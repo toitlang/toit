@@ -59,27 +59,12 @@ static bool is_dead_code(Expression* expression) {
       expression->is_Nop();
 }
 
-static int live_prefix(List<Expression*> expressions, TypeDatabase* propagated_types) {
-  int prefix = 0;
-  for (int i = 0; i < expressions.length(); i++) {
-    Expression* expression = expressions[i];
-    if (expression->is_If()) {
-      prefix = i + 1;
-    } else if (expression->is_Call()) {
-      if (propagated_types->is_dead(expression->as_Call())) {
-        fprintf(stderr, "[found dead prefix = %d (%d)]\n", prefix, expressions.length() - prefix);
-        return prefix;
-      }
-    }
-  }
-  return expressions.length();
-}
-
 ir::Sequence* eliminate_dead_code(Sequence* node, TypeDatabase* propagated_types) {
   List<Expression*> expressions = node->expressions();
+  int initial_length = expressions.length();
   int target_index = 0;
-  for (int i = 0; i < expressions.length(); i++) {
-    if (i != expressions.length() - 1 &&  // The last expression is the value of the sequence.
+  for (int i = 0; i < initial_length; i++) {
+    if (i != initial_length - 1 &&  // The last expression is the value of the sequence.
         is_dead_code(expressions[i])) continue;
     expressions[target_index++] = expressions[i];
   }
@@ -88,15 +73,6 @@ ir::Sequence* eliminate_dead_code(Sequence* node, TypeDatabase* propagated_types
     expressions = expressions.sublist(0, target_index);
   }
 
-/*
-  if (propagated_types) {
-    int prefix = live_prefix(expressions, propagated_types);
-    if (prefix != expressions.length()) {
-      expressions = expressions.sublist(0, prefix);
-    }
-  }
-*/
-
   for (int i = 0; i < expressions.length() - 1; i++) {
     if (expression_terminates(expressions[i], propagated_types)) {
       expressions = expressions.sublist(0, i + 1);
@@ -104,7 +80,7 @@ ir::Sequence* eliminate_dead_code(Sequence* node, TypeDatabase* propagated_types
     }
   }
 
-  if (expressions.data() == node->expressions().data()) return node;
+  if (expressions.length() == initial_length) return node;
   return _new Sequence(expressions, node->range());
 }
 
