@@ -31,7 +31,7 @@ TYPE_PRIMITIVE_ANY(get_ip)
 TYPE_PRIMITIVE_ANY(init_scan)
 TYPE_PRIMITIVE_ANY(start_scan)
 TYPE_PRIMITIVE_ANY(read_scan)
-TYPE_PRIMITIVE_ANY(get_ap_info)
+TYPE_PRIMITIVE_ARRAY(ap_info)
 
 }  // namespace toit::compiler
 }  // namespace toit

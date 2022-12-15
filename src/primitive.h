@@ -310,7 +310,7 @@ namespace toit {
   PRIMITIVE(init_scan, 1)                    \
   PRIMITIVE(start_scan, 4)                   \
   PRIMITIVE(read_scan, 1)                    \
-  PRIMITIVE(get_ap_info, 1)                  \
+  PRIMITIVE(ap_info, 1)                      \
 
 #define MODULE_ETHERNET(PRIMITIVE)           \
   PRIMITIVE(init_esp32, 5)                   \

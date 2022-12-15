@@ -590,7 +590,7 @@ PRIMITIVE(read_scan) {
   return ap_array;
 }
 
-PRIMITIVE(get_ap_info) {
+PRIMITIVE(ap_info) {
   ARGS(WifiResourceGroup, group);
 
   wifi_ap_record_t ap_record;

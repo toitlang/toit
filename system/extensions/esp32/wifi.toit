@@ -45,9 +45,9 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
       return connect client arguments[0] arguments[1]
     if index == WifiService.ESTABLISH_INDEX:
       return establish client arguments
-    if index == WifiService.GET_AP_INFO_INDEX:
+    if index == WifiService.AP_INFO_INDEX:
       network := (resource client arguments) as NetworkResource
-      return get_ap_info network
+      return ap_info network
     if index == WifiService.SCAN_INDEX:
       return scan arguments
     return super pid client index arguments
@@ -118,8 +118,8 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
   address resource/NetworkResource -> ByteArray:
     return (state_.module as WifiModule).address.to_byte_array
 
-  get_ap_info resource/NetworkResource -> List:
-    return (state_.module as WifiModule).get_ap_info
+  ap_info resource/NetworkResource -> List:
+    return (state_.module as WifiModule).ap_info
   
   scan config/Map -> List:
     if state_.module:
@@ -247,11 +247,8 @@ class WifiModule implements NetworkModule:
     address_ = net.IpAddress ip
     logger_.info "network address statically assigned" --tags={"ip": address_}
 
-  get_ap_info -> List:
-    result := []
-    ap_info := wifi_get_ap_info_ resource_group_
-    result.add_all ap_info
-    return result
+  ap_info -> List:
+    return wifi_get_ap_info_ resource_group_
 
   scan channels/ByteArray passive/bool period/int -> List:
     if ap or not resource_group_:
@@ -316,4 +313,4 @@ wifi_read_scan_ resource_group -> Array_:
   #primitive.wifi.read_scan
 
 wifi_get_ap_info_ resource_group -> Array_:
-  #primitive.wifi.get_ap_info
+  #primitive.wifi.ap_info

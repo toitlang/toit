@@ -15,7 +15,7 @@ main:
       --ssid=USER_SSID
       --password=USER_PASSWORD
   
-  ap := connection.get_ap_info
+  ap := connection.access_point
 
   print """
       $(%-32s "SSID") $(%-18s "BSSID") \
