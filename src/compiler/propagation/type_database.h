@@ -49,6 +49,10 @@ class TypeDatabase {
   bool is_dead(ir::Method* method) const;
   bool does_not_return(ir::Call* call) const;
 
+  void check_top(uint8* bcp, Object* top) const;
+  void check_return(uint8* bcp, Object* value) const;
+  void check_method_entry(Method method, Object** sp) const;
+
  private:
   Program* const program_;
   SourceMapper* const source_mapper_;
@@ -58,7 +62,9 @@ class TypeDatabase {
 
   std::unordered_map<int, TypeStack*> methods_;
   std::unordered_map<int, TypeSet> usage_;
-  std::unordered_map<int, TypeSet> return_types_;
+  std::unordered_map<int, TypeSet> returns_;
+
+  static std::unordered_map<Program*, TypeDatabase*> cache_;
 
   TypeDatabase(Program* program, SourceMapper* source_mapper, int words_per_type);
 

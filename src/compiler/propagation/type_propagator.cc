@@ -251,6 +251,17 @@ void TypePropagator::propagate(TypeDatabase* types) {
 
   stack.push_empty();
   TypeSet type = stack.get(0);
+
+  if (has_entry_task_) {
+    // If we've analyzed the __entry__task method, we need to note
+    // that we can return to the bytecode that follows the initial
+    // faked 'load null' one. The top of stack will be a task.
+    uint8* entry = program()->entry_task().entry();
+    type.clear(words_per_type());
+    type.add_instance(program()->task_class_id());
+    types->add_usage(program()->absolute_bci_from_bcp(entry), type);
+  }
+
   sites_.for_each([&](uint8* site, Set<TypeVariable*>& results) {
     type.clear(words_per_type());
     for (auto it = results.begin(); it != results.end(); it++) {
@@ -417,7 +428,6 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
     Program* program = this->program();
     TypeSet receiver = stack->local(arity);
     TypeSet::Iterator it(receiver, words_per_type_);
-    int variants = 0;
     while (it.has_next()) {
       unsigned id = it.next();
       int entry_index = id + offset;
@@ -432,9 +442,7 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
       arguments.push_back(ConcreteType(id));
       call_method(caller, scope, site, target, arguments);
       arguments.pop_back();
-      variants++;
     }
-    ASSERT(variants > 0);
   }
 
   stack->drop_arguments(target.arity());

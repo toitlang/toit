@@ -191,6 +191,7 @@ jobs:
           make all
           if [ "$RUNNER_OS" == "Linux" ]; then
             make CROSS_ARCH=host32 BUILD_TYPE=Debug all-cross
+            make HOST=host-ctp TOIT_CHECK_PROPAGATED_TYPES=1 sdk
           fi
 
       - name: Build esptool
@@ -208,7 +209,12 @@ jobs:
           make test
           make test-health
 
-      - name: Test 32bit debug
+      - name: Test type propagator
+        if: runner.os == 'Linux'
+        run: |
+          make HOST=host-ctp TOIT_CHECK_PROPAGATED_TYPES=1 test
+
+      - name: Test 32-bit debug
         if: runner.os == 'Linux'
         run: |
           make HOST=host32 BUILD_TYPE=Debug test

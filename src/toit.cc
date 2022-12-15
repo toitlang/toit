@@ -149,7 +149,7 @@ int main(int argc, char **argv) {
     auto dep_format = compiler::Compiler::DepFormat::none;
     bool for_language_server = false;
     bool for_analysis = false;
-    int optimization_level = 1;
+    int optimization_level = 2;
 
     int processed_args = 1;  // The executable name has already been processed.
 
