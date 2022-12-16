@@ -119,25 +119,28 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
       return eliminator_->terminate(sequence);
     }
 
-    void visit(Expression* node) {
+    Expression* visit(Expression* node) {
       ASSERT(result_ == null);
-      if (terminates_) return;
+      if (terminates_) return node;
       Node* result = eliminator_->visit(node, &terminates_);
-      if (result) result_ = result->as_Expression();
+      if (!result) return node;
+      return result_ = result->as_Expression();
     }
 
-    void visit_for_value(Expression* node) {
+    Expression* visit_for_value(Expression* node) {
       ASSERT(result_ == null);
-      if (terminates_) return;
+      if (terminates_) return node;
       Node* result = eliminator_->visit_for_value(node, &terminates_);
-      if (result) result_ = result->as_Expression();
+      if (!result) return node;
+      return result_ = result->as_Expression();
     }
 
-    void visit_for_effect(Expression* node) {
+    Expression* visit_for_effect(Expression* node) {
       ASSERT(result_ == null);
-      if (terminates_) return;
+      if (terminates_) return node;
       Node* result = eliminator_->visit_for_effect(node, &terminates_);
-      if (result) result_ = result->as_Expression();
+      if (!result) return node;
+      return result_ = result->as_Expression();
     }
 
    private:
@@ -205,34 +208,36 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
     bool terminates;
     for (int i = 0; i < length; i++) {
       Expression* entry = expressions[i];
-      // ...
-      Node* node = (i == length - 1) ? visit(entry, &terminates) : visit_for_effect(entry, &terminates);
+      // TODO(kasper): Explain this to me now! ...
+      Node* node = (i == length - 1)
+          ? visit(entry, &terminates)
+          : visit_for_effect(entry, &terminates);
       if (node) expressions[index++] = node->as_Expression();
       if (terminates) break;
     }
-    Expression* result = (index < length)
-        ? _new Sequence(expressions.sublist(0, index), node->range())
-        : node;
-    return terminates ? terminate(result) : result;
+    if (index < length) {
+      node->replace_expressions(expressions.sublist(0, index));
+    }
+    return terminates ? terminate(node) : node;
   }
 
   Node* visit_FieldLoad(FieldLoad* node) {
     Helper helper(this);
-    helper.visit(node->receiver());
+    node->replace_receiver(helper.visit(node->receiver()));
     return helper.result(node);
   }
 
   Node* visit_FieldStore(FieldStore* node) {
     Helper helper(this);
-    helper.visit_for_value(node->receiver());
+    node->replace_receiver(helper.visit_for_value(node->receiver()));
     Helper helper2(&helper);
-    helper2.visit_for_value(node->value());
+    node->replace_value(helper2.visit_for_value(node->value()));
     return helper2.result(node);
   }
 
   Node* visit_Return(Return* node) {
     Helper helper(this);
-    helper.visit_for_value(node->value());
+    node->replace_value(helper.visit_for_value(node->value()));
     return helper.result(node, true);
   }
 
@@ -245,18 +250,16 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
     Node* yes = visit(node->yes(), &terminates_yes);
     bool terminates_no;
     Node* no = visit(node->no(), &terminates_no);
-    if (!terminates_yes && !terminates_no) return node;
-    Expression* result = _new If(
-        condition->as_Expression(),
-        yes ? yes->as_Expression() : _new Nop(node->yes()->range()),
-        no  ? no->as_Expression()  : _new Nop(node->no()->range()),
-        node->range());
-    return (terminates_yes && terminates_no) ? terminate(result) : result;
+
+    node->replace_condition(condition->as_Expression());
+    node->replace_yes(yes ? yes->as_Expression() : _new Nop(node->yes()->range()));
+    node->replace_no(no ? no->as_Expression() : _new Nop(node->no()->range()));
+    return (terminates_yes && terminates_no) ? terminate(node) : node;
   }
 
   Node* visit_Not(Not* node) {
     Helper helper(this);
-    helper.visit(node->value());
+    node->replace_value(helper.visit(node->value()));
     return helper.result(node);
   }
 
@@ -342,17 +345,31 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   }
 
   Node* visit_CallConstructor(CallConstructor* node) { return visit_CallStatic(node); }
-  Node* visit_Lambda(Lambda* node) { return visit_CallStatic(node); }
+
+  Node* visit_Lambda(Lambda* node) {
+    // TODO(kasper): Deal with code too. I don't understand why we
+    // don't do that in the ReplacingVisitor.
+    return visit_CallStatic(node);
+  }
 
   Node* visit_CallBlock(CallBlock* node) { return visit_Call(node, null); }
   Node* visit_CallBuiltin(CallBuiltin* node) { return visit_Call(node, null); }
 
   Node* visit_PrimitiveInvocation(PrimitiveInvocation* node) { return node; }
-  Node* visit_Code(Code* node) { return node; }  // Not entirely sure about this one.
+
+  Node* visit_Code(Code* node) {
+    Node* result = visit_for_effect(node->body(), null);
+    if (result->is_Expression()) {
+      node->replace_body(result->as_Expression());
+    } else {
+      node->replace_body(_new Nop(node->range()));
+    }
+    return node;
+  }
 
   Node* visit_Typecheck(Typecheck* node) {
     Helper helper(this);
-    helper.visit_for_value(node->expression());
+    node->replace_expression(helper.visit_for_value(node->expression()));
     return helper.result(node);
   }
 
@@ -360,7 +377,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
     Expression* expression = node->expression();
     if (!expression) return null;
     Helper helper(this);
-    helper.visit(expression);
+    node->replace_expression(helper.visit(expression));
     return helper.result(node);
   }
 
