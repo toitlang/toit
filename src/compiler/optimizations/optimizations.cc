@@ -50,6 +50,7 @@ class OptimizationVisitor : public ReplacingVisitor {
       return node;
     }
     method_ = node;
+    eliminate_dead_code(node, propagated_types_);
     Node* result = ReplacingVisitor::visit_Method(node);
     method_ = null;
     return result;
@@ -68,10 +69,9 @@ class OptimizationVisitor : public ReplacingVisitor {
     return return_peephole(node);
   }
 
-  /// Removes code after `return`s and calls.
+  /// ...
   Node* visit_Sequence(Sequence* node) {
     node = ReplacingVisitor::visit_Sequence(node)->as_Sequence();
-    node = eliminate_dead_code(node, propagated_types_);
     return simplify_sequence(node);
   }
 

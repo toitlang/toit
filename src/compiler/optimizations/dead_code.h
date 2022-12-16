@@ -21,8 +21,8 @@
 namespace toit {
 namespace compiler {
 
-/// Removes dead code after a `return` or a call.
-ir::Sequence* eliminate_dead_code(ir::Sequence* node, TypeDatabase* propaged_types);
+/// ...
+void eliminate_dead_code(ir::Method* method, TypeDatabase* propagated_types);
 
 } // namespace toit::compiler
 } // namespace toit
