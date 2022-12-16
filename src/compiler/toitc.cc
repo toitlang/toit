@@ -101,7 +101,7 @@ int main(int argc, char **argv) {
   bool for_language_server = false;
   bool for_analysis = false;
   const char* vessels_root = null;
-  int optimization_level = 1;
+  int optimization_level = DEFAULT_OPTIMIZATION_LEVEL;
 
   int processed_args = 1;  // The executable name has already been processed.
 

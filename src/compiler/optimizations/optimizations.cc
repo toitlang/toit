@@ -50,8 +50,9 @@ class OptimizationVisitor : public ReplacingVisitor {
       return node;
     }
     method_ = node;
-    eliminate_dead_code(node, propagated_types_);
+    eliminate_dead_code(node, null);
     Node* result = ReplacingVisitor::visit_Method(node);
+    eliminate_dead_code(node, propagated_types_);
     method_ = null;
     return result;
   }
