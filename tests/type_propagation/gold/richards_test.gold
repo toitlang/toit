@@ -341,7 +341,6 @@ Scheduler.release tests/type_propagation/richards_test.toit
  35[080] - branch T43
  38[009] - load field local 68 // {*}
  40[088] - return S2 2
- 43[041] - pop 1
 
 Scheduler.queue tests/type_propagation/richards_test.toit
  - argument 0: {Scheduler}

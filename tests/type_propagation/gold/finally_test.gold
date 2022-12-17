@@ -55,7 +55,7 @@ return_is_exception tests/type_propagation/finally_test.toit
  25[015] - load local 1
  26[088] - return S7 0
  29[096] - unwind
- 30[089] - return null S1 0
+ 30[041] - pop 1
 
 [block] in return_is_exception tests/type_propagation/finally_test.toit
  - argument 0: [block]
@@ -109,7 +109,7 @@ return_exception tests/type_propagation/finally_test.toit
  25[014] - load local 0
  26[088] - return S7 0
  29[096] - unwind
- 30[089] - return null S1 0
+ 30[041] - pop 1
 
 [block] in return_exception tests/type_propagation/finally_test.toit
  - argument 0: [block]
@@ -137,7 +137,7 @@ catchy tests/type_propagation/finally_test.toit
  25[015] - load local 1
  26[088] - return S7 0
  29[096] - unwind
- 30[089] - return null S1 0
+ 30[041] - pop 1
 
 [block] in catchy tests/type_propagation/finally_test.toit
  - argument 0: [block]

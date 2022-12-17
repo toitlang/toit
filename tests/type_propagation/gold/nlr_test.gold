@@ -61,7 +61,7 @@ stop_unwinding tests/type_propagation/nlr_test.toit
  16[018] - load local 4
  17[088] - return S6 0
  20[096] - unwind
- 21[089] - return null S2 0
+ 21[041] - pop 1
 
 [block] in stop_unwinding tests/type_propagation/nlr_test.toit
  - argument 0: [block]
@@ -100,7 +100,7 @@ stop_unwinding_alternative tests/type_propagation/nlr_test.toit
  16[018] - load local 4
  17[088] - return S6 0
  20[096] - unwind
- 21[089] - return null S2 0
+ 21[041] - pop 1
 
 [block] in stop_unwinding_alternative tests/type_propagation/nlr_test.toit
  - argument 0: [block]

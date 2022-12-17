@@ -340,9 +340,13 @@ void ByteGen::visit_Sequence(Sequence* node) {
     __ store_local(old_height);
   }
 
-  // Avoid popping locals after return. It is dead code.
+  // Avoid popping locals at the end of the method or after returns
+  // and non-local loop branches. It is dead code.
   int extra = locals_count_ - old_locals_count;
-  if (length > 0 && expressions.last()->is_Return()) {
+  bool end_of_method = node == method_->body();
+  bool ends_with_return = length > 0 && expressions.last()->is_Return();
+  bool ends_with_branch = length > 0 && expressions.last()->is_LoopBranch();
+  if (end_of_method || ends_with_return || ends_with_branch) {
     emitter()->forget(extra);
   } else {
     __ pop(extra);

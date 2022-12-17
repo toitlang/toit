@@ -17,7 +17,7 @@ nested tests/type_propagation/try_test.toit
  15[018] - load local 4
  16[088] - return S6 0
  19[096] - unwind
- 20[089] - return null S2 0
+ 20[041] - pop 1
 
 [block] in nested tests/type_propagation/try_test.toit
  - argument 0: [block]
