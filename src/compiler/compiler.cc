@@ -169,8 +169,10 @@ class Pipeline {
   std::vector<ast::Unit*> _parse_units(List<const char*> source_paths,
                                        const PackageLock& package_lock);
   ir::Program* resolve(const std::vector<ast::Unit*>& units,
-                       int entry_unit_index, int core_unit_index);
-  void check_types_and_deprecations(ir::Program* program);
+                       int entry_unit_index,
+                       int core_unit_index,
+                       bool quiet = false);
+  void check_types_and_deprecations(ir::Program* program, bool quiet = false);
   void set_toitdocs(const ToitdocRegistry& registry) { toitdoc_registry_ = registry; }
 };
 
@@ -821,9 +823,13 @@ void Pipeline::setup_lsp_selection_handler() {
 }
 
 ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
-                               int entry_unit_index, int core_unit_index) {
+                               int entry_unit_index,
+                               int core_unit_index,
+                               bool quiet) {
   // Resolve all units.
-  Resolver resolver(configuration_.lsp, source_manager(), diagnostics());
+  NullDiagnostics null_diagnostics(this->diagnostics());
+  Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
+  Resolver resolver(configuration_.lsp, source_manager(), diagnostics);
   auto result = resolver.resolve(units,
                                  entry_unit_index,
                                  core_unit_index);
@@ -895,8 +901,10 @@ void DebugCompilationPipeline::patch(ir::Program* program) {
   dispatch_method->replace_body(_new ir::Sequence(dispatch_statements.build(), range));
 }
 
-void Pipeline::check_types_and_deprecations(ir::Program* program) {
-  ::toit::compiler::check_types_and_deprecations(program, configuration_.lsp, toitdocs(), diagnostics());
+void Pipeline::check_types_and_deprecations(ir::Program* program, bool quiet) {
+  NullDiagnostics null_diagnostics(this->diagnostics());
+  Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
+  ::toit::compiler::check_types_and_deprecations(program, configuration_.lsp, toitdocs(), diagnostics);
 }
 
 List<const char*> Pipeline::adjust_source_paths(List<const char*> source_paths) {
@@ -1623,8 +1631,16 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 
   SourceMapper optimized_source_mapper(source_manager());
   if (run_optimizations && configuration_.optimization_level >= 2) {
-    ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
+    bool quiet = true;
+    ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX, quiet);
     patch(ir_program);
+    // We check the types again, because the compiler computes types as
+    // a side-effect of this and the types are necessary for the
+    // optimizations. This feels a little bit unfortunate, but it is
+    // important that the second compilation pass where we use propagated
+    // types is based on the same IR nodes, so we need the optimizations
+    // to behave the same way for the output to be correct.
+    check_types_and_deprecations(ir_program, quiet);
     ASSERT(!diagnostics()->encountered_error());
     TypeDatabase* types = TypeDatabase::compute(program, source_mapper);
     source_mapper = &optimized_source_mapper;

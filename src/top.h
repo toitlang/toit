@@ -407,10 +407,4 @@ static const word ITERATE_CUSTOM_TAGS = -100;
 
 static const int DEFAULT_OPTIMIZATION_LEVEL = 1;
 
-inline void memcpy_reverse(void* dst, const void* src, size_t n) {
-  for (size_t i = 0; i < n; ++i) {
-    reinterpret_cast<uint8*>(dst)[n-1-i] = reinterpret_cast<const uint8*>(src)[i];
-  }
-}
-
 } // namespace toit

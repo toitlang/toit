@@ -280,10 +280,11 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
       arguments[used] = result ? result->as_Expression() : null;
       used++;
     }
+
     Expression* result = node;
     if (used < length) {
       if (receiver) {
-        for (int i = used; i > 0; i++) {
+        for (int i = used; i > 0; i--) {
           arguments[i] = arguments[i - 1];
         }
         arguments[0] = receiver;

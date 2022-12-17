@@ -229,6 +229,10 @@ class SourceMapper {
   // Map from location-id to selector class-entry.
   Map<int, SelectorClassEntry> selectors_;
 
+  // Bytecode position mapping.
+  Map<int, int> method_positions_;
+  Map<int, std::pair<int, int>> bytecode_positions_;
+
   void extract_holder_information(ir::Class* holder,
                                   int* holder_id,
                                   const char** holder_name);

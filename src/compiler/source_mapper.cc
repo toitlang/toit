@@ -304,7 +304,12 @@ SourceMapper::MethodEntry SourceMapper::build_method_entry(int index,
                                                            const char* name,
                                                            const char* holder_name,
                                                            Source::Range range) {
-  auto location = manager_->compute_location(range.from());
+  auto from = range.from();
+  auto probe = method_positions_.find(from.token());
+  if (probe == method_positions_.end()) {
+    method_positions_[from.token()] = index;
+  }
+  auto location = manager_->compute_location(from);
   return {
     .index = index,
     .id = -1,  // Set to -1, and must be updated later.
@@ -389,30 +394,20 @@ void SourceMapper::add_global_entry(ir::Global* global) {
 }
 
 int SourceMapper::id_for_method(ir::Method* method) {
-  auto location = manager_->compute_location(method->range().from());
-  for (auto it : source_information_) {
-    if (strcmp(it.absolute_path, location.source->absolute_path()) != 0) continue;
-    FilePosition position = it.position;
-    if (position.line != location.line_number) continue;
-    if (position.column != location.offset_in_line + 1) continue;
-    return it.id;
-  }
-  return -1;
+  auto probe = method_positions_.find(method->range().from().token());
+  if (probe == method_positions_.end()) return -1;
+  auto& method_data = source_information_[probe->second];
+  return method_data.id;
 }
 
 int SourceMapper::id_for_call(ir::Call* call) {
-  auto location = manager_->compute_location(call->range().from());
-  for (auto it : source_information_) {
-    if (strcmp(it.absolute_path, location.source->absolute_path()) != 0) continue;
-    for (auto pair : it.bytecode_positions) {
-      FilePosition position = pair.second;
-      if (position.line != location.line_number) continue;
-      if (position.column != location.offset_in_line + 1) continue;
-      int p = it.id + 4 + pair.first;
-      return p;
-    }
-  }
-  return -1;
+  auto probe = bytecode_positions_.find(call->range().from().token());
+  if (probe == bytecode_positions_.end()) return -1;
+  std::pair<int,int>& entry = probe->second;
+  int method_index = entry.first;
+  int bytecode_offset = entry.second;
+  auto& method_data = source_information_[method_index];
+  return method_data.id + 4 + bytecode_offset;
 }
 
 SourceMapper::MethodMapper SourceMapper::register_method(ir::Method* method) {
@@ -484,8 +479,16 @@ SourceMapper::MethodMapper SourceMapper::register_block(int outer_index, ir::Cod
 
 void SourceMapper::register_bytecode(int method_index, int bytecode_offset, Source::Range range) {
   ASSERT(method_index >= 0);
+  auto from = range.from();
+  auto probe = bytecode_positions_.find(from.token());
+  if (probe == bytecode_positions_.end() ||
+    ((probe->second).first > method_index) ||
+    ((probe->second).first == method_index && (probe->second).second > bytecode_offset)) {
+    bytecode_positions_[from.token()] = std::pair<int, int>(method_index, bytecode_offset);
+  }
+
   auto& method_data = source_information_[method_index];
-  auto location = manager_->compute_location(range.from());
+  auto location = manager_->compute_location(from);
   method_data.bytecode_positions[bytecode_offset] = {
     .line = location.line_number,
     .column = location.offset_in_line + 1,  // Offsets are 0-based, but columns are 1-based.

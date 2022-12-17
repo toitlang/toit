@@ -299,6 +299,12 @@ class Utils {
 
 static const int MAX_UTF_8_VALUES[3] = { Utils::MAX_ASCII, 0x7ff, 0xffff };
 
+static inline void memcpy_reverse(void* dst, const void* src, size_t n) {
+  for (size_t i = 0; i < n; ++i) {
+    reinterpret_cast<uint8*>(dst)[n-1-i] = reinterpret_cast<const uint8*>(src)[i];
+  }
+}
+
 // Use instead of a reinterpret_cast if the only thing you want to do is to
 // convert a pointer to a signed type into a pointer to an unsigned type.
 // Unlike reinterpret_cast this documents why you need the cast and doesn't let
@@ -434,7 +440,7 @@ class List {
   }
 
   const List<T> sublist(int from, int to) const {
-    ASSERT(0 <= from && from <= to && to < length_);
+    ASSERT(0 <= from && from <= to && to <= length_);
     return List<T>(&data_[from], to - from);
   }
 

@@ -33,12 +33,10 @@ using namespace ir;
 
 class OptimizationVisitor : public ReplacingVisitor {
  public:
-  OptimizationVisitor(Program* program,
-                      TypeDatabase* propagated_types,
+  OptimizationVisitor(TypeDatabase* propagated_types,
                       const UnorderedMap<Class*, QueryableClass> queryables,
                       const UnorderedSet<Symbol>& field_names)
-      : program_(program)
-      , propagated_types_(propagated_types)
+      : propagated_types_(propagated_types)
       , holder_(null)
       , method_(null)
       , queryables_(queryables)
@@ -90,7 +88,6 @@ class OptimizationVisitor : public ReplacingVisitor {
   void set_class(Class* klass) { holder_ = klass; }
 
  private:
-  Program* program_;
   TypeDatabase* const propagated_types_;
 
   Class* holder_;  // Null, if not in class (or a static method/field).
@@ -131,7 +128,7 @@ void optimize(Program* program, TypeDatabase* propagated_types) {
     }
   }
 
-  OptimizationVisitor visitor(program, propagated_types, queryables, field_names);
+  OptimizationVisitor visitor(propagated_types, queryables, field_names);
 
   for (auto klass : classes) {
     visitor.set_class(klass);
