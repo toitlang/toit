@@ -145,7 +145,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
     List<Expression*> expressions = node->expressions();
     int length = expressions.length();
     int index = 0;
-    bool terminates;
+    bool terminates = false;
     for (int i = 0; i < length; i++) {
       Expression* entry = expressions[i];
       // TODO(kasper): Explain this to me now! ...
