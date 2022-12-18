@@ -15,8 +15,8 @@ interface WifiService extends NetworkService:
   static ESTABLISH_INDEX /int ::= 1001
   establish config/Map? -> List
 
-  static RSSI_INDEX /int ::= 1002
-  rssi handle/int -> int?
+  static AP_INFO_INDEX /int ::= 1002
+  ap_info handle/int -> int?
 
   static SCAN_INDEX /int ::= 1003
   scan config/Map -> List
@@ -34,8 +34,8 @@ class WifiServiceClient extends NetworkServiceClient implements WifiService:
   establish config/Map? -> List:
     return invoke_ WifiService.ESTABLISH_INDEX config
 
-  rssi handle/int -> int?:
-    return invoke_ WifiService.RSSI_INDEX handle
+  ap_info handle/int -> List:
+    return invoke_ WifiService.AP_INFO_INDEX handle
 
   scan config/Map -> List:
     return invoke_ WifiService.SCAN_INDEX config
