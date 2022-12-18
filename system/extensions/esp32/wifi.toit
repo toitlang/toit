@@ -45,9 +45,9 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
       return connect client arguments[0] arguments[1]
     if index == WifiService.ESTABLISH_INDEX:
       return establish client arguments
-    if index == WifiService.RSSI_INDEX:
+    if index == WifiService.AP_INFO_INDEX:
       network := (resource client arguments) as NetworkResource
-      return rssi network
+      return ap_info network
     if index == WifiService.SCAN_INDEX:
       return scan arguments
     return super pid client index arguments
@@ -118,8 +118,8 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
   address resource/NetworkResource -> ByteArray:
     return (state_.module as WifiModule).address.to_byte_array
 
-  rssi resource/NetworkResource -> int?:
-    return (state_.module as WifiModule).rssi
+  ap_info resource/NetworkResource -> List:
+    return (state_.module as WifiModule).ap_info
   
   scan config/Map -> List:
     if state_.module:
@@ -247,8 +247,8 @@ class WifiModule implements NetworkModule:
     address_ = net.IpAddress ip
     logger_.info "network address statically assigned" --tags={"ip": address_}
 
-  rssi -> int?:
-    return wifi_get_rssi_ resource_group_
+  ap_info -> List:
+    return wifi_get_ap_info_ resource_group_
 
   scan channels/ByteArray passive/bool period/int -> List:
     if ap or not resource_group_:
@@ -303,9 +303,6 @@ wifi_disconnect_reason_ resource:
 wifi_get_ip_ resource_group -> ByteArray?:
   #primitive.wifi.get_ip
 
-wifi_get_rssi_ resource_group -> int?:
-  #primitive.wifi.get_rssi
-
 wifi_init_scan_ resource_group:
   #primitive.wifi.init_scan
 
@@ -314,3 +311,6 @@ wifi_start_scan_ resource_group channel passive period_ms:
 
 wifi_read_scan_ resource_group -> Array_:
   #primitive.wifi.read_scan
+
+wifi_get_ap_info_ resource_group -> Array_:
+  #primitive.wifi.ap_info

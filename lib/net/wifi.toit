@@ -65,6 +65,15 @@ class AccessPoint:
 
 interface Interface extends net.Interface:
   /**
+  Returns information about the access point this $Interface is currently
+    connected to.
+
+  Throws an exception if this network isn't currently connected to an
+    access point.
+  */
+  access_point -> AccessPoint
+
+  /**
   Returns the signal strength of the current access point association
     as a float in the range [0..1].
 
@@ -128,9 +137,18 @@ class WifiInterface_ extends SystemInterface_ implements Interface:
   constructor client/WifiServiceClient connection/List:
     super client connection
 
+  access_point -> AccessPoint:
+    info := (client_ as WifiServiceClient).ap_info handle_
+    return AccessPoint
+        --ssid=info[WIFI_SCAN_SSID_]
+        --bssid=info[WIFI_SCAN_BSSID_]
+        --rssi=info[WIFI_SCAN_RSSI_]
+        --authmode=info[WIFI_SCAN_AUTHMODE_]
+        --channel=info[WIFI_SCAN_CHANNEL_]
+
   signal_strength -> float:
-    rssi := (client_ as WifiServiceClient).rssi handle_
-    if not rssi: throw "wifi not connected in STA mode"
+    info := (client_ as WifiServiceClient).ap_info handle_
+    rssi := info[WIFI_SCAN_SSID_]
     // RSSI is usually in the range [-100..-35].
     rssi = min 65 (max 0 rssi + 100)
     return rssi / 65.0
