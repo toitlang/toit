@@ -923,35 +923,65 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(IS_CLASS, encoded);
-    USE(encoded);
+    int class_index = encoded >> 1;
+    bool is_nullable = (encoded & 1) != 0;
+    TypeSet top = stack->local(0);
+    int result = top.remove_typecheck_class(program, class_index, is_nullable);
     stack->pop();
-    stack->push_bool(program);
+    bool can_fail = (result & TypeSet::TYPECHECK_CAN_FAIL) != 0;
+    bool can_succeed = (result & TypeSet::TYPECHECK_CAN_SUCCEED) != 0;
+    if (can_succeed && can_fail)  {
+      stack->push_bool(program);
+    } else if (can_succeed) {
+      stack->push_bool_specific(program, true);
+    } else {
+      ASSERT(can_fail);
+      stack->push_bool_specific(program, false);
+    }
+    //propagator->outer(bcp)->type().add_all(stack->local(0), propagator->words_per_type());
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(IS_INTERFACE, encoded);
-    USE(encoded);
+    int interface_selector_index = encoded >> 1;
+    bool is_nullable = (encoded & 1) != 0;
+    TypeSet top = stack->local(0);
+    int result = top.remove_typecheck_interface(program, interface_selector_index, is_nullable);
     stack->pop();
-    stack->push_bool(program);
+    bool can_fail = (result & TypeSet::TYPECHECK_CAN_FAIL) != 0;
+    bool can_succeed = (result & TypeSet::TYPECHECK_CAN_SUCCEED) != 0;
+    if (can_succeed && can_fail)  {
+      stack->push_bool(program);
+    } else if (can_succeed) {
+      stack->push_bool_specific(program, true);
+    } else {
+      ASSERT(can_fail);
+      stack->push_bool_specific(program, false);
+    }
+    //propagator->outer(bcp)->type().add_all(stack->local(0), propagator->words_per_type());
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(AS_CLASS, encoded);
     int class_index = encoded >> 1;
     bool is_nullable = (encoded & 1) != 0;
     TypeSet top = stack->local(0);
-    // For all we know, doing the 'as' check can throw.
-    propagator->ensure_as_check_failure();
-    scope->throw_maybe();
-    if (!top.remove_typecheck_class(program, class_index, is_nullable)) return scope;
+    int result = top.remove_typecheck_class(program, class_index, is_nullable);
+    if ((result & TypeSet::TYPECHECK_CAN_FAIL) != 0) {
+      propagator->ensure_as_check_failure();
+      scope->throw_maybe();
+    }
+    if ((result & TypeSet::TYPECHECK_CAN_SUCCEED) == 0) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(AS_INTERFACE, encoded);
     int interface_selector_index = encoded >> 1;
     bool is_nullable = (encoded & 1) != 0;
     TypeSet top = stack->local(0);
-    // For all we know, doing the 'as' check can throw.
-    propagator->ensure_as_check_failure();
-    scope->throw_maybe();
-    if (!top.remove_typecheck_interface(program, interface_selector_index, is_nullable)) return scope;
+    int result = top.remove_typecheck_interface(program, interface_selector_index, is_nullable);
+    if ((result & TypeSet::TYPECHECK_CAN_FAIL) != 0) {
+      propagator->ensure_as_check_failure();
+      scope->throw_maybe();
+    }
+    if ((result & TypeSet::TYPECHECK_CAN_SUCCEED) == 0) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(AS_LOCAL);
@@ -960,10 +990,12 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     bool is_nullable = false;
     int class_index = encoded & 0x1F;
     TypeSet local = stack->local(stack_offset);
-    // For all we know, doing the 'as' check can throw.
-    propagator->ensure_as_check_failure();
-    scope->throw_maybe();
-    if (!local.remove_typecheck_class(program, class_index, is_nullable)) return scope;
+    int result = local.remove_typecheck_class(program, class_index, is_nullable);
+    if ((result & TypeSet::TYPECHECK_CAN_FAIL) != 0) {
+      propagator->ensure_as_check_failure();
+      scope->throw_maybe();
+    }
+    if ((result & TypeSet::TYPECHECK_CAN_SUCCEED) == 0) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_STATIC);
