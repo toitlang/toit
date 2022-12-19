@@ -69,6 +69,12 @@ test_invokes tests/type_propagation/block_test.toit
   0[016] - load local 2
   1[088] - return S1 2
 
+[block] in [block] in test_invokes tests/type_propagation/block_test.toit
+ - argument 0: [block]
+ - argument 1: {SmallInteger_}
+  0[016] - load local 2
+  1[088] - return S1 2
+
 [block] in test_invokes tests/type_propagation/block_test.toit
  - argument 0: [block]
  - argument 1: {SmallInteger_}
@@ -81,7 +87,7 @@ test_invokes tests/type_propagation/block_test.toit
 
 [block] in [block] in test_invokes tests/type_propagation/block_test.toit
  - argument 0: [block]
- - argument 1: {SmallInteger_}
+ - argument 1: {True_}
   0[016] - load local 2
   1[088] - return S1 2
 
@@ -94,12 +100,6 @@ test_invokes tests/type_propagation/block_test.toit
   8[053] - invoke static invoke tests/type_propagation/block_test.toit // {True_}
  11[004] - store local, pop S1
  13[088] - return S1 2
-
-[block] in [block] in test_invokes tests/type_propagation/block_test.toit
- - argument 0: [block]
- - argument 1: {True_}
-  0[016] - load local 2
-  1[088] - return S1 2
 
 test_nesting tests/type_propagation/block_test.toit
   0[022] - load null
