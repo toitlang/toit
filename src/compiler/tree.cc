@@ -296,6 +296,7 @@ void TreeGrower::grow(Program* program) {
       // Skip already visited methods.
       if (grown_methods_.contains(method)) continue;
       grown_methods_.insert(method);
+      if (method->is_dead()) continue;
       visitor.visit(method);
       logger->add(method, visitor.found_classes(), visitor.found_methods(), visitor.found_selectors());
       found_classes.insert_all(visitor.found_classes());
@@ -435,9 +436,11 @@ class Fixup : public ReplacingVisitor {
     ASSERT(result == node);
     Method* method = node->target()->target();
     if (unreachable_methods_.contains(method)) {
-      ASSERT(method->is_MethodInstance());
-      // We changed a dynamic call to a static call, but the target doesn't exist anymore.
-      // Just ignore the call, but still evaluate all parameters.
+      // The static method or constructor is unreachable. This might be
+      // because our type propagation phase has told us that the method
+      // is dead, but this can also happen when we have changed a dynamic
+      // call to a static call, and then tree shake the target. Either way,
+      // we just ignore the call, but still evaluate all parameters.
       auto arguments = node->arguments();
       if (arguments.length() == 1) return arguments[0];
       return _new Sequence(arguments, node->range());
@@ -480,7 +483,7 @@ static List<T*> shake_methods(List<T*> methods,
                               const Set<Method*>& grown_methods) {
   ListBuilder<T*> remaining_methods;
   for (auto method : methods) {
-    if (grown_methods.contains(method)) {
+    if (grown_methods.contains(method) && !method->is_dead()) {
       remaining_methods.add(method);
     }
   }
@@ -491,7 +494,7 @@ static std::vector<Method*> shake_methods(std::vector<Method*> methods,
                                           const Set<Method*>& grown_methods) {
   std::vector<Method*> remaining_methods;
   for (auto method : methods) {
-    if (grown_methods.contains(method)) {
+    if (grown_methods.contains(method) && !method->is_dead()) {
       remaining_methods.push_back(method);
     }
   }
@@ -544,7 +547,9 @@ static void shake(ir::Program* program,
   for (auto global : program->globals()) {
     if (grown_methods.contains(global)) {
       remaining_globals.add(global);
-      unreachable_methods.erase(global);
+      if (!global->is_dead()) {
+        unreachable_methods.erase(global);
+      }
     }
   }
   if (Flags::report_tree_shaking) {
@@ -588,6 +593,7 @@ static void shake(ir::Program* program,
                 null_type,
                 program->as_check_failure());
   for (auto method : grown_methods) {
+    if (method->is_dead()) continue;
     auto result = visitor.visit(method);
     ASSERT(result == method);
   }

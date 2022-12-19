@@ -100,10 +100,13 @@ class GcMetadata {
     uword mark_bits = (base >> MARK_BITS_SHIFT) + singleton_.mark_bits_bias_;
     // When checking if one-word objects are black we may look one bit into the
     // next page.  Add one to the area to account for this possibility.
-    OS::use_virtual_memory(reinterpret_cast<void*>(mark_bits), mark_size + 1);
-    uword cumulative_mark_bits = (base >> CUMULATIVE_MARK_BITS_SHIFT) + singleton_.cumulative_mark_bits_bias_;
-    uword cumulative_mark_size = chunk->size() >> CUMULATIVE_MARK_BITS_SHIFT;
-    OS::use_virtual_memory(reinterpret_cast<void*>(cumulative_mark_bits), cumulative_mark_size);
+    bool ok = OS::use_virtual_memory(reinterpret_cast<void*>(mark_bits), mark_size + 1);
+    if (ok) {
+      uword cumulative_mark_bits = (base >> CUMULATIVE_MARK_BITS_SHIFT) + singleton_.cumulative_mark_bits_bias_;
+      uword cumulative_mark_size = chunk->size() >> CUMULATIVE_MARK_BITS_SHIFT;
+      ok = OS::use_virtual_memory(reinterpret_cast<void*>(cumulative_mark_bits), cumulative_mark_size);
+    }
+    if (!ok) FATAL("Out of memory when mapping heap metadata");
   }
 
   static void mark_pages_for_chunk(Chunk* chunk, PageType page_type) {

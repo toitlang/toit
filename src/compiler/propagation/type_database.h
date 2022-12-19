@@ -16,6 +16,8 @@
 #pragma once
 
 #include "type_set.h"
+
+#include "../ir.h"
 #include "../../objects.h"
 
 #include <unordered_map>
@@ -29,17 +31,24 @@ class Program;
 namespace compiler {
 
 class TypeStack;
+class SourceMapper;
 
 class TypeDatabase {
  public:
-  static TypeDatabase* compute(Program* program);
+  static TypeDatabase* compute(Program* program, SourceMapper* source_mapper);
   ~TypeDatabase();
 
   const std::vector<Method> methods() const;
   const std::vector<TypeSet> arguments(Method method) const;
   const TypeSet usage(int position) const;
+  const TypeSet return_type(int position) const;
 
   std::string as_json() const;
+
+  // ...
+  bool is_dead(ir::Method* method) const;
+  bool is_dead(ir::Call* call) const;
+  bool does_not_return(ir::Call* call) const;
 
   void check_top(uint8* bcp, Object* top) const;
   void check_return(uint8* bcp, Object* value) const;
@@ -47,6 +56,8 @@ class TypeDatabase {
 
  private:
   Program* const program_;
+  SourceMapper* const source_mapper_;
+
   const int words_per_type_;
   std::vector<TypeStack*> types_;
 
@@ -56,7 +67,7 @@ class TypeDatabase {
 
   static std::unordered_map<Program*, TypeDatabase*> cache_;
 
-  TypeDatabase(Program* program, int words_per_type);
+  TypeDatabase(Program* program, SourceMapper* source_mapper, int words_per_type);
 
   void add_method(Method method);
   void add_argument(Method method, int n, const TypeSet type);

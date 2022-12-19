@@ -1,0 +1,26 @@
+main tests/type_propagation/literal_test.toit
+  0[053] - invoke static get_smi tests/type_propagation/literal_test.toit // {SmallInteger_}
+  3[041] - pop 1
+  4[053] - invoke static get_string tests/type_propagation/literal_test.toit // {String_}
+  7[041] - pop 1
+  8[053] - invoke static get_smi_or_string tests/type_propagation/literal_test.toit // {String_|SmallInteger_}
+ 11[089] - return null S1 0
+
+get_smi tests/type_propagation/literal_test.toit
+  0[026] - load smi 42
+  2[088] - return S1 0
+
+get_string tests/type_propagation/literal_test.toit
+  0[020] - load literal hest
+  2[088] - return S1 0
+
+get_smi_or_string tests/type_propagation/literal_test.toit
+  0[053] - invoke static get_smi tests/type_propagation/literal_test.toit // {SmallInteger_}
+  3[014] - load local 0
+  4[023] - load smi 0
+  5[062] - invoke eq // {True_|False_}
+  6[082] - branch if false T13
+  9[014] - load local 0
+ 10[088] - return S2 0
+ 13[053] - invoke static get_string tests/type_propagation/literal_test.toit // {String_}
+ 16[088] - return S2 0

@@ -12,7 +12,7 @@ test_is_exception:
   return_is_exception
   x := null
   try:
-     // Do nothing.
+    // Do nothing.
   finally: | is_exception exception |
     x = is_exception
   id x
@@ -27,7 +27,7 @@ test_exception:
   return_exception
   x := null
   try:
-     // Do nothing.
+    // Do nothing.
   finally: | is_exception exception |
     x = exception
   id x
