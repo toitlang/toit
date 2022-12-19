@@ -38,6 +38,7 @@ class TypeScope {
 
   int level() const { return level_; }
   bool is_in_try_block() const { return level_linked_ >= 0; }
+  int words_per_type() const { return words_per_type_; }
 
   MethodTemplate* method() const { return method_; }
   TypeScope* outer() const { return outer_; }

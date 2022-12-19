@@ -588,6 +588,27 @@ void TypePropagator::load_outer(TypeScope* scope, uint8* site, int index) {
   merged->type().add_all_also_blocks(value, words_per_type());
 }
 
+bool TypePropagator::handle_typecheck_result(TypeScope* scope, uint8* site, bool as_check, int result) {
+  TypeStack* stack = scope->top();
+  bool can_fail = (result & TypeSet::TYPECHECK_CAN_FAIL) != 0;
+  bool can_succeed = (result & TypeSet::TYPECHECK_CAN_SUCCEED) != 0;
+  if (can_succeed && can_fail)  {
+    stack->push_bool(program());
+  } else if (can_succeed) {
+    stack->push_bool_specific(program(), true);
+  } else {
+    ASSERT(can_fail);
+    stack->push_bool_specific(program(), false);
+    if (as_check) {
+      ensure_as_check_failure();
+      scope->throw_maybe();
+    }
+  }
+  outer(site)->type().add_all(stack->local(0), words_per_type());
+  if (as_check) stack->pop();
+  return can_succeed;
+}
+
 TypeVariable* TypePropagator::field(unsigned type, int index) {
   auto it = fields_.find(type);
   if (it != fields_.end()) {
@@ -923,35 +944,37 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(IS_CLASS, encoded);
-    USE(encoded);
+    int class_index = encoded >> 1;
+    bool is_nullable = (encoded & 1) != 0;
+    TypeSet top = stack->local(0);
+    int result = top.remove_typecheck_class(program, class_index, is_nullable);
     stack->pop();
-    stack->push_bool(program);
+    propagator->handle_typecheck_result(scope, bcp, false, result);
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(IS_INTERFACE, encoded);
-    USE(encoded);
+    int interface_selector_index = encoded >> 1;
+    bool is_nullable = (encoded & 1) != 0;
+    TypeSet top = stack->local(0);
+    int result = top.remove_typecheck_interface(program, interface_selector_index, is_nullable);
     stack->pop();
-    stack->push_bool(program);
+    propagator->handle_typecheck_result(scope, bcp, false, result);
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(AS_CLASS, encoded);
     int class_index = encoded >> 1;
     bool is_nullable = (encoded & 1) != 0;
     TypeSet top = stack->local(0);
-    // For all we know, doing the 'as' check can throw.
-    propagator->ensure_as_check_failure();
-    scope->throw_maybe();
-    if (!top.remove_typecheck_class(program, class_index, is_nullable)) return scope;
+    int result = top.remove_typecheck_class(program, class_index, is_nullable);
+    if (!propagator->handle_typecheck_result(scope, bcp, true, result)) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(AS_INTERFACE, encoded);
     int interface_selector_index = encoded >> 1;
     bool is_nullable = (encoded & 1) != 0;
     TypeSet top = stack->local(0);
-    // For all we know, doing the 'as' check can throw.
-    propagator->ensure_as_check_failure();
-    scope->throw_maybe();
-    if (!top.remove_typecheck_interface(program, interface_selector_index, is_nullable)) return scope;
+    int result = top.remove_typecheck_interface(program, interface_selector_index, is_nullable);
+    if (!propagator->handle_typecheck_result(scope, bcp, true, result)) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(AS_LOCAL);
@@ -960,10 +983,8 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     bool is_nullable = false;
     int class_index = encoded & 0x1F;
     TypeSet local = stack->local(stack_offset);
-    // For all we know, doing the 'as' check can throw.
-    propagator->ensure_as_check_failure();
-    scope->throw_maybe();
-    if (!local.remove_typecheck_class(program, class_index, is_nullable)) return scope;
+    int result = local.remove_typecheck_class(program, class_index, is_nullable);
+    if (!propagator->handle_typecheck_result(scope, bcp, true, result)) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_STATIC);
@@ -1031,7 +1052,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_BEGIN(opcode);                                       \
     int offset = program->invoke_bytecode_offset(opcode);     \
     propagator->call_virtual(method, scope, bcp, 2, offset);  \
-    if (stack->top_is_empty()) return scope;                   \
+    if (stack->top_is_empty()) return scope;                  \
   OPCODE_END();
 
   INVOKE_VIRTUAL_BINARY(INVOKE_EQ)
@@ -1059,6 +1080,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_BEGIN(INVOKE_AT_PUT);
     int offset = program->invoke_bytecode_offset(INVOKE_AT_PUT);
     propagator->call_virtual(method, scope, bcp, 3, offset);
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH);
@@ -1408,6 +1430,17 @@ void BlockTemplate::invoke_from_try_block() {
 }
 
 void BlockTemplate::propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked) {
+  // To avoid having empty types on the stack while we analyze
+  // block methods, we bail out early if there are any argument
+  // types that are empty. This happens before we've seen the
+  // first invocation of the block.
+  const int words_per_type = scope->words_per_type();
+  for (int i = 1; i < arity(); i++) {
+    if (argument(i)->type().is_empty(words_per_type)) {
+      return;
+    }
+  }
+
   // TODO(kasper): It feels wasteful to re-analyze blocks that
   // do not depend on the outer local types that were updated
   // by an inner block (or the blocks themselves).

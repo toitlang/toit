@@ -125,25 +125,32 @@ void TypeSet::remove_range(unsigned start, unsigned end) {
   Utils::clear_bits(data, from % WORD_BIT_SIZE, size);
 }
 
-bool TypeSet::remove_typecheck_class(Program* program, int index, bool is_nullable) {
+int TypeSet::remove_typecheck_class(Program* program, int index, bool is_nullable) {
+  // TODO(kasper): Avoid re-computing the words per type here.
+  int words_per_type = TypeSet::words_per_type(program);
   unsigned start = program->class_check_ids[2 * index];
   unsigned end = program->class_check_ids[2 * index + 1];
   bool contains_null_before = contains_null(program);
+  int size_before = size(words_per_type);
   remove_range(0, start);
   remove_range(end, program->class_bits.length());
   if (contains_null_before && is_nullable) {
     add(program->null_class_id()->value());
-    return true;
   }
-  // TODO(kasper): Avoid re-computing the words per type here.
-  return !is_empty(words_per_type(program));
+  int size_after = size(words_per_type);
+  int result = 0;
+  if (size_after > 0) result |= TYPECHECK_CAN_SUCCEED;
+  if (size_after < size_before) result |= TYPECHECK_CAN_FAIL;
+  ASSERT(result != 0);
+  return result;
 }
 
-bool TypeSet::remove_typecheck_interface(Program* program, int index, bool is_nullable) {
-  bool contains_null_before = contains_null(program);
-  int selector_offset = program->interface_check_offsets[index];
+int TypeSet::remove_typecheck_interface(Program* program, int index, bool is_nullable) {
   // TODO(kasper): Avoid re-computing the words per type here.
   int words_per_type = TypeSet::words_per_type(program);
+  bool contains_null_before = contains_null(program);
+  int size_before = size(words_per_type);
+  int selector_offset = program->interface_check_offsets[index];
   Iterator it(*this, words_per_type);
   while (it.has_next()) {
     unsigned id = it.next();
@@ -157,9 +164,13 @@ bool TypeSet::remove_typecheck_interface(Program* program, int index, bool is_nu
   }
   if (contains_null_before && is_nullable) {
     add(program->null_class_id()->value());
-    return true;
   }
-  return !is_empty(words_per_type);
+  int size_after = size(words_per_type);
+  int result = 0;
+  if (size_after > 0) result |= TYPECHECK_CAN_SUCCEED;
+  if (size_after < size_before) result |= TYPECHECK_CAN_FAIL;
+  ASSERT(result != 0);
+  return result;
 }
 
 } // namespace toit::compiler

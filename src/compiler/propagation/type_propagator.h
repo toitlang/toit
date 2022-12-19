@@ -62,6 +62,7 @@ class TypePropagator {
   void store_field(MethodTemplate* user, TypeStack* stack, int index);
 
   void load_outer(TypeScope* stack, uint8* site, int index);
+  bool handle_typecheck_result(TypeScope* stack, uint8* site, bool as_check, int result);
 
   TypeVariable* global_variable(int index);
   TypeVariable* field(unsigned type, int index);
