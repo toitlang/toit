@@ -84,7 +84,14 @@ show_types types/List snapshot_content/ByteArray -> none
     ia := program.method_info_for a.id
     ib := program.method_info_for b.id
     ia.error_path.compare_to ib.error_path --if_equal=:
-      ia.position.line.compare_to ib.position.line
+      ia.position.line.compare_to ib.position.line --if_equal=:
+        ia.name.compare_to ib.name --if_equal=:
+          // Being dependant on the method position in the
+          // bytecode stream isn't great, but as a last
+          // resort for sorting it works since it is only
+          // used to sort different adapter stubs using
+          // their (predictable) order of generation.
+          ia.id.compare_to ib.id
 
   first := true
   sorted_methods.do: | method/ToitMethod |
