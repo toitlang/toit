@@ -1052,7 +1052,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_BEGIN(opcode);                                       \
     int offset = program->invoke_bytecode_offset(opcode);     \
     propagator->call_virtual(method, scope, bcp, 2, offset);  \
-    if (stack->top_is_empty()) return scope;                   \
+    if (stack->top_is_empty()) return scope;                  \
   OPCODE_END();
 
   INVOKE_VIRTUAL_BINARY(INVOKE_EQ)
@@ -1080,6 +1080,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_BEGIN(INVOKE_AT_PUT);
     int offset = program->invoke_bytecode_offset(INVOKE_AT_PUT);
     propagator->call_virtual(method, scope, bcp, 3, offset);
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH);
@@ -1429,6 +1430,17 @@ void BlockTemplate::invoke_from_try_block() {
 }
 
 void BlockTemplate::propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked) {
+  // To avoid having empty types on the stack while we analyze
+  // block methods, we bail out early if there are any argument
+  // types that are empty. This happens before we've seen the
+  // first invocation of the block.
+  const int words_per_type = scope->words_per_type();
+  for (int i = 1; i < arity(); i++) {
+    if (argument(i)->type().is_empty(words_per_type)) {
+      return;
+    }
+  }
+
   // TODO(kasper): It feels wasteful to re-analyze blocks that
   // do not depend on the outer local types that were updated
   // by an inner block (or the blocks themselves).
