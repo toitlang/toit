@@ -588,6 +588,27 @@ void TypePropagator::load_outer(TypeScope* scope, uint8* site, int index) {
   merged->type().add_all_also_blocks(value, words_per_type());
 }
 
+bool TypePropagator::handle_typecheck_result(TypeScope* scope, uint8* site, bool as_check, int result) {
+  TypeStack* stack = scope->top();
+  bool can_fail = (result & TypeSet::TYPECHECK_CAN_FAIL) != 0;
+  bool can_succeed = (result & TypeSet::TYPECHECK_CAN_SUCCEED) != 0;
+  if (can_succeed && can_fail)  {
+    stack->push_bool(program());
+  } else if (can_succeed) {
+    stack->push_bool_specific(program(), true);
+  } else {
+    ASSERT(can_fail);
+    stack->push_bool_specific(program(), false);
+    if (as_check) {
+      ensure_as_check_failure();
+      scope->throw_maybe();
+    }
+  }
+  outer(site)->type().add_all(stack->local(0), words_per_type());
+  if (as_check) stack->pop();
+  return can_succeed;
+}
+
 TypeVariable* TypePropagator::field(unsigned type, int index) {
   auto it = fields_.find(type);
   if (it != fields_.end()) {
@@ -928,17 +949,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     TypeSet top = stack->local(0);
     int result = top.remove_typecheck_class(program, class_index, is_nullable);
     stack->pop();
-    bool can_fail = (result & TypeSet::TYPECHECK_CAN_FAIL) != 0;
-    bool can_succeed = (result & TypeSet::TYPECHECK_CAN_SUCCEED) != 0;
-    if (can_succeed && can_fail)  {
-      stack->push_bool(program);
-    } else if (can_succeed) {
-      stack->push_bool_specific(program, true);
-    } else {
-      ASSERT(can_fail);
-      stack->push_bool_specific(program, false);
-    }
-    //propagator->outer(bcp)->type().add_all(stack->local(0), propagator->words_per_type());
+    propagator->handle_typecheck_result(scope, bcp, false, result);
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(IS_INTERFACE, encoded);
@@ -947,17 +958,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     TypeSet top = stack->local(0);
     int result = top.remove_typecheck_interface(program, interface_selector_index, is_nullable);
     stack->pop();
-    bool can_fail = (result & TypeSet::TYPECHECK_CAN_FAIL) != 0;
-    bool can_succeed = (result & TypeSet::TYPECHECK_CAN_SUCCEED) != 0;
-    if (can_succeed && can_fail)  {
-      stack->push_bool(program);
-    } else if (can_succeed) {
-      stack->push_bool_specific(program, true);
-    } else {
-      ASSERT(can_fail);
-      stack->push_bool_specific(program, false);
-    }
-    //propagator->outer(bcp)->type().add_all(stack->local(0), propagator->words_per_type());
+    propagator->handle_typecheck_result(scope, bcp, false, result);
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(AS_CLASS, encoded);
@@ -965,11 +966,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     bool is_nullable = (encoded & 1) != 0;
     TypeSet top = stack->local(0);
     int result = top.remove_typecheck_class(program, class_index, is_nullable);
-    if ((result & TypeSet::TYPECHECK_CAN_FAIL) != 0) {
-      propagator->ensure_as_check_failure();
-      scope->throw_maybe();
-    }
-    if ((result & TypeSet::TYPECHECK_CAN_SUCCEED) == 0) return scope;
+    if (!propagator->handle_typecheck_result(scope, bcp, true, result)) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(AS_INTERFACE, encoded);
@@ -977,11 +974,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     bool is_nullable = (encoded & 1) != 0;
     TypeSet top = stack->local(0);
     int result = top.remove_typecheck_interface(program, interface_selector_index, is_nullable);
-    if ((result & TypeSet::TYPECHECK_CAN_FAIL) != 0) {
-      propagator->ensure_as_check_failure();
-      scope->throw_maybe();
-    }
-    if ((result & TypeSet::TYPECHECK_CAN_SUCCEED) == 0) return scope;
+    if (!propagator->handle_typecheck_result(scope, bcp, true, result)) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(AS_LOCAL);
@@ -991,11 +984,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     int class_index = encoded & 0x1F;
     TypeSet local = stack->local(stack_offset);
     int result = local.remove_typecheck_class(program, class_index, is_nullable);
-    if ((result & TypeSet::TYPECHECK_CAN_FAIL) != 0) {
-      propagator->ensure_as_check_failure();
-      scope->throw_maybe();
-    }
-    if ((result & TypeSet::TYPECHECK_CAN_SUCCEED) == 0) return scope;
+    if (!propagator->handle_typecheck_result(scope, bcp, true, result)) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_STATIC);

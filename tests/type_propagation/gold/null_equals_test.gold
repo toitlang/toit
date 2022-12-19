@@ -71,7 +71,7 @@ A tests/type_propagation/null_equals_test.toit
 A.== tests/type_propagation/null_equals_test.toit
  - argument 0: {A}
  - argument 1: {*}
-  0[052] - load local, as class, pop 2 - A(40 - 41)
+  0[052] - load local, as class, pop 2 - A(40 - 41) // {True_|False_}
   2[020] - load literal hest
   4[088] - return S1 2
 
