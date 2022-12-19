@@ -1067,17 +1067,27 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_IF_TRUE);
+    TypeSet top = stack->local(0);
+    bool can_be_falsy = top.contains_null(program) || top.contains_false(program);
     stack->pop();
     uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
+    if (!can_be_falsy) {
+      // Unconditionally continue at the branch target.
+      return worklists.back()->add(target, scope, false);
+    }
     scope = worklists.back()->add(target, scope, true);
     stack = scope->top();
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_IF_FALSE);
+    TypeSet top = stack->local(0);
+    bool can_be_falsy = top.contains_null(program) || top.contains_false(program);
     stack->pop();
     uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
-    scope = worklists.back()->add(target, scope, true);
-    stack = scope->top();
+    if (can_be_falsy) {
+      scope = worklists.back()->add(target, scope, true);
+      stack = scope->top();
+    }
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_BACK);
@@ -1086,17 +1096,27 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_BACK_IF_TRUE);
+    TypeSet top = stack->local(0);
+    bool can_be_falsy = top.contains_null(program) || top.contains_false(program);
     stack->pop();
     uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
+    if (!can_be_falsy) {
+      // Unconditionally continue at the branch target.
+      return worklists.back()->add(target, scope, false);
+    }
     scope = worklists.back()->add(target, scope, true);
     stack = scope->top();
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_BACK_IF_FALSE);
+    TypeSet top = stack->local(0);
+    bool can_be_falsy = top.contains_null(program) || top.contains_false(program);
     stack->pop();
     uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
-    scope = worklists.back()->add(target, scope, true);
-    stack = scope->top();
+    if (can_be_falsy) {
+      scope = worklists.back()->add(target, scope, true);
+      stack = scope->top();
+    }
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_LAMBDA_TAIL);
