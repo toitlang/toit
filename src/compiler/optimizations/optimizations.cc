@@ -33,14 +33,27 @@ using namespace ir;
 
 class OptimizationVisitor : public ReplacingVisitor {
  public:
-  OptimizationVisitor(Program* program,
+  OptimizationVisitor(TypeDatabase* propagated_types,
                       const UnorderedMap<Class*, QueryableClass> queryables,
                       const UnorderedSet<Symbol>& field_names)
-      : program_(program)
+      : propagated_types_(propagated_types)
       , holder_(null)
       , method_(null)
       , queryables_(queryables)
       , field_names_(field_names) {}
+
+  Node* visit_Method(Method* node) {
+    if (propagated_types_ && propagated_types_->is_dead(node)) {
+      node->kill();
+      return node;
+    }
+    method_ = node;
+    eliminate_dead_code(node, null);
+    Node* result = ReplacingVisitor::visit_Method(node);
+    eliminate_dead_code(node, propagated_types_);
+    method_ = null;
+    return result;
+  }
 
   /// Transforms virtual calls into static calls (when possible).
   /// Transforms virtual getters/setters into field accesses (when possible).
@@ -55,10 +68,9 @@ class OptimizationVisitor : public ReplacingVisitor {
     return return_peephole(node);
   }
 
-  /// Removes code after `return`s.
+  /// ...
   Node* visit_Sequence(Sequence* node) {
     node = ReplacingVisitor::visit_Sequence(node)->as_Sequence();
-    node = eliminate_dead_code(node, program_);
     return simplify_sequence(node);
   }
 
@@ -74,17 +86,17 @@ class OptimizationVisitor : public ReplacingVisitor {
   }
 
   void set_class(Class* klass) { holder_ = klass; }
-  void set_method(Method* method) { method_ = method; }
 
  private:
-  Program* program_;
+  TypeDatabase* const propagated_types_;
+
   Class* holder_;  // Null, if not in class (or a static method/field).
   Method* method_;
   UnorderedMap<Class*, QueryableClass> queryables_;
   UnorderedSet<Symbol> field_names_;
 };
 
-void optimize(Program* program) {
+void optimize(Program* program, TypeDatabase* propagated_types) {
   // The constant propagation runs independently, as it builds up its own
   // dependency graph.
   propagate_constants(program);
@@ -116,7 +128,7 @@ void optimize(Program* program) {
     }
   }
 
-  OptimizationVisitor visitor(program, queryables, field_names);
+  OptimizationVisitor visitor(propagated_types, queryables, field_names);
 
   for (auto klass : classes) {
     visitor.set_class(klass);
@@ -124,18 +136,15 @@ void optimize(Program* program) {
     //   different visitor, than for the globals.
     // Unnamed constructors:
     for (auto constructor : klass->constructors()) {
-      visitor.set_method(constructor);
       visitor.visit(constructor);
     }
     // Named constructors are mixed together with the other static entries.
     for (auto statik : klass->statics()->nodes()) {
       if (!statik->is_constructor()) continue;
-      visitor.set_method(statik);
       visitor.visit(statik);
     }
     for (auto method : klass->methods()) {
       ASSERT(method->is_instance());
-      visitor.set_method(method);
       visitor.visit(method);
     }
   }
@@ -143,11 +152,9 @@ void optimize(Program* program) {
   visitor.set_class(null);
   for (auto method : program->methods()) {
     if (method->is_constructor()) continue;  // Already handled within the class.
-    visitor.set_method(method);
     visitor.visit(method);
   }
   for (auto global : program->globals()) {
-    visitor.set_method(global);
     visitor.visit(global);
   }
 }

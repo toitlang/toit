@@ -31,14 +31,12 @@ class ProgramBuilder;
 class ByteGen : private ir::Visitor {
  public:
   ByteGen(ir::Method* lookup_failure,
-          ir::Method* as_check_failure,
           int max_captured_count,
           DispatchTable* dispatch_table,
           UnorderedMap<ir::Class*, int>* typecheck_indexes,
           SourceMapper* source_mapper,
           ProgramBuilder* program_builder)
       : lookup_failure_(lookup_failure)
-      , as_check_failure_(as_check_failure)
       , max_captured_count_(max_captured_count)
       , dispatch_table_(dispatch_table)
       , typecheck_indexes_(typecheck_indexes)
@@ -59,8 +57,6 @@ class ByteGen : private ir::Visitor {
                       int dispatch_offset,
                       bool is_field_accessor);
 
-  bool is_eager_global(ir::Global* global);
-
  private:
   int assemble_function(ir::Method* function,
                         int dispatch_offset,
@@ -73,8 +69,6 @@ class ByteGen : private ir::Visitor {
                                 int arity,
                                 bool is_block,
                                 int captured_count,   // Only used if it is a lambda.
-                                bool body_has_explicit_return,
-                                bool should_push_old_emitter,
                                 SourceMapper::MethodMapper method_mapper);
 
   void update_absolute_positions(int absolute_entry_bci,
@@ -83,7 +77,6 @@ class ByteGen : private ir::Visitor {
 
  private:
   ir::Method* const lookup_failure_;
-  ir::Method* const as_check_failure_;
   int const max_captured_count_;
   DispatchTable* const dispatch_table_;
   UnorderedMap<ir::Class*, int>* const typecheck_indexes_;

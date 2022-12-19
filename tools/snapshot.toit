@@ -1215,7 +1215,6 @@ class MethodInfo:
   position /Position ::= ?
   bytecode_positions /Map ::= ?  // of bytecode to Position
   as_class_names /Map ::= ?      // of bytecode to strings
-  pubsub_info /List ::= ?
 
   static INSTANCE_TYPE      ::= 0
   static GLOBAL_TYPE        ::= 1
@@ -1239,7 +1238,7 @@ class MethodInfo:
     print (stringify program)
 
   constructor .id .bytecode_size .name .type .outer .holder_name .absolute_path .error_path
-      .position .bytecode_positions .as_class_names .pubsub_info:
+      .position .bytecode_positions .as_class_names:
 
   stacktrace_string program/Program:
     if type == BLOCK_TYPE:
@@ -1396,19 +1395,6 @@ class MethodSegment extends MapSegment:
       : read_cardinal_
       : read_string_
 
-  read_pubsub_entry_ -> PubsubInfo:
-    bytecode_position := read_cardinal_
-    target_dispatch_index := read_cardinal_
-    has_topic := read_byte_ == 1
-    topic := read_string_
-    return PubsubInfo
-      bytecode_position
-      target_dispatch_index
-      has_topic ? topic : null
-
-  read_pubsub_info_ -> List:
-    return List read_cardinal_: read_pubsub_entry_
-
   read_element_ -> List:
     id    := read_cardinal_
     bytecode_size := read_cardinal_
@@ -1423,9 +1409,8 @@ class MethodSegment extends MapSegment:
     position := read_position_
     bytecode_positions := read_bytecode_positions_
     as_class_names := read_as_class_names_
-    pubsub_info := read_pubsub_info_
     info := MethodInfo id bytecode_size name type outer holder_name \
-        absolute_path path position bytecode_positions as_class_names pubsub_info
+        absolute_path path position bytecode_positions as_class_names
     return [info.id, info]
 
   stringify -> string:
@@ -1521,13 +1506,6 @@ class SelectorsSegment extends MapSegment:
 
   stringify -> string:
     return "Selectors"
-
-class PubsubInfo:
-  bytecode_position /int ::= ?
-  target_dispatch_index /int ::= ?
-  topic /string? ::= ?
-
-  constructor .bytecode_position .target_dispatch_index .topic:
 
 class StringSegment extends ListSegment:
 

@@ -706,6 +706,7 @@ class Method {
   uint8* bcp_from_bci(int bci) const { return &bytes_[ENTRY_OFFSET + bci]; }
   uint8* header_bcp() const { return bytes_; }
 
+  static int entry_offset() { return ENTRY_OFFSET; }
   static uint8* header_from_entry(uint8* entry) { return entry - ENTRY_OFFSET; }
 
  private: // Friend access for ProgramBuilder.
