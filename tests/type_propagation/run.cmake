@@ -13,8 +13,8 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-if (NOT DEFINED TOIT_VM)
-  message(FATAL_ERROR "Missing TOIT_VM argument")
+if (NOT DEFINED TOIT_RUN)
+  message(FATAL_ERROR "Missing TOIT_RUN argument")
 endif()
 if (NOT DEFINED TOIT_COMPILE)
   message(FATAL_ERROR "Missing TOIT_COMPILE argument")
@@ -24,6 +24,9 @@ if (NOT DEFINED TEST)
 endif()
 if (NOT DEFINED TEST_NAME)
   message(FATAL_ERROR "Missing TEST_NAME argument")
+endif()
+if (NOT DEFINED FLAGS)
+  message(FATAL_ERROR "Missing FLAGS argument")
 endif()
 if (NOT DEFINED GOLD)
   message(FATAL_ERROR "Missing GOLD argument")
@@ -39,7 +42,7 @@ set(TMP_SNAPSHOT "${TMP}/${TEST_NAME}.snapshot")
 set(TMP_TYPES "${TMP}/${TEST_NAME}.types")
 
 execute_process(
-  COMMAND "${TOIT_COMPILE}" -w "${TMP_SNAPSHOT}" -Xenable_asserts -Xpropagate "${TEST}"
+  COMMAND "${TOIT_COMPILE}" -w "${TMP_SNAPSHOT}" -Xenable_asserts -Xpropagate ${FLAGS} "${TEST}"
   OUTPUT_VARIABLE STDOUT
   RESULT_VARIABLE EXIT_CODE
 )
@@ -51,7 +54,7 @@ endif()
 file(WRITE "${TMP_TYPES}" "${STDOUT}")
 
 execute_process(
-  COMMAND "${TOIT_VM}" "${TEST_ROOT}/tools/dump_types.toit" -s "${TMP_SNAPSHOT}" -t "${TMP_TYPES}"
+  COMMAND "${TOIT_RUN}" "${TEST_ROOT}/tools/dump_types.toit" -s "${TMP_SNAPSHOT}" -t "${TMP_TYPES}"
   OUTPUT_VARIABLE STDOUT
   ERROR_VARIABLE STDERR
   RESULT_VARIABLE EXIT_CODE

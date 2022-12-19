@@ -67,13 +67,15 @@ bool OS::use_virtual_memory(void* addr, uword sz) {
   uword rounded = Utils::round_down(address, getpagesize());
   uword size = Utils::round_up(end - rounded, getpagesize());
   int result = mprotect(reinterpret_cast<void*>(rounded), size, PROT_READ | PROT_WRITE);
+  if (result == 0) {
 #ifdef TOIT_DEBUG
-  // Calls to use_virtual_memory are rounded up by one due to the single-word
-  // object problem, but we don't want to poison data belonging to the next
-  // page's metadata.
-  memset(addr, 0xc1, sz - 1);
+    // Calls to use_virtual_memory are rounded up by one due to the single-word
+    // object problem, but we don't want to poison data belonging to the next
+    // page's metadata.
+    memset(addr, 0xc1, sz - 1);
 #endif
-  if (result == 0) return true;
+    return true;
+  }
   if (errno == ENOMEM) return false;
   perror("mprotect");
   exit(1);

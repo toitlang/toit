@@ -30,6 +30,7 @@ class Global;
 class Method;
 class Code;
 class Class;
+class Call;
 }  // namespace toit::compiler::ir
 
 class SourceInfoCollector;
@@ -61,12 +62,6 @@ class SourceMapper {
       ASSERT(!is_finalized_);
       source_mapper_->register_bytecode(method_index_, bytecode_offset, range);
       source_mapper_->register_as(method_index_, bytecode_offset, class_name);
-    }
-
-    void register_pubsub_call(int bytecode_offset, int target_dispatch_index, const char* topic) {
-      ASSERT(is_valid());
-      ASSERT(!is_finalized_);
-      source_mapper_->register_pubsub_call(method_index_, bytecode_offset, target_dispatch_index, topic);
     }
 
     void finalize(int method_id, int size) {
@@ -102,6 +97,8 @@ class SourceMapper {
 
   explicit SourceMapper(SourceManager* manager) : manager_(manager) {}
 
+  SourceManager* manager() const { return manager_; }
+
   /// Returns a malloced buffer of the source-map.
   uint8* cook(int* size);
   MethodMapper register_method(ir::Method* method);
@@ -121,6 +118,9 @@ class SourceMapper {
     return probe->second.id;
   }
 
+  int id_for_method(ir::Method* method);
+  int id_for_call(ir::Call* call);
+
   void register_selector_offset(int offset, const char* name) {
     selector_offsets_[offset] = name;
   }
@@ -129,12 +129,6 @@ class SourceMapper {
   struct FilePosition {
     int line;
     int column;
-  };
-
-  struct PubsubEntry {
-    int bytecode_offset;
-    int target_dispatch_index;
-    const char* topic;
   };
 
   struct MethodEntry {
@@ -160,7 +154,6 @@ class SourceMapper {
     // bytecodes.
     std::map<int, FilePosition> bytecode_positions;
     std::map<int, const char*> as_class_names;
-    std::vector<PubsubEntry> pubsub_info;
   };
 
   struct ClassEntry {
@@ -214,7 +207,6 @@ class SourceMapper {
                                  Source::Range range);
   void register_bytecode(int method_id, int bytecode_offset, Source::Range range);
   void register_as(int method_id, int bytecode_offset, const char* class_name);
-  void register_pubsub_call(int method_id, int bytecode_offset, int target_dispatch_index, const char* topic);
 
   std::vector<MethodEntry> source_information_;
   Map<ir::Class*, ClassEntry> class_information_;
@@ -222,6 +214,11 @@ class SourceMapper {
   std::vector<GlobalEntry> global_information_;
   // Map from location-id to selector class-entry.
   Map<int, SelectorClassEntry> selectors_;
+
+  // Map from method source position to bytecode index.
+  Map<int, int> method_positions_;
+  // Map from call source position to method index and bytecode offset.
+  Map<int, std::pair<int, int>> bytecode_positions_;
 
   void extract_holder_information(ir::Class* holder,
                                   int* holder_id,

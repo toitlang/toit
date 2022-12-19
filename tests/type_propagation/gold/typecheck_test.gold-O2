@@ -1,0 +1,32 @@
+main tests/type_propagation/typecheck_test.toit
+  0[053] - invoke static test_simple tests/type_propagation/typecheck_test.toit // {Null_}
+  3[089] - return null S1 0
+
+test_simple tests/type_propagation/typecheck_test.toit
+  0[022] - load null
+  1[053] - invoke static is_int tests/type_propagation/typecheck_test.toit // {False_}
+  4[053] - invoke static id tests/type_propagation/typecheck_test.toit // {False_}
+  7[041] - pop 1
+  8[026] - load smi 7
+ 10[053] - invoke static is_int tests/type_propagation/typecheck_test.toit // {True_}
+ 13[053] - invoke static id tests/type_propagation/typecheck_test.toit // {True_}
+ 16[041] - pop 1
+ 17[020] - load literal 7.9000000000000003553
+ 19[053] - invoke static is_int tests/type_propagation/typecheck_test.toit // {False_}
+ 22[053] - invoke static id tests/type_propagation/typecheck_test.toit // {False_}
+ 25[041] - pop 1
+ 26[020] - load literal kurt
+ 28[053] - invoke static is_int tests/type_propagation/typecheck_test.toit // {False_}
+ 31[053] - invoke static id tests/type_propagation/typecheck_test.toit // {False_}
+ 34[089] - return null S1 0
+
+is_int tests/type_propagation/typecheck_test.toit
+ - argument 0: {String_|Null_|float|SmallInteger_}
+  0[016] - load local 2
+  1[044] - is class LargeInteger_(19 - 21) // {True_|False_}
+  3[088] - return S1 1
+
+id tests/type_propagation/typecheck_test.toit
+ - argument 0: {True_|False_}
+  0[016] - load local 2
+  1[088] - return S1 1

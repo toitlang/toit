@@ -1,0 +1,41 @@
+main tests/type_propagation/global_test.toit
+  0[053] - invoke static test_simple tests/type_propagation/global_test.toit // {Null_}
+  3[089] - return null S1 0
+
+X tests/type_propagation/global_test.toit
+  0[053] - invoke static foo tests/type_propagation/global_test.toit // {SmallInteger_}
+  3[088] - return S1 0
+
+Y tests/type_propagation/global_test.toit
+  0[053] - invoke static foo tests/type_propagation/global_test.toit // {SmallInteger_}
+  3[088] - return S1 0
+
+Z tests/type_propagation/global_test.toit
+  0[053] - invoke static foo tests/type_propagation/global_test.toit // {SmallInteger_}
+  3[088] - return S1 0
+
+test_simple tests/type_propagation/global_test.toit
+  0[033] - load global var lazy G0 // {SmallInteger_}
+  2[053] - invoke static id tests/type_propagation/global_test.toit // {SmallInteger_}
+  5[041] - pop 1
+  6[033] - load global var lazy G1 // {String_|SmallInteger_}
+  8[053] - invoke static id tests/type_propagation/global_test.toit // {String_|SmallInteger_}
+ 11[041] - pop 1
+ 12[020] - load literal hest
+ 14[035] - store global var G1
+ 16[041] - pop 1
+ 17[033] - load global var lazy G1 // {String_|SmallInteger_}
+ 19[053] - invoke static id tests/type_propagation/global_test.toit // {String_|SmallInteger_}
+ 22[041] - pop 1
+ 23[033] - load global var lazy G2 // {SmallInteger_}
+ 25[053] - invoke static id tests/type_propagation/global_test.toit // {SmallInteger_}
+ 28[089] - return null S1 0
+
+foo tests/type_propagation/global_test.toit
+  0[026] - load smi 42
+  2[088] - return S1 0
+
+id tests/type_propagation/global_test.toit
+ - argument 0: {String_|SmallInteger_}
+  0[016] - load local 2
+  1[088] - return S1 1

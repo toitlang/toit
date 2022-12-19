@@ -1014,7 +1014,6 @@ void MethodResolver::resolve_fill_method() {
     //   have spurious different errors.
   }
 
-
   ASSERT(scope_ == &method_scope);
   scope_ = scope_->outer();
 }

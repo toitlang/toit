@@ -180,8 +180,13 @@ class TypeSet {
   void remove_instance(Smi* class_id) { return remove(class_id->value()); }
   void remove_range(unsigned start, unsigned end);
 
-  bool remove_typecheck_class(Program* program, int index, bool is_nullable);
-  bool remove_typecheck_interface(Program* program, int index, bool is_nullable);
+  enum {
+    TYPECHECK_CAN_SUCCEED = 1 << 0,
+    TYPECHECK_CAN_FAIL    = 1 << 1,
+  };
+
+  int remove_typecheck_class(Program* program, int index, bool is_nullable);
+  int remove_typecheck_interface(Program* program, int index, bool is_nullable);
 
   void clear(int words) {
     memset(bits_, 0, words * WORD_SIZE);

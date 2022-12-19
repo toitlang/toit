@@ -16,12 +16,13 @@
 #pragma once
 
 #include "../ir.h"
+#include "../propagation/type_database.h"
 
 namespace toit {
 namespace compiler {
 
 // Optimizes the program by combining all available sub-optimizations.
-void optimize(ir::Program* program);
+void optimize(ir::Program* program, TypeDatabase* propagated_types);
 
 } // namespace toit::compiler
 } // namespace toit
