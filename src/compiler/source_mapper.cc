@@ -20,6 +20,8 @@
 #include "resolver_primitive.h"
 #include "set.h"
 
+#include "../objects.h"
+
 namespace toit {
 namespace compiler {
 
@@ -178,18 +180,6 @@ void SourceMapper::visit_method_info(SourceInfoCollector* collector) {
       collector->write_int(pair.first);
       collector->write_string(pair.second);
     }
-    collector->write_int(entry.pubsub_info.size());
-    for (auto entry : entry.pubsub_info) {
-      collector->write_int(entry.bytecode_offset);
-      collector->write_int(entry.target_dispatch_index);
-      if (entry.topic == null) {
-        collector->write_byte(0);
-        collector->write_string("");
-      } else {
-        collector->write_byte(1);
-        collector->write_string(entry.topic);
-      }
-    }
   }
 }
 
@@ -305,10 +295,17 @@ SourceMapper::MethodEntry SourceMapper::build_method_entry(int index,
                                                            const char* holder_name,
                                                            Source::Range range) {
   auto from = range.from();
+
+  // TODO(kasper): We end up registering multiple different methods with the same
+  // source position because of adapter stubs, etc. Things work out okay if we
+  // prefer the first method because these aren't the synthetic stubs that the
+  // compiler inserts. We need to base this on something unique instead of the
+  // source positions that we tend to reuse.
   auto probe = method_positions_.find(from.token());
   if (probe == method_positions_.end()) {
     method_positions_[from.token()] = index;
   }
+
   auto location = manager_->compute_location(from);
   return {
     .index = index,
@@ -407,7 +404,7 @@ int SourceMapper::id_for_call(ir::Call* call) {
   int method_index = entry.first;
   int bytecode_offset = entry.second;
   auto& method_data = source_information_[method_index];
-  return method_data.id + 4 + bytecode_offset;
+  return method_data.id + Method::entry_offset() + bytecode_offset;
 }
 
 SourceMapper::MethodMapper SourceMapper::register_method(ir::Method* method) {
@@ -480,6 +477,11 @@ SourceMapper::MethodMapper SourceMapper::register_block(int outer_index, ir::Cod
 void SourceMapper::register_bytecode(int method_index, int bytecode_offset, Source::Range range) {
   ASSERT(method_index >= 0);
   auto from = range.from();
+
+  // TODO(kasper): We end up registering multiple different bytecodes with the same
+  // source position. This is not ideal, but things work out okay if we prefer to
+  // keep the information for the first bytecode in the first method. This should
+  // be reworked and depend on something that is unique -- unlike source positions.
   auto probe = bytecode_positions_.find(from.token());
   if (probe == bytecode_positions_.end() ||
     ((probe->second).first > method_index) ||
@@ -499,19 +501,6 @@ void SourceMapper::register_as(int method_index, int bytecode_offset, const char
   ASSERT(method_index >= 0);
   auto& method_data = source_information_[method_index];
   method_data.as_class_names[bytecode_offset] = class_name;
-}
-
-void SourceMapper::register_pubsub_call(int method_index,
-                                        int bytecode_offset,
-                                        int target_dispatch_index,
-                                        const char* topic) {
-  ASSERT(method_index >= 0);
-  auto& method_data = source_information_[method_index];
-  method_data.pubsub_info.push_back({
-    .bytecode_offset = bytecode_offset,
-    .target_dispatch_index = target_dispatch_index,
-    .topic = topic,
-  });
 }
 
 void SourceMapper::extract_holder_information(ir::Class* holder,

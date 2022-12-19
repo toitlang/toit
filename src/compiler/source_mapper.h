@@ -64,12 +64,6 @@ class SourceMapper {
       source_mapper_->register_as(method_index_, bytecode_offset, class_name);
     }
 
-    void register_pubsub_call(int bytecode_offset, int target_dispatch_index, const char* topic) {
-      ASSERT(is_valid());
-      ASSERT(!is_finalized_);
-      source_mapper_->register_pubsub_call(method_index_, bytecode_offset, target_dispatch_index, topic);
-    }
-
     void finalize(int method_id, int size) {
       ASSERT(is_valid());
       ASSERT(!is_finalized_);
@@ -137,12 +131,6 @@ class SourceMapper {
     int column;
   };
 
-  struct PubsubEntry {
-    int bytecode_offset;
-    int target_dispatch_index;
-    const char* topic;
-  };
-
   struct MethodEntry {
     int index;  // The index in the source-mapping table.
     int id;     // The actual id of the method.
@@ -166,7 +154,6 @@ class SourceMapper {
     // bytecodes.
     std::map<int, FilePosition> bytecode_positions;
     std::map<int, const char*> as_class_names;
-    std::vector<PubsubEntry> pubsub_info;
   };
 
   struct ClassEntry {
@@ -220,7 +207,6 @@ class SourceMapper {
                                  Source::Range range);
   void register_bytecode(int method_id, int bytecode_offset, Source::Range range);
   void register_as(int method_id, int bytecode_offset, const char* class_name);
-  void register_pubsub_call(int method_id, int bytecode_offset, int target_dispatch_index, const char* topic);
 
   std::vector<MethodEntry> source_information_;
   Map<ir::Class*, ClassEntry> class_information_;
@@ -229,8 +215,9 @@ class SourceMapper {
   // Map from location-id to selector class-entry.
   Map<int, SelectorClassEntry> selectors_;
 
-  // Bytecode position mapping.
+  // Map from method source position to bytecode index.
   Map<int, int> method_positions_;
+  // Map from call source position to method index and bytecode offset.
   Map<int, std::pair<int, int>> bytecode_positions_;
 
   void extract_holder_information(ir::Class* holder,

@@ -69,8 +69,6 @@ class ByteGen : private ir::Visitor {
                                 int arity,
                                 bool is_block,
                                 int captured_count,   // Only used if it is a lambda.
-                                bool body_has_explicit_return,
-                                bool should_push_old_emitter,
                                 SourceMapper::MethodMapper method_mapper);
 
   void update_absolute_positions(int absolute_entry_bci,

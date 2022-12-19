@@ -34,53 +34,57 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
         , previous_(previous)
         , terminates_(previous->terminates_) {}
 
-    Node* result(Expression* node, bool terminates = false) {
-      if (node && !terminates_) {
-        return terminates ? eliminator_->terminate(node) : node;
-      }
-      int c = count();
-      if (c == 0) {
-        return terminates_ ? eliminator_->terminate(null) : null;
-      }
+    Node* result(Expression* expression, bool terminates = false) {
+      // If the expression wasn't eliminated and evaluating the
+      // intermediate parts didn't terminate, we return the
+      // expression possibly tagged as terminating if the expression
+      // is a return.
+      if (expression && !terminates_) return eliminator_->tag(expression, terminates);
+      // If we didn't gather any results, we return null.
+      int count = this->count();
+      if (count == 0) return eliminator_->tag(null, terminates_);
+      // Run through the gathered results and build a sequence of
+      // them. Optimize for the common case where we don't need to
+      // build a new list for the result because it is a single
+      // value that we can just tag.
       List<Expression*> expressions;
-      if (c > 1) expressions = ListBuilder<Expression*>::allocate(c);
-      int index = c - 1;
+      if (count > 1) expressions = ListBuilder<Expression*>::allocate(count);
+      int index = count - 1;  // List is filled from the back.
       const Helper* helper = this;
       while (index >= 0) {
-        Expression* r = helper->result_;
+        Expression* result = helper->result_;
         helper = helper->previous_;
-        if (!r) continue;
-        if (c == 1) {
-          return terminates_ ? eliminator_->terminate(r) : r;
-        }
-        expressions[index--] = r;
+        if (!result) continue;
+        if (count == 1) return eliminator_->tag(result, terminates_);
+        expressions[index] = result;
+        index--;
       }
-      Sequence* sequence = _new Sequence(expressions, node->range());
-      return terminates_ ? eliminator_->terminate(sequence) : sequence;
+      Sequence* sequence = _new Sequence(expressions, expression->range());
+      return eliminator_->tag(sequence, terminates_);
     }
 
     Expression* visit(Expression* node) {
       ASSERT(result_ == null);
       if (terminates_) return node;
-      Node* result = eliminator_->visit(node, &terminates_);
-      if (!result) return node;
-      return result_ = result->as_Expression();
+      Expression* result = eliminator_->visit(node, &terminates_);
+      result_ = result;
+      return result;
     }
 
     Expression* visit_for_value(Expression* node) {
       ASSERT(result_ == null);
       if (terminates_) return node;
-      Node* result = eliminator_->visit_for_value(node, &terminates_);
-      if (!result) return node;
-      return result_ = result->as_Expression();
+      Expression* result = eliminator_->visit_for_value(node, &terminates_);
+      result_ = result;
+      return result;
     }
 
     Expression* visit_for_effect(Expression* node) {
       ASSERT(result_ == null);
       if (terminates_) return node;
-      Node* result = eliminator_->visit_for_effect(node, &terminates_);
-      if (!result) return node;
-      return result_ = result->as_Expression();
+      Expression* result = eliminator_->visit_for_effect(node, &terminates_);
+      result_ = result;
+      return result;
     }
 
    private:
@@ -105,7 +109,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
       : propagated_types_(propagated_types)
       , terminator_(null, Symbol::invalid()) {}
 
-  Node* visit(Node* node, bool* terminates) {
+  Expression* visit(Expression* node, bool* terminates) {
     Node* result = node->accept(this);
     bool is_terminator = (result == &terminator_);
     if (is_terminator) {
@@ -113,21 +117,21 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
       terminator_.replace_receiver(null);
     }
     if (terminates) *terminates = is_terminator;
-    return result;
+    return result ? result->as_Expression() : null;
   }
 
-  Node* visit_for_value(Node* node, bool* terminates) {
+  Expression* visit_for_value(Expression* node, bool* terminates) {
     bool old = is_for_value_;
     is_for_value_ = true;
-    Node* result = visit(node, terminates);
+    Expression* result = visit(node, terminates);
     is_for_value_ = old;
     return result;
   }
 
-  Node* visit_for_effect(Node* node, bool* terminates) {
+  Expression* visit_for_effect(Expression* node, bool* terminates) {
     bool old = is_for_value_;
     is_for_value_ = false;
-    Node* result = visit(node, terminates);
+    Expression* result = visit(node, terminates);
     is_for_value_ = old;
     return result;
   }
@@ -148,18 +152,22 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
     bool terminates = false;
     for (int i = 0; i < length; i++) {
       Expression* entry = expressions[i];
-      // TODO(kasper): Explain this to me now! ...
-      Node* node = (i == length - 1)
+      // Visit the last expression in the sequence in the same
+      // state as we visit the sequence, so we produce a value
+      // if necessary. The other expressions just need to be
+      // evaluated for effect.
+      Expression* visited = (i == length - 1)
           ? visit(entry, &terminates)
           : visit_for_effect(entry, &terminates);
-      if (node) expressions[index++] = node->as_Expression();
+      if (visited) expressions[index++] = visited;
       if (terminates) break;
     }
-    // TODO(kasper): Maybe return null if index is 0?
-    if (index < length) {
+    if (index == 0) {
+      node = null;
+    } else if (index < length) {
       node->replace_expressions(expressions.sublist(0, index));
     }
-    return terminates ? terminate(node) : node;
+    return tag(node, terminates);
   }
 
   Node* visit_FieldLoad(FieldLoad* node) {
@@ -169,11 +177,11 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   }
 
   Node* visit_FieldStore(FieldStore* node) {
-    Helper helper(this);
-    node->replace_receiver(helper.visit_for_value(node->receiver()));
-    Helper helper2(&helper);
-    node->replace_value(helper2.visit_for_value(node->value()));
-    return helper2.result(node);
+    Helper receiver_helper(this);
+    node->replace_receiver(receiver_helper.visit_for_value(node->receiver()));
+    Helper value_helper(&receiver_helper);
+    node->replace_value(value_helper.visit_for_value(node->value()));
+    return value_helper.result(node);
   }
 
   Node* visit_Return(Return* node) {
@@ -184,18 +192,18 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
 
   Node* visit_If(If* node) {
     bool terminates;
-    Node* condition = visit_for_value(node->condition(), &terminates);
-    if (terminates) return terminate(condition ? condition->as_Expression() : null);
+    Expression* condition = visit_for_value(node->condition(), &terminates);
+    if (terminates) return terminate(condition);
 
     bool terminates_yes;
-    Node* yes = visit(node->yes(), &terminates_yes);
+    Expression* yes = visit(node->yes(), &terminates_yes);
     bool terminates_no;
-    Node* no = visit(node->no(), &terminates_no);
+    Expression* no = visit(node->no(), &terminates_no);
 
-    node->replace_condition(condition->as_Expression());
-    node->replace_yes(yes ? yes->as_Expression() : _new Nop(node->yes()->range()));
-    node->replace_no(no ? no->as_Expression() : _new Nop(node->no()->range()));
-    return (terminates_yes && terminates_no) ? terminate(node) : node;
+    node->replace_condition(condition);
+    node->replace_yes(yes ? yes : _new Nop(node->yes()->range()));
+    node->replace_no(no ? no : _new Nop(node->no()->range()));
+    return tag(node, terminates_yes && terminates_no);
   }
 
   Node* visit_Not(Not* node) {
@@ -206,33 +214,33 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
 
   Node* visit_LogicalBinary(LogicalBinary* node) {
     bool terminates;
-    Node* left = visit_for_value(node->left(), &terminates);
-    if (terminates) return terminate(left ? left->as_Expression() : null);
+    Expression* left = visit_for_value(node->left(), &terminates);
+    if (terminates) return terminate(left);
 
-    Node* right = visit(node->right(), null);
-    node->replace_left(left->as_Expression());
-    node->replace_right(right ? right->as_Expression() : _new Nop(node->right()->range()));
+    Expression* right = visit(node->right(), null);
+    node->replace_left(left);
+    node->replace_right(right ? right : _new Nop(node->right()->range()));
     return node;
   }
 
   Node* visit_TryFinally(TryFinally* node) {
     node->body()->accept(this);
     bool terminates;
-    Node* handler = visit_for_effect(node->handler(), &terminates);
-    node->replace_handler(handler ? handler->as_Expression() : _new Nop(node->handler()->range()));
-    return terminates ? terminate(node) : node;
+    Expression* handler = visit_for_effect(node->handler(), &terminates);
+    node->replace_handler(handler ? handler : _new Nop(node->handler()->range()));
+    return tag(node, terminates);
   }
 
   Node* visit_While(While* node) {
     bool terminates;
-    Node* condition = visit_for_value(node->condition(), &terminates);
-    if (terminates) return terminate(condition ? condition->as_Expression() : null);
+    Expression* condition = visit_for_value(node->condition(), &terminates);
+    if (terminates) return terminate(condition);
 
-    Node* body = visit(node->body(), null);
-    Node* update = visit(node->update(), null);
-    node->replace_condition(condition->as_Expression());
-    node->replace_body(body ? body->as_Expression() : _new Nop(node->body()->range()));
-    node->replace_update(update ? update->as_Expression() : _new Nop(node->update()->range()));
+    Expression* body = visit(node->body(), null);
+    Expression* update = visit(node->update(), null);
+    node->replace_condition(condition);
+    node->replace_body(body ? body : _new Nop(node->body()->range()));
+    node->replace_update(update ? update : _new Nop(node->update()->range()));
     return node;
   }
 
@@ -267,37 +275,48 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   Node* visit_Call(Call* node, Expression* receiver) {
     if (receiver) {
       bool terminates;
-      Node* result = visit_for_value(receiver, &terminates);
-      if (terminates) return terminate(result ? result->as_Expression() : null);
+      Expression* result = visit_for_value(receiver, &terminates);
+      // If evaluating the receiver always terminates, then we turn the
+      // entire call into just the receiver evaluation without looking
+      // at the arguments at all.
+      if (terminates) return terminate(result);
     }
 
+    // Now, we run thrugh the arguments until one of them (if any)
+    // terminates. We count the number of arguments we've visited
+    // and used, so we can turn the call into a sequence if the
+    // evaluation of one of the arguments terminates the evaluation
+    // of the arguments abruptly.
     List<Expression*> arguments = node->arguments();
     int length = arguments.length();
     bool terminates = false;
     int used = 0;
     while (used < length && !terminates) {
-      Node* result = visit_for_value(arguments[used], &terminates);
-      arguments[used] = result ? result->as_Expression() : null;
+      Expression* result = visit_for_value(arguments[used], &terminates);
+      arguments[used] = result;
       used++;
     }
 
     Expression* result = node;
     if (used < length) {
+      // Not all the arguments were used, so we need to turn the
+      // call into a sequence. If we have a receiver, we put it
+      // in as the first element in the sequence by shifting the
+      // arguments up.
       if (receiver) {
-        for (int i = used; i > 0; i--) {
-          arguments[i] = arguments[i - 1];
-        }
+        for (int i = used; i > 0; i--) arguments[i] = arguments[i - 1];
         arguments[0] = receiver;
         used++;
       }
       result = _new Sequence(arguments.sublist(0, used), node->range());
-    }
-
-    if (!terminates && propagated_types_ != null && !node->is_CallBuiltin()) {
+      ASSERT(terminates);
+    } else if (propagated_types_ != null && !node->is_CallBuiltin()) {
+      // If we have propagated type information, we might know that
+      // this call does not return. If so, we make sure to tag the
+      // result correctly, so we drop code that follows the call.
       terminates = propagated_types_->does_not_return(node);
     }
-
-    return terminates ? terminate(result) : result;
+    return tag(result, terminates);
   }
 
   Node* visit_Call(Call* node) {
@@ -311,9 +330,11 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   Node* visit_CallStatic(CallStatic* node) {
     Node* result = visit_Call(node, null);
     if (result == &terminator_) return result;
+    Expression* call = result ? result->as_Expression() : null;
+    // For some methods, we statically know that they
+    // are not going to return (think: throw).
     auto target = node->target()->target();
-    if (target->does_not_return()) return terminate(result ? result->as_Expression() : null);
-    return result;
+    return tag(call, target->does_not_return());
   }
 
   Node* visit_CallConstructor(CallConstructor* node) { return visit_CallStatic(node); }
@@ -324,12 +345,8 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   Node* visit_PrimitiveInvocation(PrimitiveInvocation* node) { return node; }
 
   Node* visit_Code(Code* node) {
-    Node* result = visit_for_value(node->body(), null);
-    if (result) {
-      node->replace_body(result->as_Expression());
-    } else {
-      node->replace_body(_new Nop(node->range()));
-    }
+    Expression* result = visit_for_value(node->body(), null);
+    node->replace_body(result ? result : _new Nop(node->range()));
     return node;
   }
 
@@ -388,8 +405,15 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   bool is_for_value() const { return is_for_value_; }
   bool is_for_effect() const { return !is_for_value_; }
 
-  // ...
+  // We use a recognizable marker for the expressions that
+  // terminate. This way, we can continue to return Node*
+  // but still tell if an expression is guaranteed to
+  // terminate abruptly.
   Dot terminator_;
+
+  Node* tag(Expression* value, bool terminates) {
+    return terminates ? terminate(value) : value;
+  }
 
   Node* terminate(Expression* value) {
     terminator_.replace_receiver(value);
@@ -402,12 +426,8 @@ void eliminate_dead_code(Method* method, TypeDatabase* propagated_types) {
   Expression* body = method->body();
   if (body == null) return;
 
-  Node* result = eliminator.visit_for_effect(body, null);
-  if (result) {
-    method->replace_body(result->as_Expression());
-  } else {
-    method->replace_body(_new Nop(method->range()));
-  }
+  Expression* result = eliminator.visit_for_effect(body, null);
+  method->replace_body(result ? result : _new Nop(method->range()));
 }
 
 } // namespace toit::compiler

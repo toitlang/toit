@@ -21,7 +21,6 @@
 namespace toit {
 namespace compiler {
 
-/// ...
 void eliminate_dead_code(ir::Method* method, TypeDatabase* propagated_types);
 
 } // namespace toit::compiler
