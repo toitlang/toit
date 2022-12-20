@@ -9,6 +9,8 @@ test_simple tests/type_propagation/non_local_return_test.toit
   5[038] - load block 0
   7[053] - invoke static invoke tests/type_propagation/non_local_return_test.toit // {}
  10[040] - pop 2
+ 12[053] - invoke static unreachable <sdk>/core/exceptions.toit
+ 15[041] - pop 1
 
 [block] in test_simple tests/type_propagation/non_local_return_test.toit
  - argument 0: [block]
