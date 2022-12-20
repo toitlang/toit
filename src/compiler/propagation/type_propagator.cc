@@ -1090,22 +1090,32 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
 
   OPCODE_BEGIN(BRANCH_IF_TRUE);
     TypeSet top = stack->local(0);
-    bool can_be_falsy = top.contains_null(program) || top.contains_false(program);
+    bool can_be_falsy = top.can_be_falsy(program);
+    bool can_be_truthy = top.can_be_truthy(program);
     stack->pop();
     uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
     if (!can_be_falsy) {
       // Unconditionally continue at the branch target.
+      ASSERT(can_be_truthy);
       return worklists.back()->add(target, scope, false);
     }
-    scope = worklists.back()->add(target, scope, true);
-    stack = scope->top();
+    if (can_be_truthy) {
+      scope = worklists.back()->add(target, scope, true);
+      stack = scope->top();
+    }
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_IF_FALSE);
     TypeSet top = stack->local(0);
-    bool can_be_falsy = top.contains_null(program) || top.contains_false(program);
+    bool can_be_falsy = top.can_be_falsy(program);
+    bool can_be_truthy = top.can_be_truthy(program);
     stack->pop();
     uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
+    if (!can_be_truthy) {
+      // Unconditionally continue at the branch target.
+      ASSERT(can_be_falsy);
+      return worklists.back()->add(target, scope, false);
+    }
     if (can_be_falsy) {
       scope = worklists.back()->add(target, scope, true);
       stack = scope->top();
@@ -1119,22 +1129,32 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
 
   OPCODE_BEGIN(BRANCH_BACK_IF_TRUE);
     TypeSet top = stack->local(0);
-    bool can_be_falsy = top.contains_null(program) || top.contains_false(program);
+    bool can_be_falsy = top.can_be_falsy(program);
+    bool can_be_truthy = top.can_be_truthy(program);
     stack->pop();
     uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
     if (!can_be_falsy) {
       // Unconditionally continue at the branch target.
+      ASSERT(can_be_truthy);
       return worklists.back()->add(target, scope, false);
     }
-    scope = worklists.back()->add(target, scope, true);
-    stack = scope->top();
+    if (can_be_truthy) {
+      scope = worklists.back()->add(target, scope, true);
+      stack = scope->top();
+    }
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_BACK_IF_FALSE);
     TypeSet top = stack->local(0);
-    bool can_be_falsy = top.contains_null(program) || top.contains_false(program);
+    bool can_be_falsy = top.can_be_falsy(program);
+    bool can_be_truthy = top.can_be_truthy(program);
     stack->pop();
     uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
+    if (!can_be_truthy) {
+      // Unconditionally continue at the branch target.
+      ASSERT(can_be_falsy);
+      return worklists.back()->add(target, scope, false);
+    }
     if (can_be_falsy) {
       scope = worklists.back()->add(target, scope, true);
       stack = scope->top();

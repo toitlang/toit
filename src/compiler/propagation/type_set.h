@@ -127,6 +127,9 @@ class TypeSet {
   bool contains_false(Program* program) const { return contains_instance(program->false_class_id()); }
   bool contains_instance(Smi* class_id) const { return contains(class_id->value()); }
 
+  bool can_be_falsy(Program* program) const;
+  bool can_be_truthy(Program* program) const;
+
   bool add(unsigned type) {
     ASSERT(!is_block());
     unsigned entry = type + 1;

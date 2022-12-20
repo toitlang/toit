@@ -87,6 +87,21 @@ bool TypeSet::is_any(Program* program) const {
   return size(words_per_type(program)) == program->class_bits.length();
 }
 
+bool TypeSet::can_be_falsy(Program* program) const {
+  return contains_null(program) || contains_false(program);
+}
+
+bool TypeSet::can_be_truthy(Program* program) const {
+  unsigned null_id = program->null_class_id()->value();
+  unsigned false_id = program->false_class_id()->value();
+  Iterator it(*this, TypeSet::words_per_type(program));
+  while (it.has_next()) {
+    unsigned id = it.next();
+    if (id != null_id || id != false_id) return true;
+  }
+  return false;
+}
+
 bool TypeSet::add_int(Program* program) {
   bool result = add_instance(program->smi_class_id());
   result = add_instance(program->large_integer_class_id()) || result;
