@@ -43,6 +43,13 @@ class KillerVisitor : public TraversingVisitor {
     }
   }
 
+  void visit_Code(Code* node) {
+    TraversingVisitor::visit_Code(node);
+    if (propagated_types_ && propagated_types_->is_dead(node)) {
+      node->kill();
+    }
+  }
+
   void visit_Global(Global* node) {
     TraversingVisitor::visit_Method(node);
     mark_if_eager(node);

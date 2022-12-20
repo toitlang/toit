@@ -11,6 +11,7 @@ main:
   test_modify_outer
   test_modify_outer_nested
   test_recursion
+  test_dead
 
 test_simple:
   x := 0
@@ -100,6 +101,11 @@ test_recursion:
   recursive_a_call: 87
   recursive_a_call: "fisk"
 
+test_dead:
+  ignore: "hest"
+  ignore: it
+  ignore: | x y | 42
+
 recursive_null [block]:
   if pick: return recursive_null: null
   return block.call
@@ -127,6 +133,9 @@ maybe_throw:
 
 id x:
   return x
+
+ignore [block]:
+  // Do nothing.
 
 pick:
   return (random 100) < 50

@@ -119,6 +119,7 @@ class SourceMapper {
   }
 
   int id_for_method(ir::Method* method);
+  int id_for_code(ir::Code* code);
   int id_for_call(ir::Call* call);
 
   void register_selector_offset(int offset, const char* name) {

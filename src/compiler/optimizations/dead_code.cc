@@ -373,7 +373,8 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   Node* visit_PrimitiveInvocation(PrimitiveInvocation* node) { return node; }
 
   Node* visit_Code(Code* node) {
-    Expression* result = visit_for_value(node->body(), null);
+    Expression* result = null;
+    if (!node->is_dead()) result = visit_for_value(node->body(), null);
     node->replace_body(result ? result : _new Nop(node->range()));
     return node;
   }

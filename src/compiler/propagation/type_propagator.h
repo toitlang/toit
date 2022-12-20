@@ -199,10 +199,7 @@ class BlockTemplate {
     return ConcreteType(this);
   }
 
-  TypeSet invoke(TypePropagator* propagator, TypeScope* scope, uint8* site) {
-    if (scope->is_in_try_block()) invoke_from_try_block();
-    return result_.use(propagator, scope->method(), site);
-  }
+  TypeSet invoke(TypePropagator* propagator, TypeScope* scope, uint8* site);
 
   void ret(TypePropagator* propagator, TypeStack* stack) {
     TypeSet top = stack->local(0);
@@ -224,6 +221,8 @@ class BlockTemplate {
   const int level_;
   TypeVariable** const arguments_;
   TypeVariable result_;
+
+  bool is_invoked_ = false;
   bool is_invoked_from_try_block_ = false;
 
   // All users of this block are various invocations of the same method.
