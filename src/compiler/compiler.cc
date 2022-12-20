@@ -89,6 +89,8 @@ struct PipelineConfiguration {
   bool werror;
   bool parse_only;
   bool is_for_analysis;
+  /// Optimization level.
+  int optimization_level;
 };
 
 class Pipeline {
@@ -167,8 +169,10 @@ class Pipeline {
   std::vector<ast::Unit*> _parse_units(List<const char*> source_paths,
                                        const PackageLock& package_lock);
   ir::Program* resolve(const std::vector<ast::Unit*>& units,
-                       int entry_unit_index, int core_unit_index);
-  void check_types_and_deprecations(ir::Program* program);
+                       int entry_unit_index,
+                       int core_unit_index,
+                       bool quiet = false);
+  void check_types_and_deprecations(ir::Program* program, bool quiet = false);
   void set_toitdocs(const ToitdocRegistry& registry) { toitdoc_registry_ = registry; }
 };
 
@@ -377,6 +381,7 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = true,
+    .optimization_level = compiler_config.optimization_level,
   };
 
   if (strcmp("ANALYZE", mode) == 0) {
@@ -546,6 +551,7 @@ void Compiler::analyze(List<const char*> source_paths,
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = true,
+    .optimization_level = compiler_config.optimization_level,
   };
   Pipeline pipeline(configuration);
   pipeline.run(source_paths, false);
@@ -671,6 +677,7 @@ SnapshotBundle Compiler::compile(const char* source_path,
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = false,
+    .optimization_level = compiler_config.optimization_level,
   };
 
   return compile(source_path, configuration);
@@ -816,9 +823,13 @@ void Pipeline::setup_lsp_selection_handler() {
 }
 
 ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
-                               int entry_unit_index, int core_unit_index) {
+                               int entry_unit_index,
+                               int core_unit_index,
+                               bool quiet) {
   // Resolve all units.
-  Resolver resolver(configuration_.lsp, source_manager(), diagnostics());
+  NullDiagnostics null_diagnostics(this->diagnostics());
+  Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
+  Resolver resolver(configuration_.lsp, source_manager(), diagnostics);
   auto result = resolver.resolve(units,
                                  entry_unit_index,
                                  core_unit_index);
@@ -890,8 +901,10 @@ void DebugCompilationPipeline::patch(ir::Program* program) {
   dispatch_method->replace_body(_new ir::Sequence(dispatch_statements.build(), range));
 }
 
-void Pipeline::check_types_and_deprecations(ir::Program* program) {
-  ::toit::compiler::check_types_and_deprecations(program, configuration_.lsp, toitdocs(), diagnostics());
+void Pipeline::check_types_and_deprecations(ir::Program* program, bool quiet) {
+  NullDiagnostics null_diagnostics(this->diagnostics());
+  Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
+  ::toit::compiler::check_types_and_deprecations(program, configuration_.lsp, toitdocs(), diagnostics);
 }
 
 List<const char*> Pipeline::adjust_source_paths(List<const char*> source_paths) {
@@ -1468,18 +1481,6 @@ static void assign_global_ids(List<ir::Global*> globals) {
   }
 }
 
-static void mark_eager_globals(List<ir::Global*> globals) {
-  for (auto global : globals) {
-    auto body = global->body();
-    if (!body->is_Return()) continue;
-    auto value = body->as_Return()->value();
-    if (value->is_Literal()) {
-      ASSERT(!value->is_LiteralUndefined());
-      global->mark_eager();
-    }
-  }
-}
-
 static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
   semver_t constraint_semver;
   ASSERT(constraint[0] == '^');
@@ -1499,6 +1500,33 @@ static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
                               compiler_version,
                               constraint.c_str());
   };
+}
+
+toit::Program* construct_program(ir::Program* ir_program,
+                                 SourceMapper* source_mapper,
+                                 TypeDatabase* propagated_types,
+                                 bool run_optimizations) {
+  source_mapper->register_selectors(ir_program->classes());
+
+  add_lambda_boxes(ir_program);
+  add_monitor_locks(ir_program);
+  add_stub_methods_and_switch_to_plain_shapes(ir_program);
+  add_interface_stub_methods(ir_program);
+
+  ASSERT(_sorted_by_inheritance(ir_program->classes()));
+
+  if (run_optimizations) optimize(ir_program, propagated_types);
+  tree_shake(ir_program);
+
+  // We assign the field ids very late in case we can inline field-accesses.
+  assign_field_indexes(ir_program->classes());
+  // Similarly, assign the global ids at the end, in case they can be tree
+  // shaken or inlined.
+  assign_global_ids(ir_program->globals());
+
+  Backend backend(source_mapper->manager(), source_mapper);
+  auto program = backend.emit(ir_program);
+  return program;
 }
 
 Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
@@ -1571,39 +1599,36 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     exit(1);
   }
 
-  SourceMapper source_mapper(source_manager());
-
-  source_mapper.register_selectors(ir_program->classes());
-
-  add_lambda_boxes(ir_program);
-  add_monitor_locks(ir_program);
-  add_stub_methods_and_switch_to_plain_shapes(ir_program);
-  add_interface_stub_methods(ir_program);
-
-  ASSERT(_sorted_by_inheritance(ir_program->classes()));
-
   // Only optimize the program, if we didn't encounter any errors.
   // If there was an error, we might not be able to trust the type annotations.
-  if (!diagnostics()->encountered_error()) {
-    optimize(ir_program);
+  bool run_optimizations = !diagnostics()->encountered_error() &&
+      configuration_.optimization_level >= 1;
+
+  SourceMapper unoptimized_source_mapper(source_manager());
+  auto source_mapper = &unoptimized_source_mapper;
+  auto program = construct_program(ir_program, source_mapper, null, run_optimizations);
+
+  SourceMapper optimized_source_mapper(source_manager());
+  if (run_optimizations && configuration_.optimization_level >= 2) {
+    bool quiet = true;
+    ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX, quiet);
+    patch(ir_program);
+    // We check the types again, because the compiler computes types as
+    // a side-effect of this and the types are necessary for the
+    // optimizations. This feels a little bit unfortunate, but it is
+    // important that the second compilation pass where we use propagated
+    // types is based on the same IR nodes, so we need the optimizations
+    // to behave the same way for the output to be correct.
+    check_types_and_deprecations(ir_program, quiet);
+    ASSERT(!diagnostics()->encountered_error());
+    TypeDatabase* types = TypeDatabase::compute(program, source_mapper);
+    source_mapper = &optimized_source_mapper;
+    program = construct_program(ir_program, source_mapper, types, true);
+    delete types;
   }
-  tree_shake(ir_program);
-
-  // We assign the field ids very late in case we can inline field-accesses.
-  assign_field_indexes(ir_program->classes());
-  // Similarly, assign the global ids at the end, in case they can be tree
-  // shaken or inlined.
-  assign_global_ids(ir_program->globals());
-
-  // Mark globals that can be accessed directly without going through the
-  //   lazy getter.
-  mark_eager_globals(ir_program->globals());
-
-  Backend backend(source_manager(), &source_mapper);
-  auto program = backend.emit(ir_program);
 
   if (propagate) {
-    TypeDatabase* types = TypeDatabase::compute(program);
+    TypeDatabase* types = TypeDatabase::compute(program, null);
     auto json = types->as_json();
     printf("%s", json.c_str());
     delete types;
@@ -1612,7 +1637,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   SnapshotGenerator generator(program);
   generator.generate(program);
   int source_map_size;
-  uint8* source_map_data = source_mapper.cook(&source_map_size);
+  uint8* source_map_data = source_mapper->cook(&source_map_size);
   int snapshot_size;
   uint8* snapshot = generator.take_buffer(&snapshot_size);
   return {

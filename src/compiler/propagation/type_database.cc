@@ -17,6 +17,8 @@
 #include "type_propagator.h"
 #include "type_stack.h"
 
+#include "../source_mapper.h"
+
 #include <sstream>
 
 namespace toit {
@@ -29,8 +31,9 @@ static int opcode_length[] { BYTECODES(BYTECODE_LENGTH) -1 };
 static const int TYPES_BLOCK_SIZE = 1024;
 std::unordered_map<Program*, TypeDatabase*> TypeDatabase::cache_;
 
-TypeDatabase::TypeDatabase(Program* program, int words_per_type)
+TypeDatabase::TypeDatabase(Program* program, SourceMapper* source_mapper, int words_per_type)
     : program_(program)
+    , source_mapper_(source_mapper)
     , words_per_type_(words_per_type) {
   add_types_block();
 }
@@ -117,14 +120,14 @@ void TypeDatabase::check_method_entry(Method method, Object** sp) const {
   }
 }
 
-TypeDatabase* TypeDatabase::compute(Program* program) {
+TypeDatabase* TypeDatabase::compute(Program* program, SourceMapper* source_mapper) {
   auto probe = cache_.find(program);
   if (probe != cache_.end()) return probe->second;
 
   AllowThrowingNew allow;
   uint64 start = OS::get_monotonic_time();
   TypePropagator propagator(program);
-  TypeDatabase* types = new TypeDatabase(program, propagator.words_per_type());
+  TypeDatabase* types = new TypeDatabase(program, source_mapper, propagator.words_per_type());
   propagator.propagate(types);
   uint64 elapsed = OS::get_monotonic_time() - start;
   if (false) {
@@ -164,6 +167,30 @@ const TypeSet TypeDatabase::usage(int position) const {
   } else {
     return probe->second;
   }
+}
+
+bool TypeDatabase::is_dead(ir::Method* method) const {
+  if (method->is_IsInterfaceStub()) return false;
+  int id = source_mapper_->id_for_method(method);
+  if (id < 0) return true;
+  auto probe = methods_.find(id);
+  return probe == methods_.end();
+}
+
+bool TypeDatabase::is_dead(ir::Call* call) const {
+  int id = source_mapper_->id_for_call(call);
+  if (id < 0) return true;
+  auto probe = returns_.find(id);
+  return (probe == returns_.end());
+}
+
+bool TypeDatabase::does_not_return(ir::Call* call) const {
+  int id = source_mapper_->id_for_call(call);
+  if (id < 0) return true;
+  auto probe = returns_.find(id);
+  if (probe == returns_.end()) return true;
+  TypeSet type = probe->second;
+  return type.is_empty(words_per_type_);
 }
 
 std::string TypeDatabase::as_json() const {

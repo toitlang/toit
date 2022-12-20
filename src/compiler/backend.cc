@@ -126,7 +126,6 @@ Program* Backend::emit(ir::Program* ir_program) {
   auto methods = ir_program->methods();
   auto globals = ir_program->globals();
   auto lookup_failure = ir_program->lookup_failure();
-  auto as_check_failure = ir_program->as_check_failure();
 
   DispatchTable dispatch_table = DispatchTable::build(classes, methods);
 
@@ -181,7 +180,6 @@ Program* Backend::emit(ir::Program* ir_program) {
   }
 
   ByteGen gen(lookup_failure,
-              as_check_failure,
               max_captured_count,
               &dispatch_table,
               &typecheck_indexes,
@@ -265,7 +263,13 @@ void Backend::emit_global(ir::Global* global,
     int id = gen->assemble_global(global);
     program_builder->push_lazy_initializer_id(id);
   } else {
-    auto value = global->body()->as_Return()->value();
+    auto body = global->body();
+    if (body->is_Sequence()) {
+      List<ir::Expression*> sequence = body->as_Sequence()->expressions();
+      ASSERT(sequence.length() == 1);
+      body = sequence[0];
+    }
+    auto value = body->as_Return()->value();
     if (value->is_LiteralNull()) {
       program_builder->push_null();
     } else if (value->is_LiteralInteger()) {

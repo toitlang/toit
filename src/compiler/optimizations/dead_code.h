@@ -16,12 +16,12 @@
 #pragma once
 
 #include "../ir.h"
+#include "../propagation/type_database.h"
 
 namespace toit {
 namespace compiler {
 
-/// Removes dead code after a `return`.
-ir::Sequence* eliminate_dead_code(ir::Sequence* node, ir::Program* program);
+void eliminate_dead_code(ir::Method* method, TypeDatabase* propagated_types);
 
 } // namespace toit::compiler
 } // namespace toit

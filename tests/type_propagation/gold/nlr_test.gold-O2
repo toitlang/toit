@@ -21,8 +21,6 @@ always_return tests/type_propagation/nlr_test.toit
   5[038] - load block 0
   7[053] - invoke static invoke tests/type_propagation/nlr_test.toit // {}
  10[040] - pop 2
- 12[053] - invoke static unreachable <sdk>/core/exceptions.toit
- 15[041] - pop 1
 
 [block] in always_return tests/type_propagation/nlr_test.toit
  - argument 0: [block]
@@ -75,11 +73,8 @@ stop_unwinding tests/type_propagation/nlr_test.toit
  11[029] - load [block] in [block] in stop_unwinding tests/type_propagation/nlr_test.toit
  16[038] - load block 0
  18[053] - invoke static invoke tests/type_propagation/nlr_test.toit // {}
- 21[041] - pop 1
- 22[002] - pop, load local S2
- 24[020] - load literal true
- 26[006] - store outer S1
- 28[088] - return S1 1
+ 21[004] - store local, pop S1
+ 23[088] - return S1 1
 
 [block] in [block] in stop_unwinding tests/type_propagation/nlr_test.toit
  - argument 0: [block]

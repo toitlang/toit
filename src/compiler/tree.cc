@@ -290,7 +290,7 @@ void TreeGrower::grow(Program* program) {
     Set<CallSelector> found_selectors;
 
     for (auto method : method_queue) {
-      if (method->is_abstract()) continue;
+      if (method->is_abstract() || method->is_dead()) continue;
 
       GrowerVisitor visitor(program->as_check_failure());
       // Skip already visited methods.
@@ -435,9 +435,11 @@ class Fixup : public ReplacingVisitor {
     ASSERT(result == node);
     Method* method = node->target()->target();
     if (unreachable_methods_.contains(method)) {
-      ASSERT(method->is_MethodInstance());
-      // We changed a dynamic call to a static call, but the target doesn't exist anymore.
-      // Just ignore the call, but still evaluate all parameters.
+      // The static method or constructor is unreachable. This might be
+      // because our type propagation phase has told us that the method
+      // is dead, but this can also happen when we have changed a dynamic
+      // call to a static call, and then tree shake the target. Either way,
+      // we just ignore the call, but still evaluate all parameters.
       auto arguments = node->arguments();
       if (arguments.length() == 1) return arguments[0];
       return _new Sequence(arguments, node->range());
@@ -543,8 +545,8 @@ static void shake(ir::Program* program,
   ListBuilder<ir::Global*> remaining_globals;
   for (auto global : program->globals()) {
     if (grown_methods.contains(global)) {
-      remaining_globals.add(global);
       unreachable_methods.erase(global);
+      remaining_globals.add(global);
     }
   }
   if (Flags::report_tree_shaking) {

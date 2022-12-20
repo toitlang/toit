@@ -124,7 +124,11 @@ class TypeSet {
   }
 
   bool contains_null(Program* program) const { return contains_instance(program->null_class_id()); }
+  bool contains_false(Program* program) const { return contains_instance(program->false_class_id()); }
   bool contains_instance(Smi* class_id) const { return contains(class_id->value()); }
+
+  bool can_be_falsy(Program* program) const;
+  bool can_be_truthy(Program* program) const;
 
   bool add(unsigned type) {
     ASSERT(!is_block());
@@ -179,8 +183,13 @@ class TypeSet {
   void remove_instance(Smi* class_id) { return remove(class_id->value()); }
   void remove_range(unsigned start, unsigned end);
 
-  bool remove_typecheck_class(Program* program, int index, bool is_nullable);
-  bool remove_typecheck_interface(Program* program, int index, bool is_nullable);
+  enum {
+    TYPECHECK_CAN_SUCCEED = 1 << 0,
+    TYPECHECK_CAN_FAIL    = 1 << 1,
+  };
+
+  int remove_typecheck_class(Program* program, int index, bool is_nullable);
+  int remove_typecheck_interface(Program* program, int index, bool is_nullable);
 
   void clear(int words) {
     memset(bits_, 0, words * WORD_SIZE);
