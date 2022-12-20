@@ -405,6 +405,6 @@ static const word ITERATE_TAG_HEAP_OVERHEAD = -2;
 
 static const word ITERATE_CUSTOM_TAGS = -100;
 
-static const int DEFAULT_OPTIMIZATION_LEVEL = 2;
+static const int DEFAULT_OPTIMIZATION_LEVEL = 1;
 
 } // namespace toit
