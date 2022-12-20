@@ -31,6 +31,49 @@ namespace compiler {
 
 using namespace ir;
 
+class KillerVisitor : public TraversingVisitor {
+ public:
+  KillerVisitor(TypeDatabase* propagated_types)
+      : propagated_types_(propagated_types) {}
+
+  void visit_Method(Method* node) {
+    TraversingVisitor::visit_Method(node);
+    if (propagated_types_ && propagated_types_->is_dead(node)) {
+      node->kill();
+    }
+  }
+
+  void visit_Global(Global* node) {
+    TraversingVisitor::visit_Method(node);
+    mark_if_eager(node);
+    if (!node->is_lazy()) return;
+    if (propagated_types_ && propagated_types_->is_dead(node)) {
+      node->kill();
+    }
+  }
+
+ private:
+  TypeDatabase* const propagated_types_;
+
+  void mark_if_eager(Global* global) {
+    // This runs after the constant propagation phase, so it is
+    // simple to check if the body is a return of a potentially
+    // folded literal.
+    auto body = global->body();
+    if (body->is_Sequence()) {
+      List<ir::Expression*> sequence = body->as_Sequence()->expressions();
+      if (sequence.length() != 1) return;
+      body = sequence[0];
+    }
+    if (!body->is_Return()) return;
+    auto value = body->as_Return()->value();
+    if (value->is_Literal()) {
+      ASSERT(!value->is_LiteralUndefined());
+      global->mark_eager();
+    }
+  }
+};
+
 class OptimizationVisitor : public ReplacingVisitor {
  public:
   OptimizationVisitor(TypeDatabase* propagated_types,
@@ -43,10 +86,7 @@ class OptimizationVisitor : public ReplacingVisitor {
       , field_names_(field_names) {}
 
   Node* visit_Method(Method* node) {
-    if (propagated_types_ && propagated_types_->is_dead(node)) {
-      node->kill();
-      return node;
-    }
+    if (node->is_dead()) return node;
     method_ = node;
     eliminate_dead_code(node, null);
     Node* result = ReplacingVisitor::visit_Method(node);
@@ -68,7 +108,6 @@ class OptimizationVisitor : public ReplacingVisitor {
     return return_peephole(node);
   }
 
-  /// ...
   Node* visit_Sequence(Sequence* node) {
     node = ReplacingVisitor::visit_Sequence(node)->as_Sequence();
     return simplify_sequence(node);
@@ -100,6 +139,8 @@ void optimize(Program* program, TypeDatabase* propagated_types) {
   // The constant propagation runs independently, as it builds up its own
   // dependency graph.
   propagate_constants(program);
+  KillerVisitor killer(propagated_types);
+  killer.visit(program);
 
   auto classes = program->classes();
   auto queryables = build_queryables_from_plain_shapes(classes);

@@ -1481,23 +1481,6 @@ static void assign_global_ids(List<ir::Global*> globals) {
   }
 }
 
-static void mark_eager_globals(List<ir::Global*> globals) {
-  for (auto global : globals) {
-    auto body = global->body();
-    if (body->is_Sequence()) {
-      List<ir::Expression*> sequence = body->as_Sequence()->expressions();
-      if (sequence.length() != 1) continue;
-      body = sequence[0];
-    }
-    if (!body->is_Return()) continue;
-    auto value = body->as_Return()->value();
-    if (value->is_Literal()) {
-      ASSERT(!value->is_LiteralUndefined());
-      global->mark_eager();
-    }
-  }
-}
-
 static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
   semver_t constraint_semver;
   ASSERT(constraint[0] == '^');
@@ -1540,10 +1523,6 @@ toit::Program* construct_program(ir::Program* ir_program,
   // Similarly, assign the global ids at the end, in case they can be tree
   // shaken or inlined.
   assign_global_ids(ir_program->globals());
-
-  // Mark globals that can be accessed directly without going through the
-  // lazy getter.
-  mark_eager_globals(ir_program->globals());
 
   Backend backend(source_mapper->manager(), source_mapper);
   auto program = backend.emit(ir_program);

@@ -424,8 +424,7 @@ void ByteGen::visit_If(If* node) {
     visit(ir_yes);
 
     if (is_for_value()) {
-      ASSERT(!ir_no->is_Nop());
-       __ branch(Emitter::UNCONDITIONAL, &done_label);
+      __ branch(Emitter::UNCONDITIONAL, &done_label);
       emitter()->forget(1);
     } else if (ir_no->is_Nop() || ir_no->is_Literal()) {
       // We avoid emitting a branch at the end of the 'yes' part if we know that

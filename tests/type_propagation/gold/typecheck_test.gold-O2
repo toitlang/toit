@@ -23,7 +23,7 @@ test_simple tests/type_propagation/typecheck_test.toit
 is_int tests/type_propagation/typecheck_test.toit
  - argument 0: {String_|Null_|float|SmallInteger_}
   0[016] - load local 2
-  1[044] - is class LargeInteger_(22 - 24) // {True_|False_}
+  1[044] - is class LargeInteger_(19 - 21) // {True_|False_}
   3[088] - return S1 1
 
 id tests/type_propagation/typecheck_test.toit

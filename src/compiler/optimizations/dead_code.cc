@@ -253,8 +253,11 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   }
 
   Node* visit_ReferenceGlobal(ReferenceGlobal* node) {
-    // May have side-effects due to lazy initialization.
-    return node;
+    Global* global = node->target();
+    if (global->is_dead()) {
+      return is_for_effect() ? terminate(null) : terminate(_new Nop(node->range()));
+    }
+    return (global->is_lazy() || is_for_value()) ? node : null;
   }
 
   Node* visit_ReferenceClass(ReferenceClass* node) { return visit_Reference(node); }
@@ -269,8 +272,16 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   }
 
   Node* visit_AssignmentLocal(AssignmentLocal* node) { return visit_Assignment(node); }
-  Node* visit_AssignmentGlobal(AssignmentGlobal* node) { return visit_Assignment(node); }
   Node* visit_AssignmentDefine(AssignmentDefine* node) { return visit_Assignment(node); }
+
+  Node* visit_AssignmentGlobal(AssignmentGlobal* node) {
+    Global* global = node->global();
+    if (global->is_dead()) {
+      return terminate(visit(node->right(), null));
+    } else {
+      return visit_Assignment(node);
+    }
+  }
 
   Node* visit_Call(Call* node, Expression* receiver) {
     if (receiver) {
@@ -328,6 +339,23 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   }
 
   Node* visit_CallStatic(CallStatic* node) {
+    if (node->target()->target()->is_dead()) {
+      List<Expression*> arguments = node->arguments();
+      int length = arguments.length();
+      int index = 0;
+      for (int i = 0; i < length; i++) {
+        bool terminates = false;
+        Expression* result = visit_for_effect(arguments[i], &terminates);
+        if (result) arguments[index++] = result;
+        if (terminates) break;
+      }
+      if (index == 0) {
+        return is_for_effect() ? terminate(null) : terminate(_new Nop(node->range()));
+      } else {
+        return terminate(_new Sequence(arguments.sublist(0, index), node->range()));
+      }
+    }
+
     Node* result = visit_Call(node, null);
     if (result == &terminator_) return result;
     Expression* call = result ? result->as_Expression() : null;
