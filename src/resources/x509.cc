@@ -35,12 +35,13 @@ static inline bool is_white_space(int c) {
 
 bool X509ResourceGroup::is_pem_format(const uint8* data, size_t length) {
   const char HEADER[] = "-----BEGIN ";
+  const size_t HEADER_SIZE = sizeof(HEADER) - 1;  // Don't include trailing nul character.
   while (length > 0 && is_white_space(data[0])) {
     length--;
     data++;
   }
-  if (length < sizeof(HEADER)) return false;
-  int cmp = memcmp(char_cast(data), HEADER, strlen(HEADER));
+  if (length < HEADER_SIZE) return false;
+  int cmp = memcmp(char_cast(data), HEADER, HEADER_SIZE);
   return cmp == 0;
 }
 
@@ -69,12 +70,10 @@ Object* X509ResourceGroup::parse(Process* process, const uint8_t* encoded, size_
   int ret;
   if (is_pem_format(encoded, encoded_size)) {
     ret = mbedtls_x509_crt_parse(cert->cert(), encoded, encoded_size);
+  } else if (in_flash) {
+    ret = mbedtls_x509_crt_parse_der_nocopy(cert->cert(), encoded, encoded_size);
   } else {
-    if (in_flash) {
-      ret = mbedtls_x509_crt_parse_der_nocopy(cert->cert(), encoded, encoded_size);
-    } else {
-      ret = mbedtls_x509_crt_parse_der(cert->cert(), encoded, encoded_size);
-    }
+    ret = mbedtls_x509_crt_parse_der(cert->cert(), encoded, encoded_size);
   }
   if (ret != 0) {
     delete cert;
