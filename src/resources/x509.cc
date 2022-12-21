@@ -27,7 +27,25 @@
 #if !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
 namespace toit {
 
-Object* X509ResourceGroup::parse(Process* process, const uint8_t* encoded, size_t encoded_size) {
+// A simple whitespace detector tuned for PEM format that doesn't accept exotic
+// whitespace characters.
+static inline bool is_white_space(int c) {
+  return c == ' ' or c == '\n' or c == '\r';
+}
+
+bool X509ResourceGroup::is_pem_format(const uint8* data, size_t length) {
+  const char HEADER[] = "-----BEGIN ";
+  const size_t HEADER_SIZE = sizeof(HEADER) - 1;  // Don't include trailing nul character.
+  while (length > 0 && is_white_space(data[0])) {
+    length--;
+    data++;
+  }
+  if (length < HEADER_SIZE) return false;
+  int cmp = memcmp(char_cast(data), HEADER, HEADER_SIZE);
+  return cmp == 0;
+}
+
+Object* X509ResourceGroup::parse(Process* process, const uint8_t* encoded, size_t encoded_size, bool in_flash) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
@@ -49,7 +67,14 @@ Object* X509ResourceGroup::parse(Process* process, const uint8_t* encoded, size_
   X509Certificate* cert = _new X509Certificate(this);
   if (!cert) MALLOC_FAILED;
 
-  int ret = mbedtls_x509_crt_parse(cert->cert(), encoded, encoded_size);
+  int ret;
+  if (is_pem_format(encoded, encoded_size)) {
+    ret = mbedtls_x509_crt_parse(cert->cert(), encoded, encoded_size);
+  } else if (in_flash) {
+    ret = mbedtls_x509_crt_parse_der_nocopy(cert->cert(), encoded, encoded_size);
+  } else {
+    ret = mbedtls_x509_crt_parse_der(cert->cert(), encoded, encoded_size);
+  }
   if (ret != 0) {
     delete cert;
     return tls_error(null, process, ret);
@@ -105,15 +130,18 @@ PRIMITIVE(parse) {
     ASSERT(data[length - 1] == '\0');
     if (strlen(char_cast(data)) != length - 1) INVALID_ARGUMENT;  // String with nulls in it.
   } else if (input->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) {
-    // If we're passed a byte array or a string slice, we hope that
-    // it ends with a zero character. Otherwise parsing will fail.
+    // If we're passed a byte array or a string slice, and it's in
+    // PEM format, we hope that it ends with a zero character.
+    // Otherwise parsing will fail.
     data = blob.address();
     length = blob.length();
-    if (length < 1 || data[length - 1] != '\0') INVALID_ARGUMENT;
+    bool is_pem = X509ResourceGroup::is_pem_format(data, length);
+    if (is_pem && (length < 1 || data[length - 1] != '\0')) INVALID_ARGUMENT;
   } else {
     WRONG_TYPE;
   }
-  return resource_group->parse(process, data, length);
+  bool in_flash = HeapObject::cast(input)->on_program_heap(process);
+  return resource_group->parse(process, data, length, in_flash);
 }
 
 PRIMITIVE(get_common_name) {
