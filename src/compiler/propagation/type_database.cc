@@ -169,19 +169,19 @@ const TypeSet TypeDatabase::usage(int position) const {
 }
 
 bool TypeDatabase::is_dead_method(int position) const {
-  if (position < 0) return true;
+  ASSERT(position >= 0);
   auto probe = methods_.find(position);
   return probe == methods_.end();
 }
 
 bool TypeDatabase::is_dead_call(int position) const {
-  if (position < 0) return true;
+  ASSERT(position >= 0);
   auto probe = returns_.find(position);
   return probe == returns_.end();
 }
 
 bool TypeDatabase::does_not_return(int position) const {
-  if (position < 0) return true;
+  ASSERT(position >= 0);
   auto probe = returns_.find(position);
   if (probe == returns_.end()) return true;
   TypeSet type = probe->second;
@@ -189,7 +189,7 @@ bool TypeDatabase::does_not_return(int position) const {
 }
 
 bool TypeDatabase::always_throws(int position) const {
-  if (position < 0) return true;
+  ASSERT(position >= 0);
   auto probe = returns_.find(position);
   if (probe == returns_.end()) return true;
   TypeSet type = probe->second;
@@ -197,7 +197,7 @@ bool TypeDatabase::always_throws(int position) const {
 }
 
 bool TypeDatabase::never_throws(int position) const {
-  if (position < 0) return false;
+  ASSERT(position >= 0);
   auto probe = returns_.find(position);
   if (probe == returns_.end()) return false;
   TypeSet type = probe->second;

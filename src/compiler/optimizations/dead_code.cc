@@ -377,6 +377,19 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   }
 
   Node* visit_Typecheck(Typecheck* node) {
+    if (node->is_as_check()) {
+      if (node->type().is_any() || (oracle_ != null && oracle_->never_throws(node))) {
+        bool terminates;
+        Expression* result = visit(node->expression(), &terminates);
+        return tag(result, terminates);
+      }
+    } else if (node->type().is_any()) {
+      ASSERT(!node->is_as_check());
+      Helper helper(this);
+      helper.visit_for_effect(node->expression());
+      return helper.result(_new LiteralBoolean(true, node->range()));
+    }
+
     Helper helper(this);
     node->replace_expression(helper.visit_for_value(node->expression()));
     bool terminates = node->is_as_check() && oracle_ != null && oracle_->always_throws(node);

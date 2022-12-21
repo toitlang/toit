@@ -33,10 +33,10 @@ add_library(
   ${toit_compiler_SRC}
   )
 
-#set_source_files_properties(propagation/type_database.cc PROPERTIES COMPILE_OPTIONS "-O3")
-#set_source_files_properties(propagation/type_propagator.cc PROPERTIES COMPILE_OPTIONS "-O3")
-#set_source_files_properties(propagation/type_set.cc PROPERTIES COMPILE_OPTIONS "-O3")
-#set_source_files_properties(propagation/type_stack.cc PROPERTIES COMPILE_OPTIONS "-O3")
+set_source_files_properties(propagation/type_database.cc PROPERTIES COMPILE_OPTIONS "-O3")
+set_source_files_properties(propagation/type_propagator.cc PROPERTIES COMPILE_OPTIONS "-O3")
+set_source_files_properties(propagation/type_set.cc PROPERTIES COMPILE_OPTIONS "-O3")
+set_source_files_properties(propagation/type_stack.cc PROPERTIES COMPILE_OPTIONS "-O3")
 
 target_link_libraries(
   toit_compiler
