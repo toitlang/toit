@@ -1519,6 +1519,10 @@ toit::Program* construct_program(ir::Program* ir_program,
   if (run_optimizations) optimize(ir_program, oracle);
   tree_shake(ir_program);
 
+  // It is important that we seed and finalize the oracle in the same
+  // state, so the IR nodes used to produce the somewhat unoptimized
+  // program that we propagate types through can be matched up to the
+  // corresponding IR nodes for the fully optimized version.
   if (propagated_types) {
     oracle->finalize(ir_program, propagated_types);
     optimize(ir_program, oracle);
