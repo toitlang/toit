@@ -254,9 +254,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
 
   Node* visit_ReferenceGlobal(ReferenceGlobal* node) {
     Global* global = node->target();
-    if (global->is_dead()) {
-      return is_for_effect() ? terminate(null) : terminate(_new Nop(node->range()));
-    }
+    if (global->is_dead()) return terminate(null);
     return (global->is_lazy() || is_for_value()) ? node : null;
   }
 
@@ -304,8 +302,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
     int used = 0;
     while (used < length && !terminates) {
       Expression* result = visit_for_value(arguments[used], &terminates);
-      arguments[used] = result;
-      used++;
+      if (result) arguments[used++] = result;
     }
 
     Expression* result = node;
@@ -350,7 +347,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
         if (terminates) break;
       }
       if (index == 0) {
-        return is_for_effect() ? terminate(null) : terminate(_new Nop(node->range()));
+        return terminate(null);
       } else {
         return terminate(_new Sequence(arguments.sublist(0, index), node->range()));
       }
