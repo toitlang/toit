@@ -78,9 +78,9 @@ class TypeDatabase {
   friend class TypePropagator;
 };
 
-class NodeMap {
+class TypeOracle {
  public:
-  explicit NodeMap(SourceMapper* source_mapper)
+  explicit TypeOracle(SourceMapper* source_mapper)
       : source_mapper_(source_mapper) {}
 
   void seed(ir::Program* program);
@@ -102,7 +102,7 @@ class NodeMap {
   void add(ir::Node* node);
   ir::Node* lookup(ir::Node* node) const;
 
-  friend class MappingVisitor;
+  friend class TypeOraclePopulator;
 };
 
 } // namespace toit::compiler

@@ -1504,7 +1504,7 @@ static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
 
 toit::Program* construct_program(ir::Program* ir_program,
                                  SourceMapper* source_mapper,
-                                 NodeMap* node_map,
+                                 TypeOracle* oracle,
                                  TypeDatabase* propagated_types,
                                  bool run_optimizations) {
   source_mapper->register_selectors(ir_program->classes());
@@ -1516,14 +1516,16 @@ toit::Program* construct_program(ir::Program* ir_program,
 
   ASSERT(_sorted_by_inheritance(ir_program->classes()));
 
-  if (propagated_types) {
-    node_map->finalize(ir_program, propagated_types);
-  } else {
-    node_map->seed(ir_program);
-  }
-
-  if (run_optimizations) optimize(ir_program, node_map);
+  if (run_optimizations) optimize(ir_program, oracle);
   tree_shake(ir_program);
+
+  if (propagated_types) {
+    oracle->finalize(ir_program, propagated_types);
+    optimize(ir_program, oracle);
+    tree_shake(ir_program);
+  } else {
+    oracle->seed(ir_program);
+  }
 
   // We assign the field ids very late in case we can inline field-accesses.
   assign_field_indexes(ir_program->classes());
@@ -1613,8 +1615,8 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 
   SourceMapper unoptimized_source_mapper(source_manager());
   auto source_mapper = &unoptimized_source_mapper;
-  NodeMap node_map(source_mapper);
-  auto program = construct_program(ir_program, source_mapper, &node_map, null, run_optimizations);
+  TypeOracle oracle(source_mapper);
+  auto program = construct_program(ir_program, source_mapper, &oracle, null, run_optimizations);
 
   SourceMapper optimized_source_mapper(source_manager());
   if (run_optimizations && configuration_.optimization_level >= 2) {
@@ -1631,7 +1633,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     ASSERT(!diagnostics()->encountered_error());
     TypeDatabase* types = TypeDatabase::compute(program);
     source_mapper = &optimized_source_mapper;
-    program = construct_program(ir_program, source_mapper, &node_map, types, true);
+    program = construct_program(ir_program, source_mapper, &oracle, types, true);
     delete types;
   }
 

@@ -268,44 +268,44 @@ TypeStack* TypeDatabase::add_types_block() {
   return stack;
 }
 
-class MappingVisitor : public ir::TraversingVisitor {
+class TypeOraclePopulator : public ir::TraversingVisitor {
  public:
-  explicit MappingVisitor(NodeMap* map)
-      : map_(map) {}
+  explicit TypeOraclePopulator(TypeOracle* oracle)
+      : oracle_(oracle) {}
 
   void visit_Method(ir::Method* node) {
     ir::TraversingVisitor::visit_Method(node);
-    map_->add(node);
+    oracle_->add(node);
   }
 
   void visit_Code(ir::Code* node) {
     ir::TraversingVisitor::visit_Code(node);
-    map_->add(node);
+    oracle_->add(node);
   }
 
   void visit_Call(ir::Call* node) {
     ir::TraversingVisitor::visit_Call(node);
-    map_->add(node);
+    oracle_->add(node);
   }
 
  private:
-  NodeMap* const map_;
+  TypeOracle* const oracle_;
 };
 
-void NodeMap::seed(ir::Program* program) {
+void TypeOracle::seed(ir::Program* program) {
   ASSERT(types_ == null);
-  MappingVisitor visitor(this);
-  program->accept(&visitor);
+  TypeOraclePopulator populator(this);
+  program->accept(&populator);
 }
 
-void NodeMap::finalize(ir::Program* program, TypeDatabase* types) {
+void TypeOracle::finalize(ir::Program* program, TypeDatabase* types) {
   types_ = types;
-  MappingVisitor visitor(this);
-  program->accept(&visitor);
+  TypeOraclePopulator populator(this);
+  program->accept(&populator);
   ASSERT(nodes_.size() == map_.size());
 }
 
-void NodeMap::add(ir::Node* node) {
+void TypeOracle::add(ir::Node* node) {
   if (types_ == null) {
     nodes_.push_back(node);
   } else {
@@ -318,39 +318,39 @@ void NodeMap::add(ir::Node* node) {
   }
 }
 
-ir::Node* NodeMap::lookup(ir::Node* node) const {
+ir::Node* TypeOracle::lookup(ir::Node* node) const {
   if (types_ == null) return null;
   auto probe = map_.find(node);
   if (probe == map_.end()) return null;
   return probe->second;
 }
 
-bool NodeMap::is_dead(ir::Method* method) const {
+bool TypeOracle::is_dead(ir::Method* method) const {
   if (method->is_IsInterfaceStub()) return false;
   auto probe = lookup(method);
   if (!probe) return false;
-  int position = source_mapper_->id_for_method(probe->as_Method());
+  int position = source_mapper_->position_for_method(probe->as_Method());
   return types_->is_dead_method(position);
 }
 
-bool NodeMap::is_dead(ir::Code* code) const {
+bool TypeOracle::is_dead(ir::Code* code) const {
   auto probe = lookup(code);
   if (!probe) return false;
-  int position = source_mapper_->id_for_code(probe->as_Code());
+  int position = source_mapper_->position_for_method(probe->as_Code());
   return types_->is_dead_method(position);
 }
 
-bool NodeMap::is_dead(ir::Call* call) const {
+bool TypeOracle::is_dead(ir::Call* call) const {
   auto probe = lookup(call);
   if (!probe) return false;
-  int position = source_mapper_->id_for_call(probe->as_Call());
+  int position = source_mapper_->position_for_expression(probe->as_Call());
   return types_->is_dead_call(position);
 }
 
-bool NodeMap::does_not_return(ir::Call* call) const {
+bool TypeOracle::does_not_return(ir::Call* call) const {
   auto probe = lookup(call);
   if (!probe) return false;
-  int position = source_mapper_->id_for_call(probe->as_Call());
+  int position = source_mapper_->position_for_expression(probe->as_Call());
   return types_->does_not_return(position);
 }
 

@@ -21,7 +21,7 @@
 namespace toit {
 namespace compiler {
 
-void eliminate_dead_code(ir::Method* method, NodeMap* node_map);
+void eliminate_dead_code(ir::Method* method, TypeOracle* oracle);
 
 } // namespace toit::compiler
 } // namespace toit

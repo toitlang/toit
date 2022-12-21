@@ -105,8 +105,8 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
     }
   };
 
-  explicit DeadCodeEliminator(NodeMap* node_map)
-      : node_map_(node_map)
+  explicit DeadCodeEliminator(TypeOracle* oracle)
+      : oracle_(oracle)
       , terminator_(null, Symbol::invalid()) {}
 
   Expression* visit(Expression* node, bool* terminates) {
@@ -321,11 +321,11 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
       }
       result = _new Sequence(arguments.sublist(0, used), node->range());
       ASSERT(terminates);
-    } else if (node_map_ != null && !node->is_CallBuiltin()) {
+    } else if (oracle_ != null && !node->is_CallBuiltin()) {
       // If we have propagated type information, we might know that
       // this call does not return. If so, we make sure to tag the
       // result correctly, so we drop code that follows the call.
-      terminates = node_map_->does_not_return(node);
+      terminates = oracle_->does_not_return(node);
     }
     return tag(result, terminates);
   }
@@ -428,7 +428,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   Node* visit_FieldStub(FieldStub* node) { return visit_Method(node); }
 
  private:
-  NodeMap* node_map_;
+  TypeOracle* const oracle_;
   bool is_for_value_ = false;
 
   bool is_for_value() const { return is_for_value_; }
@@ -450,8 +450,8 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   }
 };
 
-void eliminate_dead_code(Method* method, NodeMap* node_map) {
-  DeadCodeEliminator eliminator(node_map);
+void eliminate_dead_code(Method* method, TypeOracle* oracle) {
+  DeadCodeEliminator eliminator(oracle);
   Expression* body = method->body();
   if (body == null) return;
 

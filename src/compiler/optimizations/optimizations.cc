@@ -33,27 +33,27 @@ using namespace ir;
 
 class KillerVisitor : public TraversingVisitor {
  public:
-  explicit KillerVisitor(NodeMap* node_map)
-      : node_map_(node_map) {}
+  explicit KillerVisitor(TypeOracle* oracle)
+      : oracle_(oracle) {}
 
   void visit_Method(Method* node) {
     TraversingVisitor::visit_Method(node);
-    if (node_map_->is_dead(node)) node->kill();
+    if (oracle_->is_dead(node)) node->kill();
   }
 
   void visit_Code(Code* node) {
     TraversingVisitor::visit_Code(node);
-    if (node_map_->is_dead(node)) node->kill();
+    if (oracle_->is_dead(node)) node->kill();
   }
 
   void visit_Global(Global* node) {
     TraversingVisitor::visit_Method(node);
     mark_if_eager(node);
-    if (node->is_lazy() && node_map_->is_dead(node)) node->kill();
+    if (node->is_lazy() && oracle_->is_dead(node)) node->kill();
   }
 
  private:
-  NodeMap* const node_map_;
+  TypeOracle* const oracle_;
 
   void mark_if_eager(Global* global) {
     // This runs after the constant propagation phase, so it is
@@ -76,10 +76,10 @@ class KillerVisitor : public TraversingVisitor {
 
 class OptimizationVisitor : public ReplacingVisitor {
  public:
-  OptimizationVisitor(NodeMap* node_map,
+  OptimizationVisitor(TypeOracle* oracle,
                       const UnorderedMap<Class*, QueryableClass> queryables,
                       const UnorderedSet<Symbol>& field_names)
-      : node_map_(node_map)
+      : oracle_(oracle)
       , holder_(null)
       , method_(null)
       , queryables_(queryables)
@@ -88,9 +88,9 @@ class OptimizationVisitor : public ReplacingVisitor {
   Node* visit_Method(Method* node) {
     if (node->is_dead()) return node;
     method_ = node;
-    eliminate_dead_code(node, null);
+    eliminate_dead_code(node, oracle_);
     Node* result = ReplacingVisitor::visit_Method(node);
-    eliminate_dead_code(node, node_map_);
+    eliminate_dead_code(node, oracle_);
     method_ = null;
     return result;
   }
@@ -127,7 +127,7 @@ class OptimizationVisitor : public ReplacingVisitor {
   void set_class(Class* klass) { holder_ = klass; }
 
  private:
-  NodeMap* const node_map_;
+  TypeOracle* const oracle_;
 
   Class* holder_;  // Null, if not in class (or a static method/field).
   Method* method_;
@@ -135,11 +135,11 @@ class OptimizationVisitor : public ReplacingVisitor {
   UnorderedSet<Symbol> field_names_;
 };
 
-void optimize(Program* program, NodeMap* node_map) {
+void optimize(Program* program, TypeOracle* oracle) {
   // The constant propagation runs independently, as it builds up its own
   // dependency graph.
   propagate_constants(program);
-  KillerVisitor killer(node_map);
+  KillerVisitor killer(oracle);
   killer.visit(program);
 
   auto classes = program->classes();
@@ -169,7 +169,7 @@ void optimize(Program* program, NodeMap* node_map) {
     }
   }
 
-  OptimizationVisitor visitor(node_map, queryables, field_names);
+  OptimizationVisitor visitor(oracle, queryables, field_names);
 
   for (auto klass : classes) {
     visitor.set_class(klass);
