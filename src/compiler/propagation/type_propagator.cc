@@ -1364,6 +1364,7 @@ void MethodTemplate::collect_method(std::unordered_map<uint8*, std::vector<Metho
 }
 
 void BlockTemplate::collect_block(std::unordered_map<uint8*, std::vector<BlockTemplate*>>* map) {
+  if (!is_invoked_) return;
   auto key = method_.header_bcp();
   auto probe = map->find(key);
   if (probe == map->end()) {
@@ -1456,6 +1457,20 @@ void BlockTemplate::use(TypePropagator* propagator, MethodTemplate* user) {
   last_user_ = user;
 }
 
+TypeSet BlockTemplate::invoke(TypePropagator* propagator, TypeScope* scope, uint8* site) {
+  if (!is_invoked_) {
+    // If this block is being invoked for the first time,
+    // we mark it as 'invoked' and make sure to re-analyze
+    // the surrounding method in all its variants.
+    is_invoked_ = true;
+    for (auto it : users_) propagator->enqueue(it);
+  }
+  if (scope->is_in_try_block()) {
+    invoke_from_try_block();
+  }
+  return result_.use(propagator, scope->method(), site);
+}
+
 void BlockTemplate::invoke_from_try_block() {
   if (is_invoked_from_try_block_) return;
   // If we find that this block may have been invoked from
@@ -1470,16 +1485,10 @@ void BlockTemplate::invoke_from_try_block() {
 }
 
 void BlockTemplate::propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked) {
-  // To avoid having empty types on the stack while we analyze
-  // block methods, we bail out early if there are any argument
-  // types that are empty. This happens before we've seen the
-  // first invocation of the block.
-  const int words_per_type = scope->words_per_type();
-  for (int i = 1; i < arity(); i++) {
-    if (argument(i)->type().is_empty(words_per_type)) {
-      return;
-    }
-  }
+  // We avoid having empty types on the stack while we analyze
+  // block methods by bailing out if this block hasn't been
+  // invoked yet.
+  if (!is_invoked_) return;
 
   // TODO(kasper): It feels wasteful to re-analyze blocks that
   // do not depend on the outer local types that were updated

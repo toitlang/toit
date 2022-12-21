@@ -45,11 +45,13 @@ class TypeDatabase {
 
   std::string as_json() const;
 
-  // ...
+  // Helpers for optimization phase.
   bool is_dead(ir::Method* method) const;
+  bool is_dead(ir::Code* code) const;
   bool is_dead(ir::Call* call) const;
   bool does_not_return(ir::Call* call) const;
 
+  // Helpers for type checking interpreter variant.
   void check_top(uint8* bcp, Object* top) const;
   void check_return(uint8* bcp, Object* value) const;
   void check_method_entry(Method method, Object** sp) const;

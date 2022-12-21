@@ -397,6 +397,13 @@ int SourceMapper::id_for_method(ir::Method* method) {
   return method_data.id;
 }
 
+int SourceMapper::id_for_code(ir::Code* code) {
+  auto probe = method_positions_.find(code->range().from().token());
+  if (probe == method_positions_.end()) return -1;
+  auto& method_data = source_information_[probe->second];
+  return method_data.id;
+}
+
 int SourceMapper::id_for_call(ir::Call* call) {
   auto probe = bytecode_positions_.find(call->range().from().token());
   if (probe == bytecode_positions_.end()) return -1;

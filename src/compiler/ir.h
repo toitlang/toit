@@ -1161,11 +1161,16 @@ class Code : public Expression {
 
   void replace_body(Expression* new_body) { body_ = new_body; }
 
+  bool is_dead() const { return is_dead_; }
+  void kill() { is_dead_ = true; }
+
  private:
   List<Parameter*> parameters_;
   Expression* body_;
   bool is_block_;
   int captured_count_;
+
+  bool is_dead_ = false;
 };
 
 class Reference : public Expression {
