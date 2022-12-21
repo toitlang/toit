@@ -38,7 +38,7 @@ function(add_tests flags)
             -DTOIT_RUN=$<TARGET_FILE:toit.run>
             -DTOIT_COMPILE=$<TARGET_FILE:toit.compile>
             "-DTEST=${relative}"
-            "-DTEST_NAME=${name}"
+            "-DTEST_NAME=${name}${flags}"
             "-DFLAGS=${flags}"
             "-DGOLD=${gold_file}"
             "-DTEST_ROOT=${TOIT_SDK_SOURCE_DIR}"
@@ -67,7 +67,7 @@ function(add_tests flags)
           -DTOIT_RUN=$<TARGET_FILE:toit.run>
           -DTOIT_COMPILE=$<TARGET_FILE:toit.compile>
           "-DTEST=${relative}"
-          "-DTEST_NAME=${name}"
+          "-DTEST_NAME=${name}${flags}"
           "-DFLAGS=${flags}"
           "-DGOLD=${gold_file}"
           "-DTEST_ROOT=${TOIT_SDK_SOURCE_DIR}"

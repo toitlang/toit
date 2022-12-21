@@ -67,13 +67,15 @@ show_types types/List snapshot_content/ByteArray -> none
   method_args := {:}
   types.do: | entry/Map |
     position := entry["position"]
-    method := program.method_from_absolute_bci position
-    methods.add method
+    method/ToitMethod := ?
     if entry.contains "type":
+      method = program.method_from_absolute_bci position
       type_strings[position] = type_string program entry["type"]
     else:
+      method = program.method_from_absolute_bci (position + ToitMethod.HEADER_SIZE)
       method_args[position] = entry["arguments"].map: | x |
         type_string program x
+    methods.add method
 
   sorted_methods := List.from methods
   if not sdk:

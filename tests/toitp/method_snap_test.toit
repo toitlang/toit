@@ -68,8 +68,8 @@ main args:
   // Do some spot checks.
   method_bs := found_methods["ClassA.method_b"]
   expect_equals 2 method_bs.size
-  method1 := program.method_from_absolute_bci method_bs[0].id
-  method2 := program.method_from_absolute_bci method_bs[1].id
+  method1 := program.method_from_absolute_bci method_bs[0].absolute_entry_bci
+  method2 := program.method_from_absolute_bci method_bs[1].absolute_entry_bci
   // Arities include the implicit `this` parameter.
   expect (method1.arity == 2 and method2.arity == 3 or
       method1.arity == 3 and method2.arity == 2)
@@ -79,23 +79,23 @@ main args:
   info1 := lazy_fields[0]
   expect_equals MethodInfo.GLOBAL_TYPE info1.type
 
-  field_getter_id := found_methods["ClassA.field_a"].first.id
-  field_getter := program.method_from_absolute_bci field_getter_id
+  field_getter_entry := found_methods["ClassA.field_a"].first.absolute_entry_bci
+  field_getter := program.method_from_absolute_bci field_getter_entry
   expect field_getter.is_field_accessor
-  field_setter_id := found_methods["ClassA.field_a="].first.id
-  field_setter := program.method_from_absolute_bci field_setter_id
+  field_setter_entry := found_methods["ClassA.field_a="].first.absolute_entry_bci
+  field_setter := program.method_from_absolute_bci field_setter_entry
   expect field_setter.is_field_accessor
 
-  final_field_getter_id := found_methods["ClassA.final_field"].first.id
-  final_field_getter := program.method_from_absolute_bci final_field_getter_id
+  final_field_getter_entry := found_methods["ClassA.final_field"].first.absolute_entry_bci
+  final_field_getter := program.method_from_absolute_bci final_field_getter_entry
   expect final_field_getter.is_field_accessor
-  final_field_setter_id := found_methods["ClassA.final_field="].first.id
-  final_field_setter := program.method_from_absolute_bci final_field_setter_id
+  final_field_setter_entry := found_methods["ClassA.final_field="].first.absolute_entry_bci
+  final_field_setter := program.method_from_absolute_bci final_field_setter_entry
   // The final field setter is not considered an accessor.
   expect_not final_field_setter.is_field_accessor
 
-  method_a_id := found_methods["ClassA.method_a"].first.id
-  method_a := program.method_from_absolute_bci method_a_id
+  method_a_entry := found_methods["ClassA.method_a"].first.absolute_entry_bci
+  method_a := program.method_from_absolute_bci method_a_entry
   expect_not method_a.is_field_accessor
   expect method_a.is_normal_method
 
@@ -112,7 +112,7 @@ main args:
   expect_not_null block_info
   expect_not_null lambda_info
 
-  block_method := program.method_from_absolute_bci block_info.id
+  block_method := program.method_from_absolute_bci block_info.absolute_entry_bci
   expect block_method.is_block
-  lambda_method := program.method_from_absolute_bci lambda_info.id
+  lambda_method := program.method_from_absolute_bci lambda_info.absolute_entry_bci
   expect lambda_method.is_lambda

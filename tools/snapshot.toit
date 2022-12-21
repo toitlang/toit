@@ -139,16 +139,16 @@ class Program:
     method_table_.do --values block
 
   method_from_absolute_bci absolute_bci/int -> ToitMethod:
-    if absolute_bci >= methods.last.id: return methods.last
+    if absolute_bci >= methods.last.absolute_entry_bci: return methods.last
     index := methods.index_of
         absolute_bci
-        --binary_compare=: | a/ToitMethod b/int | a.id.compare_to b
+        --binary_compare=: | a/ToitMethod b/int | a.absolute_entry_bci.compare_to b
         --if_absent=: | insertion_index |
           // $insertion_index is the place where absolute_bci would need to be
           //   inserted. As such, the previous index contains the method
           //   that contains the absolute_bci.
           insertion_index - 1
-    assert: methods[index].id <= absolute_bci < methods[index + 1].id;
+    assert: methods[index].absolute_entry_bci <= absolute_bci <= methods[index + 1].id;
     return methods[index]
 
   primitive_name module_index/int primitive_index/int -> string:
@@ -506,6 +506,9 @@ class ToitMethod:
 
   selector_offset:
     return value
+
+  absolute_entry_bci -> int:
+    return id + HEADER_SIZE
 
   bci_from_absolute_bci absolute_bci/int -> int:
     bci := absolute_bci - id - HEADER_SIZE
@@ -1221,6 +1224,9 @@ class MethodInfo:
   static LAMBDA_TYPE        ::= 2
   static BLOCK_TYPE         ::= 3
   static TOP_LEVEL_TYPE     ::= 4
+
+  absolute_entry_bci -> int:
+    return id + ToitMethod.HEADER_SIZE
 
   short_stringify program/Program --show_positions/bool=true:
     prefix := prefix_string program
