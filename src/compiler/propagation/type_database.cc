@@ -304,6 +304,11 @@ class TypeOraclePopulator : public ir::TraversingVisitor {
     oracle_->add(node);
   }
 
+  void visit_Typecheck(ir::Typecheck* node) {
+    ir::TraversingVisitor::visit_Typecheck(node);
+    oracle_->add(node);
+  }
+
  private:
   TypeOracle* const oracle_;
 };
