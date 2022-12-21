@@ -1,0 +1,24 @@
+<...>/toit-cert-roots/tools/package.lock:7:10: error: Package 'github.com/toitlang/pkg-host-1.8.1' not found
+    url: github.com/toitlang/pkg-host
+         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+<...>/toit-cert-roots/tools/package.lock:11:11: error: Package '../../../toitlang/pkg-tr' not found at '/home/kasper/Toit/toitlang.org/toit/external/toitlang/pkg-tr'
+    path: ../../../toitlang/pkg-tr
+          ^~~~~~~~~~~~~~~~~~~~~~~~
+toit-cert-roots/tools/to_toit_source.toit:7:8: error: Package 'pkg-host' for prefix 'host' not found
+import host.file
+       ^~~~
+toit-cert-roots/tools/to_toit_source.toit:8:8: error: Package 'pkg-host' for prefix 'host' not found
+import host.directory
+       ^~~~
+toit-cert-roots/tools/to_toit_source.toit:9:8: error: Package 'pkg-tr' for prefix 'tr' not found
+import tr show Translator
+       ^~
+toit-cert-roots/tools/to_toit_source.toit:65:9: error: Unresolved identifier: 'Translator'
+  tr := Translator "a-z .-" "A-Z_"
+        ^~~~~~~~~~
+toit-cert-roots/tools/to_toit_source.toit:66:14: error: Unresolved identifier: 'Translator'
+  squeeze := Translator --squeeze "_" "_"
+             ^~~~~~~~~~
+toit-cert-roots/tools/to_toit_source.toit:68:9: error: Unresolved identifier: 'read_content'
+  (file.read_content args[0]).to_string.trim.split "\n": | line |
+        ^~~~~~~~~~~~
