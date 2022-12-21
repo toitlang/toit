@@ -21,7 +21,7 @@
 namespace toit {
 namespace compiler {
 
-void eliminate_dead_code(ir::Method* method, TypeDatabase* propagated_types);
+void eliminate_dead_code(ir::Method* method, TypeOracle* oracle);
 
 } // namespace toit::compiler
 } // namespace toit

@@ -31,9 +31,8 @@ static int opcode_length[] { BYTECODES(BYTECODE_LENGTH) -1 };
 static const int TYPES_BLOCK_SIZE = 1024;
 std::unordered_map<Program*, TypeDatabase*> TypeDatabase::cache_;
 
-TypeDatabase::TypeDatabase(Program* program, SourceMapper* source_mapper, int words_per_type)
+TypeDatabase::TypeDatabase(Program* program, int words_per_type)
     : program_(program)
-    , source_mapper_(source_mapper)
     , words_per_type_(words_per_type) {
   add_types_block();
 }
@@ -120,14 +119,14 @@ void TypeDatabase::check_method_entry(Method method, Object** sp) const {
   }
 }
 
-TypeDatabase* TypeDatabase::compute(Program* program, SourceMapper* source_mapper) {
+TypeDatabase* TypeDatabase::compute(Program* program) {
   auto probe = cache_.find(program);
   if (probe != cache_.end()) return probe->second;
 
   AllowThrowingNew allow;
   uint64 start = OS::get_monotonic_time();
   TypePropagator propagator(program);
-  TypeDatabase* types = new TypeDatabase(program, source_mapper, propagator.words_per_type());
+  TypeDatabase* types = new TypeDatabase(program, propagator.words_per_type());
   propagator.propagate(types);
   uint64 elapsed = OS::get_monotonic_time() - start;
   if (false) {
@@ -169,32 +168,21 @@ const TypeSet TypeDatabase::usage(int position) const {
   }
 }
 
-bool TypeDatabase::is_dead(ir::Method* method) const {
-  if (method->is_IsInterfaceStub()) return false;
-  int id = source_mapper_->id_for_method(method);
-  if (id < 0) return true;
-  auto probe = methods_.find(id);
+bool TypeDatabase::is_dead_method(int position) const {
+  if (position < 0) return true;
+  auto probe = methods_.find(position);
   return probe == methods_.end();
 }
 
-bool TypeDatabase::is_dead(ir::Code* code) const {
-  int id = source_mapper_->id_for_code(code);
-  if (id < 0) return true;
-  auto probe = methods_.find(id);
-  return probe == methods_.end();
+bool TypeDatabase::is_dead_call(int position) const {
+  if (position < 0) return true;
+  auto probe = returns_.find(position);
+  return probe == returns_.end();
 }
 
-bool TypeDatabase::is_dead(ir::Call* call) const {
-  int id = source_mapper_->id_for_call(call);
-  if (id < 0) return true;
-  auto probe = returns_.find(id);
-  return (probe == returns_.end());
-}
-
-bool TypeDatabase::does_not_return(ir::Call* call) const {
-  int id = source_mapper_->id_for_call(call);
-  if (id < 0) return true;
-  auto probe = returns_.find(id);
+bool TypeDatabase::does_not_return(int position) const {
+  if (position < 0) return true;
+  auto probe = returns_.find(position);
   if (probe == returns_.end()) return true;
   TypeSet type = probe->second;
   return type.is_empty(words_per_type_);
@@ -278,6 +266,92 @@ TypeStack* TypeDatabase::add_types_block() {
   TypeStack* stack = new TypeStack(-1, TYPES_BLOCK_SIZE, words_per_type_);
   types_.push_back(stack);
   return stack;
+}
+
+class TypeOraclePopulator : public ir::TraversingVisitor {
+ public:
+  explicit TypeOraclePopulator(TypeOracle* oracle)
+      : oracle_(oracle) {}
+
+  void visit_Method(ir::Method* node) {
+    ir::TraversingVisitor::visit_Method(node);
+    oracle_->add(node);
+  }
+
+  void visit_Code(ir::Code* node) {
+    ir::TraversingVisitor::visit_Code(node);
+    oracle_->add(node);
+  }
+
+  void visit_Call(ir::Call* node) {
+    ir::TraversingVisitor::visit_Call(node);
+    oracle_->add(node);
+  }
+
+ private:
+  TypeOracle* const oracle_;
+};
+
+void TypeOracle::seed(ir::Program* program) {
+  ASSERT(types_ == null);
+  TypeOraclePopulator populator(this);
+  program->accept(&populator);
+}
+
+void TypeOracle::finalize(ir::Program* program, TypeDatabase* types) {
+  types_ = types;
+  TypeOraclePopulator populator(this);
+  program->accept(&populator);
+  ASSERT(nodes_.size() == map_.size());
+}
+
+void TypeOracle::add(ir::Node* node) {
+  if (types_ == null) {
+    nodes_.push_back(node);
+  } else {
+    int index = map_.size();
+    ir::Node* existing = nodes_[index];
+    map_[node] = existing;
+    ASSERT(strcmp(node->node_type(), existing->node_type()) == 0);
+    ASSERT(!node->is_Method() || node->as_Method()->range() == existing->as_Method()->range());
+    ASSERT(!node->is_Expression() || node->as_Expression()->range() == existing->as_Expression()->range());
+  }
+}
+
+ir::Node* TypeOracle::lookup(ir::Node* node) const {
+  if (types_ == null) return null;
+  auto probe = map_.find(node);
+  if (probe == map_.end()) return null;
+  return probe->second;
+}
+
+bool TypeOracle::is_dead(ir::Method* method) const {
+  if (method->is_IsInterfaceStub()) return false;
+  auto probe = lookup(method);
+  if (!probe) return false;
+  int position = source_mapper_->position_for_method(probe->as_Method());
+  return types_->is_dead_method(position);
+}
+
+bool TypeOracle::is_dead(ir::Code* code) const {
+  auto probe = lookup(code);
+  if (!probe) return false;
+  int position = source_mapper_->position_for_method(probe->as_Code());
+  return types_->is_dead_method(position);
+}
+
+bool TypeOracle::is_dead(ir::Call* call) const {
+  auto probe = lookup(call);
+  if (!probe) return false;
+  int position = source_mapper_->position_for_expression(probe->as_Call());
+  return types_->is_dead_call(position);
+}
+
+bool TypeOracle::does_not_return(ir::Call* call) const {
+  auto probe = lookup(call);
+  if (!probe) return false;
+  int position = source_mapper_->position_for_expression(probe->as_Call());
+  return types_->does_not_return(position);
 }
 
 } // namespace toit::compiler

@@ -20,7 +20,7 @@ always_return tests/type_propagation/nlr_test.toit
   0[029] - load [block] in always_return tests/type_propagation/nlr_test.toit
   5[038] - load block 0
   7[053] - invoke static invoke tests/type_propagation/nlr_test.toit // {}
- 10[040] - pop 2
+ 10[041] - pop 1
 
 [block] in always_return tests/type_propagation/nlr_test.toit
  - argument 0: [block]

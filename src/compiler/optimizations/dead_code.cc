@@ -105,8 +105,8 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
     }
   };
 
-  DeadCodeEliminator(TypeDatabase* propagated_types)
-      : propagated_types_(propagated_types)
+  explicit DeadCodeEliminator(TypeOracle* oracle)
+      : oracle_(oracle)
       , terminator_(null, Symbol::invalid()) {}
 
   Expression* visit(Expression* node, bool* terminates) {
@@ -254,9 +254,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
 
   Node* visit_ReferenceGlobal(ReferenceGlobal* node) {
     Global* global = node->target();
-    if (global->is_dead()) {
-      return is_for_effect() ? terminate(null) : terminate(_new Nop(node->range()));
-    }
+    if (global->is_dead()) return terminate(null);
     return (global->is_lazy() || is_for_value()) ? node : null;
   }
 
@@ -304,8 +302,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
     int used = 0;
     while (used < length && !terminates) {
       Expression* result = visit_for_value(arguments[used], &terminates);
-      arguments[used] = result;
-      used++;
+      if (result) arguments[used++] = result;
     }
 
     Expression* result = node;
@@ -321,11 +318,11 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
       }
       result = _new Sequence(arguments.sublist(0, used), node->range());
       ASSERT(terminates);
-    } else if (propagated_types_ != null && !node->is_CallBuiltin()) {
+    } else if (oracle_ != null && !node->is_CallBuiltin()) {
       // If we have propagated type information, we might know that
       // this call does not return. If so, we make sure to tag the
       // result correctly, so we drop code that follows the call.
-      terminates = propagated_types_->does_not_return(node);
+      terminates = oracle_->does_not_return(node);
     }
     return tag(result, terminates);
   }
@@ -350,7 +347,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
         if (terminates) break;
       }
       if (index == 0) {
-        return is_for_effect() ? terminate(null) : terminate(_new Nop(node->range()));
+        return terminate(null);
       } else {
         return terminate(_new Sequence(arguments.sublist(0, index), node->range()));
       }
@@ -428,7 +425,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   Node* visit_FieldStub(FieldStub* node) { return visit_Method(node); }
 
  private:
-  TypeDatabase* propagated_types_;
+  TypeOracle* const oracle_;
   bool is_for_value_ = false;
 
   bool is_for_value() const { return is_for_value_; }
@@ -450,8 +447,8 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   }
 };
 
-void eliminate_dead_code(Method* method, TypeDatabase* propagated_types) {
-  DeadCodeEliminator eliminator(propagated_types);
+void eliminate_dead_code(Method* method, TypeOracle* oracle) {
+  DeadCodeEliminator eliminator(oracle);
   Expression* body = method->body();
   if (body == null) return;
 

@@ -22,7 +22,7 @@ namespace toit {
 namespace compiler {
 
 // Optimizes the program by combining all available sub-optimizations.
-void optimize(ir::Program* program, TypeDatabase* propagated_types);
+void optimize(ir::Program* program, TypeOracle* oracle);
 
 } // namespace toit::compiler
 } // namespace toit

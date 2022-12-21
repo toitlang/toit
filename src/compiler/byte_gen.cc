@@ -593,7 +593,7 @@ void ByteGen::_generate_call(Call* node,
 
   if (node->range().is_valid()) {
     int bytecode_position = emitter()->position();
-    method_mapper_.register_call(bytecode_position, node->range());
+    method_mapper_.register_call(node, bytecode_position);
   }
 
   if (is_for_effect()) __ pop(1);
@@ -811,9 +811,7 @@ void ByteGen::visit_Typecheck(Typecheck* node) {
       int height = local_height(target->as_Local()->index());
       bytecode_position = __ typecheck_local(height, typecheck_index);
     }
-    method_mapper_.register_as_check(bytecode_position,
-                                     node->range(),
-                                     node->type_name().c_str());
+    method_mapper_.register_as_check(node, bytecode_position);
     return;
   }
 
@@ -828,9 +826,7 @@ void ByteGen::visit_Typecheck(Typecheck* node) {
 
   if (is_as_check) {
     int bytecode_position = emitter()->position();
-    method_mapper_.register_as_check(bytecode_position,
-                                     node->range(),
-                                     node->type_name().c_str());
+    method_mapper_.register_as_check(node, bytecode_position);
   }
   if (is_for_effect()) __ pop(1);
 }
@@ -974,7 +970,7 @@ void ByteGen::visit_ReferenceGlobal(ReferenceGlobal* node) {
 
   __ load_global_var(node->target()->global_id(), is_lazy);
   int bytecode_position = emitter()->position();
-  method_mapper_.register_call(bytecode_position, node->range());
+  method_mapper_.register_call(node, bytecode_position);
 
   if (is_for_effect()) __ pop(1);
 }
