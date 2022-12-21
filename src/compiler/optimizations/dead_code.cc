@@ -105,8 +105,8 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
     }
   };
 
-  DeadCodeEliminator(TypeDatabase* propagated_types)
-      : propagated_types_(propagated_types)
+  explicit DeadCodeEliminator(NodeMap* node_map)
+      : node_map_(node_map)
       , terminator_(null, Symbol::invalid()) {}
 
   Expression* visit(Expression* node, bool* terminates) {
@@ -321,11 +321,11 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
       }
       result = _new Sequence(arguments.sublist(0, used), node->range());
       ASSERT(terminates);
-    } else if (propagated_types_ != null && !node->is_CallBuiltin()) {
+    } else if (node_map_ != null && !node->is_CallBuiltin()) {
       // If we have propagated type information, we might know that
       // this call does not return. If so, we make sure to tag the
       // result correctly, so we drop code that follows the call.
-      terminates = propagated_types_->does_not_return(node);
+      terminates = node_map_->does_not_return(node);
     }
     return tag(result, terminates);
   }
@@ -428,7 +428,7 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   Node* visit_FieldStub(FieldStub* node) { return visit_Method(node); }
 
  private:
-  TypeDatabase* propagated_types_;
+  NodeMap* node_map_;
   bool is_for_value_ = false;
 
   bool is_for_value() const { return is_for_value_; }
@@ -450,8 +450,8 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   }
 };
 
-void eliminate_dead_code(Method* method, TypeDatabase* propagated_types) {
-  DeadCodeEliminator eliminator(propagated_types);
+void eliminate_dead_code(Method* method, NodeMap* node_map) {
+  DeadCodeEliminator eliminator(node_map);
   Expression* body = method->body();
   if (body == null) return;
 

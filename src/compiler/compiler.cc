@@ -1504,6 +1504,7 @@ static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
 
 toit::Program* construct_program(ir::Program* ir_program,
                                  SourceMapper* source_mapper,
+                                 NodeMap* node_map,
                                  TypeDatabase* propagated_types,
                                  bool run_optimizations) {
   source_mapper->register_selectors(ir_program->classes());
@@ -1515,7 +1516,13 @@ toit::Program* construct_program(ir::Program* ir_program,
 
   ASSERT(_sorted_by_inheritance(ir_program->classes()));
 
-  if (run_optimizations) optimize(ir_program, propagated_types);
+  if (propagated_types) {
+    node_map->finalize(ir_program, propagated_types);
+  } else {
+    node_map->seed(ir_program);
+  }
+
+  if (run_optimizations) optimize(ir_program, node_map);
   tree_shake(ir_program);
 
   // We assign the field ids very late in case we can inline field-accesses.
@@ -1606,7 +1613,8 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 
   SourceMapper unoptimized_source_mapper(source_manager());
   auto source_mapper = &unoptimized_source_mapper;
-  auto program = construct_program(ir_program, source_mapper, null, run_optimizations);
+  NodeMap node_map(source_mapper);
+  auto program = construct_program(ir_program, source_mapper, &node_map, null, run_optimizations);
 
   SourceMapper optimized_source_mapper(source_manager());
   if (run_optimizations && configuration_.optimization_level >= 2) {
@@ -1621,14 +1629,14 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     // to behave the same way for the output to be correct.
     check_types_and_deprecations(ir_program, quiet);
     ASSERT(!diagnostics()->encountered_error());
-    TypeDatabase* types = TypeDatabase::compute(program, source_mapper);
+    TypeDatabase* types = TypeDatabase::compute(program);
     source_mapper = &optimized_source_mapper;
-    program = construct_program(ir_program, source_mapper, types, true);
+    program = construct_program(ir_program, source_mapper, &node_map, types, true);
     delete types;
   }
 
   if (propagate) {
-    TypeDatabase* types = TypeDatabase::compute(program, null);
+    TypeDatabase* types = TypeDatabase::compute(program);
     auto json = types->as_json();
     printf("%s", json.c_str());
     delete types;

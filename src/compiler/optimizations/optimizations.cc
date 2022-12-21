@@ -33,34 +33,27 @@ using namespace ir;
 
 class KillerVisitor : public TraversingVisitor {
  public:
-  KillerVisitor(TypeDatabase* propagated_types)
-      : propagated_types_(propagated_types) {}
+  explicit KillerVisitor(NodeMap* node_map)
+      : node_map_(node_map) {}
 
   void visit_Method(Method* node) {
     TraversingVisitor::visit_Method(node);
-    if (propagated_types_ && propagated_types_->is_dead(node)) {
-      node->kill();
-    }
+    if (node_map_->is_dead(node)) node->kill();
   }
 
   void visit_Code(Code* node) {
     TraversingVisitor::visit_Code(node);
-    if (propagated_types_ && propagated_types_->is_dead(node)) {
-      node->kill();
-    }
+    if (node_map_->is_dead(node)) node->kill();
   }
 
   void visit_Global(Global* node) {
     TraversingVisitor::visit_Method(node);
     mark_if_eager(node);
-    if (!node->is_lazy()) return;
-    if (propagated_types_ && propagated_types_->is_dead(node)) {
-      node->kill();
-    }
+    if (node->is_lazy() && node_map_->is_dead(node)) node->kill();
   }
 
  private:
-  TypeDatabase* const propagated_types_;
+  NodeMap* const node_map_;
 
   void mark_if_eager(Global* global) {
     // This runs after the constant propagation phase, so it is
@@ -83,10 +76,10 @@ class KillerVisitor : public TraversingVisitor {
 
 class OptimizationVisitor : public ReplacingVisitor {
  public:
-  OptimizationVisitor(TypeDatabase* propagated_types,
+  OptimizationVisitor(NodeMap* node_map,
                       const UnorderedMap<Class*, QueryableClass> queryables,
                       const UnorderedSet<Symbol>& field_names)
-      : propagated_types_(propagated_types)
+      : node_map_(node_map)
       , holder_(null)
       , method_(null)
       , queryables_(queryables)
@@ -97,7 +90,7 @@ class OptimizationVisitor : public ReplacingVisitor {
     method_ = node;
     eliminate_dead_code(node, null);
     Node* result = ReplacingVisitor::visit_Method(node);
-    eliminate_dead_code(node, propagated_types_);
+    eliminate_dead_code(node, node_map_);
     method_ = null;
     return result;
   }
@@ -134,7 +127,7 @@ class OptimizationVisitor : public ReplacingVisitor {
   void set_class(Class* klass) { holder_ = klass; }
 
  private:
-  TypeDatabase* const propagated_types_;
+  NodeMap* const node_map_;
 
   Class* holder_;  // Null, if not in class (or a static method/field).
   Method* method_;
@@ -142,11 +135,11 @@ class OptimizationVisitor : public ReplacingVisitor {
   UnorderedSet<Symbol> field_names_;
 };
 
-void optimize(Program* program, TypeDatabase* propagated_types) {
+void optimize(Program* program, NodeMap* node_map) {
   // The constant propagation runs independently, as it builds up its own
   // dependency graph.
   propagate_constants(program);
-  KillerVisitor killer(propagated_types);
+  KillerVisitor killer(node_map);
   killer.visit(program);
 
   auto classes = program->classes();
@@ -176,7 +169,7 @@ void optimize(Program* program, TypeDatabase* propagated_types) {
     }
   }
 
-  OptimizationVisitor visitor(propagated_types, queryables, field_names);
+  OptimizationVisitor visitor(node_map, queryables, field_names);
 
   for (auto klass : classes) {
     visitor.set_class(klass);

@@ -35,7 +35,7 @@ class SourceMapper;
 
 class TypeDatabase {
  public:
-  static TypeDatabase* compute(Program* program, SourceMapper* source_mapper);
+  static TypeDatabase* compute(Program* program);
   ~TypeDatabase();
 
   const std::vector<Method> methods() const;
@@ -46,10 +46,9 @@ class TypeDatabase {
   std::string as_json() const;
 
   // Helpers for optimization phase.
-  bool is_dead(ir::Method* method) const;
-  bool is_dead(ir::Code* code) const;
-  bool is_dead(ir::Call* call) const;
-  bool does_not_return(ir::Call* call) const;
+  bool is_dead_method(int position) const;
+  bool is_dead_call(int position) const;
+  bool does_not_return(int position) const;
 
   // Helpers for type checking interpreter variant.
   void check_top(uint8* bcp, Object* top) const;
@@ -58,8 +57,6 @@ class TypeDatabase {
 
  private:
   Program* const program_;
-  SourceMapper* const source_mapper_;
-
   const int words_per_type_;
   std::vector<TypeStack*> types_;
 
@@ -69,7 +66,7 @@ class TypeDatabase {
 
   static std::unordered_map<Program*, TypeDatabase*> cache_;
 
-  TypeDatabase(Program* program, SourceMapper* source_mapper, int words_per_type);
+  TypeDatabase(Program* program, int words_per_type);
 
   void add_method(Method method);
   void add_argument(Method method, int n, const TypeSet type);
@@ -79,6 +76,33 @@ class TypeDatabase {
   TypeStack* add_types_block();
 
   friend class TypePropagator;
+};
+
+class NodeMap {
+ public:
+  explicit NodeMap(SourceMapper* source_mapper)
+      : source_mapper_(source_mapper) {}
+
+  void seed(ir::Program* program);
+  void finalize(ir::Program* program, TypeDatabase* types);
+
+  // Helpers for optimization phase.
+  bool is_dead(ir::Method* method) const;
+  bool is_dead(ir::Code* code) const;
+  bool is_dead(ir::Call* call) const;
+  bool does_not_return(ir::Call* call) const;
+
+ private:
+  SourceMapper* const source_mapper_;
+  TypeDatabase* types_ = null;
+
+  std::vector<ir::Node*> nodes_;
+  std::unordered_map<ir::Node*, ir::Node*> map_;
+
+  void add(ir::Node* node);
+  ir::Node* lookup(ir::Node* node) const;
+
+  friend class MappingVisitor;
 };
 
 } // namespace toit::compiler
