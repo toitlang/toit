@@ -379,7 +379,8 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   Node* visit_Typecheck(Typecheck* node) {
     Helper helper(this);
     node->replace_expression(helper.visit_for_value(node->expression()));
-    return helper.result(node);
+    bool terminates = node->is_as_check() && oracle_ != null && oracle_->always_throws(node);
+    return helper.result(node, terminates);
   }
 
   Node* visit_Super(Super* node) {
