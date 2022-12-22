@@ -74,7 +74,7 @@ class Port implements reader.Reader:
   (Note that pins 16 and 17 are used for PSRAM on some modules, so they cannot
    be used for UART0.)
 
-  Setting a $high_priority increases the interrupt priority to level 3 on the ESP 32.
+  Setting a $high_priority increases the interrupt priority to level 3 on the ESP32.
     If you do not specify true or false for this argument, the high priority is
     automatically selected for baud rates of 460800 or above.
 
@@ -93,7 +93,8 @@ class Port implements reader.Reader:
     if not MODE_UART <= mode <= MODE_IRDA: throw "INVALID_ARGUMENT"
 
     tx_flags := (invert_tx ? 1 : 0) + (invert_rx ? 2 : 0)
-    if high_priority or high_priority == null and baud_rate >= 460800:
+    if high_priority == null: high_priority = baud_rate >= 460800
+    if high_priority:
       tx_flags |= 8
     uart_ = uart_create_
       resource_group_
