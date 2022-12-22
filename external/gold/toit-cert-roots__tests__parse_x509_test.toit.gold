@@ -1,0 +1,18 @@
+<pkg:..>/certificate_roots.toit:9100:3: warning: Deprecated 'GLOBALSIGN_ROOT_CA_R2'
+  GLOBALSIGN_ROOT_CA_R2,
+  ^~~~~~~~~~~~~~~~~~~~~
+<pkg:..>/certificate_roots.toit:9114:3: warning: Deprecated 'DST_ROOT_CA_X3'
+  DST_ROOT_CA_X3,
+  ^~~~~~~~~~~~~~
+<pkg:..>/certificate_roots.toit:9123:3: warning: Deprecated 'CYBERTRUST_GLOBAL_ROOT'
+  CYBERTRUST_GLOBAL_ROOT,
+  ^~~~~~~~~~~~~~~~~~~~~~
+toit-cert-roots/tests/parse_x509_test.toit:9:27: warning: Deprecated 'DST_ROOT_CA_X3'
+  dst := certificate_roots.DST_ROOT_CA_X3
+                          ^
+toit-cert-roots/tests/parse_x509_test.toit:10:29: warning: Deprecated 'CYBERTRUST_GLOBAL_ROOT'
+  cyber := certificate_roots.CYBERTRUST_GLOBAL_ROOT
+                            ^
+toit-cert-roots/tests/parse_x509_test.toit:11:34: warning: Deprecated 'GLOBALSIGN_ROOT_CA_R2'
+  globalsign := certificate_roots.GLOBALSIGN_ROOT_CA_R2
+                                 ^
