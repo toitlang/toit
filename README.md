@@ -253,20 +253,15 @@ in `build/esp32/firmware.envelope`:
 make esp32
 ```
 
-If you want to use `esptool.py` to flash the generated firmware on your device, you
-need to extract the `firmware.bin` file and pass it to `esptool.py`. Assuming
-your device is connected through `/dev/ttyUSB0` you can do this:
+If you want to flash the generated firmware on your device, you can use the `firmware`
+too. Internally, the `firmware` tool calls out to `esptool.py` so you need to build
+that first using `make esptool`. Assuming your device is connected through `/dev/ttyUSB0` 
+you can achieve all of this through:
 
 ``` sh
+make esptool
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    extract --format=binary -o firmware.bin
-python third_party/esp-idf/components/esptool_py/esptool/esptool.py \
-    --chip esp32 --port /dev/ttyUSB0 --baud 921600 \
-    --before default_reset --after hard_reset write_flash -z \
-    --flash_mode dio --flash_freq 40m --flash_size detect \
-    0x001000 build/esp32/bootloader/bootloader.bin \
-    0x008000 build/esp32/partitions.bin \
-    0x010000 firmware.bin
+    flash --port /dev/ttyUSB0 --baud 921600
 ```
 
 By default, the image boots up but does not run any application code. You can use your
