@@ -1,6 +1,10 @@
 main tests/type_propagation/typecheck_test.toit
   0[053] - invoke static test_simple tests/type_propagation/typecheck_test.toit // {Null_}
-  3[089] - return null S1 0
+  3[041] - pop 1
+  4[053] - invoke static test_any tests/type_propagation/typecheck_test.toit // {Null_}
+  7[041] - pop 1
+  8[053] - invoke static test_throws tests/type_propagation/typecheck_test.toit // {Null_}
+ 11[089] - return null S1 0
 
 test_simple tests/type_propagation/typecheck_test.toit
   0[022] - load null
@@ -20,6 +24,54 @@ test_simple tests/type_propagation/typecheck_test.toit
  31[053] - invoke static id tests/type_propagation/typecheck_test.toit // {False_}
  34[089] - return null S1 0
 
+test_any tests/type_propagation/typecheck_test.toit
+  0[020] - load literal true
+  2[053] - invoke static id tests/type_propagation/typecheck_test.toit // {True_}
+  5[041] - pop 1
+  6[020] - load literal true
+  8[053] - invoke static id tests/type_propagation/typecheck_test.toit // {True_}
+ 11[041] - pop 1
+ 12[026] - load smi 7
+ 14[053] - invoke static id tests/type_propagation/typecheck_test.toit // {SmallInteger_}
+ 17[041] - pop 1
+ 18[020] - load literal hest
+ 20[053] - invoke static id tests/type_propagation/typecheck_test.toit // {String_}
+ 23[089] - return null S1 0
+
+test_throws tests/type_propagation/typecheck_test.toit
+  0[029] - load [block] in test_throws tests/type_propagation/typecheck_test.toit
+  5[038] - load block 0
+  7[022] - load null
+  8[022] - load null
+  9[053] - invoke static catch <sdk>/core/exceptions.toit // {*}
+ 12[040] - pop 2
+ 14[029] - load [block] in test_throws tests/type_propagation/typecheck_test.toit
+ 19[038] - load block 0
+ 21[022] - load null
+ 22[022] - load null
+ 23[053] - invoke static catch <sdk>/core/exceptions.toit // {*}
+ 26[089] - return null S2 0
+
+[block] in test_throws tests/type_propagation/typecheck_test.toit
+ - argument 0: [block]
+  0[053] - invoke static foo tests/type_propagation/typecheck_test.toit // {SmallInteger_}
+  3[048] - as class StringSlice_(8 - 10) // {False_}
+  5[088] - return S1 1
+
+[block] in test_throws tests/type_propagation/typecheck_test.toit
+ - argument 0: [block]
+  0[026] - load smi 7
+  2[053] - invoke static bar tests/type_propagation/typecheck_test.toit // {}
+  5[088] - return S1 1
+
+foo tests/type_propagation/typecheck_test.toit
+  0[026] - load smi 42
+  2[088] - return S1 0
+
+bar tests/type_propagation/typecheck_test.toit
+ - argument 0: {SmallInteger_}
+  0[052] - load local, as class, pop 2 - StringSlice_(8 - 10) // {False_}
+
 is_int tests/type_propagation/typecheck_test.toit
  - argument 0: {String_|Null_|float|SmallInteger_}
   0[016] - load local 2
@@ -27,6 +79,6 @@ is_int tests/type_propagation/typecheck_test.toit
   3[088] - return S1 1
 
 id tests/type_propagation/typecheck_test.toit
- - argument 0: {True_|False_}
+ - argument 0: {String_|True_|False_|SmallInteger_}
   0[016] - load local 2
   1[088] - return S1 1
