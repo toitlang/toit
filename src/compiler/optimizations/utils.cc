@@ -43,7 +43,6 @@ Type compute_guaranteed_type(Expression* node, Class* holder, Method* method) {
   if (node->is_ReferenceLocal()) {
     auto target = node->as_ReferenceLocal()->target();
     if (!target->is_effectively_final()) return Type::invalid();
-    if (!target->is_Parameter()) return Type::invalid();
     if (!target->type().is_class()) return Type::invalid();
     return target->type();
   } else if (node->is_CallStatic()) {

@@ -19,8 +19,10 @@ confuse x: return x
 bytecode_test:
   a := A
   a.foo
+  (confuse a).foo
   b := B
   b.foo
+  (confuse b).foo
   bar
   global_field = 499
   (confuse b) is A

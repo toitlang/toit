@@ -326,6 +326,7 @@ void DispatchTableBuilder::handle_methods(List<Method*> methods) {
   for (int i = 0; i < table.length(); i++) {
     if (table[i] == null) {
       auto method = methods[method_index++];
+      ASSERT(!method->is_dead());
       table[i] = method;
       ASSERT(!method->index_is_set());
       method->set_index(i);
@@ -386,7 +387,7 @@ void DispatchTableBuilder::handle_classes(List<Class*> classes, int static_metho
     auto holder = classes[i];
 
     for (auto method : holder->methods()) {
-      if (method->is_dead()) continue;
+      ASSERT(!method->is_dead());
       DispatchSelector selector(method->name(), method->plain_shape());
       fitter.define(selector, holder, method);
     }
