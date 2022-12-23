@@ -169,23 +169,39 @@ const TypeSet TypeDatabase::usage(int position) const {
 }
 
 bool TypeDatabase::is_dead_method(int position) const {
-  if (position < 0) return true;
+  ASSERT(position >= 0);
   auto probe = methods_.find(position);
   return probe == methods_.end();
 }
 
 bool TypeDatabase::is_dead_call(int position) const {
-  if (position < 0) return true;
+  ASSERT(position >= 0);
   auto probe = returns_.find(position);
   return probe == returns_.end();
 }
 
 bool TypeDatabase::does_not_return(int position) const {
-  if (position < 0) return true;
+  ASSERT(position >= 0);
   auto probe = returns_.find(position);
   if (probe == returns_.end()) return true;
   TypeSet type = probe->second;
   return type.is_empty(words_per_type_);
+}
+
+bool TypeDatabase::always_throws(int position) const {
+  ASSERT(position >= 0);
+  auto probe = returns_.find(position);
+  if (probe == returns_.end()) return true;
+  TypeSet type = probe->second;
+  return !type.contains_true(program_);
+}
+
+bool TypeDatabase::never_throws(int position) const {
+  ASSERT(position >= 0);
+  auto probe = returns_.find(position);
+  if (probe == returns_.end()) return false;
+  TypeSet type = probe->second;
+  return !type.contains_false(program_);
 }
 
 std::string TypeDatabase::as_json() const {
@@ -288,6 +304,11 @@ class TypeOraclePopulator : public ir::TraversingVisitor {
     oracle_->add(node);
   }
 
+  void visit_Typecheck(ir::Typecheck* node) {
+    ir::TraversingVisitor::visit_Typecheck(node);
+    oracle_->add(node);
+  }
+
  private:
   TypeOracle* const oracle_;
 };
@@ -352,6 +373,20 @@ bool TypeOracle::does_not_return(ir::Call* call) const {
   if (!probe) return false;
   int position = source_mapper_->position_for_expression(probe->as_Call());
   return types_->does_not_return(position);
+}
+
+bool TypeOracle::always_throws(ir::Typecheck* check) const {
+  auto probe = lookup(check);
+  if (!probe) return false;
+  int position = source_mapper_->position_for_expression(probe->as_Typecheck());
+  return types_->always_throws(position);
+}
+
+bool TypeOracle::never_throws(ir::Typecheck* check) const {
+  auto probe = lookup(check);
+  if (!probe) return false;
+  int position = source_mapper_->position_for_expression(probe->as_Typecheck());
+  return types_->never_throws(position);
 }
 
 } // namespace toit::compiler

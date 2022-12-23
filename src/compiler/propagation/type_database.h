@@ -48,7 +48,10 @@ class TypeDatabase {
   // Helpers for optimization phase.
   bool is_dead_method(int position) const;
   bool is_dead_call(int position) const;
+
   bool does_not_return(int position) const;
+  bool always_throws(int position) const;
+  bool never_throws(int position) const;
 
   // Helpers for type checking interpreter variant.
   void check_top(uint8* bcp, Object* top) const;
@@ -90,7 +93,10 @@ class TypeOracle {
   bool is_dead(ir::Method* method) const;
   bool is_dead(ir::Code* code) const;
   bool is_dead(ir::Call* call) const;
+
   bool does_not_return(ir::Call* call) const;
+  bool always_throws(ir::Typecheck* check) const;
+  bool never_throws(ir::Typecheck* check) const;
 
  private:
   SourceMapper* const source_mapper_;

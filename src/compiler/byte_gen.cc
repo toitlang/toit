@@ -783,6 +783,11 @@ void ByteGen::visit_CallBuiltin(CallBuiltin* node) {
 
 void ByteGen::visit_Typecheck(Typecheck* node) {
   if (node->type().is_any()) {
+    // We will not hit this part of the code generation when we're
+    // optimizing and that is important, because we will not be
+    // registering any 'as' or 'is' check bytecodes, so we risk
+    // concluding that the check was never executed and therefore
+    // always throws. Hmm.
     if (node->is_as_check()) {
       visit(node->expression());
     } else if (is_for_value()) {

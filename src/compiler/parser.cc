@@ -2201,11 +2201,16 @@ Expression* Parser::parse_byte_array() {
   start_delimited(IndentationStack::LITERAL, Token::LSHARP_BRACK, Token::RBRACK);
   ListBuilder<Expression*> elements;
   do {
-    // Speep up parsing of large byte array literals by recognizing a common
+    // Speed up parsing of large byte array literals by recognizing a common
     // case here without going through the whole machinery.  Worth about a 25%
     // reduction in runtime.
-    if (current_state().token == Token::INTEGER && peek_token() == Token::COMMA) {
+    auto token = current_state().token;
+    if (token == Token::INTEGER && peek_token() == Token::COMMA) {
       Expression* expression = NEW_NODE(LiteralInteger(current_token_data()), current_range());
+      consume();
+      elements.add(expression);
+    } else if (token == Token::CHARACTER && peek_token() == Token::COMMA) {
+      Expression* expression = NEW_NODE(LiteralCharacter(current_token_data()), current_range());
       consume();
       elements.add(expression);
     } else {

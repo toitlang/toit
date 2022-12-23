@@ -124,6 +124,7 @@ class TypeSet {
   }
 
   bool contains_null(Program* program) const { return contains_instance(program->null_class_id()); }
+  bool contains_true(Program* program) const { return contains_instance(program->true_class_id()); }
   bool contains_false(Program* program) const { return contains_instance(program->false_class_id()); }
   bool contains_instance(Smi* class_id) const { return contains(class_id->value()); }
 

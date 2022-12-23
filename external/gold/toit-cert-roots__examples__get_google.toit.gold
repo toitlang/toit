@@ -1,10 +1,10 @@
-<pkg:..>/certificate_roots.toit:4841:3: warning: Deprecated 'GLOBALSIGN_ROOT_CA_R2'
+<pkg:..>/certificate_roots.toit:9100:3: warning: Deprecated 'GLOBALSIGN_ROOT_CA_R2'
   GLOBALSIGN_ROOT_CA_R2,
   ^~~~~~~~~~~~~~~~~~~~~
-<pkg:..>/certificate_roots.toit:4855:3: warning: Deprecated 'DST_ROOT_CA_X3'
+<pkg:..>/certificate_roots.toit:9114:3: warning: Deprecated 'DST_ROOT_CA_X3'
   DST_ROOT_CA_X3,
   ^~~~~~~~~~~~~~
-<pkg:..>/certificate_roots.toit:4864:3: warning: Deprecated 'CYBERTRUST_GLOBAL_ROOT'
+<pkg:..>/certificate_roots.toit:9123:3: warning: Deprecated 'CYBERTRUST_GLOBAL_ROOT'
   CYBERTRUST_GLOBAL_ROOT,
   ^~~~~~~~~~~~~~~~~~~~~~
 toit-cert-roots/examples/get_google.toit:16:22: warning: Deprecated 'GLOBALSIGN_ROOT_CA_R2'
