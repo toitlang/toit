@@ -7,10 +7,9 @@ test_simple tests/type_propagation/map_test.toit
   2[053] - invoke static Map <sdk>/core/collections.toit // {Map}
   5[014] - load local 0
   6[004] - store local, pop S1
-  8[014] - load local 0
-  9[060] - invoke virtual get backing_ // {Null_|List_|SmallArray_}
- 12[053] - invoke static id tests/type_propagation/map_test.toit // {Null_|List_|SmallArray_}
- 15[089] - return null S2 0
+  8[009] - load field local 48 // {Null_|List_|SmallArray_}
+ 10[053] - invoke static id tests/type_propagation/map_test.toit // {Null_|List_|SmallArray_}
+ 13[089] - return null S2 0
 
 id tests/type_propagation/map_test.toit
  - argument 0: {Null_|List_|SmallArray_}
