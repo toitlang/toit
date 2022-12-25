@@ -127,7 +127,7 @@ Program* Backend::emit(ir::Program* ir_program) {
   auto globals = ir_program->globals();
   auto lookup_failure = ir_program->lookup_failure();
 
-  DispatchTable dispatch_table = DispatchTable::build(classes, methods);
+  DispatchTable dispatch_table = DispatchTable::build(ir_program);
 
   dispatch_table.for_each_selector_offset([&](DispatchSelector selector, int offset) {
     source_mapper()->register_selector_offset(offset, selector.name().c_str());
@@ -232,6 +232,10 @@ void Backend::emit_method(ir::Method* method,
     ASSERT(method->holder() != null);
     Selector<PlainShape> selector(method->name(), method->plain_shape());
     dispatch_offset = dispatch_table->dispatch_offset_for(selector);
+    if (dispatch_offset < 0) {
+      // TODO(kasper): Hmm.
+      dispatch_offset = dispatch_table->slot_index_for(method);
+    }
     is_field_accessor = method->is_FieldStub()
         && !method->as_FieldStub()->is_throwing()
         && !method->as_FieldStub()->is_checking_setter();

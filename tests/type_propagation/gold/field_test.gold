@@ -7,35 +7,35 @@ test_simple tests/type_propagation/field_test.toit
   2[026] - load smi 12
   4[053] - invoke static A tests/type_propagation/field_test.toit // {A}
   7[014] - load local 0
-  8[060] - invoke virtual get x // {String_|Null_|SmallInteger_}
- 11[053] - invoke static id tests/type_propagation/field_test.toit // {String_|Null_|SmallInteger_}
+  8[060] - invoke virtual get x // {Task_|String_|Null_|SmallInteger_}
+ 11[053] - invoke static id tests/type_propagation/field_test.toit // {Task_|String_|Null_|SmallInteger_}
  14[041] - pop 1
  15[042] - allocate instance A
  17[020] - load literal horse
  19[053] - invoke static A tests/type_propagation/field_test.toit // {A}
  22[004] - store local, pop S1
  24[014] - load local 0
- 25[060] - invoke virtual get x // {String_|Null_|SmallInteger_}
- 28[053] - invoke static id tests/type_propagation/field_test.toit // {String_|Null_|SmallInteger_}
+ 25[060] - invoke virtual get x // {Task_|String_|Null_|SmallInteger_}
+ 28[053] - invoke static id tests/type_propagation/field_test.toit // {Task_|String_|Null_|SmallInteger_}
  31[041] - pop 1
  32[042] - allocate instance B
  34[020] - load literal true
  36[026] - load smi 42
  38[053] - invoke static B tests/type_propagation/field_test.toit // {B}
- 41[009] - load field local 0 // {Null_|True_}
- 43[053] - invoke static id tests/type_propagation/field_test.toit // {Null_|True_}
- 46[010] - pop, load field local 16 // {Null_|SmallInteger_}
- 48[053] - invoke static id tests/type_propagation/field_test.toit // {Null_|SmallInteger_}
+ 41[009] - load field local 0 // {Task_|Null_|True_}
+ 43[053] - invoke static id tests/type_propagation/field_test.toit // {Task_|Null_|True_}
+ 46[010] - pop, load field local 16 // {Task_|Null_|SmallInteger_}
+ 48[053] - invoke static id tests/type_propagation/field_test.toit // {Task_|Null_|SmallInteger_}
  51[089] - return null S3 0
 
 id tests/type_propagation/field_test.toit
- - argument 0: {String_|Null_|True_|SmallInteger_}
+ - argument 0: {Task_|String_|Null_|True_|SmallInteger_}
   0[016] - load local 2
   1[088] - return S1 1
 
 A.x tests/type_propagation/field_test.toit
  - argument 0: {A}
-  0[009] - load field local 2 // {String_|Null_|SmallInteger_}
+  0[009] - load field local 2 // {Task_|String_|Null_|SmallInteger_}
   2[088] - return S1 1
 
 A tests/type_propagation/field_test.toit

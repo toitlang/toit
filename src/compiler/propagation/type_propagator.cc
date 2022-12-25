@@ -430,15 +430,15 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
     TypeSet::Iterator it(receiver, words_per_type_);
     while (it.has_next()) {
       unsigned id = it.next();
-      int entry_index = id + offset;
-      int entry_id = program->dispatch_table[entry_index];
+      //int entry_index = id + offset;
+      //int entry_id = program->dispatch_table[entry_index];
       // If the type propagator knows less about the types we
       // can encounter than the compiler, we risk loading
       // from areas of the dispatch table the compiler didn't
       // anticipate. Guard against that.
-      if (entry_id < 0) continue;
-      Method entry = Method(program->bytecodes, entry_id);
-      if (entry.header_bcp() != target.header_bcp()) continue;
+      //if (entry_id < 0) continue;
+      //Method entry = Method(program->bytecodes, entry_id);
+      //if (entry.header_bcp() != target.header_bcp()) continue;
       arguments.push_back(ConcreteType(id));
       call_method(caller, scope, site, target, arguments);
       arguments.pop_back();
