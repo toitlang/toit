@@ -3,6 +3,9 @@ main:
   foo --foo
   fizz
   fish
+  block_foo --foo=0
+  non_block_foo --foo=(: 0)
+  block_unnamed 0
 
 must --have:
 
@@ -15,3 +18,9 @@ fizz --bar=0 unnamed:
 fish --hest:
 
 fish --fisk:
+
+block_foo [--foo]:
+
+non_block_foo --foo:
+
+block_unnamed [foo]:

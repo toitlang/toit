@@ -3,7 +3,7 @@ Block argument not provided
   foo
   ^~~
 tests/negative/default_values3_test.toit:8:3: error: Argument mismatch for 'foo'
-Method does not take any arguments, but one was provided
+Method does not take any non-block arguments, but one was provided
   foo null
   ^~~
 tests/negative/default_values3_test.toit:12:5: error: Block parameters may not have a default value.

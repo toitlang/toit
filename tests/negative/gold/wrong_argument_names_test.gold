@@ -24,7 +24,8 @@ No argument named '--foo'
   Static.no_named --foo=: it  // Has no (block) argument named foo.
          ^~~~~~~~
 tests/negative/wrong_argument_names_test.toit:140:10: error: Argument mismatch for 'foo_argument'
-  Static.foo_argument --foo=: it  // Foo should be non-block. Currently no helpful message.
+The argument '--foo' was passed with block type, but must be non-block
+  Static.foo_argument --foo=: it  // Foo should be non-block.
          ^~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:142:10: error: Argument mismatch for 'foo_argument'
 No argument named '--bar'
@@ -40,13 +41,16 @@ tests/negative/wrong_argument_names_test.toit:150:10: error: Argument mismatch f
   Static.either_block_argument --foo=(: it) --bar=(:it)  // Hard case. Currently no helpful message.
          ^~~~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:152:10: error: Argument mismatch for 'foo_argument'
-  Static.foo_argument --foo=: it  // Foo should be non-block. Currently no helpful message.
+The argument '--foo' was passed with block type, but must be non-block
+  Static.foo_argument --foo=: it  // Foo should be non-block.
          ^~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:154:10: error: Argument mismatch for 'optional_foo_argument'
-  Static.optional_foo_argument --foo=: it  // Foo should be non-block. Currently no helpful message.
+The argument '--foo' was passed with block type, but must be non-block
+  Static.optional_foo_argument --foo=: it  // Foo should be non-block.
          ^~~~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:156:10: error: Argument mismatch for 'foo_block_argument'
-  Static.foo_block_argument --foo=42  // Foo should be a block. Currently no helpful message.
+The argument '--foo' was passed with non-block type, but must be block
+  Static.foo_block_argument --foo=42  // Foo should be a block.
          ^~~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:158:10: error: Argument mismatch for 'foo_argument'
 Required named argument '--foo' not provided
@@ -104,7 +108,8 @@ No argument named '--foo'
   a.no_named --foo=: it  // Has no (block) argument named foo.
     ^~~~~~~~
 tests/negative/wrong_argument_names_test.toit:87:5: error: Argument mismatch for 'Instance.foo_argument'
-  a.foo_argument --foo=: it  // Foo should be non-block. Currently no helpful message.
+The argument '--foo' was passed with block type, but must be non-block
+  a.foo_argument --foo=: it  // Foo should be non-block.
     ^~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:89:5: error: Argument mismatch for 'Instance.foo_argument'
 No argument named '--bar'
@@ -120,10 +125,12 @@ tests/negative/wrong_argument_names_test.toit:97:5: error: Argument mismatch for
   a.either_block_argument --foo=(: it) --bar=(:it)  // Hard case. Currently no helpful message.
     ^~~~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:99:5: error: Argument mismatch for 'Instance.foo_argument'
-  a.foo_argument --foo=: it  // Foo should be non-block. Currently no helpful message.
+The argument '--foo' was passed with block type, but must be non-block
+  a.foo_argument --foo=: it  // Foo should be non-block.
     ^~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:101:5: error: Argument mismatch for 'Instance.foo_block_argument'
-  a.foo_block_argument --foo=42  // Foo should be a block.  Currently no helpful message.
+The argument '--foo' was passed with non-block type, but must be block
+  a.foo_block_argument --foo=42  // Foo should be a block.
     ^~~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:103:5: error: Argument mismatch for 'Instance.foo_argument'
 Required named argument '--foo' not provided

@@ -84,7 +84,7 @@ instances:
 
   a.no_named --foo=: it  // Has no (block) argument named foo.
 
-  a.foo_argument --foo=: it  // Foo should be non-block. Currently no helpful message.
+  a.foo_argument --foo=: it  // Foo should be non-block.
 
   a.foo_argument --bar=: it  // Has no (block) argument named bar, foo missing.
 
@@ -96,9 +96,9 @@ instances:
 
   a.either_block_argument --foo=(: it) --bar=(:it)  // Hard case. Currently no helpful message.
 
-  a.foo_argument --foo=: it  // Foo should be non-block. Currently no helpful message.
+  a.foo_argument --foo=: it  // Foo should be non-block.
 
-  a.foo_block_argument --foo=42  // Foo should be a block.  Currently no helpful message.
+  a.foo_block_argument --foo=42  // Foo should be a block.
 
   a.foo_argument  // Foo missing.
 
@@ -137,7 +137,7 @@ statics:
 
   Static.no_named --foo=: it  // Has no (block) argument named foo.
 
-  Static.foo_argument --foo=: it  // Foo should be non-block. Currently no helpful message.
+  Static.foo_argument --foo=: it  // Foo should be non-block.
 
   Static.foo_argument --bar=: it  // Has no (block) argument named bar, foo missing.
 
@@ -149,11 +149,11 @@ statics:
 
   Static.either_block_argument --foo=(: it) --bar=(:it)  // Hard case. Currently no helpful message.
 
-  Static.foo_argument --foo=: it  // Foo should be non-block. Currently no helpful message.
+  Static.foo_argument --foo=: it  // Foo should be non-block.
 
-  Static.optional_foo_argument --foo=: it  // Foo should be non-block. Currently no helpful message.
+  Static.optional_foo_argument --foo=: it  // Foo should be non-block.
 
-  Static.foo_block_argument --foo=42  // Foo should be a block. Currently no helpful message.
+  Static.foo_block_argument --foo=42  // Foo should be a block.
 
   Static.foo_argument  // Foo missing.
 

@@ -17,4 +17,16 @@ tests/negative/no_arg_named_test.toit:5:3: error: Argument mismatch for 'fish'
 Some overloads allow arguments named '--hest', '--fisk'
   fish
   ^~~~
+tests/negative/no_arg_named_test.toit:6:3: error: Argument mismatch for 'block_foo'
+The argument '--foo' was passed with non-block type, but must be block
+  block_foo --foo=0
+  ^~~~~~~~~
+tests/negative/no_arg_named_test.toit:7:3: error: Argument mismatch for 'non_block_foo'
+The argument '--foo' was passed with block type, but must be non-block
+  non_block_foo --foo=(: 0)
+  ^~~~~~~~~~~~~
+tests/negative/no_arg_named_test.toit:8:3: error: Argument mismatch for 'block_unnamed'
+Method does not take any non-block arguments, but one was provided
+  block_unnamed 0
+  ^~~~~~~~~~~~~
 Compilation failed.

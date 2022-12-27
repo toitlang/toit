@@ -9,7 +9,7 @@ Block argument not provided
   foo
   ^~~
 tests/negative/default_values5_test.toit:11:3: error: Argument mismatch for 'foo'
-Method does not take any arguments, but one was provided
+Method does not take any non-block arguments, but one was provided
   foo null
   ^~~
 Compilation failed.

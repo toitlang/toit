@@ -18,7 +18,7 @@ Too few arguments provided
   i4 := Instance.constructor_one_or_three_arguments  // Too few arguments.
                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_number_of_arguments_test.toit:87:18: error: Argument mismatch for 'constructor_one_or_three_arguments'
-Could not find an overload with 2 arguments
+Could not find an overload with exactly 2 arguments
   i5 := Instance.constructor_one_or_three_arguments 42 103  // No overload with two arguments.
                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_number_of_arguments_test.toit:88:18: error: Argument mismatch for 'constructor_one_or_three_arguments'
@@ -74,7 +74,7 @@ Too few arguments provided
   Static.one_or_three
          ^~~~~~~~~~~~
 tests/negative/wrong_number_of_arguments_test.toit:150:10: error: Argument mismatch for 'one_or_three'
-Could not find an overload with 2 arguments
+Could not find an overload with exactly 2 arguments
   Static.one_or_three 1 2
          ^~~~~~~~~~~~
 tests/negative/wrong_number_of_arguments_test.toit:151:10: error: Argument mismatch for 'one_or_three'
@@ -130,7 +130,7 @@ Block argument not provided
   Static.one_or_three_blocks
          ^~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_number_of_arguments_test.toit:176:10: error: Argument mismatch for 'one_or_three_blocks'
-Could not find an overload with 2 block arguments
+Could not find an overload with exactly 2 block arguments
   Static.one_or_three_blocks (: ) (: )
          ^~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_number_of_arguments_test.toit:178:10: error: Argument mismatch for 'one_or_three_blocks'
@@ -145,27 +145,27 @@ tests/negative/wrong_number_of_arguments_test.toit:184:10: error: No setter meth
   Static.zero = 42
          ^~~~
 tests/negative/wrong_number_of_arguments_test.toit:40:5: error: Argument mismatch for 'one_or_three'
-Could not find an overload with 2 arguments
+Could not find an overload with exactly 2 arguments
     one_or_three 1 2
     ^~~~~~~~~~~~
 tests/negative/wrong_number_of_arguments_test.toit:41:5: error: Argument mismatch for 'one_or_three_blocks'
-Could not find an overload with 2 block arguments
+Could not find an overload with exactly 2 block arguments
     one_or_three_blocks (: ) (: )
     ^~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_number_of_arguments_test.toit:73:5: error: Argument mismatch for 'one_or_three'
-Could not find an overload with 2 arguments
+Could not find an overload with exactly 2 arguments
     one_or_three 1 2
     ^~~~~~~~~~~~
 tests/negative/wrong_number_of_arguments_test.toit:74:5: error: Argument mismatch for 'one_or_three_blocks'
-Could not find an overload with 2 block arguments
+Could not find an overload with exactly 2 block arguments
     one_or_three_blocks (: ) (: )
     ^~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_number_of_arguments_test.toit:69:5: error: Argument mismatch for 'one_or_three'
-Could not find an overload with 2 arguments
+Could not find an overload with exactly 2 arguments
     one_or_three 1 2
     ^~~~~~~~~~~~
 tests/negative/wrong_number_of_arguments_test.toit:70:5: error: Argument mismatch for 'one_or_three_blocks'
-Could not find an overload with 2 block arguments
+Could not find an overload with exactly 2 block arguments
     one_or_three_blocks (: ) (: )
     ^~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_number_of_arguments_test.toit:180:25: error: Class 'Static' does not have any method 'missing_setter'
