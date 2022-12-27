@@ -291,7 +291,6 @@ static void report_no_such_method(List<ir::Node*> candidates,
       }
     }
   }
-  // TODO: Named args that have the wrong block-ness.
   // TODO: If we could not give any notes, go through all individual candidates and explain why they don't match.
   if (is_static) {
     diagnostics->report_error(range,
