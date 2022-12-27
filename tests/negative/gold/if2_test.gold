@@ -1,6 +1,9 @@
-tests/negative/if2_test.toit:7:8: error: Missing ':' for 'else'
+tests/negative/if2_test.toit:7:8: error: Missing colon for 'else'
   else unresolved
        ^~~~~~~~~~
+tests/negative/if2_test.toit:7:3: note: Missing colon needed near here
+  else unresolved
+  ^~~~
 tests/negative/if2_test.toit:7:8: error: Unresolved identifier: 'unresolved'
   else unresolved
        ^~~~~~~~~~

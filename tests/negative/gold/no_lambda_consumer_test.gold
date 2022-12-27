@@ -1,9 +1,12 @@
 tests/negative/no_lambda_consumer_test.toit:11:10: error: Empty lambdas are not allowed
       run::
          ^~
-tests/negative/no_lambda_consumer_test.toit:12:5: error: Missing ':' for 'if' condition
+tests/negative/no_lambda_consumer_test.toit:12:5: error: Missing colon for 'if' condition
     4
     ^
+tests/negative/no_lambda_consumer_test.toit:10:3: note: Missing colon needed near here
+  if
+  ^~
 tests/negative/no_lambda_consumer_test.toit:14:3: error: Argument mismatch for 'run'
 Too many arguments provided
   run

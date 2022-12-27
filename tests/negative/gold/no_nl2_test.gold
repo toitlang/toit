@@ -1,7 +1,10 @@
 tests/negative/no_nl2_test.toit:9:5: error: Incomplete expression
   if
     ^
-tests/negative/no_nl2_test.toit:9:5: error: Missing ':' for 'if' condition
+tests/negative/no_nl2_test.toit:9:5: error: Missing colon for 'if' condition
   if
     ^
+tests/negative/no_nl2_test.toit:9:3: note: Missing colon needed near here
+  if
+  ^~
 Compilation failed.

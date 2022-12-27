@@ -1,0 +1,70 @@
+tests/negative/missing_colon_test.toit:7:26: error: Missing colon for 'if' condition
+    print "Hello, World!"
+                         ^
+tests/negative/missing_colon_test.toit:6:3: note: Missing colon needed near here
+  if 12 < 43
+  ^~
+tests/negative/missing_colon_test.toit:10:42: error: Missing semicolon
+    print "Nah then, nah then, nah then!"
+                                         ^
+tests/negative/missing_colon_test.toit:9:15: note: Missing semicolon needed near here
+  for i := 0; i < 10: i++:
+              ^
+tests/negative/missing_colon_test.toit:13:5: error: Missing colon after 'try'
+    print "No colon for you!"
+    ^~~~~
+tests/negative/missing_colon_test.toit:12:3: note: Missing colon needed near here
+  try
+  ^~~
+tests/negative/missing_colon_test.toit:20:5: error: Missing colon after finally
+    print "But no colon again"
+    ^~~~~
+tests/negative/missing_colon_test.toit:19:3: note: Missing colon needed near here
+  finally
+  ^~~~~~~
+tests/negative/missing_colon_test.toit:25:5: error: Missing colon for 'else'
+    print "More like it"
+    ^~~~~
+tests/negative/missing_colon_test.toit:24:3: note: Missing colon needed near here
+  else
+  ^~~~
+tests/negative/missing_colon_test.toit:28:31: error: Missing colon for loop condition
+    print "Just keep doing it"
+                              ^
+tests/negative/missing_colon_test.toit:27:3: note: Missing colon needed near here
+  while 1 == 2
+  ^~~~~
+tests/negative/missing_colon_test.toit:32:4: error: Missing colon to end class signature
+  x/int
+   ^
+tests/negative/missing_colon_test.toit:32:4: error: Invalid name for declaration
+  x/int
+   ^
+tests/negative/missing_colon_test.toit:36:5: error: Signatures and bodies must be separated by a `:`
+    return x + y
+    ^~~~~~
+tests/negative/missing_colon_test.toit:32:3: error: Unresolved super class
+  x/int
+  ^
+tests/negative/missing_colon_test.toit:32:4: error: Missing body
+  x/int
+   ^
+tests/negative/missing_colon_test.toit:6:9: error: Can't call result of evaluating expression
+  if 12 < 43
+        ^
+tests/negative/missing_colon_test.toit:9:24: error: Can't call result of evaluating expression
+  for i := 0; i < 10: i++:
+                       ^~
+tests/negative/missing_colon_test.toit:9:17: error: Can't call result of evaluating expression
+  for i := 0; i < 10: i++:
+                ^
+tests/negative/missing_colon_test.toit:27:11: error: Can't call result of evaluating expression
+  while 1 == 2
+          ^~
+tests/negative/missing_colon_test.toit:36:12: error: Unresolved identifier: 'x'
+    return x + y
+           ^
+tests/negative/missing_colon_test.toit:33:3: error: Field 'y' must be initialized in a constructor
+  y/int
+  ^
+Compilation failed.

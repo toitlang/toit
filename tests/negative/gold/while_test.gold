@@ -1,21 +1,33 @@
 tests/negative/while_test.toit:6:8: error: Incomplete expression
   while
        ^
-tests/negative/while_test.toit:6:8: error: Missing ':' for loop condition
+tests/negative/while_test.toit:6:8: error: Missing colon for loop condition
   while
        ^
-tests/negative/while_test.toit:8:5: error: Missing ':' for loop condition
+tests/negative/while_test.toit:6:3: note: Missing colon needed near here
+  while
+  ^~~~~
+tests/negative/while_test.toit:8:5: error: Missing colon for loop condition
     print unresolved
     ^~~~~
-tests/negative/while_test.toit:9:15: error: Missing ':' for loop condition
+tests/negative/while_test.toit:7:3: note: Missing colon needed near here
+  while break
+  ^~~~~
+tests/negative/while_test.toit:9:15: error: Missing colon for loop condition
   while break print unresolved
               ^~~~~
+tests/negative/while_test.toit:9:3: note: Missing colon needed near here
+  while break print unresolved
+  ^~~~~
 tests/negative/while_test.toit:10:12: error: Incomplete expression
   while "".
            ^
-tests/negative/while_test.toit:10:12: error: Missing ':' for loop condition
+tests/negative/while_test.toit:10:12: error: Missing colon for loop condition
   while "".
            ^
+tests/negative/while_test.toit:10:3: note: Missing colon needed near here
+  while "".
+  ^~~~~
 tests/negative/while_test.toit:11:8: error: Missing condition
   while:
        ^

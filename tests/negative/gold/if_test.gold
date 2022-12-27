@@ -1,18 +1,27 @@
 tests/negative/if_test.toit:6:5: error: Incomplete expression
   if
     ^
-tests/negative/if_test.toit:6:5: error: Missing ':' for 'if' condition
+tests/negative/if_test.toit:6:5: error: Missing colon for 'if' condition
   if
     ^
-tests/negative/if_test.toit:8:5: error: Missing ':' for 'if' condition
+tests/negative/if_test.toit:6:3: note: Missing colon needed near here
+  if
+  ^~
+tests/negative/if_test.toit:8:5: error: Missing colon for 'if' condition
     print unresolved
     ^~~~~
+tests/negative/if_test.toit:7:3: note: Missing colon needed near here
+  if break
+  ^~
 tests/negative/if_test.toit:9:9: error: Incomplete expression
   if "".
         ^
-tests/negative/if_test.toit:9:9: error: Missing ':' for 'if' condition
+tests/negative/if_test.toit:9:9: error: Missing colon for 'if' condition
   if "".
         ^
+tests/negative/if_test.toit:9:3: note: Missing colon needed near here
+  if "".
+  ^~
 tests/negative/if_test.toit:10:5: error: Missing condition
   if:
     ^
