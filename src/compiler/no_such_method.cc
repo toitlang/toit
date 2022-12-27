@@ -65,6 +65,7 @@ static void report_no_such_method(List<ir::Node*> candidates,
   int selector_args = selector.shape().unnamed_non_block_count() - (is_static ? 0 : 1);
   Map<Symbol, bool> seen_names;
   Map<Symbol, int> always_required_names;  // Count how many of the candidates require each name.
+  Map<Symbol, int> always_allowed_names;  // Count how many of the candidates allow each name.
   for (auto symbol : selector.shape().names()) {
     seen_names.set(symbol, false);
   }
@@ -76,17 +77,19 @@ static void report_no_such_method(List<ir::Node*> candidates,
     for (int i = 0; i < shape.names().length(); i++) {
       auto symbol = shape.names()[i];
       if (!shape.optional_names()[i]) {
-        if (total_candidates == 0) {
-          always_required_names.set(symbol, 1);
-        // Not worth introducing a new entry in always_required_names if we are
-        // not on the first candidate since it will never be found to be
-        // required by all candidates if it isn't in the first.
-        } else if (always_required_names.contains_key(symbol)) {
+        if (always_required_names.contains_key(symbol)) {
           always_required_names.set(symbol, always_required_names[symbol] + 1);  // Increment.
+        } else {
+          always_required_names.set(symbol, 1);
         }
       }
       if (seen_names.contains_key(symbol)) {
         seen_names.set(symbol, true);
+      }
+      if (always_allowed_names.contains_key(symbol)) {
+        always_allowed_names.set(symbol, always_allowed_names[symbol] + 1);  // Increment.
+      } else {
+        always_allowed_names.set(symbol, 1);
       }
     }
 
@@ -192,12 +195,53 @@ static void report_no_such_method(List<ir::Node*> candidates,
   }
   // Go through the named args that are required by at least one candidate and
   // check if they are required by all candidates but not provided.
+  bool added_not_provided_note = false;
   for (auto required : always_required_names.keys()) {
     if (always_required_names[required] == total_candidates) {
       if (!seen_names.contains_key(required)) {
         helpful_note += "\n" "Required named argument '--";
         helpful_note += required.c_str();
         helpful_note += "' not provided";
+        added_not_provided_note = true;
+      }
+    }
+  }
+  // If that didn't yield a helpful note, move on to the arguments that are
+  // always allowed, but were not provided.
+  if (!added_not_provided_note) {
+    bool valid_message_added = false;
+    for (auto required : always_allowed_names.keys()) {
+      if (always_allowed_names[required] == total_candidates) {
+        if (!seen_names.contains_key(required)) {
+          if (!valid_message_added) {
+            helpful_note += "\n" "Valid named arguments include";
+            valid_message_added = true;
+          } else {
+            helpful_note += ",";
+          }
+          helpful_note += " '--";
+          helpful_note += required.c_str();
+          helpful_note += "'";
+        }
+      }
+    }
+    // Move on to the arguments that are sometimes allowed, but were not provided.
+    bool allowed_message_added = false;
+    for (auto required : always_allowed_names.keys()) {
+      if (always_allowed_names[required] != total_candidates) {
+        if (!seen_names.contains_key(required)) {
+          if (!allowed_message_added) {
+            helpful_note += "\n" "Some overloads ";
+            if (valid_message_added) helpful_note += "also ";
+            helpful_note += "allow arguments named";
+            allowed_message_added = true;
+          } else {
+            helpful_note += ",";
+          }
+          helpful_note += " '--";
+          helpful_note += required.c_str();
+          helpful_note += "'";
+        }
       }
     }
   }

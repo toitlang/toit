@@ -112,7 +112,7 @@ instances:
 
   a.need_not_have_foo --bar=42  // No error.
 
-  a.need_not_have_foo  // Hard case. Currently no helpful message.
+  a.need_not_have_foo  // Can always provide foo, but if not, must provide bar.
 
   a.need_not_have_foo_2 --bar=42  // No error.
 
@@ -167,7 +167,7 @@ statics:
 
   Static.need_not_have_foo --bar=42  // No error.
 
-  Static.need_not_have_foo  // Hard case. Currently no helpful message.
+  Static.need_not_have_foo  // Can always provide foo, but if not, must provide bar.
 
   Static.need_not_have_foo_2 --bar=42  // No error.
 

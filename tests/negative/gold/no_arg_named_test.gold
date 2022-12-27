@@ -1,0 +1,20 @@
+tests/negative/no_arg_named_test.toit:2:3: error: Argument mismatch for 'must'
+No argument named '--no'
+Required named argument '--have' not provided
+  must --no
+  ^~~~
+tests/negative/no_arg_named_test.toit:3:3: error: Argument mismatch for 'foo'
+No argument named '--foo'
+Valid named arguments include '--bar'
+  foo --foo
+  ^~~
+tests/negative/no_arg_named_test.toit:4:3: error: Argument mismatch for 'fizz'
+Valid named arguments include '--bar'
+Some overloads also allow arguments named '--baz'
+  fizz
+  ^~~~
+tests/negative/no_arg_named_test.toit:5:3: error: Argument mismatch for 'fish'
+Some overloads allow arguments named '--hest', '--fisk'
+  fish
+  ^~~~
+Compilation failed.
