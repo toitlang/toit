@@ -71,9 +71,11 @@ A tests/type_propagation/null_equals_test.toit
 A.== tests/type_propagation/null_equals_test.toit
  - argument 0: {A}
  - argument 1: {String_|Null_|SmallInteger_|A}
-  0[052] - load local, as class, pop 2 - A(40 - 41) // {True_|False_}
-  2[020] - load literal hest
-  4[088] - return S1 2
+  0[016] - load local 2
+  1[048] - as class A(40 - 41) // {True_|False_}
+  3[041] - pop 1
+  4[020] - load literal hest
+  6[088] - return S1 2
 
 id tests/type_propagation/null_equals_test.toit
  - argument 0: {String_|True_|False_}

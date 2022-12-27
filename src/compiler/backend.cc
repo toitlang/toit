@@ -17,8 +17,10 @@
 
 #include "backend.h"
 #include "byte_gen.h"
+#include "ir.h"
 #include "program_builder.h"
 #include "source_mapper.h"
+
 #include "../interpreter.h"
 
 namespace toit {
@@ -51,6 +53,16 @@ class BackendCollector : public ir::TraversingVisitor {
       } else {
         class_usage_counts_[klass]++;
       }
+    }
+  }
+
+  void visit_CallStatic(ir::CallStatic* node) {
+    TraversingVisitor::visit_CallStatic(node);
+    ir::Method* method = node->target()->target();
+    if (method->is_static()) return;
+    ir::Class* holder = method->holder();
+    if (class_usage_counts_.find(holder) == class_usage_counts_.end()) {
+      class_usage_counts_[holder] = 1;
     }
   }
 
@@ -195,12 +207,12 @@ Program* Backend::emit(ir::Program* ir_program) {
   program_builder.create_global_variables(globals.length());
 
   for (auto method : methods) {
-    emit_method(method, &gen, &dispatch_table, &program_builder);
+    emit_method(method, &gen, &typecheck_indexes, &dispatch_table, &program_builder);
   }
 
   for (auto klass : classes) {
     for (auto method : klass->methods()) {
-      emit_method(method, &gen, &dispatch_table, &program_builder);
+      emit_method(method, &gen, &typecheck_indexes, &dispatch_table, &program_builder);
     }
   }
 
@@ -224,6 +236,7 @@ Program* Backend::emit(ir::Program* ir_program) {
 
 void Backend::emit_method(ir::Method* method,
                           ByteGen* gen,
+                          UnorderedMap<ir::Class*, int>* typecheck_indexes,
                           DispatchTable* dispatch_table,
                           ProgramBuilder* program_builder) {
   int dispatch_offset = -1;
@@ -232,18 +245,25 @@ void Backend::emit_method(ir::Method* method,
     ASSERT(method->holder() != null);
     Selector<PlainShape> selector(method->name(), method->plain_shape());
     dispatch_offset = dispatch_table->dispatch_offset_for(selector);
-    if (dispatch_offset < 0) {
-      // TODO(kasper): Hmm.
-      dispatch_offset = dispatch_table->slot_index_for(method);
-    }
     is_field_accessor = method->is_FieldStub()
         && !method->as_FieldStub()->is_throwing()
         && !method->as_FieldStub()->is_checking_setter();
+
+    if (dispatch_offset < 0) {
+      // encode holder ...
+      // -1 | static
+      // -2 | holder
+      if (typecheck_indexes->find(method->holder()) == typecheck_indexes->end()) {
+        fprintf(stderr, "[%s: no index]\n", method->holder()->name().c_str());
+      }
+      int index = (*typecheck_indexes)[method->holder()];
+      dispatch_offset = -2 - index;
+    }
   }
 
   int id = gen->assemble_method(method, dispatch_offset, is_field_accessor);
 
-  if (method->is_static()) {
+  if (dispatch_offset < 0) {
     ASSERT(dispatch_offset < 0);
     program_builder->set_dispatch_table_entry(dispatch_table->slot_index_for(method), id);
   } else {

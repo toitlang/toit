@@ -407,6 +407,7 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
   bool is_static = true;
   int offset = target.selector_offset();
   if (offset >= 0) {
+    ASSERT(arity > 0);
     TypeSet receiver = stack->local(arity);
     // If the receiver is a single type, we don't need
     // to do virtual lookups. This allows us to handle
@@ -416,8 +417,28 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
     is_static = receiver.size(words_per_type_) <= 1;
   }
 
+  Program* program = this->program();
   if (is_static) {
-    call_method(caller, scope, site, target, arguments);
+    if (offset <= -2) {
+      ASSERT(arity > 0);
+      int index = -(offset + 2);
+      unsigned start = program->class_check_ids[2 * index];
+      unsigned end = program->class_check_ids[2 * index + 1];
+      TypeSet receiver = stack->local(arity);
+      TypeSet::Iterator it(receiver, words_per_type_);
+      while (it.has_next()) {
+        unsigned id = it.next();
+        if (id < start || id >= end) {
+          //fprintf(stderr, "-- sorting out %u - [%u, %u)\n", id, start, end);
+          continue;
+        }
+        arguments.push_back(ConcreteType(id));
+        call_method(caller, scope, site, target, arguments);
+        arguments.pop_back();
+      }
+    } else {
+      call_method(caller, scope, site, target, arguments);
+    }
   } else {
     // Run over all receiver type variants like we do for
     // virtual calls. If and only if the target method
@@ -425,20 +446,19 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
     // Otherwise, we ignore it and avoid marking this as
     // a possible lookup error, because we trust the compiler
     // to be right about the types.
-    Program* program = this->program();
     TypeSet receiver = stack->local(arity);
     TypeSet::Iterator it(receiver, words_per_type_);
     while (it.has_next()) {
       unsigned id = it.next();
-      //int entry_index = id + offset;
-      //int entry_id = program->dispatch_table[entry_index];
+      int entry_index = id + offset;
+      int entry_id = program->dispatch_table[entry_index];
       // If the type propagator knows less about the types we
       // can encounter than the compiler, we risk loading
       // from areas of the dispatch table the compiler didn't
       // anticipate. Guard against that.
-      //if (entry_id < 0) continue;
-      //Method entry = Method(program->bytecodes, entry_id);
-      //if (entry.header_bcp() != target.header_bcp()) continue;
+      if (entry_id < 0) continue;
+      Method entry = Method(program->bytecodes, entry_id);
+      if (entry.header_bcp() != target.header_bcp()) continue;
       arguments.push_back(ConcreteType(id));
       call_method(caller, scope, site, target, arguments);
       arguments.pop_back();
