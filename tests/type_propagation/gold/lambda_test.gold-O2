@@ -14,8 +14,8 @@ test_simple tests/type_propagation/lambda_test.toit
  13[023] - load smi 0
  14[053] - invoke static lambda_ <sdk>/core/objects.toit // {Lambda}
  17[014] - load local 0
- 18[058] - invoke virtual call // {*}
- 22[088] - return S2 0
+ 18[053] - invoke static Lambda.call <sdk>/core/objects.toit // {*}
+ 21[088] - return S2 0
 
 [lambda] in test_simple tests/type_propagation/lambda_test.toit
   0[026] - load smi 42

@@ -50,11 +50,14 @@ main args:
     else if it.name == "AS_LOCAL":
       as_local_count++
   expect_equals 2 allocate_count
-  expect_equals 7 static_call_count // 2 constructor calls, 1 static call, 4 confuse calls.
   expect_equals 2 virtual_call_count
   expect_equals 1 global_store_count
   expect_equals 1 is_class_count
   expect_equals 1 as_class_count
   expect_equals 1 is_interface_count
   expect_equals 1 as_interface_count
-  expect_equals 1 as_local_count
+  expect_equals 0 as_local_count
+
+  // Static calls: 2 constructor calls, 1 static call,
+  // 2 de-virtualized calls, and 6 confuse calls.
+  expect_equals 11 static_call_count

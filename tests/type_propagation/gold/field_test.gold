@@ -22,13 +22,11 @@ test_simple tests/type_propagation/field_test.toit
  34[020] - load literal true
  36[026] - load smi 42
  38[053] - invoke static B tests/type_propagation/field_test.toit // {B}
- 41[014] - load local 0
- 42[060] - invoke virtual get x // {Null_|True_}
- 45[053] - invoke static id tests/type_propagation/field_test.toit // {Null_|True_}
- 48[002] - pop, load local S0
- 50[060] - invoke virtual get y // {Null_|SmallInteger_}
- 53[053] - invoke static id tests/type_propagation/field_test.toit // {Null_|SmallInteger_}
- 56[089] - return null S3 0
+ 41[009] - load field local 0 // {Null_|True_}
+ 43[053] - invoke static id tests/type_propagation/field_test.toit // {Null_|True_}
+ 46[010] - pop, load field local 16 // {Null_|SmallInteger_}
+ 48[053] - invoke static id tests/type_propagation/field_test.toit // {Null_|SmallInteger_}
+ 51[089] - return null S3 0
 
 id tests/type_propagation/field_test.toit
  - argument 0: {String_|Null_|True_|SmallInteger_}
@@ -36,8 +34,8 @@ id tests/type_propagation/field_test.toit
   1[088] - return S1 1
 
 A.x tests/type_propagation/field_test.toit
- - argument 0: {A|B}
-  0[009] - load field local 2 // {String_|Null_|True_|SmallInteger_}
+ - argument 0: {A}
+  0[009] - load field local 2 // {String_|Null_|SmallInteger_}
   2[088] - return S1 1
 
 A tests/type_propagation/field_test.toit
@@ -48,11 +46,6 @@ A tests/type_propagation/field_test.toit
   2[013] - store field, pop 0
   4[017] - load local 3
   5[088] - return S1 2
-
-B.y tests/type_propagation/field_test.toit
- - argument 0: {B}
-  0[009] - load field local 18 // {Null_|SmallInteger_}
-  2[088] - return S1 1
 
 B tests/type_propagation/field_test.toit
  - argument 0: {B}

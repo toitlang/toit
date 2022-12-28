@@ -13,9 +13,11 @@ test args filter:
   expected_bytecodes := [
     "allocate instance A",
     "invoke static A",
+    "invoke static A.foo",
     "invoke virtual foo",
     "allocate instance B",
     "invoke static B",
+    "invoke static B.foo",
     "invoke virtual foo",
     "invoke static bar",
     "store global var",
@@ -23,7 +25,6 @@ test args filter:
     "as class A",
     "is interface is-I",
     "as interface is-I",
-    "load local, as class, pop",
   ]
 
   lines_index := 2
