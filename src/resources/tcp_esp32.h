@@ -96,10 +96,14 @@ class LwipSocket : public Resource, public BacklogSocketList::Element {
   bool send_closed() { return send_closed_; }
   void mark_send_closed() { send_closed_ = true; }
 
-  void set_read_buffer(pbuf* p) { read_buffer_ = p; }
-  pbuf* read_buffer() { return read_buffer_; }
-  void set_read_offset(int offset) { read_offset_ = offset; }
-  int read_offset() { return read_offset_; }
+  void set_read_buffer(pbuf* p, int offset) {
+    read_buffer_ = p;
+    read_offset_ = offset;
+  }
+  pbuf* get_read_buffer(int* offset_return) {
+    *offset_return = read_offset_;
+    return read_buffer_;
+  }
   bool read_closed() { return read_closed_; }
   void mark_read_closed() { read_closed_ = true; }
 

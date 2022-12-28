@@ -378,27 +378,26 @@ PRIMITIVE(read)  {
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     if (socket->error() != ERR_OK) return lwip_error(process, socket->error());
 
-    pbuf* p = socket->read_buffer();
-    if (p == null) {
+    int offset;
+    pbuf* p = socket->get_read_buffer(&offset);
+    int total_available = p->tot_len - offset;
+    if (p == null || total_available < 0) {
       if (socket->read_closed()) return process->program()->null_object();
       return Smi::from(-1);
     }
 
-    if (p->tot_len == 0) return Smi::from(-1);  // Nothing to read.
-
-    int offset = socket->read_offset();
     // Wifi MTU is 1500 bytes, subtract a 20 byte TCP header and we have 1480.
-    const int MAX_SIZE = 496;  // Three nicely-packable byte arrays per 1480 MTU.
-    int tot_len = p->tot_len;
-    ByteArray* array = process->allocate_byte_array(Utils::min(MAX_SIZE, tot_len - offset), false);  // On-heap byte array.
+    // A size of 496 gives three nicely-packable byte arrays per 1480 MTU.
+    int allocation_size = Utils::min(496, total_available);
+    ByteArray* array = process->allocate_byte_array(allocation_size, false);  // On-heap byte array.
     if (array == null) ALLOCATION_FAILED;
 
     ByteArray::Bytes bytes(array);
 
     int bytes_to_ack = 0;
     int copied = 0;
-    while (copied < bytes.length()) {
-      int to_copy = Utils::min(p->len - offset, bytes.length() - copied);
+    while (copied < allocation_size) {
+      int to_copy = Utils::min(p->len - offset, allocation_size - copied);
       uint8* payload = unvoid_cast<uint8*>(p->payload);
       memcpy(bytes.address() + copied, payload + offset, to_copy);
       copied += to_copy;
@@ -406,16 +405,18 @@ PRIMITIVE(read)  {
       if (offset == p->len) {
         pbuf* n = p->next;
         bytes_to_ack += p->len;
-        // Free the first part of the chain.
+        // Free the first part of the chain.  Increment the ref count of the
+        // next packet in the chain first, so the whole chain doesn't get
+        // freed.
         if (n != null) pbuf_ref(n);
         pbuf_free(p);
+        // We don't have to check for null because tot_len won't extend past the last packet.
         p = n;
         offset = 0;
       }
     }
 
-    socket->set_read_buffer(p);
-    socket->set_read_offset(offset);
+    socket->set_read_buffer(p, offset);
 
     // Notify peer that we finished processing some packets and they can send
     // more on the TCP socket.
