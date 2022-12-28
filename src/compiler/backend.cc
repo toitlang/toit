@@ -96,9 +96,11 @@ class BackendCollector : public ir::TraversingVisitor {
                                                 std::pair<ir::Class*, int> b) {
       // To make sure we always have a deterministic order, we must
       // handle the case where two entries have the same usage count.
-      // In that case, we start with the lowest class id.
+      // We use the source position of the class or interface as the
+      // tie breaker, because not everything that flows in here will
+      // have an assigned id we can use.
       return a.second == b.second
-          ? a.first->id() < b.first->id()
+          ? a.first->range().is_before(b.first->range())
           : a.second > b.second;
     });
     auto result = ListBuilder<ir::Class*>::allocate(sorted.size());
