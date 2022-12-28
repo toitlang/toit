@@ -46,6 +46,11 @@ string_test:
       it
   expect_equals "Soen saa saer ud" simpler
 
+  expect_equals "hello, world!" (lower_case "Hello, World!")
+
+lower_case str/string -> string:
+  return str.map: | c | ('A' <= c <= 'Z') ? c - 'A' + 'a' : c
+
 heavy_metalize str/string -> string:
   return str.map: | c |
     ROCK_DOTS_MAP_.get c --if_absent=(: c)

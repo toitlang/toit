@@ -266,7 +266,8 @@ abstract class string implements Comparable:
   heavy_metalize str/string -> string:
     return str.map: | c |
       {'o': 'ö', 'a': 'ä', 'u': 'ü', 'ä': "\u{20db}a"}.get c --if_absent=:c
-  lc str/string -> string:
+  lower_case str/string -> string:
+    return str.map: | c | ('A' <= c <= 'Z') ? c - 'A' + 'a' : c
   */
   map [block] -> string:
     prefix := ""
