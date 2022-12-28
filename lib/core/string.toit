@@ -245,6 +245,64 @@ abstract class string implements Comparable:
       if rune: block.call rune
 
   /**
+  For every unicode character in the string, call the block.
+  The argument to the block is an integer in the Unicode range of 0-0x10ffff,
+    inclusive.
+  The return value is assembled from the return values of the block.
+  If a string is returned from the block it is inserted at that point in the
+    return value.
+  If a byte array is returned from the block it is converted to a string and
+    treated like a string.  The byte array must contain whole, valid UTF-8
+    sequences.
+  If an integer is returned from the block it is treated as a Unicode code
+    point, and the corresponding code point is inserted.
+  If the block returns null, this is treated like the zero length string.
+  If the block returns a collection, then every element in the collection
+    is handled like the above actions, but this is only done for one level -
+    collections of collections are not flattened in this way.
+  To get a list or byte array as the return value instead of a string, use
+    `str.to_byte_array.map` instead.
+  # Examples.
+  heavy_metalize str/string -> string:
+    return str.map: | c |
+      {'o': 'ö', 'a': 'ä', 'u': 'ü', 'ä': "\u{20db}a"}.get c --if_absent=:c
+  lc str/string -> string:
+  */
+  map [block] -> string:
+    prefix := ""
+    byte_array := ByteArray (min 4 size)
+    position := 0
+
+    replace_block := : | replacement |
+      if replacement is string or replacement is ByteArray:
+        if position + replacement.size > byte_array.size:
+          prefix += (byte_array.to_string 0 position) + replacement.to_string
+          position = 0
+          byte_array = ByteArray (byte_array.size * 1.5).to_int
+        else:
+          byte_array.replace position replacement
+          position += replacement.size
+      else if replacement is int:
+        if position + (utf_8_bytes replacement) > byte_array.size:
+          prefix += byte_array.to_string 0 position
+          byte_array = ByteArray (byte_array.size * 1.5).to_int
+          position = 0
+        position += write_utf_8_to_byte_array byte_array position replacement
+      else if replacement != null:
+        throw "Invalid replacement"
+
+    for i := 0; i < size; i++:
+      rune := this[i]
+      if rune:
+        replacement := block.call rune
+        if replacement is Collection:
+          replacement.do: replace_block.call it
+        else:
+          replace_block.call replacement
+    result := prefix + (byte_array.to_string 0 position)
+    return result == this ? this : result
+
+  /**
   Copies the string between $from (inclusive) and $size (exclusive).
 
   The given substring must be legal. That is, $from must not point into

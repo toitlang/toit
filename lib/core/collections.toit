@@ -1079,6 +1079,16 @@ interface ByteArray:
   do --reversed/bool [block] -> none
 
   /**
+  Maps every byte with a mapping block.
+  The block is invoked with an integer argument in the range between 0 and
+    0xff, inclusive.
+  If all invocations of the block return integers between 0 and 0xff,
+    inclusive, then the return value is a byte array.
+  If some invocations return other values, the return value is a List.
+  */
+  map [block] -> any
+
+  /**
   Whether all bytes satisfy the given $predicate.
   Returns true, if the byte array is empty.
   */
@@ -1312,6 +1322,30 @@ abstract class ByteArrayBase_ implements ByteArray:
   any [predicate] -> bool:
     do: if predicate.call it: return true
     return false
+
+  /**
+  Maps every byte with a mapping block.
+  The block is invoked with an integer argument in the range between 0 and
+    0xff, inclusive.
+  If all invocations of the block return integers between 0 and 0xff,
+    inclusive, then the return value is a byte array.
+  If some invocations return other values, the return value is a List.
+  */
+  map [block] -> any:
+    result := ByteArray size
+    size.repeat: | i |
+      replacement := block.call this[i]
+      if replacement is int and 0 <= replacement < 0x100:
+        result[i] = replacement
+      else:
+        return List size: | list_index |
+          if list_index < i:
+            result[list_index]
+          else if list_index == i:
+            replacement
+          else:
+            block.call this[list_index]
+    return result
 
   /**
   The first element of the list.
@@ -1606,6 +1640,9 @@ class CowByteArray_ implements ByteArray:
 
   do --reversed/bool [block] -> none:
     backing_.do --reversed=reversed block
+
+  map [block] -> any:
+    return backing_.map block
 
   every [predicate] -> bool:
     return backing_.every predicate
