@@ -62,7 +62,7 @@ class BackendCollector : public ir::TraversingVisitor {
     if (method->is_static()) return;
     ir::Class* holder = method->holder();
     if (class_usage_counts_.find(holder) == class_usage_counts_.end()) {
-      class_usage_counts_[holder] = 1;
+      class_usage_counts_[holder] = 0;
     }
   }
 
@@ -94,7 +94,12 @@ class BackendCollector : public ir::TraversingVisitor {
     }
     std::sort(sorted.begin(), sorted.end(), [&](std::pair<ir::Class*, int> a,
                                                 std::pair<ir::Class*, int> b) {
-      return a.second > b.second;
+      // To make sure we always have a deterministic order, we must
+      // handle the case where two entries have the same usage count.
+      // In that case, we start with the lowest class id.
+      return a.second == b.second
+          ? a.first->id() < b.first->id()
+          : a.second > b.second;
     });
     auto result = ListBuilder<ir::Class*>::allocate(sorted.size());
     int index = 0;
