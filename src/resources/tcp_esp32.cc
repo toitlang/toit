@@ -380,11 +380,14 @@ PRIMITIVE(read)  {
 
     int offset;
     pbuf* p = socket->get_read_buffer(&offset);
-    int total_available = p->tot_len - offset;
-    if (p == null || total_available < 0) {
+
+    if (p == null) {
       if (socket->read_closed()) return process->program()->null_object();
       return Smi::from(-1);
     }
+
+    int total_available = p->tot_len - offset;
+    if (total_available < 0) return Smi::from(-1);
 
     // Wifi MTU is 1500 bytes, subtract a 20 byte TCP header and we have 1480.
     // A size of 496 gives three nicely-packable byte arrays per 1480 MTU.
