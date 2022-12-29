@@ -372,62 +372,60 @@ PRIMITIVE(accept) {
   });
 }
 
-static ByteArray* allocate_read_buffer(Process* process, pbuf* p) {
-  const int MAX_SIZE = 1500;
-
-  int size = 0;
-  pbuf* c = p;
-  // Note that pbuf's can't be larger than MTU (<1500).
-  while (size + c->len <= MAX_SIZE) {
-    size += c->len;
-
-    if (c->tot_len == c->len) break;
-    c = c->next;
-  }
-
-  ByteArray* array = process->allocate_byte_array(size, true);
-  if (array != null) return array;
-
-  // We failed to allocate the buffer, check if we can do a smaller allocation.
-  if (size == p->len) {
-    return null;
-  } else {
-    return process->allocate_byte_array(p->len, true);
-  }
-}
-
 PRIMITIVE(read)  {
   ARGS(SocketResourceGroup, resource_group, LwipSocket, socket);
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     if (socket->error() != ERR_OK) return lwip_error(process, socket->error());
 
-    pbuf* p = socket->read_buffer();
+    int offset;
+    pbuf* p = socket->get_read_buffer(&offset);
+
     if (p == null) {
       if (socket->read_closed()) return process->program()->null_object();
       return Smi::from(-1);
     }
 
-    ByteArray* array = allocate_read_buffer(process, p);
+    int total_available = p->tot_len - offset;
+    if (total_available < 0) return Smi::from(-1);
+
+    // Wifi MTU is 1500 bytes, subtract a 20 byte TCP header and we have 1480.
+    // A size of 496 gives three nicely-packable byte arrays per 1480 MTU.
+    int allocation_size = Utils::min(496, total_available);
+    ByteArray* array = process->allocate_byte_array(allocation_size, false);  // On-heap byte array.
     if (array == null) ALLOCATION_FAILED;
 
     ByteArray::Bytes bytes(array);
 
-    int offset = 0;
-    while (offset < bytes.length()) {
-      memcpy(bytes.address() + offset, p->payload, p->len);
-      offset += p->len;
-
-      pbuf* n = p->next;
-      // Free the first part of the chain.
-      if (n != null) pbuf_ref(n);
-      pbuf_free(p);
-      p = n;
+    int bytes_to_ack = 0;
+    int copied = 0;
+    while (copied < allocation_size) {
+      int to_copy = Utils::min(p->len - offset, allocation_size - copied);
+      uint8* payload = unvoid_cast<uint8*>(p->payload);
+      memcpy(bytes.address() + copied, payload + offset, to_copy);
+      copied += to_copy;
+      offset += to_copy;
+      if (offset == p->len) {
+        pbuf* n = p->next;
+        bytes_to_ack += p->len;
+        // Free the first part of the chain.  Increment the ref count of the
+        // next packet in the chain first, so the whole chain doesn't get
+        // freed.
+        if (n != null) pbuf_ref(n);
+        pbuf_free(p);
+        // We don't have to check for null because tot_len won't extend past the last packet.
+        p = n;
+        offset = 0;
+      }
     }
 
-    socket->set_read_buffer(p);
+    socket->set_read_buffer(p, offset);
 
-    if (socket->tpcb() != null) tcp_recved(socket->tpcb(), offset);
+    // Notify peer that we finished processing some packets and they can send
+    // more on the TCP socket.
+    if (socket->tpcb() != null && bytes_to_ack != 0) {
+      tcp_recved(socket->tpcb(), bytes_to_ack);
+    }
 
     return array;
   });
