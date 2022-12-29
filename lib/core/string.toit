@@ -807,7 +807,7 @@ abstract class string implements Comparable:
     // If the last non-whitespace character is a multi-byte UTF-8 character
     //   we have to include them. Move forward again to find all of them.
     while end < size and this[end] == null: end++
-    return copy start end
+    return this[start..end]
 
 
   /**
@@ -819,7 +819,7 @@ abstract class string implements Comparable:
     size.repeat:
       c := this[it]
       if c != null and not is_unicode_whitespace_ c:
-        return it == 0 ? this : copy it
+        return this[it..]
     return ""
 
   /**
@@ -835,7 +835,7 @@ abstract class string implements Comparable:
         //   we have to include them. Move forward again to find all of them.
         end := size - it
         while end < size and this[end] == null: end++
-        return end == size ? this : copy 0 end
+        return this[..end]
     return ""
 
   /**
@@ -875,7 +875,7 @@ abstract class string implements Comparable:
   trim --left/bool prefix/string [--if_absent] -> string:
     if left != true: throw "Bad Argument"
     if not starts_with prefix: return if_absent.call this
-    return copy prefix.size
+    return this[prefix.size..]
 
   /**
   Removes a trailing $suffix (if present).
@@ -913,7 +913,7 @@ abstract class string implements Comparable:
   trim --right/bool suffix/string [--if_absent] -> string:
     if right != true: throw "Bad Argument"
     if not ends_with suffix: return if_absent.call this
-    return copy 0 (size - suffix.size)
+    return this[..size - suffix.size]
 
   static TO_UPPER_TABLE_ ::= #[
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -1040,12 +1040,12 @@ abstract class string implements Comparable:
     while pos <= size:
       new_pos := subject.index_of separator pos --if_absent=:
         // No match.
-        process_part.call (subject.copy pos size)
+        process_part.call subject[pos..size]
         return
-      process_part.call (subject.copy pos new_pos)
+      process_part.call subject[pos..new_pos]
       pos = new_pos + separator.size
       if at_first:
-        if pos <= size: process_part.call (subject.copy pos)
+        if pos <= size: process_part.call subject[pos..]
         return
 
   /**
