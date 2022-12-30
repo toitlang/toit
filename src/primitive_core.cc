@@ -1598,16 +1598,13 @@ PRIMITIVE(array_at_put) {
   OUT_OF_BOUNDS;
 }
 
-// Must be kept in sync with ARRAYLET_SIZE in the LargeArray_ class.
-static const word ARRAYLET_SIZE = 500;
-
 // Allocates a new array and copies old_length elements from the old array into
 // the new one.
 PRIMITIVE(array_expand) {
   ARGS(Array, old, word, old_length, word, length, Object, filler);
   if (length == 0) return process->program()->empty_array();
   if (length < 0) OUT_OF_BOUNDS;
-  if (length > ARRAYLET_SIZE) OUT_OF_RANGE;
+  if (length > Array::ARRAYLET_SIZE) OUT_OF_RANGE;
   if (old_length < 0 || old_length > old->length()) OUT_OF_RANGE;
   Object* result = process->object_heap()->allocate_array(length, filler);
   if (result == null) ALLOCATION_FAILED;
@@ -1635,7 +1632,7 @@ PRIMITIVE(array_new) {
   ARGS(int, length, Object, filler);
   if (length == 0) return process->program()->empty_array();
   if (length < 0) OUT_OF_BOUNDS;
-  if (length > ARRAYLET_SIZE) OUT_OF_RANGE;
+  if (length > Array::ARRAYLET_SIZE) OUT_OF_RANGE;
   return Primitive::allocate_array(length, filler, process);
 }
 
