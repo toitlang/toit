@@ -125,46 +125,58 @@ test_array:
   expect (not a.is_sorted)
   expect sorted.is_sorted
 
+ARRAYLET_SIZE ::= LargeArray_.ARRAYLET_SIZE
+FILLER := 3.1415
+
+
 test_large_array_do:
-  sizes := [ 0, 499, 500, 501, 999, 1000, 1001, 10000 ]
+  sizes := [ 0, 1, 499, 500, 501, 999, 1000, 1001, 9999, 10000, 10001 ]
   sizes.do: | size |
-    array := LargeArray_ size
-    count := 0
-    array.do: count++
-    expect_equals size count
+    sizes.do: | new_size |
+      sizes.do: | copy_size |
+        array := Array_ size
+        expect_equals
+            size <= ARRAYLET_SIZE
+            array is SmallArray_
 
-    // Fill with non-null values.
-    array.size.repeat: array[it] = it
+        count := 0
+        array.do: count++
+        expect_equals size count
 
-    // Make a copy first, as resize_for_list_ tries to reuse the internal
-    // memory structures.
-    original := array.copy
+        // Fill with non-null values.
+        array.size.repeat: array[it] = it
 
-    // Uses private interface to test resize_for_list_ function used by List_
-    for i := 0; i < 5; i++:
-      array2 := array.resize_for_list_ (size + i) (size + i + 1)
-      size.repeat:
-        expect_equals array[it] array2[it]
-        expect_equals original[it] array[it]
-      i.repeat:
-        expect_equals (it + 1234) array2[size + it]
-      expect_equals array2[size + i] null
-      array2[size + i] = i + 1234
-      array = array2
+        sum := 0
+        array.do:
+          expect_equals it array[it]
+          sum += it
+        expect_equals
+            (array.size * (array.size - 1)) / 2
+            sum
 
-    // Reset the array.
-    array = LargeArray_ size
-    // Fill with non-null values.
-    array.size.repeat: array[it] = it
-    original = array.copy
+        if copy_size <= size:
+          copy := array.resize_for_list_ copy_size new_size FILLER
 
-    // Uses private interface to test resize_for_list_ function used by List_
-    array3 := array.resize_for_list_ size size + 500
-    size.repeat:
-      expect_equals array[it] array3[it]
-      expect_equals original[it] array[it]
-    500.repeat: expect_equals array3[size + it] null
+          expect_equals new_size copy.size
 
+          expect_equals
+              new_size <= ARRAYLET_SIZE
+              copy is SmallArray_
+
+          // Verify that the arraylets were reused.
+          if array is LargeArray_ and copy is LargeArray_:
+            (min (size / ARRAYLET_SIZE) (new_size / ARRAYLET_SIZE)).repeat:
+              expect
+                  identical
+                      (array as LargeArray_).vector_[it]
+                      (copy as LargeArray_).vector_[it]
+          // Verify that values were copied.
+          copy_edge := min size (min new_size copy_size)
+          for i := 0; i < copy_edge; i++:
+            expect_equals i copy[i]
+          // Verify filler was used.
+          for i := copy_edge; i < new_size; i++:
+            expect_equals FILLER copy[i]
 
 test_matrix:
   matrix := Matrix
