@@ -553,6 +553,9 @@ PRIMITIVE(get_option) {
         return process->program()->false_object();
 
       case TCP_WINDOW_SIZE:
+        return Smi::from(TCP_WND);
+
+      case TCP_SEND_BUFFER:
         return Smi::from(TCP_SND_BUF);
 
       case TCP_PORT:
