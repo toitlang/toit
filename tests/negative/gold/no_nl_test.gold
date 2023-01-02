@@ -3,8 +3,5 @@ tests/negative/no_nl_test.toit:9:3: error: Incomplete expression
   ^
 tests/negative/no_nl_test.toit:9:3: error: Missing colon for 'if' condition
   if
-  ^
-tests/negative/no_nl_test.toit:9:3: note: Missing colon needed near here
-  if
   ^~
 Compilation failed.

@@ -1512,10 +1512,7 @@ Expression* Parser::parse_if() {
     condition = parse_expression_or_definition(true);
   }
   if (!optional_delimiter(Token::COLON)) {
-    diagnostics()->start_group();
-    report_error("Missing colon for 'if' condition");
-    diagnostics()->report_note(range, "Missing colon needed near here");
-    diagnostics()->end_group();
+    report_error(range, "Missing colon for 'if' condition");
     // If we are at a new line, we will make it dependent on the indentation on whether they
     // are part of the `if`.
     // Examples:
@@ -1540,7 +1537,7 @@ Expression* Parser::parse_if() {
     }
   }
   if (current_token() == Token::ELSE) {
-    auto else_range = current_range();
+    auto else_range = Source::Range(current_range().to(), current_range().to());
     consume();
     if (current_token() == Token::IF) {
       end_multiline_construct(IndentationStack::IF_BODY);
@@ -1549,10 +1546,7 @@ Expression* Parser::parse_if() {
       if (!optional_delimiter(Token::COLON)) {
         // Just try to read the else block.
         // If it's correctly indented it will work.
-        diagnostics()->start_group();
-        report_error("Missing colon for 'else'");
-        diagnostics()->report_note(else_range, "Missing colon needed near here");
-        diagnostics()->end_group();
+        report_error(else_range, "Missing colon for 'else'");
       }
       no = parse_sequence();
       end_multiline_construct(IndentationStack::IF_BODY);
@@ -1578,10 +1572,7 @@ Expression* Parser::parse_while() {
     condition = parse_expression_or_definition(true);
   }
   if (!optional_delimiter(Token::COLON)) {
-    diagnostics()->start_group();
-    report_error("Missing colon for loop condition");
-    diagnostics()->report_note(range, "Missing colon needed near here");
-    diagnostics()->end_group();
+    report_error(range, "Missing colon for loop condition");
     // Just try to read the body.
   }
   switch_multiline_construct(IndentationStack::WHILE_CONDITION,
@@ -1607,10 +1598,7 @@ Expression* Parser::parse_for() {
   }
 
   if (!optional_delimiter(Token::SEMICOLON)) {
-    diagnostics()->start_group();
-    report_error("Missing semicolon");
-    diagnostics()->report_note(error_range, "Missing semicolon needed near here");
-    diagnostics()->end_group();
+    report_error(error_range, "Missing semicolon");
     condition = NEW_NODE(Error, current_range());
     update = NEW_NODE(Error, current_range());
     skip_to_body(Token::COLON);
@@ -1626,10 +1614,7 @@ Expression* Parser::parse_for() {
   }
 
   if (!optional_delimiter(Token::SEMICOLON)) {
-    diagnostics()->start_group();
-    report_error("Missing semicolon");
-    diagnostics()->report_note(error_range, "Missing semicolon needed near here");
-    diagnostics()->end_group();
+    report_error(error_range, "Missing semicolon");
     update = NEW_NODE(Error, current_range());
     skip_to_body(Token::COLON);
     goto parse_body;
@@ -1644,10 +1629,7 @@ Expression* Parser::parse_for() {
     update = parse_expression(true);
   }
   if (!optional_delimiter(Token::COLON)) {
-    diagnostics()->start_group();
-    report_error("Missing colon");
-    diagnostics()->report_note(error_range, "Missing colon needed near here");
-    diagnostics()->end_group();
+    report_error(error_range, "Missing colon");
     skip_to_body(Token::COLON);
   }
 
@@ -1671,10 +1653,7 @@ Expression* Parser::parse_try_finally() {
   if (current_token() == Token::COLON) {
     consume();
   } else {
-    diagnostics()->start_group();
-    report_error("Missing colon after 'try'");
-    diagnostics()->report_note(error_range, "Missing colon needed near here");
-    diagnostics()->end_group();
+    report_error(Source::Range(error_range.to(), error_range.to()), "Missing colon after 'try'");
 
     encountered_error = true;
   }
@@ -1694,10 +1673,7 @@ Expression* Parser::parse_try_finally() {
     if (current_token() == Token::COLON) {
       delimit_with(Token::COLON);
     } else {
-      diagnostics()->start_group();
-      report_error("Missing colon after finally");
-      diagnostics()->report_note(error_range, "Missing colon needed near here");
-      diagnostics()->end_group();
+      report_error(Source::Range(error_range.to(), error_range.to()), "Missing colon after finally");
     }
     bool has_parameters;
     handler_parameters = parse_block_parameters(&has_parameters);

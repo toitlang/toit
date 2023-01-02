@@ -1,24 +1,15 @@
-tests/negative/try_test.toit:7:5: error: Missing colon after 'try'
-    unresolved
-    ^~~~~~~~~~
-tests/negative/try_test.toit:6:3: note: Missing colon needed near here
+tests/negative/try_test.toit:6:6: error: Missing colon after 'try'
   try
-  ^~~
+     ^
 tests/negative/try_test.toit:10:15: error: Missing 'finally' block
     unresolved
               ^
-tests/negative/try_test.toit:15:5: error: Missing colon after finally
-    unresolved
-    ^~~~~~~~~~
-tests/negative/try_test.toit:14:3: note: Missing colon needed near here
+tests/negative/try_test.toit:14:10: error: Missing colon after finally
   finally
-  ^~~~~~~
-tests/negative/try_test.toit:25:5: error: Missing colon after finally
-    unresolved
-    ^~~~~~~~~~
-tests/negative/try_test.toit:24:3: note: Missing colon needed near here
+         ^
+tests/negative/try_test.toit:24:10: error: Missing colon after finally
   finally
-  ^~~~~~~
+         ^
 tests/negative/try_test.toit:7:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~

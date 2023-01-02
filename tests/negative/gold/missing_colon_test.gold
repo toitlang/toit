@@ -1,37 +1,19 @@
-tests/negative/missing_colon_test.toit:7:26: error: Missing colon for 'if' condition
-    print "Hello, World!"
-                         ^
-tests/negative/missing_colon_test.toit:6:3: note: Missing colon needed near here
+tests/negative/missing_colon_test.toit:6:3: error: Missing colon for 'if' condition
   if 12 < 43
   ^~
-tests/negative/missing_colon_test.toit:10:42: error: Missing semicolon
-    print "Nah then, nah then, nah then!"
-                                         ^
-tests/negative/missing_colon_test.toit:9:15: note: Missing semicolon needed near here
+tests/negative/missing_colon_test.toit:9:15: error: Missing semicolon
   for i := 0; i < 10: i++:
               ^
-tests/negative/missing_colon_test.toit:13:5: error: Missing colon after 'try'
-    print "No colon for you!"
-    ^~~~~
-tests/negative/missing_colon_test.toit:12:3: note: Missing colon needed near here
+tests/negative/missing_colon_test.toit:12:6: error: Missing colon after 'try'
   try
-  ^~~
-tests/negative/missing_colon_test.toit:20:5: error: Missing colon after finally
-    print "But no colon again"
-    ^~~~~
-tests/negative/missing_colon_test.toit:19:3: note: Missing colon needed near here
+     ^
+tests/negative/missing_colon_test.toit:19:10: error: Missing colon after finally
   finally
-  ^~~~~~~
-tests/negative/missing_colon_test.toit:25:5: error: Missing colon for 'else'
-    print "More like it"
-    ^~~~~
-tests/negative/missing_colon_test.toit:24:3: note: Missing colon needed near here
+         ^
+tests/negative/missing_colon_test.toit:24:7: error: Missing colon for 'else'
   else
-  ^~~~
-tests/negative/missing_colon_test.toit:28:31: error: Missing colon for loop condition
-    print "Just keep doing it"
-                              ^
-tests/negative/missing_colon_test.toit:27:3: note: Missing colon needed near here
+      ^
+tests/negative/missing_colon_test.toit:27:3: error: Missing colon for loop condition
   while 1 == 2
   ^~~~~
 tests/negative/missing_colon_test.toit:32:4: error: Missing colon to end class signature
