@@ -124,8 +124,14 @@ bool SemiSpace::is_alive(HeapObject* old_location) {
 void Space::append(Chunk* chunk) {
   chunk->set_owner(this);
   // Insert chunk in increasing address order in the list.  This means when
-  // the heap shrinks the highest addresses will be freed.
-  chunk_list_.insert_before(chunk, [&chunk](Chunk* it) { return it->start() > chunk->start(); });
+  // the heap shrinks the highest addresses will be freed.  However, we group
+  // similar sized chunks together so that the big chunks will always be at the
+  // end.  This means when the heap shrinks because of successful GC we won't
+  // be left with one big (mostly empty) chunk.  On ESP32 all the chunks are 4k.
+  chunk_list_.insert_before(chunk, [&chunk](Chunk* it) {
+    if (it->size() > chunk->size()) return true;
+    return it->start() > chunk->start() && it->size() == chunk->size();
+  });
 }
 
 void SemiSpace::append(Chunk* chunk) {
