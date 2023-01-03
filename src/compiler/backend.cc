@@ -280,7 +280,16 @@ void Backend::emit_method(ir::Method* method,
       dispatch_offset = table_offset;
     } else {
       ASSERT(table_offset == -1);
-      ASSERT(typecheck_indexes->contains_key(method->holder()));
+      if (!typecheck_indexes->contains_key(method->holder())) {
+        // TODO(kasper): This is a slightly weird case, where we have a
+        // method that is never called but the tree shaker fails to
+        // realize this. We end up with an unused entry in the dispatch
+        // table at 'dispatch_table->slot_index_for(method)', but at
+        // least we do not generate code for this. We should be able
+        // to shake this out earlier by realizing that not all static
+        // calls lead to live methods.
+        return;
+      }
       int index = (*typecheck_indexes)[method->holder()];
       ASSERT(index >= 0);
       dispatch_offset = -2 - index;
