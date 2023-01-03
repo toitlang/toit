@@ -492,7 +492,7 @@ PRIMITIVE(close_write) {
 
 PRIMITIVE(close) {
   ARGS(MbedTlsSocket, socket);
-  socket->resource_group()->unregister_resource(socket);
+  TlsEventSource::instance()->close(socket);
 
   socket_proxy->clear_external_address();
 
