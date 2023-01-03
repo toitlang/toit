@@ -12,6 +12,7 @@ expect_error name [code]:
 main:
   test1
   test2
+  test_any_every
 
 test1:
   map := {:}
@@ -261,3 +262,51 @@ test2:
     expect_equals counter value
 
   expect_equals 1 counter
+
+test_any_every:
+  map := {:}
+  expect_equals false (map.any: true)
+  expect_equals false (map.any --keys: true)
+  expect_equals false (map.any --values: true)
+  expect_equals true (map.every: false)
+  expect_equals true (map.every --keys: false)
+  expect_equals true (map.every --values: false)
+
+  map[0] = 42
+  expect_equals false (map.any --keys: it == 42)
+  expect_equals false (map.any: | k v | k == 42)
+  expect_equals false (map.any: | k v | v == 0)
+  expect_equals false (map.any --values: it == 0)
+  expect_equals true (map.any --keys: it == 0)
+  expect_equals true (map.any: | k v | k == 0)
+  expect_equals true (map.any: | k v | v == 42)
+  expect_equals true (map.any --values: it == 42)
+
+  expect_equals false (map.every --keys: it == 42)
+  expect_equals false (map.every: | k v | k == 42)
+  expect_equals false (map.every: | k v | v == 0)
+  expect_equals false (map.every --values: it == 0)
+  expect_equals true (map.every --keys: it == 0)
+  expect_equals true (map.every: | k v | k == 0)
+  expect_equals true (map.every: | k v | v == 42)
+  expect_equals true (map.every --values: it == 42)
+
+  map[1] = 103
+  expect_equals false (map.any --keys: it == 42)
+  expect_equals false (map.any: | k v | k == 42)
+  expect_equals false (map.any: | k v | v == 0)
+  expect_equals false (map.any --values: it == 0)
+  expect_equals true (map.any --keys: it == 0)
+  expect_equals true (map.any: | k v | k == 0)
+  expect_equals true (map.any: | k v | v == 42)
+  expect_equals true (map.any --values: it == 42)
+
+  expect_equals false (map.every --keys: it == 42)
+  expect_equals false (map.every: | k v | k == 42)
+  expect_equals false (map.every: | k v | v == 0)
+  expect_equals false (map.every --values: it == 0)
+  expect_equals false (map.every --keys: it == 0)
+  expect_equals false (map.every: | k v | k == 0)
+  expect_equals false (map.every: | k v | v == 42)
+  expect_equals false (map.every --values: it == 42)
+

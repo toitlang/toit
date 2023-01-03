@@ -75,13 +75,13 @@ interface Collection:
   is_empty -> bool
 
   /**
-  Whether every element in the collection satisfies the given $predicate.
+  Whether all elements in the collection satisfy the given $predicate.
   Returns true, if the collection is empty.
   */
   every [predicate] -> bool
 
   /**
-  Whether any element in the collection satisfies the given $predicate.
+  Whether at least one element in the collection satisfies the given $predicate.
   Returns false, if the collection is empty.
   */
   any [predicate] -> bool
@@ -1079,13 +1079,13 @@ interface ByteArray:
   do --reversed/bool [block] -> none
 
   /**
-  Whether every byte satisfies the given $predicate.
+  Whether all bytes satisfy the given $predicate.
   Returns true, if the byte array is empty.
   */
   every [predicate] -> bool
 
   /**
-  Whether there is a byte that satisfies the given $predicate.
+  Whether there is at least one byte that satisfies the given $predicate.
   Returns false, if the byte array is empty.
   */
   any [predicate] -> bool
@@ -2847,6 +2847,64 @@ class Map extends HashedInsertionOrderedCollection_:
     do: | key value |
       result = block.call result key value
     return result
+
+  /**
+  Whether at least one key in the map satisfies the given $predicate.
+  The flag $keys must be true.
+  Returns false, if the map is empty.
+  */
+  any --keys/bool [predicate] -> bool:
+    if keys != true: throw "Bad Argument"
+    do --keys: if predicate.call it: return true
+    return false
+
+  /**
+  Whether at least one value in the map satisfies the given $predicate.
+  The flag $values must be true.
+  Returns false, if the map is empty.
+  */
+  any --values/bool [predicate] -> bool:
+    if values != true: throw "Bad Argument"
+    do --values: if predicate.call it: return true
+    return false
+
+  /**
+  Whether at least one key-value pair in the map satisfies the given $predicate.
+  The $predicate block is called with two arguments: a key, and its value.
+  Returns false, if the map is empty.
+  */
+  any [predicate] -> bool:
+    do: | key value | if predicate.call key value: return true
+    return false
+
+  /**
+  Whether all keys in the map satisfy the given $predicate.
+  The flag $keys must be true.
+  Returns true, if the map is empty.
+  */
+  every --keys/bool [predicate] -> bool:
+    if keys != true: throw "Bad Argument"
+    do --keys: if not predicate.call it: return false
+    return true
+
+  /**
+  Whether all values in the map satisfy the given $predicate.
+  The flag $values must be true.
+  Returns true, if the map is empty.
+  */
+  every --values/bool [predicate] -> bool:
+    if values != true: throw "Bad Argument"
+    do --values: if not predicate.call it: return false
+    return true
+
+  /**
+  Whether all key-value pairs in the map satisfy the given $predicate.
+  The $predicate block is called with two arguments: a key, and its value.
+  Returns true, if the map is empty.
+  */
+  every [predicate] -> bool:
+    do: | key value | if not predicate.call key value: return false
+    return true
 
   /**
   Copies the map.
