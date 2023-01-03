@@ -257,23 +257,11 @@ scheduler_err_t Scheduler::send_system_message(SystemMessage* message) {
   return send_system_message(locker, message);
 }
 
-scheduler_err_t Scheduler::send_message(ProcessGroup* group, int process_id, Message* message) {
-  Locker locker(mutex_);
-  Process* p = group->lookup(process_id);
-  if (p == null) {
-    delete message;
-    return MESSAGE_NO_SUCH_RECEIVER;
-  }
-  p->_append_message(message);
-  process_ready(locker, p);
-  return MESSAGE_OK;
-}
-
-scheduler_err_t Scheduler::send_message(int process_id, Message* message) {
+scheduler_err_t Scheduler::send_message(int process_id, Message* message, bool free_on_failure) {
   Locker locker(mutex_);
   Process* p = find_process(locker, process_id);
   if (p == null) {
-    delete message;
+    if (free_on_failure) delete message;
     return MESSAGE_NO_SUCH_RECEIVER;
   }
   p->_append_message(message);
