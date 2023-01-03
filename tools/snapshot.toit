@@ -474,9 +474,9 @@ class ToitMethod:
   static HEADER_SIZE ::= 4
 
   static METHOD ::= 0
-  static LAMBDA ::= 1
-  static BLOCK ::= 2
-  static FIELD_ACCESSOR ::= 3
+  static FIELD_ACCESSOR ::= 1
+  static LAMBDA ::= 2
+  static BLOCK ::= 3
 
   id     ::= 0
   arity  ::= 0
@@ -497,9 +497,9 @@ class ToitMethod:
     bytecodes = all_bytecodes.copy at (at + bytecode_size)
 
   is_normal_method -> bool: return kind == METHOD
+  is_field_accessor -> bool: return kind == FIELD_ACCESSOR
   is_lambda -> bool: return kind == LAMBDA
   is_block -> bool: return kind == BLOCK
-  is_field_accessor -> bool: return kind == FIELD_ACCESSOR
 
   allocation_size -> int:
     return HEADER_SIZE + bytecodes.size
