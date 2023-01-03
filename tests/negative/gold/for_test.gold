@@ -1,66 +1,66 @@
 tests/negative/for_test.toit:6:6: error: Incomplete expression
   for
      ^
-tests/negative/for_test.toit:6:6: error: Missing ';'
+tests/negative/for_test.toit:6:6: error: Missing semicolon
   for
      ^
-tests/negative/for_test.toit:8:5: error: Missing ';'
-    print unresolved
-    ^~~~~
-tests/negative/for_test.toit:9:13: error: Missing ';'
+tests/negative/for_test.toit:7:7: error: Missing semicolon
+  for break
+      ^~~~~
+tests/negative/for_test.toit:9:7: error: Missing semicolon
   for break print unresolved
-            ^~~~~
+      ^~~~~
 tests/negative/for_test.toit:10:10: error: Incomplete expression
   for "".
          ^
-tests/negative/for_test.toit:10:10: error: Missing ';'
+tests/negative/for_test.toit:10:7: error: Missing semicolon
   for "".
-         ^
+      ^~
 tests/negative/for_test.toit:13:14: error: Incomplete expression
   for x := 0;
              ^
-tests/negative/for_test.toit:13:14: error: Missing ';'
+tests/negative/for_test.toit:13:14: error: Missing semicolon
   for x := 0;
              ^
-tests/negative/for_test.toit:15:5: error: Missing ';'
-    print unresolved
-    ^~~~~
-tests/negative/for_test.toit:16:21: error: Missing ';'
+tests/negative/for_test.toit:14:15: error: Missing semicolon
+  for x := 0; break
+              ^~~~~
+tests/negative/for_test.toit:16:15: error: Missing semicolon
   for x := 0; break print unresolved
-                    ^~~~~
+              ^~~~~
 tests/negative/for_test.toit:17:18: error: Incomplete expression
   for x := 0; "".
                  ^
-tests/negative/for_test.toit:17:18: error: Missing ';'
+tests/negative/for_test.toit:17:15: error: Missing semicolon
   for x := 0; "".
-                 ^
+              ^~
 tests/negative/for_test.toit:20:20: error: Incomplete expression
   for x := 0; true;
                    ^
-tests/negative/for_test.toit:20:20: error: Missing ':'
+tests/negative/for_test.toit:20:20: error: Missing colon
   for x := 0; true;
                    ^
-tests/negative/for_test.toit:22:5: error: Missing ':'
-    print unresolved
-    ^~~~~
-tests/negative/for_test.toit:23:27: error: Missing ':'
+tests/negative/for_test.toit:21:21: error: Missing colon
+  for x := 0; true; break
+                    ^~~~~
+tests/negative/for_test.toit:23:21: error: Missing colon
   for x := 0; true; break print unresolved
-                          ^~~~~
+                    ^~~~~
 tests/negative/for_test.toit:24:24: error: Incomplete expression
   for x := 0; true; "".
                        ^
-tests/negative/for_test.toit:24:24: error: Missing ':'
+tests/negative/for_test.toit:24:21: error: Missing colon
   for x := 0; true; "".
-                       ^
-tests/negative/for_test.toit:27:31: error: Missing ';'
+                    ^~
+tests/negative/for_test.toit:27:15: error: Missing semicolon
   for x := 0; true: unresolved
-                              ^
-tests/negative/for_test.toit:29:5: error: Missing ':'
-    print unresolved
-    ^~~~~
-tests/negative/for_test.toit:30:27: error: Missing ':'
+              ^~~~
+tests/negative/for_test.toit:28:21: error: Missing colon
+  for x := 0; true; break
+                    ^~~~~
+tests/negative/for_test.toit:30:21: error: Missing colon
   for x := 0; true; break print : unresolved
-                          ^~~~~
+                    ^~~~~
 tests/negative/for_test.toit:31:26: error: Expected identifier
   for x := 0; true; "".  : unresolved
                          ^

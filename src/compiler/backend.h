@@ -47,6 +47,7 @@ class Backend {
   void assign_field_indexes(List<ir::Class*> classes);
   void emit_method(ir::Method* method,
                    ByteGen* gen,
+                   UnorderedMap<ir::Class*, int>* typecheck_indexes,
                    DispatchTable* dispatch_table,
                    ProgramBuilder* program_builder);
   void emit_global(ir::Global* globals,

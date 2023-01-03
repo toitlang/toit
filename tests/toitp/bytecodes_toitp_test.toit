@@ -8,7 +8,6 @@ import .utils
 test args filter:
   out := run_toitp args ["-bc", filter]
   lines := out.split LINE_TERMINATOR
-  lines.do: print it
   expect (lines.first.starts_with "Bytecodes for methods")
 
   expected_bytecodes := [

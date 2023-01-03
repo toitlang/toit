@@ -1051,7 +1051,7 @@ Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
     if (current_token() == Token::COLON) {
       consume();
     } else {
-      report_error("Missing ':' to end class signature");
+      report_error("Missing colon to end class signature");
       member_indentation = 2;  // Assume that members are now intented by 2.
     }
   }
@@ -1512,7 +1512,7 @@ Expression* Parser::parse_if() {
     condition = parse_expression_or_definition(true);
   }
   if (!optional_delimiter(Token::COLON)) {
-    report_error("Missing ':' for 'if' condition");
+    report_error(range, "Missing colon for 'if' condition");
     // If we are at a new line, we will make it dependent on the indentation on whether they
     // are part of the `if`.
     // Examples:
@@ -1537,6 +1537,7 @@ Expression* Parser::parse_if() {
     }
   }
   if (current_token() == Token::ELSE) {
+    auto else_range = Source::Range(current_range().to(), current_range().to());
     consume();
     if (current_token() == Token::IF) {
       end_multiline_construct(IndentationStack::IF_BODY);
@@ -1545,7 +1546,7 @@ Expression* Parser::parse_if() {
       if (!optional_delimiter(Token::COLON)) {
         // Just try to read the else block.
         // If it's correctly indented it will work.
-        report_error("Missing ':' for 'else'");
+        report_error(else_range, "Missing colon for 'else'");
       }
       no = parse_sequence();
       end_multiline_construct(IndentationStack::IF_BODY);
@@ -1571,7 +1572,7 @@ Expression* Parser::parse_while() {
     condition = parse_expression_or_definition(true);
   }
   if (!optional_delimiter(Token::COLON)) {
-    report_error("Missing ':' for loop condition");
+    report_error(range, "Missing colon for loop condition");
     // Just try to read the body.
   }
   switch_multiline_construct(IndentationStack::WHILE_CONDITION,
@@ -1584,6 +1585,7 @@ Expression* Parser::parse_while() {
 Expression* Parser::parse_for() {
   ASSERT(current_token() == Token::FOR);
   auto range = current_range();
+  auto error_range = range;
   start_multiline_construct(IndentationStack::FOR_INIT);
   consume();
   Expression* initializer = null;
@@ -1591,11 +1593,12 @@ Expression* Parser::parse_for() {
   Expression* update = null;
 
   if (current_token_if_delimiter() != Token::SEMICOLON) {
+    error_range = current_range();
     initializer = parse_expression_or_definition(true);
   }
 
   if (!optional_delimiter(Token::SEMICOLON)) {
-    report_error("Missing ';'");
+    report_error(error_range, "Missing semicolon");
     condition = NEW_NODE(Error, current_range());
     update = NEW_NODE(Error, current_range());
     skip_to_body(Token::COLON);
@@ -1606,11 +1609,12 @@ Expression* Parser::parse_for() {
                              IndentationStack::FOR_CONDITION);
 
   if (current_token_if_delimiter() != Token::SEMICOLON) {
+    error_range = current_range();
     condition = parse_expression(true);
   }
 
   if (!optional_delimiter(Token::SEMICOLON)) {
-    report_error("Missing ';'");
+    report_error(error_range, "Missing semicolon");
     update = NEW_NODE(Error, current_range());
     skip_to_body(Token::COLON);
     goto parse_body;
@@ -1621,10 +1625,11 @@ Expression* Parser::parse_for() {
   // Could be a block in update location, but that's unlikely. We prefer to
   // assume that the update is not present.
   if (current_token_if_delimiter() != Token::COLON) {
+    error_range = current_range();
     update = parse_expression(true);
   }
   if (!optional_delimiter(Token::COLON)) {
-    report_error("Missing ':'");
+    report_error(error_range, "Missing colon");
     skip_to_body(Token::COLON);
   }
 
@@ -1641,15 +1646,18 @@ Expression* Parser::parse_for() {
 Expression* Parser::parse_try_finally() {
   ASSERT(current_token() == Token::TRY);
   auto range = current_range();
+  auto error_range = range;
   start_multiline_construct(IndentationStack::TRY);
   consume();
   bool encountered_error = false;
   if (current_token() == Token::COLON) {
     consume();
   } else {
-    report_error("Missing ':' after 'try'");
+    report_error(Source::Range(error_range.to(), error_range.to()), "Missing colon after 'try'");
+
     encountered_error = true;
   }
+  error_range = current_range();
   Sequence* body = parse_sequence();
   if (current_token() == Token::DEDENT) {
     if (peek_token() == Token::FINALLY &&
@@ -1660,11 +1668,12 @@ Expression* Parser::parse_try_finally() {
   }
   List<Parameter*> handler_parameters;
   if (current_token() == Token::FINALLY) {
+    error_range = current_range();
     consume();
     if (current_token() == Token::COLON) {
       delimit_with(Token::COLON);
     } else {
-      report_error("Missing ':' after finally");
+      report_error(Source::Range(error_range.to(), error_range.to()), "Missing colon after finally");
     }
     bool has_parameters;
     handler_parameters = parse_block_parameters(&has_parameters);
