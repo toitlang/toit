@@ -845,8 +845,8 @@ abstract class Array_ extends List:
   // Optimized helper method for iterating over the array elements.
   abstract do_ end/int [block] -> none
 
-  /** Create a new array, copying up to $copy_length elements from this array. */
-  abstract resize_for_list_ copy_length/int new_length/int filler -> Array_
+  /// Create a new array, copying up to $copy_size elements from this array.
+  abstract resize_for_list_ copy_size/int new_size/int filler -> Array_
 
   /**
   Returns the given $collection as an $Array_.
@@ -910,15 +910,15 @@ class SmallArray_ extends Array_:
       // argument. We force this to throw by doing the same here.
       block.call this[0]
 
-  /// Creates a new array of size $new_length, copying up to $copy_length elements from this array.
-  resize_for_list_ copy_length/int new_length/int filler -> Array_:
+  /// Creates a new array of size $new_size, copying up to $copy_size elements from this array.
+  resize_for_list_ copy_size/int new_size/int filler -> Array_:
     #primitive.core.array_expand:
       // Fallback if the primitive fails.  For example, the primitive can only
       // create SmallArray_ so we hit this on the border between SmallArray_
       // and LargeArray_.
 
-      result := Array_ new_length filler
-      limit := min copy_length new_length
+      result := Array_ new_size filler
+      limit := min copy_size new_size
       for i := 0; i < limit; i++:
         result[i] = this[i]
       return result
@@ -945,12 +945,12 @@ class LargeArray_ extends Array_:
   constructor .size_/int filler/any:
     if size_ <= ARRAYLET_SIZE: throw "OUT_OF_RANGE"
     full_arraylets := size_ / ARRAYLET_SIZE
-    left := size_ % ARRAYLET_SIZE
-    if left == 0:
+    remaining := size_ % ARRAYLET_SIZE
+    if remaining == 0:
       vector_ = Array_ full_arraylets
     else:
       vector_ = Array_ full_arraylets + 1
-      vector_[full_arraylets] = Array_ left filler
+      vector_[full_arraylets] = Array_ remaining filler
     full_arraylets.repeat:
       vector_[it] = Array_ ARRAYLET_SIZE filler
     // TODO(florian): remove this hack.
@@ -978,24 +978,24 @@ class LargeArray_ extends Array_:
     if number_of_arraylets == 1:
       return vector_[0].resize_for_list_ copy_size new_size filler
     new_vector := Array_ number_of_arraylets  // new_vector may be a LargeArray_!
-    left := new_size
+    remaining := new_size
     pos := 0
     number_of_arraylets.repeat:
       arraylet := ?
-      limit := min left ARRAYLET_SIZE
+      limit := min remaining ARRAYLET_SIZE
       if pos + limit <= size:
         arraylet = vector_[it]
-        if pos + limit > copy_size:
-          arraylet.fill --from=(max 0 (copy_size - pos)) --to=limit filler
+        // Sometimes from and to are reversed, which harmlessly does nothing.
+        arraylet.fill --from=(max 0 (copy_size - pos)) --to=limit filler
       else:
         arraylet = Array_ limit filler
         if pos < copy_size:
           old_arraylet := vector_[it]
           arraylet.replace 0 old_arraylet 0 (min limit (copy_size - pos))
       new_vector[it] = arraylet
-      left -= limit
-      pos += ARRAYLET_SIZE
-    assert: left == 0
+      remaining -= limit
+      pos += limit
+    assert: remaining == 0
     return LargeArray_.internal_ new_vector new_size
 
   size -> int:
@@ -1017,11 +1017,11 @@ class LargeArray_ extends Array_:
   do_ end/int [block] -> none:
     if end <= 0: return
     full_arraylets := end / ARRAYLET_SIZE
-    left := end % ARRAYLET_SIZE
+    remaining := end % ARRAYLET_SIZE
     full_arraylets.repeat:
       vector_[it].do_ ARRAYLET_SIZE block
-    if left != 0:
-      vector_[full_arraylets].do_ left block
+    if remaining != 0:
+      vector_[full_arraylets].do_ remaining block
 
   size_ /int ::= 0
   vector_ /Array_ ::= ?  // This is the array of arraylets.  It may itself be a LargeArray_!
@@ -2184,11 +2184,11 @@ abstract class HashedInsertionOrderedCollection_:
       // arrays.  This reduces GC churn and, more importantly, peak memory
       // usage.
       if index_:
-        index_ = index_.resize_for_list_ /*copy_size=*/ 0 new_index_size /*filler=*/0
+        index_ = index_.resize_for_list_ /*copy_size=*/0 new_index_size /*filler=*/0
         index_.fill 0
       else:
         index_ = Array_ new_index_size 0
-      if index_.size != new_index_size: throw "foo"
+      assert: index_.size == new_index_size
       // Rebuild the index by iterating over the backing and entering each key
       // into the index in the conventional way.  During this operation, the
       // index is big enough and the backing does not change.  The find_ operation

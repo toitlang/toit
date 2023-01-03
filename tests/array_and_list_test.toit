@@ -130,6 +130,7 @@ FILLER := 3.1415
 
 
 test_large_array_do:
+ 10.repeat:
   sizes := [ 0, 1, 499, 500, 501, 999, 1000, 1001, 9999, 10000, 10001 ]
   sizes.do: | size |
     sizes.do: | new_size |
