@@ -64,8 +64,8 @@ class BackendCollector : public ir::TraversingVisitor {
     // Some static calls target virtual methods. Some of those
     // virtual methods are never called using a virtual call, so
     // they only have a single entry in the dispatch table and
-    // no selector offset. For those methods, it is practical to
-    // be able to encode the set of classes that the method can
+    // no selector offset. For those methods, we still would like
+    // to know the set of classes that the method can
     // be called on (the holder and all subclasses), so we extend
     // the class check table to hold entries for them at the end.
     ir::Method* method = node->target()->target();
@@ -292,6 +292,9 @@ void Backend::emit_method(ir::Method* method,
       }
       int index = (*typecheck_indexes)[method->holder()];
       ASSERT(index >= 0);
+      // Negative indexes are for calls with static targets.
+      // -1 is reserved for static methods. Anything below for calls to 
+      // instance methods that are statically resolved.
       dispatch_offset = -2 - index;
     }
   }
@@ -299,7 +302,7 @@ void Backend::emit_method(ir::Method* method,
   int id = gen->assemble_method(method, dispatch_offset, is_field_accessor);
 
   if (dispatch_offset < 0) {
-    ASSERT(dispatch_offset < 0);
+    // A call with a static target.
     program_builder->set_dispatch_table_entry(dispatch_table->slot_index_for(method), id);
   } else {
     ASSERT(dispatch_offset >= 0);
