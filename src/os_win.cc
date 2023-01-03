@@ -219,6 +219,7 @@ void Thread::ensure_system_thread() {
 }
 
 void OS::set_up() {
+  SetConsoleOutputCP(65001);  // Enable UTF-8 on the terminal.
   ASSERT(sizeof(void*) == sizeof(pthread_t));
   (void) pthread_key_create(&thread_key, null);
   Thread::ensure_system_thread();
