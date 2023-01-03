@@ -102,7 +102,7 @@ void TlsEventSource::entry() {
       TlsSocket* socket = sockets_.first();
       if (socket == null) break;
 
-      word result;
+      word result = 0;
       if (!socket->needs_delayed_close()) {
         Unlocker unlocker(locker);
         result = socket->handshake();
