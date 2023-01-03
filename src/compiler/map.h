@@ -54,7 +54,7 @@ template<typename K, typename V> class Map {
     }
   }
 
-  bool contains_key(const K& key) {
+  bool contains_key(const K& key) const {
     return map_.find(key) != map_.end();
   }
 
@@ -149,6 +149,10 @@ template<typename K, typename V> class UnorderedMap {
 
   void add_all(const UnorderedMap<K, V>& other) {
     map_.insert(other.map_.begin(), other.map_.end());
+  }
+
+  bool contains_key(const K& key) const {
+    return map_.find(key) != map_.end();
   }
 
   V& operator [](const K& key) { return map_[key]; }

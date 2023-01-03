@@ -28,14 +28,14 @@ namespace ir {
   class Class;
   class Method;
   class Global;
+  class Program;
 } // namespace toit::compiler::ir
 
 typedef Selector<PlainShape> DispatchSelector;
 
 class DispatchTable {
  public:
-  static DispatchTable build(List<ir::Class*> classes,
-                             List<ir::Method*> methods);
+  static DispatchTable build(ir::Program* program);
 
   int length() const { return table_.length(); }
 
