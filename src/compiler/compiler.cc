@@ -1543,6 +1543,13 @@ toit::Program* construct_program(ir::Program* ir_program,
 }
 
 Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
+  // TODO(florian): this is hackish. We want to analyze asserts also in release mode,
+  // but then remove the code when we generate code.
+  // For now just enable asserts when we are analyzing.
+  if (configuration_.is_for_analysis) {
+    Flags::enable_asserts = true;
+  }
+
   auto fs = configuration_.filesystem;
   fs->initialize(diagnostics());
   source_paths = adjust_source_paths(source_paths);

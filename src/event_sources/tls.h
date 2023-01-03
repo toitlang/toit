@@ -31,6 +31,15 @@ class TlsSocket : public Resource, public TlsSocketList::Element {
     : Resource(resource_group) {}
 
   virtual word handshake() = 0;
+
+  // Sockets that are part of the list of sockets in the event
+  // source cannot be eagerly closed. Instead, we let the event
+  // source close them when they are no longer in the list.
+  bool needs_delayed_close() const { return needs_delayed_close_; }
+  void delay_close() { needs_delayed_close_ = true; }
+
+ private:
+  bool needs_delayed_close_ = false;
 };
 
 class TlsEventSource : public LazyEventSource, public Thread {
@@ -42,6 +51,7 @@ class TlsEventSource : public LazyEventSource, public Thread {
   virtual void on_unregister_resource(Locker& locker, Resource* r) override;
 
   void handshake(TlsSocket* socket);
+  void close(TlsSocket* socket);
 
  protected:
   friend class LazyEventSource;
