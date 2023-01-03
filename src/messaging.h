@@ -390,6 +390,7 @@ class ExternalSystemMessageHandler : private ProcessRunner {
 
   // Called by the scheduler.
   virtual Interpreter::Result run() override;
+  virtual void set_process(Process* process) override;
 };
 
 }  // namespace toit
