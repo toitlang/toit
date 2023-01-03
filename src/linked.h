@@ -347,7 +347,7 @@ class LinkedFifo : public LinkedList<T, N> {
   // Makes use of the fact that all linked elements either point to
   //   the next in the list or are the last in the list (with a null
   //   next pointer).
-  bool is_linked(T* element) {
+  bool is_linked(LinkedListElement<T, N>* element) {
     if (element->next_ != null) return true;
     return element == last();
   }
