@@ -69,13 +69,11 @@ void TlsEventSource::handshake(TlsSocket* socket) {
 
 void TlsEventSource::close(TlsSocket* socket) {
   { Locker locker(mutex());
-    for (TlsSocket* it : sockets_) {
-      if (it == socket) {
-        // Delay the close until the event source is
-        // done with the socket.
-        socket->delay_close();
-        return;
-      }
+    if (sockets_.is_linked(socket)) {
+      // Delay the close until the event source is
+      // done with the socket.
+      socket->delay_close();
+      return;
     }
   }
   socket->resource_group()->unregister_resource(socket);
@@ -83,14 +81,9 @@ void TlsEventSource::close(TlsSocket* socket) {
 
 void TlsEventSource::on_unregister_resource(Locker& locker, Resource* r) {
   ASSERT(is_locked());
-#ifdef DEBUG
   // We never close a socket that is currently in the
   // event source socket list.
-  TlsSocket* socket = r->as<TlsSocket*>();
-  for (TlsSocket* it : sockets_) {
-    ASSERT(it != socket);
-  }
-#endif
+  ASSERT(!sockets_.is_linked(r->as<TlsSocket*>()));
 }
 
 void TlsEventSource::entry() {
