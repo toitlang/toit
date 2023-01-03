@@ -404,8 +404,8 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
   std::vector<ConcreteType> arguments;
   stack->push_empty();
 
-  bool is_static = true;
   int offset = target.selector_offset();
+  bool handle_as_static = (offset == -1);
   if (offset >= 0) {
     ASSERT(arity > 0);
     TypeSet receiver = stack->local(arity);
@@ -414,32 +414,26 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
     // super calls where we cannot find the (virtual)
     // super method in the dispatch table entries for
     // the receiver because they have been overridden.
-    is_static = receiver.size(words_per_type_) <= 1;
+    handle_as_static = receiver.size(words_per_type_) <= 1;
   }
 
-  Program* program = this->program();
-  if (is_static) {
-    if (offset <= -2) {
-      ASSERT(arity > 0);
-      int index = -(offset + 2);
-      unsigned start = program->class_check_ids[2 * index];
-      unsigned end = program->class_check_ids[2 * index + 1];
-      TypeSet receiver = stack->local(arity);
-      TypeSet::Iterator it(receiver, words_per_type_);
-      while (it.has_next()) {
-        unsigned id = it.next();
-        if (id < start || id >= end) {
-          //fprintf(stderr, "-- sorting out %u - [%u, %u)\n", id, start, end);
-          continue;
-        }
-        arguments.push_back(ConcreteType(id));
-        call_method(caller, scope, site, target, arguments);
-        arguments.pop_back();
-      }
-    } else {
-      call_method(caller, scope, site, target, arguments);
-    }
+  if (handle_as_static) {
+    call_method(caller, scope, site, target, arguments);
   } else {
+    // We're handling this as a call to a virtual method,
+    // but if the offset is negative it indirectly encodes
+    // the range of classes that inherit the method from
+    // the holder class. We can find the class id limits
+    // for the range in the class check table.
+    Program* program = this->program();
+    unsigned limit_lower = 0;
+    unsigned limit_upper = 0;
+    if (offset < 0) {
+      ASSERT(offset <= -2);
+      int index = -(offset + 2);
+      limit_lower = program->class_check_ids[2 * index];
+      limit_upper = program->class_check_ids[2 * index + 1];
+    }
     // Run over all receiver type variants like we do for
     // virtual calls. If and only if the target method
     // can be looked up on the receiver we analyze the case.
@@ -450,15 +444,20 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
     TypeSet::Iterator it(receiver, words_per_type_);
     while (it.has_next()) {
       unsigned id = it.next();
-      int entry_index = id + offset;
-      int entry_id = program->dispatch_table[entry_index];
-      // If the type propagator knows less about the types we
-      // can encounter than the compiler, we risk loading
-      // from areas of the dispatch table the compiler didn't
-      // anticipate. Guard against that.
-      if (entry_id < 0) continue;
-      Method entry = Method(program->bytecodes, entry_id);
-      if (entry.header_bcp() != target.header_bcp()) continue;
+      if (offset >= 0) {
+        int entry_index = id + offset;
+        int entry_id = program->dispatch_table[entry_index];
+        // If the type propagator knows less about the types we
+        // can encounter than the compiler, we risk loading
+        // from areas of the dispatch table the compiler didn't
+        // anticipate. Guard against that.
+        if (entry_id < 0) continue;
+        Method entry = Method(program->bytecodes, entry_id);
+        if (entry.header_bcp() != target.header_bcp()) continue;
+      } else if (id < limit_lower || id >= limit_upper) {
+        // Skip ids that are outside the limits.
+        continue;
+      }
       arguments.push_back(ConcreteType(id));
       call_method(caller, scope, site, target, arguments);
       arguments.pop_back();

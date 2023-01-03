@@ -427,12 +427,16 @@ void DispatchTableBuilder::handle_classes(List<Class*> classes, int static_metho
     if (method->index_is_set()) continue;
     method->set_index(i);
   }
+
   // Now go through all methods again, and see if some of them aren't yet in
-  // the table.
+  // the table. For uninstantiated holder classes, the methods we are looking
+  // for are the ones reachable through super-class calls. For instantiated
+  // holder classes, the methods that aren't in the table yet are those always
+  // called through static calls because of our optimizations that turn
+  // virtual calls into static ones.
   int table_index = 0;
   int extra_method_count = 0;
   for (auto klass : classes) {
-    //if (klass->is_instantiated()) continue;
     for (auto method : klass->methods()) {
       if (method->index_is_set()) continue;
       extra_method_count++;
@@ -554,9 +558,9 @@ void DispatchTable::for_each_slot_index(const Method* member,
     }
   } else {
     // If the member's slot index is not in the selector's range, then the
-    //   holder is not instantiated, and the member was treated like a static (for
-    //   super calls).
-    //ASSERT(!holder->is_instantiated());
+    // member was treated like a static. We use this for super calls and
+    // for optimized virtual calls, so this can happen with both instantiated
+    // and uninstantiated holder classes.
     callback(member_slot_index);
   }
 }

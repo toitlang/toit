@@ -39,6 +39,9 @@ ENTRY_POINTS(E)
 
 class BackendCollector : public ir::TraversingVisitor {
  public:
+  explicit BackendCollector(DispatchTable* dispatch_table)
+      : dispatch_table_(dispatch_table) {}
+
   void visit_Code(ir::Code* node) {
     TraversingVisitor::visit_Code(node);
     max_captured_count_ = std::max(max_captured_count_, node->captured_count());
@@ -58,12 +61,24 @@ class BackendCollector : public ir::TraversingVisitor {
 
   void visit_CallStatic(ir::CallStatic* node) {
     TraversingVisitor::visit_CallStatic(node);
+    // Some static calls target virtual methods. Some of those
+    // virtual methods are never called using a virtual call, so
+    // they only have a single entry in the dispatch table and
+    // no selector offset. For those methods, it is practical to
+    // be able to encode the set of classes that the method can
+    // be called on (the holder and all subclasses), so we extend
+    // the class check table to hold entries for them at the end.
     ir::Method* method = node->target()->target();
     if (method->is_static()) return;
+    // Check if the dispatch table has an offset for the selector.
+    // If so, the method is already in a fitted row and we don't
+    // need to handle it here.
+    Selector<PlainShape> selector(method->name(), method->plain_shape());
+    if (dispatch_table_->dispatch_offset_for(selector) >= 0) return;
+    // Make sure we get a class check table entry for the holder.
     ir::Class* holder = method->holder();
-    if (class_usage_counts_.find(holder) == class_usage_counts_.end()) {
-      class_usage_counts_[holder] = 0;
-    }
+    if (class_usage_counts_.contains_key(holder)) return;
+    class_usage_counts_[holder] = 0;
   }
 
   int max_captured_count() const { return max_captured_count_; }
@@ -81,6 +96,7 @@ class BackendCollector : public ir::TraversingVisitor {
   }
 
  private:
+  DispatchTable* const dispatch_table_;
   int max_captured_count_ = 0;
 
   Map<ir::Class*, int> class_usage_counts_;
@@ -157,7 +173,7 @@ Program* Backend::emit(ir::Program* ir_program) {
   program_builder.create_dispatch_table(dispatch_table.length());
 
   // Find the classes and interfaces for which we have a shortcut when doing as-checks.
-  BackendCollector collector;
+  BackendCollector collector(&dispatch_table);
   collector.visit(ir_program);
   int max_captured_count = collector.max_captured_count();
   // Get the sorted classes and interface selectors.
@@ -246,24 +262,27 @@ void Backend::emit_method(ir::Method* method,
                           UnorderedMap<ir::Class*, int>* typecheck_indexes,
                           DispatchTable* dispatch_table,
                           ProgramBuilder* program_builder) {
-  int dispatch_offset = -1;
-  bool is_field_accessor = false;
-  if (!method->is_static()) {
+  int dispatch_offset;
+  bool is_field_accessor;
+
+  if (method->is_static()) {
+    dispatch_offset = -1;
+    is_field_accessor = false;
+  } else {
     ASSERT(method->holder() != null);
     Selector<PlainShape> selector(method->name(), method->plain_shape());
-    dispatch_offset = dispatch_table->dispatch_offset_for(selector);
+    int table_offset = dispatch_table->dispatch_offset_for(selector);
     is_field_accessor = method->is_FieldStub()
         && !method->as_FieldStub()->is_throwing()
         && !method->as_FieldStub()->is_checking_setter();
 
-    if (dispatch_offset < 0) {
-      // encode holder ...
-      // -1 | static
-      // -2 | holder
-      if (typecheck_indexes->find(method->holder()) == typecheck_indexes->end()) {
-        fprintf(stderr, "[%s: no index]\n", method->holder()->name().c_str());
-      }
+    if (table_offset >= 0) {
+      dispatch_offset = table_offset;
+    } else {
+      ASSERT(table_offset == -1);
+      ASSERT(typecheck_indexes->contains_key(method->holder()));
       int index = (*typecheck_indexes)[method->holder()];
+      ASSERT(index >= 0);
       dispatch_offset = -2 - index;
     }
   }
