@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include <limits.h>
+
 #include "no_such_method.h"
 
 #include "resolver_scope.h"
@@ -59,9 +61,9 @@ static void report_no_such_method(List<ir::Node*> candidates,
   bool no_candidates_take_a_named_arg = true;
   int selector_blocks = selector.shape().unnamed_block_count();
   int selector_args = selector.shape().unnamed_non_block_count() - (is_static ? 0 : 1);
-  int min_blocks = 1000000;
+  int min_blocks = INT_MAX;
   int max_blocks = -1;
-  int min_args = 1000000;
+  int min_args = INT_MAX;
   int max_args = -1;
 
   static const int ANY_NAME                    = 1;     // Name that at least one candidate allows.
