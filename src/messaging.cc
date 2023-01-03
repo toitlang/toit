@@ -736,7 +736,7 @@ bool ExternalSystemMessageHandler::start(int priority) {
   ASSERT(process_ == null);
   Process* process = vm_->scheduler()->run_external(this);
   if (process == null) return false;
-  process_ = process;
+  ASSERT(process_ == process);
   if (priority >= 0) set_priority(Utils::min(priority, 0xff));
   return true;
 }
@@ -774,9 +774,14 @@ bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int lengt
   SystemMessage* system_message = _new SystemMessage(type, process_->group()->id(), process_->id(), &encoder);
   if (system_message == null) return false;
 
-  // Can only fail if the pid is invalid.
-  scheduler_err_t result = vm_->scheduler()->send_message(pid, system_message);
-  return result == MESSAGE_OK;
+  // Sending the message can only fail if the pid is invalid.
+  scheduler_err_t result = vm_->scheduler()->send_message(pid, system_message, free_on_failure);
+  bool success = result == MESSAGE_OK;
+  if (!success && !free_on_failure) {
+    system_message->free_data_but_keep_externals();
+    delete system_message;
+  }
+  return success;
 }
 
 Interpreter::Result ExternalSystemMessageHandler::run() {
@@ -810,6 +815,11 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
       }
     }
   }
+}
+
+void ExternalSystemMessageHandler::set_process(Process* process) {
+  ASSERT(process_ == null);
+  process_ = process;
 }
 
 void ExternalSystemMessageHandler::collect_garbage(bool try_hard) {

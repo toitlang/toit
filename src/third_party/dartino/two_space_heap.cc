@@ -160,6 +160,17 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
     Locker locker(ObjectMemory::spare_chunk_mutex());
     Chunk* spare_chunk = ObjectMemory::spare_chunk(locker);
 
+    // Try to move new-spaces down in memory.
+    Chunk* new_spare_chunk = ObjectMemory::allocate_chunk(null, TOIT_PAGE_SIZE);
+    if (new_spare_chunk) {
+      if (new_spare_chunk < spare_chunk) {
+        ObjectMemory::free_chunk(spare_chunk);
+        spare_chunk = new_spare_chunk;
+      } else {
+        ObjectMemory::free_chunk(new_spare_chunk);
+      }
+    }
+
     ScavengeVisitor visitor(program_, this, spare_chunk);
     SemiSpace* to = visitor.to_space();
     to->start_scavenge();
