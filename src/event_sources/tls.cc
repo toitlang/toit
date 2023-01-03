@@ -67,10 +67,30 @@ void TlsEventSource::handshake(TlsSocket* socket) {
   OS::signal(sockets_changed_);
 }
 
+void TlsEventSource::close(TlsSocket* socket) {
+  { Locker locker(mutex());
+    for (TlsSocket* it : sockets_) {
+      if (it == socket) {
+        // Delay the close until the event source is
+        // done with the socket.
+        socket->delay_close();
+        return;
+      }
+    }
+  }
+  socket->resource_group()->unregister_resource(socket);
+}
+
 void TlsEventSource::on_unregister_resource(Locker& locker, Resource* r) {
   ASSERT(is_locked());
+#ifdef DEBUG
+  // We never close a socket that is currently in the
+  // event source socket list.
   TlsSocket* socket = r->as<TlsSocket*>();
-  sockets_.remove(socket);
+  for (TlsSocket* it : sockets_) {
+    ASSERT(it != socket);
+  }
+#endif
 }
 
 void TlsEventSource::entry() {
@@ -79,14 +99,27 @@ void TlsEventSource::entry() {
 
   while (!stop_) {
     while (true) {
-      TlsSocket* socket = sockets_.remove_first();
+      TlsSocket* socket = sockets_.first();
       if (socket == null) break;
 
-      // Keep locker while handshake is going on, to avoid conflicting remove.
-      // If we want to better support multiple concurrent handshakes, this
-      // can be further optimized but will be quite complex.
-      word result = socket->handshake();
-      dispatch(locker, socket, result);
+      word result;
+      if (!socket->needs_delayed_close()) {
+        Unlocker unlocker(locker);
+        result = socket->handshake();
+      }
+
+      // We maintain a simple invariant: We never close a socket
+      // that is currently in the event source socket list. Remove
+      // the socket now, so that the call to unregister will be
+      // reached in the right state.
+      sockets_.remove_first();
+
+      if (socket->needs_delayed_close()) {
+        Unlocker unlocker(locker);
+        socket->resource_group()->unregister_resource(socket);
+      } else {
+        dispatch(locker, socket, result);
+      }
     }
 
     OS::wait(sockets_changed_);
