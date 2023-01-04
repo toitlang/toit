@@ -775,6 +775,12 @@ jobs:
       - name: Update AUR package
         shell: bash
         run: |
+          # Toit's PKGBUILD is a bit special in that we don't download
+          # a tarball (since those don't contain submodules), but instead
+          # use Git to get the source code.
+          # For security, we store the hash of the commit in the PKGBUILD,
+          # which is why we run a custom 'update_hash.sh' script.
+          # This is the reason we can't just use the 'archlinux-package-action'.
           cd toit
           sed -i "s/_tag=.*/_tag=\"${{ env.version }}\"/g" PKGBUILD
           sed -i "s/pkgrel=.*/pkgrel=1/g" PKGBUILD
