@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 
+#include "aot.h"
 #include "compiler.h"
 #include "diagnostic.h"
 #include "definite.h"
@@ -123,7 +124,7 @@ class Pipeline {
   explicit Pipeline(const PipelineConfiguration& configuration)
       : configuration_(configuration) {}
 
-  Result run(List<const char*> source_paths, bool propagate);
+  Result run(List<const char*> source_paths, bool propagate, bool aot);
 
  protected:
   virtual Source* _load_file(const char* path, const PackageLock& package_lock);
@@ -452,7 +453,7 @@ void Compiler::lsp_complete(const char* source_path,
                             const PipelineConfiguration& configuration) {
   ASSERT(configuration.diagnostics != null);
   CompletionPipeline pipeline(source_path, line_number, column_number, configuration);
-  pipeline.run(ListBuilder<const char*>::build(source_path), false);
+  pipeline.run(ListBuilder<const char*>::build(source_path), false, false);
 }
 
 void Compiler::lsp_goto_definition(const char* source_path,
@@ -462,14 +463,14 @@ void Compiler::lsp_goto_definition(const char* source_path,
   ASSERT(configuration.diagnostics != null);
   GotoDefinitionPipeline pipeline(source_path, line_number, column_number, configuration);
 
-  pipeline.run(ListBuilder<const char*>::build(source_path), false);
+  pipeline.run(ListBuilder<const char*>::build(source_path), false, false);
 }
 
 void Compiler::lsp_analyze(List<const char*> source_paths,
                            const PipelineConfiguration& configuration) {
   ASSERT(configuration.diagnostics != null);
   LanguageServerPipeline pipeline(configuration);
-  pipeline.run(source_paths, false);
+  pipeline.run(source_paths, false, false);
 }
 
 void Compiler::lsp_snapshot(const char* source_path,
@@ -489,7 +490,7 @@ void Compiler::lsp_semantic_tokens(const char* source_path,
   configuration.lsp->set_should_emit_semantic_tokens(true);
   ASSERT(configuration.diagnostics != null);
   LanguageServerPipeline pipeline(configuration);
-  pipeline.run(ListBuilder<const char*>::build(source_path), false);
+  pipeline.run(ListBuilder<const char*>::build(source_path), false, false);
 }
 
 static bool _sorted_by_inheritance(List<ir::Class*> classes) {
@@ -554,7 +555,7 @@ void Compiler::analyze(List<const char*> source_paths,
     .optimization_level = compiler_config.optimization_level,
   };
   Pipeline pipeline(configuration);
-  pipeline.run(source_paths, false);
+  pipeline.run(source_paths, false, false);
 }
 
 #ifdef TOIT_POSIX
@@ -705,10 +706,10 @@ SnapshotBundle Compiler::compile(const char* source_path,
       exit(1);
     }
     Pipeline main_pipeline(main_configuration);
-    pipeline_main_result = main_pipeline.run(source_paths, Flags::propagate);
+    pipeline_main_result = main_pipeline.run(source_paths, Flags::propagate, Flags::aot);
     if (pipeline_main_result.is_valid()) {
       DebugCompilationPipeline debug_pipeline(debug_configuration);
-      pipeline_debug_result = debug_pipeline.run(source_paths, false);
+      pipeline_debug_result = debug_pipeline.run(source_paths, false, false);
     }
   } else {
 #ifdef TOIT_POSIX
@@ -726,11 +727,11 @@ SnapshotBundle Compiler::compile(const char* source_path,
       close(read_fd);
 
       Pipeline pipeline(main_configuration);
-      auto pipeline_result = pipeline.run(source_paths, Flags::propagate);
+      auto pipeline_result = pipeline.run(source_paths, Flags::propagate, Flags::aot);
       send_pipeline_result(write_fd, pipeline_result);
       if (pipeline_result.is_valid()) {
         DebugCompilationPipeline debug_pipeline(debug_configuration);
-        pipeline_result = debug_pipeline.run(source_paths, false);
+        pipeline_result = debug_pipeline.run(source_paths, false, false);
         send_pipeline_result(write_fd, pipeline_result);
       }
       close(write_fd);
@@ -1542,7 +1543,7 @@ toit::Program* construct_program(ir::Program* ir_program,
   return program;
 }
 
-Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
+Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate, bool aot) {
   // TODO(florian): this is hackish. We want to analyze asserts also in release mode,
   // but then remove the code when we generate code.
   // For now just enable asserts when we are analyzing.
@@ -1648,10 +1649,15 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     delete types;
   }
 
-  if (propagate) {
+  if (propagate || aot) {
     TypeDatabase* types = TypeDatabase::compute(program);
-    auto json = types->as_json();
-    printf("%s", json.c_str());
+    if (aot) {
+      compile_to_cc(types);
+    }
+    if (propagate) {
+      auto json = types->as_json();
+      printf("%s", json.c_str());
+    }
     delete types;
   }
 

@@ -38,6 +38,8 @@ class TypeDatabase {
   static TypeDatabase* compute(Program* program);
   ~TypeDatabase();
 
+  Program* program() const { return program_; }
+
   const std::vector<Method> methods() const;
   const std::vector<TypeSet> arguments(Method method) const;
   const TypeSet usage(int position) const;

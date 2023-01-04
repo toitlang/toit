@@ -50,6 +50,7 @@ namespace toit {
   FLAG_BOOL(deploy,  dhcp,                  false, "Use DHCP (only LWIP-on-Linux")  \
   FLAG_BOOL(deploy,  no_fork,               _NO_FORK, "Don't fork the compiler")    \
   FLAG_BOOL(deploy,  propagate,             false, "Propagate types")               \
+  FLAG_BOOL(deploy,  aot,                   false, "Compiler to C++ code")          \
   FLAG_BOOL(debug,   trace,                 false, "Trace interpreter")             \
   FLAG_BOOL(debug,   primitives,            false, "Trace primitives")              \
   FLAG_BOOL(deploy,  tracegc,               TRACE_GC, "Trace garbage collector")    \
