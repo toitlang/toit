@@ -845,12 +845,8 @@ abstract class Array_ extends List:
   // Optimized helper method for iterating over the array elements.
   abstract do_ end/int [block] -> none
 
-  /** Create a new array, copying up to old_length elements from this array. */
-  resize_for_list_ old_length/int new_length/int -> Array_:
-    result := Array_ new_length
-    for i := 0; i < old_length and i < new_length; i++:
-      result[i] = this[i]
-    return result
+  /// Create a new array, copying up to $copy_size elements from this array.
+  abstract resize_for_list_ copy_size/int new_size/int filler -> Array_
 
   /**
   Returns the given $collection as an $Array_.
@@ -914,15 +910,18 @@ class SmallArray_ extends Array_:
       // argument. We force this to throw by doing the same here.
       block.call this[0]
 
-  /// Creates a new array of size $new_length, copying up to $old_length elements from this array.
-  resize_for_list_ old_length/int new_length/int -> Array_:
+  /// Creates a new array of size $new_size, copying up to $copy_size elements from this array.
+  resize_for_list_ copy_size/int new_size/int filler -> Array_:
     #primitive.core.array_expand:
       // Fallback if the primitive fails.  For example, the primitive can only
       // create SmallArray_ so we hit this on the border between SmallArray_
       // and LargeArray_.
-      if old_length == LargeArray_.ARRAYLET_SIZE:
-        return LargeArray_.with_arraylet_ this new_length
-      return super old_length new_length
+
+      result := Array_ new_size filler
+      limit := min copy_size new_size
+      for i := 0; i < limit; i++:
+        result[i] = this[i]
+      return result
 
   replace index/int source from/int to/int -> none:
     #primitive.core.array_replace:
@@ -944,13 +943,14 @@ class LargeArray_ extends Array_:
     return LargeArray_ size null
 
   constructor .size_/int filler/any:
+    if size_ <= ARRAYLET_SIZE: throw "OUT_OF_RANGE"
     full_arraylets := size_ / ARRAYLET_SIZE
-    left := size_ % ARRAYLET_SIZE
-    if left == 0:
+    remaining := size_ % ARRAYLET_SIZE
+    if remaining == 0:
       vector_ = Array_ full_arraylets
     else:
       vector_ = Array_ full_arraylets + 1
-      vector_[full_arraylets] = Array_ left filler
+      vector_[full_arraylets] = Array_ remaining filler
     full_arraylets.repeat:
       vector_[it] = Array_ ARRAYLET_SIZE filler
     // TODO(florian): remove this hack.
@@ -970,25 +970,32 @@ class LargeArray_ extends Array_:
     vector_[1] = Array_ new_size - ARRAYLET_SIZE
     super.from_subclass_
 
-  // An expand that uses the backing arraylets from the old array.  Used by List.
-  resize_for_list_ old_size/int new_size/int:
+  // An expansion or shrinking that uses the backing arraylets from the old
+  // array.  Used by List, Set, and Map.
+  resize_for_list_ copy_size/int new_size/int filler:
     // Rounding up division.
     number_of_arraylets := ((new_size - 1) / ARRAYLET_SIZE) + 1
-    new_vector := Array_ number_of_arraylets
-    left := new_size
+    if number_of_arraylets == 1:
+      return vector_[0].resize_for_list_ copy_size new_size filler
+    new_vector := Array_ number_of_arraylets  // new_vector may be a LargeArray_!
+    remaining := new_size
+    pos := 0
     number_of_arraylets.repeat:
-      if (it + 1) * ARRAYLET_SIZE <= old_size:
-        new_vector[it] = vector_[it]
-        left -= ARRAYLET_SIZE
+      arraylet := ?
+      limit := min remaining ARRAYLET_SIZE
+      if pos + limit <= size:
+        arraylet = vector_[it]
+        // Sometimes from and to are reversed, which harmlessly does nothing.
+        arraylet.fill --from=(max 0 (copy_size - pos)) --to=limit filler
       else:
-        limit := min left ARRAYLET_SIZE
-        arraylet := Array_ limit
-        new_vector[it] = arraylet
-        if it * ARRAYLET_SIZE < old_size:
+        arraylet = Array_ limit filler
+        if pos < copy_size:
           old_arraylet := vector_[it]
-          arraylet.replace 0 old_arraylet 0 (old_size % ARRAYLET_SIZE)
-        left -= limit
-    assert: left == 0
+          arraylet.replace 0 old_arraylet 0 (min limit (copy_size - pos))
+      new_vector[it] = arraylet
+      remaining -= limit
+      pos += limit
+    assert: remaining == 0
     return LargeArray_.internal_ new_vector new_size
 
   size -> int:
@@ -1010,14 +1017,14 @@ class LargeArray_ extends Array_:
   do_ end/int [block] -> none:
     if end <= 0: return
     full_arraylets := end / ARRAYLET_SIZE
-    left := end % ARRAYLET_SIZE
+    remaining := end % ARRAYLET_SIZE
     full_arraylets.repeat:
       vector_[it].do_ ARRAYLET_SIZE block
-    if left != 0:
-      vector_[full_arraylets].do_ left block
+    if remaining != 0:
+      vector_[full_arraylets].do_ remaining block
 
   size_ /int ::= 0
-  vector_ /Array_ ::= ?
+  vector_ /Array_ ::= ?  // This is the array of arraylets.  It may itself be a LargeArray_!
 
 /**
 A container specialized for bytes.
@@ -1762,12 +1769,12 @@ class List_ extends List:
           : (round_up (array_size + 1 + (array_size >> 4)) LargeArray_.ARRAYLET_SIZE)
         if new_array_size < LIST_INITIAL_LENGTH_: new_array_size = LIST_INITIAL_LENGTH_
         while new_array_size < new_size: new_array_size += 1 + (new_array_size >> 1)
-        array_ = array_.resize_for_list_ size_ new_array_size
+        array_ = array_.resize_for_list_ size_ new_array_size null
 
       size_ = new_size
     else:
       if new_size < array_.size - LargeArray_.ARRAYLET_SIZE:
-        array_ = array_.resize_for_list_ size_ (round_up new_size LargeArray_.ARRAYLET_SIZE)
+        array_ = array_.resize_for_list_ size_ (round_up new_size LargeArray_.ARRAYLET_SIZE) null
       // Clear entries so they can be GC'ed.
       limit := min size_ array_.size
       for i := new_size; i < limit; i++:
@@ -2011,7 +2018,8 @@ abstract class HashedInsertionOrderedCollection_:
   //   initial slot in the index.  Since sizes are a power of 2 we merely take
   //   the modulus of the size, which can be done by bitwise and-ing with the
   //   size - 1.
-  pick_new_index_size_ old_size --allow_shrink/bool:
+  // Returns the new index size.
+  pick_new_index_size_ old_size --allow_shrink/bool -> int:
     minimum := allow_shrink ? 2 : index_.size * 2
     enough := 1 + old_size + (old_size >> 3)  // old_size * 1.125.
     new_index_size := max
@@ -2021,7 +2029,7 @@ abstract class HashedInsertionOrderedCollection_:
     index_spaces_left_ = (new_index_size * 0.85).to_int
     if index_spaces_left_ <= old_size: index_spaces_left_ = old_size + 1
     // Found large enough index size.
-    index_ = Array_ new_index_size 0
+    return new_index_size
 
   /// We store this much of the hash code in each slot.
   static HASH_MASK_ ::= 0xfff
@@ -2168,10 +2176,19 @@ abstract class HashedInsertionOrderedCollection_:
           backing_[i++] = it
       length := size_ * step
       backing_.resize size_ * step
-    old_index := index_
-    pick_new_index_size_ old_size --allow_shrink=allow_shrink
-    index_mask := index_.size - 1
-    if not old_index or index_mask > HASH_MASK_ or rebuild_backing:
+    new_index_size := pick_new_index_size_ old_size --allow_shrink=allow_shrink
+    index_mask := new_index_size - 1
+    if not index_ or index_mask > HASH_MASK_ or rebuild_backing:
+      // Rebuild the index using the backing array.
+      // By using resize_for_list_ we reuse the arraylets when growing large
+      // arrays.  This reduces GC churn and, more importantly, peak memory
+      // usage.
+      if index_:
+        index_ = index_.resize_for_list_ /*copy_size=*/0 new_index_size /*filler=*/0
+        index_.fill 0
+      else:
+        index_ = Array_ new_index_size 0
+      assert: index_.size == new_index_size
       // Rebuild the index by iterating over the backing and entering each key
       // into the index in the conventional way.  During this operation, the
       // index is big enough and the backing does not change.  The find_ operation
@@ -2189,9 +2206,12 @@ abstract class HashedInsertionOrderedCollection_:
             false_block
           assert: action == APPEND_
     else:
-      // We can do an simple rebuild.  There are enough hash bits in the index
-      // slots to tell us where the slot goes in the new index, so we don't need
-      // to call hash_code or equality for the entries in the backing.
+      // We can do an simple index rebuild from the old index.  There are
+      // enough hash bits in the index slots to tell us where the slot goes in
+      // the new index, so we don't need to call hash_code or equality for the
+      // entries in the backing.
+      old_index := index_
+      index_ = Array_ new_index_size 0
       index_spaces_left_ -= size_
       simple_rebuild_hash_index_ old_index index_
 
