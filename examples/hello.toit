@@ -3,4 +3,5 @@
 // be found in the examples/LICENSE file.
 
 main:
+  return 0
   print "Hello, World!"
