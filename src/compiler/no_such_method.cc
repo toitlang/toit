@@ -66,29 +66,32 @@ static void report_no_such_method(List<ir::Node*> candidates,
   int min_args = INT_MAX;
   int max_args = -1;
 
-  static const int ANY_NAME                    = 1;     // Name that at least one candidate allows.
-  static const int ANY_BLOCK_NAME              = 2;
-  static const int EVERY_NAME                  = 4;     // Name that every candidate allows.
-  static const int EVERY_BLOCK_NAME            = 8;
-  static const int REQUIRED_NAME               = 0x10;  // Name that every candidate requires.
-  static const int REQUIRED_BLOCK_NAME         = 0x20;  // Unused in the source.
-  static const int CURRENT_NAME                = 0x40;
-  static const int CURRENT_BLOCK_NAME          = 0x80;
-  static const int CURRENT_REQUIRED_NAME       = 0x100;
-  static const int CURRENT_REQUIRED_BLOCK_NAME = 0x200;
-  static const int CURRENT_FLAGS               = 0x3c0;
+  enum NameMask {
+      NO_NAME                     = 0,
+      ANY_NAME                    = 1,     // Name that at least one candidate allows.
+      ANY_BLOCK_NAME              = 2,
+      EVERY_NAME                  = 4,     // Name that every candidate allows.
+      EVERY_BLOCK_NAME            = 8,
+      REQUIRED_NAME               = 0x10,  // Name that every candidate requires.
+      REQUIRED_BLOCK_NAME         = 0x20,  // Unused in the source.
+      CURRENT_NAME                = 0x40,
+      CURRENT_BLOCK_NAME          = 0x80,
+      CURRENT_REQUIRED_NAME       = 0x100,
+      CURRENT_REQUIRED_BLOCK_NAME = 0x200,
+      CURRENT_FLAGS               = 0x3c0,
+  };
   Map<Symbol, int> candidate_names;  // The names that are in the candidates.
 
   static const int NAME = 1;
   static const int BLOCK_NAME = 2;
-  Map<Symbol, int> call_site_names;  // The names that are in call site.
+  Map<Symbol, int> call_site_names;  // The names that are used at the call site.
 
   int index = 0;
   for (auto symbol : selector.shape().names()) {
     call_site_names.set(symbol, selector.shape().is_block_name(index) ? BLOCK_NAME : NAME);
     index++;
   }
-  int total_candidates = 0;
+  bool is_first_candidate = true;
   for (auto node : candidates) {
     if (node == ClassScope::SUPER_CLASS_SEPARATOR || !node->is_Method()) continue;
     // Zero the flags for the current candidate.
@@ -98,7 +101,7 @@ static void report_no_such_method(List<ir::Node*> candidates,
     for (int i = 0; i < shape.names().length(); i++) {
       auto symbol = shape.names()[i];
       if (!candidate_names.contains_key(symbol)) {
-        candidate_names.set(symbol, 0);
+        candidate_names.set(symbol, NO_NAME);
       }
       bool is_required = !shape.optional_names()[i];
       if (shape.is_block_name(i)) {
@@ -110,17 +113,18 @@ static void report_no_such_method(List<ir::Node*> candidates,
       }
     }
     // Now that we did all names of the candidate, update the flags.
+    // When shift == 1 then the 'block' version of the name is updated.
     for (int shift = 0; shift < 2; shift++) {
       for (auto symbol : candidate_names.keys()) {
         if ((candidate_names[symbol] & (CURRENT_NAME << shift)) != 0) {
           candidate_names[symbol] |= (ANY_NAME << shift);
-          if (total_candidates == 0) {
+          if (is_first_candidate) {
             candidate_names[symbol] |= (EVERY_NAME << shift);
           }
         } else {
           candidate_names[symbol] &= ~(EVERY_NAME << shift);
         }
-        if (total_candidates == 0) {
+        if (is_first_candidate) {
           if ((candidate_names[symbol] & (CURRENT_REQUIRED_NAME << shift)) != 0) {
             candidate_names[symbol] |= (REQUIRED_NAME << shift);
           }
@@ -152,7 +156,7 @@ static void report_no_such_method(List<ir::Node*> candidates,
     if (shape.named_non_block_count() != 0) {
       no_candidates_take_a_named_arg = false;
     }
-    total_candidates++;
+    is_first_candidate = false;
   }
   bool too_few_unnamed_args = selector_args < min_args;
   bool too_many_unnamed_args = selector_args > max_args;
@@ -267,7 +271,12 @@ static void report_no_such_method(List<ir::Node*> candidates,
     for (auto symbol : candidate_names.keys()) {
       if ((candidate_names[symbol] & (EVERY_NAME | EVERY_BLOCK_NAME)) != 0) {
         if (!call_site_names.contains_key(symbol)) {
-          helpful_note += "\n" "Valid named arguments include '--";
+          if (!added_not_provided_note) {
+            helpful_note += "\n" "Valid named arguments include";
+          } else {
+            helpful_note += ",";
+          }
+          helpful_note += " '--";
           helpful_note += symbol.c_str();
           helpful_note += "'";
           added_not_provided_note = true;

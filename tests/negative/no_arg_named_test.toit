@@ -5,6 +5,7 @@
 main:
   must --no
   foo --foo
+  foo2 --foo
   fizz
   fish
   block_foo --foo=0
@@ -14,6 +15,8 @@ main:
 must --have:
 
 foo --bar=null:
+
+foo2 --bar=null --bar2=null:
 
 fizz --bar=0 --baz:
 

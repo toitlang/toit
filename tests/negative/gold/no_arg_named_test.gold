@@ -8,24 +8,29 @@ No argument named '--foo'
 Valid named arguments include '--bar'
   foo --foo
   ^~~
-tests/negative/no_arg_named_test.toit:8:3: error: Argument mismatch for 'fizz'
+tests/negative/no_arg_named_test.toit:8:3: error: Argument mismatch for 'foo2'
+No argument named '--foo'
+Valid named arguments include '--bar', '--bar2'
+  foo2 --foo
+  ^~~~
+tests/negative/no_arg_named_test.toit:9:3: error: Argument mismatch for 'fizz'
 Valid named arguments include '--bar'
 Some overloads also allow arguments named '--baz'
   fizz
   ^~~~
-tests/negative/no_arg_named_test.toit:9:3: error: Argument mismatch for 'fish'
+tests/negative/no_arg_named_test.toit:10:3: error: Argument mismatch for 'fish'
 Some overloads allow arguments named '--hest', '--fisk'
   fish
   ^~~~
-tests/negative/no_arg_named_test.toit:10:3: error: Argument mismatch for 'block_foo'
+tests/negative/no_arg_named_test.toit:11:3: error: Argument mismatch for 'block_foo'
 The argument '--foo' was passed with non-block type, but must be block
   block_foo --foo=0
   ^~~~~~~~~
-tests/negative/no_arg_named_test.toit:11:3: error: Argument mismatch for 'non_block_foo'
+tests/negative/no_arg_named_test.toit:12:3: error: Argument mismatch for 'non_block_foo'
 The argument '--foo' was passed with block type, but must be non-block
   non_block_foo --foo=(: 0)
   ^~~~~~~~~~~~~
-tests/negative/no_arg_named_test.toit:12:3: error: Argument mismatch for 'block_unnamed'
+tests/negative/no_arg_named_test.toit:13:3: error: Argument mismatch for 'block_unnamed'
 Method does not take any non-block arguments, but one was provided
   block_unnamed 0
   ^~~~~~~~~~~~~
