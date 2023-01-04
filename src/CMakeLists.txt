@@ -261,7 +261,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     ${BOOT_SNAPSHOT_SOURCE}
     ${BOOT_SNAPSHOT}
     ${CMAKE_CURRENT_BINARY_DIR}/boot.dep
-    "ASAN_OPTIONS=detect_leaks=false"
+    ""
   )
 
   if (DEFINED USE_LWIP)

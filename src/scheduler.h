@@ -105,12 +105,7 @@ class Scheduler {
   // Send message to the process by id. Returns an error code to signal whether the message was delivered.
   // Takes over the message (should not be freed on success or failure).
   // This only fails if the process id is invalid there are no retryable (allocation related) failures.
-  scheduler_err_t send_message(ProcessGroup* group, int process_id, Message* message);
-
-  // Send message to the process by id. Returns an error code to signal whether the message was delivered.
-  // Takes over the message (should not be freed on success or failure).
-  // This only fails if the process id is invalid there are no retryable (allocation related) failures.
-  scheduler_err_t send_message(int process_id, Message* message);
+  scheduler_err_t send_message(int process_id, Message* message, bool free_on_failure = true);
 
   // Send notify message.
   void send_notify_message(ObjectNotifier* notifier);
