@@ -774,9 +774,14 @@ bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int lengt
   SystemMessage* system_message = _new SystemMessage(type, process_->group()->id(), process_->id(), &encoder);
   if (system_message == null) return false;
 
-  // Can only fail if the pid is invalid.
-  scheduler_err_t result = vm_->scheduler()->send_message(pid, system_message);
-  return result == MESSAGE_OK;
+  // Sending the message can only fail if the pid is invalid.
+  scheduler_err_t result = vm_->scheduler()->send_message(pid, system_message, free_on_failure);
+  bool success = result == MESSAGE_OK;
+  if (!success && !free_on_failure) {
+    system_message->free_data_but_keep_externals();
+    delete system_message;
+  }
+  return success;
 }
 
 Interpreter::Result ExternalSystemMessageHandler::run() {

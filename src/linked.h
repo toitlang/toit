@@ -32,13 +32,17 @@ class LinkedListElement {
   LinkedListElement() : next_(null) {}
 
   ~LinkedListElement() {
-    ASSERT(is_not_linked());
+    ASSERT(is_maybe_unlinked());
   }
 
  protected:
   // For asserts, a conservative assertion that the element is not linked in a
-  // list (but it might be last).
-  bool is_not_linked() const {
+  //   list.
+  // Warning: Incorrectly returns true on the last item in the list even if it
+  //   is linked.  But see LinkedFifo::is_linked which gets this right for a
+  //   singly linked list and DoubleLinkedList::is_linked which gets it right
+  //   for a doubly linked list.
+  bool is_maybe_unlinked() const {
     return next_ == null;
   }
 
@@ -335,6 +339,17 @@ class LinkedFifo : public LinkedList<T, N> {
   inline T* last() const {
     if (this->is_empty()) return null;
     return tail_->container();
+  }
+
+  // Return whether or not the given element is in a linked list.
+  // May return the wrong answer if it is in a linked list, but not this
+  //   particular linked list.
+  // Makes use of the fact that all linked elements either point to
+  //   the next in the list or are the last in the list (with a null
+  //   next pointer).
+  bool is_linked(LinkedListElement<T, N>* element) {
+    if (element->next_ != null) return true;
+    return element == last();
   }
 
   T* remove(T* entry) {
