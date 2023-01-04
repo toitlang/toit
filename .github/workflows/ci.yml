@@ -739,7 +739,9 @@ jobs:
     name: Update AUR package
     runs-on: ubuntu-latest
     needs: [build]
-    if: github.event_name == 'release' && !github.event.release.prerelease
+    # While we are developing Toit 2.0.0 alpha we want to publish prereleases as well.
+    # if: github.event_name == 'release' && !github.event.release.prerelease
+    if: github.event_name == 'release'
     steps:
       - name: Version number
         id: version
