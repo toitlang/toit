@@ -769,12 +769,12 @@ abstract class List extends CollectionBase:
   static chunk_up from/int to/int available/int max_available/int=available [block] -> int:
     result := to - from
     to_do := to - from
+    chunk := min available to_do
     while to_do > 0:
-      chunk := min available to_do
       block.call from from + chunk chunk
       to_do -= chunk
       from += chunk
-      available = max_available
+      chunk = min max_available to_do
     return result
 
 /** Internal function to create a list literal with one element. */
@@ -918,9 +918,7 @@ class SmallArray_ extends Array_:
       // and LargeArray_.
 
       result := Array_ new_size filler
-      limit := min copy_size new_size
-      for i := 0; i < limit; i++:
-        result[i] = this[i]
+      result.replace 0 this 0 (min copy_size new_size)
       return result
 
   replace index/int source from/int to/int -> none:
@@ -1022,6 +1020,39 @@ class LargeArray_ extends Array_:
       vector_[it].do_ ARRAYLET_SIZE block
     if remaining != 0:
       vector_[full_arraylets].do_ remaining block
+
+  /** Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[ */
+  replace index/int source from/int=0 to/int=source.size -> none:
+    if to - from < 5:
+      super index source from to
+      return
+    dest_div := index / ARRAYLET_SIZE
+    dest_mod := index % ARRAYLET_SIZE
+    first_chunk_max := ARRAYLET_SIZE - dest_mod
+    if source is SmallArray_:
+      List.chunk_up from to first_chunk_max ARRAYLET_SIZE: | from to length |
+        vector_[dest_div++].replace dest_mod source from to
+        dest_mod = 0
+    else if source is LargeArray_:
+      // The accelerated version requires SmallArray_, so do it on the arraylets.
+      source_div := from / ARRAYLET_SIZE
+      source_mod := from % ARRAYLET_SIZE
+      // Because of alignment, each arraylet of the destination may take values
+      // from two arraylets of the source.
+      List.chunk_up from to first_chunk_max ARRAYLET_SIZE: | _ _ length |
+        part1_size := min length (ARRAYLET_SIZE - source_mod)
+        vector_[dest_div].replace dest_mod source.vector_[source_div] source_mod (source_mod + part1_size)
+        if length != part1_size:
+          // Copy part two from the next source arraylet.
+          vector_[dest_div].replace (dest_mod + part1_size) source.vector_[source_div + 1] 0 (length - part1_size)
+        source_mod += length
+        if source_mod >= ARRAYLET_SIZE:
+          source_div++
+          source_mod -= ARRAYLET_SIZE
+        dest_mod = 0
+        dest_div++
+    else:
+      super index source from to
 
   size_ /int ::= 0
   vector_ /Array_ ::= ?  // This is the array of arraylets.  It may itself be a LargeArray_!
@@ -1795,7 +1826,7 @@ class List_ extends List:
 
   /** See $super. */
   // This override is present in order to make use of the accelerated replace
-  // method on Array_.  Currently there's no acceleration for LargeArray_.
+  // method on Array_.
   replace index/int source from/int=0 to/int=source.size -> none:
     if source is List_:
       // Array may be bigger than this List_, so we must check for
