@@ -139,6 +139,8 @@ class CallShape {
   // then the block arguments.
   List<Symbol> names() const { return names_; }
 
+  bool is_block_name(int index) const { return index >= names_.length() - named_block_count_; }
+
   /// Returns the name of argument [i].
   ///
   /// Returns Symbol::invalid() if the argument is not named.
@@ -312,8 +314,10 @@ class ResolutionShape {
   /// Some of these might be optional. See [optional_names] to see which ones.
   List<Symbol> names() const { return call_shape_.names(); }
 
-  /// The number of blocks among the names. These are last in the [names] list.
-  int named_non_block_count() const { return call_shape_.names().length(); }
+  /// The number of non-blocks among the names. These are first in the [names] list.
+  int named_non_block_count() const { return call_shape_.names().length() - call_shape_.named_block_count(); }
+
+  bool is_block_name(int index) const { return call_shape_.is_block_name(index); }
 
   /// The number of blocks among the names. These are last in the [names] list.
   int named_block_count() const { return call_shape_.named_block_count(); }

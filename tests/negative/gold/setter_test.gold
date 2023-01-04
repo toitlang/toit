@@ -38,11 +38,11 @@ tests/negative/setter_test.toit:13:25: error: Unresolved identifier: 'unresolved
   instance_setter= x y: unresolved
                         ^~~~~~~~~~
 tests/negative/setter_test.toit:17:19: error: Argument mismatch for 'A.static_setter'
-Could not find an overload with 1 arguments
+Could not find an overload with exactly 1 arguments
   A.static_setter = 5
                   ^
 tests/negative/setter_test.toit:18:21: error: Argument mismatch for 'A.instance_setter'
-Could not find an overload with 1 arguments
+Could not find an overload with exactly 1 arguments
   A.instance_setter = 7
                     ^
 Compilation failed.
