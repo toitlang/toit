@@ -1,5 +1,7 @@
+sdk: ^1.6.10
 prefixes:
   ar: pkg-ar
+  cli: pkg-cli
   font_x11_adobe: pkg-font-x11-adobe
   host: pkg-host
   tar: pkg-tar
@@ -8,6 +10,10 @@ packages:
     url: github.com/toitlang/pkg-ar
     version: 1.0.0
     hash: 175bcdfd59b2597c0825ef8765a20498a7e6a2db
+  pkg-cli:
+    url: github.com/toitlang/pkg-cli
+    version: 1.1.0
+    hash: cadcb975d3130b3a154c9bc0c676b1efa997a8c6
   pkg-font-x11-adobe:
     url: github.com/toitlang/pkg-font-x11-adobe
     version: 0.1.0

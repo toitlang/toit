@@ -1,6 +1,6 @@
 import host.file
 import host.pipe
-import host.arguments
+import cli
 import reader show BufferedReader
 
 usage:
@@ -10,21 +10,26 @@ usage:
 
 OBJDUMP ::= "xtensa-esp32-elf-objdump"
 
+ELF_FILE ::= "path/to/toit.elf"
+
 main args/List:
-  parser := arguments.ArgumentParser
-  parser.describe_rest ["/path/to/toit.elf"]
-  parser.add_flag "disassemble" --short="d"
-  parser.add_option "objdump" --default=OBJDUMP
-  parser.add_option "backtrace" --default="-"
-  parsed := parser.parse args:
-    usage
-    exit 1
-  if args.size < 1: usage
+  parsed := null
+  parser := cli.Command "stacktrace"
+      --rest=[cli.OptionString --required ELF_FILE]
+      --options=[
+          cli.Flag "disassemble" --short_name="d",
+          cli.OptionString "objdump" --default=OBJDUMP,
+          cli.OptionString "backtrace" --default="-"
+          ]
+      --run=:: parsed = it
+  parser.run args
+  if not parsed: exit 0
+
   disassemble := parsed["disassemble"]
   objdump_exe := parsed["objdump"]
   objdump / BufferedReader? := null
   symbols_only := false
-  elf_file := parsed.rest[0]
+  elf_file := parsed[ELF_FILE]
   elf_size := file.size elf_file
   exception := catch:
     flags := disassemble ? "-dC" : "-tC"

@@ -6,7 +6,7 @@ import expect show *
 import .utils
 
 main args:
-  out := run_toitp args ["--senders", "the_target"]
+  out := run_toitp args ["--senders"] "the_target"
   lines := out.split LINE_TERMINATOR
   expect_equals """Methods with calls to "the_target"[3]:""" lines[0]
 
