@@ -30,7 +30,7 @@ WIFI_SCAN_AUTHMODE_ ::= 3
 WIFI_SCAN_CHANNEL_  ::= 4
 WIFI_SCAN_ELEMENT_COUNT_ ::= 5
 
-SCAN_TIMEOUT_MS_/int := 1000 
+SCAN_TIMEOUT_MS_/int := 1000
 
 service_/WifiServiceClient? ::= (WifiServiceClient --no-open).open
 
@@ -59,7 +59,7 @@ class AccessPoint:
     if authmode < 0 or authmode >= WIFI_AUTHMODE_NAME_.size:
       return "Undefined"
     return WIFI_AUTHMODE_NAME_[authmode]
-  
+
   bssid_name -> string:
     return (List bssid.size: "$(%02x bssid[it])").join ":"
 
@@ -148,7 +148,7 @@ class WifiInterface_ extends SystemInterface_ implements Interface:
 
   signal_strength -> float:
     info := (client_ as WifiServiceClient).ap_info handle_
-    rssi := info[WIFI_SCAN_SSID_]
+    rssi := info[WIFI_SCAN_RSSI_]
     // RSSI is usually in the range [-100..-35].
     rssi = min 65 (max 0 rssi + 100)
     return rssi / 65.0
