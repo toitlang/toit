@@ -1,0 +1,17 @@
+: Expected <╒════╤════════╕
+│ no   header │
+╘════╧════════╛
+>, but was <┌────┬────────┐
+│ no   header │
+└────┴────────┘
+>
+ASSERTION_FAILED error. 
+Expected <╒════╤════════╕
+│ no   header │
+╘════╧═══...
+  0: catch.<block>             <sdk>/core/exceptions.toit:124:10
+  1: catch                     <sdk>/core/exceptions.toit:122:1
+  2: catch                     <sdk>/core/exceptions.toit:73:10
+  3: expect                    <sdk>/expect.toit:21:3
+  4: expect_equals             <sdk>/expect.toit:36:5
+  5: main                      tests/negative/unicode_expect_failure_test.toit:4:3
