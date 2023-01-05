@@ -14,4 +14,4 @@ Expected <╒════╤════════╕
   2: catch                     <sdk>/core/exceptions.toit:73:10
   3: expect                    <sdk>/expect.toit:21:3
   4: expect_equals             <sdk>/expect.toit:36:5
-  5: main                      tests/negative/unicode_expect_failure_test.toit:4:3
+  5: main                      tests/negative/unicode_expect_failure_test.toit:12:3

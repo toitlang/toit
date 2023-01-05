@@ -55,7 +55,7 @@ class EncodeVisitor : public Visitor {
     if (overflow) {
       printed = MAX_NOF_STRING_ELEMENTS;
       // Don't chop up UTF-8 sequences.
-      while ((bytes.at(printed) & ~Utils::UTF_8_MASK) == Utils::UTF_8_PAYLOAD && printed > 0) {
+      while ((bytes.at(printed) & ~Utils::UTF_8_MASK) == Utils::UTF_8_PAYLOAD) {
         printed--;
       }
     }
