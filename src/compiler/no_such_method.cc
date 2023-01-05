@@ -283,22 +283,26 @@ static void report_no_such_method(List<ir::Node*> candidates,
         }
       }
     }
-    // Move on to the arguments that are sometimes allowed, but were not
-    // provided.
-    bool allowed_message_added = false;
-    for (auto symbol : candidate_names.keys()) {
-      if (!call_site_names.contains_key(symbol) && ((candidate_names[symbol] & (EVERY_NAME | EVERY_BLOCK_NAME)) == 0)) {
-        if (!allowed_message_added) {
-          helpful_note += "\n" "Some overloads ";
-          if (added_not_provided_note) helpful_note += "also ";
-          helpful_note += "allow arguments named";
-          allowed_message_added = true;
-        } else {
-          helpful_note += ",";
+    if (!wrong_number_of_unnamed_args && !wrong_number_of_unnamed_blocks) {
+      // If the problem is not just with the unnamed arguments we try to provide
+      // a bit more information on possible named arguments.  This means
+      // describing the arguments that are sometimes allowed, but were not
+      // provided.
+      bool allowed_message_added = false;
+      for (auto symbol : candidate_names.keys()) {
+        if (!call_site_names.contains_key(symbol) && ((candidate_names[symbol] & (EVERY_NAME | EVERY_BLOCK_NAME)) == 0)) {
+          if (!allowed_message_added) {
+            helpful_note += "\n" "Some overloads ";
+            if (added_not_provided_note) helpful_note += "also ";
+            helpful_note += "allow arguments named";
+            allowed_message_added = true;
+          } else {
+            helpful_note += ",";
+          }
+          helpful_note += " '--";
+          helpful_note += symbol.c_str();
+          helpful_note += "'";
         }
-        helpful_note += " '--";
-        helpful_note += symbol.c_str();
-        helpful_note += "'";
       }
     }
   }
