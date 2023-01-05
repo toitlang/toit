@@ -6,7 +6,7 @@ import expect show *
 import .utils
 
 test args filter:
-  out := run_toitp args ["-bc"] filter
+  out := run_toitp args ["-bc"] --filter=filter
   lines := out.split LINE_TERMINATOR
   expect (lines.first.starts_with "Bytecodes for methods")
 

@@ -4,7 +4,7 @@
 
 import host.pipe
 
-run_toitp test_args/List toitp_args/List filter/string?=null -> string:
+run_toitp test_args/List toitp_args/List --filter/string?=null -> string:
   i := 0
   snap := test_args[i++]
   toitc := test_args[i++]
