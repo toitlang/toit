@@ -55,7 +55,9 @@ class EncodeVisitor : public Visitor {
     if (overflow) {
       printed = MAX_NOF_STRING_ELEMENTS;
       // Don't chop up UTF-8 sequences.
-      while ((bytes.at(printed) & 0xc0) == 0x80 && printed > 0) printed--;
+      while ((bytes.at(printed) & ~Utils::UTF_8_MASK) == Utils::UTF_8_PAYLOAD && printed > 0) {
+        printed--;
+      }
     }
     const int limit = printed + (overflow ? strlen(OVERFLOW_DOTS) : 0);
     encoder_->write_int(limit);
