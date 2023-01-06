@@ -10,8 +10,8 @@ packages:
     hash: 175bcdfd59b2597c0825ef8765a20498a7e6a2db
   pkg-cli:
     url: github.com/toitlang/pkg-cli
-    version: 1.0.0
-    hash: 01d8c8f76eef979ca455a760b3330f8f826fa881
+    version: 1.1.0
+    hash: cadcb975d3130b3a154c9bc0c676b1efa997a8c6
   pkg-host:
     url: github.com/toitlang/pkg-host
     version: 1.8.1
