@@ -117,7 +117,7 @@ main args:
   parsed := null
   parser := cli.Command "toitp"
       --rest=[
-          cli.OptionString "snapshot-file" --required,
+          cli.OptionString "snapshot" --type="file" --required,
           cli.OptionString "filter",
       ]
       --options=[
@@ -136,7 +136,7 @@ main args:
   if not parsed: exit 0
 
   if parsed["filter"]: filter = parsed["filter"]
-  snapshot := SnapshotBundle.from_file parsed["snapshot-file"]
+  snapshot := SnapshotBundle.from_file parsed["snapshot"]
   program := snapshot.decode
 
   if parsed["classes"]:         print_classes program; return

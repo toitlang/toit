@@ -3,19 +3,27 @@ import host.pipe
 import cli
 import reader show BufferedReader
 
+USAGE ::= """
+    Decodes an esp-idf backtrace message from the UART console.
+    Example use:
+    echo Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0 | toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] /path/to/toit.elf"
+    or
+    toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] --backtrace=\"Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0\" /path/to/toit.elf
+    """
+
 usage:
-  print "Usage: echo Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0 | toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] /path/to/toit.elf"
-  print "or: toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] --backtrace=\"Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0\" /path/to/toit.elf"
+  print "USAGE"
   exit 1
 
 OBJDUMP ::= "xtensa-esp32-elf-objdump"
 
-ELF_FILE ::= "path/to/toit.elf"
+ELF_FILE ::= "elf-file"
 
 main args/List:
   parsed := null
   parser := cli.Command "stacktrace"
-      --rest=[cli.OptionString --required ELF_FILE]
+      --long_help=USAGE
+      --rest=[cli.OptionString --required ELF_FILE --type="path"]
       --options=[
           cli.Flag "disassemble" --short_name="d",
           cli.OptionString "objdump" --default=OBJDUMP,
