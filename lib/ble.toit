@@ -39,6 +39,8 @@ class BleUuid:
         if (catch: hex.decode data_):
           throw "INVALID UUID $data_"
       data_ = data_.to_ascii_lower
+    else:
+      throw "TYPE ERROR: data is not a string or byte array"
 
   stringify -> string:
     if data_ is ByteArray:
