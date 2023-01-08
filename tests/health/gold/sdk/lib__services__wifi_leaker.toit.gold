@@ -1,0 +1,6 @@
+<sdk>/services/wifi_leaker.toit:405:24: warning: Class 'OffsetListener' is deprecated
+    offset_listener_ = OffsetListener
+                       ^~~~~~~~~~~~~~
+<sdk>/services/wifi_leaker.toit:406:5: warning: Class 'DataListener' is deprecated
+    super null
+    ^~~~~
