@@ -47,7 +47,13 @@ class CcGenerator {
 
 void CcGenerator::emit() {
   Program* program = types_->program();
-  output_ << "void run(Process* process, Object** sp) {" << std::endl;
+  output_ << "#include \"aot_support.h\"" << std::endl << std::endl;
+  output_ << "Object* run(Process* process, Object** sp) {" << std::endl;
+  output_ << "  Object* result = Smi::from(0);" << std::endl;
+  output_ << "  Object* const null_object = process->program()->null_object();" << std::endl;
+  output_ << "  Object* const true_object = process->program()->true_object();" << std::endl;
+  output_ << "  Object* const false_object = process->program()->false_object();" << std::endl << std::endl;
+
   output_ << "  PUSH(process->task());" << std::endl;
   output_ << "  PUSH(Smi::from(0));  // Should be: return address" << std::endl;
   output_ << "  PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
@@ -59,11 +65,12 @@ void CcGenerator::emit() {
     return a.header_bcp() < b.header_bcp();
   });
   for (unsigned i = 0; i < methods.size(); i++) {
+    Method method = methods[i];
     uint8* end = (i == methods.size() - 1)
         ? program->bytecodes.data() + program->bytecodes.length()
         : methods[i + 1].header_bcp();
     output_ << std::endl;
-    emit_method(methods[i], end);
+    emit_method(method, end);
   }
   output_ << "}" << std::endl;
 }
@@ -87,8 +94,29 @@ void CcGenerator::emit_method(Method method, uint8* end) {
     }
     output_ << "  L" << bci << ": {  // " << opcode_print[opcode] << std::endl;
     switch (opcode) {
-      case HALT: {
-        output_ << "    return;" << std::endl;
+      case LOAD_SMI_0: {
+        output_ << "    PUSH(Smi::from(0));" << std::endl;
+        break;
+      }
+
+      case LOAD_SMI_1: {
+        output_ << "    PUSH(Smi::from(1));" << std::endl;
+        break;
+      }
+
+      case LOAD_SMI_U8: {
+        B_ARG1(value);
+        output_ << "    PUSH(Smi::from(" << value << "));" << std::endl;
+        break;
+      }
+
+      case LOAD_LOCAL_2: {
+        output_ << "    PUSH(STACK_AT(2));" << std::endl;
+        break;
+      }
+
+      case LOAD_LOCAL_3: {
+        output_ << "    PUSH(STACK_AT(3));" << std::endl;
         break;
       }
 
@@ -103,14 +131,60 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
+      case BRANCH_IF_FALSE: {
+        S_ARG1(offset);
+        int target = program->absolute_bci_from_bcp(bcp + offset);
+        output_ << "    Object* value = POP();" << std::endl;
+        output_ << "    if (!IS_TRUE_VALUE(value)) goto L" << target << ";" << std::endl;
+        break;
+      }
+
       case INVOKE_STATIC: {
         S_ARG1(offset);
         Method target(program->bytecodes, program->dispatch_table[offset]);
         int entry = program->absolute_bci_from_bcp(target.entry());
         int next = program->absolute_bci_from_bcp(bcp + INVOKE_STATIC_LENGTH);
-        output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
-        output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-        output_ << "    goto L" << entry << ";" << std::endl;
+        if (types_->is_dead_call(next)) {
+          output_ << "    UNREACHABLE();" << std::endl;
+        } else {
+          output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
+          output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
+          output_ << "    goto L" << entry << ";" << std::endl;
+        }
+        break;
+      }
+
+      case INVOKE_ADD: {
+        output_ << "    Object* right = STACK_AT(0);" << std::endl;
+        output_ << "    Object* left = STACK_AT(1);" << std::endl;
+        output_ << "    Object* result;" << std::endl;
+        output_ << "    if (add_smis(left, right, &result)) {" << std::endl;
+        output_ << "      STACK_AT_PUT(1, result);" << std::endl;
+        output_ << "      DROP1();" << std::endl;
+        output_ << "    } else {" << std::endl;
+        output_ << "      sp = add_int_int(sp);" << std::endl;
+        output_ << "    }" << std::endl;
+        break;
+      }
+
+      case INVOKE_SUB: {
+        output_ << "    Object* right = STACK_AT(0);" << std::endl;
+        output_ << "    Object* left = STACK_AT(1);" << std::endl;
+        output_ << "    Object* result;" << std::endl;
+        output_ << "    if (sub_smis(left, right, &result)) {" << std::endl;
+        output_ << "      STACK_AT_PUT(1, result);" << std::endl;
+        output_ << "      DROP1();" << std::endl;
+        output_ << "    } else {" << std::endl;
+        output_ << "      sp = sub_int_int(sp);" << std::endl;
+        output_ << "    }" << std::endl;
+        break;
+      }
+
+      case INVOKE_LTE: {
+        output_ << "    Object* right = STACK_AT(0);" << std::endl;
+        output_ << "    Object* left = STACK_AT(1);" << std::endl;
+        output_ << "    STACK_AT_PUT(1, BOOL(lte_ints(left, right)));" << std::endl;
+        output_ << "    DROP1();" << std::endl;
         break;
       }
 
@@ -123,6 +197,11 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         output_ << "    DROP(" << arity << ");" << std::endl;
         output_ << "    PUSH(result);" << std::endl;
         output_ << "    goto *continuation;" << std::endl;
+        break;
+      }
+
+      case HALT: {
+        output_ << "    return result;" << std::endl;
         break;
       }
 

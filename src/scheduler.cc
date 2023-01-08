@@ -31,6 +31,7 @@
 #include <freertos/FreeRTOS.h>
 #endif  // TOIT_FREERTOS
 
+toit::Object* run(toit::Process* process, toit::Object** sp);
 
 namespace toit {
 
@@ -127,6 +128,11 @@ Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** argv, 
   Locker locker(mutex_);
   Process* process = new_boot_process(locker, program, group_id);
   process->set_main_arguments(argv);
+  if (true) {
+    Object** stack = static_cast<Object**>(malloc(sizeof(Object*) * 1024));
+    Object* result = ::run(process, &stack[1024]);
+    return ExitState(EXIT_DONE);
+  }
   return launch_program(locker, process);
 }
 
@@ -140,6 +146,15 @@ Scheduler::ExitState Scheduler::run_boot_program(
   Process* process = new_boot_process(locker, program, group_id);
   process->set_main_arguments(argv);
   process->set_spawn_arguments(system, application);
+  if (true) {
+    Object** stack = static_cast<Object**>(malloc(sizeof(Object*) * 1024));
+    int64 start = OS::get_monotonic_time();
+    Object* result = ::run(process, &stack[1024]);
+    int64 end = OS::get_monotonic_time();
+    printf("%ld (took %lld us)\n", Smi::cast(result)->value(), (end - start));
+    free(stack);
+    return ExitState(EXIT_DONE);
+  }
   return launch_program(locker, process);
 }
 
