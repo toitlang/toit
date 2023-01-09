@@ -54,6 +54,21 @@ void CcGenerator::emit() {
   output_ << "  Object* const true_object = process->program()->true_object();" << std::endl;
   output_ << "  Object* const false_object = process->program()->false_object();" << std::endl << std::endl;
 
+  List<int32> dispatch_table = program->dispatch_table;
+  output_ << "  static void* vtbl[] = {" << std::endl;
+  for (int i = 0; i < dispatch_table.length(); i++) {
+    int offset = dispatch_table[i];
+    if (offset >= 0) {
+      Method method(program->bytecodes, offset);
+      if (method.selector_offset() >= 0 && !types_->is_dead_method(offset)) {
+        output_ << "    &&L" << program->absolute_bci_from_bcp(method.entry()) << ", " << std::endl;
+        continue;
+      }
+    }
+    output_ << "    null," << std::endl;
+  }
+  output_ << "  };" << std::endl << std::endl;
+
   output_ << "  PUSH(process->task());" << std::endl;
   output_ << "  PUSH(Smi::from(0));  // Should be: return address" << std::endl;
   output_ << "  PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
@@ -110,13 +125,20 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
-      case LOAD_LOCAL_2: {
-        output_ << "    PUSH(STACK_AT(2));" << std::endl;
+      case LOAD_LOCAL_0:
+      case LOAD_LOCAL_1:
+      case LOAD_LOCAL_2:
+      case LOAD_LOCAL_3:
+      case LOAD_LOCAL_4:
+      case LOAD_LOCAL_5: {
+        output_ << "    PUSH(STACK_AT(" << (opcode - LOAD_LOCAL_0) << "));" << std::endl;
         break;
       }
 
-      case LOAD_LOCAL_3: {
-        output_ << "    PUSH(STACK_AT(3));" << std::endl;
+      case LOAD_LOCAL:
+      case LOAD_LOCAL_WIDE: {
+        int index = (opcode == LOAD_LOCAL) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
+        output_ << "    PUSH(STACK_AT(" << index << "));" << std::endl;
         break;
       }
 
@@ -127,15 +149,18 @@ void CcGenerator::emit_method(Method method, uint8* end) {
       }
 
       case POP_1: {
-        output_ << "    DROP(1);" << std::endl;
+        output_ << "    DROP1();" << std::endl;
         break;
       }
 
-      case BRANCH_IF_FALSE: {
-        S_ARG1(offset);
-        int target = program->absolute_bci_from_bcp(bcp + offset);
-        output_ << "    Object* value = POP();" << std::endl;
-        output_ << "    if (!IS_TRUE_VALUE(value)) goto L" << target << ";" << std::endl;
+      case ALLOCATE:
+      case ALLOCATE_WIDE: {
+        int index = (opcode == ALLOCATE) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
+        Smi* class_id = Smi::from(index);
+        int size = program->instance_size_for(class_id);
+        int fields = Instance::fields_from_size(size);
+        TypeTag class_tag = program->class_tag_for(class_id);
+        output_ << "    sp = allocate(sp, process, " << index << ", " << fields << ", " << size << ", static_cast<TypeTag>(" << class_tag << "));" << std::endl;
         break;
       }
 
@@ -151,6 +176,18 @@ void CcGenerator::emit_method(Method method, uint8* end) {
           output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
           output_ << "    goto L" << entry << ";" << std::endl;
         }
+        break;
+      }
+
+      case INVOKE_VIRTUAL: {
+        B_ARG1(index);
+        int next = program->absolute_bci_from_bcp(bcp + INVOKE_VIRTUAL_LENGTH);
+        int offset = Utils::read_unaligned_uint16(bcp + 2);
+        output_ << "    Object* receiver = STACK_AT(" << index << ");" << std::endl;
+        output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
+        output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
+        output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
+        output_ << "    goto *vtbl[id + " << offset << "];" << std::endl;
         break;
       }
 
@@ -185,6 +222,14 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         output_ << "    Object* left = STACK_AT(1);" << std::endl;
         output_ << "    STACK_AT_PUT(1, BOOL(lte_ints(left, right)));" << std::endl;
         output_ << "    DROP1();" << std::endl;
+        break;
+      }
+
+      case BRANCH_IF_FALSE: {
+        S_ARG1(offset);
+        int target = program->absolute_bci_from_bcp(bcp + offset);
+        output_ << "    Object* value = POP();" << std::endl;
+        output_ << "    if (!IS_TRUE_VALUE(value)) goto L" << target << ";" << std::endl;
         break;
       }
 

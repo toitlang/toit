@@ -78,3 +78,5 @@ static inline bool lte_ints(Object* a, Smi* b) {
       ? Smi::cast(a)->value() <= b->value()
       : lte_ints_slow(a, b);
 }
+
+Object** allocate(Object** sp, Process* process, int index, int fields, int size, TypeTag tag);

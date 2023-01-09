@@ -3,7 +3,8 @@
 // be found in the examples/LICENSE file.
 
 main:
-  return fib 40
+  a/any := A
+  return fib a.foo
 
 /*
 main:
@@ -17,3 +18,7 @@ main:
 fib n:
   if n <= 2: return n
   return (fib n - 1) + (fib n - 2)
+
+class A:
+  foo:
+    return 40
