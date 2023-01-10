@@ -62,6 +62,8 @@ SMALL_PACKET_LIMIT_ ::= 96  // We ignore packets smaller than this, since they a
 // stream, and determines the last 5 bits of the constant, k.  The basic
 // technique is to look for deltas between two numbers, where the lower 5 bits
 // of the delta match some delta in the pseudo-random pattern.
+
+/// Deprecated. Will be removed.
 class OffsetListener:
   offset_weights_ := List INDEXES_ 0
   state_budget_ := List STATES_
@@ -121,6 +123,7 @@ class OffsetListener:
 
 MINIMAL_GOODNESS ::= 30
 
+/// Deprecated. Will be removed.
 abstract class DataListener:
   // A list of how likely it is that we are in a given state.
   states_ := List STATES_ 1
@@ -296,6 +299,8 @@ abstract class DataListener:
 // The 254 packets with 5-byte payloads can transport a message up to 1270 bytes.
 // Each 55 bit packet is expanded up to 80 bits by Hamming 16 11 error correction
 // and then sent in 16 5-bit packets.
+
+/// Deprecated. Will be removed.
 class WifiDataEncoder:
   payload_ := ?
   unencoded_packet_ := ByteArray 6  // First 48 bits of the packet (last 7 bits are the checksum).
@@ -373,6 +378,8 @@ class WifiDataEncoder:
 
 // Gets a payload divided up into 5 bit packets with noise, and transmitted repeatedly.
 // Reassembles a byte array with the data transmitted.
+
+/// Deprecated. Will be removed.
 class WifiDataDecoder extends DataListener:
   arrived_data_ := ?
   arrived_header_ := null
