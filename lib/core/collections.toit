@@ -1035,9 +1035,8 @@ class LargeArray_ extends Array_:
         vector_[dest_div++].replace dest_mod source from to
         dest_mod = 0
     else if source is LargeArray_:
-      backwards/bool := index > from and identical source this
       // The accelerated version requires SmallArray_, so do it on the arraylets.
-      if forwards:
+      if index <= from or not identical source this:
         source_div := from / ARRAYLET_SIZE
         source_mod := from % ARRAYLET_SIZE
         // Because of alignment, each arraylet of the destination may take values
@@ -1059,12 +1058,15 @@ class LargeArray_ extends Array_:
         // because of aliasing.
         source_div := to / ARRAYLET_SIZE
         source_mod := to % ARRAYLET_SIZE
+        // These three were calculated wrong for backwards iteration, so redo
+        // them here.
         dest_div = (index + count) / ARRAYLET_SIZE
         dest_mod = (index + count) % ARRAYLET_SIZE
         first_chunk_max = dest_mod
-        // Because of alignment, each arraylet of the destination may take values
-        // from two arraylets of the source.  Since we are ignoring the first two
-        // block args we can just negate and swap the to and from.
+        // Because of alignment, each arraylet of the destination may take
+        // values from two arraylets of the source.  Since we are ignoring the
+        // first two block args we can just negate and swap the `to` and `from`
+        // to iterate backwards.
         List.chunk_up -to -from first_chunk_max ARRAYLET_SIZE: | _ _ length |
           part1_size := min length source_mod
           vector_[dest_div].replace (dest_mod - part1_size) source.vector_[source_div] (source_mod - part1_size) source_mod
