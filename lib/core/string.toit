@@ -1033,13 +1033,17 @@ abstract class string implements Comparable:
   ```
   */
   split --at_first/bool=false separator/string --drop_empty/bool=false [process_part] -> none:
+    if drop_empty:
+      split --at_first=at_first separator:
+        if it != "": process_part.call it
+      return
+
     if separator == "":
       if at_first:
         if size == 0: throw "INVALID_ARGUMENT"
         len := utf_8_bytes this[0]
         process_part.call this[..len]
-        if len < size or not drop_empty:
-          process_part.call this[len..]
+        process_part.call this[len..]
         return
       split_everywhere_ process_part
       return
@@ -1048,15 +1052,12 @@ abstract class string implements Comparable:
     while pos <= size:
       new_pos := subject.index_of separator pos --if_absent=:
         // No match.
-        if not drop_empty or pos < size:
-          process_part.call subject[pos..size]
+        process_part.call subject[pos..size]
         return
-      if not drop_empty or pos < new_pos:
-        process_part.call subject[pos..new_pos]
+      process_part.call subject[pos..new_pos]
       pos = new_pos + separator.size
       if at_first:
-        if not drop_empty or pos < size:
-          process_part.call subject[pos..]
+        process_part.call subject[pos..]
         return
 
   /**
