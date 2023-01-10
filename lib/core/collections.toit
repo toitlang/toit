@@ -1023,7 +1023,8 @@ class LargeArray_ extends Array_:
 
   /** Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[ */
   replace index/int source from/int=0 to/int=source.size -> none:
-    if to - from < 5:
+    count := to - from
+    if count < 5:
       super index source from to
       return
     dest_div := index / ARRAYLET_SIZE
@@ -1034,24 +1035,49 @@ class LargeArray_ extends Array_:
         vector_[dest_div++].replace dest_mod source from to
         dest_mod = 0
     else if source is LargeArray_:
+      backwards/bool := index > from and identical source this
       // The accelerated version requires SmallArray_, so do it on the arraylets.
-      source_div := from / ARRAYLET_SIZE
-      source_mod := from % ARRAYLET_SIZE
-      // Because of alignment, each arraylet of the destination may take values
-      // from two arraylets of the source.
-      List.chunk_up from to first_chunk_max ARRAYLET_SIZE: | _ _ length |
-        part1_size := min length (ARRAYLET_SIZE - source_mod)
-        vector_[dest_div].replace dest_mod source.vector_[source_div] source_mod (source_mod + part1_size)
-        if length != part1_size:
-          // Copy part two from the next source arraylet.
-          vector_[dest_div].replace (dest_mod + part1_size) source.vector_[source_div + 1] 0 (length - part1_size)
-        source_mod += length
-        if source_mod >= ARRAYLET_SIZE:
-          source_div++
-          source_mod -= ARRAYLET_SIZE
-        dest_mod = 0
-        dest_div++
-    else:
+      if forwards:
+        source_div := from / ARRAYLET_SIZE
+        source_mod := from % ARRAYLET_SIZE
+        // Because of alignment, each arraylet of the destination may take values
+        // from two arraylets of the source.
+        List.chunk_up from to first_chunk_max ARRAYLET_SIZE: | _ _ length |
+          part1_size := min length (ARRAYLET_SIZE - source_mod)
+          vector_[dest_div].replace dest_mod source.vector_[source_div] source_mod (source_mod + part1_size)
+          if length != part1_size:
+            // Copy part two from the next source arraylet.
+            vector_[dest_div].replace (dest_mod + part1_size) source.vector_[source_div + 1] 0 (length - part1_size)
+          source_mod += length
+          if source_mod >= ARRAYLET_SIZE:
+            source_div++
+            source_mod -= ARRAYLET_SIZE
+          dest_mod = 0
+          dest_div++
+      else:
+        // Copying to a higher index, we have to do it backwards from the end
+        // because of aliasing.
+        source_div := to / ARRAYLET_SIZE
+        source_mod := to % ARRAYLET_SIZE
+        dest_div = (index + count) / ARRAYLET_SIZE
+        dest_mod = (index + count) % ARRAYLET_SIZE
+        first_chunk_max = dest_mod
+        // Because of alignment, each arraylet of the destination may take values
+        // from two arraylets of the source.  Since we are ignoring the first two
+        // block args we can just negate and swap the to and from.
+        List.chunk_up -to -from first_chunk_max ARRAYLET_SIZE: | _ _ length |
+          part1_size := min length source_mod
+          vector_[dest_div].replace (dest_mod - part1_size) source.vector_[source_div] (source_mod - part1_size) source_mod
+          if length != part1_size:
+            // Copy part two from the next source arraylet.
+            vector_[dest_div].replace (dest_mod - length) source.vector_[source_div - 1] (ARRAYLET_SIZE - length + part1_size) ARRAYLET_SIZE
+          source_mod -= length
+          if source_mod <= 0:
+            source_div--
+            source_mod += ARRAYLET_SIZE
+          dest_mod = ARRAYLET_SIZE
+          dest_div--
+    else:  // Not SmallArray_ or LargeArray_.
       super index source from to
 
   size_ /int ::= 0
@@ -1714,7 +1740,14 @@ class ListSlice_ extends List:
   from_ / int
   to_ / int
 
-  constructor .list_ .from_ .to_:
+  constructor sublist/List .from_ .to_:
+    if sublist is ListSlice_:
+      slice := sublist as ListSlice_
+      if not 0 <= from_ <= to_ <= slice.size: throw "OUT_OF_BOUNDS"
+      sublist = slice.list_
+      from_ += slice.from_
+      to_ += slice.from_
+    list_ = sublist
     super.from_subclass
 
   operator [] index:
@@ -1746,6 +1779,12 @@ class ListSlice_ extends List:
     if not from_ <= actual_from <= actual_to <= to_: throw "OUT_OF_BOUNDS"
     // If the underlying list changed size this might throw.
     return list_.copy actual_from actual_to
+
+  replace index/int source from/int=0 to/int=source.size -> none:
+    actual_index := from_ + index
+    actual_index_end := actual_index + to - from
+    if not from_ <= actual_index <= actual_index_end <= to_: throw "OUT_OF_BOUNDS"
+    list_.replace actual_index source from to
 
   resize new_size -> none:
     throw "SLICE_CANNOT_CHANGE_SIZE"
@@ -1828,12 +1867,18 @@ class List_ extends List:
   // This override is present in order to make use of the accelerated replace
   // method on Array_.
   replace index/int source from/int=0 to/int=source.size -> none:
+    if source is ListSlice_:
+      slice := source as ListSlice_
+      if not 0 <= from <= to <= source.size: throw "OUT_OF_BOUNDS"
+      from += slice.from_
+      to += slice.from_
+      source = slice.list_
     if source is List_:
       // Array may be bigger than this List_, so we must check for
       // that before delegating to the Array_ method, while being
       // careful about integer overflow.
       len := to - from
-      if len < 0 or index > size - len or to > source.size: throw "BAD ARGUMENTS"
+      if not 0 <= index <= index + to - from <= size: throw "OUT_OF_BOUNDS"
       array_.replace index source.array_ from to
     else:
       super index source from to
