@@ -374,7 +374,6 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
         output_ << "    goto *vtbl[id + " << offset << "];" << std::endl;
         break;
-        break;
       }
 
 /*
