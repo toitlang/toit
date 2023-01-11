@@ -102,7 +102,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
   output_ << "  // Method @ " << id << " (" << size << " bytes)" << std::endl;
   uint8* bcp = method.entry();
   while (bcp < end) {
-    uint8 opcode = *bcp;
+    Opcode opcode = static_cast<Opcode>(*bcp);
     int bci = program->absolute_bci_from_bcp(bcp);
     if (opcode >= ILLEGAL_END) {
       output_ << "  UNREACHABLE();" << std::endl;
@@ -347,6 +347,37 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
+      case INVOKE_EQ:
+      case INVOKE_LT:
+      case INVOKE_GT:
+      case INVOKE_LTE:
+      case INVOKE_GTE:
+      case INVOKE_BIT_OR:
+      case INVOKE_BIT_XOR:
+      case INVOKE_BIT_AND:
+      case INVOKE_BIT_SHL:
+      case INVOKE_BIT_SHR:
+      case INVOKE_BIT_USHR:
+      case INVOKE_ADD:
+      case INVOKE_SUB:
+      case INVOKE_MUL:
+      case INVOKE_DIV:
+      case INVOKE_MOD:
+      case INVOKE_AT:
+      case INVOKE_AT_PUT: {
+        int index = (opcode == INVOKE_AT_PUT) ? 2 : 1;
+        int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
+        int offset = program->invoke_bytecode_offset(opcode);
+        output_ << "    Object* receiver = STACK_AT(" << index << ");" << std::endl;
+        output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
+        output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
+        output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
+        output_ << "    goto *vtbl[id + " << offset << "];" << std::endl;
+        break;
+        break;
+      }
+
+/*
       case INVOKE_ADD: {
         output_ << "    Object* right = STACK_AT(0);" << std::endl;
         output_ << "    Object* left = STACK_AT(1);" << std::endl;
@@ -372,23 +403,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         output_ << "    }" << std::endl;
         break;
       }
-
-      case INVOKE_EQ: {
-        // TODO(kasper): Fixme.
-        output_ << "    Object* right = STACK_AT(0);" << std::endl;
-        output_ << "    Object* left = STACK_AT(1);" << std::endl;
-        output_ << "    STACK_AT_PUT(1, BOOL(left == right));" << std::endl;
-        output_ << "    DROP1();" << std::endl;
-        break;
-      }
-
-      case INVOKE_LTE: {
-        output_ << "    Object* right = STACK_AT(0);" << std::endl;
-        output_ << "    Object* left = STACK_AT(1);" << std::endl;
-        output_ << "    STACK_AT_PUT(1, BOOL(lte_ints(left, right)));" << std::endl;
-        output_ << "    DROP1();" << std::endl;
-        break;
-      }
+*/
 
       case BRANCH_IF_FALSE: {
         S_ARG1(offset);
