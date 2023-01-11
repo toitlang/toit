@@ -1,18 +1,18 @@
 main tests/type_propagation/array_do_test.toit
   0[025] - load smi 1
-  1[053] - invoke static create_array_ <sdk>/core/collections.toit // {LargeArray_|SmallArray_}
-  4[053] - invoke static create_list_literal_from_array_ <sdk>/core/collections.toit // {List_}
+  1[053] - invoke static create_array_ <sdk>/core/collections.toit // [{SmallInteger_}] -> {LargeArray_|SmallArray_}
+  4[053] - invoke static create_list_literal_from_array_ <sdk>/core/collections.toit // [{LargeArray_|SmallArray_}] -> {List_}
   7[029] - load [block] in main tests/type_propagation/array_do_test.toit
  12[015] - load local 1
  13[038] - load block 1
- 15[058] - invoke virtual do // {Null_}
+ 15[058] - invoke virtual do // [{List_}, [block]] -> {Null_}
  19[089] - return null S3 0
 
 [block] in main tests/type_propagation/array_do_test.toit
  - argument 0: [block]
  - argument 1: {*}
   0[016] - load local 2
-  1[053] - invoke static id tests/type_propagation/array_do_test.toit // {*}
+  1[053] - invoke static id tests/type_propagation/array_do_test.toit // [{*}] -> {*}
   4[088] - return S1 2
 
 id tests/type_propagation/array_do_test.toit

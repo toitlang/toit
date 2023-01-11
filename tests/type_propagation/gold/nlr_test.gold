@@ -19,7 +19,7 @@ test_try tests/type_propagation/nlr_test.toit
 always_return tests/type_propagation/nlr_test.toit
   0[029] - load [block] in always_return tests/type_propagation/nlr_test.toit
   5[038] - load block 0
-  7[053] - invoke static invoke tests/type_propagation/nlr_test.toit // {}
+  7[053] - invoke static invoke tests/type_propagation/nlr_test.toit // [[block]] -> {}
  10[040] - pop 2
  12[053] - invoke static unreachable <sdk>/core/exceptions.toit
  15[041] - pop 1
@@ -34,7 +34,7 @@ always_return tests/type_propagation/nlr_test.toit
 maybe_return tests/type_propagation/nlr_test.toit
   0[029] - load [block] in maybe_return tests/type_propagation/nlr_test.toit
   5[038] - load block 0
-  7[053] - invoke static invoke tests/type_propagation/nlr_test.toit // {Null_}
+  7[053] - invoke static invoke tests/type_propagation/nlr_test.toit // [[block]] -> {Null_}
  10[040] - pop 2
  12[020] - load literal hest
  14[088] - return S1 0
@@ -55,7 +55,7 @@ stop_unwinding tests/type_propagation/nlr_test.toit
   2[029] - load [block] in stop_unwinding tests/type_propagation/nlr_test.toit
   7[094] - link try 0
   9[038] - load block 4
- 11[055] - invoke block S1 // {}
+ 11[055] - invoke block S1 // [[block]] -> {}
  13[041] - pop 1
  14[095] - unlink try 0
  16[018] - load local 4
@@ -74,7 +74,7 @@ stop_unwinding tests/type_propagation/nlr_test.toit
  10[041] - pop 1
  11[029] - load [block] in [block] in stop_unwinding tests/type_propagation/nlr_test.toit
  16[038] - load block 0
- 18[053] - invoke static invoke tests/type_propagation/nlr_test.toit // {}
+ 18[053] - invoke static invoke tests/type_propagation/nlr_test.toit // [[block]] -> {}
  21[041] - pop 1
  22[002] - pop, load local S2
  24[020] - load literal true
@@ -94,7 +94,7 @@ stop_unwinding_alternative tests/type_propagation/nlr_test.toit
   2[029] - load [block] in stop_unwinding_alternative tests/type_propagation/nlr_test.toit
   7[094] - link try 0
   9[038] - load block 4
- 11[055] - invoke block S1 // {True_}
+ 11[055] - invoke block S1 // [[block]] -> {True_}
  13[041] - pop 1
  14[095] - unlink try 0
  16[018] - load local 4
@@ -110,7 +110,7 @@ stop_unwinding_alternative tests/type_propagation/nlr_test.toit
   5[041] - pop 1
   6[029] - load [block] in [block] in stop_unwinding_alternative tests/type_propagation/nlr_test.toit
  11[038] - load block 0
- 13[053] - invoke static invoke tests/type_propagation/nlr_test.toit // {Null_}
+ 13[053] - invoke static invoke tests/type_propagation/nlr_test.toit // [[block]] -> {Null_}
  16[041] - pop 1
  17[002] - pop, load local S2
  19[020] - load literal true
@@ -131,13 +131,13 @@ stop_unwinding_alternative tests/type_propagation/nlr_test.toit
 
 pick tests/type_propagation/nlr_test.toit
   0[026] - load smi 100
-  2[053] - invoke static random <sdk>/core/utils.toit // {LargeInteger_|SmallInteger_}
+  2[053] - invoke static random <sdk>/core/utils.toit // [{SmallInteger_}] -> {LargeInteger_|SmallInteger_}
   5[026] - load smi 50
-  7[063] - invoke lt // {True_|False_}
+  7[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
   8[088] - return S1 0
 
 invoke tests/type_propagation/nlr_test.toit
  - argument 0: [block]
   0[016] - load local 2
-  1[055] - invoke block S1 // {Null_}
+  1[055] - invoke block S1 // [[block]] -> {Null_}
   3[088] - return S1 1

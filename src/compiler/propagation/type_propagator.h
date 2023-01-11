@@ -66,10 +66,12 @@ class TypePropagator {
 
   TypeVariable* global_variable(int index);
   TypeVariable* field(unsigned type, int index);
-  TypeVariable* outer(uint8* site);
+  TypeVariable* output(uint8* site);
 
   void enqueue(MethodTemplate* method);
-  void add_site(uint8* site, TypeVariable* result);
+
+  void add_input(uint8* site, TypeStack* input, int n);
+  void add_output(uint8* site, TypeVariable* output);
 
 #define ENSURE_ENTRY_POINT(name, symbol, arity) \
   void ensure_##name();
@@ -85,13 +87,14 @@ class TypePropagator {
   ENTRY_POINTS(HAS_ENTRY_POINT)
 #undef HAS_ENTRY_POINT
 
-  Map<uint8*, Set<TypeVariable*>> sites_;
+  Map<uint8*, std::vector<TypeVariable*>> input_;
+  Map<uint8*, Set<TypeVariable*>> output_;
 
   std::unordered_map<uint32, MethodTemplate*> methods_;
   std::unordered_map<uint32, BlockTemplate*> blocks_;
 
   std::unordered_map<int, TypeVariable*> globals_;
-  std::unordered_map<uint8*, TypeVariable*> outers_;
+  std::unordered_map<uint8*, TypeVariable*> outers_;  // TODO(kasper): Rename this.
   std::unordered_map<unsigned, std::unordered_map<int, TypeVariable*>> fields_;
   std::vector<MethodTemplate*> enqueued_;
 

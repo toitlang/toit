@@ -44,6 +44,8 @@ class TypeStack {
   }
 
   int sp() const { return sp_; }
+
+  int size() const { return size_; }
   int available() const { return size_ - (sp_ + 1); }
 
   TypeSet get(int index) {
