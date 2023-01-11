@@ -693,7 +693,7 @@ void TypePropagator::add_input(uint8* site, TypeStack* input, int n) {
     ASSERT(variables.size() == n);
     for (int i = 0; i < n; i++) {
       TypeVariable* variable = variables[i];
-      variable->merge(this, input->local(n - i - 1));
+      variable->type().add_all_also_blocks(input->local(n - i - 1), words_per_type());
     }
     return;
   }
@@ -701,7 +701,7 @@ void TypePropagator::add_input(uint8* site, TypeStack* input, int n) {
   std::vector<TypeVariable*> variables;
   for (int i = 0; i < n; i++) {
     TypeVariable* variable = new TypeVariable(words_per_type());
-    variable->merge(this, input->local(n - i - 1));
+    variable->type().add_all_also_blocks(input->local(n - i - 1), words_per_type());
     variables.push_back(variable);
   }
   input_[site] = variables;
