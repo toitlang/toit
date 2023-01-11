@@ -105,21 +105,9 @@ show_types types/List snapshot_content/ByteArray -> none
     else: print ""
     args := method_args.get method.id
     method.output program args --show_positions=show_positions: | position/int |
-      input_part := null
-      if input_strings.contains position:
-        input_part = input_strings[position]
-      output_part := null
-      if output_strings.contains position:
-        output_part = output_strings[position]
-      comment := null
-      if input_part:
-        if output_part:
-          comment = "$input_part -> $output_part"
-        else:
-          comment = "$input_part -> none"
-      else:
-        comment = output_part
-      comment
+      input_part := input_strings.get position
+      output_part := output_strings.get position
+      input_part ? "$input_part -> $output_part" : output_part
 
 type_string program/Program type/any -> string:
   if type == "[]": return "[block]"
