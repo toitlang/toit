@@ -14,6 +14,8 @@
 // directory of this repository.
 
 #include "aot.h"
+#include "resolver_primitive.h"
+#include "../interpreter.h"
 
 #include <algorithm>
 #include <string>
@@ -48,8 +50,7 @@ class CcGenerator {
 void CcGenerator::emit() {
   Program* program = types_->program();
   output_ << "#include \"aot_support.h\"" << std::endl << std::endl;
-  output_ << "Object* run(Process* process, Object** sp) {" << std::endl;
-  output_ << "  Object* result = Smi::from(0);" << std::endl;
+  output_ << "void run(Process* process, Object** sp) {" << std::endl;
   output_ << "  Object* const null_object = process->program()->null_object();" << std::endl;
   output_ << "  Object* const true_object = process->program()->true_object();" << std::endl;
   output_ << "  Object* const false_object = process->program()->false_object();" << std::endl << std::endl;
@@ -65,7 +66,7 @@ void CcGenerator::emit() {
         continue;
       }
     }
-    output_ << "    null," << std::endl;
+    output_ << "    0," << std::endl;
   }
   output_ << "  };" << std::endl << std::endl;
 
@@ -109,6 +110,29 @@ void CcGenerator::emit_method(Method method, uint8* end) {
     }
     output_ << "  L" << bci << ": {  // " << opcode_print[opcode] << std::endl;
     switch (opcode) {
+      case LOAD_LITERAL:
+      case LOAD_LITERAL_WIDE: {
+        int index = (opcode == LOAD_LITERAL) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
+        switch (index) {
+          case 0:
+            output_ << "    PUSH(true_object);" << std::endl;
+            break;
+          case 1:
+            output_ << "    PUSH(false_object);" << std::endl;
+            break;
+          default:
+            // output_ << "    PUSH(program->literals.at(" << index << "));" << std::endl;
+            output_ << "    UNIMPLEMENTED();" << std::endl;
+            break;
+        }
+        break;
+      }
+
+      case LOAD_NULL: {
+        output_ << "    PUSH(null_object);" << std::endl;
+        break;
+      }
+
       case LOAD_SMI_0: {
         output_ << "    PUSH(Smi::from(0));" << std::endl;
         break;
@@ -142,6 +166,12 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
+      case POP_LOAD_LOCAL: {
+        B_ARG1(offset);
+        output_ << "    STACK_AT_PUT(0, STACK_AT(" << offset + 1 << "));" << std::endl;
+        break;
+      }
+
       case POP: {
         B_ARG1(index);
         output_ << "    DROP(" << index << ");" << std::endl;
@@ -161,6 +191,11 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         int fields = Instance::fields_from_size(size);
         TypeTag class_tag = program->class_tag_for(class_id);
         output_ << "    sp = allocate(sp, process, " << index << ", " << fields << ", " << size << ", static_cast<TypeTag>(" << class_tag << "));" << std::endl;
+        break;
+      }
+
+      case AS_LOCAL: {
+        output_ << "    // Should be: Check type!" << std::endl;
         break;
       }
 
@@ -233,20 +268,45 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
+      case PRIMITIVE: {
+        B_ARG1(module);
+        unsigned index = Utils::read_unaligned_uint16(bcp + 2);
+        int arity = PrimitiveResolver::arity(index, module);
+        const int parameter_offset = Interpreter::FRAME_SIZE;
+        output_ << "    const PrimitiveEntry* primitive = Primitive::at(" << module << ", " << index << ");  // ";
+        output_ << PrimitiveResolver::module_name(module) << "." << PrimitiveResolver::primitive_name(module, index) << std::endl;
+        output_ << "    Primitive::Entry* entry = reinterpret_cast<Primitive::Entry*>(primitive->function);" << std::endl;
+        output_ << "    Object* result = entry(process, sp + " << (parameter_offset + arity - 1) << ");" << std::endl;
+        output_ << "    void* continuation = STACK_AT(1);" << std::endl;
+        output_ << "    DROP(" << (arity + 1) << ");" << std::endl;
+        output_ << "    STACK_AT_PUT(0, result);" << std::endl;
+        output_ << "    goto *continuation;" << std::endl;
+        break;
+      }
+
       case RETURN: {
         B_ARG1(offset);
         B_ARG2(arity);
         output_ << "    Object* result = STACK_AT(0);" << std::endl;
-        output_ << "    DROP(" << (offset + 1) << ");" << std::endl;
-        output_ << "    void* continuation = POP();" << std::endl;
-        output_ << "    DROP(" << arity << ");" << std::endl;
-        output_ << "    PUSH(result);" << std::endl;
+        output_ << "    void* continuation = STACK_AT(" << (offset + 1) << ");" << std::endl;
+        output_ << "    DROP(" << (arity + offset + 1) << ");" << std::endl;
+        output_ << "    STACK_AT_PUT(0, result);" << std::endl;
+        output_ << "    goto *continuation;" << std::endl;
+        break;
+      }
+
+      case RETURN_NULL: {
+        B_ARG1(offset);
+        B_ARG2(arity);
+        output_ << "    void* continuation = STACK_AT(" << (offset + 1) << ");" << std::endl;
+        output_ << "    DROP(" << (arity + offset + 1) << ");" << std::endl;
+        output_ << "    STACK_AT_PUT(0, null_object);" << std::endl;
         output_ << "    goto *continuation;" << std::endl;
         break;
       }
 
       case HALT: {
-        output_ << "    return result;" << std::endl;
+        output_ << "    return;" << std::endl;
         break;
       }
 

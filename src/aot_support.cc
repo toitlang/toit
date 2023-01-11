@@ -2,11 +2,10 @@
 
 #include "objects_inline.h"
 
-toit::Object* run(toit::Process* process, toit::Object** sp) __attribute__((weak));
+void run(toit::Process* process, toit::Object** sp) __attribute__((weak));
 
-toit::Object* run(toit::Process* process, toit::Object** sp) {
+void run(toit::Process* process, toit::Object** sp) {
   UNIMPLEMENTED();
-  return null;
 }
 
 Object** add_int_int(Object** sp) {
