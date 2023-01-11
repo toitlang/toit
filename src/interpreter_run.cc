@@ -680,6 +680,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN_WITH_WIDE(INVOKE_VIRTUAL, stack_offset);
     Object* receiver = STACK_AT(stack_offset);
+    // TODO(kasper): The selector offset is read from the wrong address in the wide variant.
     int selector_offset = Utils::read_unaligned_uint16(bcp + 2);
     Method target = program->find_method(receiver, selector_offset);
     if (!target.is_valid()) {

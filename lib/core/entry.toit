@@ -3,12 +3,6 @@
 // found in the lib/LICENSE file.
 
 
-// Simplified. A lot.
-__entry__main task -> none:
-  #primitive.intrinsics.main (null as any)
-  __halt__
-
-/*
 // This is the system entry point. It is responsible for
 // calling the main function and halting the system after
 // it returns.
@@ -21,7 +15,6 @@ __entry__main task -> none:
   task.initialize_entry_task_
   task.evaluate_:
     #primitive.intrinsics.main main_arguments_
-*/
 
 // This is the entry point for processes just being spawned.
 // It calls the lambda passed in the spawn arguments.

@@ -128,12 +128,6 @@ Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** argv, 
   Locker locker(mutex_);
   Process* process = new_boot_process(locker, program, group_id);
   process->set_main_arguments(argv);
-  if (true) {
-    Object** stack = static_cast<Object**>(malloc(sizeof(Object*) * 1024));
-    ::run(process, &stack[1024]);
-    free(stack);
-    return ExitState(EXIT_DONE);
-  }
   return launch_program(locker, process);
 }
 
@@ -147,12 +141,6 @@ Scheduler::ExitState Scheduler::run_boot_program(
   Process* process = new_boot_process(locker, program, group_id);
   process->set_main_arguments(argv);
   process->set_spawn_arguments(system, application);
-  if (true) {
-    Object** stack = static_cast<Object**>(malloc(sizeof(Object*) * 1024));
-    ::run(process, &stack[1024]);
-    free(stack);
-    return ExitState(EXIT_DONE);
-  }
   return launch_program(locker, process);
 }
 
@@ -233,6 +221,13 @@ int Scheduler::run_program(Program* program, MessageEncoder* arguments, ProcessG
     return INVALID_PROCESS_ID;
   }
   process->set_main_arguments(arguments->take_buffer());  // Neuters the encoder.
+
+  if (true) {
+    Object** stack = static_cast<Object**>(malloc(sizeof(Object*) * 1024));
+    ::run(process, &stack[1024]);
+    free(stack);
+    exit(0);
+  }
 
   Interpreter interpreter;
   interpreter.activate(process);

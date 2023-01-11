@@ -110,6 +110,98 @@ void CcGenerator::emit_method(Method method, uint8* end) {
     }
     output_ << "  L" << bci << ": {  // " << opcode_print[opcode] << std::endl;
     switch (opcode) {
+      case LOAD_LOCAL_0:
+      case LOAD_LOCAL_1:
+      case LOAD_LOCAL_2:
+      case LOAD_LOCAL_3:
+      case LOAD_LOCAL_4:
+      case LOAD_LOCAL_5: {
+        output_ << "    PUSH(STACK_AT(" << (opcode - LOAD_LOCAL_0) << "));" << std::endl;
+        break;
+      }
+
+      case LOAD_LOCAL:
+      case LOAD_LOCAL_WIDE: {
+        int index = (opcode == LOAD_LOCAL) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
+        output_ << "    PUSH(STACK_AT(" << index << "));" << std::endl;
+        break;
+      }
+
+      case STORE_LOCAL: {
+        B_ARG1(index);
+        output_ << "    STACK_AT_PUT(" << index << ", STACK_AT(0));" << std::endl;
+        break;
+      }
+
+      case STORE_LOCAL_POP: {
+        B_ARG1(index);
+        output_ << "    STACK_AT_PUT(" << index << ", STACK_AT(0));" << std::endl;
+        output_ << "    DROP1();" << std::endl;
+        break;
+      }
+
+      case LOAD_OUTER: {
+        B_ARG1(index);
+        output_ << "    Object** block = reinterpret_cast<Object**>(STACK_AT(0));" << std::endl;
+        output_ << "    STACK_AT_PUT(0, block[" << index << "]);" << std::endl;
+        break;
+      }
+
+      case STORE_OUTER: {
+        B_ARG1(index);
+        output_ << "    Object* value = STACK_AT(0);" << std::endl;
+        output_ << "    Object** block = reinterpret_cast<Object**>(STACK_AT(1));" << std::endl;
+        output_ << "    block[" << index << "] = value;" << std::endl;
+        output_ << "    STACK_AT_PUT(1, value);" << std::endl;
+        output_ << "    DROP1();" << std::endl;
+      }
+
+      case LOAD_FIELD:
+      case LOAD_FIELD_WIDE: {
+        int index = (opcode == LOAD_FIELD) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
+        output_ << "    Instance* instance = Instance::cast(STACK_AT(0));" << std::endl;
+        output_ << "    STACK_AT_PUT(0, instance->at(" << index << "));" << std::endl;
+        break;
+      }
+
+      case LOAD_FIELD_LOCAL: {
+        B_ARG1(encoded);
+        int local = encoded & 0x0f;
+        int field = encoded >> 4;
+        output_ << "    Instance* instance = Instance::cast(STACK_AT(" << local << "));" << std::endl;
+        output_ << "    PUSH(instance->at(" << field << "));" << std::endl;
+        break;
+      }
+
+      case POP_LOAD_FIELD_LOCAL: {
+        B_ARG1(encoded);
+        int local = encoded & 0x0f;
+        int field = encoded >> 4;
+        output_ << "    Instance* instance = Instance::cast(STACK_AT(" << (local + 1) << "));" << std::endl;
+        output_ << "    STACK_AT_PUT(0, instance->at(" << field << "));" << std::endl;
+        break;
+      }
+
+      case STORE_FIELD:
+      case STORE_FIELD_WIDE: {
+        int index = (opcode == STORE_FIELD) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
+        output_ << "    Object* value = STACK_AT(0);" << std::endl;
+        output_ << "    Instance* instance = Instance::cast(STACK_AT(1));" << std::endl;
+        output_ << "    instance->at_put(" << index << ", value);" << std::endl;
+        output_ << "    STACK_AT_PUT(1, value);" << std::endl;
+        output_ << "    DROP1();" << std::endl;
+        break;
+      }
+
+      case STORE_FIELD_POP: {
+        B_ARG1(index);
+        output_ << "    Object* value = STACK_AT(0);" << std::endl;
+        output_ << "    Instance* instance = Instance::cast(STACK_AT(1));" << std::endl;
+        output_ << "    instance->at_put(" << index << ", value);" << std::endl;
+        output_ << "    DROP(2);" << std::endl;
+        break;
+      }
+
       case LOAD_LITERAL:
       case LOAD_LITERAL_WIDE: {
         int index = (opcode == LOAD_LITERAL) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
@@ -121,8 +213,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
             output_ << "    PUSH(false_object);" << std::endl;
             break;
           default:
-            // output_ << "    PUSH(program->literals.at(" << index << "));" << std::endl;
-            output_ << "    UNIMPLEMENTED();" << std::endl;
+            output_ << "    PUSH(process->program()->literals.at(" << index << "));" << std::endl;
             break;
         }
         break;
@@ -149,20 +240,37 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
-      case LOAD_LOCAL_0:
-      case LOAD_LOCAL_1:
-      case LOAD_LOCAL_2:
-      case LOAD_LOCAL_3:
-      case LOAD_LOCAL_4:
-      case LOAD_LOCAL_5: {
-        output_ << "    PUSH(STACK_AT(" << (opcode - LOAD_LOCAL_0) << "));" << std::endl;
+      case LOAD_METHOD: {
+        int offset = Utils::read_unaligned_uint32(bcp + 1);
+        if (types_->is_dead_method(offset)) {
+          output_ << "    PUSH(Smi::from(0));  // dead" << std::endl;
+        } else {
+          Method target(program->bytecodes, offset);
+          int entry = program->absolute_bci_from_bcp(target.entry());
+          output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << entry << "));" << std::endl;
+        }
         break;
       }
 
-      case LOAD_LOCAL:
-      case LOAD_LOCAL_WIDE: {
-        int index = (opcode == LOAD_LOCAL) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
-        output_ << "    PUSH(STACK_AT(" << index << "));" << std::endl;
+      case LOAD_GLOBAL_VAR:
+      case LOAD_GLOBAL_VAR_WIDE: {
+        int index = (opcode == LOAD_GLOBAL_VAR) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
+        output_ << "    PUSH(process->object_heap()->global_variables()[" << index << "]);" << std::endl;
+        break;
+      }
+
+      case STORE_GLOBAL_VAR:
+      case STORE_GLOBAL_VAR_WIDE: {
+        int index = (opcode == STORE_GLOBAL_VAR) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
+        output_ << "    process->object_heap()->global_variables()[" << index << "] = STACK_AT(0);" << std::endl;
+        break;
+      }
+
+      case LOAD_BLOCK: {
+        B_ARG1(index);
+        // TODO(kasper): This should be the distance from the bottom of the stack, so we can
+        // relocate the blocks correctly later.
+        output_ << "    PUSH(reinterpret_cast<Object*>(sp + " << index << "));" << std::endl;
         break;
       }
 
@@ -214,6 +322,19 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
+      case INVOKE_BLOCK: {
+        B_ARG1(index);
+        output_ << "    void** block = reinterpret_cast<void**>(STACK_AT(" << (index - 1) << "));" << std::endl;
+        // TODO(kasper): We need to handle the case where we are providing too many
+        // arguments to the block call somehow.
+        output_ << "    void* continuation = *block;" << std::endl;
+        int next = program->absolute_bci_from_bcp(bcp + INVOKE_BLOCK_LENGTH);
+        output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
+        output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
+        output_ << "    goto* continuation;" << std::endl;
+        break;
+      }
+
       case INVOKE_VIRTUAL: {
         B_ARG1(index);
         int next = program->absolute_bci_from_bcp(bcp + INVOKE_VIRTUAL_LENGTH);
@@ -249,6 +370,15 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         output_ << "    } else {" << std::endl;
         output_ << "      sp = sub_int_int(sp);" << std::endl;
         output_ << "    }" << std::endl;
+        break;
+      }
+
+      case INVOKE_EQ: {
+        // TODO(kasper): Fixme.
+        output_ << "    Object* right = STACK_AT(0);" << std::endl;
+        output_ << "    Object* left = STACK_AT(1);" << std::endl;
+        output_ << "    STACK_AT_PUT(1, BOOL(left == right));" << std::endl;
+        output_ << "    DROP1();" << std::endl;
         break;
       }
 
@@ -305,13 +435,37 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
+      case IDENTICAL: {
+        // TODO(kasper): Fixme.
+        output_ << "    Object* right = STACK_AT(0);" << std::endl;
+        output_ << "    Object* left = STACK_AT(1);" << std::endl;
+        output_ << "    STACK_AT_PUT(1, BOOL(left == right));" << std::endl;
+        output_ << "    DROP1();" << std::endl;
+        break;
+      }
+
+      case LINK: {
+        output_ << "    PUSH(Smi::from(0xbeef));" << std::endl;
+        output_ << "    PUSH(Smi::from(-0xdead));" << std::endl;
+        output_ << "    PUSH(Smi::from(-1));" << std::endl;
+        // TODO(kasper): This should be the link.
+        output_ << "    PUSH(reinterpret_cast<Object*>(sp));" << std::endl;
+        break;
+      }
+
+      case UNLINK: {
+        // TODO(kasper): Restore the link.
+        output_ << "     DROP1();" << std::endl;
+        break;
+      }
+
       case HALT: {
         output_ << "    return;" << std::endl;
         break;
       }
 
       default: {
-        output_ << "    UNIMPLEMENTED();" << std::endl;
+        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
         break;
       }
     }
