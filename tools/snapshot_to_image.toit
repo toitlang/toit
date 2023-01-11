@@ -27,7 +27,7 @@ import .firmware show pad
 import binary show LITTLE_ENDIAN ByteOrder
 import uuid
 import host.file
-import host.arguments
+import cli
 
 BINARY_FLAG      ::= "binary"
 M32_FLAG         ::= "machine-32-bit"
@@ -35,6 +35,7 @@ M64_FLAG         ::= "machine-64-bit"
 UNIQUE_ID_OPTION ::= "unique_id"
 OUTPUT_OPTION    ::= "output"
 ASSETS_OPTION    ::= "assets"
+SNAPSHOT_FILE    ::= "snapshot-file"
 
 abstract class RelocatedOutput:
   static ENDIAN/ByteOrder ::= LITTLE_ENDIAN
@@ -87,22 +88,25 @@ class BinaryRelocatedOutput extends RelocatedOutput:
     RelocatedOutput.ENDIAN.put_uint32 buffer_ 0 word
     out.write buffer_
 
-print_usage parser/arguments.ArgumentParser:
-  print_on_stderr_ parser.usage
+print_usage parser/cli.Command:
+  parser.usage
   exit 1
 
 main args:
-  parser := arguments.ArgumentParser
-  parser.describe_rest ["snapshot-file"]
-  parser.add_flag M32_FLAG --short="m32"
-  parser.add_flag M64_FLAG --short="m64"
-  parser.add_flag BINARY_FLAG
+  parsed := null
+  parser := cli.Command "snapshot_to_image"
+      --rest=[cli.OptionString SNAPSHOT_FILE]
+      --options=[
+          cli.Flag M32_FLAG --short_name="m32",
+          cli.Flag M64_FLAG --short_name="m64",
+          cli.Flag BINARY_FLAG,
+          cli.OptionString UNIQUE_ID_OPTION,
+          cli.OptionString OUTPUT_OPTION --short_name="o",
+          cli.OptionString ASSETS_OPTION,
+          ]
+      --run=:: parsed = it
 
-  parser.add_option UNIQUE_ID_OPTION
-  parser.add_option OUTPUT_OPTION --short="o"
-  parser.add_option ASSETS_OPTION
-
-  parsed := parser.parse args
+  parser.run args
 
   output_path/string? := parsed[OUTPUT_OPTION]
 
@@ -138,7 +142,7 @@ main args:
   assets := assets_path ? file.read_content assets_path : null
 
   out := file.Stream.for_write output_path
-  snapshot_path/string := parsed.rest[0]
+  snapshot_path/string := parsed[SNAPSHOT_FILE]
   snapshot_bundle := SnapshotBundle.from_file snapshot_path
   program_id ::= snapshot_bundle.uuid
   program := snapshot_bundle.decode

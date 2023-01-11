@@ -87,7 +87,7 @@ namespace toit {
   PRIMITIVE(array_at, 2)                     \
   PRIMITIVE(array_at_put, 3)                 \
   PRIMITIVE(array_new, 2)                    \
-  PRIMITIVE(array_expand, 3)                 \
+  PRIMITIVE(array_expand, 4)                 \
   PRIMITIVE(array_replace, 5)                \
   PRIMITIVE(list_add, 2)                     \
   PRIMITIVE(smi_unary_minus, 1)              \

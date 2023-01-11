@@ -50,8 +50,15 @@ class EncodeVisitor : public Visitor {
     encoder_->write_byte('S');
     String::Bytes bytes(string);
     const char* OVERFLOW_DOTS = "...";
-    const int printed = Utils::min(bytes.length(), MAX_NOF_STRING_ELEMENTS);
-    const bool overflow = bytes.length() > MAX_NOF_STRING_ELEMENTS;
+    int printed = bytes.length();
+    const bool overflow = printed > MAX_NOF_STRING_ELEMENTS;
+    if (overflow) {
+      printed = MAX_NOF_STRING_ELEMENTS;
+      // Don't chop up UTF-8 sequences.
+      while ((bytes.at(printed) & ~Utils::UTF_8_MASK) == Utils::UTF_8_PAYLOAD) {
+        printed--;
+      }
+    }
     const int limit = printed + (overflow ? strlen(OVERFLOW_DOTS) : 0);
     encoder_->write_int(limit);
     for (int i = 0; i < printed; i++) {
