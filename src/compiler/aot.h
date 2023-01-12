@@ -20,7 +20,7 @@
 namespace toit {
 namespace compiler {
 
-void compile_to_cc(TypeDatabase* types);
+void compile_to_cc(TypeDatabase* types, SourceMapper* source_mapper);
 
 }  // namespace toit::compiler
 }  // namespace toit

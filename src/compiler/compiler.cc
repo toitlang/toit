@@ -1652,7 +1652,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate, b
   if (propagate || aot) {
     TypeDatabase* types = TypeDatabase::compute(program);
     if (aot) {
-      compile_to_cc(types);
+      compile_to_cc(types, source_mapper);
     }
     if (propagate) {
       auto json = types->as_json();

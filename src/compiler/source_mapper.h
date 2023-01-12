@@ -124,6 +124,8 @@ class SourceMapper {
   int position_for_method(ir::Node* node) const;
   int position_for_expression(ir::Expression* expression) const;
 
+  std::vector<int> methods() const;
+
  private:
   struct FilePosition {
     int line;

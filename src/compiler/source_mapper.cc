@@ -410,6 +410,14 @@ int SourceMapper::position_for_expression(ir::Expression* expression) const {
   return method_data.id + Method::entry_offset() + bytecode_offset;
 }
 
+std::vector<int> SourceMapper::methods() const {
+  std::vector<int> result;
+  for (auto& it : source_information_) {
+    result.push_back(it.id);
+  }
+  return result;
+}
+
 SourceMapper::MethodMapper SourceMapper::register_method(ir::Method* method) {
   int index = source_information_.size();
   auto name = method->name().c_str();

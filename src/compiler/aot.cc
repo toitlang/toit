@@ -15,6 +15,9 @@
 
 #include "aot.h"
 #include "resolver_primitive.h"
+#include "set.h"
+#include "source_mapper.h"
+
 #include "../interpreter.h"
 
 #include <algorithm>
@@ -37,7 +40,7 @@ class CcGenerator {
   explicit CcGenerator(TypeDatabase* types)
      : types_(types) {}
 
-  void emit();
+  void emit(std::vector<int> offsets);
   std::string output() const { return output_.str(); }
 
  private:
@@ -47,13 +50,18 @@ class CcGenerator {
   void emit_method(Method method, uint8* end);
 };
 
-void CcGenerator::emit() {
+void CcGenerator::emit(std::vector<int> offsets) {
   Program* program = types_->program();
   output_ << "#include \"aot_support.h\"" << std::endl << std::endl;
   output_ << "void run(Process* process, Object** sp) {" << std::endl;
   output_ << "  Object* const null_object = process->program()->null_object();" << std::endl;
   output_ << "  Object* const true_object = process->program()->true_object();" << std::endl;
   output_ << "  Object* const false_object = process->program()->false_object();" << std::endl << std::endl;
+
+  std::vector<Method> methods;
+  for (auto it : offsets) {
+    methods.push_back(Method(program->bytecodes, it));
+  }
 
   List<int32> dispatch_table = program->dispatch_table;
   output_ << "  static const void* const vtbl[] = {" << std::endl;
@@ -76,12 +84,15 @@ void CcGenerator::emit() {
   int entry = program->absolute_bci_from_bcp(program->entry_main().entry());
   output_ << "  goto L" << entry << ";  // __entry__main" << std::endl;
 
-  auto methods = types_->methods();
   std::sort(methods.begin(), methods.end(), [&](Method a, Method b) {
     return a.header_bcp() < b.header_bcp();
   });
   for (unsigned i = 0; i < methods.size(); i++) {
     Method method = methods[i];
+    if (types_->is_dead_method(program->absolute_bci_from_bcp(method.header_bcp()))) {
+      // Skip dead methods completely.
+      continue;
+    }
     uint8* end = (i == methods.size() - 1)
         ? program->bytecodes.data() + program->bytecodes.length()
         : methods[i + 1].header_bcp();
@@ -394,7 +405,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         int next = program->absolute_bci_from_bcp(bcp + INVOKE_BLOCK_LENGTH);
         output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
         output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-        output_ << "    goto* continuation;" << std::endl;
+        output_ << "    goto *continuation;" << std::endl;
         break;
       }
 
@@ -510,7 +521,11 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         int target = (opcode == BRANCH)
             ? program->absolute_bci_from_bcp(bcp + offset)
             : program->absolute_bci_from_bcp(bcp - offset);
-        output_ << "    goto L" << target << ";" << std::endl;
+        if (target != program->absolute_bci_from_bcp(end)) {
+          output_ << "    goto L" << target << ";" << std::endl;
+        } else {
+          output_ << "    // dead branch" << std::endl;
+        }
         break;
       }
 
@@ -663,9 +678,9 @@ void CcGenerator::emit_method(Method method, uint8* end) {
   output_ << "  // Method @ " << id << " (" << size << " bytes): End" << std::endl;
 }
 
-void compile_to_cc(TypeDatabase* types) {
+void compile_to_cc(TypeDatabase* types, SourceMapper* source_mapper) {
   CcGenerator generator(types);
-  generator.emit();
+  generator.emit(source_mapper->methods());
   printf("%s", generator.output().c_str());
 }
 
