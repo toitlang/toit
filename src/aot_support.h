@@ -1,6 +1,7 @@
 #pragma once
 
 #include "objects.h"
+#include "objects_inline.h"
 #include "process.h"
 
 using namespace toit;

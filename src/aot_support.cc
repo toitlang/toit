@@ -1,7 +1,5 @@
 #include "aot_support.h"
 
-#include "objects_inline.h"
-
 void run(toit::Process* process, toit::Object** sp) __attribute__((weak));
 
 void run(toit::Process* process, toit::Object** sp) {

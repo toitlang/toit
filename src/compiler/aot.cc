@@ -240,6 +240,18 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
+      case LOAD_SMI_U16: {
+        uint16 value = Utils::read_unaligned_uint16(bcp + 1);
+        output_ << "    PUSH(Smi::from(" << value << "));" << std::endl;
+        break;
+      }
+
+      case LOAD_SMI_U32: {
+        uint32 value = Utils::read_unaligned_uint32(bcp + 1);
+        output_ << "    PUSH(Smi::from(" << value << "));" << std::endl;
+        break;
+      }
+
       case LOAD_METHOD: {
         int offset = Utils::read_unaligned_uint32(bcp + 1);
         if (types_->is_dead_method(offset)) {
@@ -302,8 +314,16 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
+      case AS_CLASS:
+      case AS_CLASS_WIDE:
       case AS_LOCAL: {
-        output_ << "    // Should be: Check type!" << std::endl;
+        output_ << "    // Should be: Check class!" << std::endl;
+        break;
+      }
+
+      case AS_INTERFACE:
+      case AS_INTERFACE_WIDE: {
+        output_ << "    // Should be: Check interface!" << std::endl;
         break;
       }
 
@@ -403,10 +423,33 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 */
-
-      case BRANCH_IF_FALSE: {
+      case BRANCH:
+      case BRANCH_BACK: {
         S_ARG1(offset);
-        int target = program->absolute_bci_from_bcp(bcp + offset);
+        int target = (opcode == BRANCH)
+            ? program->absolute_bci_from_bcp(bcp + offset)
+            : program->absolute_bci_from_bcp(bcp - offset);
+        output_ << "    goto L" << target << ";" << std::endl;
+        break;
+      }
+
+      case BRANCH_IF_TRUE:
+      case BRANCH_BACK_IF_TRUE: {
+        S_ARG1(offset);
+        int target = (opcode == BRANCH_IF_TRUE)
+            ? program->absolute_bci_from_bcp(bcp + offset)
+            : program->absolute_bci_from_bcp(bcp - offset);
+        output_ << "    Object* value = POP();" << std::endl;
+        output_ << "    if (IS_TRUE_VALUE(value)) goto L" << target << ";" << std::endl;
+        break;
+      }
+
+      case BRANCH_IF_FALSE:
+      case BRANCH_BACK_IF_FALSE: {
+        S_ARG1(offset);
+        int target = (opcode == BRANCH_IF_FALSE)
+            ? program->absolute_bci_from_bcp(bcp + offset)
+            : program->absolute_bci_from_bcp(bcp - offset);
         output_ << "    Object* value = POP();" << std::endl;
         output_ << "    if (!IS_TRUE_VALUE(value)) goto L" << target << ";" << std::endl;
         break;
@@ -449,8 +492,33 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
+      case NON_LOCAL_RETURN:
+      case NON_LOCAL_RETURN_WIDE: {
+        int arity = -1;
+        int height = -1;
+        if (opcode == NON_LOCAL_RETURN) {
+          B_ARG1(encoded);
+          arity = encoded & 0x0f;
+          height = encoded >> 4;
+        } else {
+          arity = Utils::read_unaligned_uint16(bcp + 1);
+          height = Utils::read_unaligned_uint16(bcp + 3);
+        }
+        // TODO(kasper): Handle linked frames.
+        output_ << "    Object** block = reinterpret_cast<Object**>(STACK_AT(0));" << std::endl;
+        output_ << "    Object* result = STACK_AT(1);" << std::endl;
+        output_ << "    sp = block + " << (height + 2) << ";" << std::endl;
+        output_ << "    void* continuation = STACK_AT(0);" << std::endl;
+        output_ << "    STACK_AT_PUT(" << arity << ", result);" << std::endl;
+        if (arity > 0) {
+          output_ << "    DROP(" << arity << ");" << std::endl;
+        }
+        output_ << "    goto *continuation;" << std::endl;
+        break;
+      }
+
       case IDENTICAL: {
-        // TODO(kasper): Fixme.
+        // TODO(kasper): Fix the semantics.
         output_ << "    Object* right = STACK_AT(0);" << std::endl;
         output_ << "    Object* left = STACK_AT(1);" << std::endl;
         output_ << "    STACK_AT_PUT(1, BOOL(left == right));" << std::endl;
@@ -470,6 +538,12 @@ void CcGenerator::emit_method(Method method, uint8* end) {
       case UNLINK: {
         // TODO(kasper): Restore the link.
         output_ << "     DROP1();" << std::endl;
+        break;
+      }
+
+      case UNWIND: {
+        // TODO(kasper): Check if we need to continue unwinding.
+        output_ << "     DROP(3);" << std::endl;
         break;
       }
 
