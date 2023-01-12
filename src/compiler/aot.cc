@@ -56,7 +56,7 @@ void CcGenerator::emit() {
   output_ << "  Object* const false_object = process->program()->false_object();" << std::endl << std::endl;
 
   List<int32> dispatch_table = program->dispatch_table;
-  output_ << "  static void* vtbl[] = {" << std::endl;
+  output_ << "  static const void* const vtbl[] = {" << std::endl;
   for (int i = 0; i < dispatch_table.length(); i++) {
     int offset = dispatch_table[i];
     if (offset >= 0) {
@@ -99,7 +99,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
   Program* program = types_->program();
   int id = program->absolute_bci_from_bcp(method.header_bcp());
   int size = end - method.entry();
-  output_ << "  // Method @ " << id << " (" << size << " bytes)" << std::endl;
+  output_ << "  // Method @ " << id << " (" << size << " bytes): Begin" << std::endl;
   uint8* bcp = method.entry();
   while (bcp < end) {
     Opcode opcode = static_cast<Opcode>(*bcp);
@@ -108,7 +108,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
       output_ << "  UNREACHABLE();" << std::endl;
       break;
     }
-    output_ << "  L" << bci << ": {  // " << opcode_print[opcode] << std::endl;
+    output_ << "  L" << bci << ": __attribute__((unused)); {  // " << opcode_print[opcode] << std::endl;
     switch (opcode) {
       case LOAD_LOCAL_0:
       case LOAD_LOCAL_1:
@@ -154,6 +154,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         output_ << "    block[" << index << "] = value;" << std::endl;
         output_ << "    STACK_AT_PUT(1, value);" << std::endl;
         output_ << "    DROP1();" << std::endl;
+        break;
       }
 
       case LOAD_FIELD:
@@ -229,6 +230,12 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
+      case LOAD_SMIS_0: {
+        B_ARG1(n);
+        output_ << "for (int i = 0; i < " << n << "; i++) PUSH(Smi::from(0));" << std::endl;
+        break;
+      }
+
       case LOAD_SMI_1: {
         output_ << "    PUSH(Smi::from(1));" << std::endl;
         break;
@@ -271,10 +278,22 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
+      case LOAD_GLOBAL_VAR_LAZY:
+      case LOAD_GLOBAL_VAR_LAZY_WIDE: {
+        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
+        break;
+      }
+
       case STORE_GLOBAL_VAR:
       case STORE_GLOBAL_VAR_WIDE: {
         int index = (opcode == STORE_GLOBAL_VAR) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
         output_ << "    process->object_heap()->global_variables()[" << index << "] = STACK_AT(0);" << std::endl;
+        break;
+      }
+
+      case LOAD_GLOBAL_VAR_DYNAMIC:
+      case STORE_GLOBAL_VAR_DYNAMIC: {
+        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
         break;
       }
 
@@ -283,6 +302,13 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         // TODO(kasper): This should be the distance from the bottom of the stack, so we can
         // relocate the blocks correctly later.
         output_ << "    PUSH(reinterpret_cast<Object*>(sp + " << index << "));" << std::endl;
+        break;
+      }
+
+      case LOAD_OUTER_BLOCK: {
+        B_ARG1(index);
+        output_ << "    Object** block = reinterpret_cast<Object**>(STACK_AT(0));" << std::endl;
+        output_ << "    STACK_AT_PUT(0, reinterpret_cast<Object*>(block + " << index << "));" << std::endl;
         break;
       }
 
@@ -314,6 +340,18 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
+      case IS_CLASS:
+      case IS_CLASS_WIDE: {
+        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
+        break;
+      }
+
+      case IS_INTERFACE:
+      case IS_INTERFACE_WIDE: {
+        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
+        break;
+      }
+
       case AS_CLASS:
       case AS_CLASS_WIDE:
       case AS_LOCAL: {
@@ -342,6 +380,11 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
+      case INVOKE_STATIC_TAIL: {
+        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
+        break;
+      }
+
       case INVOKE_BLOCK: {
         B_ARG1(index);
         output_ << "    void** block = reinterpret_cast<void**>(STACK_AT(" << (index - 1) << "));" << std::endl;
@@ -355,11 +398,48 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
+      case INVOKE_LAMBDA_TAIL: {
+        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
+        break;
+      }
+
+      case INVOKE_INITIALIZER_TAIL: {
+        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
+        break;
+      }
+
       case INVOKE_VIRTUAL: {
         B_ARG1(index);
         int next = program->absolute_bci_from_bcp(bcp + INVOKE_VIRTUAL_LENGTH);
         int offset = Utils::read_unaligned_uint16(bcp + 2);
         output_ << "    Object* receiver = STACK_AT(" << index << ");" << std::endl;
+        output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
+        output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
+        output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
+        output_ << "    goto *vtbl[id + " << offset << "];" << std::endl;
+        break;
+      }
+
+      case INVOKE_VIRTUAL_WIDE: {
+        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
+        break;
+      }
+
+      case INVOKE_VIRTUAL_GET: {
+        int next = program->absolute_bci_from_bcp(bcp + INVOKE_VIRTUAL_GET_LENGTH);
+        int offset = Utils::read_unaligned_uint16(bcp + 1);
+        output_ << "    Object* receiver = STACK_AT(0);" << std::endl;
+        output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
+        output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
+        output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
+        output_ << "    goto *vtbl[id + " << offset << "];" << std::endl;
+        break;
+      }
+
+      case INVOKE_VIRTUAL_SET: {
+        int next = program->absolute_bci_from_bcp(bcp + INVOKE_VIRTUAL_SET_LENGTH);
+        int offset = Utils::read_unaligned_uint16(bcp + 1);
+        output_ << "    Object* receiver = STACK_AT(1);" << std::endl;
         output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
         output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
         output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
@@ -423,6 +503,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 */
+
       case BRANCH:
       case BRANCH_BACK: {
         S_ARG1(offset);
@@ -468,6 +549,11 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         output_ << "    DROP(" << (arity + 1) << ");" << std::endl;
         output_ << "    STACK_AT_PUT(0, result);" << std::endl;
         output_ << "    goto *continuation;" << std::endl;
+        break;
+      }
+
+      case THROW: {
+        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
         break;
       }
 
@@ -517,6 +603,11 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
+      case NON_LOCAL_BRANCH: {
+        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
+        break;
+      }
+
       case IDENTICAL: {
         // TODO(kasper): Fix the semantics.
         output_ << "    Object* right = STACK_AT(0);" << std::endl;
@@ -552,14 +643,24 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         break;
       }
 
-      default: {
+      case INTRINSIC_SMI_REPEAT:
+      case INTRINSIC_ARRAY_DO:
+      case INTRINSIC_HASH_FIND:
+      case INTRINSIC_HASH_DO: {
         output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
         break;
+      }
+
+      case ILLEGAL_END: {
+        UNREACHABLE();
       }
     }
     output_ << "  }" << std::endl;
     bcp += opcode_length[opcode];
   }
+
+  output_ << "  __builtin_unreachable();" << std::endl;
+  output_ << "  // Method @ " << id << " (" << size << " bytes): End" << std::endl;
 }
 
 void compile_to_cc(TypeDatabase* types) {
