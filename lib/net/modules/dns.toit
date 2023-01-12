@@ -94,8 +94,8 @@ class DnsClient:
   servers_/List
   current_server_/int := ?
 
-  CACHE_ ::= Map  // From name to CacheEntry_.
-  CACHE_IPV6_ ::= Map  // From name to CacheEntry_.
+  cache_ ::= Map  // From name to CacheEntry_.
+  cache_ipv6_ ::= Map  // From name to CacheEntry_.
 
   /**
   Creates a DnsClient, given a list of DNS servers in the form of IP addresses
@@ -183,15 +183,15 @@ class DnsClient:
 
   find_in_cache_ name --accept_ipv4/bool --accept_ipv6/bool -> net.IpAddress?:
     if accept_ipv4:
-      if CACHE_.contains name:
-        entry := CACHE_[name]
+      if cache_.contains name:
+        entry := cache_[name]
         if entry.valid: return entry.address
-        CACHE_.remove name
+        cache_.remove name
     if accept_ipv6:
-      if CACHE_IPV6_.contains name:
-        entry := CACHE_IPV6_[name]
+      if cache_ipv6_.contains name:
+        entry := cache_ipv6_[name]
         if entry.valid: return entry.address
-        CACHE_IPV6_.remove name
+        cache_ipv6_.remove name
     return null
 
   static ERROR_MESSAGES_ ::= ["", "FORMAT_ERROR", "SERVER_FAILURE", "NO_SUCH_DOMAIN", "NOT_IMPLEMENTED", "REFUSED"]
@@ -243,8 +243,8 @@ class DnsClient:
           result := net.IpAddress
               response.copy position position + 4
           if ttl > 0:
-            trim_cache_ CACHE_
-            CACHE_[query.name] = CacheEntry_ result ttl
+            trim_cache_ cache_
+            cache_[query.name] = CacheEntry_ result ttl
           return result
         // Skip name that does not match.
       else if type == RECORD_AAAA and query.accept_ipv6:
@@ -253,8 +253,8 @@ class DnsClient:
           result := net.IpAddress
               response.copy position position + 16
           if ttl > 0:
-            trim_cache_ CACHE_IPV6_
-            CACHE_IPV6_[query.name] = CacheEntry_ result ttl
+            trim_cache_ cache_ipv6_
+            cache_ipv6_[query.name] = CacheEntry_ result ttl
           return result
       else if type == RECORD_CNAME:
         q_name = decode_name response position: null
