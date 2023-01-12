@@ -53,40 +53,38 @@ class CcGenerator {
 void CcGenerator::emit(std::vector<int> offsets) {
   Program* program = types_->program();
   output_ << "#include \"aot_support.h\"" << std::endl << std::endl;
-  output_ << "void run(Process* process, Object** sp) {" << std::endl;
-  output_ << "  Object* const null_object = process->program()->null_object();" << std::endl;
-  output_ << "  Object* const true_object = process->program()->true_object();" << std::endl;
-  output_ << "  Object* const false_object = process->program()->false_object();" << std::endl << std::endl;
 
   std::vector<Method> methods;
   for (auto it : offsets) {
     methods.push_back(Method(program->bytecodes, it));
   }
 
+  std::sort(methods.begin(), methods.end(), [&](Method a, Method b) {
+    return a.header_bcp() < b.header_bcp();
+  });
+
+  for (unsigned i = 0; i < methods.size(); i++) {
+    Method method = methods[i];
+    int id = program->absolute_bci_from_bcp(method.header_bcp());
+    output_ << "void run_" << id << "(RUN_PARAMS);" << std::endl;
+  }
+  output_ << std::endl;
+
   List<int32> dispatch_table = program->dispatch_table;
-  output_ << "  static const void* const vtbl[] = {" << std::endl;
+  output_ << "static const run_func vtbl[] = {" << std::endl;
   for (int i = 0; i < dispatch_table.length(); i++) {
     int offset = dispatch_table[i];
     if (offset >= 0) {
       Method method(program->bytecodes, offset);
       if (method.selector_offset() >= 0 && !types_->is_dead_method(offset)) {
-        output_ << "    &&L" << program->absolute_bci_from_bcp(method.entry()) << ", " << std::endl;
+        output_ << "  &run_" << program->absolute_bci_from_bcp(method.header_bcp()) << ", " << std::endl;
         continue;
       }
     }
-    output_ << "    0," << std::endl;
+    output_ << "  0," << std::endl;
   }
-  output_ << "  };" << std::endl << std::endl;
+  output_ << "};" << std::endl << std::endl;
 
-  output_ << "  PUSH(process->task());" << std::endl;
-  output_ << "  PUSH(Smi::from(0));  // Should be: return address" << std::endl;
-  output_ << "  PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-  int entry = program->absolute_bci_from_bcp(program->entry_main().entry());
-  output_ << "  goto L" << entry << ";  // __entry__main" << std::endl;
-
-  std::sort(methods.begin(), methods.end(), [&](Method a, Method b) {
-    return a.header_bcp() < b.header_bcp();
-  });
   for (unsigned i = 0; i < methods.size(); i++) {
     Method method = methods[i];
     if (types_->is_dead_method(program->absolute_bci_from_bcp(method.header_bcp()))) {
@@ -99,6 +97,18 @@ void CcGenerator::emit(std::vector<int> offsets) {
     output_ << std::endl;
     emit_method(method, end);
   }
+
+
+  output_ << "void run(Process* process, Object** sp) {" << std::endl;
+  output_ << "  Object* const null_object = process->program()->null_object();" << std::endl;
+  output_ << "  Object* const true_object = process->program()->true_object();" << std::endl;
+  output_ << "  Object* const false_object = process->program()->false_object();" << std::endl << std::endl;
+
+  output_ << "  PUSH(process->task());" << std::endl;
+  output_ << "  PUSH(Smi::from(0));  // Should be: return address" << std::endl;
+  output_ << "  PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
+  int entry = program->absolute_bci_from_bcp(program->entry_main().entry());
+  output_ << "  run_" << entry << "(RUN_ARGS);  // __entry__main" << std::endl;
   output_ << "}" << std::endl;
 }
 
@@ -111,6 +121,8 @@ void CcGenerator::emit_method(Method method, uint8* end) {
   int id = program->absolute_bci_from_bcp(method.header_bcp());
   int size = end - method.entry();
   output_ << "  // Method @ " << id << " (" << size << " bytes): Begin" << std::endl;
+  output_ << "void run_" << id << "(RUN_PARAMS) {" << std::endl;
+
   uint8* bcp = method.entry();
   while (bcp < end) {
     Opcode opcode = static_cast<Opcode>(*bcp);
@@ -379,14 +391,14 @@ void CcGenerator::emit_method(Method method, uint8* end) {
       case INVOKE_STATIC: {
         S_ARG1(offset);
         Method target(program->bytecodes, program->dispatch_table[offset]);
-        int entry = program->absolute_bci_from_bcp(target.entry());
+        int id = program->absolute_bci_from_bcp(target.header_bcp());
         int next = program->absolute_bci_from_bcp(bcp + INVOKE_STATIC_LENGTH);
         if (types_->is_dead_call(next)) {
           output_ << "    UNREACHABLE();" << std::endl;
         } else {
           output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
           output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-          output_ << "    goto L" << entry << ";" << std::endl;
+          output_ << "    TAILCALL return run_" << id << "(RUN_ARGS);" << std::endl;
         }
         break;
       }
@@ -398,14 +410,14 @@ void CcGenerator::emit_method(Method method, uint8* end) {
 
       case INVOKE_BLOCK: {
         B_ARG1(index);
-        output_ << "    void** block = reinterpret_cast<void**>(STACK_AT(" << (index - 1) << "));" << std::endl;
+        output_ << "    run_func* block = reinterpret_cast<run_func*>(STACK_AT(" << (index - 1) << "));" << std::endl;
         // TODO(kasper): We need to handle the case where we are providing too many
         // arguments to the block call somehow.
-        output_ << "    void* continuation = *block;" << std::endl;
+        output_ << "    run_func continuation = *block;" << std::endl;
         int next = program->absolute_bci_from_bcp(bcp + INVOKE_BLOCK_LENGTH);
         output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
         output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-        output_ << "    goto *continuation;" << std::endl;
+        output_ << "    TAILCALL return continuation(RUN_ARGS);" << std::endl;
         break;
       }
 
@@ -427,7 +439,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
         output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
         output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-        output_ << "    goto *vtbl[id + " << offset << "];" << std::endl;
+        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS);" << std::endl;
         break;
       }
 
@@ -443,7 +455,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
         output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
         output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-        output_ << "    goto *vtbl[id + " << offset << "];" << std::endl;
+        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS);" << std::endl;
         break;
       }
 
@@ -454,7 +466,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
         output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
         output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-        output_ << "    goto *vtbl[id + " << offset << "];" << std::endl;
+        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS);" << std::endl;
         break;
       }
 
@@ -483,7 +495,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
         output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
         output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-        output_ << "    goto *vtbl[id + " << offset << "];" << std::endl;
+        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS);" << std::endl;
         break;
       }
 
@@ -560,10 +572,10 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         output_ << PrimitiveResolver::module_name(module) << "." << PrimitiveResolver::primitive_name(module, index) << std::endl;
         output_ << "    Primitive::Entry* entry = reinterpret_cast<Primitive::Entry*>(primitive->function);" << std::endl;
         output_ << "    Object* result = entry(process, sp + " << (parameter_offset + arity - 1) << ");" << std::endl;
-        output_ << "    void* continuation = STACK_AT(1);" << std::endl;
+        output_ << "    run_func continuation = reinterpret_cast<run_func>(STACK_AT(1));" << std::endl;
         output_ << "    DROP(" << (arity + 1) << ");" << std::endl;
         output_ << "    STACK_AT_PUT(0, result);" << std::endl;
-        output_ << "    goto *continuation;" << std::endl;
+        output_ << "    TAILCALL return continuation(RUN_ARGS);" << std::endl;
         break;
       }
 
@@ -576,20 +588,20 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         B_ARG1(offset);
         B_ARG2(arity);
         output_ << "    Object* result = STACK_AT(0);" << std::endl;
-        output_ << "    void* continuation = STACK_AT(" << (offset + 1) << ");" << std::endl;
+        output_ << "    run_func continuation = reinterpret_cast<run_func>(STACK_AT(" << (offset + 1) << "));" << std::endl;
         output_ << "    DROP(" << (arity + offset + 1) << ");" << std::endl;
         output_ << "    STACK_AT_PUT(0, result);" << std::endl;
-        output_ << "    goto *continuation;" << std::endl;
+        output_ << "    TAILCALL return continuation(RUN_ARGS);" << std::endl;
         break;
       }
 
       case RETURN_NULL: {
         B_ARG1(offset);
         B_ARG2(arity);
-        output_ << "    void* continuation = STACK_AT(" << (offset + 1) << ");" << std::endl;
+        output_ << "    run_func continuation = reinterpret_cast<run_func>(STACK_AT(" << (offset + 1) << "));" << std::endl;
         output_ << "    DROP(" << (arity + offset + 1) << ");" << std::endl;
         output_ << "    STACK_AT_PUT(0, null_object);" << std::endl;
-        output_ << "    goto *continuation;" << std::endl;
+        output_ << "    TAILCALL return continuation(RUN_ARGS);" << std::endl;
         break;
       }
 
@@ -609,12 +621,12 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         output_ << "    Object** block = reinterpret_cast<Object**>(STACK_AT(0));" << std::endl;
         output_ << "    Object* result = STACK_AT(1);" << std::endl;
         output_ << "    sp = block + " << (height + 2) << ";" << std::endl;
-        output_ << "    void* continuation = STACK_AT(0);" << std::endl;
+        output_ << "    run_func continuation = reinterpret_cast<run_func>(STACK_AT(0));" << std::endl;
         output_ << "    STACK_AT_PUT(" << arity << ", result);" << std::endl;
         if (arity > 0) {
           output_ << "    DROP(" << arity << ");" << std::endl;
         }
-        output_ << "    goto *continuation;" << std::endl;
+        output_ << "    TAILCALL return continuation(RUN_ARGS);" << std::endl;
         break;
       }
 
@@ -675,7 +687,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
   }
 
   output_ << "  __builtin_unreachable();" << std::endl;
-  output_ << "  // Method @ " << id << " (" << size << " bytes): End" << std::endl;
+  output_ << "}" << std::endl;
 }
 
 void compile_to_cc(TypeDatabase* types, SourceMapper* source_mapper) {

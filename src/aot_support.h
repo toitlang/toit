@@ -81,3 +81,21 @@ static inline bool lte_ints(Object* a, Smi* b) {
 }
 
 Object** allocate(Object** sp, Process* process, int index, int fields, int size, TypeTag tag);
+
+#define RUN_PARAMS       \
+    Object** sp,         \
+    Process* process,    \
+    Object* null_object, \
+    Object* true_object, \
+    Object* false_object
+
+#define RUN_ARGS  \
+    sp,           \
+    process,      \
+    null_object,  \
+    true_object,  \
+    false_object
+
+typedef void (*run_func)(RUN_PARAMS);
+
+#define TAILCALL __attribute__((musttail))
