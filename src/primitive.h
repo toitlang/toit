@@ -260,6 +260,7 @@ namespace toit {
   PRIMITIVE(listen, 4)                       \
   PRIMITIVE(write, 5)                        \
   PRIMITIVE(read, 2)                         \
+  PRIMITIVE(error_number, 1)                 \
   PRIMITIVE(error, 1)                        \
   PRIMITIVE(get_option, 3)                   \
   PRIMITIVE(set_option, 4)                   \
@@ -273,7 +274,7 @@ namespace toit {
   PRIMITIVE(send, 7)                         \
   PRIMITIVE(get_option, 3)                   \
   PRIMITIVE(set_option, 4)                   \
-  PRIMITIVE(error, 1)                        \
+  PRIMITIVE(error_number, 1)                 \
   PRIMITIVE(close, 2)                        \
   PRIMITIVE(gc, 1)                           \
 

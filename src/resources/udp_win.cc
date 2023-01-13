@@ -391,9 +391,9 @@ PRIMITIVE(close) {
   return process->program()->null_object();
 }
 
-PRIMITIVE(error) {
+PRIMITIVE(error_number) {
   ARGS(UdpSocketResource, udp_resource);
-  return Primitive::unmark_from_error(windows_error(process, udp_resource->error_code()));
+  return Smi::from(udp_resource->error_code());
 }
 
 PRIMITIVE(gc) {
