@@ -126,6 +126,7 @@ class DnsClient:
 
     with_timeout timeout:
       socket/udp.Socket? := null
+      servers_immediately_failed := {}
       try:
         retry_timeout := DNS_RETRY_TIMEOUT
 
@@ -134,10 +135,21 @@ class DnsClient:
         while true:
           if not socket:
             socket = udp.Socket
-            socket.connect
-              net.SocketAddress
-                net.IpAddress.parse servers_[current_server_]
-                53                             // DNS UDP port.
+            show_errors := servers_immediately_failed.size == servers_.size
+            exception := catch --unwind=show_errors --trace=show_errors:
+              socket.connect
+                net.SocketAddress
+                  net.IpAddress.parse servers_[current_server_]
+                  53                             // DNS UDP port.
+            if exception != null:
+              // Probably the network is unreachable.  We can still try the
+              // other servers, but if we have tried all of them then we are
+              // done.
+              servers_immediately_failed.add current_server_
+              socket.close
+              socket = null
+              current_server_ = (current_server_ + 1) % servers_.size
+              continue
           socket.write query.query_packet
 
           answer := null
