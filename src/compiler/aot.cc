@@ -133,6 +133,7 @@ void CcGenerator::emit(std::vector<int> offsets) {
     }
   }
 
+  output_ << std::endl;
   output_ << "void run(Process* process, Object** sp) {" << std::endl;
   output_ << "  Object* const null_object = process->program()->null_object();" << std::endl;
   output_ << "  Object* const true_object = process->program()->true_object();" << std::endl;

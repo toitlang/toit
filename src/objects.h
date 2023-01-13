@@ -205,9 +205,11 @@ class HeapObject : public Object {
     ASSERT(is_smi(result));
     return Smi::cast(result);
   }
+
   INLINE Smi* class_id() {
     return Smi::from((header()->value() >> HeapObject::CLASS_ID_OFFSET) & HeapObject::CLASS_ID_MASK);
   }
+
   INLINE TypeTag class_tag() {
     return static_cast<TypeTag>((header()->value() >> HeapObject::CLASS_TAG_OFFSET) & HeapObject::CLASS_TAG_MASK);
   }
