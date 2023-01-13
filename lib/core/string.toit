@@ -257,9 +257,9 @@ abstract class string implements Comparable:
   If an integer is returned from the block it is treated as a Unicode code
     point, and the corresponding code point is inserted.
   If the block returns null, this is treated like the zero length string.
-  If the block returns a collection, then every element in the collection
+  If the block returns a list, then every element in the list
     is handled like the above actions, but this is only done for one level -
-    collections of collections are not flattened in this way.
+    lists of lists are not flattened in this way.
   To get a list or byte array as the return value instead of a string, use
     `str.to_byte_array.map` instead.
   # Examples.
@@ -296,7 +296,7 @@ abstract class string implements Comparable:
       rune := this[i]
       if rune:
         replacement := block.call rune
-        if replacement is Collection:
+        if replacement is List:
           replacement.do: replace_block.call it
         else:
           replace_block.call replacement
