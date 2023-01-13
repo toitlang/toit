@@ -55,7 +55,7 @@ DEFAULT_CLIENT ::= DnsClient [
 // A map from IP addresses (in string form) to DNS clients.
 // If a DNS client has multiple servers it can query then they
 // are separated by slash (/) in the key.
-ALL_CLIENTS_ ::= {DEFAULT_CLIENT.servers_.join "/": DEFAULT_CLIENT}
+ALL_CLIENTS_ ::= {DEFAULT_CLIENT.servers_.sort.join "/": DEFAULT_CLIENT}
 
 default_client := DEFAULT_CLIENT
 
