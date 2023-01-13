@@ -20,10 +20,10 @@ byte_array_test:
 
 string_test:
   // Identity map.
-  expect_equals "Hello, Wørld!" ("Hello, Wørld!".map: it)
+  expect_equals "Hello, Wørld!" ("Hello, Wørld!".flat_map: it)
 
   // Spacing map.
-  expect_equals "H e l l o , W ø r l d !" ("Hello, Wørld!".map: it == ' ' ? null : [it, ' ']).trim
+  expect_equals "H e l l o , W ø r l d !" ("Hello, Wørld!".flat_map: it == ' ' ? null : [it, ' ']).trim
 
   // Rock dots map.
   expect_equals "Mötörhead" (heavy_metalize "Motorhead")
@@ -35,7 +35,7 @@ string_test:
   expect_equals "Bravo Romeo Oscar Oscar Kilo Lima Yankee November Niner Niner" (natoize "Brooklyn 99")
 
   // Non-ASCII to ASCII map.
-  simpler := "Søen så sær ud".map:
+  simpler := "Søen så sær ud".flat_map:
     if it == 'ø':
       'o'
     else if it == 'å':
@@ -49,14 +49,14 @@ string_test:
   expect_equals "hello, world!" (lower_case "Hello, World!")
 
 lower_case str/string -> string:
-  return str.map: | c | ('A' <= c <= 'Z') ? c - 'A' + 'a' : c
+  return str.flat_map: | c | ('A' <= c <= 'Z') ? c - 'A' + 'a' : c
 
 heavy_metalize str/string -> string:
-  return str.map: | c |
+  return str.flat_map: | c |
     ROCK_DOTS_MAP_.get c --if_absent=(: c)
 
 natoize str/string -> string:
-  result := str.map: | c |
+  result := str.flat_map: | c |
     if 'a' <= c <= 'z':
       [NATO[c - 'a'], " "]
     else if 'A' <= c <= 'Z':
