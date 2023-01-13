@@ -336,7 +336,7 @@ PRIMITIVE(set_option) {
   return process->program()->null_object();
 }
 
-PRIMITIVE(error) {
+PRIMITIVE(error_number) {
   ARGS(IntResource, connection);
   int fd = connection->id();
 
@@ -345,7 +345,7 @@ PRIMITIVE(error) {
   if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &errlen) != 0) {
     error = errno;
   }
-  return process->allocate_string_or_error(strerror(error));
+  return Smi::from(error);
 }
 
 PRIMITIVE(close) {

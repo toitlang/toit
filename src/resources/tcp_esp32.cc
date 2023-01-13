@@ -507,9 +507,14 @@ PRIMITIVE(close) {
   return process->program()->null_object();
 }
 
-PRIMITIVE(error) {
+PRIMITIVE(error_number) {
   ARGS(LwipSocket, socket);
-  return lwip_error(process, socket->error());
+  return Smi::from(socket->error());
+}
+
+PRIMITIVE(error) {
+  ARGS(int, error);
+  return lwip_error(process, error);
 }
 
 static Object* get_address(LwipSocket* socket, Process* process, bool peer) {
