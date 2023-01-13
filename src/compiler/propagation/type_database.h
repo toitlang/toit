@@ -40,8 +40,7 @@ class TypeDatabase {
 
   const std::vector<Method> methods() const;
   const std::vector<TypeSet> arguments(Method method) const;
-  const TypeSet usage(int position) const;
-  const TypeSet return_type(int position) const;
+  const TypeSet output(int position) const;
 
   std::string as_json() const;
 
@@ -64,7 +63,9 @@ class TypeDatabase {
   std::vector<TypeStack*> types_;
 
   std::unordered_map<int, TypeStack*> methods_;
-  std::unordered_map<int, TypeSet> usage_;
+
+  std::unordered_map<int, TypeStack*> input_;
+  std::unordered_map<int, TypeSet> output_;
   std::unordered_map<int, TypeSet> returns_;
 
   static std::unordered_map<Program*, TypeDatabase*> cache_;
@@ -73,7 +74,8 @@ class TypeDatabase {
 
   void add_method(Method method);
   void add_argument(Method method, int n, const TypeSet type);
-  void add_usage(int position, const TypeSet type);
+  void add_input(int position, int n, int size, const TypeSet type);
+  void add_output(int position, const TypeSet type);
 
   TypeSet copy_type(const TypeSet type);
   TypeStack* add_types_block();

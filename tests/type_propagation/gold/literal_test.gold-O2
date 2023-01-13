@@ -18,7 +18,7 @@ get_smi_or_string tests/type_propagation/literal_test.toit
   0[053] - invoke static get_smi tests/type_propagation/literal_test.toit // {SmallInteger_}
   3[014] - load local 0
   4[023] - load smi 0
-  5[062] - invoke eq // {True_|False_}
+  5[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True_|False_}
   6[082] - branch if false T13
   9[014] - load local 0
  10[088] - return S2 0

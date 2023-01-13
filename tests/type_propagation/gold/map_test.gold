@@ -4,11 +4,11 @@ main tests/type_propagation/map_test.toit
 
 test_simple tests/type_propagation/map_test.toit
   0[042] - allocate instance Map
-  2[053] - invoke static Map <sdk>/core/collections.toit // {Map}
+  2[053] - invoke static Map <sdk>/core/collections.toit // [{Map}] -> {Map}
   5[014] - load local 0
   6[004] - store local, pop S1
-  8[009] - load field local 48 // {Null_|List_|SmallArray_}
- 10[053] - invoke static id tests/type_propagation/map_test.toit // {Null_|List_|SmallArray_}
+  8[009] - load field local 48 // [{Map}] -> {Null_|List_|SmallArray_}
+ 10[053] - invoke static id tests/type_propagation/map_test.toit // [{Null_|List_|SmallArray_}] -> {Null_|List_|SmallArray_}
  13[089] - return null S2 0
 
 id tests/type_propagation/map_test.toit

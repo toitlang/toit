@@ -63,14 +63,18 @@ show_types types/List snapshot_content/ByteArray -> none
   bundle := SnapshotBundle snapshot_content
   program := bundle.decode
   methods := {}
-  type_strings := {:}
+  input_strings := {:}
+  output_strings := {:}
   method_args := {:}
   types.do: | entry/Map |
     position := entry["position"]
     method/ToitMethod := ?
-    if entry.contains "type":
+    if entry.contains "output":
       method = program.method_from_absolute_bci position
-      type_strings[position] = type_string program entry["type"]
+      output_strings[position] = type_string program entry["output"]
+      if entry.contains "input":
+        input_strings[position] = entry["input"].map: | x |
+          type_string program x
     else:
       method = program.method_from_absolute_bci (position + ToitMethod.HEADER_SIZE)
       method_args[position] = entry["arguments"].map: | x |
@@ -101,7 +105,9 @@ show_types types/List snapshot_content/ByteArray -> none
     else: print ""
     args := method_args.get method.id
     method.output program args --show_positions=show_positions: | position/int |
-      type_strings.get position
+      input_part := input_strings.get position
+      output_part := output_strings.get position
+      input_part ? "$input_part -> $output_part" : output_part
 
 type_string program/Program type/any -> string:
   if type == "[]": return "[block]"
