@@ -162,7 +162,7 @@ Proc8 Array1Par Array2Par IntParI1 IntParI2:
   Array1Par[IntLoc+30] = IntLoc
   2.repeat:
     Array2Par[IntLoc][IntLoc + it] = IntLoc
-  Array2Par[IntLoc][IntLoc-1] = Array2Par[IntLoc][IntLoc-1] + 1
+  Array2Par[IntLoc][IntLoc - 1] = Array2Par[IntLoc][IntLoc - 1] + 1
   Array2Par[IntLoc+20][IntLoc] = Array1Par[IntLoc]
   IntGlob = 5
 
@@ -178,7 +178,7 @@ Func2 StrParI1 StrParI2:
   IntLoc := 1
   CharLoc := null
   while IntLoc <= 1:
-    if (Func1 StrParI1[IntLoc] StrParI2[IntLoc+1]) == Ident1:
+    if (Func1 StrParI1[IntLoc] StrParI2[IntLoc + 1]) == Ident1:
       CharLoc = 'A'
       IntLoc = IntLoc + 1
   if CharLoc >= 'W' and CharLoc <= 'Z':

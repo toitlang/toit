@@ -1,0 +1,10 @@
+tests/negative/minus_space_test.toit:11:12: warning: Minus operator must be surrounded by spaces
+  print foo-bar
+           ^
+tests/negative/minus_space_test.toit:12:12: warning: Minus operator must be surrounded by spaces
+  print foo- bar
+           ^
+tests/negative/minus_space_test.toit:18:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed.
