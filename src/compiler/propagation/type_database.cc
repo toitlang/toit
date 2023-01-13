@@ -45,9 +45,9 @@ TypeDatabase::~TypeDatabase() {
 
 void TypeDatabase::check_top(uint8* bcp, Object* value) const {
   int position = program_->absolute_bci_from_bcp(bcp);
-  auto probe = usage_.find(position);
-  if (probe == usage_.end()) {
-    FATAL("usage not analyzed: %d", position);
+  auto probe = output_.find(position);
+  if (probe == output_.end()) {
+    FATAL("output not analyzed: %d", position);
   }
   TypeSet type = probe->second;
   if (type.is_block()) {
@@ -159,9 +159,9 @@ const std::vector<TypeSet> TypeDatabase::arguments(Method method) const {
   return result;
 }
 
-const TypeSet TypeDatabase::usage(int position) const {
-  auto probe = usage_.find(position);
-  if (probe == usage_.end()) {
+const TypeSet TypeDatabase::output(int position) const {
+  auto probe = output_.find(position);
+  if (probe == output_.end()) {
     return TypeSet::invalid();
   } else {
     return probe->second;
@@ -209,15 +209,30 @@ std::string TypeDatabase::as_json() const {
   out << "[\n";
 
   bool first = true;
-  for (auto it : usage_) {
+  for (auto it : output_) {
     if (first) {
       first = false;
     } else {
       out << ",\n";
     }
-    std::string type_string = it.second.as_json(program_);
-    out << "  {\"position\": " << it.first;
-    out << ", \"type\": " << type_string << "}";
+
+    int position = it.first;
+    std::string output_string = it.second.as_json(program_);
+    out << "  {\"position\": " << position;
+    if (input_.find(position) != input_.end()) {
+      out << ", \"input\": [";
+      TypeStack* stack = input_.at(position);
+      for (int i = 0; i < stack->size(); i++) {
+        if (i != 0) {
+          out << ",";
+        }
+        TypeSet type = stack->get(i);
+        std::string type_string = type.as_json(program_);
+        out << type_string;
+      }
+      out << "]";
+    }
+    out << ", \"output\": " << output_string << "}";
   }
 
   for (auto it : methods_) {
@@ -263,11 +278,23 @@ void TypeDatabase::add_argument(Method method, int n, const TypeSet type) {
   arguments->set(n, type);
 }
 
-void TypeDatabase::add_usage(int position, const TypeSet type) {
-  ASSERT(usage_.find(position) == usage_.end());
+void TypeDatabase::add_input(int position, int n, int size, const TypeSet type) {
+  TypeStack* stack = null;
+  if (n == 0) {
+    ASSERT(input_.find(position) == input_.end());
+    stack = new TypeStack(size - 1, size, words_per_type_);
+    input_[position] = stack;
+  } else {
+    stack = input_.at(position);
+  }
+  stack->set(n, type);
+}
+
+void TypeDatabase::add_output(int position, const TypeSet type) {
+  ASSERT(output_.find(position) == output_.end());
   TypeSet copy = copy_type(type);
   uint8 opcode = *(program_->bcp_from_absolute_bci(position));
-  usage_.emplace(position, copy);
+  output_.emplace(position, copy);
   returns_.emplace(position + opcode_length[opcode], copy);
 }
 

@@ -20,7 +20,7 @@ namespace toit {
 namespace compiler {
 
 TypeSet TypeVariable::use(TypePropagator* propagator, MethodTemplate* user, uint8* site) {
-  if (site) propagator->add_site(site, this);
+  if (site) propagator->add_output(site, this);
   if (user) users_.insert(user);
   return type();
 }

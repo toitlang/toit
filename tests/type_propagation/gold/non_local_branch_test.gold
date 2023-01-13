@@ -10,11 +10,11 @@ test_break tests/type_propagation/non_local_branch_test.toit
   0[026] - load smi 42
   2[029] - load [block] in test_break tests/type_propagation/non_local_branch_test.toit
   7[038] - load block 0
-  9[053] - invoke static invoke tests/type_propagation/non_local_branch_test.toit // {}
+  9[053] - invoke static invoke tests/type_propagation/non_local_branch_test.toit // [[block]] -> {}
  12[040] - pop 2
  14[083] - branch back T2
  19[014] - load local 0
- 20[053] - invoke static id tests/type_propagation/non_local_branch_test.toit // {String_}
+ 20[053] - invoke static id tests/type_propagation/non_local_branch_test.toit // [{String_}] -> {String_}
  23[089] - return null S2 0
 
 [block] in test_break tests/type_propagation/non_local_branch_test.toit
@@ -30,11 +30,11 @@ test_continue tests/type_propagation/non_local_branch_test.toit
   0[026] - load smi 42
   2[029] - load [block] in test_continue tests/type_propagation/non_local_branch_test.toit
   7[038] - load block 0
-  9[053] - invoke static invoke tests/type_propagation/non_local_branch_test.toit // {}
+  9[053] - invoke static invoke tests/type_propagation/non_local_branch_test.toit // [[block]] -> {}
  12[040] - pop 2
  14[083] - branch back T2
  19[014] - load local 0
- 20[053] - invoke static id tests/type_propagation/non_local_branch_test.toit // {float}
+ 20[053] - invoke static id tests/type_propagation/non_local_branch_test.toit // [{float}] -> {float}
  23[089] - return null S2 0
 
 [block] in test_continue tests/type_propagation/non_local_branch_test.toit
@@ -57,14 +57,14 @@ test_continue tests/type_propagation/non_local_branch_test.toit
 test_nested tests/type_propagation/non_local_branch_test.toit
   0[029] - load [block] in test_nested tests/type_propagation/non_local_branch_test.toit
   5[038] - load block 0
-  7[053] - invoke static invoke tests/type_propagation/non_local_branch_test.toit // {Null_}
+  7[053] - invoke static invoke tests/type_propagation/non_local_branch_test.toit // [[block]] -> {Null_}
  10[089] - return null S2 0
 
 [block] in test_nested tests/type_propagation/non_local_branch_test.toit
  - argument 0: [block]
   0[029] - load [block] in [block] in test_nested tests/type_propagation/non_local_branch_test.toit
   5[038] - load block 0
-  7[053] - invoke static invoke tests/type_propagation/non_local_branch_test.toit // {}
+  7[053] - invoke static invoke tests/type_propagation/non_local_branch_test.toit // [[block]] -> {}
  10[040] - pop 2
  12[083] - branch back T0
  17[022] - load null
@@ -83,13 +83,13 @@ id tests/type_propagation/non_local_branch_test.toit
 
 pick tests/type_propagation/non_local_branch_test.toit
   0[026] - load smi 100
-  2[053] - invoke static random <sdk>/core/utils.toit // {LargeInteger_|SmallInteger_}
+  2[053] - invoke static random <sdk>/core/utils.toit // [{SmallInteger_}] -> {LargeInteger_|SmallInteger_}
   5[026] - load smi 50
-  7[063] - invoke lt // {True_|False_}
+  7[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
   8[088] - return S1 0
 
 invoke tests/type_propagation/non_local_branch_test.toit
  - argument 0: [block]
   0[016] - load local 2
-  1[055] - invoke block S1 // {Null_}
+  1[055] - invoke block S1 // [[block]] -> {Null_}
   3[089] - return null S1 1

@@ -1,3 +1,0 @@
-<pkg:..>/png_display.toit:185:12: warning: Class 'Crc32' is deprecated
-    crc := Crc32
-           ^~~~~

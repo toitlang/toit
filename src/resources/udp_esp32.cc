@@ -365,7 +365,7 @@ PRIMITIVE(close) {
   return process->program()->null_object();
 }
 
-PRIMITIVE(error) {
+PRIMITIVE(error_number) {
   ARGS(ByteArray, socket_proxy);
   USE(socket_proxy);
 
