@@ -166,7 +166,7 @@ PRIMITIVE(connect) {
   if (id == -1) return Primitive::os_error(errno, process);
 
   if (window_size != 0 && setsockopt(id, SOL_SOCKET, SO_RCVBUF, &window_size, sizeof(window_size)) == -1) {
-    close(id);
+    close_keep_errno(id);
     return Primitive::os_error(errno, process);
   }
 
@@ -180,7 +180,7 @@ PRIMITIVE(connect) {
   addr.sin_port = htons(port);
   int result = connect(id, reinterpret_cast<struct sockaddr*>(&addr), size);
   if (result != 0 && errno != EINPROGRESS) {
-    close(id);
+    close_keep_errno(id);
     ASSERT(errno > 0);
     return Primitive::os_error(errno, process);
   }
@@ -238,13 +238,13 @@ PRIMITIVE(listen) {
 
   int result = bind_socket(id, hostname, port);
   if (result != 0) {
-    close(id);
+    close_keep_errno(id);
     if (result == -1) return Primitive::os_error(errno, process);
     WRONG_TYPE;
   }
 
   if (listen(id, backlog) == -1) {
-    close(id);
+    close_keep_errno(id);
     return Primitive::os_error(errno, process);
   }
 
