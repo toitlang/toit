@@ -136,6 +136,8 @@ fallback_test:
   // The --server option still works.
   dns_lookup --server="8.8.4.4" "www.facebook.com"
 
+  expect_throw "BAD_FORMAT": dns_lookup --server="5.5.5" "www.google.com"
+
 valid_ipv4 str/string -> none:
   expect
       net.IpAddress.is_valid str

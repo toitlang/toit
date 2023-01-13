@@ -106,6 +106,8 @@ class DnsClient:
     servers_ = servers
     current_server_ = random servers.size
 
+  static DNS_UDP_PORT ::= 53
+
   /**
   Look up a domain name and return an A or AAAA record.
 
@@ -135,12 +137,16 @@ class DnsClient:
         while true:
           if not socket:
             socket = udp.Socket
+            server_ip := net.IpAddress.parse servers_[current_server_]
             show_errors := servers_immediately_failed.size == servers_.size
-            exception := catch --unwind=show_errors --trace=show_errors:
+            exception := null
+            if show_errors:
               socket.connect
-                net.SocketAddress
-                  net.IpAddress.parse servers_[current_server_]
-                  53                             // DNS UDP port.
+                net.SocketAddress server_ip DNS_UDP_PORT
+            else:
+              exception = catch:
+                socket.connect
+                  net.SocketAddress server_ip DNS_UDP_PORT
             if exception != null:
               // Probably the network is unreachable.  We can still try the
               // other servers, but if we have tried all of them then we are
