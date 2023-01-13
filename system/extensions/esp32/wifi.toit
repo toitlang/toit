@@ -18,6 +18,7 @@ import monitor
 import log
 import device
 import net.wifi
+import net.modules.dns
 
 import encoding.tison
 import system.assets
@@ -170,6 +171,7 @@ class WifiModule implements NetworkModule:
   wifi_events_/monitor.ResourceState_? := null
   ip_events_/monitor.ResourceState_? := null
   address_/net.IpAddress? := null
+  dns_client_/dns.DnsClient? := null
 
   constructor.sta .service .ssid .password:
     resource_group_ = wifi_init_ false
@@ -181,6 +183,9 @@ class WifiModule implements NetworkModule:
 
   address -> net.IpAddress:
     return address_
+
+  dns_client -> dns.DnsClient?:
+    return dns_client_
 
   connect -> none:
     with_timeout WIFI_CONNECT_TIMEOUT_: wait_for_connected_
@@ -245,8 +250,19 @@ class WifiModule implements NetworkModule:
     if (state & WIFI_IP_ASSIGNED) == 0: throw "IP_ASSIGN_FAILED"
     ip_events_.clear_state WIFI_IP_ASSIGNED
     ip ::= wifi_get_ip_ resource_group_
-    address_ = net.IpAddress ip
+    address_ = net.IpAddress ip[0..4]
+    dns_servers := []
+    for index := 4; index < ip.size; index += 4:
+      server := ip[index..index + 4]
+      if server != #[0, 0, 0, 0]:
+        bytes := List 4: server[it].stringify
+        dns_servers.add (bytes.join ".")
     logger_.info "network address dynamically assigned through dhcp" --tags={"ip": address_}
+    if dns_servers.size != 0:
+      logger_.info "dns server dynamically assigned through dhcp" --tags={"dns": dns_servers.join ", "}
+      dns_client_ = dns.DnsClient dns_servers
+    else:
+      dns_client_ = dns.default_client
     ip_events_.set_callback:: on_event_ it
 
   wait_for_static_ip_address_ -> none:

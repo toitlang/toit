@@ -149,10 +149,17 @@ class WifiResourceGroup : public ResourceGroup {
 
   uint32 on_event(Resource* resource, word data, uint32 state);
 
+  uint32 dns_server(int index) const {
+    ASSERT(index >= 0);
+    ASSERT(index < ESP_NETIF_DNS_MAX);
+    return dns_servers_[index];
+  }
+
  private:
   int id_;
   esp_netif_t* netif_;
   uint32 ip_address_;
+  uint32 dns_servers_[ESP_NETIF_DNS_MAX];
 
   uint32 on_event_wifi(Resource* resource, word data, uint32 state);
   uint32 on_event_ip(Resource* resource, word data, uint32 state);
@@ -273,6 +280,17 @@ uint32 WifiResourceGroup::on_event_ip(Resource* resource, word data, uint32 stat
     case IP_EVENT_STA_GOT_IP: {
       ip_event_got_ip_t* event = reinterpret_cast<ip_event_got_ip_t*>(system_event->event_data);
       set_ip_address(event->ip_info.ip.addr);
+
+      esp_netif_dns_info_t dns_info;
+      for (int i = 0; i < ESP_NETIF_DNS_MAX; i++) {
+        esp_err_t result = esp_netif_get_dns_info(netif_, static_cast<esp_netif_dns_type_t>(i), &dns_info);
+        if (result == ESP_OK && dns_info.ip.type == ESP_IPADDR_TYPE_V4) {
+          dns_servers_[i] = dns_info.ip.u_addr.ip4.addr;
+        } else {
+          dns_servers_[i] = 0;
+        }
+      }
+
       state |= WIFI_IP_ASSIGNED;
       break;
     }
@@ -507,10 +525,13 @@ PRIMITIVE(get_ip) {
     return process->program()->null_object();
   }
 
-  ByteArray* result = process->object_heap()->allocate_internal_byte_array(4);
+  ByteArray* result = process->object_heap()->allocate_internal_byte_array(4 + 4 * ESP_NETIF_DNS_MAX);
   if (!result) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
   Utils::write_unaligned_uint32_le(bytes.address(), group->ip_address());
+  for (int i = 0; i < ESP_NETIF_DNS_MAX; i++) {
+    Utils::write_unaligned_uint32_le(bytes.address() + 4 + 4 * i, group->dns_server(i));
+  }
   return result;
 }
 
