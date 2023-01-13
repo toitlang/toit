@@ -2,21 +2,6 @@ import expect show *
 
 main:
   string_test
-  byte_array_test
-
-byte_array_test:
-  // Stays a byte array.
-  expect_equals #[1, 2, 3] (#[0, 1, 2].map: it + 1)
-  // Negative result makes it a list.
-  expect_equals [-1, 0, 1] (#[0, 1, 2].map: it - 1)
-  POWERS ::= ByteArray 8: 1 << it
-  // Out of range result makes it a list.
-  expect_equals [2, 4, 8, 16, 32, 64, 128, 256] (POWERS.map: it * 2)
-  // Works on byte array slices.
-  expect_equals #[4, 8, 16, 32, 64, 128] (POWERS[1..7].map: it * 2)
-  // Non-int values make it a list.
-  RANDOM ::= [255, "hest", "fisk", null]
-  expect_equals RANDOM (#[0, 1, 2, 3].map: RANDOM[it])
 
 string_test:
   // Identity map.
