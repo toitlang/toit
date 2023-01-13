@@ -1150,52 +1150,20 @@ abstract class string implements Comparable:
   This operation only replaces occurrences of $needle that are fully contained in $from-$to.
   */
   replace --all/bool=false needle/string from/int=0 to/int=size [replacement_callback] -> string:
-    first_index := index_of needle from to
-    if first_index < 0: return this
-    if not all:
-      replacement := replacement_callback.call needle
-      bytes := ByteArray (size - needle.size + replacement.size)
-      write_to_byte_array_ bytes 0 first_index 0
-      replacement.write_to_byte_array_ bytes 0 replacement.size first_index
-      write_to_byte_array_ bytes (first_index + needle.size) size (first_index + replacement.size)
-      return bytes.to_string
-    positions := [first_index]
-    // We start by keeping track of one unique replacement string.
-    // If the callback returns a different one, we start using a list for the remaining
-    //   replacements.
-    unique_replacement := replacement_callback.call needle
-    replacements := []
-    last_index := first_index
-    while true:
-      next_index := index_of needle (last_index + needle.size) to
-      if next_index < 0: break
-
-      positions.add next_index
-      this_replacement := replacement_callback.call needle
-      if not (replacements.is_empty and unique_replacement == this_replacement):
-        replacements.add this_replacement
-      last_index = next_index
-
-    unique_replacement_count := positions.size - replacements.size
-    result_size := size - (needle.size * positions.size)
-        + unique_replacement_count * unique_replacement.size
-        + (replacements.reduce --initial=0: |sum new| sum + new.size)
-
-    bytes := ByteArray result_size
-    next_from := 0
-    next_to := 0
-    for i := 0; i < positions.size; i++:
-      this_position := positions[i]
-      write_to_byte_array_ bytes next_from this_position next_to
-      next_to += this_position - next_from
-      next_from = this_position + needle.size
-      this_replacement := i < unique_replacement_count
-          ? unique_replacement
-          : replacements[i - unique_replacement_count]
-      this_replacement.write_to_byte_array_ bytes 0 this_replacement.size next_to
-      next_to += this_replacement.size
-    write_to_byte_array_ bytes next_from size next_to
-    return bytes.to_string
+    index := index_of needle from to
+    start := 0
+    if index < 0: return this
+    substrings := []
+    while index >= 0:
+      if index != start:
+        substrings.add this[start..index]
+      substrings.add (replacement_callback.call needle)
+      start = index + needle.size
+      if not all:
+        break
+      index = index_of needle start to
+    if start != size: substrings.add this[start..]
+    return substrings.join ""
 
   /**
   Replaces variables in a string with their values.
