@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <string>
 #include <sstream>
+#include <set>
 
 namespace toit {
 namespace compiler {
@@ -47,7 +48,20 @@ class CcGenerator {
   TypeDatabase* const types_;
   std::stringstream output_;
 
-  void emit_method(Method method, uint8* end);
+  void emit_method(Method method);
+  void emit_range(uint8* mend, uint8* begin, uint8* end);
+
+  std::vector<uint8*> split_method(Method method, uint8* end);
+  void split_range(uint8* begin, uint8* end, std::set<uint8*>& points);
+
+  static std::string branch(uint8* begin, uint8* end, Program* program, uint8* target) {
+    int id = program->absolute_bci_from_bcp(target);
+    if (target >= begin && target < end) {
+      return std::string("goto L") + std::to_string(id);
+    } else {
+      return std::string("TAILCALL return bb_") + std::to_string(id) + "(RUN_ARGS)";
+    }
+  }
 };
 
 void CcGenerator::emit(std::vector<int> offsets) {
@@ -65,10 +79,22 @@ void CcGenerator::emit(std::vector<int> offsets) {
 
   for (unsigned i = 0; i < methods.size(); i++) {
     Method method = methods[i];
+    if (types_->is_dead_method(program->absolute_bci_from_bcp(method.header_bcp()))) {
+      // Skip dead methods completely.
+      continue;
+    }
+    uint8* end = (i == methods.size() - 1)
+        ? program->bytecodes.data() + program->bytecodes.length()
+        : methods[i + 1].header_bcp();
     int id = program->absolute_bci_from_bcp(method.header_bcp());
-    output_ << "void run_" << id << "(RUN_PARAMS);" << std::endl;
+    output_ << "static void method_" << id << "(RUN_PARAMS) __attribute__((unused));" << std::endl;
+    auto points = split_method(method, end);
+    for (unsigned j = 0; j < points.size(); j++) {
+      int entry = program->absolute_bci_from_bcp(points[j]);
+      output_ << "static void bb_" << entry << "(RUN_PARAMS) __attribute__((unused));" << std::endl;
+    }
+    output_ << std::endl;
   }
-  output_ << std::endl;
 
   List<int32> dispatch_table = program->dispatch_table;
   output_ << "static const run_func vtbl[] = {" << std::endl;
@@ -77,7 +103,8 @@ void CcGenerator::emit(std::vector<int> offsets) {
     if (offset >= 0) {
       Method method(program->bytecodes, offset);
       if (method.selector_offset() >= 0 && !types_->is_dead_method(offset)) {
-        output_ << "  &run_" << program->absolute_bci_from_bcp(method.header_bcp()) << ", " << std::endl;
+        int entry = program->absolute_bci_from_bcp(method.header_bcp());
+        output_ << "  &method_" << entry << ", " << std::endl;
         continue;
       }
     }
@@ -91,13 +118,20 @@ void CcGenerator::emit(std::vector<int> offsets) {
       // Skip dead methods completely.
       continue;
     }
-    uint8* end = (i == methods.size() - 1)
+    uint8* mend = (i == methods.size() - 1)
         ? program->bytecodes.data() + program->bytecodes.length()
         : methods[i + 1].header_bcp();
+    auto points = split_method(method, mend);
     output_ << std::endl;
-    emit_method(method, end);
+    emit_method(method);
+    for (unsigned j = 0; j < points.size(); j++) {
+      uint8* end = (j == points.size() - 1)
+          ? mend
+          : points[j + 1];
+      output_ << std::endl;
+      emit_range(mend, points[j], end);
+    }
   }
-
 
   output_ << "void run(Process* process, Object** sp) {" << std::endl;
   output_ << "  Object* const null_object = process->program()->null_object();" << std::endl;
@@ -105,10 +139,8 @@ void CcGenerator::emit(std::vector<int> offsets) {
   output_ << "  Object* const false_object = process->program()->false_object();" << std::endl << std::endl;
 
   output_ << "  PUSH(process->task());" << std::endl;
-  output_ << "  PUSH(Smi::from(0));  // Should be: return address" << std::endl;
-  output_ << "  PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-  int entry = program->absolute_bci_from_bcp(program->entry_main().entry());
-  output_ << "  run_" << entry << "(RUN_ARGS);  // __entry__main" << std::endl;
+  int id = program->absolute_bci_from_bcp(program->entry_main().header_bcp());
+  output_ << "  method_" << id << "(RUN_ARGS_XX(0, 0));  // __entry__main" << std::endl;
   output_ << "}" << std::endl;
 }
 
@@ -116,14 +148,22 @@ void CcGenerator::emit(std::vector<int> offsets) {
 #define B_ARG2(name) const int name = bcp[2];
 #define S_ARG1(name) const int name = Utils::read_unaligned_uint16(bcp + 1);
 
-void CcGenerator::emit_method(Method method, uint8* end) {
+void CcGenerator::emit_method(Method method) {
   Program* program = types_->program();
   int id = program->absolute_bci_from_bcp(method.header_bcp());
-  int size = end - method.entry();
-  output_ << "  // Method @ " << id << " (" << size << " bytes): Begin" << std::endl;
-  output_ << "void run_" << id << "(RUN_PARAMS) {" << std::endl;
+  output_ << "static void method_" << id << "(RUN_PARAMS) {" << std::endl;
+  output_ << "  PUSH(reinterpret_cast<Object*>(extra));" << std::endl;
+  output_ << "  PUSH(Smi::from(0));  // Should be: Frame marker." << std::endl;
+  output_ << "  " << branch(0, 0, program, method.entry()) << ";" << std::endl;
+  output_ << "}" << std::endl;
+}
 
-  uint8* bcp = method.entry();
+void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
+  Program* program = types_->program();
+
+  uint8* bcp = begin;
+  output_ << "static void bb_" << program->absolute_bci_from_bcp(bcp) << "(RUN_PARAMS) {" << std::endl;
+
   while (bcp < end) {
     Opcode opcode = static_cast<Opcode>(*bcp);
     int bci = program->absolute_bci_from_bcp(bcp);
@@ -285,11 +325,11 @@ void CcGenerator::emit_method(Method method, uint8* end) {
       case LOAD_METHOD: {
         int offset = Utils::read_unaligned_uint32(bcp + 1);
         if (types_->is_dead_method(offset)) {
-          output_ << "    PUSH(Smi::from(0));  // dead" << std::endl;
+          output_ << "    PUSH(Smi::from(0));  // Dead." << std::endl;
         } else {
           Method target(program->bytecodes, offset);
-          int entry = program->absolute_bci_from_bcp(target.entry());
-          output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << entry << "));" << std::endl;
+          int id = program->absolute_bci_from_bcp(target.header_bcp());
+          output_ << "    PUSH(reinterpret_cast<Object*>(&method_" << id << "));" << std::endl;
         }
         break;
       }
@@ -396,9 +436,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         if (types_->is_dead_call(next)) {
           output_ << "    UNREACHABLE();" << std::endl;
         } else {
-          output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
-          output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-          output_ << "    TAILCALL return run_" << id << "(RUN_ARGS);" << std::endl;
+          output_ << "    TAILCALL return method_" << id << "(RUN_ARGS_X(&bb_" << next << "));" << std::endl;
         }
         break;
       }
@@ -415,9 +453,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         // arguments to the block call somehow.
         output_ << "    run_func continuation = *block;" << std::endl;
         int next = program->absolute_bci_from_bcp(bcp + INVOKE_BLOCK_LENGTH);
-        output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
-        output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-        output_ << "    TAILCALL return continuation(RUN_ARGS);" << std::endl;
+        output_ << "    TAILCALL return continuation(RUN_ARGS_X(&bb_" << next << "));" << std::endl;
         break;
       }
 
@@ -437,9 +473,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         int offset = Utils::read_unaligned_uint16(bcp + 2);
         output_ << "    Object* receiver = STACK_AT(" << index << ");" << std::endl;
         output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
-        output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
-        output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS);" << std::endl;
+        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_X(&bb_" << next << "));" << std::endl;
         break;
       }
 
@@ -453,9 +487,7 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         int offset = Utils::read_unaligned_uint16(bcp + 1);
         output_ << "    Object* receiver = STACK_AT(0);" << std::endl;
         output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
-        output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
-        output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS);" << std::endl;
+        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_X(&bb_" << next << "));" << std::endl;
         break;
       }
 
@@ -464,16 +496,14 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         int offset = Utils::read_unaligned_uint16(bcp + 1);
         output_ << "    Object* receiver = STACK_AT(1);" << std::endl;
         output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
-        output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
-        output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS);" << std::endl;
+        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_X(&bb_" << next << "));" << std::endl;
         break;
       }
 
       case INVOKE_EQ:
       case INVOKE_LT:
       case INVOKE_GT:
-      case INVOKE_LTE:
+      //case INVOKE_LTE:
       case INVOKE_GTE:
       case INVOKE_BIT_OR:
       case INVOKE_BIT_XOR:
@@ -481,8 +511,8 @@ void CcGenerator::emit_method(Method method, uint8* end) {
       case INVOKE_BIT_SHL:
       case INVOKE_BIT_SHR:
       case INVOKE_BIT_USHR:
-      case INVOKE_ADD:
-      case INVOKE_SUB:
+      //case INVOKE_ADD:
+      //case INVOKE_SUB:
       case INVOKE_MUL:
       case INVOKE_DIV:
       case INVOKE_MOD:
@@ -493,50 +523,58 @@ void CcGenerator::emit_method(Method method, uint8* end) {
         int offset = program->invoke_bytecode_offset(opcode);
         output_ << "    Object* receiver = STACK_AT(" << index << ");" << std::endl;
         output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
-        output_ << "    PUSH(reinterpret_cast<Object*>(&&L" << next << "));" << std::endl;
-        output_ << "    PUSH(Smi::from(0));  // Should be: frame marker" << std::endl;
-        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS);" << std::endl;
+        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_X(&bb_" << next << "));" << std::endl;
         break;
       }
 
-/*
+      case INVOKE_LTE: {
+        int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
+        output_ << "    Object* right = STACK_AT(0);" << std::endl;
+        output_ << "    Object* left = STACK_AT(1);" << std::endl;
+        output_ << "    bool result;" << std::endl;
+        output_ << "    if (!lte_smis(left, right, &result)) {" << std::endl;
+        output_ << "      TAILCALL return lte_int_int(RUN_ARGS_X(&bb_" << next << "));" << std::endl;
+        output_ << "    }" << std::endl;
+        output_ << "    STACK_AT_PUT(1, BOOL(result));" << std::endl;
+        output_ << "    DROP1();" << std::endl;
+        break;
+      }
+
       case INVOKE_ADD: {
+        int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
         output_ << "    Object* right = STACK_AT(0);" << std::endl;
         output_ << "    Object* left = STACK_AT(1);" << std::endl;
         output_ << "    Object* result;" << std::endl;
-        output_ << "    if (add_smis(left, right, &result)) {" << std::endl;
-        output_ << "      STACK_AT_PUT(1, result);" << std::endl;
-        output_ << "      DROP1();" << std::endl;
-        output_ << "    } else {" << std::endl;
-        output_ << "      sp = add_int_int(sp);" << std::endl;
+        output_ << "    if (!add_smis(left, right, &result)) {" << std::endl;
+        output_ << "      TAILCALL return add_int_int(RUN_ARGS_X(&bb_" << next << "));" << std::endl;
         output_ << "    }" << std::endl;
+        output_ << "    STACK_AT_PUT(1, result);" << std::endl;
+        output_ << "    DROP1();" << std::endl;
         break;
       }
 
       case INVOKE_SUB: {
+        int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
         output_ << "    Object* right = STACK_AT(0);" << std::endl;
         output_ << "    Object* left = STACK_AT(1);" << std::endl;
         output_ << "    Object* result;" << std::endl;
-        output_ << "    if (sub_smis(left, right, &result)) {" << std::endl;
-        output_ << "      STACK_AT_PUT(1, result);" << std::endl;
-        output_ << "      DROP1();" << std::endl;
-        output_ << "    } else {" << std::endl;
-        output_ << "      sp = sub_int_int(sp);" << std::endl;
+        output_ << "    if (!sub_smis(left, right, &result)) {" << std::endl;
+        output_ << "      TAILCALL return sub_int_int(RUN_ARGS_X(&bb_" << next << "));" << std::endl;
         output_ << "    }" << std::endl;
+        output_ << "    STACK_AT_PUT(1, result);" << std::endl;
+        output_ << "    DROP1();" << std::endl;
         break;
       }
-*/
 
       case BRANCH:
       case BRANCH_BACK: {
         S_ARG1(offset);
-        int target = (opcode == BRANCH)
-            ? program->absolute_bci_from_bcp(bcp + offset)
-            : program->absolute_bci_from_bcp(bcp - offset);
-        if (target != program->absolute_bci_from_bcp(end)) {
-          output_ << "    goto L" << target << ";" << std::endl;
+        uint8* target = (opcode == BRANCH) ? (bcp + offset) : (bcp - offset);
+        if (target != mend) {
+          output_ << "    " << branch(begin, end, program, target) << ";" << std::endl;
         } else {
-          output_ << "    // dead branch" << std::endl;
+          output_ << "    // Dead branch." << std::endl;
+          output_ << "    __builtin_unreachable();" << std::endl;
         }
         break;
       }
@@ -544,22 +582,18 @@ void CcGenerator::emit_method(Method method, uint8* end) {
       case BRANCH_IF_TRUE:
       case BRANCH_BACK_IF_TRUE: {
         S_ARG1(offset);
-        int target = (opcode == BRANCH_IF_TRUE)
-            ? program->absolute_bci_from_bcp(bcp + offset)
-            : program->absolute_bci_from_bcp(bcp - offset);
+        uint8* target = (opcode == BRANCH_IF_TRUE) ? (bcp + offset) : (bcp - offset);
         output_ << "    Object* value = POP();" << std::endl;
-        output_ << "    if (IS_TRUE_VALUE(value)) goto L" << target << ";" << std::endl;
+        output_ << "    if (IS_TRUE_VALUE(value)) " << branch(begin, end, program, target) << ";" << std::endl;
         break;
       }
 
       case BRANCH_IF_FALSE:
       case BRANCH_BACK_IF_FALSE: {
         S_ARG1(offset);
-        int target = (opcode == BRANCH_IF_FALSE)
-            ? program->absolute_bci_from_bcp(bcp + offset)
-            : program->absolute_bci_from_bcp(bcp - offset);
+        uint8* target = (opcode == BRANCH_IF_FALSE) ? (bcp + offset) : (bcp - offset);
         output_ << "    Object* value = POP();" << std::endl;
-        output_ << "    if (!IS_TRUE_VALUE(value)) goto L" << target << ";" << std::endl;
+        output_ << "    if (!IS_TRUE_VALUE(value)) " << branch(begin, end, program, target) << ";" << std::endl;
         break;
       }
 
@@ -686,8 +720,88 @@ void CcGenerator::emit_method(Method method, uint8* end) {
     bcp += opcode_length[opcode];
   }
 
-  output_ << "  __builtin_unreachable();" << std::endl;
+  if (end != mend) {
+    int next = program->absolute_bci_from_bcp(end);
+    output_ << "  TAILCALL return bb_" << next << "(RUN_ARGS);" << std::endl;
+  } else {
+    output_ << "  __builtin_unreachable();" << std::endl;
+  }
   output_ << "}" << std::endl;
+}
+
+std::vector<uint8*> CcGenerator::split_method(Method method, uint8* end) {
+  std::set<uint8*> points;
+  while (true) {
+    size_t count = points.size();
+    uint8* begin = method.entry();
+    std::vector<uint8*> copy(points.begin(), points.end());
+    for (auto it : copy) {
+      split_range(begin, it, points);
+      begin = it;
+    }
+    split_range(begin, end, points);
+    if (count == points.size()) break;
+  }
+  points.insert(method.entry());
+  return std::vector<uint8*>(points.begin(), points.end());
+}
+
+void CcGenerator::split_range(uint8* begin, uint8* end, std::set<uint8*>& points) {
+  uint8* bcp = begin;
+  while (bcp < end) {
+    Opcode opcode = static_cast<Opcode>(*bcp);
+    switch (opcode) {
+      case INVOKE_STATIC:
+      case INVOKE_BLOCK:
+      case INVOKE_VIRTUAL:
+      case INVOKE_VIRTUAL_WIDE:
+      case INVOKE_VIRTUAL_GET:
+      case INVOKE_VIRTUAL_SET:
+      case INVOKE_EQ:
+      case INVOKE_LT:
+      case INVOKE_GT:
+      case INVOKE_LTE:
+      case INVOKE_GTE:
+      case INVOKE_BIT_OR:
+      case INVOKE_BIT_XOR:
+      case INVOKE_BIT_AND:
+      case INVOKE_BIT_SHL:
+      case INVOKE_BIT_SHR:
+      case INVOKE_BIT_USHR:
+      case INVOKE_ADD:
+      case INVOKE_SUB:
+      case INVOKE_MUL:
+      case INVOKE_DIV:
+      case INVOKE_MOD:
+      case INVOKE_AT:
+      case INVOKE_AT_PUT: {
+        uint8* next = bcp + opcode_length[opcode];
+        if (next < end) points.insert(next);
+        break;
+      }
+
+      case BRANCH:
+      case BRANCH_IF_TRUE:
+      case BRANCH_IF_FALSE: {
+        uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
+        if (target > end) points.insert(target);
+        break;
+      }
+
+      case BRANCH_BACK:
+      case BRANCH_BACK_IF_TRUE:
+      case BRANCH_BACK_IF_FALSE: {
+        uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
+        if (target < begin) points.insert(target);
+        break;
+      }
+
+      default: {
+        break;
+      }
+    }
+    bcp += opcode_length[opcode];
+  }
 }
 
 void compile_to_cc(TypeDatabase* types, SourceMapper* source_mapper) {

@@ -6,24 +6,28 @@ void run(toit::Process* process, toit::Object** sp) {
   UNIMPLEMENTED();
 }
 
-Object** add_int_int(Object** sp) {
+void add_int_int(RUN_PARAMS) {
   UNIMPLEMENTED();
-  return sp;
+  run_func continuation = reinterpret_cast<run_func>(extra);
+  TAILCALL return continuation(RUN_ARGS);
 }
 
-Object** sub_int_int(Object** sp) {
+void sub_int_smi(RUN_PARAMS) {
   UNIMPLEMENTED();
-  return sp;
+  run_func continuation = reinterpret_cast<run_func>(extra);
+  TAILCALL return continuation(RUN_ARGS);
 }
 
-Object** sub_int_smi(Object** sp) {
+void sub_int_int(RUN_PARAMS) {
   UNIMPLEMENTED();
-  return sp;
+  run_func continuation = reinterpret_cast<run_func>(extra);
+  TAILCALL return continuation(RUN_ARGS);
 }
 
-bool lte_ints_slow(Object* a, Object* b) {
+void lte_int_int(RUN_PARAMS) {
   UNIMPLEMENTED();
-  return false;
+  run_func continuation = reinterpret_cast<run_func>(extra);
+  TAILCALL return continuation(RUN_ARGS);
 }
 
 Object** allocate(Object** sp, Process* process, int index, int fields, int size, TypeTag tag) {

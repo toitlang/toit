@@ -110,7 +110,6 @@ if (DEFINED ENV{TOIT_CHECK_PROPAGATED_TYPES})
   set(TOIT_INTERPRETER_FLAGS "${TOIT_INTERPRETER_FLAGS};-DTOIT_CHECK_PROPAGATED_TYPES")
 endif()
 
-set_source_files_properties(bar.cc PROPERTIES COMPILE_OPTIONS "-O3")
 set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_OPTIONS "-O3")
 set_source_files_properties(interpreter_run.cc PROPERTIES COMPILE_OPTIONS "-O3;${TOIT_INTERPRETER_FLAGS};$ENV{LOCAL_INTERPRETER_CXXFLAGS}")
 set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\\"${TOIT_MODEL}\\\"\" -DVM_GIT_INFO=\"\\\"${VM_GIT_INFO}\\\"\" -DVM_GIT_VERSION=\"\\\"${TOIT_GIT_VERSION}\\\"\"")
