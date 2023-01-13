@@ -96,9 +96,23 @@ void CcGenerator::emit(std::vector<int> offsets) {
     output_ << std::endl;
   }
 
+  output_ << "static void method_illegal(RUN_PARAMS) __attribute__((unused));" << std::endl;
+  output_ << "static void method_illegal(RUN_PARAMS) {" << std::endl;
+  output_ << "  UNIMPLEMENTED();" << std::endl;
+  output_ << "};" << std::endl << std::endl;
+
   List<int32> dispatch_table = program->dispatch_table;
-  output_ << "static const run_func vtbl[] = {" << std::endl;
+  int selector_offset_max = 0;
   for (int i = 0; i < dispatch_table.length(); i++) {
+    int offset = dispatch_table[i];
+    if (offset < 0) continue;
+    Method method(program->bytecodes, offset);
+    selector_offset_max = Utils::max(selector_offset_max, method.selector_offset());
+  }
+
+  output_ << "static const run_func vtbl[] = {" << std::endl;
+  int limit = selector_offset_max + program->class_bits.length();
+  for (int i = 0; i < limit; i++) {
     int offset = dispatch_table[i];
     if (offset >= 0) {
       Method method(program->bytecodes, offset);
@@ -108,9 +122,9 @@ void CcGenerator::emit(std::vector<int> offsets) {
         continue;
       }
     }
-    output_ << "  0," << std::endl;
+    output_ << "  &method_illegal," << std::endl;
   }
-  output_ << "};" << std::endl << std::endl;
+  output_ << "};" << std::endl;
 
   for (unsigned i = 0; i < methods.size(); i++) {
     Method method = methods[i];
@@ -473,7 +487,7 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
         int next = program->absolute_bci_from_bcp(bcp + INVOKE_VIRTUAL_LENGTH);
         int offset = Utils::read_unaligned_uint16(bcp + 2);
         output_ << "    Object* receiver = STACK_AT(" << index << ");" << std::endl;
-        output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
+        output_ << "    unsigned id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
         output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_X(&bb_" << next << "));" << std::endl;
         break;
       }
@@ -487,7 +501,7 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
         int next = program->absolute_bci_from_bcp(bcp + INVOKE_VIRTUAL_GET_LENGTH);
         int offset = Utils::read_unaligned_uint16(bcp + 1);
         output_ << "    Object* receiver = STACK_AT(0);" << std::endl;
-        output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
+        output_ << "    unsigned id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
         output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_X(&bb_" << next << "));" << std::endl;
         break;
       }
@@ -496,7 +510,7 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
         int next = program->absolute_bci_from_bcp(bcp + INVOKE_VIRTUAL_SET_LENGTH);
         int offset = Utils::read_unaligned_uint16(bcp + 1);
         output_ << "    Object* receiver = STACK_AT(1);" << std::endl;
-        output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
+        output_ << "    unsigned id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
         output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_X(&bb_" << next << "));" << std::endl;
         break;
       }
@@ -523,7 +537,7 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
         int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
         int offset = program->invoke_bytecode_offset(opcode);
         output_ << "    Object* receiver = STACK_AT(" << index << ");" << std::endl;
-        output_ << "    int id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
+        output_ << "    unsigned id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
         output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_X(&bb_" << next << "));" << std::endl;
         break;
       }
