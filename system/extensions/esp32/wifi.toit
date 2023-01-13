@@ -74,19 +74,22 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     password/string := effective.get wifi.CONFIG_PASSWORD --if_absent=: ""
 
     module ::= (state_.up: WifiModule.sta this ssid password) as WifiModule
-    if module.ap:
-      throw "wifi already established in AP mode"
-    if module.ssid != ssid or module.password != password:
-      throw "wifi already connected with different credentials"
-
-    if save:
-      if config:
-        store_.set WIFI_CONFIG_STORE_KEY config
-      else:
-        store_.delete WIFI_CONFIG_STORE_KEY
-
-    resource := NetworkResource this client state_ --notifiable
-    return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]
+    try:
+      if module.ap:
+        throw "wifi already established in AP mode"
+      if module.ssid != ssid or module.password != password:
+        throw "wifi already connected with different credentials"
+      if save:
+        if config:
+          store_.set WIFI_CONFIG_STORE_KEY config
+        else:
+          store_.delete WIFI_CONFIG_STORE_KEY
+      resource := NetworkResource this client state_ --notifiable
+      return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]
+    finally: | is_exception exception |
+      // If we're not returning a network resource to the client, we
+      // must take care to decrement the usage count correctly.
+      if is_exception: state_.down
 
   establish client/int config/Map? -> List:
     if not config: config = {:}
@@ -102,25 +105,29 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     broadcast/bool := config.get wifi.CONFIG_BROADCAST --if_absent=: true
 
     module ::= (state_.up: WifiModule.ap this ssid password broadcast channel) as WifiModule
-    if not module.ap:
-      throw "wifi already connected in STA mode"
-    if module.ssid != ssid or module.password != password:
-      throw "wifi already established with different credentials"
-    if module.channel != channel:
-      throw "wifi already established on channel $module.channel"
-    if module.broadcast != broadcast:
-      no := broadcast ? "no " : ""
-      throw "wifi already established with $(no)ssid broadcasting"
-
-    resource := NetworkResource this client state_ --notifiable
-    return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]
+    try:
+      if not module.ap:
+        throw "wifi already connected in STA mode"
+      if module.ssid != ssid or module.password != password:
+        throw "wifi already established with different credentials"
+      if module.channel != channel:
+        throw "wifi already established on channel $module.channel"
+      if module.broadcast != broadcast:
+        no := broadcast ? "no " : ""
+        throw "wifi already established with $(no)ssid broadcasting"
+      resource := NetworkResource this client state_ --notifiable
+      return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]
+    finally: | is_exception exception |
+      // If we're not returning a network resource to the client, we
+      // must take care to decrement the usage count correctly.
+      if is_exception: state_.down
 
   address resource/NetworkResource -> ByteArray:
     return (state_.module as WifiModule).address.to_byte_array
 
   ap_info resource/NetworkResource -> List:
     return (state_.module as WifiModule).ap_info
-  
+
   scan config/Map -> List:
     if state_.module:
       throw "wifi already connected or established"

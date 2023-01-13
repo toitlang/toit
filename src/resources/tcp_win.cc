@@ -551,9 +551,14 @@ PRIMITIVE(close) {
   return process->program()->null_object();
 }
 
-PRIMITIVE(error) {
+PRIMITIVE(error_number) {
   ARGS(TcpSocketResource, tcp_resource);
-  return Primitive::unmark_from_error(windows_error(process, tcp_resource->error_code()));
+  return Smi::from(tcp_resource->error_code());
+}
+
+PRIMITIVE(error) {
+  ARGS(int, error);
+  return Primitive::unmark_from_error(windows_error(process, error));
 }
 
 PRIMITIVE(gc) {

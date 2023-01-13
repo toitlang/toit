@@ -320,7 +320,7 @@ PRIMITIVE(set_option) {
   return process->program()->null_object();
 }
 
-PRIMITIVE(error) {
+PRIMITIVE(error_number) {
   ARGS(IntResource, connection_resource);
   int fd = connection_resource->id();
 
@@ -330,7 +330,7 @@ PRIMITIVE(error) {
     error = errno;
   }
 
-  return process->allocate_string_or_error(strerror(error));
+  return Smi::from(error);
 }
 
 PRIMITIVE(close) {

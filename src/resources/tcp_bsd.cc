@@ -182,7 +182,7 @@ PRIMITIVE(connect) {
   if (id == -1) return Primitive::os_error(errno, process);
 
   if (window_size != 0 && setsockopt(id, SOL_SOCKET, SO_RCVBUF, &window_size, sizeof(window_size)) == -1) {
-    close(id);
+    close_keep_errno(id);
     return Primitive::os_error(errno, process);
   }
 
@@ -196,14 +196,14 @@ PRIMITIVE(connect) {
   addr.sin_port = htons(port);
   int result = connect(id, reinterpret_cast<struct sockaddr*>(&addr), size);
   if (result != 0 && errno != EINPROGRESS) {
-    close(id);
+    close_keep_errno(id);
     ASSERT(errno > 0);
     return Primitive::os_error(errno, process);
   }
 
   IntResource* resource = resource_group->register_id(id);
   if (!resource) {
-    close(id);
+    close_keep_errno(id);
     MALLOC_FAILED;
   }
 
@@ -254,13 +254,13 @@ PRIMITIVE(listen) {
 
   int result = bind_socket(id, hostname, port);
   if (result != 0) {
-    close(id);
+    close_keep_errno(id);
     if (result == -1) return Primitive::os_error(errno, process);
     WRONG_TYPE;
   }
 
   if (listen(id, backlog) == -1) {
-    close(id);
+    close_keep_errno(id);
     return Primitive::os_error(errno, process);
   }
 
@@ -318,7 +318,7 @@ PRIMITIVE(read)  {
   return array;
 }
 
-PRIMITIVE(error) {
+PRIMITIVE(error_number) {
   ARGS(IntResource, fd_resource);
   int fd = fd_resource->id();
 
@@ -327,6 +327,11 @@ PRIMITIVE(error) {
   if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &errlen) != 0) {
     error = errno;
   }
+  return Smi::from(error);
+}
+
+PRIMITIVE(error) {
+  ARGS(int, error);
   return process->allocate_string_or_error(strerror(error));
 }
 

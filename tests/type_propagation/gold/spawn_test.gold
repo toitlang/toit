@@ -2,21 +2,21 @@ main tests/type_propagation/spawn_test.toit
   0[029] - load [lambda] in main tests/type_propagation/spawn_test.toit
   5[023] - load smi 0
   6[022] - load null
-  7[053] - invoke static Array_ <sdk>/core/collections.toit // {LargeArray_|SmallArray_}
+  7[053] - invoke static Array_ <sdk>/core/collections.toit // [{SmallInteger_}, {Null_}] -> {LargeArray_|SmallArray_}
  10[014] - load local 0
  11[004] - store local, pop S1
  13[023] - load smi 0
- 14[053] - invoke static lambda_ <sdk>/core/objects.toit // {Lambda}
+ 14[053] - invoke static lambda_ <sdk>/core/objects.toit // [{SmallInteger_}, {LargeArray_|SmallArray_}, {SmallInteger_}] -> {Lambda}
  17[022] - load null
- 18[053] - invoke static spawn <sdk>/core/process.toit // {Process_}
+ 18[053] - invoke static spawn <sdk>/core/process.toit // [{Lambda}, {Null_}] -> {Process_}
  21[041] - pop 1
  22[020] - load literal hest
- 24[053] - invoke static id tests/type_propagation/spawn_test.toit // {String_}
+ 24[053] - invoke static id tests/type_propagation/spawn_test.toit // [{String_}] -> {String_}
  27[089] - return null S1 0
 
 [lambda] in main tests/type_propagation/spawn_test.toit
   0[026] - load smi 7
-  2[053] - invoke static id tests/type_propagation/spawn_test.toit // {SmallInteger_}
+  2[053] - invoke static id tests/type_propagation/spawn_test.toit // [{SmallInteger_}] -> {SmallInteger_}
   5[088] - return S1 0
 
 id tests/type_propagation/spawn_test.toit

@@ -72,7 +72,7 @@ class TcpSocket_:
       return failure.call "NOT_CONNECTED"
     if (state_bits & error_bits) == 0:
       return state
-    error := tcp_error_ state.resource
+    error := tcp_error_ (tcp_error_number_ state.resource)
     close
     return failure.call error
 
@@ -201,7 +201,10 @@ tcp_write_ socket_resource_group descriptor data from to:
 tcp_read_ socket_resource_group descriptor:
   #primitive.tcp.read
 
-tcp_error_ descriptor:
+tcp_error_number_ descriptor -> int:
+  #primitive.tcp.error_number
+
+tcp_error_ error/int -> string:
   #primitive.tcp.error
 
 tcp_get_option_ socket_resource_group id option:
