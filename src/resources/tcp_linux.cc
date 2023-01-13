@@ -302,7 +302,7 @@ PRIMITIVE(read)  {
   return array;
 }
 
-PRIMITIVE(error) {
+PRIMITIVE(error_number) {
   ARGS(IntResource, fd_resource);
   int fd = fd_resource->id();
 
@@ -311,6 +311,11 @@ PRIMITIVE(error) {
   if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &errlen) != 0) {
     error = errno;
   }
+  return Smi::from(error);
+}
+
+PRIMITIVE(error) {
+  ARGS(int, error);
   return process->allocate_string_or_error(strerror(error));
 }
 
