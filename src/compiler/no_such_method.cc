@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include <limits.h>
+
 #include "no_such_method.h"
 
 #include "resolver_scope.h"
@@ -52,10 +54,6 @@ static void report_no_such_method(List<ir::Node*> candidates,
     }
     return;
   }
-  bool too_few_unnamed_blocks = true;
-  bool too_few_unnamed_args = true;
-  bool too_many_unnamed_blocks = true;
-  bool too_many_unnamed_args = true;
   bool wrong_number_of_unnamed_blocks = true;
   bool wrong_number_of_unnamed_args = true;
   bool all_candidates_are_setters = true;
@@ -63,30 +61,78 @@ static void report_no_such_method(List<ir::Node*> candidates,
   bool no_candidates_take_a_named_arg = true;
   int selector_blocks = selector.shape().unnamed_block_count();
   int selector_args = selector.shape().unnamed_non_block_count() - (is_static ? 0 : 1);
-  Map<Symbol, bool> seen_names;
-  Map<Symbol, int> always_required_names;  // Count how many of the candidates require each name.
+  int min_blocks = INT_MAX;
+  int max_blocks = -1;
+  int min_args = INT_MAX;
+  int max_args = -1;
+
+  enum NameMask {
+      NO_NAME                     = 0,
+      ANY_NAME                    = 1,     // Name that at least one candidate allows.
+      ANY_BLOCK_NAME              = 2,
+      EVERY_NAME                  = 4,     // Name that every candidate allows.
+      EVERY_BLOCK_NAME            = 8,
+      REQUIRED_NAME               = 0x10,  // Name that every candidate requires.
+      REQUIRED_BLOCK_NAME         = 0x20,  // Unused in the source.
+      CURRENT_NAME                = 0x40,
+      CURRENT_BLOCK_NAME          = 0x80,
+      CURRENT_REQUIRED_NAME       = 0x100,
+      CURRENT_REQUIRED_BLOCK_NAME = 0x200,
+      CURRENT_FLAGS               = 0x3c0,
+  };
+  Map<Symbol, int> candidate_names;  // The names that are in the candidates.
+
+  static const int NAME = 1;
+  static const int BLOCK_NAME = 2;
+  Map<Symbol, int> call_site_names;  // The names that are used at the call site.
+
+  int index = 0;
   for (auto symbol : selector.shape().names()) {
-    seen_names.set(symbol, false);
+    call_site_names.set(symbol, selector.shape().is_block_name(index) ? BLOCK_NAME : NAME);
+    index++;
   }
-  int total_candidates = 0;
+  bool is_first_candidate = true;
   for (auto node : candidates) {
     if (node == ClassScope::SUPER_CLASS_SEPARATOR || !node->is_Method()) continue;
+    // Zero the flags for the current candidate.
+    for (auto symbol : candidate_names.keys()) candidate_names[symbol] &= ~CURRENT_FLAGS;
     auto method = node->as_Method();
     auto shape = method->resolution_shape();
     for (int i = 0; i < shape.names().length(); i++) {
       auto symbol = shape.names()[i];
-      if (!shape.optional_names()[i]) {
-        if (total_candidates == 0) {
-          always_required_names.set(symbol, 1);
-        // Not worth introducing a new entry in always_required_names if we are
-        // not on the first candidate since it will never be found to be
-        // required by all candidates if it isn't in the first.
-        } else if (always_required_names.contains_key(symbol)) {
-          always_required_names.set(symbol, always_required_names[symbol] + 1);  // Increment.
-        }
+      if (!candidate_names.contains_key(symbol)) {
+        candidate_names.set(symbol, NO_NAME);
       }
-      if (seen_names.contains_key(symbol)) {
-        seen_names.set(symbol, true);
+      bool is_required = !shape.optional_names()[i];
+      if (shape.is_block_name(i)) {
+        candidate_names[symbol] |= CURRENT_BLOCK_NAME;
+        if (is_required) candidate_names[symbol] |= CURRENT_REQUIRED_BLOCK_NAME;
+      } else {
+        candidate_names[symbol] |= CURRENT_NAME;
+        if (is_required) candidate_names[symbol] |= CURRENT_REQUIRED_NAME;
+      }
+    }
+    // Now that we did all names of the candidate, update the flags.
+    // When shift == 1 then the 'block' version of the name is updated.
+    for (int shift = 0; shift < 2; shift++) {
+      for (auto symbol : candidate_names.keys()) {
+        if ((candidate_names[symbol] & (CURRENT_NAME << shift)) != 0) {
+          candidate_names[symbol] |= (ANY_NAME << shift);
+          if (is_first_candidate) {
+            candidate_names[symbol] |= (EVERY_NAME << shift);
+          }
+        } else {
+          candidate_names[symbol] &= ~(EVERY_NAME << shift);
+        }
+        if (is_first_candidate) {
+          if ((candidate_names[symbol] & (CURRENT_REQUIRED_NAME << shift)) != 0) {
+            candidate_names[symbol] |= (REQUIRED_NAME << shift);
+          }
+        } else {
+          if ((candidate_names[symbol] & (CURRENT_REQUIRED_NAME << shift)) == 0) {
+            candidate_names[symbol] &= ~(REQUIRED_NAME << shift);
+          }
+        }
       }
     }
 
@@ -94,20 +140,12 @@ static void report_no_such_method(List<ir::Node*> candidates,
     int candidate_blocks = shape.unnamed_block_count();
     int candidate_min_args = shape.min_unnamed_non_block() - (method->is_static() && !method->is_constructor() ? 0 : 1);
     int candidate_max_args = shape.max_unnamed_non_block() - (method->is_static() && !method->is_constructor() ? 0 : 1);
-    if (candidate_blocks <= selector_blocks) {
-      too_few_unnamed_blocks = false;
-    }
-    if (candidate_blocks >= selector_blocks) {
-      too_many_unnamed_blocks = false;
-    }
+    min_blocks = Utils::min(min_blocks, candidate_blocks);
+    max_blocks = Utils::max(max_blocks, candidate_blocks);
+    min_args = Utils::min(min_args, candidate_min_args);
+    max_args = Utils::max(max_args, candidate_max_args);
     if (candidate_blocks == selector_blocks) {
       wrong_number_of_unnamed_blocks = false;
-    }
-    if (candidate_min_args <= selector_args) {
-      too_few_unnamed_args = false;
-    }
-    if (candidate_max_args >= selector_args) {
-      too_many_unnamed_args = false;
     }
     if (candidate_min_args <= selector_args && selector_args <= candidate_max_args) {
       wrong_number_of_unnamed_args = false;
@@ -118,8 +156,12 @@ static void report_no_such_method(List<ir::Node*> candidates,
     if (shape.named_non_block_count() != 0) {
       no_candidates_take_a_named_arg = false;
     }
-    total_candidates++;
+    is_first_candidate = false;
   }
+  bool too_few_unnamed_args = selector_args < min_args;
+  bool too_many_unnamed_args = selector_args > max_args;
+  bool too_few_unnamed_blocks = selector_blocks < min_blocks;
+  bool too_many_unnamed_blocks = selector_blocks > max_blocks;
   bool selector_uses_named_blocks = selector.shape().named_block_count() != 0;
   bool mention_unnamed_blocks = selector_uses_named_blocks || !no_candidates_take_a_named_block;
   std::string helpful_note = "";
@@ -147,7 +189,7 @@ static void report_no_such_method(List<ir::Node*> candidates,
       helpful_note += " block arguments provided";
     }
   } else if (wrong_number_of_unnamed_blocks) {
-    helpful_note = "\n" "Could not find an overload with ";
+    helpful_note = "\n" "Could not find an overload with exactly ";
     helpful_note += std::to_string(selector_blocks);
     helpful_note += unnamed;
     helpful_note += " block arguments";
@@ -156,17 +198,20 @@ static void report_no_such_method(List<ir::Node*> candidates,
   bool mention_unnamed_args = selector_uses_named_args || !no_candidates_take_a_named_arg;
   unnamed = mention_unnamed_args ? " unnamed" : "";
   if (too_many_unnamed_args) {
+    auto non_block = too_few_unnamed_blocks ? " non-block" : "";
     if (selector_args == 1) {
       if (selector.shape().is_setter()) {
         helpful_note = "\n" "No setter available";
       } else {
         helpful_note = "\n" "Method does not take any";
         helpful_note += unnamed;
+        helpful_note += non_block;
         helpful_note += " arguments, but one was provided";
       }
     } else {
       helpful_note = "\n" "Too many";
       helpful_note += unnamed;
+      helpful_note += non_block;
       helpful_note += " arguments provided";
     }
   } else if (too_few_unnamed_args) {
@@ -178,30 +223,89 @@ static void report_no_such_method(List<ir::Node*> candidates,
       helpful_note += " arguments provided";
     }
   } else if (wrong_number_of_unnamed_args) {
-    helpful_note = "\n" "Could not find an overload with ";
+    helpful_note = "\n" "Could not find an overload with exactly ";
     helpful_note += std::to_string(selector_args);
     helpful_note += unnamed;
     helpful_note += " arguments";
   }
-  for (auto symbol : seen_names.keys()) {
-    if (!seen_names[symbol]) {
+  bool added_not_provided_note = false;
+  for (auto symbol : call_site_names.keys()) {
+    if (!candidate_names.contains_key(symbol)) {
       helpful_note += "\n" "No argument named '--";
       helpful_note += symbol.c_str();
       helpful_note += "'";
-    }
-  }
-  // Go through the named args that are required by at least one candidate and
-  // check if they are required by all candidates but not provided.
-  for (auto required : always_required_names.keys()) {
-    if (always_required_names[required] == total_candidates) {
-      if (!seen_names.contains_key(required)) {
-        helpful_note += "\n" "Required named argument '--";
-        helpful_note += required.c_str();
-        helpful_note += "' not provided";
+    } else {
+      if ((call_site_names[symbol] & BLOCK_NAME) != 0) {
+        if ((candidate_names[symbol] & ANY_BLOCK_NAME) == 0) {
+          helpful_note += "\n" "The argument '--";
+          helpful_note += symbol.c_str();
+          helpful_note += "' was passed with block type, but must be non-block";
+          added_not_provided_note = true;
+        }
+      } else {
+        ASSERT((call_site_names[symbol] & NAME) != 0);
+        if ((candidate_names[symbol] & ANY_NAME) == 0) {
+          helpful_note += "\n" "The argument '--";
+          helpful_note += symbol.c_str();
+          helpful_note += "' was passed with non-block type, but must be block";
+          added_not_provided_note = true;
+        }
       }
     }
   }
-  // TODO: Named args that have the wrong block-ness.
+  // Go through the named args that are mentioned by at least one candidate and
+  // check if they are required by all candidates but not provided.
+  for (auto symbol : candidate_names.keys()) {
+    if ((candidate_names[symbol] & (REQUIRED_NAME | REQUIRED_BLOCK_NAME)) != 0) {
+      if (!call_site_names.contains_key(symbol)) {
+        helpful_note += "\n" "Required named argument '--";
+        helpful_note += symbol.c_str();
+        helpful_note += "' not provided";
+        added_not_provided_note = true;
+      }
+    }
+  }
+  // If that didn't yield a helpful note, move on to the arguments that are
+  // always allowed, but were not provided.
+  if (!added_not_provided_note) {
+    for (auto symbol : candidate_names.keys()) {
+      if ((candidate_names[symbol] & (EVERY_NAME | EVERY_BLOCK_NAME)) != 0) {
+        if (!call_site_names.contains_key(symbol)) {
+          if (!added_not_provided_note) {
+            helpful_note += "\n" "Valid named arguments include";
+          } else {
+            helpful_note += ",";
+          }
+          helpful_note += " '--";
+          helpful_note += symbol.c_str();
+          helpful_note += "'";
+          added_not_provided_note = true;
+        }
+      }
+    }
+    if (!wrong_number_of_unnamed_args && !wrong_number_of_unnamed_blocks) {
+      // If the problem is not just with the unnamed arguments we try to provide
+      // a bit more information on possible named arguments.  This means
+      // describing the arguments that are sometimes allowed, but were not
+      // provided.
+      bool allowed_message_added = false;
+      for (auto symbol : candidate_names.keys()) {
+        if (!call_site_names.contains_key(symbol) && ((candidate_names[symbol] & (EVERY_NAME | EVERY_BLOCK_NAME)) == 0)) {
+          if (!allowed_message_added) {
+            helpful_note += "\n" "Some overloads ";
+            if (added_not_provided_note) helpful_note += "also ";
+            helpful_note += "allow arguments named";
+            allowed_message_added = true;
+          } else {
+            helpful_note += ",";
+          }
+          helpful_note += " '--";
+          helpful_note += symbol.c_str();
+          helpful_note += "'";
+        }
+      }
+    }
+  }
   // TODO: If we could not give any notes, go through all individual candidates and explain why they don't match.
   if (is_static) {
     diagnostics->report_error(range,

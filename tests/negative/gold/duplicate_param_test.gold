@@ -26,6 +26,7 @@ tests/negative/duplicate_param_test.toit:10:5: note: First declaration of 'name'
 gee --name --name:
     ^~~~~~
 tests/negative/duplicate_param_test.toit:14:3: error: Argument mismatch for 'bar'
+The argument '--name' was passed with block type, but must be non-block
 Required named argument '--name' not provided
   bar --name=(: it) --name
   ^~~

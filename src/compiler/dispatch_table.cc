@@ -297,17 +297,25 @@ class RowFitter {
 };
 } // namespace toit::compiler::<anynomous>
 
-class DispatchTableBuilder {
+class DispatchTableBuilder : public TraversingVisitor {
  public:
   DispatchTableBuilder() {}
 
-  void cook(List<Class*> classes, List<Method*> methods);
+  void cook(Program* program, List<Class*> classes, List<Method*> methods);
   void print_table();
+
+  void visit_CallVirtual(CallVirtual* node) {
+    TraversingVisitor::visit_CallVirtual(node);
+    PlainShape shape(node->shape());
+    DispatchSelector selector(node->selector(), shape);
+    selectors_.insert(selector);
+  }
 
   Map<DispatchSelector, int>& selector_offsets() { return selector_offsets_; }
   List<Method*> dispatch_table() { return dispatch_table_; }
 
  private:
+  Set<DispatchSelector> selectors_;
   Map<DispatchSelector, int> selector_offsets_;
   List<Method*> dispatch_table_;
 
@@ -389,6 +397,7 @@ void DispatchTableBuilder::handle_classes(List<Class*> classes, int static_metho
     for (auto method : holder->methods()) {
       ASSERT(!method->is_dead());
       DispatchSelector selector(method->name(), method->plain_shape());
+      if (!method->is_IsInterfaceStub() && !selectors_.contains(selector)) continue;
       fitter.define(selector, holder, method);
     }
   }
@@ -418,12 +427,16 @@ void DispatchTableBuilder::handle_classes(List<Class*> classes, int static_metho
     if (method->index_is_set()) continue;
     method->set_index(i);
   }
+
   // Now go through all methods again, and see if some of them aren't yet in
-  // the table.
+  // the table. For uninstantiated holder classes, the methods we are looking
+  // for are the ones reachable through super-class calls. For instantiated
+  // holder classes, the methods that aren't in the table yet are those always
+  // called through static calls because of our optimizations that turn
+  // virtual calls into static ones.
   int table_index = 0;
   int extra_method_count = 0;
   for (auto klass : classes) {
-    if (klass->is_instantiated()) continue;
     for (auto method : klass->methods()) {
       if (method->index_is_set()) continue;
       extra_method_count++;
@@ -467,8 +480,12 @@ bool DispatchTableBuilder::indexes_are_correct() {
   return true;
 }
 
-void DispatchTableBuilder::cook(List<Class*> classes,
+void DispatchTableBuilder::cook(Program* program,
+                                List<Class*> classes,
                                 List<Method*> methods) {
+  // Traverse the entire program and find all virtual calls.
+  program->accept(this);
+
   int method_count = methods.length();
   handle_classes(classes, method_count);
   // Methods need to be added after the classes, since we are filling up
@@ -523,7 +540,7 @@ int DispatchTable::slot_index_for(const Method* method) const {
   return index;
 }
 
-void DispatchTable::for_each_slot_index(const ir::Method* member,
+void DispatchTable::for_each_slot_index(const Method* member,
                                         int dispatch_offset,
                                         std::function<void (int)>& callback) const {
   ASSERT(member->holder() != null);
@@ -541,19 +558,16 @@ void DispatchTable::for_each_slot_index(const ir::Method* member,
     }
   } else {
     // If the member's slot index is not in the selector's range, then the
-    //   holder is not instantiated, and the member was treated like a static (for
-    //   super calls).
-    ASSERT(!holder->is_instantiated());
+    // member was treated like a static. We use this for super calls and
+    // for optimized virtual calls, so this can happen with both instantiated
+    // and uninstantiated holder classes.
     callback(member_slot_index);
   }
 }
 
-DispatchTable DispatchTable::build(List<Class*> classes,
-                                   List<Method*> methods) {
+DispatchTable DispatchTable::build(Program* program) {
   DispatchTableBuilder builder;
-
-  builder.cook(classes, methods);
-
+  builder.cook(program, program->classes(), program->methods());
   return DispatchTable(builder.dispatch_table(), builder.selector_offsets());
 }
 

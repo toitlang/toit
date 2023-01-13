@@ -369,7 +369,7 @@ class ExternalSystemMessageHandler : private ProcessRunner {
 
   // Send a message to a specific pid, using Scheduler::send_message. Returns
   // true if the data was sent or false if an error occurred. The data is
-  // assumed to be a malloced message.  If free_on_failure is true, the data is
+  // assumed to be a malloced message. If free_on_failure is true, the data is
   // always freed even on failures; otherwise, only messages that are
   // succesfully sent are taken over by the receiver and must not be touched or
   // deallocated by the sender.
@@ -390,6 +390,7 @@ class ExternalSystemMessageHandler : private ProcessRunner {
 
   // Called by the scheduler.
   virtual Interpreter::Result run() override;
+  virtual void set_process(Process* process) override;
 };
 
 }  // namespace toit

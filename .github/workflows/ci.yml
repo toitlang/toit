@@ -734,3 +734,73 @@ jobs:
           find .
           cat external-result/*
           ! grep "fail" external-result/*
+
+  AUR:
+    name: Update AUR package
+    runs-on: ubuntu-latest
+    needs: [build]
+    # While we are developing Toit 2.0.0 alpha we want to publish prereleases as well.
+    # if: github.event_name == 'release' && !github.event.release.prerelease
+    if: github.event_name == 'release'
+    steps:
+      - name: Version number
+        id: version
+        shell: bash
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          echo "version=$VERSION" >> $GITHUB_ENV
+
+      - name: Ssh
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          echo "$AUR_SSH_KEY" > ${{ github.workspace }}/aur_ssh_key
+          chmod 600 ${{ github.workspace }}/aur_ssh_key
+
+          mkdir -p $HOME/.ssh
+          echo "Host aur.archlinux.org" >> $HOME/.ssh/config
+          echo "  IdentityFile ${{ github.workspace }}/aur_ssh_key" >> $HOME/.ssh/config
+          echo "  User aur" >> $HOME/.ssh/config
+
+          ssh-keyscan -H aur.archlinux.org > $HOME/.ssh/known_hosts
+
+      - name: Fetch AUR package
+        run: |
+          git clone ssh://aur@aur.archlinux.org/toit.git
+
+      - name: Git
+        run: |
+          cd toit
+          git config user.email "leon@toit.io"
+          git config user.name "Leon Gungadin Mogensen"
+
+      - name: Update AUR package
+        shell: bash
+        run: |
+          # Toit's PKGBUILD is a bit special in that we don't download
+          # a tarball (since those don't contain submodules), but instead
+          # use Git to get the source code.
+          # For security, we store the hash of the commit in the PKGBUILD,
+          # which is why we run a custom 'update_hash.sh' script.
+          # This is the reason we can't just use the 'archlinux-package-action'.
+          cd toit
+          sed -i "s/_tag=.*/_tag=\"${{ env.version }}\"/g" PKGBUILD
+          sed -i "s/pkgrel=.*/pkgrel=1/g" PKGBUILD
+          ./update_hash.sh
+
+      - name: Update .SRCINFO
+        uses: hapakaien/archlinux-package-action@v2
+        with:
+          path: toit
+          flags: ''
+          namcap: false
+          srcinfo: true
+
+      - name: Upload
+        run: |
+          cat ${{ github.workspace }}/toit/PKGBUILD
+          cat ${{ github.workspace }}/toit/.SRCINFO
+
+          cd ${{ github.workspace }}/toit
+          git commit -am "Update to version ${{ env.version }}"
+          git push origin master

@@ -866,7 +866,7 @@ abstract class string implements Comparable:
     // If the last non-whitespace character is a multi-byte UTF-8 character
     //   we have to include them. Move forward again to find all of them.
     while end < size and this[end] == null: end++
-    return copy start end
+    return this[start..end]
 
 
   /**
@@ -878,7 +878,7 @@ abstract class string implements Comparable:
     size.repeat:
       c := this[it]
       if c != null and not is_unicode_whitespace_ c:
-        return it == 0 ? this : copy it
+        return this[it..]
     return ""
 
   /**
@@ -894,7 +894,7 @@ abstract class string implements Comparable:
         //   we have to include them. Move forward again to find all of them.
         end := size - it
         while end < size and this[end] == null: end++
-        return end == size ? this : copy 0 end
+        return this[..end]
     return ""
 
   /**
@@ -934,7 +934,7 @@ abstract class string implements Comparable:
   trim --left/bool prefix/string [--if_absent] -> string:
     if left != true: throw "Bad Argument"
     if not starts_with prefix: return if_absent.call this
-    return copy prefix.size
+    return this[prefix.size..]
 
   /**
   Removes a trailing $suffix (if present).
@@ -972,7 +972,7 @@ abstract class string implements Comparable:
   trim --right/bool suffix/string [--if_absent] -> string:
     if right != true: throw "Bad Argument"
     if not ends_with suffix: return if_absent.call this
-    return copy 0 (size - suffix.size)
+    return this[..size - suffix.size]
 
   static TO_UPPER_TABLE_ ::= #[
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -1045,8 +1045,12 @@ abstract class string implements Comparable:
   If $at_first is false (the default) splits at *every* occurrence of $separator.
   If $at_first is true, splits only at the first occurrence of $separator.
 
-  Calls $process_part for each part. It this instance starts or ends with a $separator,
-    then $process_part is invoked with the empty string first and last, respectively.
+  If $drop_empty is true, then empty strings are ignored and silently dropped.
+    This happens before a call to $process_part.
+
+  Calls $process_part for each part. It $drop_empty is false and this instance
+    starts or ends with a $separator, then $process_part is invoked with the
+    empty string first and last, respectively.
 
   Splits are never in the middle of a UTF-8 multi-byte sequence. This is
     normally a consequence of the seperator (as well as this instance) being
@@ -1082,10 +1086,18 @@ abstract class string implements Comparable:
   "foob".split --at_first "foo": print it     // prints "" and "b"
   "".split     --at_first "":    print it     // This is an error.
   "a".split    --at_first "":    print it     // prints "a" and ""
+
+  "foo".split "foo" --drop_empty: print it                 // Doesn't print.
+  "afoo".split "foo" --drop_empty: print it                 // prints "a"
   ```
   */
-  split --at_first/bool=false separator/string [process_part] -> none:
-    if separator.size == 0:
+  split --at_first/bool=false separator/string --drop_empty/bool=false [process_part] -> none:
+    if drop_empty:
+      split --at_first=at_first separator:
+        if it != "": process_part.call it
+      return
+
+    if separator == "":
       if at_first:
         if size == 0: throw "INVALID_ARGUMENT"
         len := utf_8_bytes this[0]
@@ -1099,12 +1111,12 @@ abstract class string implements Comparable:
     while pos <= size:
       new_pos := subject.index_of separator pos --if_absent=:
         // No match.
-        process_part.call (subject.copy pos size)
+        process_part.call subject[pos..size]
         return
-      process_part.call (subject.copy pos new_pos)
+      process_part.call subject[pos..new_pos]
       pos = new_pos + separator.size
       if at_first:
-        if pos <= size: process_part.call (subject.copy pos)
+        process_part.call subject[pos..]
         return
 
   /**
@@ -1114,6 +1126,8 @@ abstract class string implements Comparable:
 
   If $at_first is false (the default) splits at *every* occurrence of $separator.
   If $at_first is true, splits only at the first occurrence of $separator.
+
+  If $drop_empty is true, then empty strings are not included in the result.
 
   Splits are never in the middle of a UTF-8 multi-byte sequence. This is
     normally a consequence of the seperator (as well as this instance) being
@@ -1144,9 +1158,9 @@ abstract class string implements Comparable:
   "".split     --at_first ""      // => [""]
   ```
   */
-  split --at_first/bool=false separator/string -> List/*<string>*/ :
+  split --at_first/bool=false separator/string --drop_empty/bool=false -> List/*<string>*/ :
     res := []
-    split --at_first=at_first separator:
+    split --at_first=at_first --drop_empty=drop_empty separator:
       res.add it
     return res
 

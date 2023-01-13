@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import host.arguments show ArgumentParser
+import cli
 import host.file
 import monitor
 import host.pipe
@@ -54,12 +54,19 @@ Use:
   ```
 */
 main args:
-  parser := ArgumentParser
-  parser.describe_rest ["debug-file"]
-  parser.add_flag "print-out"
-  parser.add_flag "use-std-ports"
-  parser.add_flag "log-formatted"
-  parsed := parser.parse args
+  parsed := null
+  parser := cli.Command "replay"
+      --rest=[
+          cli.OptionString "debug-file" --required
+      ]
+      --options=[
+          cli.Flag "print-out" --default=false,
+          cli.Flag "use-std-ports" --default=false,
+          cli.Flag "log-formatted" --default=false,
+      ]
+      --run=:: parsed = it
+  parser.run args
+  if not parsed: exit 0
 
   use_std_ports := parsed["use-std-ports"]
   log_formatted := parsed["log-formatted"]
@@ -79,7 +86,7 @@ main args:
     server := LspServer --no-use_rpc_filesystem server_rpc_connection null UriPathTranslator
     task:: catch --trace: server.run
 
-  debug_file := parsed.rest[0]
+  debug_file := parsed["debug-file"]
   replay_rpc := RpcConnection (BufferedReader (file.Stream.for_read debug_file)) pipe.stderr
   std_rpc := RpcConnection (BufferedReader server_from) server_to
 

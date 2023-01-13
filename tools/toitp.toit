@@ -17,22 +17,7 @@
 
 // Tools for decoding a snapshot.
 import .snapshot
-import host.arguments show *
-
-usage --exit_code:
-  print "Usage:"
-  print "  toitp"
-  print "    [--help|-h]"
-  print "    [--literals|-l]"
-  print "    [--literal <id>]"
-  print "    [--classes|-c]"
-  print "    [--dispatch_table|-d]"
-  print "    [--method_table|-m]"
-  print "    [--method_sizes]"
-  print "    [--bytecodes|-bc]"
-  print "    [--senders|-s]"
-  print "    <snapshot-path> [filter]"
-  exit exit_code
+import cli
 
 matching name:
   if filter == "": return true
@@ -59,10 +44,7 @@ print_literals program/Program:
     : matching (it.stringify)
     : it
 
-print_literal program/Program index_str/string:
-  index := int.parse index_str --on_error=:
-    print "Argument to '--literal' must be an integer."
-    usage --exit_code=1
+print_literal program/Program index/int:
   if not 0 <= index < program.literals.size:
     print "Invalid index."
     exit 1
@@ -132,23 +114,29 @@ print_senders program bc:
 filter := ""
 
 main args:
-  parser := ArgumentParser
-  parser.describe_rest ["snapshot-file", "[filter]"]
-  parser.add_flag "help"            --short="h"
-  parser.add_flag "literals"        --short="l"
-  parser.add_option "literal"
-  parser.add_flag "classes"         --short="c"
-  parser.add_flag "dispatch_table"  --short="d"
-  parser.add_flag "method_table"    --short="m"
-  parser.add_flag "method_sizes"
-  parser.add_flag "bytecodes"       --short="bc"
-  parser.add_flag "senders"         --short="s"
-  parser.add_flag "primitive_table" --short="p"
+  parsed := null
+  parser := cli.Command "toitp"
+      --rest=[
+          cli.OptionString "snapshot" --type="file" --required,
+          cli.OptionString "filter",
+      ]
+      --options=[
+          cli.Flag "literals"        --short_name="l",
+          cli.OptionInt "literal",
+          cli.Flag "classes"         --short_name="c",
+          cli.Flag "dispatch_table"  --short_name="d",
+          cli.Flag "method_table"    --short_name="m",
+          cli.Flag "method_sizes",
+          cli.Flag "bytecodes"       --short_name="bc",
+          cli.Flag "senders"         --short_name="s",
+          cli.Flag "primitive_table" --short_name="p",
+      ]
+      --run=:: parsed = it
+  parser.run args
+  if not parsed: exit 0
 
-  parsed := parser.parse args
-  if parsed["help"]: usage --exit_code=0
-  if parsed.rest.size > 1: filter = parsed.rest[1]
-  snapshot := SnapshotBundle.from_file parsed.rest[0]
+  if parsed["filter"]: filter = parsed["filter"]
+  snapshot := SnapshotBundle.from_file parsed["snapshot"]
   program := snapshot.decode
 
   if parsed["classes"]:         print_classes program; return

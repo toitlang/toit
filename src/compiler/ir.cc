@@ -145,7 +145,7 @@ void TraversingVisitor::visit_Call(Call* node) {
 
 void TraversingVisitor::visit_CallStatic(CallStatic* node) { visit_Call(node); }
 void TraversingVisitor::visit_Lambda(Lambda* node) { visit_CallStatic(node); }
-void TraversingVisitor::visit_CallConstructor(CallConstructor* node) { visit_Call(node); }
+void TraversingVisitor::visit_CallConstructor(CallConstructor* node) { visit_CallStatic(node); }
 void TraversingVisitor::visit_CallVirtual(CallVirtual* node) { visit_Call(node); }
 void TraversingVisitor::visit_CallBlock(CallBlock* node) { visit_Call(node); }
 void TraversingVisitor::visit_CallBuiltin(CallBuiltin* node) { visit_Call(node); }

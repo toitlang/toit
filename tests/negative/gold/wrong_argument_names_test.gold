@@ -13,6 +13,7 @@ Required named argument '--foo' not provided
          ^~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:130:10: error: Argument mismatch for 'optional_foo_argument'
 No argument named '--bar'
+Valid named arguments include '--foo'
   Static.optional_foo_argument --bar=42  // Has no argument named bar.
          ^~~~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:136:10: error: Argument mismatch for 'either_argument'
@@ -23,7 +24,8 @@ No argument named '--foo'
   Static.no_named --foo=: it  // Has no (block) argument named foo.
          ^~~~~~~~
 tests/negative/wrong_argument_names_test.toit:140:10: error: Argument mismatch for 'foo_argument'
-  Static.foo_argument --foo=: it  // Foo should be non-block. Currently no helpful message.
+The argument '--foo' was passed with block type, but must be non-block
+  Static.foo_argument --foo=: it  // Foo should be non-block.
          ^~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:142:10: error: Argument mismatch for 'foo_argument'
 No argument named '--bar'
@@ -32,19 +34,23 @@ Required named argument '--foo' not provided
          ^~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:144:10: error: Argument mismatch for 'optional_foo_argument'
 No argument named '--bar'
+Valid named arguments include '--foo'
   Static.optional_foo_argument --bar=: it  // Has no (block) argument named bar.
          ^~~~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:150:10: error: Argument mismatch for 'either_block_argument'
   Static.either_block_argument --foo=(: it) --bar=(:it)  // Hard case. Currently no helpful message.
          ^~~~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:152:10: error: Argument mismatch for 'foo_argument'
-  Static.foo_argument --foo=: it  // Foo should be non-block. Currently no helpful message.
+The argument '--foo' was passed with block type, but must be non-block
+  Static.foo_argument --foo=: it  // Foo should be non-block.
          ^~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:154:10: error: Argument mismatch for 'optional_foo_argument'
-  Static.optional_foo_argument --foo=: it  // Foo should be non-block. Currently no helpful message.
+The argument '--foo' was passed with block type, but must be non-block
+  Static.optional_foo_argument --foo=: it  // Foo should be non-block.
          ^~~~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:156:10: error: Argument mismatch for 'foo_block_argument'
-  Static.foo_block_argument --foo=42  // Foo should be a block. Currently no helpful message.
+The argument '--foo' was passed with non-block type, but must be block
+  Static.foo_block_argument --foo=42  // Foo should be a block.
          ^~~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:158:10: error: Argument mismatch for 'foo_argument'
 Required named argument '--foo' not provided
@@ -63,7 +69,9 @@ Required named argument '--foo' not provided
   Static.must_have_foo --bar  // Missing foo.
          ^~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:170:10: error: Argument mismatch for 'need_not_have_foo'
-  Static.need_not_have_foo  // Hard case. Currently no helpful message.
+Valid named arguments include '--foo'
+Some overloads also allow arguments named '--bar'
+  Static.need_not_have_foo  // Can always provide foo, but if not, must provide bar.
          ^~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:174:10: error: Argument mismatch for 'need_not_have_foo_2'
 Required named argument '--bar' not provided
@@ -89,6 +97,7 @@ Required named argument '--foo' not provided
     ^~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:77:5: error: Argument mismatch for 'Instance.optional_foo_argument'
 No argument named '--bar'
+Valid named arguments include '--foo'
   a.optional_foo_argument --bar=42  // Has no argument named bar.
     ^~~~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:83:5: error: Argument mismatch for 'Instance.either_argument'
@@ -99,7 +108,8 @@ No argument named '--foo'
   a.no_named --foo=: it  // Has no (block) argument named foo.
     ^~~~~~~~
 tests/negative/wrong_argument_names_test.toit:87:5: error: Argument mismatch for 'Instance.foo_argument'
-  a.foo_argument --foo=: it  // Foo should be non-block. Currently no helpful message.
+The argument '--foo' was passed with block type, but must be non-block
+  a.foo_argument --foo=: it  // Foo should be non-block.
     ^~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:89:5: error: Argument mismatch for 'Instance.foo_argument'
 No argument named '--bar'
@@ -108,16 +118,19 @@ Required named argument '--foo' not provided
     ^~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:91:5: error: Argument mismatch for 'Instance.optional_foo_argument'
 No argument named '--bar'
+Valid named arguments include '--foo'
   a.optional_foo_argument --bar=: it  // Has no (block) argument named bar.
     ^~~~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:97:5: error: Argument mismatch for 'Instance.either_block_argument'
   a.either_block_argument --foo=(: it) --bar=(:it)  // Hard case. Currently no helpful message.
     ^~~~~~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:99:5: error: Argument mismatch for 'Instance.foo_argument'
-  a.foo_argument --foo=: it  // Foo should be non-block. Currently no helpful message.
+The argument '--foo' was passed with block type, but must be non-block
+  a.foo_argument --foo=: it  // Foo should be non-block.
     ^~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:101:5: error: Argument mismatch for 'Instance.foo_block_argument'
-  a.foo_block_argument --foo=42  // Foo should be a block.  Currently no helpful message.
+The argument '--foo' was passed with non-block type, but must be block
+  a.foo_block_argument --foo=42  // Foo should be a block.
     ^~~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:103:5: error: Argument mismatch for 'Instance.foo_argument'
 Required named argument '--foo' not provided
@@ -136,7 +149,9 @@ Required named argument '--foo' not provided
   a.must_have_foo --bar  // Missing foo.
     ^~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:115:5: error: Argument mismatch for 'Instance.need_not_have_foo'
-  a.need_not_have_foo  // Hard case. Currently no helpful message.
+Valid named arguments include '--foo'
+Some overloads also allow arguments named '--bar'
+  a.need_not_have_foo  // Can always provide foo, but if not, must provide bar.
     ^~~~~~~~~~~~~~~~~
 tests/negative/wrong_argument_names_test.toit:119:5: error: Argument mismatch for 'Instance.need_not_have_foo_2'
 Required named argument '--bar' not provided

@@ -43,6 +43,12 @@ void MessageHandler::on_message(int sender, int type, void* data, int length) {
   collect_garbage(_try_hard);
   _try_hard = !_try_hard;
 
+  // Make sure that the VM respects not freeing messages even if
+  // they are sent to non-existing processes.
+  if (send(1234, type + 1, const_cast<char*>("foo"), 3, false)) {
+    FATAL("shouldn't be able to send");
+  }
+
   if (!send(sender, type + 1, data, length, true)) {
     FATAL("unable to send");
   }

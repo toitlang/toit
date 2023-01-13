@@ -693,9 +693,9 @@ class Method {
   bool is_valid() const { return bytes_ != null; }
 
   bool is_normal_method() const { return kind_() == METHOD; }
-  bool is_block_method() const { return  kind_() == BLOCK; }
-  bool is_lambda_method() const { return kind_() == LAMBDA; }
   bool is_field_accessor() const { return kind_() == FIELD_ACCESSOR; }
+  bool is_lambda_method() const { return kind_() == LAMBDA; }
+  bool is_block_method() const { return  kind_() == BLOCK; }
 
   int arity() const { return bytes_[ARITY_OFFSET]; }
   int captured_count() const { return value_(); }
@@ -744,7 +744,7 @@ class Method {
 
   uint8* bytes_;
 
-  enum Kind { METHOD = 0, LAMBDA, BLOCK, FIELD_ACCESSOR };
+  enum Kind { METHOD = 0, FIELD_ACCESSOR, LAMBDA, BLOCK };
 
   Kind kind_() const { return static_cast<Kind>(bytes_[KIND_HEIGHT_OFFSET] & KIND_MASK); }
 

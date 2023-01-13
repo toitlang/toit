@@ -183,6 +183,7 @@ class Interpreter {
 class ProcessRunner {
  public:
   virtual Interpreter::Result run() = 0;
+  virtual void set_process(Process* process) = 0;
 };
 
 } // namespace toit

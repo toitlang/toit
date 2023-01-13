@@ -1200,6 +1200,16 @@ test_split:
   expect_equals ["€"]                              ("€".split "")
   expect_equals ["€", "1", ",", "2", "3"]          ("€1,23".split "")
 
+  expect_equals ["Toad th", " W", "t Sprock", "t"] ("Toad the Wet Sprocket".split --drop_empty "e")
+  expect_equals ["the", "dust"]                    (" the dust ".split --drop_empty" ")
+  expect_equals ["a", "b", "c"]                    ("abc".split --drop_empty "")
+  expect_equals []                                 ("foo".split --drop_empty "foo")
+  expect_equals ["a"]                              ("afoo".split --drop_empty "foo")
+  expect_equals ["b"]                              ("foob".split --drop_empty "foo")
+  expect_equals []                                 ("".split --drop_empty "")
+  expect_equals ["€"]                              ("€".split --drop_empty "")
+  expect_equals ["€", "1", ",", "2", "3"]          ("€1,23".split --drop_empty "")
+
   gadsby := "If youth, throughout all history, had had a champion to stand up for it;"
   expect_equals [gadsby] (gadsby.split "e")
 
@@ -1214,6 +1224,14 @@ test_split:
   expect_equals ["a", ""]     ("afoo".split  --at_first "foo")
   expect_equals ["", "b"]     ("foob".split  --at_first "foo")
   expect_invalid_argument:    ("".split      --at_first "")
+
+  expect_equals ["a", "bc"]   ("abc".split   --drop_empty --at_first "")
+  expect_equals ["€"]         ("€".split     --drop_empty --at_first "")
+  expect_equals ["€", "1,23"] ("€1,23".split --drop_empty --at_first "")
+  expect_equals []            ("foo".split   --drop_empty --at_first "foo")
+  expect_equals ["a"]         ("afoo".split  --drop_empty --at_first "foo")
+  expect_equals ["b"]         ("foob".split  --drop_empty --at_first "foo")
+  expect_invalid_argument:    ("".split      --drop_empty --at_first "")
 
   big_string := "Toad" * 1000
   expect_equals [big_string] (big_string.split "e")
