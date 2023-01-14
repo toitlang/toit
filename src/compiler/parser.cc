@@ -1720,6 +1720,10 @@ Expression* Parser::parse_precedence(Precedence precedence,
           // A prefix minus.
           goto done;
         }
+        if (is_attached_to_previous || is_attached_to_next) {
+          diagnostics()->report_warning(range.extend(current_range()),
+                                        "Minus operator must be surrounded by spaces");
+        }
         consume();
         Expression* right = at_newline()
             ? parse_expression(allow_colon)

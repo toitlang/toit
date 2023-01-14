@@ -4,6 +4,9 @@ tests/negative/postfix2_test.toit:6:3: error: Invalid name for declaration
 tests/negative/postfix2_test.toit:14:10: error: Expected identifier
     this.- 42 unresolved
          ^
+tests/negative/postfix2_test.toit:14:10: warning: Minus operator must be surrounded by spaces
+    this.- 42 unresolved
+         ^
 tests/negative/postfix2_test.toit:14:15: error: Unresolved identifier: 'unresolved'
     this.- 42 unresolved
               ^~~~~~~~~~

@@ -1,3 +1,6 @@
-<pkg:pkg-http>/connection.toit:104:37: warning: Parenthesis should not be attached. Attempted call?
-    content_length := headers.single("Content-Length")
-                                    ^
+<pkg:pkg-http>/web_socket.toit:33:20: warning: Unresolved reference 'web_socket'
+Obtained from the $Client.web_socket or the $Server.web_socket methods.
+                   ^~~~~~~~~~~~~~~~~
+<pkg:pkg-http>/headers.toit:109:13: warning: Deprecated 'string.write_to_byte_array'
+        str.write_to_byte_array bytes 0 it 0
+            ^~~~~~~~~~~~~~~~~~~
