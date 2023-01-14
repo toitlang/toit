@@ -743,6 +743,10 @@ jobs:
     # if: github.event_name == 'release' && !github.event.release.prerelease
     if: github.event_name == 'release'
     steps:
+      # This shouldn't be necessary, but the archlinux-package-action
+      # doesn't work without it.
+      - uses: actions/checkout@v3
+
       - name: Version number
         id: version
         shell: bash
