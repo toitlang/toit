@@ -264,20 +264,15 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       case STORE_FIELD:
       case STORE_FIELD_WIDE: {
         int index = (opcode == STORE_FIELD) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
-        output_ << "    Object* value = STACK_AT(0);" << std::endl;
-        output_ << "    Instance* instance = Instance::cast(STACK_AT(1));" << std::endl;
-        output_ << "    instance->at_put(" << index << ", value);" << std::endl;
-        output_ << "    STACK_AT_PUT(1, value);" << std::endl;
-        output_ << "    DROP1();" << std::endl;
+        int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
+        output_ << "    TAILCALL return store_field(RUN_ARGS_XX(&bb_" << next << ", " << index << "));" << std::endl;
         break;
       }
 
       case STORE_FIELD_POP: {
         B_ARG1(index);
-        output_ << "    Object* value = STACK_AT(0);" << std::endl;
-        output_ << "    Instance* instance = Instance::cast(STACK_AT(1));" << std::endl;
-        output_ << "    instance->at_put(" << index << ", value);" << std::endl;
-        output_ << "    DROP(2);" << std::endl;
+        int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
+        output_ << "    TAILCALL return store_field_pop(RUN_ARGS_XX(&bb_" << next << ", " << index << "));" << std::endl;
         break;
       }
 
@@ -410,11 +405,8 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       case ALLOCATE:
       case ALLOCATE_WIDE: {
         int index = (opcode == ALLOCATE) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
-        Smi* class_id = Smi::from(index);
-        int size = program->instance_size_for(class_id);
-        int fields = Instance::fields_from_size(size);
-        TypeTag class_tag = program->class_tag_for(class_id);
-        output_ << "    sp = allocate(sp, process, " << index << ", " << fields << ", " << size << ", static_cast<TypeTag>(" << class_tag << "));" << std::endl;
+        int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
+        output_ << "    TAILCALL return allocate(RUN_ARGS_XX(&bb_" << next << ", " << index << "));" << std::endl;
         break;
       }
 
@@ -766,6 +758,11 @@ void CcGenerator::split_range(uint8* begin, uint8* end, std::set<uint8*>& points
   while (bcp < end) {
     Opcode opcode = static_cast<Opcode>(*bcp);
     switch (opcode) {
+      case STORE_FIELD:
+      case STORE_FIELD_WIDE:
+      case STORE_FIELD_POP:
+      case ALLOCATE:
+      case ALLOCATE_WIDE:
       case INVOKE_STATIC:
       case INVOKE_BLOCK:
       case INVOKE_VIRTUAL:

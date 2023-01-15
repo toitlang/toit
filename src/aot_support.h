@@ -61,6 +61,11 @@ void sub_int_smi(RUN_PARAMS);
 void sub_int_int(RUN_PARAMS);
 void lte_int_int(RUN_PARAMS);
 
+void allocate(RUN_PARAMS);
+
+void store_field(RUN_PARAMS);
+void store_field_pop(RUN_PARAMS);
+
 static INLINE bool add_smis(Object* a, Object* b, Object** result) {
   return are_smis(a, b) &&
 #ifdef BUILD_32
@@ -108,5 +113,3 @@ static INLINE bool lte_smis(Object* a, Smi* b, bool* result) {
   *result = Smi::cast(a)->value() <= b->value();
   return true;
 }
-
-Object** allocate(Object** sp, Process* process, int index, int fields, int size, TypeTag tag);
