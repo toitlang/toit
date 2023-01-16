@@ -98,8 +98,11 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   sum[6] = (sum[6] & 0xf) | 0x50;
   sum[8] = (sum[8] & 0x3f) | 0x80;
 
-  add(UUID_NAME, List<uint8>(sum, UUID_SIZE));
+  // The order of the following AR-files is important.
+  // When reading the snapshot, an iterator is used to find the individual
+  // files, and changing the order would make the iterator miss the files.
   add(SNAPSHOT_NAME, snapshot);
+  add(UUID_NAME, List<uint8>(sum, UUID_SIZE));
   add(SOURCE_MAP_NAME, source_map_data);
   add(DEBUG_SNAPSHOT_NAME, debug_snapshot);
   add(DEBUG_SOURCE_MAP_NAME, debug_source_map_data);

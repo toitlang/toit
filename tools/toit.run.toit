@@ -35,6 +35,9 @@ abstract class ContainerImageFromSnapshot extends ContainerImage:
     initialize reader
 
   initialize reader/ArReader -> none:
+    // The reader might not be at the beginning of the archive anymore.
+    // For an application image, the initialize already consumed the
+    // snapshot.
     offsets := reader.find --offsets SnapshotBundle.UUID_NAME
     id = uuid.Uuid bundle_[offsets.from..offsets.to]
 
