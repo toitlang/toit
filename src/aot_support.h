@@ -47,6 +47,9 @@ typedef void (*run_func)(RUN_PARAMS);
 #define TAILCALL
 #endif
 
+#define LIKELY(x) __builtin_expect((x), 1)
+#define UNLIKELY(x) __builtin_expect((x), 0)
+
 static INLINE bool are_smis(Object* a, Object* b) {
   uword bits = reinterpret_cast<uword>(a) | reinterpret_cast<uword>(b);
   bool result = is_smi(reinterpret_cast<Object*>(bits));

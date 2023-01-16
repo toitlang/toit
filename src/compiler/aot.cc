@@ -170,14 +170,21 @@ void CcGenerator::emit_method(Method method) {
   int id = program->absolute_bci_from_bcp(method.header_bcp());
   output_ << "static void method_" << id << "(RUN_PARAMS) {" << std::endl;
 
-  if (method.is_block_method()) {
+  if (method.is_normal_method() || method.is_field_accessor()) {
+    if (method.selector_offset() >= 0) {
+      output_ << "  int selector = reinterpret_cast<word>(x2);" << std::endl;
+      output_ << "  if (UNLIKELY(selector != " << method.selector_offset() << ")) {" << std::endl;
+      output_ << "    UNIMPLEMENTED();  // Should be: Lookup error." << std::endl;
+      output_ << "  }" << std::endl;
+    }
+  } else if (method.is_block_method()) {
     output_ << "  int arguments = reinterpret_cast<word>(x2);" << std::endl;
     output_ << "  int excessive = arguments - " << method.arity() << ";" << std::endl;
     output_ << "  if (excessive != 0) {" << std::endl;
-    output_ << "    if (excessive > 0) {" << std::endl;
+    output_ << "    if (LIKELY(excessive > 0)) {" << std::endl;
     output_ << "      DROP(excessive);" << std::endl;
     output_ << "    } else {" << std::endl;
-    output_ << "      UNIMPLEMENTED();" << std::endl;
+    output_ << "      UNIMPLEMENTED();  // Should be: Too few arguments." << std::endl;
     output_ << "    }" << std::endl;
     output_ << "  }" << std::endl;
   }
@@ -371,7 +378,7 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
         int index = (opcode == LOAD_GLOBAL_VAR_LAZY) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
         int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
         output_ << "    Object* global = process->object_heap()->global_variables()[" << index << "];" << std::endl;
-        output_ << "    if (is_heap_object(global) && HeapObject::cast(global)->class_id() == Smi::from(" << program->lazy_initializer_class_id()->value() << ")) {" << std::endl;
+        output_ << "    if (UNLIKELY(is_heap_object(global) && HeapObject::cast(global)->class_id() == Smi::from(" << program->lazy_initializer_class_id()->value() << "))) {" << std::endl;
         output_ << "      PUSH(Smi::from(" << index << "));" << std::endl;
         output_ << "      PUSH(global);" << std::endl;
         int target = program->absolute_bci_from_bcp(program->run_global_initializer().header_bcp());
@@ -782,7 +789,7 @@ void CcGenerator::emit_invoke_virtual(uint8* bcp, int arity, int offset) {
     output_ << "    unsigned id = HeapObject::cast(receiver)->class_id()->value();" << std::endl;
   }
   int next = program->absolute_bci_from_bcp(bcp + opcode_length[*bcp]);
-  output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_X(&bb_" << next << "));" << std::endl;
+  output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_XX(&bb_" << next << ", " << offset << "));" << std::endl;
 }
 
 std::vector<uint8*> CcGenerator::split_method(Method method, uint8* end) {
