@@ -62,7 +62,11 @@ static INLINE bool are_smis(Object* a, Object* b) {
 void add_int_int(RUN_PARAMS);
 void sub_int_smi(RUN_PARAMS);
 void sub_int_int(RUN_PARAMS);
+
+void lt_int_int(RUN_PARAMS);
 void lte_int_int(RUN_PARAMS);
+
+bool aot_lt(Object* a, Object* b) __attribute__((preserve_all));
 
 void allocate(RUN_PARAMS);
 void invoke_primitive(RUN_PARAMS);
@@ -109,14 +113,20 @@ static INLINE bool sub_smis(Object* a, Smi* b, Object** result) {
 #endif
 }
 
+static INLINE bool lt_smis(Object* a, Object* b, bool* result) {
+  if (!are_smis(a, b)) return false;
+  *result = a < b;
+  return true;
+}
+
 static INLINE bool lte_smis(Object* a, Object* b, bool* result) {
   if (!are_smis(a, b)) return false;
-  *result = Smi::cast(a)->value() <= Smi::cast(b)->value();
+  *result = a <= b;
   return true;
 }
 
 static INLINE bool lte_smis(Object* a, Smi* b, bool* result) {
   if (!is_smi(a)) return false;
-  *result = Smi::cast(a)->value() <= b->value();
+  *result = a <= b;
   return true;
 }

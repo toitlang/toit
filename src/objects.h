@@ -445,13 +445,13 @@ class ByteArray : public HeapObject {
   class Bytes {
    public:
     explicit Bytes(ByteArray* array) {
-      int l = array->raw_length();
+      word l = array->raw_length();
       if (l >= 0) {
         address_ = array->content();
         length_ = l;
       } else {
         address_ = array->as_external();
-        length_ = -1 -l;
+        length_ = -1 - l;
       }
       ASSERT(length() >= 0);
     }

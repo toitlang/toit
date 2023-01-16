@@ -568,7 +568,7 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       }
 
       case INVOKE_EQ:
-      case INVOKE_LT:
+      //case INVOKE_LT:
       case INVOKE_GT:
       //case INVOKE_LTE:
       case INVOKE_GTE:
@@ -583,11 +583,39 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       case INVOKE_MUL:
       case INVOKE_DIV:
       case INVOKE_MOD:
-      case INVOKE_AT:
+      //case INVOKE_AT:
       case INVOKE_AT_PUT: {
         int arity = (opcode == INVOKE_AT_PUT) ? 3 : 2;
         int offset = program->invoke_bytecode_offset(opcode);
         emit_invoke_virtual(bcp, arity, offset);
+        break;
+      }
+
+      case INVOKE_AT: {
+        std::vector<TypeSet> arguments = types_->input(program->absolute_bci_from_bcp(bcp));
+        if (arguments.size() == 2 && arguments[0].size(TypeSet::words_per_type(program)) == 1 && arguments[0].contains_instance(program->byte_array_class_id())) {
+          output_ << "    Object* index = STACK_AT(0);" << std::endl;
+          output_ << "    ByteArray* array = ByteArray::cast(STACK_AT(1));" << std::endl;
+          output_ << "    ByteArray::Bytes bytes(array);" << std::endl;
+          output_ << "    STACK_AT_PUT(1, Smi::from(bytes.at(Smi::cast(index)->value())));" << std::endl;
+          output_ << "    DROP1();" << std::endl;
+        } else {
+          int offset = program->invoke_bytecode_offset(opcode);
+          emit_invoke_virtual(bcp, 2, offset);
+        }
+        break;
+      }
+
+      case INVOKE_LT: {
+        // int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
+        output_ << "    Object* right = STACK_AT(0);" << std::endl;
+        output_ << "    Object* left = STACK_AT(1);" << std::endl;
+        output_ << "    bool result;" << std::endl;
+        output_ << "    if (UNLIKELY(!lt_smis(left, right, &result))) {" << std::endl;
+        output_ << "      result = aot_lt(left, right);" << std::endl;
+        output_ << "    }" << std::endl;
+        output_ << "    STACK_AT_PUT(1, BOOL(result));" << std::endl;
+        output_ << "    DROP1();" << std::endl;
         break;
       }
 
@@ -848,7 +876,7 @@ void CcGenerator::split_range(uint8* begin, uint8* end, std::set<uint8*>& points
       case INVOKE_VIRTUAL_GET:
       case INVOKE_VIRTUAL_SET:
       case INVOKE_EQ:
-      case INVOKE_LT:
+      //case INVOKE_LT:
       case INVOKE_GT:
       case INVOKE_LTE:
       case INVOKE_GTE:

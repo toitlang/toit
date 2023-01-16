@@ -24,10 +24,21 @@ void sub_int_int(RUN_PARAMS) {
   TAILCALL return continuation(RUN_ARGS);
 }
 
+void lt_int_int(RUN_PARAMS) {
+  UNIMPLEMENTED();
+  run_func continuation = reinterpret_cast<run_func>(extra);
+  TAILCALL return continuation(RUN_ARGS);
+}
+
 void lte_int_int(RUN_PARAMS) {
   UNIMPLEMENTED();
   run_func continuation = reinterpret_cast<run_func>(extra);
   TAILCALL return continuation(RUN_ARGS);
+}
+
+bool aot_lt(Object* a, Object* b) {
+  UNIMPLEMENTED();
+  return false;
 }
 
 void allocate(RUN_PARAMS) {
