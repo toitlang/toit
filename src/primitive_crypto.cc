@@ -13,6 +13,10 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "top.h"
+
+#if !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
+
 #include "mbedtls/gcm.h"
 #include "mbedtls/chachapoly.h"
 
@@ -534,3 +538,5 @@ PRIMITIVE(aes_ecb_close) {
 
 
 }
+
+#endif
