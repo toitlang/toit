@@ -42,7 +42,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == WifiService.CONNECT_INDEX:
-      return connect client arguments[0] arguments[1]
+      return connect client arguments
     if index == WifiService.ESTABLISH_INDEX:
       return establish client arguments
     if index == WifiService.AP_INFO_INDEX:
@@ -50,12 +50,14 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
       return ap_info network
     if index == WifiService.SCAN_INDEX:
       return scan arguments
+    if index == WifiService.CONFIGURE_INDEX:
+      return configure arguments
     return super pid client index arguments
 
   connect client/int -> List:
-    return connect client null false
+    return connect client null
 
-  connect client/int config/Map? save/bool -> List:
+  connect client/int config/Map? -> List:
     effective := config
     if not effective:
       catch --trace: effective = store_.get WIFI_CONFIG_STORE_KEY
@@ -79,11 +81,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
         throw "wifi already established in AP mode"
       if module.ssid != ssid or module.password != password:
         throw "wifi already connected with different credentials"
-      if save:
-        if config:
-          store_.set WIFI_CONFIG_STORE_KEY config
-        else:
-          store_.delete WIFI_CONFIG_STORE_KEY
+
       resource := NetworkResource this client state_ --notifiable
       return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]
     finally: | is_exception exception |
@@ -139,6 +137,12 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
       return module.scan channels passive period
     finally:
       module.disconnect
+
+  configure config/Map? -> none:
+    if config:
+      store_.set WIFI_CONFIG_STORE_KEY config
+    else:
+      store_.delete WIFI_CONFIG_STORE_KEY
 
   on_module_closed module/WifiModule -> none:
     resources_do: it.notify_ NetworkService.NOTIFY_CLOSED
