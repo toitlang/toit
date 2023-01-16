@@ -51,6 +51,8 @@ class CcGenerator {
   void emit_method(Method method);
   void emit_range(uint8* mend, uint8* begin, uint8* end);
 
+  void emit_invoke_virtual(uint8* bcp, int arity, int offset);
+
   std::vector<uint8*> split_method(Method method, uint8* end);
   void split_range(uint8* begin, uint8* end, std::set<uint8*>& points);
 
@@ -167,6 +169,19 @@ void CcGenerator::emit_method(Method method) {
   Program* program = types_->program();
   int id = program->absolute_bci_from_bcp(method.header_bcp());
   output_ << "static void method_" << id << "(RUN_PARAMS) {" << std::endl;
+
+  if (method.is_block_method()) {
+    output_ << "  int arguments = reinterpret_cast<word>(x2);" << std::endl;
+    output_ << "  int excessive = arguments - " << method.arity() << ";" << std::endl;
+    output_ << "  if (excessive != 0) {" << std::endl;
+    output_ << "    if (excessive > 0) {" << std::endl;
+    output_ << "      DROP(excessive);" << std::endl;
+    output_ << "    } else {" << std::endl;
+    output_ << "      UNIMPLEMENTED();" << std::endl;
+    output_ << "    }" << std::endl;
+    output_ << "  }" << std::endl;
+  }
+
   output_ << "  PUSH(reinterpret_cast<Object*>(extra));" << std::endl;
   output_ << "  PUSH(Smi::from(0));  // Should be: Frame marker." << std::endl;
   output_ << "  " << branch(0, 0, program, method.entry()) << ";" << std::endl;
@@ -353,7 +368,16 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
 
       case LOAD_GLOBAL_VAR_LAZY:
       case LOAD_GLOBAL_VAR_LAZY_WIDE: {
-        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
+        int index = (opcode == LOAD_GLOBAL_VAR_LAZY) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
+        int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
+        output_ << "    Object* global = process->object_heap()->global_variables()[" << index << "];" << std::endl;
+        output_ << "    if (is_heap_object(global) && HeapObject::cast(global)->class_id() == Smi::from(" << program->lazy_initializer_class_id()->value() << ")) {" << std::endl;
+        output_ << "      PUSH(Smi::from(" << index << "));" << std::endl;
+        output_ << "      PUSH(global);" << std::endl;
+        int target = program->absolute_bci_from_bcp(program->run_global_initializer().header_bcp());
+        output_ << "      TAILCALL return method_" << target << "(RUN_ARGS_X(&bb_" << next << "));" << std::endl;
+        output_ << "    }" << std::endl;
+        output_ << "    PUSH(global);" << std::endl;
         break;
       }
 
@@ -364,9 +388,15 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
         break;
       }
 
-      case LOAD_GLOBAL_VAR_DYNAMIC:
+      case LOAD_GLOBAL_VAR_DYNAMIC: {
+        int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
+        output_ << "    TAILCALL return load_global(RUN_ARGS_X(&bb_" << next << "));" << std::endl;
+        break;
+      }
+
       case STORE_GLOBAL_VAR_DYNAMIC: {
-        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
+        int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
+        output_ << "    TAILCALL return store_global(RUN_ARGS_X(&bb_" << next << "));" << std::endl;
         break;
       }
 
@@ -412,7 +442,23 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
 
       case IS_CLASS:
       case IS_CLASS_WIDE: {
-        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
+        int encoded = (opcode == IS_CLASS) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
+        int index = encoded >> 1;
+        int lower = program->class_check_ids[2 * index];
+        int upper = program->class_check_ids[2 * index + 1];
+        bool is_nullable = (encoded & 1) != 0;
+        output_ << "    Object* object = STACK_AT(0);" << std::endl;
+        output_ << "    Object* result = true_object;" << std::endl;
+        if (is_nullable) {
+          output_ << "    if (object != null_object) {" << std::endl;
+          output_ << "      Smi* id = is_smi(object) ? Smi::from(" << program->smi_class_id()->value() << ") : HeapObject::cast(object)->class_id();" << std::endl;
+          output_ << "      result = BOOL(Smi::from(" << lower << ") <= id && id < Smi::from(" << upper << "));" << std::endl;
+          output_ << "    }" << std::endl;
+        } else {
+          output_ << "    Smi* id = is_smi(object) ? Smi::from(" << program->smi_class_id()->value() << ") : HeapObject::cast(object)->class_id();" << std::endl;
+          output_ << "    result = BOOL(Smi::from(" << lower << ") <= id && id < Smi::from(" << upper << "));" << std::endl;
+        }
+        output_ << "    STACK_AT_PUT(0, result);" << std::endl;
         break;
       }
 
@@ -454,13 +500,11 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       }
 
       case INVOKE_BLOCK: {
-        B_ARG1(index);
-        output_ << "    run_func* block = reinterpret_cast<run_func*>(STACK_AT(" << (index - 1) << "));" << std::endl;
-        // TODO(kasper): We need to handle the case where we are providing too many
-        // arguments to the block call somehow.
+        B_ARG1(arity);
+        output_ << "    run_func* block = reinterpret_cast<run_func*>(STACK_AT(" << (arity - 1) << "));" << std::endl;
         output_ << "    run_func continuation = *block;" << std::endl;
         int next = program->absolute_bci_from_bcp(bcp + INVOKE_BLOCK_LENGTH);
-        output_ << "    TAILCALL return continuation(RUN_ARGS_X(&bb_" << next << "));" << std::endl;
+        output_ << "    TAILCALL return continuation(RUN_ARGS_XX(&bb_" << next << ", " << arity << "));" << std::endl;
         break;
       }
 
@@ -476,11 +520,8 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
 
       case INVOKE_VIRTUAL: {
         B_ARG1(index);
-        int next = program->absolute_bci_from_bcp(bcp + INVOKE_VIRTUAL_LENGTH);
         int offset = Utils::read_unaligned_uint16(bcp + 2);
-        output_ << "    Object* receiver = STACK_AT(" << index << ");" << std::endl;
-        output_ << "    unsigned id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
-        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_X(&bb_" << next << "));" << std::endl;
+        emit_invoke_virtual(bcp, index + 1, offset);
         break;
       }
 
@@ -490,20 +531,14 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       }
 
       case INVOKE_VIRTUAL_GET: {
-        int next = program->absolute_bci_from_bcp(bcp + INVOKE_VIRTUAL_GET_LENGTH);
         int offset = Utils::read_unaligned_uint16(bcp + 1);
-        output_ << "    Object* receiver = STACK_AT(0);" << std::endl;
-        output_ << "    unsigned id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
-        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_X(&bb_" << next << "));" << std::endl;
+        emit_invoke_virtual(bcp, 1, offset);
         break;
       }
 
       case INVOKE_VIRTUAL_SET: {
-        int next = program->absolute_bci_from_bcp(bcp + INVOKE_VIRTUAL_SET_LENGTH);
         int offset = Utils::read_unaligned_uint16(bcp + 1);
-        output_ << "    Object* receiver = STACK_AT(1);" << std::endl;
-        output_ << "    unsigned id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
-        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_X(&bb_" << next << "));" << std::endl;
+        emit_invoke_virtual(bcp, 2, offset);
         break;
       }
 
@@ -525,12 +560,9 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       case INVOKE_MOD:
       case INVOKE_AT:
       case INVOKE_AT_PUT: {
-        int index = (opcode == INVOKE_AT_PUT) ? 2 : 1;
-        int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
+        int arity = (opcode == INVOKE_AT_PUT) ? 3 : 2;
         int offset = program->invoke_bytecode_offset(opcode);
-        output_ << "    Object* receiver = STACK_AT(" << index << ");" << std::endl;
-        output_ << "    unsigned id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
-        output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_X(&bb_" << next << "));" << std::endl;
+        emit_invoke_virtual(bcp, arity, offset);
         break;
       }
 
@@ -549,14 +581,20 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
 
       case INVOKE_ADD: {
         int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
-        output_ << "    Object* right = STACK_AT(0);" << std::endl;
-        output_ << "    Object* left = STACK_AT(1);" << std::endl;
-        output_ << "    Object* result;" << std::endl;
-        output_ << "    if (!add_smis(left, right, &result)) {" << std::endl;
-        output_ << "      TAILCALL return add_int_int(RUN_ARGS_X(&bb_" << next << "));" << std::endl;
-        output_ << "    }" << std::endl;
-        output_ << "    STACK_AT_PUT(1, result);" << std::endl;
-        output_ << "    DROP1();" << std::endl;
+        std::vector<TypeSet> arguments = types_->input(program->absolute_bci_from_bcp(bcp));
+        if (arguments.size() == 2 && arguments[0].contains_smi(program)) {
+          output_ << "    Object* right = STACK_AT(0);" << std::endl;
+          output_ << "    Object* left = STACK_AT(1);" << std::endl;
+          output_ << "    Object* result;" << std::endl;
+          output_ << "    if (!add_smis(left, right, &result)) {" << std::endl;
+          output_ << "      TAILCALL return add_int_int(RUN_ARGS_X(&bb_" << next << "));" << std::endl;
+          output_ << "    }" << std::endl;
+          output_ << "    STACK_AT_PUT(1, result);" << std::endl;
+          output_ << "    DROP1();" << std::endl;
+        } else {
+          int offset = program->invoke_bytecode_offset(opcode);
+          emit_invoke_virtual(bcp, 2, offset);
+        }
         break;
       }
 
@@ -607,16 +645,10 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       case PRIMITIVE: {
         B_ARG1(module);
         unsigned index = Utils::read_unaligned_uint16(bcp + 2);
-        int arity = PrimitiveResolver::arity(index, module);
-        const int parameter_offset = Interpreter::FRAME_SIZE;
-        output_ << "    const PrimitiveEntry* primitive = Primitive::at(" << module << ", " << index << ");  // ";
+        int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
+        output_ << "    PrimitiveEntry* primitive = const_cast<PrimitiveEntry*>(Primitive::at(" << module << ", " << index << "));  // ";
         output_ << PrimitiveResolver::module_name(module) << "." << PrimitiveResolver::primitive_name(module, index) << std::endl;
-        output_ << "    Primitive::Entry* entry = reinterpret_cast<Primitive::Entry*>(primitive->function);" << std::endl;
-        output_ << "    Object* result = entry(process, sp + " << (parameter_offset + arity - 1) << ");" << std::endl;
-        output_ << "    run_func continuation = reinterpret_cast<run_func>(STACK_AT(1));" << std::endl;
-        output_ << "    DROP(" << (arity + 1) << ");" << std::endl;
-        output_ << "    STACK_AT_PUT(0, result);" << std::endl;
-        output_ << "    TAILCALL return continuation(RUN_ARGS);" << std::endl;
+        output_ << "    TAILCALL return invoke_primitive(RUN_ARGS_XX(&bb_" << next << ", primitive));" << std::endl;
         break;
       }
 
@@ -736,6 +768,23 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
   output_ << "}" << std::endl;
 }
 
+void CcGenerator::emit_invoke_virtual(uint8* bcp, int arity, int offset) {
+  Program* program = types_->program();
+  std::vector<TypeSet> arguments = types_->input(program->absolute_bci_from_bcp(bcp));
+  bool needs_smi_check = true;
+  if (arguments.size() == arity) {
+    needs_smi_check = arguments[0].contains_smi(program);
+  }
+  output_ << "    Object* receiver = STACK_AT(" << (arity - 1) << ");" << std::endl;
+  if (needs_smi_check) {
+    output_ << "    unsigned id = is_smi(receiver) ? " << program->smi_class_id()->value() << " : HeapObject::cast(receiver)->class_id()->value();" << std::endl;
+  } else {
+    output_ << "    unsigned id = HeapObject::cast(receiver)->class_id()->value();" << std::endl;
+  }
+  int next = program->absolute_bci_from_bcp(bcp + opcode_length[*bcp]);
+  output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_X(&bb_" << next << "));" << std::endl;
+}
+
 std::vector<uint8*> CcGenerator::split_method(Method method, uint8* end) {
   std::set<uint8*> points;
   while (true) {
@@ -761,6 +810,10 @@ void CcGenerator::split_range(uint8* begin, uint8* end, std::set<uint8*>& points
       case STORE_FIELD:
       case STORE_FIELD_WIDE:
       case STORE_FIELD_POP:
+      case LOAD_GLOBAL_VAR_LAZY:
+      case LOAD_GLOBAL_VAR_LAZY_WIDE:
+      case LOAD_GLOBAL_VAR_DYNAMIC:
+      case STORE_GLOBAL_VAR_DYNAMIC:
       case ALLOCATE:
       case ALLOCATE_WIDE:
       case INVOKE_STATIC:
@@ -786,7 +839,8 @@ void CcGenerator::split_range(uint8* begin, uint8* end, std::set<uint8*>& points
       case INVOKE_DIV:
       case INVOKE_MOD:
       case INVOKE_AT:
-      case INVOKE_AT_PUT: {
+      case INVOKE_AT_PUT:
+      case PRIMITIVE: {
         uint8* next = bcp + opcode_length[opcode];
         if (next < end) points.insert(next);
         break;

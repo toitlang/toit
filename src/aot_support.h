@@ -62,9 +62,13 @@ void sub_int_int(RUN_PARAMS);
 void lte_int_int(RUN_PARAMS);
 
 void allocate(RUN_PARAMS);
+void invoke_primitive(RUN_PARAMS);
+
+void load_global(RUN_PARAMS);
 
 void store_field(RUN_PARAMS);
 void store_field_pop(RUN_PARAMS);
+void store_global(RUN_PARAMS);
 
 static INLINE bool add_smis(Object* a, Object* b, Object** result) {
   return are_smis(a, b) &&

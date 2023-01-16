@@ -159,6 +159,18 @@ const std::vector<TypeSet> TypeDatabase::arguments(Method method) const {
   return result;
 }
 
+const std::vector<TypeSet> TypeDatabase::input(int position) const {
+  std::vector<TypeSet> result;
+  auto probe = input_.find(position);
+  if (probe != input_.end()) {
+    TypeStack* arguments = probe->second;
+    for (int i = 0; i < arguments->size(); i++) {
+      result.push_back(arguments->get(i));
+    }
+  }
+  return result;
+}
+
 const TypeSet TypeDatabase::output(int position) const {
   auto probe = output_.find(position);
   if (probe == output_.end()) {

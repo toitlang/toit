@@ -30,24 +30,6 @@ void lte_int_int(RUN_PARAMS) {
   TAILCALL return continuation(RUN_ARGS);
 }
 
-Object** allocate(Object** sp, Process* process, int index, int fields, int size, TypeTag tag) {
-  ObjectHeap* heap = process->object_heap();
-  Object* result = heap->allocate_instance(tag, Smi::from(index), Smi::from(size));
-  if (result == null) {
-    UNIMPLEMENTED();
-  }
-
-  Instance* instance = Instance::cast(result);
-  Object* null_object = process->program()->null_object();
-  for (int i = 0; i < fields; i++) {
-    instance->at_put(i, null_object);
-  }
-
-  PUSH(result);
-  heap->check_install_heap_limit();
-  return sp;
-}
-
 void allocate(RUN_PARAMS) {
   ObjectHeap* heap = process->object_heap();
   Smi* index = Smi::from(reinterpret_cast<word>(x2));
@@ -69,6 +51,27 @@ void allocate(RUN_PARAMS) {
   TAILCALL return continuation(RUN_ARGS);
 }
 
+void invoke_primitive(RUN_PARAMS) {
+  PrimitiveEntry* primitive = reinterpret_cast<PrimitiveEntry*>(x2);
+  Primitive::Entry* entry = reinterpret_cast<Primitive::Entry*>(primitive->function);
+  int arity = primitive->arity;
+  Object* result = entry(process, sp + Interpreter::FRAME_SIZE + arity - 1);
+  // TODO(kasper): Check for failures.
+  run_func continuation = reinterpret_cast<run_func>(STACK_AT(1));
+  DROP(arity + 1);
+  STACK_AT_PUT(0, result);
+  TAILCALL return continuation(RUN_ARGS);
+}
+
+void load_global(RUN_PARAMS) {
+  int index = Smi::cast(STACK_AT(0))->value();
+  // TODO(kasper): Check bounds.
+  Object** global_variables = process->object_heap()->global_variables();
+  STACK_AT_PUT(0, global_variables[index]);
+  run_func continuation = reinterpret_cast<run_func>(extra);
+  TAILCALL return continuation(RUN_ARGS);
+}
+
 void store_field(RUN_PARAMS) {
   int index = reinterpret_cast<word>(x2);
   Object* value = STACK_AT(0);
@@ -86,6 +89,16 @@ void store_field_pop(RUN_PARAMS) {
   Instance* instance = Instance::cast(STACK_AT(1));
   instance->at_put(index, value);
   DROP(2);
+  run_func continuation = reinterpret_cast<run_func>(extra);
+  TAILCALL return continuation(RUN_ARGS);
+}
+
+void store_global(RUN_PARAMS) {
+  Object* value = POP();
+  int index = Smi::cast(POP())->value();
+  // TODO(kasper): Check bounds.
+  Object** global_variables = process->object_heap()->global_variables();
+  global_variables[index] = value;
   run_func continuation = reinterpret_cast<run_func>(extra);
   TAILCALL return continuation(RUN_ARGS);
 }

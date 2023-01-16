@@ -42,6 +42,7 @@ class TypeDatabase {
 
   const std::vector<Method> methods() const;
   const std::vector<TypeSet> arguments(Method method) const;
+  const std::vector<TypeSet> input(int position) const;
   const TypeSet output(int position) const;
 
   std::string as_json() const;
