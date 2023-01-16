@@ -320,6 +320,18 @@ static int dup_down(int from, int to) {
   return fcntl(to, F_SETFL, old_flags & ~O_CLOEXEC);
 }
 
+// Any argument that was a normal string need not be freed because it is
+// just a pointer into the null-terminated on-heap representation of the
+// string.  Others (string slices) must be freed.
+static void free_args(char** argv, Array* args) {
+  for (int i = 0; argv[i]; i++) {
+    if (!is_string(args->at(i))) {
+      free(argv[i]);
+    }
+    argv[i] = null;
+  }
+}
+
 // Forks and execs a program (optionally found using the PATH environment
 // variable.  The given file descriptors should be open file descriptors.  They
 // are attached to the stdin, stdout and stderr of the launched program, and
@@ -351,10 +363,19 @@ PRIMITIVE(fork) {
   char** argv = reinterpret_cast<char**>(allocation.calloc(args->length() + 1, sizeof(char*)));
   if (argv == null) ALLOCATION_FAILED;
   for (word i = 0; i < args->length(); i++) {
-    if (!is_string(args->at(i))) {
-      WRONG_TYPE;
+    if (is_string(args->at(i))) {
+      argv[i] = String::cast(args->at(i))->as_cstr();
+    } else {
+      Blob blob;
+      if (!args->at(i)->byte_content(process->program(), &blob, STRINGS_ONLY)) {
+        WRONG_TYPE;
+      }
+      int len = blob.length();
+      char* c_string = unvoid_cast<char*>(malloc(len + 1));
+      memcpy(c_string, blob.address(), len);
+      c_string[len] = '\0';
+      argv[i] = c_string;
     }
-    argv[i] = String::cast(args->at(i))->as_cstr();
   }
   argv[args->length()] = null;
 
@@ -363,6 +384,7 @@ PRIMITIVE(fork) {
   int pipe_result = pipe2_portable(control_fds, FD_CLOEXEC);
 
   if (pipe_result < 0) {
+    free_args(argv, args);
     QUOTA_EXCEEDED;
   }
 
@@ -379,7 +401,10 @@ PRIMITIVE(fork) {
   for (int i = 4; i >= 0; i--) {
     if (data_fds[i] > 0) {
       if (highest_child_fd < 0) highest_child_fd = i;
-      if (data_fds[i] < -1) WRONG_TYPE;
+      if (data_fds[i] < -1) {
+        free_args(argv, args);
+        WRONG_TYPE;
+      }
     }
   }
 
@@ -388,6 +413,7 @@ PRIMITIVE(fork) {
   if (child_pid == -1) {
     close(control_read);
     close(control_write);
+    free_args(argv, args);
     if (errno == EAGAIN) QUOTA_EXCEEDED;
     if (errno == ENOMEM) MALLOC_FAILED;
     OTHER_ERROR;
@@ -395,7 +421,10 @@ PRIMITIVE(fork) {
 
   if (child_pid != 0) {
     // Parent process.
-    close(control_write);  // In the parent, close the child's end.
+    // Free the arguments (in the child they are freed by exec or abort).
+    free_args(argv, args);
+    // In the parent, close the child's end.
+    close(control_write);
     int child_errno;
     const int child_errno_size = sizeof(child_errno);
     int control_status = read(control_read, &child_errno, child_errno_size);
