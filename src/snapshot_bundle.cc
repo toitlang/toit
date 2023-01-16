@@ -26,9 +26,10 @@ namespace toit {
 
 static const char* const MAGIC_NAME = "toit";
 static const char* const MAGIC_CONTENT = "like a tiger";
+static const char* const UUID_NAME = "uuid";
+static const char* const SDK_VERSION_NAME = "sdk-version";
 static const char* const SNAPSHOT_NAME = "snapshot";
 static const char* const SOURCE_MAP_NAME = "source-map";
-static const char* const UUID_NAME = "uuid";
 static const char* const DEBUG_SNAPSHOT_NAME = "D-snapshot";
 static const char* const DEBUG_SOURCE_MAP_NAME = "D-source-map";
 
@@ -63,6 +64,14 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
     if (status != 0) FATAL("Couldn't create snapshot");
   };
 
+  const char* sdk_version = vm_git_version();
+  ar::File version_file(
+    SDK_VERSION_NAME, ar::AR_DONT_FREE,
+    reinterpret_cast<const uint8*>(sdk_version), ar::AR_DONT_FREE,
+    static_cast<int>(strlen(sdk_version)));
+  status = builder.add(version_file);
+  if (status != 0) FATAL("Couldn't create snapshot");
+
   // Generate UUID using sha256 checksum of:
   //   version
   //   snapshot
@@ -89,8 +98,8 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   sum[6] = (sum[6] & 0xf) | 0x50;
   sum[8] = (sum[8] & 0x3f) | 0x80;
 
-  add(SNAPSHOT_NAME, snapshot);
   add(UUID_NAME, List<uint8>(sum, UUID_SIZE));
+  add(SNAPSHOT_NAME, snapshot);
   add(SOURCE_MAP_NAME, source_map_data);
   add(DEBUG_SNAPSHOT_NAME, debug_snapshot);
   add(DEBUG_SOURCE_MAP_NAME, debug_source_map_data);
