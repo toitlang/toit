@@ -455,23 +455,39 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
         int upper = program->class_check_ids[2 * index + 1];
         bool is_nullable = (encoded & 1) != 0;
         output_ << "    Object* object = STACK_AT(0);" << std::endl;
-        output_ << "    Object* result = true_object;" << std::endl;
         if (is_nullable) {
+          output_ << "    Object* result = true_object;" << std::endl;
           output_ << "    if (object != null_object) {" << std::endl;
           output_ << "      Smi* id = is_smi(object) ? Smi::from(" << program->smi_class_id()->value() << ") : HeapObject::cast(object)->class_id();" << std::endl;
           output_ << "      result = BOOL(Smi::from(" << lower << ") <= id && id < Smi::from(" << upper << "));" << std::endl;
           output_ << "    }" << std::endl;
+          output_ << "    STACK_AT_PUT(0, result);" << std::endl;
         } else {
           output_ << "    Smi* id = is_smi(object) ? Smi::from(" << program->smi_class_id()->value() << ") : HeapObject::cast(object)->class_id();" << std::endl;
-          output_ << "    result = BOOL(Smi::from(" << lower << ") <= id && id < Smi::from(" << upper << "));" << std::endl;
+          output_ << "    STACK_AT_PUT(0, BOOL(Smi::from(" << lower << ") <= id && id < Smi::from(" << upper << ")));" << std::endl;
         }
-        output_ << "    STACK_AT_PUT(0, result);" << std::endl;
         break;
       }
 
       case IS_INTERFACE:
       case IS_INTERFACE_WIDE: {
-        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
+        int encoded = (opcode == IS_INTERFACE) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
+        int index = encoded >> 1;
+        int selector = program->interface_check_offsets[index];
+        bool is_nullable = (encoded & 1) != 0;
+        output_ << "    Object* object = STACK_AT(0);" << std::endl;
+        if (is_nullable) {
+          output_ << "    Object* result = true_object;" << std::endl;
+          output_ << "    if (object != null_object) {" << std::endl;
+          output_ << "      Smi* id = is_smi(object) ? Smi::from(" << program->smi_class_id()->value() << ") : HeapObject::cast(object)->class_id();" << std::endl;
+          //output_ << "      result = BOOL(Smi::from(" << lower << ") <= id && id < Smi::from(" << upper << "));" << std::endl;
+          output_ << "    }" << std::endl;
+          output_ << "    STACK_AT_PUT(0, result);" << std::endl;
+        } else {
+          output_ << "    Smi* id = is_smi(object) ? Smi::from(" << program->smi_class_id()->value() << ") : HeapObject::cast(object)->class_id();" << std::endl;
+          //output_ << "      STACK_AT_PUT(0, BOOL(Smi::from(" << lower << ") <= id && id < Smi::from(" << upper << ")));" << std::endl;
+          output_ << "    STACK_AT_PUT(0, BOOL(true));" << std::endl;
+        }
         break;
       }
 
@@ -533,7 +549,9 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       }
 
       case INVOKE_VIRTUAL_WIDE: {
-        output_ << "    FATAL(\"unimplemented: " << opcode_print[opcode] << "\");" << std::endl;
+        // We never generate this bytecode, because it requires more
+        // than 256 arguments and the compiler does not allow that.
+        UNREACHABLE();
         break;
       }
 
