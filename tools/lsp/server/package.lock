@@ -6,12 +6,12 @@ prefixes:
 packages:
   pkg-cli:
     url: github.com/toitlang/pkg-cli
-    version: 1.1.0
-    hash: cadcb975d3130b3a154c9bc0c676b1efa997a8c6
+    version: 1.1.1
+    hash: 4cfb8204a27b6eea6c4d1339c96f6e8cb41e43db
   pkg-host:
     url: github.com/toitlang/pkg-host
-    version: 1.4.1
-    hash: 444a69af53c5c2010074bceaef1afef615f14047
+    version: 1.8.1
+    hash: 7f0cc4280065fb18ee09d3803f12180cec852d32
   pkg-tar:
     url: github.com/toitlang/pkg-tar
     version: 1.0.0
