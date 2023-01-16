@@ -133,7 +133,12 @@ class Pin:
     state_ = monitor.ResourceState_ resource_group_ resource_
     if input or output:
       try:
-        configure --input=input --output=output --pull_down=pull_down --pull_up=pull_up
+        configure
+            --input=input
+            --output=output
+            --pull_down=pull_down
+            --pull_up=pull_up
+            --open_drain=open_drain
       finally: | is_exception _ |
         if is_exception: close
 
