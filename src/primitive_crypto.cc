@@ -15,7 +15,7 @@
 
 #include "top.h"
 
-#if !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
+#if !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO)
 
 #include "mbedtls/gcm.h"
 #include "mbedtls/chachapoly.h"
@@ -535,7 +535,6 @@ PRIMITIVE(aes_ecb_close) {
   context_proxy->clear_external_address();
   return process->program()->null_object();
 }
-
 
 }
 
