@@ -242,7 +242,7 @@ class RememberedSetRebuilder : public HeapObjectVisitor {
     pointer_callback.found = false;
     object->roots_do(program_, &pointer_callback);
     if (pointer_callback.found) {
-      *GcMetadata::remembered_set_for(reinterpret_cast<uword>(object)) = GcMetadata::NEW_SPACE_POINTERS;
+      *GcMetadata::remembered_set_for(object) = GcMetadata::NEW_SPACE_POINTERS;
     }
     return object->size(program_);
   }
@@ -369,7 +369,7 @@ bool OldSpace::complete_scavenge(
     }
     for (HeapObject *obj = HeapObject::from_address(traverse); traverse != end;
          traverse += obj->size(program_), obj = HeapObject::from_address(traverse)) {
-      visitor->set_record_new_space_pointers(GcMetadata::remembered_set_for(obj->_raw()));
+      visitor->set_record_new_space_pointers(GcMetadata::remembered_set_for(obj));
       obj->roots_do(program_, visitor);
     }
     PromotedTrack* previous = promoted;
@@ -477,7 +477,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
   if (object->_raw() != dest_.address) {
     object_mem_move(dest_.address, object->_raw(), size);
 
-    if (*GcMetadata::remembered_set_for(object->_raw()) !=
+    if (*GcMetadata::remembered_set_for(object) !=
         GcMetadata::NO_NEW_SPACE_POINTERS) {
       *GcMetadata::remembered_set_for(dest_.address) =
           GcMetadata::NEW_SPACE_POINTERS;
