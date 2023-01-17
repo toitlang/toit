@@ -8,6 +8,11 @@ import reader show BufferedReader
 import .lsp_client show LspClient run_client_test
 import .utils
 
+is_absolute_ path/string -> bool:
+  if path.starts_with "/": return true
+  if platform != PLATFORM_WINDOWS: return false
+  return path.size > 1 and path[1] == ':'
+
 abstract class LocationCompilerTestRunner:
   abstract parse_test_lines lines
   abstract send_request client/LspClient test_path/string line/int column/int
@@ -16,7 +21,7 @@ abstract class LocationCompilerTestRunner:
   run args:
     test_path := args[0]
     args = args.copy 1
-    if not test_path.starts_with "/":
+    if not is_absolute_ test_path:
       throw "test-path must be absolute (and canonicalized): $test_path"
 
     locations := extract_locations test_path
