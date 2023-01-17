@@ -38,9 +38,20 @@ test_no_pull_up --idle_level/int:
   // making the channel bidirectional it switches to open drain.
   rmt.Channel.make_bidirectional --in=in --out=out
 
+  // Give the 1M resistor time to drain.
+  sleep --ms=1
   // Due to the 1M resistor, the pin is pulled to GND.
   // Remember: a pin with open-drain basically disconnects when being set to 1.
-  if 0 != measure_pin.get: throw "not equal"
+  expect_equals 0 measure_pin.get
+
+  // Disable open-drain.
+  rmt_pin.set_open_drain false
+  expect_equals idle_level measure_pin.get
+
+  // Enable it again.
+  rmt_pin.set_open_drain true
+  // Give the 1M resistor time to drain.
+  sleep --ms=1
   expect_equals 0 measure_pin.get
 
   // Connect the level pin.
@@ -71,6 +82,19 @@ test_pull_up --idle_level/int:
   // making the channel bidirectional it switches to open drain.
   rmt.Channel.make_bidirectional --in=in --out=out --pull_up
 
+  if idle_level == 0:
+    // The open drain wins over the 1M resistor.
+    expect_equals 0 measure_pin.get
+  else:
+    // The internal pull-up wins over the 1M resistor.
+    expect_equals 1 measure_pin.get
+
+  // Disable open-drain.
+  rmt_pin.set_open_drain false
+  expect_equals idle_level measure_pin.get
+
+  // Enable it again.
+  rmt_pin.set_open_drain true
   if idle_level == 0:
     // The open drain wins over the 1M resistor.
     expect_equals 0 measure_pin.get

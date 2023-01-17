@@ -531,6 +531,7 @@ namespace toit {
   PRIMITIVE(set, 2)                          \
   PRIMITIVE(config_interrupt, 2)             \
   PRIMITIVE(last_edge_trigger_timestamp, 1)  \
+  PRIMITIVE(set_open_drain, 2)               \
 
 #define MODULE_ADC(PRIMITIVE)               \
   PRIMITIVE(init, 4)                        \

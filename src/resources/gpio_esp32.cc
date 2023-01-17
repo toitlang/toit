@@ -304,6 +304,19 @@ PRIMITIVE(config_interrupt) {
   return Smi::from((isr_counter++) & 0x3FFFFFFF);
 }
 
+// A very low-level change of open-drain.
+// If the pin is used in some peripheral, a call to this primitive doesn't
+// affect that configuration.
+PRIMITIVE(set_open_drain) {
+  ARGS(int, num, bool, enable);
+  if (num < 0 || num >= GPIO_NUM_MAX) INVALID_ARGUMENT;
+
+  // Change the open-drain bit.
+  GPIO.pin[num].pad_driver = enable ? 1 : 0;
+
+  return process->program()->null_object();
+}
+
 PRIMITIVE(last_edge_trigger_timestamp) {
   ARGS(GpioResource, resource);
   return Smi::from(resource->last_edge_detection() & 0x3FFFFFFF);
