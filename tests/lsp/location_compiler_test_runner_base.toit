@@ -9,9 +9,9 @@ import .lsp_client show LspClient run_client_test
 import .utils
 
 is_absolute_ path/string -> bool:
-  if platform == PLATFORM_WINDOWS:
-    return path.size > 1 and path[1] == ':'
-  return path.starts_with "/"
+  if path.starts_with "/": return true
+  if platform != PLATFORM_WINDOWS: return false
+  return path.size > 1 and path[1] == ':'
 
 abstract class LocationCompilerTestRunner:
   abstract parse_test_lines lines
