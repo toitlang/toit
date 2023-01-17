@@ -35,6 +35,8 @@ class Location:
 extract_locations path -> Map/*<string, Location>*/:
   content := (file.read_content path).to_string
   lines := (content.trim --right "\n").split "\n"
+  if platform == PLATFORM_WINDOWS:
+    lines = lines.map: |line| line.trim --right "\r"
   result := {:}
   for i := 0; i < lines.size; i++:
     line := lines[i]
