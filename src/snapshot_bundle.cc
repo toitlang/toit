@@ -65,10 +65,11 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   };
 
   const char* sdk_version = vm_git_version();
+  size_t sdk_version_length = strlen(sdk_version);
   ar::File version_file(
     SDK_VERSION_NAME, ar::AR_DONT_FREE,
     reinterpret_cast<const uint8*>(sdk_version), ar::AR_DONT_FREE,
-    static_cast<int>(strlen(sdk_version)));
+    static_cast<int>(sdk_version_length));
   status = builder.add(version_file);
   if (status != 0) FATAL("Couldn't create snapshot");
 
@@ -83,10 +84,8 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   mbedtls_sha256_starts_ret(&sha_context, SHA256);
 
   // Add hashed components.
-  const char* version_string = vm_git_version();
-  size_t version_length = strlen(version_string);
-  const uint8* version = reinterpret_cast<const uint8*>(version_string);
-  update_sha256(&sha_context, version, version_length);
+  const uint8* version_uint8 = reinterpret_cast<const uint8*>(sdk_version);
+  update_sha256(&sha_context, version_uint8, sdk_version_length);
   update_sha256(&sha_context, snapshot.data(), snapshot.length());
   update_sha256(&sha_context, source_map_data.data(), source_map_data.length());
 
