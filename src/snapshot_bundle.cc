@@ -26,9 +26,10 @@ namespace toit {
 
 static const char* const MAGIC_NAME = "toit";
 static const char* const MAGIC_CONTENT = "like a tiger";
+static const char* const UUID_NAME = "uuid";
+static const char* const SDK_VERSION_NAME = "sdk-version";
 static const char* const SNAPSHOT_NAME = "snapshot";
 static const char* const SOURCE_MAP_NAME = "source-map";
-static const char* const UUID_NAME = "uuid";
 static const char* const DEBUG_SNAPSHOT_NAME = "D-snapshot";
 static const char* const DEBUG_SOURCE_MAP_NAME = "D-source-map";
 
@@ -63,6 +64,15 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
     if (status != 0) FATAL("Couldn't create snapshot");
   };
 
+  const char* sdk_version = vm_git_version();
+  size_t sdk_version_length = strlen(sdk_version);
+  ar::File version_file(
+    SDK_VERSION_NAME, ar::AR_DONT_FREE,
+    reinterpret_cast<const uint8*>(sdk_version), ar::AR_DONT_FREE,
+    static_cast<int>(sdk_version_length));
+  status = builder.add(version_file);
+  if (status != 0) FATAL("Couldn't create snapshot");
+
   // Generate UUID using sha256 checksum of:
   //   version
   //   snapshot
@@ -74,10 +84,8 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   mbedtls_sha256_starts_ret(&sha_context, SHA256);
 
   // Add hashed components.
-  const char* version_string = vm_git_version();
-  size_t version_length = strlen(version_string);
-  const uint8* version = reinterpret_cast<const uint8*>(version_string);
-  update_sha256(&sha_context, version, version_length);
+  const uint8* version_uint8 = reinterpret_cast<const uint8*>(sdk_version);
+  update_sha256(&sha_context, version_uint8, sdk_version_length);
   update_sha256(&sha_context, snapshot.data(), snapshot.length());
   update_sha256(&sha_context, source_map_data.data(), source_map_data.length());
 
@@ -89,6 +97,9 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   sum[6] = (sum[6] & 0xf) | 0x50;
   sum[8] = (sum[8] & 0x3f) | 0x80;
 
+  // The order of the following AR-files is important.
+  // When reading the snapshot, an iterator is used to find the individual
+  // files, and changing the order would make the iterator miss the files.
   add(SNAPSHOT_NAME, snapshot);
   add(UUID_NAME, List<uint8>(sum, UUID_SIZE));
   add(SOURCE_MAP_NAME, source_map_data);
