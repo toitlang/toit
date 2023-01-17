@@ -281,7 +281,7 @@ void GcMetadata::slow_mark(HeapObject* object, uword size) {
 }
 
 void GcMetadata::mark_stack_overflow(HeapObject* object) {
-  uword address = reinterpret_cast<uword>(object);
+  uword address = object->_raw();  // Note we need this untagged because we write the low byte into the starts_for.
   uint8* overflow_bits = overflow_bits_for(address);
   *overflow_bits |= 1U << ((address >> CARD_SIZE_LOG_2) & 7);
   // We can have a mark stack overflow in new-space where we do not normally
