@@ -1163,9 +1163,10 @@ Sequence* Parser::parse_sequence() {
       //    ```
       //       while true:
       //         break 499
+      //    ```
       //
-      // We could accept the `499` as a new expression, but that would be confusing
-      // (giving the impression that `499` was an argument to `break`.
+      // We could accept the `499` as a new expression, but that would be confusing,
+      // giving the impression that `499` was an argument to `break`.
       // Report an error.
       report_error("Missing semicolon or missing newline");
     }
