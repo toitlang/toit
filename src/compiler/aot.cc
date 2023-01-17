@@ -52,6 +52,7 @@ class CcGenerator {
   void emit_range(uint8* mend, uint8* begin, uint8* end);
 
   void emit_invoke_virtual(uint8* bcp, int arity, int offset);
+  void emit_invoke_operation(uint8* bcp, Opcode opcode, const char* mnemonic);
 
   std::vector<uint8*> split_method(Method method, uint8* end);
   void split_range(uint8* begin, uint8* end, std::set<uint8*>& points);
@@ -64,6 +65,33 @@ class CcGenerator {
       return std::string("TAILCALL return bb_") + std::to_string(id) + "(RUN_ARGS)";
     }
   }
+
+  enum OperandKind {
+    UNKNOWN_NOT_SMI,
+    UNKNOWN_MAYBE_SMI,
+    INT_DEFINITELY_SMI,
+    INT_NOT_SMI,
+    INT_MAYBE_SMI
+  };
+
+  static OperandKind operand_kind(Program* program, TypeSet type) {
+    int size = type.size(TypeSet::words_per_type(program));
+    bool contains_smi = type.contains_smi(program);
+    bool contains_lgi = type.contains_instance(program->large_integer_class_id());
+    if (size == 1) {
+      if (contains_smi) return INT_DEFINITELY_SMI;
+      return contains_lgi ? INT_NOT_SMI : UNKNOWN_NOT_SMI;
+    } else if (size == 2) {
+      if (!contains_smi) return UNKNOWN_NOT_SMI;
+      return contains_lgi ? INT_MAYBE_SMI : UNKNOWN_MAYBE_SMI;
+    } else {
+      return contains_smi ? UNKNOWN_MAYBE_SMI : UNKNOWN_NOT_SMI;
+    }
+  }
+
+  static bool is_int(OperandKind kind) { return kind >= INT_DEFINITELY_SMI; }
+  static bool is_likely_smi(OperandKind kind) { return kind == INT_DEFINITELY_SMI || kind == INT_MAYBE_SMI; }
+  static bool is_maybe_smi(OperandKind kind) { return kind != UNKNOWN_NOT_SMI && kind != INT_NOT_SMI; }
 };
 
 void CcGenerator::emit(std::vector<int> offsets) {
@@ -607,15 +635,9 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       }
 
       case INVOKE_LT: {
-        // int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
-        output_ << "    Object* right = STACK_AT(0);" << std::endl;
-        output_ << "    Object* left = STACK_AT(1);" << std::endl;
-        output_ << "    bool result;" << std::endl;
-        output_ << "    if (UNLIKELY(!lt_smis(left, right, &result))) {" << std::endl;
-        output_ << "      result = aot_lt(left, right);" << std::endl;
-        output_ << "    }" << std::endl;
-        output_ << "    STACK_AT_PUT(1, BOOL(result));" << std::endl;
-        output_ << "    DROP1();" << std::endl;
+        //int offset = program->invoke_bytecode_offset(opcode);
+        //emit_invoke_virtual(bcp, 2, offset);
+        emit_invoke_operation(bcp, opcode, "lt");
         break;
       }
 
@@ -633,21 +655,7 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       }
 
       case INVOKE_ADD: {
-        int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
-        std::vector<TypeSet> arguments = types_->input(program->absolute_bci_from_bcp(bcp));
-        if (arguments.size() == 2 && arguments[0].contains_smi(program)) {
-          output_ << "    Object* right = STACK_AT(0);" << std::endl;
-          output_ << "    Object* left = STACK_AT(1);" << std::endl;
-          output_ << "    Object* result;" << std::endl;
-          output_ << "    if (!add_smis(left, right, &result)) {" << std::endl;
-          output_ << "      TAILCALL return add_int_int(RUN_ARGS_X(&bb_" << next << "));" << std::endl;
-          output_ << "    }" << std::endl;
-          output_ << "    STACK_AT_PUT(1, result);" << std::endl;
-          output_ << "    DROP1();" << std::endl;
-        } else {
-          int offset = program->invoke_bytecode_offset(opcode);
-          emit_invoke_virtual(bcp, 2, offset);
-        }
+        emit_invoke_operation(bcp, opcode, "add");
         break;
       }
 
@@ -838,6 +846,107 @@ void CcGenerator::emit_invoke_virtual(uint8* bcp, int arity, int offset) {
   output_ << "    TAILCALL return vtbl[id + " << offset << "](RUN_ARGS_XX(&bb_" << next << ", " << offset << "));" << std::endl;
 }
 
+void CcGenerator::emit_invoke_operation(uint8* bcp, Opcode opcode, const char* mnemonic) {
+  Program* program = types_->program();
+  std::vector<TypeSet> arguments = types_->input(program->absolute_bci_from_bcp(bcp));
+
+  bool is_compare;
+  switch (opcode) {
+    case INVOKE_LT:
+      is_compare = true;
+      break;
+
+    case INVOKE_ADD:
+      is_compare = false;
+      break;
+
+    default:
+      UNREACHABLE();
+  }
+
+  OperandKind left = UNKNOWN_NOT_SMI;
+  OperandKind right = UNKNOWN_NOT_SMI;
+  if (arguments.size() == 2) {
+    left = operand_kind(program, arguments[0]);
+    right = operand_kind(program, arguments[1]);
+  }
+
+  if (!is_int(left) || !is_int(right)) {
+    int offset = program->invoke_bytecode_offset(opcode);
+    if (is_maybe_smi(left) && is_maybe_smi(right)) {
+      if (right == INT_DEFINITELY_SMI) {
+        output_ << "    Smi* right = Smi::cast(STACK_AT(0));" << std::endl;
+      } else {
+        output_ << "    Object* right = STACK_AT(0);" << std::endl;
+      }
+
+      if (left == INT_DEFINITELY_SMI) {
+        output_ << "    Smi* left = Smi::cast(STACK_AT(1));" << std::endl;
+      } else {
+        output_ << "    Object* left = STACK_AT(1);" << std::endl;
+      }
+      int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
+      if (is_compare) {
+        output_ << "    bool result;" << std::endl;
+      } else {
+        output_ << "    Object* result;" << std::endl;
+      }
+      output_ << "    if (!aot_" << mnemonic << "(left, right, &result)) {" << std::endl;
+      output_ << "      TAILCALL return aot_" << mnemonic << "(RUN_ARGS_XX(&bb_" << next << ", " << offset << "));" << std::endl;
+      output_ << "    }" << std::endl;
+      if (is_compare) {
+        output_ << "    STACK_AT_PUT(1, BOOL(result));" << std::endl;
+      } else {
+        output_ << "    STACK_AT_PUT(1, result);" << std::endl;
+      }
+      output_ << "    DROP1();" << std::endl;
+    } else {
+      emit_invoke_virtual(bcp, 2, offset);
+    }
+    return;
+  }
+
+  if (is_compare || (is_likely_smi(left) && is_maybe_smi(right))) {
+    if (right == INT_DEFINITELY_SMI) {
+      output_ << "    Smi* right = Smi::cast(STACK_AT(0));" << std::endl;
+    } else {
+      output_ << "    Object* right = STACK_AT(0);" << std::endl;
+    }
+
+    if (left == INT_DEFINITELY_SMI) {
+      output_ << "    Smi* left = Smi::cast(STACK_AT(1));" << std::endl;
+    } else {
+      output_ << "    Object* left = STACK_AT(1);" << std::endl;
+    }
+  }
+
+  if (is_compare) {
+    if (is_likely_smi(left) && is_maybe_smi(right)) {
+      output_ << "    bool result;" << std::endl;
+      output_ << "    if (UNLIKELY(!aot_" << mnemonic << "(left, right, &result))) {" << std::endl;
+      output_ << "      result = aot_" << mnemonic << "(left, right);" << std::endl;
+      output_ << "    }" << std::endl;
+      output_ << "    STACK_AT_PUT(1, BOOL(result));" << std::endl;
+      output_ << "    DROP1();" << std::endl;
+    } else {
+      output_ << "    STACK_AT_PUT(1, BOOL(aot_" << mnemonic << "(left, right)));" << std::endl;
+      output_ << "    DROP1();" << std::endl;
+    }
+  } else {
+    if (is_likely_smi(left) && is_maybe_smi(right)) {
+      output_ << "    Object* result;" << std::endl;
+      output_ << "    if (LIKELY(aot_" << mnemonic << "(left, right, &result))) {" << std::endl;
+      output_ << "      STACK_AT_PUT(1, result);" << std::endl;
+      output_ << "      DROP1();" << std::endl;
+      output_ << "    } else {" << std::endl;
+      output_ << "      sp = aot_" << mnemonic << "(sp);" << std::endl;
+      output_ << "    }" << std::endl;
+    } else {
+      output_ << "    sp = aot_" << mnemonic << "(sp);" << std::endl;
+    }
+  }
+}
+
 std::vector<uint8*> CcGenerator::split_method(Method method, uint8* end) {
   std::set<uint8*> points;
   while (true) {
@@ -855,7 +964,13 @@ std::vector<uint8*> CcGenerator::split_method(Method method, uint8* end) {
   return std::vector<uint8*>(points.begin(), points.end());
 }
 
+// any
+// int - maybe smi
+// int - not smi
+// smi
+
 void CcGenerator::split_range(uint8* begin, uint8* end, std::set<uint8*>& points) {
+  Program* program = types_->program();
   uint8* bcp = begin;
   while (bcp < end) {
     Opcode opcode = static_cast<Opcode>(*bcp);
@@ -876,7 +991,6 @@ void CcGenerator::split_range(uint8* begin, uint8* end, std::set<uint8*>& points
       case INVOKE_VIRTUAL_GET:
       case INVOKE_VIRTUAL_SET:
       case INVOKE_EQ:
-      //case INVOKE_LT:
       case INVOKE_GT:
       case INVOKE_LTE:
       case INVOKE_GTE:
@@ -886,16 +1000,48 @@ void CcGenerator::split_range(uint8* begin, uint8* end, std::set<uint8*>& points
       case INVOKE_BIT_SHL:
       case INVOKE_BIT_SHR:
       case INVOKE_BIT_USHR:
-      case INVOKE_ADD:
       case INVOKE_SUB:
       case INVOKE_MUL:
       case INVOKE_DIV:
       case INVOKE_MOD:
-      case INVOKE_AT:
       case INVOKE_AT_PUT:
       case PRIMITIVE: {
         uint8* next = bcp + opcode_length[opcode];
         if (next < end) points.insert(next);
+        break;
+      }
+
+      case INVOKE_LT:
+      case INVOKE_ADD: {
+        uint8* next = bcp + opcode_length[opcode];
+        if (next < end) {
+          int position = program->absolute_bci_from_bcp(bcp);
+          std::vector<TypeSet> arguments = types_->input(position);
+          if (arguments.size() == 2) {
+            OperandKind left = operand_kind(program, arguments[0]);
+            OperandKind right = operand_kind(program, arguments[1]);
+            if (!is_int(left) || !is_int(right)) points.insert(next);
+          } else {
+            points.insert(next);
+          }
+        }
+        break;
+      }
+
+      case INVOKE_AT: {
+        uint8* next = bcp + opcode_length[opcode];
+        if (next < end) {
+          int position = program->absolute_bci_from_bcp(bcp);
+          std::vector<TypeSet> arguments = types_->input(position);
+          if (arguments.size() == 2) {
+            if (arguments[0].size(TypeSet::words_per_type(program)) != 1 ||
+                !arguments[0].contains_instance(program->byte_array_class_id())) {
+              points.insert(next);
+            }
+          } else {
+            points.insert(next);
+          }
+        }
         break;
       }
 

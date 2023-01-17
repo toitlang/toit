@@ -59,14 +59,14 @@ static INLINE bool are_smis(Object* a, Object* b) {
   return result;
 }
 
-void add_int_int(RUN_PARAMS);
-void sub_int_smi(RUN_PARAMS);
 void sub_int_int(RUN_PARAMS);
-
-void lt_int_int(RUN_PARAMS);
 void lte_int_int(RUN_PARAMS);
 
-bool aot_lt(Object* a, Object* b) __attribute__((preserve_all));
+bool aot_lt(Object* a, Object* b) __attribute__((preserve_most));
+void aot_lt(RUN_PARAMS);
+
+Object** aot_add(Object** sp) __attribute__((preserve_most));
+void aot_add(RUN_PARAMS);
 
 void allocate(RUN_PARAMS);
 void invoke_primitive(RUN_PARAMS);
@@ -77,7 +77,7 @@ void store_field(RUN_PARAMS);
 void store_field_pop(RUN_PARAMS);
 void store_global(RUN_PARAMS);
 
-static INLINE bool add_smis(Object* a, Object* b, Object** result) {
+static INLINE bool aot_add(Object* a, Object* b, Object** result) {
   return are_smis(a, b) &&
 #ifdef BUILD_32
     !__builtin_sadd_overflow((word) a, (word) b, (word*) result);
@@ -86,12 +86,30 @@ static INLINE bool add_smis(Object* a, Object* b, Object** result) {
 #endif
 }
 
-static INLINE bool add_smis(Object* a, Smi* b, Object** result) {
+static INLINE bool aot_add(Smi* a, Object* b, Object** result) {
+  return is_smi(b) &&
+#ifdef BUILD_32
+    !__builtin_sadd_overflow((word) a, (word) b, (word*) result);
+#elif BUILD_64
+    !LP64(__builtin_sadd,_overflow)((word) a, (word) b, (word*) result);
+#endif
+}
+
+static INLINE bool aot_add(Object* a, Smi* b, Object** result) {
   return is_smi(a) &&
 #ifdef BUILD_32
-    !__builtin_ssub_overflow((word) a, (word) b, (word*) result);
+    !__builtin_sadd_overflow((word) a, (word) b, (word*) result);
 #elif BUILD_64
-    !LP64(__builtin_ssub,_overflow)((word) a, (word) b, (word*) result);
+    !LP64(__builtin_sadd,_overflow)((word) a, (word) b, (word*) result);
+#endif
+}
+
+static INLINE bool aot_add(Smi* a, Smi* b, Object** result) {
+  return
+#ifdef BUILD_32
+    !__builtin_sadd_overflow((word) a, (word) b, (word*) result);
+#elif BUILD_64
+    !LP64(__builtin_sadd,_overflow)((word) a, (word) b, (word*) result);
 #endif
 }
 
@@ -113,9 +131,26 @@ static INLINE bool sub_smis(Object* a, Smi* b, Object** result) {
 #endif
 }
 
-static INLINE bool lt_smis(Object* a, Object* b, bool* result) {
+static INLINE bool aot_lt(Object* a, Object* b, bool* result) {
   if (!are_smis(a, b)) return false;
-  *result = a < b;
+  *result = reinterpret_cast<word>(a) < reinterpret_cast<word>(b);
+  return true;
+}
+
+static INLINE bool aot_lt(Smi* a, Object* b, bool* result) {
+  if (!is_smi(b)) return false;
+  *result = reinterpret_cast<word>(a) < reinterpret_cast<word>(b);
+  return true;
+}
+
+static INLINE bool aot_lt(Object* a, Smi* b, bool* result) {
+  if (!is_smi(a)) return false;
+  *result = reinterpret_cast<word>(a) < reinterpret_cast<word>(b);
+  return true;
+}
+
+static INLINE bool aot_lt(Smi* a, Smi* b, bool* result) {
+  *result = reinterpret_cast<word>(a) < reinterpret_cast<word>(b);
   return true;
 }
 

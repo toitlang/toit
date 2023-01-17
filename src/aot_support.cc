@@ -6,25 +6,7 @@ void run(toit::Process* process, toit::Object** sp) {
   UNIMPLEMENTED();
 }
 
-void add_int_int(RUN_PARAMS) {
-  UNIMPLEMENTED();
-  run_func continuation = reinterpret_cast<run_func>(extra);
-  TAILCALL return continuation(RUN_ARGS);
-}
-
-void sub_int_smi(RUN_PARAMS) {
-  UNIMPLEMENTED();
-  run_func continuation = reinterpret_cast<run_func>(extra);
-  TAILCALL return continuation(RUN_ARGS);
-}
-
 void sub_int_int(RUN_PARAMS) {
-  UNIMPLEMENTED();
-  run_func continuation = reinterpret_cast<run_func>(extra);
-  TAILCALL return continuation(RUN_ARGS);
-}
-
-void lt_int_int(RUN_PARAMS) {
   UNIMPLEMENTED();
   run_func continuation = reinterpret_cast<run_func>(extra);
   TAILCALL return continuation(RUN_ARGS);
@@ -39,6 +21,23 @@ void lte_int_int(RUN_PARAMS) {
 bool aot_lt(Object* a, Object* b) {
   UNIMPLEMENTED();
   return false;
+}
+
+void aot_lt(RUN_PARAMS) {
+  UNIMPLEMENTED();
+  run_func continuation = reinterpret_cast<run_func>(extra);
+  TAILCALL return continuation(RUN_ARGS);
+}
+
+Object** aot_add(Object** sp) {
+  UNIMPLEMENTED();
+  return sp;
+}
+
+void aot_add(RUN_PARAMS) {
+  UNIMPLEMENTED();
+  run_func continuation = reinterpret_cast<run_func>(extra);
+  TAILCALL return continuation(RUN_ARGS);
 }
 
 void allocate(RUN_PARAMS) {
