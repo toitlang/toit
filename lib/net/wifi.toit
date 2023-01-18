@@ -93,7 +93,9 @@ open config/Map? -> Interface
     --save/bool=false:
   service := service_
   if not service: throw "WiFi unavailable"
-  return WifiInterface_ service (service.connect config save)
+  connection := service.connect config
+  if save: service.configure config
+  return WifiInterface_ service connection
 
 establish --ssid/string --password/string -> net.Interface
     --broadcast/bool=true
@@ -132,6 +134,49 @@ scan channels/ByteArray --passive/bool=false --period_per_channel_ms/int=SCAN_TI
         --rssi=data_list[offset + WIFI_SCAN_RSSI_]
         --authmode=data_list[offset + WIFI_SCAN_AUTHMODE_]
         --channel=data_list[offset + WIFI_SCAN_CHANNEL_]
+
+/**
+Configure the WiFi service to connect using the given $ssid and
+  $password credentials by default.
+
+The new defaults will take effect on the next call to $open that
+  where no configuration is explicitly provided.
+
+Use $(open --ssid --password --save) to configure the WiFi
+  service only after verifying that connecting succeeds.
+*/
+configure --ssid/string --password/string -> none:
+  configure {
+    CONFIG_SSID: ssid,
+    CONFIG_PASSWORD: password,
+  }
+
+/**
+Configure the WiFi service's default way of connecting to
+  an access point. The $config contains entries for the
+  credentials such as ssid and password.
+
+The new defaults will take effect on the next call to $open that
+  where no configuration is explicitly provided.
+
+Use $(configure --reset) to reset the stored configuration.
+*/
+configure config/Map -> none:
+  service := service_
+  if not service: throw "WiFi unavailable"
+  service.configure config
+
+/**
+Reset the stored WiFi configuration and go back to using
+  the WiFi credentials embedded in the firmware image.
+
+The argument $reset must be true.
+*/
+configure --reset/bool -> none:
+  if reset != true: throw "Argument Error"
+  service := service_
+  if not service: throw "WiFi unavailable"
+  service.configure null
 
 class WifiInterface_ extends SystemInterface_ implements Interface:
   constructor client/WifiServiceClient connection/List:
