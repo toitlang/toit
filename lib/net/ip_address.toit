@@ -40,7 +40,7 @@ class IpAddress:
 
   stringify:
     if raw.size == 4:
-      return (List 4: raw[it]).join "."
+      return (ByteArrayList raw).join "."
 
     if raw.size == 16:
       return (List 8: raw[it * 2] << 8 | raw[it * 2 + 1]).join ":"
