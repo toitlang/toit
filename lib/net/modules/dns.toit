@@ -55,7 +55,7 @@ DEFAULT_CLIENT ::= DnsClient [
 // A map from IP addresses (in string form) to DNS clients.
 // If a DNS client has multiple servers it can query then they
 // are separated by slash (/) in the key.
-ALL_CLIENTS_ ::= {DEFAULT_CLIENT.servers_.sort.join "/": DEFAULT_CLIENT}
+ALL_CLIENTS_ ::= {DEFAULT_CLIENT.servers_.join "/": DEFAULT_CLIENT}
 
 default_client := DEFAULT_CLIENT
 
@@ -86,7 +86,7 @@ class DnsQuery_:
 /**
 A DnsClient contains a list of DNS servers in the form of IP addresses in
   string form.
-The client picks a DNS server at random.
+The client starts by using the first DNS server in the list.
 If a DNS server fails to answer after 2.5 times the $DNS_RETRY_TIMEOUT, then
   the client switches permanently to the next one on the list.
 */
@@ -104,7 +104,7 @@ class DnsClient:
   constructor servers/List:
     if servers.size == 0 or (servers.any: it is not string): throw "INVALID_ARGUMENT"
     servers_ = servers
-    current_server_ = random servers.size
+    current_server_ = 0
 
   static DNS_UDP_PORT ::= 53
 

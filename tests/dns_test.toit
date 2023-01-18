@@ -121,10 +121,8 @@ parse_numeric_test:
   invalid_ipv6 "::12345"             // Too long segment at end.
 
 fallback_test:
-  // The client picks a DNS server at random, so this
-  // will succeed immediately half the time.  The other half
-  // of the time there will be a short timeout (about 2.5 seconds),
-  // then it will switch to Google and succeed.
+  // There will be a short timeout (about 2.5 seconds), then it will switch to
+  // Google and succeed.
   client := DnsClient [
       "240.0.0.0",  // Black hole that never answers.
       "8.8.8.8",    // Google DNS.
