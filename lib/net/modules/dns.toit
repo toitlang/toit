@@ -9,8 +9,6 @@ import net
 DNS_DEFAULT_TIMEOUT ::= Duration --s=20
 DNS_RETRY_TIMEOUT ::= Duration --s=1
 HOSTS_ ::= {"localhost": "127.0.0.1"}
-CACHE_ ::= Map  // From name to CacheEntry_.
-CACHE_IPV6_ ::= Map  // From name to CacheEntry_.
 MAX_CACHE_SIZE_ ::= platform == "FreeRTOS" ? 30 : 1000
 MAX_TRIMMED_CACHE_SIZE_ ::= MAX_CACHE_SIZE_ / 3 * 2
 
@@ -28,17 +26,38 @@ Look up a domain name and return an A or AAAA record.
 If given a numeric address like 127.0.0.1 it merely parses
   the numbers without a network round trip.
 
-By default the server is "8.8.8.8" which is the Google DNS
-  service.
+By default the server is determined by the network interface.  The fallback
+  servers if none are configured are the Google and Cloudflare DNS services.
 */
 dns_lookup -> net.IpAddress
     host/string
-    --server/string="8.8.8.8"
+    --server/string?=null
+    --client/DnsClient?=null
     --timeout/Duration=DNS_DEFAULT_TIMEOUT
     --accept_ipv4/bool=true
     --accept_ipv6/bool=false:
-  q := DnsQuery_ host --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6
-  return q.get --server=server --timeout=timeout
+  if server and client: throw "INVALID_ARGUMENT"
+  if not client:
+    if not server:
+      client = default_client
+    else:
+      client = ALL_CLIENTS_.get server --init=:
+        DnsClient [server]
+  return client.get host --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6 --timeout=timeout
+
+DEFAULT_CLIENT ::= DnsClient [
+    "8.8.8.8",  // Google.
+    "1.1.1.1",  // Cloudflare.
+    "8.8.4.4",  // Google.
+    "1.0.0.1",  // Cloudflare.
+]
+
+// A map from IP addresses (in string form) to DNS clients.
+// If a DNS client has multiple servers it can query then they
+// are separated by slash (/) in the key.
+ALL_CLIENTS_ ::= {DEFAULT_CLIENT.servers_.join "/": DEFAULT_CLIENT}
+
+default_client := DEFAULT_CLIENT
 
 CLASS_INTERNET ::= 1
 
@@ -58,46 +77,86 @@ class DnsQuery_:
   name/string
   accept_ipv4/bool
   accept_ipv6/bool
+  query_packet/ByteArray
 
   constructor .name --.accept_ipv4 --.accept_ipv6:
     id = random 0x10000
+    query_packet = create_query_ name id --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6
+
+/**
+A DnsClient contains a list of DNS servers in the form of IP addresses in
+  string form.
+The client starts by using the first DNS server in the list.
+If a DNS server fails to answer after 2.5 times the $DNS_RETRY_TIMEOUT, then
+  the client switches permanently to the next one on the list.
+*/
+class DnsClient:
+  servers_/List
+  current_server_/int := ?
+
+  cache_ ::= Map  // From name to CacheEntry_.
+  cache_ipv6_ ::= Map  // From name to CacheEntry_.
+
+  /**
+  Creates a DnsClient, given a list of DNS servers in the form of IP addresses
+    in string form.
+  */
+  constructor servers/List:
+    if servers.size == 0 or (servers.any: it is not string): throw "INVALID_ARGUMENT"
+    servers_ = servers
+    current_server_ = 0
+
+  static DNS_UDP_PORT ::= 53
 
   /**
   Look up a domain name and return an A or AAAA record.
 
   If given a numeric address like "127.0.0.1" it merely parses
     the numbers without a network round trip.
-
-  By default the server is "8.8.8.8" which is the Google DNS
-    service.
   */
-  get -> net.IpAddress
-      --server/string="8.8.8.8"
+  get name --accept_ipv4/bool=true --accept_ipv6/bool=false -> net.IpAddress
       --timeout/Duration=DNS_DEFAULT_TIMEOUT:
     if net.IpAddress.is_valid name --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6:
       return net.IpAddress.parse name
     if HOSTS_.contains name:
       return net.IpAddress.parse HOSTS_[name]
 
-    hit := find_in_cache_ server --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6
+    hit := find_in_cache_ name --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6
     if hit: return hit
 
-    query := create_query name id --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6
+    query := DnsQuery_ name --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6
 
-    socket := udp.Socket
     with_timeout timeout:
+      socket/udp.Socket? := null
+      servers_immediately_failed := {}
       try:
-        socket.connect
-          net.SocketAddress
-            net.IpAddress.parse server
-            53                             // DNS UDP port.
-
         retry_timeout := DNS_RETRY_TIMEOUT
 
         // Resend the query with exponential backoff until the outer timeout
         // expires.
         while true:
-          socket.write query
+          if not socket:
+            socket = udp.Socket
+            server_ip := net.IpAddress.parse servers_[current_server_]
+            show_errors := servers_immediately_failed.size == servers_.size
+            exception := null
+            if show_errors:
+              socket.connect
+                net.SocketAddress server_ip DNS_UDP_PORT
+            else:
+              exception = catch:
+                socket.connect
+                  net.SocketAddress server_ip DNS_UDP_PORT
+            if exception != null:
+              // Probably the network is unreachable.  We can still try the
+              // other servers, but if we have tried all of them then we are
+              // done.
+              servers_immediately_failed.add current_server_
+              socket.close
+              socket = null
+              current_server_ = (current_server_ + 1) % servers_.size
+              continue
+          socket.write query.query_packet
 
           answer := null
           exception := catch:
@@ -106,12 +165,23 @@ class DnsQuery_:
           if exception and exception != "DEADLINE_EXCEEDED": throw exception
 
           if answer:
-            return decode_response_ answer.data server
+            return decode_response_ query answer.data
 
           retry_timeout = retry_timeout * 1.5
 
+          if retry_timeout > DNS_RETRY_TIMEOUT * 2:
+            // After two short timeouts we rotate to the next server in the
+            // list (if any).
+            new_server_index := (current_server_ + 1) % servers_.size
+            if new_server_index != current_server_:
+              // At this point we close the old socket, so if the previous
+              // server answers late, we won't see it.
+              current_server_ = new_server_index
+              socket.close
+              socket = null
+
       finally:
-        socket.close
+        if socket: socket.close
     unreachable
 
   static case_compare_ a/string b/string -> bool:
@@ -129,26 +199,24 @@ class DnsQuery_:
   static is_letter_ c/int -> bool:
     return 'a' <= c <= 'z' or 'A' <= c <= 'Z'
 
-  // We pass the name_server because we don't use the cache entry if the user
-  // is trying a different name server.
-  find_in_cache_ name_server/string --accept_ipv4/bool --accept_ipv6/bool -> net.IpAddress?:
+  find_in_cache_ name --accept_ipv4/bool --accept_ipv6/bool -> net.IpAddress?:
     if accept_ipv4:
-      if CACHE_.contains name:
-        entry := CACHE_[name]
-        if entry.valid name_server: return entry.address
-        CACHE_.remove name
+      if cache_.contains name:
+        entry := cache_[name]
+        if entry.valid: return entry.address
+        cache_.remove name
     if accept_ipv6:
-      if CACHE_IPV6_.contains name:
-        entry := CACHE_IPV6_[name]
-        if entry.valid name_server: return entry.address
-        CACHE_IPV6_.remove name
+      if cache_ipv6_.contains name:
+        entry := cache_ipv6_[name]
+        if entry.valid: return entry.address
+        cache_ipv6_.remove name
     return null
 
   static ERROR_MESSAGES_ ::= ["", "FORMAT_ERROR", "SERVER_FAILURE", "NO_SUCH_DOMAIN", "NOT_IMPLEMENTED", "REFUSED"]
 
-  decode_response_ response/ByteArray name_server/string -> net.IpAddress:
+  decode_response_ query/DnsQuery_ response/ByteArray -> net.IpAddress:
     received_id := BIG_ENDIAN.uint16 response 0
-    if received_id != id:
+    if received_id != query.id:
       throw (DnsException "Response ID mismatch")
     // Check for expected response, but mask out the authoritative bit
     // so we can accept answers that are either authoritative or non-
@@ -164,7 +232,7 @@ class DnsQuery_:
     if queries != 1: throw (DnsException "Unexpected number of queries in response")
     q_name := decode_name response position: position = it
     position += 4
-    if not case_compare_ q_name name:
+    if not case_compare_ q_name query.name:
       throw (DnsException "Response name mismatch")
     (BIG_ENDIAN.uint16 response 6).repeat:
       r_name := decode_name response position: position = it
@@ -187,24 +255,24 @@ class DnsQuery_:
 
       rd_length := BIG_ENDIAN.uint16 response position
       position += 2
-      if type == RECORD_A and accept_ipv4:
+      if type == RECORD_A and query.accept_ipv4:
         if rd_length != 4: throw (DnsException "Unexpected IP address length $rd_length")
         if case_compare_ r_name q_name:
           result := net.IpAddress
               response.copy position position + 4
           if ttl > 0:
-            trim_cache_ CACHE_
-            CACHE_[name] = CacheEntry_ result ttl name_server
+            trim_cache_ cache_
+            cache_[query.name] = CacheEntry_ result ttl
           return result
         // Skip name that does not match.
-      else if type == RECORD_AAAA and accept_ipv6:
+      else if type == RECORD_AAAA and query.accept_ipv6:
         if rd_length != 16: throw (DnsException "Unexpected IP address length $rd_length")
         if case_compare_ r_name q_name:
           result := net.IpAddress
               response.copy position position + 16
           if ttl > 0:
-            trim_cache_ CACHE_IPV6_
-            CACHE_IPV6_[name] = CacheEntry_ result ttl name_server
+            trim_cache_ cache_ipv6_
+            cache_ipv6_[query.name] = CacheEntry_ result ttl
           return result
       else if type == RECORD_CNAME:
         q_name = decode_name response position: null
@@ -257,16 +325,14 @@ trim_cache_ cache/Map -> none:
     toggle
 
 class CacheEntry_:
-  server / string          // Unparsed server name like "8.8.8.8".
   end / int                // Time in µs, compatible with Time.monotonic_us.
   address / net.IpAddress
 
-  constructor .address ttl/int .server:
+  constructor .address ttl/int:
     end = Time.monotonic_us + ttl * 1_000_000
 
-  valid name_server/string -> bool:
-    if Time.monotonic_us > end: return false
-    return name_server == server
+  valid -> bool:
+    return Time.monotonic_us <= end
 
 /**
 Creates a UDP packet to look up the given name.
@@ -274,7 +340,7 @@ Regular DNS lookup is used, namely the A record for the domain.
 The $query_id should be a 16 bit unsigned number which will be included in
   the reply.
 */
-create_query name/string query_id/int --accept_ipv4/bool=true --accept_ipv6/bool=false -> ByteArray:
+create_query_ name/string query_id/int --accept_ipv4/bool=true --accept_ipv6/bool=false -> ByteArray:
   if not (accept_ipv4 or accept_ipv6): throw "INVALID_ARGUMENT"
   query_count := (accept_ipv4 and accept_ipv6) ? 2 : 1
   parts := name.split "."

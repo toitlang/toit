@@ -177,7 +177,7 @@ void Stack::transfer_from_interpreter(Interpreter* interpreter) {
 }
 
 bool HeapObject::in_remembered_set() {
-  if (*GcMetadata::remembered_set_for(_raw()) == GcMetadata::NEW_SPACE_POINTERS) {
+  if (*GcMetadata::remembered_set_for(this) == GcMetadata::NEW_SPACE_POINTERS) {
     return true;
   }
   return GcMetadata::get_page_type(this) == NEW_SPACE_PAGE;
