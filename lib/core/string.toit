@@ -245,7 +245,7 @@ abstract class string implements Comparable:
       if rune: block.call rune
 
   /**
-  For every unicode character in the string, call the block.
+  Calls the given $block for every unicode character in the string.
   The argument to the block is an integer in the Unicode range of 0-0x10ffff,
     inclusive.
   The return value is assembled from the return values of the block.
@@ -263,11 +263,15 @@ abstract class string implements Comparable:
   To get a list or byte array as the return value instead of a string, use
     `str.to_byte_array.map` instead.
   # Examples.
+  ```
   heavy_metalize str/string -> string:
     return str.flat_map: | c |
-      {'o': 'ö', 'a': 'ä', 'u': 'ü', 'ä': "\u{20db}a"}.get c --if_absent=:c
+      {'o': 'ö', 'a': 'ä', 'u': 'ü', 'ä': "\u{20db}a"}.get c --if_absent=: c
+  ```
+  ```
   lower_case str/string -> string:
     return str.flat_map: | c | ('A' <= c <= 'Z') ? c - 'A' + 'a' : c
+  ```
   */
   flat_map [block] -> string:
     prefix := ""
