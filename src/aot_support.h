@@ -58,7 +58,6 @@ typedef void (*run_func)(RUN_PARAMS);
 #define LIKELY(x) __builtin_expect((x), 1)
 #define UNLIKELY(x) __builtin_expect((x), 0)
 #define SLOWCASE __attribute__((cold, preserve_most))
-//#define SLOWCASE
 
 static INLINE bool are_smis(Object* a, Object* b) {
   uword bits = reinterpret_cast<uword>(a) | reinterpret_cast<uword>(b);
@@ -68,15 +67,6 @@ static INLINE bool are_smis(Object* a, Object* b) {
   ASSERT(!result || (is_smi(a) && is_smi(b)));
   return result;
 }
-
-void allocate(RUN_PARAMS);
-void invoke_primitive(RUN_PARAMS);
-
-void load_global(RUN_PARAMS);
-
-void store_field(RUN_PARAMS);
-void store_field_pop(RUN_PARAMS);
-void store_global(RUN_PARAMS);
 
 #define AOT_RELATIONAL(mnemonic, op)                                      \
 static INLINE bool aot_##mnemonic(Object* a, Object* b, bool* result) {   \
@@ -142,3 +132,20 @@ void aot_##mnemonic(RUN_PARAMS);
 AOT_ARITHMETIC(add, AOT_SMI_ADD)
 AOT_ARITHMETIC(sub, AOT_SMI_SUB)
 #undef AOT_ARITHMETIC
+
+static INLINE Object* convert_to_block(Object** sp, Object** base) {
+  return reinterpret_cast<Object*>(reinterpret_cast<word>(sp) - reinterpret_cast<word>(base));
+}
+
+static INLINE Object** convert_from_block(Object* value, Object** base) {
+  return reinterpret_cast<Object**>(reinterpret_cast<word>(base) + reinterpret_cast<word>(value));
+}
+
+void allocate(RUN_PARAMS);
+void invoke_primitive(RUN_PARAMS);
+
+void load_global(RUN_PARAMS);
+
+void store_field(RUN_PARAMS);
+void store_field_pop(RUN_PARAMS);
+void store_global(RUN_PARAMS);

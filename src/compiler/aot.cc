@@ -188,7 +188,7 @@ void CcGenerator::emit(std::vector<int> offsets) {
   output_ << "    .heap     = process->object_heap()," << std::endl;
   output_ << "    .globals  = process->object_heap()->global_variables()," << std::endl;
   output_ << "    .literals = process->program()->literals.array()," << std::endl;
-  output_ << "    .base     = 0," << std::endl;
+  output_ << "    .base     = sp," << std::endl;
   output_ << "    .limit    = 0," << std::endl;
   output_ << "  };" << std::endl;
   output_ << "  Wonk* wonk = &wonky;" << std::endl;
@@ -280,7 +280,7 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
 
       case LOAD_OUTER: {
         B_ARG1(index);
-        output_ << "    Object** block = reinterpret_cast<Object**>(STACK_AT(0));" << std::endl;
+        output_ << "    Object** block = convert_from_block(STACK_AT(0), wonk->base);" << std::endl;
         output_ << "    STACK_AT_PUT(0, block[" << index << "]);" << std::endl;
         break;
       }
@@ -288,7 +288,7 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       case STORE_OUTER: {
         B_ARG1(index);
         output_ << "    Object* value = STACK_AT(0);" << std::endl;
-        output_ << "    Object** block = reinterpret_cast<Object**>(STACK_AT(1));" << std::endl;
+        output_ << "    Object** block = convert_from_block(STACK_AT(1), wonk->base);" << std::endl;
         output_ << "    block[" << index << "] = value;" << std::endl;
         output_ << "    STACK_AT_PUT(1, value);" << std::endl;
         output_ << "    DROP1();" << std::endl;
@@ -447,16 +447,14 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
 
       case LOAD_BLOCK: {
         B_ARG1(index);
-        // TODO(kasper): This should be the distance from the bottom of the stack, so we can
-        // relocate the blocks correctly later.
-        output_ << "    PUSH(reinterpret_cast<Object*>(sp + " << index << "));" << std::endl;
+        output_ << "    PUSH(convert_to_block(sp + " << index << ", wonk->base));" << std::endl;
         break;
       }
 
       case LOAD_OUTER_BLOCK: {
         B_ARG1(index);
-        output_ << "    Object** block = reinterpret_cast<Object**>(STACK_AT(0));" << std::endl;
-        output_ << "    STACK_AT_PUT(0, reinterpret_cast<Object*>(block + " << index << "));" << std::endl;
+        output_ << "    Object** block = convert_from_block(STACK_AT(0), wonk->base);" << std::endl;
+        output_ << "    STACK_AT_PUT(0, convert_to_block(block + " << index << ", wonk->base));" << std::endl;
         break;
       }
 
@@ -562,8 +560,8 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
 
       case INVOKE_BLOCK: {
         B_ARG1(arity);
-        output_ << "    run_func* block = reinterpret_cast<run_func*>(STACK_AT(" << (arity - 1) << "));" << std::endl;
-        output_ << "    run_func continuation = *block;" << std::endl;
+        output_ << "    Object** block = convert_from_block(STACK_AT(" << (arity - 1) << "), wonk->base);" << std::endl;
+        output_ << "    run_func continuation = *reinterpret_cast<run_func*>(block);" << std::endl;
         int next = program->absolute_bci_from_bcp(bcp + INVOKE_BLOCK_LENGTH);
         output_ << "    TAILCALL return continuation(RUN_ARGS_XX(&bb_" << next << ", " << arity << "));" << std::endl;
         break;
@@ -732,7 +730,7 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
           height = Utils::read_unaligned_uint16(bcp + 3);
         }
         // TODO(kasper): Handle linked frames.
-        output_ << "    Object** block = reinterpret_cast<Object**>(STACK_AT(0));" << std::endl;
+        output_ << "    Object** block = convert_from_block(STACK_AT(0), wonk->base);" << std::endl;
         output_ << "    Object* result = STACK_AT(1);" << std::endl;
         output_ << "    sp = block + " << (height + 2) << ";" << std::endl;
         output_ << "    run_func continuation = reinterpret_cast<run_func>(STACK_AT(0));" << std::endl;
