@@ -312,6 +312,7 @@ PRIMITIVE(set_open_drain) {
   if (num < 0 || num >= GPIO_NUM_MAX) INVALID_ARGUMENT;
 
   // Change the open-drain bit.
+  // Directly writes to the memory-mapped register.
   GPIO.pin[num].pad_driver = enable ? 1 : 0;
 
   return process->program()->null_object();
