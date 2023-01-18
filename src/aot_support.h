@@ -57,7 +57,7 @@ typedef void (*run_func)(RUN_PARAMS);
 
 #define LIKELY(x) __builtin_expect((x), 1)
 #define UNLIKELY(x) __builtin_expect((x), 0)
-#define SLOWCASE __attribute__((cold, preserve_most))
+#define SLOWCASE __attribute__((preserve_most))
 
 static INLINE bool are_smis(Object* a, Object* b) {
   uword bits = reinterpret_cast<uword>(a) | reinterpret_cast<uword>(b);
@@ -134,11 +134,11 @@ AOT_ARITHMETIC(sub, AOT_SMI_SUB)
 #undef AOT_ARITHMETIC
 
 static INLINE Object* convert_to_block(Object** sp, Object** base) {
-  return reinterpret_cast<Object*>(reinterpret_cast<word>(sp) - reinterpret_cast<word>(base));
+  return reinterpret_cast<Object*>((word) sp - (word) base);
 }
 
 static INLINE Object** convert_from_block(Object* value, Object** base) {
-  return reinterpret_cast<Object**>(reinterpret_cast<word>(base) + reinterpret_cast<word>(value));
+  return reinterpret_cast<Object**>((word) base + (word) value);
 }
 
 void allocate(RUN_PARAMS);

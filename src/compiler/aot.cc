@@ -229,6 +229,11 @@ void CcGenerator::emit_method(Method method) {
 
   output_ << "  PUSH(reinterpret_cast<Object*>(extra));" << std::endl;
   output_ << "  PUSH(Smi::from(0));  // Should be: Frame marker." << std::endl;
+
+  output_ << "  if (sp - " << method.max_height() << " < wonk->limit) {" << std::endl;
+  output_ << "    UNIMPLEMENTED();" << std::endl;
+  output_ << "  }" << std::endl;
+
   output_ << "  " << branch(0, 0, program, method.entry()) << ";" << std::endl;
   output_ << "}" << std::endl;
 }
@@ -654,6 +659,9 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       case BRANCH_BACK: {
         S_ARG1(offset);
         uint8* target = (opcode == BRANCH) ? (bcp + offset) : (bcp - offset);
+        if (opcode == BRANCH_BACK) {
+          output_ << "    if (sp < wonk->limit) UNIMPLEMENTED();" << std::endl;
+        }
         if (target != mend) {
           output_ << "    " << branch(begin, end, program, target) << ";" << std::endl;
         } else {
@@ -668,7 +676,12 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
         S_ARG1(offset);
         uint8* target = (opcode == BRANCH_IF_TRUE) ? (bcp + offset) : (bcp - offset);
         output_ << "    Object* value = POP();" << std::endl;
-        output_ << "    if (IS_TRUE_VALUE(value)) " << branch(begin, end, program, target) << ";" << std::endl;
+        output_ << "    if (IS_TRUE_VALUE(value)) {" << std::endl;
+        if (opcode == BRANCH_BACK_IF_TRUE) {
+          output_ << "      if (sp < wonk->limit) UNIMPLEMENTED();" << std::endl;
+        }
+        output_ << "      " << branch(begin, end, program, target) << ";" << std::endl;
+        output_ << "    }" << std::endl;
         break;
       }
 
@@ -677,7 +690,12 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
         S_ARG1(offset);
         uint8* target = (opcode == BRANCH_IF_FALSE) ? (bcp + offset) : (bcp - offset);
         output_ << "    Object* value = POP();" << std::endl;
-        output_ << "    if (!IS_TRUE_VALUE(value)) " << branch(begin, end, program, target) << ";" << std::endl;
+        output_ << "    if (!IS_TRUE_VALUE(value)) {" << std::endl;
+        if (opcode == BRANCH_BACK_IF_FALSE) {
+          output_ << "      if (sp < wonk->limit) UNIMPLEMENTED();" << std::endl;
+        }
+        output_ << "      " << branch(begin, end, program, target) << ";" << std::endl;
+        output_ << "    }" << std::endl;
         break;
       }
 
