@@ -4,9 +4,9 @@
 
 main:
   start := Time.monotonic_us
-  result := nasty 100
+  result := fib 40
   end := Time.monotonic_us
-  print_ "nasty(100) = $result | took $(end - start) us"
+  print_ "fib(40) = $result | took $(end - start) us"
 
 fib n:
   if n <= 2: return n

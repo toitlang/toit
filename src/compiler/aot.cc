@@ -183,6 +183,16 @@ void CcGenerator::emit(std::vector<int> offsets) {
   output_ << "  Object* const true_object = process->program()->true_object();" << std::endl;
   output_ << "  Object* const false_object = process->program()->false_object();" << std::endl << std::endl;
 
+  output_ << "  Wonk wonky = {" << std::endl;
+  output_ << "    .process  = process," << std::endl;
+  output_ << "    .heap     = process->object_heap()," << std::endl;
+  output_ << "    .globals  = process->object_heap()->global_variables()," << std::endl;
+  output_ << "    .literals = process->program()->literals.array()," << std::endl;
+  output_ << "    .base     = 0," << std::endl;
+  output_ << "    .limit    = 0," << std::endl;
+  output_ << "  };" << std::endl;
+  output_ << "  Wonk* wonk = &wonky;" << std::endl;
+
   output_ << "  PUSH(process->task());" << std::endl;
   int id = program->absolute_bci_from_bcp(program->entry_main().header_bcp());
   output_ << "  method_" << id << "(RUN_ARGS_XX(0, 0));  // __entry__main" << std::endl;
@@ -337,7 +347,7 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
             output_ << "    PUSH(false_object);" << std::endl;
             break;
           default:
-            output_ << "    PUSH(process->program()->literals.at(" << index << "));" << std::endl;
+            output_ << "    PUSH(wonk->literals[" << index << "]);" << std::endl;
             break;
         }
         break;
@@ -397,7 +407,7 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       case LOAD_GLOBAL_VAR:
       case LOAD_GLOBAL_VAR_WIDE: {
         int index = (opcode == LOAD_GLOBAL_VAR) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
-        output_ << "    PUSH(process->object_heap()->global_variables()[" << index << "]);" << std::endl;
+        output_ << "    PUSH(wonk->globals[" << index << "]);" << std::endl;
         break;
       }
 
@@ -405,7 +415,7 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       case LOAD_GLOBAL_VAR_LAZY_WIDE: {
         int index = (opcode == LOAD_GLOBAL_VAR_LAZY) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
         int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
-        output_ << "    Object* global = process->object_heap()->global_variables()[" << index << "];" << std::endl;
+        output_ << "    Object* global = wonk->globals[" << index << "];" << std::endl;
         output_ << "    if (UNLIKELY(is_heap_object(global) && HeapObject::cast(global)->class_id() == Smi::from(" << program->lazy_initializer_class_id()->value() << "))) {" << std::endl;
         output_ << "      PUSH(Smi::from(" << index << "));" << std::endl;
         output_ << "      PUSH(global);" << std::endl;
@@ -419,7 +429,7 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       case STORE_GLOBAL_VAR:
       case STORE_GLOBAL_VAR_WIDE: {
         int index = (opcode == STORE_GLOBAL_VAR) ? bcp[1] : Utils::read_unaligned_uint16(bcp + 1);
-        output_ << "    process->object_heap()->global_variables()[" << index << "] = STACK_AT(0);" << std::endl;
+        output_ << "    wonk->globals[" << index << "] = STACK_AT(0);" << std::endl;
         break;
       }
 
@@ -596,18 +606,12 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
       }
 
       case INVOKE_EQ:
-      //case INVOKE_LT:
-      case INVOKE_GT:
-      //case INVOKE_LTE:
-      case INVOKE_GTE:
       case INVOKE_BIT_OR:
       case INVOKE_BIT_XOR:
       case INVOKE_BIT_AND:
       case INVOKE_BIT_SHL:
       case INVOKE_BIT_SHR:
       case INVOKE_BIT_USHR:
-      //case INVOKE_ADD:
-      //case INVOKE_SUB:
       case INVOKE_MUL:
       case INVOKE_DIV:
       case INVOKE_MOD:
@@ -634,43 +638,19 @@ void CcGenerator::emit_range(uint8* mend, uint8* begin, uint8* end) {
         break;
       }
 
-      case INVOKE_LT: {
-        //int offset = program->invoke_bytecode_offset(opcode);
-        //emit_invoke_virtual(bcp, 2, offset);
-        emit_invoke_operation(bcp, opcode, "lt");
-        break;
+#define AOT_OPERATION(opcode, mnemonic)                \
+      case opcode: {                                   \
+        emit_invoke_operation(bcp, opcode, #mnemonic); \
+        break;                                         \
       }
 
-      case INVOKE_LTE: {
-        int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
-        output_ << "    Object* right = STACK_AT(0);" << std::endl;
-        output_ << "    Object* left = STACK_AT(1);" << std::endl;
-        output_ << "    bool result;" << std::endl;
-        output_ << "    if (!lte_smis(left, right, &result)) {" << std::endl;
-        output_ << "      TAILCALL return lte_int_int(RUN_ARGS_X(&bb_" << next << "));" << std::endl;
-        output_ << "    }" << std::endl;
-        output_ << "    STACK_AT_PUT(1, BOOL(result));" << std::endl;
-        output_ << "    DROP1();" << std::endl;
-        break;
-      }
-
-      case INVOKE_ADD: {
-        emit_invoke_operation(bcp, opcode, "add");
-        break;
-      }
-
-      case INVOKE_SUB: {
-        int next = program->absolute_bci_from_bcp(bcp + opcode_length[opcode]);
-        output_ << "    Object* right = STACK_AT(0);" << std::endl;
-        output_ << "    Object* left = STACK_AT(1);" << std::endl;
-        output_ << "    Object* result;" << std::endl;
-        output_ << "    if (!sub_smis(left, right, &result)) {" << std::endl;
-        output_ << "      TAILCALL return sub_int_int(RUN_ARGS_X(&bb_" << next << "));" << std::endl;
-        output_ << "    }" << std::endl;
-        output_ << "    STACK_AT_PUT(1, result);" << std::endl;
-        output_ << "    DROP1();" << std::endl;
-        break;
-      }
+      AOT_OPERATION(INVOKE_LT,  lt)
+      AOT_OPERATION(INVOKE_LTE, lte)
+      AOT_OPERATION(INVOKE_GT,  gt)
+      AOT_OPERATION(INVOKE_GTE, gte)
+      AOT_OPERATION(INVOKE_ADD, add)
+      AOT_OPERATION(INVOKE_SUB, sub)
+#undef AOT_OPERATION
 
       case BRANCH:
       case BRANCH_BACK: {
@@ -853,10 +833,14 @@ void CcGenerator::emit_invoke_operation(uint8* bcp, Opcode opcode, const char* m
   bool is_compare;
   switch (opcode) {
     case INVOKE_LT:
+    case INVOKE_LTE:
+    case INVOKE_GT:
+    case INVOKE_GTE:
       is_compare = true;
       break;
 
     case INVOKE_ADD:
+    case INVOKE_SUB:
       is_compare = false;
       break;
 
@@ -939,10 +923,10 @@ void CcGenerator::emit_invoke_operation(uint8* bcp, Opcode opcode, const char* m
       output_ << "      STACK_AT_PUT(1, result);" << std::endl;
       output_ << "      DROP1();" << std::endl;
       output_ << "    } else {" << std::endl;
-      output_ << "      sp = aot_" << mnemonic << "(sp);" << std::endl;
+      output_ << "      sp = aot_" << mnemonic << "(sp, wonk);" << std::endl;
       output_ << "    }" << std::endl;
     } else {
-      output_ << "    sp = aot_" << mnemonic << "(sp);" << std::endl;
+      output_ << "    sp = aot_" << mnemonic << "(sp, wonk);" << std::endl;
     }
   }
 }
@@ -963,11 +947,6 @@ std::vector<uint8*> CcGenerator::split_method(Method method, uint8* end) {
   points.insert(method.entry());
   return std::vector<uint8*>(points.begin(), points.end());
 }
-
-// any
-// int - maybe smi
-// int - not smi
-// smi
 
 void CcGenerator::split_range(uint8* begin, uint8* end, std::set<uint8*>& points) {
   Program* program = types_->program();
@@ -991,16 +970,12 @@ void CcGenerator::split_range(uint8* begin, uint8* end, std::set<uint8*>& points
       case INVOKE_VIRTUAL_GET:
       case INVOKE_VIRTUAL_SET:
       case INVOKE_EQ:
-      case INVOKE_GT:
-      case INVOKE_LTE:
-      case INVOKE_GTE:
       case INVOKE_BIT_OR:
       case INVOKE_BIT_XOR:
       case INVOKE_BIT_AND:
       case INVOKE_BIT_SHL:
       case INVOKE_BIT_SHR:
       case INVOKE_BIT_USHR:
-      case INVOKE_SUB:
       case INVOKE_MUL:
       case INVOKE_DIV:
       case INVOKE_MOD:
@@ -1012,7 +987,11 @@ void CcGenerator::split_range(uint8* begin, uint8* end, std::set<uint8*>& points
       }
 
       case INVOKE_LT:
-      case INVOKE_ADD: {
+      case INVOKE_GT:
+      case INVOKE_LTE:
+      case INVOKE_GTE:
+      case INVOKE_ADD:
+      case INVOKE_SUB: {
         uint8* next = bcp + opcode_length[opcode];
         if (next < end) {
           int position = program->absolute_bci_from_bcp(bcp);

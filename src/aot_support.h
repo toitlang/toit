@@ -17,27 +17,35 @@ using namespace toit;
 #define BOOL(x)            ((x) ? true_object : false_object)
 #define IS_TRUE_VALUE(x)   ((x != false_object) && (x != null_object))
 
+struct Wonk {
+  Process* process;
+  ObjectHeap* heap;
+  Object** globals;
+  Object** literals;
+  Object** base;
+  Object** limit;
+};
+
 #define RUN_PARAMS       \
     Object** sp,         \
+    Wonk* wonk,          \
     void* extra,         \
     void* x2,            \
-    Process* process,    \
-    Object* null_object, \
-    Object* true_object, \
-    Object* false_object
-
+    Object* __restrict__  null_object, \
+    Object* __restrict__ true_object,  \
+    Object* __restrict__ false_object
 
 #define RUN_ARGS_XX(x, x2)       \
     sp,                          \
+    wonk,                        \
     reinterpret_cast<void*>(x),  \
     reinterpret_cast<void*>(x2), \
-    process,                     \
     null_object,                 \
     true_object,                 \
     false_object
 
 #define RUN_ARGS_X(x) RUN_ARGS_XX(x, x2)
-#define RUN_ARGS RUN_ARGS_X(extra)
+#define RUN_ARGS      RUN_ARGS_X(extra)
 
 typedef void (*run_func)(RUN_PARAMS);
 
@@ -49,6 +57,8 @@ typedef void (*run_func)(RUN_PARAMS);
 
 #define LIKELY(x) __builtin_expect((x), 1)
 #define UNLIKELY(x) __builtin_expect((x), 0)
+#define SLOWCASE __attribute__((cold, preserve_most))
+//#define SLOWCASE
 
 static INLINE bool are_smis(Object* a, Object* b) {
   uword bits = reinterpret_cast<uword>(a) | reinterpret_cast<uword>(b);
@@ -59,15 +69,6 @@ static INLINE bool are_smis(Object* a, Object* b) {
   return result;
 }
 
-void sub_int_int(RUN_PARAMS);
-void lte_int_int(RUN_PARAMS);
-
-bool aot_lt(Object* a, Object* b) __attribute__((preserve_most));
-void aot_lt(RUN_PARAMS);
-
-Object** aot_add(Object** sp) __attribute__((preserve_most));
-void aot_add(RUN_PARAMS);
-
 void allocate(RUN_PARAMS);
 void invoke_primitive(RUN_PARAMS);
 
@@ -77,91 +78,67 @@ void store_field(RUN_PARAMS);
 void store_field_pop(RUN_PARAMS);
 void store_global(RUN_PARAMS);
 
-static INLINE bool aot_add(Object* a, Object* b, Object** result) {
-  return are_smis(a, b) &&
+#define AOT_RELATIONAL(mnemonic, op)                                      \
+static INLINE bool aot_##mnemonic(Object* a, Object* b, bool* result) {   \
+  if (!are_smis(a, b)) return false;                                      \
+  *result = reinterpret_cast<word>(a) op reinterpret_cast<word>(b);       \
+  return true;                                                            \
+}                                                                         \
+static INLINE bool aot_##mnemonic(Smi* a, Object* b, bool* result) {      \
+  if (!is_smi(b)) return false;                                           \
+  *result = reinterpret_cast<word>(a) op reinterpret_cast<word>(b);       \
+  return true;                                                            \
+}                                                                         \
+static INLINE bool aot_##mnemonic(Object* a, Smi* b, bool* result) {      \
+  if (!is_smi(a)) return false;                                           \
+  *result = reinterpret_cast<word>(a) op reinterpret_cast<word>(b);       \
+  return true;                                                            \
+}                                                                         \
+static INLINE bool aot_##mnemonic(Smi* a, Smi* b, bool* result) {         \
+  *result = reinterpret_cast<word>(a) op reinterpret_cast<word>(b);       \
+  return true;                                                            \
+}                                                                         \
+bool aot_##mnemonic(Object* a, Object* b) SLOWCASE;                       \
+void aot_##mnemonic(RUN_PARAMS);
+
+AOT_RELATIONAL(lt,  < )
+AOT_RELATIONAL(lte, <=)
+AOT_RELATIONAL(gt,  > )
+AOT_RELATIONAL(gte, >=)
+#undef AOT_RELATIONAL
+
 #ifdef BUILD_32
-    !__builtin_sadd_overflow((word) a, (word) b, (word*) result);
+
+#define AOT_SMI_ADD(a, b, result) \
+  !__builtin_sadd_overflow((word) a, (word) b, (word*) result)
+#define AOT_SMI_SUB(a, b, result) \
+  !__builtin_ssub_overflow((word) a, (word) b, (word*) result)
+
 #elif BUILD_64
-    !LP64(__builtin_sadd,_overflow)((word) a, (word) b, (word*) result);
+
+#define AOT_SMI_ADD(a, b, result) \
+  !LP64(__builtin_sadd,_overflow)((word) a, (word) b, (word*) result)
+#define AOT_SMI_SUB(a, b, result) \
+  !LP64(__builtin_ssub,_overflow)((word) a, (word) b, (word*) result)
+
 #endif
-}
 
-static INLINE bool aot_add(Smi* a, Object* b, Object** result) {
-  return is_smi(b) &&
-#ifdef BUILD_32
-    !__builtin_sadd_overflow((word) a, (word) b, (word*) result);
-#elif BUILD_64
-    !LP64(__builtin_sadd,_overflow)((word) a, (word) b, (word*) result);
-#endif
-}
+#define AOT_ARITHMETIC(mnemonic, builtin)                                  \
+static INLINE bool aot_##mnemonic(Object* a, Object* b, Object** result) { \
+  return are_smis(a, b) && builtin(a, b, result);                          \
+}                                                                          \
+static INLINE bool aot_##mnemonic(Smi* a, Object* b, Object** result) {    \
+  return is_smi(b) && builtin(a, b, result);                               \
+}                                                                          \
+static INLINE bool aot_##mnemonic(Object* a, Smi* b, Object** result) {    \
+  return is_smi(a) && builtin(a, b, result);                               \
+}                                                                          \
+static INLINE bool aot_##mnemonic(Smi* a, Smi* b, Object** result) {       \
+  return builtin(a, b, result);                                            \
+}                                                                          \
+Object** aot_##mnemonic(Object** sp, Wonk* wonk) SLOWCASE;                 \
+void aot_##mnemonic(RUN_PARAMS);
 
-static INLINE bool aot_add(Object* a, Smi* b, Object** result) {
-  return is_smi(a) &&
-#ifdef BUILD_32
-    !__builtin_sadd_overflow((word) a, (word) b, (word*) result);
-#elif BUILD_64
-    !LP64(__builtin_sadd,_overflow)((word) a, (word) b, (word*) result);
-#endif
-}
-
-static INLINE bool aot_add(Smi* a, Smi* b, Object** result) {
-  return
-#ifdef BUILD_32
-    !__builtin_sadd_overflow((word) a, (word) b, (word*) result);
-#elif BUILD_64
-    !LP64(__builtin_sadd,_overflow)((word) a, (word) b, (word*) result);
-#endif
-}
-
-static INLINE bool sub_smis(Object* a, Object* b, Object** result) {
-  return are_smis(a, b) &&
-#ifdef BUILD_32
-    !__builtin_ssub_overflow((word) a, (word) b, (word*) result);
-#elif BUILD_64
-    !LP64(__builtin_ssub,_overflow)((word) a, (word) b, (word*) result);
-#endif
-}
-
-static INLINE bool sub_smis(Object* a, Smi* b, Object** result) {
-  return is_smi(a) &&
-#ifdef BUILD_32
-    !__builtin_ssub_overflow((word) a, (word) b, (word*) result);
-#elif BUILD_64
-    !LP64(__builtin_ssub,_overflow)((word) a, (word) b, (word*) result);
-#endif
-}
-
-static INLINE bool aot_lt(Object* a, Object* b, bool* result) {
-  if (!are_smis(a, b)) return false;
-  *result = reinterpret_cast<word>(a) < reinterpret_cast<word>(b);
-  return true;
-}
-
-static INLINE bool aot_lt(Smi* a, Object* b, bool* result) {
-  if (!is_smi(b)) return false;
-  *result = reinterpret_cast<word>(a) < reinterpret_cast<word>(b);
-  return true;
-}
-
-static INLINE bool aot_lt(Object* a, Smi* b, bool* result) {
-  if (!is_smi(a)) return false;
-  *result = reinterpret_cast<word>(a) < reinterpret_cast<word>(b);
-  return true;
-}
-
-static INLINE bool aot_lt(Smi* a, Smi* b, bool* result) {
-  *result = reinterpret_cast<word>(a) < reinterpret_cast<word>(b);
-  return true;
-}
-
-static INLINE bool lte_smis(Object* a, Object* b, bool* result) {
-  if (!are_smis(a, b)) return false;
-  *result = a <= b;
-  return true;
-}
-
-static INLINE bool lte_smis(Object* a, Smi* b, bool* result) {
-  if (!is_smi(a)) return false;
-  *result = a <= b;
-  return true;
-}
+AOT_ARITHMETIC(add, AOT_SMI_ADD)
+AOT_ARITHMETIC(sub, AOT_SMI_SUB)
+#undef AOT_ARITHMETIC
