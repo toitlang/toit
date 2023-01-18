@@ -28,6 +28,7 @@ TYPE_PRIMITIVE_ANY(get)
 TYPE_PRIMITIVE_ANY(set)
 TYPE_PRIMITIVE_ANY(config_interrupt)
 TYPE_PRIMITIVE_ANY(last_edge_trigger_timestamp)
+TYPE_PRIMITIVE_ANY(set_open_drain)
 
 }  // namespace toit::compiler
 }  // namespace toit
