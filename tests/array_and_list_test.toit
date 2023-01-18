@@ -6,6 +6,7 @@ import expect show *
 
 main:
   test_byte_array
+  test_byte_array_list
   test_array
   test_large_array_do
   test_matrix
@@ -48,6 +49,35 @@ test_join:
 
   a = ["123", "1.25", "hello"]
   expect_equals "*123*, *1.25*, *hello*" (a.join ", " star_block)
+
+test_byte_array_list:
+  a := ByteArrayList #[42, 103, 7, 0, 255]
+
+  expect_equals "42, 103, 7, 0, 255"
+    a.join ", "
+
+  expect_equals [0, 1, 1, 0, 1]
+    a.map: it & 1
+
+  expect_throw "COLLECTION_CANNOT_CHANGE_SIZE": a.add 5
+
+  expect_equals [42, 0]
+    a.filter: it & 1 == 0
+
+  expect_equals [0, 7, 42, 103, 255]
+    a.sort
+
+  a.sort --in_place
+  expect_equals [0, 7, 42, 103, 255] a
+
+  a.replace 1 [192, 64, 128]
+  expect_equals [0, 192, 64, 128, 255] a
+
+  a.replace 1 #[42, 7, 103]
+  expect_equals [0, 42, 7, 103, 255] a
+
+  a.replace 1 (ByteArrayList #[27, 5, 69])
+  expect_equals [0, 27, 5, 69, 255] a
 
 test_byte_array:
   a := ByteArray 10

@@ -808,6 +808,58 @@ create_array_ x y z u -> Array_:
   return array
 
 /**
+A non-growable List, backed by the storage of a ByteArray.
+*/
+class ByteArrayList extends List:
+  byte_array_/ByteArray
+
+  /** Construct a non-growable List, backed by a ByteArray. */
+  constructor .byte_array_:
+    super.from_subclass
+
+  /** See $super. */
+  size -> int: return byte_array_.size
+
+  /** See $super. */
+  resize new_size:
+    throw "COLLECTION_CANNOT_CHANGE_SIZE"
+
+  /** See $super. */
+  do [block]:
+    byte_array_.do block
+
+  /** See $super. */
+  operator + other -> ByteArrayList:
+    if other is ByteArray:
+      return ByteArrayList byte_array_ + other
+    else if other is ByteArrayList:
+      return ByteArrayList byte_array_ + other.byte_array_
+    else:
+      throw "INVALID_ARGUMENT"
+
+  /** See $super. */
+  operator [] index/int -> int:
+    return byte_array_[index]
+
+  /** See $super. */
+  operator []= index/int value/int:
+    byte_array_[index] = value
+
+  /** See $super. */
+  replace index source from to:
+    if source is ByteArray or source is string:
+      byte_array_.replace index source from to
+    else if source is ByteArrayList:
+      byte_array_.replace index source.byte_array_ from to
+    else:
+      super index source from to
+
+  /** See $super. */
+  copy from/int=0 to/int=size -> ByteArrayList:
+    return ByteArrayList
+      byte_array_.copy from to
+
+/**
 A non-growable list.
 
 This class is the most efficient way of storing elements, but requires the user to

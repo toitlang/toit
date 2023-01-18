@@ -40,20 +40,10 @@ class IpAddress:
 
   stringify:
     if raw.size == 4:
-      buffer := ""
-      4.repeat:
-        if it != 0: buffer += "."
-        buffer += raw[it].stringify
-      return buffer
+      return (List 4: raw[it]).join "."
 
     if raw.size == 16:
-      buffer := ""
-      8.repeat:
-        if it != 0: buffer += ":"
-        field := raw[it*2] << 8 | raw[it*2 + 1]
-        buffer += field.stringify 16
-        // TODO: Consider using compressed format.
-      return buffer
+      return (List 8: raw[it * 2] << 8 | raw[it * 2 + 1]).join ":"
 
     return "<invalid-ip>"
 
