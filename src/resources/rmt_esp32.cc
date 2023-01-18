@@ -249,22 +249,38 @@ PRIMITIVE(set_idle_threshold) {
 }
 
 PRIMITIVE(config_bidirectional_pin) {
-  ARGS(int, pin, RmtResource, resource);
+  ARGS(int, pin, RmtResource, resource, bool, enable_pullup);
 
+  // This function has to be called after the pin was first
+  // configured as an output channel, and then as an input channel.
+  // We now need to reenable the output without losing the input.
+
+  // Enable the pin. "w1ts" = "write 1 to set".
+  // TODO(florian): not completely sure why this is needed, but without it
+  // it won't work.
 #if defined(CONFIG_IDF_TARGET_ESP32C3)
   if (pin >= MAX_GPIO_NUM) INVALID_ARGUMENT;
   GPIO.enable_w1ts.enable_w1ts = (0x1 << pin);
 #else
-  // Set open collector?
   if (pin < 32) {
     GPIO.enable_w1ts = (0x1 << pin);
   } else {
     GPIO.enable1_w1ts.data = (0x1 << (pin - 32));
   }
 #endif
-  rmt_set_gpio(resource->channel(), RMT_MODE_TX, static_cast<gpio_num_t>(pin), false);
+  esp_err_t err = rmt_set_gpio(resource->channel(), RMT_MODE_TX, static_cast<gpio_num_t>(pin), false);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  // Make the pin an input again.
   PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[pin]);
+
+  // Make the pin open-drain.
   GPIO.pin[pin].pad_driver = 1;
+
+  if (enable_pullup) {
+    err = gpio_pullup_en(static_cast<gpio_num_t>(pin));
+    if (err != ESP_OK) return Primitive::os_error(err, process);
+  }
 
   return process->program()->null_object();
 }

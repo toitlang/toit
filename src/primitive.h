@@ -431,7 +431,7 @@ namespace toit {
   PRIMITIVE(config_tx, 11)                   \
   PRIMITIVE(get_idle_threshold, 1)           \
   PRIMITIVE(set_idle_threshold, 2)           \
-  PRIMITIVE(config_bidirectional_pin, 2)     \
+  PRIMITIVE(config_bidirectional_pin, 3)     \
   PRIMITIVE(transmit, 2)                     \
   PRIMITIVE(transmit_done, 2)                \
   PRIMITIVE(prepare_receive, 1)              \
