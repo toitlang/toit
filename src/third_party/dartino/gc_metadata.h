@@ -149,6 +149,10 @@ class GcMetadata {
                                     singleton_.starts_bias_);
   }
 
+  static inline uint8* remembered_set_for(HeapObject* object) {
+    return remembered_set_for(reinterpret_cast<uword>(object));
+  }
+
   static inline uint8* remembered_set_for(uword address) {
     ASSERT(in_metadata_range(address));
     return reinterpret_cast<uint8*>((address >> CARD_SIZE_LOG_2) +
@@ -386,11 +390,19 @@ class GcMetadata {
 
   static uword heap_extent() { return singleton_.heap_extent_; }
 
+  // This method returns true for the end of the very last page
+  // in the metadata range.  This means it can be used for the end
+  // of a page when calculating a range of metadata corresponding
+  // to a page.  However if we are accessing the metadata for a
+  // particular HeapObject, we would normally obtain the address
+  // with a cast, which means it would be one higher because of
+  // tagging.  So an object at the start of the first page after
+  // the range would be correctly rejected here.
   template<typename T>
   static bool in_metadata_range(T address_argument) {
     uword address = reinterpret_cast<uword>(address_argument);
     uword lowest = singleton_.lowest_address_;
-    return lowest <= address && address < lowest + singleton_.heap_extent_;
+    return lowest <= address && address <= lowest + singleton_.heap_extent_;
   }
 
   static uword remembered_set_bias() { return singleton_.remembered_set_bias_; }
