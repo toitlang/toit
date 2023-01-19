@@ -308,12 +308,16 @@ PRIMITIVE(receive)  {
     if (is_array(capture.output)) {
       // TODO: Support IPv6.
       address = capture.process->allocate_byte_array(4);
-      if (address == null) ALLOCATION_FAILED;
+      if (address == null) {
+        return Primitive::mark_as_error(capture.process->program()->allocation_failed());
+      }
     }
 
     pbuf* p = packet->pbuf();
     ByteArray* array = capture.process->allocate_byte_array(p->len);
-    if (array == null) ALLOCATION_FAILED;
+    if (array == null) {
+      return Primitive::mark_as_error(capture.process->program()->allocation_failed());
+    }
 
     memcpy(ByteArray::Bytes(array).address(), p->payload, p->len);
 
@@ -368,7 +372,9 @@ PRIMITIVE(send) {
 
   Object* result = resource_group->event_source()->call_on_thread([&]() -> Object* {
     pbuf* p = pbuf_alloc(PBUF_TRANSPORT, capture.to, PBUF_REF);
-    if (p == NULL) ALLOCATION_FAILED;
+    if (p == NULL) {
+      return Primitive::mark_as_error(capture.process->program()->allocation_failed());
+    }
     p->payload = const_cast<uint8_t*>(content);
 
     err_t err;
