@@ -31,9 +31,10 @@ uninstall id/uuid.Uuid -> none:
 
 class ContainerImage:
   id/uuid.Uuid
+  name/string?
   flags/int
   data/int
-  constructor .id .flags .data:
+  constructor .id .name .flags .data:
 
 class Container extends ServiceResourceProxy:
   id/uuid.Uuid
