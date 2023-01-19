@@ -46,8 +46,22 @@ class Packet : public LinkedFifo<Packet>::Element {
     , addr_(addr)
     , port_(port) {}
 
+  Packet()
+    : pbuf_(null) {}
+
   ~Packet() {
-    pbuf_free(pbuf_);
+    clear();
+  }
+
+  void clear() {
+    if (pbuf_) pbuf_free(pbuf_);
+    pbuf_ = null;
+  }
+
+  void set(struct pbuf* pbuf, ip_addr_t addr, u16_t port) {
+    pbuf_ = pbuf;
+    addr_ = addr;
+    port_ = port;
   }
 
   struct pbuf* pbuf() { return pbuf_; }
@@ -66,12 +80,15 @@ class UdpSocket : public Resource {
   UdpSocket(ResourceGroup* group, udp_pcb* upcb)
     : Resource(group)
     , upcb_(upcb)
-    , buffered_bytes_(0) {}
+    , buffered_bytes_(0) {
+    spare_packet_ = _new Packet();
+  }
 
   ~UdpSocket() {
     while (auto packet = packets_.remove_first()) {
       delete packet;
     }
+    delete spare_packet_;
   }
 
   void tear_down() {
@@ -100,8 +117,15 @@ class UdpSocket : public Resource {
 
   void take_packet() {
     Packet* packet = packets_.remove_first();
-    if (packet != null) buffered_bytes_ -= packet->pbuf()->len;
-    delete packet;
+    if (packet != null) {
+      buffered_bytes_ -= packet->pbuf()->len;
+      if (spare_packet_ == null) {
+        packet->clear();
+        spare_packet_ = packet;
+      } else {
+        delete packet;
+      }
+    }
   }
 
   Packet* next_packet() {
@@ -111,6 +135,7 @@ class UdpSocket : public Resource {
  private:
   udp_pcb* upcb_;
   LinkedFifo<Packet> packets_;
+  Packet* spare_packet_;
   int buffered_bytes_;
 };
 
@@ -136,11 +161,17 @@ class UdpResourceGroup : public ResourceGroup {
 };
 
 void UdpSocket::on_recv(pbuf* p, const ip_addr_t* addr, u16_t port) {
-  Packet* packet = _new Packet(p, *addr, port);
+  Packet* packet = spare_packet_;
+  spare_packet_ = null;
+  if (packet != null) {
+    packet->set(p, *addr, port);
+  } else {
+    packet = _new Packet(p, *addr, port);
+  }
   if (packet == null) {
-    // TODO(kasper): It would be better to try to pre-allocate the Packet
-    // object, so we can push the allocation failure out and not drop
-    // received pbufs on the floor.
+    // The packet object itself is very small, so the allocation will
+    // rarely fail.  If it still fails we trigger a GC and drop the
+    // UDP packet.
     pbuf_free(p);
     needs_gc = true;
     return;
@@ -155,6 +186,9 @@ void UdpSocket::set_recv() {
   if (buffered_bytes_ < MAX_QUEUE_SIZE) {
     udp_recv(upcb(), UdpSocket::on_recv, this);
   } else {
+    // When too many packets have been received and not picked up by the Toit
+    // program, we set the udp_recv to null so that packets are dropped for a
+    // while.
     udp_recv(upcb(), null, null);
   }
 }
@@ -334,7 +368,7 @@ PRIMITIVE(send) {
 
   Object* result = resource_group->event_source()->call_on_thread([&]() -> Object* {
     pbuf* p = pbuf_alloc(PBUF_TRANSPORT, capture.to, PBUF_REF);
-    if (p == NULL) return Smi::from(capture.to);
+    if (p == NULL) ALLOCATION_FAILED;
     p->payload = const_cast<uint8_t*>(content);
 
     err_t err;
