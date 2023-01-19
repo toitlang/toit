@@ -158,6 +158,8 @@ class Scheduler {
   bool is_locked() const { return OS::is_locked(mutex_); }
   bool is_boot_process(Process* process) const { return boot_process_ == process; }
 
+  void iterate_process_chunks(void* context, process_chunk_callback_t callback);
+
  private:
   // Introduce a new process to the scheduler. The scheduler will not terminate until
   // all processes has completed.

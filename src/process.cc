@@ -47,7 +47,8 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
         program,
         this,
         initial_memory ? initial_memory->initial_chunk : null,
-        initial_memory ? initial_memory->global_variables : null)
+        initial_memory ? initial_memory->global_variables : null,
+        initial_memory ? initial_memory->heap_mutex : null)
     , last_bytes_allocated_(0)
     , termination_message_(termination)
     , random_seeded_(false)

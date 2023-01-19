@@ -34,10 +34,12 @@ class InitialMemoryManager {
  public:
   Chunk* initial_chunk = null;
   Object** global_variables = null;
+  Mutex* heap_mutex = null;
 
   void dont_auto_free() {
     initial_chunk = null;
     global_variables = null;
+    heap_mutex = null;
   }
 
   // Allocates initial pages for heap.  Returns success.
@@ -49,7 +51,7 @@ class InitialMemoryManager {
 
 class ObjectHeap {
  public:
-  ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, Object** global_variables);
+  ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, Object** global_variables, Mutex* mutex);
   ~ObjectHeap();
 
   // TODO: In the new heap there need not be a max allocation size.
@@ -83,11 +85,6 @@ class ObjectHeap {
   uword external_memory() const { return external_memory_; }
   bool has_limit() const { return limit_ != max_heap_size_; }
   uword limit() const { return limit_; }
-
-  void enter_gc() {}
-  void leave_gc() {}
-  void enter_no_gc() {}
-  void leave_no_gc() {}
 
   bool system_refused_memory() const {
     return
@@ -149,6 +146,8 @@ class ObjectHeap {
 
   void add_external_root(HeapRoot* element) { external_roots_.prepend(element); }
   void remove_external_root(HeapRoot* element) { element->unlink(); }
+
+  void iterate_chunks(void* context, process_chunk_callback_t* callback);
 
   void set_max_heap_size(word bytes) { max_heap_size_ = bytes; }
   word max_heap_size() const { return max_heap_size_; }
@@ -213,6 +212,7 @@ class ObjectHeap {
   Object** global_variables_ = null;
 
   HeapRootList external_roots_;
+  Mutex* mutex_;
 
   friend class ObjectNotifier;
   friend class Process;

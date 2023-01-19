@@ -288,6 +288,7 @@ void fail(const char* format, ...) __attribute__ ((__noreturn__));
 // Common forward declarations.
 class AlignedMemory;
 class Block;
+class Chunk;
 class ProgramBlock;
 class ConditionVariable;
 class Encoder;
@@ -406,5 +407,7 @@ static const word ITERATE_TAG_HEAP_OVERHEAD = -2;
 static const word ITERATE_CUSTOM_TAGS = -100;
 
 static const int DEFAULT_OPTIMIZATION_LEVEL = 1;
+
+typedef void process_chunk_callback_t(void* context, Process* process, uword address, uword size);
 
 } // namespace toit

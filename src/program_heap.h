@@ -74,32 +74,6 @@ class ProgramHeap : public ProgramRawHeap {
 
   int64 total_bytes_allocated() const { return total_bytes_allocated_; }
 
-#ifndef TOIT_DEPLOY
-  void enter_gc() {
-    ASSERT(!in_gc_);
-    ASSERT(gc_allowed_);
-    in_gc_ = true;
-  }
-  void leave_gc() {
-    ASSERT(in_gc_);
-    in_gc_ = false;
-  }
-  void enter_no_gc() {
-    ASSERT(!in_gc_);
-    ASSERT(gc_allowed_);
-    gc_allowed_ = false;
-  }
-  void leave_no_gc() {
-    ASSERT(!gc_allowed_);
-    gc_allowed_ = true;
-  }
-#else
-  void enter_gc() {}
-  void leave_gc() {}
-  void enter_no_gc() {}
-  void leave_no_gc() {}
-#endif
-
   bool system_refused_memory() const {
     return last_allocation_result_ == ALLOCATION_OUT_OF_MEMORY;
   }

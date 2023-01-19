@@ -20,6 +20,11 @@ void GcMetadata::tear_down() {
   OS::free_pages(singleton_.metadata_, singleton_.metadata_size_);
 }
 
+void GcMetadata::get_metadata_extent(uword* address_return, uword* size_return) {
+  *address_return = reinterpret_cast<uword>(singleton_.metadata_);
+  *size_return = singleton_.metadata_size_;
+}
+
 void GcMetadata::set_up() { singleton_.set_up_singleton(); }
 
 void GcMetadata::set_up_singleton() {
