@@ -271,16 +271,6 @@ Stack* ObjectHeap::allocate_stack(int length) {
   return result;
 }
 
-#ifdef TOIT_GC_LOGGING
-static word format(word n) {
-  return (n > 9999) ? (n >> KB_LOG2) : n;
-}
-static const char* format_unit(word n) {
-  return (n > 9999) ? "K" : "";
-}
-#define FORMAT(n) format(n), format_unit(n)
-#endif
-
 void ObjectHeap::iterate_roots(RootCallback* callback) {
   // Process the roots in the object heap.
   callback->do_root(reinterpret_cast<Object**>(&task_));

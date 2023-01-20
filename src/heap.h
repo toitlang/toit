@@ -156,7 +156,9 @@ class ObjectHeap {
   word max_external_allocation();
   void register_external_allocation(word size);
   void unregister_external_allocation(word size);
+
   bool has_max_heap_size() const { return max_heap_size_ != 0; }
+  bool has_pending_limit() const { return limit_ != pending_limit_; }
 
   void check_install_heap_limit() {
     if (limit_ != pending_limit_) install_heap_limit();
