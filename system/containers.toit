@@ -32,11 +32,10 @@ import .services
 class Container:
   image/ContainerImage ::= ?
   gid_/int ::= ?
-  pids_/Set ::= ?  // Set<int>
+  pids_/Set? := null
   resources/Set ::= {}
 
-  constructor .image .gid_ pid/int:
-    pids_ = { pid }
+  constructor .image .gid_:
 
   id -> int:
     return gid_
@@ -44,7 +43,13 @@ class Container:
   is_process_running pid/int -> bool:
     return pids_.contains pid
 
+  start arguments/any=image.default_arguments -> none:
+    if pids_: throw "Already started"
+    pids_ = {}
+    pids_.add (image.spawn this arguments)
+
   stop -> none:
+    if not pids_: throw "Not started"
     if pids_.is_empty: return
     pids_.do: container_kill_pid_ it
     pids_.clear
@@ -95,8 +100,18 @@ abstract class ContainerImage:
 
   abstract id -> uuid.Uuid
 
-  start -> Container:
-    return start default_arguments
+  load -> Container:
+    // We load the container without starting it, so we can
+    // register the container correctly before we receive the
+    // first events from it. This avoids a race condition
+    // that could occur because spawning a new process is
+    // inherently asynchronous and we need the client and the
+    // container manager to be ready for processing messages
+    // and close notifications.
+    gid ::= container_next_gid_
+    container := Container this gid
+    manager.on_container_load_ container
+    return container
 
   trace encoded/ByteArray -> bool:
     return false
@@ -119,7 +134,7 @@ abstract class ContainerImage:
     // consider making it null instead.
     return []
 
-  abstract start arguments/any -> Container
+  abstract spawn container/Container arguments/any -> int
   abstract stop_all -> none
   abstract delete -> none
 
@@ -138,13 +153,8 @@ class ContainerImageFlash extends ContainerImage:
   data -> int:
     return binary.LITTLE_ENDIAN.uint32 allocation_.metadata 1
 
-  start arguments/any -> Container:
-    gid ::= container_next_gid_
-    pid ::= container_spawn_ allocation_.offset allocation_.size gid arguments
-    // TODO(kasper): Can the container stop before we even get it created?
-    container := Container this gid pid
-    manager.on_container_start_ container
-    return container
+  spawn container/Container arguments/any:
+    return container_spawn_ allocation_.offset allocation_.size container.id arguments
 
   stop_all -> none:
     attempts := 0
@@ -175,8 +185,11 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
   handle pid/int client/int index/int arguments/any -> any:
     if index == ContainerService.LIST_IMAGES_INDEX:
       return list_images
-    if index == ContainerService.START_IMAGE_INDEX:
-      return start_image client (uuid.Uuid arguments[0]) arguments[1]
+    if index == ContainerService.LOAD_IMAGE_INDEX:
+      return load_image client (uuid.Uuid arguments)
+    if index == ContainerService.START_CONTAINER_INDEX:
+      resource ::= (resource client arguments[0]) as ContainerResource
+      return start_container resource arguments[1]
     if index == ContainerService.STOP_CONTAINER_INDEX:
       resource ::= (resource client arguments) as ContainerResource
       return stop_container resource
@@ -212,15 +225,18 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
       result.add image.data
     return result
 
-  start_image id/uuid.Uuid arguments/any -> int:
+  load_image id/uuid.Uuid -> int:
     unreachable  // <-- TODO(kasper): Nasty.
 
-  start_image client/int id/uuid.Uuid arguments/any -> ContainerResource?:
+  load_image client/int id/uuid.Uuid -> ContainerResource?:
     image/ContainerImage? := lookup_image id
     if not image: return null
-    return ContainerResource (image.start arguments) this client
+    return ContainerResource image.load this client
 
-  stop_container resource/ContainerResource? -> none:
+  start_container resource/ContainerResource arguments/any -> none:
+    resource.container.start arguments
+
+  stop_container resource/ContainerResource -> none:
     resource.container.stop
 
   uninstall_image id/uuid.Uuid -> none:
@@ -306,7 +322,7 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
     if containers_by_id_.is_empty: return 0
     return done_.get
 
-  on_container_start_ container/Container -> none:
+  on_container_load_ container/Container -> none:
     containers/Map ::= containers_by_image_.get container.image.id --init=: {:}
     containers[container.id] = container
     containers_by_id_[container.id] = container
