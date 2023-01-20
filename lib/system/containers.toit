@@ -22,9 +22,14 @@ current -> uuid.Uuid:
   return uuid.Uuid current_image_id_
 
 start id/uuid.Uuid arguments/any=[] -> Container:
-  handle/int? := _client_.start_image id arguments
-  if handle: return Container id handle
-  throw "No such container: $id"
+  handle/int? := _client_.load_image id
+  if not handle: throw "No such container: $id"
+  container := Container id handle
+  try:
+    _client_.start_container handle arguments
+    return container
+  finally: | is_exception exception |
+    if is_exception: container.close
 
 uninstall id/uuid.Uuid -> none:
   _client_.uninstall_image id

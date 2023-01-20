@@ -9,31 +9,34 @@ import system.containers show ContainerImage
 interface ContainerService:
   static UUID  /string ::= "358ee529-45a4-409e-8fab-7a28f71e5c51"
   static MAJOR /int    ::= 0
-  static MINOR /int    ::= 5
+  static MINOR /int    ::= 6
 
   static FLAG_RUN_BOOT     /int ::= 1 << 0
   static FLAG_RUN_CRITICAL /int ::= 1 << 1
 
-  static LIST_IMAGES_INDEX /int ::= 0
   list_images -> List
+  static LIST_IMAGES_INDEX /int ::= 0
 
-  static START_IMAGE_INDEX /int ::= 1
-  start_image id/uuid.Uuid arguments/any -> int?
+  load_image id/uuid.Uuid -> int?
+  static LOAD_IMAGE_INDEX /int ::= 1
 
-  static STOP_CONTAINER_INDEX /int ::= 6
+  start_container handle/int arguments/any -> none
+  static START_CONTAINER_INDEX /int ::= 7
+
   stop_container handle/int -> none
+  static STOP_CONTAINER_INDEX /int ::= 6
 
-  static UNINSTALL_IMAGE_INDEX /int ::= 2
   uninstall_image id/uuid.Uuid -> none
+  static UNINSTALL_IMAGE_INDEX /int ::= 2
 
-  static IMAGE_WRITER_OPEN_INDEX /int ::= 3
   image_writer_open size/int -> int
+  static IMAGE_WRITER_OPEN_INDEX /int ::= 3
 
-  static IMAGE_WRITER_WRITE_INDEX /int ::= 4
   image_writer_write handle/int bytes/ByteArray -> none
+  static IMAGE_WRITER_WRITE_INDEX /int ::= 4
 
-  static IMAGE_WRITER_COMMIT_INDEX /int ::= 5
   image_writer_commit handle/int flags/int data/int -> uuid.Uuid
+  static IMAGE_WRITER_COMMIT_INDEX /int ::= 5
 
 class ContainerServiceClient extends ServiceClient implements ContainerService:
   constructor --open/bool=true:
@@ -48,8 +51,11 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
       cursor := it * 3
       ContainerImage (uuid.Uuid array[cursor]) array[cursor + 1] array[cursor + 2]
 
-  start_image id/uuid.Uuid arguments/any -> int?:
-    return invoke_ ContainerService.START_IMAGE_INDEX [id.to_byte_array, arguments]
+  load_image id/uuid.Uuid -> int?:
+    return invoke_ ContainerService.LOAD_IMAGE_INDEX id.to_byte_array
+
+  start_container handle/int arguments/any -> none:
+    invoke_ ContainerService.START_CONTAINER_INDEX [handle, arguments]
 
   stop_container handle/int -> none:
     invoke_ ContainerService.STOP_CONTAINER_INDEX handle

@@ -61,11 +61,9 @@ class SystemContainerImage extends ContainerImageFromSnapshot:
   constructor manager/ContainerManager bundle/ByteArray:
     super manager bundle
 
-  start arguments/any -> Container:
+  spawn container/Container arguments/any -> int:
     // This container is already running as the system process.
-    container := Container this 0 Process.current.id
-    manager.on_container_start_ container
-    return container
+    return Process.current.id
 
 class ApplicationContainerImage extends ContainerImageFromSnapshot:
   snapshot/ByteArray? := null
@@ -85,12 +83,8 @@ class ApplicationContainerImage extends ContainerImageFromSnapshot:
     // the archive.
     super reader
 
-  start arguments/any -> Container:
-    gid ::= container_next_gid_
-    pid ::= launch_snapshot_ snapshot gid id.to_byte_array arguments
-    container := Container this gid pid
-    manager.on_container_start_ container
-    return container
+  spawn container/Container arguments/any -> int:
+    return launch_snapshot_ snapshot container.id id.to_byte_array arguments
 
   static launch_snapshot_ snapshot/ByteArray gid/int id/ByteArray arguments/any -> int:
     #primitive.snapshot.launch
