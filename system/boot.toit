@@ -25,7 +25,7 @@ boot container_manager/ContainerManager -> int:
   // Always start the system image which is technically already
   // running. This allows the container manager to correctly keep
   // track of the number of running processes.
-  container_manager.system_image.start
+  container_manager.system_image.load.start
   container_manager.images.do: | image/ContainerImage |
-    if image.run_boot: image.start
+    if image.run_boot: image.load.start
   return container_manager.wait_until_done
