@@ -94,7 +94,7 @@ class FlashAllocation {
         memcpy(id_, id, id_size());
       }
       pages_in_flash_ = 0;
-      memset(_metadata, 0xFF, METADATA_SIZE);
+      memset(_metadata, 0, METADATA_SIZE);
       set_uuid(uuid);
     }
 

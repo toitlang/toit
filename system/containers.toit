@@ -16,8 +16,11 @@
 import binary
 import uuid
 import monitor
-import encoding.base64 as base64
 
+import encoding.base64
+import encoding.tison
+
+import system.assets
 import system.services show ServiceDefinition ServiceResource
 import system.api.containers show ContainerService
 
@@ -208,10 +211,16 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
   abstract lookup_image id/uuid.Uuid -> ContainerImage?
 
   list_images -> List:
+    names := {:}
+    assets.decode.get "images" --if_present=: | encoded |
+      map := tison.decode encoded
+      map.do: | name/string id/ByteArray | names[uuid.Uuid id] = name
     raw := images
     result := []
     raw.do: | image/ContainerImage |
-      result.add image.id.to_byte_array
+      id/uuid.Uuid := image.id
+      result.add id.to_byte_array
+      result.add (names.get id)
       result.add image.flags
       result.add image.data
     return result

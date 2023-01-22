@@ -47,9 +47,13 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
 
   list_images -> List:
     array := invoke_ ContainerService.LIST_IMAGES_INDEX null
-    return List array.size / 3:
-      cursor := it * 3
-      ContainerImage (uuid.Uuid array[cursor]) array[cursor + 1] array[cursor + 2]
+    return List array.size / 4:
+      cursor := it * 4
+      ContainerImage
+          --id=uuid.Uuid array[cursor]
+          --name=array[cursor + 1]
+          --flags=array[cursor + 2]
+          --data=array[cursor + 3]
 
   load_image id/uuid.Uuid -> int?:
     return invoke_ ContainerService.LOAD_IMAGE_INDEX id.to_byte_array
