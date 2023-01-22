@@ -13,9 +13,10 @@ test client/LspClient:
   // The paths must not exist. We are closing one file, and are testing
   // whether the LSP can deal with it.
   DOC_COUNT ::= 2
+  DRIVE ::= platform == PLATFORM_WINDOWS ? "c:" : ""
   MODULE_NAME_PREFIX ::= "some_non_existing_path_1234134123422"
   relatives := List DOC_COUNT: ".$MODULE_NAME_PREFIX$it"
-  paths := List DOC_COUNT: "/tmp/$MODULE_NAME_PREFIX$(it).toit"
+  paths := List DOC_COUNT: "$DRIVE/tmp/$MODULE_NAME_PREFIX$(it).toit"
 
   DOC_COUNT.repeat:
     client.send_did_open --path=paths[it] --text=""

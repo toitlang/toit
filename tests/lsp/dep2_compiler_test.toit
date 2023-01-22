@@ -12,10 +12,11 @@ main args:
 test client/LspClient:
   // The paths don't really need to be non-existing, as we provide content for it
   // anyways.
+  drive := platform == PLATFORM_WINDOWS ? "c:" : ""
   relative_module1 := "some_non_existing_path1"
   relative_module2 := "some_non_existing_path2"
-  path1 := "/tmp/$(relative_module1).toit"
-  path2 := "/tmp/$(relative_module2).toit"
+  path1 := "$drive/$(relative_module1).toit"
+  path2 := "$drive/$(relative_module2).toit"
 
   client.send_did_open --path=path1 --text=""
   client.send_did_open --path=path2 --text=""
