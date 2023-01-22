@@ -39,7 +39,7 @@ class ContainerImage:
   name/string?
   flags/int
   data/int
-  constructor .id .name .flags .data:
+  constructor --.id --.name --.flags --.data:
 
 class Container extends ServiceResourceProxy:
   id/uuid.Uuid
