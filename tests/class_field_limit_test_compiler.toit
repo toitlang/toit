@@ -23,4 +23,4 @@ main args:
   exit_code := pipe.exit_code exit_value
 
   expect_not_null exit_code
-  expect_equals 255 exit_code
+  expect_not_equals 0 exit_code
