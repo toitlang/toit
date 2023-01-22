@@ -48,6 +48,10 @@ char* FilesystemLocal::root(const char* path) {
   return Filesystem::root(path);
 }
 
+bool FilesystemLocal::is_root(const char* path) {
+  return Filesystem::is_root(path);
+}
+
 char* FilesystemLocal::to_local_path(const char* path) {
   if (path == null) return null;
   return strdup(path);

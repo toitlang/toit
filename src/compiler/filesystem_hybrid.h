@@ -39,6 +39,7 @@ class FilesystemHybrid : public Filesystem {
   bool is_absolute(const char* path);
   char path_separator();
   char* root(const char* path);
+  bool is_root(const char* path);
 
  protected:
   bool do_exists(const char* path);
