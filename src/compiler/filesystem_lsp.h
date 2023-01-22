@@ -40,7 +40,9 @@ class FilesystemLsp : public Filesystem {
 
   const char* sdk_path();
   List<const char*> package_cache_paths();
-  bool is_absolute(const char* path) { return path[0] == '/'; }
+  bool is_absolute(const char* path) {
+    return path[0] == '/';
+  }
 
  protected:
   bool do_exists(const char* path);
