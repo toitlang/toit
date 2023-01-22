@@ -23,6 +23,7 @@ import monitor
 
 import .documents
 import .rpc
+import .uri_path_translator
 import .utils
 import .verbose
 
@@ -61,15 +62,16 @@ class File:
 class FileServerProtocol:
   filesystem / Filesystem ::= ?
   documents_  / Documents  ::= ?
+  translator_ / UriPathTranslator ::= ?
 
   file_cache_ / Map ::= {:}
   directory_cache_ / Map ::= {:}
   sdk_path_ / string? := null
   package_cache_paths_ / List? := null
 
-  constructor .documents_ .filesystem:
+  constructor .documents_ .filesystem .translator_:
 
-  constructor.local compiler_path/string sdk_path/string .documents_:
+  constructor.local compiler_path/string sdk_path/string .documents_ .translator_:
     filesystem = FilesystemLocal sdk_path
 
   handle reader/BufferedReader writer/Writer:
@@ -77,20 +79,23 @@ class FileServerProtocol:
         line := reader.read_line
         if line == null: break
         if line == "SDK PATH":
-          if not sdk_path_: sdk_path_ = filesystem.sdk_path
+          if not sdk_path_:
+            sdk_path_ = translator_.local_path_to_compiler_path filesystem.sdk_path
           writer.write "$sdk_path_\n"
         else if line == "PACKAGE CACHE PATHS":
           if not package_cache_paths_: package_cache_paths_ = filesystem.package_cache_paths
           writer.write "$package_cache_paths_.size\n"
           package_cache_paths_.do: writer.write "$it\n"
         else if line == "LIST DIRECTORY":
-          path := reader.read_line
+          compiler_path := reader.read_line
+          path := translator_.compiler_path_to_local_path compiler_path
           entries := directory_cache_.get path --init=: filesystem.directory_entries path
           writer.write "$entries.size\n"
           entries.do: writer.write "$it\n"
         else:
           assert: line == "INFO"
-          path := reader.read_line
+          compiler_path := reader.read_line
+          path := translator_.compiler_path_to_local_path compiler_path
 
           file := get_file path
           encoded_size := file.content == null ? -1 : file.content.size

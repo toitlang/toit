@@ -60,9 +60,14 @@ percent_decode_ str:
 
 /** Converts between LSP URIs and toitc paths. */
 class UriPathTranslator:
-  to_uri path/string -> string:
+  to_uri path/string --from_compiler/bool=false -> string:
     if path.starts_with VIRTUAL_FILE_MARKER_:
       return path.trim --left VIRTUAL_FILE_MARKER_
+
+    if platform == PLATFORM_WINDOWS and from_compiler:
+      // The compiler keeps a '/' to know whether a path is absolute or not.
+      assert: path.starts_with "/"
+      path = path.trim --left "/"
 
     // As soon as there is a protocol/authority, the path must be absolute.
     // Here the protocol is "file://".
@@ -86,12 +91,14 @@ class UriPathTranslator:
     return "file://" + encoded
     return path.trim --left "/"
 
-  to_path uri/string -> string:
+  to_path uri/string --to_compiler/bool=false -> string:
     if uri.starts_with "file://":
       without_uri_prefix := uri.trim --left "file://"
       decoded := percent_decode_ without_uri_prefix
       if platform == PLATFORM_WINDOWS:
-        if decoded.starts_with "/":
+        if to_compiler:
+          decoded = decoded.replace --all "\\" "/"
+        else:
           // This should always be the case.
           // Remove the leading '/'.
           decoded = decoded.trim --left "/"
@@ -99,6 +106,18 @@ class UriPathTranslator:
     // For every other uri assume that it's stored in the source-bundle and
     // mark it as virtual.
     return "$VIRTUAL_FILE_MARKER_$uri"
+
+  compiler_path_to_local_path compiler_path/string -> string:
+    if platform == PLATFORM_WINDOWS:
+      assert: compiler_path.starts_with "/"
+      return compiler_path[1..].replace --all "/" "\\"
+    return compiler_path
+
+  local_path_to_compiler_path local_path/string -> string:
+    assert: is_absolute_ local_path
+    if platform == PLATFORM_WINDOWS:
+      return "/$local_path"
+    return local_path
 
   /**
   Returns a canonicalized version of the uri.

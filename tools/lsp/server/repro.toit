@@ -143,7 +143,7 @@ create_archive project_path/string? compiler_path/string entry_path/string out_p
   translator := UriPathTranslator
   documents := Documents translator
   sdk_path := sdk_path_from_compiler compiler_path
-  protocol := FileServerProtocol.local compiler_path sdk_path documents
+  protocol := FileServerProtocol.local compiler_path sdk_path documents translator
   compiler := Compiler compiler_path translator DEFAULT_TIMEOUT_MS
       --protocol=protocol
       --project_path=project_path
