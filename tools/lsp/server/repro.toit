@@ -137,7 +137,7 @@ write_repro
   // As a consequence we don't close using the `tar`, but simply call close afterwards.
   tar.close --no-close_writer
 
-create_archive project_path/string? compiler_path/string entry_path/string out_path/string:
+create_archive project_uri/string? compiler_path/string entry_path/string out_path/string:
   cwd := directory.cwd
   if not entry_path.starts_with "/": entry_path = "$cwd/$entry_path"
   translator := UriPathTranslator
@@ -146,7 +146,7 @@ create_archive project_path/string? compiler_path/string entry_path/string out_p
   protocol := FileServerProtocol.local compiler_path sdk_path documents translator
   compiler := Compiler compiler_path translator DEFAULT_TIMEOUT_MS
       --protocol=protocol
-      --project_path=project_path
+      --project_uri=project_uri
   entry_uri := translator.to_uri entry_path
   compiler.analyze [entry_uri]
 

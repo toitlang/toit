@@ -517,7 +517,7 @@ class LspServer:
     compiler := null  // Let the 'compiler' local be visible in the lambda expression below.
     compiler = Compiler compiler_path translator_ timeout_ms
         --protocol=protocol
-        --project_path=root_uri_ and (translator_.to_path root_uri_)
+        --project_uri=root_uri_
         --on_error=:: |message|
           if is_rate_limited:
             // Do nothing

@@ -72,7 +72,7 @@ create_archive path toitc -> string:
   protocol := FileServerProtocol documents repro_filesystem uri_translator
   compiler := Compiler toitc uri_translator timeout_ms
       --protocol=protocol
-      --project_path=directory.cwd
+      --project_uri=uri_translator.to_uri directory.cwd
 
   compiler_input := create_compiler_input --path=untitled_path
 

@@ -17,7 +17,8 @@ main args:
   // Since we used '--no-spawn_process' we must exit 0.
   exit 0
 
-FILE_PATH ::= "/tmp/file.toit"
+DRIVE ::= platform == PLATFORM_WINDOWS ? "C:" : ""
+FILE_PATH ::= "$DRIVE/tmp/file.toit"
 
 test client/LspClient:
   client.send_did_open --path=FILE_PATH --text=""

@@ -12,8 +12,9 @@ main args:
 test client/LspClient:
   // The path doesn't really need to be non-existing, as we provide content for it
   // anyways.
-  DIR ::= "/non_existing_dir_toit_test"
-  path := "/non_exsting_dir_toit_test/file.toit"
+  DRIVE ::= platform == PLATFORM_WINDOWS ? "C:" : ""
+  DIR ::= "$DRIVE/non_existing_dir_toit_test"
+  path := "$DIR/file.toit"
 
   client.send_did_open --path=path --text=""
 

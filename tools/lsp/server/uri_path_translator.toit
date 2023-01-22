@@ -71,8 +71,10 @@ class UriPathTranslator:
 
     // As soon as there is a protocol/authority, the path must be absolute.
     // Here the protocol is "file://".
-    if not is_absolute_ path:
-      throw "Path must be absolute: $path"
+    // We would like to check that the path is absolute, but the compiler
+    // works with a '/' in front, and might walk up the directory tree to
+    // find the lock file. In that case it can remove the drive segment and
+    // thus end up with a relative path.
 
     if platform == PLATFORM_WINDOWS:
       // CMake uses forward slashes in the source-bundle. However, the protocol
