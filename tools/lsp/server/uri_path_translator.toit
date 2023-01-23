@@ -84,7 +84,6 @@ class UriPathTranslator:
     assert: path.starts_with "/"
     encoded := percent_encode_ path
     return "file://" + encoded
-    return path.trim --left "/"
 
   to_path uri/string -> string:
     if uri.starts_with "file://":
@@ -101,7 +100,7 @@ class UriPathTranslator:
     return "$VIRTUAL_FILE_MARKER_$uri"
 
   /**
-  Returns a canonicalized version of the uri.
+  Returns a canonicalized version of the $uri.
 
   Specifically deals with different ways of percent-encoding.
   */
