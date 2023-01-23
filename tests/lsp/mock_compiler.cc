@@ -85,7 +85,10 @@ static ssize_t getline(char** lineptr, size_t* n, FILE* stream) {
   (*lineptr)[pos] = '\0';
   return pos;
 }
-#define SIGKILL 9
+#define SIGCRASH SIGILL
+#else
+// We use SIGKILL, since that one doesn't create core dumps.
+#define SIGCRASH SIGKILL
 #endif
 
 using namespace toit::compiler;
@@ -207,8 +210,7 @@ int main(int argc, char** argv) {
 
   if (should_crash) {
     fprintf(stderr, "Simulating compiler crash\n");
-    // We use SIGKILL, since that one doesn't create core dumps.
-    raise(SIGKILL);
+    raise(SIGCRASH);
   }
   if (should_timeout) {
     fprintf(stderr, "Simulating timeout\n");

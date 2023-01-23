@@ -17,15 +17,12 @@ set(TOIT_FAILING_TESTS
 )
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
+  # The following tests seem to be broken because of 'realpath' in the current
+  # host package not working correctly.
   list(APPEND TOIT_FAILING_TESTS
-    tests/optimizations/byte_array_test.toit
-    tests/optimizations/dead_code_test.toit
     tests/optimizations/eager_global_test.toit
     tests/optimizations/fold_test.toit
     tests/optimizations/lambda_test.toit
-    tests/optimizations/return_test.toit
-    tests/optimizations/tail_call_test.toit
     tests/optimizations/uninstantiated_classes_test.toit
-    tests/optimizations/virtual_test.toit
   )
 endif()

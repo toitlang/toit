@@ -5,6 +5,7 @@
 import .lsp_client show LspClient run_client_test
 import expect show *
 import host.file
+import host.directory
 import writer show Writer
 
 main args:
@@ -28,9 +29,8 @@ ERROR_VERSION ::=  """
   """
 
 test client/LspClient:
-  temp := null
-  while not temp or file.is_file temp or file.is_directory temp:
-    temp = "/tmp/save_error_test-$(random).toit"
+  tmp_dir := directory.mkdtemp "/tmp/save-error-test-"
+  temp := "$tmp_dir/test.toit"
 
   try:
     print "Using $temp"
@@ -60,5 +60,5 @@ test client/LspClient:
       expect (client.diagnostics_for --path=temp).size > 0
 
   finally:
-    print "Deleting $temp"
-    file.delete temp
+    print "Deleting $tmp_dir"
+    directory.rmdir --recursive tmp_dir

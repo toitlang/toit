@@ -44,19 +44,19 @@ class Compiler:
   on_error_            /Lambda?     ::= ?
   timeout_ms_          /int         ::= ?
   protocol             /FileServerProtocol ::= ?
-  project_path_        /string?     ::= ?
+  project_uri_         /string?     ::= ?
 
   constructor
       .compiler_path_
       .uri_path_translator_
       .timeout_ms_
       --.protocol
-      --project_path/string?
+      --project_uri/string?
       --on_error/Lambda?=null
       --on_crash/Lambda?=null:
     on_crash_ = on_crash
     on_error_ = on_error
-    project_path_ = project_path
+    project_uri_ = project_uri
 
   /**
   Builds the flags that are passed to the compiler.
@@ -65,10 +65,12 @@ class Compiler:
     args := [
       "--lsp",
     ]
-    if project_path_:
-      package_lock := "$project_path_/package.lock"
+    if project_uri_:
+      project_path_local := uri_path_translator_.to_path project_uri_
+      package_lock := "$project_path_local/package.lock"
       if file.is_file package_lock:
-        args += ["--project-root", project_path_]
+        project_path_compiler := uri_path_translator_.to_path project_uri_ --to_compiler
+        args += ["--project-root", project_path_compiler]
     return args
 
   /**
