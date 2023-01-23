@@ -28,14 +28,18 @@
 // /* Modifications, public domain as well, by Antti Haapala, 11/10/17
 //    - Switched to getc on 5/23/19 */
 // Slightly modified (floitsch):
-//  - avoid warnings with malloc
-//  - indentation
+//  - avoid warnings with malloc (using 'unvoid_cast').
+//  - indentation.
 //  - discard trailing '\r'.
-ssize_t getline(char **lineptr, size_t *n, FILE *stream) {
+//  - formatting ('*' binds to type).
+//  - made the function static.
+//  - use 'null' instead of 'NULL'.
+//  - use `reinterpret_cast` instead of C cast.
+static ssize_t getline(char** lineptr, size_t* n, FILE* stream) {
   size_t pos;
   int c;
 
-  if (lineptr == NULL || stream == NULL || n == NULL) {
+  if (lineptr == null || stream == null || n == null) {
     errno = EINVAL;
     return -1;
   }
@@ -45,9 +49,9 @@ ssize_t getline(char **lineptr, size_t *n, FILE *stream) {
     return -1;
   }
 
-  if (*lineptr == NULL) {
+  if (*lineptr == null) {
     *lineptr = toit::unvoid_cast<char*>(malloc(128));
-    if (*lineptr == NULL) {
+    if (*lineptr == null) {
       return -1;
     }
     *n = 128;
@@ -60,15 +64,15 @@ ssize_t getline(char **lineptr, size_t *n, FILE *stream) {
       if (new_size < 128) {
         new_size = 128;
       }
-      char *new_ptr = toit::unvoid_cast<char*>(realloc(*lineptr, new_size));
-      if (new_ptr == NULL) {
+      char* new_ptr = toit::unvoid_cast<char*>(realloc(*lineptr, new_size));
+      if (new_ptr == null) {
         return -1;
       }
       *n = new_size;
       *lineptr = new_ptr;
     }
 
-    ((unsigned char *)(*lineptr))[pos ++] = c;
+    reinterpret_cast<unsigned char*>(*lineptr)[pos ++] = c;
     if (c == '\n') {
       break;
     }
@@ -110,7 +114,7 @@ void writer_printf(LspWriter* writer, const char* format, ...) {
 int main(int argc, char** argv) {
 #ifdef TOIT_WINDOWS
   // On Windows, we need to set the stdout to binary mode.
-  // Otherwise, the any '\n' we print becomes '\r\n'.
+  // Otherwise, any '\n' we print becomes '\r\n'.
   setmode(fileno(stdout), O_BINARY);
   setmode(fileno(stdin), O_BINARY);
   setmode(fileno(stderr), O_BINARY);

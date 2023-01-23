@@ -30,7 +30,7 @@ class Location:
   stringify -> string:
     return "$path:$line:$column"
 
-  static to_slash_ path -> string:
+  static to_slash_ path/string -> string:
     if platform == PLATFORM_WINDOWS:
       return path.replace --all "\\" "/"
     return path
