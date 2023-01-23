@@ -45,11 +45,25 @@ class Filesystem {
   virtual List<const char*> package_cache_paths() = 0;
 
   virtual bool is_absolute(const char* path) = 0;
+  // The path the non-absolute path is relative to.
+  // On Posix systems this is equal to `cwd`.
+  // On Windows, it can be `cwd`, or a drive (like "c:"), if the path starts with '\' or '/'.
+  virtual const char* relative_anchor(const char* path) {
+    return cwd();
+  }
   virtual char path_separator() { return '/'; }
+  // On Windows both '/' and '\\' are path separators. It's thus not
+  // recommended to compare to path_separator().
+  virtual bool is_path_separator(char c) { return 'c' == '/'; }
+  // May return the empty string if the path is not absolute.
   virtual char* root(const char* path) {
     char* result = new char[2];
-    result[0] = path[0];
-    result[1] = '\0';
+    if (path[0] == '/') {
+      result[0] = '/';
+      result[1] = '\0';
+    } else {
+      result[0] = '\0';
+    }
     return result;
   }
   virtual bool is_root(const char* path) {

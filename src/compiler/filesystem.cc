@@ -102,8 +102,22 @@ void Filesystem::canonicalize(char* path) {
   int i = 0;
   while (i < path_len) {
     if (at_slash && path[i] == path_separator()) {
-      // Drop double slashes.
+#ifndef TOIT_WINDOWS
       i++;
+#else
+      // Drop double slashes, unless we are on Windows and this is the first
+      // beginning of the path.
+      // A windows path that starts with '//' or '\\' (but not '/\' or '\/') is
+      // the root of a network share. We must keep them.
+      if (i == 1 && path[0] == path[1]) {
+        // Remove the first slash. It doesn't count for .. operations.
+        slashes.pop_back();
+        at_slash = i;
+        path[canonical_pos++] = path[i++];
+      } else {
+        i++;
+      }
+#endif
     } else if (at_slash &&
                path[i] == '.' &&
                (path[i + 1] == path_separator() || path[i + 1] == '\0')) {

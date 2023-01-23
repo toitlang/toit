@@ -40,6 +40,10 @@ class FilesystemLsp : public Filesystem {
 
   const char* sdk_path();
   List<const char*> package_cache_paths();
+  const char* relative_anchor(const char* path) {
+    // The LSP filesystem only deals with absolute paths.
+    UNREACHABLE();
+  }
   bool is_absolute(const char* path) {
     return path[0] == '/';
   }
