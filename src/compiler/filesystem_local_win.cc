@@ -62,7 +62,7 @@ static int root_prefix_length(const char* path) {
   }
   int length = strlen(path);
   if (length == 0) return 0;
-  if (is_path_separator(path[0]) {
+  if (is_path_separator(path[0])) {
     if (length == 1) return 0;  // Drive root is not absolute.
     if (path[1] == path[0]) return 2;  // Network path.
       return 0;
