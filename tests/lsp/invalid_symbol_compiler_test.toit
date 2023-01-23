@@ -11,7 +11,7 @@ main args:
   run_client_test --use_toitlsp args: test it
 
 test client/LspClient:
-  DRIVE ::= platform == PLATFORM_WINDOWS ? "C:" : ""
+  DRIVE ::= platform == PLATFORM_WINDOWS ? "c:" : ""
   path := "$DRIVE/not_important_non_existing.toit"
   client.send_did_open --path=path --text=""
 
