@@ -25,4 +25,4 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
     tests/optimizations/lambda_test.toit
     tests/optimizations/uninstantiated_classes_test.toit
   )
-)
+endif()
