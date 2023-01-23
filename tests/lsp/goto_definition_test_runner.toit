@@ -33,7 +33,8 @@ class GotoDefinitionRunner extends LocationCompilerTestRunner:
     target := core_lib_entry.trim --left "core."
     expect
       actuals.any:
-        it.path.ends_with "core/$(target).toit"
+        path_slash := it.path.replace --all "\\" "/"
+        path_slash.ends_with "core/$(target).toit"
           and it.column == 0
           and it.line == 0
 

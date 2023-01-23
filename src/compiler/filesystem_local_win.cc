@@ -29,7 +29,13 @@
 namespace toit {
 namespace compiler {
 
-static char PATH_SEPARATOR = '\\';
+// We need to pick between '\' and '/', and '\' is still more common on Windows.
+static const char PATH_SEPARATOR = '\\';
+
+// We accept both '/' and '\' as path separators.
+static bool is_path_separator(char c) {
+  return c == '/' || c == '\\';
+}
 
 char* FilesystemLocal::get_executable_path() {
   char* path = _new char[MAX_PATH];
@@ -44,8 +50,8 @@ bool FilesystemLocal::is_absolute(const char* path) {
   if (length < 3) return false;
   // Either a Windows drive like "c:\", or a network path "\\Machine1".
   // Network paths also include the WSL drive.
-  return (path[1] == ':' && path[2] == PATH_SEPARATOR) ||
-      (path[0] == PATH_SEPARATOR && path[1] == PATH_SEPARATOR);
+  return (path[1] == ':' && is_path_separator(path[2])) ||
+      (is_path_separator(path[0]) && is_path_separator(path[1]));
 }
 
 char FilesystemLocal::path_separator() {
@@ -73,10 +79,10 @@ bool FilesystemLocal::is_root(const char* path) {
   if (length < 3) return false;
   // Something like "c:\".
   if (path[1] == ':') {
-    return path[0] != '\n' && path[1] == ':' && path[2] == '\\' && path[3] == '\0';
+    return path[0] != '\n' && path[1] == ':' && is_path_separator(path[2]) && path[3] == '\0';
   }
   // A network path like '\\Machine1'.
-  return path[0] == '\\' && path[1] == '\\' && path[2] == '\0';
+  return is_path_separator(path[0]) && is_path_separator(path[1]) && path[2] == '\0';
 }
 
 

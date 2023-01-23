@@ -27,10 +27,22 @@ import .utils
 import .verbose
 
 sdk_path_from_compiler compiler_path/string -> string:
+  is_absolute/bool := ?
+  if platform == PLATFORM_WINDOWS:
+    compiler_path = compiler_path.replace "\\" "/"
+    if compiler_path.starts_with "/":
+      is_absolute = true
+    else if compiler_path.size >= 3 and compiler_path[1] == ':' and compiler_path[2] == '/':
+      is_absolute = true
+    else:
+      is_absolute = false
+  else:
+    is_absolute = compiler_path.starts_with "/"
+
   index := compiler_path.index_of --last "/"
   if index < 0: throw "Couldn't determine SDK path"
   result := compiler_path.copy 0 index
-  if not result.starts_with "/":
+  if not is_absolute:
     // Make it absolute.
     result = "$directory.cwd/$result"
   return result

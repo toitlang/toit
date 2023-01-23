@@ -68,6 +68,14 @@ class UriPathTranslator:
     if path.starts_with VIRTUAL_FILE_MARKER_:
       return path.trim --left VIRTUAL_FILE_MARKER_
 
+    if platform == PLATFORM_WINDOWS:
+      // CMake uses forward slashes in the source-bundle. However, the protocol
+      // requires backslashes.
+      path = path.replace --all "/" "\\"
+      if path.starts_with "\\" or (path.size >= 2 and path[1] == ':'):
+        // The path is absolute. We need to add a slash to the beginning.
+        path = "/" + path
+
     path_mapping_.do: | uri_prefix path_prefix |
       if path.starts_with path_prefix:
         without_path_prefix := path.trim --left path_prefix
@@ -81,6 +89,11 @@ class UriPathTranslator:
       if uri.starts_with uri_prefix:
         without_uri_prefix := uri.trim --left uri_prefix
         decoded := percent_decode_ without_uri_prefix
+        if platform == PLATFORM_WINDOWS:
+          if decoded.starts_with "/":
+            // The path is absolute. We need to remove the slash from the
+            // beginning.
+            decoded = decoded.trim --left "/"
         return path_prefix + decoded
     // For every other uri assume that it's stored in the source-bundle and
     // mark it as virtual.
