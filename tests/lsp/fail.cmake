@@ -86,7 +86,6 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
     tests/lsp/export_summary_compiler_test.toit
     tests/lsp/incomplete_compiler_test.toit
     tests/lsp/invalid_symbol_compiler_test.toit
-    tests/lsp/lsp_filesystem_compiler_test.toit
     tests/lsp/lsp_ubjson_rpc_compiler_test.toit
     tests/lsp/null_char_compiler_test.toit
     tests/lsp/open_many_compiler_test.toit
