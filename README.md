@@ -97,27 +97,6 @@ We're actively working on simple installation steps for other platforms. For now
 
 ### Build system
 
-#### Windows
-
-If you are using Windows you can use Chocolatey to install the required dependencies.
-
-After [installing Chocolatey](https://docs.chocolatey.org/en-us/choco/setup), you can
-install the required dependencies by running the following command in an elevated shell
-(usually the same you just used to install Chocolatey):
-
-``` powershell
-choco install git ninja mingw make golang ccache
-choco install cmake.install --installargs '"ADD_CMAKE_TO_PATH=System"'
-```
-
-After that you can use the bash that comes with Git ('git-bash') and compile Toit
-in a checkout of this repository by running the following commands:
-
-``` bash
-git submodule update --init --recursive
-make
-```
-
 #### Linux and Mac
 To build Toit and its dependencies the build host requires:
 
@@ -147,6 +126,27 @@ For builds targeting ESP32 hardware additional requirements might be in effect
 depending on the build host's architecture, see paragraph [ESP32 tools](#esp32-tools).
 
 For builds targeting RISC-V, ARM32, or ARM64 hardware, see the [Other platforms README](README_OTHERPLATFORMS.md).
+
+#### Windows
+
+If you are using Windows you can use Chocolatey to install the required dependencies.
+
+After [installing Chocolatey](https://docs.chocolatey.org/en-us/choco/setup), you can
+install the required dependencies by running the following command in an elevated shell
+(usually the same you just used to install Chocolatey):
+
+``` powershell
+choco install git ninja mingw make golang ccache
+choco install cmake.install --installargs '"ADD_CMAKE_TO_PATH=System"'
+```
+
+After that you can use the bash that comes with Git ('git-bash') and compile Toit
+in a checkout of this repository by running the following commands:
+
+``` bash
+git submodule update --init --recursive
+make
+```
 
 ### ESP-IDF
 
@@ -276,13 +276,13 @@ Make sure the environment variables for the ESP32 tools are set, as
 described in the [dependencies](#dependencies) section. Typically this
 consists of running the following command:
 
-``` sh
-# On Windows:
-third_party/esp-idf/install.bat
-```
 ``` bash
 # On Linux and Mac OS X:
 third_party/esp-idf/install.sh
+```
+``` powershell
+# On Windows:
+third_party\esp-idf\install.bat
 ```
 
 Build firmware that can be flashed onto your ESP32 device. The firmware is generated
