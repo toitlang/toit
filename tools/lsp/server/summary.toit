@@ -303,7 +303,7 @@ class SummaryReader:
 
   constructor .reader_ .uri_path_translator_:
 
-  to_uri_ path / string -> string: return uri_path_translator_.to_uri path
+  to_uri_ path / string -> string: return uri_path_translator_.to_uri path --from_compiler
 
   read_summary -> Map/*<uri, Module>*/:
     module_count := read_int

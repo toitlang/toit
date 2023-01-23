@@ -142,10 +142,10 @@ class Compiler:
     latch := monitor.Latch
     task:: catch --trace:
       paths := uris.map: | uri |
-        path := uri_path_translator_.to_path uri
+        path := uri_path_translator_.to_path uri --to_compiler
         // There are multiple ways to encode URIs. Check that the uri is already
         // canonicalized.
-        assert: uri == (uri_path_translator_.to_uri path)
+        assert: uri == (uri_path_translator_.to_uri path --from_compiler)
         path
       result := null
 
@@ -190,7 +190,7 @@ class Compiler:
             range := null
             if with_position:
               error_path = reader.read_line
-              error_uri = uri_path_translator_.to_uri error_path
+              error_uri = uri_path_translator_.to_uri error_path --from_compiler
               range = read_range reader
             msg := ""
             while true:
@@ -240,7 +240,7 @@ class Compiler:
     return latch.get
 
   complete uri/string line_number/int column_number/int -> List/*<string>*/:
-    path := uri_path_translator_.to_path uri
+    path := uri_path_translator_.to_path uri --to_compiler
     // We don't care if the compiler crashed.
     // Just send whatever completions we get.
     run --compiler_input="COMPLETE\n$path\n$line_number\n$column_number\n":
@@ -256,7 +256,7 @@ class Compiler:
     unreachable
 
   goto_definition uri/string line_number/int column_number/int -> List/*<Location>*/:
-    path := uri_path_translator_.to_path uri
+    path := uri_path_translator_.to_path uri --to_compiler
     // We don't care if the compiler crashed.
     // Just send the definitions we got.
     run --compiler_input="GOTO DEFINITION\n$path\n$line_number\n$column_number\n":
@@ -267,7 +267,7 @@ class Compiler:
         line := reader.read_line
         if line == null: break
         location := Location
-          --uri= uri_path_translator_.to_uri line
+          --uri= uri_path_translator_.to_uri line --from_compiler
           --range= read_range reader
         definitions.add location
 
@@ -284,7 +284,7 @@ class Compiler:
         if not data: break
 
   snapshot_bundle uri/string -> ByteArray?:
-    path := uri_path_translator_.to_path uri
+    path := uri_path_translator_.to_path uri --to_compiler
     run --compiler_input="SNAPSHOT BUNDLE\n$path\n":
       |reader /BufferedReader|
       status := reader.read_line
@@ -314,7 +314,7 @@ class Compiler:
   ]
 
   semantic_tokens uri/string -> List:
-    path := uri_path_translator_.to_path uri
+    path := uri_path_translator_.to_path uri --to_compiler
     run --compiler_input="SEMANTIC TOKENS\n$path\n":
       |reader /BufferedReader|
       element_count := int.parse reader.read_line
@@ -335,10 +335,11 @@ class Compiler:
     entry_count := int.parse reader.read_line
     result := {:}
     entry_count.repeat:
-      source_uri := uri_path_translator_.to_uri reader.read_line
+      source_uri := uri_path_translator_.to_uri reader.read_line --from_compiler
       direct_deps_count := int.parse reader.read_line
       direct_deps := {}
-      direct_deps_count.repeat: direct_deps.add (uri_path_translator_.to_uri reader.read_line)
+      direct_deps_count.repeat:
+        direct_deps.add (uri_path_translator_.to_uri reader.read_line --from_compiler)
       result[source_uri] = direct_deps
 
     return result

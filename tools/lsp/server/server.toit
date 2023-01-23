@@ -512,7 +512,7 @@ class LspServer:
 
     should_write_repro := settings_.get "shouldWriteReproOnCrash" --if_absent=:false
 
-    protocol := FileServerProtocol.local compiler_path sdk_path documents_
+    protocol := FileServerProtocol.local compiler_path sdk_path documents_ translator_
 
     compiler := null  // Let the 'compiler' local be visible in the lambda expression below.
     compiler = Compiler compiler_path translator_ timeout_ms
