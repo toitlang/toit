@@ -44,14 +44,44 @@ char* FilesystemLocal::get_executable_path() {
   return path;
 }
 
+// Returns the size of the root prefix of the given path.
+// Returns 0 if the path doesn't have any root prefix.
+// Accepted roots are:
+// - drives: `c:\` and `c:/`. We do not accept 'c:' here.
+// - posix roots `/`
+// - the double '\\' of a network path: `\\Machine1` or `\\wsl$`. In this
+//   case we consider `\\` to be the root path.
+//   Contrary to the file path (like "c:\") the returned root includes more
+//   than just one drive, but that's more in spirit with the original root
+//   path anyway.
+// - a virtual file, with the VIRTUAL_FILE_PREFIX.
+static int root_prefix_length(const char* path) {
+  if (SourceManager::is_virtual_file(path)) {
+    return strlen(SourceManager::VIRTUAL_FILE_PREFIX);
+  }
+  int length == strlen(path);
+  if (length == 0) return 0;
+  if (path[0] == '/') {
+    if (size == 1) return 1;  // Posix root.
+    if (!is_path_separator(path[1])) return 1;  // Posix root prefix.
+    // We have a network path with at least one slash. This is not a common form,
+    // but we have to accept it.
+    return 2;  // Network path.
+  }
+  if (size < 2) return 0;
+  if (is_path_separator(path[0]) && is_path_separator(path[1])) {
+    return 2;  // Network path.
+  }
+  if (size < 3) return 0;
+  bool is_ascii_drive = ('a' <= path[0] && path[0] <= 'z') || ('A' <= path[0] && path[0] <= 'Z');
+  if (is_ascii_drive && path[1] == ':' && is_path_separator(path[2]) {
+    return 3;  // Drive root.
+  }
+  return 0;
+}
+
 bool FilesystemLocal::is_absolute(const char* path) {
-  if (SourceManager::is_virtual_file(path)) return true;
-  int length = strlen(path);
-  if (length < 3) return false;
-  // Either a Windows drive like "c:\", or a network path "\\Machine1".
-  // Network paths also include the WSL drive.
-  return (path[1] == ':' && is_path_separator(path[2])) ||
-      (is_path_separator(path[0]) && is_path_separator(path[1]));
+  return root_prefix_length(path) != 0;
 }
 
 char FilesystemLocal::path_separator() {
@@ -59,30 +89,18 @@ char FilesystemLocal::path_separator() {
 }
 
 char* FilesystemLocal::root(const char* path) {
-  ASSERT(is_absolute(path));
-  if (path[1] == ':') {
-    // Something like "c:\".
-    char* result = new char[4];
-    memcpy(result, path, 3);
-    result[3] = '\0';
-    return result;
-  }
-  // A network path like "\\Machine1" (including "\\wsl$\" for WSL).
-  // Contrary to the file path (like "c:\") the returned root includes more
-  // than just one drive, but that's more in spirit with the original root
-  // path anyway.
-  return strdup("\\\\");
+  int prefix_length = root_prefix_length(path);
+  ASSERT(prefix_length != 0);
+  char* result = new char[prefix_length + 1];
+  memcpy(result, path, prefix_length);
+  result[prefix_length] = '\0';
+  return result;
 }
 
 bool FilesystemLocal::is_root(const char* path) {
-  int length = static_cast<int>(strlen(path));
-  if (length < 3) return false;
-  // Something like "c:\".
-  if (path[1] == ':') {
-    return path[0] != '\n' && path[1] == ':' && is_path_separator(path[2]) && path[3] == '\0';
-  }
-  // A network path like '\\Machine1'.
-  return is_path_separator(path[0]) && is_path_separator(path[1]) && path[2] == '\0';
+  int prefix_length = root_prefix_length(path);
+  if (prefix_length == 0) return false;
+  return strlen(path) == prefix_length;
 }
 
 
