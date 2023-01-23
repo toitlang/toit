@@ -59,22 +59,22 @@ static int root_prefix_length(const char* path) {
   if (SourceManager::is_virtual_file(path)) {
     return strlen(SourceManager::VIRTUAL_FILE_PREFIX);
   }
-  int length == strlen(path);
+  int length = strlen(path);
   if (length == 0) return 0;
   if (path[0] == '/') {
-    if (size == 1) return 1;  // Posix root.
+    if (length == 1) return 1;  // Posix root.
     if (!is_path_separator(path[1])) return 1;  // Posix root prefix.
     // We have a network path with at least one slash. This is not a common form,
     // but we have to accept it.
     return 2;  // Network path.
   }
-  if (size < 2) return 0;
+  if (length < 2) return 0;
   if (is_path_separator(path[0]) && is_path_separator(path[1])) {
     return 2;  // Network path.
   }
-  if (size < 3) return 0;
+  if (length < 3) return 0;
   bool is_ascii_drive = ('a' <= path[0] && path[0] <= 'z') || ('A' <= path[0] && path[0] <= 'Z');
-  if (is_ascii_drive && path[1] == ':' && is_path_separator(path[2]) {
+  if (is_ascii_drive && path[1] == ':' && is_path_separator(path[2])) {
     return 3;  // Drive root.
   }
   return 0;
@@ -100,7 +100,7 @@ char* FilesystemLocal::root(const char* path) {
 bool FilesystemLocal::is_root(const char* path) {
   int prefix_length = root_prefix_length(path);
   if (prefix_length == 0) return false;
-  return strlen(path) == prefix_length;
+  return static_cast<int>(strlen(path)) == prefix_length;
 }
 
 
