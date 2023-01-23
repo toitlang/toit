@@ -53,6 +53,7 @@ char FilesystemLocal::path_separator() {
 }
 
 char* FilesystemLocal::root(const char* path) {
+  ASSERT(is_absolute(path));
   if (path[1] == ':') {
     // Something like "c:\".
     char* result = new char[4];
@@ -66,6 +67,18 @@ char* FilesystemLocal::root(const char* path) {
   // path anyway.
   return strdup("\\\\");
 }
+
+bool FilesystemLocal::is_root(const char* path) {
+  int length = static_cast<int>(strlen(path));
+  if (length < 3) return false;
+  // Something like "c:\".
+  if (path[1] == ':') {
+    return path[0] != '\n' && path[1] == ':' && path[2] == '\\' && path[3] == '\0';
+  }
+  // A network path like '\\Machine1'.
+  return path[0] == '\\' && path[1] == '\\' && path[2] == '\0';
+}
+
 
 char* FilesystemLocal::to_local_path(const char* path) {
   if (path == null) return null;

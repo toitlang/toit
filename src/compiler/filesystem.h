@@ -52,6 +52,9 @@ class Filesystem {
     result[1] = '\0';
     return result;
   }
+  virtual bool is_root(const char* path) {
+    return path[0] == '/' && path[1] == '\0';
+  }
 
   bool is_regular_file(const char* path);
   bool is_directory(const char* path);
