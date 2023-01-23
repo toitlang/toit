@@ -48,29 +48,24 @@ char* FilesystemLocal::get_executable_path() {
 // Returns 0 if the path doesn't have any root prefix.
 // Accepted roots are:
 // - drives: `c:\` and `c:/`. We do not accept 'c:' here.
-// - posix roots `/`
 // - the double '\\' of a network path: `\\Machine1` or `\\wsl$`. In this
 //   case we consider `\\` to be the root path.
 //   Contrary to the file path (like "c:\") the returned root includes more
 //   than just one drive, but that's more in spirit with the original root
 //   path anyway.
 // - a virtual file, with the VIRTUAL_FILE_PREFIX.
+// Note that drive roots ('/' or '\') are not absolute, as they are
+// relative to the drive.
 static int root_prefix_length(const char* path) {
   if (SourceManager::is_virtual_file(path)) {
     return strlen(SourceManager::VIRTUAL_FILE_PREFIX);
   }
   int length = strlen(path);
   if (length == 0) return 0;
-  if (path[0] == '/') {
-    if (length == 1) return 1;  // Posix root.
-    if (!is_path_separator(path[1])) return 1;  // Posix root prefix.
-    // We have a network path with at least one slash. This is not a common form,
-    // but we have to accept it.
-    return 2;  // Network path.
-  }
-  if (length < 2) return 0;
-  if (is_path_separator(path[0]) && is_path_separator(path[1])) {
-    return 2;  // Network path.
+  if (is_path_separator(path[0]) {
+    if (length == 1) return 0;  // Drive root is not absolute.
+    if (path[1] == path[0]) return 2;  // Network path.
+      return 0;
   }
   if (length < 3) return 0;
   bool is_ascii_drive = ('a' <= path[0] && path[0] <= 'z') || ('A' <= path[0] && path[0] <= 'Z');
