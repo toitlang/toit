@@ -141,14 +141,13 @@ void Filesystem::canonicalize(char* path) {
       path[canonical_pos++] = path[i++];
     }
   }
-  // Drop trailing path seperator unless it's the root.
+  // Drop trailing path separator unless it's the root.
   path[canonical_pos] = '\0';
-  if (!(is_absolute && is_root(path)) && path[canonical_pos - 1] == path_separator()) {
-    // There can only be one.
-    canonical_pos--;
-  }
   if (canonical_pos == 0) {
     path[canonical_pos++] = '.';
+  } else if (!is_root(path) && path[canonical_pos - 1] == path_separator()) {
+    // There can only be one trailing path separator.
+    canonical_pos--;
   }
   path[canonical_pos] = '\0';
 }
