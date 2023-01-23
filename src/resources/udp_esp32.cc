@@ -42,12 +42,12 @@ const int MAX_QUEUE_SIZE = 1024 * 8;
 class Packet : public LinkedFifo<Packet>::Element {
  public:
   Packet(struct pbuf* pbuf, ip_addr_t addr, u16_t port)
-    : pbuf_(pbuf)
-    , addr_(addr)
-    , port_(port) {}
+      : pbuf_(pbuf)
+      , addr_(addr)
+      , port_(port) {}
 
   Packet()
-    : pbuf_(null) {}
+      : pbuf_(null) {}
 
   ~Packet() {
     clear();
@@ -64,9 +64,9 @@ class Packet : public LinkedFifo<Packet>::Element {
     port_ = port;
   }
 
-  struct pbuf* pbuf() { return pbuf_; }
-  ip_addr_t addr() { return addr_; }
-  u16_t port() { return port_; }
+  struct pbuf* pbuf() const { return pbuf_; }
+  ip_addr_t addr() const { return addr_; }
+  u16_t port() const { return port_; }
 
  private:
   struct pbuf* pbuf_;
@@ -81,6 +81,8 @@ class UdpSocket : public Resource {
     : Resource(group)
     , upcb_(upcb)
     , buffered_bytes_(0) {
+    // We can cope with this failing, just means we don't have
+    // a spare packet object ready.
     spare_packet_ = _new Packet();
   }
 
@@ -135,6 +137,9 @@ class UdpSocket : public Resource {
  private:
   udp_pcb* upcb_;
   LinkedFifo<Packet> packets_;
+  // This often contains a spare packet object, which reduces the frequency of
+  // the unfortunate case where we have to drop a packet because we can't
+  // allocate this little management struct.
   Packet* spare_packet_;
   int buffered_bytes_;
 };
