@@ -12,7 +12,7 @@ main args:
 test client/LspClient:
   // The path doesn't really need to be non-existing, as we provide content for it
   // anyways.
-  DRIVE ::= platform == PLATFORM_WINDOWS ? "C:" : ""
+  DRIVE ::= platform == PLATFORM_WINDOWS ? "c:" : ""
   DIR ::= "$DRIVE/non_existing_dir_toit_test"
   path := "$DIR/file.toit"
 

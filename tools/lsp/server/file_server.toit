@@ -101,7 +101,7 @@ class FileServerProtocol:
           writer.write "$file.exists\n$file.is_regular\n$file.is_directory\n$encoded_size\n"
           writer.write encoded_content
 
-  get_file compiler_path /string -> File:
+  get_file compiler_path/string -> File:
     return file_cache_.get compiler_path --init=: create_file_entry_ compiler_path
 
   create_file_entry_ compiler_path / string -> File:

@@ -15,7 +15,7 @@ main args:
   // Since we used '--no-spawn_process' we must exit 0.
   exit 0
 
-DRIVE ::= platform == PLATFORM_WINDOWS ? "C:" : ""
+DRIVE ::= platform == PLATFORM_WINDOWS ? "c:" : ""
 FILE_PATH ::= "$DRIVE/tmp/file.toit"
 
 build_name element klass/Class?=null:
