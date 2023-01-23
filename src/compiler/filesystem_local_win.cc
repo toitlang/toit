@@ -53,7 +53,7 @@ char FilesystemLocal::path_separator() {
 }
 
 char* FilesystemLocal::root(const char* path) {
-  assert(is_absolute(path));
+  ASSERT(is_absolute(path));
   if (path[1] == ':') {
     // Something like "c:\".
     char* result = new char[4];
@@ -69,7 +69,7 @@ char* FilesystemLocal::root(const char* path) {
 }
 
 bool FilesystemLocal::is_root(const char* path) {
-  int length = static_cast<int>();
+  int length = static_cast<int>(strlen(path));
   if (length < 3) return false;
   // Something like "c:\".
   if (path[1] == ':') {
