@@ -29,6 +29,9 @@
 namespace toit {
 namespace compiler {
 
+// We need to pick between '\' and '/', and '\' is still more common on Windows.
+static const char PATH_SEPARATOR = '\\';
+
 // We accept both '/' and '\' as path separators.
 static bool is_path_separator(char c) {
   return c == '/' || c == '\\';
@@ -52,9 +55,7 @@ bool FilesystemLocal::is_absolute(const char* path) {
 }
 
 char FilesystemLocal::path_separator() {
-  // We need to pick between '\' and '/'. As much as I hate it,
-  // '\' is still more common on Windows.
-  return '\\';
+  return PATH_SEPARATOR;
 }
 
 char* FilesystemLocal::root(const char* path) {
@@ -90,7 +91,7 @@ char* FilesystemLocal::to_local_path(const char* path) {
   char* result = strdup(path);
   int length = strlen(path);
   for (int i = 0; i < length; i++) {
-    if (result[i] == '/') result[i] = path_separator();
+    if (result[i] == '/') result[i] = PATH_SEPARATOR;
   }
   return result;
 }
