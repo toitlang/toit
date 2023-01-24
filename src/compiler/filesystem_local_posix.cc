@@ -34,15 +34,13 @@
 namespace toit {
 namespace compiler {
 
+bool FilesystemLocal::is_absolute(const char* path) {
+  return path[0] == '/';
+}
+
 const char* FilesystemLocal::relative_anchor(const char* path) {
   ASSERT(!is_absolute(path));
   return cwd();
-}
-
-bool FilesystemLocal::is_absolute(const char* path) {
-  int length = strlen(path);
-  if (length < 1) return false;
-  return path[0] == '/';
 }
 
 char FilesystemLocal::path_separator() {
@@ -54,11 +52,18 @@ bool FilesystemLocal::is_path_separator(char c) {
 }
 
 char* FilesystemLocal::root(const char* path) {
-  return Filesystem::root(path);
+    char* result = new char[2];
+    if (path[0] == '/') {
+      result[0] = '/';
+      result[1] = '\0';
+    } else {
+      result[0] = '\0';
+    }
+    return result;
 }
 
 bool FilesystemLocal::is_root(const char* path) {
-  return Filesystem::is_root(path);
+    return path[0] == '/' && path[1] == '\0';
 }
 
 char* FilesystemLocal::to_local_path(const char* path) {

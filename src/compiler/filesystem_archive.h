@@ -38,7 +38,24 @@ class FilesystemArchive : public Filesystem {
   void initialize(Diagnostics* diagnostics);
 
   const char* entry_path() { return entry_path_; }
+
   bool is_absolute(const char* path) { return path[0] == '/'; }
+  const char* relative_anchor(const char* path) { return cwd(); }
+  char path_separator() { return '/'; }
+  bool is_path_separator(char c) { return c == '/'; }
+  char* root(const char* path) {
+    char* result = new char[2];
+    if (path[0] == '/') {
+      result[0] = '/';
+      result[1] = '\0';
+    } else {
+      result[0] = '\0';
+    }
+    return result;
+  }
+  bool is_root(const char* path) {
+    return path[0] == '/' && path[1] == '\0';
+  }
 
   const char* sdk_path() { return sdk_path_; }
   List<const char*> package_cache_paths() { return package_cache_paths_; }
