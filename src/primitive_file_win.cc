@@ -112,6 +112,9 @@ HeapObject* get_absolute_path(Process* process, const char* pathname, char* outp
   size_t pathname_length = strlen(pathname);
 
   // Poor man's version. For better platform handling, use UNICODE and PathCchAppendEx.
+  // TODO(florian): we should probably use PathCchCombine here. That would remove
+  // all the special checks.
+
   if (!PathIsRelative(pathname)) {
     if (GetFullPathName(pathname, MAX_PATH, output, NULL) == 0) WINDOWS_ERROR;
     return null;
@@ -120,7 +123,10 @@ HeapObject* get_absolute_path(Process* process, const char* pathname, char* outp
   const char* current_directory = current_dir(process);
   if (!current_directory) MALLOC_FAILED;
 
-  // Check if the path is rooted.
+  // Check if the path is rooted. On Windows paths might not be absolute, but
+  // relative to the drive/root of the current working directory.
+  // For example the path `\foo\bar` is a rooted path which is relative to
+  // the drive of the current working directory.
   char root[MAX_PATH];
   const char* relative_to = null;
   if (pathname_length > 0 && (pathname[0] == '\\' || pathname[0] == '/')) {
