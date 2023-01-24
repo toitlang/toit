@@ -15,10 +15,6 @@ import system.api.service_discovery
     ServiceDiscoveryService
     ServiceDiscoveryServiceClient
 
-// Notification kinds.
-SERVICES_MANAGER_NOTIFY_ADD_PROCESS    /int ::= 0
-SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS /int ::= 1
-
 // RPC procedure numbers used for using services from clients.
 RPC_SERVICES_OPEN_           /int ::= 300
 RPC_SERVICES_CLOSE_          /int ::= 301
@@ -27,6 +23,7 @@ RPC_SERVICES_CLOSE_RESOURCE_ /int ::= 303
 
 // Internal limits.
 CLIENT_ID_LIMIT_       /int ::= 0x3fff_ffff
+SERVICE_ID_LIMIT_      /int ::= 0x3fff_ffff
 RESOURCE_HANDLE_LIMIT_ /int ::= 0x1fff_ffff  // Will be shifted up by one.
 
 _client_ /ServiceDiscoveryService ::= ServiceDiscoveryServiceClient
@@ -53,18 +50,20 @@ abstract class ServiceClient:
       --pid/int?=null
       --timeout/Duration?=_default_timeout_:
     if _id_: throw "Already opened"
-    if pid:
-      process_send_ pid SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_ADD_PROCESS, Process.current.id]
-    else:
+    id := 0  // TODO(kasper): Clean this up a bit.
+    if not pid:
+      discovered/List? := null
       if timeout:
         catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
-          with_timeout timeout: pid = _client_.discover uuid true
+          with_timeout timeout: discovered = _client_.discover uuid true
       else:
-        pid = _client_.discover uuid false
-      if not pid: return null
+        discovered = _client_.discover uuid false
+      if not discovered: return null
+      pid = discovered[0]
+      id = discovered[1]
     // Open the client by doing a RPC-call to the discovered process.
     // This returns the client id necessary for invoking service methods.
-    definition ::= rpc.invoke pid RPC_SERVICES_OPEN_ [uuid, major, minor]
+    definition ::= rpc.invoke pid RPC_SERVICES_OPEN_ [id, uuid, major, minor]
     _pid_ = pid
     _id_ = definition[2]
     _name_ = definition[0]
@@ -121,7 +120,9 @@ abstract class ServiceDefinition:
 
   _uuids_/List ::= []
   _versions_/List ::= []
+
   _manager_/ServiceManager_? := null
+  _ids_/List? := null
 
   _clients_/Set ::= {}  // Set<int>
   _clients_closed_/int := 0
@@ -156,7 +157,9 @@ abstract class ServiceDefinition:
     if _manager_: throw "Already installed"
     _manager_ = ServiceManager_.instance
     _clients_closed_ = 0
-    _uuids_.do: _manager_.listen it this
+    // TODO(kasper): Handle the case where one of the calls
+    // to listen fails.
+    _ids_ = Array_ _uuids_.size: _manager_.listen _uuids_[it] this
 
   uninstall --wait/bool=false -> none:
     if wait:
@@ -230,7 +233,10 @@ abstract class ServiceDefinition:
 
   _uninstall_ -> none:
     if not _resources_.is_empty: throw "Leaked $_resources_"
-    _uuids_.do: _manager_.unlisten it
+    // TODO(kasper): Handle the case where one of the calls
+    // to unlisten fails.
+    _ids_.do: _manager_.unlisten it
+    _ids_ = null
     _manager_ = null
 
 abstract class ServiceResource implements rpc.RpcSerializable:
@@ -337,18 +343,18 @@ class ServiceManager_ implements SystemMessageHandler_:
   static instance := ServiceManager_
   static uninitialized/bool := true
 
-  broker_/ServiceRpcBroker_ ::= ServiceRpcBroker_
+  broker_/broker.RpcBroker ::= broker.RpcBroker
 
   clients_/Map ::= {:}                // Map<int, int>
   clients_by_pid_/Map ::= {:}         // Map<int, Set<int>>
 
-  services_by_uuid_/Map ::= {:}       // Map<string, ServiceDefinition>
+  services_/Map ::= {:}               // Map<int, ServiceDefinition>
   services_by_client_/Map ::= {:}     // Map<int, ServiceDefinition>
 
   constructor:
-    set_system_message_handler_ SYSTEM_RPC_NOTIFY_ this
+    set_system_message_handler_ SYSTEM_RPC_NOTIFY_TERMINATED_ this
     broker_.register_procedure RPC_SERVICES_OPEN_:: | arguments _ pid |
-      open pid arguments[0] arguments[1] arguments[2]
+      open pid arguments[0] arguments[1] arguments[2] arguments[3]
     broker_.register_procedure RPC_SERVICES_CLOSE_:: | arguments |
       close arguments
     broker_.register_procedure RPC_SERVICES_INVOKE_:: | arguments _ pid |
@@ -364,24 +370,27 @@ class ServiceManager_ implements SystemMessageHandler_:
     uninitialized = false
 
   static is_empty -> bool:
-    return uninitialized or instance.services_by_uuid_.is_empty
+    return uninitialized or instance.services_.is_empty
 
   listen uuid/string service/ServiceDefinition -> int:
-    services_by_uuid_[uuid] = service
-    return _client_.listen uuid
+    id := assign_service_id_ service
+    _client_.listen id uuid
+    return id
 
-  unlisten uuid/string -> none:
-    _client_.unlisten uuid
-    services_by_uuid_.remove uuid
+  unlisten id/int -> none:
+    _client_.unlisten id
+    services_.remove id
 
-  open pid/int uuid/string major/int minor/int -> List:
-    service/ServiceDefinition? ::= services_by_uuid_.get uuid
-    if not service: throw "Unknown service:$uuid"
+  open pid/int id/int uuid/string major/int minor/int -> List:
+    service/ServiceDefinition? ::= services_.get id
+    if not service: throw "Unknown service:$id"
     service._validate_ uuid major minor
-    client ::= assign_client_id_ pid
-    services_by_client_[client] = service
     clients/Set ::= clients_by_pid_.get pid --init=(: {})
+    if clients.is_empty and pid != Process.current.id: _client_.watch pid
+
+    client ::= assign_client_id_ pid
     clients.add client
+    services_by_client_[client] = service
     return service._open_ client
 
   notify client/int handle/int notification/any -> none:
@@ -415,19 +424,13 @@ class ServiceManager_ implements SystemMessageHandler_:
     clients.do: close it
 
   on_message type/int gid/int pid/int message/any -> none:
-    assert: type == SYSTEM_RPC_NOTIFY_
-    kind/int ::= message[0]
+    assert: type == SYSTEM_RPC_NOTIFY_TERMINATED_
     // The other process isn't necessarily the sender of the
     // notifications. They almost always come from the system
     // process and are sent as part of the discovery handshake.
-    other/int ::= message[1]
-    if kind == SERVICES_MANAGER_NOTIFY_ADD_PROCESS:
-      broker_.add_process other
-    else if kind == SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS:
-      broker_.remove_process other
-      close_all other
-    else:
-      unreachable
+    other/int ::= message
+    broker_.cancel_requests other
+    close_all other
 
   assign_client_id_ pid/int -> int:
     while true:
@@ -436,15 +439,9 @@ class ServiceManager_ implements SystemMessageHandler_:
       clients_[guess] = pid
       return guess
 
-class ServiceRpcBroker_ extends broker.RpcBroker:
-  pids_ ::= {}
-
-  accept gid/int pid/int -> bool:
-    return pids_.contains pid
-
-  add_process pid/int -> none:
-    pids_.add pid
-
-  remove_process pid/int -> none:
-    pids_.remove pid
-    cancel_requests pid
+  assign_service_id_ service/ServiceDefinition -> int:
+    while true:
+      guess := random SERVICE_ID_LIMIT_
+      if services_.contains guess: continue
+      services_[guess] = service
+      return guess

@@ -8,16 +8,19 @@ import system.services show ServiceClient
 interface ServiceDiscoveryService:
   static UUID  /string ::= "dc58d7e1-1b1f-4a93-a9ac-bd45a47d7de8"
   static MAJOR /int    ::= 0
-  static MINOR /int    ::= 2
+  static MINOR /int    ::= 3
 
+  discover uuid/string wait/bool -> List?
   static DISCOVER_INDEX /int ::= 0
-  discover uuid/string wait/bool -> int?
 
+  watch pid/int -> none
+  static WATCH_INDEX /int ::= 3
+
+  listen id/int uuid/string -> none
   static LISTEN_INDEX /int ::= 1
-  listen uuid/string -> int
 
-  static UNLISTEN_INDEX /int ::= 2
   unlisten id/int -> none
+  static UNLISTEN_INDEX /int ::= 2
 
 class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDiscoveryService:
   constructor --open/bool=true:
@@ -26,11 +29,14 @@ class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDisc
   open -> ServiceDiscoveryServiceClient?:
     return (open_ ServiceDiscoveryService.UUID ServiceDiscoveryService.MAJOR ServiceDiscoveryService.MINOR --pid=-1) and this
 
-  discover uuid/string wait/bool -> int?:
+  discover uuid/string wait/bool -> List?:
     return invoke_ ServiceDiscoveryService.DISCOVER_INDEX [uuid, wait]
 
-  listen uuid/string -> none:
-    invoke_ ServiceDiscoveryService.LISTEN_INDEX uuid
+  watch pid/int -> none:
+    invoke_ ServiceDiscoveryService.WATCH_INDEX pid
+
+  listen id/int uuid/string -> none:
+    invoke_ ServiceDiscoveryService.LISTEN_INDEX [id, uuid]
 
   unlisten id/int -> none:
     invoke_ ServiceDiscoveryService.UNLISTEN_INDEX id

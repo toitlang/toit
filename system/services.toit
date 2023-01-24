@@ -16,100 +16,107 @@
 import system.services
   show
     ServiceDefinition
-    SERVICES_MANAGER_NOTIFY_ADD_PROCESS
-    SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS
+    ServiceManager_
 
 import monitor
 import system.api.service_discovery show ServiceDiscoveryService
 
-// Internal limits.
-SERVICE_ID_LIMIT_ /int ::= 0x3fff_ffff
+class DiscoverableService:
+  pid/int
+  id/int
+  uuid/string
+  constructor --.pid --.id --.uuid:
 
 class SystemServiceManager extends ServiceDefinition implements ServiceDiscoveryService:
   service_managers_/Map ::= {:}  // Map<int, Set<int>>
 
-  services_/Map ::= {:}          // Map<int, int>
-  services_by_pid_/Map ::= {:}   // Map<int, Set<int>>
-
-  // ...
-  services_by_uuid_/Map ::= {:}  // Map<string, int>
+  services_by_pid_/Map ::= {:}   // Map<int, Map<int, DiscoverableService>>>
+  services_by_uuid_/Map ::= {:}  // Map<string, DiscoverableService>
 
   signal_/monitor.Signal ::= monitor.Signal
 
   constructor:
     super "system/service-discovery" --major=0 --minor=1 --patch=1
     provides ServiceDiscoveryService.UUID ServiceDiscoveryService.MAJOR ServiceDiscoveryService.MINOR
-    install
+    // TODO(kasper): This is pretty nasty.
+    pid := Process.current.id
+    id := 0
+    services_by_pid_[pid] = {
+      id: DiscoverableService --pid=pid --id=id --uuid=ServiceDiscoveryService.UUID
+    }
+    _manager_ = ServiceManager_.instance
+    _manager_.services_[id] = this
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == ServiceDiscoveryService.DISCOVER_INDEX:
-      return discover arguments[0] arguments[1] pid
+      return discover arguments[0] arguments[1]
+    if index == ServiceDiscoveryService.WATCH_INDEX:
+      return watch pid arguments
     if index == ServiceDiscoveryService.LISTEN_INDEX:
-      return listen arguments pid
+      return listen pid arguments[0] arguments[1]
     if index == ServiceDiscoveryService.UNLISTEN_INDEX:
-      return unlisten arguments
+      return unlisten pid arguments
     unreachable
 
-  listen uuid/string pid/int -> int:
+  listen pid/int id/int uuid/string -> none:
+    services := services_by_pid_.get pid --init=(: {:})
+    if services.contains id:
+      throw "Already registered service:$id"
+    service_managers_.get pid --init=(: {})
+    // TODO(kasper): Change this check.
     if services_by_uuid_.contains uuid:
       throw "Already registered service:$uuid"
-    id := assign_service_id_ pid
-    services_by_uuid_[uuid] = id
-    service_managers_.get pid --init=(: {})
-    ids := services_by_pid_.get pid --init=(: {})
-    ids.add id
+
+    service := DiscoverableService --pid=pid --id=id --uuid=uuid
+    services[id] = service
+    services_by_uuid_[uuid] = service
     signal_.raise
-    return id
 
-  unlisten id/int -> none:
-    pid := services_.get id
-    if not pid: return
+  unlisten pid/int id/int -> none:
+    services := services_by_pid_.get pid
+    if not services: return
+    service := services.get id
+    if not service: return
 
-    // TODO(kasper): Clean up the discovery table.
-    // services_by_uuid_.remove uuid
-
-    ids := services_by_pid_.get pid
-    if not ids: return
-    ids.remove id
-    if not ids.is_empty: return
+    services.remove id
+    services_by_uuid_.remove service.uuid
+    if not services.is_empty: return
     service_managers_.remove pid
     services_by_pid_.remove pid
 
-  discover uuid/string wait/bool pid/int -> int?:
-    target/int? := null
+  discover uuid/string wait/bool -> List?:
+    service/DiscoverableService? := null
     if wait:
       signal_.wait:
-        target = services_by_uuid_.get uuid
-        target != null
+        service = services_by_uuid_.get uuid
+        service != null
     else:
-      target = services_by_uuid_.get uuid
-      if not target: return null
-    processes := service_managers_[target]
-    if processes:
-      processes.add pid
-      process_send_ target SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_ADD_PROCESS, pid]
-    return target
+      service = services_by_uuid_.get uuid
+      if not service: return null
+    return [service.pid, service.id]
+
+  watch pid/int target/int -> none:
+    if pid == target: return
+    processes := service_managers_.get pid
+    if processes: processes.add target
 
   on_process_stop pid/int -> none:
-    ids := services_by_pid_.get pid
-    // Iterate over a copy of the uuids, so we can manipulate the
-    // underlying set in the call to unlisten.
-    if ids: (Array_.from ids).do: unlisten it
+    services := services_by_pid_.get pid
+    // Iterate over a copy of the values, so we can manipulate the
+    // underlying map in the call to unlisten.
+    if services: services.values.do: | service/DiscoverableService |
+      unlisten service.pid service.id
     // Tell service managers about the termination.
     service_managers_.do: | manager/int processes/Set |
       if not processes.contains pid: continue.do
       processes.remove pid
-      process_send_ manager SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS, pid]
+      process_send_ manager SYSTEM_RPC_NOTIFY_TERMINATED_ pid
 
-  assign_service_id_ pid/int -> int:
-    while true:
-      guess := random SERVICE_ID_LIMIT_
-      if services_.contains guess: continue
-      services_[guess] = pid
-      return guess
-
-  discover uuid/string wait/bool -> int?:
+  listen id/int uuid/string -> none:
     unreachable  // <-- TODO(kasper): nasty
 
-  listen uuid/string -> none:
+  unlisten id/int -> none:
+    unreachable  // <-- TODO(kasper): nasty
+
+  watch target/int -> none:
     unreachable  // <-- TODO(kasper): nasty
