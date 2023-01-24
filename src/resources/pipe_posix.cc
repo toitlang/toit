@@ -337,17 +337,33 @@ static void free_args(char** argv, Array* args) {
 // are attached to the stdin, stdout and stderr of the launched program, and
 // are closed in the parent program.  If you pass -1 for any of these then the
 // forked program inherits the stdin/out/err of this Toit program.
-PRIMITIVE(fork) {
-  ARGS(SubprocessResourceGroup, resource_group,
-       bool, use_path,
-       Object, in_obj,
-       Object, out_obj,
-       Object, err_obj,
-       int, fd_3,
-       int, fd_4,
-       cstring, command,
-       Array, args);
+static Object* fork_helper(
+    Process* process,
+    SubprocessResourceGroup* resource_group,
+    bool use_path,
+    Object* in_obj,
+    Object* out_obj,
+    Object* err_obj,
+    int fd_3,
+    int fd_4,
+    const char* command,
+    Array* args,
+    Object* environment_object) {
   if (args->length() > 1000000) OUT_OF_BOUNDS;
+  Array* environment = null;
+  if (environment_object != process->program()->null_object()) {
+    if (!is_array(environment_object)) WRONG_TYPE;
+    environment = Array::cast(environment_object);
+    if (environment->length() > 1000000) OUT_OF_BOUNDS;
+    for (int i = 0; i < environment->length(); i++) {
+      Blob blob;
+      if (!environment->at(i)->byte_content(process->program(), &blob, STRINGS_ONLY)) WRONG_TYPE;
+      const uint8* str = blob.address();
+      if (str[blob.length()] + 1 != '\0') INVALID_ARGUMENT;
+      const void* equals_position = memchr(str, '=', blob.length());
+      if (equals_position == null || equals_position == str) INVALID_ARGUMENT;
+    }
+  }
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
@@ -516,10 +532,35 @@ PRIMITIVE(fork) {
 
     // Exec the actual program.  If this succeeds, then control_write is closed
     // automatically, and the parent is unblocked on its read.
-    if (use_path) {
-      execvp(command, argv);
+    if (environment == null) {
+      if (use_path) {
+        execvp(command, argv);
+      } else {
+        execv(command, argv);
+      }
     } else {
-      execv(command, argv);
+      // Convert the environment to a char**.
+      char** envp = reinterpret_cast<char**>(malloc((environment->length() / 2 + 1) * sizeof(char*)));
+      if (envp == null) break;  // Malloc has set ENOMEM.
+      for (int i = 0; i < environment->length(); i += 2) {
+        Blob key, value;
+        // These should not fail because we checked earlier with is_validated_string.
+        environment->at(i)->byte_content(process->program(), &key, STRINGS_ONLY);
+        environment->at(i + 1)->byte_content(process->program(), &value, STRINGS_ONLY);
+
+        char* var = envp[i / 2] = unvoid_cast<char*>(malloc(key.length() + value.length() + 2));
+        if (var == null) break;  // malloc has set ENOMEM.
+
+        memcpy(var, key.address(), key.length());
+        var[key.length()] = '=';
+        memcpy(var + key.length() + 1, value.address(), value.length());
+        var[key.length() + 1 + value.length()] = '\0';
+      }
+      if (use_path) {
+        execvpe(command, argv, envp);
+      } else {
+        execve(command, argv, envp);
+      }
     }
     // We only get here if the exec failed.
   } while (false);
@@ -538,6 +579,35 @@ PRIMITIVE(fork) {
   abort();
 
   return null;  // We never get here.
+}
+
+PRIMITIVE(fork) {
+  ARGS(SubprocessResourceGroup, resource_group,
+       bool, use_path,
+       Object, in_obj,
+       Object, out_obj,
+       Object, err_obj,
+       int, fd_3,
+       int, fd_4,
+       cstring, command,
+       Array, args);
+  return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
+                     fd_3, fd_4, command, args, process->program()->null_object());
+}
+
+PRIMITIVE(fork2) {
+  ARGS(SubprocessResourceGroup, resource_group,
+       bool, use_path,
+       Object, in_obj,
+       Object, out_obj,
+       Object, err_obj,
+       int, fd_3,
+       int, fd_4,
+       cstring, command,
+       Array, args,
+       Object, environment_object);
+  return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
+                     fd_3, fd_4, command, args, environment_object);
 }
 
 } // namespace toit

@@ -1445,7 +1445,7 @@ PRIMITIVE(float_trunc) {
   return Primitive::allocate_double(trunc(receiver), process);
 }
 
-static bool is_validated_string(Program* program, Object* object) {
+bool Primitive::is_validated_string(Program* program, Object* object) {
   // The only objects that are known to have valid UTF-8 sequences are
   // strings and string-slices.
   if (is_string(object)) return true;
@@ -1472,8 +1472,8 @@ PRIMITIVE(string_add) {
   // be really sure the primitive wasn't called in a different way. Otherwise
   // we can't be sure that the content only has valid strings.
   String* result;
-  if (!is_validated_string(process->program(), receiver)) WRONG_TYPE;
-  if (!is_validated_string(process->program(), other)) WRONG_TYPE;
+  if (!Primitive::is_validated_string(process->program(), receiver)) WRONG_TYPE;
+  if (!Primitive::is_validated_string(process->program(), other)) WRONG_TYPE;
   Blob receiver_blob;
   Blob other_blob;
   // These should always succeed, as the operator already checks the objects are strings.
@@ -1529,7 +1529,7 @@ PRIMITIVE(concat_strings) {
   Program* program = process->program();
   // First make sure we have an array of strings.
   for (int index = 0; index < array->length(); index++) {
-    if (!is_validated_string(process->program(), array->at(index))) WRONG_TYPE;
+    if (!Primitive::is_validated_string(process->program(), array->at(index))) WRONG_TYPE;
   }
   int length = 0;
   for (int index = 0; index < array->length(); index++) {
@@ -2281,6 +2281,42 @@ PRIMITIVE(serial_print_heap_report) {
   OS::heap_summary_report(max_pages, marker);
 #endif // def TOIT_CMPCTMALLOC
   return process->program()->null_object();
+}
+
+// Get some number of environment variables, starting at an index.
+// Returns an array of strings.  If there are nulls in the array
+// then there may be more to fetch.  Returns null when we are done.
+// Environment variables are returned as a string with key and value separated
+// by "=".
+PRIMITIVE(get_environment_variables) {
+  ARGS(int, start_index);
+#if defined (TOIT_FREERTOS)
+  // FreeRTOS supports environment variables, but we prefer not to expose them.
+  UNIMPLEMENTED_PRIMITIVE;
+#else
+  static const int MAX = 32;
+  Array* result = process->object_heap()->allocate_array(MAX, process->program()->null_object());
+  int index = 0;
+  for (int i = 0; index < MAX; i++) {
+    char* var = environ[i];
+    if (var == null) break;
+    if (i >= start_index) {
+      String* str = process->allocate_string(var, strlen(var));
+      if (str == null) {
+        if (index == 0) ALLOCATION_FAILED;  // We want at least one to succeed.
+        break;
+      }
+      result->at_put(index++, str);
+    }
+  }
+  if (index == 0) {
+    // start_index was too high, return null.
+    return process->program()->null_object();
+  } else {
+    // Return the environment vars so far.
+    return result;
+  }
+#endif
 }
 
 PRIMITIVE(get_env) {
