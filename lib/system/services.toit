@@ -366,9 +366,9 @@ class ServiceManager_ implements SystemMessageHandler_:
   static is_empty -> bool:
     return uninitialized or instance.services_by_uuid_.is_empty
 
-  listen uuid/string service/ServiceDefinition -> none:
+  listen uuid/string service/ServiceDefinition -> int:
     services_by_uuid_[uuid] = service
-    _client_.listen uuid
+    return _client_.listen uuid
 
   unlisten uuid/string -> none:
     _client_.unlisten uuid

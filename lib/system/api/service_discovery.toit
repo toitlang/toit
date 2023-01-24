@@ -14,10 +14,10 @@ interface ServiceDiscoveryService:
   discover uuid/string wait/bool -> int?
 
   static LISTEN_INDEX /int ::= 1
-  listen uuid/string -> none
+  listen uuid/string -> int
 
   static UNLISTEN_INDEX /int ::= 2
-  unlisten uuid/string -> none
+  unlisten id/int -> none
 
 class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDiscoveryService:
   constructor --open/bool=true:
@@ -32,5 +32,5 @@ class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDisc
   listen uuid/string -> none:
     invoke_ ServiceDiscoveryService.LISTEN_INDEX uuid
 
-  unlisten uuid/string -> none:
-    invoke_ ServiceDiscoveryService.UNLISTEN_INDEX uuid
+  unlisten id/int -> none:
+    invoke_ ServiceDiscoveryService.UNLISTEN_INDEX id

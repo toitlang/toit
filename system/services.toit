@@ -22,9 +22,16 @@ import system.services
 import monitor
 import system.api.service_discovery show ServiceDiscoveryService
 
+// Internal limits.
+SERVICE_ID_LIMIT_ /int ::= 0x3fff_ffff
+
 class SystemServiceManager extends ServiceDefinition implements ServiceDiscoveryService:
   service_managers_/Map ::= {:}  // Map<int, Set<int>>
-  services_by_pid_/Map ::= {:}   // Map<int, Set<string>>
+
+  services_/Map ::= {:}          // Map<int, int>
+  services_by_pid_/Map ::= {:}   // Map<int, Set<int>>
+
+  // ...
   services_by_uuid_/Map ::= {:}  // Map<string, int>
 
   signal_/monitor.Signal ::= monitor.Signal
@@ -43,23 +50,28 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
       return unlisten arguments
     unreachable
 
-  listen uuid/string pid/int -> none:
+  listen uuid/string pid/int -> int:
     if services_by_uuid_.contains uuid:
       throw "Already registered service:$uuid"
-    services_by_uuid_[uuid] = pid
+    id := assign_service_id_ pid
+    services_by_uuid_[uuid] = id
     service_managers_.get pid --init=(: {})
-    uuids := services_by_pid_.get pid --init=(: {})
-    uuids.add uuid
+    ids := services_by_pid_.get pid --init=(: {})
+    ids.add id
     signal_.raise
+    return id
 
-  unlisten uuid/string -> none:
-    pid := services_by_uuid_.get uuid
+  unlisten id/int -> none:
+    pid := services_.get id
     if not pid: return
-    services_by_uuid_.remove uuid
-    uuids := services_by_pid_.get pid
-    if not uuids: return
-    uuids.remove uuid
-    if not uuids.is_empty: return
+
+    // TODO(kasper): Clean up the discovery table.
+    // services_by_uuid_.remove uuid
+
+    ids := services_by_pid_.get pid
+    if not ids: return
+    ids.remove id
+    if not ids.is_empty: return
     service_managers_.remove pid
     services_by_pid_.remove pid
 
@@ -79,15 +91,22 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
     return target
 
   on_process_stop pid/int -> none:
-    uuids := services_by_pid_.get pid
+    ids := services_by_pid_.get pid
     // Iterate over a copy of the uuids, so we can manipulate the
     // underlying set in the call to unlisten.
-    if uuids: (Array_.from uuids).do: unlisten it
+    if ids: (Array_.from ids).do: unlisten it
     // Tell service managers about the termination.
     service_managers_.do: | manager/int processes/Set |
       if not processes.contains pid: continue.do
       processes.remove pid
       process_send_ manager SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS, pid]
+
+  assign_service_id_ pid/int -> int:
+    while true:
+      guess := random SERVICE_ID_LIMIT_
+      if services_.contains guess: continue
+      services_[guess] = pid
+      return guess
 
   discover uuid/string wait/bool -> int?:
     unreachable  // <-- TODO(kasper): nasty
