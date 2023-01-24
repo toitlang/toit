@@ -38,24 +38,20 @@ main:
 
 run_tests:
   working := [
-    // Uses > 4k buffer sizes.
-    //"amazon.com",
+    "amazon.com",
     "adafruit.com",
-    "ebay.de",
-    //"$(dns_lookup "amazon.com")/amazon.com",  // Connect to the IP address at the TCP level, but
+    // "ebay.de",  // Currently the IP that is returned first from DNS has connection refused.
+    "$(dns_lookup "amazon.com")/amazon.com",  // Connect to the IP address at the TCP level, but verify the cert name.
 
     "dkhostmaster.dk",
 
     "sha256.badssl.com",
     // "sha384.badssl.com",  Expired.
     // "sha512.badssl.com",  Expired.
-    // "100-sans.badssl.com"
-    // "10000-sans.badssl.com"
-    // "ecc256.badssl.com",  Expired.
-    // "ecc384.badssl.com",  Expired.
+    "ecc256.badssl.com",
+    "ecc384.badssl.com",
     "rsa2048.badssl.com",
     "rsa4096.badssl.com",
-    // "extended-validation.badssl.com",
     "mozilla-modern.badssl.com",
     "tls-v1-2.badssl.com:1012",
     "hsts.badssl.com",
