@@ -2272,12 +2272,25 @@ Expression* Parser::parse_string_interpolate() {
   ListBuilder<Expression*> expressions;
 
   bool is_multiline = current_token() == Token::STRING_PART_MULTI_LINE;
+  bool last_interpolated_was_identifier = false;
+  auto last_identifier_range = Source::Range::invalid();
+  auto check_minus_after_identifier = [&](Symbol current_data) {
+    if (last_interpolated_was_identifier &&
+        current_data.c_str()[0] == '-' &&
+        is_identifier_part(current_data.c_str()[1])) {
+      diagnostics()->report_warning(last_identifier_range,
+                                    "Interpolated identifiers followed by '-' must be parenthesized");
+    }
+  };
   Token::Kind end_token = is_multiline ? Token::STRING_END_MULTI_LINE : Token::STRING_END;
   Token::Kind kind;
   auto range = start;
   do {
-    parts.add(NEW_NODE(LiteralString(current_token_data(), is_multiline), range));
+    Symbol current_data = current_token_data();
+    check_minus_after_identifier(current_data);
+    parts.add(NEW_NODE(LiteralString(current_data, is_multiline), range));
     consume();
+    last_interpolated_was_identifier = false;
     scan_interpolated_part();
     // We just passed $.
     LiteralString* format = null;
@@ -2300,6 +2313,8 @@ Expression* Parser::parse_string_interpolate() {
       if (encountered_error) discard_buffered_scanner_states();
     } else if (current_token() == Token::IDENTIFIER) {
       expression = parse_identifier();
+      last_interpolated_was_identifier = true;
+      last_identifier_range = expression->range();
     } else {
       if (current_token() == Token::EOS || current_token() == Token::DEDENT) {
         report_error("Incomplete string interpolation");
@@ -2316,6 +2331,7 @@ Expression* Parser::parse_string_interpolate() {
     if (!was_parenthesized) {
       while (true) {
         if (scanner_peek() == '[') {
+          last_interpolated_was_identifier = false;
           bool encountered_error;
           expression = parse_postfix_index(expression, &encountered_error);
           if (encountered_error) {
@@ -2333,6 +2349,8 @@ Expression* Parser::parse_string_interpolate() {
           if (current_token() == Token::IDENTIFIER && is_current_token_attached()) {
             Identifier* name = parse_identifier();
             expression = NEW_NODE(Dot(expression, name), range);
+            last_interpolated_was_identifier = true;
+            last_identifier_range = range;
             continue;  // Try for another postfix.
           } else {
             report_error("Non-identifier member name");
@@ -2349,7 +2367,9 @@ Expression* Parser::parse_string_interpolate() {
     range = current_range();
   } while (kind != end_token);
 
-  parts.add(NEW_NODE(LiteralString(current_token_data(), is_multiline), range));
+  Symbol current_data  = current_token_data();
+  check_minus_after_identifier(current_data);
+  parts.add(NEW_NODE(LiteralString(current_data, is_multiline), range));
   consume();
   return NEW_NODE(LiteralStringInterpolation(parts.build(), formats.build(), expressions.build()), start);
 }
