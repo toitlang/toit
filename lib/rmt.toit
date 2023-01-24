@@ -432,15 +432,17 @@ class Channel:
   Sets the pin to open-drain, as the input channel would otherwise just read the signals of
     the output channel.
 
+  If $pull_up is true, then the internal pull-up is enabled.
+
   This function can be used to implement protocols that communicate over one wire, like
     the 1-wire protocol or the one used for DHTxx sensors.
 
   Any new call to $configure requires a new call to this function.
   */
-  static make_bidirectional --in/Channel --out/Channel:
+  static make_bidirectional --in/Channel --out/Channel --pull_up/bool=false:
     if not in.is_input or not out.is_output: throw "INVALID_STATE"
     if in.pin.num != out.pin.num: throw "INVALID_ARGUMENT"
-    rmt_config_bidirectional_pin_ out.pin.num out.resource_
+    rmt_config_bidirectional_pin_ out.pin.num out.resource_ pull_up
 
   is_configured -> bool:
     return configured_ != CONFIGURED_NONE_
@@ -582,7 +584,7 @@ rmt_set_idle_threshold_ resource/ByteArray threshold/int:
 rmt_get_idle_threshold_ resource/ByteArray -> int:
   #primitive.rmt.get_idle_threshold
 
-rmt_config_bidirectional_pin_ pin/int tx_resource/ByteArray:
+rmt_config_bidirectional_pin_ pin/int tx_resource/ByteArray enable_pullup/bool:
   #primitive.rmt.config_bidirectional_pin
 
 rmt_transmit_ resource/ByteArray signals_bytes/*/Blob*/:

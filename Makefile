@@ -77,7 +77,7 @@ else
 	$(error Invalid IDF_PATH. Missing mbedtls sources.)
 endif
 endif
-ifneq ('$(IDF_PATH)', '$(CURDIR)/third_party/esp-idf')
+ifneq ('$(realpath $(IDF_PATH))', '$(realpath $(CURDIR)/third_party/esp-idf)')
 	$(info -- Not using Toitware ESP-IDF fork.)
 endif
 

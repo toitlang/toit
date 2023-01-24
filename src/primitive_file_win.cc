@@ -497,8 +497,9 @@ PRIMITIVE(is_open_file) {
   ARGS(int, fd);
   int result = lseek(fd, 0, SEEK_CUR);
   if (result < 0) {
-    if (errno == ESPIPE) return process->program()->false_object();
-    if (errno == EBADF) INVALID_ARGUMENT;
+    if (errno == ESPIPE || errno == EINVAL || errno == EBADF) {
+      return process->program()->false_object();
+    }
     OTHER_ERROR;
   }
   return process->program()->true_object();

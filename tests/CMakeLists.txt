@@ -100,10 +100,7 @@ add_test(
   WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
   )
 
-if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows") AND (NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS"))
-  add_subdirectory(lsp)
-endif()
-
+add_subdirectory(lsp)
 add_subdirectory(minus_s)
 add_subdirectory(negative)
 add_subdirectory(type_propagation)

@@ -83,7 +83,7 @@ main args:
     server_from = FakePipe
     server_to   = FakePipe
     server_rpc_connection := RpcConnection (BufferedReader server_to) server_from
-    server := LspServer --no-use_rpc_filesystem server_rpc_connection null UriPathTranslator
+    server := LspServer server_rpc_connection null UriPathTranslator
     task:: catch --trace: server.run
 
   debug_file := parsed["debug-file"]

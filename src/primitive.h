@@ -431,7 +431,7 @@ namespace toit {
   PRIMITIVE(config_tx, 11)                   \
   PRIMITIVE(get_idle_threshold, 1)           \
   PRIMITIVE(set_idle_threshold, 2)           \
-  PRIMITIVE(config_bidirectional_pin, 2)     \
+  PRIMITIVE(config_bidirectional_pin, 3)     \
   PRIMITIVE(transmit, 2)                     \
   PRIMITIVE(transmit_done, 2)                \
   PRIMITIVE(prepare_receive, 1)              \
@@ -531,6 +531,7 @@ namespace toit {
   PRIMITIVE(set, 2)                          \
   PRIMITIVE(config_interrupt, 2)             \
   PRIMITIVE(last_edge_trigger_timestamp, 1)  \
+  PRIMITIVE(set_open_drain, 2)               \
 
 #define MODULE_ADC(PRIMITIVE)               \
   PRIMITIVE(init, 4)                        \

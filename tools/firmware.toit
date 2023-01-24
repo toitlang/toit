@@ -566,9 +566,24 @@ extract_binary envelope/Envelope --config_encoded/ByteArray -> ByteArray:
   system := entries.get SYSTEM_CONTAINER_NAME
   if system:
     // TODO(kasper): Take any other system assets into account.
-    assets_encoded := properties.get "wifi"
-        --if_present=: assets.encode { "wifi": tison.encode it }
-        --if_absent=: null
+    system_assets := {:}
+    // Encode any WiFi information.
+    properties.get "wifi" --if_present=: system_assets["wifi"] = tison.encode it
+    // Encode the list of images with their names.
+    images := {:}
+    entries.do: | name/string content/ByteArray |
+      if not (name == SYSTEM_CONTAINER_NAME or name.starts_with "\$" or name.starts_with "+"):
+        id/uuid.Uuid := ?
+        if is_snapshot_bundle content:
+          bundle := SnapshotBundle name content
+          id = bundle.uuid
+        else:
+          header := decode_image content
+          id = header.id
+        images[name] = id.to_byte_array
+    if not images.is_empty: system_assets["images"] = tison.encode images
+    // Encode the system assets and add them to the container.
+    assets_encoded := assets.encode system_assets
     containers.add (ContainerEntry SYSTEM_CONTAINER_NAME system --assets=assets_encoded)
 
   entries.do: | name/string content/ByteArray |

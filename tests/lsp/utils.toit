@@ -25,10 +25,15 @@ class Location:
   constructor .path .line .column:
 
   operator== other/Location:
-    return path == other.path and line == other.line and column == other.column
+    return (to_slash_ path) == (to_slash_ other.path) and line == other.line and column == other.column
 
   stringify -> string:
     return "$path:$line:$column"
+
+  static to_slash_ path/string -> string:
+    if platform == PLATFORM_WINDOWS:
+      return path.replace --all "\\" "/"
+    return path
 
 // Also imports all relatively imported files.
 // Fails if there is an indirect recursion (directly importing itself is ok).

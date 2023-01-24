@@ -44,19 +44,19 @@ class Compiler:
   on_error_            /Lambda?     ::= ?
   timeout_ms_          /int         ::= ?
   protocol             /FileServerProtocol ::= ?
-  project_path_        /string?     ::= ?
+  project_uri_         /string?     ::= ?
 
   constructor
       .compiler_path_
       .uri_path_translator_
       .timeout_ms_
       --.protocol
-      --project_path/string?
+      --project_uri/string?
       --on_error/Lambda?=null
       --on_crash/Lambda?=null:
     on_crash_ = on_crash
     on_error_ = on_error
-    project_path_ = project_path
+    project_uri_ = project_uri
 
   /**
   Builds the flags that are passed to the compiler.
@@ -65,10 +65,12 @@ class Compiler:
     args := [
       "--lsp",
     ]
-    if project_path_:
-      package_lock := "$project_path_/package.lock"
+    if project_uri_:
+      project_path_local := uri_path_translator_.to_path project_uri_
+      package_lock := "$project_path_local/package.lock"
       if file.is_file package_lock:
-        args += ["--project-root", project_path_]
+        project_path_compiler := uri_path_translator_.to_path project_uri_ --to_compiler
+        args += ["--project-root", project_path_compiler]
     return args
 
   /**
@@ -142,10 +144,10 @@ class Compiler:
     latch := monitor.Latch
     task:: catch --trace:
       paths := uris.map: | uri |
-        path := uri_path_translator_.to_path uri
+        path := uri_path_translator_.to_path uri --to_compiler
         // There are multiple ways to encode URIs. Check that the uri is already
         // canonicalized.
-        assert: uri == (uri_path_translator_.to_uri path)
+        assert: uri == (uri_path_translator_.to_uri path --from_compiler)
         path
       result := null
 
@@ -190,7 +192,7 @@ class Compiler:
             range := null
             if with_position:
               error_path = reader.read_line
-              error_uri = uri_path_translator_.to_uri error_path
+              error_uri = uri_path_translator_.to_uri error_path --from_compiler
               range = read_range reader
             msg := ""
             while true:
@@ -240,7 +242,7 @@ class Compiler:
     return latch.get
 
   complete uri/string line_number/int column_number/int -> List/*<string>*/:
-    path := uri_path_translator_.to_path uri
+    path := uri_path_translator_.to_path uri --to_compiler
     // We don't care if the compiler crashed.
     // Just send whatever completions we get.
     run --compiler_input="COMPLETE\n$path\n$line_number\n$column_number\n":
@@ -256,7 +258,7 @@ class Compiler:
     unreachable
 
   goto_definition uri/string line_number/int column_number/int -> List/*<Location>*/:
-    path := uri_path_translator_.to_path uri
+    path := uri_path_translator_.to_path uri --to_compiler
     // We don't care if the compiler crashed.
     // Just send the definitions we got.
     run --compiler_input="GOTO DEFINITION\n$path\n$line_number\n$column_number\n":
@@ -267,7 +269,7 @@ class Compiler:
         line := reader.read_line
         if line == null: break
         location := Location
-          --uri= uri_path_translator_.to_uri line
+          --uri= uri_path_translator_.to_uri line --from_compiler
           --range= read_range reader
         definitions.add location
 
@@ -284,7 +286,7 @@ class Compiler:
         if not data: break
 
   snapshot_bundle uri/string -> ByteArray?:
-    path := uri_path_translator_.to_path uri
+    path := uri_path_translator_.to_path uri --to_compiler
     run --compiler_input="SNAPSHOT BUNDLE\n$path\n":
       |reader /BufferedReader|
       status := reader.read_line
@@ -314,7 +316,7 @@ class Compiler:
   ]
 
   semantic_tokens uri/string -> List:
-    path := uri_path_translator_.to_path uri
+    path := uri_path_translator_.to_path uri --to_compiler
     run --compiler_input="SEMANTIC TOKENS\n$path\n":
       |reader /BufferedReader|
       element_count := int.parse reader.read_line
@@ -335,10 +337,11 @@ class Compiler:
     entry_count := int.parse reader.read_line
     result := {:}
     entry_count.repeat:
-      source_uri := uri_path_translator_.to_uri reader.read_line
+      source_uri := uri_path_translator_.to_uri reader.read_line --from_compiler
       direct_deps_count := int.parse reader.read_line
       direct_deps := {}
-      direct_deps_count.repeat: direct_deps.add (uri_path_translator_.to_uri reader.read_line)
+      direct_deps_count.repeat:
+        direct_deps.add (uri_path_translator_.to_uri reader.read_line --from_compiler)
       result[source_uri] = direct_deps
 
     return result

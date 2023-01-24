@@ -303,7 +303,7 @@ class SummaryReader:
 
   constructor .reader_ .uri_path_translator_:
 
-  to_uri_ path / string -> string: return uri_path_translator_.to_uri path
+  to_uri_ path / string -> string: return uri_path_translator_.to_uri path --from_compiler
 
   read_summary -> Map/*<uri, Module>*/:
     module_count := read_int
@@ -597,13 +597,9 @@ class Lines:
 
   constructor text/string:
     offsets_.add 0
-    previous := '\0'
     text.size.repeat:
       c := text.at it --raw
-      if (c == '\r' and previous != '\r') or
-          (c == '\n' and previous != '\r'):
-        offsets_.add (it + 1)
-      previous = c
+      if c == '\n': offsets_.add (it + 1)
     offsets_.add text.size
 
   lsp_position_for_offset offset/int -> lsp.Position:

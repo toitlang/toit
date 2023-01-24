@@ -60,31 +60,76 @@ percent_decode_ str:
 
 /** Converts between LSP URIs and toitc paths. */
 class UriPathTranslator:
-  path_mapping_ /Map/*<string, string>*/ ::= ?
-
-  constructor this.path_mapping_={"file://" : ""}:
-
-  to_uri path/string -> string:
+  to_uri path/string --from_compiler/bool=false -> string:
     if path.starts_with VIRTUAL_FILE_MARKER_:
       return path.trim --left VIRTUAL_FILE_MARKER_
 
-    path_mapping_.do: | uri_prefix path_prefix |
-      if path.starts_with path_prefix:
-        without_path_prefix := path.trim --left path_prefix
-        encoded := percent_encode_ without_path_prefix
-        return uri_prefix + encoded
-    assert: path.starts_with "/"
-    return path.trim --left "/"
+    if platform == PLATFORM_WINDOWS and from_compiler:
+      // The compiler keeps a '/' to know whether a path is absolute or not.
+      assert: path.starts_with "/"
+      path = path.trim --left "/"
 
-  to_path uri/string -> string:
-    path_mapping_.do: | uri_prefix path_prefix |
-      if uri.starts_with uri_prefix:
-        without_uri_prefix := uri.trim --left uri_prefix
-        decoded := percent_decode_ without_uri_prefix
-        return path_prefix + decoded
+    // As soon as there is a protocol/authority, the path must be absolute.
+    // Here the protocol is "file://".
+    // We would like to check that the path is absolute, but the compiler
+    // works with a '/' in front, and might walk up the directory tree to
+    // find the lock file. In that case it can remove the drive segment and
+    // thus end up with a relative path.
+
+    if platform == PLATFORM_WINDOWS:
+      // CMake uses forward slashes in the source-bundle. However, the protocol
+      // requires backslashes.
+      path = path.replace --all "/" "\\"
+      // RFC8089 states that a URI takes the form of 'file://host/path'.
+      // The 'host' part is optional, in which case we end up with
+      // three slashes.
+      // The 'path' is always absolute, and on Linux, we don't add the
+      // additional leading '/' for the root.
+      // However, on Windows, we have to add the leading '/' to start the
+      // path part.
+      path = "/$path"
+    assert: path.starts_with "/"
+    encoded := percent_encode_ path
+    return "file://" + encoded
+
+  to_path uri/string --to_compiler/bool=false -> string:
+    if uri.starts_with "file://":
+      without_uri_prefix := uri.trim --left "file://"
+      decoded := percent_decode_ without_uri_prefix
+      if platform == PLATFORM_WINDOWS:
+        if to_compiler:
+          decoded = decoded.replace --all "\\" "/"
+        else:
+          // This should always be the case.
+          // Remove the leading '/'.
+          decoded = decoded.trim --left "/"
+      return decoded
     // For every other uri assume that it's stored in the source-bundle and
     // mark it as virtual.
     return "$VIRTUAL_FILE_MARKER_$uri"
 
-  // Returns a canonicalized version of the uri.
+  compiler_path_to_local_path compiler_path/string -> string:
+    if platform == PLATFORM_WINDOWS:
+      assert: compiler_path.starts_with "/"
+      return compiler_path[1..].replace --all "/" "\\"
+    return compiler_path
+
+  local_path_to_compiler_path local_path/string -> string:
+    assert: is_absolute_ local_path
+    if platform == PLATFORM_WINDOWS:
+      return "/$local_path"
+    return local_path
+
+  /**
+  Returns a canonicalized version of the $uri.
+
+  Specifically deals with different ways of percent-encoding.
+  */
   canonicalize uri/string -> string: return to_uri (to_path uri)
+
+  is_absolute_ path/string -> bool:
+    if path.starts_with "/": return true
+    if platform == PLATFORM_WINDOWS:
+      if path.starts_with "\\\\": return true
+      if path.size >= 2 and path[1] == ':': return true
+    return false
