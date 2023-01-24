@@ -33,7 +33,7 @@ namespace compiler {
 static const char PATH_SEPARATOR = '\\';
 
 // We accept both '/' and '\' as path separators.
-static bool is_path_separator(char c) {
+static bool is_path_separator_(char c) {
   return c == '/' || c == '\\';
 }
 
@@ -62,17 +62,31 @@ static int root_prefix_length(const char* path) {
   }
   int length = strlen(path);
   if (length == 0) return 0;
-  if (is_path_separator(path[0])) {
+  if (is_path_separator_(path[0])) {
     if (length == 1) return 0;  // Drive root is not absolute.
     if (path[1] == path[0]) return 2;  // Network path.
       return 0;
   }
   if (length < 3) return 0;
   bool is_ascii_drive = ('a' <= path[0] && path[0] <= 'z') || ('A' <= path[0] && path[0] <= 'Z');
-  if (is_ascii_drive && path[1] == ':' && is_path_separator(path[2])) {
+  if (is_ascii_drive && path[1] == ':' && is_path_separator_(path[2])) {
     return 3;  // Drive root.
   }
   return 0;
+}
+
+const char* FilesystemLocal::relative_anchor(const char* path) {
+  ASSERT(!is_absolute(path));
+  if (path[0] == '/') {  // Safe to access even for empty strings.
+    // TODO(florian): error checking.
+    DWORD result_length = GetFullPathName("/", 0, NULL, NULL);
+    char* result = unvoid_cast<char*>(malloc(result_length));
+
+    GetFullPathName("/", result_length, result, NULL);
+    result[result_length] = '\0';
+    return result;
+  }
+  return cwd();
 }
 
 bool FilesystemLocal::is_absolute(const char* path) {
@@ -83,9 +97,12 @@ char FilesystemLocal::path_separator() {
   return PATH_SEPARATOR;
 }
 
+bool FilesystemLocal::is_path_separator(char c) {
+  return is_path_separator_(c);
+}
+
 char* FilesystemLocal::root(const char* path) {
   int prefix_length = root_prefix_length(path);
-  ASSERT(prefix_length != 0);
   char* result = new char[prefix_length + 1];
   memcpy(result, path, prefix_length);
   result[prefix_length] = '\0';
@@ -104,7 +121,7 @@ char* FilesystemLocal::to_local_path(const char* path) {
   char* result = strdup(path);
   int length = strlen(path);
   for (int i = 0; i < length; i++) {
-    if (result[i] == '/') result[i] = PATH_SEPARATOR;
+    if (is_path_separator_(result[i])) result[i] = PATH_SEPARATOR;
   }
   return result;
 }
