@@ -385,8 +385,12 @@ class ServiceManager_ implements SystemMessageHandler_:
     service/ServiceDefinition? ::= services_.get id
     if not service: throw "Unknown service:$id"
     service._validate_ uuid major minor
+
     clients/Set ::= clients_by_pid_.get pid --init=(: {})
-    if clients.is_empty and pid != Process.current.id: _client_.watch pid
+    if clients.is_empty and pid != Process.current.id:
+      // From this point forward, we need to be told if the client
+      // process goes away so we can clean up.
+      _client_.watch pid
 
     client ::= assign_client_id_ pid
     clients.add client
