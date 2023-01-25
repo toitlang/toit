@@ -32,7 +32,10 @@ abstract class ServiceClient:
   _pid_/int? := null
 
   _name_/string? := null
-  _version_/List? := null
+  _major_/int := 0
+  _minor_/int := 0
+  _patch_/int := 0
+
   _default_timeout_/Duration? ::= ?
 
   static DEFAULT_OPEN_TIMEOUT /Duration ::= Duration --ms=100
@@ -71,9 +74,11 @@ abstract class ServiceClient:
     // This returns the client id necessary for invoking service methods.
     definition ::= rpc.invoke pid RPC_SERVICES_OPEN_ [id, uuid, major, minor]
     _pid_ = pid
-    _id_ = definition[2]
-    _name_ = definition[0]
-    _version_ = definition[1]
+    _id_ = definition[0]
+    _name_ = definition[1]
+    _major_ = definition[2]
+    _minor_ = definition[3]
+    _patch_ = definition[4]
     // Close the client if the reference goes away, so the service
     // process can clean things up.
     add_finalizer this:: close
@@ -86,25 +91,25 @@ abstract class ServiceClient:
     return _name_
 
   major -> int:
-    return _version_[0]
+    return _major_
 
   minor -> int:
-    return _version_[1]
+    return _minor_
 
   patch -> int:
-    return _version_[2]
+    return _patch_
 
   close -> none:
     id := _id_
     if not id: return
     pid := _pid_
-    _id_ = _name_ = _version_ = _pid_ = null
+    _id_ = _name_ = _pid_ = null
     remove_finalizer this
     ServiceResourceProxyManager_.unregister_all id
     critical_do: rpc.invoke pid RPC_SERVICES_CLOSE_ id
 
   stringify -> string:
-    return "service:$_name_@$(_version_.join ".")"
+    return "service:$_name_@$(_major_).$(_minor_).$(_patch_)"
 
   invoke_ index/int arguments/any -> any:
     id := _id_
@@ -120,15 +125,16 @@ abstract class ServiceClient:
     // close after timing out, it should still work.
     critical_do: rpc.invoke _pid_ RPC_SERVICES_CLOSE_RESOURCE_ [id, handle]
 
-abstract class ServiceDefinition:
-  name/string ::= ?
-  _version_/List ::= ?
+interface ServiceHandler:
+  handle pid/int client/int index/int arguments/any-> any
 
-  // TODO(kasper): Can we combine these somehow?
-  _uuids_/List ::= []
-  _versions_/List ::= []
-  _extras_/List ::= []
+abstract class ServiceProvider:
+  name/string
+  major/int
+  minor/int
+  patch/int
 
+  _services_/List ::= []
   _manager_/ServiceManager_? := null
   _ids_/List? := null
 
@@ -139,15 +145,8 @@ abstract class ServiceDefinition:
   _resources_/Map ::= {:}  // Map<int, Map<int, Object>>
   _resource_handle_next_/int := ?
 
-  constructor .name --major/int --minor/int --patch/int=0:
-    _version_ = [major, minor, patch]
+  constructor .name --.major/int --.minor/int --.patch/int=0:
     _resource_handle_next_ = random RESOURCE_HANDLE_LIMIT_
-
-  abstract handle pid/int client/int index/int arguments/any-> any
-
-  // Better name?
-  preferred_id -> int?:
-    return null
 
   on_opened client/int -> none:
     // Override in subclasses.
@@ -155,21 +154,21 @@ abstract class ServiceDefinition:
   on_closed client/int -> none:
     // Override in subclasses.
 
-  version -> string:
-    return _version_.join "."
-
   stringify -> string:
-    return "service:$name@$version"
+    return "service:$name@$(major).$(minor).$(patch)"
 
   provides uuid/string major/int minor/int -> none
+      --handler/ServiceHandler
       --id/int?=null
-      --priority/int?=null:
-    _uuids_.add uuid
-    _versions_.add [major, minor]
-    if id or priority:
-      _extras_.add [id, priority]
-    else:
-      _extras_.add null
+      --priority/int=100:
+    service := Service_
+        --uuid=uuid
+        --major=major
+        --minor=minor
+        --handler=handler
+        --id=id
+        --priority=priority
+    _services_.add service
 
   install -> none:
     if _manager_: throw "Already installed"
@@ -177,18 +176,7 @@ abstract class ServiceDefinition:
     _clients_closed_ = 0
     // TODO(kasper): Handle the case where one of the calls
     // to listen fails.
-    _ids_ = Array_ _uuids_.size
-    _uuids_.size.repeat:
-      uuid := _uuids_[it]
-
-      id := null
-      priority := 100  // TODO(kasper): Default priority. Get from service definition?
-      extra := _extras_[it]
-      if extra and extra[0]: id = extra[0]
-      if extra and extra[1]: priority = extra[1]
-
-      _ids_[it] = _manager_.listen id uuid priority this
-      assert: not id or id == _ids_[it]
+    _ids_ = Array_ _services_.size: _manager_.listen _services_[it] this
 
   uninstall --wait/bool=false -> none:
     if wait:
@@ -209,7 +197,7 @@ abstract class ServiceDefinition:
   _open_ client/int -> List:
     _clients_.add client
     catch --trace: on_opened client
-    return [ name, _version_, client ]
+    return [ client, name, major, minor, patch ]
 
   _close_ client/int -> none:
     resources ::= _resources_.get client
@@ -251,14 +239,18 @@ abstract class ServiceDefinition:
     _resource_handle_next_ = (next >= RESOURCE_HANDLE_LIMIT_) ? 0 : next
     return (handle << 1) + (notifiable ? 1 : 0)
 
-  _validate_ uuid/string major/int minor/int -> none:
-    index := _uuids_.index_of uuid
-    if index < 0: throw "$this does not provide service:$uuid"
-    version := _versions_[index]
-    if major != version[0]:
+  _validate_ uuid/string major/int minor/int -> Service_:
+    service/Service_? := _lookup_ uuid
+    if not service: throw "$this does not provide service:$uuid"
+    if major != service.major:
       throw "$this does not provide service:$uuid@$(major).x"
-    if minor > version[1]:
+    if minor > service.minor:
       throw "$this does not provide service:$uuid@$(major).$(minor).x"
+    return service
+
+  _lookup_ uuid/string -> Service_?:
+    _services_.do: if it.uuid == uuid: return it
+    return null
 
   _uninstall_ -> none:
     if not _resources_.is_empty: throw "Leaked $_resources_"
@@ -268,13 +260,23 @@ abstract class ServiceDefinition:
     _ids_ = null
     _manager_ = null
 
+// TODO(kasper): Document this a bit.
+abstract class ServiceDefinition extends ServiceProvider implements ServiceHandler:
+  constructor name/string --major/int --minor/int --patch/int=0:
+    super name --major=major --minor=minor --patch=patch
+
+  abstract handle pid/int client/int index/int arguments/any-> any
+
+  provides uuid/string major/int minor/int:
+    super uuid major minor --handler=this
+
 abstract class ServiceResource implements rpc.RpcSerializable:
-  _service_/ServiceDefinition? := ?
+  _provider_/ServiceProvider? := ?
   _client_/int ::= ?
   _handle_/int? := null
 
-  constructor ._service_ ._client_ --notifiable/bool=false:
-    _handle_ = _service_._register_resource_ _client_ this notifiable
+  constructor ._provider_ ._client_ --notifiable/bool=false:
+    _handle_ = _provider_._register_resource_ _client_ this notifiable
 
   abstract on_closed -> none
 
@@ -290,14 +292,14 @@ abstract class ServiceResource implements rpc.RpcSerializable:
     handle := _handle_
     if not handle: throw "ALREADY_CLOSED"
     if handle & 1 == 0: throw "Resource not notifiable"
-    _service_._manager_.notify _client_ handle notification
+    _provider_._manager_.notify _client_ handle notification
 
   close -> none:
     handle := _handle_
     if not handle: return
-    service := _service_
-    _handle_ = _service_ = null
-    service._unregister_resource_ _client_ handle
+    provider := _provider_
+    _handle_ = _provider_ = null
+    provider._unregister_resource_ _client_ handle
     on_closed
 
   serialize_for_rpc -> int:
@@ -333,6 +335,18 @@ abstract class ServiceResourceProxy:
     if handle & 1 == 1:
       ServiceResourceProxyManager_.instance.unregister client_.id handle
     catch --trace: client_._close_resource_ handle
+
+class Service_:
+  uuid/string
+  major/int
+  minor/int
+
+  handler/ServiceHandler
+  id/int?
+  priority/int
+
+  constructor --.uuid --.major --.minor --.handler --.id --.priority:
+    // Do nothing.
 
 class ServiceResourceProxyManager_ implements SystemMessageHandler_:
   static instance ::= ServiceResourceProxyManager_
@@ -374,11 +388,12 @@ class ServiceManager_ implements SystemMessageHandler_:
 
   broker_/broker.RpcBroker ::= broker.RpcBroker
 
-  clients_/Map ::= {:}                // Map<int, int>
-  clients_by_pid_/Map ::= {:}         // Map<int, Set<int>>
+  clients_/Map ::= {:}              // Map<int, int>
+  clients_by_pid_/Map ::= {:}       // Map<int, Set<int>>
 
-  services_/Map ::= {:}               // Map<int, ServiceDefinition>
-  services_by_client_/Map ::= {:}     // Map<int, ServiceDefinition>
+  providers_/Map ::= {:}            // Map<int, ServiceProvider>
+  providers_by_client_/Map ::= {:}  // Map<int, ServiceProvider>
+  handlers_by_client_/Map ::= {:}   // Map<int, ServiceHandler>
 
   constructor:
     set_system_message_handler_ SYSTEM_RPC_NOTIFY_TERMINATED_ this
@@ -388,34 +403,34 @@ class ServiceManager_ implements SystemMessageHandler_:
       close arguments
     broker_.register_procedure RPC_SERVICES_INVOKE_:: | arguments _ pid |
       client/int ::= arguments[0]
-      service ::= services_by_client_[client]
-      service.handle pid client arguments[1] arguments[2]
+      handler/ServiceHandler ::= handlers_by_client_[client]
+      handler.handle pid client arguments[1] arguments[2]
     broker_.register_procedure RPC_SERVICES_CLOSE_RESOURCE_:: | arguments |
       client/int ::= arguments[0]
-      services_by_client_.get client --if_present=: | service/ServiceDefinition |
-        resource/ServiceResource? := service._find_resource_ client arguments[1]
+      providers_by_client_.get client --if_present=: | provider/ServiceProvider |
+        resource/ServiceResource? := provider._find_resource_ client arguments[1]
         if resource: resource.close
     broker_.install
     uninitialized = false
 
   static is_empty -> bool:
-    return uninitialized or instance.services_.is_empty
+    return uninitialized or instance.providers_.is_empty
 
-  listen id/int? uuid/string priority/int service/ServiceDefinition -> int:
-    id = assign_id_ id services_ service
+  listen service/Service_ provider/ServiceProvider -> int:
+    id := assign_id_ service.id providers_ provider
     // TODO(kasper): Clean up in the services
     // table if listen fails?
-    _client_.listen id uuid priority
+    _client_.listen id service.uuid service.priority
     return id
 
   unlisten id/int -> none:
     _client_.unlisten id
-    services_.remove id
+    providers_.remove id
 
   open pid/int id/int uuid/string major/int minor/int -> List:
-    service/ServiceDefinition? ::= services_.get id
-    if not service: throw "Unknown service:$id"
-    service._validate_ uuid major minor
+    provider/ServiceProvider? ::= providers_.get id
+    if not provider: throw "Unknown service:$id"
+    service := provider._validate_ uuid major minor
 
     clients/Set ::= clients_by_pid_.get pid --init=(: {})
     if clients.is_empty and pid != Process.current.id:
@@ -425,8 +440,9 @@ class ServiceManager_ implements SystemMessageHandler_:
 
     client ::= assign_id_ null clients_ pid
     clients.add client
-    services_by_client_[client] = service
-    return service._open_ client
+    providers_by_client_[client] = provider
+    handlers_by_client_[client] = service.handler
+    return provider._open_ client
 
   notify client/int handle/int notification/any -> none:
     pid/int? := clients_.get client
@@ -438,9 +454,10 @@ class ServiceManager_ implements SystemMessageHandler_:
     pid/int? := clients_.get client
     if not pid: return  // Already closed.
     clients_.remove client
-    // Unregister the client in the service client set.
-    service/ServiceDefinition := services_by_client_[client]
-    services_by_client_.remove client
+    // Unregister the client in the client sets.
+    provider/ServiceProvider := providers_by_client_[client]
+    providers_by_client_.remove client
+    handlers_by_client_.remove client
     // Only unregister the client from the clients set
     // for the pid if we haven't already done so as part
     // of a call to $close_all.
@@ -448,7 +465,7 @@ class ServiceManager_ implements SystemMessageHandler_:
     if clients:
       clients.remove client
       if clients.is_empty: clients_by_pid_.remove pid
-    service._close_ client
+    provider._close_ client
 
   close_all pid/int -> none:
     clients/Set? ::= clients_by_pid_.get pid

@@ -14,7 +14,7 @@
 // directory of this repository.
 
 import monitor
-import system.services show ServiceDefinition
+import system.services show ServiceProvider ServiceHandler
 import system.api.service_discovery show ServiceDiscoveryService
 
 class DiscoverableService:
@@ -24,7 +24,7 @@ class DiscoverableService:
   priority/int
   constructor --.pid --.id --.uuid --.priority:
 
-class SystemServiceManager extends ServiceDefinition implements ServiceDiscoveryService:
+class SystemServiceManager extends ServiceProvider implements ServiceDiscoveryService ServiceHandler:
   service_managers_/Map ::= {:}  // Map<int, Set<int>>
 
   services_by_pid_/Map ::= {:}   // Map<int, Map<int, DiscoverableService>>>
@@ -35,6 +35,7 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
   constructor:
     super "system/service-discovery" --major=0 --minor=1 --patch=1
     provides ServiceDiscoveryService.UUID ServiceDiscoveryService.MAJOR ServiceDiscoveryService.MINOR
+        --handler=this
         --id=0
     install
 

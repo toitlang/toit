@@ -34,9 +34,9 @@ main:
   expect.expect_equals 3 tests
 
 with_installed_services --priority_a/int --priority_b/int [block]:
-  service_a := PingServiceDefinition "A" --priority=priority_a
+  service_a := PingServiceProvider "A" --priority=priority_a
   service_a.install
-  service_b := PingServiceDefinition "B" --priority=priority_b
+  service_b := PingServiceProvider "B" --priority=priority_b
   service_b.install
 
   try:
@@ -59,13 +59,14 @@ class PingServiceClient extends services.ServiceClient implements PingService:
 
 // ------------------------------------------------------------------
 
-class PingServiceDefinition extends services.ServiceDefinition implements PingService:
+class PingServiceProvider extends services.ServiceProvider implements PingService services.ServiceHandler:
   identifier/string
 
   constructor .identifier --priority/int?=null:
     super "ping/$identifier" --major=1 --minor=2 --patch=5
     provides PingService.UUID PingService.MAJOR PingService.MINOR
         --priority=priority
+        --handler=this
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == PingService.PING_INDEX: return ping
