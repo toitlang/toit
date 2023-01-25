@@ -490,9 +490,9 @@ static Object* fork_helper(
 
   wchar_t* new_environment = NULL;
   if (environment) {
-    uint16* old_environment = static_cast<uint16*>(GetEnvironmentStringsW());
-    new_environment = static_cast<wchar_t*>(Utils::create_new_environment(process, old_environment, environment));
-    FreeEnvironmentStringsW(static_cast<wchar_t*>(old_environment));
+    uint16* old_environment = reinterpret_cast<uint16*>(GetEnvironmentStringsW());
+    new_environment = reinterpret_cast<wchar_t*>(Utils::create_new_environment(process, old_environment, environment));
+    FreeEnvironmentStringsW(reinterpret_cast<wchar_t*>(old_environment));
   }
 
   if (!CreateProcess(NULL,
