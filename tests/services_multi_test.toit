@@ -31,12 +31,28 @@ main:
     expect.expect_throw "Cannot disambiguate": PingServiceClient
     tests++
 
+/*
+  with_installed_services --priority_a=30 --priority_b=30:
+    client := (PingServiceClient --no-open).
+
+      // ...
+    client.ping
+    expect.expect_equals "ping/B" client.name
+    tests++
+*/
+
   expect.expect_equals 3 tests
 
-with_installed_services --priority_a/int --priority_b/int [block]:
-  service_a := PingServiceProvider "A" --priority=priority_a
+with_installed_services --priority_a/int --priority_b [block]:
+  with_installed_services
+      --create_a=(: PingServiceProvider "A" --priority=priority_a)
+      --create_b=(: PingServiceProvider "B" --priority=priority_b)
+      block
+
+with_installed_services [--create_a] [--create_b] [block]:
+  service_a := create_a.call
   service_a.install
-  service_b := PingServiceProvider "B" --priority=priority_b
+  service_b := create_b.call
   service_b.install
 
   try:
@@ -59,14 +75,16 @@ class PingServiceClient extends services.ServiceClient implements PingService:
 
 // ------------------------------------------------------------------
 
-class PingServiceProvider extends services.ServiceProvider implements PingService services.ServiceHandler:
-  identifier/string
-
-  constructor .identifier --priority/int?=null:
+class PingServiceProvider extends services.ServiceProvider:
+  constructor identifier/string --priority/int?=null:
     super "ping/$identifier" --major=1 --minor=2 --patch=5
     provides PingService.UUID PingService.MAJOR PingService.MINOR
+        --handler=PingHandler identifier
         --priority=priority
-        --handler=this
+
+class PingHandler implements services.ServiceHandler PingService:
+  identifier/string
+  constructor .identifier:
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == PingService.PING_INDEX: return ping
