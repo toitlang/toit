@@ -323,10 +323,15 @@ word Utils::utf_8_to_16(const uint8* input, word length, uint16* output, word ou
   for (word i = 0; i < length; ) {
     uint8 prefix = input[i];
     word count = Utils::bytes_in_utf_8_sequence(prefix);
-    int c = Utils::payload_from_prefix(prefix);
-    for (word j = 1; j < count; j++) {
-      c <<= Utils::UTF_8_BITS_PER_BYTE;
-      c |= input[i + j] & Utils::UTF_8_MASK;
+    int c;
+    if (prefix > Utils::MAX_ASCII) {
+      c = Utils::payload_from_prefix(prefix);
+      for (word j = 1; j < count; j++) {
+        c <<= Utils::UTF_8_BITS_PER_BYTE;
+        c |= input[i + j] & Utils::UTF_8_MASK;
+      }
+    } else {
+      c = prefix;
     }
     if (c < 0x10000) {
       if (output) {
@@ -339,8 +344,8 @@ word Utils::utf_8_to_16(const uint8* input, word length, uint16* output, word ou
       if (output) {
         c -= 0x10000;
         if (size + 1 >= output_length) return -1;
-        output[size] = 0xdc00 + (c & 0x3ff);
-        output[size + 1] = 0xd800 + (c >> 10);
+        output[size] = 0xd800 + (c >> 10);
+        output[size + 1] = 0xdc00 + (c & 0x3ff);
       }
       size += 2;
     }
@@ -356,13 +361,13 @@ word Utils::utf_8_to_16(const uint8* input, word length, uint16* output, word ou
 word Utils::utf_16_to_8(const uint16* input, word length, uint8* output, word output_length) {
   word size = 0;
   for (word i = 0; i < length; i++) {
-    int c = input[length];
+    int c = input[i];
     if (Utils::MIN_SURROGATE <= c && c <= Utils::MAX_SURROGATE) {
       // Surrogate pairs.
       int decoded = 0xfffd;  // Substitute character for illegal sequences.
       if (i + 1 != length) {
         uint16 part2 = input[i + 1];
-        if (0xdc00 <= c && c <= 0xdfff && 0xd800 <= part2 && part2 <= 0xdbff) {
+        if (0xd800 <= c && c <= 0xdbff && 0xdc00 <= part2 && part2 <= 0xdfff) {
           decoded = 0x10000 + ((c & 0x3ff) << 10) + (part2 & 0x3ff);
           i++;
         }
