@@ -108,27 +108,48 @@ const char* current_dir(Process* process) {
   return current_directory;
 }
 
-HeapObject* get_relative_path(Process* process, const char* pathname, char* output) {
+HeapObject* get_absolute_path(Process* process, const char* pathname, char* output) {
   size_t pathname_length = strlen(pathname);
 
   // Poor man's version. For better platform handling, use UNICODE and PathCchAppendEx.
-  if (pathname[0] == '\\' ||
-      (pathname_length > 2 && pathname[1] == ':' && (pathname[2] == '\\' || pathname[2] == '/'))) {
+  // TODO(florian): we should probably use PathCchCombine here. That would remove
+  // all the special checks.
+
+  if (!PathIsRelative(pathname)) {
     if (GetFullPathName(pathname, MAX_PATH, output, NULL) == 0) WINDOWS_ERROR;
-  } else {
-    const char* current_directory = current_dir(process);
-    if (!current_directory) MALLOC_FAILED;
-    char temp[MAX_PATH];
-    if (snprintf(temp, MAX_PATH, "%s\\%s", current_directory, pathname) >= MAX_PATH) INVALID_ARGUMENT;
-    if (GetFullPathName(temp, MAX_PATH, output, NULL) == 0) WINDOWS_ERROR;
+    return null;
   }
+
+  const char* current_directory = current_dir(process);
+  if (!current_directory) MALLOC_FAILED;
+
+  // Check if the path is rooted. On Windows paths might not be absolute, but
+  // relative to the drive/root of the current working directory.
+  // For example the path `\foo\bar` is a rooted path which is relative to
+  // the drive of the current working directory.
+  char root[MAX_PATH];
+  const char* relative_to = null;
+  if (pathname_length > 0 && (pathname[0] == '\\' || pathname[0] == '/')) {
+    // Relative to the root of the drive/share.
+    // For example '\foo\bar' is rooted to the current directory's drive.
+    strncpy(root, current_directory, MAX_PATH);
+    root[MAX_PATH - 1] = '\0';
+    if (!PathStripToRoot(root)) WINDOWS_ERROR;
+    relative_to = root;
+  } else {
+    relative_to = current_directory;
+  }
+
+  char temp[MAX_PATH];
+  if (snprintf(temp, MAX_PATH, "%s\\%s", relative_to, pathname) >= MAX_PATH) INVALID_ARGUMENT;
+  if (GetFullPathName(temp, MAX_PATH, output, NULL) == 0) WINDOWS_ERROR;
   return null;
 }
 
 PRIMITIVE(open) {
   ARGS(cstring, pathname, int, flags, int, mode);
   char path[MAX_PATH];
-  auto error = get_relative_path(process, pathname, path);
+  auto error = get_absolute_path(process, pathname, path);
   if (error) return error;
 
   int os_flags = _O_BINARY;
@@ -188,7 +209,7 @@ PRIMITIVE(opendir) {
 PRIMITIVE(opendir2) {
   ARGS(SimpleResourceGroup, group, cstring, pathname);
   char path[MAX_PATH];
-  auto error = get_relative_path(process, pathname, path);
+  auto error = get_absolute_path(process, pathname, path);
   if (error) return error;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -332,7 +353,7 @@ PRIMITIVE(stat) {
   ARGS(cstring, pathname, bool, follow_links);
   USE(follow_links);
   char path[MAX_PATH];
-  auto error = get_relative_path(process, pathname, path);
+  auto error = get_absolute_path(process, pathname, path);
   if (error) return error;
 
   struct stat statbuf{};
@@ -386,7 +407,7 @@ PRIMITIVE(stat) {
 PRIMITIVE(unlink) {
   ARGS(cstring, pathname);
   char path[MAX_PATH];
-  auto error = get_relative_path(process, pathname, path);
+  auto error = get_absolute_path(process, pathname, path);
   if (error) return error;
 
   int result = unlink(path);
@@ -397,7 +418,7 @@ PRIMITIVE(unlink) {
 PRIMITIVE(rmdir) {
   ARGS(cstring, pathname);
   char path[MAX_PATH];
-  auto error = get_relative_path(process, pathname, path);
+  auto error = get_absolute_path(process, pathname, path);
   if (error) return error;
 
   if (RemoveDirectory(path) == 0) WINDOWS_ERROR;
@@ -418,7 +439,7 @@ PRIMITIVE(chdir) {
   if (pathname_length == 0) INVALID_ARGUMENT;
 
   char path[MAX_PATH];
-  auto error = get_relative_path(process, pathname, path);
+  auto error = get_absolute_path(process, pathname, path);
   if (error) return error;
 
   char* copy = strdup(path);
@@ -432,7 +453,7 @@ PRIMITIVE(chdir) {
 PRIMITIVE(mkdir) {
   ARGS(cstring, pathname, int, mode);
   char path[MAX_PATH];
-  auto error = get_relative_path(process, pathname, path);
+  auto error = get_absolute_path(process, pathname, path);
   if (error) return error;
 
   int result = CreateDirectory(path, NULL);
