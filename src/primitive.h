@@ -237,7 +237,6 @@ namespace toit {
   PRIMITIVE(debug_set_memory_limit, 1)       \
   PRIMITIVE(dump_heap, 1)                    \
   PRIMITIVE(serial_print_heap_report, 2)     \
-  PRIMITIVE(get_environment_variables, 1)    \
   PRIMITIVE(get_env, 1)                      \
   PRIMITIVE(literal_index, 1)                \
   PRIMITIVE(word_size, 0)                    \
@@ -1155,7 +1154,6 @@ class Primitive {
   typedef Object* Entry(Process* process, Object** arguments);
 
   static void set_up();
-  static bool is_validated_string(Program* program, Object* object);
 
   // Use temporary tagging for marking an error.
   static bool is_error(Object* object) { return object->is_marked(); }
