@@ -12,7 +12,7 @@ test_is_exception tests/type_propagation/finally_test.toit
   0[053] - invoke static return_is_exception tests/type_propagation/finally_test.toit // {True_|False_}
   3[041] - pop 1
   4[022] - load null
-  5[029] - load [block] in test_is_exception tests/type_propagation/finally_test.toit
+  5[029] - load method [block] in test_is_exception tests/type_propagation/finally_test.toit
  10[094] - link try 0
  12[038] - load block 4
  14[055] - invoke block S1 // [[block]] -> {Null_}
@@ -39,7 +39,7 @@ test_is_exception tests/type_propagation/finally_test.toit
   1[088] - return S1 1
 
 return_is_exception tests/type_propagation/finally_test.toit
-  0[029] - load [block] in return_is_exception tests/type_propagation/finally_test.toit
+  0[029] - load method [block] in return_is_exception tests/type_propagation/finally_test.toit
   5[094] - link try 0
   7[038] - load block 4
   9[055] - invoke block S1 // [[block]] -> {Null_}
@@ -66,7 +66,7 @@ test_exception tests/type_propagation/finally_test.toit
   0[053] - invoke static return_exception tests/type_propagation/finally_test.toit // {Null_|Exception_}
   3[041] - pop 1
   4[022] - load null
-  5[029] - load [block] in test_exception tests/type_propagation/finally_test.toit
+  5[029] - load method [block] in test_exception tests/type_propagation/finally_test.toit
  10[094] - link try 0
  12[038] - load block 4
  14[055] - invoke block S1 // [[block]] -> {Null_}
@@ -93,7 +93,7 @@ test_exception tests/type_propagation/finally_test.toit
   1[088] - return S1 1
 
 return_exception tests/type_propagation/finally_test.toit
-  0[029] - load [block] in return_exception tests/type_propagation/finally_test.toit
+  0[029] - load method [block] in return_exception tests/type_propagation/finally_test.toit
   5[094] - link try 0
   7[038] - load block 4
   9[055] - invoke block S1 // [[block]] -> {Null_}
@@ -121,7 +121,7 @@ test_catchy tests/type_propagation/finally_test.toit
   3[089] - return null S1 0
 
 catchy tests/type_propagation/finally_test.toit
-  0[029] - load [block] in catchy tests/type_propagation/finally_test.toit
+  0[029] - load method [block] in catchy tests/type_propagation/finally_test.toit
   5[094] - link try 0
   7[038] - load block 4
   9[055] - invoke block S1 // [[block]] -> {}
@@ -148,7 +148,7 @@ catchy tests/type_propagation/finally_test.toit
 
 test_nlb_out_of_try tests/type_propagation/finally_test.toit
   0[026] - load smi 4
-  2[029] - load [block] in test_nlb_out_of_try tests/type_propagation/finally_test.toit
+  2[029] - load method [block] in test_nlb_out_of_try tests/type_propagation/finally_test.toit
   7[094] - link try 0
   9[038] - load block 4
  11[055] - invoke block S1 // [[block]] -> {Null_}
@@ -162,7 +162,7 @@ test_nlb_out_of_try tests/type_propagation/finally_test.toit
 
 [block] in test_nlb_out_of_try tests/type_propagation/finally_test.toit
  - argument 0: [block]
-  0[029] - load [block] in [block] in test_nlb_out_of_try tests/type_propagation/finally_test.toit
+  0[029] - load method [block] in [block] in test_nlb_out_of_try tests/type_propagation/finally_test.toit
   5[038] - load block 0
   7[053] - invoke static invoke tests/type_propagation/finally_test.toit // [[block]] -> {}
  10[040] - pop 2
@@ -173,7 +173,7 @@ test_nlb_out_of_try tests/type_propagation/finally_test.toit
  22[041] - pop 1
  23[053] - invoke static pick tests/type_propagation/finally_test.toit // {True_|False_}
  26[082] - branch if false T41
- 29[029] - load [block] in [block] in test_nlb_out_of_try tests/type_propagation/finally_test.toit
+ 29[029] - load method [block] in [block] in test_nlb_out_of_try tests/type_propagation/finally_test.toit
  34[038] - load block 0
  36[053] - invoke static invoke tests/type_propagation/finally_test.toit // [[block]] -> {}
  39[040] - pop 2

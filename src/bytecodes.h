@@ -144,7 +144,7 @@ enum BytecodeFormat {
   BYTECODE(AS_CLASS_WIDE,              3, OP_SCI, "as class wide")             \
   BYTECODE(AS_INTERFACE,               2, OP_BII, "as interface")              \
   BYTECODE(AS_INTERFACE_WIDE,          3, OP_SII, "as interface wide")         \
-  BYTECODE(AS_LOCAL,                   2, OP_BLC, "load local, as, pop")       \
+  BYTECODE(AS_LOCAL,                   2, OP_BLC, "load local, as class, pop") \
   \
   BYTECODE(INVOKE_STATIC,              3, OP_SD, "invoke static")              \
   BYTECODE(INVOKE_STATIC_TAIL,         5, OP_SD_BS_BU, "invoke static tail")   \

@@ -17,7 +17,7 @@ test_try tests/type_propagation/nlr_test.toit
   7[089] - return null S1 0
 
 always_return tests/type_propagation/nlr_test.toit
-  0[029] - load [block] in always_return tests/type_propagation/nlr_test.toit
+  0[029] - load method [block] in always_return tests/type_propagation/nlr_test.toit
   5[038] - load block 0
   7[053] - invoke static invoke tests/type_propagation/nlr_test.toit // [[block]] -> {}
  10[041] - pop 1
@@ -30,7 +30,7 @@ always_return tests/type_propagation/nlr_test.toit
   5[088] - return S1 1
 
 maybe_return tests/type_propagation/nlr_test.toit
-  0[029] - load [block] in maybe_return tests/type_propagation/nlr_test.toit
+  0[029] - load method [block] in maybe_return tests/type_propagation/nlr_test.toit
   5[038] - load block 0
   7[053] - invoke static invoke tests/type_propagation/nlr_test.toit // [[block]] -> {Null_}
  10[040] - pop 2
@@ -50,7 +50,7 @@ maybe_return tests/type_propagation/nlr_test.toit
 
 stop_unwinding tests/type_propagation/nlr_test.toit
   0[026] - load smi 42
-  2[029] - load [block] in stop_unwinding tests/type_propagation/nlr_test.toit
+  2[029] - load method [block] in stop_unwinding tests/type_propagation/nlr_test.toit
   7[094] - link try 0
   9[038] - load block 4
  11[055] - invoke block S1 // [[block]] -> {}
@@ -70,7 +70,7 @@ stop_unwinding tests/type_propagation/nlr_test.toit
   6[020] - load literal 3.2999999999999998224
   8[006] - store outer S1
  10[041] - pop 1
- 11[029] - load [block] in [block] in stop_unwinding tests/type_propagation/nlr_test.toit
+ 11[029] - load method [block] in [block] in stop_unwinding tests/type_propagation/nlr_test.toit
  16[038] - load block 0
  18[053] - invoke static invoke tests/type_propagation/nlr_test.toit // [[block]] -> {}
  21[004] - store local, pop S1
@@ -86,7 +86,7 @@ stop_unwinding tests/type_propagation/nlr_test.toit
 
 stop_unwinding_alternative tests/type_propagation/nlr_test.toit
   0[026] - load smi 42
-  2[029] - load [block] in stop_unwinding_alternative tests/type_propagation/nlr_test.toit
+  2[029] - load method [block] in stop_unwinding_alternative tests/type_propagation/nlr_test.toit
   7[094] - link try 0
   9[038] - load block 4
  11[055] - invoke block S1 // [[block]] -> {True_}
@@ -103,7 +103,7 @@ stop_unwinding_alternative tests/type_propagation/nlr_test.toit
   1[020] - load literal 3.2999999999999998224
   3[006] - store outer S1
   5[041] - pop 1
-  6[029] - load [block] in [block] in stop_unwinding_alternative tests/type_propagation/nlr_test.toit
+  6[029] - load method [block] in [block] in stop_unwinding_alternative tests/type_propagation/nlr_test.toit
  11[038] - load block 0
  13[053] - invoke static invoke tests/type_propagation/nlr_test.toit // [[block]] -> {Null_}
  16[041] - pop 1
