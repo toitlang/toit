@@ -49,6 +49,7 @@ abstract class ServiceClient:
       --pid/int?=null
       --timeout/Duration?=_default_timeout_:
     if _id_: throw "Already opened"
+
     id := 0  // TODO(kasper): Clean this up a bit.
     if not pid:
       discovered/List? := null
@@ -58,8 +59,14 @@ abstract class ServiceClient:
       else:
         discovered = _client_.discover uuid false
       if not discovered: return null
+
       pid = discovered[0]
       id = discovered[1]
+      priority := discovered[2]
+
+      if discovered.size > 3 and priority <= discovered[5]:
+        throw "Cannot disambiguate"
+
     // Open the client by doing a RPC-call to the discovered process.
     // This returns the client id necessary for invoking service methods.
     definition ::= rpc.invoke pid RPC_SERVICES_OPEN_ [id, uuid, major, minor]
@@ -117,11 +124,13 @@ abstract class ServiceDefinition:
   name/string ::= ?
   _version_/List ::= ?
 
+  // TODO(kasper): Can we combine these somehow?
   _uuids_/List ::= []
-  _ids_/List ::= []
   _versions_/List ::= []
+  _extras_/List ::= []
 
   _manager_/ServiceManager_? := null
+  _ids_/List? := null
 
   _clients_/Set ::= {}  // Set<int>
   _clients_closed_/int := 0
@@ -153,10 +162,14 @@ abstract class ServiceDefinition:
     return "service:$name@$version"
 
   provides uuid/string major/int minor/int -> none
-      --id/int?=null:
+      --id/int?=null
+      --priority/int?=null:
     _uuids_.add uuid
-    _ids_.add id
     _versions_.add [major, minor]
+    if id or priority:
+      _extras_.add [id, priority]
+    else:
+      _extras_.add null
 
   install -> none:
     if _manager_: throw "Already installed"
@@ -164,10 +177,17 @@ abstract class ServiceDefinition:
     _clients_closed_ = 0
     // TODO(kasper): Handle the case where one of the calls
     // to listen fails.
+    _ids_ = Array_ _uuids_.size
     _uuids_.size.repeat:
-      id := _ids_[it]
       uuid := _uuids_[it]
-      _ids_[it] = _manager_.listen id uuid this
+
+      id := null
+      priority := 100  // TODO(kasper): Default priority. Get from service definition?
+      extra := _extras_[it]
+      if extra and extra[0]: id = extra[0]
+      if extra and extra[1]: priority = extra[1]
+
+      _ids_[it] = _manager_.listen id uuid priority this
       assert: not id or id == _ids_[it]
 
   uninstall --wait/bool=false -> none:
@@ -245,7 +265,7 @@ abstract class ServiceDefinition:
     // TODO(kasper): Handle the case where one of the calls
     // to unlisten fails.
     _ids_.do: _manager_.unlisten it
-    //_ids_ = null
+    _ids_ = null
     _manager_ = null
 
 abstract class ServiceResource implements rpc.RpcSerializable:
@@ -381,11 +401,11 @@ class ServiceManager_ implements SystemMessageHandler_:
   static is_empty -> bool:
     return uninitialized or instance.services_.is_empty
 
-  listen id/int? uuid/string service/ServiceDefinition -> int:
+  listen id/int? uuid/string priority/int service/ServiceDefinition -> int:
     id = assign_id_ id services_ service
     // TODO(kasper): Clean up in the services
     // table if listen fails?
-    _client_.listen id uuid
+    _client_.listen id uuid priority
     return id
 
   unlisten id/int -> none:

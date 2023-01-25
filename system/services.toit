@@ -13,25 +13,22 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import system.services
-  show
-    ServiceDefinition
-    ServiceManager_
-
 import monitor
+import system.services show ServiceDefinition
 import system.api.service_discovery show ServiceDiscoveryService
 
 class DiscoverableService:
   pid/int
   id/int
   uuid/string
-  constructor --.pid --.id --.uuid:
+  priority/int
+  constructor --.pid --.id --.uuid --.priority:
 
 class SystemServiceManager extends ServiceDefinition implements ServiceDiscoveryService:
   service_managers_/Map ::= {:}  // Map<int, Set<int>>
 
   services_by_pid_/Map ::= {:}   // Map<int, Map<int, DiscoverableService>>>
-  services_by_uuid_/Map ::= {:}  // Map<string, DiscoverableService>
+  services_by_uuid_/Map ::= {:}  // Map<string, List<DiscoverableService>>
 
   signal_/monitor.Signal ::= monitor.Signal
 
@@ -47,23 +44,31 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
     if index == ServiceDiscoveryService.WATCH_INDEX:
       return watch pid arguments
     if index == ServiceDiscoveryService.LISTEN_INDEX:
-      return listen pid arguments[0] arguments[1]
+      return listen pid arguments[0] arguments[1] arguments[2]
     if index == ServiceDiscoveryService.UNLISTEN_INDEX:
       return unlisten pid arguments
     unreachable
 
-  listen pid/int id/int uuid/string -> none:
+  listen pid/int id/int uuid/string priority/int -> none:
     services := services_by_pid_.get pid --init=(: {:})
-    if services.contains id:
-      throw "Already registered service:$id"
-    service_managers_.get pid --init=(: {})
-    // TODO(kasper): Change this check.
-    if services_by_uuid_.contains uuid:
-      throw "Already registered service:$uuid"
+    if services.contains id: throw "Service id $id is already in use"
 
-    service := DiscoverableService --pid=pid --id=id --uuid=uuid
+    service := DiscoverableService
+        --pid=pid
+        --id=id
+        --uuid=uuid
+        --priority=priority
     services[id] = service
-    services_by_uuid_[uuid] = service
+
+    // Register the service based on its uuid and sort the all services
+    // with the same uuid by descending priority.
+    uuids := services_by_uuid_.get uuid --init=(: [])
+    uuids.add service
+    uuids.sort --in_place: | a b | b.priority.compare_to a.priority
+
+    // Register the process as a service manager and signal
+    // anyone waiting for services to appear.
+    service_managers_.get pid --init=(: {})
     signal_.raise
 
   unlisten pid/int id/int -> none:
@@ -71,23 +76,38 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
     if not services: return
     service := services.get id
     if not service: return
-
     services.remove id
-    services_by_uuid_.remove service.uuid
+
+    uuid := service.uuid
+    uuids := services_by_uuid_.get uuid
+    if uuids:
+      uuids.remove service
+      if uuids.is_empty: services_by_uuid_.remove uuid
+
     if not services.is_empty: return
     service_managers_.remove pid
     services_by_pid_.remove pid
 
   discover uuid/string wait/bool -> List?:
-    service/DiscoverableService? := null
+    services/List? := null
     if wait:
       signal_.wait:
-        service = services_by_uuid_.get uuid
-        service != null
+        services = services_by_uuid_.get uuid
+        services != null
     else:
-      service = services_by_uuid_.get uuid
-      if not service: return null
-    return [service.pid, service.id]
+      services = services_by_uuid_.get uuid
+      if not services: return null
+
+    // TODO(kasper): Consider keeping the list of
+    // services in a form that is ready to send
+    // back without any transformations.
+    result := Array_ 3 * services.size
+    index := 0
+    services.do: | service/DiscoverableService |
+      result[index++] = service.pid
+      result[index++] = service.id
+      result[index++] = service.priority
+    return result
 
   watch pid/int target/int -> none:
     if pid == target: return
@@ -106,7 +126,7 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
       processes.remove pid
       process_send_ manager SYSTEM_RPC_NOTIFY_TERMINATED_ pid
 
-  listen id/int uuid/string -> none:
+  listen id/int uuid/string priority/int -> none:
     unreachable  // <-- TODO(kasper): nasty
 
   unlisten id/int -> none:
