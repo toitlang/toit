@@ -22,8 +22,7 @@ RPC_SERVICES_INVOKE_         /int ::= 302
 RPC_SERVICES_CLOSE_RESOURCE_ /int ::= 303
 
 // Internal limits.
-CLIENT_ID_LIMIT_       /int ::= 0x3fff_ffff
-SERVICE_ID_LIMIT_      /int ::= 0x3fff_ffff
+RANDOM_ID_LIMIT_       /int ::= 0x3fff_ffff
 RESOURCE_HANDLE_LIMIT_ /int ::= 0x1fff_ffff  // Will be shifted up by one.
 
 _client_ /ServiceDiscoveryService ::= ServiceDiscoveryServiceClient
@@ -119,10 +118,10 @@ abstract class ServiceDefinition:
   _version_/List ::= ?
 
   _uuids_/List ::= []
+  _ids_/List ::= []
   _versions_/List ::= []
 
   _manager_/ServiceManager_? := null
-  _ids_/List? := null
 
   _clients_/Set ::= {}  // Set<int>
   _clients_closed_/int := 0
@@ -137,6 +136,10 @@ abstract class ServiceDefinition:
 
   abstract handle pid/int client/int index/int arguments/any-> any
 
+  // Better name?
+  preferred_id -> int?:
+    return null
+
   on_opened client/int -> none:
     // Override in subclasses.
 
@@ -149,8 +152,10 @@ abstract class ServiceDefinition:
   stringify -> string:
     return "service:$name@$version"
 
-  provides uuid/string major/int minor/int -> none:
+  provides uuid/string major/int minor/int -> none
+      --id/int?=null:
     _uuids_.add uuid
+    _ids_.add id
     _versions_.add [major, minor]
 
   install -> none:
@@ -159,7 +164,11 @@ abstract class ServiceDefinition:
     _clients_closed_ = 0
     // TODO(kasper): Handle the case where one of the calls
     // to listen fails.
-    _ids_ = Array_ _uuids_.size: _manager_.listen _uuids_[it] this
+    _uuids_.size.repeat:
+      id := _ids_[it]
+      uuid := _uuids_[it]
+      _ids_[it] = _manager_.listen id uuid this
+      assert: not id or id == _ids_[it]
 
   uninstall --wait/bool=false -> none:
     if wait:
@@ -236,7 +245,7 @@ abstract class ServiceDefinition:
     // TODO(kasper): Handle the case where one of the calls
     // to unlisten fails.
     _ids_.do: _manager_.unlisten it
-    _ids_ = null
+    //_ids_ = null
     _manager_ = null
 
 abstract class ServiceResource implements rpc.RpcSerializable:
@@ -372,8 +381,10 @@ class ServiceManager_ implements SystemMessageHandler_:
   static is_empty -> bool:
     return uninitialized or instance.services_.is_empty
 
-  listen uuid/string service/ServiceDefinition -> int:
-    id := assign_service_id_ service
+  listen id/int? uuid/string service/ServiceDefinition -> int:
+    id = assign_id_ id services_ service
+    // TODO(kasper): Clean up in the services
+    // table if listen fails?
     _client_.listen id uuid
     return id
 
@@ -392,7 +403,7 @@ class ServiceManager_ implements SystemMessageHandler_:
       // process goes away so we can clean up.
       _client_.watch pid
 
-    client ::= assign_client_id_ pid
+    client ::= assign_id_ null clients_ pid
     clients.add client
     services_by_client_[client] = service
     return service._open_ client
@@ -436,16 +447,15 @@ class ServiceManager_ implements SystemMessageHandler_:
     broker_.cancel_requests other
     close_all other
 
-  assign_client_id_ pid/int -> int:
-    while true:
-      guess := random CLIENT_ID_LIMIT_
-      if clients_.contains guess: continue
-      clients_[guess] = pid
-      return guess
+  assign_id_ id/int? map/Map value/any -> int:
+    if not id:
+      id = random_id_ map
+    else if map.contains id:
+      throw "Already registered"
+    map[id] = value
+    return id
 
-  assign_service_id_ service/ServiceDefinition -> int:
+  random_id_ map/Map -> int:
     while true:
-      guess := random SERVICE_ID_LIMIT_
-      if services_.contains guess: continue
-      services_[guess] = service
-      return guess
+      guess := random RANDOM_ID_LIMIT_
+      if not map.contains guess: return guess

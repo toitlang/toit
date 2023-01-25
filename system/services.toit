@@ -38,16 +38,8 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
   constructor:
     super "system/service-discovery" --major=0 --minor=1 --patch=1
     provides ServiceDiscoveryService.UUID ServiceDiscoveryService.MAJOR ServiceDiscoveryService.MINOR
-    // TODO(kasper): This is pretty nasty. It is really
-    // just installing under a well-defined service id
-    // so the client doesn't have to guess it.
-    pid := Process.current.id
-    id := 0
-    services_by_pid_[pid] = {
-      id: DiscoverableService --pid=pid --id=id --uuid=ServiceDiscoveryService.UUID
-    }
-    _manager_ = ServiceManager_.instance
-    _manager_.services_[id] = this
+        --id=0
+    install
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == ServiceDiscoveryService.DISCOVER_INDEX:
