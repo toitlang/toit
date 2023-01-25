@@ -406,16 +406,17 @@ static Object* fork_helper(
     Process* process,
     SubprocessResourceGroup* resource_group,
     bool use_path,
-    Object* in_obj,
-    Object* out_obj,
-    Object* err_obj,
+    Object* in_object,
+    Object* out_object,
+    Object* err_object,
     int fd_3,
     int fd_4,
     const char* command,
-    Array* args,
+    Array* arguments,
     Object* environment_object) {
   if (arguments->length() > 1000000) OUT_OF_BOUNDS;
 
+  Object* null_object = process->program()->null_object();
   Array* environment = null;
   if (environment_object != null_object) {
     if (!is_array(environment_object)) INVALID_ARGUMENT;
@@ -487,11 +488,11 @@ static Object* fork_helper(
   const char* current_directory = current_dir(process);
   if (!current_directory) MALLOC_FAILED;
 
-  uint16* new_environment = NULL;
+  wchar_t* new_environment = NULL;
   if (environment) {
-    uint16* old_environment = GetEnvironmentStringsW();
-    new_environment = Utils::create_new_environment(old_environment, environment);
-    FreeEnvironmentStringsW(old_environment);
+    uint16* old_environment = static_cast<uint16*>(GetEnvironmentStringsW());
+    new_environment = static_cast<wchar_t*>(Utils::create_new_environment(process, old_environment, environment));
+    FreeEnvironmentStringsW(static_cast<wchar_t*>(old_environment));
   }
 
   if (!CreateProcess(NULL,
