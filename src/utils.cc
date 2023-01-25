@@ -409,18 +409,47 @@ word Utils::utf_16_to_8(const uint16* input, word length, uint8* output, word ou
   return size;
 }
 
+bool Utils::utf_8_equals_utf_16(const uint8* input1, word length1, const uint16* input2, word length2) {
+  // The UTF-16 encoding always has fewer code units than the UTF-8 encoding.
+  if (length2 > length1) return false;
+
+  // Zero length strings are equal.
+  if (length1 == 0) return true;
+
+  // Worst blow-up is 3x because all UTF-8 sequences are 1-4 bytes and the
+  // 4-byte encodings correspond to two UTF-16 surrogates.  Broken UTF-16
+  // surrogates are encoded as a 3-byte substitution (0xfffd).
+  if (length1 > length2 * 3) return false;
+
+  // Quick out for different first ASCII letter.
+  if ((input1[0] <= MAX_ASCII || input2[0] <= MAX_ASCII) && input1[0] != input2[0]) return false;
+
+  // Start with length comparison of the UTF-16 version.
+  if (length2 != utf_8_to_16(input1, length1, null, 0)) return false;
+
+  // Now we know the UTF-16 versions are the same length, generate the UTF-16
+  // version of the UTF-8 input, and compare them.
+  uint16* wide_input1 = unvoid_cast<uint16*>(malloc(sizeof(uint16) * length2));
+  utf_8_to_16(input1, length1, wide_input1, length2);
+  bool match = memcmp(wide_input1, input2, length2 * sizeof(uint16)) == 0;
+  free(wide_input1);
+  return match;
+}
+
 // For use on Windows.  Takes the old environment in the format returned by
 // GetEnvironmentStringsW() and an array of key-value pairs.  Returns a new
 // environment in the same format, which should be freed when done.  Assumes
 // that allocations don't fail.
 // The format is a long series of null-terminated wide strings, followed by a
 // null, so a zero length string is not possible.  Each string contains an
-// equals sign the separates the key from the value.  If there is no equals
+// equals sign that separates the key from the value.  If there is no equals
 // sign then the whole thing is taken to be the key.
 uint16* Utils::create_new_environment(Process* process, uint16* previous_environment, Array* environment) {
   uint16* new_environment = null;
   word length_so_far = 0;
   word new_environment_length = 0;
+  // First run calculates the length of the result.  Second run actually writes
+  // the result.
   for (int runs = 0; runs < 2; runs++) {
     bool writing = runs != 0;
     for (uint16* p = previous_environment; *p; ) {
@@ -430,7 +459,7 @@ uint16* Utils::create_new_environment(Process* process, uint16* previous_environ
         if (utf_16_key_length == -1 && p[len] == '=') utf_16_key_length = len;
         len++;
       }
-      if (utf_16_key_length == -1) utf_16_key_length = len;
+      if (utf_16_key_length == -1) utf_16_key_length = len;  // No '=' symbol found.
       word utf_16_key_value_length = len;
       bool in_new_environment = false;
       // Environment variable key  from p to p + utf_16_key_value_length.
@@ -438,17 +467,10 @@ uint16* Utils::create_new_environment(Process* process, uint16* previous_environ
       for (int i = 0; i < environment->length(); i += 2) {
         Blob key;
         environment->at(i)->byte_content(process->program(), &key, STRINGS_ONLY);
-        // Start with simple length comparison.
-        if (utf_16_key_length == utf_8_to_16(key.address(), key.length(), null, 0)) {
-          uint16* wide_key = unvoid_cast<uint16*>(malloc(sizeof(uint16) * utf_16_key_length));
-          utf_8_to_16(key.address(), key.length(), wide_key, utf_16_key_length);
-          bool match = memcmp(wide_key, p, utf_16_key_length * sizeof(uint16)) == 0;
-          free(wide_key);
-          if (match) {
-            // Keys match, so we won't be taking this key-value pair from the old environment.
-            in_new_environment = true;
-            break;
-          }
+        if (utf_8_equals_utf_16(key.address(), key.length(), p, utf_16_key_length)) {
+          // Keys match, so we won't be taking this key-value pair from the old environment.
+          in_new_environment = true;
+          break;
         }
       }
       if (!in_new_environment) {

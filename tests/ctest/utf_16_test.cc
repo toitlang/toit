@@ -87,9 +87,24 @@ void test_utf_8_to_16() {
   if (out[5] != 'y') fatal(__LINE__);
 }
 
+void test_equals() {
+  const uint8* str_8 = reinterpret_cast<const uint8*>("xæ€😹y");
+  const uint16 str_16[6] = {'x', AELIG, EURO, CAT_WITH_TEARS_OF_JOY_1, CAT_WITH_TEARS_OF_JOY_2, 'y'};
+  if (!Utils::utf_8_equals_utf_16(str_8, 11, str_16, 6)) fatal(__LINE__);         // Full comparison.
+  if (Utils::utf_8_equals_utf_16(str_8, 10, str_16, 6)) fatal(__LINE__);          // UTF-8 is too short.
+  if (Utils::utf_8_equals_utf_16(str_8, 11, str_16, 5)) fatal(__LINE__);          // UTF-16 is too short.
+  if (Utils::utf_8_equals_utf_16(str_8 + 1, 2, str_16, 1)) fatal(__LINE__);       // Compare æ with x.
+  if (Utils::utf_8_equals_utf_16(str_8, 1, str_16 + 1, 1)) fatal(__LINE__);       // Compare x with æ.
+  if (!Utils::utf_8_equals_utf_16(str_8 + 1, 2, str_16 + 1, 1)) fatal(__LINE__);  // Compare æ with æ.
+  const uint8* str_8z = reinterpret_cast<const uint8*>("xæ€😹z");                 // Last char does not match.
+  if (Utils::utf_8_equals_utf_16(str_8z, 11, str_16, 6)) fatal(__LINE__);         // Full comparison.
+  if (!Utils::utf_8_equals_utf_16(str_8z, 10, str_16, 5)) fatal(__LINE__);        // Omit last char.
+}
+
 int main(int argc, char **argv) {
   test_utf_16_to_8();
   test_utf_8_to_16();
+  test_equals();
   return 0;
 }
 

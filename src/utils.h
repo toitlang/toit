@@ -279,6 +279,8 @@ class Utils {
 
   static word utf_16_to_8(const uint16* input, word length, uint8* output, word output_length);
   static word utf_8_to_16(const uint8* input, word length, uint16* output, word output_length);
+  // Note: Does malloc - not suitable for embedded.
+  static bool utf_8_equals_utf_16(const uint8* input1, word length1, const uint16* input2, word length2);
   static uint16* create_new_environment(Process* process, uint16* previous_environment, Array* environment);
 
   // The number of leading ones in the prefix byte determines the length of a
