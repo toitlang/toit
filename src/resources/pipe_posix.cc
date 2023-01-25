@@ -349,21 +349,29 @@ static Object* fork_helper(
     const char* command,
     Array* args,
     Object* environment_object) {
+  HeapObject* null_object = process->program()->null_object();
+
   if (args->length() > 1000000) OUT_OF_BOUNDS;
+
   Array* environment = null;
-  if (environment_object != process->program()->null_object()) {
-    if (!is_array(environment_object)) WRONG_TYPE;
+  if (environment_object != null_object) {
+    if (!is_array(environment_object)) INVALID_ARGUMENT;
     environment = Array::cast(environment_object);
-    if (environment->length() > 1000000) OUT_OF_BOUNDS;
+
+    // Validate environment array.
+    if (environment->length() >= 0x100000 || (environment->length() & 1) != 0) OUT_OF_BOUNDS;
     for (int i = 0; i < environment->length(); i++) {
       Blob blob;
-      if (!environment->at(i)->byte_content(process->program(), &blob, STRINGS_ONLY)) WRONG_TYPE;
+      Object* element = environment->at(i);
+      bool is_key = (i & 1) == 0;
+      if (!is_key && element == process->program()->null_object()) continue;
+      if (!element->byte_content(process->program(), &blob, STRINGS_ONLY)) WRONG_TYPE;
+      if (blob.length() == 0) INVALID_ARGUMENT;
       const uint8* str = blob.address();
-      if (str[blob.length()] + 1 != '\0') INVALID_ARGUMENT;
-      const void* equals_position = memchr(str, '=', blob.length());
-      if (equals_position == null || equals_position == str) INVALID_ARGUMENT;
+      if (is_key && memchr(str, '=', blob.length()) != null) INVALID_ARGUMENT;  // Key can't contain "=".
     }
   }
+
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
@@ -466,6 +474,21 @@ static Object* fork_helper(
 
   do {
     if (command == null) break;
+
+    for (int i = 0; environment && i < environment->length(); i += 2) {
+      Blob key;
+      environment->at(i)->byte_content(process->program(), &key, STRINGS_ONLY);
+      auto key_cstr = strndup(char_cast(key.address()), key.length());
+      Object* value = environment->at(i + 1);
+      if (value == process->program()->null_object()) {
+        unsetenv(key_cstr);
+      } else {
+        Blob value_blob;
+        value->byte_content(process->program(), &value_blob, STRINGS_ONLY);
+        auto value_cstr = strndup(char_cast(value_blob.address()), value_blob.length());
+        setenv(key_cstr, value_cstr, 1);
+      }
+    }
 
     // Change the directory of the child process to match the Toit task's current directory.
     int current_directory_fd = current_dir(process);

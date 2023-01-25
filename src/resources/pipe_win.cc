@@ -402,17 +402,39 @@ const int MAX_COMMAND_LINE_LENGTH = 32768;
 // are attached to the stdin, stdout and stderr of the launched program, and
 // are closed in the parent program.  If you pass -1 for any of these then the
 // forked program inherits the stdin/out/err of this Toit program.
-PRIMITIVE(fork) {
-  ARGS(SubprocessResourceGroup, resource_group,
-       bool, use_path,
-       Object, in_object,
-       Object, out_object,
-       Object, err_object,
-       int, fd_3,
-       int, fd_4,
-       cstring, command,
-       Array, arguments);
+static Object* fork_helper(
+    Process* process,
+    SubprocessResourceGroup* resource_group,
+    bool use_path,
+    Object* in_obj,
+    Object* out_obj,
+    Object* err_obj,
+    int fd_3,
+    int fd_4,
+    const char* command,
+    Array* args,
+    Object* environment_object) {
   if (arguments->length() > 1000000) OUT_OF_BOUNDS;
+
+  Array* environment = null;
+  if (environment_object != null_object) {
+    if (!is_array(environment_object)) INVALID_ARGUMENT;
+    environment = Array::cast(environment_object);
+
+    // Validate environment array.
+    if (environment->length() >= 0x100000 || (environment->length() & 1) != 0) OUT_OF_BOUNDS;
+    for (int i = 0; i < environment->length(); i++) {
+      Blob blob;
+      Object* element = environment->at(i);
+      bool is_key = (i & 1) == 0;
+      if (!is_key && element == process->program()->null_object()) continue;
+      if (!element->byte_content(process->program(), &blob, STRINGS_ONLY)) WRONG_TYPE;
+      if (blob.length() == 0) INVALID_ARGUMENT;
+      const uint8* str = blob.address();
+      if (is_key && memchr(str, '=', blob.length()) != null) INVALID_ARGUMENT;  // Key can't contain "=".
+    }
+  }
+
   if (strlen(command) > MAX_COMMAND_LINE_LENGTH) OUT_OF_BOUNDS;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -421,7 +443,7 @@ PRIMITIVE(fork) {
   // FD_3 and FD_4 is not supported on Windows.
   if (fd_3 != -1 || fd_4 != -1) INVALID_ARGUMENT;
 
-  // Clearing environment not supported n=on windows, yet.
+  // Clearing environment not supported on windows, yet.
   if (!use_path) INVALID_ARGUMENT;
 
   AllocationManager allocation(process);
@@ -464,17 +486,29 @@ PRIMITIVE(fork) {
 
   const char* current_directory = current_dir(process);
   if (!current_directory) MALLOC_FAILED;
+
+  uint16* new_environment = NULL;
+  if (environment) {
+    uint16* old_environment = GetEnvironmentStringsW();
+    new_environment = Utils::create_new_environment(old_environment, environment);
+    FreeEnvironmentStringsW(old_environment);
+  }
+
   if (!CreateProcess(NULL,
                      command_line,
                      NULL,
                      NULL,
                      TRUE,  // inherit handles.
                      0,     // creation flags
-                     NULL,  // parent's environment
+                     new_environment,
                      current_directory,
                      &startup_info,
-                     &process_information))
+                     &process_information)) {
+    if (new_environment) free(new_environment);
     WINDOWS_ERROR;
+  }
+
+  if (new_environment) free(new_environment);
 
   // Release any handles that are pipes and are parsed down to the child
   if (GetFileType(startup_info.hStdInput) == FILE_TYPE_PIPE && !is_inherited(in_object))
@@ -490,6 +524,35 @@ PRIMITIVE(fork) {
   resource_group->register_resource(subprocess);
 
   return proxy;
+}
+
+PRIMITIVE(fork) {
+  ARGS(SubprocessResourceGroup, resource_group,
+       bool, use_path,
+       Object, in_obj,
+       Object, out_obj,
+       Object, err_obj,
+       int, fd_3,
+       int, fd_4,
+       cstring, command,
+       Array, args);
+  return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
+                     fd_3, fd_4, command, args, process->program()->null_object());
+}
+
+PRIMITIVE(fork2) {
+  ARGS(SubprocessResourceGroup, resource_group,
+       bool, use_path,
+       Object, in_obj,
+       Object, out_obj,
+       Object, err_obj,
+       int, fd_3,
+       int, fd_4,
+       cstring, command,
+       Array, args,
+       Object, environment_object);
+  return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
+                     fd_3, fd_4, command, args, environment_object);
 }
 
 } // namespace toit
