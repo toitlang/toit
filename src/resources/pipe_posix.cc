@@ -555,35 +555,10 @@ static Object* fork_helper(
 
     // Exec the actual program.  If this succeeds, then control_write is closed
     // automatically, and the parent is unblocked on its read.
-    if (environment == null) {
-      if (use_path) {
-        execvp(command, argv);
-      } else {
-        execv(command, argv);
-      }
+    if (use_path) {
+      execvp(command, argv);
     } else {
-      // Convert the environment to a char**.
-      char** envp = reinterpret_cast<char**>(malloc((environment->length() / 2 + 1) * sizeof(char*)));
-      if (envp == null) break;  // Malloc has set ENOMEM.
-      for (int i = 0; i < environment->length(); i += 2) {
-        Blob key, value;
-        // These should not fail because we checked earlier with is_validated_string.
-        environment->at(i)->byte_content(process->program(), &key, STRINGS_ONLY);
-        environment->at(i + 1)->byte_content(process->program(), &value, STRINGS_ONLY);
-
-        char* var = envp[i / 2] = unvoid_cast<char*>(malloc(key.length() + value.length() + 2));
-        if (var == null) break;  // malloc has set ENOMEM.
-
-        memcpy(var, key.address(), key.length());
-        var[key.length()] = '=';
-        memcpy(var + key.length() + 1, value.address(), value.length());
-        var[key.length() + 1 + value.length()] = '\0';
-      }
-      if (use_path) {
-        execvpe(command, argv, envp);
-      } else {
-        execve(command, argv, envp);
-      }
+      execv(command, argv);
     }
     // We only get here if the exec failed.
   } while (false);
