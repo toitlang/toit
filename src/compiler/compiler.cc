@@ -1361,7 +1361,7 @@ Source* Pipeline::_load_file(const char* path, const PackageLock& package_lock) 
   if (filesystem()->is_absolute(path)) {
     builder.join(path);
   } else {
-    builder.join(filesystem()->cwd());
+    builder.join(filesystem()->relative_anchor(path));
     builder.join(path);
   }
   builder.canonicalize();

@@ -77,7 +77,7 @@ main args:
           Computes the $name checksum of the given \$data.
 
           The \$data must be a string or byte array.
-          Returns the checksum as a$(width == 8 ? "n" : "") $width-bit integer.
+          Returns the checksum as a$(width == 8 ? "n" : "") $(width)-bit integer.
           */
           $name_snake data -> int:
             crc := Crc.$(endian)_endian $width --$polynomial_argument=$fields[2]$initial_string$xor_string
