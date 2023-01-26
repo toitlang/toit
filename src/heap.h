@@ -212,6 +212,11 @@ class ObjectHeap {
   Object** global_variables_ = null;
 
   HeapRootList external_roots_;
+
+  // We can iterate all processes and their chunks in order
+  // to produce a memory report, but we can't do that in the
+  // middle of a GC that frees and allocates chunks, so this
+  // per-heap mutex protects against that.
   Mutex* mutex_;
 
   friend class ObjectNotifier;

@@ -604,8 +604,7 @@ class HeapSummaryPage {
     return "unknown";
   }
 
-  Process* get_toit_process() const { return owning_process_; }
-  void set_toit_process(Process* process) { owning_process_ = process; }
+  void set_owning_process(Process* process) { owning_process_ = process; }
 
  private:
   uword address_;
@@ -668,7 +667,7 @@ class HeapSummaryCollector {
     counts_[type]++;
   }
 
-  void identify_toit_processes() {
+  void identify_processes() {
     VM::current()->scheduler()->iterate_process_chunks(this, chunk_callback);
   }
 
@@ -687,7 +686,7 @@ class HeapSummaryCollector {
     while (size >= TOIT_PAGE_SIZE) {
       for (int i = 0; i < max_pages_; i++) {
         if (pages_[i].matches(reinterpret_cast<void*>(address))) {
-          pages_[i].set_toit_process(process);
+          pages_[i].set_owning_process(process);
         }
       }
       size -= TOIT_PAGE_SIZE;
@@ -789,7 +788,7 @@ void OS::heap_summary_report(int max_pages, const char* marker) {
   int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
   int caps = OS::toit_heap_caps_flags_for_heap();
   heap_caps_iterate_tagged_memory_areas(&collector, null, &register_allocation, flags, caps);
-  collector.identify_toit_processes();
+  collector.identify_processes();
   collector.print(marker);
 }
 
