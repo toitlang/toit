@@ -812,12 +812,12 @@ BYTE_CODES ::= [
   Bytecode "LOAD_SMI_U8"                2 OP_BU "load smi",
   Bytecode "LOAD_SMI_U16"               3 OP_SU "load smi",
   Bytecode "LOAD_SMI_U32"               5 OP_WU "load smi",
-  Bytecode "LOAD_METHOD"                5 OP_WU "load",  // Has specialized stringification.
+  Bytecode "LOAD_METHOD"                5 OP_WU "load method",  // Has specialized stringification.
   Bytecode "LOAD_GLOBAL_VAR"            2 OP_BG "load global var",
-  Bytecode "LOAD_GLOBAL_VAR_DYNAMIC"    1 OP "load global var dynamic",
   Bytecode "LOAD_GLOBAL_VAR_WIDE"       3 OP_SG "load global var wide",
   Bytecode "LOAD_GLOBAL_VAR_LAZY"       2 OP_BG "load global var lazy",
-  Bytecode "LOAD_GLOBAL_VAR_LAZY_WIDE"  3 OP_BG "load global var lazy wide",
+  Bytecode "LOAD_GLOBAL_VAR_LAZY_WIDE"  3 OP_SG "load global var lazy wide",
+  Bytecode "LOAD_GLOBAL_VAR_DYNAMIC"    1 OP "load global var dynamic",
   Bytecode "STORE_GLOBAL_VAR"           2 OP_BG "store global var",
   Bytecode "STORE_GLOBAL_VAR_WIDE"      3 OP_SG "store global var wide",
   Bytecode "STORE_GLOBAL_VAR_DYNAMIC"   1 OP "store global var dynamic",
