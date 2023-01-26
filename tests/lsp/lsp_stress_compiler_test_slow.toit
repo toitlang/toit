@@ -35,7 +35,8 @@ test client/LspClient:
       """
     client.wait_for_idle
 
-  completion_document := "/tmp/completion.toit"
+  drive := platform == PLATFORM_WINDOWS ? "c:" : ""
+  completion_document := "$drive/tmp/completion.toit"
   client.send_did_open --path=completion_document  --text="""
      completion_fun: return 499
      main: com

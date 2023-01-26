@@ -8,7 +8,7 @@ test_nested tests/type_propagation/try_test.toit
 
 nested tests/type_propagation/try_test.toit
   0[022] - load null
-  1[029] - load [block] in nested tests/type_propagation/try_test.toit
+  1[029] - load method [block] in nested tests/type_propagation/try_test.toit
   6[094] - link try 0
   8[038] - load block 4
  10[055] - invoke block S1 // [[block]] -> {Null_}
@@ -22,7 +22,7 @@ nested tests/type_propagation/try_test.toit
 [block] in nested tests/type_propagation/try_test.toit
  - argument 0: [block]
   0[022] - load null
-  1[029] - load [block] in [block] in nested tests/type_propagation/try_test.toit
+  1[029] - load method [block] in [block] in nested tests/type_propagation/try_test.toit
   6[094] - link try 0
   8[038] - load block 4
  10[055] - invoke block S1 // [[block]] -> {SmallInteger_}

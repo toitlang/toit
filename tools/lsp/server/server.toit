@@ -72,11 +72,6 @@ class LspServer:
   connection_    /RpcConnection     ::= ?
   translator_    /UriPathTranslator ::= ?
   toit_path_override_  /string?     ::= ?
-  uses_rpc_filesystem_ /bool        ::= ?
-  /// The placeholder for the compiler's SDK path.
-  /// When null uses the client's SDK libraries.
-  /// Otherwise the placeholder is replaced with the compiler's SDK library path.
-  rpc_sdk_path_placeholder_  /string? ::= ?
   /// The root uri of the workspace.
   /// Rarely needed, as the server generally works with absolute paths.
   /// It's mainly used to find package.lock files.
@@ -101,12 +96,8 @@ class LspServer:
   constructor
       .connection_
       .toit_path_override_
-      .translator_
-      --use_rpc_filesystem/bool
-      --rpc_sdk_path_placeholder/string?=null:
+      .translator_:
     documents_ = Documents translator_
-    uses_rpc_filesystem_ = use_rpc_filesystem
-    rpc_sdk_path_placeholder_ = rpc_sdk_path_placeholder
 
   run -> none:
     while true:
@@ -150,7 +141,6 @@ class LspServer:
         "toit/reset_crash_rate_limit": (:: reset_crash_rate_limit),
         "toit/settings":           (:: settings_.map_),
         "toit/didOpenMany":        (:: did_open_many it),
-        "toit/fetchSdkFile":       (:: fetch_sdk_file (FetchSdkFileParams it)),
         "toit/archive":            (:: archive (ArchiveParams it)),
         "toit/snapshot_bundle":    (:: snapshot_bundle (SnapshotBundleParams it))
     }
@@ -231,29 +221,6 @@ class LspServer:
       content := null
       documents_.did_open --uri=it content content_revision
     analyze uris
-
-  fetch_sdk_file params/FetchSdkFileParams -> Map:
-    path := params.path
-    if not uses_rpc_filesystem_ or not rpc_sdk_path_placeholder_:
-      throw "fetch_sdk_file only permitted when running with rpc sdk path"
-
-    if not path.starts_with rpc_sdk_path_placeholder_:
-      throw "fetch_sdk_file called with non sdk path: '$path'"
-
-    sdk_path := (sdk_path_from_compiler compiler_path_)
-    local_path := path.replace rpc_sdk_path_placeholder_ sdk_path
-
-    protocol := FileServerProtocol.local compiler_path_ sdk_path_ documents_
-    file := protocol.get_file local_path
-    content/any := file.content
-    if content and connection_.uses_json: content = content.to_string
-    return {
-      "path": file.path,
-      "exists": file.exists,
-      "is_regular": file.is_regular,
-      "is_directory": file.is_directory,
-      "content": content,
-    }
 
   archive params/ArchiveParams -> string:
     non_canonicalized_uris := params.uris or [params.uri]
@@ -545,21 +512,12 @@ class LspServer:
 
     should_write_repro := settings_.get "shouldWriteReproOnCrash" --if_absent=:false
 
-    protocol / FileServerProtocol := ?
-    if uses_rpc_filesystem_:
-      filesystem/Filesystem := ?
-      if rpc_sdk_path_placeholder_:
-        filesystem = FilesystemHybrid rpc_sdk_path_placeholder_ compiler_path connection_
-      else:
-        filesystem = FilesystemLspRpc connection_
-      protocol = FileServerProtocol documents_ filesystem
-    else:
-      protocol = FileServerProtocol.local compiler_path sdk_path documents_
+    protocol := FileServerProtocol.local compiler_path sdk_path documents_ translator_
 
     compiler := null  // Let the 'compiler' local be visible in the lambda expression below.
     compiler = Compiler compiler_path translator_ timeout_ms
         --protocol=protocol
-        --project_path=root_uri_ and (translator_.to_path root_uri_)
+        --project_uri=root_uri_
         --on_error=:: |message|
           if is_rate_limited:
             // Do nothing
@@ -594,10 +552,7 @@ main args -> none:
           cli.OptionString "toit-path-override",
       ]
       --options=[
-          cli.Flag "rpc-filesystem" --default=false,
-          cli.OptionString "rpc-sdk-path",
           cli.OptionString "home-path",
-          cli.OptionString "uri_path_mapping",
           cli.Flag "verbose" --default=false,
       ]
       --run=:: parsed = it
@@ -606,14 +561,9 @@ main args -> none:
 
   toit_path_override := parsed["toit-path-override"]
 
-  use_rpc_filesystem := parsed["rpc-filesystem"]
-  rpc_sdk_path_placeholder := parsed["rpc-sdk-path"]
-  json_mapping := parsed["uri_path_mapping"]
   is_verbose = parsed["verbose"]
 
-  uri_path_mapping := json_mapping == null or use_rpc_filesystem ? null : json.parse json_mapping
-
-  uri_path_translator := UriPathTranslator uri_path_mapping
+  uri_path_translator := UriPathTranslator
 
   in_pipe  := pipe.stdin
   out_pipe := pipe.stdout
@@ -636,6 +586,4 @@ main args -> none:
   rpc_connection := RpcConnection reader writer
 
   server := LspServer rpc_connection toit_path_override uri_path_translator
-      --use_rpc_filesystem=use_rpc_filesystem
-      --rpc_sdk_path_placeholder=rpc_sdk_path_placeholder
   server.run

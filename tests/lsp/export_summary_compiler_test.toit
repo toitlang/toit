@@ -27,7 +27,8 @@ check_foo_export summary client foo_path:
 
 test client/LspClient:
   LEVELS ::= 3
-  DIR ::= "/non_existing_dir_toit_test"
+  DRIVE ::= platform == PLATFORM_WINDOWS ? "c:" : ""
+  DIR ::= "$DRIVE/non_existing_dir_toit_test"
   MODULE_NAME_PREFIX ::= "some_non_existing_path"
   relatives := List LEVELS: ".$MODULE_NAME_PREFIX$it"
   paths := List LEVELS: "$DIR/$MODULE_NAME_PREFIX$(it).toit"

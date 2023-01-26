@@ -3,9 +3,13 @@
 // be found in the tests/LICENSE file.
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <stdint.h>
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "../../src/top.h"
 #include "../../src/compiler/tar.h"
@@ -19,14 +23,72 @@
 #include "../../src/compiler/package.h"
 
 #ifdef TOIT_WINDOWS
-// Make the mock-compiler compile on Windows.
-// Clearly doesn't work yet.
-size_t getline (char** line_ptr,
-                size_t* n,
-                FILE* stream) {
-  UNIMPLEMENTED();
+// https://stackoverflow.com/a/47229318
+// /* The original code is public domain -- Will Hartung 4/9/09 */
+// /* Modifications, public domain as well, by Antti Haapala, 11/10/17
+//    - Switched to getc on 5/23/19 */
+// Slightly modified (floitsch):
+//  - avoid warnings with malloc (using 'unvoid_cast').
+//  - indentation.
+//  - discard trailing '\r'.
+//  - formatting ('*' binds to type).
+//  - made the function static.
+//  - use 'null' instead of 'NULL'.
+//  - use `reinterpret_cast` instead of C cast.
+static ssize_t getline(char** lineptr, size_t* n, FILE* stream) {
+  size_t pos;
+  int c;
+
+  if (lineptr == null || stream == null || n == null) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  c = getc(stream);
+  if (c == EOF) {
+    return -1;
+  }
+
+  if (*lineptr == null) {
+    *lineptr = toit::unvoid_cast<char*>(malloc(128));
+    if (*lineptr == null) {
+      return -1;
+    }
+    *n = 128;
+  }
+
+  pos = 0;
+  while(c != EOF) {
+    if (pos + 1 >= *n) {
+      size_t new_size = *n + (*n >> 2);
+      if (new_size < 128) {
+        new_size = 128;
+      }
+      char* new_ptr = toit::unvoid_cast<char*>(realloc(*lineptr, new_size));
+      if (new_ptr == null) {
+        return -1;
+      }
+      *n = new_size;
+      *lineptr = new_ptr;
+    }
+
+    reinterpret_cast<unsigned char*>(*lineptr)[pos ++] = c;
+    if (c == '\n') {
+      break;
+    }
+    c = getc(stream);
+  }
+
+  if (pos != 0 && (*lineptr)[pos - 1] == '\r') {
+    pos --;
+  }
+  (*lineptr)[pos] = '\0';
+  return pos;
 }
-#define SIGKILL 9
+#define SIGCRASH SIGILL
+#else
+// We use SIGKILL, since that one doesn't create core dumps.
+#define SIGCRASH SIGKILL
 #endif
 
 using namespace toit::compiler;
@@ -53,6 +115,13 @@ void writer_printf(LspWriter* writer, const char* format, ...) {
 }
 
 int main(int argc, char** argv) {
+#ifdef TOIT_WINDOWS
+  // On Windows, we need to set the stdout to binary mode.
+  // Otherwise, any '\n' we print becomes '\r\n'.
+  setmode(fileno(stdout), O_BINARY);
+  setmode(fileno(stdin), O_BINARY);
+  setmode(fileno(stderr), O_BINARY);
+#endif
   toit::throwing_new_allowed = true;
   const char* MOCK_PREFIX = "///mock:";
 
@@ -67,7 +136,10 @@ int main(int argc, char** argv) {
     // We only care for the first one, but will read all the remaining ones.
     ASSERT(path_count > 0);
     path = read_line();
-    for (int i = 1; i < path_count; i++) read_line();
+    for (int i = 1; i < path_count; i++) {
+      char* ignored_line = read_line();
+      free(ignored_line);
+    }
   } else {
     path = read_line();
     if (strcmp(command, "DUMP_FILE_NAMES") == 0) {
@@ -138,8 +210,7 @@ int main(int argc, char** argv) {
 
   if (should_crash) {
     fprintf(stderr, "Simulating compiler crash\n");
-    // We use SIGKILL, since that one doesn't create core dumps.
-    raise(SIGKILL);
+    raise(SIGCRASH);
   }
   if (should_timeout) {
     fprintf(stderr, "Simulating timeout\n");

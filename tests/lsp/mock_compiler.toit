@@ -83,10 +83,10 @@ class MockCompiler:
   build_deps_ data --chunks/List:
     if not data:
       chunks.add "1"
-      chunks.add "CORE"
+      chunks.add "/CORE"
     else:
       chunks.add data.deps.size + 1
-      chunks.add "CORE"
+      chunks.add "/CORE"
       chunks.add_all data.deps
 
   build_summary_ entry_path -> string:
