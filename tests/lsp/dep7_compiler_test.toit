@@ -13,9 +13,10 @@ test client/LspClient:
   // The paths don't really need to be non-existing, as we provide content for it
   // anyways.
   LEVELS ::= 2
+  DRIVE ::= platform == PLATFORM_WINDOWS ? "c:" : ""
   MODULE_NAME_PREFIX ::= "some_non_existing_path"
   relatives := List LEVELS: ".$MODULE_NAME_PREFIX$it"
-  paths := List LEVELS: "/tmp/$MODULE_NAME_PREFIX$(it).toit"
+  paths := List LEVELS: "$DRIVE/tmp/$MODULE_NAME_PREFIX$(it).toit"
 
   PATH1_CODE ::= """
     import $relatives[1]

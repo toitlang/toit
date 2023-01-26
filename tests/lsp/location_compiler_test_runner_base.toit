@@ -35,6 +35,7 @@ abstract class LocationCompilerTestRunner:
     client.send_did_open --path=test_path --text=content
 
     lines := (content.trim --right "\n").split "\n"
+    lines = lines.map --in_place: it.trim --right "\r"
     for i := 0; i < lines.size; i++:
       line := lines[i]
       is_test_line := false

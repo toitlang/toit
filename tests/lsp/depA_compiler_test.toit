@@ -14,7 +14,8 @@ test client/LspClient:
   // The paths don't really need to be non-existing, as we provide content for it
   // anyways.
 
-  DIR ::= "/non_existing_dir_toit_test"
+  DRIVE ::= platform == PLATFORM_WINDOWS ? "c:" : ""
+  DIR ::= "$DRIVE/non_existing_dir_toit_test"
   MODULE_NAME_PREFIX ::= "some_non_existing_path"
   RELATIVE2 ::= ".$(MODULE_NAME_PREFIX)2"
   PATH1 ::= "$DIR/$(MODULE_NAME_PREFIX)1.toit"

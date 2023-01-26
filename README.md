@@ -97,6 +97,7 @@ We're actively working on simple installation steps for other platforms. For now
 
 ### Build system
 
+#### Linux and Mac
 To build Toit and its dependencies the build host requires:
 
 * [GNU Make](https://www.gnu.org/software/make/)
@@ -114,10 +115,38 @@ issue the following command to install these:
 sudo apt install build-essential cmake ninja-build golang
 ```
 
+You can then build Toit by running the following commands in a checkout of this repository:
+
+``` bash
+git submodule update --init --recursive
+make
+```
+
 For builds targeting ESP32 hardware additional requirements might be in effect
 depending on the build host's architecture, see paragraph [ESP32 tools](#esp32-tools).
 
 For builds targeting RISC-V, ARM32, or ARM64 hardware, see the [Other platforms README](README_OTHERPLATFORMS.md).
+
+#### Windows
+
+If you are using Windows you can use Chocolatey to install the required dependencies.
+
+After [installing Chocolatey](https://docs.chocolatey.org/en-us/choco/setup), you can
+install the required dependencies by running the following command in an elevated shell
+(usually the same you just used to install Chocolatey):
+
+``` powershell
+choco install git ninja mingw make golang ccache
+choco install cmake.install --installargs '"ADD_CMAKE_TO_PATH=System"'
+```
+
+After that you can use the bash that comes with Git ('git-bash') and compile Toit
+in a checkout of this repository by running the following commands:
+
+``` bash
+git submodule update --init --recursive
+make
+```
 
 ### ESP-IDF
 
@@ -244,7 +273,17 @@ There are syntax highlighters for VIM and CodeMirror in the
 ## Build for ESP32
 
 Make sure the environment variables for the ESP32 tools are set, as
-described in the [dependencies](#dependencies) section.
+described in the [dependencies](#dependencies) section. Typically this
+consists of running the following command:
+
+``` bash
+# On Linux and Mac OS X:
+third_party/esp-idf/install.sh
+```
+``` powershell
+# On Windows:
+third_party\esp-idf\install.bat
+```
 
 Build firmware that can be flashed onto your ESP32 device. The firmware is generated
 in `build/esp32/firmware.envelope`:
@@ -255,7 +294,7 @@ make esp32
 
 If you want to flash the generated firmware on your device, you can use the `firmware`
 too. Internally, the `firmware` tool calls out to `esptool.py` so you need to build
-that first using `make esptool`. Assuming your device is connected through `/dev/ttyUSB0` 
+that first using `make esptool`. Assuming your device is connected through `/dev/ttyUSB0`
 you can achieve all of this through:
 
 ``` sh

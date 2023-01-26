@@ -69,10 +69,10 @@ create_archive path toitc -> string:
   timeout_ms := -1  // No timeout.
 
   repro_filesystem := FilesystemLocal (sdk_path_from_compiler toitc)
-  protocol := FileServerProtocol documents repro_filesystem
+  protocol := FileServerProtocol documents repro_filesystem uri_translator
   compiler := Compiler toitc uri_translator timeout_ms
       --protocol=protocol
-      --project_path=directory.cwd
+      --project_uri=uri_translator.to_uri directory.cwd
 
   compiler_input := create_compiler_input --path=untitled_path
 

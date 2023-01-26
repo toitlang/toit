@@ -1,5 +1,5 @@
 main tests/type_propagation/spawn_test.toit
-  0[029] - load [lambda] in main tests/type_propagation/spawn_test.toit
+  0[029] - load method [lambda] in main tests/type_propagation/spawn_test.toit
   5[023] - load smi 0
   6[022] - load null
   7[053] - invoke static Array_ <sdk>/core/collections.toit // [{SmallInteger_}, {Null_}] -> {LargeArray_|SmallArray_}

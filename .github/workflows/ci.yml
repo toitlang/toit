@@ -286,9 +286,11 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
+          ls /tmp/lsp_repro-* || true
           REPRO_DIR=${{ steps.constants.outputs.debug_dir }}/repros
           mkdir -p $REPRO_DIR
           find /tmp -maxdepth 1 -name 'lsp_repro-*' -exec cp -r {} $REPRO_DIR \;
+          ls $REPRO_DIR
 
       - name: Upload debug artifacts
         if: always()
@@ -298,6 +300,7 @@ jobs:
           name: debug
           path: ${{ steps.constants.outputs.debug_root_dir }}
           retention-days: 5
+          if-no-files-found: ignore
 
       - name: Upload toitdoc - Linux
         if: runner.os == 'Linux' && matrix.shard == 1

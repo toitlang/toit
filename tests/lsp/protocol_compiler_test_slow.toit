@@ -14,6 +14,11 @@ test client/LspClient:
   protocol1 := "$(directory.cwd)/protocol1.toit"
   protocol2 := "$(directory.cwd)/protocol2.toit"
   protocol3 := "$(directory.cwd)/protocol3.toit"
+  // Canonicalize paths to avoid problems with Windows paths.
+  protocol1 = client.to_path (client.to_uri protocol1)
+  protocol2 = client.to_path (client.to_uri protocol2)
+  protocol3 = client.to_path (client.to_uri protocol3)
+
   files_to_open := [
     [protocol1, 0],
     [protocol2, 1],

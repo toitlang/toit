@@ -23,41 +23,54 @@ import monitor
 
 import .documents
 import .rpc
+import .uri_path_translator
 import .utils
 import .verbose
 
 sdk_path_from_compiler compiler_path/string -> string:
+  is_absolute/bool := ?
+  if platform == PLATFORM_WINDOWS:
+    compiler_path = compiler_path.replace "\\" "/"
+    if compiler_path.starts_with "/":
+      is_absolute = true
+    else if compiler_path.size >= 3 and compiler_path[1] == ':' and compiler_path[2] == '/':
+      is_absolute = true
+    else:
+      is_absolute = false
+  else:
+    is_absolute = compiler_path.starts_with "/"
+
   index := compiler_path.index_of --last "/"
   if index < 0: throw "Couldn't determine SDK path"
   result := compiler_path.copy 0 index
-  if not result.starts_with "/":
+  if not is_absolute:
     // Make it absolute.
     result = "$directory.cwd/$result"
   return result
 
 
 class File:
-  path / string ::= ?
   exists / bool ::= ?
   is_regular / bool ::= ?
   is_directory / bool ::= ?
   content / ByteArray? ::= ?
 
-  constructor .path .exists .is_regular .is_directory .content:
+  constructor .exists .is_regular .is_directory .content:
 
 
 class FileServerProtocol:
   filesystem / Filesystem ::= ?
   documents_  / Documents  ::= ?
+  translator_ / UriPathTranslator ::= ?
 
   file_cache_ / Map ::= {:}
   directory_cache_ / Map ::= {:}
   sdk_path_ / string? := null
   package_cache_paths_ / List? := null
 
-  constructor .documents_ .filesystem:
+  constructor .documents_ .filesystem .translator_:
 
-  constructor.local compiler_path/string sdk_path/string .documents_:
+  constructor.local compiler_path/string sdk_path/string .documents_ .translator_:
     filesystem = FilesystemLocal sdk_path
 
   handle reader/BufferedReader writer/Writer:
@@ -65,36 +78,38 @@ class FileServerProtocol:
         line := reader.read_line
         if line == null: break
         if line == "SDK PATH":
-          if not sdk_path_: sdk_path_ = filesystem.sdk_path
+          if not sdk_path_:
+            sdk_path_ = translator_.local_path_to_compiler_path filesystem.sdk_path
           writer.write "$sdk_path_\n"
         else if line == "PACKAGE CACHE PATHS":
           if not package_cache_paths_: package_cache_paths_ = filesystem.package_cache_paths
           writer.write "$package_cache_paths_.size\n"
           package_cache_paths_.do: writer.write "$it\n"
         else if line == "LIST DIRECTORY":
-          path := reader.read_line
-          entries := directory_cache_.get path --init=: filesystem.directory_entries path
+          compiler_path := reader.read_line
+          entries := directory_cache_.get compiler_path --init=:
+            local_path := translator_.compiler_path_to_local_path compiler_path
+            filesystem.directory_entries local_path
           writer.write "$entries.size\n"
           entries.do: writer.write "$it\n"
         else:
           assert: line == "INFO"
-          path := reader.read_line
-
-          file := get_file path
+          compiler_path := reader.read_line
+          file := get_file compiler_path
           encoded_size := file.content == null ? -1 : file.content.size
           encoded_content := file.content == null ? "" : file.content
           writer.write "$file.exists\n$file.is_regular\n$file.is_directory\n$encoded_size\n"
           writer.write encoded_content
 
-  get_file path /string -> File:
-    return file_cache_.get path --init=: create_file_entry_ path
+  get_file compiler_path/string -> File:
+    return file_cache_.get compiler_path --init=: create_file_entry_ compiler_path
 
-  create_file_entry_ path / string -> File:
+  create_file_entry_ compiler_path / string -> File:
     exists := false
     is_regular := false
     is_directory := false
     content := null
-    document := documents_.get --path=path
+    document := documents_.get --uri=(translator_.to_uri compiler_path --from_compiler)
     // Just having a document is not enough, as we might still have entries for
     // deleted files.
     if document and document.content:
@@ -102,8 +117,9 @@ class FileServerProtocol:
       is_regular = true
       is_directory = false
       content = document.content.to_byte_array
-      return File path exists is_regular is_directory content
-    return filesystem.create_file_entry path
+      return File exists is_regular is_directory content
+    local_path := translator_.compiler_path_to_local_path compiler_path
+    return filesystem.create_file_entry local_path
 
   served_files -> Map: return file_cache_
   served_directories -> Map: return directory_cache_
@@ -210,7 +226,7 @@ abstract class FilesystemBase implements Filesystem:
     is_reg := does_exist and is_regular_file path
     is_dir := does_exist and not is_reg and is_directory path
     content := is_reg ? read_content path : null
-    return File path does_exist is_reg is_dir content
+    return File does_exist is_reg is_dir content
 
   abstract sdk_path -> string
   abstract package_cache_paths -> List
