@@ -120,10 +120,10 @@ enum BytecodeFormat {
   BYTECODE(LOAD_METHOD,                5, OP_WU, "load method")                \
   \
   BYTECODE(LOAD_GLOBAL_VAR,            2, OP_BG, "load global var")            \
-  BYTECODE(LOAD_GLOBAL_VAR_DYNAMIC,    1, OP,    "load global var dynamic")    \
   BYTECODE(LOAD_GLOBAL_VAR_WIDE,       3, OP_SG, "load global var wide")       \
   BYTECODE(LOAD_GLOBAL_VAR_LAZY,       2, OP_BG, "load global var lazy")       \
   BYTECODE(LOAD_GLOBAL_VAR_LAZY_WIDE,  3, OP_SG, "load global var lazy wide")  \
+  BYTECODE(LOAD_GLOBAL_VAR_DYNAMIC,    1, OP,    "load global var dynamic")    \
   BYTECODE(STORE_GLOBAL_VAR,           2, OP_BG, "store global var")           \
   BYTECODE(STORE_GLOBAL_VAR_WIDE,      3, OP_SG, "store global var wide")      \
   BYTECODE(STORE_GLOBAL_VAR_DYNAMIC,   1, OP,    "store global var dynamic")   \
@@ -144,7 +144,7 @@ enum BytecodeFormat {
   BYTECODE(AS_CLASS_WIDE,              3, OP_SCI, "as class wide")             \
   BYTECODE(AS_INTERFACE,               2, OP_BII, "as interface")              \
   BYTECODE(AS_INTERFACE_WIDE,          3, OP_SII, "as interface wide")         \
-  BYTECODE(AS_LOCAL,                   2, OP_BLC, "load local, as, pop")       \
+  BYTECODE(AS_LOCAL,                   2, OP_BLC, "load local, as class, pop") \
   \
   BYTECODE(INVOKE_STATIC,              3, OP_SD, "invoke static")              \
   BYTECODE(INVOKE_STATIC_TAIL,         5, OP_SD_BS_BU, "invoke static tail")   \
