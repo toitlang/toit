@@ -194,11 +194,12 @@ class Compiler:
               error_path = reader.read_line
               error_uri = uri_path_translator_.to_uri error_path --from_compiler
               range = read_range reader
-            msg := ""
+            msg_lines := []
             while true:
               line = reader.read_line
               if line == "*******************": break
-              msg += line
+              msg_lines.add line
+            msg := msg_lines.join "\n"
 
             diagnostic_severity := ?
             if severity == "error":
