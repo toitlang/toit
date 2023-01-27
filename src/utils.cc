@@ -446,11 +446,12 @@ bool Utils::utf_8_equals_utf_16(const uint8* input1, word length1, const uint16*
 // sign then the whole thing is taken to be the key.
 uint16* Utils::create_new_environment(Process* process, uint16* previous_environment, Array* environment) {
   uint16* new_environment = null;
-  word length_so_far = 0;
+  word length_so_far;
   word new_environment_length = 0;
   // First run calculates the length of the result.  Second run actually writes
   // the result.
   for (int runs = 0; runs < 2; runs++) {
+    length_so_far = 0;
     bool writing = runs != 0;
     for (uint16* p = previous_environment; *p; ) {
       word len = 0;
@@ -474,10 +475,10 @@ uint16* Utils::create_new_environment(Process* process, uint16* previous_environ
         }
       }
       if (!in_new_environment) {
-        length_so_far += utf_16_key_value_length + 1;  // Add the null terminator.
         if (writing) {
           memcpy(new_environment + length_so_far, p, (utf_16_key_value_length + 1) * sizeof(uint16));
         }
+        length_so_far += utf_16_key_value_length + 1;  // Add the null terminator.
       }
       p += utf_16_key_value_length + 1;
     }
