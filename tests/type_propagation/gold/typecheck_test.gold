@@ -39,13 +39,13 @@ test_any tests/type_propagation/typecheck_test.toit
  23[089] - return null S1 0
 
 test_throws tests/type_propagation/typecheck_test.toit
-  0[029] - load [block] in test_throws tests/type_propagation/typecheck_test.toit
+  0[029] - load method [block] in test_throws tests/type_propagation/typecheck_test.toit
   5[038] - load block 0
   7[022] - load null
   8[022] - load null
   9[053] - invoke static catch <sdk>/core/exceptions.toit // [[block], {Null_}, {Null_}] -> {*}
  12[040] - pop 2
- 14[029] - load [block] in test_throws tests/type_propagation/typecheck_test.toit
+ 14[029] - load method [block] in test_throws tests/type_propagation/typecheck_test.toit
  19[038] - load block 0
  21[022] - load null
  22[022] - load null

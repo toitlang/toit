@@ -91,7 +91,7 @@ Package PackageLock::package_for(const std::string& path, Filesystem* fs) const 
   }
   std::vector<std::string> to_cache;
   for (int i = path.size() - 1; i >= 0; i--) {
-    if (path[i] == fs->path_separator()) {
+    if (fs->is_path_separator(path[i])) {
       auto sub = path.substr(0, i);
       auto probe = path_to_package_cache_.find(sub);
       if (probe != path_to_package_cache_.end()) {
@@ -119,7 +119,7 @@ std::string find_lock_file_at(const char* dir,
 
   PathBuilder builder(fs);
   if (!fs->is_absolute(dir)) {
-    builder.join(fs->cwd());
+    builder.join(fs->relative_anchor(dir));
   }
   builder.join(dir);
   builder.join(LOCK_FILE);
@@ -137,7 +137,7 @@ std::string find_lock_file(const char* source_path,
 
   PathBuilder builder(fs);
   if (!fs->is_absolute(source_path)) {
-    builder.join(fs->cwd());
+    builder.join(fs->relative_anchor(source_path));
   }
   builder.join(source_path);
   // Drop the filename.
@@ -148,7 +148,7 @@ std::string find_lock_file(const char* source_path,
   builder.add(fs->path_separator());
 
   for (int i = builder.length() - 1; i >= 0; i--) {
-    if (builder[i] == fs->path_separator()) {
+    if (fs->is_path_separator(builder[i])) {
       builder.reset_to(i + 1);
       builder.join(LOCK_FILE);
       if (fs->exists(builder.c_str())) {
@@ -163,7 +163,7 @@ static std::string build_canonical_sdk_dir(Filesystem* fs) {
   const char* sdk_lib_dir = fs->library_root();
   PathBuilder sdk_builder(fs);
   if (!fs->is_absolute(sdk_lib_dir)) {
-    sdk_builder.join(fs->cwd());
+    sdk_builder.join(fs->relative_anchor(sdk_lib_dir));
   }
   sdk_builder.join(sdk_lib_dir);
   sdk_builder.canonicalize();
@@ -857,10 +857,22 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
 
   ASSERT(!is_valid_package_id(Package::ENTRY_PACKAGE_ID));
   std::string root(fs->root(entry_path));
+  std::string absolute_error_path = root;
+  std::string relative_error_path = root;
+  if (!entry_is_absolute) {
+    // On Windows this is a drive-relative path.
+    if (fs->is_path_separator(entry_path[0])) {
+      relative_error_path = std::string(fs->relative_anchor("\\"));
+      absolute_error_path = relative_error_path;
+    } else {
+      relative_error_path = std::string(".");
+      absolute_error_path = std::string(fs->cwd());
+    }
+  }
   Package entry_package(Package::ENTRY_PACKAGE_ID,
                         entry_pkg_path,
-                        entry_is_absolute ? root : fs->cwd(),
-                        entry_is_absolute ? root : std::string("."),
+                        absolute_error_path,
+                        relative_error_path,
                         Package::OK,
                         entry_prefixes);
   packages[Package::ENTRY_PACKAGE_ID] = entry_package;
@@ -900,6 +912,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
         char* localized = FilesystemLocal::to_local_path(entry.path.c_str());
         ASSERT(i == -1);
         if (!fs->is_absolute(localized)) {
+          // TODO(florian): this is not correct for Windows paths that are drive-relative: '\foo'.
           builder.join(package_lock_dir);
         }
         error_path = std::string(localized);
@@ -909,6 +922,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
       } else {
         if (i == -1) continue;
         if (!fs->is_absolute(package_dirs[i])) {
+          // TODO(florian): this is not correct for Windows paths that are drive-relative: '\foo'.
           builder.join(fs->cwd());
         }
         builder.join(package_dirs[i]);

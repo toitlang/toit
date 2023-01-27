@@ -5,7 +5,7 @@ main tests/type_propagation/non_local_return_test.toit
   7[089] - return null S1 0
 
 test_simple tests/type_propagation/non_local_return_test.toit
-  0[029] - load [block] in test_simple tests/type_propagation/non_local_return_test.toit
+  0[029] - load method [block] in test_simple tests/type_propagation/non_local_return_test.toit
   5[038] - load block 0
   7[053] - invoke static invoke tests/type_propagation/non_local_return_test.toit // [[block]] -> {}
  10[040] - pop 2
@@ -14,7 +14,7 @@ test_simple tests/type_propagation/non_local_return_test.toit
 
 [block] in test_simple tests/type_propagation/non_local_return_test.toit
  - argument 0: [block]
-  0[029] - load [block] in [block] in test_simple tests/type_propagation/non_local_return_test.toit
+  0[029] - load method [block] in [block] in test_simple tests/type_propagation/non_local_return_test.toit
   5[038] - load block 0
   7[053] - invoke static invoke tests/type_propagation/non_local_return_test.toit // [[block]] -> {}
  10[004] - store local, pop S1
@@ -22,7 +22,7 @@ test_simple tests/type_propagation/non_local_return_test.toit
 
 [block] in [block] in test_simple tests/type_propagation/non_local_return_test.toit
  - argument 0: [block]
-  0[029] - load [block] in [block] in [block] in test_simple tests/type_propagation/non_local_return_test.toit
+  0[029] - load method [block] in [block] in [block] in test_simple tests/type_propagation/non_local_return_test.toit
   5[026] - load smi 3
   7[038] - load block 1
   9[058] - invoke virtual repeat // [{SmallInteger_}, [block]] -> {}
@@ -39,14 +39,14 @@ test_simple tests/type_propagation/non_local_return_test.toit
   9[088] - return S1 1
 
 test_continue tests/type_propagation/non_local_return_test.toit
-  0[029] - load [block] in test_continue tests/type_propagation/non_local_return_test.toit
+  0[029] - load method [block] in test_continue tests/type_propagation/non_local_return_test.toit
   5[038] - load block 0
   7[053] - invoke static invoke tests/type_propagation/non_local_return_test.toit // [[block]] -> {String_}
  10[089] - return null S2 0
 
 [block] in test_continue tests/type_propagation/non_local_return_test.toit
  - argument 0: [block]
-  0[029] - load [block] in [block] in test_continue tests/type_propagation/non_local_return_test.toit
+  0[029] - load method [block] in [block] in test_continue tests/type_propagation/non_local_return_test.toit
   5[026] - load smi 3
   7[038] - load block 1
   9[058] - invoke virtual repeat // [{SmallInteger_}, [block]] -> {}
