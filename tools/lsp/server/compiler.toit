@@ -198,7 +198,8 @@ class Compiler:
             while true:
               line = reader.read_line
               if line == "*******************": break
-              msg += line
+              if msg != "": msg += "\n"
+              msg += "$line"
 
             diagnostic_severity := ?
             if severity == "error":
