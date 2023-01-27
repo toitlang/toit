@@ -170,8 +170,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   // TODO(mikkel): current_directory could be a union with an int and a char*. The clients of this member would know
   //               which field to access.
 #if defined(TOIT_WINDOWS)
-  const char* current_directory();
-  void set_current_directory(const char* current_directory);
+  const wchar_t* current_directory();
+  void set_current_directory(const wchar_t* current_directory);
 #else
   int current_directory() { return current_directory_; }
   void set_current_directory(int fd) { current_directory_ = fd; }
@@ -311,10 +311,17 @@ class AllocationManager {
     , process_(process) {
     process->register_external_allocation(size);
   }
+  
+  // Normally we would trigger a GC if too much is allocated externally, but on
+  // desktop systems we sometimes want to be allowed to allocate without
+  // worrying about triggering a GC in a complicated primitiive.
+  void set_always_allow_external() {
+    always_allow_external_ = true;
+  }
 
   uint8* alloc(word length) {
     ASSERT(ptr_ == null);
-    bool ok = process_->should_allow_external_allocation(length);
+    bool ok = always_allow_external_ || process_->should_allow_external_allocation(length);
     if (!ok) {
       return null;
     }
@@ -361,6 +368,7 @@ class AllocationManager {
   void* ptr_;
   word size_;
   Process* process_;
+  bool always_allow_external_ = false;
 };
 
 } // namespace toit

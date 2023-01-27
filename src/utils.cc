@@ -512,6 +512,12 @@ uint16* Utils::create_new_environment(Process* process, uint16* previous_environ
       new_environment_length = length_so_far;
     }
   }
+  for (uint16* p = new_environment; *p; ) {
+    printf("new environment: %ls\n", p);
+    word len = 0;
+    while (p[len] != 0) len++;
+    p += len + 1;
+  }
   return new_environment;
 }
 

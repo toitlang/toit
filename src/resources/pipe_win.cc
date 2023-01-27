@@ -448,24 +448,28 @@ static Object* fork_helper(
   if (!use_path) INVALID_ARGUMENT;
 
   AllocationManager allocation(process);
-  char* command_line = reinterpret_cast<char*>(allocation.calloc(MAX_COMMAND_LINE_LENGTH, 1));
-  if (!command_line) ALLOCATION_FAILED;
+  allocation.set_always_allow_external();
+  auto command_line = unvoid_cast<wchar_t*>(allocation.calloc(MAX_COMMAND_LINE_LENGTH, sizeof(wchar_t)));
 
   int pos = 0;
   for (int i = 0; i < arguments->length(); i++) {
-    if (!is_string(arguments->at(i))) {
+    const wchar_t* format;
+    Blob argument;
+    if (!arguments->at(i)->byte_content(process->program(), &argument, STRINGS_ONLY)) {
       WRONG_TYPE;
     }
-    const char* format;
-    String* argument = String::cast(arguments->at(i));
-    if (strchr(argument->as_cstr(), ' ') != NULL) {
-      format = (i != arguments->length() - 1) ? "\"%s\" " : "\"%s\"";
+    if (memchr(argument.address(), argument.length(), ' ') != NULL) {
+      format = (i != arguments->length() - 1) ? L"\"%ls\" " : L"\"%ls\"";
     } else {
-      format = (i != arguments->length() - 1) ? "%s " : "%s";
+      format = (i != arguments->length() - 1) ? L"%ls " : L"%ls";
     }
+    word utf_16_length = utf8_to_utf16(argument.address(), argument.length(), null, 0);
+    auto utf_16_argument = unvoid_cast<wchar_t*>(allocation.calloc(utf_16_length + 1, sizeof(wchar_t)));
+    utf8_to_utf16(argument.address(), argument.length(), utf_16_argument, utf_16_length);
+    utf_16_argument[utf_16_length - 1] = 0;
 
-    if (pos + argument->length() + strlen(format) - 2 >= MAX_COMMAND_LINE_LENGTH) OUT_OF_BOUNDS;
-    pos += snprintf(command_line + pos, MAX_COMMAND_LINE_LENGTH - pos, format, argument->as_cstr());
+    if (pos + utf_16_length + wstrlen(format) - 3 >= MAX_COMMAND_LINE_LENGTH) OUT_OF_BOUNDS;
+    pos += snwprintf(command_line + pos, MAX_COMMAND_LINE_LENGTH - pos, format, utf_16_argument);
   }
 
   // We allocate memory for the SubprocessResource early here so we can handle failure
@@ -495,16 +499,16 @@ static Object* fork_helper(
     FreeEnvironmentStringsW(reinterpret_cast<wchar_t*>(old_environment));
   }
 
-  if (!CreateProcess(NULL,
-                     command_line,
-                     NULL,
-                     NULL,
-                     TRUE,  // inherit handles.
-                     0,     // creation flags
-                     new_environment,
-                     current_directory,
-                     &startup_info,
-                     &process_information)) {
+  if (!CreateProcessW(NULL,
+                      command_line,
+                      NULL,
+                      NULL,
+                      TRUE,  // inherit handles.
+                      0,     // creation flags
+                      new_environment,
+                      current_directory,
+                      &startup_info,
+                      &process_information)) {
     if (new_environment) free(new_environment);
     WINDOWS_ERROR;
   }

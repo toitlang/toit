@@ -548,4 +548,25 @@ class AsyncThread : public Thread {
   const std::function<void()> _func;
 };
 
+#ifdef TOIT_WINDOWS
+
+class WideCharAllocationManager : public AllocationManager {
+  public:
+    WideCharAllocationManager(Process* process) : AllocationManager(process) {
+      set_always_allow_external();
+    }
+
+    inline wchar_t* to_wcs(Blob* blob, word* length_return) {
+      word utf_16_length = utf_8_to_16(blob->data(), blob->length(), null, 0);
+      auto utf_16_string = unvoid_cast<wchar_t*>(this->calloc(utf_16_length + 1, sizeof(wchar_t)));
+      word utf_16_length = utf_8_to_16(blob->data(), blob->length(), utf_16_string, utf_16_length);
+      utf_16_string[utf_16_length] = 0;
+      if (length_return) *length_return = utf_16_length;
+      return utf_16_string;
+    }
+  };
+
+#endif
+
+
 } // namespace toit
