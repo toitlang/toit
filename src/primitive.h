@@ -795,17 +795,21 @@ namespace toit {
   if (_value_##name < 0 || _value_##name > UINT32_MAX) OUT_OF_RANGE;\
   uint32 name = (uint32) _value_##name;
 
+#define INT64_VALUE_OR_WRONG_TYPE(destination, raw)     \
+  int64 destination;                                    \
+  do {                                                  \
+    if (is_smi(raw)) {                                  \
+      destination = Smi::cast(raw)->value();            \
+    } else if (is_large_integer(raw)) {                 \
+      destination = LargeInteger::cast(raw)->value();   \
+    } else {                                            \
+      WRONG_TYPE;                                       \
+    }                                                   \
+  } while (false)
 
 #define _A_T_int64(N, name)                             \
   Object* _raw_##name = __args[-(N)];                   \
-  int64 name;                                           \
-  if (is_smi(_raw_##name)) {                            \
-    name = (int64) Smi::cast(_raw_##name)->value();     \
-  } else if (is_large_integer(_raw_##name)) {           \
-    name = LargeInteger::cast(_raw_##name)->value();    \
-  } else {                                              \
-    WRONG_TYPE;                                         \
-  }
+  INT64_VALUE_OR_WRONG_TYPE(name, _raw_##name)
 
 #define _A_T_word(N, name)                \
   Object* _raw_##name = __args[-(N)];     \

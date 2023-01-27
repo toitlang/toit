@@ -322,7 +322,7 @@ print "There have been $((process_stats)[STATS_INDEX_GC_COUNT]) GCs for this pro
 ```
 */
 process_stats --gc/bool=false list/List=(List STATS_LIST_SIZE_) -> List:
-  full_gcs /int? := null
+  full_gcs/int? := null
   if gc:
     full_gcs = (process_stats)[STATS_INDEX_FULL_GC_COUNT]
   result := process_stats_ list -1 -1 full_gcs
@@ -336,7 +336,7 @@ Returns an array with stats for the process identified by the $group and the
   $id.
 */
 process_stats --gc/bool=false group id list/List=(List STATS_LIST_SIZE_) -> List?:
-  full_gcs /int? := null
+  full_gcs/int? := null
   if gc:
     full_gcs = (process_stats)[STATS_INDEX_FULL_GC_COUNT]
   return process_stats_ list group id full_gcs

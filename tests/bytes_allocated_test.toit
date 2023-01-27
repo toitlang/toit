@@ -64,5 +64,5 @@ test_cause_gc:
   full_gcs := (process_stats)[STATS_INDEX_FULL_GC_COUNT]
   print "Full gcs: $full_gcs"
   new_full_gcs := (process_stats --gc)[STATS_INDEX_FULL_GC_COUNT]
-  print "New Full gcs: $new_full_gcs"
+  print "New full gcs: $new_full_gcs"
   expect new_full_gcs == full_gcs + 1
