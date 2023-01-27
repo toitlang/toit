@@ -285,6 +285,10 @@ STATS_INDEX_FULL_COMPACTING_GC_COUNT       ::= 10
 STATS_LIST_SIZE_                           ::= 11
 
 /**
+Collect statistics about the system and the current process.
+The $gc flag indicates whether a garbage collection should be performed
+  before collecting the stats.  This is a fairly expensive operation, so
+  it should be avoided if possible.
 Returns an array with stats for the current process.
 The stats, listed by index in the array, are:
 0. New-space (small collection) GC count for the process
@@ -317,8 +321,11 @@ By passing the optional $list argument to be filled in, you can avoid causing
 print "There have been $((process_stats)[STATS_INDEX_GC_COUNT]) GCs for this process"
 ```
 */
-process_stats list/List=(List STATS_LIST_SIZE_) -> List:
-  result := process_stats_ list -1 -1
+process_stats --gc/bool=false list/List=(List STATS_LIST_SIZE_) -> List:
+  full_gcs /int? := null
+  if gc:
+    full_gcs = (process_stats)[STATS_INDEX_FULL_GC_COUNT]
+  result := process_stats_ list -1 -1 full_gcs
   assert: result  // The current process always exists.
   return result
 
@@ -328,10 +335,13 @@ Variant of $(process_stats).
 Returns an array with stats for the process identified by the $group and the
   $id.
 */
-process_stats group id list/List=(List STATS_LIST_SIZE_) -> List?:
-  return process_stats_ list group id
+process_stats --gc/bool=false group id list/List=(List STATS_LIST_SIZE_) -> List?:
+  full_gcs /int? := null
+  if gc:
+    full_gcs = (process_stats)[STATS_INDEX_FULL_GC_COUNT]
+  return process_stats_ list group id full_gcs
 
-process_stats_ list group id:
+process_stats_ list group id gc_count:
   #primitive.core.process_stats
 
 /**

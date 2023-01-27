@@ -1071,7 +1071,14 @@ PRIMITIVE(bytes_allocated_delta) {
 }
 
 PRIMITIVE(process_stats) {
-  ARGS(Object, list_object, int, group, int, id);
+  ARGS(Object, list_object, int, group, int, id, Object, gc_count);
+
+  if (gc_count != process->program()->null_object()) {
+    _A_T_int64(3, word_gc_count);
+    // Return ALLOCATION_FAILED until we cause a full GC.
+    if (process->gc_count(FULL_GC) == word_gc_count) ALLOCATION_FAILED;
+  }
+
   Array* result = get_array_from_list(list_object, process);
   if (result == null) INVALID_ARGUMENT;
   if (group == -1 || id == -1) {
