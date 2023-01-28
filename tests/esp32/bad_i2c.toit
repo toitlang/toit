@@ -6,7 +6,7 @@
 Tests the errors of i2c.
 
 Setup:
-pin 32 and pin 33 should not be connected.
+Pin 32 and pin 33 should not be connected.
 */
 
 import expect show *
