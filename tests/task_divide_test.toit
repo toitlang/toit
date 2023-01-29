@@ -62,19 +62,19 @@ test_required:
 test_order:
   expect_structural_equals [0, 1] (Task.divide [
     :: null,
-    :: sleep --ms=40,
+    :: sleep --ms=50,
   ]).keys
 
   expect_structural_equals [1, 0] (Task.divide [
-    :: sleep --ms=40,
+    :: sleep --ms=50,
     :: null,
   ]).keys
 
   expect_structural_equals [1, 3, 2, 0] (Task.divide [
-    :: sleep --ms=120,
+    :: sleep --ms=200,
     :: null,
-    :: sleep --ms=80,
-    :: sleep --ms=40,
+    :: sleep --ms=100,
+    :: sleep --ms=50,
   ]).keys
 
 test_eager_stop:
