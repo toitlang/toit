@@ -88,7 +88,7 @@ interface Task:
 
   If any of the $lambdas throws an exception, the exception is
     propagated to the caller of $Task.divide which in
-    returns also throws.
+    return also throws.
 
   If $required is less than the number of $lambdas, the
     method returns when $required tasks have completed.
