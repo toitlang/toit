@@ -47,34 +47,34 @@ test_bad_arguments:
 test_required:
   expect_structural_equals { 0: 42 } (Task.divide --required=1 [
     :: 42,
-    :: sleep --ms=500; 87,
+    :: sleep --ms=1_000; 87,
   ])
   expect_structural_equals { 1: 42 } (Task.divide --required=1 [
-    :: sleep --ms=500; throw "ugh",
+    :: sleep --ms=1_000; throw "ugh",
     :: 42,
   ])
   expect_structural_equals { 0: 42, 2: 99 } (Task.divide --required=2 [
     :: 42,
-    :: sleep --ms=500; 87,
-    :: sleep --ms=100; 99,
+    :: sleep --ms=1_000; 87,
+    :: sleep --ms=200; 99,
   ])
 
 test_order:
   expect_structural_equals [0, 1] (Task.divide [
     :: null,
-    :: sleep --ms=100,
+    :: sleep --ms=200,
   ]).keys
 
   expect_structural_equals [1, 0] (Task.divide [
-    :: sleep --ms=100,
+    :: sleep --ms=200,
     :: null,
   ]).keys
 
   expect_structural_equals [1, 3, 2, 0] (Task.divide [
-    :: sleep --ms=300,
+    :: sleep --ms=600,
     :: null,
+    :: sleep --ms=400,
     :: sleep --ms=200,
-    :: sleep --ms=100,
   ]).keys
 
 test_eager_stop:
