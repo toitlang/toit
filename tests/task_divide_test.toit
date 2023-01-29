@@ -62,19 +62,19 @@ test_required:
 test_order:
   expect_structural_equals [0, 1] (Task.divide [
     :: null,
-    :: sleep --ms=50,
+    :: sleep --ms=100,
   ]).keys
 
   expect_structural_equals [1, 0] (Task.divide [
-    :: sleep --ms=50,
+    :: sleep --ms=100,
     :: null,
   ]).keys
 
   expect_structural_equals [1, 3, 2, 0] (Task.divide [
-    :: sleep --ms=200,
+    :: sleep --ms=300,
     :: null,
+    :: sleep --ms=200,
     :: sleep --ms=100,
-    :: sleep --ms=50,
   ]).keys
 
 test_eager_stop:
@@ -101,28 +101,28 @@ test_timeout:
   expect_throw DEADLINE_EXCEEDED_ERROR:
     Task.divide [
       :: with_timeout --ms=20: sleep --ms=200,
-      :: sleep --ms=300,
+      :: sleep --ms=500,
     ]
 
   expect_throw DEADLINE_EXCEEDED_ERROR:
     with_timeout --ms=20:
       Task.divide [
         :: sleep --ms=200,
-        :: sleep --ms=300,
+        :: sleep --ms=500,
       ]
 
 test_cancellation:
   child := run_case::
     Task.divide [
       :: Task.current.cancel,
-      :: sleep --ms=100,
+      :: sleep --ms=200,
     ]
   expect child.is_canceled
 
   child = run_case::
     Task.divide [
       :: Task.current.cancel; sleep --ms=10,
-      :: sleep --ms=100,
+      :: sleep --ms=200,
     ]
   expect child.is_canceled
 
