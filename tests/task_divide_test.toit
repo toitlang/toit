@@ -47,15 +47,15 @@ test_bad_arguments:
 test_required:
   expect_structural_equals { 0: 42 } (Task.divide --required=1 [
     :: 42,
-    :: sleep --ms=100; 87,
+    :: sleep --ms=500; 87,
   ])
   expect_structural_equals { 1: 42 } (Task.divide --required=1 [
-    :: sleep --ms=100; throw "ugh",
+    :: sleep --ms=500; throw "ugh",
     :: 42,
   ])
   expect_structural_equals { 0: 42, 2: 99 } (Task.divide --required=2 [
     :: 42,
-    :: sleep --ms=200; 87,
+    :: sleep --ms=500; 87,
     :: sleep --ms=100; 99,
   ])
 
