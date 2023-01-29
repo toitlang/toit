@@ -86,7 +86,7 @@ interface Task:
     and entry for it. The results map is insertion ordered,
     so it is possible to tell which lambda returned first.
 
-  If any of $lambdas throw an exception, the exception is
+  If any of the $lambdas throws an exception, the exception is
     propagated to the caller of $Task.divide which in
     returns also throws.
 
