@@ -425,7 +425,7 @@ bool Utils::utf_8_equals_utf_16(const uint8* input1, word length1, const uint16*
   if ((input1[0] <= MAX_ASCII || input2[0] <= MAX_ASCII) && input1[0] != input2[0]) return false;
 
   // Start with length comparison of the UTF-16 version.
-  if (length2 != utf_8_to_16(input1, length1, null, 0)) return false;
+  if (length2 != utf_8_to_16(input1, length1)) return false;
 
   // Now we know the UTF-16 versions are the same length, generate the UTF-16
   // version of the UTF-8 input, and compare them.
@@ -511,12 +511,6 @@ uint16* Utils::create_new_environment(Process* process, uint16* previous_environ
       new_environment = unvoid_cast<uint16*>(malloc(sizeof(uint16) * length_so_far));
       new_environment_length = length_so_far;
     }
-  }
-  for (uint16* p = new_environment; *p; ) {
-    printf("new environment: %ls\n", p);
-    word len = 0;
-    while (p[len] != 0) len++;
-    p += len + 1;
   }
   return new_environment;
 }

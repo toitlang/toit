@@ -183,6 +183,9 @@ class Process : public ProcessListFromProcessGroup::Element,
   String* allocate_string(const char* content, int length);
   Object* allocate_string_or_error(const char* content);
   Object* allocate_string_or_error(const char* content, int length);
+#if defined(TOIT_WINDOWS)
+  String* allocate_string(const wchar_t* content);
+#endif
   ByteArray* allocate_byte_array(int length, bool force_external=false);
 
   void set_max_heap_size(word bytes) {
@@ -273,7 +276,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   uint64_t random_state1_;
 
 #if defined(TOIT_WINDOWS)
-  const char* current_directory_;
+  const wchar_t* current_directory_;
 #else
   int current_directory_;
 #endif
@@ -364,11 +367,39 @@ class AllocationManager {
     return unvoid_cast<uint8*>(result);
   }
 
- private:
+ protected:
   void* ptr_;
+
+ private:
   word size_;
   Process* process_;
   bool always_allow_external_ = false;
 };
+
+#ifdef TOIT_WINDOWS
+
+class WideCharAllocationManager : public AllocationManager {
+ public:
+  WideCharAllocationManager(Process* process) : AllocationManager(process) {
+    set_always_allow_external();
+  }
+
+  inline wchar_t* to_wcs(Blob* blob, word* length_return = null) {
+    word utf_16_length = Utils::utf_8_to_16(blob->address(), blob->length());
+    auto utf_16_string = unvoid_cast<uint16*>(this->calloc(utf_16_length + 1, sizeof(uint16)));
+    Utils::utf_8_to_16(blob->address(), blob->length(), utf_16_string, utf_16_length);
+    utf_16_string[utf_16_length] = 0;
+    if (length_return) *length_return = utf_16_length;
+    return reinterpret_cast<wchar_t*>(utf_16_string);
+  }
+
+  wchar_t* wcs_alloc(word length) {
+    ASSERT(ptr_ == null);
+    return reinterpret_cast<wchar_t*>(alloc(length * sizeof(wchar_t)));
+  }
+
+};
+
+#endif
 
 } // namespace toit

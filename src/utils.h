@@ -277,8 +277,19 @@ class Utils {
     return c >= UTF_8_PREFIX;
   }
 
-  static word utf_16_to_8(const uint16* input, word length, uint8* output, word output_length);
-  static word utf_8_to_16(const uint8* input, word length, uint16* output, word output_length);
+  static word utf_16_to_8(const uint16* input, word length, uint8* output = null, word output_length = 0);
+  static word utf_8_to_16(const uint8* input, word length, uint16* output = null, word output_length = 0);
+#ifdef TOIT_WINDOWS
+  static inline word utf_16_to_8(const wchar_t* input, word length, uint8* output, word output_length) {
+    return utf_16_to_8(reinterpret_cast<const uint16*>(input), length, output, output_length);
+  }
+  static inline word utf_8_to_16(const uint8* input, word length, wchar_t* output, word output_length) {
+    return utf_8_to_16(input, length, reinterpret_cast<uint16*>(output), output_length);
+  }
+  static inline word utf_16_to_8(const wchar_t* input, word length) {
+    return utf_16_to_8(reinterpret_cast<const uint16*>(input), length, static_cast<uint8*>(null), 0);
+  }
+#endif
   // Note: Does malloc - not suitable for embedded.
   static bool utf_8_equals_utf_16(const uint8* input1, word length1, const uint16* input2, word length2);
   static uint16* create_new_environment(Process* process, uint16* previous_environment, Array* environment);
@@ -547,26 +558,6 @@ class AsyncThread : public Thread {
  private:
   const std::function<void()> _func;
 };
-
-#ifdef TOIT_WINDOWS
-
-class WideCharAllocationManager : public AllocationManager {
-  public:
-    WideCharAllocationManager(Process* process) : AllocationManager(process) {
-      set_always_allow_external();
-    }
-
-    inline wchar_t* to_wcs(Blob* blob, word* length_return) {
-      word utf_16_length = utf_8_to_16(blob->data(), blob->length(), null, 0);
-      auto utf_16_string = unvoid_cast<wchar_t*>(this->calloc(utf_16_length + 1, sizeof(wchar_t)));
-      word utf_16_length = utf_8_to_16(blob->data(), blob->length(), utf_16_string, utf_16_length);
-      utf_16_string[utf_16_length] = 0;
-      if (length_return) *length_return = utf_16_length;
-      return utf_16_string;
-    }
-  };
-
-#endif
 
 
 } // namespace toit

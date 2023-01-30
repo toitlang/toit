@@ -463,12 +463,12 @@ static Object* fork_helper(
     } else {
       format = (i != arguments->length() - 1) ? L"%ls " : L"%ls";
     }
-    word utf_16_length = utf8_to_utf16(argument.address(), argument.length(), null, 0);
+    word utf_16_length = Utils::utf_8_to_16(argument.address(), argument.length());
     auto utf_16_argument = unvoid_cast<wchar_t*>(allocation.calloc(utf_16_length + 1, sizeof(wchar_t)));
-    utf8_to_utf16(argument.address(), argument.length(), utf_16_argument, utf_16_length);
+    Utils::utf_8_to_16(argument.address(), argument.length(), utf_16_argument, utf_16_length);
     utf_16_argument[utf_16_length - 1] = 0;
 
-    if (pos + utf_16_length + wstrlen(format) - 3 >= MAX_COMMAND_LINE_LENGTH) OUT_OF_BOUNDS;
+    if (pos + utf_16_length + wcslen(format) - 3 >= MAX_COMMAND_LINE_LENGTH) OUT_OF_BOUNDS;
     pos += snwprintf(command_line + pos, MAX_COMMAND_LINE_LENGTH - pos, format, utf_16_argument);
   }
 
@@ -481,16 +481,15 @@ static Object* fork_helper(
   }
 
   PROCESS_INFORMATION process_information{};
-  STARTUPINFO startup_info{};
+  STARTUPINFOW startup_info{};
 
-  startup_info.cb = sizeof(STARTUPINFO);
+  startup_info.cb = sizeof(STARTUPINFOW);
   startup_info.hStdInput = handle_from_object(in_object, STD_INPUT_HANDLE);
   startup_info.hStdOutput = handle_from_object(out_object, STD_OUTPUT_HANDLE);
   startup_info.hStdError = handle_from_object(err_object, STD_ERROR_HANDLE);
   startup_info.dwFlags |= STARTF_USESTDHANDLES;
 
-  const char* current_directory = current_dir(process);
-  if (!current_directory) MALLOC_FAILED;
+  const wchar_t* current_directory = current_dir(process);
 
   wchar_t* new_environment = NULL;
   if (environment) {
