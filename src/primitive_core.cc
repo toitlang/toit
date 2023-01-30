@@ -364,13 +364,8 @@ PRIMITIVE(crc) {
       entry = byte_table[index];
     } else {
       Object* table_entry = table->at(index);
-      if (is_smi(table_entry)) {
-        entry = Smi::cast(table_entry)->value();
-      } else if (is_large_integer(table_entry)) {
-        entry = LargeInteger::cast(table_entry)->value();
-      } else {
-        INVALID_ARGUMENT;
-      }
+      INT64_VALUE_OR_WRONG_TYPE(int_table_entry, table_entry);
+      entry = int_table_entry;
     }
     if (big_endian) {
       accumulator = (accumulator << 8) ^ entry;
@@ -1071,7 +1066,14 @@ PRIMITIVE(bytes_allocated_delta) {
 }
 
 PRIMITIVE(process_stats) {
-  ARGS(Object, list_object, int, group, int, id);
+  ARGS(Object, list_object, int, group, int, id, Object, gc_count);
+
+  if (gc_count != process->program()->null_object()) {
+    INT64_VALUE_OR_WRONG_TYPE(word_gc_count, gc_count);
+    // Return ALLOCATION_FAILED until we cause a full GC.
+    if (process->gc_count(FULL_GC) == word_gc_count) ALLOCATION_FAILED;
+  }
+
   Array* result = get_array_from_list(list_object, process);
   if (result == null) INVALID_ARGUMENT;
   if (group == -1 || id == -1) {
