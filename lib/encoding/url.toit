@@ -106,8 +106,24 @@ For convenience, the $QueryString collects any resource parts (scheme,
   $QueryString.fragment.
 */
 class QueryString:
+  /**
+  The resource of the input given to $QueryString.parse.
+  The resource is the part of the URL that is before the first '?' character.
+  May be the empty string if the input starts with a '?'.
+  */
   resource/string
+  /**
+  The parsed and decoded query parameters.
+  If a query parameter appears only once, then the value for that key is a string.
+  If a query parameter appears multiple times, then the value for that key is a list of
+    strings.
+  */
   parameters/Map
+  /**
+  The fragment of the input given to $QueryString.parse.
+  The fragment is the part of the URL that follows a '#' character.
+  May be the empty string if the input ends with or does not contain a '#'.
+  */
   fragment/string
   constructor.internal_ --.resource --.parameters --.fragment:
 
