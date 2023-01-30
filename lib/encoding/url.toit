@@ -88,3 +88,71 @@ decode data -> any:
       i += 2
     result[j++] = c
   return result
+
+/**
+A $QueryString is a part of a uniform resource locator (URL) that assigns
+  values to specified parameters. It fits between the resource parts and
+  the fragment part in the URL encoding:
+
+  https://example.com/over/there?name=ferret#fish
+
+The query part starts at the '?' character and ends at the start of the
+  fragment part (if any). The fragment part starts at the '#' character.
+  The encoding of the query part uses the application/x-www-form-urlencoded
+  content type.
+
+For convenience, the $QueryString collects any resource parts
+  (scheme, authority, and path) before the query part starting at '?'
+  as $QueryString.resource and the fragment starting at '#' as
+  $QueryString.fragment.
+*/
+class QueryString:
+  resource/string
+  parameters/Map
+  fragment/string
+  constructor.internal_ --.resource --.parameters --.fragment:
+
+  /**
+  Parses an $input string into a $QueryString by following the steps
+    from https://url.spec.whatwg.org/#urlencoded-parsing and collects
+    the resource parts and the fragment part as part of the parsing.
+
+  The resource parts (scheme, authority, and path) and the fragment part
+    are left unparsed, so $QueryString.parse supports partial URLs, like
+    the ones where the the scheme and authority have been stripped.
+  */
+  static parse input/string -> QueryString:
+    fragment := ""
+    hash := input.index_of "#"
+    if hash >= 0:
+      fragment = input[hash + 1 ..]
+      input = input[..hash]
+
+    resource := input
+    parameters := {:}
+    question := input.index_of "?"
+    if question >= 0:
+      resource = input[..question]
+      query := input[question + 1 ..]
+      query.split "&" --drop_empty: | component/string |
+        assign := component.index_of "="
+        key/string := ?
+        value/string := ?
+        if assign >= 0:
+          key = (decode component[..assign]).to_string
+          value = (decode component[assign + 1 ..]).to_string
+        else:
+          key = (decode component).to_string
+          value = ""
+        existing := parameters.get key
+        if existing is string:
+          parameters[key] = [existing, value]
+        else if existing is List:
+          existing.add value
+        else:
+          parameters[key] = value
+
+    return QueryString.internal_
+        --resource=(decode resource).to_string
+        --parameters=parameters
+        --fragment=(decode fragment).to_string
