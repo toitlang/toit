@@ -411,7 +411,6 @@ static Object* fork_helper(
     Object* err_object,
     int fd_3,
     int fd_4,
-    const char* command,
     Array* arguments,
     Object* environment_object) {
   if (arguments->length() > 1000000) OUT_OF_BOUNDS;
@@ -436,8 +435,6 @@ static Object* fork_helper(
     }
   }
 
-  if (strlen(command) > MAX_COMMAND_LINE_LENGTH) OUT_OF_BOUNDS;
-
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
@@ -447,9 +444,8 @@ static Object* fork_helper(
   // Clearing environment not supported on windows, yet.
   if (!use_path) INVALID_ARGUMENT;
 
-  AllocationManager allocation(process);
-  allocation.set_always_allow_external();
-  auto command_line = unvoid_cast<wchar_t*>(allocation.calloc(MAX_COMMAND_LINE_LENGTH, sizeof(wchar_t)));
+  WideCharAllocationManager allocation(process);
+  auto command_line = allocation.wcs_alloc(MAX_COMMAND_LINE_LENGTH + 1);
 
   int pos = 0;
   for (int i = 0; i < arguments->length(); i++) {
@@ -463,12 +459,10 @@ static Object* fork_helper(
     } else {
       format = (i != arguments->length() - 1) ? L"%ls " : L"%ls";
     }
-    word utf_16_length = Utils::utf_8_to_16(argument.address(), argument.length());
-    auto utf_16_argument = unvoid_cast<wchar_t*>(allocation.calloc(utf_16_length + 1, sizeof(wchar_t)));
-    Utils::utf_8_to_16(argument.address(), argument.length(), utf_16_argument, utf_16_length);
-    utf_16_argument[utf_16_length - 1] = 0;
+    WideCharAllocationManager allocation(process);
+    auto utf_16_argument = allocation.wcs_alloc(argument.length() + 1);
 
-    if (pos + utf_16_length + wcslen(format) - 3 >= MAX_COMMAND_LINE_LENGTH) OUT_OF_BOUNDS;
+    if (pos + wcslen(utf_16_argument) + wcslen(format) - 3 >= MAX_COMMAND_LINE_LENGTH) OUT_OF_BOUNDS;
     pos += snwprintf(command_line + pos, MAX_COMMAND_LINE_LENGTH - pos, format, utf_16_argument);
   }
 
@@ -538,10 +532,11 @@ PRIMITIVE(fork) {
        Object, err_obj,
        int, fd_3,
        int, fd_4,
-       cstring, command,
+       StringOrSlice, command,
        Array, args);
+  USE(command);  // Not used on Windows.
   return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
-                     fd_3, fd_4, command, args, process->program()->null_object());
+                     fd_3, fd_4, args, process->program()->null_object());
 }
 
 PRIMITIVE(fork2) {
@@ -552,11 +547,12 @@ PRIMITIVE(fork2) {
        Object, err_obj,
        int, fd_3,
        int, fd_4,
-       cstring, command,
+       StringOrSlice, command,
        Array, args,
        Object, environment_object);
+  USE(command);  // Not used on Windows.
   return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
-                     fd_3, fd_4, command, args, environment_object);
+                     fd_3, fd_4, args, environment_object);
 }
 
 } // namespace toit

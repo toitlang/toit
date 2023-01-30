@@ -144,7 +144,7 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
   return null;
 }
 
-#define BLOB_TO_WCHARS(result, blob)                               \
+#define BLOB_TO_ABSOLUTE_PATH(result, blob)                        \
   WideCharAllocationManager allocation(process);                   \
   wchar_t* _TOIT_pathname = allocation.to_wcs(&blob);              \
   wchar_t result[MAX_PATH];                                        \
@@ -153,7 +153,7 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
 
 PRIMITIVE(open) {
   ARGS(StringOrSlice, pathname, int, flags, int, mode);
-  BLOB_TO_WCHARS(path, pathname);
+  BLOB_TO_ABSOLUTE_PATH(path, pathname);
 
   int os_flags = _O_BINARY;
   if ((flags & FILE_RDWR) == FILE_RDONLY) os_flags |= _O_RDONLY;
@@ -211,7 +211,7 @@ PRIMITIVE(opendir) {
 
 PRIMITIVE(opendir2) {
   ARGS(SimpleResourceGroup, group, StringOrSlice, pathname);
-  BLOB_TO_WCHARS(path, pathname);
+  BLOB_TO_ABSOLUTE_PATH(path, pathname);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
@@ -350,7 +350,7 @@ Object* time_stamp(Process* process, time_t time) {
 // Otherwise returns an array with indices from the FILE_ST_xxx constants.
 PRIMITIVE(stat) {
   ARGS(StringOrSlice, pathname, bool, follow_links);
-  BLOB_TO_WCHARS(path, pathname);
+  BLOB_TO_ABSOLUTE_PATH(path, pathname);
 
   USE(follow_links);
 
@@ -404,7 +404,7 @@ PRIMITIVE(stat) {
 
 PRIMITIVE(unlink) {
   ARGS(StringOrSlice, pathname);
-  BLOB_TO_WCHARS(path, pathname);
+  BLOB_TO_ABSOLUTE_PATH(path, pathname);
 
   int result = _wunlink(path);
   if (result < 0) return return_open_error(process, errno);
@@ -413,7 +413,7 @@ PRIMITIVE(unlink) {
 
 PRIMITIVE(rmdir) {
   ARGS(StringOrSlice, pathname);
-  BLOB_TO_WCHARS(path, pathname);
+  BLOB_TO_ABSOLUTE_PATH(path, pathname);
 
   if (RemoveDirectoryW(path) == 0) WINDOWS_ERROR;
   return process->program()->null_object();
@@ -433,7 +433,7 @@ PRIMITIVE(rename) {
 PRIMITIVE(chdir) {
   ARGS(StringOrSlice, pathname);
   if (pathname.length() == 0) INVALID_ARGUMENT;
-  BLOB_TO_WCHARS(path, pathname);
+  BLOB_TO_ABSOLUTE_PATH(path, pathname);
 
   wchar_t* copy = wcsdup(path);
 
@@ -444,7 +444,7 @@ PRIMITIVE(chdir) {
 
 PRIMITIVE(mkdir) {
   ARGS(StringOrSlice, pathname, int, mode);
-  BLOB_TO_WCHARS(path, pathname);
+  BLOB_TO_ABSOLUTE_PATH(path, pathname);
 
   int result = CreateDirectoryW(path, NULL);
   if (result == 0) WINDOWS_ERROR;
