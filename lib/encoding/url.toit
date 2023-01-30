@@ -101,9 +101,8 @@ The query part starts at the '?' character and ends at the start of the
   The encoding of the query part uses the application/x-www-form-urlencoded
   content type.
 
-For convenience, the $QueryString collects any resource parts
-  (scheme, authority, and path) before the query part starting at '?'
-  as $QueryString.resource and the fragment starting at '#' as
+For convenience, the $QueryString collects any resource parts (scheme,
+  authority, and path) as $QueryString.resource and the fragment as
   $QueryString.fragment.
 */
 class QueryString:
