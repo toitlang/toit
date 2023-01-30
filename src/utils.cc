@@ -314,7 +314,7 @@ bool Utils::is_valid_utf_8(const uint8* buffer, int length) {
 #endif
 }
 
-// Assumes the input is valid UTF-8, eg from a Toit string.
+// Assumes the input is valid UTF-8, for example from a Toit string.
 // See also is_valid_utf_8.  Returns size in 16 bit code units.
 // If output is null, does not write.  If output_length is too small,
 // returns -1.
