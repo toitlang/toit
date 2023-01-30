@@ -314,7 +314,7 @@ class AllocationManager {
     , process_(process) {
     process->register_external_allocation(size);
   }
-  
+
   // Normally we would trigger a GC if too much is allocated externally, but on
   // desktop systems we sometimes want to be allowed to allocate without
   // worrying about triggering a GC in a complicated primitiive.

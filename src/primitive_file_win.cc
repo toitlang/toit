@@ -110,7 +110,7 @@ const wchar_t* current_dir(Process* process) {
 HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output) {
   size_t pathname_length = wcslen(pathname);
 
-  // Poor man's version. For better platform handling, use UNICODE and PathCchAppendEx.
+  // Poor man's version. For better platform handling, use PathCchAppendEx.
   // TODO(florian): we should probably use PathCchCombine here. That would remove
   // all the special checks.
 
@@ -139,7 +139,7 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
   }
 
   wchar_t temp[MAX_PATH];
-  if (snwprintf(temp, MAX_PATH, L"%s\\%s", relative_to, pathname) >= MAX_PATH) INVALID_ARGUMENT;
+  if (snwprintf(temp, MAX_PATH, L"%ls\\%ls", relative_to, pathname) >= MAX_PATH) INVALID_ARGUMENT;
   if (GetFullPathNameW(temp, MAX_PATH, output, NULL) == 0) WINDOWS_ERROR;
   return null;
 }
@@ -178,7 +178,7 @@ PRIMITIVE(open) {
     // with open (eg a pipe, a socket, a directory).  We forbid this because
     // these file descriptors can block, and this API does not support
     // blocking.
-    if (_wcsicmp(L"(\\.\0)", path) != 0) INVALID_ARGUMENT;
+    if (_wcsicmp(L"\\\\.\\NUL", path) != 0) INVALID_ARGUMENT;
   }
   closer.clear();
   return Smi::from(fd);
@@ -188,7 +188,7 @@ class Directory : public SimpleResource {
  public:
   TAG(Directory);
   explicit Directory(SimpleResourceGroup* resource_group, const wchar_t* path) : SimpleResource(resource_group) {
-    snwprintf(path_, MAX_PATH, L"%s\\*", path);
+    snwprintf(path_, MAX_PATH, L"%ls\\*", path);
   }
 
   const wchar_t* path() { return path_; }
