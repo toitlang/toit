@@ -395,9 +395,15 @@ class WideCharAllocationManager : public AllocationManager {
 
   wchar_t* wcs_alloc(word length) {
     ASSERT(ptr_ == null);
+    if (length <= INTERNAL_BUFFER_SIZE) {
+      return buffer_;
+    }
     return reinterpret_cast<wchar_t*>(alloc(length * sizeof(wchar_t)));
   }
 
+ private:
+  static const int INTERNAL_BUFFER_SIZE = 260;
+  wchar_t buffer_[INTERNAL_BUFFER_SIZE];
 };
 
 #endif
