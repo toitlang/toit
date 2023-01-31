@@ -44,7 +44,7 @@ class Port implements reader.Reader:
   state_/ResourceState_
   should_ensure_write_state_/bool
 
-  /** Amount of encountered errors. */
+  /** Number of encountered errors. */
   errors := 0
 
   /**
@@ -123,7 +123,7 @@ class Port implements reader.Reader:
       --data_bits/int=8
       --stop_bits/StopBits=STOP_BITS_1
       --parity/int=PARITY_DISABLED:
-      return HostPort device --baud_rate=baud_rate --data_bits=data_bits --stop_bits=stop_bits --parity=parity
+    return HostPort device --baud_rate=baud_rate --data_bits=data_bits --stop_bits=stop_bits --parity=parity
 
   constructor.host_port_ device/string
        --baud_rate/int
@@ -153,7 +153,7 @@ class Port implements reader.Reader:
     1800, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 576000, 921600,
     1152000, 1500000, 2000000, 2500000, 3000000, 3500000, 4000000.
 
-  On macOS the baud rate can be arbitrary
+  On macOS the baud rate can be set to arbitrary values.
   */
   baud_rate= new_rate/int:
     uart_set_baud_rate_ uart_ new_rate
