@@ -38,6 +38,7 @@ TYPE_PRIMITIVE_ANY(mkdtemp)
 TYPE_PRIMITIVE_ANY(is_open_file)
 TYPE_PRIMITIVE_ANY(realpath)
 TYPE_PRIMITIVE_ANY(cwd)
+TYPE_PRIMITIVE_ANY(read_file_content_posix)
 
 }  // namespace toit::compiler
 }  // namespace toit

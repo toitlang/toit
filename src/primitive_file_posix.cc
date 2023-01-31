@@ -89,6 +89,32 @@ Object* return_open_error(Process* process, int err) {
   OTHER_ERROR;
 }
 
+PRIMITIVE(read_file_content_posix) {
+#ifndef TOIT_POSIX
+  UNIMPLEMENTED_PRIMITIVE;
+#else
+  ARGS(cstring, filename, int, file_size);
+  ByteArray* result = process->allocate_byte_array(file_size);
+  if (result == null) ALLOCATION_FAILED;
+  ByteArray::Bytes result_bytes(result);
+  int fd = open(filename, O_RDONLY);
+  if (fd == -1) return return_open_error(process, errno);
+  int position = 0;
+  for (position = 0; position < file_size; ) {
+    int n = read(fd, result_bytes.address() + position, file_size - position);
+    if (n == -1) {
+      if (errno == EINTR) continue;
+      close(fd);
+      OTHER_ERROR;
+    }
+    if (n == 0) INVALID_ARGUMENT;  // File changed size?
+    position += n;
+  }
+  close(fd);
+  return result;
+#endif
+}
+
 // Coordinate with utils.toit.
 static const int FILE_RDONLY = 1;
 static const int FILE_WRONLY = 2;

@@ -57,7 +57,55 @@ DEFAULT_CLIENT ::= DnsClient [
 // are separated by slash (/) in the key.
 ALL_CLIENTS_ ::= {DEFAULT_CLIENT.servers_.join "/": DEFAULT_CLIENT}
 
-default_client := DEFAULT_CLIENT
+user_set_client_/DnsClient? := null
+dhcp_client_/DnsClient? := null
+
+/**
+On Unix systems the default client is one that keeps an eye on changes in
+  /etc/resolv.conf.
+On FreeRTOS systems the default client is set by DHCP.
+On Windows we currently default to using Google and Cloudflare DNS servers.
+On all platforms you can set a custom default client with the
+  $(default_client=) setter.
+*/
+default_client -> DnsClient:
+  if user_set_client_: return user_set_client_
+  if platform == "FreeRTOS" and dhcp_client_: return dhcp_client_
+  if platform == "Linux" or platform == "macOS": return etc_resolv_client_
+  return DEFAULT_CLIENT
+
+default_client= client/DnsClient -> none:
+  user_set_client_ = client
+
+current_etc_resolv_client_/DnsClient? := null
+etc_resolv_update_time_/Time? := null
+
+etc_resolv_client_ -> DnsClient:
+  error := catch --trace:
+    resolv_conf_stat := stat_ "/etc/resolv.conf" true
+    etc_stat := stat_ "/etc" true
+    resolv_conf_time := Time.epoch --ns=resolv_conf_stat[ST_MTIME_]
+    etc_time := Time.epoch --ns=etc_stat[ST_MTIME_]
+    modification_time := resolv_conf_time > etc_time ? resolv_conf_time : etc_time
+    if etc_resolv_update_time_ == null or etc_resolv_update_time_ < modification_time:
+      etc_resolv_update_time_ = modification_time
+      // Create a new client from resolv.conf.
+      resolv_conf := (read_file_content_posix_ "/etc/resolv.conf" resolv_conf_stat[ST_SIZE_]).to_string
+      nameservers := []
+      resolv_conf.split "\n": | line |
+        if line.starts_with "nameserver ":
+          nameservers.add line[11..].copy
+      current_etc_resolv_client_ = DnsClient nameservers
+  return current_etc_resolv_client_ or DEFAULT_CLIENT
+
+ST_SIZE_ ::= 7
+ST_MTIME_ ::= 9
+
+stat_ name/string follow_links/bool -> List?:
+  #primitive.file.stat
+
+read_file_content_posix_ filename/string size/int -> ByteArray:
+  #primitive.file.read_file_content_posix
 
 CLASS_INTERNET ::= 1
 
