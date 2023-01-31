@@ -50,10 +50,9 @@ abstract class ServiceClient:
 
   open_ uuid/string major/int minor/int -> ServiceClient?
       --timeout/Duration?=_default_timeout_:
-    return open_ uuid major minor --timeout=timeout:
-      throw "Cannot disambiguate"
+    return open_ uuid major minor --timeout=timeout --filter=: true
 
-  open_ uuid/string major/int minor/int [disambiguate] -> ServiceClient?
+  open_ uuid/string major/int minor/int [--filter] -> ServiceClient?
       --timeout/Duration?=_default_timeout_:
     discovered/List? := null
     if timeout:
@@ -63,13 +62,26 @@ abstract class ServiceClient:
       discovered = _client_.discover uuid false
     if not discovered: return null
 
-    picked := 0
-    priority := discovered[2]
-    if discovered.size > 4 and priority <= discovered[6]:
-      picked = disambiguate.call
+    candidate_index := null
+    candidate_priority := null
+    for i := 0; i < discovered.size; i += 4:
+      tags := discovered[i + 3]
+      if filter.call tags:
+        priority := discovered[i + 2]
+        if not candidate_index:
+          candidate_index = i
+          candidate_priority = priority
+        else if priority < candidate_priority:
+          // The remaining entries have lower priorities and
+          // we already found a suitable candidate.
+          break
+        else:
+          // Found multiple candidates with the same priority.
+          throw "Cannot disambiguate"
 
-    pid := discovered[picked]
-    id := discovered[picked + 1]
+    if not candidate_index: return null
+    pid := discovered[candidate_index]
+    id := discovered[candidate_index + 1]
     return open_ uuid major minor --pid=pid --id=id
 
   open_ uuid/string major/int minor/int --pid/int --id/int -> ServiceClient:
@@ -424,7 +436,7 @@ class ServiceManager_ implements SystemMessageHandler_:
     id := assign_id_ service.id providers_ provider
     // TODO(kasper): Clean up in the services
     // table if listen fails?
-    _client_.listen id provider.name service.uuid service.priority
+    _client_.listen id service.uuid service.priority ["name:$provider.name"]
     return id
 
   unlisten id/int -> none:

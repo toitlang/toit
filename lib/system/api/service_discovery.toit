@@ -16,7 +16,7 @@ interface ServiceDiscoveryService:
   watch pid/int -> none
   static WATCH_INDEX /int ::= 3
 
-  listen id/int provider_name/string uuid/string priority/int -> none
+  listen id/int uuid/string priority/int tags/List -> none
   static LISTEN_INDEX /int ::= 1
 
   unlisten id/int -> none
@@ -39,8 +39,8 @@ class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDisc
   watch pid/int -> none:
     invoke_ ServiceDiscoveryService.WATCH_INDEX pid
 
-  listen id/int provider_name/string uuid/string priority/int -> none:
-    invoke_ ServiceDiscoveryService.LISTEN_INDEX [id, provider_name, uuid, priority]
+  listen id/int uuid/string priority/int tags/List -> none:
+    invoke_ ServiceDiscoveryService.LISTEN_INDEX [id, uuid, priority, tags]
 
   unlisten id/int -> none:
     invoke_ ServiceDiscoveryService.UNLISTEN_INDEX id

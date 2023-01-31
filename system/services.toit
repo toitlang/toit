@@ -20,10 +20,10 @@ import system.api.service_discovery show ServiceDiscoveryService
 class DiscoverableService:
   pid/int
   id/int
-  name/string
   uuid/string
   priority/int
-  constructor --.pid --.id --.name --.uuid --.priority:
+  tags/List
+  constructor --.pid --.id --.uuid --.priority --.tags:
 
 class SystemServiceManager extends ServiceProvider implements ServiceDiscoveryService ServiceHandler:
   service_managers_/Map ::= {:}  // Map<int, Set<int>>
@@ -51,16 +51,16 @@ class SystemServiceManager extends ServiceProvider implements ServiceDiscoverySe
       return unlisten pid arguments
     unreachable
 
-  listen pid/int id/int name/string uuid/string priority/int -> none:
+  listen pid/int id/int uuid/string priority/int tags/List -> none:
     services := services_by_pid_.get pid --init=(: {:})
     if services.contains id: throw "Service id $id is already in use"
 
     service := DiscoverableService
         --pid=pid
         --id=id
-        --name=name
         --uuid=uuid
         --priority=priority
+        --tags=tags
     services[id] = service
 
     // Register the service based on its uuid and sort the all services
@@ -110,7 +110,7 @@ class SystemServiceManager extends ServiceProvider implements ServiceDiscoverySe
       result[index++] = service.pid
       result[index++] = service.id
       result[index++] = service.priority
-      result[index++] = service.name
+      result[index++] = service.tags
     return result
 
   watch pid/int target/int -> none:
@@ -130,7 +130,7 @@ class SystemServiceManager extends ServiceProvider implements ServiceDiscoverySe
       processes.remove pid
       process_send_ manager SYSTEM_RPC_NOTIFY_TERMINATED_ pid
 
-  listen id/int name/string uuid/string priority/int -> none:
+  listen id/int uuid/string priority/int tags/List -> none:
     unreachable  // <-- TODO(kasper): nasty
 
   unlisten id/int -> none:
