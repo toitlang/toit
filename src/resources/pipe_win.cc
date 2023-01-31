@@ -454,13 +454,13 @@ static Object* fork_helper(
     if (!arguments->at(i)->byte_content(process->program(), &argument, STRINGS_ONLY)) {
       WRONG_TYPE;
     }
-    if (memchr(argument.address(), argument.length(), ' ') != NULL) {
+    if (memchr(argument.address(), ' ', argument.length()) != NULL) {
       format = (i != arguments->length() - 1) ? L"\"%ls\" " : L"\"%ls\"";
     } else {
       format = (i != arguments->length() - 1) ? L"%ls " : L"%ls";
     }
     WideCharAllocationManager allocation(process);
-    auto utf_16_argument = allocation.wcs_alloc(argument.length() + 1);
+    auto utf_16_argument = allocation.to_wcs(&argument);
 
     if (pos + wcslen(utf_16_argument) + wcslen(format) - 3 >= MAX_COMMAND_LINE_LENGTH) OUT_OF_BOUNDS;
     pos += snwprintf(command_line + pos, MAX_COMMAND_LINE_LENGTH - pos, format, utf_16_argument);
@@ -497,7 +497,7 @@ static Object* fork_helper(
                       NULL,
                       NULL,
                       TRUE,  // inherit handles.
-                      0,     // creation flags
+                      CREATE_UNICODE_ENVIRONMENT,     // creation flags
                       new_environment,
                       current_directory,
                       &startup_info,
