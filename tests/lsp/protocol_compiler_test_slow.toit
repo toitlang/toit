@@ -245,3 +245,20 @@ test client/LspClient:
   expect (response.contains "code")
   UNKNOWN_ERROR_CODE ::= -32601
   expect_equals UNKNOWN_ERROR_CODE response["code"]
+
+  // Check that diagnostics have newlines.
+  print "Checking diagnostics have newlines"
+  newline_path := "$(directory.cwd)/newline.toit"
+
+  // The diagnostic here will have multiple lines, as it
+  // explains how the 'foo' method could be called.
+  client.send_did_open --path=newline_path --text="""
+    foo x y:
+    main:
+      foo 1
+    """
+  diagnostics = client.diagnostics_for --path=newline_path
+  expect_equals 1 diagnostics.size
+  diagnostic = diagnostics.first
+  expect (diagnostic["message"].contains "\n")
+  expect_not (diagnostic["message"].ends_with "\n")

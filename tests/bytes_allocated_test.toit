@@ -7,6 +7,7 @@ import expect show *
 main:
   test_allocate_doubles
   test_allocate_byte_arrays
+  test_cause_gc
 
 ALLOCATED ::= STATS_INDEX_BYTES_ALLOCATED_IN_OBJECT_HEAP
 
@@ -58,3 +59,10 @@ test_allocate_byte_arrays:
   memory += diff
 
   expect ba.size <= diff <= ba.size + 40
+
+test_cause_gc:
+  full_gcs := (process_stats)[STATS_INDEX_FULL_GC_COUNT]
+  print "Full gcs: $full_gcs"
+  new_full_gcs := (process_stats --gc)[STATS_INDEX_FULL_GC_COUNT]
+  print "New full gcs: $new_full_gcs"
+  expect new_full_gcs == full_gcs + 1

@@ -109,22 +109,28 @@ String* ObjectHeap::allocate_internal_string(int length) {
 
 bool InitialMemoryManager::allocate() {
   initial_chunk = ObjectMemory::allocate_chunk(null, TOIT_PAGE_SIZE);
-  return initial_chunk != null;
+  if (!initial_chunk) return false;
+  heap_mutex = OS::allocate_mutex(6, "ObjectHeapMutex");
+  return heap_mutex != null;
 }
 
 InitialMemoryManager::~InitialMemoryManager() {
   if (initial_chunk) {
     ObjectMemory::free_chunk(initial_chunk);
   }
+  if (heap_mutex) {
+    OS::dispose(heap_mutex);
+  }
 }
 
-ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, Object** global_variables)
+ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, Object** global_variables, Mutex* mutex)
     : program_(program)
     , owner_(owner)
     , two_space_heap_(program, this, initial_chunk)
     , external_memory_(0)
     , total_external_memory_(0)
-    , global_variables_(global_variables) {
+    , global_variables_(global_variables)
+    , mutex_(mutex) {
   if (!initial_chunk) return;
   task_ = allocate_task();
   ASSERT(task_);  // Should not fail, because a newly created heap has at least
@@ -135,6 +141,11 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, O
 }
 
 ObjectHeap::~ObjectHeap() {
+  // If the process is still linked into the ProcessGroup then this is
+  // only called with the scheduler lock.  Once the process has been
+  // unlinked, this may be called without the scheduler lock.  We don't
+  // use the lock of the ObjectHeap itself for this.  Implicitly called
+  // from the destructor of the Process.
   free(global_variables_);
 
   while (auto finalizer = registered_finalizers_.remove_first()) {
@@ -151,6 +162,8 @@ ObjectHeap::~ObjectHeap() {
   }
 
   delete finalizer_notifier_;
+
+  OS::dispose(mutex_);
 
   ASSERT(object_notifiers_.is_empty());
 }
@@ -285,7 +298,13 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
   }
 }
 
+void ObjectHeap::iterate_chunks(void* context, process_chunk_callback_t* callback) {
+  Locker locker(mutex_);
+  two_space_heap_.iterate_chunks(context, callback);
+}
+
 GcType ObjectHeap::gc(bool try_hard) {
+  Locker locker(mutex_);
   GcType type = two_space_heap_.collect_new_space(try_hard);
   gc_count_++;
   if (type != NEW_SPACE_GC) {

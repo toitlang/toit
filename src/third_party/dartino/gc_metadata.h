@@ -24,6 +24,7 @@ class GcMetadata {
  public:
   static void set_up();
   static void tear_down();
+  static void get_metadata_extent(uword* address_return, uword* size_return);
 
   // When calculating the locations of compacted objects we want to use the
   // object starts array, which is arranged in card sizes for the remembered
