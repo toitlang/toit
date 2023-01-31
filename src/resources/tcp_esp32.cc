@@ -35,8 +35,6 @@
 
 namespace toit {
 
-// It has to be possible to call this twice because it is called from the
-// process shutdown, but also from the finalizer if the GC spots it.
 void LwipSocket::tear_down() {
   if (tpcb_ != null) {
     if (kind_ == LwipSocket::kConnection) {
@@ -55,11 +53,16 @@ void LwipSocket::tear_down() {
     tpcb_ = null;
   }
 
+  // We make sure to call pbuf_free() from this tear_down() method that
+  // is called on the lwIP task.
   if (read_buffer_ != null) {
     pbuf_free(read_buffer_);
     read_buffer_ = null;
   }
 
+  // The unaccepted sockets are not registered in the resource group
+  // yet, so we need to delete them here. We call their tear_down()
+  // method directly since we're already on the lwIP task.
   while (LwipSocket* unaccepted_socket = backlog_.remove_first()) {
     unaccepted_socket->tear_down();
     delete unaccepted_socket;
