@@ -34,18 +34,12 @@ class LwipSocket : public Resource, public BacklogSocketList::Element {
   enum Kind { kListening, kConnection };
 
   LwipSocket(ResourceGroup* group, Kind kind)
-    : Resource(group)
-    , kind_(kind)
-    , tpcb_(null)
-    , error_(ERR_OK)
-    , send_pending_(0)
-    , send_closed_(false)
-    , read_buffer_(null)
-    , read_offset_(0)
-    , read_closed_(false) {}
+      : Resource(group)
+      , kind_(kind) {}
 
   ~LwipSocket() {
     ASSERT(tpcb_ == null);
+    ASSERT(read_buffer_ == null);
   }
 
   void tear_down();
@@ -84,7 +78,7 @@ class LwipSocket : public Resource, public BacklogSocketList::Element {
   void send_state();
   void socket_error(err_t err);
 
-  tcp_pcb* tpcb() { return tpcb_; }
+  tcp_pcb* tpcb() const { return tpcb_; }
   void set_tpcb(tcp_pcb* tpcb) { tpcb_ = tpcb; }
 
   err_t error() { return error_; }
@@ -112,15 +106,15 @@ class LwipSocket : public Resource, public BacklogSocketList::Element {
 
  private:
   Kind kind_;
-  tcp_pcb* tpcb_;
-  err_t error_;
+  tcp_pcb* tpcb_ = null;
+  err_t error_ = ERR_OK;
 
-  int send_pending_;
-  bool send_closed_;
+  int send_pending_ = 0;
+  bool send_closed_ = false;
 
-  pbuf* read_buffer_;
-  int read_offset_;
-  bool read_closed_;
+  pbuf* read_buffer_ = null;
+  int read_offset_ = 0;
+  bool read_closed_ = false;
 
   // Sockets that are connected on a listening socket, but have not yet been
   // accepted by the application.
