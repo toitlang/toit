@@ -77,8 +77,7 @@ interface Task:
     return Task_.current
 
   /**
-  Divides the work given by $lambdas up into a number of
-    separate tasks that run concurrently.
+  Runs the given $lambdas as a group of concurrent tasks.
 
   Returns the results of running the $lambdas as a $Map
     keyed by the lambda index. If the lambda at a given
@@ -87,13 +86,13 @@ interface Task:
     so it is possible to tell which lambda returned first.
 
   If any of the $lambdas throws an exception, the exception is
-    propagated to the caller of $Task.divide which in
+    propagated to the caller of $Task.group which in
     return also throws.
 
   If $required is less than the number of $lambdas, the
     method returns when $required tasks have completed.
   */
-  static divide lambdas/List -> Map
+  static group lambdas/List -> Map
       --required/int=lambdas.size:
     count ::= lambdas.size
     tasks ::= Array_ count
@@ -116,13 +115,13 @@ interface Task:
             if Task.current.is_canceled:
               // If we get canceled after we decided to stop, we
               // avoid propagating the cancelation to the task
-              // that invoked Task.divide.
+              // that invoked Task.group.
               if not is_stopping:
                 is_canceled = true
                 is_stopping = true
             else if is_exception:
               // We prefer the first exception and that is the
-              // one we propagate to the caller of Task.divide.
+              // one we propagate to the caller of Task.group.
               if not caught: caught = exception
               is_stopping = true
             tasks[index] = null
