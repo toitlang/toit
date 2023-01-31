@@ -16,7 +16,7 @@ interface ServiceDiscoveryService:
   watch pid/int -> none
   static WATCH_INDEX /int ::= 3
 
-  listen id/int uuid/string priority/int -> none
+  listen id/int provider_name/string uuid/string priority/int -> none
   static LISTEN_INDEX /int ::= 1
 
   unlisten id/int -> none
@@ -27,7 +27,11 @@ class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDisc
     super --open=open
 
   open -> ServiceDiscoveryServiceClient?:
-    return (open_ ServiceDiscoveryService.UUID ServiceDiscoveryService.MAJOR ServiceDiscoveryService.MINOR --pid=-1) and this
+    client := open_ --pid=-1 --id=0  // Hardcoded in system process.
+        ServiceDiscoveryService.UUID
+        ServiceDiscoveryService.MAJOR
+        ServiceDiscoveryService.MINOR
+    return client and this
 
   discover uuid/string wait/bool -> List?:
     return invoke_ ServiceDiscoveryService.DISCOVER_INDEX [uuid, wait]
@@ -35,8 +39,8 @@ class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDisc
   watch pid/int -> none:
     invoke_ ServiceDiscoveryService.WATCH_INDEX pid
 
-  listen id/int uuid/string priority/int -> none:
-    invoke_ ServiceDiscoveryService.LISTEN_INDEX [id, uuid, priority]
+  listen id/int provider_name/string uuid/string priority/int -> none:
+    invoke_ ServiceDiscoveryService.LISTEN_INDEX [id, provider_name, uuid, priority]
 
   unlisten id/int -> none:
     invoke_ ServiceDiscoveryService.UNLISTEN_INDEX id

@@ -49,27 +49,31 @@ abstract class ServiceClient:
   abstract open -> ServiceClient?
 
   open_ uuid/string major/int minor/int -> ServiceClient?
-      --pid/int?=null
       --timeout/Duration?=_default_timeout_:
+    return open_ uuid major minor --timeout=timeout:
+      throw "Cannot disambiguate"
+
+  open_ uuid/string major/int minor/int [disambiguate] -> ServiceClient?
+      --timeout/Duration?=_default_timeout_:
+    discovered/List? := null
+    if timeout:
+      catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
+        with_timeout timeout: discovered = _client_.discover uuid true
+    else:
+      discovered = _client_.discover uuid false
+    if not discovered: return null
+
+    picked := 0
+    priority := discovered[2]
+    if discovered.size > 4 and priority <= discovered[6]:
+      picked = disambiguate.call
+
+    pid := discovered[picked]
+    id := discovered[picked + 1]
+    return open_ uuid major minor --pid=pid --id=id
+
+  open_ uuid/string major/int minor/int --pid/int --id/int -> ServiceClient:
     if _id_: throw "Already opened"
-
-    id := 0  // TODO(kasper): Clean this up a bit.
-    if not pid:
-      discovered/List? := null
-      if timeout:
-        catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
-          with_timeout timeout: discovered = _client_.discover uuid true
-      else:
-        discovered = _client_.discover uuid false
-      if not discovered: return null
-
-      pid = discovered[0]
-      id = discovered[1]
-      priority := discovered[2]
-
-      if discovered.size > 3 and priority <= discovered[5]:
-        throw "Cannot disambiguate"
-
     // Open the client by doing a RPC-call to the discovered process.
     // This returns the client id necessary for invoking service methods.
     definition ::= rpc.invoke pid RPC_SERVICES_OPEN_ [id, uuid, major, minor]
@@ -420,7 +424,7 @@ class ServiceManager_ implements SystemMessageHandler_:
     id := assign_id_ service.id providers_ provider
     // TODO(kasper): Clean up in the services
     // table if listen fails?
-    _client_.listen id service.uuid service.priority
+    _client_.listen id provider.name service.uuid service.priority
     return id
 
   unlisten id/int -> none:

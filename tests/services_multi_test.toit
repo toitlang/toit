@@ -31,17 +31,13 @@ main:
     expect.expect_throw "Cannot disambiguate": PingServiceClient
     tests++
 
-/*
   with_installed_services --priority_a=30 --priority_b=30:
-    client := (PingServiceClient --no-open).
-
-      // ...
+    client := (PingServiceClient --no-open).open: 4
     client.ping
     expect.expect_equals "ping/B" client.name
     tests++
-*/
 
-  expect.expect_equals 3 tests
+  expect.expect_equals 4 tests
 
 with_installed_services --priority_a/int --priority_b [block]:
   with_installed_services
@@ -69,6 +65,9 @@ class PingServiceClient extends services.ServiceClient implements PingService:
 
   open -> PingServiceClient?:
     return (open_ PingService.UUID PingService.MAJOR PingService.MINOR) and this
+
+  open [disambiguate] -> PingServiceClient?:
+    return (open_ PingService.UUID PingService.MAJOR PingService.MINOR disambiguate) and this
 
   ping -> none:
     invoke_ PingService.PING_INDEX null

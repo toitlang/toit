@@ -20,9 +20,10 @@ import system.api.service_discovery show ServiceDiscoveryService
 class DiscoverableService:
   pid/int
   id/int
+  name/string
   uuid/string
   priority/int
-  constructor --.pid --.id --.uuid --.priority:
+  constructor --.pid --.id --.name --.uuid --.priority:
 
 class SystemServiceManager extends ServiceProvider implements ServiceDiscoveryService ServiceHandler:
   service_managers_/Map ::= {:}  // Map<int, Set<int>>
@@ -45,18 +46,19 @@ class SystemServiceManager extends ServiceProvider implements ServiceDiscoverySe
     if index == ServiceDiscoveryService.WATCH_INDEX:
       return watch pid arguments
     if index == ServiceDiscoveryService.LISTEN_INDEX:
-      return listen pid arguments[0] arguments[1] arguments[2]
+      return listen pid arguments[0] arguments[1] arguments[2] arguments[3]
     if index == ServiceDiscoveryService.UNLISTEN_INDEX:
       return unlisten pid arguments
     unreachable
 
-  listen pid/int id/int uuid/string priority/int -> none:
+  listen pid/int id/int name/string uuid/string priority/int -> none:
     services := services_by_pid_.get pid --init=(: {:})
     if services.contains id: throw "Service id $id is already in use"
 
     service := DiscoverableService
         --pid=pid
         --id=id
+        --name=name
         --uuid=uuid
         --priority=priority
     services[id] = service
@@ -102,12 +104,13 @@ class SystemServiceManager extends ServiceProvider implements ServiceDiscoverySe
     // TODO(kasper): Consider keeping the list of
     // services in a form that is ready to send
     // back without any transformations.
-    result := Array_ 3 * services.size
+    result := Array_ 4 * services.size
     index := 0
     services.do: | service/DiscoverableService |
       result[index++] = service.pid
       result[index++] = service.id
       result[index++] = service.priority
+      result[index++] = service.name
     return result
 
   watch pid/int target/int -> none:
@@ -127,7 +130,7 @@ class SystemServiceManager extends ServiceProvider implements ServiceDiscoverySe
       processes.remove pid
       process_send_ manager SYSTEM_RPC_NOTIFY_TERMINATED_ pid
 
-  listen id/int uuid/string priority/int -> none:
+  listen id/int name/string uuid/string priority/int -> none:
     unreachable  // <-- TODO(kasper): nasty
 
   unlisten id/int -> none:
