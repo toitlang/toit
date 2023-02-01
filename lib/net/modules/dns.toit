@@ -66,7 +66,7 @@ On Unix systems the default client is one that keeps an eye on changes in
 On FreeRTOS systems the default client is set by DHCP.
 On Windows we currently default to using Google and Cloudflare DNS servers.
 On all platforms you can set a custom default client with the
-  $(default_client=) setter.
+  $(default_client= client) setter.
 */
 default_client -> DnsClient:
   if user_set_client_: return user_set_client_
