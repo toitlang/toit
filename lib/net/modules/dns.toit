@@ -93,8 +93,13 @@ etc_resolv_client_ -> DnsClient:
       resolv_conf := (read_file_content_posix_ "/etc/resolv.conf" resolv_conf_stat[ST_SIZE_]).to_string
       nameservers := []
       resolv_conf.split "\n": | line |
+        hash := line.index_of "#"
+        if hash >= 0: line = line[..hash]
+        line = line.trim
         if line.starts_with "nameserver ":
-          nameservers.add line[11..].copy
+          server := line[11..].trim.copy
+          if net.IpAddress.is_valid server --accept_ipv4=true --accept_ipv6=false:
+            nameservers.add server
       current_etc_resolv_client_ = DnsClient nameservers
   return current_etc_resolv_client_ or DEFAULT_CLIENT
 
