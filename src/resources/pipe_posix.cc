@@ -478,6 +478,8 @@ static Object* fork_helper(
     for (int i = 0; environment && i < environment->length(); i += 2) {
       Blob key;
       environment->at(i)->byte_content(process->program(), &key, STRINGS_ONLY);
+      // We don't need to free this because we are in the child process and
+      // will exec soon.
       auto key_cstr = strndup(char_cast(key.address()), key.length());
       Object* value = environment->at(i + 1);
       if (value == process->program()->null_object()) {

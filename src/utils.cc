@@ -429,10 +429,14 @@ bool Utils::utf_8_equals_utf_16(const uint8* input1, word length1, const uint16*
 
   // Now we know the UTF-16 versions are the same length, generate the UTF-16
   // version of the UTF-8 input, and compare them.
-  uint16* wide_input1 = unvoid_cast<uint16*>(malloc(sizeof(uint16) * length2));
+  static const word BUFFER_SIZE = 260;
+  uint16 buffer[BUFFER_SIZE];
+  uint16* wide_input1 = length2 < BUFFER_SIZE
+      ? buffer
+      : unvoid_cast<uint16*>(malloc(sizeof(uint16) * length2));
   utf_8_to_16(input1, length1, wide_input1, length2);
   bool match = memcmp(wide_input1, input2, length2 * sizeof(uint16)) == 0;
-  free(wide_input1);
+  if (wide_input1 != buffer) free(wide_input1);
   return match;
 }
 
