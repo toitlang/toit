@@ -87,10 +87,9 @@ class UdpSocket : public Resource {
   }
 
   ~UdpSocket() {
-    while (auto packet = packets_.remove_first()) {
-      delete packet;
-    }
-    delete spare_packet_;
+    ASSERT(upcb_ == null);
+    ASSERT(packets_.is_empty());
+    ASSERT(spare_packet_ == null);
   }
 
   void tear_down() {
@@ -99,6 +98,14 @@ class UdpSocket : public Resource {
       udp_remove(upcb_);
       upcb_ = null;
     }
+
+    // We make sure to delete packets and consequently call pbuf_free() from
+    // this tear_down() method that is called on the lwIP task.
+    while (auto packet = packets_.remove_first()) {
+      delete packet;
+    }
+    delete spare_packet_;
+    spare_packet_ = null;
   }
 
   static void on_recv(void* arg, udp_pcb* upcb, pbuf* p, const ip_addr_t* addr, u16_t port) {
