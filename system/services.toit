@@ -21,9 +21,12 @@ class DiscoverableService:
   pid/int
   id/int
   uuid/string
+  name/string
+  major/int
+  minor/int
   priority/int
-  tags/List
-  constructor --.pid --.id --.uuid --.priority --.tags:
+  tags/List?
+  constructor --.pid --.id --.uuid --.name --.major --.minor --.priority --.tags:
 
 class SystemServiceManager extends ServiceProvider implements ServiceDiscoveryService ServiceHandler:
   service_managers_/Map ::= {:}  // Map<int, Set<int>>
@@ -46,21 +49,26 @@ class SystemServiceManager extends ServiceProvider implements ServiceDiscoverySe
     if index == ServiceDiscoveryService.WATCH_INDEX:
       return watch pid arguments
     if index == ServiceDiscoveryService.LISTEN_INDEX:
-      return listen pid arguments[0] arguments[1] arguments[2] arguments[3]
+      return listen pid arguments
     if index == ServiceDiscoveryService.UNLISTEN_INDEX:
       return unlisten pid arguments
     unreachable
 
-  listen pid/int id/int uuid/string priority/int tags/List -> none:
+  listen pid/int arguments/List -> none:
     services := services_by_pid_.get pid --init=(: {:})
+    id := arguments[0]
     if services.contains id: throw "Service id $id is already in use"
 
+    uuid := arguments[1]
     service := DiscoverableService
         --pid=pid
         --id=id
         --uuid=uuid
-        --priority=priority
-        --tags=tags
+        --name=arguments[2]
+        --major=arguments[3]
+        --minor=arguments[4]
+        --priority=arguments[5]
+        --tags=arguments[6]
     services[id] = service
 
     // Register the service based on its uuid and sort the all services
@@ -104,11 +112,14 @@ class SystemServiceManager extends ServiceProvider implements ServiceDiscoverySe
     // TODO(kasper): Consider keeping the list of
     // services in a form that is ready to send
     // back without any transformations.
-    result := Array_ 4 * services.size
+    result := Array_ 7 * services.size
     index := 0
     services.do: | service/DiscoverableService |
       result[index++] = service.pid
       result[index++] = service.id
+      result[index++] = service.name
+      result[index++] = service.major
+      result[index++] = service.minor
       result[index++] = service.priority
       result[index++] = service.tags
     return result
@@ -130,7 +141,12 @@ class SystemServiceManager extends ServiceProvider implements ServiceDiscoverySe
       processes.remove pid
       process_send_ manager SYSTEM_RPC_NOTIFY_TERMINATED_ pid
 
-  listen id/int uuid/string priority/int tags/List -> none:
+  listen id/int uuid/string -> none
+      --name/string
+      --major/int
+      --minor/int
+      --priority/int
+      --tags/List:
     unreachable  // <-- TODO(kasper): nasty
 
   unlisten id/int -> none:

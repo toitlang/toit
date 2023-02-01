@@ -27,6 +27,9 @@ RESOURCE_HANDLE_LIMIT_ /int ::= 0x1fff_ffff  // Will be shifted up by one.
 
 _client_ /ServiceDiscoveryService ::= ServiceDiscoveryServiceClient
 
+interface ServiceResolver:
+  filter --name/string --major/int --minor/int --tags/List -> bool
+
 abstract class ServiceClient:
   _id_/int? := null
   _pid_/int? := null
@@ -35,6 +38,7 @@ abstract class ServiceClient:
   _major_/int := 0
   _minor_/int := 0
   _patch_/int := 0
+  _tags_/List? := null
 
   _default_timeout_/Duration? ::= ?
 
@@ -49,10 +53,7 @@ abstract class ServiceClient:
   abstract open -> ServiceClient?
 
   open_ uuid/string major/int minor/int -> ServiceClient?
-      --timeout/Duration?=_default_timeout_:
-    return open_ uuid major minor --timeout=timeout --filter=: true
-
-  open_ uuid/string major/int minor/int [--filter] -> ServiceClient?
+      --resolver/ServiceResolver?=null
       --timeout/Duration?=_default_timeout_:
     discovered/List? := null
     if timeout:
@@ -64,20 +65,26 @@ abstract class ServiceClient:
 
     candidate_index := null
     candidate_priority := null
-    for i := 0; i < discovered.size; i += 4:
-      tags := discovered[i + 3]
-      if filter.call tags:
-        priority := discovered[i + 2]
-        if not candidate_index:
-          candidate_index = i
-          candidate_priority = priority
-        else if priority < candidate_priority:
-          // The remaining entries have lower priorities and
-          // we already found a suitable candidate.
-          break
-        else:
-          // Found multiple candidates with the same priority.
-          throw "Cannot disambiguate"
+    for i := 0; i < discovered.size; i += 7:
+      if resolver:
+        tags := discovered[i + 6] or []
+        filter := resolver.filter
+            --name=discovered[i + 2]
+            --major=discovered[i + 3]
+            --minor=discovered[i + 4]
+            --tags=tags
+        if not filter: continue
+      priority := discovered[i + 5]
+      if not candidate_index:
+        candidate_index = i
+        candidate_priority = priority
+      else if priority < candidate_priority:
+        // The remaining entries have lower priorities and
+        // we already found a suitable candidate.
+        break
+      else:
+        // Found multiple candidates with the same priority.
+        throw "Cannot disambiguate"
 
     if not candidate_index: return null
     pid := discovered[candidate_index]
@@ -95,6 +102,7 @@ abstract class ServiceClient:
     _major_ = definition[2]
     _minor_ = definition[3]
     _patch_ = definition[4]
+    _tags_ = definition[5]
     // Close the client if the reference goes away, so the service
     // process can clean things up.
     add_finalizer this:: close
@@ -149,6 +157,7 @@ abstract class ServiceProvider:
   major/int
   minor/int
   patch/int
+  tags/List?
 
   _services_/List ::= []
   _manager_/ServiceManager_? := null
@@ -161,7 +170,7 @@ abstract class ServiceProvider:
   _resources_/Map ::= {:}  // Map<int, Map<int, Object>>
   _resource_handle_next_/int := ?
 
-  constructor .name --.major/int --.minor/int --.patch/int=0:
+  constructor .name --.major --.minor --.patch=0 --.tags=null:
     _resource_handle_next_ = random RESOURCE_HANDLE_LIMIT_
 
   on_opened client/int -> none:
@@ -176,7 +185,10 @@ abstract class ServiceProvider:
   provides uuid/string major/int minor/int -> none
       --handler/ServiceHandler
       --id/int?=null
-      --priority/int=100:
+      --priority/int=100
+      --tags/List?=null:
+    provider_tags := this.tags
+    if provider_tags: tags = tags ? (provider_tags + tags) : provider_tags
     service := Service_
         --uuid=uuid
         --major=major
@@ -184,6 +196,7 @@ abstract class ServiceProvider:
         --handler=handler
         --id=id
         --priority=priority
+        --tags=tags
     _services_.add service
 
   install -> none:
@@ -213,7 +226,7 @@ abstract class ServiceProvider:
   _open_ client/int -> List:
     _clients_.add client
     catch --trace: on_opened client
-    return [ client, name, major, minor, patch ]
+    return [ client, name, major, minor, patch, tags ]
 
   _close_ client/int -> none:
     resources ::= _resources_.get client
@@ -283,8 +296,8 @@ abstract class ServiceDefinition extends ServiceProvider implements ServiceHandl
 
   abstract handle pid/int client/int index/int arguments/any-> any
 
-  provides uuid/string major/int minor/int:
-    super uuid major minor --handler=this
+  provides uuid/string major/int minor/int --tags/List?=null:
+    super uuid major minor --handler=this --tags=tags
 
 abstract class ServiceResource implements rpc.RpcSerializable:
   _provider_/ServiceProvider? := ?
@@ -360,8 +373,9 @@ class Service_:
   handler/ServiceHandler
   id/int?
   priority/int
+  tags/List?
 
-  constructor --.uuid --.major --.minor --.handler --.id --.priority:
+  constructor --.uuid --.major --.minor --.handler --.id --.priority --.tags:
     // Do nothing.
 
 class ServiceResourceProxyManager_ implements SystemMessageHandler_:
@@ -436,7 +450,12 @@ class ServiceManager_ implements SystemMessageHandler_:
     id := assign_id_ service.id providers_ provider
     // TODO(kasper): Clean up in the services
     // table if listen fails?
-    _client_.listen id service.uuid service.priority ["name:$provider.name"]
+    _client_.listen id service.uuid
+        --name=provider.name
+        --major=provider.major
+        --minor=provider.minor
+        --priority=service.priority
+        --tags=service.tags
     return id
 
   unlisten id/int -> none:

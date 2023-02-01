@@ -32,8 +32,7 @@ main:
     tests++
 
   with_installed_services --priority_a=30 --priority_b=30:
-    client := (PingServiceClient --no-open).open
-        --filter=: | tags/List | tags.contains "name:ping/B"
+    client := (PingServiceClient --no-open).open --resolver=PreferB
     client.ping
     expect.expect_equals "ping/B" client.name
     tests++
@@ -42,8 +41,8 @@ main:
 
 with_installed_services --priority_a/int --priority_b [block]:
   with_installed_services
-      --create_a=(: PingServiceProvider "A" --priority=priority_a)
-      --create_b=(: PingServiceProvider "B" --priority=priority_b)
+      --create_a=(: PingServiceProvider.A --priority=priority_a)
+      --create_b=(: PingServiceProvider.B --priority=priority_b)
       block
 
 with_installed_services [--create_a] [--create_b] [block]:
@@ -60,6 +59,14 @@ with_installed_services [--create_a] [--create_b] [block]:
 
 // ------------------------------------------------------------------
 
+class PreferB implements services.ServiceResolver:
+  filter --name/string --major/int --minor/int --tags/List -> bool:
+    if name != "ping/B": return false
+    expect.expect_equals PingServiceProvider.MAJOR_B major
+    expect.expect_equals PingServiceProvider.MINOR_B minor
+    expect.expect_list_equals [] tags
+    return true
+
 class PingServiceClient extends services.ServiceClient implements PingService:
   constructor --open/bool=true:
     super --open=open
@@ -67,8 +74,8 @@ class PingServiceClient extends services.ServiceClient implements PingService:
   open -> PingServiceClient?:
     return (open_ PingService.UUID PingService.MAJOR PingService.MINOR) and this
 
-  open [--filter] -> PingServiceClient?:
-    return (open_ PingService.UUID PingService.MAJOR PingService.MINOR --filter=filter) and this
+  open --resolver/services.ServiceResolver -> PingServiceClient?:
+    return (open_ PingService.UUID PingService.MAJOR PingService.MINOR --resolver=resolver) and this
 
   ping -> none:
     invoke_ PingService.PING_INDEX null
@@ -76,10 +83,21 @@ class PingServiceClient extends services.ServiceClient implements PingService:
 // ------------------------------------------------------------------
 
 class PingServiceProvider extends services.ServiceProvider:
-  constructor identifier/string --priority/int?=null:
-    super "ping/$identifier" --major=1 --minor=2 --patch=5
+  static MAJOR_A ::= 1
+  static MINOR_A ::= 2
+  static MAJOR_B ::= 3
+  static MINOR_B ::= 4
+
+  constructor.A --priority/int?=null:
+    super "ping/A" --major=MAJOR_A --minor=MINOR_A --patch=5
     provides PingService.UUID PingService.MAJOR PingService.MINOR
-        --handler=PingHandler identifier
+        --handler=PingHandler "A"
+        --priority=priority
+
+  constructor.B --priority/int?=null:
+    super "ping/B" --major=MAJOR_B --minor=MINOR_B --patch=17
+    provides PingService.UUID PingService.MAJOR PingService.MINOR
+        --handler=PingHandler "B"
         --priority=priority
 
 class PingHandler implements services.ServiceHandler PingService:
