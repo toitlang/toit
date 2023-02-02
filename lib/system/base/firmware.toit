@@ -19,7 +19,7 @@ import system.services show ServiceDefinition ServiceResource
 abstract class FirmwareServiceDefinitionBase extends ServiceDefinition implements FirmwareService:
   constructor name/string --major/int --minor/int:
     super name --major=major --minor=minor
-    provides FirmwareService.UUID FirmwareService.MAJOR FirmwareService.MINOR
+    provides FirmwareService.SELECTOR
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == FirmwareService.IS_VALIDATION_PENDING_INDEX:

@@ -45,7 +45,7 @@ class SystemServiceManager extends ServiceProvider implements ServiceDiscoverySe
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == ServiceDiscoveryService.DISCOVER_INDEX:
-      return discover arguments[0] arguments[1]
+      return discover arguments[0] --wait=arguments[1]
     if index == ServiceDiscoveryService.WATCH_INDEX:
       return watch pid arguments
     if index == ServiceDiscoveryService.LISTEN_INDEX:
@@ -99,7 +99,7 @@ class SystemServiceManager extends ServiceProvider implements ServiceDiscoverySe
     service_managers_.remove pid
     services_by_pid_.remove pid
 
-  discover uuid/string wait/bool -> List?:
+  discover uuid/string --wait/bool -> List?:
     services/List? := null
     if wait:
       signal_.wait:

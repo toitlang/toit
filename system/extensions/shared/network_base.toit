@@ -19,7 +19,7 @@ import system.api.network show NetworkService
 abstract class NetworkServiceDefinitionBase extends ServiceDefinition implements NetworkService:
   constructor name/string --major/int --minor/int:
     super name --major=major --minor=minor
-    provides NetworkService.UUID NetworkService.MAJOR NetworkService.MINOR
+    provides NetworkService.SELECTOR
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == NetworkService.CONNECT_INDEX:

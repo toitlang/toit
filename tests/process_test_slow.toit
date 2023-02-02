@@ -34,7 +34,6 @@ test_priorities:
     test_priority n --low=Process.PRIORITY_NORMAL --high=Process.PRIORITY_CRITICAL
     test_priority n --low=Process.PRIORITY_HIGH   --high=Process.PRIORITY_CRITICAL
 
-
 test_priority n/int --low/int --high/int:
   Process.current.priority = Process.PRIORITY_CRITICAL
   print "$n x [$low < $high]"

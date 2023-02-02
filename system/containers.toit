@@ -179,7 +179,7 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
     implements ContainerService:
   constructor:
     super "system/containers" --major=0 --minor=2
-    provides ContainerService.UUID ContainerService.MAJOR ContainerService.MINOR
+    provides ContainerService.SELECTOR
     install
 
   handle pid/int client/int index/int arguments/any -> any:

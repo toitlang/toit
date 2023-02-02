@@ -8,11 +8,12 @@ import net.tcp
 import writer
 import expect
 
-import system.services show ServiceDefinition ServiceResource
+import system.services show ServiceSelector ServiceDefinition ServiceResource
 import system.api.network show NetworkService NetworkServiceClient
 import system.base.network show ProxyingNetworkServiceDefinition
 
-service_/NetworkServiceClient? ::= (FakeNetworkServiceClient --no-open).open
+service_/NetworkServiceClient? ::= (FakeNetworkServiceClient).open
+    --if_absent=: null
 
 main:
   service := FakeNetworkServiceDefinition
@@ -77,16 +78,14 @@ open_fake -> net.Interface:
   return impl.SystemInterface_ service_ service_.connect
 
 interface FakeNetworkService extends NetworkService:
-  static UUID  /string ::= "5c6f4b05-5646-4866-856d-b12649ace896"
-  static MAJOR /int    ::= 0
-  static MINOR /int    ::= 1
+  static SELECTOR ::= ServiceSelector
+      --uuid="5c6f4b05-5646-4866-856d-b12649ace896"
+      --major=0
+      --minor=1
 
 class FakeNetworkServiceClient extends NetworkServiceClient:
-  constructor --open/bool=true:
-    super --open=open
-
-  open -> FakeNetworkServiceClient?:
-    return (open_ FakeNetworkService.UUID FakeNetworkService.MAJOR FakeNetworkService.MINOR) and this
+  constructor selector/ServiceSelector=FakeNetworkService.SELECTOR:
+    super selector
 
 class FakeNetworkServiceDefinition extends ProxyingNetworkServiceDefinition:
   proxy_mask_/int := 0
@@ -95,7 +94,7 @@ class FakeNetworkServiceDefinition extends ProxyingNetworkServiceDefinition:
 
   constructor:
     super "system/network/test" --major=1 --minor=2  // Major and minor versions do not matter here.
-    provides FakeNetworkService.UUID FakeNetworkService.MAJOR FakeNetworkService.MINOR
+    provides FakeNetworkService.SELECTOR
 
   proxy_mask -> int:
     return proxy_mask_

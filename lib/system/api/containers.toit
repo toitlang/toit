@@ -3,13 +3,14 @@
 // found in the lib/LICENSE file.
 
 import uuid
-import system.services show ServiceClient
+import system.services show ServiceSelector ServiceClient
 import system.containers show ContainerImage
 
 interface ContainerService:
-  static UUID  /string ::= "358ee529-45a4-409e-8fab-7a28f71e5c51"
-  static MAJOR /int    ::= 0
-  static MINOR /int    ::= 6
+  static SELECTOR ::= ServiceSelector
+      --uuid="358ee529-45a4-409e-8fab-7a28f71e5c51"
+      --major=0
+      --minor=6
 
   static FLAG_RUN_BOOT     /int ::= 1 << 0
   static FLAG_RUN_CRITICAL /int ::= 1 << 1
@@ -39,11 +40,8 @@ interface ContainerService:
   static IMAGE_WRITER_COMMIT_INDEX /int ::= 5
 
 class ContainerServiceClient extends ServiceClient implements ContainerService:
-  constructor --open/bool=true:
-    super --open=open
-
-  open -> ContainerServiceClient?:
-    return (open_ ContainerService.UUID ContainerService.MAJOR ContainerService.MINOR) and this
+  constructor selector/ServiceSelector=ContainerService.SELECTOR:
+    super selector
 
   list_images -> List:
     array := invoke_ ContainerService.LIST_IMAGES_INDEX null

@@ -11,7 +11,7 @@ interface ServiceDiscoveryService:
       --major=0
       --minor=3
 
-  discover uuid/string wait/bool -> List?
+  discover uuid/string --wait/bool -> List?
   static DISCOVER_INDEX /int ::= 0
 
   watch pid/int -> none
@@ -36,7 +36,7 @@ class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDisc
     client := _open_ selector --pid=-1 --id=0  // Hardcoded in system process.
     return client and this
 
-  discover uuid/string wait/bool -> List?:
+  discover uuid/string --wait/bool -> List?:
     return invoke_ ServiceDiscoveryService.DISCOVER_INDEX [uuid, wait]
 
   watch pid/int -> none:

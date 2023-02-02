@@ -17,6 +17,7 @@ main:
     service.uninstall --wait  // Wait until last client closes.
 
   logger := LogServiceClient
+  logger.open
   logger.log "Hello"
   logger.log "World"
   logger.close
@@ -24,21 +25,19 @@ main:
 // ------------------------------------------------------------------
 
 interface LogService:
-  static UUID/string ::= "00e1aca5-4861-4ec6-86e6-eea82936af13"
-  static MAJOR/int   ::= 1
-  static MINOR/int   ::= 0
+  static SELECTOR ::= services.ServiceSelector
+      --uuid="00e1aca5-4861-4ec6-86e6-eea82936af13"
+      --major=1
+      --minor=0
 
-  static LOG_INDEX ::= 0
   log message/string -> none
+  static LOG_INDEX ::= 0
 
 // ------------------------------------------------------------------
 
 class LogServiceClient extends services.ServiceClient implements LogService:
-  constructor --open/bool=true:
-    super --open=open
-
-  open -> LogServiceClient?:
-    return (open_ LogService.UUID LogService.MAJOR LogService.MINOR) and this
+  constructor selector/services.ServiceSelector=LogService.SELECTOR:
+    super selector
 
   log message/string -> none:
     invoke_ LogService.LOG_INDEX message
@@ -48,7 +47,7 @@ class LogServiceClient extends services.ServiceClient implements LogService:
 class LogServiceDefinition extends services.ServiceDefinition implements LogService:
   constructor:
     super "log" --major=1 --minor=0
-    provides LogService.UUID LogService.MAJOR LogService.MINOR
+    provides LogService.SELECTOR
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == LogService.LOG_INDEX: return log arguments

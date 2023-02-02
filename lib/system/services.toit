@@ -27,6 +27,19 @@ RESOURCE_HANDLE_LIMIT_ /int ::= 0x1fff_ffff  // Will be shifted up by one.
 
 _client_ /ServiceDiscoveryService ::= (ServiceDiscoveryServiceClient).open
 
+/**
+A service selector is used to identify and discover services. It
+  has a unique id that never changes and major and minor versions
+  numbers that support evolving APIs over time.
+
+On the $ServiceProvider side, the selector is used when providing
+  a service so that clients can discover it later.
+
+On the $ServiceClient side, the selector is used when discovering
+  services, and in this context it can also be restricted to help
+  disambiguate between multiple variants of a service provided
+  by multiple providers.
+*/
 class ServiceSelector:
   uuid/string
   major/int
@@ -41,7 +54,7 @@ class ServiceSelector:
   restrict -> ServiceSelectorRestricted:
     return ServiceSelectorRestricted.internal_ this
 
-  allowed_ --name/string --major/int --minor/int --tags/List? -> bool:
+  is_allowed_ --name/string --major/int --minor/int --tags/List? -> bool:
     return true
 
 class ServiceSelectorRestricted extends ServiceSelector:
@@ -91,7 +104,7 @@ class ServiceSelectorRestricted extends ServiceSelector:
       tags_[tag] = allow
     return this
 
-  allowed_ --name/string --major/int --minor/int --tags/List? -> bool:
+  is_allowed_ --name/string --major/int --minor/int --tags/List? -> bool:
     // Check that the name and versions are allowed.
     restrictions := names_.get name
     name_allowed := not names_include_allowed_
@@ -117,15 +130,15 @@ class ServiceSelectorRestricted extends ServiceSelector:
     return tags_allowed
 
 /**
-Base class for clients that connect to and use provided services 
+Base class for clients that connect to and use provided services
   (see $ServiceProvider).
 
 Typically, users call the $open method on a subclass of the client. This then
   discovers the corresponding provider and connects to it.
-  
+
 Subclasses implement service-specific methods to provide convenient APIs.
 */
-abstract class ServiceClient:
+class ServiceClient:
   // TODO(kasper): Make this non-nullable.
   selector/ServiceSelector?
 
@@ -177,16 +190,16 @@ abstract class ServiceClient:
     discovered/List? := null
     if timeout:
       catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
-        with_timeout timeout: discovered = _client_.discover selector.uuid true
+        with_timeout timeout: discovered = _client_.discover selector.uuid --wait
     else:
-      discovered = _client_.discover selector.uuid false
+      discovered = _client_.discover selector.uuid --no-wait
     if not discovered: return null
 
     candidate_index := null
     candidate_priority := null
     for i := 0; i < discovered.size; i += 7:
       tags := discovered[i + 6]
-      allowed := selector.allowed_
+      allowed := selector.is_allowed_
           --name=discovered[i + 2]
           --major=discovered[i + 3]
           --minor=discovered[i + 4]
@@ -272,7 +285,7 @@ abstract class ServiceClient:
 /**
 A handler for requests from clients.
 
-$ServiceProviders may provide multiple services, each of which comes with a
+A $ServiceProvider may provide multiple services, each of which comes with a
   handler. That handler is then called for the corresponding request from the
   client.
 */
@@ -288,8 +301,13 @@ Service providers are classes that expose APIs through remote
 # Inheritance
 Typically, subclasses implement the $ServiceHandler interface, and
   call the $provides method in their constructor, using 'this' as handler.
+
+If the subclass implements multiple independent service APIs, it is
+  useful to split the handling out into multiple implementations of
+  $ServiceHandler to avoid running into issues with overlapping
+  method indexes.
 */
-abstract class ServiceProvider:
+class ServiceProvider:
   name/string
   major/int
   minor/int
@@ -321,7 +339,7 @@ abstract class ServiceProvider:
 
   /**
   Registers a handler for the given $selector.
-  
+
   This function should only be called from subclasses (typically in their constructor).
   */
   provides selector/ServiceSelector --handler/ServiceHandler -> none

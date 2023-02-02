@@ -83,8 +83,8 @@ write_on_stderr_ message/string add_newline/bool -> none:
 /**
 Print service used by $print.
 */
-service_/PrintService ::=
-    ((PrintServiceClient).open --if_absent=: StandardPrintService_) as PrintService
+service_/PrintService ::= (PrintServiceClient).open
+    --if_absent=: StandardPrintService_
 
 /**
 Standard print service used when the system print service cannot

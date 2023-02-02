@@ -2,12 +2,13 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import system.services show ServiceClient
+import system.services show ServiceSelector ServiceClient
 
 interface FirmwareService:
-  static UUID  /string ::= "777096e8-05bc-4af7-919e-5ba696549bd5"
-  static MAJOR /int    ::= 0
-  static MINOR /int    ::= 5
+  static SELECTOR ::= ServiceSelector
+      --uuid="777096e8-05bc-4af7-919e-5ba696549bd5"
+      --major=0
+      --minor=5
 
   is_validation_pending -> bool
   static IS_VALIDATION_PENDING_INDEX /int ::= 0
@@ -49,11 +50,8 @@ interface FirmwareService:
   static FIRMWARE_WRITER_COMMIT_INDEX /int ::= 7
 
 class FirmwareServiceClient extends ServiceClient implements FirmwareService:
-  constructor --open/bool=true:
-    super --open=open
-
-  open -> FirmwareServiceClient?:
-    return (open_ FirmwareService.UUID FirmwareService.MAJOR FirmwareService.MINOR) and this
+  constructor selector/ServiceSelector=FirmwareService.SELECTOR:
+    super selector
 
   is_validation_pending -> bool:
     return invoke_ FirmwareService.IS_VALIDATION_PENDING_INDEX null

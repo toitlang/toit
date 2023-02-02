@@ -6,15 +6,16 @@ import net
 import net.udp
 import net.tcp
 
-import system.services show ServiceClient
+import system.services show ServiceSelector ServiceClient
 
 // For references in documentation comments.
 import system.services show ServiceResource ServiceResourceProxy
 
 interface NetworkService:
-  static UUID  /string ::= "063e228a-3a7a-44a8-b024-d55127255ccb"
-  static MAJOR /int    ::= 0
-  static MINOR /int    ::= 3
+  static SELECTOR ::= ServiceSelector
+      --uuid="063e228a-3a7a-44a8-b024-d55127255ccb"
+      --major=0
+      --minor=3
 
   /**
   Proxy mask bits that indicate which operations must be proxied
@@ -43,66 +44,63 @@ interface NetworkService:
   // the proxy mask bits in a list. The proxy mask bits indicate
   // which operations the service definition wants the client to
   // proxy through it.
-  static CONNECT_INDEX /int ::= 0
   connect -> List
+  static CONNECT_INDEX /int ::= 0
 
-  static ADDRESS_INDEX /int ::= 1
   address handle/int -> ByteArray
+  static ADDRESS_INDEX /int ::= 1
 
-  static RESOLVE_INDEX /int ::= 2
   resolve handle/int host/string -> List
+  static RESOLVE_INDEX /int ::= 2
 
-  static UDP_OPEN_INDEX /int ::= 100
   udp_open handle/int port/int? -> int
+  static UDP_OPEN_INDEX /int ::= 100
 
-  static UDP_CONNECT_INDEX /int ::= 101
   udp_connect handle/int ip/ByteArray port/int -> none
+  static UDP_CONNECT_INDEX /int ::= 101
 
-  static UDP_RECEIVE_INDEX /int ::= 102
   udp_receive handle/int -> List
+  static UDP_RECEIVE_INDEX /int ::= 102
 
-  static UDP_SEND_INDEX /int ::= 103
   udp_send handle/int data/ByteArray ip/ByteArray port/int -> none
+  static UDP_SEND_INDEX /int ::= 103
 
-  static TCP_CONNECT_INDEX /int ::= 200
   tcp_connect handle/int ip/ByteArray port/int -> int
+  static TCP_CONNECT_INDEX /int ::= 200
 
-  static TCP_LISTEN_INDEX /int ::= 201
   tcp_listen handle/int port/int -> int
+  static TCP_LISTEN_INDEX /int ::= 201
 
-  static TCP_ACCEPT_INDEX /int ::= 202
   tcp_accept handle/int -> int
+  static TCP_ACCEPT_INDEX /int ::= 202
 
-  static TCP_CLOSE_WRITE_INDEX /int ::= 203
   tcp_close_write handle/int -> none
+  static TCP_CLOSE_WRITE_INDEX /int ::= 203
 
-  static SOCKET_GET_OPTION_INDEX /int ::= 300
   socket_get_option handle/int option/int -> any
+  static SOCKET_GET_OPTION_INDEX /int ::= 300
 
-  static SOCKET_SET_OPTION_INDEX /int ::= 301
   socket_set_option handle/int option/int value/any -> none
+  static SOCKET_SET_OPTION_INDEX /int ::= 301
 
-  static SOCKET_LOCAL_ADDRESS_INDEX /int ::= 302
   socket_local_address handle/int -> List
+  static SOCKET_LOCAL_ADDRESS_INDEX /int ::= 302
 
-  static SOCKET_PEER_ADDRESS_INDEX /int ::= 303
   socket_peer_address handle/int -> List
+  static SOCKET_PEER_ADDRESS_INDEX /int ::= 303
 
-  static SOCKET_READ_INDEX /int ::= 304
   socket_read handle/int -> ByteArray?
+  static SOCKET_READ_INDEX /int ::= 304
 
-  static SOCKET_WRITE_INDEX /int ::= 305
   socket_write handle/int data -> int
+  static SOCKET_WRITE_INDEX /int ::= 305
 
-  static SOCKET_MTU_INDEX /int ::= 306
   socket_mtu handle/int -> int
+  static SOCKET_MTU_INDEX /int ::= 306
 
 class NetworkServiceClient extends ServiceClient implements NetworkService:
-  constructor --open/bool=true:
-    super --open=open
-
-  open -> NetworkServiceClient?:
-    return (open_ NetworkService.UUID NetworkService.MAJOR NetworkService.MINOR) and this
+  constructor selector/ServiceSelector=NetworkService.SELECTOR:
+    super selector
 
   connect -> List:
     return invoke_ NetworkService.CONNECT_INDEX null
