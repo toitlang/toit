@@ -41,7 +41,7 @@ dns_lookup -> net.IpAddress
     if not server:
       client = default_client
     else:
-      client = ALL_CLIENTS_.get server --init=:
+      client = AUTO_CREATED_CLIENTS_.get server --init=:
         DnsClient [server]
   return client.get host --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6 --timeout=timeout
 
@@ -53,12 +53,12 @@ DEFAULT_CLIENT ::= DnsClient [
 ]
 
 // A map from IP addresses (in string form) to DNS clients.
-// If a DNS client has multiple servers it can query then they
-// are separated by slash (/) in the key.
-ALL_CLIENTS_ ::= {DEFAULT_CLIENT.servers_.join "/": DEFAULT_CLIENT}
+AUTO_CREATED_CLIENTS_ ::= {:}
 
 user_set_client_/DnsClient? := null
 dhcp_client_/DnsClient? := null
+
+RESOLV_CONF_ ::= "/etc/resolv.conf"
 
 /**
 On Unix systems the default client is one that keeps an eye on changes in
@@ -70,19 +70,19 @@ On all platforms you can set a custom default client with the
 */
 default_client -> DnsClient:
   if user_set_client_: return user_set_client_
-  if platform == "FreeRTOS" and dhcp_client_: return dhcp_client_
-  if platform == "Linux" or platform == "macOS": return etc_resolv_client_
+  if platform == PLATFORM_FREERTOS and dhcp_client_: return dhcp_client_
+  if platform == PLATFORM_LINUX or platform == PLATFORM_MACOS: return etc_resolv_client_
   return DEFAULT_CLIENT
 
-default_client= client/DnsClient -> none:
+default_client= client/DnsClient? -> none:
   user_set_client_ = client
 
 current_etc_resolv_client_/DnsClient? := null
 etc_resolv_update_time_/Time? := null
 
 etc_resolv_client_ -> DnsClient:
-  error := catch --trace:
-    resolv_conf_stat := stat_ "/etc/resolv.conf" true
+  catch --trace:
+    resolv_conf_stat := stat_ RESOLV_CONF_ true
     etc_stat := stat_ "/etc" true
     resolv_conf_time := Time.epoch --ns=resolv_conf_stat[ST_MTIME_]
     etc_time := Time.epoch --ns=etc_stat[ST_MTIME_]
@@ -90,14 +90,14 @@ etc_resolv_client_ -> DnsClient:
     if etc_resolv_update_time_ == null or etc_resolv_update_time_ < modification_time:
       etc_resolv_update_time_ = modification_time
       // Create a new client from resolv.conf.
-      resolv_conf := (read_file_content_posix_ "/etc/resolv.conf" resolv_conf_stat[ST_SIZE_]).to_string
+      resolv_conf := (read_file_content_posix_ RESOLV_CONF_ resolv_conf_stat[ST_SIZE_]).to_string
       nameservers := []
       resolv_conf.split "\n": | line |
         hash := line.index_of "#"
         if hash >= 0: line = line[..hash]
         line = line.trim
         if line.starts_with "nameserver ":
-          server := line[11..].trim.copy
+          server := line[11..].trim
           if net.IpAddress.is_valid server --accept_ipv4=true --accept_ipv6=false:
             nameservers.add server
       current_etc_resolv_client_ = DnsClient nameservers
