@@ -564,7 +564,7 @@ PRIMITIVE(cwd) {
 }
 
 PRIMITIVE(read_file_content_posix) {
-  // This is currenly only used for resolv.conf.
+  // This is currenly only used for /etc/resolv.conf.
   UNIMPLEMENTED_PRIMITIVE;
 }
 
