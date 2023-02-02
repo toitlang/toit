@@ -3,12 +3,13 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import system.services show ServiceClient
+import system.services show ServiceClient ServiceSelector
 
 interface ServiceDiscoveryService:
-  static UUID  /string ::= "dc58d7e1-1b1f-4a93-a9ac-bd45a47d7de8"
-  static MAJOR /int    ::= 0
-  static MINOR /int    ::= 3
+  static SELECTOR ::= ServiceSelector
+      --uuid="dc58d7e1-1b1f-4a93-a9ac-bd45a47d7de8"
+      --major=0
+      --minor=3
 
   discover uuid/string wait/bool -> List?
   static DISCOVER_INDEX /int ::= 0
@@ -28,14 +29,11 @@ interface ServiceDiscoveryService:
   static UNLISTEN_INDEX /int ::= 2
 
 class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDiscoveryService:
-  constructor --open/bool=true:
-    super --open=open
+  constructor selector/ServiceSelector=ServiceDiscoveryService.SELECTOR:
+    super selector
 
   open -> ServiceDiscoveryServiceClient?:
-    client := open_ --pid=-1 --id=0  // Hardcoded in system process.
-        ServiceDiscoveryService.UUID
-        ServiceDiscoveryService.MAJOR
-        ServiceDiscoveryService.MINOR
+    client := _open_ selector --pid=-1 --id=0  // Hardcoded in system process.
     return client and this
 
   discover uuid/string wait/bool -> List?:

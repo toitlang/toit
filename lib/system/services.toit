@@ -25,12 +25,101 @@ RPC_SERVICES_CLOSE_RESOURCE_ /int ::= 303
 RANDOM_ID_LIMIT_       /int ::= 0x3fff_ffff
 RESOURCE_HANDLE_LIMIT_ /int ::= 0x1fff_ffff  // Will be shifted up by one.
 
-_client_ /ServiceDiscoveryService ::= ServiceDiscoveryServiceClient
+_client_ /ServiceDiscoveryService ::= (ServiceDiscoveryServiceClient).open
 
-interface ServiceResolver:
-  filter --name/string --major/int --minor/int --tags/List -> bool
+class ServiceSelector:
+  uuid/string
+  major/int
+  minor/int
+  constructor --.uuid --.major --.minor:
+
+  /**
+  Returns a restricted variants of this $ServiceSelector that can
+    be used to in the service discovery process to allow and deny
+    discovered services.
+  */
+  restrict -> ServiceSelectorRestricted:
+    return ServiceSelectorRestricted.internal_ this
+
+  allowed_ --name/string --major/int --minor/int --tags/List? -> bool:
+    return true
+
+
+class ServiceSelectorRestricted extends ServiceSelector:
+  tags_ := {:}    // Map<string, bool>
+  names_ ::= {:}  // Map<string, List<ServiceSelectorRestriction_>>
+
+  tags_include_allowed_/bool := false
+  names_include_allowed_/bool := false
+
+  constructor.internal_ selector/ServiceSelector:
+    super --uuid=selector.uuid --major=selector.major --minor=selector.minor
+
+  restrict -> ServiceSelectorRestricted:
+    throw "Already restricted"
+
+  allow --name/string --major/int?=null --minor/int?=null -> ServiceSelectorRestricted:
+    return add_name_ --name=name --major=major --minor=minor --allow
+  deny --name/string --major/int?=null --minor/int?=null -> ServiceSelectorRestricted:
+    return add_name_ --name=name --major=major --minor=minor --no-allow
+
+  allow --tag/string -> ServiceSelectorRestricted:
+    return allow --tags=[tag]
+  allow --tags/List -> ServiceSelectorRestricted:
+    return add_tags_ --tags=tags --allow
+  deny --tag/string -> ServiceSelectorRestricted:
+    return deny --tags=[tag]
+  deny --tags/List -> ServiceSelectorRestricted:
+    return add_tags_ --tags=tags --no-allow
+
+  add_name_ --name/string --major/int? --minor/int? --allow/bool -> ServiceSelectorRestricted:
+    if minor and not major: throw "Must have major version to match on minor"
+    restrictions := names_.get name --init=: []
+    restrictions.do: | matcher/ServiceSelectorRestriction_ |
+      match := true
+      if major: match = (not matcher.major) or matcher.major == major
+      if match and minor: match = (not matcher.minor) or matcher.minor == minor
+      if match: throw "Cannot have multiple entries for the same named version"
+    if allow: names_include_allowed_ = true
+    restrictions.add (ServiceSelectorRestriction_ allow major minor)
+    return this
+
+  add_tags_ --tags/List --allow/bool -> ServiceSelectorRestricted:
+    tags.do: | tag/string |
+      if (tags_.get tag) == (not allow): throw "Cannot allow and deny the same tag"
+      if allow: tags_include_allowed_ = true
+      tags_[tag] = allow
+    return this
+
+  allowed_ --name/string --major/int --minor/int --tags/List? -> bool:
+    // Check that the name and versions are allowed.
+    restrictions := names_.get name
+    name_allowed := not names_include_allowed_
+    if restrictions: restrictions.do: | restriction/ServiceSelectorRestriction_? |
+      match := (not restriction.major) or restriction.major == major
+      if match: match = (not restriction.minor) or restriction.minor == minor
+      if not match: continue.do
+      if not restriction.allow: return false
+      // We found named version that was explicitly allowed. Continue through
+      // the matchers so we can find any explicitly denied named versions.
+      name_allowed = true
+    if not name_allowed: return false
+
+    // Check that the tag is allowed. If no tag is registered as allowed,
+    // we allow all non-denied tags.
+    tags_allowed := not tags_include_allowed_
+    if tags: tags.do: | tag/string |
+      tags_.get tag --if_present=: | allowed/bool |
+        if not allowed: return false
+        // We found a tag that was explicitly allowed. Continue through
+        // the tags so we can find any explicitly denied tags.
+        tags_allowed = true
+    return tags_allowed
 
 abstract class ServiceClient:
+  // TODO(kasper): Make this non-nullable.
+  selector/ServiceSelector?
+
   _id_/int? := null
   _pid_/int? := null
 
@@ -40,40 +129,60 @@ abstract class ServiceClient:
   _patch_/int := 0
   _tags_/List? := null
 
-  _default_timeout_/Duration? ::= ?
-
   static DEFAULT_OPEN_TIMEOUT /Duration ::= Duration --ms=100
 
+  // TODO(kasper): Deprecate this.
+  _default_timeout_/Duration? ::= ?
+
+  // TODO(kasper): Deprecate this constructor.
   constructor --open/bool=true:
     // If we're opening the client as part of constructing it, we instruct the
     // service discovery service to wait for the requested service to be provided.
+    selector = null
     _default_timeout_ = open ? DEFAULT_OPEN_TIMEOUT : null
     if open and not this.open: throw "Cannot find service"
 
-  abstract open -> ServiceClient?
-
+  // TODO(kasper): Deprecate this helper.
   open_ uuid/string major/int minor/int -> ServiceClient?
-      --resolver/ServiceResolver?=null
       --timeout/Duration?=_default_timeout_:
+    assert: not this.selector
+    return _open_ (ServiceSelector --uuid=uuid --major=major --minor=minor)
+       --timeout=timeout
+
+  constructor selector/ServiceSelector:
+    // TODO(kasper): Simplify this once the we don't need the
+    // legacy constructor.
+    this.selector = selector
+    _default_timeout_ = null
+
+  open --timeout/Duration?=DEFAULT_OPEN_TIMEOUT -> ServiceClient:
+    return open --timeout=timeout --if_absent=: throw "Cannot find service"
+
+  open --timeout/Duration?=null [--if_absent] -> any:
+    if not selector: throw "Must override open in client"
+    assert: not this._default_timeout_
+    if client := _open_ selector --timeout=timeout: return client
+    return if_absent.call
+
+  _open_ selector/ServiceSelector --timeout/Duration? -> ServiceClient?:
     discovered/List? := null
     if timeout:
       catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
-        with_timeout timeout: discovered = _client_.discover uuid true
+        with_timeout timeout: discovered = _client_.discover selector.uuid true
     else:
-      discovered = _client_.discover uuid false
+      discovered = _client_.discover selector.uuid false
     if not discovered: return null
 
     candidate_index := null
     candidate_priority := null
     for i := 0; i < discovered.size; i += 7:
-      if resolver:
-        tags := discovered[i + 6] or []
-        filter := resolver.filter
-            --name=discovered[i + 2]
-            --major=discovered[i + 3]
-            --minor=discovered[i + 4]
-            --tags=tags
-        if not filter: continue
+      tags := discovered[i + 6]
+      allowed := selector.allowed_
+          --name=discovered[i + 2]
+          --major=discovered[i + 3]
+          --minor=discovered[i + 4]
+          --tags=tags
+      if not allowed: continue
       priority := discovered[i + 5]
       if not candidate_index:
         candidate_index = i
@@ -89,13 +198,15 @@ abstract class ServiceClient:
     if not candidate_index: return null
     pid := discovered[candidate_index]
     id := discovered[candidate_index + 1]
-    return open_ uuid major minor --pid=pid --id=id
+    return _open_ selector --pid=pid --id=id
 
-  open_ uuid/string major/int minor/int --pid/int --id/int -> ServiceClient:
+  _open_ selector/ServiceSelector --pid/int --id/int -> ServiceClient:
     if _id_: throw "Already opened"
     // Open the client by doing a RPC-call to the discovered process.
     // This returns the client id necessary for invoking service methods.
-    definition ::= rpc.invoke pid RPC_SERVICES_OPEN_ [id, uuid, major, minor]
+    definition ::= rpc.invoke pid RPC_SERVICES_OPEN_ [
+      id, selector.uuid, selector.major, selector.minor
+    ]
     _pid_ = pid
     _id_ = definition[0]
     _name_ = definition[1]
@@ -182,17 +293,14 @@ abstract class ServiceProvider:
   stringify -> string:
     return "service:$name@$(major).$(minor).$(patch)"
 
-  provides uuid/string major/int minor/int -> none
-      --handler/ServiceHandler
+  provides selector/ServiceSelector --handler/ServiceHandler -> none
       --id/int?=null
       --priority/int=100
       --tags/List?=null:
     provider_tags := this.tags
     if provider_tags: tags = tags ? (provider_tags + tags) : provider_tags
     service := Service_
-        --uuid=uuid
-        --major=major
-        --minor=minor
+        --selector=selector
         --handler=handler
         --id=id
         --priority=priority
@@ -271,14 +379,15 @@ abstract class ServiceProvider:
   _validate_ uuid/string major/int minor/int -> Service_:
     service/Service_? := _lookup_ uuid
     if not service: throw "$this does not provide service:$uuid"
-    if major != service.major:
+    if major != service.selector.major:
       throw "$this does not provide service:$uuid@$(major).x"
-    if minor > service.minor:
+    if minor > service.selector.minor:
       throw "$this does not provide service:$uuid@$(major).$(minor).x"
     return service
 
   _lookup_ uuid/string -> Service_?:
-    _services_.do: if it.uuid == uuid: return it
+    _services_.do: | service/Service_ |
+      if service.selector.uuid == uuid: return service
     return null
 
   _uninstall_ -> none:
@@ -297,7 +406,8 @@ abstract class ServiceDefinition extends ServiceProvider implements ServiceHandl
   abstract handle pid/int client/int index/int arguments/any-> any
 
   provides uuid/string major/int minor/int --tags/List?=null:
-    super uuid major minor --handler=this --tags=tags
+    selector := ServiceSelector --uuid=uuid --major=major --minor=minor
+    super selector --handler=this --tags=tags
 
 abstract class ServiceResource implements rpc.RpcSerializable:
   _provider_/ServiceProvider? := ?
@@ -366,17 +476,18 @@ abstract class ServiceResourceProxy:
     catch --trace: client_._close_resource_ handle
 
 class Service_:
-  uuid/string
-  major/int
-  minor/int
-
+  selector/ServiceSelector
   handler/ServiceHandler
   id/int?
   priority/int
   tags/List?
+  constructor --.selector --.handler --.id --.priority --.tags:
 
-  constructor --.uuid --.major --.minor --.handler --.id --.priority --.tags:
-    // Do nothing.
+class ServiceSelectorRestriction_:
+  allow/bool
+  major/int?
+  minor/int?
+  constructor .allow .major .minor:
 
 class ServiceResourceProxyManager_ implements SystemMessageHandler_:
   static instance ::= ServiceResourceProxyManager_
@@ -450,7 +561,7 @@ class ServiceManager_ implements SystemMessageHandler_:
     id := assign_id_ service.id providers_ provider
     // TODO(kasper): Clean up in the services
     // table if listen fails?
-    _client_.listen id service.uuid
+    _client_.listen id service.selector.uuid
         --name=provider.name
         --major=provider.major
         --minor=provider.minor

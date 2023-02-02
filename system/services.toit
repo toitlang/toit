@@ -38,7 +38,7 @@ class SystemServiceManager extends ServiceProvider implements ServiceDiscoverySe
 
   constructor:
     super "system/service-discovery" --major=0 --minor=1 --patch=1
-    provides ServiceDiscoveryService.UUID ServiceDiscoveryService.MAJOR ServiceDiscoveryService.MINOR
+    provides ServiceDiscoveryService.SELECTOR
         --handler=this
         --id=0
     install
