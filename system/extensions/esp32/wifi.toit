@@ -89,7 +89,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
         throw "wifi already connected with different credentials"
 
       resource := NetworkResource this client state_ --notifiable
-      return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]
+      return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS | NetworkService.PROXY_RESOLVE]
     finally: | is_exception exception |
       // If we're not returning a network resource to the client, we
       // must take care to decrement the usage count correctly.
@@ -120,7 +120,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
         no := broadcast ? "no " : ""
         throw "wifi already established with $(no)ssid broadcasting"
       resource := NetworkResource this client state_ --notifiable
-      return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]
+      return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS | NetworkService.PROXY_RESOLVE]
     finally: | is_exception exception |
       // If we're not returning a network resource to the client, we
       // must take care to decrement the usage count correctly.
@@ -128,6 +128,9 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
 
   address resource/NetworkResource -> ByteArray:
     return (state_.module as WifiModule).address.to_byte_array
+
+  resolve resource/ServiceResource host/string -> List:
+    return [(dns.dns_lookup host).raw]
 
   ap_info resource/NetworkResource -> List:
     return (state_.module as WifiModule).ap_info

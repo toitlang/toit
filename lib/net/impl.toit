@@ -48,7 +48,7 @@ class SystemInterface_ extends NetworkResourceProxy implements net.Interface:
   on_notified_ notification/any -> none:
     if notification == NetworkService.NOTIFY_CLOSED: close
 
-  resolve host/string -> List:
+  resolve host/string -> List /* of net.IpAddress */:
     if is_closed: throw "Network closed"
     if (proxy_mask_ & NetworkService.PROXY_RESOLVE) != 0: return super host
     return [dns.dns_lookup host]
