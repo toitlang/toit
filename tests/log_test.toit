@@ -4,10 +4,10 @@
 
 import log
 import system.api.print
-import .services_print_test show PrintServiceProvider
+import .services_print_test show PrintServiceDefinition
 import expect show *
 
-service/PrintServiceProvider ::= PrintServiceProvider
+service ::= PrintServiceDefinition
 
 expect output/string? [block]:
   expect_equals 0 service.messages.size

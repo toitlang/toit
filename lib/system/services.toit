@@ -44,7 +44,6 @@ class ServiceSelector:
   allowed_ --name/string --major/int --minor/int --tags/List? -> bool:
     return true
 
-
 class ServiceSelectorRestricted extends ServiceSelector:
   tags_ := {:}    // Map<string, bool>
   names_ ::= {:}  // Map<string, List<ServiceSelectorRestriction_>>
@@ -398,16 +397,19 @@ abstract class ServiceProvider:
     _ids_ = null
     _manager_ = null
 
-// TODO(kasper): Document this a bit.
+// TODO(kasper): Deprecate this.
 abstract class ServiceDefinition extends ServiceProvider implements ServiceHandler:
   constructor name/string --major/int --minor/int --patch/int=0:
     super name --major=major --minor=minor --patch=patch
 
-  abstract handle pid/int client/int index/int arguments/any-> any
+  abstract handle pid/int client/int index/int arguments/any -> any
 
-  provides uuid/string major/int minor/int --tags/List?=null:
+  provides selector/ServiceSelector -> none:
+    super selector --handler=this
+
+  provides uuid/string major/int minor/int -> none:
     selector := ServiceSelector --uuid=uuid --major=major --minor=minor
-    super selector --handler=this --tags=tags
+    super selector --handler=this
 
 abstract class ServiceResource implements rpc.RpcSerializable:
   _provider_/ServiceProvider? := ?

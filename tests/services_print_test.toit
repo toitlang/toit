@@ -2,12 +2,12 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import system.services show ServiceHandler ServiceProvider
+import system.services show ServiceDefinition
 import system.api.print show PrintService
 import expect
 
 main:
-  service := PrintServiceProvider
+  service := PrintServiceDefinition
   service.install
   print "Hello"
   expect.expect_list_equals ["Hello"] service.messages
@@ -23,12 +23,12 @@ main:
   // from the client side?
   expect.expect_throw "key not found": print "Oh no"
 
-class PrintServiceProvider extends ServiceProvider implements PrintService ServiceHandler:
+class PrintServiceDefinition extends ServiceDefinition implements PrintService:
   messages_/List := []
 
   constructor:
     super "system/print/test" --major=1 --minor=2
-    provides PrintService.SELECTOR --handler=this
+    provides PrintService.SELECTOR
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == PrintService.PRINT_INDEX: return print arguments
