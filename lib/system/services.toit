@@ -35,7 +35,7 @@ class ServiceSelector:
 
   /**
   Returns a restricted variants of this $ServiceSelector that can
-    be used to in the service discovery process to allow and deny
+    be used in the service discovery process to allow and deny
     discovered services.
   */
   restrict -> ServiceSelectorRestricted:
@@ -74,6 +74,7 @@ class ServiceSelectorRestricted extends ServiceSelector:
   add_name_ --name/string --major/int? --minor/int? --allow/bool -> ServiceSelectorRestricted:
     if minor and not major: throw "Must have major version to match on minor"
     restrictions := names_.get name --init=: []
+    // Check that the new restriction doesn't conflict with an existing one.
     restrictions.do: | matcher/ServiceSelectorRestriction_ |
       match := true
       if major: match = (not matcher.major) or matcher.major == major
@@ -115,6 +116,15 @@ class ServiceSelectorRestricted extends ServiceSelector:
         tags_allowed = true
     return tags_allowed
 
+/**
+Base class for clients that connect to and use provided services 
+  (see $ServiceProvider).
+
+Typically, users call the $open method on a subclass of the client. This then
+  discovers the corresponding provider and connects to it.
+  
+Subclasses implement service-specific methods to provide convenient APIs.
+*/
 abstract class ServiceClient:
   // TODO(kasper): Make this non-nullable.
   selector/ServiceSelector?
@@ -259,9 +269,26 @@ abstract class ServiceClient:
     // close after timing out, it should still work.
     critical_do: rpc.invoke _pid_ RPC_SERVICES_CLOSE_RESOURCE_ [id, handle]
 
+/**
+A handler for requests from clients.
+
+$ServiceProviders may provide multiple services, each of which comes with a
+  handler. That handler is then called for the corresponding request from the
+  client.
+*/
 interface ServiceHandler:
   handle pid/int client/int index/int arguments/any-> any
 
+/**
+A service provider.
+
+Service providers are classes that expose APIs through remote
+  procedure calls (RPCs).
+
+# Inheritance
+Typically, subclasses implement the $ServiceHandler interface, and
+  call the $provides method in their constructor, using 'this' as handler.
+*/
 abstract class ServiceProvider:
   name/string
   major/int
@@ -292,6 +319,11 @@ abstract class ServiceProvider:
   stringify -> string:
     return "service:$name@$(major).$(minor).$(patch)"
 
+  /**
+  Registers a handler for the given $selector.
+  
+  This function should only be called from subclasses (typically in their constructor).
+  */
   provides selector/ServiceSelector --handler/ServiceHandler -> none
       --id/int?=null
       --priority/int=100
