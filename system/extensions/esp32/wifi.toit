@@ -257,14 +257,14 @@ class WifiModule implements NetworkModule:
     state := ip_events_.wait
     if (state & WIFI_IP_ASSIGNED) == 0: throw "IP_ASSIGN_FAILED"
     ip_events_.clear_state WIFI_IP_ASSIGNED
-    ip ::= wifi_get_ip_ resource_group_ OWN_ADDRESS_INDEX_
+    ip ::= (wifi_get_ip_ resource_group_ OWN_ADDRESS_INDEX_) or #[0, 0, 0, 0]
     address_ = net.IpAddress ip
     logger_.info "network address dynamically assigned through dhcp" --tags={"ip": address_}
     configure_dns_ --from_dhcp
     ip_events_.set_callback:: on_event_ it
 
   wait_for_static_ip_address_ -> none:
-    ip ::= wifi_get_ip_ resource_group_ OWN_ADDRESS_INDEX_
+    ip ::= (wifi_get_ip_ resource_group_ OWN_ADDRESS_INDEX_) or #[0, 0, 0, 0]
     address_ = net.IpAddress ip
     logger_.info "network address statically assigned" --tags={"ip": address_}
     configure_dns_ --from_dhcp=false
@@ -273,9 +273,8 @@ class WifiModule implements NetworkModule:
     main_dns := wifi_get_ip_ resource_group_ MAIN_DNS_ADDRESS_INDEX_
     backup_dns := wifi_get_ip_ resource_group_ BACKUP_DNS_ADDRESS_INDEX_
     dns_ips := []
-    NULL_IP ::= #[0, 0, 0, 0]
-    if main_dns != NULL_IP: dns_ips.add (net.IpAddress main_dns)
-    if backup_dns != NULL_IP: dns_ips.add (net.IpAddress backup_dns)
+    if main_dns: dns_ips.add (net.IpAddress main_dns)
+    if backup_dns: dns_ips.add (net.IpAddress backup_dns)
     if dns_ips.size != 0:
       dns.dhcp_client_ = dns.DnsClient dns_ips
       if from_dhcp:
@@ -284,7 +283,7 @@ class WifiModule implements NetworkModule:
         logger_.info "DNS server statically configured" --tags={"dns": dns_ips}
     else:
       dns.dhcp_client_ = null
-      logger_.info "No DNS server supplied by network.  Using fallback DNS servers."
+      logger_.info "DNS server not supplied by network; using fallback DNS servers"
 
   ap_info -> List:
     return wifi_get_ap_info_ resource_group_

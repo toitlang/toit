@@ -156,13 +156,7 @@ class DnsClient:
   */
   constructor servers/List:
     if servers.size == 0 or (servers.any: it is not string and it is not net.IpAddress): throw "INVALID_ARGUMENT"
-    servers_ = List servers.size:
-      server := servers[it]
-      if server is string:
-        net.IpAddress.parse server
-      else:
-        server
-
+    servers_ = servers.map: (it is string) ? net.IpAddress.parse it : it
     current_server_ = 0
 
   static DNS_UDP_PORT ::= 53
