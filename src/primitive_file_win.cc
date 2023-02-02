@@ -563,6 +563,11 @@ PRIMITIVE(cwd) {
   return result;
 }
 
+PRIMITIVE(read_file_content_posix) {
+  // This is currenly only used for /etc/resolv.conf.
+  UNIMPLEMENTED_PRIMITIVE;
+}
+
 }
 
 #endif  // TOIT_WINDOWS.

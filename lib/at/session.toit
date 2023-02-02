@@ -15,6 +15,8 @@ COMMAND_TIMEOUT_ERROR ::= "AT_COMMAND_TIMEOUT"
 /**
 Command to be send on a AT $Session. The command must be one of the 4 types
   `action`, `read`, `test` or `set`.
+
+Deprecated.
 */
 class Command:
   static DEFAULT_TIMEOUT ::= Duration --s=2
@@ -124,6 +126,8 @@ parse_response line/ByteArray --plain=false -> List:
 /**
 An AT session from a reader and a writer. The session can send AT commands to the
   while also processing URCs received.
+
+Deprecated.
 */
 class Session:
   static DEFAULT_COMMAND_DELAY ::= Duration --ms=100
@@ -482,6 +486,8 @@ monitor Processer_:
 
 /**
 Result from executing an AT $Command on a $Session.
+
+Deprecated.
 */
 class Result:
   static COMMAND_ERROR_CODE_ ::= "COMMAND ERROR"
