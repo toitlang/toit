@@ -144,12 +144,14 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
   return null;
 }
 
-#define BLOB_TO_ABSOLUTE_PATH(result, blob)                        \
-  WideCharAllocationManager allocation(process);                   \
-  wchar_t* _TOIT_pathname = allocation.to_wcs(&blob);              \
-  wchar_t result[MAX_PATH];                                        \
-  auto error = get_absolute_path(process, _TOIT_pathname, result); \
-  if (error) return error
+// Filesystem primitives should generally use this, since the chdir primitive
+// merely changes a string representing the current directory.
+#define BLOB_TO_ABSOLUTE_PATH(result, blob)                                 \
+  WideCharAllocationManager allocation_##result(process);                   \
+  wchar_t* wchar_##result = allocation_##result.to_wcs(&blob);              \
+  wchar_t result[MAX_PATH];                                                 \
+  auto error_##result = get_absolute_path(process, wchar_##result, result); \
+  if (error_##result) return error_##result
 
 PRIMITIVE(open) {
   ARGS(StringOrSlice, pathname, int, flags, int, mode);
@@ -421,10 +423,8 @@ PRIMITIVE(rmdir) {
 
 PRIMITIVE(rename) {
   ARGS(StringOrSlice, old_name_blob, StringOrSlice, new_name_blob);
-  WideCharAllocationManager allocation1(process), allocation2(process);
-  wchar_t* old_name = allocation1.to_wcs(&old_name_blob);
-  wchar_t* new_name = allocation2.to_wcs(&new_name_blob);
-  // TODO(erik): Should this use absolute path?
+  BLOB_TO_ABSOLUTE_PATH(old_name, old_name_blob);
+  BLOB_TO_ABSOLUTE_PATH(new_name, new_name_blob);
   int result = _wrename(old_name, new_name);
   if (result < 0) return return_open_error(process, errno);
   return process->program()->null_object();
