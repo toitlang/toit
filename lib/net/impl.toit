@@ -14,7 +14,8 @@ import .modules.udp
 import system.api.network show NetworkService NetworkServiceClient
 import system.base.network show NetworkResourceProxy
 
-service_/NetworkServiceClient? ::= (NetworkServiceClient --no-open).open
+service_/NetworkServiceClient? ::= (NetworkServiceClient).open
+    --if_absent=: null
 
 open -> net.Interface:
   service := service_

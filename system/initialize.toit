@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import system.services show ServiceDefinition
+import system.services show ServiceProvider
 
 import .flash.registry
 import .containers
@@ -26,5 +26,5 @@ Initialize the system and create the all important $ContainerManager
 initialize_system extensions/List -> ContainerManager:
   flash_registry ::= FlashRegistry.scan
   service_manager ::= SystemServiceManager
-  extensions.do: | service/ServiceDefinition | service.install
+  extensions.do: | provider/ServiceProvider | provider.install
   return ContainerManager flash_registry service_manager

@@ -11,11 +11,11 @@ interface ResourceService:
   static MAJOR/int   ::= 1
   static MINOR/int   ::= 2
 
-  static OPEN_INDEX ::= 0
   open key/string -> int
+  static OPEN_INDEX ::= 0
 
-  static NOTIFY_INDEX ::= 1
   notify handle/int notification/any -> none
+  static NOTIFY_INDEX ::= 1
 
 main:
   test_notify

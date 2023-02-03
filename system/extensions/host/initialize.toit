@@ -18,5 +18,5 @@ import ...containers
 import ...initialize
 
 initialize_host -> ContainerManager:
-  network := NetworkServiceDefinition
+  network := NetworkServiceProvider
   return initialize_system [network]

@@ -8,11 +8,11 @@ SYSTEM_SPAWNED_    ::= 1
 SYSTEM_TRACE_      ::= 2  // Stack traces, histograms, and profiling information.
 
 // System message types for service RPCs.
-SYSTEM_RPC_REQUEST_         ::= 3
-SYSTEM_RPC_REPLY_           ::= 4
-SYSTEM_RPC_CANCEL_          ::= 5
-SYSTEM_RPC_NOTIFY_          ::= 6
-SYSTEM_RPC_NOTIFY_RESOURCE_ ::= 7
+SYSTEM_RPC_REQUEST_           ::= 3
+SYSTEM_RPC_REPLY_             ::= 4
+SYSTEM_RPC_CANCEL_            ::= 5
+SYSTEM_RPC_NOTIFY_TERMINATED_ ::= 6
+SYSTEM_RPC_NOTIFY_RESOURCE_   ::= 7
 
 /**
 Sends the $message with $type to the process identified by $pid.

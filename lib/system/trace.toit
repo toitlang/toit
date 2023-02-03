@@ -21,7 +21,7 @@ send_trace_message message/ByteArray -> none:
     if service:
       handled = service.handle_trace message
     else:
-      service = (TraceServiceClient --no-open).open
+      service = (TraceServiceClient).open --if_absent=: null
       if service:
         handled = service.handle_trace message
         service_ = service

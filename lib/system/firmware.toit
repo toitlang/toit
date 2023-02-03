@@ -9,7 +9,8 @@ User-space side of the RPC API for updating the firmware.
 import system.api.firmware show FirmwareServiceClient
 import system.services show ServiceResourceProxy
 
-_client_ /FirmwareServiceClient? ::= (FirmwareServiceClient --no-open).open
+_client_ /FirmwareServiceClient? ::= (FirmwareServiceClient).open
+    --if_absent=: null
 
 /**
 The configuration of the current firmware.

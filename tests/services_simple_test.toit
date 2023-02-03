@@ -10,8 +10,8 @@ interface SimpleService:
   static MAJOR/int   ::= 1
   static MINOR/int   ::= 2
 
-  static LOG_INDEX ::= 0
   log message/string -> none
+  static LOG_INDEX ::= 0
 
 main:
   test_logging
