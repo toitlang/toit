@@ -107,7 +107,7 @@ const wchar_t* current_dir(Process* process) {
   return current_directory;
 }
 
-HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output) {
+HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output, const wchar_t* used_for_relative = null) {
   size_t pathname_length = wcslen(pathname);
 
   // Poor man's version. For better platform handling, use PathCchAppendEx.
@@ -119,7 +119,7 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
     return null;
   }
 
-  const wchar_t* current_directory = current_dir(process);
+  if (used_for_relative == null) used_for_relative = current_dir(process);
 
   // Check if the path is rooted. On Windows paths might not be absolute, but
   // relative to the drive/root of the current working directory.
@@ -130,12 +130,12 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
   if (pathname_length > 0 && (pathname[0] == '\\' || pathname[0] == '/')) {
     // Relative to the root of the drive/share.
     // For example '\foo\bar' is rooted to the current directory's drive.
-    wcsncpy(root, current_directory, MAX_PATH);
+    wcsncpy(root, used_for_relative, MAX_PATH);
     root[MAX_PATH - 1] = '\0';
     if (!PathStripToRootW(root)) WINDOWS_ERROR;
     relative_to = root;
   } else {
-    relative_to = current_directory;
+    relative_to = used_for_relative;
   }
 
   wchar_t temp[MAX_PATH];
@@ -463,13 +463,13 @@ PRIMITIVE(mkdtemp) {
   WideCharAllocationManager allocation(process);
   wchar_t* prefix = allocation.to_wcs(&prefix_blob);
 
+  wchar_t* relative_to = null;
+
   bool in_standard_tmp_dir = false;
   if (wcsncmp(prefix, L"/tmp/", 5) == 0) {
     in_standard_tmp_dir = true;
     prefix += 5;
   }
-
-  static const int UUID_TEXT_LENGTH = 32;
 
   wchar_t temp_dir_name[MAX_PATH];
   temp_dir_name[0] = '\0';
@@ -477,13 +477,14 @@ PRIMITIVE(mkdtemp) {
   if (in_standard_tmp_dir) {
     // Get the location of the Windows temp directory.
     ret = GetTempPathW(MAX_PATH, temp_dir_name);
-    if (ret + 2 > MAX_PATH) INVALID_ARGUMENT;
+    if (ret + 2 > MAX_PATH) OUT_OF_RANGE;
     if (ret == 0) WINDOWS_ERROR;
-    if (temp_dir_name[wcslen(temp_dir_name) - 1] != '\\') {
-      wcsncat(temp_dir_name, L"\\", wcslen(temp_dir_name) - 1);
-    }
+    relative_to = temp_dir_name;
   }
-  if (wcslen(temp_dir_name) + UUID_TEXT_LENGTH + wcslen(prefix) + 1 > MAX_PATH) INVALID_ARGUMENT;
+  wchar_t full_filename[MAX_PATH + 1];
+
+  Object* error = get_absolute_path(process, prefix, full_filename, relative_to);
+  if (error) return error;
 
   UUID uuid;
   ret = UuidCreate(&uuid);
@@ -491,21 +492,22 @@ PRIMITIVE(mkdtemp) {
 
   uint16* uuid_string;
   ret = UuidToStringW(&uuid, &uuid_string);
-  wcsncat(temp_dir_name, prefix, MAX_PATH - wcslen(temp_dir_name) - 1);
-  wcsncat(temp_dir_name, reinterpret_cast<wchar_t*>(uuid_string), MAX_PATH - wcslen(temp_dir_name) - 1);
+  auto uuid_string_w = reinterpret_cast<wchar_t*>(uuid_string);
+  if (wcslen(full_filename) + wcslen(uuid_string_w) > MAX_PATH) OUT_OF_RANGE;
+  wcsncat(full_filename, uuid_string_w, MAX_PATH - wcslen(full_filename));
   RpcStringFreeW(&uuid_string);
 
-  uword total_len = Utils::utf_16_to_8(temp_dir_name, wcslen(temp_dir_name));
+  uword total_len = Utils::utf_16_to_8(full_filename, wcslen(full_filename));
 
   ByteArray* result = process->allocate_byte_array(static_cast<int>(total_len));
   if (result == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes blob(result);
 
-  int posix_result = CreateDirectoryW(temp_dir_name, null);
-  if (posix_result < 0) return return_open_error(process, errno);
+  int ok = CreateDirectoryW(full_filename, null);
+  if (ok == 0) WINDOWS_ERROR;
 
-  Utils::utf_16_to_8(temp_dir_name, wcslen(temp_dir_name), blob.address(), blob.length());
+  Utils::utf_16_to_8(full_filename, wcslen(full_filename), blob.address(), blob.length());
 
   return result;
 }
