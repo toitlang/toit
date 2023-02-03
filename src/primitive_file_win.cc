@@ -435,6 +435,11 @@ PRIMITIVE(chdir) {
   if (pathname.length() == 0) INVALID_ARGUMENT;
   BLOB_TO_ABSOLUTE_PATH(path, pathname);
 
+  struct stat64 statbuf{};
+  int result = _wstat64(path, &statbuf);
+  if (result < 0) WINDOWS_ERROR;  // No such file or directory?
+  if ((statbuf.st_mode & S_IFDIR) == 0) FILE_NOT_FOUND;  // Not a directory.
+
   wchar_t* copy = wcsdup(path);
 
   process->set_current_directory(copy);
