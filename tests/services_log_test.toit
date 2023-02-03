@@ -70,7 +70,7 @@ class LogServiceDefinition extends ServiceDefinition implements LogService:
 
   constructor:
     super "system/log/test" --major=1 --minor=2
-    provides LogService.UUID LogService.MAJOR LogService.MINOR
+    provides LogService.SELECTOR
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == LogService.LOG_INDEX: return logs_.add arguments

@@ -17,8 +17,8 @@ class DefaultTarget implements Target:
 /**
 Log service used by $DefaultTarget.
 */
-service_/LogService ::= (LogServiceClient --no-open).open or
-    StandardLogService_
+service_/LogService ::= (LogServiceClient).open
+   --if_absent=: StandardLogService_
 
 /**
 Standard log service used when the system log service cannot

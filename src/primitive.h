@@ -307,7 +307,7 @@ namespace toit {
   PRIMITIVE(setup_ip, 1)                     \
   PRIMITIVE(disconnect, 2)                   \
   PRIMITIVE(disconnect_reason, 1)            \
-  PRIMITIVE(get_ip, 1)                       \
+  PRIMITIVE(get_ip, 2)                       \
   PRIMITIVE(init_scan, 1)                    \
   PRIMITIVE(start_scan, 4)                   \
   PRIMITIVE(read_scan, 1)                    \
@@ -610,6 +610,7 @@ namespace toit {
   PRIMITIVE(is_open_file, 1)                 \
   PRIMITIVE(realpath, 1)                     \
   PRIMITIVE(cwd, 0)                          \
+  PRIMITIVE(read_file_content_posix, 2)      \
 
 #define MODULE_PIPE(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \

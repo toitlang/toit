@@ -15,7 +15,7 @@
 
 import binary
 import uuid
-import system.services show ServiceResource ServiceDefinition
+import system.services show ServiceProvider ServiceResource
 
 import .allocation
 import .registry
@@ -33,9 +33,9 @@ class ContainerImageWriter extends ServiceResource:
   partial_chunk_/ByteArray? := ByteArray IMAGE_CHUNK_SIZE
   partial_chunk_fill_/int := 0
 
-  constructor service/ServiceDefinition client/int .reservation_:
+  constructor provider/ServiceProvider client/int .reservation_:
     image_ = image_writer_create_ reservation_.offset reservation_.size
-    super service client
+    super provider client
 
   write data/ByteArray -> none:
     List.chunk_up 0 data.size (IMAGE_CHUNK_SIZE - partial_chunk_fill_) IMAGE_CHUNK_SIZE: | from to size |

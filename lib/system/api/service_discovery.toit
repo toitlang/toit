@@ -3,34 +3,56 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import system.services show ServiceClient
+import system.services show ServiceClient ServiceSelector
 
 interface ServiceDiscoveryService:
-  static UUID  /string ::= "dc58d7e1-1b1f-4a93-a9ac-bd45a47d7de8"
-  static MAJOR /int    ::= 0
-  static MINOR /int    ::= 2
+  static SELECTOR ::= ServiceSelector
+      --uuid="dc58d7e1-1b1f-4a93-a9ac-bd45a47d7de8"
+      --major=0
+      --minor=3
 
+  discover uuid/string --wait/bool -> List?
   static DISCOVER_INDEX /int ::= 0
-  discover uuid/string wait/bool -> int?
 
+  watch pid/int -> none
+  static WATCH_INDEX /int ::= 3
+
+  listen id/int uuid/string -> none
+      --name/string
+      --major/int
+      --minor/int
+      --priority/int
+      --tags/List?
   static LISTEN_INDEX /int ::= 1
-  listen uuid/string -> none
 
+  unlisten id/int -> none
   static UNLISTEN_INDEX /int ::= 2
-  unlisten uuid/string -> none
 
 class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDiscoveryService:
-  constructor --open/bool=true:
-    super --open=open
+  static SELECTOR ::= ServiceDiscoveryService.SELECTOR
+  constructor selector/ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
+    super selector
 
   open -> ServiceDiscoveryServiceClient?:
-    return (open_ ServiceDiscoveryService.UUID ServiceDiscoveryService.MAJOR ServiceDiscoveryService.MINOR --pid=-1) and this
+    client := _open_ selector --pid=-1 --id=0  // Hardcoded in system process.
+    return client and this
 
-  discover uuid/string wait/bool -> int?:
+  discover uuid/string --wait/bool -> List?:
     return invoke_ ServiceDiscoveryService.DISCOVER_INDEX [uuid, wait]
 
-  listen uuid/string -> none:
-    invoke_ ServiceDiscoveryService.LISTEN_INDEX uuid
+  watch pid/int -> none:
+    invoke_ ServiceDiscoveryService.WATCH_INDEX pid
 
-  unlisten uuid/string -> none:
-    invoke_ ServiceDiscoveryService.UNLISTEN_INDEX uuid
+  listen id/int uuid/string -> none
+      --name/string
+      --major/int
+      --minor/int
+      --priority/int
+      --tags/List?:
+    invoke_ ServiceDiscoveryService.LISTEN_INDEX [
+      id, uuid, name, major, minor, priority, tags
+    ]
+
+  unlisten id/int -> none:
+    invoke_ ServiceDiscoveryService.UNLISTEN_INDEX id

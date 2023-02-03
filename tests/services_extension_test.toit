@@ -10,19 +10,19 @@ interface MyService:
   static MAJOR/int   ::= 0
   static MINOR/int   ::= 1
 
-  static FOO_INDEX ::= 0
   foo -> int
+  static FOO_INDEX ::= 0
 
-  static BAR_INDEX ::= 1
   bar x/int -> int
+  static BAR_INDEX ::= 1
 
 interface MyServiceExtended extends MyService:
   static UUID/string ::= "711e9020-69cd-4e86-84c7-6e0a92a26fa6"
   static MAJOR/int   ::= 1
   static MINOR/int   ::= 2
 
-  static BAZ_INDEX ::= 100
   baz x/string -> none
+  static BAZ_INDEX ::= 100
 
 main:
   spawn:: run_server

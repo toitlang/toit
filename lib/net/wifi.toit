@@ -32,7 +32,8 @@ WIFI_SCAN_ELEMENT_COUNT_ ::= 5
 
 SCAN_TIMEOUT_MS_/int := 1000
 
-service_/WifiServiceClient? ::= (WifiServiceClient --no-open).open
+service_/WifiServiceClient? ::= (WifiServiceClient).open
+    --if_absent=: null
 
 class AccessPoint:
   ssid/string
