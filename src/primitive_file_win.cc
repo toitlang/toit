@@ -505,7 +505,7 @@ PRIMITIVE(mkdtemp) {
   ByteArray::Bytes blob(result);
 
   int posix_result = CreateDirectoryW(full_filename, null);
-  if (posix_result < 0) return return_open_error(process, errno);
+  if (posix_result == 0) WINDOWS_ERROR;
 
   Utils::utf_16_to_8(full_filename, wcslen(full_filename), blob.address(), blob.length());
 
