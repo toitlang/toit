@@ -411,6 +411,7 @@ static Object* fork_helper(
     Object* err_object,
     int fd_3,
     int fd_4,
+    wchar_t* command,
     Array* arguments,
     Object* environment_object) {
   if (arguments->length() > 1000000) OUT_OF_BOUNDS;
@@ -492,7 +493,7 @@ static Object* fork_helper(
     FreeEnvironmentStringsW(reinterpret_cast<wchar_t*>(old_environment));
   }
 
-  if (!CreateProcessW(NULL,
+  if (!CreateProcessW(command,
                       command_line,
                       NULL,
                       NULL,
@@ -532,11 +533,10 @@ PRIMITIVE(fork) {
        Object, err_obj,
        int, fd_3,
        int, fd_4,
-       StringOrSlice, command,
+       WindowsPath, command,
        Array, args);
-  USE(command);  // Not used on Windows.
   return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
-                     fd_3, fd_4, args, process->program()->null_object());
+                     fd_3, fd_4, command, args, process->program()->null_object());
 }
 
 PRIMITIVE(fork2) {
@@ -547,12 +547,11 @@ PRIMITIVE(fork2) {
        Object, err_obj,
        int, fd_3,
        int, fd_4,
-       StringOrSlice, command,
+       WindowsPath, command,
        Array, args,
        Object, environment_object);
-  USE(command);  // Not used on Windows.
   return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
-                     fd_3, fd_4, args, environment_object);
+                     fd_3, fd_4, command, args, environment_object);
 }
 
 } // namespace toit
