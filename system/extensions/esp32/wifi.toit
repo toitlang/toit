@@ -38,7 +38,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
 
   constructor:
     super "system/wifi/esp32" --major=0 --minor=1
-    provides WifiService.UUID WifiService.MAJOR WifiService.MINOR
+    provides WifiService.SELECTOR
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == WifiService.CONNECT_INDEX:
