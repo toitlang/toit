@@ -16,7 +16,9 @@
 set(TOIT_EXTERNAL_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt")
 
 set(TOIT_REPOS
+    https://github.com/kasperl/toit-datacake
     https://github.com/kasperl/toit-qubitro
+    https://github.com/kasperl/toit-zygote
     https://github.com/nilwes/LIS3DH
     https://github.com/toitlang/jaguar
     https://github.com/toitlang/pkg-ar
