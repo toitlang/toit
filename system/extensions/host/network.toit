@@ -16,7 +16,7 @@
 import net
 import net.modules.udp
 
-import system.services show ServiceDefinition ServiceResource
+import system.services show ServiceProvider ServiceResource
 import system.api.network show NetworkService
 
 import ..shared.network_base
@@ -30,8 +30,8 @@ class NetworkServiceDefinition extends NetworkServiceDefinitionBase:
     return [resource.serialize_for_rpc, NetworkService.PROXY_NONE]
 
 class NetworkResource extends ServiceResource:
-  constructor service/ServiceDefinition client/int:
-    super service client
+  constructor provider/ServiceProvider client/int:
+    super provider client
 
   on_closed -> none:
     // Do nothing.

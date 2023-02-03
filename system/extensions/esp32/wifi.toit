@@ -25,7 +25,7 @@ import system.firmware
 
 import system.api.wifi show WifiService
 import system.api.network show NetworkService
-import system.services show ServiceDefinition ServiceResource
+import system.services show ServiceResource
 import system.base.network show NetworkModule NetworkResource NetworkState
 
 import ..shared.network_base

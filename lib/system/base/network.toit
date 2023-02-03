@@ -14,7 +14,8 @@ import system.api.network
 import system.services
   show
     ServiceClient
-    ServiceDefinition
+    ServiceHandler
+    ServiceProvider
     ServiceResource
     ServiceResourceProxy
 
@@ -53,8 +54,8 @@ interface NetworkModule:
 
 class NetworkResource extends ServiceResource:
   state_/NetworkState ::= ?
-  constructor service/ServiceDefinition client/int .state_ --notifiable/bool=false:
-    super service client --notifiable=notifiable
+  constructor provider/ServiceProvider client/int .state_ --notifiable/bool=false:
+    super provider client --notifiable=notifiable
   on_closed -> none:
     critical_do: state_.down
 
@@ -104,12 +105,13 @@ monitor NetworkState:
 // ----------------------------------------------------------------------------
 
 /**
-The $ProxyingNetworkServiceDefinition makes it easy to proxy a network
+The $ProxyingNetworkServiceProvider makes it easy to proxy a network
   interface and expose it as a provided service. The service can then
   be used across process boundaries, which makes it possible to run
   network drivers separate from the rest of the system.
 */
-abstract class ProxyingNetworkServiceDefinition extends ServiceDefinition implements NetworkModule:
+abstract class ProxyingNetworkServiceProvider extends ServiceProvider
+    implements NetworkModule ServiceHandler:
   state_/NetworkState ::= NetworkState
   network_/net.Interface? := null
 
@@ -338,7 +340,7 @@ class TcpServerSocketResourceProxy_ extends ServiceResourceProxy implements tcp.
 
 class ProxyingSocketResource_ extends ServiceResource:
   socket/any ::= ?
-  constructor service/ServiceDefinition client/int .socket:
-    super service client
+  constructor provider/ServiceProvider client/int .socket:
+    super provider client
   on_closed -> none:
     socket.close

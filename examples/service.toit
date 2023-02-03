@@ -12,7 +12,7 @@ import system.services
 
 main:
   spawn::
-    service := LogServiceDefinition
+    service := LogServiceProvider
     service.install
     service.uninstall --wait  // Wait until last client closes.
 
@@ -46,10 +46,11 @@ class LogServiceClient extends services.ServiceClient implements LogService:
 
 // ------------------------------------------------------------------
 
-class LogServiceDefinition extends services.ServiceDefinition implements LogService:
+class LogServiceProvider extends services.ServiceProvider
+    implements LogService services.ServiceHandler:
   constructor:
     super "log" --major=1 --minor=0
-    provides LogService.SELECTOR
+    provides LogService.SELECTOR --handler=this
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == LogService.LOG_INDEX: return log arguments

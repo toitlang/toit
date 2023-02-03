@@ -14,7 +14,7 @@
 // directory of this repository.
 
 import system.api.firmware show FirmwareService
-import system.services show ServiceDefinition ServiceResource
+import system.services show ServiceProvider ServiceResource
 import system.base.firmware show FirmwareServiceDefinitionBase FirmwareWriter
 
 import esp32
@@ -78,10 +78,10 @@ class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
   fullness_/int := 0
   written_/int := ?
 
-  constructor service/ServiceDefinition client/int from/int to/int:
+  constructor provider/ServiceProvider client/int from/int to/int:
     ota_begin_ from to
     written_ = from
-    super service client
+    super provider client
 
   write bytes/ByteArray -> int:
     return write_ bytes.size: | index from to |

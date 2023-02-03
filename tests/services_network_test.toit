@@ -8,22 +8,25 @@ import net.tcp
 import writer
 import expect
 
-import system.services show ServiceSelector ServiceDefinition ServiceResource
+import system.services show ServiceSelector ServiceResource
 import system.api.network show NetworkService NetworkServiceClient
-import system.base.network show ProxyingNetworkServiceDefinition
+import system.base.network show ProxyingNetworkServiceProvider
 
-service_/NetworkServiceClient? ::= (FakeNetworkServiceClient).open
+FAKE_TAG ::= "fake-$(random 1024)"
+FAKE_SELECTOR ::= NetworkService.SELECTOR.restrict.allow --tag=FAKE_TAG
+
+service_/NetworkServiceClient? ::= (NetworkServiceClient FAKE_SELECTOR).open
     --if_absent=: null
 
 main:
-  service := FakeNetworkServiceDefinition
+  service := FakeNetworkServiceProvider
   service.install
   test_address service
   test_resolve service
   test_tcp service
   service.uninstall
 
-test_address service/FakeNetworkServiceDefinition:
+test_address service/FakeNetworkServiceProvider:
   local_address ::= net.open.address
   service.address = null
   expect.expect_equals local_address open_fake.address
@@ -35,7 +38,7 @@ test_address service/FakeNetworkServiceDefinition:
   expect.expect_equals "7.8.9.10" open_fake.address.stringify
   service.address = null
 
-test_resolve service/FakeNetworkServiceDefinition:
+test_resolve service/FakeNetworkServiceProvider:
   www_google ::= net.open.resolve "www.google.com"
   service.resolve = null
   expect.expect_list_equals www_google (open_fake.resolve "www.google.com")
@@ -49,7 +52,7 @@ test_resolve service/FakeNetworkServiceDefinition:
   expect.expect_equals [net.IpAddress #[3, 4, 5, 6]] (open_fake.resolve "www.google.com")
   service.resolve = null
 
-test_tcp service/FakeNetworkServiceDefinition:
+test_tcp service/FakeNetworkServiceProvider:
   test_tcp_network open_fake
   service.enable_tcp_proxying
   test_tcp_network open_fake
@@ -77,26 +80,17 @@ test_tcp_network network/net.Interface:
 open_fake -> net.Interface:
   return impl.SystemInterface_ service_ service_.connect
 
-interface FakeNetworkService extends NetworkService:
-  static SELECTOR ::= ServiceSelector
-      --uuid="5c6f4b05-5646-4866-856d-b12649ace896"
-      --major=0
-      --minor=1
-
-class FakeNetworkServiceClient extends NetworkServiceClient:
-  static SELECTOR ::= FakeNetworkService.SELECTOR
-  constructor selector/ServiceSelector=SELECTOR:
-    assert: selector.matches SELECTOR
-    super selector
-
-class FakeNetworkServiceDefinition extends ProxyingNetworkServiceDefinition:
+class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
   proxy_mask_/int := 0
   address_/ByteArray? := null
   resolve_/List? := null
 
   constructor:
     super "system/network/test" --major=1 --minor=2  // Major and minor versions do not matter here.
-    provides FakeNetworkService.SELECTOR
+    provides NetworkService.SELECTOR
+        --handler=this
+        --priority=10  // Lower than the default, so others do not find this.
+        --tags=[FAKE_TAG]
 
   proxy_mask -> int:
     return proxy_mask_

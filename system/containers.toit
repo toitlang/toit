@@ -21,7 +21,7 @@ import encoding.base64
 import encoding.tison
 
 import system.assets
-import system.services show ServiceDefinition ServiceResource
+import system.services show ServiceDefinition ServiceProvider ServiceResource
 import system.api.containers show ContainerService
 
 import .flash.allocation
@@ -77,8 +77,8 @@ class ContainerResource extends ServiceResource:
   container/Container
   hash_code/int ::= hash_code_next
 
-  constructor .container service/ServiceDefinition client/int:
-    super service client --notifiable
+  constructor .container provider/ServiceProvider client/int:
+    super provider client --notifiable
     container.resources.add this
 
   static hash_code_next_/int := 0
