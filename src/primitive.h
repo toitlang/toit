@@ -620,6 +620,7 @@ namespace toit {
   PRIMITIVE(write, 4)                        \
   PRIMITIVE(read, 1)                         \
   PRIMITIVE(fork, 9)                         \
+  PRIMITIVE(fork2, 10)                       \
   PRIMITIVE(fd, 1)                           \
   PRIMITIVE(is_a_tty, 1)                     \
 

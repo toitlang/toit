@@ -387,7 +387,7 @@ PRIMITIVE(string_from_rune) {
   ARGS(int, rune);
   if (rune < 0 || rune > Utils::MAX_UNICODE) INVALID_ARGUMENT;
   // Don't allow surrogates.
-  if (0xD800 <= rune && rune <= 0xDFFF) INVALID_ARGUMENT;
+  if (Utils::MIN_SURROGATE <= rune && rune <= Utils::MAX_SURROGATE) INVALID_ARGUMENT;
   String* result;
   if (rune <= 0x7F) {
     char buffer[] = { static_cast<char>(rune) };

@@ -23,6 +23,8 @@
 
 namespace toit {
 
+class Process;
+
 class Utils {
  public:
   template<typename T>
@@ -257,6 +259,8 @@ class Utils {
   // The maximum value that is ASCII.  ASCII characters are represented by
   // themselves in UTF-8.
   static const int MAX_ASCII = 0x7f;
+  static const int MAX_TWO_BYTE_UNICODE = 0x7ff;
+  static const int MAX_THREE_BYTE_UNICODE = 0xffff;
   static const int MAX_UNICODE = 0x10ffff;
   static const int MIN_SURROGATE = 0xd800;
   static const int MAX_SURROGATE = 0xdfff;
@@ -272,6 +276,23 @@ class Utils {
     // Also returns true for some illegal prefix bytes for very long sequences that are no longer legal.
     return c >= UTF_8_PREFIX;
   }
+
+  static word utf_16_to_8(const uint16* input, word length, uint8* output = null, word output_length = 0);
+  static word utf_8_to_16(const uint8* input, word length, uint16* output = null, word output_length = 0);
+#ifdef TOIT_WINDOWS
+  static inline word utf_16_to_8(const wchar_t* input, word length, uint8* output, word output_length) {
+    return utf_16_to_8(reinterpret_cast<const uint16*>(input), length, output, output_length);
+  }
+  static inline word utf_8_to_16(const uint8* input, word length, wchar_t* output, word output_length) {
+    return utf_8_to_16(input, length, reinterpret_cast<uint16*>(output), output_length);
+  }
+  static inline word utf_16_to_8(const wchar_t* input, word length) {
+    return utf_16_to_8(reinterpret_cast<const uint16*>(input), length, static_cast<uint8*>(null), 0);
+  }
+#endif
+  // Note: Does malloc - not suitable for embedded.
+  static bool utf_8_equals_utf_16(const uint8* input1, word length1, const uint16* input2, word length2);
+  static uint16* create_new_environment(Process* process, uint16* previous_environment, Array* environment);
 
   // The number of leading ones in the prefix byte determines the length of a
   // UTF-8 sequence.
@@ -296,8 +317,6 @@ class Utils {
  private:
   static const uint8 REVERSE_NIBBLE[16];
 };
-
-static const int MAX_UTF_8_VALUES[3] = { Utils::MAX_ASCII, 0x7ff, 0xffff };
 
 static inline void memcpy_reverse(void* dst, const void* src, size_t n) {
   for (size_t i = 0; i < n; ++i) {
@@ -539,5 +558,6 @@ class AsyncThread : public Thread {
  private:
   const std::function<void()> _func;
 };
+
 
 } // namespace toit
