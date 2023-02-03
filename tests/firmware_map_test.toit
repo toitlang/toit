@@ -4,7 +4,7 @@
 
 import expect
 import system.firmware
-import system.base.firmware show FirmwareServiceDefinitionBase FirmwareWriter
+import system.base.firmware show FirmwareServiceProviderBase FirmwareWriter
 
 main:
   test_simple_mapping
@@ -21,7 +21,7 @@ test_map:
   // into issues where the current process caches
   // the service client.
 
-  service := FirmwareServiceDefinition
+  service := FirmwareServiceProvider
   service.install
 
   block_called := false
@@ -93,7 +93,7 @@ test_mapping bytes/ByteArray mapping/firmware.FirmwareMapping:
   test_mapping bytes[..split] mapping[..split]
   test_mapping bytes[split..] mapping[split..]
 
-class FirmwareServiceDefinition extends FirmwareServiceDefinitionBase:
+class FirmwareServiceProvider extends FirmwareServiceProviderBase:
   content/ByteArray? := null
 
   constructor:

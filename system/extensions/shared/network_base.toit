@@ -16,7 +16,7 @@
 import system.services show ServiceHandler ServiceProvider ServiceResource
 import system.api.network show NetworkService
 
-abstract class NetworkServiceDefinitionBase extends ServiceProvider
+abstract class NetworkServiceProviderBase extends ServiceProvider
     implements NetworkService ServiceHandler:
   constructor name/string --major/int --minor/int:
     super name --major=major --minor=minor

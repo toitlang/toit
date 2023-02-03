@@ -15,12 +15,12 @@
 
 import system.api.firmware show FirmwareService
 import system.services show ServiceProvider ServiceResource
-import system.base.firmware show FirmwareServiceDefinitionBase FirmwareWriter
+import system.base.firmware show FirmwareServiceProviderBase FirmwareWriter
 
 import esp32
 import encoding.ubjson
 
-class FirmwareServiceDefinition extends FirmwareServiceDefinitionBase:
+class FirmwareServiceProvider extends FirmwareServiceProviderBase:
   config_/Map ::= {:}
 
   constructor:

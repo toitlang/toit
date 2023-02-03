@@ -21,7 +21,7 @@ import system.api.network show NetworkService
 
 import ..shared.network_base
 
-class NetworkServiceDefinition extends NetworkServiceDefinitionBase:
+class NetworkServiceProvider extends NetworkServiceProviderBase:
   constructor:
     super "system/network/host" --major=0 --minor=1
 

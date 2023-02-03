@@ -43,8 +43,8 @@ class SystemImage extends ContainerImage:
 
 main:
   container_manager ::= initialize_system [
-      FirmwareServiceDefinition,
-      WifiServiceDefinition
+      FirmwareServiceProvider,
+      WifiServiceProvider
   ]
   container_manager.register_system_image
       SystemImage container_manager

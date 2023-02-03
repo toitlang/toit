@@ -30,7 +30,7 @@ import system.base.network show NetworkModule NetworkResource NetworkState
 
 import ..shared.network_base
 
-class WifiServiceDefinition extends NetworkServiceDefinitionBase:
+class WifiServiceProvider extends NetworkServiceProviderBase:
   static WIFI_CONFIG_STORE_KEY ::= "system/wifi"
 
   state_/NetworkState ::= NetworkState
@@ -38,7 +38,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
 
   constructor:
     super "system/wifi/esp32" --major=0 --minor=1
-    provides WifiService.SELECTOR
+    provides WifiService.SELECTOR --handler=this
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == WifiService.CONNECT_INDEX:
@@ -160,7 +160,7 @@ class WifiModule implements NetworkModule:
   static WIFI_DHCP_TIMEOUT_    ::= Duration --s=16
 
   logger_/log.Logger ::= log.default.with_name "wifi"
-  service/WifiServiceDefinition
+  service/WifiServiceProvider
 
   // TODO(kasper): Consider splitting the AP and non-AP case out
   // into two subclasses.
