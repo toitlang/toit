@@ -57,14 +57,25 @@ class WifiResourceGroup : public ResourceGroup {
       : ResourceGroup(process, event_source)
       , id_(id)
       , netif_(netif) {
-    clear_ip_address();
+    clear_ip_addresses();
   }
 
-  uint32 ip_address() const { return ip_address_; }
-  bool has_ip_address() const { return ip_address_ != 0; }
+  // Keep in sync with the definitions in wifi.toit.
+  static const int OWN_ADDRESS = 0;
+  static const int MAIN_DNS_ADDRESS = 1;
+  static const int BACKUP_DNS_ADDRESS = 2;
+  static const int NUMBER_OF_ADDRESSES = 3;
 
-  void set_ip_address(uint32 address) { ip_address_ = address; }
-  void clear_ip_address() { ip_address_ = 0; }
+  uint32 ip_address(int index) const { return ip_address_[index]; }
+  bool has_ip_address() const { return ip_address_[OWN_ADDRESS] != 0; }
+
+  void set_ip_address(int index, uint32 address) { ip_address_[index] = address; }
+  void clear_ip_addresses() {
+    for (int i = 0; i < NUMBER_OF_ADDRESSES; i++) {
+      ip_address_[i] = 0;
+    }
+  }
+  void get_dns();
 
   esp_err_t connect(const char* ssid, const char* password) {
     // Configure the WiFi to _start_ the channel scan from the last connected channel.
@@ -152,7 +163,7 @@ class WifiResourceGroup : public ResourceGroup {
  private:
   int id_;
   esp_netif_t* netif_;
-  uint32 ip_address_;
+  uint32 ip_address_[NUMBER_OF_ADDRESSES];
 
   uint32 on_event_wifi(Resource* resource, word data, uint32 state);
   uint32 on_event_ip(Resource* resource, word data, uint32 state);
@@ -272,14 +283,16 @@ uint32 WifiResourceGroup::on_event_ip(Resource* resource, word data, uint32 stat
   switch (system_event->id) {
     case IP_EVENT_STA_GOT_IP: {
       ip_event_got_ip_t* event = reinterpret_cast<ip_event_got_ip_t*>(system_event->event_data);
-      set_ip_address(event->ip_info.ip.addr);
+      clear_ip_addresses();
+      set_ip_address(OWN_ADDRESS, event->ip_info.ip.addr);
+      get_dns();
       state |= WIFI_IP_ASSIGNED;
       break;
     }
 
     case IP_EVENT_STA_LOST_IP: {
       state |= WIFI_IP_LOST;
-      clear_ip_address();
+      clear_ip_addresses();
       break;
     }
 
@@ -295,6 +308,16 @@ uint32 WifiResourceGroup::on_event_ip(Resource* resource, word data, uint32 stat
   }
 
   return state;
+}
+
+void WifiResourceGroup::get_dns() {
+  esp_netif_dns_info_t dns_info;
+  if (esp_netif_get_dns_info(netif_, ESP_NETIF_DNS_MAIN, &dns_info) == ESP_OK) {
+    set_ip_address(MAIN_DNS_ADDRESS, dns_info.ip.u_addr.ip4.addr);
+  }
+  if (esp_netif_get_dns_info(netif_, ESP_NETIF_DNS_BACKUP, &dns_info) == ESP_OK) {
+    set_ip_address(BACKUP_DNS_ADDRESS, dns_info.ip.u_addr.ip4.addr);
+  }
 }
 
 uint32 WifiResourceGroup::on_event(Resource* resource, word data, uint32 state) {
@@ -389,8 +412,9 @@ PRIMITIVE(init) {
   if (ap) {
     esp_netif_ip_info_t ip;
     if (esp_netif_get_ip_info(netif, &ip) == ESP_OK) {
-      resource_group->set_ip_address(ip.ip.addr);
+      resource_group->set_ip_address(WifiResourceGroup::OWN_ADDRESS, ip.ip.addr);
     }
+    resource_group->get_dns();
   }
 
   proxy->set_external_address(resource_group);
@@ -502,15 +526,18 @@ PRIMITIVE(disconnect_reason) {
 }
 
 PRIMITIVE(get_ip) {
-  ARGS(WifiResourceGroup, group);
+  ARGS(WifiResourceGroup, group, int, index);
   if (!group->has_ip_address()) {
     return process->program()->null_object();
+  }
+  if (index < 0 || index >= WifiResourceGroup::NUMBER_OF_ADDRESSES) {
+    INVALID_ARGUMENT;
   }
 
   ByteArray* result = process->object_heap()->allocate_internal_byte_array(4);
   if (!result) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
-  Utils::write_unaligned_uint32_le(bytes.address(), group->ip_address());
+  Utils::write_unaligned_uint32_le(bytes.address(), group->ip_address(index));
   return result;
 }
 
