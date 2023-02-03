@@ -10,14 +10,14 @@ interface ResourceService:
   static MAJOR/int   ::= 1
   static MINOR/int   ::= 2
 
-  static OPEN_INDEX ::= 0
   open key/string -> int
+  static OPEN_INDEX ::= 0
 
-  static MYCLOSE_INDEX ::= 1
   myclose handle/int -> none
+  static MYCLOSE_INDEX ::= 1
 
-  static CLOSE_COUNT_INDEX ::= 2
   close_count key/string -> int
+  static CLOSE_COUNT_INDEX ::= 2
 
 main:
   test_resources

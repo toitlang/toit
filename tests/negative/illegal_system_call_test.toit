@@ -7,6 +7,7 @@ import system.api.containers show ContainerServiceClient
 
 main:
   client := ContainerServiceClient
+  client.open
   // This is an illegal call, which will cause the system process to throw
   // an exception. This exception is returned over the process boundary via
   // the RPC mechanism.

@@ -21,7 +21,7 @@ import encoding.base64
 import encoding.tison
 
 import system.assets
-import system.services show ServiceDefinition ServiceResource
+import system.services show ServiceHandler ServiceProvider ServiceResource
 import system.api.containers show ContainerService
 
 import .flash.allocation
@@ -77,8 +77,8 @@ class ContainerResource extends ServiceResource:
   container/Container
   hash_code/int ::= hash_code_next
 
-  constructor .container service/ServiceDefinition client/int:
-    super service client --notifiable
+  constructor .container provider/ServiceProvider client/int:
+    super provider client --notifiable
     container.resources.add this
 
   static hash_code_next_/int := 0
@@ -175,11 +175,11 @@ class ContainerImageFlash extends ContainerImage:
     finally:
       manager.image_registry.free allocation
 
-abstract class ContainerServiceDefinition extends ServiceDefinition
-    implements ContainerService:
+abstract class ContainerServiceProvider extends ServiceProvider
+    implements ContainerService ServiceHandler:
   constructor:
     super "system/containers" --major=0 --minor=2
-    provides ContainerService.UUID ContainerService.MAJOR ContainerService.MINOR
+    provides ContainerService.SELECTOR --handler=this
     install
 
   handle pid/int client/int index/int arguments/any -> any:
@@ -261,7 +261,7 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
     image := add_flash_image allocation
     return image.id
 
-class ContainerManager extends ContainerServiceDefinition implements SystemMessageHandler_:
+class ContainerManager extends ContainerServiceProvider implements SystemMessageHandler_:
   image_registry/FlashRegistry ::= ?
   service_manager_/SystemServiceManager ::= ?
 

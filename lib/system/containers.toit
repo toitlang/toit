@@ -13,7 +13,8 @@ import monitor
 import system.api.containers show ContainerService ContainerServiceClient
 import system.services show ServiceResourceProxy
 
-_client_ /ContainerServiceClient ::= ContainerServiceClient
+_client_ /ContainerServiceClient ::=
+    (ContainerServiceClient).open as ContainerServiceClient
 
 images -> List:
   return _client_.list_images

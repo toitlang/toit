@@ -30,7 +30,8 @@ CONFIG_OPEN_DRAIN  /int ::= 2
 CONFIG_PRIORITY_LOW  /int ::= 0
 CONFIG_PRIORITY_HIGH /int ::= 1
 
-service_/CellularServiceClient? ::= (CellularServiceClient --no-open).open
+service_/CellularServiceClient? ::= (CellularServiceClient).open
+    --if_absent=: null
 
 open config/Map? -> net.Interface:
   service := service_

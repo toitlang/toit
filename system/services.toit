@@ -13,84 +13,144 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import system.services
-  show
-    ServiceDefinition
-    SERVICES_MANAGER_NOTIFY_ADD_PROCESS
-    SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS
-
 import monitor
+import system.services show ServiceProvider ServiceHandler
 import system.api.service_discovery show ServiceDiscoveryService
 
-class SystemServiceManager extends ServiceDefinition implements ServiceDiscoveryService:
+class DiscoverableService:
+  pid/int
+  id/int
+  uuid/string
+  name/string
+  major/int
+  minor/int
+  priority/int
+  tags/List?
+  constructor --.pid --.id --.uuid --.name --.major --.minor --.priority --.tags:
+
+class SystemServiceManager extends ServiceProvider implements ServiceDiscoveryService ServiceHandler:
   service_managers_/Map ::= {:}  // Map<int, Set<int>>
-  services_by_pid_/Map ::= {:}   // Map<int, Set<string>>
-  services_by_uuid_/Map ::= {:}  // Map<string, int>
+
+  services_by_pid_/Map ::= {:}   // Map<int, Map<int, DiscoverableService>>>
+  services_by_uuid_/Map ::= {:}  // Map<string, List<DiscoverableService>>
 
   signal_/monitor.Signal ::= monitor.Signal
 
   constructor:
     super "system/service-discovery" --major=0 --minor=1 --patch=1
-    provides ServiceDiscoveryService.UUID ServiceDiscoveryService.MAJOR ServiceDiscoveryService.MINOR
+    provides ServiceDiscoveryService.SELECTOR
+        --handler=this
+        --id=0
     install
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == ServiceDiscoveryService.DISCOVER_INDEX:
-      return discover arguments[0] arguments[1] pid
+      return discover arguments[0] --wait=arguments[1]
+    if index == ServiceDiscoveryService.WATCH_INDEX:
+      return watch pid arguments
     if index == ServiceDiscoveryService.LISTEN_INDEX:
-      return listen arguments pid
+      return listen pid arguments
     if index == ServiceDiscoveryService.UNLISTEN_INDEX:
-      return unlisten arguments
+      return unlisten pid arguments
     unreachable
 
-  listen uuid/string pid/int -> none:
-    if services_by_uuid_.contains uuid:
-      throw "Already registered service:$uuid"
-    services_by_uuid_[uuid] = pid
+  listen pid/int arguments/List -> none:
+    services := services_by_pid_.get pid --init=(: {:})
+    id := arguments[0]
+    if services.contains id: throw "Service id $id is already in use"
+
+    uuid := arguments[1]
+    service := DiscoverableService
+        --pid=pid
+        --id=id
+        --uuid=uuid
+        --name=arguments[2]
+        --major=arguments[3]
+        --minor=arguments[4]
+        --priority=arguments[5]
+        --tags=arguments[6]
+    services[id] = service
+
+    // Register the service based on its uuid and sort the all services
+    // with the same uuid by descending priority.
+    uuids := services_by_uuid_.get uuid --init=(: [])
+    uuids.add service
+    uuids.sort --in_place: | a b | b.priority.compare_to a.priority
+
+    // Register the process as a service manager and signal
+    // anyone waiting for services to appear.
     service_managers_.get pid --init=(: {})
-    uuids := services_by_pid_.get pid --init=(: {})
-    uuids.add uuid
     signal_.raise
 
-  unlisten uuid/string -> none:
-    pid := services_by_uuid_.get uuid
-    if not pid: return
-    services_by_uuid_.remove uuid
-    uuids := services_by_pid_.get pid
-    if not uuids: return
-    uuids.remove uuid
-    if not uuids.is_empty: return
+  unlisten pid/int id/int -> none:
+    services := services_by_pid_.get pid
+    if not services: return
+    service := services.get id
+    if not service: return
+    services.remove id
+
+    uuid := service.uuid
+    uuids := services_by_uuid_.get uuid
+    if uuids:
+      uuids.remove service
+      if uuids.is_empty: services_by_uuid_.remove uuid
+
+    if not services.is_empty: return
     service_managers_.remove pid
     services_by_pid_.remove pid
 
-  discover uuid/string wait/bool pid/int -> int?:
-    target/int? := null
+  discover uuid/string --wait/bool -> List?:
+    services/List? := null
     if wait:
       signal_.wait:
-        target = services_by_uuid_.get uuid
-        target != null
+        services = services_by_uuid_.get uuid
+        services != null
     else:
-      target = services_by_uuid_.get uuid
-      if not target: return null
-    processes := service_managers_[target]
-    if processes:
-      processes.add pid
-      process_send_ target SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_ADD_PROCESS, pid]
-    return target
+      services = services_by_uuid_.get uuid
+      if not services: return null
+
+    // TODO(kasper): Consider keeping the list of
+    // services in a form that is ready to send
+    // back without any transformations.
+    result := Array_ 7 * services.size
+    index := 0
+    services.do: | service/DiscoverableService |
+      result[index++] = service.pid
+      result[index++] = service.id
+      result[index++] = service.name
+      result[index++] = service.major
+      result[index++] = service.minor
+      result[index++] = service.priority
+      result[index++] = service.tags
+    return result
+
+  watch pid/int target/int -> none:
+    if pid == target: return
+    processes := service_managers_.get pid
+    if processes: processes.add target
 
   on_process_stop pid/int -> none:
-    uuids := services_by_pid_.get pid
-    // Iterate over a copy of the uuids, so we can manipulate the
-    // underlying set in the call to unlisten.
-    if uuids: (Array_.from uuids).do: unlisten it
+    services := services_by_pid_.get pid
+    // Iterate over a copy of the values, so we can manipulate the
+    // underlying map in the call to unlisten.
+    if services: services.values.do: | service/DiscoverableService |
+      unlisten service.pid service.id
     // Tell service managers about the termination.
     service_managers_.do: | manager/int processes/Set |
       if not processes.contains pid: continue.do
       processes.remove pid
-      process_send_ manager SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS, pid]
+      process_send_ manager SYSTEM_RPC_NOTIFY_TERMINATED_ pid
 
-  discover uuid/string wait/bool -> int?:
+  listen id/int uuid/string -> none
+      --name/string
+      --major/int
+      --minor/int
+      --priority/int
+      --tags/List:
     unreachable  // <-- TODO(kasper): nasty
 
-  listen uuid/string -> none:
+  unlisten id/int -> none:
+    unreachable  // <-- TODO(kasper): nasty
+
+  watch target/int -> none:
     unreachable  // <-- TODO(kasper): nasty

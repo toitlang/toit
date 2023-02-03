@@ -3,11 +3,13 @@
 // found in the lib/LICENSE file.
 
 import system.api.network show NetworkService NetworkServiceClient
+import system.services show ServiceSelector
 
 interface WifiService extends NetworkService:
-  static UUID  /string ::= "2436edc6-4cd8-4834-8ebc-ed883990da40"
-  static MAJOR /int    ::= 0
-  static MINOR /int    ::= 9
+  static SELECTOR ::= ServiceSelector
+      --uuid="2436edc6-4cd8-4834-8ebc-ed883990da40"
+      --major=0
+      --minor=9
 
   connect config/Map? -> List
   static CONNECT_INDEX /int ::= 1000
@@ -25,11 +27,10 @@ interface WifiService extends NetworkService:
   static CONFIGURE_INDEX /int ::= 1004
 
 class WifiServiceClient extends NetworkServiceClient implements WifiService:
-  constructor --open/bool=true:
-    super --open=open
-
-  open -> WifiServiceClient?:
-    return (open_ WifiService.UUID WifiService.MAJOR WifiService.MINOR) and this
+  static SELECTOR ::= WifiService.SELECTOR
+  constructor selector/ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
+    super selector
 
   connect config/Map? -> List:
     return invoke_ WifiService.CONNECT_INDEX config

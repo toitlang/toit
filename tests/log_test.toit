@@ -7,7 +7,7 @@ import system.api.print
 import .services_print_test show PrintServiceDefinition
 import expect show *
 
-service/PrintServiceDefinition ::= PrintServiceDefinition
+service ::= PrintServiceDefinition
 
 expect output/string? [block]:
   expect_equals 0 service.messages.size
