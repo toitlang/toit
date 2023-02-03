@@ -64,7 +64,7 @@ run_tests:
     ]
   non_working := [
     "$(dns_lookup "amazon.com")",   // This fails because the name we use to connect (an IP address string) doesn't match the cert name.
-    "wrong.host.badssl.com/Common Name",
+    "wrong.host.badssl.com/Common Name|unknown root cert",
     "self-signed.badssl.com/Certificate verification failed|unknown root cert",
     "untrusted-root.badssl.com/Certificate verification failed|unknown root cert",
     //  "revoked.badssl.com",  // We don't have support for cert revocation yet.
