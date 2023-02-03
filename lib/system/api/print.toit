@@ -14,7 +14,9 @@ interface PrintService:
   static PRINT_INDEX /int ::= 0
 
 class PrintServiceClient extends ServiceClient implements PrintService:
-  constructor selector/ServiceSelector=PrintService.SELECTOR:
+  static SELECTOR ::= PrintService.SELECTOR
+  constructor selector/ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
     super selector
 
   print message/string -> none:

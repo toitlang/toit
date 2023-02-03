@@ -50,7 +50,9 @@ interface FirmwareService:
   static FIRMWARE_WRITER_COMMIT_INDEX /int ::= 7
 
 class FirmwareServiceClient extends ServiceClient implements FirmwareService:
-  constructor selector/ServiceSelector=FirmwareService.SELECTOR:
+  static SELECTOR ::= FirmwareService.SELECTOR
+  constructor selector/ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
     super selector
 
   is_validation_pending -> bool:

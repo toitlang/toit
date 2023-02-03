@@ -29,7 +29,9 @@ interface ServiceDiscoveryService:
   static UNLISTEN_INDEX /int ::= 2
 
 class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDiscoveryService:
-  constructor selector/ServiceSelector=ServiceDiscoveryService.SELECTOR:
+  static SELECTOR ::= ServiceDiscoveryService.SELECTOR
+  constructor selector/ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
     super selector
 
   open -> ServiceDiscoveryServiceClient?:

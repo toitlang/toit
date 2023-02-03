@@ -21,7 +21,9 @@ interface TraceService:
   static HANDLE_TRACE_INDEX /int ::= 0
 
 class TraceServiceClient extends ServiceClient implements TraceService:
-  constructor selector/ServiceSelector=TraceService.SELECTOR:
+  static SELECTOR ::= TraceService.SELECTOR
+  constructor selector/ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
     super selector
 
   handle_trace message/ByteArray -> bool:

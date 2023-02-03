@@ -15,7 +15,9 @@ interface CellularService extends NetworkService:
   static CONNECT_INDEX /int ::= 1000
 
 class CellularServiceClient extends NetworkServiceClient implements CellularService:
-  constructor selector/ServiceSelector=CellularService.SELECTOR:
+  static SELECTOR ::= CellularService.SELECTOR
+  constructor selector/ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
     super selector
 
   connect config/Map? -> List:

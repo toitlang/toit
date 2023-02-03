@@ -14,7 +14,9 @@ interface LogService:
   static LOG_INDEX /int ::= 0
 
 class LogServiceClient extends ServiceClient implements LogService:
-  constructor selector/ServiceSelector=LogService.SELECTOR:
+  static SELECTOR ::= LogService.SELECTOR
+  constructor selector/ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
     super selector
 
   log level/int message/string names/List? keys/List? values/List? -> none:

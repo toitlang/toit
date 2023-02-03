@@ -27,7 +27,9 @@ interface WifiService extends NetworkService:
   static CONFIGURE_INDEX /int ::= 1004
 
 class WifiServiceClient extends NetworkServiceClient implements WifiService:
-  constructor selector/ServiceSelector=WifiService.SELECTOR:
+  static SELECTOR ::= WifiService.SELECTOR
+  constructor selector/ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
     super selector
 
   connect config/Map? -> List:

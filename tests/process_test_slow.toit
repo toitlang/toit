@@ -108,7 +108,9 @@ interface RegistrationService:
 // ------------------------------------------------------------------
 
 class RegistrationServiceClient extends services.ServiceClient implements RegistrationService:
-  constructor selector/services.ServiceSelector=RegistrationService.SELECTOR:
+  static SELECTOR ::= RegistrationService.SELECTOR
+  constructor selector/services.ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
     super selector
 
   open -> RegistrationServiceClient?:

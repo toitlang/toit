@@ -99,7 +99,9 @@ interface NetworkService:
   static SOCKET_MTU_INDEX /int ::= 306
 
 class NetworkServiceClient extends ServiceClient implements NetworkService:
-  constructor selector/ServiceSelector=NetworkService.SELECTOR:
+  static SELECTOR ::= NetworkService.SELECTOR
+  constructor selector/ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
     super selector
 
   connect -> List:

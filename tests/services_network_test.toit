@@ -84,7 +84,9 @@ interface FakeNetworkService extends NetworkService:
       --minor=1
 
 class FakeNetworkServiceClient extends NetworkServiceClient:
-  constructor selector/ServiceSelector=FakeNetworkService.SELECTOR:
+  static SELECTOR ::= FakeNetworkService.SELECTOR
+  constructor selector/ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
     super selector
 
 class FakeNetworkServiceDefinition extends ProxyingNetworkServiceDefinition:

@@ -36,7 +36,9 @@ interface LogService:
 // ------------------------------------------------------------------
 
 class LogServiceClient extends services.ServiceClient implements LogService:
-  constructor selector/services.ServiceSelector=LogService.SELECTOR:
+  static SELECTOR ::= LogService.SELECTOR
+  constructor selector/services.ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
     super selector
 
   log message/string -> none:

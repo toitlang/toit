@@ -40,7 +40,9 @@ interface ContainerService:
   static IMAGE_WRITER_COMMIT_INDEX /int ::= 5
 
 class ContainerServiceClient extends ServiceClient implements ContainerService:
-  constructor selector/ServiceSelector=ContainerService.SELECTOR:
+  static SELECTOR ::= ContainerService.SELECTOR
+  constructor selector/ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
     super selector
 
   list_images -> List:

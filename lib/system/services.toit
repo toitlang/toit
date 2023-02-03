@@ -47,12 +47,21 @@ class ServiceSelector:
   constructor --.uuid --.major --.minor:
 
   /**
-  Returns a restricted variants of this $ServiceSelector that can
+  Returns a restricted variant of this $ServiceSelector that can
     be used in the service discovery process to allow and deny
     discovered services.
   */
   restrict -> ServiceSelectorRestricted:
     return ServiceSelectorRestricted.internal_ this
+
+  /**
+  Whether this $ServiceSelector matches $selector and thus
+    identifies the same version of a specific service API.
+  */
+  matches selector/ServiceSelector -> bool:
+    return uuid == selector.uuid and
+        major == selector.major and
+        minor == selector.minor
 
   is_allowed_ --name/string --major/int --minor/int --tags/List? -> bool:
     return true
@@ -88,10 +97,10 @@ class ServiceSelectorRestricted extends ServiceSelector:
     if minor and not major: throw "Must have major version to match on minor"
     restrictions := names_.get name --init=: []
     // Check that the new restriction doesn't conflict with an existing one.
-    restrictions.do: | matcher/ServiceSelectorRestriction_ |
+    restrictions.do: | restriction/ServiceSelectorRestriction_ |
       match := true
-      if major: match = (not matcher.major) or matcher.major == major
-      if match and minor: match = (not matcher.minor) or matcher.minor == minor
+      if major: match = (not restriction.major) or restriction.major == major
+      if match and minor: match = (not restriction.minor) or restriction.minor == minor
       if match: throw "Cannot have multiple entries for the same named version"
     if allow: names_include_allowed_ = true
     restrictions.add (ServiceSelectorRestriction_ allow major minor)
@@ -114,7 +123,7 @@ class ServiceSelectorRestricted extends ServiceSelector:
       if not match: continue.do
       if not restriction.allow: return false
       // We found named version that was explicitly allowed. Continue through
-      // the matchers so we can find any explicitly denied named versions.
+      // the restrictions so we can find any explicitly denied named versions.
       name_allowed = true
     if not name_allowed: return false
 
