@@ -323,6 +323,14 @@ class ServiceProvider:
   patch/int
   tags/List?
 
+  static PRIORITY_UNPREFERRED_STRONGLY /int ::= 0x10
+  static PRIORITY_UNPREFERRED          /int ::= 0x30
+  static PRIORITY_UNPREFERRED_WEAKLY   /int ::= 0x50
+  static PRIORITY_NORMAL               /int ::= 0x80
+  static PRIORITY_PREFERRED_WEAKLY     /int ::= 0xb0
+  static PRIORITY_PREFERRED            /int ::= 0xd0
+  static PRIORITY_PREFERRED_STRONGLY   /int ::= 0xf0
+
   _services_/List ::= []
   _manager_/ServiceManager_? := null
   _ids_/List? := null
@@ -353,7 +361,7 @@ class ServiceProvider:
   */
   provides selector/ServiceSelector --handler/ServiceHandler -> none
       --id/int?=null
-      --priority/int=100
+      --priority/int=PRIORITY_NORMAL
       --tags/List?=null:
     provider_tags := this.tags
     if provider_tags: tags = tags ? (provider_tags + tags) : provider_tags
