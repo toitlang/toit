@@ -127,7 +127,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -q ninja-build ccache gcc-multilib g++-multilib socat
+          sudo apt-get install -q ninja-build ccache gcc-multilib g++-multilib socat valgrind
           ninja --version
           cmake --version
           gcc --version

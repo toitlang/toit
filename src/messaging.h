@@ -197,7 +197,7 @@ class MessageEncoder {
   //   someone else has taken responsibility for it and the data
   //   it points at.
   uint8* buffer_;
-  bool take_ownership_of_buffer_;
+  bool take_ownership_of_buffer_ = false;
   int cursor_ = 0;
   int nesting_ = 0;
   int problematic_class_id_ = -1;
