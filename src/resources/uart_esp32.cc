@@ -34,12 +34,16 @@
     #define UART_PORT UART_NUM_2
 #endif
 
+#define RX_BUFFER_SIZE (2*1024)
+#define TX_BUFFER_SIZE (2*1024)
+
 namespace toit {
 
 const uart_port_t kInvalidUartPort = uart_port_t(-1);
 
 const int kReadState = 1 << 0;
 const int kErrorState = 1 << 1;
+const int kWriteState = 1 << 2;
 
 ResourcePool<uart_port_t, kInvalidUartPort> uart_ports(
   // UART_NUM_0 is reserved serial communication (stdout).
@@ -55,14 +59,22 @@ public:
 
   UartResource(ResourceGroup* group, uart_port_t port, QueueHandle_t queue)
       : EventQueueResource(group, queue)
-      , port_(port) {}
+      , port_(port) {
+    set_state(kWriteState);
+  }
 
   uart_port_t port() const { return port_; }
+  esp_timer_handle_t* tx_timer_pointer() { return &tx_timer_; }
+  esp_timer_handle_t tx_timer() { return tx_timer_; }
 
   bool receive_event(word* data) override;
+  uint64_t calculate_transmit_time(size_t bytes) const;
+  esp_err_t baud_rate_updated();
 
-private:
+ private:
   uart_port_t port_;
+  esp_timer_handle_t tx_timer_;
+  uint64_t us_per_byte_;
 };
 
 bool UartResource::receive_event(word* data) {
@@ -70,6 +82,56 @@ bool UartResource::receive_event(word* data) {
   bool more = xQueueReceive(queue(), &event, 0);
   if (more) *data = event.type;
   return more;
+}
+
+esp_err_t UartResource::baud_rate_updated() {
+  uint32_t baud_rate;
+  uart_parity_t parity;
+  uart_word_length_t word_length;
+  uart_stop_bits_t stop_bits;
+  esp_err_t err = uart_get_baudrate(port(), &baud_rate);
+
+  if (err == ESP_OK) {
+    err = uart_get_parity(port(), &parity);
+  }
+
+  if (err == ESP_OK) {
+    err = uart_get_word_length(port(), &word_length);
+  }
+
+  if (err == ESP_OK) {
+    err = uart_get_stop_bits(port(), &stop_bits);
+  }
+
+  if (err != ESP_OK) return err;
+
+  double clocks_per_byte = 1; // Start bit
+
+  if (parity != UART_PARITY_DISABLE) clocks_per_byte += 1;
+
+  switch (stop_bits) {
+    case UART_STOP_BITS_1: clocks_per_byte += 1; break;
+    case UART_STOP_BITS_1_5: clocks_per_byte += 1.5; break;
+    case UART_STOP_BITS_2: clocks_per_byte += 2; break;
+    default: return ESP_ERR_INVALID_ARG;
+  }
+
+  switch (word_length) {
+    case UART_DATA_5_BITS: clocks_per_byte += 5; break;
+    case UART_DATA_6_BITS: clocks_per_byte += 6; break;
+    case UART_DATA_7_BITS: clocks_per_byte += 7; break;
+    case UART_DATA_8_BITS: clocks_per_byte += 8; break;
+    default: return ESP_ERR_INVALID_ARG;
+  }
+
+  double bytes_per_second = baud_rate/clocks_per_byte;
+  us_per_byte_ = (uint64_t)(1000.0*1000.0 / bytes_per_second);
+
+  return ESP_OK;
+}
+
+uint64_t UartResource::calculate_transmit_time(size_t bytes) const {
+  return us_per_byte_ * bytes;
 }
 
 class UartResourceGroup : public ResourceGroup {
@@ -80,10 +142,11 @@ class UartResourceGroup : public ResourceGroup {
 
   virtual void on_unregister_resource(Resource* r) {
     UartResource* uart_res = static_cast<UartResource*>(r);
-    SystemEventSource::instance()->run([&]() -> void {
-      FATAL_IF_NOT_ESP_OK(uart_driver_delete(uart_res->port()));
-    });
-    uart_ports.put(uart_res->port());
+    release_uart_port(uart_res->port());
+    // Ignore errors on the next call.
+    esp_err_t err = esp_timer_stop(uart_res->tx_timer());
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) fail("Unexpected error code from esp_timer_stop: %d", err);
+    FATAL_IF_NOT_ESP_OK(esp_timer_delete(uart_res->tx_timer()));
   }
 
   uint32_t on_event(Resource* r, word data, uint32_t state) {
@@ -96,6 +159,10 @@ class UartResourceGroup : public ResourceGroup {
         // Ignore.
         break;
 
+      case UART_TX_EVENT:
+        state |= kWriteState;
+        break;
+
       default:
         state |= kErrorState;
         break;
@@ -103,6 +170,26 @@ class UartResourceGroup : public ResourceGroup {
 
     return state;
   }
+
+  static void tx_callback(void* arg) {
+    uart_event_t event = {
+        .type = UART_TX_EVENT,
+        .size = 0,
+        .timeout_flag = false
+    };
+    auto resource = static_cast<UartResource*>(arg);
+    xQueueSendToBack(resource->queue(), &event, portMAX_DELAY);
+  }
+
+  static void release_uart_port(uart_port_t port) {
+    SystemEventSource::instance()->run([&]() -> void {
+      FATAL_IF_NOT_ESP_OK(uart_driver_delete(port));
+    });
+    uart_ports.put(port);
+  }
+
+ private:
+  static const uart_event_type_t UART_TX_EVENT = static_cast<uart_event_type_t>(UART_EVENT_MAX + 1);
 };
 
 MODULE_IMPLEMENTATION(uart, MODULE_UART);
@@ -203,9 +290,8 @@ PRIMITIVE(create) {
   if (err == ESP_OK) {
     args.options = options;
     SystemEventSource::instance()->run([&]() -> void {
-      int buffer_size = 2 * 1024;
       // Initialize using default priority.
-      int interrupt_flags = ESP_INTR_FLAG_IRAM;
+      int interrupt_flags = ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_SHARED;
       if ((args.options & 8) != 0) {
         // High speed setting.
         interrupt_flags |= ESP_INTR_FLAG_LEVEL3;
@@ -215,7 +301,7 @@ PRIMITIVE(create) {
         // Low speed setting.
         interrupt_flags |= ESP_INTR_FLAG_LEVEL1 | ESP_INTR_FLAG_LEVEL2 | ESP_INTR_FLAG_LEVEL3;
       }
-      args.err = uart_driver_install(port, buffer_size, buffer_size, 32, &args.queue, interrupt_flags);
+      args.err = uart_driver_install(port, RX_BUFFER_SIZE, TX_BUFFER_SIZE, 32, &args.queue, interrupt_flags);
       if (args.err == ESP_OK) {
         int flags = 0;
         if ((args.options & 1) != 0) flags |= UART_SIGNAL_TXD_INV;
@@ -231,18 +317,35 @@ PRIMITIVE(create) {
   }
 
   if (err != ESP_OK) {
-    uart_ports.put(port);
+    UartResourceGroup::release_uart_port(port);
     return Primitive::os_error(err, process);
   }
 
   UartResource* res = _new UartResource(group, port, args.queue);
   if (!res) {
-    SystemEventSource::instance()->run([&]() -> void {
-      FATAL_IF_NOT_ESP_OK(uart_driver_delete(port));
-    });
-    uart_ports.put(port);
+    UartResourceGroup::release_uart_port(port);
     MALLOC_FAILED;
   }
+
+  esp_timer_create_args_t create_args = {
+      .callback = UartResourceGroup::tx_callback,
+      .arg = reinterpret_cast<void*>(res),
+      .dispatch_method = ESP_TIMER_TASK,
+      .name = null,
+      .skip_unhandled_events = false
+  };
+  err = esp_timer_create(&create_args, res->tx_timer_pointer());
+
+  if (err == ESP_OK) {
+    err = res->baud_rate_updated();
+  }
+
+  if (err != ESP_OK) {
+    UartResourceGroup::release_uart_port(port);
+    delete(res);
+    return Primitive::os_error(err, process);
+  }
+
   group->register_resource(res);
 
   proxy->set_external_address(res);
@@ -279,6 +382,11 @@ PRIMITIVE(set_baud_rate) {
   ARGS(UartResource, uart, int, baud_rate);
 
   esp_err_t err = uart_set_baudrate(uart->port(), baud_rate);
+
+  if (err == ESP_OK) {
+    err = uart->baud_rate_updated();
+  }
+
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
@@ -290,7 +398,7 @@ PRIMITIVE(set_baud_rate) {
 // If wait is true, waits, unless the baud-rate is too low. If the function did
 // not wait, returns the negative value of the written bytes.
 PRIMITIVE(write) {
-  ARGS(UartResource, uart, Blob, data, int, from, int, to, int, break_length, bool, wait);
+  ARGS(UartResource, uart, Blob, data, int, from, int, to, int, break_length);
 
   const uint8* tx = data.address();
   if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
@@ -298,43 +406,52 @@ PRIMITIVE(write) {
 
   if (break_length < 0) OUT_OF_RANGE;
 
+  size_t uart_tx_free_size;
+  esp_err_t err = uart_get_tx_buffer_free_size(uart->port(), &uart_tx_free_size);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
   int wrote;
-  if (break_length > 0) {
-    wrote = uart_write_bytes_with_break(uart->port(), reinterpret_cast<const char*>(tx), to - from, break_length);
-  } else {
-    wrote = uart_write_bytes(uart->port(), reinterpret_cast<const char*>(tx), to - from);
-  }
-  if (wrote == -1) {
-    OUT_OF_RANGE;
-  }
-
-
-  if (wait) {
-    uint32 baud_rate;
-    esp_err_t err = uart_get_baudrate(uart->port(), &baud_rate);
+  if (uart_tx_free_size < to - from) {
+    // Not enough free space in buffer. Write however much there is room for and set the timer to request more data
+    wrote = uart_write_bytes(uart->port(), reinterpret_cast<const char*>(tx), uart_tx_free_size);
+    // After having emptied 10% of the buffer, signal toit that it is ok to send more.
+    uint64_t wait_time = uart->calculate_transmit_time(TX_BUFFER_SIZE/10);
+    err = esp_timer_start_once(uart->tx_timer(), wait_time);
     if (err != ESP_OK) {
       return Primitive::os_error(err, process);
     }
-    if (baud_rate < 100000) {
-      return Smi::from(-wrote);
+  } else {
+    if (break_length > 0) {
+      wrote = uart_write_bytes_with_break(uart->port(), reinterpret_cast<const char*>(tx), to - from, break_length);
+    } else {
+      wrote = uart_write_bytes(uart->port(), reinterpret_cast<const char*>(tx), to - from);
     }
-    // One tick takes ~10ms. We don't expect to ever hit the timeout with
-    // a baud rate that high.
-    err = uart_wait_tx_done(uart->port(), 1);
-    if (err == ESP_ERR_TIMEOUT) {
-      return Smi::from(-wrote);
-    } else if (err != ESP_OK) {
-      return Primitive::os_error(err, process);
+    if (wrote == -1) {
+      OUT_OF_RANGE;
+    }
+    if (wrote != to - from) {
+      HARDWARE_ERROR;
     }
   }
-
   return Smi::from(wrote);
 }
 
 PRIMITIVE(wait_tx) {
   ARGS(UartResource, uart);
 
-  esp_err_t err = uart_wait_tx_done(uart->port(), 0);
+  size_t uart_tx_free_size;
+  esp_err_t err = uart_get_tx_buffer_free_size(uart->port(), &uart_tx_free_size);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  uint64_t wait_time = uart->calculate_transmit_time(TX_BUFFER_SIZE - uart_tx_free_size);
+
+  if (wait_time > 1000) return BOOL(false);
+
+  err = uart_wait_tx_done(uart->port(), 1);
   if (err == ESP_ERR_TIMEOUT) {
     return BOOL(false);
   }
