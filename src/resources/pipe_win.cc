@@ -454,6 +454,8 @@ static Object* fork_helper(
     if (!arguments->at(i)->byte_content(process->program(), &argument, STRINGS_ONLY)) {
       WRONG_TYPE;
     }
+    // TODO: Escape quotes and backslashes in arguments.  See
+    // https://stackoverflow.com/questions/31838469/how-do-i-convert-argv-to-lpcommandline-parameter-of-createprocess
     if (memchr(argument.address(), ' ', argument.length()) != NULL) {
       format = (i != arguments->length() - 1) ? L"\"%ls\" " : L"\"%ls\"";
     } else {
