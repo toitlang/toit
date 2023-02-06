@@ -42,29 +42,17 @@ foreach(file ${VALGRIND_TESTS})
 
   set(input "${CMAKE_CURRENT_SOURCE_DIR}/${file}")
   set(snap ${VALGRIND_TEST_DIR}/${file}.snap)
-  set(dep ${VALGRIND_TEST_DIR}/${file}.dep)
 
-  ADD_TOIT_SNAPSHOT(
-    ${input}
-    ${snap}
-    ${dep}
-    "")
-
-  set(build_snap tests-valgrind-build_${file})
-  add_custom_target(${build_snap} DEPENDS ${snap})
-
-  # Make sure the test input is built before we run the tests.
-  add_dependencies(check ${build_snap})
-  add_dependencies(check_slow ${build_snap})
-
-  set(valgrind_xml ${VALGRIND_TEST_DIR}/${file}.valgrind.xml)
+  set(valgrind_xml_prefix ${VALGRIND_TEST_DIR}/${file}.valgrind)
 
   add_test(
     NAME ${test_name}
     COMMAND ${CMAKE_COMMAND}
-        -DTOITVM=$<TARGET_FILE:toit.run>
-        "-DTEST=${snap}"
-        "-DVALGRIND_XML=${valgrind_xml}"
+        -DTOIT_RUN=$<TARGET_FILE:toit.run>
+        -DTOIT_COMPILE=$<TARGET_FILE:toit.compile>
+        "-DINPUT=${input}"
+        "-DSNAPSHOT=${snap}"
+        "-DVALGRIND_XML_PREFIX=${valgrind_xml_prefix}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/run.cmake"
   )
   set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
