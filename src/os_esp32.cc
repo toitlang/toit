@@ -473,7 +473,7 @@ int OS::read_entire_file(char* name, uint8** buffer) {
 }
 
 void OS::out_of_memory(const char* reason) {
-  RtcMemory::register_out_of_memory();
+  RtcMemory::on_out_of_memory();
 
   // The heap fragmentation dumper code has been temporarily disabled.
   // See https://github.com/toitware/toit/issues/3153.
@@ -485,7 +485,7 @@ void OS::out_of_memory(const char* reason) {
     // bookkeeping data for out-of-memory situations. Using esp_restart()
     // would clear the RTC memory.
     esp_sleep_enable_timer_wakeup(100000);  // 100 ms.
-    RtcMemory::before_deep_sleep();
+    RtcMemory::on_deep_sleep_start();
     esp_deep_sleep_start();
   }
 

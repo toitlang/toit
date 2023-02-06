@@ -301,7 +301,7 @@ PRIMITIVE(reset_reason) {
 }
 
 PRIMITIVE(total_deep_sleep_time) {
-  return Primitive::integer(RtcMemory::total_deep_sleep_time(), process);
+  return Primitive::integer(RtcMemory::accumulated_deep_sleep_time_us(), process);
 }
 
 PRIMITIVE(enable_external_wakeup) {
@@ -361,7 +361,7 @@ PRIMITIVE(touchpad_wakeup_status) {
 }
 
 PRIMITIVE(total_run_time) {
-  return Primitive::integer(RtcMemory::total_run_time(), process);
+  return Primitive::integer(RtcMemory::accumulated_run_time_us(), process);
 }
 
 PRIMITIVE(get_mac_address) {

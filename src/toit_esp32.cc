@@ -164,7 +164,7 @@ static void start() {
       UNREACHABLE();
   }
 
-  RtcMemory::before_deep_sleep();
+  RtcMemory::on_deep_sleep_start();
   esp_deep_sleep_start();
 }
 
