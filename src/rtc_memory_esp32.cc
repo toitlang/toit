@@ -117,6 +117,7 @@ static void reset_rtc(const char* reason) {
   // Our RTC state is kept in the noinit segment, which means that it isn't
   // automatically cleared on reset. Since it is invalid now, we clear it.
   memset(&rtc, 0, sizeof(rtc));
+  memset(&rtc_user_data, 0, sizeof(rtc_user_data));
   // We only clear RTC on boot, so this must be exactly 1.
   rtc.boot_count = 1;
 
