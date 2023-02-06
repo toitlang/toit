@@ -118,10 +118,14 @@ PRIMITIVE(assets) {
   Program* program = process->program();
   int size;
   uint8* bytes;
+  Object* result = null;
   if (program->assets_size(&bytes, &size) == 0) {
-    return process->object_heap()->allocate_internal_byte_array(0);
+    result = process->object_heap()->allocate_internal_byte_array(0);
+  } else {
+    result = process->object_heap()->allocate_external_byte_array(size, bytes, false, false);
   }
-  return process->object_heap()->allocate_external_byte_array(size, bytes, false, false);
+  if (!result) ALLOCATION_FAILED;
+  return result;
 }
 
 PRIMITIVE(config) {
@@ -129,12 +133,14 @@ PRIMITIVE(config) {
 #ifdef TOIT_FREERTOS
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   List<uint8> config = extension->config();
-  return config.is_empty()
+  Object* result = config.is_empty()
       ? process->object_heap()->allocate_internal_byte_array(0)
       : process->object_heap()->allocate_external_byte_array(config.length(), config.data(), false, false);
 #else
-  return process->object_heap()->allocate_internal_byte_array(0);
+  Object* result = process->object_heap()->allocate_internal_byte_array(0);
 #endif
+  if (!result) ALLOCATION_FAILED;
+  return result;
 }
 
 } // namespace toit
