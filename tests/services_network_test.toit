@@ -8,7 +8,7 @@ import net.tcp
 import writer
 import expect
 
-import system.services show ServiceSelector ServiceResource
+import system.services show ServiceProvider ServiceSelector ServiceResource
 import system.api.network show NetworkService NetworkServiceClient
 import system.base.network show ProxyingNetworkServiceProvider
 
@@ -89,7 +89,7 @@ class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
     super "system/network/test" --major=1 --minor=2  // Major and minor versions do not matter here.
     provides NetworkService.SELECTOR
         --handler=this
-        --priority=10  // Lower than the default, so others do not find this.
+        --priority=ServiceProvider.PRIORITY_UNPREFERRED
         --tags=[FAKE_TAG]
 
   proxy_mask -> int:
