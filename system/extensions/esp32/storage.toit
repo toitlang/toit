@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -13,13 +13,11 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import .network
-import .storage
+import ..shared.storage_base
 
-import ...containers
-import ...initialize
+class StorageServiceProvider extends StorageServiceProviderBase:
+  constructor:
+    super "system/storage/esp32" --major=0 --minor=1
 
-initialize_host -> ContainerManager:
-  network := NetworkServiceProvider
-  storage := StorageServiceProvider
-  return initialize_system [network, storage]
+  open_bucket client/int name/string -> BucketResource:
+    return FlashKeyValueBucketResource this client name
