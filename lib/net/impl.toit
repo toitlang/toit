@@ -8,8 +8,8 @@ import .udp as udp
 import .socket_address
 
 import .modules.dns as dns
-import .modules.tcp
-import .modules.udp
+import .modules.tcp as tcp_module
+import .modules.udp as udp_module
 
 import system.api.network show NetworkService NetworkServiceClient
 import system.base.network show NetworkResourceProxy
@@ -36,12 +36,15 @@ class SystemInterface_ extends NetworkResourceProxy implements net.Interface:
   address -> net.IpAddress:
     if is_closed: throw "Network closed"
     if (proxy_mask_ & NetworkService.PROXY_ADDRESS) != 0: return super
-    socket := Socket
+    socket := udp_module.Socket
     try:
+      // This doesn't actually cause any network traffic, but it picks an
+      // interface for 8.8.8.8, which is not on the LAN.
       socket.connect
           SocketAddress
               net.IpAddress.parse "8.8.8.8"
               80
+      // Get the IP of the default interface.
       return socket.local_address.ip
     finally:
       socket.close
@@ -57,7 +60,7 @@ class SystemInterface_ extends NetworkResourceProxy implements net.Interface:
   udp_open --port/int?=null -> udp.Socket:
     if is_closed: throw "Network closed"
     if (proxy_mask_ & NetworkService.PROXY_UDP) != 0: return super --port=port
-    return Socket "0.0.0.0" (port ? port : 0)
+    return udp_module.Socket "0.0.0.0" (port ? port : 0)
 
   tcp_connect host/string port/int -> tcp.Socket:
     ips := resolve host
@@ -67,13 +70,13 @@ class SystemInterface_ extends NetworkResourceProxy implements net.Interface:
   tcp_connect address/net.SocketAddress -> tcp.Socket:
     if is_closed: throw "Network closed"
     if (proxy_mask_ & NetworkService.PROXY_TCP) != 0: return super address
-    result := TcpSocket
+    result := tcp_module.TcpSocket
     result.connect address.ip.stringify address.port
     return result
 
   tcp_listen port/int -> tcp.ServerSocket:
     if is_closed: throw "Network closed"
     if (proxy_mask_ & NetworkService.PROXY_TCP) != 0: return super port
-    result := TcpServerSocket
+    result := tcp_module.TcpServerSocket
     result.listen "0.0.0.0" port
     return result
