@@ -19,5 +19,9 @@ class StorageServiceProvider extends StorageServiceProviderBase:
   constructor:
     super "system/storage/host" --major=0 --minor=1
 
-  open_bucket client/int name/string -> BucketResource:
-    return FlashKeyValueBucketResource this client name
+  open_bucket client/int --scheme/string --path/string -> BucketResource:
+    // On host platforms, we always use non-volatile buckets
+    // because they are actually backed by somewhat volatile
+    // memory that is lost when the host process terminates.
+    // The memory is preserved across simulated deep sleep.
+    return FlashBucketResource this client "$scheme:$path"

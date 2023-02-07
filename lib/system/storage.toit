@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 /**
-User-space side of the RPC API for key-value storage...
+User-space side of the service API for key-value storage.
 */
 
 import encoding.tison
@@ -15,13 +15,31 @@ _client_/StorageServiceClient? ::= (StorageServiceClient).open
     --if_absent=: null
 
 class Bucket extends ServiceResourceProxy:
+  static SCHEME_RAM   ::= "ram"
+  static SCHEME_FLASH ::= "flash"
+
   constructor.internal_ client/StorageServiceClient handle/int:
     super client handle
 
-  static open name/string -> Bucket:
+  static open uri/string -> Bucket:
+    split := uri.index_of ":"
+    if not split: throw "No scheme provided"
+    return open --scheme=uri[..split] --path=uri[split + 1 ..]
+
+  static open --ram/bool path/string -> Bucket:
+    if ram != true: throw "Bad Argument"
+    return open --scheme=SCHEME_RAM --path=path
+
+  static open --flash/bool path/string -> Bucket:
+    if flash != true: throw "Bad Argument"
+    return open --scheme=SCHEME_FLASH --path=path
+
+  static open --scheme/string --path/string -> Bucket:
     client := _client_
     if not client: throw "UNSUPPORTED"
-    return Bucket.internal_ client (client.open_bucket name)
+    if (path.index_of ":") >= 0: throw "Paths cannot contain ':'"
+    handle := client.open_bucket --scheme=scheme --path=path
+    return Bucket.internal_ client handle
 
   get key/string:
     return get key --if_present=(: it) --if_absent=(: null)

@@ -10,7 +10,7 @@ interface StorageService:
       --major=0
       --minor=1
 
-  open_bucket name/string -> int
+  open_bucket --scheme/string --path/string -> int
   static OPEN_BUCKET_INDEX /int ::= 0
 
   get bucket/int key/string -> ByteArray?
@@ -28,8 +28,8 @@ class StorageServiceClient extends ServiceClient implements StorageService:
     assert: selector.matches SELECTOR
     super selector
 
-  open_bucket name/string -> int:
-    return invoke_ StorageService.OPEN_BUCKET_INDEX name
+  open_bucket --scheme/string --path/string -> int:
+    return invoke_ StorageService.OPEN_BUCKET_INDEX [scheme, path]
 
   get bucket/int key/string -> ByteArray?:
     return invoke_ StorageService.GET_INDEX [bucket, key]
