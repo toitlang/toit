@@ -17,7 +17,7 @@ import net
 import monitor
 import log
 import device
-import net.modules.dns
+import net.modules.dns as dns_module
 import net.wifi
 
 import encoding.tison
@@ -130,7 +130,7 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
     return (state_.module as WifiModule).address.to_byte_array
 
   resolve resource/ServiceResource host/string -> List:
-    return [(dns.dns_lookup host).raw]
+    return [(dns_module.dns_lookup host).raw]
 
   ap_info resource/NetworkResource -> List:
     return (state_.module as WifiModule).ap_info
@@ -276,13 +276,13 @@ class WifiModule implements NetworkModule:
     if main_dns: dns_ips.add (net.IpAddress main_dns)
     if backup_dns: dns_ips.add (net.IpAddress backup_dns)
     if dns_ips.size != 0:
-      dns.dhcp_client_ = dns.DnsClient dns_ips
+      dns_module.dhcp_client_ = dns_module.DnsClient dns_ips
       if from_dhcp:
         logger_.info "DNS server address dynamically assigned through dhcp" --tags={"dns": dns_ips}
       else:
         logger_.info "DNS server statically configured" --tags={"dns": dns_ips}
     else:
-      dns.dhcp_client_ = null
+      dns_module.dhcp_client_ = null
       logger_.info "DNS server not supplied by network; using fallback DNS servers"
 
   ap_info -> List:

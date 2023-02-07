@@ -17,6 +17,7 @@ import system.base.network show NetworkResourceProxy
 service_/NetworkServiceClient? ::= (NetworkServiceClient).open
     --if_absent=: null
 
+/// Gets the default network interface.
 open -> net.Interface:
   service := service_
   if not service: throw "Network unavailable"

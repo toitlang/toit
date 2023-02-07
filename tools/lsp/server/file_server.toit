@@ -13,7 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import .tcp as tcp
+import net
+import net.tcp
 import reader show BufferedReader Reader CloseableReader
 import writer show Writer
 import host.pipe show OpenPipe
@@ -158,7 +159,7 @@ class PipeFileServer implements FileServer:
 
 
 class TcpFileServer implements FileServer:
-  server_   / tcp.TcpServerSocket? := null
+  server_   / tcp.ServerSocket? := null
   semaphore_ ::= monitor.Semaphore
   protocol / FileServerProtocol
 
@@ -170,14 +171,14 @@ class TcpFileServer implements FileServer:
   If a $port is given, binds to that port.
   Otherwise binds to an arbitrary port.
 
-  Returns the port at which the server can be reached.
+  Returns the port at which the server can be reached as a string.
   */
   run --port=0 -> string:
-    server_ = tcp.TcpServerSocket
-    server_.listen "" port
-    port = server_.local_address.port
+    network := net.open
+    server_ = network.tcp_listen port
+    local_port := server_.local_address.port
     task:: catch --trace: accept_
-    return "$port"
+    return "$local_port"
 
   close:
     server_.close
