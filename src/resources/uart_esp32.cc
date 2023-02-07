@@ -91,6 +91,32 @@ class IsrSpinLocker {
  private:
   portMUX_TYPE* spinlock_;
 };
+
+// No boundary check and un-synchronized ringbuffer. Assumption is that all modifying
+// operations has the boundaries checked outside the ring buffer. Limited to 64k size.
+class UartRingBuffer {
+ public:
+  UartRingBuffer(uint8_t* buffer, uint16_t capacity)
+      : capacity_(capacity)
+      , head_index_(0)
+      , used_(0)
+      , buffer_(buffer) {}
+
+   inline bool is_empty() const { return used_ == 0; }
+   inline bool is_full() const { return used_ == capacity_; }
+   inline size_t free_space() const { return capacity_ - used_; }
+   inline size_t used_space() const { return used_; }
+   // This might return less than the requested_read_size in case the buffer is at the boundary
+   uint8_t* read(uint16_t *read_size, uint16_t request_read_size);
+   void write(const uint8_t* buffer, uint16_t size);
+
+ private:
+  uint16_t capacity_;
+  uint16_t head_index_; // Where we currently write
+  uint16_t used_; // The number of bytes stored currently
+  uint8_t* buffer_;
+};
+
 class UartResource;
 
 // Possible optimization: Create a RxTxBuffer that implements the ringbuffer directly. The esp-idf ringbuffer has
@@ -252,6 +278,31 @@ class UartResourceGroup : public ResourceGroup {
 
   uint32_t on_event(Resource* r, word data, uint32_t state) override;
 };
+
+IRAM_ATTR uint8_t* UartRingBuffer::read(uint16_t* read_size, uint16_t request_read_size) {
+  uint8_t* result = buffer_ + head_index_;
+  if (head_index_ + request_read_size >= capacity_) {
+    *read_size = capacity_-head_index_;
+    head_index_ = 0;
+  } else {
+    *read_size = request_read_size;
+    head_index_ += request_read_size;
+  }
+  used_ -= *read_size;
+  return result;
+}
+
+IRAM_ATTR void UartRingBuffer::write(const uint8_t* buffer, uint16_t size) {
+  uint16_t tail = (head_index_ + used_) % capacity_;
+  uint16_t first_read_size = size;
+  if (first_read_size > capacity_ - tail) first_read_size = capacity_ - tail;
+  memcpy(buffer_ + tail, buffer, first_read_size);
+  if (first_read_size != size) {
+    memcpy(buffer_, buffer + first_read_size, size - first_read_size);
+  }
+  used_ += size;
+  tail = (tail + size) & capacity_;
+}
 
 UART_ISR_INLINE void RxTxBuffer::return_buffer(uint8_t* buffer) {
   BaseType_t ignored;
