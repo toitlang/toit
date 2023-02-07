@@ -17,6 +17,7 @@ import uuid
 import system.containers
 
 import .firmware
+import .storage
 import .wifi
 
 import ...boot
@@ -44,7 +45,8 @@ class SystemImage extends ContainerImage:
 main:
   container_manager ::= initialize_system [
       FirmwareServiceProvider,
-      WifiServiceProvider
+      StorageServiceProvider,
+      WifiServiceProvider,
   ]
   container_manager.register_system_image
       SystemImage container_manager

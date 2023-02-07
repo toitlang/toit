@@ -14,9 +14,12 @@
 // directory of this repository.
 
 import .network
+import .storage
+
 import ...containers
 import ...initialize
 
 initialize_host -> ContainerManager:
   network := NetworkServiceProvider
-  return initialize_system [network]
+  storage := StorageServiceProvider
+  return initialize_system [network, storage]
