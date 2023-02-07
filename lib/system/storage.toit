@@ -64,9 +64,10 @@ class Bucket extends ServiceResourceProxy:
   static open --scheme/string --path/string -> Bucket:
     client := _client_
     if not client: throw "UNSUPPORTED"
-    path.index_of ":" --if_absent=: throw "Paths cannot contain ':'"
-    handle := client.open_bucket --scheme=scheme --path=path
-    return Bucket.internal_ client handle
+    path.index_of ":" --if_absent=:
+      handle := client.open_bucket --scheme=scheme --path=path
+      return Bucket.internal_ client handle
+    throw "Paths cannot contain ':'"
 
   get key/string -> any:
     return get key --if_present=(: it) --if_absent=(: null)
