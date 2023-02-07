@@ -39,8 +39,7 @@ class Bucket extends ServiceResourceProxy:
     bucket owner, e.g. "flash:toitlang.org/jag".
   */
   static open uri/string -> Bucket:
-    split := uri.index_of ":"
-    if not split: throw "No scheme provided"
+    split := uri.index_of ":" --if_absent=: throw "No scheme provided"
     return open --scheme=uri[..split] --path=uri[split + 1 ..]
 
   /**
