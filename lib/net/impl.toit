@@ -7,7 +7,7 @@ import .tcp as tcp
 import .udp as udp
 import .socket_address
 
-import .modules.dns as dns
+import .modules.dns as dns_module
 import .modules.tcp as tcp_module
 import .modules.udp as udp_module
 
@@ -55,7 +55,7 @@ class SystemInterface_ extends NetworkResourceProxy implements net.Interface:
   resolve host/string -> List /* of net.IpAddress */:
     if is_closed: throw "Network closed"
     if (proxy_mask_ & NetworkService.PROXY_RESOLVE) != 0: return super host
-    return [dns.dns_lookup host]
+    return [dns_module.dns_lookup host]
 
   udp_open --port/int?=null -> udp.Socket:
     if is_closed: throw "Network closed"
