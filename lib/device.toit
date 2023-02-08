@@ -5,6 +5,8 @@
 import uuid
 import encoding.tison
 
+import system.storage  // For toitdoc.
+
 /**
 Functionality available on devices (ESP32).
 */
@@ -16,7 +18,11 @@ name -> string:
 /** Hardware ID of this device. */
 hardware_id/uuid.Uuid ::= uuid.uuid5 "hw_id" get_mac_address_
 
-/** Simple key-value store. */
+/**
+Simple key-value store.
+
+Deprecated. Use $storage.Bucket instead.
+*/
 interface Store:
   get name/string -> any
   delete name/string -> none
@@ -29,6 +35,8 @@ Key-value pairs are persisted in the flash, so they can be accessed across
   deep sleeps.
 
 Make sure to remove obsolete key-value pairs using $delete.
+
+Deprecated. Use $storage.Bucket instead.
 */
 class FlashStore implements Store:
   static instance_/FlashStore ::= FlashStore.internal_

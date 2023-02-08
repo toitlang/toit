@@ -58,3 +58,15 @@ test_flash:
 
   bucket.remove "hest"
   expect_throw "key not found": bucket["hest"]
+
+  expect_throw "key not found": bucket[""]
+  bucket[""] = 1234
+  expect_equals 1234 bucket[""]
+  bucket.remove ""
+  expect_throw "key not found": bucket[""]
+
+  long := "2357" * 8
+  bucket[long] = 2345
+  expect_equals 2345 bucket[long]
+  bucket.remove long
+  expect_throw "key not found": bucket[long]

@@ -61,7 +61,7 @@ abstract class BucketResource extends ServiceResource:
     super provider client
 
   abstract get key/string -> ByteArray?
-  abstract set key/string value/ByteArray? -> none
+  abstract set key/string value/ByteArray -> none
   abstract remove key/string -> none
 
   on_closed -> none:
