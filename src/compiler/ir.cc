@@ -837,7 +837,6 @@ class Printer : public Visitor {
     const char* name = "unknown";
     switch (node->kind()) {
       case Builtin::THROW: name = "throw"; break;
-      case Builtin::HALT: name = "halt"; break;
       case Builtin::EXIT: name = "exit"; break;
       case Builtin::INVOKE_LAMBDA: name = "invoke_lambda"; break;
       case Builtin::YIELD: name = "yield"; break;

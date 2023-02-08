@@ -454,7 +454,6 @@ class TypeChecker : public ReturningVisitor<Type> {
     visit_Call(node);
     switch (node->target()->kind()) {
       case Builtin::THROW:
-      case Builtin::HALT:
       case Builtin::EXIT:
         // These are not returning.
         return Type::none();
