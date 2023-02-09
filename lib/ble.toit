@@ -8,7 +8,6 @@ import uuid
 import bytes
 import monitor show ResourceState_
 import encoding.hex
-import device
 
 /**
 A BLE Universally Unique ID.
