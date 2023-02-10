@@ -518,6 +518,7 @@ flash parsed/cli.Parsed -> none:
   dir := list[..list.size - 1].join separator
   esptool/List? := null
   if program_name.ends_with ".toit":
+    if dir == "": dir = "."
     esptool_py := "$dir/../third_party/esp-idf/components/esptool_py/esptool/esptool.py"
     if not file.is_file esptool_py:
       throw "cannot find esptool in '$esptool_py'"
