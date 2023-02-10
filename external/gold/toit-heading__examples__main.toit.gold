@@ -1,0 +1,9 @@
+<sdk>/device.toit:42:45: warning: Class 'FlashStore' is deprecated
+  static instance_/FlashStore ::= FlashStore.internal_
+                                            ^
+toit-heading/examples/main.toit:15:12: warning: Class 'FlashStore' is deprecated
+  store := FlashStore
+           ^~~~~~~~~~
+toit-heading/examples/main.toit:20:19: warning: Class 'FlashStore' is deprecated
+  calibration := (FlashStore).get "mag-calibration"
+                  ^~~~~~~~~~
