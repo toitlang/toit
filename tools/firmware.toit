@@ -115,7 +115,6 @@ main arguments/List:
   root_cmd.add create_cmd
   root_cmd.add extract_cmd
   root_cmd.add flash_cmd
-  root_cmd.add qemu_image_cmd
   root_cmd.add container_cmd
   root_cmd.add property_cmd
   root_cmd.run arguments
@@ -555,69 +554,6 @@ flash parsed/cli.Parsed -> none:
     if code != 0: exit 1
   finally:
     directory.rmdir --recursive tmp
-
-qemu_image_cmd -> cli.Command:
-  return cli.Command "qemu-image"
-      --long_help="""
-        Creates a QEMU image from the given envelope.
-
-        The image (output.bin) can be run with the following command:
-
-            qemu-system-xtensa \\
-                -M esp32 \\
-                -nographic \\
-                -drive file=output.bin,format=raw,if=mtd \\
-                -nic user,model=open_eth,hostfwd=tcp::2222-:1234 \\
-                -s
-
-        The '-nic' option is optional. In this example, the local port 2222 is
-        forwarded to port 1234 in the QEMU image.
-        """
-      --options=[
-        cli.OptionString "config"
-            --type="file",
-      ]
-      --rest=[
-        cli.OptionString "output"
-            --short_name="o"
-            --short_help="The output file."
-            --type="file"
-      ]
-      --run=:: qemu_image it
-
-qemu_image parsed/cli.Parsed -> none:
-  input_path := parsed[OPTION_ENVELOPE]
-  output_path := parsed["output"]
-  config_path := parsed["config"]
-  envelope := Envelope.load input_path
-
-  config_encoded := ByteArray 0
-  if config_path:
-    config_encoded = read_file config_path
-    exception := catch: ubjson.decode config_encoded
-    if exception: config_encoded = ubjson.encode (json.decode config_encoded)
-
-  firmware_bin := extract_binary envelope --config_encoded=config_encoded
-  binary := Esp32Binary firmware_bin
-
-  flashing := envelope.entries.get AR_ENTRY_FLASHING_JSON
-      --if_present=: json.decode it
-      --if_absent=: throw "cannot create qemu image without 'flashing.json'"
-
-  out_image := ByteArray 4_194_304  // 4 MB.
-  out_image.replace
-      int.parse flashing["bootloader"]["offset"][2..] --radix=16
-      envelope.entries.get AR_ENTRY_BOOTLOADER_BIN
-  out_image.replace
-      int.parse flashing["partition-table"]["offset"][2..] --radix=16
-      envelope.entries.get AR_ENTRY_PARTITIONS_BIN
-  out_image.replace
-      int.parse flashing["otadata"]["offset"][2..] --radix=16
-      envelope.entries.get AR_ENTRY_OTADATA_BIN
-  out_image.replace
-      int.parse flashing["app"]["offset"][2..] --radix=16
-      firmware_bin
-  write_file output_path: it.write out_image
 
 extract_binary envelope/Envelope --config_encoded/ByteArray -> ByteArray:
   containers ::= []
