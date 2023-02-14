@@ -172,7 +172,7 @@ PRIMITIVE(init_nor_flash) {
     return Primitive::os_error(ret, process);
   }
 
-  size_t size;
+  uint32_t size;
   ret = esp_flash_get_size(chip, &size);
   if (ret != ESP_OK) {
     group->tear_down();
