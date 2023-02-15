@@ -64,6 +64,11 @@ class SnapshotBundle {
   // UUID was not in the snapshot file.
   bool uuid(uint8* buffer_16) const;
 
+  // Builds a snapshot bundle without debugging information.
+  // The old and new bundle don't share any code, and this instance's
+  // buffer can be safely freed.
+  SnapshotBundle stripped() const;
+
   /// Whether the given [file] is likely a bundle file.
   /// This function is applying a heuristic to determine whether
   /// the content looks like a bundle file.
@@ -73,6 +78,17 @@ class SnapshotBundle {
  private:
   uint8* buffer_;
   int size_;
+
+  /// Returns a new SnapshotBundle, where the buffer is allocated with 'malloc'.
+  /// The given data is not reused and can be freed.
+  /// The source-maps are optional in this constructor.
+  SnapshotBundle(List<uint8> main_snapshot,
+                 List<uint8>* main_source_map_data,
+                 List<uint8>* debug_snapshot,
+                 List<uint8>* debug_source_map_data,
+                 const char* sdk_version);
+
+
 };
 
 } // namespace toit
