@@ -166,7 +166,7 @@ class SnapshotBundle:
   byte_array ::= ?
   file_name        / string?          ::= ?
   program_snapshot / ProgramSnapshot  ::= ?
-  source_map       / SourceMap        ::= ?
+  source_map       / SourceMap?       ::= ?
   uuid             / Uuid             ::= ?
 
   constructor.from_file name/string:
@@ -178,9 +178,11 @@ class SnapshotBundle:
   constructor .file_name .byte_array/ByteArray:
     if not is_bundle_content byte_array: throw "Invalid snapshot bundle"
     program_snapshot_offsets := extract_ar_offsets_ byte_array SNAPSHOT_NAME
-    source_map_offsets := extract_ar_offsets_ byte_array SOURCE_MAP_NAME
     program_snapshot = ProgramSnapshot byte_array program_snapshot_offsets.from program_snapshot_offsets.to
-    source_map = SourceMap byte_array source_map_offsets.from source_map_offsets.to
+    source_map_offsets := extract_ar_offsets_ --silent byte_array SOURCE_MAP_NAME
+    source_map = source_map_offsets
+        ? SourceMap byte_array source_map_offsets.from source_map_offsets.to
+        : null
     uuid_offsets := extract_ar_offsets_ byte_array UUID_NAME
     uuid = uuid_offsets ? (Uuid byte_array[uuid_offsets.from..uuid_offsets.to]) : NIL
 
@@ -191,15 +193,19 @@ class SnapshotBundle:
     if magic_content.to_string != MAGIC_CONTENT: return false
     return true
 
+  has_source_map -> bool: return source_map != null
+
   parse -> none:
     program_snapshot.parse
 
   decode -> Program:
+    if not source_map: throw "No source map"
     return Program this
 
   stringify -> string:
     postfix := file_name ? " ($file_name)" : ""
-    return "snapshot: $byte_array.size bytes$postfix\n - $program_snapshot\n - $source_map\n"
+    source_map_suffix := source_map ? " - $source_map\n" : ""
+    return "snapshot: $byte_array.size bytes$postfix\n - $program_snapshot\n$source_map_suffix"
 
   static extract_ar_offsets_ --silent/bool=false byte_array/ByteArray name/string -> ArFileOffsets?:
     ar_reader := ArReader.from_bytes byte_array
