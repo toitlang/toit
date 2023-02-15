@@ -29,20 +29,20 @@ static void print_usage(int exit_code) {
   // relevant for users.
   printf("Usage:\n");
   printf("toit\n");
-  printf("  [-h] [--help]                        // This help message.\n");
-  printf("  [--version]                          // Prints version information.\n");
-  printf("  [-O<level>]                          // Set optimization level (default = 1).\n");
-  printf("  [-X<flag>]*                          // Provide a compiler flag.\n");
-  printf("  [--dependency-file <file>]           // Write a dependency file ('-' for stdout).\n");
-  printf("  [--dependency-format {plain|ninja}]  // The format of the dependency file.\n");
-  printf("  [--project-root <path>]              // Path to the project root. Any package.lock file must be in that folder.\n");
-  printf("  [--force]                            // Finish compilation even with errors (if possible).\n");
-  printf("  [-Werror]                            // Treat warnings like errors.\n");
-  printf("  [--show-package-warnings]            // Show warnings from packages.\n");
-  printf("  [--vessels-root <dir>]               // Path to vessels when compiling executables.\n");
-  printf("  { -o <executable> <toitfile> |       // Write executable.\n");
-  printf("    -w <snapshot> <toitfile> |         // Write snapshot file.\n");
-  printf("    --analyze <toitfiles>...           // Analyze Toit files.\n");
+  printf("  [-h] [--help]                            // This help message.\n");
+  printf("  [--version]                              // Prints version information.\n");
+  printf("  [-O<level>]                              // Set optimization level (default = 1).\n");
+  printf("  [-X<flag>]*                              // Provide a compiler flag.\n");
+  printf("  [--dependency-file <file>]               // Write a dependency file ('-' for stdout).\n");
+  printf("  [--dependency-format {plain|ninja}]      // The format of the dependency file.\n");
+  printf("  [--project-root <path>]                  // Path to the project root. Any package.lock file must be in that folder.\n");
+  printf("  [--force]                                // Finish compilation even with errors (if possible).\n");
+  printf("  [-Werror]                                // Treat warnings like errors.\n");
+  printf("  [--show-package-warnings]                // Show warnings from packages.\n");
+  printf("  [--vessels-root <dir>]                   // Path to vessels when compiling executables.\n");
+  printf("  { -o <executable> <toitfile|snapshot> |  // Write executable.\n");
+  printf("    -w <snapshot> <toitfile> |             // Write snapshot file.\n");
+  printf("    --analyze <toitfiles>...               // Analyze Toit files.\n");
   printf("  }\n");
   exit(exit_code);
 }
@@ -313,10 +313,14 @@ int main(int argc, char **argv) {
     auto compiled = SnapshotBundle::invalid();
     compiler::Compiler compiler;
     auto source_path = source_path_count == 0 ? null : source_paths[0];
-    compiled = compiler.compile(source_path,
-                                direct_script,
-                                bundle_filename == null ? exe_filename : bundle_filename,
-                                compiler_config);
+    if (SnapshotBundle::is_bundle_file(source_path)) {
+      compiled = SnapshotBundle::read_from_file(source_path);
+    } else {
+      compiled = compiler.compile(source_path,
+                                  direct_script,
+                                  bundle_filename == null ? exe_filename : bundle_filename,
+                                  compiler_config);
+    }
 
     if (bundle_filename != null) {
       if (!compiled.write_to_file(bundle_filename)) {
