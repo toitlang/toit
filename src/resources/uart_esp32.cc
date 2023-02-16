@@ -157,7 +157,9 @@ struct TxTransferHeader {
 class TxBuffer : public RxTxBuffer {
  public:
   TxBuffer(UartResource* uart, uint8_t* ring_buffer_data, size_t ring_buffer_size)
-      : RxTxBuffer(uart, ring_buffer_data, ring_buffer_size) {}
+      : RxTxBuffer(uart, ring_buffer_data, ring_buffer_size) {
+    spinlock_initialize(&spinlock_);
+  }
 
   uint8_t* read(size_t *received, size_t max_length);
   uint8_t read_break();
@@ -189,6 +191,7 @@ public:
       , rx_buffer_(this, rx_buffer_data, rx_buffer_size)
       , tx_buffer_(this, tx_buffer_data, tx_buffer_size) {
     set_state(kWriteState);
+    spinlock_initialize(&spinlock_);
   }
 
   ~UartResource() override;
