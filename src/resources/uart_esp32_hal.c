@@ -15,6 +15,7 @@
 
 #if defined(__FREERTOS__)
 
+#include "esp_attr.h"
 #include "uart_esp32_hal.h"
 #include "hal/uart_hal.h"
 
@@ -91,7 +92,7 @@ void uart_toit_hal_set_rx_timeout(uart_hal_handle_t hal, uint8_t timeout) {
 
 #if SOC_UART_REQUIRE_CORE_RESET
 void uart_toit_hal_set_reset_core(uart_hal_handle_t hal, bool reset) {
-  uart_hal_set_reset_core(hal, reset);
+  uart_hal_set_reset_core(HAL, reset);
 }
 #endif // SOC_UART_REQUIRE_CORE_RESET
 
