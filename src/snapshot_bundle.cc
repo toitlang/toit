@@ -43,7 +43,14 @@ static void update_sha256(mbedtls_sha256_context* context, const uint8* bytes, s
 SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
                                List<uint8> source_map_data,
                                List<uint8> debug_snapshot,
-                               List<uint8> debug_source_map_data) {
+                               List<uint8> debug_source_map_data)
+    : SnapshotBundle(snapshot, &source_map_data, &debug_snapshot, &debug_source_map_data, vm_git_version()) {}
+
+SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
+                               List<uint8>* source_map_data,
+                               List<uint8>* debug_snapshot,
+                               List<uint8>* debug_source_map_data,
+                               const char* sdk_version) {
   ar::MemoryBuilder builder;
   int status = builder.open();
   if (status != 0) FATAL("Couldn't create snapshot");
@@ -64,7 +71,6 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
     if (status != 0) FATAL("Couldn't create snapshot");
   };
 
-  const char* sdk_version = vm_git_version();
   size_t sdk_version_length = strlen(sdk_version);
   ar::File version_file(
     SDK_VERSION_NAME, ar::AR_DONT_FREE,
@@ -76,7 +82,6 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   // Generate UUID using sha256 checksum of:
   //   version
   //   snapshot
-  //   source map
   mbedtls_sha256_context sha_context;
   mbedtls_sha256_init(&sha_context);
   static const int SHA256 = 0;
@@ -87,7 +92,6 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   const uint8* version_uint8 = reinterpret_cast<const uint8*>(sdk_version);
   update_sha256(&sha_context, version_uint8, sdk_version_length);
   update_sha256(&sha_context, snapshot.data(), snapshot.length());
-  update_sha256(&sha_context, source_map_data.data(), source_map_data.length());
 
   uint8 sum[SHA256_HASH_LENGTH];
   mbedtls_sha256_finish_ret(&sha_context, sum);
@@ -102,9 +106,9 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   // files, and changing the order would make the iterator miss the files.
   add(SNAPSHOT_NAME, snapshot);
   add(UUID_NAME, List<uint8>(sum, UUID_SIZE));
-  add(SOURCE_MAP_NAME, source_map_data);
-  add(DEBUG_SNAPSHOT_NAME, debug_snapshot);
-  add(DEBUG_SOURCE_MAP_NAME, debug_source_map_data);
+  if (source_map_data != null) add(SOURCE_MAP_NAME, *source_map_data);
+  if (debug_snapshot != null) add(DEBUG_SNAPSHOT_NAME, *debug_snapshot);
+  if (debug_source_map_data != null) add(DEBUG_SOURCE_MAP_NAME, *debug_source_map_data);
 
   builder.close(&buffer_, &size_);
 }
@@ -146,6 +150,23 @@ bool SnapshotBundle::uuid(uint8* buffer_16) const {
   if (status != 0 || file.byte_size < UUID_SIZE) return false;
   memcpy(buffer_16, file.content(), UUID_SIZE);
   return true;
+}
+
+SnapshotBundle SnapshotBundle::stripped() const {
+  List<uint8> snapshot_bytes;
+  const char* sdk_version = null;
+  ar::MemoryReader reader(buffer_, size_);
+  ar::File file;
+  while (reader.next(&file) == 0) {
+    if (strcmp(file.name(), SNAPSHOT_NAME) == 0) {
+      // We are just passing the list along.
+      // The const cast should be safe.
+      snapshot_bytes = List<uint8>(const_cast<uint8*>(file.content()), file.byte_size);
+    } else if (strcmp(file.name(), SDK_VERSION_NAME) == 0) {
+      sdk_version = reinterpret_cast<const char*>(file.content());
+    }
+  }
+  return SnapshotBundle(snapshot_bytes, null, null, null, sdk_version);
 }
 
 SnapshotBundle SnapshotBundle::read_from_file(const char* bundle_filename, bool silent) {

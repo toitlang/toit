@@ -40,8 +40,9 @@ static void print_usage(int exit_code) {
   printf("  [-Werror]                                // Treat warnings like errors.\n");
   printf("  [--show-package-warnings]                // Show warnings from packages.\n");
   printf("  [--vessels-root <dir>]                   // Path to vessels when compiling executables.\n");
+  printf("  [--strip]                                // Strip the output of debug information.\n");
   printf("  { -o <executable> <toitfile|snapshot> |  // Write executable.\n");
-  printf("    -w <snapshot> <toitfile> |             // Write snapshot file.\n");
+  printf("    -w <snapshot> <toitfile|snapshot> |    // Write snapshot file.\n");
   printf("    --analyze <toitfiles>...               // Analyze Toit files.\n");
   printf("  }\n");
   exit(exit_code);
@@ -102,6 +103,7 @@ int main(int argc, char **argv) {
   bool for_analysis = false;
   const char* vessels_root = null;
   int optimization_level = DEFAULT_OPTIMIZATION_LEVEL;
+  bool should_strip = false;
 
   int processed_args = 1;  // The executable name has already been processed.
 
@@ -215,6 +217,9 @@ int main(int argc, char **argv) {
       for_analysis = strcmp(argv[processed_args], "--analyze") == 0;
       processed_args++;
       ways_to_run++;
+    } else if (strcmp(argv[processed_args], "--strip") == 0) {
+      should_strip = true;
+      processed_args++;
     } else if (argv[processed_args][0] == '-' &&
                 strcmp(argv[processed_args], "--") != 0) {
       fprintf(stderr, "Unknown flag '%s'\n", argv[processed_args]);
@@ -322,6 +327,11 @@ int main(int argc, char **argv) {
                                   compiler_config);
     }
 
+    if (should_strip) {
+      auto stripped = compiled.stripped();
+      free(compiled.buffer());
+      compiled = stripped;
+    }
     if (bundle_filename != null) {
       if (!compiled.write_to_file(bundle_filename)) {
         print_usage(1);
