@@ -193,7 +193,8 @@ class SnapshotBundle:
     if magic_content.to_string != MAGIC_CONTENT: return false
     return true
 
-  has_source_map -> bool: return source_map != null
+  has_source_map -> bool: 
+    return source_map != null
 
   parse -> none:
     program_snapshot.parse
