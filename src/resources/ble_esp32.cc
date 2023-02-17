@@ -1706,6 +1706,21 @@ PRIMITIVE(advertise_start) {
   ble_hs_adv_fields response_fields{};
   bool uses_scan_response = false;
 
+  if (manufacturing_data.length() > 0) {
+    int additional_size = 2 + manufacturing_data.length();
+    ble_hs_adv_fields* target_fields = &fields;
+    if (advertisement_size + additional_size > BLE_HS_ADV_MAX_SZ) {
+      // Doesn't fit into the packet.
+      // Store it in the scan response instead.
+      target_fields = &response_fields;
+      fields.mfg_data = null;
+    } else {
+      advertisement_size += additional_size;
+    }
+    target_fields->mfg_data = manufacturing_data.address();
+    target_fields->mfg_data_len = manufacturing_data.length();
+  }
+
   fields.flags = flags;
   advertisement_size += flags > 0 ? (2 + 1) : 0;
 
@@ -1755,7 +1770,7 @@ PRIMITIVE(advertise_start) {
         fields.uuids32_is_complete = 0;
         target_fields = &response_fields;
         uses_scan_response = true;
-      } {
+      } else {
         advertisement_size += additional_size;
       }
       const_cast<ble_uuid32_t*>(target_fields->uuids32)[target_fields->num_uuids32++] = uuid.u32;
@@ -1768,7 +1783,7 @@ PRIMITIVE(advertise_start) {
         fields.uuids128_is_complete = 0;
         target_fields = &response_fields;
         uses_scan_response = true;
-      } {
+      } else {
         advertisement_size += additional_size;
       }
        const_cast<ble_uuid128_t*>(target_fields->uuids128)[target_fields->num_uuids128++] = uuid.u128;
@@ -1790,23 +1805,6 @@ PRIMITIVE(advertise_start) {
     target_fields->name = name.address();
     target_fields->name_len = name.length();
     target_fields->name_is_complete = 1;
-  }
-
-  if (manufacturing_data.length() > 0) {
-    int additional_size = 2 + manufacturing_data.length();
-    ble_hs_adv_fields* target_fields = &fields;
-    if (advertisement_size + additional_size > BLE_HS_ADV_MAX_SZ) {
-      // Doesn't fit into the packet anymore.
-      // Keep it for the scan response.
-      target_fields = &response_fields;
-      // Without any mfg_data, there is no need to change the 'name_is_complete' field.
-      // We could cut the data and send a part of it, but that's not necessary.
-      fields.mfg_data = null;
-    } else {
-      advertisement_size += additional_size;
-    }
-    target_fields->mfg_data = manufacturing_data.address();
-    target_fields->mfg_data_len = manufacturing_data.length();
   }
 
   int err = ble_gap_adv_set_fields(&fields);
