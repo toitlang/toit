@@ -63,6 +63,7 @@ void uart_toit_hal_set_txfifo_empty_thr(uart_hal_handle_t hal, uint32_t empty_th
 void uart_toit_hal_set_rx_timeout(uart_hal_handle_t hal, uint8_t timeout);
 void uart_toit_hal_set_reset_core(uart_hal_handle_t hal, bool reset);
 void uart_toit_hal_rxfifo_rst(uart_hal_handle_t hal);
+void uart_toit_hal_txfifo_rst(uart_hal_handle_t hal);
 void uart_toit_hal_tx_break(uart_hal_handle_t hal, uint32_t break_num);
 void uart_toit_hal_set_mode(uart_hal_handle_t hal, uart_mode_t mode);
 void uart_toit_hal_inverse_signal(uart_hal_handle_t hal, uint32_t inv_mask);

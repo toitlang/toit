@@ -91,32 +91,6 @@ class IsrSpinLocker {
  private:
   portMUX_TYPE* spinlock_;
 };
-
-// No boundary check and un-synchronized ringbuffer. Assumption is that all modifying
-// operations has the boundaries checked outside the ring buffer. Limited to 64k size.
-class UartRingBuffer {
- public:
-  UartRingBuffer(uint8_t* buffer, uint16_t capacity)
-      : capacity_(capacity)
-      , head_index_(0)
-      , used_(0)
-      , buffer_(buffer) {}
-
-   inline bool is_empty() const { return used_ == 0; }
-   inline bool is_full() const { return used_ == capacity_; }
-   inline size_t free_space() const { return capacity_ - used_; }
-   inline size_t used_space() const { return used_; }
-   // This might return less than the requested_read_size in case the buffer is at the boundary
-   uint8_t* read(uint16_t *read_size, uint16_t request_read_size);
-   void write(const uint8_t* buffer, uint16_t size);
-
- private:
-  uint16_t capacity_;
-  uint16_t head_index_; // Where we currently write
-  uint16_t used_; // The number of bytes stored currently
-  uint8_t* buffer_;
-};
-
 class UartResource;
 
 // Possible optimization: Create a RxTxBuffer that implements the ringbuffer directly. The esp-idf ringbuffer has
@@ -232,6 +206,7 @@ public:
 
   void set_read_fifo_timeout(uint8_t timeout) { uart_toit_hal_set_rx_timeout(hal_, timeout); }
   void clear_rx_fifo() { uart_toit_hal_rxfifo_rst(hal_); }
+  void clear_tx_fifo() { uart_toit_hal_txfifo_rst(hal_); }
 
   void clear_interrupt_index(uart_toit_interrupt_index_t index);
   void clear_interrupt_mask(uint32_t mask);
@@ -281,31 +256,6 @@ class UartResourceGroup : public ResourceGroup {
 
   uint32_t on_event(Resource* r, word data, uint32_t state) override;
 };
-
-IRAM_ATTR uint8_t* UartRingBuffer::read(uint16_t* read_size, uint16_t request_read_size) {
-  uint8_t* result = buffer_ + head_index_;
-  if (head_index_ + request_read_size >= capacity_) {
-    *read_size = capacity_-head_index_;
-    head_index_ = 0;
-  } else {
-    *read_size = request_read_size;
-    head_index_ += request_read_size;
-  }
-  used_ -= *read_size;
-  return result;
-}
-
-IRAM_ATTR void UartRingBuffer::write(const uint8_t* buffer, uint16_t size) {
-  uint16_t tail = (head_index_ + used_) % capacity_;
-  uint16_t first_read_size = size;
-  if (first_read_size > capacity_ - tail) first_read_size = capacity_ - tail;
-  memcpy(buffer_ + tail, buffer, first_read_size);
-  if (first_read_size != size) {
-    memcpy(buffer_, buffer + first_read_size, size - first_read_size);
-  }
-  used_ += size;
-  tail = (tail + size) & capacity_;
-}
 
 UART_ISR_INLINE void RxTxBuffer::return_buffer(uint8_t* buffer) {
   BaseType_t ignored;
@@ -408,6 +358,8 @@ UartResource::~UartResource() {
     len = uart_toit_hal_get_txfifo_len(hal_);
   } while (len < SOC_UART_FIFO_LEN);
 
+  clear_rx_fifo();
+
   uart_toit_hal_deinit(hal_);
 
   periph_module_disable(uart_periph_signal[port_].module);
@@ -504,6 +456,8 @@ size_t UART_ISR_INLINE UartResource::get_tx_fifo_available_count() {
 }
 
 UART_ISR_INLINE uart_event_types_t UartResource::interrupt_handler_read() {
+  IsrSpinLocker locker(&spinlock_);
+
   size_t read_length = uart_toit_hal_get_rxfifo_len(hal_);
   if (read_length == 0) return UART_EVENT_MAX;
 
@@ -522,6 +476,8 @@ UART_ISR_INLINE uart_event_types_t UartResource::interrupt_handler_read() {
 }
 
 UART_ISR_INLINE uart_event_types_t UartResource::interrupt_handler_write() {
+  IsrSpinLocker locker(&spinlock_);
+
   uint32_t tx_fifo_free = get_tx_fifo_available_count();
   size_t received_count;
   uint8_t* buffer = tx_buffer().read(&received_count, tx_fifo_free);
@@ -801,6 +757,7 @@ PRIMITIVE(create) {
   init.uart_resource->clear_interrupt_index(UART_TOIT_ALL_INTR_MASK);
 
   init.uart_resource->clear_rx_fifo();
+  init.uart_resource->clear_tx_fifo();
 
   struct {
     intr_handle_t intr_handle;

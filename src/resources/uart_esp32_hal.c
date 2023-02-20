@@ -100,6 +100,10 @@ void uart_toit_hal_rxfifo_rst(uart_hal_handle_t hal) {
   uart_hal_rxfifo_rst(HAL);
 }
 
+void uart_toit_hal_txfifo_rst(uart_hal_handle_t hal) {
+  uart_hal_txfifo_rst(HAL);
+}
+
 void IRAM_ATTR uart_toit_hal_tx_break(uart_hal_handle_t hal, uint32_t break_num) {
   uart_hal_tx_break(HAL, break_num);
 }
