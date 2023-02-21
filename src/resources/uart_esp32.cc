@@ -264,17 +264,19 @@ UART_ISR_INLINE void RxTxBuffer::return_buffer(uint8_t* buffer) {
 }
 
 void TxBuffer::write(const uint8_t* buffer, uint16_t length, uint8_t break_length) {
-  SpinLocker locker(&spinlock_);
-  TxTransferHeader header = {
-      .break_length_ = static_cast<uint8_t>(break_length),
-      .remaining_data_length_ = static_cast<uint16_t>(length)
-  };
-  if (xRingbufferSend(ring_buffer(), &header, sizeof(TxTransferHeader), 0) == pdFALSE) {
-    abort();
-  }
+  {
+    SpinLocker locker(&spinlock_);
+    TxTransferHeader header = {
+        .break_length_ = static_cast<uint8_t>(break_length),
+        .remaining_data_length_ = static_cast<uint16_t>(length)
+    };
+    if (xRingbufferSend(ring_buffer(), &header, sizeof(TxTransferHeader), 0) == pdFALSE) {
+      abort();
+    }
 
-  if (xRingbufferSend(ring_buffer(), buffer, length, 0) == pdFALSE) {
-    abort();
+    if (xRingbufferSend(ring_buffer(), buffer, length, 0) == pdFALSE) {
+      abort();
+    }
   }
 
   uart()->enable_interrupt_index(UART_TOIT_INTR_TXFIFO_EMPTY);
@@ -456,8 +458,6 @@ size_t UART_ISR_INLINE UartResource::get_tx_fifo_available_count() {
 }
 
 UART_ISR_INLINE uart_event_types_t UartResource::interrupt_handler_read() {
-  IsrSpinLocker locker(&spinlock_);
-
   size_t read_length = uart_toit_hal_get_rxfifo_len(hal_);
   if (read_length == 0) return UART_EVENT_MAX;
 
@@ -476,8 +476,6 @@ UART_ISR_INLINE uart_event_types_t UartResource::interrupt_handler_read() {
 }
 
 UART_ISR_INLINE uart_event_types_t UartResource::interrupt_handler_write() {
-  IsrSpinLocker locker(&spinlock_);
-
   uint32_t tx_fifo_free = get_tx_fifo_available_count();
   size_t received_count;
   uint8_t* buffer = tx_buffer().read(&received_count, tx_fifo_free);
