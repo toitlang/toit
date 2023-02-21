@@ -49,9 +49,14 @@ monitor ResourceState_:
     // into a situation, where timeouts might be ignored.
     super
 
+  // This method will always either yeild or wait.
   wait_for_state_ bits:
-    result := null
+    result := state_ & bits
     if not resource_: return 0
+    if result != 0:
+      // For cooporation, any resource that already has its state satisfied yields.
+      yield
+      return result
     await:
       result = state_ & bits
       // Check if we got some of the right bits or if the resource
