@@ -22,6 +22,9 @@
 #include "../resource.h"
 #include "../os.h"
 
+#define GPIO_QUEUE_SIZE 32
+#define UART_QUEUE_SIZE 32
+
 namespace toit {
 
 struct GpioEvent {
