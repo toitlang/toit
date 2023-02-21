@@ -44,7 +44,7 @@ class ServiceSelector:
   uuid/string
   major/int
   minor/int
-  constructor --.uuid --.major --.minor:
+  constructor --.uuid --.major=1 --.minor=0:
 
   /**
   Returns a restricted variant of this $ServiceSelector that can
@@ -342,7 +342,7 @@ class ServiceProvider:
   _resources_/Map ::= {:}  // Map<int, Map<int, Object>>
   _resource_handle_next_/int := ?
 
-  constructor .name --.major --.minor --.patch=0 --.tags=null:
+  constructor .name --.major=1 --.minor=0 --.patch=0 --.tags=null:
     _resource_handle_next_ = random RESOURCE_HANDLE_LIMIT_
 
   on_opened client/int -> none:
