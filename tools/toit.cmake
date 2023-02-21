@@ -120,5 +120,5 @@ macro(toit_project NAME PATH)
     DEPENDS "${TOITPKG}"
   )
   add_dependencies(download_packages "${DOWNLOAD_TARGET_NAME}")
-  add_dependencies("${DOWNLOAD_TARGET_NAME}" sync_packages)
+  #add_dependencies("${DOWNLOAD_TARGET_NAME}" sync_packages)
 endmacro()

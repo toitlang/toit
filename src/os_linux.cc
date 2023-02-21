@@ -64,9 +64,16 @@ bool OS::use_virtual_memory(void* addr, uword sz) {
   if (sz == 0) return true;
   uword address = reinterpret_cast<uword>(addr);
   uword end = address + sz;
-  uword rounded = Utils::round_down(address, getpagesize());
-  uword size = Utils::round_up(end - rounded, getpagesize());
+  uword rounded = Utils::round_down(address, getpagesize() * 256);
+  uword size = Utils::round_up(end - rounded, getpagesize() * 256);
   int result = mprotect(reinterpret_cast<void*>(rounded), size, PROT_READ | PROT_WRITE);
+  if (result != 0) {
+    rounded = Utils::round_down(address, getpagesize());
+    size = Utils::round_up(end - rounded, getpagesize());
+    result = mprotect(reinterpret_cast<void*>(rounded), size, PROT_READ | PROT_WRITE);
+  } else {
+    printf("Managed to mprotect %p-%p (%dk)\n", (void*)rounded, (void*)(rounded + size), (int)(size / 1024));
+  }
   if (result == 0) {
 #ifdef TOIT_DEBUG
     // Calls to use_virtual_memory are rounded up by one due to the single-word
@@ -82,16 +89,6 @@ bool OS::use_virtual_memory(void* addr, uword sz) {
 }
 
 void OS::unuse_virtual_memory(void* addr, uword sz) {
-  uword address = reinterpret_cast<uword>(addr);
-  uword end = address + sz;
-  uword rounded = Utils::round_up(address, getpagesize());
-  uword size = Utils::round_down(end - rounded, getpagesize());
-  if (size != 0) {
-    int result = mprotect(reinterpret_cast<void*>(rounded), size, PROT_NONE);
-    if (result == 0) return;
-    perror("mprotect");
-    exit(1);
-  }
 }
 
 void OS::set_writable(ProgramBlock* block, bool value) {
