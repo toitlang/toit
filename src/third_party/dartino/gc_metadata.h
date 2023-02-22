@@ -99,15 +99,31 @@ class GcMetadata {
     uword base = chunk->start();
     uword mark_size = chunk->size() >> MARK_BITS_SHIFT;
     uword mark_bits = (base >> MARK_BITS_SHIFT) + singleton_.mark_bits_bias_;
+    round_metadata_extent(&mark_bits, &mark_size);
     // When checking if one-word objects are black we may look one bit into the
     // next page.  Add one to the area to account for this possibility.
     bool ok = OS::use_virtual_memory(reinterpret_cast<void*>(mark_bits), mark_size + 1);
     if (ok) {
       uword cumulative_mark_bits = (base >> CUMULATIVE_MARK_BITS_SHIFT) + singleton_.cumulative_mark_bits_bias_;
       uword cumulative_mark_size = chunk->size() >> CUMULATIVE_MARK_BITS_SHIFT;
+      round_metadata_extent(&cumulative_mark_bits, &cumulative_mark_size);
       ok = OS::use_virtual_memory(reinterpret_cast<void*>(cumulative_mark_bits), cumulative_mark_size);
     }
     if (!ok) FATAL("Out of memory when mapping heap metadata");
+  }
+
+  // Avoid too many fragments of virtual memory with different permissions by
+  // rounding up the area to be unprotected.  We choose 2MB as the granularity
+  // in order to take advantage of huge pages.
+  static void round_metadata_extent(uword* address, uword* size) {
+#ifdef TOIT_FREERTOS
+    return;
+#endif
+    uword start = reinterpret_cast<uword>(singleton_.metadata_);
+    uword end = reinterpret_cast<uword>(singleton_.metadata_) + singleton_.metadata_size_;
+    uword old_address = *address;
+    *address = Utils::max(start, Utils::round_down(old_address, 2 * MB));
+    *size = Utils::min(end - *address, Utils::round_up(old_address + *size, 2 * MB) - *address);
   }
 
   static void mark_pages_for_chunk(Chunk* chunk, PageType page_type) {
