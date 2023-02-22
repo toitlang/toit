@@ -98,11 +98,12 @@ class GcMetadata {
     ASSERT(in_metadata_range(chunk->start()));
     uword base = chunk->start();
     uword mark_size = chunk->size() >> MARK_BITS_SHIFT;
-    uword mark_bits = (base >> MARK_BITS_SHIFT) + singleton_.mark_bits_bias_;
-    round_metadata_extent(&mark_bits, &mark_size);
     // When checking if one-word objects are black we may look one bit into the
     // next page.  Add one to the area to account for this possibility.
-    bool ok = OS::use_virtual_memory(reinterpret_cast<void*>(mark_bits), mark_size + 1);
+    mark_size++;
+    uword mark_bits = (base >> MARK_BITS_SHIFT) + singleton_.mark_bits_bias_;
+    round_metadata_extent(&mark_bits, &mark_size);
+    bool ok = OS::use_virtual_memory(reinterpret_cast<void*>(mark_bits), mark_size);
     if (ok) {
       uword cumulative_mark_bits = (base >> CUMULATIVE_MARK_BITS_SHIFT) + singleton_.cumulative_mark_bits_bias_;
       uword cumulative_mark_size = chunk->size() >> CUMULATIVE_MARK_BITS_SHIFT;
