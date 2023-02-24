@@ -299,7 +299,6 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
 }
 
 void ObjectHeap::iterate_chunks(void* context, process_chunk_callback_t* callback) {
-  if (!mutex_) return;  // External processes.
   Locker locker(mutex_);
   two_space_heap_.iterate_chunks(context, callback);
 }
