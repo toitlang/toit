@@ -18,8 +18,10 @@ import uuid
 import .region
 import .registry
 
-FLASH_ALLOCATION_PROGRAM_TYPE ::= 0
-FLASH_ALLOCATION_HEADER_SIZE ::= 48
+FLASH_ALLOCATION_TYPE_PROGRAM ::= 0
+FLASH_ALLOCATION_TYPE_REGION  ::= 1
+
+FLASH_ALLOCATION_HEADER_SIZE  ::= 48
 
 class FlashAllocation implements FlashRegion:
   id/uuid.Uuid ::= ?

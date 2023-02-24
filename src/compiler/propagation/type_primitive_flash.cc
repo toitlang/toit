@@ -29,7 +29,15 @@ TYPE_PRIMITIVE_ANY(get_type)
 TYPE_PRIMITIVE_ANY(get_metadata)
 TYPE_PRIMITIVE_ANY(reserve_hole)
 TYPE_PRIMITIVE_ANY(cancel_reservation)
+TYPE_PRIMITIVE_ANY(allocate)
 TYPE_PRIMITIVE_ANY(erase_flash_registry)
+TYPE_PRIMITIVE_ANY(grant_access)
+TYPE_PRIMITIVE_ANY(revoke_access)
+TYPE_PRIMITIVE_ANY(region_open)
+TYPE_PRIMITIVE_ANY(region_close)
+TYPE_PRIMITIVE_ANY(region_read)
+TYPE_PRIMITIVE_ANY(region_write)
+TYPE_PRIMITIVE_ANY(region_erase)
 
 }  // namespace toit::compiler
 }  // namespace toit

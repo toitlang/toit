@@ -566,9 +566,9 @@ namespace toit {
 
 #define MODULE_PROGRAMS_REGISTRY(PRIMITIVE)  \
   PRIMITIVE(next_group_id, 0)                \
-  PRIMITIVE(spawn, 4)                        \
-  PRIMITIVE(is_running, 2)                   \
-  PRIMITIVE(kill, 2)                         \
+  PRIMITIVE(spawn, 3)                        \
+  PRIMITIVE(is_running, 1)                   \
+  PRIMITIVE(kill, 1)                         \
   PRIMITIVE(bundled_images, 0)               \
   PRIMITIVE(assets, 0)                       \
   PRIMITIVE(config, 0)                       \
@@ -583,7 +583,15 @@ namespace toit {
   PRIMITIVE(get_metadata, 1)                 \
   PRIMITIVE(reserve_hole, 2)                 \
   PRIMITIVE(cancel_reservation, 1)           \
+  PRIMITIVE(allocate, 5)                     \
   PRIMITIVE(erase_flash_registry, 0)         \
+  PRIMITIVE(grant_access, 4)                 \
+  PRIMITIVE(revoke_access, 2)                \
+  PRIMITIVE(region_open, 5)                  \
+  PRIMITIVE(region_close, 1)                 \
+  PRIMITIVE(region_read, 3)                  \
+  PRIMITIVE(region_write, 3)                 \
+  PRIMITIVE(region_erase, 3)                 \
 
 #define MODULE_SPI_FLASH(PRIMITIVE)          \
   PRIMITIVE(init_sdcard, 6)                  \
@@ -982,6 +990,7 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
 #define _A_T_X509Certificate(N, name)     MAKE_UNPACKING_MACRO(X509Certificate, N, name)
 #define _A_T_AesContext(N, name)          MAKE_UNPACKING_MACRO(AesContext, N, name)
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)
+#define _A_T_FlashRegion(N, name)         MAKE_UNPACKING_MACRO(FlashRegion, N, name)
 #define _A_T_Sha1(N, name)                MAKE_UNPACKING_MACRO(Sha1, N, name)
 #define _A_T_Siphash(N, name)             MAKE_UNPACKING_MACRO(Siphash, N, name)
 #define _A_T_Sha(N, name)                 MAKE_UNPACKING_MACRO(Sha, N, name)

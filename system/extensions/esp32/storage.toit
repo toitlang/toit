@@ -17,10 +17,11 @@ import encoding.tison
 import system.storage show Bucket
 
 import ..shared.storage_base
+import ...flash.registry
 
 class StorageServiceProvider extends StorageServiceProviderBase:
-  constructor:
-    super "system/storage/esp32" --major=0 --minor=1
+  constructor registry/FlashRegistry:
+    super "system/storage/esp32" registry --major=0 --minor=1
 
   open_bucket client/int --scheme/string --path/string -> BucketResource:
     if scheme == Bucket.SCHEME_RAM:

@@ -32,13 +32,13 @@ namespace toit {
 
 static const esp_partition_t* allocations_partition = null;
 static spi_flash_mmap_handle_t allocations_handle;
-const char* FlashRegistry::allocations_memory_ = null;
+uint8* FlashRegistry::allocations_memory_ = null;
 
 static bool is_dirty = false;
 
-static bool is_clean_page(const char* memory, unsigned offset) {
-  uint32_t* cursor = reinterpret_cast<uint32_t*>(const_cast<char*>(memory + offset));
-  uint32_t* end = cursor + FLASH_PAGE_SIZE / sizeof(uint32_t);
+static bool is_clean_page(const uint8* memory, unsigned offset) {
+  const uint32* cursor = reinterpret_cast<const uint32*>(memory + offset);
+  const uint32* end = cursor + FLASH_PAGE_SIZE / sizeof(uint32);
   do {
     if (*cursor != 0xffffffff) return false;
     ++cursor;
@@ -47,7 +47,7 @@ static bool is_clean_page(const char* memory, unsigned offset) {
   return true;
 }
 
-static esp_err_t ensure_erased(const char* memory, unsigned offset, int size) {
+static esp_err_t ensure_erased(const uint8* memory, unsigned offset, int size) {
   FlashRegistry::flush();
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   ASSERT(Utils::is_aligned(size, FLASH_PAGE_SIZE));
@@ -82,7 +82,7 @@ void FlashRegistry::set_up() {
   ASSERT(allocations_memory() == null);
   const void* memory = null;
   esp_partition_mmap(allocations_partition, 0, allocations_size(), SPI_FLASH_MMAP_DATA, &memory, &allocations_handle);
-  allocations_memory_ = static_cast<const char*>(memory);
+  allocations_memory_ = reinterpret_cast<uint8*>(const_cast<void*>(memory));
   ASSERT(allocations_memory() != null);
 }
 
@@ -90,10 +90,6 @@ void FlashRegistry::tear_down() {
   allocations_memory_ = null;
   spi_flash_munmap(allocations_handle);
   allocations_partition = null;
-}
-
-bool FlashRegistry::is_allocations_set_up() {
-  return allocations_memory_ != null;
 }
 
 void FlashRegistry::flush() {
@@ -136,13 +132,6 @@ bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
   } else {
     return false;
   }
-}
-
-int FlashRegistry::offset(const void* cursor) {
-  ASSERT(allocations_memory() != null);
-  int offset = reinterpret_cast<int>(cursor) - reinterpret_cast<int>(allocations_memory());
-  ASSERT(0 <= offset && offset < allocations_size());
-  return offset;
 }
 
 bool FlashRegistry::erase_flash_registry() {

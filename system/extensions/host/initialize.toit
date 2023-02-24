@@ -18,8 +18,10 @@ import .storage
 
 import ...containers
 import ...initialize
+import ...flash.registry
 
 initialize_host -> ContainerManager:
-  network := NetworkServiceProvider
-  storage := StorageServiceProvider
-  return initialize_system [network, storage]
+  registry ::= FlashRegistry.scan
+  network ::= NetworkServiceProvider
+  storage ::= StorageServiceProvider registry
+  return initialize_system registry [network, storage]

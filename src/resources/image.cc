@@ -40,7 +40,7 @@ PRIMITIVE(writer_create) {
   if (result == null) ALLOCATION_FAILED;
 
   if (!FlashRegistry::erase_chunk(offset, byte_size)) HARDWARE_ERROR;
-  void* address = FlashRegistry::memory(offset, byte_size);
+  void* address = FlashRegistry::region(offset, byte_size);
   ProgramImage image(address, byte_size);
   ImageOutputStream* output = _new ImageOutputStream(image);
   if (output == null) MALLOC_FAILED;

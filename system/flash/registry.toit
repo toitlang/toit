@@ -54,6 +54,17 @@ class FlashRegistry:
     slot.size -= size
     return FlashReservation result size
 
+  allocate reservation/FlashReservation --type/int --id/uuid.Uuid --metadata/ByteArray -> FlashAllocation:
+    try:
+      offset := reservation.offset
+      size := reservation.size
+      flash_registry_allocate_ offset size type id.to_byte_array metadata
+      allocation := FlashAllocation offset size type
+      allocations_[offset] = allocation
+      return allocation
+    finally:
+      reservation.close
+
   // Frees a previously allocated region in the flash.
   free allocation/FlashAllocation -> none:
     allocations_.remove allocation.offset
@@ -134,3 +145,5 @@ flash_registry_next_ offset:
 flash_registry_erase_ offset size:
   #primitive.flash.erase
 
+flash_registry_allocate_ offset size type id metadata:
+  #primitive.flash.allocate

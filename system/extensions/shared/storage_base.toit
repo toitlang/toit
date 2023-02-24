@@ -15,13 +15,19 @@
 
 import uuid
 
-import system.storage show Bucket
+import system.storage show Bucket Region
 import system.services show ServiceHandler ServiceProvider ServiceResource
 import system.api.storage show StorageService
 
+import ...flash.allocation
+import ...flash.registry
+
 abstract class StorageServiceProviderBase extends ServiceProvider
     implements StorageService ServiceHandler:
-  constructor name/string --major/int --minor/int:
+  // ...
+  registry_/FlashRegistry
+
+  constructor name/string .registry_ --major/int --minor/int:
     super name --major=major --minor=minor
     provides StorageService.SELECTOR --handler=this
 
@@ -40,9 +46,34 @@ abstract class StorageServiceProviderBase extends ServiceProvider
       if scheme != Bucket.SCHEME_RAM and scheme != Bucket.SCHEME_FLASH:
         throw "Unsupported '$scheme:' scheme"
       return open_bucket client --scheme=scheme --path=arguments[1]
+    else if index == StorageService.OPEN_REGION_INDEX:
+      scheme := arguments[0]
+      if scheme != Region.SCHEME_FLASH:
+        throw "Unsupported '$scheme:' scheme"
+      return open_region client --scheme=scheme --path=arguments[1] --size=arguments[2]
     unreachable
 
   abstract open_bucket client/int --scheme/string --path/string -> BucketResource
+
+  open_region client/int --scheme/string --path/string --size/int -> List:
+    id := uuid.uuid5 name path
+    needed := size + FLASH_REGISTRY_PAGE_SIZE
+    allocation := find_region_allocation_ --id=id --size=needed
+    if allocation.size < needed: throw "Existing region is too small"
+    offset := allocation.offset + FLASH_REGISTRY_PAGE_SIZE
+    size = allocation.size - FLASH_REGISTRY_PAGE_SIZE
+    resource := FlashRegionResource this client --offset=offset --size=size
+    return [ resource.serialize_for_rpc, offset, size, FLASH_REGISTRY_PAGE_SIZE, 0xff ]
+
+  find_region_allocation_ --id/uuid.Uuid --size/int -> FlashAllocation:
+    registry_.do: | allocation/FlashAllocation |
+      if allocation.type != FLASH_ALLOCATION_TYPE_REGION: continue.do
+      if allocation.id == id: return allocation
+    reservation := registry_.reserve size
+    return registry_.allocate reservation
+        --type=FLASH_ALLOCATION_TYPE_REGION
+        --id=id
+        --metadata=#[0xff, 0xff, 0xff, 0xff, 0xff]
 
   open_bucket --scheme/string --path/string -> int:
     unreachable  // TODO(kasper): Nasty.
@@ -54,6 +85,9 @@ abstract class StorageServiceProviderBase extends ServiceProvider
     unreachable  // TODO(kasper): Nasty.
 
   remove bucket/int key/string -> none:
+    unreachable  // TODO(kasper): Nasty.
+
+  open_region --scheme/string --path/string --size/int -> int:
     unreachable  // TODO(kasper): Nasty.
 
 abstract class BucketResource extends ServiceResource:
@@ -87,6 +121,22 @@ class FlashBucketResource extends BucketResource:
   compute_path_ key/string -> string:
     return paths.get key --init=: (uuid.uuid5 root key).stringify[..13]
 
+class FlashRegionResource extends ServiceResource:
+  client_/int
+  handle_/int? := null
+  constructor provider/StorageServiceProviderBase .client_ --offset/int --size/int:
+    super provider client_
+    handle_ = serialize_for_rpc
+    flash_grant_access_ client_ handle_ offset size
+
+  revoke -> none:
+    if not handle_: return
+    flash_revoke_access_ client_ handle_
+    handle_ = null
+
+  on_closed -> none:
+    revoke
+
 // --------------------------------------------------------------------------
 
 flash_kv_init_ partition/string volume/string read_only/bool:
@@ -100,3 +150,9 @@ flash_kv_write_bytes_ group key/string value/ByteArray:
 
 flash_kv_delete_ group key/string:
   #primitive.flash_kv.delete
+
+flash_grant_access_ client handle offset size:
+  #primitive.flash.grant_access
+
+flash_revoke_access_ client handle:
+  #primitive.flash.revoke_access

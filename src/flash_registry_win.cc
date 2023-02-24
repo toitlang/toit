@@ -23,10 +23,9 @@
 namespace toit {
 
 static const int ALLOCATION_SIZE = 2 * MB;
-static const int ENCRYPTION_WRITE_SIZE = 16;
 
 // An aligned (FLASH_BASED_SIZE) view into the allocations_malloced.
-const char* FlashRegistry::allocations_memory_ = null;
+uint8* FlashRegistry::allocations_memory_ = null;
 static void* allocations_malloced = null;
 
 void FlashRegistry::set_up() {
@@ -36,17 +35,13 @@ void FlashRegistry::set_up() {
   allocations_malloced = malloc(ALLOCATION_SIZE + FLASH_PAGE_SIZE);
   // Align the memory to FLASH_PAGE_SIZE.
   // Note that we allocated FLASH_PAGE_SIZE more than necessary, so we could do this.
-  allocations_memory_ = Utils::round_up(unvoid_cast<char*>(allocations_malloced), FLASH_PAGE_SIZE);
+  allocations_memory_ = Utils::round_up(unvoid_cast<uint8*>(allocations_malloced), FLASH_PAGE_SIZE);
 }
 
 void FlashRegistry::tear_down() {
   allocations_memory_ = null;
   free(allocations_malloced);
   allocations_malloced = null;
-}
-
-bool FlashRegistry::is_allocations_set_up() {
-  return allocations_memory_ != null;
 }
 
 void FlashRegistry::flush() {
@@ -60,7 +55,7 @@ int FlashRegistry::allocations_size() {
 int FlashRegistry::erase_chunk(int offset, int size) {
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   size = Utils::round_up(size, FLASH_PAGE_SIZE);
-  memset(memory(offset, size), 0xff, size);
+  memset(region(offset, size), 0xff, size);
   return size;
 }
 
@@ -76,19 +71,10 @@ bool is_erased(void* memory, int offset, int size) {
 }
 
 bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
-  void* dest = memory(offset, size);
-  ASSERT(Utils::is_aligned(offset, ENCRYPTION_WRITE_SIZE));
-  ASSERT(Utils::is_aligned(size, ENCRYPTION_WRITE_SIZE));
+  void* dest = region(offset, size);
   ASSERT(is_erased(dest, 0, size));
   memcpy(dest, chunk, size);
   return true;
-}
-
-int FlashRegistry::offset(const void* cursor) {
-  ASSERT(allocations_memory() != null);
-  word offset = Utils::address_distance(allocations_memory(), cursor);
-  ASSERT(0 <= offset && offset < allocations_size());
-  return offset;
 }
 
 bool FlashRegistry::erase_flash_registry() {
@@ -99,4 +85,4 @@ bool FlashRegistry::erase_flash_registry() {
 
 } // namespace toit
 
-#endif // defined(TOIT_LINUX) || defined(TOIT_BSD)
+#endif // defined(TOIT_WINDOWS)

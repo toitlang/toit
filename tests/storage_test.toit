@@ -6,10 +6,11 @@ import system.storage
 import expect show *
 
 main:
-  test_ram
-  test_flash
+  test_bucket_ram
+  test_bucket_flash
+  test_region_flash
 
-test_ram:
+test_bucket_ram:
   a := storage.Bucket.open --ram "bucket-a"
   b := storage.Bucket.open --ram "bucket-b"
   expect_throw "key not found": a["hest"]
@@ -39,7 +40,7 @@ test_ram:
   expect_throw "key not found": a["hest"]
   expect_throw "key not found": b["hest"]
 
-test_flash:
+test_bucket_flash:
   bucket := storage.Bucket.open --flash "bucket"
   bucket.remove "hest"
   expect_throw "key not found": bucket["hest"]
@@ -70,3 +71,22 @@ test_flash:
   expect_equals 2345 bucket[long]
   bucket.remove long
   expect_throw "key not found": bucket[long]
+
+test_region_flash:
+  region := storage.Region.open --flash "first-region" --size=1000
+  expect_equals 4096 region.sector_size
+  expect_equals 0xff region.erase_byte
+  expect ((region.read --from=0 --to=region.size).every: it == region.erase_byte)
+
+  snippets := []
+  written := 0
+  while written < region.size:
+    snippet_size := min (random 128) (region.size - written)
+    snippets.add (ByteArray snippet_size: random 0x100)
+    region.write --from=written snippets.last
+    written += snippet_size
+
+  read := 0
+  snippets.do: | snippet/ByteArray |
+    expect_bytes_equal snippet (region.read --from=read --to=read + snippet.size)
+    read += snippet.size

@@ -16,6 +16,7 @@
 #include "top.h"
 #include "embedded_data.h"
 #include "flash_registry.h"
+#include "program.h"
 
 namespace toit {
 
@@ -42,44 +43,18 @@ int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
   return allocations_size();
 }
 
-const FlashAllocation* FlashRegistry::at(int offset) {
-  ASSERT(is_allocations_set_up());
-  ASSERT(0 <= offset && offset < allocations_size());
-  const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(memory(offset, 0));
-  return (probe->is_valid(offset, EmbeddedData::uuid())) ? probe : null;
-}
-
-bool FlashRegistry::pad_and_write(const void* chunk, int offset, int size) {
-  if (size % FLASH_SEGMENT_SIZE == 0) {
-    return FlashRegistry::write_chunk(chunk, offset, size);
-  }
-  int aligned_size = Utils::round_down(size, FLASH_SEGMENT_SIZE);
-  bool success = FlashRegistry::write_chunk(chunk, offset, aligned_size);
-  if (!success) {
-    return false;
-  }
-  uint8_t last_segment[FLASH_SEGMENT_SIZE];  // TODO(Lau): Make statically allocated.
-  memset(last_segment, 0xFF, FLASH_SEGMENT_SIZE);
-  int remainder_length = size % FLASH_SEGMENT_SIZE;
-  memcpy(last_segment, static_cast<char*>(const_cast<void*>(chunk)) + aligned_size, remainder_length);
-  return FlashRegistry::write_chunk(last_segment, offset + aligned_size, FLASH_SEGMENT_SIZE);
-}
-
-void* FlashRegistry::memory(int offset, int size) {
+FlashAllocation* FlashRegistry::allocation(int offset) {
+  FlashAllocation* result = null;
   if ((offset & 1) == 0) {
-    ASSERT(allocations_memory() != null);
-    ASSERT(0 <= offset && offset + size <= allocations_size());
-    return const_cast<char*>(allocations_memory()) + offset;
-  }
-
+    FlashAllocation* probe = reinterpret_cast<FlashAllocation*>(region(offset, 0));
+    if (probe->is_valid(offset, EmbeddedData::uuid())) result = probe;
+  } else {
 #ifdef TOIT_FREERTOS
-  const EmbeddedDataExtension* extension = EmbeddedData::extension();
-  const Program* program = extension->program(offset - 1);
-  const void* memory = program;
-  return const_cast<void*>(memory);
-#else
-  return null;
+    const EmbeddedDataExtension* extension = EmbeddedData::extension();
+    result = const_cast<Program*>(extension->program(offset - 1));
 #endif
+  }
+  return result;
 }
 
 }

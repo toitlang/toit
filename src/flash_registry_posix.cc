@@ -33,11 +33,10 @@
 namespace toit {
 
 static const int ALLOCATION_SIZE = 2 * MB;
-static const int ENCRYPTION_WRITE_SIZE = 16;
 
 static void* allocations_mmap = null;
 static size_t allocations_mmap_size = 0;
-const char* FlashRegistry::allocations_memory_ = null;
+uint8* FlashRegistry::allocations_memory_ = null;
 
 static bool is_file_backed = false;
 
@@ -89,7 +88,7 @@ void FlashRegistry::set_up() {
   // the flash on the device so we don't want it to show up in heap accounting.
   allocations_mmap_size = allocations_size() + padding;
   allocations_mmap = mmap(null, allocations_mmap_size, PROT_READ | PROT_WRITE, flags, fd, 0);
-  allocations_memory_ = Utils::round_up(unvoid_cast<char*>(allocations_mmap), FLASH_PAGE_SIZE);
+  allocations_memory_ = Utils::round_up(static_cast<uint8*>(allocations_mmap), FLASH_PAGE_SIZE);
 
   if (allocations_mmap == MAP_FAILED) {
     FATAL("Failed to allocate memory for FlashRegistry");
@@ -114,15 +113,11 @@ void FlashRegistry::tear_down() {
   allocations_mmap = null;
 }
 
-bool FlashRegistry::is_allocations_set_up() {
-  return allocations_memory_ != null;
-}
-
 void FlashRegistry::flush() {
   if (!is_file_backed || !is_dirty()) return;
   int offset = Utils::round_down(dirty_start, pagesize);
   int size = Utils::round_up(dirty_end - offset, pagesize);
-  if (msync(void_cast(const_cast<char*>(allocations_memory_) + offset), size, MS_SYNC) != 0) {
+  if (msync(void_cast(allocations_memory_ + offset), size, MS_SYNC) != 0) {
     perror("FlashRegistry::flush/msync");
   }
   dirty_start = INT32_MAX;
@@ -137,7 +132,7 @@ int FlashRegistry::allocations_size() {
 int FlashRegistry::erase_chunk(int offset, int size) {
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   size = Utils::round_up(size, FLASH_PAGE_SIZE);
-  memset(memory(offset, size), 0xff, size);
+  memset(region(offset, size), 0xff, size);
   mark_dirty(offset, size);
   return size;
 }
@@ -154,20 +149,11 @@ bool is_erased(void* memory, int offset, int size) {
 }
 
 bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
-  void* dest = memory(offset, size);
-  ASSERT(Utils::is_aligned(offset, ENCRYPTION_WRITE_SIZE));
-  ASSERT(Utils::is_aligned(size, ENCRYPTION_WRITE_SIZE));
+  void* dest = region(offset, size);
   ASSERT(is_erased(dest, 0, size));
   memcpy(dest, chunk, size);
   mark_dirty(offset, size);
   return true;
-}
-
-int FlashRegistry::offset(const void* cursor) {
-  ASSERT(allocations_memory() != null);
-  word offset = Utils::address_distance(allocations_memory(), cursor);
-  ASSERT(0 <= offset && offset < allocations_size());
-  return offset;
 }
 
 bool FlashRegistry::erase_flash_registry() {

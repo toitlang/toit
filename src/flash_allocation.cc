@@ -61,7 +61,7 @@ bool FlashAllocation::Header::is_valid_allocation(const uint32 allocation_offset
 bool FlashAllocation::initialize(uint32 offset, uint8 type, const uint8* id, int size, const uint8* metadata) {
   if (static_cast<unsigned>(size) < sizeof(Header)) return false;
   const uint8* uuid = EmbeddedData::uuid();
-  void* result = FlashRegistry::memory(offset, size);
+  void* result = FlashRegistry::region(offset, size);
   Header header(offset, type, id, uuid, size, metadata);
   bool success = FlashRegistry::write_chunk(&header, offset, sizeof(header));
   FlashRegistry::flush();
