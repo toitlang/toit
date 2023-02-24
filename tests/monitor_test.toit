@@ -416,7 +416,8 @@ test_yield_on_leave:
   done.get
   expect_equals 40 output.size
 
-  // Check that the two tasks
+  // Check that the two tasks take turns
+  // producing output.
   last := null
   output.do:
     expect_not_identical last it
