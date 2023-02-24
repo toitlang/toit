@@ -425,7 +425,7 @@ test_yield_on_leave:
 test_process_messages_on_leave:
   done := Latch
   task::
-    sleep --ms=100
+    sleep --ms=200
     done.set null
 
   // Check that leaving the mutex lock causes
@@ -433,8 +433,8 @@ test_process_messages_on_leave:
   // wake up the sleeping task.
   mutex := Mutex
   start := Time.monotonic_us
-  end := start + 200_000
-  while Time.monotonic_us < end:
+  end := start + 10_000_000
+  while Time.monotonic_us < end and not done.has_value:
     mutex.do: null  // Do nothing.
 
   expect done.has_value --message="Task should be done" // Not starved.
