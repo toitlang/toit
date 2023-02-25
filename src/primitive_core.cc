@@ -665,13 +665,13 @@ static Object* printf_style_integer_to_string(Process* process, int64 value, int
       break;
     }
     case 8:
-      snprintf(buffer, sizeof(buffer), "%llo", value);
+      snprintf(buffer, sizeof(buffer), "%" PRIo64, value);
       break;
     case 10:
-      snprintf(buffer, sizeof(buffer), "%lld", value);
+      snprintf(buffer, sizeof(buffer), "%" PRId64, value);
       break;
     case 16:
-      snprintf(buffer, sizeof(buffer), "%llx", value);
+      snprintf(buffer, sizeof(buffer), "%" PRIx64, value);
       break;
     default:
       buffer[0] = '\0';
