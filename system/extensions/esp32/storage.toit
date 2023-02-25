@@ -58,7 +58,7 @@ class RtcMemory:
   // We store the size of the encoded message in the header of the
   // RTC memory. This gives us a way to pass the correctly sized
   // bytes slice to tison.decode and that is essential because
-  // the decoder rejects encoding with junk at the end.
+  // the decoder rejects encodings with junk at the end.
   static HEADER_ENCODED_SIZE_OFFSET ::= 0
   static HEADER_SIZE ::= 2 + HEADER_ENCODED_SIZE_OFFSET
 
