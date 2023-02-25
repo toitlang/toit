@@ -156,7 +156,7 @@ void GpioResourceGroup::on_register_resource(Resource* r) {
   SystemEventSource::instance()->run([&]() -> void {
     FATAL_IF_NOT_ESP_OK(gpio_isr_handler_add(pin, isr_handler, reinterpret_cast<void*>(pin)));
     // The gpio_isr_handler_add also enables interrupts on the pin. This is undesirable as all changes to the
-    // pin will then call the ISR. In toit we pass the Pin object around to other peripherals, and therefore we
+    // pin will then call the ISR. In Toit, we pass the Pin object around to other peripherals, and therefore we
     // do not really want an interrupt to fire on a pin unless it is specifically being used as an input pin.
     FATAL_IF_NOT_ESP_OK(gpio_intr_disable(pin));
   });
