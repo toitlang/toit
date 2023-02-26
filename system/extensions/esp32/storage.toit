@@ -15,6 +15,7 @@
 
 import encoding.tison
 import system.storage show Bucket
+import binary show LITTLE_ENDIAN
 
 import ..shared.storage_base
 import ...flash.registry
@@ -55,18 +56,30 @@ class RamBucketResource extends BucketResource:
     memory.flush
 
 class RtcMemory:
+  // We store the size of the encoded message in the header of the
+  // RTC memory. This gives us a way to pass the correctly sized
+  // bytes slice to tison.decode and that is essential because
+  // the decoder rejects encodings with junk at the end.
+  static HEADER_ENCODED_SIZE_OFFSET ::= 0
+  static HEADER_SIZE ::= 2 + HEADER_ENCODED_SIZE_OFFSET
+
   bytes/ByteArray ::= rtc_memory_
   cache/Map := {:}
 
   constructor:
     // Fill the cache, but be nice and avoid decoding the content
     // of the RTC memory if it was just cleared.
-    catch: if bytes[0] != 0: cache = tison.decode bytes
+    size := LITTLE_ENDIAN.uint16 bytes HEADER_ENCODED_SIZE_OFFSET
+    if size > 0:
+      catch:
+        cache = tison.decode bytes[HEADER_SIZE .. size + HEADER_SIZE]
 
   flush -> none:
     // TODO(kasper): We could consider encoding directly
     // into the RTC memory instead of copying it in.
-    bytes.replace 0 (tison.encode cache)
+    encoded := tison.encode cache
+    bytes.replace HEADER_SIZE encoded
+    LITTLE_ENDIAN.put_uint16 bytes HEADER_ENCODED_SIZE_OFFSET encoded.size
 
 // --------------------------------------------------------------------------
 

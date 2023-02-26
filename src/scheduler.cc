@@ -941,6 +941,7 @@ void Scheduler::iterate_process_chunks(void* context, process_chunk_callback_t* 
   for (ProcessGroup* group : groups_) {
     ProcessListFromProcessGroup& processes = group->processes();
     for (auto it : processes) {
+      if (it->program() == null) continue;  // External process.
       it->object_heap()->iterate_chunks(context, callback);
     }
   }
