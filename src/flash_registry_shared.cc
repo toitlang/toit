@@ -57,4 +57,29 @@ FlashAllocation* FlashRegistry::allocation(int offset) {
   return result;
 }
 
+static bool is_erased_aligned(const uint8* memory, int from, int to) {
+  ASSERT(Utils::is_aligned(memory + from, sizeof(uint32)));
+  ASSERT(Utils::is_aligned(memory + to, sizeof(uint32)));
+  const uint32* cursor = reinterpret_cast<const uint32*>(memory + from);
+  const uint32* limit = reinterpret_cast<const uint32*>(memory + to);
+  do {
+    if (*cursor != 0xffffffff) return false;
+    ++cursor;
+  } while (cursor < limit);
+  return true;
+}
+
+static bool is_erased_unaligned(const uint8* memory, int from, int to) {
+  for (int i = from; i < to; i++) {
+    if (memory[i] != 0xff) return false;
+  }
+  return true;
+}
+
+// TODO(kasper): Make this faster for full pages.
+bool FlashRegistry::is_erased(int offset, int size) {
+  const uint8* memory = region(offset, size);
+  return is_erased_unaligned(memory, 0, size);
+}
+
 }

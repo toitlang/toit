@@ -50,18 +50,21 @@ abstract class StorageServiceProviderBase extends ServiceProvider
       scheme := arguments[0]
       if scheme != Region.SCHEME_FLASH:
         throw "Unsupported '$scheme:' scheme"
-      return open_region client --scheme=scheme --path=arguments[1] --size=arguments[2]
+      return open_region client
+          --scheme=scheme
+          --path=arguments[1]
+          --capacity=arguments[2]
     unreachable
 
   abstract open_bucket client/int --scheme/string --path/string -> BucketResource
 
-  open_region client/int --scheme/string --path/string --size/int -> List:
+  open_region client/int --scheme/string --path/string --capacity/int -> List:
     id := uuid.uuid5 name path
-    needed := size + FLASH_REGISTRY_PAGE_SIZE
+    needed := capacity + FLASH_REGISTRY_PAGE_SIZE
     allocation := find_region_allocation_ --id=id --size=needed
     if allocation.size < needed: throw "Existing region is too small"
     offset := allocation.offset + FLASH_REGISTRY_PAGE_SIZE
-    size = allocation.size - FLASH_REGISTRY_PAGE_SIZE
+    size := allocation.size - FLASH_REGISTRY_PAGE_SIZE
     resource := FlashRegionResource this client --offset=offset --size=size
     return [ resource.serialize_for_rpc, offset, size, FLASH_REGISTRY_PAGE_SIZE, 0xff ]
 
@@ -87,7 +90,7 @@ abstract class StorageServiceProviderBase extends ServiceProvider
   remove bucket/int key/string -> none:
     unreachable  // TODO(kasper): Nasty.
 
-  open_region --scheme/string --path/string --size/int -> int:
+  open_region --scheme/string --path/string --capacity/int -> int:
     unreachable  // TODO(kasper): Nasty.
 
 abstract class BucketResource extends ServiceResource:

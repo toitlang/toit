@@ -37,6 +37,7 @@ TYPE_PRIMITIVE_ANY(region_open)
 TYPE_PRIMITIVE_ANY(region_close)
 TYPE_PRIMITIVE_ANY(region_read)
 TYPE_PRIMITIVE_ANY(region_write)
+TYPE_PRIMITIVE_BOOL(region_is_erased)
 TYPE_PRIMITIVE_ANY(region_erase)
 
 }  // namespace toit::compiler

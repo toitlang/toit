@@ -263,10 +263,17 @@ PRIMITIVE(region_close) {
   return process->program()->null_object();
 }
 
+static bool is_within_bounds(FlashRegion* resource, int from, int size) {
+  if (from < 0 || size < 0) return false;
+  int to = from + size;
+  if (to < from || to > resource->size()) return false;
+  return true;
+}
+
 PRIMITIVE(region_read) {
   ARGS(FlashRegion, resource, int, from, MutableBlob, bytes);
   int size = bytes.length();
-  if (from < 0 || from + size > resource->size()) OUT_OF_BOUNDS;
+  if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
   FlashRegistry::flush();
   const uint8* region = FlashRegistry::region(resource->offset(), resource->size());
   memcpy(bytes.address(), region + from, size);
@@ -276,16 +283,22 @@ PRIMITIVE(region_read) {
 PRIMITIVE(region_write) {
   ARGS(FlashRegion, resource, int, from, Blob, bytes);
   int size = bytes.length();
-  if (from < 0 || from + size > resource->size()) OUT_OF_BOUNDS;
+  if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
   if (!FlashRegistry::write_chunk(bytes.address(), from + resource->offset(), size)) {
     HARDWARE_ERROR;
   }
   return process->program()->null_object();
 }
 
+PRIMITIVE(region_is_erased) {
+  ARGS(FlashRegion, resource, int, from, int, size);
+  if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
+  return BOOL(FlashRegistry::is_erased(from + resource->offset(), size));
+}
+
 PRIMITIVE(region_erase) {
   ARGS(FlashRegion, resource, int, from, int, size);
-  if (from < 0 || from + size > resource->size()) OUT_OF_BOUNDS;
+  if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
   if (!Utils::is_aligned(from, FLASH_PAGE_SIZE)) INVALID_ARGUMENT;
   if (!Utils::is_aligned(size, FLASH_PAGE_SIZE)) INVALID_ARGUMENT;
   if (!FlashRegistry::erase_chunk(from + resource->offset(), size)) {

@@ -53,6 +53,7 @@ class FlashRegistry {
   }
 
   // Flash erasing support.
+  static bool is_erased(int offset, int size);
   static int erase_chunk(int offset, int size);
   static bool erase_flash_registry();
 

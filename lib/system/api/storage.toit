@@ -22,7 +22,7 @@ interface StorageService:
   remove bucket/int key/string -> none
   static REMOVE_INDEX /int ::= 3
 
-  open_region --scheme/string --path/string --size/int -> List
+  open_region --scheme/string --path/string --capacity/int -> List
   static OPEN_REGION_INDEX /int ::= 4
 
 class StorageServiceClient extends ServiceClient implements StorageService:
@@ -43,5 +43,5 @@ class StorageServiceClient extends ServiceClient implements StorageService:
   remove bucket/int key/string -> none:
     invoke_ StorageService.REMOVE_INDEX [bucket, key]
 
-  open_region --scheme/string --path/string --size/int -> List:
-    return invoke_ StorageService.OPEN_REGION_INDEX [scheme, path, size]
+  open_region --scheme/string --path/string --capacity/int -> List:
+    return invoke_ StorageService.OPEN_REGION_INDEX [scheme, path, capacity]

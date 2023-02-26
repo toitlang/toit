@@ -141,29 +141,41 @@ class Region extends ServiceResourceProxy:
   The format of the $uri is <scheme>:<path> and it is common to
     use qualified paths that include the domain name of the
     region owner, e.g. "flash:toitlang.org/jag".
+
+  See $(open --scheme --path --capacity) for an explanation of
+    the other parameters.
   */
-  static open uri/string --size/int -> Region:
+  static open uri/string --capacity/int -> Region:
     split := uri.index_of ":" --if_absent=: throw "No scheme provided"
-    return open --scheme=uri[..split] --path=uri[split + 1 ..] --size=size
+    return open --scheme=uri[..split] --path=uri[split + 1 ..] --capacity=capacity
 
   /**
   Opens a storage region using the $SCHEME_FLASH scheme and the
     given $path.
+
+  See $(open --scheme --path --capacity) for an explanation of
+    the other parameters.
   */
-  static open --flash/bool path/string --size/int -> Region:
+  static open --flash/bool path/string --capacity/int -> Region:
     if flash != true: throw "Bad Argument"
-    return open --scheme=SCHEME_FLASH --path=path --size=size
+    return open --scheme=SCHEME_FLASH --path=path --capacity=capacity
 
   /**
   Opens a storage region using the given $scheme and $path.
+
+  See $(open --scheme --path --capacity) for an explanation of
+    the other parameters.
   */
-  static open --scheme/string --path/string --size/int -> Region:
+  static open --scheme/string --path/string --capacity/int -> Region:
     client := _client_
     if not client: throw "UNSUPPORTED"
     path.index_of ":" --if_absent=:
-      region := client.open_region --scheme=scheme --path=path --size=size
+      region := client.open_region
+          --scheme=scheme
+          --path=path
+          --capacity=capacity
       handle := region[0]
-      size = region[2]
+      size := region[2]
       resource := flash_region_open_
           resource_freeing_module_
           client.id
@@ -200,6 +212,12 @@ class Region extends ServiceResourceProxy:
   /**
   ...
   */
+  is_erased --from/int=0 --to/int=size -> bool:
+    return flash_region_is_erased_ resource_ from (to - from)
+
+  /**
+  ...
+  */
   erase --from/int=0 --to/int=size -> none:
     if (round_down from sector_size) != from: throw "xxx"
     if (round_down to sector_size) != to: throw "xxx"
@@ -227,6 +245,9 @@ flash_region_read_ resource from bytes:
 
 flash_region_write_ resource from bytes:
   #primitive.flash.region_write
+
+flash_region_is_erased_ resource from size:
+  #primitive.flash.region_is_erased
 
 flash_region_erase_ resource from size:
   #primitive.flash.region_erase

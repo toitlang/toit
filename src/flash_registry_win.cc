@@ -59,20 +59,9 @@ int FlashRegistry::erase_chunk(int offset, int size) {
   return size;
 }
 
-bool is_erased(void* memory, int offset, int size) {
-  char* dest = reinterpret_cast<char*>(memory);
-  for (int i = 0; i < size; i++) {
-    uint8 value = dest[i];
-    if (value != 0xff) {
-      return false;
-    }
-  }
-  return true;
-}
-
 bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
   void* dest = region(offset, size);
-  ASSERT(is_erased(dest, 0, size));
+  // TODO(kasper): Check that we're only flipping bits in one direction.
   memcpy(dest, chunk, size);
   return true;
 }

@@ -73,10 +73,11 @@ test_bucket_flash:
   expect_throw "key not found": bucket[long]
 
 test_region_flash:
-  region := storage.Region.open --flash "first-region" --size=1000
+  region := storage.Region.open --flash "first-region" --capacity=1000
   expect_equals 4096 region.sector_size
   expect_equals 0xff region.erase_byte
   expect ((region.read --from=0 --to=region.size).every: it == region.erase_byte)
+  expect region.is_erased
 
   snippets := []
   written := 0

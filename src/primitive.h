@@ -591,6 +591,7 @@ namespace toit {
   PRIMITIVE(region_close, 1)                 \
   PRIMITIVE(region_read, 3)                  \
   PRIMITIVE(region_write, 3)                 \
+  PRIMITIVE(region_is_erased, 3)             \
   PRIMITIVE(region_erase, 3)                 \
 
 #define MODULE_SPI_FLASH(PRIMITIVE)          \
