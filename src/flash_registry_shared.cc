@@ -58,18 +58,6 @@ FlashAllocation* FlashRegistry::allocation(int offset) {
   return result;
 }
 
-static bool is_erased_aligned(const uint8* memory, int from, int to) {
-  ASSERT(Utils::is_aligned(memory + from, sizeof(uint32)));
-  ASSERT(Utils::is_aligned(memory + to, sizeof(uint32)));
-  const uint32* cursor = reinterpret_cast<const uint32*>(memory + from);
-  const uint32* limit = reinterpret_cast<const uint32*>(memory + to);
-  do {
-    if (*cursor != 0xffffffff) return false;
-    ++cursor;
-  } while (cursor < limit);
-  return true;
-}
-
 static bool is_erased_unaligned(const uint8* memory, int from, int to) {
   for (int i = from; i < to; i++) {
     if (memory[i] != 0xff) return false;
@@ -77,10 +65,39 @@ static bool is_erased_unaligned(const uint8* memory, int from, int to) {
   return true;
 }
 
-// TODO(kasper): Make this faster for full pages.
+static bool is_erased_aligned(const uint8* memory, int from, int to) {
+  ASSERT(Utils::is_aligned(memory + from, sizeof(uword)));
+  ASSERT(Utils::is_aligned(memory + to, sizeof(uword)));
+  const uword* cursor = reinterpret_cast<const uword*>(memory + from);
+  const uword* limit = reinterpret_cast<const uword*>(memory + to);
+  do {
+    if (*cursor != static_cast<uword>(-1)) return false;
+    ++cursor;
+  } while (cursor < limit);
+  return true;
+}
+
 bool FlashRegistry::is_erased(int offset, int size) {
   const uint8* memory = region(offset, size);
-  return is_erased_unaligned(memory, 0, size);
+  int cursor = 0;
+
+  int from_aligned = Utils::round_up(offset, sizeof(uword));
+  int unaligned_prefix = from_aligned - offset;
+  if (unaligned_prefix > 0) {
+    if (!is_erased_unaligned(memory, 0, unaligned_prefix)) return false;
+    cursor = unaligned_prefix;
+  }
+
+  int to = offset + size;
+  int to_aligned = Utils::round_down(to, sizeof(uword));
+  int aligned_middle = to_aligned - from_aligned;
+  if (aligned_middle > 0) {
+    int cursor_next = cursor + aligned_middle;
+    if (!is_erased_aligned(memory, cursor, cursor_next)) return false;
+    cursor = cursor_next;
+  }
+
+  return is_erased_unaligned(memory, cursor, size);
 }
 
 }
