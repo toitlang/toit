@@ -54,8 +54,9 @@ foreach(file ${VALGRIND_TESTS})
         "-DSNAPSHOT=${snap}"
         "-DVALGRIND_XML_PREFIX=${valgrind_xml_prefix}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/run.cmake"
+    CONFIGURATIONS slow
   )
-  set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
+  set_tests_properties(${test_name} PROPERTIES TIMEOUT 400)
 
   if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
     set_tests_properties(${test_name} PROPERTIES WILL_FAIL TRUE)
