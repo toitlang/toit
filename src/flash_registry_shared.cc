@@ -20,11 +20,6 @@
 
 namespace toit {
 
-static bool is_valid_allocation(int offset, const FlashAllocation* allocation) {
-  // TODO(kasper): For
-  return allocation->is_valid(offset, EmbeddedData::uuid());
-}
-
 int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
   ASSERT(is_allocations_set_up());
   if (offset >= allocations_size()) return -1;
@@ -36,7 +31,7 @@ int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
 
   // If we are at an allocation, we return the address immediately after the allocation.
   const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(allocations_memory() + offset);
-  if (is_valid_allocation(offset, probe)) {
+  if (probe->is_valid(offset)) {
     return offset + probe->size();
   }
 
@@ -44,7 +39,7 @@ int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
   for (int i = offset + FLASH_PAGE_SIZE; i < allocations_size(); i += FLASH_PAGE_SIZE) {
     if ((*it) != ReservationList::Iterator(null) && (*it)->left() == i) return i;
     const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(allocations_memory() + i);
-    if (is_valid_allocation(i, probe)) return i;
+    if (probe->is_valid(i)) return i;
   }
   return allocations_size();
 }
@@ -53,7 +48,7 @@ FlashAllocation* FlashRegistry::allocation(int offset) {
   FlashAllocation* result = null;
   if ((offset & 1) == 0) {
     FlashAllocation* probe = reinterpret_cast<FlashAllocation*>(region(offset, 0));
-    if (probe->is_valid(offset, EmbeddedData::uuid())) result = probe;
+    if (probe->is_valid(offset)) result = probe;
   } else {
 #ifdef TOIT_FREERTOS
     const EmbeddedDataExtension* extension = EmbeddedData::extension();

@@ -25,7 +25,7 @@
 #include "esp_spi_flash.h"
 
 #ifdef CONFIG_IDF_TARGET_ESP32
-  #include <esp32/rom/cache.h>
+#include <esp32/rom/cache.h>
 #endif
 
 namespace toit {
@@ -106,11 +106,7 @@ int FlashRegistry::erase_chunk(int offset, int size) {
   size = Utils::round_up(size, FLASH_PAGE_SIZE);
   esp_err_t result = ensure_erased(offset, size);
   if (result == ESP_OK) {
-    // TODO(kasper): Not strictly necessary if we always proceed to overwrite
-    // the erased section with the image. For now, we sometimes use this to
-    // erase a program header (see _Program.remove in programs_registry.toit)
-    // and to make sure the following flash scan doesn't find pseudo-erased
-    // programs, we flush here.
+    // Flush to make sure we don't find stale cached information.
     FlashRegistry::flush();
     return size;
   } else {

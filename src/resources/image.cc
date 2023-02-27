@@ -27,7 +27,7 @@ MODULE_IMPLEMENTATION(image, MODULE_IMAGE)
 PRIMITIVE(current_id) {
   const uint8* id = process->program()->id();
   ByteArray* result = process->object_heap()->allocate_external_byte_array(
-      Program::Header::id_size(), const_cast<uint8*>(id), false, false);
+      Program::Header::ID_SIZE, const_cast<uint8*>(id), false, false);
   if (!result) ALLOCATION_FAILED;
   return result;
 }
@@ -108,19 +108,19 @@ PRIMITIVE(writer_commit) {
     // TODO(kasper): Can we get the metadata to already contain the right bits
     // from the get go? Right now, we ignore the bits put in there when
     // converting from snapshot to image, but that seems fishy.
-    metadata[0] |= FlashAllocation::Header::FLAGS_HAS_ASSETS_MASK;
+    metadata[0] |= FlashAllocation::Header::FLAGS_PROGRAM_HAS_ASSETS_MASK;
   }
 
   // Write program header as the last thing. Only a complete flash write
   // will mark the program as valid.
   int header_offset = FlashRegistry::offset(image.begin());
-  bool success = FlashAllocation::initialize(
+  const FlashAllocation::Header header(
       header_offset,
       FLASH_ALLOCATION_TYPE_PROGRAM,
       output->program_id(),
       program_size,
       metadata);
-  if (!success) HARDWARE_ERROR;
+  if (!FlashAllocation::commit(header_offset, program_size, &header)) HARDWARE_ERROR;
   return process->program()->null_object();
 }
 

@@ -127,7 +127,7 @@ test_region_flash_is_erased:
   expect_throw "OUT_OF_BOUNDS": region.is_erased --from=0 --to=0
   expect_throw "OUT_OF_BOUNDS": region.is_erased --from=-4096
   expect_throw "OUT_OF_BOUNDS": region.is_erased --to=-4096
-  expect_throw "OUT_OF_BOUNDS": region.is_erased --from=4096 --to=0x7fff_f000
+  expect_throw "OUT_OF_BOUNDS": region.is_erased --from=4096 --to=8192
   expect_throw "OUT_OF_BOUNDS": region.is_erased --from=4096 --to=0
 
 test_region_flash_write_all:

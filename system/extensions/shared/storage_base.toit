@@ -83,7 +83,6 @@ abstract class StorageServiceProviderBase extends ServiceProvider
 
   new_region_allocation_ --id/uuid.Uuid --path/string --size/int -> FlashAllocation:
     properties := tison.encode { "path": path }
-    print "properties = $properties.size bytes"
     // TODO(kasper): Check that there is room!
     reservation := registry_.reserve size
     metadata := ByteArray 5: 0xff

@@ -89,13 +89,13 @@ PRIMITIVE(get_id) {
   ARGS(int, offset);
   // Load by-value as the ID may be used across multiple segments, and will
   // be cleared in flash when the segment is deleted.
-  ByteArray* id = process->object_heap()->allocate_internal_byte_array(FlashAllocation::Header::id_size());
+  ByteArray* id = process->object_heap()->allocate_internal_byte_array(FlashAllocation::Header::ID_SIZE);
   if (id == null) ALLOCATION_FAILED;
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   // Not normally possible, may indicate a bug or a worn flash chip.
   if (!allocation) FILE_NOT_FOUND;
   ByteArray::Bytes bytes(id);
-  memcpy(bytes.address(), allocation->id(), FlashAllocation::Header::id_size());
+  memcpy(bytes.address(), allocation->id(), FlashAllocation::Header::ID_SIZE);
   return id;
 }
 
@@ -104,7 +104,8 @@ PRIMITIVE(get_size) {
   ARGS(int, offset);
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   if (allocation == null) INVALID_ARGUMENT;
-  int size = allocation->size() + allocation->assets_size(null, null);
+  int size = allocation->size();
+  if (allocation->is_program()) size += allocation->program_assets_size(null, null);
   return Smi::from(size);
 }
 
@@ -193,7 +194,8 @@ PRIMITIVE(allocate) {
     memcpy(id, id_blob.address(), sizeof(id));
     memcpy(metadata, metadata_blob.address(), sizeof(metadata));
 
-    if (!FlashAllocation::initialize(offset, type, id, size, metadata)) HARDWARE_ERROR;
+    const FlashAllocation::Header header(offset, type, id, size, metadata);
+    if (!FlashAllocation::commit(offset, size, &header)) HARDWARE_ERROR;
     return process->program()->null_object();
   }
   ALREADY_CLOSED;
@@ -277,11 +279,8 @@ PRIMITIVE(region_close) {
 }
 
 static bool is_within_bounds(FlashRegion* resource, int from, int size) {
-  if (from < 0 || size <= 0) return false;
   int to = from + size;
-  if (to < from) printf("[got it]\n"); // TODO(kasper): Can we provoke this in tests?
-  if (to < from || to > resource->size()) return false;
-  return true;
+  return from >= 0 && to > from && to <= resource->size();
 }
 
 PRIMITIVE(region_read) {
@@ -305,13 +304,13 @@ PRIMITIVE(region_write) {
 }
 
 PRIMITIVE(region_is_erased) {
-  ARGS(FlashRegion, resource, int, from, int, size);
+  ARGS(FlashRegion, resource, int, from, int32, size);
   if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
   return BOOL(FlashRegistry::is_erased(from + resource->offset(), size));
 }
 
 PRIMITIVE(region_erase) {
-  ARGS(FlashRegion, resource, int, from, int, size);
+  ARGS(FlashRegion, resource, int, from, int32, size);
   if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
   if (!Utils::is_aligned(from, FLASH_PAGE_SIZE)) INVALID_ARGUMENT;
   if (!Utils::is_aligned(size, FLASH_PAGE_SIZE)) INVALID_ARGUMENT;
