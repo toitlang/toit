@@ -84,21 +84,6 @@ PRIMITIVE(erase) {
   return Smi::from(FlashRegistry::erase_chunk(offset, size));
 }
 
-PRIMITIVE(get_id) {
-  PRIVILEGED;
-  ARGS(int, offset);
-  // Load by-value as the ID may be used across multiple segments, and will
-  // be cleared in flash when the segment is deleted.
-  ByteArray* id = process->object_heap()->allocate_internal_byte_array(FlashAllocation::Header::ID_SIZE);
-  if (id == null) ALLOCATION_FAILED;
-  const FlashAllocation* allocation = FlashRegistry::allocation(offset);
-  // Not normally possible, may indicate a bug or a worn flash chip.
-  if (!allocation) FILE_NOT_FOUND;
-  ByteArray::Bytes bytes(id);
-  memcpy(bytes.address(), allocation->id(), FlashAllocation::Header::ID_SIZE);
-  return id;
-}
-
 PRIMITIVE(get_size) {
   PRIVILEGED;
   ARGS(int, offset);
@@ -109,23 +94,17 @@ PRIMITIVE(get_size) {
   return Smi::from(size);
 }
 
-PRIMITIVE(get_type) {
+PRIMITIVE(get_header_page) {
   PRIVILEGED;
   ARGS(int, offset);
-  const FlashAllocation* allocation = FlashRegistry::allocation(offset);
-  if (allocation == null) INVALID_ARGUMENT;
-  return Smi::from(allocation->type());
-}
-
-PRIMITIVE(get_metadata) {
-  PRIVILEGED;
-  ARGS(int, offset);
-  ByteArray* metadata = process->object_heap()->allocate_proxy();
-  if (metadata == null) ALLOCATION_FAILED;
-  const FlashAllocation* allocation = FlashRegistry::allocation(offset);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
+  FlashAllocation* allocation = FlashRegistry::allocation(offset);
+  // Not normally possible, may indicate a bug or a worn flash chip.
+  if (!allocation) FILE_NOT_FOUND;
   // TODO(lau): Add support invalidation of proxy. The proxy is read-only and backed by flash.
-  metadata->set_external_address(FlashAllocation::Header::METADATA_SIZE, const_cast<uint8*>(allocation->metadata()));
-  return metadata;
+  proxy->set_external_address(FLASH_PAGE_SIZE, reinterpret_cast<uint8*>(allocation));
+  return proxy;
 }
 
 PRIMITIVE(reserve_hole) {
@@ -176,7 +155,7 @@ PRIMITIVE(erase_flash_registry) {
 
 PRIMITIVE(allocate) {
   PRIVILEGED;
-  ARGS(int, offset, int, size, int, type, Blob, id_blob, Blob, metadata_blob);
+  ARGS(int, offset, int, size, int, type, Blob, id, Blob, metadata, Blob, content);
   for (auto it = reservations.begin(); it != reservations.end(); ++it) {
     Reservation* reservation = *it;
     int reserved_offset = reservation->left();
@@ -184,17 +163,25 @@ PRIMITIVE(allocate) {
     if (reserved_offset > offset) break;
     ASSERT(reserved_offset == offset);
 
-    uint8 id[UUID_SIZE];
-    uint8 metadata[FlashAllocation::Header::METADATA_SIZE];
     if (reservation->size() != size
-        || id_blob.length() != sizeof(id)
-        || metadata_blob.length() != sizeof(metadata)) {
+        || id.length() != FlashAllocation::Header::ID_SIZE
+        || metadata.length() != FlashAllocation::Header::METADATA_SIZE) {
       INVALID_ARGUMENT;
     }
-    memcpy(id, id_blob.address(), sizeof(id));
-    memcpy(metadata, metadata_blob.address(), sizeof(metadata));
 
-    const FlashAllocation::Header header(offset, type, id, size, metadata);
+    int content_length = content.length();
+    if (content_length > 0) {
+      int header_offset = sizeof(FlashAllocation::Header);
+      if (content_length > FLASH_PAGE_SIZE - header_offset) {
+        OUT_OF_BOUNDS;
+      }
+
+      if (!FlashRegistry::write_chunk(content.address(), offset + header_offset, content_length)) {
+        HARDWARE_ERROR;
+      }
+    }
+
+    const FlashAllocation::Header header(offset, type, id.address(), size, metadata.address());
     if (!FlashAllocation::commit(offset, size, &header)) HARDWARE_ERROR;
     return process->program()->null_object();
   }

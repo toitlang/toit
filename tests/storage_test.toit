@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import uuid
 import system.storage
 import expect show *
 
@@ -14,6 +13,7 @@ main:
   test_region_flash_is_erased
   test_region_flash_write_all
   test_region_flash_ignore_set
+  test_region_flash_invalid_arguments
 
   test_region_flash_delete
   test_region_flash_list
@@ -81,13 +81,13 @@ test_bucket_flash:
   expect_throw "key not found": bucket[long]
 
 test_region_flash_erase:
-  region := storage.Region.open --flash "region-0" --capacity=8000
+  region := storage.Region.open --flash "region-0" --minimum_size=8000
   expect_equals 8192 region.size
-  expect_equals 4096 region.sector_size
-  expect_equals 0xff region.erase_byte
+  expect_equals 4096 region.erase_granularity
+  expect_equals 0xff region.erase_value
   region.is_erased
   expect region.is_erased
-  expect ((region.read --from=0 --to=region.size).every: it == region.erase_byte)
+  expect ((region.read --from=0 --to=region.size).every: it == region.erase_value)
 
   expect_throw "Bad Argument": region.erase --from=1
   expect_throw "Bad Argument": region.erase --to=9
@@ -98,7 +98,7 @@ test_region_flash_erase:
   expect_throw "OUT_OF_BOUNDS": region.erase --from=4096 --to=0
 
 test_region_flash_is_erased:
-  region := storage.Region.open --flash "region-1" --capacity=1000
+  region := storage.Region.open --flash "region-1" --minimum_size=1000
   region.erase
   expect region.is_erased
 
@@ -132,7 +132,7 @@ test_region_flash_is_erased:
   expect_throw "OUT_OF_BOUNDS": region.is_erased --from=4096 --to=0
 
 test_region_flash_write_all:
-  region := storage.Region.open --flash "region-1" --capacity=1000
+  region := storage.Region.open --flash "region-1" --minimum_size=1000
   region.erase
 
   snippets := []
@@ -149,25 +149,35 @@ test_region_flash_write_all:
     read += snippet.size
 
 test_region_flash_ignore_set:
-  region := storage.Region.open --flash "region-2" --capacity=1000
+  region := storage.Region.open --flash "region-2" --minimum_size=1000
   region.erase
   region.write --from=0 #[0b1010_1010]
   expect_bytes_equal #[0b1010_1010] (region.read --from=0 --to=1)
   region.write --from=0 #[0b1111_0000]
   expect_bytes_equal #[0b1010_0000] (region.read --from=0 --to=1)
 
+test_region_flash_invalid_arguments:
+  expect_throw "ugh": storage.Region.open --flash "region-3"
+      --minimum_access=storage.Region.ACCESS_WRITE_CAN_SET_BITS
+  expect_throw "ugh2": storage.Region.open --flash "region-3"
+      --maximum_erase_granularity=2048
+  region := storage.Region.open --flash "region-3"
+  region.close
+
 test_region_flash_delete:
-  region := storage.Region.open --scheme="flash" --path="kurt" --capacity=8192
-  expect_throw "ALREADY_IN_USE": storage.Region.delete --scheme="flash" --path="kurt"
+  region := storage.Region.open --flash "kurt" --minimum_size=8192
+  expect_throw "ALREADY_IN_USE": storage.Region.delete --flash "kurt"
   region.close
   expect_throw "ALREADY_CLOSED": region.read --from=0 --to=4
   expect_throw "ALREADY_CLOSED": region.write --from=0 #[1]
   expect_throw "ALREADY_CLOSED": region.is_erased --from=0 --to=4
   expect_throw "ALREADY_CLOSED": region.erase --from=0 --to=4096
-  storage.Region.delete --scheme="flash" --path="kurt"
+  storage.Region.delete --flash "kurt"
 
 test_region_flash_list:
-  // TODO(kasper): For now, this returns the list of internal
-  // ids, but we really want this to be the list of names.
-  uuids := (storage.Region.list --scheme="flash").map: uuid.parse it
-  expect uuids.size >= 3
+  regions := storage.Region.list --flash
+  expect (regions.contains "flash:region-0")
+  expect (regions.contains "flash:region-1")
+  expect (regions.contains "flash:region-2")
+  expect (regions.contains "flash:region-3")
+  expect_not (regions.contains "flash:kurt")

@@ -50,8 +50,8 @@ FlashAllocation::Header::Header(uint32 offset,
   initialize(id_, id, sizeof(id_));
   initialize(metadata_, metadata, sizeof(metadata_));
   ASSERT(Utils::is_aligned(size, FLASH_PAGE_SIZE));
-  size_in_pages_ = static_cast<uint16>(Utils::round_up(size, FLASH_PAGE_SIZE) >> 12);
   type_ = type;
+  size_in_pages_ = static_cast<uint16>(Utils::round_up(size, FLASH_PAGE_SIZE) >> 12);
   if (type == FLASH_ALLOCATION_TYPE_REGION) {
     memcpy(uuid_, DATA_UUID, sizeof(uuid_));
   } else {

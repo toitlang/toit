@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import binary show LITTLE_ENDIAN
+import encoding.tison
 import uuid
 
 import system.storage show Bucket Region
@@ -24,7 +26,6 @@ import ...flash.registry
 
 abstract class StorageServiceProviderBase extends ServiceProvider
     implements StorageService ServiceHandler:
-  // ...
   registry_/FlashRegistry
 
   constructor name/string .registry_ --major/int --minor/int:
@@ -53,7 +54,7 @@ abstract class StorageServiceProviderBase extends ServiceProvider
       return region_open client
           --scheme=scheme
           --path=arguments[1]
-          --capacity=arguments[2]
+          --minimum_size=arguments[2]
     else if index == StorageService.REGION_DELETE_INDEX:
       return region_delete --scheme=arguments[0] --path=arguments[1]
     else if index == StorageService.REGION_LIST_INDEX:
@@ -62,16 +63,16 @@ abstract class StorageServiceProviderBase extends ServiceProvider
 
   abstract bucket_open client/int --scheme/string --path/string -> BucketResource
 
-  region_open client/int --scheme/string --path/string --capacity/int -> List:
+  region_open client/int --scheme/string --path/string --minimum_size/int -> List:
     id := uuid.uuid5 name path
-    needed := capacity + FLASH_REGISTRY_PAGE_SIZE
+    needed := minimum_size + FLASH_REGISTRY_PAGE_SIZE
     allocation := find_region_allocation_ --id=id --if_absent=:
       new_region_allocation_ --id=id --path=path --size=needed
     if allocation.size < needed: throw "Existing region is too small"
     offset := allocation.offset + FLASH_REGISTRY_PAGE_SIZE
     size := allocation.size - FLASH_REGISTRY_PAGE_SIZE
     resource := FlashRegionResource this client --offset=offset --size=size
-    return [ resource.serialize_for_rpc, offset, size, 12, Region.MODE_WRITE_CAN_CLEAR_BITS ]
+    return [ resource.serialize_for_rpc, offset, size, 12, Region.ACCESS_WRITE_CAN_CLEAR_BITS ]
 
   find_region_allocation_ --id/uuid.Uuid [--if_absent] -> FlashAllocation:
     registry_.do: | allocation/FlashAllocation |
@@ -80,12 +81,15 @@ abstract class StorageServiceProviderBase extends ServiceProvider
     return if_absent.call
 
   new_region_allocation_ --id/uuid.Uuid --path/string --size/int -> FlashAllocation:
+    properties := tison.encode { "path": "flash:$path" }
     reservation := registry_.reserve size
     metadata := ByteArray 5: 0xff
+    LITTLE_ENDIAN.put_uint16 metadata 0 properties.size
     return registry_.allocate reservation
         --type=FLASH_ALLOCATION_TYPE_REGION
         --id=id
         --metadata=metadata
+        --content=properties
 
   region_delete --scheme/string --path/string -> none:
     id := uuid.uuid5 name path
@@ -101,9 +105,10 @@ abstract class StorageServiceProviderBase extends ServiceProvider
     result := []
     registry_.do: | allocation/FlashAllocation |
       if allocation.type != FLASH_ALLOCATION_TYPE_REGION: continue.do
-      // TODO(kasper): This is not what we want to collect. We need
-      // the names of the regions.
-      result.add allocation.id.stringify
+      properties_size := LITTLE_ENDIAN.uint16 allocation.metadata 0
+      catch:
+        properties := tison.decode allocation.content[..properties_size]
+        result.add properties["path"]
     return result
 
   bucket_open --scheme/string --path/string -> int:
@@ -118,7 +123,7 @@ abstract class StorageServiceProviderBase extends ServiceProvider
   bucket_remove bucket/int key/string -> none:
     unreachable  // TODO(kasper): Nasty.
 
-  region_open --scheme/string --path/string --capacity/int -> int:
+  region_open --scheme/string --path/string --minimum_size/int -> int:
     unreachable  // TODO(kasper): Nasty.
 
 abstract class BucketResource extends ServiceResource:

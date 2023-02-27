@@ -577,13 +577,11 @@ namespace toit {
   PRIMITIVE(next, 1)                         \
   PRIMITIVE(info, 1)                         \
   PRIMITIVE(erase, 2)                        \
-  PRIMITIVE(get_id, 1)                       \
   PRIMITIVE(get_size, 1)                     \
-  PRIMITIVE(get_type, 1)                     \
-  PRIMITIVE(get_metadata, 1)                 \
+  PRIMITIVE(get_header_page, 1)              \
   PRIMITIVE(reserve_hole, 2)                 \
   PRIMITIVE(cancel_reservation, 1)           \
-  PRIMITIVE(allocate, 5)                     \
+  PRIMITIVE(allocate, 6)                     \
   PRIMITIVE(erase_flash_registry, 0)         \
   PRIMITIVE(grant_access, 4)                 \
   PRIMITIVE(is_accessed, 2)                  \

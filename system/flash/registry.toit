@@ -54,12 +54,16 @@ class FlashRegistry:
     slot.size -= size
     return FlashReservation result size
 
-  allocate reservation/FlashReservation --type/int --id/uuid.Uuid --metadata/ByteArray -> FlashAllocation:
+  allocate reservation/FlashReservation -> FlashAllocation
+      --type/int
+      --id/uuid.Uuid
+      --metadata/ByteArray
+      --content/ByteArray=#[]:
     try:
       offset := reservation.offset
       size := reservation.size
-      flash_registry_allocate_ offset size type id.to_byte_array metadata
-      allocation := FlashAllocation offset size type
+      flash_registry_allocate_ offset size type id.to_byte_array metadata content
+      allocation := FlashAllocation offset size
       allocations_[offset] = allocation
       return allocation
     finally:
@@ -91,7 +95,7 @@ class FlashRegistry:
       else if flag == SCAN_ALLOCATION_:
         size := (info >> 10) * FLASH_REGISTRY_PAGE_SIZE
         type := (info >> 2) & 0xFF
-        allocation/FlashAllocation := FlashAllocation offset size type
+        allocation/FlashAllocation := FlashAllocation offset size
         found[allocation.offset] = allocation
     // Update the allocations map, keeping existing allocation objects.
     update_allocations_ found
@@ -145,5 +149,5 @@ flash_registry_next_ offset:
 flash_registry_erase_ offset size:
   #primitive.flash.erase
 
-flash_registry_allocate_ offset size type id metadata:
+flash_registry_allocate_ offset size type id metadata content:
   #primitive.flash.allocate

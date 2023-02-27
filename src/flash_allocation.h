@@ -50,8 +50,8 @@ class FlashAllocation {
     uint32 me_;      // Offset in allocation partition for validation.
     uint8 id_[ID_SIZE];
     uint8 metadata_[METADATA_SIZE];
-    uint16 size_in_pages_;
     uint8 type_;
+    uint16 size_in_pages_;
     uint8 uuid_[UUID_SIZE];
 
     bool is_valid(uint32 offset) const;
