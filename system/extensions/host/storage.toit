@@ -20,7 +20,7 @@ class StorageServiceProvider extends StorageServiceProviderBase:
   constructor registry/FlashRegistry:
     super "system/storage/host" registry --major=0 --minor=1
 
-  open_bucket client/int --scheme/string --path/string -> BucketResource:
+  bucket_open client/int --scheme/string --path/string -> BucketResource:
     // On host platforms, we always use non-volatile buckets
     // because they are actually backed by somewhat volatile
     // memory that is lost when the host process terminates.

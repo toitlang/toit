@@ -60,9 +60,9 @@ int FlashRegistry::erase_chunk(int offset, int size) {
 }
 
 bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
-  void* dest = region(offset, size);
-  // TODO(kasper): Check that we're only flipping bits in one direction.
-  memcpy(dest, chunk, size);
+  uint8* destination = region(offset, size);
+  const uint8* source = static_cast<const uint8*>(chunk);
+  for (int i = 0; i < size; i++) destination[i] &= source[i];
   return true;
 }
 

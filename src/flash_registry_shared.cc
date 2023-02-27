@@ -20,6 +20,11 @@
 
 namespace toit {
 
+static bool is_valid_allocation(int offset, const FlashAllocation* allocation) {
+  // TODO(kasper): For
+  return allocation->is_valid(offset, EmbeddedData::uuid());
+}
+
 int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
   ASSERT(is_allocations_set_up());
   if (offset >= allocations_size()) return -1;
@@ -28,9 +33,10 @@ int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
   if ((*it) != ReservationList::Iterator(null) && (*it)->left() == offset) {
     return (*it)->right();
   }
+
   // If we are at an allocation, we return the address immediately after the allocation.
   const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(allocations_memory() + offset);
-  if (probe->is_valid(offset, EmbeddedData::uuid())) {
+  if (is_valid_allocation(offset, probe)) {
     return offset + probe->size();
   }
 
@@ -38,7 +44,7 @@ int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
   for (int i = offset + FLASH_PAGE_SIZE; i < allocations_size(); i += FLASH_PAGE_SIZE) {
     if ((*it) != ReservationList::Iterator(null) && (*it)->left() == i) return i;
     const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(allocations_memory() + i);
-    if (probe->is_valid(i, EmbeddedData::uuid())) return i;
+    if (is_valid_allocation(i, probe)) return i;
   }
   return allocations_size();
 }

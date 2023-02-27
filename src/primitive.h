@@ -586,6 +586,7 @@ namespace toit {
   PRIMITIVE(allocate, 5)                     \
   PRIMITIVE(erase_flash_registry, 0)         \
   PRIMITIVE(grant_access, 4)                 \
+  PRIMITIVE(is_accessed, 2)                  \
   PRIMITIVE(revoke_access, 2)                \
   PRIMITIVE(region_open, 5)                  \
   PRIMITIVE(region_close, 1)                 \

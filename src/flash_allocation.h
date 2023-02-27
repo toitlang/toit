@@ -22,22 +22,14 @@
 namespace toit {
 
 // Keep in sync with system/flash/allocation.toit.
-static const uint8 PROGRAM_TYPE = 0;
+static const uint8 FLASH_ALLOCATION_TYPE_PROGRAM = 0;
+static const uint8 FLASH_ALLOCATION_TYPE_REGION = 1;
 
 static const int FLASH_PAGE_SIZE = 4 * KB;
 static const int FLASH_SEGMENT_SIZE = 16;
 
 class FlashAllocation {
  public:
-  explicit FlashAllocation(uint32 offset);
-  FlashAllocation();
-
-  bool is_valid_allocation(const uint32 allocation_offset) const;
-
-  void validate();
-
-  static bool initialize(uint32 offset, uint8 type, const uint8* id, int size, const uint8* metadata);
-
   class __attribute__ ((__packed__)) Header {
    public:
     static const int METADATA_SIZE = 5;
@@ -101,15 +93,20 @@ class FlashAllocation {
     friend class FlashAllocation;
   };
 
-  void set_header(uint32 allocation_offset, uint8* uuid, const uint8* id = null) {
-    header_.initialize(allocation_offset, uuid, id);
+  explicit FlashAllocation(uint32 offset);
+  FlashAllocation();
+
+  static bool initialize(uint32 offset, uint8 type, const uint8* id, int size, const uint8* metadata);
+
+  void set_header(uint32 offset, uint8* uuid, const uint8* id = null) {
+    header_.initialize(offset, uuid, id);
   }
 
   // Returns the size for programs stored in flash.
   int size() const { return header_.size(); }
   uint8 type() const { return header_.type(); }
 
-  bool is_valid(uint32 allocation_offset, const uint8* uuid) const;
+  bool is_valid(uint32 offset, const uint8* uuid) const;
 
   // Returns a pointer to the id of the program.
   const uint8* id() const { return header_.id(); }
@@ -126,6 +123,8 @@ class FlashAllocation {
 
  private:
   Header header_;
+
+  bool is_valid_allocation(const uint32 offset) const;
 };
 
 class Reservation;

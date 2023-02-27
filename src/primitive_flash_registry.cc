@@ -209,12 +209,25 @@ PRIMITIVE(grant_access) {
   return process->program()->null_object();
 }
 
+PRIMITIVE(is_accessed) {
+  PRIVILEGED;
+  ARGS(int, offset, int, size);
+  { Locker locker(OS::global_mutex());
+    for (auto it : grants) {
+      if (it->offset() == offset && it->size() == size) {
+        return BOOL(true);
+      }
+    }
+  }
+  return BOOL(false);
+}
+
 PRIMITIVE(revoke_access) {
   PRIVILEGED;
   ARGS(int, client, int, handle);
   Locker locker(OS::global_mutex());
   grants.remove_where([&](RegionGrant* grant) -> bool {
-    return grant->client() == client && grant->handle();
+    return grant->client() == client && grant->handle() == handle;
   });
   return process->program()->null_object();
 }
@@ -264,8 +277,9 @@ PRIMITIVE(region_close) {
 }
 
 static bool is_within_bounds(FlashRegion* resource, int from, int size) {
-  if (from < 0 || size < 0) return false;
+  if (from < 0 || size <= 0) return false;
   int to = from + size;
+  if (to < from) printf("[got it]\n"); // TODO(kasper): Can we provoke this in tests?
   if (to < from || to > resource->size()) return false;
   return true;
 }

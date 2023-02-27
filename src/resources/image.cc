@@ -114,10 +114,14 @@ PRIMITIVE(writer_commit) {
   // Write program header as the last thing. Only a complete flash write
   // will mark the program as valid.
   int header_offset = FlashRegistry::offset(image.begin());
-  if (FlashAllocation::initialize(header_offset, PROGRAM_TYPE, output->program_id(), program_size, metadata)) {
-    return process->program()->null_object();
-  }
-  HARDWARE_ERROR;
+  bool success = FlashAllocation::initialize(
+      header_offset,
+      FLASH_ALLOCATION_TYPE_PROGRAM,
+      output->program_id(),
+      program_size,
+      metadata);
+  if (!success) HARDWARE_ERROR;
+  return process->program()->null_object();
 }
 
 PRIMITIVE(writer_close) {

@@ -36,7 +36,7 @@ PRIMITIVE(spawn) {
 
   FlashAllocation* allocation = FlashRegistry::allocation(offset);
   if (!allocation) OUT_OF_BOUNDS;
-  if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
+  if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) INVALID_ARGUMENT;
 
   Program* program = static_cast<Program*>(allocation);
   if (!program->is_valid(offset, EmbeddedData::uuid())) OUT_OF_BOUNDS;
@@ -79,7 +79,7 @@ PRIMITIVE(is_running) {
   ARGS(int, offset);
   FlashAllocation* allocation = FlashRegistry::allocation(offset);
   if (!allocation) OUT_OF_BOUNDS;
-  if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
+  if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) INVALID_ARGUMENT;
   Program* program = static_cast<Program*>(allocation);
   return BOOL(VM::current()->scheduler()->is_running(program));
 }
@@ -88,7 +88,7 @@ PRIMITIVE(kill) {
   ARGS(int, offset);
   FlashAllocation* allocation = FlashRegistry::allocation(offset);
   if (!allocation) OUT_OF_BOUNDS;
-  if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
+  if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) INVALID_ARGUMENT;
   Program* program = static_cast<Program*>(allocation);
   return BOOL(VM::current()->scheduler()->kill(program));
 }

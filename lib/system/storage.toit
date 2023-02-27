@@ -65,7 +65,7 @@ class Bucket extends ServiceResourceProxy:
     client := _client_
     if not client: throw "UNSUPPORTED"
     path.index_of ":" --if_absent=:
-      handle := client.open_bucket --scheme=scheme --path=path
+      handle := client.bucket_open --scheme=scheme --path=path
       return Bucket.internal_ client handle
     throw "Paths cannot contain ':'"
 
@@ -79,7 +79,7 @@ class Bucket extends ServiceResourceProxy:
     return get key --if_present=if_present --if_absent=: null
 
   get key/string [--if_present] [--if_absent] -> any:
-    bytes := (client_ as StorageServiceClient).get handle_ key
+    bytes := (client_ as StorageServiceClient).bucket_get handle_ key
     if not bytes: return if_absent.call key
     return if_present.call (tison.decode bytes)
 
@@ -95,21 +95,29 @@ class Bucket extends ServiceResourceProxy:
     return get key --if_present=(: it) --if_absent=(: throw "key not found")
 
   operator []= key/string value/any -> none:
-    (client_ as StorageServiceClient).set handle_ key (tison.encode value)
+    (client_ as StorageServiceClient).bucket_set handle_ key (tison.encode value)
 
   remove key/string -> none:
-    (client_ as StorageServiceClient).remove handle_ key
+    (client_ as StorageServiceClient).bucket_remove handle_ key
 
 /**
 ...
 */
 class Region extends ServiceResourceProxy:
-  // TODO(kasper): Change this. It is not accurate.
   static SCHEME_FLASH ::= "flash"
+
+  /**
+  ...
+  */
+  static MODE_WRITE_CAN_SET_BITS   ::= 1 << 0
+  static MODE_WRITE_CAN_CLEAR_BITS ::= 1 << 1
 
   // The region holds onto a resource that acts as a capability
   // that allows the region to manipulate the storage.
   resource_ := ?
+
+  // ...
+  mode_/int
 
   /**
   ...
@@ -121,18 +129,24 @@ class Region extends ServiceResourceProxy:
   */
   sector_size/int
 
-  /**
-  ...
-  */
-  erase_byte/int
-
   constructor.internal_ client/StorageServiceClient handle/int
       --resource
+      --mode/int
       --.size
-      --.sector_size
-      --.erase_byte:
+      --.sector_size:
     resource_ = resource
+    mode_ = mode
     super client handle
+
+  write_can_set_bits -> bool:
+    return (mode_ & MODE_WRITE_CAN_SET_BITS) != 0
+
+  write_can_clear_bits -> bool:
+    return (mode_ & MODE_WRITE_CAN_CLEAR_BITS) != 0
+
+  // TODO(kasper): Drop this again.
+  erase_byte -> int:
+    return write_can_set_bits ? 0x00 : 0xff
 
   /**
   Opens a storage region with using the schema and path parsed
@@ -170,12 +184,14 @@ class Region extends ServiceResourceProxy:
     client := _client_
     if not client: throw "UNSUPPORTED"
     path.index_of ":" --if_absent=:
-      region := client.open_region
+      region := client.region_open
           --scheme=scheme
           --path=path
           --capacity=capacity
       handle := region[0]
       size := region[2]
+      erase_sector_bits := region[3]
+      mode := region[4]
       resource := flash_region_open_
           resource_freeing_module_
           client.id
@@ -184,10 +200,26 @@ class Region extends ServiceResourceProxy:
           size
       return Region.internal_ client handle
           --resource=resource
+          --mode=mode
           --size=size
-          --sector_size=region[3]
-          --erase_byte=region[4]
+          --sector_size=(1 << erase_sector_bits)
     throw "Paths cannot contain ':'"
+
+  /**
+  ...
+  */
+  static delete --scheme/string --path/string -> none:
+    client := _client_
+    if not client: throw "UNSUPPORTED"
+    client.region_delete --scheme=scheme --path=path
+
+  /**
+  ...
+  */
+  static list --scheme/string -> List:
+    client := _client_
+    if not client: throw "UNSUPPORTED"
+    return client.region_list --scheme=scheme
 
   /**
   ...
@@ -219,8 +251,8 @@ class Region extends ServiceResourceProxy:
   ...
   */
   erase --from/int=0 --to/int=size -> none:
-    if (round_down from sector_size) != from: throw "xxx"
-    if (round_down to sector_size) != to: throw "xxx"
+    if from & (sector_size - 1) != 0: throw "Bad Argument"
+    if to & (sector_size - 1) != 0: throw "Bad Argument"
     flash_region_erase_ resource_ from (to - from)
 
   /**
