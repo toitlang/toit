@@ -9,6 +9,7 @@ main:
   test_bucket_ram
   test_bucket_flash
 
+  test_region_flash_double_open
   test_region_flash_erase
   test_region_flash_is_erased
   test_region_flash_write_all
@@ -80,6 +81,12 @@ test_bucket_flash:
   bucket.remove long
   expect_throw "key not found": bucket[long]
 
+test_region_flash_double_open:
+  region := storage.Region.open --flash "region-0" --minimum_size=1000
+  expect_throw "ALREADY_IN_USE": storage.Region.open --flash "region-0" --minimum_size=1000
+  region.close
+  storage.Region.delete --flash "region-0"
+
 test_region_flash_erase:
   region := storage.Region.open --flash "region-0" --minimum_size=8000
   expect_equals 8192 region.size
@@ -96,6 +103,7 @@ test_region_flash_erase:
   expect_throw "OUT_OF_BOUNDS": region.erase --to=-4096
   expect_throw "OUT_OF_BOUNDS": region.erase --from=4096 --to=0x7fff_f000
   expect_throw "OUT_OF_BOUNDS": region.erase --from=4096 --to=0
+  region.close
 
 test_region_flash_is_erased:
   region := storage.Region.open --flash "region-1" --minimum_size=1000
@@ -130,6 +138,7 @@ test_region_flash_is_erased:
   expect_throw "OUT_OF_BOUNDS": region.is_erased --to=-4096
   expect_throw "OUT_OF_BOUNDS": region.is_erased --from=4096 --to=0x7fff_f000
   expect_throw "OUT_OF_BOUNDS": region.is_erased --from=4096 --to=0
+  region.close
 
 test_region_flash_write_all:
   region := storage.Region.open --flash "region-1" --minimum_size=1000
@@ -147,6 +156,7 @@ test_region_flash_write_all:
   snippets.do: | snippet/ByteArray |
     expect_bytes_equal snippet (region.read --from=read --to=read + snippet.size)
     read += snippet.size
+  region.close
 
 test_region_flash_ignore_set:
   region := storage.Region.open --flash "region-2" --minimum_size=1000
@@ -155,6 +165,7 @@ test_region_flash_ignore_set:
   expect_bytes_equal #[0b1010_1010] (region.read --from=0 --to=1)
   region.write --from=0 #[0b1111_0000]
   expect_bytes_equal #[0b1010_0000] (region.read --from=0 --to=1)
+  region.close
 
 test_region_flash_invalid_arguments:
   expect_throw "ugh": storage.Region.open --flash "region-3"
