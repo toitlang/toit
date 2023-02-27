@@ -77,13 +77,7 @@ abstract class StorageServiceProviderBase extends ServiceProvider
   find_region_allocation_ --id/uuid.Uuid [--if_absent] -> FlashAllocation:
     registry_.do: | allocation/FlashAllocation |
       if allocation.type != FLASH_ALLOCATION_TYPE_REGION: continue.do
-      if allocation.id == id:
-        // TODO(kasper): It would potentially be nicer to do this
-        // as part of granting access.
-        offset := allocation.offset + FLASH_REGISTRY_PAGE_SIZE
-        size := allocation.size - FLASH_REGISTRY_PAGE_SIZE
-        if flash_is_accessed_ offset size: throw "ALREADY_IN_USE"
-        return allocation
+      if allocation.id == id: return allocation
     return if_absent.call
 
   new_region_allocation_ --id/uuid.Uuid --path/string --size/int -> FlashAllocation:
@@ -168,8 +162,12 @@ class FlashRegionResource extends ServiceResource:
   handle_/int? := null
   constructor provider/StorageServiceProviderBase .client_ --offset/int --size/int:
     super provider client_
-    handle_ = serialize_for_rpc
-    flash_grant_access_ client_ handle_ offset size
+    try:
+      handle := serialize_for_rpc
+      flash_grant_access_ client_ handle offset size
+      handle_ = handle
+    finally: | is_exception _ |
+      if is_exception: close
 
   revoke -> none:
     if not handle_: return

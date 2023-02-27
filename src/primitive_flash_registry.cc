@@ -194,6 +194,9 @@ PRIMITIVE(grant_access) {
   RegionGrant* grant = _new RegionGrant(client, handle, offset, size);
   if (!grant) MALLOC_FAILED;
   Locker locker(OS::global_mutex());
+  for (auto it : grants) {
+    if (it->offset() == offset && it->size() == size) ALREADY_IN_USE;
+  }
   grants.prepend(grant);
   return process->program()->null_object();
 }
@@ -201,11 +204,10 @@ PRIMITIVE(grant_access) {
 PRIMITIVE(is_accessed) {
   PRIVILEGED;
   ARGS(int, offset, int, size);
-  { Locker locker(OS::global_mutex());
-    for (auto it : grants) {
-      if (it->offset() == offset && it->size() == size) {
-        return BOOL(true);
-      }
+  Locker locker(OS::global_mutex());
+  for (auto it : grants) {
+    if (it->offset() == offset && it->size() == size) {
+      return BOOL(true);
     }
   }
   return BOOL(false);
