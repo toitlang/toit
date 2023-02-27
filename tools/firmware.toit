@@ -509,7 +509,7 @@ flash parsed/cli.Parsed -> none:
   bin_extension := ?
   bin_name := program_name
   if platform == PLATFORM_WINDOWS:
-    bin_name.replace --all "\\" "/"
+    bin_name = bin_name.replace --all "\\" "/"
     bin_extension = ".exe"
   else:
     bin_extension = ""
