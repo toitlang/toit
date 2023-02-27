@@ -2,6 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import uuid
 import system.storage
 import expect show *
 
@@ -127,7 +128,7 @@ test_region_flash_is_erased:
   expect_throw "OUT_OF_BOUNDS": region.is_erased --from=0 --to=0
   expect_throw "OUT_OF_BOUNDS": region.is_erased --from=-4096
   expect_throw "OUT_OF_BOUNDS": region.is_erased --to=-4096
-  expect_throw "OUT_OF_BOUNDS": region.is_erased --from=4096 --to=8192
+  expect_throw "OUT_OF_BOUNDS": region.is_erased --from=4096 --to=0x7fff_f000
   expect_throw "OUT_OF_BOUNDS": region.is_erased --from=4096 --to=0
 
 test_region_flash_write_all:
@@ -159,7 +160,14 @@ test_region_flash_delete:
   region := storage.Region.open --scheme="flash" --path="kurt" --capacity=8192
   expect_throw "ALREADY_IN_USE": storage.Region.delete --scheme="flash" --path="kurt"
   region.close
+  expect_throw "ALREADY_CLOSED": region.read --from=0 --to=4
+  expect_throw "ALREADY_CLOSED": region.write --from=0 #[1]
+  expect_throw "ALREADY_CLOSED": region.is_erased --from=0 --to=4
+  expect_throw "ALREADY_CLOSED": region.erase --from=0 --to=4096
   storage.Region.delete --scheme="flash" --path="kurt"
 
 test_region_flash_list:
-  print (storage.Region.list --scheme="flash")
+  // TODO(kasper): For now, this returns the list of internal
+  // ids, but we really want this to be the list of names.
+  uuids := (storage.Region.list --scheme="flash").map: uuid.parse it
+  expect uuids.size >= 3

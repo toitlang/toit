@@ -225,6 +225,7 @@ class Region extends ServiceResourceProxy:
   ...
   */
   read --from/int bytes/ByteArray -> none:
+    if not resource_: throw "ALREADY_CLOSED"
     flash_region_read_ resource_ from bytes
 
   /**
@@ -239,25 +240,25 @@ class Region extends ServiceResourceProxy:
   ...
   */
   write --from/int bytes/ByteArray -> none:
+    if not resource_: throw "ALREADY_CLOSED"
     flash_region_write_ resource_ from bytes
 
   /**
   ...
   */
   is_erased --from/int=0 --to/int=size -> bool:
+    if not resource_: throw "ALREADY_CLOSED"
     return flash_region_is_erased_ resource_ from (to - from)
 
   /**
-  ...
+  Erases the sectors starting at $from and ending at $to.
   */
   erase --from/int=0 --to/int=size -> none:
+    if not resource_: throw "ALREADY_CLOSED"
     if from & (sector_size - 1) != 0: throw "Bad Argument"
     if to & (sector_size - 1) != 0: throw "Bad Argument"
     flash_region_erase_ resource_ from (to - from)
 
-  /**
-  ...
-  */
   close -> none:
     if resource_:
       flash_region_close_ resource_

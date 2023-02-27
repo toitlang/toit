@@ -13,8 +13,6 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import binary show LITTLE_ENDIAN
-import encoding.tison
 import uuid
 
 import system.storage show Bucket Region
@@ -82,12 +80,8 @@ abstract class StorageServiceProviderBase extends ServiceProvider
     return if_absent.call
 
   new_region_allocation_ --id/uuid.Uuid --path/string --size/int -> FlashAllocation:
-    properties := tison.encode { "path": path }
-    // TODO(kasper): Check that there is room!
     reservation := registry_.reserve size
     metadata := ByteArray 5: 0xff
-    LITTLE_ENDIAN.put_uint16 metadata 0 properties.size
-
     return registry_.allocate reservation
         --type=FLASH_ALLOCATION_TYPE_REGION
         --id=id
