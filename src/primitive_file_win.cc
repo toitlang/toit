@@ -33,6 +33,7 @@
 #include <windows.h>
 #include <pathcch.h>
 #include <shlwapi.h>
+#include <fileapi.h>
 
 #include "objects_inline.h"
 
@@ -395,6 +396,8 @@ PRIMITIVE(stat) {
 PRIMITIVE(unlink) {
   ARGS(WindowsPath, path);
 
+  // Remove any read-only attribute.
+  SetFileAttributesW(path, FILE_ATTRIBUTE_NORMAL);
   int result = _wunlink(path);
   if (result < 0) return return_open_error(process, errno);
   return process->program()->null_object();
