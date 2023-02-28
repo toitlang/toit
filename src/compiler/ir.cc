@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include <functional>
+#include <inttypes.h>
 
 #include "ir.h"
 
@@ -971,7 +972,7 @@ class Printer : public Visitor {
   }
 
   void visit_LiteralInteger(LiteralInteger* node) {
-    printf("%lld", node->value());
+    printf("%" PRId64, node->value());
   }
 
   void visit_LiteralFloat(LiteralFloat* node) {
