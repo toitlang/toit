@@ -70,10 +70,10 @@ static bool is_erased_aligned(const uint8* memory, int from, int to) {
   ASSERT(Utils::is_aligned(memory + to, sizeof(uword)));
   const uword* cursor = reinterpret_cast<const uword*>(memory + from);
   const uword* limit = reinterpret_cast<const uword*>(memory + to);
-  do {
+  while (cursor < limit) {
     if (*cursor != static_cast<uword>(-1)) return false;
     ++cursor;
-  } while (cursor < limit);
+  }
   return true;
 }
 

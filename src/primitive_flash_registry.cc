@@ -156,8 +156,7 @@ PRIMITIVE(erase_flash_registry) {
 PRIMITIVE(allocate) {
   PRIVILEGED;
   ARGS(int, offset, int, size, int, type, Blob, id, Blob, metadata, Blob, content);
-  for (auto it = reservations.begin(); it != reservations.end(); ++it) {
-    Reservation* reservation = *it;
+  for (auto reservation : reservations) {
     int reserved_offset = reservation->left();
     if (reserved_offset < offset) continue;
     if (reserved_offset > offset) break;
@@ -269,7 +268,7 @@ PRIMITIVE(region_close) {
 
 static bool is_within_bounds(FlashRegion* resource, int from, int size) {
   int to = from + size;
-  return from >= 0 && to > from && to <= resource->size();
+  return 0 <= from && from < to && to <= resource->size();
 }
 
 PRIMITIVE(region_read) {

@@ -38,6 +38,8 @@ class Bucket extends ServiceResourceProxy:
     return "$scheme:$path"
 
   /**
+  Variant of $(open --scheme --path).
+
   Opens a storage bucket with using the schema and path parsed
     from the given $uri.
 
@@ -50,19 +52,23 @@ class Bucket extends ServiceResourceProxy:
     return open --scheme=uri[..split] --path=uri[split + 1 ..]
 
   /**
+  Variant of $(open --scheme --path).
+
   Opens a storage bucket using the $SCHEME_RAM scheme and the
     given $path.
   */
   static open --ram/bool path/string -> Bucket:
-    if ram != true: throw "Bad Argument"
+    if not ram: throw "Bad Argument"
     return open --scheme=SCHEME_RAM --path=path
 
   /**
+  Variant of $(open --scheme --path).
+
   Opens a storage bucket using the $SCHEME_FLASH scheme and the
     given $path.
   */
   static open --flash/bool path/string -> Bucket:
-    if flash != true: throw "Bad Argument"
+    if not flash: throw "Bad Argument"
     return open --scheme=SCHEME_FLASH --path=path
 
   /**
@@ -71,10 +77,9 @@ class Bucket extends ServiceResourceProxy:
   static open --scheme/string --path/string -> Bucket:
     client := _client_
     if not client: throw "UNSUPPORTED"
-    path.index_of ":" --if_absent=:
-      handle := client.bucket_open --scheme=scheme --path=path
-      return Bucket.internal_ client handle --scheme=scheme --path=path
-    throw "Paths cannot contain ':'"
+    if path.contains ":": throw "Paths cannot contain ':'"
+    handle := client.bucket_open --scheme=scheme --path=path
+    return Bucket.internal_ client handle --scheme=scheme --path=path
 
   get key/string -> any:
     return get key --if_present=(: it) --if_absent=(: null)
@@ -152,17 +157,18 @@ class Region extends ServiceResourceProxy:
     // we should make sure to construct a proxy and close
     // it on any errors.
     handle := reply[0]
-    mode_ = reply[4]
+    offset := reply[1]
+    size = reply[2]
     erase_granularity := 1 << reply[3]
     erase_granularity_mask_ = erase_granularity - 1
-    size = reply[2]
+    mode_ = reply[4]
     super client handle
     try:
       resource_ = flash_region_open_
           resource_freeing_module_
           client.id
           handle
-          reply[1]
+          offset
           size
     finally:
       if not resource_: close
@@ -201,15 +207,14 @@ class Region extends ServiceResourceProxy:
     return (mode_ & MODE_WRITE_CAN_CLEAR_BITS_) != 0
 
   /**
+  Variant of $(open --scheme --path --capacity).
+
   Opens a storage region with using the schema and path parsed
     from the given $uri.
 
   The format of the $uri is <scheme>:<path> and it is common to
     use qualified paths that include the domain name of the
     region owner, e.g. "flash:toitlang.org/jag".
-
-  See $(open --scheme --path --capacity) for an explanation of
-    the other parameters.
   */
   static open uri/string -> Region
       --capacity/int?=null:
@@ -217,15 +222,14 @@ class Region extends ServiceResourceProxy:
     return open --scheme=uri[..split] --path=uri[split + 1 ..] --capacity=capacity
 
   /**
+  Variant of $(open --scheme --path --capacity).
+
   Opens a storage region using the $SCHEME_FLASH scheme and the
     given $path.
-
-  See $(open --scheme --path --capacity) for an explanation of
-    the other parameters.
   */
   static open --flash/bool path/string -> Region
       --capacity/int?=null:
-    if flash != true: throw "Bad Argument"
+    if not flash: throw "Bad Argument"
     return open --scheme=SCHEME_FLASH --path=path --capacity=capacity
 
   /**
@@ -236,30 +240,29 @@ class Region extends ServiceResourceProxy:
     provided and the existing region is smaller than that.
 
   If no region that match $scheme and $path exists, a new
-    one is created. An exception is thrown if no $capacity
-    is provided.
+    one is created. In this case, a non-null $capacity must
+    be provided.
   */
   static open --scheme/string --path/string -> Region
       --capacity/int?=null:
     client := _client_
     if not client: throw "UNSUPPORTED"
     if capacity and capacity < 1: throw "Bad Argument"
-    path.index_of ":" --if_absent=:
-      reply := client.region_open
-          --scheme=scheme
-          --path=path
-          --capacity=capacity
-      return Region.internal_ client reply
-          --scheme=scheme
-          --path=path
-    throw "Paths cannot contain ':'"
+    if path.contains ":": throw "Paths cannot contain ':'"
+    reply := client.region_open
+        --scheme=scheme
+        --path=path
+        --capacity=capacity
+    return Region.internal_ client reply
+        --scheme=scheme
+        --path=path
 
   static delete uri/string -> none:
     split := uri.index_of ":" --if_absent=: throw "No scheme provided"
     delete --scheme=uri[..split] --path=uri[split + 1 ..]
 
   static delete --flash/bool path/string -> none:
-    if flash != true: throw "Bad Argument"
+    if not flash: throw "Bad Argument"
     delete --scheme=SCHEME_FLASH --path=path
 
   static delete --scheme/string --path/string -> none:
@@ -268,11 +271,13 @@ class Region extends ServiceResourceProxy:
     client.region_delete --scheme=scheme --path=path
 
   /**
+  Variant of $(list --scheme).
+
   Returns the $uri for all existing regions with the $SCHEME_FLASH
     scheme as a list of strings.
   */
   static list --flash/bool -> List:
-    if flash != true: throw "Bad Argument"
+    if not flash: throw "Bad Argument"
     return list --scheme=SCHEME_FLASH
 
   /**
@@ -303,13 +308,9 @@ class Region extends ServiceResourceProxy:
 
   /**
   Erases the bytes in the range starting at $from and ending
-    at $to (exclusive).
+    at $to (exclusive) by setting them to $erase_value.
 
-  Throws an exception if the $from and $to parameters must
-    both be aligned to $erase_granularity.
-
-  If no exception is thrown, the bytes in the specified
-    range are all set to $erase_value.
+  Both $from and $to must be aligned to $erase_granularity.
   */
   erase --from/int=0 --to/int=size -> none:
     if not resource_: throw "ALREADY_CLOSED"

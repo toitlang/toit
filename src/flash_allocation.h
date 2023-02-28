@@ -25,7 +25,8 @@ namespace toit {
 static const uint8 FLASH_ALLOCATION_TYPE_PROGRAM = 0;
 static const uint8 FLASH_ALLOCATION_TYPE_REGION = 1;
 
-static const int FLASH_PAGE_SIZE = 4 * KB;
+static const int FLASH_PAGE_SIZE_LOG2 = 12;
+static const int FLASH_PAGE_SIZE = 1 << FLASH_PAGE_SIZE_LOG2;
 static const int FLASH_SEGMENT_SIZE = 16;
 
 class FlashAllocation {
@@ -42,7 +43,7 @@ class FlashAllocation {
     Header(uint32 offset, uint8 type, const uint8* id, int size, const uint8* metadata);
 
     const uint8* id() const { return id_; }
-    int size() const { return size_in_pages_ << 12; }
+    int size() const { return size_in_pages_ << FLASH_PAGE_SIZE_LOG2; }
 
    private:
     // Data section for the header.
@@ -60,8 +61,6 @@ class FlashAllocation {
 
     friend class FlashAllocation;
   };
-
-
 
   // Type tests.
   bool is_program() const { return type() == FLASH_ALLOCATION_TYPE_PROGRAM; }
@@ -92,7 +91,6 @@ class FlashAllocation {
   int program_assets_size(uint8** bytes, int* length) const;
 
  protected:
-  // Used
   FlashAllocation(const uint8* id, int size) : header_(0, FLASH_ALLOCATION_TYPE_PROGRAM, id, size, null) {}
 
  private:

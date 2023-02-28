@@ -32,7 +32,7 @@ static const uint8 DATA_UUID[UUID_SIZE] = {
 };
 
 static void initialize(void* dst, const void* src, size_t size) {
-  if (src) {
+  if (src != null) {
     memcpy(dst, src, size);
   } else {
     memset(dst, 0, size);
