@@ -53,7 +53,7 @@ prefix ?= /opt/toit-sdk
 
 # HOST
 .PHONY: all
-all: sdk
+all: sdk esptool
 
 .PHONY: debug
 debug:
@@ -120,8 +120,14 @@ toit-tools: tools download-packages
 version-file: build/$(HOST)/CMakeCache.txt
 	(cd build/$(HOST) && ninja build_version_file)
 
+build/$(HOST)/sdk/tools/esptool$(EXE_SUFFIX):
+	$(MAKE) build-esptool
+
 .PHONY: esptool
-esptool: check-env
+esptool: build/$(HOST)/sdk/tools/esptool$(EXE_SUFFIX)
+
+.PHONY: build-esptool
+build-esptool: check-env
 	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
 	    $(MAKE) esptool-no-env
 
