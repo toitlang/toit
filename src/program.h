@@ -93,8 +93,7 @@ static const int PROMOTED_TRACK_CLASS_ID = -3;
 // The reflective structure of a program.
 class Program : public FlashAllocation {
  public:
-  Program(void* program_heap_address, uword program_heap_size);
-  ~Program();
+  Program(const uint8* id, int size);
 
   #define DECLARE_ROOT(type, name) name##_INDEX,
   enum {
@@ -352,9 +351,6 @@ class Program : public FlashAllocation {
 
   // Should only be called from ProgramImage.
   void do_pointers(PointerCallback* callback);
-
-  uword program_heap_address_;
-  uword program_heap_size_;
 
   friend class Process;
   friend class ProgramHeap;

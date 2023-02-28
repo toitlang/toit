@@ -154,12 +154,12 @@ class ContainerImageFlash extends ContainerImage:
     return binary.LITTLE_ENDIAN.uint32 allocation_.metadata 1
 
   spawn container/Container arguments/any:
-    return container_spawn_ allocation_.offset allocation_.size container.id arguments
+    return container_spawn_ allocation_.offset container.id arguments
 
   stop_all -> none:
     attempts := 0
-    while container_is_running_ allocation_.offset allocation_.size:
-      result := container_kill_flash_image_ allocation_.offset allocation_.size
+    while container_is_running_ allocation_.offset:
+      result := container_kill_flash_image_ allocation_.offset
       if result: attempts++
       sleep --ms=10
     manager.on_image_stop_all_ this
@@ -278,7 +278,7 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
     set_system_message_handler_ SYSTEM_TRACE_ this
 
     image_registry.do: | allocation/FlashAllocation |
-      if allocation.type != FLASH_ALLOCATION_PROGRAM_TYPE: continue.do
+      if allocation.type != FLASH_ALLOCATION_TYPE_PROGRAM: continue.do
       add_flash_image allocation
 
     // Run through the bundled images in the VM, but skip the
@@ -401,13 +401,13 @@ trace_find_origin_id trace/ByteArray -> uuid.Uuid?:
 
 // ----------------------------------------------------------------------------
 
-container_spawn_ offset size gid arguments -> int:
+container_spawn_ offset gid arguments -> int:
   #primitive.programs_registry.spawn
 
-container_is_running_ offset size -> bool:
+container_is_running_ offset -> bool:
   #primitive.programs_registry.is_running
 
-container_kill_flash_image_ offset size -> bool:
+container_kill_flash_image_ offset -> bool:
   #primitive.programs_registry.kill
 
 container_next_gid_ -> int:

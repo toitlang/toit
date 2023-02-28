@@ -39,8 +39,8 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , program_(program)
     , runner_(runner)
     , group_(group)
-    , program_heap_address_(program ? program->program_heap_address_ : 0)
-    , program_heap_size_(program ? program->program_heap_size_ : 0)
+    , program_heap_address_(reinterpret_cast<uword>(program))
+    , program_heap_size_(program ? program->size() : 0)
     , entry_(Method::invalid())
     , spawn_method_(Method::invalid())
     , object_heap_(

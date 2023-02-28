@@ -8,19 +8,28 @@ interface StorageService:
   static SELECTOR ::= ServiceSelector
       --uuid="ee91ed5e-85dd-47dd-a57a-7b6933fa58ea"
       --major=0
-      --minor=1
+      --minor=2
 
-  open_bucket --scheme/string --path/string -> int
-  static OPEN_BUCKET_INDEX /int ::= 0
+  bucket_open --scheme/string --path/string -> int
+  static BUCKET_OPEN_INDEX /int ::= 0
 
-  get bucket/int key/string -> ByteArray?
-  static GET_INDEX /int ::= 1
+  bucket_get bucket/int key/string -> ByteArray?
+  static BUCKET_GET_INDEX /int ::= 1
 
-  set bucket/int key/string value/ByteArray -> none
-  static SET_INDEX /int ::= 2
+  bucket_set bucket/int key/string value/ByteArray -> none
+  static BUCKET_SET_INDEX /int ::= 2
 
-  remove bucket/int key/string -> none
-  static REMOVE_INDEX /int ::= 3
+  bucket_remove bucket/int key/string -> none
+  static BUCKET_REMOVE_INDEX /int ::= 3
+
+  region_open --scheme/string --path/string --capacity/int? -> List
+  static REGION_OPEN_INDEX /int ::= 4
+
+  region_delete --scheme/string --path/string -> none
+  static REGION_DELETE_INDEX /int ::= 5
+
+  region_list --scheme/string -> List
+  static REGION_LIST_INDEX /int ::= 6
 
 class StorageServiceClient extends ServiceClient implements StorageService:
   static SELECTOR ::= StorageService.SELECTOR
@@ -28,14 +37,23 @@ class StorageServiceClient extends ServiceClient implements StorageService:
     assert: selector.matches SELECTOR
     super selector
 
-  open_bucket --scheme/string --path/string -> int:
-    return invoke_ StorageService.OPEN_BUCKET_INDEX [scheme, path]
+  bucket_open --scheme/string --path/string -> int:
+    return invoke_ StorageService.BUCKET_OPEN_INDEX [scheme, path]
 
-  get bucket/int key/string -> ByteArray?:
-    return invoke_ StorageService.GET_INDEX [bucket, key]
+  bucket_get bucket/int key/string -> ByteArray?:
+    return invoke_ StorageService.BUCKET_GET_INDEX [bucket, key]
 
-  set bucket/int key/string value/ByteArray -> none:
-    invoke_ StorageService.SET_INDEX [bucket, key, value]
+  bucket_set bucket/int key/string value/ByteArray -> none:
+    invoke_ StorageService.BUCKET_SET_INDEX [bucket, key, value]
 
-  remove bucket/int key/string -> none:
-    invoke_ StorageService.REMOVE_INDEX [bucket, key]
+  bucket_remove bucket/int key/string -> none:
+    invoke_ StorageService.BUCKET_REMOVE_INDEX [bucket, key]
+
+  region_open --scheme/string --path/string --capacity/int? -> List:
+    return invoke_ StorageService.REGION_OPEN_INDEX [scheme, path, capacity]
+
+  region_delete --scheme/string --path/string -> none:
+    invoke_ StorageService.REGION_DELETE_INDEX [scheme, path]
+
+  region_list --scheme/string -> List:
+    return invoke_ StorageService.REGION_LIST_INDEX scheme

@@ -458,13 +458,13 @@ class ToitHeader extends ToitObjectType:
     "_me": PrimitiveType.UINT32,
     "_id": PrimitiveType (LayoutSize 0 ID_SIZE),
     "_metadata": PrimitiveType (LayoutSize 0 METADATA_SIZE),
-    "_pages_in_flash": PrimitiveType.UINT16,
     "_type": PrimitiveType.UINT8,
+    "_pages_in_flash": PrimitiveType.UINT16,
     "_uuid": PrimitiveType (LayoutSize 0 UUID_SIZE),
   }
 
   static MARKER_ ::= 0xDEADFACE
-  static PROGRAM_TYPE_ ::= 0
+  static FLASH_ALLOCATION_TYPE_PROGRAM_ ::= 0
 
   fill_into image/Image --at/int --system_uuid/uuid.Uuid --program_id/uuid.Uuid:
     memory := image.offheap
@@ -479,8 +479,8 @@ class ToitHeader extends ToitObjectType:
     anchored.put_bytes "_id" program_id.to_byte_array
     // TODO(kasper): Avoid hardcoding the metadata encoding here.
     anchored.put_bytes "_metadata" #[3, 0, 0, 0, 0]
+    anchored.put_uint8 "_type" FLASH_ALLOCATION_TYPE_PROGRAM_
     anchored.put_uint16 "_pages_in_flash" (image.all_memory.size / 4096)
-    anchored.put_uint8 "_type" PROGRAM_TYPE_
     anchored.put_bytes "_uuid" system_uuid.to_byte_array
 
 class ToitProgram extends ToitObjectType:

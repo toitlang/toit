@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "top.h"
 #include "flash_allocation.h"
 
 namespace toit {
@@ -29,35 +30,41 @@ class FlashRegistry {
 
   // Find next empty slot.
   static int find_next(int offset, ReservationList::Iterator* reservations);
-  static const FlashAllocation* at(int offset);
-
-  // Flash writing support.
-  static int erase_chunk(int offset, int size);
-
-  // This write may use encryption. Therefore, writes must be 16 byte aligned and target erased memory.
-  static bool write_chunk(const void* chunk, int offset, int size);
-
-  // This write pads the chunk to make it 16 byte aligned.
-  static bool pad_and_write(const void* chunk, int offset, int size);
 
   // Get a pointer to the memory of an allocation.
-  // If encryption is enabled, then reads from this pointer will be implicitly decrypted.
-  static void* memory(int offset, int size);
+  static FlashAllocation* allocation(int offset);
+
+  // Get a pointer to the memory of a region.
+  static uint8* region(int offset, int size) {
+    ASSERT(is_allocations_set_up());
+    ASSERT(0 <= offset && offset + size <= allocations_size());
+    return reinterpret_cast<uint8*>(allocations_memory()) + offset;
+  }
+
+  // Flash writing support.
+  static bool write_chunk(const void* chunk, int offset, int size);
 
   // Get the offset from the cursor.
-  static int offset(const void* cursor);
+  static int offset(const void* cursor) {
+    ASSERT(is_allocations_set_up());
+    word offset = Utils::address_distance(allocations_memory(), cursor);
+    ASSERT(0 <= offset && offset < allocations_size());
+    return offset;
+  }
 
-  // Erase the flash registry.
+  // Flash erasing support.
+  static bool is_erased(int offset, int size);
+  static int erase_chunk(int offset, int size);
   static bool erase_flash_registry();
 
   // Get the size of the allocations area in bytes.
   static int allocations_size();
 
  private:
-  static const char* allocations_memory() { return allocations_memory_; }
-  static bool is_allocations_set_up();
+  static uint8* allocations_memory() { return allocations_memory_; }
+  static bool is_allocations_set_up() { return allocations_memory_ != null; }
 
-  static const char* allocations_memory_;
+  static uint8* allocations_memory_;
 };
 
 } // namespace toit

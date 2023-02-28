@@ -179,7 +179,7 @@ Program* Backend::emit(ir::Program* ir_program) {
   // Get the sorted classes and interface selectors.
   // We sort them by usage count, so that we can use the lowest indexes for the most
   //   frequently used classes/interfaces. This means that most indexes will fit into one
-  //   byte and thus not require an `Extend` bytecode.
+  //   byte and thus not require an `extend` bytecode.
   auto checked_classes = collector.compute_sorted_typecheck_classes();
   auto checked_interface_selectors = collector.compute_sorted_typecheck_interfaces();
   program_builder.set_class_check_ids(encode_typecheck_class_list(checked_classes));

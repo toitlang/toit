@@ -18,12 +18,13 @@ import system.storage show Bucket
 import binary show LITTLE_ENDIAN
 
 import ..shared.storage_base
+import ...flash.registry
 
 class StorageServiceProvider extends StorageServiceProviderBase:
-  constructor:
-    super "system/storage/esp32" --major=0 --minor=1
+  constructor registry/FlashRegistry:
+    super "system/storage/esp32" registry --major=0 --minor=1
 
-  open_bucket client/int --scheme/string --path/string -> BucketResource:
+  bucket_open client/int --scheme/string --path/string -> BucketResource:
     if scheme == Bucket.SCHEME_RAM:
       return RamBucketResource this client path
     assert: scheme == Bucket.SCHEME_FLASH

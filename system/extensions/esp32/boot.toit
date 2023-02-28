@@ -23,6 +23,7 @@ import .wifi
 import ...boot
 import ...initialize
 import ...containers
+import ...flash.registry
 
 // TODO(kasper): It feels annoying to have to put this here. Maybe we
 // can have some sort of reasonable default in the ContainerManager?
@@ -43,9 +44,10 @@ class SystemImage extends ContainerImage:
     unreachable  // Not implemented yet.
 
 main:
-  container_manager ::= initialize_system [
+  registry ::= FlashRegistry.scan
+  container_manager ::= initialize_system registry [
       FirmwareServiceProvider,
-      StorageServiceProvider,
+      StorageServiceProvider registry,
       WifiServiceProvider,
   ]
   container_manager.register_system_image
