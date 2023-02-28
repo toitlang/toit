@@ -195,20 +195,29 @@ PRIMITIVE(init) {
     MALLOC_FAILED;
   }
 
-  FATAL_IF_NOT_ESP_OK(esp_netif_init());
+  esp_err_t err = esp_netif_init();
+  if (err != ESP_OK) return Primitive::os_error(err, process);
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   wifi_mode_t wifi_mode = mode ? WIFI_MODE_AP : WIFI_MODE_STA;
 
-  FATAL_IF_NOT_ESP_OK(esp_wifi_init(&cfg));
-  FATAL_IF_NOT_ESP_OK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
-  FATAL_IF_NOT_ESP_OK(esp_wifi_set_mode(wifi_mode));
-  FATAL_IF_NOT_ESP_OK(esp_wifi_start());
+  err = esp_wifi_init(&cfg);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  err = esp_wifi_set_mode(wifi_mode);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  err = esp_wifi_start();
+  if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  FATAL_IF_NOT_ESP_OK(esp_now_init());
-  FATAL_IF_NOT_ESP_OK(esp_now_register_send_cb(espnow_send_cb));
-  FATAL_IF_NOT_ESP_OK(esp_now_register_recv_cb(espnow_recv_cb));
+  err = esp_now_init();
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  err = esp_now_register_send_cb(espnow_send_cb);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  err = esp_now_register_recv_cb(espnow_recv_cb);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
   if (pmk.length() > 0) {
-    FATAL_IF_NOT_ESP_OK(esp_now_set_pmk(pmk.address()));
+    err = esp_now_set_pmk(pmk.address());
+    if (err != ESP_OK) return Primitive::os_error(err, process);
   }
 
   proxy->set_external_address(group);
@@ -222,7 +231,8 @@ PRIMITIVE(send) {
   // Reset the value of semaphore(max value is 1) to 0, so no need to check the result.
   xSemaphoreTake(tx_sem, 0);
 
-  FATAL_IF_NOT_ESP_OK(esp_now_send(mac.address(), data.address(), data.length()));
+  esp_err_t err = esp_now_send(mac.address(), data.address(), data.length());
+  if (err != ESP_OK) return Primitive::os_error(err, process);
 
   if (wait) {
     portBASE_TYPE ret = xSemaphoreTake(tx_sem, pdMS_TO_TICKS(ESPNOW_TX_WAIT_US));
@@ -273,7 +283,8 @@ PRIMITIVE(add_peer) {
   ARGS(Blob, mac, int, channel, Blob, key);
 
   wifi_mode_t wifi_mode;
-  FATAL_IF_NOT_ESP_OK(esp_wifi_get_mode(&wifi_mode));
+  esp_err_t err = esp_wifi_get_mode(&wifi_mode);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
 
   esp_now_peer_info_t peer;
   memset(&peer, 0, sizeof(esp_now_peer_info_t));
@@ -286,19 +297,21 @@ PRIMITIVE(add_peer) {
   } else {
     peer.encrypt = false;
   }
-  FATAL_IF_NOT_ESP_OK(esp_now_add_peer(&peer));
+  err = esp_now_add_peer(&peer);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  return process->program()->true_object(); 
+  return process->program()->true_object();
 }
 
 PRIMITIVE(deinit) {
   ARGS(EspNowResourceGroup, group);
 
-  FATAL_IF_NOT_ESP_OK(esp_now_deinit());
+  esp_err_t err = esp_now_deinit();
 
   group->tear_down();
   group_proxy->clear_external_address();
 
+  if (err != ESP_OK) return Primitive::os_error(err, process);
   return process->program()->null_object();
 }
 
