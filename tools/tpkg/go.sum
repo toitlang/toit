@@ -449,6 +449,8 @@ github.com/toitlang/tpkg v0.0.0-20220817100231-9b6e93cbd21d h1:1jwW+qPQAjBAqcycX
 github.com/toitlang/tpkg v0.0.0-20220817100231-9b6e93cbd21d/go.mod h1:8+mRIFIKJxHMEAu8H5MxkaY/fLALKSEguBBIm8D0lG8=
 github.com/toitlang/tpkg v0.0.0-20230228085517-1000ae33a97f h1:pjFnGd1th3NkrCXf4044cIhRy8yBhzyhXOVJFD5Du2o=
 github.com/toitlang/tpkg v0.0.0-20230228085517-1000ae33a97f/go.mod h1:8+mRIFIKJxHMEAu8H5MxkaY/fLALKSEguBBIm8D0lG8=
+github.com/toitlang/tpkg v0.0.0-20230228133258-22c39b148afa h1:iUdy4mcliJ0WezIBoiPkCh7SWT/1OmneS4QQ/zxuWYM=
+github.com/toitlang/tpkg v0.0.0-20230228133258-22c39b148afa/go.mod h1:8+mRIFIKJxHMEAu8H5MxkaY/fLALKSEguBBIm8D0lG8=
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=
 github.com/xanzy/ssh-agent v0.3.0 h1:wUMzuKtKilRgBAD1sUb8gOwwRr2FGoBVumcjoOACClI=
 github.com/xanzy/ssh-agent v0.3.0/go.mod h1:3s9xbODqPuuhK9JV1R321M/FlMZSBvE5aY6eAcqrDh0=
