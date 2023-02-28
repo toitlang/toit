@@ -274,10 +274,16 @@ PRIMITIVE(read) {
 
 #ifdef CONFIG_IDF_TARGET_ESP32
   uint16_t val;
+  // The ESP32 also has a 'touch_pad_read_raw' but that requires a
+  // call to 'touch_pad_filter_start' before the function is allowed
+  // to be called.
+  // The other variants don't even have a 'touch_pad_filter_start' or
+  // 'touch_pad_read' function anymore.
+  esp_err_t err = touch_pad_read(pad, &val);
 #else
   uint32_t val;
-#endif
   esp_err_t err = touch_pad_read_raw_data(pad, &val);
+#endif
   if (err != ESP_OK) return Primitive::os_error(err, process);
   return Smi::from(static_cast<int>(val));
 }

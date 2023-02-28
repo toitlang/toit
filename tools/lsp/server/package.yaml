@@ -1,10 +1,10 @@
 dependencies:
   cli:
     url: github.com/toitlang/pkg-cli
-    version: ^1.1.0
+    version: ^1.1.1
   host:
     url: github.com/toitlang/pkg-host
-    version: ^1.4.1
+    version: ^1.8.1
   tar:
     url: github.com/toitlang/pkg-tar
     version: ^1.0.0

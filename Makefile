@@ -29,7 +29,12 @@ ESP32_PORT=
 # The system process is started from its own entry point.
 ESP32_SYSTEM_ENTRY=system/extensions/esp32/boot.toit
 
-export IDF_TARGET=$(ESP32_CHIP)
+ifeq ($(ESP32_CHIP),esp32s3octo)
+	IDF_TARGET=esp32s3
+else
+	IDF_TARGET=$(ESP32_CHIP)
+endif
+export IDF_TARGET
 
 # Use Toitware ESP-IDF fork by default.
 export IDF_PATH ?= $(CURDIR)/third_party/esp-idf
@@ -77,7 +82,7 @@ else
 	$(error Invalid IDF_PATH. Missing mbedtls sources.)
 endif
 endif
-ifneq ('$(IDF_PATH)', '$(CURDIR)/third_party/esp-idf')
+ifneq ('$(realpath $(IDF_PATH))', '$(realpath $(CURDIR)/third_party/esp-idf)')
 	$(info -- Not using Toitware ESP-IDF fork.)
 endif
 
@@ -225,7 +230,7 @@ esp32:
 
 .PHONY: esp32-no-env
 esp32-no-env: check-env check-esp32-env sdk
-	cmake -E env IDF_TARGET=$(ESP32_CHIP) IDF_CCACHE_ENABLE=1 idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" build
+	cmake -E env IDF_TARGET=$(IDF_TARGET) IDF_CCACHE_ENABLE=1 idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" build
 
 # ESP32 MENU CONFIG
 .PHONY: menuconfig
@@ -235,7 +240,7 @@ menuconfig:
 
 .PHONY: menuconfig-no-env
 menuconfig-no-env: check-env check-esp32-env
-	cmake -E env IDF_TARGET=$(ESP32_CHIP) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" menuconfig
+	cmake -E env IDF_TARGET=$(IDF_TARGET) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" menuconfig
 
 .PHONY: flash
 flash:
@@ -244,7 +249,7 @@ flash:
 
 .PHONY: flash-no-env
 flash-no-env: esp32-no-env
-	cmake -E env IDF_TARGET=$(ESP32_CHIP) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" flash monitor
+	cmake -E env IDF_TARGET=$(IDF_TARGET) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" flash monitor
 
 # UTILITY
 .PHONY:	clean
@@ -258,6 +263,7 @@ INSTALL_SRC_ARCH := $(HOST)
 install-sdk: all
 	install -D --target-directory="$(DESTDIR)$(prefix)"/bin "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/bin/*
 	install -D --target-directory="$(DESTDIR)$(prefix)"/tools "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/tools/*
+	install -D --target-directory="$(DESTDIR)$(prefix)"/vessels "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/vessels/*
 	mkdir -p "$(DESTDIR)$(prefix)"/lib
 	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib
 	find "$(DESTDIR)$(prefix)"/lib -type f -exec chmod 644 {} \;

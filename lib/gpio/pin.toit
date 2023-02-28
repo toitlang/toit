@@ -133,7 +133,12 @@ class Pin:
     state_ = monitor.ResourceState_ resource_group_ resource_
     if input or output:
       try:
-        configure --input=input --output=output --pull_down=pull_down --pull_up=pull_up
+        configure
+            --input=input
+            --output=output
+            --pull_down=pull_down
+            --pull_up=pull_up
+            --open_drain=open_drain
       finally: | is_exception _ |
         if is_exception: close
 
@@ -272,6 +277,16 @@ class Pin:
     finally:
       gpio_config_interrupt_ resource_ false
 
+  /**
+  Sets the open-drain property of this pin.
+
+  This is a low-level function that doesn't affect any other configuration
+    of the pin.
+  */
+  set_open_drain value/bool:
+    gpio_set_open_drain_ num value
+
+
 /**
 Virtual pin.
 
@@ -320,6 +335,10 @@ class VirtualPin extends Pin:
   /** Not supported. */
   num: throw "UNSUPPORTED"
 
+  /** Not supported. */
+  set_open_drain value/bool: throw "UNSUPPORTED"
+
+
 /**
 A pin that does the opposite of the physical pin that it takes in the constructor.
 */
@@ -360,6 +379,9 @@ class InvertedPin extends Pin:
   num -> int:
     return original_pin_.num
 
+  set_open_drain value/bool:
+    original_pin_.set_open_drain value
+
 gpio_init_:
   #primitive.gpio.init
 
@@ -383,3 +405,6 @@ gpio_config_interrupt_ resource enabled/bool:
 
 gpio_last_edge_trigger_timestamp_ resource:
   #primitive.gpio.last_edge_trigger_timestamp
+
+gpio_set_open_drain_ num value/bool:
+  #primitive.gpio.set_open_drain

@@ -364,13 +364,8 @@ PRIMITIVE(crc) {
       entry = byte_table[index];
     } else {
       Object* table_entry = table->at(index);
-      if (is_smi(table_entry)) {
-        entry = Smi::cast(table_entry)->value();
-      } else if (is_large_integer(table_entry)) {
-        entry = LargeInteger::cast(table_entry)->value();
-      } else {
-        INVALID_ARGUMENT;
-      }
+      INT64_VALUE_OR_WRONG_TYPE(int_table_entry, table_entry);
+      entry = int_table_entry;
     }
     if (big_endian) {
       accumulator = (accumulator << 8) ^ entry;
@@ -392,7 +387,7 @@ PRIMITIVE(string_from_rune) {
   ARGS(int, rune);
   if (rune < 0 || rune > Utils::MAX_UNICODE) INVALID_ARGUMENT;
   // Don't allow surrogates.
-  if (0xD800 <= rune && rune <= 0xDFFF) INVALID_ARGUMENT;
+  if (Utils::MIN_SURROGATE <= rune && rune <= Utils::MAX_SURROGATE) INVALID_ARGUMENT;
   String* result;
   if (rune <= 0x7F) {
     char buffer[] = { static_cast<char>(rune) };
@@ -670,13 +665,13 @@ static Object* printf_style_integer_to_string(Process* process, int64 value, int
       break;
     }
     case 8:
-      snprintf(buffer, sizeof(buffer), "%llo", value);
+      snprintf(buffer, sizeof(buffer), "%" PRIo64, value);
       break;
     case 10:
-      snprintf(buffer, sizeof(buffer), "%lld", value);
+      snprintf(buffer, sizeof(buffer), "%" PRId64, value);
       break;
     case 16:
-      snprintf(buffer, sizeof(buffer), "%llx", value);
+      snprintf(buffer, sizeof(buffer), "%" PRIx64, value);
       break;
     default:
       buffer[0] = '\0';
@@ -1071,7 +1066,14 @@ PRIMITIVE(bytes_allocated_delta) {
 }
 
 PRIMITIVE(process_stats) {
-  ARGS(Object, list_object, int, group, int, id);
+  ARGS(Object, list_object, int, group, int, id, Object, gc_count);
+
+  if (gc_count != process->program()->null_object()) {
+    INT64_VALUE_OR_WRONG_TYPE(word_gc_count, gc_count);
+    // Return ALLOCATION_FAILED until we cause a full GC.
+    if (process->gc_count(FULL_GC) == word_gc_count) ALLOCATION_FAILED;
+  }
+
   Array* result = get_array_from_list(list_object, process);
   if (result == null) INVALID_ARGUMENT;
   if (group == -1 || id == -1) {

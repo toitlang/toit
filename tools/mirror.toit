@@ -88,7 +88,7 @@ class Instance extends Mirror:
   static tag ::= 'I'
   class_id/int ::= ?
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on_error]:
     class_id = json[1]
     super json program
 
@@ -106,7 +106,7 @@ class Array extends Mirror:
   size ::= 0
   content ::= []
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on_error]:
     size = json[1]
     content = json[2].map: decode_json_ it program on_error
     super json program
@@ -122,7 +122,7 @@ class MList extends Mirror:
   size ::= 0
   content ::= []
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on_error]:
     size = json[1]
     content = json[2].map: decode_json_ it program on_error
     super json program
@@ -141,10 +141,12 @@ class Error extends Mirror:
   trace := ?
 
   constructor json program/Program? [on_error]:
-    if not program: throw "Error can't be decoded without a snapshot"
     type = decode_json_ json[1] program on_error
     message = decode_json_ json[2] program on_error
-    trace = decode_json_ json[3] program on_error
+    if program:
+      trace = decode_json_ json[3] program on_error
+    else:
+      trace = null
     super json program
 
   // Whether the class has a selector.
@@ -162,7 +164,9 @@ class Error extends Mirror:
 
   lookup_failure_stringify -> string:
     // message is an array [selector string or a method id, receiver] that can identify a selector.
-    if message is not Array: return "Lookup failed message:$message.\n$trace"
+    if message is not Array or not program:
+      trace_suffix := trace ? "\n$trace" : ""
+      return "Lookup failed message:$message.$trace_suffix"
     selector_or_method_id := message.content[0]
     receiver_class_id := message.content[1]
     receiver := message.content[2]
@@ -185,7 +189,9 @@ class Error extends Mirror:
 
   as_check_failure_stringify -> string:
     // message is an array [expression, id]
-    if message is not Array: return "As check failed message:$message.\n$trace"
+    if message is not Array or not program:
+      trace_suffix := trace ? "\n$trace" : ""
+      return "As check failed message:$message.$trace_suffix"
     expression := message.content[0]
     id := message.content[1]
     class_name := id
@@ -201,13 +207,15 @@ class Error extends Mirror:
 
   serialization_failed_stringify -> string:
     // message is an integer, the failing class-id.
-    if message is not int: return "Serialization failed: Cannot encode instance.\n$trace"
+    if message is not int or not program:
+      trace_suffix := trace ? "\n$trace" : ""
+      return "Serialization failed: Cannot encode instance.$trace_suffix"
     class_id := message
     class_name := program.class_name_for class_id
     return "Serialization failed: Cannot encode instance of $class_name.\n$trace"
 
   allocation_failed_stringify -> string:
-    if message is not int:
+    if message is not int or not program:
       return "Allocation failed:$message.\n$trace"
     id := message
     class_info := program.class_info_for id:
@@ -217,8 +225,9 @@ class Error extends Mirror:
     return "Allocation failed when trying to allocate an instance of $class_name\n$trace"
 
   initialization_in_progress_stringify -> string:
-    if message is not int or not 0 <= message < program.global_table.size:
-      return "Initialization of variable in progress: $message.\n$trace"
+    if message is not int or not program or not 0 <= message < program.global_table.size:
+      trace_suffix := trace ? "\n$trace" : ""
+      return "Initialization of variable in progress: $message.$trace_suffix"
     global_id := message
     global_info := program.global_table[global_id]
     name := global_info.name
@@ -229,8 +238,9 @@ class Error extends Mirror:
     return "Initialization of $kind '$name' in progress.\n$trace"
 
   uninitialized_global_stringify -> string:
-    if message is not int or not 0 <= message < program.global_table.size:
-      return "Trying to access uninitialized variable: $message.\n$trace"
+    if message is not int or not program or not 0 <= message < program.global_table.size:
+      trace_suffix := trace ? "\n$trace" : ""
+      return "Trying to access uninitialized variable: $message.$trace_suffix"
     global_id := message
     global_info := program.global_table[global_id]
     name := global_info.name
@@ -242,12 +252,14 @@ class Error extends Mirror:
 
   code_invocation_stringify -> string:
     if message is not Array or
+        not program or
         message.content.size != 4 or
         message.content[0] is not bool or
         message.content[1] is not int or
         message.content[2] is not int or
         message.content[3] is not int:
-      return "Called block or lambda with too few arguments: $message\n$trace"
+      trace_suffix := trace ? "\n$trace" : ""
+      return "Called block or lambda with too few arguments: $message$trace_suffix"
     is_block := message.content[0]
     expected := message.content[1]
     provided := message.content[2]
@@ -276,7 +288,8 @@ class Error extends Mirror:
     if type == "UNINITIALIZED_GLOBAL": return uninitialized_global_stringify
     if type == "CODE_INVOCATION_FAILED": return code_invocation_stringify
     if message is string and message.size == 0: return "$type error.\n$trace"
-    return "$type error. \n$message\n$trace"
+    trace_suffix := trace ? "\n$trace" : ""
+    return "$type error. \n$message$trace_suffix"
 
   typed_expression_string_ expr:
     if expr is Instance: return expr.stringify

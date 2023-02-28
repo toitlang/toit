@@ -506,18 +506,18 @@ flash parsed/cli.Parsed -> none:
   firmware_bin := extract_binary envelope --config_encoded=config_encoded
   binary := Esp32Binary firmware_bin
 
-  separator := ?
   bin_extension := ?
+  bin_name := program_name
   if platform == PLATFORM_WINDOWS:
-    separator = "\\"
+    bin_name = bin_name.replace --all "\\" "/"
     bin_extension = ".exe"
   else:
-    separator = "/"
     bin_extension = ""
-  list := program_name.split separator
-  dir := list[..list.size - 1].join separator
+  list := bin_name.split "/"
+  dir := list[..list.size - 1].join "/"
   esptool/List? := null
-  if program_name.ends_with ".toit":
+  if bin_name.ends_with ".toit":
+    if dir == "": dir = "."
     esptool_py := "$dir/../third_party/esp-idf/components/esptool_py/esptool/esptool.py"
     if not file.is_file esptool_py:
       throw "cannot find esptool in '$esptool_py'"
@@ -566,9 +566,24 @@ extract_binary envelope/Envelope --config_encoded/ByteArray -> ByteArray:
   system := entries.get SYSTEM_CONTAINER_NAME
   if system:
     // TODO(kasper): Take any other system assets into account.
-    assets_encoded := properties.get "wifi"
-        --if_present=: assets.encode { "wifi": tison.encode it }
-        --if_absent=: null
+    system_assets := {:}
+    // Encode any WiFi information.
+    properties.get "wifi" --if_present=: system_assets["wifi"] = tison.encode it
+    // Encode the list of images with their names.
+    images := {:}
+    entries.do: | name/string content/ByteArray |
+      if not (name == SYSTEM_CONTAINER_NAME or name.starts_with "\$" or name.starts_with "+"):
+        id/uuid.Uuid := ?
+        if is_snapshot_bundle content:
+          bundle := SnapshotBundle name content
+          id = bundle.uuid
+        else:
+          header := decode_image content
+          id = header.id
+        images[name] = id.to_byte_array
+    if not images.is_empty: system_assets["images"] = tison.encode images
+    // Encode the system assets and add them to the container.
+    assets_encoded := assets.encode system_assets
     containers.add (ContainerEntry SYSTEM_CONTAINER_NAME system --assets=assets_encoded)
 
   entries.do: | name/string content/ByteArray |

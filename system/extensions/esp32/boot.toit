@@ -17,6 +17,7 @@ import uuid
 import system.containers
 
 import .firmware
+import .storage
 import .wifi
 
 import ...boot
@@ -31,11 +32,9 @@ class SystemImage extends ContainerImage:
   constructor manager/ContainerManager:
     super manager
 
-  start arguments/any -> Container:
+  spawn container/Container arguments/any -> int:
     // This container is already running as the system process.
-    container := Container this 0 Process.current.id
-    manager.on_container_start_ container
-    return container
+    return Process.current.id
 
   stop_all -> none:
     unreachable  // Not implemented yet.
@@ -45,8 +44,9 @@ class SystemImage extends ContainerImage:
 
 main:
   container_manager ::= initialize_system [
-      FirmwareServiceDefinition,
-      WifiServiceDefinition
+      FirmwareServiceProvider,
+      StorageServiceProvider,
+      WifiServiceProvider,
   ]
   container_manager.register_system_image
       SystemImage container_manager

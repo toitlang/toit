@@ -72,6 +72,11 @@ class TwoSpaceHeap {
     iterate_objects(&visitor);
   }
 
+  void iterate_chunks(void* context, process_chunk_callback_t* callback) {
+    semi_space_.iterate_chunks(context, process(), callback);
+    old_space_.iterate_chunks(context, process(), callback);
+  }
+
   // Flush will write cached values back to object memory.
   // Flush must be called before traveral of heap.
   void flush() {

@@ -27,6 +27,8 @@ run:
   test_sleep_in_await
   test_block_in_await
   test_process_messages_in_locked
+  test_yield_on_leave
+  test_process_messages_on_leave
   test_gate
   test_latch
 
@@ -396,6 +398,48 @@ test_process_messages_in_locked kind/int:
       outer.block
       expect_equals 1 handler.calls
   done.set 0
+
+test_yield_on_leave:
+  output := []
+  done := Latch
+  task::
+    20.repeat:
+      yield
+      output.add (Task.current)
+    done.set null
+
+  mutex := Mutex
+  20.repeat:
+    mutex.do: null  // Nothing.
+    output.add (Task.current)
+
+  done.get
+  expect_equals 40 output.size
+
+  // Check that the two tasks take turns
+  // producing output.
+  last := null
+  output.do:
+    expect_not_identical last it
+    last = it
+
+test_process_messages_on_leave:
+  done := Latch
+  task::
+    sleep --ms=200
+    done.set null
+
+  // Check that leaving the mutex lock causes
+  // us to process the messages necessary to
+  // wake up the sleeping task.
+  mutex := Mutex
+  start := Time.monotonic_us
+  end := start + 10_000_000
+  while Time.monotonic_us < end and not done.has_value:
+    mutex.do: null  // Do nothing.
+
+  expect done.has_value --message="Task should be done" // Not starved.
+  done.get
 
 test_gate:
   gate := Gate

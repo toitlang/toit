@@ -14,6 +14,8 @@ import binary show BIG_ENDIAN
 
 /**
 Writer for writing data in the XMODEM-1K format on the UART port.
+
+Deprecated.
 */
 class Writer:
   static MAX_RETRY_/int ::= 3
@@ -57,6 +59,8 @@ class Writer:
 Reusable buffer object for packing data in the XMODEM-1K format, by adding a header.
 
 Note that only the last packet should be less than DATA_SIZE.
+
+Deprecated.
 */
 class Buffer:
   static DATA_SIZE/int ::= 1024

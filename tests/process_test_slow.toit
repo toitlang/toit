@@ -34,11 +34,10 @@ test_priorities:
     test_priority n --low=Process.PRIORITY_NORMAL --high=Process.PRIORITY_CRITICAL
     test_priority n --low=Process.PRIORITY_HIGH   --high=Process.PRIORITY_CRITICAL
 
-
 test_priority n/int --low/int --high/int:
   Process.current.priority = Process.PRIORITY_CRITICAL
   print "$n x [$low < $high]"
-  service := RegistrationServiceDefinition
+  service := RegistrationServiceProvider
   service.install
 
   baseline := calibrate service
@@ -66,7 +65,7 @@ test_priority n/int --low/int --high/int:
 
   Process.current.priority = Process.PRIORITY_NORMAL
 
-calibrate service/RegistrationServiceDefinition -> int:
+calibrate service/RegistrationServiceProvider -> int:
   begin := Time.monotonic_us + 100_000
   end := begin + 500_000
   counts := service.wait 1: process begin end
@@ -98,9 +97,10 @@ fib n:
 // ------------------------------------------------------------------
 
 interface RegistrationService:
-  static UUID/string ::= "82bcb411-e479-485e-9a9e-81031a5137b2"
-  static MAJOR/int   ::= 1
-  static MINOR/int   ::= 0
+  static SELECTOR ::= services.ServiceSelector
+      --uuid="82bcb411-e479-485e-9a9e-81031a5137b2"
+      --major=1
+      --minor=0
 
   register who/int count/int -> none
   static REGISTER_INDEX ::= 0
@@ -108,29 +108,27 @@ interface RegistrationService:
 // ------------------------------------------------------------------
 
 class RegistrationServiceClient extends services.ServiceClient implements RegistrationService:
-  constructor --open/bool=true:
-    super --open=open
+  static SELECTOR ::= RegistrationService.SELECTOR
+  constructor selector/services.ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
+    super selector
 
   open -> RegistrationServiceClient?:
-    client := open_
-        RegistrationService.UUID
-        RegistrationService.MAJOR
-        RegistrationService.MINOR
-        --timeout=(Duration --s=1)  // Use higher than usual timeout.
-    return client and this
+    return (super --timeout=(Duration --s=2)) and this  // Use higher than usual timeout.
 
   register who/int count/int -> none:
     invoke_ RegistrationService.REGISTER_INDEX [who, count]
 
 // ------------------------------------------------------------------
 
-class RegistrationServiceDefinition extends services.ServiceDefinition implements RegistrationService:
+class RegistrationServiceProvider extends services.ServiceProvider
+    implements services.ServiceHandler RegistrationService:
   counts_/Map? := null
   signal_/monitor.Signal ::= monitor.Signal
 
   constructor:
     super "log" --major=1 --minor=0
-    provides RegistrationService.UUID RegistrationService.MAJOR RegistrationService.MINOR
+    provides RegistrationService.SELECTOR --handler=this
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == RegistrationService.REGISTER_INDEX:

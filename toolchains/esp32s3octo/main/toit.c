@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Toitware ApS.
+// Copyright (C) 2018 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -13,12 +13,10 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-/**
-Shim to link the tests to the TCP library.
-The TCP library lives in a different place in the OSS repository, and this way
-  the tests don't need to be changed.
-*/
+// Toit ESP32 top level, derived from ESP-IDF Hello World example.
 
-import net.modules.tcp show *
+extern void toit_start();
 
-export *
+void app_main() {
+  toit_start();
+}

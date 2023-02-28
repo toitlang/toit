@@ -78,7 +78,7 @@ namespace toit {
   PRIMITIVE(seconds_since_epoch_local, 7)    \
   PRIMITIVE(set_tz, 1)                       \
   PRIMITIVE(platform, 0)                     \
-  PRIMITIVE(process_stats, 3)                \
+  PRIMITIVE(process_stats, 4)                \
   PRIMITIVE(bytes_allocated_delta, 0)        \
   PRIMITIVE(string_length, 1)                \
   PRIMITIVE(string_at, 2)                    \
@@ -307,7 +307,7 @@ namespace toit {
   PRIMITIVE(setup_ip, 1)                     \
   PRIMITIVE(disconnect, 2)                   \
   PRIMITIVE(disconnect_reason, 1)            \
-  PRIMITIVE(get_ip, 1)                       \
+  PRIMITIVE(get_ip, 2)                       \
   PRIMITIVE(init_scan, 1)                    \
   PRIMITIVE(start_scan, 4)                   \
   PRIMITIVE(read_scan, 1)                    \
@@ -431,7 +431,7 @@ namespace toit {
   PRIMITIVE(config_tx, 11)                   \
   PRIMITIVE(get_idle_threshold, 1)           \
   PRIMITIVE(set_idle_threshold, 2)           \
-  PRIMITIVE(config_bidirectional_pin, 2)     \
+  PRIMITIVE(config_bidirectional_pin, 3)     \
   PRIMITIVE(transmit, 2)                     \
   PRIMITIVE(transmit_done, 2)                \
   PRIMITIVE(prepare_receive, 1)              \
@@ -531,6 +531,7 @@ namespace toit {
   PRIMITIVE(set, 2)                          \
   PRIMITIVE(config_interrupt, 2)             \
   PRIMITIVE(last_edge_trigger_timestamp, 1)  \
+  PRIMITIVE(set_open_drain, 2)               \
 
 #define MODULE_ADC(PRIMITIVE)               \
   PRIMITIVE(init, 4)                        \
@@ -609,6 +610,7 @@ namespace toit {
   PRIMITIVE(is_open_file, 1)                 \
   PRIMITIVE(realpath, 1)                     \
   PRIMITIVE(cwd, 0)                          \
+  PRIMITIVE(read_file_content_posix, 2)      \
 
 #define MODULE_PIPE(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
@@ -618,6 +620,7 @@ namespace toit {
   PRIMITIVE(write, 4)                        \
   PRIMITIVE(read, 1)                         \
   PRIMITIVE(fork, 9)                         \
+  PRIMITIVE(fork2, 10)                       \
   PRIMITIVE(fd, 1)                           \
   PRIMITIVE(is_a_tty, 1)                     \
 
@@ -794,17 +797,21 @@ namespace toit {
   if (_value_##name < 0 || _value_##name > UINT32_MAX) OUT_OF_RANGE;\
   uint32 name = (uint32) _value_##name;
 
+#define INT64_VALUE_OR_WRONG_TYPE(destination, raw)     \
+  int64 destination;                                    \
+  do {                                                  \
+    if (is_smi(raw)) {                                  \
+      destination = Smi::cast(raw)->value();            \
+    } else if (is_large_integer(raw)) {                 \
+      destination = LargeInteger::cast(raw)->value();   \
+    } else {                                            \
+      WRONG_TYPE;                                       \
+    }                                                   \
+  } while (false)
 
 #define _A_T_int64(N, name)                             \
   Object* _raw_##name = __args[-(N)];                   \
-  int64 name;                                           \
-  if (is_smi(_raw_##name)) {                            \
-    name = (int64) Smi::cast(_raw_##name)->value();     \
-  } else if (is_large_integer(_raw_##name)) {           \
-    name = LargeInteger::cast(_raw_##name)->value();    \
-  } else {                                              \
-    WRONG_TYPE;                                         \
-  }
+  INT64_VALUE_OR_WRONG_TYPE(name, _raw_##name)
 
 #define _A_T_word(N, name)                \
   Object* _raw_##name = __args[-(N)];     \
@@ -885,6 +892,24 @@ namespace toit {
   Object* _raw_##name = __args[-(N)];                             \
   Blob name;                                                      \
   if (!_raw_##name->byte_content(process->program(), &name, STRINGS_ONLY)) WRONG_TYPE;
+
+// Filesystem primitives should generally use this, since the chdir primitive
+// merely changes a string representing the current directory.
+#define BLOB_TO_ABSOLUTE_PATH(result, blob)                                 \
+  if (blob.length() == 0) INVALID_ARGUMENT;                                 \
+  WideCharAllocationManager allocation_##result(process);                   \
+  wchar_t* wchar_##result = allocation_##result.to_wcs(&blob);              \
+  wchar_t result[MAX_PATH];                                                 \
+  auto error_##result = get_absolute_path(process, wchar_##result, result); \
+  if (error_##result) return error_##result
+
+HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output, const wchar_t* used_for_relative = null);
+
+#define _A_T_WindowsPath(N, name)                                           \
+  Object* _raw_##name = __args[-(N)];                                       \
+  Blob name##_blob;                                                         \
+  if (!_raw_##name->byte_content(process->program(), &name##_blob, STRINGS_ONLY)) WRONG_TYPE; \
+  BLOB_TO_ABSOLUTE_PATH(name, name##_blob);
 
 #define _A_T_Blob(N, name)                                        \
   Object* _raw_##name = __args[-(N)];                             \

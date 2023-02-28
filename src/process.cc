@@ -47,7 +47,8 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
         program,
         this,
         initial_memory ? initial_memory->initial_chunk : null,
-        initial_memory ? initial_memory->global_variables : null)
+        initial_memory ? initial_memory->global_variables : null,
+        initial_memory ? initial_memory->heap_mutex : null)
     , last_bytes_allocated_(0)
     , termination_message_(termination)
     , random_seeded_(false)
@@ -371,13 +372,29 @@ uint8 Process::update_priority() {
   return priority;
 }
 
-
 #if defined(TOIT_WINDOWS)
-const char* Process::current_directory() { return current_directory_; }
-void Process::set_current_directory(const char* current_directory) {
+
+const wchar_t* Process::current_directory() { return current_directory_; }
+void Process::set_current_directory(const wchar_t* current_directory) {
   free(const_cast<void*>(void_cast(current_directory_)));
   current_directory_ = current_directory;
 }
+
+String* Process::allocate_string(const wchar_t* content) {
+  word utf_16_length = wcslen(content);
+
+  word length = Utils::utf_16_to_8(reinterpret_cast<const uint16*>(content), utf_16_length, null, 0);
+
+  String* result = allocate_string(length);
+  if (result == null) return null;
+
+  String::Bytes bytes(result);
+
+  Utils::utf_16_to_8(reinterpret_cast<const uint16*>(content), utf_16_length, bytes.address(), bytes.length());
+
+  return result;
+}
+
 #endif
 
 }

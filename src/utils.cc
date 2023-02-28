@@ -14,6 +14,8 @@
 // directory of this repository.
 
 #include "utils.h"
+#include "objects.h"
+#include "process.h"
 
 #ifndef TOIT_MODEL
 #error "TOIT_MODEL is not set"
@@ -311,6 +313,212 @@ bool Utils::is_valid_utf_8(const uint8* buffer, int length) {
   return (state & UTF_MASK) == UTF_BASE;
 #endif
 }
+
+// Assumes the input is valid UTF-8, for example from a Toit string.
+// See also is_valid_utf_8.  Returns size in 16 bit code units.
+// If output is null, does not write.  If output_length is too small,
+// returns -1.
+word Utils::utf_8_to_16(const uint8* input, word length, uint16* output, word output_length) {
+  word size = 0;
+  for (word i = 0; i < length; ) {
+    uint8 prefix = input[i];
+    word count = Utils::bytes_in_utf_8_sequence(prefix);
+    int c;
+    if (prefix > Utils::MAX_ASCII) {
+      c = Utils::payload_from_prefix(prefix);
+      for (word j = 1; j < count; j++) {
+        c <<= Utils::UTF_8_BITS_PER_BYTE;
+        c |= input[i + j] & Utils::UTF_8_MASK;
+      }
+    } else {
+      c = prefix;
+    }
+    if (c < 0x10000) {
+      if (output) {
+        if (size >= output_length) return -1;
+        output[size] = c;
+      }
+      size++;
+    } else {
+      // Surrogate pair.
+      if (output) {
+        c -= 0x10000;
+        if (size + 1 >= output_length) return -1;
+        output[size] = 0xd800 + (c >> 10);
+        output[size + 1] = 0xdc00 + (c & 0x3ff);
+      }
+      size += 2;
+    }
+    i += count;
+  }
+  return size;
+}
+
+// Returns size in bytes.  Replaces invalid UTF-16 with 0xFFFD, the replacement
+//   character.
+// length is given in 16 bit UTF-16 code points.
+// If output is null, does not write.
+word Utils::utf_16_to_8(const uint16* input, word length, uint8* output, word output_length) {
+  word size = 0;
+  for (word i = 0; i < length; i++) {
+    int c = input[i];
+    if (Utils::MIN_SURROGATE <= c && c <= Utils::MAX_SURROGATE) {
+      // Surrogate pairs.
+      int decoded = 0xfffd;  // Substitute character for illegal sequences.
+      if (i + 1 != length) {
+        uint16 part2 = input[i + 1];
+        if (0xd800 <= c && c <= 0xdbff && 0xdc00 <= part2 && part2 <= 0xdfff) {
+          decoded = 0x10000 + ((c & 0x3ff) << 10) + (part2 & 0x3ff);
+          i++;
+        }
+      }
+      c = decoded;
+    }
+    if (c <= Utils::MAX_ASCII) {
+      if (output) {
+        if (size == output_length) return -1;
+        output[size] = c;
+      }
+      size++;
+    } else if (c <= Utils::MAX_TWO_BYTE_UNICODE) {
+      if (output) {
+        if (size + 1 >= output_length) return -1;
+        output[size]     = 0xc0 + (c >> 6);
+        output[size + 1] = Utils::UTF_8_PAYLOAD + (c & Utils::UTF_8_MASK);
+      }
+      size += 2;
+    } else if (c <= Utils::MAX_THREE_BYTE_UNICODE) {
+      if (output) {
+        if (size + 2 >= output_length) return -1;
+        output[size]     = 0xe0 + (c >> 12);
+        output[size + 1] = Utils::UTF_8_PAYLOAD + ((c >> 6) & Utils::UTF_8_MASK);
+        output[size + 2] = Utils::UTF_8_PAYLOAD + (c & Utils::UTF_8_MASK);
+      }
+      size += 3;
+    } else {
+      if (output) {
+        if (size + 3 >= output_length) return -1;
+        output[size]     = 0xf0 + (c >> 18);
+        output[size + 1] = Utils::UTF_8_PAYLOAD + ((c >> 12) & Utils::UTF_8_MASK);
+        output[size + 2] = Utils::UTF_8_PAYLOAD + ((c >> 6) & Utils::UTF_8_MASK);
+        output[size + 3] = Utils::UTF_8_PAYLOAD + (c & Utils::UTF_8_MASK);
+      }
+      size += 4;
+    }
+  }
+  return size;
+}
+
+bool Utils::utf_8_equals_utf_16(const uint8* input1, word length1, const uint16* input2, word length2) {
+  // The UTF-16 encoding always has fewer code units than the UTF-8 encoding.
+  if (length2 > length1) return false;
+
+  // Zero length strings are equal.
+  if (length1 == 0) return true;
+
+  // Worst blow-up is 3x because all UTF-8 sequences are 1-4 bytes and the
+  // 4-byte encodings correspond to two UTF-16 surrogates.  Broken UTF-16
+  // surrogates are encoded as a 3-byte substitution (0xfffd).
+  if (length1 > length2 * 3) return false;
+
+  // Quick out for different first ASCII letter.
+  if ((input1[0] <= MAX_ASCII || input2[0] <= MAX_ASCII) && input1[0] != input2[0]) return false;
+
+  // Start with length comparison of the UTF-16 version.
+  if (length2 != utf_8_to_16(input1, length1)) return false;
+
+  // Now we know the UTF-16 versions are the same length, generate the UTF-16
+  // version of the UTF-8 input, and compare them.
+  static const word BUFFER_SIZE = 260;
+  uint16 buffer[BUFFER_SIZE];
+  uint16* wide_input1 = length2 < BUFFER_SIZE
+      ? buffer
+      : unvoid_cast<uint16*>(malloc(sizeof(uint16) * length2));
+  utf_8_to_16(input1, length1, wide_input1, length2);
+  bool match = memcmp(wide_input1, input2, length2 * sizeof(uint16)) == 0;
+  if (wide_input1 != buffer) free(wide_input1);
+  return match;
+}
+
+// For use on Windows.  Takes the old environment in the format returned by
+// GetEnvironmentStringsW() and an array of key-value pairs.  Returns a new
+// environment in the same format, which should be freed when done.  Assumes
+// that allocations don't fail.
+// The format is a long series of null-terminated wide strings, followed by a
+// null, so a zero length string is not possible.  Each string contains an
+// equals sign that separates the key from the value.  If there is no equals
+// sign then the whole thing is taken to be the key.
+uint16* Utils::create_new_environment(Process* process, uint16* previous_environment, Array* environment) {
+  uint16* new_environment = null;
+  word length_so_far;
+  word new_environment_length = 0;
+  // First run calculates the length of the result.  Second run actually writes
+  // the result.
+  for (int runs = 0; runs < 2; runs++) {
+    length_so_far = 0;
+    bool writing = runs != 0;
+    for (uint16* p = previous_environment; *p; ) {
+      word len = 0;
+      word utf_16_key_length = -1;
+      while (p[len] != 0) {
+        if (utf_16_key_length == -1 && p[len] == '=') utf_16_key_length = len;
+        len++;
+      }
+      if (utf_16_key_length == -1) utf_16_key_length = len;  // No '=' symbol found.
+      word utf_16_key_value_length = len;
+      bool in_new_environment = false;
+      // Environment variable key  from p to p + utf_16_key_value_length.
+      // Environment variable name from p to p + utf_16_key_length.
+      for (int i = 0; i < environment->length(); i += 2) {
+        Blob key;
+        environment->at(i)->byte_content(process->program(), &key, STRINGS_ONLY);
+        if (utf_8_equals_utf_16(key.address(), key.length(), p, utf_16_key_length)) {
+          // Keys match, so we won't be taking this key-value pair from the old environment.
+          in_new_environment = true;
+          break;
+        }
+      }
+      if (!in_new_environment) {
+        if (writing) {
+          memcpy(new_environment + length_so_far, p, (utf_16_key_value_length + 1) * sizeof(uint16));
+        }
+        length_so_far += utf_16_key_value_length + 1;  // Add the null terminator.
+      }
+      p += utf_16_key_value_length + 1;
+    }
+    // Now that we have inherited the environment variables that were not
+    // mentioned in the new environment map, add the new variables.
+    for (int i = 0; i < environment->length(); i += 2) {
+      Blob key;
+      if (environment->at(i + 1) != process->program()->null_object()) {
+        Blob key, value;
+        environment->at(i    )->byte_content(process->program(), &key, STRINGS_ONLY);
+        environment->at(i + 1)->byte_content(process->program(), &value, STRINGS_ONLY);
+        uint16* dest = writing ? new_environment + length_so_far : null;
+        word utf_16_key_length = utf_8_to_16(key.address(), key.length(), dest, new_environment_length - length_so_far);
+        length_so_far += utf_16_key_length + 1;
+        if (writing) {
+          new_environment[length_so_far - 1] = '=';
+          dest = new_environment + length_so_far;
+        }
+        word utf_16_value_length = utf_8_to_16(value.address(), value.length(), dest, new_environment_length - length_so_far);
+        length_so_far += utf_16_value_length + 1;
+        if (writing) {
+          new_environment[length_so_far - 1] = 0;
+        }
+      }
+    }
+    length_so_far++;   // Ends with a double null terminator.
+    if (writing) {
+      new_environment[length_so_far - 1] = 0;
+    } else {
+      new_environment = unvoid_cast<uint16*>(malloc(sizeof(uint16) * length_so_far));
+      new_environment_length = length_so_far;
+    }
+  }
+  return new_environment;
+}
+
 
 #define L0 0, 1, 1, 2, 1, 2, 2, 3,
 #define L1 1, 2, 2, 3, 2, 3, 3, 4,

@@ -7,6 +7,8 @@ import .session
 /**
 The locker can wrap a $Session, and ensure both exclusive access to the
   Session and a queue in case of concurrent requests.
+
+Deprecated.
 */
 monitor Locker:
   session_/Session

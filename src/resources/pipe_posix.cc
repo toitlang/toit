@@ -320,22 +320,58 @@ static int dup_down(int from, int to) {
   return fcntl(to, F_SETFL, old_flags & ~O_CLOEXEC);
 }
 
+// Any argument that was a normal string need not be freed because it is
+// just a pointer into the null-terminated on-heap representation of the
+// string.  Others (string slices) must be freed.
+static void free_args(char** argv, Array* args) {
+  for (int i = 0; argv[i]; i++) {
+    if (!is_string(args->at(i))) {
+      free(argv[i]);
+    }
+    argv[i] = null;
+  }
+}
+
 // Forks and execs a program (optionally found using the PATH environment
 // variable.  The given file descriptors should be open file descriptors.  They
 // are attached to the stdin, stdout and stderr of the launched program, and
 // are closed in the parent program.  If you pass -1 for any of these then the
 // forked program inherits the stdin/out/err of this Toit program.
-PRIMITIVE(fork) {
-  ARGS(SubprocessResourceGroup, resource_group,
-       bool, use_path,
-       Object, in_obj,
-       Object, out_obj,
-       Object, err_obj,
-       int, fd_3,
-       int, fd_4,
-       cstring, command,
-       Array, args);
+static Object* fork_helper(
+    Process* process,
+    SubprocessResourceGroup* resource_group,
+    bool use_path,
+    Object* in_obj,
+    Object* out_obj,
+    Object* err_obj,
+    int fd_3,
+    int fd_4,
+    const char* command,
+    Array* args,
+    Object* environment_object) {
+  HeapObject* null_object = process->program()->null_object();
+
   if (args->length() > 1000000) OUT_OF_BOUNDS;
+
+  Array* environment = null;
+  if (environment_object != null_object) {
+    if (!is_array(environment_object)) INVALID_ARGUMENT;
+    environment = Array::cast(environment_object);
+
+    // Validate environment array.
+    if (environment->length() >= 0x100000 || (environment->length() & 1) != 0) OUT_OF_BOUNDS;
+    for (int i = 0; i < environment->length(); i++) {
+      Blob blob;
+      Object* element = environment->at(i);
+      bool is_key = (i & 1) == 0;
+      if (!is_key && element == process->program()->null_object()) continue;
+      if (!element->byte_content(process->program(), &blob, STRINGS_ONLY)) WRONG_TYPE;
+      if (blob.length() == 0) INVALID_ARGUMENT;
+      const uint8* str = blob.address();
+      if (is_key && memchr(str, '=', blob.length()) != null) INVALID_ARGUMENT;  // Key can't contain "=".
+    }
+  }
+
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
@@ -351,10 +387,19 @@ PRIMITIVE(fork) {
   char** argv = reinterpret_cast<char**>(allocation.calloc(args->length() + 1, sizeof(char*)));
   if (argv == null) ALLOCATION_FAILED;
   for (word i = 0; i < args->length(); i++) {
-    if (!is_string(args->at(i))) {
-      WRONG_TYPE;
+    if (is_string(args->at(i))) {
+      argv[i] = String::cast(args->at(i))->as_cstr();
+    } else {
+      Blob blob;
+      if (!args->at(i)->byte_content(process->program(), &blob, STRINGS_ONLY)) {
+        WRONG_TYPE;
+      }
+      int len = blob.length();
+      char* c_string = unvoid_cast<char*>(malloc(len + 1));
+      memcpy(c_string, blob.address(), len);
+      c_string[len] = '\0';
+      argv[i] = c_string;
     }
-    argv[i] = String::cast(args->at(i))->as_cstr();
   }
   argv[args->length()] = null;
 
@@ -363,6 +408,7 @@ PRIMITIVE(fork) {
   int pipe_result = pipe2_portable(control_fds, FD_CLOEXEC);
 
   if (pipe_result < 0) {
+    free_args(argv, args);
     QUOTA_EXCEEDED;
   }
 
@@ -379,7 +425,10 @@ PRIMITIVE(fork) {
   for (int i = 4; i >= 0; i--) {
     if (data_fds[i] > 0) {
       if (highest_child_fd < 0) highest_child_fd = i;
-      if (data_fds[i] < -1) WRONG_TYPE;
+      if (data_fds[i] < -1) {
+        free_args(argv, args);
+        WRONG_TYPE;
+      }
     }
   }
 
@@ -388,6 +437,7 @@ PRIMITIVE(fork) {
   if (child_pid == -1) {
     close(control_read);
     close(control_write);
+    free_args(argv, args);
     if (errno == EAGAIN) QUOTA_EXCEEDED;
     if (errno == ENOMEM) MALLOC_FAILED;
     OTHER_ERROR;
@@ -395,7 +445,10 @@ PRIMITIVE(fork) {
 
   if (child_pid != 0) {
     // Parent process.
-    close(control_write);  // In the parent, close the child's end.
+    // Free the arguments (in the child they are freed by exec or abort).
+    free_args(argv, args);
+    // In the parent, close the child's end.
+    close(control_write);
     int child_errno;
     const int child_errno_size = sizeof(child_errno);
     int control_status = read(control_read, &child_errno, child_errno_size);
@@ -421,6 +474,23 @@ PRIMITIVE(fork) {
 
   do {
     if (command == null) break;
+
+    for (int i = 0; environment && i < environment->length(); i += 2) {
+      Blob key;
+      environment->at(i)->byte_content(process->program(), &key, STRINGS_ONLY);
+      // We don't need to free this because we are in the child process and
+      // will exec soon.
+      auto key_cstr = strndup(char_cast(key.address()), key.length());
+      Object* value = environment->at(i + 1);
+      if (value == process->program()->null_object()) {
+        unsetenv(key_cstr);
+      } else {
+        Blob value_blob;
+        value->byte_content(process->program(), &value_blob, STRINGS_ONLY);
+        auto value_cstr = strndup(char_cast(value_blob.address()), value_blob.length());
+        setenv(key_cstr, value_cstr, 1);
+      }
+    }
 
     // Change the directory of the child process to match the Toit task's current directory.
     int current_directory_fd = current_dir(process);
@@ -509,6 +579,35 @@ PRIMITIVE(fork) {
   abort();
 
   return null;  // We never get here.
+}
+
+PRIMITIVE(fork) {
+  ARGS(SubprocessResourceGroup, resource_group,
+       bool, use_path,
+       Object, in_obj,
+       Object, out_obj,
+       Object, err_obj,
+       int, fd_3,
+       int, fd_4,
+       cstring, command,
+       Array, args);
+  return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
+                     fd_3, fd_4, command, args, process->program()->null_object());
+}
+
+PRIMITIVE(fork2) {
+  ARGS(SubprocessResourceGroup, resource_group,
+       bool, use_path,
+       Object, in_obj,
+       Object, out_obj,
+       Object, err_obj,
+       int, fd_3,
+       int, fd_4,
+       cstring, command,
+       Array, args,
+       Object, environment_object);
+  return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
+                     fd_3, fd_4, command, args, environment_object);
 }
 
 } // namespace toit

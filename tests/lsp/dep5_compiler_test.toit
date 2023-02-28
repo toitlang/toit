@@ -42,9 +42,10 @@ test client/LspClient:
   // The paths don't really need to be non-existing, as we provide content for it
   // anyways.
   DOC_COUNT ::= 2
+  DRIVE ::= platform == PLATFORM_WINDOWS ? "c:" : ""
   MODULE_NAME_PREFIX ::= "some_non_existing_path"
   relatives := List DOC_COUNT: ".$MODULE_NAME_PREFIX$it"
-  paths := List DOC_COUNT: "/tmp/$MODULE_NAME_PREFIX$(it).toit"
+  paths := List DOC_COUNT: "$DRIVE/tmp/$MODULE_NAME_PREFIX$(it).toit"
 
   DOC_COUNT.repeat:
     client.send_did_open --path=paths[it] --text=""

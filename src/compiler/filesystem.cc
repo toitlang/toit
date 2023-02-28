@@ -102,8 +102,22 @@ void Filesystem::canonicalize(char* path) {
   int i = 0;
   while (i < path_len) {
     if (at_slash && path[i] == path_separator()) {
-      // Drop double slashes.
+#ifndef TOIT_WINDOWS
       i++;
+#else
+      // Drop double slashes, unless we are on Windows and this is the first
+      // beginning of the path.
+      // A windows path that starts with '//' or '\\' (but not '/\' or '\/') is
+      // the root of a network share. We must keep them.
+      if (i == 1 && path[0] == path[1]) {
+        // Remove the first slash. It doesn't count for .. operations.
+        slashes.pop_back();
+        at_slash = i;
+        path[canonical_pos++] = path[i++];
+      } else {
+        i++;
+      }
+#endif
     } else if (at_slash &&
                path[i] == '.' &&
                (path[i + 1] == path_separator() || path[i + 1] == '\0')) {
@@ -141,13 +155,13 @@ void Filesystem::canonicalize(char* path) {
       path[canonical_pos++] = path[i++];
     }
   }
-  // Drop trailing path seperator.
-  // There can only be one.
-  if (path[canonical_pos - 1] == path_separator()) {
-    canonical_pos--;
-  }
+  // Drop trailing path separator unless it's the root.
+  path[canonical_pos] = '\0';
   if (canonical_pos == 0) {
-    path[canonical_pos++] = is_absolute ? path_separator() : '.';
+    path[canonical_pos++] = '.';
+  } else if (!is_root(path) && path[canonical_pos - 1] == path_separator()) {
+    // There can only be one trailing path separator.
+    canonical_pos--;
   }
   path[canonical_pos] = '\0';
 }

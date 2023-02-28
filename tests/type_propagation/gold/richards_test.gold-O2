@@ -89,11 +89,11 @@ run_richards tests/type_propagation/richards_test.toit
 153[002] - pop, load local S1
 155[053] - invoke static Scheduler.schedule tests/type_propagation/richards_test.toit // [{Scheduler}] -> {Null_}
 158[041] - pop 1
-159[029] - load [block] in run_richards tests/type_propagation/richards_test.toit
+159[029] - load method [block] in run_richards tests/type_propagation/richards_test.toit
 164[038] - load block 0
 166[053] - invoke static assert_ <sdk>/core/assert_.toit // [[block]] -> {Null_}
 169[040] - pop 2
-171[029] - load [block] in run_richards tests/type_propagation/richards_test.toit
+171[029] - load method [block] in run_richards tests/type_propagation/richards_test.toit
 176[038] - load block 0
 178[053] - invoke static assert_ <sdk>/core/assert_.toit // [[block]] -> {Null_}
 181[089] - return null S4 0
@@ -405,7 +405,7 @@ TaskControlBlock.mark_as_not_held tests/type_propagation/richards_test.toit
  - argument 0: {TaskControlBlock}
   0[016] - load local 2
   1[009] - load field local 83 // [{TaskControlBlock}] -> {Null_|LargeInteger_|SmallInteger_}
-  3[033] - load global var lazy G0 // {SmallInteger_}
+  3[032] - load global var lazy G0 // {SmallInteger_}
   5[069] - invoke bit and // [{Null_|LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
   6[013] - store field, pop 5
   8[089] - return null S0 1

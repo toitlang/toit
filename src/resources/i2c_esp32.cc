@@ -232,7 +232,7 @@ static Object* read_i2c(Process* process, I2cResourceGroup* i2c, int i2c_address
   esp_err_t err = i2c_master_cmd_begin(i2c->port(), cmd, 1000 / portTICK_RATE_MS);
   // TODO(florian): we could return the error code here: Smi::from(err).
   // We would need to type-dispatch on the Toit side to know whether it was an error or not.
-  if (err != ESP_OK) return null;
+  if (err != ESP_OK) return process->program()->null_object();
 
   return array;
 }

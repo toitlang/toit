@@ -15,6 +15,10 @@ test client/LspClient:
   space_foo := "$(directory.cwd)/with space/foo.toit"
   space_bar := "$(directory.cwd)/with space/bar.toit"
 
+  if platform == PLATFORM_WINDOWS:
+    space_foo = space_foo.replace --all "/" "\\"
+    space_bar = space_bar.replace --all "/" "\\"
+
   print "Checking that foo has one error."
   foo_content := (file.read_content space_foo).to_string
   client.send_did_open --path=space_foo --text=foo_content

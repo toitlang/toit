@@ -21,6 +21,7 @@ class IpAddress:
       if not 0 <= val <= 255: throw "BAD_FORMAT"
       raw[i] = val
       i++
+    if i != 4: throw "BAD_FORMAT"
 
   operator == other:
     other_raw := other.raw

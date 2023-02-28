@@ -20,6 +20,11 @@ void GcMetadata::tear_down() {
   OS::free_pages(singleton_.metadata_, singleton_.metadata_size_);
 }
 
+void GcMetadata::get_metadata_extent(uword* address_return, uword* size_return) {
+  *address_return = reinterpret_cast<uword>(singleton_.metadata_);
+  *size_return = singleton_.metadata_size_;
+}
+
 void GcMetadata::set_up() { singleton_.set_up_singleton(); }
 
 void GcMetadata::set_up_singleton() {
@@ -281,7 +286,7 @@ void GcMetadata::slow_mark(HeapObject* object, uword size) {
 }
 
 void GcMetadata::mark_stack_overflow(HeapObject* object) {
-  uword address = object->_raw();
+  uword address = object->_raw();  // Note we need this untagged because we write the low byte into the starts_for.
   uint8* overflow_bits = overflow_bits_for(address);
   *overflow_bits |= 1U << ((address >> CARD_SIZE_LOG_2) & 7);
   // We can have a mark stack overflow in new-space where we do not normally

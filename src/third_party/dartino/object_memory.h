@@ -178,6 +178,8 @@ class Space : public LivenessOracle {
   // Iterate all the objects that are grey, after a mark stack overflow.
   void iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack);
 
+  void iterate_chunks(void* context, Process* process, process_chunk_callback_t* callback);
+
   // Returns true if the address is inside this space.  Not particularly fast.
   // See GcMetadata::PageType for a faster possibility.
   bool includes(uword address);

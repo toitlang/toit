@@ -97,6 +97,7 @@ Method Program::find_method(Object* receiver, int offset) {
 #define DISPATCH(n)                                                                \
     { ASSERT(program->bytecodes.data() <= bcp + n);                                \
       ASSERT(bcp + n < program->bytecodes.data() + program->bytecodes.length());   \
+      ASSERT(!process_->object_heap()->has_pending_limit());                       \
       Opcode next = static_cast<Opcode>(bcp[n]);                                   \
       bcp += n;                                                                    \
       OPCODE_TRACE()                                                               \
@@ -274,6 +275,13 @@ Interpreter::Result Interpreter::run() {
     BYTECODES(LABEL)
   };
 #undef LABEL
+
+  // We sometimes suspend processes and collect their garbage
+  // from the outside. In that case, we are not calling the GC
+  // after a failed allocation attempt, so we do not get the
+  // pending heap limit installed. Do it here before starting
+  // the interpretation.
+  process_->object_heap()->check_install_heap_limit();
 
   // Interpretation state.
   Program* program = process_->program();
@@ -531,6 +539,8 @@ Interpreter::Result Interpreter::run() {
       sp = gc(sp, false, attempts, false);
       result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     }
+    process_->object_heap()->check_install_heap_limit();
+
     if (result == null) {
       sp = push_error(sp, program->allocation_failed(), "");
       goto THROW_IMPLEMENTATION;
@@ -541,8 +551,10 @@ Interpreter::Result Interpreter::run() {
       instance->at_put(i, program->null_object());
     }
     PUSH(result);
-    if (Flags::gcalot) sp = gc(sp, false, 1, false);
-    process_->object_heap()->check_install_heap_limit();
+    if (Flags::gcalot) {
+      sp = gc(sp, false, 1, false);
+      process_->object_heap()->check_install_heap_limit();
+    }
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(IS_CLASS, encoded);
@@ -1072,6 +1084,7 @@ Interpreter::Result Interpreter::run() {
 
       // GC might have taken place in object heap but local "method" is from program heap.
       PUSH(result);
+      process_->object_heap()->check_install_heap_limit();
       DISPATCH(PRIMITIVE_LENGTH);
 
     done:
@@ -1320,13 +1333,6 @@ Interpreter::Result Interpreter::run() {
       if (Flags::trace) printf("[yield from interpretation]\n");
       return Result(Result::YIELDED);
     } else if (return_code == 1) {
-      static_assert(FRAME_SIZE == 2, "Unexpected frame size");
-      PUSH(reinterpret_cast<Object*>(bcp + HALT_LENGTH));
-      PUSH(program->frame_marker());
-      store_stack(sp);
-      if (Flags::trace) printf("[stop interpretation]\n");
-      return Result(0);
-    } else if (return_code == 2) {
       int exit_value = Smi::cast(POP())->value();
       static_assert(FRAME_SIZE == 2, "Unexpected frame size");
       PUSH(reinterpret_cast<Object*>(bcp + HALT_LENGTH));
@@ -1335,7 +1341,7 @@ Interpreter::Result Interpreter::run() {
       if (Flags::trace) printf("[exit interpretation exit_value=%d]\n", exit_value);
       return Result(exit_value);
     } else {
-      ASSERT(return_code == 3);
+      ASSERT(return_code == 2);
       Object* duration = POP();
       int64 value = 0;
       if (is_smi(duration)) {

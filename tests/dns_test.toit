@@ -15,6 +15,7 @@ main:
   fail_test
   long_test
   parse_numeric_test
+  fallback_test
 
 localhost_test:
   expect_equals "127.0.0.1" (dns_lookup "localhost").stringify
@@ -118,6 +119,22 @@ parse_numeric_test:
   invalid_ipv6 "12345:5678::"        // Number too big.
   invalid_ipv6 "1235.5678::"         // No dots.
   invalid_ipv6 "::12345"             // Too long segment at end.
+
+fallback_test:
+  // There will be a short timeout (about 2.5 seconds), then it will switch to
+  // Google and succeed.
+  client := DnsClient [
+      "240.0.0.0",  // Black hole that never answers.
+      "8.8.8.8",    // Google DNS.
+      ]
+  dns_lookup --client=client "www.apple.com"
+  // Check that we switched permanently to the DNS server that answers quickly.
+  with_timeout (DNS_RETRY_TIMEOUT * 2): dns_lookup --client=client "www.google.com"
+
+  // The --server option still works.
+  dns_lookup --server="8.8.4.4" "www.facebook.com"
+
+  expect_throw "BAD_FORMAT": dns_lookup --server="5.5.5" "www.google.com"
 
 valid_ipv4 str/string -> none:
   expect

@@ -14,7 +14,7 @@ main:
 class TraceServiceDefinition extends ServiceDefinition implements TraceService:
   constructor:
     super "system/trace/test" --major=1 --minor=2
-    provides TraceService.UUID TraceService.MAJOR TraceService.MINOR
+    provides TraceService.SELECTOR
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == TraceService.HANDLE_TRACE_INDEX:

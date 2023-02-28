@@ -32,7 +32,6 @@ with_lsp_client [block]
     --toitlsp_exe/string?=null
     --supports_config=true
     --needs_server_args=(not supports_config)
-    --use_rpc_filesystem=false
     --spawn_process=false:
   with_lsp_client block
       --toitc=toitc
@@ -40,7 +39,6 @@ with_lsp_client [block]
       --compiler_exe=compiler_exe
       --supports_config=supports_config
       --needs_server_args=needs_server_args
-      --use_rpc_filesystem=use_rpc_filesystem
       --spawn_process=spawn_process
       --pre_initialize=(:null)
 
@@ -51,7 +49,6 @@ with_lsp_client [block]
     --compiler_exe/string = toitc
     --supports_config=true
     --needs_server_args=(not supports_config)
-    --use_rpc_filesystem=false
     --spawn_process=true
     [--pre_initialize]:
   server_args := [lsp_server]
@@ -61,7 +58,6 @@ with_lsp_client [block]
   if toitlsp_exe:
     server_cmd = toitlsp_exe
     server_args = ["--toitc", compiler_exe, "--sdk", (sdk_path_from_compiler toitc)]
-    use_rpc_filesystem = false
   else:
     server_cmd = toitc
 
@@ -69,7 +65,6 @@ with_lsp_client [block]
       server_cmd
       server_args
       --supports_config=supports_config
-      --use_rpc_filesystem=use_rpc_filesystem
       --compiler_exe=compiler_exe
       --spawn_process=spawn_process
   client.initialize pre_initialize
@@ -122,9 +117,7 @@ class LspClient:
       "timeoutMs": 10_000,  // Increase the timeout to avoid flaky tests.
     }
 
-  static start_server_ cmd args compiler_exe --spawn_process/bool --use_rpc_filesystem/bool -> List:
-    if use_rpc_filesystem:
-      args += ["--rpc-filesystem"]
+  static start_server_ cmd args compiler_exe --spawn_process/bool -> List:
     print "starting the server $cmd with $args"
     if spawn_process:
       pipes := pipe.fork
@@ -143,7 +136,6 @@ class LspClient:
       server_to   := FakePipe
       server_rpc_connection := RpcConnection (BufferedReader server_to) server_from
       server := LspServer server_rpc_connection compiler_exe UriPathTranslator
-          --use_rpc_filesystem=use_rpc_filesystem
       task::
         server.run
       return [server_to, server_from, server, null]
@@ -153,12 +145,10 @@ class LspClient:
       server_cmd/string
       server_args/List
       --supports_config/bool
-      --use_rpc_filesystem/bool
       --compiler_exe=server_cmd
       --spawn_process:
     start_result := start_server_ server_cmd server_args compiler_exe
         --spawn_process=spawn_process
-        --use_rpc_filesystem=use_rpc_filesystem
     server_to   := start_result[0]
     server_from := start_result[1]
     server := start_result[2]

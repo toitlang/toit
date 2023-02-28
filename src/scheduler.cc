@@ -944,6 +944,17 @@ Process* Scheduler::find_process(Locker& locker, int pid) {
   return null;
 }
 
+void Scheduler::iterate_process_chunks(void* context, process_chunk_callback_t* callback) {
+  Locker locker(mutex_);
+  for (ProcessGroup* group : groups_) {
+    ProcessListFromProcessGroup& processes = group->processes();
+    for (auto it : processes) {
+      if (it->program() == null) continue;  // External process.
+      it->object_heap()->iterate_chunks(context, callback);
+    }
+  }
+}
+
 bool Scheduler::has_ready_processes(Locker& locker) {
   for (int i = 0; i < NUMBER_OF_READY_QUEUES; i++) {
     if (!ready_queue_[i].is_empty()) return true;

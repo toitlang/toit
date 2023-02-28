@@ -32,9 +32,31 @@ ADD_TOIT_EXE(
   ${TOITP_DEP}
   "")
 
-add_custom_target(build_test_toitp_exe DEPENDS ${TOITP_EXE})
-add_dependencies(check build_test_toitp_exe)
-add_dependencies(check_slow build_test_toitp_exe)
+add_executable(
+  bytecode_lister
+  bytecode_lister.cc
+)
+
+set(BYTECODE_LIST ${TOITP_TEST_DIR}/bytecode.output)
+
+add_custom_target(build_test_toitp_requirements DEPENDS ${TOITP_EXE} ${BYTECODE_LIST})
+add_dependencies(check build_test_toitp_requirements)
+add_dependencies(check_slow build_test_toitp_requirements)
+
+add_custom_command(
+  OUTPUT ${BYTECODE_LIST}
+  COMMAND $<TARGET_FILE:bytecode_lister> > ${BYTECODE_LIST}
+  DEPENDS $<TARGET_FILE:bytecode_lister>
+)
+
+set(BYTECODE_MATCH_TEST ${CMAKE_CURRENT_SOURCE_DIR}/bytecode_match_test.toit)
+file(RELATIVE_PATH BYTECODE_MATCH_TEST_NAME ${TOIT_SDK_SOURCE_DIR} ${BYTECODE_MATCH_TEST})
+set(BYTECODE_MATCH_TEST_NAME tests-toitp-bytecode_match_test)
+add_test(
+  NAME ${BYTECODE_MATCH_TEST_NAME}
+  COMMAND $<TARGET_FILE:toit.run> ${BYTECODE_MATCH_TEST} ${BYTECODE_LIST}
+  DEPENDS ${BYTECODE_LIST}
+  )
 
 foreach(file ${TOITP_TESTS})
   get_filename_component(base ${file} NAME_WE)

@@ -117,15 +117,15 @@ static const int WORD_SHIFT = 2;
 #endif
 static_assert(sizeof(uhalf_word) == sizeof(uword) / 2, "Unexpected half-word size");
 
-typedef signed char int8;
-typedef short int16;
-typedef int int32;
-typedef long long int int64;
+typedef int8_t int8;
+typedef int16_t int16;
+typedef int32_t int32;
+typedef int64_t int64;
 
-typedef unsigned char uint8;
-typedef unsigned short uint16;
-typedef unsigned int uint32;
-typedef unsigned long long int uint64;
+typedef uint8_t uint8;
+typedef uint16_t uint16;
+typedef uint32_t uint32;
+typedef uint64_t uint64;
 
 static const word KB_LOG2 = 10;
 static const int KB = 1 << KB_LOG2;
@@ -288,6 +288,7 @@ void fail(const char* format, ...) __attribute__ ((__noreturn__));
 // Common forward declarations.
 class AlignedMemory;
 class Block;
+class Chunk;
 class ProgramBlock;
 class ConditionVariable;
 class Encoder;
@@ -406,5 +407,7 @@ static const word ITERATE_TAG_HEAP_OVERHEAD = -2;
 static const word ITERATE_CUSTOM_TAGS = -100;
 
 static const int DEFAULT_OPTIMIZATION_LEVEL = 1;
+
+typedef void process_chunk_callback_t(void* context, Process* process, uword address, uword size);
 
 } // namespace toit

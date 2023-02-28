@@ -15,10 +15,6 @@ import system.api.service_discovery
     ServiceDiscoveryService
     ServiceDiscoveryServiceClient
 
-// Notification kinds.
-SERVICES_MANAGER_NOTIFY_ADD_PROCESS    /int ::= 0
-SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS /int ::= 1
-
 // RPC procedure numbers used for using services from clients.
 RPC_SERVICES_OPEN_           /int ::= 300
 RPC_SERVICES_CLOSE_          /int ::= 301
@@ -26,49 +22,229 @@ RPC_SERVICES_INVOKE_         /int ::= 302
 RPC_SERVICES_CLOSE_RESOURCE_ /int ::= 303
 
 // Internal limits.
-CLIENT_ID_LIMIT_       /int ::= 0x3fff_ffff
+RANDOM_ID_LIMIT_       /int ::= 0x3fff_ffff
 RESOURCE_HANDLE_LIMIT_ /int ::= 0x1fff_ffff  // Will be shifted up by one.
 
-_client_ /ServiceDiscoveryService ::= ServiceDiscoveryServiceClient
+_client_ /ServiceDiscoveryService ::= (ServiceDiscoveryServiceClient).open
 
-abstract class ServiceClient:
+/**
+A service selector is used to identify and discover services. It
+  has a unique id that never changes and major and minor versions
+  numbers that support evolving APIs over time.
+
+On the $ServiceProvider side, the selector is used when providing
+  a service so that clients can discover it later.
+
+On the $ServiceClient side, the selector is used when discovering
+  services, and in this context it can also be restricted to help
+  disambiguate between multiple variants of a service provided
+  by multiple providers.
+*/
+class ServiceSelector:
+  uuid/string
+  major/int
+  minor/int
+  constructor --.uuid --.major --.minor:
+
+  /**
+  Returns a restricted variant of this $ServiceSelector that can
+    be used in the service discovery process to allow and deny
+    discovered services.
+  */
+  restrict -> ServiceSelectorRestricted:
+    return ServiceSelectorRestricted.internal_ this
+
+  /**
+  Whether this $ServiceSelector matches $selector and thus
+    identifies the same version of a specific service API.
+  */
+  matches selector/ServiceSelector -> bool:
+    return uuid == selector.uuid and
+        major == selector.major and
+        minor == selector.minor
+
+  is_allowed_ --name/string --major/int --minor/int --tags/List? -> bool:
+    return true
+
+class ServiceSelectorRestricted extends ServiceSelector:
+  tags_ := {:}    // Map<string, bool>
+  names_ ::= {:}  // Map<string, List<ServiceSelectorRestriction_>>
+
+  tags_include_allowed_/bool := false
+  names_include_allowed_/bool := false
+
+  constructor.internal_ selector/ServiceSelector:
+    super --uuid=selector.uuid --major=selector.major --minor=selector.minor
+
+  restrict -> ServiceSelectorRestricted:
+    throw "Already restricted"
+
+  allow --name/string --major/int?=null --minor/int?=null -> ServiceSelectorRestricted:
+    return add_name_ --name=name --major=major --minor=minor --allow
+  deny --name/string --major/int?=null --minor/int?=null -> ServiceSelectorRestricted:
+    return add_name_ --name=name --major=major --minor=minor --no-allow
+
+  allow --tag/string -> ServiceSelectorRestricted:
+    return allow --tags=[tag]
+  allow --tags/List -> ServiceSelectorRestricted:
+    return add_tags_ --tags=tags --allow
+  deny --tag/string -> ServiceSelectorRestricted:
+    return deny --tags=[tag]
+  deny --tags/List -> ServiceSelectorRestricted:
+    return add_tags_ --tags=tags --no-allow
+
+  add_name_ --name/string --major/int? --minor/int? --allow/bool -> ServiceSelectorRestricted:
+    if minor and not major: throw "Must have major version to match on minor"
+    restrictions := names_.get name --init=: []
+    // Check that the new restriction doesn't conflict with an existing one.
+    restrictions.do: | restriction/ServiceSelectorRestriction_ |
+      match := true
+      if major: match = (not restriction.major) or restriction.major == major
+      if match and minor: match = (not restriction.minor) or restriction.minor == minor
+      if match: throw "Cannot have multiple entries for the same named version"
+    if allow: names_include_allowed_ = true
+    restrictions.add (ServiceSelectorRestriction_ allow major minor)
+    return this
+
+  add_tags_ --tags/List --allow/bool -> ServiceSelectorRestricted:
+    tags.do: | tag/string |
+      if (tags_.get tag) == (not allow): throw "Cannot allow and deny the same tag"
+      if allow: tags_include_allowed_ = true
+      tags_[tag] = allow
+    return this
+
+  is_allowed_ --name/string --major/int --minor/int --tags/List? -> bool:
+    // Check that the name and versions are allowed.
+    restrictions := names_.get name
+    name_allowed := not names_include_allowed_
+    if restrictions: restrictions.do: | restriction/ServiceSelectorRestriction_? |
+      match := (not restriction.major) or restriction.major == major
+      if match: match = (not restriction.minor) or restriction.minor == minor
+      if not match: continue.do
+      if not restriction.allow: return false
+      // We found named version that was explicitly allowed. Continue through
+      // the restrictions so we can find any explicitly denied named versions.
+      name_allowed = true
+    if not name_allowed: return false
+
+    // Check that the tag is allowed. If no tag is registered as allowed,
+    // we allow all non-denied tags.
+    tags_allowed := not tags_include_allowed_
+    if tags: tags.do: | tag/string |
+      tags_.get tag --if_present=: | allowed/bool |
+        if not allowed: return false
+        // We found a tag that was explicitly allowed. Continue through
+        // the tags so we can find any explicitly denied tags.
+        tags_allowed = true
+    return tags_allowed
+
+/**
+Base class for clients that connect to and use provided services
+  (see $ServiceProvider).
+
+Typically, users call the $open method on a subclass of the client. This then
+  discovers the corresponding provider and connects to it.
+
+Subclasses implement service-specific methods to provide convenient APIs.
+*/
+class ServiceClient:
+  // TODO(kasper): Make this non-nullable.
+  selector/ServiceSelector?
+
   _id_/int? := null
   _pid_/int? := null
 
   _name_/string? := null
-  _version_/List? := null
-  _default_timeout_/Duration? ::= ?
+  _major_/int := 0
+  _minor_/int := 0
+  _patch_/int := 0
+  _tags_/List? := null
 
   static DEFAULT_OPEN_TIMEOUT /Duration ::= Duration --ms=100
 
+  // TODO(kasper): Deprecate this.
+  _default_timeout_/Duration? ::= ?
+
+  // TODO(kasper): Deprecate this constructor.
   constructor --open/bool=true:
     // If we're opening the client as part of constructing it, we instruct the
     // service discovery service to wait for the requested service to be provided.
+    selector = null
     _default_timeout_ = open ? DEFAULT_OPEN_TIMEOUT : null
     if open and not this.open: throw "Cannot find service"
 
-  abstract open -> ServiceClient?
-
+  // TODO(kasper): Deprecate this helper.
   open_ uuid/string major/int minor/int -> ServiceClient?
-      --pid/int?=null
       --timeout/Duration?=_default_timeout_:
-    if _id_: throw "Already opened"
-    if pid:
-      process_send_ pid SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_ADD_PROCESS, Process.current.id]
+    assert: not this.selector
+    return _open_ (ServiceSelector --uuid=uuid --major=major --minor=minor)
+       --timeout=timeout
+
+  constructor selector/ServiceSelector:
+    // TODO(kasper): Simplify this once the we don't need the
+    // legacy constructor.
+    this.selector = selector
+    _default_timeout_ = null
+
+  open --timeout/Duration?=DEFAULT_OPEN_TIMEOUT -> ServiceClient:
+    return open --timeout=timeout --if_absent=: throw "Cannot find service"
+
+  open --timeout/Duration?=null [--if_absent] -> any:
+    if not selector: throw "Must override open in client"
+    assert: not this._default_timeout_
+    if client := _open_ selector --timeout=timeout: return client
+    return if_absent.call
+
+  _open_ selector/ServiceSelector --timeout/Duration? -> ServiceClient?:
+    discovered/List? := null
+    if timeout:
+      catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
+        with_timeout timeout: discovered = _client_.discover selector.uuid --wait
     else:
-      if timeout:
-        catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
-          with_timeout timeout: pid = _client_.discover uuid true
+      discovered = _client_.discover selector.uuid --no-wait
+    if not discovered: return null
+
+    candidate_index := null
+    candidate_priority := null
+    for i := 0; i < discovered.size; i += 7:
+      tags := discovered[i + 6]
+      allowed := selector.is_allowed_
+          --name=discovered[i + 2]
+          --major=discovered[i + 3]
+          --minor=discovered[i + 4]
+          --tags=tags
+      if not allowed: continue
+      priority := discovered[i + 5]
+      if not candidate_index:
+        candidate_index = i
+        candidate_priority = priority
+      else if priority < candidate_priority:
+        // The remaining entries have lower priorities and
+        // we already found a suitable candidate.
+        break
       else:
-        pid = _client_.discover uuid false
-      if not pid: return null
+        // Found multiple candidates with the same priority.
+        throw "Cannot disambiguate"
+
+    if not candidate_index: return null
+    pid := discovered[candidate_index]
+    id := discovered[candidate_index + 1]
+    return _open_ selector --pid=pid --id=id
+
+  _open_ selector/ServiceSelector --pid/int --id/int -> ServiceClient:
+    if _id_: throw "Already opened"
     // Open the client by doing a RPC-call to the discovered process.
     // This returns the client id necessary for invoking service methods.
-    definition ::= rpc.invoke pid RPC_SERVICES_OPEN_ [uuid, major, minor]
+    definition ::= rpc.invoke pid RPC_SERVICES_OPEN_ [
+      id, selector.uuid, selector.major, selector.minor
+    ]
     _pid_ = pid
-    _id_ = definition[2]
-    _name_ = definition[0]
-    _version_ = definition[1]
+    _id_ = definition[0]
+    _name_ = definition[1]
+    _major_ = definition[2]
+    _minor_ = definition[3]
+    _patch_ = definition[4]
+    _tags_ = definition[5]
     // Close the client if the reference goes away, so the service
     // process can clean things up.
     add_finalizer this:: close
@@ -81,25 +257,25 @@ abstract class ServiceClient:
     return _name_
 
   major -> int:
-    return _version_[0]
+    return _major_
 
   minor -> int:
-    return _version_[1]
+    return _minor_
 
   patch -> int:
-    return _version_[2]
+    return _patch_
 
   close -> none:
     id := _id_
     if not id: return
     pid := _pid_
-    _id_ = _name_ = _version_ = _pid_ = null
+    _id_ = _name_ = _pid_ = null
     remove_finalizer this
     ServiceResourceProxyManager_.unregister_all id
     critical_do: rpc.invoke pid RPC_SERVICES_CLOSE_ id
 
   stringify -> string:
-    return "service:$_name_@$(_version_.join ".")"
+    return "service:$_name_@$(_major_).$(_minor_).$(_patch_)"
 
   invoke_ index/int arguments/any -> any:
     id := _id_
@@ -115,13 +291,49 @@ abstract class ServiceClient:
     // close after timing out, it should still work.
     critical_do: rpc.invoke _pid_ RPC_SERVICES_CLOSE_RESOURCE_ [id, handle]
 
-abstract class ServiceDefinition:
-  name/string ::= ?
-  _version_/List ::= ?
+/**
+A handler for requests from clients.
 
-  _uuids_/List ::= []
-  _versions_/List ::= []
+A $ServiceProvider may provide multiple services, each of which comes with a
+  handler. That handler is then called for the corresponding request from the
+  client.
+*/
+interface ServiceHandler:
+  handle pid/int client/int index/int arguments/any-> any
+
+/**
+A service provider.
+
+Service providers are classes that expose APIs through remote
+  procedure calls (RPCs).
+
+# Inheritance
+Typically, subclasses implement the $ServiceHandler interface, and
+  call the $provides method in their constructor, using 'this' as handler.
+
+If the subclass implements multiple independent service APIs, it is
+  useful to split the handling out into multiple implementations of
+  $ServiceHandler to avoid running into issues with overlapping
+  method indexes.
+*/
+class ServiceProvider:
+  name/string
+  major/int
+  minor/int
+  patch/int
+  tags/List?
+
+  static PRIORITY_UNPREFERRED_STRONGLY /int ::= 0x10
+  static PRIORITY_UNPREFERRED          /int ::= 0x30
+  static PRIORITY_UNPREFERRED_WEAKLY   /int ::= 0x50
+  static PRIORITY_NORMAL               /int ::= 0x80
+  static PRIORITY_PREFERRED_WEAKLY     /int ::= 0xb0
+  static PRIORITY_PREFERRED            /int ::= 0xd0
+  static PRIORITY_PREFERRED_STRONGLY   /int ::= 0xf0
+
+  _services_/List ::= []
   _manager_/ServiceManager_? := null
+  _ids_/List? := null
 
   _clients_/Set ::= {}  // Set<int>
   _clients_closed_/int := 0
@@ -130,11 +342,8 @@ abstract class ServiceDefinition:
   _resources_/Map ::= {:}  // Map<int, Map<int, Object>>
   _resource_handle_next_/int := ?
 
-  constructor .name --major/int --minor/int --patch/int=0:
-    _version_ = [major, minor, patch]
+  constructor .name --.major --.minor --.patch=0 --.tags=null:
     _resource_handle_next_ = random RESOURCE_HANDLE_LIMIT_
-
-  abstract handle pid/int client/int index/int arguments/any-> any
 
   on_opened client/int -> none:
     // Override in subclasses.
@@ -142,21 +351,35 @@ abstract class ServiceDefinition:
   on_closed client/int -> none:
     // Override in subclasses.
 
-  version -> string:
-    return _version_.join "."
-
   stringify -> string:
-    return "service:$name@$version"
+    return "service:$name@$(major).$(minor).$(patch)"
 
-  provides uuid/string major/int minor/int -> none:
-    _uuids_.add uuid
-    _versions_.add [major, minor]
+  /**
+  Registers a handler for the given $selector.
+
+  This function should only be called from subclasses (typically in their constructor).
+  */
+  provides selector/ServiceSelector --handler/ServiceHandler -> none
+      --id/int?=null
+      --priority/int=PRIORITY_NORMAL
+      --tags/List?=null:
+    provider_tags := this.tags
+    if provider_tags: tags = tags ? (provider_tags + tags) : provider_tags
+    service := Service_
+        --selector=selector
+        --handler=handler
+        --id=id
+        --priority=priority
+        --tags=tags
+    _services_.add service
 
   install -> none:
     if _manager_: throw "Already installed"
     _manager_ = ServiceManager_.instance
     _clients_closed_ = 0
-    _uuids_.do: _manager_.listen it this
+    // TODO(kasper): Handle the case where one of the calls
+    // to listen fails.
+    _ids_ = Array_ _services_.size: _manager_.listen _services_[it] this
 
   uninstall --wait/bool=false -> none:
     if wait:
@@ -177,7 +400,7 @@ abstract class ServiceDefinition:
   _open_ client/int -> List:
     _clients_.add client
     catch --trace: on_opened client
-    return [ name, _version_, client ]
+    return [ client, name, major, minor, patch, tags ]
 
   _close_ client/int -> none:
     resources ::= _resources_.get client
@@ -219,27 +442,49 @@ abstract class ServiceDefinition:
     _resource_handle_next_ = (next >= RESOURCE_HANDLE_LIMIT_) ? 0 : next
     return (handle << 1) + (notifiable ? 1 : 0)
 
-  _validate_ uuid/string major/int minor/int -> none:
-    index := _uuids_.index_of uuid
-    if index < 0: throw "$this does not provide service:$uuid"
-    version := _versions_[index]
-    if major != version[0]:
+  _validate_ uuid/string major/int minor/int -> Service_:
+    service/Service_? := _lookup_ uuid
+    if not service: throw "$this does not provide service:$uuid"
+    if major != service.selector.major:
       throw "$this does not provide service:$uuid@$(major).x"
-    if minor > version[1]:
+    if minor > service.selector.minor:
       throw "$this does not provide service:$uuid@$(major).$(minor).x"
+    return service
+
+  _lookup_ uuid/string -> Service_?:
+    _services_.do: | service/Service_ |
+      if service.selector.uuid == uuid: return service
+    return null
 
   _uninstall_ -> none:
     if not _resources_.is_empty: throw "Leaked $_resources_"
-    _uuids_.do: _manager_.unlisten it
+    // TODO(kasper): Handle the case where one of the calls
+    // to unlisten fails.
+    _ids_.do: _manager_.unlisten it
+    _ids_ = null
     _manager_ = null
 
+// TODO(kasper): Deprecate this.
+abstract class ServiceDefinition extends ServiceProvider implements ServiceHandler:
+  constructor name/string --major/int --minor/int --patch/int=0:
+    super name --major=major --minor=minor --patch=patch
+
+  abstract handle pid/int client/int index/int arguments/any -> any
+
+  provides selector/ServiceSelector -> none:
+    super selector --handler=this
+
+  provides uuid/string major/int minor/int -> none:
+    selector := ServiceSelector --uuid=uuid --major=major --minor=minor
+    super selector --handler=this
+
 abstract class ServiceResource implements rpc.RpcSerializable:
-  _service_/ServiceDefinition? := ?
+  _provider_/ServiceProvider? := ?
   _client_/int ::= ?
   _handle_/int? := null
 
-  constructor ._service_ ._client_ --notifiable/bool=false:
-    _handle_ = _service_._register_resource_ _client_ this notifiable
+  constructor ._provider_ ._client_ --notifiable/bool=false:
+    _handle_ = _provider_._register_resource_ _client_ this notifiable
 
   abstract on_closed -> none
 
@@ -255,14 +500,14 @@ abstract class ServiceResource implements rpc.RpcSerializable:
     handle := _handle_
     if not handle: throw "ALREADY_CLOSED"
     if handle & 1 == 0: throw "Resource not notifiable"
-    _service_._manager_.notify _client_ handle notification
+    _provider_._manager_.notify _client_ handle notification
 
   close -> none:
     handle := _handle_
     if not handle: return
-    service := _service_
-    _handle_ = _service_ = null
-    service._unregister_resource_ _client_ handle
+    provider := _provider_
+    _handle_ = _provider_ = null
+    provider._unregister_resource_ _client_ handle
     on_closed
 
   serialize_for_rpc -> int:
@@ -298,6 +543,20 @@ abstract class ServiceResourceProxy:
     if handle & 1 == 1:
       ServiceResourceProxyManager_.instance.unregister client_.id handle
     catch --trace: client_._close_resource_ handle
+
+class Service_:
+  selector/ServiceSelector
+  handler/ServiceHandler
+  id/int?
+  priority/int
+  tags/List?
+  constructor --.selector --.handler --.id --.priority --.tags:
+
+class ServiceSelectorRestriction_:
+  allow/bool
+  major/int?
+  minor/int?
+  constructor .allow .major .minor:
 
 class ServiceResourceProxyManager_ implements SystemMessageHandler_:
   static instance ::= ServiceResourceProxyManager_
@@ -337,52 +596,68 @@ class ServiceManager_ implements SystemMessageHandler_:
   static instance := ServiceManager_
   static uninitialized/bool := true
 
-  broker_/ServiceRpcBroker_ ::= ServiceRpcBroker_
+  broker_/broker.RpcBroker ::= broker.RpcBroker
 
-  clients_/Map ::= {:}                // Map<int, int>
-  clients_by_pid_/Map ::= {:}         // Map<int, Set<int>>
+  clients_/Map ::= {:}              // Map<int, int>
+  clients_by_pid_/Map ::= {:}       // Map<int, Set<int>>
 
-  services_by_uuid_/Map ::= {:}       // Map<string, ServiceDefinition>
-  services_by_client_/Map ::= {:}     // Map<int, ServiceDefinition>
+  providers_/Map ::= {:}            // Map<int, ServiceProvider>
+  providers_by_client_/Map ::= {:}  // Map<int, ServiceProvider>
+  handlers_by_client_/Map ::= {:}   // Map<int, ServiceHandler>
 
   constructor:
-    set_system_message_handler_ SYSTEM_RPC_NOTIFY_ this
+    set_system_message_handler_ SYSTEM_RPC_NOTIFY_TERMINATED_ this
     broker_.register_procedure RPC_SERVICES_OPEN_:: | arguments _ pid |
-      open pid arguments[0] arguments[1] arguments[2]
+      open pid arguments[0] arguments[1] arguments[2] arguments[3]
     broker_.register_procedure RPC_SERVICES_CLOSE_:: | arguments |
       close arguments
     broker_.register_procedure RPC_SERVICES_INVOKE_:: | arguments _ pid |
       client/int ::= arguments[0]
-      service ::= services_by_client_[client]
-      service.handle pid client arguments[1] arguments[2]
+      handler/ServiceHandler ::= handlers_by_client_[client]
+      handler.handle pid client arguments[1] arguments[2]
     broker_.register_procedure RPC_SERVICES_CLOSE_RESOURCE_:: | arguments |
       client/int ::= arguments[0]
-      services_by_client_.get client --if_present=: | service/ServiceDefinition |
-        resource/ServiceResource? := service._find_resource_ client arguments[1]
+      providers_by_client_.get client --if_present=: | provider/ServiceProvider |
+        resource/ServiceResource? := provider._find_resource_ client arguments[1]
         if resource: resource.close
     broker_.install
     uninitialized = false
 
   static is_empty -> bool:
-    return uninitialized or instance.services_by_uuid_.is_empty
+    return uninitialized or instance.providers_.is_empty
 
-  listen uuid/string service/ServiceDefinition -> none:
-    services_by_uuid_[uuid] = service
-    _client_.listen uuid
+  listen service/Service_ provider/ServiceProvider -> int:
+    id := assign_id_ service.id providers_ provider
+    // TODO(kasper): Clean up in the services
+    // table if listen fails?
+    _client_.listen id service.selector.uuid
+        --name=provider.name
+        --major=provider.major
+        --minor=provider.minor
+        --priority=service.priority
+        --tags=service.tags
+    return id
 
-  unlisten uuid/string -> none:
-    _client_.unlisten uuid
-    services_by_uuid_.remove uuid
+  unlisten id/int -> none:
+    _client_.unlisten id
+    providers_.remove id
 
-  open pid/int uuid/string major/int minor/int -> List:
-    service/ServiceDefinition? ::= services_by_uuid_.get uuid
-    if not service: throw "Unknown service:$uuid"
-    service._validate_ uuid major minor
-    client ::= assign_client_id_ pid
-    services_by_client_[client] = service
+  open pid/int id/int uuid/string major/int minor/int -> List:
+    provider/ServiceProvider? ::= providers_.get id
+    if not provider: throw "Unknown service:$id"
+    service := provider._validate_ uuid major minor
+
     clients/Set ::= clients_by_pid_.get pid --init=(: {})
+    if clients.is_empty and pid != Process.current.id:
+      // From this point forward, we need to be told if the client
+      // process goes away so we can clean up.
+      _client_.watch pid
+
+    client ::= assign_id_ null clients_ pid
     clients.add client
-    return service._open_ client
+    providers_by_client_[client] = provider
+    handlers_by_client_[client] = service.handler
+    return provider._open_ client
 
   notify client/int handle/int notification/any -> none:
     pid/int? := clients_.get client
@@ -394,9 +669,10 @@ class ServiceManager_ implements SystemMessageHandler_:
     pid/int? := clients_.get client
     if not pid: return  // Already closed.
     clients_.remove client
-    // Unregister the client in the service client set.
-    service/ServiceDefinition := services_by_client_[client]
-    services_by_client_.remove client
+    // Unregister the client in the client sets.
+    provider/ServiceProvider := providers_by_client_[client]
+    providers_by_client_.remove client
+    handlers_by_client_.remove client
     // Only unregister the client from the clients set
     // for the pid if we haven't already done so as part
     // of a call to $close_all.
@@ -404,7 +680,7 @@ class ServiceManager_ implements SystemMessageHandler_:
     if clients:
       clients.remove client
       if clients.is_empty: clients_by_pid_.remove pid
-    service._close_ client
+    provider._close_ client
 
   close_all pid/int -> none:
     clients/Set? ::= clients_by_pid_.get pid
@@ -415,36 +691,23 @@ class ServiceManager_ implements SystemMessageHandler_:
     clients.do: close it
 
   on_message type/int gid/int pid/int message/any -> none:
-    assert: type == SYSTEM_RPC_NOTIFY_
-    kind/int ::= message[0]
+    assert: type == SYSTEM_RPC_NOTIFY_TERMINATED_
     // The other process isn't necessarily the sender of the
     // notifications. They almost always come from the system
     // process and are sent as part of the discovery handshake.
-    other/int ::= message[1]
-    if kind == SERVICES_MANAGER_NOTIFY_ADD_PROCESS:
-      broker_.add_process other
-    else if kind == SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS:
-      broker_.remove_process other
-      close_all other
-    else:
-      unreachable
+    other/int ::= message
+    broker_.cancel_requests other
+    close_all other
 
-  assign_client_id_ pid/int -> int:
+  assign_id_ id/int? map/Map value/any -> int:
+    if not id:
+      id = random_id_ map
+    else if map.contains id:
+      throw "Already registered"
+    map[id] = value
+    return id
+
+  random_id_ map/Map -> int:
     while true:
-      guess := random CLIENT_ID_LIMIT_
-      if clients_.contains guess: continue
-      clients_[guess] = pid
-      return guess
-
-class ServiceRpcBroker_ extends broker.RpcBroker:
-  pids_ ::= {}
-
-  accept gid/int pid/int -> bool:
-    return pids_.contains pid
-
-  add_process pid/int -> none:
-    pids_.add pid
-
-  remove_process pid/int -> none:
-    pids_.remove pid
-    cancel_requests pid
+      guess := random RANDOM_ID_LIMIT_
+      if not map.contains guess: return guess

@@ -155,7 +155,6 @@ enum Precedence {
 // List of predefined identifiers.
 #define IDENTIFIERS(I, IN)                                     \
   I(__throw__)                                                 \
-  I(__halt__)                                                  \
   I(__exit__)                                                  \
   I(__yield__)                                                 \
   I(__deep_sleep__)                                            \
