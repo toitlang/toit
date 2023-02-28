@@ -9,12 +9,13 @@ main:
   test_bucket_ram
   test_bucket_flash
 
+  test_region_flash_open
   test_region_flash_double_open
   test_region_flash_erase
   test_region_flash_is_erased
   test_region_flash_write_all
   test_region_flash_ignore_set
-  test_region_flash_invalid_arguments
+  test_region_flash_out_of_space
 
   test_region_flash_delete
   test_region_flash_list
@@ -81,14 +82,23 @@ test_bucket_flash:
   bucket.remove long
   expect_throw "key not found": bucket[long]
 
+test_region_flash_open:
+  storage.Region.delete --flash "region-0"
+  expect_throw "FILE_NOT_FOUND": storage.Region.open --flash "region-0"
+  region := storage.Region.open --flash "region-0" --capacity=500
+  region.close
+  expect_throw "Existing region is too small":
+    storage.Region.open --flash "region-0" --capacity=16000
+  storage.Region.delete --flash "region-0"
+
 test_region_flash_double_open:
-  region := storage.Region.open --flash "region-0" --minimum_size=1000
-  expect_throw "ALREADY_IN_USE": storage.Region.open --flash "region-0" --minimum_size=1000
+  region := storage.Region.open --flash "region-0" --capacity=1000
+  expect_throw "ALREADY_IN_USE": storage.Region.open --flash "region-0" --capacity=1000
   region.close
   storage.Region.delete --flash "region-0"
 
 test_region_flash_erase:
-  region := storage.Region.open --flash "region-0" --minimum_size=8000
+  region := storage.Region.open --flash "region-0" --capacity=8000
   expect_equals 8192 region.size
   expect_equals 4096 region.erase_granularity
   expect_equals 0xff region.erase_value
@@ -106,7 +116,7 @@ test_region_flash_erase:
   region.close
 
 test_region_flash_is_erased:
-  region := storage.Region.open --flash "region-1" --minimum_size=1000
+  region := storage.Region.open --flash "region-1" --capacity=1000
   region.erase
   expect region.is_erased
 
@@ -141,7 +151,7 @@ test_region_flash_is_erased:
   region.close
 
 test_region_flash_write_all:
-  region := storage.Region.open --flash "region-1" --minimum_size=1000
+  region := storage.Region.open --flash "region-1" --capacity=1000
   region.erase
 
   snippets := []
@@ -159,7 +169,7 @@ test_region_flash_write_all:
   region.close
 
 test_region_flash_ignore_set:
-  region := storage.Region.open --flash "region-2" --minimum_size=1000
+  region := storage.Region.open --flash "region-2" --capacity=1000
   region.erase
   region.write --from=0 #[0b1010_1010]
   expect_bytes_equal #[0b1010_1010] (region.read --from=0 --to=1)
@@ -167,28 +177,34 @@ test_region_flash_ignore_set:
   expect_bytes_equal #[0b1010_0000] (region.read --from=0 --to=1)
   region.close
 
-test_region_flash_invalid_arguments:
-  expect_throw "ugh": storage.Region.open --flash "region-3"
-      --minimum_access=storage.Region.ACCESS_WRITE_CAN_SET_BITS
-  expect_throw "ugh2": storage.Region.open --flash "region-3"
-      --maximum_erase_granularity=2048
-  region := storage.Region.open --flash "region-3"
-  region.close
+test_region_flash_out_of_space:
+  expect_throw "OUT_OF_SPACE": storage.Region.open --flash "region-3" --capacity=1 << 30
+  regions := []
+  try:
+    256.repeat: | index |
+      exception := catch:
+        regions.add (storage.Region.open --flash "too-much-$index" --capacity=32 * 1024)
+      if exception:
+        expect_equals "OUT_OF_SPACE" exception
+  finally:
+    expect regions.size > 16
+    regions.do:
+      it.close
+      storage.Region.delete it.uri
 
 test_region_flash_delete:
-  region := storage.Region.open --flash "kurt" --minimum_size=8192
-  expect_throw "ALREADY_IN_USE": storage.Region.delete --flash "kurt"
+  region := storage.Region.open --flash "region-3" --capacity=8192
+  expect_throw "ALREADY_IN_USE": storage.Region.delete --flash "region-3"
   region.close
   expect_throw "ALREADY_CLOSED": region.read --from=0 --to=4
   expect_throw "ALREADY_CLOSED": region.write --from=0 #[1]
   expect_throw "ALREADY_CLOSED": region.is_erased --from=0 --to=4
   expect_throw "ALREADY_CLOSED": region.erase --from=0 --to=4096
-  storage.Region.delete --flash "kurt"
+  storage.Region.delete --flash "region-3"
 
 test_region_flash_list:
   regions := storage.Region.list --flash
   expect (regions.contains "flash:region-0")
   expect (regions.contains "flash:region-1")
   expect (regions.contains "flash:region-2")
-  expect (regions.contains "flash:region-3")
-  expect_not (regions.contains "flash:kurt")
+  expect_not (regions.contains "flash:region-3")

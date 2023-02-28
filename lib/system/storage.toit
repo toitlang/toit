@@ -27,8 +27,15 @@ class Bucket extends ServiceResourceProxy:
   static SCHEME_RAM   ::= "ram"
   static SCHEME_FLASH ::= "flash"
 
-  constructor.internal_ client/StorageServiceClient handle/int:
+  scheme/string
+  path/string
+
+  constructor.internal_ client/StorageServiceClient handle/int
+      --.scheme --.path:
     super client handle
+
+  uri -> string:
+    return "$scheme:$path"
 
   /**
   Opens a storage bucket with using the schema and path parsed
@@ -66,7 +73,7 @@ class Bucket extends ServiceResourceProxy:
     if not client: throw "UNSUPPORTED"
     path.index_of ":" --if_absent=:
       handle := client.bucket_open --scheme=scheme --path=path
-      return Bucket.internal_ client handle
+      return Bucket.internal_ client handle --scheme=scheme --path=path
     throw "Paths cannot contain ':'"
 
   get key/string -> any:
@@ -112,55 +119,45 @@ Regions are referred to via a schema and a path. The scheme
 class Region extends ServiceResourceProxy:
   static SCHEME_FLASH ::= "flash"
 
-  /**
-  Some regions have storage mediums that only allow setting
-    bits or clearing bits as part of writes.
-
-  ...
-  */
-  static ACCESS_WRITE_CAN_SET_BITS   ::= 1 << 0
-  static ACCESS_WRITE_CAN_CLEAR_BITS ::= 1 << 1
-  static ACCESS_WRITE_CAN_MASK       ::=
-      ACCESS_WRITE_CAN_SET_BITS | ACCESS_WRITE_CAN_CLEAR_BITS
-
-  /**
-  ...
-  */
-  static DEFAULT_MINIMUM_ACCESS ::= ACCESS_WRITE_CAN_CLEAR_BITS
-  static DEFAULT_MINIMUM_SIZE ::= 4096
-  static DEFAULT_MAXIMUM_ERASE_GRANULARITY ::= 4096
-
-  // The region holds onto a resource that acts as a capability
-  // that allows the region to manipulate the storage.
-  resource_ := null
-
-  // The region has a set of access bits that indicates if
-  // stored bits can be flipped in either direction due to writes.
-  access_/int
-
-  // ...
-  erase_granularity_mask_/int
+  scheme/string
+  path/string
 
   /**
   The size of the region in bytes.
   */
   size/int
 
-  constructor.internal_ client/StorageServiceClient reply/List
-      --minimum_access/int
-      --minimum_size/int
-      --maximum_erase_granularity/int:
+  /**
+  Some regions have storage mediums that only allow setting
+    bits or clearing bits as part of writes. See the two
+    methods $write_can_set_bits and $write_can_clear_bits.
+  */
+  static MODE_WRITE_CAN_SET_BITS_   ::= 1 << 0
+  static MODE_WRITE_CAN_CLEAR_BITS_ ::= 1 << 1
+
+  // The region holds onto a resource that acts as a capability
+  // that allows the region to manipulate the storage.
+  resource_ := null
+
+  // The region has a set of mode bits that indicates if stored
+  // bits can be flipped in either direction due to writes.
+  mode_/int
+
+  // Instead of storing the erase granularity directly, we
+  // store the mask to speed up erase operations slightly.
+  erase_granularity_mask_/int
+
+  constructor.internal_ client/StorageServiceClient reply/List --.scheme --.path:
+    // Once we've gotten a reply from the storage service,
+    // we should make sure to construct a proxy and close
+    // it on any errors.
     handle := reply[0]
-    access_ = reply[4]
+    mode_ = reply[4]
     erase_granularity := 1 << reply[3]
     erase_granularity_mask_ = erase_granularity - 1
     size = reply[2]
     super client handle
     try:
-      if minimum_access != minimum_access & access_:
-        throw "ugh"
-      if maximum_erase_granularity < erase_granularity:
-        throw "ugh2"
       resource_ = flash_region_open_
           resource_freeing_module_
           client.id
@@ -170,17 +167,38 @@ class Region extends ServiceResourceProxy:
     finally:
       if not resource_: close
 
+  uri -> string:
+    return "$scheme:$path"
+
+  /**
+  The $erase_value is the value of individual erased bytes
+    after a call to $erase.
+  */
   erase_value -> int:
     return write_can_set_bits ? 0x00 : 0xff
 
+  /**
+  The $erase_granularity is the required alignment of the
+    from and to offsets for calls to $erase. As such, it
+    is also the smallest number of bytes that can be erased
+    by calls to $erase.
+  */
   erase_granularity -> int:
     return erase_granularity_mask_ + 1
 
+  /**
+  Whether a call to $write can change individual bits
+    from 0 to 1.
+  */
   write_can_set_bits -> bool:
-    return (access_ & ACCESS_WRITE_CAN_SET_BITS) != 0
+    return (mode_ & MODE_WRITE_CAN_SET_BITS_) != 0
 
+  /**
+  Whether a call to $write can change individual bits
+    from 1 to 0.
+  */
   write_can_clear_bits -> bool:
-    return (access_ & ACCESS_WRITE_CAN_CLEAR_BITS) != 0
+    return (mode_ & MODE_WRITE_CAN_CLEAR_BITS_) != 0
 
   /**
   Opens a storage region with using the schema and path parsed
@@ -190,65 +208,55 @@ class Region extends ServiceResourceProxy:
     use qualified paths that include the domain name of the
     region owner, e.g. "flash:toitlang.org/jag".
 
-  See $(open --scheme --path --minimum_access --minimum_size --maximum_erase_granularity)
-    for an explanation of the other parameters.
+  See $(open --scheme --path --capacity) for an explanation of
+    the other parameters.
   */
   static open uri/string -> Region
-      --minimum_access/int=DEFAULT_MINIMUM_ACCESS
-      --minimum_size/int=DEFAULT_MINIMUM_SIZE
-      --maximum_erase_granularity/int=DEFAULT_MAXIMUM_ERASE_GRANULARITY:
+      --capacity/int?=null:
     split := uri.index_of ":" --if_absent=: throw "No scheme provided"
-    return open --scheme=uri[..split] --path=uri[split + 1 ..]
-        --minimum_access=minimum_access
-        --minimum_size=minimum_size
-        --maximum_erase_granularity=maximum_erase_granularity
+    return open --scheme=uri[..split] --path=uri[split + 1 ..] --capacity=capacity
 
   /**
   Opens a storage region using the $SCHEME_FLASH scheme and the
     given $path.
 
-  See $(open --scheme --path --minimum_access --minimum_size --maximum_erase_granularity)
-    for an explanation of the other parameters.
+  See $(open --scheme --path --capacity) for an explanation of
+    the other parameters.
   */
   static open --flash/bool path/string -> Region
-      --minimum_access/int=DEFAULT_MINIMUM_ACCESS
-      --minimum_size/int=DEFAULT_MINIMUM_SIZE
-      --maximum_erase_granularity/int=DEFAULT_MAXIMUM_ERASE_GRANULARITY:
+      --capacity/int?=null:
     if flash != true: throw "Bad Argument"
-    return open --scheme=SCHEME_FLASH --path=path
-        --minimum_access=minimum_access
-        --minimum_size=minimum_size
-        --maximum_erase_granularity=maximum_erase_granularity
+    return open --scheme=SCHEME_FLASH --path=path --capacity=capacity
 
   /**
   Opens a storage region using the given $scheme and $path.
 
-  ... explain parameters.
+  If an existing region matches the $scheme and $path, it
+    is opened. An exception is thrown if a $capacity is
+    provided and the existing region is smaller than that.
+
+  If no region that match $scheme and $path exists, a new
+    one is created. An exception is thrown if no $capacity
+    is provided.
   */
   static open --scheme/string --path/string -> Region
-      --minimum_access/int=DEFAULT_MINIMUM_ACCESS
-      --minimum_size/int=DEFAULT_MINIMUM_SIZE
-      --maximum_erase_granularity/int=DEFAULT_MAXIMUM_ERASE_GRANULARITY:
+      --capacity/int?=null:
     client := _client_
     if not client: throw "UNSUPPORTED"
-    // Validate eagerly to avoid opening and closing with
-    // obviously wrong argument values.
-    if (minimum_access & ~ACCESS_WRITE_CAN_MASK) != 0:
-      throw "Bad Argument"
-    if minimum_size < 1:
-      throw "Bad Argument"
-    if (maximum_erase_granularity & (maximum_erase_granularity - 1)) != 0:
-      throw "Bad Argument"
+    if capacity and capacity < 1: throw "Bad Argument"
     path.index_of ":" --if_absent=:
       reply := client.region_open
           --scheme=scheme
           --path=path
-          --minimum_size=minimum_size
+          --capacity=capacity
       return Region.internal_ client reply
-          --minimum_access=minimum_access
-          --minimum_size=minimum_size
-          --maximum_erase_granularity=maximum_erase_granularity
+          --scheme=scheme
+          --path=path
     throw "Paths cannot contain ':'"
+
+  static delete uri/string -> none:
+    split := uri.index_of ":" --if_absent=: throw "No scheme provided"
+    delete --scheme=uri[..split] --path=uri[split + 1 ..]
 
   static delete --flash/bool path/string -> none:
     if flash != true: throw "Bad Argument"
@@ -259,10 +267,18 @@ class Region extends ServiceResourceProxy:
     if not client: throw "UNSUPPORTED"
     client.region_delete --scheme=scheme --path=path
 
+  /**
+  Returns the $uri for all existing regions with the $SCHEME_FLASH
+    scheme as a list of strings.
+  */
   static list --flash/bool -> List:
     if flash != true: throw "Bad Argument"
     return list --scheme=SCHEME_FLASH
 
+  /**
+  Returns the $uri for all existing regions with the given
+    $scheme as a list of strings.
+  */
   static list --scheme/string -> List:
     client := _client_
     if not client: throw "UNSUPPORTED"
@@ -286,7 +302,14 @@ class Region extends ServiceResourceProxy:
     return flash_region_is_erased_ resource_ from (to - from)
 
   /**
-  Erases the sectors starting at $from and ending at $to.
+  Erases the bytes in the range starting at $from and ending
+    at $to (exclusive).
+
+  Throws an exception if the $from and $to parameters must
+    both be aligned to $erase_granularity.
+
+  If no exception is thrown, the bytes in the specified
+    range are all set to $erase_value.
   */
   erase --from/int=0 --to/int=size -> none:
     if not resource_: throw "ALREADY_CLOSED"

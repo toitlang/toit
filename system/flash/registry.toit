@@ -18,7 +18,8 @@ import uuid
 import .allocation
 import .reservation
 
-FLASH_REGISTRY_PAGE_SIZE ::= 4096
+FLASH_REGISTRY_PAGE_SIZE_LOG2 ::= 12
+FLASH_REGISTRY_PAGE_SIZE ::= 1 << FLASH_REGISTRY_PAGE_SIZE_LOG2
 
 class FlashRegistry:
   static SCAN_HOLE_ ::= 0
