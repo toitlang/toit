@@ -25,6 +25,8 @@ import ..flash.allocation
 import ..flash.registry
 
 class FlashRegionResource extends ServiceResource:
+  static NAMESPACE ::= "flash:region"
+
   client_/int
   handle_/int? := null
 
@@ -49,7 +51,7 @@ class FlashRegionResource extends ServiceResource:
       --path/string
       --capacity/int?:
     registry := provider.registry
-    id := uuid.uuid5 "fups" path
+    id := uuid.uuid5 NAMESPACE path
     allocation := find_allocation_ registry --id=id --if_absent=:
       if not capacity: throw "FILE_NOT_FOUND"
       new_allocation_ registry --id=id --path=path --size=capacity + FLASH_REGISTRY_PAGE_SIZE
@@ -67,7 +69,7 @@ class FlashRegionResource extends ServiceResource:
 
   static delete registry/FlashRegistry -> none
       --path/string:
-    id := uuid.uuid5 "fups" path
+    id := uuid.uuid5 NAMESPACE path
     allocation := find_allocation_ registry --id=id --if_absent=: return
     offset := allocation.offset + FLASH_REGISTRY_PAGE_SIZE
     size := allocation.size - FLASH_REGISTRY_PAGE_SIZE
