@@ -375,13 +375,6 @@ PRIMITIVE(get_mac_address) {
   return result;
 }
 
-PRIMITIVE(rtc_user_bytes) {
-  uint8* rtc_memory = RtcMemory::user_data_address();
-  ByteArray* result = process->object_heap()->allocate_external_byte_array(RtcMemory::RTC_USER_DATA_SIZE, rtc_memory, false, false);
-  if (result == null) ALLOCATION_FAILED;
-  return result;
-}
-
 class PageReport {
  public:
   PageReport(uword base, uword size) {
