@@ -1,0 +1,48 @@
+<sdk>/experimental/exceptions.toit:32:5: warning: Class 'Exception' is deprecated
+    super "CANCELLED" 1 message
+    ^~~~~
+<sdk>/experimental/exceptions.toit:46:5: warning: Class 'Exception' is deprecated
+    super "UNKNOWN" 2 message
+    ^~~~~
+<sdk>/experimental/exceptions.toit:56:5: warning: Class 'Exception' is deprecated
+    super "INVALID_ARGUMENT" 3 message
+    ^~~~~
+<sdk>/experimental/exceptions.toit:69:5: warning: Class 'Exception' is deprecated
+    super "DEADLINE_EXCEEDED" 4 message
+    ^~~~~
+<sdk>/experimental/exceptions.toit:83:5: warning: Class 'Exception' is deprecated
+    super "NOT_FOUND" 5 message
+    ^~~~~
+<sdk>/experimental/exceptions.toit:93:5: warning: Class 'Exception' is deprecated
+    super "ALREADY_EXISTS" 6 message
+    ^~~~~
+<sdk>/experimental/exceptions.toit:108:5: warning: Class 'Exception' is deprecated
+    super "PERMISSION_DENIED" 7 message
+    ^~~~~
+<sdk>/experimental/exceptions.toit:118:5: warning: Class 'Exception' is deprecated
+    super "RESOURCE_EXHAUSTED" 8 message
+    ^~~~~
+<sdk>/experimental/exceptions.toit:141:5: warning: Class 'Exception' is deprecated
+    super "FAILED_PRECONDITION" 9 message
+    ^~~~~
+<sdk>/experimental/exceptions.toit:153:5: warning: Class 'Exception' is deprecated
+    super "ABORTED" 10 message
+    ^~~~~
+<sdk>/experimental/exceptions.toit:172:5: warning: Class 'Exception' is deprecated
+    super "OUT_OF_RANGE" 11 message
+    ^~~~~
+<sdk>/experimental/exceptions.toit:181:5: warning: Class 'Exception' is deprecated
+    super "UNIMPLEMENTED" 12 message
+    ^~~~~
+<sdk>/experimental/exceptions.toit:192:5: warning: Class 'Exception' is deprecated
+    super "INTERNAL" 13 message
+    ^~~~~
+<sdk>/experimental/exceptions.toit:204:5: warning: Class 'Exception' is deprecated
+    super "UNAVAILABLE" 14 message
+    ^~~~~
+<sdk>/experimental/exceptions.toit:213:5: warning: Class 'Exception' is deprecated
+    super "DATA_LOSS" 15 message
+    ^~~~~
+<sdk>/experimental/exceptions.toit:222:5: warning: Class 'Exception' is deprecated
+    super "UNAUTHENTICATED" 16 message
+    ^~~~~
