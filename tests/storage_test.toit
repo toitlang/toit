@@ -3,10 +3,13 @@
 // be found in the tests/LICENSE file.
 
 import system.storage
+import encoding.tison
 import expect show *
 
 main:
   test_bucket_ram
+  test_bucket_ram_large_payload
+  test_bucket_ram_overflow
   test_bucket_flash
 
   test_region_flash_open
@@ -49,6 +52,38 @@ test_bucket_ram:
   b.remove "hest"
   expect_throw "key not found": a["hest"]
   expect_throw "key not found": b["hest"]
+
+test_bucket_ram_large_payload:
+  // The storage service may keep a cache with the
+  // store entries around and it is important that
+  // it does not send the values directly over the
+  // RPC boundary, because that leads to neutering
+  // of large byte arrays.
+  a := storage.Bucket.open --ram "bucket-a"
+  long := List 16: "1234" * 8
+  expect (tison.encode long).size > 256
+  a["fisk"] = long
+  expect_equals long a["fisk"]
+  expect_equals long a["fisk"]
+  a.close
+
+test_bucket_ram_overflow:
+  a := storage.Bucket.open --ram "bucket-a"
+  expect_throw "OUT_OF_SPACE": a["fisk"] = "12345678" * 1024
+  stored := []
+  try:
+    256.repeat: | index |
+      exception := catch:
+        key := "$(%03x index)"
+        a[key] = key * 8
+        stored.add key
+      if exception:
+        expect_equals "OUT_OF_SPACE" exception
+  finally:
+    expect stored.size > 16
+    stored.do:
+      expect_equals (it * 8) a[it]
+      a.remove it
 
 test_bucket_flash:
   bucket := storage.Bucket.open --flash "bucket"
