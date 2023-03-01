@@ -13,28 +13,49 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import encoding.tison
-import system.storage show Bucket
+import .storage show StorageServiceProvider
+
 import binary show LITTLE_ENDIAN
+import encoding.tison
+import system.services show ServiceResource
+import uuid
 
-import ..shared.storage_base
-import ...flash.registry
+abstract class BucketResource extends ServiceResource:
+  constructor provider/StorageServiceProvider client/int:
+    super provider client
 
-class StorageServiceProvider extends StorageServiceProviderBase:
-  constructor registry/FlashRegistry:
-    super "system/storage/esp32" registry --major=0 --minor=1
+  abstract get key/string -> ByteArray?
+  abstract set key/string value/ByteArray -> none
+  abstract remove key/string -> none
 
-  bucket_open client/int --scheme/string --path/string -> BucketResource:
-    if scheme == Bucket.SCHEME_RAM:
-      return RamBucketResource this client path
-    assert: scheme == Bucket.SCHEME_FLASH
-    return FlashBucketResource this client path
+  on_closed -> none:
+    // Do nothing.
+
+class FlashBucketResource extends BucketResource:
+  static group ::= flash_kv_init_ "nvs" "toit" false
+  root/string
+  paths ::= {:}
+
+  constructor provider/StorageServiceProvider client/int .root:
+    super provider client
+
+  get key/string -> ByteArray?:
+    return flash_kv_read_bytes_ group (compute_path_ key)
+
+  set key/string value/ByteArray -> none:
+    flash_kv_write_bytes_ group (compute_path_ key) value
+
+  remove key/string -> none:
+    flash_kv_delete_ group (compute_path_ key)
+
+  compute_path_ key/string -> string:
+    return paths.get key --init=: (uuid.uuid5 root key).stringify[..13]
 
 class RamBucketResource extends BucketResource:
   static memory ::= RtcMemory
   name/string
 
-  constructor provider/StorageServiceProviderBase client/int .name:
+  constructor provider/StorageServiceProvider client/int .name:
     super provider client
 
   get key/string -> ByteArray?:
@@ -83,5 +104,17 @@ class RtcMemory:
 
 // --------------------------------------------------------------------------
 
+flash_kv_init_ partition/string volume/string read_only/bool:
+  #primitive.flash_kv.init
+
+flash_kv_read_bytes_ group key/string:
+  #primitive.flash_kv.read_bytes
+
+flash_kv_write_bytes_ group key/string value/ByteArray:
+  #primitive.flash_kv.write_bytes
+
+flash_kv_delete_ group key/string:
+  #primitive.flash_kv.delete
+
 rtc_memory_ -> ByteArray:
-  #primitive.esp32.rtc_user_bytes
+  #primitive.core.rtc_user_bytes

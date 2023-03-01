@@ -17,12 +17,12 @@ import uuid
 import system.containers
 
 import .firmware
-import .storage
 import .wifi
 
 import ...boot
 import ...initialize
 import ...containers
+import ...storage
 import ...flash.registry
 
 // TODO(kasper): It feels annoying to have to put this here. Maybe we

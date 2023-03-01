@@ -27,6 +27,10 @@
 #include "top.h"
 #include "vm.h"
 
+#ifdef TOIT_ESP32
+#include "rtc_memory_esp32.h"
+#endif
+
 #ifndef RAW
 #include "compiler/compiler.h"
 #endif
@@ -2414,5 +2418,23 @@ PRIMITIVE(firmware_mapping_copy) {
   iram_safe_memcpy(output.address() + index, input.address() + from + offset, bytes);
   return Smi::from(index + bytes);
 }
+
+#ifdef TOIT_ESP32
+PRIMITIVE(rtc_user_bytes) {
+  uint8* rtc_memory = RtcMemory::user_data_address();
+  ByteArray* result = process->object_heap()->allocate_external_byte_array(
+      RtcMemory::RTC_USER_DATA_SIZE, rtc_memory, false, false);
+  if (result == null) ALLOCATION_FAILED;
+  return result;
+}
+#else
+PRIMITIVE(rtc_user_bytes) {
+  static uint8 rtc_memory[4096];
+  ByteArray* result = process->object_heap()->allocate_external_byte_array(
+      sizeof(rtc_memory), rtc_memory, false, false);
+  if (result == null) ALLOCATION_FAILED;
+  return result;
+}
+#endif
 
 } // namespace toit

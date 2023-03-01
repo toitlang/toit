@@ -275,6 +275,7 @@ TYPE_PRIMITIVE_ANY(firmware_map)
 TYPE_PRIMITIVE_ANY(firmware_unmap)
 TYPE_PRIMITIVE_ANY(firmware_mapping_at)
 TYPE_PRIMITIVE_ANY(firmware_mapping_copy)
+TYPE_PRIMITIVE_BYTE_ARRAY(rtc_user_bytes)
 
 bool TypePrimitive::uses_entry_task(unsigned module, unsigned index) {
   return module == INDEX_core && index == CoreIndexes::task_new;

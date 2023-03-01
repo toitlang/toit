@@ -50,7 +50,6 @@ namespace toit {
   M(dhcp,    MODULE_DHCP)                    \
   M(snapshot,MODULE_SNAPSHOT)                \
   M(image,   MODULE_IMAGE)                   \
-  M(blob,    MODULE_BLOB)                    \
   M(gpio,    MODULE_GPIO)                    \
   M(adc,     MODULE_ADC)                     \
   M(dac,     MODULE_DAC)                     \
@@ -244,6 +243,7 @@ namespace toit {
   PRIMITIVE(firmware_unmap, 1)               \
   PRIMITIVE(firmware_mapping_at, 2)          \
   PRIMITIVE(firmware_mapping_copy, 5)        \
+  PRIMITIVE(rtc_user_bytes, 0)               \
 
 #define MODULE_TIMER(PRIMITIVE)              \
   PRIMITIVE(init, 0)                         \
@@ -376,7 +376,6 @@ namespace toit {
   PRIMITIVE(total_deep_sleep_time, 0)        \
   PRIMITIVE(total_run_time, 0)               \
   PRIMITIVE(get_mac_address, 0)              \
-  PRIMITIVE(rtc_user_bytes, 0)               \
   PRIMITIVE(memory_page_report, 0)           \
 
 #define MODULE_I2C(PRIMITIVE)                \
@@ -512,15 +511,6 @@ namespace toit {
   PRIMITIVE(writer_write, 4)                 \
   PRIMITIVE(writer_commit, 2)                \
   PRIMITIVE(writer_close, 1)                 \
-
-#define MODULE_BLOB(PRIMITIVE)               \
-  PRIMITIVE(writer_create, 2)                \
-  PRIMITIVE(writer_write, 2)                 \
-  PRIMITIVE(writer_commit, 4)                \
-  PRIMITIVE(writer_close, 1)                 \
-  PRIMITIVE(content, 1)                      \
-  PRIMITIVE(prepare_app_content, 2)          \
-  PRIMITIVE(app_content, 1)                  \
 
 #define MODULE_GPIO(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \

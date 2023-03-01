@@ -14,10 +14,10 @@
 // directory of this repository.
 
 import .network
-import .storage
 
 import ...containers
 import ...initialize
+import ...storage
 import ...flash.registry
 
 initialize_host -> ContainerManager:
