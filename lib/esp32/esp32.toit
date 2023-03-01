@@ -131,7 +131,7 @@ There is only one RTC memory on the device, so all tasks or processes have
   access to the same RTC memory.
 */
 rtc_user_bytes -> ByteArray:
-  #primitive.esp32.rtc_user_bytes
+  #primitive.core.rtc_user_bytes
 
 /**
 Sends (as a system message) a report over the usage of memory at the OS level.
