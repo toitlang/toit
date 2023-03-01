@@ -54,6 +54,9 @@ class FlashRegionResource extends ServiceResource:
     id := uuid.uuid5 NAMESPACE path
     allocation := find_allocation_ registry --id=id --if_absent=:
       if not capacity: throw "FILE_NOT_FOUND"
+      // Allocate enough space for the requested capacity. We need
+      // an extra page for the flash allocation header, which is
+      // also where we store additional properties for the region.
       new_allocation_ registry --id=id --path=path --size=capacity + FLASH_REGISTRY_PAGE_SIZE
     offset := allocation.offset + FLASH_REGISTRY_PAGE_SIZE
     size := allocation.size - FLASH_REGISTRY_PAGE_SIZE
