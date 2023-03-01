@@ -10,6 +10,8 @@ The exceptions are well defined and can be translatable to most network errors (
 See https://developers.google.com/maps-booking/reference/grpc-api/status_codes for the full description.
 
 Exception descriptons are licensed under https://creativecommons.org/licenses/by/4.0/.
+
+Deprecated.
 */
 abstract class Exception:
   code/string
@@ -36,6 +38,8 @@ For example, this error may be returned when a Status
   that is not known in this address space. Also errors raised by APIs
   that do not return enough error information may be converted to this
   error.
+
+Deprecated.
 */
 class UnknownException extends Exception:
   constructor message/string:
@@ -57,6 +61,8 @@ The deadline expired before the operation could complete.
   that change the state of the system, this error may be returned even
   if the operation has completed successfully. For example, a successful
   response from a server could have been delayed long.
+
+Deprecated.
 */
 class DeadlineExceededException extends Exception:
   constructor message/string:
@@ -69,6 +75,8 @@ Note to
   such as gradual feature rollout or undocumented allowlist, NOT_FOUND
   may be used. If a request is denied for some users within a class of
   users, such as user-based access control, PERMISSION_DENIED must be used.
+
+Deprecated.
 */
 class NotFoundException extends Exception:
   constructor message/string:
@@ -77,6 +85,8 @@ class NotFoundException extends Exception:
 /**
 The entity that a client attempted to create (e.g., file or directory)
   already exists.
+
+Deprecated.
 */
 class AlreadyExistsException extends Exception:
   constructor message/string:
@@ -90,6 +100,8 @@ PERMISSION_DENIED must not be used for rejections caused by exhausting
   (use UNAUTHENTICATED instead for those errors). This error code does
   not imply the request is valid or the requested entity exists or
   satisfies other pre-conditions.
+
+Deprecated.
 */
 class PermissionDeniedException extends Exception:
   constructor message/string:
@@ -98,6 +110,8 @@ class PermissionDeniedException extends Exception:
 /**
 Some resource has been exhausted, perhaps a per-user quota, or perhaps
   the entire file system is out of space.
+
+Deprecated.
 */
 class ResourceExhaustedException extends Exception:
   constructor message/string:
@@ -119,6 +133,8 @@ For example, the directory to be deleted
       because the directory is non-empty, FAILED_PRECONDITION should be
       returned since the client should not retry unless the files are
       deleted from the directory.
+
+Deprecated.
 */
 class FailedPreconditionException extends Exception:
   constructor message/string:
@@ -129,6 +145,8 @@ The operation was aborted, typically due to a concurrency issue such as a
   sequencer check failure or transaction abort.
 See the guidelines above
   for deciding between FAILED_PRECONDITION, ABORTED, and UNAVAILABLE.
+
+Deprecated.
 */
 class AbortedException extends Exception:
   constructor message/string:
@@ -146,6 +164,8 @@ E.g., seeking or reading
   using OUT_OF_RANGE (the more specific error) when it applies so that
   callers who are iterating through a space can easily look for an
   OUT_OF_RANGE error to detect when they are done.
+
+Deprecated.
 */
 class OutOfRangeException extends Exception:
   constructor message/string:
@@ -153,6 +173,8 @@ class OutOfRangeException extends Exception:
 
 /**
 The operation is not implemented or is not supported/enabled in this service.
+
+Deprecated.
 */
 class UnimplementedException extends Exception:
   constructor message/string:
@@ -162,6 +184,8 @@ class UnimplementedException extends Exception:
 Internal errors.
 This means that some invariants expected by the underlying
   system have been broken. This error code is reserved for serious errors.
+
+Deprecated.
 */
 class InternalException extends Exception:
   constructor message/string:
@@ -172,6 +196,8 @@ The service is currently unavailable.
 This is most likely a transient
   condition, which can be corrected by retrying with a backoff. Note that it
   is not always safe to retry non-idempotent operations.
+
+Deprecated.
 */
 class UnavailableException extends Exception:
   constructor message/string:
@@ -179,6 +205,8 @@ class UnavailableException extends Exception:
 
 /**
 Unrecoverable data loss or corruption.
+
+Deprecated.
 */
 class DataLossException extends Exception:
   constructor message/string:
@@ -186,6 +214,8 @@ class DataLossException extends Exception:
 
 /**
 The request does not have valid authentication credentials for the operation.
+
+Deprecated.
 */
 class UnauthenticatedException extends Exception:
   constructor message/string:
