@@ -15,15 +15,23 @@
 
 import .storage show StorageServiceProvider
 
-import binary show LITTLE_ENDIAN
-import encoding.tison
+import encoding.base64
+import system.assets
 import system.services show ServiceResource
 import uuid
 
 abstract class BucketResource extends ServiceResource:
+  // We keep a cache of computed ids around. The ids encode
+  // the root name of the bucket, so it is natural to keep
+  // these per bucket. This also simplifies cleaning them
+  // up as the cache simply goes away when the bucket
+  // resource is closed.
+  ids_ ::= {:}
+
   constructor provider/StorageServiceProvider client/int:
     super provider client
 
+  abstract root -> string
   abstract get key/string -> ByteArray?
   abstract set key/string value/ByteArray -> none
   abstract remove key/string -> none
@@ -31,76 +39,69 @@ abstract class BucketResource extends ServiceResource:
   on_closed -> none:
     // Do nothing.
 
+  compute_id_ key/string -> string:
+    return ids_.get key --init=:
+      id := uuid.uuid5 root key
+      encoded := base64.encode id.to_byte_array
+      // Keys used in nvs must be 15 bytes or less, so we
+      // pick the first 12 encoded bytes which correspond
+      // to the first 9 bytes of the 16 uuid bytes.
+      encoded[..12]
+
 class FlashBucketResource extends BucketResource:
   static group ::= flash_kv_init_ "nvs" "toit" false
   root/string
-  paths ::= {:}
+  constructor provider/StorageServiceProvider client/int .root:
+    super provider client
+
+  get key/string -> ByteArray?:
+    return flash_kv_read_bytes_ group (compute_id_ key)
+
+  set key/string value/ByteArray -> none:
+    flash_kv_write_bytes_ group (compute_id_ key) value
+
+  remove key/string -> none:
+    flash_kv_delete_ group (compute_id_ key)
+
+class RamBucketResource extends BucketResource:
+  static memory ::= RtcMemory
+  root/string
 
   constructor provider/StorageServiceProvider client/int .root:
     super provider client
 
   get key/string -> ByteArray?:
-    return flash_kv_read_bytes_ group (compute_path_ key)
+    return memory.cache.get (compute_id_ key)
 
   set key/string value/ByteArray -> none:
-    flash_kv_write_bytes_ group (compute_path_ key) value
+    memory.update: it[compute_id_ key] = value
 
   remove key/string -> none:
-    flash_kv_delete_ group (compute_path_ key)
-
-  compute_path_ key/string -> string:
-    return paths.get key --init=: (uuid.uuid5 root key).stringify[..13]
-
-class RamBucketResource extends BucketResource:
-  static memory ::= RtcMemory
-  name/string
-
-  constructor provider/StorageServiceProvider client/int .name:
-    super provider client
-
-  get key/string -> ByteArray?:
-    return memory.cache.get name
-        --if_absent=: null
-        --if_present=: it.get key
-
-  set key/string value/ByteArray -> none:
-    map := memory.cache.get name --init=: {:}
-    map[key] = value
-    memory.flush
-
-  remove key/string -> none:
-    cache := memory.cache
-    map := cache.get name
-    if not map: return
-    map.remove key --if_absent=: return
-    if map.is_empty: cache.remove name
-    memory.flush
+    memory.update: it.remove (compute_id_ key)
 
 class RtcMemory:
-  // We store the size of the encoded message in the header of the
-  // RTC memory. This gives us a way to pass the correctly sized
-  // bytes slice to tison.decode and that is essential because
-  // the decoder rejects encodings with junk at the end.
-  static HEADER_ENCODED_SIZE_OFFSET ::= 0
-  static HEADER_SIZE ::= 2 + HEADER_ENCODED_SIZE_OFFSET
+  // We use a naive encoding strategy, where we re-encode the
+  // entire mapping on all updates. It would be possible to
+  // do this in a more incremental way, where we update the
+  // cache and shuffle the sections of the memory area around.
+  bytes_/ByteArray ::= rtc_memory_
+  cache_/Map? := null
 
-  bytes/ByteArray ::= rtc_memory_
-  cache/Map := {:}
+  cache -> Map:
+    map := cache_
+    if map: return map
+    catch: map = assets.decode bytes_
+    map = map or {:}
+    cache_ = map
+    return map
 
-  constructor:
-    // Fill the cache, but be nice and avoid decoding the content
-    // of the RTC memory if it was just cleared.
-    size := LITTLE_ENDIAN.uint16 bytes HEADER_ENCODED_SIZE_OFFSET
-    if size > 0:
-      catch:
-        cache = tison.decode bytes[HEADER_SIZE .. size + HEADER_SIZE]
-
-  flush -> none:
-    // TODO(kasper): We could consider encoding directly
-    // into the RTC memory instead of copying it in.
-    encoded := tison.encode cache
-    bytes.replace HEADER_SIZE encoded
-    LITTLE_ENDIAN.put_uint16 bytes HEADER_ENCODED_SIZE_OFFSET encoded.size
+  update [block] -> none:
+    map := cache
+    cache_ = null
+    block.call map
+    encoded := assets.encode map
+    if encoded.size > bytes_.size: throw "OUT_OF_SPACE"
+    bytes_.replace 0 encoded
 
 // --------------------------------------------------------------------------
 

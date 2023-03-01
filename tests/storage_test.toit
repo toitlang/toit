@@ -9,8 +9,7 @@ import expect show *
 main:
   test_bucket_ram
   test_bucket_ram_large_payload
-  test_bucket_ram_too_many_entries
-  test_bucket_ram_too_much_data
+  test_bucket_ram_overflow
   test_bucket_flash
 
   test_region_flash_open
@@ -68,37 +67,18 @@ test_bucket_ram_large_payload:
   expect_equals long a["fisk"]
   a.close
 
-test_bucket_ram_too_many_entries:
+test_bucket_ram_overflow:
   a := storage.Bucket.open --ram "bucket-a"
+  expect_throw "OUT_OF_SPACE": a["fisk"] = "12345678" * 1024
   stored := []
   try:
     256.repeat: | index |
       exception := catch:
-        key := "$(%02x index)"
-        a[key] = index
+        key := "$(%03x index)"
+        a[key] = key * 8
         stored.add key
       if exception:
-       // TODO(kasper): Not super robust.
-        expect_equals "WRONG_OBJECT_TYPE" exception
-  finally:
-    expect stored.size > 16
-    stored.size.repeat: | index |
-      key := stored[index]
-      expect_equals index a[key]
-      a.remove key
-
-test_bucket_ram_too_much_data:
-  a := storage.Bucket.open --ram "bucket-a"
-  expect_throw "OUT_OF_BOUNDS": a["fisk"] = "12345678" * 1024
-  stored := []
-  try:
-    256.repeat: | index |
-      exception := catch:
-        key := "fisk-$index"
-        a[key] = "1234" * 64
-        stored.add key
-      if exception:
-        expect_equals "OUT_OF_BOUNDS" exception
+        expect_equals "OUT_OF_SPACE" exception
   finally:
     expect stored.size > 16
     stored.do:
