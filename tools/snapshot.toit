@@ -157,17 +157,19 @@ class Program:
 
 
 class SnapshotBundle:
-  static MAGIC_NAME / string ::= "toit"
-  static MAGIC_CONTENT / string ::= "like a tiger"
-  static SNAPSHOT_NAME / string ::= "snapshot"
-  static SOURCE_MAP_NAME / string ::= "source-map"
-  static UUID_NAME / string ::= "uuid"
+  static MAGIC_NAME        / string ::= "toit"
+  static MAGIC_CONTENT     / string ::= "like a tiger"
+  static SNAPSHOT_NAME     / string ::= "snapshot"
+  static SOURCE_MAP_NAME   / string ::= "source-map"
+  static UUID_NAME         / string ::= "uuid"
+  static SDK_VERSION_NAME  / string ::= "sdk-version"
 
-  byte_array ::= ?
-  file_name        / string?          ::= ?
-  program_snapshot / ProgramSnapshot  ::= ?
-  source_map       / SourceMap?       ::= ?
-  uuid             / Uuid             ::= ?
+  bytes            / ByteArray
+  file_name        / string?
+  program_snapshot / ProgramSnapshot
+  source_map       / SourceMap?
+  uuid             / Uuid
+  sdk_version      / string
 
   constructor.from_file name/string:
     return SnapshotBundle name (file.read_content name)
@@ -175,16 +177,20 @@ class SnapshotBundle:
   constructor byte_array/ByteArray:
     return SnapshotBundle null byte_array
 
-  constructor .file_name .byte_array/ByteArray:
-    if not is_bundle_content byte_array: throw "Invalid snapshot bundle"
-    program_snapshot_offsets := extract_ar_offsets_ byte_array SNAPSHOT_NAME
-    program_snapshot = ProgramSnapshot byte_array program_snapshot_offsets.from program_snapshot_offsets.to
-    source_map_offsets := extract_ar_offsets_ --silent byte_array SOURCE_MAP_NAME
+  constructor .file_name .bytes:
+    if not is_bundle_content bytes: throw "Invalid snapshot bundle"
+    program_snapshot_offsets := extract_ar_offsets_ bytes SNAPSHOT_NAME
+    program_snapshot = ProgramSnapshot bytes program_snapshot_offsets.from program_snapshot_offsets.to
+    source_map_offsets := extract_ar_offsets_ --silent bytes SOURCE_MAP_NAME
     source_map = source_map_offsets
-        ? SourceMap byte_array source_map_offsets.from source_map_offsets.to
+        ? SourceMap bytes source_map_offsets.from source_map_offsets.to
         : null
-    uuid_offsets := extract_ar_offsets_ byte_array UUID_NAME
-    uuid = uuid_offsets ? (Uuid byte_array[uuid_offsets.from..uuid_offsets.to]) : NIL
+    uuid_offsets := extract_ar_offsets_ bytes UUID_NAME
+    uuid = uuid_offsets ? (Uuid bytes[uuid_offsets.from..uuid_offsets.to]) : NIL
+    sdk_version_offsets := extract_ar_offsets_ bytes SDK_VERSION_NAME
+    sdk_version = sdk_version_offsets
+        ? bytes[sdk_version_offsets.from..sdk_version_offsets.to].to_string_non_throwing
+        : ""
 
   static is_bundle_content buffer/ByteArray -> bool:
     magic_file_offsets := extract_ar_offsets_ --silent buffer MAGIC_NAME
@@ -193,7 +199,7 @@ class SnapshotBundle:
     if magic_content.to_string != MAGIC_CONTENT: return false
     return true
 
-  has_source_map -> bool: 
+  has_source_map -> bool:
     return source_map != null
 
   parse -> none:
@@ -206,10 +212,10 @@ class SnapshotBundle:
   stringify -> string:
     postfix := file_name ? " ($file_name)" : ""
     source_map_suffix := source_map ? " - $source_map\n" : ""
-    return "snapshot: $byte_array.size bytes$postfix\n - $program_snapshot\n$source_map_suffix"
+    return "snapshot: $bytes.size bytes$postfix\n - $program_snapshot\n$source_map_suffix"
 
-  static extract_ar_offsets_ --silent/bool=false byte_array/ByteArray name/string -> ArFileOffsets?:
-    ar_reader := ArReader.from_bytes byte_array
+  static extract_ar_offsets_ --silent/bool=false bytes/ByteArray name/string -> ArFileOffsets?:
+    ar_reader := ArReader.from_bytes bytes
     offsets := ar_reader.find --offsets name
     if not offsets:
       if silent: return null
