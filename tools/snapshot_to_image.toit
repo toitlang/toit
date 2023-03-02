@@ -133,11 +133,6 @@ main args:
   if not word_size:
     word_size = BYTES_PER_WORD
 
-  unique_id := parsed[UNIQUE_ID_OPTION]
-  system_uuid ::= unique_id
-      ? uuid.parse unique_id
-      : uuid.uuid5 "$random" "$Time.now".to_byte_array
-
   assets_path := parsed[ASSETS_OPTION]
   assets := assets_path ? file.read_content assets_path : null
 
@@ -146,6 +141,12 @@ main args:
   snapshot_bundle := SnapshotBundle.from_file snapshot_path
   program_id ::= snapshot_bundle.uuid
   program := snapshot_bundle.decode
+
+  unique_id := parsed[UNIQUE_ID_OPTION]
+  system_uuid ::= unique_id
+      ? uuid.parse unique_id
+      : sdk_version_uuid --sdk_version=snapshot_bundle.sdk_version
+
   image := build_image program word_size --system_uuid=system_uuid --program_id=program_id
   relocatable := image.build_relocatable
   out.write relocatable
@@ -165,3 +166,6 @@ main args:
       out.write no_relocation
       out.write assets[from..to]
   out.close
+
+sdk_version_uuid --sdk_version/string -> uuid.Uuid:
+  return uuid.uuid5 "toit:sdk-version" sdk_version
