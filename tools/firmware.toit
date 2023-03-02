@@ -756,7 +756,7 @@ class Envelope:
       LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_MARKER_OFFSET MARKER
       LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_VERSION_OFFSET version_
       ar.add INFO_ENTRY_NAME info
-      ar.add AR_ENTRY_SDK_VERSION sdk_version.to_byte_array
+      ar.add AR_ENTRY_SDK_VERSION sdk_version
       // Add all other entries.
       entries.do: | name/string content/ByteArray |
         ar.add name content
