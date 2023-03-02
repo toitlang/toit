@@ -140,12 +140,12 @@ esptool-no-env:
 			'$(IDF_PATH)/components/esptool_py/esptool/esptool.py'
 
 # CROSS-COMPILE
-.PHONY: all-cross
-all-cross: tools-cross toit-tools-cross version-file-cross
+.PHONY: sdk-cross
+sdk-cross: tools-cross toit-tools-cross version-file-cross
 
 check-env-cross:
 ifndef CROSS_ARCH
-	$(error invalid must specify a cross-compilation target with CROSS_ARCH.  For example: make all-cross CROSS_ARCH=riscv64)
+	$(error invalid must specify a cross-compilation target with CROSS_ARCH.  For example: make sdk-cross CROSS_ARCH=riscv64)
 endif
 ifeq ("$(wildcard ./toolchains/$(CROSS_ARCH).cmake)","")
 	$(error invalid cross-compile target '$(CROSS_ARCH)')
@@ -194,7 +194,7 @@ build/$(PI_CROSS_ARCH)/sysroot/usr: check-env-sysroot
 
 .PHONY: pi
 pi: pi-sysroot
-	$(MAKE) CROSS_ARCH=raspberry_pi SYSROOT="$(CURDIR)/build/$(PI_CROSS_ARCH)/sysroot" all-cross
+	$(MAKE) CROSS_ARCH=raspberry_pi SYSROOT="$(CURDIR)/build/$(PI_CROSS_ARCH)/sysroot" sdk-cross
 
 ARM_LINUX_GNUEABI_CROSS_ARCH := arm-linux-gnueabi
 
@@ -220,7 +220,7 @@ build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/usr: build/$(ARM_LINUX_GNUEABI_CRO
 
 .PHONY: arm-linux-gnueabi
 arm-linux-gnueabi: arm-linux-gnueabi-sysroot
-	$(MAKE) CROSS_ARCH=$(ARM_LINUX_GNUEABI_CROSS_ARCH) SYSROOT="$(CURDIR)/build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot" all-cross
+	$(MAKE) CROSS_ARCH=$(ARM_LINUX_GNUEABI_CROSS_ARCH) SYSROOT="$(CURDIR)/build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot" sdk-cross
 
 # ESP32 VARIANTS
 .PHONY: check-esp32-env
