@@ -393,12 +393,12 @@ extract_cmd -> cli.Command:
         Extracts the firmware image of the envelope to a file.
 
         The following formats are supported:
-        - binary: the raw binary image. This format can be used with
+        - binary: the binary app partition. This format can be used with
           the 'esptool' tool.
         - elf: the ELF file of the executable. This is typically used
           for debugging.
-        - ubjson: a UBJSON encoding of the structure/sections of the image.
-        - qemu: a QEMU image.
+        - ubjson: a UBJSON encoding of the sections of the image.
+        - qemu: a full binary image suitable for running on QEMU.
 
         # QEMU
         The generated image (say 'output.bin') can be run with the
