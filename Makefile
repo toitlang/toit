@@ -29,7 +29,7 @@ ESP32_PORT=
 # The system process is started from its own entry point.
 ESP32_SYSTEM_ENTRY=system/extensions/esp32/boot.toit
 
-ifeq ($(ESP32_CHIP),esp32s3octo)
+ifeq ($(ESP32_CHIP),esp32s3-spiram-octo)
 	IDF_TARGET=esp32s3
 else
 	IDF_TARGET=$(ESP32_CHIP)
