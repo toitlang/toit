@@ -63,7 +63,7 @@ Validates the current firmware and tells the
   bootloader to boot from it in the future.
 
 Returns true if the validation was successful and
-  false if the validation was unsuccesful or just
+  false if the validation was unsuccessful or just
   not needed ($is_validation_pending is false).
 */
 validate -> bool:
