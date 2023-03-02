@@ -253,7 +253,7 @@ container_install parsed/cli.Parsed -> none:
     if is_snapshot:
       bundle := SnapshotBundle name image_data
       if bundle.sdk_version != envelope.sdk_version:
-        print "Input was built by SDK $bundle.sdk_version, but envelope is for SDK $envelope.sdk_version."
+        print "Snapshot was built by SDK $bundle.sdk_version, but envelope is for SDK $envelope.sdk_version."
         exit 1
     else:
       header := null
@@ -263,8 +263,8 @@ container_install parsed/cli.Parsed -> none:
         exit 1
       expected_system_uuid := sdk_version_uuid --sdk_version=envelope.sdk_version
       if header.system_uuid != expected_system_uuid:
-        print "Input was built for $header.system_uuid, but envelope expects $expected_system_uuid."
-        print "This is most likely because the image was not built by SDK $envelope.sdk_version."
+        print "Image cannot be verified to have been built by SDK $envelope.sdk_version."
+        print "Image is for $header.system_uuid, but envelope is $expected_system_uuid."
         exit 1
 
     envelope.entries[name] = image_data
