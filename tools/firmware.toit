@@ -234,10 +234,10 @@ decode_image data/ByteArray -> ImageHeader:
 get_container_name parsed/cli.Parsed -> string:
   name := parsed["name"]
   if name.starts_with "\$":
-    print "cannot install container with a name that starts with \$ or +"
+    print "Cannot install container with a name that starts with \$ or +"
     exit 1
   if name.size > 14:
-    print "cannot install container with a name longer than 14 characters"
+    print "Cannot install container with a name longer than 14 characters"
     exit 1
   return name
 
@@ -264,6 +264,7 @@ container_install parsed/cli.Parsed -> none:
       expected_system_uuid := sdk_version_uuid --sdk_version=envelope.sdk_version
       if header.system_uuid != expected_system_uuid:
         print "Input was built for $header.system_uuid, but envelope expects $expected_system_uuid."
+        print "This is most likely because the image was not built by SDK $envelope.sdk_version."
         exit 1
 
     envelope.entries[name] = image_data
@@ -277,7 +278,7 @@ container_extract parsed/cli.Parsed -> none:
   part := parsed["part"]
   key := (part == "assets") ? "+$name" : name
   if not entries.contains key:
-    print "container '$name' has no $part"
+    print "Container '$name' has no $part."
     exit 1
   entry := entries[key]
   write_file parsed["output"]: it.write entry
