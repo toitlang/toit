@@ -168,4 +168,6 @@ main args:
   out.close
 
 sdk_version_uuid --sdk_version/string -> uuid.Uuid:
-  return uuid.uuid5 "toit:sdk-version" sdk_version
+  return sdk_version.is_empty
+      ? uuid.uuid5 "$random" "$Time.now-$Time.monotonic_us"
+      : uuid.uuid5 "toit:sdk-version" sdk_version

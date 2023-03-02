@@ -611,8 +611,7 @@ extract_binary envelope/Envelope --config_encoded/ByteArray -> ByteArray:
   system_uuid/uuid.Uuid? := null
   if properties.contains "uuid":
     catch: system_uuid = uuid.parse properties["uuid"]
-  if not system_uuid:
-    system_uuid = uuid.uuid5 "$random" "$Time.now".to_byte_array
+  system_uuid = system_uuid or sdk_version_uuid --sdk_version=envelope.sdk_version
 
   return extract_binary_content
       --binary_input=firmware_bin
