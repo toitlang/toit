@@ -403,6 +403,31 @@ extract_cmd -> cli.Command:
     cli.Flag key
         --short_help="Extract the $key part."
   return cli.Command "extract"
+      --long_help="""
+        Extracts the firmware image of the envelope to a file.
+
+        The following formats are supported:
+        - binary: the binary app partition. This format can be used with
+          the 'esptool' tool.
+        - elf: the ELF file of the executable. This is typically used
+          for debugging.
+        - ubjson: a UBJSON encoding of the sections of the image.
+        - qemu: a full binary image suitable for running on QEMU.
+
+        # QEMU
+        The generated image (say 'output.bin') can be run with the
+        following command:
+
+            qemu-system-xtensa \\
+                -M esp32 \\
+                -nographic \\
+                -drive file=output.bin,format=raw,if=mtd \\
+                -nic user,model=open_eth,hostfwd=tcp::2222-:1234 \\
+                -s
+
+        The '-nic' option is optional. In this example, the local port 2222 is
+        forwarded to port 1234 in the QEMU image.
+        """
       --options=[
         cli.OptionString OPTION_OUTPUT
             --short_name=OPTION_OUTPUT_SHORT
@@ -411,7 +436,7 @@ extract_cmd -> cli.Command:
             --required,
         cli.OptionString "config"
             --type="file",
-        cli.OptionEnum "format" ["binary", "elf", "ubjson"]
+        cli.OptionEnum "format" ["binary", "elf", "ubjson", "qemu"]
             --short_help="Set the output format."
             --default="binary",
         cli.Flag "system.snapshot"
@@ -475,6 +500,17 @@ extract_new parsed/cli.Parsed -> none:
     write_file output_path: it.write firmware_bin
     return
 
+  if parsed["format"] == "qemu":
+    flashing := envelope.entries.get AR_ENTRY_FLASHING_JSON
+        --if_present=: json.decode it
+        --if_absent=: throw "cannot create qemu image without 'flashing.json'"
+
+    write_qemu_ output_path firmware_bin envelope
+    return
+
+  if not parsed["format"] == "ubjson":
+    throw "unknown format: $(parsed["format"])"
+
   binary := Esp32Binary firmware_bin
   parts := binary.parts firmware_bin
   output := {
@@ -482,6 +518,26 @@ extract_new parsed/cli.Parsed -> none:
     "binary"  : firmware_bin,
   }
   write_file output_path: it.write (ubjson.encode output)
+
+write_qemu_ output_path/string firmware_bin/ByteArray envelope/Envelope:
+  flashing := envelope.entries.get AR_ENTRY_FLASHING_JSON
+      --if_present=: json.decode it
+      --if_absent=: throw "cannot create qemu image without 'flashing.json'"
+
+  out_image := ByteArray 4_194_304  // 4 MB.
+  out_image.replace
+      int.parse flashing["bootloader"]["offset"][2..] --radix=16
+      envelope.entries.get AR_ENTRY_BOOTLOADER_BIN
+  out_image.replace
+      int.parse flashing["partition-table"]["offset"][2..] --radix=16
+      envelope.entries.get AR_ENTRY_PARTITIONS_BIN
+  out_image.replace
+      int.parse flashing["otadata"]["offset"][2..] --radix=16
+      envelope.entries.get AR_ENTRY_OTADATA_BIN
+  out_image.replace
+      int.parse flashing["app"]["offset"][2..] --radix=16
+      firmware_bin
+  write_file output_path: it.write out_image
 
 flash_cmd -> cli.Command:
   return cli.Command "flash"
