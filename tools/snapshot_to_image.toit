@@ -32,7 +32,6 @@ import cli
 BINARY_FLAG      ::= "binary"
 M32_FLAG         ::= "machine-32-bit"
 M64_FLAG         ::= "machine-64-bit"
-UNIQUE_ID_OPTION ::= "unique_id"
 OUTPUT_OPTION    ::= "output"
 ASSETS_OPTION    ::= "assets"
 SNAPSHOT_FILE    ::= "snapshot-file"
@@ -100,7 +99,6 @@ main args:
           cli.Flag M32_FLAG --short_name="m32",
           cli.Flag M64_FLAG --short_name="m64",
           cli.Flag BINARY_FLAG,
-          cli.OptionString UNIQUE_ID_OPTION,
           cli.OptionString OUTPUT_OPTION --short_name="o",
           cli.OptionString ASSETS_OPTION,
           ]
@@ -141,12 +139,7 @@ main args:
   snapshot_bundle := SnapshotBundle.from_file snapshot_path
   program_id ::= snapshot_bundle.uuid
   program := snapshot_bundle.decode
-
-  unique_id := parsed[UNIQUE_ID_OPTION]
-  system_uuid ::= unique_id
-      ? uuid.parse unique_id
-      : sdk_version_uuid --sdk_version=snapshot_bundle.sdk_version
-
+  system_uuid ::= sdk_version_uuid --sdk_version=snapshot_bundle.sdk_version
   image := build_image program word_size --system_uuid=system_uuid --program_id=program_id
   relocatable := image.build_relocatable
   out.write relocatable
