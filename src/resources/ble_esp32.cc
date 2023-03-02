@@ -234,17 +234,15 @@ class BleReadWriteElement : public BleErrorCapableResource {
   }
 
   static uint16_t mbuf_total_len(os_mbuf* om) {
-    uint16_t total_len = om->om_len;
-    om = SLIST_NEXT(om, om_next);
+    uint16_t total_len = 0;
     while (om) {
       total_len += om->om_len;
       om = SLIST_NEXT(om, om_next);
     }
-
     return total_len;
   }
 
-  uint16_t send_mbuf_len(void) {
+  uint16_t mbuf_to_send_len() const {
     return mbuf_total_len(mbuf_to_send_);
   }
 
@@ -932,7 +930,7 @@ int BleReadWriteElement::_on_access(ble_gatt_access_ctxt* ctxt) {
     case BLE_GATT_ACCESS_OP_READ_CHR:
     case BLE_GATT_ACCESS_OP_READ_DSC:
       if (mbuf_to_send() != null) {
-        return os_mbuf_appendfrom(ctxt->om, mbuf_to_send(), 0, send_mbuf_len());
+        return os_mbuf_appendfrom(ctxt->om, mbuf_to_send(), 0, mbuf_to_send_len());
       }
       break;
     case BLE_GATT_ACCESS_OP_WRITE_CHR:
