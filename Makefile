@@ -53,7 +53,7 @@ prefix ?= /opt/toit-sdk
 
 # HOST
 .PHONY: all
-all: sdk
+all: sdk esptool
 
 .PHONY: debug
 debug:
@@ -120,8 +120,14 @@ toit-tools: tools download-packages
 version-file: build/$(HOST)/CMakeCache.txt
 	(cd build/$(HOST) && ninja build_version_file)
 
+build/$(HOST)/sdk/tools/esptool$(EXE_SUFFIX):
+	$(MAKE) build-esptool
+
 .PHONY: esptool
-esptool: check-env
+esptool: build/$(HOST)/sdk/tools/esptool$(EXE_SUFFIX)
+
+.PHONY: build-esptool
+build-esptool: check-env
 	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
 	    $(MAKE) esptool-no-env
 
@@ -134,12 +140,12 @@ esptool-no-env:
 			'$(IDF_PATH)/components/esptool_py/esptool/esptool.py'
 
 # CROSS-COMPILE
-.PHONY: all-cross
-all-cross: tools-cross toit-tools-cross version-file-cross
+.PHONY: sdk-cross
+sdk-cross: tools-cross toit-tools-cross version-file-cross
 
 check-env-cross:
 ifndef CROSS_ARCH
-	$(error invalid must specify a cross-compilation target with CROSS_ARCH.  For example: make all-cross CROSS_ARCH=riscv64)
+	$(error invalid must specify a cross-compilation target with CROSS_ARCH.  For example: make sdk-cross CROSS_ARCH=riscv64)
 endif
 ifeq ("$(wildcard ./toolchains/$(CROSS_ARCH).cmake)","")
 	$(error invalid cross-compile target '$(CROSS_ARCH)')
@@ -188,7 +194,7 @@ build/$(PI_CROSS_ARCH)/sysroot/usr: check-env-sysroot
 
 .PHONY: pi
 pi: pi-sysroot
-	$(MAKE) CROSS_ARCH=raspberry_pi SYSROOT="$(CURDIR)/build/$(PI_CROSS_ARCH)/sysroot" all-cross
+	$(MAKE) CROSS_ARCH=raspberry_pi SYSROOT="$(CURDIR)/build/$(PI_CROSS_ARCH)/sysroot" sdk-cross
 
 ARM_LINUX_GNUEABI_CROSS_ARCH := arm-linux-gnueabi
 
@@ -214,7 +220,7 @@ build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/usr: build/$(ARM_LINUX_GNUEABI_CRO
 
 .PHONY: arm-linux-gnueabi
 arm-linux-gnueabi: arm-linux-gnueabi-sysroot
-	$(MAKE) CROSS_ARCH=$(ARM_LINUX_GNUEABI_CROSS_ARCH) SYSROOT="$(CURDIR)/build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot" all-cross
+	$(MAKE) CROSS_ARCH=$(ARM_LINUX_GNUEABI_CROSS_ARCH) SYSROOT="$(CURDIR)/build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot" sdk-cross
 
 # ESP32 VARIANTS
 .PHONY: check-esp32-env
