@@ -27,7 +27,7 @@
 #include "top.h"
 #include "vm.h"
 
-#ifdef TOIT_ESP32
+#ifdef TOIT_FREERTOS
 #include "rtc_memory_esp32.h"
 #endif
 
@@ -2419,7 +2419,7 @@ PRIMITIVE(firmware_mapping_copy) {
   return Smi::from(index + bytes);
 }
 
-#ifdef TOIT_ESP32
+#ifdef TOIT_FREERTOS
 PRIMITIVE(rtc_user_bytes) {
   uint8* rtc_memory = RtcMemory::user_data_address();
   ByteArray* result = process->object_heap()->allocate_external_byte_array(
