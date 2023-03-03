@@ -65,6 +65,10 @@ OPTION_ENVELOPE     ::= "envelope"
 OPTION_OUTPUT       ::= "output"
 OPTION_OUTPUT_SHORT ::= "o"
 
+IMAGE_FLAG_RUN_BOOT     ::= 1 << 0
+IMAGE_FLAG_RUN_CRITICAL ::= 1 << 1
+IMAGE_FLAG_HAS_ASSETS   ::= 1 << 7
+
 is_snapshot_bundle bits/ByteArray -> bool:
   catch: return SnapshotBundle.is_bundle_content bits
   return false
@@ -726,9 +730,10 @@ extract_binary_content -> ByteArray
 
     image_header ::= ImageHeader image_bits
     image_header.system_uuid = system_uuid
+    image_header.flags = IMAGE_FLAG_RUN_BOOT | IMAGE_FLAG_RUN_CRITICAL
 
     if container.assets:
-      image_header.flags |= (1 << 7)
+      image_header.flags |= IMAGE_FLAG_HAS_ASSETS
       assets_size := ByteArray 4
       LITTLE_ENDIAN.put_uint32 assets_size 0 container.assets.size
       image_bits += assets_size
