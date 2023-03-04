@@ -45,10 +45,16 @@ test_start:
   sub3.on_stopped:: lambda3_value = it
   expect_equals 0 lambda3_value
 
+  lambda4_called := false
   lambda4_value := null
   sub4 := containers.start containers.current {:}
-  sleep --ms=200
-  sub4.on_stopped:: lambda4_value = it
+  sub4.on_stopped::
+    expect_not lambda4_called
+    lambda4_value = it
+    lambda4_called = true
+  // Make sure we get the lambda called before we call
+  // wait on the container. Shouldn't take too long.
+  with_timeout --ms=5_000: while not lambda4_called: sleep --ms=50
   expect_equals 0 lambda4_value
   expect_equals 0 sub4.wait
 
