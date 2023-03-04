@@ -20,7 +20,10 @@ images -> List:
   return _client_.list_images
 
 current -> uuid.Uuid:
-  return uuid.Uuid current_image_id_
+  // TODO(kasper): It is unfortunate, but we have to copy
+  // the id here because we cannot transfer non-disposable
+  // external byte arrays across the RPC boundary.
+  return uuid.Uuid current_image_id_.copy
 
 start id/uuid.Uuid arguments/any=[] -> Container:
   handle/int? := _client_.load_image id
@@ -45,6 +48,7 @@ class ContainerImage:
 class Container extends ServiceResourceProxy:
   id/uuid.Uuid
   result_/monitor.Latch ::= monitor.Latch
+  on_stopped_/Lambda? := null
 
   constructor .id handle/int:
     super _client_ handle
@@ -64,8 +68,16 @@ class Container extends ServiceResourceProxy:
     if not code: throw "CLOSED"
     return code
 
+  on_stopped lambda/Lambda? -> none:
+    on_stopped_ = lambda
+    if not lambda or not result_.has_value: return
+    code := result_.get
+    if not code: throw "CLOSED"
+    lambda.call code
+
   on_notified_ code/int -> none:
     result_.set code
+    if on_stopped_: on_stopped_.call code
     // We close the resource, because we no longer care about or expect
     // notifications. Closing involves RPCs and thus waiting for replies
     // which isn't allowed in the message processing context that runs
