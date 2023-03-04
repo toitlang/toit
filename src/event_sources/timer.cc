@@ -115,7 +115,7 @@ void TimerEventSource::entry() {
       }
     }
     int64 elapsed = OS::get_monotonic_time() - time;
-    if (elapsed >= 2000) {
+    if (elapsed >= 20000) {
       FATAL("running through the timer list took %d us", static_cast<int>(elapsed));
     }
     if (delay_us > 0) {
