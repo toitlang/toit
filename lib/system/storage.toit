@@ -106,8 +106,9 @@ class Bucket extends ServiceResourceProxy:
   operator [] key/string -> any:
     return get key --if_present=(: it) --if_absent=(: throw "key not found")
 
-  operator []= key/string value/any -> none:
+  operator []= key/string value/any -> any:
     (client_ as StorageServiceClient).bucket_set handle_ key (tison.encode value)
+    return value
 
   remove key/string -> none:
     (client_ as StorageServiceClient).bucket_remove handle_ key

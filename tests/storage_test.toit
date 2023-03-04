@@ -33,7 +33,7 @@ test_bucket_ram:
   expect_equals 1234 a["hest"]
   expect_throw "key not found": b["hest"]
 
-  b["hest"] = 2345
+  expect_equals 2345 (set_helper b "hest" 2345)
   expect_equals 1234 a["hest"]
   expect_equals 2345 b["hest"]
 
@@ -52,6 +52,11 @@ test_bucket_ram:
   b.remove "hest"
   expect_throw "key not found": a["hest"]
   expect_throw "key not found": b["hest"]
+
+// We're only allowed to get the value of assignments
+// in certain positions, so we use a helper for this.
+set_helper bucket key value:
+  return bucket[key] = value
 
 test_bucket_ram_large_payload:
   // The storage service may keep a cache with the
@@ -93,6 +98,17 @@ test_bucket_flash:
   expect_equals 42 (bucket.get "hest" --if_absent=: 42)
   expect_equals 87 (bucket.get "hest" --init=: 87)
   expect_equals 87 bucket["hest"]
+
+  // Explicitly storing to the bucket from an --if_absent block is
+  // a bit of anti-pattern (using --init is nicer), but it is not
+  // that uncommon and it should work.
+  bucket.remove "fisk"
+  expect_equals 99 (bucket.get "fisk" --if_absent=: bucket["fisk"] = 99)
+  expect_equals 99 bucket["fisk"]
+
+  expect_equals 1234 (set_helper bucket "fisk" 1234)
+  expect_equals 1234 bucket["fisk"]
+  bucket.remove "fisk"
 
   alias := storage.Bucket.open "flash:bucket"
   expect_equals 87 alias["hest"]
