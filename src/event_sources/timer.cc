@@ -106,6 +106,10 @@ void TimerEventSource::entry() {
 
     int64 delay_us = 0;
     while (!timers_.is_empty()) {
+      int64 elapsed = OS::get_monotonic_time() - time;
+      if (elapsed > 2000) {
+        FATAL("running through the timer list took %d ms", static_cast<int>(elapsed));
+      }
       if (time >= timers_.first()->timeout()) {
         Timer* timer = timers_.remove_first();
         dispatch(locker, timer, 0);
