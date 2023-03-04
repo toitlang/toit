@@ -78,10 +78,8 @@ class Container extends ServiceResourceProxy:
   on_notified_ code/int -> none:
     result_.set code
     if on_stopped_: on_stopped_.call code
-    // We close the resource, because we no longer care about or expect
-    // notifications. Closing involves RPCs and thus waiting for replies
-    // which isn't allowed in the message processing context that runs
-    // the $on_notified_ method. For that reason, we create a new task.
+    // We no longer expect or care about notifications, so
+    // close the resource.
     close
 
 class ContainerImageWriter extends ServiceResourceProxy:
