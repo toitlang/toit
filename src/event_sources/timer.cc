@@ -107,7 +107,7 @@ void TimerEventSource::entry() {
       continue;
     }
 
-    bool wait = true;
+    bool time_is_accurate = true;
     int64 time = OS::get_monotonic_time();
     do {
       Timer* next = timers_.first();
@@ -118,12 +118,12 @@ void TimerEventSource::entry() {
         // the effective delay. In that case, we avoid
         // waiting here and just take another spin in
         // the outer loop.
-        if (wait) OS::wait_us(timer_changed_, delay_us);
+        if (time_is_accurate) OS::wait_us(timer_changed_, delay_us);
         break;
       }
       timers_.remove_first();
       dispatch(locker, next, 0);
-      wait = false;
+      time_is_accurate = false;
     } while (!timers_.is_empty());
   }
 }
