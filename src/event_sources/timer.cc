@@ -107,18 +107,23 @@ void TimerEventSource::entry() {
       continue;
     }
 
-    bool dispatched = false;
+    bool wait = true;
     int64 time = OS::get_monotonic_time();
     do {
-      Timer* first = timers_.first();
-      int64 delay_us = first->timeout() - time;
+      Timer* next = timers_.first();
+      int64 delay_us = next->timeout() - time;
       if (delay_us > 0) {
-        if (!dispatched) OS::wait_us(timer_changed_, delay_us);
+        // If we've already dispatched timers, we want
+        // to get a better timestamp before we compute
+        // the effective delay. In that case, we avoid
+        // waiting here and just take another spin in
+        // the outer loop.
+        if (wait) OS::wait_us(timer_changed_, delay_us);
         break;
       }
       timers_.remove_first();
-      dispatch(locker, first, 0);
-      dispatched = true;
+      dispatch(locker, next, 0);
+      wait = false;
     } while (!timers_.is_empty());
   }
 }
