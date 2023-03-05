@@ -102,27 +102,24 @@ void TimerEventSource::entry() {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
 
   while (!stop_) {
-    int64 time = OS::get_monotonic_time();
+    if (timers_.is_empty()) {
+      OS::wait(timer_changed_);
+      continue;
+    }
 
-    int64 delay_us = 0;
-    while (!timers_.is_empty()) {
-      if (time >= timers_.first()->timeout()) {
-        Timer* timer = timers_.remove_first();
-        dispatch(locker, timer, 0);
-      } else {
-        delay_us = timers_.first()->timeout() - time;
+    bool dispatched = false;
+    int64 time = OS::get_monotonic_time();
+    do {
+      Timer* first = timers_.first();
+      int64 delay_us = first->timeout() - time;
+      if (delay_us > 0) {
+        if (!dispatched) OS::wait_us(timer_changed_, delay_us);
         break;
       }
-    }
-    int64 elapsed = OS::get_monotonic_time() - time;
-    if (elapsed >= 20000) {
-      FATAL("running through the timer list took %d us", static_cast<int>(elapsed));
-    }
-    if (delay_us > 0) {
-      OS::wait_us(timer_changed_, delay_us);
-    } else {
-      OS::wait(timer_changed_);
-    }
+      timers_.remove_first();
+      dispatch(locker, first, 0);
+      dispatched = true;
+    } while (!timers_.is_empty());
   }
 }
 
