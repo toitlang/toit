@@ -55,29 +55,14 @@ extern "C" {
 #endif
 
 struct RtcData {
-  uint64 total_deep_sleep_time;
-  uint64 deep_sleep_time_stamp;
+  uint64 rtc_time_us_before_deep_sleep;
+  uint64 rtc_time_us_accumulated_deep_sleep;
+  uint64 system_time_us_before_deep_sleep;
 
   uint32 boot_count;
-  uint32 boot_count_last_successful;
-  word out_of_memory_count;
+  uint32 out_of_memory_count;
 
   uint8 wifi_channel;
-
-  uint8 ota_uuid[toit::UUID_SIZE];
-  uint32 ota_patch_position;
-  uint32 ota_image_position;
-  uint32 ota_image_size;
-
-  int64 time_ns_accuracy;
-  int64 last_time_s;
-  int32 last_time_ns;
-  bool last_time_set;
-
-  uint8 connection_tokens;
-
-  uint64 system_time_checkpoint;
-  uint32 session_id;
 };
 
 // Keep the RTC state in the noinit segment that isn't cleared on reboots.
@@ -91,7 +76,7 @@ extern "C" void start_cpu0_default(void) IRAM_ATTR __attribute__((noreturn));
 extern int _rtc_bss_start;
 extern int _rtc_bss_end;
 
-inline uint64_t calibrated_rtc_time() {
+static inline uint64 rtc_time_us_calibrated() {
   return rtc_time_slowclk_to_us(rtc_time_get(), esp_clk_slowclk_cal_get());
 }
 
@@ -132,6 +117,7 @@ static void reset_rtc(const char* reason) {
   // Our RTC state is kept in the noinit segment, which means that it isn't
   // automatically cleared on reset. Since it is invalid now, we clear it.
   memset(&rtc, 0, sizeof(rtc));
+  memset(&rtc_user_data, 0, sizeof(rtc_user_data));
   // We only clear RTC on boot, so this must be exactly 1.
   rtc.boot_count = 1;
 
@@ -157,7 +143,8 @@ extern "C" void IRAM_ATTR start_cpu0() {
     reset_rtc("invalid checksum");
   } else {
     rtc.boot_count++;
-    rtc.total_deep_sleep_time += calibrated_rtc_time() - rtc.deep_sleep_time_stamp;
+    uint64 elapsed = rtc_time_us_calibrated() - rtc.rtc_time_us_before_deep_sleep;
+    rtc.rtc_time_us_accumulated_deep_sleep += elapsed;
   }
 
   // We always increment the boot count, so we always need to recalculate the
@@ -181,7 +168,7 @@ void RtcMemory::set_up() {
     case ESP_RST_TASK_WDT:
     case ESP_RST_DEEPSLEEP:
       // Time drifted backwards while sleeping, clear RTC.
-      if (rtc.system_time_checkpoint > OS::get_system_time()) {
+      if (rtc.system_time_us_before_deep_sleep > OS::get_system_time()) {
         reset_rtc("system time drifted backwards");
         update_rtc_checksum();
       }
@@ -195,61 +182,31 @@ void RtcMemory::set_up() {
   }
 }
 
-void RtcMemory::before_deep_sleep() {
-  rtc.system_time_checkpoint = OS::get_system_time();
-  rtc.deep_sleep_time_stamp = calibrated_rtc_time();
+void RtcMemory::on_deep_sleep_start() {
+  rtc.system_time_us_before_deep_sleep = OS::get_system_time();
+  rtc.rtc_time_us_before_deep_sleep = rtc_time_us_calibrated();
   update_rtc_checksum();
 }
 
-void RtcMemory::checkpoint() {
-  rtc.system_time_checkpoint = OS::get_system_time();
+void RtcMemory::on_out_of_memory() {
+  rtc.out_of_memory_count++;
   update_rtc_checksum();
-}
-
-uint64 RtcMemory::total_deep_sleep_time() {
-  return rtc.total_deep_sleep_time;
-}
-
-uint64 RtcMemory::total_run_time() {
-  return calibrated_rtc_time();
 }
 
 uint32 RtcMemory::boot_count() {
   return rtc.boot_count;
 }
 
-int RtcMemory::boot_failures() {
-  uint32 difference = rtc.boot_count - rtc.boot_count_last_successful;
-  // If the difference is zero, we've just marked the boot as
-  // successful, so there have been no failures. Otherwise, we
-  // subtract one to account for the most recent boot and cap
-  // the result to avoid overflowing smi limits, etc.
-  return (difference == 0) ? 0 : Utils::min(0xffffU, difference - 1);
+uint32 RtcMemory::out_of_memory_count() {
+  return rtc.out_of_memory_count;
 }
 
-void RtcMemory::register_successful_boot() {
-  rtc.boot_count_last_successful = rtc.boot_count;
-  update_rtc_checksum();
+uint64 RtcMemory::accumulated_run_time_us() {
+  return rtc_time_us_calibrated();
 }
 
-int RtcMemory::out_of_memory_count() {
-  return Utils::min(Smi::MAX_SMI_VALUE, rtc.out_of_memory_count);
-}
-
-void RtcMemory::register_out_of_memory() {
-  int updated = rtc.out_of_memory_count + 1;
-  // Check for wraparound.
-  if (updated > 0) {
-    rtc.out_of_memory_count = updated;
-    update_rtc_checksum();
-  }
-}
-
-void RtcMemory::register_successful_out_of_memory_report(int count) {
-  if (count > 0 && count <= rtc.out_of_memory_count) {
-    rtc.out_of_memory_count -= count;
-    update_rtc_checksum();
-  }
+uint64 RtcMemory::accumulated_deep_sleep_time_us() {
+  return rtc.rtc_time_us_accumulated_deep_sleep;
 }
 
 uint8 RtcMemory::wifi_channel() {
@@ -259,79 +216,6 @@ uint8 RtcMemory::wifi_channel() {
 void RtcMemory::set_wifi_channel(uint8 channel) {
   rtc.wifi_channel = channel;
   update_rtc_checksum();
-}
-
-const uint8* RtcMemory::ota_uuid() {
-  return rtc.ota_uuid;
-}
-
-uint32 RtcMemory::ota_patch_position() {
-  return rtc.ota_patch_position;
-}
-
-uint32 RtcMemory::ota_image_position() {
-  return rtc.ota_image_position;
-}
-
-uint32 RtcMemory::ota_image_size() {
-  return rtc.ota_image_size;
-}
-
-void RtcMemory::set_ota_checkpoint(const uint8* uuid, uint32 patch_position, uint32 image_position, uint32 image_size) {
-  memcpy(rtc.ota_uuid, uuid, UUID_SIZE);
-  rtc.ota_patch_position = patch_position;
-  rtc.ota_image_position = image_position;
-  rtc.ota_image_size = image_size;
-  update_rtc_checksum();
-}
-
-void RtcMemory::set_last_time(int64 accuracy, int64 time_s, int32 time_ns) {
-  rtc.time_ns_accuracy = accuracy;
-  rtc.last_time_s = time_s;
-  rtc.last_time_ns = time_ns;
-  rtc.last_time_set = true;
-  update_rtc_checksum();
-}
-
-bool RtcMemory::is_last_time_set() {
-  return rtc.last_time_set;
-}
-
-int64 RtcMemory::last_time_ns_accuracy() {
-  return rtc.time_ns_accuracy;
-}
-
-int64 RtcMemory::last_time_s() {
-  return rtc.last_time_s;
-}
-
-int32 RtcMemory::last_time_ns() {
-  return rtc.last_time_ns;
-}
-
-bool RtcMemory::has_connection_tokens() {
-  return rtc.connection_tokens > 0;
-}
-
-void RtcMemory::set_connection_tokens(uint8 tokens) {
-  rtc.connection_tokens = tokens;
-  update_rtc_checksum();
-}
-
-void RtcMemory::decrement_connection_tokens() {
-  if (rtc.connection_tokens > 0) {
-    rtc.connection_tokens--;
-    update_rtc_checksum();
-  }
-}
-
-void RtcMemory::set_session_id(uint32 session_id) {
-  rtc.session_id = session_id;
-  update_rtc_checksum();
-}
-
-uint32 RtcMemory::session_id() {
-  return rtc.session_id;
 }
 
 uint8* RtcMemory::user_data_address() {

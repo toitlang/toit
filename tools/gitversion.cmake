@@ -148,87 +148,89 @@ function(compute_git_version VERSION)
   endfunction()
 
   # Run through the release-branches to see if we are on one.
-  math(EXPR LEN_MINUS_1 "${BRANCHES_LENGTH} - 1")
-  foreach (index RANGE ${LEN_MINUS_1})
-    list(GET RELEASE_BRANCHES ${index} RELEASE_BRANCH)
-    common_ancestor("${RELEASE_BRANCH}" origin/master BRANCH_POINT)
+  if (NOT ${BRANCHES_LENGTH} EQUAL 0)
+    math(EXPR LEN_MINUS_1 "${BRANCHES_LENGTH} - 1")
+    foreach (index RANGE 0 ${LEN_MINUS_1})
+      list(GET RELEASE_BRANCHES ${index} RELEASE_BRANCH)
+      common_ancestor("${RELEASE_BRANCH}" origin/master BRANCH_POINT)
 
-    # We are looking for commits that are between the branch point and the
-    # branch-head.
-    # In other words: BRANCH_POINT <= HEAD <= RELEASE_BRANCH-HEAD
-    execute_process(
-      COMMAND ${GIT_EXECUTABLE} merge-base --is-ancestor ${BRANCH_POINT} HEAD
-      RESULT_VARIABLE RESULT
-      ERROR_QUIET
-      OUTPUT_QUIET
-      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+      # We are looking for commits that are between the branch point and the
+      # branch-head.
+      # In other words: BRANCH_POINT <= HEAD <= RELEASE_BRANCH-HEAD
+      execute_process(
+        COMMAND ${GIT_EXECUTABLE} merge-base --is-ancestor ${BRANCH_POINT} HEAD
+        RESULT_VARIABLE RESULT
+        ERROR_QUIET
+        OUTPUT_QUIET
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 
-    )
-    if (NOT "${RESULT}" EQUAL 0)
-      continue()
-    endif()
-    execute_process(
-      COMMAND ${GIT_EXECUTABLE} merge-base --is-ancestor HEAD ${RELEASE_BRANCH}
-      RESULT_VARIABLE RESULT
-      ERROR_QUIET
-      OUTPUT_QUIET
-      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    )
-    if (NOT "${RESULT}" EQUAL 0)
-      continue()
-    endif()
+      )
+      if (NOT "${RESULT}" EQUAL 0)
+        continue()
+      endif()
+      execute_process(
+        COMMAND ${GIT_EXECUTABLE} merge-base --is-ancestor HEAD ${RELEASE_BRANCH}
+        RESULT_VARIABLE RESULT
+        ERROR_QUIET
+        OUTPUT_QUIET
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+      )
+      if (NOT "${RESULT}" EQUAL 0)
+        continue()
+      endif()
 
-    # This commit is a child branch of a release-branch.
-    version_from_branch("${RELEASE_BRANCH}" branch_major branch_minor)
+      # This commit is a child branch of a release-branch.
+      version_from_branch("${RELEASE_BRANCH}" branch_major branch_minor)
 
-    # See if there is already a release of this branch.
-    execute_process(
-      # The '--abbrev=0' ensures that we only get the tag, without the number of intermediate commits.
-      # Git describe uses globs for matching and not regexps. This makes this a bit more awkward.
-      COMMAND ${GIT_EXECUTABLE} describe --tags
-          --match "v${branch_major}.${branch_minor}.[0-9]"
-          --match "v${branch_major}.${branch_minor}.[0-9][0-9]"
-          --match "v${branch_major}.${branch_minor}.[0-9][0-9][0-9]"
-          --abbrev=0 HEAD
-      RESULT_VARIABLE result
-      ERROR_QUIET
-      OUTPUT_VARIABLE LATEST_VERSION_TAG
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    )
-    if ("${result}" EQUAL 0 AND NOT "${LATEST_VERSION_TAG}" STREQUAL "")
-      version_from_tag("${LATEST_VERSION_TAG}" tag_major tag_minor tag_patch)
-    endif()
+      # See if there is already a release of this branch.
+      execute_process(
+        # The '--abbrev=0' ensures that we only get the tag, without the number of intermediate commits.
+        # Git describe uses globs for matching and not regexps. This makes this a bit more awkward.
+        COMMAND ${GIT_EXECUTABLE} describe --tags
+            --match "v${branch_major}.${branch_minor}.[0-9]"
+            --match "v${branch_major}.${branch_minor}.[0-9][0-9]"
+            --match "v${branch_major}.${branch_minor}.[0-9][0-9][0-9]"
+            --abbrev=0 HEAD
+        RESULT_VARIABLE result
+        ERROR_QUIET
+        OUTPUT_VARIABLE LATEST_VERSION_TAG
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+      )
+      if ("${result}" EQUAL 0 AND NOT "${LATEST_VERSION_TAG}" STREQUAL "")
+        version_from_tag("${LATEST_VERSION_TAG}" tag_major tag_minor tag_patch)
+      endif()
 
-    if ("${branch_major}" EQUAL "${tag_major}" AND "${branch_minor}" EQUAL "${tag_minor}")
-      # There is already a release on this branch.
-      # Use next patch version.
-      MATH(EXPR patch "${tag_patch}+1")
-      # Count the distance to the last tag.
-      backtick(VERSION_TAG_COMMIT ${GIT_EXECUTABLE} rev-parse "${LATEST_VERSION_TAG}^{}")
-      backtick(CURRENT_COMMIT_NO ${GIT_EXECUTABLE} rev-list --count HEAD "^${VERSION_TAG_COMMIT}")
-      set(${VERSION} "v${tag_major}.${tag_minor}.${patch}-pre.${CURRENT_COMMIT_NO}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
+      if ("${branch_major}" EQUAL "${tag_major}" AND "${branch_minor}" EQUAL "${tag_minor}")
+        # There is already a release on this branch.
+        # Use next patch version.
+        MATH(EXPR patch "${tag_patch}+1")
+        # Count the distance to the last tag.
+        backtick(VERSION_TAG_COMMIT ${GIT_EXECUTABLE} rev-parse "${LATEST_VERSION_TAG}^{}")
+        backtick(CURRENT_COMMIT_NO ${GIT_EXECUTABLE} rev-list --count HEAD "^${VERSION_TAG_COMMIT}")
+        set(${VERSION} "v${tag_major}.${tag_minor}.${patch}-pre.${CURRENT_COMMIT_NO}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
+        return()
+      endif()
+
+      # First release on this major.minor branch.
+
+      # We need to find the distance to the previous commit-branch to maintain a consistent
+      # counting (monotonically increasing).
+      # We assume the next release-branch in the list is the previous branch-point.
+      # Remember: the release-branches are sorted in descending order.
+      math(EXPR next_index "${index}+1")
+      if (${next_index} EQUAL ${BRANCHES_LENGTH})
+        # No previous branch-release.
+        # Count all commits.
+        backtick(COMMITS_SINCE_LAST_RELEASE ${GIT_EXECUTABLE} rev-list --count HEAD)
+      else()
+        list(GET RELEASE_BRANCHES ${next_index} PREVIOUS_RELEASE_BRANCH)
+        commits_since_common_ancestor(${PREVIOUS_RELEASE_BRANCH} COMMITS_SINCE_LAST_RELEASE)
+      endif()
+      set(${VERSION} "v${branch_major}.${branch_minor}.0-pre.${COMMITS_SINCE_LAST_RELEASE}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
       return()
-    endif()
-
-    # First release on this major.minor branch.
-
-    # We need to find the distance to the previous commit-branch to maintain a consistent
-    # counting (monotonically increasing).
-    # We assume the next release-branch in the list is the previous branch-point.
-    # Remember: the release-branches are sorted in descending order.
-    math(EXPR next_index "${index}+1")
-    if (${next_index} EQUAL ${BRANCHES_LENGTH})
-      # No previous branch-release.
-      # Count all commits.
-      backtick(COMMITS_SINCE_LAST_RELEASE ${GIT_EXECUTABLE} rev-list --count HEAD)
-    else()
-      list(GET RELEASE_BRANCHES ${next_index} PREVIOUS_RELEASE_BRANCH)
-      commits_since_common_ancestor(${PREVIOUS_RELEASE_BRANCH} COMMITS_SINCE_LAST_RELEASE)
-    endif()
-    set(${VERSION} "v${branch_major}.${branch_minor}.0-pre.${COMMITS_SINCE_LAST_RELEASE}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
-    return()
-  endforeach()
+    endforeach()
+  endif()
 
   # We are not on a release branch.
   # Use the next highest release since the last release branch, or count up from the most recent tag.

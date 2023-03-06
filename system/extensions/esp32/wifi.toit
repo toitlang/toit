@@ -16,13 +16,14 @@
 import net
 import monitor
 import log
-import device
-import net.modules.dns
+
+import net.modules.dns as dns_module
 import net.wifi
 
 import encoding.tison
 import system.assets
 import system.firmware
+import system.storage
 
 import system.api.wifi show WifiService
 import system.api.network show NetworkService
@@ -32,15 +33,18 @@ import system.base.network show NetworkModule NetworkResource NetworkState
 import ..shared.network_base
 
 // Keep in sync with the definitions in WifiResourceGroup.
-OWN_ADDRESS_INDEX_ ::= 0
-MAIN_DNS_ADDRESS_INDEX_ ::= 1
+OWN_ADDRESS_INDEX_        ::= 0
+MAIN_DNS_ADDRESS_INDEX_   ::= 1
 BACKUP_DNS_ADDRESS_INDEX_ ::= 2
+
+// Use lazy initialization to delay opening the storage bucket
+// until we need it the first time. From that point forward,
+// we keep it around forever.
+bucket_/storage.Bucket ::= storage.Bucket.open --flash "toitlang.org/wifi"
 
 class WifiServiceProvider extends NetworkServiceProviderBase:
   static WIFI_CONFIG_STORE_KEY ::= "system/wifi"
-
   state_/NetworkState ::= NetworkState
-  store_/device.FlashStore ::= device.FlashStore
 
   constructor:
     super "system/wifi/esp32" --major=0 --minor=1
@@ -66,7 +70,7 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
   connect client/int config/Map? -> List:
     effective := config
     if not effective:
-      catch --trace: effective = store_.get WIFI_CONFIG_STORE_KEY
+      catch --trace: effective = bucket_.get WIFI_CONFIG_STORE_KEY
       if not effective:
         effective = firmware.config["wifi"]
       if not effective:
@@ -130,7 +134,7 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
     return (state_.module as WifiModule).address.to_byte_array
 
   resolve resource/ServiceResource host/string -> List:
-    return [(dns.dns_lookup host).raw]
+    return [(dns_module.dns_lookup host).raw]
 
   ap_info resource/NetworkResource -> List:
     return (state_.module as WifiModule).ap_info
@@ -149,9 +153,9 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
 
   configure config/Map? -> none:
     if config:
-      store_.set WIFI_CONFIG_STORE_KEY config
+      bucket_[WIFI_CONFIG_STORE_KEY] = config
     else:
-      store_.delete WIFI_CONFIG_STORE_KEY
+      bucket_.remove WIFI_CONFIG_STORE_KEY
 
   on_module_closed module/WifiModule -> none:
     resources_do: it.notify_ NetworkService.NOTIFY_CLOSED
@@ -276,14 +280,14 @@ class WifiModule implements NetworkModule:
     if main_dns: dns_ips.add (net.IpAddress main_dns)
     if backup_dns: dns_ips.add (net.IpAddress backup_dns)
     if dns_ips.size != 0:
-      dns.dhcp_client_ = dns.DnsClient dns_ips
+      dns_module.dhcp_client_ = dns_module.DnsClient dns_ips
       if from_dhcp:
-        logger_.info "DNS server address dynamically assigned through dhcp" --tags={"dns": dns_ips}
+        logger_.info "dns server address dynamically assigned through dhcp" --tags={"ip": dns_ips}
       else:
-        logger_.info "DNS server statically configured" --tags={"dns": dns_ips}
+        logger_.info "dns server address statically assigned" --tags={"ip": dns_ips}
     else:
-      dns.dhcp_client_ = null
-      logger_.info "DNS server not supplied by network; using fallback DNS servers"
+      dns_module.dhcp_client_ = null
+      logger_.info "dns server address not supplied by network; using fallback dns servers"
 
   ap_info -> List:
     return wifi_get_ap_info_ resource_group_

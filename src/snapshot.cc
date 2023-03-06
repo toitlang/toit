@@ -903,11 +903,8 @@ ProgramImage ImageSnapshotReader::read_image(const uint8* id) {
   //     which is a subset of SnapshotAllocator
   bool succeeded = read_header();
   ASSERT(succeeded);  // We expect to never run out of memory on the desktop.
-  program_  = new (image_allocator_.memory()) Program(image_allocator_.image()->address(), image_allocator_.image()->byte_size());
+  program_  = new (image_allocator_.memory()) Program(id, image_allocator_.image()->byte_size());
   image_allocator_.set_program(program_);
-  // Initialize the uuid to 0. It can be patched from the outside.
-  uint8 uuid[UUID_SIZE] = {0};
-  program_->set_header(0, uuid, id);
 
   image_allocator_.expand();
   program_->read(this);

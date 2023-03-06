@@ -23,8 +23,7 @@ import .services
 Initialize the system and create the all important $ContainerManager
   instance.
 */
-initialize_system extensions/List -> ContainerManager:
-  flash_registry ::= FlashRegistry.scan
+initialize_system registry/FlashRegistry extensions/List -> ContainerManager:
   service_manager ::= SystemServiceManager
   extensions.do: | provider/ServiceProvider | provider.install
-  return ContainerManager flash_registry service_manager
+  return ContainerManager registry service_manager

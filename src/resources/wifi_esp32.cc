@@ -67,7 +67,7 @@ class WifiResourceGroup : public ResourceGroup {
   static const int NUMBER_OF_ADDRESSES = 3;
 
   uint32 ip_address(int index) const { return ip_address_[index]; }
-  bool has_ip_address() const { return ip_address_[OWN_ADDRESS] != 0; }
+  bool has_ip_address(int index) const { return ip_address_[index] != 0; }
 
   void set_ip_address(int index, uint32 address) { ip_address_[index] = address; }
   void clear_ip_addresses() {
@@ -158,7 +158,7 @@ class WifiResourceGroup : public ResourceGroup {
     wifi_pool.put(id_);
   }
 
-  uint32 on_event(Resource* resource, word data, uint32 state);
+  uint32_t on_event(Resource* resource, word data, uint32_t state) override;
 
  private:
   int id_;
@@ -320,7 +320,7 @@ void WifiResourceGroup::get_dns() {
   }
 }
 
-uint32 WifiResourceGroup::on_event(Resource* resource, word data, uint32 state) {
+uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t state) {
   SystemEvent* system_event = reinterpret_cast<SystemEvent*>(data);
 
   if (system_event->base == WIFI_EVENT) {
@@ -527,11 +527,12 @@ PRIMITIVE(disconnect_reason) {
 
 PRIMITIVE(get_ip) {
   ARGS(WifiResourceGroup, group, int, index);
-  if (!group->has_ip_address()) {
-    return process->program()->null_object();
-  }
   if (index < 0 || index >= WifiResourceGroup::NUMBER_OF_ADDRESSES) {
     INVALID_ARGUMENT;
+  }
+
+  if (!group->has_ip_address(index)) {
+    return process->program()->null_object();
   }
 
   ByteArray* result = process->object_heap()->allocate_internal_byte_array(4);

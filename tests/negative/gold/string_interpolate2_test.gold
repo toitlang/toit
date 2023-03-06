@@ -1,0 +1,2 @@
+As check failed: an int (499) is not a string.
+  0: main                      tests/negative/string_interpolate2_test.toit:11:12

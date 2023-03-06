@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 import binary show BIG_ENDIAN
-import net.modules.udp
+import net.modules.udp as udp_module
 import net
 
 DNS_DEFAULT_TIMEOUT ::= Duration --s=20
@@ -180,7 +180,7 @@ class DnsClient:
     query := DnsQuery_ name --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6
 
     with_timeout timeout:
-      socket/udp.Socket? := null
+      socket/udp_module.Socket? := null
       servers_immediately_failed := {}
       try:
         retry_timeout := DNS_RETRY_TIMEOUT
@@ -189,7 +189,7 @@ class DnsClient:
         // expires.
         while true:
           if not socket:
-            socket = udp.Socket
+            socket = udp_module.Socket
             server_ip := servers_[current_server_]
             show_errors := servers_immediately_failed.size == servers_.size
             exception := null

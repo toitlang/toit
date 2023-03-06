@@ -24,7 +24,9 @@ test_positive:
   tests_run := 0
 
   tests_started++
-  with_installed_services --priority_a=30 --priority_b=20:
+  with_installed_services
+      --priority_a=services.ServiceProvider.PRIORITY_PREFERRED
+      --priority_b=services.ServiceProvider.PRIORITY_NORMAL:
     client := PingServiceClient
     client.open
     client.ping
@@ -33,7 +35,9 @@ test_positive:
   expect_equals tests_started tests_run
 
   tests_started++
-  with_installed_services --priority_a=20 --priority_b=30:
+  with_installed_services
+      --priority_a=services.ServiceProvider.PRIORITY_NORMAL
+      --priority_b=services.ServiceProvider.PRIORITY_PREFERRED:
     client := PingServiceClient
     client.open
     client.ping

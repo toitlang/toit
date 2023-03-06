@@ -109,11 +109,17 @@ set_real_time_clock time/Time -> none:
 set_real_time_clock_ seconds/int ns/int -> none:
   #primitive.core.set_real_time_clock
 
-/** Size of the user accessible RTC memory. */
+/**
+Size of the user accessible RTC memory.
+
+Deprecated.
+*/
 RTC_MEMORY_SIZE ::= 4096
 
 /**
 Constructs a $ByteArray backed by the RTC user data.
+
+Deprecated.
 
 # Advanced
 RTC memory is volatile memory that is powered during deep sleep. RTC memory is
@@ -125,7 +131,7 @@ There is only one RTC memory on the device, so all tasks or processes have
   access to the same RTC memory.
 */
 rtc_user_bytes -> ByteArray:
-  #primitive.esp32.rtc_user_bytes
+  #primitive.core.rtc_user_bytes
 
 /**
 Sends (as a system message) a report over the usage of memory at the OS level.

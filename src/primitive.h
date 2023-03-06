@@ -50,7 +50,6 @@ namespace toit {
   M(dhcp,    MODULE_DHCP)                    \
   M(snapshot,MODULE_SNAPSHOT)                \
   M(image,   MODULE_IMAGE)                   \
-  M(blob,    MODULE_BLOB)                    \
   M(gpio,    MODULE_GPIO)                    \
   M(adc,     MODULE_ADC)                     \
   M(dac,     MODULE_DAC)                     \
@@ -244,6 +243,7 @@ namespace toit {
   PRIMITIVE(firmware_unmap, 1)               \
   PRIMITIVE(firmware_mapping_at, 2)          \
   PRIMITIVE(firmware_mapping_copy, 5)        \
+  PRIMITIVE(rtc_user_bytes, 0)               \
 
 #define MODULE_TIMER(PRIMITIVE)              \
   PRIMITIVE(init, 0)                         \
@@ -376,7 +376,6 @@ namespace toit {
   PRIMITIVE(total_deep_sleep_time, 0)        \
   PRIMITIVE(total_run_time, 0)               \
   PRIMITIVE(get_mac_address, 0)              \
-  PRIMITIVE(rtc_user_bytes, 0)               \
   PRIMITIVE(memory_page_report, 0)           \
 
 #define MODULE_I2C(PRIMITIVE)                \
@@ -513,15 +512,6 @@ namespace toit {
   PRIMITIVE(writer_commit, 2)                \
   PRIMITIVE(writer_close, 1)                 \
 
-#define MODULE_BLOB(PRIMITIVE)               \
-  PRIMITIVE(writer_create, 2)                \
-  PRIMITIVE(writer_write, 2)                 \
-  PRIMITIVE(writer_commit, 4)                \
-  PRIMITIVE(writer_close, 1)                 \
-  PRIMITIVE(content, 1)                      \
-  PRIMITIVE(prepare_app_content, 2)          \
-  PRIMITIVE(app_content, 1)                  \
-
 #define MODULE_GPIO(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(use, 3)                          \
@@ -566,9 +556,9 @@ namespace toit {
 
 #define MODULE_PROGRAMS_REGISTRY(PRIMITIVE)  \
   PRIMITIVE(next_group_id, 0)                \
-  PRIMITIVE(spawn, 4)                        \
-  PRIMITIVE(is_running, 2)                   \
-  PRIMITIVE(kill, 2)                         \
+  PRIMITIVE(spawn, 3)                        \
+  PRIMITIVE(is_running, 1)                   \
+  PRIMITIVE(kill, 1)                         \
   PRIMITIVE(bundled_images, 0)               \
   PRIMITIVE(assets, 0)                       \
   PRIMITIVE(config, 0)                       \
@@ -577,13 +567,21 @@ namespace toit {
   PRIMITIVE(next, 1)                         \
   PRIMITIVE(info, 1)                         \
   PRIMITIVE(erase, 2)                        \
-  PRIMITIVE(get_id, 1)                       \
   PRIMITIVE(get_size, 1)                     \
-  PRIMITIVE(get_type, 1)                     \
-  PRIMITIVE(get_metadata, 1)                 \
+  PRIMITIVE(get_header_page, 1)              \
   PRIMITIVE(reserve_hole, 2)                 \
   PRIMITIVE(cancel_reservation, 1)           \
+  PRIMITIVE(allocate, 6)                     \
   PRIMITIVE(erase_flash_registry, 0)         \
+  PRIMITIVE(grant_access, 4)                 \
+  PRIMITIVE(is_accessed, 2)                  \
+  PRIMITIVE(revoke_access, 2)                \
+  PRIMITIVE(region_open, 5)                  \
+  PRIMITIVE(region_close, 1)                 \
+  PRIMITIVE(region_read, 3)                  \
+  PRIMITIVE(region_write, 3)                 \
+  PRIMITIVE(region_is_erased, 3)             \
+  PRIMITIVE(region_erase, 3)                 \
 
 #define MODULE_SPI_FLASH(PRIMITIVE)          \
   PRIMITIVE(init_sdcard, 6)                  \
@@ -893,6 +891,24 @@ namespace toit {
   Blob name;                                                      \
   if (!_raw_##name->byte_content(process->program(), &name, STRINGS_ONLY)) WRONG_TYPE;
 
+// Filesystem primitives should generally use this, since the chdir primitive
+// merely changes a string representing the current directory.
+#define BLOB_TO_ABSOLUTE_PATH(result, blob)                                 \
+  if (blob.length() == 0) INVALID_ARGUMENT;                                 \
+  WideCharAllocationManager allocation_##result(process);                   \
+  wchar_t* wchar_##result = allocation_##result.to_wcs(&blob);              \
+  wchar_t result[MAX_PATH];                                                 \
+  auto error_##result = get_absolute_path(process, wchar_##result, result); \
+  if (error_##result) return error_##result
+
+HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output, const wchar_t* used_for_relative = null);
+
+#define _A_T_WindowsPath(N, name)                                           \
+  Object* _raw_##name = __args[-(N)];                                       \
+  Blob name##_blob;                                                         \
+  if (!_raw_##name->byte_content(process->program(), &name##_blob, STRINGS_ONLY)) WRONG_TYPE; \
+  BLOB_TO_ABSOLUTE_PATH(name, name##_blob);
+
 #define _A_T_Blob(N, name)                                        \
   Object* _raw_##name = __args[-(N)];                             \
   Blob name;                                                      \
@@ -964,6 +980,7 @@ namespace toit {
 #define _A_T_X509Certificate(N, name)     MAKE_UNPACKING_MACRO(X509Certificate, N, name)
 #define _A_T_AesContext(N, name)          MAKE_UNPACKING_MACRO(AesContext, N, name)
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)
+#define _A_T_FlashRegion(N, name)         MAKE_UNPACKING_MACRO(FlashRegion, N, name)
 #define _A_T_Sha1(N, name)                MAKE_UNPACKING_MACRO(Sha1, N, name)
 #define _A_T_Siphash(N, name)             MAKE_UNPACKING_MACRO(Siphash, N, name)
 #define _A_T_Sha(N, name)                 MAKE_UNPACKING_MACRO(Sha, N, name)

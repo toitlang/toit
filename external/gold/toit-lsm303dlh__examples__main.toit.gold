@@ -1,0 +1,3 @@
+<sdk>/device.toit:42:45: warning: Class 'FlashStore' is deprecated
+  static instance_/FlashStore ::= FlashStore.internal_
+                                            ^

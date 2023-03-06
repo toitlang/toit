@@ -268,7 +268,8 @@ class Task_ implements Task:
     if background_: task_background_--
     // If no services are defined and only background tasks are alive
     // at this point, we terminate the process gracefully.
-    if ServiceManager_.is_empty and task_count_ == task_background_: __halt__
+    if ServiceManager_.is_empty and task_count_ == task_background_:
+      __exit__ 0
     // Suspend this task and transfer control to the next one.
     next := suspend_
     task_transfer_to_ next true

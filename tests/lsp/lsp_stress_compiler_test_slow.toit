@@ -3,7 +3,6 @@
 // be found in the tests/LICENSE file.
 
 import .lsp_client show LspClient run_client_test
-import services.arguments show *
 import host.directory
 import expect show *
 import monitor

@@ -31,6 +31,7 @@ namespace toit {
   fn(SpiDevice)                         \
   fn(X509Certificate)                   \
   fn(AesContext)                        \
+  fn(FlashRegion)                       \
   fn(AesCbcContext)                     \
   fn(SslSession)                        \
   fn(Sha1)                              \

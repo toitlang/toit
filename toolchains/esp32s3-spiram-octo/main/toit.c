@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Toitware ApS.
+// Copyright (C) 2018 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -13,20 +13,10 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#include "type_primitive.h"
+// Toit ESP32 top level, derived from ESP-IDF Hello World example.
 
-namespace toit {
-namespace compiler {
+extern void toit_start();
 
-MODULE_TYPES(blob, MODULE_BLOB)
-
-TYPE_PRIMITIVE_ANY(writer_create)
-TYPE_PRIMITIVE_ANY(writer_write)
-TYPE_PRIMITIVE_ANY(writer_commit)
-TYPE_PRIMITIVE_ANY(writer_close)
-TYPE_PRIMITIVE_ANY(content)
-TYPE_PRIMITIVE_ANY(prepare_app_content)
-TYPE_PRIMITIVE_ANY(app_content)
-
-}  // namespace toit::compiler
-}  // namespace toit
+void app_main() {
+  toit_start();
+}

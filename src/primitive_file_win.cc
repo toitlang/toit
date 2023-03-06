@@ -33,6 +33,7 @@
 #include <windows.h>
 #include <pathcch.h>
 #include <shlwapi.h>
+#include <fileapi.h>
 
 #include "objects_inline.h"
 
@@ -107,7 +108,7 @@ const wchar_t* current_dir(Process* process) {
   return current_directory;
 }
 
-HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output, const wchar_t* used_for_relative = null) {
+HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output, const wchar_t* used_for_relative) {
   size_t pathname_length = wcslen(pathname);
 
   // Poor man's version. For better platform handling, use PathCchAppendEx.
@@ -144,18 +145,8 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
   return null;
 }
 
-// Filesystem primitives should generally use this, since the chdir primitive
-// merely changes a string representing the current directory.
-#define BLOB_TO_ABSOLUTE_PATH(result, blob)                                 \
-  WideCharAllocationManager allocation_##result(process);                   \
-  wchar_t* wchar_##result = allocation_##result.to_wcs(&blob);              \
-  wchar_t result[MAX_PATH];                                                 \
-  auto error_##result = get_absolute_path(process, wchar_##result, result); \
-  if (error_##result) return error_##result
-
 PRIMITIVE(open) {
-  ARGS(StringOrSlice, pathname, int, flags, int, mode);
-  BLOB_TO_ABSOLUTE_PATH(path, pathname);
+  ARGS(WindowsPath, path, int, flags, int, mode);
 
   int os_flags = _O_BINARY;
   if ((flags & FILE_RDWR) == FILE_RDONLY) os_flags |= _O_RDONLY;
@@ -212,8 +203,7 @@ PRIMITIVE(opendir) {
 }
 
 PRIMITIVE(opendir2) {
-  ARGS(SimpleResourceGroup, group, StringOrSlice, pathname);
-  BLOB_TO_ABSOLUTE_PATH(path, pathname);
+  ARGS(SimpleResourceGroup, group, WindowsPath, path);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
@@ -351,8 +341,7 @@ Object* time_stamp(Process* process, time_t time) {
 // Returns null for entries that do not exist.
 // Otherwise returns an array with indices from the FILE_ST_xxx constants.
 PRIMITIVE(stat) {
-  ARGS(StringOrSlice, pathname, bool, follow_links);
-  BLOB_TO_ABSOLUTE_PATH(path, pathname);
+  ARGS(WindowsPath, path, bool, follow_links);
 
   USE(follow_links);
 
@@ -405,35 +394,31 @@ PRIMITIVE(stat) {
 }
 
 PRIMITIVE(unlink) {
-  ARGS(StringOrSlice, pathname);
-  BLOB_TO_ABSOLUTE_PATH(path, pathname);
+  ARGS(WindowsPath, path);
 
+  // Remove any read-only attribute.
+  SetFileAttributesW(path, FILE_ATTRIBUTE_NORMAL);
   int result = _wunlink(path);
   if (result < 0) return return_open_error(process, errno);
   return process->program()->null_object();
 }
 
 PRIMITIVE(rmdir) {
-  ARGS(StringOrSlice, pathname);
-  BLOB_TO_ABSOLUTE_PATH(path, pathname);
+  ARGS(WindowsPath, path);
 
   if (RemoveDirectoryW(path) == 0) WINDOWS_ERROR;
   return process->program()->null_object();
 }
 
 PRIMITIVE(rename) {
-  ARGS(StringOrSlice, old_name_blob, StringOrSlice, new_name_blob);
-  BLOB_TO_ABSOLUTE_PATH(old_name, old_name_blob);
-  BLOB_TO_ABSOLUTE_PATH(new_name, new_name_blob);
+  ARGS(WindowsPath, old_name, WindowsPath, new_name);
   int result = _wrename(old_name, new_name);
   if (result < 0) return return_open_error(process, errno);
   return process->program()->null_object();
 }
 
 PRIMITIVE(chdir) {
-  ARGS(StringOrSlice, pathname);
-  if (pathname.length() == 0) INVALID_ARGUMENT;
-  BLOB_TO_ABSOLUTE_PATH(path, pathname);
+  ARGS(WindowsPath, path);
 
   struct stat64 statbuf{};
   int result = _wstat64(path, &statbuf);
@@ -448,8 +433,7 @@ PRIMITIVE(chdir) {
 }
 
 PRIMITIVE(mkdir) {
-  ARGS(StringOrSlice, pathname, int, mode);
-  BLOB_TO_ABSOLUTE_PATH(path, pathname);
+  ARGS(WindowsPath, path, int, mode);
 
   int result = CreateDirectoryW(path, NULL);
   if (result == 0) WINDOWS_ERROR;

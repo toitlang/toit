@@ -207,9 +207,8 @@ Exits the VM with the given $status.
 # Argument $status
 0 signals a successful exit. All other statuses are error codes.
 */
-exit status:
-  if status == 0: __halt__
-  else: __exit__ status
+exit status/int -> none:
+  __exit__ status
 
 /**
 Creates an off-heap byte array with the given $size.
