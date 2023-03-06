@@ -11,17 +11,19 @@ jobs:
     strategy:
       # The matrix will run all possible combinations in parallel.
       matrix:
+        container: [ ubuntu-20.04 ]
+        shard: [1]
         # ubuntu-20.04 so that we don't depend on a recent glibc.
-        container: [ ubuntu-20.04, macos-latest, windows-latest ]
-        shard: [1, 2, 3, 4, 5]
+        #container: [ ubuntu-20.04, macos-latest, windows-latest ]
+        #shard: [1, 2, 3, 4, 5]
 
-        include:
-          - container: ubuntu-20.04
-            shard: 6
-          - container: ubuntu-20.04
-            shard: 7
-          - container: ubuntu-20.04
-            shard: 8
+        #include:
+        #- container: ubuntu-20.04
+        #shard: 6
+        #- container: ubuntu-20.04
+        #shard: 7
+        #- container: ubuntu-20.04
+        #shard: 8
 
     runs-on: ${{ matrix.container }}
 
@@ -45,13 +47,13 @@ jobs:
           echo "toit_version=$TOIT_VERSION" >> $GITHUB_OUTPUT
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo "artifact=toit-linux.tar.gz" >> $GITHUB_OUTPUT
-            echo "total_shards=8" >> $GITHUB_OUTPUT
+            echo "total_shards=1" >> $GITHUB_OUTPUT
           elif [ "$RUNNER_OS" == "macOS" ]; then
             echo "artifact=toit-macos.tar.gz" >> $GITHUB_OUTPUT
-            echo "total_shards=5" >> $GITHUB_OUTPUT
+            echo "total_shards=1" >> $GITHUB_OUTPUT
           elif [ "$RUNNER_OS" == "Windows" ]; then
             echo "artifact=toit-windows.tar.gz" >> $GITHUB_OUTPUT
-            echo "total_shards=5" >> $GITHUB_OUTPUT
+            echo "total_shards=1" >> $GITHUB_OUTPUT
           else
             echo "UNSUPPORTED RUNNER: $RUNNER_OS"
             exit 1
@@ -190,6 +192,9 @@ jobs:
             make CROSS_ARCH=host32 BUILD_TYPE=Debug sdk-cross
             make HOST=host-ctp TOIT_CHECK_PROPAGATED_TYPES=1 sdk
           fi
+
+      - name: Setup upterm session
+        uses: lhotari/action-upterm@v1
 
       - name: Build esptool
         shell: bash
