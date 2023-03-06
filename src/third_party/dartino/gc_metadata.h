@@ -316,9 +316,9 @@ class GcMetadata {
     if (!all_mark_bits_are(rest_of_object, size - WORD_SIZE, 0) &&
            !all_mark_bits_are(rest_of_object, size - WORD_SIZE, 1)) {
       fprintf(stderr, "Object at %p, size %d, not all bits the same\n", object, (int)size);
-      uint32* mark_bits = mark_bits_for(reinterpret_cast<uword>(object)) {
+      uint32* mark_bits = mark_bits_for(reinterpret_cast<uword>(object));
       fprintf(stderr, "Mark bits at %p: %08x\n", mark_bits, (int)(*mark_bits));
-      mark_bits = mark_bits_for(reinterpret_cast<uword>(object) + size) {
+      mark_bits = mark_bits_for(reinterpret_cast<uword>(object) + size);
       fprintf(stderr, "Mark bits at %p: %08x\n", mark_bits, (int)(*mark_bits));
     }
 #endif
