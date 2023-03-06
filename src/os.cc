@@ -152,6 +152,10 @@ static void* try_grab_aligned(void* suggestion, uword size) {
 OS::HeapMemoryRange OS::single_range_ = { 0 };
 
 // Protected by the resource mutex.
+// We keep a list of recently freed addresses, to cut down on virtual memory
+// fragmentation when an application keeps growing and then shrinking its
+// memory use.  This size covers about 320MB of memory fluctuation with a 32k
+// page (default on 64 bit).
 static const int RECENTLY_FREED_SIZE = 10000;
 static int recently_freed_index = 0;
 void* recently_freed[RECENTLY_FREED_SIZE];
