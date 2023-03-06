@@ -312,6 +312,16 @@ class GcMetadata {
     // of overflow).  Later we pop them off the stack and process them again.
     // This is rare.
     auto rest_of_object = reinterpret_cast<HeapObject*>(reinterpret_cast<uword>(object) + WORD_SIZE);
+#ifdef DEBUG
+    if (!all_mark_bits_are(rest_of_object, size - WORD_SIZE, 0) &&
+           !all_mark_bits_are(rest_of_object, size - WORD_SIZE, 1)) {
+      printf("Object at %p, size %d, not all bits the same\n", object, (int)size);
+      uint32* mark_bits = mark_bits_for(reinterpret_cast<uword>(object)) {
+      printf("Mark bits at %p: %08x\n", mark_bits, (int)(*mark_bits));
+      mark_bits = mark_bits_for(reinterpret_cast<uword>(object) + size) {
+      printf("Mark bits at %p: %08x\n", mark_bits, (int)(*mark_bits));
+    }
+#endif
     ASSERT(all_mark_bits_are(rest_of_object, size - WORD_SIZE, 0) ||
            all_mark_bits_are(rest_of_object, size - WORD_SIZE, 1));
     uword size_in_words = size >> WORD_SHIFT;
