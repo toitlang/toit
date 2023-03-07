@@ -1,7 +1,7 @@
 tests/lsp/bad_definition_test.toit:48:3: error: Argument mismatch for 'func'
 Too few arguments provided
   func
-  ^~~
+  ^~~~
 tests/lsp/bad_definition_test.toit:53:3: error: Argument mismatch for 'A'
 Method does not take any arguments, but one was provided
   A 499
