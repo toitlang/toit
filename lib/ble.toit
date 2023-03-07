@@ -171,7 +171,6 @@ CHARACTERISTIC_PROPERTY_WRITE                        ::= 0x0008
 CHARACTERISTIC_PROPERTY_NOTIFY                       ::= 0x0010
 CHARACTERISTIC_PROPERTY_INDICATE                     ::= 0x0020
 CHARACTERISTIC_PROPERTY_AUTHENTICATED_SIGNED_WRITES  ::= 0x0040
-CHARACTERISTIC_PROPERTY_EXTENDED_PROPERTIES          ::= 0x0080
 CHARACTERISTIC_PROPERTY_NOTIFY_ENCRYPTION_REQUIRED   ::= 0x0100
 CHARACTERISTIC_PROPERTY_INDICATE_ENCRYPTION_REQUIRED ::= 0x0200
 
@@ -357,8 +356,8 @@ class RemoteDevice extends Resource_:
 
   discovered_services/List := []
 
-  constructor.private_ .manager .address:
-    device := ble_connect_ manager.resource_ address
+  constructor.private_ .manager .address secure:
+    device := ble_connect_ manager.resource_ address secure
     super manager.adapter.resource_group_ device --auto_release
     state := resource_state_.wait_for_state CONNECTED_EVENT_ | CONNECT_FAILED_EVENT_
     if state & CONNECT_FAILED_EVENT_ != 0:
@@ -427,21 +426,27 @@ class LocalService extends Resource_ implements Attribute:
     $CHARACTERISTIC_PROPERTY_BROADCAST and similar).
   $permissions is one of the CHARACTERISTIC_PERMISSIONS_* values (see
     $CHARACTERISTIC_PERMISSION_READ and similar).
-  if $value is specified, it is used as the initial value for the characteristic.
+  If $value is specified, it is used as the initial value for the characteristic. If $value is null,
+    then the characteristic supports callback reads and the client needs
+    to call $read_request to provide the value upon request. NOTE: Read callbacks are not supported
+    in MacOS.
+  When using read callbacks, the $read_timeout_ms specifies the time the callback function is allowed
+    to use.
   Throws if the service is already deployed.
   */
-  add_characteristic
+  add_characteristic -> LocalCharacteristic
       uuid/BleUuid
       --properties/int
       --permissions/int
-      --value/ByteArray=#[] -> LocalCharacteristic:
+      --value/ByteArray=#[]
+      --read_timeout_ms/int=2500:
     if deployed_: throw "Service is already deployed"
-    return LocalCharacteristic this uuid properties permissions value
+    return LocalCharacteristic this uuid properties permissions value read_timeout_ms
 
   /**
   Convenience method to add a read-only characteristic with the given $uuid and $value.
   */
-  add_read_only_characteristic uuid/BleUuid --value/ByteArray -> LocalCharacteristic:
+  add_read_only_characteristic uuid/BleUuid --value/ByteArray? -> LocalCharacteristic:
     return add_characteristic
         uuid
         --properties=CHARACTERISTIC_PROPERTY_READ
@@ -497,8 +502,8 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   properties/int
   service/LocalService
 
-  constructor .service .uuid .properties .permissions value/ByteArray:
-    resource := ble_add_characteristic_ service.resource_ uuid.encode_for_platform_ properties permissions value
+  constructor .service .uuid .properties .permissions value/ByteArray? read_timeout_ms:
+    resource := ble_add_characteristic_ service.resource_ uuid.encode_for_platform_ properties permissions value read_timeout_ms
     super service resource
 
   /**
@@ -526,6 +531,17 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
       throw "Invalid permission"
     return read_
 
+  /**
+  Manual handling of read requests. If the characteristics supports reads and the value in the constructor is null
+    then a read request will call the $block. The $block should return a ByteArray
+  */
+  read_request [block]:
+    while true:
+      resource_state_.wait_for_state DATA_READ_REQUEST_EVENT_
+      if not resource_: return
+      value := block.call
+      resource_state_.clear_state DATA_READ_REQUEST_EVENT_
+      ble_read_request_reply_ resource_ value
   /**
   Adds a descriptor to this characteristic.
   $uuid is the uuid of the descriptor
@@ -577,9 +593,12 @@ class Central extends Resource_:
   Connects to the remote device with the given $address.
 
   Connections cannot be established while a scan is ongoing.
+
+  If $secure is true, the connections is secured and the remote
+    peer is bonded.
   */
-  connect address/any -> RemoteDevice:
-    return RemoteDevice.private_ this address
+  connect address/any --secure/bool=false -> RemoteDevice:
+    return RemoteDevice.private_ this address secure
 
 
   /**
@@ -626,6 +645,15 @@ class Central extends Resource_:
       ble_scan_stop_ resource_
       resource_state_.wait_for_state COMPLETED_EVENT_
 
+  /**
+  Returns a list of device addresses that have been bonded. The elements
+    of the list can be used as arguments to $connect.
+
+  NOTE: Not implemented on MacOS.
+  */
+  bonded_peers -> List:
+    return List.from ble_get_bonded_peers_
+
 /**
 The manager for advertising and managing local services.
 */
@@ -633,8 +661,8 @@ class Peripheral extends Resource_:
   static DEFAULT_INTERVAL ::= Duration --us=46875
   adapter/Adapter
 
-  constructor .adapter:
-    resource := ble_create_peripheral_manager_ adapter.resource_group_
+  constructor .adapter bonding/bool secure_connections/bool:
+    resource := ble_create_peripheral_manager_ adapter.resource_group_ bonding secure_connections
     super adapter.resource_group_ resource --auto_release
     resource_state_.wait_for_state STARTED_EVENT_
 
@@ -689,6 +717,22 @@ class Peripheral extends Resource_:
     return LocalService this uuid
 
 
+class AdapterConfig:
+  /**
+  Enable support for bonding
+  */
+  bonding/bool
+  
+  /**
+  Enable support for secure connections
+  */
+  secure_connections/bool
+  
+  constructor
+      --.bonding/bool=false 
+      --.secure_connections/bool=false:
+
+
 class AdapterMetadata:
   identifier/string
   address/ByteArray
@@ -698,7 +742,7 @@ class AdapterMetadata:
 
   constructor.private_ .identifier .address .supports_central_role .supports_peripheral_role .handle_:
 
-  adapter -> Adapter:
+  adapter  -> Adapter:
     return Adapter.private_ this
 
 /**
@@ -732,10 +776,14 @@ class Adapter:
 
   /**
   The peripheral manager is used to advertise and publish local services.
+
+  If $bonding the peripheral is allowing remote centrals to bond.
+
+  If $secure_connections the peripheral is enabling secure connections.
   */
-  peripheral -> Peripheral:
+  peripheral --bonding/bool=false --secure_connections/bool=false -> Peripheral:
     if not adapter_metadata.supports_peripheral_role: throw "NOT_SUPPORTED"
-    if not peripheral_: peripheral_ = Peripheral this
+    if not peripheral_: peripheral_ = Peripheral this bonding secure_connections
     return peripheral_;
 
   set_preferred_mtu mtu/int:
@@ -777,7 +825,7 @@ ADVERTISE_START_FAILED_EVENT_         ::= 1 << 17
 SERVICE_ADD_SUCCEEDED_EVENT_          ::= 1 << 18
 SERVICE_ADD_FAILED_EVENT_             ::= 1 << 19
 DATA_RECEIVED_EVENT_                  ::= 1 << 20
-
+DATA_READ_REQUEST_EVENT_              ::= 1 << 23
 
 
 order_attributes_ input/List/*<BleUUID>*/ output/List/*<Attribute>*/ -> List:
@@ -858,6 +906,7 @@ class LocalReadWriteElement_ extends Resource_:
       resource_state_.wait_for_state DATA_RECEIVED_EVENT_
 
 
+
 ble_retrieve_adpaters_:
   if platform == PLATFORM_FREERTOS or platform == PLATFORM_MACOS:
     return [["default", #[], true, true, null]]
@@ -869,7 +918,7 @@ ble_init_ adapter:
 ble_create_central_manager_ resource_group:
   #primitive.ble.create_central_manager
 
-ble_create_peripheral_manager_ resource_group:
+ble_create_peripheral_manager_ resource_group bonding secure_connections:
   #primitive.ble.create_peripheral_manager
 
 ble_close_ resource_group:
@@ -884,7 +933,7 @@ ble_scan_next_ central_manager:
 ble_scan_stop_ central_manager:
   #primitive.ble.scan_stop
 
-ble_connect_ resource_group address:
+ble_connect_ resource_group address secure:
   #primitive.ble.connect
 
 ble_disconnect_ device:
@@ -936,12 +985,12 @@ ble_advertise_stop_ peripheral_manager:
 ble_add_service_ peripheral_manager uuid:
   #primitive.ble.add_service
 
-ble_add_characteristic_ service uuid properties permission value:
+ble_add_characteristic_ service uuid properties permission value read_timeout_ms:
   return ble_run_with_quota_backoff_:
-    ble_add_characteristic__ service uuid properties permission value
+    ble_add_characteristic__ service uuid properties permission value read_timeout_ms
   unreachable
 
-ble_add_characteristic__ service uuid properties permission value:
+ble_add_characteristic__ service uuid properties permission value read_timeout_ms:
   #primitive.ble.add_characteristic
 
 ble_add_descriptor_ characteristic uuid properties permission value:
@@ -985,6 +1034,16 @@ ble_gc_ resource:
 
 ble_platform_requires_uuid_as_byte_array_:
   return platform == PLATFORM_FREERTOS
+
+ble_read_request_reply_ resource value:
+  ble_run_with_quota_backoff_ :
+    ble_read_request_reply__ resource value
+
+ble_read_request_reply__ resource value:
+  #primitive.ble.read_request_reply
+
+ble_get_bonded_peers_:
+  #primitive.ble.get_bonded_peers
 
 ble_run_with_quota_backoff_ [block]:
   start := Time.monotonic_us

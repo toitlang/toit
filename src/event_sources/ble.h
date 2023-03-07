@@ -40,7 +40,9 @@ enum {
   kBleServiceAddFailed = 1 << 19,
   kBleDataReceived = 1 << 20,
   kBleDiscoverOperationFailed = 1 << 21,
-  kBleMallocFailed = 1 << 22
+  kBleMallocFailed = 1 << 22,
+  kBleDataReadRequest = 1 << 23
+
 };
 
 class BleResourceGroup;
