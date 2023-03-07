@@ -237,7 +237,7 @@ class Port implements reader.Reader:
       if not uart_: throw "CLOSED"
       written := uart_write_ uart_ data from to break_length
       if written < to - from:
-        // Not every thing was written, clear write flag and try again
+        // Not everything was written, clear write flag and try again.
         state_.clear_state WRITE_STATE_
         if written == 0: continue
 

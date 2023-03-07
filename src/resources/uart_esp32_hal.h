@@ -27,13 +27,13 @@ extern "C" {
 #endif
   
 typedef enum {
-  UART_TOIT_INTR_RXFIFO_FULL  = 0, // The RxFifo is over its threshold
-  UART_TOIT_INTR_TXFIFO_EMPTY,     // The TxFifo is under its threshold
-  UART_TOIT_INTR_PARITY_ERR,       // Parity error
-  UART_TOIT_INTR_RXFIFO_OVF,       // RxFifo overflow, not emptied fast enough
-  UART_TOIT_INTR_TX_BRK_DONE,      // Transfer break completed
-  UART_TOIT_INTR_RX_TIMEOUT,       // The RxFifo has data, not over its threshold, but some time since last byte
-  UART_TOIT_ALL_INTR_MASK,         // All interrupt bits
+  UART_TOIT_INTR_RXFIFO_FULL  = 0,  // The RxFifo is over its threshold
+  UART_TOIT_INTR_TXFIFO_EMPTY,      // The TxFifo is under its threshold
+  UART_TOIT_INTR_PARITY_ERR,        // Parity error
+  UART_TOIT_INTR_RXFIFO_OVF,        // RxFifo overflow, not emptied fast enough
+  UART_TOIT_INTR_TX_BRK_DONE,       // Transfer break completed
+  UART_TOIT_INTR_RX_TIMEOUT,        // The RxFifo has data, not over its threshold, but some time since last byte
+  UART_TOIT_ALL_INTR_MASK,          // All interrupt bits
   UART_TOIT_INTR_MAX
 } uart_toit_interrupt_index_t;
 

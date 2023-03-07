@@ -97,7 +97,7 @@ class UartResource;
 // a notable overhead due to features that are not required in this context.
 class RxTxBuffer {
  public:
-  RxTxBuffer(UartResource* uart, uint8_t* ring_buffer_data, size_t ring_buffer_size)
+  RxTxBuffer(UartResource* uart, uint8* ring_buffer_data, uword ring_buffer_size)
       : uart_(uart)
       , ring_buffer_data_(ring_buffer_data)
       , ring_buffer_size_(ring_buffer_size) {
@@ -110,35 +110,35 @@ class RxTxBuffer {
   }
 
   UART_ISR_INLINE bool is_empty() { return xRingbufferGetCurFreeSize(ring_buffer_) == ring_buffer_size_; }
-  size_t available_size() { return ring_buffer_size_ - xRingbufferGetCurFreeSize(ring_buffer_); }
-  inline RingbufHandle_t& ring_buffer() { return ring_buffer_; }
-  void return_buffer(uint8_t* buffer);
+  uword available_size() { return ring_buffer_size_ - xRingbufferGetCurFreeSize(ring_buffer_); }
+  inline RingbufHandle_t ring_buffer() { return ring_buffer_; }
+  void return_buffer(uint8* buffer);
   inline UartResource* uart() { return uart_; }
 
  private:
   UartResource* uart_;
   RingbufHandle_t ring_buffer_;
-  uint8_t* ring_buffer_data_;
-  size_t ring_buffer_size_;
+  uint8* ring_buffer_data_;
+  uword ring_buffer_size_;
   StaticRingbuffer_t ring_buffer_static_{};
 };
 
 struct TxTransferHeader {
-  uint8_t break_length_;
-  uint16_t remaining_data_length_;
+  uint8 break_length_;
+  uint16 remaining_data_length_;
 };
 
 class TxBuffer : public RxTxBuffer {
  public:
-  TxBuffer(UartResource* uart, uint8_t* ring_buffer_data, size_t ring_buffer_size)
+  TxBuffer(UartResource* uart, uint8* ring_buffer_data, uword ring_buffer_size)
       : RxTxBuffer(uart, ring_buffer_data, ring_buffer_size) {
     spinlock_initialize(&spinlock_);
   }
 
-  uint8_t* read(size_t *received, size_t max_length);
-  uint8_t read_break();
-  size_t free_size();
-  void write(const uint8_t* buffer, uint16_t length, uint8_t break_length);
+  uint8* read(uword *received, uword max_length);
+  uint8 read_break();
+  uword free_size();
+  void write(const uint8* buffer, uint16 length, uint8 break_length);
 
  private:
   portMUX_TYPE spinlock_{};
@@ -147,12 +147,12 @@ class TxBuffer : public RxTxBuffer {
 
 class RxBuffer : public RxTxBuffer {
  public:
-  RxBuffer(UartResource* uart, uint8_t* ring_buffer_data, size_t ring_buffer_size)
+  RxBuffer(UartResource* uart, uint8* ring_buffer_data, uword ring_buffer_size)
       : RxTxBuffer(uart, ring_buffer_data, ring_buffer_size) {}
 
-  size_t UART_ISR_INLINE free_count() { return xRingbufferGetCurFreeSize(ring_buffer()); }
-  void UART_ISR_INLINE send(uint8_t* buffer, uint32_t length);
-  void read(uint8_t *buffer, uint32_t length);;
+  uword UART_ISR_INLINE free_count() { return xRingbufferGetCurFreeSize(ring_buffer()); }
+  void UART_ISR_INLINE send(uint8* buffer, uint32 length);
+  void read(uint8 *buffer, uint32 length);;
 };
 
 class UartResource : public EventQueueResource {
@@ -160,7 +160,7 @@ public:
   TAG(UartResource);
 
   UartResource(ResourceGroup* group, uart_port_t port, QueueHandle_t queue, uart_hal_handle_t hal,
-               uint8_t* rx_buffer_data, size_t rx_buffer_size, uint8_t* tx_buffer_data, size_t tx_buffer_size)
+               uint8* rx_buffer_data, uword rx_buffer_size, uint8* tx_buffer_data, uword tx_buffer_size)
       : EventQueueResource(group, queue), port_(port), hal_(hal)
       , rx_buffer_(this, rx_buffer_data, rx_buffer_size)
       , tx_buffer_(this, tx_buffer_data, tx_buffer_size) {
@@ -171,45 +171,45 @@ public:
   ~UartResource() override;
 
   uart_port_t port() const { return port_; }
-  RxBuffer& rx_buffer() { return rx_buffer_; }
-  TxBuffer& tx_buffer() { return tx_buffer_; }
+  RxBuffer* rx_buffer() { return &rx_buffer_; }
+  TxBuffer* tx_buffer() { return &tx_buffer_; }
 
   bool receive_event(word* data) override;
 
   void set_source_clock(uart_sclk_t source_clock) { uart_toit_hal_set_sclk(hal_, source_clock); }
-  void set_baud_rate(uint32_t baud_rate) { uart_toit_hal_set_baudrate(hal_, baud_rate); }
-  uint32_t get_baud_rate();
+  void set_baud_rate(uint32 baud_rate) { uart_toit_hal_set_baudrate(hal_, baud_rate); }
+  uint32 get_baud_rate();
   void uart_set_mode(uart_mode_t mode) { uart_toit_hal_set_mode(hal_, mode); }
   void set_parity(uart_parity_t parity) { uart_toit_hal_set_parity(hal_, parity); }
   void set_word_length(uart_word_length_t word_length) { uart_toit_hal_set_data_bit_num(hal_, word_length); }
   void set_stop_bits(uart_stop_bits_t stop_bits) { uart_toit_hal_set_stop_bits(hal_, stop_bits); }
-  void set_transmit_idle_num(uint32_t idle_num) { uart_toit_hal_set_tx_idle_num(hal_, idle_num); }
+  void set_transmit_idle_num(uint32 idle_num) { uart_toit_hal_set_tx_idle_num(hal_, idle_num); }
 
-  void set_hardware_flow_control(uart_hw_flowcontrol_t hardware_flow_control, uint8_t transmit_threshold) {
+  void set_hardware_flow_control(uart_hw_flowcontrol_t hardware_flow_control, uint8 transmit_threshold) {
     uart_toit_hal_set_hw_flow_ctrl(hal_, hardware_flow_control, transmit_threshold);
   }
 
-  void set_line_inverse(uint32_t inverse_mask) { uart_toit_hal_inverse_signal(hal_, inverse_mask); }
+  void set_line_inverse(uint32 inverse_mask) { uart_toit_hal_inverse_signal(hal_, inverse_mask); }
 
   void set_tx_pin(gpio_num_t tx_pin);
   void set_rx_pin(gpio_num_t rx_pin);
   void set_rts_pin(gpio_num_t rts_pin);
   void set_cts_pin(gpio_num_t cts_pin);
 
-  void set_read_fifo_full_interrupt_threshold(uint8_t threshold) {
+  void set_read_fifo_full_interrupt_threshold(uint8 threshold) {
     uart_toit_hal_set_rxfifo_full_thr(hal_, threshold);
   }
 
-  void set_write_fifo_empty_interrupt_threshold(uint8_t threshold) {
+  void set_write_fifo_empty_interrupt_threshold(uint8 threshold) {
     uart_toit_hal_set_txfifo_empty_thr(hal_, threshold);
   }
 
-  void set_read_fifo_timeout(uint8_t timeout) { uart_toit_hal_set_rx_timeout(hal_, timeout); }
+  void set_read_fifo_timeout(uint8 timeout) { uart_toit_hal_set_rx_timeout(hal_, timeout); }
   void clear_rx_fifo() { uart_toit_hal_rxfifo_rst(hal_); }
   void clear_tx_fifo() { uart_toit_hal_txfifo_rst(hal_); }
 
   void clear_interrupt_index(uart_toit_interrupt_index_t index);
-  void clear_interrupt_mask(uint32_t mask);
+  void clear_interrupt_mask(uint32 mask);
   void enable_interrupt_index(uart_toit_interrupt_index_t index);
   void disable_interrupt_index(uart_toit_interrupt_index_t index);
   void UART_ISR_INLINE enable_interrupt_index_isr(uart_toit_interrupt_index_t index);
@@ -217,8 +217,8 @@ public:
 
   void enable_read_interrupts();
   void disable_read_interrupts();
-  size_t UART_ISR_INLINE get_tx_fifo_available_count();
-  uint32_t UART_ISR_INLINE interrupt_mask(uart_toit_interrupt_index_t toit_interrupt_index) {
+  uword UART_ISR_INLINE get_tx_fifo_available_count();
+  uint32 UART_ISR_INLINE interrupt_mask(uart_toit_interrupt_index_t toit_interrupt_index) {
     return hal_->interrupt_mask[toit_interrupt_index];
   }
   void set_interrupt_handle(intr_handle_t interrupt_handle) { interrupt_handle_ = interrupt_handle; }
@@ -230,13 +230,13 @@ public:
   void clear_tx_event_in_queue();
 
  private:
-  void UART_ISR_INLINE disable_interrupt_mask_(uint32_t mask)  {
+  void UART_ISR_INLINE disable_interrupt_mask_(uint32 mask)  {
     uart_toit_hal_disable_intr_mask(hal_, mask);
   }
-  void UART_ISR_INLINE enable_interrupt_mask_(uint32_t mask) {
+  void UART_ISR_INLINE enable_interrupt_mask_(uint32 mask) {
     uart_toit_hal_ena_intr_mask(hal_, mask);
   }
-  bool try_set_iomux_pin(gpio_num_t pin, uint32_t iomux_index) const;
+  bool try_set_iomux_pin(gpio_num_t pin, uint32 iomux_index) const;
   uart_port_t port_;
   uart_hal_handle_t hal_;
   portMUX_TYPE spinlock_{};
@@ -261,21 +261,21 @@ class UartResourceGroup : public ResourceGroup {
     uart_ports.put(uart_res->port());
   }
 
-  uint32_t on_event(Resource* r, word data, uint32_t state) override;
+  uint32 on_event(Resource* r, word data, uint32 state) override;
 };
 
-UART_ISR_INLINE void RxTxBuffer::return_buffer(uint8_t* buffer) {
-  // No blocking calls ever on TxBuffer, so ignore last parameter
+UART_ISR_INLINE void RxTxBuffer::return_buffer(uint8* buffer) {
+  // No blocking calls ever on TxBuffer, so ignore last parameter.
   vRingbufferReturnItemFromISR(ring_buffer(), buffer, null);
 }
 
-void TxBuffer::write(const uint8_t* buffer, uint16_t length, uint8_t break_length) {
+void TxBuffer::write(const uint8* buffer, uint16 length, uint8 break_length) {
   {
     SpinLocker locker(&spinlock_);
 
     TxTransferHeader header = {
-        .break_length_ = static_cast<uint8_t>(break_length),
-        .remaining_data_length_ = static_cast<uint16_t>(length)
+        .break_length_ = break_length,
+        .remaining_data_length_ = length
     };
 
     if (xRingbufferSend(ring_buffer(), &header, sizeof(TxTransferHeader), 0) == pdFALSE) {
@@ -290,62 +290,63 @@ void TxBuffer::write(const uint8_t* buffer, uint16_t length, uint8_t break_lengt
   uart()->enable_interrupt_index(UART_TOIT_INTR_TXFIFO_EMPTY);
 }
 
-UART_ISR_INLINE uint8_t TxBuffer::read_break() {
+UART_ISR_INLINE uint8 TxBuffer::read_break() {
   IsrSpinLocker locker(&spinlock_);
 
-  uint8_t break_length = transfer_header_.break_length_;
-  transfer_header_.break_length_ = 0; // To avoid it being read again and the break continuing...
+  uint8 break_length = transfer_header_.break_length_;
+  transfer_header_.break_length_ = 0; //  To avoid it being read again and the break continuing...
   return break_length;
 }
 
-UART_ISR_INLINE uint8_t* TxBuffer::read(size_t *received, size_t max_length) {
+UART_ISR_INLINE uint8* TxBuffer::read(uword *received, uword max_length) {
   IsrSpinLocker locker(&spinlock_);
 
   if (transfer_header_.remaining_data_length_ == 0 && transfer_header_.break_length_ == 0) {
-    // No more data in the latest package. Need to read header
-    size_t header_received;
-    size_t read = 0;
-    do { // As the header is multiple bytes, it could be split over the edge of the ring buffer
+    // No more data in the latest package. Need to read header.
+    uword header_received;
+    uword read = 0;
+    do {  // As the header is multiple bytes, it could be split over the edge of the ring buffer.
       void* header_data = xRingbufferReceiveUpToFromISR(ring_buffer(), &header_received, sizeof(TxTransferHeader) - read);
       if (!header_data) {
-        // TxBuffer is empty
+        // TxBuffer is empty.
         return null;
       }
-      memcpy(reinterpret_cast<uint8_t*>(&transfer_header_) + read, header_data, header_received);
-      // No blocking calls ever on TxBuffer, so ignore last parameter
+      memcpy(reinterpret_cast<uint8*>(&transfer_header_) + read, header_data, header_received);
+      // No blocking calls ever on TxBuffer, so ignore last parameter.
       vRingbufferReturnItemFromISR(ring_buffer(), header_data, null);
       read += header_received;
     } while (read < sizeof(TxTransferHeader));
   }
 
-  size_t maximum_to_receive = max_length;
-  if (transfer_header_.remaining_data_length_ < maximum_to_receive) maximum_to_receive = transfer_header_.remaining_data_length_;
+  uword maximum_to_receive = Utils::min(max_length, static_cast<uword>(transfer_header_.remaining_data_length_));
 
   if (maximum_to_receive == 0) {
     return null;
   }
 
-  auto buffer = static_cast<uint8_t*>(xRingbufferReceiveUpToFromISR(ring_buffer(), received, maximum_to_receive));
+  auto buffer = static_cast<uint8*>(xRingbufferReceiveUpToFromISR(ring_buffer(), received, maximum_to_receive));
   transfer_header_.remaining_data_length_ -= *received;
   return buffer;
 }
 
-size_t TxBuffer::free_size() {
-  size_t ringbuffer_free = xRingbufferGetCurFreeSize(ring_buffer());
+uword TxBuffer::free_size() {
+  uword ringbuffer_free = xRingbufferGetCurFreeSize(ring_buffer());
   if (ringbuffer_free < sizeof(TxTransferHeader)) return 0;
   return ringbuffer_free - sizeof(TxTransferHeader);
 }
 
-void UART_ISR_INLINE RxBuffer::send(uint8_t* buffer, uint32_t length) {
-  // We are never blocking on the ring buffer
+void UART_ISR_INLINE RxBuffer::send(uint8* buffer, uint32 length) {
+  // We are never blocking on the ring buffer.
   xRingbufferSendFromISR(ring_buffer(), buffer, length, null);
 }
 
-void RxBuffer::read(uint8_t* buffer, uint32_t length) {
-  size_t received;
-  size_t read = 0;
+void RxBuffer::read(uint8* buffer, uint32 length) {
+  uword received;
+  uword read = 0;
+  // Note that this method is never called with a length that exceeds the available data in the buffer. The
+  // reason for the loop is to guard against the data being wrapped around the edge of the ring buffer.
   do {
-    auto from_ring_buffer = static_cast<uint8_t*>(xRingbufferReceiveUpTo(ring_buffer(), &received, 0, length - read));
+    auto from_ring_buffer = static_cast<uint8*>(xRingbufferReceiveUpTo(ring_buffer(), &received, 0, length - read));
     memcpy(buffer + read, from_ring_buffer, received);
     return_buffer(from_ring_buffer);
     read += received;
@@ -364,7 +365,7 @@ UartResource::~UartResource() {
   vQueueDelete(queue());
 
   // Empty tx buffer.
-  uint32_t len;
+  uint32 len;
   do {
     len = uart_toit_hal_get_txfifo_len(hal_);
   } while (len < SOC_UART_FIFO_LEN);
@@ -376,8 +377,8 @@ UartResource::~UartResource() {
   periph_module_disable(uart_periph_signal[port_].module);
 }
 
-uint32_t UartResource::get_baud_rate() {
-  uint32_t baud_rate;
+uint32 UartResource::get_baud_rate() {
+  uint32 baud_rate;
   uart_toit_hal_get_baudrate(hal_, &baud_rate);
   return baud_rate;
 }
@@ -450,11 +451,12 @@ void UartResource::clear_interrupt_index(uart_toit_interrupt_index_t index) {
   uart_toit_hal_clr_intsts_mask(hal_, interrupt_mask(index));
 }
 
-void UartResource::clear_interrupt_mask(uint32_t mask) {
+void UartResource::clear_interrupt_mask(uint32 mask) {
   uart_toit_hal_clr_intsts_mask(hal_, mask);
 }
 
-bool UartResource::try_set_iomux_pin(gpio_num_t pin, uint32_t iomux_index) const {
+// This method tries to set the pin via the direct IO MUX. Returns true upon success.
+bool UartResource::try_set_iomux_pin(gpio_num_t pin, uint32 iomux_index) const {
   const uart_periph_sig_t *uart_pin = &uart_periph_signal[port_].pins[iomux_index];
   if (uart_pin->default_gpio == -1 || uart_pin->default_gpio != pin) return false;
   gpio_iomux_out(pin, uart_pin->iomux_func, false);
@@ -462,43 +464,43 @@ bool UartResource::try_set_iomux_pin(gpio_num_t pin, uint32_t iomux_index) const
   return true;
 }
 
-size_t UART_ISR_INLINE UartResource::get_tx_fifo_available_count() {
+uword UART_ISR_INLINE UartResource::get_tx_fifo_available_count() {
   return uart_toit_hal_get_txfifo_len(hal_);
 }
 
 UART_ISR_INLINE uart_event_types_t UartResource::interrupt_handler_read() {
-  size_t read_length = uart_toit_hal_get_rxfifo_len(hal_);
+  uword read_length = uart_toit_hal_get_rxfifo_len(hal_);
   if (read_length == 0) return UART_EVENT_MAX;
 
-  size_t rx_buffer_free = rx_buffer_.free_count();
+  uword rx_buffer_free = rx_buffer_.free_count();
   if (rx_buffer_free == 0) {
     disable_read_interrupts();
     return UART_BUFFER_FULL;
   } else {
     if (rx_buffer_free < read_length) read_length = rx_buffer_free;
-    uint8_t buffer[read_length];
+    uint8 buffer[read_length];
     uart_toit_hal_read_rxfifo(hal_, buffer, reinterpret_cast<int*>(&read_length));
-    rx_buffer().send(buffer, read_length);
+    rx_buffer()->send(buffer, read_length);
     return UART_DATA;
   }
 }
 
 UART_ISR_INLINE uart_event_types_t UartResource::interrupt_handler_write() {
-  uint32_t tx_fifo_free = get_tx_fifo_available_count();
-  size_t received_count;
-  uint8_t* buffer = tx_buffer().read(&received_count, tx_fifo_free);
+  uint32 tx_fifo_free = get_tx_fifo_available_count();
+  uword received_count;
+  uint8* buffer = tx_buffer()->read(&received_count, tx_fifo_free);
   if (buffer) {
-    uint32_t written;
-    uart_toit_hal_write_txfifo(hal_, buffer, received_count, &written); // TODO: Is the RS485 workaround necessary here?
-    tx_buffer().return_buffer(buffer);
+    uint32 written;
+    uart_toit_hal_write_txfifo(hal_, buffer, received_count, &written);  // TODO: Is the RS485 workaround necessary here?
+    tx_buffer()->return_buffer(buffer);
     return UART_TX_EVENT;
   } else {
-    int break_number = tx_buffer().read_break();
+    int break_number = tx_buffer()->read_break();
     if (break_number != 0) {
       enable_interrupt_index_isr(UART_TOIT_INTR_TX_BRK_DONE);
       uart_toit_hal_tx_break(hal_, break_number);
       disable_interrupt_index_isr(UART_TOIT_INTR_TXFIFO_EMPTY);
-    } else if (tx_buffer().is_empty()) {
+    } else if (tx_buffer()->is_empty()) {
       disable_interrupt_index_isr(UART_TOIT_INTR_TXFIFO_EMPTY);
     }
     return UART_EVENT_MAX;
@@ -507,7 +509,7 @@ UART_ISR_INLINE uart_event_types_t UartResource::interrupt_handler_write() {
 
 IRAM_ATTR void UartResource::interrupt_handler(void* arg) {
   auto uart = unvoid_cast<UartResource*>(arg);
-  uint32_t uart_interrupt_status = uart_toit_hal_get_intsts_mask(uart->hal_);
+  uint32 uart_interrupt_status = uart_toit_hal_get_intsts_mask(uart->hal_);
   if (uart_interrupt_status == 0) return;
   uart_event_types_t event = UART_EVENT_MAX;
 
@@ -542,7 +544,7 @@ IRAM_ATTR void UartResource::interrupt_handler(void* arg) {
 
 UART_ISR_INLINE void UartResource::send_event_to_queue(uart_event_types_t event, int* hp_task_awoken) {
   IsrSpinLocker locker(&spinlock_);
-  // Data and Tx Event receive special care, as to not overflow the queue
+  // Data and Tx Event receive special care, so as to not overflow the queue.
   if (event == UART_DATA) {
     if (data_event_in_queue_) return;
     data_event_in_queue_ = true;
@@ -570,7 +572,7 @@ void UartResource::clear_tx_event_in_queue() {
 }
 
 
-uint32_t UartResourceGroup::on_event(Resource* r, word data, uint32_t state) {
+uint32 UartResourceGroup::on_event(Resource* r, word data, uint32 state) {
   switch (data) {
     case UART_DATA:
       state |= kReadState;
@@ -608,32 +610,36 @@ PRIMITIVE(init) {
   return proxy;
 }
 
-typedef struct {
-  QueueHandle_t queue;
-  uart_hal_handle_t hal;
-  bool hardware_initialized;
-  UartResource* uart_resource;
-  uart_port_t port;
-  uint8_t* rx_buffer;
-  uint8_t* tx_buffer;
-} uart_initialization_record_t;
+class UartInitialization {
+ public:
+  ~UartInitialization() {
+    if (keep) return;
 
-void uart_init_cleanup(uart_initialization_record_t& init) {
-  if (!init.uart_resource) {
-    if (init.queue) vQueueDelete(init.queue);
-    if (init.hal) uart_toit_hal_deinit(init.hal);
-    if (init.rx_buffer) free(init.rx_buffer);
-    if (init.tx_buffer) free(init.tx_buffer);
-  } else {
-    delete init.uart_resource;
+    if (!uart_resource) {
+      if (queue) vQueueDelete(queue);
+      if (hal) uart_toit_hal_deinit(hal);
+      if (rx_buffer) free(rx_buffer);
+      if (tx_buffer) free(tx_buffer);
+    } else {
+      delete uart_resource;
+    }
+
+    if (hardware_initialized) {
+      periph_module_disable(uart_periph_signal[port].module);
+    }
+
+    uart_ports.put(port);
   }
 
-  if (init.hardware_initialized) {
-    periph_module_disable(uart_periph_signal[init.port].module);
-  }
-
-  uart_ports.put(init.port);
-}
+  QueueHandle_t queue = null;
+  uart_hal_handle_t hal = null;
+  bool hardware_initialized = false;
+  UartResource* uart_resource = null;
+  uart_port_t port = 0;
+  uint8* rx_buffer = null;
+  uint8* tx_buffer = null;
+  bool keep = false;
+};
 
 static uart_port_t determine_preferred_port(int tx, int rx, int rts, int cts) {
   for (int uart = UART_NUM_0; uart < SOC_UART_NUM; uart++) {
@@ -663,8 +669,8 @@ PRIMITIVE(create) {
   if (rts >= 0 && !GPIO_IS_VALID_OUTPUT_GPIO(rts)) INVALID_ARGUMENT;
   if (cts >= 0 && !GPIO_IS_VALID_GPIO(cts)) INVALID_ARGUMENT;
 
-  uint8_t full_interrupt_threshold;
-  uint16_t rx_buffer_size, tx_buffer_size;
+  uint8 full_interrupt_threshold;
+  uint16 rx_buffer_size, tx_buffer_size;
   int interrupt_flags = ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_SHARED;
   if ((options & 8) != 0) {
     // High speed setting.
@@ -673,7 +679,7 @@ PRIMITIVE(create) {
     tx_buffer_size = 1024;
     rx_buffer_size = 2048;
   } else if ((options & 4) != 0) {
-    // Medium speed
+    // Medium speed setting.
     interrupt_flags |= ESP_INTR_FLAG_LEVEL2 | ESP_INTR_FLAG_LEVEL3;
     full_interrupt_threshold = 92;
     tx_buffer_size = 512;
@@ -686,7 +692,7 @@ PRIMITIVE(create) {
     rx_buffer_size = 768;
   }
 
-  uart_initialization_record_t init = {};
+  UartInitialization init;
   uart_port_t port = determine_preferred_port(tx, rx, rts, cts);
 
   port = uart_ports.preferred(port);
@@ -695,31 +701,26 @@ PRIMITIVE(create) {
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
-    uart_init_cleanup(init);
     ALLOCATION_FAILED;
   }
 
   init.queue = xQueueCreate(EVENT_QUEUE_SIZE, sizeof(uart_event_types_t));
   if (!init.queue) {
-    uart_init_cleanup(init);
     MALLOC_FAILED;
   }
 
   init.hal = uart_toit_hal_init(port);
   if (!init.hal) {
-    uart_init_cleanup(init);
     MALLOC_FAILED;
   }
 
-  init.rx_buffer = static_cast<uint8_t*>(malloc(rx_buffer_size));
+  init.rx_buffer = static_cast<uint8*>(malloc(rx_buffer_size));
   if (!init.rx_buffer) {
-    uart_init_cleanup(init);
     MALLOC_FAILED;
   }
 
-  init.tx_buffer = static_cast<uint8_t*>(malloc(tx_buffer_size));
+  init.tx_buffer = static_cast<uint8*>(malloc(tx_buffer_size));
   if (!init.tx_buffer) {
-    uart_init_cleanup(init);
     MALLOC_FAILED;
   }
 
@@ -727,14 +728,13 @@ PRIMITIVE(create) {
                                          init.rx_buffer, rx_buffer_size,
                                          init.tx_buffer, tx_buffer_size);
   if (!init.uart_resource) {
-    uart_init_cleanup(init);
     MALLOC_FAILED;
   }
 
   periph_module_enable(uart_periph_signal[port].module);
     // Workaround for ESP32C3: enable core reset
     // before enabling uart module clock
-    // to prevent uart output garbage value.
+    // to prevent uart from outputting garbage value.
 #if SOC_UART_REQUIRE_CORE_RESET
     uart_toit_hal_set_reset_core(init.hal, true);
     periph_module_reset(uart_periph_signal[port].module);
@@ -798,7 +798,7 @@ PRIMITIVE(create) {
 
   struct {
     intr_handle_t intr_handle;
-    uint8_t irq;
+    uint8 irq;
     int interrupt_flags;
     void* uart_resource;
     esp_err_t err;
@@ -810,7 +810,8 @@ PRIMITIVE(create) {
       .err = ESP_OK
   };
 
-  // Install the ISR on the SystemEventSource's main thread that runs on core 0, to allocate the interrupts on core 0
+  // Install the ISR on the SystemEventSource's main thread that runs on core 0,
+  // to allocate the interrupts on core 0.
   SystemEventSource::instance()->run([&]() -> void {
     args.err = esp_intr_alloc(args.irq, args.interrupt_flags, UartResource::interrupt_handler,
                               args.uart_resource, &args.intr_handle);
@@ -818,13 +819,14 @@ PRIMITIVE(create) {
   });
 
   if (args.err != ESP_OK) {
-    uart_init_cleanup(init);
     return Primitive::os_error(args.err, process);
   }
 
+  init.keep = true;
+
   init.uart_resource->set_interrupt_handle(args.intr_handle);
 
-  // Enable read interrupts
+  // Enable read interrupts.
   init.uart_resource->enable_read_interrupts();
   init.uart_resource->enable_interrupt_index(UART_TOIT_INTR_PARITY_ERR);
   init.uart_resource->enable_interrupt_index(UART_TOIT_INTR_RXFIFO_OVF);
@@ -869,7 +871,7 @@ PRIMITIVE(write) {
   if (break_length < 0 || break_length >= 256) OUT_OF_RANGE;
   int size = to - from;
 
-  size_t available = uart->tx_buffer().free_size();
+  uword available = uart->tx_buffer()->free_size();
   if (available < size) {
     size = static_cast<int>(available);
     break_length = 0;
@@ -877,7 +879,7 @@ PRIMITIVE(write) {
 
   if (size == 0) return Smi::from(0);
 
-  uart->tx_buffer().write(tx, size, break_length);
+  uart->tx_buffer()->write(tx, size, break_length);
 
   return Smi::from(size);
 }
@@ -885,9 +887,9 @@ PRIMITIVE(write) {
 PRIMITIVE(wait_tx) {
   ARGS(UartResource, uart)
 
-  if (!uart->tx_buffer().is_empty()) return BOOL(false);
+  if (!uart->tx_buffer()->is_empty()) return BOOL(false);
 
-  // Busy wait for the fifo to become empty
+  // Busy wait for the fifo to become empty.
   while (uart->get_tx_fifo_available_count() < SOC_UART_FIFO_LEN) ;
   return BOOL(true);
 }
@@ -895,7 +897,7 @@ PRIMITIVE(wait_tx) {
 PRIMITIVE(read) {
   ARGS(UartResource, uart)
 
-  size_t available = uart->rx_buffer().available_size();
+  uword available = uart->rx_buffer()->available_size();
 
   ByteArray* data = process->allocate_byte_array(static_cast<int>(available), /*force_external*/ available != 0);
   if (data == null) ALLOCATION_FAILED;
@@ -903,7 +905,7 @@ PRIMITIVE(read) {
   if (available == 0) return data;
 
   ByteArray::Bytes rx(data);
-  uart->rx_buffer().read(rx.address(), rx.length());
+  uart->rx_buffer()->read(rx.address(), rx.length());
 
   return data;
 }
