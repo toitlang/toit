@@ -199,12 +199,6 @@ class Program : public FlashAllocation {
     heap_.take_blocks(blocks);
   }
 
-  bool is_valid_program() const;
-
-  void validate();
-
-  String* source_mapping() const { return source_mapping_; }
-
   int invoke_bytecode_offset(Opcode opcode) const {
     ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_AT_PUT);
     return invoke_bytecode_offsets_[opcode - INVOKE_EQ];
@@ -339,9 +333,6 @@ class Program : public FlashAllocation {
     ASSERT(entry_point_index >= 0);
     entry_point_indexes_[entry_point_index] = dispatch_index;
   }
-
-  String* source_mapping_;
-  void set_source_mapping(String* mapping) { source_mapping_ = mapping; }
 
   void set_dispatch_table(List<int32> table) { dispatch_table = table; }
   void set_class_bits_table(List<uint16> table) { class_bits = table; }
