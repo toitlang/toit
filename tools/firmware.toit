@@ -598,37 +598,45 @@ extract_binary envelope/Envelope --config_encoded/ByteArray -> ByteArray:
       --if_present=: json.decode it
       --if_absent=: {:}
 
+  // Compute relocatable images for all the containers.
+  images := {:}
+  entries.do: | name/string content/ByteArray |
+    if name.starts_with "\$" or name.starts_with "+": continue.do
+    if is_snapshot_bundle content:
+      snapshot_bundle := SnapshotBundle name content
+      snapshot_uuid ::= snapshot_bundle.uuid
+      program := snapshot_bundle.decode
+      image := build_image program WORD_SIZE --system_uuid=uuid.NIL --snapshot_uuid=snapshot_uuid
+      header := ImageHeader image.all_memory
+      images[name] = RelocatableImage header.id image.build_relocatable
+    else:
+      header := decode_image content
+      images[name] = RelocatableImage header.id content
+
   // Handle the system container first. It needs to be the
   // first container we encode.
-  system := entries.get SYSTEM_CONTAINER_NAME
-  if system:
+  if entries.contains SYSTEM_CONTAINER_NAME:
     // TODO(kasper): Take any other system assets into account.
     system_assets := {:}
     // Encode any WiFi information.
     properties.get "wifi" --if_present=: system_assets["wifi"] = tison.encode it
-    // Encode the list of images with their names.
-    images := {:}
+    // Encode the images with their names.
+    image_names := {:}
     entries.do: | name/string content/ByteArray |
       if not (name == SYSTEM_CONTAINER_NAME or name.starts_with "\$" or name.starts_with "+"):
-        id/uuid.Uuid := ?
-        if is_snapshot_bundle content:
-          bundle := SnapshotBundle name content
-          // TODO(kasper): This is the wrong id. We need the one from we really
-          // need the one from the image.
-          id = bundle.uuid
-        else:
-          header := decode_image content
-          id = header.id
-        images[name] = id.to_byte_array
-    if not images.is_empty: system_assets["images"] = tison.encode images
+        image := images[name]
+        image_names[name] = image.id.to_byte_array
+    if not image_names.is_empty: system_assets["images"] = tison.encode image_names
     // Encode the system assets and add them to the container.
     assets_encoded := assets.encode system_assets
-    containers.add (ContainerEntry SYSTEM_CONTAINER_NAME system --assets=assets_encoded)
+    image := images[SYSTEM_CONTAINER_NAME]
+    containers.add (ContainerEntry SYSTEM_CONTAINER_NAME image --assets=assets_encoded)
 
   entries.do: | name/string content/ByteArray |
     if not (name == SYSTEM_CONTAINER_NAME or name.starts_with "\$" or name.starts_with "+"):
       assets_encoded := entries.get "+$name"
-      containers.add (ContainerEntry name content --assets=assets_encoded)
+      image := images[name]
+      containers.add (ContainerEntry name image --assets=assets_encoded)
 
   firmware_bin := entries.get AR_ENTRY_FIRMWARE_BIN
   if not firmware_bin:
@@ -671,16 +679,7 @@ extract_binary_content -> ByteArray
   images := []
   index := 0
   containers.do: | container/ContainerEntry |
-    relocatable/ByteArray := ?
-    if is_snapshot_bundle container.content:
-      snapshot_bundle := SnapshotBundle container.name container.content
-      snapshot_uuid ::= snapshot_bundle.uuid
-      program := snapshot_bundle.decode
-      image := build_image program WORD_SIZE --system_uuid=uuid.NIL --snapshot_uuid=snapshot_uuid
-      relocatable = image.build_relocatable
-    else:
-      relocatable = container.content
-
+    relocatable := container.image.relocatable
     out := bytes.Buffer
     output := BinaryRelocatedOutput out relocation_base
     output.write WORD_SIZE relocatable
@@ -798,11 +797,16 @@ class Envelope:
       throw "cannot open envelope - expected version $ENVELOPE_FORMAT_VERSION, was $version"
     return version
 
+class RelocatableImage:
+  id/uuid.Uuid
+  relocatable/ByteArray
+  constructor .id .relocatable:
+
 class ContainerEntry:
   name/string
-  content/ByteArray
+  image/RelocatableImage
   assets/ByteArray?
-  constructor .name .content --.assets:
+  constructor .name .image --.assets:
 
 class ImageHeader:
   static MARKER_OFFSET_   ::= 0
