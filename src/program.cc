@@ -123,6 +123,11 @@ Program::Program(const uint8* id, int size)
     , roots_()
     , entry_point_indexes_()
     , source_mapping_(null) {
+  if (id) {
+    memcpy(snapshot_uuid_, id, UUID_SIZE);
+  } else {
+    memset(snapshot_uuid_, 0, UUID_SIZE);
+  }
 }
 
 void Program::do_pointers(PointerCallback* callback) {

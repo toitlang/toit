@@ -183,6 +183,11 @@ class Program : public FlashAllocation {
   // Size of all objects stored in this program.
   int object_size() const { return heap_.object_size(); }
 
+  // Get the snapshot uuid for the program. This is useful for associating
+  // encoded stack traces with the snapshot containing the symbolic debug
+  // information.
+  const uint8* snapshot_uuid() const { return snapshot_uuid_; }
+
   // Return the program heap.
   ProgramRawHeap* heap() { return &heap_; }
   // The address of where the program heap starts.
@@ -299,6 +304,8 @@ class Program : public FlashAllocation {
   List<uint8> bytecodes;
 
  private:
+  uint8 snapshot_uuid_[UUID_SIZE];
+
   static const int INVOKE_BYTECODE_COUNT = INVOKE_AT_PUT - INVOKE_EQ + 1;
   int invoke_bytecode_offsets_[INVOKE_BYTECODE_COUNT];
 

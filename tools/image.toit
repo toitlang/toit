@@ -449,9 +449,8 @@ class ToitObject:
 class ToitObjectType extends ToitObject:
 
 class ToitHeader extends ToitObjectType:
-  static ID_SIZE ::= 16
+  static ID_SIZE ::= uuid.SIZE
   static METADATA_SIZE ::= 5
-  static UUID_SIZE ::= 16
 
   static LAYOUT /ObjectType ::= ObjectType --packed {
     "_marker": PrimitiveType.UINT32,
@@ -460,23 +459,23 @@ class ToitHeader extends ToitObjectType:
     "_metadata": PrimitiveType (LayoutSize 0 METADATA_SIZE),
     "_type": PrimitiveType.UINT8,
     "_pages_in_flash": PrimitiveType.UINT16,
-    "_uuid": PrimitiveType (LayoutSize 0 UUID_SIZE),
+    "_uuid": PrimitiveType (LayoutSize 0 uuid.SIZE),
   }
 
   static MARKER_ ::= 0xDEADFACE
   static FLASH_ALLOCATION_TYPE_PROGRAM_ ::= 0
 
-  fill_into image/Image --at/int --system_uuid/uuid.Uuid --program_id/uuid.Uuid:
+  fill_into image/Image --at/int --system_uuid/uuid.Uuid --id/uuid.Uuid:
     memory := image.offheap
     anchored := LAYOUT.anchor --at=at memory
     assert: at % memory.word_size == 0
     assert: anchored["_uuid"] % memory.word_size == 0
-    assert: program_id.to_byte_array.size == ID_SIZE
-    assert: system_uuid.to_byte_array.size == UUID_SIZE
+    assert: id.to_byte_array.size == ID_SIZE
+    assert: system_uuid.to_byte_array.size == uuid.SIZE
 
     anchored.put_uint32 "_marker" MARKER_
     anchored.put_uint32 "_me" at
-    anchored.put_bytes "_id" program_id.to_byte_array
+    anchored.put_bytes "_id" id.to_byte_array
     anchored.put_bytes "_metadata" (ByteArray METADATA_SIZE: 0)
     anchored.put_uint8 "_type" FLASH_ALLOCATION_TYPE_PROGRAM_
     anchored.put_uint16 "_pages_in_flash" (image.all_memory.size / 4096)
@@ -549,6 +548,7 @@ class ToitProgram extends ToitObjectType:
       "interface_check_offsets": ToitList.LAYOUT,
       "class_bits": ToitList.LAYOUT,
       "bytecodes": ToitList.LAYOUT,
+      "snapshot_uuid_": PrimitiveType (LayoutSize 0 uuid.SIZE),
       "_invoke_bytecode_offsets": PrimitiveType.INT * INVOKE_BYTECODE_COUNT,
       "_heap": ToitRawHeap.LAYOUT,
       "_roots": PrimitiveType.POINTER * ROOT_COUNT,
@@ -562,12 +562,15 @@ class ToitProgram extends ToitObjectType:
   snapshot_program /snapshot.Program
   constructor .snapshot_program:
 
-  write_to image/Image --system_uuid/uuid.Uuid --program_id/uuid.Uuid -> int:
+  write_to image/Image --system_uuid/uuid.Uuid --snapshot_uuid/uuid.Uuid -> int:
     word_size := image.word_size
     offheap := image.offheap
 
     address := offheap.allocate LAYOUT
     anchored := LAYOUT.anchor --at=address offheap
+
+    // TODO(kasper): Base this on the content. Don't randomize.
+    id := uuid.uuid5 "$random" "$Time.now-$Time.monotonic_us"
 
     // The order of writing the fields must be kept in sync with the C++ version.
     // Not only does it allow us to compare the two results more easily, the size
@@ -577,7 +580,8 @@ class ToitProgram extends ToitObjectType:
     // and just dynamically build up the memory here.
 
     header := ToitHeader  // Doesn't need data from the snapshot.
-    header.fill_into image --at=anchored["header"] --system_uuid=system_uuid --program_id=program_id
+    header.fill_into image --at=anchored["header"] --system_uuid=system_uuid --id=id
+    anchored.put_bytes "snapshot_uuid_" snapshot_uuid.to_byte_array
 
     class_tags := snapshot_program.class_tags
     class_instance_sizes := snapshot_program.class_instance_sizes
@@ -1156,9 +1160,9 @@ class ToitInteger extends ToitHeapObject:
     anchored.put_int64 "value" o_.value
     return to_encoded_address address
 
-build_image snapshot/snapshot.Program word_size/int --system_uuid/uuid.Uuid --program_id/uuid.Uuid -> Image:
+build_image snapshot/snapshot.Program word_size/int --system_uuid/uuid.Uuid --snapshot_uuid/uuid.Uuid -> Image:
   ToitProgram.init_constants snapshot
   image := Image snapshot word_size
   program := ToitProgram snapshot
-  program.write_to image --system_uuid=system_uuid --program_id=program_id
+  program.write_to image --system_uuid=system_uuid --snapshot_uuid=snapshot_uuid
   return image

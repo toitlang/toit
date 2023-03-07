@@ -308,7 +308,7 @@ container_list parsed/cli.Parsed -> none:
     else:
       header := decode_image content
       entry["kind"] = "image"
-      entry["id"] = header.program_id.stringify
+      entry["id"] = header.snapshot_uuid.stringify
     assets := entries.get "+$name"
     if assets: entry["assets"] = { "size": assets.size }
     output[name] = entry
@@ -403,9 +403,6 @@ properties_update parsed/cli.Parsed [block] -> none:
     if properties: envelope.entries[AR_ENTRY_PROPERTIES] = json.encode properties
 
 extract_cmd -> cli.Command:
-  flags := AR_ENTRY_FILE_MAP.map: | key/string value/string |
-    cli.Flag key
-        --short_help="Extract the $key part."
   return cli.Command "extract"
       --long_help="""
         Extracts the firmware image of the envelope to a file.
@@ -443,47 +440,13 @@ extract_cmd -> cli.Command:
         cli.OptionEnum "format" ["binary", "elf", "ubjson", "qemu"]
             --short_help="Set the output format."
             --default="binary",
-        cli.Flag "system.snapshot"
-      ] + flags.values
+      ]
       --run=:: extract it
 
 extract parsed/cli.Parsed -> none:
-  parts := []
-  AR_ENTRY_FILE_MAP.do: | key/string |
-    if parsed[key]: parts.add key
-  if parts.size == 0:
-    extract_new parsed
-    return
-  else if parts.size > 1:
-    throw "cannot extract: multiple parts specified ($(parts.join ", "))"
-  part := parts.first
-
-  print "WARNING: extracting a specific part is deprecated"
-  if part == "firmware.bin":
-    print "WARNING: use 'tools/firmware -e ... extract --format=binary -o firmware.bin"
-
   input_path := parsed[OPTION_ENVELOPE]
   output_path := parsed[OPTION_OUTPUT]
   envelope := Envelope.load input_path
-
-  content/ByteArray? := null
-  if part == "firmware.bin":
-    content = extract_binary envelope --config_encoded=(ByteArray 0)
-  else:
-    content = envelope.entries.get AR_ENTRY_FILE_MAP[part]
-  if not content:
-    throw "cannot extract: no such part ($part)"
-  write_file output_path: it.write content
-
-extract_new parsed/cli.Parsed -> none:
-  input_path := parsed[OPTION_ENVELOPE]
-  output_path := parsed[OPTION_OUTPUT]
-  envelope := Envelope.load input_path
-
-  // TODO(kasper): Remove this legacy support.
-  if parsed["system.snapshot"]:
-    write_file output_path: it.write envelope.entries[SYSTEM_CONTAINER_NAME]
-    return
 
   config_path := parsed["config"]
 
@@ -650,10 +613,12 @@ extract_binary envelope/Envelope --config_encoded/ByteArray -> ByteArray:
         id/uuid.Uuid := ?
         if is_snapshot_bundle content:
           bundle := SnapshotBundle name content
+          // TODO(kasper): This is the wrong id. We need the one from we really
+          // need the one from the image.
           id = bundle.uuid
         else:
           header := decode_image content
-          id = header.program_id
+          id = header.id
         images[name] = id.to_byte_array
     if not images.is_empty: system_assets["images"] = tison.encode images
     // Encode the system assets and add them to the container.
@@ -709,9 +674,9 @@ extract_binary_content -> ByteArray
     relocatable/ByteArray := ?
     if is_snapshot_bundle container.content:
       snapshot_bundle := SnapshotBundle container.name container.content
-      program_id ::= snapshot_bundle.uuid
+      snapshot_uuid ::= snapshot_bundle.uuid
       program := snapshot_bundle.decode
-      image := build_image program WORD_SIZE --system_uuid=uuid.NIL --program_id=program_id
+      image := build_image program WORD_SIZE --system_uuid=uuid.NIL --snapshot_uuid=snapshot_uuid
       relocatable = image.build_relocatable
     else:
       relocatable = container.content
@@ -858,8 +823,11 @@ class ImageHeader:
   flags= value/int -> none:
     header_[METADATA_OFFSET_] = value
 
-  program_id -> uuid.Uuid:
+  id -> uuid.Uuid:
     return read_uuid_ ID_OFFSET_
+
+  snapshot_uuid -> uuid.Uuid:
+    return read_uuid_ 0 // TODO(kasper): Wrong.
 
   system_uuid -> uuid.Uuid:
     return read_uuid_ UUID_OFFSET_

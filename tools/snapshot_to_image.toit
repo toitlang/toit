@@ -137,10 +137,10 @@ main args:
   out := file.Stream.for_write output_path
   snapshot_path/string := parsed[SNAPSHOT_FILE]
   snapshot_bundle := SnapshotBundle.from_file snapshot_path
-  program_id ::= snapshot_bundle.uuid
+  snapshot_uuid ::= snapshot_bundle.uuid
   program := snapshot_bundle.decode
   system_uuid ::= sdk_version_uuid --sdk_version=snapshot_bundle.sdk_version
-  image := build_image program word_size --system_uuid=system_uuid --program_id=program_id
+  image := build_image program word_size --system_uuid=system_uuid --snapshot_uuid=snapshot_uuid
   relocatable := image.build_relocatable
   out.write relocatable
   if assets:
