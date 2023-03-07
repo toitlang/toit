@@ -8,7 +8,7 @@ tests/negative/block7_test.toit:18:13: error: Can't use []= with a block value
   a[:400] = :99
             ^~~
 tests/negative/block7_test.toit:18:11: error: Argument mismatch for 'A.[]='
-Method does not take any arguments, but one was provided
+Method does not take any non-block arguments, but one was provided
   a[:400] = :99
           ^
 Compilation failed.

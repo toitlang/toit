@@ -29,29 +29,29 @@
 
 namespace toit {
 
-SubprocessEventSource* SubprocessEventSource::_instance = null;
+SubprocessEventSource* SubprocessEventSource::instance_ = null;
 
 SubprocessEventSource::SubprocessEventSource()
       : EventSource("ProcessWait")
       , Thread("ProcessWait")
-      , _subprocess_waits_changed(OS::allocate_condition_variable(mutex()))
-      , _running(false)
-      , _stop(false) {
-  ASSERT(_instance == null);
-  _instance = this;
+      , subprocess_waits_changed_(OS::allocate_condition_variable(mutex()))
+      , running_(false)
+      , stop_(false) {
+  ASSERT(instance_ == null);
+  instance_ = this;
 
   Locker locker(mutex());
   spawn();
 
   // Wait for the thread to be running, to ensure we don't miss signals.
-  while (!_running) {
-    OS::wait(_subprocess_waits_changed);
+  while (!running_) {
+    OS::wait(subprocess_waits_changed_);
   }
 }
 
 SubprocessEventSource::~SubprocessEventSource() {
   { Locker locker(mutex());
-    _stop = true;
+    stop_ = true;
 
     // Make waitpid exit by starting to ignore child signals.
     struct sigaction act;
@@ -61,22 +61,22 @@ SubprocessEventSource::~SubprocessEventSource() {
     sigaction(SIGCHLD, &act, null);
 
     // In case it is waiting for work in the condition variable.
-    OS::signal(_subprocess_waits_changed);
+    OS::signal(subprocess_waits_changed_);
   }
 
   // Wait for SubprocessEventSource thread to exit.
   join();
 
-  while (ProcessWaitResult* r = _ignores.remove_first()) {
+  while (ProcessWaitResult* r = ignores_.remove_first()) {
     delete r;
   }
-  while (ProcessWaitResult* r = _results.remove_first()) {
+  while (ProcessWaitResult* r = results_.remove_first()) {
     delete r;
   }
   ASSERT(resources().is_empty());
 
-  OS::dispose(_subprocess_waits_changed);
-  _instance = null;
+  OS::dispose(subprocess_waits_changed_);
+  instance_ = null;
 }
 
 static const int PROCESS_EXITED = 1;
@@ -100,10 +100,10 @@ static int status_from(int wstatus) {
 }
 
 void SubprocessEventSource::on_register_resource(Locker& locker, Resource* r) {
-  OS::signal(_subprocess_waits_changed);
+  OS::signal(subprocess_waits_changed_);
   auto resource = static_cast<IntResource*>(r);
   pid_t pid = resource->id();
-  ProcessWaitResult* already_exited = _results.remove_where([&](ProcessWaitResult* result) {
+  ProcessWaitResult* already_exited = results_.remove_where([&](ProcessWaitResult* result) {
     return result->pid() == pid;
   });
   // TODO: Remove any results from the same process that were not waited for.
@@ -118,7 +118,7 @@ void SubprocessEventSource::on_register_resource(Locker& locker, Resource* r) {
 bool SubprocessEventSource::ignore_result(IntResource* resource) {
   // TODO(anders): Event sources should not be communicated with outside of register/unregister.
   Locker locker(mutex());
-  OS::signal(_subprocess_waits_changed);
+  OS::signal(subprocess_waits_changed_);
   pid_t pid = resource->id();
   // We do this twice to be sure that the second time is harmless.  This
   // happens rarely when the primitive is restarted due to allocation failure,
@@ -127,22 +127,22 @@ bool SubprocessEventSource::ignore_result(IntResource* resource) {
 #ifdef TOIT_DEBUG
   unregister_resource(locker, resource);
 #endif
-  ProcessWaitResult* already_exited = _results.remove_where([&](ProcessWaitResult* result) {
+  ProcessWaitResult* already_exited = results_.remove_where([&](ProcessWaitResult* result) {
     return result->pid() == pid;
   });
   if (!already_exited) {
     ProcessWaitResult* waiter = _new ProcessWaitResult(pid, 0);
     if (waiter == null) return false;
-    _ignores.prepend(waiter);
+    ignores_.prepend(waiter);
   }
   return true;
 }
 
 void SubprocessEventSource::on_unregister_resource(Locker& locker, Resource* r) {
-  OS::signal(_subprocess_waits_changed);
+  OS::signal(subprocess_waits_changed_);
   auto resource = static_cast<IntResource*>(r);
   pid_t pid = resource->id();
-  ProcessWaitResult* already_exited = _results.remove_where([&](ProcessWaitResult* result) {
+  ProcessWaitResult* already_exited = results_.remove_where([&](ProcessWaitResult* result) {
     return result->pid() == pid;
   });
   // TODO: Remove any results from the same process that were not waited for.
@@ -159,12 +159,12 @@ void SubprocessEventSource::entry() {
   Locker locker(mutex());
   // If we issue a signal before this lock is taken, we can lose a signal
   // and be stuck in OS::wait.
-  _running = true;
-  OS::signal(_subprocess_waits_changed);
+  running_ = true;
+  OS::signal(subprocess_waits_changed_);
 
-  while (!_stop) {
+  while (!stop_) {
     // Wait for subprocesses to start.
-    OS::wait(_subprocess_waits_changed);  // Releases and reacquires the mutex.
+    OS::wait(subprocess_waits_changed_);  // Releases and reacquires the mutex.
 
     // Loop over waitpid until waitpid returns -1, indicating no more
     // child processes are running.
@@ -194,7 +194,7 @@ void SubprocessEventSource::entry() {
       Resource* r = find_resource_by_id(locker, pid);
       // If someone wanted to ignore the exit code from this pid then remove that
       // entry from the list now it exited.
-      auto ignore = _ignores.remove_where([&](ProcessWaitResult* ignore) {
+      auto ignore = ignores_.remove_where([&](ProcessWaitResult* ignore) {
         return ignore->pid() == pid;
       });
       if (r != null) {
@@ -210,7 +210,7 @@ void SubprocessEventSource::entry() {
   #ifdef TOIT_FREERTOS
         UNREACHABLE();
   #endif
-        _results.prepend(_new ProcessWaitResult(pid, wstatus));
+        results_.prepend(_new ProcessWaitResult(pid, wstatus));
       }
     }
   }

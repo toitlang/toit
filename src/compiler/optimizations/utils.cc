@@ -43,7 +43,6 @@ Type compute_guaranteed_type(Expression* node, Class* holder, Method* method) {
   if (node->is_ReferenceLocal()) {
     auto target = node->as_ReferenceLocal()->target();
     if (!target->is_effectively_final()) return Type::invalid();
-    if (!target->is_Parameter()) return Type::invalid();
     if (!target->type().is_class()) return Type::invalid();
     return target->type();
   } else if (node->is_CallStatic()) {
@@ -61,6 +60,9 @@ Type compute_guaranteed_type(Expression* node, Class* holder, Method* method) {
       return Type::invalid();
     }
     return field->type();
+  } else if (node->is_Typecheck()) {
+    auto check = node->as_Typecheck();
+    if (check->is_as_check()) return check->type();
   }
   return Type::invalid();
 }

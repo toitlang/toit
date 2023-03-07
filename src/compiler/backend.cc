@@ -17,8 +17,10 @@
 
 #include "backend.h"
 #include "byte_gen.h"
+#include "ir.h"
 #include "program_builder.h"
 #include "source_mapper.h"
+
 #include "../interpreter.h"
 
 namespace toit {
@@ -37,9 +39,12 @@ ENTRY_POINTS(E)
 
 class BackendCollector : public ir::TraversingVisitor {
  public:
+  explicit BackendCollector(DispatchTable* dispatch_table)
+      : dispatch_table_(dispatch_table) {}
+
   void visit_Code(ir::Code* node) {
     TraversingVisitor::visit_Code(node);
-    _max_captured_count = std::max(_max_captured_count, node->captured_count());
+    max_captured_count_ = std::max(max_captured_count_, node->captured_count());
   }
 
   void visit_Typecheck(ir::Typecheck* node) {
@@ -47,32 +52,55 @@ class BackendCollector : public ir::TraversingVisitor {
     if (node->type().is_class()) {
       auto klass = node->type().klass();
       if (klass->is_interface()) {
-        _interface_usage_counts[klass]++;
+        interface_usage_counts_[klass]++;
       } else {
-        _class_usage_counts[klass]++;
+        class_usage_counts_[klass]++;
       }
     }
   }
 
-  int max_captured_count() const { return _max_captured_count; }
+  void visit_CallStatic(ir::CallStatic* node) {
+    TraversingVisitor::visit_CallStatic(node);
+    // Some static calls target virtual methods. Some of those
+    // virtual methods are never called using a virtual call, so
+    // they only have a single entry in the dispatch table and
+    // no selector offset. For those methods, we still would like
+    // to know the set of classes that the method can
+    // be called on (the holder and all subclasses), so we extend
+    // the class check table to hold entries for them at the end.
+    ir::Method* method = node->target()->target();
+    if (method->is_static()) return;
+    // Check if the dispatch table has an offset for the selector.
+    // If so, the method is already in a fitted row and we don't
+    // need to handle it here.
+    Selector<PlainShape> selector(method->name(), method->plain_shape());
+    if (dispatch_table_->dispatch_offset_for(selector) >= 0) return;
+    // Make sure we get a class check table entry for the holder.
+    ir::Class* holder = method->holder();
+    if (class_usage_counts_.contains_key(holder)) return;
+    class_usage_counts_[holder] = 0;
+  }
+
+  int max_captured_count() const { return max_captured_count_; }
 
   /// Returns a list of all classes that were used in typechecks.
   /// The result is sorted by usage-count, most-used first.
   List<ir::Class*> compute_sorted_typecheck_classes() {
-    return to_sorted_list(_class_usage_counts);
+    return to_sorted_list(class_usage_counts_);
   }
 
   /// Returns a list of all interfaces that were used in typechecks.
   /// The result is sorted by usage-count, most-used first.
   List<ir::Class*> compute_sorted_typecheck_interfaces() {
-    return to_sorted_list(_interface_usage_counts);
+    return to_sorted_list(interface_usage_counts_);
   }
 
  private:
-  int _max_captured_count = 0;
+  DispatchTable* const dispatch_table_;
+  int max_captured_count_ = 0;
 
-  Map<ir::Class*, int> _class_usage_counts;
-  Map<ir::Class*, int> _interface_usage_counts;
+  Map<ir::Class*, int> class_usage_counts_;
+  Map<ir::Class*, int> interface_usage_counts_;
 
   List<ir::Class*> to_sorted_list(Map<ir::Class*, int>& counts) {
     std::vector<std::pair<ir::Class*, int>> sorted;
@@ -82,7 +110,14 @@ class BackendCollector : public ir::TraversingVisitor {
     }
     std::sort(sorted.begin(), sorted.end(), [&](std::pair<ir::Class*, int> a,
                                                 std::pair<ir::Class*, int> b) {
-      return a.second > b.second;
+      // To make sure we always have a deterministic order, we must
+      // handle the case where two entries have the same usage count.
+      // We use the source position of the class or interface as the
+      // tie breaker, because not everything that flows in here will
+      // have an assigned id we can use.
+      return a.second == b.second
+          ? a.first->range().is_before(b.first->range())
+          : a.second > b.second;
     });
     auto result = ListBuilder<ir::Class*>::allocate(sorted.size());
     int index = 0;
@@ -126,9 +161,8 @@ Program* Backend::emit(ir::Program* ir_program) {
   auto methods = ir_program->methods();
   auto globals = ir_program->globals();
   auto lookup_failure = ir_program->lookup_failure();
-  auto as_check_failure = ir_program->as_check_failure();
 
-  DispatchTable dispatch_table = DispatchTable::build(classes, methods);
+  DispatchTable dispatch_table = DispatchTable::build(ir_program);
 
   dispatch_table.for_each_selector_offset([&](DispatchSelector selector, int offset) {
     source_mapper()->register_selector_offset(offset, selector.name().c_str());
@@ -139,13 +173,13 @@ Program* Backend::emit(ir::Program* ir_program) {
   program_builder.create_dispatch_table(dispatch_table.length());
 
   // Find the classes and interfaces for which we have a shortcut when doing as-checks.
-  BackendCollector collector;
+  BackendCollector collector(&dispatch_table);
   collector.visit(ir_program);
   int max_captured_count = collector.max_captured_count();
   // Get the sorted classes and interface selectors.
   // We sort them by usage count, so that we can use the lowest indexes for the most
   //   frequently used classes/interfaces. This means that most indexes will fit into one
-  //   byte and thus not require an `Extend` bytecode.
+  //   byte and thus not require an `extend` bytecode.
   auto checked_classes = collector.compute_sorted_typecheck_classes();
   auto checked_interface_selectors = collector.compute_sorted_typecheck_interfaces();
   program_builder.set_class_check_ids(encode_typecheck_class_list(checked_classes));
@@ -181,7 +215,6 @@ Program* Backend::emit(ir::Program* ir_program) {
   }
 
   ByteGen gen(lookup_failure,
-              as_check_failure,
               max_captured_count,
               &dispatch_table,
               &typecheck_indexes,
@@ -197,12 +230,12 @@ Program* Backend::emit(ir::Program* ir_program) {
   program_builder.create_global_variables(globals.length());
 
   for (auto method : methods) {
-    emit_method(method, &gen, &dispatch_table, &program_builder);
+    emit_method(method, &gen, &typecheck_indexes, &dispatch_table, &program_builder);
   }
 
   for (auto klass : classes) {
     for (auto method : klass->methods()) {
-      emit_method(method, &gen, &dispatch_table, &program_builder);
+      emit_method(method, &gen, &typecheck_indexes, &dispatch_table, &program_builder);
     }
   }
 
@@ -226,24 +259,55 @@ Program* Backend::emit(ir::Program* ir_program) {
 
 void Backend::emit_method(ir::Method* method,
                           ByteGen* gen,
+                          UnorderedMap<ir::Class*, int>* typecheck_indexes,
                           DispatchTable* dispatch_table,
                           ProgramBuilder* program_builder) {
-  int dispatch_offset = 0;
-  bool is_field_accessor = false;
-  if (!method->is_static()) {
+  int dispatch_offset;
+  bool is_field_accessor;
+
+  if (method->is_static()) {
+    dispatch_offset = -1;
+    is_field_accessor = false;
+  } else {
     ASSERT(method->holder() != null);
     Selector<PlainShape> selector(method->name(), method->plain_shape());
-    dispatch_offset = dispatch_table->dispatch_offset_for(selector);
+    int table_offset = dispatch_table->dispatch_offset_for(selector);
     is_field_accessor = method->is_FieldStub()
         && !method->as_FieldStub()->is_throwing()
         && !method->as_FieldStub()->is_checking_setter();
+
+    if (table_offset >= 0) {
+      dispatch_offset = table_offset;
+    } else {
+      ASSERT(table_offset == -1);
+      if (!typecheck_indexes->contains_key(method->holder())) {
+        // TODO(kasper): This is a slightly weird case, where we have a
+        // method that is never called but the tree shaker fails to
+        // realize this. We end up with an unused entry in the dispatch
+        // table at 'dispatch_table->slot_index_for(method)', but at
+        // least we do not generate code for this. We should be able
+        // to shake this out earlier by realizing that not all static
+        // calls lead to live methods.
+        return;
+      }
+      int index = (*typecheck_indexes)[method->holder()];
+      ASSERT(index >= 0);
+      // Negative indexes are for calls with static targets.
+      // -1 is reserved for static methods. Anything below for calls to
+      // instance methods that are statically resolved.
+      dispatch_offset = -2 - index;
+    }
   }
 
   int id = gen->assemble_method(method, dispatch_offset, is_field_accessor);
 
-  if (method->is_static()) {
+  if (dispatch_offset < 0) {
+    // A call with a static target occupying a single entry in
+    // the dispatch table.
     program_builder->set_dispatch_table_entry(dispatch_table->slot_index_for(method), id);
   } else {
+    // A virtual call with a dynamic target occupying entries
+    // in the dispatch table for each possible receiver type.
     bool was_executed;
     std::function<void (int)> callback = [&](int index) {
       was_executed = true;
@@ -263,7 +327,13 @@ void Backend::emit_global(ir::Global* global,
     int id = gen->assemble_global(global);
     program_builder->push_lazy_initializer_id(id);
   } else {
-    auto value = global->body()->as_Return()->value();
+    auto body = global->body();
+    if (body->is_Sequence()) {
+      List<ir::Expression*> sequence = body->as_Sequence()->expressions();
+      ASSERT(sequence.length() == 1);
+      body = sequence[0];
+    }
+    auto value = body->as_Return()->value();
     if (value->is_LiteralNull()) {
       program_builder->push_null();
     } else if (value->is_LiteralInteger()) {

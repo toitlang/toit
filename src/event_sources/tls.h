@@ -21,33 +21,43 @@
 
 namespace toit {
 
-class TLSSocket;
+class TlsSocket;
 
-typedef LinkedFIFO<TLSSocket, 1> TLSSocketList;
+typedef LinkedFifo<TlsSocket, 1> TlsSocketList;
 
-class TLSSocket : public Resource, public TLSSocketList::Element {
+class TlsSocket : public Resource, public TlsSocketList::Element {
  public:
-  TLSSocket(ResourceGroup* resource_group)
-    : Resource(resource_group) { }
+  TlsSocket(ResourceGroup* resource_group)
+    : Resource(resource_group) {}
 
   virtual word handshake() = 0;
+
+  // Sockets that are part of the list of sockets in the event
+  // source cannot be eagerly closed. Instead, we let the event
+  // source close them when they are no longer in the list.
+  bool needs_delayed_close() const { return needs_delayed_close_; }
+  void delay_close() { needs_delayed_close_ = true; }
+
+ private:
+  bool needs_delayed_close_ = false;
 };
 
-class TLSEventSource : public LazyEventSource, public Thread {
+class TlsEventSource : public LazyEventSource, public Thread {
  public:
-  static TLSEventSource* instance() { return _instance; }
+  static TlsEventSource* instance() { return instance_; }
 
-  TLSEventSource();
+  TlsEventSource();
 
   virtual void on_unregister_resource(Locker& locker, Resource* r) override;
 
-  void handshake(TLSSocket* socket);
+  void handshake(TlsSocket* socket);
+  void close(TlsSocket* socket);
 
  protected:
   friend class LazyEventSource;
-  static TLSEventSource* _instance;
+  static TlsEventSource* instance_;
 
-  ~TLSEventSource();
+  ~TlsEventSource();
 
   virtual bool start() override;
   virtual void stop() override;
@@ -55,9 +65,9 @@ class TLSEventSource : public LazyEventSource, public Thread {
  private:
   void entry() override;
 
-  ConditionVariable* _sockets_changed = null;
-  TLSSocketList _sockets;
-  bool _stop = false;
+  ConditionVariable* sockets_changed_ = null;
+  TlsSocketList sockets_;
+  bool stop_ = false;
 };
 
 } // namespace toit

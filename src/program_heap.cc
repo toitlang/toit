@@ -37,17 +37,17 @@ namespace toit {
 
 ProgramHeap::ProgramHeap(Program* program)
     : ProgramRawHeap()
-    , _program(program)
-    , _in_gc(false)
-    , _gc_allowed(true)
-    , _total_bytes_allocated(0)
-    , _last_allocation_result(ALLOCATION_SUCCESS) {
-  _blocks.append(ProgramBlock::allocate_program_block());
+    , program_(program)
+    , in_gc_(false)
+    , gc_allowed_(true)
+    , total_bytes_allocated_(0)
+    , last_allocation_result_(ALLOCATION_SUCCESS) {
+  blocks_.append(ProgramBlock::allocate_program_block());
 }
 
 ProgramHeap::~ProgramHeap() {
   set_writable(true);
-  _blocks.free_blocks(this);
+  blocks_.free_blocks(this);
 }
 
 Instance* ProgramHeap::allocate_instance(Smi* class_id) {
@@ -72,7 +72,7 @@ Array* ProgramHeap::allocate_array(int length, Object* filler) {
     return null;  // Allocation failure.
   }
   // Initialize object.
-  result->_set_header(_program, _program->array_class_id());
+  result->_set_header(program_, program_->array_class_id());
   Array::cast(result)->_initialize_no_write_barrier(length, filler);
   return Array::cast(result);
 }
@@ -85,7 +85,7 @@ Array* ProgramHeap::allocate_array(int length) {
     return null;  // Allocation failure.
   }
   // Initialize object.
-  result->_set_header(_program, _program->array_class_id());
+  result->_set_header(program_, program_->array_class_id());
   Array::cast(result)->_initialize(length);
   return Array::cast(result);
 }
@@ -97,7 +97,7 @@ ByteArray* ProgramHeap::allocate_internal_byte_array(int length) {
   ByteArray* result = unvoid_cast<ByteArray*>(_allocate_raw(ByteArray::internal_allocation_size(length)));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
-  result->_set_header(_program, _program->byte_array_class_id());
+  result->_set_header(program_, program_->byte_array_class_id());
   result->_initialize(length);
   return result;
 }
@@ -106,7 +106,7 @@ Double* ProgramHeap::allocate_double(double value) {
   HeapObject* result = _allocate_raw(Double::allocation_size());
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
-  result->_set_header(_program, _program->double_class_id());
+  result->_set_header(program_, program_->double_class_id());
   Double::cast(result)->_initialize(value);
   return Double::cast(result);
 }
@@ -115,13 +115,13 @@ LargeInteger* ProgramHeap::allocate_large_integer(int64 value) {
   HeapObject* result = _allocate_raw(LargeInteger::allocation_size());
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
-  result->_set_header(_program, _program->large_integer_class_id());
+  result->_set_header(program_, program_->large_integer_class_id());
   LargeInteger::cast(result)->_initialize(value);
   return LargeInteger::cast(result);
 }
 
 int ProgramHeap::payload_size() {
-  return _blocks.payload_size();
+  return blocks_.payload_size();
 }
 
 String* ProgramHeap::allocate_internal_string(int length) {
@@ -142,27 +142,27 @@ String* ProgramHeap::allocate_internal_string(int length) {
 
 void ProgramHeap::migrate_to(Program* program) {
   set_writable(false);
-  program->take_blocks(&_blocks);
+  program->take_blocks(&blocks_);
 }
 
 HeapObject* ProgramHeap::_allocate_raw(int byte_size) {
   ASSERT(byte_size > 0);
   ASSERT(byte_size <= ProgramBlock::max_payload_size());
-  HeapObject* result = _blocks.last()->allocate_raw(byte_size);
+  HeapObject* result = blocks_.last()->allocate_raw(byte_size);
   if (result == null) {
     AllocationResult expand_result = _expand();
     set_last_allocation_result(expand_result);
     if (expand_result != ALLOCATION_SUCCESS) return null;
-    result = _blocks.last()->allocate_raw(byte_size);
+    result = blocks_.last()->allocate_raw(byte_size);
   }
   if (result == null) return null;
-  _total_bytes_allocated += byte_size;
+  total_bytes_allocated_ += byte_size;
   return result;
 }
 
 ProgramHeap::AllocationResult ProgramHeap::_expand() {
   ProgramBlock* block = ProgramBlock::allocate_program_block();
-  _blocks.append(block);
+  blocks_.append(block);
   return ALLOCATION_SUCCESS;
 }
 
@@ -206,7 +206,7 @@ ByteArray* ProgramHeap::allocate_external_byte_array(int length, uint8* memory) 
   ByteArray* result = unvoid_cast<ByteArray*>(_allocate_raw(ByteArray::external_allocation_size()));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
-  result->_set_header(_program, _program->byte_array_class_id());
+  result->_set_header(program_, program_->byte_array_class_id());
   result->_initialize_external_memory(length, memory, false);
   return result;
 }
@@ -231,47 +231,47 @@ String* ProgramHeap::allocate_external_string(int length, uint8* memory) {
 // We initialize lazily - this is because the number of objects can grow during
 // iteration.
 ProgramHeap::Iterator::Iterator(ProgramBlockList& list, Program* program)
-  : _list(list)
-  , _iterator(list.end())  // Set to null.
-  , _block(null)
-  , _current(null)
-  , _program(program) {}
+  : list_(list)
+  , iterator_(list.end())  // Set to null.
+  , block_(null)
+  , current_(null)
+  , program_(program) {}
 
 bool ProgramHeap::Iterator::eos() {
-  return _list.is_empty()
-      || (_block == null
-          ? _list.first()->is_empty()
-          :  (_current >= _block->top() && _block == _list.last()));
+  return list_.is_empty()
+      || (block_ == null
+          ? list_.first()->is_empty()
+          :  (current_ >= block_->top() && block_ == list_.last()));
 }
 
 void ProgramHeap::Iterator::ensure_started() {
   ASSERT(!eos());
-  if (_block == null) {
-     _iterator = _list.begin();
-     _block = *_iterator;
-     _current = _block->base();
+  if (block_ == null) {
+     iterator_ = list_.begin();
+     block_ = *iterator_;
+     current_ = block_->base();
   }
 }
 
 HeapObject* ProgramHeap::Iterator::current() {
   ensure_started();
-  if (_current >= _block->top() && _block != _list.last()) {
-    _block = *++_iterator;
-    _current = _block->base();
+  if (current_ >= block_->top() && block_ != list_.last()) {
+    block_ = *++iterator_;
+    current_ = block_->base();
   }
-  ASSERT(!_block->is_empty());
-  return HeapObject::cast(_current);
+  ASSERT(!block_->is_empty());
+  return HeapObject::cast(current_);
 }
 
 void ProgramHeap::Iterator::advance() {
   ensure_started();
 
-  ASSERT(is_smi(HeapObject::cast(_current)->header()));  // Header is not a forwarding pointer.
-  _current = Utils::address_at(_current, HeapObject::cast(_current)->size(_program));
-  if (_current >= _block->top() && _block != _list.last()) {
-    _block = *++_iterator;
-    _current = _block->base();
-    ASSERT(!_block->is_empty());
+  ASSERT(is_smi(HeapObject::cast(current_)->header()));  // Header is not a forwarding pointer.
+  current_ = Utils::address_at(current_, HeapObject::cast(current_)->size(program_));
+  if (current_ >= block_->top() && block_ != list_.last()) {
+    block_ = *++iterator_;
+    current_ = block_->base();
+    ASSERT(!block_->is_empty());
   }
 }
 

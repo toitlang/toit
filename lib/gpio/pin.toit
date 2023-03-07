@@ -25,8 +25,7 @@ Only one $Pin instance of any given GPIO number can be open at any given point
 To release the resources associated with the $Pin, call $Pin.close.
 */
 class Pin:
-  static GPIO_STATE_DOWN_ ::= 1
-  static GPIO_STATE_UP_   ::= 2
+  static GPIO_STATE_EDGE_TRIGGERED_ ::= 1
 
   static resource_group_ ::= gpio_init_
 
@@ -47,16 +46,23 @@ class Pin:
 
   While the Pin is in input mode, $pull_up and $pull_down resistors are applied as
     configured.
+
+  See $constructor for more information.
   */
-  constructor.in num/int --pull_up/bool=false --pull_down/bool=false:
+  constructor.in num/int
+      --pull_up/bool=false
+      --pull_down/bool=false
+      --allow_restricted/bool=false:
     return Pin num --input --pull_up=pull_up --pull_down=pull_down
 
   /**
   Opens a GPIO Pin $num in output mode.
 
   Use $Pin.set to set the output value. The default value is 0.
+
+  See $constructor for more information.
   */
-  constructor.out num/int:
+  constructor.out num/int --allow_restricted/bool=false:
     return Pin num --output
 
   /**
@@ -68,21 +74,71 @@ class Pin:
 
   If a pin should be used both as $input and as an $output, $open_drain is often needed to
     avoid short-circuits. See $configure for more information.
+
+  Some pins should usually not be used. For example, the ESP32 uses pins
+    6-11 to communicate with flash and PSRAM. These pins can not be
+    instantiated unless the $allow_restricted flag is set to `true`.
+
+  # ESP32
+  The ESP32 has 34 physical pins (0-19, 21-23, 25-27, and 32-39). Each pin can
+    be used as general-purpose pin, or be connected to a peripheral.
+  Pins 0, 2, 5, 12 and 15 are strapping pins.
+  Pins 6-11 are normally connected to flash/PSRAM, and should not be used.
+  Pins 12-15 are JTAG pins, and should not be used if JTAG support is needed.
+  Pins 25-26 are DAC pins.
+  Pins 34-39 are input only.
+  Pins 32-39 are ADC pins of channel 1.
+  Pins 0, 2, 4, 12-15, 25-27 are ADC pins of channel 2. ADC channel 2 has
+    restrictions and should be avoided if possible.
+  Pins 0, 2, 4, 12-16, 25-39 are RTC pins. They can be used in deep sleep. For
+    example, to wake up from deep sleep.
+
+  # ESP32C3
+  The ESP32C3 has 22 physical pins (0-21). Each pin can be used as
+    general-purpose pin, or be connected to a peripheral.
+
+  Pins 2, 8, and 9 are strapping pins.
+  Pins 12-17 are normally connected to flash/PSRAM, and should not be used.
+  Pins 18-19 are JTAG pins, and should not be used if JTAG support is needed.
+  Pins 0-5 are RTC pins and can be used in deep-sleep.
+  Pins 0-4 are ADC pins of channel 1.
+  Pin 5 is an ADC pin of channel 2. ADC channel 2 has restrictions and should be
+    avoided if possible.
+
+  # ESP32S3
+  The ESP32S3 has 45 physical pins (0-21, 26-48). Each pin can be used as
+    general-purpose pin, or be connected to a peripheral.
+
+  Pins 0, 3, 45, and 46 are strapping pins.
+  Pins 26-32 are normally connected to flash/PSRAM, and should not be used.
+  Pins 33-37 are used when using octal flash or PSRAM. They may be available
+    depending on the configuration, but are considered restricted.
+  Pins 19-20 are JTAG pins, and should not be used if JTAG support is needed.
+  Pins 1-10 are ADC pins of channel 1.
+  Pins 11-20 are ADC pins of channel 2. ADC channel 2 has restrictions and
+    should be avoided if possible.
+  Pins 0-21 are RTC pins and can be used in deep-sleep.
   */
   constructor .num
       --input/bool=false
       --output/bool=false
       --pull_up/bool=false
       --pull_down/bool=false
-      --open_drain/bool=false:
+      --open_drain/bool=false
+      --allow_restricted/bool=false:
     pull_up_ = pull_up
     pull_down_ = pull_down
-    resource_ = gpio_use_ resource_group_ num
+    resource_ = gpio_use_ resource_group_ num allow_restricted
     // TODO(anders): Ideally we would create this resource ad-hoc, in input-mode.
     state_ = monitor.ResourceState_ resource_group_ resource_
     if input or output:
       try:
-        configure --input=input --output=output --pull_down=pull_down --pull_up=pull_up
+        configure
+            --input=input
+            --output=output
+            --pull_down=pull_down
+            --pull_up=pull_up
+            --open_drain=open_drain
       finally: | is_exception _ |
         if is_exception: close
 
@@ -195,18 +251,41 @@ class Pin:
   */
   wait_for value -> none:
     if get == value: return
-    expected_state := value == 1 ? GPIO_STATE_UP_ : GPIO_STATE_DOWN_
-    state_.clear_state expected_state
-    gpio_config_interrupt_ num true
+    state_.clear_state GPIO_STATE_EDGE_TRIGGERED_
+    config_timestamp := gpio_config_interrupt_ resource_ true
     try:
       // Make sure the pin didn't change to the expected value while we
       // were setting up the interrupt.
       if get == value: return
 
-      state_.wait_for_state expected_state
+      while true:
+        state_.wait_for_state GPIO_STATE_EDGE_TRIGGERED_
+        event_timestamp := gpio_last_edge_trigger_timestamp_ resource_
+        // If there was an edge transition after we configured the interrupt,
+        // we are guaranteed that we have seen the value we are waiting for.
+        // The pin's value might already be different now, but we know
+        // that it was at the correct value at least for a brief period of
+        // time when the interrupt triggered.
+        if (event_timestamp - config_timestamp).abs < 0xFF_FFFF:
+          if event_timestamp >= config_timestamp: return
+        else:
+          // Unrealistically far from each other.
+          // Assume an overflow happened (either the event or config timestamp).
+          if event_timestamp < config_timestamp: return
+        // The following test shouldn't be necessary, but doesn't hurt either.
+        if get == value: return
     finally:
-      gpio_config_interrupt_ num false
-      state_.clear_state expected_state
+      gpio_config_interrupt_ resource_ false
+
+  /**
+  Sets the open-drain property of this pin.
+
+  This is a low-level function that doesn't affect any other configuration
+    of the pin.
+  */
+  set_open_drain value/bool:
+    gpio_set_open_drain_ num value
+
 
 /**
 Virtual pin.
@@ -256,6 +335,10 @@ class VirtualPin extends Pin:
   /** Not supported. */
   num: throw "UNSUPPORTED"
 
+  /** Not supported. */
+  set_open_drain value/bool: throw "UNSUPPORTED"
+
+
 /**
 A pin that does the opposite of the physical pin that it takes in the constructor.
 */
@@ -296,10 +379,13 @@ class InvertedPin extends Pin:
   num -> int:
     return original_pin_.num
 
+  set_open_drain value/bool:
+    original_pin_.set_open_drain value
+
 gpio_init_:
   #primitive.gpio.init
 
-gpio_use_ resource_group num:
+gpio_use_ resource_group num allow_restricted:
   #primitive.gpio.use
 
 gpio_unuse_ resource_group num:
@@ -314,5 +400,11 @@ gpio_get_ num:
 gpio_set_ num value:
   #primitive.gpio.set
 
-gpio_config_interrupt_ num enabled/bool:
+gpio_config_interrupt_ resource enabled/bool:
   #primitive.gpio.config_interrupt
+
+gpio_last_edge_trigger_timestamp_ resource:
+  #primitive.gpio.last_edge_trigger_timestamp
+
+gpio_set_open_drain_ num value/bool:
+  #primitive.gpio.set_open_drain

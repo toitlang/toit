@@ -1,0 +1,10 @@
+tests/negative/minus_interpolated_test.toit:9:11: warning: Interpolated identifiers followed by '-' must be parenthesized
+  print "$foo-b"  // Warning, since that would become a single identifier.
+          ^~~
+tests/negative/minus_interpolated_test.toit:10:11: warning: Interpolated identifiers followed by '-' must be parenthesized
+  print "$foo-3"  // Same warning.
+          ^~~
+tests/negative/minus_interpolated_test.toit:12:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed.

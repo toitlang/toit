@@ -24,7 +24,7 @@ Finalizers are not automatically called when a program exits. This is also true 
 An arbitrary amount of time may pass from the $object becomes unreachable and
   the finalizer is called.
 */
-add_finalizer object lambda:
+add_finalizer object lambda -> none:
   #primitive.core.add_finalizer
 
 /**

@@ -31,8 +31,8 @@ namespace toit {
 namespace compiler {
 
 void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
-  if (_is_initialized) return;
-  _is_initialized = true;
+  if (is_initialized_) return;
+  is_initialized_ = true;
 
  // Initialize Winsock
   WSADATA wsaData;
@@ -49,7 +49,7 @@ void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
   hints.ai_protocol = 0;           // Any protocol.
 
   addrinfo* result;
-  int status = getaddrinfo(null, _port, &hints, &result);
+  int status = getaddrinfo(null, port_, &hints, &result);
   if (status != 0) {
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
     exit(EXIT_FAILURE);
@@ -61,7 +61,7 @@ void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
     BOOL value = TRUE;
     setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (const char*)&value, sizeof(value));
     if (connect(sock, info->ai_addr, info->ai_addrlen) == 0) {
-      _socket = sock;
+      socket_ = sock;
       break;
     }
     closesocket(sock);
@@ -69,9 +69,9 @@ void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
 }
 
 LspFsConnectionSocket::~LspFsConnectionSocket() {
-  if (_socket != -1) {
-    closesocket(_socket);
-    _socket = -1;
+  if (socket_ != -1) {
+    closesocket(socket_);
+    socket_ = -1;
   }
   WSACleanup();
 }

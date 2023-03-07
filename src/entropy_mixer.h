@@ -30,13 +30,13 @@ namespace toit {
 class EntropyMixer {
  public:
   EntropyMixer()
-    : _mutex(OS::allocate_mutex(4, "Entropy mutex")) {
-    mbedtls_entropy_init(&_context);
+    : mutex_(OS::allocate_mutex(4, "Entropy mutex")) {
+    mbedtls_entropy_init(&context_);
   }
 
   ~EntropyMixer() {
-    mbedtls_entropy_free(&_context);
-    OS::dispose(_mutex);
+    mbedtls_entropy_free(&context_);
+    OS::dispose(mutex_);
   }
 
   void add_entropy_byte(int datum) {
@@ -45,22 +45,22 @@ class EntropyMixer {
   }
 
   void add_entropy(const uint8* data, size_t size) {
-    Locker locker(_mutex);
-    mbedtls_entropy_update_manual(&_context, data, size);
+    Locker locker(mutex_);
+    mbedtls_entropy_update_manual(&context_, data, size);
   }
 
   bool get_entropy(uint8* data, size_t size) {
-    Locker locker(_mutex);
-    int result = mbedtls_entropy_func(&_context, data, size);
+    Locker locker(mutex_);
+    int result = mbedtls_entropy_func(&context_, data, size);
     return result == 0;
   }
 
-  static EntropyMixer* instance() { return &_instance; }
+  static EntropyMixer* instance() { return &instance_; }
 
  private:
-  mbedtls_entropy_context _context;
-  Mutex* _mutex;
-  static EntropyMixer _instance;
+  mbedtls_entropy_context context_;
+  Mutex* mutex_;
+  static EntropyMixer instance_;
 };
 
 }

@@ -21,9 +21,9 @@ namespace toit {
 namespace compiler {
 
 void GotoDefinitionHandler::_print_range(Source::Range range) {
-  if (_printed_definitions.contains(range)) return;
-  _printed_definitions.insert(range);
-  protocol()->goto_definition()->emit(range_to_lsp_range(range, _source_manager));
+  if (printed_definitions_.contains(range)) return;
+  printed_definitions_.insert(range);
+  protocol()->goto_definition()->emit(range_to_lsp_range(range, source_manager_));
 }
 
 void GotoDefinitionHandler::_print_range(ir::Node* resolved) {

@@ -75,13 +75,13 @@ interface Collection:
   is_empty -> bool
 
   /**
-  Whether every element in the collection satisfies the given $predicate.
+  Whether all elements in the collection satisfy the given $predicate.
   Returns true, if the collection is empty.
   */
   every [predicate] -> bool
 
   /**
-  Whether any element in the collection satisfies the given $predicate.
+  Whether at least one element in the collection satisfies the given $predicate.
   Returns false, if the collection is empty.
   */
   any [predicate] -> bool
@@ -148,6 +148,13 @@ abstract class CollectionBase implements Collection:
     return result
 
 
+/**
+A linear collection of objects.
+A List is an array with constant-time access to numbered elements,
+  starting at index zero.  (This is not a linked-list collection.)
+Lists are mutable and growable.
+See also https://docs.toit.io/language/listsetmap.
+*/
 abstract class List extends CollectionBase:
 
   /**
@@ -762,12 +769,12 @@ abstract class List extends CollectionBase:
   static chunk_up from/int to/int available/int max_available/int=available [block] -> int:
     result := to - from
     to_do := to - from
+    chunk := min available to_do
     while to_do > 0:
-      chunk := min available to_do
       block.call from from + chunk chunk
       to_do -= chunk
       from += chunk
-      available = max_available
+      chunk = min max_available to_do
     return result
 
 /** Internal function to create a list literal with one element. */
@@ -838,12 +845,8 @@ abstract class Array_ extends List:
   // Optimized helper method for iterating over the array elements.
   abstract do_ end/int [block] -> none
 
-  /** Create a new array, copying up to old_length elements from this array. */
-  resize_for_list_ old_length/int new_length/int -> Array_:
-    result := Array_ new_length
-    for i := 0; i < old_length and i < new_length; i++:
-      result[i] = this[i]
-    return result
+  /// Create a new array, copying up to $copy_size elements from this array.
+  abstract resize_for_list_ copy_size/int new_size/int filler -> Array_
 
   /**
   Returns the given $collection as an $Array_.
@@ -905,17 +908,18 @@ class SmallArray_ extends Array_:
     #primitive.intrinsics.array_do:
       // The intrinsic only fails if we cannot call the block with a single
       // argument. We force this to throw by doing the same here.
-      block.call null
+      block.call this[0]
 
-  /// Creates a new array of size $new_length, copying up to $old_length elements from this array.
-  resize_for_list_ old_length/int new_length/int -> Array_:
+  /// Creates a new array of size $new_size, copying up to $copy_size elements from this array.
+  resize_for_list_ copy_size/int new_size/int filler -> Array_:
     #primitive.core.array_expand:
       // Fallback if the primitive fails.  For example, the primitive can only
       // create SmallArray_ so we hit this on the border between SmallArray_
       // and LargeArray_.
-      if old_length == LargeArray_.ARRAYLET_SIZE:
-        return LargeArray_.with_arraylet_ this new_length
-      return super old_length new_length
+
+      result := Array_ new_size filler
+      result.replace 0 this 0 (min copy_size new_size)
+      return result
 
   replace index/int source from/int to/int -> none:
     #primitive.core.array_replace:
@@ -937,13 +941,14 @@ class LargeArray_ extends Array_:
     return LargeArray_ size null
 
   constructor .size_/int filler/any:
+    if size_ <= ARRAYLET_SIZE: throw "OUT_OF_RANGE"
     full_arraylets := size_ / ARRAYLET_SIZE
-    left := size_ % ARRAYLET_SIZE
-    if left == 0:
+    remaining := size_ % ARRAYLET_SIZE
+    if remaining == 0:
       vector_ = Array_ full_arraylets
     else:
       vector_ = Array_ full_arraylets + 1
-      vector_[full_arraylets] = Array_ left filler
+      vector_[full_arraylets] = Array_ remaining filler
     full_arraylets.repeat:
       vector_[it] = Array_ ARRAYLET_SIZE filler
     // TODO(florian): remove this hack.
@@ -963,25 +968,32 @@ class LargeArray_ extends Array_:
     vector_[1] = Array_ new_size - ARRAYLET_SIZE
     super.from_subclass_
 
-  // An expand that uses the backing arraylets from the old array.  Used by List.
-  resize_for_list_ old_size/int new_size/int:
+  // An expansion or shrinking that uses the backing arraylets from the old
+  // array.  Used by List, Set, and Map.
+  resize_for_list_ copy_size/int new_size/int filler:
     // Rounding up division.
     number_of_arraylets := ((new_size - 1) / ARRAYLET_SIZE) + 1
-    new_vector := Array_ number_of_arraylets
-    left := new_size
+    if number_of_arraylets == 1:
+      return vector_[0].resize_for_list_ copy_size new_size filler
+    new_vector := Array_ number_of_arraylets  // new_vector may be a LargeArray_!
+    remaining := new_size
+    pos := 0
     number_of_arraylets.repeat:
-      if (it + 1) * ARRAYLET_SIZE <= old_size:
-        new_vector[it] = vector_[it]
-        left -= ARRAYLET_SIZE
+      arraylet := ?
+      limit := min remaining ARRAYLET_SIZE
+      if pos + limit <= size:
+        arraylet = vector_[it]
+        // Sometimes from and to are reversed, which harmlessly does nothing.
+        arraylet.fill --from=(max 0 (copy_size - pos)) --to=limit filler
       else:
-        limit := min left ARRAYLET_SIZE
-        arraylet := Array_ limit
-        new_vector[it] = arraylet
-        if it * ARRAYLET_SIZE < old_size:
+        arraylet = Array_ limit filler
+        if pos < copy_size:
           old_arraylet := vector_[it]
-          arraylet.replace 0 old_arraylet 0 (old_size % ARRAYLET_SIZE)
-        left -= limit
-    assert: left == 0
+          arraylet.replace 0 old_arraylet 0 (min limit (copy_size - pos))
+      new_vector[it] = arraylet
+      remaining -= limit
+      pos += limit
+    assert: remaining == 0
     return LargeArray_.internal_ new_vector new_size
 
   size -> int:
@@ -1003,14 +1015,75 @@ class LargeArray_ extends Array_:
   do_ end/int [block] -> none:
     if end <= 0: return
     full_arraylets := end / ARRAYLET_SIZE
-    left := end % ARRAYLET_SIZE
+    remaining := end % ARRAYLET_SIZE
     full_arraylets.repeat:
       vector_[it].do_ ARRAYLET_SIZE block
-    if left != 0:
-      vector_[full_arraylets].do_ left block
+    if remaining != 0:
+      vector_[full_arraylets].do_ remaining block
+
+  /** Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[ */
+  replace index/int source from/int=0 to/int=source.size -> none:
+    count := to - from
+    if count < 5:
+      super index source from to
+      return
+    dest_div := index / ARRAYLET_SIZE
+    dest_mod := index % ARRAYLET_SIZE
+    first_chunk_max := ARRAYLET_SIZE - dest_mod
+    if source is SmallArray_:
+      List.chunk_up from to first_chunk_max ARRAYLET_SIZE: | from to length |
+        vector_[dest_div++].replace dest_mod source from to
+        dest_mod = 0
+    else if source is LargeArray_:
+      // The accelerated version requires SmallArray_, so do it on the arraylets.
+      if index <= from or not identical source this:
+        source_div := from / ARRAYLET_SIZE
+        source_mod := from % ARRAYLET_SIZE
+        // Because of alignment, each arraylet of the destination may take values
+        // from two arraylets of the source.
+        List.chunk_up from to first_chunk_max ARRAYLET_SIZE: | _ _ length |
+          part1_size := min length (ARRAYLET_SIZE - source_mod)
+          vector_[dest_div].replace dest_mod source.vector_[source_div] source_mod (source_mod + part1_size)
+          if length != part1_size:
+            // Copy part two from the next source arraylet.
+            vector_[dest_div].replace (dest_mod + part1_size) source.vector_[source_div + 1] 0 (length - part1_size)
+          source_mod += length
+          if source_mod >= ARRAYLET_SIZE:
+            source_div++
+            source_mod -= ARRAYLET_SIZE
+          dest_mod = 0
+          dest_div++
+      else:
+        // Copying to a higher index, we have to do it backwards from the end
+        // because of aliasing.
+        source_div := to / ARRAYLET_SIZE
+        source_mod := to % ARRAYLET_SIZE
+        // These three were calculated wrong for backwards iteration, so redo
+        // them here.
+        dest_div = (index + count) / ARRAYLET_SIZE
+        dest_mod = (index + count) % ARRAYLET_SIZE
+        first_chunk_max = dest_mod
+        // Because of alignment, each arraylet of the destination may take
+        // values from two arraylets of the source.  Since we are ignoring the
+        // first two block args we can just negate and swap the `to` and `from`
+        // to iterate backwards.
+        List.chunk_up -to -from first_chunk_max ARRAYLET_SIZE: | _ _ length |
+          part1_size := min length source_mod
+          vector_[dest_div].replace (dest_mod - part1_size) source.vector_[source_div] (source_mod - part1_size) source_mod
+          if length != part1_size:
+            // Copy part two from the next source arraylet.
+            vector_[dest_div].replace (dest_mod - length) source.vector_[source_div - 1] (ARRAYLET_SIZE - length + part1_size) ARRAYLET_SIZE
+          source_mod -= length
+          if source_mod <= 0:
+            source_div--
+            source_mod += ARRAYLET_SIZE
+          dest_mod = ARRAYLET_SIZE
+          dest_div--
+    else:  // Not SmallArray_ or LargeArray_.
+      super index source from to
 
   size_ /int ::= 0
-  vector_ /Array_ ::= ?
+  vector_ /Array_ ::= ?  // This is the array of arraylets.  It may itself be a LargeArray_!
 
 /**
 A container specialized for bytes.
@@ -1072,13 +1145,13 @@ interface ByteArray:
   do --reversed/bool [block] -> none
 
   /**
-  Whether every byte satisfies the given $predicate.
+  Whether all bytes satisfy the given $predicate.
   Returns true, if the byte array is empty.
   */
   every [predicate] -> bool
 
   /**
-  Whether there is a byte that satisfies the given $predicate.
+  Whether there is at least one byte that satisfies the given $predicate.
   Returns false, if the byte array is empty.
   */
   any [predicate] -> bool
@@ -1322,6 +1395,9 @@ abstract class ByteArrayBase_ implements ByteArray:
 
   /**
   Converts this instance to a string, interpreting its bytes as UTF-8.
+  Invalid UTF-8 sequences are rejected with an exception.  This includes
+    overlong encodings, encodings of UTF-16 surrogates and encodings of
+    values that are outside the Unicode range.
   */
   to_string from/int=0 to/int=size -> string:
     #primitive.core.byte_array_convert_to_string
@@ -1666,7 +1742,14 @@ class ListSlice_ extends List:
   from_ / int
   to_ / int
 
-  constructor .list_ .from_ .to_:
+  constructor sublist/List .from_ .to_:
+    if sublist is ListSlice_:
+      slice := sublist as ListSlice_
+      if not 0 <= from_ <= to_ <= slice.size: throw "OUT_OF_BOUNDS"
+      sublist = slice.list_
+      from_ += slice.from_
+      to_ += slice.from_
+    list_ = sublist
     super.from_subclass
 
   operator [] index:
@@ -1698,6 +1781,12 @@ class ListSlice_ extends List:
     if not from_ <= actual_from <= actual_to <= to_: throw "OUT_OF_BOUNDS"
     // If the underlying list changed size this might throw.
     return list_.copy actual_from actual_to
+
+  replace index/int source from/int=0 to/int=source.size -> none:
+    actual_index := from_ + index
+    actual_index_end := actual_index + to - from
+    if not from_ <= actual_index <= actual_index_end <= to_: throw "OUT_OF_BOUNDS"
+    list_.replace actual_index source from to
 
   resize new_size -> none:
     throw "SLICE_CANNOT_CHANGE_SIZE"
@@ -1752,12 +1841,12 @@ class List_ extends List:
           : (round_up (array_size + 1 + (array_size >> 4)) LargeArray_.ARRAYLET_SIZE)
         if new_array_size < LIST_INITIAL_LENGTH_: new_array_size = LIST_INITIAL_LENGTH_
         while new_array_size < new_size: new_array_size += 1 + (new_array_size >> 1)
-        array_ = array_.resize_for_list_ size_ new_array_size
+        array_ = array_.resize_for_list_ size_ new_array_size null
 
       size_ = new_size
     else:
       if new_size < array_.size - LargeArray_.ARRAYLET_SIZE:
-        array_ = array_.resize_for_list_ size_ (round_up new_size LargeArray_.ARRAYLET_SIZE)
+        array_ = array_.resize_for_list_ size_ (round_up new_size LargeArray_.ARRAYLET_SIZE) null
       // Clear entries so they can be GC'ed.
       limit := min size_ array_.size
       for i := new_size; i < limit; i++:
@@ -1778,14 +1867,20 @@ class List_ extends List:
 
   /** See $super. */
   // This override is present in order to make use of the accelerated replace
-  // method on Array_.  Currently there's no acceleration for LargeArray_.
+  // method on Array_.
   replace index/int source from/int=0 to/int=source.size -> none:
+    if source is ListSlice_:
+      slice := source as ListSlice_
+      if not 0 <= from <= to <= source.size: throw "OUT_OF_BOUNDS"
+      from += slice.from_
+      to += slice.from_
+      source = slice.list_
     if source is List_:
       // Array may be bigger than this List_, so we must check for
       // that before delegating to the Array_ method, while being
       // careful about integer overflow.
       len := to - from
-      if len < 0 or index > size - len or to > source.size: throw "BAD ARGUMENTS"
+      if not 0 <= index <= index + to - from <= size: throw "OUT_OF_BOUNDS"
       array_.replace index source.array_ from to
     else:
       super index source from to
@@ -2001,7 +2096,8 @@ abstract class HashedInsertionOrderedCollection_:
   //   initial slot in the index.  Since sizes are a power of 2 we merely take
   //   the modulus of the size, which can be done by bitwise and-ing with the
   //   size - 1.
-  pick_new_index_size_ old_size --allow_shrink/bool:
+  // Returns the new index size.
+  pick_new_index_size_ old_size --allow_shrink/bool -> int:
     minimum := allow_shrink ? 2 : index_.size * 2
     enough := 1 + old_size + (old_size >> 3)  // old_size * 1.125.
     new_index_size := max
@@ -2011,7 +2107,7 @@ abstract class HashedInsertionOrderedCollection_:
     index_spaces_left_ = (new_index_size * 0.85).to_int
     if index_spaces_left_ <= old_size: index_spaces_left_ = old_size + 1
     // Found large enough index size.
-    index_ = Array_ new_index_size 0
+    return new_index_size
 
   /// We store this much of the hash code in each slot.
   static HASH_MASK_ ::= 0xfff
@@ -2146,9 +2242,8 @@ abstract class HashedInsertionOrderedCollection_:
       // If the intrinsic fails, return the start position.  This
       // is very rare because the intrinsic will generally return a
       // progress-indicating integer rather than failing.
-      return reversed
-        ? backing_ ? backing_.size - step : 0
-        : 0
+      if backing_ == null: return null
+      return reversed ? backing_.size - step : 0
 
   rebuild_ old_size/int step/int --allow_shrink/bool --rebuild_backing/bool:
     if rebuild_backing:
@@ -2159,10 +2254,19 @@ abstract class HashedInsertionOrderedCollection_:
           backing_[i++] = it
       length := size_ * step
       backing_.resize size_ * step
-    old_index := index_
-    pick_new_index_size_ old_size --allow_shrink=allow_shrink
-    index_mask := index_.size - 1
-    if not old_index or index_mask > HASH_MASK_ or rebuild_backing:
+    new_index_size := pick_new_index_size_ old_size --allow_shrink=allow_shrink
+    index_mask := new_index_size - 1
+    if not index_ or index_mask > HASH_MASK_ or rebuild_backing:
+      // Rebuild the index using the backing array.
+      // By using resize_for_list_ we reuse the arraylets when growing large
+      // arrays.  This reduces GC churn and, more importantly, peak memory
+      // usage.
+      if index_:
+        index_ = index_.resize_for_list_ /*copy_size=*/0 new_index_size /*filler=*/0
+        index_.fill 0
+      else:
+        index_ = Array_ new_index_size 0
+      assert: index_.size == new_index_size
       // Rebuild the index by iterating over the backing and entering each key
       // into the index in the conventional way.  During this operation, the
       // index is big enough and the backing does not change.  The find_ operation
@@ -2180,9 +2284,12 @@ abstract class HashedInsertionOrderedCollection_:
             false_block
           assert: action == APPEND_
     else:
-      // We can do an simple rebuild.  There are enough hash bits in the index
-      // slots to tell us where the slot goes in the new index, so we don't need
-      // to call hash_code or equality for the entries in the backing.
+      // We can do an simple index rebuild from the old index.  There are
+      // enough hash bits in the index slots to tell us where the slot goes in
+      // the new index, so we don't need to call hash_code or equality for the
+      // entries in the backing.
+      old_index := index_
+      index_ = Array_ new_index_size 0
       index_spaces_left_ -= size_
       simple_rebuild_hash_index_ old_index index_
 
@@ -2210,6 +2317,7 @@ The == operator should be compatible with the hash_code method so
   be rare to maintain good performance.
 Strings, byte arrays, and numbers fulfill these requirements and can be used as
   keys in sets.
+See also https://docs.toit.io/language/listsetmap.
 */
 class Set extends HashedInsertionOrderedCollection_ implements Collection:
   static STEP_ ::= 1
@@ -2492,6 +2600,7 @@ The == operator should be compatible with the hash_code method so
   be rare to maintain good performance.
 Strings, byte arrays, and numbers fulfill these requirements and can be used as
   keys in maps.
+See also https://docs.toit.io/language/listsetmap.
 */
 class Map extends HashedInsertionOrderedCollection_:
   static STEP_ ::= 2
@@ -2697,7 +2806,7 @@ class Map extends HashedInsertionOrderedCollection_:
     i := hash_do_ STEP_ false block
     if not i: return
     assert: backing_
-    limit := backing_ ? backing_.size : 0
+    limit := backing_.size
     while i < limit:
       key := backing_[i]
       if key is not Tombstone_:
@@ -2838,6 +2947,64 @@ class Map extends HashedInsertionOrderedCollection_:
     return result
 
   /**
+  Whether at least one key in the map satisfies the given $predicate.
+  The flag $keys must be true.
+  Returns false, if the map is empty.
+  */
+  any --keys/bool [predicate] -> bool:
+    if keys != true: throw "Bad Argument"
+    do --keys: if predicate.call it: return true
+    return false
+
+  /**
+  Whether at least one value in the map satisfies the given $predicate.
+  The flag $values must be true.
+  Returns false, if the map is empty.
+  */
+  any --values/bool [predicate] -> bool:
+    if values != true: throw "Bad Argument"
+    do --values: if predicate.call it: return true
+    return false
+
+  /**
+  Whether at least one key-value pair in the map satisfies the given $predicate.
+  The $predicate block is called with two arguments: a key, and its value.
+  Returns false, if the map is empty.
+  */
+  any [predicate] -> bool:
+    do: | key value | if predicate.call key value: return true
+    return false
+
+  /**
+  Whether all keys in the map satisfy the given $predicate.
+  The flag $keys must be true.
+  Returns true, if the map is empty.
+  */
+  every --keys/bool [predicate] -> bool:
+    if keys != true: throw "Bad Argument"
+    do --keys: if not predicate.call it: return false
+    return true
+
+  /**
+  Whether all values in the map satisfy the given $predicate.
+  The flag $values must be true.
+  Returns true, if the map is empty.
+  */
+  every --values/bool [predicate] -> bool:
+    if values != true: throw "Bad Argument"
+    do --values: if not predicate.call it: return false
+    return true
+
+  /**
+  Whether all key-value pairs in the map satisfy the given $predicate.
+  The $predicate block is called with two arguments: a key, and its value.
+  Returns true, if the map is empty.
+  */
+  every [predicate] -> bool:
+    do: | key value | if not predicate.call key value: return false
+    return true
+
+  /**
   Copies the map.
   The copy is shallow.
   */
@@ -2941,8 +3108,14 @@ class IdentityMap extends Map:
     return identical key key_or_probe
 
 /**
-A collection where you can add to the end, and remove items from
-  either end efficiently.
+A double-ended queue.
+
+A collection of items, where new items can be added at the end. They can
+  be removed at the beginning and the end. These operations are efficient
+  and use an amortized time of O(1).
+
+A deque is a generalization of a stack and a queue, and can be used for both
+  purposes.
 */
 class Deque implements Collection:
   // Traditionally we would have a head index, a tail index and an array

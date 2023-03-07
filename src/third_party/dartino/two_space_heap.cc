@@ -160,6 +160,17 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
     Locker locker(ObjectMemory::spare_chunk_mutex());
     Chunk* spare_chunk = ObjectMemory::spare_chunk(locker);
 
+    // Try to move new-spaces down in memory.
+    Chunk* new_spare_chunk = ObjectMemory::allocate_chunk(null, TOIT_PAGE_SIZE);
+    if (new_spare_chunk) {
+      if (new_spare_chunk < spare_chunk) {
+        ObjectMemory::free_chunk(spare_chunk);
+        spare_chunk = new_spare_chunk;
+      } else {
+        ObjectMemory::free_chunk(new_spare_chunk);
+      }
+    }
+
     ScavengeVisitor visitor(program_, this, spare_chunk);
     SemiSpace* to = visitor.to_space();
     to->start_scavenge();
@@ -423,7 +434,7 @@ class HeapObjectPointerVisitor : public HeapObjectVisitor {
 
 class EverythingIsAlive : public LivenessOracle {
  public:
-  bool is_alive(HeapObject* object) { return true; }
+  bool is_alive(HeapObject* object) override { return true; }
 };
 
 void TwoSpaceHeap::compact_heap() {
@@ -443,7 +454,13 @@ void TwoSpaceHeap::compact_heap() {
   old_space()->set_used_after_last_gc(used_after);
 
   HeapObjectPointerVisitor new_space_visitor(program_, &fix);
-  semi_space->iterate_objects(&new_space_visitor);
+  // When iterating the semi-space, use the old_space to determine liveness.
+  // This works because it checks the mark bits, which are all valid at this
+  // point, even in the semi-space.  This means we don't fix pointers in dead
+  // objects - although it's probably harmless to fix such pointers this seems
+  // cleaner and might avoid a crash if an allocation failure in a primtive
+  // left partially initialized objects in the semi-space.
+  semi_space->iterate_objects(&new_space_visitor, old_space());
 
   process_heap_->iterate_roots(&fix);
   // At this point dead objects have been cleared out of the finalizer lists.

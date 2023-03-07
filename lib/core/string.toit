@@ -48,6 +48,15 @@ is_unicode_whitespace_ c/int -> bool:
       c == 0x3000 or
       c == 0xFEFF
 
+/**
+A Unicode text object.
+Strings are sequences of Unicode code points, stored in UTF-8 format.
+This is a fully fledged class, not a 'primitive type'.
+A string can only contain valid UTF-8 byte sequences.  To store arbitrary
+  byte sequences or other encodings like ISO 8859, use $ByteArray.
+Strings are immutable objects.
+See more on strings at https://docs.toit.io/language/strings.
+*/
 abstract class string implements Comparable:
   static MIN_SLICE_SIZE_ ::= 16
 
@@ -158,13 +167,20 @@ abstract class string implements Comparable:
     syntax: `str[from..to]`. Since both arguments are optional (as they have
     default values), it is valid to omit `from` or `to`.
 
+  Positions that would create an invalid UTF-8 sequence are rejected with
+    an exception.
+
   # Examples
   ```
-  str := "hello world"
+  str := "Hello, world!"
   hello := str[..5]
-  world := str[6..]
-  print hello  // => "hello"
-  print world  // => "world"
+  world := str[7..]
+  comma := str[5..6]
+  print hello  // => "Hello"
+  print comma  // => ","
+  print world  // => "world!"
+  amelie := "Amélie"
+  amelie[2..3]  // Throws an exception.
   ```
   */
   // TODO(florian): make this an overloaded function. Currently we can't because
@@ -229,6 +245,69 @@ abstract class string implements Comparable:
       if rune: block.call rune
 
   /**
+  Calls the given $block for every unicode character in the string.
+  The argument to the block is an integer in the Unicode range of 0-0x10ffff,
+    inclusive.
+  The return value is assembled from the return values of the block.
+  If a string is returned from the block it is inserted at that point in the
+    return value.
+  If a byte array is returned from the block it is converted to a string and
+    treated like a string.  The byte array must contain whole, valid UTF-8
+    sequences.
+  If an integer is returned from the block it is treated as a Unicode code
+    point, and the corresponding code point is inserted.
+  If the block returns null, this is treated like the zero length string.
+  If the block returns a list, then every element in the list
+    is handled like the above actions, but this is only done for one level -
+    lists of lists are not flattened in this way.
+  To get a list or byte array as the return value instead of a string, use
+    `str.to_byte_array.map` instead.
+  # Examples.
+  ```
+  heavy_metalize str/string -> string:
+    return str.flat_map: | c |
+      {'o': 'ö', 'a': 'ä', 'u': 'ü', 'ä': "\u{20db}a"}.get c --if_absent=: c
+  ```
+  ```
+  lower_case str/string -> string:
+    return str.flat_map: | c | ('A' <= c <= 'Z') ? c - 'A' + 'a' : c
+  ```
+  */
+  flat_map [block] -> string:
+    prefix := ""
+    byte_array := ByteArray (min 4 size)
+    position := 0
+
+    replace_block := : | replacement |
+      if replacement is string or replacement is ByteArray:
+        if position + replacement.size > byte_array.size:
+          prefix += (byte_array.to_string 0 position) + replacement.to_string
+          position = 0
+          byte_array = ByteArray (byte_array.size * 1.5).to_int
+        else:
+          byte_array.replace position replacement
+          position += replacement.size
+      else if replacement is int:
+        if position + (utf_8_bytes replacement) > byte_array.size:
+          prefix += byte_array.to_string 0 position
+          byte_array = ByteArray (byte_array.size * 1.5).to_int
+          position = 0
+        position += write_utf_8_to_byte_array byte_array position replacement
+      else if replacement != null:
+        throw "Invalid replacement"
+
+    for i := 0; i < size; i++:
+      rune := this[i]
+      if rune:
+        replacement := block.call rune
+        if replacement is List:
+          replacement.do: replace_block.call it
+        else:
+          replace_block.call replacement
+    result := prefix + (byte_array.to_string 0 position)
+    return result == this ? this : result
+
+  /**
   Copies the string between $from (inclusive) and $size (exclusive).
 
   The given substring must be legal. That is, $from must not point into
@@ -285,17 +364,19 @@ abstract class string implements Comparable:
 
   The normal way of using this functionality is through the
     string interpolation syntax - see
-    https://docs.toit.io/language/strings/#string-interpolation
+    https://docs.toit.io/language/strings/#string-interpolation.
 
   The $format description is very similar to `printf`.
 
   Extensions relative to printf:
   - `^` for centering.
+  - 'b' for binary.
 
   Missing relative to printf: No support for `%g` or `%p`.
 
   Like in printf the hexadecimal and octal format specifiers,
-    %x and %o will treat all values as unsigned.  See also
+    %x and %o will treat all values as unsigned.  This also
+    applies to the binary format specifier, %b.  See also
     $int.stringify.
 
   Format Description:
@@ -304,7 +385,7 @@ abstract class string implements Comparable:
   alignment = flags<digits>
   flags = '-' | '^' | '>'   (> is default, can't be used in the syntax)
   precision = .<digits>
-  type 'd' | 'f' | 's' | 'o' | 'x' | 'c'
+  type 'd' | 'f' | 's' | 'o' | 'x' | 'c' | 'b'
   ```
   */
   static format format/string object -> string:
@@ -344,6 +425,7 @@ abstract class string implements Comparable:
       d := object.to_float
       meat = precision ? (d.stringify precision) : d.stringify
     else if type == 'd': meat = object.to_int.stringify
+    else if type == 'b': meat = printf_style_int_stringify_ object.to_int 2
     else if type == 'o': meat = printf_style_int_stringify_ object.to_int 8
     else if type == 'x': meat = printf_style_int_stringify_ object.to_int 16
     else if type == 'X':
@@ -788,7 +870,7 @@ abstract class string implements Comparable:
     // If the last non-whitespace character is a multi-byte UTF-8 character
     //   we have to include them. Move forward again to find all of them.
     while end < size and this[end] == null: end++
-    return copy start end
+    return this[start..end]
 
 
   /**
@@ -800,7 +882,7 @@ abstract class string implements Comparable:
     size.repeat:
       c := this[it]
       if c != null and not is_unicode_whitespace_ c:
-        return it == 0 ? this : copy it
+        return this[it..]
     return ""
 
   /**
@@ -816,7 +898,7 @@ abstract class string implements Comparable:
         //   we have to include them. Move forward again to find all of them.
         end := size - it
         while end < size and this[end] == null: end++
-        return end == size ? this : copy 0 end
+        return this[..end]
     return ""
 
   /**
@@ -856,7 +938,7 @@ abstract class string implements Comparable:
   trim --left/bool prefix/string [--if_absent] -> string:
     if left != true: throw "Bad Argument"
     if not starts_with prefix: return if_absent.call this
-    return copy prefix.size
+    return this[prefix.size..]
 
   /**
   Removes a trailing $suffix (if present).
@@ -894,7 +976,7 @@ abstract class string implements Comparable:
   trim --right/bool suffix/string [--if_absent] -> string:
     if right != true: throw "Bad Argument"
     if not ends_with suffix: return if_absent.call this
-    return copy 0 (size - suffix.size)
+    return this[..size - suffix.size]
 
   static TO_UPPER_TABLE_ ::= #[
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -967,8 +1049,12 @@ abstract class string implements Comparable:
   If $at_first is false (the default) splits at *every* occurrence of $separator.
   If $at_first is true, splits only at the first occurrence of $separator.
 
-  Calls $process_part for each part. It this instance starts or ends with a $separator,
-    then $process_part is invoked with the empty string first and last, respectively.
+  If $drop_empty is true, then empty strings are ignored and silently dropped.
+    This happens before a call to $process_part.
+
+  Calls $process_part for each part. It $drop_empty is false and this instance
+    starts or ends with a $separator, then $process_part is invoked with the
+    empty string first and last, respectively.
 
   Splits are never in the middle of a UTF-8 multi-byte sequence. This is
     normally a consequence of the seperator (as well as this instance) being
@@ -1004,10 +1090,18 @@ abstract class string implements Comparable:
   "foob".split --at_first "foo": print it     // prints "" and "b"
   "".split     --at_first "":    print it     // This is an error.
   "a".split    --at_first "":    print it     // prints "a" and ""
+
+  "foo".split "foo" --drop_empty: print it                 // Doesn't print.
+  "afoo".split "foo" --drop_empty: print it                 // prints "a"
   ```
   */
-  split --at_first/bool=false separator/string [process_part] -> none:
-    if separator.size == 0:
+  split --at_first/bool=false separator/string --drop_empty/bool=false [process_part] -> none:
+    if drop_empty:
+      split --at_first=at_first separator:
+        if it != "": process_part.call it
+      return
+
+    if separator == "":
       if at_first:
         if size == 0: throw "INVALID_ARGUMENT"
         len := utf_8_bytes this[0]
@@ -1021,12 +1115,12 @@ abstract class string implements Comparable:
     while pos <= size:
       new_pos := subject.index_of separator pos --if_absent=:
         // No match.
-        process_part.call (subject.copy pos size)
+        process_part.call subject[pos..size]
         return
-      process_part.call (subject.copy pos new_pos)
+      process_part.call subject[pos..new_pos]
       pos = new_pos + separator.size
       if at_first:
-        if pos <= size: process_part.call (subject.copy pos)
+        process_part.call subject[pos..]
         return
 
   /**
@@ -1036,6 +1130,8 @@ abstract class string implements Comparable:
 
   If $at_first is false (the default) splits at *every* occurrence of $separator.
   If $at_first is true, splits only at the first occurrence of $separator.
+
+  If $drop_empty is true, then empty strings are not included in the result.
 
   Splits are never in the middle of a UTF-8 multi-byte sequence. This is
     normally a consequence of the seperator (as well as this instance) being
@@ -1066,9 +1162,9 @@ abstract class string implements Comparable:
   "".split     --at_first ""      // => [""]
   ```
   */
-  split --at_first/bool=false separator/string -> List/*<string>*/ :
+  split --at_first/bool=false separator/string --drop_empty/bool=false -> List/*<string>*/ :
     res := []
-    split --at_first=at_first separator:
+    split --at_first=at_first --drop_empty=drop_empty separator:
       res.add it
     return res
 
@@ -1290,6 +1386,6 @@ class StringSlice_ extends string:
   compute_hash_ -> int:
     #primitive.core.blob_hash_code
 
-// Unsigned base 8 and base 16 stringification.
+// Unsigned base 2, 8, and 16 stringification.
 printf_style_int_stringify_ value/int base/int -> string:
   #primitive.core.printf_style_int64_to_string

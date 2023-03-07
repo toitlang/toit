@@ -8,10 +8,14 @@ Implementation of the XMODEM-1K file transfer protocol.
 
 import writer
 import uart
-import crypto.crc16 as crypto
+import crypto.checksum
+import crypto.crc
+import binary show BIG_ENDIAN
 
 /**
 Writer for writing data in the XMODEM-1K format on the UART port.
+
+Deprecated.
 */
 class Writer:
   static MAX_RETRY_/int ::= 3
@@ -55,6 +59,8 @@ class Writer:
 Reusable buffer object for packing data in the XMODEM-1K format, by adding a header.
 
 Note that only the last packet should be less than DATA_SIZE.
+
+Deprecated.
 */
 class Buffer:
   static DATA_SIZE/int ::= 1024
@@ -71,13 +77,12 @@ class Buffer:
     buffer_[1] = packet_no_
     buffer_[2] = ~packet_no_
     buffer_.replace DATA_OFFSET_ data
-    buffer_.fill --from=(DATA_OFFSET_ + data.size) --to=(DATA_OFFSET_ + DATA_SIZE) CTRL_Z_
+    END ::= DATA_OFFSET_ + DATA_SIZE
+    buffer_.fill --from=(DATA_OFFSET_ + data.size) --to=END CTRL_Z_
 
-    crc := crypto.crc16 buffer_ DATA_OFFSET_ DATA_OFFSET_ + DATA_SIZE
-
-    // Note that bytes are swapped, little -> big endian.
-    buffer_[DATA_OFFSET_ + DATA_SIZE] = crc[1]
-    buffer_[DATA_OFFSET_ + DATA_SIZE + 1] = crc[0]
+    buffer_.replace
+        END
+        checksum.checksum crc.Crc16Xmodem buffer_ DATA_OFFSET_ END
 
     packet_no_++
 

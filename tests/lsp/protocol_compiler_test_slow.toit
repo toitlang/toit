@@ -14,6 +14,11 @@ test client/LspClient:
   protocol1 := "$(directory.cwd)/protocol1.toit"
   protocol2 := "$(directory.cwd)/protocol2.toit"
   protocol3 := "$(directory.cwd)/protocol3.toit"
+  // Canonicalize paths to avoid problems with Windows paths.
+  protocol1 = client.to_path (client.to_uri protocol1)
+  protocol2 = client.to_path (client.to_uri protocol2)
+  protocol3 = client.to_path (client.to_uri protocol3)
+
   files_to_open := [
     [protocol1, 0],
     [protocol2, 1],
@@ -240,3 +245,20 @@ test client/LspClient:
   expect (response.contains "code")
   UNKNOWN_ERROR_CODE ::= -32601
   expect_equals UNKNOWN_ERROR_CODE response["code"]
+
+  // Check that diagnostics have newlines.
+  print "Checking diagnostics have newlines"
+  newline_path := "$(directory.cwd)/newline.toit"
+
+  // The diagnostic here will have multiple lines, as it
+  // explains how the 'foo' method could be called.
+  client.send_did_open --path=newline_path --text="""
+    foo x y:
+    main:
+      foo 1
+    """
+  diagnostics = client.diagnostics_for --path=newline_path
+  expect_equals 1 diagnostics.size
+  diagnostic = diagnostics.first
+  expect (diagnostic["message"].contains "\n")
+  expect_not (diagnostic["message"].ends_with "\n")

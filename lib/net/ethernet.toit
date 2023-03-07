@@ -13,13 +13,13 @@ import net.udp
 import net.tcp
 import spi
 
-import .modules.ethernet as ethernet
+import .modules.ethernet as ethernet_module
 import .modules.ethernet show
     MAC_CHIP_ESP32 MAC_CHIP_W5500
     PHY_CHIP_NONE PHY_CHIP_IP101 PHY_CHIP_LAN8720
-import .modules.tcp
-import .modules.udp
-import .modules.dns
+import .modules.tcp as tcp_module
+import .modules.udp as udp_module
+import .modules.dns as dns_module
 import ..esp32
 
 export MAC_CHIP_ESP32 MAC_CHIP_W5500
@@ -28,7 +28,7 @@ export PHY_CHIP_NONE PHY_CHIP_IP101 PHY_CHIP_LAN8720
 ETHERNET_CONNECT_TIMEOUT_  ::= Duration --s=10
 ETHERNET_DHCP_TIMEOUT_     ::= Duration --s=16
 
-ethernet_/ethernet.Ethernet? := null
+ethernet_/ethernet_module.Ethernet? := null
 ethernet_connecting_/monitor.Latch? := null
 
 /**
@@ -97,7 +97,7 @@ connect -> net.Interface
       // connection. We always set it to a value when leaving this path
       // and we always clear out the latch when we're done synchronizing.
       ethernet_connecting_ = monitor.Latch
-      ethernet := ethernet.Ethernet
+      ethernet := ethernet_module.Ethernet
           --phy_chip=phy_chip
           --phy_addr=phy_addr
           --phy_reset=phy_reset
@@ -131,7 +131,7 @@ class EthernetInterface_ implements net.Interface:
 
   resolve host/string -> List:
     with_ethernet_:
-      return [dns_lookup host]
+      return [dns_module.dns_lookup host]
     unreachable
 
   udp_open -> udp.Socket:
@@ -139,7 +139,7 @@ class EthernetInterface_ implements net.Interface:
 
   udp_open --port/int? -> udp.Socket:
     with_ethernet_:
-      return Socket "0.0.0.0" (port ? port : 0)
+      return udp_module.Socket "0.0.0.0" (port ? port : 0)
     unreachable
 
   tcp_connect host/string port/int -> tcp.Socket:
@@ -149,14 +149,14 @@ class EthernetInterface_ implements net.Interface:
 
   tcp_connect address/net.SocketAddress -> tcp.Socket:
     with_ethernet_:
-      result := TcpSocket
+      result := tcp_module.TcpSocket
       result.connect address.ip.stringify address.port
       return result
     unreachable
 
   tcp_listen port/int -> tcp.ServerSocket:
     with_ethernet_:
-      result := TcpServerSocket
+      result := tcp_module.TcpServerSocket
       result.listen "0.0.0.0" port
       return result
     unreachable

@@ -57,6 +57,10 @@ file(GLOB toit_resources_SRC
   "resources/*.cc"
   )
 
+if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
+  list(APPEND toit_resources_SRC "resources/ble_darwin.mm")
+endif()
+
 file(GLOB toit_event_sources_SRC
   "event_sources/*.h"
   "event_sources/*.cc"
@@ -78,7 +82,13 @@ file(GLOB gc_sources_SRC
   "third_party/dartino/two_space_heap.cc"
   )
 
-set(toit_vm_SRC ${toit_vm_runtime_SRC} ${toit_resources_SRC} ${toit_event_sources_SRC} ${lwip_on_linux_sources_SRC} ${gc_sources_SRC})
+file(GLOB porting_sources_SRC
+  "ports/*.h"
+  "ports/*.cc"
+  )
+
+set(toit_vm_SRC ${toit_vm_runtime_SRC} ${toit_resources_SRC} ${toit_event_sources_SRC}
+                ${lwip_on_linux_sources_SRC} ${gc_sources_SRC})
 
 add_library(
   toit_core
@@ -91,7 +101,16 @@ add_library(
   ${toit_core_SRC}
   )
 
-set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_OPTIONS "-O3")
+add_library(
+  toit_porting
+  ${porting_sources_SRC}
+  )
+
+if (DEFINED ENV{TOIT_CHECK_PROPAGATED_TYPES})
+  set(TOIT_INTERPRETER_FLAGS "${TOIT_INTERPRETER_FLAGS};-DTOIT_CHECK_PROPAGATED_TYPES")
+endif()
+
+set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_OPTIONS "-O3;$ENV{LOCAL_INTERPRETER_CXXFLAGS}")
 set_source_files_properties(interpreter_run.cc PROPERTIES COMPILE_OPTIONS "-O3;${TOIT_INTERPRETER_FLAGS};$ENV{LOCAL_INTERPRETER_CXXFLAGS}")
 set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\\"${TOIT_MODEL}\\\"\" -DVM_GIT_INFO=\"\\\"${VM_GIT_INFO}\\\"\" -DVM_GIT_VERSION=\"\\\"${TOIT_GIT_VERSION}\\\"\"")
 
@@ -155,11 +174,15 @@ else()
 endif()
 
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "MSYS")
-  set(TOIT_WINDOWS_LIBS ws2_32 rpcrt4)
+  set(TOIT_WINDOWS_LIBS ws2_32 rpcrt4 shlwapi)
 elseif ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows")
-  set(TOIT_WINDOWS_LIBS rpcrt4)
+  set(TOIT_WINDOWS_LIBS rpcrt4 shlwapi)
 else()
   set(TOIT_WINDOWS_LIBS )
+endif()
+
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+  set(TOIT_BLUETOOTH_LIBS "-framework Foundation" "-framework CoreBluetooth" ObjC)
 endif()
 
 # Because of the `CACHE INTERNAL ""` at the end of the `set` we can
@@ -177,6 +200,8 @@ set(TOIT_LINK_LIBS
   ${CMAKE_DL_LIBS}
   ${TOIT_LINK_LIBS_LIBGCC}
   ${TOIT_LINK_SEGFAULT}
+  toit_porting
+  ${TOIT_BLUETOOTH_LIBS}
   CACHE INTERNAL ""
   )
 
@@ -236,7 +261,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     ${BOOT_SNAPSHOT_SOURCE}
     ${BOOT_SNAPSHOT}
     ${CMAKE_CURRENT_BINARY_DIR}/boot.dep
-    "ASAN_OPTIONS=detect_leaks=false"
+    ""
   )
 
   if (DEFINED USE_LWIP)

@@ -30,16 +30,16 @@ namespace toit {
 namespace compiler {
 
 const char* Filesystem::cwd() {
-  if (_cwd == null) {
+  if (cwd_ == null) {
     char buffer[PATH_MAX];
     auto result = getcwd(buffer, PATH_MAX);
-    _cwd = strdup(result);
+    cwd_ = strdup(result);
   }
-  return _cwd;
+  return cwd_;
 }
 
 const char* Filesystem::library_root() {
-  if (_library_root == null) {
+  if (library_root_ == null) {
     auto sdk = sdk_path();
     const char* LIB_SUFFIX = "lib";
     PathBuilder builder(this);
@@ -47,7 +47,7 @@ const char* Filesystem::library_root() {
     int sdk_length = builder.length();
     builder.join(LIB_SUFFIX);
     if (is_directory(builder.c_str())) {
-      _library_root = builder.strdup();
+      library_root_ = builder.strdup();
     } else {
       builder.reset_to(sdk_length);
       builder.join("..", "lib");
@@ -55,14 +55,14 @@ const char* Filesystem::library_root() {
       // Always assign the string, without testing.
       // If the path is wrong there will be an error very soon, because the compiler can't
       // find the core library.
-      _library_root = builder.strdup();
+      library_root_ = builder.strdup();
     }
   }
-  return _library_root;
+  return library_root_;
 }
 
 const char* Filesystem::vessel_root() {
-  if (_vessel_root == null) {
+  if (vessel_root_ == null) {
     auto sdk = sdk_path();
     const char* VESSEL_SUFFIX = "vessels";
     PathBuilder builder(this);
@@ -70,7 +70,7 @@ const char* Filesystem::vessel_root() {
     int sdk_length = builder.length();
     builder.join(VESSEL_SUFFIX);
     if (is_directory(builder.c_str())) {
-      _vessel_root = builder.strdup();
+      vessel_root_ = builder.strdup();
     } else {
       builder.reset_to(sdk_length);
       builder.join("..", "vessels");
@@ -78,10 +78,10 @@ const char* Filesystem::vessel_root() {
       // Always assign the string, without testing.
       // If the path is wrong there will be an error very soon, because the compiler can't
       // find the vessel.
-      _vessel_root = builder.strdup();
+      vessel_root_ = builder.strdup();
     }
   }
-  return _vessel_root;
+  return vessel_root_;
 }
 
 void Filesystem::canonicalize(char* path) {
@@ -102,8 +102,22 @@ void Filesystem::canonicalize(char* path) {
   int i = 0;
   while (i < path_len) {
     if (at_slash && path[i] == path_separator()) {
-      // Drop double slashes.
+#ifndef TOIT_WINDOWS
       i++;
+#else
+      // Drop double slashes, unless we are on Windows and this is the first
+      // beginning of the path.
+      // A windows path that starts with '//' or '\\' (but not '/\' or '\/') is
+      // the root of a network share. We must keep them.
+      if (i == 1 && path[0] == path[1]) {
+        // Remove the first slash. It doesn't count for .. operations.
+        slashes.pop_back();
+        at_slash = i;
+        path[canonical_pos++] = path[i++];
+      } else {
+        i++;
+      }
+#endif
     } else if (at_slash &&
                path[i] == '.' &&
                (path[i + 1] == path_separator() || path[i + 1] == '\0')) {
@@ -141,13 +155,13 @@ void Filesystem::canonicalize(char* path) {
       path[canonical_pos++] = path[i++];
     }
   }
-  // Drop trailing path seperator.
-  // There can only be one.
-  if (path[canonical_pos - 1] == path_separator()) {
-    canonical_pos--;
-  }
+  // Drop trailing path separator unless it's the root.
+  path[canonical_pos] = '\0';
   if (canonical_pos == 0) {
-    path[canonical_pos++] = is_absolute ? path_separator() : '.';
+    path[canonical_pos++] = '.';
+  } else if (!is_root(path) && path[canonical_pos - 1] == path_separator()) {
+    // There can only be one trailing path separator.
+    canonical_pos--;
   }
   path[canonical_pos] = '\0';
 }
@@ -197,32 +211,32 @@ void Filesystem::dirname(const char* file_path, char* dir_path, int dir_path_siz
 }
 
 bool Filesystem::is_regular_file(const char* path) {
-  auto probe = _intercepted.find(std::string(path));
-  if (probe == _intercepted.end()) return do_is_regular_file(path);
+  auto probe = intercepted_.find(std::string(path));
+  if (probe == intercepted_.end()) return do_is_regular_file(path);
   return true;
 }
 
 bool Filesystem::is_directory(const char* path) {
-  auto probe = _intercepted.find(std::string(path));
-  if (probe == _intercepted.end()) return do_is_directory(path);
+  auto probe = intercepted_.find(std::string(path));
+  if (probe == intercepted_.end()) return do_is_directory(path);
   return false;
 }
 
 bool Filesystem::exists(const char* path) {
-  auto probe = _intercepted.find(std::string(path));
-  if (probe == _intercepted.end()) return do_exists(path);
+  auto probe = intercepted_.find(std::string(path));
+  if (probe == intercepted_.end()) return do_exists(path);
   return true;
 }
 
 const uint8* Filesystem::read_content(const char* path, int* size) {
-  auto probe = _intercepted.find(std::string(path));
-  if (probe == _intercepted.end()) return do_read_content(path, size);
+  auto probe = intercepted_.find(std::string(path));
+  if (probe == intercepted_.end()) return do_read_content(path, size);
   *size = probe->second.size;
   return probe->second.content;
 }
 
 void Filesystem::register_intercepted(const std::string& path, const uint8* content, int size) {
-  _intercepted[path] = {
+  intercepted_[path] = {
     .content = content,
     .size = size,
   };

@@ -13,31 +13,42 @@ import monitor
 import system.api.containers show ContainerService ContainerServiceClient
 import system.services show ServiceResourceProxy
 
-_client_ /ContainerServiceClient ::= ContainerServiceClient
+_client_ /ContainerServiceClient ::=
+    (ContainerServiceClient).open as ContainerServiceClient
 
 images -> List:
   return _client_.list_images
 
 current -> uuid.Uuid:
-  return uuid.Uuid current_image_id_
+  // TODO(kasper): It is unfortunate, but we have to copy
+  // the id here because we cannot transfer non-disposable
+  // external byte arrays across the RPC boundary.
+  return uuid.Uuid current_image_id_.copy
 
 start id/uuid.Uuid arguments/any=[] -> Container:
-  handle/int? := _client_.start_image id arguments
-  if handle: return Container id handle
-  throw "No such container: $id"
+  handle/int? := _client_.load_image id
+  if not handle: throw "No such container: $id"
+  container := Container id handle
+  try:
+    _client_.start_container handle arguments
+    return container
+  finally: | is_exception exception |
+    if is_exception: container.close
 
 uninstall id/uuid.Uuid -> none:
   _client_.uninstall_image id
 
 class ContainerImage:
   id/uuid.Uuid
+  name/string?
   flags/int
   data/int
-  constructor .id .flags .data:
+  constructor --.id --.name --.flags --.data:
 
 class Container extends ServiceResourceProxy:
   id/uuid.Uuid
   result_/monitor.Latch ::= monitor.Latch
+  on_stopped_/Lambda? := null
 
   constructor .id handle/int:
     super _client_ handle
@@ -57,12 +68,18 @@ class Container extends ServiceResourceProxy:
     if not code: throw "CLOSED"
     return code
 
+  on_stopped lambda/Lambda? -> none:
+    on_stopped_ = lambda
+    if not lambda or not result_.has_value: return
+    code := result_.get
+    if not code: throw "CLOSED"
+    lambda.call code
+
   on_notified_ code/int -> none:
     result_.set code
-    // We close the resource, because we no longer care about or expect
-    // notifications. Closing involves RPCs and thus waiting for replies
-    // which isn't allowed in the message processing context that runs
-    // the $on_notified_ method. For that reason, we create a new task.
+    if on_stopped_: on_stopped_.call code
+    // We no longer expect or care about notifications, so
+    // close the resource.
     close
 
 class ContainerImageWriter extends ServiceResourceProxy:

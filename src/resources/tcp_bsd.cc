@@ -56,10 +56,10 @@ void close_keep_errno(int fd) {
   errno = err;
 }
 
-class TCPResourceGroup : public ResourceGroup {
+class TcpResourceGroup : public ResourceGroup {
  public:
-  TAG(TCPResourceGroup);
-  TCPResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
+  TAG(TcpResourceGroup);
+  TcpResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
 
   int create_socket() {
     // TODO: Get domain from address.
@@ -143,7 +143,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  TCPResourceGroup* resource_group = _new TCPResourceGroup(process, KQueueEventSource::instance());
+  TcpResourceGroup* resource_group = _new TcpResourceGroup(process, KQueueEventSource::instance());
   if (!resource_group) MALLOC_FAILED;
 
   proxy->set_external_address(resource_group);
@@ -151,7 +151,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(close) {
-  ARGS(TCPResourceGroup, resource_group, IntResource, fd_resource);
+  ARGS(TcpResourceGroup, resource_group, IntResource, fd_resource);
   int fd = fd_resource->id();
 
   resource_group->close_socket(fd);
@@ -173,7 +173,7 @@ PRIMITIVE(close_write) {
 }
 
 PRIMITIVE(connect) {
-  ARGS(TCPResourceGroup, resource_group, Blob, address, int, port, int, window_size);
+  ARGS(TcpResourceGroup, resource_group, Blob, address, int, port, int, window_size);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;
@@ -182,7 +182,7 @@ PRIMITIVE(connect) {
   if (id == -1) return Primitive::os_error(errno, process);
 
   if (window_size != 0 && setsockopt(id, SOL_SOCKET, SO_RCVBUF, &window_size, sizeof(window_size)) == -1) {
-    close(id);
+    close_keep_errno(id);
     return Primitive::os_error(errno, process);
   }
 
@@ -196,14 +196,14 @@ PRIMITIVE(connect) {
   addr.sin_port = htons(port);
   int result = connect(id, reinterpret_cast<struct sockaddr*>(&addr), size);
   if (result != 0 && errno != EINPROGRESS) {
-    close(id);
+    close_keep_errno(id);
     ASSERT(errno > 0);
     return Primitive::os_error(errno, process);
   }
 
   IntResource* resource = resource_group->register_id(id);
   if (!resource) {
-    close(id);
+    close_keep_errno(id);
     MALLOC_FAILED;
   }
 
@@ -212,7 +212,7 @@ PRIMITIVE(connect) {
 }
 
 PRIMITIVE(accept) {
-  ARGS(TCPResourceGroup, resource_group, IntResource, listen_fd_resource);
+  ARGS(TcpResourceGroup, resource_group, IntResource, listen_fd_resource);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;
@@ -244,7 +244,7 @@ PRIMITIVE(accept) {
 }
 
 PRIMITIVE(listen) {
-  ARGS(TCPResourceGroup, resource_group, cstring, hostname, int, port, int, backlog);
+  ARGS(TcpResourceGroup, resource_group, cstring, hostname, int, port, int, backlog);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;
@@ -254,13 +254,13 @@ PRIMITIVE(listen) {
 
   int result = bind_socket(id, hostname, port);
   if (result != 0) {
-    close(id);
+    close_keep_errno(id);
     if (result == -1) return Primitive::os_error(errno, process);
     WRONG_TYPE;
   }
 
   if (listen(id, backlog) == -1) {
-    close(id);
+    close_keep_errno(id);
     return Primitive::os_error(errno, process);
   }
 
@@ -318,7 +318,7 @@ PRIMITIVE(read)  {
   return array;
 }
 
-PRIMITIVE(error) {
+PRIMITIVE(error_number) {
   ARGS(IntResource, fd_resource);
   int fd = fd_resource->id();
 
@@ -327,6 +327,11 @@ PRIMITIVE(error) {
   if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &errlen) != 0) {
     error = errno;
   }
+  return Smi::from(error);
+}
+
+PRIMITIVE(error) {
+  ARGS(int, error);
   return process->allocate_string_or_error(strerror(error));
 }
 
@@ -340,11 +345,12 @@ static Object* get_address(int id, Process* process, bool peer) {
   if (result != 0) return Primitive::os_error(errno, process);
   char buffer[16];
   uint32_t addr_word = ntohl(sin.sin_addr.s_addr);
-  sprintf(buffer, "%d.%d.%d.%d",
+  snprintf(buffer, sizeof(buffer), "%d.%d.%d.%d",
       (addr_word >> 24) & 0xff,
       (addr_word >> 16) & 0xff,
       (addr_word >> 8) & 0xff,
       (addr_word >> 0) & 0xff);
+  buffer[sizeof(buffer) - 1] = '\0';
   return process->allocate_string_or_error(buffer);
 }
 

@@ -23,7 +23,7 @@ set(CMAKE_CXX_COMPILER x86_64-w64-mingw32-g++)
 set(CMAKE_CXX_COMPILER_TARGET ${triple})
 
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -m64 -x assembler-with-cpp" CACHE STRING "asm flags")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m64" CACHE STRING "c flags")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m64 -Wno-error=sign-compare" CACHE STRING "c flags")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64" CACHE STRING "c++ flags")
 
 set(CMAKE_C_FLAGS_DEBUG "-Og -g" CACHE STRING "c Debug flags")

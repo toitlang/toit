@@ -31,8 +31,12 @@
 
 namespace toit {
 
-const int kI2CTransactionTimeout = 10;
+const int kI2cTransactionTimeout = 10;
 const i2c_port_t kInvalidPort = i2c_port_t(-1);
+
+#ifndef SOC_I2C_NUM
+#error "SOC_I2C_NUM not defined"
+#endif
 
 ResourcePool<i2c_port_t, kInvalidPort> i2c_ports(
    I2C_NUM_0
@@ -41,24 +45,24 @@ ResourcePool<i2c_port_t, kInvalidPort> i2c_ports(
 #endif
 );
 
-class I2CResourceGroup : public ResourceGroup {
+class I2cResourceGroup : public ResourceGroup {
  public:
-  TAG(I2CResourceGroup);
-  I2CResourceGroup(Process* process, i2c_port_t port)
+  TAG(I2cResourceGroup);
+  I2cResourceGroup(Process* process, i2c_port_t port)
     : ResourceGroup(process)
-    , _port(port) { }
+    , port_(port) {}
 
-  ~I2CResourceGroup() {
+  ~I2cResourceGroup() {
     SystemEventSource::instance()->run([&]() -> void {
-      FATAL_IF_NOT_ESP_OK(i2c_driver_delete(_port));
+      FATAL_IF_NOT_ESP_OK(i2c_driver_delete(port_));
     });
-    i2c_ports.put(_port);
+    i2c_ports.put(port_);
   }
 
-  i2c_port_t port() const { return _port; }
+  i2c_port_t port() const { return port_; }
 
  private:
-  i2c_port_t _port;
+  i2c_port_t port_;
 };
 
 MODULE_IMPLEMENTATION(i2c, MODULE_I2C);
@@ -89,9 +93,9 @@ PRIMITIVE(init) {
   SystemEventSource::instance()->run([&]() -> void {
     result = i2c_driver_install(port, I2C_MODE_MASTER, 0, 0, 0);
 #ifdef CONFIG_IDF_TARGET_ESP32S3
-    i2c_set_timeout(port, (int)(log2(I2C_APB_CLK_FREQ / 1000.0 * kI2CTransactionTimeout)));
+    i2c_set_timeout(port, (int)(log2(I2C_APB_CLK_FREQ / 1000.0 * kI2cTransactionTimeout)));
 #else
-    i2c_set_timeout(port, I2C_APB_CLK_FREQ / 1000 * kI2CTransactionTimeout);
+    i2c_set_timeout(port, I2C_APB_CLK_FREQ / 1000 * kI2cTransactionTimeout);
 #endif
   });
   if (result != ESP_OK) {
@@ -99,7 +103,7 @@ PRIMITIVE(init) {
     return Primitive::os_error(result, process);
   }
 
-  I2CResourceGroup* i2c = _new I2CResourceGroup(process, port);
+  I2cResourceGroup* i2c = _new I2cResourceGroup(process, port);
   if (!i2c) {
     SystemEventSource::instance()->run([&]() -> void {
       i2c_driver_delete(port);
@@ -114,13 +118,13 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(close) {
-  ARGS(I2CResourceGroup, i2c);
+  ARGS(I2cResourceGroup, i2c);
   i2c->tear_down();
   i2c_proxy->clear_external_address();
   return process->program()->null_object();
 }
 
-static Object* write_i2c(Process* process, I2CResourceGroup* i2c, int i2c_address, const uint8* address, int address_length, Blob buffer) {
+static Object* write_i2c(Process* process, I2cResourceGroup* i2c, int i2c_address, const uint8* address, int address_length, Blob buffer) {
 
   const uint8* data = buffer.address();
   int length = buffer.length();
@@ -176,7 +180,7 @@ static Object* write_i2c(Process* process, I2CResourceGroup* i2c, int i2c_addres
   return process->program()->null_object();
 }
 
-static Object* read_i2c(Process* process, I2CResourceGroup* i2c, int i2c_address, const uint8* address, int address_length, int length) {
+static Object* read_i2c(Process* process, I2cResourceGroup* i2c, int i2c_address, const uint8* address, int address_length, int length) {
   ByteArray* array = process->allocate_byte_array(length);
   if (array == null) ALLOCATION_FAILED;
   uint8* data = ByteArray::Bytes(array).address();
@@ -228,19 +232,19 @@ static Object* read_i2c(Process* process, I2CResourceGroup* i2c, int i2c_address
   esp_err_t err = i2c_master_cmd_begin(i2c->port(), cmd, 1000 / portTICK_RATE_MS);
   // TODO(florian): we could return the error code here: Smi::from(err).
   // We would need to type-dispatch on the Toit side to know whether it was an error or not.
-  if (err != ESP_OK) return null;
+  if (err != ESP_OK) return process->program()->null_object();
 
   return array;
 }
 
 PRIMITIVE(write) {
-  ARGS(I2CResourceGroup, i2c, int, i2c_address, Blob, buffer);
+  ARGS(I2cResourceGroup, i2c, int, i2c_address, Blob, buffer);
 
   return write_i2c(process, i2c, i2c_address, null, 0, buffer);
 }
 
 PRIMITIVE(write_reg) {
-  ARGS(I2CResourceGroup, i2c, int, i2c_address, int, reg, Blob, buffer);
+  ARGS(I2cResourceGroup, i2c, int, i2c_address, int, reg, Blob, buffer);
 
   if (!(0 <= reg && reg < 256)) INVALID_ARGUMENT;
 
@@ -249,20 +253,20 @@ PRIMITIVE(write_reg) {
 }
 
 PRIMITIVE(write_address) {
-  ARGS(I2CResourceGroup, i2c, int, i2c_address, Blob, address, Blob, buffer);
+  ARGS(I2cResourceGroup, i2c, int, i2c_address, Blob, address, Blob, buffer);
 
   return write_i2c(process, i2c, i2c_address, address.address(), address.length(), buffer);
 }
 
 PRIMITIVE(read) {
-  ARGS(I2CResourceGroup, i2c, int, i2c_address, int, length);
+  ARGS(I2cResourceGroup, i2c, int, i2c_address, int, length);
 
   return read_i2c(process, i2c, i2c_address, null, 0, length);
 }
 
 
 PRIMITIVE(read_reg) {
-  ARGS(I2CResourceGroup, i2c, int, i2c_address, int, reg, int, length)
+  ARGS(I2cResourceGroup, i2c, int, i2c_address, int, reg, int, length)
 
   if (!(0 <= reg && reg < 256)) INVALID_ARGUMENT;
 
@@ -271,7 +275,7 @@ PRIMITIVE(read_reg) {
 }
 
 PRIMITIVE(read_address) {
-  ARGS(I2CResourceGroup, i2c, int, i2c_address, Blob, address, int, length);
+  ARGS(I2cResourceGroup, i2c, int, i2c_address, Blob, address, int, length);
 
   return read_i2c(process, i2c, i2c_address, address.address(), address.length(), length);
 }

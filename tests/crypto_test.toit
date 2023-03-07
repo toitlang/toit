@@ -5,13 +5,16 @@
 import expect show *
 
 import crypto show *
-import crypto.sha256 show *
+import crypto.aes show *
+import crypto.chacha20 show *
+import crypto.sha show *
 import crypto.siphash show *
 import crypto.sha1 show *
 import crypto.crc16 show *
 import crypto.crc32 show *
 import crypto.hamming as hamming
 
+import binary show BIG_ENDIAN
 import encoding.hex as hex
 import encoding.base64 as base64
 
@@ -47,7 +50,9 @@ main:
   hex_test
   hamming_test
   hash_test
+  chacha_test
   sip_test
+  aead_simple_test
 
 hex_test -> none:
   expect_equals "" (hex.encode #[])
@@ -68,8 +73,8 @@ hex_test -> none:
   expect_equals #[0xf5, 0x52] (hex.decode "F552")
   expect_equals #[0x41, 0x34] (hex.decode "4134")
 
-  expect_invalid_argument: hex.decode "a"
-  expect_invalid_argument: hex.decode "s"
+  expect_equals #[10] (hex.decode "a")
+  expect_integer_parsing_error: hex.decode "s"
   expect_integer_parsing_error: hex.decode "sa"
   expect_integer_parsing_error: hex.decode "as"
   expect_invalid_argument: hex.decode "0348af8g1921"
@@ -77,11 +82,17 @@ hex_test -> none:
 
 hash_test -> none:
   EMPTY_HEX ::= "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+  EMPTY_SHA224 ::= "d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f"
   EMPTY_SHA2 ::= "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  EMPTY_SHA384 ::= "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b"
+  EMPTY_SHA512 ::= "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"
   EMPTY_CRC32 ::=  "00000000"
   EMPTY_CRC16 ::=  "0000"
   expect_equals EMPTY_HEX (hex.encode (sha1 ""))
+  expect_equals EMPTY_SHA224 (hex.encode (sha224 ""))
   expect_equals EMPTY_SHA2 (hex.encode (sha256 ""))
+  expect_equals EMPTY_SHA384 (hex.encode (sha384 ""))
+  expect_equals EMPTY_SHA512 (hex.encode (sha512 ""))
   expect_equals EMPTY_CRC32 (hex.encode (crc32 ""))
   expect_equals "2jmj7l5rSw0yVb/vlWAYkK/YBwk=" (base64.encode (sha1 ""))
 
@@ -91,10 +102,16 @@ hash_test -> none:
   hash2 := sha256 PARTY
   hash3 := crc32 PARTY
   hash4 := crc16 PARTY
+  hash5 := sha224 PARTY
+  hash6 := sha384 PARTY
+  hash7 := sha512 PARTY
   expect_equals "f160938592eeac116451ebc4da23dbc17e29283aef99de0197d705ad4d4c43f1" (hex.encode hash2)
   expect_equals "852430d0" (hex.encode hash3)
   expect_equals "a87e" (hex.encode hash4)
   expect_equals "AtKDelzDGqn+uPZqKj25gZRkVCs=" (base64.encode hash)
+  expect_equals "0824c514a92fcac7cbe5221d1d28d7e0cfb061d4dbb33f0a8f1fe9c2" (hex.encode hash5)
+  expect_equals "77d1a7ca704cd324b3519f2d89f455953e25801373bfc5a9eea38d16bc1aa57f1c90f0250c7bab60b07622c9bad5c1bf" (hex.encode hash6)
+  expect_equals "f8777873ec6d5108191afeccc87c696fea78dcdf156a420bf3efadb1669d0adf56a2139ca7da2b8511e1ac25a9ce230dc0a7fe7a721e2ebcb7f8182f41dcc162" (hex.encode hash7)
 
   expect_equals EMPTY_HEX (hex.encode (sha1 ""))
   expect_equal_arrays (sha1 (ByteArray 0)) (sha1 "")
@@ -178,13 +195,64 @@ hamming_test:
             null
             hamming.fix_16_11 correct ^ (1 << bit_flip_1) ^ (1 << bit_flip_2)
 
+aead_simple_test:
+  key := ByteArray 16: random 256
+  initialization_vector := ByteArray 12: random 256
+
+  encrypted := (AesGcm.encryptor key initialization_vector).encrypt DREAM
+
+  expect_equals DREAM.size + 16 encrypted.size
+  expect_not_equals DREAM[..DREAM.size].to_byte_array DREAM
+
+  round_trip := (AesGcm.decryptor key initialization_vector).decrypt encrypted
+
+  expect_equals DREAM.to_byte_array round_trip
+
+chacha_test:
+  // Test vectors from RFC 7539.
+  KEY ::= #[
+      0x1c, 0x92, 0x40, 0xa5, 0xeb, 0x55, 0xd3, 0x8a, 0xf3, 0x33, 0x88, 0x86, 0x04, 0xf6, 0xb5, 0xf0,
+      0x47, 0x39, 0x17, 0xc1, 0x40, 0x2b, 0x80, 0x09, 0x9d, 0xca, 0x5c, 0xbc, 0x20, 0x70, 0x75, 0xc0,
+  ]
+  IV ::= #[0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
+  AAD ::= #[0xf3, 0x33, 0x88, 0x86, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4e, 0x91]
+  EXPECTED_TAG ::= #[0xee, 0xad, 0x9d, 0x67, 0x89, 0x0c, 0xbb, 0x22, 0x39, 0x23, 0x36, 0xfe, 0xa1, 0x85, 0x1f, 0x38]
+  EXPECTED_CIPHERTEXT ::= #[
+      0x64, 0xa0, 0x86, 0x15, 0x75, 0x86, 0x1a, 0xf4, 0x60, 0xf0, 0x62, 0xc7, 0x9b, 0xe6, 0x43, 0xbd,
+      0x5e, 0x80, 0x5c, 0xfd, 0x34, 0x5c, 0xf3, 0x89, 0xf1, 0x08, 0x67, 0x0a, 0xc7, 0x6c, 0x8c, 0xb2,
+      0x4c, 0x6c, 0xfc, 0x18, 0x75, 0x5d, 0x43, 0xee, 0xa0, 0x9e, 0xe9, 0x4e, 0x38, 0x2d, 0x26, 0xb0,
+      0xbd, 0xb7, 0xb7, 0x3c, 0x32, 0x1b, 0x01, 0x00, 0xd4, 0xf0, 0x3b, 0x7f, 0x35, 0x58, 0x94, 0xcf,
+      0x33, 0x2f, 0x83, 0x0e, 0x71, 0x0b, 0x97, 0xce, 0x98, 0xc8, 0xa8, 0x4a, 0xbd, 0x0b, 0x94, 0x81,
+      0x14, 0xad, 0x17, 0x6e, 0x00, 0x8d, 0x33, 0xbd, 0x60, 0xf9, 0x82, 0xb1, 0xff, 0x37, 0xc8, 0x55,
+      0x97, 0x97, 0xa0, 0x6e, 0xf4, 0xf0, 0xef, 0x61, 0xc1, 0x86, 0x32, 0x4e, 0x2b, 0x35, 0x06, 0x38,
+      0x36, 0x06, 0x90, 0x7b, 0x6a, 0x7c, 0x02, 0xb0, 0xf9, 0xf6, 0x15, 0x7b, 0x53, 0xc8, 0x67, 0xe4,
+      0xb9, 0x16, 0x6c, 0x76, 0x7b, 0x80, 0x4d, 0x46, 0xa5, 0x9b, 0x52, 0x16, 0xcd, 0xe7, 0xa4, 0xe9,
+      0x90, 0x40, 0xc5, 0xa4, 0x04, 0x33, 0x22, 0x5e, 0xe2, 0x82, 0xa1, 0xb0, 0xa0, 0x6c, 0x52, 0x3e,
+      0xaf, 0x45, 0x34, 0xd7, 0xf8, 0x3f, 0xa1, 0x15, 0x5b, 0x00, 0x47, 0x71, 0x8c, 0xbc, 0x54, 0x6a,
+      0x0d, 0x07, 0x2b, 0x04, 0xb3, 0x56, 0x4e, 0xea, 0x1b, 0x42, 0x22, 0x73, 0xf5, 0x48, 0x27, 0x1a,
+      0x0b, 0xb2, 0x31, 0x60, 0x53, 0xfa, 0x76, 0x99, 0x19, 0x55, 0xeb, 0xd6, 0x31, 0x59, 0x43, 0x4e,
+      0xce, 0xbb, 0x4e, 0x46, 0x6d, 0xae, 0x5a, 0x10, 0x73, 0xa6, 0x72, 0x76, 0x27, 0x09, 0x7a, 0x10,
+      0x49, 0xe6, 0x17, 0xd9, 0x1d, 0x36, 0x10, 0x94, 0xfa, 0x68, 0xf0, 0xff, 0x77, 0x98, 0x71, 0x30,
+      0x30, 0x5b, 0xea, 0xba, 0x2e, 0xda, 0x04, 0xdf, 0x99, 0x7b, 0x71, 0x4d, 0x6c, 0x6f, 0x2c, 0x29,
+      0xa6, 0xad, 0x5c, 0xb4, 0x02, 0x2b, 0x02, 0x70, 0x9b,
+  ]
+  EXPECTED_PLAINTEXT ::= """
+      Internet-Drafts are draft documents valid for a maximum of six months \
+      and may be updated, replaced, or obsoleted by other documents at any \
+      time. It is inappropriate to use Internet-Drafts as reference material \
+      or to cite them other than as /“work in progress./”"""
+
+  encrypted := (ChaCha20Poly1305.encryptor KEY IV).encrypt EXPECTED_PLAINTEXT --authenticated_data=AAD
+  decrypted := (ChaCha20Poly1305.decryptor KEY IV).decrypt EXPECTED_CIPHERTEXT --authenticated_data=AAD --verification_tag=EXPECTED_TAG
+  expect_equals (EXPECTED_CIPHERTEXT + EXPECTED_TAG) encrypted
+  expect_equals EXPECTED_PLAINTEXT.to_byte_array decrypted
+
 sip_test:
   key := ByteArray 16: it
 
   in := ByteArray 64
 
   64.repeat: | size |
-    print size
     in[size] = size
     hash_8  := siphash in[0..size] key --output_length=8
     expect_equals SIP_VECTOR_8[size] hash_8
@@ -341,3 +409,51 @@ SIP_VECTOR_16 ::= [
     #[0x58, 0x53, 0x54, 0x23, 0x21, 0xf5, 0x67, 0xa0, 0x05, 0xd5, 0x47, 0xa4, 0xf0, 0x47, 0x59, 0xbd,],
     #[0x51, 0x50, 0xd1, 0x77, 0x2f, 0x50, 0x83, 0x4a, 0x50, 0x3e, 0x06, 0x9a, 0x97, 0x3f, 0xbd, 0x7c,],
 ]
+
+DREAM ::= """
+    Sarnac had worked almost continuously for the better part of a year
+    upon some very subtle chemical reactions of the nervous cells of the
+    sympathetic system.  His first enquiries had led to the opening out
+    of fresh and surprising possibilities, and these again had lured him
+    on to still broader and more fascinating prospects.  He worked
+    perhaps too closely; he found his hope and curiosity unimpaired, but
+    there was less delicacy of touch in his manipulation, and he was
+    thinking less quickly and accurately.  He needed a holiday.  He had
+    come to the end of a chapter in his work and wished to brace himself
+    for a new beginning.  Sunray had long hoped to be away with him; she,
+    too, was at a phase in her work when interruption was possible, and
+    so the two went off together to wander among the lakes and mountains.
+
+    Their companionship was at a very delightful stage.  Their close
+    relationship and their friendship was of old standing, so that they
+    were quite at their ease with one another, yet they were not too
+    familiar to have lost the keen edge of their interest in each other's
+    proceedings.  Sunray was very much in love with Sarnac and glad, and
+    Sarnac was always happy and pleasantly exalted when Sunray was near
+    him.  Sunray was the richer-hearted and cleverer lover.  They talked
+    of everything in the world but Sarnac's work because that had to rest
+    and grow fresh again.  Of her own work Sunray talked abundantly.  She
+    had been making stories and pictures of happiness and sorrow in the
+    past ages of the world, and she was full of curious speculations
+    about the ways in which the ancestral mind has thought and felt.
+
+    They played with boats upon the great lake for some days, they sailed
+    and paddled and drew up their canoe among the sweet-scented rushes of
+    the islands and bathed and swam.  They went from one guest-house to
+    another upon the water and met many interesting and refreshing
+    people.  In one house an old man of ninety-eight was staying: he was
+    amusing his declining years by making statuettes of the greatest
+    beauty and humour; it was wonderful to see the clay take shape in his
+    hands.  Moreover, he had a method of cooking the lake fish that was
+    very appetising, and he made a great dish of them so that everyone
+    who was dining in the place could have some.  And there was a
+    musician who made Sunray talk about the days gone by, and afterwards
+    he played music with his own hands on a clavier to express the
+    ancient feelings of men.  He played one piece that was, he explained,
+    two thousand years old; it was by a man named Chopin, and it was
+    called the Revolutionary Etude.  Sunray could not have believed a
+    piano capable of such passionate resentment.  After that he played
+    grotesque and angry battle music and crude marching tunes from those
+    half-forgotten times, and then he invented wrathful and passionate
+    music of his own.
+    """

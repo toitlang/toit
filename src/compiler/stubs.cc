@@ -162,17 +162,17 @@ class IsInterfaceVisitor : public ir::TraversingVisitor {
     klass->set_typecheck_selector(selector);
 
     // We still need to add stub methods.
-    _interfaces_to_selectors.add(klass, selector);
+    interfaces_to_selectors_.add(klass, selector);
   }
 
   UnorderedMap<ir::Class*, Selector<CallShape>> interfaces_to_selectors() const {
-    return _interfaces_to_selectors;
+    return interfaces_to_selectors_;
   }
 
  private:
   // We have to use `const char*` since we don't have a default constructor for
   // symbols.
-  UnorderedMap<ir::Class*, Selector<CallShape>> _interfaces_to_selectors;
+  UnorderedMap<ir::Class*, Selector<CallShape>> interfaces_to_selectors_;
 };
 
 void add_interface_stub_methods(ir::Program* program) {

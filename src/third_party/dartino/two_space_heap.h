@@ -16,15 +16,15 @@ class HeapObjectFunctionVisitor : public HeapObjectVisitor {
  public:
   HeapObjectFunctionVisitor(Program* program, const std::function<void (HeapObject*)>& func)
     : HeapObjectVisitor(program)
-    , _func(func) {}
+    , func_(func) {}
 
   virtual uword visit(HeapObject* object) override {
-    _func(object);
+    func_(object);
     return object->size(program_);
   }
 
  private:
-  const std::function<void (HeapObject*)>& _func;
+  const std::function<void (HeapObject*)>& func_;
 };
 
 // TwoSpaceHeap represents the container for all HeapObjects.
@@ -70,6 +70,11 @@ class TwoSpaceHeap {
   void do_objects(const std::function<void (HeapObject*)>& func) {
     HeapObjectFunctionVisitor visitor(program_, func);
     iterate_objects(&visitor);
+  }
+
+  void iterate_chunks(void* context, process_chunk_callback_t* callback) {
+    semi_space_.iterate_chunks(context, process(), callback);
+    old_space_.iterate_chunks(context, process(), callback);
   }
 
   // Flush will write cached values back to object memory.

@@ -67,13 +67,15 @@ bool OS::use_virtual_memory(void* addr, uword sz) {
   uword rounded = Utils::round_down(address, getpagesize());
   uword size = Utils::round_up(end - rounded, getpagesize());
   int result = mprotect(reinterpret_cast<void*>(rounded), size, PROT_READ | PROT_WRITE);
+  if (result == 0) {
 #ifdef TOIT_DEBUG
-  // Calls to use_virtual_memory are rounded up by one due to the single-word
-  // object problem, but we don't want to poison data belonging to the next
-  // page's metadata.
-  memset(addr, 0xc1, sz - 1);
+    // Calls to use_virtual_memory are rounded up by one due to the single-word
+    // object problem, but we don't want to poison data belonging to the next
+    // page's metadata.
+    memset(addr, 0xc1, sz - 1);
 #endif
-  if (result == 0) return true;
+    return true;
+  }
   if (errno == ENOMEM) return false;
   perror("mprotect");
   exit(1);
@@ -97,9 +99,9 @@ void OS::set_writable(ProgramBlock* block, bool value) {
 }
 
 void OS::tear_down() {
-  dispose(_global_mutex);
-  dispose(_scheduler_mutex);
-  dispose(_resource_mutex);
+  dispose(global_mutex_);
+  dispose(scheduler_mutex_);
+  dispose(resource_mutex_);
 }
 
 const char* OS::get_platform() {
@@ -148,12 +150,12 @@ word OS::get_heap_tag() {
 
 #else // def TOIT_CMPCTMALLOC
 
-void OS::set_heap_tag(word tag) { }
+void OS::set_heap_tag(word tag) {}
 word OS::get_heap_tag() { return 0; }
 
 #endif // def TOIT_CMPCTMALLOC
 
-void OS::heap_summary_report(int max_pages, const char* marker) { }
+void OS::heap_summary_report(int max_pages, const char* marker) {}
 
 }
 

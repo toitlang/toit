@@ -36,8 +36,8 @@ class ProgramBuilder {
  public:
   explicit ProgramBuilder(Program* program);
 
-  Program* program() const { return _program; }
-  int size() const { return _stack.size(); }
+  Program* program() const { return program_; }
+  int size() const { return stack_.size(); }
 
   void drop() { pop(); }
   void dup();
@@ -94,11 +94,11 @@ class ProgramBuilder {
   int payload_size();
 
   void set_entry_point_index(int entry_point_index, int dispatch_index) {
-    _program->_set_entry_point_index(entry_point_index, dispatch_index);
+    program_->_set_entry_point_index(entry_point_index, dispatch_index);
   }
 
   void set_invoke_bytecode_offset(Opcode opcode, int offset) {
-    _program->set_invoke_bytecode_offset(opcode, offset);
+    program_->set_invoke_bytecode_offset(opcode, offset);
   }
 
  private:
@@ -108,33 +108,33 @@ class ProgramBuilder {
 
   void set_built_in_class_tags_and_sizes();
   void set_built_in_class_tag_and_size(Symbol name, TypeTag tag=TypeTag::INSTANCE_TAG, int size=-1) {
-    _built_in_class_tags[std::string(name.c_str())] = tag;
+    built_in_class_tags_[std::string(name.c_str())] = tag;
     if (size != -1) {
-      _built_in_class_sizes[std::string(name.c_str())] = size;
+      built_in_class_sizes_[std::string(name.c_str())] = size;
     }
   }
   String* lookup_symbol(const char* str);
   String* lookup_symbol(const char* str, int length);
 
-  ProgramHeap _program_heap;
-  Program* _program;
+  ProgramHeap program_heap_;
+  Program* program_;
 
-  UnorderedMap<std::string, String*> _symbols;
-  std::vector<Object*> _stack;
+  UnorderedMap<std::string, String*> symbols_;
+  std::vector<Object*> stack_;
 
-  Map<std::string, int> _string_literals; // index of strings in literal vector.
-  Map<std::string, int> _byte_array_literals; // index of strings in literal vector.
-  Map<int64, int> _integer_interals; // index of int64 in literal vector.
-  Map<uint64, int> _double_literals; // index of doubles in literal vector.
+  Map<std::string, int> string_literals_; // index of strings in literal vector.
+  Map<std::string, int> byte_array_literals_; // index of strings in literal vector.
+  Map<int64, int> integer_interals_; // index of int64 in literal vector.
+  Map<uint64, int> double_literals_; // index of doubles in literal vector.
   // Class tags for built-in classes.
   // A built-in class must be present in the map to be counted as builtin.
-  Map<std::string, TypeTag> _built_in_class_tags;
+  Map<std::string, TypeTag> built_in_class_tags_;
   // Class size for built-in classes.
   // If the class is not present, then the computed size (from the compiler) is used.
-  Map<std::string, int> _built_in_class_sizes;
-  std::vector<Object*> _literals;
+  Map<std::string, int> built_in_class_sizes_;
+  std::vector<Object*> literals_;
 
-  std::vector<uint8> _all_bytecodes;
+  std::vector<uint8> all_bytecodes_;
 
   // Basic stack operations.
   Object* top();

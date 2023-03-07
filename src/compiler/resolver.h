@@ -43,25 +43,25 @@ class Resolver {
   Resolver(Lsp* lsp,
            SourceManager* source_manager,
            Diagnostics* diagnostics)
-      : _source_manager(source_manager)
-      , _diagnostics(diagnostics)
-      , _lsp(lsp) { }
+      : source_manager_(source_manager)
+      , diagnostics_(diagnostics)
+      , lsp_(lsp) {}
 
   ir::Program* resolve(const std::vector<ast::Unit*>& units,
                        int entry_unit_index,
                        int core_unit_index);
 
-  ToitdocRegistry toitdocs() { return _toitdocs; }
+  ToitdocRegistry toitdocs() { return toitdocs_; }
 
  private:
-  SourceManager* _source_manager;
-  Diagnostics* _diagnostics;
-  UnorderedMap<ir::Node*, ast::Node*> _ir_to_ast_map;
-  ToitdocRegistry _toitdocs;
+  SourceManager* source_manager_;
+  Diagnostics* diagnostics_;
+  UnorderedMap<ir::Node*, ast::Node*> ir_to_ast_map_;
+  ToitdocRegistry toitdocs_;
 
-  Lsp* _lsp;
+  Lsp* lsp_;
 
-  Diagnostics* diagnostics() const { return _diagnostics; }
+  Diagnostics* diagnostics() const { return diagnostics_; }
 
   void report_error(const ast::Node* position_node, const char* format, ...);
   void report_error(ir::Node* position_node, const char* format, ...);
@@ -71,8 +71,8 @@ class Resolver {
   void report_warning(const ast::Node* position_node, const char* format, ...);
   void report_warning(ir::Node* position_node, const char* format, ...);
 
-  ast::Class* ast_for(ir::Class* node) { return _ir_to_ast_map.at(node)->as_Class(); }
-  ast::Method* ast_for(ir::Method* node) { return _ir_to_ast_map.at(node)->as_Method(); }
+  ast::Class* ast_for(ir::Class* node) { return ir_to_ast_map_.at(node)->as_Class(); }
+  ast::Method* ast_for(ir::Method* node) { return ir_to_ast_map_.at(node)->as_Method(); }
 
   std::vector<Module*> build_modules(const std::vector<ast::Unit*>& units,
                                      int entry_unit_index,
@@ -82,8 +82,9 @@ class Resolver {
 
   void check_clashing_or_conflicting(Symbol name, List<ir::Node*> declarations);
   void check_clashing_or_conflicting(std::vector<Module*> modules);
+  void check_future_reserved_globals(std::vector<Module*> modules);
 
-  void mark_runtime_classes(Module* core_module);
+  void mark_runtime(Module* core_module);
   void mark_non_returning(Module* core_module);
 
   void setup_inheritance(std::vector<Module*> modules, int core_module_index);
@@ -95,7 +96,8 @@ class Resolver {
   List<ir::Type> find_literal_types(Module* core_module);
   ir::Constructor* build_default_constructor(ir::Class* klass, bool* detected_error);
   void check_method(ast::Method* method, ir::Class* holder,
-                    Symbol* name, ir::Method::MethodKind* kind);
+                    Symbol* name, ir::Method::MethodKind* kind,
+                    bool allow_future_reserved);
   void check_field(ast::Field* method, ir::Class* holder);
   void check_class(ast::Class* klass);
   void fill_classes_with_skeletons(std::vector<Module*> modules);

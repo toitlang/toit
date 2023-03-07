@@ -16,6 +16,7 @@ main:
   test_constructors
   test_slice
   test_replace
+  test_replace_large
 
 test_list:
   list := [13, 1, 13, 13, 2]
@@ -627,7 +628,41 @@ test_replace:
   list[1] = 2
   expect_list_equals copy list
 
-  expect_throws "BAD ARGUMENTS": list.replace 1 other
+  expect_throws "OUT_OF_BOUNDS": list.replace 1 other
+
+  sublist := list[1..4]
+  expect_throws "OUT_OF_BOUNDS": sublist.replace 0 [0, 0, 0, 0]
+
+test_replace_large:
+  // Some tests of the tricky code to do replace when the source and
+  // destination are the same LargeArray.
+  large := List 2500: it
+
+  INDEX_FROM_TO ::= [
+      [491, 490, 510],
+      [491, 490, 1510],
+      [500, 490, 1510],
+      [490, 500, 1510],
+      [491, 490, 1500],
+      [500, 490, 1500],
+      [490, 500, 1500],
+      [491, 490, 2000],
+      [500, 490, 2000],
+      [490, 500, 2000],
+  ]
+  [490, 491, 500, 501, 510, 990, 1000, 1010].do: | index |
+    [490, 491, 500, 501, 510, 990, 1000, 1010].do: | from |
+      [from, from + 1, from + 10, from + 20, 1490, 1499, 1500, 1501, 1510].do: | to |
+        large.size.repeat: large[it] = it
+        large.replace index large from to
+
+        large.size.repeat:
+          if it < index:
+            expect_equals it large[it]
+          else if it < index + to - from:
+            expect_equals (it + from - index) large[it]
+          else:
+            expect_equals it large[it]
 
 class Coordinate implements Comparable:
   x := 0

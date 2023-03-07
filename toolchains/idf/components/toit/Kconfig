@@ -67,6 +67,12 @@ menu "Toit"
             depends on TOIT_ENABLE_IP
             help
                 WIFI support in the Toit binary.
+        
+        config TOIT_ENABLE_ESPNOW
+            boolean "Enable ESP-Now on ESP32"
+            default "y"
+            help
+                ESP-Now support in the Toit binary.       
 
         config TOIT_SPIRAM_HEAP
             boolean "Enable toit heap in SPIRAM"

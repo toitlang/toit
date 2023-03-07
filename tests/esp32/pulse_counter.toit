@@ -27,13 +27,14 @@ main:
   in := gpio.Pin IN1
   out := gpio.Pin OUT1 --output
 
+  unit := pulse_counter.Unit
+
   // TODO(florian): we would like to check that the unit's value is 0.
   // However, in ESP-IDF 4.3/4.4, the unit isn't allocated yet, and we are not allowed to
   // read the value yet.
   // expect_equals 0 unit.value
 
   /** ---- Count when edge raises. ---- */
-  unit := pulse_counter.Unit
   channel := unit.add_channel in
   expect_equals 0 unit.value
 

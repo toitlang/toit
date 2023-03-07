@@ -54,3 +54,29 @@ main:
   test_array a
   c := 75
   test_map
+  test_throwing_process_send
+  test_tison_throwing
+
+class Unserializable:
+
+test_throwing_process_send:
+  l := List 10: ByteArray_.external_ 100
+  expect_throw "TOO_MANY_EXTERNALS": process_send_ 0 0 l
+  // expect_throw "MESSAGE_NO_SUCH_RECEIVER": process_send_ 100000000 -10 #[]
+  expect_null (process_send_ 100000000 -10 #[])
+  l = []
+  l.add l
+  expect_throw "NESTING_TOO_DEEP": process_send_ 0 0 l
+  l = [Unserializable]
+  // We catch this, which means we don't get information about which class failed.
+  // If we left it uncaught, the stack trace decoder would tell us.
+  expect_throw "SERIALIZATION_FAILED": process_send_ 0 0 l
+
+test_tison_throwing:
+  l := []
+  l.add l
+  expect_throw "NESTING_TOO_DEEP": tison.encode l
+  l = [Unserializable]
+  // We catch this, which means we don't get information about which class failed.
+  // If we left it uncaught, the stack trace decoder would tell us.
+  expect_throw "SERIALIZATION_FAILED": tison.encode l

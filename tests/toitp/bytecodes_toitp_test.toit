@@ -6,16 +6,18 @@ import expect show *
 import .utils
 
 test args filter:
-  out := run_toitp args ["-bc", filter]
-  lines := out.split "\n"
+  out := run_toitp args ["-bc"] --filter=filter
+  lines := out.split LINE_TERMINATOR
   expect (lines.first.starts_with "Bytecodes for methods")
 
   expected_bytecodes := [
     "allocate instance A",
     "invoke static A",
+    "invoke static A.foo",
     "invoke virtual foo",
     "allocate instance B",
     "invoke static B",
+    "invoke static B.foo",
     "invoke virtual foo",
     "invoke static bar",
     "store global var",
@@ -23,7 +25,6 @@ test args filter:
     "as class A",
     "is interface is-I",
     "as interface is-I",
-    "load local, as class, pop",
   ]
 
   lines_index := 2

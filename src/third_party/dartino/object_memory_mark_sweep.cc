@@ -21,7 +21,7 @@ OldSpace::OldSpace(Program* program, TwoSpaceHeap* owner)
     : Space(program, CAN_RESIZE, OLD_SPACE_PAGE),
       heap_(owner) {}
 
-OldSpace::~OldSpace() { }
+OldSpace::~OldSpace() {}
 
 void OldSpace::flush() {
   if (top_ != 0) {
@@ -40,16 +40,6 @@ void OldSpace::flush() {
     used_ -= free_size;
     // Check for 'negative' value.
     ASSERT(static_cast<word>(used_) >= 0);
-  }
-}
-
-HeapObject* OldSpace::new_location(HeapObject* old_location) {
-  ASSERT(includes(old_location->_raw()));
-  ASSERT(GcMetadata::is_marked(old_location));
-  if (compacting_) {
-    return HeapObject::from_address(GcMetadata::get_destination(old_location));
-  } else {
-    return old_location;
   }
 }
 
@@ -252,7 +242,7 @@ class RememberedSetRebuilder : public HeapObjectVisitor {
     pointer_callback.found = false;
     object->roots_do(program_, &pointer_callback);
     if (pointer_callback.found) {
-      *GcMetadata::remembered_set_for(reinterpret_cast<uword>(object)) = GcMetadata::NEW_SPACE_POINTERS;
+      *GcMetadata::remembered_set_for(object) = GcMetadata::NEW_SPACE_POINTERS;
     }
     return object->size(program_);
   }
@@ -260,13 +250,6 @@ class RememberedSetRebuilder : public HeapObjectVisitor {
  private:
   RememberedSetRebuilder2 pointer_callback;
 };
-
-// Until we have a write barrier we have to iterate the whole
-// of old space.
-void OldSpace::rebuild_remembered_set() {
-  RememberedSetRebuilder rebuilder(program_);
-  iterate_objects(&rebuilder);
-}
 
 void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
   flush();
@@ -386,7 +369,7 @@ bool OldSpace::complete_scavenge(
     }
     for (HeapObject *obj = HeapObject::from_address(traverse); traverse != end;
          traverse += obj->size(program_), obj = HeapObject::from_address(traverse)) {
-      visitor->set_record_new_space_pointers(GcMetadata::remembered_set_for(obj->_raw()));
+      visitor->set_record_new_space_pointers(GcMetadata::remembered_set_for(obj));
       obj->roots_do(program_, visitor);
     }
     PromotedTrack* previous = promoted;
@@ -494,7 +477,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
   if (object->_raw() != dest_.address) {
     object_mem_move(dest_.address, object->_raw(), size);
 
-    if (*GcMetadata::remembered_set_for(object->_raw()) !=
+    if (*GcMetadata::remembered_set_for(object) !=
         GcMetadata::NO_NEW_SPACE_POINTERS) {
       *GcMetadata::remembered_set_for(dest_.address) =
           GcMetadata::NEW_SPACE_POINTERS;

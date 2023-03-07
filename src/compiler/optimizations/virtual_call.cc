@@ -20,6 +20,7 @@
 #include "../queryable_class.h"
 #include "../set.h"
 
+#include "../../flags.h"
 #include "../../bytecodes.h"
 
 namespace toit {

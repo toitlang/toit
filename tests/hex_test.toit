@@ -23,8 +23,24 @@ main:
     catch: hex.decode "hh"
 
   expect_equals
-    "INVALID_ARGUMENT"
-    catch: hex.decode "eee"
+    #[0x0e]
+    hex.decode "e"
+
+  expect_equals
+    #[0x0e, 0xee]
+    hex.decode "eee"
+
+  expect_equals
+    #[0x0d, 0xef]
+    hex.decode "def"
+
+  expect_equals
+    #[0x0c, 0x0f, 0xfe]
+    hex.decode "c0ffe"
+
+  expect_equals
+    #[0, 0, 0x0e]
+    hex.decode "0000e"
 
 test array:
   ba := ByteArray array.size: array[it]

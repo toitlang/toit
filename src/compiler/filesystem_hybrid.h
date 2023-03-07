@@ -29,16 +29,19 @@ class Diagnostics;
 class FilesystemHybrid : public Filesystem {
  public:
   FilesystemHybrid(const char* path)
-      : _use_fs_archive(FilesystemArchive::is_probably_archive(path))
-      , _fs_archive(path) { }
+      : use_fs_archive_(FilesystemArchive::is_probably_archive(path))
+      , fs_archive_(path) {}
 
   void initialize(Diagnostics* diagnostics);
   const char* entry_path();
   const char* sdk_path();
   List<const char*> package_cache_paths();
   bool is_absolute(const char* path);
+  const char* relative_anchor(const char* path);
   char path_separator();
+  bool is_path_separator(char c);
   char* root(const char* path);
+  bool is_root(const char* path);
 
  protected:
   bool do_exists(const char* path);
@@ -51,9 +54,9 @@ class FilesystemHybrid : public Filesystem {
                               const std::function<void (const char*)> callback);
 
  private:
-  bool _use_fs_archive;
-  FilesystemLocal _fs_local;
-  FilesystemArchive _fs_archive;
+  bool use_fs_archive_;
+  FilesystemLocal fs_local_;
+  FilesystemArchive fs_archive_;
 
   template<typename T>
   T do_with_active_fs(const std::function<T (Filesystem* fs)> callback);

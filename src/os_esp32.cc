@@ -30,13 +30,15 @@
 #include <sys/time.h>
 #include <sys/queue.h>
 
-#include "os.h"
+#include "driver/uart.h"
 #include "flags.h"
 #include "heap_report.h"
 #include "memory.h"
+#include "os.h"
 #include "rtc_memory_esp32.h"
-#include "driver/uart.h"
+#include "scheduler.h"
 #include "utils.h"
+#include "vm.h"
 
 #include <soc/soc.h>
 #include <soc/uart_reg.h>
@@ -57,11 +59,11 @@ namespace toit {
 // capable.  We will set this to the most useful value when we have detected
 // which types of RAM are available.
 #if CONFIG_TOIT_SPIRAM_HEAP
-bool OS::_use_spiram_for_heap = true;
+bool OS::use_spiram_for_heap_ = true;
 #else
-bool OS::_use_spiram_for_heap = false;
+bool OS::use_spiram_for_heap_ = false;
 #endif
-bool OS::_use_spiram_for_metadata = false;
+bool OS::use_spiram_for_metadata_ = false;
 
 #if CONFIG_TOIT_SPIRAM_HEAP_ONLY
 static const int EXTERNAL_CAPS = MALLOC_CAP_SPIRAM;
@@ -125,35 +127,35 @@ void OS::close(int fd) {
 class Mutex {
  public:
   Mutex(int level, const char* name)
-    : _level(level)
-    , _sem(xSemaphoreCreateMutex()) {
-    if (!_sem) FATAL("Failed allocating mutex semaphore")
+    : level_(level)
+    , sem_(xSemaphoreCreateMutex()) {
+    if (!sem_) FATAL("Failed allocating mutex semaphore")
   }
 
   ~Mutex() {
-    vSemaphoreDelete(_sem);
+    vSemaphoreDelete(sem_);
   }
 
   void lock() {
-    if (xSemaphoreTake(_sem, portMAX_DELAY) != pdTRUE) {
+    if (xSemaphoreTake(sem_, portMAX_DELAY) != pdTRUE) {
       FATAL("Mutex lock failed");
     }
   }
 
   void unlock() {
-    if (xSemaphoreGive(_sem) != pdTRUE) {
+    if (xSemaphoreGive(sem_) != pdTRUE) {
       FATAL("Mutex unlock failed");
     }
   }
 
   bool is_locked() {
-    return xSemaphoreGetMutexHolder(_sem) != null;
+    return xSemaphoreGetMutexHolder(sem_) != null;
   }
 
-  int level() const { return _level; }
+  int level() const { return level_; }
 
-  int _level;
-  SemaphoreHandle_t _sem;
+  int level_;
+  SemaphoreHandle_t sem_;
 };
 
 // Inspired by pthread_cond_t impl on esp32-idf.
@@ -167,12 +169,11 @@ struct ConditionVariableWaiter {
 class ConditionVariable {
  public:
   explicit ConditionVariable(Mutex* mutex)
-    : _mutex(mutex) {
-    TAILQ_INIT(&_waiter_list);
+    : mutex_(mutex) {
+    TAILQ_INIT(&waiter_list_);
   }
 
-  ~ConditionVariable() {
-  }
+  ~ConditionVariable() {}
 
   void wait() {
     wait_ticks(portMAX_DELAY);
@@ -189,56 +190,52 @@ class ConditionVariable {
   }
 
   bool wait_ticks(uint32 ticks) {
-    if (!_mutex->is_locked()) {
+    if (!mutex_->is_locked()) {
       FATAL("wait on unlocked mutex");
     }
 
     ConditionVariableWaiter w{};
     w.task = xTaskGetCurrentTaskHandle();
 
-    TAILQ_INSERT_TAIL(&_waiter_list, &w, link);
+    TAILQ_INSERT_TAIL(&waiter_list_, &w, link);
 
-    _mutex->unlock();
+    mutex_->unlock();
 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
     uint32_t value = 0;
-#else
-    uint32 value = 0;
-#endif
     bool success = xTaskNotifyWait(0x00, 0xffffffff, &value, ticks) == pdTRUE;
 
-    _mutex->lock();
-    TAILQ_REMOVE(&_waiter_list, &w, link);
+    mutex_->lock();
+    TAILQ_REMOVE(&waiter_list_, &w, link);
 
     if ((value & SIGNAL_ALL) != 0) signal_all();
     return success;
   }
 
   void signal() {
-    if (!_mutex->is_locked()) {
+    if (!mutex_->is_locked()) {
       FATAL("signal on unlocked mutex");
     }
-    ConditionVariableWaiter* entry = TAILQ_FIRST(&_waiter_list);
+    ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_);
     if (entry) {
       xTaskNotify(entry->task, SIGNAL_ONE, eSetBits);
     }
   }
 
   void signal_all() {
-    if (!_mutex->is_locked()) {
+    if (!mutex_->is_locked()) {
       FATAL("signal_all on unlocked mutex");
     }
-    ConditionVariableWaiter* entry = TAILQ_FIRST(&_waiter_list);
+    ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_);
     if (entry) {
       xTaskNotify(entry->task, SIGNAL_ALL, eSetBits);
     }
   }
 
  private:
-  Mutex* _mutex;
+  Mutex* mutex_;
 
   // Head of the list of semaphores.
-  TAILQ_HEAD(, ConditionVariableWaiter) _waiter_list;
+  TAILQ_HEAD(, ConditionVariableWaiter) waiter_list_;
 
   static const uint32 SIGNAL_ONE = 1 << 0;
   static const uint32 SIGNAL_ALL = 1 << 1;
@@ -246,29 +243,29 @@ class ConditionVariable {
 
 void Locker::leave() {
   Thread* thread = Thread::current();
-  if (thread->_locker != this) FATAL("unlocking would break lock order");
-  thread->_locker = _previous;
+  if (thread->locker_ != this) FATAL("unlocking would break lock order");
+  thread->locker_ = previous_;
   // Perform the actual unlock.
-  _mutex->unlock();
+  mutex_->unlock();
 }
 
 void Locker::enter() {
   Thread* thread = Thread::current();
-  int level = _mutex->level();
-  Locker* previous_locker = thread->_locker;
+  int level = mutex_->level();
+  Locker* previous_locker = thread->locker_;
   if (previous_locker != null) {
-    int previous_level = previous_locker->_mutex->level();
+    int previous_level = previous_locker->mutex_->level();
     if (level <= previous_level) {
       FATAL("trying to take lock of level %d while holding lock of level %d", level, previous_level);
     }
   }
   // Lock after checking the precondition to avoid deadlocking
   // instead of just failing the precondition check.
-  _mutex->lock();
+  mutex_->lock();
   // Only update variables after we have the lock - that grants right
   // to update the locker.
-  _previous = thread->_locker;
-  thread->_locker = this;
+  previous_ = thread->locker_;
+  thread->locker_ = this;
 }
 
 const int DEFAULT_STACK_SIZE = 2 * KB;
@@ -285,10 +282,9 @@ struct ThreadData {
 };
 
 Thread::Thread(const char* name)
-    : _name(name)
-    , _handle(null)
-    , _locker(null) {
-}
+    : name_(name)
+    , handle_(null)
+    , locker_(null) {}
 
 void* thread_start(void* arg) {
   Thread* thread = unvoid_cast<Thread*>(arg);
@@ -301,7 +297,7 @@ static void esp_thread_start(void* arg) {
 }
 
 void Thread::_boot() {
-  auto thread = reinterpret_cast<ThreadData*>(_handle);
+  auto thread = reinterpret_cast<ThreadData*>(handle_);
   current_thread_ = this;
   ASSERT(current() == this);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + OTHER_THREADS_MALLOC_TAG);
@@ -319,14 +315,14 @@ bool Thread::spawn(int stack_size, int core) {
     delete thread;
     return false;
   }
-  _handle = void_cast(thread);
+  handle_ = void_cast(thread);
 
   if (stack_size == 0) stack_size = DEFAULT_STACK_SIZE;
   if (core == -1) core = tskNO_AFFINITY;
 
   BaseType_t res = xTaskCreatePinnedToCore(
     esp_thread_start,
-    _name,
+    name_,
     stack_size,
     this,
     tskIDLE_PRIORITY + 1,  // We want to be scheduled before IDLE, but still after WiFi, etc.
@@ -342,19 +338,19 @@ bool Thread::spawn(int stack_size, int core) {
 
 // Run on current thread.
 void Thread::run() {
-  ASSERT(_handle == null);
+  ASSERT(handle_ == null);
   thread_start(void_cast(this));
 }
 
 void Thread::join() {
-  ASSERT(_handle != null);
-  auto thread = reinterpret_cast<ThreadData*>(_handle);
+  ASSERT(handle_ != null);
+  auto thread = reinterpret_cast<ThreadData*>(handle_);
   if (xSemaphoreTake(thread->terminated, portMAX_DELAY) != pdTRUE) {
     FATAL("Thread join failed");
   }
   vSemaphoreDelete(thread->terminated);
   delete thread;
-  _handle = null;
+  handle_ = null;
 }
 
 void Thread::ensure_system_thread() {
@@ -373,13 +369,13 @@ Thread* Thread::current() {
 
 void OS::set_up() {
   Thread::ensure_system_thread();
-  _global_mutex = allocate_mutex(0, "Global mutex");
-  _scheduler_mutex = allocate_mutex(4, "Scheduler mutex");
-  _resource_mutex = allocate_mutex(99, "Resource mutex");
+  global_mutex_ = allocate_mutex(0, "Global mutex");
+  scheduler_mutex_ = allocate_mutex(4, "Scheduler mutex");
+  resource_mutex_ = allocate_mutex(99, "Resource mutex");
 #ifdef CONFIG_IDF_TARGET_ESP32
   // This will normally return 1 or 3.  Perhaps later, more
   // CPU revisions will appear.
-  _cpu_revision = esp_efuse_get_chip_ver();
+  cpu_revision_ = esp_efuse_get_chip_ver();
 #endif
 }
 
@@ -437,7 +433,7 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   heap_caps_get_info(&info, caps);
 
   if (has_spiram) {
-    _use_spiram_for_metadata = true;
+    use_spiram_for_metadata_ = true;
     printf("[toit] INFO: using SPIRAM for heap metadata.\n");
   }
 
@@ -466,8 +462,7 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   return range;
 }
 
-void OS::tear_down() {
-}
+void OS::tear_down() {}
 
 const char* OS::get_platform() {
   return "FreeRTOS";
@@ -478,7 +473,7 @@ int OS::read_entire_file(char* name, uint8** buffer) {
 }
 
 void OS::out_of_memory(const char* reason) {
-  RtcMemory::register_out_of_memory();
+  RtcMemory::on_out_of_memory();
 
   // The heap fragmentation dumper code has been temporarily disabled.
   // See https://github.com/toitware/toit/issues/3153.
@@ -490,7 +485,7 @@ void OS::out_of_memory(const char* reason) {
     // bookkeeping data for out-of-memory situations. Using esp_restart()
     // would clear the RTC memory.
     esp_sleep_enable_timer_wakeup(100000);  // 100 ms.
-    RtcMemory::before_deep_sleep();
+    RtcMemory::on_deep_sleep_start();
     esp_deep_sleep_start();
   }
 
@@ -557,6 +552,7 @@ class HeapSummaryPage {
     memset(void_cast(counts_), 0, sizeof counts_);
     users_ = 0;
     largest_free_ = 0;
+    owning_process_ = null;
   }
 
   int register_user(uword tag, uword size) {
@@ -608,6 +604,8 @@ class HeapSummaryPage {
     return "unknown";
   }
 
+  void set_owning_process(Process* process) { owning_process_ = process; }
+
  private:
   uword address_;
   // In order to increase the chances of being able to make a report
@@ -618,6 +616,7 @@ class HeapSummaryPage {
   uint16 counts_[NUMBER_OF_MALLOC_TAGS];
   uint16 largest_free_;
   uint16 largest_allocation_;
+  Process* owning_process_;
 };
 
 class HeapSummaryCollector {
@@ -629,6 +628,8 @@ class HeapSummaryCollector {
     }
     memset(void_cast(sizes_), 0, sizeof sizes_);
     memset(void_cast(counts_), 0, sizeof counts_);
+    memset(void_cast(toit_memory_), 0, sizeof toit_memory_);
+    memset(void_cast(processes_), 0, sizeof processes_);
   }
 
   word allocation_requirement() {
@@ -666,28 +667,71 @@ class HeapSummaryCollector {
     counts_[type]++;
   }
 
+  void identify_processes() {
+    VM::current()->scheduler()->iterate_process_chunks(this, chunk_callback);
+  }
+
+  static void chunk_callback(void* context, Process* process, uword address, uword size) {
+    reinterpret_cast<HeapSummaryCollector*>(context)->chunk_callback(process, address, size);
+  }
+
+  void chunk_callback(Process* process, uword address, uword size) {
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+      if (processes_[i] == null || processes_[i] == process) {
+        toit_memory_[i] += size;
+        processes_[i] = process;
+        break;
+      }
+    }
+    while (size >= TOIT_PAGE_SIZE) {
+      for (int i = 0; i < max_pages_; i++) {
+        if (pages_[i].matches(reinterpret_cast<void*>(address))) {
+          pages_[i].set_owning_process(process);
+        }
+      }
+      size -= TOIT_PAGE_SIZE;
+      address += TOIT_PAGE_SIZE;
+    }
+  }
+
   void print(const char* marker) {
     if (marker && strlen(marker) > 0) {
       printf("Heap report @ %s:\n", marker);
     } else {
       printf("Heap report:\n");
     }
-    printf("  ┌───────────┬─────────┬───────────────────────┐\n");
-    printf("  │   Bytes   │  Count  │  Type                 │\n");
-    printf("  ├───────────┼─────────┼───────────────────────┤\n");
+    printf("  ┌───────────┬──────────┬───────────────────────┐\n");
+    printf("  │   Bytes   │  Count   │  Type                 │\n");
+    printf("  ├───────────┼──────────┼───────────────────────┤\n");
 
     int size = 0;
     int count = 0;
     for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
       // Leave out free space and allocation types with no allocations.
       if (i == FREE_MALLOC_TAG || sizes_[i] == 0) continue;
-      printf("  │ %7d   │ %6d  │  %-20s │\n",
+      printf("  │ %7d   │ %6d   │  %-20s │\n",
           sizes_[i], counts_[i], HeapSummaryPage::name_of_type(i));
       size += sizes_[i];
       // The reported overhead isn't really separate allocations, so
       // don't count them as such.
       if (i != HEAP_OVERHEAD_MALLOC_TAG) {
         count += counts_[i];
+      }
+      if (i == TOIT_HEAP_MALLOC_TAG) {
+        for (int j = 0; j < MAX_PROCESSES; j++) {
+          if (processes_[j]) {
+            printf("  │   %7d │   %6d │    process %p │\n",
+                static_cast<int>(toit_memory_[j]),
+                static_cast<int>(toit_memory_[j] / TOIT_PAGE_SIZE),
+                processes_[j]);
+          }
+        }
+        uword metadata_location, metadata_size;
+        GcMetadata::get_metadata_extent(&metadata_location, &metadata_size);
+        printf("  │   %7d │        1 │    GC heap metadata   │\n"
+               "  │   %7d │        1 │    Spare new-space    │\n",
+               static_cast<int>(metadata_size),
+               TOIT_PAGE_SIZE);
       }
     }
 
@@ -696,7 +740,7 @@ class HeapSummaryCollector {
     heap_caps_get_info(&info, caps);
     int capacity_bytes = info.total_allocated_bytes + info.total_free_bytes;
     int used_bytes = size * 100 / capacity_bytes;
-    printf("  └───────────┴─────────┴───────────────────────┘\n");
+    printf("  └───────────┴──────────┴───────────────────────┘\n");
     printf("  Total: %d bytes in %d allocations (%d%%), largest free %dk, total free %dk\n",
         size, count, used_bytes,
         static_cast<int>(info.largest_free_block >> 10),
@@ -717,10 +761,13 @@ class HeapSummaryCollector {
   }
 
  private:
+  static const int MAX_PROCESSES = 10;
   HeapSummaryPage* pages_ = null;
   HeapSummaryPage* current_page_ = null;
   uword sizes_[NUMBER_OF_MALLOC_TAGS];
   uword counts_[NUMBER_OF_MALLOC_TAGS];
+  uword toit_memory_[MAX_PROCESSES];
+  Process* processes_[MAX_PROCESSES];
   const int max_pages_;
   int dropped_pages_ = 0;
   bool out_of_memory_ = false;
@@ -741,42 +788,17 @@ void OS::heap_summary_report(int max_pages, const char* marker) {
   int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
   int caps = OS::toit_heap_caps_flags_for_heap();
   heap_caps_iterate_tagged_memory_areas(&collector, null, &register_allocation, flags, caps);
+  collector.identify_processes();
   collector.print(marker);
 }
 
 #else // def TOIT_CMPCTMALLOC
 
-void OS::set_heap_tag(word tag) { }
+void OS::set_heap_tag(word tag) {}
 word OS::get_heap_tag() { return 0; }
-void OS::heap_summary_report(int max_pages, const char* marker) { }
-
+void OS::heap_summary_report(int max_pages, const char* marker) {}
 
 #endif // def TOIT_CMPCTMALLOC
-
-class ImageData {
- public:
-  // The data between image_magic1 and image_magic2 must be less than 256
-  // bytes, otherwise the patching utility will not detect it. Search for
-  // 0x7017da7a. If the format is changed, the code in tools/firmware.toit
-  // must be adapted and the ENVELOPE_FORMAT_VERSION bumped.
-  uint32 image_magic1 = 0x7017da7a;  // "toitdata"
-  uint32 image_bundled_programs_table = 0;
-  uint8 image_uuid[UUID_SIZE] = { 0, };
-  uint32 image_magic2 = 0x00c09f19;  // "config"
-} __attribute__((packed));
-
-// Note, you can't declare this const because then the compiler thinks it can
-// just const propagate, but we are going to patch this before we flash it, so
-// we don't want that.  But it's still const because it goes in a flash section.
-__attribute__((section(".rodata_custom_desc"))) ImageData toit_image_data;
-
-const uint8* OS::image_uuid() {
-  return toit_image_data.image_uuid;
-}
-
-const uword* OS::image_bundled_programs_table() {
-  return reinterpret_cast<const uword*>(toit_image_data.image_bundled_programs_table);
-}
 
 const char* OS::getenv(const char* variable) {
   // Unimplemented on purpose.

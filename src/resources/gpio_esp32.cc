@@ -37,9 +37,8 @@
 
 namespace toit {
 
-enum GPIOState {
-  GPIO_STATE_DOWN = 1,
-  GPIO_STATE_UP = 2,
+enum GpioState {
+  GPIO_STATE_EDGE_TRIGGERED = 1,
 };
 
 ResourcePool<int, -1> gpio_pins(
@@ -55,27 +54,85 @@ ResourcePool<int, -1> gpio_pins(
 #endif
 );
 
-class GPIOResource : public EventQueueResource {
- public:
-  TAG(GPIOResource);
+#ifdef CONFIG_IDF_TARGET_ESP32
+static bool is_restricted_pin(int num) {
+  // The flash pins should generally not be used.
+  return 6 <= num && num <= 11;
+}
+#elif CONFIG_IDF_TARGET_ESP32C3
+static bool is_restricted_pin(int num) {
+  // The flash pins should generally not be used.
+  return 12 <= num && num <= 17;
+}
+#elif CONFIG_IDF_TARGET_ESP32S3
+static bool is_restricted_pin(int num) {
+  // Pins 26-32 are used for flash, and pins 33-37 are used for
+  // octal flash or octal PSRAM.
+  return 26 <= num && num <= 37;
+}
+#elif CONFIG_IDF_TARGET_ESP32S2
+static bool is_restricted_pin(int num) {
+  // Pins 26-32 are used for flash and PSRAM.
+  return 26 <= num && num <= 32;
+}
+#else
+#error Unknown ESP32 target architecture
 
-  GPIOResource(ResourceGroup* group, int pin)
+static bool is_restricted_pin(int num) {
+  return false;
+}
+
+#endif
+
+class GpioResource : public EventQueueResource {
+ public:
+  TAG(GpioResource);
+
+  GpioResource(ResourceGroup* group, int pin)
       // GPIO resources share a queue, which is always on the event source, so pass null.
       : EventQueueResource(group, null)
-      , _pin(pin) {}
+      , pin_(pin)
+      , interrupt_listeners_count_(0)
+      , last_edge_detection_(-1)
+      {}
 
-  int pin() const { return _pin; }
+  int pin() const { return pin_; }
 
   bool check_gpio(word pin) override;
 
+  /// Increments the number of interrupt listeners.
+  /// Returns true if this is the first interrupt listener.
+  bool increment_interrupt_listeners_count() {
+    interrupt_listeners_count_++;
+    return interrupt_listeners_count_ == 1;
+  }
+
+  /// Decrements the number of interrupt listeners.
+  /// Returns true if this was the last interrupt listener.
+  bool decrement_interrupt_listeners_count() {
+    interrupt_listeners_count_--;
+    return interrupt_listeners_count_ == 0;
+  }
+
+  void set_last_edge_detection_timestamp(word timestamp) {
+    last_edge_detection_ = timestamp;
+  }
+
+  word last_edge_detection() const { return last_edge_detection_; }
+
  private:
-  int _pin;
+  int pin_;
+  // The number of users that have enabled interrupts.
+  int interrupt_listeners_count_;
+  // The timestamp for which an edge transition was detected.
+  // Any user that started listening after this value should ignore the transition.
+  word last_edge_detection_;
 };
 
-class GPIOResourceGroup : public ResourceGroup {
+class GpioResourceGroup : public ResourceGroup {
  public:
-  TAG(GPIOResourceGroup);
-  explicit GPIOResourceGroup(Process* process)
+  TAG(GpioResourceGroup);
+  explicit GpioResourceGroup(Process* process)
       : ResourceGroup(process, EventQueueEventSource::instance()) {
     queue = EventQueueEventSource::instance()->gpio_queue();
   }
@@ -85,7 +142,8 @@ class GPIOResourceGroup : public ResourceGroup {
 
  private:
   virtual uint32_t on_event(Resource* resource, word data, uint32_t state) {
-    return state | (data ? GPIO_STATE_UP : GPIO_STATE_DOWN);
+    static_cast<GpioResource*>(resource)->set_last_edge_detection_timestamp(static_cast<int>(data));
+    return state | GPIO_STATE_EDGE_TRIGGERED;
   }
 
   static QueueHandle_t IRAM_ATTR queue;
@@ -93,15 +151,19 @@ class GPIOResourceGroup : public ResourceGroup {
   static void IRAM_ATTR isr_handler(void* arg);
 };
 
-void GPIOResourceGroup::on_register_resource(Resource* r) {
-  gpio_num_t pin = static_cast<gpio_num_t>(static_cast<GPIOResource*>(r)->pin());
+void GpioResourceGroup::on_register_resource(Resource* r) {
+  gpio_num_t pin = static_cast<gpio_num_t>(static_cast<GpioResource*>(r)->pin());
   SystemEventSource::instance()->run([&]() -> void {
     FATAL_IF_NOT_ESP_OK(gpio_isr_handler_add(pin, isr_handler, reinterpret_cast<void*>(pin)));
+    // The gpio_isr_handler_add also enables interrupts on the pin. This is undesirable as all changes to the
+    // pin will then call the ISR. In Toit, we pass the Pin object around to other peripherals, and therefore we
+    // do not really want an interrupt to fire on a pin unless it is specifically being used as an input pin.
+    FATAL_IF_NOT_ESP_OK(gpio_intr_disable(pin));
   });
 }
 
-void GPIOResourceGroup::on_unregister_resource(Resource* r) {
-  gpio_num_t pin = static_cast<gpio_num_t>(static_cast<GPIOResource*>(r)->pin());
+void GpioResourceGroup::on_unregister_resource(Resource* r) {
+  gpio_num_t pin = static_cast<gpio_num_t>(static_cast<GpioResource*>(r)->pin());
 
   SystemEventSource::instance()->run([&]() -> void {
     FATAL_IF_NOT_ESP_OK(gpio_isr_handler_remove(gpio_num_t(pin)));
@@ -124,17 +186,34 @@ void GPIOResourceGroup::on_unregister_resource(Resource* r) {
   gpio_pins.put(pin);
 }
 
-QueueHandle_t IRAM_ATTR GPIOResourceGroup::queue;
+QueueHandle_t IRAM_ATTR GpioResourceGroup::queue;
 
-void IRAM_ATTR GPIOResourceGroup::isr_handler(void* arg) {
-  word id = unvoid_cast<word>(arg);
-  xQueueSendToBackFromISR(queue, &id, null);
+// A counter for interrupt-enabling requests.
+// We use this counter instead of a timestamp which is hard to get inside an interrupt
+// handler.
+// When a user requests to be informed about interrupts, we increment the counter.
+// When an interrupt triggers, it records the current counter, and pushes the event
+// into a queue. (Sligthly) later the event is taken out of the queue and used to
+// notify all users that are listening at that moment. Due to race conditions, there
+// might be users now that weren't subscribed when the event actually happened.
+// We pass the counter so that they can determine whether the event is actually
+// relevant to them.
+word IRAM_ATTR isr_counter = 0;
+
+void IRAM_ATTR GpioResourceGroup::isr_handler(void* arg) {
+  GpioEvent event {
+    .pin = unvoid_cast<word>(arg),
+    // Since real timestamps are hard to get inside an interrupt handler, we use
+    // the isr_counter instead. It is monotonically increasing and grows exactly when
+    // we need the values to change.
+    .timestamp = isr_counter,
+  };
+  xQueueSendToBackFromISR(queue, &event, null);
   return;
 }
 
-bool GPIOResource::check_gpio(word pin) {
-  if (pin != _pin) return false;
-  return true;
+bool GpioResource::check_gpio(word pin) {
+  return pin == pin_;
 }
 
 MODULE_IMPLEMENTATION(gpio, MODULE_GPIO)
@@ -143,7 +222,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  GPIOResourceGroup* gpio = _new GPIOResourceGroup(process);
+  GpioResourceGroup* gpio = _new GpioResourceGroup(process);
   if (!gpio) MALLOC_FAILED;
 
   proxy->set_external_address(gpio);
@@ -151,14 +230,16 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(use) {
-  ARGS(GPIOResourceGroup, resource_group, int, num);
+  ARGS(GpioResourceGroup, resource_group, int, num, bool, allow_restricted);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
+  if (!allow_restricted && is_restricted_pin(num)) INVALID_ARGUMENT;
+
   if (!gpio_pins.take(num)) ALREADY_IN_USE;
 
-  GPIOResource* resource = _new GPIOResource(resource_group, num);
+  GpioResource* resource = _new GpioResource(resource_group, num);
   if (!resource) {
     gpio_pins.put(num);
     MALLOC_FAILED;
@@ -171,7 +252,7 @@ PRIMITIVE(use) {
 }
 
 PRIMITIVE(unuse) {
-  ARGS(GPIOResourceGroup, resource_group, GPIOResource, resource);
+  ARGS(GpioResourceGroup, resource_group, GpioResource, resource);
 
   resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();
@@ -200,25 +281,55 @@ PRIMITIVE(config) {
     cfg.mode = open_drain ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT;
   }
 
-  esp_err_t err = gpio_config(&cfg);;
+  esp_err_t err = gpio_config(&cfg);
+  if (input) {
+    // The gpio driver enables interrupts automatically for input pins. Since this is handled more fine-grained
+    // in config_interrupt we disable the interrupt.
+    gpio_intr_disable(static_cast<gpio_num_t>(num));
+  }
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   return process->program()->null_object();
 }
 
 PRIMITIVE(config_interrupt) {
-  ARGS(int, num, bool, enable);
+  ARGS(GpioResource, resource, bool, enable);
   esp_err_t err = ESP_OK;
-  CAPTURE3(int, num, bool, enable, esp_err_t&, err);
-  SystemEventSource::instance()->run([&]() -> void {
-    if (capture.enable) {
-      capture.err = gpio_intr_enable((gpio_num_t)capture.num);
-    } else {
-      capture.err = gpio_intr_disable((gpio_num_t)capture.num);
+  gpio_num_t num = static_cast<gpio_num_t>(resource->pin());
+  if (enable) {
+    if (resource->increment_interrupt_listeners_count()) {
+      SystemEventSource::instance()->run([&]() -> void {
+        err = gpio_intr_enable(num);
+      });
     }
-  });
+  } else {
+    if (resource->decrement_interrupt_listeners_count()) {
+      SystemEventSource::instance()->run([&]() -> void {
+        err = gpio_intr_disable(num);
+      });
+    }
+  }
   if (err != ESP_OK) return Primitive::os_error(err, process);
+  return Smi::from((isr_counter++) & 0x3FFFFFFF);
+}
+
+// A very low-level change of open-drain.
+// If the pin is used in some peripheral, a call to this primitive doesn't
+// affect that configuration.
+PRIMITIVE(set_open_drain) {
+  ARGS(int, num, bool, enable);
+  if (num < 0 || num >= GPIO_NUM_MAX) INVALID_ARGUMENT;
+
+  // Change the open-drain bit.
+  // Directly writes to the memory-mapped register.
+  GPIO.pin[num].pad_driver = enable ? 1 : 0;
+
   return process->program()->null_object();
+}
+
+PRIMITIVE(last_edge_trigger_timestamp) {
+  ARGS(GpioResource, resource);
+  return Smi::from(resource->last_edge_detection() & 0x3FFFFFFF);
 }
 
 PRIMITIVE(get) {

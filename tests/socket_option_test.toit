@@ -12,6 +12,7 @@ import monitor show *
 
 main:
   test_window_size
+  print "done"
 
 test_window_size:
   default := null

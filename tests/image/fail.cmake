@@ -16,8 +16,3 @@
 set(TOIT_FAILING_TESTS
 )
 
-if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
-  list(APPEND TOIT_FAILING_TESTS
-    tests/image/full_page_test.toit
-  )
-endif()

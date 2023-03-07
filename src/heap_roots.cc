@@ -21,15 +21,15 @@
 namespace toit {
 
 void FinalizerNode::roots_do(RootCallback* cb) {
-  cb->do_root(reinterpret_cast<Object**>(&_key));
-  cb->do_root(reinterpret_cast<Object**>(&_lambda));
+  cb->do_root(reinterpret_cast<Object**>(&key_));
+  cb->do_root(reinterpret_cast<Object**>(&lambda_));
 }
 
-void VMFinalizerNode::roots_do(RootCallback* cb) {
-  cb->do_root(reinterpret_cast<Object**>(&_key));
+void VmFinalizerNode::roots_do(RootCallback* cb) {
+  cb->do_root(reinterpret_cast<Object**>(&key_));
 }
 
-void VMFinalizerNode::free_external_memory(Process* process) {
+void VmFinalizerNode::free_external_memory(Process* process) {
   uint8* memory = null;
   word accounting_size = 0;
   if (is_byte_array(key())) {

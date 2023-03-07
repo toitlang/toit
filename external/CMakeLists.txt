@@ -16,7 +16,10 @@
 set(TOIT_EXTERNAL_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt")
 
 set(TOIT_REPOS
+    https://github.com/kasperl/toit-datacake
     https://github.com/kasperl/toit-qubitro
+    https://github.com/kasperl/toit-zygote
+    https://github.com/lask/toit-hc-sr04
     https://github.com/nilwes/LIS3DH
     https://github.com/toitlang/jaguar
     https://github.com/toitlang/pkg-ar
@@ -27,26 +30,26 @@ set(TOIT_REPOS
     https://github.com/toitlang/pkg-tar
     https://github.com/toitlang/pkg-testing
     https://github.com/toitware/bme280-driver
-    # https://github.com/toitware/cellular
+    https://github.com/toitware/cellular
     https://github.com/toitware/dbc
     https://github.com/toitware/icm20948-driver
     https://github.com/toitware/max31865-driver
     https://github.com/toitware/mcp2518fd-driver
     https://github.com/toitware/mcp342x-driver
     https://github.com/toitware/mqtt
-    # https://github.com/toitware/quectel-cellular
-    # https://github.com/toitware/sequans-cellular
     https://github.com/toitware/sts3x-driver
     https://github.com/toitware/toit-A3967
     https://github.com/toitware/toit-axp192
     https://github.com/toitware/toit-cert-roots
     https://github.com/toitware/toit-color-tft
+    https://github.com/toitware/toit-ds18b20
     https://github.com/toitware/toit-e-paper
     https://github.com/toitware/toit-font-clock
     https://github.com/toitware/toit-font-google-100dpi-roboto
     https://github.com/toitware/toit-gnss-location
     https://github.com/toitware/toit-heading
     https://github.com/toitware/toit-hx711
+    https://github.com/toitware/toit-ibutton
     https://github.com/toitware/toit-icons-pictogrammers
     https://github.com/toitware/toit-location
     https://github.com/toitware/toit-lsm303d
@@ -62,18 +65,21 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-png-display
     https://github.com/toitware/toit-r46ca01
     https://github.com/toitware/toit-resistance-to-temperature
-    # https://github.com/toitware/toit-rs485
+    https://github.com/toitware/toit-rs485
     https://github.com/toitware/toit-si7006
     https://github.com/toitware/toit-solar-position
     https://github.com/toitware/toit-ssd1306
     https://github.com/toitware/toit-tl19a08
     https://github.com/toitware/toit-tm1640
     https://github.com/toitware/toit-vcnl4040
-    # https://github.com/toitware/ublox-cellular
+    https://github.com/toitware/toit-1-wire
     https://github.com/toitware/ublox-gnss-driver
 )
 
 set(DOWNLOADS_DIR "${CMAKE_CURRENT_LIST_DIR}/downloads")
+
+include(ProcessorCount)
+ProcessorCount(NUM_CPU)
 
 IF(APPLE)
   set(DEFAULT_TIMEOUT 80)
@@ -174,7 +180,7 @@ endforeach()
 function(find_toit_projects REPO)
   get_filename_component(REPO_NAME "${REPO}" NAME)
   set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
-  foreach(LOCATION "" "examples" "tests")
+  foreach(LOCATION "" "examples" "tests" "tools")
     set(LOCATION_PATH "${REPO_PATH}/${LOCATION}")
     if (EXISTS "${LOCATION_PATH}/package.yaml" OR EXISTS "${LOCATION_PATH}/package.lock")
       set(PROJECT_NAME "${REPO_NAME}")
@@ -190,34 +196,37 @@ endfunction()
 function(add_repo_tests REPO)
   get_filename_component(REPO_NAME "${REPO}" NAME)
   set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
-  file(GLOB TEST_FILES RELATIVE "${CMAKE_SOURCE_DIR}"
+  file(GLOB TEST_FILES RELATIVE "${REPO_PATH}"
       "${REPO_PATH}/tests/*_test.toit"
       "${REPO_PATH}/tests/*_test_slow.toit")
 
-  file(RELATIVE_PATH TEST_PREFIX "${CMAKE_SOURCE_DIR}" "${REPO_PATH}")
+  # Set the TEST_PREFIX which will be used by the 'fail.cmake' files.
+  set(TEST_PREFIX "${REPO_NAME}")
   set(FAILING_TESTS)
   set(SKIP_TESTS)
   include("${REPO_PATH}/test/fail.cmake" OPTIONAL)
   include("${REPO_PATH}/tests/fail.cmake" OPTIONAL)
 
   foreach(FILE ${TEST_FILES})
-    if("${FILE}" IN_LIST SKIP_TESTS)
+    set(TEST_NAME "${REPO_NAME}/${FILE}")
+    if("${TEST_NAME}" IN_LIST SKIP_TESTS)
       continue()
     endif()
+
     add_test(
-      NAME "${FILE}"
+      NAME "${TEST_NAME}"
       COMMAND $<TARGET_FILE:toit.run> "${FILE}"
-      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      WORKING_DIRECTORY "${REPO_PATH}"
       CONFIGURATIONS external
     )
-    if("${FILE}" IN_LIST FAILING_TESTS)
-      set_tests_properties(${FILE} PROPERTIES WILL_FAIL TRUE)
+    if("${TEST_NAME}" IN_LIST FAILING_TESTS)
+      set_tests_properties(${TEST_NAME} PROPERTIES WILL_FAIL TRUE)
     endif()
 
-    if ("${FILE}" MATCHES "_slow\\.toit$")
-      set_tests_properties(${FILE} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
+    if ("${TEST_NAME}" MATCHES "_slow\\.toit$")
+      set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
     else()
-      set_tests_properties(${FILE} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+      set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
     endif()
   endforeach()
 endfunction()

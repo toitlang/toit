@@ -62,3 +62,9 @@ main:
 /*                    ^
   [ImportedClass]
 */
+
+  // Make sure it also works inside asserts.
+  assert: imported = ImportedClass
+/*                     ^
+  [ImportedClass]
+*/

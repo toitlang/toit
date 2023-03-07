@@ -25,7 +25,7 @@ namespace compiler {
 
 class FilesystemLocal : public Filesystem {
  public:
-  void initialize(Diagnostics* diagnostics) { }
+  void initialize(Diagnostics* diagnostics) {}
 
   const char* entry_path() { return null; }
 
@@ -34,8 +34,11 @@ class FilesystemLocal : public Filesystem {
   const char* sdk_path();
   List<const char*> package_cache_paths();
   bool is_absolute(const char* path);
+  const char* relative_anchor(const char* path);
   char path_separator();
+  bool is_path_separator(char c);
   char* root(const char* path);
+  bool is_root(const char* path);
 
   /// Computes the executable path.
   ///
@@ -56,9 +59,9 @@ class FilesystemLocal : public Filesystem {
                               const std::function<void (const char*)> callback);
 
  private:
-  const char* _sdk_path = null;
-  List<const char*> _package_cache_paths;
-  bool _has_computed_cache_paths = false;
+  const char* sdk_path_ = null;
+  List<const char*> package_cache_paths_;
+  bool has_computed_cache_paths_ = false;
 };
 
 } // namespace compiler

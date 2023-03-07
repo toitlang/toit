@@ -112,7 +112,7 @@ class Socket implements net.Socket:
     assert: state_bits != 0
     if (state_bits & TOIT_UDP_ERROR_) == 0:
       return state
-    error := udp_error_ state.resource
+    error := udp_error_ (udp_error_number_ state.resource)
     close
     throw error
 
@@ -142,8 +142,11 @@ udp_receive_ udp_resource_group id output:
 udp_send_ udp_resource_group id data from to address port:
   #primitive.udp.send
 
+udp_error_number_ id:
+  #primitive.udp.error_number
+
 udp_error_ id:
-  #primitive.udp.error
+  #primitive.tcp.error
 
 udp_close_ udp_resource_group id:
   #primitive.udp.close

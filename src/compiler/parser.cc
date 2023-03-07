@@ -73,24 +73,24 @@ static inline T add_range(std::pair<int, int> range, Source* source, T node) {
 
 class ParserPeeker {
  public:
-  ParserPeeker(Parser* parser) : _parser(parser) { }
+  ParserPeeker(Parser* parser) : parser_(parser) {}
 
   Token::Kind current_token() { return current_state().token; }
 
   Parser::State current_state() {
-    while (_parser->peek_state(n).token == Token::NEWLINE) n++;
-    return _parser->peek_state(n);
+    while (parser_->peek_state(n).token == Token::NEWLINE) n++;
+    return parser_->peek_state(n);
   }
 
   void consume() { n++; }
 
  private:
-  Parser* _parser;
+  Parser* parser_;
   int n = 0;
 };
 
 #define NEW_NODE(constructor, range) \
-  add_range(range, _source, _new constructor)
+  add_range(range, source_, _new constructor)
 
 void Parser::report_error(Source::Range range, const char* format, ...) {
   va_list arguments;
@@ -145,14 +145,14 @@ Unit* Parser::parse_unit(Source* override_source) {
     }
   }
 
-  auto result = NEW_NODE(Unit(override_source == null ? _source : override_source,
+  auto result = NEW_NODE(Unit(override_source == null ? source_ : override_source,
                               imports.build(),
                               exports.build(),
                               declarations.build()),
                               std::make_pair(0, 0));
   attach_toitdoc(result,
                  scanner()->comments(),
-                 _source,
+                 source_,
                  scanner()->symbol_canonicalizer(),
                  diagnostics());
   if (!check_tree_height(result)) {
@@ -204,7 +204,7 @@ ToitdocReference* Parser::parse_toitdoc_reference(int* end_offset) {
 /// over a call on the last line.
 
 bool Parser::allowed_to_consume(Token::Kind token) {
-  auto& stack = _indentation_stack;
+  auto& stack = indentation_stack_;
 
   ASSERT(token == Token::COLON || token == Token::DOUBLE_COLON);
   ASSERT(!stack.is_empty());
@@ -273,7 +273,7 @@ bool Parser::consumer_exists(Token::Kind token, int next_line_indentation) {
   if (token == Token::DEDENT) return true;
   if (token == Token::SEMICOLON) return true;
 
-  auto& stack = _indentation_stack;
+  auto& stack = indentation_stack_;
 
   for (int i = stack.size() - 1; i > 0; i--) {
     auto kind = stack.kind_at(i);
@@ -369,36 +369,36 @@ namespace {  // anonymous
 class TreeHeightChecker : public TraversingVisitor {
  public:
   TreeHeightChecker(int max_height, Diagnostics* diagnostics)
-      : _max_height(max_height)
-      , _diagnostics(diagnostics) { }
+      : max_height_(max_height)
+      , diagnostics_(diagnostics) {}
 
-  bool reached_max_depth() const { return _reported_error; }
+  bool reached_max_depth() const { return reported_error_; }
 
 #define DECLARE(name) \
   void visit_##name(name* node) { \
     if (check_height(node)) { \
-      _current_height++; \
+      current_height_++; \
       TraversingVisitor::visit_##name(node); \
-      _current_height--; \
+      current_height_--; \
     } \
   }
 NODES(DECLARE)
 #undef DECLARE
 
  private:
-  int _max_height;
-  Diagnostics* _diagnostics;
+  int max_height_;
+  Diagnostics* diagnostics_;
 
-  int _current_height = 0;
-  bool _reported_error = false;
+  int current_height_ = 0;
+  bool reported_error_ = false;
 
   bool check_height(Node* node) {
-    if (_reported_error) return false;
-    if (_current_height >= _max_height) {
-      _diagnostics->report_error(node->range(),
+    if (reported_error_) return false;
+    if (current_height_ >= max_height_) {
+      diagnostics_->report_error(node->range(),
                                  "Maximal recursion depth exceeded %d\n",
-                                 _max_height);
-      _reported_error = true;
+                                 max_height_);
+      reported_error_ = true;
       return false;
     }
     return true;
@@ -415,15 +415,15 @@ bool Parser::check_tree_height(Unit* unit) {
 }
 
 void Parser::check_indentation_stack_depth() {
-  if (!_encountered_stack_overflow &&
-      _indentation_stack.size() > Flags::max_recursion_depth) {
-    ASSERT(made_progress(_indentation_stack));
+  if (!encountered_stack_overflow_ &&
+      indentation_stack_.size() > Flags::max_recursion_depth) {
+    ASSERT(made_progress(indentation_stack_));
     diagnostics()->report_error(current_range_safe(),
                                 "Maximal recursion depth exceeded %d\n",
                                 Flags::max_recursion_depth);
-    _encountered_stack_overflow = true;
+    encountered_stack_overflow_ = true;
     // Move to the end of the file to stop scanning it.
-    _scanner->advance_to(_source->size());
+    scanner_->advance_to(source_->size());
   }
 }
 
@@ -433,7 +433,7 @@ void Parser::start_multiline_construct(IndentationStack::Kind kind) {
 
 void Parser::start_multiline_construct(IndentationStack::Kind kind, int indentation) {
   check_indentation_stack_depth();
-  _indentation_stack.push(indentation, kind, current_range_safe());
+  indentation_stack_.push(indentation, kind, current_range_safe());
 }
 
 void Parser::delimit_with(Token::Kind token) {
@@ -447,7 +447,7 @@ void Parser::delimit_with(Token::Kind token) {
   //
   // In other words: the individual delimited sections should not depend on
   // each other WRT indentation.
-  int construct_indentation = _indentation_stack.top_indentation();
+  int construct_indentation = indentation_stack_.top_indentation();
   if (current_token() == Token::DEDENT &&
       indentation_after_dedent() == construct_indentation) {
     // Allow delimiters to be at the same level as the construct.
@@ -475,7 +475,7 @@ bool Parser::skip_to_body(Token::Kind delimiter) {
   while (true) {
     // This could be written in the condition of the `while`, but I found it so much harder
     // to read.
-    if (at_newline() && current_indentation() < _indentation_stack.top_indentation() + 4) break;
+    if (at_newline() && current_indentation() < indentation_stack_.top_indentation() + 4) break;
     if (current_token() == Token::DEDENT) break;
     if (current_token() == delimiter) break;
     consume();
@@ -484,9 +484,9 @@ bool Parser::skip_to_body(Token::Kind delimiter) {
 }
 
 void Parser::skip_to_dedent() {
-  ASSERT(!_indentation_stack.is_empty());
+  ASSERT(!indentation_stack_.is_empty());
   while (current_token() != Token::DEDENT ||
-         current_state().scanner_state.indentation > _indentation_stack.top_indentation()) {
+         current_state().scanner_state.indentation > indentation_stack_.top_indentation()) {
     ASSERT(current_token() != Token::EOS);
     consume();
   }
@@ -499,15 +499,15 @@ void Parser::skip_to_end_of_multiline_construct() {
 
 void Parser::end_multiline_construct(IndentationStack::Kind kind,
                                      bool must_finish_with_dedent) {
-  ASSERT(_indentation_stack.top_kind() == kind);
+  ASSERT(indentation_stack_.top_kind() == kind);
   if (must_finish_with_dedent && current_token() != Token::DEDENT && current_token() != Token::EOS) {
     report_error("Not at dedent");
     skip_to_dedent();
   }
-  int construct_indentation = _indentation_stack.pop();
+  int construct_indentation = indentation_stack_.pop();
   if (current_token() == Token::DEDENT) {
     int next_indentation = peek_state().scanner_state.indentation;
-    if (_indentation_stack.is_empty() || _indentation_stack.top_indentation() < next_indentation) {
+    if (indentation_stack_.is_empty() || indentation_stack_.top_indentation() < next_indentation) {
       consume();
       if (next_indentation > construct_indentation) {
         FATAL("Dedent while indentation is still higher");
@@ -518,13 +518,13 @@ void Parser::end_multiline_construct(IndentationStack::Kind kind,
 
 void Parser::switch_multiline_construct(IndentationStack::Kind from,
                                         IndentationStack::Kind to) {
-  ASSERT(_indentation_stack.top_kind() == from);
-  int indentation = _indentation_stack.pop();
-  _indentation_stack.push(indentation, to, current_range_safe());
+  ASSERT(indentation_stack_.top_kind() == from);
+  int indentation = indentation_stack_.pop();
+  indentation_stack_.push(indentation, to, current_range_safe());
 }
 
 void Parser::start_delimited(IndentationStack::Kind kind, Token::Kind start_token, Token::Kind end_token) {
-  _indentation_stack.push(current_state().scanner_state.indentation, kind, end_token, current_range());
+  indentation_stack_.push(current_state().scanner_state.indentation, kind, end_token, current_range());
   ASSERT(current_token() == start_token);
   consume();
 }
@@ -533,7 +533,7 @@ bool Parser::end_delimited(IndentationStack::Kind kind,
                            Token::Kind end_token,
                            bool try_to_recover,
                            bool report_error_on_missing_delimiter) {
-  ASSERT(_indentation_stack.top_end_token() == end_token);
+  ASSERT(indentation_stack_.top_end_token() == end_token);
   if (current_token() == Token::DEDENT &&
       current_token_if_delimiter() == end_token) {
     // Allow to end delimited sections at the same level as they started:
@@ -548,9 +548,9 @@ bool Parser::end_delimited(IndentationStack::Kind kind,
   bool encountered_error = false;
 
   if (current_token() != end_token) {
-    auto start_range = _indentation_stack.top_start_range();
+    auto start_range = indentation_stack_.top_start_range();
     encountered_error = true;
-    if (report_error_on_missing_delimiter && !_encountered_stack_overflow) {
+    if (report_error_on_missing_delimiter && !encountered_stack_overflow_) {
       report_error(start_range.extend(current_range().from()),
                   "Missing closing '%s'", Token::symbol(end_token).c_str());
     }
@@ -580,14 +580,14 @@ bool Parser::end_delimited(IndentationStack::Kind kind,
 
 void Parser::peek_state(int n, Parser::State* parser_state) {
   bool at_newline = false;
-  auto scanner_state = _scanner_state_queue.get(n);
+  auto scanner_state = scanner_state_queue_.get(n);
   Token::Kind token = scanner_state.token();
 
   // Switch the token to a DEDENT, if it's a EOS/NEWLINE, and the indentation
   // warrants the switch.
   switch (token) {
     case Token::EOS: {
-      if (_indentation_stack.is_empty()) {
+      if (indentation_stack_.is_empty()) {
         // Just consume the EOS token and thus terminate the parsing.
         break;
       }
@@ -595,19 +595,19 @@ void Parser::peek_state(int n, Parser::State* parser_state) {
       [[fallthrough]];
     }
     case Token::NEWLINE: {
-      if (_indentation_stack.is_empty()) {
+      if (indentation_stack_.is_empty()) {
         // No multiline construct. Just deal with the next token.
         break;
       }
 
-      auto& next_state = _scanner_state_queue.get(n + 1);
+      auto& next_state = scanner_state_queue_.get(n + 1);
       int old_indentation = scanner_state.indentation;
 
       if (next_state.indentation > old_indentation) {
         // Increasing the indentation is ok.
         break;
       } else if (next_state.indentation == old_indentation &&
-                 _indentation_stack.top_indentation() < old_indentation) {
+                 indentation_stack_.top_indentation() < old_indentation) {
         // Still indented.
         break;
       } else {
@@ -617,7 +617,7 @@ void Parser::peek_state(int n, Parser::State* parser_state) {
       }
     }
     default:
-      auto& previous_state = _scanner_state_queue.get(n - 1);
+      auto& previous_state = scanner_state_queue_.get(n - 1);
       at_newline = previous_state.token() == Token::NEWLINE;
       break;
   }
@@ -952,7 +952,7 @@ Declaration* Parser::parse_declaration(bool is_abstract) {
       body = parse_sequence();
     } else {
       report_error("Unexpected token: %s", Token::symbol(current_token()).c_str());
-      while (!(at_newline() && (current_indentation() < _indentation_stack.top_indentation() + 4)) &&
+      while (!(at_newline() && (current_indentation() < indentation_stack_.top_indentation() + 4)) &&
              current_token() != Token::DEDENT &&
              current_token() != Token::COLON &&
              current_token() != Token::DEFINE &&
@@ -1051,7 +1051,7 @@ Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
     if (current_token() == Token::COLON) {
       consume();
     } else {
-      report_error("Missing ':' to end class signature");
+      report_error("Missing colon to end class signature");
       member_indentation = 2;  // Assume that members are now intented by 2.
     }
   }
@@ -1111,7 +1111,7 @@ Sequence* Parser::parse_sequence() {
 
   // In theory we don't need the multiline construct, but it allows for better
   // error recovery.
-  int outer_indentation = _indentation_stack.top_indentation();
+  int outer_indentation = indentation_stack_.top_indentation();
   start_multiline_construct(IndentationStack::Kind::SEQUENCE);
   ListBuilder<Expression*> expressions;
   int expression_indent = -1;
@@ -1163,9 +1163,10 @@ Sequence* Parser::parse_sequence() {
       //    ```
       //       while true:
       //         break 499
+      //    ```
       //
-      // We could accept the `499` as a new expression, but that would be confusing
-      // (giving the impression that `499` was an argument to `break`.
+      // We could accept the `499` as a new expression, but that would be confusing,
+      // giving the impression that `499` was an argument to `break`.
       // Report an error.
       report_error("Missing semicolon or missing newline");
     }
@@ -1339,7 +1340,7 @@ Expression* Parser::parse_logical_spelled(bool allow_colon) {
 }
 
 Expression* Parser::parse_not_spelled(bool allow_colon) {
-  ASSERT(_indentation_stack.top_kind() == IndentationStack::LOGICAL);
+  ASSERT(indentation_stack_.top_kind() == IndentationStack::LOGICAL);
   if (current_token() == Token::NOT) {
     std::vector<Source::Range> not_ranges;
     while (current_token() == Token::NOT) {
@@ -1438,7 +1439,7 @@ Expression* Parser::parse_call(bool allow_colon) {
       } else if (token == Token::DOUBLE_COLON && !allowed_to_consume(token)) {
         break;
       }
-      int call_indentation = _indentation_stack.top_indentation();
+      int call_indentation = indentation_stack_.top_indentation();
       // Check whether there is a dedent after the ':' or after its parameters.
       // The dedent's depth determines whether the block is part of this call or not.
       bool at_dedent = false;
@@ -1512,7 +1513,7 @@ Expression* Parser::parse_if() {
     condition = parse_expression_or_definition(true);
   }
   if (!optional_delimiter(Token::COLON)) {
-    report_error("Missing ':' for 'if' condition");
+    report_error(range, "Missing colon for 'if' condition");
     // If we are at a new line, we will make it dependent on the indentation on whether they
     // are part of the `if`.
     // Examples:
@@ -1531,12 +1532,13 @@ Expression* Parser::parse_if() {
   Expression* no = null;
   if (current_token() == Token::DEDENT) {
     if (peek_token() == Token::ELSE &&
-        _indentation_stack.top_indentation() == current_indentation() &&
-        _indentation_stack.is_outmost(IndentationStack::IF_BODY)) {
+        indentation_stack_.top_indentation() == current_indentation() &&
+        indentation_stack_.is_outmost(IndentationStack::IF_BODY)) {
       consume();
     }
   }
   if (current_token() == Token::ELSE) {
+    auto else_range = Source::Range(current_range().to(), current_range().to());
     consume();
     if (current_token() == Token::IF) {
       end_multiline_construct(IndentationStack::IF_BODY);
@@ -1545,7 +1547,7 @@ Expression* Parser::parse_if() {
       if (!optional_delimiter(Token::COLON)) {
         // Just try to read the else block.
         // If it's correctly indented it will work.
-        report_error("Missing ':' for 'else'");
+        report_error(else_range, "Missing colon for 'else'");
       }
       no = parse_sequence();
       end_multiline_construct(IndentationStack::IF_BODY);
@@ -1571,7 +1573,7 @@ Expression* Parser::parse_while() {
     condition = parse_expression_or_definition(true);
   }
   if (!optional_delimiter(Token::COLON)) {
-    report_error("Missing ':' for loop condition");
+    report_error(range, "Missing colon for loop condition");
     // Just try to read the body.
   }
   switch_multiline_construct(IndentationStack::WHILE_CONDITION,
@@ -1584,6 +1586,7 @@ Expression* Parser::parse_while() {
 Expression* Parser::parse_for() {
   ASSERT(current_token() == Token::FOR);
   auto range = current_range();
+  auto error_range = range;
   start_multiline_construct(IndentationStack::FOR_INIT);
   consume();
   Expression* initializer = null;
@@ -1591,11 +1594,12 @@ Expression* Parser::parse_for() {
   Expression* update = null;
 
   if (current_token_if_delimiter() != Token::SEMICOLON) {
+    error_range = current_range();
     initializer = parse_expression_or_definition(true);
   }
 
   if (!optional_delimiter(Token::SEMICOLON)) {
-    report_error("Missing ';'");
+    report_error(error_range, "Missing semicolon");
     condition = NEW_NODE(Error, current_range());
     update = NEW_NODE(Error, current_range());
     skip_to_body(Token::COLON);
@@ -1606,11 +1610,12 @@ Expression* Parser::parse_for() {
                              IndentationStack::FOR_CONDITION);
 
   if (current_token_if_delimiter() != Token::SEMICOLON) {
+    error_range = current_range();
     condition = parse_expression(true);
   }
 
   if (!optional_delimiter(Token::SEMICOLON)) {
-    report_error("Missing ';'");
+    report_error(error_range, "Missing semicolon");
     update = NEW_NODE(Error, current_range());
     skip_to_body(Token::COLON);
     goto parse_body;
@@ -1621,17 +1626,18 @@ Expression* Parser::parse_for() {
   // Could be a block in update location, but that's unlikely. We prefer to
   // assume that the update is not present.
   if (current_token_if_delimiter() != Token::COLON) {
+    error_range = current_range();
     update = parse_expression(true);
   }
   if (!optional_delimiter(Token::COLON)) {
-    report_error("Missing ':'");
+    report_error(error_range, "Missing colon");
     skip_to_body(Token::COLON);
   }
 
   parse_body:
-  ASSERT(_indentation_stack.top_kind() == IndentationStack::FOR_UPDATE ||
+  ASSERT(indentation_stack_.top_kind() == IndentationStack::FOR_UPDATE ||
          diagnostics()->encountered_error());
-  switch_multiline_construct(_indentation_stack.top_kind(),
+  switch_multiline_construct(indentation_stack_.top_kind(),
                              IndentationStack::FOR_BODY);
   Expression* body = parse_sequence();
   end_multiline_construct(IndentationStack::FOR_BODY);
@@ -1641,30 +1647,34 @@ Expression* Parser::parse_for() {
 Expression* Parser::parse_try_finally() {
   ASSERT(current_token() == Token::TRY);
   auto range = current_range();
+  auto error_range = range;
   start_multiline_construct(IndentationStack::TRY);
   consume();
   bool encountered_error = false;
   if (current_token() == Token::COLON) {
     consume();
   } else {
-    report_error("Missing ':' after 'try'");
+    report_error(Source::Range(error_range.to(), error_range.to()), "Missing colon after 'try'");
+
     encountered_error = true;
   }
+  error_range = current_range();
   Sequence* body = parse_sequence();
   if (current_token() == Token::DEDENT) {
     if (peek_token() == Token::FINALLY &&
-        _indentation_stack.top_indentation() == current_indentation() &&
-        _indentation_stack.is_outmost(IndentationStack::TRY)) {
+        indentation_stack_.top_indentation() == current_indentation() &&
+        indentation_stack_.is_outmost(IndentationStack::TRY)) {
       consume();
     }
   }
   List<Parameter*> handler_parameters;
   if (current_token() == Token::FINALLY) {
+    error_range = current_range();
     consume();
     if (current_token() == Token::COLON) {
       delimit_with(Token::COLON);
     } else {
-      report_error("Missing ':' after finally");
+      report_error(Source::Range(error_range.to(), error_range.to()), "Missing colon after finally");
     }
     bool has_parameters;
     handler_parameters = parse_block_parameters(&has_parameters);
@@ -1711,6 +1721,10 @@ Expression* Parser::parse_precedence(Precedence precedence,
           // A prefix minus.
           goto done;
         }
+        if (is_attached_to_previous || is_attached_to_next) {
+          diagnostics()->report_warning(range.extend(current_range()),
+                                        "Minus operator must be surrounded by spaces");
+        }
         consume();
         Expression* right = at_newline()
             ? parse_expression(allow_colon)
@@ -1730,7 +1744,7 @@ Expression* Parser::parse_precedence(Precedence precedence,
         } else if (at_newline()) {
           right = parse_expression(allow_colon);
         } else if (level == PRECEDENCE_ASSIGNMENT) {
-          IndentationStack::Kind old_kind = _indentation_stack.top_kind();
+          IndentationStack::Kind old_kind = indentation_stack_.top_kind();
           // Switch temporarily to `ASSIGNMENT`.
           // This way, blocks that follow are not consumed by the assignment, but
           // by the right-hand-side of the expression:
@@ -1855,7 +1869,7 @@ Expression* Parser::parse_conditional(bool allow_colon) {
 
 Expression* Parser::parse_conditional_rest(Expression* head, bool allow_colon) {
   ASSERT(current_token() == Token::CONDITIONAL);
-  ASSERT(_indentation_stack.top_kind() == IndentationStack::CONDITIONAL);
+  ASSERT(indentation_stack_.top_kind() == IndentationStack::CONDITIONAL);
   auto range = current_range();
   delimit_with(Token::CONDITIONAL);
   switch_multiline_construct(IndentationStack::CONDITIONAL,
@@ -2201,11 +2215,16 @@ Expression* Parser::parse_byte_array() {
   start_delimited(IndentationStack::LITERAL, Token::LSHARP_BRACK, Token::RBRACK);
   ListBuilder<Expression*> elements;
   do {
-    // Speep up parsing of large byte array literals by recognizing a common
+    // Speed up parsing of large byte array literals by recognizing a common
     // case here without going through the whole machinery.  Worth about a 25%
     // reduction in runtime.
-    if (current_state().token == Token::INTEGER && peek_token() == Token::COMMA) {
+    auto token = current_state().token;
+    if (token == Token::INTEGER && peek_token() == Token::COMMA) {
       Expression* expression = NEW_NODE(LiteralInteger(current_token_data()), current_range());
+      consume();
+      elements.add(expression);
+    } else if (token == Token::CHARACTER && peek_token() == Token::COMMA) {
+      Expression* expression = NEW_NODE(LiteralCharacter(current_token_data()), current_range());
       consume();
       elements.add(expression);
     } else {
@@ -2235,14 +2254,14 @@ void Parser::discard_buffered_scanner_states() {
   // However, because of the already peeked token, the scanner already read the
   // `/* " // */` as a comment, and we will now also report an error because of
   // the missing quote.
-  if (_current_state.is_valid()) {
+  if (current_state_.is_valid()) {
     consume();
-    ASSERT(!_current_state.is_valid());
+    ASSERT(!current_state_.is_valid());
   }
   // Use up all scanner states that have been buffered. We might be unlucky
   // and consume tokens that should be in the string, but there isn't a good
   // way to know which part is string, and which isn't.
-  _scanner_state_queue.discard_buffered();
+  scanner_state_queue_.discard_buffered();
 }
 
 Expression* Parser::parse_string_interpolate() {
@@ -2253,12 +2272,25 @@ Expression* Parser::parse_string_interpolate() {
   ListBuilder<Expression*> expressions;
 
   bool is_multiline = current_token() == Token::STRING_PART_MULTI_LINE;
+  bool last_interpolated_was_identifier = false;
+  auto last_identifier_range = Source::Range::invalid();
+  auto check_minus_after_identifier = [&](Symbol current_data) {
+    if (last_interpolated_was_identifier &&
+        current_data.c_str()[0] == '-' &&
+        is_identifier_part(current_data.c_str()[1])) {
+      diagnostics()->report_warning(last_identifier_range,
+                                    "Interpolated identifiers followed by '-' must be parenthesized");
+    }
+  };
   Token::Kind end_token = is_multiline ? Token::STRING_END_MULTI_LINE : Token::STRING_END;
   Token::Kind kind;
   auto range = start;
   do {
-    parts.add(NEW_NODE(LiteralString(current_token_data(), is_multiline), range));
+    Symbol current_data = current_token_data();
+    check_minus_after_identifier(current_data);
+    parts.add(NEW_NODE(LiteralString(current_data, is_multiline), range));
     consume();
+    last_interpolated_was_identifier = false;
     scan_interpolated_part();
     // We just passed $.
     LiteralString* format = null;
@@ -2281,6 +2313,8 @@ Expression* Parser::parse_string_interpolate() {
       if (encountered_error) discard_buffered_scanner_states();
     } else if (current_token() == Token::IDENTIFIER) {
       expression = parse_identifier();
+      last_interpolated_was_identifier = true;
+      last_identifier_range = expression->range();
     } else {
       if (current_token() == Token::EOS || current_token() == Token::DEDENT) {
         report_error("Incomplete string interpolation");
@@ -2297,6 +2331,7 @@ Expression* Parser::parse_string_interpolate() {
     if (!was_parenthesized) {
       while (true) {
         if (scanner_peek() == '[') {
+          last_interpolated_was_identifier = false;
           bool encountered_error;
           expression = parse_postfix_index(expression, &encountered_error);
           if (encountered_error) {
@@ -2314,6 +2349,8 @@ Expression* Parser::parse_string_interpolate() {
           if (current_token() == Token::IDENTIFIER && is_current_token_attached()) {
             Identifier* name = parse_identifier();
             expression = NEW_NODE(Dot(expression, name), range);
+            last_interpolated_was_identifier = true;
+            last_identifier_range = range;
             continue;  // Try for another postfix.
           } else {
             report_error("Non-identifier member name");
@@ -2330,7 +2367,9 @@ Expression* Parser::parse_string_interpolate() {
     range = current_range();
   } while (kind != end_token);
 
-  parts.add(NEW_NODE(LiteralString(current_token_data(), is_multiline), range));
+  Symbol current_data  = current_token_data();
+  check_minus_after_identifier(current_data);
+  parts.add(NEW_NODE(LiteralString(current_data, is_multiline), range));
   consume();
   return NEW_NODE(LiteralStringInterpolation(parts.build(), formats.build(), expressions.build()), start);
 }
@@ -2486,7 +2525,7 @@ bool Parser::peek_block_parameter(ParserPeeker* peeker) {
 std::pair<Expression*, List<Parameter*>> Parser::parse_parameters(bool allow_return_type) {
   Expression* return_type = null;
   ListBuilder<Parameter*> parameters;
-  auto declaration_indentation = _indentation_stack.top_indentation();
+  auto declaration_indentation = indentation_stack_.top_indentation();
   bool reported_unusual_indentation = false;
   while (true) {
     auto range = current_range();
@@ -2657,28 +2696,28 @@ Source::Range Parser::current_range() {
   auto& state = current_state();
   if (state.token == Token::NEWLINE || state.token == Token::DEDENT || state.token == Token::EOS) {
     int shortened_to = std::min(state.scanner_state.to, state.scanner_state.from + 1);
-    if (_source->text()[shortened_to] == '\n' && _source->text()[shortened_to - 1] == '\r') {
+    if (source_->text()[shortened_to] == '\n' && source_->text()[shortened_to - 1] == '\r') {
       shortened_to++;
     }
-    return _source->range(state.scanner_state.from, shortened_to);
+    return source_->range(state.scanner_state.from, shortened_to);
   }
-  return _source->range(state.scanner_state.from, state.scanner_state.to);
+  return source_->range(state.scanner_state.from, state.scanner_state.to);
 }
 
 Source::Range Parser::current_range_safe() {
-  if (_current_state.is_valid() || _scanner_state_queue.buffered_count() > 0) {
+  if (current_state_.is_valid() || scanner_state_queue_.buffered_count() > 0) {
     return current_range();
   }
-  return _scanner->current_range();
+  return scanner_->current_range();
 }
 
 Source::Range Parser::previous_range() {
-  auto& previous_state = _scanner_state_queue.get(-1);
-  return _source->range(previous_state.from, previous_state.to);
+  auto& previous_state = scanner_state_queue_.get(-1);
+  return source_->range(previous_state.from, previous_state.to);
 }
 
 Token::Kind Parser::previous_token() {
-  auto& previous_state = _scanner_state_queue.get(-1);
+  auto& previous_state = scanner_state_queue_.get(-1);
   return previous_state.token();
 }
 
@@ -2694,7 +2733,7 @@ bool Parser::optional_delimiter(Token::Kind kind) {
     return true;
   }
   if (current_token() == Token::DEDENT &&
-      current_indentation() == _indentation_stack.top_indentation() &&
+      current_indentation() == indentation_stack_.top_indentation() &&
       peek_token() == kind) {
     delimit_with(kind);
     return true;

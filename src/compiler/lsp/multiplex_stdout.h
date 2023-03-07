@@ -35,7 +35,7 @@ struct LspWriterMultiplexStdout : public LspWriter {
 };
 
 struct LspFsConnectionMultiplexStdout : public LspFsConnection {
-  void initialize(Diagnostics* diagnostics) { }
+  void initialize(Diagnostics* diagnostics) {}
   void putline(const char* line);
   char* getline();
   int read_data(uint8* content, int size);

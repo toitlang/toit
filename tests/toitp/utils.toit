@@ -4,19 +4,21 @@
 
 import host.pipe
 
-run_toitp test_args/List toitp_args/List -> string:
+run_toitp test_args/List toitp_args/List --filter/string?=null -> string:
   i := 0
   snap := test_args[i++]
   toitc := test_args[i++]
   toitp := test_args[i++]
 
-  command_list := [toitp, snap]
+  command_list := [toitp]
   command_list.add_all toitp_args
+  command_list.add snap
+  if filter: command_list.add filter
   return pipe.backticks command_list
 
 // Extracts the entry names, discarding the index and the location.
 extract_entries output/string --max_length/int -> List:
-  lines := output.split "\n"
+  lines := output.split LINE_TERMINATOR
   result := lines.copy 1
   result.filter --in_place: it != ""
   result.map --in_place:

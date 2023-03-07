@@ -52,3 +52,10 @@ main:
   + ImportedClass, ImportedInterface
   - *
 */
+
+  // Make sure it also works inside asserts
+  assert: block.call
+/*              ^~~~
+  + call
+  - member, ==, true, null, false
+*/

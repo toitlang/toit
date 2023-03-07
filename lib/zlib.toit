@@ -6,7 +6,7 @@ import monitor
 import reader
 import crypto
 import crypto.adler32 as crypto
-import crypto.crc32 as crypto
+import crypto.crc as crc_algorithms
 
 class ZlibEncoder_ implements reader.Reader:
   channel_ := monitor.Channel 1
@@ -79,7 +79,7 @@ An 8 byte checksum that consists of the 4 byte CRC32 checksum followed by
   the checksum that gzip uses.
 */
 class CrcAndLengthChecksum_ extends crypto.Checksum:
-  crc_ := crypto.Crc32
+  crc_ := crc_algorithms.Crc32
   length_ := 0
 
   add collection from/int to/int -> none:

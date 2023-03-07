@@ -44,9 +44,9 @@ parse str/string:
   thrower := (: throw "INVALID_UUID")
   while i < str.size and index < uuid.size:
     if (str.at --raw i) == '-': i++
-    v := hex_digit str[i++] thrower
+    v := hex_char_to_value str[i++] --on_error=thrower
     v <<= 4
-    v |= hex_digit str[i++] thrower
+    v |= hex_char_to_value str[i++] --on_error=thrower
     uuid[index++] = v
   if i < str.size or index != uuid.size: throw "INVALID_UUID"
   return Uuid uuid
@@ -59,7 +59,7 @@ The generated UUID uses the variant 1 (RFC 4122/DCE 1.1), and is
   thus also known as "Leach-Salz" UUID.
 */
 // TODO(4197): should be typed.
-uuid5 namespace data:
+uuid5 namespace data -> Uuid:
   hash := crypto.Sha1
   // TODO(4197): why do we need to call `to_byte_array` here.
   //   Is the documentation wrong and we want to accept more than

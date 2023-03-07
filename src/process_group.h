@@ -33,8 +33,8 @@ class ProcessGroup : public ProcessGroupList::Element {
 
   static ProcessGroup* create(int id, Program* program, AlignedMemoryBase* memory = null);
 
-  int id() const { return _id; }
-  Program* program() const { return _program; }
+  int id() const { return id_; }
+  Program* program() const { return program_; }
 
   Process* lookup(int process_id);
   void add(Process* process);
@@ -43,17 +43,17 @@ class ProcessGroup : public ProcessGroupList::Element {
   // if there are more processes left in the group.
   bool remove(Process* process);
 
-  ProcessListFromProcessGroup& processes() { return _processes; }
+  ProcessListFromProcessGroup& processes() { return processes_; }
 
  private:
-  const int _id;
-  Program* const _program;
+  const int id_;
+  Program* const program_;
 
   // If the process groups owns memory, it is automatically deleted
   // when the process group goes away.
-  AlignedMemoryBase* const _memory;
+  AlignedMemoryBase* const memory_;
 
-  ProcessListFromProcessGroup _processes;
+  ProcessListFromProcessGroup processes_;
 
   ProcessGroup(int id, Program* program, AlignedMemoryBase* memory);
 

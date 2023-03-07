@@ -42,9 +42,9 @@ List<const char*> string_split(char* str, const char* delim) {
 void PathBuilder::canonicalize() {
   // With C++11 we can, in theory, modify the buffer directly, but it feels
   // brittle.
-  auto copy = ::strdup(_buffer.c_str());
-  _fs->canonicalize(copy);
-  _buffer.assign(copy);
+  auto copy = ::strdup(buffer_.c_str());
+  fs_->canonicalize(copy);
+  buffer_.assign(copy);
   free(copy);
 }
 

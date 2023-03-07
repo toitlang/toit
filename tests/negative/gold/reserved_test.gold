@@ -1,4 +1,4 @@
-tests/negative/reserved_test.toit:20:11: error: Missing ':' to end class signature
+tests/negative/reserved_test.toit:20:11: error: Missing colon to end class signature
 class this=:
           ^
 tests/negative/reserved_test.toit:20:11: error: Members must have the same indentation
@@ -7,7 +7,7 @@ class this=:
 tests/negative/reserved_test.toit:20:11: error: Invalid name for declaration
 class this=:
           ^
-tests/negative/reserved_test.toit:21:12: error: Missing ':' to end class signature
+tests/negative/reserved_test.toit:21:12: error: Missing colon to end class signature
 class super=:
            ^
 tests/negative/reserved_test.toit:21:12: error: Members must have the same indentation
@@ -16,7 +16,7 @@ class super=:
 tests/negative/reserved_test.toit:21:12: error: Invalid name for declaration
 class super=:
            ^
-tests/negative/reserved_test.toit:22:18: error: Missing ':' to end class signature
+tests/negative/reserved_test.toit:22:18: error: Missing colon to end class signature
 class constructor=:
                  ^
 tests/negative/reserved_test.toit:22:18: error: Members must have the same indentation
@@ -25,7 +25,7 @@ class constructor=:
 tests/negative/reserved_test.toit:22:18: error: Invalid name for declaration
 class constructor=:
                  ^
-tests/negative/reserved_test.toit:23:8: error: Missing ':' to end class signature
+tests/negative/reserved_test.toit:23:8: error: Missing colon to end class signature
 class _=:
        ^
 tests/negative/reserved_test.toit:23:8: error: Members must have the same indentation

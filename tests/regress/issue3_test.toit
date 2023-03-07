@@ -16,4 +16,7 @@ expect name [code]:
 main:
   // Port 47 is reserved/unassigned.
   socket := TcpSocket
-  expect "Connection refused": socket.connect "localhost" 47
+  if platform == PLATFORM_WINDOWS:
+    expect "No connection could be made because the target machine actively refused it.\r\n": socket.connect "localhost" 47
+  else:
+    expect "Connection refused": socket.connect "localhost" 47

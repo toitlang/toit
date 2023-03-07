@@ -39,8 +39,9 @@ For floats, two NaN's (not-a-number) are identical when they have the same
   `==` where NaN's are never equal, so `float.NAN == float.NAN` is always
   false.
 */
-identical x y:
-  #primitive.core.identical
+identical x/any y/any -> bool:
+  // Recognized by the compiler and implemented as separate bytecode.
+  unreachable
 
 /**
 Returns the min of $a and $b.
@@ -206,9 +207,8 @@ Exits the VM with the given $status.
 # Argument $status
 0 signals a successful exit. All other statuses are error codes.
 */
-exit status:
-  if status == 0: __halt__
-  else: __exit__ status
+exit status/int -> none:
+  __exit__ status
 
 /**
 Creates an off-heap byte array with the given $size.
@@ -256,6 +256,8 @@ PLATFORM_WINDOWS ::= "Windows"
 PLATFORM_MACOS ::= "macOS"
 PLATFORM_LINUX ::= "Linux"
 
+LINE_TERMINATOR ::= platform == PLATFORM_WINDOWS ? "\r\n" : "\n"
+
 /// Index for $process_stats.
 STATS_INDEX_GC_COUNT                       ::= 0
 /// Index for $process_stats.
@@ -282,6 +284,10 @@ STATS_INDEX_FULL_COMPACTING_GC_COUNT       ::= 10
 STATS_LIST_SIZE_                           ::= 11
 
 /**
+Collect statistics about the system and the current process.
+The $gc flag indicates whether a garbage collection should be performed
+  before collecting the stats.  This is a fairly expensive operation, so
+  it should be avoided if possible.
 Returns an array with stats for the current process.
 The stats, listed by index in the array, are:
 0. New-space (small collection) GC count for the process
@@ -314,8 +320,11 @@ By passing the optional $list argument to be filled in, you can avoid causing
 print "There have been $((process_stats)[STATS_INDEX_GC_COUNT]) GCs for this process"
 ```
 */
-process_stats list/List=(List STATS_LIST_SIZE_) -> List:
-  result := process_stats_ list -1 -1
+process_stats --gc/bool=false list/List=(List STATS_LIST_SIZE_) -> List:
+  full_gcs/int? := null
+  if gc:
+    full_gcs = (process_stats)[STATS_INDEX_FULL_GC_COUNT]
+  result := process_stats_ list -1 -1 full_gcs
   assert: result  // The current process always exists.
   return result
 
@@ -325,10 +334,13 @@ Variant of $(process_stats).
 Returns an array with stats for the process identified by the $group and the
   $id.
 */
-process_stats group id list/List=(List STATS_LIST_SIZE_) -> List?:
-  return process_stats_ list group id
+process_stats --gc/bool=false group id list/List=(List STATS_LIST_SIZE_) -> List?:
+  full_gcs/int? := null
+  if gc:
+    full_gcs = (process_stats)[STATS_INDEX_FULL_GC_COUNT]
+  return process_stats_ list group id full_gcs
 
-process_stats_ list group id:
+process_stats_ list group id gc_count:
   #primitive.core.process_stats
 
 /**
@@ -440,25 +452,33 @@ literal_index_ o -> int?:
 word_size_ -> int:
   #primitive.core.word_size
 
+/// Deprecated.
+hex_digit char/int [error_block] -> int:
+  return hex_char_to_value char --on_error=error_block
+
+/// Deprecated.
+hex_digit char/int -> int:
+  return hex_char_to_value char --on_error=(: throw "INVALID_ARGUMENT")
+
 /**
 Converts a hex digit character in the ranges
   '0'-'9', 'a'-'f', or 'A'-'F'.
 Returns the value between 0 and 15.
 Calls the block on invalid input and returns its return value if any.
 */
-hex_digit char/int [error_block] -> int:
+hex_char_to_value char/int [--on_error] -> int:
   if '0' <= char <= '9': return char - '0'
   if 'a' <= char <= 'f': return 10 + char - 'a'
   if 'A' <= char <= 'F': return 10 + char - 'A'
-  return error_block.call
+  return on_error.call
 
 /**
 Converts a hex digit character in the ranges
   '0'-'9', 'a'-'f', or 'A'-'F'.
 Returns the value between 0 and 15.
 */
-hex_digit char/int -> int:
-  return hex_digit char: throw "INVALID_ARGUMENT"
+hex_char_to_value char/int -> int:
+  return hex_char_to_value char --on_error=(: throw "INVALID_ARGUMENT")
 
 /**
 Converts a number between 0 and 15 to a lower case

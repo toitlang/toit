@@ -30,7 +30,7 @@ class Diagnostics;
 
 class Filesystem {
  public:
-  virtual ~Filesystem() { free(const_cast<char*>(_cwd)); }
+  virtual ~Filesystem() { free(const_cast<char*>(cwd_)); }
 
   /// Can be called multiple times.
   /// Subclasses must ensure that multiple calls don't lead to problems.
@@ -45,13 +45,26 @@ class Filesystem {
   virtual List<const char*> package_cache_paths() = 0;
 
   virtual bool is_absolute(const char* path) = 0;
-  virtual char path_separator() { return '/'; }
-  virtual char* root(const char* path) {
-    char* result = new char[2];
-    result[0] = path[0];
-    result[1] = '\0';
-    return result;
-  }
+  // The path the non-absolute path is relative to.
+  // On Posix systems this is equal to `cwd`.
+  // On Windows, it can be `cwd`, or a drive (like "c:"), if the path starts with '\' or '/'.
+  virtual const char* relative_anchor(const char* path) = 0;
+  // The default path separator.
+  // On Posix systems equal to '/'.
+  // On Windows set to '\\' (although '/' also works).
+  virtual char path_separator() = 0;
+  // On Windows both '/' and '\' are path separators. It's thus not
+  // recommended to compare to path_separator().
+  virtual bool is_path_separator(char c) = 0;
+  // The root of the path.
+  // May return the empty string if the path is not absolute.
+  // On Posix systems equal to '/' for absolute paths.
+  // On Windows either the drive 'c:\' or 'c:/' or '\\' and '//' for network paths.
+  //   Note that the network path root returns just the '\\' or '//', and drops
+  //   the hostname which is required for file operations.
+  virtual char* root(const char* path) = 0;
+  // Whether the given path is already a root (as specified by 'root' above).
+  virtual bool is_root(const char* path) = 0;
 
   bool is_regular_file(const char* path);
   bool is_directory(const char* path);
@@ -109,10 +122,10 @@ class Filesystem {
 
   std::string _relative(const std::string& path, std::string to);
 
-  UnorderedMap<std::string, InterceptedFile> _intercepted;
-  const char* _library_root = null;
-  const char* _vessel_root = null;
-  const char* _cwd = null;
+  UnorderedMap<std::string, InterceptedFile> intercepted_;
+  const char* library_root_ = null;
+  const char* vessel_root_ = null;
+  const char* cwd_ = null;
 };
 
 } // namespace compiler

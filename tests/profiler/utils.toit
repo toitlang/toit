@@ -35,5 +35,5 @@ run args -> List:
   exit_code := pipe.exit_code exit_value
 
   if exit_code != 0: throw "Program didn't exit with 0."
-  lines := output.split "\n"
+  lines := output.split LINE_TERMINATOR
   return lines

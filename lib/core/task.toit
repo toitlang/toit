@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import monitor
 import ..system.services show ServiceManager_
 
 // How many tasks are alive?
@@ -15,7 +16,7 @@ Returns the object for the current task.
 Deprecated: Use $Task.current instead.
 */
 task -> Task:
-  #primitive.core.task_current
+  return Task_.current
 
 /**
 Creates a new user task.
@@ -64,6 +65,8 @@ Tasks are created by calling $(task code). They can either terminate by themselv
   (gracefully or with an exception) or by being canceled from the outside with
   $cancel.
 
+See more on tasks at https://docs.toit.io/language/tasks.
+
 If a task finishes with an exception it brings down the whole program.
 */
 interface Task:
@@ -71,7 +74,90 @@ interface Task:
   Returns the current task.
   */
   static current -> Task:
-    #primitive.core.task_current
+    return Task_.current
+
+  /**
+  Runs the given $lambdas as a group of concurrent tasks.
+
+  Returns the results of running the $lambdas as a $Map
+    keyed by the lambda index. If the lambda at a given
+    index did not return, the results map will not contain
+    and entry for it. The results map is insertion ordered,
+    so it is possible to tell which lambda returned first.
+
+  If any of the $lambdas throws an exception, the exception is
+    propagated to the caller of $Task.group which in
+    return also throws.
+
+  If $required is less than the number of $lambdas, the
+    method returns when $required tasks have completed.
+  */
+  static group lambdas/List -> Map
+      --required/int=lambdas.size:
+    count ::= lambdas.size
+    tasks ::= Array_ count
+    results ::= {:}
+    if count < 2 or not (1 <= required <= count):
+      throw "Bad Argument"
+
+    is_stopping/bool := false
+    is_canceled/bool := false
+    caught/Exception_? := null
+
+    terminated := 0
+    signal ::= monitor.Signal
+    for index := 0; index < count; index++:
+      tasks[index] = task::
+        while true:
+          try:
+            results[index] = lambdas[index].call
+          finally: | is_exception exception |
+            if Task.current.is_canceled:
+              // If we get canceled after we decided to stop, we
+              // avoid propagating the cancelation to the task
+              // that invoked Task.group.
+              if not is_stopping:
+                is_canceled = true
+                is_stopping = true
+            else if is_exception:
+              // We prefer the first exception and that is the
+              // one we propagate to the caller of Task.group.
+              if not caught: caught = exception
+              is_stopping = true
+            tasks[index] = null
+            terminated++
+            critical_do: signal.raise
+            break  // Stop the unwinding.
+
+      // We prefer giving the new tasks a chance to run eagerly,
+      // so we yield here to start it up. In return, this makes
+      // it possible that we get stopped before creating all the
+      // tasks, so we deal with that by leaving the loop.
+      yield
+      if is_stopping:
+        // Count remaining tasks as eagerly terminated.
+        terminated += count - index - 1
+        break
+
+    try:
+      signal.wait: is_stopping or terminated >= required
+    finally:
+      if terminated < count:
+        // We're either stopping or we got the required results.
+        // Make sure we're marked as stopping and cancel all
+        // the tasks that are still live.
+        is_stopping = true
+        tasks.do: if it: it.cancel
+        // Wait until all tasks have terminated.
+        critical_do --no-respect_deadline:
+          // TODO(kasper): Consider letting the user control the timeout.
+          with_timeout --ms=1_000: signal.wait: terminated == count
+
+    if caught:
+      rethrow caught.value caught.trace
+    else if is_canceled:
+      Task.current.cancel
+    return results
 
   /**
   Cancels the task.
@@ -95,10 +181,9 @@ interface Task:
 
 class Task_ implements Task:
   /**
-  Same as $task, but returns it as a $Task_ object instead.
+  Same as $Task.current, but returns it as a $Task_ object instead.
   */
-  static current -> Task_:
-    #primitive.core.task_current
+  static current/Task_? := null
 
   background -> bool:
     return background_
@@ -107,7 +192,7 @@ class Task_ implements Task:
     return other is Task_ and other.id_ == id_
 
   stringify:
-    return "$name_<$(id_)@$(current_process_)>"
+    return "$name_<$(id_)@$(Process.current.id)>"
 
   with_deadline_ deadline [block]:
     assert: Task_.current == this
@@ -124,7 +209,7 @@ class Task_ implements Task:
   deadline: return deadline_
 
   // Mark the task for cancellation, at the next idle operation.
-  cancel:
+  cancel -> none:
     is_canceled_ = true
     if monitor_ and critical_count_ == 0: monitor_.notify_
 
@@ -183,7 +268,8 @@ class Task_ implements Task:
     if background_: task_background_--
     // If no services are defined and only background tasks are alive
     // at this point, we terminate the process gracefully.
-    if ServiceManager_.is_empty and task_count_ == task_background_: __halt__
+    if ServiceManager_.is_empty and task_count_ == task_background_:
+      __exit__ 0
     // Suspend this task and transfer control to the next one.
     next := suspend_
     task_transfer_to_ next true
@@ -279,4 +365,6 @@ task_new_ lambda/Lambda -> Task_:
   #primitive.core.task_new
 
 task_transfer_to_ to/Task_ detach_stack:
-  #primitive.core.task_transfer
+  #primitive.core.task_transfer: | task |
+    Task_.current = task
+    return task

@@ -28,7 +28,7 @@ namespace toit {
 //  }
 class Locker {
  public:
-  explicit Locker(Mutex* mutex)  : _mutex(mutex), _previous(null) {
+  explicit Locker(Mutex* mutex)  : mutex_(mutex), previous_(null) {
     enter();
   }
   ~Locker() {
@@ -43,8 +43,8 @@ class Locker {
   // Enter a locker after leaving it.
   void enter();
 
-  Mutex* _mutex;
-  Locker* _previous;
+  Mutex* mutex_;
+  Locker* previous_;
 
   friend class Unlocker;
 };
@@ -56,17 +56,16 @@ class Locker {
 //  }
 class Unlocker {
  public:
-  explicit Unlocker(Locker& locker) : _locker(locker) {
-    _locker.leave();
+  explicit Unlocker(Locker& locker) : locker_(locker) {
+    locker_.leave();
   }
   ~Unlocker() {
-    _locker.enter();
+    locker_.enter();
   }
 
  private:
-  Locker& _locker;
+  Locker& locker_;
 };
-
 
 // Abstraction for running stuff in parallel.
 class Thread {
@@ -93,9 +92,9 @@ class Thread {
  private:
   void _boot();
 
-  const char* _name;
-  void* _handle;
-  Locker* _locker;
+  const char* name_;
+  void* handle_;
+  Locker* locker_;
 
   friend void* thread_start(void*);
   friend class Locker;
@@ -138,17 +137,17 @@ class AlignedMemory : public AlignedMemoryBase {
 class ProtectableAlignedMemory : public AlignedMemoryBase {
  public:
   ProtectableAlignedMemory(size_t size_in_bytes, size_t alignment)
-      : _memory(size_in_bytes, compute_alignment(alignment)) { }
+      : memory_(size_in_bytes, compute_alignment(alignment)) {}
   virtual ~ProtectableAlignedMemory();
 
   // Returns the aligned address.
-  virtual void* address() { return _memory.address(); }
-  virtual size_t byte_size() const { return _memory.byte_size(); }
+  virtual void* address() { return memory_.address(); }
+  virtual size_t byte_size() const { return memory_.byte_size(); }
 
   void mark_read_only();
 
  private:
-  AlignedMemory _memory;
+  AlignedMemory memory_;
   static size_t compute_alignment(size_t alignment);
 };
 #endif
@@ -172,9 +171,9 @@ class OS {
 
   static void out_of_memory(const char* reason);
 
-  static Mutex* global_mutex() { return _global_mutex; }
-  static Mutex* scheduler_mutex() { return _scheduler_mutex; }
-  static Mutex* resource_mutex() { return _resource_mutex; }
+  static Mutex* global_mutex() { return global_mutex_; }
+  static Mutex* scheduler_mutex() { return scheduler_mutex_; }
+  static Mutex* resource_mutex() { return resource_mutex_; }
 
   // Mutex (used with Locker).
   static Mutex* allocate_mutex(int level, const char* title);
@@ -242,17 +241,11 @@ class OS {
   static word get_heap_tag();
   static void heap_summary_report(int max_pages, const char* marker);
 
-  // Unique 16-bytes uuid of the running image.
-  static const uint8* image_uuid();
-
-  // Bundled programs table.
-  static const uword* image_bundled_programs_table();
-
   static const char* getenv(const char* variable);
 
 #ifdef TOIT_FREERTOS
-  static bool use_spiram_for_heap() { return _use_spiram_for_heap; }
-  static bool use_spiram_for_metadata() { return _use_spiram_for_metadata; }
+  static bool use_spiram_for_heap() { return use_spiram_for_heap_; }
+  static bool use_spiram_for_metadata() { return use_spiram_for_metadata_; }
   static int toit_heap_caps_flags_for_heap();
   static int toit_heap_caps_flags_for_metadata();
 #elif defined(TOIT_LINUX)
@@ -263,14 +256,14 @@ class OS {
   static bool monotonic_gettime(int64* timestamp);
   static void timespec_increment(timespec* ts, int64 ns);
 
-  static Mutex* _global_mutex;
-  static Mutex* _scheduler_mutex;
-  static Mutex* _resource_mutex;
-  static HeapMemoryRange _single_range;
-  static int _cpu_revision;
+  static Mutex* global_mutex_;
+  static Mutex* scheduler_mutex_;
+  static Mutex* resource_mutex_;
+  static HeapMemoryRange single_range_;
+  static int cpu_revision_;
 #ifdef TOIT_FREERTOS
-  static bool _use_spiram_for_heap;
-  static bool _use_spiram_for_metadata;
+  static bool use_spiram_for_heap_;
+  static bool use_spiram_for_metadata_;
 #endif
 
   friend class ConditionVariable;
@@ -296,8 +289,8 @@ class HeapTagScope {
 // Weak symbols for the custom heap.  These are only present on non-embedded
 // platforms if we are using LD_PRELOAD to replace the malloc implementation.
 extern "C" {
-typedef bool heap_caps_iterate_callback(void*, void*, void*, size_t);
-__attribute__ ((weak)) extern void heap_caps_iterate_tagged_memory_areas(void*, void*, heap_caps_iterate_callback, int);
-__attribute__ ((weak)) extern void heap_caps_set_option(int, void*);
+  typedef bool heap_caps_iterate_callback(void*, void*, void*, size_t);
+  void heap_caps_iterate_tagged_memory_areas(void*, void*, heap_caps_iterate_callback, int) __attribute__ ((weak));
+  void heap_caps_set_option(int, void*) __attribute__ ((weak));
 }
 #endif

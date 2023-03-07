@@ -117,15 +117,15 @@ static const int WORD_SHIFT = 2;
 #endif
 static_assert(sizeof(uhalf_word) == sizeof(uword) / 2, "Unexpected half-word size");
 
-typedef signed char int8;
-typedef short int16;
-typedef int int32;
-typedef long long int int64;
+typedef int8_t int8;
+typedef int16_t int16;
+typedef int32_t int32;
+typedef int64_t int64;
 
-typedef unsigned char uint8;
-typedef unsigned short uint16;
-typedef unsigned int uint32;
-typedef unsigned long long int uint64;
+typedef uint8_t uint8;
+typedef uint16_t uint16;
+typedef uint32_t uint32;
+typedef uint64_t uint64;
 
 static const word KB_LOG2 = 10;
 static const int KB = 1 << KB_LOG2;
@@ -201,7 +201,7 @@ static_assert(sizeof(word) == 4, "invalid type size");
 #define malloc(size) toit::tracing_malloc(size, __FILE__, __LINE__)
 #define realloc(ptr, size) toit::tracing_realloc(ptr, size, __FILE__, __LINE__)
 #define free(p) toit::tracing_free(p, __FILE__, __LINE__)
-#define _new NewMarker(__FILE__, __LINE__) * new (std::nothrow)
+#define _new toit::NewMarker(__FILE__, __LINE__) * new (std::nothrow)
 #else
 #define _new new (std::nothrow)
 #endif
@@ -226,7 +226,7 @@ void tracing_free(void* ptr, const char* file, int line);
 
 class NewMarker	{
  public:
-  NewMarker(char const* file, int line) : file(file), line(line) { }
+  NewMarker(char const* file, int line) : file(file), line(line) {}
   char const* const file;
   int const line;
 };
@@ -273,7 +273,7 @@ void fail(const char* file, int line, const char* format, ...) __attribute__ ((_
 #endif
 #else  // TOIT_DEPLOY
 void fail(const char* format, ...) __attribute__ ((__noreturn__));
-#define ASSERT(cond) while (false && (cond)) { }
+#define ASSERT(cond) while (false && (cond)) {}
 #define FATAL(message, ...) toit::fail(#message, ##__VA_ARGS__);
 #ifdef TOIT_FREERTOS
 #define FATAL_IF_NOT_ESP_OK(cond) do { if ((cond) != ESP_OK) toit::fail("%s", #cond); } while (0)
@@ -288,6 +288,7 @@ void fail(const char* format, ...) __attribute__ ((__noreturn__));
 // Common forward declarations.
 class AlignedMemory;
 class Block;
+class Chunk;
 class ProgramBlock;
 class ConditionVariable;
 class Encoder;
@@ -405,10 +406,8 @@ static const word ITERATE_TAG_HEAP_OVERHEAD = -2;
 
 static const word ITERATE_CUSTOM_TAGS = -100;
 
-inline void memcpy_reverse(void* dst, const void* src, size_t n) {
-  for (size_t i = 0; i < n; ++i) {
-    reinterpret_cast<uint8*>(dst)[n-1-i] = reinterpret_cast<const uint8*>(src)[i];
-  }
-}
+static const int DEFAULT_OPTIMIZATION_LEVEL = 1;
+
+typedef void process_chunk_callback_t(void* context, Process* process, uword address, uword size);
 
 } // namespace toit

@@ -1,19 +1,5 @@
 # Compiling for other platforms (RISC-V, ARM32, ARM64, WIN32, WIN64)
 
-| STATUS | |
-| ------------- | ------------- |
-| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Linux environment |
-| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | IDF environment |
-| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | IDF compile sources |
-| ![](https://img.shields.io/static/v1?label=&message=FAILURE&color=red) | IDF export > [fails on RISC-V host](https://github.com/dsobotta/toit/issues/4) |
-| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green)| Toit generate build files |
-| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Toit compile sources |
-| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green)| Toit generate boot snapshot |
-| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Toit run examples |
-| ![](https://img.shields.io/static/v1?label=&message=PARTIAL&color=yellow) | Cross-compile > [fails to link on Arch](https://github.com/dsobotta/toit/issues/6)|
-| ![](https://img.shields.io/static/v1?label=&message=TODO&color=orange) | Embedded support |
-
-
 ## 1) Environment setup (RISC-V example)
 Install a Debian-based Linux distro (choose one)
 - SiFive Unmatched: [Ubuntu Server 20.04](https://ubuntu.com/tutorials/how-to-install-ubuntu-on-risc-v-hifive-boards#1-overview)
@@ -42,9 +28,9 @@ make all
 
 ## 5) Run examples
 ``` sh
-build/host/bin/toit.run examples/hello.toit
-build/host/bin/toit.run examples/bubble_sort.toit
-build/host/bin/toit.run examples/mandelbrot.toit
+build/host/sdk/bin/toit.run examples/hello.toit
+build/host/sdk/bin/toit.run examples/bubble_sort.toit
+build/host/sdk/bin/toit.run examples/mandelbrot.toit
 ```
 </br>
 </br>
@@ -81,7 +67,12 @@ apt install g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64
 ## 3) Cross-compile Toit SDK
 ``` sh
 #Substitute <TARGET> with one of [arm32, arm64, riscv64, win32, win64]
-make all-cross CROSS_ARCH=<TARGET>
+make CROSS_ARCH=<TARGET> sdk-cross
+```
+
+For example, for Windows:
+```
+make CROSS_ARCH=win64 sdk-cross
 ```
 
 ## 4) Deploy

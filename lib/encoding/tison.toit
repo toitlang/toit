@@ -20,15 +20,15 @@ For compatibility with JSON encoding, you should avoid passing byte arrays
 
 For compatibility with JSON and UBJSON encodings, you should avoid passing
   maps with non-string keys directly or indirectly to $encode.
+
+Cannot encode data structures with cycles in them.  In this case it will
+  throw "NESTING_TOO_DEEP".
 */
 encode object/any -> ByteArray:
-  result := tison_encode_ object
-  if result is int:
-    serialization_failure_ result
-  return result
-
-tison_encode_ object/any -> any:
-  #primitive.encoding.tison_encode
+  #primitive.encoding.tison_encode:
+    if it is List and it.size != 0 and it[0] is int:
+      serialization_failure_ it[0]
+    throw it
 
 /**
 Decodes $bytes, which is a $ByteArray in TISON format.

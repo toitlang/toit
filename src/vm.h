@@ -31,23 +31,23 @@ class VM {
   VM();
   ~VM();
 
-  static VM* current() { return _current; }
+  static VM* current() { return current_; }
 
   // Load the platform specific integrations. Without this call, the VM
   // will have no platform features available.
   void load_platform_event_sources();
 
-  Scheduler* scheduler() const { return _scheduler; }
+  Scheduler* scheduler() const { return scheduler_; }
 
-  EventSourceManager* event_manager() const { return _event_manager; }
-  EventSource* nop_event_source() const { return _nop_event_source; }
+  EventSourceManager* event_manager() const { return event_manager_; }
+  EventSource* nop_event_source() const { return nop_event_source_; }
 
  private:
-  static VM* _current;
-  Scheduler* _scheduler;
+  static VM* current_;
+  Scheduler* scheduler_;
 
-  EventSourceManager* _event_manager = null;
-  EventSource* _nop_event_source = null;
+  EventSourceManager* event_manager_ = null;
+  EventSource* nop_event_source_ = null;
 };
 
 } // namespace toit

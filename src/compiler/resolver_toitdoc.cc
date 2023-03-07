@@ -38,34 +38,34 @@ class LeftMostIterator : public ToitdocScopeIterator {
                    ast::Node* holder,
                    ir::Class* this_class,
                    List<ir::Node*> super_entries)
-      : _scope(scope)
-      , _holder(holder)
-      , _this_class(this_class)
-      , _super_entries(super_entries) { }
+      : scope_(scope)
+      , holder_(holder)
+      , this_class_(this_class)
+      , super_entries_(super_entries) {}
 
   void for_each(const std::function<void (Symbol)>& parameter_callback,
                 const std::function<void (Symbol, const ResolutionEntry&)>& callback) {
-    if (_holder != null && _holder->is_Method()) {
-      auto method = _holder->as_Method();
+    if (holder_ != null && holder_->is_Method()) {
+      auto method = holder_->as_Method();
       for (auto parameter : method->parameters()) {
         parameter_callback(parameter->name()->data());
       }
     }
-    if (_this_class != null) {
-      callback(Symbols::this_, ResolutionEntry(_this_class));
+    if (this_class_ != null) {
+      callback(Symbols::this_, ResolutionEntry(this_class_));
     }
-    if (!_super_entries.is_empty()) {
+    if (!super_entries_.is_empty()) {
       // For now just use the first entry we find.
-      callback(Symbols::super, ResolutionEntry(_super_entries.first()));
+      callback(Symbols::super, ResolutionEntry(super_entries_.first()));
     }
-    _scope->for_each(callback);
+    scope_->for_each(callback);
   }
 
  private:
-  Scope* _scope;
-  ast::Node* _holder;
-  ir::Class* _this_class;
-  List<ir::Node*> _super_entries;
+  Scope* scope_;
+  ast::Node* holder_;
+  ir::Class* this_class_;
+  List<ir::Node*> super_entries_;
 };
 
 /**
@@ -76,17 +76,17 @@ It sees both static and dynamic entries.
 class ClassIterator : public ToitdocScopeIterator {
  public:
   ClassIterator(ir::Class* klass)
-      : _class(klass) { }
+      : class_(klass) {}
 
   void for_each(const std::function<void (Symbol)>& parameter_callback,
                 const std::function<void (Symbol, const ResolutionEntry&)>& callback) {
-    ensure_has_toitdoc_scope(_class);
-    auto class_scope = _class->toitdoc_scope();
+    ensure_has_toitdoc_scope(class_);
+    auto class_scope = class_->toitdoc_scope();
     class_scope->for_each(callback);
   }
 
  private:
-  ir::Class* _class;
+  ir::Class* class_;
 };
 
 /**
@@ -95,15 +95,15 @@ An iterator for prefixes.
 class PrefixIterator : public ToitdocScopeIterator {
  public:
   PrefixIterator(ImportScope* import_scope)
-      : _import_scope(import_scope) { }
+      : import_scope_(import_scope) {}
 
   void for_each(const std::function<void (Symbol)>& parameter_callback,
                 const std::function<void (Symbol, const ResolutionEntry&)>& callback) {
-    _import_scope->for_each_external(callback);
+    import_scope_->for_each_external(callback);
   }
 
  private:
-  ImportScope* _import_scope;
+  ImportScope* import_scope_;
 };
 
 } // namespace anonymous

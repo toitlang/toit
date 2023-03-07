@@ -21,6 +21,7 @@ import reader
 import uuid
 
 import encoding.json
+import encoding.ubjson
 import encoding.tison
 
 import system.assets
@@ -28,21 +29,25 @@ import system.assets
 import ar
 import cli
 import host.file
+import host.pipe
+import host.directory
 
 import .image
 import .snapshot
 import .snapshot_to_image
 
-ENVELOPE_FORMAT_VERSION ::= 4
+ENVELOPE_FORMAT_VERSION ::= 6
 
 WORD_SIZE ::= 4
-AR_ENTRY_FIRMWARE_BIN    ::= "\$firmware.bin"
-AR_ENTRY_FIRMWARE_ELF    ::= "\$firmware.elf"
-AR_ENTRY_BOOTLOADER_BIN  ::= "\$bootloader.bin"
-AR_ENTRY_PARTITIONS_BIN  ::= "\$partitions.bin"
-AR_ENTRY_PARTITIONS_CSV  ::= "\$partitions.csv"
-AR_ENTRY_SYSTEM_SNAPSHOT ::= "\$system.snap"
-AR_ENTRY_PROPERTIES      ::= "\$properties"
+AR_ENTRY_FIRMWARE_BIN   ::= "\$firmware.bin"
+AR_ENTRY_FIRMWARE_ELF   ::= "\$firmware.elf"
+AR_ENTRY_BOOTLOADER_BIN ::= "\$bootloader.bin"
+AR_ENTRY_PARTITIONS_BIN ::= "\$partitions.bin"
+AR_ENTRY_PARTITIONS_CSV ::= "\$partitions.csv"
+AR_ENTRY_OTADATA_BIN    ::= "\$otadata.bin"
+AR_ENTRY_FLASHING_JSON  ::= "\$flashing.json"
+AR_ENTRY_PROPERTIES     ::= "\$properties"
+AR_ENTRY_SDK_VERSION    ::= "\$sdk-version"
 
 AR_ENTRY_FILE_MAP ::= {
   "firmware.bin"    : AR_ENTRY_FIRMWARE_BIN,
@@ -50,12 +55,19 @@ AR_ENTRY_FILE_MAP ::= {
   "bootloader.bin"  : AR_ENTRY_BOOTLOADER_BIN,
   "partitions.bin"  : AR_ENTRY_PARTITIONS_BIN,
   "partitions.csv"  : AR_ENTRY_PARTITIONS_CSV,
-  "system.snapshot" : AR_ENTRY_SYSTEM_SNAPSHOT,
+  "otadata.bin"     : AR_ENTRY_OTADATA_BIN,
+  "flashing.json"   : AR_ENTRY_FLASHING_JSON,
 }
+
+SYSTEM_CONTAINER_NAME ::= "system"
 
 OPTION_ENVELOPE     ::= "envelope"
 OPTION_OUTPUT       ::= "output"
 OPTION_OUTPUT_SHORT ::= "o"
+
+IMAGE_FLAG_RUN_BOOT     ::= 1 << 0
+IMAGE_FLAG_RUN_CRITICAL ::= 1 << 1
+IMAGE_FLAG_HAS_ASSETS   ::= 1 << 7
 
 is_snapshot_bundle bits/ByteArray -> bool:
   catch: return SnapshotBundle.is_bundle_content bits
@@ -107,6 +119,7 @@ main arguments/List:
       ]
   root_cmd.add create_cmd
   root_cmd.add extract_cmd
+  root_cmd.add flash_cmd
   root_cmd.add container_cmd
   root_cmd.add property_cmd
   root_cmd.run arguments
@@ -118,25 +131,36 @@ create_cmd -> cli.Command:
         --type="file"
         --required=(key == "firmware.bin")
   return cli.Command "create"
-      --options=options.values
+      --options=options.values + [
+        cli.OptionString "system.snapshot"
+            --type="file"
+            --required,
+      ]
       --run=:: create_envelope it
 
 create_envelope parsed/cli.Parsed -> none:
   output_path := parsed[OPTION_ENVELOPE]
   input_path := parsed["firmware.bin"]
 
-  // TODO(kasper): Do some sanity checks on the
-  // structure of this. Can we check that we don't
-  // already have stuff appended to the DROM section?
   firmware_bin_data := read_file input_path
-  Esp32Binary firmware_bin_data
+  binary := Esp32Binary firmware_bin_data
+  binary.remove_drom_extension firmware_bin_data
 
-  entries := { AR_ENTRY_FIRMWARE_BIN: firmware_bin_data }
+  system_snapshot_content := read_file parsed["system.snapshot"]
+  system_snapshot := SnapshotBundle system_snapshot_content
+
+  entries := {
+    AR_ENTRY_FIRMWARE_BIN: binary.bits,
+    SYSTEM_CONTAINER_NAME: system_snapshot_content,
+  }
+
   AR_ENTRY_FILE_MAP.do: | key/string value/string |
     if key == "firmware.bin": continue.do
-    entries[value] = read_file parsed[key]
+    filename := parsed[key]
+    if filename: entries[value] = read_file filename
 
   envelope := Envelope.create entries
+      --sdk_version=system_snapshot.sdk_version
   envelope.store output_path
 
 container_cmd -> cli.Command:
@@ -166,6 +190,20 @@ container_cmd -> cli.Command:
           --run=:: container_install it
 
   cmd.add
+      cli.Command "extract"
+          --options=[
+            cli.OptionString "output"
+                --short_help="Set the output file name."
+                --short_name="o"
+                --required,
+            cli.OptionEnum "part" ["image", "assets"]
+                --short_help="Pick the part of the container to extract."
+                --required
+          ]
+          --rest=[option_name]
+          --run=:: container_extract it
+
+  cmd.add
       cli.Command "uninstall"
           --options=[ option_output ]
           --rest=[ option_name ]
@@ -173,6 +211,7 @@ container_cmd -> cli.Command:
 
   cmd.add
       cli.Command "list"
+          --options=[ option_output ]
           --run=:: container_list it
 
   return cmd
@@ -196,46 +235,66 @@ decode_image data/ByteArray -> ImageHeader:
   decoded := out.bytes
   return ImageHeader decoded
 
-container_install parsed/cli.Parsed -> none:
+get_container_name parsed/cli.Parsed -> string:
   name := parsed["name"]
-  image_path := parsed["image"]
-  assets_path := parsed["assets"]
   if name.starts_with "\$":
-    print "cannot install container with a name that starts with \$ or +"
+    print "Cannot install container with a name that starts with \$ or +"
     exit 1
   if name.size > 14:
-    print "cannot install container with a name longer than 14 characters"
+    print "Cannot install container with a name longer than 14 characters"
     exit 1
+  return name
+
+container_install parsed/cli.Parsed -> none:
+  name := get_container_name parsed
+  image_path := parsed["image"]
+  assets_path := parsed["assets"]
   image_data := read_file image_path
   assets_data := read_assets assets_path
-  if not is_snapshot_bundle image_data:
-    // We're not dealing with a snapshot, so make sure
-    // the provided image is a valid relocatable image.
-    header := null
-    catch: header = decode_image image_data
-    // TODO(kasper): Can we validate that the output
-    // fits with the version of the SDK used to compile
-    // the embedded binary?
-    if not header:
-      print "Input is not a valid snapshot or image ('$image_path')."
-      exit 1
-  else:
-    // TODO(kasper): Can we check that the snapshot
-    // fits with the version of the SDK used to compile
-    // the embedded binary?
-    SnapshotBundle name image_data
+  is_snapshot := is_snapshot_bundle image_data
+
   update_envelope parsed: | envelope/Envelope |
+    if is_snapshot:
+      bundle := SnapshotBundle name image_data
+      if bundle.sdk_version != envelope.sdk_version:
+        print "Snapshot was built by SDK $bundle.sdk_version, but envelope is for SDK $envelope.sdk_version."
+        exit 1
+    else:
+      header := null
+      catch: header = decode_image image_data
+      if not header:
+        print "Input is not a valid snapshot or image ('$image_path')."
+        exit 1
+      expected_system_uuid := sdk_version_uuid --sdk_version=envelope.sdk_version
+      if header.system_uuid != expected_system_uuid:
+        print "Image cannot be verified to have been built by SDK $envelope.sdk_version."
+        print "Image is for $header.system_uuid, but envelope is $expected_system_uuid."
+        exit 1
+
     envelope.entries[name] = image_data
     if assets_data: envelope.entries["+$name"] = assets_data
     else: envelope.entries.remove "+$name"
 
+container_extract parsed/cli.Parsed -> none:
+  input_path := parsed[OPTION_ENVELOPE]
+  name := get_container_name parsed
+  entries := (Envelope.load input_path).entries
+  part := parsed["part"]
+  key := (part == "assets") ? "+$name" : name
+  if not entries.contains key:
+    print "Container '$name' has no $part."
+    exit 1
+  entry := entries[key]
+  write_file parsed["output"]: it.write entry
+
 container_uninstall parsed/cli.Parsed -> none:
-  name := parsed["name"]
+  name := get_container_name parsed
   update_envelope parsed: | envelope/Envelope |
     envelope.entries.remove name
     envelope.entries.remove "+$name"
 
 container_list parsed/cli.Parsed -> none:
+  output_path := parsed[OPTION_OUTPUT]
   input_path := parsed[OPTION_ENVELOPE]
   entries := (Envelope.load input_path).entries
   output := {:}
@@ -249,11 +308,17 @@ container_list parsed/cli.Parsed -> none:
     else:
       header := decode_image content
       entry["kind"] = "image"
-      entry["id"] = header.id.stringify
+      entry["id"] = header.program_id.stringify
     assets := entries.get "+$name"
     if assets: entry["assets"] = { "size": assets.size }
     output[name] = entry
-  print (json.stringify output)
+  output_string := json.stringify output
+  if output_path:
+    write_file output_path:
+      it.write output_string
+      it.write "\n"
+  else:
+    print output_string
 
 property_cmd -> cli.Command:
   cmd := cli.Command "property"
@@ -291,7 +356,12 @@ property_get parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
   key := parsed["key"]
 
-  entries := (Envelope.load input_path).entries
+  envelope := Envelope.load input_path
+  if key == "sdk-version":
+    print envelope.sdk_version
+    return
+
+  entries := envelope.entries
   entry := entries.get AR_ENTRY_PROPERTIES
   if not entry: return
 
@@ -325,6 +395,7 @@ property_set parsed/cli.Parsed -> none:
 
 properties_update parsed/cli.Parsed [block] -> none:
   key := parsed["key"]
+  if key == "sdk-version": throw "cannot update sdk-version property"
   update_envelope parsed: | envelope/Envelope |
     properties_data/ByteArray? := envelope.entries.get AR_ENTRY_PROPERTIES
     properties/Map? := properties_data ? (json.decode properties_data) : null
@@ -336,12 +407,43 @@ extract_cmd -> cli.Command:
     cli.Flag key
         --short_help="Extract the $key part."
   return cli.Command "extract"
+      --long_help="""
+        Extracts the firmware image of the envelope to a file.
+
+        The following formats are supported:
+        - binary: the binary app partition. This format can be used with
+          the 'esptool' tool.
+        - elf: the ELF file of the executable. This is typically used
+          for debugging.
+        - ubjson: a UBJSON encoding of the sections of the image.
+        - qemu: a full binary image suitable for running on QEMU.
+
+        # QEMU
+        The generated image (say 'output.bin') can be run with the
+        following command:
+
+            qemu-system-xtensa \\
+                -M esp32 \\
+                -nographic \\
+                -drive file=output.bin,format=raw,if=mtd \\
+                -nic user,model=open_eth,hostfwd=tcp::2222-:1234 \\
+                -s
+
+        The '-nic' option is optional. In this example, the local port 2222 is
+        forwarded to port 1234 in the QEMU image.
+        """
       --options=[
         cli.OptionString OPTION_OUTPUT
             --short_name=OPTION_OUTPUT_SHORT
             --short_help="Set the output file."
             --type="file"
             --required,
+        cli.OptionString "config"
+            --type="file",
+        cli.OptionEnum "format" ["binary", "elf", "ubjson", "qemu"]
+            --short_help="Set the output format."
+            --default="binary",
+        cli.Flag "system.snapshot"
       ] + flags.values
       --run=:: extract it
 
@@ -350,10 +452,15 @@ extract parsed/cli.Parsed -> none:
   AR_ENTRY_FILE_MAP.do: | key/string |
     if parsed[key]: parts.add key
   if parts.size == 0:
-    throw "cannot extract: no part specified"
+    extract_new parsed
+    return
   else if parts.size > 1:
     throw "cannot extract: multiple parts specified ($(parts.join ", "))"
   part := parts.first
+
+  print "WARNING: extracting a specific part is deprecated"
+  if part == "firmware.bin":
+    print "WARNING: use 'tools/firmware -e ... extract --format=binary -o firmware.bin"
 
   input_path := parsed[OPTION_ENVELOPE]
   output_path := parsed[OPTION_OUTPUT]
@@ -361,29 +468,200 @@ extract parsed/cli.Parsed -> none:
 
   content/ByteArray? := null
   if part == "firmware.bin":
-    content = extract_binary envelope
+    content = extract_binary envelope --config_encoded=(ByteArray 0)
   else:
     content = envelope.entries.get AR_ENTRY_FILE_MAP[part]
   if not content:
     throw "cannot extract: no such part ($part)"
   write_file output_path: it.write content
 
-extract_binary envelope/Envelope -> ByteArray:
+extract_new parsed/cli.Parsed -> none:
+  input_path := parsed[OPTION_ENVELOPE]
+  output_path := parsed[OPTION_OUTPUT]
+  envelope := Envelope.load input_path
+
+  // TODO(kasper): Remove this legacy support.
+  if parsed["system.snapshot"]:
+    write_file output_path: it.write envelope.entries[SYSTEM_CONTAINER_NAME]
+    return
+
+  config_path := parsed["config"]
+
+  if parsed["format"] == "elf":
+    if config_path:
+      print "WARNING: config is ignored when extracting elf file"
+    write_file output_path: it.write (envelope.entries.get AR_ENTRY_FIRMWARE_ELF)
+    return
+
+  config_encoded := ByteArray 0
+  if config_path:
+    config_encoded = read_file config_path
+    exception := catch: ubjson.decode config_encoded
+    if exception: config_encoded = ubjson.encode (json.decode config_encoded)
+  firmware_bin := extract_binary envelope --config_encoded=config_encoded
+
+  if parsed["format"] == "binary":
+    write_file output_path: it.write firmware_bin
+    return
+
+  if parsed["format"] == "qemu":
+    flashing := envelope.entries.get AR_ENTRY_FLASHING_JSON
+        --if_present=: json.decode it
+        --if_absent=: throw "cannot create qemu image without 'flashing.json'"
+
+    write_qemu_ output_path firmware_bin envelope
+    return
+
+  if not parsed["format"] == "ubjson":
+    throw "unknown format: $(parsed["format"])"
+
+  binary := Esp32Binary firmware_bin
+  parts := binary.parts firmware_bin
+  output := {
+    "parts"   : parts,
+    "binary"  : firmware_bin,
+  }
+  write_file output_path: it.write (ubjson.encode output)
+
+write_qemu_ output_path/string firmware_bin/ByteArray envelope/Envelope:
+  flashing := envelope.entries.get AR_ENTRY_FLASHING_JSON
+      --if_present=: json.decode it
+      --if_absent=: throw "cannot create qemu image without 'flashing.json'"
+
+  out_image := ByteArray 4_194_304  // 4 MB.
+  out_image.replace
+      int.parse flashing["bootloader"]["offset"][2..] --radix=16
+      envelope.entries.get AR_ENTRY_BOOTLOADER_BIN
+  out_image.replace
+      int.parse flashing["partition-table"]["offset"][2..] --radix=16
+      envelope.entries.get AR_ENTRY_PARTITIONS_BIN
+  out_image.replace
+      int.parse flashing["otadata"]["offset"][2..] --radix=16
+      envelope.entries.get AR_ENTRY_OTADATA_BIN
+  out_image.replace
+      int.parse flashing["app"]["offset"][2..] --radix=16
+      firmware_bin
+  write_file output_path: it.write out_image
+
+flash_cmd -> cli.Command:
+  return cli.Command "flash"
+      --options=[
+        cli.OptionString "config"
+            --type="file",
+        cli.OptionString "port"
+            --type="file"
+            --short_name="p"
+            --required,
+        cli.OptionInt "baud"
+            --default=921600,
+        cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32s2", "esp32s3"]
+            --default="esp32"
+      ]
+      --run=:: flash it
+
+flash parsed/cli.Parsed -> none:
+  input_path := parsed[OPTION_ENVELOPE]
+  config_path := parsed["config"]
+  port := parsed["port"]
+  baud := parsed["baud"]
+  envelope := Envelope.load input_path
+
+  if platform != PLATFORM_WINDOWS:
+    stat := file.stat port
+    if not stat or stat[file.ST_TYPE] != file.CHARACTER_DEVICE:
+      throw "cannot open port '$port'"
+
+  config_encoded := ByteArray 0
+  if config_path:
+    config_encoded = read_file config_path
+    exception := catch: ubjson.decode config_encoded
+    if exception: config_encoded = ubjson.encode (json.decode config_encoded)
+
+  firmware_bin := extract_binary envelope --config_encoded=config_encoded
+  binary := Esp32Binary firmware_bin
+
+  bin_extension := ?
+  bin_name := program_name
+  if platform == PLATFORM_WINDOWS:
+    bin_name = bin_name.replace --all "\\" "/"
+    bin_extension = ".exe"
+  else:
+    bin_extension = ""
+  list := bin_name.split "/"
+  dir := list[..list.size - 1].join "/"
+  esptool/List? := null
+  if bin_name.ends_with ".toit":
+    if dir == "": dir = "."
+    esptool_py := "$dir/../third_party/esp-idf/components/esptool_py/esptool/esptool.py"
+    if not file.is_file esptool_py:
+      throw "cannot find esptool in '$esptool_py'"
+    esptool = ["python", esptool_py ]
+  else:
+    esptool = ["$dir/esptool$bin_extension"]
+    if not file.is_file esptool[0]:
+      throw "cannot find esptool in '$esptool[0]'"
+
+  flashing := envelope.entries.get AR_ENTRY_FLASHING_JSON
+      --if_present=: json.decode it
+      --if_absent=: throw "cannot flash without 'flashing.json'"
+
+  tmp := directory.mkdtemp "/tmp/toit-flash-"
+  try:
+    write_file "$tmp/firmware.bin": it.write firmware_bin
+    write_file "$tmp/bootloader.bin": it.write (envelope.entries.get AR_ENTRY_BOOTLOADER_BIN)
+    write_file "$tmp/partitions.bin": it.write (envelope.entries.get AR_ENTRY_PARTITIONS_BIN)
+    write_file "$tmp/otadata.bin": it.write (envelope.entries.get AR_ENTRY_OTADATA_BIN)
+
+    code := pipe.run_program esptool + [
+      "--port", port,
+      "--baud", "$baud",
+      "--chip", parsed["chip"],
+      "--before", flashing["extra_esptool_args"]["before"],
+      "--after",  flashing["extra_esptool_args"]["after"]
+    ] + [ "write_flash" ] + flashing["write_flash_args"] + [
+      flashing["bootloader"]["offset"],      "$tmp/bootloader.bin",
+      flashing["partition-table"]["offset"], "$tmp/partitions.bin",
+      flashing["otadata"]["offset"],         "$tmp/otadata.bin",
+      flashing["app"]["offset"],             "$tmp/firmware.bin"
+    ]
+    if code != 0: exit 1
+  finally:
+    directory.rmdir --recursive tmp
+
+extract_binary envelope/Envelope --config_encoded/ByteArray -> ByteArray:
   containers ::= []
   entries := envelope.entries
   properties := entries.get AR_ENTRY_PROPERTIES
       --if_present=: json.decode it
       --if_absent=: {:}
 
-  system := entries.get AR_ENTRY_SYSTEM_SNAPSHOT
+  // Handle the system container first. It needs to be the
+  // first container we encode.
+  system := entries.get SYSTEM_CONTAINER_NAME
   if system:
-    assets_encoded := properties.get "wifi"
-        --if_present=: assets.encode { "wifi": tison.encode it }
-        --if_absent=: null
-    containers.add (ContainerEntry "system" system --assets=assets_encoded)
+    // TODO(kasper): Take any other system assets into account.
+    system_assets := {:}
+    // Encode any WiFi information.
+    properties.get "wifi" --if_present=: system_assets["wifi"] = tison.encode it
+    // Encode the list of images with their names.
+    images := {:}
+    entries.do: | name/string content/ByteArray |
+      if not (name == SYSTEM_CONTAINER_NAME or name.starts_with "\$" or name.starts_with "+"):
+        id/uuid.Uuid := ?
+        if is_snapshot_bundle content:
+          bundle := SnapshotBundle name content
+          id = bundle.uuid
+        else:
+          header := decode_image content
+          id = header.program_id
+        images[name] = id.to_byte_array
+    if not images.is_empty: system_assets["images"] = tison.encode images
+    // Encode the system assets and add them to the container.
+    assets_encoded := assets.encode system_assets
+    containers.add (ContainerEntry SYSTEM_CONTAINER_NAME system --assets=assets_encoded)
 
   entries.do: | name/string content/ByteArray |
-    if not (name.starts_with "\$" or name.starts_with "+"):
+    if not (name == SYSTEM_CONTAINER_NAME or name.starts_with "\$" or name.starts_with "+"):
       assets_encoded := entries.get "+$name"
       containers.add (ContainerEntry name content --assets=assets_encoded)
 
@@ -394,13 +672,13 @@ extract_binary envelope/Envelope -> ByteArray:
   system_uuid/uuid.Uuid? := null
   if properties.contains "uuid":
     catch: system_uuid = uuid.parse properties["uuid"]
-  if not system_uuid:
-    system_uuid = uuid.uuid5 "$random" "$Time.now".to_byte_array
+  system_uuid = system_uuid or sdk_version_uuid --sdk_version=envelope.sdk_version
 
   return extract_binary_content
       --binary_input=firmware_bin
       --containers=containers
       --system_uuid=system_uuid
+      --config_encoded=config_encoded
 
 update_envelope parsed/cli.Parsed [block] -> none:
   input_path := parsed[OPTION_ENVELOPE]
@@ -411,19 +689,20 @@ update_envelope parsed/cli.Parsed [block] -> none:
   block.call existing
 
   envelope := Envelope.create existing.entries
+      --sdk_version=existing.sdk_version
   envelope.store output_path
 
 extract_binary_content -> ByteArray
     --binary_input/ByteArray
     --containers/List
-    --system_uuid/uuid.Uuid:
+    --system_uuid/uuid.Uuid
+    --config_encoded/ByteArray:
   binary := Esp32Binary binary_input
   image_count := containers.size
-  image_table := ByteArray 4 + 8 * image_count
-  LITTLE_ENDIAN.put_uint32 image_table 0 image_count
+  image_table := ByteArray 8 * image_count
 
   table_address := binary.extend_drom_address
-  relocation_base := table_address + image_table.size
+  relocation_base := table_address + 5 * 4 + image_table.size
   images := []
   index := 0
   containers.do: | container/ContainerEntry |
@@ -432,7 +711,7 @@ extract_binary_content -> ByteArray
       snapshot_bundle := SnapshotBundle container.name container.content
       program_id ::= snapshot_bundle.uuid
       program := snapshot_bundle.decode
-      image := build_image program WORD_SIZE --system_uuid=system_uuid --program_id=program_id
+      image := build_image program WORD_SIZE --system_uuid=uuid.NIL --program_id=program_id
       relocatable = image.build_relocatable
     else:
       relocatable = container.content
@@ -443,15 +722,18 @@ extract_binary_content -> ByteArray
     image_bits := out.bytes
     image_size := image_bits.size
 
-    LITTLE_ENDIAN.put_uint32 image_table 4 + index * 8
+    LITTLE_ENDIAN.put_uint32 image_table index * 8
         relocation_base
-    LITTLE_ENDIAN.put_uint32 image_table 8 + index * 8
+    LITTLE_ENDIAN.put_uint32 image_table index * 8 + 4
         image_size
     image_bits = pad image_bits 4
 
+    image_header ::= ImageHeader image_bits
+    image_header.system_uuid = system_uuid
+    image_header.flags = IMAGE_FLAG_RUN_BOOT | IMAGE_FLAG_RUN_CRITICAL
+
     if container.assets:
-      header ::= ImageHeader image_bits
-      header.flags |= (1 << 7)
+      image_header.flags |= IMAGE_FLAG_HAS_ASSETS
       assets_size := ByteArray 4
       LITTLE_ENDIAN.put_uint32 assets_size 0 container.assets.size
       image_bits += assets_size
@@ -462,8 +744,37 @@ extract_binary_content -> ByteArray
     relocation_base += image_bits.size
     index++
 
-  extension := image_table
+  // Build the DROM extension by adding a header in front of the
+  // table entries. The header will be patched later when we know
+  // the total sizes.
+  extension_header := ByteArray 5 * 4
+  LITTLE_ENDIAN.put_uint32 extension_header (0 * 4) 0x98dfc301
+  LITTLE_ENDIAN.put_uint32 extension_header (3 * 4) image_count
+  extension := extension_header + image_table
   images.do: extension += it
+
+  // Now add the device-specific configurations at the end.
+  used_size := extension.size
+  config_size := ByteArray 4
+  LITTLE_ENDIAN.put_uint32 config_size 0 config_encoded.size
+  extension += config_size
+  extension += config_encoded
+
+  // This is a pretty serious padding up. We do it to guarantee
+  // that segments that follow this one do not change their
+  // alignment within the individual flash pages, which seems
+  // to be a requirement. It might be possible to get away with
+  // less padding somehow.
+  extension = pad extension 64 * 1024
+  free_size := extension.size - used_size
+
+  // Update the extension header.
+  checksum := 0xb3147ee9
+  LITTLE_ENDIAN.put_uint32 extension (1 * 4) used_size
+  LITTLE_ENDIAN.put_uint32 extension (2 * 4) free_size
+  4.repeat: checksum ^= LITTLE_ENDIAN.uint32 extension (it * 4)
+  LITTLE_ENDIAN.put_uint32 extension (4 * 4) checksum
+
   binary.patch_extend_drom system_uuid table_address extension
   return binary.bits
 
@@ -475,32 +786,38 @@ class Envelope:
   static INFO_ENTRY_VERSION_OFFSET ::= 4
   static INFO_ENTRY_SIZE           ::= 8
 
-  path/string? ::= null
   version_/int
+
+  path/string? ::= null
+  sdk_version/string
   entries/Map ::= {:}
 
   constructor.load .path/string:
     version/int? := null
+    sdk_version = ""
     read_file path: | reader/reader.Reader |
       ar := ar.ArReader reader
       while file := ar.next:
         if file.name == INFO_ENTRY_NAME:
           version = validate file.content
+        else if file.name == AR_ENTRY_SDK_VERSION:
+          sdk_version = file.content.to_string_non_throwing
         else:
           entries[file.name] = file.content
     version_ = version
 
-  constructor.create .entries:
+  constructor.create .entries --.sdk_version:
     version_ = ENVELOPE_FORMAT_VERSION
 
   store path/string -> none:
     write_file path: | writer/writer.Writer |
       ar := ar.ArWriter writer
-      // Add the enveloper info entry.
+      // Add the envelope info entry.
       info := ByteArray INFO_ENTRY_SIZE
       LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_MARKER_OFFSET MARKER
       LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_VERSION_OFFSET version_
       ar.add INFO_ENTRY_NAME info
+      ar.add AR_ENTRY_SDK_VERSION sdk_version
       // Add all other entries.
       entries.do: | name/string content/ByteArray |
         ar.add name content
@@ -526,7 +843,8 @@ class ImageHeader:
   static MARKER_OFFSET_   ::= 0
   static ID_OFFSET_       ::= 8
   static METADATA_OFFSET_ ::= 24
-  static HEADER_SIZE_     ::= 40
+  static UUID_OFFSET_     ::= 32
+  static HEADER_SIZE_     ::= 48
 
   static MARKER_ ::= 0xdeadface
 
@@ -540,8 +858,20 @@ class ImageHeader:
   flags= value/int -> none:
     header_[METADATA_OFFSET_] = value
 
-  id -> uuid.Uuid:
-    return uuid.Uuid header_[ID_OFFSET_..ID_OFFSET_ + uuid.SIZE]
+  program_id -> uuid.Uuid:
+    return read_uuid_ ID_OFFSET_
+
+  system_uuid -> uuid.Uuid:
+    return read_uuid_ UUID_OFFSET_
+
+  system_uuid= value/uuid.Uuid -> none:
+    write_uuid_ UUID_OFFSET_ value
+
+  read_uuid_ offset/int -> uuid.Uuid:
+    return uuid.Uuid header_[offset .. offset + uuid.SIZE]
+
+  write_uuid_ offset/int value/uuid.Uuid -> none:
+    header_.replace offset value.to_byte_array
 
   static validate image/ByteArray -> ByteArray:
     if image.size < HEADER_SIZE_: throw "image too small"
@@ -578,29 +908,35 @@ for more details on the format.
 */
 
 interface AddressMap:
-  IROM_MAP_START -> int
-  IROM_MAP_END -> int
-  DROM_MAP_START -> int
-  DROM_MAP_END -> int
+  irom_map_start -> int
+  irom_map_end -> int
+  drom_map_start -> int
+  drom_map_end -> int
 
-// See <<chiptype>/include/soc/soc.h for these constants
+// See <<chiptype>/include/soc/soc.h for these constants.
 class Esp32AddressMap implements AddressMap:
-  IROM_MAP_START := 0x400d0000
-  IROM_MAP_END   := 0x40400000
-  DROM_MAP_START := 0x3f400000
-  DROM_MAP_END   := 0x3f800000
+  irom_map_start ::= 0x400d0000
+  irom_map_end   ::= 0x40400000
+  drom_map_start ::= 0x3f400000
+  drom_map_end   ::= 0x3f800000
 
 class Esp32C3AddressMap implements AddressMap:
-  IROM_MAP_START := 0x42000000
-  IROM_MAP_END   := 0x42800000
-  DROM_MAP_START := 0x3c000000
-  DROM_MAP_END   := 0x3c800000
+  irom_map_start ::= 0x42000000
+  irom_map_end   ::= 0x42800000
+  drom_map_start ::= 0x3c000000
+  drom_map_end   ::= 0x3c800000
+
+class Esp32S2AddressMap implements AddressMap:
+  irom_map_start ::= 0x40080000
+  irom_map_end   ::= 0x40800000
+  drom_map_start ::= 0x3f000000
+  drom_map_end   ::= 0x3ff80000
 
 class Esp32S3AddressMap implements AddressMap:
-  IROM_MAP_START := 0x42000000
-  IROM_MAP_END   := 0x44000000
-  DROM_MAP_START := 0x3c000000
-  DROM_MAP_END   := 0x3d000000
+  irom_map_start ::= 0x42000000
+  irom_map_end   ::= 0x44000000
+  drom_map_start ::= 0x3c000000
+  drom_map_end   ::= 0x3d000000
 
 
 class Esp32Binary:
@@ -613,16 +949,17 @@ class Esp32Binary:
   static ESP_IMAGE_HEADER_MAGIC_ ::= 0xe9
   static ESP_CHECKSUM_MAGIC_     ::= 0xef
 
-  static ESP_CHIP_ID_ESP32   ::= 0x0000  /*!< chip ID: ESP32 */
-  static ESP_CHIP_ID_ESP32S2 ::= 0x0002  /*!< chip ID: ESP32-S2 */
-  static ESP_CHIP_ID_ESP32C3 ::= 0x0005 /*!< chip ID: ESP32-C3 */
-  static ESP_CHIP_ID_ESP32S3 ::= 0x0009 /*!< chip ID: ESP32-S3 */
-  static ESP_CHIP_ID_ESP32H2 ::= 0x000A /*!< chip ID: ESP32-H2 */  // ESP32H2-TODO: IDF-3475
+  static ESP_CHIP_ID_ESP32    ::= 0x0000  // Chip ID: ESP32.
+  static ESP_CHIP_ID_ESP32_S2 ::= 0x0002  // Chip ID: ESP32-S2.
+  static ESP_CHIP_ID_ESP32_C3 ::= 0x0005  // Chip ID: ESP32-C3.
+  static ESP_CHIP_ID_ESP32_S3 ::= 0x0009  // Chip ID: ESP32-S3.
+  static ESP_CHIP_ID_ESP32_H2 ::= 0x000a  // Chip ID: ESP32-H2.
 
   static CHIP_ADDRESS_MAPS_ := {
-      ESP_CHIP_ID_ESP32 : Esp32AddressMap,
-      ESP_CHIP_ID_ESP32C3 : Esp32C3AddressMap,
-      ESP_CHIP_ID_ESP32S3 : Esp32S3AddressMap
+      ESP_CHIP_ID_ESP32    : Esp32AddressMap,
+      ESP_CHIP_ID_ESP32_C3 : Esp32C3AddressMap,
+      ESP_CHIP_ID_ESP32_S2 : Esp32S2AddressMap,
+      ESP_CHIP_ID_ESP32_S3 : Esp32S3AddressMap,
   }
   header_/ByteArray
   segments_/List
@@ -671,40 +1008,96 @@ class Esp32Binary:
       result.replace sha_checksum_offset sha_checksum
     return result
 
+  parts bits/ByteArray -> List:
+    drom := find_last_drom_segment_
+    if not drom: throw "cannot find drom segment"
+    result := []
+    extension_size := compute_drom_extension_size_ drom
+    // The segments before the last DROM segment is part of the
+    // original binary, so we combine them into one part.
+    unextended_size := extension_size[0] + Esp32BinarySegment.HEADER_SIZE_
+    offset := collect_part_ result "binary" --from=0 --to=(drom.offset + unextended_size)
+    // The container images are stored in the beginning of the DROM segment extension.
+    extension_used := extension_size[1]
+    offset =  collect_part_ result "images" --from=offset --size=extension_used
+    // The config part is the free space in the DROM segment extension.
+    extension_free := extension_size[2]
+    offset = collect_part_ result "config" --from=offset --size=extension_free
+    // The segments that follow the last DROM segment are part of the
+    // original binary, so we combine them into one part.
+    size_no_checksum := bits.size - 1
+    if hash_appended: size_no_checksum -= 32
+    offset = collect_part_ result "binary" --from=drom.end --to=size_no_checksum
+    // Always add the checksum as a separate part.
+    collect_part_ result "checksum" --from=offset --to=bits.size
+    return result
+
+  static collect_part_ parts/List type/string --from/int --size/int -> int:
+    return collect_part_ parts type --from=from --to=(from + size)
+
+  static collect_part_ parts/List type/string --from/int --to/int -> int:
+    parts.add { "type": type, "from": from, "to": to }
+    return to
+
   hash_appended -> bool:
     return header_[HASH_APPENDED_OFFSET_] == 1
 
   extend_drom_address -> int:
     drom := find_last_drom_segment_
-    if not drom: throw "Cannot append to non-existing DROM segment"
+    if not drom: throw "cannot append to non-existing DROM segment"
     return drom.address + drom.size
 
   patch_extend_drom system_uuid/uuid.Uuid table_address/int bits/ByteArray -> none:
-    // This is a pretty serious padding up. We do it to guarantee
-    // that segments that follow this one do not change their
-    // alignment within the individual flash pages, which seems
-    // to be a requirement. It might be possible to get away with
-    // less padding somehow.
-    bits = pad bits 64 * 1024
+    if (bits.size & 0xffff) != 0: throw "cannot extend with partial flash pages (64KB)"
     // We look for the last DROM segment, because it will grow into
     // unused virtual memory, so we can extend that without relocating
     // other segments (which we don't know how to).
     drom := find_last_drom_segment_
-    if not drom: throw "Cannot append to non-existing DROM segment"
-    // Run through all the segments and extend the
-    // segment we just found. All segments following
-    // that one need to be displaced in flash.
-    displacement := null
+    if not drom: throw "cannot append to non-existing DROM segment"
+    transform_drom_segment_ drom: | segment/ByteArray |
+      patch_details segment system_uuid table_address
+      segment + bits
+
+  remove_drom_extension bits/ByteArray -> none:
+    drom := find_last_drom_segment_
+    if not drom: return
+    extension_size := compute_drom_extension_size_ drom
+    if not extension_size: return
+    transform_drom_segment_ drom: it[..extension_size[0]]
+
+  static compute_drom_extension_size_ drom/Esp32BinarySegment -> List:
+    details_offset := find_details_offset drom.bits
+    unextended_end_address := LITTLE_ENDIAN.uint32 drom.bits details_offset
+    if unextended_end_address == 0: return [drom.size, 0, 0]
+    unextended_size := unextended_end_address - drom.address
+    extension_size := drom.size - unextended_size
+    if extension_size < 5 * 4: throw "malformed drom extension (size)"
+    marker := LITTLE_ENDIAN.uint32 drom.bits unextended_size
+    if marker != 0x98dfc301: throw "malformed drom extension (marker)"
+    checksum := 0
+    5.repeat: checksum ^= LITTLE_ENDIAN.uint32 drom.bits unextended_size + 4 * it
+    if checksum != 0xb3147ee9: throw "malformed drom extension (checksum)"
+    used := LITTLE_ENDIAN.uint32 drom.bits unextended_size + 4
+    free := LITTLE_ENDIAN.uint32 drom.bits unextended_size + 8
+    return [unextended_size, used, free]
+
+  transform_drom_segment_ drom/Esp32BinarySegment [block] -> none:
+    // Run through all the segments and transform the DROM one.
+    // All segments following that must be displaced in flash if
+    // the DROM segment changed size.
+    displacement := 0
     segments_.size.repeat:
       segment/Esp32BinarySegment := segments_[it]
       if segment == drom:
-        segment_bits := segment.bits
-        patch_details segment_bits system_uuid table_address
-        segments_[it] = Esp32BinarySegment segment_bits + bits
+        bits := segment.bits
+        size_before := bits.size
+        transformed := block.call bits
+        size_after := transformed.size
+        segments_[it] = Esp32BinarySegment transformed
             --offset=segment.offset
             --address=segment.address
-        displacement = bits.size
-      else if displacement:
+        displacement = size_after - size_before
+      else if displacement != 0:
         segments_[it] = Esp32BinarySegment segment.bits
             --offset=segment.offset + displacement
             --address=segment.address
@@ -712,10 +1105,9 @@ class Esp32Binary:
   find_last_drom_segment_ -> Esp32BinarySegment?:
     last := null
     address_map/AddressMap? := CHIP_ADDRESS_MAPS_.get chip_id_
-
     segments_.do: | segment/Esp32BinarySegment |
       address := segment.address
-      if not address_map_.DROM_MAP_START <= address < address_map_.DROM_MAP_END: continue.do
+      if not address_map_.drom_map_start <= address < address_map_.drom_map_end: continue.do
       if not last or address > last.address: last = segment
     return last
 

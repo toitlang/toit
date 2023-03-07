@@ -14,35 +14,18 @@
 // directory of this repository.
 
 import system.api.firmware show FirmwareService
-import system.services show ServiceDefinition ServiceResource
+import system.services show ServiceProvider ServiceResource
+import system.base.firmware show FirmwareServiceProviderBase FirmwareWriter
 
 import esp32
+import encoding.ubjson
 
-class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareService:
+class FirmwareServiceProvider extends FirmwareServiceProviderBase:
+  config_/Map ::= {:}
+
   constructor:
+    catch: config_ = ubjson.decode firmware_embedded_config_
     super "system/firmware/esp32" --major=0 --minor=1
-    provides FirmwareService.UUID FirmwareService.MAJOR FirmwareService.MINOR
-
-  handle pid/int client/int index/int arguments/any -> any:
-    if index == FirmwareService.IS_VALIDATION_PENDING_INDEX:
-      return is_validation_pending
-    if index == FirmwareService.IS_ROLLBACK_POSSIBLE_INDEX:
-      return is_rollback_possible
-    if index == FirmwareService.VALIDATE_INDEX:
-      return validate
-    if index == FirmwareService.UPGRADE_INDEX:
-      return upgrade
-    if index == FirmwareService.ROLLBACK_INDEX:
-      return rollback
-    if index == FirmwareService.FIRMWARE_WRITER_OPEN_INDEX:
-      return firmware_writer_open client arguments[0] arguments[1]
-    if index == FirmwareService.FIRMWARE_WRITER_WRITE_INDEX:
-      writer ::= (resource client arguments[0]) as FirmwareWriter
-      return firmware_writer_write writer arguments[1]
-    if index == FirmwareService.FIRMWARE_WRITER_COMMIT_INDEX:
-      writer ::= (resource client arguments[0]) as FirmwareWriter
-      return firmware_writer_commit writer arguments[1]
-    unreachable
 
   is_validation_pending -> bool:
     return (ota_state_ & OTA_STATE_VALIDATION_PENDING_) != 0
@@ -62,46 +45,77 @@ class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareSer
     // system properly instead.
     esp32.deep_sleep (Duration --ms=10)
 
-  firmware_writer_open from/int to/int -> int:
-    unreachable  // TODO(kasper): Nasty.
+  config_ubjson -> ByteArray:
+    // TODO(kasper): We have to copy this for now, because we
+    // cannot transfer a non-disposable byte array across the
+    // RPC boundary just yet.
+    return firmware_embedded_config_.copy
 
-  firmware_writer_open client/int from/int to/int -> ServiceResource:
-    return FirmwareWriter this client from to
+  config_entry key/string -> any:
+    return config_.get key
 
-  firmware_writer_write writer/FirmwareWriter bytes/ByteArray -> none:
-    writer.write bytes
+  content -> ByteArray?:
+    // We deliberately return null here to let the caller know that
+    // it should try to use the firmware content provided by the
+    // underlying system (if any). On the ESP32, the system will
+    // use this to give access to the content of the currently
+    // running OTA partition.
+    return null
 
-  firmware_writer_commit writer/FirmwareWriter checksum/ByteArray? -> none:
-    writer.commit checksum
+  firmware_writer_open client/int from/int to/int -> FirmwareWriter:
+    return FirmwareWriter_ this client from to
 
 /**
-The $FirmwareWriter uses the OTA support of the ESP32 to let you
+The $FirmwareWriter_ uses the OTA support of the ESP32 to let you
   update the firmware image. After writing and commiting the firmware,
   you must reboot (use deep_sleep) for the update to take effect.
 */
-class FirmwareWriter extends ServiceResource:
-  buffer_/ByteArray? := ByteArray 4096
+class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
+  static REQUIRED_WRITE_ALIGNMENT ::= 16
+  static PAGE_SIZE ::= 4096
+
+  buffer_/ByteArray? := ByteArray PAGE_SIZE
   fullness_/int := 0
   written_/int := ?
 
-  constructor service/ServiceDefinition client/int from/int to/int:
+  constructor provider/ServiceProvider client/int from/int to/int:
     ota_begin_ from to
     written_ = from
-    super service client
+    super provider client
 
-  write bytes/ByteArray from=0 to=bytes.size -> int:
-    return List.chunk_up from to (buffer_.size - fullness_) buffer_.size: | from to chunk |
-      buffer_.replace fullness_ bytes from to
-      fullness_ += chunk
-      if fullness_ == buffer_.size:
-        written_ = ota_write_ buffer_
-        fullness_ = 0
+  write bytes/ByteArray -> int:
+    return write_ bytes.size: | index from to |
+      buffer_.replace index bytes from to
+
+  pad size/int value/int -> int:
+    return write_ size: | index from to |
+      buffer_.fill --from=index --to=(index + to - from) value
+
+  write_ size [block] -> int:
+    // We try to write just enough to get back to writing full pages
+    // after an early flush. We do this by computing the fullness level
+    // at which we want to flush. If we're already page aligned, we will
+    // flush after writing another page.
+    fullness_flush := (round_up (written_ + 1) PAGE_SIZE) - written_
+    return List.chunk_up 0 size (fullness_flush - fullness_) PAGE_SIZE: | from to |
+      block.call fullness_ from to
+      fullness_ += to - from
+      if fullness_ == fullness_flush:
+        unflushed := flush
+        assert: unflushed == 0
+        fullness_flush = PAGE_SIZE
+
+  flush -> int:
+    flushable := round_down fullness_ REQUIRED_WRITE_ALIGNMENT
+    if flushable == 0: return 0
+    written_ = ota_write_ buffer_[..flushable]
+    buffer_.replace 0 buffer_ flushable fullness_
+    fullness_ -= flushable
+    return fullness_
 
   commit checksum/ByteArray? -> none:
-    if fullness_ != 0:
-      written_ = ota_write_ buffer_[..fullness_]
-      fullness_ = 0
     // Always commit. Always.
+    flush
     ota_end_ written_ checksum
     buffer_ = null
 
@@ -135,3 +149,6 @@ ota_validate_ -> bool:
 
 ota_rollback_ -> none:
   #primitive.esp32.ota_rollback
+
+firmware_embedded_config_ -> any:
+  #primitive.programs_registry.config

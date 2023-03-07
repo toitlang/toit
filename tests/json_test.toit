@@ -7,7 +7,7 @@ import expect show *
 import encoding.json
 import fixed_point show FixedPoint
 import math
-import reader show Reader
+import reader show Reader BufferedReader
 
 main:
   test_parse
@@ -18,6 +18,7 @@ main:
   test_repeated_strings
   test_number_terminators
   test_with_reader
+  test_multiple_objects
 
 test_stringify:
   expect_equals "\"testing\"" (json.stringify "testing")
@@ -362,7 +363,21 @@ class TestReader implements Reader:
       throw "READ_ERROR"
     return list[pos++]
 
-test_with_reader:
+test_multiple_objects -> none:
+  VECTORS ::= [
+      // Put the border between the reads in different places.
+      [ """{"foo": 42}""", """{"bar": 103}"""],
+      [ """{"foo": 42}{"ba""", """r": 103}"""],
+      [ """{"foo": 4""", """2}{"bar": 103}"""],
+  ]
+  VECTORS.do:
+    buffered := BufferedReader (TestReader it)
+    first := json.decode_stream buffered
+    second := json.decode_stream buffered
+    expect_equals 42 first["foo"]
+    expect_equals 103 second["bar"]
+
+test_with_reader -> none:
   expect_equals 3.1415
     json.decode_stream
       TestReader ["3", ".", "1", "4", "1", "5"]

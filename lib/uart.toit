@@ -7,6 +7,12 @@ import monitor show ResourceState_
 import reader
 import writer
 
+class StopBits:
+  value_ /int
+
+  constructor.private_ value:
+    value_ = value
+
 /**
 Support for Universal asynchronous receiver-transmitter (UART).
 
@@ -19,9 +25,9 @@ The UART Port exposes the hardware features for communicating with an external
   peripheral using asynchronous communication.
 */
 class Port implements reader.Reader:
-  static STOP_BITS_1   ::= 1
-  static STOP_BITS_1_5 ::= 2
-  static STOP_BITS_2   ::= 3
+  static STOP_BITS_1   ::= StopBits.private_ 1
+  static STOP_BITS_1_5 ::= StopBits.private_ 2
+  static STOP_BITS_2   ::= StopBits.private_ 3
 
   static PARITY_DISABLED ::= 1
   static PARITY_EVEN     ::= 2
@@ -38,7 +44,7 @@ class Port implements reader.Reader:
   state_/ResourceState_
   should_ensure_write_state_/bool
 
-  /** Amount of encountered errors. */
+  /** Number of encountered errors. */
   errors := 0
 
   /**
@@ -68,20 +74,28 @@ class Port implements reader.Reader:
   (Note that pins 16 and 17 are used for PSRAM on some modules, so they cannot
    be used for UART0.)
 
+  Setting a $high_priority increases the interrupt priority to level 3 on the ESP32.
+    If you do not specify true or false for this argument, the high priority is
+    automatically selected for baud rates of 460800 or above.
+
   The ESP32 has hardware support for up to two UART ports (the third one is
     normally already taken for the USB connection/debugging console.
   */
   constructor
       --tx/gpio.Pin? --rx/gpio.Pin? --rts/gpio.Pin?=null --cts/gpio.Pin?=null
-      --baud_rate/int --data_bits/int=8 --stop_bits/int=STOP_BITS_1
+      --baud_rate/int --data_bits/int=8 --stop_bits/StopBits=STOP_BITS_1
       --invert_tx/bool=false --invert_rx/bool=false
       --parity/int=PARITY_DISABLED
-      --mode/int=MODE_UART:
+      --mode/int=MODE_UART
+      --high_priority/bool?=null:
     if (not tx) and (not rx): throw "INVALID_ARGUMENT"
     if mode == MODE_RS485_HALF_DUPLEX and cts: throw "INVALID_ARGUMENT"
     if not MODE_UART <= mode <= MODE_IRDA: throw "INVALID_ARGUMENT"
 
     tx_flags := (invert_tx ? 1 : 0) + (invert_rx ? 2 : 0)
+    if high_priority == null: high_priority = baud_rate >= 460800
+    if high_priority:
+      tx_flags |= 8
     uart_ = uart_create_
       resource_group_
       tx ? tx.num : -1
@@ -90,7 +104,7 @@ class Port implements reader.Reader:
       cts ? cts.num : -1
       baud_rate
       data_bits
-      stop_bits
+      stop_bits.value_
       parity
       tx_flags
       mode
@@ -107,18 +121,18 @@ class Port implements reader.Reader:
   constructor device/string
       --baud_rate/int
       --data_bits/int=8
-      --stop_bits/int=STOP_BITS_1
+      --stop_bits/StopBits=STOP_BITS_1
       --parity/int=PARITY_DISABLED:
-      return HostPort device --baud_rate=baud_rate --data_bits=data_bits --stop_bits=stop_bits --parity=parity
+    return HostPort device --baud_rate=baud_rate --data_bits=data_bits --stop_bits=stop_bits --parity=parity
 
   constructor.host_port_ device/string
        --baud_rate/int
        --data_bits/int=8
-       --stop_bits/int=STOP_BITS_1
+       --stop_bits/StopBits=STOP_BITS_1
        --parity/int=PARITY_DISABLED:
      group := resource_group_
      should_ensure_write_state_ = true
-     uart_ = uart_create_path_ group device baud_rate data_bits stop_bits parity
+     uart_ = uart_create_path_ group device baud_rate data_bits stop_bits.value_ parity
      state_ = ResourceState_ group uart_
 
   /**
@@ -139,7 +153,7 @@ class Port implements reader.Reader:
     1800, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 576000, 921600,
     1152000, 1500000, 2000000, 2500000, 3000000, 3500000, 4000000.
 
-  On macOS the baud rate can be arbitrary
+  On macOS the baud rate can be set to arbitrary values.
   */
   baud_rate= new_rate/int:
     uart_set_baud_rate_ uart_ new_rate
@@ -237,7 +251,7 @@ class HostPort extends Port:
   constructor device/string
       --baud_rate/int
       --data_bits/int=8
-      --stop_bits/int=Port.STOP_BITS_1
+      --stop_bits/StopBits=Port.STOP_BITS_1
       --parity/int=Port.PARITY_DISABLED:
     super.host_port_ device --baud_rate=baud_rate --data_bits=data_bits --stop_bits=stop_bits --parity=parity
 

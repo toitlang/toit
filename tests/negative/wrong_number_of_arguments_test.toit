@@ -22,6 +22,9 @@ class Instance:
   one_or_three x:
   one_or_three x y z:
 
+  one_or_three --foo x:
+  one_or_three --bar x y z:
+
   takes_a_block [block]:
   doesnt_take_a_block:
   doesnt_take_a_block x:

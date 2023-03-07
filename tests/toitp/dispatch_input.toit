@@ -9,9 +9,12 @@ class ClassA:
 class ClassB extends ClassA:
   test_bar x: print "ClassB.method_b 1"
 
+confuse a:
+  return a
+
 main:
   ClassA
-  (ClassA).test_foo
-  (ClassA).test_bar 1
-  (ClassB).test_foo
-  (ClassB).test_bar 1
+  (confuse ClassA).test_foo
+  (confuse ClassA).test_bar 1
+  (confuse ClassB).test_foo
+  (confuse ClassB).test_bar 1

@@ -3,7 +3,6 @@
 // be found in the tests/LICENSE file.
 
 import .lsp_client show LspClient run_client_test
-import services.arguments show *
 import host.directory
 import expect show *
 import monitor
@@ -35,7 +34,8 @@ test client/LspClient:
       """
     client.wait_for_idle
 
-  completion_document := "/tmp/completion.toit"
+  drive := platform == PLATFORM_WINDOWS ? "c:" : ""
+  completion_document := "$drive/tmp/completion.toit"
   client.send_did_open --path=completion_document  --text="""
      completion_fun: return 499
      main: com

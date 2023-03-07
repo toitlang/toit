@@ -40,11 +40,11 @@ class SymbolCanonicalizer {
  private:
   // Identifiers, keywords, and numbers are canonicalized
   // through two separate trie structures.
-  Trie _identifier_trie;
-  Trie _number_trie;
+  Trie identifier_trie_;
+  Trie number_trie_;
 
   // Copy of canonicalized syntax for identifiers and numbers.
-  ListBuilder<const uint8*> _syntax;
+  ListBuilder<const uint8*> syntax_;
 };
 
 } // namespace toit::compiler

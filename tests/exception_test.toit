@@ -57,7 +57,6 @@ main:
   test_lookup_exceptions
   test_code_exceptions
   test_stack_overflow_exception
-  test_allocation_size_exceeded
 
 test_framework:
   expect_lookup_failed:     throw "LOOKUP_FAILED"
@@ -177,8 +176,3 @@ recurse a b c:
 
 test_stack_overflow_exception:
   expect_stack_overflow: recurse 1 2 3
-
-test_allocation_size_exceeded:
-  // Enable when read_entire file problem has been solved.
-  // expect_allocation_size_exceeded: ByteArray 1200000
-

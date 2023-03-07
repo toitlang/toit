@@ -111,7 +111,7 @@ void CompletionHandler::call_virtual(ir::CallVirtual* node,
   }
 
   while (klass != null) {
-    auto class_source = _source_manager->source_for_position(klass->range().from());
+    auto class_source = source_manager_->source_for_position(klass->range().from());
     auto class_package = class_source->package_id();
     for (auto method : klass->methods()) {
       complete_method(method, class_package);
@@ -430,7 +430,7 @@ void CompletionHandler::complete_entry(Symbol name,
   }
   std::string package_id = Package::INVALID_PACKAGE_ID;
   if (range.is_valid()) {
-    package_id = _source_manager->source_for_position(range.from())->package_id();
+    package_id = source_manager_->source_for_position(range.from())->package_id();
   }
   complete_if_visible(name, kind, package_id);
 }
@@ -438,7 +438,7 @@ void CompletionHandler::complete_entry(Symbol name,
 void CompletionHandler::complete_if_visible(Symbol name,
                                             CompletionKind kind,
                                             const std::string& package_id) {
-  if (_package_id == package_id || !is_private(name)) {
+  if (package_id_ == package_id || !is_private(name)) {
     complete(name, kind);
   }
 }
@@ -446,7 +446,7 @@ void CompletionHandler::complete_if_visible(Symbol name,
 void CompletionHandler::complete(const std::string& name, CompletionKind kind) {
   if (emitted.contains(name)) return;
   // Filter out completions that don't match the prefix.
-  if (strncmp(name.c_str(), _prefix.c_str(), strlen(_prefix.c_str())) != 0) return;
+  if (strncmp(name.c_str(), prefix_.c_str(), strlen(prefix_.c_str())) != 0) return;
   emitted.insert(name);
   protocol()->completion()->emit(name, kind);
 }

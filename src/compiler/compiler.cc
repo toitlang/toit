@@ -47,6 +47,7 @@
 #include "monitor.h"
 #include "optimizations/optimizations.h"
 #include "parser.h"
+#include "propagation/type_database.h"
 #include "resolver.h"
 #include "../snapshot_bundle.h"
 #include "stubs.h"
@@ -88,6 +89,8 @@ struct PipelineConfiguration {
   bool werror;
   bool parse_only;
   bool is_for_analysis;
+  /// Optimization level.
+  int optimization_level;
 };
 
 class Pipeline {
@@ -118,9 +121,9 @@ class Pipeline {
   };
 
   explicit Pipeline(const PipelineConfiguration& configuration)
-      : _configuration(configuration) { }
+      : configuration_(configuration) {}
 
-  Result run(List<const char*> source_paths);
+  Result run(List<const char*> source_paths, bool propagate);
 
  protected:
   virtual Source* _load_file(const char* path, const PackageLock& package_lock);
@@ -133,27 +136,27 @@ class Pipeline {
 
   virtual void lsp_selection_import_path(const char* path,
                                          const char* segment,
-                                         const char* resolved) { }
+                                         const char* resolved) {}
   virtual void lsp_complete_import_first_segment(ast::Identifier* segment,
                                                  const Package& current_package,
-                                                 const PackageLock& package_lock) { }
+                                                 const PackageLock& package_lock) {}
 
   virtual List<const char*> adjust_source_paths(List<const char*> source_paths);
   virtual PackageLock load_package_lock(List<const char*> source_paths);
 
-  SourceManager* source_manager() const { return _configuration.source_manager; }
-  Diagnostics* diagnostics() const { return _configuration.diagnostics; }
-  SymbolCanonicalizer* symbol_canonicalizer() { return &_symbols; }
-  Filesystem* filesystem() const { return _configuration.filesystem; }
-  Lsp* lsp() { return _configuration.lsp; }
+  SourceManager* source_manager() const { return configuration_.source_manager; }
+  Diagnostics* diagnostics() const { return configuration_.diagnostics; }
+  SymbolCanonicalizer* symbol_canonicalizer() { return &symbols_; }
+  Filesystem* filesystem() const { return configuration_.filesystem; }
+  Lsp* lsp() { return configuration_.lsp; }
   // The toitdoc registry is filled during the resolution stage.
-  ToitdocRegistry* toitdocs() { return &_toitdoc_registry; }
+  ToitdocRegistry* toitdocs() { return &toitdoc_registry_; }
 
 
  private:
-  PipelineConfiguration _configuration;
-  SymbolCanonicalizer _symbols;
-  ToitdocRegistry _toitdoc_registry;
+  PipelineConfiguration configuration_;
+  SymbolCanonicalizer symbols_;
+  ToitdocRegistry toitdoc_registry_;
 
   ast::Unit* _parse_source(Source* source);
 
@@ -166,9 +169,11 @@ class Pipeline {
   std::vector<ast::Unit*> _parse_units(List<const char*> source_paths,
                                        const PackageLock& package_lock);
   ir::Program* resolve(const std::vector<ast::Unit*>& units,
-                       int entry_unit_index, int core_unit_index);
-  void check_types_and_deprecations(ir::Program* program);
-  void set_toitdocs(const ToitdocRegistry& registry) { _toitdoc_registry = registry; }
+                       int entry_unit_index,
+                       int core_unit_index,
+                       bool quiet = false);
+  void check_types_and_deprecations(ir::Program* program, bool quiet = false);
+  void set_toitdocs(const ToitdocRegistry& registry) { toitdoc_registry_ = registry; }
 };
 
 class DebugCompilationPipeline : public Pipeline {
@@ -213,10 +218,9 @@ class LocationLanguageServerPipeline : public LanguageServerPipeline {
                                  int column_number, // 1-based
                                  const PipelineConfiguration& configuration)
       : LanguageServerPipeline(configuration)
-      , _lsp_selection_path(path)
-      , _line_number(line_number)
-      , _column_number(column_number) {
-  }
+      , lsp_selection_path_(path)
+      , line_number_(line_number)
+      , column_number_(column_number) {}
 
  protected:
   ast::Unit* parse(Source* source);
@@ -225,9 +229,9 @@ class LocationLanguageServerPipeline : public LanguageServerPipeline {
   /// at the LSP-selection point.
   virtual bool is_lsp_selection_identifier() = 0;
 
-  const char* _lsp_selection_path;
-  int _line_number;
-  int _column_number;
+  const char* lsp_selection_path_;
+  int line_number_;
+  int column_number_;
 };
 
 class CompletionPipeline : public LocationLanguageServerPipeline {
@@ -251,8 +255,8 @@ class CompletionPipeline : public LocationLanguageServerPipeline {
   bool is_lsp_selection_identifier() { return true; }
 
  private:
-  Symbol _completion_prefix = Symbol::invalid();
-  std::string _package_id = Package::INVALID_PACKAGE_ID;
+  Symbol completion_prefix_ = Symbol::invalid();
+  std::string package_id_ = Package::INVALID_PACKAGE_ID;
 };
 
 class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
@@ -262,8 +266,7 @@ class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
                          int column_number, // 1-based
                          const PipelineConfiguration& configuration)
       : LocationLanguageServerPipeline(completion_path, line_number, column_number,
-                                       configuration) {
-  }
+                                       configuration) {}
 
  protected:
   void setup_lsp_selection_handler();
@@ -277,35 +280,35 @@ class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
 
 class LineReader {
  public:
-  explicit LineReader(FILE* file) : _file(file), _line(null), _line_size(0) { }
+  explicit LineReader(FILE* file) : file_(file), line_(null), line_size_(0) {}
   ~LineReader() {
-    free(_line);
+    free(line_);
   }
 
  /// Returns the next line without terminating `\n`.
  ///
  /// The returned string has been allocated with malloc.
  char* next(const char* kind, bool must_be_non_empty = true) {
-  auto characters_read = getline(&_line, &_line_size, _file);
+  auto characters_read = getline(&line_, &line_size_, file_);
   if (characters_read <= (must_be_non_empty ? 1 : 0)) {
     FATAL("LANGUAGE SERVER ERROR - Expected %s", kind);
   }
-  _line[characters_read - 1] = '\0';  // Remove trailing newline.
-  return strdup(_line);
+  line_[characters_read - 1] = '\0';  // Remove trailing newline.
+  return strdup(line_);
  }
 
  int next_int(const char* kind) {
-  auto characters_read = getline(&_line, &_line_size, _file);
+  auto characters_read = getline(&line_, &line_size_, file_);
   if (characters_read <= 1) {
     FATAL("LANGUAGE SERVER ERROR - Expected %s", kind);
   }
-  return atoi(_line);
+  return atoi(line_);
  }
 
  private:
-  FILE* _file;
-  char* _line;
-  size_t _line_size;
+  FILE* file_;
+  char* line_;
+  size_t line_size_;
 };
 
 Compiler::Compiler() {
@@ -378,6 +381,7 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = true,
+    .optimization_level = compiler_config.optimization_level,
   };
 
   if (strcmp("ANALYZE", mode) == 0) {
@@ -448,7 +452,7 @@ void Compiler::lsp_complete(const char* source_path,
                             const PipelineConfiguration& configuration) {
   ASSERT(configuration.diagnostics != null);
   CompletionPipeline pipeline(source_path, line_number, column_number, configuration);
-  pipeline.run(ListBuilder<const char*>::build(source_path));
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
 void Compiler::lsp_goto_definition(const char* source_path,
@@ -458,14 +462,14 @@ void Compiler::lsp_goto_definition(const char* source_path,
   ASSERT(configuration.diagnostics != null);
   GotoDefinitionPipeline pipeline(source_path, line_number, column_number, configuration);
 
-  pipeline.run(ListBuilder<const char*>::build(source_path));
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
 void Compiler::lsp_analyze(List<const char*> source_paths,
                            const PipelineConfiguration& configuration) {
   ASSERT(configuration.diagnostics != null);
   LanguageServerPipeline pipeline(configuration);
-  pipeline.run(source_paths);
+  pipeline.run(source_paths, false);
 }
 
 void Compiler::lsp_snapshot(const char* source_path,
@@ -485,7 +489,7 @@ void Compiler::lsp_semantic_tokens(const char* source_path,
   configuration.lsp->set_should_emit_semantic_tokens(true);
   ASSERT(configuration.diagnostics != null);
   LanguageServerPipeline pipeline(configuration);
-  pipeline.run(ListBuilder<const char*>::build(source_path));
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
 static bool _sorted_by_inheritance(List<ir::Class*> classes) {
@@ -547,9 +551,10 @@ void Compiler::analyze(List<const char*> source_paths,
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = true,
+    .optimization_level = compiler_config.optimization_level,
   };
   Pipeline pipeline(configuration);
-  pipeline.run(source_paths);
+  pipeline.run(source_paths, false);
 }
 
 #ifdef TOIT_POSIX
@@ -672,6 +677,7 @@ SnapshotBundle Compiler::compile(const char* source_path,
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = false,
+    .optimization_level = compiler_config.optimization_level,
   };
 
   return compile(source_path, configuration);
@@ -699,10 +705,10 @@ SnapshotBundle Compiler::compile(const char* source_path,
       exit(1);
     }
     Pipeline main_pipeline(main_configuration);
-    pipeline_main_result = main_pipeline.run(source_paths);
+    pipeline_main_result = main_pipeline.run(source_paths, Flags::propagate);
     if (pipeline_main_result.is_valid()) {
       DebugCompilationPipeline debug_pipeline(debug_configuration);
-      pipeline_debug_result = debug_pipeline.run(source_paths);
+      pipeline_debug_result = debug_pipeline.run(source_paths, false);
     }
   } else {
 #ifdef TOIT_POSIX
@@ -720,11 +726,11 @@ SnapshotBundle Compiler::compile(const char* source_path,
       close(read_fd);
 
       Pipeline pipeline(main_configuration);
-      auto pipeline_result = pipeline.run(source_paths);
+      auto pipeline_result = pipeline.run(source_paths, Flags::propagate);
       send_pipeline_result(write_fd, pipeline_result);
       if (pipeline_result.is_valid()) {
         DebugCompilationPipeline debug_pipeline(debug_configuration);
-        pipeline_result = debug_pipeline.run(source_paths);
+        pipeline_result = debug_pipeline.run(source_paths, false);
         send_pipeline_result(write_fd, pipeline_result);
       }
       close(write_fd);
@@ -817,9 +823,13 @@ void Pipeline::setup_lsp_selection_handler() {
 }
 
 ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
-                               int entry_unit_index, int core_unit_index) {
+                               int entry_unit_index,
+                               int core_unit_index,
+                               bool quiet) {
   // Resolve all units.
-  Resolver resolver(_configuration.lsp, source_manager(), diagnostics());
+  NullDiagnostics null_diagnostics(this->diagnostics());
+  Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
+  Resolver resolver(configuration_.lsp, source_manager(), diagnostics);
   auto result = resolver.resolve(units,
                                  entry_unit_index,
                                  core_unit_index);
@@ -891,8 +901,10 @@ void DebugCompilationPipeline::patch(ir::Program* program) {
   dispatch_method->replace_body(_new ir::Sequence(dispatch_statements.build(), range));
 }
 
-void Pipeline::check_types_and_deprecations(ir::Program* program) {
-  ::toit::compiler::check_types_and_deprecations(program, _configuration.lsp, toitdocs(), diagnostics());
+void Pipeline::check_types_and_deprecations(ir::Program* program, bool quiet) {
+  NullDiagnostics null_diagnostics(this->diagnostics());
+  Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
+  ::toit::compiler::check_types_and_deprecations(program, configuration_.lsp, toitdocs(), diagnostics);
 }
 
 List<const char*> Pipeline::adjust_source_paths(List<const char*> source_paths) {
@@ -919,8 +931,8 @@ List<const char*> DebugCompilationPipeline::adjust_source_paths(List<const char*
 PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
   auto entry_path = source_paths.first();
   std::string lock_file;
-  if (_configuration.project_root != null) {
-    lock_file = find_lock_file_at(_configuration.project_root, filesystem());
+  if (configuration_.project_root != null) {
+    lock_file = find_lock_file_at(configuration_.project_root, filesystem());
   } else {
     lock_file = find_lock_file(entry_path, filesystem());
   }
@@ -946,10 +958,10 @@ PackageLock DebugCompilationPipeline::load_package_lock(const List<const char*> 
 }
 
 ast::Unit* LocationLanguageServerPipeline::parse(Source* source) {
-  if (strcmp(source->absolute_path(), _lsp_selection_path) != 0) return Pipeline::parse(source);
+  if (strcmp(source->absolute_path(), lsp_selection_path_) != 0) return Pipeline::parse(source);
 
   const uint8* text = source->text();
-  int offset = compute_source_offset(text, _line_number, _column_number);
+  int offset = compute_source_offset(text, line_number_, column_number_);
 
   // We only provide completions after a `-` if we are after a " --".
   if (offset >= 1 && text[offset - 1] == '-') {
@@ -970,42 +982,42 @@ ast::Unit* LocationLanguageServerPipeline::parse(Source* source) {
 
 Source* CompletionPipeline::_load_file(const char* path, const PackageLock& package_lock) {
   auto result = LocationLanguageServerPipeline::_load_file(path, package_lock);
-  if (strcmp(path, _lsp_selection_path) != 0) return result;
+  if (strcmp(path, lsp_selection_path_) != 0) return result;
 
   // Now that we have loaded the file that contains the LSP selection, extract
   // the prefix (if there is any), and the package it is from.
 
-  _package_id = package_lock.package_for(path, filesystem()).id();
+  package_id_ = package_lock.package_for(path, filesystem()).id();
 
   const uint8* text = result->text();
-  int offset = compute_source_offset(text, _line_number, _column_number);
+  int offset = compute_source_offset(text, line_number_, column_number_);
   int start_offset = offset;
   while (start_offset > 0 && is_identifier_part(text[start_offset - 1])) {
     start_offset--;
   }
 
   if (start_offset == offset || !is_identifier_start(text[start_offset])) {
-    _completion_prefix = Symbols::empty_string;
+    completion_prefix_ = Symbols::empty_string;
   } else {
     auto canonicalized = symbol_canonicalizer()->canonicalize_identifier(&text[start_offset], &text[offset]);
     if (canonicalized.kind == Token::Kind::IDENTIFIER) {
-      _completion_prefix = canonicalized.symbol;
+      completion_prefix_ = canonicalized.symbol;
     } else {
-      _completion_prefix = Token::symbol(canonicalized.kind);
+      completion_prefix_ = Token::symbol(canonicalized.kind);
     }
   }
   return result;
 }
 
 void CompletionPipeline::setup_lsp_selection_handler() {
-  lsp()->setup_completion_handler(_completion_prefix, _package_id, source_manager());
+  lsp()->setup_completion_handler(completion_prefix_, package_id_, source_manager());
 }
 
 
 void CompletionPipeline::lsp_complete_import_first_segment(ast::Identifier* segment,
                                                            const Package& current_package,
                                                            const PackageLock& package_lock) {
-  lsp()->complete_first_segment(_completion_prefix,
+  lsp()->complete_first_segment(completion_prefix_,
                                 segment,
                                 current_package,
                                 package_lock);
@@ -1014,7 +1026,7 @@ void CompletionPipeline::lsp_complete_import_first_segment(ast::Identifier* segm
 void CompletionPipeline::lsp_selection_import_path(const char* path,
                                                    const char* segment,
                                                    const char* resolved) {
-  lsp()->complete_import_path(_completion_prefix, path, filesystem());
+  lsp()->complete_import_path(completion_prefix_, path, filesystem());
 }
 
 void GotoDefinitionPipeline::setup_lsp_selection_handler() {
@@ -1349,7 +1361,7 @@ Source* Pipeline::_load_file(const char* path, const PackageLock& package_lock) 
   if (filesystem()->is_absolute(path)) {
     builder.join(path);
   } else {
-    builder.join(filesystem()->cwd());
+    builder.join(filesystem()->relative_anchor(path));
     builder.join(path);
   }
   builder.canonicalize();
@@ -1469,18 +1481,6 @@ static void assign_global_ids(List<ir::Global*> globals) {
   }
 }
 
-static void mark_eager_globals(List<ir::Global*> globals) {
-  for (auto global : globals) {
-    auto body = global->body();
-    if (!body->is_Return()) continue;
-    auto value = body->as_Return()->value();
-    if (value->is_Literal()) {
-      ASSERT(!value->is_LiteralUndefined());
-      global->mark_eager();
-    }
-  }
-}
-
 static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
   semver_t constraint_semver;
   ASSERT(constraint[0] == '^');
@@ -1502,8 +1502,55 @@ static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
   };
 }
 
-Pipeline::Result Pipeline::run(List<const char*> source_paths) {
-  auto fs = _configuration.filesystem;
+toit::Program* construct_program(ir::Program* ir_program,
+                                 SourceMapper* source_mapper,
+                                 TypeOracle* oracle,
+                                 TypeDatabase* propagated_types,
+                                 bool run_optimizations) {
+  source_mapper->register_selectors(ir_program->classes());
+
+  add_lambda_boxes(ir_program);
+  add_monitor_locks(ir_program);
+  add_stub_methods_and_switch_to_plain_shapes(ir_program);
+  add_interface_stub_methods(ir_program);
+
+  ASSERT(_sorted_by_inheritance(ir_program->classes()));
+
+  if (run_optimizations) optimize(ir_program, oracle);
+  tree_shake(ir_program);
+
+  // It is important that we seed and finalize the oracle in the same
+  // state, so the IR nodes used to produce the somewhat unoptimized
+  // program that we propagate types through can be matched up to the
+  // corresponding IR nodes for the fully optimized version.
+  if (propagated_types) {
+    oracle->finalize(ir_program, propagated_types);
+    optimize(ir_program, oracle);
+    tree_shake(ir_program);
+  } else {
+    oracle->seed(ir_program);
+  }
+
+  // We assign the field ids very late in case we can inline field-accesses.
+  assign_field_indexes(ir_program->classes());
+  // Similarly, assign the global ids at the end, in case they can be tree
+  // shaken or inlined.
+  assign_global_ids(ir_program->globals());
+
+  Backend backend(source_mapper->manager(), source_mapper);
+  auto program = backend.emit(ir_program);
+  return program;
+}
+
+Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
+  // TODO(florian): this is hackish. We want to analyze asserts also in release mode,
+  // but then remove the code when we generate code.
+  // For now just enable asserts when we are analyzing.
+  if (configuration_.is_for_analysis) {
+    Flags::enable_asserts = true;
+  }
+
+  auto fs = configuration_.filesystem;
   fs->initialize(diagnostics());
   source_paths = adjust_source_paths(source_paths);
   auto package_lock = load_package_lock(source_paths);
@@ -1516,12 +1563,12 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths) {
 
   auto units = _parse_units(source_paths, package_lock);
 
-  if (_configuration.dep_file != null) {
-    ASSERT(_configuration.dep_format != Compiler::DepFormat::none);
+  if (configuration_.dep_file != null) {
+    ASSERT(configuration_.dep_format != Compiler::DepFormat::none);
     PlainDepWriter plain_writer;
     NinjaDepWriter ninja_writer;
     DepWriter* chosen_writer = null;
-    switch (_configuration.dep_format) {
+    switch (configuration_.dep_format) {
       case Compiler::DepFormat::plain:
         chosen_writer = &plain_writer;
         break;
@@ -1531,13 +1578,13 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths) {
       case Compiler::DepFormat::none:
         UNREACHABLE();
     }
-    chosen_writer->write_deps_to_file_if_different(_configuration.dep_file,
-                                                   _configuration.out_path,
+    chosen_writer->write_deps_to_file_if_different(configuration_.dep_file,
+                                                   configuration_.out_path,
                                                    units,
                                                    CORE_UNIT_INDEX);
   }
 
-  if (_configuration.parse_only) return Result::invalid();
+  if (configuration_.parse_only) return Result::invalid();
 
   setup_lsp_selection_handler();
 
@@ -1551,7 +1598,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths) {
   check_types_and_deprecations(ir_program);
   check_definite_assignments_returns(ir_program, diagnostics());
 
-  if (_configuration.is_for_analysis) {
+  if (configuration_.is_for_analysis) {
     if (diagnostics()->encountered_error()) exit(1);
     return Result::invalid();
   }
@@ -1564,48 +1611,54 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths) {
   }
   // If we encountered errors abort unless the `--force` flag is on.
   bool encountered_error = diagnostics()->encountered_error();
-  if (_configuration.werror && diagnostics()->encountered_warning()) {
+  if (configuration_.werror && diagnostics()->encountered_warning()) {
     encountered_error = true;
   }
-  if (!_configuration.force && encountered_error) {
+  if (!configuration_.force && encountered_error) {
     printf("Compilation failed.\n");
     exit(1);
   }
 
-  SourceMapper source_mapper(source_manager());
-
-  source_mapper.register_selectors(ir_program->classes());
-
-  add_lambda_boxes(ir_program);
-  add_monitor_locks(ir_program);
-  add_stub_methods_and_switch_to_plain_shapes(ir_program);
-  add_interface_stub_methods(ir_program);
-
-  ASSERT(_sorted_by_inheritance(ir_program->classes()));
-
   // Only optimize the program, if we didn't encounter any errors.
   // If there was an error, we might not be able to trust the type annotations.
-  if (!diagnostics()->encountered_error()) {
-    optimize(ir_program);
+  bool run_optimizations = !diagnostics()->encountered_error() &&
+      configuration_.optimization_level >= 1;
+
+  SourceMapper unoptimized_source_mapper(source_manager());
+  auto source_mapper = &unoptimized_source_mapper;
+  TypeOracle oracle(source_mapper);
+  auto program = construct_program(ir_program, source_mapper, &oracle, null, run_optimizations);
+
+  SourceMapper optimized_source_mapper(source_manager());
+  if (run_optimizations && configuration_.optimization_level >= 2) {
+    bool quiet = true;
+    ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX, quiet);
+    patch(ir_program);
+    // We check the types again, because the compiler computes types as
+    // a side-effect of this and the types are necessary for the
+    // optimizations. This feels a little bit unfortunate, but it is
+    // important that the second compilation pass where we use propagated
+    // types is based on the same IR nodes, so we need the optimizations
+    // to behave the same way for the output to be correct.
+    check_types_and_deprecations(ir_program, quiet);
+    ASSERT(!diagnostics()->encountered_error());
+    TypeDatabase* types = TypeDatabase::compute(program);
+    source_mapper = &optimized_source_mapper;
+    program = construct_program(ir_program, source_mapper, &oracle, types, true);
+    delete types;
   }
-  tree_shake(ir_program);
 
-  // We assign the field ids very late in case we can inline field-accesses.
-  assign_field_indexes(ir_program->classes());
-  // Similarly, assign the global ids at the end, in case they can be tree
-  // shaken or inlined.
-  assign_global_ids(ir_program->globals());
+  if (propagate) {
+    TypeDatabase* types = TypeDatabase::compute(program);
+    auto json = types->as_json();
+    printf("%s", json.c_str());
+    delete types;
+  }
 
-  // Mark globals that can be accessed directly without going through the
-  //   lazy getter.
-  mark_eager_globals(ir_program->globals());
-
-  Backend backend(source_manager(), &source_mapper);
-  auto program = backend.emit(ir_program);
   SnapshotGenerator generator(program);
   generator.generate(program);
   int source_map_size;
-  uint8* source_map_data = source_mapper.cook(&source_map_size);
+  uint8* source_map_data = source_mapper->cook(&source_map_size);
   int snapshot_size;
   uint8* snapshot = generator.take_buffer(&snapshot_size);
   return {

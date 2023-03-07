@@ -60,8 +60,8 @@ class LspSelectionHandler {
  public:
   /// The constructor takes a protocol as argument. All information that is
   /// sent to the LSP server must go through the protocol.
-  explicit LspSelectionHandler(LspProtocol* protocol) : _protocol(protocol) { }
-  virtual ~LspSelectionHandler() { }
+  explicit LspSelectionHandler(LspProtocol* protocol) : protocol_(protocol) {}
+  virtual ~LspSelectionHandler() {}
 
   /// Handles a class or interface node.
   ///
@@ -126,10 +126,10 @@ class LspSelectionHandler {
 
 
  protected:
-  LspProtocol* protocol() { return _protocol; }
+  LspProtocol* protocol() { return protocol_; }
 
  private:
-  LspProtocol* _protocol;
+  LspProtocol* protocol_;
 };
 
 } // namespace toit::compiler

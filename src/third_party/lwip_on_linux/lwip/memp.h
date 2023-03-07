@@ -58,7 +58,7 @@ typedef enum {
 } memp_t;
 
 #define LWIP_MEMPOOL_DECLARE(name, num, size, desc)                                \
-  LWIP_DECLARE_MEMORY_ALIGNED(memp_memory_ ## name ## _base, ((num) * (MEMP_SIZE + MEMP_ALIGN_SIZE(size)))); \
+  LWIP_DECLARE_MEMORY_ALIGNED(memp_memory_ ## name ## base_, ((num) * (MEMP_SIZE + MEMP_ALIGN_SIZE(size)))); \
                                                                                    \
   LWIP_MEMPOOL_DECLARE_STATS_INSTANCE(memp_stats_ ## name)                         \
                                                                                    \
@@ -69,7 +69,7 @@ typedef enum {
     LWIP_MEMPOOL_DECLARE_STATS_REFERENCE(memp_stats_ ## name)                      \
     LWIP_MEM_ALIGN_SIZE(size),                                                     \
     (num),                                                                         \
-    memp_memory_ ## name ## _base,                                                 \
+    memp_memory_ ## name ## base_,                                                 \
     &memp_tab_ ## name                                                             \
   };
 

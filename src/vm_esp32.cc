@@ -36,11 +36,11 @@ void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new SystemEventSource());
   event_manager()->add_event_source(_new EventQueueEventSource());
 #if defined(CONFIG_TOIT_ENABLE_IP)
-  event_manager()->add_event_source(_new LwIPEventSource());
-  event_manager()->add_event_source(_new TLSEventSource());
+  event_manager()->add_event_source(_new LwipEventSource());
+  event_manager()->add_event_source(_new TlsEventSource());
 #endif
 #ifdef CONFIG_BT_ENABLED
-  event_manager()->add_event_source(_new BLEEventSource());
+  event_manager()->add_event_source(_new BleEventSource());
 #endif
 }
 

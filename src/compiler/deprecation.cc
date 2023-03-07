@@ -68,25 +68,25 @@ class DeprecationFinder : public toitdoc::Visitor {
 
 class DeprecationCollector : public toitdoc::Visitor {
  public:
-  DeprecationCollector(const ToitdocRegistry* registry) : _registry(registry) {}
+  DeprecationCollector(const ToitdocRegistry* registry) : registry_(registry) {}
 
   void analyze(ir::Node* node) {
-    auto toitdoc = _registry->toitdoc_for(node);
+    auto toitdoc = registry_->toitdoc_for(node);
     if (!toitdoc.is_valid()) return;
     DeprecationFinder finder;
     finder.visit(toitdoc.contents());
     if (finder.found_deprecation) {
-      _deprecated_nodes.insert(node);
+      deprecated_nodes_.insert(node);
     }
   }
 
   Set<ir::Node*>& deprecated_nodes() {
-    return _deprecated_nodes;
+    return deprecated_nodes_;
   }
 
  private:
-  Set<ir::Node*> _deprecated_nodes;
-  const ToitdocRegistry* _registry;
+  Set<ir::Node*> deprecated_nodes_;
+  const ToitdocRegistry* registry_;
 };
 }  // anonymous namespace.
 

@@ -24,7 +24,7 @@
 #include "process.h"
 #include "scheduler.h"
 #include "sha1.h"
-#include "sha256.h"
+#include "sha.h"
 
 #include "rtc_memory_esp32.h"
 
@@ -197,9 +197,9 @@ PRIMITIVE(ota_end) {
   uint8* buffer = allocation.alloc(BLOCK);
   if (buffer == null) ALLOCATION_FAILED;
 
-  Sha256* sha256 = _new Sha256(null);
+  Sha* sha256 = _new Sha(null, 256);
   if (sha256 == null) ALLOCATION_FAILED;
-  DeferDelete<Sha256> d(sha256);
+  DeferDelete<Sha> d(sha256);
 
   if (size != 0) {
     if (ota_partition == null) {
@@ -232,17 +232,17 @@ PRIMITIVE(ota_end) {
     // byte, and so not really reliable.)
     Blob checksum_bytes;
     if (expected->byte_content(process->program(), &checksum_bytes, STRINGS_OR_BYTE_ARRAYS)) {
-      if (checksum_bytes.length() != Sha256::HASH_LENGTH) INVALID_ARGUMENT;
+      if (checksum_bytes.length() != Sha::HASH_LENGTH_256) INVALID_ARGUMENT;
       for (int i = 0; i < size; i += BLOCK) {
         int chunk = Utils::min(BLOCK, size - i);
         err = esp_partition_read(ota_partition, i, buffer, chunk);
         if (err != ESP_OK) OUT_OF_BOUNDS;
         sha256->add(buffer, chunk);
       }
-      uint8 calculated[Sha256::HASH_LENGTH];
+      uint8 calculated[Sha::HASH_LENGTH_256];
       sha256->get(calculated);
       int diff = 0;
-      for (int i = 0; i < Sha256::HASH_LENGTH; i++) {
+      for (int i = 0; i < Sha::HASH_LENGTH_256; i++) {
         diff |= calculated[i] ^ checksum_bytes.address()[i];
       }
       if (diff != 0) {
@@ -301,7 +301,7 @@ PRIMITIVE(reset_reason) {
 }
 
 PRIMITIVE(total_deep_sleep_time) {
-  return Primitive::integer(RtcMemory::total_deep_sleep_time(), process);
+  return Primitive::integer(RtcMemory::accumulated_deep_sleep_time_us(), process);
 }
 
 PRIMITIVE(enable_external_wakeup) {
@@ -361,7 +361,7 @@ PRIMITIVE(touchpad_wakeup_status) {
 }
 
 PRIMITIVE(total_run_time) {
-  return Primitive::integer(RtcMemory::total_run_time(), process);
+  return Primitive::integer(RtcMemory::accumulated_run_time_us(), process);
 }
 
 PRIMITIVE(get_mac_address) {
@@ -372,13 +372,6 @@ PRIMITIVE(get_mac_address) {
   esp_err_t err = esp_efuse_mac_get_default(bytes.address());
   if (err != ESP_OK) memset(bytes.address(), 0, 6);
 
-  return result;
-}
-
-PRIMITIVE(rtc_user_bytes) {
-  uint8* rtc_memory = RtcMemory::user_data_address();
-  ByteArray* result = process->object_heap()->allocate_external_byte_array(RtcMemory::RTC_USER_DATA_SIZE, rtc_memory, false, false);
-  if (result == null) ALLOCATION_FAILED;
   return result;
 }
 

@@ -44,6 +44,7 @@ static void print_usage(int exit_code) {
   printf("toit\n");
   printf("  [-h] [--help]                        // This help message.\n");
   printf("  [--version]                          // Prints version information.\n");
+  printf("  [-O<level>]                          // Set optimization level (default = 1).\n");
   printf("  [-X<flag>]*                          // Provide a compiler flag.\n");
   printf("  [-b <snapshot>]                      // Use a specific boot snapshot, default is the adjacent toit.run.snapshot.\n");
   printf("  [--dependency-file <file>]           // Write a dependency file ('-' for stdout).\n");
@@ -148,6 +149,7 @@ int main(int argc, char **argv) {
     auto dep_format = compiler::Compiler::DepFormat::none;
     bool for_language_server = false;
     bool for_analysis = false;
+    int optimization_level = DEFAULT_OPTIMIZATION_LEVEL;
 
     int processed_args = 1;  // The executable name has already been processed.
 
@@ -161,7 +163,16 @@ int main(int argc, char **argv) {
                 argv[processed_args]);
         print_usage(1);
       }
-      if (strcmp(argv[processed_args], "-w") == 0) {
+      if (strcmp(argv[processed_args], "-O0") == 0) {
+        optimization_level = 0;
+        processed_args++;
+      } else if (strcmp(argv[processed_args], "-O1") == 0) {
+        optimization_level = 1;
+        processed_args++;
+      } else if (strcmp(argv[processed_args], "-O2") == 0) {
+        optimization_level = 2;
+        processed_args++;
+      } else if (strcmp(argv[processed_args], "-w") == 0) {
         // Bundle writing.
         processed_args++;
         if (processed_args == argc) {
@@ -329,6 +340,7 @@ int main(int argc, char **argv) {
       .force = force,
       .werror = werror,
       .show_package_warnings = show_package_warnings,
+      .optimization_level = optimization_level,
     };
 
     if (for_language_server) {

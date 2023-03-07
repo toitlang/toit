@@ -13,6 +13,7 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/tmp")
 file(GLOB TOIT_TESTS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*_test.toit" "**/*_test.toit")
 
 add_custom_target(update_gold)

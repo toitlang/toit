@@ -20,7 +20,7 @@
 
 #include "heap_report.h"
 #include "objects.h"
-#include "sha256.h"
+#include "sha.h"
 #include "uuid.h"
 
 #include "objects_inline.h"
@@ -142,7 +142,7 @@ class FlashHeapFragmentationDumper : public HeapFragmentationDumper {
   FlashHeapFragmentationDumper(const esp_partition_t* partition)
     : HeapFragmentationDumper("Out of memory heap report", null),
       partition_(partition),
-      sha256_(null),
+      sha256_(null, 256),
       position_(0) {
     // There's a 4 byte size field before the ubjson starts.  We will overwrite
     // this with the real size later.
@@ -158,9 +158,9 @@ class FlashHeapFragmentationDumper : public HeapFragmentationDumper {
     // After write_end, the last bit of data has been written out, and the output buffer
     // has been flushed.
     uword size = position_;
-    uint8 checksum[Sha256::HASH_LENGTH];
+    uint8 checksum[Sha::HASH_LENGTH_256];
     sha256_.get(checksum);
-    write_buffer(checksum, Sha256::HASH_LENGTH);
+    write_buffer(checksum, Sha::HASH_LENGTH_256);
     uint8 size_field[4];
     size_field[0] = size & 0xff;
     size_field[1] = (size >> 8) & 0xff;
@@ -195,7 +195,7 @@ class FlashHeapFragmentationDumper : public HeapFragmentationDumper {
 
  private:
   const esp_partition_t* partition_;
-  Sha256 sha256_;
+  Sha sha256_;
   size_t position_;
 };
 

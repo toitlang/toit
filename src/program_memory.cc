@@ -39,7 +39,7 @@ HeapObject* ProgramBlock::allocate_raw(int byte_size) {
   void* result = top();
   void* new_top = Utils::address_at(top(), byte_size);
   if (new_top <= limit()) {
-    _top = new_top;
+    top_ = new_top;
     return HeapObject::cast(result);
   }
   return null;
@@ -56,7 +56,7 @@ void ProgramBlock::print() {
 }
 
 void ProgramBlockList::print() {
-  for (auto block : _blocks) {
+  for (auto block : blocks_) {
     printf(" - ");
     block->print();
   }
@@ -64,7 +64,7 @@ void ProgramBlockList::print() {
 
 int ProgramBlockList::payload_size() const {
   int result = 0;
-  for (auto block : _blocks) {
+  for (auto block : blocks_) {
     result += block->payload_size();
   }
   return result;
@@ -72,28 +72,28 @@ int ProgramBlockList::payload_size() const {
 
 ProgramBlockList::~ProgramBlockList() {
   set_writable(true);
-  while (_blocks.remove_first());
+  while (blocks_.remove_first());
 }
 
 void ProgramBlockList::free_blocks(ProgramRawHeap* heap) {
-  while (auto block = _blocks.remove_first()) {
+  while (auto block = blocks_.remove_first()) {
     block->wipe();
     // TODO: We should delete program blocks, but they are created in such a
     // strange way, that it's simpler to leak them.
   }
-  _length = 0;
+  length_ = 0;
 }
 
 void ProgramBlockList::take_blocks(ProgramBlockList* list, ProgramRawHeap* heap) {
   free_blocks(heap);
-  _blocks = list->_blocks;
-  _length = list->_length;
-  list->_length = 0;
-  list->_blocks = ProgramBlockLinkedList();
+  blocks_ = list->blocks_;
+  length_ = list->length_;
+  list->length_ = 0;
+  list->blocks_ = ProgramBlockLinkedList();
 }
 
 void ProgramBlockList::set_writable(bool value) {
-  for (auto block : _blocks) {
+  for (auto block : blocks_) {
     ProgramHeapMemory::instance()->set_writable(block, value);
   }
 }
@@ -111,47 +111,47 @@ void ProgramBlock::do_pointers(Program* program, PointerCallback* callback) {
   LinkedListPatcher<ProgramBlock> hack(*this);
   callback->c_address(reinterpret_cast<void**>(hack.next_cell()));
   bool is_sentinel = true;
-  callback->c_address(reinterpret_cast<void**>(&_top), is_sentinel);
+  callback->c_address(reinterpret_cast<void**>(&top_), is_sentinel);
 }
 
 void ProgramBlockList::do_pointers(Program* program, PointerCallback* callback) {
   ProgramBlock* previous = null;
-  for (auto block : _blocks) {
+  for (auto block : blocks_) {
     if (previous) previous->do_pointers(program, callback);
     previous = block;
   }
   if (previous) previous->do_pointers(program, callback);
-  LinkedListPatcher<ProgramBlock> hack(_blocks);
+  LinkedListPatcher<ProgramBlock> hack(blocks_);
   callback->c_address(reinterpret_cast<void**>(hack.next_cell()));
   callback->c_address(reinterpret_cast<void**>(hack.tail_cell()));
 }
 
 ProgramHeapMemory::ProgramHeapMemory() {
-  _memory_mutex = OS::allocate_mutex(0, "Memory mutex");
+  memory_mutex_ = OS::allocate_mutex(0, "Memory mutex");
 }
 
 ProgramHeapMemory::~ProgramHeapMemory() {
-  OS::dispose(_memory_mutex);
+  OS::dispose(memory_mutex_);
 }
 
 void ProgramHeapMemory::set_writable(ProgramBlock* block, bool value) {
   OS::set_writable(block, value);
 }
 
-ProgramHeapMemory ProgramHeapMemory::_instance;
+ProgramHeapMemory ProgramHeapMemory::instance_;
 
 void ProgramRawHeap::take_blocks(ProgramBlockList* blocks) {
-  _blocks.take_blocks(blocks, this);
+  blocks_.take_blocks(blocks, this);
 }
 
 void ProgramRawHeap::print() {
   printf("%p RawHeap\n", this);
-  _blocks.print();
-  printf("  SIZE = %d\n", _blocks.payload_size());
+  blocks_.print();
+  printf("  SIZE = %d\n", blocks_.payload_size());
 }
 
 ProgramUsage ProgramRawHeap::usage(const char* name = "heap") {
-  int allocated = _blocks.length() * TOIT_PAGE_SIZE;
+  int allocated = blocks_.length() * TOIT_PAGE_SIZE;
   int used = object_size();
   return ProgramUsage(name, allocated, used);
 }

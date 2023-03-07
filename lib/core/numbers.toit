@@ -2,7 +2,11 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-/** A number. */
+/**
+A number.
+This is an abstract super class for $int and $float.
+See also https://docs.toit.io/language/math.
+*/
 abstract class num implements Comparable:
   equals_from_float_ other/float -> bool: return false
   equals_from_small_integer_ other/int -> bool: return false
@@ -529,15 +533,22 @@ abstract class num implements Comparable:
   */
   abstract sqrt -> float
 
+/**
+A 64 bit integer.
+Ints are always 64 bit two's complement signed values between $int.MIN and
+  $int.MAX.  Overflow is silent.
+This is a fully fledged class, not a 'primitive type'.
+Ints are immutable objects.
+See also https://docs.toit.io/language/math.
+*/
 abstract class int extends num:
   /**
   The maximum integer value.
 
   The maximum value is equal to:
-    * 9223372036854775807
-    * 2**63-1
-    * 0x7fff_ffff_ffff_ffff
-  (** is "to the power of".)
+  * 9223372036854775807
+  * 2**63-1  (** is "to the power of")
+  * 0x7fff_ffff_ffff_ffff
   */
   static MAX ::= 0x7fff_ffff_ffff_ffff
 
@@ -545,10 +556,9 @@ abstract class int extends num:
   The minimum integer value.
 
   The minimum value is equal to:
-    * -9223372036854775808
-    * -2**63
-    * 0x8000_0000_0000_0000
-  (** is "to the power of".)
+  * -9223372036854775808
+  * -2**63 (** is "to the power of").
+  * 0x8000_0000_0000_0000
   */
   static MIN ::= -MAX - 1
 
@@ -677,14 +687,14 @@ abstract class int extends num:
     negative := false
     underscore := false
     size := to - from
-    if size == 0: throw "OUT_OF_BOUNDS"
+    if size == 0: return on_error.call PARSE_ERR_
     size.repeat:
       char := data[from + it]
       if char == '-':
         if it != 0 or size == 1: return on_error.call PARSE_ERR_
         negative = true
       else if char == '_' and not underscore:
-        if is_invalid_underscore it size negative:
+        if is_invalid_underscore_ it size negative:
           return on_error.call PARSE_ERR_
         else:
           underscore = true
@@ -695,7 +705,7 @@ abstract class int extends num:
     if negative: result = -result
     return result
 
-  static is_invalid_underscore index size negative:
+  static is_invalid_underscore_ index size negative:
     // The '_' should not be the first or the last character.
     return (not negative and index == 0) or (negative and index == 1) or index == size - 1
 
@@ -708,7 +718,7 @@ abstract class int extends num:
             return int.MIN
         return on_error.call RANGE_ERR_
 
-      value := hex_digit char: on_error.call PARSE_ERR_
+      value := hex_char_to_value char --on_error=(: on_error.call PARSE_ERR_)
       result <<= 4
       result |= value
       continue.generic_parser_ result
@@ -717,7 +727,7 @@ abstract class int extends num:
   abstract operator - -> int
 
   /**
-  Negates this number bitwise.
+  Negates this integer bitwise.
 
   # Examples
   ```
@@ -728,7 +738,7 @@ abstract class int extends num:
   abstract operator ~ -> int
 
   /**
-  Bitwise-ANDs this number with the $other.
+  Bitwise-ANDs this integer with the $other.
 
   # Examples
   ```
@@ -746,7 +756,7 @@ abstract class int extends num:
   abstract operator & other/int -> int
 
   /**
-  Bitwise-ORs this number with the $other.
+  Bitwise-ORs this integer with the $other.
 
   # Examples
   ```
@@ -763,7 +773,7 @@ abstract class int extends num:
   abstract operator | other/int -> int
 
   /**
-  Bitwise-XORs this number with the $other.
+  Bitwise-XORs this integer with the $other.
 
   # Examples
   ```
@@ -781,9 +791,9 @@ abstract class int extends num:
   abstract operator ^ other/int -> int
 
   /**
-  Right shifts this number with $number_of_bits.
+  Right shifts this integer with $number_of_bits.
 
-  The left most bit of this number is inserted to the left of the shifted
+  The left-most bit of this integer is inserted to the left of the shifted
     bits preserving the sign.
 
   # Examples
@@ -801,7 +811,7 @@ abstract class int extends num:
   abstract operator >> number_of_bits/int -> int
 
   /**
-  Right shifts this number with $number_of_bits erasing the sign bit.
+  Right shifts this integer with $number_of_bits, erasing the sign bit.
 
   # Examples
   ```
@@ -820,7 +830,7 @@ abstract class int extends num:
   abstract operator >>> number_of_bits/int -> int
 
   /**
-  Left shifts this number with $number_of_bits.
+  Left shifts this integer with $number_of_bits.
 
   # Examples
   ```
@@ -841,7 +851,7 @@ abstract class int extends num:
 
   /**
   Variant of $stringify.
-  Unlike string interpolation with base 8 or 16, negative
+  Unlike string interpolation with base 2, 8, or 16, negative
     numbers are rendered in a straight-forward way with a
     '-' character at the start.
 
@@ -903,9 +913,9 @@ abstract class int extends num:
     return to_float.sqrt
 
   /**
-  Whether this number is a power of two.
+  Whether this integer is a power of two.
 
-  A number is a power of two if here exists a number `n` such that the number
+  An integer is a power of two if there exists a number `n` such that the integer
     is equal to 2**n.
   (** is "to the power of".)
 
@@ -926,9 +936,9 @@ abstract class int extends num:
     return (this & this - 1) == 0 and this != 0
 
   /**
-  Whether this number is aligned with $n.
+  Whether this integer is aligned with $n.
 
-  This number and the given $n must be a power of 2 or 0.
+  The given $n must be a power of 2.
 
   # Examples
   ```
@@ -938,9 +948,9 @@ abstract class int extends num:
   0.is_aligned 4096      // => true
 
   2.is_aligned 1024  // => false
+  3.is_aligned 2     // => false.
 
   2.is_aligned 3     // Error.
-  3.is_aligned 2     // Error.
     ```
   */
   is_aligned n/int -> bool:
@@ -949,7 +959,7 @@ abstract class int extends num:
 
   /**
   Calls the given $block a number of times corresponding to the value of
-    this number.
+    this integer.
 
   If the number is negative, then the given block is not called.
 
@@ -1027,6 +1037,66 @@ abstract class int extends num:
   */
   population_count -> int:
     #primitive.core.popcount
+
+  /**
+  Counts the number of ones in the binary representation of the integer.
+  Returns 1 if the number is odd, zero if the number is even.
+  The integer is treated as a 64 bit number.
+    Thus it returns 0 if called on -1.
+  # Examples
+  ```
+  (0b101101).parity  // => 0
+  (0b101100).parity  // => 1
+  (0b101110).parity  // => 0
+  (0b101111).parity  // => 1
+  (0).parity         // => 0
+  (-1).parity        // => 0
+  int.MIN.parity     // => 1
+  int.MAX.parity     // => 1
+  ```
+  */
+  parity -> int:
+    return population_count & 1
+
+  /**
+  Counts the number of ones in the binary representation of the integer.
+  Returns false if the number is odd, true if the number is even.
+  The integer is treated as a 64 bit number.
+    Thus it returns false if called on -1.
+  # Examples
+  ```
+  (0b101101).parity  // => true
+  (0b101100).parity  // => false
+  (0b101110).parity  // => true
+  (0b101111).parity  // => false
+  (0).parity         // => true
+  (-1).parity        // => true
+  int.MIN.parity     // => false
+  int.MAX.parity     // => false
+  ```
+  */
+  has_even_parity -> bool:
+    return (population_count & 1) == 0
+
+  /**
+  Counts the number of ones in the binary representation of the integer.
+  Returns true if the number is odd, false if the number is even.
+  The integer is treated as a 64 bit number.
+    Thus it returns true if called on -1.
+  # Examples
+  ```
+  (0b101101).parity  // => false
+  (0b101100).parity  // => true
+  (0b101110).parity  // => false
+  (0b101111).parity  // => true
+  (0).parity         // => false
+  (-1).parity        // => false
+  int.MIN.parity     // => true
+  int.MAX.parity     // => true
+  ```
+  */
+  has_odd_parity -> bool:
+    return (population_count & 1) == 1
 
 class SmallInteger_ extends int:
   /** See $super. */
@@ -1125,7 +1195,7 @@ class SmallInteger_ extends int:
     #primitive.intrinsics.smi_repeat:
       // The intrinsic only fails if we cannot call the block with a single
       // argument. We force this to throw by doing the same here.
-      block.call null
+      block.call this
 
   // Double dispatch support for binary operations.
 
@@ -1284,6 +1354,14 @@ class LargeInteger_ extends int:
   greater_than_or_equal_from_float_ other:
     return other >= to_float
 
+/**
+A 64 bit floating point value.
+Floats are double precision IEEE 754 values, including $float.NAN,
+  $float.INFINITY, -$float.INFINITY and negative zero.
+This is a fully fledged class, not a 'primitive type'.
+Floats are immutable objects.
+See also https://docs.toit.io/language/math.
+*/
 class float extends num:
 
   /**

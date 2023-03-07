@@ -48,8 +48,8 @@ class Class_:
 class Stack_:
 class Exception_:
 
-__entry__main:
-__entry__spawn:
+__entry__main task:
+__entry__spawn task:
 __entry__task lambda:
 
 primitive_lookup_failure_ module index:

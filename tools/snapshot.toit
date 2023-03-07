@@ -139,16 +139,16 @@ class Program:
     method_table_.do --values block
 
   method_from_absolute_bci absolute_bci/int -> ToitMethod:
-    if absolute_bci >= methods.last.id: return methods.last
+    if absolute_bci >= methods.last.absolute_entry_bci: return methods.last
     index := methods.index_of
         absolute_bci
-        --binary_compare=: | a/ToitMethod b/int | a.id.compare_to b
+        --binary_compare=: | a/ToitMethod b/int | a.absolute_entry_bci.compare_to b
         --if_absent=: | insertion_index |
           // $insertion_index is the place where absolute_bci would need to be
           //   inserted. As such, the previous index contains the method
           //   that contains the absolute_bci.
           insertion_index - 1
-    assert: methods[index].id <= absolute_bci < methods[index + 1].id;
+    assert: methods[index].absolute_entry_bci <= absolute_bci <= methods[index + 1].id;
     return methods[index]
 
   primitive_name module_index/int primitive_index/int -> string:
@@ -157,17 +157,19 @@ class Program:
 
 
 class SnapshotBundle:
-  static MAGIC_NAME / string ::= "toit"
-  static MAGIC_CONTENT / string ::= "like a tiger"
-  static SNAPSHOT_NAME / string ::= "snapshot"
-  static SOURCE_MAP_NAME / string ::= "source-map"
-  static UUID_NAME / string ::= "uuid"
+  static MAGIC_NAME        / string ::= "toit"
+  static MAGIC_CONTENT     / string ::= "like a tiger"
+  static SNAPSHOT_NAME     / string ::= "snapshot"
+  static SOURCE_MAP_NAME   / string ::= "source-map"
+  static UUID_NAME         / string ::= "uuid"
+  static SDK_VERSION_NAME  / string ::= "sdk-version"
 
-  byte_array ::= ?
-  file_name        / string?          ::= ?
-  program_snapshot / ProgramSnapshot  ::= ?
-  source_map       / SourceMap        ::= ?
-  uuid             / Uuid             ::= ?
+  bytes            / ByteArray
+  file_name        / string?
+  program_snapshot / ProgramSnapshot
+  source_map       / SourceMap?
+  uuid             / Uuid
+  sdk_version      / string
 
   constructor.from_file name/string:
     return SnapshotBundle name (file.read_content name)
@@ -175,14 +177,20 @@ class SnapshotBundle:
   constructor byte_array/ByteArray:
     return SnapshotBundle null byte_array
 
-  constructor .file_name .byte_array/ByteArray:
-    if not is_bundle_content byte_array: throw "Invalid snapshot bundle"
-    program_snapshot_offsets := extract_ar_offsets_ byte_array SNAPSHOT_NAME
-    source_map_offsets := extract_ar_offsets_ byte_array SOURCE_MAP_NAME
-    program_snapshot = ProgramSnapshot byte_array program_snapshot_offsets.from program_snapshot_offsets.to
-    source_map = SourceMap byte_array source_map_offsets.from source_map_offsets.to
-    uuid_offsets := extract_ar_offsets_ byte_array UUID_NAME
-    uuid = uuid_offsets ? (Uuid byte_array[uuid_offsets.from..uuid_offsets.to]) : NIL
+  constructor .file_name .bytes:
+    if not is_bundle_content bytes: throw "Invalid snapshot bundle"
+    program_snapshot_offsets := extract_ar_offsets_ bytes SNAPSHOT_NAME
+    program_snapshot = ProgramSnapshot bytes program_snapshot_offsets.from program_snapshot_offsets.to
+    source_map_offsets := extract_ar_offsets_ --silent bytes SOURCE_MAP_NAME
+    source_map = source_map_offsets
+        ? SourceMap bytes source_map_offsets.from source_map_offsets.to
+        : null
+    uuid_offsets := extract_ar_offsets_ bytes UUID_NAME
+    uuid = uuid_offsets ? (Uuid bytes[uuid_offsets.from..uuid_offsets.to]) : NIL
+    sdk_version_offsets := extract_ar_offsets_ bytes SDK_VERSION_NAME
+    sdk_version = sdk_version_offsets
+        ? bytes[sdk_version_offsets.from..sdk_version_offsets.to].to_string_non_throwing
+        : ""
 
   static is_bundle_content buffer/ByteArray -> bool:
     magic_file_offsets := extract_ar_offsets_ --silent buffer MAGIC_NAME
@@ -191,18 +199,23 @@ class SnapshotBundle:
     if magic_content.to_string != MAGIC_CONTENT: return false
     return true
 
+  has_source_map -> bool:
+    return source_map != null
+
   parse -> none:
     program_snapshot.parse
 
   decode -> Program:
+    if not source_map: throw "No source map"
     return Program this
 
   stringify -> string:
     postfix := file_name ? " ($file_name)" : ""
-    return "snapshot: $byte_array.size bytes$postfix\n - $program_snapshot\n - $source_map\n"
+    source_map_suffix := source_map ? " - $source_map\n" : ""
+    return "snapshot: $bytes.size bytes$postfix\n - $program_snapshot\n$source_map_suffix"
 
-  static extract_ar_offsets_ --silent/bool=false byte_array/ByteArray name/string -> ArFileOffsets?:
-    ar_reader := ArReader.from_bytes byte_array
+  static extract_ar_offsets_ --silent/bool=false bytes/ByteArray name/string -> ArFileOffsets?:
+    ar_reader := ArReader.from_bytes bytes
     offsets := ar_reader.find --offsets name
     if not offsets:
       if silent: return null
@@ -474,9 +487,9 @@ class ToitMethod:
   static HEADER_SIZE ::= 4
 
   static METHOD ::= 0
-  static LAMBDA ::= 1
-  static BLOCK ::= 2
-  static FIELD_ACCESSOR ::= 3
+  static FIELD_ACCESSOR ::= 1
+  static LAMBDA ::= 2
+  static BLOCK ::= 3
 
   id     ::= 0
   arity  ::= 0
@@ -497,15 +510,18 @@ class ToitMethod:
     bytecodes = all_bytecodes.copy at (at + bytecode_size)
 
   is_normal_method -> bool: return kind == METHOD
+  is_field_accessor -> bool: return kind == FIELD_ACCESSOR
   is_lambda -> bool: return kind == LAMBDA
   is_block -> bool: return kind == BLOCK
-  is_field_accessor -> bool: return kind == FIELD_ACCESSOR
 
   allocation_size -> int:
     return HEADER_SIZE + bytecodes.size
 
   selector_offset:
     return value
+
+  absolute_entry_bci -> int:
+    return id + HEADER_SIZE
 
   bci_from_absolute_bci absolute_bci/int -> int:
     bci := absolute_bci - id - HEADER_SIZE
@@ -517,22 +533,27 @@ class ToitMethod:
     return bci + id + HEADER_SIZE
 
   // bytecode_string is static to support future byte code tracing.
-  static bytecode_string method/ToitMethod bci index program/Program:
+  static bytecode_string method/ToitMethod bci index program/Program --show_positions/bool=true:
     opcode := method.bytecodes[bci]
     bytecode := BYTE_CODES[opcode]
     line := "[$(%03d opcode)] - $bytecode.description"
     format := bytecode.format
     if format == OP:
     else if format  == OP_BU:
-      line += " $index "
+      line += " $index"
     else if format == OP_SU:
       line += " $(method.uint16 bci + 1)"
     else if format == OP_BS:
-      line += " S$index "
+      line += " S$index"
     else if format == OP_SS:
-      line += " S$(method.uint16 bci + 1) "
+      line += " S$(method.uint16 bci + 1)"
     else if format == OP_BL:
-      line += " $program.literals[index]"
+      if index == 0:
+        line += " true"
+      else if index == 1:
+        line += " false"
+      else:
+        line += " $program.literals[index]"
     else if format == OP_SL:
       line += " $program.literals[method.uint16 bci + 1]"
     else if format == OP_BC:
@@ -588,12 +609,17 @@ class ToitMethod:
       dispatch_index := method.uint16 bci + 1
       target := program.dispatch_table[dispatch_index]
       debug_info := program.method_info_for target
-      line += " $(debug_info.short_stringify program)"
+      line += " $(debug_info.short_stringify program --show_positions=show_positions)"
     else if format == OP_SO:
       offset := method.uint16 bci + 1
       line += " $(program.selector_from_dispatch_offset offset)"
     else if format == OP_WU:
-      line += " $(method.uint32 bci + 1)"
+      value := method.uint32 bci + 1
+      if bytecode.name == "LOAD_METHOD":
+        debug_info := program.method_info_for value
+        line += " $(debug_info.short_stringify program --show_positions=show_positions)"
+      else:
+        line += " $value"
     else if format == OP_BS_BU:
       line += " S$index $(method.bytecodes[bci+2])"
     else if format == OP_BS_SO:
@@ -689,22 +715,31 @@ class ToitMethod:
       index += bc_length
 
   output program/Program:
+    output program null: null
+    print ""
+
+  output program/Program arguments/List? --show_positions/bool=true [block]:
     debug_info := program.method_info_for id
-    print "$id: $(debug_info.short_stringify program)"
+    prefix := show_positions ? "$id: " : ""
+    print "$prefix$(debug_info.short_stringify program --show_positions=show_positions)"
+    if arguments:
+      arguments.size.repeat: | n |
+        print "$prefix - argument $n: $arguments[n]"
     index := 0
     length := bytecodes.size
     while index < length:
       absolute_bci := absolute_bci_from_bci index
-      line := "$(%3d index)/$(%4d absolute_bci) "
+      line := "$(%3d index)"
+      if show_positions: line += "/$(%4d absolute_bci) "
       opcode := bytecodes[index]
       bc_length := BYTE_CODES[opcode].size
       argument := 0;
       if bc_length > 1:
         argument = bytecodes[index + 1]
-      line += bytecode_string this index argument program
+      line += bytecode_string this index argument program --show_positions=show_positions
+      if extra := block.call absolute_bci: line += " // $extra"
       print line
       index += bc_length
-    print ""
 
   hash_code:
     return id
@@ -790,11 +825,12 @@ BYTE_CODES ::= [
   Bytecode "LOAD_SMI_U8"                2 OP_BU "load smi",
   Bytecode "LOAD_SMI_U16"               3 OP_SU "load smi",
   Bytecode "LOAD_SMI_U32"               5 OP_WU "load smi",
+  Bytecode "LOAD_METHOD"                5 OP_WU "load method",  // Has specialized stringification.
   Bytecode "LOAD_GLOBAL_VAR"            2 OP_BG "load global var",
-  Bytecode "LOAD_GLOBAL_VAR_DYNAMIC"    1 OP "load global var dynamic",
   Bytecode "LOAD_GLOBAL_VAR_WIDE"       3 OP_SG "load global var wide",
   Bytecode "LOAD_GLOBAL_VAR_LAZY"       2 OP_BG "load global var lazy",
-  Bytecode "LOAD_GLOBAL_VAR_LAZY_WIDE"  3 OP_BG "load global var lazy wide",
+  Bytecode "LOAD_GLOBAL_VAR_LAZY_WIDE"  3 OP_SG "load global var lazy wide",
+  Bytecode "LOAD_GLOBAL_VAR_DYNAMIC"    1 OP "load global var dynamic",
   Bytecode "STORE_GLOBAL_VAR"           2 OP_BG "store global var",
   Bytecode "STORE_GLOBAL_VAR_WIDE"      3 OP_SG "store global var wide",
   Bytecode "STORE_GLOBAL_VAR_DYNAMIC"   1 OP "store global var dynamic",
@@ -853,6 +889,7 @@ BYTE_CODES ::= [
   Bytecode "NON_LOCAL_RETURN"           2 OP_BU "non-local return",
   Bytecode "NON_LOCAL_RETURN_WIDE"      4 OP_SU_SU "non-local return wide",
   Bytecode "NON_LOCAL_BRANCH"           6 OP_BU_WU "non-local branch",
+  Bytecode "IDENTICAL"                  1 OP "identical",
   Bytecode "LINK"                       2 OP_BU "link try",
   Bytecode "UNLINK"                     2 OP_BU "unlink try",
   Bytecode "UNWIND"                     1 OP "unwind",
@@ -1171,10 +1208,12 @@ class ProgramSegment extends HeapSegment:
 
 
 class Position:
-  line ::= -1
-  column ::= -1
-
+  line/int ::= ?
+  column/int ::= ?
   constructor .line .column:
+
+  operator == other -> bool:
+    return other is Position and line == other.line and column == other.column
 
   stringify:
     return "$line:$column"
@@ -1192,8 +1231,6 @@ class MethodInfo:
   position /Position ::= ?
   bytecode_positions /Map ::= ?  // of bytecode to Position
   as_class_names /Map ::= ?      // of bytecode to strings
-  pubsub_info /List ::= ?
-
 
   static INSTANCE_TYPE      ::= 0
   static GLOBAL_TYPE        ::= 1
@@ -1201,9 +1238,14 @@ class MethodInfo:
   static BLOCK_TYPE         ::= 3
   static TOP_LEVEL_TYPE     ::= 4
 
-  short_stringify program/Program:
+  absolute_entry_bci -> int:
+    return id + ToitMethod.HEADER_SIZE
+
+  short_stringify program/Program --show_positions/bool=true:
     prefix := prefix_string program
-    return "$prefix $error_path:$position"
+    if show_positions: return "$prefix $error_path:$position"
+    normalized_path := error_path.replace --all "\\" "/"
+    return "$prefix $normalized_path"
 
   position relative_bci/int -> Position:
     return bytecode_positions.get relative_bci --if_absent=: position
@@ -1214,8 +1256,8 @@ class MethodInfo:
   print program/Program:
     print (stringify program)
 
-  constructor .id .bytecode_size .name .type .outer .holder_name .absolute_path .error_path \
-      .position .bytecode_positions .as_class_names .pubsub_info:
+  constructor .id .bytecode_size .name .type .outer .holder_name .absolute_path .error_path
+      .position .bytecode_positions .as_class_names:
 
   stacktrace_string program/Program:
     if type == BLOCK_TYPE:
@@ -1372,19 +1414,6 @@ class MethodSegment extends MapSegment:
       : read_cardinal_
       : read_string_
 
-  read_pubsub_entry_ -> PubsubInfo:
-    bytecode_position := read_cardinal_
-    target_dispatch_index := read_cardinal_
-    has_topic := read_byte_ == 1
-    topic := read_string_
-    return PubsubInfo
-      bytecode_position
-      target_dispatch_index
-      has_topic ? topic : null
-
-  read_pubsub_info_ -> List:
-    return List read_cardinal_: read_pubsub_entry_
-
   read_element_ -> List:
     id    := read_cardinal_
     bytecode_size := read_cardinal_
@@ -1399,9 +1428,8 @@ class MethodSegment extends MapSegment:
     position := read_position_
     bytecode_positions := read_bytecode_positions_
     as_class_names := read_as_class_names_
-    pubsub_info := read_pubsub_info_
     info := MethodInfo id bytecode_size name type outer holder_name \
-        absolute_path path position bytecode_positions as_class_names pubsub_info
+        absolute_path path position bytecode_positions as_class_names
     return [info.id, info]
 
   stringify -> string:
@@ -1497,13 +1525,6 @@ class SelectorsSegment extends MapSegment:
 
   stringify -> string:
     return "Selectors"
-
-class PubsubInfo:
-  bytecode_position /int ::= ?
-  target_dispatch_index /int ::= ?
-  topic /string? ::= ?
-
-  constructor .bytecode_position .target_dispatch_index .topic:
 
 class StringSegment extends ListSegment:
 

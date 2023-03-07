@@ -100,12 +100,10 @@ add_test(
   WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
   )
 
-if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows") AND (NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS"))
-  add_subdirectory(lsp)
-endif()
-
+add_subdirectory(lsp)
 add_subdirectory(minus_s)
 add_subdirectory(negative)
+add_subdirectory(type_propagation)
 add_subdirectory(optimizations)
 add_subdirectory(ctest)
 add_subdirectory(toitp)
@@ -116,3 +114,5 @@ add_subdirectory(fuzzer)
 add_subdirectory(cmake)
 add_subdirectory(lock_file)
 add_subdirectory(vessels)
+add_subdirectory(valgrind)
+add_subdirectory(strip)

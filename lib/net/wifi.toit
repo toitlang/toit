@@ -13,9 +13,67 @@ CONFIG_PASSWORD  /string ::= "wifi.password"
 CONFIG_BROADCAST /string ::= "wifi.broadcast"
 CONFIG_CHANNEL   /string ::= "wifi.channel"
 
-service_/WifiServiceClient? ::= (WifiServiceClient --no-open).open
+CONFIG_SCAN_CHANNELS /string ::= "scan.channels"
+CONFIG_SCAN_PASSIVE  /string ::= "scan.passive"
+CONFIG_SCAN_PERIOD   /string ::= "scan.period"
+
+SCAN_AP_SSID     /string ::= "scan.ap.ssid"
+SCAN_AP_BSSID    /string ::= "scan.ap.bssid"
+SCAN_AP_RSSI     /string ::= "scan.ap.rssi"
+SCAN_AP_AUTHMODE /string ::= "scan.ap.authmode"
+SCAN_AP_CHANNEL  /string ::= "scan.ap.channel"
+
+WIFI_SCAN_SSID_     ::= 0
+WIFI_SCAN_BSSID_    ::= 1
+WIFI_SCAN_RSSI_     ::= 2
+WIFI_SCAN_AUTHMODE_ ::= 3
+WIFI_SCAN_CHANNEL_  ::= 4
+WIFI_SCAN_ELEMENT_COUNT_ ::= 5
+
+SCAN_TIMEOUT_MS_/int := 1000
+
+service_/WifiServiceClient? ::= (WifiServiceClient).open
+    --if_absent=: null
+
+class AccessPoint:
+  ssid/string
+  bssid/ByteArray
+  rssi/int
+  authmode/int
+  channel/int
+
+  static WIFI_AUTHMODE_NAME_/List ::= [
+    "Open",
+    "WEP",
+    "WPA PSK",
+    "WPA2 PSK",
+    "WPA/WPA2 PSK",
+    "WPA2 Enterprise",
+    "WPA3 PSK",
+    "WPA2/WPA3 PSK",
+    "WAPI PSK",
+  ]
+
+  constructor --.ssid/string --.bssid/ByteArray --.rssi/int --.authmode/int --.channel/int:
+
+  authmode_name -> string:
+    if authmode < 0 or authmode >= WIFI_AUTHMODE_NAME_.size:
+      return "Undefined"
+    return WIFI_AUTHMODE_NAME_[authmode]
+
+  bssid_name -> string:
+    return (List bssid.size: "$(%02x bssid[it])").join ":"
 
 interface Interface extends net.Interface:
+  /**
+  Returns information about the access point this $Interface is currently
+    connected to.
+
+  Throws an exception if this network isn't currently connected to an
+    access point.
+  */
+  access_point -> AccessPoint
+
   /**
   Returns the signal strength of the current access point association
     as a float in the range [0..1].
@@ -36,7 +94,9 @@ open config/Map? -> Interface
     --save/bool=false:
   service := service_
   if not service: throw "WiFi unavailable"
-  return WifiInterface_ service (service.connect config save)
+  connection := service.connect config
+  if save: service.configure config
+  return WifiInterface_ service connection
 
 establish --ssid/string --password/string -> net.Interface
     --broadcast/bool=true
@@ -53,13 +113,88 @@ establish config/Map? -> Interface:
   if not service: throw "WiFi unavailable"
   return WifiInterface_ service (service.establish config)
 
+scan channels/ByteArray --passive/bool=false --period_per_channel_ms/int=SCAN_TIMEOUT_MS_ -> List:
+  if channels.size < 1: throw "Channels are unspecified"
+
+  service := service_
+  if not service: throw "WiFi unavailable"
+
+  config ::= {
+    CONFIG_SCAN_PASSIVE: passive,
+    CONFIG_SCAN_CHANNELS: channels,
+    CONFIG_SCAN_PERIOD: period_per_channel_ms,
+  }
+
+  data_list := service.scan config
+  ap_count := data_list.size / WIFI_SCAN_ELEMENT_COUNT_
+  return List ap_count:
+    offset := it * WIFI_SCAN_ELEMENT_COUNT_
+    AccessPoint
+        --ssid=data_list[offset + WIFI_SCAN_SSID_]
+        --bssid=data_list[offset + WIFI_SCAN_BSSID_]
+        --rssi=data_list[offset + WIFI_SCAN_RSSI_]
+        --authmode=data_list[offset + WIFI_SCAN_AUTHMODE_]
+        --channel=data_list[offset + WIFI_SCAN_CHANNEL_]
+
+/**
+Configure the WiFi service to connect using the given $ssid and
+  $password credentials by default.
+
+The new defaults will take effect on the next call to $open that
+  where no configuration is explicitly provided.
+
+Use $(open --ssid --password --save) to configure the WiFi
+  service only after verifying that connecting succeeds.
+*/
+configure --ssid/string --password/string -> none:
+  configure {
+    CONFIG_SSID: ssid,
+    CONFIG_PASSWORD: password,
+  }
+
+/**
+Configure the WiFi service's default way of connecting to
+  an access point. The $config contains entries for the
+  credentials such as ssid and password.
+
+The new defaults will take effect on the next call to $open that
+  where no configuration is explicitly provided.
+
+Use $(configure --reset) to reset the stored configuration.
+*/
+configure config/Map -> none:
+  service := service_
+  if not service: throw "WiFi unavailable"
+  service.configure config
+
+/**
+Reset the stored WiFi configuration and go back to using
+  the WiFi credentials embedded in the firmware image.
+
+The argument $reset must be true.
+*/
+configure --reset/bool -> none:
+  if reset != true: throw "Argument Error"
+  service := service_
+  if not service: throw "WiFi unavailable"
+  service.configure null
+
 class WifiInterface_ extends SystemInterface_ implements Interface:
   constructor client/WifiServiceClient connection/List:
     super client connection
 
+  access_point -> AccessPoint:
+    info := (client_ as WifiServiceClient).ap_info handle_
+    return AccessPoint
+        --ssid=info[WIFI_SCAN_SSID_]
+        --bssid=info[WIFI_SCAN_BSSID_]
+        --rssi=info[WIFI_SCAN_RSSI_]
+        --authmode=info[WIFI_SCAN_AUTHMODE_]
+        --channel=info[WIFI_SCAN_CHANNEL_]
+
   signal_strength -> float:
-    rssi := (client_ as WifiServiceClient).rssi handle_
-    if not rssi: throw "wifi not connected in STA mode"
+    info := (client_ as WifiServiceClient).ap_info handle_
+    rssi := info[WIFI_SCAN_RSSI_]
     // RSSI is usually in the range [-100..-35].
     rssi = min 65 (max 0 rssi + 100)
     return rssi / 65.0

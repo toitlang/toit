@@ -37,59 +37,59 @@ class SourceManagerSource : public Source {
                       const uint8* text,
                       int size,
                       int offset)
-      : _absolute_path(absolute_path)
-      , _package_id(package_id)
-      , _error_path(error_path)
-      , _text(text)
-      , _size(size),
-      _offset(offset) { }
+      : absolute_path_(absolute_path)
+      , package_id_(package_id)
+      , error_path_(error_path)
+      , text_(text)
+      , size_(size),
+      offset_(offset) {}
 
   static SourceManagerSource invalid() {
     return SourceManagerSource(null, Package::INVALID_PACKAGE_ID, "", null, 0, 0);
   }
 
-  bool is_valid() const { return _text != null; }
+  bool is_valid() const { return text_ != null; }
 
   /// Returns the path of the source.
   ///
   /// Might be "", if the source was given as argument to the compiler.
   const char* absolute_path() const {
     ASSERT(is_valid());
-    return _absolute_path;
+    return absolute_path_;
   }
 
   std::string package_id() const {
-    return _package_id;
+    return package_id_;
   }
 
   std::string error_path() const {
     ASSERT(is_valid());
-    return _error_path;
+    return error_path_;
   }
 
   const uint8* text() const {
     ASSERT(is_valid());
-    return _text;
+    return text_;
   }
 
   Range range(int from, int to) const {
     ASSERT(is_valid());
-    ASSERT(0 <= from && from <= _size);
-    ASSERT(0 <= to && to <= _size);
-    return Range(Position::from_token(_offset + from),
-                 Position::from_token(_offset + to));
+    ASSERT(0 <= from && from <= size_);
+    ASSERT(0 <= to && to <= size_);
+    return Range(Position::from_token(offset_ + from),
+                 Position::from_token(offset_ + to));
   }
 
   int size() const {
     ASSERT(is_valid());
-    return _size;
+    return size_;
   }
 
   /// Returns the offset of the given [position] in this source.
   /// Returns -1 if the position is not from this source.
   int offset_in_source(Position position) const {
-    if (_offset <= position.token() && position.token() <= _offset + _size) {
-      return position.token() - _offset;
+    if (offset_ <= position.token() && position.token() <= offset_ + size_) {
+      return position.token() - offset_;
     }
     return -1;
   }
@@ -97,19 +97,19 @@ class SourceManagerSource : public Source {
   bool is_lsp_marker_at(int offset) { return false; }
 
   void text_range_without_marker(int from, int to, const uint8** text_from, const uint8** text_to) {
-    *text_from = &_text[from];
-    *text_to = &_text[to];
+    *text_from = &text_[from];
+    *text_to = &text_[to];
   }
 
-  int offset() const { return _offset; }
+  int offset() const { return offset_; }
 
  private:
-  const char* _absolute_path;
-  std::string _package_id;
-  std::string _error_path;
-  const uint8* _text;
-  int _size;
-  int _offset;
+  const char* absolute_path_;
+  std::string package_id_;
+  std::string error_path_;
+  const uint8* text_;
+  int size_;
+  int offset_;
 };
 
 const char* error_message_for_load_error(SourceManager::LoadResult::Status status) {
@@ -123,7 +123,7 @@ const char* error_message_for_load_error(SourceManager::LoadResult::Status statu
 }
 
 const char* SourceManager::library_root() {
-  return _filesystem->library_root();
+  return filesystem_->library_root();
 }
 
 void SourceManager::LoadResult::report_error(Diagnostics* diagnostics) {
@@ -143,12 +143,12 @@ bool SourceManager::is_loaded(const char* path) {
 }
 
 bool SourceManager::is_loaded(const std::string& path) {
-  return _path_to_source.find(path) != _path_to_source.end();
+  return path_to_source_.find(path) != path_to_source_.end();
 }
 
 SourceManager::LoadResult SourceManager::load_file(const std::string& path, const Package& package) {
-  auto probe = _path_to_source.find(path);
-  if (probe != _path_to_source.end()) {
+  auto probe = path_to_source_.find(path);
+  if (probe != path_to_source_.end()) {
     // The path is already loaded.
     auto entry = probe->second;
     return {
@@ -157,14 +157,14 @@ SourceManager::LoadResult SourceManager::load_file(const std::string& path, cons
       .status = LoadResult::OK,
     };
   }
-  if (!_filesystem->exists(path.c_str())) {
+  if (!filesystem_->exists(path.c_str())) {
     return {
       .source = null,
       .absolute_path = path,
       .status = LoadResult::NOT_FOUND,
     };
   }
-  if (!_filesystem->is_regular_file(path.c_str())) {
+  if (!filesystem_->is_regular_file(path.c_str())) {
     return {
       .source = null,
       .absolute_path = path,
@@ -172,7 +172,7 @@ SourceManager::LoadResult SourceManager::load_file(const std::string& path, cons
     };
   }
   int size;
-  auto buffer = _filesystem->read_content(path.c_str(), &size);
+  auto buffer = filesystem_->read_content(path.c_str(), &size);
   if (buffer == null) {
     return {
       .source = null,
@@ -184,7 +184,7 @@ SourceManager::LoadResult SourceManager::load_file(const std::string& path, cons
   std::string error_path;
   std::string package_id;
   if (package.is_valid()) {
-    error_path = package.build_error_path(_filesystem, path);
+    error_path = package.build_error_path(filesystem_, path);
     package_id = package.id();
   } else {
     error_path = path;
@@ -208,29 +208,29 @@ SourceManagerSource* SourceManager::register_source(const std::string& absolute_
                                         error_path,
                                         source,
                                         size,
-                                        _next_offset);
-  _sources.push_back(entry);
+                                        next_offset_);
+  sources_.push_back(entry);
   if (absolute_path != "") {
-    _path_to_source.add(absolute_path, entry);
+    path_to_source_.add(absolute_path, entry);
   }
   // Add one for the terminating character. This also allows to point to errors
   // at the end of the file. (Like unclosed strings, comments, ...)
-  _next_offset = entry->offset() + entry->size() + 1;
+  next_offset_ = entry->offset() + entry->size() + 1;
   return entry;
 }
 
 Source* SourceManager::source_for_position(Source::Position position) const {
   int absolute_offset = position.token();
-  ASSERT(0 <= absolute_offset && absolute_offset < _next_offset);
+  ASSERT(0 <= absolute_offset && absolute_offset < next_offset_);
 
   SourceManagerSource* entry = null;
 
   if (entry == null) {
     int start_index = 0;
-    int end_index = _sources.size() - 1;
+    int end_index = sources_.size() - 1;
     while (start_index != end_index) {
       int half_index = start_index + (end_index - start_index) / 2;
-      auto current = _sources[half_index];
+      auto current = sources_[half_index];
       if (absolute_offset < current->offset()) {
         end_index = half_index - 1;
       } else if (absolute_offset > current->offset() + current->size()) {
@@ -240,21 +240,21 @@ Source* SourceManager::source_for_position(Source::Position position) const {
         break;
       }
     }
-    entry = _sources[start_index];
+    entry = sources_[start_index];
     ASSERT(entry->offset() <= absolute_offset && absolute_offset <= entry->offset() + entry->size());
   }
   ASSERT(entry != null);
 
-  _cached_offset = absolute_offset;
-  _cached_source_entry = entry;
-  _cached_location = Source::Location::invalid();
+  cached_offset_ = absolute_offset;
+  cached_source_entry_ = entry;
+  cached_location_ = Source::Location::invalid();
 
   return entry;
 }
 
 Source::Location SourceManager::compute_location(Source::Position position) const {
   int absolute_offset = position.token();
-  ASSERT(0 <= absolute_offset && absolute_offset < _next_offset);
+  ASSERT(0 <= absolute_offset && absolute_offset < next_offset_);
 
   SourceManagerSource* entry = null;
 
@@ -262,15 +262,15 @@ Source::Location SourceManager::compute_location(Source::Position position) cons
   int line = 1;  // The line number.
   int line_start = 0;  // The start of the line.
 
-  if (_cached_offset >= 0 &&
-      _cached_source_entry->offset() <= absolute_offset &&
-      absolute_offset <= _cached_source_entry->offset() + _cached_source_entry->size()) {
-    entry = _cached_source_entry;
-    if (_cached_offset < absolute_offset) {
-      if (_cached_location.is_valid()) {
-        start_offset = _cached_offset - entry->offset();
-        line = _cached_location.line_number;
-        line_start = _cached_location.line_offset;
+  if (cached_offset_ >= 0 &&
+      cached_source_entry_->offset() <= absolute_offset &&
+      absolute_offset <= cached_source_entry_->offset() + cached_source_entry_->size()) {
+    entry = cached_source_entry_;
+    if (cached_offset_ < absolute_offset) {
+      if (cached_location_.is_valid()) {
+        start_offset = cached_offset_ - entry->offset();
+        line = cached_location_.line_number;
+        line_start = cached_location_.line_offset;
       }
     }
   }
@@ -296,9 +296,9 @@ Source::Location SourceManager::compute_location(Source::Position position) cons
   int offset_in_line = offset_in_source - line_start;
   Source::Location result(entry, offset_in_source, offset_in_line, line, line_start);
 
-  _cached_offset = absolute_offset;
-  _cached_source_entry = entry;
-  _cached_location = result;
+  cached_offset_ = absolute_offset;
+  cached_source_entry_ = entry;
+  cached_location_ = result;
   return result;
 }
 

@@ -25,7 +25,6 @@ run_client_test
     [test_fun]
     --supports_config=true
     --needs_server_args=(not supports_config)
-    --use_rpc_filesystem=false
     --use_mock=false
     --exit=true
     --spawn_process=true
@@ -50,7 +49,6 @@ run_client_test
         --toitlsp_exe=toitlsp_exe
         --supports_config=supports_config
         --needs_server_args=needs_server_args
-        --use_rpc_filesystem=use_rpc_filesystem
         --spawn_process=spawn_process
         --pre_initialize=: | client args |
             client.configuration["reproDir"] = repro_dir
@@ -64,7 +62,6 @@ run_client_test
     [test_fun]
     --supports_config=true
     --needs_server_args=(not supports_config)
-    --use_rpc_filesystem=false
     --use_mock=false
     --exit=true
     --spawn_process=true
@@ -74,7 +71,6 @@ run_client_test
       test_fun
       --supports_config=supports_config
       --needs_server_args=needs_server_args
-      --use_rpc_filesystem=use_rpc_filesystem
       --pre_initialize=: null
       --use_mock=use_mock
       --spawn_process=spawn_process

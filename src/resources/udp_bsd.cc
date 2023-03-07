@@ -55,10 +55,10 @@ static void close_keep_errno(int fd) {
   errno = err;
 }
 
-class UDPResourceGroup : public ResourceGroup {
+class UdpResourceGroup : public ResourceGroup {
  public:
-  TAG(UDPResourceGroup);
-  UDPResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
+  TAG(UdpResourceGroup);
+  UdpResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
 
   int create_socket() {
     // TODO: Get domain from address.
@@ -118,7 +118,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  UDPResourceGroup* resource_group = _new UDPResourceGroup(process, KQueueEventSource::instance());
+  UdpResourceGroup* resource_group = _new UdpResourceGroup(process, KQueueEventSource::instance());
   if (!resource_group) MALLOC_FAILED;
 
   proxy->set_external_address(resource_group);
@@ -126,7 +126,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(bind) {
-  ARGS(UDPResourceGroup, resource_group, Blob, address, int, port);
+  ARGS(UdpResourceGroup, resource_group, Blob, address, int, port);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;
@@ -212,7 +212,7 @@ PRIMITIVE(receive) {
 
   if (is_array(output)) {
     Array* out = Array::cast(output);
-    ASSERT(out->length() == 3);
+    if (out->length() < 3) INVALID_ARGUMENT;
     out->at_put(0, array);
     memcpy(ByteArray::Bytes(address).address(), &addr.sin_addr.s_addr, 4);
     out->at_put(1, address);
@@ -264,11 +264,12 @@ static Object* get_address_or_error(int id, Process* process, bool peer) {
   if (result != 0) return Primitive::os_error(errno, process);
   char buffer[16];
   uint32_t addr_word = ntohl(sin.sin_addr.s_addr);
-  sprintf(buffer, "%d.%d.%d.%d",
+  snprintf(buffer, sizeof(buffer), "%d.%d.%d.%d",
       (addr_word >> 24) & 0xff,
       (addr_word >> 16) & 0xff,
       (addr_word >> 8) & 0xff,
       (addr_word >> 0) & 0xff);
+  buffer[sizeof(buffer) - 1] = '\0';
   return process->allocate_string_or_error(buffer, strlen(buffer));
 }
 
@@ -335,7 +336,7 @@ PRIMITIVE(set_option) {
   return process->program()->null_object();
 }
 
-PRIMITIVE(error) {
+PRIMITIVE(error_number) {
   ARGS(IntResource, connection);
   int fd = connection->id();
 
@@ -344,11 +345,11 @@ PRIMITIVE(error) {
   if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &errlen) != 0) {
     error = errno;
   }
-  return process->allocate_string_or_error(strerror(error));
+  return Smi::from(error);
 }
 
 PRIMITIVE(close) {
-  ARGS(UDPResourceGroup, resource_group, IntResource, connection_resource);
+  ARGS(UdpResourceGroup, resource_group, IntResource, connection_resource);
   int fd = connection_resource->id();
 
   resource_group->close_socket(fd);

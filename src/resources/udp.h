@@ -17,14 +17,14 @@
 
 namespace toit {
 
-enum UDPState {
+enum UdpState {
   UDP_READ  = 1 << 0,
   UDP_WRITE = 1 << 1,
   UDP_ERROR = 1 << 2,
   UDP_NEEDS_GC = 1 << 3,
 };
 
-enum UDPOption {
+enum UdpOption {
   UDP_PORT        = 1,
   UDP_ADDRESS     = 2,
   UDP_BROADCAST   = 3,

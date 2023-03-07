@@ -27,6 +27,10 @@
 #include "top.h"
 #include "vm.h"
 
+#ifdef TOIT_FREERTOS
+#include "rtc_memory_esp32.h"
+#endif
+
 #ifndef RAW
 #include "compiler/compiler.h"
 #endif
@@ -43,6 +47,8 @@
 #ifdef TOIT_FREERTOS
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_ota_ops.h"
+#include "esp_spi_flash.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -63,14 +69,14 @@ PRIMITIVE(write_string_on_stdout) {
   ARGS(cstring, message, bool, add_newline);
   fprintf(stdout, "%s%s", message, add_newline ? "\n" : "");
   fflush(stdout);
-  return _raw_message;
+  return process->program()->null_object();
 }
 
 PRIMITIVE(write_string_on_stderr) {
   ARGS(cstring, message, bool, add_newline);
   fprintf(stderr, "%s%s", message, add_newline ? "\n" : "");
   fflush(stderr);
-  return _raw_message;
+  return process->program()->null_object();
 }
 
 PRIMITIVE(main_arguments) {
@@ -116,19 +122,22 @@ PRIMITIVE(spawn_method) {
 }
 
 PRIMITIVE(spawn) {
-  ARGS(Object, entry, Object, arguments)
+  ARGS(int, priority, Object, entry, Object, arguments)
+  if (priority != -1 && (priority < 0 || priority > 0xff)) OUT_OF_RANGE;
   if (!is_smi(entry)) WRONG_TYPE;
 
   int method_id = Smi::cast(entry)->value();
   ASSERT(method_id != -1);
   Method method(process->program()->bytecodes, method_id);
 
-  InitialMemoryManager manager;
-  if (!manager.allocate()) ALLOCATION_FAILED;
+  InitialMemoryManager initial_memory_manager;
+  if (!initial_memory_manager.allocate()) ALLOCATION_FAILED;
 
   unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
-    if (!size_encoder.encode(arguments)) WRONG_TYPE;
+    if (!size_encoder.encode(arguments)) {
+      return size_encoder.create_error_object(process);
+    }
     size = size_encoder.size();
   }
 
@@ -136,19 +145,27 @@ PRIMITIVE(spawn) {
   uint8* buffer = unvoid_cast<uint8*>(malloc(size));
   if (buffer == null) MALLOC_FAILED;
 
-  MessageEncoder encoder(process, buffer);
+  MessageEncoder encoder(process, buffer);  // Takes over buffer.
   if (!encoder.encode(arguments)) {
-    encoder.free_copied();
-    free(buffer);
-    if (encoder.malloc_failed()) MALLOC_FAILED;
-    OTHER_ERROR;
+    // Probably an allocation error.
+    return encoder.create_error_object(process);
   }
 
-  Process* child = VM::current()->scheduler()->spawn(process->program(), process->group(), method, buffer, manager.initial_chunk);
-  if (!child) MALLOC_FAILED;
+  initial_memory_manager.global_variables = process->program()->global_variables.copy();
+  if (!initial_memory_manager.global_variables) MALLOC_FAILED;
 
-  manager.dont_auto_free();
-  return Smi::from(child->id());
+  int pid = VM::current()->scheduler()->spawn(
+      process->program(),
+      process->group(),
+      priority,
+      method,
+      &encoder,                  // Takes over encoder.
+      &initial_memory_manager);  // Takes over initial memory.
+  if (pid == Scheduler::INVALID_PROCESS_ID) {
+    MALLOC_FAILED;
+  }
+
+  return Smi::from(pid);
 }
 
 PRIMITIVE(get_generic_resource_group) {
@@ -162,14 +179,29 @@ PRIMITIVE(get_generic_resource_group) {
   return proxy;
 }
 
-PRIMITIVE(signal_kill) {
+PRIMITIVE(process_signal_kill) {
   ARGS(int, target_id);
 
   return BOOL(VM::current()->scheduler()->signal_process(process, target_id, Process::KILL));
 }
 
-PRIMITIVE(current_process_id) {
+PRIMITIVE(process_current_id) {
   return Smi::from(process->id());
+}
+
+PRIMITIVE(process_get_priority) {
+  ARGS(int, pid);
+  int priority = VM::current()->scheduler()->get_priority(pid);
+  if (priority < 0) INVALID_ARGUMENT;
+  return Smi::from(priority);
+}
+
+PRIMITIVE(process_set_priority) {
+  ARGS(int, pid, int, priority);
+  if (priority < 0 || priority > 0xff) OUT_OF_RANGE;
+  bool success = VM::current()->scheduler()->set_priority(pid, priority);
+  if (!success) INVALID_ARGUMENT;
+  return process->program()->null_object();
 }
 
 PRIMITIVE(object_class_id) {
@@ -294,11 +326,72 @@ PRIMITIVE(blob_index_of) {
 #endif
 }
 
+static Array* get_array_from_list(Object* object, Process* process) {
+  Array* result = null;
+  if (is_instance(object)) {
+    Instance* list = Instance::cast(object);
+    if (list->class_id() == process->program()->list_class_id()) {
+      Object* array_object;
+      // This 'if' will fail if we are dealing with a List so large
+      // that it has arraylets.
+      if (is_array(array_object = list->at(0))) {
+        result = Array::cast(array_object);
+      }
+    }
+  }
+  return result;
+}
+
+PRIMITIVE(crc) {
+  ARGS(int64, accumulator, int, width, Blob, data, int, from, int, to, Object, table_object);
+  if ((width != 0 && width < 8) || width > 64) INVALID_ARGUMENT;
+  bool big_endian = width != 0;
+  if (to == from) return _raw_accumulator;
+  if (from < 0 || to > data.length() || from > to) OUT_OF_BOUNDS;
+  Array* table = get_array_from_list(table_object, process);
+  const uint8* byte_table = null;
+  if (table) {
+    if (table->length() != 0x100) INVALID_ARGUMENT;
+  } else {
+    Blob blob;
+    if (!table_object->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+    if (blob.length() != 0x100) INVALID_ARGUMENT;
+    byte_table = blob.address();
+  }
+  for (word i = from; i < to; i++) {
+    uint8 byte = data.address()[i];
+    uint64 index = accumulator;
+    if (big_endian) index >>= width - 8;
+    index = (byte ^ index) & 0xff;
+    int64 entry;
+    if (byte_table) {
+      entry = byte_table[index];
+    } else {
+      Object* table_entry = table->at(index);
+      INT64_VALUE_OR_WRONG_TYPE(int_table_entry, table_entry);
+      entry = int_table_entry;
+    }
+    if (big_endian) {
+      accumulator = (accumulator << 8) ^ entry;
+    } else {
+      accumulator = (static_cast<uint64>(accumulator) >> 8) ^ entry;
+    }
+  }
+  if ((width & 63) != 0) {
+    // If width is less than 64 we have to mask the result.  For the little
+    // endian case (width == 0) we don't need to mask.
+    uint64 mask = 1;
+    mask = (mask << (width & 63)) - 1;
+    accumulator &= mask;
+  }
+  return Primitive::integer(accumulator, process);
+}
+
 PRIMITIVE(string_from_rune) {
   ARGS(int, rune);
   if (rune < 0 || rune > Utils::MAX_UNICODE) INVALID_ARGUMENT;
   // Don't allow surrogates.
-  if (0xD800 <= rune && rune <= 0xDFFF) INVALID_ARGUMENT;
+  if (Utils::MIN_SURROGATE <= rune && rune <= Utils::MAX_SURROGATE) INVALID_ARGUMENT;
   String* result;
   if (rune <= 0x7F) {
     char buffer[] = { static_cast<char>(rune) };
@@ -561,20 +654,31 @@ PRIMITIVE(smi_mod) {
   return Primitive::integer((int64) receiver % other, process);
 }
 
-// Signed for base 10, unsigned for bases 8 or 16.
+// Signed for base 10, unsigned for bases 2, 8 or 16.
 static Object* printf_style_integer_to_string(Process* process, int64 value, int base) {
-  ASSERT(base == 8 || base == 10 || base == 16);
-  char buffer[32];
+  ASSERT(base == 2 || base == 8 || base == 10 || base == 16);
+  char buffer[70];
   switch (base) {
+    case 2: {
+      char* p = buffer;
+      int first_bit = value == 0 ? 0 : 63 - Utils::clz(value);
+      for (int i = first_bit; i >= 0; i--) {
+        *p++ = '0' + ((value >> i) & 1);
+      }
+      *p++ = '\0';
+      break;
+    }
     case 8:
-      snprintf(buffer, sizeof(buffer), "%llo", value);
+      snprintf(buffer, sizeof(buffer), "%" PRIo64, value);
       break;
     case 10:
-      snprintf(buffer, sizeof(buffer), "%lld", value);
+      snprintf(buffer, sizeof(buffer), "%" PRId64, value);
       break;
     case 16:
-      snprintf(buffer, sizeof(buffer), "%llx", value);
+      snprintf(buffer, sizeof(buffer), "%" PRIx64, value);
       break;
+    default:
+      buffer[0] = '\0';
   }
   return process->allocate_string_or_error(buffer);
 }
@@ -582,7 +686,7 @@ static Object* printf_style_integer_to_string(Process* process, int64 value, int
 PRIMITIVE(int64_to_string) {
   ARGS(int64, value, int, base);
   if (!(2 <= base && base <= 36)) OUT_OF_RANGE;
-  if (base == 10 || (value >= 0 && (base == 8 || base == 16))) {
+  if (base == 10 || (value >= 0 && (base == 2 || base == 8 || base == 16))) {
     return printf_style_integer_to_string(process, value, base);
   }
   const int BUFFER_SIZE = 70;
@@ -966,19 +1070,15 @@ PRIMITIVE(bytes_allocated_delta) {
 }
 
 PRIMITIVE(process_stats) {
-  ARGS(Object, list_object, int, group, int, id);
-  Array* result = null;
-  if (is_instance(list_object)) {
-    Instance* list = Instance::cast(list_object);
-    if (list->class_id() == process->program()->list_class_id()) {
-      Object* array_object;
-      if (is_array(array_object = list->at(0))) {
-        result = Array::cast(array_object);
-      } else {
-        OUT_OF_RANGE;  // List is so big it uses arraylets.
-      }
-    }
+  ARGS(Object, list_object, int, group, int, id, Object, gc_count);
+
+  if (gc_count != process->program()->null_object()) {
+    INT64_VALUE_OR_WRONG_TYPE(word_gc_count, gc_count);
+    // Return ALLOCATION_FAILED until we cause a full GC.
+    if (process->gc_count(FULL_GC) == word_gc_count) ALLOCATION_FAILED;
   }
+
+  Array* result = get_array_from_list(list_object, process);
   if (result == null) INVALID_ARGUMENT;
   if (group == -1 || id == -1) {
     if (group != -1 || id != -1) INVALID_ARGUMENT;
@@ -1218,32 +1318,7 @@ PRIMITIVE(string_rune_count) {
     count -= Utils::popcount(w & end_mask);
   }
 
-  return Primitive::integer(count, process);
-}
-
-
-PRIMITIVE(object_equals) {
-  ARGS(Object, receiver, Object, other)
-  return BOOL(receiver == other);
-}
-
-PRIMITIVE(identical) {
-  ARGS(Object, a, Object, b)
-  if (a == b) return BOOL(true);
-  if (is_double(a) && is_double(b)) {
-    auto double_a = Double::cast(a);
-    auto double_b = Double::cast(b);
-    return BOOL(double_a->bits() == double_b->bits());
-  }
-  if (is_large_integer(a) && is_large_integer(b)) {
-    auto large_a = LargeInteger::cast(a);
-    auto large_b = LargeInteger::cast(b);
-    return BOOL(large_a->value() == large_b->value());
-  }
-  if (is_string(a) && is_string(b)) {
-    return BOOL(String::cast(a)->compare(String::cast(b)) == 0);
-  }
-  return BOOL(false);
+  return Smi::from(count);
 }
 
 PRIMITIVE(smi_to_string_base_10) {
@@ -1258,7 +1333,7 @@ PRIMITIVE(smi_to_string_base_10) {
 // bases.
 PRIMITIVE(printf_style_int64_to_string) {
   ARGS(int64, receiver, int, base);
-  if (base != 8 && base != 16) INVALID_ARGUMENT;
+  if (base != 2 && base != 8 && base != 16) INVALID_ARGUMENT;
   return printf_style_integer_to_string(process, receiver, base);
 }
 
@@ -1435,7 +1510,7 @@ PRIMITIVE(string_slice) {
     // TODO: there should be a singleton empty string in the roots in program.h.
     return process->allocate_string_or_error("");
   }
-  ASSERT(from < length);
+  ASSERT(from < length);  // Checked above.
   // We must guard against chopped up UTF-8 sequences.  We can do this, knowing
   // that the receiver string is valid UTF-8, so a very minimal verification is
   // enough.
@@ -1444,7 +1519,7 @@ PRIMITIVE(string_slice) {
     if (utf_8_continuation_byte(first_after)) ILLEGAL_UTF_8;
   }
   ASSERT(from >= 0);
-  ASSERT(to <= receiver->length());
+  ASSERT(to <= receiver->length());  // Checked above.
   ASSERT(from < to);
   int result_len = to - from;
   String* result = process->allocate_string(result_len);
@@ -1532,17 +1607,16 @@ PRIMITIVE(array_at_put) {
 // Allocates a new array and copies old_length elements from the old array into
 // the new one.
 PRIMITIVE(array_expand) {
-  ARGS(Array, old, word, old_length, word, length);
+  ARGS(Array, old, word, old_length, word, length, Object, filler);
   if (length == 0) return process->program()->empty_array();
   if (length < 0) OUT_OF_BOUNDS;
-  if (length > Array::max_length_in_process()) OUT_OF_RANGE;
-  if (old_length < 0 || old_length > old->length() || old_length > length) OUT_OF_RANGE;
-  Object* result = process->object_heap()->allocate_array(length, Smi::from(0));
+  if (length > Array::ARRAYLET_SIZE) OUT_OF_RANGE;
+  if (old_length < 0 || old_length > old->length()) OUT_OF_RANGE;
+  Object* result = process->object_heap()->allocate_array(length, filler);
   if (result == null) ALLOCATION_FAILED;
   Array* new_array = Array::cast(result);
-  new_array->copy_from(old, old_length);
-  Object* filler = process->program()->null_object();
-  new_array->fill(old_length, filler);
+  new_array->copy_from(old, Utils::min(length, old_length));
+  if (old_length < length) new_array->fill(old_length, filler);
   return new_array;
 }
 
@@ -1564,7 +1638,7 @@ PRIMITIVE(array_new) {
   ARGS(int, length, Object, filler);
   if (length == 0) return process->program()->empty_array();
   if (length < 0) OUT_OF_BOUNDS;
-  if (length > Array::max_length_in_process()) OUT_OF_RANGE;
+  if (length > Array::ARRAYLET_SIZE) OUT_OF_RANGE;
   return Primitive::allocate_array(length, filler, process);
 }
 
@@ -1657,36 +1731,15 @@ PRIMITIVE(byte_array_new_external) {
   return result;
 }
 
-static bool memory_overlaps(const uint8* address_a, int length_a, const uint8* address_b, int length_b) {
-  if (address_a <= address_b && address_b < address_a + length_a) return true;
-  if (address_b <= address_a && address_a < address_b + length_b) return true;
-  return false;
-}
-
 PRIMITIVE(byte_array_replace) {
   ARGS(MutableBlob, receiver, int, index, Blob, source_object, int, from, int, to);
-
-  if (index < 0) OUT_OF_BOUNDS;
-
-  if (from < 0) OUT_OF_BOUNDS;
-  if (to < 0) OUT_OF_BOUNDS;
-  if (to > source_object.length()) OUT_OF_BOUNDS;
-
+  if (index < 0 || from < 0 || to < 0 || to > source_object.length()) OUT_OF_BOUNDS;
   int length = to - from;
-  if (length < 0) OUT_OF_BOUNDS;
-
-  if (index + length > receiver.length()) OUT_OF_BOUNDS;
+  if (length < 0 || index + length > receiver.length()) OUT_OF_BOUNDS;
 
   uint8* dest = receiver.address() + index;
   const uint8* source = source_object.address() + from;
-
-  if (((reinterpret_cast<uintptr_t>(source) | length) & 3) == 0 &&
-      !memory_overlaps(dest, length, source, length)) {
-    iram_safe_memcpy(dest, source, length);
-  } else {
-    memmove(dest, source, length);
-  }
-
+  memmove(dest, source, length);
   return process->program()->null_object();
 }
 
@@ -1751,35 +1804,24 @@ PRIMITIVE(smi_shift_left) {
   return Primitive::integer(value << number_of_bits, process);
 }
 
-PRIMITIVE(task_stack) {
-  ARGS(Task, task);
-  return task->stack();
-}
-
-PRIMITIVE(task_current) {
-  return process->object_heap()->task();
-}
-
 PRIMITIVE(task_new) {
   ARGS(Instance, code);
   Task* task = process->object_heap()->allocate_task();
   if (task == null) ALLOCATION_FAILED;
   Method entry = process->program()->entry_task();
   if (!entry.is_valid()) FATAL("Cannot locate task entry method");
+  Task* current = process->object_heap()->task();
 
-  Object* tru = process->program()->true_object();
-  if ((reinterpret_cast<uword>(tru) & 3) != 1) FATAL("Program heap misaligned");
-
-  Task* old = process->object_heap()->task();
-  process->scheduler_thread()->interpreter()->store_stack();
+  Interpreter* interpreter = process->scheduler_thread()->interpreter();
+  interpreter->store_stack();
 
   process->object_heap()->set_task(task);
-  process->scheduler_thread()->interpreter()->load_stack();
-  process->scheduler_thread()->interpreter()->prepare_task(entry, code);
-  process->scheduler_thread()->interpreter()->store_stack();
+  interpreter->load_stack();
+  interpreter->prepare_task(entry, code);
+  interpreter->store_stack();
 
-  process->object_heap()->set_task(old);
-  process->scheduler_thread()->interpreter()->load_stack();
+  process->object_heap()->set_task(current);
+  interpreter->load_stack();
 
   return task;
 }
@@ -1790,13 +1832,14 @@ PRIMITIVE(task_transfer) {
   if (from != to) {
     // Make sure we don't transfer to a dead task.
     if (!to->has_stack()) OTHER_ERROR;
-    process->scheduler_thread()->interpreter()->store_stack();
+    Interpreter* interpreter = process->scheduler_thread()->interpreter();
+    interpreter->store_stack();
     // Remove the link from the task to the stack if requested.
     if (detach_stack) from->detach_stack();
     process->object_heap()->set_task(to);
-    process->scheduler_thread()->interpreter()->load_stack();
+    interpreter->load_stack();
   }
-  return Smi::from(42);
+  return Primitive::mark_as_error(to);
 }
 
 PRIMITIVE(process_send) {
@@ -1804,7 +1847,9 @@ PRIMITIVE(process_send) {
 
   unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
-    if (!size_encoder.encode(array)) WRONG_TYPE;
+    if (!size_encoder.encode(array)) {
+      return size_encoder.create_error_object(process);
+    }
     size = size_encoder.size();
   }
 
@@ -1812,43 +1857,48 @@ PRIMITIVE(process_send) {
   uint8* buffer = unvoid_cast<uint8*>(malloc(size));
   if (buffer == null) MALLOC_FAILED;
 
-  SystemMessage* message = null;
-  MessageEncoder encoder(process, buffer);
-  bool encoding_succeeded = false;
-  if (encoder.encode(array)) {
-    encoding_succeeded = true;
-    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
+  MessageEncoder encoder(process, buffer);  // Takes over buffer.
+  if (!encoder.encode(array)) {
+    return encoder.create_error_object(process);
   }
 
-  if (message == null) {
-    encoder.free_copied();
-    free(buffer);
-    if (encoder.malloc_failed()) MALLOC_FAILED;
-    if (encoding_succeeded) MALLOC_FAILED;
-    OTHER_ERROR;
-  }
+  // Takes over the buffer and neutralizes the MessageEncoder.
+  SystemMessage* message = _new SystemMessage(type, process->group()->id(), process->id(), &encoder);
+  if (message == null) MALLOC_FAILED;
 
-  // From here on, the destructor of SystemMessage will free the buffer and
-  // potentially the externals too if ownership isn't transferred elsewhere
-  // when the message is received.
+  // One of the calls below takes over the SystemMessage.
   scheduler_err_t result = (process_id >= 0)
       ? VM::current()->scheduler()->send_message(process_id, message)
       : VM::current()->scheduler()->send_system_message(message);
-  if (result == MESSAGE_OK) {
-    // Neuter will disassociate the external memory from the ByteArray, and
-    // also remove the memory from the accounting of the sending process.  The
-    // memory is unaccounted until it is attached to the receiving process.
-    encoder.neuter_externals();
-    // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
-    // byte arrays and strings.
-  } else {
-    // Sending failed. Free any copied bits, but make sure to not free the externals
-    // that have not been neutered on this path.
-    encoder.free_copied();
-    message->free_data_but_keep_externals();
-    delete message;
+  // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
+  // byte arrays and strings.
+  if (result != MESSAGE_OK) {
+    // TODO: We should reactivate - see https://github.com/toitlang/toit/pull/1107
+    // Object* result = process->allocate_string_or_error("MESSAGE_NO_SUCH_RECEIVER");
+    // if (Primitive::is_error(result)) return result;
+    // return Primitive::mark_as_error(HeapObject::cast(result));
   }
-  return Smi::from(result);
+  return process->program()->null_object();
+}
+
+Object* MessageEncoder::create_error_object(Process* process) {
+  Object* result = null;
+  if (malloc_failed_) {
+    MALLOC_FAILED;
+  } else if (nesting_too_deep_) {
+    result = process->allocate_string_or_error("NESTING_TOO_DEEP");
+  } else if (problematic_class_id_ >= 0) {
+    result = Primitive::allocate_array(1, Smi::from(problematic_class_id_), process);
+  } else if (too_many_externals_) {
+    result = process->allocate_string_or_error("TOO_MANY_EXTERNALS");
+  }
+  if (result) {
+    if (Primitive::is_error(result)) return result;
+    return Primitive::mark_as_error(HeapObject::cast(result));
+  }
+  // The remaining errors are things like unserializable non-instances, non-smi
+  // lengths, large lists.  TODO: Be more specific and/or remove some limitations.
+  WRONG_TYPE;
 }
 
 PRIMITIVE(task_has_messages) {
@@ -1876,8 +1926,8 @@ PRIMITIVE(task_receive_message) {
   } else if (message_type == MESSAGE_SYSTEM) {
     Array* array = process->object_heap()->allocate_array(4, Smi::from(0));
     if (array == null) ALLOCATION_FAILED;
-    SystemMessage* system = static_cast<SystemMessage*>(message);
-    MessageDecoder decoder(process, system->data());
+    SystemMessage* system_message = static_cast<SystemMessage*>(message);
+    MessageDecoder decoder(process, system_message->data());
 
     Object* decoded = decoder.decode();
     if (decoder.allocation_failed()) {
@@ -1885,11 +1935,11 @@ PRIMITIVE(task_receive_message) {
       ALLOCATION_FAILED;
     }
     decoder.register_external_allocations();
-    system->free_data_but_keep_externals();
+    system_message->free_data_but_keep_externals();
 
-    array->at_put(0, Smi::from(system->type()));
-    array->at_put(1, Smi::from(system->gid()));
-    array->at_put(2, Smi::from(system->pid()));
+    array->at_put(0, Smi::from(system_message->type()));
+    array->at_put(1, Smi::from(system_message->gid()));
+    array->at_put(2, Smi::from(system_message->pid()));
     array->at_put(3, decoded);
     result = array;
   } else {
@@ -1904,7 +1954,7 @@ PRIMITIVE(add_finalizer) {
   ARGS(HeapObject, object, Object, finalizer)
   if (process->has_finalizer(object, finalizer)) OUT_OF_BOUNDS;
   if (!process->add_finalizer(object, finalizer)) MALLOC_FAILED;
-  return object;
+  return process->program()->null_object();
 }
 
 PRIMITIVE(remove_finalizer) {
@@ -2267,5 +2317,124 @@ PRIMITIVE(literal_index) {
 PRIMITIVE(word_size) {
   return Smi::from(WORD_SIZE);
 }
+
+#ifdef TOIT_FREERTOS
+static spi_flash_mmap_handle_t firmware_mmap_handle;
+static bool firmware_is_mapped = false;
+#endif
+
+PRIMITIVE(firmware_map) {
+  ARGS(Object, bytes);
+#ifndef TOIT_FREERTOS
+  return bytes;
+#else
+  if (bytes != process->program()->null_object()) {
+    // If we're passed non-null bytes, we use that as the
+    // firmware bits.
+    return bytes;
+  }
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
+
+  if (firmware_is_mapped) {
+    // We unmap to allow the next attempt to get the current
+    // system image to succeed.
+    spi_flash_munmap(firmware_mmap_handle);
+    firmware_is_mapped = false;
+    QUOTA_EXCEEDED;  // Quota is 1.
+  }
+
+  const esp_partition_t* current_partition = esp_ota_get_running_partition();
+  if (current_partition == null) OTHER_ERROR;
+
+  const void* mapped_to = null;
+  esp_err_t err = esp_partition_mmap(
+      current_partition,
+      0,  // Offset from start of partition.
+      current_partition->size,
+      SPI_FLASH_MMAP_INST,
+      &mapped_to,
+      &firmware_mmap_handle);
+  if (err != ESP_OK) OTHER_ERROR;
+
+  firmware_is_mapped = true;
+  proxy->set_external_address(
+      current_partition->size,
+      const_cast<uint8*>(reinterpret_cast<const uint8*>(mapped_to)));
+  return proxy;
+#endif
+}
+
+PRIMITIVE(firmware_unmap) {
+#ifdef TOIT_FREERTOS
+  ARGS(ByteArray, proxy);
+  if (!firmware_is_mapped) process->program()->null_object();
+  spi_flash_munmap(firmware_mmap_handle);
+  firmware_is_mapped = false;
+  proxy->clear_external_address();
+#endif
+  return process->program()->null_object();
+}
+
+PRIMITIVE(firmware_mapping_at) {
+  ARGS(Instance, receiver, int, index);
+  int offset = Smi::cast(receiver->at(1))->value();
+  int size = Smi::cast(receiver->at(2))->value();
+  if (index < 0 || index >= size) OUT_OF_BOUNDS;
+
+  Blob input;
+  if (!receiver->at(0)->byte_content(process->program(), &input, STRINGS_OR_BYTE_ARRAYS)) {
+    WRONG_TYPE;
+  }
+
+  // Firmware is potentially mapped into memory that only allow word
+  // access. We read the full word before masking and shifting. This
+  // asssumes that we're running on a little endian platform.
+  index += offset;
+  const uint32* words = reinterpret_cast<const uint32*>(input.address());
+  uint32 shifted = words[index >> 2] >> ((index & 3) << 3);
+  return Smi::from(shifted & 0xff);
+}
+
+PRIMITIVE(firmware_mapping_copy) {
+  ARGS(Instance, receiver, int, from, int, to, ByteArray, into, int, index);
+  int offset = Smi::cast(receiver->at(1))->value();
+  int size = Smi::cast(receiver->at(2))->value();
+  if (!Utils::is_aligned(from + offset, sizeof(uint32)) ||
+      !Utils::is_aligned(to + offset, sizeof(uint32))) INVALID_ARGUMENT;
+  if (from > to || from < 0 || to > size) OUT_OF_BOUNDS;
+
+  Blob input;
+  if (!receiver->at(0)->byte_content(process->program(), &input, STRINGS_OR_BYTE_ARRAYS)) {
+    WRONG_TYPE;
+  }
+
+  // Firmware is potentially mapped into memory that only allow word
+  // access. We use an IRAM safe memcpy alternative that guarantees
+  // always reading whole words to avoid issues with this.
+  ByteArray::Bytes output(into);
+  int bytes = to - from;
+  iram_safe_memcpy(output.address() + index, input.address() + from + offset, bytes);
+  return Smi::from(index + bytes);
+}
+
+#ifdef TOIT_FREERTOS
+PRIMITIVE(rtc_user_bytes) {
+  uint8* rtc_memory = RtcMemory::user_data_address();
+  ByteArray* result = process->object_heap()->allocate_external_byte_array(
+      RtcMemory::RTC_USER_DATA_SIZE, rtc_memory, false, false);
+  if (result == null) ALLOCATION_FAILED;
+  return result;
+}
+#else
+PRIMITIVE(rtc_user_bytes) {
+  static uint8 rtc_memory[4096];
+  ByteArray* result = process->object_heap()->allocate_external_byte_array(
+      sizeof(rtc_memory), rtc_memory, false, false);
+  if (result == null) ALLOCATION_FAILED;
+  return result;
+}
+#endif
 
 } // namespace toit
