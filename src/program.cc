@@ -121,9 +121,7 @@ Program::Program(const uint8* id, int size)
     : FlashAllocation(id, size)
     , invoke_bytecode_offsets_()
     , roots_()
-    , entry_point_indexes_()
-    , source_mapping_(null) {
-}
+    , entry_point_indexes_() {}
 
 void Program::do_pointers(PointerCallback* callback) {
   global_variables.do_pointers(callback);

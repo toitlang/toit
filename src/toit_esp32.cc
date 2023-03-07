@@ -129,7 +129,7 @@ static void start() {
   if (firmware_updated) {
     // If we're updating the firmware, we call esp_restart to ensure we fully
     // reset the chip with the new firmware.
-    ets_printf("Firmware updated; doing chip reset\n");
+    ets_printf("[toit] INFO: firmware updated; doing chip reset\n");
     esp_restart();  // Careful: This clears the RTC memory.
   }
 
@@ -140,7 +140,7 @@ static void start() {
       int64 ms = exit_state.value;
       if (ms < MIN_MS) ms = MIN_MS;
       else if (ms > MAX_MS) ms = MAX_MS;
-      ets_printf("Entering deep sleep for %lldms\n", ms);
+      ets_printf("[toit] INFO: entering deep sleep for %lldms\n", ms);
       err_t err = esp_sleep_enable_timer_wakeup(ms * 1000);
       if (err != ERR_OK) FATAL("Cannot enable deep sleep timer");
       break;
