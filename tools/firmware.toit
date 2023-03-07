@@ -608,6 +608,7 @@ extract_binary envelope/Envelope --config_encoded/ByteArray -> ByteArray:
       program := snapshot_bundle.decode
       image := build_image program WORD_SIZE --system_uuid=uuid.NIL --snapshot_uuid=snapshot_uuid
       header := ImageHeader image.all_memory
+      if header.snapshot_uuid != snapshot_uuid: throw "corrupt snapshot uuid encoding"
       images[name] = RelocatableImage header.id image.build_relocatable
     else:
       header := decode_image content
@@ -809,11 +810,12 @@ class ContainerEntry:
   constructor .name .image --.assets:
 
 class ImageHeader:
-  static MARKER_OFFSET_   ::= 0
-  static ID_OFFSET_       ::= 8
-  static METADATA_OFFSET_ ::= 24
-  static UUID_OFFSET_     ::= 32
-  static HEADER_SIZE_     ::= 48
+  static MARKER_OFFSET_        ::= 0
+  static ID_OFFSET_            ::= 8
+  static METADATA_OFFSET_      ::= 24
+  static UUID_OFFSET_          ::= 32
+  static SNAPSHOT_UUID_OFFSET_ ::= 48 + 7 * 2 * 4  // 7 tables and lists.
+  static HEADER_SIZE_          ::= SNAPSHOT_UUID_OFFSET_ + uuid.SIZE
 
   static MARKER_ ::= 0xdeadface
 
@@ -831,7 +833,7 @@ class ImageHeader:
     return read_uuid_ ID_OFFSET_
 
   snapshot_uuid -> uuid.Uuid:
-    return read_uuid_ 0 // TODO(kasper): Wrong.
+    return read_uuid_ SNAPSHOT_UUID_OFFSET_
 
   system_uuid -> uuid.Uuid:
     return read_uuid_ UUID_OFFSET_
