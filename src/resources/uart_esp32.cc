@@ -215,7 +215,7 @@ PRIMITIVE(create) {
         // Low speed setting.
         interrupt_flags |= ESP_INTR_FLAG_LEVEL1 | ESP_INTR_FLAG_LEVEL2 | ESP_INTR_FLAG_LEVEL3;
       }
-      args.err = uart_driver_install(port, buffer_size, buffer_size, 32, &args.queue, interrupt_flags);
+      args.err = uart_driver_install(port, buffer_size, buffer_size, UART_QUEUE_SIZE, &args.queue, interrupt_flags);
       if (args.err == ESP_OK) {
         int flags = 0;
         if ((args.options & 1) != 0) flags |= UART_SIGNAL_TXD_INV;
