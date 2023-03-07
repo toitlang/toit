@@ -121,8 +121,7 @@ Program::Program(const uint8* id, int size)
     : FlashAllocation(id, size)
     , invoke_bytecode_offsets_()
     , roots_()
-    , entry_point_indexes_()
-    , source_mapping_(null) {
+    , entry_point_indexes_() {
   if (id) {
     memcpy(snapshot_uuid_, id, UUID_SIZE);
   } else {

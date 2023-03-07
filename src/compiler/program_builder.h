@@ -76,7 +76,6 @@ class ProgramBuilder {
   void create_literals();
 
   void set_dispatch_table_entry(int index, int id);
-  void set_source_mapping(const char* data);
   void set_class_check_ids(const List<uint16>& class_check_ids);
   void set_interface_check_offsets(const List<uint16>& interface_check_offsets);
 

@@ -315,12 +315,6 @@ void ProgramBuilder::set_up_skeleton_program() {
   program_->set_app_sdk_info(lookup_symbol(vm_git_info()));
 }
 
-void ProgramBuilder::set_source_mapping(const char* data) {
-  int length = strlen(data);
-  String* string = lookup_symbol(data, length);
-  program_->set_source_mapping(string);
-}
-
 void ProgramBuilder::set_class_check_ids(const List<uint16>& class_check_ids) {
   program_->set_class_check_ids(class_check_ids);
 }

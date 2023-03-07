@@ -554,7 +554,6 @@ class ToitProgram extends ToitObjectType:
       "_roots": PrimitiveType.POINTER * ROOT_COUNT,
       "_builtin_class_ids": PrimitiveType.POINTER * BUILT_IN_CLASS_ID_COUNT,
       "_entry_point_indexes": PrimitiveType.INT * ENTRY_POINT_COUNT,
-      "_source_mapping": PrimitiveType.POINTER,
       "_program_heap_address": PrimitiveType.POINTER,
       "_program_heap_size": PrimitiveType.WORD,
     }
