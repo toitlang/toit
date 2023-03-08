@@ -478,6 +478,7 @@ UART_ISR_INLINE uart_event_types_t UartResource::interrupt_handler_read() {
     return UART_BUFFER_FULL;
   } else {
     if (rx_buffer_free < read_length) read_length = rx_buffer_free;
+    ASSERT(read_length <= 128)
     uint8 buffer[read_length];
     uart_toit_hal_read_rxfifo(hal_, buffer, reinterpret_cast<int*>(&read_length));
     rx_buffer()->send(buffer, read_length);
