@@ -239,8 +239,8 @@ ProgramOrientedEncoder::ProgramOrientedEncoder(Program* program, Buffer* buffer)
   // VM SDK version
   write_string(vm_sdk_model());
   // UUID
-  const uint8* application_uuid = program->id();
-  visitor.visit_byte_array(application_uuid, UUID_SIZE);
+  const uint8* snapshot_uuid = program->snapshot_uuid();
+  visitor.visit_byte_array(snapshot_uuid, UUID_SIZE);
   // Last element is the payload.
 }
 

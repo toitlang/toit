@@ -25,6 +25,8 @@ import .snapshot
 import .firmware show pad
 
 import binary show LITTLE_ENDIAN ByteOrder
+import bytes
+import encoding.ubjson
 import uuid
 import host.file
 import cli
@@ -33,6 +35,7 @@ BINARY_FLAG      ::= "binary"
 M32_FLAG         ::= "machine-32-bit"
 M64_FLAG         ::= "machine-64-bit"
 OUTPUT_OPTION    ::= "output"
+FORMAT_OPTION    ::= "format"
 ASSETS_OPTION    ::= "assets"
 SNAPSHOT_FILE    ::= "snapshot-file"
 
@@ -87,8 +90,9 @@ class BinaryRelocatedOutput extends RelocatedOutput:
     RelocatedOutput.ENDIAN.put_uint32 buffer_ 0 word
     out.write buffer_
 
-print_usage parser/cli.Command:
-  parser.usage
+print_usage parser/cli.Command --error/string?=null:
+  if error: print_on_stderr_ "Error: $error\n"
+  print_on_stderr_ parser.usage
   exit 1
 
 main args:
@@ -99,9 +103,10 @@ main args:
           cli.Flag M32_FLAG --short_name="m32",
           cli.Flag M64_FLAG --short_name="m64",
           cli.Flag BINARY_FLAG,
+          cli.OptionEnum FORMAT_OPTION ["binary", "ubjson"],
           cli.OptionString OUTPUT_OPTION --short_name="o",
           cli.OptionString ASSETS_OPTION,
-          ]
+        ]
       --run=:: parsed = it
 
   parser.run args
@@ -109,55 +114,71 @@ main args:
   output_path/string? := parsed[OUTPUT_OPTION]
 
   if not output_path:
-    print_on_stderr_ "Error: -o flag is not optional"
-    print_usage parser
-    exit 1
+    print_usage parser --error="-o flag is not optional"
 
-  binary_output := false
+  format := ?
   if parsed[BINARY_FLAG]:
-    binary_output = true
+    if parsed[FORMAT_OPTION] != null:
+      print_usage parser --error="cannot use --binary with --format option"
+    format = "binary"
+  else:
+    format = parsed[FORMAT_OPTION]
 
-  if not binary_output:
-    print_on_stderr_ "Error: --binary is no longer optional"
-    exit 1
+  if not format:
+    print_usage parser --error="no output format specified"
 
-  word_size/int? := null
+  machine_word_sizes := []
   if parsed[M32_FLAG]:
-    word_size = 4
+    machine_word_sizes.add 4
   if parsed[M64_FLAG]:
-    if word_size:
-      print_usage parser  // Already set to -m32.
-    word_size = 8
-  if not word_size:
-    word_size = BYTES_PER_WORD
+    machine_word_sizes.add 8
+  if machine_word_sizes.is_empty:
+    machine_word_sizes.add BYTES_PER_WORD
 
-  assets_path := parsed[ASSETS_OPTION]
-  assets := assets_path ? file.read_content assets_path : null
+  if format == "binary" and machine_word_sizes.size > 1:
+    print_usage parser --error="more than one machine flag provided"
 
-  out := file.Stream.for_write output_path
   snapshot_path/string := parsed[SNAPSHOT_FILE]
   snapshot_bundle := SnapshotBundle.from_file snapshot_path
-  program_id ::= snapshot_bundle.uuid
+  snapshot_uuid ::= snapshot_bundle.uuid
   program := snapshot_bundle.decode
   system_uuid ::= sdk_version_uuid --sdk_version=snapshot_bundle.sdk_version
-  image := build_image program word_size --system_uuid=system_uuid --program_id=program_id
-  relocatable := image.build_relocatable
-  out.write relocatable
-  if assets:
-    // Send the assets prefixed with the size and make sure
-    // to round up to full "flash" pages.
-    assets_size := ByteArray 4
-    LITTLE_ENDIAN.put_uint32 assets_size 0 assets.size
-    assets = pad (assets_size + assets) 4096
-    // Encode the assets with dummy relocation information for
-    // every chunk. The assets do not need relocation, but it
-    // is simpler to just use the same image format for the
-    // asset pages.
-    chunk_size := word_size * 8 * word_size
-    no_relocation := ByteArray word_size
-    List.chunk_up 0 assets.size chunk_size: | from to |
-      out.write no_relocation
-      out.write assets[from..to]
+  assets_path := parsed[ASSETS_OPTION]
+  assets := assets_path ? file.read_content assets_path : null
+  id := image_id --snapshot_uuid=snapshot_uuid --assets=assets
+
+  output := { "id": id.stringify }
+  machine_word_sizes.do: | word_size/int |
+    image := build_image program word_size
+        --system_uuid=system_uuid
+        --snapshot_uuid=snapshot_uuid
+        --id=id
+    buffer := bytes.Buffer
+    buffer.write image.build_relocatable
+    if assets:
+      // Send the assets prefixed with the size and make sure
+      // to round up to full "flash" pages.
+      assets_size := ByteArray 4
+      LITTLE_ENDIAN.put_uint32 assets_size 0 assets.size
+      assets = pad (assets_size + assets) 4096
+      // Encode the assets with dummy relocation information for
+      // every chunk. The assets do not need relocation, but it
+      // is simpler to just use the same image format for the
+      // asset pages.
+      chunk_size := word_size * 8 * word_size
+      no_relocation := ByteArray word_size
+      List.chunk_up 0 assets.size chunk_size: | from to |
+        buffer.write no_relocation
+        buffer.write assets[from..to]
+    images := output.get "images" --init=: []
+    machine := "-m$(word_size * 8)"
+    images.add { "flags": [machine], "bytes": buffer.bytes }
+
+  out := file.Stream.for_write output_path
+  if format == "binary":
+    out.write output["images"].first["bytes"]
+  else:
+    out.write (ubjson.encode output)
   out.close
 
 sdk_version_uuid --sdk_version/string -> uuid.Uuid:

@@ -121,7 +121,13 @@ Program::Program(const uint8* id, int size)
     : FlashAllocation(id, size)
     , invoke_bytecode_offsets_()
     , roots_()
-    , entry_point_indexes_() {}
+    , entry_point_indexes_() {
+  if (id) {
+    memcpy(snapshot_uuid_, id, UUID_SIZE);
+  } else {
+    memset(snapshot_uuid_, 0, UUID_SIZE);
+  }
+}
 
 void Program::do_pointers(PointerCallback* callback) {
   global_variables.do_pointers(callback);
