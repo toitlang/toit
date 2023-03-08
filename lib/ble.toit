@@ -356,7 +356,7 @@ class RemoteDevice extends Resource_:
 
   discovered_services/List := []
 
-  constructor.private_ .manager .address secure:
+  constructor.private_ .manager .address secure/bool:
     device := ble_connect_ manager.resource_ address secure
     super manager.adapter.resource_group_ device --auto_release
     state := resource_state_.wait_for_state CONNECTED_EVENT_ | CONNECT_FAILED_EVENT_
@@ -426,10 +426,10 @@ class LocalService extends Resource_ implements Attribute:
     $CHARACTERISTIC_PROPERTY_BROADCAST and similar).
   $permissions is one of the CHARACTERISTIC_PERMISSIONS_* values (see
     $CHARACTERISTIC_PERMISSION_READ and similar).
-  If $value is specified, it is used as the initial value for the characteristic. If $value is null,
-    then the characteristic supports callback reads and the client needs
-    to call $read_request to provide the value upon request. NOTE: Read callbacks are not supported
-    in MacOS.
+  If $value is specified, it is used as the initial value for the characteristic. If $value is null
+    or an empty ByteArray, then the characteristic supports callback reads and the client needs
+    to call $read_request to provide the value upon request.
+  NOTE: Read callbacks are not supported in MacOS.
   When using read callbacks, the $read_timeout_ms specifies the time the callback function is allowed
     to use.
   Throws if the service is already deployed.
@@ -438,7 +438,7 @@ class LocalService extends Resource_ implements Attribute:
       uuid/BleUuid
       --properties/int
       --permissions/int
-      --value/ByteArray=#[]
+      --value/ByteArray?=null
       --read_timeout_ms/int=2500:
     if deployed_: throw "Service is already deployed"
     return LocalCharacteristic this uuid properties permissions value read_timeout_ms
@@ -532,16 +532,18 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
     return read_
 
   /**
-  Manual handling of read requests. If the characteristics supports reads and the value in the constructor is null
-    then a read request will call the $block. The $block should return a ByteArray
+  Handles read requests.
+    This blocking function waits for read requests on this characteristic and calls the given $block for each request.
+    The block must return a ByteArray which is then used as value of the characteristic.
   */
-  read_request [block]:
+  handle_read_request [block]:
     while true:
       resource_state_.wait_for_state DATA_READ_REQUEST_EVENT_
       if not resource_: return
       value := block.call
       resource_state_.clear_state DATA_READ_REQUEST_EVENT_
       ble_read_request_reply_ resource_ value
+
   /**
   Adds a descriptor to this characteristic.
   $uuid is the uuid of the descriptor
@@ -719,12 +721,12 @@ class Peripheral extends Resource_:
 
 class AdapterConfig:
   /**
-  Enable support for bonding
+  Whether support for bonding is enabled.
   */
   bonding/bool
   
   /**
-  Enable support for secure connections
+  Whether support for secure connections is enabled.
   */
   secure_connections/bool
   
@@ -742,7 +744,7 @@ class AdapterMetadata:
 
   constructor.private_ .identifier .address .supports_central_role .supports_peripheral_role .handle_:
 
-  adapter  -> Adapter:
+  adapter -> Adapter:
     return Adapter.private_ this
 
 /**
@@ -777,7 +779,9 @@ class Adapter:
   /**
   The peripheral manager is used to advertise and publish local services.
 
-  If $bonding the peripheral is allowing remote centrals to bond.
+  If $bonding is true then the peripheral is allowing remote centrals to bond. In that
+    case the information of the pairing process may be stored on the device to make
+    reconnects more efficient.
 
   If $secure_connections the peripheral is enabling secure connections.
   */
