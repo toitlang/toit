@@ -60,7 +60,7 @@ set(IMAGE_S2I "${OUTPUT_PREFIX}-s2i.image")
 
 # Compile to binary image.
 execute_process(
-  COMMAND "${TOITVM}" "${SNAPSHOT_TO_IMAGE}" --binary -o "${IMAGE_S2I}" "${SNAP}"
+  COMMAND "${TOITVM}" "${SNAPSHOT_TO_IMAGE}" --format=binary -o "${IMAGE_S2I}" "${SNAP}"
   WORKING_DIRECTORY "${WORKING_DIR}"
   COMMAND_ERROR_IS_FATAL ANY
   )

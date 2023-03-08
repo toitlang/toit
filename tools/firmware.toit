@@ -187,8 +187,9 @@ container_cmd -> cli.Command:
             cli.OptionString "assets"
                 --short_help="Add assets to the container."
                 --type="file",
-            cli.OptionEnum "run" ["boot"]
-                --short_help="Automatically run the container on trigger.",
+            cli.OptionEnum "run" ["no", "boot"]
+                --short_help="Automatically run the container on trigger."
+                --default="boot",
             cli.Flag "critical"
                 --short_help="Reboot system if the container terminates.",
           ]
