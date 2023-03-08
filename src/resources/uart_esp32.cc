@@ -47,8 +47,6 @@
     #define UART_PORT UART_NUM_2
 #endif
 
-#define EVENT_QUEUE_SIZE 32
-
 namespace toit {
 
 const uart_port_t kInvalidUartPort = uart_port_t(-1);
@@ -705,7 +703,7 @@ PRIMITIVE(create) {
     ALLOCATION_FAILED;
   }
 
-  init.queue = xQueueCreate(EVENT_QUEUE_SIZE, sizeof(uart_event_types_t));
+  init.queue = xQueueCreate(UART_QUEUE_SIZE, sizeof(uart_event_types_t));
   if (!init.queue) {
     MALLOC_FAILED;
   }
