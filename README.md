@@ -310,7 +310,7 @@ own entry point by installing it into the firmware envelope before flashing:
 ``` sh
 build/host/sdk/bin/toit.compile -w hello.snapshot examples/hello.toit
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    container install --run=boot hello hello.snapshot
+    container install hello hello.snapshot
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
     flash --port /dev/ttyUSB0 --baud 921600
 ```
@@ -327,9 +327,9 @@ build/host/sdk/bin/toit.compile -w hello.snapshot examples/hello.toit
 build/host/sdk/bin/toit.compile -w ntp.snapshot examples/ntp/ntp.toit
 
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    container install --run=boot hello hello.snapshot
+    container install hello hello.snapshot
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    container install --run=boot ntp ntp.snapshot
+    container install ntp ntp.snapshot
 ```
 
 You can list the containers in a given firmware envelope:
@@ -382,7 +382,7 @@ install time:
 ``` sh
 build/host/sdk/bin/toit.compile -w assets.snapshot assets.toit
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    container install --run=boot assets assets.snapshot \
+    container install assets assets.snapshot \
     --assets=encoded.assets
 ```
 
@@ -404,7 +404,7 @@ the `assets.toit` file to `assets.snapshot` and re-running:
 
 ``` sh
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    container install --run=boot assets assets.snapshot \
+    container install assets assets.snapshot \
     --assets=encoded.assets
 ```
 
