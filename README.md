@@ -291,7 +291,7 @@ Build firmware that can be flashed onto your ESP32 device. The firmware is gener
 in `build/esp32/firmware.envelope`:
 
 ``` sh
-make esp32
+make esp32 esptool
 ```
 
 If you want to flash the generated firmware on your device, you can use the `firmware`
@@ -300,34 +300,27 @@ that first using `make esptool`. Assuming your device is connected through `/dev
 you can achieve all of this through:
 
 ``` sh
-make esptool
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
     flash --port /dev/ttyUSB0 --baud 921600
 ```
 
 By default, the image boots up but does not run any application code. You can use your
-own entry point by installing it into the firmware envelope before extracting the
-`firmware.bin` file:
+own entry point by installing it into the firmware envelope before flashing:
 
 ``` sh
 build/host/sdk/bin/toit.compile -w hello.snapshot examples/hello.toit
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
     container install hello hello.snapshot
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    extract --format=binary -o firmware.bin
-```
-
-Alternatively, you can also specify the entry point through the `ESP32_ENTRY` make variable
-and let the `Makefile` handle the flashing:
-
-``` sh
-make flash ESP32_ENTRY=examples/hello.toit ESP32_PORT=/dev/ttyUSB0
+    flash --port /dev/ttyUSB0 --baud 921600
 ```
 
 ### Adding multiple containers
 
-You can add more containers before you extract `firmware.bin`, so you firmware
-envelope can have any number of containers.
+You can add more containers before you flash, so you firmware
+envelope can have any number of containers. Be aware that adding the NTP
+example below requires you to [configure the WiFi on the ESP32](#configuring-wifi-for-the-esp32) when you
+flash.
 
 ``` sh
 build/host/sdk/bin/toit.compile -w hello.snapshot examples/hello.toit
@@ -351,7 +344,7 @@ The listing produces JSON output that can be processed by other tools:
 ```
 { "hello": {
     "kind" : "snapshot",
-    "id"   : "f0b7e859-9188-52d9-8be3-856bd0e75919"
+    "id"   : "f0b7e859-9188-52d9-8be3-856bd0e75919",
   },
   "ntp": {
     "kind" : "snapshot",
@@ -389,7 +382,8 @@ install time:
 ``` sh
 build/host/sdk/bin/toit.compile -w assets.snapshot assets.toit
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    container install --assets=encoded.assets assets assets.snapshot
+    container install assets assets.snapshot \
+    --assets=encoded.assets
 ```
 
 If you update the source code in `assets.toit` slightly, the
@@ -410,8 +404,23 @@ the `assets.toit` file to `assets.snapshot` and re-running:
 
 ``` sh
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    container install --assets=encoded.assets assets assets.snapshot
+    container install assets assets.snapshot \
+    --assets=encoded.assets
 ```
+
+### Configuring WiFi for the ESP32
+
+You can easily configure the ESP32's builtin WiFi passing it as configuration
+when you flash:
+
+``` sh
+echo '{ "wifi": { "wifi.ssid": "myssid", "wifi.password": "mypassword" } }' > wifi.json
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    flash --config wifi.json \
+    --port /dev/ttyUSB0 --baud 921600
+```
+
+This allows the WiFi to automatically start up when a network interface is opened.
 
 ---
 *NOTE*
@@ -433,26 +442,3 @@ sudo usermod -aG dialout $USER
 ```
 
 You will have to log out and log back in for this to take effect.
-
----
-
-
-### Configuring WiFi for the ESP32
-
-You can easily configure the ESP32's builtin WiFi passing it as configuration
-when you extract the `firmware.bin` file:
-
-``` sh
-echo '{ "wifi.ssid": "myssid", "wifi.password": "mypassword" }' > config.json
-build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    extract --format=binary -o firmware.bin --config config.json
-```
-
-The `Makefile` also has the `ESP32_WIFI_SSID` and `ESP32_WIFI_PASSWORD` make variables
-to support this, if you prefer flashing through make:
-
-``` sh
-make flash ESP32_ENTRY=examples/http/http.toit ESP32_WIFI_SSID=myssid ESP32_WIFI_PASSWORD=mypassword
-```
-
-This allows the WiFi to automatically start up when a network interface is opened.
