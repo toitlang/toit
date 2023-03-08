@@ -344,7 +344,7 @@ The listing produces JSON output that can be processed by other tools:
 ```
 { "hello": {
     "kind" : "snapshot",
-    "id"   : "f0b7e859-9188-52d9-8be3-856bd0e75919",
+    "id"   : "f0b7e859-9188-52d9-8be3-856bd0e75919"
   },
   "ntp": {
     "kind" : "snapshot",
