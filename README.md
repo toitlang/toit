@@ -296,7 +296,7 @@ make esp32 esptool
 
 If you want to flash the generated firmware on your device, you can use the `firmware`
 too. Internally, the `firmware` tool calls out to `esptool.py` so you need to build
-that first using 'make esptool'. Assuming your device is connected through `/dev/ttyUSB0`
+that first using `make esptool`. Assuming your device is connected through `/dev/ttyUSB0`
 you can achieve all of this through:
 
 ``` sh
