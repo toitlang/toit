@@ -57,7 +57,7 @@ List<uint8> EmbeddedDataExtension::config() const {
   uword address = reinterpret_cast<uword>(header) + used;
   uword size = *reinterpret_cast<uint32*>(address);
   uint8* data = reinterpret_cast<uint8*>(address + sizeof(uint32));
-  return List<uint8>(data, Utils::min(size, free - sizeof(uint32)));
+  return List<uint8>(data, Utils::min(size, (uword)(free - sizeof(uint32))));
 }
 
 uword EmbeddedDataExtension::offset(const Program* program) const {

@@ -690,7 +690,7 @@ void TypePropagator::add_input(uint8* site, TypeStack* input, int n) {
   auto probe = input_.find(site);
   if (probe != input_.end()) {
     std::vector<TypeVariable*>& variables = probe->second;
-    ASSERT(variables.size() == n);
+    ASSERT(static_cast<int>(variables.size()) == n);
     for (int i = 0; i < n; i++) {
       TypeVariable* variable = variables[i];
       variable->type().add_all_also_blocks(input->local(n - i - 1), words_per_type());

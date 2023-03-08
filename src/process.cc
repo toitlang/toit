@@ -39,8 +39,8 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , program_(program)
     , runner_(runner)
     , group_(group)
-    , program_heap_address_(program ? program->program_heap_address_ : 0)
-    , program_heap_size_(program ? program->program_heap_size_ : 0)
+    , program_heap_address_(reinterpret_cast<uword>(program))
+    , program_heap_size_(program ? program->size() : 0)
     , entry_(Method::invalid())
     , spawn_method_(Method::invalid())
     , object_heap_(
@@ -372,13 +372,29 @@ uint8 Process::update_priority() {
   return priority;
 }
 
-
 #if defined(TOIT_WINDOWS)
-const char* Process::current_directory() { return current_directory_; }
-void Process::set_current_directory(const char* current_directory) {
+
+const wchar_t* Process::current_directory() { return current_directory_; }
+void Process::set_current_directory(const wchar_t* current_directory) {
   free(const_cast<void*>(void_cast(current_directory_)));
   current_directory_ = current_directory;
 }
+
+String* Process::allocate_string(const wchar_t* content) {
+  word utf_16_length = wcslen(content);
+
+  word length = Utils::utf_16_to_8(reinterpret_cast<const uint16*>(content), utf_16_length, null, 0);
+
+  String* result = allocate_string(length);
+  if (result == null) return null;
+
+  String::Bytes bytes(result);
+
+  Utils::utf_16_to_8(reinterpret_cast<const uint16*>(content), utf_16_length, bytes.address(), bytes.length());
+
+  return result;
+}
+
 #endif
 
 }

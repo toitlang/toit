@@ -15,6 +15,36 @@
 
 set(TEST_EXECUTABLES)
 
+set(VESSEL_TEST_ASSETS)
+
+# Test that the Toit compiler can compile a simple program from a snapshot.
+set(SNAPSHOT_TEST_INPUT "${CMAKE_CURRENT_LIST_DIR}/snapshot_input.toit")
+set(SNAPSHOT_TEST_SNAPSHOT "${CMAKE_CURRENT_BINARY_DIR}/snapshot_input.snapshot")
+set(SNAPSHOT_TEST_DEP "${CMAKE_CURRENT_BINARY_DIR}/snapshot_input.dep")
+set(SNAPSHOT_TEST_EXE "${CMAKE_CURRENT_BINARY_DIR}/snapshot_input.exe")
+
+ADD_TOIT_SNAPSHOT(
+  "${SNAPSHOT_TEST_INPUT}"
+  "${SNAPSHOT_TEST_SNAPSHOT}"
+  "${SNAPSHOT_TEST_DEP}"
+  ""
+)
+
+add_custom_command(
+  OUTPUT "${SNAPSHOT_TEST_EXE}"
+  COMMAND $<TARGET_FILE:toit.compile> -o "${SNAPSHOT_TEST_EXE}" "${SNAPSHOT_TEST_SNAPSHOT}"
+  DEPENDS $<TARGET_FILE:toit.compile> ${SNAPSHOT_TEST_SNAPSHOT}
+)
+
+list(APPEND VESSEL_TEST_ASSETS ${SNAPSHOT_TEST_EXE})
+
+file(RELATIVE_PATH TEST_NAME ${TOIT_SDK_SOURCE_DIR} ${SNAPSHOT_TEST_EXE})
+
+add_test(
+  NAME "${TEST_NAME}"
+  COMMAND "${SNAPSHOT_TEST_EXE}"
+)
+
 # Tests the vessel-generation for different snapshot sizes.
 # 1. Builds Toit files that are then compiled with the Toit compiler.
 # 2. Runs the generated executables.
@@ -25,7 +55,6 @@ set(TEST_EXECUTABLES)
 set(SIZES 1 128 256 512 1024 1048576)
 set(TEST_GENERATOR_SRC "${CMAKE_CURRENT_LIST_DIR}/test_generator.toit")
 
-set(VESSEL_TEST_EXECUTABLES)
 foreach(SIZE ${SIZES})
   set(GENERATED_TEST "${CMAKE_CURRENT_BINARY_DIR}/test-${SIZE}.toit")
   set(GENERATED_TEST_EXE "${CMAKE_CURRENT_BINARY_DIR}/test-${SIZE}.exe")
@@ -43,7 +72,7 @@ foreach(SIZE ${SIZES})
     "${GENERATED_TEST_DEP}"
     ""
   )
-  list(APPEND VESSEL_TEST_EXECUTABLES ${GENERATED_TEST_EXE})
+  list(APPEND VESSEL_TEST_ASSETS ${GENERATED_TEST_EXE})
 
   set(SIGN_ON_DARWIN)
   if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
@@ -59,7 +88,7 @@ foreach(SIZE ${SIZES})
     ${SIGN_ON_DARWIN}
     DEPENDS ${GENERATED_TEST_EXE}
   )
-  list(APPEND VESSEL_TEST_EXECUTABLES ${GENERATED_TEST_STRIPPED_EXE})
+  list(APPEND VESSEL_TEST_ASSETS ${GENERATED_TEST_STRIPPED_EXE})
 
   file(RELATIVE_PATH TEST_NAME ${TOIT_SDK_SOURCE_DIR} ${GENERATED_TEST_EXE})
   add_test(
@@ -73,7 +102,7 @@ foreach(SIZE ${SIZES})
   )
 endforeach()
 
-add_custom_target(build_vessel_test_exes DEPENDS ${VESSEL_TEST_EXECUTABLES})
-add_dependencies(check build_vessel_test_exes)
-add_dependencies(check_slow build_vessel_test_exes)
+add_custom_target(build_vessel_test_assets DEPENDS ${VESSEL_TEST_ASSETS})
+add_dependencies(check build_vessel_test_assets)
+add_dependencies(check_slow build_vessel_test_assets)
 

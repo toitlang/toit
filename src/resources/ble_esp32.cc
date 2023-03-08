@@ -233,6 +233,19 @@ class BleReadWriteElement : public BleErrorCapableResource {
     return unvoid_cast<BleReadWriteElement*>(arg)->_on_access(ctxt);
   }
 
+  static uint16_t mbuf_total_len(os_mbuf* om) {
+    uint16_t total_len = 0;
+    while (om) {
+      total_len += om->om_len;
+      om = SLIST_NEXT(om, om_next);
+    }
+    return total_len;
+  }
+
+  uint16_t mbuf_to_send_len() const {
+    return mbuf_total_len(mbuf_to_send_);
+  }
+
  private:
   void _on_attribute_read(const ble_gatt_error *error, ble_gatt_attr *attr);
   int _on_access(ble_gatt_access_ctxt* ctxt);
@@ -917,7 +930,7 @@ int BleReadWriteElement::_on_access(ble_gatt_access_ctxt* ctxt) {
     case BLE_GATT_ACCESS_OP_READ_CHR:
     case BLE_GATT_ACCESS_OP_READ_DSC:
       if (mbuf_to_send() != null) {
-        return os_mbuf_appendfrom(ctxt->om, mbuf_to_send(), 0, mbuf_to_send()->om_len);
+        return os_mbuf_appendfrom(ctxt->om, mbuf_to_send(), 0, mbuf_to_send_len());
       }
       break;
     case BLE_GATT_ACCESS_OP_WRITE_CHR:
@@ -1162,7 +1175,7 @@ PRIMITIVE(init) {
     ble_pool.put(id);
     MALLOC_FAILED;
   }
-  
+
   ble_hs_cfg.sync_cb = ble_on_sync;
 
   // It is important to call nimble_port_init before creating the resource group, as the
@@ -1698,18 +1711,50 @@ PRIMITIVE(advertise_start) {
 
   if (BlePeripheralManagerResource::is_advertising()) ALREADY_EXISTS;
 
+  // The advertisement packet.
   ble_hs_adv_fields fields{};
-  if (name.length() > 0) {
-    fields.name = name.address();
-    fields.name_len = name.length();
-    fields.name_is_complete = 1;
+  // The size of the data that was already stored in the 'fields'.
+  int advertisement_size = 0;
+  // The scan response. Only used, if the advertising packet would become too big.
+  ble_hs_adv_fields response_fields{};
+  bool uses_scan_response = false;
+
+  if (manufacturing_data.length() > 0) {
+    int additional_size = 2 + manufacturing_data.length();
+    ble_hs_adv_fields* target_fields = &fields;
+    if (advertisement_size + additional_size > BLE_HS_ADV_MAX_SZ) {
+      // Doesn't fit into the packet.
+      // Store it in the scan response instead.
+      target_fields = &response_fields;
+      fields.mfg_data = null;
+    } else {
+      advertisement_size += additional_size;
+    }
+    target_fields->mfg_data = manufacturing_data.address();
+    target_fields->mfg_data_len = manufacturing_data.length();
   }
 
   fields.flags = flags;
+  advertisement_size += flags > 0 ? (2 + 1) : 0;
 
   ble_uuid16_t uuids_16[service_classes->length()];
+  fields.uuids16 = uuids_16;
+  fields.uuids16_is_complete = 1;
   ble_uuid32_t uuids_32[service_classes->length()];
+  fields.uuids32 = uuids_32;
+  fields.uuids32_is_complete = 1;
   ble_uuid128_t uuids_128[service_classes->length()];
+  fields.uuids128 = uuids_128;
+  fields.uuids128_is_complete = 1;
+  ble_uuid16_t response_uuids_16[service_classes->length()];
+  response_fields.uuids16 = response_uuids_16;
+  response_fields.uuids16_is_complete = 1;
+  ble_uuid32_t response_uuids_32[service_classes->length()];
+  response_fields.uuids32 = response_uuids_32;
+  response_fields.uuids32_is_complete = 1;
+  ble_uuid128_t response_uuids_128[service_classes->length()];
+  response_fields.uuids128 = response_uuids_128;
+  response_fields.uuids128_is_complete = 1;
   for (int i = 0; i < service_classes->length(); i++) {
     Object* obj = service_classes->at(i);
     Blob blob;
@@ -1717,29 +1762,76 @@ PRIMITIVE(advertise_start) {
 
     ble_uuid_any_t uuid = uuid_from_blob(blob);
     if (uuid.u.type == BLE_UUID_TYPE_16) {
-      uuids_16[fields.num_uuids16++] = uuid.u16;
+      // Make sure the additional UUID fits into the packet.
+      // For the first UUID we also have to include the 2 byte header of the list.
+      int additional_size = fields.num_uuids16 == 0 ? 4 : 2;
+      ble_hs_adv_fields* target_fields = &fields;
+      if (advertisement_size + additional_size > BLE_HS_ADV_MAX_SZ) {
+        fields.uuids16_is_complete = 0;
+        target_fields = &response_fields;
+        uses_scan_response = true;
+      } else {
+        advertisement_size += additional_size;
+      }
+      const_cast<ble_uuid16_t*>(target_fields->uuids16)[target_fields->num_uuids16++] = uuid.u16;
     } else if (uuid.u.type == BLE_UUID_TYPE_32) {
-      uuids_32[fields.num_uuids32++] = uuid.u32;
+      // Make sure the additional UUID fits into the packet.
+      // For the first UUID we also have to include the 2 byte header of the list.
+      int additional_size = fields.num_uuids32 == 0 ? 6 : 4;
+      ble_hs_adv_fields* target_fields = &fields;
+      if (advertisement_size + additional_size > BLE_HS_ADV_MAX_SZ) {
+        fields.uuids32_is_complete = 0;
+        target_fields = &response_fields;
+        uses_scan_response = true;
+      } else {
+        advertisement_size += additional_size;
+      }
+      const_cast<ble_uuid32_t*>(target_fields->uuids32)[target_fields->num_uuids32++] = uuid.u32;
     } else {
-      uuids_128[fields.num_uuids128++] = uuid.u128;
+      // Make sure the additional UUID fits into the packet.
+      // For the first UUID we also have to include the 2 byte header of the list.
+      int additional_size = fields.num_uuids128 == 0 ? 18 : 16;
+      ble_hs_adv_fields* target_fields = &fields;
+      if (advertisement_size + additional_size > BLE_HS_ADV_MAX_SZ) {
+        fields.uuids128_is_complete = 0;
+        target_fields = &response_fields;
+        uses_scan_response = true;
+      } else {
+        advertisement_size += additional_size;
+      }
+       const_cast<ble_uuid128_t*>(target_fields->uuids128)[target_fields->num_uuids128++] = uuid.u128;
     }
   }
-  fields.uuids16 = uuids_16;
-  fields.uuids16_is_complete = 1;
-  fields.uuids32 = uuids_32;
-  fields.uuids32_is_complete = 1;
-  fields.uuids128 = uuids_128;
-  fields.uuids128_is_complete = 1;
 
-  if (manufacturing_data.length() > 0) {
-    fields.mfg_data = manufacturing_data.address();
-    fields.mfg_data_len = manufacturing_data.length();
+  if (name.length() > 0) {
+    int additional_size = 2 + name.length();
+    ble_hs_adv_fields* target_fields = &fields;
+    if (advertisement_size + additional_size > BLE_HS_ADV_MAX_SZ) {
+      // Without any name, there is no need to change the 'name_is_complete' field.
+      // We could cut the name and send a part of it, but that's not necessary.
+      fields.name = null;
+      target_fields = &response_fields;
+      uses_scan_response = true;
+    } else {
+      advertisement_size += additional_size;
+    }
+    target_fields->name = name.address();
+    target_fields->name_len = name.length();
+    target_fields->name_is_complete = 1;
   }
 
   int err = ble_gap_adv_set_fields(&fields);
   if (err != BLE_ERR_SUCCESS) {
     if (err == BLE_HS_EMSGSIZE) OUT_OF_RANGE;
-    return nimle_stack_error(process,err);
+    return nimle_stack_error(process, err);
+  }
+
+  if (uses_scan_response) {
+    err = ble_gap_adv_rsp_set_fields(&response_fields);
+    if (err != BLE_ERR_SUCCESS) {
+      if (err == BLE_HS_EMSGSIZE) OUT_OF_RANGE;
+      return nimle_stack_error(process, err);
+    }
   }
 
   peripheral_manager->advertising_params().conn_mode = conn_mode;

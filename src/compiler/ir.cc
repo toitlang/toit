@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include <functional>
+#include <inttypes.h>
 
 #include "ir.h"
 
@@ -837,7 +838,6 @@ class Printer : public Visitor {
     const char* name = "unknown";
     switch (node->kind()) {
       case Builtin::THROW: name = "throw"; break;
-      case Builtin::HALT: name = "halt"; break;
       case Builtin::EXIT: name = "exit"; break;
       case Builtin::INVOKE_LAMBDA: name = "invoke_lambda"; break;
       case Builtin::YIELD: name = "yield"; break;
@@ -972,7 +972,7 @@ class Printer : public Visitor {
   }
 
   void visit_LiteralInteger(LiteralInteger* node) {
-    printf("%lld", node->value());
+    printf("%" PRId64, node->value());
   }
 
   void visit_LiteralFloat(LiteralFloat* node) {

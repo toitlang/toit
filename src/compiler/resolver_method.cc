@@ -4452,9 +4452,18 @@ void MethodResolver::visit_LiteralStringInterpolation(ast::LiteralStringInterpol
                                           CallShape::for_instance_call_no_named(no_args),
                                           no_args,
                                           node->range());
+    auto string_entry = core_module_->scope()->lookup_shallow(Symbols::string);
+    ASSERT(string_entry.is_class());
+    auto string_class = string_entry.klass();
+    ir::Type string_type(string_class);
+    auto stringify_as_string = _new ir::Typecheck(ir::Typecheck::AS_CHECK,
+                                                  stringify,
+                                                  string_type,
+                                                  string_type.klass()->name(),
+                                                  center->range());
     ir::Expression* accumulator = null;
     accumulator = _accumulate_concatenation(accumulator, left, node->range());
-    accumulator = _accumulate_concatenation(accumulator, stringify, node->range());
+    accumulator = _accumulate_concatenation(accumulator, stringify_as_string, node->range());
     accumulator = _accumulate_concatenation(accumulator, right, node->range());
     push(accumulator);
     return;

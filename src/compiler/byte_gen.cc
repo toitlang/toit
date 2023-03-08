@@ -712,11 +712,6 @@ void ByteGen::visit_CallBuiltin(CallBuiltin* node) {
       if (is_for_effect()) emitter()->forget(1);
       break;
 
-    case Builtin::HALT:
-      __ halt(1);
-      if (is_for_value()) emitter()->remember(1);
-      break;
-
     case Builtin::INVOKE_LAMBDA: {
         ASSERT(node->arguments().length() == 1 &&
                node->arguments()[0]->is_LiteralInteger());
@@ -734,13 +729,13 @@ void ByteGen::visit_CallBuiltin(CallBuiltin* node) {
 
     case Builtin::EXIT:
       visit_for_value(node->arguments()[0]);
-      __ halt(2);
+      __ halt(1);
       if (is_for_effect()) emitter()->forget(1);
       break;
 
     case Builtin::DEEP_SLEEP:
       visit_for_value(node->arguments()[0]);
-      __ halt(3);
+      __ halt(2);
       if (is_for_effect()) emitter()->forget(1);
       break;
 

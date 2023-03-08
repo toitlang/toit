@@ -32,13 +32,14 @@ PRIMITIVE(next_group_id) {
 }
 
 PRIMITIVE(spawn) {
-  ARGS(int, offset, int, size, int, group_id, Object, arguments);
+  ARGS(int, offset, int, group_id, Object, arguments);
 
-  FlashAllocation* allocation = static_cast<FlashAllocation*>(FlashRegistry::memory(offset, size));
-  if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
+  FlashAllocation* allocation = FlashRegistry::allocation(offset);
+  if (!allocation) OUT_OF_BOUNDS;
+  if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) INVALID_ARGUMENT;
 
   Program* program = static_cast<Program*>(allocation);
-  if (!program->is_valid(offset, EmbeddedData::uuid())) OUT_OF_BOUNDS;
+  if (!program->is_valid(offset)) OUT_OF_BOUNDS;
 
   unsigned message_size = 0;
   { MessageEncoder size_encoder(process, null);
@@ -75,17 +76,19 @@ PRIMITIVE(spawn) {
 }
 
 PRIMITIVE(is_running) {
-  ARGS(int, offset, int, size);
-  FlashAllocation* allocation = static_cast<FlashAllocation*>(FlashRegistry::memory(offset, size));
-  if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
+  ARGS(int, offset);
+  FlashAllocation* allocation = FlashRegistry::allocation(offset);
+  if (!allocation) OUT_OF_BOUNDS;
+  if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) INVALID_ARGUMENT;
   Program* program = static_cast<Program*>(allocation);
   return BOOL(VM::current()->scheduler()->is_running(program));
 }
 
 PRIMITIVE(kill) {
-  ARGS(int, offset, int, size);
-  FlashAllocation* allocation = static_cast<FlashAllocation*>(FlashRegistry::memory(offset, size));
-  if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
+  ARGS(int, offset);
+  FlashAllocation* allocation = FlashRegistry::allocation(offset);
+  if (!allocation) OUT_OF_BOUNDS;
+  if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) INVALID_ARGUMENT;
   Program* program = static_cast<Program*>(allocation);
   return BOOL(VM::current()->scheduler()->kill(program));
 }
@@ -118,10 +121,14 @@ PRIMITIVE(assets) {
   Program* program = process->program();
   int size;
   uint8* bytes;
-  if (program->assets_size(&bytes, &size) == 0) {
-    return process->object_heap()->allocate_internal_byte_array(0);
+  Object* result = null;
+  if (program->program_assets_size(&bytes, &size) == 0) {
+    result = process->object_heap()->allocate_internal_byte_array(0);
+  } else {
+    result = process->object_heap()->allocate_external_byte_array(size, bytes, false, false);
   }
-  return process->object_heap()->allocate_external_byte_array(size, bytes, false, false);
+  if (!result) ALLOCATION_FAILED;
+  return result;
 }
 
 PRIMITIVE(config) {
@@ -129,12 +136,14 @@ PRIMITIVE(config) {
 #ifdef TOIT_FREERTOS
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   List<uint8> config = extension->config();
-  return config.is_empty()
+  Object* result = config.is_empty()
       ? process->object_heap()->allocate_internal_byte_array(0)
       : process->object_heap()->allocate_external_byte_array(config.length(), config.data(), false, false);
 #else
-  return process->object_heap()->allocate_internal_byte_array(0);
+  Object* result = process->object_heap()->allocate_internal_byte_array(0);
 #endif
+  if (!result) ALLOCATION_FAILED;
+  return result;
 }
 
 } // namespace toit

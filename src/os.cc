@@ -151,13 +151,30 @@ static void* try_grab_aligned(void* suggestion, uword size) {
 
 OS::HeapMemoryRange OS::single_range_ = { 0 };
 
+// Protected by the resource mutex.
+// We keep a list of recently freed addresses, to cut down on virtual memory
+// fragmentation when an application keeps growing and then shrinking its
+// memory use.  This size covers about 320MB of memory fluctuation with a 32k
+// page (default on 64 bit).
+static const int RECENTLY_FREED_SIZE = 10000;
+static int recently_freed_index = 0;
+void* recently_freed[RECENTLY_FREED_SIZE];
+
 void* OS::allocate_pages(uword size) {
+  Locker locker(OS::resource_mutex());
   if (single_range_.size == 0) FATAL("GcMetadata::set_up not called");
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
   uword original_size = size;
-  // First attempt, let the OS pick a location.
-  void* result = try_grab_aligned(null, size);
-  if (result == null) return null;
+  // First attempt, use a recently freed address.
+  void* result = null;
+  if (recently_freed_index != 0) {
+    result = try_grab_aligned(recently_freed[--recently_freed_index], size);
+  }
+  if (result == null) {
+    // Second attempt, let the OS pick a location.
+    result = try_grab_aligned(null, size);
+    if (result == null) return null;
+  }
   uword numeric_address = reinterpret_cast<uword>(result);
   uword result_end = numeric_address + size;
   int attempt = 0;
@@ -181,6 +198,10 @@ void* OS::allocate_pages(uword size) {
 }
 
 void OS::free_pages(void* address, uword size) {
+  Locker locker(OS::resource_mutex());
+  if (recently_freed_index < RECENTLY_FREED_SIZE) {
+    recently_freed[recently_freed_index++] = address;
+  }
   ungrab_virtual_memory(address, size);
 }
 

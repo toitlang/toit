@@ -40,11 +40,9 @@ class Adc:
   /**
   Initializes an Adc unit for the $pin.
 
-  Use $max to indicate max voltage expected to measure. This helps to
-    tune the attenuation of the underlying ADC unit.
-
-  Note that chip-specific limitations apply, generally the precision at
-    various voltage ranges.
+  Use $max_voltage to indicate max voltage expected to measure. This helps to
+    tune the attenuation of the underlying ADC unit. If no $max_voltage is
+    provided, the ADC uses the maximum voltage range of the pin.
 
   If $allow_restricted is provided, allows pins that are restricted.
     See the ESP32 section below.

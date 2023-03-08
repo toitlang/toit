@@ -5,3 +5,6 @@
 main:
   print "foo $(: print it) bar"
   print "foo $class"
+  local/any := 499
+  str := "$local"
+  str.foo

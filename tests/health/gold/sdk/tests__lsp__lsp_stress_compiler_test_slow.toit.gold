@@ -1,3 +1,0 @@
-<sdk>/services/arguments.toit:11:30: warning: Class 'ArgumentParser' is deprecated
-    return commands_[name] = ArgumentParser
-                             ^~~~~~~~~~~~~~

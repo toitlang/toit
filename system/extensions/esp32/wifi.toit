@@ -16,12 +16,14 @@
 import net
 import monitor
 import log
-import device
+
+import net.modules.dns as dns_module
 import net.wifi
 
 import encoding.tison
 import system.assets
 import system.firmware
+import system.storage
 
 import system.api.wifi show WifiService
 import system.api.network show NetworkService
@@ -30,11 +32,19 @@ import system.base.network show NetworkModule NetworkResource NetworkState
 
 import ..shared.network_base
 
+// Keep in sync with the definitions in WifiResourceGroup.
+OWN_ADDRESS_INDEX_        ::= 0
+MAIN_DNS_ADDRESS_INDEX_   ::= 1
+BACKUP_DNS_ADDRESS_INDEX_ ::= 2
+
+// Use lazy initialization to delay opening the storage bucket
+// until we need it the first time. From that point forward,
+// we keep it around forever.
+bucket_/storage.Bucket ::= storage.Bucket.open --flash "toitlang.org/wifi"
+
 class WifiServiceProvider extends NetworkServiceProviderBase:
   static WIFI_CONFIG_STORE_KEY ::= "system/wifi"
-
   state_/NetworkState ::= NetworkState
-  store_/device.FlashStore ::= device.FlashStore
 
   constructor:
     super "system/wifi/esp32" --major=0 --minor=1
@@ -60,7 +70,7 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
   connect client/int config/Map? -> List:
     effective := config
     if not effective:
-      catch --trace: effective = store_.get WIFI_CONFIG_STORE_KEY
+      catch --trace: effective = bucket_.get WIFI_CONFIG_STORE_KEY
       if not effective:
         effective = firmware.config["wifi"]
       if not effective:
@@ -83,7 +93,7 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
         throw "wifi already connected with different credentials"
 
       resource := NetworkResource this client state_ --notifiable
-      return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]
+      return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS | NetworkService.PROXY_RESOLVE]
     finally: | is_exception exception |
       // If we're not returning a network resource to the client, we
       // must take care to decrement the usage count correctly.
@@ -114,7 +124,7 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
         no := broadcast ? "no " : ""
         throw "wifi already established with $(no)ssid broadcasting"
       resource := NetworkResource this client state_ --notifiable
-      return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]
+      return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS | NetworkService.PROXY_RESOLVE]
     finally: | is_exception exception |
       // If we're not returning a network resource to the client, we
       // must take care to decrement the usage count correctly.
@@ -122,6 +132,9 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
 
   address resource/NetworkResource -> ByteArray:
     return (state_.module as WifiModule).address.to_byte_array
+
+  resolve resource/ServiceResource host/string -> List:
+    return [(dns_module.dns_lookup host).raw]
 
   ap_info resource/NetworkResource -> List:
     return (state_.module as WifiModule).ap_info
@@ -140,9 +153,9 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
 
   configure config/Map? -> none:
     if config:
-      store_.set WIFI_CONFIG_STORE_KEY config
+      bucket_[WIFI_CONFIG_STORE_KEY] = config
     else:
-      store_.delete WIFI_CONFIG_STORE_KEY
+      bucket_.remove WIFI_CONFIG_STORE_KEY
 
   on_module_closed module/WifiModule -> none:
     resources_do: it.notify_ NetworkService.NOTIFY_CLOSED
@@ -248,15 +261,33 @@ class WifiModule implements NetworkModule:
     state := ip_events_.wait
     if (state & WIFI_IP_ASSIGNED) == 0: throw "IP_ASSIGN_FAILED"
     ip_events_.clear_state WIFI_IP_ASSIGNED
-    ip ::= wifi_get_ip_ resource_group_
+    ip ::= (wifi_get_ip_ resource_group_ OWN_ADDRESS_INDEX_) or #[0, 0, 0, 0]
     address_ = net.IpAddress ip
     logger_.info "network address dynamically assigned through dhcp" --tags={"ip": address_}
+    configure_dns_ --from_dhcp
     ip_events_.set_callback:: on_event_ it
 
   wait_for_static_ip_address_ -> none:
-    ip ::= wifi_get_ip_ resource_group_
+    ip ::= (wifi_get_ip_ resource_group_ OWN_ADDRESS_INDEX_) or #[0, 0, 0, 0]
     address_ = net.IpAddress ip
     logger_.info "network address statically assigned" --tags={"ip": address_}
+    configure_dns_ --from_dhcp=false
+
+  configure_dns_ --from_dhcp/bool -> none:
+    main_dns := wifi_get_ip_ resource_group_ MAIN_DNS_ADDRESS_INDEX_
+    backup_dns := wifi_get_ip_ resource_group_ BACKUP_DNS_ADDRESS_INDEX_
+    dns_ips := []
+    if main_dns: dns_ips.add (net.IpAddress main_dns)
+    if backup_dns: dns_ips.add (net.IpAddress backup_dns)
+    if dns_ips.size != 0:
+      dns_module.dhcp_client_ = dns_module.DnsClient dns_ips
+      if from_dhcp:
+        logger_.info "dns server address dynamically assigned through dhcp" --tags={"ip": dns_ips}
+      else:
+        logger_.info "dns server address statically assigned" --tags={"ip": dns_ips}
+    else:
+      dns_module.dhcp_client_ = null
+      logger_.info "dns server address not supplied by network; using fallback dns servers"
 
   ap_info -> List:
     return wifi_get_ap_info_ resource_group_
@@ -311,7 +342,7 @@ wifi_disconnect_ resource_group resource:
 wifi_disconnect_reason_ resource:
   #primitive.wifi.disconnect_reason
 
-wifi_get_ip_ resource_group -> ByteArray?:
+wifi_get_ip_ resource_group index/int -> ByteArray?:
   #primitive.wifi.get_ip
 
 wifi_init_scan_ resource_group:

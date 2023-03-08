@@ -14,7 +14,6 @@
 // directory of this repository.
 
 import net
-import net.modules.udp
 
 import system.services show ServiceProvider ServiceResource
 import system.api.network show NetworkService

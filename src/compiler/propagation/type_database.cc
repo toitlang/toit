@@ -20,6 +20,7 @@
 #include "../source_mapper.h"
 
 #include <sstream>
+#include <cinttypes>
 
 namespace toit {
 namespace compiler {
@@ -130,7 +131,7 @@ TypeDatabase* TypeDatabase::compute(Program* program) {
   propagator.propagate(types);
   uint64 elapsed = OS::get_monotonic_time() - start;
   if (false) {
-    printf("[propagating types through program %p => %lld ms]\n",
+    printf("[propagating types through program %p => %" PRId64 " ms]\n",
         program, elapsed / 1000);
   }
   cache_[program] = types;

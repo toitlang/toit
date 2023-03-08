@@ -35,7 +35,6 @@ TYPE_PRIMITIVE_ANY(touchpad_wakeup_status)
 TYPE_PRIMITIVE_ANY(total_deep_sleep_time)
 TYPE_PRIMITIVE_ANY(total_run_time)
 TYPE_PRIMITIVE_ANY(get_mac_address)
-TYPE_PRIMITIVE_ANY(rtc_user_bytes)
 TYPE_PRIMITIVE_ANY(memory_page_report)
 
 }  // namespace toit::compiler

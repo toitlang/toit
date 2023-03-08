@@ -301,7 +301,7 @@ PRIMITIVE(reset_reason) {
 }
 
 PRIMITIVE(total_deep_sleep_time) {
-  return Primitive::integer(RtcMemory::total_deep_sleep_time(), process);
+  return Primitive::integer(RtcMemory::accumulated_deep_sleep_time_us(), process);
 }
 
 PRIMITIVE(enable_external_wakeup) {
@@ -361,7 +361,7 @@ PRIMITIVE(touchpad_wakeup_status) {
 }
 
 PRIMITIVE(total_run_time) {
-  return Primitive::integer(RtcMemory::total_run_time(), process);
+  return Primitive::integer(RtcMemory::accumulated_run_time_us(), process);
 }
 
 PRIMITIVE(get_mac_address) {
@@ -372,13 +372,6 @@ PRIMITIVE(get_mac_address) {
   esp_err_t err = esp_efuse_mac_get_default(bytes.address());
   if (err != ESP_OK) memset(bytes.address(), 0, 6);
 
-  return result;
-}
-
-PRIMITIVE(rtc_user_bytes) {
-  uint8* rtc_memory = RtcMemory::user_data_address();
-  ByteArray* result = process->object_heap()->allocate_external_byte_array(RtcMemory::RTC_USER_DATA_SIZE, rtc_memory, false, false);
-  if (result == null) ALLOCATION_FAILED;
   return result;
 }
 

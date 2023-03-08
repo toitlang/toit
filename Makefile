@@ -29,7 +29,12 @@ ESP32_PORT=
 # The system process is started from its own entry point.
 ESP32_SYSTEM_ENTRY=system/extensions/esp32/boot.toit
 
-export IDF_TARGET=$(ESP32_CHIP)
+ifeq ($(ESP32_CHIP),esp32s3-spiram-octo)
+	IDF_TARGET=esp32s3
+else
+	IDF_TARGET=$(ESP32_CHIP)
+endif
+export IDF_TARGET
 
 # Use Toitware ESP-IDF fork by default.
 export IDF_PATH ?= $(CURDIR)/third_party/esp-idf
@@ -48,7 +53,7 @@ prefix ?= /opt/toit-sdk
 
 # HOST
 .PHONY: all
-all: sdk
+all: sdk esptool
 
 .PHONY: debug
 debug:
@@ -115,8 +120,14 @@ toit-tools: tools download-packages
 version-file: build/$(HOST)/CMakeCache.txt
 	(cd build/$(HOST) && ninja build_version_file)
 
+build/$(HOST)/sdk/tools/esptool$(EXE_SUFFIX):
+	$(MAKE) build-esptool
+
 .PHONY: esptool
-esptool: check-env
+esptool: build/$(HOST)/sdk/tools/esptool$(EXE_SUFFIX)
+
+.PHONY: build-esptool
+build-esptool: check-env
 	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
 	    $(MAKE) esptool-no-env
 
@@ -129,12 +140,12 @@ esptool-no-env:
 			'$(IDF_PATH)/components/esptool_py/esptool/esptool.py'
 
 # CROSS-COMPILE
-.PHONY: all-cross
-all-cross: tools-cross toit-tools-cross version-file-cross
+.PHONY: sdk-cross
+sdk-cross: tools-cross toit-tools-cross version-file-cross
 
 check-env-cross:
 ifndef CROSS_ARCH
-	$(error invalid must specify a cross-compilation target with CROSS_ARCH.  For example: make all-cross CROSS_ARCH=riscv64)
+	$(error invalid must specify a cross-compilation target with CROSS_ARCH.  For example: make sdk-cross CROSS_ARCH=riscv64)
 endif
 ifeq ("$(wildcard ./toolchains/$(CROSS_ARCH).cmake)","")
 	$(error invalid cross-compile target '$(CROSS_ARCH)')
@@ -183,7 +194,7 @@ build/$(PI_CROSS_ARCH)/sysroot/usr: check-env-sysroot
 
 .PHONY: pi
 pi: pi-sysroot
-	$(MAKE) CROSS_ARCH=raspberry_pi SYSROOT="$(CURDIR)/build/$(PI_CROSS_ARCH)/sysroot" all-cross
+	$(MAKE) CROSS_ARCH=raspberry_pi SYSROOT="$(CURDIR)/build/$(PI_CROSS_ARCH)/sysroot" sdk-cross
 
 ARM_LINUX_GNUEABI_CROSS_ARCH := arm-linux-gnueabi
 
@@ -209,7 +220,7 @@ build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/usr: build/$(ARM_LINUX_GNUEABI_CRO
 
 .PHONY: arm-linux-gnueabi
 arm-linux-gnueabi: arm-linux-gnueabi-sysroot
-	$(MAKE) CROSS_ARCH=$(ARM_LINUX_GNUEABI_CROSS_ARCH) SYSROOT="$(CURDIR)/build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot" all-cross
+	$(MAKE) CROSS_ARCH=$(ARM_LINUX_GNUEABI_CROSS_ARCH) SYSROOT="$(CURDIR)/build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot" sdk-cross
 
 # ESP32 VARIANTS
 .PHONY: check-esp32-env
@@ -225,7 +236,7 @@ esp32:
 
 .PHONY: esp32-no-env
 esp32-no-env: check-env check-esp32-env sdk
-	cmake -E env IDF_TARGET=$(ESP32_CHIP) IDF_CCACHE_ENABLE=1 idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" build
+	cmake -E env IDF_TARGET=$(IDF_TARGET) IDF_CCACHE_ENABLE=1 idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" build
 
 # ESP32 MENU CONFIG
 .PHONY: menuconfig
@@ -235,7 +246,7 @@ menuconfig:
 
 .PHONY: menuconfig-no-env
 menuconfig-no-env: check-env check-esp32-env
-	cmake -E env IDF_TARGET=$(ESP32_CHIP) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" menuconfig
+	cmake -E env IDF_TARGET=$(IDF_TARGET) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" menuconfig
 
 .PHONY: flash
 flash:
@@ -244,7 +255,7 @@ flash:
 
 .PHONY: flash-no-env
 flash-no-env: esp32-no-env
-	cmake -E env IDF_TARGET=$(ESP32_CHIP) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" flash monitor
+	cmake -E env IDF_TARGET=$(IDF_TARGET) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" flash monitor
 
 # UTILITY
 .PHONY:	clean

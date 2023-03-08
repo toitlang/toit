@@ -25,6 +25,10 @@
 #include "system_esp32.h"
 #include "ev_queue_esp32.h"
 
+// The max queue set size is the maximum number of events in the queue. This is used for the gpio queue,
+// up to two UART queues and the stop semaphore.
+#define MAX_QUEUE_SET_SIZE (GPIO_QUEUE_SIZE + 2 * UART_QUEUE_SIZE + 1)
+
 namespace toit {
 
 EventQueueEventSource* EventQueueEventSource::instance_ = null;
@@ -33,8 +37,8 @@ EventQueueEventSource::EventQueueEventSource()
     : EventSource("EVQ")
     , Thread("EVQ")
     , stop_(xSemaphoreCreateBinary())
-    , gpio_queue_(xQueueCreate(32, sizeof(GpioEvent)))
-    , queue_set_(xQueueCreateSet(32)) {
+    , gpio_queue_(xQueueCreate(GPIO_QUEUE_SIZE, sizeof(GpioEvent)))
+    , queue_set_(xQueueCreateSet(MAX_QUEUE_SET_SIZE)) {
   xQueueAddToSet(stop_, queue_set_);
   xQueueAddToSet(gpio_queue_, queue_set_);
 
@@ -69,33 +73,42 @@ void EventQueueEventSource::entry() {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
 
   while (true) {
+    QueueSetMemberHandle_t handle;
     { Unlocker unlock(locker);
       // Wait for any queue/semaphore to wake up.
-      xQueueSelectFromSet(queue_set_, portMAX_DELAY);
+      handle = xQueueSelectFromSet(queue_set_, portMAX_DELAY);
     }
+
+    // The handle is now the queue/semaphore that has woken up. Remove at most one event from the underlying queues,
+    // so that the queue set does not overflow. If the queues are emptied at a different rate than the queue set, then
+    // the queue might have free space where the queue set does not have free space.
 
     // First test if we should shut down.
-    if (xSemaphoreTake(stop_, 0)) {
-      return;
-    }
-
-    // See if there's a GPIO event.
-    GpioEvent data;
-    while (xQueueReceive(gpio_queue_, &data, 0)) {
-      for (auto r : resources()) {
-        auto resource = static_cast<EventQueueResource*>(r);
-        if (resource->check_gpio(data.pin)) {
-          dispatch(locker, r, data.timestamp);
+    if (handle == stop_) {
+      if (xSemaphoreTake(stop_, 0)) {
+        return;
+      }
+    } else if (handle == gpio_queue_) {
+      // See if there's a GPIO event.
+      GpioEvent data;
+      if (xQueueReceive(gpio_queue_, &data, 0)) {
+        for (auto r : resources()) {
+          auto resource = static_cast<EventQueueResource*>(r);
+          if (resource->check_gpio(data.pin)) {
+            dispatch(locker, r, data.timestamp);
+          }
         }
       }
-    }
-
-    // Then loop through other queues.
-    for (auto r : resources()) {
-      auto resource = static_cast<EventQueueResource*>(r);
-      word data;
-      while (resource->receive_event(&data)) {
-        dispatch(locker, r, data);
+    } else {
+      // Then loop through other queues.
+      for (auto r: resources()) {
+        auto resource = static_cast<EventQueueResource*>(r);
+        if (resource->queue() == handle) {
+          word data;
+          if (resource->receive_event(&data)) {
+            dispatch(locker, r, data);
+          }
+        }
       }
     }
   }

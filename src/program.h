@@ -93,8 +93,7 @@ static const int PROMOTED_TRACK_CLASS_ID = -3;
 // The reflective structure of a program.
 class Program : public FlashAllocation {
  public:
-  Program(void* program_heap_address, uword program_heap_size);
-  ~Program();
+  Program(const uint8* id, int size);
 
   #define DECLARE_ROOT(type, name) name##_INDEX,
   enum {
@@ -184,6 +183,11 @@ class Program : public FlashAllocation {
   // Size of all objects stored in this program.
   int object_size() const { return heap_.object_size(); }
 
+  // Get the snapshot uuid for the program. This is useful for associating
+  // encoded stack traces with the snapshot containing the symbolic debug
+  // information.
+  const uint8* snapshot_uuid() const { return snapshot_uuid_; }
+
   // Return the program heap.
   ProgramRawHeap* heap() { return &heap_; }
   // The address of where the program heap starts.
@@ -199,12 +203,6 @@ class Program : public FlashAllocation {
   void take_blocks(ProgramBlockList* blocks) {
     heap_.take_blocks(blocks);
   }
-
-  bool is_valid_program() const;
-
-  void validate();
-
-  String* source_mapping() const { return source_mapping_; }
 
   int invoke_bytecode_offset(Opcode opcode) const {
     ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_AT_PUT);
@@ -300,6 +298,10 @@ class Program : public FlashAllocation {
   List<uint8> bytecodes;
 
  private:
+  // ATTENTION: The snapshot uuid is decoded by tools/firmware.toit. You
+  // need to update that if the offset of the field changes.
+  uint8 snapshot_uuid_[UUID_SIZE];
+
   static const int INVOKE_BYTECODE_COUNT = INVOKE_AT_PUT - INVOKE_EQ + 1;
   int invoke_bytecode_offsets_[INVOKE_BYTECODE_COUNT];
 
@@ -341,9 +343,6 @@ class Program : public FlashAllocation {
     entry_point_indexes_[entry_point_index] = dispatch_index;
   }
 
-  String* source_mapping_;
-  void set_source_mapping(String* mapping) { source_mapping_ = mapping; }
-
   void set_dispatch_table(List<int32> table) { dispatch_table = table; }
   void set_class_bits_table(List<uint16> table) { class_bits = table; }
   void set_class_check_ids(List<uint16> ids) { class_check_ids = ids; }
@@ -352,9 +351,6 @@ class Program : public FlashAllocation {
 
   // Should only be called from ProgramImage.
   void do_pointers(PointerCallback* callback);
-
-  uword program_heap_address_;
-  uword program_heap_size_;
 
   friend class Process;
   friend class ProgramHeap;

@@ -17,6 +17,7 @@ import .snapshot as snapshot
 import bytes
 import binary show LITTLE_ENDIAN ByteOrder
 import uuid
+import crypto.sha256
 
 abstract class Memory:
   static ENDIAN_ /ByteOrder ::= LITTLE_ENDIAN
@@ -217,6 +218,7 @@ class Image:
   static PAGE_BYTE_SIZE_32 ::= 1 << 12
   static PAGE_BYTE_SIZE_64 ::= 1 << 15
 
+  id      /uuid.Uuid
   offheap /Offheap
   heap    /Heap
 
@@ -231,7 +233,7 @@ class Image:
   // through every possible function call.
   large_integer_header_ /int? := null
 
-  constructor snapshot_program/snapshot.Program .word_size:
+  constructor snapshot_program/snapshot.Program .word_size --.id:
     header := snapshot_program.header
     assert: word_size == 4 or word_size == 8
     page_size = word_size == 4 ? PAGE_BYTE_SIZE_32 : PAGE_BYTE_SIZE_64
@@ -449,38 +451,36 @@ class ToitObject:
 class ToitObjectType extends ToitObject:
 
 class ToitHeader extends ToitObjectType:
-  static ID_SIZE ::= 16
+  static ID_SIZE ::= uuid.SIZE
   static METADATA_SIZE ::= 5
-  static UUID_SIZE ::= 16
 
   static LAYOUT /ObjectType ::= ObjectType --packed {
     "_marker": PrimitiveType.UINT32,
     "_me": PrimitiveType.UINT32,
     "_id": PrimitiveType (LayoutSize 0 ID_SIZE),
     "_metadata": PrimitiveType (LayoutSize 0 METADATA_SIZE),
-    "_pages_in_flash": PrimitiveType.UINT16,
     "_type": PrimitiveType.UINT8,
-    "_uuid": PrimitiveType (LayoutSize 0 UUID_SIZE),
+    "_pages_in_flash": PrimitiveType.UINT16,
+    "_uuid": PrimitiveType (LayoutSize 0 uuid.SIZE),
   }
 
   static MARKER_ ::= 0xDEADFACE
-  static PROGRAM_TYPE_ ::= 0
+  static FLASH_ALLOCATION_TYPE_PROGRAM_ ::= 0
 
-  fill_into image/Image --at/int --system_uuid/uuid.Uuid --program_id/uuid.Uuid:
+  fill_into image/Image --at/int --system_uuid/uuid.Uuid --id/uuid.Uuid:
     memory := image.offheap
     anchored := LAYOUT.anchor --at=at memory
     assert: at % memory.word_size == 0
     assert: anchored["_uuid"] % memory.word_size == 0
-    assert: program_id.to_byte_array.size == ID_SIZE
-    assert: system_uuid.to_byte_array.size == UUID_SIZE
+    assert: id.to_byte_array.size == ID_SIZE
+    assert: system_uuid.to_byte_array.size == uuid.SIZE
 
     anchored.put_uint32 "_marker" MARKER_
     anchored.put_uint32 "_me" at
-    anchored.put_bytes "_id" program_id.to_byte_array
-    // TODO(kasper): Avoid hardcoding the metadata encoding here.
-    anchored.put_bytes "_metadata" #[3, 0, 0, 0, 0]
+    anchored.put_bytes "_id" id.to_byte_array
+    anchored.put_bytes "_metadata" (ByteArray METADATA_SIZE: 0)
+    anchored.put_uint8 "_type" FLASH_ALLOCATION_TYPE_PROGRAM_
     anchored.put_uint16 "_pages_in_flash" (image.all_memory.size / 4096)
-    anchored.put_uint8 "_type" PROGRAM_TYPE_
     anchored.put_bytes "_uuid" system_uuid.to_byte_array
 
 class ToitProgram extends ToitObjectType:
@@ -550,12 +550,12 @@ class ToitProgram extends ToitObjectType:
       "interface_check_offsets": ToitList.LAYOUT,
       "class_bits": ToitList.LAYOUT,
       "bytecodes": ToitList.LAYOUT,
+      "snapshot_uuid_": PrimitiveType (LayoutSize 0 uuid.SIZE),
       "_invoke_bytecode_offsets": PrimitiveType.INT * INVOKE_BYTECODE_COUNT,
       "_heap": ToitRawHeap.LAYOUT,
       "_roots": PrimitiveType.POINTER * ROOT_COUNT,
       "_builtin_class_ids": PrimitiveType.POINTER * BUILT_IN_CLASS_ID_COUNT,
       "_entry_point_indexes": PrimitiveType.INT * ENTRY_POINT_COUNT,
-      "_source_mapping": PrimitiveType.POINTER,
       "_program_heap_address": PrimitiveType.POINTER,
       "_program_heap_size": PrimitiveType.WORD,
     }
@@ -563,7 +563,9 @@ class ToitProgram extends ToitObjectType:
   snapshot_program /snapshot.Program
   constructor .snapshot_program:
 
-  write_to image/Image --system_uuid/uuid.Uuid --program_id/uuid.Uuid -> int:
+  write_to image/Image -> int
+      --system_uuid/uuid.Uuid
+      --snapshot_uuid/uuid.Uuid:
     word_size := image.word_size
     offheap := image.offheap
 
@@ -578,7 +580,8 @@ class ToitProgram extends ToitObjectType:
     // and just dynamically build up the memory here.
 
     header := ToitHeader  // Doesn't need data from the snapshot.
-    header.fill_into image --at=anchored["header"] --system_uuid=system_uuid --program_id=program_id
+    header.fill_into image --at=anchored["header"] --system_uuid=system_uuid --id=image.id
+    anchored.put_bytes "snapshot_uuid_" snapshot_uuid.to_byte_array
 
     class_tags := snapshot_program.class_tags
     class_instance_sizes := snapshot_program.class_instance_sizes
@@ -1157,9 +1160,33 @@ class ToitInteger extends ToitHeapObject:
     anchored.put_int64 "value" o_.value
     return to_encoded_address address
 
-build_image snapshot/snapshot.Program word_size/int --system_uuid/uuid.Uuid --program_id/uuid.Uuid -> Image:
+build_image snapshot/snapshot.Program word_size/int -> Image
+    --system_uuid/uuid.Uuid
+    --snapshot_uuid/uuid.Uuid
+    --assets/ByteArray?:
+  id := image_id --snapshot_uuid=snapshot_uuid --assets=assets
+  return build_image snapshot word_size
+      --system_uuid=system_uuid
+      --snapshot_uuid=snapshot_uuid
+      --id=id
+
+build_image snapshot/snapshot.Program word_size/int -> Image
+    --system_uuid/uuid.Uuid
+    --snapshot_uuid/uuid.Uuid
+    --id/uuid.Uuid:
   ToitProgram.init_constants snapshot
-  image := Image snapshot word_size
+  image := Image snapshot word_size --id=id
   program := ToitProgram snapshot
-  program.write_to image --system_uuid=system_uuid --program_id=program_id
+  program.write_to image
+      --system_uuid=system_uuid
+      --snapshot_uuid=snapshot_uuid
   return image
+
+image_id --snapshot_uuid/uuid.Uuid --assets/ByteArray? -> uuid.Uuid:
+  // Compute a stable id for the program based on the snapshot
+  // and the assets. This way, the word size doesn't impact the
+  // generated id.
+  sha := sha256.Sha256
+  sha.add snapshot_uuid.to_byte_array
+  if assets: sha.add assets
+  return uuid.Uuid sha.get[..uuid.SIZE]

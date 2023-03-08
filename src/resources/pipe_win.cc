@@ -402,18 +402,38 @@ const int MAX_COMMAND_LINE_LENGTH = 32768;
 // are attached to the stdin, stdout and stderr of the launched program, and
 // are closed in the parent program.  If you pass -1 for any of these then the
 // forked program inherits the stdin/out/err of this Toit program.
-PRIMITIVE(fork) {
-  ARGS(SubprocessResourceGroup, resource_group,
-       bool, use_path,
-       Object, in_object,
-       Object, out_object,
-       Object, err_object,
-       int, fd_3,
-       int, fd_4,
-       cstring, command,
-       Array, arguments);
+static Object* fork_helper(
+    Process* process,
+    SubprocessResourceGroup* resource_group,
+    bool use_path,
+    Object* in_object,
+    Object* out_object,
+    Object* err_object,
+    int fd_3,
+    int fd_4,
+    Array* arguments,
+    Object* environment_object) {
   if (arguments->length() > 1000000) OUT_OF_BOUNDS;
-  if (strlen(command) > MAX_COMMAND_LINE_LENGTH) OUT_OF_BOUNDS;
+
+  Object* null_object = process->program()->null_object();
+  Array* environment = null;
+  if (environment_object != null_object) {
+    if (!is_array(environment_object)) INVALID_ARGUMENT;
+    environment = Array::cast(environment_object);
+
+    // Validate environment array.
+    if (environment->length() >= 0x100000 || (environment->length() & 1) != 0) OUT_OF_BOUNDS;
+    for (int i = 0; i < environment->length(); i++) {
+      Blob blob;
+      Object* element = environment->at(i);
+      bool is_key = (i & 1) == 0;
+      if (!is_key && element == process->program()->null_object()) continue;
+      if (!element->byte_content(process->program(), &blob, STRINGS_ONLY)) WRONG_TYPE;
+      if (blob.length() == 0) INVALID_ARGUMENT;
+      const uint8* str = blob.address();
+      if (is_key && memchr(str, '=', blob.length()) != null) INVALID_ARGUMENT;  // Key can't contain "=".
+    }
+  }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
@@ -421,28 +441,31 @@ PRIMITIVE(fork) {
   // FD_3 and FD_4 is not supported on Windows.
   if (fd_3 != -1 || fd_4 != -1) INVALID_ARGUMENT;
 
-  // Clearing environment not supported n=on windows, yet.
+  // Clearing environment not supported on windows, yet.
   if (!use_path) INVALID_ARGUMENT;
 
-  AllocationManager allocation(process);
-  char* command_line = reinterpret_cast<char*>(allocation.calloc(MAX_COMMAND_LINE_LENGTH, 1));
-  if (!command_line) ALLOCATION_FAILED;
+  WideCharAllocationManager allocation(process);
+  auto command_line = allocation.wcs_alloc(MAX_COMMAND_LINE_LENGTH + 1);
 
   int pos = 0;
   for (int i = 0; i < arguments->length(); i++) {
-    if (!is_string(arguments->at(i))) {
+    const wchar_t* format;
+    Blob argument;
+    if (!arguments->at(i)->byte_content(process->program(), &argument, STRINGS_ONLY)) {
       WRONG_TYPE;
     }
-    const char* format;
-    String* argument = String::cast(arguments->at(i));
-    if (strchr(argument->as_cstr(), ' ') != NULL) {
-      format = (i != arguments->length() - 1) ? "\"%s\" " : "\"%s\"";
+    // TODO: Escape quotes and backslashes in arguments.  See
+    // https://stackoverflow.com/questions/31838469/how-do-i-convert-argv-to-lpcommandline-parameter-of-createprocess
+    if (memchr(argument.address(), ' ', argument.length()) != NULL) {
+      format = (i != arguments->length() - 1) ? L"\"%ls\" " : L"\"%ls\"";
     } else {
-      format = (i != arguments->length() - 1) ? "%s " : "%s";
+      format = (i != arguments->length() - 1) ? L"%ls " : L"%ls";
     }
+    WideCharAllocationManager allocation(process);
+    auto utf_16_argument = allocation.to_wcs(&argument);
 
-    if (pos + argument->length() + strlen(format) - 2 >= MAX_COMMAND_LINE_LENGTH) OUT_OF_BOUNDS;
-    pos += snprintf(command_line + pos, MAX_COMMAND_LINE_LENGTH - pos, format, argument->as_cstr());
+    if (pos + wcslen(utf_16_argument) + wcslen(format) - 3 >= MAX_COMMAND_LINE_LENGTH) OUT_OF_BOUNDS;
+    pos += snwprintf(command_line + pos, MAX_COMMAND_LINE_LENGTH - pos, format, utf_16_argument);
   }
 
   // We allocate memory for the SubprocessResource early here so we can handle failure
@@ -454,27 +477,38 @@ PRIMITIVE(fork) {
   }
 
   PROCESS_INFORMATION process_information{};
-  STARTUPINFO startup_info{};
+  STARTUPINFOW startup_info{};
 
-  startup_info.cb = sizeof(STARTUPINFO);
+  startup_info.cb = sizeof(STARTUPINFOW);
   startup_info.hStdInput = handle_from_object(in_object, STD_INPUT_HANDLE);
   startup_info.hStdOutput = handle_from_object(out_object, STD_OUTPUT_HANDLE);
   startup_info.hStdError = handle_from_object(err_object, STD_ERROR_HANDLE);
   startup_info.dwFlags |= STARTF_USESTDHANDLES;
 
-  const char* current_directory = current_dir(process);
-  if (!current_directory) MALLOC_FAILED;
-  if (!CreateProcess(NULL,
-                     command_line,
-                     NULL,
-                     NULL,
-                     TRUE,  // inherit handles.
-                     0,     // creation flags
-                     NULL,  // parent's environment
-                     current_directory,
-                     &startup_info,
-                     &process_information))
+  const wchar_t* current_directory = current_dir(process);
+
+  wchar_t* new_environment = NULL;
+  if (environment) {
+    uint16* old_environment = reinterpret_cast<uint16*>(GetEnvironmentStringsW());
+    new_environment = reinterpret_cast<wchar_t*>(Utils::create_new_environment(process, old_environment, environment));
+    FreeEnvironmentStringsW(reinterpret_cast<wchar_t*>(old_environment));
+  }
+
+  if (!CreateProcessW(NULL,
+                      command_line,
+                      NULL,
+                      NULL,
+                      TRUE,  // inherit handles.
+                      CREATE_UNICODE_ENVIRONMENT,     // creation flags
+                      new_environment,
+                      current_directory,
+                      &startup_info,
+                      &process_information)) {
+    if (new_environment) free(new_environment);
     WINDOWS_ERROR;
+  }
+
+  if (new_environment) free(new_environment);
 
   // Release any handles that are pipes and are parsed down to the child
   if (GetFileType(startup_info.hStdInput) == FILE_TYPE_PIPE && !is_inherited(in_object))
@@ -490,6 +524,37 @@ PRIMITIVE(fork) {
   resource_group->register_resource(subprocess);
 
   return proxy;
+}
+
+PRIMITIVE(fork) {
+  ARGS(SubprocessResourceGroup, resource_group,
+       bool, use_path,
+       Object, in_obj,
+       Object, out_obj,
+       Object, err_obj,
+       int, fd_3,
+       int, fd_4,
+       StringOrSlice, command,
+       Array, args);
+  USE(command);  // Not used on Windows.
+  return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
+                     fd_3, fd_4, args, process->program()->null_object());
+}
+
+PRIMITIVE(fork2) {
+  ARGS(SubprocessResourceGroup, resource_group,
+       bool, use_path,
+       Object, in_obj,
+       Object, out_obj,
+       Object, err_obj,
+       int, fd_3,
+       int, fd_4,
+       StringOrSlice, command,
+       Array, args,
+       Object, environment_object);
+  USE(command);  // Not used on Windows.
+  return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
+                     fd_3, fd_4, args, environment_object);
 }
 
 } // namespace toit

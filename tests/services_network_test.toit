@@ -6,9 +6,9 @@ import net
 import net.impl
 import net.tcp
 import writer
-import expect
+import expect show *
 
-import system.services show ServiceSelector ServiceResource
+import system.services show ServiceProvider ServiceSelector ServiceResource
 import system.api.network show NetworkService NetworkServiceClient
 import system.base.network show ProxyingNetworkServiceProvider
 
@@ -29,27 +29,27 @@ main:
 test_address service/FakeNetworkServiceProvider:
   local_address ::= net.open.address
   service.address = null
-  expect.expect_equals local_address open_fake.address
+  expect_equals local_address open_fake.address
   service.address = local_address.to_byte_array
-  expect.expect_equals local_address open_fake.address
+  expect_equals local_address open_fake.address
   service.address = #[1, 2, 3, 4]
-  expect.expect_equals "1.2.3.4" open_fake.address.stringify
+  expect_equals "1.2.3.4" open_fake.address.stringify
   service.address = #[7, 8, 9, 10]
-  expect.expect_equals "7.8.9.10" open_fake.address.stringify
+  expect_equals "7.8.9.10" open_fake.address.stringify
   service.address = null
 
 test_resolve service/FakeNetworkServiceProvider:
   www_google ::= net.open.resolve "www.google.com"
   service.resolve = null
-  expect.expect_list_equals www_google (open_fake.resolve "www.google.com")
+  expect_list_equals www_google (open_fake.resolve "www.google.com")
   service.resolve = www_google.map: it.to_byte_array
-  expect.expect_list_equals www_google (open_fake.resolve "www.google.com")
+  expect_list_equals www_google (open_fake.resolve "www.google.com")
   service.resolve = []
-  expect.expect_equals [] (open_fake.resolve "www.google.com")
+  expect_equals [] (open_fake.resolve "www.google.com")
   service.resolve = [#[1, 2, 3, 4]]
-  expect.expect_equals [net.IpAddress #[1, 2, 3, 4]] (open_fake.resolve "www.google.com")
+  expect_equals [net.IpAddress #[1, 2, 3, 4]] (open_fake.resolve "www.google.com")
   service.resolve = [#[3, 4, 5, 6]]
-  expect.expect_equals [net.IpAddress #[3, 4, 5, 6]] (open_fake.resolve "www.google.com")
+  expect_equals [net.IpAddress #[3, 4, 5, 6]] (open_fake.resolve "www.google.com")
   service.resolve = null
 
 test_tcp service/FakeNetworkServiceProvider:
@@ -61,16 +61,25 @@ test_tcp service/FakeNetworkServiceProvider:
 test_tcp_network network/net.Interface:
   socket/tcp.Socket := network.tcp_connect "www.google.com" 80
   try:
-    expect.expect_equals 80 socket.peer_address.port
-    expect.expect_equals network.address socket.local_address.ip
+    expect_equals 80 socket.peer_address.port
+    expect_equals network.address socket.local_address.ip
 
     writer := writer.Writer socket
     writer.write "GET / HTTP/1.1\r\nConnection: close\r\n\r\n"
     response := #[]
     while data := socket.read:
       response += data
-    expected := "HTTP/1.1 200 OK\r\n"
-    expect.expect_equals expected response[0..expected.size].to_string
+
+    cr_index := response.index_of '\r'
+    expect cr_index >= 0
+    lf_index := response.index_of '\n'
+    expect_equals cr_index + 1 lf_index
+
+    actual := response[0..cr_index].to_string
+    expected_200 := "HTTP/1.1 200 OK"
+    expected_302 := "HTTP/1.1 302 Found"
+    expect (actual == expected_200 or actual == expected_302)
+        --message="Expected <$expected_200> or <$expected_302>, but was <$actual>"
   finally:
     socket.close
     network.close
@@ -89,7 +98,7 @@ class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
     super "system/network/test" --major=1 --minor=2  // Major and minor versions do not matter here.
     provides NetworkService.SELECTOR
         --handler=this
-        --priority=10  // Lower than the default, so others do not find this.
+        --priority=ServiceProvider.PRIORITY_UNPREFERRED
         --tags=[FAKE_TAG]
 
   proxy_mask -> int:

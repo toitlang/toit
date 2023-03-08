@@ -102,23 +102,29 @@ void TimerEventSource::entry() {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
 
   while (!stop_) {
-    int64 time = OS::get_monotonic_time();
+    if (timers_.is_empty()) {
+      OS::wait(timer_changed_);
+      continue;
+    }
 
-    int64 delay_us = 0;
-    while (!timers_.is_empty()) {
-      if (time >= timers_.first()->timeout()) {
-        Timer* timer = timers_.remove_first();
-        dispatch(locker, timer, 0);
-      } else {
-        delay_us = timers_.first()->timeout() - time;
+    bool time_is_accurate = true;
+    int64 time = OS::get_monotonic_time();
+    do {
+      Timer* next = timers_.first();
+      int64 delay_us = next->timeout() - time;
+      if (delay_us > 0) {
+        // If we've already dispatched timers, we want
+        // to get a better timestamp before we compute
+        // the effective delay. In that case, we avoid
+        // waiting here and just take another spin in
+        // the outer loop.
+        if (time_is_accurate) OS::wait_us(timer_changed_, delay_us);
         break;
       }
-    }
-    if (delay_us > 0) {
-      OS::wait_us(timer_changed_, delay_us);
-    } else {
-      OS::wait(timer_changed_);
-    }
+      timers_.remove_first();
+      dispatch(locker, next, 0);
+      time_is_accurate = false;
+    } while (!timers_.is_empty());
   }
 }
 

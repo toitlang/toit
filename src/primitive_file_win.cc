@@ -33,6 +33,7 @@
 #include <windows.h>
 #include <pathcch.h>
 #include <shlwapi.h>
+#include <fileapi.h>
 
 #include "objects_inline.h"
 
@@ -92,65 +93,60 @@ static const int FILE_ST_ATIME = 8;
 static const int FILE_ST_MTIME = 9;
 static const int FILE_ST_CTIME = 10;
 
-const char* current_dir(Process* process) {
-  const char* current_directory = process->current_directory();
+const wchar_t* current_dir(Process* process) {
+  const wchar_t* current_directory = process->current_directory();
   if (current_directory) return current_directory;
-  DWORD length = GetCurrentDirectory(0, NULL);
+  word length = GetCurrentDirectoryW(0, NULL);
   if (length == 0) {
     FATAL("Failed to get current dir");
   }
-  current_directory = reinterpret_cast<char*>(malloc(length));
-  if (!current_directory) return null;
-  if (GetCurrentDirectory(length, const_cast<char*>(current_directory)) == 0) {
+  current_directory = unvoid_cast<wchar_t*>(malloc(length * sizeof(wchar_t)));
+  if (GetCurrentDirectoryW(length, const_cast<wchar_t*>(current_directory)) == 0) {
     FATAL("Failed to get current dir");
   }
   process->set_current_directory(current_directory);
   return current_directory;
 }
 
-HeapObject* get_absolute_path(Process* process, const char* pathname, char* output) {
-  size_t pathname_length = strlen(pathname);
+HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output, const wchar_t* used_for_relative) {
+  size_t pathname_length = wcslen(pathname);
 
-  // Poor man's version. For better platform handling, use UNICODE and PathCchAppendEx.
+  // Poor man's version. For better platform handling, use PathCchAppendEx.
   // TODO(florian): we should probably use PathCchCombine here. That would remove
   // all the special checks.
 
-  if (!PathIsRelative(pathname)) {
-    if (GetFullPathName(pathname, MAX_PATH, output, NULL) == 0) WINDOWS_ERROR;
+  if (!PathIsRelativeW(pathname)) {
+    if (GetFullPathNameW(pathname, MAX_PATH, output, NULL) == 0) WINDOWS_ERROR;
     return null;
   }
 
-  const char* current_directory = current_dir(process);
-  if (!current_directory) MALLOC_FAILED;
+  if (used_for_relative == null) used_for_relative = current_dir(process);
 
   // Check if the path is rooted. On Windows paths might not be absolute, but
   // relative to the drive/root of the current working directory.
   // For example the path `\foo\bar` is a rooted path which is relative to
   // the drive of the current working directory.
-  char root[MAX_PATH];
-  const char* relative_to = null;
+  wchar_t root[MAX_PATH];
+  const wchar_t* relative_to = null;
   if (pathname_length > 0 && (pathname[0] == '\\' || pathname[0] == '/')) {
     // Relative to the root of the drive/share.
     // For example '\foo\bar' is rooted to the current directory's drive.
-    strncpy(root, current_directory, MAX_PATH);
+    wcsncpy(root, used_for_relative, MAX_PATH);
     root[MAX_PATH - 1] = '\0';
-    if (!PathStripToRoot(root)) WINDOWS_ERROR;
+    if (!PathStripToRootW(root)) WINDOWS_ERROR;
     relative_to = root;
   } else {
-    relative_to = current_directory;
+    relative_to = used_for_relative;
   }
 
-  char temp[MAX_PATH];
-  if (snprintf(temp, MAX_PATH, "%s\\%s", relative_to, pathname) >= MAX_PATH) INVALID_ARGUMENT;
-  if (GetFullPathName(temp, MAX_PATH, output, NULL) == 0) WINDOWS_ERROR;
+  wchar_t temp[MAX_PATH];
+  if (snwprintf(temp, MAX_PATH, L"%ls\\%ls", relative_to, pathname) >= MAX_PATH) INVALID_ARGUMENT;
+  if (GetFullPathNameW(temp, MAX_PATH, output, NULL) == 0) WINDOWS_ERROR;
   return null;
 }
 
 PRIMITIVE(open) {
-  ARGS(cstring, pathname, int, flags, int, mode);
-  char path[MAX_PATH];
-  auto error = get_absolute_path(process, pathname, path);
-  if (error) return error;
+  ARGS(WindowsPath, path, int, flags, int, mode);
 
   int os_flags = _O_BINARY;
   if ((flags & FILE_RDWR) == FILE_RDONLY) os_flags |= _O_RDONLY;
@@ -160,7 +156,7 @@ PRIMITIVE(open) {
   if ((flags & FILE_APPEND) != 0) os_flags |= _O_APPEND;
   if ((flags & FILE_CREAT) != 0) os_flags |= _O_CREAT;
   if ((flags & FILE_TRUNC) != 0) os_flags |= _O_TRUNC;
-  int fd = _open(path, os_flags, mode);
+  int fd = _wopen(path, os_flags, mode);
   AutoCloser closer(fd);
   if (fd < 0) return return_open_error(process, errno);
   struct stat statbuf{};
@@ -175,7 +171,7 @@ PRIMITIVE(open) {
     // with open (eg a pipe, a socket, a directory).  We forbid this because
     // these file descriptors can block, and this API does not support
     // blocking.
-    if (strcmpi(R"(\\.\NUL)", pathname) != 0) INVALID_ARGUMENT;
+    if (_wcsicmp(L"\\\\.\\NUL", path) != 0) INVALID_ARGUMENT;
   }
   closer.clear();
   return Smi::from(fd);
@@ -184,20 +180,20 @@ PRIMITIVE(open) {
 class Directory : public SimpleResource {
  public:
   TAG(Directory);
-  explicit Directory(SimpleResourceGroup* resource_group, const char* path) : SimpleResource(resource_group) {
-    snprintf(path_, MAX_PATH, "%s\\*", path);
+  explicit Directory(SimpleResourceGroup* resource_group, const wchar_t* path) : SimpleResource(resource_group) {
+    snwprintf(path_, MAX_PATH, L"%ls\\*", path);
   }
 
-  const char* path() { return path_; }
-  WIN32_FIND_DATA* find_file_data() { return &find_file_data_; }
+  const wchar_t* path() { return path_; }
+  WIN32_FIND_DATAW* find_file_data() { return &find_file_data_; }
   void set_dir_handle(HANDLE dir_handle) { dir_handle_ = dir_handle; }
   HANDLE dir_handle() { return dir_handle_; }
   bool done() const { return done_; }
   void set_done(bool done) { done_ = done; }
 
  private:
-  char path_[MAX_PATH]{};
-  WIN32_FIND_DATA find_file_data_{};
+  wchar_t path_[MAX_PATH]{};
+  WIN32_FIND_DATAW find_file_data_{};
   HANDLE dir_handle_ = INVALID_HANDLE_VALUE;
   bool done_ = false;
 };
@@ -207,18 +203,14 @@ PRIMITIVE(opendir) {
 }
 
 PRIMITIVE(opendir2) {
-  ARGS(SimpleResourceGroup, group, cstring, pathname);
-  char path[MAX_PATH];
-  auto error = get_absolute_path(process, pathname, path);
-  if (error) return error;
+  ARGS(SimpleResourceGroup, group, WindowsPath, path);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
   auto directory = _new Directory(group, path);
-  if (!directory) MALLOC_FAILED;
 
-  HANDLE dir_handle = FindFirstFile(directory->path(), directory->find_file_data());
+  HANDLE dir_handle = FindFirstFileW(directory->path(), directory->find_file_data());
   if (dir_handle == INVALID_HANDLE_VALUE) {
     if (GetLastError() == ERROR_NO_MORE_FILES) {
       directory->set_done(true);
@@ -249,20 +241,19 @@ PRIMITIVE(readdir) {
     ALLOCATION_FAILED;
   }
 
-  size_t len = strlen(directory->find_file_data()->cFileName);
-  if (!Utils::is_valid_utf_8(unsigned_cast(directory->find_file_data()->cFileName), static_cast<int>(len))) {
-    ILLEGAL_UTF_8;
-  }
+  const wchar_t* utf_16 = directory->find_file_data()->cFileName;
+  size_t utf_16_len = wcslen(utf_16);
+  size_t utf_8_len = Utils::utf_16_to_8(utf_16, utf_16_len);
 
-  process->register_external_allocation(static_cast<int>(len));
+  process->register_external_allocation(static_cast<int>(utf_8_len));
 
-  auto backing = unvoid_cast<uint8*>(malloc(len));  // Can't fail on non-embedded.
-  if (!backing) MALLOC_FAILED;
+  auto backing = unvoid_cast<uint8*>(malloc(utf_8_len + 1));  // Can't fail on non-embedded.
 
-  memcpy(backing, unsigned_cast(directory->find_file_data()->cFileName), len);
-  proxy->set_external_address(static_cast<int>(len), backing);
+  Utils::utf_16_to_8(utf_16, utf_16_len, backing, utf_8_len);
 
-  if (FindNextFile(directory->dir_handle(), directory->find_file_data()) == 0) {
+  proxy->set_external_address(static_cast<int>(utf_8_len), backing);
+
+  if (FindNextFileW(directory->dir_handle(), directory->find_file_data()) == 0) {
     if (GetLastError() == ERROR_NO_MORE_FILES) directory->set_done(true);
     else WINDOWS_ERROR;
   };
@@ -350,14 +341,12 @@ Object* time_stamp(Process* process, time_t time) {
 // Returns null for entries that do not exist.
 // Otherwise returns an array with indices from the FILE_ST_xxx constants.
 PRIMITIVE(stat) {
-  ARGS(cstring, pathname, bool, follow_links);
-  USE(follow_links);
-  char path[MAX_PATH];
-  auto error = get_absolute_path(process, pathname, path);
-  if (error) return error;
+  ARGS(WindowsPath, path, bool, follow_links);
 
-  struct stat statbuf{};
-  int result = stat(path, &statbuf);
+  USE(follow_links);
+
+  struct stat64 statbuf{};
+  int result = _wstat64(path, &statbuf);
   if (result < 0) {
     if (errno == ENOENT || errno == ENOTDIR) {
       return process->program()->null_object();
@@ -405,45 +394,38 @@ PRIMITIVE(stat) {
 }
 
 PRIMITIVE(unlink) {
-  ARGS(cstring, pathname);
-  char path[MAX_PATH];
-  auto error = get_absolute_path(process, pathname, path);
-  if (error) return error;
+  ARGS(WindowsPath, path);
 
-  int result = unlink(path);
+  // Remove any read-only attribute.
+  SetFileAttributesW(path, FILE_ATTRIBUTE_NORMAL);
+  int result = _wunlink(path);
   if (result < 0) return return_open_error(process, errno);
   return process->program()->null_object();
 }
 
 PRIMITIVE(rmdir) {
-  ARGS(cstring, pathname);
-  char path[MAX_PATH];
-  auto error = get_absolute_path(process, pathname, path);
-  if (error) return error;
+  ARGS(WindowsPath, path);
 
-  if (RemoveDirectory(path) == 0) WINDOWS_ERROR;
+  if (RemoveDirectoryW(path) == 0) WINDOWS_ERROR;
   return process->program()->null_object();
 }
 
 PRIMITIVE(rename) {
-  ARGS(cstring, old_name, cstring, new_name);
-  int result = rename(old_name, new_name);
+  ARGS(WindowsPath, old_name, WindowsPath, new_name);
+  int result = _wrename(old_name, new_name);
   if (result < 0) return return_open_error(process, errno);
   return process->program()->null_object();
 }
 
 PRIMITIVE(chdir) {
-  ARGS(cstring, pathname);
-  size_t pathname_length = strlen(pathname);
+  ARGS(WindowsPath, path);
 
-  if (pathname_length == 0) INVALID_ARGUMENT;
+  struct stat64 statbuf{};
+  int result = _wstat64(path, &statbuf);
+  if (result < 0) WINDOWS_ERROR;  // No such file or directory?
+  if ((statbuf.st_mode & S_IFDIR) == 0) FILE_NOT_FOUND;  // Not a directory.
 
-  char path[MAX_PATH];
-  auto error = get_absolute_path(process, pathname, path);
-  if (error) return error;
-
-  char* copy = strdup(path);
-  if (!copy) MALLOC_FAILED;
+  wchar_t* copy = wcsdup(path);
 
   process->set_current_directory(copy);
 
@@ -451,65 +433,65 @@ PRIMITIVE(chdir) {
 }
 
 PRIMITIVE(mkdir) {
-  ARGS(cstring, pathname, int, mode);
-  char path[MAX_PATH];
-  auto error = get_absolute_path(process, pathname, path);
-  if (error) return error;
+  ARGS(WindowsPath, path, int, mode);
 
-  int result = CreateDirectory(path, NULL);
+  int result = CreateDirectoryW(path, NULL);
   if (result == 0) WINDOWS_ERROR;
   return process->program()->null_object();
 }
 
 PRIMITIVE(mkdtemp) {
-  ARGS(cstring, prefix);
+  ARGS(StringOrSlice, prefix_blob);
   DWORD ret;
 
+  WideCharAllocationManager allocation(process);
+  wchar_t* prefix = allocation.to_wcs(&prefix_blob);
+
+  wchar_t* relative_to = null;
+
   bool in_standard_tmp_dir = false;
-  if (strncmp(prefix, "/tmp/", 5) == 0) {
+  if (wcsncmp(prefix, L"/tmp/", 5) == 0) {
     in_standard_tmp_dir = true;
     prefix += 5;
   }
 
-  char accumulator = 0;
-  for (const char* p = prefix; *p; p++) accumulator |= *p;
-  if (accumulator & 0x80) INVALID_ARGUMENT;  // Only supports ASCII prefix.
-
-  static const int UUID_TEXT_LENGTH = 32;
-
-  char temp_dir_name[MAX_PATH];
+  wchar_t temp_dir_name[MAX_PATH];
   temp_dir_name[0] = '\0';
 
   if (in_standard_tmp_dir) {
     // Get the location of the Windows temp directory.
-    ret = GetTempPath(MAX_PATH, temp_dir_name);
-    if (ret + 2 > MAX_PATH) INVALID_ARGUMENT;
+    ret = GetTempPathW(MAX_PATH, temp_dir_name);
+    if (ret + 2 > MAX_PATH) OUT_OF_RANGE;
     if (ret == 0) WINDOWS_ERROR;
-    if (temp_dir_name[strlen(temp_dir_name)-1] != '\\') {
-      strncat(temp_dir_name, "\\", strlen(temp_dir_name) - 1);
-    }
+    relative_to = temp_dir_name;
   }
-  if (strlen(temp_dir_name) + UUID_TEXT_LENGTH + strlen(prefix) + 1 > MAX_PATH) INVALID_ARGUMENT;
+  wchar_t full_filename[MAX_PATH + 1];
+
+  Object* error = get_absolute_path(process, prefix, full_filename, relative_to);
+  if (error) return error;
 
   UUID uuid;
   ret = UuidCreate(&uuid);
   if (ret != RPC_S_OK && ret != RPC_S_UUID_LOCAL_ONLY) OTHER_ERROR;
 
-  unsigned char* uuid_string;
-  ret = UuidToString(&uuid, &uuid_string);
-  strncat(temp_dir_name, prefix, MAX_PATH - strlen(temp_dir_name) - 1);
-  strncat(temp_dir_name, char_cast(uuid_string), MAX_PATH - strlen(temp_dir_name) - 1);
-  RpcStringFree(&uuid_string);
+  uint16* uuid_string;
+  ret = UuidToStringW(&uuid, &uuid_string);
+  auto uuid_string_w = reinterpret_cast<wchar_t*>(uuid_string);
+  if (wcslen(full_filename) + wcslen(uuid_string_w) > MAX_PATH) OUT_OF_RANGE;
+  wcsncat(full_filename, uuid_string_w, MAX_PATH - wcslen(full_filename));
+  RpcStringFreeW(&uuid_string);
 
-  uword total_len = strlen(temp_dir_name);
+  uword total_len = Utils::utf_16_to_8(full_filename, wcslen(full_filename));
 
-  Object* result = process->allocate_byte_array(static_cast<int>(total_len));
+  ByteArray* result = process->allocate_byte_array(static_cast<int>(total_len));
   if (result == null) ALLOCATION_FAILED;
 
-  int posix_result = mkdir(temp_dir_name);
-  if (posix_result < 0) return return_open_error(process, errno);
+  ByteArray::Bytes blob(result);
 
-  memcpy(ByteArray::Bytes(ByteArray::cast(result)).address(), temp_dir_name, total_len);
+  int ok = CreateDirectoryW(full_filename, null);
+  if (ok == 0) WINDOWS_ERROR;
+
+  Utils::utf_16_to_8(full_filename, wcslen(full_filename), blob.address(), blob.length());
 
   return result;
 }
@@ -527,39 +509,33 @@ PRIMITIVE(is_open_file) {
 }
 
 PRIMITIVE(realpath) {
-  ARGS(cstring, filename);
-  DWORD result_length = GetFullPathName(filename, 0, NULL, NULL);
+  ARGS(StringOrSlice, filename_blob);
+  WideCharAllocationManager allocation(process);
+  wchar_t* filename = allocation.to_wcs(&filename_blob);
+  DWORD result_length = GetFullPathNameW(filename, 0, NULL, NULL);
   if (result_length == 0) WINDOWS_ERROR;
 
-  char* c_result = reinterpret_cast<char*>(malloc(result_length));
-  if (!c_result) MALLOC_FAILED;
+  WideCharAllocationManager allocation2(process);
+  wchar_t* w_result = allocation2.wcs_alloc(result_length);
 
-  if (GetFullPathName(filename, result_length, c_result, NULL) == 0) {
-    free(c_result);
+  if (GetFullPathNameW(filename, result_length, w_result, NULL) == 0) {
     WINDOWS_ERROR;
   }
-  // The toit package expects a null value when the file does not exist. Win32 does not detect his in GetFile
-  if (!PathFileExists(c_result)) {
-    free(c_result);
+
+  // The toit package expects a null value when the file does not exist. Win32 does not detect this in GetFile
+  if (!PathFileExistsW(w_result)) {
     return process->program()->null_object();
   }
 
-  String* result = process->allocate_string(c_result);
-  if (result == null) {
-    free(c_result);
-    ALLOCATION_FAILED;
-  }
+  String* result = process->allocate_string(w_result);
+  if (result == null) ALLOCATION_FAILED;
 
   return result;
 }
 
 PRIMITIVE(cwd) {
-  const char* current_directory = current_dir(process);
-  if (current_directory == null) MALLOC_FAILED;
-
-  String* result = process->allocate_string(current_directory);
+  Object* result = process->allocate_string(current_dir(process));
   if (result == null) ALLOCATION_FAILED;
-
   return result;
 }
 

@@ -974,7 +974,6 @@ class Builtin : public Node {
  public:
   enum BuiltinKind {
     THROW,
-    HALT,
     EXIT,
     INVOKE_LAMBDA,
     YIELD,
@@ -992,8 +991,6 @@ class Builtin : public Node {
   static Builtin* resolve(Symbol id) {
     if (id == Symbols::__throw__) {
       return _new Builtin(THROW);
-    } else if (id == Symbols::__halt__) {
-      return _new Builtin(HALT);
     } else if (id == Symbols::__exit__) {
       return _new Builtin(EXIT);
     } else if (id == Symbols::__invoke_lambda__) {
@@ -1031,7 +1028,6 @@ class Builtin : public Node {
       case GLOBAL_ID:
         return 1;
 
-      case HALT:
       case YIELD:
         return 0;
     }

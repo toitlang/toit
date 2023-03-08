@@ -16,7 +16,10 @@
 set(TOIT_EXTERNAL_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt")
 
 set(TOIT_REPOS
+    https://github.com/kasperl/toit-datacake
     https://github.com/kasperl/toit-qubitro
+    https://github.com/kasperl/toit-zygote
+    https://github.com/lask/toit-hc-sr04
     https://github.com/nilwes/LIS3DH
     https://github.com/toitlang/jaguar
     https://github.com/toitlang/pkg-ar
@@ -39,12 +42,14 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-axp192
     https://github.com/toitware/toit-cert-roots
     https://github.com/toitware/toit-color-tft
+    https://github.com/toitware/toit-ds18b20
     https://github.com/toitware/toit-e-paper
     https://github.com/toitware/toit-font-clock
     https://github.com/toitware/toit-font-google-100dpi-roboto
     https://github.com/toitware/toit-gnss-location
     https://github.com/toitware/toit-heading
     https://github.com/toitware/toit-hx711
+    https://github.com/toitware/toit-ibutton
     https://github.com/toitware/toit-icons-pictogrammers
     https://github.com/toitware/toit-location
     https://github.com/toitware/toit-lsm303d
@@ -60,17 +65,21 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-png-display
     https://github.com/toitware/toit-r46ca01
     https://github.com/toitware/toit-resistance-to-temperature
-    # https://github.com/toitware/toit-rs485
+    https://github.com/toitware/toit-rs485
     https://github.com/toitware/toit-si7006
     https://github.com/toitware/toit-solar-position
     https://github.com/toitware/toit-ssd1306
     https://github.com/toitware/toit-tl19a08
     https://github.com/toitware/toit-tm1640
     https://github.com/toitware/toit-vcnl4040
+    https://github.com/toitware/toit-1-wire
     https://github.com/toitware/ublox-gnss-driver
 )
 
 set(DOWNLOADS_DIR "${CMAKE_CURRENT_LIST_DIR}/downloads")
+
+include(ProcessorCount)
+ProcessorCount(NUM_CPU)
 
 IF(APPLE)
   set(DEFAULT_TIMEOUT 80)

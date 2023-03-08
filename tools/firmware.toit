@@ -36,7 +36,7 @@ import .image
 import .snapshot
 import .snapshot_to_image
 
-ENVELOPE_FORMAT_VERSION ::= 5
+ENVELOPE_FORMAT_VERSION ::= 6
 
 WORD_SIZE ::= 4
 AR_ENTRY_FIRMWARE_BIN   ::= "\$firmware.bin"
@@ -47,6 +47,7 @@ AR_ENTRY_PARTITIONS_CSV ::= "\$partitions.csv"
 AR_ENTRY_OTADATA_BIN    ::= "\$otadata.bin"
 AR_ENTRY_FLASHING_JSON  ::= "\$flashing.json"
 AR_ENTRY_PROPERTIES     ::= "\$properties"
+AR_ENTRY_SDK_VERSION    ::= "\$sdk-version"
 
 AR_ENTRY_FILE_MAP ::= {
   "firmware.bin"    : AR_ENTRY_FIRMWARE_BIN,
@@ -63,6 +64,12 @@ SYSTEM_CONTAINER_NAME ::= "system"
 OPTION_ENVELOPE     ::= "envelope"
 OPTION_OUTPUT       ::= "output"
 OPTION_OUTPUT_SHORT ::= "o"
+
+PROPERTY_CONTAINER_FLAGS ::= "\$container-flags"
+
+IMAGE_FLAG_RUN_BOOT     ::= 1 << 0
+IMAGE_FLAG_RUN_CRITICAL ::= 1 << 1
+IMAGE_FLAG_HAS_ASSETS   ::= 1 << 7
 
 is_snapshot_bundle bits/ByteArray -> bool:
   catch: return SnapshotBundle.is_bundle_content bits
@@ -141,9 +148,17 @@ create_envelope parsed/cli.Parsed -> none:
   binary := Esp32Binary firmware_bin_data
   binary.remove_drom_extension firmware_bin_data
 
+  system_snapshot_content := read_file parsed["system.snapshot"]
+  system_snapshot := SnapshotBundle system_snapshot_content
+
   entries := {
     AR_ENTRY_FIRMWARE_BIN: binary.bits,
-    SYSTEM_CONTAINER_NAME: read_file parsed["system.snapshot"]
+    SYSTEM_CONTAINER_NAME: system_snapshot_content,
+    AR_ENTRY_PROPERTIES: json.encode {
+      PROPERTY_CONTAINER_FLAGS: {
+        SYSTEM_CONTAINER_NAME: IMAGE_FLAG_RUN_BOOT | IMAGE_FLAG_RUN_CRITICAL
+      }
+    }
   }
 
   AR_ENTRY_FILE_MAP.do: | key/string value/string |
@@ -152,6 +167,7 @@ create_envelope parsed/cli.Parsed -> none:
     if filename: entries[value] = read_file filename
 
   envelope := Envelope.create entries
+      --sdk_version=system_snapshot.sdk_version
   envelope.store output_path
 
 container_cmd -> cli.Command:
@@ -169,8 +185,13 @@ container_cmd -> cli.Command:
           --options=[
             option_output,
             cli.OptionString "assets"
-                --short_help="Add assets to the image."
-                --type="file"
+                --short_help="Add assets to the container."
+                --type="file",
+            cli.OptionEnum "run" ["no", "boot"]
+                --short_help="Automatically run the container on trigger."
+                --default="boot",
+            cli.Flag "critical"
+                --short_help="Reboot system if the container terminates.",
           ]
           --rest=[
             option_name,
@@ -228,13 +249,21 @@ decode_image data/ByteArray -> ImageHeader:
 
 get_container_name parsed/cli.Parsed -> string:
   name := parsed["name"]
-  if name.starts_with "\$":
-    print "cannot install container with a name that starts with \$ or +"
+  if name.starts_with "\$" or name.starts_with "+":
+    print "Cannot install container with a name that starts with \$ or +."
+    exit 1
+  if name.size == 0:
+    print "Cannot install container with an empty name."
     exit 1
   if name.size > 14:
-    print "cannot install container with a name longer than 14 characters"
+    print "Cannot install container with a name longer than 14 characters."
     exit 1
   return name
+
+is_container_name name/string -> bool:
+  if not 0 < name.size <= 14: return false
+  first := name[0]
+  return first != '$' and first != '+'
 
 container_install parsed/cli.Parsed -> none:
   name := get_container_name parsed
@@ -242,26 +271,38 @@ container_install parsed/cli.Parsed -> none:
   assets_path := parsed["assets"]
   image_data := read_file image_path
   assets_data := read_assets assets_path
-  if not is_snapshot_bundle image_data:
-    // We're not dealing with a snapshot, so make sure
-    // the provided image is a valid relocatable image.
-    header := null
-    catch: header = decode_image image_data
-    // TODO(kasper): Can we validate that the output
-    // fits with the version of the SDK used to compile
-    // the embedded binary?
-    if not header:
-      print "Input is not a valid snapshot or image ('$image_path')."
-      exit 1
-  else:
-    // TODO(kasper): Can we check that the snapshot
-    // fits with the version of the SDK used to compile
-    // the embedded binary?
-    SnapshotBundle name image_data
+  is_snapshot := is_snapshot_bundle image_data
+
   update_envelope parsed: | envelope/Envelope |
+    if is_snapshot:
+      bundle := SnapshotBundle name image_data
+      if bundle.sdk_version != envelope.sdk_version:
+        print "Snapshot was built by SDK $bundle.sdk_version, but envelope is for SDK $envelope.sdk_version."
+        exit 1
+    else:
+      header := null
+      catch: header = decode_image image_data
+      if not header:
+        print "Input is not a valid snapshot or image ('$image_path')."
+        exit 1
+      expected_system_uuid := sdk_version_uuid --sdk_version=envelope.sdk_version
+      if header.system_uuid != expected_system_uuid:
+        print "Image cannot be verified to have been built by SDK $envelope.sdk_version."
+        print "Image is for $header.system_uuid, but envelope is $expected_system_uuid."
+        exit 1
+
     envelope.entries[name] = image_data
     if assets_data: envelope.entries["+$name"] = assets_data
     else: envelope.entries.remove "+$name"
+
+    flag_bits := 0
+    if parsed["run"] == "boot": flag_bits |= IMAGE_FLAG_RUN_BOOT
+    if parsed["critical"]: flag_bits |= IMAGE_FLAG_RUN_CRITICAL
+    properties_update envelope: | properties/Map? |
+      properties = properties or {:}
+      flags := properties.get PROPERTY_CONTAINER_FLAGS --init=: {:}
+      flags[name] = flag_bits
+      properties
 
 container_extract parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
@@ -270,7 +311,7 @@ container_extract parsed/cli.Parsed -> none:
   part := parsed["part"]
   key := (part == "assets") ? "+$name" : name
   if not entries.contains key:
-    print "container '$name' has no $part"
+    print "Container '$name' has no $part."
     exit 1
   entry := entries[key]
   write_file parsed["output"]: it.write entry
@@ -281,13 +322,20 @@ container_uninstall parsed/cli.Parsed -> none:
     envelope.entries.remove name
     envelope.entries.remove "+$name"
 
+    properties_update envelope: | properties/Map? |
+      flags := properties and properties.get PROPERTY_CONTAINER_FLAGS
+      if flags: flags.remove name
+      properties
+
 container_list parsed/cli.Parsed -> none:
   output_path := parsed[OPTION_OUTPUT]
   input_path := parsed[OPTION_ENVELOPE]
   entries := (Envelope.load input_path).entries
+  properties/Map? := entries.get AR_ENTRY_PROPERTIES
+      --if_present=: json.decode it
   output := {:}
   entries.do: | name/string content/ByteArray |
-    if name.starts_with "\$" or name.starts_with "+": continue.do
+    if not is_container_name name: continue.do
     entry := {:}
     if is_snapshot_bundle content:
       bundle := SnapshotBundle name content
@@ -296,9 +344,18 @@ container_list parsed/cli.Parsed -> none:
     else:
       header := decode_image content
       entry["kind"] = "image"
-      entry["id"] = header.id.stringify
+      entry["id"] = header.snapshot_uuid.stringify
     assets := entries.get "+$name"
     if assets: entry["assets"] = { "size": assets.size }
+    container_flags := properties and properties.get PROPERTY_CONTAINER_FLAGS
+    flags := container_flags and container_flags.get name
+    if flags and flags != 0:
+      flag_names := []
+      if (flags & IMAGE_FLAG_RUN_BOOT) != 0:
+        flag_names.add "run=boot"
+      if (flags & IMAGE_FLAG_RUN_CRITICAL) != 0:
+        flag_names.add "critical"
+      entry["flags"] = flag_names
     output[name] = entry
   output_string := json.stringify output
   if output_path:
@@ -344,7 +401,12 @@ property_get parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
   key := parsed["key"]
 
-  entries := (Envelope.load input_path).entries
+  envelope := Envelope.load input_path
+  if key == "sdk-version":
+    print envelope.sdk_version
+    return
+
+  entries := envelope.entries
   entry := entries.get AR_ENTRY_PROPERTIES
   if not entry: return
 
@@ -353,10 +415,11 @@ property_get parsed/cli.Parsed -> none:
     if properties.contains key:
       print (json.stringify (properties.get key))
   else:
-    print (json.stringify properties)
+    filtered := properties.filter: not it.starts_with "\$"
+    print (json.stringify filtered)
 
 property_remove parsed/cli.Parsed -> none:
-  properties_update parsed: | properties/Map? key/string |
+  properties_update_with_key parsed: | properties/Map? key/string |
     if properties: properties.remove key
     properties
 
@@ -368,7 +431,7 @@ property_set parsed/cli.Parsed -> none:
     catch: element = json.parse element
     element
   if value.size == 1: value = value.first
-  properties_update parsed: | properties/Map? key/string |
+  properties_update_with_key parsed: | properties/Map? key/string |
     if key == "uuid":
       exception := catch: uuid.parse value
       if exception: throw "cannot parse uuid: $value ($exception)"
@@ -376,19 +439,47 @@ property_set parsed/cli.Parsed -> none:
     properties[key] = value
     properties
 
-properties_update parsed/cli.Parsed [block] -> none:
-  key := parsed["key"]
+properties_update envelope/Envelope [block] -> none:
+  properties/Map? := envelope.entries.get AR_ENTRY_PROPERTIES
+      --if_present=: json.decode it
+  properties = block.call properties
+  if properties: envelope.entries[AR_ENTRY_PROPERTIES] = json.encode properties
+
+properties_update_with_key parsed/cli.Parsed [block] -> none:
+  key/string := parsed["key"]
+  if key.starts_with "\$": throw "property keys cannot start with \$"
+  if key == "sdk-version": throw "cannot update sdk-version property"
   update_envelope parsed: | envelope/Envelope |
-    properties_data/ByteArray? := envelope.entries.get AR_ENTRY_PROPERTIES
-    properties/Map? := properties_data ? (json.decode properties_data) : null
-    properties = block.call properties key
-    if properties: envelope.entries[AR_ENTRY_PROPERTIES] = json.encode properties
+    properties_update envelope: | properties/Map? |
+      block.call properties key
 
 extract_cmd -> cli.Command:
-  flags := AR_ENTRY_FILE_MAP.map: | key/string value/string |
-    cli.Flag key
-        --short_help="Extract the $key part."
   return cli.Command "extract"
+      --long_help="""
+        Extracts the firmware image of the envelope to a file.
+
+        The following formats are supported:
+        - binary: the binary app partition. This format can be used with
+          the 'esptool' tool.
+        - elf: the ELF file of the executable. This is typically used
+          for debugging.
+        - ubjson: a UBJSON encoding of the sections of the image.
+        - qemu: a full binary image suitable for running on QEMU.
+
+        # QEMU
+        The generated image (say 'output.bin') can be run with the
+        following command:
+
+            qemu-system-xtensa \\
+                -M esp32 \\
+                -nographic \\
+                -drive file=output.bin,format=raw,if=mtd \\
+                -nic user,model=open_eth,hostfwd=tcp::2222-:1234 \\
+                -s
+
+        The '-nic' option is optional. In this example, the local port 2222 is
+        forwarded to port 1234 in the QEMU image.
+        """
       --options=[
         cli.OptionString OPTION_OUTPUT
             --short_name=OPTION_OUTPUT_SHORT
@@ -397,50 +488,16 @@ extract_cmd -> cli.Command:
             --required,
         cli.OptionString "config"
             --type="file",
-        cli.OptionEnum "format" ["binary", "elf", "ubjson"]
+        cli.OptionEnum "format" ["binary", "elf", "ubjson", "qemu"]
             --short_help="Set the output format."
             --default="binary",
-        cli.Flag "system.snapshot"
-      ] + flags.values
+      ]
       --run=:: extract it
 
 extract parsed/cli.Parsed -> none:
-  parts := []
-  AR_ENTRY_FILE_MAP.do: | key/string |
-    if parsed[key]: parts.add key
-  if parts.size == 0:
-    extract_new parsed
-    return
-  else if parts.size > 1:
-    throw "cannot extract: multiple parts specified ($(parts.join ", "))"
-  part := parts.first
-
-  print "WARNING: extracting a specific part is deprecated"
-  if part == "firmware.bin":
-    print "WARNING: use 'tools/firmware -e ... extract --format=binary -o firmware.bin"
-
   input_path := parsed[OPTION_ENVELOPE]
   output_path := parsed[OPTION_OUTPUT]
   envelope := Envelope.load input_path
-
-  content/ByteArray? := null
-  if part == "firmware.bin":
-    content = extract_binary envelope --config_encoded=(ByteArray 0)
-  else:
-    content = envelope.entries.get AR_ENTRY_FILE_MAP[part]
-  if not content:
-    throw "cannot extract: no such part ($part)"
-  write_file output_path: it.write content
-
-extract_new parsed/cli.Parsed -> none:
-  input_path := parsed[OPTION_ENVELOPE]
-  output_path := parsed[OPTION_OUTPUT]
-  envelope := Envelope.load input_path
-
-  // TODO(kasper): Remove this legacy support.
-  if parsed["system.snapshot"]:
-    write_file output_path: it.write envelope.entries[SYSTEM_CONTAINER_NAME]
-    return
 
   config_path := parsed["config"]
 
@@ -461,6 +518,17 @@ extract_new parsed/cli.Parsed -> none:
     write_file output_path: it.write firmware_bin
     return
 
+  if parsed["format"] == "qemu":
+    flashing := envelope.entries.get AR_ENTRY_FLASHING_JSON
+        --if_present=: json.decode it
+        --if_absent=: throw "cannot create qemu image without 'flashing.json'"
+
+    write_qemu_ output_path firmware_bin envelope
+    return
+
+  if not parsed["format"] == "ubjson":
+    throw "unknown format: $(parsed["format"])"
+
   binary := Esp32Binary firmware_bin
   parts := binary.parts firmware_bin
   output := {
@@ -468,6 +536,26 @@ extract_new parsed/cli.Parsed -> none:
     "binary"  : firmware_bin,
   }
   write_file output_path: it.write (ubjson.encode output)
+
+write_qemu_ output_path/string firmware_bin/ByteArray envelope/Envelope:
+  flashing := envelope.entries.get AR_ENTRY_FLASHING_JSON
+      --if_present=: json.decode it
+      --if_absent=: throw "cannot create qemu image without 'flashing.json'"
+
+  out_image := ByteArray 4_194_304  // 4 MB.
+  out_image.replace
+      int.parse flashing["bootloader"]["offset"][2..] --radix=16
+      envelope.entries.get AR_ENTRY_BOOTLOADER_BIN
+  out_image.replace
+      int.parse flashing["partition-table"]["offset"][2..] --radix=16
+      envelope.entries.get AR_ENTRY_PARTITIONS_BIN
+  out_image.replace
+      int.parse flashing["otadata"]["offset"][2..] --radix=16
+      envelope.entries.get AR_ENTRY_OTADATA_BIN
+  out_image.replace
+      int.parse flashing["app"]["offset"][2..] --radix=16
+      firmware_bin
+  write_file output_path: it.write out_image
 
 flash_cmd -> cli.Command:
   return cli.Command "flash"
@@ -506,18 +594,18 @@ flash parsed/cli.Parsed -> none:
   firmware_bin := extract_binary envelope --config_encoded=config_encoded
   binary := Esp32Binary firmware_bin
 
-  separator := ?
   bin_extension := ?
+  bin_name := program_name
   if platform == PLATFORM_WINDOWS:
-    separator = "\\"
+    bin_name = bin_name.replace --all "\\" "/"
     bin_extension = ".exe"
   else:
-    separator = "/"
     bin_extension = ""
-  list := program_name.split separator
-  dir := list[..list.size - 1].join separator
+  list := bin_name.split "/"
+  dir := list[..list.size - 1].join "/"
   esptool/List? := null
-  if program_name.ends_with ".toit":
+  if bin_name.ends_with ".toit":
+    if dir == "": dir = "."
     esptool_py := "$dir/../third_party/esp-idf/components/esptool_py/esptool/esptool.py"
     if not file.is_file esptool_py:
       throw "cannot find esptool in '$esptool_py'"
@@ -560,36 +648,35 @@ extract_binary envelope/Envelope --config_encoded/ByteArray -> ByteArray:
   properties := entries.get AR_ENTRY_PROPERTIES
       --if_present=: json.decode it
       --if_absent=: {:}
+  flags := properties and properties.get PROPERTY_CONTAINER_FLAGS
 
-  // Handle the system container first. It needs to be the
-  // first container we encode.
-  system := entries.get SYSTEM_CONTAINER_NAME
-  if system:
+  // The system image, if any, must be the first image, so
+  // we reserve space for it in the list of containers.
+  has_system_image := entries.contains SYSTEM_CONTAINER_NAME
+  if has_system_image: containers.add null
+
+  // Compute relocatable images for all the non-system containers.
+  non_system_images := {:}
+  entries.do: | name/string content/ByteArray |
+    if name == SYSTEM_CONTAINER_NAME or not is_container_name name:
+      continue.do  // Skip.
+    assets := entries.get "+$name"
+    entry := extract_container name flags content --assets=assets
+    containers.add entry
+    non_system_images[name] = entry.id.to_byte_array
+
+  if has_system_image:
+    name := SYSTEM_CONTAINER_NAME
+    content := entries[name]
     // TODO(kasper): Take any other system assets into account.
     system_assets := {:}
     // Encode any WiFi information.
     properties.get "wifi" --if_present=: system_assets["wifi"] = tison.encode it
-    // Encode the list of images with their names.
-    images := {:}
-    entries.do: | name/string content/ByteArray |
-      if not (name == SYSTEM_CONTAINER_NAME or name.starts_with "\$" or name.starts_with "+"):
-        id/uuid.Uuid := ?
-        if is_snapshot_bundle content:
-          bundle := SnapshotBundle name content
-          id = bundle.uuid
-        else:
-          header := decode_image content
-          id = header.id
-        images[name] = id.to_byte_array
-    if not images.is_empty: system_assets["images"] = tison.encode images
+    // Encode any non-system image names.
+    if not non_system_images.is_empty: system_assets["images"] = tison.encode non_system_images
     // Encode the system assets and add them to the container.
     assets_encoded := assets.encode system_assets
-    containers.add (ContainerEntry SYSTEM_CONTAINER_NAME system --assets=assets_encoded)
-
-  entries.do: | name/string content/ByteArray |
-    if not (name == SYSTEM_CONTAINER_NAME or name.starts_with "\$" or name.starts_with "+"):
-      assets_encoded := entries.get "+$name"
-      containers.add (ContainerEntry name content --assets=assets_encoded)
+    containers[0] = extract_container name flags content --assets=assets_encoded
 
   firmware_bin := entries.get AR_ENTRY_FIRMWARE_BIN
   if not firmware_bin:
@@ -598,14 +685,35 @@ extract_binary envelope/Envelope --config_encoded/ByteArray -> ByteArray:
   system_uuid/uuid.Uuid? := null
   if properties.contains "uuid":
     catch: system_uuid = uuid.parse properties["uuid"]
-  if not system_uuid:
-    system_uuid = uuid.uuid5 "$random" "$Time.now".to_byte_array
+  system_uuid = system_uuid or sdk_version_uuid --sdk_version=envelope.sdk_version
 
   return extract_binary_content
       --binary_input=firmware_bin
       --containers=containers
       --system_uuid=system_uuid
       --config_encoded=config_encoded
+
+extract_container name/string flags/Map? content/ByteArray -> ContainerEntry
+    --assets/ByteArray?:
+  header/ImageHeader := ?
+  relocatable/ByteArray := ?
+  if is_snapshot_bundle content:
+    snapshot_bundle := SnapshotBundle name content
+    snapshot_uuid ::= snapshot_bundle.uuid
+    program := snapshot_bundle.decode
+    image := build_image program WORD_SIZE
+        --system_uuid=uuid.NIL
+        --snapshot_uuid=snapshot_uuid
+        --assets=assets
+    header = ImageHeader image.all_memory
+    if header.snapshot_uuid != snapshot_uuid: throw "corrupt snapshot uuid encoding"
+    relocatable = image.build_relocatable
+  else:
+    header = decode_image content
+    relocatable = content
+  flag_bits := flags and flags.get name
+  flag_bits = flag_bits or 0
+  return ContainerEntry header.id name relocatable --flags=flag_bits --assets=assets
 
 update_envelope parsed/cli.Parsed [block] -> none:
   input_path := parsed[OPTION_ENVELOPE]
@@ -616,6 +724,7 @@ update_envelope parsed/cli.Parsed [block] -> none:
   block.call existing
 
   envelope := Envelope.create existing.entries
+      --sdk_version=existing.sdk_version
   envelope.store output_path
 
 extract_binary_content -> ByteArray
@@ -632,16 +741,7 @@ extract_binary_content -> ByteArray
   images := []
   index := 0
   containers.do: | container/ContainerEntry |
-    relocatable/ByteArray := ?
-    if is_snapshot_bundle container.content:
-      snapshot_bundle := SnapshotBundle container.name container.content
-      program_id ::= snapshot_bundle.uuid
-      program := snapshot_bundle.decode
-      image := build_image program WORD_SIZE --system_uuid=system_uuid --program_id=program_id
-      relocatable = image.build_relocatable
-    else:
-      relocatable = container.content
-
+    relocatable := container.relocatable
     out := bytes.Buffer
     output := BinaryRelocatedOutput out relocation_base
     output.write WORD_SIZE relocatable
@@ -654,9 +754,12 @@ extract_binary_content -> ByteArray
         image_size
     image_bits = pad image_bits 4
 
+    image_header ::= ImageHeader image_bits
+    image_header.system_uuid = system_uuid
+    image_header.flags = container.flags
+
     if container.assets:
-      image_header ::= ImageHeader image_bits
-      image_header.flags |= (1 << 7)
+      image_header.flags |= IMAGE_FLAG_HAS_ASSETS
       assets_size := ByteArray 4
       LITTLE_ENDIAN.put_uint32 assets_size 0 container.assets.size
       image_bits += assets_size
@@ -709,22 +812,27 @@ class Envelope:
   static INFO_ENTRY_VERSION_OFFSET ::= 4
   static INFO_ENTRY_SIZE           ::= 8
 
-  path/string? ::= null
   version_/int
+
+  path/string? ::= null
+  sdk_version/string
   entries/Map ::= {:}
 
   constructor.load .path/string:
     version/int? := null
+    sdk_version = ""
     read_file path: | reader/reader.Reader |
       ar := ar.ArReader reader
       while file := ar.next:
         if file.name == INFO_ENTRY_NAME:
           version = validate file.content
+        else if file.name == AR_ENTRY_SDK_VERSION:
+          sdk_version = file.content.to_string_non_throwing
         else:
           entries[file.name] = file.content
     version_ = version
 
-  constructor.create .entries:
+  constructor.create .entries --.sdk_version:
     version_ = ENVELOPE_FORMAT_VERSION
 
   store path/string -> none:
@@ -735,6 +843,7 @@ class Envelope:
       LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_MARKER_OFFSET MARKER
       LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_VERSION_OFFSET version_
       ar.add INFO_ENTRY_NAME info
+      ar.add AR_ENTRY_SDK_VERSION sdk_version
       // Add all other entries.
       entries.do: | name/string content/ByteArray |
         ar.add name content
@@ -751,16 +860,20 @@ class Envelope:
     return version
 
 class ContainerEntry:
+  id/uuid.Uuid
   name/string
-  content/ByteArray
+  flags/int
+  relocatable/ByteArray
   assets/ByteArray?
-  constructor .name .content --.assets:
+  constructor .id .name .relocatable --.flags --.assets:
 
 class ImageHeader:
-  static MARKER_OFFSET_   ::= 0
-  static ID_OFFSET_       ::= 8
-  static METADATA_OFFSET_ ::= 24
-  static HEADER_SIZE_     ::= 40
+  static MARKER_OFFSET_        ::= 0
+  static ID_OFFSET_            ::= 8
+  static METADATA_OFFSET_      ::= 24
+  static UUID_OFFSET_          ::= 32
+  static SNAPSHOT_UUID_OFFSET_ ::= 48 + 7 * 2 * 4  // 7 tables and lists.
+  static HEADER_SIZE_          ::= SNAPSHOT_UUID_OFFSET_ + uuid.SIZE
 
   static MARKER_ ::= 0xdeadface
 
@@ -775,7 +888,22 @@ class ImageHeader:
     header_[METADATA_OFFSET_] = value
 
   id -> uuid.Uuid:
-    return uuid.Uuid header_[ID_OFFSET_..ID_OFFSET_ + uuid.SIZE]
+    return read_uuid_ ID_OFFSET_
+
+  snapshot_uuid -> uuid.Uuid:
+    return read_uuid_ SNAPSHOT_UUID_OFFSET_
+
+  system_uuid -> uuid.Uuid:
+    return read_uuid_ UUID_OFFSET_
+
+  system_uuid= value/uuid.Uuid -> none:
+    write_uuid_ UUID_OFFSET_ value
+
+  read_uuid_ offset/int -> uuid.Uuid:
+    return uuid.Uuid header_[offset .. offset + uuid.SIZE]
+
+  write_uuid_ offset/int value/uuid.Uuid -> none:
+    header_.replace offset value.to_byte_array
 
   static validate image/ByteArray -> ByteArray:
     if image.size < HEADER_SIZE_: throw "image too small"
