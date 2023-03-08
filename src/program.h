@@ -298,6 +298,8 @@ class Program : public FlashAllocation {
   List<uint8> bytecodes;
 
  private:
+  // ATTENTION: The snapshot uuid is decoded by tools/firmware.toit. You
+  // need to update that if the offset of the field changes.
   uint8 snapshot_uuid_[UUID_SIZE];
 
   static const int INVOKE_BYTECODE_COUNT = INVOKE_AT_PUT - INVOKE_EQ + 1;

@@ -65,6 +65,8 @@ OPTION_ENVELOPE     ::= "envelope"
 OPTION_OUTPUT       ::= "output"
 OPTION_OUTPUT_SHORT ::= "o"
 
+PROPERTY_CONTAINER_FLAGS ::= "\$container-flags"
+
 IMAGE_FLAG_RUN_BOOT     ::= 1 << 0
 IMAGE_FLAG_RUN_CRITICAL ::= 1 << 1
 IMAGE_FLAG_HAS_ASSETS   ::= 1 << 7
@@ -152,6 +154,11 @@ create_envelope parsed/cli.Parsed -> none:
   entries := {
     AR_ENTRY_FIRMWARE_BIN: binary.bits,
     SYSTEM_CONTAINER_NAME: system_snapshot_content,
+    AR_ENTRY_PROPERTIES: json.encode {
+      PROPERTY_CONTAINER_FLAGS: {
+        SYSTEM_CONTAINER_NAME: IMAGE_FLAG_RUN_BOOT | IMAGE_FLAG_RUN_CRITICAL
+      }
+    }
   }
 
   AR_ENTRY_FILE_MAP.do: | key/string value/string |
@@ -178,8 +185,12 @@ container_cmd -> cli.Command:
           --options=[
             option_output,
             cli.OptionString "assets"
-                --short_help="Add assets to the image."
-                --type="file"
+                --short_help="Add assets to the container."
+                --type="file",
+            cli.OptionEnum "run" ["boot"]
+                --short_help="Automatically run the container on trigger.",
+            cli.Flag "critical"
+                --short_help="Reboot system if the container terminates.",
           ]
           --rest=[
             option_name,
@@ -237,13 +248,21 @@ decode_image data/ByteArray -> ImageHeader:
 
 get_container_name parsed/cli.Parsed -> string:
   name := parsed["name"]
-  if name.starts_with "\$":
-    print "Cannot install container with a name that starts with \$ or +"
+  if name.starts_with "\$" or name.starts_with "+":
+    print "Cannot install container with a name that starts with \$ or +."
+    exit 1
+  if name.size == 0:
+    print "Cannot install container with an empty name."
     exit 1
   if name.size > 14:
-    print "Cannot install container with a name longer than 14 characters"
+    print "Cannot install container with a name longer than 14 characters."
     exit 1
   return name
+
+is_container_name name/string -> bool:
+  if not 0 < name.size <= 14: return false
+  first := name[0]
+  return first != '$' and first != '+'
 
 container_install parsed/cli.Parsed -> none:
   name := get_container_name parsed
@@ -275,6 +294,15 @@ container_install parsed/cli.Parsed -> none:
     if assets_data: envelope.entries["+$name"] = assets_data
     else: envelope.entries.remove "+$name"
 
+    flag_bits := 0
+    if parsed["run"] == "boot": flag_bits |= IMAGE_FLAG_RUN_BOOT
+    if parsed["critical"]: flag_bits |= IMAGE_FLAG_RUN_CRITICAL
+    properties_update envelope: | properties/Map? |
+      properties = properties or {:}
+      flags := properties.get PROPERTY_CONTAINER_FLAGS --init=: {:}
+      flags[name] = flag_bits
+      properties
+
 container_extract parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
   name := get_container_name parsed
@@ -293,13 +321,20 @@ container_uninstall parsed/cli.Parsed -> none:
     envelope.entries.remove name
     envelope.entries.remove "+$name"
 
+    properties_update envelope: | properties/Map? |
+      flags := properties and properties.get PROPERTY_CONTAINER_FLAGS
+      if flags: flags.remove name
+      properties
+
 container_list parsed/cli.Parsed -> none:
   output_path := parsed[OPTION_OUTPUT]
   input_path := parsed[OPTION_ENVELOPE]
   entries := (Envelope.load input_path).entries
+  properties/Map? := entries.get AR_ENTRY_PROPERTIES
+      --if_present=: json.decode it
   output := {:}
   entries.do: | name/string content/ByteArray |
-    if name.starts_with "\$" or name.starts_with "+": continue.do
+    if not is_container_name name: continue.do
     entry := {:}
     if is_snapshot_bundle content:
       bundle := SnapshotBundle name content
@@ -311,6 +346,15 @@ container_list parsed/cli.Parsed -> none:
       entry["id"] = header.snapshot_uuid.stringify
     assets := entries.get "+$name"
     if assets: entry["assets"] = { "size": assets.size }
+    container_flags := properties and properties.get PROPERTY_CONTAINER_FLAGS
+    flags := container_flags and container_flags.get name
+    if flags and flags != 0:
+      flag_names := []
+      if (flags & IMAGE_FLAG_RUN_BOOT) != 0:
+        flag_names.add "run=boot"
+      if (flags & IMAGE_FLAG_RUN_CRITICAL) != 0:
+        flag_names.add "critical"
+      entry["flags"] = flag_names
     output[name] = entry
   output_string := json.stringify output
   if output_path:
@@ -370,10 +414,11 @@ property_get parsed/cli.Parsed -> none:
     if properties.contains key:
       print (json.stringify (properties.get key))
   else:
-    print (json.stringify properties)
+    filtered := properties.filter: not it.starts_with "\$"
+    print (json.stringify filtered)
 
 property_remove parsed/cli.Parsed -> none:
-  properties_update parsed: | properties/Map? key/string |
+  properties_update_with_key parsed: | properties/Map? key/string |
     if properties: properties.remove key
     properties
 
@@ -385,7 +430,7 @@ property_set parsed/cli.Parsed -> none:
     catch: element = json.parse element
     element
   if value.size == 1: value = value.first
-  properties_update parsed: | properties/Map? key/string |
+  properties_update_with_key parsed: | properties/Map? key/string |
     if key == "uuid":
       exception := catch: uuid.parse value
       if exception: throw "cannot parse uuid: $value ($exception)"
@@ -393,14 +438,19 @@ property_set parsed/cli.Parsed -> none:
     properties[key] = value
     properties
 
-properties_update parsed/cli.Parsed [block] -> none:
-  key := parsed["key"]
+properties_update envelope/Envelope [block] -> none:
+  properties/Map? := envelope.entries.get AR_ENTRY_PROPERTIES
+      --if_present=: json.decode it
+  properties = block.call properties
+  if properties: envelope.entries[AR_ENTRY_PROPERTIES] = json.encode properties
+
+properties_update_with_key parsed/cli.Parsed [block] -> none:
+  key/string := parsed["key"]
+  if key.starts_with "\$": throw "property keys cannot start with \$"
   if key == "sdk-version": throw "cannot update sdk-version property"
   update_envelope parsed: | envelope/Envelope |
-    properties_data/ByteArray? := envelope.entries.get AR_ENTRY_PROPERTIES
-    properties/Map? := properties_data ? (json.decode properties_data) : null
-    properties = block.call properties key
-    if properties: envelope.entries[AR_ENTRY_PROPERTIES] = json.encode properties
+    properties_update envelope: | properties/Map? |
+      block.call properties key
 
 extract_cmd -> cli.Command:
   return cli.Command "extract"
@@ -597,47 +647,35 @@ extract_binary envelope/Envelope --config_encoded/ByteArray -> ByteArray:
   properties := entries.get AR_ENTRY_PROPERTIES
       --if_present=: json.decode it
       --if_absent=: {:}
+  flags := properties and properties.get PROPERTY_CONTAINER_FLAGS
 
-  // Compute relocatable images for all the containers.
-  images := {:}
+  // The system image, if any, must be the first image, so
+  // we reserve space for it in the list of containers.
+  has_system_image := entries.contains SYSTEM_CONTAINER_NAME
+  if has_system_image: containers.add null
+
+  // Compute relocatable images for all the non-system containers.
+  non_system_images := {:}
   entries.do: | name/string content/ByteArray |
-    if name.starts_with "\$" or name.starts_with "+": continue.do
-    if is_snapshot_bundle content:
-      snapshot_bundle := SnapshotBundle name content
-      snapshot_uuid ::= snapshot_bundle.uuid
-      program := snapshot_bundle.decode
-      image := build_image program WORD_SIZE --system_uuid=uuid.NIL --snapshot_uuid=snapshot_uuid
-      header := ImageHeader image.all_memory
-      if header.snapshot_uuid != snapshot_uuid: throw "corrupt snapshot uuid encoding"
-      images[name] = RelocatableImage header.id image.build_relocatable
-    else:
-      header := decode_image content
-      images[name] = RelocatableImage header.id content
+    if name == SYSTEM_CONTAINER_NAME or not is_container_name name:
+      continue.do  // Skip.
+    assets := entries.get "+$name"
+    entry := extract_container name flags content --assets=assets
+    containers.add entry
+    non_system_images[name] = entry.id.to_byte_array
 
-  // Handle the system container first. It needs to be the
-  // first container we encode.
-  if entries.contains SYSTEM_CONTAINER_NAME:
+  if has_system_image:
+    name := SYSTEM_CONTAINER_NAME
+    content := entries[name]
     // TODO(kasper): Take any other system assets into account.
     system_assets := {:}
     // Encode any WiFi information.
     properties.get "wifi" --if_present=: system_assets["wifi"] = tison.encode it
-    // Encode the images with their names.
-    image_names := {:}
-    entries.do: | name/string content/ByteArray |
-      if not (name == SYSTEM_CONTAINER_NAME or name.starts_with "\$" or name.starts_with "+"):
-        image := images[name]
-        image_names[name] = image.id.to_byte_array
-    if not image_names.is_empty: system_assets["images"] = tison.encode image_names
+    // Encode any non-system image names.
+    if not non_system_images.is_empty: system_assets["images"] = tison.encode non_system_images
     // Encode the system assets and add them to the container.
     assets_encoded := assets.encode system_assets
-    image := images[SYSTEM_CONTAINER_NAME]
-    containers.add (ContainerEntry SYSTEM_CONTAINER_NAME image --assets=assets_encoded)
-
-  entries.do: | name/string content/ByteArray |
-    if not (name == SYSTEM_CONTAINER_NAME or name.starts_with "\$" or name.starts_with "+"):
-      assets_encoded := entries.get "+$name"
-      image := images[name]
-      containers.add (ContainerEntry name image --assets=assets_encoded)
+    containers[0] = extract_container name flags content --assets=assets_encoded
 
   firmware_bin := entries.get AR_ENTRY_FIRMWARE_BIN
   if not firmware_bin:
@@ -653,6 +691,28 @@ extract_binary envelope/Envelope --config_encoded/ByteArray -> ByteArray:
       --containers=containers
       --system_uuid=system_uuid
       --config_encoded=config_encoded
+
+extract_container name/string flags/Map? content/ByteArray -> ContainerEntry
+    --assets/ByteArray?:
+  header/ImageHeader := ?
+  relocatable/ByteArray := ?
+  if is_snapshot_bundle content:
+    snapshot_bundle := SnapshotBundle name content
+    snapshot_uuid ::= snapshot_bundle.uuid
+    program := snapshot_bundle.decode
+    image := build_image program WORD_SIZE
+        --system_uuid=uuid.NIL
+        --snapshot_uuid=snapshot_uuid
+        --assets=assets
+    header = ImageHeader image.all_memory
+    if header.snapshot_uuid != snapshot_uuid: throw "corrupt snapshot uuid encoding"
+    relocatable = image.build_relocatable
+  else:
+    header = decode_image content
+    relocatable = content
+  flag_bits := flags and flags.get name
+  flag_bits = flag_bits or 0
+  return ContainerEntry header.id name relocatable --flags=flag_bits --assets=assets
 
 update_envelope parsed/cli.Parsed [block] -> none:
   input_path := parsed[OPTION_ENVELOPE]
@@ -680,7 +740,7 @@ extract_binary_content -> ByteArray
   images := []
   index := 0
   containers.do: | container/ContainerEntry |
-    relocatable := container.image.relocatable
+    relocatable := container.relocatable
     out := bytes.Buffer
     output := BinaryRelocatedOutput out relocation_base
     output.write WORD_SIZE relocatable
@@ -695,7 +755,7 @@ extract_binary_content -> ByteArray
 
     image_header ::= ImageHeader image_bits
     image_header.system_uuid = system_uuid
-    image_header.flags = IMAGE_FLAG_RUN_BOOT | IMAGE_FLAG_RUN_CRITICAL
+    image_header.flags = container.flags
 
     if container.assets:
       image_header.flags |= IMAGE_FLAG_HAS_ASSETS
@@ -798,16 +858,13 @@ class Envelope:
       throw "cannot open envelope - expected version $ENVELOPE_FORMAT_VERSION, was $version"
     return version
 
-class RelocatableImage:
-  id/uuid.Uuid
-  relocatable/ByteArray
-  constructor .id .relocatable:
-
 class ContainerEntry:
+  id/uuid.Uuid
   name/string
-  image/RelocatableImage
+  flags/int
+  relocatable/ByteArray
   assets/ByteArray?
-  constructor .name .image --.assets:
+  constructor .id .name .relocatable --.flags --.assets:
 
 class ImageHeader:
   static MARKER_OFFSET_        ::= 0

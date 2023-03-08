@@ -17,6 +17,7 @@ import .snapshot as snapshot
 import bytes
 import binary show LITTLE_ENDIAN ByteOrder
 import uuid
+import crypto.sha256
 
 abstract class Memory:
   static ENDIAN_ /ByteOrder ::= LITTLE_ENDIAN
@@ -217,6 +218,7 @@ class Image:
   static PAGE_BYTE_SIZE_32 ::= 1 << 12
   static PAGE_BYTE_SIZE_64 ::= 1 << 15
 
+  id      /uuid.Uuid
   offheap /Offheap
   heap    /Heap
 
@@ -231,7 +233,7 @@ class Image:
   // through every possible function call.
   large_integer_header_ /int? := null
 
-  constructor snapshot_program/snapshot.Program .word_size:
+  constructor snapshot_program/snapshot.Program .word_size --.id:
     header := snapshot_program.header
     assert: word_size == 4 or word_size == 8
     page_size = word_size == 4 ? PAGE_BYTE_SIZE_32 : PAGE_BYTE_SIZE_64
@@ -561,15 +563,14 @@ class ToitProgram extends ToitObjectType:
   snapshot_program /snapshot.Program
   constructor .snapshot_program:
 
-  write_to image/Image --system_uuid/uuid.Uuid --snapshot_uuid/uuid.Uuid -> int:
+  write_to image/Image -> int
+      --system_uuid/uuid.Uuid
+      --snapshot_uuid/uuid.Uuid:
     word_size := image.word_size
     offheap := image.offheap
 
     address := offheap.allocate LAYOUT
     anchored := LAYOUT.anchor --at=address offheap
-
-    // TODO(kasper): Base this on the content. Don't randomize.
-    id := uuid.uuid5 "$random" "$Time.now-$Time.monotonic_us"
 
     // The order of writing the fields must be kept in sync with the C++ version.
     // Not only does it allow us to compare the two results more easily, the size
@@ -579,7 +580,7 @@ class ToitProgram extends ToitObjectType:
     // and just dynamically build up the memory here.
 
     header := ToitHeader  // Doesn't need data from the snapshot.
-    header.fill_into image --at=anchored["header"] --system_uuid=system_uuid --id=id
+    header.fill_into image --at=anchored["header"] --system_uuid=system_uuid --id=image.id
     anchored.put_bytes "snapshot_uuid_" snapshot_uuid.to_byte_array
 
     class_tags := snapshot_program.class_tags
@@ -1159,9 +1160,33 @@ class ToitInteger extends ToitHeapObject:
     anchored.put_int64 "value" o_.value
     return to_encoded_address address
 
-build_image snapshot/snapshot.Program word_size/int --system_uuid/uuid.Uuid --snapshot_uuid/uuid.Uuid -> Image:
+build_image snapshot/snapshot.Program word_size/int -> Image
+    --system_uuid/uuid.Uuid
+    --snapshot_uuid/uuid.Uuid
+    --assets/ByteArray?:
+  id := image_id --snapshot_uuid=snapshot_uuid --assets=assets
+  return build_image snapshot word_size
+      --system_uuid=system_uuid
+      --snapshot_uuid=snapshot_uuid
+      --id=id
+
+build_image snapshot/snapshot.Program word_size/int -> Image
+    --system_uuid/uuid.Uuid
+    --snapshot_uuid/uuid.Uuid
+    --id/uuid.Uuid:
   ToitProgram.init_constants snapshot
-  image := Image snapshot word_size
+  image := Image snapshot word_size --id=id
   program := ToitProgram snapshot
-  program.write_to image --system_uuid=system_uuid --snapshot_uuid=snapshot_uuid
+  program.write_to image
+      --system_uuid=system_uuid
+      --snapshot_uuid=snapshot_uuid
   return image
+
+image_id --snapshot_uuid/uuid.Uuid --assets/ByteArray? -> uuid.Uuid:
+  // Compute a stable id for the program based on the snapshot
+  // and the assets. This way, the word size doesn't impact the
+  // generated id.
+  sha := sha256.Sha256
+  sha.add snapshot_uuid.to_byte_array
+  if assets: sha.add assets
+  return uuid.Uuid sha.get[..uuid.SIZE]
