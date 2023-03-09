@@ -406,8 +406,9 @@ PRIMITIVE(wait_tx) {
   if (queued == 0) return BOOL(true);
 
   // Upper bound on time to drain queue (12 is a conservative estimate
-  // on the number of transferred bits per by byte).
-  if (queued*12*1000/baud_rate > 0) return BOOL(false);
+  // on the number of transferred bits per byte). If it takes longer
+  // than 1 ms, just return back to toit code.
+  if (queued * 12 * 1000 > baud_rate) return BOOL(false);
 
   // TODO(florian): do we ever want to do a blocking wait on Linux?
 
