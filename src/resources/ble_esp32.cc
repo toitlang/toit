@@ -34,6 +34,7 @@
 #include <host/ble_gap.h>
 #include <services/gap/ble_svc_gap.h>
 #include <services/gatt/ble_svc_gatt.h>
+#include <store/config/ble_store_config.h>
 
 
 namespace toit {
@@ -185,7 +186,12 @@ class BleReadWriteElement : public BleErrorCapableResource {
       , uuid_(uuid)
       , handle_(handle)
       , mbuf_received_(null)
-      , mbuf_to_send_(null) {}
+      , mbuf_to_send_(null)
+      , read_request_mbuf_(null)
+      , read_request_mutex_(null)
+      , read_request_condition_(null)
+      , read_timeout_ms_(0) {}
+
   ble_uuid_any_t &uuid() { return uuid_; }
   ble_uuid_t* ptr_uuid() { return &uuid_.u; }
   uint16 handle() const { return handle_; }
@@ -208,6 +214,10 @@ class BleReadWriteElement : public BleErrorCapableResource {
 
   os_mbuf* mbuf_to_send() {
     Locker locker(BleResourceGroup::instance()->mutex());
+    return mbuf_to_send(locker);
+  }
+
+  os_mbuf* mbuf_to_send(Locker& locker) {
     return mbuf_to_send_;
   }
 
@@ -215,6 +225,14 @@ class BleReadWriteElement : public BleErrorCapableResource {
     Locker locker(BleResourceGroup::instance()->mutex());
     if (mbuf_to_send_ != null) os_mbuf_free(mbuf_to_send_);
     mbuf_to_send_ = mbuf;
+  }
+
+  void set_read_request_mbuf(os_mbuf* mbuf) {
+    read_request_mbuf_ = mbuf;
+  }
+
+  os_mbuf* get_read_request_mbuf() {
+    return read_request_mbuf_;
   }
 
   static int on_attribute_read(uint16_t conn_handle,
@@ -234,6 +252,7 @@ class BleReadWriteElement : public BleErrorCapableResource {
   }
 
   static uint16_t mbuf_total_len(os_mbuf* om) {
+    if (!om) return 0;
     uint16_t total_len = 0;
     while (om) {
       total_len += om->om_len;
@@ -242,8 +261,23 @@ class BleReadWriteElement : public BleErrorCapableResource {
     return total_len;
   }
 
-  uint16_t mbuf_to_send_len() const {
-    return mbuf_total_len(mbuf_to_send_);
+  bool setup_callback_readable_characteristic(int read_timeout_ms) {
+    read_request_mutex_ = OS::allocate_mutex(1, "Read request");
+    if (!read_request_mutex_) return false;
+    read_request_condition_ = OS::allocate_condition_variable(read_request_mutex_);
+    if (!read_request_condition_) {
+      OS::dispose(read_request_mutex_);
+      return false;
+    }
+    read_timeout_ms_ = read_timeout_ms;
+    return true;
+  }
+
+  void handle_read_reply_request(os_mbuf* mbuf) {
+    Locker locker(read_request_mutex_);
+    if (read_request_mbuf_ != null) os_mbuf_free(read_request_mbuf_);
+    read_request_mbuf_ = mbuf;
+    OS::signal_all(read_request_condition_);
   }
 
  private:
@@ -254,7 +288,10 @@ class BleReadWriteElement : public BleErrorCapableResource {
   uint16 handle_;
   os_mbuf* mbuf_received_;
   os_mbuf* mbuf_to_send_;
-
+  os_mbuf* read_request_mbuf_;
+  Mutex* read_request_mutex_;
+  ConditionVariable* read_request_condition_;
+  int read_timeout_ms_;
 };
 
 
@@ -305,7 +342,7 @@ class BleCharacteristicResource :
  public:
   TAG(BleCharacteristicResource);
   BleCharacteristicResource(BleResourceGroup* group, BleServiceResource* service,
-                            ble_uuid_any_t uuid, uint8 properties, uint16 handle,
+                            ble_uuid_any_t uuid, uint16 properties, uint16 handle,
                             uint16 definition_handle)
       : BleReadWriteElement(group, CHARACTERISTIC, uuid, handle)
       , service_(service)
@@ -320,7 +357,7 @@ class BleCharacteristicResource :
 
   BleServiceResource* service() override { return service_; }
 
-  uint8 properties() const { return properties_;  }
+  uint16 properties() const { return properties_;  }
   uint16 definition_handle() const { return definition_handle_; }
 
   BleDescriptorResource* get_or_create_descriptor(ble_uuid_any_t uuid, uint16_t handle,
@@ -376,7 +413,7 @@ class BleCharacteristicResource :
   void _on_subscribe_response(const ble_gatt_error* error, ble_gatt_attr* attr);
 
   BleServiceResource* service_;
-  uint8 properties_;
+  uint16 properties_;
   uint16 definition_handle_;
   DescriptorList descriptors_;
   SubscriptionList subscriptions_;
@@ -415,7 +452,7 @@ class BleServiceResource:
   }
 
   BleCharacteristicResource* get_or_create_characteristics_resource(
-      ble_uuid_any_t uuid, uint8 properties, uint16 def_handle,
+      ble_uuid_any_t uuid, uint16 properties, uint16 def_handle,
       uint16 value_handle);
 
   void make_deletable() override {
@@ -582,9 +619,10 @@ class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManage
 class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource> {
  public:
   TAG(BleRemoteDeviceResource);
-  explicit BleRemoteDeviceResource(BleResourceGroup* group)
+  explicit BleRemoteDeviceResource(BleResourceGroup* group, bool secure_connection)
     : ServiceContainer(group, REMOTE_DEVICE)
-    , handle_(kInvalidHandle) {}
+    , handle_(kInvalidHandle)
+    , secure_connection_(secure_connection) {}
 
   BleRemoteDeviceResource* type() override { return this; }
 
@@ -608,6 +646,7 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   void _on_service_discovered(const ble_gatt_error* error, const ble_gatt_svc* service);
 
   uint16 handle_;
+  bool secure_connection_;
 };
 
 Object* nimble_error_code_to_string(Process* process, int error_code, bool host) {
@@ -665,7 +704,7 @@ static ByteArray* byte_array_from_uuid(Process* process, ble_uuid_any_t uuid, Er
       *reinterpret_cast<uint16*>(bytes.address()) = __builtin_bswap16(uuid.u16.value);
       break;
     case BLE_UUID_TYPE_32:
-      *reinterpret_cast<uint32*>(bytes.address()) = __builtin_bswap16(uuid.u32.value);
+      *reinterpret_cast<uint32*>(bytes.address()) = __builtin_bswap32(uuid.u32.value);
       break;
     default:
       memcpy_reverse(bytes.address(), uuid.u128.value, sizeof(uuid.u128.value));
@@ -767,12 +806,8 @@ BleServiceResource::_on_characteristic_discovered(const struct ble_gatt_error* e
 }
 
 BleCharacteristicResource* BleServiceResource::get_or_create_characteristics_resource(
-    ble_uuid_any_t uuid, uint8 properties, uint16 def_handle,
+    ble_uuid_any_t uuid, uint16 properties, uint16 def_handle,
     uint16 value_handle) {
-  for (auto item : characteristics_) {
-    if (uuid_equals(uuid, item->uuid())) return item;
-  }
-
   auto characteristic = _new BleCharacteristicResource(group(), this, uuid, properties, value_handle, def_handle);
   if (!characteristic) return null;
   group()->register_resource(characteristic);
@@ -838,8 +873,8 @@ void BleRemoteDeviceResource::_on_event(ble_gap_event* event) {
       // Notify/indicate update.
 
       // TODO(mikkel): More efficient data structure.
-      for (auto service : services()) {
-        for (auto characteristic : service->characteristics()) {
+      for (auto service: services()) {
+        for (auto characteristic: service->characteristics()) {
           if (characteristic->handle() == event->notify_rx.attr_handle) {
             {
               Locker locker(BleResourceGroup::instance()->mutex());
@@ -853,7 +888,16 @@ void BleRemoteDeviceResource::_on_event(ble_gap_event* event) {
       }
       break;
     case BLE_GAP_EVENT_MTU:
-      BleEventSource::instance()->on_event(this, kBleConnected);
+      if (secure_connection_) {
+        ble_gap_security_initiate(event->mtu.conn_handle);
+      } else {
+        BleEventSource::instance()->on_event(this, kBleConnected);
+      }
+      break;
+    case BLE_GAP_EVENT_ENC_CHANGE:
+      if (secure_connection_) {
+        BleEventSource::instance()->on_event(this, kBleConnected);
+      }
       break;
   }
 }
@@ -930,7 +974,18 @@ int BleReadWriteElement::_on_access(ble_gatt_access_ctxt* ctxt) {
     case BLE_GATT_ACCESS_OP_READ_CHR:
     case BLE_GATT_ACCESS_OP_READ_DSC:
       if (mbuf_to_send() != null) {
-        return os_mbuf_appendfrom(ctxt->om, mbuf_to_send(), 0, mbuf_to_send_len());
+        Locker locker(BleResourceGroup::instance()->mutex());
+        return os_mbuf_appendfrom(ctxt->om, mbuf_to_send(locker), 0, mbuf_total_len(mbuf_to_send_));
+      } else {
+        BleEventSource::instance()->on_event(this, kBleDataReadRequest);
+        {
+          Locker locker(read_request_mutex_);
+          if (!OS::wait_us(read_request_condition_, 1000 * read_timeout_ms_)) return BLE_ERR_OPERATION_CANCELLED;
+          int result = os_mbuf_appendfrom(ctxt->om, read_request_mbuf_, 0, mbuf_total_len(read_request_mbuf_));
+          os_mbuf_free(read_request_mbuf_);
+          read_request_mbuf_ = null;
+          return result;
+        }
       }
       break;
     case BLE_GATT_ACCESS_OP_WRITE_CHR:
@@ -1073,9 +1128,10 @@ int BlePeripheralManagerResource::_on_gap(struct ble_gap_event* event) {
             BlePeripheralManagerResource::on_gap,
             this);
         if (err != BLE_ERR_SUCCESS) {
-          ESP_LOGW("BLE", "Could not restart advertising: err=%d",err);
+          ESP_LOGW("BLE", "Could not restart advertising: err=%d", err);
         }
       }
+
       break;
     case BLE_GAP_EVENT_ADV_COMPLETE:
       // TODO(mikkel) Add stopped event.
@@ -1094,10 +1150,17 @@ int BlePeripheralManagerResource::_on_gap(struct ble_gap_event* event) {
           }
         }
       }
+      break;
+    }
+    case BLE_GAP_EVENT_REPEAT_PAIRING: {
+      ble_gap_conn_desc connection_description = {};
+      ble_gap_conn_find(event->repeat_pairing.conn_handle, &connection_description);
+      ble_store_util_delete_peer(&connection_description.peer_id_addr);
+      return BLE_GAP_REPEAT_PAIRING_RETRY;
     }
   }
-  return BLE_ERR_SUCCESS;
 
+  return BLE_ERR_SUCCESS;
 }
 
 static Object* object_to_mbuf(Process* process, Object* object, os_mbuf** result) {
@@ -1217,13 +1280,29 @@ PRIMITIVE(create_central_manager) {
 }
 
 PRIMITIVE(create_peripheral_manager) {
-  ARGS(BleResourceGroup, group)
+  ARGS(BleResourceGroup, group, bool, bonding, bool, secure_connections)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
   auto peripheral_manager = _new BlePeripheralManagerResource(group);
   if (!peripheral_manager) MALLOC_FAILED;
+
+  ble_hs_cfg.sm_bonding = bonding;
+  ble_hs_cfg.sm_sc = secure_connections;
+  ble_hs_cfg.sm_mitm = secure_connections;
+  if (bonding) {
+    ble_hs_cfg.sm_our_key_dist = bonding;
+    ble_hs_cfg.sm_their_key_dist = bonding;
+  }
+  ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
+
+  if (bonding | secure_connections) {
+    ble_hs_cfg.store_read_cb = ble_store_config_read;
+    ble_hs_cfg.store_write_cb = ble_store_config_write;
+    ble_hs_cfg.store_delete_cb = ble_store_config_delete;
+    ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
+  }
 
   ble_svc_gap_init();
   ble_svc_gatt_init();
@@ -1389,7 +1468,7 @@ PRIMITIVE(scan_stop) {
 }
 
 PRIMITIVE(connect) {
-  ARGS(BleCentralManagerResource, central_manager, Blob, address)
+  ARGS(BleCentralManagerResource, central_manager, Blob, address, bool, secure_connection)
 
   uint8_t own_addr_type;
 
@@ -1405,7 +1484,7 @@ PRIMITIVE(connect) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (!proxy) ALLOCATION_FAILED;
 
-  auto device = _new BleRemoteDeviceResource(central_manager->group());
+  auto device = _new BleRemoteDeviceResource(central_manager->group(), secure_connection);
   if (!device) MALLOC_FAILED;
 
   err = ble_gap_connect(own_addr_type, &addr, 3000, null,
@@ -1890,7 +1969,8 @@ PRIMITIVE(add_service) {
 }
 
 PRIMITIVE(add_characteristic) {
-  ARGS(BleServiceResource, service_resource, Blob, raw_uuid, int, properties, int, permissions, Object, value)
+  ARGS(BleServiceResource, service_resource, Blob, raw_uuid, int, properties,
+       int, permissions, Object, value, int, read_timeout_ms)
 
   if (!service_resource->peripheral_manager()) INVALID_ARGUMENT;
 
@@ -1899,18 +1979,30 @@ PRIMITIVE(add_characteristic) {
 
   if (service_resource->deployed()) INVALID_ARGUMENT;
 
+  uint32 flags = properties & 0x7F;
+  if (permissions & 0x1) {  // READ
+    if (!(properties & BLE_GATT_CHR_F_READ)) INVALID_ARGUMENT;
+  }
+
+  if (permissions & 0x2) { // WRITE
+    if (!(properties & (BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP))) INVALID_ARGUMENT;
+  }
+
+  if (permissions & 0x4) {
+    if (!(properties & BLE_GATT_CHR_F_READ)) INVALID_ARGUMENT;
+    flags |= BLE_GATT_CHR_F_READ_ENC;  // _ENC = Encrypted.
+  }
+
+  if (permissions & 0x8) {
+    if (!(properties & (BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP))) INVALID_ARGUMENT;
+    flags |= BLE_GATT_CHR_F_WRITE_ENC;  // _ENC = Encrypted.
+  }
+
   ble_uuid_any_t ble_uuid = uuid_from_blob(raw_uuid);
 
   os_mbuf* om = null;
   Object* error = object_to_mbuf(process, value, &om);
   if (error) return error;
-
-  uint32 flags = properties & 0x7F;
-  if (permissions & 0x1) flags |= BLE_GATT_CHR_F_READ;
-  if (permissions & 0x2 && !(properties & (BLE_GATT_CHR_PROP_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP)))
-    INVALID_ARGUMENT;
-  if (permissions & 0x4) flags |= BLE_GATT_CHR_F_READ_ENC; // _ENC = Encrypted.
-  if (permissions & 0x8) flags |= BLE_GATT_CHR_F_WRITE_ENC; // _ENC = Encrypted.
 
   BleCharacteristicResource* characteristic =
     service_resource->get_or_create_characteristics_resource(ble_uuid, flags, 0, 0);
@@ -1920,7 +2012,14 @@ PRIMITIVE(add_characteristic) {
     MALLOC_FAILED;
   }
 
-  if (om != null) characteristic->set_mbuf_to_send(om);
+  if (om != null) {
+    characteristic->set_mbuf_to_send(om);
+  } else {
+    if (!characteristic->setup_callback_readable_characteristic(read_timeout_ms)) {
+      delete characteristic;
+      MALLOC_FAILED;
+    }
+  }
 
   proxy->set_external_address(characteristic);
   return proxy;
@@ -2169,6 +2268,37 @@ PRIMITIVE(gc) {
   }
 
   return process->program()->null_object();
+}
+
+PRIMITIVE(read_request_reply) {
+  ARGS(BleCharacteristicResource, characteristic, Object, value)
+  os_mbuf* mbuf;
+  object_to_mbuf(process, value, &mbuf);
+
+  if (!mbuf) {
+    QUOTA_EXCEEDED;
+  }
+
+  characteristic->handle_read_reply_request(mbuf);
+
+  return process->program()->null_object();
+}
+
+PRIMITIVE(get_bonded_peers) {
+  ble_addr_t bonds[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
+  int num_peers;
+  ble_store_util_bonded_peers(bonds,&num_peers,MYNEWT_VAL(BLE_STORE_MAX_BONDS));
+
+  Array* result = process->object_heap()->allocate_array(num_peers, process->program()->null_object());
+  for (int i = 0; i < num_peers; i++) {
+    ByteArray* id = process->object_heap()->allocate_internal_byte_array(7);
+    ByteArray::Bytes id_bytes(id);
+    id_bytes.address()[0] = bonds[i].type;
+    memcpy_reverse(id_bytes.address() + 1, bonds[i].val, 6);
+    result->at_put(i, id);
+  }
+
+  return result;
 }
 
 } // namespace toit
