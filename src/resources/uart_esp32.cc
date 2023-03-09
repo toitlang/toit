@@ -74,20 +74,20 @@ typedef enum {
 
 class SpinLocker {
  public:
-  explicit SpinLocker(portMUX_TYPE* spinlock): spinlock_(spinlock) { portENTER_CRITICAL(spinlock_); }
+  explicit SpinLocker(spinlock_t* spinlock): spinlock_(spinlock) { portENTER_CRITICAL(spinlock_); }
   ~SpinLocker() { portEXIT_CRITICAL(spinlock_); }
  private:
-  portMUX_TYPE* spinlock_;
+  spinlock_t* spinlock_;
 };
 
 class IsrSpinLocker {
  public:
-  UART_ISR_INLINE explicit IsrSpinLocker(portMUX_TYPE* spinlock): spinlock_(spinlock) {
+  UART_ISR_INLINE explicit IsrSpinLocker(spinlock_t* spinlock): spinlock_(spinlock) {
     portENTER_CRITICAL_ISR(spinlock_);
   }
   UART_ISR_INLINE ~IsrSpinLocker() { portEXIT_CRITICAL_ISR(spinlock_); }
  private:
-  portMUX_TYPE* spinlock_;
+  spinlock_t* spinlock_;
 };
 class UartResource;
 
@@ -139,7 +139,7 @@ class TxBuffer : public RxTxBuffer {
   void write(const uint8* buffer, uint16 length, uint8 break_length);
 
  private:
-  portMUX_TYPE spinlock_{};
+  spinlock_t spinlock_{};
   TxTransferHeader transfer_header_{};
 };
 
@@ -237,7 +237,7 @@ public:
   bool try_set_iomux_pin(gpio_num_t pin, uint32 iomux_index) const;
   uart_port_t port_;
   uart_hal_handle_t hal_;
-  portMUX_TYPE spinlock_{};
+  spinlock_t spinlock_{};
   RxBuffer rx_buffer_;
   TxBuffer tx_buffer_;
   intr_handle_t interrupt_handle_ = null;

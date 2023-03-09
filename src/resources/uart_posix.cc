@@ -392,25 +392,28 @@ PRIMITIVE(write) {
 
 PRIMITIVE(wait_tx) {
   ARGS(IntResource, resource);
-  int fd = resource->id();
+  int fd = static_cast<int>(resource->id());
 
-  // If we have a break, or need to wait we need the current baud_rate.
-  struct termios tty;
+  // If we need to wait we need the current baud_rate.
+  struct termios tty = {};
   if (tcgetattr(fd, &tty) < 0) return Primitive::os_error(errno, process);
   // We assume that the input and output speed are the same and only query the output speed.
   speed_t speed = cfgetospeed(&tty);
   int baud_rate = baud_rate_to_int(speed);
-  if (baud_rate > 100000) {
-    // TODO(florian): do we ever want to do a blocking wait on Linux?
-
-    // Just wait for the data to be flushed.
-    if (!tcdrain(fd)) return Primitive::os_error(errno, process);
-    return BOOL(true);
-  }
 
   int queued;
   if (ioctl(fd, TIOCOUTQ, &queued) != 0) return Primitive::os_error(errno, process);
-  return BOOL(queued == 0);
+  if (queued == 0) return BOOL(true);
+
+  // Upper bound on time to drain queue (12 is a conservative estimate
+  // on the number of transferred bits per by byte).
+  if (queued*12*1000/baud_rate > 0) return BOOL(false);
+
+  // TODO(florian): do we ever want to do a blocking wait on Linux?
+
+  // Just wait for the data to be flushed.
+  if (tcdrain(fd) != 0) return Primitive::os_error(errno, process);
+  return BOOL(true);
 }
 
 PRIMITIVE(read) {

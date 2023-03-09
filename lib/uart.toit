@@ -227,6 +227,7 @@ class Port implements reader.Reader:
   */
   flush -> none:
     while true:
+      if not uart_: throw "CLOSED"
       flushed := uart_wait_tx_ uart_
       if flushed: return
       sleep --ms=1
