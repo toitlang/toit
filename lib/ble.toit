@@ -428,7 +428,7 @@ class LocalService extends Resource_ implements Attribute:
     $CHARACTERISTIC_PERMISSION_READ and similar).
   If $value is specified, it is used as the initial value for the characteristic. If $value is null
     or an empty ByteArray, then the characteristic supports callback reads and the client needs
-    to call $read_request to provide the value upon request.
+    to call $LocalCharacteristic.handle_read_request to provide the value upon request.
   NOTE: Read callbacks are not supported in MacOS.
   When using read callbacks, the $read_timeout_ms specifies the time the callback function is allowed
     to use.
