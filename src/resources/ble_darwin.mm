@@ -893,7 +893,8 @@ PRIMITIVE(scan_stop) {
 }
 
 PRIMITIVE(connect) {
-  ARGS(BleCentralManagerResource, central_manager, Blob, address);
+  ARGS(BleCentralManagerResource, central_manager, Blob, address, bool, secure_connection);
+  USE(secure_connection);
 
   NSUUID* uuid = [[NSUUID alloc] initWithUUIDString:ns_string_from_blob(address)];
 
@@ -1294,4 +1295,13 @@ PRIMITIVE(get_error) {
 PRIMITIVE(gc) {
   UNIMPLEMENTED();
 }
+
+PRIMITIVE(read_request_reply) {
+  UNIMPLEMENTED();
+}
+
+PRIMITIVE(get_bonded_peers) {
+  UNIMPLEMENTED();
+}
+
 }
