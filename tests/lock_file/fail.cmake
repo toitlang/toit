@@ -19,7 +19,6 @@ set(TOIT_FAILING_TESTS
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS
     tests/lock_file/basic_test
-    tests/lock_file/dot_out_test
     tests/lock_file/empty_test
     tests/lock_file/multi_test
     tests/lock_file/sdk_version_test
