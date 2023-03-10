@@ -88,6 +88,7 @@ run_test tty0/string tty1/string:
   2.repeat:
     // With socat the baud rates are only simulated, but we do exercise different code
     // paths for the '--wait'.
+    write_done/monitor.Gate := monitor.Gate
     rate := ?
     if it == 0: rate = 9600
     else: rate = 115200
@@ -123,12 +124,15 @@ run_test tty0/string tty1/string:
       written := 0
       while written < bytes.size:
         written += port1.write bytes[written ..] --wait
+      // Use a gate, as the port could be closed before the --wait is done otherwise
+      write_done.unlock
 
     received = #[]
     while true:
       received += reader2.read
       if received.size == bytes.size: break
     expect_equals bytes received
+    write_done.enter
 
   port1.close
   port2.close
