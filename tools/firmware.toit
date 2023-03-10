@@ -333,30 +333,27 @@ container_list parsed/cli.Parsed -> none:
   entries := (Envelope.load input_path).entries
   properties/Map? := entries.get AR_ENTRY_PROPERTIES
       --if_present=: json.decode it
+  flags := properties and properties.get PROPERTY_CONTAINER_FLAGS
+
   output := {:}
   entries.do: | name/string content/ByteArray |
     if not is_container_name name: continue.do
-    entry := {:}
-    if is_snapshot_bundle content:
-      bundle := SnapshotBundle name content
-      entry["kind"] = "snapshot"
-      entry["id"] = bundle.uuid.stringify
-    else:
-      header := decode_image content
-      entry["kind"] = "image"
-      entry["id"] = header.snapshot_uuid.stringify
     assets := entries.get "+$name"
-    if assets: entry["assets"] = { "size": assets.size }
-    container_flags := properties and properties.get PROPERTY_CONTAINER_FLAGS
-    flags := container_flags and container_flags.get name
-    if flags and flags != 0:
+    entry := extract_container name flags content --assets=assets
+    map := {
+      "kind" : (is_snapshot_bundle content) ? "snapshot" : "image",
+      "id"   : entry.id.stringify,
+    }
+    if assets:
+      map["assets"] = { "size": assets.size }
+    if entry.flags != 0:
       flag_names := []
-      if (flags & IMAGE_FLAG_RUN_BOOT) != 0:
+      if (entry.flags & IMAGE_FLAG_RUN_BOOT) != 0:
         flag_names.add "run=boot"
-      if (flags & IMAGE_FLAG_RUN_CRITICAL) != 0:
+      if (entry.flags & IMAGE_FLAG_RUN_CRITICAL) != 0:
         flag_names.add "critical"
-      entry["flags"] = flag_names
-    output[name] = entry
+      map["flags"] = flag_names
+    output[name] = map
   output_string := json.stringify output
   if output_path:
     write_file output_path:
