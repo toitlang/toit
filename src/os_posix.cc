@@ -255,8 +255,20 @@ void OS::out_of_memory(const char* reason) {
   abort();
 }
 
-const char* OS::getenv(const char* variable) {
-  return ::getenv(variable);
+char* OS::getenv(const char* variable) {
+  // TODO(florian): getenv is not reentrant.
+  //   We should have a lock around `getenv` and `setenv`.
+  char* result = ::getenv(variable);
+  if (result == null) return null;
+  return strdup(result);
+}
+
+bool OS::setenv(const char* variable, const char* value) {
+  return ::setenv(variable, value, 1) == 0;
+}
+
+bool OS::unsetenv(const char* variable) {
+  return ::unsetenv(variable) == 0;
 }
 
 bool OS::set_real_time(struct timespec* time) {

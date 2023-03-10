@@ -256,8 +256,43 @@ void OS::out_of_memory(const char* reason) {
   abort();
 }
 
-const char* OS::getenv(const char* variable) {
-  return ::getenv(variable);
+static wchar_t* malloced_wide_string(const char* string) {
+  word length = Utils::utf_8_to_16(unsigned_cast(string), strlen(string));
+  wchar_t* result = reinterpret_cast<wchar_t*>(malloc((length + 1) * sizeof(wchar_t)));
+  Utils::utf_8_to_16(unsigned_cast(string), strlen(string), result, length);
+  result[length] = '\0';
+  return result;
+}
+
+char* OS::getenv(const char* variable) {
+  wchar_t* wide_variable = malloced_wide_string(variable);
+
+  const int BUFFER_SIZE = 32767;
+  wchar_t buffer[BUFFER_SIZE];
+  int wide_length = GetEnvironmentVariableW(wide_variable, buffer, BUFFER_SIZE);
+  free(wide_variable);
+  if (wide_length == 0 || wide_length > BUFFER_SIZE) return null;
+  word size = Utils::utf_16_to_8(buffer, wide_length, null, 0);
+  char* result = unvoid_cast<char*>(malloc(size + 1));
+  Utils::utf_16_to_8(buffer, wide_length, unsigned_cast(result), size);
+  result[size] = '\0';
+  return result;
+}
+
+bool OS::setenv(const char* variable, const char* value) {
+  wchar_t* wide_variable = malloced_wide_string(variable);
+  wchar_t* wide_value = malloced_wide_string(value);
+  bool ok = SetEnvironmentVariableW(wide_variable, wide_value);
+  free(wide_variable);
+  free(wide_value);
+  return ok;
+}
+
+bool OS::unsetenv(const char* variable) {
+  wchar_t* wide_variable = malloced_wide_string(variable);
+  bool ok = SetEnvironmentVariableW(wide_variable, null);
+  free(wide_variable);
+  return ok;
 }
 
 bool OS::set_real_time(struct timespec* time) {

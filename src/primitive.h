@@ -237,6 +237,7 @@ namespace toit {
   PRIMITIVE(dump_heap, 1)                    \
   PRIMITIVE(serial_print_heap_report, 2)     \
   PRIMITIVE(get_env, 1)                      \
+  PRIMITIVE(set_env, 2)                      \
   PRIMITIVE(literal_index, 1)                \
   PRIMITIVE(word_size, 0)                    \
   PRIMITIVE(firmware_map, 1)                 \

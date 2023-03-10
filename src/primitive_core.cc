@@ -2295,11 +2295,28 @@ PRIMITIVE(get_env) {
   UNIMPLEMENTED_PRIMITIVE;
 #else
   ARGS(cstring, key);
-  // TODO(florian): getenv is not reentrant.
-  //   We should have a lock around `getenv` and `setenv`.
-  const char* result = OS::getenv(key);
+  char* result = OS::getenv(key);
   if (result == null) return process->program()->null_object();
-  return process->allocate_string_or_error(result, strlen(result));
+  Object* string_or_error = process->allocate_string_or_error(result, strlen(result));
+  free(result);
+  return string_or_error;
+#endif
+}
+
+PRIMITIVE(set_env) {
+#if defined (TOIT_FREERTOS)
+  // FreeRTOS supports environment variables, but we prefer not to expose them.
+  UNIMPLEMENTED_PRIMITIVE;
+#else
+  ARGS(cstring, key, cstring, value);
+  // TODO(florian): setenv may not be reentrant.
+  //   We should have a lock around `getenv` and `setenv`.
+  if (value) {
+    OS::setenv(key, value);
+  } else {
+    OS::unsetenv(key);
+  }
+  return process->program()->null_object();
 #endif
 }
 
