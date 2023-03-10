@@ -800,11 +800,21 @@ void OS::heap_summary_report(int max_pages, const char* marker) {}
 
 #endif // def TOIT_CMPCTMALLOC
 
-const char* OS::getenv(const char* variable) {
+char* OS::getenv(const char* variable) {
   // Unimplemented on purpose.
   // We currently prefer not to expose environment variables on embedded devices.
   // There is no technical reason for it, so if circumstances change, one can
   // just add a call to `::getenv`.
+  UNIMPLEMENTED();
+}
+
+bool OS::setenv(const char* variable, const char* value) {
+  // Unimplemented on purpose.
+  UNIMPLEMENTED();
+}
+
+bool OS::unsetenv(const char* variable) {
+  // Unimplemented on purpose.
   UNIMPLEMENTED();
 }
 
