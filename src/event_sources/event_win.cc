@@ -99,6 +99,8 @@ class WindowsEventThread: public Thread {
             event_source_->on_event(locker, resources_[index], handles_[index]);
           else
             recalculate_handles();
+        } else if (GetLastError() == ERROR_INVALID_HANDLE) {
+          recalculate_handles();  // This happens on Wine, but not on real Windows.
         } else {
           FATAL("wait failed. error=%lu", GetLastError());
         }
