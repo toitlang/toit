@@ -21,6 +21,5 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
     tests/lock_file/basic_test
     tests/lock_file/empty_test
     tests/lock_file/multi_test
-    tests/lock_file/sdk_version_test
   )
 endif()
