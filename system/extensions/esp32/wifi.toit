@@ -158,7 +158,10 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
       bucket_.remove WIFI_CONFIG_STORE_KEY
 
   on_module_closed module/WifiModule -> none:
-    resources_do: it.notify_ NetworkService.NOTIFY_CLOSED
+    critical_do:
+      resources_do: | resource/NetworkResource |
+        if not resource.is_closed:
+          resource.notify_ NetworkService.NOTIFY_CLOSED --close
 
 class WifiModule implements NetworkModule:
   static WIFI_CONNECTED    ::= 1 << 0
