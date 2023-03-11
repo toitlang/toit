@@ -449,17 +449,10 @@ static Object* fork_helper(
 
   int pos = 0;
   for (int i = 0; i < arguments->length(); i++) {
-    const wchar_t* format;
+    const wchar_t* format = (i != arguments->length() - 1) ? L"%ls " : L"%ls";
     Blob argument;
     if (!arguments->at(i)->byte_content(process->program(), &argument, STRINGS_ONLY)) {
       WRONG_TYPE;
-    }
-    // TODO: Escape quotes and backslashes in arguments.  See
-    // https://stackoverflow.com/questions/31838469/how-do-i-convert-argv-to-lpcommandline-parameter-of-createprocess
-    if (memchr(argument.address(), ' ', argument.length()) != NULL) {
-      format = (i != arguments->length() - 1) ? L"\"%ls\" " : L"\"%ls\"";
-    } else {
-      format = (i != arguments->length() - 1) ? L"%ls " : L"%ls";
     }
     WideCharAllocationManager allocation(process);
     auto utf_16_argument = allocation.to_wcs(&argument);

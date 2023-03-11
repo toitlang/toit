@@ -38,7 +38,7 @@ const int kErrorState = 1 << 2;
 
 ResourcePool<i2s_port_t, kInvalidPort> i2s_ports(
     I2S_NUM_0
-#if !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S2)
+#if SOC_I2S_NUM > 1
     , I2S_NUM_1
 #endif
 );
@@ -72,10 +72,10 @@ class I2sResourceGroup : public ResourceGroup {
 class I2sResource: public EventQueueResource {
  public:
   TAG(I2sResource);
-  I2sResource(I2sResourceGroup* group, i2s_port_t port, int alignment, QueueHandle_t queue)
+  I2sResource(I2sResourceGroup* group, i2s_port_t port, int max_read_buffer_size, QueueHandle_t queue)
     : EventQueueResource(group, queue)
     , port_(port)
-    , alignment_(alignment) {}
+    , max_read_buffer_size_(max_read_buffer_size) {}
 
   ~I2sResource() override {
     SystemEventSource::instance()->run([&]() -> void {
@@ -85,13 +85,13 @@ class I2sResource: public EventQueueResource {
   }
 
   i2s_port_t port() const { return port_; }
-  int alignment() const { return alignment_; }
+  int max_read_buffer_size() const { return max_read_buffer_size_; }
 
   bool receive_event(word* data) override;
 
  private:
   i2s_port_t port_;
-  int alignment_;
+  int max_read_buffer_size_;
 };
 
 bool I2sResource::receive_event(word* data) {
@@ -125,7 +125,7 @@ PRIMITIVE(create) {
        uint32, sample_rate, int, bits_per_sample, int, buffer_size,
        bool, is_master, int, mclk_multiplier, bool, use_apll);
 
-  int fixed_mclk = 0;
+  uint32 fixed_mclk = 0;
   if (mclk_pin != -1) {
     if (mclk_multiplier != 128 && mclk_multiplier != 256 && mclk_multiplier != 384) INVALID_ARGUMENT;
     fixed_mclk = mclk_multiplier * sample_rate;
@@ -164,13 +164,11 @@ PRIMITIVE(create) {
     .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
     .communication_format = I2S_COMM_FORMAT_STAND_I2S,
     .intr_alloc_flags = 0, // default interrupt priority
-    // TODO(anders): Buffer count should be computed as a rate (buffer_size and sample rate).
     .dma_buf_count = 4,
-    // TODO(anders): Divide buf_len (and grow buf-count) if buffer_size is > 1024.
-    .dma_buf_len = buffer_size / (bits_per_sample / 8),
+    .dma_buf_len = buffer_size / 4,
     .use_apll = use_apll,
     .tx_desc_auto_clear = false,
-    .fixed_mclk = fixed_mclk,
+    .fixed_mclk = static_cast<int>(fixed_mclk),
     .mclk_multiple = I2S_MCLK_MULTIPLE_DEFAULT,
     .bits_per_chan = I2S_BITS_PER_CHAN_DEFAULT,
 #if SOC_I2S_SUPPORTS_TDM
@@ -243,21 +241,19 @@ PRIMITIVE(close) {
 PRIMITIVE(write) {
   ARGS(I2sResource, i2s, Blob, buffer);
 
-  if (buffer.length() % i2s->alignment() != 0) INVALID_ARGUMENT;
-
   size_t written = 0;
   esp_err_t err = i2s_write(i2s->port(), buffer.address(), buffer.length(), &written, 0);
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
 
-  return Smi::from(written);
+  return Smi::from(static_cast<word>(written));
 }
 
 PRIMITIVE(read) {
   ARGS(I2sResource, i2s);
 
-  ByteArray* data = process->allocate_byte_array(i2s->alignment(), /*force_external*/ true);
+  ByteArray* data = process->allocate_byte_array(i2s->max_read_buffer_size(), /*force_external*/ true);
   if (data == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes rx(data);
@@ -267,14 +263,12 @@ PRIMITIVE(read) {
     return Primitive::os_error(err, process);
   }
 
-  data->resize_external(process, read);
+  data->resize_external(process, static_cast<word>(read));
   return data;
 }
 
 PRIMITIVE(read_to_buffer) {
   ARGS(I2sResource, i2s, MutableBlob, buffer);
-
-  if (buffer.length() % i2s->alignment() != 0) INVALID_ARGUMENT;
 
   size_t read = 0;
   esp_err_t err = i2s_read(i2s->port(), static_cast<void*>(buffer.address()), buffer.length(), &read, 0);
@@ -282,7 +276,7 @@ PRIMITIVE(read_to_buffer) {
     return Primitive::os_error(err, process);
   }
 
-  return Smi::from(read);
+  return Smi::from(static_cast<word>(read));
 }
 
 } // namespace toit

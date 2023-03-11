@@ -352,10 +352,10 @@ PRIMITIVE(set_baud_rate) {
 }
 
 // Writes the data to the UART.
-// Does not support break or wait
+// Does not support break
 PRIMITIVE(write) {
-  ARGS(UartResource, uart_resource, Blob, data, int, from, int, to, int, break_length, bool, wait);
-  if (break_length > 0 || wait) INVALID_ARGUMENT;
+  ARGS(UartResource, uart_resource, Blob, data, int, from, int, to, int, break_length);
+  if (break_length > 0) INVALID_ARGUMENT;
 
   const uint8* tx = data.address();
   if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;

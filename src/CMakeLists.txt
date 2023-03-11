@@ -55,6 +55,7 @@ file(GLOB toit_vm_runtime_SRC
 file(GLOB toit_resources_SRC
   "resources/*.h"
   "resources/*.cc"
+  "resources/*.c"
   )
 
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")

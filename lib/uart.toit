@@ -42,7 +42,6 @@ class Port implements reader.Reader:
 
   uart_ := ?
   state_/ResourceState_
-  should_ensure_write_state_/bool
 
   /** Number of encountered errors. */
   errors := 0
@@ -108,7 +107,6 @@ class Port implements reader.Reader:
       parity
       tx_flags
       mode
-    should_ensure_write_state_ = false
     state_ = ResourceState_ resource_group_ uart_
 
   /**
@@ -131,7 +129,6 @@ class Port implements reader.Reader:
        --stop_bits/StopBits=STOP_BITS_1
        --parity/int=PARITY_DISABLED:
      group := resource_group_
-     should_ensure_write_state_ = true
      uart_ = uart_create_path_ group device baud_rate data_bits stop_bits.value_ parity
      state_ = ResourceState_ group uart_
 
@@ -196,19 +193,13 @@ class Port implements reader.Reader:
   Returns the number of bytes written.
   */
   write data from=0 to=data.size --break_length=0 --wait=false -> int:
-    while true:
-      if should_ensure_write_state_: state_.wait_for_state WRITE_STATE_ | ERROR_STATE_
-      if not uart_: throw "CLOSED"
-      written := uart_write_ uart_ data from to break_length wait
-      if should_ensure_write_state_ and written == 0 and from != to:
-        // We shouldn't have tried to write.
-        state_.clear_state WRITE_STATE_
-        continue
+    size := to - from
+    while from < to:
+      from += write_no_wait_ data from to --break_length=break_length
 
-      if written >= 0: return written
-      assert: wait
-      flush
-      return -written
+    if wait: flush
+
+    return size
 
   /**
   Reads data from the port.
@@ -236,9 +227,22 @@ class Port implements reader.Reader:
   */
   flush -> none:
     while true:
+      if not uart_: throw "CLOSED"
       flushed := uart_wait_tx_ uart_
       if flushed: return
       sleep --ms=1
+
+  write_no_wait_ data from=0 to=data.size --break_length=0:
+    while true:
+      s := state_.wait_for_state WRITE_STATE_ | ERROR_STATE_
+      if not uart_: throw "CLOSED"
+      written := uart_write_ uart_ data from to break_length
+      if written < to - from:
+        // Not everything was written, clear write flag and try again.
+        state_.clear_state WRITE_STATE_
+        if written == 0: continue
+
+      return written
 
 /**
 Extends the functionality of the UART Port on platforms that support configurable RS232 devices. It allows setting
@@ -324,11 +328,8 @@ uart_close_ group uart:
 /**
 Writes the $data to the uart.
 Returns the amount of bytes that were written.
-
-If $wait is true, but the baud rate was too low to wait, returns a negative number, where
-  the absolute value is the amount of bytes that were written.
 */
-uart_write_ uart data from to break_length wait:
+uart_write_ uart data from to break_length:
   #primitive.uart.write
 
 uart_wait_tx_ uart:

@@ -356,10 +356,8 @@ PRIMITIVE(set_baud_rate) {
 }
 
 // Writes the data to the UART.
-// If wait is true, waits, unless the baud-rate is too low. If the function did
-// not wait, returns the negative value of the written bytes.
 PRIMITIVE(write) {
-  ARGS(IntResource, resource, Blob, data, int, from, int, to, int, break_length, bool, wait);
+  ARGS(IntResource, resource, Blob, data, int, from, int, to, int, break_length);
   int fd = resource->id();
 
   const uint8* tx = data.address();
@@ -375,16 +373,13 @@ PRIMITIVE(write) {
   }
 
   int baud_rate = 0;
-  if (break_length > 0 || wait) {
+  if (break_length > 0) {
     // If we have a break, or need to wait we need the current baud_rate.
     struct termios tty;
     if (tcgetattr(fd, &tty) != 0) return Primitive::os_error(errno, process);
     // We assume that the input and output speed are the same and only query the output speed.
     speed_t speed = cfgetospeed(&tty);
     baud_rate = baud_rate_to_int(speed);
-  }
-
-  if (break_length > 0) {
     // Toit (because of ESP32) defines the break-length as equal to the time it takes to write 1 bit.
     // Linux uses 'ms' instead. We need to get the baud-rate so we can convert from bit-duration to ms.
     int ms = break_length * 1000 / baud_rate;
@@ -392,39 +387,34 @@ PRIMITIVE(write) {
     if (tcsendbreak(fd, ms) != 0) return Primitive::os_error(errno, process);
   }
 
-  if (wait) {
-    if (baud_rate < 100000) {
-      return Smi::from(-written);
-    }
-    // TODO(florian): do we ever want to do a blocking wait on Linux?
-    // Wait until the data has been drained.
-    if (tcdrain(fd) != 0) return Primitive::os_error(errno, process);
-  }
-
   return Smi::from(written);
 }
 
 PRIMITIVE(wait_tx) {
   ARGS(IntResource, resource);
-  int fd = resource->id();
+  int fd = static_cast<int>(resource->id());
 
-  // If we have a break, or need to wait we need the current baud_rate.
-  struct termios tty;
+  // If we need to wait we need the current baud_rate.
+  struct termios tty = {};
   if (tcgetattr(fd, &tty) < 0) return Primitive::os_error(errno, process);
   // We assume that the input and output speed are the same and only query the output speed.
   speed_t speed = cfgetospeed(&tty);
   int baud_rate = baud_rate_to_int(speed);
-  if (baud_rate > 100000) {
-    // TODO(florian): do we ever want to do a blocking wait on Linux?
-
-    // Just wait for the data to be flushed.
-    if (!tcdrain(fd)) return Primitive::os_error(errno, process);
-    return BOOL(true);
-  }
 
   int queued;
   if (ioctl(fd, TIOCOUTQ, &queued) != 0) return Primitive::os_error(errno, process);
-  return BOOL(queued == 0);
+  if (queued == 0) return BOOL(true);
+
+  // Upper bound on time to drain queue (12 is a conservative estimate
+  // on the number of transferred bits per byte). If it takes longer
+  // than 1 ms, just return back to toit code.
+  if (queued * 12 * 1000 > baud_rate) return BOOL(false);
+
+  // TODO(florian): do we ever want to do a blocking wait on Linux?
+
+  // Just wait for the data to be flushed.
+  if (tcdrain(fd) != 0) return Primitive::os_error(errno, process);
+  return BOOL(true);
 }
 
 PRIMITIVE(read) {
