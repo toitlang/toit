@@ -256,18 +256,20 @@ void OS::out_of_memory(const char* reason) {
 }
 
 char* OS::getenv(const char* variable) {
-  // TODO(florian): getenv is not reentrant.
-  //   We should have a lock around `getenv` and `setenv`.
+  // Getenv/setenv are not guaranteed to be reentrant.
+  Locker scope(global_mutex_);
   char* result = ::getenv(variable);
   if (result == null) return null;
   return strdup(result);
 }
 
 bool OS::setenv(const char* variable, const char* value) {
+  Locker scope(global_mutex_);
   return ::setenv(variable, value, 1) == 0;
 }
 
 bool OS::unsetenv(const char* variable) {
+  Locker scope(global_mutex_);
   return ::unsetenv(variable) == 0;
 }
 

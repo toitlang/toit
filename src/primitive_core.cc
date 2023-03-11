@@ -2244,7 +2244,7 @@ PRIMITIVE(dump_heap) {
 #else
   ARGS(int, padding);
   if (padding < 0 || padding > 0x10000) OUT_OF_RANGE;
-#if defined(TOIT_LINUX)
+#ifdef TOIT_LINUX
   if (heap_caps_iterate_tagged_memory_areas == null) {
     // This always happens on the server unless we are running with
     // cmpctmalloc (using LD_PRELOAD), which supports iterating the heap in
@@ -2290,7 +2290,7 @@ PRIMITIVE(serial_print_heap_report) {
 }
 
 PRIMITIVE(get_env) {
-#if defined (TOIT_FREERTOS)
+#ifdef TOIT_FREERTOS
   // FreeRTOS supports environment variables, but we prefer not to expose them.
   UNIMPLEMENTED_PRIMITIVE;
 #else
@@ -2304,13 +2304,11 @@ PRIMITIVE(get_env) {
 }
 
 PRIMITIVE(set_env) {
-#if defined (TOIT_FREERTOS)
+#ifdef TOIT_FREERTOS
   // FreeRTOS supports environment variables, but we prefer not to expose them.
   UNIMPLEMENTED_PRIMITIVE;
 #else
   ARGS(cstring, key, cstring, value);
-  // TODO(florian): setenv may not be reentrant.
-  //   We should have a lock around `getenv` and `setenv`.
   if (value) {
     OS::setenv(key, value);
   } else {
