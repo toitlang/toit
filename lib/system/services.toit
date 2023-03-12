@@ -515,6 +515,8 @@ abstract class ServiceResource implements rpc.RpcSerializable:
     handle := _handle_
     if not handle: throw "ALREADY_CLOSED"
     if handle & 1 == 0: throw "Resource not notifiable"
+    // Closing this resource clears the provider, so grab hold of
+    // the provider before potentially closing the resource.
     provider := _provider_
     if close: catch --trace: this.close
     provider._manager_.notify _client_ handle notification
