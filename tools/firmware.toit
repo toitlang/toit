@@ -187,8 +187,8 @@ container_cmd -> cli.Command:
             cli.OptionString "assets"
                 --short_help="Add assets to the container."
                 --type="file",
-            cli.OptionEnum "run" ["no", "boot"]
-                --short_help="Automatically run the container on trigger."
+            cli.OptionEnum "trigger" ["none", "boot"]
+                --short_help="Trigger the container to run automatically."
                 --default="boot",
             cli.Flag "critical"
                 --short_help="Reboot system if the container terminates.",
@@ -296,7 +296,7 @@ container_install parsed/cli.Parsed -> none:
     else: envelope.entries.remove "+$name"
 
     flag_bits := 0
-    if parsed["run"] == "boot": flag_bits |= IMAGE_FLAG_RUN_BOOT
+    if parsed["trigger"] == "boot": flag_bits |= IMAGE_FLAG_RUN_BOOT
     if parsed["critical"]: flag_bits |= IMAGE_FLAG_RUN_CRITICAL
     properties_update envelope: | properties/Map? |
       properties = properties or {:}
@@ -349,7 +349,7 @@ container_list parsed/cli.Parsed -> none:
     if entry.flags != 0:
       flag_names := []
       if (entry.flags & IMAGE_FLAG_RUN_BOOT) != 0:
-        flag_names.add "run=boot"
+        flag_names.add "trigger=boot"
       if (entry.flags & IMAGE_FLAG_RUN_CRITICAL) != 0:
         flag_names.add "critical"
       map["flags"] = flag_names
