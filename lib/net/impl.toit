@@ -51,7 +51,7 @@ class SystemInterface_ extends NetworkResourceProxy implements net.Interface:
       socket.close
 
   on_notified_ notification/any -> none:
-    if notification == NetworkService.NOTIFY_CLOSED: close
+    if notification == NetworkService.NOTIFY_CLOSED: close_handle_
 
   resolve host/string -> List /* of net.IpAddress */:
     if is_closed: throw "Network closed"

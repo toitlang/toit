@@ -393,9 +393,21 @@ class ServiceProvider:
     return _find_resource_ client handle
 
   resources_do [block] -> none:
-    _resources_.do: | client/int resources/Map |
-      resources.do: | handle/int resource/ServiceResource |
-        block.call resource client
+    // Collect the resources into an array, so we can
+    // deal nicely with modifications to the resource
+    // set that occur while we iterate over it.
+    size := 0
+    _resources_.do: | _ map/Map | size += map.size
+    resources := Array_ size
+    index := 0
+    _resources_.do: | _ map/Map |
+      map.do: | _ resource |
+        resources[index++] = resource
+    // Call the block on each of the resources. The
+    // resource passed to the block can have been
+    // closed already, so it is up to the callee to
+    // handle that correctly.
+    resources.do block
 
   _open_ client/int -> List:
     _clients_.add client
@@ -495,12 +507,19 @@ abstract class ServiceResource implements rpc.RpcSerializable:
   The $notify_ method is used for sending notifications to remote clients'
     resource proxies. The notifications are delivered asynchronously and
     the method returns immediately.
+
+  If $close is true, the resource is automatically closed before
+    sending the notification.
   */
-  notify_ notification/any -> none:
+  notify_ notification/any --close/bool=false -> none:
     handle := _handle_
     if not handle: throw "ALREADY_CLOSED"
     if handle & 1 == 0: throw "Resource not notifiable"
-    _provider_._manager_.notify _client_ handle notification
+    // Closing this resource clears the provider, so grab hold of
+    // the provider before potentially closing the resource.
+    provider := _provider_
+    if close: catch --trace: this.close
+    provider._manager_.notify _client_ handle notification
 
   close -> none:
     handle := _handle_
@@ -535,14 +554,18 @@ abstract class ServiceResourceProxy:
   on_notified_ notification/any -> none:
     // Override in subclasses.
 
-  close:
+  close -> none:
+    handle/int? := close_handle_
+    if handle: catch --trace: client_._close_resource_ handle
+
+  close_handle_ -> int?:
     handle := _handle_
-    if not handle: return
+    if not handle: return null
     _handle_ = null
     remove_finalizer this
     if handle & 1 == 1:
       ServiceResourceProxyManager_.instance.unregister client_.id handle
-    catch --trace: client_._close_resource_ handle
+    return handle
 
 class Service_:
   selector/ServiceSelector
@@ -663,7 +686,7 @@ class ServiceManager_ implements SystemMessageHandler_:
     pid/int? := clients_.get client
     if not pid: return  // Already closed.
     process_send_ pid SYSTEM_RPC_NOTIFY_RESOURCE_ [client, handle, notification]
-    if not is_processing_messages_: yield  // Yield to allow intra-process messages to be processed.
+    if Task_.current.critical_count_ == 0: yield
 
   close client/int -> none:
     pid/int? := clients_.get client
