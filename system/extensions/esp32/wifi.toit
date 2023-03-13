@@ -47,7 +47,7 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
   state_/NetworkState ::= NetworkState
 
   constructor:
-    super "system/wifi/esp32" --major=0 --minor=1
+    super "system/wifi/esp32" --major=0 --minor=1 --tags=["wifi"]
     provides WifiService.SELECTOR --handler=this
 
   handle pid/int client/int index/int arguments/any -> any:
