@@ -161,6 +161,7 @@ class ServiceClient:
   _tags_/List? := null
 
   static DEFAULT_OPEN_TIMEOUT /Duration ::= Duration --ms=100
+  static CLOSE_TIMEOUT_US_ /int ::= 1 * 1000 * 1000  // 1 second.
 
   // TODO(kasper): Deprecate this.
   _default_timeout_/Duration? ::= ?
@@ -272,7 +273,9 @@ class ServiceClient:
     _id_ = _name_ = _pid_ = null
     remove_finalizer this
     ServiceResourceProxyManager_.unregister_all id
-    critical_do: rpc.invoke pid RPC_SERVICES_CLOSE_ id
+    critical_do --no-respect_deadline:
+      with_timeout --us=CLOSE_TIMEOUT_US_:
+        rpc.invoke pid RPC_SERVICES_CLOSE_ id
 
   stringify -> string:
     return "service:$_name_@$(_major_).$(_minor_).$(_patch_)"
@@ -280,16 +283,24 @@ class ServiceClient:
   invoke_ index/int arguments/any -> any:
     id := _id_
     if not id: throw "Client closed"
-    return rpc.invoke _pid_ RPC_SERVICES_INVOKE_ [id, index, arguments]
+    pid := _pid_
+    if not ServiceManager_.uninitialized and pid == Process.current.id:
+      manager := ServiceManager_.instance
+      handler/ServiceHandler ::= manager.handlers_by_client_[id]
+      if arguments is rpc.RpcSerializable: arguments = arguments.serialize_for_rpc
+      result := handler.handle pid id index arguments
+      if result is rpc.RpcSerializable: result = result.serialize_for_rpc
+      return result
+    else:
+      return rpc.invoke _pid_ RPC_SERVICES_INVOKE_ [id, index, arguments]
 
   _close_resource_ handle/int -> none:
     // If this client is closed, we've already closed all its resources.
     id := _id_
     if not id: return
-    // TODO(kasper): Should we avoid using the task deadline here
-    // and use our own? If we're timing out and trying to call
-    // close after timing out, it should still work.
-    critical_do: rpc.invoke _pid_ RPC_SERVICES_CLOSE_RESOURCE_ [id, handle]
+    critical_do --no-respect_deadline:
+      with_timeout --us=CLOSE_TIMEOUT_US_:
+        rpc.invoke _pid_ RPC_SERVICES_CLOSE_RESOURCE_ [id, handle]
 
 /**
 A handler for requests from clients.
