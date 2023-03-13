@@ -18,6 +18,13 @@ interface NetworkService:
       --minor=3
 
   /**
+  List of common tags that providers of $NetworkService may use
+    to make their services easier to distinguish.
+  */
+  static TAG_WIFI     /string ::= "wifi"
+  static TAG_CELLULAR /string ::= "cellular"
+
+  /**
   Proxy mask bits that indicate which operations must be proxied
     through the service. See $connect.
   */
