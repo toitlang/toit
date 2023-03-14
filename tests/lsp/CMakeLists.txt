@@ -56,6 +56,7 @@ foreach(file ${ALL_TESTS})
       NAME ${file}
       COMMAND $<TARGET_FILE:toit.run> ${CMAKE_CURRENT_SOURCE_DIR}/completion_test_runner.toit ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
+      CONFIGURATIONS slow
       )
     set_tests_properties(${file} PROPERTIES TIMEOUT ${LSP_DOUBLE_TIMEOUT})
   elseif ("${file}" IN_LIST TOIT_GOTO_DEFINITION_TESTS)
@@ -63,6 +64,7 @@ foreach(file ${ALL_TESTS})
       NAME ${file}
       COMMAND $<TARGET_FILE:toit.run> ${CMAKE_CURRENT_SOURCE_DIR}/goto_definition_test_runner.toit ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
+      CONFIGURATIONS slow
       )
     set_tests_properties(${file} PROPERTIES TIMEOUT ${LSP_DOUBLE_TIMEOUT})
   elseif ("${file}" IN_LIST TOIT_COMPILER_TESTS)
@@ -70,14 +72,15 @@ foreach(file ${ALL_TESTS})
       NAME ${file}
       COMMAND $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+      CONFIGURATIONS slow
       )
     set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
   elseif ("${file}" IN_LIST TOIT_SLOW_COMPILER_TESTS)
     add_test(
       NAME ${file}
       COMMAND $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
-      CONFIGURATIONS slow
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+      CONFIGURATIONS slow
       )
     set_tests_properties(${file} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
   else()

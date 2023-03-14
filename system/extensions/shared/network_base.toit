@@ -18,9 +18,9 @@ import system.api.network show NetworkService
 
 abstract class NetworkServiceProviderBase extends ServiceProvider
     implements NetworkService ServiceHandler:
-  constructor name/string --major/int --minor/int:
+  constructor name/string --major/int --minor/int --tags/List?=null:
     super name --major=major --minor=minor
-    provides NetworkService.SELECTOR --handler=this
+    provides NetworkService.SELECTOR --handler=this --tags=tags
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == NetworkService.CONNECT_INDEX:

@@ -46,6 +46,7 @@ function(add_tests flags)
             "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/run.cmake"
         WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
+        CONFIGURATIONS slow
       )
       set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
 
