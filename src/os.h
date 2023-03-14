@@ -241,7 +241,11 @@ class OS {
   static word get_heap_tag();
   static void heap_summary_report(int max_pages, const char* marker);
 
-  static const char* getenv(const char* variable);
+  // Returns a malloced string.
+  static char* getenv(const char* variable);
+  // Returns true for OK.
+  static bool setenv(const char* variable, const char* value);
+  static bool unsetenv(const char* variable);
 
 #ifdef TOIT_FREERTOS
   static bool use_spiram_for_heap() { return use_spiram_for_heap_; }

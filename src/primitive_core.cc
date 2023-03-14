@@ -2244,7 +2244,7 @@ PRIMITIVE(dump_heap) {
 #else
   ARGS(int, padding);
   if (padding < 0 || padding > 0x10000) OUT_OF_RANGE;
-#if defined(TOIT_LINUX)
+#ifdef TOIT_LINUX
   if (heap_caps_iterate_tagged_memory_areas == null) {
     // This always happens on the server unless we are running with
     // cmpctmalloc (using LD_PRELOAD), which supports iterating the heap in
@@ -2290,16 +2290,31 @@ PRIMITIVE(serial_print_heap_report) {
 }
 
 PRIMITIVE(get_env) {
-#if defined (TOIT_FREERTOS)
+#ifdef TOIT_FREERTOS
   // FreeRTOS supports environment variables, but we prefer not to expose them.
   UNIMPLEMENTED_PRIMITIVE;
 #else
   ARGS(cstring, key);
-  // TODO(florian): getenv is not reentrant.
-  //   We should have a lock around `getenv` and `setenv`.
-  const char* result = OS::getenv(key);
+  char* result = OS::getenv(key);
   if (result == null) return process->program()->null_object();
-  return process->allocate_string_or_error(result, strlen(result));
+  Object* string_or_error = process->allocate_string_or_error(result, strlen(result));
+  free(result);
+  return string_or_error;
+#endif
+}
+
+PRIMITIVE(set_env) {
+#ifdef TOIT_FREERTOS
+  // FreeRTOS supports environment variables, but we prefer not to expose them.
+  UNIMPLEMENTED_PRIMITIVE;
+#else
+  ARGS(cstring, key, cstring, value);
+  if (value) {
+    OS::setenv(key, value);
+  } else {
+    OS::unsetenv(key);
+  }
+  return process->program()->null_object();
 #endif
 }
 
