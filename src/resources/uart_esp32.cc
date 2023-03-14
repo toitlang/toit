@@ -203,7 +203,7 @@ public:
   }
 
   void set_read_fifo_timeout(uint8 timeout) { uart_toit_hal_set_rx_timeout(hal_, timeout); }
-  void clear_rx_fifo() { uart_toit_hal_rxfifo_rst(hal_); }
+  void UART_ISR_INLINE clear_rx_fifo() { uart_toit_hal_rxfifo_rst(hal_); }
   void clear_tx_fifo() { uart_toit_hal_txfifo_rst(hal_); }
 
   void clear_interrupt_index(uart_toit_interrupt_index_t index);
@@ -445,7 +445,7 @@ void UartResource::disable_interrupt_index(uart_toit_interrupt_index_t index) {
   disable_interrupt_mask_(interrupt_mask(index));
 }
 
-void UartResource::clear_interrupt_index(uart_toit_interrupt_index_t index) {
+void UART_ISR_INLINE UartResource::clear_interrupt_index(uart_toit_interrupt_index_t index) {
   uart_toit_hal_clr_intsts_mask(hal_, interrupt_mask(index));
 }
 
