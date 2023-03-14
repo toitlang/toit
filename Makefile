@@ -282,6 +282,10 @@ install: install-sdk
 test:
 	(cd build/$(HOST) && ninja check_slow check_fuzzer_lib)
 
+.PHONY: test-fast
+test-fast:
+	(cd build/$(HOST) && ninja check)
+
 .PHONY: update-gold
 update-gold:
 	$(MAKE) rebuild-cmake

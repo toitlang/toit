@@ -82,6 +82,7 @@ foreach(file ${S2I_TESTS})
         "$<TARGET_FILE:toit.run>"
         "${TOIT_SDK_SOURCE_DIR}/tools/snapshot_to_image.toit"
     WORKING_DIRECTORY "${TOIT_SDK_SOURCE_DIR}"
+    CONFIGURATIONS slow
     )
   set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
 

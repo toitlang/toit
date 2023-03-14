@@ -26,6 +26,7 @@ foreach(file ${TOIT_OPTIMIZATION_TESTS})
     NAME ${file}
     COMMAND $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/tools/lsp/server/server.toit
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    CONFIGURATIONS slow
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT 40)
 

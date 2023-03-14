@@ -75,10 +75,17 @@ foreach(file ${ALL_TESTS})
     # They are only used for tests that deal with arguments.
     set(TEST_ARGS "foo" "bar" "gee")
   endif()
+
+  set(TEST_CONFIGURATIONS)
+  if ("${file}" IN_LIST TOIT_SLOW_TESTS)
+    set(TEST_CONFIGURATIONS "slow")
+  endif()
+
   add_test(
     NAME ${file}
     COMMAND $<TARGET_FILE:toit.run> ${TOIT_ARGS} ${file} ${TEST_ARGS}
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
+    CONFIGURATIONS ${TEST_CONFIGURATIONS}
     )
 
   set_tests_properties(${file} PROPERTIES ENVIRONMENT "TOIT_TEST_ENV_ENTRY=TOIT_TEST_ENV_VALUE")

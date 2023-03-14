@@ -26,6 +26,7 @@ foreach(dir ${PACKAGE_LOCK_TESTS})
       NAME ${test1}
       COMMAND $<TARGET_FILE:toit.run> ${test1}
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
+      CONFIGURATIONS slow
       )
     set_tests_properties(${test1} PROPERTIES TIMEOUT 40)
 
@@ -40,6 +41,7 @@ foreach(dir ${PACKAGE_LOCK_TESTS})
       NAME ${test2}
       COMMAND $<TARGET_FILE:toit.run> ${CMAKE_CURRENT_SOURCE_DIR}/absolute_pkg.toit $<TARGET_FILE:toit.run> ${test_prefix}
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
+      CONFIGURATIONS slow
       )
     set_tests_properties(${test2} PROPERTIES TIMEOUT 40)
 
