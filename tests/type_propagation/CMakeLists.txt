@@ -14,7 +14,12 @@
 # directory of this repository.
 
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/tmp")
-file(GLOB TOIT_TESTS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*_test.toit")
+
+IF (DEFINED ENV{NO_SLOW_TESTS})
+  set(TOIT_TESTS )
+ELSE()
+  file(GLOB TOIT_TESTS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*_test.toit")
+ENDIF()
 
 add_custom_target(update_type_gold)
 

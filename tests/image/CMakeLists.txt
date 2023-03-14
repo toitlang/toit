@@ -13,8 +13,15 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-file(GLOB S2I_TESTS RELATIVE "${TOIT_SDK_SOURCE_DIR}" "*_test.toit")
+file(GLOB S2I_FAST_TESTS RELATIVE "${TOIT_SDK_SOURCE_DIR}" "*_test.toit")
+file(GLOB S2I_SLOW_TESTS RELATIVE "${TOIT_SDK_SOURCE_DIR}" "*_test_slow.toit")
 file(GLOB INPUT RELATIVE "${TOIT_SDK_SOURCE_DIR}" "*_input.toit")
+
+IF (DEFINED ENV{NO_SLOW_TESTS})
+  set(S2I_TESTS ${S2I_FAST_TESTS})
+ELSE()
+  set(S2I_TESTS ${S2I_FAST_TESTS} ${S2I_SLOW_TESTS})
+ENDIF()
 
 set(S2I_TEST_DIR ${CMAKE_BINARY_DIR}/snapshot_to_image_test)
 

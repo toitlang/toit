@@ -19,7 +19,13 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
   return()
 endif()
 
-file(GLOB VALGRIND_TESTS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "*_test.toit")
+# To use this, at top level:
+# NO_SLOW_TESTS=1 make rebuild-cmake
+IF (DEFINED ENV{NO_SLOW_TESTS})
+  set(VALGRIND_TESTS )
+ELSE()
+  file(GLOB VALGRIND_TESTS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "*_test.toit")
+ENDIF()
 
 set(VALGRIND_TEST_DIR ${CMAKE_BINARY_DIR}/valgrind_test)
 
