@@ -388,7 +388,15 @@ PRIMITIVE(get_option) {
       if (getsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &value, &size) == -1) {
         return Primitive::os_error(errno, process);
       }
+      return BOOL(value != 0);
+    }
 
+    case TCP_NO_DELAY: {
+      int value = 0;
+      socklen_t size = sizeof(value);
+      if (getsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &value, &size) == -1) {
+        return Primitive::os_error(errno, process);
+      }
       return BOOL(value != 0);
     }
 
@@ -398,12 +406,11 @@ PRIMITIVE(get_option) {
       if (getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &value, &size) == -1) {
         return Primitive::os_error(errno, process);
       }
-
       return Smi::from(value);
     }
 
     default:
-      return process->program()->unimplemented();
+      UNIMPLEMENTED_PRIMITIVE;
   }
 }
 
@@ -426,8 +433,21 @@ PRIMITIVE(set_option) {
       break;
     }
 
+    case TCP_NO_DELAY: {
+      int value = 0;
+      if (raw == process->program()->true_object()) {
+        value = 1;
+      } else if (raw != process->program()->false_object()) {
+        WRONG_TYPE;
+      }
+      if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value)) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      break;
+    }
+
     default:
-      return process->program()->unimplemented();
+      UNIMPLEMENTED_PRIMITIVE;
   }
 
   return process->program()->null_object();

@@ -455,13 +455,10 @@ PRIMITIVE(get_option) {
         return get_address_or_error(capture.socket, capture.process, false);
 
       case UDP_BROADCAST:
-        if (capture.socket->upcb()->so_options & SOF_BROADCAST) {
-          return capture.process->program()->true_object();
-        }
-        return capture.process->program()->false_object();
+        return BOOL(capture.socket->upcb()->so_options & SOF_BROADCAST);
 
       default:
-        return capture.process->program()->unimplemented();
+        UNIMPLEMENTED_PRIMITIVE;
     }
   });
 }
@@ -481,11 +478,13 @@ PRIMITIVE(set_option) {
           capture.socket->upcb()->so_options |= SOF_BROADCAST;
         } else if (capture.raw == capture.process->program()->false_object()) {
           capture.socket->upcb()->so_options &= ~SOF_BROADCAST;
+        } else {
+          WRONG_TYPE;
         }
-        return capture.process->program()->wrong_object_type();
+        break;
 
       default:
-        return capture.process->program()->unimplemented();
+        UNIMPLEMENTED_PRIMITIVE;
     }
 
     return capture.process->program()->null_object();

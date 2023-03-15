@@ -301,12 +301,11 @@ PRIMITIVE(get_option) {
       if (getsockopt(fd, SOL_SOCKET, SO_BROADCAST, &value, &size) == -1) {
         return Primitive::os_error(errno, process);
       }
-
       return BOOL(value != 0);
     }
 
     default:
-      return process->program()->unimplemented();
+      UNIMPLEMENTED_PRIMITIVE;
   }
 }
 
@@ -330,7 +329,7 @@ PRIMITIVE(set_option) {
     }
 
     default:
-      return process->program()->unimplemented();
+      UNIMPLEMENTED_PRIMITIVE;
   }
 
   return process->program()->null_object();

@@ -549,16 +549,10 @@ PRIMITIVE(get_option) {
 
     switch (capture.option) {
       case TCP_KEEP_ALIVE:
-        if (capture.socket->tpcb()->so_options & SOF_KEEPALIVE) {
-          return process->program()->true_object();
-        }
-        return process->program()->false_object();
+        return BOOL(capture.socket->tpcb()->so_options & SOF_KEEPALIVE);
 
       case TCP_NO_DELAY:
-        if (tcp_nagle_disabled(capture.socket->tpcb())) {
-          return process->program()->true_object();
-        }
-        return process->program()->false_object();
+        return BOOL(tcp_nagle_disabled(capture.socket->tpcb()));
 
       case TCP_WINDOW_SIZE:
         return Smi::from(TCP_WND);
@@ -579,7 +573,7 @@ PRIMITIVE(get_option) {
         return get_address(capture.socket, process, true);
 
       default:
-        return process->program()->unimplemented();
+        UNIMPLEMENTED_PRIMITIVE;
     }
   });
 }
@@ -600,7 +594,7 @@ PRIMITIVE(set_option) {
         } else if (capture.raw == process->program()->false_object()) {
           capture.socket->tpcb()->so_options &= ~SOF_KEEPALIVE;
         } else {
-          return process->program()->wrong_object_type();
+          WRONG_TYPE;
         }
         break;
 
@@ -612,16 +606,16 @@ PRIMITIVE(set_option) {
         } else if (capture.raw == process->program()->false_object()) {
           tcp_nagle_enable(capture.socket->tpcb());
         } else {
-          return process->program()->wrong_object_type();
+          WRONG_TYPE;
         }
         break;
 
       case TCP_WINDOW_SIZE:
-        if (!is_smi(capture.raw)) return process->program()->wrong_object_type();
-        return process->program()->unimplemented();
+        if (!is_smi(capture.raw)) WRONG_TYPE;
+        UNIMPLEMENTED_PRIMITIVE;
 
       default:
-        return process->program()->unimplemented();
+        UNIMPLEMENTED_PRIMITIVE;
     }
 
     return process->program()->null_object();

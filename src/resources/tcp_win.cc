@@ -488,43 +488,73 @@ PRIMITIVE(get_option) {
     case TCP_KEEP_ALIVE: {
       int value = 0;
       int size = sizeof(value);
-      if (getsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<char *>(&value), &size) == -1)
+      if (getsockopt(socket, SOL_SOCKET, SO_KEEPALIVE,
+                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
         WINDOWS_ERROR;
+      }
+      return BOOL(value != 0);
+    }
 
+    case TCP_NO_DELAY: {
+      int value = 0;
+      int size = sizeof(value);
+      if (getsockopt(fd, IPPROTO_TCP, TCP_NODELAY,
+                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
+        return Primitive::os_error(errno, process);
+      }
       return BOOL(value != 0);
     }
 
     case TCP_WINDOW_SIZE: {
       int value = 0;
       int size = sizeof(value);
-      if (getsockopt(socket, SOL_SOCKET, SO_RCVBUF, reinterpret_cast<char *>(&value), &size) == -1)
+      if (getsockopt(socket, SOL_SOCKET, SO_RCVBUF,
+                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
         WINDOWS_ERROR;
-
+      }
       return Smi::from(value);
     }
 
     default:
-      return process->program()->unimplemented();
+      UNIMPLEMENTED_PRIMITIVE;
   }
 }
 
 PRIMITIVE(set_option) {
   ARGS(ByteArray, proxy, TcpSocketResource, tcp_resource, int, option, Object, raw);
-  USE(proxy);
+  SOCKET socket = reinterpret_cast<SocketResource*>(resource)->socket();
 
-  if (option == TCP_KEEP_ALIVE) {
-    int value = 0;
-    if (raw == process->program()->true_object()) {
-      value = 1;
-    } else if (raw != process->program()->false_object()) {
-      WRONG_TYPE;
+  switch (option) {
+    case TCP_KEEP_ALIVE: {
+      int value = 0;
+      if (raw == process->program()->true_object()) {
+        value = 1;
+      } else if (raw != process->program()->false_object()) {
+        WRONG_TYPE;
+      }
+      if (setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE,
+                     reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      break;
     }
-    if (setsockopt(tcp_resource->socket(), SOL_SOCKET, SO_KEEPALIVE,
-                   reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
-      WINDOWS_ERROR;
+
+    case TCP_NO_DELAY: {
+      int value = 0;
+      if (raw == process->program()->true_object()) {
+        value = 1;
+      } else if (raw != process->program()->false_object()) {
+        WRONG_TYPE;
+      }
+      if (setsockopt(socket, IPPROTO_TCP, TCP_NODELAY,
+                     reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      break;
     }
-  } else {
-    return process->program()->unimplemented();
+
+    default:
+      UNIMPLEMENTED_PRIMITIVE;
   }
 
   return process->program()->null_object();
