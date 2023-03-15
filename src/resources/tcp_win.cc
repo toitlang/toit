@@ -468,9 +468,9 @@ static Object* get_port(SOCKET socket, Process* process, bool peer) {
 }
 
 PRIMITIVE(get_option) {
-  ARGS(ByteArray, proxy, TcpSocketResource, tcp_resource, int, option);
+  ARGS(ByteArray, proxy, SocketResource, resource, int, option);
   USE(proxy);
-  SOCKET socket = tcp_resource->socket();
+  SOCKET socket = resource->socket();
 
   switch (option) {
     case TCP_ADDRESS:
@@ -521,9 +521,9 @@ PRIMITIVE(get_option) {
 }
 
 PRIMITIVE(set_option) {
-  ARGS(ByteArray, proxy, TcpSocketResource, tcp_resource, int, option, Object, raw);
+  ARGS(ByteArray, proxy, SocketResource, resource, int, option, Object, raw);
   USE(proxy);
-  SOCKET socket = tcp_resource->socket();
+  SOCKET socket = resource->socket();
 
   switch (option) {
     case TCP_KEEP_ALIVE: {
@@ -583,8 +583,8 @@ PRIMITIVE(close) {
 }
 
 PRIMITIVE(error_number) {
-  ARGS(TcpSocketResource, tcp_resource);
-  return Smi::from(tcp_resource->error_code());
+  ARGS(SocketResource, resource);
+  return Smi::from(resource->error_code());
 }
 
 PRIMITIVE(error) {
