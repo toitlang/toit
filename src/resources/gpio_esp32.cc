@@ -146,7 +146,7 @@ class GpioResourceGroup : public ResourceGroup {
     return state | GPIO_STATE_EDGE_TRIGGERED;
   }
 
-  static QueueHandle_t IRAM_ATTR queue;
+  static QueueHandle_t queue;
 
   static void IRAM_ATTR isr_handler(void* arg);
 };
@@ -186,7 +186,7 @@ void GpioResourceGroup::on_unregister_resource(Resource* r) {
   gpio_pins.put(pin);
 }
 
-QueueHandle_t IRAM_ATTR GpioResourceGroup::queue;
+QueueHandle_t GpioResourceGroup::queue;
 
 // A counter for interrupt-enabling requests.
 // We use this counter instead of a timestamp which is hard to get inside an interrupt
@@ -198,7 +198,7 @@ QueueHandle_t IRAM_ATTR GpioResourceGroup::queue;
 // might be users now that weren't subscribed when the event actually happened.
 // We pass the counter so that they can determine whether the event is actually
 // relevant to them.
-word IRAM_ATTR isr_counter = 0;
+static word isr_counter = 0;
 
 void IRAM_ATTR GpioResourceGroup::isr_handler(void* arg) {
   GpioEvent event {
