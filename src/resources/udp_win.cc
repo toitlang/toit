@@ -237,7 +237,7 @@ PRIMITIVE(bind) {
 PRIMITIVE(connect) {
   ARGS(ByteArray, proxy, UdpSocketResource, udp_resource, Blob, address, int, port);
   USE(proxy);
-  
+
   ToitSocketAddress socket_address(address.address(), address.length(), port);
 
   if (connect(udp_resource->socket(), socket_address.as_socket_address(), socket_address.size()) != 0) {
@@ -342,21 +342,22 @@ PRIMITIVE(get_option) {
     case UDP_BROADCAST: {
       int value = 0;
       int size = sizeof(value);
-      if (getsockopt(socket, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<char*>(&value), &size) == -1) {
+      if (getsockopt(socket, SOL_SOCKET, SO_BROADCAST,
+                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
         WINDOWS_ERROR;
       }
-
       return BOOL(value != 0);
     }
 
     default:
-      return process->program()->unimplemented();
+      UNIMPLEMENTED_PRIMITIVE;
   }
 }
 
 PRIMITIVE(set_option) {
   ARGS(ByteArray, proxy, UdpSocketResource, udp_resource, int, option, Object, raw);
   USE(proxy);
+  SOCKET socket = udp_resource->socket();
 
   switch (option) {
     case UDP_BROADCAST: {
@@ -366,7 +367,7 @@ PRIMITIVE(set_option) {
       } else if (raw != process->program()->false_object()) {
         WRONG_TYPE;
       }
-      if (setsockopt(udp_resource->socket(), SOL_SOCKET, SO_BROADCAST,
+      if (setsockopt(socket, SOL_SOCKET, SO_BROADCAST,
                      reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
         WINDOWS_ERROR;
       }
@@ -374,7 +375,7 @@ PRIMITIVE(set_option) {
     }
 
     default:
-      return process->program()->unimplemented();
+      UNIMPLEMENTED_PRIMITIVE;
   }
 
   return process->program()->null_object();

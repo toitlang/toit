@@ -53,28 +53,35 @@ class TcpResourceGroup : public ResourceGroup {
   }
 };
 
-class SocketResource : public WindowsResource {
+class TcpSocketBaseResource : public WindowsResource {
  public:
-  SocketResource(TcpResourceGroup* resource_group, SOCKET socket)
-    : WindowsResource(resource_group)
-    , socket_(socket) {}
+  TcpSocketBaseResource(TcpResourceGroup* resource_group, SOCKET socket)
+      : WindowsResource(resource_group)
+      , socket_(socket) {}
+
   SOCKET socket() const { return socket_; }
+  int error_code() const { return error_code_; }
+
   void do_close() override {
     closesocket(socket_);
   }
 
+ protected:
+   void set_error_code(int value) { error_code_ = value; }
+
  private:
   SOCKET socket_;
+  int error_code_ = 0;
 };
 
 const int READ_BUFFER_SIZE = 1 << 16;
 
-class TcpSocketResource : public SocketResource {
+class TcpSocketResource : public TcpSocketBaseResource {
  public:
   TAG(TcpSocketResource);
   TcpSocketResource(TcpResourceGroup* resource_group, SOCKET socket,
                     HANDLE read_event, HANDLE write_event, HANDLE auxiliary_event)
-      : SocketResource(resource_group, socket)
+      : TcpSocketBaseResource(resource_group, socket)
       , auxiliary_event_(auxiliary_event) {
     read_buffer_.buf = read_data_;
     read_buffer_.len = READ_BUFFER_SIZE;
@@ -85,7 +92,7 @@ class TcpSocketResource : public SocketResource {
       if (error_code == WSAECONNRESET) {
         set_state(TCP_CLOSE);
       } else {
-        error_code_ = WSAGetLastError();
+        set_error_code(WSAGetLastError());
         set_state(TCP_ERROR);
       }
     } else {
@@ -102,14 +109,13 @@ class TcpSocketResource : public SocketResource {
   bool ready_for_write() const { return write_ready_; }
   bool ready_for_read() const { return read_ready_; }
   bool closed() const { return closed_; }
-  int error_code() const { return error_code_; }
 
   std::vector<HANDLE> events() override {
     return std::vector<HANDLE>({
-                                   read_overlapped_.hEvent,
-                                   write_overlapped_.hEvent,
-                                   auxiliary_event_
-      });
+        read_overlapped_.hEvent,
+        write_overlapped_.hEvent,
+        auxiliary_event_
+    });
   }
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
@@ -122,21 +128,21 @@ class TcpSocketResource : public SocketResource {
     } else if (event == auxiliary_event_) {
       WSANETWORKEVENTS network_events;
       if (WSAEnumNetworkEvents(socket(), NULL, &network_events) == SOCKET_ERROR) {
-        error_code_ = WSAGetLastError();
+        set_error_code(WSAGetLastError());
         state |= TCP_ERROR;
       };
       if (network_events.lNetworkEvents & FD_CLOSE) {
         if (network_events.iErrorCode[FD_CLOSE_BIT] == 0) {
           state |= TCP_READ;
         } else {
-          error_code_ = network_events.iErrorCode[FD_CLOSE_BIT];
+          set_error_code(network_events.iErrorCode[FD_CLOSE_BIT]);
           closed_ = true;
           state |= TCP_CLOSE | TCP_READ;
         }
       }
     } else if (event == INVALID_HANDLE_VALUE) {
       // The event source sends INVALID_HANDLE_VALUE when the socket is closed.
-      error_code_ = WSAECONNRESET;
+      set_error_code(WSAECONNRESET);
       closed_ = true;
       state |= TCP_CLOSE | TCP_READ;
     }
@@ -144,7 +150,7 @@ class TcpSocketResource : public SocketResource {
   }
 
   void do_close() override {
-    SocketResource::do_close();
+    TcpSocketBaseResource::do_close();
     CloseHandle(read_overlapped_.hEvent);
     CloseHandle(write_overlapped_.hEvent);
   }
@@ -205,15 +211,14 @@ class TcpSocketResource : public SocketResource {
 
   HANDLE auxiliary_event_;
   bool closed_ = false;
-  int error_code_ = 0;
 };
 
-class TcpServerSocketResource : public SocketResource {
+class TcpServerSocketResource : public TcpSocketBaseResource {
  public:
   TAG(TcpServerSocketResource);
   TcpServerSocketResource(TcpResourceGroup* resource_group, SOCKET socket, HANDLE event)
-    : SocketResource(resource_group, socket)
-    , event_(event) {}
+      : TcpSocketBaseResource(resource_group, socket)
+      , event_(event) {}
 
   std::vector<HANDLE> events() override {
     return std::vector<HANDLE>({event_ });
@@ -224,7 +229,7 @@ class TcpServerSocketResource : public SocketResource {
   }
 
   void do_close() override {
-    SocketResource::do_close();
+    TcpSocketBaseResource::do_close();
     CloseHandle(event_);
   }
 
@@ -470,7 +475,7 @@ static Object* get_port(SOCKET socket, Process* process, bool peer) {
 PRIMITIVE(get_option) {
   ARGS(ByteArray, proxy, Resource, resource, int, option);
   USE(proxy);
-  SOCKET socket = reinterpret_cast<SocketResource*>(resource)->socket();
+  SOCKET socket = reinterpret_cast<TcpSocketBaseResource*>(resource)->socket();
 
   switch (option) {
     case TCP_ADDRESS:
@@ -488,43 +493,74 @@ PRIMITIVE(get_option) {
     case TCP_KEEP_ALIVE: {
       int value = 0;
       int size = sizeof(value);
-      if (getsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<char *>(&value), &size) == -1)
+      if (getsockopt(socket, SOL_SOCKET, SO_KEEPALIVE,
+                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
         WINDOWS_ERROR;
+      }
+      return BOOL(value != 0);
+    }
 
+    case TCP_NO_DELAY: {
+      int value = 0;
+      int size = sizeof(value);
+      if (getsockopt(socket, IPPROTO_TCP, TCP_NODELAY,
+                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
+        return Primitive::os_error(errno, process);
+      }
       return BOOL(value != 0);
     }
 
     case TCP_WINDOW_SIZE: {
       int value = 0;
       int size = sizeof(value);
-      if (getsockopt(socket, SOL_SOCKET, SO_RCVBUF, reinterpret_cast<char *>(&value), &size) == -1)
+      if (getsockopt(socket, SOL_SOCKET, SO_RCVBUF,
+                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
         WINDOWS_ERROR;
-
+      }
       return Smi::from(value);
     }
 
     default:
-      return process->program()->unimplemented();
+      UNIMPLEMENTED_PRIMITIVE;
   }
 }
 
 PRIMITIVE(set_option) {
-  ARGS(ByteArray, proxy, TcpSocketResource, tcp_resource, int, option, Object, raw);
+  ARGS(ByteArray, proxy, Resource, resource, int, option, Object, raw);
   USE(proxy);
+  SOCKET socket = reinterpret_cast<TcpSocketBaseResource*>(resource)->socket();
 
-  if (option == TCP_KEEP_ALIVE) {
-    int value = 0;
-    if (raw == process->program()->true_object()) {
-      value = 1;
-    } else if (raw != process->program()->false_object()) {
-      WRONG_TYPE;
+  switch (option) {
+    case TCP_KEEP_ALIVE: {
+      int value = 0;
+      if (raw == process->program()->true_object()) {
+        value = 1;
+      } else if (raw != process->program()->false_object()) {
+        WRONG_TYPE;
+      }
+      if (setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE,
+                     reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      break;
     }
-    if (setsockopt(tcp_resource->socket(), SOL_SOCKET, SO_KEEPALIVE,
-                   reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
-      WINDOWS_ERROR;
+
+    case TCP_NO_DELAY: {
+      int value = 0;
+      if (raw == process->program()->true_object()) {
+        value = 1;
+      } else if (raw != process->program()->false_object()) {
+        WRONG_TYPE;
+      }
+      if (setsockopt(socket, IPPROTO_TCP, TCP_NODELAY,
+                     reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      break;
     }
-  } else {
-    return process->program()->unimplemented();
+
+    default:
+      UNIMPLEMENTED_PRIMITIVE;
   }
 
   return process->program()->null_object();
@@ -552,8 +588,8 @@ PRIMITIVE(close) {
 }
 
 PRIMITIVE(error_number) {
-  ARGS(TcpSocketResource, tcp_resource);
-  return Smi::from(tcp_resource->error_code());
+  ARGS(Resource, resource);
+  return Smi::from(reinterpret_cast<TcpSocketBaseResource*>(resource)->error_code());
 }
 
 PRIMITIVE(error) {

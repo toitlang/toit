@@ -371,7 +371,6 @@ PRIMITIVE(get_option) {
       if (getsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &value, &size) == -1) {
         return Primitive::os_error(errno, process);
       }
-
       return BOOL(value != 0);
     }
 
@@ -381,7 +380,6 @@ PRIMITIVE(get_option) {
       if (getsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &value, &size) == -1) {
         return Primitive::os_error(errno, process);
       }
-
       return BOOL(value != 0);
     }
 
@@ -400,7 +398,7 @@ PRIMITIVE(get_option) {
     }
 
     default:
-      return process->program()->unimplemented();
+      UNIMPLEMENTED_PRIMITIVE;
   }
 }
 
@@ -437,7 +435,7 @@ PRIMITIVE(set_option) {
     }
 
     default:
-      return process->program()->unimplemented();
+      UNIMPLEMENTED_PRIMITIVE;
   }
 
   return process->program()->null_object();
