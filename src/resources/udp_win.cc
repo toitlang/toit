@@ -357,6 +357,7 @@ PRIMITIVE(get_option) {
 PRIMITIVE(set_option) {
   ARGS(ByteArray, proxy, UdpSocketResource, udp_resource, int, option, Object, raw);
   USE(proxy);
+  SOCKET socket = udp_resource->socket();
 
   switch (option) {
     case UDP_BROADCAST: {
@@ -366,7 +367,7 @@ PRIMITIVE(set_option) {
       } else if (raw != process->program()->false_object()) {
         WRONG_TYPE;
       }
-      if (setsockopt(udp_resource->socket(), SOL_SOCKET, SO_BROADCAST,
+      if (setsockopt(socket, SOL_SOCKET, SO_BROADCAST,
                      reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
         WINDOWS_ERROR;
       }

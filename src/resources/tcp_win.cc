@@ -468,9 +468,9 @@ static Object* get_port(SOCKET socket, Process* process, bool peer) {
 }
 
 PRIMITIVE(get_option) {
-  ARGS(ByteArray, proxy, Resource, resource, int, option);
+  ARGS(ByteArray, proxy, TcpSocketResource, tcp_resource, int, option);
   USE(proxy);
-  SOCKET socket = reinterpret_cast<SocketResource*>(resource)->socket();
+  SOCKET socket = tcp_resource->socket();
 
   switch (option) {
     case TCP_ADDRESS:
@@ -498,7 +498,7 @@ PRIMITIVE(get_option) {
     case TCP_NO_DELAY: {
       int value = 0;
       int size = sizeof(value);
-      if (getsockopt(fd, IPPROTO_TCP, TCP_NODELAY,
+      if (getsockopt(socket, IPPROTO_TCP, TCP_NODELAY,
                      reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
         return Primitive::os_error(errno, process);
       }
@@ -522,7 +522,8 @@ PRIMITIVE(get_option) {
 
 PRIMITIVE(set_option) {
   ARGS(ByteArray, proxy, TcpSocketResource, tcp_resource, int, option, Object, raw);
-  SOCKET socket = reinterpret_cast<SocketResource*>(resource)->socket();
+  USE(proxy);
+  SOCKET socket = tcp_resource->socket();
 
   switch (option) {
     case TCP_KEEP_ALIVE: {
