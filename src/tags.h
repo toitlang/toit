@@ -55,6 +55,7 @@ namespace toit {
   fn(BleDescriptorResource)             \
   fn(Directory)                         \
   fn(UdpSocketResource)                 \
+  fn(TcpSocketBaseResource)             \
   fn(TcpSocketResource)                 \
   fn(TcpServerSocketResource)           \
   fn(SubprocessResource)                \

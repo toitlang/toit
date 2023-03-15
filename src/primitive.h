@@ -992,6 +992,7 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
 #define _A_T_GpioResource(N, name)        MAKE_UNPACKING_MACRO(GpioResource, N, name)
 #define _A_T_UartResource(N, name)        MAKE_UNPACKING_MACRO(UartResource, N, name)
 #define _A_T_UdpSocketResource(N, name)   MAKE_UNPACKING_MACRO(UdpSocketResource, N, name)
+#define _A_T_TcpSocketBaseResource(N, name)     MAKE_UNPACKING_MACRO(TcpSocketBaseResource, N, name)
 #define _A_T_TcpSocketResource(N, name)   MAKE_UNPACKING_MACRO(TcpSocketResource, N, name)
 #define _A_T_TcpServerSocketResource(N, name)   MAKE_UNPACKING_MACRO(TcpServerSocketResource, N, name)
 #define _A_T_SubprocessResource(N, name)  MAKE_UNPACKING_MACRO(SubprocessResource, N, name)
