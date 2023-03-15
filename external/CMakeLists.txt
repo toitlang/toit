@@ -63,6 +63,8 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-pixel-display
     https://github.com/toitware/toit-pixel-strip
     https://github.com/toitware/toit-png-display
+    https://github.com/toitware/toit-protobuf
+    https://github.com/toitware/toit-provision
     https://github.com/toitware/toit-r46ca01
     https://github.com/toitware/toit-resistance-to-temperature
     https://github.com/toitware/toit-rs485
@@ -193,6 +195,8 @@ function(find_toit_projects REPO)
   endforeach()
 endfunction()
 
+include(fail.cmake OPTIONAL)
+
 function(add_repo_tests REPO)
   get_filename_component(REPO_NAME "${REPO}" NAME)
   set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
@@ -209,7 +213,7 @@ function(add_repo_tests REPO)
 
   foreach(FILE ${TEST_FILES})
     set(TEST_NAME "${REPO_NAME}/${FILE}")
-    if("${TEST_NAME}" IN_LIST SKIP_TESTS)
+    if("${TEST_NAME}" IN_LIST SKIP_TESTS OR "${TEST_NAME}" IN_LIST TOIT_SKIP_TESTS)
       continue()
     endif()
 
@@ -219,7 +223,7 @@ function(add_repo_tests REPO)
       WORKING_DIRECTORY "${REPO_PATH}"
       CONFIGURATIONS external
     )
-    if("${TEST_NAME}" IN_LIST FAILING_TESTS)
+    if("${TEST_NAME}" IN_LIST FAILING_TESTS OR "${TEST_NAME}" IN_LIST TOIT_FAILING_TESTS)
       set_tests_properties(${TEST_NAME} PROPERTIES WILL_FAIL TRUE)
     endif()
 
@@ -242,6 +246,11 @@ file(GLOB_RECURSE HEALTH_SOURCES "${CMAKE_CURRENT_LIST_DIR}/*.toit")
 
 foreach(FILE ${HEALTH_SOURCES})
   if (FILE MATCHES "/[.]packages/")
+    continue()
+  endif()
+
+  file(RELATIVE_PATH RELATIVE_FILE "${CMAKE_CURRENT_LIST_DIR}" "${FILE}")
+  if ("health-external/${RELATIVE_FILE}" IN_LIST TOIT_SKIP_TESTS)
     continue()
   endif()
 
