@@ -981,10 +981,14 @@ int BleReadWriteElement::_on_access(ble_gatt_access_ctxt* ctxt) {
         {
           Locker locker(read_request_mutex_);
           if (!OS::wait_us(read_request_condition_, 1000 * read_timeout_ms_)) return BLE_ERR_OPERATION_CANCELLED;
-          int result = os_mbuf_appendfrom(ctxt->om, read_request_mbuf_, 0, mbuf_total_len(read_request_mbuf_));
-          os_mbuf_free(read_request_mbuf_);
-          read_request_mbuf_ = null;
-          return result;
+          if (read_request_mbuf_) {
+            int result = os_mbuf_appendfrom(ctxt->om, read_request_mbuf_, 0, mbuf_total_len(read_request_mbuf_));
+            os_mbuf_free(read_request_mbuf_);
+            read_request_mbuf_ = null;
+            return result;
+          } else {  // Empty response
+            return BLE_ERR_SUCCESS;
+          }
         }
       }
       break;
@@ -2274,10 +2278,6 @@ PRIMITIVE(read_request_reply) {
   ARGS(BleCharacteristicResource, characteristic, Object, value)
   os_mbuf* mbuf;
   object_to_mbuf(process, value, &mbuf);
-
-  if (!mbuf) {
-    QUOTA_EXCEEDED;
-  }
 
   characteristic->handle_read_reply_request(mbuf);
 
