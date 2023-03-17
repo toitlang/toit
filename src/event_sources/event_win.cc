@@ -112,6 +112,11 @@ class WindowsEventThread: public Thread {
   void recalculate_handles() {
     int index = 1;
     for (auto resource_event : resource_events_) {
+      if (index >= MAXIMUM_WAIT_OBJECTS) {
+        // Windows only allows 64 handles - we would have to move to a tree to
+        // support more.
+        FATAL("Too many events");
+      }
       if (resource_event->is_event_enabled()) {
         handles_[index] = resource_event->event();
         resources_[index] = resource_event->resource();
