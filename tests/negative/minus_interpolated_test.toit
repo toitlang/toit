@@ -8,5 +8,7 @@ main:
   print "$foo-"   // OK because not followed by identifier character.
   print "$foo-b"  // Warning, since that would become a single identifier.
   print "$foo-3"  // Same warning.
+  print "$foo-="  // OK
+  print "$foo--"  // OK
   print "$foo-$bar" // OK.
   unresolved

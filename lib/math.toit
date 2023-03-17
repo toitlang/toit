@@ -102,7 +102,7 @@ log x/num -> float:
   #primitive.math.log
 
 /**
-Returns, approximately, the $n-base logarithm of the given $x.
+Returns, approximately, the $n base logarithm of the given $x.
 For negative $x or $n, NaN ($float.NAN) is returned.
 */
 log x/num n/num -> float:
