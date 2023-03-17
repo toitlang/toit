@@ -511,6 +511,16 @@ static Object* fork_helper(
   if (GetFileType(startup_info.hStdError) == FILE_TYPE_PIPE && !is_inherited(err_object))
     CloseHandle(startup_info.hStdError);
 
+  if (!process_information.hProcess) {
+    // We are running on Wine, and we have started a Linux executable,
+    // which means we can't track when it terminates.  But we already
+    // started the process.  We don't want to define yet another C++-thrown
+    // exception for this marginal case, so we throw one of the standard
+    // exceptions here, but also print a warning on stderr.
+    fprintf(stderr, "Error: Running a Linux executable from Wine is not supported: '%ls'\n", command_line);
+    INVALID_ARGUMENT;
+  }
+
   auto subprocess = new (resource_allocation.keep_result()) SubprocessResource(resource_group, process_information.hProcess);
   proxy->set_external_address(subprocess);
 
