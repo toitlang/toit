@@ -2099,7 +2099,7 @@ ToitdocReference* Parser::parse_toitdoc_identifier_reference(int* end_offset) {
         && current_token() == Token::SUB
         && is_next_token_attached()
         && (peek_token() == Token::IDENTIFIER || peek_token() == Token::INTEGER || peek_token() == Token::DOUBLE)) {
-    // This would become a valid identifier with kebap case.
+    // This would become a valid identifier with kebab case.
     diagnostics()->report_warning(node_range.extend(target->range()),
                                   "Interpolated identifiers must not be followed by '-'");
   }
