@@ -30,10 +30,21 @@ CONFIG_OPEN_DRAIN  /int ::= 2
 CONFIG_PRIORITY_LOW  /int ::= 0
 CONFIG_PRIORITY_HIGH /int ::= 1
 
-service_/CellularServiceClient? ::= (CellularServiceClient).open
-    --if_absent=: null
+service_/CellularServiceClient? := null
+service_initialized_/bool := false
 
 open config/Map? -> net.Interface:
+  if not service_initialized_:
+    // We typically run the cellular service in a non-system
+    // container with --trigger=boot, so we need to give it
+    // time to start so it can be discovered. We should really
+    // generalize this handling for net.open and wifi.open too,
+    // so we get a shared pattern for dealing with discovering
+    // such network services at start up.
+    service_initialized_ = true
+    service_ = (CellularServiceClient).open
+        --timeout=(Duration --s=5)
+        --if_absent=: null
   service := service_
   if not service: throw "cellular unavailable"
   return SystemInterface_ service (service.connect config)
