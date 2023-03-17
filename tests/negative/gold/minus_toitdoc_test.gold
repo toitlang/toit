@@ -1,0 +1,14 @@
+tests/negative/minus_toitdoc_test.toit:7:4: warning: Interpolated identifiers must not be followed by '-'
+  $foo-b  // Warning, since that would become a single identifier.
+   ^~~
+tests/negative/minus_toitdoc_test.toit:8:4: warning: Interpolated identifiers must not be followed by '-'
+  $foo-3  // Same warning.
+   ^~~
+tests/negative/minus_toitdoc_test.toit:9:4: warning: Interpolated identifiers must not be followed by '-'
+  $foo-3.5  // Same warning.
+   ^~~
+tests/negative/minus_toitdoc_test.toit:15:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/minus_toitdoc_test.toit'
+Compilation failed.

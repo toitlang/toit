@@ -2094,6 +2094,14 @@ ToitdocReference* Parser::parse_toitdoc_identifier_reference(int* end_offset) {
     *end_offset = current_state().scanner_state.to;
     consume();
     is_setter = true;
+  } else if (!is_operator
+        && is_current_token_attached()
+        && current_token() == Token::SUB
+        && is_next_token_attached()
+        && (peek_token() == Token::IDENTIFIER || peek_token() == Token::INTEGER || peek_token() == Token::DOUBLE)) {
+    // This would become a valid identifier with kebab case.
+    diagnostics()->report_warning(node_range.extend(target->range()),
+                                  "Interpolated identifiers must not be followed by '-'");
   }
   // If this is a setter, then the range is already extended to more than the target range,
   //   and the `extend` here won't have any effect.
