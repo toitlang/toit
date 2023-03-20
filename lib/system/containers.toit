@@ -69,15 +69,22 @@ class Container extends ServiceResourceProxy:
     return code
 
   on_stopped lambda/Lambda? -> none:
-    on_stopped_ = lambda
-    if not lambda or not result_.has_value: return
-    code := result_.get
-    if not code: throw "CLOSED"
-    lambda.call code
+    if not lambda:
+      on_stopped_ = null
+      return
+    if on_stopped_: throw "ALREADY_IN_USE"
+    if result_.has_value:
+      code := result_.get
+      if not code: throw "CLOSED"
+      lambda.call code
+    else:
+      on_stopped_ = lambda
 
   on_notified_ code/int -> none:
     result_.set code
-    if on_stopped_: on_stopped_.call code
+    on_stopped := on_stopped_
+    on_stopped_ = null
+    if on_stopped: on_stopped.call code
     // We no longer expect or care about notifications, so
     // close the resource.
     close

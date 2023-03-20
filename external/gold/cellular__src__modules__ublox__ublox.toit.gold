@@ -1,0 +1,6 @@
+cellular/src/modules/ublox/ublox.toit:624:7: error: Missing implementations for interface methods
+class Interface_ implements net.Interface:
+      ^~~~~~~~~~
+<sdk>/net/net.toit:42:3: note: Missing implementation for 'on_closed'
+  on_closed lambda/Lambda? -> none
+  ^~~~~~~~~

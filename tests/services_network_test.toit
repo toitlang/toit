@@ -23,6 +23,7 @@ main:
   test_address service
   test_resolve service
   test_tcp service
+  test_close service
   service.uninstall
 
 test_address service/FakeNetworkServiceProvider:
@@ -83,6 +84,18 @@ test_tcp_network network/net.Interface:
     socket.close
     network.close
 
+test_close service/FakeNetworkServiceProvider:
+  3.repeat:
+    network := open_fake
+    service.network.close
+    yield
+    expect network.is_closed
+  3.repeat:
+    network := open_fake
+    service.disconnect
+    yield
+    expect network.is_closed
+
 // --------------------------------------------------------------------------
 
 open_fake -> net.Client:
@@ -92,6 +105,7 @@ class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
   proxy_mask_/int := 0
   address_/ByteArray? := null
   resolve_/List? := null
+  network/net.Interface? := null
 
   constructor:
     super "system/network/test" --major=1 --minor=2  // Major and minor versions do not matter here.
@@ -104,9 +118,13 @@ class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
     return proxy_mask_
 
   open_network -> net.Interface:
-    return net.open
+    expect_null network
+    network = net.open
+    return network
 
   close_network network/net.Interface -> none:
+    expect_identical this.network network
+    this.network = null
     network.close
 
   update_proxy_mask_ mask/int add/bool:

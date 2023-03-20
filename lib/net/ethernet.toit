@@ -13,6 +13,8 @@ import net.udp
 import net.tcp
 import spi
 
+import system.base.network show CloseableNetwork
+
 import .modules.ethernet as ethernet_module
 import .modules.ethernet show
     MAC_CHIP_ESP32 MAC_CHIP_W5500
@@ -122,7 +124,7 @@ connect -> net.Interface
 
   return EthernetInterface_
 
-class EthernetInterface_ implements net.Interface:
+class EthernetInterface_ extends CloseableNetwork implements net.Interface:
   static open_count_/int := 0
   open_/bool := true
 
@@ -169,7 +171,7 @@ class EthernetInterface_ implements net.Interface:
   is_closed -> bool:
     return not open_
 
-  close -> none:
+  close_ -> none:
     if not open_: return
     open_ = false
     open_count_--

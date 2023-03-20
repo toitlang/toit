@@ -20,6 +20,8 @@ import system.services
     ServiceResourceProxy
 
 class NetworkResourceProxy extends ServiceResourceProxy:
+  on_closed_/Lambda? := null
+
   constructor client/NetworkServiceClient handle/int:
     super client handle
 
@@ -45,6 +47,22 @@ class NetworkResourceProxy extends ServiceResourceProxy:
     client ::= client_ as NetworkServiceClient
     socket ::= client.tcp_listen handle_ port
     return TcpServerSocketResourceProxy_ client socket
+
+  on_closed lambda/Lambda? -> none:
+    if not lambda:
+      on_closed_ = null
+      return
+    if on_closed_: throw "ALREADY_IN_USE"
+    if is_closed: lambda.call
+    else: on_closed_ = lambda
+
+  close_handle_ -> int?:
+    on_closed := on_closed_
+    on_closed_ = null
+    try:
+      return super
+    finally:
+      if on_closed: on_closed.call
 
 // ----------------------------------------------------------------------------
 
@@ -101,6 +119,41 @@ monitor NetworkState:
       // Assume the module is off even if turning
       // it off threw an exception.
       module_ = null
+
+// ----------------------------------------------------------------------------
+
+/**
+The $CloseableNetwork is a convenience base class for implementing
+  closeable networks that keep track of a single listener for the
+  on-closed events.
+
+Subclasses must take care to provide an implementation of the $close_
+  method instead of overriding the $close method.
+
+If the language supported mixins, the $CloseableNetwork could be
+  mixed into $NetworkResourceProxy.
+*/
+abstract class CloseableNetwork:
+  on_closed_/Lambda? := null
+
+  abstract is_closed -> bool
+  abstract close_ -> none
+
+  on_closed lambda/Lambda? -> none:
+    if not lambda:
+      on_closed_ = null
+      return
+    if on_closed_: throw "ALREADY_IN_USE"
+    if is_closed: lambda.call
+    else: on_closed_ = lambda
+
+  close -> none:
+    on_closed := on_closed_
+    on_closed_ = null
+    try:
+      close_
+    finally:
+      if on_closed: on_closed.call
 
 // ----------------------------------------------------------------------------
 
@@ -220,16 +273,25 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
     // We use 'this' service definition as the network module, so we get told
     // when the module disconnects as a result of calling $NetworkState.down.
     state_.up: this
-    resource := NetworkResource this client state_
+    resource := NetworkResource this client state_ --notifiable
     return [resource.serialize_for_rpc, proxy_mask]
 
   connect -> none:
-    network_ = open_network
+    network := open_network
+    network.on_closed:: disconnect
+    network_ = network
 
   disconnect -> none:
-    if not network_: return
-    close_network network_
+    network := network_
+    if not network: return
     network_ = null
+    try:
+      close_network network
+    finally:
+      critical_do:
+        resources_do: | resource/NetworkResource |
+          if not resource.is_closed:
+            resource.notify_ NetworkService.NOTIFY_CLOSED --close
 
   address resource/ServiceResource -> ByteArray:
     return network_.address.to_byte_array
