@@ -164,11 +164,10 @@ class MemoryReader {
   MemoryReader(uint8* buffer, int size) : buffer_(buffer), size_(size) {}
 
   /// Fills the next file.
-  /// On success, the name of the file is allocated and should be freed with
-  /// 'free'.
+  /// On success, the file's name is automatically freed when the 'file'
+  ///    is reused or the destructor is called.
   /// On success, the content of the file is pointing directly into the memory
   /// that was given at construction.
-  ///
   ///
   /// Returns 0 when a file was successfully read.
   ///
@@ -221,7 +220,8 @@ class FileReader {
   ///
   /// Returns 0 when a file was successfully read.
   /// In this case:
-  ///   - The name of the file is allocated and should be freed with 'free'.
+  ///   - The name of the file is automatically freed when the 'file' is
+  ///     reused or its destructor is called.
   ///   - The content of the file is allocated and should be freed with 'free'.
   ///
   /// Returns [AR_END_OF_ARCHIVE] when at the end of the archive.
@@ -237,6 +237,9 @@ class FileReader {
   ///
   /// If [reset] is true, starts searching at the beginning of the file. This
   /// requires the file to be seekable.
+  ///
+  /// The name and the content of the result are automatically freed when
+  ///   the file is reused or the destructor is called.
   ///
   /// Returns 0 when a file was successfully read.
   /// In that case:
