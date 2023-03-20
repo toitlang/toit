@@ -164,7 +164,7 @@ class MemoryReader {
   MemoryReader(uint8* buffer, int size) : buffer_(buffer), size_(size) {}
 
   /// Fills the next file.
-  /// On success, the file's name is automatically freed when the `File`
+  /// On success, the file's name is automatically freed when the 'file'
   ///    is reused or the destructor is called.
   /// On success, the content of the file is pointing directly into the memory
   /// that was given at construction.
