@@ -129,6 +129,9 @@ The $CloseableNetwork is a convenience base class for implementing
 
 Subclasses must take care to provide an implementation of the $close_
   method instead of overriding the $close method.
+
+If the language supported mixins, the $CloseableNetwork could be
+  mixed into $NetworkResourceProxy.
 */
 abstract class CloseableNetwork:
   on_closed_/Lambda? := null
