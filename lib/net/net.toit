@@ -39,6 +39,8 @@ interface Interface implements udp.Interface tcp.Interface:
   tcp_connect address/SocketAddress -> tcp.Socket
   tcp_listen port/int -> tcp.ServerSocket
 
+  on_closed lambda/Lambda? -> none
+
   close -> none
 
 class Client extends NetworkResourceProxy implements Interface:
@@ -75,9 +77,6 @@ class Client extends NetworkResourceProxy implements Interface:
     finally:
       socket.close
 
-  on_notified_ notification/any -> none:
-    if notification == NetworkService.NOTIFY_CLOSED: close_handle_
-
   resolve host/string -> List /* of IpAddress */:
     if is_closed: throw "Network closed"
     if (proxy_mask_ & NetworkService.PROXY_RESOLVE) != 0: return super host
@@ -106,3 +105,6 @@ class Client extends NetworkResourceProxy implements Interface:
     result := tcp_module.TcpServerSocket
     result.listen "0.0.0.0" port
     return result
+
+  on_notified_ notification/any -> none:
+    if notification == NetworkService.NOTIFY_CLOSED: close_handle_
