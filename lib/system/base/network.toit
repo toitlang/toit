@@ -289,8 +289,8 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
       close_network network
     finally:
       critical_do:
-        resources_do: | resource/NetworkResource |
-          if not resource.is_closed:
+        resources_do: | resource/ServiceResource |
+          if resource is NetworkResource and not resource.is_closed:
             resource.notify_ NetworkService.NOTIFY_CLOSED --close
 
   address resource/ServiceResource -> ByteArray:
