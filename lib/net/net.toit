@@ -30,7 +30,7 @@ interface Interface implements udp.Interface tcp.Interface:
   address -> IpAddress
   is_closed -> bool
 
-  resolve host/string -> List /* of IpAddress */
+  resolve host/string -> List /* of IpAddress. */
 
   udp_open -> udp.Socket
   udp_open --port/int? -> udp.Socket
