@@ -163,7 +163,8 @@ SnapshotBundle SnapshotBundle::stripped() const {
       // The const cast should be safe.
       snapshot_bytes = List<uint8>(const_cast<uint8*>(file.content()), file.byte_size);
     } else if (strcmp(file.name(), SDK_VERSION_NAME) == 0) {
-      sdk_version = reinterpret_cast<const char*>(file.content());
+      // Copy the sdk-version so it's null terminated.
+      sdk_version = strndup(reinterpret_cast<const char*>(file.content()), file.byte_size);
     }
   }
   return SnapshotBundle(snapshot_bytes, null, null, null, sdk_version);
