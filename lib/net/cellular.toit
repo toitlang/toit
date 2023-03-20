@@ -5,8 +5,6 @@
 import net
 import system.api.cellular show CellularServiceClient
 
-import .impl
-
 CONFIG_LOG_LEVEL /string ::= "cellular.log.level"
 
 CONFIG_APN   /string ::= "cellular.apn"
@@ -33,7 +31,7 @@ CONFIG_PRIORITY_HIGH /int ::= 1
 service_/CellularServiceClient? := null
 service_initialized_/bool := false
 
-open config/Map? -> net.Interface:
+open config/Map? -> net.SystemInterface_:
   if not service_initialized_:
     // We typically run the cellular service in a non-system
     // container with --trigger=boot, so we need to give it
@@ -47,4 +45,4 @@ open config/Map? -> net.Interface:
         --if_absent=: null
   service := service_
   if not service: throw "cellular unavailable"
-  return SystemInterface_ service (service.connect config)
+  return net.SystemInterface_ service (service.connect config)
