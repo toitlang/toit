@@ -5,8 +5,6 @@
 import net
 import system.api.wifi show WifiServiceClient
 
-import .impl
-
 CONFIG_SSID      /string ::= "wifi.ssid"
 CONFIG_PASSWORD  /string ::= "wifi.password"
 
@@ -64,15 +62,25 @@ class AccessPoint:
   bssid_name -> string:
     return (List bssid.size: "$(%02x bssid[it])").join ":"
 
-interface Interface extends net.Interface:
+class Client extends net.Client:
+  constructor client/WifiServiceClient connection/List:
+    super client connection
+
   /**
-  Returns information about the access point this $Interface is currently
+  Returns information about the access point this $Client is currently
     connected to.
 
   Throws an exception if this network isn't currently connected to an
     access point.
   */
-  access_point -> AccessPoint
+  access_point -> AccessPoint:
+    info := (client_ as WifiServiceClient).ap_info handle_
+    return AccessPoint
+        --ssid=info[WIFI_SCAN_SSID_]
+        --bssid=info[WIFI_SCAN_BSSID_]
+        --rssi=info[WIFI_SCAN_RSSI_]
+        --authmode=info[WIFI_SCAN_AUTHMODE_]
+        --channel=info[WIFI_SCAN_CHANNEL_]
 
   /**
   Returns the signal strength of the current access point association
@@ -81,24 +89,29 @@ interface Interface extends net.Interface:
   Throws an exception if this network isn't currently connected to an
     access point.
   */
-  signal_strength -> float
+  signal_strength -> float:
+    info := (client_ as WifiServiceClient).ap_info handle_
+    rssi := info[WIFI_SCAN_RSSI_]
+    // RSSI is usually in the range [-100..-35].
+    rssi = min 65 (max 0 rssi + 100)
+    return rssi / 65.0
 
-open --ssid/string --password/string -> Interface
+open --ssid/string --password/string -> Client
     --save/bool=false:
   return open --save=save {
     CONFIG_SSID: ssid,
     CONFIG_PASSWORD: password,
   }
 
-open config/Map? -> Interface
+open config/Map? -> Client
     --save/bool=false:
   service := service_
   if not service: throw "WiFi unavailable"
   connection := service.connect config
   if save: service.configure config
-  return WifiInterface_ service connection
+  return Client service connection
 
-establish --ssid/string --password/string -> net.Interface
+establish --ssid/string --password/string -> Client
     --broadcast/bool=true
     --channel/int=1:
   return establish {
@@ -108,10 +121,10 @@ establish --ssid/string --password/string -> net.Interface
     CONFIG_CHANNEL: channel,
   }
 
-establish config/Map? -> Interface:
+establish config/Map? -> Client:
   service := service_
   if not service: throw "WiFi unavailable"
-  return WifiInterface_ service (service.establish config)
+  return Client service (service.establish config)
 
 scan channels/ByteArray --passive/bool=false --period_per_channel_ms/int=SCAN_TIMEOUT_MS_ -> List:
   if channels.size < 1: throw "Channels are unspecified"
@@ -178,23 +191,3 @@ configure --reset/bool -> none:
   service := service_
   if not service: throw "WiFi unavailable"
   service.configure null
-
-class WifiInterface_ extends SystemInterface_ implements Interface:
-  constructor client/WifiServiceClient connection/List:
-    super client connection
-
-  access_point -> AccessPoint:
-    info := (client_ as WifiServiceClient).ap_info handle_
-    return AccessPoint
-        --ssid=info[WIFI_SCAN_SSID_]
-        --bssid=info[WIFI_SCAN_BSSID_]
-        --rssi=info[WIFI_SCAN_RSSI_]
-        --authmode=info[WIFI_SCAN_AUTHMODE_]
-        --channel=info[WIFI_SCAN_CHANNEL_]
-
-  signal_strength -> float:
-    info := (client_ as WifiServiceClient).ap_info handle_
-    rssi := info[WIFI_SCAN_RSSI_]
-    // RSSI is usually in the range [-100..-35].
-    rssi = min 65 (max 0 rssi + 100)
-    return rssi / 65.0
