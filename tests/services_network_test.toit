@@ -3,7 +3,6 @@
 // be found in the tests/LICENSE file.
 
 import net
-import net.impl
 import net.tcp
 import writer
 import expect show *
@@ -86,8 +85,8 @@ test_tcp_network network/net.Interface:
 
 // --------------------------------------------------------------------------
 
-open_fake -> net.Interface:
-  return impl.SystemInterface_ service_ service_.connect
+open_fake -> net.Client:
+  return net.Client service_ service_.connect
 
 class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
   proxy_mask_/int := 0

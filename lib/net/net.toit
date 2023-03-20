@@ -22,9 +22,9 @@ service_/NetworkServiceClient? ::= (NetworkServiceClient).open
     --if_absent=: null
 
 /// Gets the default network interface.
-open --service/NetworkServiceClient?=service_ -> SystemInterface_:
+open --service/NetworkServiceClient?=service_ -> Client:
   if not service: throw "Network unavailable"
-  return SystemInterface_ service service.connect
+  return Client service service.connect
 
 interface Interface implements udp.Interface tcp.Interface:
   address -> IpAddress
@@ -41,7 +41,7 @@ interface Interface implements udp.Interface tcp.Interface:
 
   close -> none
 
-class SystemInterface_ extends NetworkResourceProxy implements Interface:
+class Client extends NetworkResourceProxy implements Interface:
   // The proxy mask contains bits for all the operations that must be
   // proxied through the service client. The service definition tells the
   // client about the bits on connect.

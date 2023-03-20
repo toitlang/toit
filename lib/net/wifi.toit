@@ -62,12 +62,12 @@ class AccessPoint:
   bssid_name -> string:
     return (List bssid.size: "$(%02x bssid[it])").join ":"
 
-class Interface extends net.SystemInterface_:
+class Client extends net.Client:
   constructor client/WifiServiceClient connection/List:
     super client connection
 
   /**
-  Returns information about the access point this $Interface is currently
+  Returns information about the access point this $Client is currently
     connected to.
 
   Throws an exception if this network isn't currently connected to an
@@ -96,22 +96,22 @@ class Interface extends net.SystemInterface_:
     rssi = min 65 (max 0 rssi + 100)
     return rssi / 65.0
 
-open --ssid/string --password/string -> Interface
+open --ssid/string --password/string -> Client
     --save/bool=false:
   return open --save=save {
     CONFIG_SSID: ssid,
     CONFIG_PASSWORD: password,
   }
 
-open config/Map? -> Interface
+open config/Map? -> Client
     --save/bool=false:
   service := service_
   if not service: throw "WiFi unavailable"
   connection := service.connect config
   if save: service.configure config
-  return Interface service connection
+  return Client service connection
 
-establish --ssid/string --password/string -> Interface
+establish --ssid/string --password/string -> Client
     --broadcast/bool=true
     --channel/int=1:
   return establish {
@@ -121,10 +121,10 @@ establish --ssid/string --password/string -> Interface
     CONFIG_CHANNEL: channel,
   }
 
-establish config/Map? -> Interface:
+establish config/Map? -> Client:
   service := service_
   if not service: throw "WiFi unavailable"
-  return Interface service (service.establish config)
+  return Client service (service.establish config)
 
 scan channels/ByteArray --passive/bool=false --period_per_channel_ms/int=SCAN_TIMEOUT_MS_ -> List:
   if channels.size < 1: throw "Channels are unspecified"
