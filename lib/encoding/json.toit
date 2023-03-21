@@ -568,7 +568,7 @@ class StreamingDecoder extends Decoder:
       buffered_reader_ = null  // Use non-incremental parsing.
 
     while true:
-      error := catch --trace=(: it is not WrappedException_):
+      error := catch:
         result := decode_
         if offset_ != bytes_.size:
           buffered_reader_.unget bytes_[offset_..]
@@ -578,7 +578,7 @@ class StreamingDecoder extends Decoder:
       if error is WrappedException_:
         throw error.inner
       offset_ = 0
-      if false == get_more_:
+      if not get_more_:
         throw error
 
   // Returns true if we ran out of input.
@@ -590,8 +590,7 @@ class StreamingDecoder extends Decoder:
       error := catch:
         next_bytes = buffered_reader_.read
       if error:
-        throw
-          WrappedException_ error
+        throw (WrappedException_ error)
       if not next_bytes: return false
     bytes_ = old_bytes + next_bytes
     return true
@@ -600,8 +599,8 @@ class StreamingDecoder extends Decoder:
     if error is WrappedException_: throw error
     bytes_ = bytes_[checkpoint..]
     offset_ = 0
-    if false == get_more_:
-      throw error
+    if not get_more_:
+      throw (WrappedException_ error)
     offset_ = Decoder.skip_whitespaces_ bytes_ offset_
 
 class StringView_:
