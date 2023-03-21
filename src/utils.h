@@ -416,11 +416,6 @@ bit_cast(const From& src) noexcept {
   return dst;
 }
 
-// This does nothing, but the optimizer can't see that at the use point, so it
-// forces the optimizer to preserve allocations that are immediately freed.
-extern void dont_optimize_away_these_allocations(void** blocks);
-
-
 template<typename T>
 class List {
  public:

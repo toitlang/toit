@@ -397,34 +397,8 @@ PRIMITIVE(create) {
   return resource_group->tls_socket_create(process, hostname);
 }
 
-bool ensure_handshake_memory() {
-  // TLS handshake allocates with a high water mark of 12-13k.  We don't
-  // currently have a way to reserve that memory, but we can at least ensure
-  // that that amount of memory can be allocated before we start, and trigger
-  // GC if it can't.  Since the system is multithreaded and the allocator is
-  // subject to fragmentation this doesn't actually guarantee that the
-  // handshake will succeed, but increases the probability.  If an allocation
-  // fails during a handshake step then the TLS connection fails and has to be
-  // restarted from scratch.  This is annoying, but most code will already be
-  // able to restart TLS connections since they can fail because of transient
-  // network issues.
-  HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
-  const int BLOCK_SIZE = 1900;
-  const int BLOCK_COUNT = 8;
-  void* blocks[BLOCK_COUNT] = { 0 };
-  bool success = true;
-  for (int i = 0; i < BLOCK_COUNT; i++) {
-    blocks[i] = malloc(BLOCK_SIZE);
-    success = success && blocks[i];
-  }
-  dont_optimize_away_these_allocations(blocks);
-  for (int i = 0; i < BLOCK_COUNT; i++) free(blocks[i]);
-  return success;
-}
-
 PRIMITIVE(handshake) {
   ARGS(MbedTlsSocket, socket);
-  if (!ensure_handshake_memory()) MALLOC_FAILED;
   TlsEventSource::instance()->handshake(socket);
   return process->program()->null_object();
 }

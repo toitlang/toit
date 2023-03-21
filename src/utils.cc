@@ -538,8 +538,6 @@ const char* vm_git_version() { return VM_GIT_VERSION; }
 const char* vm_git_info() { return VM_GIT_INFO; }
 const char* vm_sdk_model() { return TOIT_MODEL; }
 
-void dont_optimize_away_these_allocations(void** blocks) {}
-
 const uint8 Utils::REVERSE_NIBBLE[16] = {
     0b0000,
     0b1000,
