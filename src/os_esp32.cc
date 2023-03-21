@@ -443,6 +443,8 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
 #endif
       printf("[toit] INFO: using SPIRAM%s for heap.\n", only ? " only" : "");
     }
+  } else {
+    use_spiram_for_heap_ = false;  // May already have been false.
   }
 
   // Older esp-idfs or mallocs other than cmpctmalloc won't set the
