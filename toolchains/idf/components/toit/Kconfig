@@ -76,17 +76,19 @@ menu "Toit"
 
         config TOIT_SPIRAM_HEAP
             boolean "Enable toit heap in SPIRAM"
-            default "n"
+            default "y"
             depends on SPIRAM_USE_CAPS_ALLOC || SPIRAM_USE_MALLOC
             help
                 Enables the possibility of allocating Toit heap in the SPIRAM.
+                You can enable this even if your device doesn't have SPIRAM, but it will not be used.
 
         config TOIT_SPIRAM_HEAP_ONLY
             boolean "Keep toit heap exclusively in SPIRAM"
-            default "n"
+            default "y"
             depends on TOIT_SPIRAM_HEAP
             help
                 If selected, the Toit heap will exclusively be placed in SPIRAM.
+                You can enable this even if your device doesn't have SPIRAM, but it will not be used.
 
         config TOIT_SYSTEM_SOURCE
             string "Toit source file for system"
