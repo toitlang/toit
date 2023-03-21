@@ -424,6 +424,26 @@ test_with_reader -> none:
     expect_throw "READ_ERROR":
       json.decode_stream test_reader
 
+  BAD_JSON_EXAMPLES ::= [
+    """{"foo": 3 "bar": 4}""",
+    """{"x":[{"foo": 3 "bar": 4}]}""",
+    """{"a":{"b":{"c":[]},"de":{"e":"f" "g":[]}}}""",
+  ]
+  BAD_JSON_EXAMPLES.do: | example |
+    example.size.repeat:
+      part_1 := example[..it]
+      part_2 := example[it..]
+      expect_throw "INVALID_JSON_CHARACTER":
+        json.decode_stream (TestReader [part_1, part_2])
+
+    example_bytes := example.to_byte_array
+    chunks := []
+    example_bytes.size.repeat:
+      chunks.add example_bytes[it .. it + 1]
+
+    expect_throw "INVALID_JSON_CHARACTER":
+      json.decode_stream (TestReader chunks)
+
   // Split anywhere:
   NUMBER_WITH_LEADING_SPACE.size.repeat:
     part_1 := NUMBER_WITH_LEADING_SPACE[..it]
