@@ -89,6 +89,8 @@ class SocketResourceGroup : public ResourceGroup {
   }
 
   void close_socket(int id) {
+    // The actual close syscall will take place in the event loop in
+    // epoll_linux.cc.
     unregister_id(id);
   }
 
