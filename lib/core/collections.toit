@@ -1889,8 +1889,8 @@ class List_ extends List:
   copy from/int=0 to/int=size -> List:
     if not 0 <= from <= to <= size: throw "BAD ARGUMENTS"
     result_size := to - from
-    result := List_
-    result.resize result_size
+    result := List_            // Uses singleton empty array as backing.
+    result.resize result_size  // Allocates a backing array of the right size.
     result.array_.replace 0 this.array_ from to
     return result
 
