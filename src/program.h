@@ -296,7 +296,7 @@ class Program : public FlashAllocation {
   List<uint16> interface_check_offsets;  // Selector offsets.
   List<uint16> class_bits;               // Instance sizes and class tags.
   List<uint8> bytecodes;
-  word max_max_stack_height_;            // Maximum stack height for all methods.
+  word global_max_stack_height_;         // Maximum stack height for all methods.
 
  private:
   // ATTENTION: The snapshot uuid is decoded by tools/firmware.toit. You
@@ -349,7 +349,7 @@ class Program : public FlashAllocation {
   void set_class_check_ids(List<uint16> ids) { class_check_ids = ids; }
   void set_interface_check_offsets(List<uint16> offsets) { interface_check_offsets = offsets; }
   void set_bytecodes(List<uint8> codes) { bytecodes = codes; }
-  void set_max_max_stack_height(int height) { max_max_stack_height_ = height; }
+  void set_global_max_stack_height(int height) { global_max_stack_height_ = height; }
 
   // Should only be called from ProgramImage.
   void do_pointers(PointerCallback* callback);

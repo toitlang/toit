@@ -100,7 +100,7 @@ class ProgramBuilder {
     program_->set_invoke_bytecode_offset(opcode, offset);
   }
 
-  int max_max_stack_height() const { return max_max_stack_height_; }
+  int global_max_stack_height() const { return global_max_stack_height_; }
 
  private:
   void allocate_method(int bytecode_size, int max_height, int* method_id, Method* method);
@@ -137,7 +137,8 @@ class ProgramBuilder {
 
   std::vector<uint8> all_bytecodes_;
 
-  int max_max_stack_height_ = 0;
+  // The biggest max stack-height of all functions.
+  int global_max_stack_height_ = 0;
 
   // Basic stack operations.
   Object* top();

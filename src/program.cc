@@ -52,7 +52,7 @@ void Program::write(SnapshotWriter* st) {
   st->write_external_list_uint16(interface_check_offsets);
   st->write_external_list_int32(dispatch_table);
   st->write_external_list_uint8(bytecodes);
-  st->write_cardinal(max_max_stack_height_);
+  st->write_cardinal(global_max_stack_height_);
   // The source-mapping is not serialized into the snapshot.
 }
 
@@ -87,7 +87,7 @@ void Program::read(SnapshotReader* st) {
   interface_check_offsets = st->read_external_list_uint16();
   dispatch_table = st->read_external_list_int32();
   bytecodes = st->read_external_list_uint8();
-  max_max_stack_height_ = st->read_cardinal();
+  global_max_stack_height_ = st->read_cardinal();
   ASSERT(st->eos());
   // The source-mapping was not serialized into the snapshot and is therefore
   // kept as `null`.

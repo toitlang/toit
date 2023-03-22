@@ -48,7 +48,7 @@ class Program:
   heap32                    / Heap ::= ?
   heap64                    / Heap ::= ?
   all_bytecodes             / ByteArray ::= ?
-  max_max_stack_height      / int ::= ?
+  global_max_stack_height   / int ::= ?
 
   // Debugging information.
   method_table_  / Map      ::= ?       // Map of MethodInfo
@@ -85,7 +85,7 @@ class Program:
     heap32                    = snapshot.program_snapshot.program_segment.heap32
     heap64                    = snapshot.program_snapshot.program_segment.heap64
     all_bytecodes             = snapshot.program_snapshot.program_segment.bytecodes_
-    max_max_stack_height      = snapshot.program_snapshot.program_segment.max_max_stack_height_
+    global_max_stack_height   = snapshot.program_snapshot.program_segment.global_max_stack_height_
     method_table_             = snapshot.source_map.method_segment.content
     class_table_              = snapshot.source_map.class_segment.content
     primitive_table           = snapshot.source_map.primitive_segment.content
@@ -1159,7 +1159,7 @@ class ProgramSegment extends HeapSegment:
   interface_check_selectors_ := []
   dispatch_table_            := []
   bytecodes_                 := null
-  max_max_stack_height_      := 0
+  global_max_stack_height_   := 0
 
   constructor byte_array begin end:
     super byte_array begin end
@@ -1200,7 +1200,7 @@ class ProgramSegment extends HeapSegment:
     interface_check_selectors_ = read_list_uint16_
     dispatch_table_            = read_list_int32_
     bytecodes_                 = read_list_uint8_
-    max_max_stack_height_      = read_cardinal_
+    global_max_stack_height_   = read_cardinal_
     if back_table_.size != back_table_length:
       throw "Bad back-table size"
 
