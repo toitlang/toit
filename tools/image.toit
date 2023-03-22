@@ -550,6 +550,7 @@ class ToitProgram extends ToitObjectType:
       "interface_check_offsets": ToitList.LAYOUT,
       "class_bits": ToitList.LAYOUT,
       "bytecodes": ToitList.LAYOUT,
+      "max_max_stack_height": PrimitiveType.WORD,
       "snapshot_uuid_": PrimitiveType (LayoutSize 0 uuid.SIZE),
       "_invoke_bytecode_offsets": PrimitiveType.INT * INVOKE_BYTECODE_COUNT,
       "_heap": ToitRawHeap.LAYOUT,
@@ -650,6 +651,9 @@ class ToitProgram extends ToitObjectType:
 
     bytecodes := ToitUint8List snapshot_program.all_bytecodes
     bytecodes.fill_into image --at=anchored["bytecodes"]
+
+    max_max_index := anchored["max_max_stack_height"]
+    offheap.put_word --at=max_max_index snapshot_program.max_max_stack_height
 
     // Source mapping is kept at null.
 
