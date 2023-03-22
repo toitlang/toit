@@ -390,7 +390,7 @@ jobs:
 
       - name: Decompress
         run: |
-          & "C:\Program Files\Git\bin\bash.EXE" --noprofile --norc -e -o pipefail -c "tar -xzf toit-windows.tar.gz"
+          & "C:\Program Files\Git\bin\bash.exe" --noprofile --norc -e -o pipefail -c "tar -xzf toit-windows.tar.gz"
 
       - name: Sign
         run: |
@@ -400,7 +400,7 @@ jobs:
 
       - name: Compress
         run: |
-          & "C:\Program Files\Git\bin\bash.EXE" --noprofile --norc -e -o pipefail -c "tar -czf toit-windows.tar.gz toit"
+          & "C:\Program Files\Git\bin\bash.exe" --noprofile --norc -e -o pipefail -c "tar -czf toit-windows.tar.gz toit"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
@@ -408,7 +408,7 @@ jobs:
           name: Windows-build
           path: toit-windows.tar.gz
 
-      - name: Upload release artifact
+      - name: Upload release artifacts
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
