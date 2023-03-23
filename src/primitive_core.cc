@@ -66,15 +66,29 @@ namespace toit {
 MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
 PRIMITIVE(write_string_on_stdout) {
+#ifdef TOIT_WINDOWS
+  ARGS(StringOrSlice, message, bool, add_newline);
+  WideCharAllocationManager allocation(process);
+  wchar_t* wchar_message = allocation.to_wcs(&message);              \
+  fprintf(stdout, "%ls%s", wchar_message, add_newline ? "\n" : "");
+#else
   ARGS(cstring, message, bool, add_newline);
   fprintf(stdout, "%s%s", message, add_newline ? "\n" : "");
+#endif
   fflush(stdout);
   return process->program()->null_object();
 }
 
 PRIMITIVE(write_string_on_stderr) {
+#ifdef TOIT_WINDOWS
+  ARGS(StringOrSlice, message, bool, add_newline);
+  WideCharAllocationManager allocation(process);
+  wchar_t* wchar_message = allocation.to_wcs(&message);              \
+  fprintf(stderr, "%ls%s", wchar_message, add_newline ? "\n" : "");
+#else
   ARGS(cstring, message, bool, add_newline);
   fprintf(stderr, "%s%s", message, add_newline ? "\n" : "");
+#endif
   fflush(stderr);
   return process->program()->null_object();
 }
