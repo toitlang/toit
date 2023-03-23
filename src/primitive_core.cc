@@ -69,7 +69,7 @@ PRIMITIVE(write_string_on_stdout) {
 #ifdef TOIT_WINDOWS
   ARGS(StringOrSlice, message, bool, add_newline);
   WideCharAllocationManager allocation(process);
-  wchar_t* wchar_message = allocation.to_wcs(&message);              \
+  wchar_t* wchar_message = allocation.to_wcs(&message);
   fprintf(stdout, "%ls%s", wchar_message, add_newline ? "\n" : "");
 #else
   ARGS(cstring, message, bool, add_newline);
@@ -83,7 +83,7 @@ PRIMITIVE(write_string_on_stderr) {
 #ifdef TOIT_WINDOWS
   ARGS(StringOrSlice, message, bool, add_newline);
   WideCharAllocationManager allocation(process);
-  wchar_t* wchar_message = allocation.to_wcs(&message);              \
+  wchar_t* wchar_message = allocation.to_wcs(&message);
   fprintf(stderr, "%ls%s", wchar_message, add_newline ? "\n" : "");
 #else
   ARGS(cstring, message, bool, add_newline);
