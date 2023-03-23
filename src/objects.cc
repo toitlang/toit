@@ -242,6 +242,22 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
   void* bytecodes_to = &program->bytecodes.data()[program->bytecodes.length()];
   // Assert that the frame-marker is skipped this way as well.
   ASSERT(bytecodes_from <= program->frame_marker() && program->frame_marker() < bytecodes_to);
+  printf("Stack at %p with %d spare slots\n", this, top);
+  if (top > program->global_max_stack_height()) {
+    int reduction = top - program->global_max_stack_height();
+    memmove(_root_at(0), _root_at(reduction), (length() - reduction) << LOG2_BYTES_PER_WORD);
+    // We don't need to update the remembered set/write barrier because the
+    // start of the stack object has not moved.
+    set_length(length() - reduction);
+    set_top(top - reduction);
+    set_try_top(try_top() - reduction);
+    // Now that the stack is smaller we need to fill the space after it with
+    // something to keep the heap iterable.
+    for (uword i = 0; i < reduction; i += WORD_SIZE) {
+      auto one_word = reinterpret_cast<FreeListRegion*>(HeapObject::from_address(start + i));
+      one_word->_set_header(Smi::from(SINGLE_FREE_WORD_CLASS_ID), SINGLE_FREE_WORD_TAG);
+    }
+  }
   Object** roots = _root_at(_array_offset_from(top));
   int used_length = length() - top;
   for (int i = 0; i < used_length; i++) {
