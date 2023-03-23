@@ -296,12 +296,12 @@ class Program : public FlashAllocation {
   List<uint16> interface_check_offsets;  // Selector offsets.
   List<uint16> class_bits;               // Instance sizes and class tags.
   List<uint8> bytecodes;
-  word global_max_stack_height_;         // Maximum stack height for all methods.
 
  private:
   // ATTENTION: The snapshot uuid is decoded by tools/firmware.toit. You
   // need to update that if the offset of the field changes.
   uint8 snapshot_uuid_[UUID_SIZE];
+  word global_max_stack_height_;         // Maximum stack height for all methods.
 
   static const int INVOKE_BYTECODE_COUNT = INVOKE_AT_PUT - INVOKE_EQ + 1;
   int invoke_bytecode_offsets_[INVOKE_BYTECODE_COUNT];
