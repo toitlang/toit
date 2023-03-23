@@ -243,7 +243,9 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
   // Assert that the frame-marker is skipped this way as well.
   ASSERT(bytecodes_from <= program->frame_marker() && program->frame_marker() < bytecodes_to);
   int min = program->global_max_stack_height();
-  if (top > min && top >= length() >> 1) {
+  // Don't shrink the stack unless we can halve the size.  The growing algo
+  // grows it by 50%, to try to avoid too much churn.
+  if (top > min && top > length() >> 1) {
     int reduction = top - min;
     if (reduction >= 8) {
       auto destin = _array_address(0);
