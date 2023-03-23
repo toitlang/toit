@@ -144,6 +144,7 @@ int ProgramBuilder::create_method(int selector_offset,
   auto method = Method::invalid();
   allocate_method(bytecodes.length(), max_height, &method_id, &method);
   method._initialize_method(selector_offset, is_field_accessor, arity, bytecodes, max_height);
+  global_max_stack_height_ = Utils::max(global_max_stack_height_, max_height);
   return method_id;
 }
 
@@ -326,6 +327,7 @@ void ProgramBuilder::set_interface_check_offsets(const List<uint16>& interface_c
 Program* ProgramBuilder::cook() {
   create_literals();
   program_->set_bytecodes(ListBuilder<uint8>::build_from_vector(all_bytecodes_));
+  program_->set_global_max_stack_height(global_max_stack_height_);
 
   // Clear the symbol table not used during execution.
   symbols_.clear();

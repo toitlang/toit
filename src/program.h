@@ -301,6 +301,7 @@ class Program : public FlashAllocation {
   // ATTENTION: The snapshot uuid is decoded by tools/firmware.toit. You
   // need to update that if the offset of the field changes.
   uint8 snapshot_uuid_[UUID_SIZE];
+  word global_max_stack_height_;         // Maximum stack height for all methods.
 
   static const int INVOKE_BYTECODE_COUNT = INVOKE_AT_PUT - INVOKE_EQ + 1;
   int invoke_bytecode_offsets_[INVOKE_BYTECODE_COUNT];
@@ -348,6 +349,7 @@ class Program : public FlashAllocation {
   void set_class_check_ids(List<uint16> ids) { class_check_ids = ids; }
   void set_interface_check_offsets(List<uint16> offsets) { interface_check_offsets = offsets; }
   void set_bytecodes(List<uint8> codes) { bytecodes = codes; }
+  void set_global_max_stack_height(int height) { global_max_stack_height_ = height; }
 
   // Should only be called from ProgramImage.
   void do_pointers(PointerCallback* callback);
