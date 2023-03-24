@@ -288,8 +288,6 @@ class Program : public FlashAllocation {
     return result;
   }
 
-  int global_max_stack_height() const { return global_max_stack_height_; }
-
  public:
   Table<Object*> global_variables;
   Table<Object*> literals;
