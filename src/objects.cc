@@ -242,11 +242,15 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
   void* bytecodes_to = &program->bytecodes.data()[program->bytecodes.length()];
   // Assert that the frame-marker is skipped this way as well.
   ASSERT(bytecodes_from <= program->frame_marker() && program->frame_marker() < bytecodes_to);
-  int min = program->global_max_stack_height();
+  // The stack overflow check happens on function entry, so we can't shrink the
+  // stack so much that an overflow check would have failed.  Luckily the
+  // compiler kept track of the maximum space that any function could need, so
+  // we can use that.
+  int minimum_space = program->global_max_stack_height();
   // Don't shrink the stack unless we can halve the size.  The growing algo
   // grows it by 50%, to try to avoid too much churn.
-  if (top > min && top > length() >> 1) {
-    int reduction = top - min;
+  if (top > minimum_space && top > length() >> 1) {
+    int reduction = top - minimum_space;
     if (reduction >= 8) {
       auto destin = _array_address(0);
       auto source = _array_address(reduction);
