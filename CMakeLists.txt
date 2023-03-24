@@ -167,7 +167,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
 
   set(GO_ENV "$ENV{GO_BUILD_FLAGS}")
   separate_arguments(GO_ENV)
-  list(APPEND GO_ENV CGO_ENABLED=1 GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
+  list(APPEND GO_ENV GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
 
   set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.sdkVersion=${TOIT_GIT_VERSION}")
 
