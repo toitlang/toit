@@ -284,6 +284,10 @@ class ServiceClient:
     id := _id_
     if not id: throw "Client closed"
     pid := _pid_
+    // If we are communicating with our own process, use a short cut.
+    // The check on the uninitialized flag causes this code to be
+    // optimized out by the type propagator in programs that do not
+    // provide services.
     if not ServiceManager_.uninitialized and pid == Process.current.id:
       manager := ServiceManager_.instance
       handler/ServiceHandler ::= manager.handlers_by_client_[id]
