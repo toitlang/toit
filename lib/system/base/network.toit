@@ -196,6 +196,15 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
   */
   abstract close_network network/net.Interface -> none
 
+  /**
+  Reports that a specific set of $events has occurred on
+    the network identified by $id.
+
+  Subclasses may override and use the reported $events.
+  */
+  report id/string events/int -> none:
+    // Do nothing.
+
   handle pid/int client/int index/int arguments/any -> any:
     if index == NetworkService.SOCKET_READ_INDEX:
       socket ::= convert_to_socket_ client arguments
@@ -219,6 +228,8 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
       return address (resource client arguments)
     if index == NetworkService.RESOLVE_INDEX:
       return resolve (resource client arguments[0]) arguments[1]
+    if index == NetworkService.REPORT_INDEX:
+      return report arguments[0] arguments[1]
 
     if index == NetworkService.UDP_OPEN_INDEX:
       return udp_open client arguments[1]
@@ -274,7 +285,11 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
     // when the module disconnects as a result of calling $NetworkState.down.
     state_.up: this
     resource := NetworkResource this client state_ --notifiable
-    return [resource.serialize_for_rpc, proxy_mask]
+    return [
+      resource.serialize_for_rpc,
+      proxy_mask | NetworkService.PROXY_REPORT,
+      "wonk"  // <--- TODO(kasper): Not good.
+    ]
 
   connect -> none:
     network := open_network

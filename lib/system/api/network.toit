@@ -15,7 +15,7 @@ interface NetworkService:
   static SELECTOR ::= ServiceSelector
       --uuid="063e228a-3a7a-44a8-b024-d55127255ccb"
       --major=0
-      --minor=3
+      --minor=4
 
   /**
   List of common tags that providers of $NetworkService may use
@@ -34,6 +34,7 @@ interface NetworkService:
   static PROXY_RESOLVE /int ::= 1 << 1
   static PROXY_UDP     /int ::= 1 << 2
   static PROXY_TCP     /int ::= 1 << 3
+  static PROXY_REPORT  /int ::= 1 << 4
 
   /**
   The socket options can be read or written using $socket_get_option
@@ -41,6 +42,15 @@ interface NetworkService:
   */
   static SOCKET_OPTION_UDP_BROADCAST /int ::= 0
   static SOCKET_OPTION_TCP_NO_DELAY  /int ::= 100
+
+  /**
+  The event constants are used for reporting noteworthy events
+    from the client user to the service provider.
+  */
+  static EVENT_NONE           /int ::= 0
+  static EVENT_NO_DNS       /int ::= 1 << 0
+  static EVENT_NO_INTERNET  /int ::= 1 << 1
+  static EVENT_NO_DATA      /int ::= 1 << 2
 
   /**
   The notification constants are used as arguments to $ServiceResource.notify_
@@ -60,6 +70,9 @@ interface NetworkService:
 
   resolve handle/int host/string -> List
   static RESOLVE_INDEX /int ::= 2
+
+  report id/string events/int -> none
+  static REPORT_INDEX /int ::= 3
 
   udp_open handle/int port/int? -> int
   static UDP_OPEN_INDEX /int ::= 100
@@ -120,6 +133,9 @@ class NetworkServiceClient extends ServiceClient implements NetworkService:
 
   resolve handle/int host/string -> List:
     return invoke_ NetworkService.RESOLVE_INDEX [handle, host]
+
+  report id/string events/int -> none:
+    invoke_ NetworkService.REPORT_INDEX [id, events]
 
   udp_open handle/int port/int? -> int:
     return invoke_ NetworkService.UDP_OPEN_INDEX [handle, port]

@@ -14,9 +14,6 @@ import system.base.network show ProxyingNetworkServiceProvider
 FAKE_TAG ::= "fake-$(random 1024)"
 FAKE_SELECTOR ::= NetworkService.SELECTOR.restrict.allow --tag=FAKE_TAG
 
-service_/NetworkServiceClient? ::= (NetworkServiceClient FAKE_SELECTOR).open
-    --if_absent=: null
-
 main:
   service := FakeNetworkServiceProvider
   service.install
@@ -25,6 +22,8 @@ main:
   test_tcp service
   test_close service
   service.uninstall
+
+  test_report
 
 test_address service/FakeNetworkServiceProvider:
   local_address ::= net.open.address
@@ -96,16 +95,27 @@ test_close service/FakeNetworkServiceProvider:
     yield
     expect network.is_closed
 
+test_report:
+  service := FakeNetworkServiceProvider
+  service.install
+  network := open_fake
+  network.report --unavailable --dns
+  network.close
+  service.uninstall
+
 // --------------------------------------------------------------------------
 
 open_fake -> net.Client:
-  return net.Client service_ service_.connect
+  service := (NetworkServiceClient FAKE_SELECTOR).open as NetworkServiceClient
+  return net.open --service=service
 
 class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
   proxy_mask_/int := 0
   address_/ByteArray? := null
   resolve_/List? := null
   network/net.Interface? := null
+
+  events_/int := NetworkService.EVENT_NONE
 
   constructor:
     super "system/network/test" --major=1 --minor=2  // Major and minor versions do not matter here.
@@ -127,9 +137,18 @@ class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
     this.network = null
     network.close
 
+  report id/string events/int -> none:
+    events_ |= events
+    unreachable
+
   update_proxy_mask_ mask/int add/bool:
     if add: proxy_mask_ |= mask
     else: proxy_mask_ &= ~mask
+
+  events -> int:
+    result := events_
+    events_ = NetworkService.EVENT_NONE
+    return result
 
   address= value/ByteArray?:
     update_proxy_mask_ NetworkService.PROXY_ADDRESS (value != null)
