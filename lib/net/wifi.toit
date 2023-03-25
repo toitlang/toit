@@ -64,7 +64,7 @@ class AccessPoint:
 
 class Client extends net.Client:
   constructor client/WifiServiceClient --name/string? connection/List:
-    super --name=name client connection
+    super client --name=name connection
 
   /**
   Returns information about the access point this $Client is currently
@@ -111,7 +111,7 @@ open config/Map? -> Client
   if not service: throw "WiFi unavailable"
   connection := service.connect config
   if save: service.configure config
-  return Client --name=name service connection
+  return Client service --name=name connection
 
 establish --ssid/string --password/string -> Client
     --name/string?=null
@@ -128,7 +128,7 @@ establish config/Map? -> Client
     --name/string?=null:
   service := service_
   if not service: throw "WiFi unavailable"
-  return Client service (service.establish config)
+  return Client service --name=name (service.establish config)
 
 scan channels/ByteArray --passive/bool=false --period_per_channel_ms/int=SCAN_TIMEOUT_MS_ -> List:
   if channels.size < 1: throw "Channels are unspecified"

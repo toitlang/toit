@@ -26,7 +26,7 @@ open -> Client
     --name/string?=null
     --service/NetworkServiceClient?=service_:
   if not service: throw "Network unavailable"
-  return Client --name=name service service.connect
+  return Client service --name=name service.connect
 
 interface Interface implements udp.Interface tcp.Interface:
   name -> string

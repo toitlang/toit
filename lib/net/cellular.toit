@@ -46,4 +46,4 @@ open config/Map? -> net.Client
         --if_absent=: null
   service := service_
   if not service: throw "cellular unavailable"
-  return net.Client --name=name service (service.connect config)
+  return net.Client service --name=name (service.connect config)
