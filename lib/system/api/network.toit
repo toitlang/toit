@@ -62,7 +62,7 @@ interface NetworkService:
   resolve handle/int host/string -> List
   static RESOLVE_INDEX /int ::= 2
 
-  quarantine id/string -> none
+  quarantine name/string -> none
   static QUARANTINE_INDEX /int ::= 3
 
   udp_open handle/int port/int? -> int
@@ -125,8 +125,8 @@ class NetworkServiceClient extends ServiceClient implements NetworkService:
   resolve handle/int host/string -> List:
     return invoke_ NetworkService.RESOLVE_INDEX [handle, host]
 
-  quarantine id/string -> none:
-    invoke_ NetworkService.QUARANTINE_INDEX id
+  quarantine name/string -> none:
+    invoke_ NetworkService.QUARANTINE_INDEX name
 
   udp_open handle/int port/int? -> int:
     return invoke_ NetworkService.UDP_OPEN_INDEX [handle, port]

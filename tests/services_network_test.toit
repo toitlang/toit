@@ -102,6 +102,12 @@ test_report:
   network.quarantine
   expect service.has_been_quarantined
   network.close
+
+  // Check that we can quarantine a closed network.
+  expect_not service.has_been_quarantined
+  network.quarantine
+  expect service.has_been_quarantined
+
   service.uninstall
 
 // --------------------------------------------------------------------------
@@ -129,7 +135,7 @@ class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
 
   open_network -> net.Interface:
     expect_null network
-    network = net.open
+    network = net.open --name="fake-net"
     return network
 
   close_network network/net.Interface -> none:
@@ -137,9 +143,8 @@ class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
     this.network = null
     network.close
 
-  quarantine id/string -> none:
-    // TODO(kasper): Fix the id.
-    expect_equals "wonk" id
+  quarantine name/string -> none:
+    expect_equals "fake-net" name
     quarantined_ = true
 
   update_proxy_mask_ mask/int add/bool:

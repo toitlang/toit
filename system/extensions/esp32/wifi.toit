@@ -94,7 +94,11 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
         throw "wifi already connected with different credentials"
 
       resource := NetworkResource this client state_ --notifiable
-      return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS | NetworkService.PROXY_RESOLVE]
+      return [
+        resource.serialize_for_rpc,
+        NetworkService.PROXY_ADDRESS | NetworkService.PROXY_RESOLVE,
+        "wifi:sta"
+      ]
     finally: | is_exception exception |
       // If we're not returning a network resource to the client, we
       // must take care to decrement the usage count correctly.
@@ -125,7 +129,11 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
         no := broadcast ? "no " : ""
         throw "wifi already established with $(no)ssid broadcasting"
       resource := NetworkResource this client state_ --notifiable
-      return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS | NetworkService.PROXY_RESOLVE]
+      return [
+        resource.serialize_for_rpc,
+        NetworkService.PROXY_ADDRESS | NetworkService.PROXY_RESOLVE,
+        "wifi:ap"
+      ]
     finally: | is_exception exception |
       // If we're not returning a network resource to the client, we
       // must take care to decrement the usage count correctly.

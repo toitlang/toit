@@ -22,11 +22,14 @@ service_/NetworkServiceClient? ::= (NetworkServiceClient).open
     --if_absent=: null
 
 /// Gets the default network interface.
-open --service/NetworkServiceClient?=service_ -> Client:
+open -> Client
+    --name/string?=null
+    --service/NetworkServiceClient?=service_:
   if not service: throw "Network unavailable"
-  return Client service service.connect
+  return Client --name=name service service.connect
 
 interface Interface implements udp.Interface tcp.Interface:
+  name -> string
   address -> IpAddress
   is_closed -> bool
 
@@ -44,24 +47,23 @@ interface Interface implements udp.Interface tcp.Interface:
   close -> none
 
 class Client extends NetworkResourceProxy implements Interface:
+  name/string
+
   // The proxy mask contains bits for all the operations that must be
   // proxied through the service client. The service definition tells the
   // client about the bits on connect.
   proxy_mask/int
 
-  // ...
-  id/string?
-
-  constructor service/NetworkServiceClient connection/List:
+  constructor service/NetworkServiceClient --name/string? connection/List:
     handle := connection[0]
     proxy_mask = connection[1]
-    id = (connection.size < 3) ? null : connection[2]
+    this.name = name or connection[2]
     super service handle
 
   constructor service/NetworkServiceClient
       --handle/int
       --.proxy_mask
-      --.id=null:
+      --.name:
     super service handle
 
   address -> IpAddress:
@@ -86,8 +88,8 @@ class Client extends NetworkResourceProxy implements Interface:
     return [dns_module.dns_lookup host]
 
   quarantine -> none:
-    if not id or (proxy_mask & NetworkService.PROXY_QUARANTINE) == 0: return
-    (client_ as NetworkServiceClient).quarantine id
+    if (proxy_mask & NetworkService.PROXY_QUARANTINE) == 0: return
+    (client_ as NetworkServiceClient).quarantine name
 
   udp_open --port/int?=null -> udp.Socket:
     if is_closed: throw "Network closed"

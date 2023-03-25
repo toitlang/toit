@@ -197,11 +197,11 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
   abstract close_network network/net.Interface -> none
 
   /**
-  Requests quarantining the network identified by $id.
+  Requests quarantining the network identified by $name.
 
   Subclasses may override and act on the request.
   */
-  quarantine id/string -> none:
+  quarantine name/string -> none:
     // Do nothing.
 
   handle pid/int client/int index/int arguments/any -> any:
@@ -287,7 +287,7 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
     return [
       resource.serialize_for_rpc,
       proxy_mask | NetworkService.PROXY_QUARANTINE,
-      "wonk"  // <--- TODO(kasper): Not good.
+      network_.name
     ]
 
   connect -> none:
