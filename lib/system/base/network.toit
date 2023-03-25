@@ -197,12 +197,11 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
   abstract close_network network/net.Interface -> none
 
   /**
-  Reports that a specific set of $events has occurred on
-    the network identified by $id.
+  Requests quarantining the network identified by $id.
 
-  Subclasses may override and use the reported $events.
+  Subclasses may override and act on the request.
   */
-  report id/string events/int -> none:
+  quarantine id/string -> none:
     // Do nothing.
 
   handle pid/int client/int index/int arguments/any -> any:
@@ -228,8 +227,8 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
       return address (resource client arguments)
     if index == NetworkService.RESOLVE_INDEX:
       return resolve (resource client arguments[0]) arguments[1]
-    if index == NetworkService.REPORT_INDEX:
-      return report arguments[0] arguments[1]
+    if index == NetworkService.QUARANTINE_INDEX:
+      return quarantine arguments
 
     if index == NetworkService.UDP_OPEN_INDEX:
       return udp_open client arguments[1]
@@ -287,7 +286,7 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
     resource := NetworkResource this client state_ --notifiable
     return [
       resource.serialize_for_rpc,
-      proxy_mask | NetworkService.PROXY_REPORT,
+      proxy_mask | NetworkService.PROXY_QUARANTINE,
       "wonk"  // <--- TODO(kasper): Not good.
     ]
 

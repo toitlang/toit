@@ -43,7 +43,7 @@ abstract class NetworkServiceProviderBase extends ServiceProvider
     unreachable
   resolve resource/ServiceResource host/string -> List:
     unreachable
-  report id/string events/int -> none:
+  quarantine id/string -> none:
     unreachable
 
   udp_open handle/int port/int? -> int:

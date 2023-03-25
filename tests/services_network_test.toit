@@ -99,7 +99,8 @@ test_report:
   service := FakeNetworkServiceProvider
   service.install
   network := open_fake
-  network.report --unavailable --dns
+  network.quarantine
+  expect service.has_been_quarantined
   network.close
   service.uninstall
 
@@ -114,8 +115,7 @@ class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
   address_/ByteArray? := null
   resolve_/List? := null
   network/net.Interface? := null
-
-  events_/int := NetworkService.EVENT_NONE
+  quarantined_/bool := false
 
   constructor:
     super "system/network/test" --major=1 --minor=2  // Major and minor versions do not matter here.
@@ -137,17 +137,18 @@ class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
     this.network = null
     network.close
 
-  report id/string events/int -> none:
-    events_ |= events
-    unreachable
+  quarantine id/string -> none:
+    // TODO(kasper): Fix the id.
+    expect_equals "wonk" id
+    quarantined_ = true
 
   update_proxy_mask_ mask/int add/bool:
     if add: proxy_mask_ |= mask
     else: proxy_mask_ &= ~mask
 
-  events -> int:
-    result := events_
-    events_ = NetworkService.EVENT_NONE
+  has_been_quarantined -> bool:
+    result := quarantined_
+    quarantined_ = false
     return result
 
   address= value/ByteArray?:

@@ -85,17 +85,9 @@ class Client extends NetworkResourceProxy implements Interface:
     if (proxy_mask & NetworkService.PROXY_RESOLVE) != 0: return super host
     return [dns_module.dns_lookup host]
 
-  report --unavailable/bool -> none
-      --dns/bool=false
-      --internet/bool=false
-      --data/bool=false:
-    if not unavailable: throw "Bad Argument"
-    if not id or (proxy_mask & NetworkService.PROXY_REPORT) == 0: return
-    events := NetworkService.EVENT_NONE
-    if dns: events |= NetworkService.EVENT_NO_DNS
-    if internet: events |= NetworkService.EVENT_NO_INTERNET
-    if data: events |= NetworkService.EVENT_NO_DATA
-    (client_ as NetworkServiceClient).report id events
+  quarantine -> none:
+    if not id or (proxy_mask & NetworkService.PROXY_QUARANTINE) == 0: return
+    (client_ as NetworkServiceClient).quarantine id
 
   udp_open --port/int?=null -> udp.Socket:
     if is_closed: throw "Network closed"
