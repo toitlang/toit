@@ -249,7 +249,6 @@ test_region_flash_stream:
   region := storage.Region.open --flash "region-1" --capacity=1000
   try:
     test_region_flash_stream region null
-    []
     [ 0, 1, 8, 17, 199, 256, 512, 999, 1000, 1001, 10000 ].do:
       test_region_flash_stream region it
   finally:
