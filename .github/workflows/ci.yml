@@ -71,11 +71,11 @@ jobs:
           git submodule update --init components/mbedtls
           git submodule update --init components/esptool_py
 
-      # Use Go 1.17
-      - name: Switch to Go 1.17
+      # Use Go 1.20
+      - name: Switch to Go 1.20
         shell: bash
         run:
-          echo "$GOROOT_1_17_X64"/bin >> $GITHUB_PATH
+          echo "$GOROOT_1_20_X64"/bin >> $GITHUB_PATH
 
       # Get values for cache paths to be used in later steps
       - name: Get Go paths
@@ -433,11 +433,11 @@ jobs:
           git submodule sync --recursive
           git submodule update --init --recursive -j 16
 
-      # Use Go 1.17
-      - name: Switch to Go 1.17
+      # Use Go 1.20
+      - name: Switch to Go 1.20
         shell: bash
         run:
-          echo "$GOROOT_1_17_X64"/bin >> $GITHUB_PATH
+          echo "$GOROOT_1_20_X64"/bin >> $GITHUB_PATH
 
       # Get values for cache paths to be used in later steps
       - name: Get Go paths
@@ -605,11 +605,11 @@ jobs:
           git submodule update --init components/mbedtls
           git submodule update --init components/esptool_py
 
-      # Use Go 1.17
-      - name: Switch to Go 1.17
+      # Use Go 1.20
+      - name: Switch to Go 1.20
         shell: bash
         run:
-          echo "$GOROOT_1_17_X64"/bin >> $GITHUB_PATH
+          echo "$GOROOT_1_20_X64"/bin >> $GITHUB_PATH
 
       # Get values for cache paths to be used in later steps
       - name: Get Go paths
