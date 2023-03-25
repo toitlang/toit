@@ -14,9 +14,6 @@ import system.base.network show ProxyingNetworkServiceProvider
 FAKE_TAG ::= "fake-$(random 1024)"
 FAKE_SELECTOR ::= NetworkService.SELECTOR.restrict.allow --tag=FAKE_TAG
 
-service_/NetworkServiceClient? ::= (NetworkServiceClient FAKE_SELECTOR).open
-    --if_absent=: null
-
 main:
   service := FakeNetworkServiceProvider
   service.install
@@ -25,6 +22,8 @@ main:
   test_tcp service
   test_close service
   service.uninstall
+
+  test_report
 
 test_address service/FakeNetworkServiceProvider:
   local_address ::= net.open.address
@@ -96,16 +95,33 @@ test_close service/FakeNetworkServiceProvider:
     yield
     expect network.is_closed
 
+test_report:
+  service := FakeNetworkServiceProvider
+  service.install
+  network := open_fake
+  network.quarantine
+  expect service.has_been_quarantined
+  network.close
+
+  // Check that we can quarantine a closed network.
+  expect_not service.has_been_quarantined
+  network.quarantine
+  expect service.has_been_quarantined
+
+  service.uninstall
+
 // --------------------------------------------------------------------------
 
 open_fake -> net.Client:
-  return net.Client service_ service_.connect
+  service := (NetworkServiceClient FAKE_SELECTOR).open as NetworkServiceClient
+  return net.open --service=service
 
 class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
   proxy_mask_/int := 0
   address_/ByteArray? := null
   resolve_/List? := null
   network/net.Interface? := null
+  quarantined_/bool := false
 
   constructor:
     super "system/network/test" --major=1 --minor=2  // Major and minor versions do not matter here.
@@ -119,7 +135,7 @@ class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
 
   open_network -> net.Interface:
     expect_null network
-    network = net.open
+    network = net.open --name="fake-net"
     return network
 
   close_network network/net.Interface -> none:
@@ -127,9 +143,18 @@ class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
     this.network = null
     network.close
 
+  quarantine name/string -> none:
+    expect_equals "fake-net" name
+    quarantined_ = true
+
   update_proxy_mask_ mask/int add/bool:
     if add: proxy_mask_ |= mask
     else: proxy_mask_ &= ~mask
+
+  has_been_quarantined -> bool:
+    result := quarantined_
+    quarantined_ = false
+    return result
 
   address= value/ByteArray?:
     update_proxy_mask_ NetworkService.PROXY_ADDRESS (value != null)

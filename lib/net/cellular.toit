@@ -31,7 +31,8 @@ CONFIG_PRIORITY_HIGH /int ::= 1
 service_/CellularServiceClient? := null
 service_initialized_/bool := false
 
-open config/Map? -> net.Client:
+open config/Map? -> net.Client
+    --name/string?=null:
   if not service_initialized_:
     // We typically run the cellular service in a non-system
     // container with --trigger=boot, so we need to give it
@@ -45,4 +46,4 @@ open config/Map? -> net.Client:
         --if_absent=: null
   service := service_
   if not service: throw "cellular unavailable"
-  return net.Client service (service.connect config)
+  return net.Client service --name=name (service.connect config)

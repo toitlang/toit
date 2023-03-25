@@ -131,6 +131,9 @@ class EthernetInterface_ extends CloseableNetwork implements net.Interface:
   constructor:
     open_count_++
 
+  name -> string:
+    return "ethernet"
+
   resolve host/string -> List:
     with_ethernet_:
       return [dns_module.dns_lookup host]

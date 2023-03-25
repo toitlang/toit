@@ -15,7 +15,7 @@ interface NetworkService:
   static SELECTOR ::= ServiceSelector
       --uuid="063e228a-3a7a-44a8-b024-d55127255ccb"
       --major=0
-      --minor=3
+      --minor=4
 
   /**
   List of common tags that providers of $NetworkService may use
@@ -29,11 +29,12 @@ interface NetworkService:
   Proxy mask bits that indicate which operations must be proxied
     through the service. See $connect.
   */
-  static PROXY_NONE    /int ::= 0
-  static PROXY_ADDRESS /int ::= 1 << 0
-  static PROXY_RESOLVE /int ::= 1 << 1
-  static PROXY_UDP     /int ::= 1 << 2
-  static PROXY_TCP     /int ::= 1 << 3
+  static PROXY_NONE       /int ::= 0
+  static PROXY_ADDRESS    /int ::= 1 << 0
+  static PROXY_RESOLVE    /int ::= 1 << 1
+  static PROXY_UDP        /int ::= 1 << 2
+  static PROXY_TCP        /int ::= 1 << 3
+  static PROXY_QUARANTINE /int ::= 1 << 4
 
   /**
   The socket options can be read or written using $socket_get_option
@@ -60,6 +61,9 @@ interface NetworkService:
 
   resolve handle/int host/string -> List
   static RESOLVE_INDEX /int ::= 2
+
+  quarantine name/string -> none
+  static QUARANTINE_INDEX /int ::= 3
 
   udp_open handle/int port/int? -> int
   static UDP_OPEN_INDEX /int ::= 100
@@ -120,6 +124,9 @@ class NetworkServiceClient extends ServiceClient implements NetworkService:
 
   resolve handle/int host/string -> List:
     return invoke_ NetworkService.RESOLVE_INDEX [handle, host]
+
+  quarantine name/string -> none:
+    invoke_ NetworkService.QUARANTINE_INDEX name
 
   udp_open handle/int port/int? -> int:
     return invoke_ NetworkService.UDP_OPEN_INDEX [handle, port]

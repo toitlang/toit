@@ -26,7 +26,11 @@ class NetworkServiceProvider extends NetworkServiceProviderBase:
 
   connect client/int -> List:
     resource := NetworkResource this client
-    return [resource.serialize_for_rpc, NetworkService.PROXY_NONE]
+    return [
+      resource.serialize_for_rpc,
+      NetworkService.PROXY_NONE,
+      "system"
+    ]
 
 class NetworkResource extends ServiceResource:
   constructor provider/ServiceProvider client/int:
