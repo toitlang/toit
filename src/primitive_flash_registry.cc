@@ -253,6 +253,7 @@ PRIMITIVE(partition_find) {
   word* partition;
   if (probe == partitions.end()) {
     // TODO(kasper): Use mmap and get the right alignment.
+    size = Utils::round_up(size, FLASH_PAGE_SIZE);
     partition = static_cast<word*>(malloc(size + sizeof(word)));
     memset(partition + 1, 0xff, size);
     *partition = size;
@@ -264,9 +265,13 @@ PRIMITIVE(partition_find) {
   }
   word offset = reinterpret_cast<word>(partition + 1);
 #endif
-  // TODO(kasper): Should be ints.
-  result->at_put(0, Smi::from(offset + 1));
-  result->at_put(1, Smi::from(size));
+  // TODO(kasper): Clean up the offset tagging.
+  Object* offset_entry = Primitive::integer(offset + 1, process);
+  if (Primitive::is_error(offset_entry)) return offset_entry;
+  Object* size_entry = Primitive::integer(size, process);
+  if (Primitive::is_error(size_entry)) return size_entry;
+  result->at_put(0, offset_entry);
+  result->at_put(1, size_entry);
   return result;
 }
 

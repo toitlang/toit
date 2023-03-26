@@ -245,7 +245,6 @@ class Region extends ServiceResourceProxy:
     if not partition: throw "Bad Argument"
     return open --scheme=SCHEME_PARTITION --path=path --capacity=capacity
 
-
   /**
   Opens a storage region using the given $scheme and $path.
 
