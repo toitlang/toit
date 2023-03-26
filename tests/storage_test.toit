@@ -23,6 +23,8 @@ main:
   test_region_flash_delete
   test_region_flash_list
 
+  test_region_partition
+
 test_bucket_ram:
   a := storage.Bucket.open --ram "bucket-a"
   b := storage.Bucket.open --ram "bucket-b"
@@ -259,3 +261,9 @@ test_region_flash_list:
   expect (regions.contains "flash:region-1")
   expect (regions.contains "flash:region-2")
   expect_not (regions.contains "flash:region-3")
+
+test_region_partition:
+  // TODO(kasper): Extend testing.
+  region := storage.Region.open --partition "partition-0"
+  expect_throw "ALREADY_IN_USE": storage.Region.open --partition "partition-0"
+  region.close

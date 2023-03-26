@@ -19,9 +19,20 @@
 #include "process.h"
 #include "objects_inline.h"
 
+#ifdef TOIT_FREERTOS
+#include "esp_partition.h"
+#else
+#include <string>
+#include <unordered_map>
+#endif
+
 namespace toit {
 
 MODULE_IMPLEMENTATION(flash, MODULE_FLASH_REGISTRY)
+
+#ifndef TOIT_FREERTOS
+static std::unordered_map<std::string, word*> partitions;
+#endif
 
 static int flash_registry_offset_current = 0;
 static int flash_registry_offset_next = 0;
@@ -189,7 +200,7 @@ PRIMITIVE(allocate) {
 
 PRIMITIVE(grant_access) {
   PRIVILEGED;
-  ARGS(int, client, int, handle, int, offset, int, size);
+  ARGS(int, client, int, handle, word, offset, word, size);
   RegionGrant* grant = _new RegionGrant(client, handle, offset, size);
   if (!grant) MALLOC_FAILED;
   Locker locker(OS::global_mutex());
@@ -222,22 +233,59 @@ PRIMITIVE(revoke_access) {
   return process->program()->null_object();
 }
 
+PRIMITIVE(partition_find) {
+  PRIVILEGED;
+  ARGS(cstring, path, int, type, word, size);
+  if (size <= 0 || (type < 0x00) || (type > 0xfe)) INVALID_ARGUMENT;
+  Array* result = process->object_heap()->allocate_array(2, Smi::zero());
+  if (!result) ALLOCATION_FAILED;
+#ifdef TOIT_FREERTOS
+  const esp_partition_t* partition = esp_partition_find_first(
+      static_cast<esp_partition_type_t>(type),
+      ESP_PARTITION_SUBTYPE_ANY,
+      path);
+  if (!partition) FILE_NOT_FOUND;
+  word offset = partition->address;
+  size = partition->size;
+#else
+  std::string key(path);
+  auto probe = partitions.find(path);
+  word* partition;
+  if (probe == partitions.end()) {
+    // TODO(kasper): Use mmap and get the right alignment.
+    partition = static_cast<word*>(malloc(size + sizeof(word)));
+    memset(partition + 1, 0xff, size);
+    *partition = size;
+    AllowThrowingNew host_only;
+    partitions[key] = partition;
+  } else {
+    partition = probe->second;
+    size = *partition;
+  }
+  word offset = reinterpret_cast<word>(partition + 1);
+#endif
+  // TODO(kasper): Should be ints.
+  result->at_put(0, Smi::from(offset + 1));
+  result->at_put(1, Smi::from(size));
+  return result;
+}
+
 class FlashRegion : public SimpleResource {
  public:
   TAG(FlashRegion);
-  FlashRegion(SimpleResourceGroup* group, int offset, int size)
+  FlashRegion(SimpleResourceGroup* group, uword offset, uword size)
       : SimpleResource(group), offset_(offset), size_(size) {}
 
-  int offset() const { return offset_; }
-  int size() const { return size_; }
+  word offset() const { return offset_; }
+  word size() const { return size_; }
 
  private:
-  int offset_;
-  int size_;
+  word offset_;
+  word size_;
 };
 
 PRIMITIVE(region_open) {
-  ARGS(SimpleResourceGroup, group, int, client, int, handle, int, offset, int, size);
+  ARGS(SimpleResourceGroup, group, int, client, int, handle, word, offset, word, size);
 
   bool found = false;
   { Locker locker(OS::global_mutex());
@@ -275,9 +323,24 @@ PRIMITIVE(region_read) {
   ARGS(FlashRegion, resource, int, from, MutableBlob, bytes);
   int size = bytes.length();
   if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
-  FlashRegistry::flush();
-  const uint8* region = FlashRegistry::region(resource->offset(), resource->size());
-  memcpy(bytes.address(), region + from, size);
+  word offset = resource->offset();
+  if ((offset & 1) == 0) {
+    FlashRegistry::flush();
+    const uint8* region = FlashRegistry::region(offset, resource->size());
+    memcpy(bytes.address(), region + from, size);
+  } else {
+#ifdef TOIT_FREERTOS
+    uword region = offset - 1;
+    uword source = region + from;
+    uint8* destination = bytes.address();
+    if (esp_flash_read(NULL, destination, source, size) != ESP_OK) {
+      HARDWARE_ERROR;
+    }
+#else
+    uint8* region = reinterpret_cast<uint8*>(offset - 1);
+    memcpy(bytes.address(), region + from, size);
+#endif
+  }
   return process->program()->null_object();
 }
 
@@ -285,8 +348,25 @@ PRIMITIVE(region_write) {
   ARGS(FlashRegion, resource, int, from, Blob, bytes);
   int size = bytes.length();
   if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
-  if (!FlashRegistry::write_chunk(bytes.address(), from + resource->offset(), size)) {
-    HARDWARE_ERROR;
+  word offset = resource->offset();
+  if ((offset & 1) == 0) {
+    if (!FlashRegistry::write_chunk(bytes.address(), from + offset, size)) {
+      HARDWARE_ERROR;
+    }
+  } else {
+#ifdef TOIT_FREERTOS
+    uword region = offset - 1;
+    uword destination = region + from;
+    const uint8* source = bytes.address();
+    if (esp_flash_write(NULL, source, destination, size) != ESP_OK) {
+      HARDWARE_ERROR;
+    }
+#else
+    uint8* region = reinterpret_cast<uint8*>(offset - 1);
+    uint8* destination = region + from;
+    const uint8* source = bytes.address();
+    for (int i = 0; i < size; i++) destination[i] &= source[i];
+#endif
   }
   return process->program()->null_object();
 }
@@ -294,7 +374,37 @@ PRIMITIVE(region_write) {
 PRIMITIVE(region_is_erased) {
   ARGS(FlashRegion, resource, int, from, int32, size);
   if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
-  return BOOL(FlashRegistry::is_erased(from + resource->offset(), size));
+  word offset = resource->offset();
+  if ((offset & 1) == 0) {
+    return BOOL(FlashRegistry::is_erased(from + offset, size));
+  } else {
+#ifdef TOIT_FREERTOS
+    static const int BUFFER_SIZE = 256;
+    AllocationManager allocation(process);
+    uint8* buffer = allocation.alloc(BUFFER_SIZE);
+    if (!buffer) MALLOC_FAILED;
+    uword region = offset - 1;
+    int to = from + size;
+    while (true) {
+      int remaining = to - from;
+      if (remaining == 0) return BOOL(true);
+      int n = Utils::min(remaining, BUFFER_SIZE);
+      if (esp_flash_read(NULL, buffer, region + from, n) != ESP_OK) {
+        HARDWARE_ERROR;
+      }
+      for (int i = 0; i < n; i++) {
+        if (buffer[i] != 0xff) return BOOL(false);
+      }
+      from += n;
+    }
+#else
+    uint8* region = reinterpret_cast<uint8*>(offset - 1);
+    for (int i = 0; i < size; i++) {
+      if (region[i] != 0xff) return BOOL(false);
+    }
+    return BOOL(true);
+#endif
+  }
 }
 
 PRIMITIVE(region_erase) {
@@ -302,8 +412,22 @@ PRIMITIVE(region_erase) {
   if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
   if (!Utils::is_aligned(from, FLASH_PAGE_SIZE)) INVALID_ARGUMENT;
   if (!Utils::is_aligned(size, FLASH_PAGE_SIZE)) INVALID_ARGUMENT;
-  if (!FlashRegistry::erase_chunk(from + resource->offset(), size)) {
-    HARDWARE_ERROR;
+  word offset = resource->offset();
+  if ((offset & 1) == 0) {
+    if (!FlashRegistry::erase_chunk(from + offset, size)) {
+      HARDWARE_ERROR;
+    }
+  } else {
+#ifdef TOIT_FREERTOS
+    uword region = offset - 1;
+    uword destination = region + from;
+    if (esp_flash_erase_region(NULL, destination, size) != ESP_OK) {
+      HARDWARE_ERROR;
+    }
+#else
+    uint8* region = reinterpret_cast<uint8*>(offset - 1);
+    memset(region + from, 0xff, size);
+#endif
   }
   return process->program()->null_object();
 }

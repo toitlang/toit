@@ -24,8 +24,8 @@ Buckets are referred to via a schema and a path. The scheme
   and the path allows separating buckets.
 */
 class Bucket extends ServiceResourceProxy:
-  static SCHEME_RAM   ::= "ram"
   static SCHEME_FLASH ::= "flash"
+  static SCHEME_RAM   ::= "ram"
 
   scheme/string
   path/string
@@ -123,7 +123,8 @@ Regions are referred to via a schema and a path. The scheme
   and the path allows separating regions.
 */
 class Region extends ServiceResourceProxy:
-  static SCHEME_FLASH ::= "flash"
+  static SCHEME_FLASH     ::= "flash"
+  static SCHEME_PARTITION ::= "partition"
 
   scheme/string
   path/string
@@ -232,6 +233,18 @@ class Region extends ServiceResourceProxy:
       --capacity/int?=null:
     if not flash: throw "Bad Argument"
     return open --scheme=SCHEME_FLASH --path=path --capacity=capacity
+
+  /**
+  Variant of $(open --scheme --path --capacity).
+
+  Opens a storage region using the $SCHEME_PARTITION scheme and the
+    given $path.
+  */
+  static open --partition/bool path/string -> Region
+      --capacity/int?=null:
+    if not partition: throw "Bad Argument"
+    return open --scheme=SCHEME_PARTITION --path=path --capacity=capacity
+
 
   /**
   Opens a storage region using the given $scheme and $path.

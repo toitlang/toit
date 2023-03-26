@@ -579,6 +579,7 @@ namespace toit {
   PRIMITIVE(grant_access, 4)                 \
   PRIMITIVE(is_accessed, 2)                  \
   PRIMITIVE(revoke_access, 2)                \
+  PRIMITIVE(partition_find, 3)              \
   PRIMITIVE(region_open, 5)                  \
   PRIMITIVE(region_close, 1)                 \
   PRIMITIVE(region_read, 3)                  \

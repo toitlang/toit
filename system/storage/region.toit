@@ -24,9 +24,7 @@ import uuid
 import ..flash.allocation
 import ..flash.registry
 
-class FlashRegionResource extends ServiceResource:
-  static NAMESPACE ::= "flash:region"
-
+class RegionResource extends ServiceResource:
   client_/int
   handle_/int? := null
 
@@ -47,6 +45,12 @@ class FlashRegionResource extends ServiceResource:
   on_closed -> none:
     revoke
 
+class FlashRegionResource extends RegionResource:
+  static NAMESPACE ::= "flash:region"
+
+  constructor provider/StorageServiceProvider client/int --offset/int --size/int:
+    super provider client --offset=offset --size=size
+
   static open provider/StorageServiceProvider client/int -> List
       --path/string
       --capacity/int?:
@@ -63,11 +67,11 @@ class FlashRegionResource extends ServiceResource:
     if capacity and size < capacity: throw "Existing region is too small"
     resource := FlashRegionResource provider client --offset=offset --size=size
     return [
-        resource.serialize_for_rpc,
-        offset,
-        size,
-        FLASH_REGISTRY_PAGE_SIZE_LOG2,
-        Region.MODE_WRITE_CAN_CLEAR_BITS_
+      resource.serialize_for_rpc,
+      offset,
+      size,
+      FLASH_REGISTRY_PAGE_SIZE_LOG2,
+      Region.MODE_WRITE_CAN_CLEAR_BITS_
     ]
 
   static delete registry/FlashRegistry -> none
@@ -111,6 +115,36 @@ class FlashRegionResource extends ServiceResource:
         --metadata=metadata
         --content=properties
 
+class PartitionRegionResource extends RegionResource:
+  // On the ESP32, we use partition type 0x40 for the
+  // flash registry and 0x41 for region partitions.
+  static ESP32_PARTITION_TYPE ::= 0x41
+
+  // On host platforms, we automatically create an
+  // in-memory partition if we do not find an existing
+  // one. This is useful primarily for testing.
+  static HOST_DEFAULT_SIZE ::= 64 * 1024
+
+  constructor provider/StorageServiceProvider client/int --offset/int --size/int:
+    super provider client --offset=offset --size=size
+
+  static open provider/StorageServiceProvider client/int -> List
+      --path/string
+      --capacity/int?:
+    size := capacity or HOST_DEFAULT_SIZE
+    partition := flash_partition_find_ path ESP32_PARTITION_TYPE size
+    offset := partition[0]
+    size = partition[1]
+    if capacity and size < capacity: throw "Existing region is too small"
+    resource := PartitionRegionResource provider client --offset=offset --size=size
+    return [
+      resource.serialize_for_rpc,
+      offset,
+      size,
+      FLASH_REGISTRY_PAGE_SIZE_LOG2,
+      Region.MODE_WRITE_CAN_CLEAR_BITS_
+    ]
+
 // --------------------------------------------------------------------------
 
 flash_grant_access_ client handle offset size:
@@ -121,3 +155,6 @@ flash_is_accessed_ offset size:
 
 flash_revoke_access_ client handle:
   #primitive.flash.revoke_access
+
+flash_partition_find_ path type size -> List:
+  #primitive.flash.partition_find
