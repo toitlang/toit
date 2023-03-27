@@ -200,7 +200,7 @@ PRIMITIVE(allocate) {
 
 PRIMITIVE(grant_access) {
   PRIVILEGED;
-  ARGS(int, client, int, handle, word, offset, word, size);
+  ARGS(int, client, int, handle, uword, offset, uword, size);
   RegionGrant* grant = _new RegionGrant(client, handle, offset, size);
   if (!grant) MALLOC_FAILED;
   Locker locker(OS::global_mutex());
@@ -213,7 +213,7 @@ PRIMITIVE(grant_access) {
 
 PRIMITIVE(is_accessed) {
   PRIVILEGED;
-  ARGS(int, offset, int, size);
+  ARGS(uword, offset, uword, size);
   Locker locker(OS::global_mutex());
   for (auto it : grants) {
     if (it->offset() == offset && it->size() == size) {
@@ -235,7 +235,7 @@ PRIMITIVE(revoke_access) {
 
 PRIMITIVE(partition_find) {
   PRIVILEGED;
-  ARGS(cstring, path, int, type, word, size);
+  ARGS(cstring, path, int, type, uword, size);
   if (size <= 0 || (type < 0x00) || (type > 0xfe)) INVALID_ARGUMENT;
   Array* result = process->object_heap()->allocate_array(2, Smi::zero());
   if (!result) ALLOCATION_FAILED;
@@ -245,7 +245,7 @@ PRIMITIVE(partition_find) {
       ESP_PARTITION_SUBTYPE_ANY,
       path);
   if (!partition) FILE_NOT_FOUND;
-  word offset = partition->address;
+  uword offset = partition->address;
   size = partition->size;
 #else
   std::string key(path);
@@ -263,7 +263,7 @@ PRIMITIVE(partition_find) {
     partition = probe->second;
     size = *partition;
   }
-  word offset = reinterpret_cast<word>(partition + 1);
+  uword offset = reinterpret_cast<word>(partition + 1);
 #endif
   // TODO(kasper): Clean up the offset tagging.
   Object* offset_entry = Primitive::integer(offset + 1, process);
@@ -281,16 +281,16 @@ class FlashRegion : public SimpleResource {
   FlashRegion(SimpleResourceGroup* group, uword offset, uword size)
       : SimpleResource(group), offset_(offset), size_(size) {}
 
-  word offset() const { return offset_; }
-  word size() const { return size_; }
+  uword offset() const { return offset_; }
+  uword size() const { return size_; }
 
  private:
-  word offset_;
-  word size_;
+  uword offset_;
+  uword size_;
 };
 
 PRIMITIVE(region_open) {
-  ARGS(SimpleResourceGroup, group, int, client, int, handle, word, offset, word, size);
+  ARGS(SimpleResourceGroup, group, int, client, int, handle, uword, offset, uword, size);
 
   bool found = false;
   { Locker locker(OS::global_mutex());
@@ -319,14 +319,14 @@ PRIMITIVE(region_close) {
   return process->program()->null_object();
 }
 
-static bool is_within_bounds(FlashRegion* resource, int from, int size) {
-  int to = from + size;
-  return 0 <= from && from < to && to <= resource->size();
+static bool is_within_bounds(FlashRegion* resource, word from, uword size) {
+  word to = from + size;
+  return 0 <= from && from < to && static_cast<uword>(to) <= resource->size();
 }
 
 PRIMITIVE(region_read) {
-  ARGS(FlashRegion, resource, int, from, MutableBlob, bytes);
-  int size = bytes.length();
+  ARGS(FlashRegion, resource, word, from, MutableBlob, bytes);
+  uword size = bytes.length();
   if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
   word offset = resource->offset();
   if ((offset & 1) == 0) {
@@ -350,10 +350,10 @@ PRIMITIVE(region_read) {
 }
 
 PRIMITIVE(region_write) {
-  ARGS(FlashRegion, resource, int, from, Blob, bytes);
-  int size = bytes.length();
+  ARGS(FlashRegion, resource, word, from, Blob, bytes);
+  uword size = bytes.length();
   if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
-  word offset = resource->offset();
+  uword offset = resource->offset();
   if ((offset & 1) == 0) {
     if (!FlashRegistry::write_chunk(bytes.address(), from + offset, size)) {
       HARDWARE_ERROR;
@@ -370,41 +370,41 @@ PRIMITIVE(region_write) {
     uint8* region = reinterpret_cast<uint8*>(offset - 1);
     uint8* destination = region + from;
     const uint8* source = bytes.address();
-    for (int i = 0; i < size; i++) destination[i] &= source[i];
+    for (uword i = 0; i < size; i++) destination[i] &= source[i];
 #endif
   }
   return process->program()->null_object();
 }
 
 PRIMITIVE(region_is_erased) {
-  ARGS(FlashRegion, resource, int, from, int32, size);
+  ARGS(FlashRegion, resource, word, from, uword, size);
   if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
-  word offset = resource->offset();
+  uword offset = resource->offset();
   if ((offset & 1) == 0) {
     return BOOL(FlashRegistry::is_erased(from + offset, size));
   } else {
 #ifdef TOIT_FREERTOS
-    static const int BUFFER_SIZE = 256;
+    static const uword BUFFER_SIZE = 256;
     AllocationManager allocation(process);
     uint8* buffer = allocation.alloc(BUFFER_SIZE);
-    if (!buffer) MALLOC_FAILED;
+    if (!buffer) ALLOCATION_FAILED;
     uword region = offset - 1;
-    int to = from + size;
+    word to = from + size;
     while (true) {
-      int remaining = to - from;
+      uword remaining = to - from;
       if (remaining == 0) return BOOL(true);
-      int n = Utils::min(remaining, BUFFER_SIZE);
+      uword n = Utils::min(remaining, BUFFER_SIZE);
       if (esp_flash_read(NULL, buffer, region + from, n) != ESP_OK) {
         HARDWARE_ERROR;
       }
-      for (int i = 0; i < n; i++) {
+      for (uword i = 0; i < n; i++) {
         if (buffer[i] != 0xff) return BOOL(false);
       }
       from += n;
     }
 #else
     uint8* region = reinterpret_cast<uint8*>(offset - 1);
-    for (int i = 0; i < size; i++) {
+    for (uword i = 0; i < size; i++) {
       if (region[i] != 0xff) return BOOL(false);
     }
     return BOOL(true);
@@ -413,11 +413,11 @@ PRIMITIVE(region_is_erased) {
 }
 
 PRIMITIVE(region_erase) {
-  ARGS(FlashRegion, resource, int, from, int32, size);
+  ARGS(FlashRegion, resource, word, from, uword, size);
   if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
   if (!Utils::is_aligned(from, FLASH_PAGE_SIZE)) INVALID_ARGUMENT;
   if (!Utils::is_aligned(size, FLASH_PAGE_SIZE)) INVALID_ARGUMENT;
-  word offset = resource->offset();
+  uword offset = resource->offset();
   if ((offset & 1) == 0) {
     if (!FlashRegistry::erase_chunk(from + offset, size)) {
       HARDWARE_ERROR;
