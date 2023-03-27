@@ -80,6 +80,7 @@ class MD5 extends Checksum:
   add_chunk_ chunk/ByteArray from/int -> none:
     noise := NOISE_
     shifts := SHIFTS_
+    f := F_
     mask32 := 0xffff_ffff
 
     a := a_
@@ -104,7 +105,7 @@ class MD5 extends Checksum:
       d = c
       c = b
       ae := a + e
-      cf := LITTLE_ENDIAN.uint32 chunk (from + F_[i])
+      cf := LITTLE_ENDIAN.uint32 chunk (from + f[i])
       nc := noise[i] + cf
       aenc := (ae + nc) & mask32
       shift := shifts[i]
