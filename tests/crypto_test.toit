@@ -10,13 +10,13 @@ import crypto.chacha20 show *
 import crypto.sha show *
 import crypto.siphash show *
 import crypto.sha1 show *
-import crypto.crc16 show *
-import crypto.crc32 show *
-import crypto.hamming as hamming
+import crypto.crc show *
+import crypto.md5 show *
+import crypto.hamming
 
 import binary show BIG_ENDIAN
-import encoding.hex as hex
-import encoding.base64 as base64
+import encoding.hex
+import encoding.base64
 
 expect name [code]:
   expect_equals
@@ -53,6 +53,7 @@ main:
   chacha_test
   sip_test
   aead_simple_test
+  md5_test
 
 hex_test -> none:
   expect_equals "" (hex.encode #[])
@@ -93,7 +94,8 @@ hash_test -> none:
   expect_equals EMPTY_SHA2 (hex.encode (sha256 ""))
   expect_equals EMPTY_SHA384 (hex.encode (sha384 ""))
   expect_equals EMPTY_SHA512 (hex.encode (sha512 ""))
-  expect_equals EMPTY_CRC32 (hex.encode (crc32 ""))
+  expect_equals 0 (crc16_xmodem "")
+  expect_equals 0 (crc32 "")
   expect_equals "2jmj7l5rSw0yVb/vlWAYkK/YBwk=" (base64.encode (sha1 ""))
 
   PARTY ::= "Now is the time for all good men to come to the aid of the party"
@@ -101,13 +103,13 @@ hash_test -> none:
   expect_equals "02d2837a5cc31aa9feb8f66a2a3db9819464542b" (hex.encode hash)
   hash2 := sha256 PARTY
   hash3 := crc32 PARTY
-  hash4 := crc16 PARTY
+  hash4 := crc16_xmodem PARTY
   hash5 := sha224 PARTY
   hash6 := sha384 PARTY
   hash7 := sha512 PARTY
   expect_equals "f160938592eeac116451ebc4da23dbc17e29283aef99de0197d705ad4d4c43f1" (hex.encode hash2)
-  expect_equals "852430d0" (hex.encode hash3)
-  expect_equals "a87e" (hex.encode hash4)
+  expect_equals "d0302485" "$(%x hash3)"
+  expect_equals "7ea8" "$(%x hash4)"
   expect_equals "AtKDelzDGqn+uPZqKj25gZRkVCs=" (base64.encode hash)
   expect_equals "0824c514a92fcac7cbe5221d1d28d7e0cfb061d4dbb33f0a8f1fe9c2" (hex.encode hash5)
   expect_equals "77d1a7ca704cd324b3519f2d89f455953e25801373bfc5a9eea38d16bc1aa57f1c90f0250c7bab60b07622c9bad5c1bf" (hex.encode hash6)
@@ -124,10 +126,10 @@ hash_test -> none:
   sha1 := Sha1
   sha2 := Sha256
   crc32 := Crc32
-  crc16 := Crc16
+  crc16 := Crc16Xmodem
   expect_equals EMPTY_HEX (hex.encode (Sha1).get)
   expect_equals EMPTY_CRC32 (hex.encode (Crc32).get)
-  expect_equals EMPTY_CRC16 (hex.encode (Crc16).get)
+  expect_equals EMPTY_CRC16 (hex.encode (Crc16Xmodem).get)
   GOLD_MEMBER := "Hey, everyone! I am from Holland! Isn't that weird?\n"
   sha1.add GOLD_MEMBER
   sha2.add GOLD_MEMBER
@@ -139,13 +141,13 @@ hash_test -> none:
   4.repeat: crc16.add GOLD_MEMBER
   expect_equals "7fd2b3793f46a174024e4fb78b17c0dc4c5bf2bc" (hex.encode sha1.get)
   expect_equals "56185f37" (hex.encode crc32.get)
-  expect_equals "c25d" (hex.encode crc16.get)
+  expect_equals "5dc2" (hex.encode crc16.get)
   expect_equals "68ffcaadaabb22152c90cfbe4e0cd17ddf2f469d8ea9d021713f1b17c72705b8" (hex.encode sha2.get)
   expect_already_closed: (sha2.get)   // Can't do this twice.
 
   sha2 = Sha256
   crc32 = Crc32
-  crc16 = Crc16
+  crc16 = Crc16Xmodem
 
   // Takes a string or a byte array.
   expect_wrong_type: base64.decode (confuse 10000)
@@ -275,6 +277,35 @@ sip_test:
       h16.add part2
       result16 := h16.get
       expect_equals SIP_VECTOR_16[size] result16
+
+md5_test:
+  cases := {
+    "":
+        #[ 0xD4, 0x1D, 0x8C, 0xD9, 0x8F, 0x00, 0xB2, 0x04,
+           0xE9, 0x80, 0x09, 0x98, 0xEC, 0xF8, 0x42, 0x7E ],
+    "a":
+        #[ 0x0C, 0xC1, 0x75, 0xB9, 0xC0, 0xF1, 0xB6, 0xA8,
+           0x31, 0xC3, 0x99, 0xE2, 0x69, 0x77, 0x26, 0x61 ],
+    "abc":
+        #[ 0x90, 0x01, 0x50, 0x98, 0x3C, 0xD2, 0x4F, 0xB0,
+           0xD6, 0x96, 0x3F, 0x7D, 0x28, 0xE1, 0x7F, 0x72 ],
+    "message digest":
+        #[ 0xF9, 0x6B, 0x69, 0x7D, 0x7C, 0xB7, 0x93, 0x8D,
+           0x52, 0x5A, 0x2F, 0x31, 0xAA, 0xF1, 0x61, 0xD0 ],
+    "abcdefghijklmnopqrstuvwxyz":
+        #[ 0xC3, 0xFC, 0xD3, 0xD7, 0x61, 0x92, 0xE4, 0x00,
+           0x7D, 0xFB, 0x49, 0x6C, 0xCA, 0x67, 0xE1, 0x3B ],
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789":
+        #[ 0xD1, 0x74, 0xAB, 0x98, 0xD2, 0x77, 0xD9, 0xF5,
+           0xA5, 0x61, 0x1C, 0x2C, 0x9F, 0x41, 0x9D, 0x9F ],
+    "12345678901234567890123456789012345678901234567890123456789012345678901234567890":
+        #[ 0x57, 0xED, 0xF4, 0xA2, 0x2B, 0xE3, 0xC9, 0x55,
+           0xAC, 0x49, 0xDA, 0x2E, 0x21, 0x07, 0xB6, 0x7A ],
+  }
+  cases.do: | message digest |
+    md5 := Md5
+    md5.add message
+    expect_bytes_equal digest md5.get
 
 SIP_VECTOR_8 ::= [
     #[0x31, 0x0e, 0x0e, 0xdd, 0x47, 0xdb, 0x6f, 0x72,],
