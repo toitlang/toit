@@ -5,8 +5,11 @@
 import binary show LITTLE_ENDIAN
 import .checksum
 
+/**
+Pure Toit MD5 implementation.
+*/
 class MD5 extends Checksum:
-  static SHIFTS_ ::= [
+  static SHIFTS_ ::= #[
     07, 12, 17, 22, 07, 12, 17, 22, 07, 12, 17, 22, 07, 12, 17, 22, 05, 09, 14,
     20, 05, 09, 14, 20, 05, 09, 14, 20, 05, 09, 14, 20, 04, 11, 16, 23, 04, 11,
     16, 23, 04, 11, 16, 23, 04, 11, 16, 23, 06, 10, 15, 21, 06, 10, 15, 21, 06,
@@ -26,6 +29,8 @@ class MD5 extends Checksum:
     0xffeff47d, 0x85845dd1, 0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1,
     0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
   ]
+
+  static F_ ::= "\x00\x04\x08\x0c\x10\x14\x18\x1c\x20\x24\x28\x2c\x30\x34\x38\x3c\x04\x18\x2c\x00\x14\x28\x3c\x10\x24\x38\x0c\x20\x34\x08\x1c\x30\x14\x20\x2c\x38\x04\x10\x1c\x28\x34\x00\x0c\x18\x24\x30\x3c\x08\x00\x1c\x38\x14\x30\x0c\x28\x04\x20\x3c\x18\x34\x10\x2c\x08\x24"
 
   size_/int := 0
   buffer_/ByteArray? := ByteArray 64
@@ -56,7 +61,7 @@ class MD5 extends Checksum:
     // We have enough extra bytes to fill up the
     // buffer completely.
     buffer.replace fullness bytes 0 n
-    add_chunk_ buffer
+    add_chunk_ buffer 0
 
     // Run through the extra bytes and add the
     // full chunks we can find without copying
@@ -68,11 +73,11 @@ class MD5 extends Checksum:
         // so we have them for the next add.
         buffer.replace 0 bytes[n..]
         return
-      add_chunk_ bytes[n..next]
+      add_chunk_ bytes n
       n = next
 
-  add_chunk_ chunk/ByteArray -> none:
-    assert: chunk.size == 64
+  // Takes the 64 bytes, starting at $from.
+  add_chunk_ chunk/ByteArray from/int -> none:
     noise := NOISE_
     shifts := SHIFTS_
     mask32 := 0xffff_ffff
@@ -84,29 +89,26 @@ class MD5 extends Checksum:
 
     64.repeat: | i/int |
       e := ?
-      f := ?
-      if i < 16:
-        e = (b & c) | ((~b & mask32) & d)
-        f = i
-      else if i < 32:
-        e = (d & b) | ((~d & mask32) & c)
-        f = ((5 * i) + 1) & 0xf
-      else if i < 48:
-        e = b ^ c ^ d
-        f = ((3 * i) + 5) & 0xf
+      if i < 32:
+        if i < 16:
+          e = (b & c) | (~b & d)
+        else:
+          e = (d & b) | (~d & c)
       else:
-        e = c ^ (b | (~d & mask32))
-        f = (7 * i) & 0xf
+        if i < 48:
+          e = b ^ c ^ d
+        else:
+          e = c ^ (b | (~d & mask32))
 
       t := d
       d = c
       c = b
-      ae := (a + e) & mask32
-      cf := LITTLE_ENDIAN.uint32 chunk (f << 2)
-      nc := (noise[i] + cf) & mask32
+      ae := a + e
+      cf := LITTLE_ENDIAN.uint32 chunk (from + F_[i])
+      nc := noise[i] + cf
       aenc := (ae + nc) & mask32
       shift := shifts[i]
-      rotated := ((aenc << shift) & mask32) | (aenc >> (32 - shift))
+      rotated := (aenc << shift) | (aenc >> (32 - shift))
       b = (b + rotated) & mask32
       a = t
 
