@@ -349,8 +349,7 @@ class RegionReader_ implements Reader:
 
   read -> ByteArray?:
     from := from_
-    to := to_
-    remaining := to - from
+    remaining := to_ - from
     if remaining == 0: return null
     n := min remaining buffer_
     result := ByteArray n
