@@ -242,6 +242,34 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
   void* bytecodes_to = &program->bytecodes.data()[program->bytecodes.length()];
   // Assert that the frame-marker is skipped this way as well.
   ASSERT(bytecodes_from <= program->frame_marker() && program->frame_marker() < bytecodes_to);
+  // The stack overflow check happens on function entry, so we can't shrink the
+  // stack so much that an overflow check would have failed.  Luckily the
+  // compiler kept track of the maximum space that any function could need, so
+  // we can use that.
+  int minimum_space = program->global_max_stack_height();
+  // Don't shrink the stack unless we can halve the size.  The growing algo
+  // grows it by 50%, to try to avoid too much churn.
+  if (top > minimum_space && top > length() >> 1) {
+    int reduction = top - minimum_space;
+    if (reduction >= 8) {
+      auto destin = _array_address(0);
+      auto source = _array_address(reduction);
+      memmove(destin, source, (length() - reduction) << WORD_SIZE_LOG_2);
+      // We don't need to update the remembered set/write barrier because the
+      // start of the stack object has not moved.
+      int len = length() - reduction;
+      top -= reduction;
+      _set_length(len);
+      _set_top(top);
+      _set_try_top(try_top() - reduction);
+      // Now that the stack is smaller we need to fill the space after it with
+      // something to keep the heap iterable.
+      for (int i = 0; i < reduction; i++) {
+        auto one_word = static_cast<FreeListRegion*>(HeapObject::cast(_array_address(len + i)));
+        one_word->_set_header(Smi::from(SINGLE_FREE_WORD_CLASS_ID), SINGLE_FREE_WORD_TAG);
+      }
+    }
+  }
   Object** roots = _root_at(_array_offset_from(top));
   int used_length = length() - top;
   for (int i = 0; i < used_length; i++) {
