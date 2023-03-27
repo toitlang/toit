@@ -5,7 +5,7 @@
 import binary show LITTLE_ENDIAN
 import .checksum
 
-class Md5 extends Checksum:
+class MD5 extends Checksum:
   static SHIFTS_ ::= [
     07, 12, 17, 22, 07, 12, 17, 22, 07, 12, 17, 22, 07, 12, 17, 22, 05, 09, 14,
     20, 05, 09, 14, 20, 05, 09, 14, 20, 05, 09, 14, 20, 04, 11, 16, 23, 04, 11,
