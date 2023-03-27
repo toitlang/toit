@@ -19,7 +19,7 @@ import system.api.storage show StorageService
 
 import ..flash.registry show FlashRegistry
 import .bucket show BucketResource FlashBucketResource RamBucketResource
-import .region show FlashRegionResource
+import .region show FlashRegionResource PartitionRegionResource
 
 class StorageServiceProvider extends ServiceProvider implements StorageService ServiceHandler:
   registry/FlashRegistry
@@ -59,8 +59,11 @@ class StorageServiceProvider extends ServiceProvider implements StorageService S
     throw "Unsupported '$scheme:' scheme"
 
   region_open client/int --scheme/string --path/string --capacity/int? -> List:
-    if scheme != Region.SCHEME_FLASH: throw "Unsupported '$scheme:' scheme"
-    return FlashRegionResource.open this client --path=path --capacity=capacity
+    if scheme == Region.SCHEME_FLASH:
+      return FlashRegionResource.open this client --path=path --capacity=capacity
+    else if scheme == Region.SCHEME_PARTITION:
+      return PartitionRegionResource.open this client --path=path --capacity=capacity
+    throw "Unsupported '$scheme:' scheme"
 
   region_delete --scheme/string --path/string -> none:
     if scheme != Region.SCHEME_FLASH: throw "Unsupported '$scheme:' scheme"
