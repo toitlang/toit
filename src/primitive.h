@@ -296,8 +296,6 @@ namespace toit {
   PRIMITIVE(add_root_certificate, 2)         \
   PRIMITIVE(add_certificate, 4)              \
   PRIMITIVE(error, 2)                        \
-  PRIMITIVE(get_session, 1)                  \
-  PRIMITIVE(set_session, 2)                  \
   PRIMITIVE(get_internals, 1)                \
 
 #define MODULE_WIFI(PRIMITIVE)               \
@@ -979,7 +977,6 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
 #define _A_T_EthernetIpEvents(N, name)    MAKE_UNPACKING_MACRO(EthernetIpEvents, N, name)
 #define _A_T_MbedTlsSocket(N, name)       MAKE_UNPACKING_MACRO(MbedTlsSocket, N, name)
 #define _A_T_BaseMbedTlsSocket(N, name)   MAKE_UNPACKING_MACRO(BaseMbedTlsSocket, N, name)
-#define _A_T_SslSession(N, name)          MAKE_UNPACKING_MACRO(SslSession, N, name)
 #define _A_T_X509Certificate(N, name)     MAKE_UNPACKING_MACRO(X509Certificate, N, name)
 #define _A_T_AesContext(N, name)          MAKE_UNPACKING_MACRO(AesContext, N, name)
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)

@@ -546,150 +546,6 @@ bool MbedTlsSocket::init(const char*) {
   return true;
 }
 
-// Takes a deep copy of the SSL session provided by MbedTLS.
-int SslSession::serialize(mbedtls_ssl_session* session, Blob* blob_return) {
-  size_t struct_size = sizeof(*session);
-  size_t cert_size = 0;
-  if (session->peer_cert != null) {
-    cert_size = session->peer_cert->raw.len;
-    if (cert_size > 0xffff) return CORRUPT;
-  }
-  size_t ticket_size = 0;
-  if (session->ticket_len != 0) {
-    ticket_size  = session->ticket_len;
-    if (ticket_size > 0xffff) return CORRUPT;
-  }
-  size_t size = 6 + struct_size + cert_size + ticket_size;
-  uint8* data = unvoid_cast<uint8_t*>(malloc(size));
-  if (data == null) return OUT_OF_MEMORY;
-
-  SslSession ssl_session(data);
-  int ret = ssl_session.serialize(session, struct_size, cert_size, ticket_size);
-  if (ret != OK) {
-    free(data);
-    return ret;
-  }
-  *blob_return = Blob(data, size);
-  return OK;
-}
-
-int SslSession::serialize(mbedtls_ssl_session* session, size_t struct_size, size_t cert_size, size_t ticket_size) {
-  memcpy(struct_address(), reinterpret_cast<const uint8*>(session), struct_size);
-  set_struct_size(struct_size);
-  if (cert_size)
-    memcpy(cert_address(), reinterpret_cast<const uint8*>(session->peer_cert->raw.p), cert_size);
-  set_cert_size(cert_size);
-  memcpy(ticket_address(), reinterpret_cast<const uint8*>(session->ticket), ticket_size);
-  set_ticket_size(ticket_size);
-
-  return OK;
-}
-
-// Creates a "fake" mbedtls_ssl_session that can be used as input
-// to ssl_session_copy in ssl_tls.c.
-int SslSession::deserialize(Blob serialized, mbedtls_ssl_session* returned_value) {
-  SslSession session(const_cast<uint8*>(serialized.address()));
-  int ret = session.deserialize(serialized.length(), returned_value);
-  return ret;
-}
-
-int SslSession::deserialize(word serialized_length, mbedtls_ssl_session* returned_value) {
-  mbedtls_ssl_session_init(returned_value);
-
-  // It's important for overflow that this is a larger type than the individual size fields.
-  word expected_size = 6;
-  expected_size += struct_size() + cert_size() + ticket_size();
-  if (expected_size != serialized_length ||
-      struct_size() != sizeof(mbedtls_ssl_session)) {
-    return CORRUPT;
-  }
-  // Create struct.
-  mbedtls_ssl_session* ssl_session = returned_value;
-  memcpy(ssl_session, struct_address(), struct_size());
-
-  // Create ticket.
-  ssl_session->ticket = ticket_address();
-  ssl_session->ticket_len = ticket_size();
-
-  // Create peer cert.
-  if (cert_size() != 0) {
-    // Freed in free_session.
-    ssl_session->peer_cert = _new mbedtls_x509_crt;
-    if (ssl_session->peer_cert == null) {
-      ssl_session->ticket = null;
-      return OUT_OF_MEMORY;
-    }
-    mbedtls_x509_crt_init(ssl_session->peer_cert);
-
-    // These are the only parts used by ssl_session_copy.
-    ssl_session->peer_cert->raw.p = cert_address();
-    ssl_session->peer_cert->raw.len = cert_size();
-  }
-
-  return OK;
-}
-
-void SslSession::free_session(mbedtls_ssl_session* session) {
-  delete session->peer_cert;
-}
-
-
-PRIMITIVE(get_session) {
-  ARGS(BaseMbedTlsSocket, socket);
-
-  ByteArray* proxy = process->object_heap()->allocate_proxy(true);
-  if (proxy == null) ALLOCATION_FAILED;
-
-  mbedtls_ssl_session session;
-  mbedtls_ssl_session_init(&session);
-
-  int ret = mbedtls_ssl_get_session(&socket->ssl, &session);
-
-  if (ret != 0) {
-    return tls_error(null, process, ret);
-  }
-
-  Blob result;
-  ret = SslSession::serialize(&session, &result);
-
-  mbedtls_ssl_session_free(&session);
-
-  if (ret != SslSession::OK) {
-    if (ret == SslSession::OUT_OF_MEMORY) MALLOC_FAILED;
-    if (ret == SslSession::CORRUPT) INVALID_ARGUMENT;
-    return tls_error(null, process, ret);
-  }
-
-  proxy->set_external_address(result.length(), const_cast<uint8*>(result.address()));
-  process->object_heap()->register_external_allocation(result.length());
-  return proxy;
-}
-
-PRIMITIVE(set_session) {
-  // PRIVILEGED; TODO: When we are done testing this should probably be privileged.
-  ARGS(BaseMbedTlsSocket, socket, Blob, serialized);
-
-  mbedtls_ssl_session ssl_session;
-  mbedtls_ssl_session_init(&ssl_session);
-  int result = SslSession::deserialize(serialized, &ssl_session);
-
-  if (result != SslSession::OK) {
-    if (result == SslSession::OUT_OF_MEMORY) MALLOC_FAILED;
-    if (result == SslSession::CORRUPT) INVALID_ARGUMENT;
-    return tls_error(null, process, result);
-  }
-
-  // Set the session and remember to always free the fake session
-  // created by deserialize.
-  result = mbedtls_ssl_set_session(&socket->ssl, &ssl_session);
-  SslSession::free_session(&ssl_session);
-
-  if (result != 0) {
-    return tls_error(null, process, result);
-  }
-  return process->program()->null_object();
-}
-
 static bool known_cipher_info(const mbedtls_cipher_info_t* info, size_t key_bitlen, int iv_len) {
   if (info->mode == MBEDTLS_MODE_GCM) {
     if (info->type != MBEDTLS_CIPHER_AES_128_GCM && info->type != MBEDTLS_CIPHER_AES_256_GCM) return false;
@@ -744,10 +600,16 @@ PRIMITIVE(get_internals) {
   ByteArray* decode_iv = process->allocate_byte_array(iv_len);
   ByteArray* encode_key = process->allocate_byte_array(key_len);
   ByteArray* decode_key = process->allocate_byte_array(key_len);
-  Array* result = process->object_heap()->allocate_array(5, Smi::zero());
-  if (!encode_iv || !decode_iv || !encode_key || !decode_key || !result) ALLOCATION_FAILED;
+  ByteArray* session_id = process->allocate_byte_array(socket->ssl.session->id_len);
+  ByteArray* session_ticket = process->allocate_byte_array(socket->ssl.session->ticket_len);
+  ByteArray* master_secret = process->allocate_byte_array(48);
+  Array* result = process->object_heap()->allocate_array(8, Smi::zero());
+  if (!encode_iv || !decode_iv || !encode_key || !decode_key || !result || !session_id || !session_ticket || !master_secret) ALLOCATION_FAILED;
   memcpy(ByteArray::Bytes(encode_iv).address(), socket->ssl.transform_out->iv_enc, iv_len);
   memcpy(ByteArray::Bytes(decode_iv).address(), socket->ssl.transform_in->iv_dec, iv_len);
+  memcpy(ByteArray::Bytes(session_id).address(), socket->ssl.session->id, socket->ssl.session->id_len);
+  memcpy(ByteArray::Bytes(session_ticket).address(), socket->ssl.session->ticket, socket->ssl.session->ticket_len);
+  memcpy(ByteArray::Bytes(master_secret).address(), socket->ssl.session->master, 48);
   if (out_info->mode == MBEDTLS_MODE_GCM) {
     mbedtls_gcm_context* out_gcm_context = reinterpret_cast<mbedtls_gcm_context*>(out_cipher_ctx->cipher_ctx);
     mbedtls_gcm_context* in_gcm_context = reinterpret_cast<mbedtls_gcm_context*>(in_cipher_ctx->cipher_ctx);
@@ -790,6 +652,9 @@ PRIMITIVE(get_internals) {
   result->at_put(2, decode_key);
   result->at_put(3, encode_iv);
   result->at_put(4, decode_iv);
+  result->at_put(5, session_id);
+  result->at_put(6, session_ticket);
+  result->at_put(7, master_secret);
 
   return result;
 }
