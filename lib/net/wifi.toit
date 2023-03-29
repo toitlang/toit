@@ -63,8 +63,8 @@ class AccessPoint:
     return (List bssid.size: "$(%02x bssid[it])").join ":"
 
 class Client extends net.Client:
-  constructor client/WifiServiceClient connection/List:
-    super client connection
+  constructor client/WifiServiceClient --name/string? connection/List:
+    super client --name=name connection
 
   /**
   Returns information about the access point this $Client is currently
@@ -97,34 +97,38 @@ class Client extends net.Client:
     return rssi / 65.0
 
 open --ssid/string --password/string -> Client
+    --name/string?=null
     --save/bool=false:
-  return open --save=save {
+  return open --name=name --save=save {
     CONFIG_SSID: ssid,
     CONFIG_PASSWORD: password,
   }
 
 open config/Map? -> Client
+    --name/string?=null
     --save/bool=false:
   service := service_
   if not service: throw "WiFi unavailable"
   connection := service.connect config
   if save: service.configure config
-  return Client service connection
+  return Client service --name=name connection
 
 establish --ssid/string --password/string -> Client
+    --name/string?=null
     --broadcast/bool=true
     --channel/int=1:
-  return establish {
+  return establish --name=name {
     CONFIG_SSID: ssid,
     CONFIG_PASSWORD: password,
     CONFIG_BROADCAST: broadcast,
     CONFIG_CHANNEL: channel,
   }
 
-establish config/Map? -> Client:
+establish config/Map? -> Client
+    --name/string?=null:
   service := service_
   if not service: throw "WiFi unavailable"
-  return Client service (service.establish config)
+  return Client service --name=name (service.establish config)
 
 scan channels/ByteArray --passive/bool=false --period_per_channel_ms/int=SCAN_TIMEOUT_MS_ -> List:
   if channels.size < 1: throw "Channels are unspecified"

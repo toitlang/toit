@@ -33,6 +33,7 @@ import host.pipe
 import host.directory
 
 import .image
+import .partition_table
 import .snapshot
 import .snapshot_to_image
 
@@ -616,11 +617,18 @@ flash parsed/cli.Parsed -> none:
       --if_present=: json.decode it
       --if_absent=: throw "cannot flash without 'flashing.json'"
 
+  bundled_partitions_bin := (envelope.entries.get AR_ENTRY_PARTITIONS_BIN)
+  partition_table := PartitionTable.decode bundled_partitions_bin
+  encoded_partitions_bin := partition_table.encode
+
+  app_partition ::= partition_table.find_app
+  otadata_partition := partition_table.find_otadata
+
   tmp := directory.mkdtemp "/tmp/toit-flash-"
   try:
     write_file "$tmp/firmware.bin": it.write firmware_bin
     write_file "$tmp/bootloader.bin": it.write (envelope.entries.get AR_ENTRY_BOOTLOADER_BIN)
-    write_file "$tmp/partitions.bin": it.write (envelope.entries.get AR_ENTRY_PARTITIONS_BIN)
+    write_file "$tmp/partitions.bin": it.write encoded_partitions_bin
     write_file "$tmp/otadata.bin": it.write (envelope.entries.get AR_ENTRY_OTADATA_BIN)
 
     code := pipe.run_program esptool + [
@@ -632,8 +640,8 @@ flash parsed/cli.Parsed -> none:
     ] + [ "write_flash" ] + flashing["write_flash_args"] + [
       flashing["bootloader"]["offset"],      "$tmp/bootloader.bin",
       flashing["partition-table"]["offset"], "$tmp/partitions.bin",
-      flashing["otadata"]["offset"],         "$tmp/otadata.bin",
-      flashing["app"]["offset"],             "$tmp/firmware.bin"
+      "0x$(%x otadata_partition.offset)",    "$tmp/otadata.bin",
+      "0x$(%x app_partition.offset)",        "$tmp/firmware.bin"
     ]
     if code != 0: exit 1
   finally:

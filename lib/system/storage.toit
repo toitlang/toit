@@ -7,6 +7,7 @@ User-space side of the service API for key-value storage.
 */
 
 import encoding.tison
+import reader show Reader
 
 import system.api.storage show StorageService StorageServiceClient
 import system.services show ServiceResourceProxy
@@ -24,8 +25,8 @@ Buckets are referred to via a schema and a path. The scheme
   and the path allows separating buckets.
 */
 class Bucket extends ServiceResourceProxy:
-  static SCHEME_RAM   ::= "ram"
   static SCHEME_FLASH ::= "flash"
+  static SCHEME_RAM   ::= "ram"
 
   scheme/string
   path/string
@@ -123,7 +124,8 @@ Regions are referred to via a schema and a path. The scheme
   and the path allows separating regions.
 */
 class Region extends ServiceResourceProxy:
-  static SCHEME_FLASH ::= "flash"
+  static SCHEME_FLASH     ::= "flash"
+  static SCHEME_PARTITION ::= "partition"
 
   scheme/string
   path/string
@@ -234,6 +236,17 @@ class Region extends ServiceResourceProxy:
     return open --scheme=SCHEME_FLASH --path=path --capacity=capacity
 
   /**
+  Variant of $(open --scheme --path --capacity).
+
+  Opens a storage region using the $SCHEME_PARTITION scheme and the
+    given $path.
+  */
+  static open --partition/bool path/string -> Region
+      --capacity/int?=null:
+    if not partition: throw "Bad Argument"
+    return open --scheme=SCHEME_PARTITION --path=path --capacity=capacity
+
+  /**
   Opens a storage region using the given $scheme and $path.
 
   If an existing region matches the $scheme and $path, it
@@ -299,6 +312,15 @@ class Region extends ServiceResourceProxy:
     read --from=from bytes
     return bytes
 
+  stream --from/int=0 --to/int=size --buffer/int=256 -> Reader:
+    if not 0 <= from <= to <= size: throw "OUT_OF_BOUNDS"
+    if buffer <= 0: throw "Bad Argument"
+    return RegionReader_
+        --region=this
+        --from=from
+        --to=to
+        --buffer=buffer
+
   write --from/int bytes/ByteArray -> none:
     if not resource_: throw "ALREADY_CLOSED"
     flash_region_write_ resource_ from bytes
@@ -324,6 +346,28 @@ class Region extends ServiceResourceProxy:
       flash_region_close_ resource_
       resource_ = null
     super
+
+class RegionReader_ implements Reader:
+  region_/Region
+  from_/int := ?
+  to_/int
+  buffer_/int
+
+  constructor --region/Region --from/int --to/int --buffer/int:
+    region_ = region
+    from_ = from
+    to_ = to
+    buffer_ = buffer
+
+  read -> ByteArray?:
+    from := from_
+    remaining := to_ - from
+    if remaining == 0: return null
+    n := min remaining buffer_
+    result := ByteArray n
+    region_.read --from=from result
+    from_ = from + n
+    return result
 
 // --------------------------------------------------------------------------
 

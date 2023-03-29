@@ -39,8 +39,8 @@ func ToitLSP(version, date string) *cobra.Command {
 	cmd.Flags().BoolP("verbose", "v", false, "")
 	cmd.Flags().String("toitc", "", "the default toit compiler to use")
 	cmd.Flags().String("sdk", "", "the default SDK path to use")
-	cmd.Flags().String("cpuprofile", "", "write cpu profile to `file`")
-	cmd.Flags().String("memprofile", "", "write mem profile to `file`")
+	cmd.Flags().String("cpuprofile", "", "write cpu profile to `directory`")
+	cmd.Flags().String("memprofile", "", "write mem profile to `directory`")
 
 	cmd.AddCommand(Version(version, date))
 	cmd.AddCommand(Toitdoc(version))
@@ -75,7 +75,7 @@ func runToitLSP(cmd *cobra.Command, args []string) (err error) {
 		if err != nil {
 			return err
 		}
-		f, err := os.Create(cpuprofile)
+		f, err := os.CreateTemp(cpuprofile, "toitlsp.*.prof")
 		if err != nil {
 			return err
 		}
@@ -92,7 +92,7 @@ func runToitLSP(cmd *cobra.Command, args []string) (err error) {
 			return err
 		}
 
-		f, err := os.Create(memprofile)
+		f, err := os.CreateTemp(memprofile, "toitlsp.*.prof")
 		if err != nil {
 			return err
 		}

@@ -2,6 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import reader show BufferedReader
 import system.storage
 import encoding.tison
 import expect show *
@@ -19,9 +20,12 @@ main:
   test_region_flash_write_all
   test_region_flash_ignore_set
   test_region_flash_out_of_space
+  test_region_flash_stream
 
   test_region_flash_delete
   test_region_flash_list
+
+  test_region_partition
 
 test_bucket_ram:
   a := storage.Bucket.open --ram "bucket-a"
@@ -243,6 +247,40 @@ test_region_flash_out_of_space:
       it.close
       storage.Region.delete it.uri
 
+test_region_flash_stream:
+  region := storage.Region.open --flash "region-1" --capacity=1000
+  try:
+    test_region_flash_stream region null
+    [ 0, 1, 8, 17, 199, 256, 512, 999, 1000, 1001, 10000 ].do:
+      test_region_flash_stream region it
+  finally:
+    region.close
+
+test_region_flash_stream region/storage.Region buffer/int?:
+  region.erase
+  bytes_written := ByteArray region.size: random 0x100
+  region.write --from=0 bytes_written
+
+  if buffer and buffer <= 0:
+    expect_throw "Bad Argument": region.stream --buffer=buffer
+    return
+
+  expect_bytes_equal
+      bytes_written
+      (BufferedReader (region.stream --buffer=buffer)).read_bytes region.size
+
+  indexes := [-100, -1, 0, 1, 7, 99, 500, 512, 999, 1000, 1001, 10000]
+  indexes.do: | from/int |
+    indexes.do: | to/int |
+      if 0 <= from <= to <= bytes_written.size:
+        reader := region.stream --from=from --to=to --buffer=buffer
+        buffered := BufferedReader reader
+        bytes_read := buffered.read_bytes to - from
+        expect_bytes_equal bytes_written[from..to] bytes_read
+      else:
+        expect_throw "OUT_OF_BOUNDS":
+          region.stream  --from=from --to=to --buffer=buffer
+
 test_region_flash_delete:
   region := storage.Region.open --flash "region-3" --capacity=8192
   expect_throw "ALREADY_IN_USE": storage.Region.delete --flash "region-3"
@@ -259,3 +297,9 @@ test_region_flash_list:
   expect (regions.contains "flash:region-1")
   expect (regions.contains "flash:region-2")
   expect_not (regions.contains "flash:region-3")
+
+test_region_partition:
+  // TODO(kasper): Extend testing.
+  region := storage.Region.open --partition "partition-0"
+  expect_throw "ALREADY_IN_USE": storage.Region.open --partition "partition-0"
+  region.close
