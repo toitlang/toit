@@ -41,6 +41,13 @@ class PartitionTable:
         return partition
     return null
 
+  find_first_free_offset -> int:
+    offset := 0
+    partitions_.do: | partition/Partition |
+      end := round_up (partition.offset + partition.size) 4096
+      offset = max offset end
+    return offset
+
   static decode bytes/ByteArray:
     table := PartitionTable
     checksum := md5.MD5

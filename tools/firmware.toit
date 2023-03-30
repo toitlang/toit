@@ -540,18 +540,26 @@ write_qemu_ output_path/string firmware_bin/ByteArray envelope/Envelope:
       --if_present=: json.decode it
       --if_absent=: throw "cannot create qemu image without 'flashing.json'"
 
-  out_image := ByteArray 4_194_304  // 4 MB.
+  bundled_partitions_bin := (envelope.entries.get AR_ENTRY_PARTITIONS_BIN)
+  partition_table := PartitionTable.decode bundled_partitions_bin
+
+  // TODO(kasper): Allow adding more partitions.
+  encoded_partitions_bin := partition_table.encode
+  app_partition ::= partition_table.find_app
+  otadata_partition := partition_table.find_otadata
+
+  out_image := ByteArray 4 * 1024 * 1024  // 4 MB.
   out_image.replace
       int.parse flashing["bootloader"]["offset"][2..] --radix=16
       envelope.entries.get AR_ENTRY_BOOTLOADER_BIN
   out_image.replace
       int.parse flashing["partition-table"]["offset"][2..] --radix=16
-      envelope.entries.get AR_ENTRY_PARTITIONS_BIN
+      encoded_partitions_bin
   out_image.replace
-      int.parse flashing["otadata"]["offset"][2..] --radix=16
+      otadata_partition.offset
       envelope.entries.get AR_ENTRY_OTADATA_BIN
   out_image.replace
-      int.parse flashing["app"]["offset"][2..] --radix=16
+      app_partition.offset
       firmware_bin
   write_file output_path: it.write out_image
 
@@ -567,7 +575,12 @@ flash_cmd -> cli.Command:
         cli.OptionInt "baud"
             --default=921600,
         cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32s2", "esp32s3"]
-            --default="esp32"
+            --default="esp32",
+        OptionPatterns "partition"
+            ["file:<name>=<path>", "empty:<name>=<size>"]
+            --short_help="Add a custom partition to the flashed image."
+            --split_commas
+            --multi,
       ]
       --run=:: flash it
 
@@ -619,17 +632,66 @@ flash parsed/cli.Parsed -> none:
 
   bundled_partitions_bin := (envelope.entries.get AR_ENTRY_PARTITIONS_BIN)
   partition_table := PartitionTable.decode bundled_partitions_bin
-  encoded_partitions_bin := partition_table.encode
 
+  // Map the file:<name>=<path> and empty:<name>=<size> partitions
+  // to entries in the partition table by allocating at the end
+  // of the used part of the flash image.
+  partitions := {:}
+  parsed_partitions := parsed["partition"]
+  parsed_partitions.do: | entry/Map |
+    description := ?
+    is_file := entry.contains "file"
+    if is_file: description = entry["file"]
+    else: description = entry["empty"]
+    assign_index := description.index_of "="
+    if assign_index < 0: throw "malformed partition description '$description'"
+    name := description[..assign_index]
+    if not (0 < name.size <= 15): throw "malformed partition name '$name'"
+    if partitions.contains name: throw "duplicate partition named '$name'"
+    value := description[assign_index + 1..]
+    partition_content/ByteArray := ?
+    if is_file:
+      partition_content = read_file value
+    else:
+      size := int.parse value --on_error=:
+        throw "malformed partition size '$value'"
+      partition_content = ByteArray size
+    partition_content = pad partition_content 4096
+    partition := Partition
+        --name=name
+        --type=0x41  // TODO(kasper): Avoid hardcoding this.
+        --subtype=0
+        --offset=partition_table.find_first_free_offset
+        --size=partition_content.size
+        --flags=0
+    partitions[name] = [partition, partition_content]
+    partition_table.add partition
+
+  encoded_partitions_bin := partition_table.encode
   app_partition ::= partition_table.find_app
   otadata_partition := partition_table.find_otadata
 
   tmp := directory.mkdtemp "/tmp/toit-flash-"
   try:
-    write_file "$tmp/firmware.bin": it.write firmware_bin
     write_file "$tmp/bootloader.bin": it.write (envelope.entries.get AR_ENTRY_BOOTLOADER_BIN)
     write_file "$tmp/partitions.bin": it.write encoded_partitions_bin
     write_file "$tmp/otadata.bin": it.write (envelope.entries.get AR_ENTRY_OTADATA_BIN)
+    write_file "$tmp/firmware.bin": it.write firmware_bin
+
+    partition_args := [
+      flashing["bootloader"]["offset"],      "$tmp/bootloader.bin",
+      flashing["partition-table"]["offset"], "$tmp/partitions.bin",
+      "0x$(%x otadata_partition.offset)",    "$tmp/otadata.bin",
+      "0x$(%x app_partition.offset)",        "$tmp/firmware.bin"
+    ]
+
+    partitions.do: | name/string entry/List |
+      offset := (entry[0] as Partition).offset
+      content := entry[1] as ByteArray
+      path := "$tmp/partition-$offset"
+      write_file path: it.write content
+      partition_args.add "0x$(%x offset)"
+      partition_args.add path
 
     code := pipe.run_program esptool + [
       "--port", port,
@@ -637,12 +699,7 @@ flash parsed/cli.Parsed -> none:
       "--chip", parsed["chip"],
       "--before", flashing["extra_esptool_args"]["before"],
       "--after",  flashing["extra_esptool_args"]["after"]
-    ] + [ "write_flash" ] + flashing["write_flash_args"] + [
-      flashing["bootloader"]["offset"],      "$tmp/bootloader.bin",
-      flashing["partition-table"]["offset"], "$tmp/partitions.bin",
-      "0x$(%x otadata_partition.offset)",    "$tmp/otadata.bin",
-      "0x$(%x app_partition.offset)",        "$tmp/firmware.bin"
-    ]
+    ] + [ "write_flash" ] + flashing["write_flash_args"] + partition_args
     if code != 0: exit 1
   finally:
     directory.rmdir --recursive tmp
@@ -1223,3 +1280,39 @@ find_details_offset bits/ByteArray -> int:
   // No magic numbers were found so the image is from a legacy SDK that has the
   // image details at a fixed offset.
   throw "cannot find magic marker in binary file"
+
+// TODO(kasper): Move this to the cli package?
+class OptionPatterns extends cli.OptionEnum:
+  constructor name/string patterns/List
+      --default=null
+      --short_name/string?=null
+      --short_help/string?=null
+      --required/bool=false
+      --hidden/bool=false
+      --multi/bool=false
+      --split_commas/bool=false:
+    super name patterns
+      --default=default
+      --short_name=short_name
+      --short_help=short_help
+      --required=required
+      --hidden=hidden
+      --multi=multi
+      --split_commas=split_commas
+
+  parse str/string --for_help_example/bool=false -> any:
+    if not str.contains ":" and not str.contains "=":
+      // Make sure it's a valid one.
+      key := super str --for_help_example=for_help_example
+      return key
+
+    separator_index := str.index_of ":"
+    if separator_index < 0: separator_index = str.index_of "="
+    key := str[..separator_index]
+    key_with_equals := str[..separator_index + 1]
+    if not (values.any: it.starts_with key_with_equals):
+      throw "Invalid value for option '$name': '$str'. Valid values are: $(values.join ", ")."
+
+    return {
+      key: str[separator_index + 1..]
+    }
