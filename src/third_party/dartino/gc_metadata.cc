@@ -39,11 +39,13 @@ void GcMetadata::set_up_singleton() {
   // 24k to 12k.
   const uword TWELVE_K_METADATA_LIMIT = 148 * KB;
   const uword PLENTY_OF_MEMORY = 308 * KB;
-  if (!OS::use_spiram_for_metadata() && !OS::use_spiram_for_heap() &&
-      TWELVE_K_METADATA_LIMIT < size && size < PLENTY_OF_MEMORY) {
-    uword adjust = size - TWELVE_K_METADATA_LIMIT;
-    lowest_address_ += adjust;
-    size -= adjust;
+  if (!OS::use_spiram_for_metadata() && !OS::use_spiram_for_heap()) {
+    printf("[Toit] malloc reports memory size of %dk.\n", static_cast<int>(size >> 10));
+    if (TWELVE_K_METADATA_LIMIT < size && size < PLENTY_OF_MEMORY) {
+      uword adjust = size - TWELVE_K_METADATA_LIMIT;
+      lowest_address_ += adjust;
+      size -= adjust;
+    }
   }
 #endif
   heap_extent_ = size;
