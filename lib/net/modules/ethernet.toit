@@ -39,22 +39,14 @@ class Ethernet:
       --mac_spi_device/spi.Device?
       --mac_int/gpio.Pin?:
 
-    if mac_chip == MAC_CHIP_ESP32:
+    if mac_chip == MAC_CHIP_ESP32 or mac_chip == MAC_CHIP_OPENETH:
       resource_group_ = ethernet_init_esp32_
         mac_chip
         phy_chip
         phy_addr
         (phy_reset ? phy_reset.num : -1)
-        mac_mdc.num
-        mac_mdio.num
-    else if mac_chip == MAC_CHIP_OPENETH:
-      resource_group_ = ethernet_init_esp32_
-        mac_chip
-        phy_chip
-        phy_addr
-        -1
-        -1
-        -1
+        (mac_mdc ? mac_mdc.num : -1)
+        (mac_mdio ? mac_mdio.num : -1)
     else:
       if phy_chip != PHY_CHIP_NONE: throw "unexpected PHY chip selection"
       resource_group_ = ethernet_init_spi_
