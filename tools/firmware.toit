@@ -633,7 +633,9 @@ flash parsed/cli.Parsed -> none:
   bundled_partitions_bin := (envelope.entries.get AR_ENTRY_PARTITIONS_BIN)
   partition_table := PartitionTable.decode bundled_partitions_bin
 
-  // ...
+  // Map the file:<name>=<path> and empty:<name>=<size> partitions
+  // to entries in the partition table by allocating at the end
+  // of the used part of the flash image.
   partitions := {:}
   parsed_partitions := parsed["partition"]
   parsed_partitions.do: | entry/Map |
