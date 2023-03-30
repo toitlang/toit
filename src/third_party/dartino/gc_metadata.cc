@@ -41,7 +41,7 @@ void GcMetadata::set_up_singleton() {
   const uword TWELVE_K_METADATA_LIMIT = 148 * KB;
   const uword SIXTEEN_K_METADATA_LIMIT = 200 * KB;
   if (!OS::use_spiram_for_metadata() && !OS::use_spiram_for_heap()) {
-    uword adjust = ONLY_FOR_MALLOC;
+    word adjust = ONLY_FOR_MALLOC;
     // Metadata sizes are rounded up to the next 4k boundary, so we might as
     // well increase the covered size to make use of the extra space.
     if (size - adjust < TWELVE_K_METADATA_LIMIT) {
@@ -49,8 +49,10 @@ void GcMetadata::set_up_singleton() {
     } else if (size - adjust < SIXTEEN_K_METADATA_LIMIT) {
       adjust = size - SIXTEEN_K_METADATA_LIMIT;
     }
-    lowest_address_ += adjust;
-    size -= adjust;
+    if (adjust > 0) {
+      lowest_address_ += adjust;
+      size -= adjust;
+    }
   }
 #endif
   heap_extent_ = size;
