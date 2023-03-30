@@ -214,7 +214,7 @@ jobs:
       - name: Test 32-bit debug
         if: runner.os == 'Linux'
         run: |
-          make HOST=host32 BUILD_TYPE=Debug test
+          make HOST=host32 CROSS_ARCH=host32 BUILD_TYPE=Debug test
 
       # Test external code.
       - name: Test external
@@ -241,7 +241,7 @@ jobs:
           make test-external-health
           if [ "$RUNNER_OS" == "Linux" ]; then
             cmake -DTOIT_TEST_EXTERNAL=ON build/host32
-            make CROSS_ARCH=host32 BUILD_TYPE=Debug rebuild-cross-cmake
+            make HOST=host32 CROSS_ARCH=host32 BUILD_TYPE=Debug rebuild-cross-cmake
             cd build/host32
             ninja check_external
             cd ../..

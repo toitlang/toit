@@ -6,19 +6,20 @@ import system.services
 import expect
 
 interface FooService:
-  static UUID/string ::= "27d4a329-8b0a-4dcc-9e1c-2296475461fa"
-  static MAJOR/int   ::= 0
-  static MINOR/int   ::= 0
+  static SELECTOR ::= services.ServiceSelector
+      --uuid="27d4a329-8b0a-4dcc-9e1c-2296475461fa"
+      --major=0
+      --minor=0
 
-  static LIST_CLIENTS_INDEX ::= 0
   list_clients -> List
+  static LIST_CLIENTS_INDEX ::= 0
 
 main:
   test_close
   test_close --separate_process
 
 test_close --separate_process/bool=false:
-  service := FooServiceDefinition
+  service := FooServiceProvider
   service.install
   if separate_process:
     spawn::
@@ -43,6 +44,7 @@ test_close --separate_process/bool=false:
 
 test_foo --close=false -> FooServiceClient:
   client := FooServiceClient
+  client.open
   clients := client.list_clients
   expect.expect_not_null clients
   expect.expect (clients.index_of client.id) >= 0
@@ -54,25 +56,25 @@ test_foo --close=false -> FooServiceClient:
 // ------------------------------------------------------------------
 
 class FooServiceClient extends services.ServiceClient implements FooService:
-  constructor --open/bool=true:
-    super --open=open
-
-  open -> FooServiceClient?:
-    return (open_ FooService.UUID FooService.MAJOR FooService.MINOR) and this
+  static SELECTOR ::= FooService.SELECTOR
+  constructor selector/services.ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
+    super selector
 
   list_clients -> List:
     return List.from (invoke_ FooService.LIST_CLIENTS_INDEX null)
 
 // ------------------------------------------------------------------
 
-class FooServiceDefinition extends services.ServiceDefinition implements FooService:
+class FooServiceProvider extends services.ServiceProvider
+    implements FooService services.ServiceHandlerNew:
   clients := {}
 
   constructor:
     super "foo" --major=1 --minor=1
-    provides FooService.UUID FooService.MAJOR FooService.MINOR
+    provides FooService.SELECTOR --handler=this --new
 
-  handle pid/int client/int index/int arguments/any -> any:
+  handle index/int arguments/any --gid/int --client/int -> any:
     if index == FooService.LIST_CLIENTS_INDEX: return list_clients
     unreachable
 

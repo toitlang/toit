@@ -84,14 +84,14 @@ class ResourceProxy extends services.ServiceResourceProxy:
 // ------------------------------------------------------------------
 
 class ResourceServiceProvider extends services.ServiceProvider
-    implements services.ServiceHandler ResourceService:
+    implements ResourceService services.ServiceHandlerNew:
   state_/State
 
   constructor .state_:
     super "resource" --major=1 --minor=2 --patch=5
-    provides ResourceService.SELECTOR --handler=this
+    provides ResourceService.SELECTOR --handler=this --new
 
-  handle pid/int client/int index/int arguments/any -> any:
+  handle index/int arguments/any --gid/int --client/int -> any:
     if index == ResourceService.NEW_INDEX:
       return new client
     unreachable

@@ -122,15 +122,15 @@ class RegistrationServiceClient extends services.ServiceClient implements Regist
 // ------------------------------------------------------------------
 
 class RegistrationServiceProvider extends services.ServiceProvider
-    implements services.ServiceHandler RegistrationService:
+    implements RegistrationService services.ServiceHandlerNew:
   counts_/Map? := null
   signal_/monitor.Signal ::= monitor.Signal
 
   constructor:
     super "log" --major=1 --minor=0
-    provides RegistrationService.SELECTOR --handler=this
+    provides RegistrationService.SELECTOR --handler=this --new
 
-  handle pid/int client/int index/int arguments/any -> any:
+  handle index/int arguments/any --gid/int --client/int -> any:
     if index == RegistrationService.REGISTER_INDEX:
       return register arguments[0] arguments[1]
     unreachable

@@ -17,15 +17,15 @@ import system.base.network show CloseableNetwork
 
 import .modules.ethernet as ethernet_module
 import .modules.ethernet show
-    MAC_CHIP_ESP32 MAC_CHIP_W5500
-    PHY_CHIP_NONE PHY_CHIP_IP101 PHY_CHIP_LAN8720
+    MAC_CHIP_ESP32 MAC_CHIP_W5500 MAC_CHIP_OPENETH
+    PHY_CHIP_NONE PHY_CHIP_IP101 PHY_CHIP_LAN8720 PHY_CHIP_DP83848
 import .modules.tcp as tcp_module
 import .modules.udp as udp_module
 import .modules.dns as dns_module
 import ..esp32
 
-export MAC_CHIP_ESP32 MAC_CHIP_W5500
-export PHY_CHIP_NONE PHY_CHIP_IP101 PHY_CHIP_LAN8720
+export MAC_CHIP_ESP32 MAC_CHIP_W5500 MAC_CHIP_OPENETH
+export PHY_CHIP_NONE PHY_CHIP_IP101 PHY_CHIP_LAN8720 PHY_CHIP_DP83848
 
 ETHERNET_CONNECT_TIMEOUT_  ::= Duration --s=10
 ETHERNET_DHCP_TIMEOUT_     ::= Duration --s=16

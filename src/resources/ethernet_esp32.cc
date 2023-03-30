@@ -39,12 +39,15 @@ enum {
 };
 
 enum {
+  MAC_CHIP_ESP32    = 0,
   MAC_CHIP_W5500    = 1,
+  MAC_CHIP_OPENETH  = 2,
 };
 
 enum {
   PHY_CHIP_IP101    = 1,
   PHY_CHIP_LAN8720  = 2,
+  PHY_CHIP_DP83848  = 3,
 };
 
 const int kInvalidEthernet = -1;
@@ -171,7 +174,7 @@ uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t
 MODULE_IMPLEMENTATION(ethernet, MODULE_ETHERNET)
 
 PRIMITIVE(init_esp32) {
-  ARGS(int, phy_chip, int, phy_addr, int, phy_reset_num, int, mdc_num, int, mdio_num)
+  ARGS(int, mac_chip, int, phy_chip, int, phy_addr, int, phy_reset_num, int, mdc_num, int, mdio_num)
 
 #if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
   return Primitive::os_error(ESP_FAIL, process);
@@ -200,7 +203,16 @@ PRIMITIVE(init_esp32) {
   mac_config.smi_mdio_gpio_num = mdio_num;
 
   // TODO(anders): If phy initialization fails, we're leaking this.
-  esp_eth_mac_t* mac = esp_eth_mac_new_esp32(&mac_config);
+  esp_eth_mac_t* mac;
+  if (mac_chip == MAC_CHIP_ESP32) {
+    mac = esp_eth_mac_new_esp32(&mac_config);
+  } else if (mac_chip == MAC_CHIP_OPENETH) {
+    // Openeth is the network driver that is used with QEMU.
+    mac = esp_eth_mac_new_openeth(&mac_config);
+    phy_config.autonego_timeout_ms = 100;
+  } else {
+    INVALID_ARGUMENT;
+  }
 
   if (!mac) {
     ethernet_pool.put(id);
@@ -215,6 +227,9 @@ PRIMITIVE(init_esp32) {
     case PHY_CHIP_LAN8720:
       phy = esp_eth_phy_new_lan8720(&phy_config);
       break;
+    case PHY_CHIP_DP83848: {
+      phy = esp_eth_phy_new_dp83848(&phy_config);
+    }
   }
   if (!phy) {
     ethernet_pool.put(id);

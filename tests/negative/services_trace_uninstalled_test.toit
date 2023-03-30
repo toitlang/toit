@@ -2,23 +2,24 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import system.services show ServiceDefinition
+import system.services show ServiceProvider ServiceHandlerNew
 import system.api.trace show TraceService
 
 main:
-  service := TraceServiceDefinition
+  service := TraceServiceProvider
   service.install
   catch --trace: throw "you shouldn't see this"
   service.uninstall
   catch --trace: throw 1234
   throw 3456
 
-class TraceServiceDefinition extends ServiceDefinition implements TraceService:
+class TraceServiceProvider extends ServiceProvider
+    implements TraceService ServiceHandlerNew:
   constructor:
     super "system/trace/test" --major=1 --minor=2
-    provides TraceService.SELECTOR
+    provides TraceService.SELECTOR --handler=this --new
 
-  handle pid/int client/int index/int arguments/any -> any:
+  handle index/int arguments/any --gid/int --client/int -> any:
     if index == TraceService.HANDLE_TRACE_INDEX:
       return handle_trace arguments
     unreachable
