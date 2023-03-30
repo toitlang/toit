@@ -10,7 +10,7 @@ interface ContainerService:
   static SELECTOR ::= ServiceSelector
       --uuid="358ee529-45a4-409e-8fab-7a28f71e5c51"
       --major=0
-      --minor=6
+      --minor=7
 
   static FLAG_RUN_BOOT     /int ::= 1 << 0
   static FLAG_RUN_CRITICAL /int ::= 1 << 1
@@ -18,7 +18,7 @@ interface ContainerService:
   list_images -> List
   static LIST_IMAGES_INDEX /int ::= 0
 
-  load_image id/uuid.Uuid -> int?
+  load_image id/uuid.Uuid -> List?
   static LOAD_IMAGE_INDEX /int ::= 1
 
   start_container handle/int arguments/any -> none
@@ -55,7 +55,7 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
           --flags=array[cursor + 2]
           --data=array[cursor + 3]
 
-  load_image id/uuid.Uuid -> int?:
+  load_image id/uuid.Uuid -> List?:
     return invoke_ ContainerService.LOAD_IMAGE_INDEX id.to_byte_array
 
   start_container handle/int arguments/any -> none:

@@ -225,13 +225,15 @@ abstract class ContainerServiceProvider extends ServiceProvider
       result.add image.data
     return result
 
-  load_image id/uuid.Uuid -> int:
+  load_image id/uuid.Uuid -> List?:
     unreachable  // <-- TODO(kasper): Nasty.
 
-  load_image client/int id/uuid.Uuid -> ContainerResource?:
+  load_image client/int id/uuid.Uuid -> List?:
     image/ContainerImage? := lookup_image id
     if not image: return null
-    return ContainerResource image.load this client
+    container := image.load
+    resource := ContainerResource container this client
+    return [resource.serialize_for_rpc, container.id]
 
   start_container resource/ContainerResource arguments/any -> none:
     resource.container.start arguments
