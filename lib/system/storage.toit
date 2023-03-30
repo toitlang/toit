@@ -314,7 +314,7 @@ class Region extends ServiceResourceProxy:
 
   stream --from/int=0 --to/int=size --buffer/int=256 -> Reader:
     if not 0 <= from <= to <= size: throw "OUT_OF_BOUNDS"
-    if buffer <= 0: throw "Bad Argument"
+    if buffer < 16: throw "Bad Argument"
     return RegionReader_
         --region=this
         --from=from
@@ -363,7 +363,11 @@ class RegionReader_ implements Reader:
     from := from_
     remaining := to_ - from
     if remaining == 0: return null
-    n := min remaining buffer_
+    n := min
+        // Prefer 16 byte alignment for next read,
+        (round_down (from + buffer_) 16) - from
+        // unless we're reading the final chunk.
+        remaining
     result := ByteArray n
     region_.read --from=from result
     from_ = from + n
