@@ -1,0 +1,12 @@
+cellular/src/base/service.toit:80:12: error: Argument mismatch for 'handle'
+Too many unnamed arguments provided
+Required named argument '--client' not provided
+Required named argument '--gid' not provided
+    return super pid client index arguments
+           ^~~~~
+cellular/src/base/service.toit:72:19: error: Type mismatch. Expected 'ServiceHandler'. Got 'CellularServiceProvider'
+        --handler=this
+                  ^~~~
+cellular/src/base/service.toit:75:42: error: Type mismatch. Expected 'ServiceHandler'. Got 'CellularServiceProvider'
+    provides CELLULAR_SELECTOR --handler=this
+                                         ^~~~

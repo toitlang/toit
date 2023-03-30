@@ -297,15 +297,24 @@ A handler for requests from clients.
 A $ServiceProvider may provide multiple services, each of which comes with a
   handler. That handler is then called for the corresponding request from the
   client.
+
+Deprecated. Implement $ServiceHandlerNew instead and use the adapted
+  $(ServiceProvider.provides selector --handler --new) to register
+  the handler with the $ServiceProvider.
 */
 interface ServiceHandler:
   handle pid/int client/int index/int arguments/any -> any
 
 /**
-New variant of $ServiceHandler.
+A handler for requests from clients.
 
-Eventually this will replace the old $ServiceHandler to provide
-  implementers both pid (indirectly through client) and gid.
+A $ServiceProvider may provide multiple services, each of which comes with a
+  handler. That handler is then called for the corresponding request from the
+  client.
+
+Variant of $ServiceHandler. Eventually this new variant of will replace
+  the old one to provide implementers both pid (indirectly through client)
+  and gid.
 */
 interface ServiceHandlerNew:
   handle index/int arguments/any --gid/int --client/int -> any
