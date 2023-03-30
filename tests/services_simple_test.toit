@@ -6,9 +6,10 @@ import system.services
 import expect
 
 interface SimpleService:
-  static UUID/string ::= "10660fd6-3df8-4123-ac6e-e295484a4891"
-  static MAJOR/int   ::= 1
-  static MINOR/int   ::= 2
+  static SELECTOR ::= services.ServiceSelector
+      --uuid="10660fd6-3df8-4123-ac6e-e295484a4891"
+      --major=1
+      --minor=2
 
   log message/string -> none
   static LOG_INDEX ::= 0
@@ -21,7 +22,7 @@ main:
   test_uninstall
 
 test_logging --separate_process/bool=false:
-  service := SimpleServiceDefinition
+  service := SimpleServiceProvider
   service.install
   if separate_process:
     spawn:: test_hello
@@ -30,52 +31,48 @@ test_logging --separate_process/bool=false:
   service.uninstall --wait
 
 test_illegal_name:
-  service := SimpleServiceDefinition
+  service := SimpleServiceProvider
   service.install
 
   expect.expect_throw "Cannot find service":
-    FlexibleServiceClient ""
+    (FlexibleServiceClient --uuid="").open
   expect.expect_null
-    (FlexibleServiceClient "" --no-open).open
+    (FlexibleServiceClient --uuid="").open --if_absent=: null
 
   expect.expect_throw "Cannot find service":
-    FlexibleServiceClient "logs"
+    (FlexibleServiceClient --uuid="logs").open
   expect.expect_null
-    (FlexibleServiceClient "logs" --no-open).open
+    (FlexibleServiceClient --uuid="logs").open --if_absent=: null
 
   expect.expect_throw "Cannot find service":
-    FlexibleServiceClient "log.illegal"
+    (FlexibleServiceClient --uuid="log.illegal").open
   expect.expect_null
-    (FlexibleServiceClient "log.illegal" --no-open).open
+    (FlexibleServiceClient --uuid="log.illegal").open --if_absent=: null
 
   service.uninstall
 
 test_versions:
-  service := SimpleServiceDefinition
+  service := SimpleServiceProvider
   service.install
 
-  expect.expect_throw "service:log@1.2.5 does not provide service:$SimpleService.UUID@0.x":
-    FlexibleServiceClient SimpleService.UUID 0
-  expect.expect_no_throw:
-    (FlexibleServiceClient SimpleService.UUID 0 --no-open)
-  expect.expect_throw "service:log@1.2.5 does not provide service:$SimpleService.UUID@0.x":
-    (FlexibleServiceClient SimpleService.UUID 0 --no-open).open
+  uuid := SimpleService.SELECTOR.uuid
+  expect.expect_throw "service:log@1.2.5 does not provide service:$uuid@0.x":
+    (FlexibleServiceClient --major=0).open
+  expect.expect_throw "service:log@1.2.5 does not provide service:$uuid@0.x":
+    (FlexibleServiceClient --major=0).open --if_absent=: null
 
-  expect.expect_throw "service:log@1.2.5 does not provide service:$SimpleService.UUID@2.x":
-    FlexibleServiceClient SimpleService.UUID 2
-  expect.expect_no_throw:
-    (FlexibleServiceClient SimpleService.UUID 2 --no-open)
-  expect.expect_throw "service:log@1.2.5 does not provide service:$SimpleService.UUID@2.x":
-    (FlexibleServiceClient SimpleService.UUID 2 --no-open).open
+  expect.expect_throw "service:log@1.2.5 does not provide service:$uuid@2.x":
+    (FlexibleServiceClient --major=2).open
+  expect.expect_throw "service:log@1.2.5 does not provide service:$uuid@2.x":
+    (FlexibleServiceClient --major=2).open --if_absent=: null
 
-  expect.expect_throw "service:log@1.2.5 does not provide service:$SimpleService.UUID@1.3.x":
-    FlexibleServiceClient SimpleService.UUID 1 3
-  expect.expect_no_throw:
-    (FlexibleServiceClient SimpleService.UUID 1 3 --no-open)
-  expect.expect_throw "service:log@1.2.5 does not provide service:$SimpleService.UUID@1.3.x":
-    (FlexibleServiceClient SimpleService.UUID 1 3 --no-open).open
+  expect.expect_throw "service:log@1.2.5 does not provide service:$uuid@1.3.x":
+    (FlexibleServiceClient --minor=3).open
+  expect.expect_throw "service:log@1.2.5 does not provide service:$uuid@1.3.x":
+    (FlexibleServiceClient --minor=3).open --if_absent=: null
 
-  client := FlexibleServiceClient SimpleService.UUID 1 1
+  client := FlexibleServiceClient --major=1 --minor=1
+  client.open
   expect.expect_equals 1 client.major
   expect.expect_equals 2 client.minor
   expect.expect_equals 5 client.patch
@@ -83,50 +80,52 @@ test_versions:
   service.uninstall --wait
 
 test_uninstall:
-  service := SimpleServiceDefinition
+  service := SimpleServiceProvider
   service.install
   test_hello --no-close
   logger := SimpleServiceClient
+  logger.open
   service.uninstall
   exception := catch: logger.log "Don't let me do this!"
   expect.expect_equals "key not found" exception
 
 test_hello --close=false:
   logger := SimpleServiceClient
+  logger.open
   logger.log "Hello!"
   if close: logger.close
 
 // ------------------------------------------------------------------
 
 class SimpleServiceClient extends services.ServiceClient implements SimpleService:
-  constructor --open/bool=true:
-    super --open=open
-
-  open -> SimpleServiceClient?:
-    return (open_ SimpleService.UUID SimpleService.MAJOR SimpleService.MINOR) and this
+  static SELECTOR ::= SimpleService.SELECTOR
+  constructor selector/services.ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
+    super selector
 
   log message/string -> none:
     invoke_ SimpleService.LOG_INDEX message
 
 class FlexibleServiceClient extends services.ServiceClient:
-  uuid_/string ::= ?
-  major_/int ::= ?
-  minor_/int ::= ?
-
-  constructor .uuid_/string=SimpleService.UUID .major_/int=SimpleService.MAJOR .minor_/int=SimpleService.MINOR --open/bool=true:
-    super --open=open
-
-  open -> FlexibleServiceClient?:
-    return (open_ uuid_ major_ minor_) and this
+  constructor
+      --uuid/string=SimpleService.SELECTOR.uuid
+      --major/int=SimpleService.SELECTOR.major
+      --minor/int=SimpleService.SELECTOR.minor:
+    modified := services.ServiceSelector
+        --uuid=uuid
+        --major=major
+        --minor=minor
+    super modified
 
 // ------------------------------------------------------------------
 
-class SimpleServiceDefinition extends services.ServiceDefinition implements SimpleService:
+class SimpleServiceProvider extends services.ServiceProvider
+    implements SimpleService services.ServiceHandlerNew:
   constructor:
     super "log" --major=1 --minor=2 --patch=5
-    provides SimpleService.UUID SimpleService.MAJOR SimpleService.MINOR
+    provides SimpleService.SELECTOR --handler=this --new
 
-  handle pid/int client/int index/int arguments/any -> any:
+  handle index/int arguments/any --gid/int --client/int -> any:
     if index == SimpleService.LOG_INDEX: return log arguments
     unreachable
 

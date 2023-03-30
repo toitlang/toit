@@ -7,9 +7,10 @@ import expect
 import monitor
 
 interface ResourceService:
-  static UUID/string ::= "7ff1a5eb-27b7-4560-8861-7ebe0415e3cc"
-  static MAJOR/int   ::= 1
-  static MINOR/int   ::= 2
+  static SELECTOR ::= services.ServiceSelector
+      --uuid="7ff1a5eb-27b7-4560-8861-7ebe0415e3cc"
+      --major=1
+      --minor=2
 
   open key/string -> int
   static OPEN_INDEX ::= 0
@@ -21,9 +22,10 @@ main:
   test_notify
 
 test_notify:
-  service := ResourceServiceDefinition
+  service := ResourceServiceProvider
   service.install
   client := ResourceServiceClient
+  client.open
   resource := ResourceProxy client "resource"
 
   resource.notify 42
@@ -49,11 +51,10 @@ test_notify:
 class ResourceServiceClient extends services.ServiceClient implements ResourceService:
   resources/List ::= []  // Keep around to avoid GC and finalization behavior.
 
-  constructor --open/bool=true:
-    super --open=open
-
-  open -> ResourceServiceClient?:
-    return (open_ ResourceService.UUID ResourceService.MAJOR ResourceService.MINOR) and this
+  static SELECTOR ::= ResourceService.SELECTOR
+  constructor selector/services.ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
+    super selector
 
   open key/string -> int:
     return invoke_ ResourceService.OPEN_INDEX key
@@ -78,14 +79,15 @@ class ResourceProxy extends services.ServiceResourceProxy:
 
 // ------------------------------------------------------------------
 
-class ResourceServiceDefinition extends services.ServiceDefinition implements ResourceService:
+class ResourceServiceProvider extends services.ServiceProvider
+    implements ResourceService services.ServiceHandlerNew:
   resources/Map ::= {:}
 
   constructor:
     super "resource" --major=1 --minor=2 --patch=5
-    provides ResourceService.UUID ResourceService.MAJOR ResourceService.MINOR
+    provides ResourceService.SELECTOR --handler=this --new
 
-  handle pid/int client/int index/int arguments/any -> any:
+  handle index/int arguments/any --gid/int --client/int -> any:
     if index == ResourceService.OPEN_INDEX:
       return open client arguments
     if index == ResourceService.NOTIFY_INDEX:
@@ -107,8 +109,8 @@ class ResourceServiceDefinition extends services.ServiceDefinition implements Re
 class Resource extends services.ServiceResource:
   key/string ::= ?
 
-  constructor service/services.ServiceDefinition client/int .key:
-    super service client --notifiable
+  constructor provider/services.ServiceProvider client/int .key:
+    super provider client --notifiable
 
   on_closed -> none:
     // Do nothing.

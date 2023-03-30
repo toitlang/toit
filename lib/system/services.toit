@@ -299,7 +299,16 @@ A $ServiceProvider may provide multiple services, each of which comes with a
   client.
 */
 interface ServiceHandler:
-  handle pid/int client/int index/int arguments/any-> any
+  handle pid/int client/int index/int arguments/any -> any
+
+/**
+New variant of $ServiceHandler.
+
+Eventually this will replace the old $ServiceHandler to provide
+  implementers both pid (indirectly through client) and gid.
+*/
+interface ServiceHandlerNew:
+  handle index/int arguments/any --gid/int --client/int -> any
 
 /**
 A service provider.
@@ -373,6 +382,26 @@ class ServiceProvider:
         --tags=tags
     _services_.add service
 
+  /**
+  Registers a handler for the given $selector.
+
+  This function should only be called from subclasses (typically in their constructor).
+  */
+  provides selector/ServiceSelector --handler/ServiceHandlerNew --new/bool -> none
+      --id/int?=null
+      --priority/int=PRIORITY_NORMAL
+      --tags/List?=null:
+    if not new: throw "Bad Argument"
+    provider_tags := this.tags
+    if provider_tags: tags = tags ? (provider_tags + tags) : provider_tags
+    service := Service_
+        --selector=selector
+        --handler=handler
+        --id=id
+        --priority=priority
+        --tags=tags
+    _services_.add service
+
   install -> none:
     if _manager_: throw "Already installed"
     _manager_ = ServiceManager_.instance
@@ -388,6 +417,10 @@ class ServiceProvider:
     if not _manager_: return
     _clients_.do: _manager_.close it
     if _manager_: _uninstall_
+
+  pid --client/int -> int?:
+    if not _manager_: return null
+    return _manager_.clients_.get client
 
   resource client/int handle/int -> ServiceResource:
     return _find_resource_ client handle
@@ -476,8 +509,12 @@ class ServiceProvider:
     _ids_ = null
     _manager_ = null
 
-// TODO(kasper): Deprecate this.
-abstract class ServiceDefinition extends ServiceProvider implements ServiceHandler:
+/**
+Deprecated. Use $ServiceProvider instead and implement the $ServiceHandler
+  interface.
+*/
+abstract class ServiceDefinition extends ServiceProvider
+    implements ServiceHandler:
   constructor name/string --major/int --minor/int --patch/int=0:
     super name --major=major --minor=minor --patch=patch
 
@@ -569,7 +606,7 @@ abstract class ServiceResourceProxy:
 
 class Service_:
   selector/ServiceSelector
-  handler/ServiceHandler
+  handler/any  // ServiceHandler|ServiceHandlerNew
   id/int?
   priority/int
   tags/List?
@@ -626,7 +663,7 @@ class ServiceManager_ implements SystemMessageHandler_:
 
   providers_/Map ::= {:}            // Map<int, ServiceProvider>
   providers_by_client_/Map ::= {:}  // Map<int, ServiceProvider>
-  handlers_by_client_/Map ::= {:}   // Map<int, ServiceHandler>
+  handlers_by_client_/Map ::= {:}   // Map<int, ServiceHandler|ServiceHandlerNew>
 
   constructor:
     set_system_message_handler_ SYSTEM_RPC_NOTIFY_TERMINATED_ this
@@ -634,10 +671,15 @@ class ServiceManager_ implements SystemMessageHandler_:
       open pid arguments[0] arguments[1] arguments[2] arguments[3]
     broker_.register_procedure RPC_SERVICES_CLOSE_:: | arguments |
       close arguments
-    broker_.register_procedure RPC_SERVICES_INVOKE_:: | arguments _ pid |
+    broker_.register_procedure RPC_SERVICES_INVOKE_:: | arguments gid pid |
       client/int ::= arguments[0]
-      handler/ServiceHandler ::= handlers_by_client_[client]
-      handler.handle pid client arguments[1] arguments[2]
+      handler ::= handlers_by_client_[client]
+      if handler is ServiceHandlerNew:
+        (handler as ServiceHandlerNew).handle arguments[1] arguments[2] --gid=gid --client=client
+      else if handler is ServiceHandler:
+        (handler as ServiceHandler).handle pid client arguments[1] arguments[2]
+      else:
+        unreachable
     broker_.register_procedure RPC_SERVICES_CLOSE_RESOURCE_:: | arguments |
       client/int ::= arguments[0]
       providers_by_client_.get client --if_present=: | provider/ServiceProvider |

@@ -6,9 +6,10 @@ import system.services
 import expect
 
 interface ResourceService:
-  static UUID/string ::= "74921323-3400-4d32-b8be-54b241daca05"
-  static MAJOR/int   ::= 1
-  static MINOR/int   ::= 2
+  static SELECTOR ::= services.ServiceSelector
+      --uuid="74921323-3400-4d32-b8be-54b241daca05"
+      --major=1
+      --minor=2
 
   open key/string -> int
   static OPEN_INDEX ::= 0
@@ -29,7 +30,7 @@ main:
   test_custom_close
 
 test_resources --close/bool=false --separate_process/bool=false:
-  service := ResourceServiceDefinition
+  service := ResourceServiceProvider
   service.install
   expect.expect_equals -1 (service.close_count "resource-0")
   if separate_process:
@@ -41,7 +42,7 @@ test_resources --close/bool=false --separate_process/bool=false:
   expect.expect_equals 1 (service.close_count "resource-0")
 
 test_uninstall:
-  service := ResourceServiceDefinition
+  service := ResourceServiceProvider
   service.install
   clients := []
   clients.add (test_open "resource-1" false --no-close_client)
@@ -52,7 +53,7 @@ test_uninstall:
   expect.expect_equals 1 (service.close_count "resource-1")
 
 test_multiple_resources:
-  service := ResourceServiceDefinition
+  service := ResourceServiceProvider
   service.install
   clients := []
   clients.add (test_open "resource-2" false)
@@ -75,9 +76,10 @@ test_multiple_resources:
   service.uninstall --wait
 
 test_custom_close:
-  service := ResourceServiceDefinition
+  service := ResourceServiceProvider
   service.install
   client := ResourceServiceClient
+  client.open
   resource := ResourceProxy client "resource"
   expect.expect_equals 0 (service.close_count "resource")
   resource.myclose
@@ -89,6 +91,7 @@ test_custom_close:
 
 test_open key/string close/bool --close_client/bool=false -> ResourceServiceClient:
   client := ResourceServiceClient
+  client.open
   resource := ResourceProxy client key
   client.resources.add resource
   expect.expect_equals 0 (client.close_count key)
@@ -105,11 +108,10 @@ test_open key/string close/bool --close_client/bool=false -> ResourceServiceClie
 class ResourceServiceClient extends services.ServiceClient implements ResourceService:
   resources/List ::= []  // Keep around to avoid GC and finalization behavior.
 
-  constructor --open/bool=true:
-    super --open=open
-
-  open -> ResourceServiceClient?:
-    return (open_ ResourceService.UUID ResourceService.MAJOR ResourceService.MINOR) and this
+  static SELECTOR ::= ResourceService.SELECTOR
+  constructor selector/services.ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
+    super selector
 
   open key/string -> int:
     return invoke_ ResourceService.OPEN_INDEX key
@@ -129,14 +131,15 @@ class ResourceProxy extends services.ServiceResourceProxy:
 
 // ------------------------------------------------------------------
 
-class ResourceServiceDefinition extends services.ServiceDefinition implements ResourceService:
+class ResourceServiceProvider extends services.ServiceProvider
+    implements ResourceService services.ServiceHandlerNew:
   resources/Map ::= {:}
 
   constructor:
     super "resource" --major=1 --minor=2 --patch=5
-    provides ResourceService.UUID ResourceService.MAJOR ResourceService.MINOR
+    provides ResourceService.SELECTOR --handler=this --new
 
-  handle pid/int client/int index/int arguments/any -> any:
+  handle index/int arguments/any --gid/int --client/int -> any:
     if index == ResourceService.OPEN_INDEX:
       return open client arguments
     if index == ResourceService.MYCLOSE_INDEX:
@@ -165,8 +168,8 @@ class Resource extends services.ServiceResource:
   key/string ::= ?
   close_count_/int := 0
 
-  constructor service/services.ServiceDefinition client/int .key:
-    super service client
+  constructor provider/services.ServiceProvider client/int .key:
+    super provider client
 
   on_closed -> none:
     close_count_++
