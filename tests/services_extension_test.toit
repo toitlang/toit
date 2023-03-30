@@ -54,7 +54,6 @@ run_client:
 class MyServiceClient extends services.ServiceClient implements MyService:
   static SELECTOR ::= MyService.SELECTOR
   constructor selector/services.ServiceSelector=SELECTOR:
-    assert: selector.matches SELECTOR
     super selector
 
   foo -> int:
