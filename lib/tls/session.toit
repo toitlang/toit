@@ -34,6 +34,9 @@ ALERT_FATAL_ ::= 2
 
 RECORD_HEADER_SIZE_    ::= 5
 
+EXTENSION_SERVER_NAME_ ::= 0
+EXTENSION_SESSION_TICKET_ ::= 35
+
 class RecordHeader_:
   bytes /ByteArray      // At least 5 bytes.
   type -> int: return bytes[0]
@@ -106,6 +109,7 @@ class Session:
   handshake_in_progress_/monitor.Latch? := monitor.Latch
   group_/TlsGroup_? := null
   tls_ := null
+  toit_handshake_ := null
 
   outgoing_buffer_/ByteArray := #[]
   bytes_before_next_record_header_ := 0
@@ -195,7 +199,6 @@ class Session:
         value := is_exception ? exception.value : null
         handshake_in_progress_.set value
         handshake_in_progress_ = null
-        resource_state.dispose
 
     group_ = is_server ? tls_group_server_ : tls_group_client_
     handle := group_.use
@@ -262,7 +265,7 @@ class Session:
     master secret.  The session ID and session ticket are mutually exclusive (only
     one of them has a non-zero length).
   */
-  session_state/ByteArray?
+  session_state/ByteArray? := null
 
   write data from=0 to=data.size:
     ensure_handshaken_
@@ -503,7 +506,7 @@ class ToitHandshake:
   master_secret_ /ByteArray
   client_random_ /ByteArray
 
-  constructor .session_
+  constructor .session_:
     list := tison.decode session_.session_state
     session_id_ = list[0]
     session_ticket_ = list[1]
@@ -537,9 +540,31 @@ class ToitHandshake:
     hello := client_hello_packet_
     sent := session_.writer_.write hello
     assert: sent == hello.size
-    server_hello := session_.extract_first_message_
-    assert: server_hello[0] == HANDSHAKE_
+    server_hello_packet := session_.extract_first_message_
+    server_hello := ServerHello_ server_hello_packet
 
+    // Session IDs are handled in RFC 4346.  Session tickets are in RFC 5077.
+    // * We sent ticket, server accepts ticket: Figure 5077-2.
+    //     * Server sends empty ticket extension, followed by
+    //           NewSessionTicket message. Shortened handshake gets
+    //           us connected.
+    // * We sent ticket, server wants a full handshake: Figure 5077-3 and 4.
+    //     * Server sends empty ticket extension, followed by
+    //           Certificate message. This means we need a full handshake
+    //           which is not yet implemented in Toit. Abandon and
+    //           reconnect, using MbedTLS.
+    // * We sent session ID, server accepts session ID: Figure 4346-2.
+    //    * Server sends no ticket extension, echoes back session ID in
+    //          server hello. Shortened handshake gets us connected.
+    // * We sent session ID, server rejects session ID: Figure 4346-1.
+    //    * Server sends no ticket extension, sends non-matching session ID
+    //          in server hello. This means we need a full handshake
+    //          which is not yet implemented in Toit. Abandon and
+    //          reconnect, using MbedTLS.
+    if server_hello.session_id == session_id_ and session_id_.size != 0:
+      // Session ID accepted, yay!
+      return
+    returned_ticket_extension := server_hello.extensions.get EXTENSION_SESSION_TICKET_
 
   client_hello_packet_ -> ByteArray:
     client_hello := ByteArray 100
@@ -550,34 +575,78 @@ class ToitHandshake:
     client_hello.replace index session_id_
     index += session_id_.size
 
-    // Build the extensions.  We must supply the hostname because
-    // multiple HTTPS servers can be on the same IP.
-    hostname := session_.server_name_
-    name_extension := ByteArray hostname.size + 9
-    name_extension[3] = hostname.size + 5
-    name_extension[5] = hostname.size + 3
-    name_extension[8] = hostname.size
-    name_extension.replace 9 hostname
-    // If we have a ticket instead of a session ID, use that.
-    ticket_extension := #[]
-    if session_ticket_.size != 0:
-      ticket_extension := ByteArray session_ticket_.size + 4
-      ticket_extension[1] = 35  // Session ticket.
-      ticket_extension[3] = session_ticket_.size
-      ticket_extension.replace 4 session_ticket_
+    // Build the extensions.
+    extensions := []
+    do_name_extension_ extensions
+    do_session_ticket_extension_ extensions
+
     // Write extensions size.
-    BIG_ENDIAN.put_uint16 index
-        name_extension.size + ticket_extension.size
+    extensions_size := extensions.reduce --initial=0: | sum ext | sum + ext.size
+    BIG_ENDIAN.put_uint16 client_hello index extensions_size
     index += 2
     // Write extensions.
-    client_hello.replace index name_extension
-    index += name_extension.size
-    client_hello.replace index ticket_extension
-    index += ticket_extension.size
-    client_hello = client_hello[..index]
+    extensions.do:
+      client_hello.replace index it
+      index += it.size
     // Update size of record and message.
-    BIG_ENDIAN.put_uint16 3 client_hello index - 5
-    BIG_ENDIAN.put_uint24 6 client_hello index - 9
+    BIG_ENDIAN.put_uint16 client_hello 3 index - 5
+    BIG_ENDIAN.put_uint24 client_hello 6 index - 9
+
+  // We normally supply the hostname because multiple HTTPS servers can be on
+  // the same IP.
+  do_name_extension_ extensions/List -> none:
+    hostname := session_.server_name_
+    if hostname:
+      name_extension := ByteArray hostname.size + 9
+      name_extension[3] = hostname.size + 5
+      name_extension[5] = hostname.size + 3
+      name_extension[8] = hostname.size
+      name_extension.replace 9 hostname
+      extensions.add name_extension
+
+  do_session_ticket_extension_ extensions/List -> none:
+    // If we have a ticket instead of a session ID, use that.
+    // If we don't have a ticket we could send an empty ticket
+    // extension to indicate we want a ticket for next time, but
+    // we have not implemented that yet.
+    if session_ticket_.size != 0:
+      ticket_extension := ByteArray session_ticket_.size + 4
+      ticket_extension[1] = EXTENSION_SESSION_TICKET_
+      ticket_extension[3] = session_ticket_.size
+      ticket_extension.replace 4 session_ticket_
+      extensions.add ticket_extension
+
+class ServerHello_:
+  extensions /Map
+  random /ByteArray
+  session_id /ByteArray
+  cipher_suite /int
+
+  constructor packet/ByteArray:
+    if packet[0] != HANDSHAKE_ or packet[5] != SERVER_HELLO_:
+      throw "PROTOCOL_ERROR"
+    message_size := BIG_ENDIAN.uint24 packet 6
+    assert:
+      record_size := BIG_ENDIAN.uint16 packet 3
+      record_size == message_size + 4  // Last line is value being asserted.
+    random = packet[11..43]
+    server_session_id_length := packet[43]
+    index := 44 + server_session_id_length
+    session_id = packet[44..index]
+    cipher_suite = BIG_ENDIAN.uint16 packet index
+    compression_method := packet[index + 2]
+    if compression_method != 0: throw "PROTOCOL_ERROR"  // Compression not supported.
+    extensions_length := BIG_ENDIAN.uint16 packet index + 3
+    index += 5
+    extensions = {:}
+    while extensions_length < 0:
+      extension_type := BIG_ENDIAN.uint16 packet index
+      extension_length := BIG_ENDIAN.uint16 packet index + 2
+      extension := packet[index + 4..index + 4 + extension_length]
+      extensions[extension_type] = extension
+      index += 4 + extension_length
+      extensions_length -= 4 + extension_length
+    if index != message_size: throw "PROTOCOL_ERROR"
 
 class SymmetricSession_:
   write_keys /KeyData_
