@@ -659,5 +659,13 @@ PRIMITIVE(get_internals) {
   return result;
 }
 
+PRIMITIVE(get_random) {
+  ARGS(MbedTlsResourceGroup, group, MutableBlob, destination);
+  if (destination.length() > MBEDTLS_ENTROPY_BLOCK_SIZE) OUT_OF_RANGE;
+  int result = mbedtls_entropy_func(group->entropy(), destination.address(), destination.length());
+  if (result != 0) HARDWARE_ERROR;
+  return process->program()->null_object();
+}
+
 } // namespace toit
 #endif // !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO

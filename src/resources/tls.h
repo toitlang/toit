@@ -154,6 +154,9 @@ class MbedTlsResourceGroup : public ResourceGroup {
     free(error_issuer_);
     error_issuer_ = null;
   }
+
+  mbedtls_entropy_context* entropy() { return &entropy_; }
+
  private:
   void init_conf(mbedtls_ssl_config* conf);
   mbedtls_entropy_context entropy_;

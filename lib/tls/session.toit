@@ -15,6 +15,15 @@ import .certificate
 import .socket
 
 // Record types from RFC 5246.
+HELLO_REQUEST_ ::= 0
+CLIENT_HELLO_ ::= 1
+SERVER_HELLO_ ::= 2
+CERTIFICATE_ ::= 11
+SERVER_KEY_EXCHANGE_ ::= 12
+CERTIFICATE_REQUEST_ ::= 13
+SERVER_HELLO_DONE_ ::= 14
+CERTIFICATE_VERIFY_ ::= 15
+CLIENT_KEY_EXCHANGE_ ::= 16
 CHANGE_CIPHER_SPEC_ ::= 20
 ALERT_ ::= 21
 HANDSHAKE_ ::= 22
@@ -133,11 +142,16 @@ class Session:
     authority of the client. This is not done using e.g. HTTPS communication.
   The handshake routine requires at most $handshake_timeout between each step
     in the handshake process.
+  If $session_state is given, the handshake operation will use it to resume the TLS
+    session from the previous stored session state. This can greatly improve the
+    duration of a complete TLS handshake. If the session state is invalid, the
+    operation will fall back to performing the full handshake.
   */
   constructor.client .unbuffered_reader_ .writer_
       --server_name/string?=null
       --.certificate=null
       --.root_certificates=[]
+      --.session_state=null
       --.handshake_timeout/Duration=DEFAULT_HANDSHAKE_TIMEOUT:
     reader_ = reader.BufferedReader unbuffered_reader_
     server_name_ = server_name
@@ -163,18 +177,25 @@ class Session:
 
   This method will automatically be called by read and write if the handshake
     is not completed yet.
-
-  If $session_state is given, the handshake operation will use it to resume the TLS
-    session from the previous stored session state. This can greatly improve the
-    duration of a complete TLS handshake. If the session state is invalid, the
-    operation will fall back to performing the full handshake.
   */
-  handshake --session_state/ByteArray?=null -> none:
-    if tls_:
+  handshake -> none:
+    if tls_ or toit_handshake_:
       if not handshake_in_progress_: throw "TLS_ALREADY_HANDSHAKEN"
+      // Wait for the handshake to complete on another task.
       error := handshake_in_progress_.get
       if error: throw error
       return
+
+    if session_state:
+      toit_handshake_ = ToitHandshake this
+      try:
+        toit_handshake_.handshake
+        return
+      finally: | is_exception exception |
+        value := is_exception ? exception.value : null
+        handshake_in_progress_.set value
+        handshake_in_progress_ = null
+        resource_state.dispose
 
     group_ = is_server ? tls_group_server_ : tls_group_client_
     handle := group_.use
@@ -185,9 +206,6 @@ class Session:
     if certificate:
       tls_add_certificate_ tls_ certificate.certificate.res_ certificate.private_key certificate.password
     tls_init_socket_ tls_ null
-    if session_state:
-      list := tison.decode session_state
-      // TODO: Handshake without MbedTLS.
 
     resource_state := monitor.ResourceState_ handle tls_
     try:
@@ -209,7 +227,8 @@ class Session:
           return
         else if state == TOIT_TLS_WANT_READ_:
           with_timeout handshake_timeout:
-            read_handshake_message_
+            packet := extract_first_message_
+            tls_set_incoming_ tls_ packet 0
         else if state == TOIT_TLS_WANT_WRITE_:
           // This is already handled above with flush_outgoing_
         else:
@@ -223,6 +242,7 @@ class Session:
   extract_key_data_ -> none:
     if reads_encrypted_ and writes_encrypted_:
       key_data /List? := tls_get_internals_ tls_
+      session_state = tison.encode key_data[5..8]
       if key_data != null:
         assert: key_data.size == 8
         write_key_data := KeyData_ --key=key_data[1] --iv=key_data[3] --algorithm=key_data[0]
@@ -235,17 +255,14 @@ class Session:
   Gets the session state, a ByteArray that can be used to resume
     a TLS session at a later point.
 
-  The session can be read at any point after a handshake, but before the session
-    is closed.
+  The session can be read at any point after a handshake.
 
   The session state is a Tison-encoded list of 3 byte arrays.  The first byte array
     is the session ID, the second is the session ticket, and the third is the
     master secret.  The session ID and session ticket are mutually exclusive (only
     one of them has a non-zero length).
   */
-  session_state -> ByteArray:
-    key_data := tls_get_internals_ tls_
-    return tison.encode key_data[5..8]
+  session_state/ByteArray?
 
   write data from=0 to=data.size:
     ensure_handshaken_
@@ -479,9 +496,88 @@ class Session:
       reader_.unget unget_synthetic_header.bytes
     return synthetic
 
-  read_handshake_message_ -> none:
-    packet := extract_first_message_
-    tls_set_incoming_ tls_ packet 0
+class ToitHandshake:
+  session_ /Session
+  session_id_ /ByteArray
+  session_ticket_ /ByteArray
+  master_secret_ /ByteArray
+  client_random_ /ByteArray
+
+  constructor .session_
+    list := tison.decode session_.session_state
+    session_id_ = list[0]
+    session_ticket_ = list[1]
+    master_secret_ = list[2]
+    client_random_ = ByteArray 32
+    tls_get_random_ tls_group_client_ client_random_
+
+  static CLIENT_HELLO_TEMPLATE_ ::= #[ 
+      22,          // Record type: HANDSHAKE_
+      3, 1,        // TLS 1.0 - see comment at https://tls12.xargs.org/#client-hello/annotated
+      0, 0,        // Record header size will be filled in here.
+      1,           // CLIENT_HELLO_.
+      0, 0, 0,     // Message size will be filled in here.
+      3, 3,        // TLS 1.2.
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // Client random.
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // Overwritten below.
+      0, 16,       // Cipher suites size - keep in sync with cipher suites below.
+      0xcc, 0xa8,  // TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+      0xcc, 0xa9,  // TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+      0xc0, 0x2f,  // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+      0xc0, 0x30,  // TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+      0xc0, 0x2b,  // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+      0xc0, 0x2c,  // TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+      0x00, 0x9c,  // TLS_RSA_WITH_AES_128_GCM_SHA256
+      0x00, 0x9d,  // TLS_RSA_WITH_AES_256_GCM_SHA384
+      1,           // Compression methods length.
+      0,           // No compression.
+  ]
+
+  handshake -> none:
+    hello := client_hello_packet_
+    sent := session_.writer_.write hello
+    assert: sent == hello.size
+    server_hello := session_.extract_first_message_
+    assert: server_hello[0] == HANDSHAKE_
+
+
+  client_hello_packet_ -> ByteArray:
+    client_hello := ByteArray 100
+    client_hello.replace 0 CLIENT_HELLO_TEMPLATE_
+    client_hello.replace 11 client_random_
+    index := CLIENT_HELLO_TEMPLATE_.size
+    client_hello[index++] = session_id_.size  // Session ID length.
+    client_hello.replace index session_id_
+    index += session_id_.size
+
+    // Build the extensions.  We must supply the hostname because
+    // multiple HTTPS servers can be on the same IP.
+    hostname := session_.server_name_
+    name_extension := ByteArray hostname.size + 9
+    name_extension[3] = hostname.size + 5
+    name_extension[5] = hostname.size + 3
+    name_extension[8] = hostname.size
+    name_extension.replace 9 hostname
+    // If we have a ticket instead of a session ID, use that.
+    ticket_extension := #[]
+    if session_ticket_.size != 0:
+      ticket_extension := ByteArray session_ticket_.size + 4
+      ticket_extension[1] = 35  // Session ticket.
+      ticket_extension[3] = session_ticket_.size
+      ticket_extension.replace 4 session_ticket_
+    // Write extensions size.
+    BIG_ENDIAN.put_uint16 index
+        name_extension.size + ticket_extension.size
+    index += 2
+    // Write extensions.
+    client_hello.replace index name_extension
+    index += name_extension.size
+    client_hello.replace index ticket_extension
+    index += ticket_extension.size
+    client_hello = client_hello[..index]
+    // Update size of record and message.
+    BIG_ENDIAN.put_uint16 3 client_hello index - 5
+    BIG_ENDIAN.put_uint24 6 client_hello index - 9
 
 class SymmetricSession_:
   write_keys /KeyData_
@@ -696,3 +792,6 @@ tls_get_outgoing_fullness_ tls_socket:
 
 tls_get_internals_ tls_socket -> List:
   #primitive.tls.get_internals
+
+tls_get_random_ tls_group destination/ByteArray -> none:
+  #primitive.tls.get_random

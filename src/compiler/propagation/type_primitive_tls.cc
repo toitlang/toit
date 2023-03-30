@@ -37,6 +37,7 @@ TYPE_PRIMITIVE_ANY(add_root_certificate)
 TYPE_PRIMITIVE_ANY(add_certificate)
 TYPE_PRIMITIVE_ANY(error)
 TYPE_PRIMITIVE_ANY(get_internals)
+TYPE_PRIMITIVE_NULL(get_random)
 
 }  // namespace toit::compiler
 }  // namespace toit

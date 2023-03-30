@@ -297,6 +297,7 @@ namespace toit {
   PRIMITIVE(add_certificate, 4)              \
   PRIMITIVE(error, 2)                        \
   PRIMITIVE(get_internals, 1)                \
+  PRIMITIVE(get_random, 2)                   \
 
 #define MODULE_WIFI(PRIMITIVE)               \
   PRIMITIVE(init, 1)                         \
