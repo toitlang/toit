@@ -62,16 +62,11 @@ class Socket implements tcp.Socket:
 
   This method will automatically be called by read and write if the handshake
     is not completed yet.
-
-  If $session_state is given, the handshake operation will use it to resume the TLS
-    session from the previous stored session state. This can greatly improve the
-    duration of a complete TLS handshake. If the session state is invalid, the
-    operation will fall back to performing the full handshake.
   */
-  handshake --session_state/ByteArray?=null -> none:
+  handshake -> none:
     no_delay ::= socket_.no_delay
     socket_.no_delay = true
-    session_.handshake --session_state=session_state
+    session_.handshake
     socket_.no_delay = no_delay
 
   /**

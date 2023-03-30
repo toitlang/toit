@@ -591,6 +591,7 @@ class ToitHandshake:
     // Update size of record and message.
     BIG_ENDIAN.put_uint16 client_hello 3 index - 5
     BIG_ENDIAN.put_uint24 client_hello 6 index - 9
+    return client_hello[..index]
 
   // We normally supply the hostname because multiple HTTPS servers can be on
   // the same IP.
