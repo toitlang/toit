@@ -61,10 +61,13 @@ class EthernetResourceGroup : public ResourceGroup {
  public:
   TAG(EthernetResourceGroup);
   EthernetResourceGroup(Process* process, SystemEventSource* event_source, int id,
+                        esp_eth_mac_t* mac, esp_eth_phy_t* phy,
                         esp_netif_t* netif, esp_eth_handle_t eth_handle,
                         esp_eth_netif_glue_handle_t netif_glue)
       : ResourceGroup(process, event_source)
       , id_(id)
+      , mac_(mac)
+      , phy_(phy)
       , netif_(netif)
       , eth_handle_(eth_handle)
       , netif_glue_(netif_glue) {}
@@ -80,12 +83,16 @@ class EthernetResourceGroup : public ResourceGroup {
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle_));
     esp_netif_destroy(netif_);
     ethernet_pool.put(id_);
+    phy_->del(phy_);
+    mac_->del(mac_);
   }
 
   uint32_t on_event(Resource* resource, word data, uint32_t state);
 
  private:
   int id_;
+  esp_eth_mac_t* mac_;
+  esp_eth_phy_t* phy_;
   esp_netif_t *netif_;
   esp_eth_handle_t eth_handle_;
   esp_eth_netif_glue_handle_t netif_glue_;
@@ -234,7 +241,7 @@ PRIMITIVE(init_esp32) {
   if (!phy) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
-    // TODO(anders): Hmmm, cannot figure out to de-init the mac part.
+    mac->del(mac);
     return Primitive::os_error(ESP_ERR_INVALID_ARG, process);
   }
 
@@ -244,7 +251,8 @@ PRIMITIVE(init_esp32) {
   if (err != ESP_OK) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
-    // TODO(anders): Ditto, deinit mac and phy.
+    phy->del(phy);
+    mac->del(mac);
     return Primitive::os_error(err, process);
   }
 
@@ -255,16 +263,20 @@ PRIMITIVE(init_esp32) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle));
+    phy->del(phy);
+    mac->del(mac);
     return Primitive::os_error(err, process);
   }
 
   EthernetResourceGroup* resource_group = _new EthernetResourceGroup(
-    process, SystemEventSource::instance(), id, netif, eth_handle, netif_glue);
+    process, SystemEventSource::instance(), id, mac, phy, netif, eth_handle, netif_glue);
   if (!resource_group) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
     ESP_ERROR_CHECK(esp_eth_del_netif_glue(netif_glue));
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle));
+    phy->del(phy);
+    mac->del(mac);
     MALLOC_FAILED;
   }
 
@@ -311,6 +323,8 @@ PRIMITIVE(init_spi) {
   if (!phy || !mac) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
+    if (phy) phy->del(phy);
+    if (mac) mac->del(mac);
     return Primitive::os_error(ESP_ERR_INVALID_ARG, process);
   }
 
@@ -320,7 +334,8 @@ PRIMITIVE(init_spi) {
   if (err != ESP_OK) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
-    // TODO(anders): Ditto, deinit mac and phy.
+    phy->del(phy);
+    mac->del(mac);
     return Primitive::os_error(err, process);
   }
 
@@ -335,16 +350,20 @@ PRIMITIVE(init_spi) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle));
+    phy->del(phy);
+    mac->del(mac);
     return Primitive::os_error(err, process);
   }
 
   EthernetResourceGroup* resource_group = _new EthernetResourceGroup(
-    process, SystemEventSource::instance(), id, netif, eth_handle, netif_glue);
+    process, SystemEventSource::instance(), id, mac, phy, netif, eth_handle, netif_glue);
   if (!resource_group) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
     ESP_ERROR_CHECK(esp_eth_del_netif_glue(netif_glue));
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle));
+    phy->del(phy);
+    mac->del(mac);
     MALLOC_FAILED;
   }
 
