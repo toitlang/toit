@@ -11,7 +11,7 @@ import uuid
 import monitor
 
 import system.api.containers show ContainerService ContainerServiceClient
-import system.services show ServiceResourceProxy ServiceHandler
+import system.services show ServiceResourceProxy ServiceHandlerNew
 
 _client_ /ContainerServiceClient ::=
     (ContainerServiceClient).open as ContainerServiceClient
@@ -57,7 +57,8 @@ class Container extends ServiceResourceProxy:
   /**
   The $gid is shared among all processes that run within the
     same container. When a process invokes a service method,
-    the $gid is passed to ServiceHandlerNew.handle    <---- fix this!
+    the $gid is passed to
+    $(ServiceHandlerNew.handle index arguments --gid --client)
     as a way to identify the running container that the
     invocation originates from.
 

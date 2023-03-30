@@ -5,10 +5,10 @@
 import log
 import expect
 
-import system.services show ServiceDefinition
+import system.services show ServiceProvider ServiceHandlerNew
 import system.api.log show LogService
 
-service ::= LogServiceDefinition
+service ::= LogServiceProvider
 
 expect_log level/int message/string names/List? keys/List? values/List? [block]:
   expect.expect_equals 0 service.logs.size
@@ -65,14 +65,15 @@ main:
   // from the client side?
   expect.expect_throw "key not found": log.debug "Oh no"
 
-class LogServiceDefinition extends ServiceDefinition implements LogService:
+class LogServiceProvider extends ServiceProvider
+    implements LogService ServiceHandlerNew:
   logs_/List := []
 
   constructor:
     super "system/log/test" --major=1 --minor=2
-    provides LogService.SELECTOR
+    provides LogService.SELECTOR --handler=this --new
 
-  handle pid/int client/int index/int arguments/any -> any:
+  handle index/int arguments/any --gid/int --client/int -> any:
     if index == LogService.LOG_INDEX: return logs_.add arguments
     unreachable
 

@@ -49,9 +49,9 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
   constructor:
     super "system/wifi/esp32" --major=0 --minor=1
         --tags=[NetworkService.TAG_WIFI]
-    provides WifiService.SELECTOR --handler=this
+    provides WifiService.SELECTOR --handler=this --new
 
-  handle pid/int client/int index/int arguments/any -> any:
+  handle index/int arguments/any --gid/int --client/int -> any:
     if index == WifiService.CONNECT_INDEX:
       return connect client arguments
     if index == WifiService.ESTABLISH_INDEX:
@@ -63,7 +63,7 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
       return scan arguments
     if index == WifiService.CONFIGURE_INDEX:
       return configure arguments
-    return super pid client index arguments
+    return super index arguments --gid=gid --client=client
 
   connect client/int -> List:
     return connect client null

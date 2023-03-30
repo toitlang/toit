@@ -129,6 +129,7 @@ class FakeNetworkServiceProvider extends ProxyingNetworkServiceProvider:
         --handler=this
         --priority=ServiceProvider.PRIORITY_UNPREFERRED
         --tags=[FAKE_TAG]
+        --new
 
   proxy_mask -> int:
     return proxy_mask_
