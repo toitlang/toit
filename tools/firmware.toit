@@ -647,7 +647,7 @@ flash parsed/cli.Parsed -> none:
     if assign_index < 0: throw "malformed partition description '$description'"
     name := description[..assign_index]
     if not (0 < name.size <= 15): throw "malformed partition name '$name'"
-    if partitions.get name: throw "duplicate partition named '$name'"
+    if partitions.contains name: throw "duplicate partition named '$name'"
     value := description[assign_index + 1..]
     partition_content/ByteArray := ?
     if is_file:
