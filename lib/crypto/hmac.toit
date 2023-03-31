@@ -21,7 +21,6 @@ class Hmac extends Checksum:
   The $hasher_creator is a lambda that should create a new $Checksum object.
   */
   constructor --block_size/int key .hasher_creator/Lambda:
-    print "Input key = $key"
     block_size_ = block_size
     if key.size > block_size:
       key = checksum hasher_creator.call key
@@ -32,7 +31,6 @@ class Hmac extends Checksum:
     else:
       key += ByteArray block_size - key.size  // Zero pad and copy.
     this.key = key
-    print "Generated key = $key"
     key.size.repeat: key[it] ^= 0x36  // Xor with ipad.
     hasher_ = hasher_creator.call
     hasher_.add key  // Start with the key xor ipad.

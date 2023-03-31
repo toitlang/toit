@@ -118,11 +118,11 @@ class Md5 extends Checksum:
     digest := digest_
     if digest: return digest
 
-    // The signature is 128 bits with the number of bits
-    // in the content encoded in the last 64 of them.
+    // The signature is 64 bits with the number of bits
+    // in the content encoded in them.
     size := size_
-    signature := ByteArray 16
-    LITTLE_ENDIAN.put_int64 signature 8 (size * 8)
+    signature := ByteArray 8
+    LITTLE_ENDIAN.put_int64 signature 0 (size * 8)
 
     // The padding starts with a 1 bit and then enough
     // zeros to make the total size a multiple of 64.
