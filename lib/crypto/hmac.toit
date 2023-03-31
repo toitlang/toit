@@ -54,7 +54,7 @@ class HmacSha224 extends Hmac:
   Construct an Hmac SHA224 Checksum object.
   The $key must be a string or byte array.
   */
-  constructor key/ByteArray:
+  constructor key:
     super --block_size=64 key:: Sha224
 
 /**
@@ -65,7 +65,7 @@ class HmacSha256 extends Hmac:
   Construct an Hmac SHA256 Checksum object.
   The $key must be a string or byte array.
   */
-  constructor key/ByteArray:
+  constructor key:
     super --block_size=64 key:: Sha256
 
 /**
@@ -76,7 +76,7 @@ class HmacSha384 extends Hmac:
   Construct an Hmac SHA384 Checksum object.
   The $key must be a string or byte array.
   */
-  constructor key/ByteArray:
+  constructor key:
     super --block_size=128 key:: Sha384
 
 /**
@@ -87,8 +87,18 @@ class HmacSha512 extends Hmac:
   Construct an Hmac SHA512 Checksum object.
   The $key must be a string or byte array.
   */
-  constructor key/ByteArray:
+  constructor key:
     super --block_size=128 key:: Sha512
+
+/**
+Computes the HMAC using Sha-224 of the given $data.
+The $data must be a string or byte array.
+The $key (secret) must be a string or byte array.
+*/
+hmac_sha224 --key data -> ByteArray:
+  hmac := HmacSha224 key
+  hmac.add data
+  return hmac.get
 
 /**
 Computes the HMAC using Sha-256 of the given $data.
