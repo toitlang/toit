@@ -50,7 +50,7 @@ class PartitionTable:
 
   static decode bytes/ByteArray:
     table := PartitionTable
-    checksum := md5.MD5
+    checksum := md5.Md5
     cursor := 0
     while cursor < bytes.size:
       next := cursor + 32
@@ -80,7 +80,7 @@ class PartitionTable:
     return result
 
   encode_md5_partition_ partitions/ByteArray -> ByteArray:
-    checksum := md5.MD5
+    checksum := md5.Md5
     checksum.add partitions
     partition := ByteArray 32: 0xff
     partition.replace 0 MAGIC_BYTES_MD5

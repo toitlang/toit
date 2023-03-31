@@ -1462,6 +1462,7 @@ abstract class ByteArrayBase_ implements ByteArray:
 
   /**
   Concatenates this instance with $other.
+  Always creates a fresh ByteArray even if the receiver or the argument is empty.
   */
   operator + other/ByteArray -> ByteArray:
     result := ByteArray size + other.size
