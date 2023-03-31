@@ -146,3 +146,11 @@ class Md5 extends Checksum:
     digest_ = digest
     buffer_ = null
     return digest
+
+/**
+Computes the MD5 hash of the given $data.
+
+The $data must be a string or byte array.
+*/
+md5 data from/int=0 to/int=data.size -> ByteArray:
+  return checksum Md5 data from to
