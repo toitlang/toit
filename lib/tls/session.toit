@@ -577,8 +577,8 @@ class ToitHandshake:
 
     // Build the extensions.
     extensions := []
-    do_name_extension_ extensions
-    do_session_ticket_extension_ extensions
+    add_name_extension_ extensions
+    add_session_ticket_extension_ extensions
 
     // Write extensions size.
     extensions_size := extensions.reduce --initial=0: | sum ext | sum + ext.size
@@ -595,7 +595,7 @@ class ToitHandshake:
 
   // We normally supply the hostname because multiple HTTPS servers can be on
   // the same IP.
-  do_name_extension_ extensions/List -> none:
+  add_name_extension_ extensions/List -> none:
     hostname := session_.server_name_
     if hostname:
       name_extension := ByteArray hostname.size + 9
@@ -605,7 +605,7 @@ class ToitHandshake:
       name_extension.replace 9 hostname
       extensions.add name_extension
 
-  do_session_ticket_extension_ extensions/List -> none:
+  add_session_ticket_extension_ extensions/List -> none:
     // If we have a ticket instead of a session ID, use that.
     // If we don't have a ticket we could send an empty ticket
     // extension to indicate we want a ticket for next time, but
