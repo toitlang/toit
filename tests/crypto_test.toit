@@ -284,9 +284,11 @@ sip_test:
 
 md5_test:
   check := : | message digest |
-    md5 := Md5
-    md5.add message
-    expect_bytes_equal digest md5.get
+    message.size.repeat: | split |
+      md5 := Md5
+      md5.add message[0..split]
+      md5.add message[split..]
+      expect_bytes_equal digest md5.get
   STANDARD_MD5_CASES.do check
   GENERATED_MD5_CASES.do check
   check.call

@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 import crypto.sha show Sha224 Sha256 Sha384 Sha512
-import crypto.checksum show Checksum
+import crypto.checksum show Checksum checksum
 
 /**
 HMAC keyed hashing for message authentication.
@@ -24,9 +24,7 @@ class Hmac extends Checksum:
     print "Input key = $key"
     block_size_ = block_size
     if key.size > block_size:
-      hasher/Checksum := hasher_creator.call
-      hasher.add key
-      key = hasher.get
+      key = checksum hasher_creator.call key
     if key is string:
       s := key as string
       key = ByteArray block_size
