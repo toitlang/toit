@@ -11,7 +11,7 @@ import uuid
 import monitor
 
 import system.api.containers show ContainerService ContainerServiceClient
-import system.services show ServiceResourceProxy
+import system.services show ServiceResourceProxy ServiceHandlerNew
 
 _client_ /ContainerServiceClient ::=
     (ContainerServiceClient).open as ContainerServiceClient
@@ -26,9 +26,14 @@ current -> uuid.Uuid:
   return uuid.Uuid current_image_id_.copy
 
 start id/uuid.Uuid arguments/any=[] -> Container:
-  handle/int? := _client_.load_image id
-  if not handle: throw "No such container: $id"
-  container := Container id handle
+  image/List? := _client_.load_image id
+  if not image: throw "No such container: $id"
+  handle := image[0]
+  gid := image[1]
+  container := Container.internal_
+      --handle=handle
+      --id=id
+      --gid=gid
   try:
     _client_.start_container handle arguments
     return container
@@ -46,11 +51,27 @@ class ContainerImage:
   constructor --.id --.name --.flags --.data:
 
 class Container extends ServiceResourceProxy:
+  // TODO(kasper): Rename this and document it.
   id/uuid.Uuid
+
+  /**
+  The $gid is shared among all processes that run within the
+    same container. When a process invokes a service method,
+    the $gid is passed to
+    $(ServiceHandlerNew.handle index arguments --gid --client)
+    as a way to identify the running container that the
+    invocation originates from.
+
+  The container gets a new and unique $gid when it starts, but
+    any process that is spawned from within the container gets
+    the current $gid from its container.
+  */
+  gid/int
+
   result_/monitor.Latch ::= monitor.Latch
   on_stopped_/Lambda? := null
 
-  constructor .id handle/int:
+  constructor.internal_ --handle/int --.id --.gid:
     super _client_ handle
 
   close -> none:

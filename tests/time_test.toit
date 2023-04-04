@@ -17,6 +17,16 @@ EXAMPLES ::= [
   "2020-10-01T15:02:04",
 ]
 
+TZ_TIMES ::= [
+  ["2020-10-01T15:12:04+02:10", "2020-10-01T13:02:04Z"],
+  ["2020-10-01T15:12:04+0210", "2020-10-01T13:02:04Z"],
+  ["2020-10-01T15:02:04-02:10", "2020-10-01T17:12:04Z"],
+  ["2020-10-01T15:02:04-0210", "2020-10-01T17:12:04Z"],
+  ["2020-10-01T15:02:04+00:00", "2020-10-01T15:02:04Z"],
+  ["2020-10-01T15:02:04Z", "2020-10-01T15:02:04Z"],
+  ["2020-10-01T00:02:03+02", "2020-09-30T22:02:03Z"],
+]
+
 test_time_string str/string:
   time ::= Time.from_string str
   if str.ends_with "Z":
@@ -336,3 +346,10 @@ main:
   expect_equals
       1
       (Duration --s=-9).compare_to (Duration --s=-10)
+
+  TZ_TIMES.do:
+    left := it[0]
+    right := it[1]
+    expect_equals
+      Time.from_string left
+      Time.from_string right

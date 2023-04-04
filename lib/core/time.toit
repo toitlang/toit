@@ -714,10 +714,29 @@ class Time implements Comparable:
   The $str must be in ISO 8601 format. For example "2019-12-18T06:22:48Z".
   */
   constructor.from_string str/string:
-    is_utc := str.ends_with "Z"
+    zone_is_adjusted := str.ends_with "Z"
     str = str.trim --right "Z"
+    str_to_int ::= : | s/string | int.parse s --on_error=: throw "Cannot parse $s as integer"
+    zone_minutes := 0
+    if not zone_is_adjusted:
+      plus := str.index_of "+"
+      colon := str.index_of ":"
+      minus := str.index_of --last "-"
+      if plus > 0 or 0 < colon < minus:
+        zone_is_adjusted = true
+        cut := plus > 0 ? plus : minus
+        zone_parts := str[cut + 1..]
+        zone_minutes = 60 * (str_to_int.call zone_parts[..2])
+        if zone_parts.size == 4:  // +HHMM
+          zone_minutes += str_to_int.call zone_parts[2..]
+        else if zone_parts.size == 5:  // +HH:MM
+          if (zone_parts[2] != ':'): throw "Invalid time zone"
+          zone_minutes += str_to_int.call zone_parts[3..]
+        else if zone_parts.size != 2:  // +HH
+          throw "Invalid time zone"
+        zone_minutes = plus > 0 ? -zone_minutes : zone_minutes
+        str = str[..cut]
     parts ::= str.split "T"
-    str_to_int ::= :int.parse it --on_error=: throw "Cannot parse $it as integer"
     if parts.size != 2: throw "Expected T to separate date and time"
     date_parts ::= (parts[0].split "-").map str_to_int
     if date_parts.size != 3: throw "Expected 3 segments separated by - for date"
@@ -728,12 +747,12 @@ class Time implements Comparable:
       date_parts[1]
       date_parts[2]
       time_parts[0]
-      time_parts[1]
+      time_parts[1] + zone_minutes
       time_parts[2]
       --ms=0
       --us=0
       --ns=0
-      --is_utc=is_utc
+      --is_utc=zone_is_adjusted
 
   /**
   Returns a monotonic microsecond value.

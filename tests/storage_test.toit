@@ -256,30 +256,36 @@ test_region_flash_stream:
   finally:
     region.close
 
-test_region_flash_stream region/storage.Region buffer/int?:
+test_region_flash_stream region/storage.Region max_size/int?:
   region.erase
   bytes_written := ByteArray region.size: random 0x100
   region.write --from=0 bytes_written
 
-  if buffer and buffer <= 0:
-    expect_throw "Bad Argument": region.stream --buffer=buffer
+  if max_size and max_size < 16:
+    expect_throw "Bad Argument": region.stream --max_size=max_size
     return
 
   expect_bytes_equal
       bytes_written
-      (BufferedReader (region.stream --buffer=buffer)).read_bytes region.size
+      (BufferedReader (region.stream --max_size=max_size)).read_bytes region.size
 
   indexes := [-100, -1, 0, 1, 7, 99, 500, 512, 999, 1000, 1001, 10000]
   indexes.do: | from/int |
     indexes.do: | to/int |
       if 0 <= from <= to <= bytes_written.size:
-        reader := region.stream --from=from --to=to --buffer=buffer
+        reader := region.stream --from=from --to=to --max_size=max_size
         buffered := BufferedReader reader
         bytes_read := buffered.read_bytes to - from
         expect_bytes_equal bytes_written[from..to] bytes_read
       else:
         expect_throw "OUT_OF_BOUNDS":
-          region.stream  --from=from --to=to --buffer=buffer
+          region.stream  --from=from --to=to --max_size=max_size
+
+  64.repeat:
+    reader := region.stream --from=it --max_size=max_size
+    n := reader.read.size
+    cursor := n + it
+    expect_equals (round_up cursor 16) cursor
 
 test_region_flash_delete:
   region := storage.Region.open --flash "region-3" --capacity=8192
