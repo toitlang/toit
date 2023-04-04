@@ -34,16 +34,25 @@ void GcMetadata::set_up_singleton() {
   lowest_address_ = Utils::round_down(range_address, TOIT_PAGE_SIZE);
   uword size = Utils::round_up(range.size + range_address - lowest_address_, TOIT_PAGE_SIZE);
 #ifdef TOIT_FREERTOS
-  // If we have very limited memory then we restrict the Toit heap
-  // to the high half, which reduces the metadata allocation from
-  // 24k to 12k.
+  // Assume that the first 160k of memory can be used for C allocations, so we
+  // remove that from the area that needs to be covered by the heap metadata.
+  // This reduces the heap metadata from 24k or 28k to 12k or 16k.
+  const uword ONLY_FOR_MALLOC = 160 * KB;
   const uword TWELVE_K_METADATA_LIMIT = 148 * KB;
-  const uword PLENTY_OF_MEMORY = 308 * KB;
-  if (!OS::use_spiram_for_metadata() && !OS::use_spiram_for_heap() &&
-      TWELVE_K_METADATA_LIMIT < size && size < PLENTY_OF_MEMORY) {
-    uword adjust = size - TWELVE_K_METADATA_LIMIT;
-    lowest_address_ += adjust;
-    size -= adjust;
+  const uword SIXTEEN_K_METADATA_LIMIT = 200 * KB;
+  if (!OS::use_spiram_for_metadata() && !OS::use_spiram_for_heap()) {
+    word adjust = ONLY_FOR_MALLOC;
+    // Metadata sizes are rounded up to the next 4k boundary, so we might as
+    // well increase the covered size to make use of the extra space.
+    if (size - adjust < TWELVE_K_METADATA_LIMIT) {
+      adjust = size - TWELVE_K_METADATA_LIMIT;
+    } else if (size - adjust < SIXTEEN_K_METADATA_LIMIT) {
+      adjust = size - SIXTEEN_K_METADATA_LIMIT;
+    }
+    if (adjust > 0) {
+      lowest_address_ += adjust;
+      size -= adjust;
+    }
   }
 #endif
   heap_extent_ = size;

@@ -17,10 +17,12 @@ TOIT_ETHERNET_DISCONNECTED_ ::= 1 << 2
 
 MAC_CHIP_ESP32    ::= 0
 MAC_CHIP_W5500    ::= 1
+MAC_CHIP_OPENETH  ::= 2
 
 PHY_CHIP_NONE     ::= 0
 PHY_CHIP_IP101    ::= 1
 PHY_CHIP_LAN8720  ::= 2
+PHY_CHIP_DP83848  ::= 3
 
 class Ethernet:
   logger_/log.Logger ::= log.default.with_name "ethernet"
@@ -37,13 +39,14 @@ class Ethernet:
       --mac_spi_device/spi.Device?
       --mac_int/gpio.Pin?:
 
-    if mac_chip == MAC_CHIP_ESP32:
+    if mac_chip == MAC_CHIP_ESP32 or mac_chip == MAC_CHIP_OPENETH:
       resource_group_ = ethernet_init_esp32_
+        mac_chip
         phy_chip
         phy_addr
         (phy_reset ? phy_reset.num : -1)
-        mac_mdc.num
-        mac_mdio.num
+        (mac_mdc ? mac_mdc.num : -1)
+        (mac_mdio ? mac_mdio.num : -1)
     else:
       if phy_chip != PHY_CHIP_NONE: throw "unexpected PHY chip selection"
       resource_group_ = ethernet_init_spi_
@@ -86,7 +89,7 @@ class Ethernet:
   rssi -> int?:
     return null
 
-ethernet_init_esp32_ phy_chip/int phy_addr/int phy_reset_num/int mac_mdc_num/int mac_mdio_num/int:
+ethernet_init_esp32_ mac_chip/int phy_chip/int phy_addr/int phy_reset_num/int mac_mdc_num/int mac_mdio_num/int:
   #primitive.ethernet.init_esp32
 
 ethernet_init_spi_ mac_chip/int spi_device int_num/int:

@@ -21,7 +21,7 @@ import encoding.base64
 import encoding.tison
 
 import system.assets
-import system.services show ServiceHandler ServiceProvider ServiceResource
+import system.services show ServiceHandlerNew ServiceProvider ServiceResource
 import system.api.containers show ContainerService
 
 import .flash.allocation
@@ -176,13 +176,13 @@ class ContainerImageFlash extends ContainerImage:
       manager.image_registry.free allocation
 
 abstract class ContainerServiceProvider extends ServiceProvider
-    implements ContainerService ServiceHandler:
+    implements ContainerService ServiceHandlerNew:
   constructor:
     super "system/containers" --major=0 --minor=2
-    provides ContainerService.SELECTOR --handler=this
+    provides ContainerService.SELECTOR --handler=this --new
     install
 
-  handle pid/int client/int index/int arguments/any -> any:
+  handle index/int arguments/any --gid/int --client/int -> any:
     if index == ContainerService.LIST_IMAGES_INDEX:
       return list_images
     if index == ContainerService.LOAD_IMAGE_INDEX:
@@ -225,13 +225,15 @@ abstract class ContainerServiceProvider extends ServiceProvider
       result.add image.data
     return result
 
-  load_image id/uuid.Uuid -> int:
+  load_image id/uuid.Uuid -> List?:
     unreachable  // <-- TODO(kasper): Nasty.
 
-  load_image client/int id/uuid.Uuid -> ContainerResource?:
+  load_image client/int id/uuid.Uuid -> List?:
     image/ContainerImage? := lookup_image id
     if not image: return null
-    return ContainerResource image.load this client
+    container := image.load
+    resource := ContainerResource container this client
+    return [resource.serialize_for_rpc, container.id]
 
   start_container resource/ContainerResource arguments/any -> none:
     resource.container.start arguments
