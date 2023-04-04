@@ -5,6 +5,7 @@
 import binary show BIG_ENDIAN
 import crypto.aes show *
 import crypto.chacha20 show *
+import crypto.hmac show *
 import encoding.tison
 import monitor
 import net.x509 as x509
@@ -616,6 +617,19 @@ class ToitHandshake:
       ticket_extension[3] = session_ticket_.size
       ticket_extension.replace 4 session_ticket_
       extensions.add ticket_extension
+
+  /**
+  Generate $size random bytes using the PRF of RFC 5246.
+  */
+  static pseudo_random_function size/int hash_producer/Lambda block_size/int secret/ByteArray label/string seed/ByteArray -> ByteArray:
+    result := #[]
+    a := label.to_byte_array + seed
+    while result.size < size:
+      hasher := Hmac --block_size=block_size secret hash_producer
+      hasher.add a + seed
+      a = hasher.get
+      result += a
+    return result[..size]
 
 class ServerHello_:
   extensions /Map
