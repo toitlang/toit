@@ -57,8 +57,6 @@ main:
   md5_test
   hmac_test
 
-
-
 hex_test -> none:
   expect_equals "" (hex.encode #[])
   expect_equals "" (hex.encode "")

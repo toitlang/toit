@@ -15,7 +15,7 @@ class Hmac extends Checksum:
   block_size_ /int
 
   /**
-  Construct an Hmac Checksum object.
+  Construct an Hmac checksum object.
   The $key must be a string or byte array.
   The $block_size must be the block size of the underlying hash.
   The $hasher_creator is a lambda that should create a new $Checksum object.
