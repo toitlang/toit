@@ -28,8 +28,10 @@ class Md5 extends Checksum:
     0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
   ]
 
+  static BLOCK_SIZE ::= 64
+
   size_/int := 0
-  buffer_/ByteArray? := ByteArray 64
+  buffer_/ByteArray? := ByteArray BLOCK_SIZE
   digest_/ByteArray? := null
 
   a_/int := 0x67452301
@@ -49,7 +51,7 @@ class Md5 extends Checksum:
 
     // See if we can fit all the extra bytes into the buffer.
     buffer := buffer_
-    n := 64 - fullness
+    n := BLOCK_SIZE - fullness
     if extra < n:
       buffer.replace fullness bytes
       return
@@ -63,7 +65,7 @@ class Md5 extends Checksum:
     // full chunks we can find without copying
     // the bytes into the buffer.
     while true:
-      next := n + 64
+      next := n + BLOCK_SIZE
       if next > extra:
         // Save the last extra bytes in the buffer,
         // so we have them for the next add.
@@ -84,7 +86,7 @@ class Md5 extends Checksum:
     c := c_
     d := d_
 
-    64.repeat: | i/int |
+    BLOCK_SIZE.repeat: | i/int |
       e := ?
       if i < 32:
         if i < 16:
