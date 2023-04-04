@@ -8,7 +8,7 @@ import .checksum
 /**
 Pure Toit MD5 implementation.
 */
-class MD5 extends Checksum:
+class Md5 extends Checksum:
   // Strings are slightly faster than byte arrays.
   static SHIFTS_ ::= "\x07\x0c\x11\x16\x07\x0c\x11\x16\x07\x0c\x11\x16\x07\x0c\x11\x16\x05\x09\x0e\x14\x05\x09\x0e\x14\x05\x09\x0e\x14\x05\x09\x0e\x14\x04\x0b\x10\x17\x04\x0b\x10\x17\x04\x0b\x10\x17\x04\x0b\x10\x17\x06\x0a\x0f\x15\x06\x0a\x0f\x15\x06\x0a\x0f\x15\x06\x0a\x0f\x15"
 
@@ -118,11 +118,11 @@ class MD5 extends Checksum:
     digest := digest_
     if digest: return digest
 
-    // The signature is 128 bits with the number of bits
-    // in the content encoded in the last 64 of them.
+    // The signature is 64 bits with the number of bits
+    // in the content encoded in them.
     size := size_
-    signature := ByteArray 16
-    LITTLE_ENDIAN.put_int64 signature 8 (size * 8)
+    signature := ByteArray 8
+    LITTLE_ENDIAN.put_int64 signature 0 (size * 8)
 
     // The padding starts with a 1 bit and then enough
     // zeros to make the total size a multiple of 64.
@@ -146,3 +146,11 @@ class MD5 extends Checksum:
     digest_ = digest
     buffer_ = null
     return digest
+
+/**
+Computes the MD5 hash of the given $data.
+
+The $data must be a string or byte array.
+*/
+md5 data from/int=0 to/int=data.size -> ByteArray:
+  return checksum Md5 data from to
