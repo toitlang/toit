@@ -23,6 +23,7 @@
 #include <mbedtls/platform.h>
 #include <mbedtls/ssl_internal.h>
 
+#include "../entropy_mixer.h"
 #include "../heap_report.h"
 #include "../primitive.h"
 #include "../process.h"
@@ -657,6 +658,12 @@ PRIMITIVE(get_internals) {
   result->at_put(7, master_secret);
 
   return result;
+}
+
+PRIMITIVE(get_random) {
+  ARGS(MutableBlob, destination);
+  EntropyMixer::instance()->get_entropy(destination.address(), destination.length());
+  return process->program()->null_object();
 }
 
 } // namespace toit

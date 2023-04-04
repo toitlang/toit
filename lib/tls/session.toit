@@ -696,3 +696,6 @@ tls_get_outgoing_fullness_ tls_socket:
 
 tls_get_internals_ tls_socket -> List:
   #primitive.tls.get_internals
+
+tls_get_random_ destination/ByteArray -> none:
+  #primitive.tls.get_random
