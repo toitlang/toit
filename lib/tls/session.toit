@@ -2,13 +2,14 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import binary show BIG_ENDIAN
 import crypto.aes show *
 import crypto.chacha20 show *
+import encoding.tison
 import monitor
+import net.x509 as x509
 import reader
 import writer
-import net.x509 as x509
-import binary show BIG_ENDIAN
 
 import .certificate
 import .socket
@@ -185,7 +186,8 @@ class Session:
       tls_add_certificate_ tls_ certificate.certificate.res_ certificate.private_key certificate.password
     tls_init_socket_ tls_ null
     if session_state:
-      tls_set_session_ tls_ session_state
+      list := tison.decode session_state
+      // TODO: Handshake without MbedTLS.
 
     resource_state := monitor.ResourceState_ handle tls_
     try:
@@ -222,6 +224,7 @@ class Session:
     if reads_encrypted_ and writes_encrypted_:
       key_data /List? := tls_get_internals_ tls_
       if key_data != null:
+        assert: key_data.size == 8
         write_key_data := KeyData_ --key=key_data[1] --iv=key_data[3] --algorithm=key_data[0]
         read_key_data := KeyData_ --key=key_data[2] --iv=key_data[4] --algorithm=key_data[0]
         write_key_data.sequence_number_ = outgoing_sequence_numbers_used_
@@ -234,9 +237,15 @@ class Session:
 
   The session can be read at any point after a handshake, but before the session
     is closed.
+
+  The session state is a Tison-encoded list of 3 byte arrays.  The first byte array
+    is the session ID, the second is the session ticket, and the third is the
+    master secret.  The session ID and session ticket are mutually exclusive (only
+    one of them has a non-zero length).
   */
   session_state -> ByteArray:
-    return tls_get_session_ tls_
+    key_data := tls_get_internals_ tls_
+    return tison.encode key_data[5..8]
 
   write data from=0 to=data.size:
     ensure_handshaken_
@@ -684,12 +693,6 @@ tls_set_outgoing_ tls_socket byte_array fullness:
 
 tls_get_outgoing_fullness_ tls_socket:
   #primitive.tls.get_outgoing_fullness
-
-tls_get_session_ tls_socket -> ByteArray:
-  #primitive.tls.get_session
-
-tls_set_session_ tls_socket session/ByteArray:
-  #primitive.tls.set_session
 
 tls_get_internals_ tls_socket -> List:
   #primitive.tls.get_internals
