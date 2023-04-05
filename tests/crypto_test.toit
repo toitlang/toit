@@ -446,7 +446,7 @@ random_test:
   tls_get_random_ eight_b
   // Unlikely in the extreme to get the same random 8 bytes twice.
   expect_not_equals eight_a eight_b
-  // Unlikely in the extreme to eight zero bytes.
+  // Unlikely in the extreme to get eight zero bytes.
   expect_not_equals (ByteArray 8) eight_a
   expect_not_equals (ByteArray 8) eight_b
 
