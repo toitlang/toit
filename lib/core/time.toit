@@ -716,7 +716,7 @@ class Time implements Comparable:
   constructor.from_string str/string:
     zone_is_adjusted := str.ends_with "Z"
     str = str.trim --right "Z"
-    str_to_int ::= : | s/string | int.parse s --on_error=: throw "Cannot parse $s as integer"
+    str_to_int ::= : | s/string | int.parse s --on_error=: throw "INVALID_ARGUMENT"
     zone_minutes := 0
     if not zone_is_adjusted:
       plus := str.index_of "+"
@@ -730,18 +730,18 @@ class Time implements Comparable:
         if zone_parts.size == 4:  // +HHMM
           zone_minutes += str_to_int.call zone_parts[2..]
         else if zone_parts.size == 5:  // +HH:MM
-          if (zone_parts[2] != ':'): throw "Invalid time zone"
+          if (zone_parts[2] != ':'): throw "INVALID_ARGUMENT"
           zone_minutes += str_to_int.call zone_parts[3..]
         else if zone_parts.size != 2:  // +HH
-          throw "Invalid time zone"
+          throw "INVALID_ARGUMENT"
         zone_minutes = plus > 0 ? -zone_minutes : zone_minutes
         str = str[..cut]
     parts ::= str.split "T"
-    if parts.size != 2: throw "Expected T to separate date and time"
+    if parts.size != 2: throw "INVALID_ARGUMENT"
     date_parts ::= (parts[0].split "-").map str_to_int
-    if date_parts.size != 3: throw "Expected 3 segments separated by - for date"
+    if date_parts.size != 3: throw "INVALID_ARGUMENT"
     time_parts ::= (parts[1].split ":").map str_to_int
-    if time_parts.size != 3: throw "Expected 3 segments separated by : for time"
+    if time_parts.size != 3: throw "INVALID_ARGUMENT"
     return Time.local_or_utc_
       date_parts[0]
       date_parts[1]
