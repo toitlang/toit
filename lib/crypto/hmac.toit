@@ -55,7 +55,7 @@ class HmacSha224 extends Hmac:
   The $key must be a string or byte array.
   */
   constructor key:
-    super --block_size=64 key:: Sha224
+    super --block_size=Sha224.BLOCK_SIZE key:: Sha224
 
 /**
 HMAC using Sha-256 as the underlying hash.
@@ -66,7 +66,7 @@ class HmacSha256 extends Hmac:
   The $key must be a string or byte array.
   */
   constructor key:
-    super --block_size=64 key:: Sha256
+    super --block_size=Sha256.BLOCK_SIZE key:: Sha256
 
 /**
 HMAC using Sha-384 as the underlying hash.
@@ -77,7 +77,7 @@ class HmacSha384 extends Hmac:
   The $key must be a string or byte array.
   */
   constructor key:
-    super --block_size=128 key:: Sha384
+    super --block_size=Sha384.BLOCK_SIZE key:: Sha384
 
 /**
 HMAC using Sha-512 as the underlying hash.
@@ -88,7 +88,7 @@ class HmacSha512 extends Hmac:
   The $key must be a string or byte array.
   */
   constructor key:
-    super --block_size=128 key:: Sha512
+    super --block_size=Sha512.BLOCK_SIZE key:: Sha512
 
 /**
 Computes the HMAC using Sha-224 of the given $data.
