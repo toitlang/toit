@@ -69,21 +69,25 @@ class Sha_ extends Checksum:
 
 /** SHA-224 hash state. */
 class Sha224 extends Sha_:
+  static BLOCK_SIZE ::= 64
   constructor:
     super 224
 
 /** SHA-256 hash state. */
 class Sha256 extends Sha_:
+  static BLOCK_SIZE ::= 64
   constructor:
     super 256
 
 /** SHA-384 hash state. */
 class Sha384 extends Sha_:
+  static BLOCK_SIZE ::= 128
   constructor:
     super 384
 
 /** SHA-512 hash state. */
 class Sha512 extends Sha_:
+  static BLOCK_SIZE ::= 128
   constructor:
     super 512
 

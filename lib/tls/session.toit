@@ -5,6 +5,7 @@
 import binary show BIG_ENDIAN
 import crypto.aes show *
 import crypto.chacha20 show *
+import crypto.hmac show Hmac
 import encoding.tison
 import monitor
 import net.x509 as x509
@@ -632,6 +633,26 @@ class TlsGroup_:
       handle := handle_
       handle_ = null
       tls_deinit_ handle
+
+/**
+Generate $size random bytes using the PRF of RFC 5246.
+*/
+pseudo_random_function_ size/int --block_size/int --secret/ByteArray --label/string --seed/ByteArray hash_producer/Lambda -> ByteArray:
+  result := []
+  result_size := 0
+  seed = label.to_byte_array + seed
+  a := seed
+  while result_size < size:
+    hasher := Hmac --block_size=block_size secret hash_producer
+    hasher.add a
+    a = hasher.get
+    hasher2 := Hmac --block_size=block_size secret hash_producer
+    hasher2.add a
+    hasher2.add seed
+    part := hasher2.get
+    result.add part
+    result_size += part.size
+  return (byte_array_join_ result)[..size]
 
 byte_array_join_ arrays/List -> ByteArray:
   arrays_size := arrays.size
