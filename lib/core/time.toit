@@ -751,23 +751,26 @@ class Time implements Comparable:
     if parts.size != 2: throw "INVALID_ARGUMENT"
     date_parts ::= (parts[0].split "-").map str_to_int
     if date_parts.size != 3: throw "INVALID_ARGUMENT"
-    time_parts ::= parts[1].split ":"
-    if time_parts.size != 3: throw "INVALID_ARGUMENT"
-    h := str_to_int.call time_parts[0]
-    m := str_to_int.call time_parts[1]
-    s_float := float.parse time_parts[2]  // Float.parse has no --on_error parameter.
-    s_int := s_float.floor.to_int
-    ns := ((s_float - s_int) * 1_000_000_000).round
+    time_string_parts ::= parts[1].split ":"
+    if time_string_parts.size != 3: throw "INVALID_ARGUMENT"
+    if time_string_parts[2].contains ".":
+      splits := time_string_parts[2].split "."
+      if splits.size != 2: throw "INVALID_ARGUMENT"
+      time_string_parts[2] = splits[0]
+      time_string_parts.add "$splits[1]000000000"[..9]
+    else:
+      time_string_parts.add "0"
+    time_parts := time_string_parts.map str_to_int
     return Time.local_or_utc_
       date_parts[0]
       date_parts[1]
       date_parts[2]
-      h
-      m + zone_minutes
-      s_int
+      time_parts[0]
+      time_parts[1] + zone_minutes
+      time_parts[2]
       --ms=0
       --us=0
-      --ns=ns
+      --ns=time_parts[3]
       --is_utc=zone_is_adjusted
 
   /**
