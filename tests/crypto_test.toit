@@ -14,6 +14,7 @@ import crypto.crc show *
 import crypto.md5 show *
 import crypto.hamming
 import crypto.hmac show *
+import tls.session show tls_get_random_
 
 import binary show BIG_ENDIAN
 import encoding.hex
@@ -56,6 +57,7 @@ main:
   aead_simple_test
   md5_test
   hmac_test
+  random_test
 
 hex_test -> none:
   expect_equals "" (hex.encode #[])
@@ -433,6 +435,33 @@ hmac_test:
                   0xb6, 0x02, 0x2c, 0xac, 0x3c, 0x49, 0x82, 0xb1, 0x0d, 0x5e, 0xeb, 0x55, 0xc3, 0xe4, 0xde, 0x15,
                   0x13, 0x46, 0x76, 0xfb, 0x6d, 0xe0, 0x44, 0x60, 0x65, 0xc9, 0x74, 0x40, 0xfa, 0x8c, 0x6a, 0x58]
       hmac_sha512 --key=key data
+
+random_test:
+  tls_get_random_ #[]
+
+  eight_a := ByteArray 8
+  eight_b := ByteArray 8
+
+  tls_get_random_ eight_a
+  tls_get_random_ eight_b
+  // Unlikely in the extreme to get the same random 8 bytes twice.
+  expect_not_equals eight_a eight_b
+  // Unlikely in the extreme to get eight zero bytes.
+  expect_not_equals (ByteArray 8) eight_a
+  expect_not_equals (ByteArray 8) eight_b
+
+  // Ensure we don't round down the size written - sooner or later we
+  // must get a non-zero value there.
+  fifteen := ByteArray 15
+  while fifteen[14] == 0:
+    tls_get_random_ fifteen
+
+  b32 := ByteArray 32
+  10.repeat:
+    tls_get_random_ b32
+    zeros := 0
+    b32.do: if it == 0: zeros++
+    expect_equals true (zeros < 8)
 
 SIP_VECTOR_8 ::= [
     #[0x31, 0x0e, 0x0e, 0xdd, 0x47, 0xdb, 0x6f, 0x72,],
