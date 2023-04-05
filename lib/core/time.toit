@@ -728,7 +728,7 @@ class Time implements Comparable:
     zone_is_adjusted := str.ends_with "Z"
     str = str.trim --right "Z"
     str_to_int ::= : | s/string |
-      if s.contains "-": throw "INVALID_ARGUMENT"
+      if s[0] == '-': throw "INVALID_ARGUMENT"
       int.parse s --on_error=: throw "INVALID_ARGUMENT"
     zone_minutes := 0
     if not zone_is_adjusted:
