@@ -246,9 +246,8 @@ class Session:
   extract_key_data_ -> none:
     if reads_encrypted_ and writes_encrypted_:
       key_data /List? := tls_get_internals_ tls_
-      session_state = tison.encode key_data[5..8]
+      session_state = tison.encode key_data[5..9]
       if key_data != null:
-        assert: key_data.size == 8
         write_key_data := KeyData_ --key=key_data[1] --iv=key_data[3] --algorithm=key_data[0]
         read_key_data := KeyData_ --key=key_data[2] --iv=key_data[4] --algorithm=key_data[0]
         write_key_data.sequence_number_ = outgoing_sequence_numbers_used_
@@ -261,10 +260,11 @@ class Session:
 
   The session can be read at any point after a handshake.
 
-  The session state is a Tison-encoded list of 3 byte arrays.  The first byte array
-    is the session ID, the second is the session ticket, and the third is the
-    master secret.  The session ID and session ticket are mutually exclusive (only
-    one of them has a non-zero length).
+  The session state is a Tison-encoded list of 3 byte arrays and an integer:
+  The first byte array is the session ID, the second is the session ticket, and
+    the third is the master secret.  The session ID and session ticket are
+    mutually exclusive (only one of them has a non-zero length).  The fourth
+    item is an integer giving the ciphersuite used.
   */
   session_state/ByteArray? := null
 
@@ -505,6 +505,7 @@ class ToitHandshake:
   session_id_ /ByteArray
   session_ticket_ /ByteArray
   master_secret_ /ByteArray
+  cipher_suite_ /int
   client_random_ /ByteArray
 
   constructor .session_:
@@ -512,10 +513,31 @@ class ToitHandshake:
     session_id_ = list[0]
     session_ticket_ = list[1]
     master_secret_ = list[2]
+    cipher_suite_ = list[3]
     client_random_ = ByteArray 32
-    tls_get_random_ tls_group_client_ client_random_
+    tls_get_random_ client_random_
 
-  static CLIENT_HELLO_TEMPLATE_ ::= #[ 
+  static KEYGEN_HMAC_IS_SHA256_     ::= 1
+  static KEYGEN_HMAC_IS_SHA384_     ::= 2
+  static ENCRYPTION_IS_CHACHA20_    ::= 4
+  static ENCRYPTION_IS_AES_128_     ::= 8
+  static ENCRYPTION_IS_AES_256_     ::= 16
+  static ASYMMETRIC_IS_ECDHE_RSA_   ::= 32
+  static ASYMMETRIC_IS_RSA_         ::= 64
+  static ASYMMETRIC_IS_ECDHE_ECDSA_ ::= 128
+
+  static KNOWN_CIPHER_SUITES_ ::= {
+      0xcca8: ASYMMETRIC_IS_ECDHE_RSA_   | ENCRYPTION_IS_CHACHA20_ | KEYGEN_HMAC_IS_SHA256_,
+      0xcca9: ASYMMETRIC_IS_ECDHE_ECDSA_ | ENCRYPTION_IS_CHACHA20_ | KEYGEN_HMAC_IS_SHA256_,
+      0xc02f: ASYMMETRIC_IS_ECDHE_RSA_   | ENCRYPTION_IS_AES_128_  | KEYGEN_HMAC_IS_SHA256_,
+      0xc030: ASYMMETRIC_IS_ECDHE_RSA_   | ENCRYPTION_IS_AES_256_  | KEYGEN_HMAC_IS_SHA384_,
+      0xc02b: ASYMMETRIC_IS_ECDHE_ECDSA_ | ENCRYPTION_IS_AES_128_  | KEYGEN_HMAC_IS_SHA256_,
+      0xc02c: ASYMMETRIC_IS_ECDHE_ECDSA_ | ENCRYPTION_IS_AES_256_  | KEYGEN_HMAC_IS_SHA384_,
+      0x009c: ASYMMETRIC_IS_RSA_         | ENCRYPTION_IS_AES_128_  | KEYGEN_HMAC_IS_SHA256_,
+      0x009d: ASYMMETRIC_IS_RSA_         | ENCRYPTION_IS_AES_256_  | KEYGEN_HMAC_IS_SHA384_,
+  }
+
+  static CLIENT_HELLO_TEMPLATE_ ::= #[
       22,          // Record type: HANDSHAKE_
       3, 1,        // TLS 1.0 - see comment at https://tls12.xargs.org/#client-hello/annotated
       0, 0,        // Record header size will be filled in here.
@@ -524,15 +546,8 @@ class ToitHandshake:
       3, 3,        // TLS 1.2.
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // Client random.
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // Overwritten below.
-      0, 16,       // Cipher suites size - keep in sync with cipher suites below.
-      0xcc, 0xa8,  // TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-      0xcc, 0xa9,  // TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-      0xc0, 0x2f,  // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-      0xc0, 0x30,  // TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-      0xc0, 0x2b,  // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-      0xc0, 0x2c,  // TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-      0x00, 0x9c,  // TLS_RSA_WITH_AES_128_GCM_SHA256
-      0x00, 0x9d,  // TLS_RSA_WITH_AES_256_GCM_SHA384
+      0, 2,        // Cipher suites size.
+      0, 0,        // Cipher suite is filled in here.
       1,           // Compression methods length.
       0,           // No compression.
   ]
@@ -571,6 +586,7 @@ class ToitHandshake:
     client_hello := ByteArray 100
     client_hello.replace 0 CLIENT_HELLO_TEMPLATE_
     client_hello.replace 11 client_random_
+    BIG_ENDIAN.put_uint16 client_hello 50 cipher_suite_
     index := CLIENT_HELLO_TEMPLATE_.size
     client_hello[index++] = session_id_.size  // Session ID length.
     client_hello.replace index session_id_
