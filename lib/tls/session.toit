@@ -5,7 +5,7 @@
 import binary show BIG_ENDIAN
 import crypto.aes show *
 import crypto.chacha20 show *
-import crypto.checksum show
+import crypto.checksum
 import crypto.hmac show Hmac
 import crypto.sha show Sha256 Sha384
 import encoding.tison
@@ -194,7 +194,7 @@ class Session:
       return
 
     if session_state:
-      toit_handshake_ = ToitHandshake this
+      toit_handshake_ = ToitHandshake_ this
       try:
         result := toit_handshake_.handshake
         client_keys /KeyData_ := result[0]
@@ -550,7 +550,7 @@ class CipherSuite_:
         hmac_hasher = :: Sha384
         hmac_block_size = Sha384.BLOCK_SIZE
 
-class ToitHandshake:
+class ToitHandshake_:
   session_ /Session
   session_id_ /ByteArray
   session_ticket_ /ByteArray
@@ -582,10 +582,10 @@ class ToitHandshake:
       0,           // No compression.
   ]
 
-  static CLIENT_CHANGE_CIPHER_ ::= #[
+  static CHANGE_CIPHER_SPEC_TEMPLATE_ ::= #[
       20,          // Record type: CHANGE_CIPHER_SPEC_
       3, 3,        // TLS 1.2.
-      0, 1         // One byte of payload.
+      0, 1,        // One byte of payload.
       1,           // 1 means change cipher spec.
   ]
 
@@ -622,24 +622,26 @@ class ToitHandshake:
         // Session ID not accepted.  Abandon and reconnect, using MbedTLS.
         throw "Session resume failed"
       // Session ID accepted - yay!  Generate new keys.
-      bytes_needed := 2 * (cipher_suite_.key_size + cipher_suite_.iv_size)
+      key_size := cipher_suite_.key_size
+      iv_size := cipher_suite_.iv_size
+      bytes_needed := 2 * (key_size + iv_size)
       // RFC 5246 section 6.3.
-      keys := pseudo_random_function_ bytes_needed
+      key_data := pseudo_random_function_ bytes_needed
           --block_size=cipher_suite_.hmac_block_size
           --secret=master_secret_
           --label="key expansion"
           --seed=(server_hello.random + client_random_)
-          cipher_suite_.hmac
-      partition := partition_byte_array_ keys [ciper_suite_.key_size, ciper_suite_.key_size, ciper_suite_.iv_size, ciper_suite_.iv_size]
-      client_keys := KeyData_ --key=partition[0] --iv=partition[1] --algorithm=cipher_suite_.algorithm
-      server_keys := KeyData_ --key=partition[2] --iv=partition[2] --algorithm=cipher_suite_.algorithm
-      sent = session_.writer_.write CLIENT_CHANGE_CIPHER_SPEC_
-      assert: sent == CLIENT_CHANGE_CIPHER_SPEC_.size
-      server_change_packet := session_.extract_first_message_
-      if server_change_packet.size != 6 or server_change_packet[0] != CHANGE_CIPHER_SPEC_ or server_change_packet[5] != 1:
-        throw "Server did not accept change cipher spec"
+          cipher_suite_.hmac_hasher
+      partition := partition_byte_array_ key_data [key_size, key_size, iv_size, iv_size]
+      write_key := KeyData_ --key=partition[0] --iv=partition[1] --algorithm=cipher_suite_.algorithm
+      read_key := KeyData_ --key=partition[2] --iv=partition[2] --algorithm=cipher_suite_.algorithm
+      sent = session_.writer_.write CHANGE_CIPHER_SPEC_TEMPLATE_
+      assert: sent == CHANGE_CIPHER_SPEC_TEMPLATE_.size
+      peer_change_message := session_.extract_first_message_
+      if peer_change_message.size != 6 or peer_change_message[0] != CHANGE_CIPHER_SPEC_ or peer_change_message[5] != 1:
+        throw "Peer did not accept change cipher spec"
       handshake_hash := handshake_hasher.get
-      client_finished_payload := pseudo_random_function_ 12
+      client_finished := pseudo_random_function_ 12
           --block_size=cipher_suite_.hmac_block_size
           --secret=master_secret_
           --label="client finished"
@@ -651,25 +653,24 @@ class ToitHandshake:
           --label="server finished"
           --seed=handshake_hash
           cipher_suite_.hmac_hasher
-      return [client_keys, server_keys, client_finished_payload, server_finished_expected]
+      set_up_session_ write_key read_key client_finished server_finished_expected
+      return
     returned_ticket_extension := server_hello.extensions.get EXTENSION_SESSION_TICKET_
     if not returned_ticket_extension: throw "Server did not return session ID or ticket"
     throw "Session ticket resume not implemented"
 
-  // Compares byte arrays, without revealing the contents to timing attacks.
-  static compare_byte_arrays_ a b -> bool:
-    if a is not ByteArray or b is not ByteArray or a.size != b.size: return false
-    accumulator := 0
-    a.size.repeat: accumulator |= a[it] ^ b[it]
-    return accumulator == 0
-
-  // Given a byte array and a list of sizes, partitions the byte array into
-  // slices with those sizes.
-  static partition_byte_array_ bytes/ByteArray sizes/List -> List:
-    index := 0
-    return List sizes.size:
-      index += it
-      bytes[index - it..index]
+  set_up_session_ write_key/KeyData_ read_key/KeyData_ client_finished/ByteArray server_finished_expected/ByteArray -> none:
+    session_.reads_encrypted_ = true
+    session_.writes_encrypted_ = true
+    symmetric_session :=
+        SymmetricSession_ session_ session_.writer_ session_.reader_ write_key read_key
+    session_.symmetric_session_ = symmetric_session
+    // Send the client finished message.  This assumes we are the client.
+    symmetric_session.write client_finished 0 client_finished.size --type=HANDSHAKE_
+    // Get the server finished message.  This assumes we are the client.
+    server_finished := symmetric_session.read --expected_type=HANDSHAKE_
+    if not compare_byte_arrays_ server_finished_expected server_finished:
+      throw "TLS_HANDSHAKE_FAILED"
 
   client_hello_packet_ -> ByteArray:
     client_hello := ByteArray 100
@@ -937,6 +938,23 @@ byte_array_join_ arrays/List -> ByteArray:
     result.replace position it
     position += it.size
   return result
+
+/// Compares byte arrays, without revealing the contents to timing attacks.
+compare_byte_arrays_ a b -> bool:
+  if a is not ByteArray or b is not ByteArray or a.size != b.size: return false
+  accumulator := 0
+  a.size.repeat: accumulator |= a[it] ^ b[it]
+  return accumulator == 0
+
+/**
+Given a byte array and a list of sizes, partitions the byte array into
+  slices with those sizes.
+*/
+partition_byte_array_ bytes/ByteArray sizes/List -> List:
+  index := 0
+  return List sizes.size:
+    index += it
+    bytes[index - it..index]
 
 tls_init_ is_server/bool:
   #primitive.tls.init
