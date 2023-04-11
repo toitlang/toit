@@ -14,6 +14,7 @@ import crypto.crc show *
 import crypto.md5 show *
 import crypto.hamming
 import crypto.hmac show *
+import tls.session show tls_get_random_
 
 import binary show BIG_ENDIAN
 import encoding.hex
@@ -56,6 +57,7 @@ main:
   aead_simple_test
   md5_test
   hmac_test
+  random_test
 
 hex_test -> none:
   expect_equals "" (hex.encode #[])
@@ -295,15 +297,15 @@ md5_test:
 
 hmac_test:
   // Test vectors from RFC 2104.
-  hmaccer := Hmac --block_size=64 (ByteArray 16: 0xb):: Md5
+  hmaccer := Hmac --block_size=Md5.BLOCK_SIZE (ByteArray 16: 0xb):: Md5
   hmaccer.add "Hi There"
   expect_equals #[0x92, 0x94, 0x72, 0x7a, 0x36, 0x38, 0xbb, 0x1c, 0x13, 0xf4, 0x8e, 0xf8, 0x15, 0x8b, 0xfc, 0x9d] hmaccer.get
 
-  hmaccer = Hmac --block_size=64 "Jefe":: Md5
+  hmaccer = Hmac --block_size=Md5.BLOCK_SIZE "Jefe":: Md5
   hmaccer.add "what do ya want for nothing?"
   expect_equals #[0x75, 0x0c, 0x78, 0x3e, 0x6a, 0xb0, 0xb5, 0x03, 0xea, 0xa8, 0x6e, 0x31, 0x0a, 0x5d, 0xb7, 0x38] hmaccer.get
 
-  hmaccer = Hmac --block_size=64 (ByteArray 16: 0xaa):: Md5
+  hmaccer = Hmac --block_size=Md5.BLOCK_SIZE (ByteArray 16: 0xaa):: Md5
   hmaccer.add (ByteArray 50: 0xdd)
   expect_equals #[0x56, 0xbe, 0x34, 0x52, 0x1d, 0x14, 0x4c, 0x88, 0xdb, 0xb8, 0xc7, 0x33, 0xf0, 0xe8, 0xb3, 0xf6] hmaccer.get
 
@@ -433,6 +435,33 @@ hmac_test:
                   0xb6, 0x02, 0x2c, 0xac, 0x3c, 0x49, 0x82, 0xb1, 0x0d, 0x5e, 0xeb, 0x55, 0xc3, 0xe4, 0xde, 0x15,
                   0x13, 0x46, 0x76, 0xfb, 0x6d, 0xe0, 0x44, 0x60, 0x65, 0xc9, 0x74, 0x40, 0xfa, 0x8c, 0x6a, 0x58]
       hmac_sha512 --key=key data
+
+random_test:
+  tls_get_random_ #[]
+
+  eight_a := ByteArray 8
+  eight_b := ByteArray 8
+
+  tls_get_random_ eight_a
+  tls_get_random_ eight_b
+  // Unlikely in the extreme to get the same random 8 bytes twice.
+  expect_not_equals eight_a eight_b
+  // Unlikely in the extreme to get eight zero bytes.
+  expect_not_equals (ByteArray 8) eight_a
+  expect_not_equals (ByteArray 8) eight_b
+
+  // Ensure we don't round down the size written - sooner or later we
+  // must get a non-zero value there.
+  fifteen := ByteArray 15
+  while fifteen[14] == 0:
+    tls_get_random_ fifteen
+
+  b32 := ByteArray 32
+  10.repeat:
+    tls_get_random_ b32
+    zeros := 0
+    b32.do: if it == 0: zeros++
+    expect_equals true (zeros < 8)
 
 SIP_VECTOR_8 ::= [
     #[0x31, 0x0e, 0x0e, 0xdd, 0x47, 0xdb, 0x6f, 0x72,],

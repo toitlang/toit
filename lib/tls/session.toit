@@ -5,7 +5,7 @@
 import binary show BIG_ENDIAN
 import crypto.aes show *
 import crypto.chacha20 show *
-import crypto.hmac show *
+import crypto.hmac show Hmac
 import encoding.tison
 import monitor
 import net.x509 as x509
@@ -618,19 +618,6 @@ class ToitHandshake:
       ticket_extension.replace 4 session_ticket_
       extensions.add ticket_extension
 
-  /**
-  Generate $size random bytes using the PRF of RFC 5246.
-  */
-  static pseudo_random_function size/int hash_producer/Lambda block_size/int secret/ByteArray label/string seed/ByteArray -> ByteArray:
-    result := #[]
-    a := label.to_byte_array + seed
-    while result.size < size:
-      hasher := Hmac --block_size=block_size secret hash_producer
-      hasher.add a + seed
-      a = hasher.get
-      result += a
-    return result[..size]
-
 class ServerHello_:
   extensions /Map
   random /ByteArray
@@ -813,6 +800,26 @@ class TlsGroup_:
       handle_ = null
       tls_deinit_ handle
 
+/**
+Generate $size random bytes using the PRF of RFC 5246.
+*/
+pseudo_random_function_ size/int --block_size/int --secret/ByteArray --label/string --seed/ByteArray hash_producer/Lambda -> ByteArray:
+  result := []
+  result_size := 0
+  seed = label.to_byte_array + seed
+  a := seed
+  while result_size < size:
+    hasher := Hmac --block_size=block_size secret hash_producer
+    hasher.add a
+    a = hasher.get
+    hasher2 := Hmac --block_size=block_size secret hash_producer
+    hasher2.add a
+    hasher2.add seed
+    part := hasher2.get
+    result.add part
+    result_size += part.size
+  return (byte_array_join_ result)[..size]
+
 byte_array_join_ arrays/List -> ByteArray:
   arrays_size := arrays.size
   if arrays_size == 0: return #[]
@@ -877,5 +884,5 @@ tls_get_outgoing_fullness_ tls_socket:
 tls_get_internals_ tls_socket -> List:
   #primitive.tls.get_internals
 
-tls_get_random_ tls_group destination/ByteArray -> none:
+tls_get_random_ destination/ByteArray -> none:
   #primitive.tls.get_random

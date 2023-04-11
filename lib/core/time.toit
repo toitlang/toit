@@ -583,12 +583,21 @@ class TimeInfo:
     return TimeInfo.__ new_time --is_utc=is_utc
 
   /**
-  Converts this instance to an string in ISO 8601 format.
+  Converts this instance to an string conforming to RFC 3339, which is a subset
+    of ISO 8601.
   For example, the time of the first moonlanding would be written as:
     `1969-07-20T20:17:00Z`.
   */
   to_iso8601_string:
-    return "$(year)-$(%02d month)-$(%02d day)T$(%02d h):$(%02d m):$(%02d s)$(is_utc ? "Z" : "")"
+    fraction := ""
+    if ns != 0:
+      fraction = ".$(%09d ns)"
+      // Trim trailing zeros.
+      for i := fraction.size - 1; true; i--:
+        if fraction[i] != '0':
+          fraction = fraction[..i + 1]
+          break
+    return "$(year)-$(%02d month)-$(%02d day)T$(%02d h):$(%02d m):$(%02d s)$fraction$(is_utc ? "Z" : "")"
 
   /** See $super. */
   stringify -> string:
@@ -711,12 +720,16 @@ class Time implements Comparable:
   /**
   Parses the given $str to construct a UTC time instance.
 
-  The $str must be in ISO 8601 format. For example "2019-12-18T06:22:48Z".
+  The $str must be in RFC 3339 format, which is a subset of ISO 8601 format.
+  For example "2019-12-18T06:22:48Z".
+  Leap seconds are not supported, and lower case 't' and 'z' are not allowed.
   */
   constructor.from_string str/string:
     zone_is_adjusted := str.ends_with "Z"
     str = str.trim --right "Z"
-    str_to_int ::= : | s/string | int.parse s --on_error=: throw "Cannot parse $s as integer"
+    str_to_int ::= : | s/string |
+      if s[0] == '-': throw "INVALID_ARGUMENT"
+      int.parse s --on_error=: throw "INVALID_ARGUMENT"
     zone_minutes := 0
     if not zone_is_adjusted:
       plus := str.index_of "+"
@@ -726,22 +739,28 @@ class Time implements Comparable:
         zone_is_adjusted = true
         cut := plus > 0 ? plus : minus
         zone_parts := str[cut + 1..]
-        zone_minutes = 60 * (str_to_int.call zone_parts[..2])
-        if zone_parts.size == 4:  // +HHMM
-          zone_minutes += str_to_int.call zone_parts[2..]
-        else if zone_parts.size == 5:  // +HH:MM
-          if (zone_parts[2] != ':'): throw "Invalid time zone"
-          zone_minutes += str_to_int.call zone_parts[3..]
-        else if zone_parts.size != 2:  // +HH
-          throw "Invalid time zone"
+        // RFC 3339 requires the zone to be in the form hh:mm.
+        if zone_parts.size != 5: throw "INVALID_ARGUMENT"
+        zone_parts.split ":":
+          if it.size != 2: throw "INVALID_ARGUMENT"
+          zone_minutes *= 60
+          zone_minutes += str_to_int.call it
         zone_minutes = plus > 0 ? -zone_minutes : zone_minutes
         str = str[..cut]
     parts ::= str.split "T"
-    if parts.size != 2: throw "Expected T to separate date and time"
+    if parts.size != 2: throw "INVALID_ARGUMENT"
     date_parts ::= (parts[0].split "-").map str_to_int
-    if date_parts.size != 3: throw "Expected 3 segments separated by - for date"
-    time_parts ::= (parts[1].split ":").map str_to_int
-    if time_parts.size != 3: throw "Expected 3 segments separated by : for time"
+    if date_parts.size != 3: throw "INVALID_ARGUMENT"
+    time_string_parts ::= parts[1].split ":"
+    if time_string_parts.size != 3: throw "INVALID_ARGUMENT"
+    if time_string_parts[2].contains ".":
+      splits := time_string_parts[2].split "."
+      if splits.size != 2: throw "INVALID_ARGUMENT"
+      time_string_parts[2] = splits[0]
+      time_string_parts.add "$splits[1]000000000"[..9]
+    else:
+      time_string_parts.add "0"
+    time_parts := time_string_parts.map str_to_int
     return Time.local_or_utc_
       date_parts[0]
       date_parts[1]
@@ -751,7 +770,7 @@ class Time implements Comparable:
       time_parts[2]
       --ms=0
       --us=0
-      --ns=0
+      --ns=time_parts[3]
       --is_utc=zone_is_adjusted
 
   /**

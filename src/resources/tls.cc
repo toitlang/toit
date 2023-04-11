@@ -23,6 +23,7 @@
 #include <mbedtls/platform.h>
 #include <mbedtls/ssl_internal.h>
 
+#include "../entropy_mixer.h"
 #include "../heap_report.h"
 #include "../primitive.h"
 #include "../process.h"
@@ -660,10 +661,8 @@ PRIMITIVE(get_internals) {
 }
 
 PRIMITIVE(get_random) {
-  ARGS(MbedTlsResourceGroup, group, MutableBlob, destination);
-  if (destination.length() > MBEDTLS_ENTROPY_BLOCK_SIZE) OUT_OF_RANGE;
-  int result = mbedtls_entropy_func(group->entropy(), destination.address(), destination.length());
-  if (result != 0) HARDWARE_ERROR;
+  ARGS(MutableBlob, destination);
+  EntropyMixer::instance()->get_entropy(destination.address(), destination.length());
   return process->program()->null_object();
 }
 
