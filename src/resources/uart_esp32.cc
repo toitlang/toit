@@ -109,9 +109,9 @@ class RxTxBuffer {
 
   UART_ISR_INLINE bool is_empty() { return xRingbufferGetCurFreeSize(ring_buffer_) == ring_buffer_size_; }
   uword available_size() { return ring_buffer_size_ - xRingbufferGetCurFreeSize(ring_buffer_); }
-  inline RingbufHandle_t ring_buffer() { return ring_buffer_; }
+  UART_ISR_INLINE RingbufHandle_t ring_buffer() { return ring_buffer_; }
   void return_buffer(uint8* buffer);
-  inline UartResource* uart() { return uart_; }
+  UART_ISR_INLINE UartResource* uart() { return uart_; }
 
  private:
   UartResource* uart_;
@@ -133,7 +133,7 @@ class TxBuffer : public RxTxBuffer {
     spinlock_initialize(&spinlock_);
   }
 
-  uint8* read(uword *received, uword max_length);
+  uint8* read(uword* received, uword max_length);
   uint8 read_break();
   uword free_size();
   void write(const uint8* buffer, uint16 length, uint8 break_length);
@@ -150,7 +150,7 @@ class RxBuffer : public RxTxBuffer {
 
   uword UART_ISR_INLINE free_count() { return xRingbufferGetCurFreeSize(ring_buffer()); }
   void UART_ISR_INLINE send(uint8* buffer, uint32 length);
-  void read(uint8 *buffer, uint32 length);;
+  void read(uint8 *buffer, uint32 length);
 };
 
 class UartResource : public EventQueueResource {
@@ -169,8 +169,8 @@ public:
   ~UartResource() override;
 
   uart_port_t port() const { return port_; }
-  RxBuffer* rx_buffer() { return &rx_buffer_; }
-  TxBuffer* tx_buffer() { return &tx_buffer_; }
+  RxBuffer* UART_ISR_INLINE rx_buffer() { return &rx_buffer_; }
+  TxBuffer* UART_ISR_INLINE tx_buffer() { return &tx_buffer_; }
 
   bool receive_event(word* data) override;
 
@@ -470,7 +470,7 @@ UART_ISR_INLINE uart_event_types_t UartResource::interrupt_handler_read() {
   uword read_length = uart_toit_hal_get_rxfifo_len(hal_);
   if (read_length == 0) return UART_EVENT_MAX;
 
-  uword rx_buffer_free = rx_buffer_.free_count();
+  uword rx_buffer_free = rx_buffer()->free_count();
   if (rx_buffer_free == 0) {
     disable_read_interrupts();
     return UART_BUFFER_FULL;
