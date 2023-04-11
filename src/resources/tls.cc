@@ -604,7 +604,7 @@ PRIMITIVE(get_internals) {
   ByteArray* session_id = process->allocate_byte_array(socket->ssl.session->id_len);
   ByteArray* session_ticket = process->allocate_byte_array(socket->ssl.session->ticket_len);
   ByteArray* master_secret = process->allocate_byte_array(48);
-  Array* result = process->object_heap()->allocate_array(8, Smi::zero());
+  Array* result = process->object_heap()->allocate_array(9, Smi::zero());
   if (!encode_iv || !decode_iv || !encode_key || !decode_key || !result || !session_id || !session_ticket || !master_secret) ALLOCATION_FAILED;
   memcpy(ByteArray::Bytes(encode_iv).address(), socket->ssl.transform_out->iv_enc, iv_len);
   memcpy(ByteArray::Bytes(decode_iv).address(), socket->ssl.transform_in->iv_dec, iv_len);
@@ -656,6 +656,7 @@ PRIMITIVE(get_internals) {
   result->at_put(5, session_id);
   result->at_put(6, session_ticket);
   result->at_put(7, master_secret);
+  result->at_put(8, Smi::from(socket->ssl.session->ciphersuite));
 
   return result;
 }

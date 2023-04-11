@@ -225,7 +225,7 @@ class Session:
     if reads_encrypted_ and writes_encrypted_:
       key_data /List? := tls_get_internals_ tls_
       if key_data != null:
-        assert: key_data.size == 8
+        assert: key_data.size == 9
         write_key_data := KeyData_ --key=key_data[1] --iv=key_data[3] --algorithm=key_data[0]
         read_key_data := KeyData_ --key=key_data[2] --iv=key_data[4] --algorithm=key_data[0]
         write_key_data.sequence_number_ = outgoing_sequence_numbers_used_
@@ -239,10 +239,11 @@ class Session:
   The session can be read at any point after a handshake, but before the session
     is closed.
 
-  The session state is a Tison-encoded list of 3 byte arrays.  The first byte array
-    is the session ID, the second is the session ticket, and the third is the
-    master secret.  The session ID and session ticket are mutually exclusive (only
-    one of them has a non-zero length).
+  The session state is a Tison-encoded list of 3 byte arrays and an integer:
+  The first byte array is the session ID, the second is the session ticket, and
+    the third is the master secret.  The session ID and session ticket are
+    mutually exclusive (only one of them has a non-zero length).  The fourth
+    item is an integer giving the ciphersuite used.
   */
   session_state -> ByteArray:
     key_data := tls_get_internals_ tls_
