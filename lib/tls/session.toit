@@ -5,7 +5,9 @@
 import binary show BIG_ENDIAN
 import crypto.aes show *
 import crypto.chacha20 show *
+import crypto.checksum show
 import crypto.hmac show Hmac
+import crypto.sha show Sha256 Sha384
 import encoding.tison
 import monitor
 import net.x509 as x509
@@ -194,7 +196,21 @@ class Session:
     if session_state:
       toit_handshake_ = ToitHandshake this
       try:
-        toit_handshake_.handshake
+        result := toit_handshake_.handshake
+        client_keys /KeyData_ := result[0]
+        server_keys /KeyData_ := result[1]
+        client_finished_payload /ByteArray := result[2]
+        server_finished_expected /ByteArray := result[3]
+
+        // TODO: Maybe move this into handshake, and maybe just make it a method on the Session.
+        reads_encrypted_ = true
+        writes_encrypted_ = true
+        symmetric_session_ = SymmetricSession_ this writer_ reader_ client_keys server_keys
+        symmetric_session_.write client_finished_payload 0 client_finished_payload.size --type=HANDSHAKE_
+        server_finished := symmetric_session_.read --expected_type=HANDSHAKE_
+        if not compare_byte_arrays_ server_finished_expected server_finished:
+          throw "TLS_HANDSHAKE_FAILED"
+        // Connected.
         return
       finally: | is_exception exception |
         value := is_exception ? exception.value : null
@@ -500,12 +516,46 @@ class Session:
       reader_.unget unget_synthetic_header.bytes
     return synthetic
 
+class CipherSuite_:
+  id /int               // 16 bit cipher suite ID from RFCs 5288, 5289, 7905.
+  key_size /int         // In bytes.
+  iv_size /int          // In bytes.
+  algorithm /int        // ALGORITHM_AES_GCM or ALGORITHM_CHACHA20_POLY1305 from lib/crypto.
+  hmac_hasher /Lambda   // Lambda that creates Sha256 or Sha384 objects.
+  hmac_block_size /int  // In bytes.
+
+  constructor .id/int:
+      // No suites from RFC 5246, because they have all been deprecated.
+      sha_is_256 /bool := ?
+      if 0x9c <= id <= 0xa7 or 0xc02b <= id <= 0xc032:
+        // The AES GCM suites from RFC 5288 and RFC 5289.
+        algorithm = ALGORITHM_AES_GCM
+        sha_is_256 = id < 0x100
+            ? id & 1 == 0
+            : id & 1 == 1
+        key_size = sha_is_256 ? 16 : 32  // Pick AES-128 or AES-256.
+        iv_size = 4  // Called the salt in RFC 5288.
+      else if 0xcca8 <= id <= 0xccae:
+        // The ChaCha20-Poly1305 suites from RFC 7905.
+        algorithm = ALGORITHM_CHACHA20_POLY1305
+        sha_is_256 = true
+        key_size = 32
+        iv_size = 12  // Called the nonce in RFC 7905.
+      else:
+        throw "Unknown cipher suite ID: $id"
+      if sha_is_256:
+        hmac_hasher = :: Sha256
+        hmac_block_size = Sha256.BLOCK_SIZE
+      else:
+        hmac_hasher = :: Sha384
+        hmac_block_size = Sha384.BLOCK_SIZE
+
 class ToitHandshake:
   session_ /Session
   session_id_ /ByteArray
   session_ticket_ /ByteArray
   master_secret_ /ByteArray
-  cipher_suite_ /int
+  cipher_suite_ /CipherSuite_
   client_random_ /ByteArray
 
   constructor .session_:
@@ -513,29 +563,9 @@ class ToitHandshake:
     session_id_ = list[0]
     session_ticket_ = list[1]
     master_secret_ = list[2]
-    cipher_suite_ = list[3]
+    cipher_suite_ = CipherSuite_ list[3]
     client_random_ = ByteArray 32
     tls_get_random_ client_random_
-
-  static KEYGEN_HMAC_IS_SHA256_     ::= 1
-  static KEYGEN_HMAC_IS_SHA384_     ::= 2
-  static ENCRYPTION_IS_CHACHA20_    ::= 4
-  static ENCRYPTION_IS_AES_128_     ::= 8
-  static ENCRYPTION_IS_AES_256_     ::= 16
-  static ASYMMETRIC_IS_ECDHE_RSA_   ::= 32
-  static ASYMMETRIC_IS_RSA_         ::= 64
-  static ASYMMETRIC_IS_ECDHE_ECDSA_ ::= 128
-
-  static KNOWN_CIPHER_SUITES_ ::= {
-      0xcca8: ASYMMETRIC_IS_ECDHE_RSA_   | ENCRYPTION_IS_CHACHA20_ | KEYGEN_HMAC_IS_SHA256_,
-      0xcca9: ASYMMETRIC_IS_ECDHE_ECDSA_ | ENCRYPTION_IS_CHACHA20_ | KEYGEN_HMAC_IS_SHA256_,
-      0xc02f: ASYMMETRIC_IS_ECDHE_RSA_   | ENCRYPTION_IS_AES_128_  | KEYGEN_HMAC_IS_SHA256_,
-      0xc030: ASYMMETRIC_IS_ECDHE_RSA_   | ENCRYPTION_IS_AES_256_  | KEYGEN_HMAC_IS_SHA384_,
-      0xc02b: ASYMMETRIC_IS_ECDHE_ECDSA_ | ENCRYPTION_IS_AES_128_  | KEYGEN_HMAC_IS_SHA256_,
-      0xc02c: ASYMMETRIC_IS_ECDHE_ECDSA_ | ENCRYPTION_IS_AES_256_  | KEYGEN_HMAC_IS_SHA384_,
-      0x009c: ASYMMETRIC_IS_RSA_         | ENCRYPTION_IS_AES_128_  | KEYGEN_HMAC_IS_SHA256_,
-      0x009d: ASYMMETRIC_IS_RSA_         | ENCRYPTION_IS_AES_256_  | KEYGEN_HMAC_IS_SHA384_,
-  }
 
   static CLIENT_HELLO_TEMPLATE_ ::= #[
       22,          // Record type: HANDSHAKE_
@@ -552,11 +582,21 @@ class ToitHandshake:
       0,           // No compression.
   ]
 
+  static CLIENT_CHANGE_CIPHER_ ::= #[
+      20,          // Record type: CHANGE_CIPHER_SPEC_
+      3, 3,        // TLS 1.2.
+      0, 1         // One byte of payload.
+      1,           // 1 means change cipher spec.
+  ]
+
   handshake -> none:
-    hello := client_hello_packet_
+    handshake_hasher /checksum.Checksum := cipher_suite_.hmac_hasher.call
+    hello := client_hello_packet_[5..]
+    handshake_hasher.add hello
     sent := session_.writer_.write hello
     assert: sent == hello.size
     server_hello_packet := session_.extract_first_message_
+    handshake_hasher.add server_hello_packet[5..]
     server_hello := ServerHello_ server_hello_packet
 
     // Session IDs are handled in RFC 4346.  Session tickets are in RFC 5077.
@@ -577,16 +617,65 @@ class ToitHandshake:
     //          in server hello. This means we need a full handshake
     //          which is not yet implemented in Toit. Abandon and
     //          reconnect, using MbedTLS.
-    if server_hello.session_id == session_id_ and session_id_.size != 0:
-      // Session ID accepted, yay!
-      return
+    if session_id_.size != 0:
+      if not compare_byte_arrays_ server_hello.session_id session_id_:
+        // Session ID not accepted.  Abandon and reconnect, using MbedTLS.
+        throw "Session resume failed"
+      // Session ID accepted - yay!  Generate new keys.
+      bytes_needed := 2 * (cipher_suite_.key_size + cipher_suite_.iv_size)
+      // RFC 5246 section 6.3.
+      keys := pseudo_random_function_ bytes_needed
+          --block_size=cipher_suite_.hmac_block_size
+          --secret=master_secret_
+          --label="key expansion"
+          --seed=(server_hello.random + client_random_)
+          cipher_suite_.hmac
+      partition := partition_byte_array_ keys [ciper_suite_.key_size, ciper_suite_.key_size, ciper_suite_.iv_size, ciper_suite_.iv_size]
+      client_keys := KeyData_ --key=partition[0] --iv=partition[1] --algorithm=cipher_suite_.algorithm
+      server_keys := KeyData_ --key=partition[2] --iv=partition[2] --algorithm=cipher_suite_.algorithm
+      sent = session_.writer_.write CLIENT_CHANGE_CIPHER_SPEC_
+      assert: sent == CLIENT_CHANGE_CIPHER_SPEC_.size
+      server_change_packet := session_.extract_first_message_
+      if server_change_packet.size != 6 or server_change_packet[0] != CHANGE_CIPHER_SPEC_ or server_change_packet[5] != 1:
+        throw "Server did not accept change cipher spec"
+      handshake_hash := handshake_hasher.get
+      client_finished_payload := pseudo_random_function_ 12
+          --block_size=cipher_suite_.hmac_block_size
+          --secret=master_secret_
+          --label="client finished"
+          --seed=handshake_hash
+          cipher_suite_.hmac_hasher
+      server_finished_expected := pseudo_random_function_ 12
+          --block_size=cipher_suite_.hmac_block_size
+          --secret=master_secret_
+          --label="server finished"
+          --seed=handshake_hash
+          cipher_suite_.hmac_hasher
+      return [client_keys, server_keys, client_finished_payload, server_finished_expected]
     returned_ticket_extension := server_hello.extensions.get EXTENSION_SESSION_TICKET_
+    if not returned_ticket_extension: throw "Server did not return session ID or ticket"
+    throw "Session ticket resume not implemented"
+
+  // Compares byte arrays, without revealing the contents to timing attacks.
+  static compare_byte_arrays_ a b -> bool:
+    if a is not ByteArray or b is not ByteArray or a.size != b.size: return false
+    accumulator := 0
+    a.size.repeat: accumulator |= a[it] ^ b[it]
+    return accumulator == 0
+
+  // Given a byte array and a list of sizes, partitions the byte array into
+  // slices with those sizes.
+  static partition_byte_array_ bytes/ByteArray sizes/List -> List:
+    index := 0
+    return List sizes.size:
+      index += it
+      bytes[index - it..index]
 
   client_hello_packet_ -> ByteArray:
     client_hello := ByteArray 100
     client_hello.replace 0 CLIENT_HELLO_TEMPLATE_
     client_hello.replace 11 client_random_
-    BIG_ENDIAN.put_uint16 client_hello 50 cipher_suite_
+    BIG_ENDIAN.put_uint16 client_hello 50 cipher_suite_.id
     index := CLIENT_HELLO_TEMPLATE_.size
     client_hello[index++] = session_id_.size  // Session ID length.
     client_hello.replace index session_id_
@@ -678,13 +767,13 @@ class SymmetricSession_:
 
   constructor .parent_ .writer_ .reader_ .write_keys .read_keys:
 
-  write data from/int to/int -> int:
+  write data from/int to/int --type/int=APPLICATION_DATA_ -> int:
     if to - from  == 0: return 0
     // We want to be nice to the receiver in case it is an embedded device, so we
     // don't send too large records.  This size is intended to fit in two MTUs on
     // Ethernet.
     List.chunk_up from to 2800: | from2/int to2/int length2 |
-      record_header := RecordHeader_ #[APPLICATION_DATA_, 3, 3, 0, 0]
+      record_header := RecordHeader_ #[type, 3, 3, 0, 0]
       record_header.length = length2
       // AES-GCM:
       // The explicit (transmitted) part of the IV (nonce) must not be reused,
@@ -728,16 +817,16 @@ class SymmetricSession_:
           written += writer_.write encrypted written
     return to - from
 
-  read -> ByteArray?:
+  read --expected_type/int=APPLICATION_DATA_ -> ByteArray?:
     try:
-      return read_
+      return read_ expected_type
     finally: | is_exception exception |
       if is_exception:
         // If anything goes wrong we close the connection - don't want to give
         // anyone a second chance to probe us with dodgy data.
         parent_.close
 
-  read_ -> ByteArray?:
+  read_ expected_type/int -> ByteArray?:
     while true:
       if buffered_plaintext_index_ != buffered_plaintext_.size:
         return buffered_plaintext_[buffered_plaintext_index_++]
@@ -746,7 +835,7 @@ class SymmetricSession_:
       bytes := reader_.read_bytes RECORD_HEADER_SIZE_
       if not bytes: return null
       record_header := RecordHeader_ bytes
-      bad_content := record_header.type != APPLICATION_DATA_ and record_header.type != ALERT_
+      bad_content := record_header.type != expected_type and record_header.type != ALERT_
       if bad_content or record_header.major_version != 3 or record_header.minor_version != 3: throw "PROTOCOL_ERROR $record_header.bytes"
       encrypted_length := record_header.length
       // According to RFC5246: The length MUST NOT exceed 2^14 + 1024.
