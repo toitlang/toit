@@ -58,6 +58,10 @@ class MarkingVisitor : public RootCallback {
     for (Object** p = start; p < end; p++) mark_pointer(*p);
   }
 
+  virtual bool shrink_stacks() {
+    return true;
+  }
+
  private:
   void INLINE mark_pointer(Object* object) {
     if (!GcMetadata::in_new_or_old_space(object)) return;
