@@ -360,13 +360,10 @@ PRIMITIVE(write) {
   ARGS(IntResource, resource, Blob, data, int, from, int, to, int, break_length);
   int fd = resource->id();
 
-  const uint8* tx = data.address();
   if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
-  tx += from;
-
   if (break_length < 0) OUT_OF_RANGE;
 
-  ssize_t written = write(fd, tx, to - from);
+  ssize_t written = write(fd, data.address() + from, to - from);
   if (written < 0) {
     if (errno != EAGAIN) return Primitive::os_error(errno, process);
     written = 0;
@@ -407,7 +404,7 @@ PRIMITIVE(wait_tx) {
 
   // Upper bound on time to drain queue (12 is a conservative estimate
   // on the number of transferred bits per byte). If it takes longer
-  // than 1 ms, just return back to toit code.
+  // than 1 ms, just return back to Toit code.
   if (queued * 12 * 1000 > baud_rate) return BOOL(false);
 
   // TODO(florian): do we ever want to do a blocking wait on Linux?
@@ -425,7 +422,7 @@ PRIMITIVE(read) {
   if (ioctl(fd, FIONREAD, &available) != 0) return Primitive::os_error(errno, process);
   if (available == 0) return process->program()->null_object();
 
-  ByteArray* data = process->allocate_byte_array(available, /*force_external*/ true);
+  ByteArray* data = process->allocate_byte_array(static_cast<int>(available));
   if (data == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes rx(data);
