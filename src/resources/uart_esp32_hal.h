@@ -18,14 +18,13 @@
 
 #include <hal/uart_types.h>
 
-// This file is purely here to enable calling some lowlevel C-code defined in header files
+// This file is purely here to enable calling some low-level C-code defined in header files
 // in ESP-IDF. For documentation of almost all the functions, please refer to hal/uart_hal.h.
-
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-  
+
 typedef enum {
   UART_TOIT_INTR_RXFIFO_FULL  = 0,  // The RxFifo is over its threshold
   UART_TOIT_INTR_TXFIFO_EMPTY,      // The TxFifo is under its threshold
@@ -44,7 +43,7 @@ typedef struct {
 
 typedef uart_hal_t* uart_hal_handle_t;
 
-// Initialize (allocate) the right hal structure.  
+// Initialize (allocate) the right hal structure.
 uart_hal_handle_t uart_toit_hal_init(uart_port_t port);
 
 // De-initialize (free) the hal strcuture.
