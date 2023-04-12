@@ -380,18 +380,17 @@ PRIMITIVE(read) {
   ARGS(UartResource, uart_resource);
 
   if (uart_resource->has_error()) return windows_error(process, uart_resource->error_code());
-
   if (!uart_resource->ready_for_read()) return process->program()->null_object();
-
   if (!uart_resource->receive_read_response()) WINDOWS_ERROR;
 
-  ByteArray* array = process->allocate_byte_array(static_cast<int>(uart_resource->read_count()));
+  DWORD available = uart_resource->read_count();
+  if (available == 0) return process->program()->null_object();
+
+  ByteArray* array = process->allocate_byte_array(static_cast<int>(available));
   if (array == null) ALLOCATION_FAILED;
 
-  memcpy(ByteArray::Bytes(array).address(), uart_resource->read_buffer(), uart_resource->read_count());
-
-  if (!uart_resource->issue_read_request())  WINDOWS_ERROR;
-
+  memcpy(ByteArray::Bytes(array).address(), uart_resource->read_buffer(), available);
+  if (!uart_resource->issue_read_request()) WINDOWS_ERROR;
   return array;
 }
 
