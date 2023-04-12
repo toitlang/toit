@@ -148,7 +148,7 @@ class TxBuffer : public RxTxBuffer {
   spinlock_t spinlock_{};
   TxTransferHeader transfer_header_{};
 
-  UART_ISR_INLINE void handle_empty_isr(IsrSpinLocker& locker);
+  UART_ISR_INLINE void handle_empty_isr(const IsrSpinLocker& locker);
 };
 
 class RxBuffer : public RxTxBuffer {
@@ -327,7 +327,7 @@ void TxBuffer::write(const uint8* buffer, uint16 length, uint8 break_length) {
   uart()->enable_interrupt_index(UART_TOIT_INTR_TXFIFO_EMPTY);
 }
 
-UART_ISR_INLINE void TxBuffer::handle_empty_isr(IsrSpinLocker& locker) {
+UART_ISR_INLINE void TxBuffer::handle_empty_isr(const IsrSpinLocker& locker) {
   uint8 break_length = transfer_header_.break_length_;
   transfer_header_.break_length_ = 0; //  To avoid it being read again and the break continuing...
 
