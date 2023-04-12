@@ -693,7 +693,7 @@ class ToitHandshake_:
       throw "TLS_HANDSHAKE_FAILED"
 
   client_hello_packet_ -> ByteArray:
-    client_hello := ByteArray 100
+    client_hello := ByteArray 100 + session_ticket_.size
     client_hello.replace 0 CLIENT_HELLO_TEMPLATE_
     client_hello.replace 11 client_random_
     BIG_ENDIAN.put_uint16 client_hello 50 cipher_suite_.id
@@ -718,6 +718,7 @@ class ToitHandshake_:
     // Update size of record and message.
     BIG_ENDIAN.put_uint16 client_hello 3 index - 5
     BIG_ENDIAN.put_uint24 client_hello 6 index - 9
+    print "Client hello size $index: $client_hello[..index]"
     return client_hello[..index]
 
   // We normally supply the hostname because multiple HTTPS servers can be on
@@ -752,6 +753,8 @@ class ServerHello_:
 
   constructor packet/ByteArray:
     if packet[0] != HANDSHAKE_ or packet[5] != SERVER_HELLO_:
+      if packet[0] == ALERT_:
+        print "Alert: $(packet[5] == 2 ? "fatal" : "warning") $(packet[6])"
       throw "PROTOCOL_ERROR"
     message_size := BIG_ENDIAN.uint24 packet 6
     assert:
