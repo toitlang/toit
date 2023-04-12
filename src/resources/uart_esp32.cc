@@ -31,7 +31,7 @@
 #include "../resource_pool.h"
 #include "../event_sources/ev_queue_esp32.h"
 
-#define UART_ISR_INLINE  inline __attribute__((always_inline))
+#define UART_ISR_INLINE inline __attribute__((always_inline))
 
 // Valid UART port number
 #define UART_NUM_0             (0) /*!< UART port 0 */
@@ -107,13 +107,16 @@ class RxTxBuffer {
     free(ring_buffer_data_);
   }
 
-  // TODO(kasper): This is not ISR safe yet.
-  bool UART_ISR_INLINE is_empty() { return xRingbufferGetCurFreeSize(ring_buffer_) == ring_buffer_size_; }
-
+  bool is_empty() { return xRingbufferGetCurFreeSize(ring_buffer_) == ring_buffer_size_; }
   uword available_size() { return ring_buffer_size_ - xRingbufferGetCurFreeSize(ring_buffer_); }
-  RingbufHandle_t UART_ISR_INLINE ring_buffer() const { return ring_buffer_; }
-  void return_buffer(uint8* buffer);
-  UartResource* UART_ISR_INLINE uart() const { return uart_; }
+  void return_buffer(uint8* buffer) const { vRingbufferReturnItem(ring_buffer(), buffer); }
+
+  // TODO(kasper): This is not ISR safe yet.
+  UART_ISR_INLINE bool is_empty_isr() const { return xRingbufferGetCurFreeSize(ring_buffer_) == ring_buffer_size_; }
+  UART_ISR_INLINE void return_buffer_isr(uint8* buffer) const;
+
+  UART_ISR_INLINE RingbufHandle_t ring_buffer() const { return ring_buffer_; }
+  UART_ISR_INLINE UartResource* uart() const { return uart_; }
 
  private:
   UartResource* uart_;
@@ -135,8 +138,9 @@ class TxBuffer : public RxTxBuffer {
     spinlock_initialize(&spinlock_);
   }
 
-  uint8* read(uword* received, uword max_length);
-  uint8 read_break();
+  UART_ISR_INLINE uint8* read_isr(uword* received, uword max_length);
+  UART_ISR_INLINE uint8 read_break_isr();
+
   uword free_size();
   void write(const uint8* buffer, uint16 length, uint8 break_length);
 
@@ -151,9 +155,9 @@ class RxBuffer : public RxTxBuffer {
       : RxTxBuffer(uart, ring_buffer_data, ring_buffer_size) {}
 
   // TODO(kasper): This is not ISR safe yet.
-  uword UART_ISR_INLINE free_count() { return xRingbufferGetCurFreeSize(ring_buffer()); }
+  UART_ISR_INLINE uword free_size_isr() const { return xRingbufferGetCurFreeSize(ring_buffer()); }
+  UART_ISR_INLINE void send_isr(uint8* buffer, uint32 length);
 
-  void UART_ISR_INLINE send(uint8* buffer, uint32 length);
   void read(uint8 *buffer, uint32 length);
 };
 
@@ -173,8 +177,8 @@ public:
   ~UartResource() override;
 
   uart_port_t port() const { return port_; }
-  RxBuffer* UART_ISR_INLINE rx_buffer() { return &rx_buffer_; }
-  TxBuffer* UART_ISR_INLINE tx_buffer() { return &tx_buffer_; }
+  UART_ISR_INLINE RxBuffer* rx_buffer() { return &rx_buffer_; }
+  UART_ISR_INLINE TxBuffer* tx_buffer() { return &tx_buffer_; }
 
   bool receive_event(word* data) override;
 
@@ -207,20 +211,20 @@ public:
   }
 
   void set_read_fifo_timeout(uint8 timeout) { uart_toit_hal_set_rx_timeout(hal_, timeout); }
-  void UART_ISR_INLINE clear_rx_fifo() { uart_toit_hal_rxfifo_rst(hal_); }
+  UART_ISR_INLINE void clear_rx_fifo() { uart_toit_hal_rxfifo_rst(hal_); }
   void clear_tx_fifo() { uart_toit_hal_txfifo_rst(hal_); }
 
   void clear_interrupt_index(uart_toit_interrupt_index_t index);
   void clear_interrupt_mask(uint32 mask);
   void enable_interrupt_index(uart_toit_interrupt_index_t index);
   void disable_interrupt_index(uart_toit_interrupt_index_t index);
-  void UART_ISR_INLINE enable_interrupt_index_isr(uart_toit_interrupt_index_t index);
-  void UART_ISR_INLINE disable_interrupt_index_isr(uart_toit_interrupt_index_t index);
+  UART_ISR_INLINE void enable_interrupt_index_isr(uart_toit_interrupt_index_t index);
+  UART_ISR_INLINE void disable_interrupt_index_isr(uart_toit_interrupt_index_t index);
 
   void enable_read_interrupts();
-  void disable_read_interrupts();
-  uword UART_ISR_INLINE get_tx_fifo_available_count();
-  uint32 UART_ISR_INLINE interrupt_mask(uart_toit_interrupt_index_t toit_interrupt_index) {
+  UART_ISR_INLINE void disable_read_interrupts_isr();
+  UART_ISR_INLINE uword get_tx_fifo_available_count();
+  UART_ISR_INLINE uint32 interrupt_mask(uart_toit_interrupt_index_t toit_interrupt_index) {
     return hal_->interrupt_mask[toit_interrupt_index];
   }
   void set_interrupt_handle(intr_handle_t interrupt_handle) { interrupt_handle_ = interrupt_handle; }
@@ -232,10 +236,10 @@ public:
   void clear_tx_event_in_queue();
 
  private:
-  void UART_ISR_INLINE disable_interrupt_mask_(uint32 mask)  {
+  UART_ISR_INLINE void disable_interrupt_mask_(uint32 mask)  {
     uart_toit_hal_disable_intr_mask(hal_, mask);
   }
-  void UART_ISR_INLINE enable_interrupt_mask_(uint32 mask) {
+  UART_ISR_INLINE void enable_interrupt_mask_(uint32 mask) {
     uart_toit_hal_ena_intr_mask(hal_, mask);
   }
   bool try_set_iomux_pin(gpio_num_t pin, uint32 iomux_index) const;
@@ -248,7 +252,7 @@ public:
   bool data_event_in_queue_ = false;
   bool tx_event_in_queue_ = false;
 
-  void send_event_to_queue(uart_event_types_t event, int* hp_task_awoken);
+  UART_ISR_INLINE void send_event_to_queue_isr(uart_event_types_t event, int* hp_task_awoken);
 };
 
 
@@ -266,7 +270,7 @@ class UartResourceGroup : public ResourceGroup {
   uint32 on_event(Resource* r, word data, uint32 state) override;
 };
 
-void UART_ISR_INLINE RxTxBuffer::return_buffer(uint8* buffer) {
+UART_ISR_INLINE void RxTxBuffer::return_buffer_isr(uint8* buffer) const {
   // No blocking calls ever on TxBuffer, so ignore last parameter.
   vRingbufferReturnItemFromISR(ring_buffer(), buffer, null);
 }
@@ -292,7 +296,7 @@ void TxBuffer::write(const uint8* buffer, uint16 length, uint8 break_length) {
   uart()->enable_interrupt_index(UART_TOIT_INTR_TXFIFO_EMPTY);
 }
 
-uint8 UART_ISR_INLINE TxBuffer::read_break() {
+UART_ISR_INLINE uint8 TxBuffer::read_break_isr() {
   IsrSpinLocker locker(&spinlock_);
 
   uint8 break_length = transfer_header_.break_length_;
@@ -300,7 +304,7 @@ uint8 UART_ISR_INLINE TxBuffer::read_break() {
   return break_length;
 }
 
-uint8* UART_ISR_INLINE TxBuffer::read(uword *received, uword max_length) {
+UART_ISR_INLINE uint8* TxBuffer::read_isr(uword *received, uword max_length) {
   IsrSpinLocker locker(&spinlock_);
 
   if (transfer_header_.remaining_data_length_ == 0 && transfer_header_.break_length_ == 0) {
@@ -337,7 +341,7 @@ uword TxBuffer::free_size() {
   return ringbuffer_free - sizeof(TxTransferHeader);
 }
 
-void UART_ISR_INLINE RxBuffer::send(uint8* buffer, uint32 length) {
+UART_ISR_INLINE void RxBuffer::send_isr(uint8* buffer, uint32 length) {
   // We are never blocking on the ring buffer.
   xRingbufferSendFromISR(ring_buffer(), buffer, length, null);
 }
@@ -419,7 +423,7 @@ void UartResource::set_cts_pin(gpio_num_t cts_pin) {
   }
 }
 
-void UART_ISR_INLINE UartResource::enable_interrupt_index_isr(uart_toit_interrupt_index_t index) {
+UART_ISR_INLINE void UartResource::enable_interrupt_index_isr(uart_toit_interrupt_index_t index) {
   IsrSpinLocker locker(&spinlock_);
   enable_interrupt_mask_(interrupt_mask(index));
 }
@@ -429,12 +433,12 @@ void UartResource::enable_interrupt_index(uart_toit_interrupt_index_t index) {
   enable_interrupt_mask_(interrupt_mask(index));
 }
 
-void UART_ISR_INLINE UartResource::disable_interrupt_index_isr(uart_toit_interrupt_index_t index) {
+UART_ISR_INLINE void UartResource::disable_interrupt_index_isr(uart_toit_interrupt_index_t index) {
   IsrSpinLocker locker(&spinlock_);
   disable_interrupt_mask_(interrupt_mask(index));
 }
 
-void UART_ISR_INLINE UartResource::disable_read_interrupts() {
+UART_ISR_INLINE void UartResource::disable_read_interrupts_isr() {
   disable_interrupt_index_isr(UART_TOIT_INTR_RXFIFO_FULL);
   disable_interrupt_index_isr(UART_TOIT_INTR_RX_TIMEOUT);
 }
@@ -449,7 +453,7 @@ void UartResource::disable_interrupt_index(uart_toit_interrupt_index_t index) {
   disable_interrupt_mask_(interrupt_mask(index));
 }
 
-void UART_ISR_INLINE UartResource::clear_interrupt_index(uart_toit_interrupt_index_t index) {
+UART_ISR_INLINE void UartResource::clear_interrupt_index(uart_toit_interrupt_index_t index) {
   uart_toit_hal_clr_intsts_mask(hal_, interrupt_mask(index));
 }
 
@@ -466,44 +470,44 @@ bool UartResource::try_set_iomux_pin(gpio_num_t pin, uint32 iomux_index) const {
   return true;
 }
 
-uword UART_ISR_INLINE UartResource::get_tx_fifo_available_count() {
+UART_ISR_INLINE uword UartResource::get_tx_fifo_available_count() {
   return uart_toit_hal_get_txfifo_len(hal_);
 }
 
-uart_event_types_t UART_ISR_INLINE UartResource::interrupt_handler_read() {
+UART_ISR_INLINE uart_event_types_t UartResource::interrupt_handler_read() {
   uword read_length = uart_toit_hal_get_rxfifo_len(hal_);
   if (read_length == 0) return UART_EVENT_MAX;
 
-  uword rx_buffer_free = rx_buffer()->free_count();
+  uword rx_buffer_free = rx_buffer()->free_size_isr();
   if (rx_buffer_free == 0) {
-    disable_read_interrupts();
+    disable_read_interrupts_isr();
     return UART_BUFFER_FULL;
   } else {
     if (rx_buffer_free < read_length) read_length = rx_buffer_free;
     ASSERT(read_length <= SOC_UART_FIFO_LEN)
     uint8 buffer[read_length];
     uart_toit_hal_read_rxfifo(hal_, buffer, reinterpret_cast<int*>(&read_length));
-    rx_buffer()->send(buffer, read_length);
+    rx_buffer()->send_isr(buffer, read_length);
     return UART_DATA;
   }
 }
 
-uart_event_types_t UART_ISR_INLINE UartResource::interrupt_handler_write() {
+UART_ISR_INLINE uart_event_types_t UartResource::interrupt_handler_write() {
   uint32 tx_fifo_free = get_tx_fifo_available_count();
   uword received_count;
-  uint8* buffer = tx_buffer()->read(&received_count, tx_fifo_free);
+  uint8* buffer = tx_buffer()->read_isr(&received_count, tx_fifo_free);
   if (buffer) {
     uint32 written;
     uart_toit_hal_write_txfifo(hal_, buffer, received_count, &written);  // TODO: Is the RS485 workaround necessary here?
-    tx_buffer()->return_buffer(buffer);
+    tx_buffer()->return_buffer_isr(buffer);
     return UART_TX_EVENT;
   } else {
-    int break_number = tx_buffer()->read_break();
+    int break_number = tx_buffer()->read_break_isr();
     if (break_number != 0) {
       enable_interrupt_index_isr(UART_TOIT_INTR_TX_BRK_DONE);
       uart_toit_hal_tx_break(hal_, break_number);
       disable_interrupt_index_isr(UART_TOIT_INTR_TXFIFO_EMPTY);
-    } else if (tx_buffer()->is_empty()) {
+    } else if (tx_buffer()->is_empty_isr()) {
       disable_interrupt_index_isr(UART_TOIT_INTR_TXFIFO_EMPTY);
     }
     return UART_EVENT_MAX;
@@ -540,12 +544,12 @@ IRAM_ATTR void UartResource::interrupt_handler(void* arg) {
 
   if (event != UART_EVENT_MAX) {
     portBASE_TYPE hp_task_awoken = 0;
-    uart->send_event_to_queue(event, &hp_task_awoken);
+    uart->send_event_to_queue_isr(event, &hp_task_awoken);
     if (hp_task_awoken) portYIELD_FROM_ISR();
   }
 }
 
-void UART_ISR_INLINE UartResource::send_event_to_queue(uart_event_types_t event, int* hp_task_awoken) {
+UART_ISR_INLINE void UartResource::send_event_to_queue_isr(uart_event_types_t event, int* hp_task_awoken) {
   IsrSpinLocker locker(&spinlock_);
   // Data and Tx Event receive special care, so as to not overflow the queue.
   if (event == UART_DATA) {
