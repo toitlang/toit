@@ -341,9 +341,7 @@ UART_ISR_INLINE uint8* TxBuffer::read_isr(uword *received, uword max_length) {
 
 uword TxBuffer::free_size_minus_header() const {
   uword free = free_size();
-  return (free >= sizeof(TxTransferHeader))
-      ? free - sizeof(TxTransferHeader)
-      : 0;
+  return Utils::max(0U, free - sizeof(TxTransferHeader));
 }
 
 UART_ISR_INLINE void RxBuffer::send_isr(uint8* buffer, uint32 length) const {
@@ -879,16 +877,14 @@ PRIMITIVE(write) {
   if (break_length < 0 || break_length >= 256) OUT_OF_RANGE;
   int size = to - from;
 
-  uword free = uart->tx_buffer()->free_size_minus_header();
+  TxBuffer* buffer = uart->tx_buffer();
+  uword free = buffer->free_size_minus_header();
   if (free < size) {
     size = static_cast<int>(free);
     break_length = 0;
   }
 
-  if (size == 0) return Smi::from(0);
-
-  uart->tx_buffer()->write(tx, size, break_length);
-
+  if (size > 0) buffer->write(tx, size, break_length);
   return Smi::from(size);
 }
 
@@ -897,24 +893,27 @@ PRIMITIVE(wait_tx) {
 
   if (!uart->tx_buffer()->is_empty()) return BOOL(false);
 
-  // Busy wait for the fifo to become empty.
-  while (uart->get_tx_fifo_available_count() < SOC_UART_FIFO_LEN) ;
+  while (uart->get_tx_fifo_available_count() < SOC_UART_FIFO_LEN) {
+    // Busy wait for the fifo to become empty.
+  }
   return BOOL(true);
 }
 
 PRIMITIVE(read) {
   ARGS(UartResource, uart)
 
-  uword available = uart->rx_buffer()->available_size();
+  RxBuffer* buffer = uart->rx_buffer();
+  uword available = buffer->available_size();
+  if (available == 0) return process->program()->null_object();
 
-  ByteArray* data = process->allocate_byte_array(static_cast<int>(available), /*force_external*/ available != 0);
+  // TODO(kasper): It isn't obviously a good idea to force all these
+  // byte arrays to be allocated in the malloc heap. Maybe we should
+  // consider always returning smaller byte arrays (<512 bytes) instead?
+  ByteArray* data = process->allocate_byte_array(static_cast<int>(available), true);
   if (data == null) ALLOCATION_FAILED;
 
-  if (available == 0) return data;
-
   ByteArray::Bytes rx(data);
-  uart->rx_buffer()->read(rx.address(), rx.length());
-
+  buffer->read(rx.address(), available);
   return data;
 }
 
