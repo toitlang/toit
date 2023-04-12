@@ -395,37 +395,33 @@ uint32 UartResource::get_baud_rate() {
 }
 
 void UartResource::set_tx_pin(gpio_num_t tx_pin) {
-  if (!try_set_iomux_pin(tx_pin, SOC_UART_TX_PIN_IDX)) {
-    gpio_hal_iomux_func_sel(GPIO_PIN_MUX_REG[tx_pin], PIN_FUNC_GPIO);
-    gpio_set_level(tx_pin, 1);
-    esp_rom_gpio_connect_out_signal(tx_pin, UART_PERIPH_SIGNAL(port_, SOC_UART_TX_PIN_IDX), false, false);
-  }
+  if (try_set_iomux_pin(tx_pin, SOC_UART_TX_PIN_IDX)) return;
+  gpio_hal_iomux_func_sel(GPIO_PIN_MUX_REG[tx_pin], PIN_FUNC_GPIO);
+  gpio_set_level(tx_pin, 1);
+  esp_rom_gpio_connect_out_signal(tx_pin, UART_PERIPH_SIGNAL(port_, SOC_UART_TX_PIN_IDX), false, false);
 }
 
 void UartResource::set_rx_pin(gpio_num_t rx_pin) {
-  if (!try_set_iomux_pin(rx_pin, SOC_UART_RX_PIN_IDX)) {
-    gpio_hal_iomux_func_sel(GPIO_PIN_MUX_REG[rx_pin], PIN_FUNC_GPIO);
-    gpio_set_pull_mode(rx_pin, GPIO_PULLUP_ONLY);
-    gpio_set_direction(rx_pin, GPIO_MODE_INPUT);
-    esp_rom_gpio_connect_in_signal(rx_pin, UART_PERIPH_SIGNAL(port_, SOC_UART_RX_PIN_IDX), false);
-  }
+  if (try_set_iomux_pin(rx_pin, SOC_UART_RX_PIN_IDX)) return;
+  gpio_hal_iomux_func_sel(GPIO_PIN_MUX_REG[rx_pin], PIN_FUNC_GPIO);
+  gpio_set_pull_mode(rx_pin, GPIO_PULLUP_ONLY);
+  gpio_set_direction(rx_pin, GPIO_MODE_INPUT);
+  esp_rom_gpio_connect_in_signal(rx_pin, UART_PERIPH_SIGNAL(port_, SOC_UART_RX_PIN_IDX), false);
 }
 
 void UartResource::set_rts_pin(gpio_num_t rts_pin) {
-  if (!try_set_iomux_pin(rts_pin, SOC_UART_RTS_PIN_IDX)) {
-    gpio_hal_iomux_func_sel(GPIO_PIN_MUX_REG[rts_pin], PIN_FUNC_GPIO);
-    gpio_set_direction(rts_pin, GPIO_MODE_OUTPUT);
-    esp_rom_gpio_connect_out_signal(rts_pin, UART_PERIPH_SIGNAL(port_, SOC_UART_RTS_PIN_IDX), false, false);
-  }
+  if (try_set_iomux_pin(rts_pin, SOC_UART_RTS_PIN_IDX)) return;
+  gpio_hal_iomux_func_sel(GPIO_PIN_MUX_REG[rts_pin], PIN_FUNC_GPIO);
+  gpio_set_direction(rts_pin, GPIO_MODE_OUTPUT);
+  esp_rom_gpio_connect_out_signal(rts_pin, UART_PERIPH_SIGNAL(port_, SOC_UART_RTS_PIN_IDX), false, false);
 }
 
 void UartResource::set_cts_pin(gpio_num_t cts_pin) {
-  if (!try_set_iomux_pin(cts_pin, SOC_UART_CTS_PIN_IDX)) {
-    gpio_hal_iomux_func_sel(GPIO_PIN_MUX_REG[cts_pin], PIN_FUNC_GPIO);
-    gpio_set_pull_mode(cts_pin, GPIO_PULLUP_ONLY);
-    gpio_set_direction(cts_pin, GPIO_MODE_INPUT);
-    esp_rom_gpio_connect_in_signal(cts_pin, UART_PERIPH_SIGNAL(port_, SOC_UART_CTS_PIN_IDX), false);
-  }
+  if (try_set_iomux_pin(cts_pin, SOC_UART_CTS_PIN_IDX)) return;
+  gpio_hal_iomux_func_sel(GPIO_PIN_MUX_REG[cts_pin], PIN_FUNC_GPIO);
+  gpio_set_pull_mode(cts_pin, GPIO_PULLUP_ONLY);
+  gpio_set_direction(cts_pin, GPIO_MODE_INPUT);
+  esp_rom_gpio_connect_in_signal(cts_pin, UART_PERIPH_SIGNAL(port_, SOC_UART_CTS_PIN_IDX), false);
 }
 
 UART_ISR_INLINE void UartResource::enable_interrupt_index_isr(uart_toit_interrupt_index_t index) {
@@ -468,7 +464,7 @@ void UartResource::clear_interrupt_mask(uint32 mask) {
 
 // This method tries to set the pin via the direct IO MUX. Returns true upon success.
 bool UartResource::try_set_iomux_pin(gpio_num_t pin, uint32 iomux_index) const {
-  const uart_periph_sig_t *uart_pin = &uart_periph_signal[port_].pins[iomux_index];
+  const uart_periph_sig_t* uart_pin = &uart_periph_signal[port_].pins[iomux_index];
   if (uart_pin->default_gpio == -1 || uart_pin->default_gpio != pin) return false;
   gpio_iomux_out(pin, uart_pin->iomux_func, false);
   if (uart_pin->input) gpio_iomux_in(pin, uart_pin->signal);
@@ -768,7 +764,7 @@ PRIMITIVE(create) {
   }
   init.uart_resource->set_parity(uart_parity);
 
-  auto uart_data_bits = (uart_word_length_t)(data_bits - 5);
+  auto uart_data_bits = static_cast<uart_word_length_t>(data_bits - 5);
   init.uart_resource->set_word_length(uart_data_bits);
 
   uart_stop_bits_t uart_stop_bits;
