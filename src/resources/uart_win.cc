@@ -352,24 +352,20 @@ PRIMITIVE(set_baud_rate) {
 }
 
 // Writes the data to the UART.
-// Does not support break
+// Does not support break.
 PRIMITIVE(write) {
   ARGS(UartResource, uart_resource, Blob, data, int, from, int, to, int, break_length);
   if (break_length > 0) INVALID_ARGUMENT;
 
-  const uint8* tx = data.address();
   if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
-  tx += from;
-
   if (break_length < 0) OUT_OF_RANGE;
 
   if (uart_resource->has_error()) return windows_error(process, uart_resource->error_code());
-
   if (!uart_resource->ready_for_write()) return Smi::from(0);
 
-  if (!uart_resource->send(tx, to - from)) WINDOWS_ERROR;
-
-  return Smi::from(to - from);
+  uword size = to - from;
+  if (!uart_resource->send(data.address() + from, size)) WINDOWS_ERROR;
+  return Smi::from(size);
 }
 
 PRIMITIVE(wait_tx) {

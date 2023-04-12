@@ -33,7 +33,7 @@
 
 #define UART_ISR_INLINE inline __attribute__((always_inline))
 
-// Valid UART port number
+// Valid UART port numbers.
 #define UART_NUM_0             (0) /*!< UART port 0 */
 #define UART_NUM_1             (1) /*!< UART port 1 */
 #if SOC_UART_NUM > 2
@@ -49,7 +49,7 @@
 
 namespace toit {
 
-const uart_port_t kInvalidUartPort = uart_port_t(-1);
+const uart_port_t kInvalidUartPort = static_cast<uart_port_t>(-1);
 
 const int kReadState = 1 << 0;
 const int kErrorState = 1 << 1;
@@ -112,8 +112,8 @@ class RxTxBuffer {
   uword available_size() const { return ring_buffer_size_ - free_size(); }
   void return_buffer(uint8* buffer) const { vRingbufferReturnItem(ring_buffer(), buffer); }
 
-  UART_ISR_INLINE uword free_size_isr() const;
-  UART_ISR_INLINE bool is_empty_isr() const { return free_size_isr() == ring_buffer_size_; }
+  UART_ISR_INLINE uword free_size_isr();
+  UART_ISR_INLINE bool is_empty_isr() { return free_size_isr() == ring_buffer_size_; }
   UART_ISR_INLINE void return_buffer_isr(uint8* buffer) const;
 
   UART_ISR_INLINE RingbufHandle_t ring_buffer() const { return ring_buffer_; }
@@ -269,9 +269,32 @@ class UartResourceGroup : public ResourceGroup {
   uint32 on_event(Resource* r, word data, uint32 state) override;
 };
 
-UART_ISR_INLINE uword RxTxBuffer::free_size_isr() const {
-  // TODO(kasper): This is not ISR safe yet.
-  return xRingbufferGetCurFreeSize(ring_buffer_);
+UART_ISR_INLINE uword RxTxBuffer::free_size_isr() {
+  // This is a hideous re-implementation of the prvGetCurMaxSizeByteBuf
+  // function from third_party/esp-idf/components/esp_ringbuf/ringbuf.c.
+  // We need a version that is ISR safe and no such thing exists.
+  static const UBaseType_t rbBUFFER_FULL_FLAG = static_cast<UBaseType_t>(4);
+
+  StaticRingbuffer_t* pxRingbuffer = &ring_buffer_static_;
+  uword result = 0;
+
+  portMUX_TYPE* mux = &pxRingbuffer->muxDummy;
+  portENTER_CRITICAL_ISR(mux);
+
+  UBaseType_t uxRingbufferFlags = pxRingbuffer->uxDummy2;
+  if ((uxRingbufferFlags & rbBUFFER_FULL_FLAG) == 0) {
+    uint8* pucAcquire = static_cast<uint8*>(pxRingbuffer->pvDummy4[5]);
+    uint8* pucFree = static_cast<uint8*>(pxRingbuffer->pvDummy4[8]);
+    BaseType_t xFreeSize = pucFree - pucAcquire;
+    if (xFreeSize <= 0) {
+      size_t xSize = pxRingbuffer->xDummy1[0];
+      xFreeSize += xSize;
+    }
+    result = xFreeSize;
+  }
+
+  portEXIT_CRITICAL_ISR(mux);
+  return result;
 }
 
 UART_ISR_INLINE void RxTxBuffer::return_buffer_isr(uint8* buffer) const {
@@ -870,21 +893,18 @@ PRIMITIVE(set_baud_rate) {
 PRIMITIVE(write) {
   ARGS(UartResource, uart, Blob, data, int, from, int, to, int, break_length)
 
-  const uint8* tx = data.address();
   if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
-  tx += from;
-
   if (break_length < 0 || break_length >= 256) OUT_OF_RANGE;
-  int size = to - from;
 
   TxBuffer* buffer = uart->tx_buffer();
+  uword size = to - from;
   uword free = buffer->free_size_minus_header();
   if (free < size) {
-    size = static_cast<int>(free);
+    size = free;
     break_length = 0;
   }
 
-  if (size > 0) buffer->write(tx, size, break_length);
+  if (size > 0) buffer->write(data.address() + from, size, break_length);
   return Smi::from(size);
 }
 
@@ -906,10 +926,11 @@ PRIMITIVE(read) {
   uword available = buffer->available_size();
   if (available == 0) return process->program()->null_object();
 
-  // TODO(kasper): It isn't obviously a good idea to force all these
-  // byte arrays to be allocated in the malloc heap. Maybe we should
-  // consider always returning smaller byte arrays (<512 bytes) instead?
-  ByteArray* data = process->allocate_byte_array(static_cast<int>(available), true);
+  // TODO(kasper): It isn't obviously a good idea to just return
+  // all the data in a potentially rather large external byte array.
+  // For reads from TCP sockets, we chunk it up instead and prefer
+  // to return multiple smaller byte arrays.
+  ByteArray* data = process->allocate_byte_array(available);
   if (data == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes rx(data);

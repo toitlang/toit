@@ -360,13 +360,10 @@ PRIMITIVE(write) {
   ARGS(IntResource, resource, Blob, data, int, from, int, to, int, break_length);
   int fd = resource->id();
 
-  const uint8* tx = data.address();
   if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
-  tx += from;
-
   if (break_length < 0) OUT_OF_RANGE;
 
-  ssize_t written = write(fd, tx, to - from);
+  ssize_t written = write(fd, data.address() + from, to - from);
   if (written < 0) {
     if (errno != EAGAIN) return Primitive::os_error(errno, process);
     written = 0;
