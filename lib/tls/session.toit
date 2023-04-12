@@ -21,6 +21,7 @@ import .socket
 HELLO_REQUEST_ ::= 0
 CLIENT_HELLO_ ::= 1
 SERVER_HELLO_ ::= 2
+NEW_SESSION_TICKET_ ::= 4
 CERTIFICATE_ ::= 11
 SERVER_KEY_EXCHANGE_ ::= 12
 CERTIFICATE_REQUEST_ ::= 13
@@ -112,7 +113,7 @@ class Session:
   handshake_in_progress_/monitor.Latch? := monitor.Latch
   group_/TlsGroup_? := null
   tls_ := null
-  toit_handshake_ := null
+  toit_handshake_/ToitHandshake_? := null
 
   outgoing_buffer_/ByteArray := #[]
   bytes_before_next_record_header_ := 0
@@ -196,20 +197,7 @@ class Session:
     if session_state:
       toit_handshake_ = ToitHandshake_ this
       try:
-        result := toit_handshake_.handshake
-        client_keys /KeyData_ := result[0]
-        server_keys /KeyData_ := result[1]
-        client_finished_payload /ByteArray := result[2]
-        server_finished_expected /ByteArray := result[3]
-
-        // TODO: Maybe move this into handshake, and maybe just make it a method on the Session.
-        reads_encrypted_ = true
-        writes_encrypted_ = true
-        symmetric_session_ = SymmetricSession_ this writer_ reader_ client_keys server_keys
-        symmetric_session_.write client_finished_payload 0 client_finished_payload.size --type=HANDSHAKE_
-        server_finished := symmetric_session_.read --expected_type=HANDSHAKE_
-        if not compare_byte_arrays_ server_finished_expected server_finished:
-          throw "TLS_HANDSHAKE_FAILED"
+        toit_handshake_.handshake
         // Connected.
         return
       finally: | is_exception exception |
@@ -591,8 +579,8 @@ class ToitHandshake_:
 
   handshake -> none:
     handshake_hasher /checksum.Checksum := cipher_suite_.hmac_hasher.call
-    hello := client_hello_packet_[5..]
-    handshake_hasher.add hello
+    hello := client_hello_packet_
+    handshake_hasher.add hello[5..]
     sent := session_.writer_.write hello
     assert: sent == hello.size
     server_hello_packet := session_.extract_first_message_
@@ -620,44 +608,76 @@ class ToitHandshake_:
     if session_id_.size != 0:
       if not compare_byte_arrays_ server_hello.session_id session_id_:
         // Session ID not accepted.  Abandon and reconnect, using MbedTLS.
-        throw "Session resume failed"
-      // Session ID accepted - yay!  Generate new keys.
-      key_size := cipher_suite_.key_size
-      iv_size := cipher_suite_.iv_size
-      bytes_needed := 2 * (key_size + iv_size)
-      // RFC 5246 section 6.3.
-      key_data := pseudo_random_function_ bytes_needed
-          --block_size=cipher_suite_.hmac_block_size
-          --secret=master_secret_
-          --label="key expansion"
-          --seed=(server_hello.random + client_random_)
-          cipher_suite_.hmac_hasher
-      partition := partition_byte_array_ key_data [key_size, key_size, iv_size, iv_size]
-      write_key := KeyData_ --key=partition[0] --iv=partition[1] --algorithm=cipher_suite_.algorithm
-      read_key := KeyData_ --key=partition[2] --iv=partition[2] --algorithm=cipher_suite_.algorithm
-      sent = session_.writer_.write CHANGE_CIPHER_SPEC_TEMPLATE_
-      assert: sent == CHANGE_CIPHER_SPEC_TEMPLATE_.size
-      peer_change_message := session_.extract_first_message_
-      if peer_change_message.size != 6 or peer_change_message[0] != CHANGE_CIPHER_SPEC_ or peer_change_message[5] != 1:
-        throw "Peer did not accept change cipher spec"
-      handshake_hash := handshake_hasher.get
-      client_finished := pseudo_random_function_ 12
-          --block_size=cipher_suite_.hmac_block_size
-          --secret=master_secret_
-          --label="client finished"
-          --seed=handshake_hash
-          cipher_suite_.hmac_hasher
-      server_finished_expected := pseudo_random_function_ 12
-          --block_size=cipher_suite_.hmac_block_size
-          --secret=master_secret_
-          --label="server finished"
-          --seed=handshake_hash
-          cipher_suite_.hmac_hasher
-      set_up_session_ write_key read_key client_finished server_finished_expected
-      return
-    returned_ticket_extension := server_hello.extensions.get EXTENSION_SESSION_TICKET_
-    if not returned_ticket_extension: throw "Server did not return session ID or ticket"
-    throw "Session ticket resume not implemented"
+        throw "RESUME_FAILED"
+      // Session ID accepted.
+    else:
+      returned_ticket_extension := server_hello.extensions.get EXTENSION_SESSION_TICKET_
+      // Figures in RFC 5077:
+      // 1) We don't have a ticket, but we want one:
+      //    We can't handle this in pure Toit, and we don't even get here in this case.
+      // 2) The server recognizes our ticket:
+      //    Server sends empty ticket extension, followed by NewSessionTicket message.
+      //    We handle this below.
+      // 3) We have a ticket, but the server does not know about tickets:
+      //    The server sends no ticket extension, and the next thing is a Certificate.
+      //    We can't handle this in pure Toit, so we throw.
+      // 4) The server knows about tickets, but does not recognize our ticket:
+      //    The server sends an empty ticket extension, and the next thing is a
+      //    Certificate.  We can't handle this in pure Toit, so we throw.
+      //
+      // If the server accepts the ticket, it sends an empty ticket extension back,
+      // and the next thing is a NewSessionTicket message.  If the server knows nothing
+      // of tickets it sends no ticket extension, and the next thing is a Certificate.
+      // I
+      // the ticket
+      if not returned_ticket_extension:
+        // RFC 5077, figure 3.
+        throw "RESUME_FAILED"  // Server did not understand session ticket extension.
+      if returned_ticket_extension.size != 0:
+        throw "TLS_PROTOCOL_ERROR"  // Strange server sent non-empty ticket extension.
+      next_server_packet := session_.extract_first_message_
+      if next_server_packet[0] != HANDSHAKE_:
+        throw "TLS_PROTOCOL_ERROR"  // Strange server sent non-handshake message.
+      if next_server_packet[5] != NEW_SESSION_TICKET_:
+        // RFC 5077, figure 4.
+        throw "RESUME_FAILED"  // TLS session ticket rejected.
+      // TODO: We should save the ticket for a third connection.
+      handshake_hasher.add next_server_packet[5..]
+      // RFC 5077, figure 2.  The peer accepted our ticket.
+    // Either the peer accepted our session ID or our ticket.
+    // Generate new keys in a shortened handshake.
+    key_size := cipher_suite_.key_size
+    iv_size := cipher_suite_.iv_size
+    bytes_needed := 2 * (key_size + iv_size)
+    // RFC 5246 section 6.3.
+    key_data := pseudo_random_function_ bytes_needed
+        --block_size=cipher_suite_.hmac_block_size
+        --secret=master_secret_
+        --label="key expansion"
+        --seed=(server_hello.random + client_random_)
+        cipher_suite_.hmac_hasher
+    partition := partition_byte_array_ key_data [key_size, key_size, iv_size, iv_size]
+    write_key := KeyData_ --key=partition[0] --iv=partition[1] --algorithm=cipher_suite_.algorithm
+    read_key := KeyData_ --key=partition[2] --iv=partition[2] --algorithm=cipher_suite_.algorithm
+    sent = session_.writer_.write CHANGE_CIPHER_SPEC_TEMPLATE_
+    assert: sent == CHANGE_CIPHER_SPEC_TEMPLATE_.size
+    peer_change_message := session_.extract_first_message_
+    if peer_change_message.size != 6 or peer_change_message[0] != CHANGE_CIPHER_SPEC_ or peer_change_message[5] != 1:
+      throw "Peer did not accept change cipher spec"
+    handshake_hash := handshake_hasher.get
+    client_finished := pseudo_random_function_ 12
+        --block_size=cipher_suite_.hmac_block_size
+        --secret=master_secret_
+        --label="client finished"
+        --seed=handshake_hash
+        cipher_suite_.hmac_hasher
+    server_finished_expected := pseudo_random_function_ 12
+        --block_size=cipher_suite_.hmac_block_size
+        --secret=master_secret_
+        --label="server finished"
+        --seed=handshake_hash
+        cipher_suite_.hmac_hasher
+    set_up_session_ write_key read_key client_finished server_finished_expected
 
   set_up_session_ write_key/KeyData_ read_key/KeyData_ client_finished/ByteArray server_finished_expected/ByteArray -> none:
     session_.reads_encrypted_ = true
