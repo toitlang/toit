@@ -107,12 +107,13 @@ class RxTxBuffer {
     free(ring_buffer_data_);
   }
 
-  bool is_empty() { return xRingbufferGetCurFreeSize(ring_buffer_) == ring_buffer_size_; }
-  uword available_size() { return ring_buffer_size_ - xRingbufferGetCurFreeSize(ring_buffer_); }
+  bool is_empty() const { return free_size() == ring_buffer_size_; }
+  uword free_size() const { return xRingbufferGetCurFreeSize(ring_buffer()); }
+  uword available_size() const { return ring_buffer_size_ - free_size(); }
   void return_buffer(uint8* buffer) const { vRingbufferReturnItem(ring_buffer(), buffer); }
 
-  // TODO(kasper): This is not ISR safe yet.
-  UART_ISR_INLINE bool is_empty_isr() const { return xRingbufferGetCurFreeSize(ring_buffer_) == ring_buffer_size_; }
+  UART_ISR_INLINE uword free_size_isr() const;
+  UART_ISR_INLINE bool is_empty_isr() const { return free_size_isr() == ring_buffer_size_; }
   UART_ISR_INLINE void return_buffer_isr(uint8* buffer) const;
 
   UART_ISR_INLINE RingbufHandle_t ring_buffer() const { return ring_buffer_; }
@@ -141,7 +142,7 @@ class TxBuffer : public RxTxBuffer {
   UART_ISR_INLINE uint8* read_isr(uword* received, uword max_length);
   UART_ISR_INLINE uint8 read_break_isr();
 
-  uword free_size();
+  uword free_size_minus_header() const;
   void write(const uint8* buffer, uint16 length, uint8 break_length);
 
  private:
@@ -154,11 +155,9 @@ class RxBuffer : public RxTxBuffer {
   RxBuffer(UartResource* uart, uint8* ring_buffer_data, uword ring_buffer_size)
       : RxTxBuffer(uart, ring_buffer_data, ring_buffer_size) {}
 
-  // TODO(kasper): This is not ISR safe yet.
-  UART_ISR_INLINE uword free_size_isr() const { return xRingbufferGetCurFreeSize(ring_buffer()); }
-  UART_ISR_INLINE void send_isr(uint8* buffer, uint32 length);
+  UART_ISR_INLINE void send_isr(uint8* buffer, uint32 length) const;
 
-  void read(uint8 *buffer, uint32 length);
+  void read(uint8* buffer, uint32 length);
 };
 
 class UartResource : public EventQueueResource {
@@ -270,6 +269,11 @@ class UartResourceGroup : public ResourceGroup {
   uint32 on_event(Resource* r, word data, uint32 state) override;
 };
 
+UART_ISR_INLINE uword RxTxBuffer::free_size_isr() const {
+  // TODO(kasper): This is not ISR safe yet.
+  return xRingbufferGetCurFreeSize(ring_buffer_);
+}
+
 UART_ISR_INLINE void RxTxBuffer::return_buffer_isr(uint8* buffer) const {
   // No blocking calls ever on TxBuffer, so ignore last parameter.
   vRingbufferReturnItemFromISR(ring_buffer(), buffer, null);
@@ -335,13 +339,14 @@ UART_ISR_INLINE uint8* TxBuffer::read_isr(uword *received, uword max_length) {
   return buffer;
 }
 
-uword TxBuffer::free_size() {
-  uword ringbuffer_free = xRingbufferGetCurFreeSize(ring_buffer());
-  if (ringbuffer_free < sizeof(TxTransferHeader)) return 0;
-  return ringbuffer_free - sizeof(TxTransferHeader);
+uword TxBuffer::free_size_minus_header() const {
+  uword free = free_size();
+  return (free >= sizeof(TxTransferHeader))
+      ? free - sizeof(TxTransferHeader)
+      : 0;
 }
 
-UART_ISR_INLINE void RxBuffer::send_isr(uint8* buffer, uint32 length) {
+UART_ISR_INLINE void RxBuffer::send_isr(uint8* buffer, uint32 length) const {
   // We are never blocking on the ring buffer.
   xRingbufferSendFromISR(ring_buffer(), buffer, length, null);
 }
@@ -878,9 +883,9 @@ PRIMITIVE(write) {
   if (break_length < 0 || break_length >= 256) OUT_OF_RANGE;
   int size = to - from;
 
-  uword available = uart->tx_buffer()->free_size();
-  if (available < size) {
-    size = static_cast<int>(available);
+  uword free = uart->tx_buffer()->free_size_minus_header();
+  if (free < size) {
+    size = static_cast<int>(free);
     break_length = 0;
   }
 
