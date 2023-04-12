@@ -407,7 +407,7 @@ PRIMITIVE(wait_tx) {
 
   // Upper bound on time to drain queue (12 is a conservative estimate
   // on the number of transferred bits per byte). If it takes longer
-  // than 1 ms, just return back to toit code.
+  // than 1 ms, just return back to Toit code.
   if (queued * 12 * 1000 > baud_rate) return BOOL(false);
 
   // TODO(florian): do we ever want to do a blocking wait on Linux?
@@ -425,7 +425,7 @@ PRIMITIVE(read) {
   if (ioctl(fd, FIONREAD, &available) != 0) return Primitive::os_error(errno, process);
   if (available == 0) return process->program()->null_object();
 
-  ByteArray* data = process->allocate_byte_array(available, /*force_external*/ true);
+  ByteArray* data = process->allocate_byte_array(static_cast<int>(available));
   if (data == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes rx(data);
