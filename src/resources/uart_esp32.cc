@@ -321,6 +321,8 @@ void TxBuffer::write(const uint8* buffer, uint16 length, uint8 break_length) {
     abort();
   }
 
+  // Interrupts are disabled while we're in the critical section
+  // holding the spinlock.
   uart()->enable_interrupt_index(UART_TOIT_INTR_TXFIFO_EMPTY);
 }
 
