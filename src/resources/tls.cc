@@ -672,7 +672,7 @@ PRIMITIVE(get_random) {
 // to avoid running into memory issues.
 static const int HANDSHAKE_CONCURRENCY = 1;
 #else
-static const int HANDSHAKE_CONCURRENCY = 2;
+static const int HANDSHAKE_CONCURRENCY = 16;
 #endif
 
 class TlsHandshakeToken;
@@ -683,7 +683,7 @@ typedef DoubleLinkedList<TlsHandshakeToken> TlsHandshakeTokenList;
 // can be at most HANDSHAKE_CONCURRENCY tokens with
 // a non-zero state. All zero state tokens are chained
 // together in a waiters list and get a non-zero state
-// one at a time as other token are released.
+// one at a time as other tokens are released.
 class TlsHandshakeToken : public Resource, public TlsHandshakeTokenList::Element {
  public:
   TAG(TlsHandshakeToken);
