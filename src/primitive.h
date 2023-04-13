@@ -298,6 +298,8 @@ namespace toit {
   PRIMITIVE(error, 2)                        \
   PRIMITIVE(get_internals, 1)                \
   PRIMITIVE(get_random, 1)                   \
+  PRIMITIVE(token_acquire, 1)                \
+  PRIMITIVE(token_release, 1)                \
 
 #define MODULE_WIFI(PRIMITIVE)               \
   PRIMITIVE(init, 1)                         \

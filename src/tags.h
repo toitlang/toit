@@ -60,6 +60,7 @@ namespace toit {
   fn(SubprocessResource)                \
   fn(PipeResource)                      \
   fn(AeadContext)                       \
+  fn(TlsHandshakeToken)                 \
 
 #define TLS_CLASSES_DO(fn)              \
   fn(MbedTlsSocket)                     \
