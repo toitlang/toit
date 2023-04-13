@@ -179,8 +179,29 @@ class Session:
 
     group_ = is_server ? tls_group_server_ : tls_group_client_
     handle := group_.use
-    tls_ = tls_create_ handle server_name_
     add_finalizer this:: this.close
+
+    // We allow the VM to prevent too many concurrent
+    // handshakes because they are very memory intensive.
+    // We acquire a token and we must wait until the
+    // token has a non-zero state before we are allowed
+    // to start the handshake process. When releasing
+    // the token, we notify the first waiter if any.
+    token := tls_token_acquire_ handle
+    state := null
+    try:
+      state = ResourceState_ handle token
+      state.wait
+      state.dispose
+      state = null
+      handshake_ handle --session_state=session_state
+    finally:
+      if state: state.dispose
+      tls_token_release_ token
+
+  handshake_ handle/ByteArray --session_state/ByteArray?=null -> none:
+    assert: tls_ == null
+    tls_ = tls_create_ handle server_name_
 
     root_certificates.do: tls_add_root_certificate_ tls_ it.res_
     if certificate:
@@ -291,16 +312,16 @@ class Session:
   /**
   Closes the TLS session and releases any resources associated with it.
   */
-  close:
+  close -> none:
     if tls_:
-      critical_do:
-        tls_close_ tls_
-        tls_ = null
-        group_.unuse
-        group_ = null
-        reader_.clear
-        outgoing_buffer_ = #[]
-        remove_finalizer this
+      tls_close_ tls_
+      tls_ = null
+      reader_.clear
+      outgoing_buffer_ = #[]
+    if group_:
+      group_.unuse
+      group_ = null
+      remove_finalizer this
     if reader_:
       reader_ = null
       writer_.close
@@ -667,6 +688,12 @@ byte_array_join_ arrays/List -> ByteArray:
     result.replace position it
     position += it.size
   return result
+
+tls_token_acquire_ group:
+  #primitive.tls.token_acquire
+
+tls_token_release_ token -> none:
+  #primitive.tls.token_release
 
 tls_init_ is_server/bool:
   #primitive.tls.init
