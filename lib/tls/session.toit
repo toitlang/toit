@@ -94,10 +94,9 @@ class Session:
   writer_ ::= ?
   server_name_/string? ::= null
 
-  // A latch until the handshake has completed.
-  handshake_in_progress_/monitor.Latch? := monitor.Latch
-  group_/TlsGroup_? := null
+  handshake_in_progress_/monitor.Latch? := null
   tls_ := null
+  tls_group_/TlsGroup_? := null
 
   outgoing_buffer_/ByteArray := #[]
   bytes_before_next_record_header_ := 0
@@ -171,38 +170,76 @@ class Session:
     operation will fall back to performing the full handshake.
   */
   handshake --session_state/ByteArray?=null -> none:
-    if tls_:
-      if not handshake_in_progress_: throw "TLS_ALREADY_HANDSHAKEN"
-      error := handshake_in_progress_.get
-      if error: throw error
+    if not reader_:
+      throw "ALREADY_CLOSED"
+    else if handshake_in_progress_:
+      handshake_in_progress_.get  // Throws if an exception was set.
       return
+    else if symmetric_session_ or tls_group_:
+      throw "TLS_ALREADY_HANDSHAKEN"
 
-    group_ = is_server ? tls_group_server_ : tls_group_client_
-    handle := group_.use
-    add_finalizer this:: this.close
+    handshake_in_progress_ = monitor.Latch
+    tls_group := is_server ? tls_group_server_ : tls_group_client_
 
-    // We allow the VM to prevent too many concurrent
-    // handshakes because they are very memory intensive.
-    // We acquire a token and we must wait until the
-    // token has a non-zero state before we are allowed
-    // to start the handshake process. When releasing
-    // the token, we notify the first waiter if any.
-    token := tls_token_acquire_ handle
-    state := null
+    token := null
+    token_state/monitor.ResourceState_? := null
+    tls := null
+    tls_state/monitor.ResourceState_? := null
+    close_resources := true
     try:
-      state = ResourceState_ handle token
-      state.wait
-      state.dispose
-      state = null
-      handshake_ handle --session_state=session_state
-    finally:
-      if state: state.dispose
-      tls_token_release_ token
+      group := tls_group.use
 
-  handshake_ handle/ByteArray --session_state/ByteArray?=null -> none:
-    assert: tls_ == null
-    tls_ = tls_create_ handle server_name_
+      // We allow the VM to prevent too many concurrent
+      // handshakes because they are very memory intensive.
+      // We acquire a token and we must wait until the
+      // token has a non-zero state before we are allowed
+      // to start the handshake process. When releasing
+      // the token, we notify the first waiter if any.
+      token = tls_token_acquire_ group
+      token_state = ResourceState_ group token
+      token_state.wait
+      token_state.dispose
+      token_state = null
 
+      tls = tls_create_ group server_name_
+      tls_state = monitor.ResourceState_ group tls
+      // TODO(kasper): It would be great to be able to set
+      // the field after the successful handshake, but a
+      // good chunk of methods use the field indirectly as
+      // part of completing the handshake.
+      tls_ = tls
+      handshake_ tls_state --session_state=session_state
+      close_resources = symmetric_session_ != null
+
+    finally: | is_exception exception |
+      if token_state: token_state.dispose
+      if tls_state: tls_state.dispose
+
+      if close_resources:
+        // We do not need the resources any more. Either
+        // because we're running in Toit mode using a
+        // symmetric session or because we failed to do
+        // the handshake.
+        if tls: tls_close_ tls
+        tls_group.unuse
+        tls_ = null
+      else:
+        // Delay the closing of the TLS group and resource
+        // until $close is called.
+        tls_group_ = tls_group
+        add_finalizer this:: close
+
+      // Release the handshake token if we managed to
+      // create the resource group.
+      if token: tls_token_release_ token
+
+      // Mark the handshake as no longer in progress and
+      // send back any
+      handshake_in_progress_.set (is_exception ? exception : null)
+          --exception=is_exception
+      handshake_in_progress_ = null
+
+  handshake_ tls_state/monitor.ResourceState_ --session_state/ByteArray?=null -> none:
     root_certificates.do: tls_add_root_certificate_ tls_ it.res_
     if certificate:
       tls_add_certificate_ tls_ certificate.certificate.res_ certificate.private_key certificate.password
@@ -211,36 +248,22 @@ class Session:
       list := tison.decode session_state
       // TODO: Handshake without MbedTLS.
 
-    resource_state := monitor.ResourceState_ handle tls_
-    try:
-      while true:
-        tls_handshake_ tls_
-        state := resource_state.wait
-        resource_state.clear_state state
+    while true:
+      tls_handshake_ tls_
+      state := tls_state.wait
+      tls_state.clear_state state
+      with_timeout handshake_timeout:
+        flush_outgoing_
+      if state == TOIT_TLS_DONE_:
+        extract_key_data_
+        return  // Connected.
+      else if state == TOIT_TLS_WANT_READ_:
         with_timeout handshake_timeout:
-          flush_outgoing_
-        if state == TOIT_TLS_DONE_:
-          extract_key_data_
-          if symmetric_session_ != null:
-            // We don't use MbedTLS any more.
-            tls_close_ tls_
-            tls_ = null
-            group_.unuse
-            group_ = null
-          // Connected.
-          return
-        else if state == TOIT_TLS_WANT_READ_:
-          with_timeout handshake_timeout:
-            read_handshake_message_
-        else if state == TOIT_TLS_WANT_WRITE_:
-          // This is already handled above with flush_outgoing_
-        else:
-          tls_error_ handle state
-    finally: | is_exception exception |
-      value := is_exception ? exception.value : null
-      handshake_in_progress_.set value
-      handshake_in_progress_ = null
-      resource_state.dispose
+          read_handshake_message_
+      else if state == TOIT_TLS_WANT_WRITE_:
+        // This is already handled above with flush_outgoing_
+      else:
+        tls_error_ tls_state.group state
 
   extract_key_data_ -> none:
     if reads_encrypted_ and writes_encrypted_:
@@ -316,11 +339,10 @@ class Session:
     if tls_:
       tls_close_ tls_
       tls_ = null
+      tls_group_.unuse
+      tls_group_ = null
       reader_.clear
       outgoing_buffer_ = #[]
-    if group_:
-      group_.unuse
-      group_ = null
       remove_finalizer this
     if reader_:
       reader_ = null
@@ -328,9 +350,14 @@ class Session:
     if unbuffered_reader_:
       unbuffered_reader_.close
       unbuffered_reader_ = null
+    symmetric_session_ = null
 
   ensure_handshaken_:
-    if not handshake_in_progress_: return
+    // TODO(kasper): It is a bit unfortunate that the $tls_ field
+    // is set while we're doing the handshaking. Because of that
+    // we have to check that $handshake_in_progress_ is null
+    // before we can conclude that we're already handshaken.
+    if symmetric_session_ or (tls_ and not handshake_in_progress_): return
     handshake
 
   // This takes any data that the MbedTLS callback has deposited in the

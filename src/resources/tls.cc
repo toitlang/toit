@@ -672,7 +672,7 @@ PRIMITIVE(get_random) {
 // to avoid running into memory issues.
 static const int HANDSHAKE_CONCURRENCY = 1;
 #else
-static const int HANDSHAKE_CONCURRENCY = 1;
+static const int HANDSHAKE_CONCURRENCY = 2;
 #endif
 
 class TlsHandshakeToken;
@@ -700,7 +700,7 @@ class TlsHandshakeToken : public Resource, public TlsHandshakeTokenList::Element
     TlsHandshakeToken* token = release();
     if (token) {
       ASSERT(token != this);
-      EventSource* source = resource_group()->event_source();
+      EventSource* source = token->resource_group()->event_source();
       source->set_state(token, 1);
     }
   }
@@ -723,7 +723,10 @@ class TlsHandshakeToken : public Resource, public TlsHandshakeTokenList::Element
 
   TlsHandshakeToken* release() {
     Locker locker(OS::global_mutex());
-    if (waiters.is_empty()) {
+    if (waiters.is_linked(this)) {
+      waiters.unlink(this);
+      return null;
+    } else if (waiters.is_empty()) {
       count++;
       return null;
     } else {
