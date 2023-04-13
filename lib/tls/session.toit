@@ -234,7 +234,8 @@ class Session:
       if token: tls_token_release_ token
 
       // Mark the handshake as no longer in progress and
-      // send back any
+      // send back any exception to whoever may be waiting
+      // for the handshake to complete.
       handshake_in_progress_.set (is_exception ? exception : null)
           --exception=is_exception
       handshake_in_progress_ = null
