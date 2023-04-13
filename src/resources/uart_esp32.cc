@@ -113,7 +113,6 @@ class RxTxBuffer {
   void return_buffer(uint8* buffer) const { vRingbufferReturnItem(ring_buffer(), buffer); }
 
   UART_ISR_INLINE uword free_size_isr();
-  UART_ISR_INLINE bool is_empty_isr() { return free_size_isr() == ring_buffer_size_; }
   UART_ISR_INLINE void return_buffer_isr(uint8* buffer) const;
 
   UART_ISR_INLINE RingbufHandle_t ring_buffer() const { return ring_buffer_; }
@@ -147,8 +146,6 @@ class TxBuffer : public RxTxBuffer {
  private:
   spinlock_t spinlock_{};
   TxTransferHeader transfer_header_{};
-
-  UART_ISR_INLINE void handle_empty_isr(const IsrSpinLocker& locker);
 };
 
 class RxBuffer : public RxTxBuffer {
@@ -289,8 +286,8 @@ UART_ISR_INLINE uword RxTxBuffer::free_size_isr() {
 
   UBaseType_t uxRingbufferFlags = pxRingbuffer->uxDummy2;
   if ((uxRingbufferFlags & rbBUFFER_FULL_FLAG) == 0) {
-    uint8* pucAcquire = static_cast<uint8*>(pxRingbuffer->pvDummy4[5]);
-    uint8* pucFree = static_cast<uint8*>(pxRingbuffer->pvDummy4[8]);
+    uint8* pucAcquire = static_cast<uint8*>(pxRingbuffer->pvDummy4[4]);
+    uint8* pucFree = static_cast<uint8*>(pxRingbuffer->pvDummy4[7]);
     BaseType_t xFreeSize = pucFree - pucAcquire;
     if (xFreeSize <= 0) {
       size_t xSize = pxRingbuffer->xDummy1[0];
@@ -327,54 +324,47 @@ void TxBuffer::write(const uint8* buffer, uint16 length, uint8 break_length) {
   uart()->enable_interrupt_index(UART_TOIT_INTR_TXFIFO_EMPTY);
 }
 
-UART_ISR_INLINE void TxBuffer::handle_empty_isr(const IsrSpinLocker& locker) {
-  uint8 break_length = transfer_header_.break_length_;
-  transfer_header_.break_length_ = 0; //  To avoid it being read again and the break continuing...
-
-  UartResource* uart = this->uart();
-  if (break_length != 0) {
-    uart->enable_interrupt_index_isr(UART_TOIT_INTR_TX_BRK_DONE);
-    uart->tx_break(break_length);
-    uart->disable_interrupt_index_isr(UART_TOIT_INTR_TXFIFO_EMPTY);
-  } else if (is_empty_isr()) {
-    uart->disable_interrupt_index_isr(UART_TOIT_INTR_TXFIFO_EMPTY);
-  }
-}
-
 UART_ISR_INLINE uint8* TxBuffer::read_isr(uword* received, uword max_length) {
   IsrSpinLocker locker(&spinlock_);
 
-  if (transfer_header_.remaining_data_length_ == 0 && transfer_header_.break_length_ == 0) {
-    // No more data in the latest package. Need to read header.
-    uword header_received;
-    uword read = 0;
+  UartResource* uart = this->uart();
+  while (true) {
+    uword remaining_data_length = transfer_header_.remaining_data_length_;
+    if (remaining_data_length > 0) {
+      uword requested = Utils::min(max_length, remaining_data_length);
+      auto buffer = static_cast<uint8*>(xRingbufferReceiveUpToFromISR(ring_buffer(), received, requested));
+      transfer_header_.remaining_data_length_ = remaining_data_length - *received;
+      return buffer;
+    }
+
+    uint8 break_length = transfer_header_.break_length_;
+    if (break_length > 0) {
+      uart->enable_interrupt_index_isr(UART_TOIT_INTR_TX_BRK_DONE);
+      uart->tx_break(break_length);
+      uart->disable_interrupt_index_isr(UART_TOIT_INTR_TXFIFO_EMPTY);
+      transfer_header_.break_length_ = 0; // To avoid it being read again and the break continuing...
+      return null;
+    }
+
+    // No more data in the latest packet. Need to read header.
+    uword header_remaining = sizeof(TxTransferHeader);
     do {
       // As the header is multiple bytes, it could be split over the edge of the ring buffer.
-      void* header_data = xRingbufferReceiveUpToFromISR(ring_buffer(), &header_received, sizeof(TxTransferHeader) - read);
+      uword header_received;
+      void* header_data = xRingbufferReceiveUpToFromISR(ring_buffer(), &header_received, header_remaining);
       if (!header_data) {
-        // TxBuffer is empty.
-        handle_empty_isr(locker);
+        // TxBuffer is empty. Reset any already read state.
+        memset(&transfer_header_, 0, sizeof(TxTransferHeader));
+        uart->disable_interrupt_index_isr(UART_TOIT_INTR_TXFIFO_EMPTY);
         return null;
       }
-      memcpy(reinterpret_cast<uint8*>(&transfer_header_) + read, header_data, header_received);
+      uword offset = sizeof(TxTransferHeader) - header_remaining;
+      memcpy(reinterpret_cast<uint8*>(&transfer_header_) + offset, header_data, header_received);
       // No blocking calls ever on TxBuffer, so ignore last parameter.
       vRingbufferReturnItemFromISR(ring_buffer(), header_data, null);
-      read += header_received;
-    } while (read < sizeof(TxTransferHeader));
+      header_remaining -= header_received;
+    } while (header_remaining > 0);
   }
-
-  uword maximum_to_receive = Utils::min(max_length, static_cast<uword>(transfer_header_.remaining_data_length_));
-
-  if (maximum_to_receive == 0) {
-    // TODO(kasper): What does this mean? The payload is empty? Do
-    // we need to handle this as a case where the TxBuffer is empty?
-    handle_empty_isr(locker);
-    return null;
-  }
-
-  auto buffer = static_cast<uint8*>(xRingbufferReceiveUpToFromISR(ring_buffer(), received, maximum_to_receive));
-  transfer_header_.remaining_data_length_ -= *received;
-  return buffer;
 }
 
 uword TxBuffer::free_size_minus_header() const {
@@ -593,7 +583,6 @@ UART_ISR_INLINE void UartResource::send_event_to_queue_isr(uart_event_types_t ev
   if (xQueueSendToBackFromISR(queue(), &event, hp_task_awoken) != pdTRUE) {
     esp_rom_printf("[uart] warning: event queue is full\n");
   }
-
 }
 
 void UartResource::clear_data_event_in_queue() {
