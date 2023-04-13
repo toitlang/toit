@@ -17,6 +17,7 @@ test_site host/string -> none:
   socket := tls.Socket.client raw
     // Install the roots needed.
     --root_certificates=[BALTIMORE_CYBERTRUST_ROOT, GLOBALSIGN_ROOT_CA, DIGICERT_GLOBAL_ROOT_G2]
+    --server_name=host
 
   socket.handshake
 
@@ -33,6 +34,7 @@ test_site host/string -> none:
 
   // Don't need root certs for a resume.
   socket2 := tls.Socket.client raw2
+    --server_name=host
 
   // Put the session state from the last connection on it.
   socket2.session_.session_state = session

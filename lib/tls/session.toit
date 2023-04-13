@@ -36,7 +36,8 @@ APPLICATION_DATA_ ::= 23
 ALERT_WARNING_ ::= 1
 ALERT_FATAL_ ::= 2
 
-RECORD_HEADER_SIZE_    ::= 5
+RECORD_HEADER_SIZE_ ::= 5
+CLIENT_RANDOM_SIZE_ ::= 32
 
 EXTENSION_SERVER_NAME_ ::= 0
 EXTENSION_SESSION_TICKET_ ::= 35
@@ -552,18 +553,19 @@ class ToitHandshake_:
     session_ticket_ = list[1]
     master_secret_ = list[2]
     cipher_suite_ = CipherSuite_ list[3]
-    client_random_ = ByteArray 32
+    client_random_ = ByteArray CLIENT_RANDOM_SIZE_
     tls_get_random_ client_random_
 
-  static CLIENT_HELLO_TEMPLATE_ ::= #[
+  static CLIENT_HELLO_TEMPLATE_1_ ::= #[
       22,          // Record type: HANDSHAKE_
       3, 1,        // TLS 1.0 - see comment at https://tls12.xargs.org/#client-hello/annotated
       0, 0,        // Record header size will be filled in here.
       1,           // CLIENT_HELLO_.
       0, 0, 0,     // Message size will be filled in here.
       3, 3,        // TLS 1.2.
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // Client random.
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // Overwritten below.
+  ]
+
+  static CLIENT_HELLO_TEMPLATE_2_ ::= #[
       0, 2,        // Cipher suites size.
       0, 0,        // Cipher suite is filled in here.
       1,           // Compression methods length.
@@ -693,18 +695,22 @@ class ToitHandshake_:
       throw "TLS_HANDSHAKE_FAILED"
 
   client_hello_packet_ -> ByteArray:
-    client_hello := ByteArray 100 + session_ticket_.size
-    client_hello.replace 0 CLIENT_HELLO_TEMPLATE_
-    client_hello.replace 11 client_random_
-    BIG_ENDIAN.put_uint16 client_hello 50 cipher_suite_.id
-    index := CLIENT_HELLO_TEMPLATE_.size
+    client_hello := ByteArray 140 + session_ticket_.size
+    client_hello.replace 0 CLIENT_HELLO_TEMPLATE_1_
+    index := CLIENT_HELLO_TEMPLATE_1_.size
+    client_hello.replace index client_random_
+    index += CLIENT_RANDOM_SIZE_
     client_hello[index++] = session_id_.size  // Session ID length.
     client_hello.replace index session_id_
     index += session_id_.size
+    client_hello.replace index CLIENT_HELLO_TEMPLATE_2_
+    BIG_ENDIAN.put_uint16 client_hello (index + 2) cipher_suite_.id
+    index += CLIENT_HELLO_TEMPLATE_2_.size
 
     // Build the extensions.
     extensions := []
     add_name_extension_ extensions
+    add_elliptic_curves_extension_ extensions
     add_session_ticket_extension_ extensions
 
     // Write extensions size.
@@ -718,7 +724,6 @@ class ToitHandshake_:
     // Update size of record and message.
     BIG_ENDIAN.put_uint16 client_hello 3 index - 5
     BIG_ENDIAN.put_uint24 client_hello 6 index - 9
-    print "Client hello size $index: $client_hello[..index]"
     return client_hello[..index]
 
   // We normally supply the hostname because multiple HTTPS servers can be on
@@ -733,11 +738,23 @@ class ToitHandshake_:
       name_extension.replace 9 hostname
       extensions.add name_extension
 
+  add_elliptic_curves_extension_ extensions/List -> none:
+    // We don't actually have the ability to do elliptic curves in the pure
+    // Toit handshake, but if we don't include this, our client hello is
+    // rejected.  Just use the curves from "The illustrated TLS connection" for
+    // now.
+    // Elliptic curve supported groups supported.
+    extensions.add #[0x00, 0x0a, 0x00, 0x0a, 0x00, 0x08, 0x00, 0x1d, 0x00, 0x17, 0x00, 0x18, 0x00, 0x19]
+    // Elliptic curve point formats supported.
+    extensions.add #[0x00, 0x0b, 0x00, 0x02, 0x01, 0x00]
+    // Signature algorithms supported.
+    extensions.add #[0x00, 0x0d, 0x00, 0x12, 0x00, 0x10, 0x04, 0x01, 0x04, 0x03, 0x05, 0x01, 0x05, 0x03, 0x06, 0x01, 0x06, 0x03, 0x02, 0x01, 0x02, 0x03]
+
   add_session_ticket_extension_ extensions/List -> none:
     // If we have a ticket instead of a session ID, use that.
     // If we don't have a ticket we could send an empty ticket
     // extension to indicate we want a ticket for next time, but
-    // we have not implemented that yet.
+    // we have not implemented that yet. From RFC 5077.
     if session_ticket_.size != 0:
       ticket_extension := ByteArray session_ticket_.size + 4
       ticket_extension[1] = EXTENSION_SESSION_TICKET_
@@ -755,6 +772,7 @@ class ServerHello_:
     if packet[0] != HANDSHAKE_ or packet[5] != SERVER_HELLO_:
       if packet[0] == ALERT_:
         print "Alert: $(packet[5] == 2 ? "fatal" : "warning") $(packet[6])"
+        print "See https://www.rfc-editor.org/rfc/rfc4346#section-7.2"
       throw "PROTOCOL_ERROR"
     message_size := BIG_ENDIAN.uint24 packet 6
     assert:
