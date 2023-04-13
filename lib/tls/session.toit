@@ -741,25 +741,36 @@ class ToitHandshake_:
   add_elliptic_curves_extension_ extensions/List -> none:
     // We don't actually have the ability to do elliptic curves in the pure
     // Toit handshake, but if we don't include this, our client hello is
-    // rejected.  Just use the curves from "The illustrated TLS connection" for
-    // now.
-    // Elliptic curve supported groups supported.
-    extensions.add #[0x00, 0x0a, 0x00, 0x0a, 0x00, 0x08, 0x00, 0x1d, 0x00, 0x17, 0x00, 0x18, 0x00, 0x19]
+    // rejected.
+    // Elliptic curve supported groups supported - numbers from
+    // https://www.ietf.org/rfc/rfc8422.html#section-5.1.1
+    extensions.add #[
+        0x00, 0x0a,  // 0x0a = elliptic curves extension.
+        0x00, 0x0a,  // 10 bytes of extension data follow.
+        0x00, 0x08,  // 8 bytes of data in the curve list.
+        0x00, 0x1d,  // x25519.
+        0x00, 0x17,  // secp256r1.
+        0x00, 0x18,  // secp384r1
+        0x00, 0x19,  // secp521r1
+    ]
+    // For the other extensions, we just use the curves from "The illustrated
+    // TLS connection" for now.
     // Elliptic curve point formats supported.
     extensions.add #[0x00, 0x0b, 0x00, 0x02, 0x01, 0x00]
     // Signature algorithms supported.
     extensions.add #[0x00, 0x0d, 0x00, 0x12, 0x00, 0x10, 0x04, 0x01, 0x04, 0x03, 0x05, 0x01, 0x05, 0x03, 0x06, 0x01, 0x06, 0x03, 0x02, 0x01, 0x02, 0x03]
 
   add_session_ticket_extension_ extensions/List -> none:
-    // If we have a ticket instead of a session ID, use that.
-    // If we don't have a ticket we could send an empty ticket
-    // extension to indicate we want a ticket for next time, but
-    // we have not implemented that yet. From RFC 5077.
+    // If we have a ticket instead of a session ID, use that.  If we don't have
+    // a ticket we could send an empty ticket extension to indicate we want a
+    // ticket for next time, but we have not implemented that yet. From RFC
+    // 5077 appendix A.
     if session_ticket_.size != 0:
       ticket_extension := ByteArray session_ticket_.size + 4
       ticket_extension[1] = EXTENSION_SESSION_TICKET_
-      ticket_extension[3] = session_ticket_.size
+      BIG_ENDIAN.put_uint16 ticket_extension 2 session_ticket_.size
       ticket_extension.replace 4 session_ticket_
+      print "Ticket Extension size $ticket_extension.size: $ticket_extension"
       extensions.add ticket_extension
 
 class ServerHello_:
@@ -769,6 +780,7 @@ class ServerHello_:
   cipher_suite /int
 
   constructor packet/ByteArray:
+    print "Server hello size $packet.size: $packet"
     if packet[0] != HANDSHAKE_ or packet[5] != SERVER_HELLO_:
       if packet[0] == ALERT_:
         print "Alert: $(packet[5] == 2 ? "fatal" : "warning") $(packet[6])"
@@ -785,17 +797,19 @@ class ServerHello_:
     cipher_suite = BIG_ENDIAN.uint16 packet index
     compression_method := packet[index + 2]
     if compression_method != 0: throw "PROTOCOL_ERROR"  // Compression not supported.
-    extensions_length := BIG_ENDIAN.uint16 packet index + 3
-    index += 5
+    index += 3
     extensions = {:}
-    while extensions_length < 0:
-      extension_type := BIG_ENDIAN.uint16 packet index
-      extension_length := BIG_ENDIAN.uint16 packet index + 2
-      extension := packet[index + 4..index + 4 + extension_length]
-      extensions[extension_type] = extension
-      index += 4 + extension_length
-      extensions_length -= 4 + extension_length
-    if index != message_size: throw "PROTOCOL_ERROR"
+    if index != packet.size:
+      extensions_length := BIG_ENDIAN.uint16 packet index
+      index += 2
+      while extensions_length < 0:
+        extension_type := BIG_ENDIAN.uint16 packet index
+        extension_length := BIG_ENDIAN.uint16 packet index + 2
+        extension := packet[index + 4..index + 4 + extension_length]
+        extensions[extension_type] = extension
+        index += 4 + extension_length
+        extensions_length -= 4 + extension_length
+    if index != packet.size: throw "PROTOCOL_ERROR"
 
 class SymmetricSession_:
   write_keys /KeyData_
