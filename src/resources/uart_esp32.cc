@@ -203,10 +203,16 @@ public:
   }
 
   UART_ISR_INLINE void disable_interrupt_mask(uint32 mask)  {
+    // Disabling interrupts reads and writes the mask, so we must
+    // do this in a critical region to ensure consistency.
+    SpinLocker locker(&spinlock_);
     uart_toit_hal_disable_intr_mask(hal_, mask);
   }
 
   UART_ISR_INLINE void enable_interrupt_mask(uint32 mask) {
+    // Enabling interrupts reads and writes the mask, so we must
+    // do this in a critical region to ensure consistency.
+    SpinLocker locker(&spinlock_);
     uart_toit_hal_ena_intr_mask(hal_, mask);
   }
 
