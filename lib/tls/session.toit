@@ -252,6 +252,7 @@ class Session:
     if reads_encrypted_ and writes_encrypted_:
       key_data /List? := tls_get_internals_ tls_
       session_state = tison.encode key_data[5..9]
+      print "Session id: $key_data[5].size bytes, session ticket: $key_data[6].size bytes, master secret: $key_data[7].size bytes"
       if key_data != null:
         write_key_data := KeyData_ --key=key_data[1] --iv=key_data[3] --algorithm=key_data[0]
         read_key_data := KeyData_ --key=key_data[2] --iv=key_data[4] --algorithm=key_data[0]
@@ -695,7 +696,7 @@ class ToitHandshake_:
       throw "TLS_HANDSHAKE_FAILED"
 
   client_hello_packet_ -> ByteArray:
-    client_hello := ByteArray 140 + session_ticket_.size
+    client_hello := ByteArray 170 + session_ticket_.size
     client_hello.replace 0 CLIENT_HELLO_TEMPLATE_1_
     index := CLIENT_HELLO_TEMPLATE_1_.size
     client_hello.replace index client_random_
@@ -770,6 +771,7 @@ class ToitHandshake_:
       ticket_extension[1] = EXTENSION_SESSION_TICKET_
       BIG_ENDIAN.put_uint16 ticket_extension 2 session_ticket_.size
       ticket_extension.replace 4 session_ticket_
+      //ticket_extension[0] = 42
       print "Ticket Extension size $ticket_extension.size: $ticket_extension"
       extensions.add ticket_extension
 
@@ -791,6 +793,13 @@ class ServerHello_:
       record_size := BIG_ENDIAN.uint16 packet 3
       record_size == message_size + 4  // Last line is value being asserted.
     random = packet[11..43]
+    str := ""
+    for i := random.size - 8; i < random.size; i++:
+      if ' ' <= random[i] <= '~':
+        str += "$(%c random[i])"
+      else:
+        break
+    print "Server random: '$str' $random"
     server_session_id_length := packet[43]
     index := 44 + server_session_id_length
     session_id = packet[44..index]
@@ -802,7 +811,7 @@ class ServerHello_:
     if index != packet.size:
       extensions_length := BIG_ENDIAN.uint16 packet index
       index += 2
-      while extensions_length < 0:
+      while extensions_length > 0:
         extension_type := BIG_ENDIAN.uint16 packet index
         extension_length := BIG_ENDIAN.uint16 packet index + 2
         extension := packet[index + 4..index + 4 + extension_length]

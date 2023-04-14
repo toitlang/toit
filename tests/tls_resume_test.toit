@@ -8,7 +8,7 @@ import net.x509 as net
 import writer
 
 main:
-  test_site "www.supabase.com"
+  test_site "amazon.com"
 
 test_site host/string -> none:
   port := 443
@@ -26,6 +26,9 @@ test_site host/string -> none:
   print "Session data: $session"
 
   socket.close
+  raw.close
+
+  sleep --ms=100
 
   // Now try to connect again, using the session data.
 
