@@ -60,6 +60,7 @@ class KeyData_:
 
   // Algorithm is one of ALGORITHM_AES_GCM or ALGORITHM_CHACHA20_POLY1305.
   constructor --.key --.iv --.algorithm/int:
+    iv += ByteArray (12 - iv.size)
 
   next_sequence_number -> ByteArray:
     result := ByteArray 8
@@ -660,8 +661,8 @@ class ToitHandshake_:
         --seed=(server_hello.random + client_random_)
         cipher_suite_.hmac_hasher
     partition := partition_byte_array_ key_data [key_size, key_size, iv_size, iv_size]
-    write_key := KeyData_ --key=partition[0] --iv=partition[1] --algorithm=cipher_suite_.algorithm
-    read_key := KeyData_ --key=partition[2] --iv=partition[2] --algorithm=cipher_suite_.algorithm
+    write_key := KeyData_ --key=partition[0] --iv=partition[2] --algorithm=cipher_suite_.algorithm
+    read_key := KeyData_ --key=partition[1] --iv=partition[3] --algorithm=cipher_suite_.algorithm
     sent = session_.writer_.write CHANGE_CIPHER_SPEC_TEMPLATE_
     assert: sent == CHANGE_CIPHER_SPEC_TEMPLATE_.size
     peer_change_message := session_.extract_first_message_
@@ -1016,9 +1017,9 @@ Given a byte array and a list of sizes, partitions the byte array into
 */
 partition_byte_array_ bytes/ByteArray sizes/List -> List:
   index := 0
-  return List sizes.size:
+  return sizes.map:
     index += it
-    bytes[index - it..index]
+    bytes[index - it .. index]
 
 tls_init_ is_server/bool:
   #primitive.tls.init
