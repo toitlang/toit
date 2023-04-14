@@ -25,7 +25,6 @@
 #include "esp_rom_gpio.h"
 #include "driver/periph_ctrl.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/ringbuf.h"
 
 #include "../objects_inline.h"
 #include "../resource_pool.h"
