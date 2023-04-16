@@ -28,6 +28,8 @@ CERTIFICATE_REQUEST_ ::= 13
 SERVER_HELLO_DONE_ ::= 14
 CERTIFICATE_VERIFY_ ::= 15
 CLIENT_KEY_EXCHANGE_ ::= 16
+FINISHED_ ::= 20
+
 CHANGE_CIPHER_SPEC_ ::= 20
 ALERT_ ::= 21
 HANDSHAKE_ ::= 22
@@ -582,13 +584,16 @@ class ToitHandshake_:
   ]
 
   handshake -> none:
-    handshake_hasher /checksum.Checksum := cipher_suite_.hmac_hasher.call
+    handshake_hasher_client /checksum.Checksum := cipher_suite_.hmac_hasher.call
+    handshake_hasher_server /checksum.Checksum := cipher_suite_.hmac_hasher.call
     hello := client_hello_packet_
-    handshake_hasher.add hello[5..]
+    handshake_hasher_client.add hello[5..]
+    handshake_hasher_server.add hello[5..]
     sent := session_.writer_.write hello
     assert: sent == hello.size
     server_hello_packet := session_.extract_first_message_
-    handshake_hasher.add server_hello_packet[5..]
+    handshake_hasher_client.add server_hello_packet[5..]
+    handshake_hasher_server.add server_hello_packet[5..]
     server_hello := ServerHello_ server_hello_packet
 
     // Session IDs are handled in RFC 4346.  Session tickets are in RFC 5077.
@@ -646,7 +651,8 @@ class ToitHandshake_:
         // RFC 5077, figure 4.
         throw "RESUME_FAILED"  // TLS session ticket rejected.
       // TODO: We should save the ticket for a third connection.
-      handshake_hasher.add next_server_packet[5..]
+      handshake_hasher_client.add next_server_packet[5..]
+      handshake_hasher_server.add next_server_packet[5..]
       // RFC 5077, figure 2.  The peer accepted our ticket.
     // Either the peer accepted our session ID or our ticket.
     // Generate new keys in a shortened handshake.
@@ -668,33 +674,45 @@ class ToitHandshake_:
     peer_change_message := session_.extract_first_message_
     if peer_change_message.size != 6 or peer_change_message[0] != CHANGE_CIPHER_SPEC_ or peer_change_message[5] != 1:
       throw "Peer did not accept change cipher spec"
-    handshake_hash := handshake_hasher.get
-    client_finished := pseudo_random_function_ 12
-        --block_size=cipher_suite_.hmac_block_size
-        --secret=master_secret_
-        --label="client finished"
-        --seed=handshake_hash
-        cipher_suite_.hmac_hasher
+    server_handshake_hash := handshake_hasher_server.get
+    // https://www.rfc-editor.org/rfc/rfc5246#section-7.4.9
     server_finished_expected := pseudo_random_function_ 12
         --block_size=cipher_suite_.hmac_block_size
         --secret=master_secret_
         --label="server finished"
-        --seed=handshake_hash
+        --seed=server_handshake_hash
+        cipher_suite_.hmac_hasher
+    server_finished_expected = #[FINISHED_, 0x00, 0x00, server_finished_expected.size] + server_finished_expected
+    // The client message hash includes the server handshake message.
+    // We know what that message is going to be, so we can add it before
+    // we receive it.
+    handshake_hasher_client.add server_finished_expected
+    client_handshake_hash := handshake_hasher_client.get
+    // The client finished messages includes the hash of the server's.
+    client_finished := pseudo_random_function_ 12
+        --block_size=cipher_suite_.hmac_block_size
+        --secret=master_secret_
+        --label="client finished"
+        --seed=client_handshake_hash
         cipher_suite_.hmac_hasher
     set_up_session_ write_key read_key client_finished server_finished_expected
 
   set_up_session_ write_key/KeyData_ read_key/KeyData_ client_finished/ByteArray server_finished_expected/ByteArray -> none:
+    // Add message header - 1 byte for type, 3 bytes for length.
+    client_finished = #[FINISHED_, 0x00, 0x00, client_finished.size] + client_finished
+    server_finished_expected = #[FINISHED_, 0x00, 0x00, server_finished_expected.size] + server_finished_expected
     session_.reads_encrypted_ = true
     session_.writes_encrypted_ = true
     symmetric_session :=
         SymmetricSession_ session_ session_.writer_ session_.reader_ write_key read_key
     session_.symmetric_session_ = symmetric_session
-    // Send the client finished message.  This assumes we are the client.
-    symmetric_session.write client_finished 0 client_finished.size --type=HANDSHAKE_
     // Get the server finished message.  This assumes we are the client.
     server_finished := symmetric_session.read --expected_type=HANDSHAKE_
+    print "server_finished: $server_finished"
     if not compare_byte_arrays_ server_finished_expected server_finished:
       throw "TLS_HANDSHAKE_FAILED"
+    // Send the client finished message.  This assumes we are the client.
+    symmetric_session.write client_finished 0 client_finished.size --type=HANDSHAKE_
 
   client_hello_packet_ -> ByteArray:
     client_hello := ByteArray 170 + session_ticket_.size
@@ -895,7 +913,9 @@ class SymmetricSession_:
   read_ expected_type/int -> ByteArray?:
     while true:
       if buffered_plaintext_index_ != buffered_plaintext_.size:
-        return buffered_plaintext_[buffered_plaintext_index_++]
+        result := buffered_plaintext_[buffered_plaintext_index_]
+        buffered_plaintext_[buffered_plaintext_index_++] = null  // Allow GC.
+        return result
       if not reader_.can_ensure 1:
         return null
       bytes := reader_.read_bytes RECORD_HEADER_SIZE_
@@ -941,6 +961,7 @@ class SymmetricSession_:
       if record_header.type == ALERT_:
         alert_data := byte_array_join_ buffered_plaintext
         if alert_data[0] != ALERT_WARNING_:
+          print "See https://www.rfc-editor.org/rfc/rfc4346#section-7.2"
           throw "Fatal TLS alert: $alert_data[1]"
       if record_header.type == APPLICATION_DATA_:
         buffered_plaintext_ = buffered_plaintext
