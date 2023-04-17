@@ -159,7 +159,6 @@ public:
       , rx_buffer_(rx_buffer_data, rx_buffer_size)
       , tx_buffer_(tx_buffer_data, tx_buffer_size) {
     spinlock_initialize(&spinlock_);
-    initialize();
   }
 
   ~UartResource() override;
@@ -170,7 +169,9 @@ public:
   UART_ISR_INLINE RxBuffer* rx_buffer() { return &rx_buffer_; }
   UART_ISR_INLINE TxBuffer* tx_buffer() { return &tx_buffer_; }
 
+  void initialize();
   void enable(intr_handle_t handle);
+
   bool receive_event(word* data) override;
   void clear_data_event_in_queue();
   void clear_tx_event_in_queue();
@@ -237,8 +238,6 @@ public:
   UART_ISR_INLINE uart_event_types_t handle_write_isr();
   UART_ISR_INLINE uart_event_types_t handle_read_isr();
   UART_ISR_INLINE void send_event_to_queue_isr(uart_event_types_t event, int* hp_task_awoken);
-
-  void initialize();
 
   const uart_port_t port_;
   const uart_hal_handle_t hal_;
@@ -769,8 +768,8 @@ PRIMITIVE(create) {
   init.hardware_initialized = true;
 
   uart_toit_hal_set_sclk(init.hal, UART_SCLK_APB);
-  uart_toit_hal_set_mode(init.hal, static_cast<uart_mode_t>(mode));
   init.uart->set_baud_rate(baud_rate);
+  uart_toit_hal_set_mode(init.hal, static_cast<uart_mode_t>(mode));
 
   uart_parity_t uart_parity;
   switch (parity) {
@@ -794,8 +793,8 @@ PRIMITIVE(create) {
 
   int flow_ctrl = 0;
   if (mode == UART_MODE_UART) {
-    if (rts != -1) flow_ctrl |= UART_HW_FLOWCTRL_RTS;
-    if (cts != -1) flow_ctrl |= UART_HW_FLOWCTRL_CTS;
+    if (rts != -1) flow_ctrl += UART_HW_FLOWCTRL_RTS;
+    if (cts != -1) flow_ctrl += UART_HW_FLOWCTRL_CTS;
   }
   uart_toit_hal_set_hw_flow_ctrl(init.hal, static_cast<uart_hw_flowcontrol_t>(flow_ctrl), 122);
 
@@ -812,6 +811,8 @@ PRIMITIVE(create) {
   uart_toit_hal_set_rxfifo_full_thr(init.hal, full_interrupt_threshold);
   uart_toit_hal_set_txfifo_empty_thr(init.hal, 10);
   uart_toit_hal_set_rx_timeout(init.hal, 10);
+
+  init.uart->initialize();
 
   struct {
     intr_handle_t intr_handle;
@@ -886,7 +887,7 @@ PRIMITIVE(wait_tx) {
   ARGS(UartResource, uart)
 
   TxBuffer* buffer = uart->tx_buffer();
-  if (buffer->is_empty()) return BOOL(false);
+  if (!buffer->is_empty()) return BOOL(false);
   uart->drain_tx_fifo();
   return BOOL(true);
 }
@@ -902,11 +903,12 @@ PRIMITIVE(read) {
   // all the data in a potentially rather large external byte array.
   // For reads from TCP sockets, we chunk it up instead and prefer
   // to return multiple smaller byte arrays.
-  ByteArray* data = process->allocate_byte_array(available);
+  uword consumed = Utils::min(500U, available);
+  ByteArray* data = process->allocate_byte_array(consumed);
   if (data == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes rx(data);
-  buffer->read(uart, rx.address(), available);
+  buffer->read(uart, rx.address(), consumed);
   return data;
 }
 
@@ -921,4 +923,3 @@ PRIMITIVE(get_control_flags) {
 } // namespace toit
 
 #endif // TOIT_FREERTOS
-
