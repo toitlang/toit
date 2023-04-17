@@ -608,7 +608,9 @@ class SymmetricSession_:
   read_ -> ByteArray?:
     while true:
       if buffered_plaintext_index_ != buffered_plaintext_.size:
-        return buffered_plaintext_[buffered_plaintext_index_++]
+        result := buffered_plaintext_[buffered_plaintext_index_]
+        buffered_plaintext_[buffered_plaintext_index_++] = null  // Allow GC.
+        return result
       if not reader_.can_ensure 1:
         return null
       bytes := reader_.read_bytes RECORD_HEADER_SIZE_
