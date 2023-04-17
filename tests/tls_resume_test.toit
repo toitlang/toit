@@ -2,6 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import encoding.tison
 import tls
 import .tcp as tcp
 import net.x509 as net
@@ -23,7 +24,9 @@ test_site host/string -> none:
 
   print "Handshake complete to $host"
   session := socket.session_.session_state
-  print "Session data: $session"
+  print "Got $session.size bytes of session data"
+  print
+      tison.decode session
 
   socket.close
   raw.close
@@ -44,6 +47,18 @@ test_site host/string -> none:
 
   // Try to handshake in pure Toit.
   socket2.handshake
+
+  print "Resume succeeded"
+
+  socket2.write "GET / HTTP/1.1\r\n"
+  socket2.write "Host: $host\r\n"
+  socket2.write "\r\n"
+
+  while data := socket2.read:
+    str := data.to_string
+    print str
+    if str.contains "301 Moved Permanently":
+      break
 
 BALTIMORE_CYBERTRUST_ROOT ::= net.Certificate.parse """\
 -----BEGIN CERTIFICATE-----

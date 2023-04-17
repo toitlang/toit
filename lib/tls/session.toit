@@ -255,7 +255,6 @@ class Session:
     if reads_encrypted_ and writes_encrypted_:
       key_data /List? := tls_get_internals_ tls_
       session_state = tison.encode key_data[5..9]
-      print "Session id: $key_data[5].size bytes, session ticket: $key_data[6].size bytes, master secret: $key_data[7].size bytes"
       if key_data != null:
         write_key_data := KeyData_ --key=key_data[1] --iv=key_data[3] --algorithm=key_data[0]
         read_key_data := KeyData_ --key=key_data[2] --iv=key_data[4] --algorithm=key_data[0]
@@ -695,12 +694,11 @@ class ToitHandshake_:
         --label="client finished"
         --seed=client_handshake_hash
         cipher_suite_.hmac_hasher
+    client_finished = #[FINISHED_, 0x00, 0x00, client_finished.size] + client_finished
     set_up_session_ write_key read_key client_finished server_finished_expected
 
   set_up_session_ write_key/KeyData_ read_key/KeyData_ client_finished/ByteArray server_finished_expected/ByteArray -> none:
     // Add message header - 1 byte for type, 3 bytes for length.
-    client_finished = #[FINISHED_, 0x00, 0x00, client_finished.size] + client_finished
-    server_finished_expected = #[FINISHED_, 0x00, 0x00, server_finished_expected.size] + server_finished_expected
     session_.reads_encrypted_ = true
     session_.writes_encrypted_ = true
     symmetric_session :=
@@ -708,7 +706,6 @@ class ToitHandshake_:
     session_.symmetric_session_ = symmetric_session
     // Get the server finished message.  This assumes we are the client.
     server_finished := symmetric_session.read --expected_type=HANDSHAKE_
-    print "server_finished: $server_finished"
     if not compare_byte_arrays_ server_finished_expected server_finished:
       throw "TLS_HANDSHAKE_FAILED"
     // Send the client finished message.  This assumes we are the client.
@@ -791,7 +788,6 @@ class ToitHandshake_:
       BIG_ENDIAN.put_uint16 ticket_extension 2 session_ticket_.size
       ticket_extension.replace 4 session_ticket_
       //ticket_extension[0] = 42
-      print "Ticket Extension size $ticket_extension.size: $ticket_extension"
       extensions.add ticket_extension
 
 class ServerHello_:
@@ -801,7 +797,6 @@ class ServerHello_:
   cipher_suite /int
 
   constructor packet/ByteArray:
-    print "Server hello size $packet.size: $packet"
     if packet[0] != HANDSHAKE_ or packet[5] != SERVER_HELLO_:
       if packet[0] == ALERT_:
         print "Alert: $(packet[5] == 2 ? "fatal" : "warning") $(packet[6])"
@@ -818,7 +813,6 @@ class ServerHello_:
         str += "$(%c random[i])"
       else:
         break
-    print "Server random: '$str' $random"
     server_session_id_length := packet[43]
     index := 44 + server_session_id_length
     session_id = packet[44..index]
@@ -963,9 +957,9 @@ class SymmetricSession_:
         if alert_data[0] != ALERT_WARNING_:
           print "See https://www.rfc-editor.org/rfc/rfc4346#section-7.2"
           throw "Fatal TLS alert: $alert_data[1]"
-      if record_header.type == APPLICATION_DATA_:
-        buffered_plaintext_ = buffered_plaintext
-        buffered_plaintext_index_ = 0
+      assert: record_header.type == expected_type
+      buffered_plaintext_ = buffered_plaintext
+      buffered_plaintext_index_ = 0
 
 TOIT_TLS_DONE_ := 1 << 0
 TOIT_TLS_WANT_READ_ := 1 << 1
