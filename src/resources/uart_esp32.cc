@@ -357,7 +357,7 @@ UART_ISR_INLINE uword TxBuffer::read_to_fifo(UartResource* uart, uword max) {
         cursor_ = buffer;
       }
       available_ -= length;
-      uart->write_tx_fifo(start, length);  // TODO: Is the RS485 workaround necessary here?
+      uart->write_tx_fifo(start, length);
       transfer_header_.remaining_data_length = remaining_data_length - length;
       return length;
     }
@@ -436,6 +436,7 @@ UART_ISR_INLINE void UartResource::disable_rx_interrupts() {
 }
 
 UART_ISR_INLINE void UartResource::enable_tx_interrupts(bool begin) {
+  enable_interrupt_index(UART_TOIT_INTR_TXFIFO_EMPTY);
   if (begin && is_rs485_half_duplex_mode()) {
     if (rts_active_) {
       // The RTS is already active, so we avoid de-activating
@@ -447,15 +448,10 @@ UART_ISR_INLINE void UartResource::enable_tx_interrupts(bool begin) {
       disable_interrupt_index(UART_TOIT_INTR_TX_DONE);
       clear_interrupt_index(UART_TOIT_INTR_TX_DONE);
     } else {
-      // Set the RTS to active and delay adding bytes to the
-      // TX fifo until we get the TX_BRK_DONE interrupt.
+      // Set the RTS to active.
       uart_toit_hal_set_rts(hal_, true);
       rts_active_ = true;
-      enable_interrupt_index(UART_TOIT_INTR_TX_BRK_DONE);
-      uart_toit_hal_tx_break(hal_, 3);
     }
-  } else {
-    enable_interrupt_index(UART_TOIT_INTR_TXFIFO_EMPTY);
   }
 }
 
@@ -835,12 +831,12 @@ PRIMITIVE(create) {
   uart_toit_hal_set_stop_bits(init.hal, uart_stop_bits);
   uart_toit_hal_set_tx_idle_num(init.hal, 0);
 
+  int flow_ctrl = 0;
   if (mode == UART_MODE_UART) {
-    int flow_ctrl = 0;
     if (rts != -1) flow_ctrl += UART_HW_FLOWCTRL_RTS;
     if (cts != -1) flow_ctrl += UART_HW_FLOWCTRL_CTS;
-    uart_toit_hal_set_hw_flow_ctrl(init.hal, static_cast<uart_hw_flowcontrol_t>(flow_ctrl), 122);
   }
+  uart_toit_hal_set_hw_flow_ctrl(init.hal, static_cast<uart_hw_flowcontrol_t>(flow_ctrl), 122);
 
   if (tx >= 0) init.set_tx_pin(static_cast<gpio_num_t>(tx));
   if (rx >= 0) init.set_rx_pin(static_cast<gpio_num_t>(rx));
