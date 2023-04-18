@@ -450,9 +450,9 @@ UART_ISR_INLINE void UartResource::enable_tx_interrupts(bool begin) {
       // Set the RTS to active and delay adding bytes to the
       // TX fifo until we get the TX_BRK_DONE interrupt.
       uart_toit_hal_set_rts(hal_, true);
+      rts_active_ = true;
       enable_interrupt_index(UART_TOIT_INTR_TX_BRK_DONE);
       uart_toit_hal_tx_break(hal_, 3);
-      rts_active_ = true;
     }
   } else {
     enable_interrupt_index(UART_TOIT_INTR_TXFIFO_EMPTY);
