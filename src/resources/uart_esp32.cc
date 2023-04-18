@@ -521,7 +521,7 @@ UART_ISR_INLINE void UartResource::handle_isr() {
     if (rts_active_) {
       // If the transmit is still active, we can't de-activate
       // the RTS just yet. Just postpone interrupt processing
-      // for next interrupt.
+      // for next TX_DONE interrupt which we leave enabled.
       if (!uart_toit_hal_is_tx_idle(hal_)) return;
       clear_rx_fifo();
       uart_toit_hal_set_rts(hal_, false);
