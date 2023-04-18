@@ -903,12 +903,11 @@ PRIMITIVE(read) {
   // all the data in a potentially rather large external byte array.
   // For reads from TCP sockets, we chunk it up instead and prefer
   // to return multiple smaller byte arrays.
-  uword consumed = Utils::min(500U, available);
-  ByteArray* data = process->allocate_byte_array(consumed);
+  ByteArray* data = process->allocate_byte_array(available);
   if (data == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes rx(data);
-  buffer->read(uart, rx.address(), consumed);
+  buffer->read(uart, rx.address(), available);
   return data;
 }
 
