@@ -443,8 +443,9 @@ UART_ISR_INLINE void UartResource::enable_tx_interrupts(bool begin) {
       // it until we've processed the new additional bytes
       // in the TX buffer. We achieve this by disabling the
       // TX_DONE interrupt. Once we're done with the bytes
-      // in the TX buffer, it will get re-enabled from
-      // TxBuffer::read_to_fifo.
+      // in the TX buffer, the interrupt will get re-enabled
+      // from TxBuffer::read_to_fifo() through a call to
+      // disable_tx_interrupts(done = true).
       disable_interrupt_index(UART_TOIT_INTR_TX_DONE);
       clear_interrupt_index(UART_TOIT_INTR_TX_DONE);
     } else {
