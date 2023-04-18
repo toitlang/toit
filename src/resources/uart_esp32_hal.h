@@ -26,7 +26,7 @@ extern "C" {
 #endif
 
 typedef enum {
-  UART_TOIT_INTR_RXFIFO_FULL  = 0,  // The RxFifo is over its threshold
+  UART_TOIT_INTR_RXFIFO_FULL = 0,   // The RxFifo is over its threshold
   UART_TOIT_INTR_TXFIFO_EMPTY,      // The TxFifo is under its threshold
   UART_TOIT_INTR_PARITY_ERR,        // Parity error
   UART_TOIT_INTR_RXFIFO_OVF,        // RxFifo overflow, not emptied fast enough
