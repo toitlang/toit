@@ -674,7 +674,9 @@ class ToitHandshake_:
     symmetric_session.write client_finished 0 client_finished.size --type=HANDSHAKE_
 
   client_hello_packet_ -> ByteArray:
-    client_hello := ByteArray 190 + session_ticket_.size
+    enough_bytes := 142 + session_ticket_.size
+    if session_.server_name_: enough_bytes += session_.server_name_.size
+    client_hello := ByteArray enough_bytes
     client_hello.replace 0 CLIENT_HELLO_TEMPLATE_1_
     index := CLIENT_HELLO_TEMPLATE_1_.size
     client_hello.replace index client_random_
@@ -692,8 +694,7 @@ class ToitHandshake_:
     // Build the extensions.
     extensions := []
     add_name_extension_ extensions
-    add_signature_algorithms_extension_ extensions
-    add_elliptic_curves_extension_ extensions
+    add_algorithms_extensions_ extensions
     add_session_ticket_extension_ extensions
 
     // Write extensions size.
@@ -721,65 +722,47 @@ class ToitHandshake_:
       name_extension.replace 9 hostname
       extensions.add name_extension
 
-  add_elliptic_curves_extension_ extensions/List -> none:
+  add_algorithms_extensions_ extensions/List -> none:
     // We don't actually have the ability to do elliptic curves in the pure
     // Toit handshake, but if we don't include this, our client hello is
     // rejected.
-    // Elliptic curve supported groups supported - numbers from
-    // https://www.ietf.org/rfc/rfc8422.html#section-5.1.1
     extensions.add #[
+        // Elliptic curve supported groups supported - numbers from
+        // https://www.ietf.org/rfc/rfc8422.html#section-5.1.1
         0x00, 0x0a,  // 0x0a = elliptic curves extension.
-        0x00, 0x1c,  // 28 bytes of extension data follow.
-        0x00, 0x1a,  // 26 bytes of data in the curve list.
+        0x00, 0x0e,  // 14 bytes of extension data follow.
+        0x00, 0x0c,  // 12 bytes of data in the curve list.
         0x00, 0x19,  // secp521r1
-        0x00, 0x1c,  // brainpoolP512r1.
         0x00, 0x18,  // secp384r1
-        0x00, 0x1b,  // brainpoolP384r1.
         0x00, 0x17,  // secp256r1.
         0x00, 0x16,  // secp256k1.
-        0x00, 0x1a,  // brainpoolP256r1.
-        0x00, 0x15,  // secp224r1.
-        0x00, 0x14,  // secp224k1.
-        0x00, 0x13,  // secp192r1.
-        0x00, 0x12,  // secp192k1.
         0x00, 0x1d,  // x25519.
         0x00, 0x1e,  // x448.
-    ]
-    // For the other extensions, we just use the curves from "The illustrated
-    // TLS connection" for now.
-    // Elliptic curve point formats supported.
-    extensions.add #[0x00, 0x0b, 0x00, 0x02, 0x01, 0x00]
-    // Encrypt-then-MAC extension.
-    extensions.add #[0x00, 0x16, 0x00, 0x00]
-    // Extended master secret extension.
-    extensions.add #[0x00, 0x17, 0x00, 0x00]
 
-  add_signature_algorithms_extension_ extensions/List -> none:
-    // Signature algorithms supported.
-    extensions.add #[0x00, 0x0d,
-        0x00, 0x12,  // Length.
-        0x00, 0x10,  // Length.
-        0x03, 0x01,  // rsa_sha224
-        0x03, 0x03,  // ecdsa_sha225.
+        // Extended master secret extension - resume fails without this.
+        0x00, 0x17, 0x00, 0x00,
+
+        // Signature algorithms supported.
+        0x00, 0x0d,
+        0x00, 0x0e,  // Length.
+        0x00, 0x0c,  // Length.
         0x04, 0x01,  // rsa_pkcs1_sha256.
         0x04, 0x03,  // rsa_secp256r1_sha256.
         0x05, 0x01,  // rsa_pkcs1_sha384.
         0x05, 0x03,  // rsa_secp384r1_sha384.
         0x06, 0x01,  // rsa_pkcs1_sha512.
-        0x06, 0x03   // rsa_secp521r1_sha512.
+        0x06, 0x03,  // rsa_secp521r1_sha512.
     ]
 
   add_session_ticket_extension_ extensions/List -> none:
-    // If we have a ticket instead of a session ID, use that.  If we don't have
-    // a ticket we could send an empty ticket extension to indicate we want a
-    // ticket for next time, but we have not implemented that yet. From RFC
-    // 5077 appendix A.
+    // If we have a ticket send that.  If we don't have a ticket we could send
+    // an empty ticket extension to indicate we want a ticket for next time,
+    // but we have not implemented that yet. From RFC 5077 appendix A.
     if session_ticket_.size != 0:
       ticket_extension := ByteArray session_ticket_.size + 4
       ticket_extension[1] = EXTENSION_SESSION_TICKET_
       BIG_ENDIAN.put_uint16 ticket_extension 2 session_ticket_.size
       ticket_extension.replace 4 session_ticket_
-      //ticket_extension[0] = 42
       extensions.add ticket_extension
 
 class ServerHello_:
