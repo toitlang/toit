@@ -25,6 +25,7 @@ class Siphash : public SimpleResource {
   // Key is a pointer to a 16 byte random key.
   // Output_length is 8 or 16.
   Siphash(SimpleResourceGroup* group, const uint8* key, int output_length, int c_rounds, int d_rounds);
+  Siphash(const Siphash* parent);
 
   void add(const uint8* contents, intptr_t extra);
   void get_hash(uint8* hash);

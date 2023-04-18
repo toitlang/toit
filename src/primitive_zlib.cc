@@ -33,6 +33,17 @@ PRIMITIVE(adler32_start) {
   return proxy;
 }
 
+PRIMITIVE(adler32_clone) {
+  ARGS(Adler32, parent);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
+  Adler32* child = _new Adler32(static_cast<SimpleResourceGroup*>(parent->resource_group()));
+  if (!child) MALLOC_FAILED;
+  parent->clone(child);
+  proxy->set_external_address(child);
+  return proxy;
+}
+
 PRIMITIVE(adler32_add) {
   ARGS(Adler32, adler32, Blob, data, int, from, int, to, bool, unadd);
   if (!adler32) INVALID_ARGUMENT;

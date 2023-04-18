@@ -64,6 +64,12 @@ class Adler32 : public SimpleResource {
     hash[3] = s1;
   }
 
+  void clone(Adler32* child) {
+    child->s1 = s1;
+    child->s2 = s2;
+    child->count = count;
+  }
+
  private:
   int32 s1;
   int32 s2;

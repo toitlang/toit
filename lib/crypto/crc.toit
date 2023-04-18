@@ -35,6 +35,17 @@ class Crc extends Checksum:
         and little_endian == other.little_endian
         and width == other.width
 
+  constructor.private_ other/Crc:
+    width = other.width
+    polynomial = other.polynomial
+    table_ = other.table_
+    little_endian = other.little_endian
+    xor_result = other.xor_result
+    sum_ = other.sum_
+
+  clone -> Crc:
+    return Crc.private_ this
+
   /**
   Construct a CRC that processes bits in little-endian-first order.
   The $polynomial is an integer encoding of width $width with the most

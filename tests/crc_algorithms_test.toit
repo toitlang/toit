@@ -69,9 +69,14 @@ main:
   expect_equals 0xb90956c775a41001 summer.get_as_int
 
   // The 64 bit CRC from ECMA182 used in tape cartridges.
-  summer = crc.Crc.big_endian 64 --polynomial=0x42f0e1eba9ea3693
-  summer.add "123456789"
-  expect_equals 0x6c40df5f0b497347 summer.get_as_int
+  9.repeat: | cut |
+    summer = crc.Crc.big_endian 64 --polynomial=0x42f0e1eba9ea3693
+    summer.add "123456789"[..cut]
+    summer2 := summer.clone
+    summer.add "123456789"[cut..]
+    summer2.add "123456789"[cut..]
+    expect_equals 0x6c40df5f0b497347 summer.get_as_int
+    expect_equals 0x6c40df5f0b497347 summer2.get_as_int
 
   // The 5 bit CRC from USB, little-endian polynomial 0b00101.
   summer = crc.Crc.little_endian 5 --normal_polynomial=0x5 --initial_state=0x1f --xor_result=0x1f

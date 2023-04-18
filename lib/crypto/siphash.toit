@@ -31,6 +31,9 @@ class Siphash extends Checksum:
     siphash_state_ = siphash_start_ resource_freeing_module_ key output_length c_rounds d_rounds
     add_finalizer this:: finalize_checksum_ this
 
+  constructor.private_ .siphash_state_:
+    add_finalizer this:: finalize_checksum_ this
+
   /** See $super. */
   add data from/int to/int -> none:
     siphash_add_ siphash_state_ data from to
@@ -44,9 +47,16 @@ class Siphash extends Checksum:
     remove_finalizer this
     return siphash_get_ siphash_state_
 
+  clone -> Siphash:
+    return Siphash.private_ (siphash_clone_ siphash_state_)
+
 // Gets a new empty SipHash object.
-siphash_start_ group key output_length c_rounds d_rounds -> none:
+siphash_start_ group key output_length c_rounds d_rounds:
   #primitive.crypto.siphash_start
+
+// Clones
+siphash_clone_ other:
+  #primitive.crypto.siphash_clone
 
 // Adds a UTF-8 string or a byte array to the Sip hash.
 siphash_add_ siphash data from/int to/int -> none:

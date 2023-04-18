@@ -30,6 +30,7 @@ class Sha : public SimpleResource {
   // If you pass null for the group, it is not managed by the SimpleResourceGroup and
   // you must take care of allocating and freeing manually.
   Sha(SimpleResourceGroup* group, int bits);
+  Sha(const Sha* parent);
   virtual ~Sha();
 
   static const int HASH_LENGTH_224 = 28;
