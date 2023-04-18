@@ -545,7 +545,7 @@ class CipherSuite_:
 
 class ToitHandshake_:
   session_ /Session
-  session_id_ /ByteArray
+  session_id_ /ByteArray := ?
   session_ticket_ /ByteArray
   master_secret_ /ByteArray
   cipher_suite_ /CipherSuite_
@@ -597,64 +597,26 @@ class ToitHandshake_:
     server_hello := ServerHello_ server_hello_packet
 
     // Session IDs are handled in RFC 4346.  Session tickets are in RFC 5077.
-    // * We sent ticket, server accepts ticket: Figure 5077-2.
-    //     * Server sends empty ticket extension, followed by
-    //           NewSessionTicket message. Shortened handshake gets
-    //           us connected.
-    // * We sent ticket, server wants a full handshake: Figure 5077-3 and 4.
-    //     * Server sends empty ticket extension, followed by
-    //           Certificate message. This means we need a full handshake
-    //           which is not yet implemented in Toit. Abandon and
-    //           reconnect, using MbedTLS.
+    // * We sent ticket, and a random session ID.  Server accepts ticket: Figure 5077-2.
+    //   * Server responds with matching session ID. Shortened handshake gets
+    //          us connected.  There may be a NewSessionTicket message.
     // * We sent session ID, server accepts session ID: Figure 4346-2.
     //    * Server sends no ticket extension, echoes back session ID in
     //          server hello. Shortened handshake gets us connected.
-    // * We sent session ID, server rejects session ID: Figure 4346-1.
-    //    * Server sends no ticket extension, sends non-matching session ID
-    //          in server hello. This means we need a full handshake
-    //          which is not yet implemented in Toit. Abandon and
-    //          reconnect, using MbedTLS.
-    if session_id_.size != 0:
-      if not compare_byte_arrays_ server_hello.session_id session_id_:
-        // Session ID not accepted.  Abandon and reconnect, using MbedTLS.
-        throw "RESUME_FAILED"
-      // Session ID accepted.
-    else:
-      returned_ticket_extension := server_hello.extensions.get EXTENSION_SESSION_TICKET_
-      // Figures in RFC 5077:
-      // 1) We don't have a ticket, but we want one:
-      //    We can't handle this in pure Toit, and we don't even get here in this case.
-      // 2) The server recognizes our ticket:
-      //    Server sends empty ticket extension, followed by NewSessionTicket message.
-      //    We handle this below.
-      // 3) We have a ticket, but the server does not know about tickets:
-      //    The server sends no ticket extension, and the next thing is a Certificate.
-      //    We can't handle this in pure Toit, so we throw.
-      // 4) The server knows about tickets, but does not recognize our ticket:
-      //    The server sends an empty ticket extension, and the next thing is a
-      //    Certificate.  We can't handle this in pure Toit, so we throw.
-      //
-      // If the server accepts the ticket, it sends an empty ticket extension back,
-      // and the next thing is a NewSessionTicket message.  If the server knows nothing
-      // of tickets it sends no ticket extension, and the next thing is a Certificate.
-      // I
-      // the ticket
-      if not returned_ticket_extension:
-        // RFC 5077, figure 3.
-        throw "RESUME_FAILED"  // Server did not understand session ticket extension.
-      if returned_ticket_extension.size != 0:
-        throw "TLS_PROTOCOL_ERROR"  // Strange server sent non-empty ticket extension.
-      next_server_packet := session_.extract_first_message_
-      if next_server_packet[0] != HANDSHAKE_:
-        throw "TLS_PROTOCOL_ERROR"  // Strange server sent non-handshake message.
-      if next_server_packet[5] != NEW_SESSION_TICKET_:
-        // RFC 5077, figure 4.
-        throw "RESUME_FAILED"  // TLS session ticket rejected.
-      // TODO: We should save the ticket for a third connection.
+    // * We sent session ID, server responds with non-matching session ID:  Figure 4346-1, 5077-3, or 5077-4.
+    //    * This means we need a full handshake which is not yet
+    //          implemented in Toit. Abandon and reconnect, using MbedTLS.
+    if not compare_byte_arrays_ server_hello.session_id session_id_:
+      // Session ID not accepted.  Abandon and reconnect, using MbedTLS.
+      throw "RESUME_FAILED"
+    next_server_packet := session_.extract_first_message_
+    if next_server_packet[0] == HANDSHAKE_ and next_server_packet[5] == NEW_SESSION_TICKET_:
+      // TODO: We should save this updated ticket for next connection so we can
+      // resume the third session.
       handshake_hasher_client.add next_server_packet[5..]
       handshake_hasher_server.add next_server_packet[5..]
-      // RFC 5077, figure 2.  The peer accepted our ticket.
-    // Either the peer accepted our session ID or our ticket.
+      next_server_packet = session_.extract_first_message_
+
     // Generate new keys in a shortened handshake.
     key_size := cipher_suite_.key_size
     iv_size := cipher_suite_.iv_size
@@ -671,8 +633,7 @@ class ToitHandshake_:
     read_key := KeyData_ --key=partition[1] --iv=partition[3] --algorithm=cipher_suite_.algorithm
     sent = session_.writer_.write CHANGE_CIPHER_SPEC_TEMPLATE_
     assert: sent == CHANGE_CIPHER_SPEC_TEMPLATE_.size
-    peer_change_message := session_.extract_first_message_
-    if peer_change_message.size != 6 or peer_change_message[0] != CHANGE_CIPHER_SPEC_ or peer_change_message[5] != 1:
+    if next_server_packet.size != 6 or next_server_packet[0] != CHANGE_CIPHER_SPEC_ or next_server_packet[5] != 1:
       throw "Peer did not accept change cipher spec"
     server_handshake_hash := handshake_hasher_server.get
     // https://www.rfc-editor.org/rfc/rfc5246#section-7.4.9
@@ -718,6 +679,9 @@ class ToitHandshake_:
     index := CLIENT_HELLO_TEMPLATE_1_.size
     client_hello.replace index client_random_
     index += CLIENT_RANDOM_SIZE_
+    if session_id_.size == 0:
+      session_id_ = ByteArray 32
+      tls_get_random_ session_id_
     client_hello[index++] = session_id_.size  // Session ID length.
     client_hello.replace index session_id_
     index += session_id_.size
@@ -811,7 +775,6 @@ class ToitHandshake_:
     // ticket for next time, but we have not implemented that yet. From RFC
     // 5077 appendix A.
     if session_ticket_.size != 0:
-      print "Sending session ticket of size $session_ticket_.size\n"
       ticket_extension := ByteArray session_ticket_.size + 4
       ticket_extension[1] = EXTENSION_SESSION_TICKET_
       BIG_ENDIAN.put_uint16 ticket_extension 2 session_ticket_.size
@@ -853,14 +816,11 @@ class ServerHello_:
     if index != packet.size:
       extensions_length := BIG_ENDIAN.uint16 packet index
       index += 2
-      print "extensions_length: $extensions_length"
-      print "Extensions: $packet[index..index + extensions_length]"
       while extensions_length > 0:
         extension_type := BIG_ENDIAN.uint16 packet index
         extension_length := BIG_ENDIAN.uint16 packet index + 2
         extension := packet[index + 4..index + 4 + extension_length]
         extensions[extension_type] = extension
-        print "Found extension $(%x extension_type) of length $extension.size"
         index += 4 + extension_length
         extensions_length -= 4 + extension_length
     if index != packet.size: throw "PROTOCOL_ERROR"
