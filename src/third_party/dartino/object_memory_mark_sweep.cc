@@ -689,8 +689,8 @@ void OldSpace::validate() {
 void MarkingStack::empty(RootCallback* visitor) {
   while (!is_empty()) {
     HeapObject* object = *--next_;
+    object->roots_do(program_, visitor);  // Changes size of stacks!
     GcMetadata::mark_all(object, object->size(program_));
-    object->roots_do(program_, visitor);
   }
 }
 
