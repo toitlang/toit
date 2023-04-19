@@ -5,6 +5,7 @@
 import binary show BIG_ENDIAN
 import crypto.aes show *
 import crypto.chacha20 show *
+import crypto.checksum
 import crypto.hmac show Hmac
 import encoding.tison
 import monitor
@@ -693,15 +694,14 @@ pseudo_random_function_ size/int --block_size/int --secret/ByteArray --label/str
   result := []
   result_size := 0
   seed = label.to_byte_array + seed
-  a := seed
+  seeded_hmac := Hmac --block_size=block_size secret hash_producer
+  a := checksum.checksum seeded_hmac.clone seed
   while result_size < size:
-    hasher := Hmac --block_size=block_size secret hash_producer
+    hasher := seeded_hmac.clone
     hasher.add a
-    a = hasher.get
-    hasher2 := Hmac --block_size=block_size secret hash_producer
-    hasher2.add a
-    hasher2.add seed
-    part := hasher2.get
+    a = hasher.clone.get
+    hasher.add seed
+    part := hasher.get
     result.add part
     result_size += part.size
   return (byte_array_join_ result)[..size]
