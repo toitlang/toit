@@ -58,7 +58,7 @@ class MarkingVisitor : public RootCallback {
     for (Object** p = start; p < end; p++) mark_pointer(*p);
   }
 
-  virtual bool shrink_stacks() {
+  bool shrink_stacks() const override {
     return true;
   }
 

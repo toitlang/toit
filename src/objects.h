@@ -179,7 +179,7 @@ class RootCallback {
  public:
   void do_root(Object** root) { do_roots(root, 1); }
   virtual void do_roots(Object** roots, int length) = 0;
-  virtual bool shrink_stacks() { return false; }
+  virtual bool shrink_stacks() const { return false; }
 };
 
 // Note that these enum numbers must match the constants (called TAG) found in
