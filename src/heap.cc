@@ -313,11 +313,11 @@ GcType ObjectHeap::gc(bool try_hard) {
     // Update the pending limit that will be installed after the current
     // primitive (that caused the GC) completes.
     update_pending_limit();
+    // Use only the hard limit for the rest of this primitive.  We don't want to
+    // trigger any heuristic GCs before the primitive is over or we might cause a
+    // triple GC, which throws an exception.
+    limit_ = max_heap_size_;
   }
-  // Use only the hard limit for the rest of this primitive.  We don't want to
-  // trigger any heuristic GCs before the primitive is over or we might cause a
-  // triple GC, which throws an exception.
-  limit_ = max_heap_size_;
   return type;
 }
 
