@@ -41,8 +41,7 @@ abstract class Checksum:
   abstract get -> ByteArray
 
   /** Clones the internal state so we can compute checksums of multiple data with the same prefix. */
-  clone -> Checksum:
-    throw "NOT_IMPLEMENTED"
+  abstract clone -> Checksum
 
 /**
 Computes the hash of the given $data.
