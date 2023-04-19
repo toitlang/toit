@@ -54,6 +54,9 @@ class Sha_ extends Checksum:
     sha_state_ = sha_start_ resource_freeing_module_ bits
     add_finalizer this:: finalize_checksum_ this
 
+  constructor.private_ .sha_state_:
+    add_finalizer this:: finalize_checksum_ this
+
   /** See $super. */
   add data from/int to/int -> none:
     sha_add_ sha_state_ data from to
@@ -66,6 +69,9 @@ class Sha_ extends Checksum:
   get -> ByteArray:
     remove_finalizer this
     return sha_get_ sha_state_
+
+  clone -> Sha_:
+    return Sha_.private_ (sha_clone_ sha_state_)
 
 /** SHA-224 hash state. */
 class Sha224 extends Sha_:
@@ -94,6 +100,10 @@ class Sha512 extends Sha_:
 // Gets a new empty Sha224+ object.
 sha_start_ group bits/int:
   #primitive.crypto.sha_start
+
+// Clones a Sha224+ object.
+sha_clone_ sha:
+  #primitive.crypto.sha_clone
 
 // Adds a UTF-8 string or a byte array to the sha224+ hash.
 sha_add_ sha data from/int to/int -> none:

@@ -32,12 +32,19 @@ class Md5 extends Checksum:
 
   size_/int := 0
   buffer_/ByteArray? := ByteArray BLOCK_SIZE
-  digest_/ByteArray? := null
 
   a_/int := 0x67452301
   b_/int := 0xefcdab89
   c_/int := 0x98badcfe
   d_/int := 0x10325476
+
+  clone -> Md5:
+    return Md5.private_ size_ buffer_ a_ b_ c_ d_
+
+  constructor:
+
+  constructor.private_ .size_ buffer/ByteArray? .a_ .b_ .c_ .d_:
+    buffer_ = buffer.copy
 
   add data from/int to/int -> none:
     if not buffer_: throw "ALREADY_CLOSED"
@@ -117,8 +124,7 @@ class Md5 extends Checksum:
     d_ = (d_ + d) & mask32
 
   get -> ByteArray:
-    digest := digest_
-    if digest: return digest
+    if buffer_ == null: throw "ALREADY_CLOSED"
 
     // The signature is 64 bits with the number of bits
     // in the content encoded in them.
@@ -140,12 +146,11 @@ class Md5 extends Checksum:
     add_bytes_ bytes
     assert: size_ == size
 
-    digest = ByteArray 16
+    digest := ByteArray 16
     LITTLE_ENDIAN.put_uint32 digest  0 a_
     LITTLE_ENDIAN.put_uint32 digest  4 b_
     LITTLE_ENDIAN.put_uint32 digest  8 c_
     LITTLE_ENDIAN.put_uint32 digest 12 d_
-    digest_ = digest
     buffer_ = null
     return digest
 

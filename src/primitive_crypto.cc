@@ -47,6 +47,18 @@ PRIMITIVE(sha1_start) {
   return proxy;
 }
 
+PRIMITIVE(sha1_clone) {
+  ARGS(Sha1, parent);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
+
+  Sha1* child = _new Sha1(static_cast<SimpleResourceGroup*>(parent->resource_group()));
+  if (!child) MALLOC_FAILED;
+  parent->clone(child);
+  proxy->set_external_address(child);
+  return proxy;
+}
+
 PRIMITIVE(sha1_add) {
   ARGS(Sha1, sha1, Blob, data, int, from, int, to);
 
@@ -79,6 +91,18 @@ PRIMITIVE(sha_start) {
   return proxy;
 }
 
+PRIMITIVE(sha_clone) {
+  ARGS(Sha, parent);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
+
+  Sha* child = _new Sha(parent);
+  if (!child) MALLOC_FAILED;
+  proxy->set_external_address(child);
+  return proxy;
+}
+
+
 PRIMITIVE(sha_add) {
   ARGS(Sha, sha, Blob, data, int, from, int, to);
   if (!sha) INVALID_ARGUMENT;
@@ -108,6 +132,17 @@ PRIMITIVE(siphash_start) {
   Siphash* siphash = _new Siphash(group, key.address(), output_length, c_rounds, d_rounds);
   if (!siphash) MALLOC_FAILED;
   proxy->set_external_address(siphash);
+  return proxy;
+}
+
+PRIMITIVE(siphash_clone) {
+  ARGS(Siphash, parent);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
+
+  Siphash* child = _new Siphash(parent);
+  if (!child) MALLOC_FAILED;
+  proxy->set_external_address(child);
   return proxy;
 }
 

@@ -82,6 +82,10 @@ class CrcAndLengthChecksum_ extends crypto.Checksum:
   crc_ := crc_algorithms.Crc32
   length_ := 0
 
+  constructor:
+
+  constructor.private_ .length_ .crc_:
+
   add collection from/int to/int -> none:
     crc_.add collection from to
     length_ += to - from
@@ -93,6 +97,9 @@ class CrcAndLengthChecksum_ extends crypto.Checksum:
         crc[it] :
         (length_ >> (8 * (it - 4))) & 0xff
     return result
+
+  clone -> CrcAndLengthChecksum_:
+    return CrcAndLengthChecksum_.private_ length_ crc_.clone
 
 /**
 Creates an uncompressed data stream that is compatible with gzip decoders
