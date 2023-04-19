@@ -190,7 +190,7 @@ class Session:
   This method will automatically be called by read and write if the handshake
     is not completed yet.
   */
-  handshake --session_state/ByteArray?=null -> none:
+  handshake -> none:
     if not reader_:
       throw "ALREADY_CLOSED"
     else if handshake_in_progress_:
@@ -198,6 +198,8 @@ class Session:
       return
     else if symmetric_session_ or tls_group_:
       throw "TLS_ALREADY_HANDSHAKEN"
+
+    handshake_in_progress_ = monitor.Latch
 
     if session_state:
       toit_handshake_ = ToitHandshake_ this
@@ -210,7 +212,6 @@ class Session:
         handshake_in_progress_.set value
         handshake_in_progress_ = null
 
-    handshake_in_progress_ = monitor.Latch
     tls_group := is_server ? tls_group_server_ : tls_group_client_
 
     token := null
@@ -555,6 +556,10 @@ class Session:
       unget_synthetic_header.length = remaining_in_record
       reader_.unget unget_synthetic_header.bytes
     return synthetic
+
+  read_handshake_message_ -> none:
+    packet := extract_first_message_
+    tls_set_incoming_ tls_ packet 0
 
 class CipherSuite_:
   id /int               // 16 bit cipher suite ID from RFCs 5288, 5289, 7905.
