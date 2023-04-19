@@ -33,6 +33,9 @@ class Adler32 extends Checksum:
     adler_ = adler32_start_ resource_freeing_module_
     add_finalizer this:: finalize_checksum_ this
 
+  constructor.private_ .adler_:
+    add_finalizer this:: finalize_checksum_ this
+
   /** See $super. */
   add data from/int to/int -> none:
     adler32_add_ adler_ data from to false
@@ -70,8 +73,14 @@ class Adler32 extends Checksum:
       remove_finalizer this
     return adler32_get_ adler_ destructive
 
+  clone -> Adler32:
+    return Adler32.private_ (adler32_clone_ adler_)
+
 adler32_start_ group:
   #primitive.zlib.adler32_start
+
+adler32_clone_ adler:
+  #primitive.zlib.adler32_clone
 
 adler32_add_ adler collection from/int to/int unadd/bool:
   #primitive.zlib.adler32_add

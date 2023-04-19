@@ -5,6 +5,7 @@
 import expect show *
 
 import crypto show *
+import crypto.adler32 show *
 import crypto.aes show *
 import crypto.chacha20 show *
 import crypto.sha show *
@@ -55,6 +56,7 @@ main:
   chacha_test
   sip_test
   aead_simple_test
+  adler_test
   md5_test
   hmac_test
   random_test
@@ -139,15 +141,22 @@ hash_test -> none:
   sha2.add GOLD_MEMBER
   crc32.add GOLD_MEMBER
   crc16.add GOLD_MEMBER
+  sha1b := sha1.clone
+  sha2b := sha2.clone
   4.repeat: sha1.add GOLD_MEMBER
+  4.repeat: sha1b.add GOLD_MEMBER
   4.repeat: sha2.add GOLD_MEMBER
+  4.repeat: sha2b.add GOLD_MEMBER
   4.repeat: crc32.add GOLD_MEMBER
   4.repeat: crc16.add GOLD_MEMBER
   expect_equals "7fd2b3793f46a174024e4fb78b17c0dc4c5bf2bc" (hex.encode sha1.get)
+  expect_equals "7fd2b3793f46a174024e4fb78b17c0dc4c5bf2bc" (hex.encode sha1b.get)
   expect_equals "56185f37" (hex.encode crc32.get)
   expect_equals "5dc2" (hex.encode crc16.get)
   expect_equals "68ffcaadaabb22152c90cfbe4e0cd17ddf2f469d8ea9d021713f1b17c72705b8" (hex.encode sha2.get)
+  expect_equals "68ffcaadaabb22152c90cfbe4e0cd17ddf2f469d8ea9d021713f1b17c72705b8" (hex.encode sha2b.get)
   expect_already_closed: (sha2.get)   // Can't do this twice.
+  expect_already_closed: (sha2b.get)   // Can't do this twice.
 
   sha2 = Sha256
   crc32 = Crc32
@@ -272,23 +281,57 @@ sip_test:
 
       h8 := Siphash key --output_length=8
       h8.add part1
+      h8b := h8.clone
       h8.add part2
+      h8b.add part2
       result8 := h8.get
+      result8b := h8b.get
       expect_equals SIP_VECTOR_8[size] result8
+      expect_equals SIP_VECTOR_8[size] result8b
 
       h16 := Siphash key --output_length=16
       h16.add part1
+      h16b := h16.clone
       h16.add part2
+      h16b.add part2
       result16 := h16.get
+      result16b := h16b.get
       expect_equals SIP_VECTOR_16[size] result16
+      expect_equals SIP_VECTOR_16[size] result16b
+
+adler_test:
+  VECTORS ::= [
+      ["", "00000001"],
+      ["a", "00620062"],
+      ["abc", "024d0127"],
+      ["message digest", "29750586"],
+      ["abcdefghijklmnopqrstuvwxyz", "90860b20"],
+      ["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", "8adb150c"],
+      ["12345678901234567890123456789012345678901234567890123456789012345678901234567890", "97b61069"]
+  ]
+  VECTORS.do:
+    input := it[0]
+    output := it[1]
+    adler1 := Adler32
+    cut := input.size / 2
+    adler1.add input[..cut]
+    adler2 := adler1.clone
+    [adler1, adler2].do: | adler |
+      adler.add input[cut..]
+      result := adler.get
+      expected := ((List result.size: result[it]).map: "$(%02x it)").join ""
+      expect_equals output expected
 
 md5_test:
   check := : | message digest |
     message.size.repeat: | split |
-      md5 := Md5
-      md5.add message[0..split]
-      md5.add message[split..]
-      expect_bytes_equal digest md5.get
+      md5a := Md5
+      md5a.add message[0..split]
+      md5b := md5a.clone
+      md5a.add message[split..]
+      md5b.add message[split..]
+      expect_bytes_equal digest md5a.get
+      expect_bytes_equal digest md5b.get
   STANDARD_MD5_CASES.do check
   GENERATED_MD5_CASES.do check
   check.call
@@ -305,9 +348,19 @@ hmac_test:
   hmaccer.add "what do ya want for nothing?"
   expect_equals #[0x75, 0x0c, 0x78, 0x3e, 0x6a, 0xb0, 0xb5, 0x03, 0xea, 0xa8, 0x6e, 0x31, 0x0a, 0x5d, 0xb7, 0x38] hmaccer.get
 
+  DD_50_ANSWER ::= #[0x56, 0xbe, 0x34, 0x52, 0x1d, 0x14, 0x4c, 0x88, 0xdb, 0xb8, 0xc7, 0x33, 0xf0, 0xe8, 0xb3, 0xf6]
   hmaccer = Hmac --block_size=Md5.BLOCK_SIZE (ByteArray 16: 0xaa):: Md5
   hmaccer.add (ByteArray 50: 0xdd)
-  expect_equals #[0x56, 0xbe, 0x34, 0x52, 0x1d, 0x14, 0x4c, 0x88, 0xdb, 0xb8, 0xc7, 0x33, 0xf0, 0xe8, 0xb3, 0xf6] hmaccer.get
+  expect_equals DD_50_ANSWER hmaccer.get
+
+  // Test clone.
+  hmaccer = Hmac --block_size=Md5.BLOCK_SIZE (ByteArray 16: 0xaa):: Md5
+  hmaccer.add (ByteArray 25: 0xdd)
+  hmaccer2 := hmaccer.clone
+  hmaccer.add (ByteArray 25: 0xdd)
+  hmaccer2.add (ByteArray 25: 0xdd)
+  expect_equals DD_50_ANSWER hmaccer.get
+  expect_equals DD_50_ANSWER hmaccer2.get
 
   // Test vectors from RFC 4231.
   key/any := ByteArray 20: 0x0b

@@ -9,10 +9,8 @@ import crypto.checksum show Checksum checksum
 HMAC keyed hashing for message authentication.
 */
 class Hmac extends Checksum:
-  hasher_creator /Lambda
   hasher_ /Checksum
-  key /ByteArray
-  block_size_ /int
+  final_hasher_ /Checksum
 
   /**
   Construct an Hmac checksum object.
@@ -20,8 +18,7 @@ class Hmac extends Checksum:
   The $block_size must be the block size of the underlying hash.
   The $hasher_creator is a lambda that should create a new $Checksum object.
   */
-  constructor --block_size/int key .hasher_creator/Lambda:
-    block_size_ = block_size
+  constructor --block_size/int key hasher_creator/Lambda:
     if key.size > block_size:
       key = checksum hasher_creator.call key
     if key is string:
@@ -30,21 +27,30 @@ class Hmac extends Checksum:
       key.replace 0 s
     else:
       key += ByteArray block_size - key.size  // Zero pad and copy.
-    this.key = key
     key.size.repeat: key[it] ^= 0x36  // Xor with ipad.
     hasher_ = hasher_creator.call
     hasher_.add key  // Start with the key xor ipad.
-    key.size.repeat: key[it] ^= 0x36 ^ 0x5c  // Xor with opad instead.
+    key.size.repeat: key[it] ^= 0x6a  // == 0x36 ^ 0x5c  // Xor with opad instead.
+    final_hasher_ = hasher_creator.call
+    final_hasher_.add key  // Start with the key xor opad.
+
+  constructor.private_ .final_hasher_ .hasher_:
 
   add data from/int to/int -> none:
     hasher_.add data from to
 
   get -> ByteArray:
     step_4 := hasher_.get
-    hasher := hasher_creator.call
-    hasher.add key
-    hasher.add step_4
-    return hasher.get
+    final_hasher_.add step_4
+    return final_hasher_.get
+
+  /**
+  Creates a clone of the HMAC with the same key and the same prefix input.
+  Call this immediately after creating the HMAC to save the key setup work and
+    obtain an object that is efficient for small inputs.
+  */
+  clone -> Hmac:
+    return Hmac.private_ final_hasher_.clone hasher_.clone
 
 /**
 HMAC using Sha-224 as the underlying hash.

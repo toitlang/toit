@@ -35,6 +35,24 @@ Sha::Sha(SimpleResourceGroup* group, int bits)
   }
 }
 
+Sha::Sha(const Sha* parent)
+    : SimpleResource(static_cast<SimpleResourceGroup*>(parent->resource_group()))
+    , bits_(parent->bits_) {
+  if (bits_ == 224) {
+    mbedtls_sha256_init(&context_);
+    mbedtls_sha256_clone(&context_, &parent->context_);
+  } else if (bits_ == 256) {
+    mbedtls_sha256_init(&context_);
+    mbedtls_sha256_clone(&context_, &parent->context_);
+  } else if (bits_ == 384) {
+    mbedtls_sha512_init(&context_512_);
+    mbedtls_sha512_clone(&context_512_, &parent->context_512_);
+  } else if (bits_ == 512) {
+    mbedtls_sha512_init(&context_512_);
+    mbedtls_sha512_clone(&context_512_, &parent->context_512_);
+  }
+}
+
 Sha::~Sha() {
   if (bits_ <= 256) {
     mbedtls_sha256_free(&context_);

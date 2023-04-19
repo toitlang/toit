@@ -40,6 +40,9 @@ abstract class Checksum:
   /** Computes the checksum from the added data. */
   abstract get -> ByteArray
 
+  /** Clones the internal state so we can compute checksums of multiple data with the same prefix. */
+  abstract clone -> Checksum
+
 /**
 Computes the hash of the given $data.
 
