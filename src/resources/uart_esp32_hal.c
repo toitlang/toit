@@ -37,6 +37,7 @@ uart_hal_handle_t uart_toit_hal_init(uart_port_t port) {
   handle->interrupt_mask[UART_TOIT_INTR_PARITY_ERR]   = UART_INTR_PARITY_ERR;
   handle->interrupt_mask[UART_TOIT_INTR_RXFIFO_OVF]   = UART_INTR_RXFIFO_OVF;
   handle->interrupt_mask[UART_TOIT_INTR_TX_BRK_DONE]  = UART_INTR_TX_BRK_DONE;
+  handle->interrupt_mask[UART_TOIT_INTR_TX_DONE]      = UART_INTR_TX_DONE;
   handle->interrupt_mask[UART_TOIT_ALL_INTR_MASK]     = UART_LL_INTR_MASK;
   handle->interrupt_mask[UART_TOIT_INTR_RX_TIMEOUT]   = UART_INTR_RXFIFO_TOUT;
 
@@ -52,7 +53,6 @@ void uart_toit_hal_deinit(uart_hal_handle_t hal) {
 void uart_toit_hal_set_tx_idle_num(uart_hal_handle_t hal, uint16_t idle_num) {
   uart_hal_set_tx_idle_num(HAL, idle_num);
 }
-
 
 void uart_toit_hal_set_sclk(uart_hal_handle_t hal, uart_sclk_t sclk) {
   uart_hal_set_sclk(HAL, sclk);
@@ -110,6 +110,14 @@ void IRAM_ATTR uart_toit_hal_tx_break(uart_hal_handle_t hal, uint32_t break_num)
 
 void uart_toit_hal_set_mode(uart_hal_handle_t hal, uart_mode_t mode) {
   uart_hal_set_mode(HAL, mode);
+}
+
+bool IRAM_ATTR uart_toit_hal_is_tx_idle(uart_hal_handle_t hal) {
+  return uart_hal_is_tx_idle(HAL);
+}
+
+void IRAM_ATTR uart_toit_hal_set_rts(uart_hal_handle_t hal, bool active) {
+  uart_hal_set_rts(HAL, active ? 0 : 1);
 }
 
 void uart_toit_hal_inverse_signal(uart_hal_handle_t hal, uint32_t inv_mask) {
