@@ -153,9 +153,10 @@ class UartResource : public EventQueueResource {
 public:
   TAG(UartResource);
 
-  UartResource(ResourceGroup* group, uart_port_t port, QueueHandle_t queue, uart_hal_handle_t hal,
+  UartResource(ResourceGroup* group, uart_port_t port, QueueHandle_t queue,
+               uart_hal_handle_t hal, uart_mode_t mode,
                uint8* rx_buffer_data, uword rx_buffer_size, uint8* tx_buffer_data, uword tx_buffer_size)
-      : EventQueueResource(group, queue), port_(port), hal_(hal)
+      : EventQueueResource(group, queue), port_(port), hal_(hal), mode_(mode)
       , rx_buffer_(rx_buffer_data, rx_buffer_size)
       , tx_buffer_(tx_buffer_data, tx_buffer_size) {
     spinlock_initialize(&spinlock_);
@@ -179,8 +180,8 @@ public:
   UART_ISR_INLINE void enable_rx_interrupts();
   UART_ISR_INLINE void disable_rx_interrupts();
 
-  UART_ISR_INLINE void enable_tx_empty_interrupts();
-  UART_ISR_INLINE void disable_tx_empty_interrupts();
+  UART_ISR_INLINE void enable_tx_interrupts(bool begin);
+  UART_ISR_INLINE void disable_tx_interrupts(bool done);
 
   UART_ISR_INLINE void drain_tx_fifo();
   UART_ISR_INLINE void write_tx_break(uint8 length);
@@ -233,6 +234,10 @@ public:
     return uart_toit_hal_get_txfifo_len(hal_);
   }
 
+  UART_ISR_INLINE bool is_rs485_half_duplex_mode() const {
+    return mode_ == UART_MODE_RS485_HALF_DUPLEX;
+  }
+
   friend void uart_interrupt_handler(void* arg);
   UART_ISR_INLINE void handle_isr();
   UART_ISR_INLINE uart_event_types_t handle_write_isr();
@@ -241,10 +246,12 @@ public:
 
   const uart_port_t port_;
   const uart_hal_handle_t hal_;
+  const uart_mode_t mode_;
   spinlock_t spinlock_{};
   RxBuffer rx_buffer_;
   TxBuffer tx_buffer_;
   intr_handle_t interrupt_handle_ = null;
+  bool rts_active_ = false;
   bool data_event_in_queue_ = false;
   bool tx_event_in_queue_ = false;
 };
@@ -328,7 +335,7 @@ uint16 TxBuffer::write(UartResource* uart, const uint8* buffer, uint16 length, u
   // Interrupts are disabled while we're in the critical section
   // holding the spinlock, so they will not fire before we leave
   // the critical section at the end of this function.
-  uart->enable_tx_empty_interrupts();
+  uart->enable_tx_interrupts(true);
   return length;
 }
 
@@ -350,7 +357,7 @@ UART_ISR_INLINE uword TxBuffer::read_to_fifo(UartResource* uart, uword max) {
         cursor_ = buffer;
       }
       available_ -= length;
-      uart->write_tx_fifo(start, length);  // TODO: Is the RS485 workaround necessary here?
+      uart->write_tx_fifo(start, length);
       transfer_header_.remaining_data_length = remaining_data_length - length;
       return length;
     }
@@ -364,7 +371,7 @@ UART_ISR_INLINE uword TxBuffer::read_to_fifo(UartResource* uart, uword max) {
 
     // No more data in the latest packet. Need to read header.
     if (available() < sizeof(TxTransferHeader)) {
-      uart->disable_tx_empty_interrupts();
+      uart->disable_tx_interrupts(true);
       return 0;
     }
     read(locker, reinterpret_cast<uint8*>(&transfer_header_), sizeof(TxTransferHeader));
@@ -428,12 +435,32 @@ UART_ISR_INLINE void UartResource::disable_rx_interrupts() {
   disable_interrupt_index(UART_TOIT_INTR_RX_TIMEOUT);
 }
 
-UART_ISR_INLINE void UartResource::enable_tx_empty_interrupts() {
+UART_ISR_INLINE void UartResource::enable_tx_interrupts(bool begin) {
   enable_interrupt_index(UART_TOIT_INTR_TXFIFO_EMPTY);
+  if (begin && is_rs485_half_duplex_mode()) {
+    if (rts_active_) {
+      // The RTS is already active, so we avoid de-activating
+      // it until we've processed the new additional bytes
+      // in the TX buffer. We achieve this by disabling the
+      // TX_DONE interrupt. Once we're done with the bytes
+      // in the TX buffer, the interrupt will get re-enabled
+      // from TxBuffer::read_to_fifo() through a call to
+      // disable_tx_interrupts(done = true).
+      disable_interrupt_index(UART_TOIT_INTR_TX_DONE);
+      clear_interrupt_index(UART_TOIT_INTR_TX_DONE);
+    } else {
+      // Set the RTS to active.
+      uart_toit_hal_set_rts(hal_, true);
+      rts_active_ = true;
+    }
+  }
 }
 
-UART_ISR_INLINE void UartResource::disable_tx_empty_interrupts() {
+UART_ISR_INLINE void UartResource::disable_tx_interrupts(bool done) {
   disable_interrupt_index(UART_TOIT_INTR_TXFIFO_EMPTY);
+  if (done && rts_active_) {
+    enable_interrupt_index(UART_TOIT_INTR_TX_DONE);
+  }
 }
 
 UART_ISR_INLINE void UartResource::drain_tx_fifo() {
@@ -445,7 +472,7 @@ UART_ISR_INLINE void UartResource::drain_tx_fifo() {
 UART_ISR_INLINE void UartResource::write_tx_break(uint8 length) {
   enable_interrupt_index(UART_TOIT_INTR_TX_BRK_DONE);
   uart_toit_hal_tx_break(hal_, length);
-  disable_tx_empty_interrupts();
+  disable_tx_interrupts(false);
 }
 
 UART_ISR_INLINE uint32 UartResource::write_tx_fifo(const uint8* data, uint32 length) {
@@ -488,7 +515,20 @@ UART_ISR_INLINE void UartResource::handle_isr() {
     event = handle_write_isr();
   } else if (status & interrupt_mask(UART_TOIT_INTR_TX_BRK_DONE)) {
     disable_interrupt_index(UART_TOIT_INTR_TX_BRK_DONE);
-    enable_tx_empty_interrupts();
+    clear_interrupt_index(UART_TOIT_INTR_TX_BRK_DONE);
+    enable_tx_interrupts(false);
+  } else if (status & interrupt_mask(UART_TOIT_INTR_TX_DONE)) {
+    if (rts_active_) {
+      // If the transmit is still active, we can't de-activate
+      // the RTS just yet. Just postpone interrupt processing
+      // for next TX_DONE interrupt which we leave enabled.
+      if (!uart_toit_hal_is_tx_idle(hal_)) return;
+      clear_rx_fifo();
+      uart_toit_hal_set_rts(hal_, false);
+      rts_active_ = false;
+    }
+    disable_interrupt_index(UART_TOIT_INTR_TX_DONE);
+    clear_interrupt_index(UART_TOIT_INTR_TX_DONE);
   } else if (status & (interrupt_mask(UART_TOIT_INTR_RXFIFO_FULL) | interrupt_mask(UART_TOIT_INTR_RX_TIMEOUT))) {
     if (status & interrupt_mask(UART_TOIT_INTR_RXFIFO_FULL)) {
       clear_interrupt_index(UART_TOIT_INTR_RXFIFO_FULL);
@@ -685,7 +725,7 @@ PRIMITIVE(create) {
   if (parity < 1 || parity > 3) INVALID_ARGUMENT;
   if (options < 0 || options > 15) INVALID_ARGUMENT;
   if (mode < UART_MODE_UART || mode > UART_MODE_IRDA) INVALID_ARGUMENT;
-  if (mode == UART_MODE_RS485_HALF_DUPLEX && cts != -1) INVALID_ARGUMENT;
+  if (mode == UART_MODE_RS485_HALF_DUPLEX && (rts == -1 || cts != -1)) INVALID_ARGUMENT;
   if (baud_rate < 0 || baud_rate > SOC_UART_BITRATE_MAX) INVALID_ARGUMENT;
   if (tx >= 0 && !GPIO_IS_VALID_OUTPUT_GPIO(tx)) INVALID_ARGUMENT;
   if (rx >= 0 && !GPIO_IS_VALID_GPIO(rx)) INVALID_ARGUMENT;
@@ -747,7 +787,8 @@ PRIMITIVE(create) {
     MALLOC_FAILED;
   }
 
-  init.uart = _new UartResource(group, port, init.queue, init.hal,
+  init.uart = _new UartResource(group, port, init.queue,
+                                init.hal, static_cast<uart_mode_t>(mode),
                                 init.rx_buffer, rx_buffer_size,
                                 init.tx_buffer, tx_buffer_size);
   if (!init.uart) {
