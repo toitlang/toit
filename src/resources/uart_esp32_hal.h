@@ -18,20 +18,20 @@
 
 #include <hal/uart_types.h>
 
-// This file is purely here to enable calling some lowlevel C-code defined in header files
+// This file is purely here to enable calling some low-level C-code defined in header files
 // in ESP-IDF. For documentation of almost all the functions, please refer to hal/uart_hal.h.
-
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-  
+
 typedef enum {
-  UART_TOIT_INTR_RXFIFO_FULL  = 0,  // The RxFifo is over its threshold
+  UART_TOIT_INTR_RXFIFO_FULL = 0,   // The RxFifo is over its threshold
   UART_TOIT_INTR_TXFIFO_EMPTY,      // The TxFifo is under its threshold
   UART_TOIT_INTR_PARITY_ERR,        // Parity error
   UART_TOIT_INTR_RXFIFO_OVF,        // RxFifo overflow, not emptied fast enough
   UART_TOIT_INTR_TX_BRK_DONE,       // Transfer break completed
+  UART_TOIT_INTR_TX_DONE,           // Transfer completed
   UART_TOIT_INTR_RX_TIMEOUT,        // The RxFifo has data, not over its threshold, but some time since last byte
   UART_TOIT_ALL_INTR_MASK,          // All interrupt bits
   UART_TOIT_INTR_MAX
@@ -44,7 +44,7 @@ typedef struct {
 
 typedef uart_hal_t* uart_hal_handle_t;
 
-// Initialize (allocate) the right hal structure.  
+// Initialize (allocate) the right hal structure.
 uart_hal_handle_t uart_toit_hal_init(uart_port_t port);
 
 // De-initialize (free) the hal strcuture.
@@ -65,7 +65,9 @@ void uart_toit_hal_set_reset_core(uart_hal_handle_t hal, bool reset);
 void uart_toit_hal_rxfifo_rst(uart_hal_handle_t hal);
 void uart_toit_hal_txfifo_rst(uart_hal_handle_t hal);
 void uart_toit_hal_tx_break(uart_hal_handle_t hal, uint32_t break_num);
+bool uart_toit_hal_is_tx_idle(uart_hal_handle_t hal);
 void uart_toit_hal_set_mode(uart_hal_handle_t hal, uart_mode_t mode);
+void uart_toit_hal_set_rts(uart_hal_handle_t hal, bool active);
 void uart_toit_hal_inverse_signal(uart_hal_handle_t hal, uint32_t inv_mask);
 void uart_toit_hal_get_baudrate(uart_hal_handle_t hal, uint32_t *baud_rate);
 uint32_t uart_toit_hal_get_rxfifo_len(uart_hal_handle_t hal);

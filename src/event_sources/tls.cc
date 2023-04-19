@@ -81,9 +81,15 @@ void TlsEventSource::close(TlsSocket* socket) {
 
 void TlsEventSource::on_unregister_resource(Locker& locker, Resource* r) {
   ASSERT(is_locked());
+#ifdef DEBUG
   // We never close a socket that is currently in the
-  // event source socket list.
-  ASSERT(!sockets_.is_linked(r->as<TlsSocket*>()));
+  // event source socket list. We may get non-socket
+  // resources in here, so we need to run through the
+  // list to safely figure out if they are present.
+  for (auto s : sockets_) {
+    ASSERT(s != r);
+  }
+#endif
 }
 
 void TlsEventSource::entry() {

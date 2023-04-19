@@ -298,6 +298,8 @@ namespace toit {
   PRIMITIVE(error, 2)                        \
   PRIMITIVE(get_internals, 1)                \
   PRIMITIVE(get_random, 1)                   \
+  PRIMITIVE(token_acquire, 1)                \
+  PRIMITIVE(token_release, 1)                \
 
 #define MODULE_WIFI(PRIMITIVE)               \
   PRIMITIVE(init, 1)                         \
@@ -453,12 +455,15 @@ namespace toit {
 
 #define MODULE_CRYPTO(PRIMITIVE)             \
   PRIMITIVE(sha1_start, 1)                   \
+  PRIMITIVE(sha1_clone, 1)                   \
   PRIMITIVE(sha1_add, 4)                     \
   PRIMITIVE(sha1_get, 1)                     \
   PRIMITIVE(sha_start, 2)                    \
+  PRIMITIVE(sha_clone, 1)                    \
   PRIMITIVE(sha_add, 4)                      \
   PRIMITIVE(sha_get, 1)                      \
   PRIMITIVE(siphash_start, 5)                \
+  PRIMITIVE(siphash_clone, 1)                \
   PRIMITIVE(siphash_add, 4)                  \
   PRIMITIVE(siphash_get, 1)                  \
   PRIMITIVE(aes_init, 4)                     \
@@ -629,6 +634,7 @@ namespace toit {
   PRIMITIVE(adler32_start, 1)                \
   PRIMITIVE(adler32_add, 5)                  \
   PRIMITIVE(adler32_get, 2)                  \
+  PRIMITIVE(adler32_clone, 1)                \
   PRIMITIVE(rle_start, 1)                    \
   PRIMITIVE(rle_add, 6)                      \
   PRIMITIVE(rle_finish, 3)                   \

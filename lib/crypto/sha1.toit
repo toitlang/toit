@@ -29,6 +29,9 @@ class Sha1 extends Checksum:
     sha1_state_ = sha1_start_ resource_freeing_module_
     add_finalizer this:: finalize_checksum_ this
 
+  constructor.private_ .sha1_state_:
+    add_finalizer this:: finalize_checksum_ this
+
   /** See $super. */
   add data from/int to/int -> none:
     sha1_add_ sha1_state_ data from to
@@ -42,9 +45,16 @@ class Sha1 extends Checksum:
     remove_finalizer this
     return sha1_get_ sha1_state_
 
+  clone -> Sha1:
+    return Sha1.private_ (sha1_clone_ sha1_state_)
+
 // Gets a new empty Sha1 object.
-sha1_start_ group -> none:
+sha1_start_ group:
   #primitive.crypto.sha1_start
+
+// Clones a Sha1 object.
+sha1_clone_ sha1:
+  #primitive.crypto.sha1_clone
 
 // Adds a UTF-8 string or a byte array to the sha1 hash.
 sha1_add_ sha1 data from/int to/int -> none:

@@ -38,6 +38,8 @@ TYPE_PRIMITIVE_ANY(add_certificate)
 TYPE_PRIMITIVE_ANY(error)
 TYPE_PRIMITIVE_ANY(get_internals)
 TYPE_PRIMITIVE_NULL(get_random)
+TYPE_PRIMITIVE_BYTE_ARRAY(token_acquire)
+TYPE_PRIMITIVE_NULL(token_release)
 
 }  // namespace toit::compiler
 }  // namespace toit
