@@ -636,16 +636,13 @@ class ToitHandshake_:
   ]
 
   handshake -> none:
-    handshake_hasher_client /checksum.Checksum := cipher_suite_.hmac_hasher.call
-    handshake_hasher_server /checksum.Checksum := cipher_suite_.hmac_hasher.call
+    handshake_hasher /checksum.Checksum := cipher_suite_.hmac_hasher.call
     hello := client_hello_packet_
-    handshake_hasher_client.add hello[5..]
-    handshake_hasher_server.add hello[5..]
+    handshake_hasher.add hello[5..]
     sent := session_.writer_.write hello
     assert: sent == hello.size
     server_hello_packet := session_.extract_first_message_
-    handshake_hasher_client.add server_hello_packet[5..]
-    handshake_hasher_server.add server_hello_packet[5..]
+    handshake_hasher.add server_hello_packet[5..]
     server_hello := ServerHello_ server_hello_packet
 
     // Session IDs are handled in RFC 4346.  Session tickets are in RFC 5077.
@@ -665,8 +662,7 @@ class ToitHandshake_:
     if next_server_packet[0] == HANDSHAKE_ and next_server_packet[5] == NEW_SESSION_TICKET_:
       // TODO: We should save this updated ticket for next connection so we can
       // resume the third session.
-      handshake_hasher_client.add next_server_packet[5..]
-      handshake_hasher_server.add next_server_packet[5..]
+      handshake_hasher.add next_server_packet[5..]
       next_server_packet = session_.extract_first_message_
 
     // Generate new keys in a shortened handshake.
@@ -687,7 +683,7 @@ class ToitHandshake_:
     assert: sent == CHANGE_CIPHER_SPEC_TEMPLATE_.size
     if next_server_packet.size != 6 or next_server_packet[0] != CHANGE_CIPHER_SPEC_ or next_server_packet[5] != 1:
       throw "Peer did not accept change cipher spec"
-    server_handshake_hash := handshake_hasher_server.get
+    server_handshake_hash := handshake_hasher.clone.get
     // https://www.rfc-editor.org/rfc/rfc5246#section-7.4.9
     server_finished_expected := pseudo_random_function_ 12
         --block_size=cipher_suite_.hmac_block_size
@@ -699,8 +695,8 @@ class ToitHandshake_:
     // The client message hash includes the server handshake message.
     // We know what that message is going to be, so we can add it before
     // we receive it.
-    handshake_hasher_client.add server_finished_expected
-    client_handshake_hash := handshake_hasher_client.get
+    handshake_hasher.add server_finished_expected
+    client_handshake_hash := handshake_hasher.get
     // The client finished messages includes the hash of the server's.
     client_finished := pseudo_random_function_ 12
         --block_size=cipher_suite_.hmac_block_size
