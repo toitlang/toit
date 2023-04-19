@@ -80,6 +80,16 @@ class Socket implements tcp.Socket:
     return session_.session_state
 
   /**
+  Set the state from a previous connection to the same TLS server.
+  This can dramatically speed up the hhandshake process.
+  Note that we don't currently have the ability to fall back from a resumed
+    session to a full handshake, so if the session is invalid, or the server has
+    forgotten about it, the handshake will fail.
+  */
+  session_state= state/ByteArray:
+    session_.session_state = state
+
+  /**
   Returns one of $SESSION_MODE_CONNECTING, $SESSION_MODE_MBED_TLS, $SESSION_MODE_TOIT, $SESSION_MODE_CLOSED.
   */
   session_mode -> int:

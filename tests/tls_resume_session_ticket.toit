@@ -24,7 +24,7 @@ test_site host/string -> none:
   socket.handshake
 
   print "Handshake complete to $host"
-  session := socket.session_.session_state
+  session := socket.session_state
   print "Got $session.size bytes of session data"
   print
       tison.decode session
@@ -44,7 +44,7 @@ test_site host/string -> none:
     --server_name=host
 
   // Put the session state from the last connection on it.
-  socket2.session_.session_state = session
+  socket2.session_state = session
 
   // Try to handshake in pure Toit.
   socket2.handshake
