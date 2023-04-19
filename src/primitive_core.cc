@@ -1912,7 +1912,7 @@ PRIMITIVE(task_has_messages) {
 PRIMITIVE(task_receive_message) {
   ObjectHeap* heap = process->object_heap();
 
-  if (heap->max_external_allocation() <= 0) ALLOCATION_FAILED;
+  if (heap->max_external_allocation() < 0) ALLOCATION_FAILED;
 
   if (heap->has_finalizer_to_run()) {
     return heap->next_finalizer_to_run();

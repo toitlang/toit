@@ -89,24 +89,27 @@ uword OldSpace::allocate_in_new_chunk(uword size) {
   // Allocate new chunk.  After a certain heap size we start allocating
   // multi-page chunks to improve fragmentation.
   int tracking_size = tracking_allocations_ ? 0 : PromotedTrack::header_size();
-  uword max_expansion = heap_->max_external_allocation();
-  uword smallest_chunk_size = Utils::round_down(Utils::min(get_default_chunk_size(used()), max_expansion), TOIT_PAGE_SIZE);
-  uword min_space_needed = size + tracking_size + WORD_SIZE;  // Make room for sentinel.
-  // Toit uses arraylets and external objects, so all objects should fit on a page.
-  ASSERT(min_space_needed <= TOIT_PAGE_SIZE);
-  uword chunk_size = Utils::round_up(Utils::max(min_space_needed, smallest_chunk_size), TOIT_PAGE_SIZE);
+  word max_expansion_signed = heap_->max_external_allocation();
+  if (max_expansion_signed > 0) {
+    uword max_expansion = max_expansion_signed;
+    uword smallest_chunk_size = Utils::round_down(Utils::min(get_default_chunk_size(used()), max_expansion), TOIT_PAGE_SIZE);
+    uword min_space_needed = size + tracking_size + WORD_SIZE;  // Make room for sentinel.
+    // Toit uses arraylets and external objects, so all objects should fit on a page.
+    ASSERT(min_space_needed <= TOIT_PAGE_SIZE);
+    uword chunk_size = Utils::round_up(Utils::max(min_space_needed, smallest_chunk_size), TOIT_PAGE_SIZE);
 
-  if (chunk_size <= max_expansion) {
-    Chunk* chunk = allocate_and_use_chunk(chunk_size);
-    while (chunk == null && chunk_size > TOIT_PAGE_SIZE && chunk_size >= min_space_needed) {
-      // If we fail to get a multi-page chunk, try for a smaller chunk.
-      chunk_size = Utils::round_up(chunk_size >> 1, TOIT_PAGE_SIZE);
-      chunk = allocate_and_use_chunk(chunk_size);
-    }
-    if (chunk != null) {
-      return allocate(size);
-    } else {
-      heap_->report_malloc_failed();
+    if (chunk_size <= max_expansion) {
+      Chunk* chunk = allocate_and_use_chunk(chunk_size);
+      while (chunk == null && chunk_size > TOIT_PAGE_SIZE && chunk_size >= min_space_needed) {
+        // If we fail to get a multi-page chunk, try for a smaller chunk.
+        chunk_size = Utils::round_up(chunk_size >> 1, TOIT_PAGE_SIZE);
+        chunk = allocate_and_use_chunk(chunk_size);
+      }
+      if (chunk != null) {
+        return allocate(size);
+      } else {
+        heap_->report_malloc_failed();
+      }
     }
   }
 

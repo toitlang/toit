@@ -188,7 +188,6 @@ word ObjectHeap::update_pending_limit() {
 word ObjectHeap::max_external_allocation() {
   if (!has_limit() && !has_max_heap_size()) return _UNLIMITED_EXPANSION;
   word total = external_memory_ + two_space_heap_.size();
-  if (total >= limit_) return 0;
   return limit_ - total;
 }
 
