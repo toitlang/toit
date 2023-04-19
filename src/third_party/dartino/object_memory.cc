@@ -108,8 +108,8 @@ void Space::iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stac
                object_address += object->size(program_)) {
             object = HeapObject::from_address(object_address);
             if (GcMetadata::is_grey(object)) {
+              object->roots_do(program_, visitor);  // This changes the size of stacks!
               GcMetadata::mark_all(object, object->size(program_));
-              object->roots_do(program_, visitor);
             }
           }
         }
