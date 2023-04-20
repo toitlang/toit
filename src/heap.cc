@@ -188,7 +188,6 @@ word ObjectHeap::update_pending_limit() {
 word ObjectHeap::max_external_allocation() {
   if (!has_limit() && !has_max_heap_size()) return _UNLIMITED_EXPANSION;
   word total = external_memory_ + two_space_heap_.size();
-  if (total >= limit_) return 0;
   return limit_ - total;
 }
 
@@ -313,11 +312,11 @@ GcType ObjectHeap::gc(bool try_hard) {
     // Update the pending limit that will be installed after the current
     // primitive (that caused the GC) completes.
     update_pending_limit();
+    // Use only the hard limit for the rest of this primitive.  We don't want to
+    // trigger any heuristic GCs before the primitive is over or we might cause a
+    // triple GC, which throws an exception.
+    limit_ = max_heap_size_;
   }
-  // Use only the hard limit for the rest of this primitive.  We don't want to
-  // trigger any heuristic GCs before the primitive is over or we might cause a
-  // triple GC, which throws an exception.
-  limit_ = max_heap_size_;
   return type;
 }
 
