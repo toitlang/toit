@@ -14,12 +14,14 @@ expect_allocation_failed [code]:
   expect
       exception == "ALLOCATION_FAILED" or exception == "OUT_OF_MEMORY"
 
+PAGE_SIZE_LOG_2 ::= platform == "FreeRTOS" ? 12 : 15
+
 main:
   // We can limit ourselves to as little as a 4k heap (on 32 bit) which
   // means no old-space.
-  for i := 12; i < 17; i++:
+  for i := PAGE_SIZE_LOG_2; i < 17; i++:
     doesnt_fail 1 << i
-  for i := 14; i < 17; i++:
+  for i := PAGE_SIZE_LOG_2 + 2; i < 18; i++:
     doesnt_fail_external 1 << i
   spawn:: eventually_fails 70000 --external
   sleep --ms=2000
@@ -29,8 +31,9 @@ main:
   sleep --ms=1500
   spawn:: eventually_fails 0x8000 --external
   sleep --ms=1000
-  spawn:: eventually_fails 30000 --external
-  sleep --ms=1000
+  if PAGE_SIZE_LOG_2 < 15:
+    spawn:: eventually_fails 30000 --external
+    sleep --ms=1000
 
   spawn:: eventually_fails 70000 --no-external
   sleep --ms=2000
@@ -40,8 +43,9 @@ main:
   sleep --ms=1500
   spawn:: eventually_fails 0x8000 --no-external
   sleep --ms=1000
-  spawn:: eventually_fails 30000 --no-external
-  sleep --ms=1000
+  if PAGE_SIZE_LOG_2 < 15:
+    spawn:: eventually_fails 30000 --no-external
+    sleep --ms=1000
 
 eventually_fails limit --external/bool:
   print_ "$limit eventually fails"
