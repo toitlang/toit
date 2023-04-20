@@ -598,7 +598,7 @@ class CipherSuite_:
 class ToitHandshake_:
   session_ /Session
   session_id_ /ByteArray := ?
-  session_ticket_ /ByteArray
+  session_ticket_ /ByteArray := ?
   master_secret_ /ByteArray
   cipher_suite_ /CipherSuite_
   client_random_ /ByteArray
@@ -660,8 +660,8 @@ class ToitHandshake_:
       throw "RESUME_FAILED"
     next_server_packet := session_.extract_first_message_
     if next_server_packet[0] == HANDSHAKE_ and next_server_packet[5] == NEW_SESSION_TICKET_:
-      // TODO: We should save this updated ticket for next connection so we can
-      // resume the third session.
+      session_ticket_ = next_server_packet[9..]
+      assert: (BIG_ENDIAN.uint24 next_server_packet 6) == session_ticket_.size
       handshake_hasher.add next_server_packet[5..]
       next_server_packet = session_.extract_first_message_
 
@@ -720,6 +720,15 @@ class ToitHandshake_:
       throw "TLS_HANDSHAKE_FAILED"
     // Send the client finished message.  This assumes we are the client.
     symmetric_session.write client_finished 0 client_finished.size --type=HANDSHAKE_
+
+    // Update the session data for any third connection.
+    to_encode := [
+      session_ticket_.size == 0 ? session_id_: #[],
+      session_ticket_,
+      master_secret_,
+      cipher_suite_.id,
+    ]
+    session_.session_state = tison.encode to_encode
 
   client_hello_packet_ -> ByteArray:
     enough_bytes := 142 + session_ticket_.size

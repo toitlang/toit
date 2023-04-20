@@ -10,56 +10,49 @@ import net.x509 as net
 import writer
 
 main:
+  test_site "amazon.com"
   test_site "cloudflare.com"
 
 test_site host/string -> none:
   port := 443
-  raw := tcp.TcpSocket
-  raw.connect host port
-  socket := tls.Socket.client raw
-    // Install the roots needed.
-    --root_certificates=[BALTIMORE_CYBERTRUST_ROOT, GLOBALSIGN_ROOT_CA, DIGICERT_GLOBAL_ROOT_G2, ISRG_ROOT_X1]
-    --server_name=host
 
-  socket.handshake
+  saved_session := null
 
-  print "Handshake complete to $host"
-  session := socket.session_state
-  print "Got $session.size bytes of session data"
-  print
-      tison.decode session
+  3.repeat: | iteration |
+    if iteration != 0:
+      sleep --ms=1000
 
-  socket.close
-  raw.close
+    raw := tcp.TcpSocket
+    raw.connect host port
+    socket := tls.Socket.client raw
+      // Install the roots needed.
+      --root_certificates=[BALTIMORE_CYBERTRUST_ROOT, GLOBALSIGN_ROOT_CA, DIGICERT_GLOBAL_ROOT_G2, ISRG_ROOT_X1]
+      --server_name=host
 
-  sleep --ms=1000
+    method := "full MbedTLS handshake"
+    if saved_session:
+      socket.session_state = saved_session
+      decoded := tison.decode saved_session
+      if decoded[0].size != 0: method = "resumed with ID"
+      if decoded[1].size != 0: method = "resumed with ticket"
 
-  // Now try to connect again, using the session data.
+    duration := Duration.of:
+      socket.handshake
 
-  raw2 := tcp.TcpSocket
-  raw2.connect host port
+    print "Handshake complete ($(%22s method)) to $(%15s host) in $(%4d duration.in_ms)ms"
 
-  // Don't need root certs for a resume.
-  socket2 := tls.Socket.client raw2
-    --server_name=host
+    saved_session = socket.session_state
 
-  // Put the session state from the last connection on it.
-  socket2.session_state = session
+    socket.write "GET / HTTP/1.1\r\n"
+    socket.write "Host: $host\r\n"
+    socket.write "\r\n"
 
-  // Try to handshake in pure Toit.
-  socket2.handshake
+    while data := socket.read:
+      str := data.to_string
+      if str.contains "301 Moved Permanently":
+        break
 
-  print "Resume succeeded"
-
-  socket2.write "GET / HTTP/1.1\r\n"
-  socket2.write "Host: $host\r\n"
-  socket2.write "\r\n"
-
-  while data := socket2.read:
-    str := data.to_string
-    print str
-    if str.contains "301 Moved Permanently":
-      break
+    socket.close
 
 BALTIMORE_CYBERTRUST_ROOT ::= net.Certificate.parse """\
 -----BEGIN CERTIFICATE-----
