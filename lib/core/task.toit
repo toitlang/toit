@@ -233,46 +233,80 @@ class Task_ implements Task:
     state_ = STATE_RUNNING
     previous_running_ = next_running_ = this
 
-  evaluate_ [code]:
-    exception := null
-    // Always have an outer catch clause. Without this, a throw will crash the VM.
-    // In that, we have an inner, but very pretty, root exception handling.
-    // This can fail in rare cases where --trace will OOM, kernel reject the message, etc.
+  evaluate_ [code] -> none:
     try:
-      exception = catch --trace code
-    finally: | is_exception trace_exception |
-      // If we got an exception here, either
-      // 1) the catch failed to guard against the exception so we assume
-      //    nothing works and just print the error.
-      // 2) the task was canceled.
-      if is_exception:
-        exception = trace_exception.value
-        if exception == CANCELED_ERROR and is_canceled:
-          exception = null
-        else:
-          print_ exception
-      exit_ exception != null
+      evaluate_and_trace_ code
 
-  exit_ has_error/bool:
-    // If any task exits with an error, we terminate the process eagerly.
-    if has_error: __exit__ 1
-    // Clean up resources.
-    if timer_:
-      timer_.close
-      timer_ = null
-    // Process messages and update task counts. We do this before we
-    // determine if the process is done to allow new tasks to spin
-    // up as part of the processing and impact the decision.
-    process_messages_
-    task_count_--
-    if background_: task_background_--
-    // If no services are defined and only background tasks are alive
-    // at this point, we terminate the process gracefully.
-    if ServiceManager_.is_empty and task_count_ == task_background_:
-      __exit__ 0
-    // Suspend this task and transfer control to the next one.
-    next := suspend_
-    task_transfer_to_ next true
+      // Process messages now. We do this before we determine
+      // if the process is done to allow new tasks to spin
+      // up as part of the processing and impact the decision.
+      evaluate_and_trace_: process_messages_
+
+      // If no services are defined and only background tasks are
+      // alive at this point, we terminate the process gracefully.
+      task_count := task_count_ - 1
+      task_background := task_background_
+      if background_: task_background--
+      if task_count == task_background and ServiceManager_.is_empty:
+        __exit__ 0
+
+      // We still have tasks left, so we need to update the counts
+      // and process messages until some other running task can
+      // take that responsibility over.
+      task_count_ = task_count
+      task_background_ = task_background
+      while identical this previous_running_:
+        __yield__
+        evaluate_and_trace_: process_messages_
+
+      // Mark this task as terminated and unlink it from the
+      // list of running tasks.
+      state_ = STATE_TERMINATED
+      next := unlink_
+      task_transfer_to_ next true  // Never returns.
+
+    finally:
+      __exit__ 1
+
+  /**
+  Evaluates the $block and safely traces any exceptions.
+
+  If evaluating the $block causes an exception, we let
+    the unwinding continue, unless it is due to
+    cancelation.
+  */
+  evaluate_and_trace_ [block] -> none:
+    traced := false
+    try:
+      catch block
+          --trace=:
+            true
+          --unwind=:
+            // The --trace block is invoked before
+            // the --unwind block, so we only get
+            // here if tracing did not cause an
+            // exception itself.
+            traced = true
+            true
+    finally: | is_exception exception |
+      // Release any acquired timer resource. We
+      // probably do not need it going forward and
+      // it will be re-acquired on demand.
+      timer := timer_
+      if timer:
+        timer.close
+        timer_ = null
+      // Check if we need to consume any cancelation
+      // errors and try to print a helpful message
+      // if we failed to trace the exception in the
+      // first attemp.
+      if is_exception:
+        value := exception.value
+        if is_canceled_ and value == CANCELED_ERROR:
+          return
+        else if not traced:
+          write_on_stdout_ "Uncaught exception: " false
+          print_ value
 
   suspend_:
     state_ = STATE_SUSPENDING
@@ -283,13 +317,8 @@ class Task_ implements Task:
       // If this task not the only task left, we unlink it from
       // the linked list of running tasks and mark it suspended.
       if not identical this previous_running_:
-        next := next_running_
-        previous := previous_running_
-        previous.next_running_ = next
-        next.previous_running_ = previous
-        next_running_ = previous_running_ = this
         state_ = STATE_SUSPENDED
-        return next
+        return unlink_
       // This task is the only task left. We keep it in the
       // suspending state and tell the system to wake us up when
       // new messages arrive.
@@ -306,6 +335,15 @@ class Task_ implements Task:
       previous_running_ = previous
       next_running_ = current
     state_ = STATE_RUNNING
+
+  unlink_:
+    assert: not identical this previous_running_
+    next := next_running_
+    previous := previous_running_
+    previous.next_running_ = next
+    next.previous_running_ = previous
+    next_running_ = previous_running_ = this
+    return next
 
   // Acquiring a timer will reuse the first previously released timer if
   // available. We use a single element cache to avoid creating timer objects
@@ -357,6 +395,7 @@ class Task_ implements Task:
   static STATE_RUNNING    /int ::= 0
   static STATE_SUSPENDING /int ::= 1
   static STATE_SUSPENDED  /int ::= 2
+  static STATE_TERMINATED /int ::= 3
   state_ := null  // TODO(kasper): Document this.
 
 // ----------------------------------------------------------------------------
