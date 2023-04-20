@@ -105,21 +105,70 @@ It is common that newly installed firmware boots with
   pending validation; see $is_validation_pending.
 */
 class FirmwareWriter extends ServiceResourceProxy:
+  static BUFFER_SIZE_ ::= 4096
+  buffer_/ByteArray? := null
+  buffered_/int := 0
+
   constructor from/int to/int:
     if not _client_: throw "UNSUPPORTED"
     super _client_ (_client_.firmware_writer_open from to)
 
   write bytes/ByteArray -> none:
-    _client_.firmware_writer_write handle_ bytes
+    size := bytes.size
+    if buffer := buffer_:
+      buffered := buffered_
+      free := BUFFER_SIZE_ - buffered
+      if size <= free:
+        buffer.replace buffered bytes 0 size
+        buffered_ += size
+        return
+      // Fill buffer and flush it.
+      buffer.replace buffered bytes 0 free
+      flush_ buffer BUFFER_SIZE_
+      // Adjust remaining bytes.
+      size -= free
+      bytes = bytes[free..]
+
+    if size >= BUFFER_SIZE_:
+      _client_.firmware_writer_write handle_ bytes
+    else:
+      buffer := ByteArray BUFFER_SIZE_
+      buffer.replace 0 bytes 0 size
+      buffer_ = buffer
+      buffered_ = size
+
+  copy mapping/FirmwareMapping -> none:
+    flush_
+    List.chunk_up 0 mapping.size BUFFER_SIZE_: | from to size |
+      buffer := ByteArray BUFFER_SIZE_
+      mapping.copy from to --into=buffer
+      if size < BUFFER_SIZE_:
+        buffer_ = buffer
+        buffered_ = size
+      else:
+        _client_.firmware_writer_write handle_ buffer
 
   pad size/int --value/int=0 -> none:
+    flush_
     _client_.firmware_writer_pad handle_ size value
 
   flush -> int:
+    flush_
     return _client_.firmware_writer_flush handle_
 
   commit --checksum/ByteArray?=null -> none:
+    flush_
     _client_.firmware_writer_commit handle_ checksum
+
+  flush_ buffer/ByteArray?=buffer_ buffered/int=buffered_ -> none:
+    if not buffer: return
+    // When the buffer is full, we avoid sending a slice because
+    // that disables the neutering transfer. This is the common
+    // case, so we prefer a little less copying.
+    if buffered < BUFFER_SIZE_: buffer = buffer[..buffered]
+    _client_.firmware_writer_write handle_ buffer
+    buffer_ = null
+    buffered_ = 0
 
 interface FirmwareConfig:
   /**
