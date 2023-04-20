@@ -731,7 +731,7 @@ class ToitHandshake_:
     session_.session_state = tison.encode to_encode
 
   client_hello_packet_ -> ByteArray:
-    enough_bytes := 142 + session_ticket_.size
+    enough_bytes := 150 + session_ticket_.size
     if session_.server_name_: enough_bytes += session_.server_name_.size
     client_hello := ByteArray enough_bytes
     client_hello.replace 0 CLIENT_HELLO_TEMPLATE_1_
@@ -789,14 +789,19 @@ class ToitHandshake_:
         0x00, 0x0a,  // 0x0a = elliptic curves extension.
         0x00, 0x0e,  // 14 bytes of extension data follow.
         0x00, 0x0c,  // 12 bytes of data in the curve list.
-        0x00, 0x19,  // secp521r1
-        0x00, 0x18,  // secp384r1
-        0x00, 0x17,  // secp256r1.
-        0x00, 0x16,  // secp256k1.
-        0x00, 0x1d,  // x25519.
-        0x00, 0x1e,  // x448.
+        0x00, 0x16,  // secp256k1(22) - removing this doesn't cause any test failures as far as we know.
+        0x00, 0x17,  // secp256r1(23).
+        0x00, 0x18,  // secp384r1(24).
+        0x00, 0x19,  // secp521r1(25).
+        0x00, 0x1d,  // x25519(29).
+        0x00, 0x1e,  // x448(30).
 
-        // Extended master secret extension - resume fails without this.
+        // Elliptic curve formats supported: uncompressed only.
+        // From https://www.ietf.org/rfc/rfc8422.html#section-5.1.2
+        // Resume to app.supabase.com fails without this.
+        0x00, 0x0b, 0x00, 0x02, 0x01, 0x00,
+
+        // Extended master secret extension - resume to Cloudflare fails without this.
         0x00, 0x17, 0x00, 0x00,
 
         // Signature algorithms supported.

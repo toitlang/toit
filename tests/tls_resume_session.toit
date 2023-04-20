@@ -10,17 +10,18 @@ import net.x509 as net
 import writer
 
 main:
-  test_site "amazon.com"
-  test_site "cloudflare.com"
+  test_site "amazon.com" true
+  test_site "app.supabase.com" false
+  test_site "cloudflare.com" true
 
-test_site host/string -> none:
+test_site host/string read_data/bool -> none:
   port := 443
 
   saved_session := null
 
   3.repeat: | iteration |
     if iteration != 0:
-      sleep --ms=1000
+      sleep --ms=500
 
     raw := tcp.TcpSocket
     raw.connect host port
@@ -30,27 +31,30 @@ test_site host/string -> none:
       --server_name=host
 
     method := "full MbedTLS handshake"
+    suite := 0
     if saved_session:
       socket.session_state = saved_session
       decoded := tison.decode saved_session
       if decoded[0].size != 0: method = "resumed with ID"
       if decoded[1].size != 0: method = "resumed with ticket"
+      suite = decoded[3]
 
     duration := Duration.of:
       socket.handshake
 
-    print "Handshake complete ($(%22s method)) to $(%15s host) in $(%4d duration.in_ms)ms"
+    print "Handshake complete ($(%22s method), suite $(%04x suite)) to $(%16s host) in $(%4d duration.in_ms) ms"
 
     saved_session = socket.session_state
 
-    socket.write "GET / HTTP/1.1\r\n"
-    socket.write "Host: $host\r\n"
-    socket.write "\r\n"
+    if read_data:
+      socket.write "GET / HTTP/1.1\r\n"
+      socket.write "Host: $host\r\n"
+      socket.write "\r\n"
 
-    while data := socket.read:
-      str := data.to_string
-      if str.contains "301 Moved Permanently":
-        break
+      while data := socket.read:
+        str := data.to_string
+        if str.contains "301 Moved Permanently":
+          break
 
     socket.close
 
