@@ -113,6 +113,14 @@ class FirmwareWriter extends ServiceResourceProxy:
     if not _client_: throw "UNSUPPORTED"
     super _client_ (_client_.firmware_writer_open from to)
 
+  /**
+  Write the $bytes into the target firmware.
+
+  If $bytes is an external byte array, the byte array will
+    be transferred without copying and thus neutered as
+    part of the call. Such a byte array will be turned into
+    an empty byte array.
+  */
   write bytes/ByteArray -> none:
     size := bytes.size
     if buffer := buffer_:
@@ -137,6 +145,13 @@ class FirmwareWriter extends ServiceResourceProxy:
       buffer_ = buffer
       buffered_ = size
 
+  /**
+  Copy all bytes from $mapping into the target firmware.
+
+  As the copying progresses and writes to the firmware
+    are performed, the $progress block is invoked and
+    passed the non-accumulated number of bytes written.
+  */
   copy mapping/FirmwareMapping [progress] -> none:
     flush_
     List.chunk_up 0 mapping.size BUFFER_SIZE_: | from to size |
@@ -163,11 +178,7 @@ class FirmwareWriter extends ServiceResourceProxy:
 
   flush_ buffer/ByteArray?=buffer_ buffered/int=buffered_ -> none:
     if not buffer: return
-    // When the buffer is full, we avoid sending a slice because
-    // that disables the neutering transfer. This is the common
-    // case, so we prefer a little less copying.
-    if buffered < BUFFER_SIZE_: buffer = buffer[..buffered]
-    _client_.firmware_writer_write handle_ buffer
+    _client_.firmware_writer_write handle_ buffer[..buffered]
     buffer_ = null
     buffered_ = 0
 
