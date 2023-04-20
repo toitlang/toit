@@ -186,7 +186,6 @@ class Session:
     token_state/monitor.ResourceState_? := null
     tls := null
     tls_state/monitor.ResourceState_? := null
-    close_resources := true
     try:
       group := tls_group.use
 
@@ -210,13 +209,13 @@ class Session:
       // part of completing the handshake.
       tls_ = tls
       handshake_ tls_state --session_state=session_state
-      close_resources = symmetric_session_ != null
 
     finally: | is_exception exception |
       if token_state: token_state.dispose
       if tls_state: tls_state.dispose
+      if is_exception: reader_ = null
 
-      if close_resources:
+      if is_exception or symmetric_session_ != null:
         // We do not need the resources any more. Either
         // because we're running in Toit mode using a
         // symmetric session or because we failed to do
