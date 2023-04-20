@@ -721,13 +721,12 @@ class ToitHandshake_:
     symmetric_session.write client_finished 0 client_finished.size --type=HANDSHAKE_
 
     // Update the session data for any third connection.
-    to_encode := [
-      session_ticket_.size == 0 ? session_id_: #[],
-      session_ticket_,
-      master_secret_,
-      cipher_suite_.id,
+    session_.session_state = tison.encode [
+        session_ticket_.size == 0 ? session_id_: #[],
+        session_ticket_,
+        master_secret_,
+        cipher_suite_.id,
     ]
-    session_.session_state = tison.encode to_encode
 
   client_hello_packet_ -> ByteArray:
     enough_bytes := 150 + session_ticket_.size
