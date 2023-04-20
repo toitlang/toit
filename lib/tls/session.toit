@@ -1008,7 +1008,8 @@ class SymmetricSession_:
         if alert_data[0] != ALERT_WARNING_:
           print "See https://www.rfc-editor.org/rfc/rfc4346#section-7.2"
           throw "Fatal TLS alert: $alert_data[1]"
-      assert: record_header.type == expected_type
+      else:
+        assert: record_header.type == expected_type
       buffered_plaintext_ = buffered_plaintext
       buffered_plaintext_index_ = 0
 
