@@ -17,33 +17,34 @@ import writer
 import .certificate
 import .socket
 
-// Record types from RFC 5246.
-HELLO_REQUEST_ ::= 0
-CLIENT_HELLO_ ::= 1
-SERVER_HELLO_ ::= 2
-NEW_SESSION_TICKET_ ::= 4
-CERTIFICATE_ ::= 11
+// Record types from RFC 5246 section 6.2.1.
+CHANGE_CIPHER_SPEC_ ::= 20
+ALERT_              ::= 21
+HANDSHAKE_          ::= 22
+APPLICATION_DATA_   ::= 23
+
+// Handshake message types from RFC 5246 section 7.4.
+HELLO_REQUEST_       ::= 0
+CLIENT_HELLO_        ::= 1
+SERVER_HELLO_        ::= 2
+NEW_SESSION_TICKET_  ::= 4
+CERTIFICATE_         ::= 11
 SERVER_KEY_EXCHANGE_ ::= 12
 CERTIFICATE_REQUEST_ ::= 13
-SERVER_HELLO_DONE_ ::= 14
-CERTIFICATE_VERIFY_ ::= 15
+SERVER_HELLO_DONE_   ::= 14
+CERTIFICATE_VERIFY_  ::= 15
 CLIENT_KEY_EXCHANGE_ ::= 16
-FINISHED_ ::= 20
-
-CHANGE_CIPHER_SPEC_ ::= 20
-ALERT_ ::= 21
-HANDSHAKE_ ::= 22
-APPLICATION_DATA_ ::= 23
+FINISHED_            ::= 20
 
 ALERT_WARNING_ ::= 1
-ALERT_FATAL_ ::= 2
+ALERT_FATAL_   ::= 2
 
 RECORD_HEADER_SIZE_ ::= 5
 CLIENT_RANDOM_SIZE_ ::= 32
 
-EXTENSION_SERVER_NAME_ ::= 0
+EXTENSION_SERVER_NAME_            ::= 0
 EXTENSION_EXTENDED_MASTER_SECRET_ ::= 23
-EXTENSION_SESSION_TICKET_ ::= 35
+EXTENSION_SESSION_TICKET_         ::= 35
 
 class RecordHeader_:
   bytes /ByteArray      // At least 5 bytes.
@@ -52,6 +53,14 @@ class RecordHeader_:
   minor_version -> int: return bytes[2]
   length -> int: return BIG_ENDIAN.uint16 bytes 3
   length= value/int: BIG_ENDIAN.put_uint16 bytes 3 value
+
+  constructor .bytes:
+
+class HandshakeHeader_:
+  bytes /ByteArray     // At least 9 bytes.  Includes the record header.
+  type -> int: return bytes[5]
+  length -> int: return BIG_ENDIAN.uint24 bytes 6
+  length= value/int: BIG_ENDIAN.put_uint24 bytes 6 value
 
   constructor .bytes:
 
@@ -660,7 +669,9 @@ class ToitHandshake_:
     next_server_packet := session_.extract_first_message_
     if next_server_packet[0] == HANDSHAKE_ and next_server_packet[5] == NEW_SESSION_TICKET_:
       session_ticket_ = next_server_packet[9..]
-      assert: (BIG_ENDIAN.uint24 next_server_packet 6) == session_ticket_.size
+      assert:
+        message := HandshakeHeader_ next_server_packet
+        message.length == session_ticket_.size
       handshake_hasher.add next_server_packet[5..]
       next_server_packet = session_.extract_first_message_
 
@@ -761,8 +772,10 @@ class ToitHandshake_:
       client_hello.replace index it
       index += it.size
     // Update size of record and message.
-    BIG_ENDIAN.put_uint16 client_hello 3 index - 5
-    BIG_ENDIAN.put_uint24 client_hello 6 index - 9
+    record_header := RecordHeader_ client_hello
+    record_header.length = index - 5
+    handshake_header := HandshakeHeader_ client_hello
+    handshake_header.length = index - 9
     return client_hello[..index]
 
   // We normally supply the hostname because multiple HTTPS servers can be on
@@ -832,15 +845,15 @@ class ServerHello_:
   cipher_suite /int
 
   constructor packet/ByteArray:
-    if packet[0] != HANDSHAKE_ or packet[5] != SERVER_HELLO_:
-      if packet[0] == ALERT_:
+    header := RecordHeader_ packet
+    if header.type != HANDSHAKE_ or packet[5] != SERVER_HELLO_:
+      if header.type == ALERT_:
         print "Alert: $(packet[5] == 2 ? "fatal" : "warning") $(packet[6])"
         print "See https://www.rfc-editor.org/rfc/rfc4346#section-7.2"
       throw "PROTOCOL_ERROR"
-    message_size := BIG_ENDIAN.uint24 packet 6
     assert:
-      record_size := BIG_ENDIAN.uint16 packet 3
-      record_size == message_size + 4  // Last line is value being asserted.
+      handshake_header := HandshakeHeader_ packet
+      header.length == handshake_header.length + 4  // Last line is value being asserted.
     random = packet[11..43]
     str := ""
     for i := random.size - 8; i < random.size; i++:
