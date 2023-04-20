@@ -137,7 +137,7 @@ class FirmwareWriter extends ServiceResourceProxy:
       buffer_ = buffer
       buffered_ = size
 
-  copy mapping/FirmwareMapping -> none:
+  copy mapping/FirmwareMapping [progress] -> none:
     flush_
     List.chunk_up 0 mapping.size BUFFER_SIZE_: | from to size |
       buffer := ByteArray BUFFER_SIZE_
@@ -147,6 +147,7 @@ class FirmwareWriter extends ServiceResourceProxy:
         buffered_ = size
       else:
         _client_.firmware_writer_write handle_ buffer
+      progress.call size
 
   pad size/int --value/int=0 -> none:
     flush_
