@@ -72,6 +72,7 @@ class KeyData_:
 
   // Algorithm is one of ALGORITHM_AES_GCM or ALGORITHM_CHACHA20_POLY1305.
   constructor --.key --.iv --.algorithm/int:
+    // Both algorithms require a 12 byte IV, so we pad.
     iv += ByteArray (12 - iv.size)
 
   next_sequence_number -> ByteArray:
@@ -156,17 +157,19 @@ class Session:
   /**
   Creates a new TLS session at the client-side.
 
-  If $server_name is provided, it will validate the peer certificate against that. If
-    the $server_name is omitted, it will skip verification.
+  If $server_name is provided, it will validate the peer certificate against
+    that. If the $server_name is omitted, it will skip verification.
   The $root_certificates are used to validate the peer certificate.
-  If $certificate is given, the certificate is used by the server to validate the
-    authority of the client. This is not done using e.g. HTTPS communication.
+  If $certificate is given, the certificate is used by the server to validate
+    the authority of the client. This is not usually done on the web, where
+    normally only the client verifies the server
   The handshake routine requires at most $handshake_timeout between each step
     in the handshake process.
-  If $session_state is given, the handshake operation will use it to resume the TLS
-    session from the previous stored session state. This can greatly improve the
-    duration of a complete TLS handshake. If the session state is invalid, the
-    operation will fall back to performing the full handshake.
+  If $session_state is given, the handshake operation will use it to resume the
+    TLS session from the previous stored session state. This can greatly
+    improve the duration of a complete TLS handshake. If the session state is
+    given, but rejected by the server, an error will be thrown, and the
+    operation must be retried without stored session data.
   */
   constructor.client .unbuffered_reader_ .writer_
       --server_name/string?=null
@@ -181,8 +184,9 @@ class Session:
   Creates a new TLS session at the server-side.
 
   The $root_certificates are used to validate the peer certificate.
-  If $certificate is given, the certificate is used by the server to validate the
-    authority of the client. This is not done using e.g. HTTPS communication.
+  If $certificate is given, the certificate is used by the server to validate
+    the authority of the client. This is not usually done on the web,
+    where normally only the client verifies the server.
   The handshake routine requires at most $handshake_timeout between each step
     in the handshake process.
   */
@@ -828,15 +832,14 @@ class ToitHandshake_:
     ]
 
   add_session_ticket_extension_ extensions/List -> none:
-    // If we have a ticket send that.  If we don't have a ticket we could send
-    // an empty ticket extension to indicate we want a ticket for next time,
-    // but we have not implemented that yet. From RFC 5077 appendix A.
-    if session_ticket_.size != 0:
-      ticket_extension := ByteArray session_ticket_.size + 4
-      ticket_extension[1] = EXTENSION_SESSION_TICKET_
-      BIG_ENDIAN.put_uint16 ticket_extension 2 session_ticket_.size
-      ticket_extension.replace 4 session_ticket_
-      extensions.add ticket_extension
+    // If we have a ticket send that.  If we don't have a ticket we send
+    // an empty ticket extension to indicate we want a ticket for next time.
+    // From RFC 5077 appendix A.
+    ticket_extension := ByteArray session_ticket_.size + 4
+    ticket_extension[1] = EXTENSION_SESSION_TICKET_
+    BIG_ENDIAN.put_uint16 ticket_extension 2 session_ticket_.size
+    ticket_extension.replace 4 session_ticket_
+    extensions.add ticket_extension
 
 class ServerHello_:
   extensions /Map

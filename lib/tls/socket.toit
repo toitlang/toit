@@ -81,7 +81,7 @@ class Socket implements tcp.Socket:
 
   /**
   Set the state from a previous connection to the same TLS server.
-  This can dramatically speed up the hhandshake process.
+  This can dramatically speed up the handshake process.
   Note that we don't currently have the ability to fall back from a resumed
     session to a full handshake, so if the session is invalid, or the server has
     forgotten about it, the handshake will fail.
