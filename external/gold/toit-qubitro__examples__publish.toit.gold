@@ -7,6 +7,3 @@
 <pkg:toit-cert-roots>/certificate_roots.toit:9123:3: warning: Deprecated 'CYBERTRUST_GLOBAL_ROOT'
   CYBERTRUST_GLOBAL_ROOT,
   ^~~~~~~~~~~~~~~~~~~~~~
-<pkg:mqtt>/broker.toit:298:29: warning: Deprecated 'task'
-    assert: writer_task_ != task
-                            ^~~~
