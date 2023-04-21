@@ -126,7 +126,6 @@ class Session:
 
   handshake_in_progress_/monitor.Latch? := null
   tls_ := null
-  toit_handshake_/ToitHandshake_? := null
   tls_group_/TlsGroup_? := null
 
   outgoing_buffer_/ByteArray := #[]
@@ -215,14 +214,14 @@ class Session:
     handshake_in_progress_ = monitor.Latch
 
     if session_state:
-      toit_handshake_ = ToitHandshake_ this
       try:
-        toit_handshake_.handshake
+        result := (ToitHandshake_ this).handshake
+        set_up_symmetric_session_ result
         // Connected.
         return
       finally: | is_exception exception |
         value := is_exception ? exception.value : null
-        handshake_in_progress_.set value
+        handshake_in_progress_.set value --exception=is_exception
         handshake_in_progress_ = null
 
     tls_group := is_server ? tls_group_server_ : tls_group_client_
@@ -332,6 +331,39 @@ class Session:
     item is an integer giving the ciphersuite used.
   */
   session_state/ByteArray? := null
+
+  /**
+  Called after a pure-Toit handshake has completed.  This sets up the
+    symmetric session and checks that the handshake checksums match.
+  We have to switch to encrypted mode to receive and send the last
+    two handshake messages.  We do this before knowing if the handshake
+    succeeded.
+  */
+  set_up_symmetric_session_ handshake_result/List -> none:
+    reads_encrypted_ = true
+    writes_encrypted_ = true
+    symmetric_session_ = handshake_result[0]
+    client_finished /ByteArray := handshake_result[1]
+    server_finished_expected /ByteArray := handshake_result[2]
+    session_id /ByteArray := handshake_result[3]
+    session_ticket /ByteArray := handshake_result[4]
+    master_secret /ByteArray := handshake_result[5]
+    cipher_suite_id /int := handshake_result[6]
+
+    // Get the server finished message.  This assumes we are the client.
+    server_finished := symmetric_session_.read --expected_type=HANDSHAKE_
+    if not compare_byte_arrays_ server_finished_expected server_finished:
+      throw "TLS_HANDSHAKE_FAILED"
+    // Send the client finished message.  This assumes we are the client.
+    symmetric_session_.write client_finished 0 client_finished.size --type=HANDSHAKE_
+
+    // Update the session data for any third connection.
+    session_state = tison.encode [
+        session_id,
+        session_ticket,
+        master_secret,
+        cipher_suite_id,
+    ]
 
   write data from=0 to=data.size:
     ensure_handshaken_
@@ -647,7 +679,7 @@ class ToitHandshake_:
       1,           // 1 means change cipher spec.
   ]
 
-  handshake -> none:
+  handshake -> List:
     handshake_hasher /checksum.Checksum := cipher_suite_.hmac_hasher.call
     hello := client_hello_packet_
     handshake_hasher.add hello[5..]
@@ -719,24 +751,13 @@ class ToitHandshake_:
         --seed=client_handshake_hash
         cipher_suite_.hmac_hasher
     client_finished = #[FINISHED_, 0x00, 0x00, client_finished.size] + client_finished
-    set_up_session_ write_key read_key client_finished server_finished_expected
-
-  set_up_session_ write_key/KeyData_ read_key/KeyData_ client_finished/ByteArray server_finished_expected/ByteArray -> none:
-    // Add message header - 1 byte for type, 3 bytes for length.
-    session_.reads_encrypted_ = true
-    session_.writes_encrypted_ = true
     symmetric_session :=
         SymmetricSession_ session_ session_.writer_ session_.reader_ write_key read_key
-    session_.symmetric_session_ = symmetric_session
-    // Get the server finished message.  This assumes we are the client.
-    server_finished := symmetric_session.read --expected_type=HANDSHAKE_
-    if not compare_byte_arrays_ server_finished_expected server_finished:
-      throw "TLS_HANDSHAKE_FAILED"
-    // Send the client finished message.  This assumes we are the client.
-    symmetric_session.write client_finished 0 client_finished.size --type=HANDSHAKE_
 
-    // Update the session data for any third connection.
-    session_.session_state = tison.encode [
+    return [
+        symmetric_session,
+        client_finished,
+        server_finished_expected,
         session_ticket_.size == 0 ? session_id_: #[],
         session_ticket_,
         master_secret_,

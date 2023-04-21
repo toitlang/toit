@@ -10,11 +10,19 @@ import net.x509 as net
 import writer
 
 main:
-  test_site "amazon.com"
-  test_site "app.supabase.com" --no-read_data
-  test_site "cloudflare.com"
-  test_site "adafruit.com"
-  test_site "dkhostmaster.dk"
+  test_site_with_one_retry "amazon.com"
+  test_site_with_one_retry "app.supabase.com" --no-read_data
+  test_site_with_one_retry "cloudflare.com"
+  test_site_with_one_retry "adafruit.com"
+  test_site_with_one_retry "dkhostmaster.dk"
+
+test_site_with_one_retry host/string --read_data/bool=true -> none:
+  catch --trace:
+    with_timeout --ms=10_000:
+      test_site host --read_data=read_data
+    return
+  with_timeout --ms=10_000:
+    test_site host --read_data=read_data
 
 test_site host/string --read_data/bool=true -> none:
   port := 443
