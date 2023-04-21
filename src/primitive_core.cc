@@ -281,6 +281,17 @@ PRIMITIVE(byte_array_convert_to_string) {
   return process->allocate_string_or_error(char_cast(bytes.address()) + start, end - start);
 }
 
+PRIMITIVE(count_byte_matches) {
+  ARGS(Blob, bytes_1, Blob, bytes_2, int, start_1, int, start_2, int, length);
+  if (!(0 <= start_1 && start_1 <= start_1 + length && start_1 + length <= bytes_1.length())) OUT_OF_BOUNDS;
+  if (!(0 <= start_2 && start_2 <= start_2 + length && start_2 + length <= bytes_2.length())) OUT_OF_BOUNDS;
+  word count = 0;
+  for (word i_1 = start_1, i_2 = start_2; i_1 < start_1 + length; i_1++, i_2++) {
+    if (bytes_1.address()[i_1] == bytes_2.address()[i_2]) count++;
+  }
+  return Primitive::integer(count, process);
+}
+
 PRIMITIVE(blob_index_of) {
   ARGS(Blob, bytes, int, byte, int, from, int, to);
   if (!(0 <= from && from <= to && to <= bytes.length())) OUT_OF_BOUNDS;

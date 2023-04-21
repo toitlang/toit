@@ -1266,6 +1266,12 @@ interface ByteArray:
   */
   index_of byte/int --from/int=0 --to/int=size -> int
 
+  /***
+  Count how many bytes match the other string or byte array, starting at the
+    given index.
+  */
+  count_byte_matches other index/int other_index/int length/int -> int
+
 /** Internal function to create a byte array with one element. */
 create_byte_array_ x/int -> ByteArray_:
   bytes := ByteArray_ 1
@@ -1531,6 +1537,10 @@ abstract class ByteArrayBase_ implements ByteArray:
   index_of byte/int --from/int=0 --to/int=size -> int:
     #primitive.core.blob_index_of
 
+  /// Count how many bytes match the other string or byte array, starting at the given index.
+  count_byte_matches other index/int other_index/int length/int -> int:
+    #primitive.core.count_byte_matches
+
 /**
 A container specialized for bytes.
 
@@ -1655,6 +1665,10 @@ class CowByteArray_ implements ByteArray:
 
   index_of byte/int --from/int=0 --to/int=size -> int:
     return backing_.index_of byte --from=from --to=to
+
+  /// Count how many bytes match the other string or byte array, starting at the given index.
+  count_byte_matches other index/int other_index/int length/int -> int:
+    #primitive.core.count_byte_matches
 
   size:
     return backing_.size

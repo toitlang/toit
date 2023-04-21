@@ -213,6 +213,7 @@ TYPE_PRIMITIVE_BYTE_ARRAY(byte_array_new_external)
 TYPE_PRIMITIVE_NULL(byte_array_replace)
 TYPE_PRIMITIVE_BOOL(byte_array_is_valid_string_content)
 TYPE_PRIMITIVE_STRING(byte_array_convert_to_string)
+TYPE_PRIMITIVE_INT(count_byte_matches)
 
 TYPE_PRIMITIVE_STRING(vm_sdk_version)
 TYPE_PRIMITIVE_STRING(vm_sdk_info)
