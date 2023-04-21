@@ -7,6 +7,7 @@ import crypto.aes show *
 import crypto.chacha20 show *
 import crypto.checksum
 import crypto.hmac show Hmac
+import crypto.sha show Sha256 Sha384
 import encoding.tison
 import monitor
 import net.x509 as x509
@@ -16,16 +17,34 @@ import writer
 import .certificate
 import .socket
 
-// Record types from RFC 5246.
+// Record types from RFC 5246 section 6.2.1.
 CHANGE_CIPHER_SPEC_ ::= 20
-ALERT_ ::= 21
-HANDSHAKE_ ::= 22
-APPLICATION_DATA_ ::= 23
+ALERT_              ::= 21
+HANDSHAKE_          ::= 22
+APPLICATION_DATA_   ::= 23
+
+// Handshake message types from RFC 5246 section 7.4.
+HELLO_REQUEST_       ::= 0
+CLIENT_HELLO_        ::= 1
+SERVER_HELLO_        ::= 2
+NEW_SESSION_TICKET_  ::= 4
+CERTIFICATE_         ::= 11
+SERVER_KEY_EXCHANGE_ ::= 12
+CERTIFICATE_REQUEST_ ::= 13
+SERVER_HELLO_DONE_   ::= 14
+CERTIFICATE_VERIFY_  ::= 15
+CLIENT_KEY_EXCHANGE_ ::= 16
+FINISHED_            ::= 20
 
 ALERT_WARNING_ ::= 1
-ALERT_FATAL_ ::= 2
+ALERT_FATAL_   ::= 2
 
-RECORD_HEADER_SIZE_    ::= 5
+RECORD_HEADER_SIZE_ ::= 5
+CLIENT_RANDOM_SIZE_ ::= 32
+
+EXTENSION_SERVER_NAME_            ::= 0
+EXTENSION_EXTENDED_MASTER_SECRET_ ::= 23
+EXTENSION_SESSION_TICKET_         ::= 35
 
 class RecordHeader_:
   bytes /ByteArray      // At least 5 bytes.
@@ -37,6 +56,14 @@ class RecordHeader_:
 
   constructor .bytes:
 
+class HandshakeHeader_:
+  bytes /ByteArray     // At least 9 bytes.  Includes the record header.
+  type -> int: return bytes[5]
+  length -> int: return BIG_ENDIAN.uint24 bytes 6
+  length= value/int: BIG_ENDIAN.put_uint24 bytes 6 value
+
+  constructor .bytes:
+
 class KeyData_:
   key /ByteArray
   iv /ByteArray
@@ -45,6 +72,8 @@ class KeyData_:
 
   // Algorithm is one of ALGORITHM_AES_GCM or ALGORITHM_CHACHA20_POLY1305.
   constructor --.key --.iv --.algorithm/int:
+    // Both algorithms require a 12 byte IV, so we pad.
+    iv += ByteArray (12 - iv.size)
 
   next_sequence_number -> ByteArray:
     result := ByteArray 8
@@ -127,18 +156,25 @@ class Session:
   /**
   Creates a new TLS session at the client-side.
 
-  If $server_name is provided, it will validate the peer certificate against that. If
-    the $server_name is omitted, it will skip verification.
+  If $server_name is provided, it will validate the peer certificate against
+    that. If the $server_name is omitted, it will skip verification.
   The $root_certificates are used to validate the peer certificate.
-  If $certificate is given, the certificate is used by the server to validate the
-    authority of the client. This is not done using e.g. HTTPS communication.
+  If $certificate is given, the certificate is used by the server to validate
+    the authority of the client. This is not usually done on the web, where
+    normally only the client verifies the server
   The handshake routine requires at most $handshake_timeout between each step
     in the handshake process.
+  If $session_state is given, the handshake operation will use it to resume the
+    TLS session from the previous stored session state. This can greatly
+    improve the duration of a complete TLS handshake. If the session state is
+    given, but rejected by the server, an error will be thrown, and the
+    operation must be retried without stored session data.
   */
   constructor.client .unbuffered_reader_ .writer_
       --server_name/string?=null
       --.certificate=null
       --.root_certificates=[]
+      --.session_state=null
       --.handshake_timeout/Duration=DEFAULT_HANDSHAKE_TIMEOUT:
     reader_ = reader.BufferedReader unbuffered_reader_
     server_name_ = server_name
@@ -147,8 +183,9 @@ class Session:
   Creates a new TLS session at the server-side.
 
   The $root_certificates are used to validate the peer certificate.
-  If $certificate is given, the certificate is used by the server to validate the
-    authority of the client. This is not done using e.g. HTTPS communication.
+  If $certificate is given, the certificate is used by the server to validate
+    the authority of the client. This is not usually done on the web,
+    where normally only the client verifies the server.
   The handshake routine requires at most $handshake_timeout between each step
     in the handshake process.
   */
@@ -164,13 +201,8 @@ class Session:
 
   This method will automatically be called by read and write if the handshake
     is not completed yet.
-
-  If $session_state is given, the handshake operation will use it to resume the TLS
-    session from the previous stored session state. This can greatly improve the
-    duration of a complete TLS handshake. If the session state is invalid, the
-    operation will fall back to performing the full handshake.
   */
-  handshake --session_state/ByteArray?=null -> none:
+  handshake -> none:
     if not reader_:
       throw "ALREADY_CLOSED"
     else if handshake_in_progress_:
@@ -180,6 +212,18 @@ class Session:
       throw "TLS_ALREADY_HANDSHAKEN"
 
     handshake_in_progress_ = monitor.Latch
+
+    if session_state:
+      try:
+        result := (ToitHandshake_ this).handshake
+        set_up_symmetric_session_ result
+        // Connected.
+        return
+      finally: | is_exception exception |
+        value := is_exception ? exception.value : null
+        handshake_in_progress_.set value --exception=is_exception
+        handshake_in_progress_ = null
+
     tls_group := is_server ? tls_group_server_ : tls_group_client_
 
     token := null
@@ -245,9 +289,6 @@ class Session:
     if certificate:
       tls_add_certificate_ tls_ certificate.certificate.res_ certificate.private_key certificate.password
     tls_init_socket_ tls_ null
-    if session_state:
-      list := tison.decode session_state
-      // TODO: Handshake without MbedTLS.
 
     while true:
       tls_handshake_ tls_
@@ -269,8 +310,8 @@ class Session:
   extract_key_data_ -> none:
     if reads_encrypted_ and writes_encrypted_:
       key_data /List? := tls_get_internals_ tls_
+      session_state = tison.encode key_data[5..9]
       if key_data != null:
-        assert: key_data.size == 9
         write_key_data := KeyData_ --key=key_data[1] --iv=key_data[3] --algorithm=key_data[0]
         read_key_data := KeyData_ --key=key_data[2] --iv=key_data[4] --algorithm=key_data[0]
         write_key_data.sequence_number_ = outgoing_sequence_numbers_used_
@@ -281,8 +322,7 @@ class Session:
   Gets the session state, a ByteArray that can be used to resume
     a TLS session at a later point.
 
-  The session can be read at any point after a handshake, but before the session
-    is closed.
+  The session can be read at any point after a handshake.
 
   The session state is a Tison-encoded list of 3 byte arrays and an integer:
   The first byte array is the session ID, the second is the session ticket, and
@@ -290,9 +330,40 @@ class Session:
     mutually exclusive (only one of them has a non-zero length).  The fourth
     item is an integer giving the ciphersuite used.
   */
-  session_state -> ByteArray:
-    key_data := tls_get_internals_ tls_
-    return tison.encode key_data[5..8]
+  session_state/ByteArray? := null
+
+  /**
+  Called after a pure-Toit handshake has completed.  This sets up the
+    symmetric session and checks that the handshake checksums match.
+  We have to switch to encrypted mode to receive and send the last
+    two handshake messages.  We do this before knowing if the handshake
+    succeeded.
+  */
+  set_up_symmetric_session_ handshake_result/List -> none:
+    reads_encrypted_ = true
+    writes_encrypted_ = true
+    symmetric_session_ = handshake_result[0]
+    client_finished /ByteArray := handshake_result[1]
+    server_finished_expected /ByteArray := handshake_result[2]
+    session_id /ByteArray := handshake_result[3]
+    session_ticket /ByteArray := handshake_result[4]
+    master_secret /ByteArray := handshake_result[5]
+    cipher_suite_id /int := handshake_result[6]
+
+    // Get the server finished message.  This assumes we are the client.
+    server_finished := symmetric_session_.read --expected_type=HANDSHAKE_
+    if not compare_byte_arrays_ server_finished_expected server_finished:
+      throw "TLS_HANDSHAKE_FAILED"
+    // Send the client finished message.  This assumes we are the client.
+    symmetric_session_.write client_finished 0 client_finished.size --type=HANDSHAKE_
+
+    // Update the session data for any third connection.
+    session_state = tison.encode [
+        session_id,
+        session_ticket,
+        master_secret,
+        cipher_suite_id,
+    ]
 
   write data from=0 to=data.size:
     ensure_handshaken_
@@ -534,6 +605,306 @@ class Session:
     packet := extract_first_message_
     tls_set_incoming_ tls_ packet 0
 
+class CipherSuite_:
+  id /int               // 16 bit cipher suite ID from RFCs 5288, 5289, 7905.
+  key_size /int         // In bytes.
+  iv_size /int          // In bytes.
+  algorithm /int        // ALGORITHM_AES_GCM or ALGORITHM_CHACHA20_POLY1305 from lib/crypto.
+  hmac_hasher /Lambda   // Lambda that creates Sha256 or Sha384 objects.
+  hmac_block_size /int  // In bytes.
+
+  constructor .id/int:
+      // No suites from RFC 5246, because they have all been deprecated.
+      sha_is_256 /bool := ?
+      if 0x9c <= id <= 0xa7 or 0xc02b <= id <= 0xc032:
+        // The AES GCM suites from RFC 5288 and RFC 5289.
+        algorithm = ALGORITHM_AES_GCM
+        sha_is_256 = id < 0x100
+            ? id & 1 == 0
+            : id & 1 == 1
+        key_size = sha_is_256 ? 16 : 32  // Pick AES-128 or AES-256.
+        iv_size = 4  // Called the salt in RFC 5288.
+      else if 0xcca8 <= id <= 0xccae:
+        // The ChaCha20-Poly1305 suites from RFC 7905.
+        algorithm = ALGORITHM_CHACHA20_POLY1305
+        sha_is_256 = true
+        key_size = 32
+        iv_size = 12  // Called the nonce in RFC 7905.
+      else:
+        throw "Unknown cipher suite ID: $id"
+      if sha_is_256:
+        hmac_hasher = :: Sha256
+        hmac_block_size = Sha256.BLOCK_SIZE
+      else:
+        hmac_hasher = :: Sha384
+        hmac_block_size = Sha384.BLOCK_SIZE
+
+class ToitHandshake_:
+  session_ /Session
+  session_id_ /ByteArray := ?
+  session_ticket_ /ByteArray := ?
+  master_secret_ /ByteArray
+  cipher_suite_ /CipherSuite_
+  client_random_ /ByteArray
+
+  constructor .session_:
+    list := tison.decode session_.session_state
+    session_id_ = list[0]
+    session_ticket_ = list[1]
+    master_secret_ = list[2]
+    cipher_suite_ = CipherSuite_ list[3]
+    client_random_ = ByteArray CLIENT_RANDOM_SIZE_
+    tls_get_random_ client_random_
+
+  static CLIENT_HELLO_TEMPLATE_1_ ::= #[
+      22,          // Record type: HANDSHAKE_
+      3, 1,        // TLS 1.0 - see comment at https://tls12.xargs.org/#client-hello/annotated
+      0, 0,        // Record header size will be filled in here.
+      1,           // CLIENT_HELLO_.
+      0, 0, 0,     // Message size will be filled in here.
+      3, 3,        // TLS 1.2.
+  ]
+
+  static CLIENT_HELLO_TEMPLATE_2_ ::= #[
+      0, 2,        // Cipher suites size.
+      0, 0,        // Cipher suite is filled in here.
+      1,           // Compression methods length.
+      0,           // No compression.
+  ]
+
+  static CHANGE_CIPHER_SPEC_TEMPLATE_ ::= #[
+      20,          // Record type: CHANGE_CIPHER_SPEC_
+      3, 3,        // TLS 1.2.
+      0, 1,        // One byte of payload.
+      1,           // 1 means change cipher spec.
+  ]
+
+  handshake -> List:
+    handshake_hasher /checksum.Checksum := cipher_suite_.hmac_hasher.call
+    hello := client_hello_packet_
+    handshake_hasher.add hello[5..]
+    sent := session_.writer_.write hello
+    assert: sent == hello.size
+    server_hello_packet := session_.extract_first_message_
+    handshake_hasher.add server_hello_packet[5..]
+    server_hello := ServerHello_ server_hello_packet
+
+    // Session IDs are handled in RFC 4346.  Session tickets are in RFC 5077.
+    // * We sent ticket, and a random session ID.  Server accepts ticket: Figure 5077-2.
+    //   * Server responds with matching session ID. Shortened handshake gets
+    //          us connected.  There may be a NewSessionTicket message.
+    // * We sent session ID, server accepts session ID: Figure 4346-2.
+    //    * Server sends no ticket extension, echoes back session ID in
+    //          server hello. Shortened handshake gets us connected.
+    // * We sent session ID, server responds with non-matching session ID:  Figure 4346-1, 5077-3, or 5077-4.
+    //    * This means we need a full handshake which is not yet
+    //          implemented in Toit. Abandon and reconnect, using MbedTLS.
+    if not compare_byte_arrays_ server_hello.session_id session_id_:
+      // Session ID not accepted.  Abandon and reconnect, using MbedTLS.
+      throw "RESUME_FAILED"
+    next_server_packet := session_.extract_first_message_
+    if next_server_packet[0] == HANDSHAKE_ and next_server_packet[5] == NEW_SESSION_TICKET_:
+      session_ticket_ = next_server_packet[9..]
+      assert:
+        message := HandshakeHeader_ next_server_packet
+        message.length == session_ticket_.size
+      handshake_hasher.add next_server_packet[5..]
+      next_server_packet = session_.extract_first_message_
+
+    // Generate new keys in a shortened handshake.
+    key_size := cipher_suite_.key_size
+    iv_size := cipher_suite_.iv_size
+    bytes_needed := 2 * (key_size + iv_size)
+    // RFC 5246 section 6.3.
+    key_data := pseudo_random_function_ bytes_needed
+        --block_size=cipher_suite_.hmac_block_size
+        --secret=master_secret_
+        --label="key expansion"
+        --seed=(server_hello.random + client_random_)
+        cipher_suite_.hmac_hasher
+    partition := partition_byte_array_ key_data [key_size, key_size, iv_size, iv_size]
+    write_key := KeyData_ --key=partition[0] --iv=partition[2] --algorithm=cipher_suite_.algorithm
+    read_key := KeyData_ --key=partition[1] --iv=partition[3] --algorithm=cipher_suite_.algorithm
+    sent = session_.writer_.write CHANGE_CIPHER_SPEC_TEMPLATE_
+    assert: sent == CHANGE_CIPHER_SPEC_TEMPLATE_.size
+    if next_server_packet.size != 6 or next_server_packet[0] != CHANGE_CIPHER_SPEC_ or next_server_packet[5] != 1:
+      throw "Peer did not accept change cipher spec"
+    server_handshake_hash := handshake_hasher.clone.get
+    // https://www.rfc-editor.org/rfc/rfc5246#section-7.4.9
+    server_finished_expected := pseudo_random_function_ 12
+        --block_size=cipher_suite_.hmac_block_size
+        --secret=master_secret_
+        --label="server finished"
+        --seed=server_handshake_hash
+        cipher_suite_.hmac_hasher
+    server_finished_expected = #[FINISHED_, 0x00, 0x00, server_finished_expected.size] + server_finished_expected
+    // The client message hash includes the server handshake message.
+    // We know what that message is going to be, so we can add it before
+    // we receive it.
+    handshake_hasher.add server_finished_expected
+    client_handshake_hash := handshake_hasher.get
+    // The client finished messages includes the hash of the server's.
+    client_finished := pseudo_random_function_ 12
+        --block_size=cipher_suite_.hmac_block_size
+        --secret=master_secret_
+        --label="client finished"
+        --seed=client_handshake_hash
+        cipher_suite_.hmac_hasher
+    client_finished = #[FINISHED_, 0x00, 0x00, client_finished.size] + client_finished
+    symmetric_session :=
+        SymmetricSession_ session_ session_.writer_ session_.reader_ write_key read_key
+
+    return [
+        symmetric_session,
+        client_finished,
+        server_finished_expected,
+        session_ticket_.size == 0 ? session_id_: #[],
+        session_ticket_,
+        master_secret_,
+        cipher_suite_.id,
+    ]
+
+  client_hello_packet_ -> ByteArray:
+    enough_bytes := 150 + session_ticket_.size
+    if session_.server_name_: enough_bytes += session_.server_name_.size
+    client_hello := ByteArray enough_bytes
+    client_hello.replace 0 CLIENT_HELLO_TEMPLATE_1_
+    index := CLIENT_HELLO_TEMPLATE_1_.size
+    client_hello.replace index client_random_
+    index += CLIENT_RANDOM_SIZE_
+    if session_id_.size == 0:
+      session_id_ = ByteArray 32
+      tls_get_random_ session_id_
+    client_hello[index++] = session_id_.size  // Session ID length.
+    client_hello.replace index session_id_
+    index += session_id_.size
+    client_hello.replace index CLIENT_HELLO_TEMPLATE_2_
+    BIG_ENDIAN.put_uint16 client_hello (index + 2) cipher_suite_.id
+    index += CLIENT_HELLO_TEMPLATE_2_.size
+
+    // Build the extensions.
+    extensions := []
+    add_name_extension_ extensions
+    add_algorithms_extensions_ extensions
+    add_session_ticket_extension_ extensions
+
+    // Write extensions size.
+    extensions_size := extensions.reduce --initial=0: | sum ext | sum + ext.size
+    BIG_ENDIAN.put_uint16 client_hello index extensions_size
+    index += 2
+    // Write extensions.
+    extensions.do:
+      client_hello.replace index it
+      index += it.size
+    // Update size of record and message.
+    record_header := RecordHeader_ client_hello
+    record_header.length = index - 5
+    handshake_header := HandshakeHeader_ client_hello
+    handshake_header.length = index - 9
+    return client_hello[..index]
+
+  // We normally supply the hostname because multiple HTTPS servers can be on
+  // the same IP.
+  add_name_extension_ extensions/List -> none:
+    hostname := session_.server_name_
+    if hostname:
+      name_extension := ByteArray hostname.size + 9
+      name_extension[3] = hostname.size + 5
+      name_extension[5] = hostname.size + 3
+      name_extension[8] = hostname.size
+      name_extension.replace 9 hostname
+      extensions.add name_extension
+
+  add_algorithms_extensions_ extensions/List -> none:
+    // We don't actually have the ability to do elliptic curves in the pure
+    // Toit handshake, but if we don't include this, our client hello is
+    // rejected.
+    extensions.add #[
+        // Elliptic curve supported groups supported - numbers from
+        // https://www.ietf.org/rfc/rfc8422.html#section-5.1.1
+        0x00, 0x0a,  // 0x0a = elliptic curves extension.
+        0x00, 0x0e,  // 14 bytes of extension data follow.
+        0x00, 0x0c,  // 12 bytes of data in the curve list.
+        0x00, 0x16,  // secp256k1(22) - removing this doesn't cause any test failures as far as we know.
+        0x00, 0x17,  // secp256r1(23).
+        0x00, 0x18,  // secp384r1(24).
+        0x00, 0x19,  // secp521r1(25).
+        0x00, 0x1d,  // x25519(29).
+        0x00, 0x1e,  // x448(30).
+
+        // Elliptic curve formats supported: uncompressed only.
+        // From https://www.ietf.org/rfc/rfc8422.html#section-5.1.2
+        // Resume to app.supabase.com fails without this.
+        0x00, 0x0b, 0x00, 0x02, 0x01, 0x00,
+
+        // Extended master secret extension - resume to Cloudflare fails without this.
+        0x00, 0x17, 0x00, 0x00,
+
+        // Signature algorithms supported.
+        0x00, 0x0d,
+        0x00, 0x0e,  // Length.
+        0x00, 0x0c,  // Length.
+        0x04, 0x01,  // rsa_pkcs1_sha256.
+        0x04, 0x03,  // rsa_secp256r1_sha256.
+        0x05, 0x01,  // rsa_pkcs1_sha384.
+        0x05, 0x03,  // rsa_secp384r1_sha384.
+        0x06, 0x01,  // rsa_pkcs1_sha512.
+        0x06, 0x03,  // rsa_secp521r1_sha512.
+    ]
+
+  add_session_ticket_extension_ extensions/List -> none:
+    // If we have a ticket send that.  If we don't have a ticket we send
+    // an empty ticket extension to indicate we want a ticket for next time.
+    // From RFC 5077 appendix A.
+    ticket_extension := ByteArray session_ticket_.size + 4
+    ticket_extension[1] = EXTENSION_SESSION_TICKET_
+    BIG_ENDIAN.put_uint16 ticket_extension 2 session_ticket_.size
+    ticket_extension.replace 4 session_ticket_
+    extensions.add ticket_extension
+
+class ServerHello_:
+  extensions /Map
+  random /ByteArray
+  session_id /ByteArray
+  cipher_suite /int
+
+  constructor packet/ByteArray:
+    header := RecordHeader_ packet
+    if header.type != HANDSHAKE_ or packet[5] != SERVER_HELLO_:
+      if header.type == ALERT_:
+        print "Alert: $(packet[5] == 2 ? "fatal" : "warning") $(packet[6])"
+        print "See https://www.rfc-editor.org/rfc/rfc4346#section-7.2"
+      throw "PROTOCOL_ERROR"
+    assert:
+      handshake_header := HandshakeHeader_ packet
+      header.length == handshake_header.length + 4  // Last line is value being asserted.
+    random = packet[11..43]
+    str := ""
+    for i := random.size - 8; i < random.size; i++:
+      if ' ' <= random[i] <= '~':
+        str += "$(%c random[i])"
+      else:
+        break
+    server_session_id_length := packet[43]
+    index := 44 + server_session_id_length
+    session_id = packet[44..index]
+    cipher_suite = BIG_ENDIAN.uint16 packet index
+    compression_method := packet[index + 2]
+    if compression_method != 0: throw "PROTOCOL_ERROR"  // Compression not supported.
+    index += 3
+    extensions = {:}
+    if index != packet.size:
+      extensions_length := BIG_ENDIAN.uint16 packet index
+      index += 2
+      while extensions_length > 0:
+        extension_type := BIG_ENDIAN.uint16 packet index
+        extension_length := BIG_ENDIAN.uint16 packet index + 2
+        extension := packet[index + 4..index + 4 + extension_length]
+        extensions[extension_type] = extension
+        index += 4 + extension_length
+        extensions_length -= 4 + extension_length
+    if index != packet.size: throw "PROTOCOL_ERROR"
+
 class SymmetricSession_:
   write_keys /KeyData_
   read_keys /KeyData_
@@ -546,13 +917,13 @@ class SymmetricSession_:
 
   constructor .parent_ .writer_ .reader_ .write_keys .read_keys:
 
-  write data from/int to/int -> int:
+  write data from/int to/int --type/int=APPLICATION_DATA_ -> int:
     if to - from  == 0: return 0
     // We want to be nice to the receiver in case it is an embedded device, so we
     // don't send too large records.  This size is intended to fit in two MTUs on
     // Ethernet.
     List.chunk_up from to 2800: | from2/int to2/int length2 |
-      record_header := RecordHeader_ #[APPLICATION_DATA_, 3, 3, 0, 0]
+      record_header := RecordHeader_ #[type, 3, 3, 0, 0]
       record_header.length = length2
       // AES-GCM:
       // The explicit (transmitted) part of the IV (nonce) must not be reused,
@@ -596,16 +967,16 @@ class SymmetricSession_:
           written += writer_.write encrypted written
     return to - from
 
-  read -> ByteArray?:
+  read --expected_type/int=APPLICATION_DATA_ -> ByteArray?:
     try:
-      return read_
+      return read_ expected_type
     finally: | is_exception exception |
       if is_exception:
         // If anything goes wrong we close the connection - don't want to give
         // anyone a second chance to probe us with dodgy data.
         parent_.close
 
-  read_ -> ByteArray?:
+  read_ expected_type/int -> ByteArray?:
     while true:
       if buffered_plaintext_index_ != buffered_plaintext_.size:
         result := buffered_plaintext_[buffered_plaintext_index_]
@@ -616,7 +987,7 @@ class SymmetricSession_:
       bytes := reader_.read_bytes RECORD_HEADER_SIZE_
       if not bytes: return null
       record_header := RecordHeader_ bytes
-      bad_content := record_header.type != APPLICATION_DATA_ and record_header.type != ALERT_
+      bad_content := record_header.type != expected_type and record_header.type != ALERT_
       if bad_content or record_header.major_version != 3 or record_header.minor_version != 3: throw "PROTOCOL_ERROR $record_header.bytes"
       encrypted_length := record_header.length
       // According to RFC5246: The length MUST NOT exceed 2^14 + 1024.
@@ -656,10 +1027,12 @@ class SymmetricSession_:
       if record_header.type == ALERT_:
         alert_data := byte_array_join_ buffered_plaintext
         if alert_data[0] != ALERT_WARNING_:
+          print "See https://www.rfc-editor.org/rfc/rfc4346#section-7.2"
           throw "Fatal TLS alert: $alert_data[1]"
-      if record_header.type == APPLICATION_DATA_:
-        buffered_plaintext_ = buffered_plaintext
-        buffered_plaintext_index_ = 0
+      else:
+        assert: record_header.type == expected_type
+      buffered_plaintext_ = buffered_plaintext
+      buffered_plaintext_index_ = 0
 
 TOIT_TLS_DONE_ := 1 << 0
 TOIT_TLS_WANT_READ_ := 1 << 1
@@ -717,6 +1090,23 @@ byte_array_join_ arrays/List -> ByteArray:
     result.replace position it
     position += it.size
   return result
+
+/// Compares byte arrays, without revealing the contents to timing attacks.
+compare_byte_arrays_ a b -> bool:
+  if a is not ByteArray or b is not ByteArray or a.size != b.size: return false
+  accumulator := 0
+  a.size.repeat: accumulator |= a[it] ^ b[it]
+  return accumulator == 0
+
+/**
+Given a byte array and a list of sizes, partitions the byte array into
+  slices with those sizes.
+*/
+partition_byte_array_ bytes/ByteArray sizes/List -> List:
+  index := 0
+  return sizes.map:
+    index += it
+    bytes[index - it .. index]
 
 tls_token_acquire_ group:
   #primitive.tls.token_acquire
