@@ -37,7 +37,7 @@ Supports the canonical textual representation, consisting of 16 bytes encoded
 parse "123e4567-e89b-12d3-a456-426614174000"
 ```
 */
-parse str/string:
+parse str/string -> Uuid:
   uuid := ByteArray SIZE
   index := 0
   i := 0
@@ -109,6 +109,14 @@ class Uuid:
     return Uuid zeros
 
   /**
+  Converts this instance to a string.
+
+  Use $to_string to get the canonical text representation of UUIDs.
+  */
+  stringify -> string:
+    return to_string
+
+  /**
   Converts this instance to the canonical text representation of UUIDs.
 
   Converts the 128 bits of this instance into hexadecimal values, and groups
@@ -117,7 +125,7 @@ class Uuid:
   For example, a result of this method could be:
     `"123e4567-e89b-12d3-a456-426614174000"`
   */
-  stringify:
+  to_string -> string:
     buffer := ByteArray 36
     index := 0
     for i := 0; i < SIZE; i++:
