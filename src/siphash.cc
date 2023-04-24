@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#if !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO)
+
 #include "utils.h"
 #include "siphash.h"
 
@@ -124,3 +126,5 @@ void Siphash::process_block() {
 }
 
 }
+
+#endif
