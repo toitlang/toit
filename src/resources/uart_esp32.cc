@@ -940,10 +940,10 @@ PRIMITIVE(read) {
   uword available = buffer->available();
   if (available == 0) return process->program()->null_object();
 
-  // TODO(kasper): It isn't obviously a good idea to just return
-  // all the data in a potentially rather large external byte array.
-  // For reads from TCP sockets, we chunk it up instead and prefer
-  // to return multiple smaller byte arrays.
+  // For high-speed UART communication, it is important
+  // that we consume as much as we can when we read.
+  // This immediately gives the ISR more available space
+  // in the RX buffer.
   ByteArray* data = process->allocate_byte_array(available);
   if (data == null) ALLOCATION_FAILED;
 
