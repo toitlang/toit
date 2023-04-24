@@ -117,7 +117,7 @@ class RxTxBuffer {
   // of the buffer. The number of bytes can be read without
   // holding the lock, but it must be updated while holding
   // the lock.
-  std::atomic<uword> available_;
+  volatile uword available_;
 
   UART_ISR_INLINE void read(const SpinLocker& locker, uint8* buffer, uword length);
   UART_ISR_INLINE void write(const SpinLocker& locker, const uint8* buffer, uword length);
