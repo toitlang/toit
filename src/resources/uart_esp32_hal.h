@@ -47,11 +47,12 @@ typedef uart_hal_t* uart_hal_handle_t;
 // Initialize (allocate) the right hal structure.
 uart_hal_handle_t uart_toit_hal_init(uart_port_t port);
 
-// De-initialize (free) the hal strcuture.
+// De-initialize (free) the hal structure.
 void uart_toit_hal_deinit(uart_hal_handle_t hal);
 
 // The rest of the functions have a corresponding declaration in hal/uart_hal.h
 void uart_toit_hal_set_sclk(uart_hal_handle_t hal, uart_sclk_t sclk);
+void uart_toit_hal_get_baudrate(uart_hal_handle_t hal, uint32_t* baud_rate);
 void uart_toit_hal_set_baudrate(uart_hal_handle_t hal, uint32_t baud_rate);
 void uart_toit_hal_set_stop_bits(uart_hal_handle_t hal, uart_stop_bits_t stop_bit);
 void uart_toit_hal_set_tx_idle_num(uart_hal_handle_t hal, uint16_t idle_num);
@@ -62,18 +63,19 @@ void uart_toit_hal_set_rxfifo_full_thr(uart_hal_handle_t hal, uint32_t full_thrh
 void uart_toit_hal_set_txfifo_empty_thr(uart_hal_handle_t hal, uint32_t empty_thrhd);
 void uart_toit_hal_set_rx_timeout(uart_hal_handle_t hal, uint8_t timeout);
 void uart_toit_hal_set_reset_core(uart_hal_handle_t hal, bool reset);
+void uart_toit_hal_set_mode(uart_hal_handle_t hal, uart_mode_t mode);
+void uart_toit_hal_inverse_signal(uart_hal_handle_t hal, uint32_t inv_mask);
+
+// ISR safe operations.
 void uart_toit_hal_rxfifo_rst(uart_hal_handle_t hal);
 void uart_toit_hal_txfifo_rst(uart_hal_handle_t hal);
 void uart_toit_hal_tx_break(uart_hal_handle_t hal, uint32_t break_num);
-bool uart_toit_hal_is_tx_idle(uart_hal_handle_t hal);
-void uart_toit_hal_set_mode(uart_hal_handle_t hal, uart_mode_t mode);
 void uart_toit_hal_set_rts(uart_hal_handle_t hal, bool active);
-void uart_toit_hal_inverse_signal(uart_hal_handle_t hal, uint32_t inv_mask);
-void uart_toit_hal_get_baudrate(uart_hal_handle_t hal, uint32_t *baud_rate);
+bool uart_toit_hal_is_tx_idle(uart_hal_handle_t hal);
 uint32_t uart_toit_hal_get_rxfifo_len(uart_hal_handle_t hal);
 uint32_t uart_toit_hal_get_txfifo_len(uart_hal_handle_t hal);
-void uart_toit_hal_write_txfifo(uart_hal_handle_t hal, const uint8_t *buf, uint32_t data_size, uint32_t *write_size);
-void uart_toit_hal_read_rxfifo(uart_hal_handle_t hal, uint8_t *buf, int *inout_rd_len);
+void uart_toit_hal_write_txfifo(uart_hal_handle_t hal, const uint8_t* buf, uint32_t data_size, uint32_t* write_size);
+void uart_toit_hal_read_rxfifo(uart_hal_handle_t hal, uint8_t* buf, int* inout_rd_len);
 void uart_toit_hal_ena_intr_mask(uart_hal_handle_t hal, uint32_t mask);
 void uart_toit_hal_disable_intr_mask(uart_hal_handle_t hal, uint32_t mask);
 uint32_t uart_toit_hal_get_intsts_mask(uart_hal_handle_t hal);
