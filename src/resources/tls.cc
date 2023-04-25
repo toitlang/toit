@@ -235,14 +235,20 @@ MODULE_IMPLEMENTATION(tls, MODULE_TLS)
 Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err) {
   static const size_t BUFFER_LEN = 400;
   char buffer[BUFFER_LEN];
-  if (err == MBEDTLS_ERR_CIPHER_ALLOC_FAILED ||
-      err == MBEDTLS_ERR_ECP_ALLOC_FAILED ||
-      err == MBEDTLS_ERR_MD_ALLOC_FAILED ||
-      err == MBEDTLS_ERR_MPI_ALLOC_FAILED ||
-      err == MBEDTLS_ERR_PEM_ALLOC_FAILED ||
-      err == MBEDTLS_ERR_PK_ALLOC_FAILED ||
-      err == MBEDTLS_ERR_SSL_ALLOC_FAILED ||
-      err == MBEDTLS_ERR_X509_ALLOC_FAILED) {
+  // For some reason Mbedtls doesn't seem to export this mask.
+  static const int MBED_LOW_LEVEL_ERROR_MASK = 0x7f;
+  // Error codes are negative so we use or-not instead of and.
+  int lo_error = err | ~MBED_LOW_LEVEL_ERROR_MASK;
+  int hi_error = err & ~MBED_LOW_LEVEL_ERROR_MASK;
+  if (hi_error == MBEDTLS_ERR_CIPHER_ALLOC_FAILED ||
+      hi_error == MBEDTLS_ERR_ECP_ALLOC_FAILED ||
+      hi_error == MBEDTLS_ERR_MD_ALLOC_FAILED ||
+      lo_error == MBEDTLS_ERR_MPI_ALLOC_FAILED ||
+      lo_error == MBEDTLS_ERR_ASN1_ALLOC_FAILED ||
+      hi_error == MBEDTLS_ERR_PEM_ALLOC_FAILED ||
+      hi_error == MBEDTLS_ERR_PK_ALLOC_FAILED ||
+      hi_error == MBEDTLS_ERR_SSL_ALLOC_FAILED ||
+      hi_error == MBEDTLS_ERR_X509_ALLOC_FAILED) {
     MALLOC_FAILED;
   }
   if (err == MBEDTLS_ERR_X509_CERT_VERIFY_FAILED &&
