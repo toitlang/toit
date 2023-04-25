@@ -30,23 +30,6 @@
 #include "../top.h"
 #include "../utils.h"
 
-// Old C library version of stat.
-extern "C" {
-
-extern int __xstat64(int ver, const char* path, struct stat64* stat_buf);
-
-}
-
-#if defined(TOIT_LINUX) && !defined(__riscv)
-  #define USE_XSTAT64 1
-#endif
-
-#ifdef BUILD_64
-# define STAT_VERSION 1
-#else
-# define STAT_VERSION 3
-#endif
-
 namespace toit {
 namespace compiler {
 
@@ -61,29 +44,15 @@ List<const char*> FilesystemLocal::to_local_path(List<const char*> paths) {
 }
 
 bool FilesystemLocal::do_exists(const char* path) {
-#ifdef USE_XSTAT64
-  // Use an older version of stat, so that we can run in docker
-  // containers with older glibc.
-  struct stat64 path_stat;
-  int stat_result = __xstat64(STAT_VERSION, path, &path_stat);
-#else
   struct stat path_stat;
   int stat_result = stat(path, &path_stat);
-#endif
   return stat_result == 0;
 }
 
 
 bool FilesystemLocal::do_is_regular_file(const char* path) {
-#ifdef USE_XSTAT64
-  // Use an older version of stat, so that we can run in docker
-  // containers with older glibc.
-  struct stat64 path_stat;
-  int stat_result = __xstat64(STAT_VERSION, path, &path_stat);
-#else
   struct stat path_stat;
   int stat_result = stat(path, &path_stat);
-#endif
   if (stat_result == 0) {
     return S_ISREG(path_stat.st_mode);
   } else {
@@ -92,15 +61,8 @@ bool FilesystemLocal::do_is_regular_file(const char* path) {
 }
 
 bool FilesystemLocal::do_is_directory(const char* path) {
-#ifdef USE_XSTAT64
-  // Use an older version of stat, so that we can run in docker
-  // containers with older glibc.
-  struct stat64 path_stat;
-  int stat_result = __xstat64(STAT_VERSION, path, &path_stat);
-#else
   struct stat path_stat;
   int stat_result = stat(path, &path_stat);
-#endif
   if (stat_result == 0) {
     return S_ISDIR(path_stat.st_mode);
   } else {
