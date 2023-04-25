@@ -32,6 +32,12 @@
 #include "siphash.h"
 #include "tags.h"
 
+#if (defined(MBEDTLS_CHACHAPOLY_C) && defined(MBEDTLS_CHACHA20_C)) || (defined(CONFIG_MBEDTLS_POLY1305_C) && defined(CONFIG_MBEDTLS_CHACHA20_C))
+#define SUPPORT_CHACHA20_POLY1305 1
+#else
+#define SUPPORT_CHACHA20_POLY1305 0
+#endif
+
 namespace toit {
 
 MODULE_IMPLEMENTATION(crypto, MODULE_CRYPTO)
@@ -178,11 +184,17 @@ class AeadContext : public SimpleResource {
       : SimpleResource(group)
       , cipher_id_(cipher_id)
       , encrypt_(encrypt) {
-    if (cipher_id == MBEDTLS_CIPHER_ID_AES) {
-      mbedtls_gcm_init(&gcm_context_);
-    } else {
-      ASSERT(cipher_id == MBEDTLS_CIPHER_ID_CHACHA20);
-      mbedtls_chachapoly_init(&chachapoly_context_);
+    switch (cipher_id) {
+      case MBEDTLS_CIPHER_ID_AES:
+        mbedtls_gcm_init(&gcm_context_);
+        break;
+#if SUPPORT_CHACHA20_POLY1305
+      case MBEDTLS_CIPHER_ID_CHACHA20:
+        mbedtls_chachapoly_init(&chachapoly_context_);
+        break;
+#endif
+      default:
+        UNREACHABLE();
     }
   }
 
@@ -217,22 +229,32 @@ class AeadContext : public SimpleResource {
 };
 
 int AeadContext::update(int size, const uint8* input_data, uint8* output_data) {
-  if (cipher_id_ == MBEDTLS_CIPHER_ID_AES) {
-    return mbedtls_gcm_update(&gcm_context_, size, input_data, output_data);
-  } else {
-    return mbedtls_chachapoly_update(&chachapoly_context_, size, input_data, output_data);
+  switch (cipher_id_) {
+    case MBEDTLS_CIPHER_ID_AES:
+      return mbedtls_gcm_update(&gcm_context_, size, input_data, output_data);
+#if SUPPORT_CHACHA20_POLY1305
+    case MBEDTLS_CIPHER_ID_CHACHA20:
+      return mbedtls_chachapoly_update(&chachapoly_context_, size, input_data, output_data);
+#endif
+    default:
+      UNREACHABLE();
   }
 }
 
 int AeadContext::finish(uint8* output_data, int size) {
-  if (cipher_id_ == MBEDTLS_CIPHER_ID_AES) {
-    return mbedtls_gcm_finish(&gcm_context_, output_data, size);
-  } else {
-    ASSERT(cipher_id_ == MBEDTLS_CIPHER_ID_CHACHA20);
-    ASSERT(size == TAG_SIZE);
-    return mbedtls_chachapoly_finish(&chachapoly_context_, output_data);
+  switch (cipher_id_) {
+    case MBEDTLS_CIPHER_ID_AES:
+      return mbedtls_gcm_finish(&gcm_context_, output_data, size);
+#if SUPPORT_CHACHA20_POLY1305
+    case MBEDTLS_CIPHER_ID_CHACHA20:
+      ASSERT(size == TAG_SIZE);
+      return mbedtls_chachapoly_finish(&chachapoly_context_, output_data);
+#endif
+    default:
+      UNREACHABLE();
   }
 }
+
 
 class MbedTlsResourceGroup;
 
@@ -240,11 +262,17 @@ class MbedTlsResourceGroup;
 extern Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err);
 
 AeadContext::~AeadContext(){
-  if (cipher_id_ == MBEDTLS_CIPHER_ID_AES) {
-    mbedtls_gcm_free(&gcm_context_);
-  } else {
-    ASSERT(cipher_id_ == MBEDTLS_CIPHER_ID_CHACHA20);
-    mbedtls_chachapoly_free(&chachapoly_context_);
+  switch (cipher_id_) {
+    case MBEDTLS_CIPHER_ID_AES:
+      mbedtls_gcm_free(&gcm_context_);
+      break;
+#if SUPPORT_CHACHA20_POLY1305
+    case MBEDTLS_CIPHER_ID_CHACHA20:
+      mbedtls_chachapoly_free(&chachapoly_context_);
+      break;
+#endif
+    default:
+      UNREACHABLE();
   }
 }
 
@@ -261,12 +289,17 @@ PRIMITIVE(aead_init) {
 
   mbedtls_cipher_id_t mbedtls_cipher;
 
-  if (algorithm == ALGORITHM_AES_GCM) {
-    mbedtls_cipher = MBEDTLS_CIPHER_ID_AES;
-  } else if (algorithm == ALGORITHM_CHACHA20_POLY1305) {
-    mbedtls_cipher = MBEDTLS_CIPHER_ID_CHACHA20;
-  } else {
-    INVALID_ARGUMENT;
+  switch (algorithm) {
+    case ALGORITHM_AES_GCM:
+      mbedtls_cipher = MBEDTLS_CIPHER_ID_AES;
+      break;
+#if SUPPORT_CHACHA20_POLY1305
+    case ALGORITHM_CHACHA20_POLY1305:
+      mbedtls_cipher = MBEDTLS_CIPHER_ID_CHACHA20;
+      break;
+#endif
+    default:
+      UNIMPLEMENTED_PRIMITIVE;
   }
 
   AeadContext* aead_context = _new AeadContext(
@@ -278,14 +311,21 @@ PRIMITIVE(aead_init) {
     MALLOC_FAILED;
   }
 
-  int err;
-  if (mbedtls_cipher == MBEDTLS_CIPHER_ID_AES) {
-    err = mbedtls_gcm_setkey(aead_context->gcm_context(), mbedtls_cipher, key.address(), key.length() * BYTE_BIT_SIZE);
-  } else {
-    ASSERT(mbedtls_cipher == MBEDTLS_CIPHER_ID_CHACHA20);
-    ASSERT(key.length() * BYTE_BIT_SIZE == 256);
-    err = mbedtls_chachapoly_setkey(aead_context->chachapoly_context(), key.address());
+  int err = 0;
+  switch (mbedtls_cipher) {
+    case MBEDTLS_CIPHER_ID_AES:
+      err = mbedtls_gcm_setkey(aead_context->gcm_context(), mbedtls_cipher, key.address(), key.length() * BYTE_BIT_SIZE);
+      break;
+#if SUPPORT_CHACHA20_POLY1305
+    case MBEDTLS_CIPHER_ID_CHACHA20:
+      ASSERT(key.length() * BYTE_BIT_SIZE == 256);
+      err = mbedtls_chachapoly_setkey(aead_context->chachapoly_context(), key.address());
+      break;
+#endif
+    default:
+      UNREACHABLE();
   }
+
   if (err != 0) {
     group->unregister_resource(aead_context);
     return tls_error(null, process, err);
@@ -320,31 +360,40 @@ PRIMITIVE(aead_start_message) {
   if (context->currently_generating_message() != 0) INVALID_ARGUMENT;
   if (nonce.length() != AeadContext::NONCE_SIZE) INVALID_ARGUMENT;
   context->set_currently_generating_message();
-  int result;
-  if (context->cipher_id() == MBEDTLS_CIPHER_ID_AES) {
-    int mode = context->is_encrypt() ? MBEDTLS_GCM_ENCRYPT : MBEDTLS_GCM_DECRYPT;
-    result = mbedtls_gcm_starts(
-        context->gcm_context(),
-        mode,
-        nonce.address(),
-        nonce.length(),
-        authenticated_data.address(),
-        authenticated_data.length());
-  } else {
-    ASSERT(context->cipher_id() == MBEDTLS_CIPHER_ID_CHACHA20);
-    ASSERT(nonce.length() == 12);
-    mbedtls_chachapoly_mode_t mode = context->is_encrypt() ? MBEDTLS_CHACHAPOLY_ENCRYPT : MBEDTLS_CHACHAPOLY_DECRYPT;
-    result = mbedtls_chachapoly_starts(
-        context->chachapoly_context(),
-        nonce.address(),
-        mode);
-    if (result == 0 && authenticated_data.length() != 0) {
-      result = mbedtls_chachapoly_update_aad(
-          context->chachapoly_context(),
+  int result = 0;
+  switch (context->cipher_id()) {
+    case MBEDTLS_CIPHER_ID_AES: {
+      int mode = context->is_encrypt() ? MBEDTLS_GCM_ENCRYPT : MBEDTLS_GCM_DECRYPT;
+      result = mbedtls_gcm_starts(
+          context->gcm_context(),
+          mode,
+          nonce.address(),
+          nonce.length(),
           authenticated_data.address(),
           authenticated_data.length());
+      break;
     }
+#if SUPPORT_CHACHA20_POLY1305
+    case MBEDTLS_CIPHER_ID_CHACHA20: {
+      ASSERT(nonce.length() == 12);
+      mbedtls_chachapoly_mode_t mode = context->is_encrypt() ? MBEDTLS_CHACHAPOLY_ENCRYPT : MBEDTLS_CHACHAPOLY_DECRYPT;
+      result = mbedtls_chachapoly_starts(
+          context->chachapoly_context(),
+          nonce.address(),
+          mode);
+      if (result == 0 && authenticated_data.length() != 0) {
+        result = mbedtls_chachapoly_update_aad(
+            context->chachapoly_context(),
+            authenticated_data.address(),
+            authenticated_data.length());
+      }
+      break;
+    }
+#endif
+    default:
+      UNREACHABLE();
   }
+
   if (result != 0) return tls_error(null, process, result);
 
   return process->program()->null_object();
