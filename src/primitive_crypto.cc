@@ -239,7 +239,7 @@ int AeadContext::update(int size, const uint8* input_data, uint8* output_data, u
 #if MBEDTLS_VERSION_MAJOR >= 3
       return mbedtls_gcm_update(&gcm_context_, input_data, size, output_data, size, output_length);
 #else
-      *output_length = Utils::round_down(size, BLOCK_SIZE);
+      *output_length = size;
       return mbedtls_gcm_update(&gcm_context_, size, input_data, output_data);
 #endif
     }
