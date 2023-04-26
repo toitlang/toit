@@ -1,0 +1,233 @@
+diff --git a/include/mbedtls/error.h b/include/mbedtls/error.h
+index 50f253850..c0cc438ba 100644
+--- a/include/mbedtls/error.h
++++ b/include/mbedtls/error.h
+@@ -125,10 +125,11 @@ extern "C" {
+  * \brief Combines a high-level and low-level error code together.
+  *
+  *        Wrapper macro for mbedtls_error_add(). See that function for
+- *        more details.
++ *        more details. This wrapper removes any high level error that
++ *        might already have been added to the low level error code.
+  */
+ #define MBEDTLS_ERROR_ADD( high, low ) \
+-        mbedtls_error_add( high, low, __FILE__, __LINE__ )
++        mbedtls_error_add( high, ( low ) | ~0x7f, __FILE__, __LINE__ )
+ 
+ #if defined(MBEDTLS_TEST_HOOKS)
+ /**
+diff --git a/library/ecdh.c b/library/ecdh.c
+index 60c6e429d..0411a5882 100644
+--- a/library/ecdh.c
++++ b/library/ecdh.c
+@@ -199,7 +199,7 @@ static int ecdh_setup_internal( mbedtls_ecdh_context_mbed *ctx,
+     ret = mbedtls_ecp_group_load( &ctx->grp, grp_id );
+     if( ret != 0 )
+     {
+-        return( MBEDTLS_ERR_ECP_FEATURE_UNAVAILABLE );
++        return( MBEDTLS_ERROR_ADD( MBEDTLS_ERR_ECP_FEATURE_UNAVAILABLE, ret ) );
+     }
+ 
+     return( 0 );
+diff --git a/library/pkparse.c b/library/pkparse.c
+index ea5c6b69c..5976ad02f 100644
+--- a/library/pkparse.c
++++ b/library/pkparse.c
+@@ -540,7 +540,7 @@ static int pk_get_rsapubkey( unsigned char **p,
+ 
+     if( ( ret = mbedtls_rsa_import_raw( rsa, *p, len, NULL, 0, NULL, 0,
+                                         NULL, 0, NULL, 0 ) ) != 0 )
+-        return( MBEDTLS_ERR_PK_INVALID_PUBKEY );
++        return( MBEDTLS_ERROR_ADD( MBEDTLS_ERR_PK_INVALID_PUBKEY, ret ) );
+ 
+     *p += len;
+ 
+@@ -550,14 +550,14 @@ static int pk_get_rsapubkey( unsigned char **p,
+ 
+     if( ( ret = mbedtls_rsa_import_raw( rsa, NULL, 0, NULL, 0, NULL, 0,
+                                         NULL, 0, *p, len ) ) != 0 )
+-        return( MBEDTLS_ERR_PK_INVALID_PUBKEY );
++        return( MBEDTLS_ERROR_ADD( MBEDTLS_ERR_PK_INVALID_PUBKEY, ret ) );
+ 
+     *p += len;
+ 
+-    if( mbedtls_rsa_complete( rsa ) != 0 ||
+-        mbedtls_rsa_check_pubkey( rsa ) != 0 )
++    if( ( ret = mbedtls_rsa_complete( rsa ) ) != 0 ||
++        ( ret = mbedtls_rsa_check_pubkey( rsa ) ) != 0 )
+     {
+-        return( MBEDTLS_ERR_PK_INVALID_PUBKEY );
++        return( MBEDTLS_ERROR_ADD( MBEDTLS_ERR_PK_INVALID_PUBKEY, ret ) );
+     }
+ 
+     if( *p != end )
+diff --git a/library/ssl_cli.c b/library/ssl_cli.c
+index 72351c975..4d2e0d638 100644
+--- a/library/ssl_cli.c
++++ b/library/ssl_cli.c
+@@ -3193,14 +3193,16 @@ start_processing:
+         ciphersuite_info->key_exchange == MBEDTLS_KEY_EXCHANGE_DHE_PSK ||
+         ciphersuite_info->key_exchange == MBEDTLS_KEY_EXCHANGE_ECDHE_PSK )
+     {
+-        if( ssl_parse_server_psk_hint( ssl, &p, end ) != 0 )
++        ret = ssl_parse_server_psk_hint( ssl, &p, end );
++        if( ret != 0 )
+         {
++
+             MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad server key exchange message" ) );
+             mbedtls_ssl_send_alert_message(
+                 ssl,
+                 MBEDTLS_SSL_ALERT_LEVEL_FATAL,
+                 MBEDTLS_SSL_ALERT_MSG_ILLEGAL_PARAMETER );
+-            return( MBEDTLS_ERR_SSL_BAD_HS_SERVER_KEY_EXCHANGE );
++            return( MBEDTLS_ERROR_ADD( MBEDTLS_ERR_SSL_BAD_HS_SERVER_KEY_EXCHANGE, ret ) );
+         }
+     } /* FALLTHROUGH */
+ #endif /* MBEDTLS_KEY_EXCHANGE_SOME_PSK_ENABLED */
+@@ -3218,14 +3220,15 @@ start_processing:
+     if( ciphersuite_info->key_exchange == MBEDTLS_KEY_EXCHANGE_DHE_RSA ||
+         ciphersuite_info->key_exchange == MBEDTLS_KEY_EXCHANGE_DHE_PSK )
+     {
+-        if( ssl_parse_server_dh_params( ssl, &p, end ) != 0 )
++        ret = ssl_parse_server_dh_params( ssl, &p, end );
++        if( ret != 0 )
+         {
+             MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad server key exchange message" ) );
+             mbedtls_ssl_send_alert_message(
+                 ssl,
+                 MBEDTLS_SSL_ALERT_LEVEL_FATAL,
+                 MBEDTLS_SSL_ALERT_MSG_ILLEGAL_PARAMETER );
+-            return( MBEDTLS_ERR_SSL_BAD_HS_SERVER_KEY_EXCHANGE );
++            return( MBEDTLS_ERROR_ADD( MBEDTLS_ERR_SSL_BAD_HS_SERVER_KEY_EXCHANGE, ret ) );
+         }
+     }
+     else
+@@ -3237,14 +3240,15 @@ start_processing:
+     if( ciphersuite_info->key_exchange == MBEDTLS_KEY_EXCHANGE_ECDHE_RSA ||
+         ciphersuite_info->key_exchange == MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA )
+     {
+-        if( ssl_parse_server_ecdh_params_psa( ssl, &p, end ) != 0 )
++        ret = ssl_parse_server_ecdh_params_psa( ssl, &p, end );
++        if( ret != 0 )
+         {
+             MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad server key exchange message" ) );
+             mbedtls_ssl_send_alert_message(
+                 ssl,
+                 MBEDTLS_SSL_ALERT_LEVEL_FATAL,
+                 MBEDTLS_SSL_ALERT_MSG_ILLEGAL_PARAMETER );
+-            return( MBEDTLS_ERR_SSL_BAD_HS_SERVER_KEY_EXCHANGE );
++            return( MBEDTLS_ERROR_ADD( MBEDTLS_ERR_SSL_BAD_HS_SERVER_KEY_EXCHANGE, ret ) );
+         }
+     }
+     else
+@@ -3258,14 +3262,15 @@ start_processing:
+         ciphersuite_info->key_exchange == MBEDTLS_KEY_EXCHANGE_ECDHE_PSK ||
+         ciphersuite_info->key_exchange == MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA )
+     {
+-        if( ssl_parse_server_ecdh_params( ssl, &p, end ) != 0 )
++        ret = ssl_parse_server_ecdh_params( ssl, &p, end );
++        if( ret != 0 )
+         {
+             MBEDTLS_SSL_DEBUG_MSG( 1, ( "bad server key exchange message" ) );
+             mbedtls_ssl_send_alert_message(
+                 ssl,
+                 MBEDTLS_SSL_ALERT_LEVEL_FATAL,
+                 MBEDTLS_SSL_ALERT_MSG_ILLEGAL_PARAMETER );
+-            return( MBEDTLS_ERR_SSL_BAD_HS_SERVER_KEY_EXCHANGE );
++            return( MBEDTLS_ERROR_ADD( MBEDTLS_ERR_SSL_BAD_HS_SERVER_KEY_EXCHANGE, ret ) );
+         }
+     }
+     else
+@@ -3284,7 +3289,7 @@ start_processing:
+                 ssl,
+                 MBEDTLS_SSL_ALERT_LEVEL_FATAL,
+                 MBEDTLS_SSL_ALERT_MSG_ILLEGAL_PARAMETER );
+-            return( MBEDTLS_ERR_SSL_BAD_HS_SERVER_KEY_EXCHANGE );
++            return( MBEDTLS_ERROR_ADD( MBEDTLS_ERR_SSL_BAD_HS_SERVER_KEY_EXCHANGE, ret ) );
+         }
+     }
+     else
+@@ -3317,8 +3322,9 @@ start_processing:
+ #if defined(MBEDTLS_SSL_PROTO_TLS1_2)
+         if( ssl->minor_ver == MBEDTLS_SSL_MINOR_VERSION_3 )
+         {
+-            if( ssl_parse_signature_algorithm( ssl, &p, end,
+-                                               &md_alg, &pk_alg ) != 0 )
++            ret = ssl_parse_signature_algorithm( ssl, &p, end,
++                                                 &md_alg, &pk_alg );
++            if( ret != 0 )
+             {
+                 MBEDTLS_SSL_DEBUG_MSG( 1,
+                     ( "bad server key exchange message" ) );
+@@ -3326,7 +3332,7 @@ start_processing:
+                     ssl,
+                     MBEDTLS_SSL_ALERT_LEVEL_FATAL,
+                     MBEDTLS_SSL_ALERT_MSG_ILLEGAL_PARAMETER );
+-                return( MBEDTLS_ERR_SSL_BAD_HS_SERVER_KEY_EXCHANGE );
++                return( MBEDTLS_ERROR_ADD( MBEDTLS_ERR_SSL_BAD_HS_SERVER_KEY_EXCHANGE, ret ) );
+             }
+ 
+             if( pk_alg !=
+diff --git a/library/x509_crt.c b/library/x509_crt.c
+index 911644b7d..3a7ea0a51 100644
+--- a/library/x509_crt.c
++++ b/library/x509_crt.c
+@@ -2554,6 +2554,7 @@ static int x509_crt_check_parent( const mbedtls_x509_crt *child,
+  *
+  * Return value:
+  *  - 0 on success
++ *  - MBEDTLS_ERR_MPI_ALLOC_FAILED on memory allocation failure
+  *  - MBEDTLS_ERR_ECP_IN_PROGRESS otherwise
+  */
+ static int x509_crt_find_parent_in(
+@@ -2611,6 +2612,13 @@ check_signature:
+ #endif
+         ret = x509_crt_check_signature( child, parent, rs_ctx );
+ 
++        if( (ret | ~0x7f) == MBEDTLS_ERR_MPI_ALLOC_FAILED )
++        {
++            *r_parent = NULL;
++            *r_signature_is_good = 0;
++            return (ret);
++        }
++
+ #if defined(MBEDTLS_ECDSA_C) && defined(MBEDTLS_ECP_RESTARTABLE)
+         if( rs_ctx != NULL && ret == MBEDTLS_ERR_ECP_IN_PROGRESS )
+         {
+@@ -2677,6 +2685,7 @@ check_signature:
+  *
+  * Return value:
+  *  - 0 on success
++ *  - MBEDTLS_ERR_MPI_ALLOC_FAILED if allocation failed
+  *  - MBEDTLS_ERR_ECP_IN_PROGRESS otherwise
+  */
+ static int x509_crt_find_parent(
+@@ -2723,7 +2732,7 @@ static int x509_crt_find_parent(
+ #endif
+ 
+         /* stop here if found or already in second iteration */
+-        if( *parent != NULL || *parent_is_trusted == 0 )
++        if( *parent != NULL || *parent_is_trusted == 0 || ( ret | ~0x7f ) == MBEDTLS_ERR_MPI_ALLOC_FAILED )
+             break;
+ 
+         /* prepare second iteration */
+@@ -2737,6 +2746,9 @@ static int x509_crt_find_parent(
+         *signature_is_good = 0;
+     }
+ 
++    if( ( ret | ~0x7f ) == MBEDTLS_ERR_MPI_ALLOC_FAILED )
++        return ret;
++
+     return( 0 );
+ }
+ 
+@@ -2920,6 +2932,9 @@ find_parent:
+                                        &parent_is_trusted, &signature_is_good,
+                                        ver_chain->len - 1, self_cnt, rs_ctx );
+ 
++        if( ( ret | ~0x7f ) == MBEDTLS_ERR_MPI_ALLOC_FAILED )
++            return( ret );
++
+ #if defined(MBEDTLS_ECDSA_C) && defined(MBEDTLS_ECP_RESTARTABLE)
+         if( rs_ctx != NULL && ret == MBEDTLS_ERR_ECP_IN_PROGRESS )
+         {
