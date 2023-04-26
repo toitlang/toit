@@ -129,12 +129,16 @@ catch [--trace] [--unwind] [block]:
       value ::= exception.value
       // If the task is unwinding due to cancelation, don't catch the exception and
       // don't print a stack trace; just unwind.
-      is_canceled_unwind := value == CANCELED_ERROR and Task.current.is_canceled
+      self := Task_.current
+      is_canceled_unwind := value == CANCELED_ERROR and self.is_canceled
       if not is_canceled_unwind:
         if stack and trace.call value stack:
           exception.trace = null  // Avoid reporting the same stack trace multiple times.
           send_trace_message stack
-        if not unwind.call value stack: return value
+        if not unwind.call value stack:
+          deadline := self.deadline
+          if deadline and Time.monotonic_us >= deadline: throw DEADLINE_EXCEEDED_ERROR
+          return value
 
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
