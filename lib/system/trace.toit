@@ -15,27 +15,27 @@ The trace message is forwarded to the system's trace message handler
   one fails to handle the message.
 */
 send_trace_message message/ByteArray -> none:
-  handled := false
+  unhandled/ByteArray? := message
   try:
     service := service_
     if service:
-      handled = service.handle_trace message
+      unhandled = service.handle_trace message
     else:
       service = (TraceServiceClient).open --if_absent=: null
       if service:
-        handled = service.handle_trace message
+        unhandled = service.handle_trace message
         service_ = service
   finally: | is_exception exception |
     // If the service handled the trace, we do not need to let the system
     // know about it. It is nice that others take care of our traces!
-    if handled: return
+    if not unhandled: return
     // If we got an exception during the processing, then we do not want
     // to reuse the trace service we just tried.
     if is_exception: service_ = null
     // Send the trace to the system process using the more primitive messaging
     // infrastructure. This allows the system to produce a meaningful trace
     // or print it for manual processing.
-    process_send_ -1 SYSTEM_TRACE_ message
+    process_send_ -1 SYSTEM_TRACE_ unhandled
     // We check for messages here in case there is no system process. This allows
     // the traces to be discovered in the message queue and handled right here.
     process_messages_

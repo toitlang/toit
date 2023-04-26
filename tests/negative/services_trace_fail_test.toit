@@ -22,6 +22,6 @@ class TraceServiceProvider extends ServiceProvider
       return handle_trace arguments
     unreachable
 
-  handle_trace message/ByteArray -> bool:
+  handle_trace message/ByteArray -> ByteArray?:
     print "TraceService.handle_trace called"
     throw "Tracing failed"

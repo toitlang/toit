@@ -40,6 +40,6 @@ class TraceServiceProvider extends ServiceProvider
     traces_ = []
     return result
 
-  handle_trace message/ByteArray -> bool:
+  handle_trace message/ByteArray -> ByteArray?:
     traces_.add message
-    return true
+    return null
