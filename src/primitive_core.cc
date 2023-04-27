@@ -28,6 +28,7 @@
 #include "vm.h"
 
 #ifdef TOIT_FREERTOS
+#include "esp_spi_flash.h"
 #include "rtc_memory_esp32.h"
 #endif
 
@@ -41,14 +42,12 @@
 #include <string.h>
 #include <cinttypes>
 #include <errno.h>
-#include <inttypes.h>
 #include <sys/time.h>
 
 #ifdef TOIT_FREERTOS
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
-#include "esp_spi_flash.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -2145,13 +2144,12 @@ PRIMITIVE(get_real_time_clock) {
 PRIMITIVE(set_real_time_clock) {
 #ifdef TOIT_FREERTOS
   ARGS(int64, tv_sec, int64, tv_nsec);
-  if (tv_sec < LONG_MIN || tv_sec > LONG_MAX) INVALID_ARGUMENT;
+  if (sizeof(timespec::tv_sec) == sizeof(long) && (tv_sec < LONG_MIN || tv_sec > LONG_MAX)) INVALID_ARGUMENT;
   if (tv_nsec < LONG_MIN || tv_nsec > LONG_MAX) INVALID_ARGUMENT;
   struct timespec time = {
     .tv_sec = static_cast<long>(tv_sec),
     .tv_nsec = static_cast<long>(tv_nsec),
   };
-  static_assert(sizeof(time.tv_sec) == sizeof(long), "Unexpected size of timespec field");
   static_assert(sizeof(time.tv_nsec) == sizeof(long), "Unexpected size of timespec field");
   if (!OS::set_real_time(&time)) OTHER_ERROR;
 #endif
@@ -2371,7 +2369,7 @@ PRIMITIVE(firmware_map) {
       current_partition,
       0,  // Offset from start of partition.
       current_partition->size,
-      SPI_FLASH_MMAP_INST,
+      ESP_PARTITION_MMAP_INST,
       &mapped_to,
       &firmware_mmap_handle);
   if (err != ESP_OK) OTHER_ERROR;

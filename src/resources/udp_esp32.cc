@@ -17,8 +17,6 @@
 // compatible with this warning.
 #pragma GCC diagnostic ignored "-Waddress"
 
-#include <inttypes.h>
-
 #include "../top.h"
 
 #if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP) && CONFIG_TOIT_ENABLE_IP

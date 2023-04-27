@@ -191,7 +191,7 @@ PRIMITIVE(init) {
   int max_mv = static_cast<int>(max * 1000.0);
   if (max_mv == 0) max_mv = 3900;
   adc_atten_t atten = get_atten(max_mv);
-  adc_unit_t unit = ADC_UNIT_MAX;
+  adc_unit_t unit;
 
   int chan = get_adc1_channel(pin);
   if (chan >= 0) {

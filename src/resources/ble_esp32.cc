@@ -105,8 +105,6 @@ class BleResourceGroup : public ResourceGroup, public Thread {
 
     nimble_port_deinit();
 
-    FATAL_IF_NOT_ESP_OK(esp_nimble_hci_and_controller_deinit());
-
     ble_pool.put(id_);
 
     ResourceGroup::tear_down();
@@ -1211,23 +1209,6 @@ PRIMITIVE(init) {
   int id = ble_pool.any();
   if (id == kInvalidBle) ALREADY_IN_USE;
 
-  esp_err_t err = esp_nimble_hci_and_controller_init();
-
-  // TODO(anders): Enable these to improve BLE/WiFi coop?
-  //SystemEventSource::instance()->run([&]() -> void {
-    // esp_coex_preference_set(ESP_COEX_PREFER_BT);
-    // esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-  //});
-  if (err != BLE_ERR_SUCCESS) {
-    ble_pool.put(id);
-    if (err == ESP_ERR_NO_MEM) {
-      esp_bt_controller_disable();
-      esp_bt_controller_deinit();
-      MALLOC_FAILED;
-    }
-    return Primitive::os_error(err, process);
-  }
-
   // Mark usage. When the group is unregistered, the usage is automatically
   // decremented, but if group allocation fails, we manually call unuse().
   BleEventSource* ble = BleEventSource::instance();
@@ -2231,7 +2212,7 @@ PRIMITIVE(get_att_mtu) {
       for (auto subscription : characteristic->subscriptions()) {
         uint16 sub_mtu = ble_att_mtu(subscription->conn_handle());
         if (min_sub_mtu == -1) min_sub_mtu = sub_mtu;
-        else min_sub_mtu = min(min_sub_mtu, sub_mtu);
+        else min_sub_mtu = Utils::min(min_sub_mtu, static_cast<int>(sub_mtu));
       }
       if (min_sub_mtu != -1) mtu = min_sub_mtu;
       break;

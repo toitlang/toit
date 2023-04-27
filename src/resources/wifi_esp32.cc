@@ -265,11 +265,7 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
 
     default:
       printf(
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-          "unhandled Wi-Fi event: %lu\n",
-#else
-          "unhandled Wi-Fi event: %d\n",
-#endif
+          "unhandled Wi-Fi event: %" PRId32 "\n",
           system_event->id
       );
   }
@@ -298,11 +294,7 @@ uint32 WifiResourceGroup::on_event_ip(Resource* resource, word data, uint32 stat
 
     default:
       printf(
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-          "unhandled IP event: %lu\n",
-#else
-          "unhandled IP event: %d\n",
-#endif
+          "unhandled IP event: %" PRId32 "\n",
           system_event->id
       );
   }
@@ -623,7 +615,7 @@ PRIMITIVE(ap_info) {
 
   wifi_ap_record_t ap_record;
   esp_err_t ret = esp_wifi_sta_get_ap_info(&ap_record);
-  if (ret != OK) return Primitive::os_error(ret, process);
+  if (ret != ESP_OK) return Primitive::os_error(ret, process);
 
   const size_t element_count = 5;
   Array* ap_array = process->object_heap()->allocate_array(element_count, Smi::zero());

@@ -20,6 +20,7 @@
 #include "objects_inline.h"
 
 #ifdef TOIT_FREERTOS
+#include "esp_flash.h"
 #include "esp_partition.h"
 #else
 #include <string>

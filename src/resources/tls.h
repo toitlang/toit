@@ -18,7 +18,7 @@
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/debug.h>
 #include <mbedtls/entropy.h>
-#include <mbedtls/net.h>
+#include <mbedtls/gcm.h>
 #include <mbedtls/ssl_cookie.h>
 #include <mbedtls/ssl.h>
 #include <mbedtls/x509_crl.h>

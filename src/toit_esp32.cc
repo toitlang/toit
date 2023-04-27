@@ -25,6 +25,7 @@
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "esp_system.h"
+#include "rom/ets_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lwip/tcpip.h"
@@ -63,7 +64,7 @@ const Program* setup_program(bool supports_ota) {
     const esp_partition_t* running = esp_ota_get_running_partition();
 
     if (configured != running) {
-      ESP_LOGW("Toit", "Configured OTA boot partition at offset 0x%08x, but running from offset 0x%08x",
+      ESP_LOGW("Toit", "Configured OTA boot partition at offset 0x%08" PRIx32 ", but running from offset 0x%08" PRIx32,
           configured->address, running->address);
     }
 

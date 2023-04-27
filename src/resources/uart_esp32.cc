@@ -287,7 +287,7 @@ UART_ISR_INLINE void RxTxBuffer::read(const SpinLocker& locker, uint8* data, uwo
     memcpy(data + head, buffer, overflow);
     cursor_ = buffer + overflow;
   }
-  available_ -= length;
+  available_ = available_ - length;
 }
 
 UART_ISR_INLINE void RxTxBuffer::write(const SpinLocker& locker, const uint8* data, uword length) {
@@ -305,7 +305,7 @@ UART_ISR_INLINE void RxTxBuffer::write(const SpinLocker& locker, const uint8* da
     memcpy(start, data, head);
     memcpy(buffer, data + head, overflow);
   }
-  available_ += length;
+  available_ = available_ + length;
 }
 
 uint16 TxBuffer::write(UartResource* uart, const uint8* buffer, uint16 length, uint8 break_length) {

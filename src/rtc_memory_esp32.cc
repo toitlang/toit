@@ -37,16 +37,7 @@
 #endif
 
 #include "esp_system.h"
-
-extern "C" {
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-  #include <esp32c3/clk.h>
-#elif CONFIG_IDF_TARGET_ESP32S3
-  #include <esp32s3/clk.h>
-#else
-  #include <esp32/clk.h>
-#endif
-}
+#include "esp_private/esp_clk.h"
 
 #ifndef CONFIG_IDF_TARGET_ESP32
 extern "C" {

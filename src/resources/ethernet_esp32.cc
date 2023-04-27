@@ -18,6 +18,9 @@
 #if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
 
 #include <esp_eth.h>
+#include <esp_eth_netif_glue.h>
+#include <esp_netif.h>
+#include <rom/ets_sys.h>
 
 #include "../resource.h"
 #include "../objects.h"
@@ -78,7 +81,6 @@ class EthernetResourceGroup : public ResourceGroup {
 
   ~EthernetResourceGroup() {
     ESP_ERROR_CHECK(esp_eth_stop(eth_handle_));
-    ESP_ERROR_CHECK(esp_eth_clear_default_handlers(eth_handle_));
     ESP_ERROR_CHECK(esp_eth_del_netif_glue(netif_glue_));
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle_));
     esp_netif_destroy(netif_);
@@ -123,7 +125,8 @@ class EthernetIpEvents : public SystemResource {
   }
 
   void update_ip(uint32 addr) {
-    sprintf(ip_, "%d.%d.%d.%d",
+    sprintf(ip_,
+            "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32,
             (addr >> 0) & 0xff,
             (addr >> 8) & 0xff,
             (addr >> 16) & 0xff,
@@ -181,6 +184,8 @@ uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t
 MODULE_IMPLEMENTATION(ethernet, MODULE_ETHERNET)
 
 PRIMITIVE(init_esp32) {
+  UNIMPLEMENTED();
+#if 0
   ARGS(int, mac_chip, int, phy_chip, int, phy_addr, int, phy_reset_num, int, mdc_num, int, mdio_num)
 
 #if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
@@ -283,10 +288,13 @@ PRIMITIVE(init_esp32) {
   proxy->set_external_address(resource_group);
   return proxy;
 #endif
+#endif
 }
 
 
 PRIMITIVE(init_spi) {
+  UNIMPLEMENTED();
+#if 0
   ARGS(int, mac_chip, SpiDevice, spi_device, int, int_num)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -369,6 +377,7 @@ PRIMITIVE(init_spi) {
 
   proxy->set_external_address(resource_group);
   return proxy;
+#endif
 }
 
 PRIMITIVE(close) {

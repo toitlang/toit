@@ -18,6 +18,8 @@
 #if defined(TOIT_FREERTOS) && !defined(CONFIG_IDF_TARGET_ESP32C3)
 
 #include <driver/pcnt.h>
+#include <soc/soc.h>
+#include <esp_idf_version.h>
 
 #include "../objects_inline.h"
 #include "../primitive.h"
@@ -75,7 +77,7 @@ class PcntUnitResource : public Resource {
     // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-channel
     // This static assert might hit, even though the code is still OK. Check the documentation if
     // the code from 'master' (as of 2022-07-01) has already made it into the release you are using.
-    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 4,
+    static_assert(ESP_IDF_VERSION_MAJOR == 5 && ESP_IDF_VERSION_MINOR == 0,
                   "Newer ESP-IDF might need different code");
     for (int i = 0; i < PCNT_CHANNEL_MAX; i++) {
       if (!used_channels_[i]) {
@@ -134,7 +136,7 @@ class PcntUnitResource : public Resource {
     // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-channel
     // This static assert might hit, even though the code is still OK. Check the documentation if
     // the code from 'master' (as of 2022-04-16) has already made it into the release you are using.
-    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 4,
+    static_assert(ESP_IDF_VERSION_MAJOR == 5 && ESP_IDF_VERSION_MINOR == 0,
                   "Newer ESP-IDF might need different code");
     pcnt_config_t config {
       .pulse_gpio_num = PCNT_PIN_NOT_USED,
@@ -171,7 +173,7 @@ class PcntUnitResource : public Resource {
     // This static assert might hit, even though the code is still OK. Check the documentation if
     // the code from 'master' (as of 2022-07-01) has already made it into the release you are using.
     // If yes, stop the unit and the delete it.
-    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 4,
+    static_assert(ESP_IDF_VERSION_MAJOR == 5 && ESP_IDF_VERSION_MINOR == 0,
                   "Newer ESP-IDF might need different code");
   }
 
@@ -259,7 +261,7 @@ PRIMITIVE(new_unit) {
   // This static assert might hit, even though the code is still OK. Check the documentation if
   // the code from 'master' (as of 2022-07-01) has already made it into the release you are using.
   // If yes, create a new unit.
-  static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 4,
+  static_assert(ESP_IDF_VERSION_MAJOR == 5 && ESP_IDF_VERSION_MINOR == 0,
                 "Newer ESP-IDF might need different code");
 
   proxy->set_external_address(unit);
