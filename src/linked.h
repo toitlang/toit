@@ -310,7 +310,7 @@ class LinkedList {
 template <typename T, int N = 1>
 class LinkedFifo : public LinkedList<T, N> {
  public:
-  LinkedFifo<T, N>() : tail_(&this->anchor_) {}
+  LinkedFifo() : tail_(&this->anchor_) {}
 
   typedef LinkedList<T, N> Super;
   typedef typename Super::Element Element;

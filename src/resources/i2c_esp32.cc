@@ -174,7 +174,7 @@ static Object* write_i2c(Process* process, I2cResourceGroup* i2c, int i2c_addres
   if (i2c_master_stop(cmd) != ESP_OK) MALLOC_FAILED;
 
   // Ship the built command.
-  esp_err_t err = i2c_master_cmd_begin(i2c->port(), cmd, 1000 / portTICK_RATE_MS);
+  esp_err_t err = i2c_master_cmd_begin(i2c->port(), cmd, 1000 / portTICK_PERIOD_MS);
   if (err != ESP_OK) return Smi::from(err);
 
   return process->program()->null_object();
@@ -229,7 +229,7 @@ static Object* read_i2c(Process* process, I2cResourceGroup* i2c, int i2c_address
   if (i2c_master_stop(cmd) != ESP_OK) MALLOC_FAILED;
 
   // Ship the built command.
-  esp_err_t err = i2c_master_cmd_begin(i2c->port(), cmd, 1000 / portTICK_RATE_MS);
+  esp_err_t err = i2c_master_cmd_begin(i2c->port(), cmd, 1000 / portTICK_PERIOD_MS);
   // TODO(florian): we could return the error code here: Smi::from(err).
   // We would need to type-dispatch on the Toit side to know whether it was an error or not.
   if (err != ESP_OK) return process->program()->null_object();

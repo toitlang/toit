@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include <inttypes.h>
+
 #include "../top.h"
 
 #ifdef TOIT_FREERTOS
@@ -521,16 +523,12 @@ PRIMITIVE(error) {
 }
 
 static Object* get_address(LwipSocket* socket, Process* process, bool peer) {
-  uint32_t address = peer ?
+  uint32 address = peer ?
     ip_addr_get_ip4_u32(&socket->tpcb()->remote_ip) :
     ip_addr_get_ip4_u32(&socket->tpcb()->local_ip);
   char buffer[16];
   int length = sprintf(buffer,
-#ifdef CONFIG_IDF_TARGET_ESP32C3
- 		       "%lu.%lu.%lu.%lu",
-#else
-		       "%d.%d.%d.%d",
-#endif
+                       "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32,
                        (address >> 0) & 0xff,
                        (address >> 8) & 0xff,
                        (address >> 16) & 0xff,
