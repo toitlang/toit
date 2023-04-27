@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include <intttypes.h>
+
 #include "../top.h"
 
 #ifdef TOIT_FREERTOS
@@ -526,7 +528,7 @@ static Object* get_address(LwipSocket* socket, Process* process, bool peer) {
     ip_addr_get_ip4_u32(&socket->tpcb()->local_ip);
   char buffer[16];
   int length = sprintf(buffer,
-                       "%u.%u.%u.%u",
+                       "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32,
                        (address >> 0) & 0xff,
                        (address >> 8) & 0xff,
                        (address >> 16) & 0xff,
