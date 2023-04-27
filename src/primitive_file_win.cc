@@ -277,14 +277,20 @@ PRIMITIVE(closedir) {
 
 PRIMITIVE(read) {
   ARGS(int, fd);
+  const int SIZE = 1 * MB;
 
-  ByteArray* byte_array = process->allocate_byte_array(4000, /*force_external*/ true);
-  if (byte_array == null) ALLOCATION_FAILED;
+  AllocationManager allocation(process);
+  uint8* buffer = allocation.alloc(SIZE);
+  if (!buffer) ALLOCATION_FAILED;
 
-  ByteArray::Bytes bytes(ByteArray::cast(byte_array));
+  ByteArray* result = process->object_heap()->allocate_external_byte_array(
+      SIZE, buffer, true /* dispose */, false /* clear */);
+  if (!result) ALLOCATION_FAILED;
+  allocation.keep_result();
+
   ssize_t buffer_fullness = 0;
-  while (buffer_fullness < bytes.length()) {
-    ssize_t bytes_read = _read(fd, bytes.address() + buffer_fullness, bytes.length() - buffer_fullness);
+  while (buffer_fullness < SIZE) {
+    ssize_t bytes_read = _read(fd, buffer + buffer_fullness, SIZE - buffer_fullness);
     if (bytes_read < 0) {
       if (errno == EINTR) continue;
       if (errno == EINVAL || errno == EISDIR || errno == EBADF) INVALID_ARGUMENT;
@@ -297,8 +303,10 @@ PRIMITIVE(read) {
     return process->program()->null_object();
   }
 
-  byte_array->resize_external(process, buffer_fullness);
-  return byte_array;
+  if (buffer_fullness < SIZE) {
+    result->resize_external(process, buffer_fullness);
+  }
+  return result;
 }
 
 PRIMITIVE(write) {
