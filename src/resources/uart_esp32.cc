@@ -777,12 +777,13 @@ PRIMITIVE(create) {
     MALLOC_FAILED;
   }
 
-  init.rx_buffer = static_cast<uint8*>(malloc(rx_buffer_size));
+  const int caps_flags = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+  init.rx_buffer = static_cast<uint8*>(heap_caps_malloc(rx_buffer_size, caps_flags));
   if (!init.rx_buffer) {
     MALLOC_FAILED;
   }
 
-  init.tx_buffer = static_cast<uint8*>(malloc(tx_buffer_size));
+  init.tx_buffer = static_cast<uint8*>(heap_caps_malloc(tx_buffer_size, caps_flags));
   if (!init.tx_buffer) {
     MALLOC_FAILED;
   }
