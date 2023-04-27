@@ -7,7 +7,7 @@
 
 void fatal(int line) {
   fprintf(stderr, "FATAL at line %d\n", line);
-  FATAL(FATAL);
+  FATAL("FATAL");
 }
 
 namespace toit {
