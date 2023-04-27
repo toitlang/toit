@@ -311,15 +311,14 @@ PRIMITIVE(read) {
   ARGS(int, fd);
   const int SIZE = 1 * MB;
 
-  uint8* buffer = static_cast<uint8*>(malloc(SIZE));
-  if (!buffer) MALLOC_FAILED;
+  AllocationManager allocation(process);
+  uint8* buffer = allocation.alloc(SIZE);
+  if (!buffer) ALLOCATION_FAILED;
 
   ByteArray* result = process->object_heap()->allocate_external_byte_array(
       SIZE, buffer, true /* dispose */, false /* clear */);
-  if (!result) {
-    free(buffer);
-    ALLOCATION_FAILED;
-  }
+  if (!result) ALLOCATION_FAILED;
+  allocation.keep_result();
 
   ssize_t buffer_fullness = 0;
   while (buffer_fullness < SIZE) {
