@@ -6,8 +6,7 @@
 #include "../../src/utils.h"
 
 void fatal(int line) {
-  fprintf(stderr, "FATAL at line %d\n", line);
-  FATAL("FATAL");
+  FATAL("FATAL at line %d", line);
 }
 
 namespace toit {
