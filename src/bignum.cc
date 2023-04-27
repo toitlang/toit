@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
+
 #include "top.h"
 #include "objects_inline.h"
 #include "process.h"
