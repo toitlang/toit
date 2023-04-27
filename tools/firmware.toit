@@ -14,6 +14,7 @@
 // directory of this repository.
 
 import binary show LITTLE_ENDIAN
+import bitmap
 import bytes
 import crypto.sha256 as crypto
 import writer
@@ -1243,9 +1244,12 @@ class Esp32BinarySegment:
     return offset + HEADER_SIZE_ + size
 
   xor_checksum -> int:
-    result := 0
-    bits.do: result ^= it
-    return result
+    // XOR all the bytes together using blit.
+    result := #[0]
+    bitmap.blit bits result bits.size
+        --destination_pixel_stride=0
+        --operation=bitmap.XOR
+    return result[0]
 
   stringify -> string:
     return "len 0x$(%05x size) load 0x$(%08x address) file_offs 0x$(%08x offset)"

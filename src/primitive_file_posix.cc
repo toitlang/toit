@@ -309,8 +309,18 @@ PRIMITIVE(closedir) {
 
 PRIMITIVE(read) {
   ARGS(int, fd);
-  const int SIZE = 4000;
-  uint8 buffer[SIZE];
+  const int SIZE = 1 * MB;
+
+  uint8* buffer = static_cast<uint8*>(malloc(SIZE));
+  if (!buffer) MALLOC_FAILED;
+
+  ByteArray* result = process->object_heap()->allocate_external_byte_array(
+      SIZE, buffer, true /* dispose */, false /* clear */);
+  if (!result) {
+    free(buffer);
+    ALLOCATION_FAILED;
+  }
+
   ssize_t buffer_fullness = 0;
   while (buffer_fullness < SIZE) {
     ssize_t bytes_read = read(fd, buffer + buffer_fullness, SIZE - buffer_fullness);
@@ -321,17 +331,15 @@ PRIMITIVE(read) {
     buffer_fullness += bytes_read;
     if (bytes_read == 0) break;
   }
+
   if (buffer_fullness == 0) {
     return process->program()->null_object();
   }
-  Object* byte_array = process->allocate_byte_array(buffer_fullness);
-  if (byte_array == null) {
-    lseek(fd, -buffer_fullness, SEEK_CUR);
-    ALLOCATION_FAILED;
+
+  if (buffer_fullness < SIZE) {
+    result->resize_external(process, buffer_fullness);
   }
-  auto buf = ByteArray::Bytes(ByteArray::cast(byte_array)).address();
-  memcpy(buf, buffer, buffer_fullness);
-  return byte_array;
+  return result;
 }
 
 PRIMITIVE(write) {
