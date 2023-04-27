@@ -312,7 +312,6 @@ PRIMITIVE(read) {
   const int SIZE = 1 * MB;
 
   AllocationManager allocation(process);
-  allocation.set_always_allow_external();
   uint8* buffer = allocation.alloc(SIZE);
   if (!buffer) ALLOCATION_FAILED;
 
