@@ -17,7 +17,7 @@
 // compatible with this warning.
 #pragma GCC diagnostic ignored "-Waddress"
 
-#include <intttypes.h>
+#include <inttypes.h>
 
 #include "../top.h"
 

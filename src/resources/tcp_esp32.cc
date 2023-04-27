@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#include <intttypes.h>
+#include <inttypes.h>
 
 #include "../top.h"
 
