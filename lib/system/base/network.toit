@@ -14,7 +14,7 @@ import system.api.network
 import system.services
   show
     ServiceClient
-    ServiceHandlerNew
+    ServiceHandler
     ServiceProvider
     ServiceResource
     ServiceResourceProxy
@@ -164,7 +164,7 @@ The $ProxyingNetworkServiceProvider makes it easy to proxy a network
   network drivers separate from the rest of the system.
 */
 abstract class ProxyingNetworkServiceProvider extends ServiceProvider
-    implements NetworkModule ServiceHandlerNew:
+    implements NetworkModule ServiceHandler:
   state_/NetworkState ::= NetworkState
   network_/net.Interface? := null
 

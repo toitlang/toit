@@ -47,10 +47,10 @@ class LogServiceClient extends services.ServiceClient implements LogService:
 // ------------------------------------------------------------------
 
 class LogServiceProvider extends services.ServiceProvider
-    implements LogService services.ServiceHandlerNew:
+    implements LogService services.ServiceHandler:
   constructor:
     super "log" --major=1 --minor=0
-    provides LogService.SELECTOR --handler=this --new
+    provides LogService.SELECTOR --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == LogService.LOG_INDEX: return log arguments

@@ -120,10 +120,10 @@ class FlexibleServiceClient extends services.ServiceClient:
 // ------------------------------------------------------------------
 
 class SimpleServiceProvider extends services.ServiceProvider
-    implements SimpleService services.ServiceHandlerNew:
+    implements SimpleService services.ServiceHandler:
   constructor:
     super "log" --major=1 --minor=2 --patch=5
-    provides SimpleService.SELECTOR --handler=this --new
+    provides SimpleService.SELECTOR --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == SimpleService.LOG_INDEX: return log arguments

@@ -14,7 +14,7 @@
 // directory of this repository.
 
 import system.storage show Bucket Region
-import system.services show ServiceHandlerNew ServiceProvider
+import system.services show ServiceHandler ServiceProvider
 import system.api.storage show StorageService
 
 import ..flash.registry show FlashRegistry
@@ -22,12 +22,12 @@ import .bucket show BucketResource FlashBucketResource RamBucketResource
 import .region show FlashRegionResource PartitionRegionResource
 
 class StorageServiceProvider extends ServiceProvider
-    implements StorageService ServiceHandlerNew:
+    implements StorageService ServiceHandler:
   registry/FlashRegistry
 
   constructor .registry:
     super "system/storage" --major=0 --minor=2
-    provides StorageService.SELECTOR --handler=this --new
+    provides StorageService.SELECTOR --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == StorageService.BUCKET_GET_INDEX:

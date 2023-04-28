@@ -132,12 +132,12 @@ class ResourceProxy extends services.ServiceResourceProxy:
 // ------------------------------------------------------------------
 
 class ResourceServiceProvider extends services.ServiceProvider
-    implements ResourceService services.ServiceHandlerNew:
+    implements ResourceService services.ServiceHandler:
   resources/Map ::= {:}
 
   constructor:
     super "resource" --major=1 --minor=2 --patch=5
-    provides ResourceService.SELECTOR --handler=this --new
+    provides ResourceService.SELECTOR --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == ResourceService.OPEN_INDEX:

@@ -148,8 +148,7 @@ Typically, users call the $open method on a subclass of the client. This then
 Subclasses implement service-specific methods to provide convenient APIs.
 */
 class ServiceClient:
-  // TODO(kasper): Make this non-nullable.
-  selector/ServiceSelector?
+  selector/ServiceSelector
 
   _id_/int? := null
   _pid_/int? := null
@@ -162,47 +161,19 @@ class ServiceClient:
 
   static DEFAULT_OPEN_TIMEOUT /Duration ::= Duration --ms=100
 
-  // TODO(kasper): Deprecate this.
-  _default_timeout_/Duration? ::= ?
-
-  // TODO(kasper): Deprecate this constructor.
-  constructor --open/bool=true:
-    // If we're opening the client as part of constructing it, we instruct the
-    // service discovery service to wait for the requested service to be provided.
-    selector = null
-    _default_timeout_ = open ? DEFAULT_OPEN_TIMEOUT : null
-    if open and not this.open: throw "Cannot find service"
-
-  // TODO(kasper): Deprecate this helper.
-  open_ uuid/string major/int minor/int -> ServiceClient?
-      --timeout/Duration?=_default_timeout_:
-    assert: not this.selector
-    return _open_ (ServiceSelector --uuid=uuid --major=major --minor=minor)
-       --timeout=timeout
-
-  constructor selector/ServiceSelector:
-    // TODO(kasper): Simplify this once the we don't need the
-    // legacy constructor.
-    this.selector = selector
-    _default_timeout_ = null
+  constructor .selector:
 
   open --timeout/Duration?=DEFAULT_OPEN_TIMEOUT -> ServiceClient:
     return open --timeout=timeout --if_absent=: throw "Cannot find service"
 
   open --timeout/Duration?=null [--if_absent] -> any:
-    if not selector: throw "Must override open in client"
-    assert: not this._default_timeout_
-    if client := _open_ selector --timeout=timeout: return client
-    return if_absent.call
-
-  _open_ selector/ServiceSelector --timeout/Duration? -> ServiceClient?:
     discovered/List? := null
     if timeout:
       catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
         with_timeout timeout: discovered = _client_.discover selector.uuid --wait
     else:
       discovered = _client_.discover selector.uuid --no-wait
-    if not discovered: return null
+    if not discovered: return if_absent.call
 
     candidate_index := null
     candidate_priority := null
@@ -297,13 +268,9 @@ A handler for requests from clients.
 A $ServiceProvider may provide multiple services, each of which comes with a
   handler. That handler is then called for the corresponding request from the
   client.
-
-Deprecated. Implement $ServiceHandlerNew instead and use the adapted
-  $(ServiceProvider.provides selector --handler --new) to register
-  the handler with the $ServiceProvider.
 */
 interface ServiceHandler:
-  handle pid/int client/int index/int arguments/any -> any
+  handle index/int arguments/any --gid/int --client/int -> any
 
 /**
 A handler for requests from clients.
@@ -312,12 +279,9 @@ A $ServiceProvider may provide multiple services, each of which comes with a
   handler. That handler is then called for the corresponding request from the
   client.
 
-Variant of $ServiceHandler. Eventually this new variant of will replace
-  the old one to provide implementers both pid (indirectly through client)
-  and gid.
+Deprecated. Implement $ServiceHandler instead.
 */
-interface ServiceHandlerNew:
-  handle index/int arguments/any --gid/int --client/int -> any
+interface ServiceHandlerNew extends ServiceHandler:
 
 /**
 A service provider.
@@ -395,8 +359,10 @@ class ServiceProvider:
   Registers a handler for the given $selector.
 
   This function should only be called from subclasses (typically in their constructor).
+
+  Deprecated. Use $(provides selector --handler) instead.
   */
-  provides selector/ServiceSelector --handler/ServiceHandlerNew --new/bool -> none
+  provides selector/ServiceSelector --handler/ServiceHandler --new/bool -> none
       --id/int?=null
       --priority/int=PRIORITY_NORMAL
       --tags/List?=null:
@@ -518,24 +484,6 @@ class ServiceProvider:
     _ids_ = null
     _manager_ = null
 
-/**
-Deprecated. Use $ServiceProvider instead and implement the $ServiceHandler
-  interface.
-*/
-abstract class ServiceDefinition extends ServiceProvider
-    implements ServiceHandler:
-  constructor name/string --major/int --minor/int --patch/int=0:
-    super name --major=major --minor=minor --patch=patch
-
-  abstract handle pid/int client/int index/int arguments/any -> any
-
-  provides selector/ServiceSelector -> none:
-    super selector --handler=this
-
-  provides uuid/string major/int minor/int -> none:
-    selector := ServiceSelector --uuid=uuid --major=major --minor=minor
-    super selector --handler=this
-
 abstract class ServiceResource implements rpc.RpcSerializable:
   _provider_/ServiceProvider? := ?
   _client_/int ::= ?
@@ -615,7 +563,7 @@ abstract class ServiceResourceProxy:
 
 class Service_:
   selector/ServiceSelector
-  handler/any  // ServiceHandler|ServiceHandlerNew
+  handler/ServiceHandler
   id/int?
   priority/int
   tags/List?
@@ -672,7 +620,7 @@ class ServiceManager_ implements SystemMessageHandler_:
 
   providers_/Map ::= {:}            // Map<int, ServiceProvider>
   providers_by_client_/Map ::= {:}  // Map<int, ServiceProvider>
-  handlers_by_client_/Map ::= {:}   // Map<int, ServiceHandler|ServiceHandlerNew>
+  handlers_by_client_/Map ::= {:}   // Map<int, ServiceHandler>
 
   constructor:
     set_system_message_handler_ SYSTEM_RPC_NOTIFY_TERMINATED_ this
@@ -683,12 +631,7 @@ class ServiceManager_ implements SystemMessageHandler_:
     broker_.register_procedure RPC_SERVICES_INVOKE_:: | arguments gid pid |
       client/int ::= arguments[0]
       handler ::= handlers_by_client_[client]
-      if handler is ServiceHandlerNew:
-        (handler as ServiceHandlerNew).handle arguments[1] arguments[2] --gid=gid --client=client
-      else if handler is ServiceHandler:
-        (handler as ServiceHandler).handle pid client arguments[1] arguments[2]
-      else:
-        unreachable
+      (handler as ServiceHandler).handle arguments[1] arguments[2] --gid=gid --client=client
     broker_.register_procedure RPC_SERVICES_CLOSE_RESOURCE_:: | arguments |
       client/int ::= arguments[0]
       providers_by_client_.get client --if_present=: | provider/ServiceProvider |
