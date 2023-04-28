@@ -49,7 +49,7 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
   constructor:
     super "system/wifi/esp32" --major=0 --minor=1
         --tags=[NetworkService.TAG_WIFI]
-    provides WifiService.SELECTOR --handler=this --new
+    provides WifiService.SELECTOR --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == WifiService.CONNECT_INDEX:

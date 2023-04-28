@@ -74,11 +74,11 @@ class MyServiceExtendedClient extends MyServiceClient implements MyServiceExtend
 // ------------------------------------------------------------------
 
 class MyServiceProvider extends services.ServiceProvider
-    implements MyServiceExtended services.ServiceHandlerNew:
+    implements MyServiceExtended services.ServiceHandler:
   constructor:
     super "myservice/extended" --major=1 --minor=2 --patch=3
-    provides MyService.SELECTOR --handler=this --new
-    provides MyServiceExtended.SELECTOR --handler=this --new
+    provides MyService.SELECTOR --handler=this
+    provides MyServiceExtended.SELECTOR --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == MyService.FOO_INDEX: return foo
