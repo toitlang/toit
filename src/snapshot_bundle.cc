@@ -16,6 +16,10 @@
 #include "top.h"
 #include "uuid.h"
 #include <mbedtls/sha256.h>
+#if MBEDTLS_VERSION_MAJOR >= 3
+// Bring back the _ret names for sha functions.
+#include <mbedtls/compat-2.x.h>
+#endif
 
 #ifndef TOIT_FREERTOS
 

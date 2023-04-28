@@ -17,6 +17,8 @@
 // compatible with this warning.
 #pragma GCC diagnostic ignored "-Waddress"
 
+#include <inttypes.h>
+
 #include "../top.h"
 
 #if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP) && CONFIG_TOIT_ENABLE_IP
@@ -430,11 +432,7 @@ static Object* get_address_or_error(UdpSocket* socket, Process* process, bool pe
     ip_addr_get_ip4_u32(&socket->upcb()->local_ip);
   char buffer[16];
   int length = sprintf(buffer,
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-		       "%lu.%lu.%lu.%lu",
-#else
-		       "%d.%d.%d.%d",
-#endif
+                       "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32,
                        (address >> 0) & 0xff,
                        (address >> 8) & 0xff,
                        (address >> 16) & 0xff,

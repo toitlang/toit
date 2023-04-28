@@ -17,6 +17,10 @@
 
 #include <mbedtls/sha256.h>
 #include <mbedtls/sha512.h>
+#if MBEDTLS_VERSION_MAJOR >= 3
+// Bring back the _ret names for sha functions.
+#include <mbedtls/compat-2.x.h>
+#endif
 
 #include "resource.h"
 #include "tags.h"
