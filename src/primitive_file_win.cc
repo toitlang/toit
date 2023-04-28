@@ -277,7 +277,7 @@ PRIMITIVE(closedir) {
 
 PRIMITIVE(read) {
   ARGS(int, fd);
-  const int SIZE = 1 * MB;
+  const int SIZE = 64 * KB;
 
   AllocationManager allocation(process);
   uint8* buffer = allocation.alloc(SIZE);
