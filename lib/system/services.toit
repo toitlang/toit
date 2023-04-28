@@ -197,7 +197,7 @@ class ServiceClient:
         // Found multiple candidates with the same priority.
         throw "Cannot disambiguate"
 
-    if not candidate_index: return null
+    if not candidate_index: return if_absent.call
     pid := discovered[candidate_index]
     id := discovered[candidate_index + 1]
     return _open_ selector --pid=pid --id=id
