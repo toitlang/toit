@@ -34,11 +34,11 @@ void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
   if (is_initialized_) return;
   is_initialized_ = true;
 
- // Initialize Winsock
-  WSADATA wsaData;
-  int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-  if (iResult != NO_ERROR) {
-      FATAL(L"WSAStartup function failed with error: %d\n", iResult);
+ // Initialize Winsock.
+  WSADATA wsa_data;
+  int status = WSAStartup(MAKEWORD(2, 2), &wsa_data);
+  if (status != NO_ERROR) {
+    FATAL("WSAStartup function failed with error: %d\n", status);
   }
 
   addrinfo hints;
@@ -48,14 +48,14 @@ void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
   hints.ai_flags = 0;
   hints.ai_protocol = 0;           // Any protocol.
 
-  addrinfo* result;
-  int status = getaddrinfo(null, port_, &hints, &result);
+  addrinfo* head;
+  status = getaddrinfo(null, port_, &hints, &head);
   if (status != 0) {
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
     exit(EXIT_FAILURE);
   }
 
-  for (auto info = result; info != null; info = info->ai_next) {
+  for (auto info = head; info != null; info = info->ai_next) {
     SOCKET sock = socket(info->ai_family, info->ai_socktype, info->ai_protocol);
     if (sock == INVALID_SOCKET) continue;
     BOOL value = TRUE;

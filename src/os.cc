@@ -181,7 +181,7 @@ void* OS::allocate_pages(uword size) {
   while (result < single_range_.address ||
          result_end > reinterpret_cast<uword>(single_range_.address) + single_range_.size ||
          numeric_address != Utils::round_up(numeric_address, TOIT_PAGE_SIZE)) {
-    if (attempt++ > 20) FATAL("Out of memory");
+    if (attempt++ > 20) FATAL("Out of memory (cannot allocate pages)");
     // We did not get a result in the right range.
     // Try to use a random address in the right range.
     ungrab_virtual_memory(result, size);
