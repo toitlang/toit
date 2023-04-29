@@ -13,14 +13,29 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-set(CMAKE_C_COMPILER /usr/bin/riscv64-linux-gnu-gcc CACHE PATH "" FORCE)
-set(CMAKE_CXX_COMPILER /usr/bin/riscv64-linux-gnu-g++ CACHE PATH "" FORCE)
+set(CMAKE_C_COMPILER clang CACHE PATH "" FORCE)
+set(CMAKE_CXX_COMPILER clang++ CACHE PATH "" FORCE)
 
 set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}")
+
+if ("${CMAKE_SYSROOT}" STREQUAL "")
+  if (DEFINED ENV{SYSROOT})
+    set(CMAKE_SYSROOT "$ENV{SYSROOT}")
+  else()
+    message(FATAL_ERROR, "Missing sysroot variable")
+  endif()
+endif()
+
+set(CMAKE_C_COMPILER_TARGET "riscv64-linux-gnu")
+set(CMAKE_CXX_COMPILER_TARGET "riscv64-linux-gnu")
+
 
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -x assembler-with-cpp" CACHE STRING "asm flags")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}" CACHE STRING "c flags")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "c++ flags")
+
+set(CMAKE_C_LINK_FLAGS "${CMAKE_C_LINK_FLAGS} -fuse-ld=lld" CACHE STRING "c link flags")
+set(CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -fuse-ld=lld" CACHE STRING "cxx link flags")
 
 set(CMAKE_C_FLAGS_DEBUG "-Og -g -rdynamic -fdiagnostics-color" CACHE STRING "c Debug flags")
 set(CMAKE_C_FLAGS_RELEASE "-Os" CACHE STRING "c Release flags")

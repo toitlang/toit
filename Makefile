@@ -21,6 +21,8 @@ SHELL=bash
 HOST=host
 BUILD_TYPE=Release
 
+prefix ?= /opt/toit-sdk
+
 # Use 'make flash ESP32_ENTRY=examples/mandelbrot.toit' to flash
 # a firmware version with an embedded application.
 ESP32_CHIP=esp32
@@ -47,9 +49,20 @@ else
 	DETECTED_OS=$(shell uname)
 endif
 
+PI_CROSS_ARCH := raspberry_pi
+ARM_LINUX_GNUEABI_CROSS_ARCH := arm-linux-gnueabi
+
+SUPPORTED_CROSS_ARCHS := $(PI_CROSS_ARCH) $(ARM_LINUX_GNUEABI_CROSS_ARCH) armv7 aarch64 riscv64 arm64
 CROSS_ARCH=
 
-prefix ?= /opt/toit-sdk
+# Check that the CROSS_ARCH is supported.
+ifdef CROSS_ARCH # If CROSS_ARCH is set, check that it is supported.
+ifneq ($(filter $(CROSS_ARCH),$(SUPPORTED_CROSS_ARCHS)),)
+# CROSS_ARCH is supported.
+else
+$(error Unsupported CROSS_ARCH=$(CROSS_ARCH). Supported values are $(SUPPORTED_CROSS_ARCHS))
+endif
+endif
 
 # HOST
 .PHONY: all
@@ -172,8 +185,7 @@ toit-tools-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
 version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
 	(cd build/$(CROSS_ARCH) && ninja build_version_file)
 
-PI_CROSS_ARCH := raspberry_pi
-
+# Raspberry Pi
 .PHONY: pi-sysroot
 pi-sysroot: build/$(PI_CROSS_ARCH)/sysroot/usr
 
@@ -196,8 +208,7 @@ build/$(PI_CROSS_ARCH)/sysroot/usr: check-env-sysroot
 pi: pi-sysroot
 	$(MAKE) CROSS_ARCH=raspberry_pi SYSROOT="$(CURDIR)/build/$(PI_CROSS_ARCH)/sysroot" sdk-cross
 
-ARM_LINUX_GNUEABI_CROSS_ARCH := arm-linux-gnueabi
-
+# ARM Linux GNUEABI
 .PHONY: arm-linux-gnueabi-sysroot
 arm-linux-gnueabi-sysroot: build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/usr
 
@@ -206,11 +217,11 @@ ARM_LINUX_GNUEABI_GCC_TOOLCHAIN_URL=https://releases.linaro.org/components/toolc
 
 build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/sysroot.tar.xz:
 	mkdir -p build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot
-	wget --output-document build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/sysroot.tar.xz $(ARM_LINUX_GNUEABI_SYSROOT_URL)
+	curl --location --output build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/sysroot.tar.xz $(ARM_LINUX_GNUEABI_SYSROOT_URL)
 
 build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/gcc-toolchain.tar.xz:
 	mkdir -p build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot
-	wget --output-document build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/gcc-toolchain.tar.xz $(ARM_LINUX_GNUEABI_GCC_TOOLCHAIN_URL)
+	curl --location --output build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/gcc-toolchain.tar.xz $(ARM_LINUX_GNUEABI_GCC_TOOLCHAIN_URL)
 
 build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/usr: build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/sysroot.tar.xz
 build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/usr: build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/gcc-toolchain.tar.xz
@@ -221,6 +232,39 @@ build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/usr: build/$(ARM_LINUX_GNUEABI_CRO
 .PHONY: arm-linux-gnueabi
 arm-linux-gnueabi: arm-linux-gnueabi-sysroot
 	$(MAKE) CROSS_ARCH=$(ARM_LINUX_GNUEABI_CROSS_ARCH) SYSROOT="$(CURDIR)/build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot" sdk-cross
+
+# Armv7 Aarch64 Riscv64
+TOITLANG_SYSROOTS := armv7 aarch64 riscv64
+ifneq (,$(filter $(CROSS_ARCH),$(TOITLANG_SYSROOTS)))
+SYSROOT_URL=https://github.com/toitlang/sysroots/releases/download/v1.2.0/sysroot-$(CROSS_ARCH).tar.gz
+build/$(CROSS_ARCH)/sysroot/sysroot.tar.xz:
+	if [[ "$(SYSROOT_URL)" == "" ]]; then \
+		echo "No sysroot URL for $(CROSS_ARCH)"; \
+		exit 1; \
+	fi
+
+	mkdir -p build/$(CROSS_ARCH)/sysroot
+	curl --location --output build/$(CROSS_ARCH)/sysroot/sysroot.tar.xz $(SYSROOT_URL)
+
+build/$(CROSS_ARCH)/sysroot/usr: build/$(CROSS_ARCH)/sysroot/sysroot.tar.xz
+	tar x -f build/$(CROSS_ARCH)/sysroot/sysroot.tar.xz -C build/$(CROSS_ARCH)/sysroot
+	touch $@
+endif
+
+.PHONY: armv7
+armv7:
+	$(MAKE) CROSS_ARCH=$@ build/$@/sysroot/usr
+	$(MAKE) CROSS_ARCH=$@ SYSROOT="$(CURDIR)/build/$@/sysroot" sdk-cross
+
+.PHONY: aarch64
+aarch64:
+	$(MAKE) CROSS_ARCH=$@ build/$@/sysroot/usr
+	$(MAKE) CROSS_ARCH=$@ SYSROOT="$(CURDIR)/build/$@/sysroot" sdk-cross
+
+.PHONY: riscv64
+riscv64:
+	$(MAKE) CROSS_ARCH=$@ build/$@/sysroot/usr
+	$(MAKE) CROSS_ARCH=$@ SYSROOT="$(CURDIR)/build/$@/sysroot" sdk-cross
 
 # ESP32 VARIANTS
 .PHONY: check-esp32-env
