@@ -39,7 +39,7 @@ static void print_usage(int exit_code) {
   printf("  [--force]                                // Finish compilation even with errors (if possible).\n");
   printf("  [-Werror]                                // Treat warnings like errors.\n");
   printf("  [--show-package-warnings]                // Show warnings from packages.\n");
-  printf("  [--vessels-root <dir>]                   // Path to vessels when compiling executables.\n");
+  printf("  [--arch <architecture>]                  // Cross-compilation target.\n");
   printf("  [--strip]                                // Strip the output of debug information.\n");
   printf("  { -o <executable> <toitfile|snapshot> |  // Write executable.\n");
   printf("    -w <snapshot> <toitfile|snapshot> |    // Write snapshot file.\n");
@@ -102,6 +102,7 @@ int main(int argc, char **argv) {
   bool for_language_server = false;
   bool for_analysis = false;
   const char* vessels_root = null;
+  const char* arch = null;
   int optimization_level = DEFAULT_OPTIMIZATION_LEVEL;
   bool should_strip = false;
 
@@ -211,6 +212,17 @@ int main(int argc, char **argv) {
         print_usage(1);
       }
       vessels_root = argv[processed_args++];
+    } else if (strcmp(argv[processed_args], "--arch") == 0) {
+      processed_args++;
+      if (processed_args == argc) {
+        fprintf(stderr, "Missing argument to '--arch'\n");
+        print_usage(1);
+      }
+      if (arch != null) {
+        fprintf(stderr, "Only one '--arch' flag is allowed.\n");
+        print_usage(1);
+      }
+      arch = argv[processed_args++];
     } else if (strcmp(argv[processed_args], "--lsp") == 0 ||
                 strcmp(argv[processed_args], "--analyze") == 0) {
       for_language_server = strcmp(argv[processed_args], "--lsp") == 0;
@@ -337,7 +349,7 @@ int main(int argc, char **argv) {
         print_usage(1);
       }
     } else {
-      exit_state = create_executable(exe_filename, compiled, vessels_root);
+      exit_state = create_executable(exe_filename, compiled, vessels_root, arch);
     }
     free(compiled.buffer());
   } else {

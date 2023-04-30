@@ -48,10 +48,14 @@ static const uint8 VESSEL_TOKEN[] = { VESSEL_TOKEN_VALUES };
 // just much more complicated for something that doesn't change that frequently.
 static int VESSEL_SIZES[] = { 128, 256, 512, 1024, 8192, };
 
-static int sign_if_necessary(const char* out_path) {
+static int sign_if_necessary(const char* out_path, const char* arch) {
 #ifndef TOIT_DARWIN
+  // TODO(florian): sign if arch equals "macos".
   return 0;
 #else
+  if (arch != null) {
+    return 0;
+  }
   char codesign[] = { "codesign" };
   char minus_fs[] = { "-fs" };
   char dash[] = { "-" };
@@ -76,13 +80,20 @@ static int sign_if_necessary(const char* out_path) {
 #endif
 }
 
-int create_executable(const char* out_path, const SnapshotBundle& bundle, const char* vessel_root) {
+int create_executable(const char* out_path,
+                      const SnapshotBundle& bundle,
+                      const char* vessel_root,
+                      const char* arch) {
   FilesystemLocal fs;
   PathBuilder builder(&fs);
-  if (vessel_root == null) {
-    vessel_root = fs.vessel_root();
+  if (vessel_root != null) {
+    builder.add(vessel_root);
+  } else {
+    builder.add(fs.vessel_root());
   }
-  builder.add(vessel_root);
+  if (arch != null) {
+    builder.join(arch);
+  }
   bool found_vessel = false;
   for (unsigned int i = 0; i < ARRAY_SIZE(VESSEL_SIZES); i++) {
     if (bundle.size() < VESSEL_SIZES[i] * 1024) {
@@ -169,7 +180,7 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle, const 
         return -1;
       }
       fclose(file_out);
-      if (sign_if_necessary(out_path) != 0) {
+      if (sign_if_necessary(out_path, arch) != 0) {
         fprintf(stderr, "Error while signing the generated executable '%s'. The program might still work.\n", out_path);
       }
       return 0;
