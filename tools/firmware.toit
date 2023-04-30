@@ -577,14 +577,26 @@ find_esptool_ -> List:
   if bin_name.ends_with ".toit":
     if dir == "": dir = "."
     esptool_py := "$dir/../third_party/esp-idf/components/esptool_py/esptool/esptool.py"
-    if not file.is_file esptool_py:
-      throw "cannot find esptool in '$esptool_py'"
-    return ["python", esptool_py ]
+    if file.is_file esptool_py:
+      return ["python", esptool_py ]
   else:
     esptool := ["$dir/esptool$bin_extension"]
-    if not file.is_file esptool[0]:
-      throw "cannot find esptool in '$esptool[0]'"
+    if file.is_file esptool[0]:
+      return esptool
+  // Try to find esptool in PATH.
+  esptool := ["esptool$bin_extension"]
+  catch:
+    pipe.backticks esptool "version"
+    // Succeeded, so just return it.
     return esptool
+  // An exception was thrown.
+  // Try to find esptool.py in PATH.
+  if platform != PLATFORM_WINDOWS:
+    exit_value := pipe.system "esptool.py version > /dev/null 2>&1"
+    if exit_value == 0:
+      location := pipe.backticks "/bin/sh" "-c" "command -v esptool.py"
+      return ["python3", location.trim]
+  throw "cannot find esptool"
 
 flash_cmd -> cli.Command:
   return cli.Command "flash"
