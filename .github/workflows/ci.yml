@@ -721,21 +721,36 @@ jobs:
 
       - name: Copy vessels
         run: |
+          mkdir -p vessels
+
           for source in windows linux macos rpi rpi64; do
+            mkdir -p vessels/$source
+            cp -R $source/toit/vessels/vessel* vessels/$source
+
             for target in windows linux macos rpi rpi64; do
               if [ "$source" == "$target" ]; then
                 continue
               fi
               mkdir -p $target/toit/vessels/$source
-              cp -R $source/toit/vessels/* $target/toit/vessels/$source
+              cp -R $source/toit/vessels/vessel* $target/toit/vessels/$source
             done
           done
+
+      - name: Create vessels artifact
+        run: |
+          tar c -zf vessels.tar.gz vessels
 
       - name: Compress SDKs
         run: |
           for os in windows linux macos rpi rpi64; do
-            tar -czf toit-$os.tar.gz $os
+            tar c -zf toit-$os.tar.gz -C $os .
           done
+
+      - name: Upload vessels
+        uses: actions/upload-artifact@v3
+        with:
+          name: vessels
+          path: vessels.tar.gz
 
       - name: Upload Windows unsigned
         uses: actions/upload-artifact@v3
@@ -757,6 +772,17 @@ jobs:
         with:
           name: macOS-build
           path: toit-macos.tar.gz
+
+      - name: Upload release vessels
+        if: |
+          github.event_name == 'release' &&
+          github.repository_owner == 'toitlang'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: vessels.tar.gz
+          tag: ${{ github.ref }}
+          overwrite: true
 
       - name: Upload release Linux
         if: |
