@@ -49,20 +49,7 @@ else
 	DETECTED_OS=$(shell uname)
 endif
 
-PI_CROSS_ARCH := raspberry_pi
-ARM_LINUX_GNUEABI_CROSS_ARCH := arm-linux-gnueabi
-
-SUPPORTED_CROSS_ARCHS := $(PI_CROSS_ARCH) $(ARM_LINUX_GNUEABI_CROSS_ARCH) armv7 aarch64 riscv64 arm64
 CROSS_ARCH=
-
-# Check that the CROSS_ARCH is supported.
-ifdef CROSS_ARCH # If CROSS_ARCH is set, check that it is supported.
-ifneq ($(filter $(CROSS_ARCH),$(SUPPORTED_CROSS_ARCHS)),)
-# CROSS_ARCH is supported.
-else
-$(error Unsupported CROSS_ARCH=$(CROSS_ARCH). Supported values are $(SUPPORTED_CROSS_ARCHS))
-endif
-endif
 
 # HOST
 .PHONY: all
@@ -186,6 +173,8 @@ version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
 	(cd build/$(CROSS_ARCH) && ninja build_version_file)
 
 # Raspberry Pi
+PI_CROSS_ARCH := raspberry_pi
+
 .PHONY: pi-sysroot
 pi-sysroot: build/$(PI_CROSS_ARCH)/sysroot/usr
 
@@ -209,6 +198,8 @@ pi: pi-sysroot
 	$(MAKE) CROSS_ARCH=raspberry_pi SYSROOT="$(CURDIR)/build/$(PI_CROSS_ARCH)/sysroot" sdk-cross
 
 # ARM Linux GNUEABI
+ARM_LINUX_GNUEABI_CROSS_ARCH := arm-linux-gnueabi
+
 .PHONY: arm-linux-gnueabi-sysroot
 arm-linux-gnueabi-sysroot: build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/usr
 
