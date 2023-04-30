@@ -712,6 +712,52 @@ jobs:
         with:
           name: macOS-build
 
+      - name: Unpack SDKs
+        run: |
+          for os in windows linux macos rpi rpi64; do
+            mkdir -p $os
+            tar x -zf toit-$os.tar.gz -C $os
+          done
+
+      - name: Copy vessels
+        run: |
+          for source in windows linux macos rpi rpi64; do
+            for target in windows linux macos rpi rpi64; do
+              if [ "$source" == "$target" ]; then
+                continue
+              fi
+              mkdir -p $target/toit/vessels/$source
+              cp -R $source/toit/vessels/* $target/toit/vessels/$source
+            done
+          done
+
+      - name: Compress SDKs
+        run: |
+          for os in windows linux macos rpi rpi64; do
+            tar -czf toit-$os.tar.gz $os
+          done
+
+      - name: Upload Windows unsigned
+        uses: actions/upload-artifact@v3
+        with:
+          name: Windows-build-unsigned
+          path: toit-windows.tar.gz
+
+      - name: Upload Linux
+        uses: actions/upload-artifact@v3
+        with:
+          name: Linux-build
+          path: |
+            toit-linux.tar.gz
+            toit-rpi.tar.gz
+            toit-rpi64.tar.gz
+
+      - name: Upload macOS
+        uses: actions/upload-artifact@v3
+        with:
+          name: macOS-build
+          path: toit-macos.tar.gz
+
       - name: Upload release Linux
         if: |
           github.event_name == 'release' &&
