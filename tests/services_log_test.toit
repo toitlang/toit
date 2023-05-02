@@ -5,7 +5,7 @@
 import log
 import expect
 
-import system.services show ServiceProvider ServiceHandlerNew
+import system.services show ServiceProvider ServiceHandler
 import system.api.log show LogService
 
 service ::= LogServiceProvider
@@ -66,12 +66,12 @@ main:
   expect.expect_throw "key not found": log.debug "Oh no"
 
 class LogServiceProvider extends ServiceProvider
-    implements LogService ServiceHandlerNew:
+    implements LogService ServiceHandler:
   logs_/List := []
 
   constructor:
     super "system/log/test" --major=1 --minor=2
-    provides LogService.SELECTOR --handler=this --new
+    provides LogService.SELECTOR --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == LogService.LOG_INDEX: return logs_.add arguments

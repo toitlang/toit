@@ -13,14 +13,14 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import system.services show ServiceHandlerNew ServiceProvider ServiceResource
+import system.services show ServiceHandler ServiceProvider ServiceResource
 import system.api.network show NetworkService
 
 abstract class NetworkServiceProviderBase extends ServiceProvider
-    implements NetworkService ServiceHandlerNew:
+    implements NetworkService ServiceHandler:
   constructor name/string --major/int --minor/int --tags/List?=null:
     super name --major=major --minor=minor
-    provides NetworkService.SELECTOR --handler=this --tags=tags --new
+    provides NetworkService.SELECTOR --handler=this --tags=tags
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == NetworkService.CONNECT_INDEX:

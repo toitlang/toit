@@ -67,12 +67,12 @@ class FooServiceClient extends services.ServiceClient implements FooService:
 // ------------------------------------------------------------------
 
 class FooServiceProvider extends services.ServiceProvider
-    implements FooService services.ServiceHandlerNew:
+    implements FooService services.ServiceHandler:
   clients := {}
 
   constructor:
     super "foo" --major=1 --minor=1
-    provides FooService.SELECTOR --handler=this --new
+    provides FooService.SELECTOR --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == FooService.LIST_CLIENTS_INDEX: return list_clients

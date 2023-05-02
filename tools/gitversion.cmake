@@ -259,7 +259,9 @@ function(compute_git_version VERSION)
       else()
         # A normal version number.
         # Add a '-pre.<commit-count>' suffix.
-        set(RESULT_PREFIX "${LATEST_VERSION_TAG}-pre.${COMMITS_SINCE_LAST_TAG}")
+        version_from_tag("${LATEST_VERSION_TAG}" tag_major tag_minor tag_patch)
+        MATH(EXPR patch "${tag_patch}+1")
+        set(RESULT_PREFIX "v${tag_major}.${tag_minor}.${patch}-pre.${COMMITS_SINCE_LAST_TAG}")
       endif()
     endif()
   endif()

@@ -37,24 +37,12 @@
 #define FILE_RENAME_(olddirfd, oldpath, newdirfd, newpath) rename(oldpath, newpath)
 #define FILE_MKDIR_(dirfd, ...)                            mkdir(__VA_ARGS__)
 #else
-// Old C library version of stat.
-extern "C" {
 
-extern int __fxstat64(int ver, int fd, struct stat64* stat_buf);
-extern int __fxstatat64(int ver, int dirfd, const char* path, struct stat64* stat_buf, int flags);
-
-}
 #define FILE_OPEN_(...)     openat(__VA_ARGS__)
 #define FILE_UNLINK_(...)   unlinkat(__VA_ARGS__)
 #define FILE_RENAME_(...)   renameat(__VA_ARGS__)
 #define FILE_MKDIR_(...)    mkdirat(__VA_ARGS__)
 #endif // TOIT_FREERTOS
-
-#ifdef BUILD_64
-# define STAT_VERSION 1
-#else
-# define STAT_VERSION 3
-#endif
 
 namespace toit {
 
@@ -159,15 +147,8 @@ PRIMITIVE(open) {
   int fd = FILE_OPEN_(current_dir(process), pathname, os_flags, mode);
   AutoCloser closer(fd);
   if (fd < 0) return return_open_error(process, errno);
-#ifndef TOIT_LINUX
   struct stat statbuf;
   int res = fstat(fd, &statbuf);
-#else
-  // Use an older version of stat, so that we can run in docker
-  // containers with older glibc.
-  struct stat64 statbuf;
-  int res = __fxstat64(STAT_VERSION, fd, &statbuf);
-#endif
   if (res < 0) {
     if (errno == ENOMEM) MALLOC_FAILED;
     OTHER_ERROR;
@@ -328,8 +309,17 @@ PRIMITIVE(closedir) {
 
 PRIMITIVE(read) {
   ARGS(int, fd);
-  const int SIZE = 4000;
-  uint8 buffer[SIZE];
+  const int SIZE = 64 * KB;
+
+  AllocationManager allocation(process);
+  uint8* buffer = allocation.alloc(SIZE);
+  if (!buffer) ALLOCATION_FAILED;
+
+  ByteArray* result = process->object_heap()->allocate_external_byte_array(
+      SIZE, buffer, true /* dispose */, false /* clear */);
+  if (!result) ALLOCATION_FAILED;
+  allocation.keep_result();
+
   ssize_t buffer_fullness = 0;
   while (buffer_fullness < SIZE) {
     ssize_t bytes_read = read(fd, buffer + buffer_fullness, SIZE - buffer_fullness);
@@ -340,17 +330,15 @@ PRIMITIVE(read) {
     buffer_fullness += bytes_read;
     if (bytes_read == 0) break;
   }
+
   if (buffer_fullness == 0) {
     return process->program()->null_object();
   }
-  Object* byte_array = process->allocate_byte_array(buffer_fullness);
-  if (byte_array == null) {
-    lseek(fd, -buffer_fullness, SEEK_CUR);
-    ALLOCATION_FAILED;
+
+  if (buffer_fullness < SIZE) {
+    result->resize_external(process, buffer_fullness);
   }
-  auto buf = ByteArray::Bytes(ByteArray::cast(byte_array)).address();
-  memcpy(buf, buffer, buffer_fullness);
-  return byte_array;
+  return result;
 }
 
 PRIMITIVE(write) {
@@ -396,14 +384,9 @@ PRIMITIVE(stat) {
   USE(follow_links);
   struct stat statbuf;
   int result = stat(pathname, &statbuf); // FAT does not have symbolic links
-#elif !defined(TOIT_LINUX)
+#else
   struct stat statbuf;
   int result = fstatat(current_dir(process), pathname, &statbuf, follow_links ? 0 : AT_SYMLINK_NOFOLLOW);
-#else
-  struct stat64 statbuf;
-  // Use an older version of stat, so that we can run in docker
-  // containers with older glibc.
-  int result = __fxstatat64(STAT_VERSION, current_dir(process), pathname, &statbuf, follow_links ? 0 : AT_SYMLINK_NOFOLLOW);
 #endif
   if (result < 0) {
     if (errno == ENOENT || errno == ENOTDIR) {

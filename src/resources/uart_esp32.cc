@@ -117,7 +117,7 @@ class RxTxBuffer {
   // of the buffer. The number of bytes can be read without
   // holding the lock, but it must be updated while holding
   // the lock.
-  std::atomic<uword> available_;
+  volatile uword available_;
 
   UART_ISR_INLINE void read(const SpinLocker& locker, uint8* buffer, uword length);
   UART_ISR_INLINE void write(const SpinLocker& locker, const uint8* buffer, uword length);
@@ -777,12 +777,13 @@ PRIMITIVE(create) {
     MALLOC_FAILED;
   }
 
-  init.rx_buffer = static_cast<uint8*>(malloc(rx_buffer_size));
+  const int caps_flags = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+  init.rx_buffer = static_cast<uint8*>(heap_caps_malloc(rx_buffer_size, caps_flags));
   if (!init.rx_buffer) {
     MALLOC_FAILED;
   }
 
-  init.tx_buffer = static_cast<uint8*>(malloc(tx_buffer_size));
+  init.tx_buffer = static_cast<uint8*>(heap_caps_malloc(tx_buffer_size, caps_flags));
   if (!init.tx_buffer) {
     MALLOC_FAILED;
   }
@@ -940,10 +941,10 @@ PRIMITIVE(read) {
   uword available = buffer->available();
   if (available == 0) return process->program()->null_object();
 
-  // TODO(kasper): It isn't obviously a good idea to just return
-  // all the data in a potentially rather large external byte array.
-  // For reads from TCP sockets, we chunk it up instead and prefer
-  // to return multiple smaller byte arrays.
+  // For high-speed UART communication, it is important
+  // that we consume as much as we can when we read.
+  // This immediately gives the ISR more available space
+  // in the RX buffer.
   ByteArray* data = process->allocate_byte_array(available);
   if (data == null) ALLOCATION_FAILED;
 

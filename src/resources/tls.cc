@@ -16,12 +16,17 @@
 #include "../top.h"
 
 #if !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include <mbedtls/error.h>
 #include <mbedtls/pem.h>
 #include <mbedtls/gcm.h>
 #include <mbedtls/chachapoly.h>
 #include <mbedtls/platform.h>
+#if MBEDTLS_VERSION_MAJOR >= 3
+#include <../library/ssl_misc.h>
+#else
 #include <mbedtls/ssl_internal.h>
+#endif
 
 #include "../entropy_mixer.h"
 #include "../heap_report.h"
@@ -48,13 +53,27 @@ void BaseMbedTlsSocket::uninit_certs() {
   private_key_ = null;
 }
 
+#if MBEDTLS_VERSION_MAJOR >= 3
+static int random_generator(void* arg, unsigned char* output, size_t len) {
+  auto mixer = reinterpret_cast<EntropyMixer*>(arg);
+  return mixer->get_entropy(output, len);
+}
+#endif
+
 int BaseMbedTlsSocket::add_certificate(X509Certificate* cert, const uint8_t* private_key, size_t private_key_length, const uint8_t* password, int password_length) {
   uninit_certs();  // Remove any old cert on the config.
 
   private_key_ = _new mbedtls_pk_context;
   if (!private_key_) return MBEDTLS_ERR_PK_ALLOC_FAILED;
   mbedtls_pk_init(private_key_);
+#if MBEDTLS_VERSION_MAJOR >= 3
+  // We need a random number generator to blind the calculations in the RSA, to
+  // avoid timing attacks.
+  void* random_arg = reinterpret_cast<void*>(EntropyMixer::instance());
+  int ret = mbedtls_pk_parse_key(private_key_, private_key, private_key_length, password, password_length, random_generator, random_arg);
+#else
   int ret = mbedtls_pk_parse_key(private_key_, private_key, private_key_length, password, password_length);
+#endif
   if (ret < 0) {
     delete private_key_;
     private_key_ = null;
@@ -235,14 +254,20 @@ MODULE_IMPLEMENTATION(tls, MODULE_TLS)
 Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err) {
   static const size_t BUFFER_LEN = 400;
   char buffer[BUFFER_LEN];
-  if (err == MBEDTLS_ERR_CIPHER_ALLOC_FAILED ||
-      err == MBEDTLS_ERR_ECP_ALLOC_FAILED ||
-      err == MBEDTLS_ERR_MD_ALLOC_FAILED ||
-      err == MBEDTLS_ERR_MPI_ALLOC_FAILED ||
-      err == MBEDTLS_ERR_PEM_ALLOC_FAILED ||
-      err == MBEDTLS_ERR_PK_ALLOC_FAILED ||
-      err == MBEDTLS_ERR_SSL_ALLOC_FAILED ||
-      err == MBEDTLS_ERR_X509_ALLOC_FAILED) {
+  // For some reason Mbedtls doesn't seem to export this mask.
+  static const int MBED_LOW_LEVEL_ERROR_MASK = 0x7f;
+  // Error codes are negative so we use or-not instead of and.
+  int lo_error = err | ~MBED_LOW_LEVEL_ERROR_MASK;
+  int hi_error = err & ~MBED_LOW_LEVEL_ERROR_MASK;
+  if (hi_error == MBEDTLS_ERR_CIPHER_ALLOC_FAILED ||
+      hi_error == MBEDTLS_ERR_ECP_ALLOC_FAILED ||
+      hi_error == MBEDTLS_ERR_MD_ALLOC_FAILED ||
+      lo_error == MBEDTLS_ERR_MPI_ALLOC_FAILED ||
+      lo_error == MBEDTLS_ERR_ASN1_ALLOC_FAILED ||
+      hi_error == MBEDTLS_ERR_PEM_ALLOC_FAILED ||
+      hi_error == MBEDTLS_ERR_PK_ALLOC_FAILED ||
+      hi_error == MBEDTLS_ERR_SSL_ALLOC_FAILED ||
+      hi_error == MBEDTLS_ERR_X509_ALLOC_FAILED) {
     MALLOC_FAILED;
   }
   if (err == MBEDTLS_ERR_X509_CERT_VERIFY_FAILED &&
@@ -627,7 +652,10 @@ PRIMITIVE(get_internals) {
         in_gcm_context->mode != MBEDTLS_GCM_DECRYPT) {
       return process->program()->null_object();
     }
-#ifdef TOIT_FREERTOS
+#if MBEDTLS_VERSION_MAJOR >= 3
+    memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->buf + out_aes_context->rk_offset, key_len);
+    memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->buf + in_aes_context->rk_offset, key_len);
+#elif defined(TOIT_FREERTOS)
     if (out_aes_context->key_bytes != key_len ||
         in_aes_context->key_bytes != key_len) {
       return process->program()->null_object();
