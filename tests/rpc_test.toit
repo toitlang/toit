@@ -36,6 +36,9 @@ main:
   broker.register_procedure PROCEDURE_MULTIPLY_BY_TWO:: | args |
     args[0] * 2
 
+  expect.expect_throw "NO_SUCH_PROCESS":
+    rpc.invoke 1919 PROCEDURE_ECHO [42]
+
   test_simple myself
   test_large_external myself
   test_second_procedure myself
