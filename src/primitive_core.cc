@@ -1898,18 +1898,19 @@ Object* MessageEncoder::create_error_object(Process* process) {
 }
 
 PRIMITIVE(task_has_messages) {
-  if (process->object_heap()->has_finalizer_to_run()) {
+  ObjectHeap* heap = process->object_heap();
+  if (heap->max_external_allocation() < 0) ALLOCATION_FAILED;
+
+  if (heap->has_finalizer_to_run()) {
     return BOOL(true);
+  } else {
+    Message* message = process->peek_message();
+    return BOOL(message != null);
   }
-  Message* message = process->peek_message();
-  return BOOL(message != null);
 }
 
 PRIMITIVE(task_receive_message) {
   ObjectHeap* heap = process->object_heap();
-
-  if (heap->max_external_allocation() < 0) ALLOCATION_FAILED;
-
   if (heap->has_finalizer_to_run()) {
     return heap->next_finalizer_to_run();
   }
