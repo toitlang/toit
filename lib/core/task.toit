@@ -299,7 +299,7 @@ class Task_ implements Task:
       // Check if we need to consume any cancelation
       // errors and try to print a helpful message
       // if we failed to trace the exception in the
-      // first attemp.
+      // first attempt.
       if is_exception:
         value := exception.value
         if is_canceled_ and value == CANCELED_ERROR:
