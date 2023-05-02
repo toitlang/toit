@@ -1901,11 +1901,12 @@ PRIMITIVE(task_has_messages) {
   ObjectHeap* heap = process->object_heap();
   if (heap->max_external_allocation() < 0) ALLOCATION_FAILED;
 
-  if (process->object_heap()->has_finalizer_to_run()) {
+  if (heap->has_finalizer_to_run()) {
     return BOOL(true);
+  } else {
+    Message* message = process->peek_message();
+    return BOOL(message != null);
   }
-  Message* message = process->peek_message();
-  return BOOL(message != null);
 }
 
 PRIMITIVE(task_receive_message) {
