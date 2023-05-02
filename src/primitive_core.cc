@@ -1870,15 +1870,11 @@ PRIMITIVE(process_send) {
   scheduler_err_t result = (process_id >= 0)
       ? VM::current()->scheduler()->send_message(process_id, message)
       : VM::current()->scheduler()->send_system_message(message);
-  // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
-  // byte arrays and strings.
-  if (result != MESSAGE_OK) {
-    // TODO: We should reactivate - see https://github.com/toitlang/toit/pull/1107
-    // Object* result = process->allocate_string_or_error("MESSAGE_NO_SUCH_RECEIVER");
-    // if (Primitive::is_error(result)) return result;
-    // return Primitive::mark_as_error(HeapObject::cast(result));
-  }
-  return process->program()->null_object();
+  if (result == MESSAGE_OK) return process->program()->null_object();
+
+  Object* error = process->allocate_string_or_error("MESSAGE_NO_SUCH_RECEIVER");
+  if (Primitive::is_error(error)) return error;
+  return Primitive::mark_as_error(HeapObject::cast(error));
 }
 
 Object* MessageEncoder::create_error_object(Process* process) {

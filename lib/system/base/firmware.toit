@@ -14,13 +14,13 @@
 // directory of this repository.
 
 import system.api.firmware show FirmwareService
-import system.services show ServiceHandlerNew ServiceProvider ServiceResource
+import system.services show ServiceHandler ServiceProvider ServiceResource
 
 abstract class FirmwareServiceProviderBase extends ServiceProvider
-    implements FirmwareService ServiceHandlerNew:
+    implements FirmwareService ServiceHandler:
   constructor name/string --major/int --minor/int:
     super name --major=major --minor=minor
-    provides FirmwareService.SELECTOR --handler=this --new
+    provides FirmwareService.SELECTOR --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == FirmwareService.IS_VALIDATION_PENDING_INDEX:

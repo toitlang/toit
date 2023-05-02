@@ -23,7 +23,11 @@ namespace toit {
 #define MATERIALIZE_DEBUG_FLAG(type, prefix, name, value, doc)
 #endif
 
+#ifndef IOT_DEVICE
 #define MATERIALIZE_DEPLOY_FLAG(type, prefix, name, value, doc) type Flags::name = value;
+#else
+#define MATERIALIZE_DEPLOY_FLAG(type, prefix, name, value, doc)
+#endif
 
 FLAGS_DO(MATERIALIZE_DEBUG_FLAG, MATERIALIZE_DEPLOY_FLAG)
 

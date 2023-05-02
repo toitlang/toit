@@ -273,7 +273,6 @@ class PingServiceProvider extends services.ServiceProvider:
         --handler=PingHandler "A"
         --priority=priority
         --tags=["A", "!B"]
-        --new
 
   constructor.B --priority/int?=null:
     super "ping/B" --major=3 --minor=4 --patch=17 --tags=["yada"]
@@ -281,9 +280,8 @@ class PingServiceProvider extends services.ServiceProvider:
         --handler=PingHandler "B"
         --priority=priority
         --tags=["!A", "B"]
-        --new
 
-class PingHandler implements services.ServiceHandlerNew PingService:
+class PingHandler implements services.ServiceHandler PingService:
   identifier/string
   constructor .identifier:
 
