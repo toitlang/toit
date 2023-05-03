@@ -122,13 +122,13 @@ class RegistrationServiceClient extends services.ServiceClient implements Regist
 // ------------------------------------------------------------------
 
 class RegistrationServiceProvider extends services.ServiceProvider
-    implements RegistrationService services.ServiceHandlerNew:
+    implements RegistrationService services.ServiceHandler:
   counts_/Map? := null
   signal_/monitor.Signal ::= monitor.Signal
 
   constructor:
     super "log" --major=1 --minor=0
-    provides RegistrationService.SELECTOR --handler=this --new
+    provides RegistrationService.SELECTOR --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == RegistrationService.REGISTER_INDEX:

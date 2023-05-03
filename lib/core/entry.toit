@@ -11,8 +11,8 @@ __entry__main task -> none:
   // As an example, accessing a lazily initialized global variable
   // requires access to the task.
   Task_.current = task
-  task.initialize_entry_task_
   task.evaluate_:
+    task.initialize_entry_task_
     #primitive.intrinsics.main main_arguments_
 
 // This is the entry point for processes just being spawned.
@@ -23,9 +23,10 @@ __entry__spawn task -> none:
   // As an example, accessing a lazily initialized global variable
   // requires access to the task.
   Task_.current = task
-  task.initialize_entry_task_
-  lambda := Lambda.__ spawn_method_ spawn_arguments_
-  task.evaluate_: lambda.call
+  task.evaluate_:
+    task.initialize_entry_task_
+    lambda := Lambda.__ spawn_method_ spawn_arguments_
+    lambda.call
 
 // This is the entry point for newly created tasks.
 __entry__task lambda -> none:
@@ -35,8 +36,9 @@ __entry__task lambda -> none:
   // for us on the stack. The `null` assigned to `task` below
   // is skipped and we let the value passed to us take its place.
   task := null
-  assert: identical task Task_.current
-  task.evaluate_: lambda.call
+  task.evaluate_:
+    assert: identical task Task_.current
+    lambda.call
 
 // --------------------------------------------------------
 

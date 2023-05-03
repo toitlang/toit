@@ -268,14 +268,14 @@ class AllowThrowingNew {
 #ifndef TOIT_DEPLOY
 void fail(const char* file, int line, const char* format, ...) __attribute__ ((__noreturn__));
 #define ASSERT(cond) if (!(cond)) { toit::fail(__FILE__, __LINE__, "assertion failure, %s.", #cond); }
-#define FATAL(message, ...) toit::fail(__FILE__, __LINE__, #message, ##__VA_ARGS__);
+#define FATAL(message, ...) toit::fail(__FILE__, __LINE__, message, ##__VA_ARGS__);
 #ifdef TOIT_FREERTOS
 #define FATAL_IF_NOT_ESP_OK(cond) do { if ((cond) != ESP_OK) toit::fail(__FILE__, __LINE__, "%s", #cond); } while (0)
 #endif
 #else  // TOIT_DEPLOY
 void fail(const char* format, ...) __attribute__ ((__noreturn__));
 #define ASSERT(cond) while (false && (cond)) {}
-#define FATAL(message, ...) toit::fail(#message, ##__VA_ARGS__);
+#define FATAL(message, ...) toit::fail(message, ##__VA_ARGS__);
 #ifdef TOIT_FREERTOS
 #define FATAL_IF_NOT_ESP_OK(cond) do { if ((cond) != ESP_OK) toit::fail("%s", #cond); } while (0)
 #endif

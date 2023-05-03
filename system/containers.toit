@@ -21,7 +21,7 @@ import encoding.base64
 import encoding.tison
 
 import system.assets
-import system.services show ServiceHandlerNew ServiceProvider ServiceResource
+import system.services show ServiceHandler ServiceProvider ServiceResource
 import system.api.containers show ContainerService
 
 import .flash.allocation
@@ -176,10 +176,10 @@ class ContainerImageFlash extends ContainerImage:
       manager.image_registry.free allocation
 
 abstract class ContainerServiceProvider extends ServiceProvider
-    implements ContainerService ServiceHandlerNew:
+    implements ContainerService ServiceHandler:
   constructor:
     super "system/containers" --major=0 --minor=2
-    provides ContainerService.SELECTOR --handler=this --new
+    provides ContainerService.SELECTOR --handler=this
     install
 
   handle index/int arguments/any --gid/int --client/int -> any:
