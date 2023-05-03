@@ -106,7 +106,7 @@ void uart_toit_hal_inverse_signal(uart_hal_handle_t hal, uint32_t inv_mask) {
   uart_hal_inverse_signal(HAL, inv_mask);
 }
 
-void uart_toit_hal_get_baudrate(uart_hal_handle_t hal, uint32_t *baud_rate) {
+void uart_toit_hal_get_baudrate(uart_hal_handle_t hal, uint32_t* baud_rate) {
   uart_sclk_t src_clk;
   uart_hal_get_sclk(HAL, &src_clk);
   uint32_t sclk_frequency;

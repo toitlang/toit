@@ -37,6 +37,7 @@
 #endif
 
 #include "esp_system.h"
+// TODO: Can we remove this private import?
 #include "esp_private/esp_clk.h"
 
 #ifndef CONFIG_IDF_TARGET_ESP32

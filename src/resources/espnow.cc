@@ -150,7 +150,7 @@ static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status
   }
 }
 
-static void espnow_recv_cb(const esp_now_recv_info *recv_info, const uint8_t *data, int data_len) {
+static void espnow_recv_cb(const esp_now_recv_info* recv_info, const uint8_t* data, int data_len) {
   if (data_len > ESPNOW_RX_DATAGRAM_LEN_MAX) {
     ESP_LOGE("ESPNow", "Receive datagram length=%d is larger than max=%d", data_len, ESPNOW_RX_DATAGRAM_LEN_MAX);
     return ;

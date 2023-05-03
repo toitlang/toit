@@ -287,6 +287,7 @@ UART_ISR_INLINE void RxTxBuffer::read(const SpinLocker& locker, uint8* data, uwo
     memcpy(data + head, buffer, overflow);
     cursor_ = buffer + overflow;
   }
+  // Composite assignments are not allowed on volatile variables.
   available_ = available_ - length;
 }
 
@@ -305,6 +306,7 @@ UART_ISR_INLINE void RxTxBuffer::write(const SpinLocker& locker, const uint8* da
     memcpy(start, data, head);
     memcpy(buffer, data + head, overflow);
   }
+  // Composite assignments are not allowed on volatile variables.
   available_ = available_ + length;
 }
 
