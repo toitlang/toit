@@ -358,7 +358,8 @@ UART_ISR_INLINE uword TxBuffer::read_to_fifo(UartResource* uart, uword max) {
         length = limit - start;
         cursor_ = buffer;
       }
-      available_ -= length;
+      // Composite assignments are not allowed on volatile variables.
+      available_ = available_ - length;
       uart->write_tx_fifo(start, length);
       transfer_header_.remaining_data_length = remaining_data_length - length;
       return length;
