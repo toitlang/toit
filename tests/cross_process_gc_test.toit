@@ -4,7 +4,7 @@
 
 import expect show *
 
-ON_DEVICE ::= platform == "FreeRTOS"
+ON_DEVICE ::= platform == PLATFORM_FREERTOS
 
 main:
   10.repeat:
@@ -15,7 +15,11 @@ main:
         spawn:: allocate_too_much
 
 allocate_too_much:
-  if not ON_DEVICE: set_max_heap_size_ 30_000
+  // Always allow at least one page, so the test
+  // can succeed even if we end up having promoted
+  // a little bit of memory after the long string
+  // allocation has been cleaned up.
+  if not ON_DEVICE: set_max_heap_size_ (1 << 15)
   error ::= catch:
     10.repeat:
       x := "foo"
