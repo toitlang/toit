@@ -1870,15 +1870,7 @@ PRIMITIVE(process_send) {
   scheduler_err_t result = (process_id >= 0)
       ? VM::current()->scheduler()->send_message(process_id, message)
       : VM::current()->scheduler()->send_system_message(message);
-  // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
-  // byte arrays and strings.
-  if (result != MESSAGE_OK) {
-    // TODO: We should reactivate - see https://github.com/toitlang/toit/pull/1107
-    // Object* result = process->allocate_string_or_error("MESSAGE_NO_SUCH_RECEIVER");
-    // if (Primitive::is_error(result)) return result;
-    // return Primitive::mark_as_error(HeapObject::cast(result));
-  }
-  return process->program()->null_object();
+  return BOOL(result == MESSAGE_OK);
 }
 
 Object* MessageEncoder::create_error_object(Process* process) {
@@ -1902,18 +1894,19 @@ Object* MessageEncoder::create_error_object(Process* process) {
 }
 
 PRIMITIVE(task_has_messages) {
-  if (process->object_heap()->has_finalizer_to_run()) {
+  ObjectHeap* heap = process->object_heap();
+  if (heap->max_external_allocation() < 0) ALLOCATION_FAILED;
+
+  if (heap->has_finalizer_to_run()) {
     return BOOL(true);
+  } else {
+    Message* message = process->peek_message();
+    return BOOL(message != null);
   }
-  Message* message = process->peek_message();
-  return BOOL(message != null);
 }
 
 PRIMITIVE(task_receive_message) {
   ObjectHeap* heap = process->object_heap();
-
-  if (heap->max_external_allocation() < 0) ALLOCATION_FAILED;
-
   if (heap->has_finalizer_to_run()) {
     return heap->next_finalizer_to_run();
   }

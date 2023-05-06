@@ -15,14 +15,15 @@ SYSTEM_RPC_NOTIFY_TERMINATED_ ::= 6
 SYSTEM_RPC_NOTIFY_RESOURCE_   ::= 7
 
 /**
-Sends the $message with $type to the process identified by $pid.
+Sends the $message with $type to the process identified by $pid and
+  returns whether the $message was delivered.
+
 It must be possible to encode the $message with the built-in
-  primitive message encoder.
-May throw "NESTING_TOO_DEEP" for deep or cyclic data structures.
-May throw a serialization failure.
-May throw "MESSAGE_NO_SUCH_RECEIVER" if the pid is invalid.
+  message encoder. Throws "NESTING_TOO_DEEP" for deep or cyclic
+  data structures or a serialization error for unserializable
+  messages.
 */
-process_send_ pid/int type/int message -> none:
+process_send_ pid/int type/int message -> bool:
   #primitive.core.process_send:
     if it is List and it.size != 0 and it[0] is int:
       serialization_failure_ it[0]
@@ -35,10 +36,6 @@ interface SystemMessageHandler_:
   /**
   Handles the $message of the $type from the process with group ID $gid and
     process ID $pid.
-
-  # Inheritance
-  Implementation of this method must not lead to message processing (that is calls to
-    $process_messages_).
   */
   on_message type/int gid/int pid/int message/any -> none
 
