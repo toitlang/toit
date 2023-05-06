@@ -39,7 +39,8 @@ static void print_usage(int exit_code) {
   printf("  [--force]                                // Finish compilation even with errors (if possible).\n");
   printf("  [-Werror]                                // Treat warnings like errors.\n");
   printf("  [--show-package-warnings]                // Show warnings from packages.\n");
-  printf("  [--arch <architecture>]                  // Cross-compilation target.\n");
+  printf("  [--os <system>]                          // Cross-compilation system target.\n");
+  printf("  [--arch <architecture>]                  // Cross-compilation architecture target.\n");
   printf("  [--strip]                                // Strip the output of debug information.\n");
   printf("  { -o <executable> <toitfile|snapshot> |  // Write executable.\n");
   printf("    -w <snapshot> <toitfile|snapshot> |    // Write snapshot file.\n");
@@ -102,7 +103,8 @@ int main(int argc, char **argv) {
   bool for_language_server = false;
   bool for_analysis = false;
   const char* vessels_root = null;
-  const char* arch = null;
+  const char* cross_os = null;
+  const char* cross_arch = null;
   int optimization_level = DEFAULT_OPTIMIZATION_LEVEL;
   bool should_strip = false;
 
@@ -218,11 +220,22 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Missing argument to '--arch'\n");
         print_usage(1);
       }
-      if (arch != null) {
+      if (cross_arch != null) {
         fprintf(stderr, "Only one '--arch' flag is allowed.\n");
         print_usage(1);
       }
-      arch = argv[processed_args++];
+      cross_arch = argv[processed_args++];
+    } else if (strcmp(argv[processed_args], "--os") == 0) {
+      processed_args++;
+      if (processed_args == argc) {
+        fprintf(stderr, "Missing argument to '--os'\n");
+        print_usage(1);
+      }
+      if (cross_os != null) {
+        fprintf(stderr, "Only one '--os' flag is allowed.\n");
+        print_usage(1);
+      }
+      cross_os = argv[processed_args++];
     } else if (strcmp(argv[processed_args], "--lsp") == 0 ||
                 strcmp(argv[processed_args], "--analyze") == 0) {
       for_language_server = strcmp(argv[processed_args], "--lsp") == 0;
@@ -267,6 +280,19 @@ int main(int argc, char **argv) {
 
   if (vessels_root != null && exe_filename == null) {
     fprintf(stderr, "The --vessels-root flag can only be used when compiling executables\n");
+    print_usage(1);
+  }
+
+  if (cross_arch != null && cross_os == null) {
+    fprintf(stderr, "The --arch flag can only be used together with the --os flag\n");
+    print_usage(1);
+  }
+  if (cross_os != null && cross_arch == null) {
+    fprintf(stderr, "The --os flag can only be used together with the --arch flag\n");
+    print_usage(1);
+  }
+  if (exe_filename == null && cross_os != null) {
+    fprintf(stderr, "The --os/--arch flags can only be used when compiling executables\n");
     print_usage(1);
   }
 
@@ -349,7 +375,7 @@ int main(int argc, char **argv) {
         print_usage(1);
       }
     } else {
-      exit_state = create_executable(exe_filename, compiled, vessels_root, arch);
+      exit_state = create_executable(exe_filename, compiled, vessels_root, cross_os, cross_arch);
     }
     free(compiled.buffer());
   } else {
