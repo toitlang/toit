@@ -46,7 +46,7 @@ namespace toit {
   FLAG_INT(deploy,   int_deploy,             0, "Test int deploy flag")             \
   FLAG_INT(debug,    int_debug,         0xcafe, "Test int debug flag")              \
                                                                                     \
-  /* Default for LWIP-on-Linux test config is to use a static IP */                 \
+  /* Default for LWIP-on-Linux test config is to use a static IP. */                \
   FLAG_BOOL(deploy,  dhcp,                  false, "Use DHCP (only LWIP-on-Linux")  \
   FLAG_BOOL(deploy,  no_fork,               _NO_FORK, "Don't fork the compiler")    \
   FLAG_BOOL(deploy,  propagate,             false, "Propagate types")               \
@@ -78,10 +78,14 @@ namespace toit {
 #ifdef TOIT_DEBUG
 #define DECLARE_DEBUG_FLAG(type, prefix, name, value, doc) static type name;
 #else
-#define DECLARE_DEBUG_FLAG(type, prefix, name, value, doc) static const type name = value;
+#define DECLARE_DEBUG_FLAG(type, prefix, name, value, doc) static constexpr type name = value;
 #endif
 
+#ifndef IOT_DEVICE
 #define DECLARE_DEPLOY_FLAG(type, prefix, name, value, doc) static type name;
+#else
+#define DECLARE_DEPLOY_FLAG(type, prefix, name, value, doc) static constexpr type name = value;
+#endif
 
 class Flags {
  public:
