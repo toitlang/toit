@@ -744,7 +744,7 @@ jobs:
                 continue
               fi
               mkdir -p $target/toit/vessels/$CROSS_OS/$CROSS_ARCH
-              cp -R $source/toit/vessels/* $target/toit/vessels/$CROSS_OS/$CROSS_ARCH
+              cp $source/toit/vessels/vessel* $target/toit/vessels/$CROSS_OS/$CROSS_ARCH
             done
           done
 
