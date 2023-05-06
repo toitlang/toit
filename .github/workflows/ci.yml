@@ -724,15 +724,33 @@ jobs:
           mkdir -p vessels
 
           for source in windows linux macos rpi rpi64; do
-            mkdir -p vessels/$source
-            cp -R $source/toit/vessels/vessel* vessels/$source
+            # Use same values as Go.
+            if [ "$source" == "windows" ]; then
+              CROSS_OS=windows
+              CROSS_ARCH=amd64
+            elif [ "$source" == "linux" ]; then
+              CROSS_OS=linux
+              CROSS_ARCH=amd64
+            elif [ "$source" == "macos" ]; then
+              CROSS_OS=darwin
+              CROSS_ARCH=amd64
+            elif [ "$source" == "rpi" ]; then
+              CROSS_OS=linux
+              CROSS_ARCH=arm
+            elif [ "$source" == "rpi64" ]; then
+              CROSS_OS=linux
+              CROSS_ARCH=arm64
+            fi
+
+            mkdir -p vessels/$CROSS_OS/$CROSS_ARCH
+            cp $source/toit/vessels/vessel* vessels/$CROSS_OS/$CROSS_ARCH
 
             for target in windows linux macos rpi rpi64; do
               if [ "$source" == "$target" ]; then
                 continue
               fi
-              mkdir -p $target/toit/vessels/$source
-              cp -R $source/toit/vessels/vessel* $target/toit/vessels/$source
+              mkdir -p $target/toit/vessels/$CROSS_OS/$CROSS_ARCH
+              cp $source/toit/vessels/vessel* $target/toit/vessels/$CROSS_OS/$CROSS_ARCH
             done
           done
 

@@ -24,6 +24,7 @@ namespace compiler {
 int create_executable(const char* out_path,
                       const SnapshotBundle& bundle,
                       const char* vessel_root,
+                      const char* os,
                       const char* arch);
 
 } // namespace toit::compiler
