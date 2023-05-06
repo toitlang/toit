@@ -58,17 +58,20 @@ monitor RpcSynchronizer_:
     result/any := EMPTY
     try:
       map[id] = EMPTY
-      send.call id pid  // Lock is kept during the non-blocking send.
-      await:
-        result = map[id]
-        not identical EMPTY result
+      // Lock is kept during the non-blocking send.
+      if send.call id pid:
+        await:
+          result = map[id]
+          not identical EMPTY result
     finally: | is_exception exception |
       map.remove id
       if is_exception:
         if exception.value == DEADLINE_EXCEEDED_ERROR or Task.current.is_canceled:
           process_send_ pid SYSTEM_RPC_CANCEL_ [ id ]
 
-    if result is not RpcException_: return result
+    if result is not RpcException_:
+      if not identical EMPTY result: return result
+      throw "NO_SUCH_PROCESS"
     exception := result.exception
     if exception == CANCELED_ERROR: Task.current.cancel
     trace := result.trace

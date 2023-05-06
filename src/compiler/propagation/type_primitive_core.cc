@@ -238,7 +238,7 @@ TYPE_PRIMITIVE_SMI(set_real_time_clock)
 TYPE_PRIMITIVE_INT(get_system_time)
 
 TYPE_PRIMITIVE(process_send) {
-  result.add_null(program);
+  result.add_bool(program);
   failure.add_string(program);
   failure.add_array(program);
 }

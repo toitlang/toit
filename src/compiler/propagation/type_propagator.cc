@@ -1372,7 +1372,15 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(HALT);
-    return scope;
+    B_ARG1(code);
+    if (code == 0) {
+      // The interpreter pushes a fake value onto the stack as
+      // the result of yielding. It is always a smi.
+      stack->push_smi(program);
+    } else {
+      // The interpretation stops at exit and deep sleep.
+      return scope;
+    }
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_SMI_REPEAT);
