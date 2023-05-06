@@ -579,7 +579,7 @@ find_esptool_ -> List:
     esptool_py := "$dir/../third_party/esp-idf/components/esptool_py/esptool/esptool.py"
     if not file.is_file esptool_py:
       throw "cannot find esptool in '$esptool_py'"
-    return ["python", esptool_py ]
+    return ["python", esptool_py]
   else:
     esptool := ["$dir/esptool$bin_extension"]
     if not file.is_file esptool[0]:
