@@ -211,6 +211,9 @@ target_link_libraries(
   ${TOIT_WINDOWS_LIBS}
 )
 
+add_custom_target(build_vessels)
+add_dependencies(build_tools build_vessels)
+
 if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   target_link_libraries(
     toit.run
@@ -253,7 +256,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
       )
     endif()
 
-    add_dependencies(build_tools ${VESSEL_TARGET})
+    add_dependencies(build_vessels ${VESSEL_TARGET})
   endforeach()
   include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
