@@ -52,7 +52,7 @@ class MarkingVisitor : public RootCallback {
         new_space_size_(new_space->size()),
         marking_stack_(marking_stack) {}
 
-  virtual void do_roots(Object** start, int length) {
+  virtual void do_roots(Object** start, int length) override {
     Object** end = start + length;
     // Mark live all HeapObjects pointed to by pointers in [start, end)
     for (Object** p = start; p < end; p++) mark_pointer(*p);
