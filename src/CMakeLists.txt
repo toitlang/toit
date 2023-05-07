@@ -211,10 +211,10 @@ target_link_libraries(
   ${TOIT_WINDOWS_LIBS}
 )
 
-add_custom_target(build_vessels)
-add_dependencies(build_tools build_vessels)
-
 if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+  add_custom_target(build_vessels)
+  add_dependencies(build_tools build_vessels)
+
   target_link_libraries(
     toit.run
     ${TOIT_LINK_LIBS}
