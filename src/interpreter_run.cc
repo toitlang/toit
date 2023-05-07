@@ -217,7 +217,7 @@ inline word mul(word a, word b) { return a * b; }
 inline bool intrinsic_add(Object* a, Object* b, Smi** result) {
   return are_smis(a, b) &&
 #ifdef BUILD_32
-    !__builtin_sadd_overflow((word) a, (word) b, (word*) result);
+    !__builtin_sadd_overflow((word) a, (word) b, (int*) result);
 #elif BUILD_64
     !LP64(__builtin_sadd,_overflow)((word) a, (word) b, (word*) result);
 #endif
@@ -227,7 +227,7 @@ inline bool intrinsic_add(Object* a, Object* b, Smi** result) {
 inline bool intrinsic_sub(Object* a, Object* b, Smi** result) {
   return are_smis(a, b) &&
 #ifdef BUILD_32
-    !__builtin_ssub_overflow((word) a, (word) b, (word*) result);
+    !__builtin_ssub_overflow((word) a, (word) b, (int*) result);
 #elif BUILD_64
     !LP64(__builtin_ssub,_overflow)((word) a, (word) b, (word*) result);
 #endif
@@ -237,7 +237,7 @@ inline bool intrinsic_sub(Object* a, Object* b, Smi** result) {
 inline bool intrinsic_mul(Object* a, Object* b, Smi** result) {
   return are_smis(a, b) &&
 #ifdef BUILD_32
-    !__builtin_smul_overflow((word) a, ((word) b) >> 1, (word*) result);
+    !__builtin_smul_overflow((word) a, ((word) b) >> 1, (int*) result);
 #elif BUILD_64
     !LP64(__builtin_smul,_overflow)((word) a, ((word) b) >> 1, (word*) result);
 #endif

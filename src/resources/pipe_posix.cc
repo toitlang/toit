@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_LINUX) || defined(TOIT_BSD)
+#if (defined(TOIT_LINUX) || defined(TOIT_BSD)) && !defined(__EMSCRIPTEN__)
 
 #include <errno.h>
 #include <fcntl.h>

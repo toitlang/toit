@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_POSIX
+#if defined(TOIT_POSIX) && !defined(__EMSCRIPTEN__)
 
 #include <fcntl.h>
 #include <errno.h>

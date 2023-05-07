@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_LINUX
+#if defined(TOIT_LINUX) && !defined(__EMSCRIPTEN__)
 
 #include "../primitive.h"
 #include "../process.h"

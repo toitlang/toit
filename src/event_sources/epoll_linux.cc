@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_LINUX
+#if defined(TOIT_LINUX) && !defined(__EMSCRIPTEN__)
 
 #include <sys/epoll.h>
 #include <fcntl.h>

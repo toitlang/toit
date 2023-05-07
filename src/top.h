@@ -80,9 +80,9 @@
 #error "No OS configuration specified"
 #endif
 
-#if (__WORDSIZE == 64) || __WIN64
+#if (__WORDSIZE == 64) || __WIN64 || __wasm64__
 #define BUILD_64 1
-#elif (__WORDSIZE == 32) || ESP32 || __WIN32
+#elif (__WORDSIZE == 32) || ESP32 || __WIN32 || __wasm32__
 #define BUILD_32 1
 #else
 #error "Expecting a 32 or 64 bit memory model"
@@ -108,7 +108,7 @@
 typedef intptr_t word;
 typedef uintptr_t uword;
 
-#if (__WORDSIZE == 64) || __WIN64
+#ifdef BUILD_64
 typedef unsigned int uhalf_word;
 static const int WORD_SHIFT = 3;
 #else

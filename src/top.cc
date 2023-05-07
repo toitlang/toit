@@ -16,7 +16,7 @@
 #include "top.h"
 #include "flags.h"
 #include <stdarg.h>
-#ifdef TOIT_POSIX
+#if defined(TOIT_POSIX) && !defined(__EMSCRIPTEN__)
 #include <execinfo.h>
 #include <unistd.h>
 #include <cxxabi.h>
@@ -26,7 +26,7 @@
 namespace toit {
 
 void print_stacktrace() {
-#ifdef TOIT_POSIX
+#if defined(TOIT_POSIX) && !defined(__EMSCRIPTEN__)
   void* callstack[10];
   int frames = backtrace(callstack, 10);
   char** symbols = backtrace_symbols(callstack, frames);
