@@ -712,6 +712,69 @@ jobs:
         with:
           name: macOS-build
 
+      - name: Unpack SDKs
+        run: |
+          for os in windows linux macos rpi rpi64; do
+            mkdir -p $os
+            tar x -zf toit-$os.tar.gz -C $os
+          done
+
+      - name: Copy vessels
+        run: |
+          for source in windows linux macos rpi rpi64; do
+            # Use same values as Go.
+            if [ "$source" == "windows" ]; then
+              CROSS_OS=windows
+              CROSS_ARCH=amd64
+            elif [ "$source" == "linux" ]; then
+              CROSS_OS=linux
+              CROSS_ARCH=amd64
+            elif [ "$source" == "macos" ]; then
+              CROSS_OS=darwin
+              CROSS_ARCH=amd64
+            elif [ "$source" == "rpi" ]; then
+              CROSS_OS=linux
+              CROSS_ARCH=arm
+            elif [ "$source" == "rpi64" ]; then
+              CROSS_OS=linux
+              CROSS_ARCH=arm64
+            fi
+            for target in windows linux macos rpi rpi64; do
+              if [ "$source" == "$target" ]; then
+                continue
+              fi
+              mkdir -p $target/toit/vessels/$CROSS_OS/$CROSS_ARCH
+              cp $source/toit/vessels/vessel* $target/toit/vessels/$CROSS_OS/$CROSS_ARCH
+            done
+          done
+
+      - name: Compress SDKs
+        run: |
+          for os in windows linux macos rpi rpi64; do
+            tar -czf toit-$os.tar.gz $os
+          done
+
+      - name: Upload Windows unsigned
+        uses: actions/upload-artifact@v3
+        with:
+          name: Windows-build-unsigned
+          path: toit-windows.tar.gz
+
+      - name: Upload Linux
+        uses: actions/upload-artifact@v3
+        with:
+          name: Linux-build
+          path: |
+            toit-linux.tar.gz
+            toit-rpi.tar.gz
+            toit-rpi64.tar.gz
+
+      - name: Upload macOS
+        uses: actions/upload-artifact@v3
+        with:
+          name: macOS-build
+          path: toit-macos.tar.gz
+
       - name: Upload release Linux
         if: |
           github.event_name == 'release' &&
