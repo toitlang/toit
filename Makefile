@@ -21,6 +21,7 @@ SHELL=bash
 HOST=host
 BUILD_TYPE=Release
 TARGET ?= $(HOST)
+TOOLCHAIN ?= $(TARGET)
 
 prefix ?= /opt/toit-sdk
 
@@ -83,8 +84,8 @@ endif
 ifneq ('$(realpath $(IDF_PATH))', '$(realpath $(CURDIR)/third_party/esp-idf)')
 	$(info -- Not using Toitware ESP-IDF fork.)
 endif
-ifeq ("$(wildcard ./toolchains/$(TARGET).cmake)","")
-	$(error invalid compilation target '$(TARGET)')
+ifeq ("$(wildcard ./toolchains/$(TOOLCHAIN).cmake)","")
+	$(error invalid compilation target '$(TOOLCHAIN)')
 endif
 
 # We mark this phony because adding and removing .cc files means that
@@ -119,7 +120,7 @@ download-packages: check-env build/$(HOST)/CMakeCache.txt tools
 .PHONY: rebuild-cmake
 rebuild-cmake:
 	mkdir -p build/$(TARGET)
-	(cd build/$(TARGET) && cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(TARGET).cmake --no-warn-unused-cli)
+	(cd build/$(TARGET) && cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(TOOLCHAIN).cmake --no-warn-unused-cli)
 
 .PHONY: host-tools
 host-tools: check-env build/$(HOST)/CMakeCache.txt
