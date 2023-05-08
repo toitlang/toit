@@ -534,7 +534,6 @@ jobs:
         shell: bash
         run: |
           echo raspberry_pi_artifact=toit-rpi.tar.gz >> $GITHUB_OUTPUT
-          echo raspberry_pi64_artifact=toit-rpi64.tar.gz >> $GITHUB_OUTPUT
 
       - uses: actions/checkout@v3
 
@@ -613,11 +612,6 @@ jobs:
           make aarch64
           make arm-linux-gnueabi
 
-      - name: Copy 32-bit sdk to 64-bit directory
-        run: |
-          mkdir -p build/raspberry_pi64
-          cp -Ra build/raspbian/sdk build/raspberry_pi64
-
       - name: Patch esptool requirements
         # We don't want to use the cryptography package that uses rust.
         # The latest version that can still be installed without rust is 3.4.8.
@@ -652,7 +646,7 @@ jobs:
               apt-get install -y python3-pip git
               python --version
               pip install --user -e third_party/esp-idf/components/esptool_py/esptool
-              make HOST=raspberry_pi64 esptool-no-env
+              make HOST=aarch64 esptool-no-env
 
       - name: Test executables 32-bit
         uses: pguyot/arm-runner-action@v2
@@ -675,27 +669,27 @@ jobs:
           bind_mount_repository: true
           commands: |
               uname -m > pi_uname
-              build/raspberry_pi64/sdk/bin/toit.pkg version
-              build/raspberry_pi64/sdk/bin/toit.run --version
-              build/raspberry_pi64/sdk/tools/firmware --help
-              build/raspberry_pi64/sdk/tools/esptool -h
+              build/aarch64/sdk/bin/toit.pkg version
+              build/aarch64/sdk/bin/toit.run --version
+              build/aarch64/sdk/tools/firmware --help
+              build/aarch64/sdk/tools/esptool -h
 
-      - name: Pack Raspberry Pi artifacts
+      - name: Pack artifacts
         shell: bash
         # Note that we use `cp -R` first, since that works on every platform.
         run: |
           cp -R ./build/raspbian/sdk ./build/raspbian/toit
           tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspbian --dereference toit
-          cp -R ./build/raspberry_pi64/sdk ./build/raspberry_pi64/toit
-          tar -czf build/${{ steps.constants.outputs.raspberry_pi64_artifact }} -C ./build/raspberry_pi64 --dereference toit
+          cp -R ./build/aarch64/sdk ./build/aarch64/toit
+          tar -czf build/toit-aarch64.tar.gz -C ./build/aarch64 --dereference toit
 
-      - name: Upload Raspberry Pi artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
           name: ${{ runner.os }}-build
           path: |
             build/${{ steps.constants.outputs.raspberry_pi_artifact }}
-            build/${{ steps.constants.outputs.raspberry_pi64_artifact }}
+            build/toit-aarch64.tar.gz
 
   combine:
     needs: [build, cross]
@@ -716,7 +710,7 @@ jobs:
 
       - name: Unpack SDKs
         run: |
-          for os in windows linux macos rpi rpi64; do
+          for os in windows linux macos rpi aarch64; do
             mkdir -p $os
             tar x -zf toit-$os.tar.gz -C $os
           done
@@ -725,7 +719,7 @@ jobs:
         run: |
           mkdir -p vessels
 
-          for source in windows linux macos rpi rpi64; do
+          for source in windows linux macos rpi aarch64; do
             # Use same values as Go.
             if [ "$source" == "windows" ]; then
               CROSS_OS=windows
@@ -739,15 +733,18 @@ jobs:
             elif [ "$source" == "rpi" ]; then
               CROSS_OS=linux
               CROSS_ARCH=arm
-            elif [ "$source" == "rpi64" ]; then
+            elif [ "$source" == "aarch64" ]; then
               CROSS_OS=linux
               CROSS_ARCH=arm64
+            else
+              echo "Unknown source: $source"
+              exit 1
             fi
 
             mkdir -p vessels/$CROSS_OS/$CROSS_ARCH
             cp $source/toit/vessels/vessel* vessels/$CROSS_OS/$CROSS_ARCH
 
-            for target in windows linux macos rpi rpi64; do
+            for target in windows linux macos rpi aarch64; do
               if [ "$source" == "$target" ]; then
                 continue
               fi
@@ -762,7 +759,7 @@ jobs:
 
       - name: Compress SDKs
         run: |
-          for os in windows linux macos rpi rpi64; do
+          for os in windows linux macos rpi aarch64; do
             tar c -zf toit-$os.tar.gz -C $os .
           done
 
@@ -785,7 +782,7 @@ jobs:
           path: |
             toit-linux.tar.gz
             toit-rpi.tar.gz
-            toit-rpi64.tar.gz
+            toit-aarch64.tar.gz
 
       - name: Upload macOS
         uses: actions/upload-artifact@v3
@@ -837,14 +834,14 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
 
-      - name: Upload release Raspberry Pi 64-bit
+      - name: Upload release aarch64
         if: |
           github.event_name == 'release' &&
           github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-rpi64.tar.gz
+          file: toit-aarch64.tar.gz
           tag: ${{ github.ref }}
           overwrite: true
 
