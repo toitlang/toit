@@ -196,6 +196,10 @@ ifeq ("", "$(shell command -v dpkg)")
 	$(error dpkg not in path.)
 endif
 
+ifeq ("$(CROSS_ARCH)", "$(PI_CROSS_ARCH)")
+rebuild-cross-cmake: sysroot
+endif
+
 build/$(PI_CROSS_ARCH)/sysroot/usr: check-env-sysroot
 	# This rule is brittle, since it only depends on the 'usr' folder of the sysroot.
 	# If the sysroot script fails, it might be incomplete, but another call to
@@ -207,10 +211,14 @@ build/$(PI_CROSS_ARCH)/sysroot/usr: check-env-sysroot
 
 .PHONY: pi
 pi: pi-sysroot
-	$(MAKE) CROSS_ARCH=raspberry_pi SYSROOT="$(CURDIR)/build/$(PI_CROSS_ARCH)/sysroot" sdk-cross
+	$(MAKE) CROSS_ARCH=raspberry_pi sdk-cross
 
 # ARM Linux GNUEABI
 ARM_LINUX_GNUEABI_CROSS_ARCH := arm-linux-gnueabi
+
+ifeq ("$(CROSS_ARCH)", "$(ARM_LINUX_GNUEABI_CROSS_ARCH)")
+rebuild-cross-cmake: sysroot
+endif
 
 .PHONY: arm-linux-gnueabi-sysroot
 arm-linux-gnueabi-sysroot: build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/usr
@@ -240,6 +248,9 @@ arm-linux-gnueabi: arm-linux-gnueabi-sysroot
 TOITLANG_SYSROOTS := armv7 aarch64 riscv64
 ifneq (,$(filter $(CROSS_ARCH),$(TOITLANG_SYSROOTS)))
 SYSROOT_URL=https://github.com/toitlang/sysroots/releases/download/v1.2.0/sysroot-$(CROSS_ARCH).tar.gz
+
+rebuild-cross-cmake: sysroot
+
 build/$(CROSS_ARCH)/sysroot/sysroot.tar.xz:
 	if [[ "$(SYSROOT_URL)" == "" ]]; then \
 		echo "No sysroot URL for $(CROSS_ARCH)"; \
@@ -254,20 +265,14 @@ build/$(CROSS_ARCH)/sysroot/usr: build/$(CROSS_ARCH)/sysroot/sysroot.tar.xz
 	touch $@
 endif
 
-.PHONY: armv7
-armv7:
-	$(MAKE) CROSS_ARCH=$@ build/$@/sysroot/usr
-	$(MAKE) CROSS_ARCH=$@ SYSROOT="$(CURDIR)/build/$@/sysroot" sdk-cross
+# Create convenience rules for armv7, aarch64 and riscv64.
+define CROSS_RULE
+.PHONY: $(1)
+$(1):
+	$(MAKE) CROSS_ARCH=$(1) sdk-cross
+endef
 
-.PHONY: aarch64
-aarch64:
-	$(MAKE) CROSS_ARCH=$@ build/$@/sysroot/usr
-	$(MAKE) CROSS_ARCH=$@ SYSROOT="$(CURDIR)/build/$@/sysroot" sdk-cross
-
-.PHONY: riscv64
-riscv64:
-	$(MAKE) CROSS_ARCH=$@ build/$@/sysroot/usr
-	$(MAKE) CROSS_ARCH=$@ SYSROOT="$(CURDIR)/build/$@/sysroot" sdk-cross
+$(foreach arch,$(TOITLANG_SYSROOTS),$(eval $(call CROSS_RULE,$(arch))))
 
 # ESP32 VARIANTS
 .PHONY: check-esp32-env
