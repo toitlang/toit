@@ -49,13 +49,6 @@ else
 	DETECTED_OS=$(shell uname)
 endif
 
-CROSS_ARCH=
-
-ifneq ($(CROSS_ARCH),)
-TARGET:=$(CROSS_ARCH)
-else
-TARGET:=$(HOST)
-endif
 
 # HOST
 .PHONY: all
@@ -91,11 +84,8 @@ endif
 ifneq ('$(realpath $(IDF_PATH))', '$(realpath $(CURDIR)/third_party/esp-idf)')
 	$(info -- Not using Toitware ESP-IDF fork.)
 endif
-# Only run cross-check if the variable is set.
-ifneq ($(CROSS_ARCH),)
-ifeq ("$(wildcard ./toolchains/$(CROSS_ARCH).cmake)","")
-	$(error invalid cross-compile target '$(CROSS_ARCH)')
-endif
+ifeq ("$(wildcard ./toolchains/$(TARGET).cmake)","")
+	$(error invalid compilation target '$(TARGET)')
 endif
 
 # We mark this phony because adding and removing .cc files means that
@@ -115,7 +105,7 @@ build/$(HOST)/CMakeCache.txt:
 
 .PHONY: sysroot
 sysroot: check-env
-	$(MAKE) build/$(CROSS_ARCH)/sysroot/usr
+	$(MAKE) build/$(TARGET)/sysroot/usr
 endif
 
 BIN_DIR = $(CURDIR)/build/$(HOST)/sdk/bin
@@ -199,7 +189,7 @@ build/$(PI_TARGET)/sysroot/usr: check-env-sysroot
 
 .PHONY: pi
 pi:
-	$(MAKE) CROSS_ARCH=$(PI_TARGET) sdk
+	$(MAKE) TARGET=$(PI_TARGET) sdk
 
 # ARM Linux GNUEABI
 ARM_LINUX_GNUEABI_TARGET := arm-linux-gnueabi
@@ -230,7 +220,7 @@ build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/usr: build/$(ARM_LINUX_GNUEABI_TARGET)
 
 .PHONY: arm-linux-gnueabi
 arm-linux-gnueabi: arm-linux-gnueabi-sysroot
-	$(MAKE) CROSS_ARCH=$(ARM_LINUX_GNUEABI_TARGET) sdk
+	$(MAKE) TARGET=$(ARM_LINUX_GNUEABI_TARGET) sdk
 
 # Armv7 Aarch64 Riscv64
 TOITLANG_SYSROOTS := armv7 aarch64 riscv64
@@ -257,7 +247,7 @@ endif
 define CROSS_RULE
 .PHONY: $(1)
 $(1):
-	$(MAKE) CROSS_ARCH=$(1) sdk
+	$(MAKE) TARGET=$(1) sdk
 endef
 
 $(foreach arch,$(TOITLANG_SYSROOTS),$(eval $(call CROSS_RULE,$(arch))))
