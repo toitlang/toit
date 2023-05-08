@@ -22,7 +22,7 @@ if ("${CMAKE_SYSROOT}" STREQUAL "")
   if (DEFINED ENV{SYSROOT})
     set(CMAKE_SYSROOT "$ENV{SYSROOT}")
   else()
-    message(FATAL_ERROR, "Missing sysroot variable")
+    set(CMAKE_SYSROOT "${CMAKE_BINARY_DIR}/sysroot")
   endif()
 endif()
 
