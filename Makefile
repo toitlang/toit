@@ -20,6 +20,7 @@ SHELL=bash
 # General options.
 HOST=host
 BUILD_TYPE=Release
+TARGET ?= $(HOST)
 
 prefix ?= /opt/toit-sdk
 
@@ -49,9 +50,6 @@ else
 	DETECTED_OS=$(shell uname)
 endif
 
-CROSS_ARCH=
-
-# HOST
 .PHONY: all
 all: sdk esptool
 
@@ -85,14 +83,29 @@ endif
 ifneq ('$(realpath $(IDF_PATH))', '$(realpath $(CURDIR)/third_party/esp-idf)')
 	$(info -- Not using Toitware ESP-IDF fork.)
 endif
+ifeq ("$(wildcard ./toolchains/$(TARGET).cmake)","")
+	$(error invalid compilation target '$(TARGET)')
+endif
 
 # We mark this phony because adding and removing .cc files means that
 # cmake needs to be rerun, but we don't detect that, so it might not
 # get run enough.  It takes <1s on Linux to run cmake, so it's
 # usually best to run it eagerly.
+.PHONY: build/$(TARGET)/CMakeCache.txt
+build/$(TARGET)/CMakeCache.txt:
+	$(MAKE) rebuild-cmake
+
+ifneq ($(TARGET),$(HOST))
+# Support for cross-compilation.
+
 .PHONY: build/$(HOST)/CMakeCache.txt
 build/$(HOST)/CMakeCache.txt:
-	$(MAKE) rebuild-cmake
+	$(MAKE) TARGET=$(HOST) rebuild-cmake
+
+.PHONY: sysroot
+sysroot: check-env
+	$(MAKE) build/$(TARGET)/sysroot/usr
+endif
 
 BIN_DIR = $(CURDIR)/build/$(HOST)/sdk/bin
 TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
@@ -105,24 +118,31 @@ download-packages: check-env build/$(HOST)/CMakeCache.txt tools
 
 .PHONY: rebuild-cmake
 rebuild-cmake:
-	mkdir -p build/$(HOST)
-	(cd build/$(HOST) && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=../../toolchains/host.cmake --no-warn-unused-cli)
+	mkdir -p build/$(TARGET)
+	(cd build/$(TARGET) && cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(TARGET).cmake --no-warn-unused-cli)
+
+.PHONY: host-tools
+host-tools: check-env build/$(HOST)/CMakeCache.txt
+	(cd build/$(HOST) && ninja build_tools)
 
 .PHONY: tools
-tools: check-env build/$(HOST)/CMakeCache.txt
-	(cd build/$(HOST) && ninja build_tools)
+# This rule contains a reference to host-tools.
+# This means that on host we will try to build host twice, but
+# the second attempt will be a no-op.
+tools: host-tools check-env build/$(TARGET)/CMakeCache.txt
+	(cd build/$(TARGET) && ninja build_tools)
 
 .PHONY: toit-tools
 toit-tools: tools download-packages
-	(cd build/$(HOST) && ninja build_toit_tools)
+	(cd build/$(TARGET) && ninja build_toit_tools)
 
 .PHONY: vessels
-vessels: check-env build/$(HOST)/CMakeCache.txt
-	(cd build/$(HOST) && ninja build_vessels)
+vessels: check-env build/$(TARGET)/CMakeCache.txt
+	(cd build/$(TARGET) && ninja build_vessels)
 
 .PHONY: version-file
-version-file: build/$(HOST)/CMakeCache.txt
-	(cd build/$(HOST) && ninja build_version_file)
+version-file: build/$(TARGET)/CMakeCache.txt
+	(cd build/$(TARGET) && ninja build_version_file)
 
 build/$(HOST)/sdk/tools/esptool$(EXE_SUFFIX):
 	$(MAKE) build-esptool
@@ -143,52 +163,9 @@ esptool-no-env:
 			--specpath build/$(HOST)/esptool \
 			'$(IDF_PATH)/components/esptool_py/esptool/esptool.py'
 
-# CROSS-COMPILE
-.PHONY: sdk-cross
-sdk-cross: tools-cross toit-tools-cross version-file-cross
-
-.PHONY: sysroot
-sysroot: check-env-cross
-	$(MAKE) build/$(CROSS_ARCH)/sysroot/usr
-
-check-env-cross:
-ifndef CROSS_ARCH
-	$(error invalid must specify a cross-compilation target with CROSS_ARCH.  For example: make sdk-cross CROSS_ARCH=riscv64)
-endif
-ifeq ("$(wildcard ./toolchains/$(CROSS_ARCH).cmake)","")
-	$(error invalid cross-compile target '$(CROSS_ARCH)')
-endif
-
-.PHONY: build/$(CROSS_ARCH)/CMakeCache.txt
-build/$(CROSS_ARCH)/CMakeCache.txt:
-	$(MAKE) rebuild-cross-cmake
-
-.PHONY: rebuild-cross-cmake
-rebuild-cross-cmake:
-	mkdir -p build/$(CROSS_ARCH)
-	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake --no-warn-unused-cli)
-
-.PHONY: tools-cross
-tools-cross: check-env-cross tools build/$(CROSS_ARCH)/CMakeCache.txt
-	(cd build/$(CROSS_ARCH) && ninja build_tools)
-
-.PHONY: toit-tools-cross
-toit-tools-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
-	(cd build/$(CROSS_ARCH) && ninja build_toit_tools)
-
-.PHONY: version-file-cross
-version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
-	(cd build/$(CROSS_ARCH) && ninja build_version_file)
-
-.PHONY: vessels-cross
-vessels-cross: check-env-cross tools build/$(CROSS_ARCH)/CMakeCache.txt
-	(cd build/$(CROSS_ARCH) && ninja build_vessels)
 
 # Raspberry Pi
-PI_CROSS_ARCH := raspberry_pi
-
-.PHONY: pi-sysroot
-pi-sysroot: build/$(PI_CROSS_ARCH)/sysroot/usr
+PI_TARGET := raspberry_pi
 
 .PHONY: check-env-sysroot
 check-env-sysroot:
@@ -196,72 +173,72 @@ ifeq ("", "$(shell command -v dpkg)")
 	$(error dpkg not in path.)
 endif
 
-ifeq ("$(CROSS_ARCH)", "$(PI_CROSS_ARCH)")
-rebuild-cross-cmake: sysroot
+ifeq ("$(TARGET)", "$(PI_TARGET)")
+rebuild-cmake: sysroot
 endif
 
-build/$(PI_CROSS_ARCH)/sysroot/usr: check-env-sysroot
+build/$(PI_TARGET)/sysroot/usr: check-env-sysroot
 	# This rule is brittle, since it only depends on the 'usr' folder of the sysroot.
 	# If the sysroot script fails, it might be incomplete, but another call to
 	# the rule won't do anything anymore.
 	# Generally we use this rule on the buildbot and are thus not too concerned.
-	mkdir -p build/$(PI_CROSS_ARCH)/sysroot
+	mkdir -p build/$(PI_TARGET)/sysroot
 	# The sysroot script doesn't like symlinks in the path. This is why we call 'realpath'.
-	third_party/rpi/sysroot.py --distro raspbian --sysroot $$(realpath build/$(PI_CROSS_ARCH)/sysroot) libc6-dev libstdc++-6-dev
+	third_party/rpi/sysroot.py --distro raspbian --sysroot $$(realpath build/$(PI_TARGET)/sysroot) libc6-dev libstdc++-6-dev
 
 .PHONY: pi
-pi: pi-sysroot
-	$(MAKE) CROSS_ARCH=raspberry_pi sdk-cross
+pi:
+	$(MAKE) TARGET=$(PI_TARGET) sdk
 
 # ARM Linux GNUEABI
-ARM_LINUX_GNUEABI_CROSS_ARCH := arm-linux-gnueabi
+ARM_LINUX_GNUEABI_TARGET := arm-linux-gnueabi
 
-ifeq ("$(CROSS_ARCH)", "$(ARM_LINUX_GNUEABI_CROSS_ARCH)")
-rebuild-cross-cmake: sysroot
+ifeq ("$(TARGET)", "$(ARM_LINUX_GNUEABI_TARGET)")
+rebuild-cmake: sysroot
 endif
 
 .PHONY: arm-linux-gnueabi-sysroot
-arm-linux-gnueabi-sysroot: build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/usr
+arm-linux-gnueabi-sysroot: build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/usr
 
 ARM_LINUX_GNUEABI_SYSROOT_URL=https://releases.linaro.org/components/toolchain/binaries/latest-7/arm-linux-gnueabi/sysroot-glibc-linaro-2.25-2019.12-arm-linux-gnueabi.tar.xz
 ARM_LINUX_GNUEABI_GCC_TOOLCHAIN_URL=https://releases.linaro.org/components/toolchain/binaries/latest-7/arm-linux-gnueabi/gcc-linaro-7.5.0-2019.12-i686_arm-linux-gnueabi.tar.xz
 
-build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/sysroot.tar.xz:
-	mkdir -p build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot
-	curl --location --output build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/sysroot.tar.xz $(ARM_LINUX_GNUEABI_SYSROOT_URL)
+build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/sysroot.tar.xz:
+	mkdir -p build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot
+	curl --location --output build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/sysroot.tar.xz $(ARM_LINUX_GNUEABI_SYSROOT_URL)
 
-build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/gcc-toolchain.tar.xz:
-	mkdir -p build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot
-	curl --location --output build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/gcc-toolchain.tar.xz $(ARM_LINUX_GNUEABI_GCC_TOOLCHAIN_URL)
+build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/gcc-toolchain.tar.xz:
+	mkdir -p build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot
+	curl --location --output build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/gcc-toolchain.tar.xz $(ARM_LINUX_GNUEABI_GCC_TOOLCHAIN_URL)
 
-build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/usr: build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/sysroot.tar.xz
-build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/usr: build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/gcc-toolchain.tar.xz
-	tar x --strip-components=1 -f build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/sysroot.tar.xz -C build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot
-	tar x --strip-components=1 -f build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/gcc-toolchain.tar.xz -C build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot
+build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/usr: build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/sysroot.tar.xz
+build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/usr: build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/gcc-toolchain.tar.xz
+	tar x --strip-components=1 -f build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/sysroot.tar.xz -C build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot
+	tar x --strip-components=1 -f build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/gcc-toolchain.tar.xz -C build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot
 	touch $@
 
 .PHONY: arm-linux-gnueabi
 arm-linux-gnueabi: arm-linux-gnueabi-sysroot
-	$(MAKE) CROSS_ARCH=$(ARM_LINUX_GNUEABI_CROSS_ARCH) SYSROOT="$(CURDIR)/build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot" sdk-cross
+	$(MAKE) TARGET=$(ARM_LINUX_GNUEABI_TARGET) sdk
 
 # Armv7 Aarch64 Riscv64
 TOITLANG_SYSROOTS := armv7 aarch64 riscv64
-ifneq (,$(filter $(CROSS_ARCH),$(TOITLANG_SYSROOTS)))
-SYSROOT_URL=https://github.com/toitlang/sysroots/releases/download/v1.2.0/sysroot-$(CROSS_ARCH).tar.gz
+ifneq (,$(filter $(TARGET),$(TOITLANG_SYSROOTS)))
+SYSROOT_URL=https://github.com/toitlang/sysroots/releases/download/v1.2.0/sysroot-$(TARGET).tar.gz
 
-rebuild-cross-cmake: sysroot
+rebuild-cmake: sysroot
 
-build/$(CROSS_ARCH)/sysroot/sysroot.tar.xz:
+build/$(TARGET)/sysroot/sysroot.tar.xz:
 	if [[ "$(SYSROOT_URL)" == "" ]]; then \
-		echo "No sysroot URL for $(CROSS_ARCH)"; \
+		echo "No sysroot URL for $(TARGET)"; \
 		exit 1; \
 	fi
 
-	mkdir -p build/$(CROSS_ARCH)/sysroot
-	curl --location --output build/$(CROSS_ARCH)/sysroot/sysroot.tar.xz $(SYSROOT_URL)
+	mkdir -p build/$(TARGET)/sysroot
+	curl --location --output build/$(TARGET)/sysroot/sysroot.tar.xz $(SYSROOT_URL)
 
-build/$(CROSS_ARCH)/sysroot/usr: build/$(CROSS_ARCH)/sysroot/sysroot.tar.xz
-	tar x -f build/$(CROSS_ARCH)/sysroot/sysroot.tar.xz -C build/$(CROSS_ARCH)/sysroot
+build/$(TARGET)/sysroot/usr: build/$(TARGET)/sysroot/sysroot.tar.xz
+	tar x -f build/$(TARGET)/sysroot/sysroot.tar.xz -C build/$(TARGET)/sysroot
 	touch $@
 endif
 
@@ -269,7 +246,7 @@ endif
 define CROSS_RULE
 .PHONY: $(1)
 $(1):
-	$(MAKE) CROSS_ARCH=$(1) sdk-cross
+	$(MAKE) TARGET=$(1) sdk
 endef
 
 $(foreach arch,$(TOITLANG_SYSROOTS),$(eval $(call CROSS_RULE,$(arch))))
@@ -315,7 +292,7 @@ clean:
 	rm -rf build/
 	find toolchains -name sdkconfig -exec rm '{}' ';'
 
-INSTALL_SRC_ARCH := $(HOST)
+INSTALL_SRC_ARCH := $(TARGET)
 
 .PHONY: install-sdk install
 install-sdk: all
