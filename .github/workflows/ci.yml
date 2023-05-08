@@ -188,7 +188,7 @@ jobs:
           make sdk
           if [ "$RUNNER_OS" == "Linux" ]; then
             make HOST=host32 BUILD_TYPE=Debug sdk
-            make HOST=host-ctp TOIT_CHECK_PROPAGATED_TYPES=1 sdk
+            make HOST=host-ctp TOOLCHAIN=host TOIT_CHECK_PROPAGATED_TYPES=1 sdk
           fi
 
       - name: Build esptool
