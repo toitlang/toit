@@ -116,6 +116,10 @@ tools: check-env build/$(HOST)/CMakeCache.txt
 toit-tools: tools download-packages
 	(cd build/$(HOST) && ninja build_toit_tools)
 
+.PHONY: vessels
+vessels: check-env build/$(HOST)/CMakeCache.txt
+	(cd build/$(HOST) && ninja build_vessels)
+
 .PHONY: version-file
 version-file: build/$(HOST)/CMakeCache.txt
 	(cd build/$(HOST) && ninja build_version_file)
@@ -142,6 +146,10 @@ esptool-no-env:
 # CROSS-COMPILE
 .PHONY: sdk-cross
 sdk-cross: tools-cross toit-tools-cross version-file-cross
+
+.PHONY: sysroot
+sysroot: check-env-cross
+	$(MAKE) build/$(CROSS_ARCH)/sysroot/usr
 
 check-env-cross:
 ifndef CROSS_ARCH
@@ -171,6 +179,10 @@ toit-tools-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
 .PHONY: version-file-cross
 version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
 	(cd build/$(CROSS_ARCH) && ninja build_version_file)
+
+.PHONY: vessels-cross
+vessels-cross: check-env-cross tools build/$(CROSS_ARCH)/CMakeCache.txt
+	(cd build/$(CROSS_ARCH) && ninja build_vessels)
 
 # Raspberry Pi
 PI_CROSS_ARCH := raspberry_pi
