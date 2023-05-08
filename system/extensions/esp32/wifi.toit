@@ -180,7 +180,7 @@ class WifiModule implements NetworkModule:
   static WIFI_RETRY        ::= 1 << 4
   static WIFI_SCAN_DONE    ::= 1 << 5
 
-  static WIFI_RETRY_DELAY_     ::= Duration --s=1
+  static WIFI_RETRY_DELAY_     ::= Duration --ms=100
   static WIFI_CONNECT_TIMEOUT_ ::= Duration --s=10
   static WIFI_DHCP_TIMEOUT_    ::= Duration --s=16
 
