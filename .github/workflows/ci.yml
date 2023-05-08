@@ -608,7 +608,7 @@ jobs:
           CCACHE_COMPRESSLEVEL: '6'
           CCACHE_MAXSIZE: 400M
         run: |
-          make CROSS_ARCH=win64 sdk
+          make TARGET=win64 sdk
           make pi
 
       - name: Copy 32-bit sdk to 64-bit directory
