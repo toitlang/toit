@@ -163,68 +163,12 @@ esptool-no-env:
 			--specpath build/$(HOST)/esptool \
 			'$(IDF_PATH)/components/esptool_py/esptool/esptool.py'
 
-
-# Raspberry Pi
-PI_TARGET := raspberry_pi
-
-.PHONY: check-env-sysroot
-check-env-sysroot:
-ifeq ("", "$(shell command -v dpkg)")
-	$(error dpkg not in path.)
-endif
-
-ifeq ("$(TARGET)", "$(PI_TARGET)")
-rebuild-cmake: sysroot
-endif
-
-build/$(PI_TARGET)/sysroot/usr: check-env-sysroot
-	# This rule is brittle, since it only depends on the 'usr' folder of the sysroot.
-	# If the sysroot script fails, it might be incomplete, but another call to
-	# the rule won't do anything anymore.
-	# Generally we use this rule on the buildbot and are thus not too concerned.
-	mkdir -p build/$(PI_TARGET)/sysroot
-	# The sysroot script doesn't like symlinks in the path. This is why we call 'realpath'.
-	third_party/rpi/sysroot.py --distro raspbian --sysroot $$(realpath build/$(PI_TARGET)/sysroot) libc6-dev libstdc++-6-dev
-
 .PHONY: pi
-pi:
-	$(MAKE) TARGET=$(PI_TARGET) sdk
+pi: raspbian
 
-# ARM Linux GNUEABI
-ARM_LINUX_GNUEABI_TARGET := arm-linux-gnueabi
-
-ifeq ("$(TARGET)", "$(ARM_LINUX_GNUEABI_TARGET)")
-rebuild-cmake: sysroot
-endif
-
-.PHONY: arm-linux-gnueabi-sysroot
-arm-linux-gnueabi-sysroot: build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/usr
-
-ARM_LINUX_GNUEABI_SYSROOT_URL=https://releases.linaro.org/components/toolchain/binaries/latest-7/arm-linux-gnueabi/sysroot-glibc-linaro-2.25-2019.12-arm-linux-gnueabi.tar.xz
-ARM_LINUX_GNUEABI_GCC_TOOLCHAIN_URL=https://releases.linaro.org/components/toolchain/binaries/latest-7/arm-linux-gnueabi/gcc-linaro-7.5.0-2019.12-i686_arm-linux-gnueabi.tar.xz
-
-build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/sysroot.tar.xz:
-	mkdir -p build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot
-	curl --location --output build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/sysroot.tar.xz $(ARM_LINUX_GNUEABI_SYSROOT_URL)
-
-build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/gcc-toolchain.tar.xz:
-	mkdir -p build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot
-	curl --location --output build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/gcc-toolchain.tar.xz $(ARM_LINUX_GNUEABI_GCC_TOOLCHAIN_URL)
-
-build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/usr: build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/sysroot.tar.xz
-build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/usr: build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/gcc-toolchain.tar.xz
-	tar x --strip-components=1 -f build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/sysroot.tar.xz -C build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot
-	tar x --strip-components=1 -f build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot/gcc-toolchain.tar.xz -C build/$(ARM_LINUX_GNUEABI_TARGET)/sysroot
-	touch $@
-
-.PHONY: arm-linux-gnueabi
-arm-linux-gnueabi: arm-linux-gnueabi-sysroot
-	$(MAKE) TARGET=$(ARM_LINUX_GNUEABI_TARGET) sdk
-
-# Armv7 Aarch64 Riscv64
-TOITLANG_SYSROOTS := armv7 aarch64 riscv64
+TOITLANG_SYSROOTS := armv7 aarch64 riscv64 raspbian arm-linux-gnueabi
 ifneq (,$(filter $(TARGET),$(TOITLANG_SYSROOTS)))
-SYSROOT_URL=https://github.com/toitlang/sysroots/releases/download/v1.2.0/sysroot-$(TARGET).tar.gz
+SYSROOT_URL=https://github.com/toitlang/sysroots/releases/download/v1.3.0/sysroot-$(TARGET).tar.gz
 
 rebuild-cmake: sysroot
 

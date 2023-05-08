@@ -609,12 +609,14 @@ jobs:
           CCACHE_MAXSIZE: 400M
         run: |
           make TARGET=win64 sdk
-          make pi
+          make raspbian
+          make aarch64
+          make arm-linux-gnueabi
 
       - name: Copy 32-bit sdk to 64-bit directory
         run: |
           mkdir -p build/raspberry_pi64
-          cp -Ra build/raspberry_pi/sdk build/raspberry_pi64
+          cp -Ra build/raspbian/sdk build/raspberry_pi64
 
       - name: Patch esptool requirements
         # We don't want to use the cryptography package that uses rust.
@@ -637,7 +639,7 @@ jobs:
               apt-get install -y python3-pip git
               python --version
               pip install --user -e third_party/esp-idf/components/esptool_py/esptool
-              make HOST=raspberry_pi esptool-no-env
+              make HOST=raspbian esptool-no-env
 
       - name: Build esptool 64-bit
         uses: pguyot/arm-runner-action@v2
@@ -660,10 +662,10 @@ jobs:
           bind_mount_repository: true
           commands: |
               uname -m > pi_uname
-              build/raspberry_pi/sdk/bin/toit.pkg version
-              build/raspberry_pi/sdk/bin/toit.run --version
-              build/raspberry_pi/sdk/tools/firmware --help
-              build/raspberry_pi/sdk/tools/esptool -h
+              build/raspbian/sdk/bin/toit.pkg version
+              build/raspbian/sdk/bin/toit.run --version
+              build/raspbian/sdk/tools/firmware --help
+              build/raspbian/sdk/tools/esptool -h
 
       - name: Test executables 64-bit
         uses: pguyot/arm-runner-action@v2
@@ -682,8 +684,8 @@ jobs:
         shell: bash
         # Note that we use `cp -R` first, since that works on every platform.
         run: |
-          cp -R ./build/raspberry_pi/sdk ./build/raspberry_pi/toit
-          tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspberry_pi --dereference toit
+          cp -R ./build/raspbian/sdk ./build/raspbian/toit
+          tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspbian --dereference toit
           cp -R ./build/raspberry_pi64/sdk ./build/raspberry_pi64/toit
           tar -czf build/${{ steps.constants.outputs.raspberry_pi64_artifact }} -C ./build/raspberry_pi64 --dereference toit
 
