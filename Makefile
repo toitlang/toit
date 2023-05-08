@@ -20,6 +20,7 @@ SHELL=bash
 # General options.
 HOST=host
 BUILD_TYPE=Release
+TARGET ?= $(HOST)
 
 prefix ?= /opt/toit-sdk
 
@@ -49,8 +50,6 @@ else
 	DETECTED_OS=$(shell uname)
 endif
 
-
-# HOST
 .PHONY: all
 all: sdk esptool
 
