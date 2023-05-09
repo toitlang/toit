@@ -218,6 +218,8 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
         case WIFI_REASON_ASSOC_LEAVE:
         case WIFI_REASON_ASSOC_EXPIRE:
         case WIFI_REASON_AUTH_EXPIRE:
+        case WIFI_REASON_HANDSHAKE_TIMEOUT:
+        case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
           state |= WIFI_RETRY;
           break;
         default:
@@ -501,11 +503,12 @@ PRIMITIVE(disconnect_reason) {
   switch (wifi->disconnect_reason()) {
     case WIFI_REASON_ASSOC_EXPIRE:
     case WIFI_REASON_ASSOC_LEAVE:
-      return process->allocate_string_or_error("session expired");
+      return process->allocate_string_or_error("expired session");
     case WIFI_REASON_AUTH_EXPIRE:
-      return process->allocate_string_or_error("timeout");
+      return process->allocate_string_or_error("expired authentication");
     case WIFI_REASON_HANDSHAKE_TIMEOUT:
     case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+      return process->allocate_string_or_error("handshake timeout");
     case WIFI_REASON_AUTH_FAIL:
       return process->allocate_string_or_error("bad authentication");
     case WIFI_REASON_NO_AP_FOUND:

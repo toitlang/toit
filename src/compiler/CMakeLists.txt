@@ -38,8 +38,13 @@ set_source_files_properties(propagation/type_propagator.cc PROPERTIES COMPILE_OP
 set_source_files_properties(propagation/type_set.cc PROPERTIES COMPILE_OPTIONS "-O3")
 set_source_files_properties(propagation/type_stack.cc PROPERTIES COMPILE_OPTIONS "-O3")
 
+if (${TOIT_IS_CROSS})
+  set(TOIT_COMPILER_STATIC -static)
+endif()
+
 target_link_libraries(
   toit_compiler
+  ${TOIT_COMPILER_STATIC}
   ${YAML_STATIC_LIB_NAME}
   ${SEMVER_STATIC_LIB_NAME}
   )
@@ -63,6 +68,7 @@ endif()
 
 target_link_libraries(
   toit.compile
+  ${TOIT_COMPILER_STATIC}
   toit_compiler
   toit_core
   mbedtls

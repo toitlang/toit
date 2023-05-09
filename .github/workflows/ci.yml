@@ -187,8 +187,8 @@ jobs:
         run: |
           make sdk
           if [ "$RUNNER_OS" == "Linux" ]; then
-            make CROSS_ARCH=host32 BUILD_TYPE=Debug sdk-cross
-            make HOST=host-ctp TOIT_CHECK_PROPAGATED_TYPES=1 sdk
+            make HOST=host32 BUILD_TYPE=Debug sdk
+            make HOST=host-ctp TOOLCHAIN=host TOIT_CHECK_PROPAGATED_TYPES=1 sdk
           fi
 
       - name: Build esptool
@@ -214,7 +214,7 @@ jobs:
       - name: Test 32-bit debug
         if: runner.os == 'Linux'
         run: |
-          make HOST=host32 CROSS_ARCH=host32 BUILD_TYPE=Debug test
+          make HOST=host32 BUILD_TYPE=Debug test
 
       # Test external code.
       - name: Test external
@@ -241,7 +241,7 @@ jobs:
           make test-external-health
           if [ "$RUNNER_OS" == "Linux" ]; then
             cmake -DTOIT_TEST_EXTERNAL=ON build/host32
-            make HOST=host32 CROSS_ARCH=host32 BUILD_TYPE=Debug rebuild-cross-cmake
+            make HOST=host32 BUILD_TYPE=Debug rebuild-cmake
             cd build/host32
             ninja check_external
             cd ../..
@@ -361,60 +361,6 @@ jobs:
         with:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.artifact }}
-
-      - name: Upload release artifacts - Linux/macOS
-        if: |
-          github.event_name == 'release' &&
-          runner.os != 'Windows' &&
-          matrix.shard == 1 &&
-          github.repository_owner == 'toitlang'
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/${{ steps.constants.outputs.artifact }}
-          tag: ${{ github.ref }}
-          overwrite: true
-
-  sign_windows:
-    runs-on: windows-signing
-    needs: [build]
-    if: github.event_name == 'release'
-    steps:
-      - name: Clean workspace
-        run: |
-          rm -Recurse -Force ${{ github.workspace }}\*
-
-      - uses: actions/download-artifact@v3
-        with:
-          name: Windows-build-unsigned
-
-      - name: Decompress
-        run: |
-          & "C:\Program Files\Git\bin\bash.exe" --noprofile --norc -e -o pipefail -c "tar -xzf toit-windows.tar.gz"
-
-      - name: Sign
-        run: |
-          Get-ChildItem toit/bin/*.exe, toit/tools/*.exe | ForEach-Object {
-              signtool sign /debug /n "Toitware ApS" /t http://timestamp.digicert.com/ $_.FullName
-          }
-
-      - name: Compress
-        run: |
-          & "C:\Program Files\Git\bin\bash.exe" --noprofile --norc -e -o pipefail -c "tar -czf toit-windows.tar.gz toit"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: Windows-build
-          path: toit-windows.tar.gz
-
-      - name: Upload release artifacts
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit-windows.tar.gz
-          tag: ${{ github.ref }}
-          overwrite: true
 
   # Really annoying that we need to duplicate so much.
   esp32:
@@ -588,7 +534,6 @@ jobs:
         shell: bash
         run: |
           echo raspberry_pi_artifact=toit-rpi.tar.gz >> $GITHUB_OUTPUT
-          echo raspberry_pi64_artifact=toit-rpi64.tar.gz >> $GITHUB_OUTPUT
 
       - uses: actions/checkout@v3
 
@@ -662,13 +607,10 @@ jobs:
           CCACHE_COMPRESSLEVEL: '6'
           CCACHE_MAXSIZE: 400M
         run: |
-          make CROSS_ARCH=win64 sdk-cross
-          make pi
-
-      - name: Copy 32-bit sdk to 64-bit directory
-        run: |
-          mkdir -p build/raspberry_pi64
-          cp -Ra build/raspberry_pi/sdk build/raspberry_pi64
+          make TARGET=win64 sdk
+          make raspbian
+          make aarch64
+          make arm-linux-gnueabi
 
       - name: Patch esptool requirements
         # We don't want to use the cryptography package that uses rust.
@@ -691,7 +633,7 @@ jobs:
               apt-get install -y python3-pip git
               python --version
               pip install --user -e third_party/esp-idf/components/esptool_py/esptool
-              make HOST=raspberry_pi esptool-no-env
+              make HOST=raspbian esptool-no-env
 
       - name: Build esptool 64-bit
         uses: pguyot/arm-runner-action@v2
@@ -704,7 +646,7 @@ jobs:
               apt-get install -y python3-pip git
               python --version
               pip install --user -e third_party/esp-idf/components/esptool_py/esptool
-              make HOST=raspberry_pi64 esptool-no-env
+              make HOST=aarch64 esptool-no-env
 
       - name: Test executables 32-bit
         uses: pguyot/arm-runner-action@v2
@@ -714,10 +656,10 @@ jobs:
           bind_mount_repository: true
           commands: |
               uname -m > pi_uname
-              build/raspberry_pi/sdk/bin/toit.pkg version
-              build/raspberry_pi/sdk/bin/toit.run --version
-              build/raspberry_pi/sdk/tools/firmware --help
-              build/raspberry_pi/sdk/tools/esptool -h
+              build/raspbian/sdk/bin/toit.pkg version
+              build/raspbian/sdk/bin/toit.run --version
+              build/raspbian/sdk/tools/firmware --help
+              build/raspbian/sdk/tools/esptool -h
 
       - name: Test executables 64-bit
         uses: pguyot/arm-runner-action@v2
@@ -727,47 +669,220 @@ jobs:
           bind_mount_repository: true
           commands: |
               uname -m > pi_uname
-              build/raspberry_pi64/sdk/bin/toit.pkg version
-              build/raspberry_pi64/sdk/bin/toit.run --version
-              build/raspberry_pi64/sdk/tools/firmware --help
-              build/raspberry_pi64/sdk/tools/esptool -h
+              build/aarch64/sdk/bin/toit.pkg version
+              build/aarch64/sdk/bin/toit.run --version
+              build/aarch64/sdk/tools/firmware --help
+              build/aarch64/sdk/tools/esptool -h
 
-      - name: Pack Raspberry Pi artifacts
+      - name: Pack artifacts
         shell: bash
         # Note that we use `cp -R` first, since that works on every platform.
         run: |
-          cp -R ./build/raspberry_pi/sdk ./build/raspberry_pi/toit
-          tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspberry_pi --dereference toit
-          cp -R ./build/raspberry_pi64/sdk ./build/raspberry_pi64/toit
-          tar -czf build/${{ steps.constants.outputs.raspberry_pi64_artifact }} -C ./build/raspberry_pi64 --dereference toit
+          cp -R ./build/raspbian/sdk ./build/raspbian/toit
+          tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspbian --dereference toit
+          cp -R ./build/aarch64/sdk ./build/aarch64/toit
+          tar -czf build/toit-aarch64.tar.gz -C ./build/aarch64 --dereference toit
 
-      - name: Upload Raspberry Pi artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
           name: ${{ runner.os }}-build
           path: |
             build/${{ steps.constants.outputs.raspberry_pi_artifact }}
-            build/${{ steps.constants.outputs.raspberry_pi64_artifact }}
+            build/toit-aarch64.tar.gz
 
-      - name: Upload release Raspberry Pi artifacts 32-bit
+  combine:
+    needs: [build, cross]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: Windows-build-unsigned
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: Linux-build
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: macOS-build
+
+      - name: Unpack SDKs
+        run: |
+          for os in windows linux macos rpi aarch64; do
+            mkdir -p $os
+            tar x -zf toit-$os.tar.gz -C $os
+          done
+
+      - name: Copy vessels
+        run: |
+          mkdir -p vessels
+
+          for source in windows linux macos rpi aarch64; do
+            # Use same values as Go.
+            if [ "$source" == "windows" ]; then
+              CROSS_OS=windows
+              CROSS_ARCH=amd64
+            elif [ "$source" == "linux" ]; then
+              CROSS_OS=linux
+              CROSS_ARCH=amd64
+            elif [ "$source" == "macos" ]; then
+              CROSS_OS=darwin
+              CROSS_ARCH=amd64
+            elif [ "$source" == "rpi" ]; then
+              CROSS_OS=linux
+              CROSS_ARCH=arm
+            elif [ "$source" == "aarch64" ]; then
+              CROSS_OS=linux
+              CROSS_ARCH=arm64
+            else
+              echo "Unknown source: $source"
+              exit 1
+            fi
+
+            mkdir -p vessels/$CROSS_OS/$CROSS_ARCH
+            cp $source/toit/vessels/vessel* vessels/$CROSS_OS/$CROSS_ARCH
+
+            for target in windows linux macos rpi aarch64; do
+              if [ "$source" == "$target" ]; then
+                continue
+              fi
+              mkdir -p $target/toit/vessels/$CROSS_OS/$CROSS_ARCH
+              cp $source/toit/vessels/vessel* $target/toit/vessels/$CROSS_OS/$CROSS_ARCH
+            done
+          done
+
+      - name: Create vessels artifact
+        run: |
+          tar c -zf vessels.tar.gz vessels
+
+      - name: Compress SDKs
+        run: |
+          for os in windows linux macos rpi aarch64; do
+            tar c -zf toit-$os.tar.gz -C $os .
+          done
+
+      - name: Upload vessels
+        uses: actions/upload-artifact@v3
+        with:
+          name: vessels
+          path: vessels.tar.gz
+
+      - name: Upload Windows unsigned
+        uses: actions/upload-artifact@v3
+        with:
+          name: Windows-build-unsigned
+          path: toit-windows.tar.gz
+
+      - name: Upload Linux
+        uses: actions/upload-artifact@v3
+        with:
+          name: Linux-build
+          path: |
+            toit-linux.tar.gz
+            toit-rpi.tar.gz
+            toit-aarch64.tar.gz
+
+      - name: Upload macOS
+        uses: actions/upload-artifact@v3
+        with:
+          name: macOS-build
+          path: toit-macos.tar.gz
+
+      - name: Upload release vessels
         if: |
           github.event_name == 'release' &&
           github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/${{ steps.constants.outputs.raspberry_pi_artifact }}
+          file: vessels.tar.gz
           tag: ${{ github.ref }}
           overwrite: true
 
-      - name: Upload release Raspberry Pi artifacts 64-bit
+      - name: Upload release Linux
         if: |
           github.event_name == 'release' &&
           github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/${{ steps.constants.outputs.raspberry_pi64_artifact }}
+          file: toit-linux.tar.gz
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload release macOS
+        if: |
+          github.event_name == 'release' &&
+          github.repository_owner == 'toitlang'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: toit-macos.tar.gz
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload release Raspberry Pi 32-bit
+        if: |
+          github.event_name == 'release' &&
+          github.repository_owner == 'toitlang'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: toit-rpi.tar.gz
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload release aarch64
+        if: |
+          github.event_name == 'release' &&
+          github.repository_owner == 'toitlang'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: toit-aarch64.tar.gz
+          tag: ${{ github.ref }}
+          overwrite: true
+
+  sign_windows:
+    runs-on: windows-signing
+    needs: [combine]
+    if: github.event_name == 'release'
+    steps:
+      - name: Clean workspace
+        run: |
+          rm -Recurse -Force ${{ github.workspace }}\*
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: Windows-build-unsigned
+
+      - name: Decompress
+        run: |
+          & "C:\Program Files\Git\bin\bash.exe" --noprofile --norc -e -o pipefail -c "tar -xzf toit-windows.tar.gz"
+
+      - name: Sign
+        run: |
+          Get-ChildItem toit/bin/*.exe, toit/tools/*.exe | ForEach-Object {
+              signtool sign /debug /n "Toitware ApS" /t http://timestamp.digicert.com/ $_.FullName
+          }
+
+      - name: Compress
+        run: |
+          & "C:\Program Files\Git\bin\bash.exe" --noprofile --norc -e -o pipefail -c "tar -czf toit-windows.tar.gz toit"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: Windows-build
+          path: toit-windows.tar.gz
+
+      - name: Upload release artifacts
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: toit-windows.tar.gz
           tag: ${{ github.ref }}
           overwrite: true
 
