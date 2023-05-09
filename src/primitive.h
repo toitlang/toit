@@ -679,7 +679,7 @@ namespace toit {
   PRIMITIVE(object_histogram, 2)             \
 
 #define MODULE_ESPNOW(PRIMITIVE)             \
-  PRIMITIVE(init, 2)                         \
+  PRIMITIVE(init, 3)                         \
   PRIMITIVE(send, 3)                         \
   PRIMITIVE(receive, 1)                      \
   PRIMITIVE(add_peer, 3)                     \

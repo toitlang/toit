@@ -173,8 +173,53 @@ static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int dat
   }
 }
 
+static wifi_phy_rate_t map_toit_rate_to_esp_idf_rate(int toit_rate) {
+  switch (toit_rate) {
+    case 0x00: return WIFI_PHY_RATE_1M_L;
+    case 0x01: return WIFI_PHY_RATE_2M_L;
+    case 0x02: return WIFI_PHY_RATE_5M_L;
+    case 0x03: return WIFI_PHY_RATE_11M_L;
+    case 0x05: return WIFI_PHY_RATE_2M_S;
+    case 0x06: return WIFI_PHY_RATE_5M_S;
+    case 0x07: return WIFI_PHY_RATE_11M_S;
+    case 0x08: return WIFI_PHY_RATE_48M;
+    case 0x09: return WIFI_PHY_RATE_24M;
+    case 0x0A: return WIFI_PHY_RATE_12M;
+    case 0x0B: return WIFI_PHY_RATE_6M;
+    case 0x0C: return WIFI_PHY_RATE_54M;
+    case 0x0D: return WIFI_PHY_RATE_36M;
+    case 0x0E: return WIFI_PHY_RATE_18M;
+    case 0x0F: return WIFI_PHY_RATE_9M;
+    case 0x10: return WIFI_PHY_RATE_MCS0_LGI;
+    case 0x11: return WIFI_PHY_RATE_MCS1_LGI;
+    case 0x12: return WIFI_PHY_RATE_MCS2_LGI;
+    case 0x13: return WIFI_PHY_RATE_MCS3_LGI;
+    case 0x14: return WIFI_PHY_RATE_MCS4_LGI;
+    case 0x15: return WIFI_PHY_RATE_MCS5_LGI;
+    case 0x16: return WIFI_PHY_RATE_MCS6_LGI;
+    case 0x17: return WIFI_PHY_RATE_MCS7_LGI;
+    case 0x18: return WIFI_PHY_RATE_MCS0_SGI;
+    case 0x19: return WIFI_PHY_RATE_MCS1_SGI;
+    case 0x1A: return WIFI_PHY_RATE_MCS2_SGI;
+    case 0x1B: return WIFI_PHY_RATE_MCS3_SGI;
+    case 0x1C: return WIFI_PHY_RATE_MCS4_SGI;
+    case 0x1D: return WIFI_PHY_RATE_MCS5_SGI;
+    case 0x1E: return WIFI_PHY_RATE_MCS6_SGI;
+    case 0x1F: return WIFI_PHY_RATE_MCS7_SGI;
+    case 0x29: return WIFI_PHY_RATE_LORA_250K;
+    case 0x2A: return WIFI_PHY_RATE_LORA_500K;
+    default: return static_cast<wifi_phy_rate_t>(-1);
+  }
+}
+
 PRIMITIVE(init) {
-  ARGS(int, mode, Blob, pmk);
+  ARGS(int, mode, Blob, pmk, int, toit_rate);
+
+  wifi_phy_rate_t rate = WIFI_PHY_RATE_1M_L;
+  if (toit_rate != -1) {
+    rate =  map_toit_rate_to_esp_idf_rate(toit_rate);
+    if (rate == -1) INVALID_ARGUMENT;
+  }
 
   if (pmk.length() > 0 && pmk.length() != 16) INVALID_ARGUMENT;
 
@@ -198,7 +243,7 @@ PRIMITIVE(init) {
   esp_err_t err = esp_netif_init();
   if (err != ESP_OK) return Primitive::os_error(err, process);
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-  wifi_mode_t wifi_mode = mode ? WIFI_MODE_AP : WIFI_MODE_STA;
+  wifi_mode_t wifi_mode = mode == 0 ? WIFI_MODE_STA : WIFI_MODE_AP;
 
   err = esp_wifi_init(&cfg);
   if (err != ESP_OK) return Primitive::os_error(err, process);
@@ -207,6 +252,10 @@ PRIMITIVE(init) {
   err = esp_wifi_set_mode(wifi_mode);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   err = esp_wifi_start();
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  wifi_interface_t interface = mode == 0 ? WIFI_IF_STA : WIFI_IF_AP;
+  err = esp_wifi_config_espnow_rate(interface, rate);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   err = esp_now_init();
