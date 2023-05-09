@@ -480,6 +480,7 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
   }
 
   int gcs = 0;
+  USE(gcs);
   if (doing_idle_process_gc) {
     ProcessListFromScheduler targets;
     { Locker locker(mutex_);
