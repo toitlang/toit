@@ -113,5 +113,7 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
     unreachable
   config_entry key/string -> any:
     unreachable
+  uri -> string?:
+    unreachable
   firmware_writer_open client/int from/int to/int -> FirmwareWriter:
     unreachable

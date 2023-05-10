@@ -100,7 +100,12 @@ class WifiResourceGroup : public ResourceGroup {
     err = esp_wifi_start();
     if (err != ESP_OK) return err;
 
-    reconnects_remaining_ = 1;
+    // When connecting to Android mobile hotspot APs, we
+    // quite often get WIFI_REASON_AUTH_FAIL followed by
+    // WIFI_REASON_CONNECTION_FAIL. The next connect still
+    // has a good chance of succeeding, so we allow two
+    // reconnect attempts.
+    reconnects_remaining_ = 2;
     return esp_wifi_connect();
   }
 
@@ -240,6 +245,7 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
           break;
         case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
         case WIFI_REASON_AUTH_FAIL:
+        case WIFI_REASON_CONNECTION_FAIL:
           reconnect = true;
           break;
       }
@@ -546,6 +552,7 @@ PRIMITIVE(disconnect_reason) {
       return process->allocate_string_or_error("handshake timeout");
     case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
     case WIFI_REASON_AUTH_FAIL:
+    case WIFI_REASON_CONNECTION_FAIL:
       return process->allocate_string_or_error("bad authentication");
     case WIFI_REASON_NO_AP_FOUND:
       return process->allocate_string_or_error("access point not found");
