@@ -62,6 +62,9 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
     // running OTA partition.
     return null
 
+  uri -> string?:
+    return "partition:$ota_current_partition_name_"
+
   firmware_writer_open client/int from/int to/int -> FirmwareWriter:
     return FirmwareWriter_ this client from to
 
@@ -125,6 +128,9 @@ class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
     buffer_ = null
 
 // ----------------------------------------------------------------------------
+
+ota_current_partition_name_ -> string:
+  #primitive.esp32.ota_current_partition_name
 
 ota_begin_ from/int to/int -> none:
   #primitive.esp32.ota_begin

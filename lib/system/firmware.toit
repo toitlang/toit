@@ -8,9 +8,21 @@ User-space side of the RPC API for updating the firmware.
 
 import system.api.firmware show FirmwareServiceClient
 import system.services show ServiceResourceProxy
+import system.storage  // For toitdoc.
 
 _client_ /FirmwareServiceClient? ::= (FirmwareServiceClient).open
     --if_absent=: null
+
+/**
+The identifier for the current firmware.
+
+A non-null $uri can be passed to $storage.Region.open
+  to get access to the region containing the current
+  firmware.
+*/
+uri -> string?:
+  if not _client_: return null
+  return _client_.uri
 
 /**
 The configuration of the current firmware.

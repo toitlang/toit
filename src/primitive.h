@@ -365,6 +365,7 @@ namespace toit {
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \
 
 #define MODULE_ESP32(PRIMITIVE)              \
+  PRIMITIVE(ota_current_partition_name, 0)   \
   PRIMITIVE(ota_begin, 2)                    \
   PRIMITIVE(ota_write, 1)                    \
   PRIMITIVE(ota_end, 2)                      \

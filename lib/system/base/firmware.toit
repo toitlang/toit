@@ -39,6 +39,8 @@ abstract class FirmwareServiceProviderBase extends ServiceProvider
       return config_entry arguments
     if index == FirmwareService.CONTENT_INDEX:
       return content
+    if index == FirmwareService.URI_INDEX:
+      return uri
     if index == FirmwareService.FIRMWARE_WRITER_OPEN_INDEX:
       return firmware_writer_open client arguments[0] arguments[1]
     if index == FirmwareService.FIRMWARE_WRITER_WRITE_INDEX:
@@ -66,6 +68,7 @@ abstract class FirmwareServiceProviderBase extends ServiceProvider
   abstract config_entry key/string -> any
 
   abstract content -> ByteArray?
+  abstract uri -> string?
 
   firmware_writer_open from/int to/int -> int:
     unreachable  // TODO(kasper): Nasty.
