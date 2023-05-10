@@ -8,7 +8,7 @@ interface FirmwareService:
   static SELECTOR ::= ServiceSelector
       --uuid="777096e8-05bc-4af7-919e-5ba696549bd5"
       --major=0
-      --minor=5
+      --minor=6
 
   is_validation_pending -> bool
   static IS_VALIDATION_PENDING_INDEX /int ::= 0
