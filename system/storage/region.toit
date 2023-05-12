@@ -28,11 +28,11 @@ class RegionResource extends ServiceResource:
   client_/int
   handle_/int? := null
 
-  constructor provider/StorageServiceProvider .client_ --offset/int --size/int --write/bool:
+  constructor provider/StorageServiceProvider .client_ --offset/int --size/int --writable/bool:
     super provider client_
     try:
       handle := serialize_for_rpc
-      flash_grant_access_ client_ handle offset size write
+      flash_grant_access_ client_ handle offset size writable
       handle_ = handle
     finally: | is_exception _ |
       if is_exception: close
@@ -48,13 +48,13 @@ class RegionResource extends ServiceResource:
 class FlashRegionResource extends RegionResource:
   static NAMESPACE ::= "flash:region"
 
-  constructor provider/StorageServiceProvider client/int --offset/int --size/int --write/bool:
-    super provider client --offset=offset --size=size --write=write
+  constructor provider/StorageServiceProvider client/int --offset/int --size/int --writable/bool:
+    super provider client --offset=offset --size=size --writable=writable
 
   static open provider/StorageServiceProvider client/int -> List
       --path/string
       --capacity/int?
-      --write/bool:
+      --writable/bool:
     registry := provider.registry
     id := uuid.uuid5 NAMESPACE path
     allocation := find_allocation_ registry --id=id --if_absent=:
@@ -66,7 +66,7 @@ class FlashRegionResource extends RegionResource:
     offset := allocation.offset + FLASH_REGISTRY_PAGE_SIZE
     size := allocation.size - FLASH_REGISTRY_PAGE_SIZE
     if capacity and size < capacity: throw "Existing region is too small"
-    resource := FlashRegionResource provider client --offset=offset --size=size --write=write
+    resource := FlashRegionResource provider client --offset=offset --size=size --writable=writable
     return [
       resource.serialize_for_rpc,
       offset,
@@ -120,26 +120,28 @@ class PartitionRegionResource extends RegionResource:
   // On the ESP32, we use partition type 0x40 for the
   // flash registry and 0x41 for region partitions.
   static ESP32_PARTITION_TYPE ::= 0x41
+  static ESP32_PARTITION_TYPE_ANY ::= 0xff
 
   // On host platforms, we automatically create an
   // in-memory partition if we do not find an existing
   // one. This is useful primarily for testing.
   static HOST_DEFAULT_SIZE ::= 64 * 1024
 
-  constructor provider/StorageServiceProvider client/int --offset/int --size/int --write/bool:
-    super provider client --offset=offset --size=size --write=write
+  constructor provider/StorageServiceProvider client/int --offset/int --size/int --writable/bool:
+    super provider client --offset=offset --size=size --writable=writable
 
   static open provider/StorageServiceProvider client/int -> List
       --path/string
       --capacity/int?
-      --write/bool:
+      --writable/bool:
     size := capacity or HOST_DEFAULT_SIZE
-    type := write ? ESP32_PARTITION_TYPE : 0xff
+    // We allow read-only access to all partitions.
+    type := writable ? ESP32_PARTITION_TYPE : ESP32_PARTITION_TYPE_ANY
     partition := flash_partition_find_ path type size
     offset := partition[0]
     size = partition[1]
     if capacity and size < capacity: throw "Existing region is too small"
-    resource := PartitionRegionResource provider client --offset=offset --size=size --write=write
+    resource := PartitionRegionResource provider client --offset=offset --size=size --writable=writable
     return [
       resource.serialize_for_rpc,
       offset,
@@ -150,7 +152,7 @@ class PartitionRegionResource extends RegionResource:
 
 // --------------------------------------------------------------------------
 
-flash_grant_access_ client handle offset size write:
+flash_grant_access_ client handle offset size writable:
   #primitive.flash.grant_access
 
 flash_is_accessed_ offset size:
