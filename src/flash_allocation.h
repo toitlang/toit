@@ -116,19 +116,21 @@ class RegionGrant;
 typedef LinkedList<RegionGrant> RegionGrantList;
 class RegionGrant : public RegionGrantList::Element {
  public:
-  RegionGrant(int client, int handle, uword offset, uword size)
-      : client_(client), handle_(handle), offset_(offset), size_(size) {}
+  RegionGrant(int client, int handle, uword offset, uword size, bool writable)
+      : client_(client), handle_(handle), offset_(offset), size_(size), writable_(writable) {}
 
   int client() const { return client_; }
   int handle() const { return handle_; }
   uword offset() const { return offset_; }
   uword size() const { return size_; }
+  bool writable() const { return writable_; }
 
  private:
   int client_;
   int handle_;
   uword offset_;
   uword size_;
+  bool writable_;
 };
 
 } // namespace toit

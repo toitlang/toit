@@ -210,7 +210,7 @@ class Region extends ServiceResourceProxy:
     return (mode_ & MODE_WRITE_CAN_CLEAR_BITS_) != 0
 
   /**
-  Variant of $(open --scheme --path --capacity).
+  Variant of $(open --scheme --path --capacity --writable).
 
   Opens a storage region with using the schema and path parsed
     from the given $uri.
@@ -220,31 +220,46 @@ class Region extends ServiceResourceProxy:
     region owner, e.g. "flash:toitlang.org/jag".
   */
   static open uri/string -> Region
-      --capacity/int?=null:
+      --capacity/int?=null
+      --writable/bool=true:
     split := uri.index_of ":" --if_absent=: throw "No scheme provided"
-    return open --scheme=uri[..split] --path=uri[split + 1 ..] --capacity=capacity
+    return open
+        --scheme=uri[..split]
+        --path=uri[split + 1 ..]
+        --capacity=capacity
+        --writable=writable
 
   /**
-  Variant of $(open --scheme --path --capacity).
+  Variant of $(open --scheme --path --capacity --writable).
 
   Opens a storage region using the $SCHEME_FLASH scheme and the
     given $path.
   */
   static open --flash/bool path/string -> Region
-      --capacity/int?=null:
+      --capacity/int?=null
+      --writable/bool=true:
     if not flash: throw "Bad Argument"
-    return open --scheme=SCHEME_FLASH --path=path --capacity=capacity
+    return open
+        --scheme=SCHEME_FLASH
+        --path=path
+        --capacity=capacity
+        --writable=writable
 
   /**
-  Variant of $(open --scheme --path --capacity).
+  Variant of $(open --scheme --path --capacity --writable).
 
   Opens a storage region using the $SCHEME_PARTITION scheme and the
     given $path.
   */
   static open --partition/bool path/string -> Region
-      --capacity/int?=null:
+      --capacity/int?=null
+      --writable/bool=true:
     if not partition: throw "Bad Argument"
-    return open --scheme=SCHEME_PARTITION --path=path --capacity=capacity
+    return open
+        --scheme=SCHEME_PARTITION
+        --path=path
+        --capacity=capacity
+        --writable=writable
 
   /**
   Opens a storage region using the given $scheme and $path.
@@ -256,9 +271,16 @@ class Region extends ServiceResourceProxy:
   If no region that match $scheme and $path exists, a new
     one is created. In this case, a non-null $capacity must
     be provided.
+
+  If $writable is true (default), the region is opened for both
+    reading and writing. If $writable is false (use --no-writable),
+    the region is opened just for reading. Opening a partition
+    for writing may require different permissions than opening
+    it just for reading.
   */
   static open --scheme/string --path/string -> Region
-      --capacity/int?=null:
+      --capacity/int?=null
+      --writable/bool=true:
     client := _client_
     if not client: throw "UNSUPPORTED"
     if capacity and capacity < 1: throw "Bad Argument"
@@ -267,6 +289,7 @@ class Region extends ServiceResourceProxy:
         --scheme=scheme
         --path=path
         --capacity=capacity
+        --writable=writable
     return Region.internal_ client reply
         --scheme=scheme
         --path=path

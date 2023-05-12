@@ -581,7 +581,7 @@ namespace toit {
   PRIMITIVE(cancel_reservation, 1)           \
   PRIMITIVE(allocate, 6)                     \
   PRIMITIVE(erase_flash_registry, 0)         \
-  PRIMITIVE(grant_access, 4)                 \
+  PRIMITIVE(grant_access, 5)                 \
   PRIMITIVE(is_accessed, 2)                  \
   PRIMITIVE(revoke_access, 2)                \
   PRIMITIVE(partition_find, 3)              \
