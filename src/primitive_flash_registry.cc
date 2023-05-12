@@ -240,7 +240,6 @@ PRIMITIVE(partition_find) {
   Array* result = process->object_heap()->allocate_array(2, Smi::zero());
   if (!result) ALLOCATION_FAILED;
 #ifdef TOIT_FREERTOS
-  printf("[looking for partitition of type %d: %s]\n", type, path);
   const esp_partition_t* partition = esp_partition_find_first(
       static_cast<esp_partition_type_t>(type),
       ESP_PARTITION_SUBTYPE_ANY,

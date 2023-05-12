@@ -271,6 +271,12 @@ class Region extends ServiceResourceProxy:
   If no region that match $scheme and $path exists, a new
     one is created. In this case, a non-null $capacity must
     be provided.
+
+  If $write is true (default), the region is opened for both
+    reading and writing. If $write is false (use --no-write),
+    the region is opened just for reading. Opening a partition
+    for writing may require different permissions than opening
+    it just for reading.
   */
   static open --scheme/string --path/string -> Region
       --capacity/int?=null
