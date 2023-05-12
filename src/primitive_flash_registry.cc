@@ -279,7 +279,7 @@ class FlashRegion : public SimpleResource {
  public:
   TAG(FlashRegion);
   FlashRegion(SimpleResourceGroup* group, uword offset, uword size, bool write)
-      : SimpleResource(group), offset_(offset), size_(size) {}
+      : SimpleResource(group), offset_(offset), size_(size), write_(write) {}
 
   uword offset() const { return offset_; }
   uword size() const { return size_; }
