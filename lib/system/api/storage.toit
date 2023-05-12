@@ -8,7 +8,7 @@ interface StorageService:
   static SELECTOR ::= ServiceSelector
       --uuid="ee91ed5e-85dd-47dd-a57a-7b6933fa58ea"
       --major=0
-      --minor=2
+      --minor=3
 
   bucket_open --scheme/string --path/string -> int
   static BUCKET_OPEN_INDEX /int ::= 0
@@ -22,7 +22,7 @@ interface StorageService:
   bucket_remove bucket/int key/string -> none
   static BUCKET_REMOVE_INDEX /int ::= 3
 
-  region_open --scheme/string --path/string --capacity/int? -> List
+  region_open --scheme/string --path/string --capacity/int? --write/bool -> List
   static REGION_OPEN_INDEX /int ::= 4
 
   region_delete --scheme/string --path/string -> none
@@ -49,8 +49,8 @@ class StorageServiceClient extends ServiceClient implements StorageService:
   bucket_remove bucket/int key/string -> none:
     invoke_ StorageService.BUCKET_REMOVE_INDEX [bucket, key]
 
-  region_open --scheme/string --path/string --capacity/int? -> List:
-    return invoke_ StorageService.REGION_OPEN_INDEX [scheme, path, capacity]
+  region_open --scheme/string --path/string --capacity/int? --write/bool -> List:
+    return invoke_ StorageService.REGION_OPEN_INDEX [scheme, path, capacity, write]
 
   region_delete --scheme/string --path/string -> none:
     invoke_ StorageService.REGION_DELETE_INDEX [scheme, path]

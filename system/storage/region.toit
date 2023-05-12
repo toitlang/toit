@@ -28,11 +28,11 @@ class RegionResource extends ServiceResource:
   client_/int
   handle_/int? := null
 
-  constructor provider/StorageServiceProvider .client_ --offset/int --size/int:
+  constructor provider/StorageServiceProvider .client_ --offset/int --size/int --write/bool:
     super provider client_
     try:
       handle := serialize_for_rpc
-      flash_grant_access_ client_ handle offset size
+      flash_grant_access_ client_ handle offset size write
       handle_ = handle
     finally: | is_exception _ |
       if is_exception: close
@@ -48,12 +48,13 @@ class RegionResource extends ServiceResource:
 class FlashRegionResource extends RegionResource:
   static NAMESPACE ::= "flash:region"
 
-  constructor provider/StorageServiceProvider client/int --offset/int --size/int:
-    super provider client --offset=offset --size=size
+  constructor provider/StorageServiceProvider client/int --offset/int --size/int --write/bool:
+    super provider client --offset=offset --size=size --write=write
 
   static open provider/StorageServiceProvider client/int -> List
       --path/string
-      --capacity/int?:
+      --capacity/int?
+      --write/bool:
     registry := provider.registry
     id := uuid.uuid5 NAMESPACE path
     allocation := find_allocation_ registry --id=id --if_absent=:
@@ -65,7 +66,7 @@ class FlashRegionResource extends RegionResource:
     offset := allocation.offset + FLASH_REGISTRY_PAGE_SIZE
     size := allocation.size - FLASH_REGISTRY_PAGE_SIZE
     if capacity and size < capacity: throw "Existing region is too small"
-    resource := FlashRegionResource provider client --offset=offset --size=size
+    resource := FlashRegionResource provider client --offset=offset --size=size --write=write
     return [
       resource.serialize_for_rpc,
       offset,
@@ -125,18 +126,20 @@ class PartitionRegionResource extends RegionResource:
   // one. This is useful primarily for testing.
   static HOST_DEFAULT_SIZE ::= 64 * 1024
 
-  constructor provider/StorageServiceProvider client/int --offset/int --size/int:
-    super provider client --offset=offset --size=size
+  constructor provider/StorageServiceProvider client/int --offset/int --size/int --write/bool:
+    super provider client --offset=offset --size=size --write=write
 
   static open provider/StorageServiceProvider client/int -> List
       --path/string
-      --capacity/int?:
+      --capacity/int?
+      --write/bool:
     size := capacity or HOST_DEFAULT_SIZE
-    partition := flash_partition_find_ path ESP32_PARTITION_TYPE size
+    type := write ? ESP32_PARTITION_TYPE : 0xff
+    partition := flash_partition_find_ path type size
     offset := partition[0]
     size = partition[1]
     if capacity and size < capacity: throw "Existing region is too small"
-    resource := PartitionRegionResource provider client --offset=offset --size=size
+    resource := PartitionRegionResource provider client --offset=offset --size=size --write=write
     return [
       resource.serialize_for_rpc,
       offset,
@@ -147,7 +150,7 @@ class PartitionRegionResource extends RegionResource:
 
 // --------------------------------------------------------------------------
 
-flash_grant_access_ client handle offset size:
+flash_grant_access_ client handle offset size write:
   #primitive.flash.grant_access
 
 flash_is_accessed_ offset size:

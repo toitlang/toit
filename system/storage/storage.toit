@@ -46,6 +46,7 @@ class StorageServiceProvider extends ServiceProvider
           --scheme=arguments[0]
           --path=arguments[1]
           --capacity=arguments[2]
+          --write=arguments[3]
     else if index == StorageService.REGION_DELETE_INDEX:
       return region_delete --scheme=arguments[0] --path=arguments[1]
     else if index == StorageService.REGION_LIST_INDEX:
@@ -59,11 +60,11 @@ class StorageServiceProvider extends ServiceProvider
       return FlashBucketResource this client path
     throw "Unsupported '$scheme:' scheme"
 
-  region_open client/int --scheme/string --path/string --capacity/int? -> List:
+  region_open client/int --scheme/string --path/string --capacity/int? --write/bool -> List:
     if scheme == Region.SCHEME_FLASH:
-      return FlashRegionResource.open this client --path=path --capacity=capacity
+      return FlashRegionResource.open this client --path=path --capacity=capacity --write=write
     else if scheme == Region.SCHEME_PARTITION:
-      return PartitionRegionResource.open this client --path=path --capacity=capacity
+      return PartitionRegionResource.open this client --path=path --capacity=capacity --write=write
     throw "Unsupported '$scheme:' scheme"
 
   region_delete --scheme/string --path/string -> none:
@@ -86,5 +87,5 @@ class StorageServiceProvider extends ServiceProvider
   bucket_remove bucket/int key/string -> none:
     unreachable  // TODO(kasper): Nasty.
 
-  region_open --scheme/string --path/string --capacity/int? -> int:
+  region_open --scheme/string --path/string --capacity/int? --write/bool -> int:
     unreachable  // TODO(kasper): Nasty.
