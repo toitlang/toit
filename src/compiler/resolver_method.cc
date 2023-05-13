@@ -2928,7 +2928,6 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
     target_name_node = ast_target->as_Dot()->name();
     target_name = ast_target->as_Dot()->name()->data();
   }
-  int block_count = 0;
   bool has_positional_blocks = false;
   ast::LspSelection* named_lsp_selection = null;
   CallBuilder call_builder(range);
@@ -2974,7 +2973,6 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
     }
     call_builder.add_argument(ir_argument, name);
     if (ir_argument->is_block()) {
-      block_count++;
       if (!name.is_valid()) has_positional_blocks = true;
     } else if (has_positional_blocks && !name.is_valid()) {
       // We don't enter here for named arguments, and therefore boolean named
