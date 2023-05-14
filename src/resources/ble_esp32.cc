@@ -1976,29 +1976,47 @@ PRIMITIVE(add_characteristic) {
   ARGS(BleServiceResource, service_resource, Blob, raw_uuid, int, properties,
        int, permissions, Object, value, int, read_timeout_ms)
 
-  if (!service_resource->peripheral_manager()) INVALID_ARGUMENT;
+  if (!service_resource->peripheral_manager()) {
+    printf("service_resource->peripheral_manager() is null\n");
+    INVALID_ARGUMENT;
+  }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  if (service_resource->deployed()) INVALID_ARGUMENT;
+  if (service_resource->deployed()) {
+    printf("service_resource->deployed() is true\n");
+    INVALID_ARGUMENT;
+  }
 
   uint32 flags = properties & 0x7F;
   if (permissions & 0x1) {  // READ
-    if (!(properties & BLE_GATT_CHR_F_READ)) INVALID_ARGUMENT;
+    if (!((properties & BLE_GATT_CHR_F_READ) ||
+          (properties & BLE_GATT_CHR_F_NOTIFY) ||
+          (properties & BLE_GATT_CHR_F_INDICATE))) {
+      INVALID_ARGUMENT;
+    }
   }
 
   if (permissions & 0x2) { // WRITE
-    if (!(properties & (BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP))) INVALID_ARGUMENT;
+    if (!(properties & (BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP)))  {
+      INVALID_ARGUMENT;
+    }
   }
 
   if (permissions & 0x4) {
-    if (!(properties & BLE_GATT_CHR_F_READ)) INVALID_ARGUMENT;
+    if (!((properties & BLE_GATT_CHR_F_READ) ||
+          (properties & BLE_GATT_CHR_F_NOTIFY) ||
+          (properties & BLE_GATT_CHR_F_INDICATE))) {
+      INVALID_ARGUMENT;
+    }
     flags |= BLE_GATT_CHR_F_READ_ENC;  // _ENC = Encrypted.
   }
 
   if (permissions & 0x8) {
-    if (!(properties & (BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP))) INVALID_ARGUMENT;
+    if (!(properties & (BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP))) {
+      INVALID_ARGUMENT;
+    }
     flags |= BLE_GATT_CHR_F_WRITE_ENC;  // _ENC = Encrypted.
   }
 

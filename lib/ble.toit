@@ -441,6 +441,23 @@ class LocalService extends Resource_ implements Attribute:
       --value/ByteArray?=null
       --read_timeout_ms/int=2500:
     if deployed_: throw "Service is already deployed"
+    read_permission_bits := CHARACTERISTIC_PERMISSION_READ
+        | CHARACTERISTIC_PERMISSION_READ_ENCRYPTED
+    read_properties_bits := CHARACTERISTIC_PROPERTY_READ
+        | CHARACTERISTIC_PROPERTY_NOTIFY
+        | CHARACTERISTIC_PROPERTY_INDICATE
+    write_permission_bits := CHARACTERISTIC_PERMISSION_WRITE
+        | CHARACTERISTIC_PERMISSION_WRITE_ENCRYPTED
+    write_properties_bits := CHARACTERISTIC_PROPERTY_WRITE
+        | CHARACTERISTIC_PROPERTY_WRITE_WITHOUT_RESPONSE
+
+    if permissions & read_permission_bits  != 0 and
+        properties & read_properties_bits == 0:
+      throw "Read permission requires read property (READ, NOTIFY or INDICATE)"
+    if permissions & write_permission_bits != 0 and
+        properties & write_properties_bits == 0:
+      throw "Write permission requires write property (WRITE or WRITE_WITHOUT_RESPONSE)"
+
     return LocalCharacteristic this uuid properties permissions value read_timeout_ms
 
   /**
@@ -724,14 +741,14 @@ class AdapterConfig:
   Whether support for bonding is enabled.
   */
   bonding/bool
-  
+
   /**
   Whether support for secure connections is enabled.
   */
   secure_connections/bool
-  
+
   constructor
-      --.bonding/bool=false 
+      --.bonding/bool=false
       --.secure_connections/bool=false:
 
 
