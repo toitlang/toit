@@ -61,7 +61,7 @@ void TypeDatabase::check_top(uint8* bcp, Object* value) const {
   Smi* class_id = is_smi(value)
       ? program_->smi_class_id()
       : HeapObject::cast(value)->class_id();
-  if (type.contains(Smi::value(class_id)) return;
+  if (type.contains(Smi::value(class_id))) return;
   FATAL("didn't expect %d at %d", Smi::value(class_id), position);
 }
 

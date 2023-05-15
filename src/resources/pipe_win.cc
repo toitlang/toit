@@ -380,7 +380,7 @@ PRIMITIVE(read) {
 
 HANDLE handle_from_object(Object* object, DWORD std_handle) {
   if (is_smi(object)) {
-    int fd = static_cast<int>(Smi::cast(object)->value());
+    int fd = static_cast<int>(Smi::value(object));
     if (fd == -1) return GetStdHandle(std_handle);
     return reinterpret_cast<HANDLE>(fd);
   } else if (is_byte_array(object)) {
@@ -393,7 +393,7 @@ HANDLE handle_from_object(Object* object, DWORD std_handle) {
 }
 
 bool is_inherited(Object *object) {
-  return is_smi(object) && static_cast<int>(Smi::cast(object)->value()) == -1;
+  return is_smi(object) && static_cast<int>(Smi::value(object)) == -1;
 }
 const int MAX_COMMAND_LINE_LENGTH = 32768;
 
