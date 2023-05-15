@@ -61,8 +61,8 @@ void TypeDatabase::check_top(uint8* bcp, Object* value) const {
   Smi* class_id = is_smi(value)
       ? program_->smi_class_id()
       : HeapObject::cast(value)->class_id();
-  if (type.contains(class_id->value())) return;
-  FATAL("didn't expect %d at %d", class_id->value(), position);
+  if (type.contains(Smi::value(class_id)) return;
+  FATAL("didn't expect %d at %d", Smi::value(class_id), position);
 }
 
 void TypeDatabase::check_return(uint8* bcp, Object* value) const {
@@ -91,8 +91,8 @@ void TypeDatabase::check_return(uint8* bcp, Object* value) const {
   Smi* class_id = is_smi(value)
       ? program_->smi_class_id()
       : HeapObject::cast(value)->class_id();
-  if (type.contains(class_id->value())) return;
-  FATAL("didn't expect %d at %d", class_id->value(), position);
+  if (type.contains(Smi::value(class_id))) return;
+  FATAL("didn't expect %d at %d", Smi::value(class_id), position);
 }
 
 void TypeDatabase::check_method_entry(Method method, Object** sp) const {
@@ -115,8 +115,8 @@ void TypeDatabase::check_method_entry(Method method, Object** sp) const {
     Smi* class_id = is_smi(argument)
         ? program_->smi_class_id()
         : HeapObject::cast(argument)->class_id();
-    if (type.contains(class_id->value())) continue;
-    FATAL("method has wrong argument type %d @ %d: %d", class_id->value(), i, position);
+    if (type.contains(Smi::value(class_id))) continue;
+    FATAL("method has wrong argument type %d @ %d: %d", Smi::value(class_id), i, position);
   }
 }
 

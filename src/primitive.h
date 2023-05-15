@@ -735,7 +735,7 @@ namespace toit {
     if (is_large_integer(_raw_##name)) OUT_OF_RANGE;    \
     else WRONG_TYPE;                                    \
   }                                                     \
-  word _word_##name = Smi::cast(_raw_##name)->value();  \
+  word _word_##name = Smi::value(_raw_##name);          \
   int name = _word_##name;                              \
   if (name != _word_##name) OUT_OF_RANGE;               \
 
@@ -745,7 +745,7 @@ namespace toit {
     if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                      \
     else WRONG_TYPE;                                                      \
   }                                                                       \
-  word _value_##name = Smi::cast(_raw_##name)->value();                   \
+  word _value_##name = Smi::value(_raw_##name);                           \
   if (INT8_MIN > _value_##name || _value_##name > INT8_MAX) OUT_OF_RANGE; \
   int8 name = (int8) _value_##name;
 
@@ -755,7 +755,7 @@ namespace toit {
     if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                  \
     else WRONG_TYPE;                                                  \
   }                                                                   \
-  word _value_##name = Smi::cast(_raw_##name)->value();               \
+  word _value_##name = Smi::value(_raw_##name);                       \
   if (0 > _value_##name || _value_##name > UINT8_MAX) OUT_OF_RANGE;   \
   uint8 name = (uint8) _value_##name;
 
@@ -765,7 +765,7 @@ namespace toit {
     if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                         \
     else WRONG_TYPE;                                                         \
   }                                                                          \
-  word _value_##name = Smi::cast(_raw_##name)->value();                      \
+  word _value_##name = Smi::value(_raw_##name);                              \
   if (INT16_MIN > _value_##name || _value_##name > INT16_MAX) OUT_OF_RANGE;  \
   int16 name = (int16) _value_##name;
 
@@ -775,7 +775,7 @@ namespace toit {
     if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                  \
     else WRONG_TYPE;                                                  \
   }                                                                   \
-  word _value_##name = Smi::cast(_raw_##name)->value();               \
+  word _value_##name = Smi::value(_raw_##name);                       \
   if (0 > _value_##name || _value_##name > UINT16_MAX) OUT_OF_RANGE;  \
   uint16 name = (uint16) _value_##name;
 
@@ -783,7 +783,7 @@ namespace toit {
   Object* _raw_##name = __args[-(N)];                                        \
   int64 _value_##name;                                                       \
   if (is_smi(_raw_##name)) {                                                 \
-    _value_##name = Smi::cast(_raw_##name)->value();                         \
+    _value_##name = Smi::value(_raw_##name);                                 \
   } else if (is_large_integer(_raw_##name))   {                              \
     _value_##name = LargeInteger::cast(_raw_##name)->value();                \
   } else {                                                                   \
@@ -796,7 +796,7 @@ namespace toit {
   Object* _raw_##name = __args[-(N)];                                        \
   int64 _value_##name;                                                       \
   if (is_smi(_raw_##name)) {                                                 \
-    _value_##name = Smi::cast(_raw_##name)->value();                         \
+    _value_##name = Smi::value(_raw_##name);                                 \
   } else if (is_large_integer(_raw_##name)) {                                \
     _value_##name = LargeInteger::cast(_raw_##name)->value();                \
   } else {                                                                   \
@@ -809,7 +809,7 @@ namespace toit {
   int64 destination;                                    \
   do {                                                  \
     if (is_smi(raw)) {                                  \
-      destination = Smi::cast(raw)->value();            \
+      destination = Smi::value(raw);                    \
     } else if (is_large_integer(raw)) {                 \
       destination = LargeInteger::cast(raw)->value();   \
     } else {                                            \
@@ -825,13 +825,13 @@ namespace toit {
 #define _A_T_word(N, name)                \
   Object* _raw_##name = __args[-(N)];     \
   if (!is_smi(_raw_##name)) WRONG_TYPE;   \
-  word name = Smi::cast(_raw_##name)->value();
+  word name = Smi::value(_raw_##name);
 
 #define _A_T_uword(N, name)                           \
   Object* _raw_##name = __args[-(N)];                 \
   uword name;                                         \
   if (is_smi(_raw_##name)) {                          \
-    name = Smi::cast(_raw_##name)->value();           \
+    name = Smi::value(_raw_##name);                   \
   } else if (is_large_integer(_raw_##name)) {         \
     name = LargeInteger::cast(_raw_##name)->value();  \
   } else WRONG_TYPE;
@@ -845,7 +845,7 @@ namespace toit {
   Object* _raw_##name = __args[-(N)];                          \
   double name;                                                 \
   if (is_smi(_raw_##name)) {                                   \
-    name = (double) Smi::cast(_raw_##name)->value();           \
+    name = (double) Smi::value(_raw_##name);                   \
   } else if (is_large_integer(_raw_##name)) {                  \
     name = (double) LargeInteger::cast(_raw_##name)->value();  \
   } else if (is_double(_raw_##name)) {                         \

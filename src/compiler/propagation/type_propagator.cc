@@ -77,7 +77,7 @@ void TypePropagator::ensure_entry_main() {
   if (has_entry_main_) return;
   TypeScope scope(1, words_per_type());
   TypeStack* stack = scope.top();
-  stack->push_instance(program()->task_class_id()->value());
+  stack->push_instance(Smi::value(program()->task_class_id()));
   Method target = program()->entry_main();
   call_static(null, &scope, null, target);
   has_entry_main_ = true;
@@ -87,7 +87,7 @@ void TypePropagator::ensure_entry_spawn() {
   if (has_entry_spawn_) return;
   TypeScope scope(1, words_per_type());
   TypeStack* stack = scope.top();
-  stack->push_instance(program()->task_class_id()->value());
+  stack->push_instance(Smi::value(program()->task_class_id()));
   Method target = program()->entry_spawn();
   call_static(null, &scope, null, target);
   has_entry_spawn_ = true;
@@ -170,7 +170,7 @@ void TypePropagator::ensure_run_global_initializer() {
   TypeScope scope(2, words_per_type());
   TypeStack* stack = scope.top();
   // Seed the type of LazyInitializer_.id_or_tasks_ field.
-  int initializer_class_id = program()->lazy_initializer_class_id()->value();
+  int initializer_class_id = Smi::value(program()->lazy_initializer_class_id());
   TypeVariable* id_field = field(initializer_class_id, INITIALIZER_ID_INDEX);
   stack->push_smi(program());
   id_field->merge(this, stack->local(0));
@@ -210,33 +210,33 @@ void TypePropagator::propagate(TypeDatabase* types) {
     } else {
       stack.push_null(program());
     }
-    field(program()->task_class_id()->value(), i)->merge(this, stack.local(0));
+    field(Smi::value(program()->task_class_id()), i)->merge(this, stack.local(0));
     stack.pop();
   }
 
   // Initialize Exception_.value
   ASSERT(program()->instance_fields_for(program()->exception_class_id()) == 2);
   stack.push_any(program());
-  field(program()->exception_class_id()->value(), 0)->merge(this, stack.local(0));
+  field(Smi::value(program()->exception_class_id()), 0)->merge(this, stack.local(0));
   stack.pop();
 
   // Initialize Exception_.trace
   stack.push_byte_array(program(), true);
-  field(program()->task_class_id()->value(), 1)->merge(this, stack.local(0));
+  field(Smi::value(program()->task_class_id()), 1)->merge(this, stack.local(0));
   stack.pop();
 
   // Initialize Map fields. We allocate the map instances from within
   // the VM when decoding messages.
   stack.push_smi(program());
-  field(program()->map_class_id()->value(), Instance::MAP_SIZE_INDEX)->merge(this, stack.local(0));
-  field(program()->map_class_id()->value(), Instance::MAP_SPACES_LEFT_INDEX)->merge(this, stack.local(0));
+  field(Smi::value(program()->map_class_id()), Instance::MAP_SIZE_INDEX)->merge(this, stack.local(0));
+  field(Smi::value(program()->map_class_id()), Instance::MAP_SPACES_LEFT_INDEX)->merge(this, stack.local(0));
   stack.pop();
   stack.push_null(program());
-  field(program()->map_class_id()->value(), Instance::MAP_INDEX_INDEX)->merge(this, stack.local(0));
-  field(program()->map_class_id()->value(), Instance::MAP_BACKING_INDEX)->merge(this, stack.local(0));
+  field(Smi::value(program()->map_class_id()), Instance::MAP_INDEX_INDEX)->merge(this, stack.local(0));
+  field(Smi::value(program()->map_class_id()), Instance::MAP_BACKING_INDEX)->merge(this, stack.local(0));
   stack.pop();
   stack.push_array(program());
-  field(program()->map_class_id()->value(), Instance::MAP_BACKING_INDEX)->merge(this, stack.local(0));
+  field(Smi::value(program()->map_class_id()), Instance::MAP_BACKING_INDEX)->merge(this, stack.local(0));
   stack.pop();
 
   ensure_entry_main();
@@ -910,7 +910,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     scope->throw_maybe();
     // Analyze a call to the initializer method.
     Instance* initializer = Instance::cast(program->global_variables.at(index));
-    int method_id = Smi::cast(initializer->at(INITIALIZER_ID_INDEX))->value();
+    int method_id = Smi::value(initializer->at(INITIALIZER_ID_INDEX));
     Method target(program->bytecodes, method_id);
     propagator->call_static(method, scope, null, target);
     // Merge the initializer result into the global variable.
@@ -1343,7 +1343,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(LINK);
-    stack->push_instance(program->exception_class_id()->value());
+    stack->push_instance(Smi::value(program->exception_class_id()));
     stack->push_empty();       // Unwind target.
     stack->push_smi(program);  // Unwind reason. Looked at by finally blocks with parameters.
     stack->push_smi(program);  // Unwind chain next.
@@ -1462,7 +1462,7 @@ void MethodTemplate::propagate() {
   // flows into the method body. We have to simulate that.
   Program* program = propagator_->program();
   if (method_.selector_offset() == program->invoke_bytecode_offset(INVOKE_EQ)) {
-    ConcreteType null_type = ConcreteType(program->null_class_id()->value());
+    ConcreteType null_type = ConcreteType(Smi::value(program->null_class_id()));
     bool receiver_is_null = argument(0).matches(null_type);
     bool argument_is_null = argument(1).matches(null_type);
     if (receiver_is_null || argument_is_null) {
@@ -1485,7 +1485,7 @@ void MethodTemplate::propagate() {
   uint8* entry = method_.entry();
   if (entry == program->entry_task().entry()) {
     entry = method_.bcp_from_bci(LOAD_NULL_LENGTH);
-    stack->push_instance(program->task_class_id()->value());
+    stack->push_instance(Smi::value(program->task_class_id()));
   }
 
   std::vector<Worklist*> worklists;
