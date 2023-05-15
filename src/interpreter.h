@@ -170,7 +170,7 @@ class Interpreter {
   }
 
   Object** from_block(Smi* block) const {
-    return base_ - (block->value() - BLOCK_SALT);
+    return base_ - (Smi::value(block) - BLOCK_SALT);
   }
 
   Smi* to_block(Object** pointer) const {

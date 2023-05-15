@@ -59,8 +59,8 @@ bool Object::byte_content(Program* program, const uint8** content, int* length, 
       // TODO(florian): we could eventually accept larger integers here.
       if (!is_smi(from)) return false;
       if (!is_smi(to)) return false;
-      int from_value = Smi::cast(from)->value();
-      int to_value = Smi::cast(to)->value();
+      int from_value = Smi::value(from);
+      int to_value = Smi::value(to);
       bool inner_success = HeapObject::cast(wrapped)->byte_content(program, content, length, strings_only);
       if (!inner_success) return false;
       if (0 <= from_value && from_value <= to_value && to_value <= *length) {
@@ -171,11 +171,11 @@ Object* FreeListRegion::single_free_word_header() {
 bool HeapObject::is_a_free_object() {
   int tag = class_tag();
   if (tag == FREE_LIST_REGION_TAG) {
-    ASSERT(class_id()->value() == FREE_LIST_REGION_CLASS_ID);
+    ASSERT(Smi::value(class_id()) == FREE_LIST_REGION_CLASS_ID);
     return true;
   }
   if (tag == SINGLE_FREE_WORD_TAG) {
-    ASSERT(class_id()->value() == SINGLE_FREE_WORD_CLASS_ID);
+    ASSERT(Smi::value(class_id()) == SINGLE_FREE_WORD_CLASS_ID);
     return true;
   }
   return false;

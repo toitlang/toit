@@ -58,7 +58,7 @@ PRIMITIVE(object_histogram) {
 
   // Iterate through the object heap to collect the histogram.
   process->object_heap()->do_objects([&](HeapObject* object) -> void {
-    int class_index = Smi::cast(object->class_id())->value();
+    int class_index = Smi::value(object->class_id());
     if (class_index < 0) return;  // Free-list entries etc.
     int size = object->size(program);
     if (is_byte_array(object) && ByteArray::cast(object)->has_external_address()) {

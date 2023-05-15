@@ -249,7 +249,7 @@ void print_method_console(int method_id, Program* program, int bytecode_size) {
 }
 
 void print_method_console(Smi* method_id, Program* program, int bytecode_size) {
-  print_method_console(method_id->value(), program, bytecode_size);
+  print_method_console(Smi::value(method_id), program, bytecode_size);
 }
 
 void print_bytecode_console(uint8* bcp) {
@@ -282,7 +282,7 @@ class ShortPrintVisitor : public PrintVisitor {
 
  protected:
   void visit_smi(Smi* smi) {
-    printer_->printf("%ld", smi->value());
+    printer_->printf("%ld", Smi::value(smi));
   }
 
   void visit_string(String* string) {
@@ -314,13 +314,13 @@ class ShortPrintVisitor : public PrintVisitor {
 
   void visit_instance(Instance* instance) {
     if (!toplevel_) printer_->printf("`");
-    printer_->printf("instance<%ld>", instance->class_id()->value());
+    printer_->printf("instance<%ld>", Smi::value(instance->class_id()));
     if (!toplevel_) printer_->printf("`");
   }
 
   void visit_oddball(HeapObject* oddball) {
     if (printer_->program() == null) {
-      printer_->printf("true/false/null(%ld)", oddball->class_id()->value());
+      printer_->printf("true/false/null(%ld)", Smi::value(oddball->class_id()));
     }
     if (oddball == printer_->program()->true_object()) {
       printer_->printf("true");
@@ -360,7 +360,7 @@ class LongPrintVisitor : public PrintVisitor {
   }
 
   void visit_smi(Smi* smi) {
-    printer_->printf("%ld", smi->value());
+    printer_->printf("%ld", Smi::value(smi));
   }
 
   void visit_string(String* string) {
@@ -398,7 +398,7 @@ class LongPrintVisitor : public PrintVisitor {
 
   void visit_instance(Instance* instance) {
     print_heap_address(instance);
-    printer_->printf("Instance of class %ld\n", instance->class_id()->value());
+    printer_->printf("Instance of class %ld\n", Smi::value(instance->class_id()));
     int fields = Instance::fields_from_size(printer_->program()->instance_size_for(instance));
     for (int index = 0; index < fields; index++) {
       printer_->printf(" - %d: ", index);
@@ -410,7 +410,7 @@ class LongPrintVisitor : public PrintVisitor {
   void visit_oddball(HeapObject* oddball) {
     print_heap_address(oddball);
     if (printer_->program() == null) {
-      printer_->printf("true/false/null(%ld)", oddball->class_id()->value());
+      printer_->printf("true/false/null(%ld)", Smi::value(oddball->class_id()));
     }
     if (oddball == printer_->program()->true_object()) {
       printer_->printf("true");

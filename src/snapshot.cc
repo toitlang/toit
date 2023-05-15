@@ -758,7 +758,7 @@ Object* SnapshotReader::read_object() {
   HeapObject* result = allocate_object(heap_tag, optional_length);
   if (in_table) table_[index_++] = result;
   result->_set_header(Smi::cast(read_object()));
-  ASSERT((0 <= result->class_id()->value() && result->class_id()->value() < class_bits_length_));
+  ASSERT((0 <= Smi::value(result->class_id()) && Smi::value(result->class_id()) < class_bits_length_));
   ASSERT(ARRAY_TAG <= result->class_tag() && result->class_tag() <= LARGE_INTEGER_TAG);
   switch (heap_tag) {
     case TypeTag::ARRAY_TAG:
@@ -941,7 +941,7 @@ SnapshotGenerator::~SnapshotGenerator() {
 }
 
 int SnapshotGenerator::large_integer_class_id() {
-  return program_->large_integer_class_id()->value();
+  return Smi::value(program_->large_integer_class_id());
 }
 
 void SnapshotGenerator::generate(Program* program) {
@@ -1147,7 +1147,7 @@ void BaseSnapshotWriter::write_reference(int index) {
 }
 
 void BaseSnapshotWriter::write_object(Object* object) {
-  if (is_smi(object)) write_integer(Smi::cast(object)->value());
+  if (is_smi(object)) write_integer(Smi::value(object));
   else if (is_large_integer(object)) write_integer(LargeInteger::cast(object)->value());
   else write_heap_object(HeapObject::cast(object));
 }

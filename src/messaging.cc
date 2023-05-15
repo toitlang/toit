@@ -159,7 +159,7 @@ bool MessageEncoder::encode_any(Object* object) {
   }
 
   if (is_smi(object)) {
-    word value = Smi::cast(object)->value();
+    word value = Smi::value(object);
     if (value >= 0) {
       write_uint8(TAG_POSITIVE_SMI);
       write_cardinal(value);
@@ -177,14 +177,14 @@ bool MessageEncoder::encode_any(Object* object) {
     if (class_id == program->list_class_id()) {
       Object* size = instance->at(Instance::LIST_SIZE_INDEX);
       if (!is_smi(size)) return false;
-      return encode_list(instance, 0, Smi::cast(size)->value());
+      return encode_list(instance, 0, Smi::value(size));
     } else if (class_id == program->list_slice_class_id()) {
       Object* list = instance->at(Instance::LIST_SLICE_LIST_INDEX);
       Object* from_object = instance->at(Instance::LIST_SLICE_FROM_INDEX);
       Object* to_object = instance->at(Instance::LIST_SLICE_TO_INDEX);
       if (!is_smi(from_object) || !is_smi(to_object)) return false;
-      int from = Smi::cast(from_object)->value();
-      int to = Smi::cast(to_object)->value();
+      int from = Smi::value(from_object);
+      int to = Smi::value(to_object);
       if (is_array(list)) return encode_array(Array::cast(list), from, to);
       return encode_list(Instance::cast(list), from, to);
     } else if (class_id == program->map_class_id()) {
@@ -196,7 +196,7 @@ bool MessageEncoder::encode_any(Object* object) {
     } else if (class_id == program->string_slice_class_id()) {
       return encode_copy(object, TAG_STRING);
     } else {
-      problematic_class_id_ = class_id->value();
+      problematic_class_id_ = Smi::value(class_id);
     }
   } else if (object == program->null_object()) {
     write_uint8(TAG_NULL);
@@ -260,7 +260,7 @@ bool MessageEncoder::encode_map(Instance* instance) {
 
   object = instance->at(Instance::MAP_SIZE_INDEX);
   if (!is_smi(object)) return false;
-  word size = Smi::cast(object)->value();
+  word size = Smi::value(object);
 
   write_cardinal(size);
   if (size == 0) return true;  // Do this before looking at the backing, which may be null.
@@ -435,7 +435,7 @@ bool MessageDecoder::decode_process_message(const uint8* buffer, int* value) {
   // TODO(kasper): Make this more robust. We don't know the content.
   Object* object = decoder.decode();
   if (is_smi(object)) {
-    *value = Smi::cast(object)->value();
+    *value = Smi::value(object);
     return true;
   }
   return false;

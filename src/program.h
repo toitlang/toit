@@ -146,7 +146,7 @@ class Program : public FlashAllocation {
   static const int INSTANCE_SIZE_MASK = (1 << INSTANCE_SIZE_BIT_SIZE) - 1;
 
   inline TypeTag class_tag_for(Smi* class_id) {
-    return class_tag_from_class_bits(class_bits[class_id->value()]);
+    return class_tag_from_class_bits(class_bits[Smi::value(class_id)]);
   }
 
   static inline TypeTag class_tag_from_class_bits(int class_bits) {
@@ -158,7 +158,7 @@ class Program : public FlashAllocation {
   }
 
   inline int instance_size_for(Smi* class_id) {
-    word value = class_id->value();
+    word value = Smi::value(class_id);
     if (value < 0) {
       if (value == SINGLE_FREE_WORD_CLASS_ID) return sizeof(word);
       return 0;  // Variable sized object - free-list region or promoted track.

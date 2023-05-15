@@ -291,7 +291,7 @@ class Freer {
 // -2 is returned otherwise.
 static int get_fd(Object* obj) {
   if (is_smi(obj)) {
-    return Smi::cast(obj)->value();
+    return Smi::value(obj);
   } else if (is_byte_array(obj)) {
     ByteArray* ba = ByteArray::cast(obj);
     if (!ba->has_external_address()) return -2;

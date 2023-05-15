@@ -44,7 +44,7 @@ class EncodeVisitor : public Visitor {
   const int MAX_NOF_ARRAY_ELEMENTS = 10;
 
   void visit_smi(Smi* smi) {
-    encoder_->write_int(smi->value());
+    encoder_->write_int(Smi::value(smi));
   }
   void visit_string(String* string) {
     encoder_->write_byte('S');
@@ -121,10 +121,10 @@ class EncodeVisitor : public Visitor {
       visit_list(
           instance,
           Array::cast(instance->at(Instance::LIST_ARRAY_INDEX)),
-          Smi::cast(instance->at(Instance::LIST_SIZE_INDEX))->value());
+          Smi::value(instance->at(Instance::LIST_SIZE_INDEX)));
     } else {
       encoder_->write_header(1, 'I');
-      encoder_->write_int(class_id->value());
+      encoder_->write_int(Smi::value(class_id));
     }
   }
 

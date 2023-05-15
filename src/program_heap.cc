@@ -57,7 +57,7 @@ Instance* ProgramHeap::allocate_instance(Smi* class_id) {
 }
 
 Instance* ProgramHeap::allocate_instance(TypeTag class_tag, Smi* class_id, Smi* instance_size) {
-  Instance* result = unvoid_cast<Instance*>(_allocate_raw(instance_size->value()));
+  Instance* result = unvoid_cast<Instance*>(_allocate_raw(Smi::value(instance_size)));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
   result->_set_header(class_id, class_tag);
