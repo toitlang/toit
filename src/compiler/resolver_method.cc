@@ -3534,9 +3534,7 @@ ir::Expression* MethodResolver::_potentially_store_field(ast::Node* node,
     }
 
     auto ir_this = _this_ref(node->range(), true);  // Don't care for the resolution-mode.
-    if (field->type().is_class() &&
-        (resolution_mode_ == CONSTRUCTOR_INSTANCE ||
-         resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE)) {
+    if (field->type().is_class()) {
       ir_value = _new ir::Typecheck(ir::Typecheck::FIELD_AS_CHECK,
                                     ir_value,
                                     field->type(),
