@@ -1977,7 +1977,6 @@ PRIMITIVE(add_characteristic) {
        int, permissions, Object, value, int, read_timeout_ms)
 
   if (!service_resource->peripheral_manager()) {
-    printf("service_resource->peripheral_manager() is null\n");
     INVALID_ARGUMENT;
   }
 
@@ -1985,36 +1984,35 @@ PRIMITIVE(add_characteristic) {
   if (proxy == null) ALLOCATION_FAILED;
 
   if (service_resource->deployed()) {
-    printf("service_resource->deployed() is true\n");
     INVALID_ARGUMENT;
   }
 
   uint32 flags = properties & 0x7F;
-  if (permissions & 0x1) {  // READ
-    if (!((properties & BLE_GATT_CHR_F_READ) ||
-          (properties & BLE_GATT_CHR_F_NOTIFY) ||
-          (properties & BLE_GATT_CHR_F_INDICATE))) {
+  if (permissions & 0x1) {  // READ.
+    uint32 mask = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_INDICATE;
+    if (properties & mask == 0) {
       INVALID_ARGUMENT;
     }
   }
 
-  if (permissions & 0x2) { // WRITE
-    if (!(properties & (BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP)))  {
+  if (permissions & 0x2) { // WRITE.
+    uint32 mask = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP;
+    if (properties & mask == 0) {
       INVALID_ARGUMENT;
     }
   }
 
-  if (permissions & 0x4) {
-    if (!((properties & BLE_GATT_CHR_F_READ) ||
-          (properties & BLE_GATT_CHR_F_NOTIFY) ||
-          (properties & BLE_GATT_CHR_F_INDICATE))) {
+  if (permissions & 0x4) { // READ_ENCRYPTED.
+    uint32 mask = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_INDICATE;
+    if (properties & mask == 0) {
       INVALID_ARGUMENT;
     }
     flags |= BLE_GATT_CHR_F_READ_ENC;  // _ENC = Encrypted.
   }
 
-  if (permissions & 0x8) {
-    if (!(properties & (BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP))) {
+  if (permissions & 0x8) { // WRITE_ENCRYPTED.
+    uint32 mask = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP;
+    if (properties & mask == 0) {
       INVALID_ARGUMENT;
     }
     flags |= BLE_GATT_CHR_F_WRITE_ENC;  // _ENC = Encrypted.

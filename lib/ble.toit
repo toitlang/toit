@@ -451,7 +451,7 @@ class LocalService extends Resource_ implements Attribute:
     write_properties_bits := CHARACTERISTIC_PROPERTY_WRITE
         | CHARACTERISTIC_PROPERTY_WRITE_WITHOUT_RESPONSE
 
-    if permissions & read_permission_bits  != 0 and
+    if permissions & read_permission_bits != 0 and
         properties & read_properties_bits == 0:
       throw "Read permission requires read property (READ, NOTIFY or INDICATE)"
     if permissions & write_permission_bits != 0 and
@@ -488,7 +488,7 @@ class LocalService extends Resource_ implements Attribute:
   add_notification_characteristic uuid/BleUuid -> LocalCharacteristic:
     return add_characteristic
         uuid
-        --properties=CHARACTERISTIC_PROPERTY_NOTIFY
+        --properties=CHARACTERISTIC_PROPERTY_NOTIFY | CHARACTERISTIC_PROPERTY_READ
         --permissions=CHARACTERISTIC_PERMISSION_READ
 
   /**
@@ -497,7 +497,7 @@ class LocalService extends Resource_ implements Attribute:
   add_indication_characteristic  uuid/BleUuid  -> LocalCharacteristic:
     return add_characteristic
         uuid
-        --properties=CHARACTERISTIC_PROPERTY_INDICATE
+        --properties=CHARACTERISTIC_PROPERTY_INDICATE | CHARACTERISTIC_PROPERTY_READ
         --permissions=CHARACTERISTIC_PERMISSION_READ
 
   /**
