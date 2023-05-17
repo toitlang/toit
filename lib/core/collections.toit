@@ -2576,6 +2576,15 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
   rebuild_ old_size --allow_shrink/bool:
     rebuild_ old_size STEP_ --allow_shrink=allow_shrink --rebuild_backing=false
 
+  /**
+  Returns a list of the elements of this set.
+  */
+  to_list -> List:
+    result := List size
+    index := 0
+    do:
+      result[index++] = it
+    return result
 
 /**
 A set that uses object identity instead of the == operator to test equality
