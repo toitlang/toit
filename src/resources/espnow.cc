@@ -173,8 +173,55 @@ static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int dat
   }
 }
 
+static wifi_phy_rate_t map_toit_rate_to_esp_idf_rate(int toit_rate) {
+  static_assert(WIFI_PHY_RATE_1M_L == 0x00, "WIFI_PHY_RATE_1M_L must be 0x00");
+  static_assert(WIFI_PHY_RATE_2M_L == 0x01, "WIFI_PHY_RATE_2M_L must be 0x01");
+  static_assert(WIFI_PHY_RATE_5M_L == 0x02, "WIFI_PHY_RATE_5M_L must be 0x02");
+  static_assert(WIFI_PHY_RATE_11M_L == 0x03, "WIFI_PHY_RATE_11M_L must be 0x03");
+  static_assert(WIFI_PHY_RATE_2M_S == 0x05, "WIFI_PHY_RATE_2M_S must be 0x05");
+  static_assert(WIFI_PHY_RATE_5M_S == 0x06, "WIFI_PHY_RATE_5M_S must be 0x06");
+  static_assert(WIFI_PHY_RATE_11M_S == 0x07, "WIFI_PHY_RATE_11M_S must be 0x07");
+  static_assert(WIFI_PHY_RATE_48M == 0x08, "WIFI_PHY_RATE_48M must be 0x08");
+  static_assert(WIFI_PHY_RATE_24M == 0x09, "WIFI_PHY_RATE_24M must be 0x09");
+  static_assert(WIFI_PHY_RATE_12M == 0x0A, "WIFI_PHY_RATE_12M must be 0x0A");
+  static_assert(WIFI_PHY_RATE_6M == 0x0B, "WIFI_PHY_RATE_6M must be 0x0B");
+  static_assert(WIFI_PHY_RATE_54M == 0x0C, "WIFI_PHY_RATE_54M must be 0x0C");
+  static_assert(WIFI_PHY_RATE_36M == 0x0D, "WIFI_PHY_RATE_36M must be 0x0D");
+  static_assert(WIFI_PHY_RATE_18M == 0x0E, "WIFI_PHY_RATE_18M must be 0x0E");
+  static_assert(WIFI_PHY_RATE_9M == 0x0F, "WIFI_PHY_RATE_9M must be 0x0F");
+  static_assert(WIFI_PHY_RATE_MCS0_LGI == 0x10, "WIFI_PHY_RATE_MCS0_LGI must be 0x10");
+  static_assert(WIFI_PHY_RATE_MCS1_LGI == 0x11, "WIFI_PHY_RATE_MCS1_LGI must be 0x11");
+  static_assert(WIFI_PHY_RATE_MCS2_LGI == 0x12, "WIFI_PHY_RATE_MCS2_LGI must be 0x12");
+  static_assert(WIFI_PHY_RATE_MCS3_LGI == 0x13, "WIFI_PHY_RATE_MCS3_LGI must be 0x13");
+  static_assert(WIFI_PHY_RATE_MCS4_LGI == 0x14, "WIFI_PHY_RATE_MCS4_LGI must be 0x14");
+  static_assert(WIFI_PHY_RATE_MCS5_LGI == 0x15, "WIFI_PHY_RATE_MCS5_LGI must be 0x15");
+  static_assert(WIFI_PHY_RATE_MCS6_LGI == 0x16, "WIFI_PHY_RATE_MCS6_LGI must be 0x16");
+  static_assert(WIFI_PHY_RATE_MCS7_LGI == 0x17, "WIFI_PHY_RATE_MCS7_LGI must be 0x17");
+  static_assert(WIFI_PHY_RATE_MCS0_SGI == 0x18, "WIFI_PHY_RATE_MCS0_SGI must be 0x18");
+  static_assert(WIFI_PHY_RATE_MCS1_SGI == 0x19, "WIFI_PHY_RATE_MCS1_SGI must be 0x19");
+  static_assert(WIFI_PHY_RATE_MCS2_SGI == 0x1A, "WIFI_PHY_RATE_MCS2_SGI must be 0x1A");
+  static_assert(WIFI_PHY_RATE_MCS3_SGI == 0x1B, "WIFI_PHY_RATE_MCS3_SGI must be 0x1B");
+  static_assert(WIFI_PHY_RATE_MCS4_SGI == 0x1C, "WIFI_PHY_RATE_MCS4_SGI must be 0x1C");
+  static_assert(WIFI_PHY_RATE_MCS5_SGI == 0x1D, "WIFI_PHY_RATE_MCS5_SGI must be 0x1D");
+  static_assert(WIFI_PHY_RATE_MCS6_SGI == 0x1E, "WIFI_PHY_RATE_MCS6_SGI must be 0x1E");
+  static_assert(WIFI_PHY_RATE_MCS7_SGI == 0x1F, "WIFI_PHY_RATE_MCS7_SGI must be 0x1F");
+  static_assert(WIFI_PHY_RATE_LORA_250K == 0x29, "WIFI_PHY_RATE_LORA_250K must be 0x29");
+  static_assert(WIFI_PHY_RATE_LORA_500K == 0x2A, "WIFI_PHY_RATE_LORA_500K must be 0x2A");
+  if ((0x00 <= toit_rate && toit_rate <= 0x1F) ||
+      (0x29 <= toit_rate && toit_rate <= 0x2A)) {
+    return static_cast<wifi_phy_rate_t>(toit_rate);
+  }
+  return static_cast<wifi_phy_rate_t>(-1);
+}
+
 PRIMITIVE(init) {
-  ARGS(int, mode, Blob, pmk);
+  ARGS(int, mode, Blob, pmk, int, rate);
+
+  wifi_phy_rate_t phy_rate = WIFI_PHY_RATE_1M_L;
+  if (rate != -1) {
+    phy_rate =  map_toit_rate_to_esp_idf_rate(rate);
+    if (phy_rate == -1) INVALID_ARGUMENT;
+  }
 
   if (pmk.length() > 0 && pmk.length() != 16) INVALID_ARGUMENT;
 
@@ -198,7 +245,7 @@ PRIMITIVE(init) {
   esp_err_t err = esp_netif_init();
   if (err != ESP_OK) return Primitive::os_error(err, process);
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-  wifi_mode_t wifi_mode = mode ? WIFI_MODE_AP : WIFI_MODE_STA;
+  wifi_mode_t wifi_mode = mode == 0 ? WIFI_MODE_STA : WIFI_MODE_AP;
 
   err = esp_wifi_init(&cfg);
   if (err != ESP_OK) return Primitive::os_error(err, process);
@@ -207,6 +254,10 @@ PRIMITIVE(init) {
   err = esp_wifi_set_mode(wifi_mode);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   err = esp_wifi_start();
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  wifi_interface_t interface = mode == 0 ? WIFI_IF_STA : WIFI_IF_AP;
+  err = esp_wifi_config_espnow_rate(interface, phy_rate);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   err = esp_now_init();
