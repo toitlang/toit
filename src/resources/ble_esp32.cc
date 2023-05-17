@@ -1990,21 +1990,21 @@ PRIMITIVE(add_characteristic) {
   uint32 flags = properties & 0x7F;
   if (permissions & 0x1) {  // READ.
     uint32 mask = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_INDICATE;
-    if (properties & mask == 0) {
+    if ((properties & mask) == 0) {
       INVALID_ARGUMENT;
     }
   }
 
   if (permissions & 0x2) { // WRITE.
     uint32 mask = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP;
-    if (properties & mask == 0) {
+    if ((properties & mask) == 0) {
       INVALID_ARGUMENT;
     }
   }
 
   if (permissions & 0x4) { // READ_ENCRYPTED.
     uint32 mask = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_INDICATE;
-    if (properties & mask == 0) {
+    if ((properties & mask) == 0) {
       INVALID_ARGUMENT;
     }
     flags |= BLE_GATT_CHR_F_READ_ENC;  // _ENC = Encrypted.
@@ -2012,7 +2012,7 @@ PRIMITIVE(add_characteristic) {
 
   if (permissions & 0x8) { // WRITE_ENCRYPTED.
     uint32 mask = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP;
-    if (properties & mask == 0) {
+    if ((properties & mask) == 0) {
       INVALID_ARGUMENT;
     }
     flags |= BLE_GATT_CHR_F_WRITE_ENC;  // _ENC = Encrypted.
