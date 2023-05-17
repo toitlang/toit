@@ -207,8 +207,8 @@ static wifi_phy_rate_t map_toit_rate_to_esp_idf_rate(int toit_rate) {
   static_assert(WIFI_PHY_RATE_MCS7_SGI == 0x1F, "WIFI_PHY_RATE_MCS7_SGI must be 0x1F");
   static_assert(WIFI_PHY_RATE_LORA_250K == 0x29, "WIFI_PHY_RATE_LORA_250K must be 0x29");
   static_assert(WIFI_PHY_RATE_LORA_500K == 0x2A, "WIFI_PHY_RATE_LORA_500K must be 0x2A");
-  if (0x00 <= toit_rate && toit_rate <= 0x1F ||
-      0x29 <= toit_rate && toit_rate <= 0x2A) {
+  if ((0x00 <= toit_rate && toit_rate <= 0x1F) ||
+      (0x29 <= toit_rate && toit_rate <= 0x2A)) {
     return static_cast<wifi_phy_rate_t>(toit_rate);
   }
   return static_cast<wifi_phy_rate_t>(-1);
