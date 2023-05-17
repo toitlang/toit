@@ -1,6 +1,0 @@
-cellular/src/base/service.toit:71:5: warning: Deprecated 'ServiceProvider.provides'
-    provides NETWORK_SELECTOR
-    ^~~~~~~~
-cellular/src/base/service.toit:76:5: warning: Deprecated 'ServiceProvider.provides'
-    provides CELLULAR_SELECTOR --handler=this --new
-    ^~~~~~~~
