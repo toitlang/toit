@@ -32,24 +32,35 @@ Supports the canonical textual representation, consisting of 16 bytes encoded
   groups, separated by a dash ('-'). The groups should contain respectively
   8, 4, 4, 4, and 12 hexadecimal characters.
 
+Calls $on_error (and returns its result) if $str is not a valid UUID.
+
 # Examples
 ```
 parse "123e4567-e89b-12d3-a456-426614174000"
 ```
 */
-parse str/string -> Uuid:
+parse str/string [--on_error] -> Uuid:
   uuid := ByteArray SIZE
   index := 0
   i := 0
-  thrower := (: throw "INVALID_UUID")
+  error_handler := (: return on_error.call)
   while i < str.size and index < uuid.size:
     if (str.at --raw i) == '-': i++
-    v := hex_char_to_value str[i++] --on_error=thrower
+    if i + 1 >= str.size: return on_error.call
+    v := hex_char_to_value str[i++] --on_error=error_handler
     v <<= 4
-    v |= hex_char_to_value str[i++] --on_error=thrower
+    v |= hex_char_to_value str[i++] --on_error=error_handler
     uuid[index++] = v
-  if i < str.size or index != uuid.size: throw "INVALID_UUID"
+  if i < str.size or index != uuid.size:
+    return on_error.call
   return Uuid uuid
+
+/**
+Variant of $(parse str [--on_error]) that throws an error if $str is not a
+  valid UUID.
+*/
+parse str/string -> Uuid:
+  return parse str --on_error=(: throw "INVALID_UUID")
 
 /**
 Builds a version 5 UUID from the given $namespace and $data.
