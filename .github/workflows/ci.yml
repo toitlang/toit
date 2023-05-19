@@ -760,7 +760,7 @@ jobs:
       - name: Compress SDKs
         run: |
           for os in windows linux macos rpi aarch64; do
-            tar c -zf toit-$os.tar.gz -C $os .
+            tar c -zf toit-$os.tar.gz -C $os toit
           done
 
       - name: Upload vessels
