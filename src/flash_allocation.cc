@@ -44,9 +44,7 @@ uint32 FlashAllocation::Header::compute_checksum(const void* memory) const {
   // is useful if the allocation contains relocated pointers to parts
   // of itself. In that case, those pointers are only correct if the
   // allocation is always access from the same virtual memory address.
-  uint8 bits[sizeof(memory)];
-  memcpy(bits, &memory, sizeof(bits));
-  uint32 initial = Utils::crc32(FORMAT_MARKER, bits, sizeof(bits));
+  uint32 initial = Utils::crc32(FORMAT_MARKER, reinterpret_cast<uint8*>(&memory), sizeof(memory));
   // The rest of the header is also covered. This gives a much
   // stronger header validation check and reduces the risk of
   // accidentally treating garbage in the flash as allocations.

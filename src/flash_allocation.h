@@ -79,6 +79,8 @@ class FlashAllocation {
 
   // Commit an allocation by providing it with the correct header. Returns
   // whether the allocation is valid after the commit.
+  // Includes the virtual memory address of the allocation in the checksum
+  // just in case the flash is mapped at an incompatible address.
   static bool commit(const void* memory, int size, const Header* header);
 
   // Get the flags encoded in the first metadata byte. Only valid for programs.
