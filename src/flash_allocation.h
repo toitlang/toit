@@ -58,7 +58,7 @@ class FlashAllocation {
     bool is_valid(bool embedded) const;
     uint8 type() const { return type_; }
     const uint8* metadata() const { return metadata_; }
-    uint32 compute_checksum() const;
+    uint32 compute_checksum(const void* memory) const;
 
     friend class FlashAllocation;
   };

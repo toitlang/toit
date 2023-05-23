@@ -39,15 +39,14 @@ static void initialize(void* dst, const void* src, size_t size) {
   }
 }
 
-uint32 FlashAllocation::Header::compute_checksum() const {
+uint32 FlashAllocation::Header::compute_checksum(const void* memory) const {
   // The checksum covers the virtual address of the allocation. This
   // is useful if the allocation contains relocated pointers to parts
   // of itself. In that case, those pointers are only correct if the
   // allocation is always access from the same virtual memory address.
-  const void* address = this;
-  uint8 bits[sizeof(address)];
-  memcpy(bits, address, sizeof(bits));
-  uint32 initial = Utils::crc32(FORMAT_MARKER, bits, sizeof(this));
+  uint8 bits[sizeof(memory)];
+  memcpy(bits, &memory, sizeof(bits));
+  uint32 initial = Utils::crc32(FORMAT_MARKER, bits, sizeof(bits));
   // The rest of the header is also covered. This gives a much
   // stronger header validation check and reduces the risk of
   // accidentally treating garbage in the flash as allocations.
@@ -70,7 +69,7 @@ FlashAllocation::Header::Header(const void* memory,
   } else {
     memcpy(uuid_, EmbeddedData::uuid(), sizeof(uuid_));
   }
-  checksum_ = compute_checksum();
+  checksum_ = compute_checksum(memory);
 }
 
 bool FlashAllocation::Header::is_valid(bool embedded) const {
@@ -79,7 +78,7 @@ bool FlashAllocation::Header::is_valid(bool embedded) const {
     // All programs embedded in the binary have a zero checksum.
     if (checksum_ != 0) return false;
   } else {
-    uint32 checksum = compute_checksum();
+    uint32 checksum = compute_checksum(this);
     if (checksum_ != checksum) return false;
     if (type_ == FLASH_ALLOCATION_TYPE_REGION) {
       return memcmp(uuid_, DATA_UUID, UUID_SIZE) == 0;
