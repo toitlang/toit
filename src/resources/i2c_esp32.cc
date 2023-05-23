@@ -17,8 +17,9 @@
 
 #ifdef TOIT_FREERTOS
 
-#include <driver/i2c.h>
 #include <cmath>
+#include <driver/i2c.h>
+#include <esp_memory_utils.h>
 
 #include "../objects_inline.h"
 #include "../process.h"
