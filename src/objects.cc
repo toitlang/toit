@@ -250,7 +250,7 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
   int minimum_space = program->global_max_stack_height() + RESERVED_STACK_FOR_CALLS;
   // Don't shrink the stack unless we can halve the size.  The growing algo
   // grows it by 50%, to try to avoid too much churn.
-  if (Flags::shrink_stacks_a_lot || (cb->shrink_stacks() && top > minimum_space && top > length() >> 1)) {
+  if (top > minimum_space && (Flags::shrink_stacks_a_lot || (cb->shrink_stacks() && top > length() >> 1))) {
     int reduction = top - minimum_space;
     if (Flags::shrink_stacks_a_lot || reduction >= 8) {
       auto destin = _array_address(0);
