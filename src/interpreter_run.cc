@@ -516,13 +516,13 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(POP);
     B_ARG1(index);
-    if (Flags::preemptalot) preempt();
+    if (Flags::preempt_a_lot) preempt();
     ASSERT(index > 0);
     DROP(index);
   OPCODE_END();
 
   OPCODE_BEGIN(POP_1);
-    if (Flags::preemptalot) preempt();
+    if (Flags::preempt_a_lot) preempt();
     DROP1();
   OPCODE_END();
 
@@ -551,7 +551,7 @@ Interpreter::Result Interpreter::run() {
       instance->at_put(i, program->null_object());
     }
     PUSH(result);
-    if (Flags::gcalot) {
+    if (Flags::gc_a_lot) {
       sp = gc(sp, false, 1, false);
       process_->object_heap()->check_install_heap_limit();
     }

@@ -27,14 +27,6 @@
 
 namespace toit {
 
-// We push the exception and two elements for the unwinding implementation
-// on the stack when we handle stack overflows. This is in addition to the
-// extra frame information we store for the call, because those are not
-// reflected in the max-height of the called method. We do not keep track
-// of where in a method we might do a call, so we conservatively assume
-// that it will happen at max-height and reserve space for that.
-static const int RESERVED_STACK_FOR_CALLS = Interpreter::FRAME_SIZE + 3;
-
 Interpreter::Interpreter()
     : process_(null)
     , limit_(null)
