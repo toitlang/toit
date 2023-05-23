@@ -39,14 +39,27 @@ static void initialize(void* dst, const void* src, size_t size) {
   }
 }
 
-FlashAllocation::Header::Header(uint32 offset,
+uint32 FlashAllocation::Header::compute_checksum() const {
+  // The checksum covers the virtual address of the allocation. This
+  // is useful if the allocation contains relocated pointers to parts
+  // of itself. In that case, those pointers are only correct if the
+  // allocation is always access from the same virtual memory address.
+  const void* address = this;
+  uint8 bits[sizeof(address)];
+  memcpy(bits, address, sizeof(bits));
+  uint32 initial = Utils::crc32(FORMAT_MARKER, bits, sizeof(this));
+  // The rest of the header is also covered. This gives a much
+  // stronger header validation check and reduces the risk of
+  // accidentally treating garbage in the flash as allocations.
+  return Utils::crc32(initial, id_, sizeof(Header) - offsetof(Header, id_));
+}
+
+FlashAllocation::Header::Header(const void* memory,
                                 uint8 type,
                                 const uint8* id,
                                 int size,
                                 const uint8* metadata) {
-
   marker_ = FORMAT_MARKER;
-  me_ = offset;
   initialize(id_, id, sizeof(id_));
   initialize(metadata_, metadata, sizeof(metadata_));
   ASSERT(Utils::is_aligned(size, FLASH_PAGE_SIZE));
@@ -57,27 +70,31 @@ FlashAllocation::Header::Header(uint32 offset,
   } else {
     memcpy(uuid_, EmbeddedData::uuid(), sizeof(uuid_));
   }
+  checksum_ = compute_checksum();
 }
 
-bool FlashAllocation::Header::is_valid(uint32 offset) const {
-  if (marker_ != FORMAT_MARKER || me_ != offset) return false;
-  if (type_ == FLASH_ALLOCATION_TYPE_REGION) {
-    return memcmp(uuid_, DATA_UUID, UUID_SIZE) == 0;
+bool FlashAllocation::Header::is_valid(bool embedded) const {
+  if (marker_ != FORMAT_MARKER || size_in_pages_ == 0) return false;
+  if (embedded) {
+    // All programs embedded in the binary have a zero checksum.
+    if (checksum_ != 0) return false;
   } else {
-    return memcmp(uuid_, EmbeddedData::uuid(), UUID_SIZE) == 0;
+    uint32 checksum = compute_checksum();
+    if (checksum_ != checksum) return false;
+    if (type_ == FLASH_ALLOCATION_TYPE_REGION) {
+      return memcmp(uuid_, DATA_UUID, UUID_SIZE) == 0;
+    }
   }
+  if (type_ != FLASH_ALLOCATION_TYPE_PROGRAM) return false;
+  return memcmp(uuid_, EmbeddedData::uuid(), UUID_SIZE) == 0;
 }
 
-bool FlashAllocation::is_valid(uint32 offset) const {
-  return header_.is_valid(((offset & 1) == 0) ? offset : 0);
-}
-
-bool FlashAllocation::commit(uint32 offset, int size, const Header* header) {
+bool FlashAllocation::commit(const void* memory, int size, const Header* header) {
   if (static_cast<unsigned>(size) < sizeof(Header)) return false;
-  void* result = FlashRegistry::region(offset, size);
+  uint32 offset = FlashRegistry::offset(memory);
   bool success = FlashRegistry::write_chunk(header, offset, sizeof(Header));
   FlashRegistry::flush();
-  return success && static_cast<FlashAllocation*>(result)->is_valid(offset);
+  return success && static_cast<const FlashAllocation*>(memory)->is_valid();
 }
 
 int FlashAllocation::program_assets_size(uint8** bytes, int* length) const {
