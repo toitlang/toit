@@ -455,13 +455,13 @@ class ToitHeader extends ToitObjectType:
   static METADATA_SIZE ::= 5
 
   static LAYOUT /ObjectType ::= ObjectType --packed {
-    "_marker": PrimitiveType.UINT32,
-    "_me": PrimitiveType.UINT32,
-    "_id": PrimitiveType (LayoutSize 0 ID_SIZE),
-    "_metadata": PrimitiveType (LayoutSize 0 METADATA_SIZE),
-    "_type": PrimitiveType.UINT8,
-    "_pages_in_flash": PrimitiveType.UINT16,
-    "_uuid": PrimitiveType (LayoutSize 0 uuid.SIZE),
+    "marker_": PrimitiveType.UINT32,
+    "checksum_": PrimitiveType.UINT32,
+    "id_": PrimitiveType (LayoutSize 0 ID_SIZE),
+    "metadata_": PrimitiveType (LayoutSize 0 METADATA_SIZE),
+    "type_": PrimitiveType.UINT8,
+    "pages_in_flash_": PrimitiveType.UINT16,
+    "uuid_": PrimitiveType (LayoutSize 0 uuid.SIZE),
   }
 
   static MARKER_ ::= 0xDEADFACE
@@ -471,17 +471,17 @@ class ToitHeader extends ToitObjectType:
     memory := image.offheap
     anchored := LAYOUT.anchor --at=at memory
     assert: at % memory.word_size == 0
-    assert: anchored["_uuid"] % memory.word_size == 0
+    assert: anchored["uuid_"] % memory.word_size == 0
     assert: id.to_byte_array.size == ID_SIZE
     assert: system_uuid.to_byte_array.size == uuid.SIZE
 
-    anchored.put_uint32 "_marker" MARKER_
-    anchored.put_uint32 "_me" at
-    anchored.put_bytes "_id" id.to_byte_array
-    anchored.put_bytes "_metadata" (ByteArray METADATA_SIZE: 0)
-    anchored.put_uint8 "_type" FLASH_ALLOCATION_TYPE_PROGRAM_
-    anchored.put_uint16 "_pages_in_flash" (image.all_memory.size / 4096)
-    anchored.put_bytes "_uuid" system_uuid.to_byte_array
+    anchored.put_uint32 "marker_" MARKER_
+    anchored.put_uint32 "checksum_" 0  // Overwritten on device at install time.
+    anchored.put_bytes "id_" id.to_byte_array
+    anchored.put_bytes "metadata_" (ByteArray METADATA_SIZE: 0)
+    anchored.put_uint8 "type_" FLASH_ALLOCATION_TYPE_PROGRAM_
+    anchored.put_uint16 "pages_in_flash_" (image.all_memory.size / 4096)
+    anchored.put_bytes "uuid_" system_uuid.to_byte_array
 
 class ToitProgram extends ToitObjectType:
   static CLASS_TAG_BIT_SIZE ::= 4

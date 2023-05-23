@@ -31,7 +31,7 @@ int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
 
   // If we are at an allocation, we return the address immediately after the allocation.
   const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(allocations_memory() + offset);
-  if (probe->is_valid(offset)) {
+  if (probe->is_valid()) {
     return offset + probe->size();
   }
 
@@ -39,20 +39,21 @@ int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
   for (int i = offset + FLASH_PAGE_SIZE; i < allocations_size(); i += FLASH_PAGE_SIZE) {
     if ((*it) != ReservationList::Iterator(null) && (*it)->left() == i) return i;
     const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(allocations_memory() + i);
-    if (probe->is_valid(i)) return i;
+    if (probe->is_valid()) return i;
   }
   return allocations_size();
 }
 
-FlashAllocation* FlashRegistry::allocation(int offset) {
-  FlashAllocation* result = null;
+const FlashAllocation* FlashRegistry::allocation(int offset) {
+  const FlashAllocation* result = null;
   if ((offset & 1) == 0) {
     FlashAllocation* probe = reinterpret_cast<FlashAllocation*>(region(offset, 0));
-    if (probe->is_valid(offset)) result = probe;
+    if (probe->is_valid()) result = probe;
   } else {
 #ifdef TOIT_FREERTOS
     const EmbeddedDataExtension* extension = EmbeddedData::extension();
-    result = const_cast<Program*>(extension->program(offset - 1));
+    const Program* probe = const_cast<Program*>(extension->program(offset - 1));
+    if (probe->is_valid_embedded()) result = probe;
 #endif
   }
   return result;

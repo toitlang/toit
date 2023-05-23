@@ -251,6 +251,8 @@ class Utils {
     return result;
   }
 
+  static uint32 crc32(uint32 crc, const uint8* ptr, size_t length);
+
   // Reverse the order of the bits in an 8 bit byte.
   static inline uint8 reverse_8(uint8 b) {
     return (REVERSE_NIBBLE[b & 0b1111] << 4) | REVERSE_NIBBLE[b >> 4];

@@ -34,12 +34,10 @@ PRIMITIVE(next_group_id) {
 PRIMITIVE(spawn) {
   ARGS(int, offset, int, group_id, Object, arguments);
 
-  FlashAllocation* allocation = FlashRegistry::allocation(offset);
+  const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   if (!allocation) OUT_OF_BOUNDS;
   if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) INVALID_ARGUMENT;
-
-  Program* program = static_cast<Program*>(allocation);
-  if (!program->is_valid(offset)) OUT_OF_BOUNDS;
+  Program* program = const_cast<Program*>(static_cast<const Program*>(allocation));
 
   unsigned message_size = 0;
   { MessageEncoder size_encoder(process, null);
@@ -77,19 +75,19 @@ PRIMITIVE(spawn) {
 
 PRIMITIVE(is_running) {
   ARGS(int, offset);
-  FlashAllocation* allocation = FlashRegistry::allocation(offset);
+  const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   if (!allocation) OUT_OF_BOUNDS;
   if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) INVALID_ARGUMENT;
-  Program* program = static_cast<Program*>(allocation);
+  const Program* program = static_cast<const Program*>(allocation);
   return BOOL(VM::current()->scheduler()->is_running(program));
 }
 
 PRIMITIVE(kill) {
   ARGS(int, offset);
-  FlashAllocation* allocation = FlashRegistry::allocation(offset);
+  const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   if (!allocation) OUT_OF_BOUNDS;
   if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) INVALID_ARGUMENT;
-  Program* program = static_cast<Program*>(allocation);
+  const Program* program = static_cast<const Program*>(allocation);
   return BOOL(VM::current()->scheduler()->kill(program));
 }
 

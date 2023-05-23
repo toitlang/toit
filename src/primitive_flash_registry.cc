@@ -110,11 +110,12 @@ PRIMITIVE(get_header_page) {
   ARGS(int, offset);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
-  FlashAllocation* allocation = FlashRegistry::allocation(offset);
+  const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   // Not normally possible, may indicate a bug or a worn flash chip.
   if (!allocation) FILE_NOT_FOUND;
   // TODO(lau): Add support invalidation of proxy. The proxy is read-only and backed by flash.
-  proxy->set_external_address(FLASH_PAGE_SIZE, reinterpret_cast<uint8*>(allocation));
+  uint8* memory = reinterpret_cast<uint8*>(const_cast<FlashAllocation*>(allocation));
+  proxy->set_external_address(FLASH_PAGE_SIZE, memory);
   return proxy;
 }
 
@@ -191,8 +192,9 @@ PRIMITIVE(allocate) {
       }
     }
 
-    const FlashAllocation::Header header(offset, type, id.address(), size, metadata.address());
-    if (!FlashAllocation::commit(offset, size, &header)) HARDWARE_ERROR;
+    const void* memory = FlashRegistry::region(offset, size);
+    const FlashAllocation::Header header(memory, type, id.address(), size, metadata.address());
+    if (!FlashAllocation::commit(memory, size, &header)) HARDWARE_ERROR;
     return process->program()->null_object();
   }
   ALREADY_CLOSED;
