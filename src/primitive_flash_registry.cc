@@ -111,11 +111,12 @@ PRIMITIVE(get_header_page) {
   ARGS(int, offset);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
-  FlashAllocation* allocation = FlashRegistry::allocation(offset);
+  const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   // Not normally possible, may indicate a bug or a worn flash chip.
   if (!allocation) FILE_NOT_FOUND;
   // TODO(lau): Add support invalidation of proxy. The proxy is read-only and backed by flash.
-  proxy->set_external_address(FLASH_PAGE_SIZE, reinterpret_cast<uint8*>(allocation));
+  uint8* memory = reinterpret_cast<uint8*>(const_cast<FlashAllocation*>(allocation));
+  proxy->set_external_address(FLASH_PAGE_SIZE, memory);
   return proxy;
 }
 
@@ -192,8 +193,9 @@ PRIMITIVE(allocate) {
       }
     }
 
-    const FlashAllocation::Header header(offset, type, id.address(), size, metadata.address());
-    if (!FlashAllocation::commit(offset, size, &header)) HARDWARE_ERROR;
+    const void* memory = FlashRegistry::region(offset, size);
+    const FlashAllocation::Header header(memory, type, id.address(), size, metadata.address());
+    if (!FlashAllocation::commit(memory, size, &header)) HARDWARE_ERROR;
     return process->program()->null_object();
   }
   ALREADY_CLOSED;
@@ -201,8 +203,8 @@ PRIMITIVE(allocate) {
 
 PRIMITIVE(grant_access) {
   PRIVILEGED;
-  ARGS(int, client, int, handle, uword, offset, uword, size);
-  RegionGrant* grant = _new RegionGrant(client, handle, offset, size);
+  ARGS(int, client, int, handle, uword, offset, uword, size, bool, writable);
+  RegionGrant* grant = _new RegionGrant(client, handle, offset, size, writable);
   if (!grant) MALLOC_FAILED;
   Locker locker(OS::global_mutex());
   for (auto it : grants) {
@@ -237,7 +239,7 @@ PRIMITIVE(revoke_access) {
 PRIMITIVE(partition_find) {
   PRIVILEGED;
   ARGS(cstring, path, int, type, uword, size);
-  if (size <= 0 || (type < 0x00) || (type > 0xfe)) INVALID_ARGUMENT;
+  if (size <= 0 || (type < 0x00) || (type > 0xff)) INVALID_ARGUMENT;
   Array* result = process->object_heap()->allocate_array(2, Smi::zero());
   if (!result) ALLOCATION_FAILED;
 #ifdef TOIT_FREERTOS
@@ -279,25 +281,29 @@ PRIMITIVE(partition_find) {
 class FlashRegion : public SimpleResource {
  public:
   TAG(FlashRegion);
-  FlashRegion(SimpleResourceGroup* group, uword offset, uword size)
-      : SimpleResource(group), offset_(offset), size_(size) {}
+  FlashRegion(SimpleResourceGroup* group, uword offset, uword size, bool writable)
+      : SimpleResource(group), offset_(offset), size_(size), writable_(writable) {}
 
   uword offset() const { return offset_; }
   uword size() const { return size_; }
+  bool writable() const { return writable_; }
 
  private:
   uword offset_;
   uword size_;
+  bool writable_;
 };
 
 PRIMITIVE(region_open) {
   ARGS(SimpleResourceGroup, group, int, client, int, handle, uword, offset, uword, size);
 
+  bool writable = false;
   bool found = false;
   { Locker locker(OS::global_mutex());
     for (auto it : grants) {
       if (it->client() == client && it->handle() == handle &&
           it->offset() == offset && it->size() == size) {
+        writable = it->writable();
         found = true;
         break;
       }
@@ -307,7 +313,7 @@ PRIMITIVE(region_open) {
   if (!found) PERMISSION_DENIED;
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (!proxy) ALLOCATION_FAILED;
-  FlashRegion* resource = _new FlashRegion(group, offset, size);
+  FlashRegion* resource = _new FlashRegion(group, offset, size, writable);
   if (!resource) MALLOC_FAILED;
   proxy->set_external_address(resource);
   return proxy;
@@ -352,6 +358,7 @@ PRIMITIVE(region_read) {
 
 PRIMITIVE(region_write) {
   ARGS(FlashRegion, resource, word, from, Blob, bytes);
+  if (!resource->writable()) PERMISSION_DENIED;
   uword size = bytes.length();
   if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
   uword offset = resource->offset();
@@ -415,6 +422,7 @@ PRIMITIVE(region_is_erased) {
 
 PRIMITIVE(region_erase) {
   ARGS(FlashRegion, resource, word, from, uword, size);
+  if (!resource->writable()) PERMISSION_DENIED;
   if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
   if (!Utils::is_aligned(from, FLASH_PAGE_SIZE)) INVALID_ARGUMENT;
   if (!Utils::is_aligned(size, FLASH_PAGE_SIZE)) INVALID_ARGUMENT;

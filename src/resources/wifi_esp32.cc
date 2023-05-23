@@ -100,6 +100,12 @@ class WifiResourceGroup : public ResourceGroup {
     err = esp_wifi_start();
     if (err != ESP_OK) return err;
 
+    // When connecting to Android mobile hotspot APs, we
+    // quite often get WIFI_REASON_AUTH_FAIL followed by
+    // WIFI_REASON_CONNECTION_FAIL. The next connect still
+    // has a good chance of succeeding, so we allow two
+    // reconnect attempts.
+    reconnects_remaining_ = 2;
     return esp_wifi_connect();
   }
 
@@ -120,6 +126,7 @@ class WifiResourceGroup : public ResourceGroup {
     err = esp_wifi_set_config(WIFI_IF_AP, &config);
     if (err != ESP_OK) return err;
 
+    reconnects_remaining_ = 0;
     return esp_wifi_start();
   }
 
@@ -127,6 +134,7 @@ class WifiResourceGroup : public ResourceGroup {
     esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
     if (err != ESP_OK) return err;
 
+    reconnects_remaining_ = 0;
     return esp_wifi_start();
   }
 
@@ -164,6 +172,12 @@ class WifiResourceGroup : public ResourceGroup {
   int id_;
   esp_netif_t* netif_;
   uint32 ip_address_[NUMBER_OF_ADDRESSES];
+
+  // In STA mode, we allow the implementation to reconnect few times
+  // on its own. This is useful to flush out weird state in the APs
+  // that may not have noticed that the device has gone away and is
+  // now attempting to re-authenticate.
+  int reconnects_remaining_ = 0;
 
   uint32 on_event_wifi(Resource* resource, word data, uint32 state);
   uint32 on_event_ip(Resource* resource, word data, uint32 state);
@@ -208,38 +222,58 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
 
   switch (system_event->id) {
     case WIFI_EVENT_STA_CONNECTED:
+      reconnects_remaining_ = 0;
       state |= WIFI_CONNECTED;
       cache_wifi_channel();
       break;
 
     case WIFI_EVENT_STA_DISCONNECTED: {
       uint8 reason = reinterpret_cast<wifi_event_sta_disconnected_t*>(system_event->event_data)->reason;
+      static_cast<WifiEvents*>(resource)->set_disconnect_reason(reason);
+
+      bool reconnect = false;
+      uint32 outcome = WIFI_DISCONNECTED;
       switch (reason) {
         case WIFI_REASON_ASSOC_LEAVE:
         case WIFI_REASON_ASSOC_EXPIRE:
         case WIFI_REASON_AUTH_EXPIRE:
         case WIFI_REASON_HANDSHAKE_TIMEOUT:
-        case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
-          state |= WIFI_RETRY;
+          reconnect = true;
+          // If we're not reconnecting, we will do a
+          // delayed retry after waiting in Toit code.
+          outcome = WIFI_RETRY;
           break;
-        default:
-          state |= WIFI_DISCONNECTED;
+        case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+        case WIFI_REASON_AUTH_FAIL:
+        case WIFI_REASON_CONNECTION_FAIL:
+          reconnect = true;
           break;
       }
-      static_cast<WifiEvents*>(resource)->set_disconnect_reason(reason);
+
+      bool reconnecting = false;
+      if (reconnect && reconnects_remaining_ > 0) {
+        reconnects_remaining_--;
+        reconnecting = esp_wifi_connect() == ESP_OK;
+      }
+
+      // If we're attempting to reconnect, we do not
+      // update the state here. Instead we just wait
+      // for the reconnect attempt to conclude.
+      if (!reconnecting) {
+        reconnects_remaining_ = 0;
+        state |= outcome;
+      }
       break;
     }
 
     case WIFI_EVENT_STA_START:
+    case WIFI_EVENT_STA_STOP:
       break;
 
     case WIFI_EVENT_SCAN_DONE: {
       state |= WIFI_SCAN_DONE;
       break;
     }
-
-    case WIFI_EVENT_STA_STOP:
-      break;
 
     case WIFI_EVENT_STA_BEACON_TIMEOUT:
       // The beacon timeout mechanism is used by ESP32 station to detect whether the AP
@@ -507,9 +541,10 @@ PRIMITIVE(disconnect_reason) {
     case WIFI_REASON_AUTH_EXPIRE:
       return process->allocate_string_or_error("expired authentication");
     case WIFI_REASON_HANDSHAKE_TIMEOUT:
-    case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
       return process->allocate_string_or_error("handshake timeout");
+    case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
     case WIFI_REASON_AUTH_FAIL:
+    case WIFI_REASON_CONNECTION_FAIL:
       return process->allocate_string_or_error("bad authentication");
     case WIFI_REASON_NO_AP_FOUND:
       return process->allocate_string_or_error("access point not found");

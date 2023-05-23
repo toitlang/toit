@@ -73,8 +73,8 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
     // TODO(florian): we could eventually accept larger integers here.
     if (!is_smi(from)) return false;
     if (!is_smi(to)) return false;
-    int from_value = Smi::cast(from)->value();
-    int to_value = Smi::cast(to)->value();
+    int from_value = Smi::value(from);
+    int to_value = Smi::value(to);
     bool inner_success = HeapObject::cast(byte_array)->mutable_byte_content(process, content, length, error);
     if (!inner_success) return false;
     // If the content is null, then we probably failed allocating the object.

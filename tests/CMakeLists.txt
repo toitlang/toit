@@ -100,10 +100,10 @@ foreach(file ${ALL_TESTS})
   endif()
 endforeach()
 
-set(PREEMPT_ALOT_TEST "tests/json_test.toit")
+set(PREEMPT_A_LOT_TEST "tests/json_test.toit")
 add_test(
-  NAME "${PREEMPT_ALOT_TEST}-PREEMPT_ALOT"
-  COMMAND $<TARGET_FILE:toit.run> -Xpreemptalot ${PREEMPT_ALOT_TEST}
+  NAME "${PREEMPT_A_LOT_TEST}-PREEMPT_A_LOT"
+  COMMAND $<TARGET_FILE:toit.run> -Xpreempt_a_lot ${PREEMPT_A_LOT_TEST}
   WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
   )
 

@@ -59,8 +59,8 @@ bool Object::byte_content(Program* program, const uint8** content, int* length, 
       // TODO(florian): we could eventually accept larger integers here.
       if (!is_smi(from)) return false;
       if (!is_smi(to)) return false;
-      int from_value = Smi::cast(from)->value();
-      int to_value = Smi::cast(to)->value();
+      int from_value = Smi::value(from);
+      int to_value = Smi::value(to);
       bool inner_success = HeapObject::cast(wrapped)->byte_content(program, content, length, strings_only);
       if (!inner_success) return false;
       if (0 <= from_value && from_value <= to_value && to_value <= *length) {
@@ -171,11 +171,11 @@ Object* FreeListRegion::single_free_word_header() {
 bool HeapObject::is_a_free_object() {
   int tag = class_tag();
   if (tag == FREE_LIST_REGION_TAG) {
-    ASSERT(class_id()->value() == FREE_LIST_REGION_CLASS_ID);
+    ASSERT(Smi::value(class_id()) == FREE_LIST_REGION_CLASS_ID);
     return true;
   }
   if (tag == SINGLE_FREE_WORD_TAG) {
-    ASSERT(class_id()->value() == SINGLE_FREE_WORD_CLASS_ID);
+    ASSERT(Smi::value(class_id()) == SINGLE_FREE_WORD_CLASS_ID);
     return true;
   }
   return false;
@@ -234,6 +234,7 @@ int Stack::absolute_bci_at_preemption(Program* program) {
 }
 
 void Stack::roots_do(Program* program, RootCallback* cb) {
+  if (is_guard_zone_touched()) FATAL("stack overflow detected");
   int top = this->top();
   ASSERT(top >= 0);
   ASSERT(top <= length());
@@ -246,12 +247,12 @@ void Stack::roots_do(Program* program, RootCallback* cb) {
   // stack so much that an overflow check would have failed.  Luckily the
   // compiler kept track of the maximum space that any function could need, so
   // we can use that.
-  int minimum_space = program->global_max_stack_height();
+  int minimum_space = program->global_max_stack_height() + RESERVED_STACK_FOR_CALLS;
   // Don't shrink the stack unless we can halve the size.  The growing algo
   // grows it by 50%, to try to avoid too much churn.
-  if (cb->shrink_stacks() && top > minimum_space && top > length() >> 1) {
+  if (top > minimum_space && (Flags::shrink_stacks_a_lot || (cb->shrink_stacks() && top > length() >> 1))) {
     int reduction = top - minimum_space;
-    if (reduction >= 8) {
+    if (Flags::shrink_stacks_a_lot || reduction >= 8) {
       auto destin = _array_address(0);
       auto source = _array_address(reduction);
       memmove(destin, source, (length() - reduction) << WORD_SIZE_LOG_2);

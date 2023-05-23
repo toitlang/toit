@@ -170,7 +170,7 @@ class Interpreter {
   }
 
   Object** from_block(Smi* block) const {
-    return base_ - (block->value() - BLOCK_SALT);
+    return base_ - (Smi::value(block) - BLOCK_SALT);
   }
 
   Smi* to_block(Object** pointer) const {
@@ -179,6 +179,14 @@ class Interpreter {
 
   friend class Stack;
 };
+
+// We push the exception and two elements for the unwinding implementation
+// on the stack when we handle stack overflows. This is in addition to the
+// extra frame information we store for the call, because those are not
+// reflected in the max-height of the called method. We do not keep track
+// of where in a method we might do a call, so we conservatively assume
+// that it will happen at max-height and reserve space for that.
+const int RESERVED_STACK_FOR_CALLS = Interpreter::FRAME_SIZE + 3;
 
 class ProcessRunner {
  public:

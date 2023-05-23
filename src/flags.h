@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -54,8 +54,9 @@ namespace toit {
   FLAG_BOOL(debug,   primitives,            false, "Trace primitives")              \
   FLAG_BOOL(deploy,  tracegc,               TRACE_GC, "Trace garbage collector")    \
   FLAG_BOOL(debug,   validate_heap,         false, "Check garbage collector")       \
-  FLAG_BOOL(debug,   gcalot,                false, "Garbage collect after each allocation in the interpreter") \
-  FLAG_BOOL(debug,   preemptalot,           false, "Preempt process after each pop bytecode") \
+  FLAG_BOOL(debug,   gc_a_lot,              false, "Garbage collect after each allocation in the interpreter") \
+  FLAG_BOOL(debug,   preempt_a_lot,         false, "Preempt process after each pop bytecode") \
+  FLAG_BOOL(debug,   shrink_stacks_a_lot,   false, "Shrink stacks on every GC")     \
   FLAG_BOOL(debug,   lookup,                false, "Trace lookup")                  \
   FLAG_BOOL(debug,   allocation,            false, "Trace object allocation")       \
   FLAG_BOOL(debug,   cheap,                 false, "Trace malloc and free")         \

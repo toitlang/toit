@@ -240,7 +240,7 @@ clean:
 INSTALL_SRC_ARCH := $(TARGET)
 
 .PHONY: install-sdk install
-install-sdk: all
+install-sdk:
 	install -D --target-directory="$(DESTDIR)$(prefix)"/bin "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/bin/*
 	install -D --target-directory="$(DESTDIR)$(prefix)"/tools "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/tools/*
 	install -D --target-directory="$(DESTDIR)$(prefix)"/vessels "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/vessels/*

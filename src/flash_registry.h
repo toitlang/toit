@@ -32,7 +32,7 @@ class FlashRegistry {
   static int find_next(int offset, ReservationList::Iterator* reservations);
 
   // Get a pointer to the memory of an allocation.
-  static FlashAllocation* allocation(int offset);
+  static const FlashAllocation* allocation(int offset);
 
   // Get a pointer to the memory of a region.
   static uint8* region(int offset, int size) {

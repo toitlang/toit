@@ -125,7 +125,7 @@ PRIMITIVE(spawn) {
   if (priority != -1 && (priority < 0 || priority > 0xff)) OUT_OF_RANGE;
   if (!is_smi(entry)) WRONG_TYPE;
 
-  int method_id = Smi::cast(entry)->value();
+  int method_id = Smi::value(entry);
   ASSERT(method_id != -1);
   Method method(process->program()->bytecodes, method_id);
 
@@ -232,7 +232,7 @@ PRIMITIVE(min_special_compare_to) {
 
 #define SMI_COMPARE(op) { \
   ARGS(word, receiver, Object, arg); \
-  if (is_smi(arg)) return BOOL(receiver op Smi::cast(arg)->value()); \
+  if (is_smi(arg)) return BOOL(receiver op Smi::value(arg)); \
   if (!is_large_integer(arg)) WRONG_TYPE; \
   return BOOL(((int64) receiver) op LargeInteger::cast(arg)->value()); \
 }
@@ -244,7 +244,7 @@ PRIMITIVE(min_special_compare_to) {
 
 #define LARGE_INTEGER_COMPARE(op) { \
   ARGS(LargeInteger, receiver, Object, arg); \
-  if (is_smi(arg)) return BOOL(receiver->value() op (int64) Smi::cast(arg)->value()); \
+  if (is_smi(arg)) return BOOL(receiver->value() op (int64) Smi::value(arg)); \
   if (!is_large_integer(arg)) WRONG_TYPE; \
   return BOOL(receiver->value() op LargeInteger::cast(arg)->value()); \
 }
@@ -587,35 +587,35 @@ PRIMITIVE(command) {
 PRIMITIVE(smi_add) {
   ARGS(word, receiver, Object, arg);
   if (is_smi(arg)) {
-    word other = Smi::cast(arg)->value();
+    word other = Smi::value(arg);
     if ((receiver > 0) && (other > Smi::MAX_SMI_VALUE - receiver)) goto overflow;
     if ((receiver < 0) && (other < Smi::MIN_SMI_VALUE - receiver)) goto overflow;
     return Smi::from(receiver + other);
   }
   if (!is_large_integer(arg)) WRONG_TYPE;
   overflow:
-  int64 other = is_smi(arg) ? (int64) Smi::cast(arg)->value() : LargeInteger::cast(arg)->value();
+  int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
   return Primitive::integer((int64) receiver + other, process);
 }
 
 PRIMITIVE(smi_subtract) {
   ARGS(word, receiver, Object, arg);
   if (is_smi(arg)) {
-    word other = Smi::cast(arg)->value();
+    word other = Smi::value(arg);
     if ((receiver < 0) && (other > Smi::MAX_SMI_VALUE + receiver)) goto overflow;
     if ((receiver > 0) && (other < Smi::MIN_SMI_VALUE + receiver)) goto overflow;
     return Smi::from(receiver - other);
   }
   if (!is_large_integer(arg)) WRONG_TYPE;
   overflow:
-  int64 other = is_smi(arg) ? (int64) Smi::cast(arg)->value() : LargeInteger::cast(arg)->value();
+  int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
   return Primitive::integer((int64) receiver - other, process);
 }
 
 PRIMITIVE(smi_multiply) {
   ARGS(word, receiver, Object, arg);
   if (is_smi(arg)) {
-    word other = Smi::cast(arg)->value();
+    word other = Smi::value(arg);
     word result;
     if (__builtin_mul_overflow(receiver, other << 1, &result)) goto overflow;
     Smi* r = reinterpret_cast<Smi*>(result);
@@ -624,19 +624,19 @@ PRIMITIVE(smi_multiply) {
   }
   if (!is_large_integer(arg)) WRONG_TYPE;
   overflow:
-  int64 other = is_smi(arg) ? (int64) Smi::cast(arg)->value() : LargeInteger::cast(arg)->value();
+  int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
   return Primitive::integer((int64) receiver * other, process);
 }
 
 PRIMITIVE(smi_divide) {
   ARGS(word, receiver, Object, arg);
   if (is_smi(arg)) {
-    word other = Smi::cast(arg)->value();
+    word other = Smi::value(arg);
     if (other == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
     return Smi::from(receiver / other);
   }
   if (!is_large_integer(arg)) WRONG_TYPE;
-  int64 other = is_smi(arg) ? (int64) Smi::cast(arg)->value() : LargeInteger::cast(arg)->value();
+  int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
   return Primitive::integer((int64) receiver / other, process);
 }
 
@@ -644,12 +644,12 @@ PRIMITIVE(smi_mod) {
   ARGS(word, receiver, Object, arg);
   if (arg == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
   if (is_smi(arg)) {
-    word other = Smi::cast(arg)->value();
+    word other = Smi::value(arg);
     if (other == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
     return Smi::from(receiver % other);
   }
   if (!is_large_integer(arg)) WRONG_TYPE;
-  int64 other = is_smi(arg) ? (int64) Smi::cast(arg)->value() : LargeInteger::cast(arg)->value();
+  int64 other = is_smi(arg) ? (int64) Smi::value(arg) : LargeInteger::cast(arg)->value();
   return Primitive::integer((int64) receiver % other, process);
 }
 
@@ -725,7 +725,7 @@ PRIMITIVE(int64_to_string) {
 PRIMITIVE(large_integer_add) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
-  if (is_smi(arg)) result += Smi::cast(arg)->value();
+  if (is_smi(arg)) result += Smi::value(arg);
   else if (is_large_integer(arg)) result += LargeInteger::cast(arg)->value();
   else WRONG_TYPE;
   return Primitive::integer(result, process);
@@ -734,7 +734,7 @@ PRIMITIVE(large_integer_add) {
 PRIMITIVE(large_integer_subtract) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
-  if (is_smi(arg)) result -= Smi::cast(arg)->value();
+  if (is_smi(arg)) result -= Smi::value(arg);
   else if (is_large_integer(arg)) result -= LargeInteger::cast(arg)->value();
   else WRONG_TYPE;
   return Primitive::integer(result, process);
@@ -743,7 +743,7 @@ PRIMITIVE(large_integer_subtract) {
 PRIMITIVE(large_integer_multiply) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
-  if (is_smi(arg)) result *= Smi::cast(arg)->value();
+  if (is_smi(arg)) result *= Smi::value(arg);
   else if (is_large_integer(arg)) result *= LargeInteger::cast(arg)->value();
   else WRONG_TYPE;
   return Primitive::integer(result, process);
@@ -753,8 +753,8 @@ PRIMITIVE(large_integer_divide) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
   if (is_smi(arg)) {
-    if (Smi::cast(arg)->value() == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
-    result /= Smi::cast(arg)->value();
+    if (Smi::value(arg) == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
+    result /= Smi::value(arg);
   } else if (is_large_integer(arg)) {
     ASSERT(LargeInteger::cast(arg)->value() != 0LL);
     result /= LargeInteger::cast(arg)->value();
@@ -766,8 +766,8 @@ PRIMITIVE(large_integer_mod) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
   if (is_smi(arg)) {
-    if (Smi::cast(arg)->value() == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
-    result %= Smi::cast(arg)->value();
+    if (Smi::value(arg) == 0) return Primitive::mark_as_error(process->program()->division_by_zero());
+    result %= Smi::value(arg);
   } else if (is_large_integer(arg)) {
     ASSERT(LargeInteger::cast(arg)->value() != 0LL);
     result %= LargeInteger::cast(arg)->value();
@@ -789,7 +789,7 @@ PRIMITIVE(large_integer_and) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
   if (is_smi(arg)) {
-    result &= Smi::cast(arg)->value();
+    result &= Smi::value(arg);
   } else if (is_large_integer(arg)) {
     result &= LargeInteger::cast(arg)->value();
   } else WRONG_TYPE;
@@ -800,7 +800,7 @@ PRIMITIVE(large_integer_or) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
   if (is_smi(arg)) {
-    result |= Smi::cast(arg)->value();
+    result |= Smi::value(arg);
   } else if (is_large_integer(arg)) {
     result |= LargeInteger::cast(arg)->value();
   } else WRONG_TYPE;
@@ -811,7 +811,7 @@ PRIMITIVE(large_integer_xor) {
   ARGS(LargeInteger, receiver, Object, arg);
   int64 result = receiver->value();
   if (is_smi(arg)) {
-    result ^= Smi::cast(arg)->value();
+    result ^= Smi::value(arg);
   } else if (is_large_integer(arg)) {
     result ^= LargeInteger::cast(arg)->value();
   } else WRONG_TYPE;
@@ -1382,7 +1382,7 @@ PRIMITIVE(float_to_string) {
     format = "%.*lf";
     if (is_large_integer(precision)) OUT_OF_BOUNDS;
     if (!is_smi(precision)) WRONG_TYPE;
-    prec = Smi::cast(precision)->value();
+    prec = Smi::value(precision);
     if (prec < 0 || prec > 64) OUT_OF_BOUNDS;
   }
   char* buffer = safe_double_print(format, prec, receiver);
@@ -1650,7 +1650,7 @@ PRIMITIVE(list_add) {
       if (is_array(array_object = list->at(0))) {
         // Small array backing case.
         Array* array = Array::cast(array_object);
-        word size = Smi::cast(list->at(1))->value();
+        word size = Smi::value(list->at(1));
         if (size < array->length()) {
           list->at_put(1, Smi::from(size + 1));
           array->at_put(size, value);
@@ -1660,7 +1660,7 @@ PRIMITIVE(list_add) {
         // Large array backing case.
         Object* size_object = list->at(1);
         if (is_smi(size_object)) {
-          word size = Smi::cast(size_object)->value();
+          word size = Smi::value(size_object);
           if (Smi::is_valid(size + 1)) {
             if (Interpreter::fast_at(process, array_object, size_object, true, &value)) {
               list->at_put(1, Smi::from(size + 1));
@@ -1747,7 +1747,7 @@ PRIMITIVE(smi_unary_minus) {
   if (!is_smi(receiver)) WRONG_TYPE;
   // We can't assume that `-x` is still a smi, as -MIN_SMI_VALUE > MAX_SMI_VALUE.
   // However, it must fit a `word` as smis are smaller than words.
-  word value = Smi::cast(receiver)->value();
+  word value = Smi::value(receiver);
   return Primitive::integer(-value, process);
 }
 
@@ -1758,21 +1758,21 @@ PRIMITIVE(smi_not) {
 
 PRIMITIVE(smi_and) {
   ARGS(word, receiver, Object, arg);
-  if (is_smi(arg)) return Smi::from(receiver & Smi::cast(arg)->value());
+  if (is_smi(arg)) return Smi::from(receiver & Smi::value(arg));
   if (!is_large_integer(arg)) WRONG_TYPE;
   return Primitive::integer(((int64) receiver) & LargeInteger::cast(arg)->value() , process);
 }
 
 PRIMITIVE(smi_or) {
   ARGS(word, receiver, Object, arg);
-  if (is_smi(arg)) return Smi::from(receiver | Smi::cast(arg)->value());
+  if (is_smi(arg)) return Smi::from(receiver | Smi::value(arg));
   if (!is_large_integer(arg)) WRONG_TYPE;
   return Primitive::integer(((int64) receiver) | LargeInteger::cast(arg)->value() , process);
 }
 
 PRIMITIVE(smi_xor) {
   ARGS(word, receiver, Object, arg);
-  if (is_smi(arg)) return Smi::from(receiver ^ Smi::cast(arg)->value());
+  if (is_smi(arg)) return Smi::from(receiver ^ Smi::value(arg));
   if (!is_large_integer(arg)) WRONG_TYPE;
   return Primitive::integer(((int64) receiver) ^ LargeInteger::cast(arg)->value() , process);
 }
@@ -1789,7 +1789,7 @@ PRIMITIVE(smi_unsigned_shift_right) {
   if (!is_smi(receiver)) WRONG_TYPE;
   if (bits_to_shift < 0) NEGATIVE_ARGUMENT;
   if (bits_to_shift >= 64) return Smi::zero();
-  uint64 value = static_cast<uint64>(Smi::cast(receiver)->value());
+  uint64 value = static_cast<uint64>(Smi::value(receiver));
   int64 result = static_cast<int64>(value >> bits_to_shift);
   return Primitive::integer(result, process);
 }
@@ -1799,7 +1799,7 @@ PRIMITIVE(smi_shift_left) {
   if (!is_smi(receiver)) WRONG_TYPE;
   if (number_of_bits < 0) NEGATIVE_ARGUMENT;
   if (number_of_bits >= 64) return Smi::zero();
-  int64 value = Smi::cast(receiver)->value();
+  int64 value = Smi::value(receiver);
   return Primitive::integer(value << number_of_bits, process);
 }
 
@@ -2043,7 +2043,7 @@ PRIMITIVE(rebuild_hash_index) {
     Object* o = old_array->at(i);
     word hash_and_position;
     if (is_smi(o)) {
-      hash_and_position = Smi::cast(o)->value();
+      hash_and_position = Smi::value(o);
     } else if (is_large_integer(o)) {
       hash_and_position = LargeInteger::cast(o)->value();
     } else {
@@ -2388,8 +2388,8 @@ PRIMITIVE(firmware_unmap) {
 
 PRIMITIVE(firmware_mapping_at) {
   ARGS(Instance, receiver, int, index);
-  int offset = Smi::cast(receiver->at(1))->value();
-  int size = Smi::cast(receiver->at(2))->value();
+  int offset = Smi::value(receiver->at(1));
+  int size = Smi::value(receiver->at(2));
   if (index < 0 || index >= size) OUT_OF_BOUNDS;
 
   Blob input;
@@ -2408,8 +2408,8 @@ PRIMITIVE(firmware_mapping_at) {
 
 PRIMITIVE(firmware_mapping_copy) {
   ARGS(Instance, receiver, int, from, int, to, ByteArray, into, int, index);
-  int offset = Smi::cast(receiver->at(1))->value();
-  int size = Smi::cast(receiver->at(2))->value();
+  int offset = Smi::value(receiver->at(1));
+  int size = Smi::value(receiver->at(2));
   if (!Utils::is_aligned(from + offset, sizeof(uint32)) ||
       !Utils::is_aligned(to + offset, sizeof(uint32))) INVALID_ARGUMENT;
   if (from > to || from < 0 || to > size) OUT_OF_BOUNDS;

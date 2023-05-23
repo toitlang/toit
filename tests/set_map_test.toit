@@ -148,6 +148,7 @@ test_set:
   test_set_map
   test_set_reduce
   test_set_clear
+  test_set_to_list
 
 test_set_basics:
   n := 213
@@ -341,6 +342,21 @@ test_set_clear:
     expect (set.contains i)
   set.clear
   expect set.is_empty
+
+test_set_to_list:
+  set := {}
+  expect_equals [] set.to_list
+
+  set = {1}
+  expect_equals [1] set.to_list
+
+  set = {1, 2}
+  expect_equals [1, 2] set.to_list
+
+  set = {}
+  set.add 499
+  set.add 99
+  expect_equals [499, 99] set.to_list
 
 second set:
   first := true

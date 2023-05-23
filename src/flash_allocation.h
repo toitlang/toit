@@ -40,7 +40,7 @@ class FlashAllocation {
     static const unsigned ID_SIZE = UUID_SIZE;
     static const unsigned METADATA_SIZE = 5;  // Picked for 16 byte alignment.
 
-    Header(uint32 offset, uint8 type, const uint8* id, int size, const uint8* metadata);
+    Header(const void* memory, uint8 type, const uint8* id, int size, const uint8* metadata);
 
     const uint8* id() const { return id_; }
     int size() const { return size_in_pages_ << FLASH_PAGE_SIZE_LOG2; }
@@ -48,16 +48,17 @@ class FlashAllocation {
    private:
     // Data section for the header.
     uint32 marker_;  // Magic marker.
-    uint32 me_;      // Offset in allocation partition for validation.
+    uint32 checksum_;
     uint8 id_[ID_SIZE];
     uint8 metadata_[METADATA_SIZE];
     uint8 type_;
     uint16 size_in_pages_;
     uint8 uuid_[UUID_SIZE];
 
-    bool is_valid(uint32 offset) const;
+    bool is_valid(bool embedded) const;
     uint8 type() const { return type_; }
     const uint8* metadata() const { return metadata_; }
+    uint32 compute_checksum(const void* memory) const;
 
     friend class FlashAllocation;
   };
@@ -72,12 +73,15 @@ class FlashAllocation {
   const uint8* id() const { return header_.id(); }
   const uint8* metadata() const { return header_.metadata(); }
 
-  // Check if the allocation is valid for the given offset.
-  bool is_valid(uint32 offset) const;
+  // Check if the allocation is valid.
+  bool is_valid() const { return header_.is_valid(false); }
+  bool is_valid_embedded() const { return header_.is_valid(true); }
 
   // Commit an allocation by providing it with the correct header. Returns
   // whether the allocation is valid after the commit.
-  static bool commit(uint32 offset, int size, const Header* header);
+  // Includes the virtual memory address of the allocation in the checksum
+  // just in case the flash is mapped at an incompatible address.
+  static bool commit(const void* memory, int size, const Header* header);
 
   // Get the flags encoded in the first metadata byte. Only valid for programs.
   int program_flags() const { ASSERT(is_program()); return header_.metadata()[0]; }
@@ -116,19 +120,21 @@ class RegionGrant;
 typedef LinkedList<RegionGrant> RegionGrantList;
 class RegionGrant : public RegionGrantList::Element {
  public:
-  RegionGrant(int client, int handle, uword offset, uword size)
-      : client_(client), handle_(handle), offset_(offset), size_(size) {}
+  RegionGrant(int client, int handle, uword offset, uword size, bool writable)
+      : client_(client), handle_(handle), offset_(offset), size_(size), writable_(writable) {}
 
   int client() const { return client_; }
   int handle() const { return handle_; }
   uword offset() const { return offset_; }
   uword size() const { return size_; }
+  bool writable() const { return writable_; }
 
  private:
   int client_;
   int handle_;
   uword offset_;
   uword size_;
+  bool writable_;
 };
 
 } // namespace toit

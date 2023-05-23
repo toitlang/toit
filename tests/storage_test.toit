@@ -21,11 +21,14 @@ main:
   test_region_flash_ignore_set
   test_region_flash_out_of_space
   test_region_flash_stream
+  test_region_flash_no_writable
 
   test_region_flash_delete
   test_region_flash_list
 
   test_region_partition
+  test_region_partition_no_writable
+
 
 test_bucket_ram:
   a := storage.Bucket.open --ram "bucket-a"
@@ -287,6 +290,13 @@ test_region_flash_stream region/storage.Region max_size/int?:
     cursor := n + it
     expect_equals (round_up cursor 16) cursor
 
+test_region_flash_no_writable:
+  region := storage.Region.open --flash "region-1" --capacity=1000 --no-writable
+  expect_throw "PERMISSION_DENIED": region.erase
+  expect_throw "PERMISSION_DENIED": region.write --from=0 #[0b1010_1010]
+  region.read --from=0 --to=1
+  region.close
+
 test_region_flash_delete:
   region := storage.Region.open --flash "region-3" --capacity=8192
   expect_throw "ALREADY_IN_USE": storage.Region.delete --flash "region-3"
@@ -308,4 +318,11 @@ test_region_partition:
   // TODO(kasper): Extend testing.
   region := storage.Region.open --partition "partition-0"
   expect_throw "ALREADY_IN_USE": storage.Region.open --partition "partition-0"
+  region.close
+
+test_region_partition_no_writable:
+  region := storage.Region.open --partition "partition-0" --no-writable
+  expect_throw "PERMISSION_DENIED": region.erase
+  expect_throw "PERMISSION_DENIED": region.write --from=0 #[0b1010_1010]
+  region.read --from=0 --to=1
   region.close

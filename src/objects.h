@@ -138,7 +138,14 @@ class Error : public Object {
 
 class Smi : public Object {
  public:
-  word value() const { return reinterpret_cast<word>(this) >> SMI_TAG_SIZE; }
+  static word value(Smi* smi) {
+    return reinterpret_cast<word>(smi) >> SMI_TAG_SIZE;
+  }
+
+  static word value(Object* object) {
+    ASSERT(is_smi(object));
+    return reinterpret_cast<word>(object) >> SMI_TAG_SIZE;
+  }
 
   template<typename T> static bool is_valid(T value) {
     return (value >= MIN_SMI_VALUE) && (value <= MAX_SMI_VALUE);
@@ -157,9 +164,9 @@ class Smi : public Object {
     return reinterpret_cast<Smi*>(static_cast<uword>(value) << SMI_TAG_SIZE);
   }
 
-  static Smi* cast(Object* obj) {
-    ASSERT(is_smi(obj));
-    return static_cast<Smi*>(obj);
+  static Smi* cast(Object* object) {
+    ASSERT(is_smi(object));
+    return static_cast<Smi*>(object);
   }
 
   static Smi* zero() { return from(0); }
@@ -207,10 +214,10 @@ class HeapObject : public Object {
     return Smi::cast(result);
   }
   INLINE Smi* class_id() {
-    return Smi::from((header()->value() >> HeapObject::CLASS_ID_OFFSET) & HeapObject::CLASS_ID_MASK);
+    return Smi::from((Smi::value(header()) >> HeapObject::CLASS_ID_OFFSET) & HeapObject::CLASS_ID_MASK);
   }
   INLINE TypeTag class_tag() {
-    return static_cast<TypeTag>((header()->value() >> HeapObject::CLASS_TAG_OFFSET) & HeapObject::CLASS_TAG_MASK);
+    return static_cast<TypeTag>((Smi::value(header()) >> HeapObject::CLASS_TAG_OFFSET) & HeapObject::CLASS_TAG_MASK);
   }
 
   INLINE bool has_forwarding_address() {
@@ -295,7 +302,7 @@ class HeapObject : public Object {
 
  protected:
   void _set_header(Smi* class_id, TypeTag class_tag) {
-    uword header = class_id->value();
+    uword header = Smi::value(class_id);
     header = (header << CLASS_TAG_BIT_SIZE) | class_tag;
 
     _set_header(Smi::from(header));
@@ -915,7 +922,7 @@ class Stack : public HeapObject {
   }
 
   Object** _from_block(Smi* block) {
-    return _stack_base_addr() - (block->value() - BLOCK_SALT);
+    return _stack_base_addr() - (Smi::value(block) - BLOCK_SALT);
   }
 
   Smi* _to_block(Object** pointer) {
@@ -1428,7 +1435,7 @@ class Task : public Instance {
   Stack* stack() { return Stack::cast(at(STACK_INDEX)); }
   void set_stack(Stack* value) { at_put(STACK_INDEX, value); }
 
-  int id() { return Smi::cast(at(ID_INDEX))->value(); }
+  int id() { return Smi::value(at(ID_INDEX)); }
 
   static Task* cast(Object* value) {
     ASSERT(is_task(value));

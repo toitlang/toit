@@ -20,6 +20,7 @@ namespace compiler {
 
 MODULE_TYPES(esp32, MODULE_ESP32)
 
+TYPE_PRIMITIVE_STRING(ota_current_partition_name)
 TYPE_PRIMITIVE_ANY(ota_begin)
 TYPE_PRIMITIVE_ANY(ota_write)
 TYPE_PRIMITIVE_ANY(ota_end)

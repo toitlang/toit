@@ -26,7 +26,7 @@ namespace toit {
 bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool is_put, Object** value) {
   if (!is_smi(arg)) return false;
 
-  word n = Smi::cast(arg)->value();
+  word n = Smi::value(arg);
   if (n < 0) return false;
 
   ByteArray* byte_array = null;
@@ -43,15 +43,15 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
       // The backing storage in a list can be either an array -- or a
       // large array. Only optimize here if it isn't large.
       array = Array::cast(array_object);
-      length = Smi::cast(instance->at(Instance::LIST_SIZE_INDEX))->value();
+      length = Smi::value(instance->at(Instance::LIST_SIZE_INDEX));
     } else if (class_id == program->byte_array_slice_class_id()) {
       if (!(is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX)) &&
             is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX  )))) {
         return false;
       }
 
-      word from = Smi::cast(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX))->value();
-      word to = Smi::cast(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX))->value();
+      word from = Smi::value(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX));
+      word to = Smi::value(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX));
       n = from + n;
       if (n >= to) return false;
 
@@ -83,7 +83,7 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
       }
       word size;
       if (is_smi(size_object)) {
-        size = Smi::cast(size_object)->value();
+        size = Smi::value(size_object);
       } else {
         return false;
       }
@@ -128,7 +128,7 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
     if (is_put) {
       if (!is_smi(*value)) return false;
 
-      uint8 byte_value = (uint8) Smi::cast(*value)->value();
+      uint8 byte_value = (uint8) Smi::value(*value);
       bytes.at_put(n, byte_value);
       (*value) = Smi::from(byte_value);
       return true;
@@ -147,7 +147,7 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
   bool rhs_is_int;
   if (is_smi(lhs)) {
     lhs_is_int = true;
-    lhs_int = Smi::cast(lhs)->value();
+    lhs_int = Smi::value(lhs);
   } else if (is_large_integer(lhs)) {
     lhs_is_int = true;
     lhs_int = LargeInteger::cast(lhs)->value();
@@ -156,7 +156,7 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
   }
   if (is_smi(rhs)) {
     rhs_is_int = true;
-    rhs_int = Smi::cast(rhs)->value();
+    rhs_int = Smi::value(rhs);
   } else if (is_large_integer(rhs)) {
     rhs_is_int = true;
     rhs_int = LargeInteger::cast(rhs)->value();
@@ -247,10 +247,10 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
       }
     } else if (step < 0) {
       // Start at the end of the list.
-      c = Smi::cast(Instance::cast(backing)->at(Instance::LIST_SIZE_INDEX))->value() + step;
+      c = Smi::value(Instance::cast(backing)->at(Instance::LIST_SIZE_INDEX)) + step;
     }
     Smi* block = Smi::cast(*from_block(Smi::cast(block_on_stack)));
-    Method target = Method(program->bytecodes, block->value());
+    Method target = Method(program->bytecodes, Smi::value(block));
     if ((step & 1) != 0) {
       ASSERT(step == 1 || step == -1);
       // Block for set should take 1 argument.
@@ -266,7 +266,7 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
     }
   } else {
     // Subsequent entries to the bytecode.
-    c = Smi::cast(current)->value();
+    c = Smi::value(current);
     c += step;
   }
 
@@ -309,7 +309,7 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
       }
       Object* skip = Instance::cast(entry)->at(Instance::TOMBSTONE_DISTANCE_INDEX);
       if (is_smi(skip)) {
-        word distance = Smi::cast(skip)->value();
+        word distance = Smi::value(skip);
         if (distance != 0 && (distance ^ step) >= 0) { // If signs match.
           c += distance;
           continue;  // Skip the increment of c below.

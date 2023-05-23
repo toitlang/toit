@@ -83,6 +83,12 @@ static const esp_partition_t* ota_partition = null;
 static int ota_size = 0;
 static int ota_written = 0;
 
+PRIMITIVE(ota_current_partition_name) {
+  const esp_partition_t* current_partition = esp_ota_get_running_partition();
+  if (current_partition == null) OTHER_ERROR;
+  return process->allocate_string_or_error(current_partition->label);
+}
+
 PRIMITIVE(ota_begin) {
   PRIVILEGED;
   ARGS(int, from, int, to);

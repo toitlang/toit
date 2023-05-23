@@ -72,26 +72,9 @@ static inline uint64 rtc_time_us_calibrated() {
   return rtc_time_slowclk_to_us(rtc_time_get(), esp_clk_slowclk_cal_get());
 }
 
-// Karl Malbrain's compact CRC-32. See "A compact CCITT crc16 and crc32 C implementation that balances processor
-// cache usage against speed": http://www.geocities.com/malbrain/.
-static uint32 crc32(uint32 crc, const uint8* ptr, size_t length) {
-  static const uint32 s_crc32[16] = {
-      0x00000000, 0x1db71064, 0x3b6e20c8, 0x26d930ac, 0x76dc4190, 0x6b6b51f4, 0x4db26158, 0x5005713c,
-      0xedb88320, 0xf00f9344, 0xd6d6a3e8, 0xcb61b38c, 0x9b64c2b0, 0x86d3d2d4, 0xa00ae278, 0xbdbdf21c
-  };
-  uint32 crcu32 = crc;
-  crcu32 = ~crcu32;
-  while (length--) {
-    uint8 b = *ptr++;
-    crcu32 = (crcu32 >> 4) ^ s_crc32[(crcu32 & 0xF) ^ (b & 0xF)];
-    crcu32 = (crcu32 >> 4) ^ s_crc32[(crcu32 & 0xF) ^ (b >> 4)];
-  }
-  return ~crcu32;
-}
-
 static uint32 compute_rtc_checksum() {
-  uint32 vm_checksum = crc32(0x12345678, toit::EmbeddedData::uuid(), toit::UUID_SIZE);
-  return crc32(vm_checksum, reinterpret_cast<uint8*>(&rtc), sizeof(rtc));
+  uint32 vm_checksum = toit::Utils::crc32(0x12345678, toit::EmbeddedData::uuid(), toit::UUID_SIZE);
+  return toit::Utils::crc32(vm_checksum, reinterpret_cast<uint8*>(&rtc), sizeof(rtc));
 }
 
 static void update_rtc_checksum() {

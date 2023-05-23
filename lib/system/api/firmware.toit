@@ -8,7 +8,7 @@ interface FirmwareService:
   static SELECTOR ::= ServiceSelector
       --uuid="777096e8-05bc-4af7-919e-5ba696549bd5"
       --major=0
-      --minor=5
+      --minor=6
 
   is_validation_pending -> bool
   static IS_VALIDATION_PENDING_INDEX /int ::= 0
@@ -33,6 +33,9 @@ interface FirmwareService:
 
   content -> ByteArray?
   static CONTENT_INDEX /int ::= 11
+
+  uri -> string?
+  static URI_INDEX /int ::= 13
 
   firmware_writer_open from/int to/int -> int
   static FIRMWARE_WRITER_OPEN_INDEX /int ::= 5
@@ -78,6 +81,9 @@ class FirmwareServiceClient extends ServiceClient implements FirmwareService:
 
   content -> ByteArray?:
     return invoke_ FirmwareService.CONTENT_INDEX null
+
+  uri -> string?:
+    return invoke_ FirmwareService.URI_INDEX null
 
   firmware_writer_open from/int to/int -> int:
     return invoke_ FirmwareService.FIRMWARE_WRITER_OPEN_INDEX [from, to]
