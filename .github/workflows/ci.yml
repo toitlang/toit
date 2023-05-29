@@ -854,6 +854,8 @@ jobs:
         run: |
           rm -Recurse -Force ${{ github.workspace }}\*
 
+      - uses: actions/checkout@v3
+
       - uses: actions/download-artifact@v3
         with:
           name: Windows-build-unsigned
@@ -872,17 +874,42 @@ jobs:
         run: |
           & "C:\Program Files\Git\bin\bash.exe" --noprofile --norc -e -o pipefail -c "tar -czf toit-windows.tar.gz toit"
 
+      - name: Version number
+        id: version
+        shell: powershell
+        run: |
+          $versionV = "${{ github.event.release.tag_name }}"
+          $version = $versionV.Substring(1)
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build installer
+        run: |
+          & tools\windows_installer\build.bat ${{ steps.version.outputs.version }} $PWD\toit $PWD\toit_installer_x64.exe
+          signtool sign /debug /n "Toitware ApS" /t http://timestamp.digicert.com/ $PWD\toit_installer_x64.exe
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
           name: Windows-build
-          path: toit-windows.tar.gz
+          path: |
+            toit-windows.tar.gz
+            toit_installer_x64.exe
 
       - name: Upload release artifacts
+        if: github.event_name == 'release'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: toit-windows.tar.gz
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload release installer
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: toit_installer_x64.exe
           tag: ${{ github.ref }}
           overwrite: true
 
