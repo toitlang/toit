@@ -329,19 +329,6 @@ jobs:
           gsutil cp $JSON_PATH gs://toit-web/toitdoc-sdk/$TOIT_VERSION.json
           gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/LATEST
 
-      - name: Update RELEASE in gcloud - Linux
-        if: |
-          runner.os == 'Linux' && matrix.shard == 1 &&
-          github.event_name == 'release' &&
-          github.repository_owner == 'toitlang'
-        env:
-          TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
-        run: |
-          echo -n $TOIT_VERSION > LATEST.tmp
-
-          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/RELEASED
-          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/RELEASED.$TOIT_VERSION
-
       - name: Upload unsigned artifacts - Windows
         if: runner.os == 'Windows' && matrix.shard == 1
         uses: actions/upload-artifact@v3
