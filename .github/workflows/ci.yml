@@ -6,6 +6,9 @@ on:
     types: [published]
   workflow_dispatch:
 
+env:
+  ESPTOOL_VERSION: v4.6
+
 jobs:
   build:
     strategy:
@@ -69,7 +72,6 @@ jobs:
           cd third_party/esp-idf
           git submodule update --init .
           git submodule update --init components/mbedtls
-          git submodule update --init components/esptool_py
 
       # Use Go 1.20
       - name: Switch to Go 1.20
@@ -190,14 +192,6 @@ jobs:
             make HOST=host32 BUILD_TYPE=Debug sdk
             make HOST=host-ctp TOOLCHAIN=host TOIT_CHECK_PROPAGATED_TYPES=1 sdk
           fi
-
-      - name: Build esptool
-        shell: bash
-        if: matrix.shard == 1
-        run: |
-          python -m pip install --upgrade pip
-          pip install --user -e "$IDF_PATH/components/esptool_py/esptool"
-          make esptool-no-env
 
       # Test.
       - name: Test
@@ -548,7 +542,6 @@ jobs:
           cd third_party/esp-idf
           git submodule update --init .
           git submodule update --init components/mbedtls
-          git submodule update --init components/esptool_py
 
       # Use Go 1.20
       - name: Switch to Go 1.20
@@ -612,42 +605,6 @@ jobs:
           make aarch64
           make arm-linux-gnueabi
 
-      - name: Patch esptool requirements
-        # We don't want to use the cryptography package that uses rust.
-        # The latest version that can still be installed without rust is 3.4.8.
-        # If we want to use a newer version, we would need to:
-        # - Install rust in the container: apt-get install -y cargo
-        # - Make sure there is enough space in the container.
-        #    This is done by a `with` argument: image_additional_mb: 512
-        run: |
-          sed -i 's/cryptography/cryptography<=3.4.8/' third_party/esp-idf/components/esptool_py/esptool/setup.py
-
-      - name: Build esptool 32-bit
-        uses: pguyot/arm-runner-action@v2
-        with:
-          cpu: cortex-a7
-          base_image: "raspios_lite:2022-01-28"
-          bind_mount_repository: true
-          commands: |
-              apt-get update
-              apt-get install -y python3-pip git
-              python --version
-              pip install --user -e third_party/esp-idf/components/esptool_py/esptool
-              make HOST=raspbian esptool-no-env
-
-      - name: Build esptool 64-bit
-        uses: pguyot/arm-runner-action@v2
-        with:
-          cpu: cortex-a7
-          base_image: "raspios_lite_arm64:2022-01-28"
-          bind_mount_repository: true
-          commands: |
-              apt-get update
-              apt-get install -y python3-pip git
-              python --version
-              pip install --user -e third_party/esp-idf/components/esptool_py/esptool
-              make HOST=aarch64 esptool-no-env
-
       - name: Test executables 32-bit
         uses: pguyot/arm-runner-action@v2
         with:
@@ -659,7 +616,6 @@ jobs:
               build/raspbian/sdk/bin/toit.pkg version
               build/raspbian/sdk/bin/toit.run --version
               build/raspbian/sdk/tools/firmware --help
-              build/raspbian/sdk/tools/esptool -h
 
       - name: Test executables 64-bit
         uses: pguyot/arm-runner-action@v2
@@ -672,7 +628,6 @@ jobs:
               build/aarch64/sdk/bin/toit.pkg version
               build/aarch64/sdk/bin/toit.run --version
               build/aarch64/sdk/tools/firmware --help
-              build/aarch64/sdk/tools/esptool -h
 
       - name: Pack artifacts
         shell: bash
@@ -756,6 +711,27 @@ jobs:
       - name: Create vessels artifact
         run: |
           tar c -zf vessels.tar.gz vessels
+
+      - name: Download esptools
+        run: |
+          for arch in arm arm64 linux-amd64 macos win64; do
+            curl -O -L https://github.com/espressif/esptool/releases/download/$ESPTOOL_VERSION/esptool-$ESPTOOL_VERSION-$arch.zip
+            unzip esptool-$ESPTOOL_VERSION-$arch.zip
+            EXTENSION=""
+            if [[ "$arch" = "arm" ]]; then
+              TARGET=rpi
+            elif [[ "$arch" = "arm64" ]]; then
+              TARGET=aarch64
+            elif [[ "$arch" = "linux-amd64" ]]; then
+              TARGET=linux
+            elif [[ "$arch" = "macos" ]]; then
+              TARGET=macos
+            elif [[ "$arch" = "win64" ]]; then
+              TARGET=windows
+              EXTENSION=.exe
+            fi
+            cp esptool-$ESPTOOL_VERSION-$arch/esptool$EXTENSION $TARGET/toit/tools/esptool$EXTENSION
+          done
 
       - name: Compress SDKs
         run: |
