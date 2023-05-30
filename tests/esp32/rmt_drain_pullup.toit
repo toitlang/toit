@@ -7,7 +7,7 @@ Tests the bidirectional open-drain/pull-up functionality of the RMT peripheral.
 
 Setup:
 Connect pin 18 and 19 with a 330 Ohm (or any other 300-1K) resistor.
-Connect pin 18 to pin 32.
+Connect pin 18 to pin 34.
 Connect pin 18 to GND with a 1M Ohm resistor (or any other big number).
 */
 
@@ -18,7 +18,7 @@ import expect show *
 
 RMT_PIN ::= 18
 LEVEL_PIN ::= 19
-MEASURE_PIN ::= 32
+MEASURE_PIN ::= 34
 
 main:
   2.repeat:

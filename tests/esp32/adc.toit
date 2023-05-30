@@ -9,8 +9,8 @@ Note that this test accesses ADC2 which is restricted and can't be used
   while WiFi is running.
 
 Setup:
-Connect 3V3 to pin 12 with a 330 Ohm resistor.
-Connect pin 12 to pin 32 with a 330 Ohm resistor.
+Connect pin 12 to pin 14 with a 330 Ohm resistor.
+Connect pin 14 to pin 32 with a 330 Ohm resistor.
 Connect pin 32 to pin 25 with a 330 Ohm resistor.
 */
 
@@ -19,11 +19,15 @@ import gpio
 import expect show *
 
 ADC1_PIN ::= 32
-ADC2_PIN ::= 12
+ADC2_PIN ::= 14
 CONTROL_PIN ::= 25
+V33_PIN ::= 12
 
 main:
   test_restricted := true
+
+  v33_pin := gpio.Pin V33_PIN --output
+  v33_pin.set 1
 
   adc1_pin := gpio.Pin ADC1_PIN
   control_pin := gpio.Pin CONTROL_PIN --output
@@ -32,7 +36,7 @@ main:
   control_pin.set 0
   // The resistors create a voltage divider of ration 2/3.
   value := adc.get
-  expect 0.9 < value < 1.3
+  expect 1.0 < value < 1.2
 
   raw_value := adc.get --raw
   expect 1115 < raw_value < 1500

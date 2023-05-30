@@ -7,14 +7,14 @@ Tests sending bigger chunks.
 
 Setup:
 Connect GND of one ESP32 to GND of another ESP32.
-Connect pin 18 of the first ESP32 to pin 19 of the second ESP32.
-Connect pin 19 of the first ESP32 to pin 18 of the second ESP32.
+Connect pin 22 of the first ESP32 to pin 23 of the second ESP32.
+Connect pin 23 of the first ESP32 to pin 22 of the second ESP32.
 
 Run uart_big_data_read.toit on one ESP32 and uart_big_data_write.toit on the other.
 
 For the host-test, use a flasher and connect GND to GND of the flasher.
-Connect pin 18 of the ESP32 to the RX pin of the flasher.
-Connect pin 19 of the ESP32 to the TX pin of the flasher.
+Connect pin 22 of the ESP32 to the RX pin of the flasher.
+Connect pin 23 of the ESP32 to the TX pin of the flasher.
 If necessary, adjust the $UART_PATH.
 */
 
@@ -22,8 +22,8 @@ import expect show *
 
 TEST_ITERATIONS := 10
 
-RX ::= 18
-TX ::= 19
+RX ::= 22
+TX ::= 23
 UART_PATH ::= "/dev/ttyUSB1"
 BAUD_RATE ::= 115200
 

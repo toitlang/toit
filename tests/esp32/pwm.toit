@@ -9,7 +9,7 @@ Setup:
 Connect pin 18 and 19 with a 330 Ohm resistor. The resistor isn't
   strictly necessary but can prevent accidental short circuiting.
 
-Similarly, connect pin 25 to pin 26 with a 330 Ohm resistor.
+Similarly, connect pin 26 to pin 33 with a 330 Ohm resistor.
 */
 
 import expect show *
@@ -18,7 +18,7 @@ import pulse_counter
 import gpio.pwm
 
 IN1 /int ::= 18
-IN2 /int ::= 25
+IN2 /int ::= 33
 
 OUT1 /int := 19
 OUT2 /int := 26

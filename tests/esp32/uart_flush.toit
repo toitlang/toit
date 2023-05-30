@@ -6,8 +6,8 @@
 Tests reading and writing of the UART baud rate.
 
 Setup:
-Connect pin 16 to pin 26, optionally with a 330 Ohm resistor to avoid short circuits.
-Connect pin 17 to pin 27, optionally with a resistor.
+Connect pin 18 to pin 19, optionally with a 330 Ohm resistor to avoid short circuits.
+Connect pin 26 to pin 32, optionally with a resistor.
 */
 
 import expect show *
@@ -15,10 +15,10 @@ import gpio
 import uart
 import writer
 
-RX1 := 16
-TX1 := 17
-RX2 := 27
-TX2 := 26
+RX1 := 18
+TX1 := 26
+RX2 := 32
+TX2 := 19
 
 main:
   succeeded := false
@@ -49,7 +49,7 @@ main:
       before = Time.monotonic_us
       port1.flush
       after = Time.monotonic_us
-      print "writing finished"
+      print "flush took $(after - before) us"
       done = true
 
     woken := []
@@ -58,6 +58,7 @@ main:
       sleep --ms=10
 
     // While we were waiting for port1 to flush we were woken several times.
+    print "woken.size $woken.size"
     expect woken.size > 5
 
     // We make sure that the medium entry was while port1 was flushing.
@@ -87,4 +88,3 @@ main:
   pin_tx1.close
   pin_rx2.close
   pin_tx2.close
-
