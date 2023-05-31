@@ -6,18 +6,18 @@
 Tests reading and writing of the UART baud rate.
 
 Setup:
-Connect pin 16 to pin 26, optionally with a 330 Ohm resistor to avoid short circuits.
-Connect pin 17 to pin 27, optionally with a resistor.
+Connect pin 18 to pin 19, optionally with a 330 Ohm resistor to avoid short circuits.
+Connect pin 26 to pin 33, optionally with a resistor.
 */
 
 import expect show *
 import gpio
 import uart
 
-RX1 := 16
-TX1 := 17
-RX2 := 27
-TX2 := 26
+RX1 := 18
+TX1 := 26
+RX2 := 33
+TX2 := 19
 
 expect_baud expected/int actual/int:
   // Baudrate is not 100% accurate, so we can't just test for equality to $expected.

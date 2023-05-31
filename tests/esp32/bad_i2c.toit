@@ -6,15 +6,15 @@
 Tests the errors of i2c.
 
 Setup:
-Pin 32 and pin 33 should not be connected.
+Pin 2 and pin 4 should not be connected.
 */
 
 import expect show *
 import gpio
 import i2c
 
-SDA_PIN := 32
-SCL_PIN := 33
+SDA_PIN := 2
+SCL_PIN := 4
 
 main:
   bus := i2c.Bus

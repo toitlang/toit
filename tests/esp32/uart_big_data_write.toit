@@ -28,3 +28,4 @@ main:
     sleep --ms=200
 
   port.close
+  print "done"

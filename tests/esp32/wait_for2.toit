@@ -12,8 +12,8 @@ import .wait_for1 show
 See 'wait_for1.toit'.
 */
 
-PIN_IN ::= 18
-PIN_OUT ::= 19
+PIN_IN ::= 22
+PIN_OUT ::= 23
 
 main:
   pin_in := gpio.Pin PIN_IN --input
