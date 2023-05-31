@@ -28,6 +28,7 @@ Connect board 1 to board 2 as follows:
 3. IO23 - IO22
 
 ## Running
+
 As of 2023-05-30.
 Run the tests individually. All test run on board 1, except for the
 uart and wait_for tests. (See their respective files for more info.)
