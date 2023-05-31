@@ -76,7 +76,7 @@ class Socket implements tcp.Socket:
   The session can be read at any point after a handshake, but before the session
     is closed.
   */
-  session_state -> ByteArray:
+  session_state -> ByteArray?:
     return session_.session_state
 
   /**

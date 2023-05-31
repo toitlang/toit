@@ -930,6 +930,9 @@ PRIMITIVE(wait_tx) {
 
   TxBuffer* buffer = uart->tx_buffer();
   if (!buffer->is_empty()) return BOOL(false);
+  if (uart->baud_rate < 10000 && get_tx_fifo_free() < SOC_UART_FIFO_LEN) {
+    return BOOL(false);
+  }
   uart->drain_tx_fifo();
   return BOOL(true);
 }
