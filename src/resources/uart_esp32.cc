@@ -187,6 +187,10 @@ public:
   UART_ISR_INLINE void write_tx_break(uint8 length);
   UART_ISR_INLINE uint32 write_tx_fifo(const uint8* data, uint32 length);
 
+  UART_ISR_INLINE bool tx_fifo_empty() {
+    return get_tx_fifo_free() >= SOC_UART_FIFO_LEN;
+  }
+
  private:
   UART_ISR_INLINE uint32 interrupt_mask(uart_toit_interrupt_index_t toit_interrupt_index) {
     return hal_->interrupt_mask[toit_interrupt_index];
@@ -930,7 +934,7 @@ PRIMITIVE(wait_tx) {
 
   TxBuffer* buffer = uart->tx_buffer();
   if (!buffer->is_empty()) return BOOL(false);
-  if (uart->baud_rate < 10000 && get_tx_fifo_free() < SOC_UART_FIFO_LEN) {
+  if (uart->baud_rate() < 10000 && !uart->tx_fifo_empty()) {
     return BOOL(false);
   }
   uart->drain_tx_fifo();
