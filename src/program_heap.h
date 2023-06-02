@@ -98,8 +98,7 @@ class ProgramHeap : public ProgramRawHeap {
   Program* const program_;
   HeapObject* _allocate_raw(int byte_size);
   virtual AllocationResult _expand();
-  bool in_gc_;
-  bool gc_allowed_;
+  bool retrying_primitive_;
   int64 total_bytes_allocated_;
   AllocationResult last_allocation_result_;
 

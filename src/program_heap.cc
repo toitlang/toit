@@ -38,8 +38,7 @@ namespace toit {
 ProgramHeap::ProgramHeap(Program* program)
     : ProgramRawHeap()
     , program_(program)
-    , in_gc_(false)
-    , gc_allowed_(true)
+    , retrying_primitive_(false)
     , total_bytes_allocated_(0)
     , last_allocation_result_(ALLOCATION_SUCCESS) {
   blocks_.append(ProgramBlock::allocate_program_block());
