@@ -156,7 +156,7 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
     sp = gc(sp, false, attempts, false);
     instance = process->object_heap()->allocate_instance(process->program()->exception_class_id());
   }
-  process->object_heap()->check_install_heap_limit();
+  process->object_heap()->leave_primitive();
 
   if (instance == null) {
     DROP(1);
@@ -174,7 +174,7 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
     sp = gc(sp, true, attempts, false);
     buffer.allocate(STACK_ENCODING_BUFFER_SIZE);
   }
-  process->object_heap()->check_install_heap_limit();
+  process->object_heap()->leave_primitive();
 
   if (!buffer.has_content()) {
     DROP(2);
@@ -192,7 +192,7 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
       sp = gc(sp, false, attempts, false);
       trace = process->allocate_byte_array(buffer.size());
     }
-    process->object_heap()->check_install_heap_limit();
+    process->object_heap()->leave_primitive();
 
     if (trace == null) {
       DROP(2);
@@ -261,7 +261,7 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
     sp = gc(sp, false, attempts, false);
     new_stack = process->object_heap()->allocate_stack(new_length);
   }
-  process->object_heap()->check_install_heap_limit();
+  process->object_heap()->leave_primitive();
 
   // Then check for out of memory.
   if (new_stack == null) {

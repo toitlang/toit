@@ -281,7 +281,7 @@ Interpreter::Result Interpreter::run() {
   // after a failed allocation attempt, so we do not get the
   // pending heap limit installed. Do it here before starting
   // the interpretation.
-  process_->object_heap()->check_install_heap_limit();
+  process_->object_heap()->leave_primitive();
 
   // Interpretation state.
   Program* program = process_->program();
@@ -539,7 +539,7 @@ Interpreter::Result Interpreter::run() {
       sp = gc(sp, false, attempts, false);
       result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     }
-    process_->object_heap()->check_install_heap_limit();
+    process_->object_heap()->leave_primitive();
 
     if (result == null) {
       sp = push_error(sp, program->allocation_failed(), "");
@@ -553,7 +553,7 @@ Interpreter::Result Interpreter::run() {
     PUSH(result);
     if (Flags::gc_a_lot) {
       sp = gc(sp, false, 1, false);
-      process_->object_heap()->check_install_heap_limit();
+      process_->object_heap()->leave_primitive();
     }
   OPCODE_END();
 
@@ -1083,7 +1083,7 @@ Interpreter::Result Interpreter::run() {
 
       // GC might have taken place in object heap but local "method" is from program heap.
       PUSH(result);
-      process_->object_heap()->check_install_heap_limit();
+      process_->object_heap()->leave_primitive();
       DISPATCH(PRIMITIVE_LENGTH);
 
     done:
@@ -1095,7 +1095,7 @@ Interpreter::Result Interpreter::run() {
       DROP(arity);
       ASSERT(!is_stack_empty());
       PUSH(result);
-      process_->object_heap()->check_install_heap_limit();
+      process_->object_heap()->leave_primitive();
       CHECK_PROPAGATED_TYPES_RETURN();
       DISPATCH(0);
     }
