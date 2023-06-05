@@ -44,5 +44,3 @@ Known issues:
   https://github.com/espressif/esp-idf/pull/9430 to the ESP-IDF is needed.
 - pulse_counter2.toit: the Pulse counter isn't correctly released. If, for
   any reason, pulse_counter1.toit fails it also requires a reset.
-- uart_flush.toit: the 'flush' function is blocking and spends time in the
-  primitive instead of yielding.
