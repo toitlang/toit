@@ -317,6 +317,9 @@ GcType ObjectHeap::gc(bool try_hard) {
     // triple GC, which throws an exception.
     limit_ = max_heap_size_;
   }
+  // Will be cleared again immediately if the GC succeeded in freeing up enough
+  // to complete the primitive.
+  retrying_primitive_ = true;
   return type;
 }
 
