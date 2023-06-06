@@ -202,7 +202,8 @@ menuconfig:
 
 .PHONY: menuconfig-no-env
 menuconfig-no-env: check-env check-esp32-env
-	cmake -E env IDF_TARGET=$(IDF_TARGET) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" menuconfig
+	cmake -E env IDF_TARGET=$(IDF_TARGET) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) menuconfig
+	cmake -E env IDF_TARGET=$(IDF_TARGET) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) save-defconfig
 
 .PHONY: flash
 flash:
