@@ -159,6 +159,10 @@ jobs:
         if: matrix.shard == 1 && runner.os != 'Windows'
         with:
           python-version: '3.10'
+          cache: 'pip'
+          cache-dependencey-path: third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
+        run:
+          pip install -e . -r third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
 
       - name: Set up Python - Windows
         uses: actions/setup-python@v4
@@ -166,6 +170,10 @@ jobs:
         with:
           # Use 3.8 since that version still works on Windows 7.
           python-version: '3.8'
+          cache: 'pip'
+          cache-dependencey-path: third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
+        run:
+          pip install -e . -r third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
 
       - name: Setup compilation env
         shell: bash
@@ -427,7 +435,7 @@ jobs:
 
       - name: Install ESP32 tools
         run: |
-          third_party/esp-idf/install.sh --enable-ci
+          third_party/esp-idf/install.sh
 
       # Build using make.
       - name: make
