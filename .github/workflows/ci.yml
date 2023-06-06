@@ -160,7 +160,7 @@ jobs:
         with:
           python-version: '3.10'
           cache: 'pip'
-          cache-dependencey-path: third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
+          cache-dependency-path: third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
 
       - name: Set up Python - Windows
         uses: actions/setup-python@v4
