@@ -161,8 +161,6 @@ jobs:
           python-version: '3.10'
           cache: 'pip'
           cache-dependencey-path: third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
-        run:
-          pip install -e . -r third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
 
       - name: Set up Python - Windows
         uses: actions/setup-python@v4
@@ -172,6 +170,8 @@ jobs:
           python-version: '3.8'
           cache: 'pip'
           cache-dependencey-path: third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
+
+      - name: Install python packages needed by MbedTLS
         run:
           pip install -e . -r third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
 
