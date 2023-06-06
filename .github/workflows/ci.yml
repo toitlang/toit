@@ -169,7 +169,7 @@ jobs:
           # Use 3.8 since that version still works on Windows 7.
           python-version: '3.8'
           cache: 'pip'
-          cache-dependencey-path: third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
+          cache-dependency-path: third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
 
       - name: Install python packages needed by MbedTLS
         run:
