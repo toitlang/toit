@@ -173,7 +173,7 @@ jobs:
 
       - name: Install python packages needed by MbedTLS
         run:
-          pip install -e . -r third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
+          pip install -r third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
 
       - name: Setup compilation env
         shell: bash
