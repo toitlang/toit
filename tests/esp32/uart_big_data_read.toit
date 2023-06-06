@@ -31,3 +31,4 @@ main:
         break
 
   port.close
+  print "done"

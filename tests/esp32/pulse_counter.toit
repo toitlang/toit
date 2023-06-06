@@ -9,7 +9,7 @@ Setup:
 Connect pin 18 and 19 with a 330 Ohm resistor. The resistor isn't
   strictly necessary but can prevent accidental short circuiting.
 
-Similarly, connect pin 25 to pin 26 with a 330 Ohm resistor.
+Similarly, connect pin 26 to pin 33 with a 330 Ohm resistor.
 */
 
 import expect show *
@@ -18,7 +18,7 @@ import pulse_counter
 import rmt
 
 IN1 /int ::= 18
-IN2 /int ::= 25
+IN2 /int ::= 33
 
 OUT1 /int := 19
 OUT2 /int := 26
@@ -299,7 +299,7 @@ main:
   rmt_channel := rmt.Channel --output out --clk_div=1 --idle_level=0
 
   // Since the RMT also runs on the ABP clock, we can't produce any pulse that is shorter than 12.5ns.
-  // There set the glitch filter to 25ns. This should make it possible to drop the shortest pulses
+  // Therefore set the glitch filter to 25ns. This should make it possible to drop the shortest pulses
   // the RMT can produce.
   unit = pulse_counter.Unit --glitch_filter_ns=45
   unit.add_channel in --on_negative_edge=pulse_counter.Unit.INCREMENT
@@ -314,8 +314,10 @@ main:
   expect_equals 0 unit.value
 
   // If the pulse is 3 ticks long, then the pulse counter should detect it.
+  // If we use a resistor than the rise/fall time of the signal might not make
+  // it fast enough. -> Use 4 ticks.
   short_pulse := rmt.Signals 2
-  shortest_pulse.set 0 --level=1 --period=3
+  shortest_pulse.set 0 --level=1 --period=4
   shortest_pulse.set 1 --level=0 --period=0
   rmt_channel.write shortest_pulse
 

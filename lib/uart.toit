@@ -230,7 +230,7 @@ class Port implements reader.Reader:
       if not uart_: throw "CLOSED"
       flushed := uart_wait_tx_ uart_
       if flushed: return
-      sleep --ms=1
+      yield
 
   write_no_wait_ data from=0 to=data.size --break_length=0:
     while true:

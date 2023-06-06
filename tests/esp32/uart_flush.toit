@@ -6,8 +6,8 @@
 Tests reading and writing of the UART baud rate.
 
 Setup:
-Connect pin 16 to pin 26, optionally with a 330 Ohm resistor to avoid short circuits.
-Connect pin 17 to pin 27, optionally with a resistor.
+Connect pin 18 to pin 19, optionally with a 330 Ohm resistor to avoid short circuits.
+Connect pin 26 to pin 33, optionally with a resistor.
 */
 
 import expect show *
@@ -15,10 +15,10 @@ import gpio
 import uart
 import writer
 
-RX1 := 16
-TX1 := 17
-RX2 := 27
-TX2 := 26
+RX1 := 18
+TX1 := 26
+RX2 := 33
+TX2 := 19
 
 main:
   succeeded := false
@@ -37,7 +37,6 @@ main:
         --tx=pin_tx2
         --baud_rate=1200
 
-    print port1.baud_rate
     TEST_STR ::= "toit toit toit toit"
     done := false
     before := 0
@@ -49,7 +48,7 @@ main:
       before = Time.monotonic_us
       port1.flush
       after = Time.monotonic_us
-      print "writing finished"
+      print "flush took $(after - before) us"
       done = true
 
     woken := []
@@ -70,7 +69,6 @@ main:
     // Generally, it's enough to do a second round.
     // https://github.com/espressif/esp-idf/issues/9397
     data := port2.read
-    print "$data.size"
     // expect_equals TEST_STR data.to_string_non_throwing
     if TEST_STR != data.to_string_non_throwing:
       print "***********************************  NOT EQUAL"
@@ -87,4 +85,3 @@ main:
   pin_tx1.close
   pin_rx2.close
   pin_tx2.close
-

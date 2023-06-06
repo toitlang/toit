@@ -52,7 +52,7 @@ else
 endif
 
 .PHONY: all
-all: sdk esptool
+all: sdk
 
 .PHONY: debug
 debug:
@@ -145,24 +145,6 @@ vessels: check-env build/$(TARGET)/CMakeCache.txt
 version-file: build/$(TARGET)/CMakeCache.txt
 	(cd build/$(TARGET) && ninja build_version_file)
 
-build/$(HOST)/sdk/tools/esptool$(EXE_SUFFIX):
-	$(MAKE) build-esptool
-
-.PHONY: esptool
-esptool: build/$(HOST)/sdk/tools/esptool$(EXE_SUFFIX)
-
-.PHONY: build-esptool
-build-esptool: check-env
-	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
-	    $(MAKE) esptool-no-env
-
-.PHONY: esptool-no-env
-esptool-no-env:
-	pip install -U 'pyinstaller>=4.8'
-	pyinstaller --onefile --distpath build/$(HOST)/sdk/tools \
-			--workpath build/$(HOST)/esptool \
-			--specpath build/$(HOST)/esptool \
-			'$(IDF_PATH)/components/esptool_py/esptool/esptool.py'
 
 .PHONY: pi
 pi: raspbian

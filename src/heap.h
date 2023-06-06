@@ -159,7 +159,10 @@ class ObjectHeap {
   bool has_max_heap_size() const { return max_heap_size_ != 0; }
   bool has_pending_limit() const { return limit_ != pending_limit_; }
 
-  void check_install_heap_limit() {
+  bool retrying_primitive() const { return retrying_primitive_; }
+
+  void leave_primitive() {
+    retrying_primitive_ = false;
     if (limit_ != pending_limit_) install_heap_limit();
   }
 
@@ -178,8 +181,7 @@ class ObjectHeap {
 
   void install_heap_limit();
 
-  bool in_gc_ = false;
-  bool gc_allowed_ = true;
+  bool retrying_primitive_ = false;
   AllocationResult last_allocation_result_ = ALLOCATION_SUCCESS;
 
   Process* owner_;
@@ -188,7 +190,7 @@ class ObjectHeap {
   static const word _UNLIMITED_EXPANSION = 0x7fffffff;
 
   // Number of bytes used before forcing a GC, including external memory.
-  // Set to zero to have no limit.
+  // Set to max_heap_size_ to have no limit.
   word limit_ = 0;
   // This limit will be installed at the end of the current primitive.
   word pending_limit_ = 0;

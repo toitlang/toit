@@ -38,12 +38,10 @@ HeapObject* TwoSpaceHeap::allocate(uword size) {
 }
 
 HeapObject* TwoSpaceHeap::new_space_allocation_failure(uword size) {
-  if (!process_heap_->has_limit()) {
+  if (process_heap_->retrying_primitive()) {
     // When we are rerunning a primitive after a GC we don't want to
     // trigger a new GC unless we abolutely have to, so we allow allocation
-    // directly into old-space.  We recognize this situation by there not
-    // being an allocation limit (it is installed when the primitive
-    // completes).
+    // directly into old-space.
     uword result = old_space_.allocate(size);
     if (result != 0) {
       // The code that populates newly allocated objects assumes that they

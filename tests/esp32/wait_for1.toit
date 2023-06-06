@@ -12,15 +12,15 @@ Tests the $gpio.Pin.wait_for functionality.
 # Setup
 You need two boards.
 - Connect GND of board1 to GND of board2.
-- Connect pin 18 of board1 to pin 19 of board2.
-- Connect pin 19 of board1 to pin 18 of board2.
+- Connect pin 22 of board1 to pin 23 of board2.
+- Connect pin 23 of board1 to pin 22 of board2.
 
 Run `wait_for1.toit` on board1.
 Once that one is running, run `wait_for2.toit` on board2.
 */
 
-PIN_IN ::= 18
-PIN_OUT ::= 19
+PIN_IN ::= 22
+PIN_OUT ::= 23
 
 ITERATIONS ::= 10_000
 MEDIUM_PULSE_ITERATIONS ::= 50

@@ -6,8 +6,9 @@
 Tests the DAC functionality of the ESP32.
 
 Setup:
-Connect pin 25 to pin 32.
-Connect pin 26 to pin 33.
+Connect pin 26 to pin 32.
+Connect pin 25 to pin 33.
+The connections can be done with a resistor.
 */
 
 import gpio
@@ -15,10 +16,10 @@ import gpio.dac as gpio
 import gpio.adc as gpio
 import expect show *
 
-ADC_IN1 := 32
-ADC_IN2 := 33
-DAC_OUT1 := 25
-DAC_OUT2 := 26
+ADC_IN1 := 33
+ADC_IN2 := 32
+DAC_OUT1 := 26
+DAC_OUT2 := 25
 
 test_wave data/List:
   bucket1 := 0
@@ -30,6 +31,10 @@ test_wave data/List:
     else if it < 1.65: bucket2++
     else if it < 2.8: bucket3++
     else: bucket4++
+  print bucket1
+  print bucket2
+  print bucket3
+  print bucket4
   expect bucket1 >= data.size / 8
   expect bucket2 >= data.size / 8
   expect bucket3 >= data.size / 8
@@ -69,8 +74,8 @@ main:
   expect in_range >= 80
 
   // Expect to see the majority of values.
-  test_wave data1
   test_wave data2
+  test_wave data1
 
   dac1.set 0.5
   expect 0.4 <= adc1.get <= 0.6
