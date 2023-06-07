@@ -37,6 +37,12 @@ add_executable(
   bytecode_lister.cc
 )
 
+set_target_properties(
+  bytecode_lister
+  PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/toitp/bin"
+)
+
 set(BYTECODE_LIST ${TOITP_TEST_DIR}/bytecode.output)
 
 add_custom_target(build_test_toitp_requirements DEPENDS ${TOITP_EXE} ${BYTECODE_LIST})
