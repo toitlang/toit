@@ -848,8 +848,8 @@ jobs:
 
       - name: Build installer
         run: |
-          & tools\windows_installer\build.bat ${{ steps.version.outputs.version }} $PWD\toit $PWD\toit_installer_x64.exe
-          signtool sign /debug /n "Toitware ApS" /t http://timestamp.digicert.com/ $PWD\toit_installer_x64.exe
+          & tools\windows_installer\build.bat ${{ steps.version.outputs.version }} $PWD\toit $PWD\toit-windows-x64-installer.exe
+          signtool sign /debug /n "Toitware ApS" /t http://timestamp.digicert.com/ $PWD\toit-windows-x64-installer.exe
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
@@ -857,7 +857,7 @@ jobs:
           name: Windows-build
           path: |
             toit-windows.tar.gz
-            toit_installer_x64.exe
+            toit-windows-x64-installer.exe
 
       - name: Upload release artifacts
         if: github.event_name == 'release'
@@ -873,7 +873,7 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit_installer_x64.exe
+          file: toit-windows-x64-installer.exe
           tag: ${{ github.ref }}
           overwrite: true
 
