@@ -23,6 +23,7 @@
 #include "soc/uart_periph.h"
 #include "hal/gpio_hal.h"
 #include "esp_rom_gpio.h"
+#include "esp_timer.h"
 #include "driver/periph_ctrl.h"
 #include "freertos/FreeRTOS.h"
 
