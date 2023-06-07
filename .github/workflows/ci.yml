@@ -718,6 +718,7 @@ jobs:
               EXTENSION=.exe
             fi
             cp esptool-$ESPTOOL_VERSION-$arch/esptool$EXTENSION $TARGET/toit/tools/esptool$EXTENSION
+            chmod +x $TARGET/toit/tools/esptool$EXTENSION
           done
 
       - name: Compress SDKs
