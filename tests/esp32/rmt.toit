@@ -9,7 +9,7 @@ Setup:
 Connect pin 18 and 19 with a 330 Ohm resistor. The resistor isn't
   strictly necessary but can prevent accidental short circuiting.
 
-Similarly, connect pin 15 to pin 19 with a 330 Ohm resistor. We will
+Similarly, connect pin 21 to pin 19 with a 330 Ohm resistor. We will
   use that one to pull the line high.
 */
 
@@ -20,7 +20,7 @@ import expect show *
 
 RMT_PIN_1 ::= 18
 RMT_PIN_2 ::= 19
-RMT_PIN_3 ::= 15
+RMT_PIN_3 ::= 21
 
 // Because of the resistors and a weak pull-up, the reading isn't fully precise.
 // We allow 5us error.
