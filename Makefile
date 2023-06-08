@@ -218,7 +218,6 @@ flash-no-env: esp32-no-env
 .PHONY:	clean
 clean:
 	rm -rf build/
-	find toolchains -name sdkconfig -exec rm '{}' ';'
 
 INSTALL_SRC_ARCH := $(TARGET)
 
