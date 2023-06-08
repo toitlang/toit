@@ -44,7 +44,7 @@ PRIMITIVE(open) {
 PRIMITIVE(transfer) {
   ARGS(int, fd, int, length, Object, tx, int, from_tx, Object, rx, int, from_rx, int, delay_usecs, bool, cs_change);
 
-  Object* null_object = process->program()->null_object();
+  Object* null_object = process->null_object();
   if (length <= 0 || delay_usecs < 0 || delay_usecs > 0xffff) OUT_OF_BOUNDS;
   if (fd < 0) INVALID_ARGUMENT;
 

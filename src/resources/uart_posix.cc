@@ -310,7 +310,7 @@ PRIMITIVE(close) {
   ARGS(UartResourceGroup, resource_group, IntResource, uart_resource);
   resource_group->close_uart(uart_resource->id());
   uart_resource_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_baud_rate) {
@@ -352,7 +352,7 @@ PRIMITIVE(set_baud_rate) {
 #endif
 
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 // Writes the data to the UART.
@@ -420,7 +420,7 @@ PRIMITIVE(read) {
 
   size_t available = 0;
   if (ioctl(fd, FIONREAD, &available) != 0) return Primitive::os_error(errno, process);
-  if (available == 0) return process->program()->null_object();
+  if (available == 0) return process->null_object();
 
   ByteArray* data = process->allocate_byte_array(static_cast<int>(available));
   if (data == null) ALLOCATION_FAILED;
@@ -449,7 +449,7 @@ PRIMITIVE(set_control_flags) {
 
   if (ioctl(fd, TIOCMSET, &flags) != 0) return Primitive::os_error(errno, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_control_flags) {

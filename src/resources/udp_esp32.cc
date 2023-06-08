@@ -302,7 +302,7 @@ PRIMITIVE(connect) {
       return lwip_error(capture.process, err);
     }
 
-    return capture.process->program()->null_object();
+    return capture.process->null_object();
   });
 }
 
@@ -365,7 +365,7 @@ PRIMITIVE(send) {
   to -= from;
 
   ip_addr_t addr;
-  if (address != process->program()->null_object()) {
+  if (address != process->null_object()) {
     Blob address_bytes;
     if (!address->byte_content(process->program(), &address_bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
     if (address_bytes.length() == 4) {
@@ -416,7 +416,7 @@ PRIMITIVE(close) {
 
   socket_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(error_number) {
@@ -472,9 +472,9 @@ PRIMITIVE(set_option) {
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     switch (capture.option) {
       case UDP_BROADCAST:
-        if (capture.raw == capture.process->program()->true_object()) {
+        if (capture.raw == capture.process->true_object()) {
           capture.socket->upcb()->so_options |= SOF_BROADCAST;
-        } else if (capture.raw == capture.process->program()->false_object()) {
+        } else if (capture.raw == capture.process->false_object()) {
           capture.socket->upcb()->so_options &= ~SOF_BROADCAST;
         } else {
           WRONG_TYPE;
@@ -485,7 +485,7 @@ PRIMITIVE(set_option) {
         UNIMPLEMENTED_PRIMITIVE;
     }
 
-    return capture.process->program()->null_object();
+    return capture.process->null_object();
   });
 }
 
@@ -496,8 +496,8 @@ PRIMITIVE(gc) {
     needs_gc = false;
     return BOOL(result);
   });
-  if (do_gc == process->program()->true_object()) CROSS_PROCESS_GC;
-  return process->program()->null_object();
+  if (do_gc == process->true_object()) CROSS_PROCESS_GC;
+  return process->null_object();
 }
 
 } // namespace toit

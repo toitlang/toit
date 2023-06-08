@@ -375,7 +375,7 @@ PRIMITIVE(close) {
   ARGS(EthernetResourceGroup, group);
   group->tear_down();
   group_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(connect) {
@@ -415,7 +415,7 @@ PRIMITIVE(disconnect) {
 
   group->unregister_resource(ethernet);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_ip) {

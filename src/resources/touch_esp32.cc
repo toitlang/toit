@@ -265,7 +265,7 @@ PRIMITIVE(unuse) {
   resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(read) {
@@ -308,7 +308,7 @@ PRIMITIVE(set_threshold) {
 
   esp_err_t err = touch_pad_set_thresh(pad, threshold);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

@@ -155,7 +155,7 @@ PRIMITIVE(channel_delete) {
   ARGS(RmtResourceGroup, resource_group, RmtResource, resource)
   resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 esp_err_t configure(const rmt_config_t* config, rmt_channel_t channel_num, size_t rx_buffer_size) {
@@ -205,7 +205,7 @@ PRIMITIVE(config_tx) {
   esp_err_t err = configure(&config, channel, 0);
   if (ESP_OK != err) return Primitive::os_error(err, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(config_rx) {
@@ -230,7 +230,7 @@ PRIMITIVE(config_rx) {
   esp_err_t err = configure(&config, channel, buffer_size);
   if (ESP_OK != err) return Primitive::os_error(err, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_idle_threshold) {
@@ -245,7 +245,7 @@ PRIMITIVE(set_idle_threshold) {
   ARGS(RmtResource, resource, uint16, threshold)
   esp_err_t err = rmt_set_rx_idle_thresh(resource->channel(), threshold);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(config_bidirectional_pin) {
@@ -282,7 +282,7 @@ PRIMITIVE(config_bidirectional_pin) {
     if (err != ESP_OK) return Primitive::os_error(err, process);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(transmit) {
@@ -347,7 +347,7 @@ PRIMITIVE(start_receive) {
   bool reset_memory;
   esp_err_t err = rmt_rx_start(resource->channel(), reset_memory=flush);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(prepare_receive) {
@@ -375,11 +375,11 @@ PRIMITIVE(receive) {
 
   size_t received_length;
   auto received_bytes = xRingbufferReceive(rb, &received_length, 0);
-  if (received_bytes == null) return process->program()->null_object();
+  if (received_bytes == null) return process->null_object();
   if (received_length == 0) {
     // We got a 0-length item. The RMT sometimes does this. Ignore it.
     vRingbufferReturnItem(rb, received_bytes);
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   ByteArray::Bytes bytes(output);
@@ -399,7 +399,7 @@ PRIMITIVE(stop_receive) {
   ARGS(RmtResource, resource)
   esp_err_t err = rmt_rx_stop(resource->channel());
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

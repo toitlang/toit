@@ -94,7 +94,7 @@ PRIMITIVE(blit) {
     INVALID_ARGUMENT;
   }
   const uint8* lookup;
-  if (lut == process->program()->null_object()) {
+  if (lut == process->null_object()) {
     lookup = IDENTITY_LOOKUP;
   } else {
     Blob blob;
@@ -156,7 +156,7 @@ PRIMITIVE(blit) {
     src_offset += src_line_stride;
     dest_offset += dest_line_stride;
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 struct DrawData {
@@ -577,7 +577,7 @@ PRIMITIVE(draw_text) {
       draw_text_orientation_270(x_base, y_base, color, string, font, contents, byte_array_width, byte_array_height);
       break;
   }
-  return process->program()->null_object();
+  return process->null_object();
 #endif  // CONFIG_TOIT_BIT_DISPLAY
 }
 
@@ -749,7 +749,7 @@ PRIMITIVE(draw_bitmap) {
       }
       break;
   }
-  return process->program()->null_object();
+  return process->null_object();
 #endif  // !defined(CONFIG_TOIT_BIT_DISPLAY) && !defined(CONFIG_TOIT_BYTE_DISPLAY)
 }
 
@@ -781,7 +781,7 @@ PRIMITIVE(draw_bytemap) {
 
   byte_draw(orientation, bytemap_source, bit_box, capture);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 static void byte_draw(int orientation, BytemapDecompresser& decompresser, const PixelBox& bit_box, DrawData& capture) {
@@ -843,7 +843,7 @@ PRIMITIVE(byte_draw_text) {
       byte_draw_text_orientation_90_270(x_base, y_base, color, orientation * 90, string, font, contents, byte_array_width, byte_array_height);
       break;
   }
-  return process->program()->null_object();
+  return process->null_object();
 #endif  // TOIT BYTE_DISPLAY
 }
 
@@ -862,7 +862,7 @@ PRIMITIVE(rectangle) {
     OUT_OF_RANGE;
   }
   if (x_base >= byte_array_width || y_base >= byte_array_height || x_base + width <= 0 || y_base + height <= 0 || height == 0 || width == 0) {
-    return process->program()->null_object();
+    return process->null_object();
   }
   if (x_base < 0) {
     width += x_base;
@@ -898,14 +898,14 @@ PRIMITIVE(rectangle) {
       }
     }
     if (page == end_page) {
-      return process->program()->null_object();
+      return process->null_object();
     }
     int new_y_base = (y_base + 8) & ~7;
     int step = new_y_base - y_base;
     height -= step;
     y_base = new_y_base;
   }
-  return process->program()->null_object();
+  return process->null_object();
 #endif  // CONFIG_TOIT_BIT_DISPLAY
 }
 
@@ -923,7 +923,7 @@ PRIMITIVE(byte_rectangle) {
     OUT_OF_RANGE;
   }
   if (x_base >= byte_array_width || y_base >= byte_array_height || x_base + width <= 0 || y_base + height <= 0 || height == 0 || width == 0) {
-    return process->program()->false_object();
+    return process->false_object();
   }
   if (x_base < 0) {
     width += x_base;
@@ -946,7 +946,7 @@ PRIMITIVE(byte_rectangle) {
     }
     contents += byte_array_width;
   }
-  return process->program()->true_object();
+  return process->true_object();
 #endif  // CONFIG_TOIT_BYTE_DISPLAY
 }
 
@@ -978,7 +978,7 @@ PRIMITIVE(bytemap_blur) {
   if (width < 1) OUT_OF_BOUNDS;
   int height = bytes.length() / width;
   if (height * width != bytes.length()) OUT_OF_BOUNDS;
-  if (x_blur_radius < 2 && y_blur_radius < 2) return process->program()->null_object();
+  if (x_blur_radius < 2 && y_blur_radius < 2) return process->null_object();
   if (x_blur_radius < 0 || y_blur_radius < 0) INVALID_ARGUMENT;
   const int BUFFER_SIZE = 16;  // Power of 2.
   const int BUFFER_MASK = BUFFER_SIZE - 1;
@@ -1044,7 +1044,7 @@ PRIMITIVE(bytemap_blur) {
       }
     }
   }
-  return process->program()->null_object();
+  return process->null_object();
 #endif  // CONFIG_TOIT_BYTE_DISPLAY
 }
 
@@ -1150,7 +1150,7 @@ PRIMITIVE(composit) {
       }
     }
   }
-  return process->program()->null_object();
+  return process->null_object();
 #endif // !defined(CONFIG_TOIT_BIT_DISPLAY) && !defined(CONFIG_TOIT_BYTE_DISPLAY)
 }
 

@@ -53,7 +53,7 @@ PRIMITIVE(adler32_add) {
   } else {
     adler32->add(data.address() + from, to - from);
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(adler32_get) {

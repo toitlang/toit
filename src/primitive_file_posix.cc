@@ -267,7 +267,7 @@ PRIMITIVE(readdir) {
   // restartable in Unix.
 
   if (entry == null) {
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   int len = strlen(entry->d_name);
@@ -304,7 +304,7 @@ PRIMITIVE(closedir) {
   }
 
   proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(read) {
@@ -332,7 +332,7 @@ PRIMITIVE(read) {
   }
 
   if (buffer_fullness == 0) {
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   if (buffer_fullness < SIZE) {
@@ -368,7 +368,7 @@ PRIMITIVE(close) {
       if (errno == ENOSPC || errno == EDQUOT) QUOTA_EXCEEDED;
       OTHER_ERROR;
     }
-    return process->program()->null_object();
+    return process->null_object();
   }
 }
 
@@ -390,7 +390,7 @@ PRIMITIVE(stat) {
 #endif
   if (result < 0) {
     if (errno == ENOENT || errno == ENOTDIR) {
-      return process->program()->null_object();
+      return process->null_object();
     }
     return return_open_error(process, errno);
   }
@@ -448,21 +448,21 @@ PRIMITIVE(unlink) {
   ARGS(cstring, pathname);
   int result = FILE_UNLINK_(current_dir(process), pathname, 0);
   if (result < 0) return return_open_error(process, errno);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(rmdir) {
   ARGS(cstring, pathname);
   int result = FILE_UNLINK_(current_dir(process), pathname, AT_REMOVEDIR);
   if (result < 0) return return_open_error(process, errno);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(rename) {
   ARGS(cstring, old_name, cstring, new_name);
   int result = FILE_RENAME_(current_dir(process), old_name, current_dir(process), new_name);
   if (result < 0) return return_open_error(process, errno);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(chdir) {
@@ -473,7 +473,7 @@ PRIMITIVE(chdir) {
   if (new_dir < 0) return return_open_error(process, errno);
   process->set_current_directory(new_dir);
   close(old_dir);
-  return process->program()->null_object();
+  return process->null_object();
 #else
   UNIMPLEMENTED_PRIMITIVE;
 #endif
@@ -484,7 +484,7 @@ PRIMITIVE(mkdir) {
   int result = FILE_MKDIR_(current_dir(process), pathname, mode);
   return result < 0
     ? return_open_error(process, errno)
-    : process->program()->null_object();
+    : process->null_object();
 }
 
 PRIMITIVE(mkdtemp) {
@@ -519,11 +519,11 @@ PRIMITIVE(is_open_file) {
   ARGS(int, fd);
   int result = lseek(fd, 0, SEEK_CUR);
   if (result < 0) {
-    if (errno == ESPIPE) return process->program()->false_object();
+    if (errno == ESPIPE) return process->false_object();
     if (errno == EBADF) INVALID_ARGUMENT;
     OTHER_ERROR;
   }
-  return process->program()->true_object();
+  return process->true_object();
 }
 
 PRIMITIVE(realpath) {
@@ -538,7 +538,7 @@ PRIMITIVE(realpath) {
   char* c_result = realpath(filename, null);
   if (c_result == null) {
     if (errno == ENOMEM) MALLOC_FAILED;
-    if (errno == ENOENT or errno == ENOTDIR) return process->program()->null_object();
+    if (errno == ENOENT or errno == ENOTDIR) return process->null_object();
     OTHER_ERROR;
   }
   String* result = process->allocate_string(c_result);

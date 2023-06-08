@@ -74,13 +74,13 @@ PRIMITIVE(init) {
 PRIMITIVE(wait_for) {
   // On Windows we always add an event to get notified when a subprocess ends. So this primitive is intentionally just
   // returning null.
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(dont_wait_for) {
   // On Windows we always add an event to get notified when a subprocess ends. So this primitive is intentionally just
   // returning null.
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(kill) {
@@ -89,7 +89,7 @@ PRIMITIVE(kill) {
 
   subprocess->set_killed();
   TerminateProcess(subprocess->handle(), signal);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(strsignal) {

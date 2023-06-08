@@ -283,7 +283,7 @@ PRIMITIVE(close) {
   resource->resource_group()->unregister_resource(resource);
   resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

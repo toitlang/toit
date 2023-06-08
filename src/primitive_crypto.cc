@@ -70,7 +70,7 @@ PRIMITIVE(sha1_add) {
 
   if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
   sha1->add(data.address() + from, to - from);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(sha1_get) {
@@ -114,7 +114,7 @@ PRIMITIVE(sha_add) {
   if (!sha) INVALID_ARGUMENT;
   if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
   sha->add(data.address() + from, to - from);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(sha_get) {
@@ -157,7 +157,7 @@ PRIMITIVE(siphash_add) {
 
   if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
   siphash->add(data.address() + from, to - from);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(siphash_get) {
@@ -356,7 +356,7 @@ PRIMITIVE(aead_close) {
   ARGS(AeadContext, context);
   context->resource_group()->unregister_resource(context);
   context_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 // Start the encryption of a message.  Takes a 12 byte nonce.
@@ -427,7 +427,7 @@ PRIMITIVE(aead_start_message) {
 
   if (result != 0) return tls_error(null, process, result);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 /**
@@ -451,7 +451,7 @@ PRIMITIVE(aead_add) {
       BLOCK_SIZE);
   if (output_length > out.length()) {
     // Output byte array not big enough.
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   int buffered = context->number_of_buffered_bytes();
@@ -649,14 +649,14 @@ PRIMITIVE(aes_cbc_close) {
   ARGS(AesCbcContext, context);
   context->resource_group()->unregister_resource(context);
   context_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(aes_ecb_close) {
   ARGS(AesContext, context);
   context->resource_group()->unregister_resource(context);
   context_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 }

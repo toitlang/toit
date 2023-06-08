@@ -259,7 +259,7 @@ PRIMITIVE(send) {
   const uint8* send_buffer = data.address() + from;
   int send_size = to - from;
 
-  if (address != process->program()->null_object()) {
+  if (address != process->null_object()) {
     Blob address_bytes;
     if (!address->byte_content(process->program(), &address_bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
 
@@ -362,9 +362,9 @@ PRIMITIVE(set_option) {
   switch (option) {
     case UDP_BROADCAST: {
       int value = 0;
-      if (raw == process->program()->true_object()) {
+      if (raw == process->true_object()) {
         value = 1;
-      } else if (raw != process->program()->false_object()) {
+      } else if (raw != process->false_object()) {
         WRONG_TYPE;
       }
       if (setsockopt(socket, SOL_SOCKET, SO_BROADCAST,
@@ -378,7 +378,7 @@ PRIMITIVE(set_option) {
       UNIMPLEMENTED_PRIMITIVE;
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(close) {
@@ -389,7 +389,7 @@ PRIMITIVE(close) {
 
   udp_resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(error_number) {

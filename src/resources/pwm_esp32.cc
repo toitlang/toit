@@ -180,7 +180,7 @@ PRIMITIVE(close) {
 
   resource_group_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 static uint32 compute_duty_factor(PwmResourceGroup* pwm, double factor) {
@@ -252,7 +252,7 @@ PRIMITIVE(set_factor) {
     return Primitive::os_error(err, process);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(frequency) {
@@ -276,7 +276,7 @@ PRIMITIVE(set_frequency) {
     return Primitive::os_error(err, process);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(close_channel) {
@@ -286,7 +286,7 @@ PRIMITIVE(close_channel) {
 
   resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

@@ -191,7 +191,7 @@ PRIMITIVE(unuse) {
   resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(set) {
@@ -204,7 +204,7 @@ PRIMITIVE(set) {
   err = dac_output_voltage(channel, dac_value);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(cosine_wave) {
@@ -228,7 +228,7 @@ PRIMITIVE(cosine_wave) {
   err = resource->use_cosine();
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

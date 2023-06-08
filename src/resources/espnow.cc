@@ -315,7 +315,7 @@ PRIMITIVE(receive) {
   struct DataGram* datagram;
   portBASE_TYPE ret = xQueueReceive(rx_queue, &datagram, 0);
   if (ret != pdTRUE) {
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   data->resize_external(process, datagram->len);
@@ -351,7 +351,7 @@ PRIMITIVE(add_peer) {
   err = esp_now_add_peer(&peer);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  return process->program()->true_object();
+  return process->true_object();
 }
 
 PRIMITIVE(deinit) {
@@ -363,7 +363,7 @@ PRIMITIVE(deinit) {
   group_proxy->clear_external_address();
 
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

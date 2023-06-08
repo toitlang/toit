@@ -1169,7 +1169,7 @@ int BlePeripheralManagerResource::_on_gap(struct ble_gap_event* event) {
 
 static Object* object_to_mbuf(Process* process, Object* object, os_mbuf** result) {
   *result = null;
-  if (object != process->program()->null_object()) {
+  if (object != process->null_object()) {
     Blob bytes;
     if (!object->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
     if (bytes.length() > 0) {
@@ -1329,7 +1329,7 @@ PRIMITIVE(close) {
   ARGS(BleResourceGroup, group)
   group->tear_down();
   group_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(scan_start) {
@@ -1371,7 +1371,7 @@ PRIMITIVE(scan_start) {
     return nimle_stack_error(process,err);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(scan_next) {
@@ -1379,9 +1379,9 @@ PRIMITIVE(scan_next) {
   Locker locker(BleResourceGroup::instance()->mutex());
 
   DiscoveredPeripheral* next = central_manager->get_discovered_peripheral();
-  if (!next) return process->program()->null_object();
+  if (!next) return process->null_object();
 
-  Array* array = process->object_heap()->allocate_array(7, process->program()->null_object());
+  Array* array = process->object_heap()->allocate_array(7, process->null_object());
   if (!array) ALLOCATION_FAILED;
 
   ByteArray* id = process->object_heap()->allocate_internal_byte_array(7);
@@ -1468,7 +1468,7 @@ PRIMITIVE(scan_stop) {
     BleEventSource::instance()->on_event(reinterpret_cast<BleResource*>(resource), kBleCompleted);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(connect) {
@@ -1506,14 +1506,14 @@ PRIMITIVE(connect) {
 PRIMITIVE(disconnect) {
   ARGS(BleRemoteDeviceResource, device)
   ble_gap_terminate(device->handle(), BLE_ERR_REM_USER_CONN_TERM);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(release_resource) {
   ARGS(Resource, resource)
   resource->resource_group()->unregister_resource(resource);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(discover_services) {
@@ -1542,7 +1542,7 @@ PRIMITIVE(discover_services) {
     }
   } else INVALID_ARGUMENT;
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(discover_services_result) {
@@ -1554,14 +1554,14 @@ PRIMITIVE(discover_services_result) {
     count++;
   }
 
-  Array* array = process->object_heap()->allocate_array(count, process->program()->null_object());
+  Array* array = process->object_heap()->allocate_array(count, process->null_object());
   if (!array) ALLOCATION_FAILED;
 
   int index = 0;
   for (auto service : device->services()) {
     if (service->is_returned()) continue;
 
-    Array* service_info = process->object_heap()->allocate_array(2, process->program()->null_object());
+    Array* service_info = process->object_heap()->allocate_array(2, process->null_object());
     if (service_info == null) ALLOCATION_FAILED;
 
     ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -1601,7 +1601,7 @@ PRIMITIVE(discover_characteristics){
     BleEventSource::instance()->on_event(service, kBleCharacteristicsDiscovered);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(discover_characteristics_result) {
@@ -1613,7 +1613,7 @@ PRIMITIVE(discover_characteristics_result) {
     count++;
   }
 
-  Array* array = process->object_heap()->allocate_array(count, process->program()->null_object());
+  Array* array = process->object_heap()->allocate_array(count, process->null_object());
   if (!array) ALLOCATION_FAILED;
 
   int index = 0;
@@ -1621,7 +1621,7 @@ PRIMITIVE(discover_characteristics_result) {
     if (characteristic->is_returned()) continue;
 
     Array* characteristic_data = process->object_heap()->allocate_array(
-        3, process->program()->null_object());
+        3, process->null_object());
     if (!characteristic_data) ALLOCATION_FAILED;
 
     ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -1647,7 +1647,7 @@ PRIMITIVE(discover_descriptors) {
   // We always discover descriptors when discovering characteristics.
   BleEventSource::instance()->on_event(characteristic, kBleDescriptorsDiscovered);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(discover_descriptors_result) {
@@ -1659,14 +1659,14 @@ PRIMITIVE(discover_descriptors_result) {
     count++;
   }
 
-  Array* array = process->object_heap()->allocate_array(count, process->program()->null_object());
+  Array* array = process->object_heap()->allocate_array(count, process->null_object());
   if (!array) ALLOCATION_FAILED;
 
   int index = 0;
   for (auto descriptor : characteristic->descriptors()) {
     if (descriptor->is_returned()) continue;
 
-    Array* descriptor_result = process->object_heap()->allocate_array(2, process->program()->null_object());
+    Array* descriptor_result = process->object_heap()->allocate_array(2, process->null_object());
 
     Error* err;
     ByteArray *uuid_byte_array = byte_array_from_uuid(process, descriptor->uuid(), err);
@@ -1700,7 +1700,7 @@ PRIMITIVE(request_read) {
                       BleReadWriteElement::on_attribute_read,
                       element);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_value) {
@@ -1710,7 +1710,7 @@ PRIMITIVE(get_value) {
   auto element = reinterpret_cast<BleReadWriteElement*>(resource);
 
   const os_mbuf* mbuf = element->mbuf_received();
-  if (!mbuf) return process->program()->null_object();
+  if (!mbuf) return process->null_object();
 
   Object* ret_val = convert_mbuf_to_heap_object(process, mbuf);
   if (!ret_val) ALLOCATION_FAILED;
@@ -1785,7 +1785,7 @@ PRIMITIVE(set_characteristic_notify) {
     }
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(advertise_start) {
@@ -1940,7 +1940,7 @@ PRIMITIVE(advertise_start) {
   // nimble does not provide a advertise started gap event, so we just simulate the event
   // from the primitive.
   BleEventSource::instance()->on_event(peripheral_manager, kBleAdvertiseStartSucceeded);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(advertise_stop) {
@@ -1953,7 +1953,7 @@ PRIMITIVE(advertise_stop) {
   }
   peripheral_manager->set_advertising_started(false);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(add_service) {
@@ -2161,7 +2161,7 @@ PRIMITIVE(deploy_service) {
   // simulate success event
   BleEventSource::instance()->on_event(service_resource, kBleServiceAddSucceeded);
   service_resource->set_deployed(true);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(set_value) {
@@ -2177,7 +2177,7 @@ PRIMITIVE(set_value) {
 
   element->set_mbuf_to_send(om);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_subscribed_clients) {
@@ -2188,7 +2188,7 @@ PRIMITIVE(get_subscribed_clients) {
     count++;
   }
 
-  Array* array = process->object_heap()->allocate_array(count, process->program()->null_object());
+  Array* array = process->object_heap()->allocate_array(count, process->null_object());
   if (!array) ALLOCATION_FAILED;
 
   int index = 0;
@@ -2226,7 +2226,7 @@ PRIMITIVE(notify_characteristics_value) {
     return nimle_stack_error(process, err);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_att_mtu) {
@@ -2267,7 +2267,7 @@ PRIMITIVE(set_preferred_mtu) {
   if (result) {
     INVALID_ARGUMENT;
   } else {
-    return process->program()->null_object();
+    return process->null_object();
   }
 }
 
@@ -2287,7 +2287,7 @@ PRIMITIVE(gc) {
     CROSS_PROCESS_GC;
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(read_request_reply) {
@@ -2297,7 +2297,7 @@ PRIMITIVE(read_request_reply) {
 
   characteristic->handle_read_reply_request(mbuf);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_bonded_peers) {
@@ -2305,7 +2305,7 @@ PRIMITIVE(get_bonded_peers) {
   int num_peers;
   ble_store_util_bonded_peers(bonds,&num_peers,MYNEWT_VAL(BLE_STORE_MAX_BONDS));
 
-  Array* result = process->object_heap()->allocate_array(num_peers, process->program()->null_object());
+  Array* result = process->object_heap()->allocate_array(num_peers, process->null_object());
   for (int i = 0; i < num_peers; i++) {
     ByteArray* id = process->object_heap()->allocate_internal_byte_array(7);
     ByteArray::Bytes id_bytes(id);

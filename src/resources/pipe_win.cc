@@ -186,7 +186,7 @@ PRIMITIVE(close) {
 
   fd_resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 // Create a writable or readable pipe, as used for stdin/stdout/stderr of a child process.
@@ -352,19 +352,19 @@ PRIMITIVE(write) {
 PRIMITIVE(read) {
   ARGS(ReadPipeResource, read_resource);
 
-  if (read_resource->pipe_ended()) return process->program()->null_object();
+  if (read_resource->pipe_ended()) return process->null_object();
   if (!read_resource->read_ready()) return Smi::from(-1);
 
   ByteArray* array = process->allocate_byte_array(READ_BUFFER_SIZE, true);
   if (array == null) ALLOCATION_FAILED;
 
   if (!read_resource->receive_read_response()) {
-    if (GetLastError() == ERROR_BROKEN_PIPE) return process->program()->null_object();
+    if (GetLastError() == ERROR_BROKEN_PIPE) return process->null_object();
     WINDOWS_ERROR;
   }
 
   // A read count of 0 means EOF
-  if (read_resource->read_count() == 0) return process->program()->null_object();
+  if (read_resource->read_count() == 0) return process->null_object();
 
   array->resize_external(process, read_resource->read_count());
 
@@ -415,7 +415,7 @@ static Object* fork_helper(
     Object* environment_object) {
   if (arguments->length() > 1000000) OUT_OF_BOUNDS;
 
-  Object* null_object = process->program()->null_object();
+  Object* null_object = process->null_object();
   Array* environment = null;
   if (environment_object != null_object) {
     if (!is_array(environment_object)) INVALID_ARGUMENT;
@@ -427,7 +427,7 @@ static Object* fork_helper(
       Blob blob;
       Object* element = environment->at(i);
       bool is_key = (i & 1) == 0;
-      if (!is_key && element == process->program()->null_object()) continue;
+      if (!is_key && element == process->null_object()) continue;
       if (!element->byte_content(process->program(), &blob, STRINGS_ONLY)) WRONG_TYPE;
       if (blob.length() == 0) INVALID_ARGUMENT;
       const uint8* str = blob.address();
@@ -541,7 +541,7 @@ PRIMITIVE(fork) {
        Array, args);
   USE(command);  // Not used on Windows.
   return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
-                     fd_3, fd_4, args, process->program()->null_object());
+                     fd_3, fd_4, args, process->null_object());
 }
 
 PRIMITIVE(fork2) {

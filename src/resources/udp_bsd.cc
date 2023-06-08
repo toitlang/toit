@@ -205,7 +205,7 @@ PRIMITIVE(receive) {
     if (errno == EWOULDBLOCK) return Smi::from(-1);
     return Primitive::os_error(errno, process);
   }
-  if (read == 0) return process->program()->null_object();
+  if (read == 0) return process->null_object();
 
   ASSERT(read == available);
   memcpy(ByteArray::Bytes(array).address(), buffer, read);
@@ -233,7 +233,7 @@ PRIMITIVE(send) {
   struct sockaddr_in addr_in;
   struct sockaddr* addr = null;
   size_t size = 0;
-  if (address != process->program()->null_object()) {
+  if (address != process->null_object()) {
     bzero((char*)&addr_in, sizeof(addr_in));
     addr_in.sin_family = AF_INET;
     Blob address_bytes;
@@ -317,9 +317,9 @@ PRIMITIVE(set_option) {
   switch (option) {
     case UDP_BROADCAST: {
       int value = 0;
-      if (raw == process->program()->true_object()) {
+      if (raw == process->true_object()) {
         value = 1;
-      } else if (raw != process->program()->false_object()) {
+      } else if (raw != process->false_object()) {
         WRONG_TYPE;
       }
       if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &value, sizeof(value)) == -1) {
@@ -332,7 +332,7 @@ PRIMITIVE(set_option) {
       UNIMPLEMENTED_PRIMITIVE;
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(error_number) {
@@ -355,7 +355,7 @@ PRIMITIVE(close) {
 
   connection_resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(gc) {

@@ -161,7 +161,7 @@ PRIMITIVE(close) {
 
   fd_resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 // Create a writable or readable pipe, as used for stdin/stdout/stderr of a child process.
@@ -224,8 +224,8 @@ PRIMITIVE(fd_to_pipe) {
 
 PRIMITIVE(is_a_tty) {
   ARGS(IntResource, fd_resource);
-  if (isatty(fd_resource->id())) return process->program()->true_object();
-  return process->program()->false_object();
+  if (isatty(fd_resource->id())) return process->true_object();
+  return process->false_object();
 }
 
 PRIMITIVE(write) {
@@ -269,7 +269,7 @@ PRIMITIVE(read) {
     if (errno == EWOULDBLOCK) return Smi::from(-1);
     return Primitive::os_error(errno, process);
   }
-  if (read == 0) return process->program()->null_object();
+  if (read == 0) return process->null_object();
 
   array->resize_external(process, read);
 
@@ -349,7 +349,7 @@ static Object* fork_helper(
     const char* command,
     Array* args,
     Object* environment_object) {
-  HeapObject* null_object = process->program()->null_object();
+  HeapObject* null_object = process->null_object();
 
   if (args->length() > 1000000) OUT_OF_BOUNDS;
 
@@ -364,7 +364,7 @@ static Object* fork_helper(
       Blob blob;
       Object* element = environment->at(i);
       bool is_key = (i & 1) == 0;
-      if (!is_key && element == process->program()->null_object()) continue;
+      if (!is_key && element == process->null_object()) continue;
       if (!element->byte_content(process->program(), &blob, STRINGS_ONLY)) WRONG_TYPE;
       if (blob.length() == 0) INVALID_ARGUMENT;
       const uint8* str = blob.address();
@@ -482,7 +482,7 @@ static Object* fork_helper(
       // will exec soon.
       auto key_cstr = strndup(char_cast(key.address()), key.length());
       Object* value = environment->at(i + 1);
-      if (value == process->program()->null_object()) {
+      if (value == process->null_object()) {
         unsetenv(key_cstr);
       } else {
         Blob value_blob;
@@ -592,7 +592,7 @@ PRIMITIVE(fork) {
        cstring, command,
        Array, args);
   return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
-                     fd_3, fd_4, command, args, process->program()->null_object());
+                     fd_3, fd_4, command, args, process->null_object());
 }
 
 PRIMITIVE(fork2) {

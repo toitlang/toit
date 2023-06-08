@@ -160,7 +160,7 @@ PRIMITIVE(close) {
   ARGS(SpiResourceGroup, spi);
   spi->tear_down();
   spi_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 IRAM_ATTR static void spi_pre_transfer_callback(spi_transaction_t* t) {
@@ -219,7 +219,7 @@ PRIMITIVE(device) {
 PRIMITIVE(device_close) {
   ARGS(SpiResourceGroup, spi, SpiDevice, device);
   spi->unregister_resource(device);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(transfer) {
@@ -267,7 +267,7 @@ PRIMITIVE(transfer) {
     memcpy(tx.address() + from, trans.rx_buffer, length);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(acquire_bus) {
@@ -276,13 +276,13 @@ PRIMITIVE(acquire_bus) {
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(release_bus) {
   ARGS(SpiDevice, device);
   spi_device_release_bus(device->handle());
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

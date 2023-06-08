@@ -271,7 +271,7 @@ PRIMITIVE(close_unit) {
   unit->tear_down();
   pcnt_unit_ids.put(unit->unit_id());
   unit_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(new_channel) {
@@ -301,7 +301,7 @@ PRIMITIVE(close_channel) {
   if (!unit->is_open_channel(channel)) INVALID_ARGUMENT;
   esp_err_t err = unit->close_channel(channel);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(start) {
@@ -309,7 +309,7 @@ PRIMITIVE(start) {
 
   esp_err_t err = pcnt_counter_resume(unit->unit_id());
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(stop) {
@@ -317,7 +317,7 @@ PRIMITIVE(stop) {
 
   esp_err_t err = pcnt_counter_pause(unit->unit_id());
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(clear) {
@@ -325,7 +325,7 @@ PRIMITIVE(clear) {
 
   esp_err_t err = pcnt_counter_clear(unit->unit_id());
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_count) {

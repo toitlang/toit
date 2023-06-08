@@ -464,7 +464,7 @@ PRIMITIVE(get_font) {
     page1 = FONT_PAGE_ToitLogo;
     page1_length = sizeof(FONT_PAGE_ToitLogo);
   }
-  if (page1 == null) return process->program()->null_object();
+  if (page1 == null) return process->null_object();
   if (!FontBlock::verify(page1, page1_length, null)) INVALID_ARGUMENT;
   FontBlock* block1 = _new FontBlock(page1, false);
   if (!block1) ALLOCATION_FAILED;
@@ -537,7 +537,7 @@ PRIMITIVE(delete_font) {
   font->resource_group()->unregister_resource(font);
 
   font_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 void iterate_font_characters(Blob bytes, Font* font, const std::function<void (const FontCharacter*)>& f) {

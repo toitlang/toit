@@ -341,7 +341,7 @@ PRIMITIVE(get_outgoing_fullness) {
 
 PRIMITIVE(set_outgoing) {
   ARGS(MbedTlsSocket, socket, Object, outgoing, int, fullness);
-  Object* null_object = process->program()->null_object();
+  Object* null_object = process->null_object();
   if (outgoing == null_object) {
     if (fullness != 0) INVALID_ARGUMENT;
   } else if (is_byte_array(outgoing)) {
@@ -365,7 +365,7 @@ PRIMITIVE(set_incoming) {
   if (!incoming->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
   if (from < 0 || from > blob.length()) INVALID_ARGUMENT;
   socket->set_incoming(incoming, from);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(init) {
@@ -400,7 +400,7 @@ PRIMITIVE(deinit) {
   ARGS(MbedTlsResourceGroup, group);
   group->tear_down();
   group_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 Object* MbedTlsResourceGroup::tls_socket_create(Process* process, const char* hostname) {
@@ -426,7 +426,7 @@ PRIMITIVE(create) {
 PRIMITIVE(handshake) {
   ARGS(MbedTlsSocket, socket);
   TlsEventSource::instance()->handshake(socket);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 // This is only used after the handshake.  It reads data that has been decrypted.
@@ -449,7 +449,7 @@ PRIMITIVE(read)  {
   if (array == null) ALLOCATION_FAILED;
   int read = mbedtls_ssl_read(&socket->ssl, ByteArray::Bytes(array).address(), size);
   if (read == 0 || read == MBEDTLS_ERR_SSL_CONN_EOF || read == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
-    return process->program()->null_object();
+    return process->null_object();
   } else if (read == MBEDTLS_ERR_SSL_WANT_READ) {
     return Smi::from(TLS_WANT_READ);
   } else if (read < 0) {
@@ -487,7 +487,7 @@ PRIMITIVE(close_write) {
 
   mbedtls_ssl_close_notify(&socket->ssl);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(close) {
@@ -496,7 +496,7 @@ PRIMITIVE(close) {
 
   socket_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(add_root_certificate) {
@@ -504,7 +504,7 @@ PRIMITIVE(add_root_certificate) {
   if (cert->cert()->next) INVALID_ARGUMENT;  // You can only append a single cert, not a chain of certs.
   int ret = socket->add_root_certificate(cert);
   if (ret != 0) return tls_error(null, process, ret);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(add_certificate) {
@@ -512,7 +512,7 @@ PRIMITIVE(add_certificate) {
 
   int ret = socket->add_certificate(certificate, private_key, private_key_length, password, password_length);
   if (ret != 0) return tls_error(null, process, ret);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 static int toit_tls_send(void* ctx, const unsigned char* buf, size_t len) {
@@ -553,7 +553,7 @@ PRIMITIVE(init_socket) {
   ARGS(BaseMbedTlsSocket, socket, cstring, transport_id);
   socket->apply_certs();
   if (!socket->init(transport_id)) MALLOC_FAILED;
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(error) {
@@ -612,13 +612,13 @@ PRIMITIVE(get_internals) {
   const mbedtls_cipher_info_t* in_info = in_cipher_ctx->cipher_info;
 
   // Check the connection for parameters we can cope with.
-  if (out_info->mode != in_info->mode) return process->program()->null_object();
-  if (!known_cipher_info(out_info, key_bitlen, iv_len)) return process->program()->null_object();
-  if (!known_cipher_info(in_info, key_bitlen, iv_len)) return process->program()->null_object();
-  if (!known_transform(socket->ssl.transform_out, iv_len)) return process->program()->null_object();
-  if (!known_transform(socket->ssl.transform_in, iv_len)) return process->program()->null_object();
-  if (in_cipher_ctx->key_bitlen != static_cast<int>(key_bitlen)) return process->program()->null_object();
-  if (out_cipher_ctx->key_bitlen != static_cast<int>(key_bitlen)) return process->program()->null_object();
+  if (out_info->mode != in_info->mode) return process->null_object();
+  if (!known_cipher_info(out_info, key_bitlen, iv_len)) return process->null_object();
+  if (!known_cipher_info(in_info, key_bitlen, iv_len)) return process->null_object();
+  if (!known_transform(socket->ssl.transform_out, iv_len)) return process->null_object();
+  if (!known_transform(socket->ssl.transform_in, iv_len)) return process->null_object();
+  if (in_cipher_ctx->key_bitlen != static_cast<int>(key_bitlen)) return process->null_object();
+  if (out_cipher_ctx->key_bitlen != static_cast<int>(key_bitlen)) return process->null_object();
 
   size_t key_len = key_bitlen >> 3;
 
@@ -650,7 +650,7 @@ PRIMITIVE(get_internals) {
 #endif
     if (out_gcm_context->mode != MBEDTLS_GCM_ENCRYPT ||
         in_gcm_context->mode != MBEDTLS_GCM_DECRYPT) {
-      return process->program()->null_object();
+      return process->null_object();
     }
 #if MBEDTLS_VERSION_MAJOR >= 3
     memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->buf + out_aes_context->rk_offset, key_len);
@@ -658,7 +658,7 @@ PRIMITIVE(get_internals) {
 #elif defined(TOIT_FREERTOS)
     if (out_aes_context->key_bytes != key_len ||
         in_aes_context->key_bytes != key_len) {
-      return process->program()->null_object();
+      return process->null_object();
     }
     memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->key, key_len);
     memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->key, key_len);
@@ -692,7 +692,7 @@ PRIMITIVE(get_internals) {
 PRIMITIVE(get_random) {
   ARGS(MutableBlob, destination);
   EntropyMixer::instance()->get_entropy(destination.address(), destination.length());
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 #ifdef TOIT_FREERTOS
@@ -787,7 +787,7 @@ PRIMITIVE(token_release) {
   token->resource_group()->unregister_resource(token);
   proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

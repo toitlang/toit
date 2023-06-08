@@ -338,7 +338,7 @@ PRIMITIVE(accept) {
   SOCKET socket = accept(server_socket_resource->socket(), NULL, NULL);
   if (socket == INVALID_SOCKET) {
     if (WSAGetLastError() == WSAEWOULDBLOCK)
-      return process->program()->null_object();
+      return process->null_object();
     WINDOWS_ERROR;
   }
 
@@ -435,14 +435,14 @@ PRIMITIVE(read)  {
   ARGS(ByteArray, proxy, TcpSocketResource, tcp_resource);
   USE(proxy);
 
-  if (tcp_resource->closed()) return process->program()->null_object();
+  if (tcp_resource->closed()) return process->null_object();
 
   if (!tcp_resource->ready_for_read()) return Smi::from(-1);
 
   if (!tcp_resource->receive_read_response()) WINDOWS_ERROR;
 
   // With overlapped (async) reads a read_count of 0 indicates end of stream.
-  if (tcp_resource->read_count() == 0) return process->program()->null_object();
+  if (tcp_resource->read_count() == 0) return process->null_object();
 
   ByteArray* array = process->allocate_byte_array(static_cast<int>(tcp_resource->read_count()));
   if (array == null) ALLOCATION_FAILED;
@@ -533,9 +533,9 @@ PRIMITIVE(set_option) {
   switch (option) {
     case TCP_KEEP_ALIVE: {
       int value = 0;
-      if (raw == process->program()->true_object()) {
+      if (raw == process->true_object()) {
         value = 1;
-      } else if (raw != process->program()->false_object()) {
+      } else if (raw != process->false_object()) {
         WRONG_TYPE;
       }
       if (setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE,
@@ -547,9 +547,9 @@ PRIMITIVE(set_option) {
 
     case TCP_NO_DELAY: {
       int value = 0;
-      if (raw == process->program()->true_object()) {
+      if (raw == process->true_object()) {
         value = 1;
-      } else if (raw != process->program()->false_object()) {
+      } else if (raw != process->false_object()) {
         WRONG_TYPE;
       }
       if (setsockopt(socket, IPPROTO_TCP, TCP_NODELAY,
@@ -563,7 +563,7 @@ PRIMITIVE(set_option) {
       UNIMPLEMENTED_PRIMITIVE;
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(close_write) {
@@ -573,7 +573,7 @@ PRIMITIVE(close_write) {
   int result = shutdown(tcp_resource->socket(), SD_SEND);
   if (result != 0) WINDOWS_ERROR;
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(close) {
@@ -584,7 +584,7 @@ PRIMITIVE(close) {
 
   resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(error_number) {

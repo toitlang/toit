@@ -904,7 +904,7 @@ PRIMITIVE(close) {
   ARGS(UartResourceGroup, uart, UartResource, res)
   uart->unregister_resource(res);
   res_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_baud_rate) {
@@ -915,7 +915,7 @@ PRIMITIVE(get_baud_rate) {
 PRIMITIVE(set_baud_rate) {
   ARGS(UartResource, uart, int, baud_rate)
   uart->set_baud_rate(baud_rate);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(write) {
@@ -942,7 +942,7 @@ PRIMITIVE(read) {
 
   RxBuffer* buffer = uart->rx_buffer();
   uword available = buffer->available();
-  if (available == 0) return process->program()->null_object();
+  if (available == 0) return process->null_object();
 
   // For high-speed UART communication, it is important
   // that we consume as much as we can when we read.

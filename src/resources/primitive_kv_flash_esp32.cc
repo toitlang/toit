@@ -81,7 +81,7 @@ PRIMITIVE(read_bytes) {
   size_t length;
   esp_err_t err = nvs_get_blob(resource_group->handle(), key, null, &length);
   if (err == ESP_ERR_NVS_NOT_FOUND) {
-    return process->program()->null_object();
+    return process->null_object();
   } else if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
@@ -92,7 +92,7 @@ PRIMITIVE(read_bytes) {
   ByteArray::Bytes bytes(array);
   err = nvs_get_blob(resource_group->handle(), key, bytes.address(), &length);
   if (err == ESP_ERR_NVS_NOT_FOUND) {
-    return process->program()->null_object();
+    return process->null_object();
   } else if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
@@ -115,7 +115,7 @@ PRIMITIVE(write_bytes) {
   err = nvs_commit(resource_group->handle());
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(delete) {
@@ -129,7 +129,7 @@ PRIMITIVE(delete) {
     return Primitive::os_error(err, process);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(erase) {
@@ -140,7 +140,7 @@ PRIMITIVE(erase) {
     return Primitive::os_error(err, process);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

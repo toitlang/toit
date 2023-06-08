@@ -366,7 +366,7 @@ PRIMITIVE(accept) {
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     LwipSocket* accepted = capture.listen_socket->accept();
     if (accepted == null) {
-      return capture.process->program()->null_object();
+      return capture.process->null_object();
     }
 
     capture.resource_group->register_resource(accepted);
@@ -387,7 +387,7 @@ PRIMITIVE(read)  {
     pbuf* p = socket->get_read_buffer(&offset);
 
     if (p == null) {
-      if (socket->read_closed()) return process->program()->null_object();
+      if (socket->read_closed()) return process->null_object();
       return Smi::from(-1);
     }
 
@@ -496,12 +496,12 @@ PRIMITIVE(close_write) {
       // Write routine already running.
       err_t err = tcp_output(socket->tpcb());
       if (err != ERR_OK) return lwip_error(process, err);
-      return process->program()->null_object();
+      return process->null_object();
     }
 
     err_t err = tcp_shutdown(socket->tpcb(), 0, 1);
     if (err != ERR_OK) return lwip_error(process, err);
-    return process->program()->null_object();
+    return process->null_object();
   });
 }
 
@@ -509,7 +509,7 @@ PRIMITIVE(close) {
   ARGS(SocketResourceGroup, resource_group, LwipSocket, socket);
   resource_group->unregister_resource(socket);
   socket_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(error_number) {
@@ -587,9 +587,9 @@ PRIMITIVE(set_option) {
 
     switch (capture.option) {
       case TCP_KEEP_ALIVE:
-        if (capture.raw == process->program()->true_object()) {
+        if (capture.raw == process->true_object()) {
           capture.socket->tpcb()->so_options |= SOF_KEEPALIVE;
-        } else if (capture.raw == process->program()->false_object()) {
+        } else if (capture.raw == process->false_object()) {
           capture.socket->tpcb()->so_options &= ~SOF_KEEPALIVE;
         } else {
           WRONG_TYPE;
@@ -597,11 +597,11 @@ PRIMITIVE(set_option) {
         break;
 
       case TCP_NO_DELAY:
-        if (capture.raw == process->program()->true_object()) {
+        if (capture.raw == process->true_object()) {
           tcp_nagle_disable(capture.socket->tpcb());
           // Flush when disabling Nagle.
           tcp_output(capture.socket->tpcb());
-        } else if (capture.raw == process->program()->false_object()) {
+        } else if (capture.raw == process->false_object()) {
           tcp_nagle_enable(capture.socket->tpcb());
         } else {
           WRONG_TYPE;
@@ -616,7 +616,7 @@ PRIMITIVE(set_option) {
         UNIMPLEMENTED_PRIMITIVE;
     }
 
-    return process->program()->null_object();
+    return process->null_object();
   });
 }
 
@@ -627,8 +627,8 @@ PRIMITIVE(gc) {
     needs_gc = false;
     return BOOL(result);
   });
-  if (do_gc == process->program()->true_object()) CROSS_PROCESS_GC;
-  return process->program()->null_object();
+  if (do_gc == process->true_object()) CROSS_PROCESS_GC;
+  return process->null_object();
 }
 
 } // namespace toit

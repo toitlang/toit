@@ -325,7 +325,7 @@ PRIMITIVE(close) {
   ARGS(UartResourceGroup, resource_group, UartResource, uart_resource);
   resource_group->unregister_resource(uart_resource);
   uart_resource_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_baud_rate) {
@@ -348,7 +348,7 @@ PRIMITIVE(set_baud_rate) {
   success = SetCommState(uart_resource->uart(), &dcb);
   if (!success) WINDOWS_ERROR;
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 // Writes the data to the UART.
@@ -376,11 +376,11 @@ PRIMITIVE(read) {
   ARGS(UartResource, uart_resource);
 
   if (uart_resource->has_error()) return windows_error(process, uart_resource->error_code());
-  if (!uart_resource->ready_for_read()) return process->program()->null_object();
+  if (!uart_resource->ready_for_read()) return process->null_object();
   if (!uart_resource->receive_read_response()) WINDOWS_ERROR;
 
   DWORD available = uart_resource->read_count();
-  if (available == 0) return process->program()->null_object();
+  if (available == 0) return process->null_object();
 
   ByteArray* array = process->allocate_byte_array(static_cast<int>(available));
   if (array == null) ALLOCATION_FAILED;
@@ -415,7 +415,7 @@ PRIMITIVE(set_control_flags) {
   }
   uart_resource->set_rts((flags & CONTROL_FLAG_RTS) != 0);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_control_flags) {

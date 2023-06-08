@@ -70,6 +70,28 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
   current_directory_ = -1;
 #endif
   ASSERT(group_->lookup(id_) == this);
+
+  bools_[0] = program->false_object();
+  bools_[1] = program->true_object();
+  null_ = program->null_object();
+  marked_allocation_failed_ = Primitive::mark_as_error(program->allocation_failed());
+  marked_already_exists_ = Primitive::mark_as_error(program->already_exists());
+  marked_file_not_found_ = Primitive::mark_as_error(program->file_not_found());
+  marked_hardware_error_ = Primitive::mark_as_error(program->hardware_error());
+  marked_illegal_utf_8_ = Primitive::mark_as_error(program->illegal_utf_8());
+  marked_invalid_argument_ = Primitive::mark_as_error(program->invalid_argument());
+  marked_malloc_failed_ = Primitive::mark_as_error(program->malloc_failed());
+  marked_cross_process_gc_ = Primitive::mark_as_error(program->cross_process_gc());
+  marked_negative_argument_ = Primitive::mark_as_error(program->negative_argument());
+  marked_out_of_bounds_ = Primitive::mark_as_error(program->out_of_bounds());
+  marked_out_of_range_ = Primitive::mark_as_error(program->out_of_range());
+  marked_already_in_use_ = Primitive::mark_as_error(program->already_in_use());
+  marked_overflow_ = Primitive::mark_as_error(program->overflow());
+  marked_permission_denied_ = Primitive::mark_as_error(program->permission_denied());
+  marked_quota_exceeded_ = Primitive::mark_as_error(program->quota_exceeded());
+  marked_unimplemented_primitive_ = Primitive::mark_as_error(program->unimplemented());
+  marked_wrong_type_ = Primitive::mark_as_error(program->wrong_object_type());
+  marked_already_closed_ = Primitive::mark_as_error(program->already_closed());
 }
 
 Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory)

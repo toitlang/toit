@@ -852,25 +852,25 @@ namespace toit {
     name = Double::cast(_raw_##name)->value();                 \
   } else WRONG_TYPE;
 
-#define _A_T_bool(N, name)                   \
-  Object* _raw_##name = __args[-(N)];        \
-  bool name = true;                          \
-  if (_raw_##name == process->program()->true_object()) {         \
-  } else if (_raw_##name == process->program()->false_object()) { \
-    name = false;                                                 \
+#define _A_T_bool(N, name)                             \
+  Object* _raw_##name = __args[-(N)];                  \
+  bool name = true;                                    \
+  if (_raw_##name == process->true_object()) {         \
+  } else if (_raw_##name == process->false_object()) { \
+    name = false;                                      \
   } else WRONG_TYPE;
 
-#define _A_T_cstring(N, name)                                           \
-  Object* _raw_##name = __args[-(N)];                                   \
-  char* _nonconst_##name = null;                                        \
-  if (_raw_##name != process->program()->null_object()) {               \
-    Blob _blob_##name;                                                  \
+#define _A_T_cstring(N, name)                                                    \
+  Object* _raw_##name = __args[-(N)];                                            \
+  char* _nonconst_##name = null;                                                 \
+  if (_raw_##name != process->null_object()) {                                   \
+    Blob _blob_##name;                                                           \
     if (!_raw_##name->byte_content(process->program(), &_blob_##name, STRINGS_ONLY)) WRONG_TYPE; \
     _nonconst_##name = unvoid_cast<char*>(calloc(_blob_##name.length() + 1, 1)); \
-    if (!_nonconst_##name) MALLOC_FAILED;                               \
-    memcpy(_nonconst_##name, _blob_##name.address(), _blob_##name.length()); \
-  }                                                                     \
-  const char* name = _nonconst_##name;                                  \
+    if (!_nonconst_##name) MALLOC_FAILED;                                        \
+    memcpy(_nonconst_##name, _blob_##name.address(), _blob_##name.length());     \
+  }                                                                              \
+  const char* name = _nonconst_##name;                                           \
   AllocationManager _manager_##name(process, _nonconst_##name, 0);
 
 // If it's a string, then the length is calculated including the terminating
@@ -898,7 +898,7 @@ namespace toit {
     } else if (_raw_##name->byte_content(process->program(), &_blob_##name, STRINGS_OR_BYTE_ARRAYS)) { \
       name##_length = _blob_##name.length();                            \
       name = _blob_##name.address();                                    \
-    } else if (_raw_##name != process->program()->null_object()) {      \
+    } else if (_raw_##name != process->null_object()) {                 \
       WRONG_TYPE;                                                       \
     }                                                                   \
   }                                                                     \
@@ -1153,27 +1153,27 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
     _A_4,  _ODD,         \
     _A_2,  _ODD)(__VA_ARGS__)
 
-// Macro for return a boolean object.
-#define BOOL(value) ((value) ? process->program()->true_object() : process->program()->false_object())
+// Macro for returning a boolean object.
+#define BOOL(value) process->bools((value) ? 1 : 0)
 
-#define ALLOCATION_FAILED return Primitive::mark_as_error(process->program()->allocation_failed())
-#define ALREADY_EXISTS return Primitive::mark_as_error(process->program()->already_exists())
-#define FILE_NOT_FOUND return Primitive::mark_as_error(process->program()->file_not_found())
-#define HARDWARE_ERROR return Primitive::mark_as_error(process->program()->hardware_error())
-#define ILLEGAL_UTF_8 return Primitive::mark_as_error(process->program()->illegal_utf_8())
-#define INVALID_ARGUMENT return Primitive::mark_as_error(process->program()->invalid_argument())
-#define MALLOC_FAILED return Primitive::mark_as_error(process->program()->malloc_failed())
-#define CROSS_PROCESS_GC return Primitive::mark_as_error(process->program()->cross_process_gc())
-#define NEGATIVE_ARGUMENT return Primitive::mark_as_error(process->program()->negative_argument())
-#define OUT_OF_BOUNDS return Primitive::mark_as_error(process->program()->out_of_bounds())
-#define OUT_OF_RANGE return Primitive::mark_as_error(process->program()->out_of_range())
-#define ALREADY_IN_USE return Primitive::mark_as_error(process->program()->already_in_use())
-#define OVERFLOW_ return Primitive::mark_as_error(process->program()->overflow())
-#define PERMISSION_DENIED return Primitive::mark_as_error(process->program()->permission_denied())
-#define QUOTA_EXCEEDED return Primitive::mark_as_error(process->program()->quota_exceeded())
-#define UNIMPLEMENTED_PRIMITIVE return Primitive::mark_as_error(process->program()->unimplemented())
-#define WRONG_TYPE return Primitive::mark_as_error(process->program()->wrong_object_type())
-#define ALREADY_CLOSED return Primitive::mark_as_error(process->program()->already_closed())
+#define ALLOCATION_FAILED return process->marked_allocation_failed()
+#define ALREADY_EXISTS return process->marked_already_exists()
+#define FILE_NOT_FOUND return process->marked_file_not_found()
+#define HARDWARE_ERROR return process->marked_hardware_error()
+#define ILLEGAL_UTF_8 return process->marked_illegal_utf_8()
+#define INVALID_ARGUMENT return process->marked_invalid_argument()
+#define MALLOC_FAILED return process->marked_malloc_failed()
+#define CROSS_PROCESS_GC return process->marked_cross_process_gc()
+#define NEGATIVE_ARGUMENT return process->marked_negative_argument()
+#define OUT_OF_BOUNDS return process->marked_out_of_bounds()
+#define OUT_OF_RANGE return process->marked_out_of_range()
+#define ALREADY_IN_USE return process->marked_already_in_use()
+#define OVERFLOW_ return process->marked_overflow()
+#define PERMISSION_DENIED return process->marked_permission_denied()
+#define QUOTA_EXCEEDED return process->marked_quota_exceeded()
+#define UNIMPLEMENTED_PRIMITIVE return process->marked_unimplemented_primitive()
+#define WRONG_TYPE return process->marked_wrong_type()
+#define ALREADY_CLOSED return process->marked_already_closed()
 
 #define OTHER_ERROR return Primitive::mark_as_error(process->program()->error())
 

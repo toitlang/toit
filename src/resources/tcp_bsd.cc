@@ -158,7 +158,7 @@ PRIMITIVE(close) {
 
   fd_resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(close_write) {
@@ -169,7 +169,7 @@ PRIMITIVE(close_write) {
   int result = shutdown(fd, SHUT_WR);
   if (result != 0) return Primitive::os_error(errno, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(connect) {
@@ -222,7 +222,7 @@ PRIMITIVE(accept) {
   int fd = resource_group->accept(listen_fd);
   if (fd == -1) {
     if (errno == EWOULDBLOCK) {
-      return process->program()->null_object();
+      return process->null_object();
     }
     return Primitive::os_error(errno, process);
   }
@@ -311,7 +311,7 @@ PRIMITIVE(read)  {
     if (errno == EWOULDBLOCK) return Smi::from(-1);
     return Primitive::os_error(errno, process);
   }
-  if (read == 0) return process->program()->null_object();
+  if (read == 0) return process->null_object();
 
   array->resize_external(process, read);
 
@@ -422,9 +422,9 @@ PRIMITIVE(set_option) {
   switch (option) {
     case TCP_KEEP_ALIVE: {
       int value = 0;
-      if (raw == process->program()->true_object()) {
+      if (raw == process->true_object()) {
         value = 1;
-      } else if (raw != process->program()->false_object()) {
+      } else if (raw != process->false_object()) {
         WRONG_TYPE;
       }
       if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &value, sizeof(value)) == -1) {
@@ -435,9 +435,9 @@ PRIMITIVE(set_option) {
 
     case TCP_NO_DELAY: {
       int value = 0;
-      if (raw == process->program()->true_object()) {
+      if (raw == process->true_object()) {
         value = 1;
-      } else if (raw != process->program()->false_object()) {
+      } else if (raw != process->false_object()) {
         WRONG_TYPE;
       }
       if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value)) == -1) {
@@ -450,7 +450,7 @@ PRIMITIVE(set_option) {
       UNIMPLEMENTED_PRIMITIVE;
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(gc) {

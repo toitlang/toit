@@ -116,7 +116,7 @@ PRIMITIVE(ota_begin) {
 
   ota_size = to;
   ota_written = from;
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(ota_write) {
@@ -319,7 +319,7 @@ PRIMITIVE(enable_external_wakeup) {
     OTHER_ERROR;
   }
 #endif
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(enable_touchpad_wakeup) {
@@ -336,7 +336,7 @@ PRIMITIVE(enable_touchpad_wakeup) {
   }
   keep_touch_active();
 #endif
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(wakeup_cause) {

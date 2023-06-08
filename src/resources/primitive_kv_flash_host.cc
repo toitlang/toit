@@ -74,7 +74,7 @@ PRIMITIVE(read_bytes) {
   std::string str(key);
   auto it = persistent_bytes_map.find(str);
   if (it == persistent_bytes_map.end()) {
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   ByteArray* array = process->allocate_byte_array(it->second.size());
@@ -96,7 +96,7 @@ PRIMITIVE(write_bytes) {
   std::vector<uint8_t> data(bytes.address(), bytes.address() + bytes.length());
   persistent_bytes_map[str] = data;
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(delete) {
@@ -111,7 +111,7 @@ PRIMITIVE(delete) {
   persistent_int64_map.erase(str);
   persistent_bytes_map.erase(str);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(erase) {
@@ -122,7 +122,7 @@ PRIMITIVE(erase) {
   persistent_int64_map.clear();
   persistent_bytes_map.clear();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

@@ -65,7 +65,7 @@ PRIMITIVE(wait_for) {
   ARGS(IntResource, subprocess);
   if (subprocess->resource_group()->event_source() != SubprocessEventSource::instance()) WRONG_TYPE;
   subprocess->resource_group()->register_resource(subprocess);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(dont_wait_for) {
@@ -75,14 +75,14 @@ PRIMITIVE(dont_wait_for) {
   if (!success) MALLOC_FAILED;
   subprocess->resource_group()->unregister_resource(subprocess);  // Also deletes subprocess.
   subprocess_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(kill) {
   ARGS(IntResource, subprocess, int, signal);
   if (subprocess->resource_group()->event_source() != SubprocessEventSource::instance()) WRONG_TYPE;
   kill(subprocess->id(), signal);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(strsignal) {

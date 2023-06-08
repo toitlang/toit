@@ -65,7 +65,7 @@ PRIMITIVE(arm) {
 
   TimerEventSource::instance()->arm(timer, usec);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(delete) {
@@ -75,7 +75,7 @@ PRIMITIVE(delete) {
 
   timer_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

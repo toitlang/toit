@@ -69,14 +69,14 @@ PRIMITIVE(write_string_on_stdout) {
   ARGS(cstring, message, bool, add_newline);
   fprintf(stdout, "%s%s", message, add_newline ? "\n" : "");
   fflush(stdout);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(write_string_on_stderr) {
   ARGS(cstring, message, bool, add_newline);
   fprintf(stderr, "%s%s", message, add_newline ? "\n" : "");
   fflush(stderr);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(main_arguments) {
@@ -201,7 +201,7 @@ PRIMITIVE(process_set_priority) {
   if (priority < 0 || priority > 0xff) OUT_OF_RANGE;
   bool success = VM::current()->scheduler()->set_priority(pid, priority);
   if (!success) INVALID_ARGUMENT;
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(object_class_id) {
@@ -447,7 +447,7 @@ PRIMITIVE(put_uint_big_endian) {
     dest.address()[offset + i] = value;
     value >>= 8;
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(put_uint_little_endian) {
@@ -466,7 +466,7 @@ PRIMITIVE(put_uint_little_endian) {
     dest.address()[offset + i] = value;
     value >>= 8;
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(put_float_32_little_endian) {
@@ -482,7 +482,7 @@ PRIMITIVE(put_float_32_little_endian) {
   }
   float raw = value;
   memcpy(dest.address() + offset, &raw, sizeof raw);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(put_float_64_little_endian) {
@@ -497,7 +497,7 @@ PRIMITIVE(put_float_64_little_endian) {
     OUT_OF_BOUNDS;
   }
   memcpy(dest.address() + offset, &value, sizeof value);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(read_uint_big_endian) {
@@ -581,7 +581,7 @@ PRIMITIVE(read_int_little_endian) {
 }
 
 PRIMITIVE(command) {
-  if (Flags::program_name == null) return process->program()->null_object();
+  if (Flags::program_name == null) return process->null_object();
   return process->allocate_string_or_error(Flags::program_name);
 }
 
@@ -1015,11 +1015,11 @@ PRIMITIVE(seconds_since_epoch_local) {
   decomposed.tm_hour = hour;
   decomposed.tm_min = min;
   decomposed.tm_sec = sec;
-  if (daylight_saving_is_active == process->program()->null_object()) {
+  if (daylight_saving_is_active == process->null_object()) {
     decomposed.tm_isdst = -1;
-  } else if (daylight_saving_is_active == process->program()->true_object()) {
+  } else if (daylight_saving_is_active == process->true_object()) {
     decomposed.tm_isdst = 1;
-  } else if (daylight_saving_is_active == process->program()->false_object()) {
+  } else if (daylight_saving_is_active == process->false_object()) {
     decomposed.tm_isdst = 0;
   } else {
     WRONG_TYPE;
@@ -1027,7 +1027,7 @@ PRIMITIVE(seconds_since_epoch_local) {
   errno = 0;
   int64 result = mktime(&decomposed);
   if (result == -1 && errno != 0) {
-    return process->program()->null_object();
+    return process->null_object();
   }
   return Primitive::integer(result, process);
 }
@@ -1042,7 +1042,7 @@ PRIMITIVE(set_tz) {
     tzset();
     free(current_buffer);
     current_buffer = null;
-    return process->program()->null_object();
+    return process->null_object();
   }
   const char* prefix = "TZ=";
   const int prefix_size = strlen(prefix);
@@ -1057,7 +1057,7 @@ PRIMITIVE(set_tz) {
   tzset();
   free(current_buffer);
   current_buffer = tz_buffer;
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(platform) {
@@ -1072,7 +1072,7 @@ PRIMITIVE(bytes_allocated_delta) {
 PRIMITIVE(process_stats) {
   ARGS(Object, list_object, int, group, int, id, Object, gc_count);
 
-  if (gc_count != process->program()->null_object()) {
+  if (gc_count != process->null_object()) {
     INT64_VALUE_OR_WRONG_TYPE(word_gc_count, gc_count);
     // Return ALLOCATION_FAILED until we cause a full GC.
     if (process->gc_count(FULL_GC) == word_gc_count) ALLOCATION_FAILED;
@@ -1099,14 +1099,14 @@ PRIMITIVE(random) {
 PRIMITIVE(random_seed) {
   ARGS(Blob, seed);
   process->random_seed(seed.address(), seed.length());
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(add_entropy) {
   PRIVILEGED;
   ARGS(Blob, data);
   EntropyMixer::instance()->add_entropy(data.address(), data.length());
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(count_leading_zeros) {
@@ -1377,7 +1377,7 @@ PRIMITIVE(float_to_string) {
   if (isnan(receiver)) return process->allocate_string_or_error("nan");
   const char* format;
   word prec = 20;
-  if (precision == process->program()->null_object()) {
+  if (precision == process->null_object()) {
     format = "%.*lg";
   } else {
     format = "%.*lf";
@@ -1563,7 +1563,7 @@ PRIMITIVE(string_at) {
   int c = receiver.address()[index] & 0xff;
   if (c <= Utils::MAX_ASCII) return Smi::from(c);
   // Invalid index.  Return null.  This means you can still scan for ASCII characters very simply.
-  if (!Utils::is_utf_8_prefix(c)) return process->program()->null_object();
+  if (!Utils::is_utf_8_prefix(c)) return process->null_object();
   int n_byte_sequence = Utils::bytes_in_utf_8_sequence(c);
   // String contain only verified UTF-8 so there are some things we can guarantee.
   ASSERT(n_byte_sequence <= 4);
@@ -1631,7 +1631,7 @@ PRIMITIVE(array_replace) {
   memmove(dest->content() + index * WORD_SIZE,
           source->content() + from * WORD_SIZE,
           len * WORD_SIZE);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(array_new) {
@@ -1655,7 +1655,7 @@ PRIMITIVE(list_add) {
         if (size < array->length()) {
           list->at_put(1, Smi::from(size + 1));
           array->at_put(size, value);
-          return process->program()->null_object();
+          return process->null_object();
         }
       } else {
         // Large array backing case.
@@ -1665,7 +1665,7 @@ PRIMITIVE(list_add) {
           if (Smi::is_valid(size + 1)) {
             if (Interpreter::fast_at(process, array_object, size_object, true, &value)) {
               list->at_put(1, Smi::from(size + 1));
-              return process->program()->null_object();
+              return process->null_object();
             }
           }
         }
@@ -1740,7 +1740,7 @@ PRIMITIVE(byte_array_replace) {
   uint8* dest = receiver.address() + index;
   const uint8* source = source_object.address() + from;
   memmove(dest, source, length);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(smi_unary_minus) {
@@ -1913,7 +1913,7 @@ PRIMITIVE(task_receive_message) {
 
   Message* message = process->peek_message();
   MessageType message_type = message->message_type();
-  Object* result = process->program()->null_object();
+  Object* result = process->null_object();
 
   if (message_type == MESSAGE_MONITOR_NOTIFY) {
     ObjectNotifyMessage* object_notify = static_cast<ObjectNotifyMessage*>(message);
@@ -1950,7 +1950,7 @@ PRIMITIVE(add_finalizer) {
   ARGS(HeapObject, object, Object, finalizer)
   if (process->has_finalizer(object, finalizer)) OUT_OF_BOUNDS;
   if (!process->add_finalizer(object, finalizer)) MALLOC_FAILED;
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(remove_finalizer) {
@@ -2059,7 +2059,7 @@ PRIMITIVE(rebuild_hash_index) {
     new_array->at_put(slot, Smi::from(hash_and_position));
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(profiler_install) {
@@ -2073,21 +2073,21 @@ PRIMITIVE(profiler_install) {
 PRIMITIVE(profiler_start) {
   Profiler* profiler = process->profiler();
   if (profiler == null) ALREADY_CLOSED;
-  if (profiler->is_active()) return process->program()->false_object();
+  if (profiler->is_active()) return process->false_object();
   profiler->start();
   // Tell the scheduler that a new process has an active profiler.
   VM::current()->scheduler()->activate_profiler(process);
-  return process->program()->true_object();
+  return process->true_object();
 }
 
 PRIMITIVE(profiler_stop) {
   Profiler* profiler = process->profiler();
   if (profiler == null) ALREADY_CLOSED;
-  if (!profiler->is_active()) return process->program()->false_object();
+  if (!profiler->is_active()) return process->false_object();
   profiler->stop();
   // Tell the scheduler to deactivate profiling for the process.
   VM::current()->scheduler()->deactivate_profiler(process);
-  return process->program()->true_object();
+  return process->true_object();
 }
 
 PRIMITIVE(profiler_encode) {
@@ -2109,14 +2109,14 @@ PRIMITIVE(profiler_uninstall) {
   Profiler* profiler = process->profiler();
   if (profiler == null) ALREADY_CLOSED;
   process->uninstall_profiler();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(set_max_heap_size) {
   ARGS(word, max_bytes);
   process->set_max_heap_size(max_bytes);
   process->object_heap()->update_pending_limit();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_real_time_clock) {
@@ -2169,10 +2169,10 @@ PRIMITIVE(debug_set_memory_limit) {
   if (result != 0) {
     return Primitive::os_error(errno, process);
   }
-  return process->program()->true_object();
+  return process->true_object();
 #else
   USE(limit);
-  return process->program()->false_object();
+  return process->false_object();
 #endif
 }
 
@@ -2245,7 +2245,7 @@ PRIMITIVE(dump_heap) {
     // This always happens on the server unless we are running with
     // cmpctmalloc (using LD_PRELOAD), which supports iterating the heap in
     // this way.
-    return process->program()->null_object();
+    return process->null_object();
   }
 #endif
 
@@ -2263,7 +2263,7 @@ PRIMITIVE(dump_heap) {
   if (actual_size < 0) {
     // Due to other threads allocating and freeing we may not succeed in creating
     // a heap layout dump, in which case we return null.
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   // Fill up with ubjson no-ops.
@@ -2271,7 +2271,7 @@ PRIMITIVE(dump_heap) {
 
   return result;
 #else
-  return process->program()->null_object();
+  return process->null_object();
 #endif
 
 #endif // def TOIT_CMPCTMALLOC
@@ -2282,7 +2282,7 @@ PRIMITIVE(serial_print_heap_report) {
   ARGS(cstring, marker, int, max_pages);
   OS::heap_summary_report(max_pages, marker);
 #endif // def TOIT_CMPCTMALLOC
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_env) {
@@ -2292,7 +2292,7 @@ PRIMITIVE(get_env) {
 #else
   ARGS(cstring, key);
   char* result = OS::getenv(key);
-  if (result == null) return process->program()->null_object();
+  if (result == null) return process->null_object();
   Object* string_or_error = process->allocate_string_or_error(result, strlen(result));
   free(result);
   return string_or_error;
@@ -2310,13 +2310,13 @@ PRIMITIVE(set_env) {
   } else {
     OS::unsetenv(key);
   }
-  return process->program()->null_object();
+  return process->null_object();
 #endif
 }
 
 PRIMITIVE(literal_index) {
   ARGS(Object, o);
-  auto null_object = process->program()->null_object();
+  auto null_object = process->null_object();
   if (!is_heap_object(o)) return null_object;
   auto& literals = process->program()->literals;
   for (int i = 0; i < literals.length(); i++) {
@@ -2339,7 +2339,7 @@ PRIMITIVE(firmware_map) {
 #ifndef TOIT_FREERTOS
   return bytes;
 #else
-  if (bytes != process->program()->null_object()) {
+  if (bytes != process->null_object()) {
     // If we're passed non-null bytes, we use that as the
     // firmware bits.
     return bytes;
@@ -2380,12 +2380,12 @@ PRIMITIVE(firmware_map) {
 PRIMITIVE(firmware_unmap) {
 #ifdef TOIT_FREERTOS
   ARGS(ByteArray, proxy);
-  if (!firmware_is_mapped) process->program()->null_object();
+  if (!firmware_is_mapped) process->null_object();
   spi_flash_munmap(firmware_mmap_handle);
   firmware_is_mapped = false;
   proxy->clear_external_address();
 #endif
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(firmware_mapping_at) {

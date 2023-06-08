@@ -234,7 +234,7 @@ PRIMITIVE(readdir) {
 
   auto directory = directory_proxy->as_external<Directory>();
 
-  if (directory->done()) return process->program()->null_object();
+  if (directory->done()) return process->null_object();
 
   ByteArray* proxy = process->object_heap()->allocate_proxy(true);
   if (proxy == null) {
@@ -272,7 +272,7 @@ PRIMITIVE(closedir) {
   directory->resource_group()->unregister_resource(directory);
 
   proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(read) {
@@ -300,7 +300,7 @@ PRIMITIVE(read) {
   }
 
   if (buffer_fullness == 0) {
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   if (buffer_fullness < SIZE) {
@@ -331,14 +331,14 @@ PRIMITIVE(close) {
     int result = close(fd);
     if (result < 0) {
       if (GetFileType(reinterpret_cast<HANDLE>(fd)) == FILE_TYPE_PIPE && errno == EBADF) {
-        return process->program()->null_object(); // Ignore already closed on PIPEs
+        return process->null_object(); // Ignore already closed on PIPEs
       }
       if (errno == EINTR) continue;
       if (errno == EBADF) ALREADY_CLOSED;
       if (errno == ENOSPC) QUOTA_EXCEEDED;
       OTHER_ERROR;
     }
-    return process->program()->null_object();
+    return process->null_object();
   }
 }
 
@@ -357,7 +357,7 @@ PRIMITIVE(stat) {
   int result = _wstat64(path, &statbuf);
   if (result < 0) {
     if (errno == ENOENT || errno == ENOTDIR) {
-      return process->program()->null_object();
+      return process->null_object();
     }
     return return_open_error(process, errno);
   }
@@ -408,21 +408,21 @@ PRIMITIVE(unlink) {
   SetFileAttributesW(path, FILE_ATTRIBUTE_NORMAL);
   int result = _wunlink(path);
   if (result < 0) return return_open_error(process, errno);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(rmdir) {
   ARGS(WindowsPath, path);
 
   if (RemoveDirectoryW(path) == 0) WINDOWS_ERROR;
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(rename) {
   ARGS(WindowsPath, old_name, WindowsPath, new_name);
   int result = _wrename(old_name, new_name);
   if (result < 0) return return_open_error(process, errno);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(chdir) {
@@ -437,7 +437,7 @@ PRIMITIVE(chdir) {
 
   process->set_current_directory(copy);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(mkdir) {
@@ -445,7 +445,7 @@ PRIMITIVE(mkdir) {
 
   int result = CreateDirectoryW(path, NULL);
   if (result == 0) WINDOWS_ERROR;
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(mkdtemp) {
@@ -509,11 +509,11 @@ PRIMITIVE(is_open_file) {
   int result = lseek(fd, 0, SEEK_CUR);
   if (result < 0) {
     if (errno == ESPIPE || errno == EINVAL || errno == EBADF) {
-      return process->program()->false_object();
+      return process->false_object();
     }
     OTHER_ERROR;
   }
-  return process->program()->true_object();
+  return process->true_object();
 }
 
 PRIMITIVE(realpath) {
@@ -532,7 +532,7 @@ PRIMITIVE(realpath) {
 
   // The toit package expects a null value when the file does not exist. Win32 does not detect this in GetFile
   if (!PathFileExistsW(w_result)) {
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   String* result = process->allocate_string(w_result);

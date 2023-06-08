@@ -789,7 +789,7 @@ PRIMITIVE(close) {
   ARGS(BleResourceGroup, group);
   group->tear_down();
   group_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(scan_start) {
@@ -810,16 +810,16 @@ PRIMITIVE(scan_start) {
     HostBleEventSource::instance()->on_event(central_manager, kBleCompleted);
   });
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(scan_next) {
   ARGS(BleCentralManagerResource, central_manager);
 
   DiscoveredPeripheral* peripheral = central_manager->next_discovered_peripheral();
-  if (!peripheral) return process->program()->null_object();
+  if (!peripheral) return process->null_object();
 
-  Array* array = process->object_heap()->allocate_array(7, process->program()->null_object());
+  Array* array = process->object_heap()->allocate_array(7, process->null_object());
   if (!array) ALLOCATION_FAILED;
 
   const char* address = [[[peripheral->peripheral() identifier] UUIDString] UTF8String];
@@ -846,7 +846,7 @@ PRIMITIVE(scan_next) {
   if (discovered_services != nil) {
     Array* service_classes = process->object_heap()->allocate_array(
         static_cast<int>([discovered_services count]),
-        process->program()->null_object());
+        process->null_object());
 
     for (int i = 0; i < [discovered_services count]; i++) {
       String* uuid = process->allocate_string([[discovered_services[i] UUIDString] UTF8String]);
@@ -889,7 +889,7 @@ PRIMITIVE(scan_stop) {
     OS::signal(central_manager->stop_scan_condition());
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(connect) {
@@ -924,7 +924,7 @@ PRIMITIVE(disconnect) {
 
   [device->central_manager() cancelPeripheralConnection:device->peripheral()];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(release_resource) {
@@ -932,7 +932,7 @@ PRIMITIVE(release_resource) {
 
   resource->resource_group()->unregister_resource(resource);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(discover_services) {
@@ -943,7 +943,7 @@ PRIMITIVE(discover_services) {
   if (err) return err;
   [device->peripheral() discoverServices:service_uuids];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(discover_services_result) {
@@ -958,7 +958,7 @@ PRIMITIVE(discover_services_result) {
     service_resources[count++] = service_resource;
   }
 
-  Array* array = process->object_heap()->allocate_array(count, process->program()->null_object());
+  Array* array = process->object_heap()->allocate_array(count, process->null_object());
   if (array == null) ALLOCATION_FAILED;
 
   for (int i = 0; i < count; i++) {
@@ -967,7 +967,7 @@ PRIMITIVE(discover_services_result) {
     String* uuid_str = process->allocate_string([[services[i].UUID UUIDString] UTF8String]);
     if (uuid_str == null) ALLOCATION_FAILED;
 
-    Array* service_info = process->object_heap()->allocate_array(2, process->program()->null_object());
+    Array* service_info = process->object_heap()->allocate_array(2, process->null_object());
     if (service_info == null) ALLOCATION_FAILED;
 
     ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -997,7 +997,7 @@ PRIMITIVE(discover_characteristics) {
 
   [service->device()->peripheral() discoverCharacteristics:characteristics_uuids forService:service->service()];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(discover_characteristics_result) {
@@ -1014,7 +1014,7 @@ PRIMITIVE(discover_characteristics_result) {
     characteristic_resources[count++] = characteristic_resource;
   }
 
-  Array* array = process->object_heap()->allocate_array(count,process->program()->null_object());
+  Array* array = process->object_heap()->allocate_array(count,process->null_object());
   if (!array) ALLOCATION_FAILED;
 
   for (int i = 0; i < count; i++) {
@@ -1024,7 +1024,7 @@ PRIMITIVE(discover_characteristics_result) {
     uint16 flags = characteristics[i].properties;
 
     Array* characteristic_data = process->object_heap()->allocate_array(
-        3, process->program()->null_object());
+        3, process->null_object());
     if (!characteristic_data) ALLOCATION_FAILED;
 
     array->at_put(i, characteristic_data);
@@ -1057,14 +1057,14 @@ PRIMITIVE(request_read) {
 
   [characteristic->characteristic().service.peripheral readValueForCharacteristic:characteristic->characteristic()];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_value) {
   ARGS(BleCharacteristicResource, characteristic);
 
   CharacteristicData* data = characteristic->remove_first();
-  if (!data) return process->program()->null_object();
+  if (!data) return process->null_object();
 
   ByteArray* byte_array = process->object_heap()->allocate_internal_byte_array(
       static_cast<int>([data->data() length]));
@@ -1110,7 +1110,7 @@ PRIMITIVE(set_characteristic_notify) {
       setNotifyValue:enable
    forCharacteristic:characteristic->characteristic()];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(advertise_start) {
@@ -1136,7 +1136,7 @@ PRIMITIVE(advertise_start) {
 
   [peripheral_manager->peripheral_manager() startAdvertising:data];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(advertise_stop) {
@@ -1144,7 +1144,7 @@ PRIMITIVE(advertise_stop) {
 
   [peripheral_manager->peripheral_manager() stopAdvertising];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(add_service) {
@@ -1214,7 +1214,7 @@ PRIMITIVE(deploy_service) {
   auto service = (CBMutableService*)service_resource->service();
   [service_resource->peripheral_manager()->peripheral_manager() addService:service];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(set_value) {
@@ -1225,13 +1225,13 @@ PRIMITIVE(set_value) {
   auto characteristic = (CBMutableCharacteristic*) characteristic_resource->characteristic();
   characteristic.value = [[NSData alloc] initWithBytes:bytes.address() length:bytes.length()];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 // Just return an array with 1 null object. This will cause the toit code to call notify_characteristics_value with
 // a conn_handle of null that we will not use.
 PRIMITIVE(get_subscribed_clients) {
-  Array* array = process->object_heap()->allocate_array(1, process->program()->null_object());
+  Array* array = process->object_heap()->allocate_array(1, process->null_object());
   if (!array) ALLOCATION_FAILED;
   return array;
 }
@@ -1251,7 +1251,7 @@ PRIMITIVE(notify_characteristics_value) {
               updateValue:[[NSData alloc] initWithBytes:bytes.address() length:bytes.length()]
         forCharacteristic:characteristic
      onSubscribedCentrals:nil];
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_att_mtu) {
@@ -1278,7 +1278,7 @@ PRIMITIVE(get_att_mtu) {
 
 PRIMITIVE(set_preferred_mtu) {
   // Ignore
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_error) {

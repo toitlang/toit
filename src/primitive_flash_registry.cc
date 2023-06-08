@@ -60,7 +60,7 @@ PRIMITIVE(next) {
 
   // Compute the next.
   int next = FlashRegistry::find_next(result, &reservation_scan);
-  if (next < 0) return process->program()->null_object();
+  if (next < 0) return process->null_object();
 
   // Update current and next -- and return the result.
   flash_registry_offset_current = result;
@@ -144,7 +144,7 @@ PRIMITIVE(reserve_hole) {
   reservations.insert_before(reservation, [&reservation](Reservation* other_reservation) -> bool {
     return reservation->right() <= other_reservation->left();
   });
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(cancel_reservation) {
@@ -155,9 +155,9 @@ PRIMITIVE(cancel_reservation) {
     return reservation->left() == offset;
   });
   ASSERT(reservation != null);
-  if (reservation == null) return process->program()->false_object();
+  if (reservation == null) return process->false_object();
   delete reservation;
-  return process->program()->true_object();
+  return process->true_object();
 }
 
 PRIMITIVE(erase_flash_registry) {
@@ -195,7 +195,7 @@ PRIMITIVE(allocate) {
     const void* memory = FlashRegistry::region(offset, size);
     const FlashAllocation::Header header(memory, type, id.address(), size, metadata.address());
     if (!FlashAllocation::commit(memory, size, &header)) HARDWARE_ERROR;
-    return process->program()->null_object();
+    return process->null_object();
   }
   ALREADY_CLOSED;
 }
@@ -210,7 +210,7 @@ PRIMITIVE(grant_access) {
     if (it->offset() == offset && it->size() == size) ALREADY_IN_USE;
   }
   grants.prepend(grant);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(is_accessed) {
@@ -232,7 +232,7 @@ PRIMITIVE(revoke_access) {
   grants.remove_where([&](RegionGrant* grant) -> bool {
     return grant->client() == client && grant->handle() == handle;
   });
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(partition_find) {
@@ -322,7 +322,7 @@ PRIMITIVE(region_close) {
   ARGS(FlashRegion, resource);
   resource->resource_group()->unregister_resource(resource);
   resource_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 static bool is_within_bounds(FlashRegion* resource, word from, uword size) {
@@ -352,7 +352,7 @@ PRIMITIVE(region_read) {
     memcpy(bytes.address(), region + from, size);
 #endif
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(region_write) {
@@ -380,7 +380,7 @@ PRIMITIVE(region_write) {
     for (uword i = 0; i < size; i++) destination[i] &= source[i];
 #endif
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(region_is_erased) {
@@ -442,7 +442,7 @@ PRIMITIVE(region_erase) {
     memset(region + from, 0xff, size);
 #endif
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 }

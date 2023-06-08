@@ -84,7 +84,7 @@ PRIMITIVE(writer_write) {
   const word* data = reinterpret_cast<const word*>(content_bytes.address() + from);
   int length = (to - from) / WORD_SIZE;
   Object* error = write_image_chunk(process, output, data, length);
-  return error ? error : process->program()->null_object();
+  return error ? error : process->null_object();
 }
 
 PRIMITIVE(writer_commit) {
@@ -120,14 +120,14 @@ PRIMITIVE(writer_commit) {
       program_size,
       metadata);
   if (!FlashAllocation::commit(image.begin(), program_size, &header)) HARDWARE_ERROR;
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(writer_close) {
   ARGS(ImageOutputStream, output);
   delete output;
   output_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

@@ -256,7 +256,7 @@ PRIMITIVE(unuse) {
 
   resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(config) {
@@ -289,7 +289,7 @@ PRIMITIVE(config) {
   }
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(config_interrupt) {
@@ -324,7 +324,7 @@ PRIMITIVE(set_open_drain) {
   // Directly writes to the memory-mapped register.
   GPIO.pin[num].pad_driver = enable ? 1 : 0;
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(last_edge_trigger_timestamp) {
@@ -344,7 +344,7 @@ PRIMITIVE(set) {
   esp_err_t err = gpio_set_level((gpio_num_t)num, value);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

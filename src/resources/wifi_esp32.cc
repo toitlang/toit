@@ -462,7 +462,7 @@ PRIMITIVE(close) {
 
   group->tear_down();
   group_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(connect) {
@@ -537,7 +537,7 @@ PRIMITIVE(disconnect) {
 
   group->unregister_resource(wifi);
   wifi_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(disconnect_reason) {
@@ -570,7 +570,7 @@ PRIMITIVE(get_ip) {
   }
 
   if (!group->has_ip_address(index)) {
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   ByteArray* result = process->object_heap()->allocate_internal_byte_array(4);
@@ -609,7 +609,7 @@ PRIMITIVE(start_scan) {
     return Primitive::os_error(ret, process);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(read_scan) {

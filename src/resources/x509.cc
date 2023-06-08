@@ -96,7 +96,7 @@ Object* X509Certificate::common_name_or_error(Process* process) {
     }
     item = item->next;
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 MODULE_IMPLEMENTATION(x509, MODULE_X509)
@@ -155,7 +155,7 @@ PRIMITIVE(close) {
     cert->resource_group()->unregister_resource(cert);
   }
   cert_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 

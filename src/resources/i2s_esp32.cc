@@ -235,7 +235,7 @@ PRIMITIVE(close) {
   ARGS(I2sResourceGroup, group, I2sResource, i2s);
   group->unregister_resource(i2s);
   i2s_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(write) {

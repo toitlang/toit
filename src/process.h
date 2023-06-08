@@ -238,6 +238,30 @@ class Process : public ProcessListFromProcessGroup::Element,
     return address - program_heap_address_ < program_heap_size_;
   }
 
+  inline Object* marked_allocation_failed() const { return marked_allocation_failed_; }
+  inline Object* marked_already_exists() const { return marked_already_exists_; }
+  inline Object* marked_file_not_found() const { return marked_file_not_found_; }
+  inline Object* marked_hardware_error() const { return marked_hardware_error_; }
+  inline Object* marked_illegal_utf_8() const { return marked_illegal_utf_8_; }
+  inline Object* marked_invalid_argument() const { return marked_invalid_argument_; }
+  inline Object* marked_malloc_failed() const { return marked_malloc_failed_; }
+  inline Object* marked_cross_process_gc() const { return marked_cross_process_gc_; }
+  inline Object* marked_negative_argument() const { return marked_negative_argument_; }
+  inline Object* marked_out_of_bounds() const { return marked_out_of_bounds_; }
+  inline Object* marked_out_of_range() const { return marked_out_of_range_; }
+  inline Object* marked_already_in_use() const { return marked_already_in_use_; }
+  inline Object* marked_overflow() const { return marked_overflow_; }
+  inline Object* marked_permission_denied() const { return marked_permission_denied_; }
+  inline Object* marked_quota_exceeded() const { return marked_quota_exceeded_; }
+  inline Object* marked_unimplemented_primitive() const { return marked_unimplemented_primitive_; }
+  inline Object* marked_wrong_type() const { return marked_wrong_type_; }
+  inline Object* marked_already_closed() const { return marked_already_closed_; }
+
+  inline HeapObject* bools(int i) const { return bools_[i]; }
+  inline HeapObject* false_object() const { return bools_[0]; }
+  inline HeapObject* true_object() const { return bools_[1]; }
+  inline HeapObject* null_object() const { return null_; }
+
  private:
   Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
   void _append_message(Message* message);
@@ -289,6 +313,28 @@ class Process : public ProcessListFromProcessGroup::Element,
   bool idle_since_gc_ = true;
 
   Profiler* profiler_ = null;
+
+  Object* marked_allocation_failed_;
+  Object* marked_already_exists_;
+  Object* marked_file_not_found_;
+  Object* marked_hardware_error_;
+  Object* marked_illegal_utf_8_;
+  Object* marked_invalid_argument_;
+  Object* marked_malloc_failed_;
+  Object* marked_cross_process_gc_;
+  Object* marked_negative_argument_;
+  Object* marked_out_of_bounds_;
+  Object* marked_out_of_range_;
+  Object* marked_already_in_use_;
+  Object* marked_overflow_;
+  Object* marked_permission_denied_;
+  Object* marked_quota_exceeded_;
+  Object* marked_unimplemented_primitive_;
+  Object* marked_wrong_type_;
+  Object* marked_already_closed_;
+
+  HeapObject* bools_[2];
+  HeapObject* null_;
 
   ResourceGroupListFromProcess resource_groups_;
   friend class HeapObject;

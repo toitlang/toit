@@ -267,7 +267,7 @@ PRIMITIVE(close) {
   ARGS(SpiFlashResourceGroup, group)
   group->tear_down();
   group_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 }
