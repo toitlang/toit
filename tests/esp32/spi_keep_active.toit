@@ -6,7 +6,7 @@
 Tests the '--keep_cs_active' flag of the SPI transfer.
 
 Setup:
-Connect pin 19 and 15 with a 330 Ohm resistor. The resistor isn't
+Connect pin 19 and 21 with a 330 Ohm resistor. The resistor isn't
   strictly necessary but can prevent accidental short circuiting.
 
 Make sure that pins 12, 13, and 14 are not connected to anything important. They
@@ -19,7 +19,7 @@ import gpio
 import monitor
 
 
-CS ::= 15
+CS ::= 21
 MISO ::= 12
 MOSI ::= 13
 SCK ::= 14
