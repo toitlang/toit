@@ -42,6 +42,7 @@
 
 #include <soc/soc.h>
 #include <soc/uart_reg.h>
+#include <hal/efuse_hal.h>
 
 #if CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rtc.h>
@@ -375,7 +376,7 @@ void OS::set_up() {
 #ifdef CONFIG_IDF_TARGET_ESP32
   // This will normally return 1 or 3.  Perhaps later, more
   // CPU revisions will appear.
-  cpu_revision_ = esp_efuse_get_chip_ver();
+  cpu_revision_ = efuse_hal_chip_revision();
 #endif
 }
 
