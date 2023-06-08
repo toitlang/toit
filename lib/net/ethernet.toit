@@ -39,9 +39,6 @@ Connects the Ethernet peripheral.
 The $mac_chip must be one of $MAC_CHIP_ESP32 or $MAC_CHIP_W5500.
 The $phy_chip must be one of $PHY_CHIP_NONE, $PHY_CHIP_IP101 or $PHY_CHIP_LAN8720.
 
-See https://docs.toit.io/firmware/connectivity/ethernet for documentation and
-  examples.
-
 # Olimex Gateway
 The Olimex gateway needs an sdkconfig change:
 
