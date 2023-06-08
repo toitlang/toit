@@ -729,21 +729,19 @@ namespace toit {
 #define _A_T_Object(N, name) Object* name = __args[-(N)];
 
 // Covers the range of int or Smi, whichever is smaller.
-#define _A_T_int(N, name)                               \
-  Object* _raw_##name = __args[-(N)];                   \
-  if (!is_smi(_raw_##name)) {                           \
-    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;    \
-    else WRONG_TYPE;                                    \
-  }                                                     \
-  word _word_##name = Smi::value(_raw_##name);          \
-  int name = _word_##name;                              \
-  if (name != _word_##name) OUT_OF_RANGE;               \
+#define _A_T_int(N, name)                                      \
+  Object* _raw_##name = __args[-(N)];                          \
+  if (!is_smi(_raw_##name)) {                                  \
+    return Primitive::return_not_a_smi(process, _raw_##name);  \
+  }                                                            \
+  word _word_##name = Smi::value(_raw_##name);                 \
+  int name = _word_##name;                                     \
+  if (name != _word_##name) OUT_OF_RANGE;                      \
 
 #define _A_T_int8(N, name)                                                \
   Object* _raw_##name = __args[-(N)];                                     \
   if (!is_smi(_raw_##name)) {                                             \
-    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                      \
-    else WRONG_TYPE;                                                      \
+    return Primitive::return_not_a_smi(process, _raw_##name);  \
   }                                                                       \
   word _value_##name = Smi::value(_raw_##name);                           \
   if (INT8_MIN > _value_##name || _value_##name > INT8_MAX) OUT_OF_RANGE; \
@@ -752,8 +750,7 @@ namespace toit {
 #define _A_T_uint8(N, name)                                           \
   Object* _raw_##name = __args[-(N)];                                 \
   if (!is_smi(_raw_##name)) {                                         \
-    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                  \
-    else WRONG_TYPE;                                                  \
+    return Primitive::return_not_a_smi(process, _raw_##name);  \
   }                                                                   \
   word _value_##name = Smi::value(_raw_##name);                       \
   if (0 > _value_##name || _value_##name > UINT8_MAX) OUT_OF_RANGE;   \
@@ -762,8 +759,7 @@ namespace toit {
 #define _A_T_int16(N, name)                                                  \
   Object* _raw_##name = __args[-(N)];                                        \
   if (!is_smi(_raw_##name)) {                                                \
-    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                         \
-    else WRONG_TYPE;                                                         \
+    return Primitive::return_not_a_smi(process, _raw_##name);  \
   }                                                                          \
   word _value_##name = Smi::value(_raw_##name);                              \
   if (INT16_MIN > _value_##name || _value_##name > INT16_MAX) OUT_OF_RANGE;  \
@@ -772,8 +768,7 @@ namespace toit {
 #define _A_T_uint16(N, name)                                          \
   Object* _raw_##name = __args[-(N)];                                 \
   if (!is_smi(_raw_##name)) {                                         \
-    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                  \
-    else WRONG_TYPE;                                                  \
+    return Primitive::return_not_a_smi(process, _raw_##name);  \
   }                                                                   \
   word _value_##name = Smi::value(_raw_##name);                       \
   if (0 > _value_##name || _value_##name > UINT16_MAX) OUT_OF_RANGE;  \
@@ -929,7 +924,8 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
 
 #define _A_T_Blob(N, name)                                        \
   Object* _raw_##name = __args[-(N)];                             \
-  Blob name;                                                      \
+  uninitialized_t _u_##name;                                      \
+  Blob name(_u_##name);                                           \
   if (!_raw_##name->byte_content(process->program(), &name, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
 
 #define _A_T_MutableBlob(N, name)                                                                  \
@@ -1199,6 +1195,7 @@ class Primitive {
   static HeapObject* mark_as_error(HeapObject* object) { return object->mark(); }
   static HeapObject* unmark_from_error(Object* object) { return object->unmark(); }
   static Object* os_error(int error, Process* process);
+  static Object* return_not_a_smi(Process* process, Object* value);
 
   // Module-specific primitive lookup. May return null if the primitive isn't linked in.
   static const PrimitiveEntry* at(unsigned module, unsigned index) {

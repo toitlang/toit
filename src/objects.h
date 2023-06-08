@@ -96,10 +96,14 @@ class Object {
   bool encode_on(ProgramOrientedEncoder* encoder);
 };
 
+// A struct that is only used to get a different overload of the constructor.
+struct uninitialized_t {};
+
 // A class that combines a memory address with the size of it.
 class Blob {
  public:
-  Blob() : address_(null), length_(0) {}
+  inline Blob(uninitialized_t& u) {}
+  inline Blob() : address_(null), length_(0) {}
   Blob(const uint8* address, int length)
       : address_(address), length_(length) {}
 

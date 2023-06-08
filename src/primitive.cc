@@ -85,4 +85,12 @@ Object* Primitive::os_error(int error, Process* process) {
   return Error::from(result);
 }
 
+Object* Primitive::return_not_a_smi(Process* process, Object* value) {
+  if (is_large_integer(value)) {
+    OUT_OF_RANGE;
+  } else {
+    WRONG_TYPE;
+  }
+}
+
 }  // namespace toit
