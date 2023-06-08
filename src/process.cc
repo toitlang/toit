@@ -71,8 +71,8 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
 #endif
   ASSERT(group_->lookup(id_) == this);
 
-  bools_[0] = program->false_object();
-  bools_[1] = program->true_object();
+  false_object_ = program->false_object();
+  true_object_ = program->true_object();
   null_ = program->null_object();
   marked_allocation_failed_ = Primitive::mark_as_error(program->allocation_failed());
   marked_already_exists_ = Primitive::mark_as_error(program->already_exists());

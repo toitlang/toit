@@ -1154,7 +1154,7 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
     _A_2,  _ODD)(__VA_ARGS__)
 
 // Macro for returning a boolean object.
-#define BOOL(value) process->bools((value) ? 1 : 0)
+#define BOOL(value) ((value) ? process->true_object() : process->false_object())
 
 #define ALLOCATION_FAILED return process->marked_allocation_failed()
 #define ALREADY_EXISTS return process->marked_already_exists()

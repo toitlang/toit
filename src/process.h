@@ -257,9 +257,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   inline Object* marked_wrong_type() const { return marked_wrong_type_; }
   inline Object* marked_already_closed() const { return marked_already_closed_; }
 
-  inline HeapObject* bools(int i) const { return bools_[i]; }
-  inline HeapObject* false_object() const { return bools_[0]; }
-  inline HeapObject* true_object() const { return bools_[1]; }
+  inline HeapObject* false_object() const { return false_object_; }
+  inline HeapObject* true_object() const { return true_object_; }
   inline HeapObject* null_object() const { return null_; }
 
  private:
@@ -333,7 +332,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   Object* marked_wrong_type_;
   Object* marked_already_closed_;
 
-  HeapObject* bools_[2];
+  HeapObject* false_object_;
+  HeapObject* true_object_;
   HeapObject* null_;
 
   ResourceGroupListFromProcess resource_groups_;
