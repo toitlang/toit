@@ -42,7 +42,7 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
     if (is_mutable == process->true_object()) {
       return backing->mutable_byte_content(process, content, length, error);
     }
-    ASSERT(is_mutable == process->program()->false_object());
+    ASSERT(is_mutable == process->false_object());
 
     const uint8* immutable_content;
     int immutable_length;
