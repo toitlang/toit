@@ -197,7 +197,7 @@ PRIMITIVE(init) {
 
   if (!WindowsEventSource::instance()->use()) {
     resource_group->tear_down();
-    FAIL(WINDOWS_ERROR);
+    WINDOWS_ERROR;
   }
 
   if (!resource_group) FAIL(MALLOC_FAILED);
@@ -217,7 +217,7 @@ PRIMITIVE(create_path) {
   if (stop_bits < 1 || stop_bits > 3) FAIL(INVALID_ARGUMENT);
   if (parity < 1 || parity > 3) FAIL(INVALID_ARGUMENT);
   if (baud_rate <= 0) FAIL(INVALID_ARGUMENT);
-  if (strlen(path) > 5) INVALID_ARGUMENT; // Support up to COM99
+  if (strlen(path) > 5) FAIL(INVALID_ARGUMENT); // Support up to COM99
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
@@ -232,7 +232,7 @@ PRIMITIVE(create_path) {
                            FILE_FLAG_OVERLAPPED,      //   overlapped I/O
                            NULL ); //  hTemplate must be NULL for comm devices
 
-  if (uart == INVALID_HANDLE_VALUE) FAIL(WINDOWS_ERROR);
+  if (uart == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
 
   DCB dcb{};
   dcb.DCBlength = sizeof(DCB);
@@ -263,7 +263,7 @@ PRIMITIVE(create_path) {
 
   if (!success) {
     close_handle_keep_errno(uart);
-    FAIL(WINDOWS_ERROR);
+    WINDOWS_ERROR;
   }
 
   // Setup timeouts
@@ -274,27 +274,27 @@ PRIMITIVE(create_path) {
   success = SetCommTimeouts(uart, &comm_timeouts);
   if (!success) {
     close_handle_keep_errno(uart);
-    FAIL(WINDOWS_ERROR);
+    WINDOWS_ERROR;
   }
 
   // Setup Mask
   success = SetCommMask(uart, EV_ERR | EV_RXCHAR | EV_TXEMPTY);
   if (!success) {
     close_handle_keep_errno(uart);
-    FAIL(WINDOWS_ERROR);
+    WINDOWS_ERROR;
   }
 
   HANDLE read_event = CreateEvent(NULL, true, false, NULL);
   if (read_event == INVALID_HANDLE_VALUE) {
     close_handle_keep_errno(uart);
-    FAIL(WINDOWS_ERROR);
+    WINDOWS_ERROR;
   }
 
   HANDLE write_event = CreateEvent(NULL, true, false, NULL);
   if (write_event == INVALID_HANDLE_VALUE) {
     close_handle_keep_errno(uart);
     close_handle_keep_errno(read_event);
-    FAIL(WINDOWS_ERROR);
+    WINDOWS_ERROR;
   }
 
   HANDLE error_event = CreateEvent(NULL, true, false, NULL);
@@ -302,7 +302,7 @@ PRIMITIVE(create_path) {
     close_handle_keep_errno(uart);
     close_handle_keep_errno(read_event);
     close_handle_keep_errno(write_event);
-    FAIL(WINDOWS_ERROR);
+    WINDOWS_ERROR;
   }
 
   auto uart_resource = _new UartResource(resource_group, uart, read_event, write_event, error_event);
@@ -333,7 +333,7 @@ PRIMITIVE(get_baud_rate) {
   DCB dcb;
 
   bool success = GetCommState(uart_resource->uart(), &dcb);
-  if (!success) FAIL(WINDOWS_ERROR);
+  if (!success) WINDOWS_ERROR;
 
   return Primitive::integer(dcb.BaudRate, process);
 }
@@ -342,11 +342,11 @@ PRIMITIVE(set_baud_rate) {
   ARGS(UartResource, uart_resource, int, baud_rate);
   DCB dcb{};
   bool success = GetCommState(uart_resource->uart(), &dcb);
-  if (!success) FAIL(WINDOWS_ERROR);
+  if (!success) WINDOWS_ERROR;
 
   dcb.BaudRate = baud_rate;
   success = SetCommState(uart_resource->uart(), &dcb);
-  if (!success) FAIL(WINDOWS_ERROR);
+  if (!success) WINDOWS_ERROR;
 
   return process->null_object();
 }
@@ -364,7 +364,7 @@ PRIMITIVE(write) {
   if (!uart_resource->ready_for_write()) return Smi::from(0);
 
   uword size = to - from;
-  if (!uart_resource->send(data.address() + from, size)) FAIL(WINDOWS_ERROR);
+  if (!uart_resource->send(data.address() + from, size)) WINDOWS_ERROR;
   return Smi::from(size);
 }
 
@@ -377,7 +377,7 @@ PRIMITIVE(read) {
 
   if (uart_resource->has_error()) return windows_error(process, uart_resource->error_code());
   if (!uart_resource->ready_for_read()) return process->null_object();
-  if (!uart_resource->receive_read_response()) FAIL(WINDOWS_ERROR);
+  if (!uart_resource->receive_read_response()) WINDOWS_ERROR;
 
   DWORD available = uart_resource->read_count();
   if (available == 0) return process->null_object();
@@ -386,7 +386,7 @@ PRIMITIVE(read) {
   if (array == null) FAIL(ALLOCATION_FAILED);
 
   memcpy(ByteArray::Bytes(array).address(), uart_resource->read_buffer(), available);
-  if (!uart_resource->issue_read_request()) FAIL(WINDOWS_ERROR);
+  if (!uart_resource->issue_read_request()) WINDOWS_ERROR;
   return array;
 }
 

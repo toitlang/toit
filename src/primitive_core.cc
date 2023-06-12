@@ -2353,7 +2353,7 @@ PRIMITIVE(firmware_map) {
     // system image to succeed.
     spi_flash_munmap(firmware_mmap_handle);
     firmware_is_mapped = false;
-    QUOTA_EXCEEDED;  // Quota is 1.
+    FAIL(QUOTA_EXCEEDED);  // Quota is 1.
   }
 
   const esp_partition_t* current_partition = esp_ota_get_running_partition();

@@ -200,7 +200,7 @@ PRIMITIVE(create_pipe) {
   if (array == null) FAIL(ALLOCATION_FAILED);
 
   HANDLE event = CreateEvent(NULL, true, false, NULL);
-  if (event == INVALID_HANDLE_VALUE) FAIL(WINDOWS_ERROR);
+  if (event == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
 
   char pipe_name_buffer[MAX_PATH];
   snprintf(pipe_name_buffer,
@@ -230,7 +230,7 @@ PRIMITIVE(create_pipe) {
 
   if (read == INVALID_HANDLE_VALUE) {
     close_handle_keep_errno(event);
-    FAIL(WINDOWS_ERROR);
+    WINDOWS_ERROR;
   }
 
   security_attributes.bInheritHandle = !input;
@@ -248,7 +248,7 @@ PRIMITIVE(create_pipe) {
   if (write == INVALID_HANDLE_VALUE) {
     close_handle_keep_errno(event);
     close_handle_keep_errno(read);
-    FAIL(WINDOWS_ERROR);
+    WINDOWS_ERROR;
   }
 
   HandlePipeResource* pipe_resource;
@@ -285,7 +285,7 @@ PRIMITIVE(fd_to_pipe) {
   if (resource_group->is_standard_piped(fd)) FAIL(INVALID_ARGUMENT);
 
   HANDLE event = CreateEvent(NULL, true, false, NULL);
-  if (event == INVALID_HANDLE_VALUE) FAIL(WINDOWS_ERROR);
+  if (event == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
   HandlePipeResource* pipe_resource;
 
   switch (fd) {
@@ -344,7 +344,7 @@ PRIMITIVE(write) {
 
   if (!pipe_resource->ready_for_write()) return Smi::from(0);
 
-  if (!pipe_resource->send(tx, to - from)) FAIL(WINDOWS_ERROR);
+  if (!pipe_resource->send(tx, to - from)) WINDOWS_ERROR;
 
   return Smi::from(to - from);
 }
@@ -360,7 +360,7 @@ PRIMITIVE(read) {
 
   if (!read_resource->receive_read_response()) {
     if (GetLastError() == ERROR_BROKEN_PIPE) return process->null_object();
-    FAIL(WINDOWS_ERROR);
+    WINDOWS_ERROR;
   }
 
   // A read count of 0 means EOF
@@ -371,7 +371,7 @@ PRIMITIVE(read) {
   memcpy(ByteArray::Bytes(array).address(), read_resource->read_buffer(), read_resource->read_count());
 
   if (!read_resource->issue_read_request()) {
-    if (GetLastError() != ERROR_BROKEN_PIPE) FAIL(WINDOWS_ERROR);
+    if (GetLastError() != ERROR_BROKEN_PIPE) WINDOWS_ERROR;
     read_resource->set_pipe_ended(true);
   }
 
@@ -431,7 +431,7 @@ static Object* fork_helper(
       if (!element->byte_content(process->program(), &blob, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE);
       if (blob.length() == 0) FAIL(INVALID_ARGUMENT);
       const uint8* str = blob.address();
-      if (is_key && memchr(str, '=', blob.length()) != null) INVALID_ARGUMENT;  // Key can't contain "=".
+      if (is_key && memchr(str, '=', blob.length()) != null) FAIL(INVALID_ARGUMENT);  // Key can't contain "=".
     }
   }
 
@@ -498,7 +498,7 @@ static Object* fork_helper(
                       &startup_info,
                       &process_information)) {
     if (new_environment) free(new_environment);
-    FAIL(WINDOWS_ERROR);
+    WINDOWS_ERROR;
   }
 
   if (new_environment) free(new_environment);

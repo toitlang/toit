@@ -108,7 +108,7 @@ const wchar_t* current_dir(Process* process) {
   return current_directory;
 }
 
-HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output, const wchar_t* used_for_relative) {
+Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output, const wchar_t* used_for_relative) {
   size_t pathname_length = wcslen(pathname);
 
   // Poor man's version. For better platform handling, use PathCchAppendEx.
@@ -116,7 +116,7 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
   // all the special checks.
 
   if (!PathIsRelativeW(pathname)) {
-    if (GetFullPathNameW(pathname, MAX_PATH, output, NULL) == 0) FAIL(WINDOWS_ERROR);
+    if (GetFullPathNameW(pathname, MAX_PATH, output, NULL) == 0) WINDOWS_ERROR;
     return null;
   }
 
@@ -133,7 +133,7 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
     // For example '\foo\bar' is rooted to the current directory's drive.
     wcsncpy(root, used_for_relative, MAX_PATH);
     root[MAX_PATH - 1] = '\0';
-    if (!PathStripToRootW(root)) FAIL(WINDOWS_ERROR);
+    if (!PathStripToRootW(root)) WINDOWS_ERROR;
     relative_to = root;
   } else {
     relative_to = used_for_relative;
@@ -141,7 +141,7 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
 
   wchar_t temp[MAX_PATH];
   if (snwprintf(temp, MAX_PATH, L"%ls\\%ls", relative_to, pathname) >= MAX_PATH) FAIL(INVALID_ARGUMENT);
-  if (GetFullPathNameW(temp, MAX_PATH, output, NULL) == 0) FAIL(WINDOWS_ERROR);
+  if (GetFullPathNameW(temp, MAX_PATH, output, NULL) == 0) WINDOWS_ERROR;
   return null;
 }
 
@@ -216,7 +216,7 @@ PRIMITIVE(opendir2) {
       directory->set_done(true);
     } else {
       delete directory;
-      FAIL(WINDOWS_ERROR);
+      WINDOWS_ERROR;
     }
   }
 
@@ -255,7 +255,7 @@ PRIMITIVE(readdir) {
 
   if (FindNextFileW(directory->dir_handle(), directory->find_file_data()) == 0) {
     if (GetLastError() == ERROR_NO_MORE_FILES) directory->set_done(true);
-    else FAIL(WINDOWS_ERROR);
+    else WINDOWS_ERROR;
   };
 
   return proxy;
@@ -414,7 +414,7 @@ PRIMITIVE(unlink) {
 PRIMITIVE(rmdir) {
   ARGS(WindowsPath, path);
 
-  if (RemoveDirectoryW(path) == 0) FAIL(WINDOWS_ERROR);
+  if (RemoveDirectoryW(path) == 0) WINDOWS_ERROR;
   return process->null_object();
 }
 
@@ -431,7 +431,7 @@ PRIMITIVE(chdir) {
   struct stat64 statbuf{};
   int result = _wstat64(path, &statbuf);
   if (result < 0) WINDOWS_ERROR;  // No such file or directory?
-  if ((statbuf.st_mode & S_IFDIR) == 0) FILE_NOT_FOUND;  // Not a directory.
+  if ((statbuf.st_mode & S_IFDIR) == 0) FAIL(FILE_NOT_FOUND);  // Not a directory.
 
   wchar_t* copy = wcsdup(path);
 
@@ -444,7 +444,7 @@ PRIMITIVE(mkdir) {
   ARGS(WindowsPath, path, int, mode);
 
   int result = CreateDirectoryW(path, NULL);
-  if (result == 0) FAIL(WINDOWS_ERROR);
+  if (result == 0) WINDOWS_ERROR;
   return process->null_object();
 }
 
@@ -470,12 +470,12 @@ PRIMITIVE(mkdtemp) {
     // Get the location of the Windows temp directory.
     ret = GetTempPathW(MAX_PATH, temp_dir_name);
     if (ret + 2 > MAX_PATH) FAIL(OUT_OF_RANGE);
-    if (ret == 0) FAIL(WINDOWS_ERROR);
+    if (ret == 0) WINDOWS_ERROR;
     relative_to = temp_dir_name;
   }
   wchar_t full_filename[MAX_PATH + 1];
 
-  HeapObject* error = get_absolute_path(process, prefix, full_filename, relative_to);
+  Object* error = get_absolute_path(process, prefix, full_filename, relative_to);
   if (error) return error;
 
   UUID uuid;
@@ -497,7 +497,7 @@ PRIMITIVE(mkdtemp) {
   ByteArray::Bytes blob(result);
 
   int ok = CreateDirectoryW(full_filename, null);
-  if (ok == 0) FAIL(WINDOWS_ERROR);
+  if (ok == 0) WINDOWS_ERROR;
 
   Utils::utf_16_to_8(full_filename, wcslen(full_filename), blob.address(), blob.length());
 
@@ -521,13 +521,13 @@ PRIMITIVE(realpath) {
   WideCharAllocationManager allocation(process);
   wchar_t* filename = allocation.to_wcs(&filename_blob);
   DWORD result_length = GetFullPathNameW(filename, 0, NULL, NULL);
-  if (result_length == 0) FAIL(WINDOWS_ERROR);
+  if (result_length == 0) WINDOWS_ERROR;
 
   WideCharAllocationManager allocation2(process);
   wchar_t* w_result = allocation2.wcs_alloc(result_length);
 
   if (GetFullPathNameW(filename, result_length, w_result, NULL) == 0) {
-    FAIL(WINDOWS_ERROR);
+    WINDOWS_ERROR;
   }
 
   // The toit package expects a null value when the file does not exist. Win32 does not detect this in GetFile

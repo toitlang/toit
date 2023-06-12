@@ -23,13 +23,13 @@
 #include <cstdarg>
 namespace toit {
 
-static HeapObject* custom_error(Process* process, const char* txt) {
+static Object* custom_error(Process* process, const char* txt) {
   String* error = process->allocate_string(txt);
   if (error == null) FAIL(ALLOCATION_FAILED);
   return Primitive::mark_as_error(error);
 }
 
-HeapObject* windows_error(Process* process, DWORD error_number) {
+Object* windows_error(Process* process, DWORD error_number) {
   DWORD err = GetLastError();
   if (err == ERROR_FILE_NOT_FOUND ||
       err == ERROR_INVALID_DRIVE ||
@@ -88,7 +88,7 @@ HeapObject* windows_error(Process* process, DWORD error_number) {
   }
 }
 
-HeapObject* windows_error(Process* process) {
+Object* windows_error(Process* process) {
   return windows_error(process, GetLastError());
 }
 

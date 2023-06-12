@@ -911,14 +911,14 @@ namespace toit {
 // Filesystem primitives should generally use this, since the chdir primitive
 // merely changes a string representing the current directory.
 #define BLOB_TO_ABSOLUTE_PATH(result, blob)                                 \
-  if (blob.length() == 0) INVALID_ARGUMENT;                                 \
+  if (blob.length() == 0) FAIL(INVALID_ARGUMENT);                           \
   WideCharAllocationManager allocation_##result(process);                   \
   wchar_t* wchar_##result = allocation_##result.to_wcs(&blob);              \
   wchar_t result[MAX_PATH];                                                 \
   auto error_##result = get_absolute_path(process, wchar_##result, result); \
   if (error_##result) return error_##result
 
-HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output, const wchar_t* used_for_relative = null);
+Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output, const wchar_t* used_for_relative = null);
 
 #define _A_T_WindowsPath(N, name)                                            \
   Object* _raw_##name = __args[-(N)];                                        \

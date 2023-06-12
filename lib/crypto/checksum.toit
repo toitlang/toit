@@ -21,13 +21,13 @@ abstract class Checksum:
   /** Variant of $(add data from to). */
   add data -> none:
     if data is not string and data is not ByteArray:
-      throw "WRONG_TYPE"
+      throw "WRONG_OBJECT_TYPE"
     add data 0 data.size
 
   /** Variant of $(add data from to). */
   add data from/int -> none:
     if data is not string and data is not ByteArray:
-      throw "WRONG_TYPE"
+      throw "WRONG_OBJECT_TYPE"
     add data from data.size
 
   /**

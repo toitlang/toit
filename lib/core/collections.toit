@@ -1000,12 +1000,12 @@ class LargeArray_ extends Array_:
     return size_
 
   operator [] n/int -> any:
-    if n is not int: throw "WRONG_TYPE"
+    if n is not int: throw "WRONG_OBJECT_TYPE"
     if not 0 <= n < size_: throw "OUT_OF_BOUNDS"
     return vector_[n / ARRAYLET_SIZE][n % ARRAYLET_SIZE]
 
   operator []= n/int value/any -> any:
-    if n is not int: throw "WRONG_TYPE"
+    if n is not int: throw "WRONG_OBJECT_TYPE"
     if not 0 <= n < size_: throw "OUT_OF_BOUNDS"
     return vector_[n / ARRAYLET_SIZE][n % ARRAYLET_SIZE] = value
 
@@ -1856,13 +1856,13 @@ class List_ extends List:
 
   /** See $super. */
   operator [] index:
-    if index is not int: throw "WRONG_TYPE"
+    if index is not int: throw "WRONG_OBJECT_TYPE"
     if index >= size_: throw "OUT_OF_BOUNDS"
     return array_[index]
 
   /** See $super. */
   operator []= index value:
-    if index is not int: throw "WRONG_TYPE"
+    if index is not int: throw "WRONG_OBJECT_TYPE"
     if index >= size_: throw "OUT_OF_BOUNDS"
     return array_[index] = value
 

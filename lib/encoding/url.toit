@@ -52,7 +52,7 @@ encode data -> any:
       // Convert to something where do will iterate over UTF-8 bytes.
       data = data.to_byte_array
   else if data is not ByteArray:
-    throw "WRONG_TYPE"
+    throw "WRONG_OBJECT_TYPE"
   return url_encode_ data
 
 /**
@@ -74,7 +74,7 @@ decode data -> any:
   else if data is ByteArray:
     if (data.index_of '%') == -1: return data
   else:
-    throw "WRONG_TYPE"
+    throw "WRONG_OBJECT_TYPE"
   count := 0
   data.do: | c |
     if c == '%': count++
