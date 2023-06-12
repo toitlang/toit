@@ -251,7 +251,7 @@ PRIMITIVE(listen) {
     IP_ADDR4(&bind_address, 127, 0, 0, 1);
   } else {
     // We currently only implement binding to localhost or IN_ADDR_ANY.
-     FAIL(UNIMPLEMENTED);
+    FAIL(UNIMPLEMENTED);
   }
 
   CAPTURE6(
@@ -268,7 +268,7 @@ PRIMITIVE(listen) {
     tcp_pcb* tpcb = tcp_new();
     if (tpcb == null) {
       delete capture.socket;
-       FAIL(MALLOC_FAILED);
+      FAIL(MALLOC_FAILED);
     }
 
     tpcb->so_options |= SOF_REUSEADDR;
@@ -285,7 +285,7 @@ PRIMITIVE(listen) {
     tpcb = tcp_listen_with_backlog(tpcb, capture.backlog);
     if (tpcb == null) {
       delete capture.socket;
-       FAIL(MALLOC_FAILED);
+      FAIL(MALLOC_FAILED);
     }
 
     capture.socket->set_tpcb(tpcb);
@@ -314,7 +314,7 @@ PRIMITIVE(connect) {
     const uint8_t* a = address.address();
     IP_ADDR4(&addr, a[0], a[1], a[2], a[3]);
   } else {
-     FAIL(OUT_OF_BOUNDS);
+    FAIL(OUT_OF_BOUNDS);
   }
 
   CAPTURE5(
@@ -330,7 +330,7 @@ PRIMITIVE(connect) {
     tcp_pcb* tpcb = tcp_new();
     if (tpcb == null) {
       delete capture.socket;
-       FAIL(MALLOC_FAILED);
+      FAIL(MALLOC_FAILED);
     }
 
     capture.socket->set_tpcb(tpcb);
@@ -571,7 +571,7 @@ PRIMITIVE(get_option) {
         return get_address(capture.socket, process, true);
 
       default:
-         FAIL(UNIMPLEMENTED);
+        FAIL(UNIMPLEMENTED);
     }
   });
 }
@@ -592,7 +592,7 @@ PRIMITIVE(set_option) {
         } else if (capture.raw == process->false_object()) {
           capture.socket->tpcb()->so_options &= ~SOF_KEEPALIVE;
         } else {
-           FAIL(WRONG_OBJECT_TYPE);
+          FAIL(WRONG_OBJECT_TYPE);
         }
         break;
 
@@ -604,16 +604,16 @@ PRIMITIVE(set_option) {
         } else if (capture.raw == process->false_object()) {
           tcp_nagle_enable(capture.socket->tpcb());
         } else {
-           FAIL(WRONG_OBJECT_TYPE);
+          FAIL(WRONG_OBJECT_TYPE);
         }
         break;
 
       case TCP_WINDOW_SIZE:
         if (!is_smi(capture.raw)) FAIL(WRONG_OBJECT_TYPE);
-         FAIL(UNIMPLEMENTED);
+        FAIL(UNIMPLEMENTED);
 
       default:
-         FAIL(UNIMPLEMENTED);
+        FAIL(UNIMPLEMENTED);
     }
 
     return process->null_object();

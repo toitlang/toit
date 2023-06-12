@@ -197,7 +197,7 @@ PRIMITIVE(init_esp32) {
   esp_netif_t *netif = esp_netif_new(&cfg);
   if (!netif) {
     ethernet_pool.put(id);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   // Init MAC and PHY configs to default.
@@ -218,7 +218,7 @@ PRIMITIVE(init_esp32) {
     mac = esp_eth_mac_new_openeth(&mac_config);
     phy_config.autonego_timeout_ms = 100;
   } else {
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
 
   if (!mac) {
@@ -277,7 +277,7 @@ PRIMITIVE(init_esp32) {
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle));
     phy->del(phy);
     mac->del(mac);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(resource_group);
@@ -299,7 +299,7 @@ PRIMITIVE(init_spi) {
   esp_netif_t *netif = esp_netif_new(&cfg);
   if (!netif) {
     ethernet_pool.put(id);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   // Init MAC and PHY configs to default.
@@ -364,7 +364,7 @@ PRIMITIVE(init_spi) {
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle));
     phy->del(phy);
     mac->del(mac);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(resource_group);

@@ -304,7 +304,7 @@ PRIMITIVE(set_option) {
       if (raw == process->true_object()) {
         value = 1;
       } else if (raw != process->false_object()) {
-         FAIL(WRONG_OBJECT_TYPE);
+        FAIL(WRONG_OBJECT_TYPE);
       }
       if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &value, sizeof(value)) == -1) {
         return Primitive::os_error(errno, process);

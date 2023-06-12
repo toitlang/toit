@@ -230,7 +230,7 @@ PRIMITIVE(create_pipe) {
 
   if (read == INVALID_HANDLE_VALUE) {
     close_handle_keep_errno(event);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   security_attributes.bInheritHandle = !input;
@@ -248,7 +248,7 @@ PRIMITIVE(create_pipe) {
   if (write == INVALID_HANDLE_VALUE) {
     close_handle_keep_errno(event);
     close_handle_keep_errno(read);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   HandlePipeResource* pipe_resource;
@@ -259,7 +259,7 @@ PRIMITIVE(create_pipe) {
     CloseHandle(read);
     CloseHandle(write);
     CloseHandle(event);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   resource_group->register_resource(pipe_resource);
@@ -305,7 +305,7 @@ PRIMITIVE(fd_to_pipe) {
       break;
     }
     default:
-       FAIL(INVALID_ARGUMENT);
+      FAIL(INVALID_ARGUMENT);
   }
 
   if (!pipe_resource) FAIL(MALLOC_FAILED);
@@ -360,7 +360,7 @@ PRIMITIVE(read) {
 
   if (!read_resource->receive_read_response()) {
     if (GetLastError() == ERROR_BROKEN_PIPE) return process->null_object();
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   // A read count of 0 means EOF
@@ -452,7 +452,7 @@ static Object* fork_helper(
     const wchar_t* format = (i != arguments->length() - 1) ? L"%ls " : L"%ls";
     Blob argument;
     if (!arguments->at(i)->byte_content(process->program(), &argument, STRINGS_ONLY)) {
-       FAIL(WRONG_OBJECT_TYPE);
+      FAIL(WRONG_OBJECT_TYPE);
     }
     WideCharAllocationManager allocation(process);
     auto utf_16_argument = allocation.to_wcs(&argument);
@@ -466,7 +466,7 @@ static Object* fork_helper(
   // subprocess is already running, and it is too late to GC-and-retry.
   AllocationManager resource_allocation(process);
   if (resource_allocation.alloc(sizeof(SubprocessResource)) == null) {
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
 
   PROCESS_INFORMATION process_information{};
@@ -498,7 +498,7 @@ static Object* fork_helper(
                       &startup_info,
                       &process_information)) {
     if (new_environment) free(new_environment);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   if (new_environment) free(new_environment);
@@ -518,7 +518,7 @@ static Object* fork_helper(
     // exception for this marginal case, so we throw one of the standard
     // exceptions here, but also print a warning on stderr.
     fprintf(stderr, "Error: Running a Linux executable from Wine is not supported: '%ls'\n", command_line);
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
 
   auto subprocess = new (resource_allocation.keep_result()) SubprocessResource(resource_group, process_information.hProcess);

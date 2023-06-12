@@ -178,7 +178,7 @@ PRIMITIVE(init) {
 
   if (!WindowsEventSource::instance()->use()) {
     resource_group->tear_down();
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   proxy->set_external_address(resource_group);
@@ -197,26 +197,26 @@ PRIMITIVE(bind) {
   int yes = 1;
   if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof(yes)) == SOCKET_ERROR) {
     close_keep_errno(socket);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   ToitSocketAddress socket_address(address.address(), address.length(), port);
   if (bind(socket, socket_address.as_socket_address(), socket_address.size()) != 0) {
     close_keep_errno(socket);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   WSAEVENT read_event = WSACreateEvent();
   if (read_event == WSA_INVALID_EVENT) {
     close_keep_errno(socket);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   WSAEVENT write_event = WSACreateEvent();
   if (write_event == WSA_INVALID_EVENT) {
     close_keep_errno(socket);
     close_handle_keep_errno(read_event);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   auto resource = _new UdpSocketResource(resource_group, socket, read_event, write_event);
@@ -224,7 +224,7 @@ PRIMITIVE(bind) {
     close_keep_errno(socket);
     close_handle_keep_errno(read_event);
     close_handle_keep_errno(write_event);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   resource_group->register_resource(resource);
@@ -241,7 +241,7 @@ PRIMITIVE(connect) {
   ToitSocketAddress socket_address(address.address(), address.length(), port);
 
   if (connect(udp_resource->socket(), socket_address.as_socket_address(), socket_address.size()) != 0) {
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   return udp_resource_proxy;
@@ -344,13 +344,13 @@ PRIMITIVE(get_option) {
       int size = sizeof(value);
       if (getsockopt(socket, SOL_SOCKET, SO_BROADCAST,
                      reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
-         FAIL(WINDOWS_ERROR);
+        FAIL(WINDOWS_ERROR);
       }
       return BOOL(value != 0);
     }
 
     default:
-       FAIL(UNIMPLEMENTED);
+      FAIL(UNIMPLEMENTED);
   }
 }
 
@@ -365,17 +365,17 @@ PRIMITIVE(set_option) {
       if (raw == process->true_object()) {
         value = 1;
       } else if (raw != process->false_object()) {
-         FAIL(WRONG_TYPE);
+        FAIL(WRONG_TYPE);
       }
       if (setsockopt(socket, SOL_SOCKET, SO_BROADCAST,
                      reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
-         FAIL(WINDOWS_ERROR);
+        FAIL(WINDOWS_ERROR);
       }
       break;
     }
 
     default:
-       FAIL(UNIMPLEMENTED);
+      FAIL(UNIMPLEMENTED);
   }
 
   return process->null_object();

@@ -76,7 +76,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
     i2c_ports.put(port);
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
 
   i2c_config_t conf;
@@ -109,7 +109,7 @@ PRIMITIVE(init) {
       i2c_driver_delete(port);
     });
     i2c_ports.put(port);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(i2c);

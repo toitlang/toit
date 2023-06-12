@@ -447,7 +447,7 @@ void FontDecompresser::compute_next_line() {
 
 PRIMITIVE(get_font) {
 #if !defined(CONFIG_TOIT_BIT_DISPLAY) && !defined(CONFIG_TOIT_BYTE_DISPLAY)
-   FAIL(UNIMPLEMENTED);
+  FAIL(UNIMPLEMENTED);
 #else
   ARGS(SimpleResourceGroup, resource_group, StringOrSlice, string);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -470,7 +470,7 @@ PRIMITIVE(get_font) {
   if (!block1) FAIL(ALLOCATION_FAILED);
   if (!font->add(block1)) {
     delete block1;
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
   proxy->set_external_address(font_allocation_manager.keep_result());
   return proxy;
@@ -496,7 +496,7 @@ PRIMITIVE(get_nonbuiltin) {
     // TODO: We should perhaps avoid redoing this verification if the data is
     // in flash and we already did it once.
     if (!FontBlock::verify(bytes, length, null)) {
-       FAIL(INVALID_ARGUMENT);
+      FAIL(INVALID_ARGUMENT);
     }
     AllocationManager manager(process);
     const uint8* font_characters;

@@ -259,7 +259,7 @@ PRIMITIVE(init_nand_flash) {
 
   return proxy;
 #else
-   FAIL(UNIMPLEMENTED);
+  FAIL(UNIMPLEMENTED);
 #endif // CONFIG_SPI_FLASH_NAND_ENABLED
 }
 

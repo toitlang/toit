@@ -106,12 +106,12 @@ MODULE_IMPLEMENTATION(i2s, MODULE_I2S);
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
 
   I2sResourceGroup* i2s = _new I2sResourceGroup(process, EventQueueEventSource::instance());
   if (!i2s) {
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(i2s);
@@ -139,7 +139,7 @@ PRIMITIVE(create) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
     i2s_ports.put(port);
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
 
   int mode;
@@ -222,7 +222,7 @@ PRIMITIVE(create) {
       i2s_driver_uninstall(port);
     });
     i2s_ports.put(port);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   group->register_resource(i2s);

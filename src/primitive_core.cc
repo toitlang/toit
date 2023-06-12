@@ -904,7 +904,7 @@ PRIMITIVE(int_parse) {
     } else if (c == '_') {
       if (index == from || index == to - 1 || (negative && index == from + 1)) FAIL(INVALID_ARGUMENT);
     } else {
-       FAIL(INVALID_ARGUMENT);
+      FAIL(INVALID_ARGUMENT);
     }
   }
   return Primitive::integer(negative ? -result : result, process);
@@ -1928,7 +1928,7 @@ PRIMITIVE(task_receive_message) {
     Object* decoded = decoder.decode();
     if (decoder.allocation_failed()) {
       decoder.remove_disposing_finalizers();
-       FAIL(ALLOCATION_FAILED);
+      FAIL(ALLOCATION_FAILED);
     }
     decoder.register_external_allocations();
     system_message->free_data_but_keep_externals();
@@ -2048,7 +2048,7 @@ PRIMITIVE(rebuild_hash_index) {
     } else if (is_large_integer(o)) {
       hash_and_position = LargeInteger::cast(o)->value();
     } else {
-       FAIL(INVALID_ARGUMENT);
+      FAIL(INVALID_ARGUMENT);
     }
     word slot = hash_and_position & index_mask;
     word step = 1;

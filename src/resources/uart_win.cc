@@ -197,7 +197,7 @@ PRIMITIVE(init) {
 
   if (!WindowsEventSource::instance()->use()) {
     resource_group->tear_down();
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   if (!resource_group) FAIL(MALLOC_FAILED);
@@ -207,7 +207,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(create) {
-   FAIL(UNIMPLEMENTED);
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(create_path) {
@@ -263,7 +263,7 @@ PRIMITIVE(create_path) {
 
   if (!success) {
     close_handle_keep_errno(uart);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   // Setup timeouts
@@ -274,27 +274,27 @@ PRIMITIVE(create_path) {
   success = SetCommTimeouts(uart, &comm_timeouts);
   if (!success) {
     close_handle_keep_errno(uart);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   // Setup Mask
   success = SetCommMask(uart, EV_ERR | EV_RXCHAR | EV_TXEMPTY);
   if (!success) {
     close_handle_keep_errno(uart);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   HANDLE read_event = CreateEvent(NULL, true, false, NULL);
   if (read_event == INVALID_HANDLE_VALUE) {
     close_handle_keep_errno(uart);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   HANDLE write_event = CreateEvent(NULL, true, false, NULL);
   if (write_event == INVALID_HANDLE_VALUE) {
     close_handle_keep_errno(uart);
     close_handle_keep_errno(read_event);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   HANDLE error_event = CreateEvent(NULL, true, false, NULL);
@@ -302,7 +302,7 @@ PRIMITIVE(create_path) {
     close_handle_keep_errno(uart);
     close_handle_keep_errno(read_event);
     close_handle_keep_errno(write_event);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   auto uart_resource = _new UartResource(resource_group, uart, read_event, write_event, error_event);
@@ -311,7 +311,7 @@ PRIMITIVE(create_path) {
     close_handle_keep_errno(read_event);
     close_handle_keep_errno(write_event);
     close_handle_keep_errno(error_event);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   resource_group->register_resource(uart_resource);

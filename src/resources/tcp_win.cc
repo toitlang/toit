@@ -248,7 +248,7 @@ PRIMITIVE(init) {
 
   if (!WindowsEventSource::instance()->use()) {
     resource_group->tear_down();
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   proxy->set_external_address(resource_group);
@@ -259,25 +259,25 @@ static HeapObject* create_events(Process* process, SOCKET socket, WSAEVENT& read
                                  WSAEVENT& write_event, WSAEVENT& auxiliary_event) {
   auxiliary_event = WSACreateEvent();
   if (auxiliary_event == WSA_INVALID_EVENT) {
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   if (WSAEventSelect(socket, auxiliary_event, FD_CLOSE) == SOCKET_ERROR) {
     close_handle_keep_errno(auxiliary_event);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   read_event = WSACreateEvent();
   if (read_event == WSA_INVALID_EVENT) {
     close_handle_keep_errno(auxiliary_event);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   write_event = WSACreateEvent();
   if (write_event == WSA_INVALID_EVENT) {
     close_handle_keep_errno(read_event);
     close_handle_keep_errno(auxiliary_event);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   return null;
@@ -295,14 +295,14 @@ PRIMITIVE(connect) {
   if (window_size != 0 && setsockopt(socket, SOL_SOCKET, SO_RCVBUF,
                                      reinterpret_cast<char*>(&window_size), sizeof(window_size)) == -1) {
     close_keep_errno(socket);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   ToitSocketAddress socket_address(address.address(), address.length(), port);
   int result = connect(socket, socket_address.as_socket_address(), socket_address.port());
   if (result == SOCKET_ERROR && WSAGetLastError() != WSAEINPROGRESS) {
     close_keep_errno(socket);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   WSAEVENT read_event, write_event, auxiliary_event;
@@ -319,7 +319,7 @@ PRIMITIVE(connect) {
     close_handle_keep_errno(read_event);
     close_handle_keep_errno(write_event);
     close_handle_keep_errno(auxiliary_event);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   resource_group->register_resource(tcp_resource);
@@ -339,7 +339,7 @@ PRIMITIVE(accept) {
   if (socket == INVALID_SOCKET) {
     if (WSAGetLastError() == WSAEWOULDBLOCK)
       return process->null_object();
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   WSAEVENT read_event, write_event, auxiliary_event;
@@ -355,7 +355,7 @@ PRIMITIVE(accept) {
     close_keep_errno(socket);
     close_handle_keep_errno(read_event);
     close_handle_keep_errno(write_event);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   resource_group->register_resource(tcp_resource);
@@ -373,7 +373,7 @@ PRIMITIVE(listen) {
 
   ToitSocketAddress socket_address;
   if (!socket_address.lookup_address(hostname, port)) {
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   };
 
   SOCKET socket = TcpResourceGroup::create_socket();
@@ -385,31 +385,31 @@ PRIMITIVE(listen) {
       if (error == null) FAIL(ALLOCATION_FAILED);
       return Error::from(error);
     }
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   if (listen(socket, backlog) == SOCKET_ERROR) {
     close_keep_errno(socket);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   WSAEVENT event = WSACreateEvent();
   if (event == WSA_INVALID_EVENT) {
     close_keep_errno(socket);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   if (WSAEventSelect(socket, event, FD_ACCEPT) == SOCKET_ERROR) {
     close_keep_errno(socket);
     close_handle_keep_errno(event);
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   auto resource = _new TcpServerSocketResource(resource_group, socket, event);
   if (!resource) {
     close_keep_errno(socket);
     close_handle_keep_errno(event);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   resource_group->register_resource(resource);
@@ -495,7 +495,7 @@ PRIMITIVE(get_option) {
       int size = sizeof(value);
       if (getsockopt(socket, SOL_SOCKET, SO_KEEPALIVE,
                      reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
-         FAIL(WINDOWS_ERROR);
+        FAIL(WINDOWS_ERROR);
       }
       return BOOL(value != 0);
     }
@@ -515,13 +515,13 @@ PRIMITIVE(get_option) {
       int size = sizeof(value);
       if (getsockopt(socket, SOL_SOCKET, SO_RCVBUF,
                      reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
-         FAIL(WINDOWS_ERROR);
+        FAIL(WINDOWS_ERROR);
       }
       return Smi::from(value);
     }
 
     default:
-       FAIL(UNIMPLEMENTED);
+      FAIL(UNIMPLEMENTED);
   }
 }
 
@@ -536,11 +536,11 @@ PRIMITIVE(set_option) {
       if (raw == process->true_object()) {
         value = 1;
       } else if (raw != process->false_object()) {
-         FAIL(WRONG_OBJECT_TYPE);
+        FAIL(WRONG_OBJECT_TYPE);
       }
       if (setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE,
                      reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
-         FAIL(WINDOWS_ERROR);
+        FAIL(WINDOWS_ERROR);
       }
       break;
     }
@@ -550,17 +550,17 @@ PRIMITIVE(set_option) {
       if (raw == process->true_object()) {
         value = 1;
       } else if (raw != process->false_object()) {
-         FAIL(WRONG_OBJECT_TYPE);
+        FAIL(WRONG_OBJECT_TYPE);
       }
       if (setsockopt(socket, IPPROTO_TCP, TCP_NODELAY,
                      reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
-         FAIL(WINDOWS_ERROR);
+        FAIL(WINDOWS_ERROR);
       }
       break;
     }
 
     default:
-       FAIL(UNIMPLEMENTED);
+      FAIL(UNIMPLEMENTED);
   }
 
   return process->null_object();

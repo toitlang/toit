@@ -178,7 +178,7 @@ PRIMITIVE(create_pipe) {
   int fds[2];
   int result = pipe2_portable(fds, FD_CLOEXEC);
   if (result < 0) {
-     FAIL(QUOTA_EXCEEDED);
+    FAIL(QUOTA_EXCEEDED);
   }
   int read = fds[0];
   int write = fds[1];
@@ -193,7 +193,7 @@ PRIMITIVE(create_pipe) {
   if (!resource) {
     close(read);
     close(write);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
   resource_proxy->set_external_address(resource);
 
@@ -380,7 +380,7 @@ static Object* fork_helper(
   // subprocess is already running and it's too late to GC-and-retry.
   AllocationManager resource_allocation(process);
   if (resource_allocation.alloc(sizeof(IntResource)) == null) {
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
 
   AllocationManager allocation(process);
@@ -392,7 +392,7 @@ static Object* fork_helper(
     } else {
       Blob blob;
       if (!args->at(i)->byte_content(process->program(), &blob, STRINGS_ONLY)) {
-         FAIL(WRONG_OBJECT_TYPE);
+        FAIL(WRONG_OBJECT_TYPE);
       }
       int len = blob.length();
       char* c_string = unvoid_cast<char*>(malloc(len + 1));
@@ -409,7 +409,7 @@ static Object* fork_helper(
 
   if (pipe_result < 0) {
     free_args(argv, args);
-     FAIL(QUOTA_EXCEEDED);
+    FAIL(QUOTA_EXCEEDED);
   }
 
   int control_read = control_fds[0];
@@ -427,7 +427,7 @@ static Object* fork_helper(
       if (highest_child_fd < 0) highest_child_fd = i;
       if (data_fds[i] < -1) {
         free_args(argv, args);
-         FAIL(WRONG_OBJECT_TYPE);
+        FAIL(WRONG_OBJECT_TYPE);
       }
     }
   }
@@ -440,7 +440,7 @@ static Object* fork_helper(
     free_args(argv, args);
     if (errno == EAGAIN) FAIL(QUOTA_EXCEEDED);
     if (errno == ENOMEM) FAIL(MALLOC_FAILED);
-     FAIL(ERROR);
+    FAIL(ERROR);
   }
 
   if (child_pid != 0) {

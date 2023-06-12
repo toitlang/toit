@@ -103,14 +103,14 @@ PRIMITIVE(init) {
   int dma_chan = dma_channels.any();
   if (dma_chan == 0) {
     spi_host_devices.put(host_device);
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
     spi_host_devices.put(host_device);
     dma_channels.put(dma_chan);
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
 
   spi_bus_config_t conf = {};
@@ -149,7 +149,7 @@ PRIMITIVE(init) {
   if (!spi) {
     spi_host_devices.put(host_device);
     dma_channels.put(dma_chan);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
   proxy->set_external_address(spi);
 
@@ -176,7 +176,7 @@ PRIMITIVE(device) {
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
 
   spi_device_interface_config_t conf = {
@@ -208,7 +208,7 @@ PRIMITIVE(device) {
   SpiDevice* spi_device = _new SpiDevice(spi, device, dc);
   if (spi_device == null) {
     spi_bus_remove_device(device);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   spi->register_resource(spi_device);

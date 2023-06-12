@@ -234,12 +234,12 @@ PRIMITIVE(init) {
   EspNowResourceGroup* group = _new EspNowResourceGroup(process);
   if (!group) {
     espnow_pool.put(id);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   if (!group->init()) {
     espnow_pool.put(id);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   esp_err_t err = esp_netif_init();

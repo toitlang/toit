@@ -826,7 +826,7 @@ PRIMITIVE(scan_next) {
   String* address_str = process->allocate_string(address);
   if (address_str == null) {
     delete peripheral;
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
   array->at_put(0, address_str);
 
@@ -837,7 +837,7 @@ PRIMITIVE(scan_next) {
     String* identifier_str = process->allocate_string([identifier UTF8String]);
     if (identifier_str == null) {
       free(peripheral);
-       FAIL(ALLOCATION_FAILED);
+      FAIL(ALLOCATION_FAILED);
     }
     array->at_put(2, identifier_str);
   }
@@ -852,7 +852,7 @@ PRIMITIVE(scan_next) {
       String* uuid = process->allocate_string([[discovered_services[i] UUIDString] UTF8String]);
       if (uuid == null) {
         free(peripheral);
-         FAIL(ALLOCATION_FAILED);
+        FAIL(ALLOCATION_FAILED);
       }
       service_classes->at_put(i, uuid);
     }
@@ -1045,11 +1045,11 @@ PRIMITIVE(discover_characteristics_result) {
 }
 
 PRIMITIVE(discover_descriptors) {
-   FAIL(UNIMPLEMENTED);
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(discover_descriptors_result) {
-   FAIL(UNIMPLEMENTED);
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(request_read) {
@@ -1071,7 +1071,7 @@ PRIMITIVE(get_value) {
 
   if (!byte_array) {
     characteristic->put_back(data);
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
 
   ByteArray::Bytes bytes(byte_array);

@@ -276,7 +276,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(create) {
-   FAIL(UNIMPLEMENTED);
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(create_path) {
@@ -348,7 +348,7 @@ PRIMITIVE(set_baud_rate) {
 #ifdef TOIT_DARWIN
     if (ioctl(fd, IOSSIOSPEED, &speed) != 0) return Primitive::os_error(errno, process);
 #else
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
 #endif
 
   }

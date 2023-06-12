@@ -81,17 +81,17 @@ PRIMITIVE(blit) {
   if (operation < 0 || operation >= NUMBER_OF_POSSIBLE_OPERATIONS) FAIL(OUT_OF_BOUNDS);
   word mask_23 = -0x800000;
   if (((dest_line_stride | src_line_stride | pixels_per_line) & mask_23) != 0) {
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
   // src_pixel_stride is multiplied by other values so to avoid security issues caused by
   // overflows it is limited to positive 7 bit values.
   word mask_7 = -0x80;
   if ((src_pixel_stride & mask_7) != 0) {
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
   // dest_pixel_stride is also multiplied by other values, but we allow negative values.
   if (!(-0x80 < dest_pixel_stride && dest_pixel_stride <= 0x80)) {
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
   const uint8* lookup;
   if (lut == process->null_object()) {
@@ -859,7 +859,7 @@ PRIMITIVE(rectangle) {
   if (width < 0 || height < 0) FAIL(OUT_OF_RANGE);
   static const int TOO_BIG = 0x8000000;
   if (x_base > TOO_BIG || y_base > TOO_BIG || width > TOO_BIG || height > TOO_BIG || -x_base > TOO_BIG || -y_base > TOO_BIG) {
-     FAIL(OUT_OF_RANGE);
+    FAIL(OUT_OF_RANGE);
   }
   if (x_base >= byte_array_width || y_base >= byte_array_height || x_base + width <= 0 || y_base + height <= 0 || height == 0 || width == 0) {
     return process->null_object();
@@ -920,7 +920,7 @@ PRIMITIVE(byte_rectangle) {
   if (width < 0 || height < 0) FAIL(OUT_OF_RANGE);
   static const int TOO_BIG = 0x8000000;
   if (x_base > TOO_BIG || y_base > TOO_BIG || width > TOO_BIG || height > TOO_BIG || -x_base > TOO_BIG || -y_base > TOO_BIG) {
-     FAIL(OUT_OF_RANGE);
+    FAIL(OUT_OF_RANGE);
   }
   if (x_base >= byte_array_width || y_base >= byte_array_height || x_base + width <= 0 || y_base + height <= 0 || height == 0 || width == 0) {
     return process->false_object();

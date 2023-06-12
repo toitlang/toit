@@ -140,7 +140,7 @@ PRIMITIVE(channel_new) {
       for (int i = 0; i < memory_block_count; i++) {
         rmt_channels.put(static_cast<rmt_channel_t>(channel + i));
       }
-       FAIL(MALLOC_FAILED);
+      FAIL(MALLOC_FAILED);
     }
   }
 

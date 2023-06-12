@@ -163,7 +163,7 @@ PRIMITIVE(open) {
   int res = fstat(fd, &statbuf);
   if (res < 0) {
     if (errno == ENOMEM) FAIL(MALLOC_FAILED);
-     FAIL(ERROR);
+    FAIL(ERROR);
   }
   int type = statbuf.st_mode & S_IFMT;
   if (type != S_IFREG) {
@@ -216,7 +216,7 @@ PRIMITIVE(opendir2) {
       directory->set_done(true);
     } else {
       delete directory;
-       FAIL(WINDOWS_ERROR);
+      FAIL(WINDOWS_ERROR);
     }
   }
 
@@ -238,7 +238,7 @@ PRIMITIVE(readdir) {
 
   ByteArray* proxy = process->object_heap()->allocate_proxy(true);
   if (proxy == null) {
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
 
   const wchar_t* utf_16 = directory->find_file_data()->cFileName;
@@ -318,7 +318,7 @@ PRIMITIVE(write) {
     if (bytes_written < 0) {
       if (errno == EINTR) continue;
       if (errno == EINVAL || errno == EBADF) FAIL(INVALID_ARGUMENT);
-       FAIL(ERROR);
+      FAIL(ERROR);
     }
     current_offset += bytes_written;
   }
@@ -336,7 +336,7 @@ PRIMITIVE(close) {
       if (errno == EINTR) continue;
       if (errno == EBADF) FAIL(ALREADY_CLOSED);
       if (errno == ENOSPC) FAIL(QUOTA_EXCEEDED);
-       FAIL(ERROR);
+      FAIL(ERROR);
     }
     return process->null_object();
   }
@@ -511,7 +511,7 @@ PRIMITIVE(is_open_file) {
     if (errno == ESPIPE || errno == EINVAL || errno == EBADF) {
       return process->false_object();
     }
-     FAIL(ERROR);
+    FAIL(ERROR);
   }
   return process->true_object();
 }
@@ -527,7 +527,7 @@ PRIMITIVE(realpath) {
   wchar_t* w_result = allocation2.wcs_alloc(result_length);
 
   if (GetFullPathNameW(filename, result_length, w_result, NULL) == 0) {
-     FAIL(WINDOWS_ERROR);
+    FAIL(WINDOWS_ERROR);
   }
 
   // The toit package expects a null value when the file does not exist. Win32 does not detect this in GetFile

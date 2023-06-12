@@ -208,15 +208,15 @@ PRIMITIVE(init) {
       esp_err_t err = adc2_config_channel_atten(static_cast<adc2_channel_t>(chan), atten);
       if (err != ESP_OK) return Primitive::os_error(err, process);
     } else {
-       FAIL(OUT_OF_RANGE);
+      FAIL(OUT_OF_RANGE);
     }
   } else {
-     FAIL(OUT_OF_RANGE);
+    FAIL(OUT_OF_RANGE);
   }
   
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
 
   AdcResource* resource = null;

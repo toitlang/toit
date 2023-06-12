@@ -53,7 +53,7 @@ PRIMITIVE(next) {
     reservation_scan = reservations.begin();
     result = 0;
   } else if (current != flash_registry_offset_current) {
-     FAIL(OUT_OF_BOUNDS);
+    FAIL(OUT_OF_BOUNDS);
   } else {
     result = flash_registry_offset_next;
   }
@@ -72,7 +72,7 @@ PRIMITIVE(info) {
   PRIVILEGED;
   ARGS(int, current);
   if (current < 0 || flash_registry_offset_current != current) {
-     FAIL(OUT_OF_BOUNDS);
+    FAIL(OUT_OF_BOUNDS);
   }
   const FlashAllocation* allocation = FlashRegistry::allocation(current);
   int page_size = (flash_registry_offset_next - current) >> 12;
@@ -138,7 +138,7 @@ PRIMITIVE(reserve_hole) {
   if ((previous_reservation != null && reservation->left() < previous_reservation->right()) ||
       (it != reservations.end() && it->left() < reservation->right())) {
     delete reservation;
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
 
   reservations.insert_before(reservation, [&reservation](Reservation* other_reservation) -> bool {
@@ -177,18 +177,18 @@ PRIMITIVE(allocate) {
     if (reservation->size() != size
         || id.length() != FlashAllocation::Header::ID_SIZE
         || metadata.length() != FlashAllocation::Header::METADATA_SIZE) {
-       FAIL(INVALID_ARGUMENT);
+      FAIL(INVALID_ARGUMENT);
     }
 
     int content_length = content.length();
     if (content_length > 0) {
       int header_offset = sizeof(FlashAllocation::Header);
       if (content_length > FLASH_PAGE_SIZE - header_offset) {
-         FAIL(OUT_OF_BOUNDS);
+        FAIL(OUT_OF_BOUNDS);
       }
 
       if (!FlashRegistry::write_chunk(content.address(), offset + header_offset, content_length)) {
-         FAIL(HARDWARE_ERROR);
+        FAIL(HARDWARE_ERROR);
       }
     }
 
@@ -197,7 +197,7 @@ PRIMITIVE(allocate) {
     if (!FlashAllocation::commit(memory, size, &header)) FAIL(HARDWARE_ERROR);
     return process->null_object();
   }
-   FAIL(ALREADY_CLOSED);
+  FAIL(ALREADY_CLOSED);
 }
 
 PRIMITIVE(grant_access) {
@@ -345,7 +345,7 @@ PRIMITIVE(region_read) {
     uword source = region + from;
     uint8* destination = bytes.address();
     if (esp_flash_read(NULL, destination, source, size) != ESP_OK) {
-       FAIL(HARDWARE_ERROR);
+      FAIL(HARDWARE_ERROR);
     }
 #else
     uint8* region = reinterpret_cast<uint8*>(offset - 1);
@@ -363,7 +363,7 @@ PRIMITIVE(region_write) {
   uword offset = resource->offset();
   if ((offset & 1) == 0) {
     if (!FlashRegistry::write_chunk(bytes.address(), from + offset, size)) {
-       FAIL(HARDWARE_ERROR);
+      FAIL(HARDWARE_ERROR);
     }
   } else {
 #ifdef TOIT_FREERTOS
@@ -371,7 +371,7 @@ PRIMITIVE(region_write) {
     uword destination = region + from;
     const uint8* source = bytes.address();
     if (esp_flash_write(NULL, source, destination, size) != ESP_OK) {
-       FAIL(HARDWARE_ERROR);
+      FAIL(HARDWARE_ERROR);
     }
 #else
     uint8* region = reinterpret_cast<uint8*>(offset - 1);
@@ -402,7 +402,7 @@ PRIMITIVE(region_is_erased) {
       if (remaining == 0) return BOOL(true);
       uword n = Utils::min(remaining, BUFFER_SIZE);
       if (esp_flash_read(NULL, buffer, region + from, n) != ESP_OK) {
-         FAIL(HARDWARE_ERROR);
+        FAIL(HARDWARE_ERROR);
       }
       for (uword i = 0; i < n; i++) {
         if (buffer[i] != 0xff) return BOOL(false);
@@ -428,14 +428,14 @@ PRIMITIVE(region_erase) {
   uword offset = resource->offset();
   if ((offset & 1) == 0) {
     if (!FlashRegistry::erase_chunk(from + offset, size)) {
-       FAIL(HARDWARE_ERROR);
+      FAIL(HARDWARE_ERROR);
     }
   } else {
 #ifdef TOIT_FREERTOS
     uword region = offset - 1;
     uword destination = region + from;
     if (esp_flash_erase_region(NULL, destination, size) != ESP_OK) {
-       FAIL(HARDWARE_ERROR);
+      FAIL(HARDWARE_ERROR);
     }
 #else
     uint8* region = reinterpret_cast<uint8*>(offset - 1);

@@ -95,7 +95,7 @@ PRIMITIVE(kill) {
 PRIMITIVE(strsignal) {
   ARGS(int, signal);
   if (signal == 9) return process->allocate_string_or_error("SIGKILL");
-   FAIL(INVALID_ARGUMENT);
+  FAIL(INVALID_ARGUMENT);
 }
 
 } // namespace toit

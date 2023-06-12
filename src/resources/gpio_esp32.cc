@@ -242,7 +242,7 @@ PRIMITIVE(use) {
   GpioResource* resource = _new GpioResource(resource_group, num);
   if (!resource) {
     gpio_pins.put(num);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
   resource_group->register_resource(resource);
 

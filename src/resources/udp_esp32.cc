@@ -241,7 +241,7 @@ PRIMITIVE(bind) {
     const uint8_t* a = address.address();
     IP_ADDR4(&addr, a[0], a[1], a[2], a[3]);
   } else {
-     FAIL(OUT_OF_BOUNDS);
+    FAIL(OUT_OF_BOUNDS);
   }
 
   CAPTURE4(
@@ -264,7 +264,7 @@ PRIMITIVE(bind) {
     UdpSocket* socket = _new UdpSocket(capture.resource_group, upcb);
     if (socket == null) {
       udp_remove(upcb);
-       FAIL(MALLOC_FAILED);
+      FAIL(MALLOC_FAILED);
     }
     udp_recv(upcb, UdpSocket::on_recv, socket);
     proxy->set_external_address(socket);
@@ -287,7 +287,7 @@ PRIMITIVE(connect) {
     const uint8_t* a = address.address();
     IP_ADDR4(&addr, a[0], a[1], a[2], a[3]);
   } else {
-     FAIL(OUT_OF_BOUNDS);
+    FAIL(OUT_OF_BOUNDS);
   }
 
   CAPTURE4(
@@ -372,7 +372,7 @@ PRIMITIVE(send) {
       const uint8_t* a = address_bytes.address();
       IP_ADDR4(&addr, a[0], a[1], a[2], a[3]);
     } else {
-       FAIL(OUT_OF_BOUNDS);
+      FAIL(OUT_OF_BOUNDS);
     }
   }
 
@@ -423,7 +423,7 @@ PRIMITIVE(error_number) {
   ARGS(ByteArray, socket_proxy);
   USE(socket_proxy);
 
-   FAIL(WRONG_OBJECT_TYPE);
+  FAIL(WRONG_OBJECT_TYPE);
 }
 
 static Object* get_address_or_error(UdpSocket* socket, Process* process, bool peer) {
@@ -456,7 +456,7 @@ PRIMITIVE(get_option) {
         return BOOL(capture.socket->upcb()->so_options & SOF_BROADCAST);
 
       default:
-         FAIL(UNIMPLEMENTED);
+        FAIL(UNIMPLEMENTED);
     }
   });
 }
@@ -477,12 +477,12 @@ PRIMITIVE(set_option) {
         } else if (capture.raw == capture.process->false_object()) {
           capture.socket->upcb()->so_options &= ~SOF_BROADCAST;
         } else {
-           FAIL(WRONG_OBJECT_TYPE);
+          FAIL(WRONG_OBJECT_TYPE);
         }
         break;
 
       default:
-         FAIL(UNIMPLEMENTED);
+        FAIL(UNIMPLEMENTED);
     }
 
     return capture.process->null_object();

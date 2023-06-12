@@ -616,7 +616,7 @@ MODULE_IMPLEMENTATION(uart, MODULE_UART)
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
   UartResourceGroup* uart = _new UartResourceGroup(process, EventQueueEventSource::instance());
   if (!uart) FAIL(MALLOC_FAILED);
@@ -768,28 +768,28 @@ PRIMITIVE(create) {
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
 
   init.queue = xQueueCreate(UART_QUEUE_SIZE, sizeof(uart_event_types_t));
   if (!init.queue) {
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   init.hal = uart_toit_hal_init(port);
   if (!init.hal) {
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   const int caps_flags = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
   init.rx_buffer = static_cast<uint8*>(heap_caps_malloc(rx_buffer_size, caps_flags));
   if (!init.rx_buffer) {
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   init.tx_buffer = static_cast<uint8*>(heap_caps_malloc(tx_buffer_size, caps_flags));
   if (!init.tx_buffer) {
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   init.uart = _new UartResource(group, port, init.queue,
@@ -797,7 +797,7 @@ PRIMITIVE(create) {
                                 init.rx_buffer, rx_buffer_size,
                                 init.tx_buffer, tx_buffer_size);
   if (!init.uart) {
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   periph_module_enable(uart_periph_signal[port].module);
@@ -897,7 +897,7 @@ PRIMITIVE(create) {
 }
 
 PRIMITIVE(create_path) {
-   FAIL(UNIMPLEMENTED);
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(close) {
@@ -957,11 +957,11 @@ PRIMITIVE(read) {
 }
 
 PRIMITIVE(set_control_flags) {
-   FAIL(UNIMPLEMENTED);
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(get_control_flags) {
-   FAIL(UNIMPLEMENTED);
+  FAIL(UNIMPLEMENTED);
 }
 
 } // namespace toit

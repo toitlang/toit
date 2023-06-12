@@ -98,7 +98,7 @@ PRIMITIVE(ota_begin) {
   ARGS(int, from, int, to);
   if (!(0 <= from && from < to)) {
     ESP_LOGE("Toit", "Unordered ota_begin args: %d-%d", from, to);
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
 
   ota_partition = esp_ota_get_next_update_partition(null);
@@ -106,12 +106,12 @@ PRIMITIVE(ota_begin) {
     ESP_LOGE("Toit", "Cannot find OTA partition - retrying after GC");
     // This can actually be caused by a malloc failure in the
     // esp-idf libraries.
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   if (to > ota_partition->size) {
     ESP_LOGE("Toit", "Oversized ota_begin args: %d-%d", to, ota_partition->size);
-     FAIL(OUT_OF_BOUNDS);
+    FAIL(OUT_OF_BOUNDS);
   }
 
   ota_size = to;
@@ -125,7 +125,7 @@ PRIMITIVE(ota_write) {
 
   if (ota_partition == null) {
     ESP_LOGE("Toit", "Cannot write to OTA session before starting it");
-     FAIL(OUT_OF_BOUNDS);
+    FAIL(OUT_OF_BOUNDS);
   }
 
   if (bytes.length() == FLASH_PAGE_SIZE && ota_written == Utils::round_up(ota_written, FLASH_PAGE_SIZE)) {
@@ -151,13 +151,13 @@ PRIMITIVE(ota_write) {
   // by 16.
   if (ota_written != Utils::round_up(ota_written, FLASH_SEGMENT_SIZE)) {
     ESP_LOGE("Toit", "More OTA was written after last block");
-     FAIL(OUT_OF_BOUNDS);
+    FAIL(OUT_OF_BOUNDS);
   }
 
   if (ota_size > 0 && (ota_written + bytes.length() > ota_size)) {
     ESP_LOGE("Toit", "OTA write overflows predetermined size (%d + %d > %d)",
         ota_written, bytes.length(), ota_size);
-     FAIL(OUT_OF_BOUNDS);
+    FAIL(OUT_OF_BOUNDS);
   }
 
   uword to_write = Utils::round_down(bytes.length(), FLASH_SEGMENT_SIZE);
@@ -169,7 +169,7 @@ PRIMITIVE(ota_write) {
     if (err != ESP_OK) {
       ota_partition = null;
       ESP_LOGE("Toit", "esp_partition_erase_range failed (%s)", esp_err_to_name(err));
-       FAIL(OUT_OF_BOUNDS);
+      FAIL(OUT_OF_BOUNDS);
     }
   }
 
@@ -186,7 +186,7 @@ PRIMITIVE(ota_write) {
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "esp_partition_write failed (%s)!", esp_err_to_name(err));
     ota_partition = null;
-     FAIL(OUT_OF_BOUNDS);
+    FAIL(OUT_OF_BOUNDS);
   }
 
   ota_written += bytes.length();
@@ -210,13 +210,13 @@ PRIMITIVE(ota_end) {
   if (size != 0) {
     if (ota_partition == null) {
       ESP_LOGE("Toit", "Cannot end OTA session before starting it");
-       FAIL(OUT_OF_BOUNDS);
+      FAIL(OUT_OF_BOUNDS);
     }
 
     ASSERT(ota_size == 0 || (ota_written <= ota_size));
     if (ota_size > 0 && ota_written < ota_size) {
       ESP_LOGE("Toit", "OTA only partially written (%d < %d)", ota_written, ota_size);
-       FAIL(OUT_OF_BOUNDS);
+      FAIL(OUT_OF_BOUNDS);
     }
 
     const esp_partition_pos_t partition_position = {
@@ -230,7 +230,7 @@ PRIMITIVE(ota_end) {
     if (err != ESP_OK) {
       ESP_LOGE("Toit", "esp_image_verify failed (%s)!", esp_err_to_name(err));
       ota_partition = null;
-       FAIL(OUT_OF_BOUNDS);
+      FAIL(OUT_OF_BOUNDS);
     }
 
     // The system SHA256 checksum is optional, so we add an explicit verification
@@ -254,7 +254,7 @@ PRIMITIVE(ota_end) {
       if (diff != 0) {
         ESP_LOGE("Toit", "esp_image_verify failed!");
         ota_partition = null;
-         FAIL(OUT_OF_BOUNDS);
+        FAIL(OUT_OF_BOUNDS);
       }
     }
 
@@ -267,7 +267,7 @@ PRIMITIVE(ota_end) {
 
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "esp_ota_set_boot_partition failed (%s)!", esp_err_to_name(err));
-     FAIL(OUT_OF_BOUNDS);
+    FAIL(OUT_OF_BOUNDS);
   }
   return Smi::zero();
 }
@@ -316,7 +316,7 @@ PRIMITIVE(enable_external_wakeup) {
   esp_err_t err = esp_sleep_enable_ext1_wakeup(pin_mask, on_any_high ? ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ALL_LOW);
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_ext1_wakeup");
-     FAIL(ERROR);
+    FAIL(ERROR);
   }
 #endif
   return process->null_object();
@@ -327,12 +327,12 @@ PRIMITIVE(enable_touchpad_wakeup) {
   esp_err_t err = esp_sleep_enable_touchpad_wakeup();
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup");
-     FAIL(ERROR);
+    FAIL(ERROR);
   }
   err = esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup - power domain");
-     FAIL(ERROR);
+    FAIL(ERROR);
   }
   keep_touch_active();
 #endif

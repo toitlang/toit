@@ -93,7 +93,7 @@ PRIMITIVE(read_file_content_posix) {
     if (n == -1) {
       if (errno == EINTR) continue;
       close(fd);
-       FAIL(ERROR);
+      FAIL(ERROR);
     }
     if (n == 0) FAIL(INVALID_ARGUMENT);  // File changed size?
     position += n;
@@ -151,7 +151,7 @@ PRIMITIVE(open) {
   int res = fstat(fd, &statbuf);
   if (res < 0) {
     if (errno == ENOMEM) FAIL(MALLOC_FAILED);
-     FAIL(ERROR);
+    FAIL(ERROR);
   }
   int type = statbuf.st_mode & S_IFMT;
   if (!is_dev_null && type != S_IFREG) {
@@ -159,7 +159,7 @@ PRIMITIVE(open) {
     // with open (eg a pipe, a socket, a directory).  We forbid this because
     // these file descriptors can block, and this API does not support
     // blocking.
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
   closer.clear();
   return Smi::from(fd);
@@ -207,7 +207,7 @@ PRIMITIVE(opendir) {
   LeakyDirectory* directory = _new LeakyDirectory(dir);
   if (directory == null) {
     closedir(dir);  // Also closes fd.
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(directory);
@@ -236,7 +236,7 @@ PRIMITIVE(opendir2) {
   Directory* directory = _new Directory(group, dir);
   if (directory == null) {
     closedir(dir);  // Also closes fd.
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(directory);
@@ -254,12 +254,12 @@ PRIMITIVE(readdir) {
   } else if (directory_proxy->external_tag() == LeakyDirectory::tag_min) {
     directory = directory_proxy->as_external<LeakyDirectory>();
   } else {
-     FAIL(WRONG_OBJECT_TYPE);
+    FAIL(WRONG_OBJECT_TYPE);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy(true);
   if (proxy == null) {
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
 
   struct dirent* entry = readdir(directory->dir());
@@ -300,7 +300,7 @@ PRIMITIVE(closedir) {
     LeakyDirectory* directory = proxy->as_external<LeakyDirectory>();
     delete directory;
   } else {
-     FAIL(WRONG_OBJECT_TYPE);
+    FAIL(WRONG_OBJECT_TYPE);
   }
 
   proxy->clear_external_address();
@@ -351,7 +351,7 @@ PRIMITIVE(write) {
       if (errno == EINTR) continue;
       if (errno == EINVAL || errno == EBADF) FAIL(INVALID_ARGUMENT);
       if (errno == EDQUOT || errno == ENOSPC) FAIL(QUOTA_EXCEEDED);
-       FAIL(ERROR);
+      FAIL(ERROR);
     }
     current_offset += bytes_written;
   }
@@ -366,7 +366,7 @@ PRIMITIVE(close) {
       if (errno == EINTR) continue;
       if (errno == EBADF) FAIL(ALREADY_CLOSED);
       if (errno == ENOSPC || errno == EDQUOT) FAIL(QUOTA_EXCEEDED);
-       FAIL(ERROR);
+      FAIL(ERROR);
     }
     return process->null_object();
   }
@@ -521,7 +521,7 @@ PRIMITIVE(is_open_file) {
   if (result < 0) {
     if (errno == ESPIPE) return process->false_object();
     if (errno == EBADF) FAIL(INVALID_ARGUMENT);
-     FAIL(ERROR);
+    FAIL(ERROR);
   }
   return process->true_object();
 }
@@ -531,7 +531,7 @@ PRIMITIVE(realpath) {
 #ifdef TOIT_FREERTOS
   String* result = process->allocate_string(filename);
   if (result == null) {
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
   return result;
 #else
@@ -539,12 +539,12 @@ PRIMITIVE(realpath) {
   if (c_result == null) {
     if (errno == ENOMEM) FAIL(MALLOC_FAILED);
     if (errno == ENOENT or errno == ENOTDIR) return process->null_object();
-     FAIL(ERROR);
+    FAIL(ERROR);
   }
   String* result = process->allocate_string(c_result);
   if (result == null) {
     free(c_result);
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
   return result;
 #endif // TOIT_FREERTOS
@@ -557,7 +557,7 @@ PRIMITIVE(cwd) {
   cwd_path[PATH_MAX] = '\0';
   if (status == -1) {
     if (errno == ENOMEM) FAIL(MALLOC_FAILED);
-     FAIL(ERROR);
+    FAIL(ERROR);
   }
   String* result = process->allocate_string(cwd_path);
   if (result == null) FAIL(ALLOCATION_FAILED);

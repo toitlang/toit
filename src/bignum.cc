@@ -93,7 +93,7 @@ PRIMITIVE(binary_operator) {
   ByteArray* limbs = process->allocate_byte_array(n);
   if (limbs == null) {
     mbedtls_mpi_free(&x_mpi);
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
 
   bool sign = x_mpi.s == -1 ? true : false;
@@ -157,7 +157,7 @@ PRIMITIVE(exp_mod) {
   ByteArray* limbs = process->allocate_byte_array(n);
   if (limbs == null) {
     mbedtls_mpi_free(&x_mpi);
-     FAIL(ALLOCATION_FAILED);
+    FAIL(ALLOCATION_FAILED);
   }
 
   bool sign = x_mpi.s == -1 ? true : false;

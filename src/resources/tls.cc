@@ -268,7 +268,7 @@ Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err) {
       hi_error == MBEDTLS_ERR_PK_ALLOC_FAILED ||
       hi_error == MBEDTLS_ERR_SSL_ALLOC_FAILED ||
       hi_error == MBEDTLS_ERR_X509_ALLOC_FAILED) {
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
   if (err == MBEDTLS_ERR_X509_CERT_VERIFY_FAILED &&
       group &&
@@ -348,7 +348,7 @@ PRIMITIVE(set_outgoing) {
     ByteArray::Bytes data_bytes(ByteArray::cast(outgoing));
     if (fullness < 0 || fullness >= data_bytes.length()) FAIL(INVALID_ARGUMENT);
   } else {
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
   socket->set_outgoing(outgoing, fullness);
   return null_object;
@@ -383,7 +383,7 @@ PRIMITIVE(init) {
   MbedTlsResourceGroup* group = _new MbedTlsResourceGroup(process, tls, mode);
   if (!group) {
     tls->unuse();
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   int ret = group->init();

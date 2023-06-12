@@ -248,7 +248,7 @@ PRIMITIVE(new_unit) {
     unit = _new PcntUnitResource(unit_resource_group, unit_id, low_limit, high_limit, glitch_filter_ns);
     if (unit == null) {
       pcnt_unit_ids.put(unit_id);
-       FAIL(MALLOC_FAILED);
+      FAIL(MALLOC_FAILED);
     }
   }
 

@@ -393,7 +393,7 @@ PRIMITIVE(init) {
 
   if (!netif) {
     wifi_pool.put(id);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   if (ap) {
@@ -442,7 +442,7 @@ PRIMITIVE(init) {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy_default_wifi(netif);
     wifi_pool.put(id);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   if (ap) {
@@ -470,7 +470,7 @@ PRIMITIVE(connect) {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
   if (ssid == null || password == null) {
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -496,7 +496,7 @@ PRIMITIVE(establish) {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
   if (ssid == null || password == null) {
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -566,7 +566,7 @@ PRIMITIVE(disconnect_reason) {
 PRIMITIVE(get_ip) {
   ARGS(WifiResourceGroup, group, int, index);
   if (index < 0 || index >= WifiResourceGroup::NUMBER_OF_ADDRESSES) {
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
 
   if (!group->has_ip_address(index)) {

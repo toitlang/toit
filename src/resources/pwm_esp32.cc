@@ -166,7 +166,7 @@ PRIMITIVE(init) {
   if (!gpio) {
     ledc_timer_rst(SPEED_MODE, timer);
     ledc_timers.put(timer);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
   proxy->set_external_address(gpio);
 
@@ -217,7 +217,7 @@ PRIMITIVE(start) {
   if (!pwm) {
     ledc_stop(SPEED_MODE, channel, 0);
     ledc_channels.put(channel);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   resource_group->register_resource(pwm);

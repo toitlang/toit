@@ -296,7 +296,7 @@ AeadContext::~AeadContext(){
 PRIMITIVE(aead_init) {
   ARGS(SimpleResourceGroup, group, Blob, key, int, algorithm, bool, encrypt);
   if (!(0 <= algorithm && algorithm < NUMBER_OF_ALGORITHM_TYPES)) {
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
 
   if (key.length() != 16 && key.length() != 24 && key.length() != 32) FAIL(INVALID_ARGUMENT);
@@ -316,7 +316,7 @@ PRIMITIVE(aead_init) {
       break;
 #endif
     default:
-       FAIL(UNIMPLEMENTED);
+      FAIL(UNIMPLEMENTED);
   }
 
   AeadContext* aead_context = _new AeadContext(
@@ -325,7 +325,7 @@ PRIMITIVE(aead_init) {
       encrypt);
 
   if (!aead_context) {
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   int err = 0;
@@ -583,12 +583,12 @@ PRIMITIVE(aes_init) {
   if (key.length() != AesContext::AES_BLOCK_SIZE * 2 &&
       key.length() != AesContext::AES_BLOCK_SIZE + 8 &&
       key.length() != AesContext::AES_BLOCK_SIZE) {
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
 
   if (iv.length() != AesContext::AES_BLOCK_SIZE &&
       iv.length() != 0) {
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();

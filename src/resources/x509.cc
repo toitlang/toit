@@ -138,7 +138,7 @@ PRIMITIVE(parse) {
     bool is_pem = X509ResourceGroup::is_pem_format(data, length);
     if (is_pem && (length < 1 || data[length - 1] != '\0')) FAIL(INVALID_ARGUMENT);
   } else {
-     FAIL(WRONG_OBJECT_TYPE);
+    FAIL(WRONG_OBJECT_TYPE);
   }
   bool in_flash = HeapObject::cast(input)->on_program_heap(process);
   return resource_group->parse(process, data, length, in_flash);

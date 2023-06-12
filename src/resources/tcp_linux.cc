@@ -190,7 +190,7 @@ PRIMITIVE(connect) {
   IntResource* resource = resource_group->register_id(id);
   if (!resource) {
     close(id);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   resource_proxy->set_external_address(resource);
@@ -216,7 +216,7 @@ PRIMITIVE(accept) {
   IntResource* resource = resource_group->register_id(fd);
   if (!resource) {
     close(fd);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
   AutoUnregisteringResource<IntResource> resource_manager(resource_group, resource);
 
@@ -242,7 +242,7 @@ PRIMITIVE(listen) {
   if (result != 0) {
     close_keep_errno(id);
     if (result == -1) return Primitive::os_error(errno, process);
-     FAIL(WRONG_OBJECT_TYPE);
+    FAIL(WRONG_OBJECT_TYPE);
   }
 
   if (listen(id, backlog) == -1) {
@@ -253,7 +253,7 @@ PRIMITIVE(listen) {
   IntResource* resource = resource_group->register_id(id);
   if (!resource) {
     close(id);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   resource_proxy->set_external_address(resource);
@@ -400,7 +400,7 @@ PRIMITIVE(get_option) {
     }
 
     default:
-       FAIL(UNIMPLEMENTED);
+      FAIL(UNIMPLEMENTED);
   }
 }
 
@@ -415,7 +415,7 @@ PRIMITIVE(set_option) {
       if (raw == process->true_object()) {
         value = 1;
       } else if (raw != process->false_object()) {
-         FAIL(WRONG_OBJECT_TYPE);
+        FAIL(WRONG_OBJECT_TYPE);
       }
       if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &value, sizeof(value)) == -1) {
         return Primitive::os_error(errno, process);
@@ -428,7 +428,7 @@ PRIMITIVE(set_option) {
       if (raw == process->true_object()) {
         value = 1;
       } else if (raw != process->false_object()) {
-         FAIL(WRONG_OBJECT_TYPE);
+        FAIL(WRONG_OBJECT_TYPE);
       }
       if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value)) == -1) {
         return Primitive::os_error(errno, process);
@@ -437,7 +437,7 @@ PRIMITIVE(set_option) {
     }
 
     default:
-       FAIL(UNIMPLEMENTED);
+      FAIL(UNIMPLEMENTED);
   }
 
   return process->null_object();

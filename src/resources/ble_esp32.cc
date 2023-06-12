@@ -1223,7 +1223,7 @@ PRIMITIVE(init) {
     if (err == ESP_ERR_NO_MEM) {
       esp_bt_controller_disable();
       esp_bt_controller_deinit();
-       FAIL(MALLOC_FAILED);
+      FAIL(MALLOC_FAILED);
     }
     return Primitive::os_error(err, process);
   }
@@ -1233,14 +1233,14 @@ PRIMITIVE(init) {
   BleEventSource* ble = BleEventSource::instance();
   if (!ble->use()) {
     ble_pool.put(id);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   Mutex* mutex = OS::allocate_mutex(0, "BLE");
   if (!mutex) {
     ble->unuse();
     ble_pool.put(id);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   ble_hs_cfg.sync_cb = ble_on_sync;
@@ -1256,7 +1256,7 @@ PRIMITIVE(init) {
     ble->unuse();
     ble_pool.put(id);
     nimble_port_deinit();
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(group);
@@ -1771,7 +1771,7 @@ PRIMITIVE(set_characteristic_notify) {
 
   auto cccd = characteristic->find_cccd();
   if (!cccd) {
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   } else {
     int err = ble_gattc_write_flat(
         characteristic->service()->device()->handle(),
@@ -1977,35 +1977,35 @@ PRIMITIVE(add_characteristic) {
        int, permissions, Object, value, int, read_timeout_ms)
 
   if (!service_resource->peripheral_manager()) {
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   if (service_resource->deployed()) {
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   }
 
   uint32 flags = properties & 0x7F;
   if (permissions & 0x1) {  // READ.
     uint32 mask = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_INDICATE;
     if ((properties & mask) == 0) {
-       FAIL(INVALID_ARGUMENT);
+      FAIL(INVALID_ARGUMENT);
     }
   }
 
   if (permissions & 0x2) { // WRITE.
     uint32 mask = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP;
     if ((properties & mask) == 0) {
-       FAIL(INVALID_ARGUMENT);
+      FAIL(INVALID_ARGUMENT);
     }
   }
 
   if (permissions & 0x4) { // READ_ENCRYPTED.
     uint32 mask = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_INDICATE;
     if ((properties & mask) == 0) {
-       FAIL(INVALID_ARGUMENT);
+      FAIL(INVALID_ARGUMENT);
     }
     flags |= BLE_GATT_CHR_F_READ_ENC;  // _ENC = Encrypted.
   }
@@ -2013,7 +2013,7 @@ PRIMITIVE(add_characteristic) {
   if (permissions & 0x8) { // WRITE_ENCRYPTED.
     uint32 mask = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP;
     if ((properties & mask) == 0) {
-       FAIL(INVALID_ARGUMENT);
+      FAIL(INVALID_ARGUMENT);
     }
     flags |= BLE_GATT_CHR_F_WRITE_ENC;  // _ENC = Encrypted.
   }
@@ -2029,7 +2029,7 @@ PRIMITIVE(add_characteristic) {
 
   if (!characteristic) {
     if (om != null) os_mbuf_free(om);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   if (om != null) {
@@ -2037,7 +2037,7 @@ PRIMITIVE(add_characteristic) {
   } else {
     if (!characteristic->setup_callback_readable_characteristic(read_timeout_ms)) {
       delete characteristic;
-       FAIL(MALLOC_FAILED);
+      FAIL(MALLOC_FAILED);
     }
   }
 
@@ -2069,7 +2069,7 @@ PRIMITIVE(add_descriptor) {
       characteristic->get_or_create_descriptor(ble_uuid, 0, flags, true);
   if (!descriptor) {
     if (om != null) os_mbuf_free(om);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   if (om != null) descriptor->set_mbuf_to_send(om);
@@ -2119,7 +2119,7 @@ PRIMITIVE(deploy_service) {
 
       if (!gatt_desc_defs) {
         clean_up_gatt_svr_chars(gatt_svr_chars, characteristic_index);
-         FAIL(MALLOC_FAILED);
+        FAIL(MALLOC_FAILED);
       }
 
       gatt_svr_chars[characteristic_index].descriptors = gatt_desc_defs;
@@ -2140,7 +2140,7 @@ PRIMITIVE(deploy_service) {
   if (!gatt_services) {
     clean_up_gatt_svr_chars(gatt_svr_chars, characteristic_count);
     free(gatt_svr_chars);
-     FAIL(MALLOC_FAILED);
+    FAIL(MALLOC_FAILED);
   }
 
   gatt_services[1].type = 0;
@@ -2253,7 +2253,7 @@ PRIMITIVE(get_att_mtu) {
       break;
     }
     default:
-       FAIL(INVALID_ARGUMENT);
+      FAIL(INVALID_ARGUMENT);
   }
   return Smi::from(mtu);
 }
@@ -2265,7 +2265,7 @@ PRIMITIVE(set_preferred_mtu) {
   int result = ble_att_set_preferred_mtu(mtu);
 
   if (result) {
-     FAIL(INVALID_ARGUMENT);
+    FAIL(INVALID_ARGUMENT);
   } else {
     return process->null_object();
   }
@@ -2284,7 +2284,7 @@ PRIMITIVE(gc) {
   auto err_resource = reinterpret_cast<BleErrorCapableResource*>(resource);
   if (err_resource->has_malloc_error()) {
     err_resource->set_malloc_error(false);
-     FAIL(CROSS_PROCESS_GC);
+    FAIL(CROSS_PROCESS_GC);
   }
 
   return process->null_object();
