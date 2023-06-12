@@ -251,7 +251,6 @@ PRIMITIVE(bind) {
       Process*, process);
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
-    Process* process = capture.process;
     udp_pcb* upcb = udp_new();
     if (upcb == null) FAIL(MALLOC_FAILED);
 
