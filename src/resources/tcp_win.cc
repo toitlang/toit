@@ -594,7 +594,7 @@ PRIMITIVE(error_number) {
 
 PRIMITIVE(error) {
   ARGS(int, error);
-  return Primitive::unmark_from_error(windows_error(process, error));
+  return Primitive::unmark_from_error(process->program(), windows_error(process, error));
 }
 
 PRIMITIVE(gc) {

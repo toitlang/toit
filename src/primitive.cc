@@ -93,4 +93,11 @@ Object* Primitive::return_not_a_smi(Process* process, Object* value) {
   }
 }
 
+Object* Primitive::unmark_from_error(Program* program, Object* marked_error) {
+  if (reinterpret_cast<uword>(marked_error) < Error::MAX_TAGGED_ERROR) {
+    return program->root(reinterpret_cast<uword>(marked_error) >> Error::ERROR_SHIFT);
+  }
+  return marked_error->unmark();
+}
+
 }  // namespace toit

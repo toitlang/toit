@@ -34,33 +34,33 @@ namespace toit {
   ROOT(Instance,   out_of_memory_error)      \
   ROOT(String,     app_sdk_version)          \
   ROOT(String,     app_sdk_info)             \
-  \
-  ROOT(String,     allocation_failed)        \
-  ROOT(String,     allocation_size_exceeded) \
-  ROOT(String,     already_closed)           \
-  ROOT(String,     already_exists)           \
-  ROOT(String,     division_by_zero)         \
-  ROOT(String,     error)                    \
-  ROOT(String,     file_not_found)           \
-  ROOT(String,     hardware_error)           \
-  ROOT(String,     illegal_utf_8)            \
-  ROOT(String,     invalid_argument)         \
-  ROOT(String,     malloc_failed)            \
-  ROOT(String,     cross_process_gc)         \
-  ROOT(String,     negative_argument)        \
-  ROOT(String,     out_of_bounds)            \
-  ROOT(String,     out_of_range)             \
-  ROOT(String,     already_in_use)           \
-  ROOT(String,     overflow)                 \
-  ROOT(String,     privileged_primitive)     \
-  ROOT(String,     permission_denied)        \
-  ROOT(String,     quota_exceeded)           \
-  ROOT(String,     read_failed)              \
-  ROOT(String,     stack_overflow)           \
-  ROOT(String,     unimplemented)            \
-  ROOT(String,     wrong_object_type)        \
-  ROOT(String,     invalid_signature)        \
 
+#define ERROR_STRINGS(ERROR_STRING)                                 \
+  ERROR_STRING(allocation_failed, ALLOCATION_FAILED)                \
+  ERROR_STRING(allocation_size_exceeded, ALLOCATION_SIZE_EXCEEDED)  \
+  ERROR_STRING(already_closed, ALREADY_CLOSED)                      \
+  ERROR_STRING(already_exists, ALREADY_EXISTS)                      \
+  ERROR_STRING(division_by_zero, DIVISION_BY_ZERO)                  \
+  ERROR_STRING(error, ERROR)                                        \
+  ERROR_STRING(file_not_found, FILE_NOT_FOUND)                      \
+  ERROR_STRING(hardware_error, HARDWARE_ERROR)                      \
+  ERROR_STRING(illegal_utf_8, ILLEGAL_UTF_8)                        \
+  ERROR_STRING(invalid_argument, INVALID_ARGUMENT)                  \
+  ERROR_STRING(malloc_failed, MALLOC_FAILED)                        \
+  ERROR_STRING(cross_process_gc, CROSS_PROCESS_GC)                  \
+  ERROR_STRING(negative_argument, NEGATIVE_ARGUMENT)                \
+  ERROR_STRING(out_of_bounds, OUT_OF_BOUNDS)                        \
+  ERROR_STRING(out_of_range, OUT_OF_RANGE)                          \
+  ERROR_STRING(already_in_use, ALREADY_IN_USE)                      \
+  ERROR_STRING(overflow, OVERFLOW)                                  \
+  ERROR_STRING(privileged_primitive, PRIVILEGED_PRIMITIVE)          \
+  ERROR_STRING(permission_denied, PERMISSION_DENIED)                \
+  ERROR_STRING(quota_exceeded, QUOTA_EXCEEDED)                      \
+  ERROR_STRING(read_failed, READ_FAILED)                            \
+  ERROR_STRING(stack_overflow, STACK_OVERFLOW)                      \
+  ERROR_STRING(unimplemented, UNIMPLEMENTED)                        \
+  ERROR_STRING(wrong_object_type, WRONG_OBJECT_TYPE)                \
+  ERROR_STRING(invalid_signature, INVALID_SIGNATURE)                \
 
 #define BUILTIN_CLASS_IDS(ID)    \
   ID(string_class_id)            \
@@ -96,11 +96,14 @@ class Program : public FlashAllocation {
   Program(const uint8* id, int size);
 
   #define DECLARE_ROOT(type, name) name##_INDEX,
+  #define DECLARE_ERROR(name, upper_name) upper_name##_INDEX,
   enum {
     PROGRAM_ROOTS(DECLARE_ROOT)
+    ERROR_STRINGS(DECLARE_ERROR)
     ROOT_COUNT
   };
   #undef DECLARE_ROOT
+  #undef DECLARE_ERROR
 
   #define DECLARE_BUILTIN_CLASS_IDS(name) name##_INDEX,
   enum {
@@ -119,8 +122,11 @@ class Program : public FlashAllocation {
   Object* root(int index) const { ASSERT(index >= 0 && index < ROOT_COUNT); return roots_[index]; }
 
   #define DECLARE_ROOT_ACCESSOR(type, name) type* name() const { return static_cast<type*>(roots_[name##_INDEX]); }
+  #define DECLARE_ERROR_ACCESSOR(name, upper_name) String* name() const { return static_cast<String*>(roots_[upper_name##_INDEX]); }
   PROGRAM_ROOTS(DECLARE_ROOT_ACCESSOR)
+  ERROR_STRINGS(DECLARE_ERROR_ACCESSOR)
   #undef DECLARE_ROOT_ACCESSOR
+  #undef DECLARE_ERROR_ACCESSOR
 
   #define DECLARE_ENTRY_POINT_ACCESSOR(name, lib_name, arity) Method name() { \
     int dispatch_index = entry_point_indexes_[name##_INDEX]; \
@@ -331,8 +337,10 @@ class Program : public FlashAllocation {
 
   Object* roots_[ROOT_COUNT];
   #define DECLARE_ROOT(type, name) void set_##name(type* v) { roots_[name##_INDEX] = v; }
+  #define DECLARE_ERROR(name, string) void set_##name(String* v) { roots_[name##_INDEX] = v; }
   PROGRAM_ROOTS(DECLARE_ROOT)
   #undef DECLARE_ROOT
+  #undef DECLARE_ERROR
 
   Smi* _builtin_class_ids[BUILTIN_CLASS_IDS_COUNT];
   #define DECLARE_CLASS_ID_ROOT(name) void set_##name(Smi* v) { _builtin_class_ids[name##_INDEX] = v; }

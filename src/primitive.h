@@ -1152,26 +1152,9 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
 // Macro for returning a boolean object.
 #define BOOL(value) ((value) ? process->true_object() : process->false_object())
 
-#define ALLOCATION_FAILED return process->marked_allocation_failed()
-#define ALREADY_EXISTS return process->marked_already_exists()
-#define FILE_NOT_FOUND return process->marked_file_not_found()
-#define HARDWARE_ERROR return process->marked_hardware_error()
-#define ILLEGAL_UTF_8 return process->marked_illegal_utf_8()
-#define INVALID_ARGUMENT return process->marked_invalid_argument()
-#define MALLOC_FAILED return process->marked_malloc_failed()
-#define CROSS_PROCESS_GC return process->marked_cross_process_gc()
-#define NEGATIVE_ARGUMENT return process->marked_negative_argument()
-#define OUT_OF_BOUNDS return process->marked_out_of_bounds()
-#define OUT_OF_RANGE return process->marked_out_of_range()
-#define ALREADY_IN_USE return process->marked_already_in_use()
-#define OVERFLOW_ return process->marked_overflow()
-#define PERMISSION_DENIED return process->marked_permission_denied()
-#define QUOTA_EXCEEDED return process->marked_quota_exceeded()
-#define UNIMPLEMENTED_PRIMITIVE return process->marked_unimplemented_primitive()
-#define WRONG_TYPE return process->marked_wrong_type()
-#define ALREADY_CLOSED return process->marked_already_closed()
-
-#define OTHER_ERROR return Primitive::mark_as_error(process->program()->error())
+// Macro for returning a small error-tagged pointer that indicates one
+// of the standard errors.
+#define FAIL(name) return ((Program::name##_INDEX) << Error::ERROR_SHIFT) | ERROR::ERROR_TAG
 
 // Support for validating a primitive is only invoked from the system process.
 #define PRIVILEGED \
@@ -1193,7 +1176,7 @@ class Primitive {
   // Use temporary tagging for marking an error.
   static bool is_error(Object* object) { return object->is_marked(); }
   static HeapObject* mark_as_error(HeapObject* object) { return object->mark(); }
-  static HeapObject* unmark_from_error(Object* object) { return object->unmark(); }
+  static HeapObject* unmark_from_error(Program* program, Object* object);
   static Object* os_error(int error, Process* process);
   static Object* return_not_a_smi(Process* process, Object* value);
 
