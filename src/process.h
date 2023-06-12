@@ -238,24 +238,24 @@ class Process : public ProcessListFromProcessGroup::Element,
     return address - program_heap_address_ < program_heap_size_;
   }
 
-  inline Object* marked_allocation_failed() const { return marked_allocation_failed_; }
-  inline Object* marked_already_exists() const { return marked_already_exists_; }
-  inline Object* marked_file_not_found() const { return marked_file_not_found_; }
-  inline Object* marked_hardware_error() const { return marked_hardware_error_; }
-  inline Object* marked_illegal_utf_8() const { return marked_illegal_utf_8_; }
-  inline Object* marked_invalid_argument() const { return marked_invalid_argument_; }
-  inline Object* marked_malloc_failed() const { return marked_malloc_failed_; }
-  inline Object* marked_cross_process_gc() const { return marked_cross_process_gc_; }
-  inline Object* marked_negative_argument() const { return marked_negative_argument_; }
-  inline Object* marked_out_of_bounds() const { return marked_out_of_bounds_; }
-  inline Object* marked_out_of_range() const { return marked_out_of_range_; }
-  inline Object* marked_already_in_use() const { return marked_already_in_use_; }
-  inline Object* marked_overflow() const { return marked_overflow_; }
-  inline Object* marked_permission_denied() const { return marked_permission_denied_; }
-  inline Object* marked_quota_exceeded() const { return marked_quota_exceeded_; }
-  inline Object* marked_unimplemented_primitive() const { return marked_unimplemented_primitive_; }
-  inline Object* marked_wrong_type() const { return marked_wrong_type_; }
-  inline Object* marked_already_closed() const { return marked_already_closed_; }
+  inline HeapObject* marked_allocation_failed() const { return marked_allocation_failed_; }
+  inline HeapObject* marked_already_exists() const { return marked_already_exists_; }
+  inline HeapObject* marked_file_not_found() const { return marked_file_not_found_; }
+  inline HeapObject* marked_hardware_error() const { return marked_hardware_error_; }
+  inline HeapObject* marked_illegal_utf_8() const { return marked_illegal_utf_8_; }
+  inline HeapObject* marked_invalid_argument() const { return marked_invalid_argument_; }
+  inline HeapObject* marked_malloc_failed() const { return marked_malloc_failed_; }
+  inline HeapObject* marked_cross_process_gc() const { return marked_cross_process_gc_; }
+  inline HeapObject* marked_negative_argument() const { return marked_negative_argument_; }
+  inline HeapObject* marked_out_of_bounds() const { return marked_out_of_bounds_; }
+  inline HeapObject* marked_out_of_range() const { return marked_out_of_range_; }
+  inline HeapObject* marked_already_in_use() const { return marked_already_in_use_; }
+  inline HeapObject* marked_overflow() const { return marked_overflow_; }
+  inline HeapObject* marked_permission_denied() const { return marked_permission_denied_; }
+  inline HeapObject* marked_quota_exceeded() const { return marked_quota_exceeded_; }
+  inline HeapObject* marked_unimplemented_primitive() const { return marked_unimplemented_primitive_; }
+  inline HeapObject* marked_wrong_type() const { return marked_wrong_type_; }
+  inline HeapObject* marked_already_closed() const { return marked_already_closed_; }
 
   inline HeapObject* false_object() const { return false_object_; }
   inline HeapObject* true_object() const { return true_object_; }
@@ -313,24 +313,24 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   Profiler* profiler_ = null;
 
-  Object* marked_allocation_failed_;
-  Object* marked_already_exists_;
-  Object* marked_file_not_found_;
-  Object* marked_hardware_error_;
-  Object* marked_illegal_utf_8_;
-  Object* marked_invalid_argument_;
-  Object* marked_malloc_failed_;
-  Object* marked_cross_process_gc_;
-  Object* marked_negative_argument_;
-  Object* marked_out_of_bounds_;
-  Object* marked_out_of_range_;
-  Object* marked_already_in_use_;
-  Object* marked_overflow_;
-  Object* marked_permission_denied_;
-  Object* marked_quota_exceeded_;
-  Object* marked_unimplemented_primitive_;
-  Object* marked_wrong_type_;
-  Object* marked_already_closed_;
+  HeapObject* marked_allocation_failed_;
+  HeapObject* marked_already_exists_;
+  HeapObject* marked_file_not_found_;
+  HeapObject* marked_hardware_error_;
+  HeapObject* marked_illegal_utf_8_;
+  HeapObject* marked_invalid_argument_;
+  HeapObject* marked_malloc_failed_;
+  HeapObject* marked_cross_process_gc_;
+  HeapObject* marked_negative_argument_;
+  HeapObject* marked_out_of_bounds_;
+  HeapObject* marked_out_of_range_;
+  HeapObject* marked_already_in_use_;
+  HeapObject* marked_overflow_;
+  HeapObject* marked_permission_denied_;
+  HeapObject* marked_quota_exceeded_;
+  HeapObject* marked_unimplemented_primitive_;
+  HeapObject* marked_wrong_type_;
+  HeapObject* marked_already_closed_;
 
   HeapObject* false_object_;
   HeapObject* true_object_;
