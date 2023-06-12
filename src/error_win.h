@@ -23,8 +23,8 @@
 #define WINDOWS_ERROR return windows_error(process)
 
 namespace toit {
-  Object* windows_error(Process* process);
-  Object* windows_error(Process* process, DWORD error_number);
+  HeapObject* windows_error(Process* process);
+  HeapObject* windows_error(Process* process, DWORD error_number);
   void close_keep_errno(SOCKET socket);
   void close_handle_keep_errno(HANDLE handle);
 }

@@ -475,7 +475,7 @@ PRIMITIVE(mkdtemp) {
   }
   wchar_t full_filename[MAX_PATH + 1];
 
-  Object* error = get_absolute_path(process, prefix, full_filename, relative_to);
+  HeapObject* error = get_absolute_path(process, prefix, full_filename, relative_to);
   if (error) return error;
 
   UUID uuid;
