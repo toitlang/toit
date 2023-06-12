@@ -89,7 +89,7 @@ static int ota_written = 0;
 
 PRIMITIVE(ota_current_partition_name) {
   const esp_partition_t* current_partition = esp_ota_get_running_partition();
-  if (current_partition == null) OTHER_ERROR;
+  if (current_partition == null) FAIL(ERROR);
   return process->allocate_string_or_error(current_partition->label);
 }
 
@@ -98,7 +98,7 @@ PRIMITIVE(ota_begin) {
   ARGS(int, from, int, to);
   if (!(0 <= from && from < to)) {
     ESP_LOGE("Toit", "Unordered ota_begin args: %d-%d", from, to);
-    INVALID_ARGUMENT;
+     FAIL(INVALID_ARGUMENT);
   }
 
   ota_partition = esp_ota_get_next_update_partition(null);
@@ -106,12 +106,12 @@ PRIMITIVE(ota_begin) {
     ESP_LOGE("Toit", "Cannot find OTA partition - retrying after GC");
     // This can actually be caused by a malloc failure in the
     // esp-idf libraries.
-    MALLOC_FAILED;
+     FAIL(MALLOC_FAILED);
   }
 
   if (to > ota_partition->size) {
     ESP_LOGE("Toit", "Oversized ota_begin args: %d-%d", to, ota_partition->size);
-    OUT_OF_BOUNDS;
+     FAIL(OUT_OF_BOUNDS);
   }
 
   ota_size = to;
@@ -125,7 +125,7 @@ PRIMITIVE(ota_write) {
 
   if (ota_partition == null) {
     ESP_LOGE("Toit", "Cannot write to OTA session before starting it");
-    OUT_OF_BOUNDS;
+     FAIL(OUT_OF_BOUNDS);
   }
 
   if (bytes.length() == FLASH_PAGE_SIZE && ota_written == Utils::round_up(ota_written, FLASH_PAGE_SIZE)) {
@@ -151,13 +151,13 @@ PRIMITIVE(ota_write) {
   // by 16.
   if (ota_written != Utils::round_up(ota_written, FLASH_SEGMENT_SIZE)) {
     ESP_LOGE("Toit", "More OTA was written after last block");
-    OUT_OF_BOUNDS;
+     FAIL(OUT_OF_BOUNDS);
   }
 
   if (ota_size > 0 && (ota_written + bytes.length() > ota_size)) {
     ESP_LOGE("Toit", "OTA write overflows predetermined size (%d + %d > %d)",
         ota_written, bytes.length(), ota_size);
-    OUT_OF_BOUNDS;
+     FAIL(OUT_OF_BOUNDS);
   }
 
   uword to_write = Utils::round_down(bytes.length(), FLASH_SEGMENT_SIZE);
@@ -169,7 +169,7 @@ PRIMITIVE(ota_write) {
     if (err != ESP_OK) {
       ota_partition = null;
       ESP_LOGE("Toit", "esp_partition_erase_range failed (%s)", esp_err_to_name(err));
-      OUT_OF_BOUNDS;
+       FAIL(OUT_OF_BOUNDS);
     }
   }
 
@@ -186,7 +186,7 @@ PRIMITIVE(ota_write) {
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "esp_partition_write failed (%s)!", esp_err_to_name(err));
     ota_partition = null;
-    OUT_OF_BOUNDS;
+     FAIL(OUT_OF_BOUNDS);
   }
 
   ota_written += bytes.length();
@@ -201,22 +201,22 @@ PRIMITIVE(ota_end) {
   const int BLOCK = 1024;
   AllocationManager allocation(process);
   uint8* buffer = allocation.alloc(BLOCK);
-  if (buffer == null) ALLOCATION_FAILED;
+  if (buffer == null) FAIL(ALLOCATION_FAILED);
 
   Sha* sha256 = _new Sha(null, 256);
-  if (sha256 == null) ALLOCATION_FAILED;
+  if (sha256 == null) FAIL(ALLOCATION_FAILED);
   DeferDelete<Sha> d(sha256);
 
   if (size != 0) {
     if (ota_partition == null) {
       ESP_LOGE("Toit", "Cannot end OTA session before starting it");
-      OUT_OF_BOUNDS;
+       FAIL(OUT_OF_BOUNDS);
     }
 
     ASSERT(ota_size == 0 || (ota_written <= ota_size));
     if (ota_size > 0 && ota_written < ota_size) {
       ESP_LOGE("Toit", "OTA only partially written (%d < %d)", ota_written, ota_size);
-      OUT_OF_BOUNDS;
+       FAIL(OUT_OF_BOUNDS);
     }
 
     const esp_partition_pos_t partition_position = {
@@ -230,7 +230,7 @@ PRIMITIVE(ota_end) {
     if (err != ESP_OK) {
       ESP_LOGE("Toit", "esp_image_verify failed (%s)!", esp_err_to_name(err));
       ota_partition = null;
-      OUT_OF_BOUNDS;
+       FAIL(OUT_OF_BOUNDS);
     }
 
     // The system SHA256 checksum is optional, so we add an explicit verification
@@ -238,11 +238,11 @@ PRIMITIVE(ota_end) {
     // byte, and so not really reliable.)
     Blob checksum_bytes;
     if (expected->byte_content(process->program(), &checksum_bytes, STRINGS_OR_BYTE_ARRAYS)) {
-      if (checksum_bytes.length() != Sha::HASH_LENGTH_256) INVALID_ARGUMENT;
+      if (checksum_bytes.length() != Sha::HASH_LENGTH_256) FAIL(INVALID_ARGUMENT);
       for (int i = 0; i < size; i += BLOCK) {
         int chunk = Utils::min(BLOCK, size - i);
         err = esp_partition_read(ota_partition, i, buffer, chunk);
-        if (err != ESP_OK) OUT_OF_BOUNDS;
+        if (err != ESP_OK) FAIL(OUT_OF_BOUNDS);
         sha256->add(buffer, chunk);
       }
       uint8 calculated[Sha::HASH_LENGTH_256];
@@ -254,7 +254,7 @@ PRIMITIVE(ota_end) {
       if (diff != 0) {
         ESP_LOGE("Toit", "esp_image_verify failed!");
         ota_partition = null;
-        OUT_OF_BOUNDS;
+         FAIL(OUT_OF_BOUNDS);
       }
     }
 
@@ -267,7 +267,7 @@ PRIMITIVE(ota_end) {
 
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "esp_ota_set_boot_partition failed (%s)!", esp_err_to_name(err));
-    OUT_OF_BOUNDS;
+     FAIL(OUT_OF_BOUNDS);
   }
   return Smi::zero();
 }
@@ -296,10 +296,10 @@ PRIMITIVE(ota_validate) {
 PRIMITIVE(ota_rollback) {
   PRIVILEGED;
   bool is_rollback_possible = esp_ota_check_rollback_is_possible();
-  if (!is_rollback_possible) PERMISSION_DENIED;
+  if (!is_rollback_possible) FAIL(PERMISSION_DENIED);
   esp_err_t err = esp_ota_mark_app_invalid_rollback_and_reboot();
   ESP_LOGE("Toit", "esp_ota_end esp_ota_mark_app_invalid_rollback_and_reboot (%s)!", esp_err_to_name(err));
-  OTHER_ERROR;
+  FAIL(ERROR);
 }
 
 PRIMITIVE(reset_reason) {
@@ -316,7 +316,7 @@ PRIMITIVE(enable_external_wakeup) {
   esp_err_t err = esp_sleep_enable_ext1_wakeup(pin_mask, on_any_high ? ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ALL_LOW);
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_ext1_wakeup");
-    OTHER_ERROR;
+     FAIL(ERROR);
   }
 #endif
   return process->null_object();
@@ -327,12 +327,12 @@ PRIMITIVE(enable_touchpad_wakeup) {
   esp_err_t err = esp_sleep_enable_touchpad_wakeup();
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup");
-    OTHER_ERROR;
+     FAIL(ERROR);
   }
   err = esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup - power domain");
-    OTHER_ERROR;
+     FAIL(ERROR);
   }
   keep_touch_active();
 #endif
@@ -372,7 +372,7 @@ PRIMITIVE(total_run_time) {
 
 PRIMITIVE(get_mac_address) {
   ByteArray* result = process->allocate_byte_array(6);
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes bytes = ByteArray::Bytes(result);
   esp_err_t err = esp_efuse_mac_get_default(bytes.address());
@@ -517,9 +517,9 @@ PRIMITIVE(memory_page_report) {
     report.next_memory_base();
   }
   encoder.write_int(report.GRANULARITY);
-  if (buffer.has_overflow()) OUT_OF_BOUNDS;
+  if (buffer.has_overflow()) FAIL(OUT_OF_BOUNDS);
   ByteArray* result = process->allocate_byte_array(buffer.size());
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes bytes(result);
   memcpy(bytes.address(), buffer.content(), buffer.size());
   return result;

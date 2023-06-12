@@ -65,7 +65,7 @@ void HeapFragmentationDumper::log_allocation(void* allocation, uword size, void*
           is_free ? FREE_MALLOC_TAG :
           is_overhead ? HEAP_OVERHEAD_MALLOC_TAG :
           is_custom ? (wtag - ITERATE_CUSTOM_TAGS) :
-          MISC_MALLOC_TAG;
+           FAIL(MISC_MALLOC_TAG);
       write_interval(subrange_size, allocation_type);
       unemitted_8_byte_overhead_ = false;
     }

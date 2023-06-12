@@ -220,10 +220,10 @@ MODULE_IMPLEMENTATION(gpio, MODULE_GPIO)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   GpioResourceGroup* gpio = _new GpioResourceGroup(process);
-  if (!gpio) MALLOC_FAILED;
+  if (!gpio) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(gpio);
   return proxy;
@@ -233,16 +233,16 @@ PRIMITIVE(use) {
   ARGS(GpioResourceGroup, resource_group, int, num, bool, allow_restricted);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  if (!allow_restricted && is_restricted_pin(num)) INVALID_ARGUMENT;
+  if (!allow_restricted && is_restricted_pin(num)) FAIL(INVALID_ARGUMENT);
 
-  if (!gpio_pins.take(num)) ALREADY_IN_USE;
+  if (!gpio_pins.take(num)) FAIL(ALREADY_IN_USE);
 
   GpioResource* resource = _new GpioResource(resource_group, num);
   if (!resource) {
     gpio_pins.put(num);
-    MALLOC_FAILED;
+     FAIL(MALLOC_FAILED);
   }
   resource_group->register_resource(resource);
 
@@ -318,7 +318,7 @@ PRIMITIVE(config_interrupt) {
 // affect that configuration.
 PRIMITIVE(set_open_drain) {
   ARGS(int, num, bool, enable);
-  if (num < 0 || num >= GPIO_NUM_MAX) INVALID_ARGUMENT;
+  if (num < 0 || num >= GPIO_NUM_MAX) FAIL(INVALID_ARGUMENT);
 
   // Change the open-drain bit.
   // Directly writes to the memory-mapped register.

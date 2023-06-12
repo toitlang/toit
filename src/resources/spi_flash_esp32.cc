@@ -140,7 +140,7 @@ PRIMITIVE(init_sdcard) {
 PRIMITIVE(init_nor_flash) {
   ARGS(cstring, mount_point, SpiResourceGroup, spi_bus, int, gpio_cs,int, frequency, int, format_if_mount_failed, int, max_files, int, allocation_unit_size)
 
-  if (frequency < 0 || frequency > ESP_FLASH_80MHZ) INVALID_ARGUMENT;
+  if (frequency < 0 || frequency > ESP_FLASH_80MHZ) FAIL(INVALID_ARGUMENT);
 
   SpiFlashResourceGroup* group;
   HeapObject* error;
@@ -259,7 +259,7 @@ PRIMITIVE(init_nand_flash) {
 
   return proxy;
 #else
-  UNIMPLEMENTED_PRIMITIVE;
+   FAIL(UNIMPLEMENTED);
 #endif // CONFIG_SPI_FLASH_NAND_ENABLED
 }
 

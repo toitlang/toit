@@ -268,7 +268,7 @@ Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err) {
       hi_error == MBEDTLS_ERR_PK_ALLOC_FAILED ||
       hi_error == MBEDTLS_ERR_SSL_ALLOC_FAILED ||
       hi_error == MBEDTLS_ERR_X509_ALLOC_FAILED) {
-    MALLOC_FAILED;
+     FAIL(MALLOC_FAILED);
   }
   if (err == MBEDTLS_ERR_X509_CERT_VERIFY_FAILED &&
       group &&
@@ -282,7 +282,7 @@ Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err) {
         for (unsigned i = 0; i < len; i++) if (buffer[i] & 0x80) buffer[i] = '.';
       }
       String* str = process->allocate_string(buffer);
-      if (str == null) ALLOCATION_FAILED;
+      if (str == null) FAIL(ALLOCATION_FAILED);
       group->clear_error_flags();
       return Primitive::mark_as_error(str);
     }
@@ -329,7 +329,7 @@ Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err) {
   }
   buffer[BUFFER_LEN - 1] = '\0';
   String* str = process->allocate_string(buffer);
-  if (str == null) ALLOCATION_FAILED;
+  if (str == null) FAIL(ALLOCATION_FAILED);
   if (group) group->clear_error_flags();
   return Primitive::mark_as_error(str);
 }
@@ -343,12 +343,12 @@ PRIMITIVE(set_outgoing) {
   ARGS(MbedTlsSocket, socket, Object, outgoing, int, fullness);
   Object* null_object = process->null_object();
   if (outgoing == null_object) {
-    if (fullness != 0) INVALID_ARGUMENT;
+    if (fullness != 0) FAIL(INVALID_ARGUMENT);
   } else if (is_byte_array(outgoing)) {
     ByteArray::Bytes data_bytes(ByteArray::cast(outgoing));
-    if (fullness < 0 || fullness >= data_bytes.length()) INVALID_ARGUMENT;
+    if (fullness < 0 || fullness >= data_bytes.length()) FAIL(INVALID_ARGUMENT);
   } else {
-    INVALID_ARGUMENT;
+     FAIL(INVALID_ARGUMENT);
   }
   socket->set_outgoing(outgoing, fullness);
   return null_object;
@@ -362,8 +362,8 @@ PRIMITIVE(get_incoming_from) {
 PRIMITIVE(set_incoming) {
   ARGS(MbedTlsSocket, socket, Object, incoming, int, from);
   Blob blob;
-  if (!incoming->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
-  if (from < 0 || from > blob.length()) INVALID_ARGUMENT;
+  if (!incoming->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+  if (from < 0 || from > blob.length()) FAIL(INVALID_ARGUMENT);
   socket->set_incoming(incoming, from);
   return process->null_object();
 }
@@ -372,18 +372,18 @@ PRIMITIVE(init) {
   ARGS(bool, server)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   // Mark usage. When the group is unregistered, the usage is automatically
   // decremented, but if group allocation fails, we manually call unuse().
   TlsEventSource* tls = TlsEventSource::instance();
-  if (!tls->use()) MALLOC_FAILED;
+  if (!tls->use()) FAIL(MALLOC_FAILED);
 
   auto mode = server ? MbedTlsResourceGroup::TLS_SERVER : MbedTlsResourceGroup::TLS_CLIENT;
   MbedTlsResourceGroup* group = _new MbedTlsResourceGroup(process, tls, mode);
   if (!group) {
     tls->unuse();
-    MALLOC_FAILED;
+     FAIL(MALLOC_FAILED);
   }
 
   int ret = group->init();
@@ -405,11 +405,11 @@ PRIMITIVE(deinit) {
 
 Object* MbedTlsResourceGroup::tls_socket_create(Process* process, const char* hostname) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   MbedTlsSocket* socket = _new MbedTlsSocket(this);
 
-  if (socket == null) MALLOC_FAILED;
+  if (socket == null) FAIL(MALLOC_FAILED);
   proxy->set_external_address(socket);
 
   mbedtls_ssl_set_hostname(&socket->ssl, hostname);
@@ -446,7 +446,7 @@ PRIMITIVE(read)  {
   if (size < 0 || size > ByteArray::PREFERRED_IO_BUFFER_SIZE) size = ByteArray::PREFERRED_IO_BUFFER_SIZE;
 
   ByteArray* array = process->allocate_byte_array(size, /*force_external*/ true);
-  if (array == null) ALLOCATION_FAILED;
+  if (array == null) FAIL(ALLOCATION_FAILED);
   int read = mbedtls_ssl_read(&socket->ssl, ByteArray::Bytes(array).address(), size);
   if (read == 0 || read == MBEDTLS_ERR_SSL_CONN_EOF || read == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
     return process->null_object();
@@ -468,7 +468,7 @@ PRIMITIVE(read)  {
 PRIMITIVE(write) {
   ARGS(MbedTlsSocket, socket, Blob, data, int, from, int, to)
 
-  if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
 
   int wrote = mbedtls_ssl_write(&socket->ssl, data.address() + from, to - from);
   if (wrote < 0) {
@@ -501,7 +501,8 @@ PRIMITIVE(close) {
 
 PRIMITIVE(add_root_certificate) {
   ARGS(BaseMbedTlsSocket, socket, X509Certificate, cert);
-  if (cert->cert()->next) INVALID_ARGUMENT;  // You can only append a single cert, not a chain of certs.
+  // You can only append a single cert, not a chain of certs.
+  if (cert->cert()->next) FAIL(INVALID_ARGUMENT);
   int ret = socket->add_root_certificate(cert);
   if (ret != 0) return tls_error(null, process, ret);
   return process->null_object();
@@ -552,7 +553,7 @@ static int toit_tls_recv(void* ctx, unsigned char * buf, size_t len) {
 PRIMITIVE(init_socket) {
   ARGS(BaseMbedTlsSocket, socket, cstring, transport_id);
   socket->apply_certs();
-  if (!socket->init(transport_id)) MALLOC_FAILED;
+  if (!socket->init(transport_id)) FAIL(MALLOC_FAILED);
   return process->null_object();
 }
 
@@ -630,7 +631,7 @@ PRIMITIVE(get_internals) {
   ByteArray* session_ticket = process->allocate_byte_array(socket->ssl.session->ticket_len);
   ByteArray* master_secret = process->allocate_byte_array(48);
   Array* result = process->object_heap()->allocate_array(9, Smi::zero());
-  if (!encode_iv || !decode_iv || !encode_key || !decode_key || !result || !session_id || !session_ticket || !master_secret) ALLOCATION_FAILED;
+  if (!encode_iv || !decode_iv || !encode_key || !decode_key || !result || !session_id || !session_ticket || !master_secret) FAIL(ALLOCATION_FAILED);
   memcpy(ByteArray::Bytes(encode_iv).address(), socket->ssl.transform_out->iv_enc, iv_len);
   memcpy(ByteArray::Bytes(decode_iv).address(), socket->ssl.transform_in->iv_dec, iv_len);
   memcpy(ByteArray::Bytes(session_id).address(), socket->ssl.session->id, socket->ssl.session->id_len);
@@ -771,10 +772,10 @@ PRIMITIVE(token_acquire) {
   ARGS(MbedTlsResourceGroup, group);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   TlsHandshakeToken* token = _new TlsHandshakeToken(group);
-  if (!token) MALLOC_FAILED;
+  if (!token) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(token);
   return proxy;

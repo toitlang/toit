@@ -62,10 +62,10 @@ MODULE_IMPLEMENTATION(subprocess, MODULE_SUBPROCESS)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto  resource_group = _new SubprocessResourceGroup(process, WindowsEventSource::instance());
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
@@ -85,7 +85,7 @@ PRIMITIVE(dont_wait_for) {
 
 PRIMITIVE(kill) {
   ARGS(SubprocessResource, subprocess, int, signal);
-  if (signal != 9) INVALID_ARGUMENT;
+  if (signal != 9) FAIL(INVALID_ARGUMENT);
 
   subprocess->set_killed();
   TerminateProcess(subprocess->handle(), signal);
@@ -95,7 +95,7 @@ PRIMITIVE(kill) {
 PRIMITIVE(strsignal) {
   ARGS(int, signal);
   if (signal == 9) return process->allocate_string_or_error("SIGKILL");
-  INVALID_ARGUMENT;
+   FAIL(INVALID_ARGUMENT);
 }
 
 } // namespace toit

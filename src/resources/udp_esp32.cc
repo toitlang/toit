@@ -221,10 +221,10 @@ MODULE_IMPLEMENTATION(udp, MODULE_UDP)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   UdpResourceGroup* resource_group = _new UdpResourceGroup(process, LwipEventSource::instance());
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
@@ -234,14 +234,14 @@ PRIMITIVE(bind) {
   ARGS(UdpResourceGroup, resource_group, Blob, address, int, port);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   ip_addr_t addr;
   if (address.length() == 4) {
     const uint8_t* a = address.address();
     IP_ADDR4(&addr, a[0], a[1], a[2], a[3]);
   } else {
-    OUT_OF_BOUNDS;
+     FAIL(OUT_OF_BOUNDS);
   }
 
   CAPTURE4(
@@ -253,7 +253,7 @@ PRIMITIVE(bind) {
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     Process* process = capture.process;
     udp_pcb* upcb = udp_new();
-    if (upcb == null) MALLOC_FAILED;
+    if (upcb == null) FAIL(MALLOC_FAILED);
 
     err_t err = udp_bind(upcb, &capture.addr, capture.port);
     if (err != ERR_OK) {
@@ -264,7 +264,7 @@ PRIMITIVE(bind) {
     UdpSocket* socket = _new UdpSocket(capture.resource_group, upcb);
     if (socket == null) {
       udp_remove(upcb);
-      MALLOC_FAILED;
+       FAIL(MALLOC_FAILED);
     }
     udp_recv(upcb, UdpSocket::on_recv, socket);
     proxy->set_external_address(socket);
@@ -280,14 +280,14 @@ PRIMITIVE(connect) {
   ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, Blob, address, int, port);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   ip_addr_t addr;
   if (address.length() == 4) {
     const uint8_t* a = address.address();
     IP_ADDR4(&addr, a[0], a[1], a[2], a[3]);
   } else {
-    OUT_OF_BOUNDS;
+     FAIL(OUT_OF_BOUNDS);
   }
 
   CAPTURE4(
@@ -337,7 +337,7 @@ PRIMITIVE(receive)  {
 
     if (is_array(capture.output)) {
       Array* out = Array::cast(capture.output);
-      if (out->length() < 3) INVALID_ARGUMENT;
+      if (out->length() < 3) FAIL(INVALID_ARGUMENT);
       out->at_put(0, array);
       ip_addr_t addr = packet->addr();
       uint32_t ipv4_address = ip_addr_get_ip4_u32(&addr);
@@ -359,7 +359,7 @@ PRIMITIVE(send) {
   ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, Blob, data, int, from, int, to, Object, address, int, port);
 
   const uint8* content = data.address();
-  if (from < 0 || from > to || to > data.length()) OUT_OF_BOUNDS;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_BOUNDS);
 
   content += from;
   to -= from;
@@ -367,12 +367,12 @@ PRIMITIVE(send) {
   ip_addr_t addr;
   if (address != process->null_object()) {
     Blob address_bytes;
-    if (!address->byte_content(process->program(), &address_bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+    if (!address->byte_content(process->program(), &address_bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
     if (address_bytes.length() == 4) {
       const uint8_t* a = address_bytes.address();
       IP_ADDR4(&addr, a[0], a[1], a[2], a[3]);
     } else {
-      OUT_OF_BOUNDS;
+       FAIL(OUT_OF_BOUNDS);
     }
   }
 
@@ -423,7 +423,7 @@ PRIMITIVE(error_number) {
   ARGS(ByteArray, socket_proxy);
   USE(socket_proxy);
 
-  WRONG_TYPE;
+   FAIL(WRONG_OBJECT_TYPE);
 }
 
 static Object* get_address_or_error(UdpSocket* socket, Process* process, bool peer) {
@@ -456,7 +456,7 @@ PRIMITIVE(get_option) {
         return BOOL(capture.socket->upcb()->so_options & SOF_BROADCAST);
 
       default:
-        UNIMPLEMENTED_PRIMITIVE;
+         FAIL(UNIMPLEMENTED);
     }
   });
 }
@@ -477,12 +477,12 @@ PRIMITIVE(set_option) {
         } else if (capture.raw == capture.process->false_object()) {
           capture.socket->upcb()->so_options &= ~SOF_BROADCAST;
         } else {
-          WRONG_TYPE;
+           FAIL(WRONG_OBJECT_TYPE);
         }
         break;
 
       default:
-        UNIMPLEMENTED_PRIMITIVE;
+         FAIL(UNIMPLEMENTED);
     }
 
     return capture.process->null_object();
@@ -496,7 +496,7 @@ PRIMITIVE(gc) {
     needs_gc = false;
     return BOOL(result);
   });
-  if (do_gc == process->true_object()) CROSS_PROCESS_GC;
+  if (do_gc == process->true_object()) FAIL(CROSS_PROCESS_GC);
   return process->null_object();
 }
 

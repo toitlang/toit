@@ -57,10 +57,10 @@ PRIMITIVE(init) {
   // TODO: We should find a way to honor these properties.
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   PersistentResourceGroup* resource_group = _new PersistentResourceGroup(process);
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
@@ -69,7 +69,7 @@ PRIMITIVE(init) {
 PRIMITIVE(read_bytes) {
   ARGS(PersistentResourceGroup, resource_group, cstring, key);
   USE(resource_group);
-  if (!is_valid_key(key, process)) INVALID_ARGUMENT;
+  if (!is_valid_key(key, process)) FAIL(INVALID_ARGUMENT);
 
   std::string str(key);
   auto it = persistent_bytes_map.find(str);
@@ -78,7 +78,7 @@ PRIMITIVE(read_bytes) {
   }
 
   ByteArray* array = process->allocate_byte_array(it->second.size());
-  if (array == null) ALLOCATION_FAILED;
+  if (array == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes bytes(array);
   memmove(bytes.address(), it->second.data(), bytes.length());
@@ -88,7 +88,7 @@ PRIMITIVE(read_bytes) {
 PRIMITIVE(write_bytes) {
   ARGS(PersistentResourceGroup, resource_group, cstring, key, ByteArray, value);
   USE(resource_group);
-  if (!is_valid_key(key, process)) INVALID_ARGUMENT;
+  if (!is_valid_key(key, process)) FAIL(INVALID_ARGUMENT);
 
   std::string str(key);
   ByteArray::Bytes bytes(value);
@@ -103,7 +103,7 @@ PRIMITIVE(delete) {
   ARGS(PersistentResourceGroup, resource_group, cstring, key);
   USE(resource_group);
 
-  if (!is_valid_key(key, process)) INVALID_ARGUMENT;
+  if (!is_valid_key(key, process)) FAIL(INVALID_ARGUMENT);
 
   std::string str(key);
   AllowThrowingNew host_only;

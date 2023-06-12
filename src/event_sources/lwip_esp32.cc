@@ -105,9 +105,9 @@ String* lwip_strerror(Process* process, err_t err) {
 }
 
 Object* lwip_error(Process* process, err_t err) {
-  if (err == ERR_MEM) MALLOC_FAILED;
+  if (err == ERR_MEM) FAIL(MALLOC_FAILED);
   String* str = lwip_strerror(process, err);
-  if (str == null) ALLOCATION_FAILED;
+  if (str == null) FAIL(ALLOCATION_FAILED);
   return Primitive::mark_as_error(str);
 }
 

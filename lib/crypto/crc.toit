@@ -220,7 +220,7 @@ class Crc extends Checksum:
           b := data.at --raw from + it
           sum = (sum >>> 8) ^ table[(b ^ sum) & 0xff]
       else:
-        if data is not ByteArray: throw "WRONG_OBJECT_TYPE"
+        if data is not ByteArray: throw "WRONG_TYPE"
         (to - from).repeat:
           b := data[from + it]
           sum = (sum >>> 8) ^ table[(b ^ sum) & 0xff]
@@ -234,7 +234,7 @@ class Crc extends Checksum:
           b := data.at --raw from + it
           sum = ((sum << 8) & mask) ^ table[b ^ (sum >>> (width - 8))]
       else:
-        if data is not ByteArray: throw "WRONG_OBJECT_TYPE"
+        if data is not ByteArray: throw "WRONG_TYPE"
         (to - from).repeat:
           b := data[from + it]
           sum = ((sum << 8) & mask) ^ table[b ^ (sum >>> (width - 8))]

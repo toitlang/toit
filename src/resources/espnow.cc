@@ -220,26 +220,26 @@ PRIMITIVE(init) {
   wifi_phy_rate_t phy_rate = WIFI_PHY_RATE_1M_L;
   if (rate != -1) {
     phy_rate =  map_toit_rate_to_esp_idf_rate(rate);
-    if (phy_rate == -1) INVALID_ARGUMENT;
+    if (phy_rate == -1) FAIL(INVALID_ARGUMENT);
   }
 
-  if (pmk.length() > 0 && pmk.length() != 16) INVALID_ARGUMENT;
+  if (pmk.length() > 0 && pmk.length() != 16) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = espnow_pool.any();
-  if (id == kInvalidEspNow) ALREADY_IN_USE;
+  if (id == kInvalidEspNow) FAIL(ALREADY_IN_USE);
 
   EspNowResourceGroup* group = _new EspNowResourceGroup(process);
   if (!group) {
     espnow_pool.put(id);
-    MALLOC_FAILED;
+     FAIL(MALLOC_FAILED);
   }
 
   if (!group->init()) {
     espnow_pool.put(id);
-    MALLOC_FAILED;
+     FAIL(MALLOC_FAILED);
   }
 
   esp_err_t err = esp_netif_init();
@@ -303,14 +303,14 @@ PRIMITIVE(receive) {
   ARGS(Object, output);
 
   Array* out = Array::cast(output);
-  if (out->length() != 2) INVALID_ARGUMENT;
+  if (out->length() != 2) FAIL(INVALID_ARGUMENT);
 
   ByteArray* mac = null;
   mac = process->allocate_byte_array(6);
-  if (mac == null) ALLOCATION_FAILED;
+  if (mac == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray* data = process->allocate_byte_array(ESPNOW_RX_DATAGRAM_LEN_MAX, true);
-  if (data == null) ALLOCATION_FAILED;
+  if (data == null) FAIL(ALLOCATION_FAILED);
 
   struct DataGram* datagram;
   portBASE_TYPE ret = xQueueReceive(rx_queue, &datagram, 0);

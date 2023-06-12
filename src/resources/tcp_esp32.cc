@@ -226,10 +226,10 @@ MODULE_IMPLEMENTATION(tcp, MODULE_TCP)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   SocketResourceGroup* resource_group = _new SocketResourceGroup(process, LwipEventSource::instance());
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
@@ -239,10 +239,10 @@ PRIMITIVE(listen) {
   ARGS(SocketResourceGroup, resource_group, String, address, int, port, int, backlog);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
   LwipSocket* socket = _new LwipSocket(resource_group, LwipSocket::kListening);
-  if (socket == null) MALLOC_FAILED;
+  if (socket == null) FAIL(MALLOC_FAILED);
 
   ip_addr_t bind_address;
   if (address->is_empty() || address->slow_equals("0.0.0.0")) {
@@ -251,7 +251,7 @@ PRIMITIVE(listen) {
     IP_ADDR4(&bind_address, 127, 0, 0, 1);
   } else {
     // We currently only implement binding to localhost or IN_ADDR_ANY.
-    UNIMPLEMENTED_PRIMITIVE;
+     FAIL(UNIMPLEMENTED);
   }
 
   CAPTURE6(
@@ -268,7 +268,7 @@ PRIMITIVE(listen) {
     tcp_pcb* tpcb = tcp_new();
     if (tpcb == null) {
       delete capture.socket;
-      MALLOC_FAILED;
+       FAIL(MALLOC_FAILED);
     }
 
     tpcb->so_options |= SOF_REUSEADDR;
@@ -285,7 +285,7 @@ PRIMITIVE(listen) {
     tpcb = tcp_listen_with_backlog(tpcb, capture.backlog);
     if (tpcb == null) {
       delete capture.socket;
-      MALLOC_FAILED;
+       FAIL(MALLOC_FAILED);
     }
 
     capture.socket->set_tpcb(tpcb);
@@ -304,17 +304,17 @@ PRIMITIVE(connect) {
   ARGS(SocketResourceGroup, resource_group, Blob, address, int, port, int, window_size);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
   LwipSocket* socket = _new LwipSocket(resource_group, LwipSocket::kConnection);
-  if (socket == null) MALLOC_FAILED;
+  if (socket == null) FAIL(MALLOC_FAILED);
 
   ip_addr_t addr;
   if (address.length() == 4) {
     const uint8_t* a = address.address();
     IP_ADDR4(&addr, a[0], a[1], a[2], a[3]);
   } else {
-    OUT_OF_BOUNDS;
+     FAIL(OUT_OF_BOUNDS);
   }
 
   CAPTURE5(
@@ -330,7 +330,7 @@ PRIMITIVE(connect) {
     tcp_pcb* tpcb = tcp_new();
     if (tpcb == null) {
       delete capture.socket;
-      MALLOC_FAILED;
+       FAIL(MALLOC_FAILED);
     }
 
     capture.socket->set_tpcb(tpcb);
@@ -355,7 +355,7 @@ PRIMITIVE(accept) {
   ARGS(SocketResourceGroup, resource_group, LwipSocket, listen_socket);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
   CAPTURE4(
     SocketResourceGroup*, resource_group,
@@ -398,7 +398,7 @@ PRIMITIVE(read)  {
     // A size of 496 gives three nicely-packable byte arrays per 1480 MTU.
     int allocation_size = Utils::min(496, total_available);
     ByteArray* array = process->allocate_byte_array(allocation_size, false);  // On-heap byte array.
-    if (array == null) ALLOCATION_FAILED;
+    if (array == null) FAIL(ALLOCATION_FAILED);
 
     ByteArray::Bytes bytes(array);
 
@@ -440,7 +440,7 @@ PRIMITIVE(write) {
   ARGS(SocketResourceGroup, resource_group, LwipSocket, socket, Blob, data, int, from, int, to);
 
   const uint8* content = data.address();
-  if (from < 0 || from > to || to > data.length()) OUT_OF_BOUNDS;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_BOUNDS);
 
   content += from;
   to -= from;
@@ -472,7 +472,7 @@ PRIMITIVE(write) {
     } else if (err == ERR_MEM) {
       // If send queue is empty, we know the internal allocation failed. Be sure to
       // trigger GC and retry, as there will be no tcp_sent event.
-      if (tcp_sndqueuelen(capture.socket->tpcb()) == 0) MALLOC_FAILED;
+      if (tcp_sndqueuelen(capture.socket->tpcb()) == 0) FAIL(MALLOC_FAILED);
       // Wait for data being processed.
       return Smi::from(-1);
     } else {
@@ -571,7 +571,7 @@ PRIMITIVE(get_option) {
         return get_address(capture.socket, process, true);
 
       default:
-        UNIMPLEMENTED_PRIMITIVE;
+         FAIL(UNIMPLEMENTED);
     }
   });
 }
@@ -592,7 +592,7 @@ PRIMITIVE(set_option) {
         } else if (capture.raw == process->false_object()) {
           capture.socket->tpcb()->so_options &= ~SOF_KEEPALIVE;
         } else {
-          WRONG_TYPE;
+           FAIL(WRONG_OBJECT_TYPE);
         }
         break;
 
@@ -604,16 +604,16 @@ PRIMITIVE(set_option) {
         } else if (capture.raw == process->false_object()) {
           tcp_nagle_enable(capture.socket->tpcb());
         } else {
-          WRONG_TYPE;
+           FAIL(WRONG_OBJECT_TYPE);
         }
         break;
 
       case TCP_WINDOW_SIZE:
-        if (!is_smi(capture.raw)) WRONG_TYPE;
-        UNIMPLEMENTED_PRIMITIVE;
+        if (!is_smi(capture.raw)) FAIL(WRONG_OBJECT_TYPE);
+         FAIL(UNIMPLEMENTED);
 
       default:
-        UNIMPLEMENTED_PRIMITIVE;
+         FAIL(UNIMPLEMENTED);
     }
 
     return process->null_object();
@@ -627,7 +627,7 @@ PRIMITIVE(gc) {
     needs_gc = false;
     return BOOL(result);
   });
-  if (do_gc == process->true_object()) CROSS_PROCESS_GC;
+  if (do_gc == process->true_object()) FAIL(CROSS_PROCESS_GC);
   return process->null_object();
 }
 

@@ -34,7 +34,7 @@ PRIMITIVE(register_monitor_notifier) {
   ARGS(Object, monitor, ResourceGroup, group, Resource, resource);
 
   EventSource* source = group->event_source();
-  if (!source->update_resource_monitor(resource, process, monitor)) MALLOC_FAILED;
+  if (!source->update_resource_monitor(resource, process, monitor)) FAIL(MALLOC_FAILED);
   return process->null_object();
 }
 

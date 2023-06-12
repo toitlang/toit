@@ -171,14 +171,14 @@ MODULE_IMPLEMENTATION(udp, MODULE_UDP)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto resource_group = _new UdpResourceGroup(process, WindowsEventSource::instance());
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   if (!WindowsEventSource::instance()->use()) {
     resource_group->tear_down();
-    WINDOWS_ERROR;
+     FAIL(WINDOWS_ERROR);
   }
 
   proxy->set_external_address(resource_group);
@@ -189,34 +189,34 @@ PRIMITIVE(bind) {
   ARGS(UdpResourceGroup, resource_group, Blob, address, int, port);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
   SOCKET socket = WSASocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, NULL, 0, WSA_FLAG_OVERLAPPED);
-  if (socket == INVALID_SOCKET) WINDOWS_ERROR;
+  if (socket == INVALID_SOCKET) FAIL(WINDOWS_ERROR);
 
   int yes = 1;
   if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof(yes)) == SOCKET_ERROR) {
     close_keep_errno(socket);
-    WINDOWS_ERROR;
+     FAIL(WINDOWS_ERROR);
   }
 
   ToitSocketAddress socket_address(address.address(), address.length(), port);
   if (bind(socket, socket_address.as_socket_address(), socket_address.size()) != 0) {
     close_keep_errno(socket);
-    WINDOWS_ERROR;
+     FAIL(WINDOWS_ERROR);
   }
 
   WSAEVENT read_event = WSACreateEvent();
   if (read_event == WSA_INVALID_EVENT) {
     close_keep_errno(socket);
-    WINDOWS_ERROR;
+     FAIL(WINDOWS_ERROR);
   }
 
   WSAEVENT write_event = WSACreateEvent();
   if (write_event == WSA_INVALID_EVENT) {
     close_keep_errno(socket);
     close_handle_keep_errno(read_event);
-    WINDOWS_ERROR;
+     FAIL(WINDOWS_ERROR);
   }
 
   auto resource = _new UdpSocketResource(resource_group, socket, read_event, write_event);
@@ -224,7 +224,7 @@ PRIMITIVE(bind) {
     close_keep_errno(socket);
     close_handle_keep_errno(read_event);
     close_handle_keep_errno(write_event);
-    MALLOC_FAILED;
+     FAIL(MALLOC_FAILED);
   }
 
   resource_group->register_resource(resource);
@@ -241,7 +241,7 @@ PRIMITIVE(connect) {
   ToitSocketAddress socket_address(address.address(), address.length(), port);
 
   if (connect(udp_resource->socket(), socket_address.as_socket_address(), socket_address.size()) != 0) {
-    WINDOWS_ERROR;
+     FAIL(WINDOWS_ERROR);
   }
 
   return udp_resource_proxy;
@@ -251,7 +251,7 @@ PRIMITIVE(send) {
   ARGS(ByteArray, proxy, UdpSocketResource, udp_resource, Blob, data, int, from, int, to, Object, address, int, port);
   USE(proxy);
 
-  if (from < 0 || from > to || to > data.length()) OUT_OF_BOUNDS;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_BOUNDS);
 
   if (!udp_resource->ready_for_write()) return Smi::from(-1);
 
@@ -261,14 +261,14 @@ PRIMITIVE(send) {
 
   if (address != process->null_object()) {
     Blob address_bytes;
-    if (!address->byte_content(process->program(), &address_bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+    if (!address->byte_content(process->program(), &address_bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_TYPE);
 
     ToitSocketAddress socket_address(address_bytes.address(), address_bytes.length(), port);
     send_result = udp_resource->send(send_buffer, send_size, &socket_address);
   } else {
     send_result = udp_resource->send(send_buffer, send_size, null);
   }
-  if (!send_result) WINDOWS_ERROR;
+  if (!send_result) FAIL(WINDOWS_ERROR);
 
   return Smi::from(to-from);
 }
@@ -283,21 +283,21 @@ PRIMITIVE(receive) {
   ByteArray* address = null;
   if (is_array(output)) {
     address = process->allocate_byte_array(4);
-    if (address == null) ALLOCATION_FAILED;
+    if (address == null) FAIL(ALLOCATION_FAILED);
   }
 
-  if (!udp_resource->receive_read_response()) WINDOWS_ERROR;
+  if (!udp_resource->receive_read_response()) FAIL(WINDOWS_ERROR);
 
   ByteArray* array = process->allocate_byte_array(static_cast<int>(udp_resource->read_count()));
-  if (array == null) ALLOCATION_FAILED;
+  if (array == null) FAIL(ALLOCATION_FAILED);
 
   memcpy(ByteArray::Bytes(array).address(), udp_resource->read_buffer(), udp_resource->read_count());
 
-  if (!udp_resource->issue_read_request()) WINDOWS_ERROR;
+  if (!udp_resource->issue_read_request()) FAIL(WINDOWS_ERROR);
 
   if (is_array(output)) {
     Array* out = Array::cast(output);
-    if (out->length() != 3) INVALID_ARGUMENT;
+    if (out->length() != 3) FAIL(INVALID_ARGUMENT);
     out->at_put(0, array);
     ToitSocketAddress& read_peer_address = udp_resource->read_peer_address();
     memcpy(ByteArray::Bytes(address).address(), read_peer_address.address(), read_peer_address.address_length());
@@ -313,7 +313,7 @@ static Object* get_address_or_error(SOCKET socket, Process* process) {
   ToitSocketAddress socket_address;
 
   int result = socket_address.retrieve_address(socket, false);
-  if (result == SOCKET_ERROR) WINDOWS_ERROR;
+  if (result == SOCKET_ERROR) FAIL(WINDOWS_ERROR);
 
   return socket_address.as_toit_string(process);
 }
@@ -322,7 +322,7 @@ static Object* get_port_or_error(SOCKET socket, Process* process) {
   ToitSocketAddress socket_address;
 
   int result = socket_address.retrieve_address(socket, false);
-  if (result == SOCKET_ERROR) WINDOWS_ERROR;
+  if (result == SOCKET_ERROR) FAIL(WINDOWS_ERROR);
 
   return Smi::from(socket_address.port());
 }
@@ -344,13 +344,13 @@ PRIMITIVE(get_option) {
       int size = sizeof(value);
       if (getsockopt(socket, SOL_SOCKET, SO_BROADCAST,
                      reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
-        WINDOWS_ERROR;
+         FAIL(WINDOWS_ERROR);
       }
       return BOOL(value != 0);
     }
 
     default:
-      UNIMPLEMENTED_PRIMITIVE;
+       FAIL(UNIMPLEMENTED);
   }
 }
 
@@ -365,17 +365,17 @@ PRIMITIVE(set_option) {
       if (raw == process->true_object()) {
         value = 1;
       } else if (raw != process->false_object()) {
-        WRONG_TYPE;
+         FAIL(WRONG_TYPE);
       }
       if (setsockopt(socket, SOL_SOCKET, SO_BROADCAST,
                      reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
-        WINDOWS_ERROR;
+         FAIL(WINDOWS_ERROR);
       }
       break;
     }
 
     default:
-      UNIMPLEMENTED_PRIMITIVE;
+       FAIL(UNIMPLEMENTED);
   }
 
   return process->null_object();

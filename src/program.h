@@ -337,8 +337,9 @@ class Program : public FlashAllocation {
 
   Object* roots_[ROOT_COUNT];
   #define DECLARE_ROOT(type, name) void set_##name(type* v) { roots_[name##_INDEX] = v; }
-  #define DECLARE_ERROR(name, string) void set_##name(String* v) { roots_[name##_INDEX] = v; }
+  #define DECLARE_ERROR(name, upper_name) void set_##name(String* v) { roots_[upper_name##_INDEX] = v; }
   PROGRAM_ROOTS(DECLARE_ROOT)
+  ERROR_STRINGS(DECLARE_ERROR)
   #undef DECLARE_ROOT
   #undef DECLARE_ERROR
 

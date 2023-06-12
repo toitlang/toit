@@ -127,10 +127,10 @@ MODULE_IMPLEMENTATION(tcp, MODULE_TCP)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   SocketResourceGroup* resource_group = _new SocketResourceGroup(process, EpollEventSource::instance());
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
@@ -162,7 +162,7 @@ PRIMITIVE(connect) {
   ARGS(SocketResourceGroup, resource_group, Blob, address, int, port, int, window_size);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = resource_group->create_socket();
   if (id == -1) return Primitive::os_error(errno, process);
@@ -190,7 +190,7 @@ PRIMITIVE(connect) {
   IntResource* resource = resource_group->register_id(id);
   if (!resource) {
     close(id);
-    MALLOC_FAILED;
+     FAIL(MALLOC_FAILED);
   }
 
   resource_proxy->set_external_address(resource);
@@ -201,7 +201,7 @@ PRIMITIVE(accept) {
   ARGS(SocketResourceGroup, resource_group, IntResource, listen_fd_resource);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
   int listen_fd = listen_fd_resource->id();
 
@@ -216,7 +216,7 @@ PRIMITIVE(accept) {
   IntResource* resource = resource_group->register_id(fd);
   if (!resource) {
     close(fd);
-    MALLOC_FAILED;
+     FAIL(MALLOC_FAILED);
   }
   AutoUnregisteringResource<IntResource> resource_manager(resource_group, resource);
 
@@ -233,7 +233,7 @@ PRIMITIVE(listen) {
   ARGS(SocketResourceGroup, resource_group, cstring, hostname, int, port, int, backlog);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = resource_group->create_socket();
   if (id == -1) return Primitive::os_error(errno, process);
@@ -242,7 +242,7 @@ PRIMITIVE(listen) {
   if (result != 0) {
     close_keep_errno(id);
     if (result == -1) return Primitive::os_error(errno, process);
-    WRONG_TYPE;
+     FAIL(WRONG_OBJECT_TYPE);
   }
 
   if (listen(id, backlog) == -1) {
@@ -253,7 +253,7 @@ PRIMITIVE(listen) {
   IntResource* resource = resource_group->register_id(id);
   if (!resource) {
     close(id);
-    MALLOC_FAILED;
+     FAIL(MALLOC_FAILED);
   }
 
   resource_proxy->set_external_address(resource);
@@ -265,7 +265,7 @@ PRIMITIVE(write) {
   USE(proxy);
   int fd = fd_resource->id();
 
-  if (from < 0 || from > to || to > data.length()) OUT_OF_BOUNDS;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_BOUNDS);
 
   int wrote = send(fd, data.address() + from, to - from, MSG_NOSIGNAL);
   if (wrote == -1) {
@@ -290,7 +290,7 @@ PRIMITIVE(read)  {
   available = Utils::min(available, ByteArray::PREFERRED_IO_BUFFER_SIZE);
 
   ByteArray* array = process->allocate_byte_array(available, /*force_external*/ true);
-  if (array == null) ALLOCATION_FAILED;
+  if (array == null) FAIL(ALLOCATION_FAILED);
 
   int read = recv(fd, ByteArray::Bytes(array).address(), available, 0);
   if (read == -1) {
@@ -400,7 +400,7 @@ PRIMITIVE(get_option) {
     }
 
     default:
-      UNIMPLEMENTED_PRIMITIVE;
+       FAIL(UNIMPLEMENTED);
   }
 }
 
@@ -415,7 +415,7 @@ PRIMITIVE(set_option) {
       if (raw == process->true_object()) {
         value = 1;
       } else if (raw != process->false_object()) {
-        WRONG_TYPE;
+         FAIL(WRONG_OBJECT_TYPE);
       }
       if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &value, sizeof(value)) == -1) {
         return Primitive::os_error(errno, process);
@@ -428,7 +428,7 @@ PRIMITIVE(set_option) {
       if (raw == process->true_object()) {
         value = 1;
       } else if (raw != process->false_object()) {
-        WRONG_TYPE;
+         FAIL(WRONG_OBJECT_TYPE);
       }
       if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value)) == -1) {
         return Primitive::os_error(errno, process);
@@ -437,7 +437,7 @@ PRIMITIVE(set_option) {
     }
 
     default:
-      UNIMPLEMENTED_PRIMITIVE;
+       FAIL(UNIMPLEMENTED);
   }
 
   return process->null_object();

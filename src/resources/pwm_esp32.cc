@@ -129,16 +129,16 @@ MODULE_IMPLEMENTATION(pwm, MODULE_PWM)
 PRIMITIVE(init) {
   ARGS(int, frequency, int, max_frequency)
 
-  if (frequency <= 0 || frequency > max_frequency || max_frequency > kMaxFrequency) OUT_OF_BOUNDS;
+  if (frequency <= 0 || frequency > max_frequency || max_frequency > kMaxFrequency) FAIL(OUT_OF_BOUNDS);
 
   uint32 bits = msb(max_frequency << 1);
   uint32 resolution_bits = kMaxFrequencyBits - bits;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   ledc_timer_t timer = ledc_timers.any();
-  if (timer == kInvalidLedcTimer) ALREADY_IN_USE;
+  if (timer == kInvalidLedcTimer) FAIL(ALREADY_IN_USE);
 
   ledc_timer_config_t config = {
     .speed_mode = SPEED_MODE,
@@ -166,7 +166,7 @@ PRIMITIVE(init) {
   if (!gpio) {
     ledc_timer_rst(SPEED_MODE, timer);
     ledc_timers.put(timer);
-    MALLOC_FAILED;
+     FAIL(MALLOC_FAILED);
   }
   proxy->set_external_address(gpio);
 
@@ -192,10 +192,10 @@ PRIMITIVE(start) {
   ARGS(PwmResourceGroup, resource_group, int, pin, double, factor);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   ledc_channel_t channel = ledc_channels.any();
-  if (channel == kInvalidLedcChannel) OUT_OF_RANGE;
+  if (channel == kInvalidLedcChannel) FAIL(OUT_OF_RANGE);
 
   ledc_channel_config_t config = {
     .gpio_num = pin,
@@ -217,7 +217,7 @@ PRIMITIVE(start) {
   if (!pwm) {
     ledc_stop(SPEED_MODE, channel, 0);
     ledc_channels.put(channel);
-    MALLOC_FAILED;
+     FAIL(MALLOC_FAILED);
   }
 
   resource_group->register_resource(pwm);
@@ -259,7 +259,7 @@ PRIMITIVE(frequency) {
   ARGS(PwmResourceGroup, resource_group);
 
   uint32 frequency = ledc_get_freq(SPEED_MODE, resource_group->timer());
-  if (frequency == 0) OTHER_ERROR;
+  if (frequency == 0) FAIL(ERROR);
 
   ASSERT(frequency <= kMaxFrequency);
   return Smi::from(static_cast<word>(frequency));
@@ -268,7 +268,7 @@ PRIMITIVE(frequency) {
 PRIMITIVE(set_frequency) {
   ARGS(PwmResourceGroup, resource_group, int, frequency);
 
-  if (frequency <= 0 || frequency > kMaxFrequency) OUT_OF_BOUNDS;
+  if (frequency <= 0 || frequency > kMaxFrequency) FAIL(OUT_OF_BOUNDS);
 
   esp_err_t err = ledc_set_freq(SPEED_MODE, resource_group->timer(), static_cast<uint32>(frequency));
   if (err != ESP_OK) {
