@@ -658,7 +658,7 @@ Object* nimble_error_code_to_string(Process* process, int error_code, bool host)
                         error_code % 0x100,
                         gist);
   String* str = process->allocate_string(buffer, length);
-  if (!str) ALLOCATION_FAILED;
+  if (!str) FAIL(ALLOCATION_FAILED);
   return Primitive::mark_as_error(str);
 }
 
@@ -1171,14 +1171,14 @@ static Object* object_to_mbuf(Process* process, Object* object, os_mbuf** result
   *result = null;
   if (object != process->null_object()) {
     Blob bytes;
-    if (!object->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+    if (!object->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
     if (bytes.length() > 0) {
       os_mbuf* mbuf = ble_hs_mbuf_from_flat(bytes.address(), bytes.length());
       // A null response is not an allocation error, as the mbufs are allocated on boot based on configuration settings.
       // Therefore, a GC will do little to help the situation and will eventually result in the VM thinking it is out of memory.
       // The mbuf will be freed eventually by the NimBLE stack. The client code will
       // have to wait and then try again.
-      if (!mbuf) QUOTA_EXCEEDED;
+      if (!mbuf) FAIL(QUOTA_EXCEEDED);
       *result = mbuf;
     }
   }
@@ -1206,10 +1206,10 @@ MODULE_IMPLEMENTATION(ble, MODULE_BLE)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = ble_pool.any();
-  if (id == kInvalidBle) ALREADY_IN_USE;
+  if (id == kInvalidBle) FAIL(ALREADY_IN_USE);
 
   esp_err_t err = esp_nimble_hci_and_controller_init();
 
@@ -1223,7 +1223,7 @@ PRIMITIVE(init) {
     if (err == ESP_ERR_NO_MEM) {
       esp_bt_controller_disable();
       esp_bt_controller_deinit();
-      MALLOC_FAILED;
+      FAIL(MALLOC_FAILED);
     }
     return Primitive::os_error(err, process);
   }
@@ -1233,14 +1233,14 @@ PRIMITIVE(init) {
   BleEventSource* ble = BleEventSource::instance();
   if (!ble->use()) {
     ble_pool.put(id);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   Mutex* mutex = OS::allocate_mutex(0, "BLE");
   if (!mutex) {
     ble->unuse();
     ble_pool.put(id);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   ble_hs_cfg.sync_cb = ble_on_sync;
@@ -1256,7 +1256,7 @@ PRIMITIVE(init) {
     ble->unuse();
     ble_pool.put(id);
     nimble_port_deinit();
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(group);
@@ -1267,10 +1267,10 @@ PRIMITIVE(create_central_manager) {
   ARGS(BleResourceGroup, group)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto central_manager = _new BleCentralManagerResource(group);
-  if (!central_manager) MALLOC_FAILED;
+  if (!central_manager) FAIL(MALLOC_FAILED);
 
   group->register_resource(central_manager);
   proxy->set_external_address(central_manager);
@@ -1287,10 +1287,10 @@ PRIMITIVE(create_peripheral_manager) {
   ARGS(BleResourceGroup, group, bool, bonding, bool, secure_connections)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto peripheral_manager = _new BlePeripheralManagerResource(group);
-  if (!peripheral_manager) MALLOC_FAILED;
+  if (!peripheral_manager) FAIL(MALLOC_FAILED);
 
   ble_hs_cfg.sm_bonding = bonding;
   ble_hs_cfg.sm_sc = secure_connections;
@@ -1335,7 +1335,7 @@ PRIMITIVE(close) {
 PRIMITIVE(scan_start) {
   ARGS(BleCentralManagerResource, central_manager, int64, duration_us)
 
-  if (BleCentralManagerResource::is_scanning()) ALREADY_EXISTS;
+  if (BleCentralManagerResource::is_scanning()) FAIL(ALREADY_EXISTS);
 
   int32 duration_ms = duration_us < 0 ? BLE_HS_FOREVER : static_cast<int>(duration_us / 1000);
 
@@ -1382,10 +1382,10 @@ PRIMITIVE(scan_next) {
   if (!next) return process->null_object();
 
   Array* array = process->object_heap()->allocate_array(7, process->null_object());
-  if (!array) ALLOCATION_FAILED;
+  if (!array) FAIL(ALLOCATION_FAILED);
 
   ByteArray* id = process->object_heap()->allocate_internal_byte_array(7);
-  if (!id) ALLOCATION_FAILED;
+  if (!id) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes id_bytes(id);
   id_bytes.address()[0] = next->addr().type;
@@ -1399,18 +1399,18 @@ PRIMITIVE(scan_next) {
     if (rc == 0) {
       if (fields.name_len > 0) {
         String* name = process->allocate_string((const char*)fields.name, fields.name_len);
-        if (!name) ALLOCATION_FAILED;
+        if (!name) FAIL(ALLOCATION_FAILED);
         array->at_put(2, name);
       }
 
       int uuids = fields.num_uuids16 + fields.num_uuids32 + fields.num_uuids128;
       Array* service_classes = process->object_heap()->allocate_array(uuids, Smi::from(0));
-      if (!service_classes) ALLOCATION_FAILED;
+      if (!service_classes) FAIL(ALLOCATION_FAILED);
 
       int index = 0;
       for (int i = 0; i < fields.num_uuids16; i++) {
         ByteArray* service_class = process->object_heap()->allocate_internal_byte_array(2);
-        if (!service_class) ALLOCATION_FAILED;
+        if (!service_class) FAIL(ALLOCATION_FAILED);
         ByteArray::Bytes service_class_bytes(service_class);
         *reinterpret_cast<uint16*>(service_class_bytes.address()) = __builtin_bswap16(fields.uuids16[i].value);
         service_classes->at_put(index++, service_class);
@@ -1418,7 +1418,7 @@ PRIMITIVE(scan_next) {
 
       for (int i = 0; i < fields.num_uuids32; i++) {
         ByteArray* service_class = process->object_heap()->allocate_internal_byte_array(4);
-        if (!service_class) ALLOCATION_FAILED;
+        if (!service_class) FAIL(ALLOCATION_FAILED);
         ByteArray::Bytes service_class_bytes(service_class);
         *reinterpret_cast<uint32*>(service_class_bytes.address()) = __builtin_bswap32(fields.uuids32[i].value);
         service_classes->at_put(index++, service_class);
@@ -1426,7 +1426,7 @@ PRIMITIVE(scan_next) {
 
       for (int i = 0; i < fields.num_uuids128; i++) {
         ByteArray* service_class = process->object_heap()->allocate_internal_byte_array(16);
-        if (!service_class) ALLOCATION_FAILED;
+        if (!service_class) FAIL(ALLOCATION_FAILED);
         ByteArray::Bytes service_class_bytes(service_class);
         memcpy_reverse(service_class_bytes.address(), fields.uuids128[i].value, 16);
         service_classes->at_put(index++, service_class);
@@ -1435,7 +1435,7 @@ PRIMITIVE(scan_next) {
 
       if (fields.mfg_data_len > 0 && fields.mfg_data) {
         ByteArray* custom_data = process->object_heap()->allocate_internal_byte_array(fields.mfg_data_len);
-        if (!custom_data) ALLOCATION_FAILED;
+        if (!custom_data) FAIL(ALLOCATION_FAILED);
         ByteArray::Bytes custom_data_bytes(custom_data);
         memcpy(custom_data_bytes.address(), fields.mfg_data, fields.mfg_data_len);
         array->at_put(4, custom_data);
@@ -1486,10 +1486,10 @@ PRIMITIVE(connect) {
   memcpy_reverse(addr.val, address.address() + 1, 6);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) ALLOCATION_FAILED;
+  if (!proxy) FAIL(ALLOCATION_FAILED);
 
   auto device = _new BleRemoteDeviceResource(central_manager->group(), secure_connection);
-  if (!device) MALLOC_FAILED;
+  if (!device) FAIL(MALLOC_FAILED);
 
   err = ble_gap_connect(own_addr_type, &addr, 3000, null,
                         BleRemoteDeviceResource::on_event, device);
@@ -1530,7 +1530,7 @@ PRIMITIVE(discover_services) {
   } else if (raw_service_uuids->length() == 1) {
     Blob blob;
     Object* obj = raw_service_uuids->at(0);
-    if (!obj->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+    if (!obj->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
     ble_uuid_any_t uuid = uuid_from_blob(blob);
     int err = ble_gattc_disc_svc_by_uuid(
         device->handle(),
@@ -1540,7 +1540,7 @@ PRIMITIVE(discover_services) {
     if (err != BLE_ERR_SUCCESS) {
       return nimle_stack_error(process,err);
     }
-  } else INVALID_ARGUMENT;
+  } else FAIL(INVALID_ARGUMENT);
 
   return process->null_object();
 }
@@ -1555,17 +1555,17 @@ PRIMITIVE(discover_services_result) {
   }
 
   Array* array = process->object_heap()->allocate_array(count, process->null_object());
-  if (!array) ALLOCATION_FAILED;
+  if (!array) FAIL(ALLOCATION_FAILED);
 
   int index = 0;
   for (auto service : device->services()) {
     if (service->is_returned()) continue;
 
     Array* service_info = process->object_heap()->allocate_array(2, process->null_object());
-    if (service_info == null) ALLOCATION_FAILED;
+    if (service_info == null) FAIL(ALLOCATION_FAILED);
 
     ByteArray* proxy = process->object_heap()->allocate_proxy();
-    if (proxy == null) ALLOCATION_FAILED;
+    if (proxy == null) FAIL(ALLOCATION_FAILED);
 
     Error* err = null;
     ByteArray* uuid_byte_array = byte_array_from_uuid(process, service->uuid(), err);
@@ -1614,7 +1614,7 @@ PRIMITIVE(discover_characteristics_result) {
   }
 
   Array* array = process->object_heap()->allocate_array(count, process->null_object());
-  if (!array) ALLOCATION_FAILED;
+  if (!array) FAIL(ALLOCATION_FAILED);
 
   int index = 0;
   for (auto characteristic : service->characteristics()) {
@@ -1622,10 +1622,10 @@ PRIMITIVE(discover_characteristics_result) {
 
     Array* characteristic_data = process->object_heap()->allocate_array(
         3, process->null_object());
-    if (!characteristic_data) ALLOCATION_FAILED;
+    if (!characteristic_data) FAIL(ALLOCATION_FAILED);
 
     ByteArray* proxy = process->object_heap()->allocate_proxy();
-    if (proxy == null) ALLOCATION_FAILED;
+    if (proxy == null) FAIL(ALLOCATION_FAILED);
 
     proxy->set_external_address(characteristic);
     array->at_put(index++, characteristic_data);
@@ -1660,7 +1660,7 @@ PRIMITIVE(discover_descriptors_result) {
   }
 
   Array* array = process->object_heap()->allocate_array(count, process->null_object());
-  if (!array) ALLOCATION_FAILED;
+  if (!array) FAIL(ALLOCATION_FAILED);
 
   int index = 0;
   for (auto descriptor : characteristic->descriptors()) {
@@ -1673,7 +1673,7 @@ PRIMITIVE(discover_descriptors_result) {
     if (err) return err;
 
     ByteArray* proxy = process->object_heap()->allocate_proxy();
-    if (proxy == null) ALLOCATION_FAILED;
+    if (proxy == null) FAIL(ALLOCATION_FAILED);
 
     proxy->set_external_address(descriptor);
 
@@ -1692,7 +1692,7 @@ PRIMITIVE(request_read) {
 
   auto element = reinterpret_cast<BleReadWriteElement*>(resource);
 
-  if (!element->service()->device()) INVALID_ARGUMENT;
+  if (!element->service()->device()) FAIL(INVALID_ARGUMENT);
 
   ble_gattc_read_long(element->service()->device()->handle(),
                       element->handle(),
@@ -1713,7 +1713,7 @@ PRIMITIVE(get_value) {
   if (!mbuf) return process->null_object();
 
   Object* ret_val = convert_mbuf_to_heap_object(process, mbuf);
-  if (!ret_val) ALLOCATION_FAILED;
+  if (!ret_val) FAIL(ALLOCATION_FAILED);
 
   element->set_mbuf_received(null);
   return ret_val;
@@ -1724,7 +1724,7 @@ PRIMITIVE(write_value) {
 
   auto element = reinterpret_cast<BleReadWriteElement*>(resource);
 
-  if (!element->service()->device()) INVALID_ARGUMENT;
+  if (!element->service()->device()) FAIL(INVALID_ARGUMENT);
 
   os_mbuf* om = null;
   Object* error = object_to_mbuf(process, value, &om);
@@ -1771,7 +1771,7 @@ PRIMITIVE(set_characteristic_notify) {
 
   auto cccd = characteristic->find_cccd();
   if (!cccd) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   } else {
     int err = ble_gattc_write_flat(
         characteristic->service()->device()->handle(),
@@ -1792,7 +1792,7 @@ PRIMITIVE(advertise_start) {
   ARGS(BlePeripheralManagerResource, peripheral_manager, Blob, name, Array, service_classes,
        Blob, manufacturing_data, int, interval_us, int, conn_mode, int, flags)
 
-  if (BlePeripheralManagerResource::is_advertising()) ALREADY_EXISTS;
+  if (BlePeripheralManagerResource::is_advertising()) FAIL(ALREADY_EXISTS);
 
   // The advertisement packet.
   ble_hs_adv_fields fields{};
@@ -1841,7 +1841,7 @@ PRIMITIVE(advertise_start) {
   for (int i = 0; i < service_classes->length(); i++) {
     Object* obj = service_classes->at(i);
     Blob blob;
-    if (!obj->byte_content(process->program(), &blob, BlobKind::STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+    if (!obj->byte_content(process->program(), &blob, BlobKind::STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
 
     ble_uuid_any_t uuid = uuid_from_blob(blob);
     if (uuid.u.type == BLE_UUID_TYPE_16) {
@@ -1905,14 +1905,14 @@ PRIMITIVE(advertise_start) {
 
   int err = ble_gap_adv_set_fields(&fields);
   if (err != BLE_ERR_SUCCESS) {
-    if (err == BLE_HS_EMSGSIZE) OUT_OF_RANGE;
+    if (err == BLE_HS_EMSGSIZE) FAIL(OUT_OF_RANGE);
     return nimle_stack_error(process, err);
   }
 
   if (uses_scan_response) {
     err = ble_gap_adv_rsp_set_fields(&response_fields);
     if (err != BLE_ERR_SUCCESS) {
-      if (err == BLE_HS_EMSGSIZE) OUT_OF_RANGE;
+      if (err == BLE_HS_EMSGSIZE) FAIL(OUT_OF_RANGE);
       return nimle_stack_error(process, err);
     }
   }
@@ -1960,13 +1960,13 @@ PRIMITIVE(add_service) {
   ARGS(BlePeripheralManagerResource, peripheral_manager, Blob, uuid)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
   ble_uuid_any_t ble_uuid = uuid_from_blob(uuid);
 
   BleServiceResource* service_resource =
       peripheral_manager->get_or_create_service_resource(ble_uuid, 0,0);
-  if (!service_resource) MALLOC_FAILED;
-  if (service_resource->deployed()) INVALID_ARGUMENT;
+  if (!service_resource) FAIL(MALLOC_FAILED);
+  if (service_resource->deployed()) FAIL(INVALID_ARGUMENT);
 
   proxy->set_external_address(service_resource);
   return proxy;
@@ -1977,35 +1977,35 @@ PRIMITIVE(add_characteristic) {
        int, permissions, Object, value, int, read_timeout_ms)
 
   if (!service_resource->peripheral_manager()) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   if (service_resource->deployed()) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
 
   uint32 flags = properties & 0x7F;
   if (permissions & 0x1) {  // READ.
     uint32 mask = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_INDICATE;
     if ((properties & mask) == 0) {
-      INVALID_ARGUMENT;
+      FAIL(INVALID_ARGUMENT);
     }
   }
 
   if (permissions & 0x2) { // WRITE.
     uint32 mask = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP;
     if ((properties & mask) == 0) {
-      INVALID_ARGUMENT;
+      FAIL(INVALID_ARGUMENT);
     }
   }
 
   if (permissions & 0x4) { // READ_ENCRYPTED.
     uint32 mask = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_INDICATE;
     if ((properties & mask) == 0) {
-      INVALID_ARGUMENT;
+      FAIL(INVALID_ARGUMENT);
     }
     flags |= BLE_GATT_CHR_F_READ_ENC;  // _ENC = Encrypted.
   }
@@ -2013,7 +2013,7 @@ PRIMITIVE(add_characteristic) {
   if (permissions & 0x8) { // WRITE_ENCRYPTED.
     uint32 mask = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP;
     if ((properties & mask) == 0) {
-      INVALID_ARGUMENT;
+      FAIL(INVALID_ARGUMENT);
     }
     flags |= BLE_GATT_CHR_F_WRITE_ENC;  // _ENC = Encrypted.
   }
@@ -2029,7 +2029,7 @@ PRIMITIVE(add_characteristic) {
 
   if (!characteristic) {
     if (om != null) os_mbuf_free(om);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   if (om != null) {
@@ -2037,7 +2037,7 @@ PRIMITIVE(add_characteristic) {
   } else {
     if (!characteristic->setup_callback_readable_characteristic(read_timeout_ms)) {
       delete characteristic;
-      MALLOC_FAILED;
+      FAIL(MALLOC_FAILED);
     }
   }
 
@@ -2048,10 +2048,10 @@ PRIMITIVE(add_characteristic) {
 PRIMITIVE(add_descriptor) {
   ARGS(BleCharacteristicResource, characteristic, Blob, raw_uuid, int, properties, int, permissions, Object, value)
 
-  if (!characteristic->service()->peripheral_manager()) INVALID_ARGUMENT;
+  if (!characteristic->service()->peripheral_manager()) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   ble_uuid_any_t ble_uuid = uuid_from_blob(raw_uuid);
 
@@ -2069,7 +2069,7 @@ PRIMITIVE(add_descriptor) {
       characteristic->get_or_create_descriptor(ble_uuid, 0, flags, true);
   if (!descriptor) {
     if (om != null) os_mbuf_free(om);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   if (om != null) descriptor->set_mbuf_to_send(om);
@@ -2088,8 +2088,8 @@ void clean_up_gatt_svr_chars(ble_gatt_chr_def* gatt_svr_chars, int count) {
 PRIMITIVE(deploy_service) {
   ARGS(BleServiceResource, service_resource)
 
-  if (!service_resource->peripheral_manager()) INVALID_ARGUMENT;
-  if (service_resource->deployed()) INVALID_ARGUMENT;
+  if (!service_resource->peripheral_manager()) FAIL(INVALID_ARGUMENT);
+  if (service_resource->deployed()) FAIL(INVALID_ARGUMENT);
 
   int characteristic_count = 0;
   for (auto characteristic : service_resource->characteristics()) {
@@ -2098,7 +2098,7 @@ PRIMITIVE(deploy_service) {
   }
 
   auto gatt_svr_chars = static_cast<ble_gatt_chr_def*>(calloc(characteristic_count + 1, sizeof(ble_gatt_chr_def)));
-  if (!gatt_svr_chars) MALLOC_FAILED;
+  if (!gatt_svr_chars) FAIL(MALLOC_FAILED);
 
   int characteristic_index = 0;
   for (auto characteristic : service_resource->characteristics()) {
@@ -2119,7 +2119,7 @@ PRIMITIVE(deploy_service) {
 
       if (!gatt_desc_defs) {
         clean_up_gatt_svr_chars(gatt_svr_chars, characteristic_index);
-        MALLOC_FAILED;
+        FAIL(MALLOC_FAILED);
       }
 
       gatt_svr_chars[characteristic_index].descriptors = gatt_desc_defs;
@@ -2140,7 +2140,7 @@ PRIMITIVE(deploy_service) {
   if (!gatt_services) {
     clean_up_gatt_svr_chars(gatt_svr_chars, characteristic_count);
     free(gatt_svr_chars);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   gatt_services[1].type = 0;
@@ -2169,7 +2169,7 @@ PRIMITIVE(set_value) {
 
   auto element = reinterpret_cast<BleReadWriteElement*>(resource);
 
-  if (!element->service()->peripheral_manager()) INVALID_ARGUMENT;
+  if (!element->service()->peripheral_manager()) FAIL(INVALID_ARGUMENT);
 
   os_mbuf* om = null;
   Object* error = object_to_mbuf(process, value, &om);
@@ -2189,7 +2189,7 @@ PRIMITIVE(get_subscribed_clients) {
   }
 
   Array* array = process->object_heap()->allocate_array(count, process->null_object());
-  if (!array) ALLOCATION_FAILED;
+  if (!array) FAIL(ALLOCATION_FAILED);
 
   int index = 0;
   for (auto subscription : characteristic->subscriptions()) {
@@ -2209,7 +2209,7 @@ PRIMITIVE(notify_characteristics_value) {
     }
   }
 
-  if (!subscription) INVALID_ARGUMENT;
+  if (!subscription) FAIL(INVALID_ARGUMENT);
 
   os_mbuf* om = null;
   Object* error = object_to_mbuf(process, value, &om);
@@ -2253,19 +2253,19 @@ PRIMITIVE(get_att_mtu) {
       break;
     }
     default:
-      INVALID_ARGUMENT;
+      FAIL(INVALID_ARGUMENT);
   }
   return Smi::from(mtu);
 }
 
 PRIMITIVE(set_preferred_mtu) {
   ARGS(int, mtu)
-  if (mtu > BLE_ATT_MTU_MAX) INVALID_ARGUMENT;
+  if (mtu > BLE_ATT_MTU_MAX) FAIL(INVALID_ARGUMENT);
 
   int result = ble_att_set_preferred_mtu(mtu);
 
   if (result) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   } else {
     return process->null_object();
   }
@@ -2274,7 +2274,7 @@ PRIMITIVE(set_preferred_mtu) {
 PRIMITIVE(get_error) {
   ARGS(Resource, resource)
   auto err_resource = reinterpret_cast<BleErrorCapableResource*>(resource);
-  if (err_resource->error() == 0) OTHER_ERROR;
+  if (err_resource->error() == 0) FAIL(ERROR);
 
   return nimble_error_code_to_string(process, err_resource->error(), true);
 }
@@ -2284,7 +2284,7 @@ PRIMITIVE(gc) {
   auto err_resource = reinterpret_cast<BleErrorCapableResource*>(resource);
   if (err_resource->has_malloc_error()) {
     err_resource->set_malloc_error(false);
-    CROSS_PROCESS_GC;
+    FAIL(CROSS_PROCESS_GC);
   }
 
   return process->null_object();

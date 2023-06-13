@@ -69,7 +69,7 @@ Object* Primitive::allocate_array(int length, Object* filler, Process* process) 
 
 Object* Primitive::os_error(int error, Process* process) {
 #ifdef TOIT_FREERTOS
-  if (error == ESP_ERR_NO_MEM) MALLOC_FAILED;
+  if (error == ESP_ERR_NO_MEM) FAIL(MALLOC_FAILED);
   const size_t BUF_SIZE = 200;
   char buffer[BUF_SIZE];
   // This makes a string that is either informative or of the form: "UNKNOWN
@@ -81,16 +81,24 @@ Object* Primitive::os_error(int error, Process* process) {
   char* error_text = strerror(error);
 #endif
   String* result = process->allocate_string(error_text);
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
   return Error::from(result);
 }
 
 Object* Primitive::return_not_a_smi(Process* process, Object* value) {
   if (is_large_integer(value)) {
-    OUT_OF_RANGE;
+    FAIL(OUT_OF_RANGE);
   } else {
-    WRONG_TYPE;
+    FAIL(WRONG_OBJECT_TYPE);
   }
+}
+
+Object* Primitive::unmark_from_error(Program* program, Object* marked_error) {
+  ASSERT((reinterpret_cast<uword>(marked_error) & 3) == Error::ERROR_TAG);
+  if (reinterpret_cast<uword>(marked_error) < Error::MAX_TAGGED_ERROR) {
+    return program->root(reinterpret_cast<uword>(marked_error) >> Error::ERROR_SHIFT);
+  }
+  return marked_error->unmark();
 }
 
 }  // namespace toit

@@ -191,7 +191,7 @@ MODULE_IMPLEMENTATION(uart, MODULE_UART);
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto resource_group = _new UartResourceGroup(process, WindowsEventSource::instance());
 
@@ -200,27 +200,27 @@ PRIMITIVE(init) {
     WINDOWS_ERROR;
   }
 
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
 }
 
 PRIMITIVE(create) {
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(create_path) {
   ARGS(UartResourceGroup, resource_group, cstring, path, int, baud_rate, int, data_bits, int, stop_bits, int, parity);
 
-  if (data_bits < 5 || data_bits > 8) INVALID_ARGUMENT;
-  if (stop_bits < 1 || stop_bits > 3) INVALID_ARGUMENT;
-  if (parity < 1 || parity > 3) INVALID_ARGUMENT;
-  if (baud_rate <= 0) INVALID_ARGUMENT;
-  if (strlen(path) > 5) INVALID_ARGUMENT; // Support up to COM99
+  if (data_bits < 5 || data_bits > 8) FAIL(INVALID_ARGUMENT);
+  if (stop_bits < 1 || stop_bits > 3) FAIL(INVALID_ARGUMENT);
+  if (parity < 1 || parity > 3) FAIL(INVALID_ARGUMENT);
+  if (baud_rate <= 0) FAIL(INVALID_ARGUMENT);
+  if (strlen(path) > 5) FAIL(INVALID_ARGUMENT); // Support up to COM99
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
   char serial_name[10];
   sprintf(serial_name,R"(\\.\%s)", path);
@@ -311,7 +311,7 @@ PRIMITIVE(create_path) {
     close_handle_keep_errno(read_event);
     close_handle_keep_errno(write_event);
     close_handle_keep_errno(error_event);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   resource_group->register_resource(uart_resource);
@@ -355,10 +355,10 @@ PRIMITIVE(set_baud_rate) {
 // Does not support break.
 PRIMITIVE(write) {
   ARGS(UartResource, uart_resource, Blob, data, int, from, int, to, int, break_length);
-  if (break_length > 0) INVALID_ARGUMENT;
+  if (break_length > 0) FAIL(INVALID_ARGUMENT);
 
-  if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
-  if (break_length < 0) OUT_OF_RANGE;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
+  if (break_length < 0) FAIL(OUT_OF_RANGE);
 
   if (uart_resource->has_error()) return windows_error(process, uart_resource->error_code());
   if (!uart_resource->ready_for_write()) return Smi::from(0);
@@ -369,7 +369,7 @@ PRIMITIVE(write) {
 }
 
 PRIMITIVE(wait_tx) {
-  UNIMPLEMENTED_PRIMITIVE; // TODO(mikkel), Use WaitEvent on EV_TXEMPTY
+  FAIL(UNIMPLEMENTED); // TODO(mikkel), Use WaitEvent on EV_TXEMPTY
 }
 
 PRIMITIVE(read) {
@@ -383,7 +383,7 @@ PRIMITIVE(read) {
   if (available == 0) return process->null_object();
 
   ByteArray* array = process->allocate_byte_array(static_cast<int>(available));
-  if (array == null) ALLOCATION_FAILED;
+  if (array == null) FAIL(ALLOCATION_FAILED);
 
   memcpy(ByteArray::Bytes(array).address(), uart_resource->read_buffer(), available);
   if (!uart_resource->issue_read_request()) WINDOWS_ERROR;

@@ -28,22 +28,22 @@ PRIMITIVE(current_id) {
   const uint8* id = process->program()->id();
   ByteArray* result = process->object_heap()->allocate_external_byte_array(
       Program::Header::ID_SIZE, const_cast<uint8*>(id), false, false);
-  if (!result) ALLOCATION_FAILED;
+  if (!result) FAIL(ALLOCATION_FAILED);
   return result;
 }
 
 PRIMITIVE(writer_create) {
   ARGS(int, offset, int, byte_size);
-  if (offset < 0 || offset + byte_size > FlashRegistry::allocations_size()) OUT_OF_BOUNDS;
+  if (offset < 0 || offset + byte_size > FlashRegistry::allocations_size()) FAIL(OUT_OF_BOUNDS);
 
   ByteArray* result = process->object_heap()->allocate_proxy();
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
 
-  if (!FlashRegistry::erase_chunk(offset, byte_size)) HARDWARE_ERROR;
+  if (!FlashRegistry::erase_chunk(offset, byte_size)) FAIL(HARDWARE_ERROR);
   void* address = FlashRegistry::region(offset, byte_size);
   ProgramImage image(address, byte_size);
   ImageOutputStream* output = _new ImageOutputStream(image);
-  if (output == null) MALLOC_FAILED;
+  if (output == null) FAIL(MALLOC_FAILED);
 
   result->set_external_address(output);
   return result;
@@ -56,7 +56,7 @@ static Object* write_image_chunk(Process* process, ImageOutputStream* output, co
 
   bool first = output->empty();
   int offset = FlashRegistry::offset(output->cursor());
-  if (offset < 0 || offset + output_byte_size > FlashRegistry::allocations_size()) OUT_OF_BOUNDS;
+  if (offset < 0 || offset + output_byte_size > FlashRegistry::allocations_size()) FAIL(OUT_OF_BOUNDS);
   output->write(data, length, buffer);
 
   bool success = false;
@@ -73,14 +73,14 @@ static Object* write_image_chunk(Process* process, ImageOutputStream* output, co
   } else {
     success = FlashRegistry::write_chunk(buffer, offset, output_byte_size);
   }
-  if (!success) HARDWARE_ERROR;
+  if (!success) FAIL(HARDWARE_ERROR);
   return null;
 }
 
 PRIMITIVE(writer_write) {
   ARGS(ImageOutputStream, output, Blob, content_bytes, int, from, int, to);
-  if (to < from || from < 0) INVALID_ARGUMENT;
-  if (to > content_bytes.length()) OUT_OF_BOUNDS;
+  if (to < from || from < 0) FAIL(INVALID_ARGUMENT);
+  if (to > content_bytes.length()) FAIL(OUT_OF_BOUNDS);
   const word* data = reinterpret_cast<const word*>(content_bytes.address() + from);
   int length = (to - from) / WORD_SIZE;
   Object* error = write_image_chunk(process, output, data, length);
@@ -90,11 +90,11 @@ PRIMITIVE(writer_write) {
 PRIMITIVE(writer_commit) {
   ARGS(ImageOutputStream, output, Blob, metadata_blob);
   uint8 metadata[FlashAllocation::Header::METADATA_SIZE];
-  if (metadata_blob.length() != sizeof(metadata)) INVALID_ARGUMENT;
+  if (metadata_blob.length() != sizeof(metadata)) FAIL(INVALID_ARGUMENT);
   memcpy(metadata, metadata_blob.address(), sizeof(metadata));
 
   ProgramImage image = output->image();
-  if (!image.is_valid() || output->cursor() != image.end()) OUT_OF_BOUNDS;
+  if (!image.is_valid() || output->cursor() != image.end()) FAIL(OUT_OF_BOUNDS);
 
   // If there are extra bytes after the program, they represent assets associated
   // with the program image. Check that the size of the encoded assets is within
@@ -104,7 +104,7 @@ PRIMITIVE(writer_commit) {
   if (assets_extra > 0) {
     uword assets_address = reinterpret_cast<uword>(image.begin()) + program_size;
     uword assets_length = *reinterpret_cast<uint32*>(assets_address);
-    if (assets_length + sizeof(uint32) > assets_extra) OUT_OF_BOUNDS;
+    if (assets_length + sizeof(uint32) > assets_extra) FAIL(OUT_OF_BOUNDS);
     // TODO(kasper): Can we get the metadata to already contain the right bits
     // from the get go? Right now, we ignore the bits put in there when
     // converting from snapshot to image, but that seems fishy.
@@ -119,7 +119,7 @@ PRIMITIVE(writer_commit) {
       output->program_id(),
       program_size,
       metadata);
-  if (!FlashAllocation::commit(image.begin(), program_size, &header)) HARDWARE_ERROR;
+  if (!FlashAllocation::commit(image.begin(), program_size, &header)) FAIL(HARDWARE_ERROR);
   return process->null_object();
 }
 

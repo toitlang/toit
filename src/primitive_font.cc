@@ -447,13 +447,13 @@ void FontDecompresser::compute_next_line() {
 
 PRIMITIVE(get_font) {
 #if !defined(CONFIG_TOIT_BIT_DISPLAY) && !defined(CONFIG_TOIT_BYTE_DISPLAY)
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 #else
   ARGS(SimpleResourceGroup, resource_group, StringOrSlice, string);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) ALLOCATION_FAILED;
+  if (!proxy) FAIL(ALLOCATION_FAILED);
   Font* font = _new Font(resource_group);
-  if (!font) MALLOC_FAILED;
+  if (!font) FAIL(MALLOC_FAILED);
   SimpleResourceAllocationManager<Font> font_allocation_manager(font);
   const uint8* page1 = null;
   size_t page1_length = 0;
@@ -465,12 +465,12 @@ PRIMITIVE(get_font) {
     page1_length = sizeof(FONT_PAGE_ToitLogo);
   }
   if (page1 == null) return process->null_object();
-  if (!FontBlock::verify(page1, page1_length, null)) INVALID_ARGUMENT;
+  if (!FontBlock::verify(page1, page1_length, null)) FAIL(INVALID_ARGUMENT);
   FontBlock* block1 = _new FontBlock(page1, false);
-  if (!block1) ALLOCATION_FAILED;
+  if (!block1) FAIL(ALLOCATION_FAILED);
   if (!font->add(block1)) {
     delete block1;
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
   proxy->set_external_address(font_allocation_manager.keep_result());
   return proxy;
@@ -480,10 +480,10 @@ PRIMITIVE(get_font) {
 PRIMITIVE(get_nonbuiltin) {
   ARGS(SimpleResourceGroup, group, Array, arrays);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   Font* font = _new Font(group);
-  if (!font) ALLOCATION_FAILED;
+  if (!font) FAIL(ALLOCATION_FAILED);
 
   SimpleResourceAllocationManager<Font> font_manager(font);
 
@@ -491,12 +491,12 @@ PRIMITIVE(get_nonbuiltin) {
     Object* block_array = arrays->at(index);
     const uint8* bytes;
     int length;
-    if (!is_heap_object(block_array)) WRONG_TYPE;
-    if (!block_array->byte_content(process->program(), &bytes, &length, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+    if (!is_heap_object(block_array)) FAIL(WRONG_OBJECT_TYPE);
+    if (!block_array->byte_content(process->program(), &bytes, &length, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
     // TODO: We should perhaps avoid redoing this verification if the data is
     // in flash and we already did it once.
     if (!FontBlock::verify(bytes, length, null)) {
-      INVALID_ARGUMENT;
+      FAIL(INVALID_ARGUMENT);
     }
     AllocationManager manager(process);
     const uint8* font_characters;
@@ -507,13 +507,13 @@ PRIMITIVE(get_nonbuiltin) {
     } else {
       auto mutable_font_characters = manager.alloc(length);
       was_allocated = true;
-      if (!mutable_font_characters) ALLOCATION_FAILED;
+      if (!mutable_font_characters) FAIL(ALLOCATION_FAILED);
       memcpy(mutable_font_characters, bytes, length);
       font_characters = mutable_font_characters;
     }
     FontBlock* block = _new FontBlock(font_characters, was_allocated);
-    if (!block) MALLOC_FAILED;
-    if (!font->add(block)) MALLOC_FAILED;
+    if (!block) FAIL(MALLOC_FAILED);
+    if (!font->add(block)) FAIL(MALLOC_FAILED);
     // TODO(kasper): This looks fishy. What happens if processing the next
     // entry fails? Do we just leak the memory allocated up to that point?
     manager.keep_result();
@@ -526,7 +526,7 @@ PRIMITIVE(get_nonbuiltin) {
 
 PRIMITIVE(contains) {
   ARGS(Font, font, int, code_point);
-  if (code_point < 0 || code_point > Utils::MAX_UNICODE) OUT_OF_RANGE;
+  if (code_point < 0 || code_point > Utils::MAX_UNICODE) FAIL(OUT_OF_RANGE);
   const bool mojibake = false;
   const FontCharacter* fc = font->get_char(code_point, mojibake);
   return BOOL(fc != null);

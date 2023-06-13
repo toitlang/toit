@@ -53,7 +53,7 @@ MODULE_IMPLEMENTATION(flash_kv, MODULE_FLASH_KV)
 PRIMITIVE(init) {
   ARGS(cstring, partition, cstring, name, bool, read_only)
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   AllowThrowingNew issue_961;
 
@@ -69,7 +69,7 @@ PRIMITIVE(init) {
   }
 
   PersistentResourceGroup* resource_group = _new PersistentResourceGroup(handle, process);
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
@@ -77,7 +77,7 @@ PRIMITIVE(init) {
 
 PRIMITIVE(read_bytes) {
   ARGS(PersistentResourceGroup, resource_group, cstring, key);
-  if (!is_valid_key(key, process)) INVALID_ARGUMENT;
+  if (!is_valid_key(key, process)) FAIL(INVALID_ARGUMENT);
   size_t length;
   esp_err_t err = nvs_get_blob(resource_group->handle(), key, null, &length);
   if (err == ESP_ERR_NVS_NOT_FOUND) {
@@ -87,7 +87,7 @@ PRIMITIVE(read_bytes) {
   }
 
   ByteArray* array = process->allocate_byte_array(length);
-  if (array == null) ALLOCATION_FAILED;
+  if (array == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes bytes(array);
   err = nvs_get_blob(resource_group->handle(), key, bytes.address(), &length);
@@ -102,7 +102,7 @@ PRIMITIVE(read_bytes) {
 
 PRIMITIVE(write_bytes) {
   ARGS(PersistentResourceGroup, resource_group, cstring, key, ByteArray, value);
-  if (!is_valid_key(key, process)) INVALID_ARGUMENT;
+  if (!is_valid_key(key, process)) FAIL(INVALID_ARGUMENT);
   // The NVS code does not check for malloc failure.  See
   // https://github.com/toitware/toit/issues/961
   AllowThrowingNew issue_961;
@@ -120,7 +120,7 @@ PRIMITIVE(write_bytes) {
 
 PRIMITIVE(delete) {
   ARGS(PersistentResourceGroup, resource_group, cstring, key);
-  if (!is_valid_key(key, process)) INVALID_ARGUMENT;
+  if (!is_valid_key(key, process)) FAIL(INVALID_ARGUMENT);
   esp_err_t err = nvs_erase_key(resource_group->handle(), key);
   if (err == ESP_OK) {
     err = nvs_commit(resource_group->handle());

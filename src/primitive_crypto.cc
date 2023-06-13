@@ -45,10 +45,10 @@ MODULE_IMPLEMENTATION(crypto, MODULE_CRYPTO)
 PRIMITIVE(sha1_start) {
   ARGS(SimpleResourceGroup, group);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   Sha1* sha1 = _new Sha1(group);
-  if (!sha1) MALLOC_FAILED;
+  if (!sha1) FAIL(MALLOC_FAILED);
   proxy->set_external_address(sha1);
   return proxy;
 }
@@ -56,10 +56,10 @@ PRIMITIVE(sha1_start) {
 PRIMITIVE(sha1_clone) {
   ARGS(Sha1, parent);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   Sha1* child = _new Sha1(static_cast<SimpleResourceGroup*>(parent->resource_group()));
-  if (!child) MALLOC_FAILED;
+  if (!child) FAIL(MALLOC_FAILED);
   parent->clone(child);
   proxy->set_external_address(child);
   return proxy;
@@ -68,7 +68,7 @@ PRIMITIVE(sha1_clone) {
 PRIMITIVE(sha1_add) {
   ARGS(Sha1, sha1, Blob, data, int, from, int, to);
 
-  if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
   sha1->add(data.address() + from, to - from);
   return process->null_object();
 }
@@ -76,7 +76,7 @@ PRIMITIVE(sha1_add) {
 PRIMITIVE(sha1_get) {
   ARGS(Sha1, sha1);
   ByteArray* result = process->allocate_byte_array(20);
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
   uint8 hash[20];
   sha1->get_hash(hash);
   memcpy(ByteArray::Bytes(result).address(), hash, 20);
@@ -87,12 +87,12 @@ PRIMITIVE(sha1_get) {
 
 PRIMITIVE(sha_start) {
   ARGS(SimpleResourceGroup, group, int, bits);
-  if (bits != 224 && bits != 256 && bits != 384 && bits != 512) INVALID_ARGUMENT;
+  if (bits != 224 && bits != 256 && bits != 384 && bits != 512) FAIL(INVALID_ARGUMENT);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   Sha* sha = _new Sha(group, bits);
-  if (!sha) MALLOC_FAILED;
+  if (!sha) FAIL(MALLOC_FAILED);
   proxy->set_external_address(sha);
   return proxy;
 }
@@ -100,10 +100,10 @@ PRIMITIVE(sha_start) {
 PRIMITIVE(sha_clone) {
   ARGS(Sha, parent);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   Sha* child = _new Sha(parent);
-  if (!child) MALLOC_FAILED;
+  if (!child) FAIL(MALLOC_FAILED);
   proxy->set_external_address(child);
   return proxy;
 }
@@ -111,8 +111,8 @@ PRIMITIVE(sha_clone) {
 
 PRIMITIVE(sha_add) {
   ARGS(Sha, sha, Blob, data, int, from, int, to);
-  if (!sha) INVALID_ARGUMENT;
-  if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
+  if (!sha) FAIL(INVALID_ARGUMENT);
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
   sha->add(data.address() + from, to - from);
   return process->null_object();
 }
@@ -120,7 +120,7 @@ PRIMITIVE(sha_add) {
 PRIMITIVE(sha_get) {
   ARGS(Sha, sha);
   ByteArray* result = process->allocate_byte_array(sha->hash_length());
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes bytes(result);
   sha->get(bytes.address());
   sha->resource_group()->unregister_resource(sha);
@@ -130,13 +130,13 @@ PRIMITIVE(sha_get) {
 
 PRIMITIVE(siphash_start) {
   ARGS(SimpleResourceGroup, group, Blob, key, int, output_length, int, c_rounds, int, d_rounds);
-  if (output_length != 8 && output_length != 16) INVALID_ARGUMENT;
-  if (key.length() < 16) INVALID_ARGUMENT;
+  if (output_length != 8 && output_length != 16) FAIL(INVALID_ARGUMENT);
+  if (key.length() < 16) FAIL(INVALID_ARGUMENT);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   Siphash* siphash = _new Siphash(group, key.address(), output_length, c_rounds, d_rounds);
-  if (!siphash) MALLOC_FAILED;
+  if (!siphash) FAIL(MALLOC_FAILED);
   proxy->set_external_address(siphash);
   return proxy;
 }
@@ -144,10 +144,10 @@ PRIMITIVE(siphash_start) {
 PRIMITIVE(siphash_clone) {
   ARGS(Siphash, parent);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   Siphash* child = _new Siphash(parent);
-  if (!child) MALLOC_FAILED;
+  if (!child) FAIL(MALLOC_FAILED);
   proxy->set_external_address(child);
   return proxy;
 }
@@ -155,7 +155,7 @@ PRIMITIVE(siphash_clone) {
 PRIMITIVE(siphash_add) {
   ARGS(Siphash, siphash, Blob, data, int, from, int, to);
 
-  if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
   siphash->add(data.address() + from, to - from);
   return process->null_object();
 }
@@ -163,7 +163,7 @@ PRIMITIVE(siphash_add) {
 PRIMITIVE(siphash_get) {
   ARGS(Siphash, siphash);
   ByteArray* result = process->allocate_byte_array(siphash->output_length());
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
   siphash->get_hash(ByteArray::Bytes(result).address());
   siphash->resource_group()->unregister_resource(siphash);
   siphash_proxy->clear_external_address();
@@ -296,13 +296,13 @@ AeadContext::~AeadContext(){
 PRIMITIVE(aead_init) {
   ARGS(SimpleResourceGroup, group, Blob, key, int, algorithm, bool, encrypt);
   if (!(0 <= algorithm && algorithm < NUMBER_OF_ALGORITHM_TYPES)) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
 
-  if (key.length() != 16 && key.length() != 24 && key.length() != 32) INVALID_ARGUMENT;
+  if (key.length() != 16 && key.length() != 24 && key.length() != 32) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   mbedtls_cipher_id_t mbedtls_cipher;
 
@@ -316,7 +316,7 @@ PRIMITIVE(aead_init) {
       break;
 #endif
     default:
-      UNIMPLEMENTED_PRIMITIVE;
+      FAIL(UNIMPLEMENTED);
   }
 
   AeadContext* aead_context = _new AeadContext(
@@ -325,7 +325,7 @@ PRIMITIVE(aead_init) {
       encrypt);
 
   if (!aead_context) {
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   int err = 0;
@@ -374,8 +374,8 @@ PRIMITIVE(aead_close) {
 //   the nonce corresponds to the sequence number of the record.
 PRIMITIVE(aead_start_message) {
   ARGS(AeadContext, context, Blob, authenticated_data, Blob, nonce);
-  if (context->currently_generating_message() != 0) INVALID_ARGUMENT;
-  if (nonce.length() != AeadContext::NONCE_SIZE) INVALID_ARGUMENT;
+  if (context->currently_generating_message() != 0) FAIL(INVALID_ARGUMENT);
+  if (nonce.length() != AeadContext::NONCE_SIZE) FAIL(INVALID_ARGUMENT);
   context->set_currently_generating_message();
   int result = 0;
   switch (context->cipher_id()) {
@@ -438,7 +438,7 @@ If the out byte array was not big enough, returns null.  In this case no
 */
 PRIMITIVE(aead_add) {
   ARGS(AeadContext, context, Blob, in, MutableBlob, out);
-  if (!context->currently_generating_message()) INVALID_ARGUMENT;
+  if (!context->currently_generating_message()) FAIL(INVALID_ARGUMENT);
 
   static const int BLOCK_SIZE = AeadContext::BLOCK_SIZE;
 
@@ -500,11 +500,11 @@ Returns the last data encrypted, followed by the encryption tag
 */
 PRIMITIVE(aead_finish) {
   ARGS(AeadContext, context);
-  if (!context->is_encrypt()) INVALID_ARGUMENT;
-  if (!context->currently_generating_message()) INVALID_ARGUMENT;
+  if (!context->is_encrypt()) FAIL(INVALID_ARGUMENT);
+  if (!context->currently_generating_message()) FAIL(INVALID_ARGUMENT);
   int rest = context->number_of_buffered_bytes();
   ByteArray* result = process->allocate_byte_array(rest + AeadContext::TAG_SIZE);
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes result_bytes(result);
 
   uword rest_output = 0;
@@ -526,9 +526,9 @@ Returns non-zero if the tag does not match.
 */
 PRIMITIVE(aead_verify) {
   ARGS(AeadContext, context, Blob, verification_tag, MutableBlob, rest);
-  if (context->is_encrypt()) INVALID_ARGUMENT;
-  if (verification_tag.length() != AeadContext::TAG_SIZE) INVALID_ARGUMENT;
-  if (rest.length() < context->number_of_buffered_bytes()) INVALID_ARGUMENT;
+  if (context->is_encrypt()) FAIL(INVALID_ARGUMENT);
+  if (verification_tag.length() != AeadContext::TAG_SIZE) FAIL(INVALID_ARGUMENT);
+  if (rest.length() < context->number_of_buffered_bytes()) FAIL(INVALID_ARGUMENT);
 
   uword rest_output = 0;
   int ok = context->update(context->number_of_buffered_bytes(), context->buffered_data(), rest.address(), &rest_output);
@@ -583,24 +583,24 @@ PRIMITIVE(aes_init) {
   if (key.length() != AesContext::AES_BLOCK_SIZE * 2 &&
       key.length() != AesContext::AES_BLOCK_SIZE + 8 &&
       key.length() != AesContext::AES_BLOCK_SIZE) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
 
   if (iv.length() != AesContext::AES_BLOCK_SIZE &&
       iv.length() != 0) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   if (iv.length() == 0) {
     AesContext* aes = _new AesContext(group, &key, encrypt);
-    if (!aes) MALLOC_FAILED;
+    if (!aes) FAIL(MALLOC_FAILED);
     proxy->set_external_address(aes);
   } else {
     AesCbcContext* aes = _new AesCbcContext(group, &key, iv.address(), encrypt);
-    if (!aes) MALLOC_FAILED;
+    if (!aes) FAIL(MALLOC_FAILED);
     proxy->set_external_address(aes);
   }
 
@@ -609,10 +609,10 @@ PRIMITIVE(aes_init) {
 
 PRIMITIVE(aes_cbc_crypt) {
   ARGS(AesCbcContext, context, Blob, input, bool, encrypt);
-  if ((input.length() % AesContext::AES_BLOCK_SIZE) != 0) INVALID_ARGUMENT;
+  if ((input.length() % AesContext::AES_BLOCK_SIZE) != 0) FAIL(INVALID_ARGUMENT);
 
   ByteArray* result = process->allocate_byte_array(input.length());
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes output_bytes(result);
 
@@ -629,10 +629,10 @@ PRIMITIVE(aes_cbc_crypt) {
 
 PRIMITIVE(aes_ecb_crypt) {
   ARGS(AesContext, context, Blob, input, bool, encrypt);
-  if ((input.length() % AesContext::AES_BLOCK_SIZE) != 0) INVALID_ARGUMENT;
+  if ((input.length() % AesContext::AES_BLOCK_SIZE) != 0) FAIL(INVALID_ARGUMENT);
 
   ByteArray* result = process->allocate_byte_array(input.length());
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes output_bytes(result);
 
