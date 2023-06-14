@@ -39,10 +39,10 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
   if (instance->class_id() == program->byte_array_cow_class_id()) {
     Object* backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
     auto is_mutable = instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX);
-    if (is_mutable == process->program()->true_object()) {
+    if (is_mutable == process->true_object()) {
       return backing->mutable_byte_content(process, content, length, error);
     }
-    ASSERT(is_mutable == process->program()->false_object());
+    ASSERT(is_mutable == process->false_object());
 
     const uint8* immutable_content;
     int immutable_length;
@@ -63,7 +63,7 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
     memcpy(bytes.address(), immutable_content, immutable_length);
 
     instance->at_put(0, new_backing);
-    instance->at_put(1, process->program()->true_object());
+    instance->at_put(1, process->true_object());
     return new_backing->mutable_byte_content(process, content, length, error);
   } else if (instance->class_id() == program->byte_array_slice_class_id()) {
     auto byte_array = instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);

@@ -27,7 +27,7 @@ PRIMITIVE(base64_encode)  {
   int out_len = Base64Encoder::output_size(data.length(), url_mode);
 
   ByteArray* buffer = process->allocate_byte_array(out_len);
-  if (buffer == null) ALLOCATION_FAILED;
+  if (buffer == null) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes buffer_bytes(buffer);
 
   word i = 0;
@@ -72,7 +72,7 @@ PRIMITIVE(base64_decode)  {
     out_len = (length >> 2) * 3;
     int last_group_length = length & 3;  // Can be 0 if input length is a multiple of 4.
     if (last_group_length == 1) {
-      OUT_OF_RANGE;  // 6 bits are not enough to encode another byte.
+      FAIL(OUT_OF_RANGE);  // 6 bits are not enough to encode another byte.
     } else if (last_group_length == 2) {
       out_len++;     // 12 bits for one more byte of output.
     } else if (last_group_length == 3) {
@@ -80,7 +80,7 @@ PRIMITIVE(base64_decode)  {
     }
   } else {
     // Padding '=' signs required to make the input a multiple of 4 characters.
-    if ((length & 3) != 0) OUT_OF_RANGE;
+    if ((length & 3) != 0) FAIL(OUT_OF_RANGE);
     out_len = (length >> 2) * 3;
     // Trailing "=" signs indicate a slightly shorter output.
     if (length > 0 && input.address()[static_cast<unsigned>(length) - 1] == '=') out_len--;
@@ -89,7 +89,7 @@ PRIMITIVE(base64_decode)  {
 
 
   ByteArray* result = process->allocate_byte_array(out_len);
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
 
   uint8* buffer = ByteArray::Bytes(result).address();
   // Iterate over the groups of 3 output characters that have 4 regular input characters.
@@ -101,7 +101,7 @@ PRIMITIVE(base64_decode)  {
       (get_for_decode(input, j + 3, url_mode) << 0);
     // If any of the get_for_decode calls returned -1 then some of the high
     // bits will be set, indicating invalid input.
-    if (wrd >> 24 != 0) OUT_OF_RANGE;
+    if (wrd >> 24 != 0) FAIL(OUT_OF_RANGE);
     buffer[i + 0] = (wrd >> 16) & 0xff;
     buffer[i + 1] = (wrd >> 8) & 0xff;
     buffer[i + 2] = wrd & 0xff;
@@ -110,26 +110,26 @@ PRIMITIVE(base64_decode)  {
   switch (out_len % 3) {
     case 1: {
       if (!url_mode) {
-        if (input.address()[j + 2] != '=' || input.address()[j + 3] != '=') OUT_OF_RANGE;
+        if (input.address()[j + 2] != '=' || input.address()[j + 3] != '=') FAIL(OUT_OF_RANGE);
       }
       uint32_t wrd =
         (get_for_decode(input, j + 0, url_mode) << 6) |
         (get_for_decode(input, j + 1, url_mode) << 0);
-      if (wrd >> 24 != 0) OUT_OF_RANGE;
-      if ((wrd & 0xf) != 0) OUT_OF_RANGE;  // Unused bits must be zero.
+      if (wrd >> 24 != 0) FAIL(OUT_OF_RANGE);
+      if ((wrd & 0xf) != 0) FAIL(OUT_OF_RANGE);  // Unused bits must be zero.
       buffer[out_len - 1] = (wrd >> 4) & 0xff;
       break;
     }
     case 2: {
       if (!url_mode) {
-        if (input.address()[j + 3] != '=') OUT_OF_RANGE;
+        if (input.address()[j + 3] != '=') FAIL(OUT_OF_RANGE);
       }
       uint32_t wrd =
         (get_for_decode(input, j + 0, url_mode) << 12) |
         (get_for_decode(input, j + 1, url_mode) << 6) |
         (get_for_decode(input, j + 2, url_mode) << 0);
-      if (wrd >> 24 != 0) OUT_OF_RANGE;
-      if ((wrd & 0x3) != 0) OUT_OF_RANGE;  // Unused bits must be zero.
+      if (wrd >> 24 != 0) FAIL(OUT_OF_RANGE);
+      if ((wrd & 0x3) != 0) FAIL(OUT_OF_RANGE);  // Unused bits must be zero.
       buffer[out_len - 2] = (wrd >> 10) & 0xff;
       buffer[out_len - 1] = (wrd >> 2) & 0xff;
       break;
@@ -152,7 +152,7 @@ PRIMITIVE(tison_encode) {
   }
 
   ByteArray* result = process->allocate_byte_array(size);
-  if (!result) ALLOCATION_FAILED;
+  if (!result) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes bytes(result);
   TisonEncoder encoder(process, bytes.address(), payload_size);
   if (!encoder.encode(object)) {
@@ -165,8 +165,8 @@ PRIMITIVE(tison_decode) {
   ARGS(Blob, bytes);
   TisonDecoder decoder(process, bytes.address(), bytes.length());
   Object* decoded = decoder.decode();
-  if (decoder.allocation_failed()) ALLOCATION_FAILED;
-  if (decoder.malformed_input()) WRONG_TYPE;
+  if (decoder.allocation_failed()) FAIL(ALLOCATION_FAILED);
+  if (decoder.malformed_input()) FAIL(WRONG_OBJECT_TYPE);
   return decoded;
 }
 

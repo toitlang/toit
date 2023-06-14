@@ -59,22 +59,22 @@ PRIMITIVE(binary_operator) {
   mbedtls_mpi b_mpi;
   mbedtls_mpi x_mpi;
 
-  if (operator_id >= MPI_BASIC_FUNCS_NUM || operator_id < 0) INVALID_ARGUMENT;
+  if (operator_id >= MPI_BASIC_FUNCS_NUM || operator_id < 0) FAIL(INVALID_ARGUMENT);
 
   Array* array = process->object_heap()->allocate_array(2, Smi::zero());
-  if (array == null) ALLOCATION_FAILED;
+  if (array == null) FAIL(ALLOCATION_FAILED);
 
   mbedtls_mpi_init(&a_mpi);
   mbedtls_mpi_init(&b_mpi);
   mbedtls_mpi_init(&x_mpi);
 
   ret = mbedtls_mpi_read_binary(&a_mpi, a_limbs.address(), a_limbs.length());
-  if (ret != 0) MALLOC_FAILED;
+  if (ret != 0) FAIL(MALLOC_FAILED);
 
   ret = mbedtls_mpi_read_binary(&b_mpi, b_limbs.address(), b_limbs.length());
   if (ret != 0) {
     mbedtls_mpi_free(&a_mpi);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   if (a_negative) a_mpi.s = -1;
@@ -86,20 +86,20 @@ PRIMITIVE(binary_operator) {
   if (ret != 0) {
     if (ret == MBEDTLS_ERR_MPI_DIVISION_BY_ZERO) return Primitive::mark_as_error(process->program()->division_by_zero());
     if (ret == MBEDTLS_ERR_MPI_NEGATIVE_VALUE) return Primitive::mark_as_error(process->program()->negative_argument());
-    else MALLOC_FAILED;
+    else FAIL(MALLOC_FAILED);
   }
 
   size_t n = mbedtls_mpi_size(&x_mpi);
   ByteArray* limbs = process->allocate_byte_array(n);
   if (limbs == null) {
     mbedtls_mpi_free(&x_mpi);
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   bool sign = x_mpi.s == -1 ? true : false;
   ret = mbedtls_mpi_write_binary(&x_mpi, ByteArray::Bytes(limbs).address(), n);
   mbedtls_mpi_free(&x_mpi);
-  if (ret) INVALID_ARGUMENT;
+  if (ret) FAIL(INVALID_ARGUMENT);
 
   array->at_put(0, BOOL(sign));
   array->at_put(1, limbs);
@@ -117,7 +117,7 @@ PRIMITIVE(exp_mod) {
   mbedtls_mpi x_mpi;
 
   Array* array = process->object_heap()->allocate_array(2, Smi::zero());
-  if (array == null) ALLOCATION_FAILED;
+  if (array == null) FAIL(ALLOCATION_FAILED);
 
   mbedtls_mpi_init(&a_mpi);
   mbedtls_mpi_init(&b_mpi);
@@ -125,19 +125,19 @@ PRIMITIVE(exp_mod) {
   mbedtls_mpi_init(&x_mpi);
 
   ret = mbedtls_mpi_read_binary(&a_mpi, a_limbs.address(), a_limbs.length());
-  if (ret != 0) MALLOC_FAILED;
+  if (ret != 0) FAIL(MALLOC_FAILED);
 
   ret = mbedtls_mpi_read_binary(&b_mpi, b_limbs.address(), b_limbs.length());
   if (ret != 0) {
     mbedtls_mpi_free(&a_mpi);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   ret = mbedtls_mpi_read_binary(&c_mpi, c_limbs.address(), c_limbs.length());
   if (ret != 0) {
     mbedtls_mpi_free(&b_mpi);
     mbedtls_mpi_free(&a_mpi);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   if (a_negative) a_mpi.s = -1;
@@ -150,20 +150,20 @@ PRIMITIVE(exp_mod) {
   mbedtls_mpi_free(&a_mpi);
   if (ret != 0) {
     if (ret == MBEDTLS_ERR_MPI_DIVISION_BY_ZERO) return Primitive::mark_as_error(process->program()->division_by_zero());
-    else MALLOC_FAILED;
+    else FAIL(MALLOC_FAILED);
   }
 
   size_t n = mbedtls_mpi_size(&x_mpi);
   ByteArray* limbs = process->allocate_byte_array(n);
   if (limbs == null) {
     mbedtls_mpi_free(&x_mpi);
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   bool sign = x_mpi.s == -1 ? true : false;
   ret = mbedtls_mpi_write_binary(&x_mpi, ByteArray::Bytes(limbs).address(), n);
   mbedtls_mpi_free(&x_mpi);
-  if (ret) INVALID_ARGUMENT;
+  if (ret) FAIL(INVALID_ARGUMENT);
 
   array->at_put(0, BOOL(sign));
   array->at_put(1, limbs);

@@ -238,6 +238,10 @@ class Process : public ProcessListFromProcessGroup::Element,
     return address - program_heap_address_ < program_heap_size_;
   }
 
+  inline HeapObject* false_object() const { return false_object_; }
+  inline HeapObject* true_object() const { return true_object_; }
+  inline HeapObject* null_object() const { return null_; }
+
  private:
   Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
   void _append_message(Message* message);
@@ -289,6 +293,10 @@ class Process : public ProcessListFromProcessGroup::Element,
   bool idle_since_gc_ = true;
 
   Profiler* profiler_ = null;
+
+  HeapObject* false_object_;
+  HeapObject* true_object_;
+  HeapObject* null_;
 
   ResourceGroupListFromProcess resource_groups_;
   friend class HeapObject;

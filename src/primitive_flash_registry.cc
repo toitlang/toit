@@ -53,14 +53,14 @@ PRIMITIVE(next) {
     reservation_scan = reservations.begin();
     result = 0;
   } else if (current != flash_registry_offset_current) {
-    OUT_OF_BOUNDS;
+    FAIL(OUT_OF_BOUNDS);
   } else {
     result = flash_registry_offset_next;
   }
 
   // Compute the next.
   int next = FlashRegistry::find_next(result, &reservation_scan);
-  if (next < 0) return process->program()->null_object();
+  if (next < 0) return process->null_object();
 
   // Update current and next -- and return the result.
   flash_registry_offset_current = result;
@@ -72,7 +72,7 @@ PRIMITIVE(info) {
   PRIVILEGED;
   ARGS(int, current);
   if (current < 0 || flash_registry_offset_current != current) {
-    OUT_OF_BOUNDS;
+    FAIL(OUT_OF_BOUNDS);
   }
   const FlashAllocation* allocation = FlashRegistry::allocation(current);
   int page_size = (flash_registry_offset_next - current) >> 12;
@@ -99,7 +99,7 @@ PRIMITIVE(get_size) {
   PRIVILEGED;
   ARGS(int, offset);
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
-  if (allocation == null) INVALID_ARGUMENT;
+  if (allocation == null) FAIL(INVALID_ARGUMENT);
   int size = allocation->size();
   if (allocation->is_program()) size += allocation->program_assets_size(null, null);
   return Smi::from(size);
@@ -109,10 +109,10 @@ PRIMITIVE(get_header_page) {
   PRIVILEGED;
   ARGS(int, offset);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   // Not normally possible, may indicate a bug or a worn flash chip.
-  if (!allocation) FILE_NOT_FOUND;
+  if (!allocation) FAIL(FILE_NOT_FOUND);
   // TODO(lau): Add support invalidation of proxy. The proxy is read-only and backed by flash.
   uint8* memory = reinterpret_cast<uint8*>(const_cast<FlashAllocation*>(allocation));
   proxy->set_external_address(FLASH_PAGE_SIZE, memory);
@@ -124,9 +124,9 @@ PRIMITIVE(reserve_hole) {
   ARGS(int, offset, int, size);
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   ASSERT(Utils::is_aligned(size, FLASH_PAGE_SIZE));
-  if (size == 0) INVALID_ARGUMENT;
+  if (size == 0) FAIL(INVALID_ARGUMENT);
   Reservation* reservation = _new Reservation(offset, size);
-  if (reservation == null) MALLOC_FAILED;
+  if (reservation == null) FAIL(MALLOC_FAILED);
 
   // Check whether reservation overlaps with existing reservations.
   ReservationList::Iterator it = reservations.begin();
@@ -138,13 +138,13 @@ PRIMITIVE(reserve_hole) {
   if ((previous_reservation != null && reservation->left() < previous_reservation->right()) ||
       (it != reservations.end() && it->left() < reservation->right())) {
     delete reservation;
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
 
   reservations.insert_before(reservation, [&reservation](Reservation* other_reservation) -> bool {
     return reservation->right() <= other_reservation->left();
   });
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(cancel_reservation) {
@@ -155,9 +155,9 @@ PRIMITIVE(cancel_reservation) {
     return reservation->left() == offset;
   });
   ASSERT(reservation != null);
-  if (reservation == null) return process->program()->false_object();
+  if (reservation == null) return process->false_object();
   delete reservation;
-  return process->program()->true_object();
+  return process->true_object();
 }
 
 PRIMITIVE(erase_flash_registry) {
@@ -177,40 +177,40 @@ PRIMITIVE(allocate) {
     if (reservation->size() != size
         || id.length() != FlashAllocation::Header::ID_SIZE
         || metadata.length() != FlashAllocation::Header::METADATA_SIZE) {
-      INVALID_ARGUMENT;
+      FAIL(INVALID_ARGUMENT);
     }
 
     int content_length = content.length();
     if (content_length > 0) {
       int header_offset = sizeof(FlashAllocation::Header);
       if (content_length > FLASH_PAGE_SIZE - header_offset) {
-        OUT_OF_BOUNDS;
+        FAIL(OUT_OF_BOUNDS);
       }
 
       if (!FlashRegistry::write_chunk(content.address(), offset + header_offset, content_length)) {
-        HARDWARE_ERROR;
+        FAIL(HARDWARE_ERROR);
       }
     }
 
     const void* memory = FlashRegistry::region(offset, size);
     const FlashAllocation::Header header(memory, type, id.address(), size, metadata.address());
-    if (!FlashAllocation::commit(memory, size, &header)) HARDWARE_ERROR;
-    return process->program()->null_object();
+    if (!FlashAllocation::commit(memory, size, &header)) FAIL(HARDWARE_ERROR);
+    return process->null_object();
   }
-  ALREADY_CLOSED;
+  FAIL(ALREADY_CLOSED);
 }
 
 PRIMITIVE(grant_access) {
   PRIVILEGED;
   ARGS(int, client, int, handle, uword, offset, uword, size, bool, writable);
   RegionGrant* grant = _new RegionGrant(client, handle, offset, size, writable);
-  if (!grant) MALLOC_FAILED;
+  if (!grant) FAIL(MALLOC_FAILED);
   Locker locker(OS::global_mutex());
   for (auto it : grants) {
-    if (it->offset() == offset && it->size() == size) ALREADY_IN_USE;
+    if (it->offset() == offset && it->size() == size) FAIL(ALREADY_IN_USE);
   }
   grants.prepend(grant);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(is_accessed) {
@@ -232,21 +232,21 @@ PRIMITIVE(revoke_access) {
   grants.remove_where([&](RegionGrant* grant) -> bool {
     return grant->client() == client && grant->handle() == handle;
   });
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(partition_find) {
   PRIVILEGED;
   ARGS(cstring, path, int, type, uword, size);
-  if (size <= 0 || (type < 0x00) || (type > 0xff)) INVALID_ARGUMENT;
+  if (size <= 0 || (type < 0x00) || (type > 0xff)) FAIL(INVALID_ARGUMENT);
   Array* result = process->object_heap()->allocate_array(2, Smi::zero());
-  if (!result) ALLOCATION_FAILED;
+  if (!result) FAIL(ALLOCATION_FAILED);
 #ifdef TOIT_FREERTOS
   const esp_partition_t* partition = esp_partition_find_first(
       static_cast<esp_partition_type_t>(type),
       ESP_PARTITION_SUBTYPE_ANY,
       path);
-  if (!partition) FILE_NOT_FOUND;
+  if (!partition) FAIL(FILE_NOT_FOUND);
   uword offset = partition->address;
   size = partition->size;
 #else
@@ -309,11 +309,11 @@ PRIMITIVE(region_open) {
     }
   }
 
-  if (!found) PERMISSION_DENIED;
+  if (!found) FAIL(PERMISSION_DENIED);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) ALLOCATION_FAILED;
+  if (!proxy) FAIL(ALLOCATION_FAILED);
   FlashRegion* resource = _new FlashRegion(group, offset, size, writable);
-  if (!resource) MALLOC_FAILED;
+  if (!resource) FAIL(MALLOC_FAILED);
   proxy->set_external_address(resource);
   return proxy;
 }
@@ -322,7 +322,7 @@ PRIMITIVE(region_close) {
   ARGS(FlashRegion, resource);
   resource->resource_group()->unregister_resource(resource);
   resource_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 static bool is_within_bounds(FlashRegion* resource, word from, uword size) {
@@ -333,7 +333,7 @@ static bool is_within_bounds(FlashRegion* resource, word from, uword size) {
 PRIMITIVE(region_read) {
   ARGS(FlashRegion, resource, word, from, MutableBlob, bytes);
   uword size = bytes.length();
-  if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
+  if (!is_within_bounds(resource, from, size)) FAIL(OUT_OF_BOUNDS);
   word offset = resource->offset();
   if ((offset & 1) == 0) {
     FlashRegistry::flush();
@@ -345,25 +345,25 @@ PRIMITIVE(region_read) {
     uword source = region + from;
     uint8* destination = bytes.address();
     if (esp_flash_read(NULL, destination, source, size) != ESP_OK) {
-      HARDWARE_ERROR;
+      FAIL(HARDWARE_ERROR);
     }
 #else
     uint8* region = reinterpret_cast<uint8*>(offset - 1);
     memcpy(bytes.address(), region + from, size);
 #endif
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(region_write) {
   ARGS(FlashRegion, resource, word, from, Blob, bytes);
-  if (!resource->writable()) PERMISSION_DENIED;
+  if (!resource->writable()) FAIL(PERMISSION_DENIED);
   uword size = bytes.length();
-  if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
+  if (!is_within_bounds(resource, from, size)) FAIL(OUT_OF_BOUNDS);
   uword offset = resource->offset();
   if ((offset & 1) == 0) {
     if (!FlashRegistry::write_chunk(bytes.address(), from + offset, size)) {
-      HARDWARE_ERROR;
+      FAIL(HARDWARE_ERROR);
     }
   } else {
 #ifdef TOIT_FREERTOS
@@ -371,7 +371,7 @@ PRIMITIVE(region_write) {
     uword destination = region + from;
     const uint8* source = bytes.address();
     if (esp_flash_write(NULL, source, destination, size) != ESP_OK) {
-      HARDWARE_ERROR;
+      FAIL(HARDWARE_ERROR);
     }
 #else
     uint8* region = reinterpret_cast<uint8*>(offset - 1);
@@ -380,12 +380,12 @@ PRIMITIVE(region_write) {
     for (uword i = 0; i < size; i++) destination[i] &= source[i];
 #endif
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(region_is_erased) {
   ARGS(FlashRegion, resource, word, from, uword, size);
-  if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
+  if (!is_within_bounds(resource, from, size)) FAIL(OUT_OF_BOUNDS);
   uword offset = resource->offset();
   if ((offset & 1) == 0) {
     return BOOL(FlashRegistry::is_erased(from + offset, size));
@@ -394,7 +394,7 @@ PRIMITIVE(region_is_erased) {
     static const uword BUFFER_SIZE = 256;
     AllocationManager allocation(process);
     uint8* buffer = allocation.alloc(BUFFER_SIZE);
-    if (!buffer) ALLOCATION_FAILED;
+    if (!buffer) FAIL(ALLOCATION_FAILED);
     uword region = offset - 1;
     word to = from + size;
     while (true) {
@@ -402,7 +402,7 @@ PRIMITIVE(region_is_erased) {
       if (remaining == 0) return BOOL(true);
       uword n = Utils::min(remaining, BUFFER_SIZE);
       if (esp_flash_read(NULL, buffer, region + from, n) != ESP_OK) {
-        HARDWARE_ERROR;
+        FAIL(HARDWARE_ERROR);
       }
       for (uword i = 0; i < n; i++) {
         if (buffer[i] != 0xff) return BOOL(false);
@@ -421,28 +421,28 @@ PRIMITIVE(region_is_erased) {
 
 PRIMITIVE(region_erase) {
   ARGS(FlashRegion, resource, word, from, uword, size);
-  if (!resource->writable()) PERMISSION_DENIED;
-  if (!is_within_bounds(resource, from, size)) OUT_OF_BOUNDS;
-  if (!Utils::is_aligned(from, FLASH_PAGE_SIZE)) INVALID_ARGUMENT;
-  if (!Utils::is_aligned(size, FLASH_PAGE_SIZE)) INVALID_ARGUMENT;
+  if (!resource->writable()) FAIL(PERMISSION_DENIED);
+  if (!is_within_bounds(resource, from, size)) FAIL(OUT_OF_BOUNDS);
+  if (!Utils::is_aligned(from, FLASH_PAGE_SIZE)) FAIL(INVALID_ARGUMENT);
+  if (!Utils::is_aligned(size, FLASH_PAGE_SIZE)) FAIL(INVALID_ARGUMENT);
   uword offset = resource->offset();
   if ((offset & 1) == 0) {
     if (!FlashRegistry::erase_chunk(from + offset, size)) {
-      HARDWARE_ERROR;
+      FAIL(HARDWARE_ERROR);
     }
   } else {
 #ifdef TOIT_FREERTOS
     uword region = offset - 1;
     uword destination = region + from;
     if (esp_flash_erase_region(NULL, destination, size) != ESP_OK) {
-      HARDWARE_ERROR;
+      FAIL(HARDWARE_ERROR);
     }
 #else
     uint8* region = reinterpret_cast<uint8*>(offset - 1);
     memset(region + from, 0xff, size);
 #endif
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 }

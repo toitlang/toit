@@ -52,10 +52,10 @@ MODULE_IMPLEMENTATION(subprocess, MODULE_SUBPROCESS)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   SubprocessResourceGroup* resource_group = _new SubprocessResourceGroup(process, SubprocessEventSource::instance());
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
@@ -63,26 +63,26 @@ PRIMITIVE(init) {
 
 PRIMITIVE(wait_for) {
   ARGS(IntResource, subprocess);
-  if (subprocess->resource_group()->event_source() != SubprocessEventSource::instance()) WRONG_TYPE;
+  if (subprocess->resource_group()->event_source() != SubprocessEventSource::instance()) FAIL(WRONG_OBJECT_TYPE);
   subprocess->resource_group()->register_resource(subprocess);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(dont_wait_for) {
   ARGS(IntResource, subprocess);
-  if (subprocess->resource_group()->event_source() != SubprocessEventSource::instance()) WRONG_TYPE;
+  if (subprocess->resource_group()->event_source() != SubprocessEventSource::instance()) FAIL(WRONG_OBJECT_TYPE);
   bool success = SubprocessEventSource::instance()->ignore_result(subprocess);
-  if (!success) MALLOC_FAILED;
+  if (!success) FAIL(MALLOC_FAILED);
   subprocess->resource_group()->unregister_resource(subprocess);  // Also deletes subprocess.
   subprocess_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(kill) {
   ARGS(IntResource, subprocess, int, signal);
-  if (subprocess->resource_group()->event_source() != SubprocessEventSource::instance()) WRONG_TYPE;
+  if (subprocess->resource_group()->event_source() != SubprocessEventSource::instance()) FAIL(WRONG_OBJECT_TYPE);
   kill(subprocess->id(), signal);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(strsignal) {

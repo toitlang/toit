@@ -170,10 +170,10 @@ MODULE_IMPLEMENTATION(pipe, MODULE_PIPE)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto resource_group = _new PipeResourceGroup(process, WindowsEventSource::instance());
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
@@ -186,7 +186,7 @@ PRIMITIVE(close) {
 
   fd_resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 // Create a writable or readable pipe, as used for stdin/stdout/stderr of a child process.
@@ -195,9 +195,9 @@ PRIMITIVE(close) {
 PRIMITIVE(create_pipe) {
   ARGS(PipeResourceGroup, resource_group, bool, input);
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
   Array* array = process->object_heap()->allocate_array(2, Smi::zero());
-  if (array == null) ALLOCATION_FAILED;
+  if (array == null) FAIL(ALLOCATION_FAILED);
 
   HANDLE event = CreateEvent(NULL, true, false, NULL);
   if (event == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
@@ -259,7 +259,7 @@ PRIMITIVE(create_pipe) {
     CloseHandle(read);
     CloseHandle(write);
     CloseHandle(event);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   resource_group->register_resource(pipe_resource);
@@ -276,13 +276,13 @@ PRIMITIVE(fd_to_pipe) {
   ARGS(PipeResourceGroup, resource_group, int, fd);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
-  if (fd < 0 || fd > 2) INVALID_ARGUMENT;
+  if (fd < 0 || fd > 2) FAIL(INVALID_ARGUMENT);
 
   // Check if the standard handle has already been made a pipe. The overlapped
   // IO does not support multiple clients.
-  if (resource_group->is_standard_piped(fd)) INVALID_ARGUMENT;
+  if (resource_group->is_standard_piped(fd)) FAIL(INVALID_ARGUMENT);
 
   HANDLE event = CreateEvent(NULL, true, false, NULL);
   if (event == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
@@ -305,10 +305,10 @@ PRIMITIVE(fd_to_pipe) {
       break;
     }
     default:
-      INVALID_ARGUMENT;
+      FAIL(INVALID_ARGUMENT);
   }
 
-  if (!pipe_resource) MALLOC_FAILED;
+  if (!pipe_resource) FAIL(MALLOC_FAILED);
 
   resource_group->set_standard_piped(fd);
 
@@ -339,7 +339,7 @@ PRIMITIVE(write) {
   ARGS(WritePipeResource, pipe_resource, Blob, data, int, from, int, to);
 
   const uint8* tx = data.address();
-  if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
   tx += from;
 
   if (!pipe_resource->ready_for_write()) return Smi::from(0);
@@ -352,19 +352,19 @@ PRIMITIVE(write) {
 PRIMITIVE(read) {
   ARGS(ReadPipeResource, read_resource);
 
-  if (read_resource->pipe_ended()) return process->program()->null_object();
+  if (read_resource->pipe_ended()) return process->null_object();
   if (!read_resource->read_ready()) return Smi::from(-1);
 
   ByteArray* array = process->allocate_byte_array(READ_BUFFER_SIZE, true);
-  if (array == null) ALLOCATION_FAILED;
+  if (array == null) FAIL(ALLOCATION_FAILED);
 
   if (!read_resource->receive_read_response()) {
-    if (GetLastError() == ERROR_BROKEN_PIPE) return process->program()->null_object();
+    if (GetLastError() == ERROR_BROKEN_PIPE) return process->null_object();
     WINDOWS_ERROR;
   }
 
   // A read count of 0 means EOF
-  if (read_resource->read_count() == 0) return process->program()->null_object();
+  if (read_resource->read_count() == 0) return process->null_object();
 
   array->resize_external(process, read_resource->read_count());
 
@@ -413,36 +413,36 @@ static Object* fork_helper(
     int fd_4,
     Array* arguments,
     Object* environment_object) {
-  if (arguments->length() > 1000000) OUT_OF_BOUNDS;
+  if (arguments->length() > 1000000) FAIL(OUT_OF_BOUNDS);
 
-  Object* null_object = process->program()->null_object();
+  Object* null_object = process->null_object();
   Array* environment = null;
   if (environment_object != null_object) {
-    if (!is_array(environment_object)) INVALID_ARGUMENT;
+    if (!is_array(environment_object)) FAIL(INVALID_ARGUMENT);
     environment = Array::cast(environment_object);
 
     // Validate environment array.
-    if (environment->length() >= 0x100000 || (environment->length() & 1) != 0) OUT_OF_BOUNDS;
+    if (environment->length() >= 0x100000 || (environment->length() & 1) != 0) FAIL(OUT_OF_BOUNDS);
     for (int i = 0; i < environment->length(); i++) {
       Blob blob;
       Object* element = environment->at(i);
       bool is_key = (i & 1) == 0;
-      if (!is_key && element == process->program()->null_object()) continue;
-      if (!element->byte_content(process->program(), &blob, STRINGS_ONLY)) WRONG_TYPE;
-      if (blob.length() == 0) INVALID_ARGUMENT;
+      if (!is_key && element == process->null_object()) continue;
+      if (!element->byte_content(process->program(), &blob, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE);
+      if (blob.length() == 0) FAIL(INVALID_ARGUMENT);
       const uint8* str = blob.address();
-      if (is_key && memchr(str, '=', blob.length()) != null) INVALID_ARGUMENT;  // Key can't contain "=".
+      if (is_key && memchr(str, '=', blob.length()) != null) FAIL(INVALID_ARGUMENT);  // Key can't contain "=".
     }
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   // FD_3 and FD_4 is not supported on Windows.
-  if (fd_3 != -1 || fd_4 != -1) INVALID_ARGUMENT;
+  if (fd_3 != -1 || fd_4 != -1) FAIL(INVALID_ARGUMENT);
 
   // Clearing environment not supported on windows, yet.
-  if (!use_path) INVALID_ARGUMENT;
+  if (!use_path) FAIL(INVALID_ARGUMENT);
 
   WideCharAllocationManager allocation(process);
   auto command_line = allocation.wcs_alloc(MAX_COMMAND_LINE_LENGTH + 1);
@@ -452,12 +452,12 @@ static Object* fork_helper(
     const wchar_t* format = (i != arguments->length() - 1) ? L"%ls " : L"%ls";
     Blob argument;
     if (!arguments->at(i)->byte_content(process->program(), &argument, STRINGS_ONLY)) {
-      WRONG_TYPE;
+      FAIL(WRONG_OBJECT_TYPE);
     }
     WideCharAllocationManager allocation(process);
     auto utf_16_argument = allocation.to_wcs(&argument);
 
-    if (pos + wcslen(utf_16_argument) + wcslen(format) - 3 >= MAX_COMMAND_LINE_LENGTH) OUT_OF_BOUNDS;
+    if (pos + wcslen(utf_16_argument) + wcslen(format) - 3 >= MAX_COMMAND_LINE_LENGTH) FAIL(OUT_OF_BOUNDS);
     pos += snwprintf(command_line + pos, MAX_COMMAND_LINE_LENGTH - pos, format, utf_16_argument);
   }
 
@@ -466,7 +466,7 @@ static Object* fork_helper(
   // subprocess is already running, and it is too late to GC-and-retry.
   AllocationManager resource_allocation(process);
   if (resource_allocation.alloc(sizeof(SubprocessResource)) == null) {
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   PROCESS_INFORMATION process_information{};
@@ -518,7 +518,7 @@ static Object* fork_helper(
     // exception for this marginal case, so we throw one of the standard
     // exceptions here, but also print a warning on stderr.
     fprintf(stderr, "Error: Running a Linux executable from Wine is not supported: '%ls'\n", command_line);
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
 
   auto subprocess = new (resource_allocation.keep_result()) SubprocessResource(resource_group, process_information.hProcess);
@@ -541,7 +541,7 @@ PRIMITIVE(fork) {
        Array, args);
   USE(command);  // Not used on Windows.
   return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
-                     fd_3, fd_4, args, process->program()->null_object());
+                     fd_3, fd_4, args, process->null_object());
 }
 
 PRIMITIVE(fork2) {

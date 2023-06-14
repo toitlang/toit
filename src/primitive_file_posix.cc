@@ -68,22 +68,22 @@ class AutoCloser {
 };
 
 Object* return_open_error(Process* process, int err) {
-  if (err == EPERM || err == EACCES || err == EROFS) PERMISSION_DENIED;
-  if (err == EDQUOT || err == EMFILE || err == ENFILE || err == ENOSPC) QUOTA_EXCEEDED;
-  if (err == EEXIST) ALREADY_EXISTS;
-  if (err == EINVAL || err == EISDIR || err == ENAMETOOLONG) INVALID_ARGUMENT;
-  if (err == ENODEV || err == ENOENT || err == ENOTDIR) FILE_NOT_FOUND;
-  if (err == ENOMEM) MALLOC_FAILED;
-  OTHER_ERROR;
+  if (err == EPERM || err == EACCES || err == EROFS) FAIL(PERMISSION_DENIED);
+  if (err == EDQUOT || err == EMFILE || err == ENFILE || err == ENOSPC) FAIL(QUOTA_EXCEEDED);
+  if (err == EEXIST) FAIL(ALREADY_EXISTS);
+  if (err == EINVAL || err == EISDIR || err == ENAMETOOLONG) FAIL(INVALID_ARGUMENT);
+  if (err == ENODEV || err == ENOENT || err == ENOTDIR) FAIL(FILE_NOT_FOUND);
+  if (err == ENOMEM) FAIL(MALLOC_FAILED);
+  FAIL(ERROR);
 }
 
 PRIMITIVE(read_file_content_posix) {
 #ifndef TOIT_POSIX
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 #else
   ARGS(cstring, filename, int, file_size);
   ByteArray* result = process->allocate_byte_array(file_size);
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes result_bytes(result);
   int fd = open(filename, O_RDONLY);
   if (fd == -1) return return_open_error(process, errno);
@@ -93,9 +93,9 @@ PRIMITIVE(read_file_content_posix) {
     if (n == -1) {
       if (errno == EINTR) continue;
       close(fd);
-      OTHER_ERROR;
+      FAIL(ERROR);
     }
-    if (n == 0) INVALID_ARGUMENT;  // File changed size?
+    if (n == 0) FAIL(INVALID_ARGUMENT);  // File changed size?
     position += n;
   }
   close(fd);
@@ -139,7 +139,7 @@ PRIMITIVE(open) {
   if ((flags & FILE_RDWR) == FILE_RDONLY) os_flags |= O_RDONLY;
   else if ((flags & FILE_RDWR) == FILE_WRONLY) os_flags |= O_WRONLY;
   else if ((flags & FILE_RDWR) == FILE_RDWR) os_flags |= O_RDWR;
-  else INVALID_ARGUMENT;
+  else FAIL(INVALID_ARGUMENT);
   if ((flags & FILE_APPEND) != 0) os_flags |= O_APPEND;
   if ((flags & FILE_CREAT) != 0) os_flags |= O_CREAT;
   if ((flags & FILE_TRUNC) != 0) os_flags |= O_TRUNC;
@@ -150,8 +150,8 @@ PRIMITIVE(open) {
   struct stat statbuf;
   int res = fstat(fd, &statbuf);
   if (res < 0) {
-    if (errno == ENOMEM) MALLOC_FAILED;
-    OTHER_ERROR;
+    if (errno == ENOMEM) FAIL(MALLOC_FAILED);
+    FAIL(ERROR);
   }
   int type = statbuf.st_mode & S_IFMT;
   if (!is_dev_null && type != S_IFREG) {
@@ -159,7 +159,7 @@ PRIMITIVE(open) {
     // with open (eg a pipe, a socket, a directory).  We forbid this because
     // these file descriptors can block, and this API does not support
     // blocking.
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
   closer.clear();
   return Smi::from(fd);
@@ -187,7 +187,7 @@ class Directory : public SimpleResource, public LeakyDirectory {
 PRIMITIVE(opendir) {
   ARGS(cstring, pathname);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
 #ifndef TOIT_FREERTOS
   int fd = FILE_OPEN_(current_dir(process), pathname, O_RDONLY | O_DIRECTORY);
@@ -207,7 +207,7 @@ PRIMITIVE(opendir) {
   LeakyDirectory* directory = _new LeakyDirectory(dir);
   if (directory == null) {
     closedir(dir);  // Also closes fd.
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(directory);
@@ -217,7 +217,7 @@ PRIMITIVE(opendir) {
 PRIMITIVE(opendir2) {
   ARGS(SimpleResourceGroup, group, cstring, pathname);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 #ifndef TOIT_FREERTOS
   int fd = FILE_OPEN_(current_dir(process), pathname, O_RDONLY | O_DIRECTORY);
   if (fd < 0) return return_open_error(process, errno);
@@ -236,7 +236,7 @@ PRIMITIVE(opendir2) {
   Directory* directory = _new Directory(group, dir);
   if (directory == null) {
     closedir(dir);  // Also closes fd.
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(directory);
@@ -246,7 +246,7 @@ PRIMITIVE(opendir2) {
 PRIMITIVE(readdir) {
   ARGS(ByteArray, directory_proxy);
 
-  if (!directory_proxy->has_external_address()) WRONG_TYPE;
+  if (!directory_proxy->has_external_address()) FAIL(WRONG_OBJECT_TYPE);
 
   LeakyDirectory* directory;
   if (directory_proxy->external_tag() == Directory::tag_min) {
@@ -254,12 +254,12 @@ PRIMITIVE(readdir) {
   } else if (directory_proxy->external_tag() == LeakyDirectory::tag_min) {
     directory = directory_proxy->as_external<LeakyDirectory>();
   } else {
-    WRONG_TYPE;
+    FAIL(WRONG_OBJECT_TYPE);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy(true);
   if (proxy == null) {
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   struct dirent* entry = readdir(directory->dir());
@@ -267,13 +267,13 @@ PRIMITIVE(readdir) {
   // restartable in Unix.
 
   if (entry == null) {
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   int len = strlen(entry->d_name);
 
   if (!Utils::is_valid_utf_8(unsigned_cast(entry->d_name), len)) {
-    ILLEGAL_UTF_8;
+    FAIL(ILLEGAL_UTF_8);
   }
 
   process->register_external_allocation(len);
@@ -289,7 +289,7 @@ PRIMITIVE(readdir) {
 PRIMITIVE(closedir) {
   ARGS(ByteArray, proxy);
 
-  if (!proxy->has_external_address()) WRONG_TYPE;
+  if (!proxy->has_external_address()) FAIL(WRONG_OBJECT_TYPE);
 
   if (proxy->external_tag() == Directory::tag_min) {
     Directory* directory = proxy->as_external<Directory>();
@@ -300,11 +300,11 @@ PRIMITIVE(closedir) {
     LeakyDirectory* directory = proxy->as_external<LeakyDirectory>();
     delete directory;
   } else {
-    WRONG_TYPE;
+    FAIL(WRONG_OBJECT_TYPE);
   }
 
   proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(read) {
@@ -313,11 +313,11 @@ PRIMITIVE(read) {
 
   AllocationManager allocation(process);
   uint8* buffer = allocation.alloc(SIZE);
-  if (!buffer) ALLOCATION_FAILED;
+  if (!buffer) FAIL(ALLOCATION_FAILED);
 
   ByteArray* result = process->object_heap()->allocate_external_byte_array(
       SIZE, buffer, true /* dispose */, false /* clear */);
-  if (!result) ALLOCATION_FAILED;
+  if (!result) FAIL(ALLOCATION_FAILED);
   allocation.keep_result();
 
   ssize_t buffer_fullness = 0;
@@ -325,14 +325,14 @@ PRIMITIVE(read) {
     ssize_t bytes_read = read(fd, buffer + buffer_fullness, SIZE - buffer_fullness);
     if (bytes_read < 0) {
       if (errno == EINTR) continue;
-      if (errno == EINVAL || errno == EISDIR || errno == EBADF) INVALID_ARGUMENT;
+      if (errno == EINVAL || errno == EISDIR || errno == EBADF) FAIL(INVALID_ARGUMENT);
     }
     buffer_fullness += bytes_read;
     if (bytes_read == 0) break;
   }
 
   if (buffer_fullness == 0) {
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   if (buffer_fullness < SIZE) {
@@ -343,15 +343,15 @@ PRIMITIVE(read) {
 
 PRIMITIVE(write) {
   ARGS(int, fd, Blob, bytes, int, from, int, to);
-  if (from > to || from < 0 || to > bytes.length()) OUT_OF_BOUNDS;
+  if (from > to || from < 0 || to > bytes.length()) FAIL(OUT_OF_BOUNDS);
   ssize_t current_offset = from;
   while (current_offset < to) {
     ssize_t bytes_written = write(fd, bytes.address() + current_offset, to - current_offset);
     if (bytes_written < 0) {
       if (errno == EINTR) continue;
-      if (errno == EINVAL || errno == EBADF) INVALID_ARGUMENT;
-      if (errno == EDQUOT || errno == ENOSPC) QUOTA_EXCEEDED;
-      OTHER_ERROR;
+      if (errno == EINVAL || errno == EBADF) FAIL(INVALID_ARGUMENT);
+      if (errno == EDQUOT || errno == ENOSPC) FAIL(QUOTA_EXCEEDED);
+      FAIL(ERROR);
     }
     current_offset += bytes_written;
   }
@@ -364,11 +364,11 @@ PRIMITIVE(close) {
     int result = close(fd);
     if (result < 0) {
       if (errno == EINTR) continue;
-      if (errno == EBADF) ALREADY_CLOSED;
-      if (errno == ENOSPC || errno == EDQUOT) QUOTA_EXCEEDED;
-      OTHER_ERROR;
+      if (errno == EBADF) FAIL(ALREADY_CLOSED);
+      if (errno == ENOSPC || errno == EDQUOT) FAIL(QUOTA_EXCEEDED);
+      FAIL(ERROR);
     }
-    return process->program()->null_object();
+    return process->null_object();
   }
 }
 
@@ -390,13 +390,13 @@ PRIMITIVE(stat) {
 #endif
   if (result < 0) {
     if (errno == ENOENT || errno == ENOTDIR) {
-      return process->program()->null_object();
+      return process->null_object();
     }
     return return_open_error(process, errno);
   }
 
   Array* array = process->object_heap()->allocate_array(11, Smi::zero());
-  if (!array) ALLOCATION_FAILED;
+  if (!array) FAIL(ALLOCATION_FAILED);
 
   int type = (statbuf.st_mode & S_IFMT) >> 13;
   int mode = (statbuf.st_mode & 0x1ff);
@@ -448,21 +448,21 @@ PRIMITIVE(unlink) {
   ARGS(cstring, pathname);
   int result = FILE_UNLINK_(current_dir(process), pathname, 0);
   if (result < 0) return return_open_error(process, errno);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(rmdir) {
   ARGS(cstring, pathname);
   int result = FILE_UNLINK_(current_dir(process), pathname, AT_REMOVEDIR);
   if (result < 0) return return_open_error(process, errno);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(rename) {
   ARGS(cstring, old_name, cstring, new_name);
   int result = FILE_RENAME_(current_dir(process), old_name, current_dir(process), new_name);
   if (result < 0) return return_open_error(process, errno);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(chdir) {
@@ -473,9 +473,9 @@ PRIMITIVE(chdir) {
   if (new_dir < 0) return return_open_error(process, errno);
   process->set_current_directory(new_dir);
   close(old_dir);
-  return process->program()->null_object();
+  return process->null_object();
 #else
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 #endif
 }
 
@@ -484,7 +484,7 @@ PRIMITIVE(mkdir) {
   int result = FILE_MKDIR_(current_dir(process), pathname, mode);
   return result < 0
     ? return_open_error(process, errno)
-    : process->program()->null_object();
+    : process->null_object();
 }
 
 PRIMITIVE(mkdtemp) {
@@ -495,11 +495,11 @@ PRIMITIVE(mkdtemp) {
   word prefix_len = strlen(prefix);
   word total_len = prefix_len + X_COUNT;
   Object* result = process->allocate_byte_array(total_len);
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
 
-  if (!process->should_allow_external_allocation(total_len + 1)) ALLOCATION_FAILED;
+  if (!process->should_allow_external_allocation(total_len + 1)) FAIL(ALLOCATION_FAILED);
   char* mutable_buffer = unvoid_cast<char*>(malloc(total_len + 1));
-  if (mutable_buffer == null) MALLOC_FAILED;
+  if (mutable_buffer == null) FAIL(MALLOC_FAILED);
   AllocationManager allocation(process, mutable_buffer, total_len);
 
   memset(mutable_buffer, 'X', total_len);
@@ -519,11 +519,11 @@ PRIMITIVE(is_open_file) {
   ARGS(int, fd);
   int result = lseek(fd, 0, SEEK_CUR);
   if (result < 0) {
-    if (errno == ESPIPE) return process->program()->false_object();
-    if (errno == EBADF) INVALID_ARGUMENT;
-    OTHER_ERROR;
+    if (errno == ESPIPE) return process->false_object();
+    if (errno == EBADF) FAIL(INVALID_ARGUMENT);
+    FAIL(ERROR);
   }
-  return process->program()->true_object();
+  return process->true_object();
 }
 
 PRIMITIVE(realpath) {
@@ -531,20 +531,20 @@ PRIMITIVE(realpath) {
 #ifdef TOIT_FREERTOS
   String* result = process->allocate_string(filename);
   if (result == null) {
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
   return result;
 #else
   char* c_result = realpath(filename, null);
   if (c_result == null) {
-    if (errno == ENOMEM) MALLOC_FAILED;
-    if (errno == ENOENT or errno == ENOTDIR) return process->program()->null_object();
-    OTHER_ERROR;
+    if (errno == ENOMEM) FAIL(MALLOC_FAILED);
+    if (errno == ENOENT or errno == ENOTDIR) return process->null_object();
+    FAIL(ERROR);
   }
   String* result = process->allocate_string(c_result);
   if (result == null) {
     free(c_result);
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
   return result;
 #endif // TOIT_FREERTOS
@@ -556,14 +556,14 @@ PRIMITIVE(cwd) {
   int status = fcntl(current_dir(process), F_GETPATH, &cwd_path);
   cwd_path[PATH_MAX] = '\0';
   if (status == -1) {
-    if (errno == ENOMEM) MALLOC_FAILED;
-    OTHER_ERROR;
+    if (errno == ENOMEM) FAIL(MALLOC_FAILED);
+    FAIL(ERROR);
   }
   String* result = process->allocate_string(cwd_path);
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
   return result;
 #else
-  OTHER_ERROR;
+  FAIL(ERROR);
 #endif
 }
 

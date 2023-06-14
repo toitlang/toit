@@ -47,7 +47,7 @@ bool X509ResourceGroup::is_pem_format(const uint8* data, size_t length) {
 
 Object* X509ResourceGroup::parse(Process* process, const uint8_t* encoded, size_t encoded_size, bool in_flash) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   uint8 checksum[Sha::HASH_LENGTH_256];
   { Sha sha256(null, 256);
@@ -65,7 +65,7 @@ Object* X509ResourceGroup::parse(Process* process, const uint8_t* encoded, size_
   }
 
   X509Certificate* cert = _new X509Certificate(this);
-  if (!cert) MALLOC_FAILED;
+  if (!cert) FAIL(MALLOC_FAILED);
 
   int ret;
   if (is_pem_format(encoded, encoded_size)) {
@@ -96,17 +96,17 @@ Object* X509Certificate::common_name_or_error(Process* process) {
     }
     item = item->next;
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 MODULE_IMPLEMENTATION(x509, MODULE_X509)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   X509ResourceGroup* resource_group = _new X509ResourceGroup(process);
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
@@ -128,7 +128,7 @@ PRIMITIVE(parse) {
     length = str->length() + 1;
     // Toit strings are stored null terminated.
     ASSERT(data[length - 1] == '\0');
-    if (strlen(char_cast(data)) != length - 1) INVALID_ARGUMENT;  // String with nulls in it.
+    if (strlen(char_cast(data)) != length - 1) FAIL(INVALID_ARGUMENT);  // String with nulls in it.
   } else if (input->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) {
     // If we're passed a byte array or a string slice, and it's in
     // PEM format, we hope that it ends with a zero character.
@@ -136,9 +136,9 @@ PRIMITIVE(parse) {
     data = blob.address();
     length = blob.length();
     bool is_pem = X509ResourceGroup::is_pem_format(data, length);
-    if (is_pem && (length < 1 || data[length - 1] != '\0')) INVALID_ARGUMENT;
+    if (is_pem && (length < 1 || data[length - 1] != '\0')) FAIL(INVALID_ARGUMENT);
   } else {
-    WRONG_TYPE;
+    FAIL(WRONG_OBJECT_TYPE);
   }
   bool in_flash = HeapObject::cast(input)->on_program_heap(process);
   return resource_group->parse(process, data, length, in_flash);
@@ -155,7 +155,7 @@ PRIMITIVE(close) {
     cert->resource_group()->unregister_resource(cert);
   }
   cert_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 

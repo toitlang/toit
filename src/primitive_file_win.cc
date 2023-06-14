@@ -64,13 +64,13 @@ class AutoCloser {
 
 // For Posix-like calls, including socket calls.
 static Object* return_open_error(Process* process, int err) {
-  if (err == EPERM || err == EACCES || err == EROFS) PERMISSION_DENIED;
-  if (err == EMFILE || err == ENFILE || err == ENOSPC) QUOTA_EXCEEDED;
-  if (err == EEXIST) ALREADY_EXISTS;
-  if (err == EINVAL || err == EISDIR || err == ENAMETOOLONG) INVALID_ARGUMENT;
-  if (err == ENODEV || err == ENOENT || err == ENOTDIR) FILE_NOT_FOUND;
-  if (err == ENOMEM) MALLOC_FAILED;
-  OTHER_ERROR;
+  if (err == EPERM || err == EACCES || err == EROFS) FAIL(PERMISSION_DENIED);
+  if (err == EMFILE || err == ENFILE || err == ENOSPC) FAIL(QUOTA_EXCEEDED);
+  if (err == EEXIST) FAIL(ALREADY_EXISTS);
+  if (err == EINVAL || err == EISDIR || err == ENAMETOOLONG) FAIL(INVALID_ARGUMENT);
+  if (err == ENODEV || err == ENOENT || err == ENOTDIR) FAIL(FILE_NOT_FOUND);
+  if (err == ENOMEM) FAIL(MALLOC_FAILED);
+  FAIL(ERROR);
 }
 
 // Coordinate with utils.toit.
@@ -108,7 +108,7 @@ const wchar_t* current_dir(Process* process) {
   return current_directory;
 }
 
-HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output, const wchar_t* used_for_relative) {
+Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output, const wchar_t* used_for_relative) {
   size_t pathname_length = wcslen(pathname);
 
   // Poor man's version. For better platform handling, use PathCchAppendEx.
@@ -140,7 +140,7 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
   }
 
   wchar_t temp[MAX_PATH];
-  if (snwprintf(temp, MAX_PATH, L"%ls\\%ls", relative_to, pathname) >= MAX_PATH) INVALID_ARGUMENT;
+  if (snwprintf(temp, MAX_PATH, L"%ls\\%ls", relative_to, pathname) >= MAX_PATH) FAIL(INVALID_ARGUMENT);
   if (GetFullPathNameW(temp, MAX_PATH, output, NULL) == 0) WINDOWS_ERROR;
   return null;
 }
@@ -152,7 +152,7 @@ PRIMITIVE(open) {
   if ((flags & FILE_RDWR) == FILE_RDONLY) os_flags |= _O_RDONLY;
   else if ((flags & FILE_RDWR) == FILE_WRONLY) os_flags |= _O_WRONLY;
   else if ((flags & FILE_RDWR) == FILE_RDWR) os_flags |= _O_RDWR;
-  else INVALID_ARGUMENT;
+  else FAIL(INVALID_ARGUMENT);
   if ((flags & FILE_APPEND) != 0) os_flags |= _O_APPEND;
   if ((flags & FILE_CREAT) != 0) os_flags |= _O_CREAT;
   if ((flags & FILE_TRUNC) != 0) os_flags |= _O_TRUNC;
@@ -162,8 +162,8 @@ PRIMITIVE(open) {
   struct stat statbuf{};
   int res = fstat(fd, &statbuf);
   if (res < 0) {
-    if (errno == ENOMEM) MALLOC_FAILED;
-    OTHER_ERROR;
+    if (errno == ENOMEM) FAIL(MALLOC_FAILED);
+    FAIL(ERROR);
   }
   int type = statbuf.st_mode & S_IFMT;
   if (type != S_IFREG) {
@@ -171,7 +171,7 @@ PRIMITIVE(open) {
     // with open (eg a pipe, a socket, a directory).  We forbid this because
     // these file descriptors can block, and this API does not support
     // blocking.
-    if (_wcsicmp(L"\\\\.\\NUL", path) != 0) INVALID_ARGUMENT;
+    if (_wcsicmp(L"\\\\.\\NUL", path) != 0) FAIL(INVALID_ARGUMENT);
   }
   closer.clear();
   return Smi::from(fd);
@@ -199,14 +199,14 @@ class Directory : public SimpleResource {
 };
 
 PRIMITIVE(opendir) {
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(opendir2) {
   ARGS(SimpleResourceGroup, group, WindowsPath, path);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto directory = _new Directory(group, path);
 
@@ -230,15 +230,15 @@ PRIMITIVE(opendir2) {
 PRIMITIVE(readdir) {
   ARGS(ByteArray, directory_proxy);
 
-  if (!directory_proxy->has_external_address()) WRONG_TYPE;
+  if (!directory_proxy->has_external_address()) FAIL(WRONG_OBJECT_TYPE);
 
   auto directory = directory_proxy->as_external<Directory>();
 
-  if (directory->done()) return process->program()->null_object();
+  if (directory->done()) return process->null_object();
 
   ByteArray* proxy = process->object_heap()->allocate_proxy(true);
   if (proxy == null) {
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   const wchar_t* utf_16 = directory->find_file_data()->cFileName;
@@ -264,7 +264,7 @@ PRIMITIVE(readdir) {
 PRIMITIVE(closedir) {
   ARGS(ByteArray, proxy);
 
-  if (!proxy->has_external_address()) WRONG_TYPE;
+  if (!proxy->has_external_address()) FAIL(WRONG_OBJECT_TYPE);
   auto directory = proxy->as_external<Directory>();
 
   FindClose(directory->dir_handle());
@@ -272,7 +272,7 @@ PRIMITIVE(closedir) {
   directory->resource_group()->unregister_resource(directory);
 
   proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(read) {
@@ -281,11 +281,11 @@ PRIMITIVE(read) {
 
   AllocationManager allocation(process);
   uint8* buffer = allocation.alloc(SIZE);
-  if (!buffer) ALLOCATION_FAILED;
+  if (!buffer) FAIL(ALLOCATION_FAILED);
 
   ByteArray* result = process->object_heap()->allocate_external_byte_array(
       SIZE, buffer, true /* dispose */, false /* clear */);
-  if (!result) ALLOCATION_FAILED;
+  if (!result) FAIL(ALLOCATION_FAILED);
   allocation.keep_result();
 
   ssize_t buffer_fullness = 0;
@@ -293,14 +293,14 @@ PRIMITIVE(read) {
     ssize_t bytes_read = _read(fd, buffer + buffer_fullness, SIZE - buffer_fullness);
     if (bytes_read < 0) {
       if (errno == EINTR) continue;
-      if (errno == EINVAL || errno == EISDIR || errno == EBADF) INVALID_ARGUMENT;
+      if (errno == EINVAL || errno == EISDIR || errno == EBADF) FAIL(INVALID_ARGUMENT);
     }
     buffer_fullness += bytes_read;
     if (bytes_read == 0) break;
   }
 
   if (buffer_fullness == 0) {
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   if (buffer_fullness < SIZE) {
@@ -311,14 +311,14 @@ PRIMITIVE(read) {
 
 PRIMITIVE(write) {
   ARGS(int, fd, Blob, bytes, int, from, int, to);
-  if (from > to || from < 0 || to > bytes.length()) OUT_OF_BOUNDS;
+  if (from > to || from < 0 || to > bytes.length()) FAIL(OUT_OF_BOUNDS);
   ssize_t current_offset = from;
   while (current_offset < to) {
     ssize_t bytes_written = write(fd, bytes.address() + current_offset, to - current_offset);
     if (bytes_written < 0) {
       if (errno == EINTR) continue;
-      if (errno == EINVAL || errno == EBADF) INVALID_ARGUMENT;
-      OTHER_ERROR;
+      if (errno == EINVAL || errno == EBADF) FAIL(INVALID_ARGUMENT);
+      FAIL(ERROR);
     }
     current_offset += bytes_written;
   }
@@ -331,14 +331,14 @@ PRIMITIVE(close) {
     int result = close(fd);
     if (result < 0) {
       if (GetFileType(reinterpret_cast<HANDLE>(fd)) == FILE_TYPE_PIPE && errno == EBADF) {
-        return process->program()->null_object(); // Ignore already closed on PIPEs
+        return process->null_object(); // Ignore already closed on PIPEs
       }
       if (errno == EINTR) continue;
-      if (errno == EBADF) ALREADY_CLOSED;
-      if (errno == ENOSPC) QUOTA_EXCEEDED;
-      OTHER_ERROR;
+      if (errno == EBADF) FAIL(ALREADY_CLOSED);
+      if (errno == ENOSPC) FAIL(QUOTA_EXCEEDED);
+      FAIL(ERROR);
     }
-    return process->program()->null_object();
+    return process->null_object();
   }
 }
 
@@ -357,13 +357,13 @@ PRIMITIVE(stat) {
   int result = _wstat64(path, &statbuf);
   if (result < 0) {
     if (errno == ENOENT || errno == ENOTDIR) {
-      return process->program()->null_object();
+      return process->null_object();
     }
     return return_open_error(process, errno);
   }
 
   Array* array = process->object_heap()->allocate_array(11, Smi::zero());
-  if (!array) ALLOCATION_FAILED;
+  if (!array) FAIL(ALLOCATION_FAILED);
 
   int type = (statbuf.st_mode & S_IFMT) >> 13;
   int mode = (statbuf.st_mode & 0x1ff);
@@ -408,21 +408,21 @@ PRIMITIVE(unlink) {
   SetFileAttributesW(path, FILE_ATTRIBUTE_NORMAL);
   int result = _wunlink(path);
   if (result < 0) return return_open_error(process, errno);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(rmdir) {
   ARGS(WindowsPath, path);
 
   if (RemoveDirectoryW(path) == 0) WINDOWS_ERROR;
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(rename) {
   ARGS(WindowsPath, old_name, WindowsPath, new_name);
   int result = _wrename(old_name, new_name);
   if (result < 0) return return_open_error(process, errno);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(chdir) {
@@ -431,13 +431,13 @@ PRIMITIVE(chdir) {
   struct stat64 statbuf{};
   int result = _wstat64(path, &statbuf);
   if (result < 0) WINDOWS_ERROR;  // No such file or directory?
-  if ((statbuf.st_mode & S_IFDIR) == 0) FILE_NOT_FOUND;  // Not a directory.
+  if ((statbuf.st_mode & S_IFDIR) == 0) FAIL(FILE_NOT_FOUND);  // Not a directory.
 
   wchar_t* copy = wcsdup(path);
 
   process->set_current_directory(copy);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(mkdir) {
@@ -445,7 +445,7 @@ PRIMITIVE(mkdir) {
 
   int result = CreateDirectoryW(path, NULL);
   if (result == 0) WINDOWS_ERROR;
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(mkdtemp) {
@@ -469,7 +469,7 @@ PRIMITIVE(mkdtemp) {
   if (in_standard_tmp_dir) {
     // Get the location of the Windows temp directory.
     ret = GetTempPathW(MAX_PATH, temp_dir_name);
-    if (ret + 2 > MAX_PATH) OUT_OF_RANGE;
+    if (ret + 2 > MAX_PATH) FAIL(OUT_OF_RANGE);
     if (ret == 0) WINDOWS_ERROR;
     relative_to = temp_dir_name;
   }
@@ -480,19 +480,19 @@ PRIMITIVE(mkdtemp) {
 
   UUID uuid;
   ret = UuidCreate(&uuid);
-  if (ret != RPC_S_OK && ret != RPC_S_UUID_LOCAL_ONLY) OTHER_ERROR;
+  if (ret != RPC_S_OK && ret != RPC_S_UUID_LOCAL_ONLY) FAIL(ERROR);
 
   uint16* uuid_string;
   ret = UuidToStringW(&uuid, &uuid_string);
   auto uuid_string_w = reinterpret_cast<wchar_t*>(uuid_string);
-  if (wcslen(full_filename) + wcslen(uuid_string_w) > MAX_PATH) OUT_OF_RANGE;
+  if (wcslen(full_filename) + wcslen(uuid_string_w) > MAX_PATH) FAIL(OUT_OF_RANGE);
   wcsncat(full_filename, uuid_string_w, MAX_PATH - wcslen(full_filename));
   RpcStringFreeW(&uuid_string);
 
   uword total_len = Utils::utf_16_to_8(full_filename, wcslen(full_filename));
 
   ByteArray* result = process->allocate_byte_array(static_cast<int>(total_len));
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes blob(result);
 
@@ -509,11 +509,11 @@ PRIMITIVE(is_open_file) {
   int result = lseek(fd, 0, SEEK_CUR);
   if (result < 0) {
     if (errno == ESPIPE || errno == EINVAL || errno == EBADF) {
-      return process->program()->false_object();
+      return process->false_object();
     }
-    OTHER_ERROR;
+    FAIL(ERROR);
   }
-  return process->program()->true_object();
+  return process->true_object();
 }
 
 PRIMITIVE(realpath) {
@@ -532,24 +532,24 @@ PRIMITIVE(realpath) {
 
   // The toit package expects a null value when the file does not exist. Win32 does not detect this in GetFile
   if (!PathFileExistsW(w_result)) {
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   String* result = process->allocate_string(w_result);
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
 
   return result;
 }
 
 PRIMITIVE(cwd) {
   Object* result = process->allocate_string(current_dir(process));
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
   return result;
 }
 
 PRIMITIVE(read_file_content_posix) {
   // This is currenly only used for /etc/resolv.conf.
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 }
 
 }

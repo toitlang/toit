@@ -78,33 +78,33 @@ PRIMITIVE(blit) {
   // To avoid security issues caused by overflow, all values are limited to
   // positive 23 bits values.  We could up the limit on 64 bit, but this
   // would increase differences between device and server.
-  if (operation < 0 || operation >= NUMBER_OF_POSSIBLE_OPERATIONS) OUT_OF_BOUNDS;
+  if (operation < 0 || operation >= NUMBER_OF_POSSIBLE_OPERATIONS) FAIL(OUT_OF_BOUNDS);
   word mask_23 = -0x800000;
   if (((dest_line_stride | src_line_stride | pixels_per_line) & mask_23) != 0) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
   // src_pixel_stride is multiplied by other values so to avoid security issues caused by
   // overflows it is limited to positive 7 bit values.
   word mask_7 = -0x80;
   if ((src_pixel_stride & mask_7) != 0) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
   // dest_pixel_stride is also multiplied by other values, but we allow negative values.
   if (!(-0x80 < dest_pixel_stride && dest_pixel_stride <= 0x80)) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
   const uint8* lookup;
-  if (lut == process->program()->null_object()) {
+  if (lut == process->null_object()) {
     lookup = IDENTITY_LOOKUP;
   } else {
     Blob blob;
-    if (!lut->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+    if (!lut->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
     lookup = blob.address();
-    if (blob.length() < 0x100) INVALID_ARGUMENT;
+    if (blob.length() < 0x100) FAIL(INVALID_ARGUMENT);
   }
   word abs_dest_pixel_stride = abs(dest_pixel_stride);
   // Avoid infinite loop.
-  if (dest_line_stride == 0 && src_line_stride == 0) INVALID_ARGUMENT;
+  if (dest_line_stride == 0 && src_line_stride == 0) FAIL(INVALID_ARGUMENT);
 
   word src_offset = 0;
   word dest_offset = 0;
@@ -113,7 +113,7 @@ PRIMITIVE(blit) {
   // 16 bit operation writes one more byte.
   if (abs_dest_pixel_stride != dest_pixel_stride) {
     // Too complicated to work out the bounds checking in this case.
-    if (operation == ADD_16_LE) INVALID_ARGUMENT;
+    if (operation == ADD_16_LE) FAIL(INVALID_ARGUMENT);
     // Start at the end of the 0th line when stepping backwards within each line.
     dest_offset += dest_write_width;
     // We can start each destination line right at the end of the blob, since
@@ -156,7 +156,7 @@ PRIMITIVE(blit) {
     src_offset += src_line_stride;
     dest_offset += dest_line_stride;
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 struct DrawData {
@@ -549,19 +549,19 @@ static void SOMETIMES_UNUSED draw_text_orientation_270(int x_base, int y_base, i
 
 PRIMITIVE(draw_text) {
 #ifndef CONFIG_TOIT_BIT_DISPLAY
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 #else
   ARGS(int, x_base, int, y_base, int, color, int, orientation, StringOrSlice, string, Font, font, MutableBlob, bytes, int, byte_array_width);
   // The byte array is arranged as n pages, each byte_array_width x 8.  Each
   // page is one byte per column.  Each column has the most significant bit at
   // the bottom, the least significant at the top.  Y coordinates are 0 at the
   // top.
-  if (byte_array_width < 1) OUT_OF_BOUNDS;
+  if (byte_array_width < 1) FAIL(OUT_OF_BOUNDS);
   int byte_array_height = bytes.length() / byte_array_width;
-  if (byte_array_height * byte_array_width != bytes.length()) OUT_OF_BOUNDS;
+  if (byte_array_height * byte_array_width != bytes.length()) FAIL(OUT_OF_BOUNDS);
   byte_array_height <<= 3;  // Height in pixels, not bytes.
-  if ((byte_array_width & 7) != 0) OUT_OF_BOUNDS;
-  if (!(0 <= orientation && orientation <= 3)) INVALID_ARGUMENT;
+  if ((byte_array_width & 7) != 0) FAIL(OUT_OF_BOUNDS);
+  if (!(0 <= orientation && orientation <= 3)) FAIL(INVALID_ARGUMENT);
 
   uint8* contents = bytes.address();
 
@@ -577,7 +577,7 @@ PRIMITIVE(draw_text) {
       draw_text_orientation_270(x_base, y_base, color, string, font, contents, byte_array_width, byte_array_height);
       break;
   }
-  return process->program()->null_object();
+  return process->null_object();
 #endif  // CONFIG_TOIT_BIT_DISPLAY
 }
 
@@ -669,14 +669,14 @@ class IndexedBytemapSource : public BytemapDecompresser {
 // drawn in the given color and the zeros are transparent.
 PRIMITIVE(draw_bitmap) {
 #if !defined(CONFIG_TOIT_BIT_DISPLAY) && !defined(CONFIG_TOIT_BYTE_DISPLAY)
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 #else
   ARGS(int, x_base, int, y_base, int, color, int, orientation, Blob, in_bytes, int, bitmap_offset, int, bitmap_width, MutableBlob, bytes, int, byte_array_width, bool, bytewise_output);
 #ifndef CONFIG_TOIT_BIT_DISPLAY
-  if (!bytewise_output) UNIMPLEMENTED_PRIMITIVE;
+  if (!bytewise_output) FAIL(UNIMPLEMENTED);
 #endif
 #ifndef CONFIG_TOIT_BYTE_DISPLAY
-  if (bytewise_output) UNIMPLEMENTED_PRIMITIVE;
+  if (bytewise_output) FAIL(UNIMPLEMENTED);
 #endif
   // Bitwise output:
   //   The output byte array is arranged as n pages, each byte_array_width x 8.  Each
@@ -688,9 +688,9 @@ PRIMITIVE(draw_bitmap) {
   //   1 means draw the color and 0 means transparent.
   // Bytewise output:
   //   The byte array is arranged as n rows, each byte_array_width long.
-  if (byte_array_width < 1) OUT_OF_BOUNDS;
+  if (byte_array_width < 1) FAIL(OUT_OF_BOUNDS);
   int byte_array_height = bytes.length() / byte_array_width;
-  if (byte_array_height * byte_array_width != bytes.length()) OUT_OF_BOUNDS;
+  if (byte_array_height * byte_array_width != bytes.length()) FAIL(OUT_OF_BOUNDS);
   if (!bytewise_output) {
     byte_array_height <<= 3;  // Height in pixels, not bytes.
   }
@@ -698,12 +698,12 @@ PRIMITIVE(draw_bitmap) {
   uint8* output_contents = bytes.address();
 
   int bytes_per_line = (bitmap_width + 7) >> 3;
-  if (bitmap_offset < 0) OUT_OF_BOUNDS;
-  if (bitmap_width < 1) OUT_OF_BOUNDS;
+  if (bitmap_offset < 0) FAIL(OUT_OF_BOUNDS);
+  if (bitmap_width < 1) FAIL(OUT_OF_BOUNDS);
   int bitmap_height = (in_bytes.length() - bitmap_offset) / bytes_per_line;
-  if (bitmap_height * bytes_per_line > in_bytes.length() - bitmap_offset) OUT_OF_BOUNDS;
+  if (bitmap_height * bytes_per_line > in_bytes.length() - bitmap_offset) FAIL(OUT_OF_BOUNDS);
 
-  if (!(0 <= orientation && orientation <= 3)) INVALID_ARGUMENT;
+  if (!(0 <= orientation && orientation <= 3)) FAIL(INVALID_ARGUMENT);
 
   const uint8* input_contents = in_bytes.address() + bitmap_offset;
 
@@ -749,7 +749,7 @@ PRIMITIVE(draw_bitmap) {
       }
       break;
   }
-  return process->program()->null_object();
+  return process->null_object();
 #endif  // !defined(CONFIG_TOIT_BIT_DISPLAY) && !defined(CONFIG_TOIT_BYTE_DISPLAY)
 }
 
@@ -759,29 +759,29 @@ static void byte_draw(int, BytemapDecompresser&, const PixelBox&, DrawData&);
 PRIMITIVE(draw_bytemap) {
   ARGS(int, x_base, int, y_base, int, transparent_color, int, orientation, Blob, in_bytes, int, bytes_per_line, Blob, palette, MutableBlob, bytes, int, byte_array_width);
   // Both the input and output byte arrays are arranged as n rows, each byte_array_width long.
-  if (byte_array_width < 1) OUT_OF_BOUNDS;
+  if (byte_array_width < 1) FAIL(OUT_OF_BOUNDS);
   int byte_array_height = bytes.length() / byte_array_width;
-  if (byte_array_height * byte_array_width != bytes.length()) OUT_OF_BOUNDS;
+  if (byte_array_height * byte_array_width != bytes.length()) FAIL(OUT_OF_BOUNDS);
 
   uint8* output_contents = bytes.address();
 
-  if (bytes_per_line < 1) OUT_OF_BOUNDS;
+  if (bytes_per_line < 1) FAIL(OUT_OF_BOUNDS);
   int bitmap_height = in_bytes.length() / bytes_per_line;
-  if (bitmap_height * bytes_per_line > in_bytes.length()) OUT_OF_BOUNDS;
+  if (bitmap_height * bytes_per_line > in_bytes.length()) FAIL(OUT_OF_BOUNDS);
 
-  if (!(0 <= orientation && orientation <= 3)) INVALID_ARGUMENT;
+  if (!(0 <= orientation && orientation <= 3)) FAIL(INVALID_ARGUMENT);
 
   int color = 0;  // Unused.
 
   DrawData capture(x_base, y_base, color, orientation * 90, byte_array_width, byte_array_height, output_contents);
   IndexedBytemapSource bytemap_source(in_bytes.address(), bytes_per_line, palette.address(), palette.length(), transparent_color);
-  if (bytemap_source.out_of_memory()) MALLOC_FAILED;
+  if (bytemap_source.out_of_memory()) FAIL(MALLOC_FAILED);
 
   BitmapPixelBox bit_box(bytes_per_line, bitmap_height);
 
   byte_draw(orientation, bytemap_source, bit_box, capture);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 static void byte_draw(int orientation, BytemapDecompresser& decompresser, const PixelBox& bit_box, DrawData& capture) {
@@ -821,15 +821,15 @@ static void byte_draw(int orientation, BytemapDecompresser& decompresser, const 
 
 PRIMITIVE(byte_draw_text) {
 #ifndef CONFIG_TOIT_BYTE_DISPLAY
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 #else
   ARGS(int, x_base, int, y_base, int, color, int, orientation, StringOrSlice, string, Font, font, MutableBlob, bytes, int, byte_array_width);
   // The byte array is arranged as n columns, each byte_array_width long.
-  if (byte_array_width < 1) OUT_OF_BOUNDS;
+  if (byte_array_width < 1) FAIL(OUT_OF_BOUNDS);
   int byte_array_height = bytes.length() / byte_array_width;
-  if (byte_array_height * byte_array_width != bytes.length()) OUT_OF_BOUNDS;
+  if (byte_array_height * byte_array_width != bytes.length()) FAIL(OUT_OF_BOUNDS);
 
-  if (!(0 <= orientation && orientation <= 3)) INVALID_ARGUMENT;
+  if (!(0 <= orientation && orientation <= 3)) FAIL(INVALID_ARGUMENT);
 
   uint8* contents = bytes.address();
 
@@ -843,26 +843,26 @@ PRIMITIVE(byte_draw_text) {
       byte_draw_text_orientation_90_270(x_base, y_base, color, orientation * 90, string, font, contents, byte_array_width, byte_array_height);
       break;
   }
-  return process->program()->null_object();
+  return process->null_object();
 #endif  // TOIT BYTE_DISPLAY
 }
 
 PRIMITIVE(rectangle) {
 #ifndef CONFIG_TOIT_BIT_DISPLAY
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 #else
   ARGS(int, x_base, int, y_base, int, color, int, width, int, height, MutableBlob, bytes, int, byte_array_width);
-  if (byte_array_width < 1) OUT_OF_BOUNDS;
+  if (byte_array_width < 1) FAIL(OUT_OF_BOUNDS);
   int byte_array_height = bytes.length() / byte_array_width;
-  if (byte_array_height * byte_array_width != bytes.length()) OUT_OF_BOUNDS;
+  if (byte_array_height * byte_array_width != bytes.length()) FAIL(OUT_OF_BOUNDS);
   byte_array_height <<= 3;  // Height in pixels, not bytes.
-  if (width < 0 || height < 0) OUT_OF_RANGE;
+  if (width < 0 || height < 0) FAIL(OUT_OF_RANGE);
   static const int TOO_BIG = 0x8000000;
   if (x_base > TOO_BIG || y_base > TOO_BIG || width > TOO_BIG || height > TOO_BIG || -x_base > TOO_BIG || -y_base > TOO_BIG) {
-    OUT_OF_RANGE;
+    FAIL(OUT_OF_RANGE);
   }
   if (x_base >= byte_array_width || y_base >= byte_array_height || x_base + width <= 0 || y_base + height <= 0 || height == 0 || width == 0) {
-    return process->program()->null_object();
+    return process->null_object();
   }
   if (x_base < 0) {
     width += x_base;
@@ -898,32 +898,32 @@ PRIMITIVE(rectangle) {
       }
     }
     if (page == end_page) {
-      return process->program()->null_object();
+      return process->null_object();
     }
     int new_y_base = (y_base + 8) & ~7;
     int step = new_y_base - y_base;
     height -= step;
     y_base = new_y_base;
   }
-  return process->program()->null_object();
+  return process->null_object();
 #endif  // CONFIG_TOIT_BIT_DISPLAY
 }
 
 PRIMITIVE(byte_rectangle) {
 #ifndef CONFIG_TOIT_BYTE_DISPLAY
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 #else
   ARGS(int, x_base, int, y_base, int, color, int, width, int, height, MutableBlob, bytes, int, byte_array_width);
-  if (byte_array_width < 1) OUT_OF_BOUNDS;
+  if (byte_array_width < 1) FAIL(OUT_OF_BOUNDS);
   int byte_array_height = bytes.length() / byte_array_width;
-  if (byte_array_height * byte_array_width != bytes.length()) OUT_OF_BOUNDS;
-  if (width < 0 || height < 0) OUT_OF_RANGE;
+  if (byte_array_height * byte_array_width != bytes.length()) FAIL(OUT_OF_BOUNDS);
+  if (width < 0 || height < 0) FAIL(OUT_OF_RANGE);
   static const int TOO_BIG = 0x8000000;
   if (x_base > TOO_BIG || y_base > TOO_BIG || width > TOO_BIG || height > TOO_BIG || -x_base > TOO_BIG || -y_base > TOO_BIG) {
-    OUT_OF_RANGE;
+    FAIL(OUT_OF_RANGE);
   }
   if (x_base >= byte_array_width || y_base >= byte_array_height || x_base + width <= 0 || y_base + height <= 0 || height == 0 || width == 0) {
-    return process->program()->false_object();
+    return process->false_object();
   }
   if (x_base < 0) {
     width += x_base;
@@ -946,7 +946,7 @@ PRIMITIVE(byte_rectangle) {
     }
     contents += byte_array_width;
   }
-  return process->program()->true_object();
+  return process->true_object();
 #endif  // CONFIG_TOIT_BYTE_DISPLAY
 }
 
@@ -971,19 +971,19 @@ static const uint16_t SOMETIMES_UNUSED start_index_for_radius[MAX_RADIUS - 1] = 
 // pixmap should be padded and then trimmed afterwards.
 PRIMITIVE(bytemap_blur) {
 #ifndef CONFIG_TOIT_BYTE_DISPLAY
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 #else
   ARGS(MutableBlob, bytes, int, width, int, x_blur_radius, int, y_blur_radius);
   uint8* image = bytes.address();
-  if (width < 1) OUT_OF_BOUNDS;
+  if (width < 1) FAIL(OUT_OF_BOUNDS);
   int height = bytes.length() / width;
-  if (height * width != bytes.length()) OUT_OF_BOUNDS;
-  if (x_blur_radius < 2 && y_blur_radius < 2) return process->program()->null_object();
-  if (x_blur_radius < 0 || y_blur_radius < 0) INVALID_ARGUMENT;
+  if (height * width != bytes.length()) FAIL(OUT_OF_BOUNDS);
+  if (x_blur_radius < 2 && y_blur_radius < 2) return process->null_object();
+  if (x_blur_radius < 0 || y_blur_radius < 0) FAIL(INVALID_ARGUMENT);
   const int BUFFER_SIZE = 16;  // Power of 2.
   const int BUFFER_MASK = BUFFER_SIZE - 1;
-  if (x_blur_radius >= MAX_RADIUS - 1 || x_blur_radius * 2 > BUFFER_SIZE) OUT_OF_BOUNDS;
-  if (y_blur_radius >= MAX_RADIUS - 1 || y_blur_radius * 2 > BUFFER_SIZE) OUT_OF_BOUNDS;
+  if (x_blur_radius >= MAX_RADIUS - 1 || x_blur_radius * 2 > BUFFER_SIZE) FAIL(OUT_OF_BOUNDS);
+  if (y_blur_radius >= MAX_RADIUS - 1 || y_blur_radius * 2 > BUFFER_SIZE) FAIL(OUT_OF_BOUNDS);
   // We can't immediately write the blurred pixel back because we need its
   // original value to blur the adjacent pixels.  However we don't need to make
   // a copy of the whole image, just the recently blurred pixels.  This is where
@@ -1044,7 +1044,7 @@ PRIMITIVE(bytemap_blur) {
       }
     }
   }
-  return process->program()->null_object();
+  return process->null_object();
 #endif  // CONFIG_TOIT_BYTE_DISPLAY
 }
 
@@ -1054,14 +1054,14 @@ PRIMITIVE(bytemap_blur) {
 // contents are painted on top.
 PRIMITIVE(composit) {
 #if !defined(CONFIG_TOIT_BIT_DISPLAY) && !defined(CONFIG_TOIT_BYTE_DISPLAY)
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 #else
   ARGS(MutableBlob, dest_bytes, Blob, frame_opacity_object, Object, frame, Blob, painting_opacity_byte_array, Blob, painting, bool, bit);
 #ifndef CONFIG_TOIT_BIT_DISPLAY
-  if (bit) UNIMPLEMENTED_PRIMITIVE;
+  if (bit) FAIL(UNIMPLEMENTED);
 #endif
 #ifndef CONFIG_TOIT_BYTE_DISPLAY
-  if (!bit) UNIMPLEMENTED_PRIMITIVE;
+  if (!bit) FAIL(UNIMPLEMENTED);
 #endif
 
   uint8* dest_address = dest_bytes.address();
@@ -1077,7 +1077,7 @@ PRIMITIVE(composit) {
     frame_opacity = frame_opacity_bytes[0];
   } else {
     frame_opacity_lookup = true;
-    if (frame_opacity_length != dest_length) OUT_OF_BOUNDS;
+    if (frame_opacity_length != dest_length) FAIL(OUT_OF_BOUNDS);
   }
 
   // The painting opacity/transparency can be either an alpha map or a single opacity value.
@@ -1090,7 +1090,7 @@ PRIMITIVE(composit) {
     painting_opacity = painting_opacity_bytes[0];
   } else {
     painting_opacity_lookup = true;
-    if (painting_opacity_length != dest_length) OUT_OF_BOUNDS;
+    if (painting_opacity_length != dest_length) FAIL(OUT_OF_BOUNDS);
   }
 
   // Unless the frame is totally transparent (opacity 0) we need some frame
@@ -1098,15 +1098,15 @@ PRIMITIVE(composit) {
   const uint8* frame_pixels;
   int frame_length;
   if (!frame->byte_content(process->program(), &frame_pixels, &frame_length, STRINGS_OR_BYTE_ARRAYS)) {
-    if (frame_opacity != 0) WRONG_TYPE;
+    if (frame_opacity != 0) FAIL(WRONG_OBJECT_TYPE);
   } else {
-    if (frame_length != dest_length) OUT_OF_BOUNDS;
+    if (frame_length != dest_length) FAIL(OUT_OF_BOUNDS);
   }
 
   const uint8* painting_pixels = painting.address();
   int painting_length = painting.length();
   // The painting (window contents) must always be in the form of pixels.
-  if (painting_length != dest_length) OUT_OF_BOUNDS;
+  if (painting_length != dest_length) FAIL(OUT_OF_BOUNDS);
 
   if (bit) {
     // Bit version.  The images and opacities are all in a 1-bit-per-pixel format.
@@ -1150,7 +1150,7 @@ PRIMITIVE(composit) {
       }
     }
   }
-  return process->program()->null_object();
+  return process->null_object();
 #endif // !defined(CONFIG_TOIT_BIT_DISPLAY) && !defined(CONFIG_TOIT_BYTE_DISPLAY)
 }
 

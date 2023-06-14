@@ -547,9 +547,9 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
   for (auto g : groups_) {
     if (g->id() == group_id) group = g;
   }
-  if (group == null) return calling_process->program()->null_object();
+  if (group == null) return calling_process->null_object();
   Process* subject_process = group->lookup(process_id);
-  if (subject_process == null) return calling_process->program()->null_object();  // Process not found.
+  if (subject_process == null) return calling_process->null_object();  // Process not found.
   uword length = array->length();
 #ifdef TOIT_FREERTOS
   multi_heap_info_t info;

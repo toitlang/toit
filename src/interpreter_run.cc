@@ -1050,7 +1050,7 @@ Interpreter::Result Interpreter::run() {
 
       for (int attempts = 1; true; attempts++) {
         if (!Primitive::is_error(result)) goto done;
-        result = Primitive::unmark_from_error(result);
+        result = Primitive::unmark_from_error(program, result);
         bool malloc_failed = (result == program->malloc_failed());
         bool allocation_failed = (result == program->allocation_failed());
         bool force_cross_process = false;

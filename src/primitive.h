@@ -23,6 +23,10 @@
 
 namespace toit {
 
+// Macro for returning a small error-tagged pointer that indicates one
+// of the standard errors.
+#define FAIL(name) return reinterpret_cast<Object*>(((Program::name##_INDEX) << Error::ERROR_SHIFT) | Error::ERROR_TAG)
+
 // ----------------------------------------------------------------------------
 
 #define MODULES(M)                           \
@@ -714,9 +718,9 @@ namespace toit {
 // ARGS takes pairs: first type and then name
 // NB: Currently ARGS only takes upto 8 pairs.
 
-#define __ARG__(N, name, type, test)    \
-  Object* _raw_##name = __args[-(N)];   \
-  if (!test(_raw_##name)) WRONG_TYPE; \
+#define __ARG__(N, name, type, test)                \
+  Object* _raw_##name = __args[-(N)];               \
+  if (!test(_raw_##name)) FAIL(WRONG_OBJECT_TYPE);  \
   type* name = type::cast(_raw_##name);
 
 #define _A_T_Array(N, name)         __ARG__(N, name, Array, is_array)
@@ -729,54 +733,49 @@ namespace toit {
 #define _A_T_Object(N, name) Object* name = __args[-(N)];
 
 // Covers the range of int or Smi, whichever is smaller.
-#define _A_T_int(N, name)                               \
-  Object* _raw_##name = __args[-(N)];                   \
-  if (!is_smi(_raw_##name)) {                           \
-    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;    \
-    else WRONG_TYPE;                                    \
-  }                                                     \
-  word _word_##name = Smi::value(_raw_##name);          \
-  int name = _word_##name;                              \
-  if (name != _word_##name) OUT_OF_RANGE;               \
+#define _A_T_int(N, name)                                      \
+  Object* _raw_##name = __args[-(N)];                          \
+  if (!is_smi(_raw_##name)) {                                  \
+    return Primitive::return_not_a_smi(process, _raw_##name);  \
+  }                                                            \
+  word _word_##name = Smi::value(_raw_##name);                 \
+  int name = _word_##name;                                     \
+  if (name != _word_##name) FAIL(OUT_OF_RANGE);                \
 
-#define _A_T_int8(N, name)                                                \
-  Object* _raw_##name = __args[-(N)];                                     \
-  if (!is_smi(_raw_##name)) {                                             \
-    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                      \
-    else WRONG_TYPE;                                                      \
-  }                                                                       \
-  word _value_##name = Smi::value(_raw_##name);                           \
-  if (INT8_MIN > _value_##name || _value_##name > INT8_MAX) OUT_OF_RANGE; \
+#define _A_T_int8(N, name)                                                   \
+  Object* _raw_##name = __args[-(N)];                                        \
+  if (!is_smi(_raw_##name)) {                                                \
+    return Primitive::return_not_a_smi(process, _raw_##name);                \
+  }                                                                          \
+  word _value_##name = Smi::value(_raw_##name);                              \
+  if (INT8_MIN > _value_##name || _value_##name > INT8_MAX) FAIL(OUT_OF_RANGE); \
   int8 name = (int8) _value_##name;
 
-#define _A_T_uint8(N, name)                                           \
-  Object* _raw_##name = __args[-(N)];                                 \
-  if (!is_smi(_raw_##name)) {                                         \
-    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                  \
-    else WRONG_TYPE;                                                  \
-  }                                                                   \
-  word _value_##name = Smi::value(_raw_##name);                       \
-  if (0 > _value_##name || _value_##name > UINT8_MAX) OUT_OF_RANGE;   \
+#define _A_T_uint8(N, name)                                                  \
+  Object* _raw_##name = __args[-(N)];                                        \
+  if (!is_smi(_raw_##name)) {                                                \
+    return Primitive::return_not_a_smi(process, _raw_##name);                \
+  }                                                                          \
+  word _value_##name = Smi::value(_raw_##name);                              \
+  if (0 > _value_##name || _value_##name > UINT8_MAX) FAIL(OUT_OF_RANGE);    \
   uint8 name = (uint8) _value_##name;
 
 #define _A_T_int16(N, name)                                                  \
   Object* _raw_##name = __args[-(N)];                                        \
   if (!is_smi(_raw_##name)) {                                                \
-    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                         \
-    else WRONG_TYPE;                                                         \
+    return Primitive::return_not_a_smi(process, _raw_##name);  \
   }                                                                          \
   word _value_##name = Smi::value(_raw_##name);                              \
-  if (INT16_MIN > _value_##name || _value_##name > INT16_MAX) OUT_OF_RANGE;  \
+  if (INT16_MIN > _value_##name || _value_##name > INT16_MAX) FAIL(OUT_OF_RANGE);  \
   int16 name = (int16) _value_##name;
 
-#define _A_T_uint16(N, name)                                          \
-  Object* _raw_##name = __args[-(N)];                                 \
-  if (!is_smi(_raw_##name)) {                                         \
-    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                  \
-    else WRONG_TYPE;                                                  \
-  }                                                                   \
-  word _value_##name = Smi::value(_raw_##name);                       \
-  if (0 > _value_##name || _value_##name > UINT16_MAX) OUT_OF_RANGE;  \
+#define _A_T_uint16(N, name)                                                 \
+  Object* _raw_##name = __args[-(N)];                                        \
+  if (!is_smi(_raw_##name)) {                                                \
+    return Primitive::return_not_a_smi(process, _raw_##name);                \
+  }                                                                          \
+  word _value_##name = Smi::value(_raw_##name);                              \
+  if (0 > _value_##name || _value_##name > UINT16_MAX) FAIL(OUT_OF_RANGE);   \
   uint16 name = (uint16) _value_##name;
 
 #define _A_T_int32(N, name)                                                  \
@@ -787,9 +786,9 @@ namespace toit {
   } else if (is_large_integer(_raw_##name))   {                              \
     _value_##name = LargeInteger::cast(_raw_##name)->value();                \
   } else {                                                                   \
-    WRONG_TYPE;                                                              \
+    FAIL(WRONG_OBJECT_TYPE);                                                 \
   }                                                                          \
-  if (_value_##name < INT32_MIN || _value_##name > INT32_MAX) OUT_OF_RANGE;  \
+  if (_value_##name < INT32_MIN || _value_##name > INT32_MAX) FAIL(OUT_OF_RANGE);  \
   int32 name = (int32) _value_##name;
 
 #define _A_T_uint32(N, name)                                                 \
@@ -800,9 +799,9 @@ namespace toit {
   } else if (is_large_integer(_raw_##name)) {                                \
     _value_##name = LargeInteger::cast(_raw_##name)->value();                \
   } else {                                                                   \
-    WRONG_TYPE;                                                              \
+    FAIL(WRONG_OBJECT_TYPE);                                                 \
   }                                                                          \
-  if (_value_##name < 0 || _value_##name > UINT32_MAX) OUT_OF_RANGE;\
+  if (_value_##name < 0 || _value_##name > UINT32_MAX) FAIL(OUT_OF_RANGE);   \
   uint32 name = (uint32) _value_##name;
 
 #define INT64_VALUE_OR_WRONG_TYPE(destination, raw)     \
@@ -813,7 +812,7 @@ namespace toit {
     } else if (is_large_integer(raw)) {                 \
       destination = LargeInteger::cast(raw)->value();   \
     } else {                                            \
-      WRONG_TYPE;                                       \
+      FAIL(WRONG_OBJECT_TYPE);                          \
     }                                                   \
   } while (false)
 
@@ -822,23 +821,23 @@ namespace toit {
   INT64_VALUE_OR_WRONG_TYPE(name, _raw_##name)
 
 // TODO(kasper): Rename this.
-#define _A_T_word(N, name)                \
-  Object* _raw_##name = __args[-(N)];     \
-  if (!is_smi(_raw_##name)) WRONG_TYPE;   \
+#define _A_T_word(N, name)                             \
+  Object* _raw_##name = __args[-(N)];                  \
+  if (!is_smi(_raw_##name)) FAIL(WRONG_OBJECT_TYPE);   \
   word name = Smi::value(_raw_##name);
 
-#define _A_T_uword(N, name)                           \
-  Object* _raw_##name = __args[-(N)];                 \
-  uword name;                                         \
-  if (is_smi(_raw_##name)) {                          \
-    name = Smi::value(_raw_##name);                   \
-  } else if (is_large_integer(_raw_##name)) {         \
-    name = LargeInteger::cast(_raw_##name)->value();  \
-  } else WRONG_TYPE;
+#define _A_T_uword(N, name)                            \
+  Object* _raw_##name = __args[-(N)];                  \
+  uword name;                                          \
+  if (is_smi(_raw_##name)) {                           \
+    name = Smi::value(_raw_##name);                    \
+  } else if (is_large_integer(_raw_##name)) {          \
+    name = LargeInteger::cast(_raw_##name)->value();   \
+  } else FAIL(WRONG_OBJECT_TYPE);   
 
-#define _A_T_double(N, name)                 \
-  Object* _raw_##name = __args[-(N)];        \
-  if (!is_double(_raw_##name)) WRONG_TYPE;   \
+#define _A_T_double(N, name)                                   \
+  Object* _raw_##name = __args[-(N)];                          \
+  if (!is_double(_raw_##name)) FAIL(WRONG_OBJECT_TYPE);        \
   double name = Double::cast(_raw_##name)->value();
 
 #define _A_T_to_double(N, name)                                \
@@ -850,27 +849,27 @@ namespace toit {
     name = (double) LargeInteger::cast(_raw_##name)->value();  \
   } else if (is_double(_raw_##name)) {                         \
     name = Double::cast(_raw_##name)->value();                 \
-  } else WRONG_TYPE;
+  } else FAIL(WRONG_OBJECT_TYPE);   
 
-#define _A_T_bool(N, name)                   \
-  Object* _raw_##name = __args[-(N)];        \
-  bool name = true;                          \
-  if (_raw_##name == process->program()->true_object()) {         \
-  } else if (_raw_##name == process->program()->false_object()) { \
-    name = false;                                                 \
-  } else WRONG_TYPE;
+#define _A_T_bool(N, name)                             \
+  Object* _raw_##name = __args[-(N)];                  \
+  bool name = true;                                    \
+  if (_raw_##name == process->true_object()) {         \
+  } else if (_raw_##name == process->false_object()) { \
+    name = false;                                      \
+  } else FAIL(WRONG_OBJECT_TYPE);   
 
-#define _A_T_cstring(N, name)                                           \
-  Object* _raw_##name = __args[-(N)];                                   \
-  char* _nonconst_##name = null;                                        \
-  if (_raw_##name != process->program()->null_object()) {               \
-    Blob _blob_##name;                                                  \
-    if (!_raw_##name->byte_content(process->program(), &_blob_##name, STRINGS_ONLY)) WRONG_TYPE; \
+#define _A_T_cstring(N, name)                                                    \
+  Object* _raw_##name = __args[-(N)];                                            \
+  char* _nonconst_##name = null;                                                 \
+  if (_raw_##name != process->null_object()) {                                   \
+    Blob _blob_##name;                                                           \
+    if (!_raw_##name->byte_content(process->program(), &_blob_##name, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE); \
     _nonconst_##name = unvoid_cast<char*>(calloc(_blob_##name.length() + 1, 1)); \
-    if (!_nonconst_##name) MALLOC_FAILED;                               \
-    memcpy(_nonconst_##name, _blob_##name.address(), _blob_##name.length()); \
-  }                                                                     \
-  const char* name = _nonconst_##name;                                  \
+    if (!_nonconst_##name) FAIL(MALLOC_FAILED);                                  \
+    memcpy(_nonconst_##name, _blob_##name.address(), _blob_##name.length());     \
+  }                                                                              \
+  const char* name = _nonconst_##name;                                           \
   AllocationManager _manager_##name(process, _nonconst_##name, 0);
 
 // If it's a string, then the length is calculated including the terminating
@@ -893,13 +892,13 @@ namespace toit {
       /* Probably a slice - send it as a string to mbedtls */           \
       name##_length = 1 + _blob_##name.length();                        \
       name = _freed_##name = unvoid_cast<uint8*>(calloc(name##_length, 1)); \
-      if (!_freed_##name) MALLOC_FAILED;                                \
+      if (!_freed_##name) FAIL(MALLOC_FAILED);                          \
       memcpy(_freed_##name, _blob_##name.address(), _blob_##name.length()); \
     } else if (_raw_##name->byte_content(process->program(), &_blob_##name, STRINGS_OR_BYTE_ARRAYS)) { \
       name##_length = _blob_##name.length();                            \
       name = _blob_##name.address();                                    \
-    } else if (_raw_##name != process->program()->null_object()) {      \
-      WRONG_TYPE;                                                       \
+    } else if (_raw_##name != process->null_object()) {                 \
+      FAIL(WRONG_OBJECT_TYPE);                                          \
     }                                                                   \
   }                                                                     \
   AllocationManager _manager_##name(process, _freed_##name, 0);
@@ -907,36 +906,37 @@ namespace toit {
 #define _A_T_StringOrSlice(N, name)                               \
   Object* _raw_##name = __args[-(N)];                             \
   Blob name;                                                      \
-  if (!_raw_##name->byte_content(process->program(), &name, STRINGS_ONLY)) WRONG_TYPE;
+  if (!_raw_##name->byte_content(process->program(), &name, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE);
 
 // Filesystem primitives should generally use this, since the chdir primitive
 // merely changes a string representing the current directory.
 #define BLOB_TO_ABSOLUTE_PATH(result, blob)                                 \
-  if (blob.length() == 0) INVALID_ARGUMENT;                                 \
+  if (blob.length() == 0) FAIL(INVALID_ARGUMENT);                           \
   WideCharAllocationManager allocation_##result(process);                   \
   wchar_t* wchar_##result = allocation_##result.to_wcs(&blob);              \
   wchar_t result[MAX_PATH];                                                 \
   auto error_##result = get_absolute_path(process, wchar_##result, result); \
   if (error_##result) return error_##result
 
-HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output, const wchar_t* used_for_relative = null);
+Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* output, const wchar_t* used_for_relative = null);
 
-#define _A_T_WindowsPath(N, name)                                           \
-  Object* _raw_##name = __args[-(N)];                                       \
-  Blob name##_blob;                                                         \
-  if (!_raw_##name->byte_content(process->program(), &name##_blob, STRINGS_ONLY)) WRONG_TYPE; \
+#define _A_T_WindowsPath(N, name)                                            \
+  Object* _raw_##name = __args[-(N)];                                        \
+  Blob name##_blob;                                                          \
+  if (!_raw_##name->byte_content(process->program(), &name##_blob, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE); \
   BLOB_TO_ABSOLUTE_PATH(name, name##_blob);
 
-#define _A_T_Blob(N, name)                                        \
-  Object* _raw_##name = __args[-(N)];                             \
-  Blob name;                                                      \
-  if (!_raw_##name->byte_content(process->program(), &name, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+#define _A_T_Blob(N, name)                                                   \
+  Object* _raw_##name = __args[-(N)];                                        \
+  uninitialized_t _u_##name;                                                 \
+  Blob name(_u_##name);                                                      \
+  if (!_raw_##name->byte_content(process->program(), &name, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
 
-#define _A_T_MutableBlob(N, name)                                                                  \
-  Object* _raw_##name = __args[-(N)];                                                              \
-  MutableBlob name;                                                                                \
-  Error* _mutable_blob_error_##name;                                                               \
-  if (!_raw_##name->mutable_byte_content(process, &name, &_mutable_blob_error_##name)) WRONG_TYPE; \
+#define _A_T_MutableBlob(N, name)                                            \
+  Object* _raw_##name = __args[-(N)];                                        \
+  MutableBlob name;                                                          \
+  Error* _mutable_blob_error_##name;                                         \
+  if (!_raw_##name->mutable_byte_content(process, &name, &_mutable_blob_error_##name)) FAIL(WRONG_OBJECT_TYPE); \
   if (name.address() == null) return _mutable_blob_error_##name;
 
 #define MAKE_UNPACKING_MACRO(Type, N, name)                      \
@@ -944,9 +944,9 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
   if (!name##_proxy->has_external_address() ||                   \
       name##_proxy->external_tag() < Type::tag_min ||            \
       name##_proxy->external_tag() > Type::tag_max)              \
-    WRONG_TYPE;                                                  \
+    FAIL(WRONG_OBJECT_TYPE);                                     \
   Type* name = name##_proxy->as_external<Type>();                \
-  if (!name) ALREADY_CLOSED;                                     \
+  if (!name) FAIL(ALREADY_CLOSED)                                \
 
 #define _A_T_SimpleResourceGroup(N, name) MAKE_UNPACKING_MACRO(SimpleResourceGroup, N, name)
 #define _A_T_DacResourceGroup(N, name)    MAKE_UNPACKING_MACRO(DacResourceGroup, N, name)
@@ -1153,29 +1153,8 @@ HeapObject* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t
     _A_4,  _ODD,         \
     _A_2,  _ODD)(__VA_ARGS__)
 
-// Macro for return a boolean object.
-#define BOOL(value) ((value) ? process->program()->true_object() : process->program()->false_object())
-
-#define ALLOCATION_FAILED return Primitive::mark_as_error(process->program()->allocation_failed())
-#define ALREADY_EXISTS return Primitive::mark_as_error(process->program()->already_exists())
-#define FILE_NOT_FOUND return Primitive::mark_as_error(process->program()->file_not_found())
-#define HARDWARE_ERROR return Primitive::mark_as_error(process->program()->hardware_error())
-#define ILLEGAL_UTF_8 return Primitive::mark_as_error(process->program()->illegal_utf_8())
-#define INVALID_ARGUMENT return Primitive::mark_as_error(process->program()->invalid_argument())
-#define MALLOC_FAILED return Primitive::mark_as_error(process->program()->malloc_failed())
-#define CROSS_PROCESS_GC return Primitive::mark_as_error(process->program()->cross_process_gc())
-#define NEGATIVE_ARGUMENT return Primitive::mark_as_error(process->program()->negative_argument())
-#define OUT_OF_BOUNDS return Primitive::mark_as_error(process->program()->out_of_bounds())
-#define OUT_OF_RANGE return Primitive::mark_as_error(process->program()->out_of_range())
-#define ALREADY_IN_USE return Primitive::mark_as_error(process->program()->already_in_use())
-#define OVERFLOW_ return Primitive::mark_as_error(process->program()->overflow())
-#define PERMISSION_DENIED return Primitive::mark_as_error(process->program()->permission_denied())
-#define QUOTA_EXCEEDED return Primitive::mark_as_error(process->program()->quota_exceeded())
-#define UNIMPLEMENTED_PRIMITIVE return Primitive::mark_as_error(process->program()->unimplemented())
-#define WRONG_TYPE return Primitive::mark_as_error(process->program()->wrong_object_type())
-#define ALREADY_CLOSED return Primitive::mark_as_error(process->program()->already_closed())
-
-#define OTHER_ERROR return Primitive::mark_as_error(process->program()->error())
+// Macro for returning a boolean object.
+#define BOOL(value) ((value) ? process->true_object() : process->false_object())
 
 // Support for validating a primitive is only invoked from the system process.
 #define PRIVILEGED \
@@ -1197,8 +1176,9 @@ class Primitive {
   // Use temporary tagging for marking an error.
   static bool is_error(Object* object) { return object->is_marked(); }
   static HeapObject* mark_as_error(HeapObject* object) { return object->mark(); }
-  static HeapObject* unmark_from_error(Object* object) { return object->unmark(); }
+  static Object* unmark_from_error(Program* program, Object* object);
   static Object* os_error(int error, Process* process);
+  static Object* return_not_a_smi(Process* process, Object* value);
 
   // Module-specific primitive lookup. May return null if the primitive isn't linked in.
   static const PrimitiveEntry* at(unsigned module, unsigned index) {
