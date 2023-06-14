@@ -6,7 +6,9 @@
 Network driver for wired Ethernet.
 */
 
+import esp32
 import gpio
+import log
 import monitor
 import net
 import net.udp
@@ -14,23 +16,27 @@ import net.tcp
 import spi
 
 import system.base.network show CloseableNetwork
+import net.modules.tcp as tcp_module
+import net.modules.udp as udp_module
+import net.modules.dns as dns_module
 
-import .modules.ethernet as ethernet_module
-import .modules.ethernet show
-    MAC_CHIP_ESP32 MAC_CHIP_W5500 MAC_CHIP_OPENETH
-    PHY_CHIP_NONE PHY_CHIP_IP101 PHY_CHIP_LAN8720 PHY_CHIP_DP83848
-import .modules.tcp as tcp_module
-import .modules.udp as udp_module
-import .modules.dns as dns_module
-import ..esp32
+MAC_CHIP_ESP32    ::= 0
+MAC_CHIP_W5500    ::= 1
+MAC_CHIP_OPENETH  ::= 2
 
-export MAC_CHIP_ESP32 MAC_CHIP_W5500 MAC_CHIP_OPENETH
-export PHY_CHIP_NONE PHY_CHIP_IP101 PHY_CHIP_LAN8720 PHY_CHIP_DP83848
+PHY_CHIP_NONE     ::= 0
+PHY_CHIP_IP101    ::= 1
+PHY_CHIP_LAN8720  ::= 2
+PHY_CHIP_DP83848  ::= 3
 
 ETHERNET_CONNECT_TIMEOUT_  ::= Duration --s=10
 ETHERNET_DHCP_TIMEOUT_     ::= Duration --s=16
 
-ethernet_/ethernet_module.Ethernet? := null
+ETHERNET_CONNECTED_    ::= 1 << 0
+ETHERNET_DHCP_SUCCESS_ ::= 1 << 1
+ETHERNET_DISCONNECTED_ ::= 1 << 2
+
+ethernet_/EthernetDriver_? := null
 ethernet_connecting_/monitor.Latch? := null
 
 /**
@@ -96,7 +102,7 @@ connect -> net.Interface
       // connection. We always set it to a value when leaving this path
       // and we always clear out the latch when we're done synchronizing.
       ethernet_connecting_ = monitor.Latch
-      ethernet := ethernet_module.Ethernet
+      ethernet := EthernetDriver_
           --phy_chip=phy_chip
           --phy_addr=phy_addr
           --phy_reset=phy_reset
@@ -183,3 +189,88 @@ class EthernetInterface_ extends CloseableNetwork implements net.Interface:
   with_ethernet_ [block]:
     if not open_: throw "interface is closed"
     block.call ethernet_
+
+class EthernetDriver_:
+  logger_/log.Logger ::= log.default.with_name "ethernet"
+
+  resource_group_ := null
+
+  constructor
+      --phy_chip/int
+      --phy_addr/int=-1
+      --phy_reset/gpio.Pin?=null
+      --mac_chip/int
+      --mac_mdc/gpio.Pin?
+      --mac_mdio/gpio.Pin?
+      --mac_spi_device/spi.Device?
+      --mac_int/gpio.Pin?:
+    if mac_chip == MAC_CHIP_ESP32 or mac_chip == MAC_CHIP_OPENETH:
+      resource_group_ = ethernet_init_esp32_
+        mac_chip
+        phy_chip
+        phy_addr
+        (phy_reset ? phy_reset.num : -1)
+        (mac_mdc ? mac_mdc.num : -1)
+        (mac_mdio ? mac_mdio.num : -1)
+    else:
+      if phy_chip != PHY_CHIP_NONE: throw "unexpected PHY chip selection"
+      resource_group_ = ethernet_init_spi_
+        mac_chip
+        (mac_spi_device as spi.Device_).device_
+        mac_int.num
+
+  close:
+    if resource_group_:
+      ethernet_close_ resource_group_
+      resource_group_ = null
+
+  connect:
+    logger_.debug "connecting"
+    while true:
+      resource := ethernet_connect_ resource_group_
+      res := monitor.ResourceState_ resource_group_ resource
+      state := res.wait
+      res.dispose
+      if (state & ETHERNET_CONNECTED_) != 0:
+        logger_.debug "connected"
+        return
+      else if (state & ETHERNET_DISCONNECTED_) != 0:
+        logger_.warn "connect failed"
+        close
+        throw "CONNECT_FAILED"
+
+  get_ip:
+    resource := ethernet_setup_ip_ resource_group_
+    res := monitor.ResourceState_ resource_group_ resource
+    state := res.wait
+    res.dispose
+    if (state & ETHERNET_DHCP_SUCCESS_) != 0:
+      ip := ethernet_get_ip_ resource
+      logger_.debug "got ip" --tags={"ip": ip}
+      return ip
+    close
+    throw "IP_ASSIGN_FAILED"
+
+  rssi -> int?:
+    return null
+
+ethernet_init_esp32_ mac_chip/int phy_chip/int phy_addr/int phy_reset_num/int mac_mdc_num/int mac_mdio_num/int:
+  #primitive.ethernet.init_esp32
+
+ethernet_init_spi_ mac_chip/int spi_device int_num/int:
+  #primitive.ethernet.init_spi
+
+ethernet_close_ resource_group:
+  #primitive.ethernet.close
+
+ethernet_connect_ resource_group:
+  #primitive.ethernet.connect
+
+ethernet_setup_ip_ resource_group:
+  #primitive.ethernet.setup_ip
+
+ethernet_disconnect_ resource_group resource:
+  #primitive.ethernet.disconnect
+
+ethernet_get_ip_ resource:
+  #primitive.ethernet.get_ip
