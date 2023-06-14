@@ -1,3 +1,0 @@
-<pkg:..>/service.toit:45:5: warning: Deprecated 'ServiceProvider.provides'
-    provides QubitroService.SELECTOR --handler=this --new
-    ^~~~~~~~
