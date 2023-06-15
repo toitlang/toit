@@ -84,14 +84,29 @@ int BaseMbedTlsSocket::add_certificate(X509Certificate* cert, const uint8_t* pri
   return ret;
 }
 
+static mbedtls_x509_crt* static_root_certs = null;
+
+static int toit_tls_verify(void* context, const mbedtls_x509_crt* certificate, mbedtls_x509_crt** chain) {
+  printf("Being called back for %p - gave %p.\n", certificate, static_root_certs);
+  *chain = static_root_certs;
+  static_root_certs = null;
+  return 0;
+}
+
+void BaseMbedTlsSocket::register_root_callback() {
+  mbedtls_ssl_conf_ca_cb(&conf_, toit_tls_verify, void_cast(this));
+}
+
 int BaseMbedTlsSocket::add_root_certificate(X509Certificate* cert) {
+  printf("Adding cert %p.\n", cert);
   // Copy to a per-certificate chain.
-  mbedtls_x509_crt** last = &root_certs_;
+  mbedtls_x509_crt** last = &static_root_certs;
   // Move to end of chain.
   while (*last != null) last = &(*last)->next;
   ASSERT(!cert->cert()->next);
   // Do a shallow copy of the cert.
   *last = _new mbedtls_x509_crt(*(cert->cert()));
+  printf("Added as shallow copy %p.\n", *last);
   if (*last == null) return MBEDTLS_ERR_PK_ALLOC_FAILED;
   // By default we don't enable certificate verification in server mode, but if
   // the user adds a root that indicates that they certainly want verification.
@@ -499,12 +514,18 @@ PRIMITIVE(close) {
   return process->null_object();
 }
 
+PRIMITIVE(add_global_root) {
+  ARGS(Blob, unparsed_cert);
+
+}
+
 PRIMITIVE(add_root_certificate) {
   ARGS(BaseMbedTlsSocket, socket, X509Certificate, cert);
   // You can only append a single cert, not a chain of certs.
   if (cert->cert()->next) FAIL(INVALID_ARGUMENT);
   int ret = socket->add_root_certificate(cert);
   if (ret != 0) return tls_error(null, process, ret);
+  socket->register_root_callback();
   return process->null_object();
 }
 

@@ -67,6 +67,7 @@ class BaseMbedTlsSocket : public TlsSocket {
   void apply_certs();
   int add_certificate(X509Certificate* cert, const uint8_t* private_key, size_t private_key_length, const uint8_t* password, int password_length);
   int add_root_certificate(X509Certificate* cert);
+  void register_root_callback();
   void uninit_certs();
   word handshake() override;
 
