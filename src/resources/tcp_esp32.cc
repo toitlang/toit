@@ -263,6 +263,7 @@ PRIMITIVE(listen) {
       Process*, process);
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
+    Process* process = capture.process;
     tcp_pcb* tpcb = tcp_new();
     if (tpcb == null) {
       delete capture.socket;
