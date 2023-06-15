@@ -25,6 +25,9 @@
 
 namespace toit {
 
+class UnparsedRootCertificate;
+typedef LinkedList<UnparsedRootCertificate> UnparsedRootCertificateList;
+
 // Process is linked into two different linked lists, so we have to make
 // use of the arbitrary N template argument to distinguish the two.
 typedef LinkedList<Process, 1> ProcessListFromProcessGroup;
@@ -291,6 +294,8 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   bool construction_failed_ = false;
   bool idle_since_gc_ = true;
+
+  UnparsedRootCertificateList root_certificates_;
 
   Profiler* profiler_ = null;
 

@@ -93,10 +93,6 @@ static int toit_tls_verify(void* context, const mbedtls_x509_crt* certificate, m
   return 0;
 }
 
-void BaseMbedTlsSocket::register_root_callback() {
-  mbedtls_ssl_conf_ca_cb(&conf_, toit_tls_verify, void_cast(this));
-}
-
 int BaseMbedTlsSocket::add_root_certificate(X509Certificate* cert) {
   printf("Adding cert %p.\n", cert);
   // Copy to a per-certificate chain.
@@ -514,9 +510,9 @@ PRIMITIVE(close) {
   return process->null_object();
 }
 
-PRIMITIVE(add_global_root) {
+PRIMITIVE(add_global_root_certificate) {
   ARGS(Blob, unparsed_cert);
-
+  mbedtls_ssl_conf_ca_cb(&conf_, toit_tls_verify, void_cast(process));
 }
 
 PRIMITIVE(add_root_certificate) {
@@ -525,7 +521,6 @@ PRIMITIVE(add_root_certificate) {
   if (cert->cert()->next) FAIL(INVALID_ARGUMENT);
   int ret = socket->add_root_certificate(cert);
   if (ret != 0) return tls_error(null, process, ret);
-  socket->register_root_callback();
   return process->null_object();
 }
 

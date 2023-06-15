@@ -112,6 +112,9 @@ PRIMITIVE(init) {
   return proxy;
 }
 
+bool X509ResourceGroup::get_certificate_data(Object* object, bool* needs_free, Object** tagged_error_result) {
+}
+
 PRIMITIVE(parse) {
   ARGS(X509ResourceGroup, resource_group, Object, input);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
@@ -119,7 +122,7 @@ PRIMITIVE(parse) {
   const uint8_t* data = null;
   size_t length = 0;
   Blob blob;
-  if (is_string(input)) {
+  if (is_string(input)) {  // Only for actual strings, not slices of strings.
     // For the PEM format, we must provide a zero-terminated string and
     // the size of the string including the termination character,
     // otherwise the parsing will fail.
@@ -129,6 +132,7 @@ PRIMITIVE(parse) {
     // Toit strings are stored null terminated.
     ASSERT(data[length - 1] == '\0');
     if (strlen(char_cast(data)) != length - 1) FAIL(INVALID_ARGUMENT);  // String with nulls in it.
+    if (!X509ResourceGroup::is_pem_format(data, length)) FAIL(INVALID_ARGUMENT);  // UTF-8 is not compatible with DER format.
   } else if (input->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) {
     // If we're passed a byte array or a string slice, and it's in
     // PEM format, we hope that it ends with a zero character.
