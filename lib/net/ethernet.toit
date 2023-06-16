@@ -8,8 +8,7 @@ import system.api.ethernet show EthernetServiceClient
 service_/EthernetServiceClient? := null
 service_initialized_/bool := false
 
-open config/Map -> net.Client
-    --name/string?=null:
+open --name/string?=null -> net.Client:
   if not service_initialized_:
     // We typically run the ethernet service in a non-system
     // container with --trigger=boot, so we need to give it
@@ -23,4 +22,4 @@ open config/Map -> net.Client
         --if_absent=: null
   service := service_
   if not service: throw "ethernet unavailable"
-  return net.Client service --name=name (service.connect config)
+  return net.Client service --name=name service.connect
