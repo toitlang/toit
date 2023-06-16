@@ -35,12 +35,56 @@ ETHERNET_CONNECTED_    ::= 1 << 0
 ETHERNET_DHCP_SUCCESS_ ::= 1 << 1
 ETHERNET_DISCONNECTED_ ::= 1 << 2
 
+/**
+Service provider for networking via the Ethernet peripheral.
+
+# Olimex Gateway
+The Olimex gateway needs an SDK config change:
+
+``` diff
+diff --git b/toolchains/esp32/sdkconfig a/toolchains/esp32/sdkconfig
+index df798c8..fef8c8a 100644
+--- b/toolchains/esp32/sdkconfig
++++ a/toolchains/esp32/sdkconfig
+@@ -492,9 +492,10 @@ CONFIG_ETH_ENABLED=y
+ CONFIG_ETH_USE_ESP32_EMAC=y
+ CONFIG_ETH_PHY_INTERFACE_RMII=y
+ # CONFIG_ETH_PHY_INTERFACE_MII is not set
+-CONFIG_ETH_RMII_CLK_INPUT=y
+-# CONFIG_ETH_RMII_CLK_OUTPUT is not set
+-CONFIG_ETH_RMII_CLK_IN_GPIO=0
++# CONFIG_ETH_RMII_CLK_INPUT is not set
++CONFIG_ETH_RMII_CLK_OUTPUT=y
++# CONFIG_ETH_RMII_CLK_OUTPUT_GPIO0 is not set
++CONFIG_ETH_RMII_CLK_OUT_GPIO=17
+ CONFIG_ETH_DMA_BUFFER_SIZE=512
+ CONFIG_ETH_DMA_RX_BUFFER_NUM=10
+ CONFIG_ETH_DMA_TX_BUFFER_NUM=10
+```
+
+After that, the ethernet service provider can be installed with:
+```
+  provider := EthernetServiceProvider
+      --phy_chip=ethernet.PHY_CHIP_LAN8720
+      --phy_address=0
+      --mac_chip=ethernet.MAC_CHIP_ESP32
+      --mac_mdc=gpio.Pin 23
+      --mac_mdio=gpio.Pin 18
+      --mac_spi_device=null
+      --mac_interrupt=null
+  provider.install
+```
+*/
 class EthernetServiceProvider extends ServiceProvider
     implements ServiceHandler:
 
   state_/NetworkState ::= NetworkState
   create_resource_group_/Lambda
 
+  /**
+  The $mac_chip must be one of $MAC_CHIP_ESP32 or $MAC_CHIP_W5500.
+  The $phy_chip must be one of $PHY_CHIP_NONE, $PHY_CHIP_IP101 or $PHY_CHIP_LAN8720.
+  */
   constructor
       --phy_chip/int
       --phy_address/int=-1
