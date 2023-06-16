@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 /**
-Network driver for wired Ethernet.
+Network driver as a service for wired Ethernet.
 */
 
 import esp32
@@ -27,13 +27,6 @@ PHY_CHIP_NONE     ::= 0
 PHY_CHIP_IP101    ::= 1
 PHY_CHIP_LAN8720  ::= 2
 PHY_CHIP_DP83848  ::= 3
-
-ETHERNET_CONNECT_TIMEOUT_  ::= Duration --s=10
-ETHERNET_DHCP_TIMEOUT_     ::= Duration --s=16
-
-ETHERNET_CONNECTED_    ::= 1 << 0
-ETHERNET_DHCP_SUCCESS_ ::= 1 << 1
-ETHERNET_DISCONNECTED_ ::= 1 << 2
 
 /**
 Service provider for networking via the Ethernet peripheral.
@@ -75,9 +68,7 @@ After that, the ethernet service provider can be installed with:
   provider.install
 ```
 */
-class EthernetServiceProvider extends ServiceProvider
-    implements ServiceHandler:
-
+class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
   state_/NetworkState ::= NetworkState
   create_resource_group_/Lambda
 
@@ -122,10 +113,8 @@ class EthernetServiceProvider extends ServiceProvider
     unreachable
 
   connect client/int -> List:
-    module ::= (state_.up: EthernetModule this create_resource_group_) as EthernetModule
+    module ::= (state_.up: EthernetModule_ this create_resource_group_) as EthernetModule_
     try:
-      // TODO(kasper): We should verify that the configuration
-      // of the ethernet module we got matches the one we requested.
       resource := NetworkResource this client state_ --notifiable
       return [
         resource.serialize_for_rpc,
@@ -138,15 +127,22 @@ class EthernetServiceProvider extends ServiceProvider
       if is_exception: state_.down
 
   address resource/NetworkResource -> ByteArray:
-    return (state_.module as EthernetModule).address.to_byte_array
+    return (state_.module as EthernetModule_).address.to_byte_array
 
-  on_module_closed module/EthernetModule -> none:
+  on_module_closed module/EthernetModule_ -> none:
     critical_do:
       resources_do: | resource/NetworkResource |
         if not resource.is_closed:
           resource.notify_ NetworkService.NOTIFY_CLOSED --close
 
-class EthernetModule implements NetworkModule:
+class EthernetModule_ implements NetworkModule:
+  static ETHERNET_CONNECT_TIMEOUT ::= Duration --s=10
+  static ETHERNET_DHCP_TIMEOUT    ::= Duration --s=16
+
+  static ETHERNET_CONNECTED    ::= 1 << 0
+  static ETHERNET_DHCP_SUCCESS ::= 1 << 1
+  static ETHERNET_DISCONNECTED ::= 1 << 2
+
   logger_/log.Logger ::= log.default.with_name "ethernet"
   service/EthernetServiceProvider
 
@@ -160,8 +156,8 @@ class EthernetModule implements NetworkModule:
     return address_
 
   connect -> none:
-    with_timeout ETHERNET_CONNECT_TIMEOUT_: wait_for_connected_
-    with_timeout ETHERNET_DHCP_TIMEOUT_: wait_for_dhcp_ip_address_
+    with_timeout ETHERNET_CONNECT_TIMEOUT: wait_for_connected_
+    with_timeout ETHERNET_DHCP_TIMEOUT: wait_for_dhcp_ip_address_
 
   disconnect -> none:
     if not resource_group_: return
@@ -178,10 +174,10 @@ class EthernetModule implements NetworkModule:
       ethernet_events := monitor.ResourceState_ resource_group_ resource
       state := ethernet_events.wait
       ethernet_events.dispose
-      if (state & ETHERNET_CONNECTED_) != 0:
+      if (state & ETHERNET_CONNECTED) != 0:
         logger_.debug "connected"
         return
-      else if (state & ETHERNET_DISCONNECTED_) != 0:
+      else if (state & ETHERNET_DISCONNECTED) != 0:
         logger_.warn "connect failed"
         throw "CONNECT_FAILED"
 
@@ -190,7 +186,7 @@ class EthernetModule implements NetworkModule:
     ip_events := monitor.ResourceState_ resource_group_ resource
     state := ip_events.wait
     ip_events.dispose
-    if (state & ETHERNET_DHCP_SUCCESS_) == 0: throw "IP_ASSIGN_FAILED"
+    if (state & ETHERNET_DHCP_SUCCESS) == 0: throw "IP_ASSIGN_FAILED"
     ip := ethernet_get_ip_ resource
     address_ = net.IpAddress ip
     logger_.info "network address dynamically assigned through dhcp" --tags={"ip": address_}
