@@ -113,7 +113,7 @@ class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
     unreachable
 
   connect client/int -> List:
-    module ::= (state_.up: EthernetModule_ this create_resource_group_) as EthernetModule_
+    state_.up: EthernetModule_ this create_resource_group_
     try:
       resource := NetworkResource this client state_ --notifiable
       return [
