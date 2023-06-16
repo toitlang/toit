@@ -11,7 +11,7 @@ interface EthernetService extends NetworkService:
       --major=0
       --minor=1
 
-  connect config/Map -> List
+  connect -> List
   static CONNECT_INDEX /int ::= 1000
 
 class EthernetServiceClient extends NetworkServiceClient implements EthernetService:
@@ -20,5 +20,5 @@ class EthernetServiceClient extends NetworkServiceClient implements EthernetServ
     assert: selector.matches SELECTOR
     super selector
 
-  connect config/Map -> List:
-    return invoke_ EthernetService.CONNECT_INDEX config
+  connect -> List:
+    return invoke_ EthernetService.CONNECT_INDEX null
