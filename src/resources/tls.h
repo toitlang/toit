@@ -63,8 +63,8 @@ class BaseMbedTlsSocket : public TlsSocket {
 
   mbedtls_ssl_context ssl;
 
-  virtual bool init(const char* transport_id) = 0;
-  void apply_certs();
+  virtual bool init() = 0;
+  void apply_certs(Process* process);
   int add_certificate(X509Certificate* cert, const uint8_t* private_key, size_t private_key_length, const uint8_t* password, int password_length);
   int add_root_certificate(X509Certificate* cert);
   void register_root_callback();
@@ -89,7 +89,7 @@ class MbedTlsSocket : public BaseMbedTlsSocket {
 
   Object* get_clear_outgoing();
 
-  virtual bool init(const char*);
+  virtual bool init();
 
   void set_incoming(Object* incoming, int from) {
     incoming_packet_ = incoming;

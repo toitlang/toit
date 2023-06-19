@@ -98,7 +98,6 @@ int BaseMbedTlsSocket::add_root_certificate(X509Certificate* cert) {
   ASSERT(!cert->cert()->next);
   // Do a shallow copy of the cert.
   *last = _new mbedtls_x509_crt(*(cert->cert()));
-  printf("Added as shallow copy %p.\n", *last);
   if (*last == null) return MBEDTLS_ERR_PK_ALLOC_FAILED;
   // By default we don't enable certificate verification in server mode, but if
   // the user adds a root that indicates that they certainly want verification.
@@ -106,9 +105,11 @@ int BaseMbedTlsSocket::add_root_certificate(X509Certificate* cert) {
   return 0;
 }
 
-void BaseMbedTlsSocket::apply_certs() {
+void BaseMbedTlsSocket::apply_certs(Process* process) {
   if (root_certs_) {
     mbedtls_ssl_conf_ca_chain(&conf_, root_certs_, null);
+  } else {
+    mbedtls_ssl_conf_ca_cb(&conf_, toit_tls_verify, void_cast(process));
   }
 }
 
@@ -548,10 +549,6 @@ PRIMITIVE(add_global_root_certificate) {
 
   process->add_root_certificate(root);
 
-  // We have added at least one cert to the chain, so we need to make sure the
-  // callback is set up to use it.
-  mbedtls_ssl_conf_ca_cb(&conf_, toit_tls_verify, void_cast(process));
-
   return process->null_object();
 }
 
@@ -608,8 +605,9 @@ static int toit_tls_recv(void* ctx, unsigned char * buf, size_t len) {
 
 PRIMITIVE(init_socket) {
   ARGS(BaseMbedTlsSocket, socket, cstring, transport_id);
-  socket->apply_certs();
-  if (!socket->init(transport_id)) FAIL(MALLOC_FAILED);
+  USE(transport_id);
+  socket->apply_certs(process);
+  if (!socket->init()) FAIL(MALLOC_FAILED);
   return process->null_object();
 }
 
@@ -618,7 +616,7 @@ PRIMITIVE(error) {
   return tls_error(group, process, -error);
 }
 
-bool MbedTlsSocket::init(const char*) {
+bool MbedTlsSocket::init() {
   if (int ret = mbedtls_ssl_setup(&ssl, &conf_)) {
     if (ret == MBEDTLS_ERR_SSL_ALLOC_FAILED) return false;
     FATAL("mbedtls_ssl_setup returned %d (not %d)", ret, MBEDTLS_ERR_SSL_ALLOC_FAILED);
