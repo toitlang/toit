@@ -297,7 +297,7 @@ class HeapObject : public Object {
     return reinterpret_cast<HeapObject*>(address + HEAP_TAG);
   }
 
-  inline bool on_program_heap(Process* process);
+  inline bool on_program_heap(Process* process) const;
 
   static int allocation_size() { return _align(SIZE); }
   static void allocation_size(int* word_count, int* extra_bytes) {

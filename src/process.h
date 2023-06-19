@@ -236,7 +236,7 @@ class Process : public ProcessListFromProcessGroup::Element,
     delete p;
   }
 
-  inline bool on_program_heap(HeapObject* object) {
+  inline bool on_program_heap(const HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     return address - program_heap_address_ < program_heap_size_;
   }

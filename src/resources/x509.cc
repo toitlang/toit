@@ -112,16 +112,10 @@ PRIMITIVE(init) {
   return proxy;
 }
 
-bool X509ResourceGroup::get_certificate_data(Object* object, bool* needs_free, Object** tagged_error_result) {
-}
-
-PRIMITIVE(parse) {
-  ARGS(X509ResourceGroup, resource_group, Object, input);
-  HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
-
-  const uint8_t* data = null;
-  size_t length = 0;
+Object* X509ResourceGroup::get_certificate_data(Process* process, Object* input, bool* needs_free, const uint8** data_return, size_t* length_return) {
   Blob blob;
+  const uint8* data = null;
+  size_t length = 0;
   if (is_string(input)) {  // Only for actual strings, not slices of strings.
     // For the PEM format, we must provide a zero-terminated string and
     // the size of the string including the termination character,
@@ -140,12 +134,39 @@ PRIMITIVE(parse) {
     data = blob.address();
     length = blob.length();
     bool is_pem = X509ResourceGroup::is_pem_format(data, length);
-    if (is_pem && (length < 1 || data[length - 1] != '\0')) FAIL(INVALID_ARGUMENT);
+    if (is_pem && (length < 1 || data[length - 1] != '\0')) {
+      // We need to add a zero character to the end of the string.
+      // We can't do that in place, so we need to allocate a new
+      // string.
+      uint8* new_data = _new uint8[length + 1];
+      if (!new_data) FAIL(MALLOC_FAILED);
+      memcpy(new_data, data, length);
+      new_data[length] = '\0';
+      data = new_data;
+      length++;
+      *needs_free = true;
+    }
   } else {
     FAIL(WRONG_OBJECT_TYPE);
   }
-  bool in_flash = HeapObject::cast(input)->on_program_heap(process);
-  return resource_group->parse(process, data, length, in_flash);
+  *length_return = length;
+  *data_return = data;
+  return null;
+}
+
+PRIMITIVE(parse) {
+  ARGS(X509ResourceGroup, resource_group, Object, input);
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
+
+  const uint8_t* data = null;
+  size_t length = 0;
+  bool needs_free = false;
+  Object* result = X509ResourceGroup::get_certificate_data(process, input, &needs_free, &data, &length);
+  if (result) return result;  // Error.
+  bool in_flash = reinterpret_cast<const HeapObject*>(data)->on_program_heap(process);
+  result = resource_group->parse(process, data, length, in_flash);
+  if (needs_free) delete data;
+  return result;
 }
 
 PRIMITIVE(get_common_name) {

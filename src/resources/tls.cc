@@ -512,7 +512,8 @@ PRIMITIVE(close) {
 
 PRIMITIVE(add_global_root_certificate) {
   ARGS(Blob, unparsed_cert);
-  mbedtls_ssl_conf_ca_cb(&conf_, toit_tls_verify, void_cast(process));
+  //mbedtls_ssl_conf_ca_cb(&conf_, toit_tls_verify, void_cast(process));
+  return null;
 }
 
 PRIMITIVE(add_root_certificate) {
