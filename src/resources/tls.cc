@@ -541,6 +541,11 @@ PRIMITIVE(add_global_root_certificate) {
     data = copy;
   }
 
+  if (process->already_has_root_certificate(data, length)) {
+    if (!in_flash) delete data;
+    return process->null_object();
+  }
+
   UnparsedRootCertificate* root = _new UnparsedRootCertificate(data, length);
   if (!root) {
     if (!in_flash) delete data;

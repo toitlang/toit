@@ -21,6 +21,7 @@
 #include "messaging.h"
 #include "profiler.h"
 #include "resource.h"
+#include "sha.h"
 #include "snapshot_bundle.h"
 
 namespace toit {
@@ -30,10 +31,12 @@ typedef LinkedFifo<UnparsedRootCertificate> UnparsedRootCertificateList;
 
 class UnparsedRootCertificate: public UnparsedRootCertificateList::Element {
  public:
-  UnparsedRootCertificate(const uint8* data, size_t length) : data(data), length(length) {}
+  UnparsedRootCertificate(const uint8* data, size_t length);
+  bool matches_hash(uint8* hash) const;
 
  private:
   const uint8* data;
+  uint8 hash[Sha::HASH_LENGTH_256];  // Hash of unparsed version.
   size_t length;
 };
 
@@ -257,6 +260,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   void add_root_certificate(UnparsedRootCertificate* certificate) {
     root_certificates_.append(certificate);
   }
+
+  bool already_has_root_certificate(const uint8* data, size_t length);
 
  private:
   Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
