@@ -84,19 +84,15 @@ int BaseMbedTlsSocket::add_certificate(X509Certificate* cert, const uint8_t* pri
   return ret;
 }
 
-static mbedtls_x509_crt* static_root_certs = null;
-
 static int toit_tls_verify(void* context, const mbedtls_x509_crt* certificate, mbedtls_x509_crt** chain) {
-  printf("Being called back for %p - gave %p.\n", certificate, static_root_certs);
-  *chain = static_root_certs;
-  static_root_certs = null;
+  //Process* process = unvoid_cast<Process*>(context);
+  printf("toit_tls_verify: Being called back for %p.\n", certificate);
   return 0;
 }
 
 int BaseMbedTlsSocket::add_root_certificate(X509Certificate* cert) {
-  printf("Adding cert %p.\n", cert);
-  // Copy to a per-certificate chain.
-  mbedtls_x509_crt** last = &static_root_certs;
+  // Copy to a per-socket chain.
+  mbedtls_x509_crt** last = &root_certs_;
   // Move to end of chain.
   while (*last != null) last = &(*last)->next;
   ASSERT(!cert->cert()->next);
@@ -511,9 +507,52 @@ PRIMITIVE(close) {
 }
 
 PRIMITIVE(add_global_root_certificate) {
-  ARGS(Blob, unparsed_cert);
-  //mbedtls_ssl_conf_ca_cb(&conf_, toit_tls_verify, void_cast(process));
-  return null;
+  ARGS(Object, unparsed_cert);
+  bool needs_free = false;
+  const uint8* data = null;
+  size_t length = 0;
+  Object* result = X509ResourceGroup::get_certificate_data(process, unparsed_cert, &needs_free, &data, &length);
+  if (result) return result;  // Error case.
+
+  // The global roots are parsed on demand, but we parse them now, then discard
+  // the result, to get an early error message.
+  mbedtls_x509_crt cert;
+  mbedtls_x509_crt_init(&cert);
+  int ret;
+  if (X509ResourceGroup::is_pem_format(data, length)) {
+    ret = mbedtls_x509_crt_parse(&cert, data, length);
+  } else {
+    ret = mbedtls_x509_crt_parse_der_nocopy(&cert, data, length);
+  }
+  mbedtls_x509_crt_free(&cert);
+  if (ret != 0) {
+    if (needs_free) delete data;
+    return tls_error(null, process, ret);
+  }
+
+  // Parsing worked, so lets add the root cert to the chain on the process.
+  bool in_flash = reinterpret_cast<const HeapObject*>(data)->on_program_heap(process);
+  if (!needs_free && !in_flash) {
+    // We can't keep around a pointer to the on-heap data, so make a copy.
+    uint8* copy = _new uint8[length];
+    if (!copy) FAIL(MALLOC_FAILED);
+    memcpy(copy, data, length);
+    data = copy;
+  }
+
+  UnparsedRootCertificate* root = _new UnparsedRootCertificate(data, length);
+  if (!root) {
+    if (!in_flash) delete data;
+    FAIL(MALLOC_FAILED);
+  }
+
+  process->add_root_certificate(root);
+
+  // We have added at least one cert to the chain, so we need to make sure the
+  // callback is set up to use it.
+  mbedtls_ssl_conf_ca_cb(&conf_, toit_tls_verify, void_cast(process));
+
+  return process->null_object();
 }
 
 PRIMITIVE(add_root_certificate) {

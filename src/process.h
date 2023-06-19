@@ -26,7 +26,16 @@
 namespace toit {
 
 class UnparsedRootCertificate;
-typedef LinkedList<UnparsedRootCertificate> UnparsedRootCertificateList;
+typedef LinkedFifo<UnparsedRootCertificate> UnparsedRootCertificateList;
+
+class UnparsedRootCertificate: public UnparsedRootCertificateList::Element {
+ public:
+  UnparsedRootCertificate(const uint8* data, size_t length) : data(data), length(length) {}
+
+ private:
+  const uint8* data;
+  size_t length;
+};
 
 // Process is linked into two different linked lists, so we have to make
 // use of the arbitrary N template argument to distinguish the two.
@@ -244,6 +253,10 @@ class Process : public ProcessListFromProcessGroup::Element,
   inline HeapObject* false_object() const { return false_object_; }
   inline HeapObject* true_object() const { return true_object_; }
   inline HeapObject* null_object() const { return null_; }
+
+  void add_root_certificate(UnparsedRootCertificate* certificate) {
+    root_certificates_.append(certificate);
+  }
 
  private:
   Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
