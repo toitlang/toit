@@ -419,14 +419,14 @@ bool Process::already_has_root_certificate(const uint8* data, size_t length) {
 }
 
 UnparsedRootCertificate::UnparsedRootCertificate(const uint8* data, size_t length)
-    : data(data), length(length) {
+    : data_(data), length_(length) {
   Sha sha256(null, 256);
-  sha256.add(data, length);
-  sha256.get(hash);
+  sha256.add(data_, length_);
+  sha256.get(hash_);
 }
 
 bool UnparsedRootCertificate::matches_hash(uint8* hash) const {
-  return memcmp(hash, this->hash, Sha::HASH_LENGTH_256) == 0;
+  return memcmp(hash, hash_, Sha::HASH_LENGTH_256) == 0;
 }
 
 }

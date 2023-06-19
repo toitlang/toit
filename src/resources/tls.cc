@@ -84,12 +84,6 @@ int BaseMbedTlsSocket::add_certificate(X509Certificate* cert, const uint8_t* pri
   return ret;
 }
 
-static int toit_tls_verify(void* context, const mbedtls_x509_crt* certificate, mbedtls_x509_crt** chain) {
-  //Process* process = unvoid_cast<Process*>(context);
-  printf("toit_tls_verify: Being called back for %p.\n", certificate);
-  return 0;
-}
-
 int BaseMbedTlsSocket::add_root_certificate(X509Certificate* cert) {
   // Copy to a per-socket chain.
   mbedtls_x509_crt** last = &root_certs_;
@@ -102,6 +96,33 @@ int BaseMbedTlsSocket::add_root_certificate(X509Certificate* cert) {
   // By default we don't enable certificate verification in server mode, but if
   // the user adds a root that indicates that they certainly want verification.
   mbedtls_ssl_conf_authmode(&conf_, MBEDTLS_SSL_VERIFY_REQUIRED);
+  return 0;
+}
+
+// Use the unparsed certificates on the process to find the right one
+// for this connection.
+static int toit_tls_verify(void* context, const mbedtls_x509_crt* certificate, mbedtls_x509_crt** chain) {
+  Process* process = unvoid_cast<Process*>(context);
+  *chain = null;
+  mbedtls_x509_crt cert;
+  mbedtls_x509_crt_init(&cert);
+  for (auto unparsed : process->root_certificates()) {
+    int ret;
+    mbedtls_x509_crt* cert = _new mbedtls_x509_crt;
+    mbedtls_x509_crt_init(cert);
+    if (X509ResourceGroup::is_pem_format(unparsed->data(), unparsed->length())) {
+      ret = mbedtls_x509_crt_parse(cert, unparsed->data(), unparsed->length());
+    } else {
+      ret = mbedtls_x509_crt_parse_der_nocopy(cert, unparsed->data(), unparsed->length());
+    }
+    *chain = cert;
+    // TODO: Chain them up!
+    if (ret != 0) {
+      printf("toit_tls_verify: Parsing cert failed.\n");
+      return ret;
+    }
+  }
+  printf("toit_tls_verify: Being called back for %p.\n", certificate);
   return 0;
 }
 

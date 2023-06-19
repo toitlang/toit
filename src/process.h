@@ -34,10 +34,13 @@ class UnparsedRootCertificate: public UnparsedRootCertificateList::Element {
   UnparsedRootCertificate(const uint8* data, size_t length);
   bool matches_hash(uint8* hash) const;
 
+  const uint8* data() const { return data_; }
+  size_t length() const { return length_; }
+
  private:
-  const uint8* data;
-  uint8 hash[Sha::HASH_LENGTH_256];  // Hash of unparsed version.
-  size_t length;
+  const uint8* data_;
+  uint8 hash_[Sha::HASH_LENGTH_256];  // Hash of unparsed version.
+  size_t length_;
 };
 
 // Process is linked into two different linked lists, so we have to make
@@ -262,6 +265,10 @@ class Process : public ProcessListFromProcessGroup::Element,
   }
 
   bool already_has_root_certificate(const uint8* data, size_t length);
+
+  UnparsedRootCertificateList& root_certificates() {
+    return root_certificates_;
+  }
 
  private:
   Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
