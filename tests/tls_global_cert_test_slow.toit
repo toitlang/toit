@@ -176,8 +176,9 @@ add_global_certs -> none:
   tls_add_global_root_certificate ISRG_ROOT_X1_TEXT
   // Test that the cert can be a slice.
   tls_add_global_root_certificate DIGICERT_ROOT_TEXT[..DIGICERT_ROOT_TEXT.size - 9]
-  // Test a binary (DER) root.
+  // Test binary (DER) roots.
   tls_add_global_root_certificate DIGICERT_GLOBAL_ROOT_G2_BYTES
+  tls_add_global_root_certificate DIGICERT_GLOBAL_ROOT_CA_BYTES
   // Test a binary root that is a modified copy-on-write byte array.
   DIGICERT_ASSURED_ID_ROOT_G3_BYTES[42] ^= 42
   DIGICERT_ASSURED_ID_ROOT_G3_BYTES[42] ^= 42

@@ -106,24 +106,36 @@ static int toit_tls_verify(void* context, const mbedtls_x509_crt* certificate, m
   *chain = null;
   mbedtls_x509_crt cert;
   mbedtls_x509_crt_init(&cert);
+  int ret;
+  mbedtls_x509_crt** last = chain;
   for (auto unparsed : process->root_certificates()) {
-    int ret;
     mbedtls_x509_crt* cert = _new mbedtls_x509_crt;
+    if (!cert) {
+      ret = MBEDTLS_ERR_X509_ALLOC_FAILED;
+      goto failed;
+    }
+
     mbedtls_x509_crt_init(cert);
     if (X509ResourceGroup::is_pem_format(unparsed->data(), unparsed->length())) {
       ret = mbedtls_x509_crt_parse(cert, unparsed->data(), unparsed->length());
     } else {
       ret = mbedtls_x509_crt_parse_der_nocopy(cert, unparsed->data(), unparsed->length());
     }
-    *chain = cert;
-    // TODO: Chain them up!
-    if (ret != 0) {
-      printf("toit_tls_verify: Parsing cert failed.\n");
-      return ret;
-    }
+    if (ret != 0) goto failed;
+    *last = cert;
+    last = &cert->next;
   }
-  printf("toit_tls_verify: Being called back for %p.\n", certificate);
   return 0;
+
+failed:
+  printf("toit_tls_verify: Parsing cert failed.\n");
+  for (mbedtls_x509_crt* cert = *chain; cert; ) {
+    mbedtls_x509_crt* next = cert->next;
+    mbedtls_x509_crt_free(cert);
+    delete cert;
+    cert = next;
+  }
+  return ret;
 }
 
 void BaseMbedTlsSocket::apply_certs(Process* process) {
