@@ -17,10 +17,11 @@
 
 #if !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
-#include <mbedtls/error.h>
-#include <mbedtls/pem.h>
-#include <mbedtls/gcm.h>
 #include <mbedtls/chachapoly.h>
+#include <mbedtls/error.h>
+#include <mbedtls/gcm.h>
+#include <mbedtls/oid.h>
+#include <mbedtls/pem.h>
 #include <mbedtls/platform.h>
 #if MBEDTLS_VERSION_MAJOR >= 3
 #include <../library/ssl_misc.h>
@@ -540,13 +541,30 @@ PRIMITIVE(close) {
   return process->null_object();
 }
 
+static int extension_callback(void* context, const mbedtls_x509_crt* crt, const mbedtls_x509_buf* oid, int critical, const uint8* start, const uint8* end) {
+  auto root = unvoid_cast<UnparsedRootCertificate*>(context);
+  if (oid->len == strlen(MBEDTLS_OID_SUBJECT_KEY_IDENTIFIER) &&
+      memcmp(oid->p, MBEDTLS_OID_SUBJECT_KEY_IDENTIFIER, oid->len) == 0) {
+    root->set_subject_key_identifier(start, end - start);
+  }
+  return 0;
+}
+
 PRIMITIVE(add_global_root_certificate) {
   ARGS(Object, unparsed_cert);
   bool needs_free = false;
   const uint8* data = null;
   size_t length = 0;
+
   Object* result = X509ResourceGroup::get_certificate_data(process, unparsed_cert, &needs_free, &data, &length);
   if (result) return result;  // Error case.
+
+  bool in_flash = reinterpret_cast<const HeapObject*>(data)->on_program_heap(process);
+  UnparsedRootCertificate* root = _new UnparsedRootCertificate(data, length);
+  if (!root) {
+    if (!in_flash) delete data;
+    FAIL(MALLOC_FAILED);
+  }
 
   // The global roots are parsed on demand, but we parse them now, then discard
   // the result, to get an early error message.
@@ -556,7 +574,8 @@ PRIMITIVE(add_global_root_certificate) {
   if (X509ResourceGroup::is_pem_format(data, length)) {
     ret = mbedtls_x509_crt_parse(&cert, data, length);
   } else {
-    ret = mbedtls_x509_crt_parse_der_nocopy(&cert, data, length);
+    bool copy_data = false;
+    ret = mbedtls_x509_crt_parse_der_with_ext_cb(&cert, data, length, copy_data, extension_callback, root);
   }
   mbedtls_x509_crt_free(&cert);
   if (ret != 0) {
@@ -565,7 +584,6 @@ PRIMITIVE(add_global_root_certificate) {
   }
 
   // Parsing worked, so lets add the root cert to the chain on the process.
-  bool in_flash = reinterpret_cast<const HeapObject*>(data)->on_program_heap(process);
   if (!needs_free && !in_flash) {
     // We can't keep around a pointer to the on-heap data, so make a copy.
     uint8* copy = _new uint8[length];
@@ -577,12 +595,6 @@ PRIMITIVE(add_global_root_certificate) {
   if (process->already_has_root_certificate(data, length)) {
     if (!in_flash) delete data;
     return process->null_object();
-  }
-
-  UnparsedRootCertificate* root = _new UnparsedRootCertificate(data, length);
-  if (!root) {
-    if (!in_flash) delete data;
-    FAIL(MALLOC_FAILED);
   }
 
   process->add_root_certificate(root);
