@@ -119,6 +119,10 @@ Process::~Process() {
   while (has_messages()) {
     remove_first_message();
   }
+
+  while (!root_certificates_.is_empty()) {
+    delete root_certificates_.remove_first();
+  }
 }
 
 void Process::set_main_arguments(uint8* arguments) {
