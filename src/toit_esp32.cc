@@ -123,8 +123,9 @@ static void start() {
   // when a new firmware has been installed, so if we're not in a situation
   // where the boot image was rejected and the boot image has changed as part
   // of running the VM, we consider it a firmware update.
+  const esp_partition_t* running = esp_ota_get_running_partition();
   bool firmware_updated = !firmware_rejected && supports_ota &&
-      esp_ota_get_boot_partition() != esp_ota_get_running_partition();
+      esp_ota_get_boot_partition() != running;
 
   if (firmware_updated) {
     // If we're updating the firmware, we call esp_restart to ensure we fully
@@ -146,22 +147,30 @@ static void start() {
       break;
     }
 
-    case Scheduler::EXIT_ERROR:
-#ifndef CONFIG_IDF_TARGET_ESP32C3
-      ESP_LOGE("Toit", "VM exited with error, restarting.");
-#endif
-      // 1s sleep before restart, after an error.
+    case Scheduler::EXIT_ERROR: {
+      esp_ota_img_states_t ota_state;
+      esp_err_t err = esp_ota_get_state_partition(running, &ota_state);
+      // If we are running from the factory partition esp_ota_get_state_partition()
+      // fails. In that case, we're not rejecting a firmware update.
+      if (err == ESP_OK && ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
+        ets_printf("[toit] WARN: firmware update rejected; doing chip reset\n");
+        esp_restart();  // Careful: This clears the RTC memory.
+      }
+
+      // Sleep for 1s before restarting after an error.
+      ets_printf("[toit] WARN: ...\n");
       esp_sleep_enable_timer_wakeup(1000000);
       break;
+    }
 
-    case Scheduler::EXIT_DONE:
-#ifndef CONFIG_IDF_TARGET_ESP32C3
-      ESP_LOGE("Toit", "VM exited, going into deep sleep.");
-#endif
+    case Scheduler::EXIT_DONE: {
+      ets_printf("[toit] INFO: ...\n");
       break;
+    }
 
-    case Scheduler::EXIT_NONE:
+    case Scheduler::EXIT_NONE: {
       UNREACHABLE();
+    }
   }
 
   RtcMemory::on_deep_sleep_start();
