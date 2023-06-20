@@ -653,7 +653,7 @@ Object* nimble_error_code_to_string(Process* process, int error_code, bool host)
   return Primitive::mark_as_error(str);
 }
 
-Object* nimle_stack_error(Process* process, int error_code) {
+static Object* nimble_stack_error(Process* process, int error_code) {
   return nimble_error_code_to_string(process, error_code, false);
 }
 
@@ -1333,7 +1333,7 @@ PRIMITIVE(scan_start) {
   /* Figure out address to use while advertising (no privacy for now) */
   int err = ble_hs_id_infer_auto(0, &own_addr_type);
   if (err != BLE_ERR_SUCCESS) {
-    return nimle_stack_error(process,err);
+    return nimble_stack_error(process, err);
   }
 
   ble_gap_disc_params disc_params{};
@@ -1357,7 +1357,7 @@ PRIMITIVE(scan_start) {
                      BleCentralManagerResource::on_discovery, central_manager);
 
   if (err != BLE_ERR_SUCCESS) {
-    return nimle_stack_error(process,err);
+    return nimble_stack_error(process, err);
   }
 
   return process->null_object();
@@ -1449,7 +1449,7 @@ PRIMITIVE(scan_stop) {
   if (BleCentralManagerResource::is_scanning()) {
     int err = ble_gap_disc_cancel();
     if (err != BLE_ERR_SUCCESS) {
-      return nimle_stack_error(process,err);
+      return nimble_stack_error(process, err);
     }
     // If ble_gap_disc_cancel returns without an error, the discovery has stopped and NimBLE will not provide an
     // event. So we fire the event manually.
@@ -1466,7 +1466,7 @@ PRIMITIVE(connect) {
 
   int err = ble_hs_id_infer_auto(0, &own_addr_type);
   if (err != BLE_ERR_SUCCESS) {
-    return nimle_stack_error(process,err);
+    return nimble_stack_error(process, err);
   }
 
   ble_addr_t addr{};
@@ -1483,7 +1483,7 @@ PRIMITIVE(connect) {
                         BleRemoteDeviceResource::on_event, device);
   if (err != BLE_ERR_SUCCESS) {
     delete device;
-    return nimle_stack_error(process,err);
+    return nimble_stack_error(process, err);
   }
 
   proxy->set_external_address(device);
@@ -1513,7 +1513,7 @@ PRIMITIVE(discover_services) {
         BleRemoteDeviceResource::on_service_discovered,
         device);
     if (err != BLE_ERR_SUCCESS) {
-      return nimle_stack_error(process,err);
+      return nimble_stack_error(process, err);
     }
   } else if (raw_service_uuids->length() == 1) {
     Blob blob;
@@ -1526,7 +1526,7 @@ PRIMITIVE(discover_services) {
         BleRemoteDeviceResource::on_service_discovered,
         device);
     if (err != BLE_ERR_SUCCESS) {
-      return nimle_stack_error(process,err);
+      return nimble_stack_error(process, err);
     }
   } else FAIL(INVALID_ARGUMENT);
 
@@ -1572,7 +1572,7 @@ PRIMITIVE(discover_services_result) {
 
 PRIMITIVE(discover_characteristics){
   ARGS(BleServiceResource, service, Array, raw_characteristics_uuids)
-  // Nimble has a funny thing about descriptors (needed for subscriptions), where all characteristics
+  // NimBLE has a funny thing about descriptors (needed for subscriptions), where all characteristics
   // need to be discovered to discover descriptors. Therefore, we ignore the raw_characteristics_uuids
   // and always discover all, if they haven't been discovered yet.
   USE(raw_characteristics_uuids);
@@ -1583,7 +1583,7 @@ PRIMITIVE(discover_characteristics){
                                       BleServiceResource::on_characteristic_discovered,
                                       service);
     if (err != BLE_ERR_SUCCESS) {
-      return nimle_stack_error(process,err);
+      return nimble_stack_error(process, err);
     }
   } else {
     BleEventSource::instance()->on_event(service, kBleCharacteristicsDiscovered);
@@ -1741,7 +1741,7 @@ PRIMITIVE(write_value) {
     // The 'om' buffer is always consumed by the call to
     // ble_gattc_write_long() or ble_gattc_write_no_rsp()
     // regardless of the outcome.
-    return nimle_stack_error(process, err);
+    return nimble_stack_error(process, err);
   }
 
   return Smi::from(with_response ? 1 : 0);
@@ -1774,7 +1774,7 @@ PRIMITIVE(set_characteristic_notify) {
         characteristic);
 
     if (err != BLE_ERR_SUCCESS) {
-      return nimle_stack_error(process,err);
+      return nimble_stack_error(process, err);
     }
   }
 
@@ -1899,14 +1899,14 @@ PRIMITIVE(advertise_start) {
   int err = ble_gap_adv_set_fields(&fields);
   if (err != BLE_ERR_SUCCESS) {
     if (err == BLE_HS_EMSGSIZE) FAIL(OUT_OF_RANGE);
-    return nimle_stack_error(process, err);
+    return nimble_stack_error(process, err);
   }
 
   if (uses_scan_response) {
     err = ble_gap_adv_rsp_set_fields(&response_fields);
     if (err != BLE_ERR_SUCCESS) {
       if (err == BLE_HS_EMSGSIZE) FAIL(OUT_OF_RANGE);
-      return nimle_stack_error(process, err);
+      return nimble_stack_error(process, err);
     }
   }
 
@@ -1927,8 +1927,7 @@ PRIMITIVE(advertise_start) {
       BlePeripheralManagerResource::on_gap,
       peripheral_manager);
   if (err != BLE_ERR_SUCCESS) {
-
-    return nimle_stack_error(process, err);
+    return nimble_stack_error(process, err);
   }
   peripheral_manager->set_advertising_started(true);
   // nimble does not provide a advertise started gap event, so we just simulate the event
@@ -1942,7 +1941,7 @@ PRIMITIVE(advertise_stop) {
   if (BlePeripheralManagerResource::is_advertising()) {
     int err = ble_gap_adv_stop();
     if (err != BLE_ERR_SUCCESS) {
-      return nimle_stack_error(process,err);
+      return nimble_stack_error(process, err);
     }
   }
   peripheral_manager->set_advertising_started(false);
@@ -2147,7 +2146,7 @@ PRIMITIVE(deploy_service) {
   if (rc != BLE_ERR_SUCCESS) {
     free(gatt_services);
     clean_up_gatt_svr_chars(gatt_svr_chars, characteristic_count);
-    return nimle_stack_error(process, rc);
+    return nimble_stack_error(process, rc);
   }
 
   // NimBLE does not do async service deployments, so
@@ -2220,7 +2219,7 @@ PRIMITIVE(notify_characteristics_value) {
     // The 'om' buffer is always consumed by the call to
     // ble_gattc_notify_custom() or ble_gattc_indicate_custom()
     // regardless of the outcome.
-    return nimle_stack_error(process, err);
+    return nimble_stack_error(process, err);
   }
 
   return process->null_object();
