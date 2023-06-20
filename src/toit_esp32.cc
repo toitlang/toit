@@ -143,7 +143,7 @@ static void start() {
       else if (ms > MAX_MS) ms = MAX_MS;
       ets_printf("[toit] INFO: entering deep sleep for %lldms\n", ms);
       err_t err = esp_sleep_enable_timer_wakeup(ms * 1000);
-      if (err != ERR_OK) FATAL("Cannot enable deep sleep timer");
+      if (err != ERR_OK) FATAL("cannot enable deep sleep timer");
       break;
     }
 
@@ -158,13 +158,13 @@ static void start() {
       }
 
       // Sleep for 1s before restarting after an error.
-      ets_printf("[toit] WARN: ...\n");
+      ets_printf("[toit] WARN: entering deep sleep for 1s due to error\n");
       esp_sleep_enable_timer_wakeup(1000000);
       break;
     }
 
     case Scheduler::EXIT_DONE: {
-      ets_printf("[toit] INFO: ...\n");
+      ets_printf("[toit] INFO: entering deep sleep without wakeup time\n");
       break;
     }
 
