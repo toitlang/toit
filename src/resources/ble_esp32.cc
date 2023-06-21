@@ -236,14 +236,6 @@ class BleReadWriteElement : public BleErrorCapableResource {
     mbuf_to_send_ = mbuf;
   }
 
-  void set_read_request_mbuf(os_mbuf* mbuf) {
-    read_request_mbuf_ = mbuf;
-  }
-
-  os_mbuf* get_read_request_mbuf() {
-    return read_request_mbuf_;
-  }
-
   static int on_attribute_read(uint16_t conn_handle,
                                const ble_gatt_error *error,
                                ble_gatt_attr *attr,
@@ -595,13 +587,13 @@ class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManage
 
   ble_gap_adv_params& advertising_params() { return advertising_params_; }
 
-  static int on_gap(struct ble_gap_event *event, void *arg) {
+  static int on_gap(struct ble_gap_event* event, void* arg) {
     return unvoid_cast<BlePeripheralManagerResource*>(arg)->_on_gap(event);
   }
   static bool is_advertising() { return ble_gap_adv_active(); }
 
  private:
-  int _on_gap(struct ble_gap_event *event);
+  int _on_gap(struct ble_gap_event* event);
   ble_gap_adv_params advertising_params_;
   bool advertising_started_;
 };
@@ -1092,13 +1084,13 @@ bool BleCharacteristicResource::update_subscription_status(uint8_t indicate, uin
     }
   }
 
-  auto subscription = _new Subscription(indicate,notify,conn_handle);
+  auto subscription = _new Subscription(indicate, notify, conn_handle);
   if (!subscription) {
     // Since this method is called from the BLE event handler and there is no
     // toit code monitoring the interaction, we resort to calling gc by hand to
     // try to recover on OOM.
     VM::current()->scheduler()->gc(null, /* malloc_failed = */ true, /* try_hard = */ true);
-    subscription = _new Subscription(indicate,notify,conn_handle);
+    subscription = _new Subscription(indicate, notify, conn_handle);
     if (!subscription) return false;
   }
 
@@ -1123,7 +1115,6 @@ int BlePeripheralManagerResource::_on_gap(struct ble_gap_event* event) {
           ESP_LOGW("BLE", "Could not restart advertising: err=%d", err);
         }
       }
-
       break;
     case BLE_GAP_EVENT_ADV_COMPLETE:
       // TODO(mikkel): Add stopped event.
@@ -1137,7 +1128,6 @@ int BlePeripheralManagerResource::_on_gap(struct ble_gap_event* event) {
                 event->subscribe.cur_indicate,
                 event->subscribe.cur_notify,
                 event->subscribe.conn_handle);
-
             return success ? BLE_ERR_SUCCESS : BLE_ERR_MEM_CAPACITY;
           }
         }
@@ -1202,10 +1192,10 @@ PRIMITIVE(init) {
   esp_err_t err = esp_nimble_hci_and_controller_init();
 
   // TODO(anders): Enable these to improve BLE/WiFi coop?
-  //SystemEventSource::instance()->run([&]() -> void {
-    // esp_coex_preference_set(ESP_COEX_PREFER_BT);
-    // esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-  //});
+  // SystemEventSource::instance()->run([&]() -> void {
+  //   esp_coex_preference_set(ESP_COEX_PREFER_BT);
+  //   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+  // });
 
   if (err != BLE_ERR_SUCCESS) {
     ble_pool.put(id);
@@ -2071,7 +2061,7 @@ PRIMITIVE(add_descriptor) {
   return proxy;
 }
 
-void clean_up_gatt_svr_chars(ble_gatt_chr_def* gatt_svr_chars, int count) {
+static void clean_up_gatt_svr_chars(ble_gatt_chr_def* gatt_svr_chars, int count) {
   for (int i = 0; i < count; i++) {
     if (gatt_svr_chars[i].descriptors) free(gatt_svr_chars[i].descriptors);
   }
@@ -2129,30 +2119,31 @@ PRIMITIVE(deploy_service) {
     characteristic_index++;
   }
 
-  auto gatt_services = static_cast<ble_gatt_svc_def*>(calloc(2, sizeof(ble_gatt_svc_def)));
-  if (!gatt_services) {
-    clean_up_gatt_svr_chars(gatt_svr_chars, characteristic_count);
-    FAIL(MALLOC_FAILED);
-  }
-
-  gatt_services[0].type = BLE_GATT_SVC_TYPE_PRIMARY;
-  gatt_services[0].uuid = service_resource->ptr_uuid();
-  gatt_services[0].characteristics = gatt_svr_chars;
-  gatt_services[1].type = 0;
+  struct ble_gatt_svc_def gatt_svcs[2] = {
+    {
+      .type = BLE_GATT_SVC_TYPE_PRIMARY,
+      .uuid = service_resource->ptr_uuid(),
+      .includes = 0,
+      .characteristics = gatt_svr_chars
+    },
+  };
+  gatt_svcs[1].type = 0;
 
   int rc = ble_gatts_count_cfg(gatt_services);
-  if (rc == BLE_ERR_SUCCESS) rc = ble_gatts_add_svcs(gatt_services);
+  if (rc == BLE_ERR_SUCCESS) rc = ble_gatts_add_svcs(gatt_svcs);
   if (rc == BLE_ERR_SUCCESS) rc = ble_gatts_start();
   if (rc != BLE_ERR_SUCCESS) {
-    free(gatt_services);
     clean_up_gatt_svr_chars(gatt_svr_chars, characteristic_count);
     return nimble_stack_error(process, rc);
   }
 
+  // TODO(kasper): We should hold on to the characteristics array
+  // and not just leak it.
+  service_resource->set_deployed(true);
+
   // NimBLE does not do async service deployments, so
   // simulate success event.
   BleEventSource::instance()->on_event(service_resource, kBleServiceAddSucceeded);
-  service_resource->set_deployed(true);
   return process->null_object();
 }
 
