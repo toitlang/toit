@@ -29,9 +29,10 @@ import system.assets
 
 import ar
 import cli
-import host.file
-import host.pipe
 import host.directory
+import host.file
+import host.os
+import host.pipe
 
 import .image
 import .partition_table
@@ -123,6 +124,7 @@ main arguments/List:
       ]
   root_cmd.add create_cmd
   root_cmd.add extract_cmd
+  root_cmd.add esptool_cmd
   root_cmd.add flash_cmd
   root_cmd.add container_cmd
   root_cmd.add property_cmd
@@ -572,13 +574,25 @@ find_esptool_ -> List:
     bin_extension = ".exe"
   else:
     bin_extension = ""
+
+  if esptool_path := os.env.get "ESPTOOL_PATH":
+    if esptool_path.ends_with ".py":
+      return ["python$bin_extension", esptool_path]
+    return [esptool_path]
+
+  if jag_toit_repo_path := os.env.get "JAG_TOIT_REPO_PATH":
+    return [
+      "python$bin_extension",
+      "$jag_toit_repo_path/third_party/esp-idf/components/esptool_py/esptool/esptool.py"
+    ]
+
   list := bin_name.split "/"
   dir := list[..list.size - 1].join "/"
   if bin_name.ends_with ".toit":
     if dir == "": dir = "."
     esptool_py := "$dir/../third_party/esp-idf/components/esptool_py/esptool/esptool.py"
     if file.is_file esptool_py:
-      return ["python", esptool_py]
+      return ["python$bin_extension", esptool_py]
   else:
     esptool := ["$dir/esptool$bin_extension"]
     if file.is_file esptool[0]:
@@ -597,6 +611,16 @@ find_esptool_ -> List:
       location := pipe.backticks "/bin/sh" "-c" "command -v esptool.py"
       return ["python3", location.trim]
   throw "cannot find esptool"
+
+esptool_cmd -> cli.Command:
+  return cli.Command "esptool"
+      --short_help="Prints the path and version of the found esptool."
+      --run=:: esptool it
+
+esptool parsed/cli.Parsed -> none:
+  esptool := find_esptool_
+  print (esptool.join " ")
+  pipe.run_program esptool + ["version"]
 
 flash_cmd -> cli.Command:
   return cli.Command "flash"
