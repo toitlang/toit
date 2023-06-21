@@ -102,7 +102,7 @@ int BaseMbedTlsSocket::add_root_certificate(X509Certificate* cert) {
 
 // Use the unparsed certificates on the process to find the right one
 // for this connection.
-static int toit_tls_verify(void* context, const mbedtls_x509_crt* certificate, mbedtls_x509_crt** chain) {
+static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate, mbedtls_x509_crt** chain) {
   Process* process = unvoid_cast<Process*>(context);
   *chain = null;
   mbedtls_x509_crt cert;
@@ -129,7 +129,7 @@ static int toit_tls_verify(void* context, const mbedtls_x509_crt* certificate, m
   return 0;
 
 failed:
-  printf("toit_tls_verify: Parsing cert failed.\n");
+  printf("toit_tls_find_root: Parsing cert failed.\n");
   for (mbedtls_x509_crt* cert = *chain; cert; ) {
     mbedtls_x509_crt* next = cert->next;
     mbedtls_x509_crt_free(cert);
@@ -143,7 +143,7 @@ void BaseMbedTlsSocket::apply_certs(Process* process) {
   if (root_certs_) {
     mbedtls_ssl_conf_ca_chain(&conf_, root_certs_, null);
   } else {
-    mbedtls_ssl_conf_ca_cb(&conf_, toit_tls_verify, void_cast(process));
+    mbedtls_ssl_conf_ca_cb(&conf_, toit_tls_find_root, void_cast(process));
   }
 }
 
@@ -162,11 +162,11 @@ static int toit_tls_verify(
     mbedtls_x509_crt* cert,
     int certificate_depth,  // Counts up to trusted root.
     uint32_t* flags) {      // Flags for this cert.
-  auto group = unvoid_cast<MbedTlsResourceGroup*>(ctx);
-  return group->verify_callback(cert, certificate_depth, flags);
+  auto socket = unvoid_cast<MbedTlsSocket*>(ctx);
+  return socket->verify_callback(cert, certificate_depth, flags);
 }
 
-int MbedTlsResourceGroup::verify_callback(mbedtls_x509_crt* crt, int certificate_depth, uint32_t* flags) {
+int BaseMbedTlsSocket::verify_callback(mbedtls_x509_crt* crt, int certificate_depth, uint32_t* flags) {
   if (*flags != 0) {
     if ((*flags & MBEDTLS_X509_BADCERT_NOT_TRUSTED) != 0) {
       // This is the error when the cert relies on a root that we have not
@@ -232,7 +232,6 @@ void MbedTlsResourceGroup::init_conf(mbedtls_ssl_config* conf) {
 #endif
 
   mbedtls_ssl_conf_max_frag_len(conf, MBEDTLS_SSL_MAX_FRAG_LEN_4096);
-  mbedtls_ssl_conf_verify(conf, toit_tls_verify, this);
 }
 
 int MbedTlsResourceGroup::init() {
@@ -258,7 +257,10 @@ uint32_t MbedTlsResourceGroup::on_event(Resource* resource, word data, uint32_t 
 BaseMbedTlsSocket::BaseMbedTlsSocket(MbedTlsResourceGroup* group)
   : TlsSocket(group)
   , root_certs_(null)
-  , private_key_(null) {
+  , private_key_(null)
+  , error_flags_(0)
+  , error_depth_(0)
+  , error_issuer_(null) {
   mbedtls_ssl_init(&ssl);
   group->init_conf(&conf_);
 }
@@ -272,6 +274,8 @@ BaseMbedTlsSocket::~BaseMbedTlsSocket() {
     delete c;
     c = n;
   }
+  free(error_issuer_);
+  error_issuer_ = null;
 }
 
 MbedTlsSocket::MbedTlsSocket(MbedTlsResourceGroup* group)
@@ -293,7 +297,7 @@ MbedTlsSocket::~MbedTlsSocket() {
 
 MODULE_IMPLEMENTATION(tls, MODULE_TLS)
 
-Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err) {
+Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
   static const size_t BUFFER_LEN = 400;
   char buffer[BUFFER_LEN];
   // For some reason Mbedtls doesn't seem to export this mask.
@@ -313,11 +317,11 @@ Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err) {
     FAIL(MALLOC_FAILED);
   }
   if (err == MBEDTLS_ERR_X509_CERT_VERIFY_FAILED &&
-      group &&
-      group->error_flags() &&
-      (group->error_flags() & ~MBEDTLS_X509_BADCERT_NOT_TRUSTED) == 0 &&
-      group->error_issuer()) {
-    size_t len = snprintf(buffer, BUFFER_LEN - 1, "Site relies on unknown root certificate: '%s'", group->error_issuer());
+      socket &&
+      socket->error_flags() &&
+      (socket->error_flags() & ~MBEDTLS_X509_BADCERT_NOT_TRUSTED) == 0 &&
+      socket->error_issuer()) {
+    size_t len = snprintf(buffer, BUFFER_LEN - 1, "Site relies on unknown root certificate: '%s'", socket->error_issuer());
     if (len > 0 && len < BUFFER_LEN) {
       buffer[len] = '\0';
       if (!Utils::is_valid_utf_8(unsigned_cast(buffer), len)) {
@@ -325,7 +329,7 @@ Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err) {
       }
       String* str = process->allocate_string(buffer);
       if (str == null) FAIL(ALLOCATION_FAILED);
-      group->clear_error_flags();
+      socket->clear_error_flags();
       return Primitive::mark_as_error(str);
     }
   }
@@ -354,15 +358,15 @@ Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err) {
   }
 #endif
   unsigned used = strlen(buffer);
-  if (group && group->error_flags() != 0 && used < BUFFER_LEN - 30) {
+  if (socket && socket->error_flags() != 0 && used < BUFFER_LEN - 30) {
     buffer[used] = ':';
     buffer[used + 1] = ' ';
     buffer[used + 2] = '\0';
     used += 2;
-    snprintf(buffer + used, sizeof(buffer) - used, "Cert depth %d:\n", group->error_depth());
+    snprintf(buffer + used, sizeof(buffer) - used, "Cert depth %d:\n", socket->error_depth());
     buffer[sizeof(buffer) - 1] = '\0';
     used = strlen(buffer);
-    mbedtls_x509_crt_verify_info(buffer + used, BUFFER_LEN - used, " * ", group->error_flags());
+    mbedtls_x509_crt_verify_info(buffer + used, BUFFER_LEN - used, " * ", socket->error_flags());
     used = strlen(buffer);
     if (used && buffer[used - 1] == '\n') {
       used--;
@@ -372,7 +376,7 @@ Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err) {
   buffer[BUFFER_LEN - 1] = '\0';
   String* str = process->allocate_string(buffer);
   if (str == null) FAIL(ALLOCATION_FAILED);
-  if (group) group->clear_error_flags();
+  if (socket) socket->clear_error_flags();
   return Primitive::mark_as_error(str);
 }
 
@@ -495,7 +499,7 @@ PRIMITIVE(read)  {
   } else if (read == MBEDTLS_ERR_SSL_WANT_READ) {
     return Smi::from(TLS_WANT_READ);
   } else if (read < 0) {
-    return tls_error(null, process, read);
+    return tls_error(socket, process, read);
   }
 
   array->resize_external(process, read);
@@ -517,7 +521,7 @@ PRIMITIVE(write) {
     if (wrote == MBEDTLS_ERR_SSL_WANT_WRITE) {
       wrote = 0;
     } else {
-      return tls_error(null, process, wrote);
+      return tls_error(socket, process, wrote);
     }
   }
 
@@ -607,7 +611,7 @@ PRIMITIVE(add_root_certificate) {
   // You can only append a single cert, not a chain of certs.
   if (cert->cert()->next) FAIL(INVALID_ARGUMENT);
   int ret = socket->add_root_certificate(cert);
-  if (ret != 0) return tls_error(null, process, ret);
+  if (ret != 0) return tls_error(socket, process, ret);
   return process->null_object();
 }
 
@@ -615,7 +619,7 @@ PRIMITIVE(add_certificate) {
   ARGS(BaseMbedTlsSocket, socket, X509Certificate, certificate, blob_or_string_with_terminating_null, private_key, blob_or_string_with_terminating_null, password);
 
   int ret = socket->add_certificate(certificate, private_key, private_key_length, password, password_length);
-  if (ret != 0) return tls_error(null, process, ret);
+  if (ret != 0) return tls_error(socket, process, ret);
   return process->null_object();
 }
 
@@ -662,8 +666,8 @@ PRIMITIVE(init_socket) {
 }
 
 PRIMITIVE(error) {
-  ARGS(MbedTlsResourceGroup, group, int, error);
-  return tls_error(group, process, -error);
+  ARGS(MbedTlsSocket, socket, int, error);
+  return tls_error(socket, process, -error);
 }
 
 bool MbedTlsSocket::init() {
@@ -673,6 +677,7 @@ bool MbedTlsSocket::init() {
   }
 
   mbedtls_ssl_set_bio(&ssl, this, toit_tls_send, toit_tls_recv, null);
+  mbedtls_ssl_conf_verify(&conf_, toit_tls_verify, this);
 
   return true;
 }

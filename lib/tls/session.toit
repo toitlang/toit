@@ -305,7 +305,7 @@ class Session:
       else if state == TOIT_TLS_WANT_WRITE_:
         // This is already handled above with flush_outgoing_
       else:
-        tls_error_ tls_state.group state
+        tls_error_ tls_ state
 
   extract_key_data_ -> none:
     if reads_encrypted_ and writes_encrypted_:
@@ -1126,7 +1126,7 @@ tls_create_ group hostname:
 tls_add_root_certificate_ group cert:
   #primitive.tls.add_root_certificate
 
-tls_error_ group error:
+tls_error_ socket error:
   #primitive.tls.error
 
 tls_init_socket_ tls_socket transport_id:
