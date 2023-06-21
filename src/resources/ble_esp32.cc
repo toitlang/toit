@@ -2129,7 +2129,7 @@ PRIMITIVE(deploy_service) {
   };
   gatt_svcs[1].type = 0;
 
-  int rc = ble_gatts_count_cfg(gatt_services);
+  int rc = ble_gatts_count_cfg(gatt_svcs);
   if (rc == BLE_ERR_SUCCESS) rc = ble_gatts_add_svcs(gatt_svcs);
   if (rc == BLE_ERR_SUCCESS) rc = ble_gatts_start();
   if (rc != BLE_ERR_SUCCESS) {
