@@ -427,7 +427,6 @@ class BleServiceResource:
       , uuid_(uuid)
       , start_handle_(start_handle)
       , end_handle_(end_handle)
-      , deployed_(false)
       , characteristics_discovered_(false)
       , device_(null)
       , peripheral_manager_(null) {}
@@ -444,6 +443,11 @@ class BleServiceResource:
                      ble_uuid_any_t uuid, uint16 start_handle, uint16 end_handle)
       : BleServiceResource(group, uuid, start_handle, end_handle) {
     peripheral_manager_ = peripheral_manager;
+  }
+
+  ~BleServiceResource() override {
+    if (!deployed()) return;
+    dispose_gatt_svr_chars(gatt_svr_chars_, gatt_svr_chars_count_);
   }
 
   BleCharacteristicResource* get_or_create_characteristics_resource(
@@ -465,8 +469,15 @@ class BleServiceResource:
     }
   }
 
-  bool deployed() const { return deployed_; }
-  void set_deployed(bool deployed) { deployed_ = deployed; }
+  bool deployed() const { return gatt_svr_chars_count_ >= 0; }
+
+  void set_svr_chars(ble_gatt_chr_def* chars, int count) {
+    ASSERT(count >= 0);
+    gatt_svr_chars_ = chars;
+    gatt_svr_chars_count_ = count;
+  }
+
+
   bool characteristics_discovered() const { return characteristics_discovered_; }
   void set_characteristics_discovered(bool discovered) { characteristics_discovered_ = discovered; }
 
@@ -488,6 +499,12 @@ class BleServiceResource:
     return BLE_ERR_SUCCESS;
   }
 
+  static void dispose_gatt_svr_chars(ble_gatt_chr_def* gatt_svr_chars, int count) {
+    for (int i = 0; i < count; i++) {
+      free(gatt_svr_chars[i].descriptors);
+    }
+    free(gatt_svr_chars);
+  }
 
  private:
   void _on_characteristic_discovered(const ble_gatt_error *error, const ble_gatt_chr *chr);
@@ -500,10 +517,12 @@ class BleServiceResource:
   ble_uuid_any_t uuid_;
   uint16 start_handle_;
   uint16 end_handle_;
-  bool deployed_;
   bool characteristics_discovered_;
   BleRemoteDeviceResource* device_;
   BlePeripheralManagerResource* peripheral_manager_;
+
+  ble_gatt_chr_def* gatt_svr_chars_ = null;
+  int gatt_svr_chars_count_ = -1;
 };
 
 class BleCentralManagerResource : public BleErrorCapableResource {
@@ -664,9 +683,11 @@ static ble_uuid_any_t uuid_from_blob(Blob& blob) {
       uuid.u32.value = __builtin_bswap32(value);
       break;
     }
-    default:
+    default: {
       uuid.u.type = BLE_UUID_TYPE_128;
       memcpy_reverse(uuid.u128.value, blob.address(), 16);
+      break;
+    }
   }
   return uuid;
 }
@@ -2061,13 +2082,6 @@ PRIMITIVE(add_descriptor) {
   return proxy;
 }
 
-static void clean_up_gatt_svr_chars(ble_gatt_chr_def* gatt_svr_chars, int count) {
-  for (int i = 0; i < count; i++) {
-    if (gatt_svr_chars[i].descriptors) free(gatt_svr_chars[i].descriptors);
-  }
-  free(gatt_svr_chars);
-}
-
 PRIMITIVE(deploy_service) {
   ARGS(BleServiceResource, service_resource)
 
@@ -2101,7 +2115,7 @@ PRIMITIVE(deploy_service) {
       auto gatt_desc_defs = static_cast<ble_gatt_dsc_def*>(calloc(descriptor_count + 1, sizeof(ble_gatt_dsc_def)));
 
       if (!gatt_desc_defs) {
-        clean_up_gatt_svr_chars(gatt_svr_chars, characteristic_index);
+        BleServiceResource::dispose_gatt_svr_chars(gatt_svr_chars, characteristic_index);
         FAIL(MALLOC_FAILED);
       }
 
@@ -2130,16 +2144,33 @@ PRIMITIVE(deploy_service) {
   gatt_svcs[1].type = 0;
 
   int rc = ble_gatts_count_cfg(gatt_svcs);
-  if (rc == BLE_ERR_SUCCESS) rc = ble_gatts_add_svcs(gatt_svcs);
-  if (rc == BLE_ERR_SUCCESS) rc = ble_gatts_start();
   if (rc != BLE_ERR_SUCCESS) {
-    clean_up_gatt_svr_chars(gatt_svr_chars, characteristic_count);
+    BleServiceResource::dispose_gatt_svr_chars(gatt_svr_chars, characteristic_count);
     return nimble_stack_error(process, rc);
   }
 
-  // TODO(kasper): We should hold on to the characteristics array
-  // and not just leak it.
-  service_resource->set_deployed(true);
+  rc = ble_gatts_add_svcs(gatt_svcs);
+  if (rc != BLE_ERR_SUCCESS) {
+    BleServiceResource::dispose_gatt_svr_chars(gatt_svr_chars, characteristic_count);
+    return nimble_stack_error(process, rc);
+  }
+
+  // TODO(kasper): Calling ble_gatts_start() multiple times without
+  // resetting (and forgetting all registered services) is broken and
+  // leads to memory corruption.
+  //
+  // We should avoid this by resetting, but that requires us to always
+  // pass in the full list of services so we can recreate everything.
+  //
+  // See https://github.com/apache/mynewt-nimble/issues/556.
+  rc = ble_gatts_start();
+  if (rc != BLE_ERR_SUCCESS) {
+    BleServiceResource::dispose_gatt_svr_chars(gatt_svr_chars, characteristic_count);
+    return nimble_stack_error(process, rc);
+  }
+
+  // Mark the service resource as deployed by setting its characteristics.
+  service_resource->set_svr_chars(gatt_svr_chars, characteristic_count);
 
   // NimBLE does not do async service deployments, so
   // simulate success event.
