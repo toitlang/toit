@@ -128,6 +128,7 @@ main arguments/List:
   root_cmd.add flash_cmd
   root_cmd.add container_cmd
   root_cmd.add property_cmd
+  root_cmd.add describe_cmd
   root_cmd.run arguments
 
 create_cmd -> cli.Command:
@@ -905,6 +906,48 @@ extract_binary_content -> ByteArray
 
   binary.patch_extend_drom system_uuid table_address extension
   return binary.bits
+
+describe_cmd -> cli.Command:
+  return cli.Command "describe"
+      --short_help="Describe the contents of the given firmware envelope."
+      --options=[
+        cli.OptionEnum "output-format" ["text", "json"]
+            --default="text",
+        cli.Flag "all"
+            --short_help="Show all information, including system entries."
+            --short_name="a",
+      ]
+      --run=:: describe it
+
+describe parsed/cli.Parsed -> none:
+  input_path := parsed[OPTION_ENVELOPE]
+  output_format := parsed["output-format"]
+  show_all := parsed["all"]
+
+  envelope := Envelope.load input_path
+
+  if output_format == "text":
+    print "Envelope format version: $envelope.version_"
+    print "SDK version: $envelope.sdk_version"
+    print
+    print "Containers:"
+    envelope.entries.do: | name entry |
+      if show_all or not name.starts_with "\$":
+        print "  $name: $(entry.size) bytes"
+    return
+
+  entries := {:}
+  envelope.entries.do: | name entry |
+    if show_all or not name.starts_with "\$":
+      entries[name] = {
+        "size": entry.size,
+      }
+  result := {
+    "envelope-format-version": envelope.version_,
+    "sdk-version": envelope.sdk_version,
+    "containers": entries,
+  }
+  print (json.stringify result)
 
 class Envelope:
   static MARKER ::= 0x0abeca70
