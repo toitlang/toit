@@ -73,9 +73,9 @@ class ServiceContainer : public BleResource {
 
   void make_deletable() override;
 
-
   virtual T* type() = 0;
   BleServiceResource* get_or_create_service_resource(CBService* service, bool can_create=false);
+
  private:
   NSMutableDictionary<CBUUID*, BleResourceHolder*>* _service_resource_index;
 };
@@ -110,6 +110,7 @@ class DiscoverableResource {
   DiscoverableResource() : _returned(false) {}
   bool is_returned() const { return _returned; }
   void set_returned(bool returned) { _returned = returned; }
+
  private:
   bool _returned;
 };
@@ -151,6 +152,7 @@ class BleServiceResource: public BleResource, public DiscoverableResource {
   BleCharacteristicResource* get_or_create_characteristic_resource(CBCharacteristic* characteristic, bool can_create= false);
   bool deployed() const { return _deployed; }
   void set_deployed(bool deployed) { _deployed = deployed; }
+
  private:
   CBService* _service;
   BleRemoteDeviceResource* _device;
@@ -166,6 +168,7 @@ class CharacteristicData: public CharacteristicDataList::Element {
   explicit CharacteristicData(NSData* data): _data([data retain]) {}
   ~CharacteristicData() { [_data release]; }
   NSData* data() { return _data; }
+
  private:
   NSData* _data;
 };
@@ -359,7 +362,6 @@ class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManage
  private:
   CBPeripheralManager* _peripheral_manager;
   NSMutableDictionary<CBUUID*, BleResourceHolder*>* _service_resource_index;
-
 };
 
 BleCharacteristicResource* lookup_remote_characteristic_resource(CBPeripheral* peripheral, CBCharacteristic* characteristic);

@@ -115,28 +115,20 @@ class EthernetIpEvents : public SystemResource {
   TAG(EthernetIpEvents);
   explicit EthernetIpEvents(EthernetResourceGroup* group)
       : SystemResource(group, IP_EVENT, IP_EVENT_ETH_GOT_IP) {
-    clear_ip();
+    ip_address_ = 0;
   }
 
-  const char* ip() {
-    return ip_;
+  uint32 ip_address() {
+    return ip_address_;
   }
 
-  void update_ip(uint32 addr) {
-    sprintf(ip_, "%d.%d.%d.%d",
-            (addr >> 0) & 0xff,
-            (addr >> 8) & 0xff,
-            (addr >> 16) & 0xff,
-            (addr >> 24) & 0xff);
-  }
-
-  void clear_ip() {
-    memset(ip_, 0, sizeof(ip_));
+  void update_ip_address(uint32 addr) {
+    ip_address_ = addr;
   }
 
  private:
   friend class EthernetResourceGroup;
-  char ip_[16];
+  uint32 ip_address_;
 };
 
 uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t state) {
@@ -163,7 +155,7 @@ uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t
     switch (system_event->id) {
       case IP_EVENT_ETH_GOT_IP: {
         ip_event_got_ip_t* event = reinterpret_cast<ip_event_got_ip_t*>(system_event->event_data);
-        static_cast<EthernetIpEvents*>(resource)->update_ip(event->ip_info.ip.addr);
+        static_cast<EthernetIpEvents*>(resource)->update_ip_address(event->ip_info.ip.addr);
         state |= ETHERNET_DHCP_SUCCESS;
         break;
       }
@@ -420,7 +412,15 @@ PRIMITIVE(disconnect) {
 
 PRIMITIVE(get_ip) {
   ARGS(EthernetIpEvents, ip);
-  return process->allocate_string_or_error(ip->ip());
+
+  uint32 address = ip->ip_address();
+  if (address == 0) return process->null_object();
+
+  ByteArray* result = process->object_heap()->allocate_internal_byte_array(4);
+  if (!result) FAIL(ALLOCATION_FAILED);
+  ByteArray::Bytes bytes(result);
+  Utils::write_unaligned_uint32_le(bytes.address(), address);
+  return result;
 }
 
 
