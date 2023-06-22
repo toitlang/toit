@@ -127,7 +127,7 @@ main arguments/List:
   root_cmd.add flash_cmd
   root_cmd.add container_cmd
   root_cmd.add property_cmd
-  root_cmd.add describe_cmd
+  root_cmd.add show_cmd
   root_cmd.add tool_cmd
   root_cmd.run arguments
 
@@ -919,9 +919,9 @@ extract_binary_content -> ByteArray
   binary.patch_extend_drom system_uuid table_address extension
   return binary.bits
 
-describe_cmd -> cli.Command:
-  return cli.Command "describe"
-      --short_help="Describe the contents of the given firmware envelope."
+show_cmd -> cli.Command:
+  return cli.Command "show"
+      --short_help="Show the contents of the given firmware envelope."
       --options=[
         cli.OptionEnum "output-format" ["text", "json"]
             --default="text",
