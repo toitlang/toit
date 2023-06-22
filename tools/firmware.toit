@@ -124,10 +124,10 @@ main arguments/List:
       ]
   root_cmd.add create_cmd
   root_cmd.add extract_cmd
-  root_cmd.add esptool_cmd
   root_cmd.add flash_cmd
   root_cmd.add container_cmd
   root_cmd.add property_cmd
+  root_cmd.add tool_cmd
   root_cmd.run arguments
 
 create_cmd -> cli.Command:
@@ -612,9 +612,21 @@ find_esptool_ -> List:
       return ["python3", location.trim]
   throw "cannot find esptool"
 
+tool_cmd -> cli.Command:
+  return cli.Command "tool"
+      --short_help="Provides information about used tools."
+      --subcommands=[
+        esptool_cmd,
+      ]
+
 esptool_cmd -> cli.Command:
   return cli.Command "esptool"
+      --aliases=["esp-tool", "esp_tool"]
       --short_help="Prints the path and version of the found esptool."
+      --examples=[
+        cli.Example "Print the path and version of the found esptool."
+            --arguments="-e ignored-envelope"
+      ]
       --run=:: esptool it
 
 esptool parsed/cli.Parsed -> none:
