@@ -5,7 +5,7 @@
 import expect show *
 import gpio
 import monitor
-import .wait_for1 show
+import .wait_for1_shared show
   ITERATIONS MEDIUM_PULSE_ITERATIONS SHORT_PULSE_ITERATIONS ULTRA_SHORT_PULSE_ITERATIONS
 
 /**

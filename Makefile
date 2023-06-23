@@ -185,6 +185,8 @@ ifeq ("", "$(shell command -v xtensa-esp32-elf-g++)")
 	$(error xtensa-esp32-elf-g++ not in path. Did you `source third_party/esp-idf/export.sh`?)
 endif
 
+IDF_PY ::= "$(IDF_PATH)/tools/idf.py"
+
 .PHONY: esp32
 esp32:
 	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
@@ -192,7 +194,7 @@ esp32:
 
 .PHONY: esp32-no-env
 esp32-no-env: check-env check-esp32-env sdk
-	cmake -E env IDF_TARGET=$(IDF_TARGET) IDF_CCACHE_ENABLE=1 idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" build
+	cmake -E env IDF_TARGET=$(IDF_TARGET) IDF_CCACHE_ENABLE=1 python$(EXE_SUFFIX) $(IDF_PY) -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" build
 
 # ESP32 MENU CONFIG
 .PHONY: menuconfig
@@ -202,7 +204,7 @@ menuconfig:
 
 .PHONY: menuconfig-no-env
 menuconfig-no-env: check-env check-esp32-env
-	cmake -E env IDF_TARGET=$(IDF_TARGET) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" menuconfig
+	cmake -E env IDF_TARGET=$(IDF_TARGET) python$(EXE_SUFFIX) $(IDF_PY) -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" menuconfig
 
 .PHONY: flash
 flash:
@@ -211,7 +213,7 @@ flash:
 
 .PHONY: flash-no-env
 flash-no-env: esp32-no-env
-	cmake -E env IDF_TARGET=$(IDF_TARGET) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" flash monitor
+	cmake -E env IDF_TARGET=$(IDF_TARGET) python$(EXE_SUFFIX) $(IDF_PY) -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" flash monitor
 
 # UTILITY
 .PHONY:	clean

@@ -82,13 +82,15 @@ if (CCACHE_FOUND)
   set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_FOUND}")
 endif(CCACHE_FOUND)
 
-if ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows")
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -static")
 else()
-  set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} '-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.'")
+  if (NOT ("${CMAKE_HOST_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_HOST_SYSTEM_NAME}" STREQUAL "MSYS"))
+    set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} '-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.'")
+  endif()
 endif()
 
-if (NOT ${ESP32_CHIP} MATCHES "esp32c3")
+if (NOT ${ESP32_CHIP} STREQUAL "esp32c3")
   set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wno-unused-command-line-argument")
 endif()
 
