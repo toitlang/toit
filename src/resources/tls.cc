@@ -100,33 +100,35 @@ int BaseMbedTlsSocket::add_root_certificate(X509Certificate* cert) {
   return 0;
 }
 
+uint32 BaseMbedTlsSocket::hash_subject(uint8* buffer, int length) {
+  // Matching should be case independent for ASCII strings, so lets just zap
+  // all the 0x20 bits, since we are just doing a fuzzy match.
+  for (int i = 0; i < length; i++) buffer[i] |= 0x20;
+  return Utils::crc32(0xce77509, buffer, length);
+}
+
 // Use the unparsed certificates on the process to find the right one
 // for this connection.
 static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate, mbedtls_x509_crt** chain) {
-  Process* process = unvoid_cast<Process*>(context);
+  BaseMbedTlsSocket* socket = unvoid_cast<BaseMbedTlsSocket*>(context);
+  Process* process = socket->resource_group()->process();
 
-  int MAX_SUBJECT = 512;
-  uint8 subject_buffer[MAX_SUBJECT];
-  uint8* end = subject_buffer + MAX_SUBJECT;
-  uint8* start = end;
-  // Need const casts because the MbedTLS API has a missing const.
-  auto issuer = const_cast<mbedtls_asn1_named_data*>(&certificate->issuer);
-  int ret = mbedtls_x509_write_names(&start, subject_buffer, issuer);
-  if (ret < 0) {
-    printf("Could not get issuer information from certificate.\n");
+  uint8 issuer_buffer[MAX_SUBJECT];
+  int ret = mbedtls_x509_dn_gets(char_cast(&issuer_buffer[0]), MAX_SUBJECT, &certificate->issuer);
+  if (ret < 0) goto failed;
+  if (ret >= MAX_SUBJECT) {
+    ret = MBEDTLS_ERR_ASN1_BUF_TOO_SMALL;
+    goto failed;
   } else {
-    // Matching should be case independent for ASCII strings, so lets just zap
-    // all the 0x20 bits, since we are just doing a fuzzy match.
-    for (uint8* p = start; p < end; p++) *p |= 0x20;
-    uint32 issuer_hash = Utils::crc32(0xce77509, start, end - start);
+    uint32 issuer_hash = BaseMbedTlsSocket::hash_subject(issuer_buffer, ret);
 
     *chain = null;
     mbedtls_x509_crt cert;
     mbedtls_x509_crt_init(&cert);
     mbedtls_x509_crt** last = chain;
+    bool found_root_with_matching_subject = false;
     for (auto unparsed : process->root_certificates()) {
       if (unparsed->subject_hash() != issuer_hash) continue;
-      printf("Found root with subject hash 0x%08x\n", issuer_hash);
       mbedtls_x509_crt* cert = _new mbedtls_x509_crt;
       if (!cert) {
         ret = MBEDTLS_ERR_X509_ALLOC_FAILED;
@@ -140,14 +142,16 @@ static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate
         ret = mbedtls_x509_crt_parse_der_nocopy(cert, unparsed->data(), unparsed->length());
       }
       if (ret != 0) goto failed;
+      found_root_with_matching_subject = true;
       *last = cert;
       last = &cert->next;
     }
+    if (!found_root_with_matching_subject) {
+      socket->record_unknown_issuer(&certificate->issuer);
+    }
     return 0;
   }
-
 failed:
-  printf("toit_tls_find_root: Parsing cert failed.\n");
   for (mbedtls_x509_crt* cert = *chain; cert; ) {
     mbedtls_x509_crt* next = cert->next;
     mbedtls_x509_crt_free(cert);
@@ -161,7 +165,7 @@ void BaseMbedTlsSocket::apply_certs(Process* process) {
   if (root_certs_) {
     mbedtls_ssl_conf_ca_chain(&conf_, root_certs_, null);
   } else {
-    mbedtls_ssl_conf_ca_cb(&conf_, toit_tls_find_root, void_cast(process));
+    mbedtls_ssl_conf_ca_cb(&conf_, toit_tls_find_root, void_cast(this));
   }
 }
 
@@ -189,25 +193,29 @@ int BaseMbedTlsSocket::verify_callback(mbedtls_x509_crt* crt, int certificate_de
     if ((*flags & MBEDTLS_X509_BADCERT_NOT_TRUSTED) != 0) {
       // This is the error when the cert relies on a root that we have not
       // trusted/added.
-      const int BUFFER_SIZE = 200;
-      char buffer[BUFFER_SIZE];
-      int ret = mbedtls_x509_dn_gets(buffer, BUFFER_SIZE, &crt->issuer);
-      if (ret > 0 && ret < BUFFER_SIZE) {
-        // If we are unlucky and the malloc fails, then the error message will
-        // be less informative.
-        char* issuer = unvoid_cast<char*>(malloc(ret + 1));
-        if (issuer) {
-          memcpy(issuer, buffer, ret);
-          issuer[ret] = '\0';
-          if (error_issuer_) free(error_issuer_);
-          error_issuer_ = issuer;
-        }
-      }
+      record_unknown_issuer(&crt->issuer);
     }
     error_flags_ = *flags;
-    error_depth_ = certificate_depth;
   }
   return 0; // Keep going.
+}
+
+void BaseMbedTlsSocket::record_unknown_issuer(const mbedtls_asn1_named_data* issuer) {
+  char buffer[MAX_SUBJECT];
+  int ret = mbedtls_x509_dn_gets(buffer, MAX_SUBJECT, issuer);
+  if (error_issuer_) free(error_issuer_);
+  error_issuer_ = null;
+  if (ret > 0 && ret < MAX_SUBJECT) {
+    // If we are unlucky and the malloc fails, then the error message will
+    // be less informative.
+    char* issuer_text = unvoid_cast<char*>(malloc(ret + 1));
+    if (issuer_text) {
+      memcpy(issuer_text, buffer, ret);
+      issuer_text[ret] = '\0';
+      error_issuer_ = issuer_text;
+    }
+  }
+  error_flags_ = MBEDTLS_X509_BADCERT_NOT_TRUSTED;
 }
 
 static void* tagging_mbedtls_calloc(size_t nelem, size_t size) {
@@ -277,7 +285,6 @@ BaseMbedTlsSocket::BaseMbedTlsSocket(MbedTlsResourceGroup* group)
   , root_certs_(null)
   , private_key_(null)
   , error_flags_(0)
-  , error_depth_(0)
   , error_issuer_(null) {
   mbedtls_ssl_init(&ssl);
   group->init_conf(&conf_);
@@ -334,12 +341,12 @@ Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
       hi_error == MBEDTLS_ERR_X509_ALLOC_FAILED) {
     FAIL(MALLOC_FAILED);
   }
+  const char* issuer = socket->error_issuer();
   if (err == MBEDTLS_ERR_X509_CERT_VERIFY_FAILED &&
       socket &&
       socket->error_flags() &&
-      (socket->error_flags() & ~MBEDTLS_X509_BADCERT_NOT_TRUSTED) == 0 &&
-      socket->error_issuer()) {
-    size_t len = snprintf(buffer, BUFFER_LEN - 1, "Site relies on unknown root certificate: '%s'", socket->error_issuer());
+      (socket->error_flags() & ~MBEDTLS_X509_BADCERT_NOT_TRUSTED) == 0) {
+    size_t len = snprintf(buffer, BUFFER_LEN - 1, "Site relies on unknown root certificate: '%s'", issuer ? issuer : "");
     if (len > 0 && len < BUFFER_LEN) {
       buffer[len] = '\0';
       if (!Utils::is_valid_utf_8(unsigned_cast(buffer), len)) {
@@ -381,9 +388,6 @@ Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
     buffer[used + 1] = ' ';
     buffer[used + 2] = '\0';
     used += 2;
-    snprintf(buffer + used, sizeof(buffer) - used, "Cert depth %d:\n", socket->error_depth());
-    buffer[sizeof(buffer) - 1] = '\0';
-    used = strlen(buffer);
     mbedtls_x509_crt_verify_info(buffer + used, BUFFER_LEN - used, " * ", socket->error_flags());
     used = strlen(buffer);
     if (used && buffer[used - 1] == '\n') {
@@ -596,21 +600,14 @@ PRIMITIVE(add_global_root_certificate) {
     return tls_error(null, process, ret);
   }
 
-  int MAX_SUBJECT = 512;
   uint8 subject_buffer[MAX_SUBJECT];
-  uint8* end = subject_buffer + MAX_SUBJECT;
-  uint8* start = end;
-  ret = mbedtls_x509_write_names(&start, subject_buffer, &cert.subject);
+  ret = mbedtls_x509_dn_gets(char_cast(&subject_buffer[0]), MAX_SUBJECT, &cert.subject);
   mbedtls_x509_crt_free(&cert);
-  if (ret < 0) {
+  if (ret < 0 || ret >= MAX_SUBJECT) {
     if (needs_free) delete data;
-    return tls_error(null, process, ret);
+    return tls_error(null, process, ret < 0 ? ret : MBEDTLS_ERR_ASN1_BUF_TOO_SMALL);
   }
-  // Matching should be case independent for ASCII strings, so lets just zap
-  // all the 0x20 bits, since we are just doing a fuzzy match.
-  for (uint8* p = start; p < end; p++) *p |= 0x20;
-  // Get a hash of the subject identifier.
-  root->set_subject_hash(Utils::crc32(0xce77509, start, end - start));
+  root->set_subject_hash(BaseMbedTlsSocket::hash_subject(subject_buffer, ret));
 
   // Parsing worked, so lets add the root cert to the chain on the process.
   if (!needs_free && !in_flash) {

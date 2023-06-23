@@ -73,12 +73,14 @@ class BaseMbedTlsSocket : public TlsSocket {
 
   int verify_callback(mbedtls_x509_crt* cert, int certificate_depth, uint32_t* flags);
 
+  void record_unknown_issuer(const mbedtls_asn1_named_data* issuer);
+  // Hash a textual description of the issuer of a certificate, or the
+  // subject of a root certificate. These should match.
+  static uint32 hash_subject(uint8* buffer, int length);
   uint32_t error_flags() const { return error_flags_; }
-  int error_depth() const { return error_depth_; }
   char* error_issuer() const { return error_issuer_; }
   void clear_error_flags() {
     error_flags_ = 0;
-    error_depth_ = 0;
     free(error_issuer_);
     error_issuer_ = null;
   }
@@ -90,9 +92,10 @@ class BaseMbedTlsSocket : public TlsSocket {
   mbedtls_x509_crt* root_certs_;
   mbedtls_pk_context* private_key_;
   uint32_t error_flags_;
-  int error_depth_;
   char* error_issuer_;
 };
+
+static const int MAX_SUBJECT = 400;
 
 // Although it's a resource we never actually wait on a MbedTlsSocket, preferring
 // to wait on the underlying TCP socket.
