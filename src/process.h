@@ -37,21 +37,14 @@ class UnparsedRootCertificate: public UnparsedRootCertificateList::Element {
   const uint8* data() const { return data_; }
   size_t length() const { return length_; }
 
-  void set_subject_key_identifier(const uint8* subject_key_identifier, size_t length) {
-    // We always expect the extension data to be within the certificate data,
-    // which is why we don't have to manage its lifetime.
-    ASSERT(subject_key_identifier >= data_ && subject_key_identifier + length <= data_ + length_);
-
-    subject_key_identifier_ = subject_key_identifier;
-    subject_key_identifier_length_ = length;
-  }
+  void set_subject_hash(uint32 hash) { subject_hash_ = hash; }
+  uint32 subject_hash() const { return subject_hash_; }
 
  private:
   const uint8* data_;
   uint8 hash_[Sha::HASH_LENGTH_256];  // Hash of unparsed version.
   size_t length_;
-  const uint8* subject_key_identifier_ = null;
-  size_t subject_key_identifier_length_ = 0;
+  uint32 subject_hash_ = 0;
 };
 
 // Process is linked into two different linked lists, so we have to make

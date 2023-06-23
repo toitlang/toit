@@ -104,29 +104,47 @@ int BaseMbedTlsSocket::add_root_certificate(X509Certificate* cert) {
 // for this connection.
 static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate, mbedtls_x509_crt** chain) {
   Process* process = unvoid_cast<Process*>(context);
-  *chain = null;
-  mbedtls_x509_crt cert;
-  mbedtls_x509_crt_init(&cert);
-  int ret;
-  mbedtls_x509_crt** last = chain;
-  for (auto unparsed : process->root_certificates()) {
-    mbedtls_x509_crt* cert = _new mbedtls_x509_crt;
-    if (!cert) {
-      ret = MBEDTLS_ERR_X509_ALLOC_FAILED;
-      goto failed;
-    }
 
-    mbedtls_x509_crt_init(cert);
-    if (X509ResourceGroup::is_pem_format(unparsed->data(), unparsed->length())) {
-      ret = mbedtls_x509_crt_parse(cert, unparsed->data(), unparsed->length());
-    } else {
-      ret = mbedtls_x509_crt_parse_der_nocopy(cert, unparsed->data(), unparsed->length());
+  int MAX_SUBJECT = 512;
+  uint8 subject_buffer[MAX_SUBJECT];
+  uint8* end = subject_buffer + MAX_SUBJECT;
+  uint8* start = end;
+  // Need const casts because the MbedTLS API has a missing const.
+  auto issuer = const_cast<mbedtls_asn1_named_data*>(&certificate->issuer);
+  int ret = mbedtls_x509_write_names(&start, subject_buffer, issuer);
+  if (ret < 0) {
+    printf("Could not get issuer information from certificate.\n");
+  } else {
+    // Matching should be case independent for ASCII strings, so lets just zap
+    // all the 0x20 bits, since we are just doing a fuzzy match.
+    for (uint8* p = start; p < end; p++) *p |= 0x20;
+    uint32 issuer_hash = Utils::crc32(0xce77509, start, end - start);
+
+    *chain = null;
+    mbedtls_x509_crt cert;
+    mbedtls_x509_crt_init(&cert);
+    mbedtls_x509_crt** last = chain;
+    for (auto unparsed : process->root_certificates()) {
+      if (unparsed->subject_hash() != issuer_hash) continue;
+      printf("Found root with subject hash 0x%08x\n", issuer_hash);
+      mbedtls_x509_crt* cert = _new mbedtls_x509_crt;
+      if (!cert) {
+        ret = MBEDTLS_ERR_X509_ALLOC_FAILED;
+        goto failed;
+      }
+
+      mbedtls_x509_crt_init(cert);
+      if (X509ResourceGroup::is_pem_format(unparsed->data(), unparsed->length())) {
+        ret = mbedtls_x509_crt_parse(cert, unparsed->data(), unparsed->length());
+      } else {
+        ret = mbedtls_x509_crt_parse_der_nocopy(cert, unparsed->data(), unparsed->length());
+      }
+      if (ret != 0) goto failed;
+      *last = cert;
+      last = &cert->next;
     }
-    if (ret != 0) goto failed;
-    *last = cert;
-    last = &cert->next;
+    return 0;
   }
-  return 0;
 
 failed:
   printf("toit_tls_find_root: Parsing cert failed.\n");
@@ -545,15 +563,6 @@ PRIMITIVE(close) {
   return process->null_object();
 }
 
-static int extension_callback(void* context, const mbedtls_x509_crt* crt, const mbedtls_x509_buf* oid, int critical, const uint8* start, const uint8* end) {
-  auto root = unvoid_cast<UnparsedRootCertificate*>(context);
-  if (oid->len == strlen(MBEDTLS_OID_SUBJECT_KEY_IDENTIFIER) &&
-      memcmp(oid->p, MBEDTLS_OID_SUBJECT_KEY_IDENTIFIER, oid->len) == 0) {
-    root->set_subject_key_identifier(start, end - start);
-  }
-  return 0;
-}
-
 PRIMITIVE(add_global_root_certificate) {
   ARGS(Object, unparsed_cert);
   bool needs_free = false;
@@ -571,21 +580,37 @@ PRIMITIVE(add_global_root_certificate) {
   }
 
   // The global roots are parsed on demand, but we parse them now, then discard
-  // the result, to get an early error message.
+  // the result, to get an early error message and the authority data so we
+  // know when to use it.
   mbedtls_x509_crt cert;
   mbedtls_x509_crt_init(&cert);
   int ret;
   if (X509ResourceGroup::is_pem_format(data, length)) {
     ret = mbedtls_x509_crt_parse(&cert, data, length);
   } else {
-    bool copy_data = false;
-    ret = mbedtls_x509_crt_parse_der_with_ext_cb(&cert, data, length, copy_data, extension_callback, root);
+    ret = mbedtls_x509_crt_parse_der_nocopy(&cert, data, length);
   }
-  mbedtls_x509_crt_free(&cert);
   if (ret != 0) {
+    mbedtls_x509_crt_free(&cert);
     if (needs_free) delete data;
     return tls_error(null, process, ret);
   }
+
+  int MAX_SUBJECT = 512;
+  uint8 subject_buffer[MAX_SUBJECT];
+  uint8* end = subject_buffer + MAX_SUBJECT;
+  uint8* start = end;
+  ret = mbedtls_x509_write_names(&start, subject_buffer, &cert.subject);
+  mbedtls_x509_crt_free(&cert);
+  if (ret < 0) {
+    if (needs_free) delete data;
+    return tls_error(null, process, ret);
+  }
+  // Matching should be case independent for ASCII strings, so lets just zap
+  // all the 0x20 bits, since we are just doing a fuzzy match.
+  for (uint8* p = start; p < end; p++) *p |= 0x20;
+  // Get a hash of the subject identifier.
+  root->set_subject_hash(Utils::crc32(0xce77509, start, end - start));
 
   // Parsing worked, so lets add the root cert to the chain on the process.
   if (!needs_free && !in_flash) {
