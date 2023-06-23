@@ -1,10 +1,8 @@
-// Copyright (C) 2022 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
 import gpio
-import monitor
-import rmt
 
 /**
 Tests the $gpio.Pin.wait_for functionality while a parallel
