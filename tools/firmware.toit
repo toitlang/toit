@@ -964,7 +964,7 @@ show_cmd -> cli.Command:
         cli.OptionEnum "output-format" ["human", "json"]
             --default="human",
         cli.Flag "all"
-            --short_help="Show all information, including system entries."
+            --short_help="Show all information, including non-container entries."
             --short_name="a",
         cli.Option "output"
             --short_help="Write output to the given file."
