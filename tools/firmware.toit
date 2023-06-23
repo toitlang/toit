@@ -29,9 +29,10 @@ import system.assets
 
 import ar
 import cli
-import host.file
-import host.pipe
 import host.directory
+import host.file
+import host.os
+import host.pipe
 
 import .image
 import .partition_table
@@ -126,6 +127,8 @@ main arguments/List:
   root_cmd.add flash_cmd
   root_cmd.add container_cmd
   root_cmd.add property_cmd
+  root_cmd.add show_cmd
+  root_cmd.add tool_cmd
   root_cmd.run arguments
 
 create_cmd -> cli.Command:
@@ -572,13 +575,25 @@ find_esptool_ -> List:
     bin_extension = ".exe"
   else:
     bin_extension = ""
+
+  if esptool_path := os.env.get "ESPTOOL_PATH":
+    if esptool_path.ends_with ".py":
+      return ["python$bin_extension", esptool_path]
+    return [esptool_path]
+
+  if jag_toit_repo_path := os.env.get "JAG_TOIT_REPO_PATH":
+    return [
+      "python$bin_extension",
+      "$jag_toit_repo_path/third_party/esp-idf/components/esptool_py/esptool/esptool.py"
+    ]
+
   list := bin_name.split "/"
   dir := list[..list.size - 1].join "/"
   if bin_name.ends_with ".toit":
     if dir == "": dir = "."
     esptool_py := "$dir/../third_party/esp-idf/components/esptool_py/esptool/esptool.py"
     if file.is_file esptool_py:
-      return ["python", esptool_py]
+      return ["python$bin_extension", esptool_py]
   else:
     esptool := ["$dir/esptool$bin_extension"]
     if file.is_file esptool[0]:
@@ -597,6 +612,28 @@ find_esptool_ -> List:
       location := pipe.backticks "/bin/sh" "-c" "command -v esptool.py"
       return ["python3", location.trim]
   throw "cannot find esptool"
+
+tool_cmd -> cli.Command:
+  return cli.Command "tool"
+      --short_help="Provides information about used tools."
+      --subcommands=[
+        esptool_cmd,
+      ]
+
+esptool_cmd -> cli.Command:
+  return cli.Command "esptool"
+      --aliases=["esp-tool", "esp_tool"]
+      --short_help="Prints the path and version of the found esptool."
+      --examples=[
+        cli.Example "Print the path and version of the found esptool."
+            --arguments="-e ignored-envelope"
+      ]
+      --run=:: esptool it
+
+esptool parsed/cli.Parsed -> none:
+  esptool := find_esptool_
+  print (esptool.join " ")
+  pipe.run_program esptool + ["version"]
 
 flash_cmd -> cli.Command:
   return cli.Command "flash"
@@ -881,6 +918,48 @@ extract_binary_content -> ByteArray
 
   binary.patch_extend_drom system_uuid table_address extension
   return binary.bits
+
+show_cmd -> cli.Command:
+  return cli.Command "show"
+      --short_help="Show the contents of the given firmware envelope."
+      --options=[
+        cli.OptionEnum "output-format" ["text", "json"]
+            --default="text",
+        cli.Flag "all"
+            --short_help="Show all information, including system entries."
+            --short_name="a",
+      ]
+      --run=:: describe it
+
+describe parsed/cli.Parsed -> none:
+  input_path := parsed[OPTION_ENVELOPE]
+  output_format := parsed["output-format"]
+  show_all := parsed["all"]
+
+  envelope := Envelope.load input_path
+
+  if output_format == "text":
+    print "Envelope format version: $envelope.version_"
+    print "SDK version: $envelope.sdk_version"
+    print
+    print "Containers:"
+    envelope.entries.do: | name entry |
+      if show_all or not name.starts_with "\$":
+        print "  $name: $(entry.size) bytes"
+    return
+
+  entries := {:}
+  envelope.entries.do: | name entry |
+    if show_all or not name.starts_with "\$":
+      entries[name] = {
+        "size": entry.size,
+      }
+  result := {
+    "envelope-format-version": envelope.version_,
+    "sdk-version": envelope.sdk_version,
+    "containers": entries,
+  }
+  print (json.stringify result)
 
 class Envelope:
   static MARKER ::= 0x0abeca70

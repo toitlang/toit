@@ -203,7 +203,7 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
     PUSH(trace);
   } else {
     STACK_AT_PUT(0, process->program()->out_of_bounds());
-    PUSH(process->program()->null_object());
+    PUSH(process->null_object());
   }
 
   // Stack: Trace, Type, Instance, ...

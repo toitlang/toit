@@ -259,6 +259,7 @@ foreach(FILE ${HEALTH_SOURCES})
     LIB_DIR "${TOIT_SDK_SOURCE_DIR}"
     GOLD_DIR "${EXTERNAL_GOLD_DIR}"
     CONFIGURATION external_health
+    SHOW_PACKAGE_WARNINGS OFF
     UPDATE_TARGET update_external_health_gold
   )
 endforeach()

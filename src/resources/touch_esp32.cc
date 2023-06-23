@@ -195,10 +195,10 @@ MODULE_IMPLEMENTATION(touch, MODULE_TOUCH)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   TouchResourceGroup* touch = _new TouchResourceGroup(process);
-  if (!touch) MALLOC_FAILED;
+  if (!touch) FAIL(MALLOC_FAILED);
 
   Locker locker(OS::resource_mutex());
 
@@ -230,13 +230,13 @@ PRIMITIVE(use) {
   // This obviously fails, if someone calls the primitive directly without acquiring the pin first.
 
   touch_pad_t pad = get_touch_pad(num);
-  if (pad == kInvalidTouchPad) OUT_OF_RANGE;
+  if (pad == kInvalidTouchPad) FAIL(OUT_OF_RANGE);
 
   auto resource = _new IntResource(resource_group, pad);
-  if (!resource) MALLOC_FAILED;
+  if (!resource) FAIL(MALLOC_FAILED);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
 #if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
   esp_err_t err = touch_pad_config(pad);
@@ -265,7 +265,7 @@ PRIMITIVE(unuse) {
   resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(read) {
@@ -308,7 +308,7 @@ PRIMITIVE(set_threshold) {
 
   esp_err_t err = touch_pad_set_thresh(pad, threshold);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

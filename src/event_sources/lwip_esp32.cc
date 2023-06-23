@@ -105,9 +105,9 @@ String* lwip_strerror(Process* process, err_t err) {
 }
 
 Object* lwip_error(Process* process, err_t err) {
-  if (err == ERR_MEM) MALLOC_FAILED;
+  if (err == ERR_MEM) FAIL(MALLOC_FAILED);
   String* str = lwip_strerror(process, err);
-  if (str == null) ALLOCATION_FAILED;
+  if (str == null) FAIL(ALLOCATION_FAILED);
   return Primitive::mark_as_error(str);
 }
 
@@ -128,7 +128,7 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
       dhcp_set_struct(&global_netif, &static_dhcp);
       netif_set_up(&global_netif);
       err = dhcp_start(&global_netif);
-      return process->program()->null_object();
+      return process->null_object();
     });
     if (err != ERR_OK) {
       return lwip_error(process, err);
@@ -165,13 +165,13 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
       return 0;
     });
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 #else
 
 PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 #endif
@@ -233,7 +233,7 @@ void LwipEventSource::on_thread(void* arg) {
 MODULE_IMPLEMENTATION(dhcp, MODULE_DHCP)
 
 PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 #endif // defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)

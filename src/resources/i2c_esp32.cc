@@ -71,12 +71,12 @@ PRIMITIVE(init) {
   ARGS(int, frequency, int, sda, int, scl);
 
   i2c_port_t port = i2c_ports.any();
-  if (port == kInvalidPort) OUT_OF_RANGE;
+  if (port == kInvalidPort) FAIL(OUT_OF_RANGE);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
     i2c_ports.put(port);
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   i2c_config_t conf;
@@ -88,7 +88,7 @@ PRIMITIVE(init) {
   conf.scl_pullup_en = GPIO_PULLUP_DISABLE;
   conf.master.clk_speed = frequency;
   int result = i2c_param_config(port, &conf);
-  if (result != ESP_OK) INVALID_ARGUMENT;
+  if (result != ESP_OK) FAIL(INVALID_ARGUMENT);
   result = ESP_FAIL;
   SystemEventSource::instance()->run([&]() -> void {
     result = i2c_driver_install(port, I2C_MODE_MASTER, 0, 0, 0);
@@ -109,7 +109,7 @@ PRIMITIVE(init) {
       i2c_driver_delete(port);
     });
     i2c_ports.put(port);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(i2c);
@@ -121,7 +121,7 @@ PRIMITIVE(close) {
   ARGS(I2cResourceGroup, i2c);
   i2c->tear_down();
   i2c_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 static Object* write_i2c(Process* process, I2cResourceGroup* i2c, int i2c_address, const uint8* address, int address_length, Blob buffer) {
@@ -131,14 +131,14 @@ static Object* write_i2c(Process* process, I2cResourceGroup* i2c, int i2c_addres
   if (!esp_ptr_internal(data)) {
     // Copy buffer to malloc heap, if the buffer is not in memory.
     uint8* copy = unvoid_cast<uint8*>(malloc(length));
-    if (copy == null) MALLOC_FAILED;
+    if (copy == null) FAIL(MALLOC_FAILED);
     memcpy(copy, data, length);
     data = copy;
   }
   Defer release_copy { [&]() { if (data != buffer.address()) free(const_cast<uint8*>(data)); } };
 
   i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-  if (cmd == null) MALLOC_FAILED;
+  if (cmd == null) FAIL(MALLOC_FAILED);
   Defer release_cmd_handle { [&]() { i2c_cmd_link_delete(cmd); } };
 
   // NOTE:
@@ -148,45 +148,45 @@ static Object* write_i2c(Process* process, I2cResourceGroup* i2c, int i2c_addres
   // Initiate the sequence by issuing a `start`. That will notify slaves to
   // listen (if possible) and promote self to current master, in case of
   // multi-master setup.
-  if (i2c_master_start(cmd) != ESP_OK) MALLOC_FAILED;
+  if (i2c_master_start(cmd) != ESP_OK) FAIL(MALLOC_FAILED);
 
   // Write the i2c address with the write-bit. The device must ack.
-  if (i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, true) != ESP_OK) MALLOC_FAILED;
+  if (i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, true) != ESP_OK) FAIL(MALLOC_FAILED);
 
   // First we notify the slave about the register/address we will use.
   if (address != null) {
     // Write the register address. Each byte must be acked.
     if (address_length > 1 && esp_ptr_internal(address)) {
-      if (i2c_master_write(cmd, address, address_length, true) != ESP_OK) MALLOC_FAILED;
+      if (i2c_master_write(cmd, address, address_length, true) != ESP_OK) FAIL(MALLOC_FAILED);
     } else {
       for (int i = 0; i < address_length; i++) {
-        if (i2c_master_write_byte(cmd, address[i], true) != ESP_OK) MALLOC_FAILED;
+        if (i2c_master_write_byte(cmd, address[i], true) != ESP_OK) FAIL(MALLOC_FAILED);
       }
     }
   }
 
   // Queue up all the bytes to be written. Each byte must be acked.
   if (buffer.length() > 0) {
-    if (i2c_master_write(cmd, data, length, true) != ESP_OK) MALLOC_FAILED;
+    if (i2c_master_write(cmd, data, length, true) != ESP_OK) FAIL(MALLOC_FAILED);
   }
 
   // Finally issue the stop. That will allow other masters to communicate.
-  if (i2c_master_stop(cmd) != ESP_OK) MALLOC_FAILED;
+  if (i2c_master_stop(cmd) != ESP_OK) FAIL(MALLOC_FAILED);
 
   // Ship the built command.
   esp_err_t err = i2c_master_cmd_begin(i2c->port(), cmd, 1000 / portTICK_PERIOD_MS);
   if (err != ESP_OK) return Smi::from(err);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 static Object* read_i2c(Process* process, I2cResourceGroup* i2c, int i2c_address, const uint8* address, int address_length, int length) {
   ByteArray* array = process->allocate_byte_array(length);
-  if (array == null) ALLOCATION_FAILED;
+  if (array == null) FAIL(ALLOCATION_FAILED);
   uint8* data = ByteArray::Bytes(array).address();
 
   i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-  if (cmd == null) MALLOC_FAILED;
+  if (cmd == null) FAIL(MALLOC_FAILED);
   Defer release_cmd_handle { [&]() { i2c_cmd_link_delete(cmd); } };
 
   // NOTE:
@@ -196,43 +196,43 @@ static Object* read_i2c(Process* process, I2cResourceGroup* i2c, int i2c_address
   // Initiate the sequence by issuing a `start`. That will notify slaves to
   // listen (if possible) and promote self to current master, in case of
   // multi-master setup.
-  if (i2c_master_start(cmd) != ESP_OK) MALLOC_FAILED;
+  if (i2c_master_start(cmd) != ESP_OK) FAIL(MALLOC_FAILED);
 
   if (address != null) {
     // First we notify the slave about the register/address we will use.
 
     // Write the i2c address with the write-bit. The device must ack.
-    if (i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, true) != ESP_OK) MALLOC_FAILED;
+    if (i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, true) != ESP_OK) FAIL(MALLOC_FAILED);
 
     // Write the register address. Each byte must be acked.
     if (address_length > 1 && esp_ptr_internal(address)) {
-      if (i2c_master_write(cmd, address, address_length, true) != ESP_OK) MALLOC_FAILED;
+      if (i2c_master_write(cmd, address, address_length, true) != ESP_OK) FAIL(MALLOC_FAILED);
     } else {
       for (int i = 0; i < address_length; i++) {
-        if (i2c_master_write_byte(cmd, address[i], true) != ESP_OK) MALLOC_FAILED;
+        if (i2c_master_write_byte(cmd, address[i], true) != ESP_OK) FAIL(MALLOC_FAILED);
       }
     }
 
     // Prepare the slave for the next command.
-    if (i2c_master_start(cmd) != ESP_OK) MALLOC_FAILED;
+    if (i2c_master_start(cmd) != ESP_OK) FAIL(MALLOC_FAILED);
   }
 
   // Write the address with the read-bit set. The slave must ack.
-  if (i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_READ, true) != ESP_OK) MALLOC_FAILED;
+  if (i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_READ, true) != ESP_OK) FAIL(MALLOC_FAILED);
 
   // Queue up all the bytes that must be read.
   if (length > 0) {
-    if (i2c_master_read(cmd, data, length, I2C_MASTER_LAST_NACK) != ESP_OK) MALLOC_FAILED;
+    if (i2c_master_read(cmd, data, length, I2C_MASTER_LAST_NACK) != ESP_OK) FAIL(MALLOC_FAILED);
   }
 
   // Finally issue the stop. That will allow other masters to communicate.
-  if (i2c_master_stop(cmd) != ESP_OK) MALLOC_FAILED;
+  if (i2c_master_stop(cmd) != ESP_OK) FAIL(MALLOC_FAILED);
 
   // Ship the built command.
   esp_err_t err = i2c_master_cmd_begin(i2c->port(), cmd, 1000 / portTICK_PERIOD_MS);
   // TODO(florian): we could return the error code here: Smi::from(err).
   // We would need to type-dispatch on the Toit side to know whether it was an error or not.
-  if (err != ESP_OK) return process->program()->null_object();
+  if (err != ESP_OK) return process->null_object();
 
   return array;
 }
@@ -246,7 +246,7 @@ PRIMITIVE(write) {
 PRIMITIVE(write_reg) {
   ARGS(I2cResourceGroup, i2c, int, i2c_address, int, reg, Blob, buffer);
 
-  if (!(0 <= reg && reg < 256)) INVALID_ARGUMENT;
+  if (!(0 <= reg && reg < 256)) FAIL(INVALID_ARGUMENT);
 
   uint8 reg_address[1] = { static_cast<uint8>(reg) };
   return write_i2c(process, i2c, i2c_address, reg_address, 1, buffer);
@@ -268,7 +268,7 @@ PRIMITIVE(read) {
 PRIMITIVE(read_reg) {
   ARGS(I2cResourceGroup, i2c, int, i2c_address, int, reg, int, length)
 
-  if (!(0 <= reg && reg < 256)) INVALID_ARGUMENT;
+  if (!(0 <= reg && reg < 256)) FAIL(INVALID_ARGUMENT);
 
   uint8 address[1] = { static_cast<uint8>(reg) };
   return read_i2c(process, i2c, i2c_address, address, 1, length);

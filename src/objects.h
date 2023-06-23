@@ -96,10 +96,14 @@ class Object {
   bool encode_on(ProgramOrientedEncoder* encoder);
 };
 
+// A struct that is only used to get a different overload of the constructor.
+struct uninitialized_t {};
+
 // A class that combines a memory address with the size of it.
 class Blob {
  public:
-  Blob() : address_(null), length_(0) {}
+  inline Blob(uninitialized_t& u) {}
+  inline Blob() : address_(null), length_(0) {}
   Blob(const uint8* address, int length)
       : address_(address), length_(length) {}
 
@@ -134,6 +138,12 @@ class Error : public Object {
  public:
   static INLINE Error* from(String* string);
   INLINE String* as_string();
+  // Errors are tagged with binary 11 in the low bits.
+  // Within primitives, errors are sometimes represented as small integers,
+  // which are shifted indices into the program roots.
+  static const int ERROR_SHIFT = 2;
+  static const int ERROR_TAG = 3;
+  static const int MAX_TAGGED_ERROR = 256;
 };
 
 class Smi : public Object {
@@ -265,7 +275,7 @@ class HeapObject : public Object {
   // used in the class field to mark a forwarding pointer.
   HeapObject* mark() {
     ASSERT(!is_marked());
-    uword raw = reinterpret_cast<uword>(this) | 0x3;
+    uword raw = reinterpret_cast<uword>(this) | Error::ERROR_TAG;
     HeapObject* result = reinterpret_cast<HeapObject*>(raw);
     ASSERT(result->is_marked());
     return result;

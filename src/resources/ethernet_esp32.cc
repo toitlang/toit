@@ -115,28 +115,20 @@ class EthernetIpEvents : public SystemResource {
   TAG(EthernetIpEvents);
   explicit EthernetIpEvents(EthernetResourceGroup* group)
       : SystemResource(group, IP_EVENT, IP_EVENT_ETH_GOT_IP) {
-    clear_ip();
+    ip_address_ = 0;
   }
 
-  const char* ip() {
-    return ip_;
+  uint32 ip_address() {
+    return ip_address_;
   }
 
-  void update_ip(uint32 addr) {
-    sprintf(ip_, "%d.%d.%d.%d",
-            (addr >> 0) & 0xff,
-            (addr >> 8) & 0xff,
-            (addr >> 16) & 0xff,
-            (addr >> 24) & 0xff);
-  }
-
-  void clear_ip() {
-    memset(ip_, 0, sizeof(ip_));
+  void update_ip_address(uint32 addr) {
+    ip_address_ = addr;
   }
 
  private:
   friend class EthernetResourceGroup;
-  char ip_[16];
+  uint32 ip_address_;
 };
 
 uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t state) {
@@ -163,7 +155,7 @@ uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t
     switch (system_event->id) {
       case IP_EVENT_ETH_GOT_IP: {
         ip_event_got_ip_t* event = reinterpret_cast<ip_event_got_ip_t*>(system_event->event_data);
-        static_cast<EthernetIpEvents*>(resource)->update_ip(event->ip_info.ip.addr);
+        static_cast<EthernetIpEvents*>(resource)->update_ip_address(event->ip_info.ip.addr);
         state |= ETHERNET_DHCP_SUCCESS;
         break;
       }
@@ -188,16 +180,16 @@ PRIMITIVE(init_esp32) {
 #else
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = ethernet_pool.any();
-  if (id == kInvalidEthernet) OUT_OF_BOUNDS;
+  if (id == kInvalidEthernet) FAIL(OUT_OF_BOUNDS);
 
   esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
   esp_netif_t *netif = esp_netif_new(&cfg);
   if (!netif) {
     ethernet_pool.put(id);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   // Init MAC and PHY configs to default.
@@ -218,7 +210,7 @@ PRIMITIVE(init_esp32) {
     mac = esp_eth_mac_new_openeth(&mac_config);
     phy_config.autonego_timeout_ms = 100;
   } else {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
 
   if (!mac) {
@@ -277,7 +269,7 @@ PRIMITIVE(init_esp32) {
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle));
     phy->del(phy);
     mac->del(mac);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(resource_group);
@@ -290,16 +282,16 @@ PRIMITIVE(init_spi) {
   ARGS(int, mac_chip, SpiDevice, spi_device, int, int_num)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = ethernet_pool.any();
-  if (id == kInvalidEthernet) OUT_OF_BOUNDS;
+  if (id == kInvalidEthernet) FAIL(OUT_OF_BOUNDS);
 
   esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
   esp_netif_t *netif = esp_netif_new(&cfg);
   if (!netif) {
     ethernet_pool.put(id);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   // Init MAC and PHY configs to default.
@@ -364,7 +356,7 @@ PRIMITIVE(init_spi) {
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle));
     phy->del(phy);
     mac->del(mac);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(resource_group);
@@ -375,17 +367,17 @@ PRIMITIVE(close) {
   ARGS(EthernetResourceGroup, group);
   group->tear_down();
   group_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(connect) {
   ARGS(EthernetResourceGroup, group);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   EthernetEvents* ethernet = _new EthernetEvents(group);
-  if (ethernet == null) MALLOC_FAILED;
+  if (ethernet == null) FAIL(MALLOC_FAILED);
 
   group->register_resource(ethernet);
   group->connect();
@@ -398,10 +390,10 @@ PRIMITIVE(setup_ip) {
   ARGS(EthernetResourceGroup, group);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   EthernetIpEvents* ip_events = _new EthernetIpEvents(group);
-  if (ip_events == null) MALLOC_FAILED;
+  if (ip_events == null) FAIL(MALLOC_FAILED);
 
   group->register_resource(ip_events);
 
@@ -415,12 +407,20 @@ PRIMITIVE(disconnect) {
 
   group->unregister_resource(ethernet);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_ip) {
   ARGS(EthernetIpEvents, ip);
-  return process->allocate_string_or_error(ip->ip());
+
+  uint32 address = ip->ip_address();
+  if (address == 0) return process->null_object();
+
+  ByteArray* result = process->object_heap()->allocate_internal_byte_array(4);
+  if (!result) FAIL(ALLOCATION_FAILED);
+  ByteArray::Bytes bytes(result);
+  Utils::write_unaligned_uint32_le(bytes.address(), address);
+  return result;
 }
 
 

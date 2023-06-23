@@ -507,7 +507,7 @@ uint16* Utils::create_new_environment(Process* process, uint16* previous_environ
     // mentioned in the new environment map, add the new variables.
     for (int i = 0; i < environment->length(); i += 2) {
       Blob key;
-      if (environment->at(i + 1) != process->program()->null_object()) {
+      if (environment->at(i + 1) != process->null_object()) {
         Blob key, value;
         environment->at(i    )->byte_content(process->program(), &key, STRINGS_ONLY);
         environment->at(i + 1)->byte_content(process->program(), &value, STRINGS_ONLY);

@@ -215,10 +215,10 @@ MODULE_IMPLEMENTATION(pcnt, MODULE_PCNT)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   PcntUnitResourceGroup* pcnt = _new PcntUnitResourceGroup(process);
-  if (pcnt == null) MALLOC_FAILED;
+  if (pcnt == null) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(pcnt);
   return proxy;
@@ -227,17 +227,17 @@ PRIMITIVE(init) {
 PRIMITIVE(new_unit) {
   ARGS(PcntUnitResourceGroup, unit_resource_group, int16, low_limit, int16, high_limit, int, glitch_filter_ns)
 
-  if (low_limit > 0 || high_limit < 0) OUT_OF_RANGE;
+  if (low_limit > 0 || high_limit < 0) FAIL(OUT_OF_RANGE);
   if (glitch_filter_ns > 0) {
     int ticks = PcntUnitResource::glitch_filter_ns_to_ticks(glitch_filter_ns);
-    if (!PcntUnitResource::validate_glitch_filter_ticks(ticks)) OUT_OF_RANGE;
+    if (!PcntUnitResource::validate_glitch_filter_ticks(ticks)) FAIL(OUT_OF_RANGE);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   pcnt_unit_t unit_id = pcnt_unit_ids.any();
-  if (unit_id == kInvalidUnitId) ALREADY_IN_USE;
+  if (unit_id == kInvalidUnitId) FAIL(ALREADY_IN_USE);
 
   PcntUnitResource* unit = null;
   { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
@@ -248,7 +248,7 @@ PRIMITIVE(new_unit) {
     unit = _new PcntUnitResource(unit_resource_group, unit_id, low_limit, high_limit, glitch_filter_ns);
     if (unit == null) {
       pcnt_unit_ids.put(unit_id);
-      MALLOC_FAILED;
+      FAIL(MALLOC_FAILED);
     }
   }
 
@@ -271,16 +271,16 @@ PRIMITIVE(close_unit) {
   unit->tear_down();
   pcnt_unit_ids.put(unit->unit_id());
   unit_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(new_channel) {
   ARGS(PcntUnitResource, unit, int, pin_number, int, on_positive_edge, int, on_negative_edge,
        int, control_pin_number, int, when_control_low, int, when_control_high)
-  if (on_positive_edge < 0 || on_positive_edge >= PCNT_COUNT_MAX) INVALID_ARGUMENT;
-  if (on_negative_edge < 0 || on_negative_edge >= PCNT_COUNT_MAX) INVALID_ARGUMENT;
-  if (when_control_low < 0 || when_control_low >= PCNT_MODE_MAX) INVALID_ARGUMENT;
-  if (when_control_high < 0 || when_control_high >= PCNT_MODE_MAX) INVALID_ARGUMENT;
+  if (on_positive_edge < 0 || on_positive_edge >= PCNT_COUNT_MAX) FAIL(INVALID_ARGUMENT);
+  if (on_negative_edge < 0 || on_negative_edge >= PCNT_COUNT_MAX) FAIL(INVALID_ARGUMENT);
+  if (when_control_low < 0 || when_control_low >= PCNT_MODE_MAX) FAIL(INVALID_ARGUMENT);
+  if (when_control_high < 0 || when_control_high >= PCNT_MODE_MAX) FAIL(INVALID_ARGUMENT);
 
   pcnt_channel_t channel = kInvalidChannel;
   esp_err_t err = unit->add_channel(pin_number,
@@ -291,17 +291,17 @@ PRIMITIVE(new_channel) {
                                     static_cast<pcnt_ctrl_mode_t>(when_control_high),
                                     &channel);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  if (channel == kInvalidChannel) ALREADY_IN_USE;
+  if (channel == kInvalidChannel) FAIL(ALREADY_IN_USE);
   return Smi::from(static_cast<int>(channel));
 }
 
 PRIMITIVE(close_channel) {
   ARGS(PcntUnitResource, unit, int, channel_id)
   pcnt_channel_t channel = static_cast<pcnt_channel_t>(channel_id);
-  if (!unit->is_open_channel(channel)) INVALID_ARGUMENT;
+  if (!unit->is_open_channel(channel)) FAIL(INVALID_ARGUMENT);
   esp_err_t err = unit->close_channel(channel);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(start) {
@@ -309,7 +309,7 @@ PRIMITIVE(start) {
 
   esp_err_t err = pcnt_counter_resume(unit->unit_id());
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(stop) {
@@ -317,7 +317,7 @@ PRIMITIVE(stop) {
 
   esp_err_t err = pcnt_counter_pause(unit->unit_id());
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(clear) {
@@ -325,7 +325,7 @@ PRIMITIVE(clear) {
 
   esp_err_t err = pcnt_counter_clear(unit->unit_id());
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_count) {

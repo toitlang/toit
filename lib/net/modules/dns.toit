@@ -346,8 +346,9 @@ parts_ packet/ByteArray position/int parts/List [position_block] -> none:
     size := packet[position]
     if size <= 63:
       position++
-      parts.add
-        packet.to_string position position + size
+      part := packet.to_string position position + size
+      if part == "\0": throw (DnsException "Strange Samsung phone query detected")
+      parts.add part
       position += size
     else:
       if size < 192: throw (DnsException "")

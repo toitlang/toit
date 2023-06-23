@@ -70,6 +70,16 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
   current_directory_ = -1;
 #endif
   ASSERT(group_->lookup(id_) == this);
+
+  if (program) {
+    false_object_ = program->false_object();
+    true_object_ = program->true_object();
+    null_ = program->null_object();
+  } else {
+    false_object_ = null;
+    true_object_ = null;
+    null_ = null;
+  }
 }
 
 Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory)
