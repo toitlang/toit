@@ -260,6 +260,9 @@ class Pin:
 
       while true:
         state_.wait_for_state GPIO_STATE_EDGE_TRIGGERED_
+        if not resource_:
+          // The pin was closed while we were waiting.
+          return
         event_timestamp := gpio_last_edge_trigger_timestamp_ resource_
         // If there was an edge transition after we configured the interrupt,
         // we are guaranteed that we have seen the value we are waiting for.
@@ -272,10 +275,12 @@ class Pin:
           // Unrealistically far from each other.
           // Assume an overflow happened (either the event or config timestamp).
           if event_timestamp < config_timestamp: return
+        state_.clear_state GPIO_STATE_EDGE_TRIGGERED_
         // The following test shouldn't be necessary, but doesn't hurt either.
         if get == value: return
     finally:
-      gpio_config_interrupt_ resource_ false
+      if resource_:
+        gpio_config_interrupt_ resource_ false
 
   /**
   Sets the open-drain property of this pin.
