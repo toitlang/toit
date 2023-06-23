@@ -173,20 +173,17 @@ connect_to_site host port expected_certificate_name:
 
 add_global_certs -> none:
   // Test binary (DER) roots.
-  tls_add_global_root_certificate DIGICERT_GLOBAL_ROOT_G2_BYTES
-  tls_add_global_root_certificate DIGICERT_GLOBAL_ROOT_CA_BYTES
+  tls.add_global_root_certificate DIGICERT_GLOBAL_ROOT_G2_BYTES
+  tls.add_global_root_certificate DIGICERT_GLOBAL_ROOT_CA_BYTES
   // Test ASCII (PEM) roots.
-  tls_add_global_root_certificate USERTRUST_CERTIFICATE_TEXT
-  tls_add_global_root_certificate ISRG_ROOT_X1_TEXT
+  tls.add_global_root_certificate USERTRUST_CERTIFICATE_TEXT
+  tls.add_global_root_certificate ISRG_ROOT_X1_TEXT
   // Test that the cert can be a slice.
-  tls_add_global_root_certificate DIGICERT_ROOT_TEXT[..DIGICERT_ROOT_TEXT.size - 9]
+  tls.add_global_root_certificate DIGICERT_ROOT_TEXT[..DIGICERT_ROOT_TEXT.size - 9]
   // Test a binary root that is a modified copy-on-write byte array.
   DIGICERT_ASSURED_ID_ROOT_G3_BYTES[42] ^= 42
   DIGICERT_ASSURED_ID_ROOT_G3_BYTES[42] ^= 42
-  tls_add_global_root_certificate DIGICERT_ASSURED_ID_ROOT_G3_BYTES
-
-tls_add_global_root_certificate cert:
-  #primitive.tls.add_global_root_certificate
+  tls.add_global_root_certificate DIGICERT_ASSURED_ID_ROOT_G3_BYTES
 
 // Ebay.de sometimes uses this trusted root certificate.
 // Serial number 01:FD:6D:30:FC:A3:CA:51:A8:1B:BC:64:0E:35:03:2D
