@@ -113,6 +113,14 @@ write_file path/string [block] -> none:
   finally:
     stream.close
 
+write_file_or_print --path/string? output/string -> none:
+  if path:
+    write_file path: | writer/writer.Writer |
+      writer.write output
+      writer.write "\n"
+  else:
+    print output
+
 main arguments/List:
   root_cmd := cli.Command "root"
       --options=[
@@ -228,7 +236,14 @@ container_cmd -> cli.Command:
 
   cmd.add
       cli.Command "list"
-          --options=[ option_output ]
+          --options=[
+            cli.OptionString "output"
+                --short_help="Set the output file name."
+                --short_name="o",
+            cli.OptionEnum "output-format" ["human", "json"]
+                --short_help="Set the output format."
+                --default="human",
+          ]
           --run=:: container_list it
 
   return cmd
@@ -264,6 +279,11 @@ get_container_name parsed/cli.Parsed -> string:
     print "Cannot install container with a name longer than 14 characters."
     exit 1
   return name
+
+is_system_name name/string -> bool:
+  // Normally names should have at least a character, but to avoid
+  // out-of-bound errors we allow empty names here.
+  return name.size == 0 or name[0] == '$'
 
 is_container_name name/string -> bool:
   if not 0 < name.size <= 14: return false
@@ -335,19 +355,34 @@ container_uninstall parsed/cli.Parsed -> none:
 container_list parsed/cli.Parsed -> none:
   output_path := parsed[OPTION_OUTPUT]
   input_path := parsed[OPTION_ENVELOPE]
+  output_format := parsed["output-format"]
   entries := (Envelope.load input_path).entries
+
+  entries_json := build_entries_json entries
+  output := entries_json["containers"]
+
+  output_string := ""
+  if output_format == "human":
+    output_string = json_to_human output: | chain/List |
+      chain.size != 1
+  else:
+    output_string = json.stringify output
+
+  write_file_or_print --path=output_path output_string
+
+build_entries_json entries/Map -> Map:
   properties/Map? := entries.get AR_ENTRY_PROPERTIES
       --if_present=: json.decode it
   flags := properties and properties.get PROPERTY_CONTAINER_FLAGS
-
-  output := {:}
+  containers := {:}
   entries.do: | name/string content/ByteArray |
     if not is_container_name name: continue.do
     assets := entries.get "+$name"
     entry := extract_container name flags content --assets=assets
     map := {
-      "kind" : (is_snapshot_bundle content) ? "snapshot" : "image",
-      "id"   : entry.id.stringify,
+      "kind": (is_snapshot_bundle content) ? "snapshot" : "image",
+      "id"  : entry.id.to_string,
+      "size": content.size,
     }
     if assets:
       map["assets"] = { "size": assets.size }
@@ -358,14 +393,17 @@ container_list parsed/cli.Parsed -> none:
       if (entry.flags & IMAGE_FLAG_RUN_CRITICAL) != 0:
         flag_names.add "critical"
       map["flags"] = flag_names
-    output[name] = map
-  output_string := json.stringify output
-  if output_path:
-    write_file output_path:
-      it.write output_string
-      it.write "\n"
-  else:
-    print output_string
+    containers[name] = map
+  other_entries := {:}
+  entries.do: | name/string content/ByteArray |
+    if not is_system_name name: continue.do
+    other_entries[name[1..]] = {
+      "size": content.size,
+    }
+  return {
+    "containers": containers,
+    "entries": other_entries,
+  }
 
 property_cmd -> cli.Command:
   cmd := cli.Command "property"
@@ -923,43 +961,91 @@ show_cmd -> cli.Command:
   return cli.Command "show"
       --short_help="Show the contents of the given firmware envelope."
       --options=[
-        cli.OptionEnum "output-format" ["text", "json"]
-            --default="text",
+        cli.OptionEnum "output-format" ["human", "json"]
+            --default="human",
         cli.Flag "all"
-            --short_help="Show all information, including system entries."
+            --short_help="Show all information, including non-container entries."
             --short_name="a",
+        cli.Option "output"
+            --short_help="Write output to the given file."
+            --short_name="o",
       ]
-      --run=:: describe it
+      --run=:: show it
 
-describe parsed/cli.Parsed -> none:
+show parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
+  output_path := parsed["output"]
   output_format := parsed["output-format"]
   show_all := parsed["all"]
 
   envelope := Envelope.load input_path
-
-  if output_format == "text":
-    print "Envelope format version: $envelope.version_"
-    print "SDK version: $envelope.sdk_version"
-    print
-    print "Containers:"
-    envelope.entries.do: | name entry |
-      if show_all or not name.starts_with "\$":
-        print "  $name: $(entry.size) bytes"
-    return
-
-  entries := {:}
-  envelope.entries.do: | name entry |
-    if show_all or not name.starts_with "\$":
-      entries[name] = {
-        "size": entry.size,
-      }
+  entries_json := build_entries_json envelope.entries
   result := {
     "envelope-format-version": envelope.version_,
     "sdk-version": envelope.sdk_version,
-    "containers": entries,
+    "containers": entries_json["containers"],
   }
-  print (json.stringify result)
+  if show_all:
+    result["entries"] = entries_json["entries"]
+
+  output := ""
+  if output_format == "human":
+    output = json_to_human result: | chain/List |
+      chain.size != 2 or (chain[0] != "containers" and chain[0] != "entries")
+  else:
+    output = json.stringify result
+
+  write_file_or_print --path=output_path output
+
+capitalize_ str/string -> string:
+  if str == "": return ""
+  return str[..1].to_ascii_upper + str[1..]
+
+humanize_key_ key/string -> string:
+  parts := key.split "-"
+  parts.map --in_place: it == "sdk" ? "SDK" : it
+  parts[0] = capitalize_ parts[0]
+  return parts.join " "
+
+json_to_human o/any --indentation/int=0 --skip_indentation/bool=false --chain/List=[] [should_humanize] -> string:
+  result := ""
+  if o is Map:
+    o.do: | key/string value |
+      new_chain := chain + [key]
+      human_key := (should_humanize.call new_chain) ? (humanize_key_ key) : key
+      if not skip_indentation:
+        result += " " * indentation
+      else:
+        skip_indentation = false
+      result += "$human_key: "
+      if value is not Map and value is not List:
+        result += "$value\n"
+      else:
+        result += "\n"
+        result += json_to_human value --indentation=(indentation + 2) --chain=new_chain should_humanize
+  else if o is List:
+    o.do: | value |
+      if not skip_indentation:
+        result += " " * indentation
+      else:
+        skip_indentation = false
+      result += "-"
+      if value is Map:
+        result += " "
+        result += json_to_human value --indentation=(indentation + 2) --skip_indentation --chain=chain should_humanize
+      else if value is List:
+        result += "\n"
+        result += json_to_human value --indentation=(indentation + 2) --chain=chain should_humanize
+      else:
+        result += " $value\n"
+  else:
+    if not skip_indentation:
+      result += " " * indentation
+    else:
+      skip_indentation = false
+    result += "$o\n"
+
+  return result
 
 class Envelope:
   static MARKER ::= 0x0abeca70

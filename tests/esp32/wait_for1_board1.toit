@@ -5,6 +5,8 @@
 import gpio
 import monitor
 import rmt
+import .wait_for1_shared show
+  ITERATIONS MEDIUM_PULSE_ITERATIONS SHORT_PULSE_ITERATIONS ULTRA_SHORT_PULSE_ITERATIONS
 
 /**
 Tests the $gpio.Pin.wait_for functionality.
@@ -21,11 +23,6 @@ Once that one is running, run `wait_for2.toit` on board2.
 
 PIN_IN ::= 22
 PIN_OUT ::= 23
-
-ITERATIONS ::= 10_000
-MEDIUM_PULSE_ITERATIONS ::= 50
-SHORT_PULSE_ITERATIONS ::= 50
-ULTRA_SHORT_PULSE_ITERATIONS ::= 50
 
 MEDIUM_PULSE_DURATION_MS ::= 5
 
