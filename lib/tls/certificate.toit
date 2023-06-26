@@ -42,6 +42,9 @@ Certificates, the $cert argument, are added here in unparsed form, ie either in
   very little memory until it is needed to complete a TLS handshake. Trying to
   add an instance of $Certificate or $x509.Certificate with this function will
   throw an error.
+
+Returns the hash of the added certificate, which can be used to add it more
+  efficiently, without parsing the certificate at startup time.
 */
-add_global_root_certificate cert hash/int?=null:
+add_global_root_certificate cert hash/int?=null -> int:
   #primitive.tls.add_global_root_certificate

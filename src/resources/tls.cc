@@ -611,7 +611,6 @@ PRIMITIVE(add_global_root_certificate) {
       return tls_error(null, process, ret < 0 ? ret : MBEDTLS_ERR_ASN1_BUF_TOO_SMALL);
     }
     subject_hash = BaseMbedTlsSocket::hash_subject(subject_buffer, ret);
-    printf("Adding root certificate with subject hash %08x\n", subject_hash);
   } else {
     // If the subject hash is given to the primitive then we are probably
     // dealing with a root cert directly from the certificat roots package or
@@ -639,7 +638,7 @@ PRIMITIVE(add_global_root_certificate) {
 
   process->add_root_certificate(root, locker);
 
-  return process->null_object();
+  return Primitive::integer(subject_hash, process);
 }
 
 PRIMITIVE(add_root_certificate) {

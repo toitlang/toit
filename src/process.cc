@@ -413,25 +413,18 @@ String* Process::allocate_string(const wchar_t* content) {
 #endif
 
 bool Process::already_has_root_certificate(const uint8* data, size_t length, const Locker& locker) {
-  uint8 hash[Sha::HASH_LENGTH_256];
-  Sha sha256(null, 256);
-  sha256.add(data, length);
-  sha256.get(hash);
   for (auto root : root_certificates_) {
-    if (root->matches_hash(hash)) return true;
+    if (root->matches(data, length)) return true;
   }
   return false;
 }
 
 UnparsedRootCertificate::UnparsedRootCertificate(const uint8* data, size_t length)
-    : data_(data), length_(length) {
-  Sha sha256(null, 256);
-  sha256.add(data_, length_);
-  sha256.get(hash_);
-}
+    : data_(data), length_(length) {}
 
-bool UnparsedRootCertificate::matches_hash(uint8* hash) const {
-  return memcmp(hash, hash_, Sha::HASH_LENGTH_256) == 0;
+bool UnparsedRootCertificate::matches(const uint8* data, size_t length) const {
+  if (length != length_) return false;
+  return memcmp(data, data_, length) == 0;
 }
 
 }

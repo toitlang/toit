@@ -10,9 +10,8 @@ import .tcp as tcp
 import net.x509 as net
 
 expect_error name [code]:
-  expect_equals
-    name
-    catch code
+  error := catch code
+  expect: error.contains name
 
 monitor LimitLoad:
   current := 0
@@ -182,14 +181,14 @@ add_global_certs -> none:
   tls.add_global_root_certificate DIGICERT_GLOBAL_ROOT_G2_BYTES 0x025449c2
   tls.add_global_root_certificate DIGICERT_GLOBAL_ROOT_CA_BYTES
   // Test ASCII (PEM) roots.
-  tls.add_global_root_certificate USERTRUST_CERTIFICATE_TEXT 0x0c49cbaf
+  tls.add_global_root_certificate USERTRUST_CERTIFICATE_TEXT 0x0c49cbaf  // This one is not needed for the current test sites.
   tls.add_global_root_certificate ISRG_ROOT_X1_TEXT
   // Test that the cert can be a slice.
   tls.add_global_root_certificate DIGICERT_ROOT_TEXT[..DIGICERT_ROOT_TEXT.size - 9]
   // Test a binary root that is a modified copy-on-write byte array.
   DIGICERT_ASSURED_ID_ROOT_G3_BYTES[42] ^= 42
   DIGICERT_ASSURED_ID_ROOT_G3_BYTES[42] ^= 42
-  tls.add_global_root_certificate DIGICERT_ASSURED_ID_ROOT_G3_BYTES
+  tls.add_global_root_certificate DIGICERT_ASSURED_ID_ROOT_G3_BYTES  // This one is not needed for the current test sites.
 
   // Test that we get a sensible error when trying to add a parsed root
   // certificate.
@@ -197,8 +196,13 @@ add_global_certs -> none:
   expect_error "WRONG_OBJECT_TYPE": tls.add_global_root_certificate parsed
 
   // Test that unparseable cert gives an immediate error.
-  DIGICERT_ASSURED_ID_ROOT_G3_BYTES[42] ^= 42
-  tls.add_global_root_certificate DIGICERT_ASSURED_ID_ROOT_G3_BYTES
+  expect_error "OID is not found":
+    DIGICERT_GLOBAL_ROOT_CA_BYTES[42] ^= 42
+    tls.add_global_root_certificate DIGICERT_GLOBAL_ROOT_CA_BYTES
+
+  // Test that it's not too costly to add the same cert multiple times.
+  1_000_000.repeat:
+    tls.add_global_root_certificate DIGICERT_GLOBAL_ROOT_G2_BYTES 0x025449c2
 
 // Ebay.de sometimes uses this trusted root certificate.
 // Serial number 01:FD:6D:30:FC:A3:CA:51:A8:1B:BC:64:0E:35:03:2D

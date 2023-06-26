@@ -21,7 +21,6 @@
 #include "messaging.h"
 #include "profiler.h"
 #include "resource.h"
-#include "sha.h"
 #include "snapshot_bundle.h"
 
 namespace toit {
@@ -32,7 +31,7 @@ typedef LinkedFifo<UnparsedRootCertificate> UnparsedRootCertificateList;
 class UnparsedRootCertificate: public UnparsedRootCertificateList::Element {
  public:
   UnparsedRootCertificate(const uint8* data, size_t length);
-  bool matches_hash(uint8* hash) const;
+  bool matches(const uint8* data, size_t length) const;
 
   const uint8* data() const { return data_; }
   size_t length() const { return length_; }
@@ -42,7 +41,6 @@ class UnparsedRootCertificate: public UnparsedRootCertificateList::Element {
 
  private:
   const uint8* data_;
-  uint8 hash_[Sha::HASH_LENGTH_256];  // Hash of unparsed version.
   size_t length_;
   uint32 subject_hash_ = 0;
 };
