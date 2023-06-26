@@ -173,10 +173,10 @@ connect_to_site host port expected_certificate_name:
 
 add_global_certs -> none:
   // Test binary (DER) roots.
-  tls.add_global_root_certificate DIGICERT_GLOBAL_ROOT_G2_BYTES
+  tls.add_global_root_certificate DIGICERT_GLOBAL_ROOT_G2_BYTES 0x025449c2
   tls.add_global_root_certificate DIGICERT_GLOBAL_ROOT_CA_BYTES
   // Test ASCII (PEM) roots.
-  tls.add_global_root_certificate USERTRUST_CERTIFICATE_TEXT
+  tls.add_global_root_certificate USERTRUST_CERTIFICATE_TEXT 0x0c49cbaf
   tls.add_global_root_certificate ISRG_ROOT_X1_TEXT
   // Test that the cert can be a slice.
   tls.add_global_root_certificate DIGICERT_ROOT_TEXT[..DIGICERT_ROOT_TEXT.size - 9]

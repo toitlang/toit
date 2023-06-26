@@ -43,5 +43,5 @@ Certificates, the $cert argument, are added here in unparsed form, ie either in
   add an instance of $Certificate or $x509.Certificate with this function will
   throw an error.
 */
-add_global_root_certificate cert:
+add_global_root_certificate cert hash/int?=null:
   #primitive.tls.add_global_root_certificate

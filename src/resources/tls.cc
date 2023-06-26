@@ -569,7 +569,7 @@ PRIMITIVE(close) {
 }
 
 PRIMITIVE(add_global_root_certificate) {
-  ARGS(Object, unparsed_cert);
+  ARGS(Object, unparsed_cert, Object, hash);
   bool needs_free = false;
   const uint8* data = null;
   size_t length = 0;
@@ -584,33 +584,45 @@ PRIMITIVE(add_global_root_certificate) {
     FAIL(MALLOC_FAILED);
   }
 
-  // The global roots are parsed on demand, but we parse them now, then discard
-  // the result, to get an early error message and the authority data so we
-  // know when to use it.
-  mbedtls_x509_crt cert;
-  mbedtls_x509_crt_init(&cert);
-  int ret;
-  if (X509ResourceGroup::is_pem_format(data, length)) {
-    ret = mbedtls_x509_crt_parse(&cert, data, length);
-  } else {
-    ret = mbedtls_x509_crt_parse_der_nocopy(&cert, data, length);
-  }
-  if (ret != 0) {
+  uint32 subject_hash = 0;
+  if (hash == process->null_object()) {
+    // The global roots are parsed on demand, but we parse them now, then discard
+    // the result, to get an early error message and the issuer data so we
+    // know when to use it.
+    mbedtls_x509_crt cert;
+    mbedtls_x509_crt_init(&cert);
+    int ret;
+    if (X509ResourceGroup::is_pem_format(data, length)) {
+      ret = mbedtls_x509_crt_parse(&cert, data, length);
+    } else {
+      ret = mbedtls_x509_crt_parse_der_nocopy(&cert, data, length);
+    }
+    if (ret != 0) {
+      mbedtls_x509_crt_free(&cert);
+      if (needs_free) delete data;
+      return tls_error(null, process, ret);
+    }
+
+    uint8 subject_buffer[MAX_SUBJECT];
+    ret = mbedtls_x509_dn_gets(char_cast(&subject_buffer[0]), MAX_SUBJECT, &cert.subject);
     mbedtls_x509_crt_free(&cert);
-    if (needs_free) delete data;
-    return tls_error(null, process, ret);
+    if (ret < 0 || ret >= MAX_SUBJECT) {
+      if (needs_free) delete data;
+      return tls_error(null, process, ret < 0 ? ret : MBEDTLS_ERR_ASN1_BUF_TOO_SMALL);
+    }
+    subject_hash = BaseMbedTlsSocket::hash_subject(subject_buffer, ret);
+    printf("Adding root certificate with subject hash %08x\n", subject_hash);
+  } else {
+    // If the subject hash is given to the primitive then we are probably
+    // dealing with a root cert directly from the certificat roots package or
+    // baked into the VM. In that case we speed up the initialization by not
+    // parsing the cert, and trusting that the hash is correct.
+    GET_UINT32(hash, subject_hash_64);
+    subject_hash = subject_hash_64;
   }
+  root->set_subject_hash(subject_hash);
 
-  uint8 subject_buffer[MAX_SUBJECT];
-  ret = mbedtls_x509_dn_gets(char_cast(&subject_buffer[0]), MAX_SUBJECT, &cert.subject);
-  mbedtls_x509_crt_free(&cert);
-  if (ret < 0 || ret >= MAX_SUBJECT) {
-    if (needs_free) delete data;
-    return tls_error(null, process, ret < 0 ? ret : MBEDTLS_ERR_ASN1_BUF_TOO_SMALL);
-  }
-  root->set_subject_hash(BaseMbedTlsSocket::hash_subject(subject_buffer, ret));
-
-  // Parsing worked, so lets add the root cert to the chain on the process.
+  // No errors found, so lets add the root cert to the chain on the process.
   if (!needs_free && !in_flash) {
     // We can't keep around a pointer to the on-heap data, so make a copy.
     uint8* copy = _new uint8[length];
