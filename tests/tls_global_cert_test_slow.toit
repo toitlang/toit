@@ -56,7 +56,6 @@ run_tests:
     "coinbase.com",
     "helsinki.fi",
     "lund.se",
-    "gnu.org",
     ]
   non_working := [
     "$(dns_lookup "amazon.com")",   // This fails because the name we use to connect (an IP address string) doesn't match the cert name.
