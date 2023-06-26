@@ -127,7 +127,8 @@ static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate
     mbedtls_x509_crt_init(&cert);
     mbedtls_x509_crt** last = chain;
     bool found_root_with_matching_subject = false;
-    for (auto unparsed : process->root_certificates()) {
+    Locker locker(OS::scheduler_mutex());
+    for (auto unparsed : process->root_certificates(locker)) {
       if (unparsed->subject_hash() != issuer_hash) continue;
       mbedtls_x509_crt* cert = _new mbedtls_x509_crt;
       if (!cert) {
@@ -618,12 +619,13 @@ PRIMITIVE(add_global_root_certificate) {
     data = copy;
   }
 
-  if (process->already_has_root_certificate(data, length)) {
+  Locker locker(OS::scheduler_mutex());
+  if (process->already_has_root_certificate(data, length, locker)) {
     if (!in_flash) delete data;
     return process->null_object();
   }
 
-  process->add_root_certificate(root);
+  process->add_root_certificate(root, locker);
 
   return process->null_object();
 }

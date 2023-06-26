@@ -264,13 +264,14 @@ class Process : public ProcessListFromProcessGroup::Element,
   inline HeapObject* true_object() const { return true_object_; }
   inline HeapObject* null_object() const { return null_; }
 
-  void add_root_certificate(UnparsedRootCertificate* certificate) {
+  // These root certificate functions should be guarded by the scheduler mutex.
+  void add_root_certificate(UnparsedRootCertificate* certificate, const Locker& locker) {
     root_certificates_.append(certificate);
   }
 
-  bool already_has_root_certificate(const uint8* data, size_t length);
+  bool already_has_root_certificate(const uint8* data, size_t length, const Locker& locker);
 
-  UnparsedRootCertificateList& root_certificates() {
+  UnparsedRootCertificateList& root_certificates(const Locker& locker) {
     return root_certificates_;
   }
 

@@ -120,6 +120,7 @@ Process::~Process() {
     remove_first_message();
   }
 
+  Locker locker(OS::scheduler_mutex());
   while (!root_certificates_.is_empty()) {
     delete root_certificates_.remove_first();
   }
@@ -411,7 +412,7 @@ String* Process::allocate_string(const wchar_t* content) {
 
 #endif
 
-bool Process::already_has_root_certificate(const uint8* data, size_t length) {
+bool Process::already_has_root_certificate(const uint8* data, size_t length, const Locker& locker) {
   uint8 hash[Sha::HASH_LENGTH_256];
   Sha sha256(null, 256);
   sha256.add(data, length);
