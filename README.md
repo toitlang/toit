@@ -106,7 +106,7 @@ To build Toit and its dependencies the build host requires:
 * [CMake >= 3.13.3](https://cmake.org/)
 * [Ninja](https://ninja-build.org/)
 * [GCC](https://gcc.gnu.org/)
-* [Go >= 1.16](https://go.dev/)
+* [Go >= 1.19](https://go.dev/)
 * python-is-python3: on Ubuntu machines
 * glibc-tools: optional and only available on newer Ubuntus
 
