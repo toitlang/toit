@@ -3,10 +3,16 @@
 // be found in the tests/LICENSE file.
 
 import .dns
+import expect show *
 import writer
 import tls
 import .tcp as tcp
 import net.x509 as net
+
+expect_error name [code]:
+  expect_equals
+    name
+    catch code
 
 monitor LimitLoad:
   current := 0
@@ -184,6 +190,11 @@ add_global_certs -> none:
   DIGICERT_ASSURED_ID_ROOT_G3_BYTES[42] ^= 42
   DIGICERT_ASSURED_ID_ROOT_G3_BYTES[42] ^= 42
   tls.add_global_root_certificate DIGICERT_ASSURED_ID_ROOT_G3_BYTES
+
+  // Test that we get a sensible error when trying to add a parsed root
+  // certificate.
+  parsed := net.Certificate.parse DIGICERT_ASSURED_ID_ROOT_G3_BYTES
+  expect_error "WRONG_OBJECT_TYPE": tls.add_global_root_certificate parsed
 
 // Ebay.de sometimes uses this trusted root certificate.
 // Serial number 01:FD:6D:30:FC:A3:CA:51:A8:1B:BC:64:0E:35:03:2D
