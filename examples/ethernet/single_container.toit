@@ -35,7 +35,6 @@ import esp32.net.ethernet as esp32
 main:
   power := gpio.Pin --output 12
   power.set 1
-  // sleep --ms=1000
   provider := esp32.EthernetServiceProvider
       --phy_chip=esp32.PHY_CHIP_LAN8720
       --phy_address=0
