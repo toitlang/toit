@@ -342,7 +342,7 @@ Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
       hi_error == MBEDTLS_ERR_X509_ALLOC_FAILED) {
     FAIL(MALLOC_FAILED);
   }
-  const char* issuer = socket->error_issuer();
+  const char* issuer = socket ? socket->error_issuer() : null;
   if (err == MBEDTLS_ERR_X509_CERT_VERIFY_FAILED &&
       socket &&
       socket->error_flags() &&

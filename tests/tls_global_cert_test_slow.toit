@@ -196,6 +196,10 @@ add_global_certs -> none:
   parsed := net.Certificate.parse DIGICERT_ASSURED_ID_ROOT_G3_BYTES
   expect_error "WRONG_OBJECT_TYPE": tls.add_global_root_certificate parsed
 
+  // Test that unparseable cert gives an immediate error.
+  DIGICERT_ASSURED_ID_ROOT_G3_BYTES[42] ^= 42
+  tls.add_global_root_certificate DIGICERT_ASSURED_ID_ROOT_G3_BYTES
+
 // Ebay.de sometimes uses this trusted root certificate.
 // Serial number 01:FD:6D:30:FC:A3:CA:51:A8:1B:BC:64:0E:35:03:2D
 USERTRUST_CERTIFICATE_TEXT ::= """\
