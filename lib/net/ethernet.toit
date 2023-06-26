@@ -4,6 +4,30 @@
 
 import net
 import system.api.ethernet show EthernetServiceClient
+import system.services show ServiceProvider // For Toitdocs.
+import esp32.net.ethernet show EthernetServiceProvider // For Toitdocs.
+
+/**
+Library to open an ethernet connection.
+
+This library makes it possible to explicitly open a network connection,
+  even if $net.open defaults to a different connection (like WiFi).
+
+It requires a $ServiceProvider to be installed. On the ESP32, this
+  could be the $EthernetServiceProvider.
+
+# Example
+
+```
+import net.ethernet
+
+main:
+  client := ethernet.open
+  // Use the client for network communication.
+  ...
+  client.close
+```
+*/
 
 service_/EthernetServiceClient? := null
 service_initialized_/bool := false

@@ -3,7 +3,9 @@
 // found in the lib/LICENSE file.
 
 /**
-Network driver as a service for wired Ethernet.
+Network driver as a service for wired Ethernet on the ESP32.
+
+See $EthernetServiceProvider for details.
 */
 
 import esp32
@@ -31,18 +33,55 @@ PHY_CHIP_DP83848  ::= 3
 /**
 Service provider for networking via the Ethernet peripheral.
 
+This provider must be installed before Ethernet networking can be used
+  on the ESP32. The provider can be installed in a separate container
+  or in the same container as the application.
+
+# Example
+
+An example of how to install the service provider in the same
+  container:
+
+``` toit
+import gpio
+import net.ethernet
+import esp32.net.ethernet as esp32
+
+main:
+  power := gpio.Pin --output 12
+  power.set 1
+  // sleep --ms=1000
+  provider := esp32.EthernetServiceProvider
+      --phy_chip=esp32.PHY_CHIP_LAN8720
+      --phy_address=0
+      --mac_chip=esp32.MAC_CHIP_ESP32
+      --mac_mdc=gpio.Pin 23
+      --mac_mdio=gpio.Pin 18
+      --mac_spi_device=null
+      --mac_interrupt=null
+  provider.install
+  network := ethernet.open
+  // Use the network.
+  network.close
+  provider.uninstall
+  power.close
+```
+
 # Olimex Gateway
 The Olimex gateway needs an SDK config change:
 
+In `make menuconfig` search for the setting
+  `CONFIG_ETH_RMII_CLK_OUTPUT` and set it to true.
+  That should disable `CONFIG_ETH_RMII_CLK_INPUT` and
+  set `CONFIG_ETH_RMII_CLK_OUT_GPIO` to 17 (the default).
+
 ``` diff
-diff --git b/toolchains/esp32/sdkconfig a/toolchains/esp32/sdkconfig
-index df798c8..fef8c8a 100644
 --- b/toolchains/esp32/sdkconfig
 +++ a/toolchains/esp32/sdkconfig
-@@ -492,9 +492,10 @@ CONFIG_ETH_ENABLED=y
+@@ -505,9 +505,10 @@
+ CONFIG_ETH_ENABLED=y
  CONFIG_ETH_USE_ESP32_EMAC=y
  CONFIG_ETH_PHY_INTERFACE_RMII=y
- # CONFIG_ETH_PHY_INTERFACE_MII is not set
 -CONFIG_ETH_RMII_CLK_INPUT=y
 -# CONFIG_ETH_RMII_CLK_OUTPUT is not set
 -CONFIG_ETH_RMII_CLK_IN_GPIO=0
@@ -53,19 +92,6 @@ index df798c8..fef8c8a 100644
  CONFIG_ETH_DMA_BUFFER_SIZE=512
  CONFIG_ETH_DMA_RX_BUFFER_NUM=10
  CONFIG_ETH_DMA_TX_BUFFER_NUM=10
-```
-
-After that, the ethernet service provider can be installed with:
-```
-  provider := EthernetServiceProvider
-      --phy_chip=ethernet.PHY_CHIP_LAN8720
-      --phy_address=0
-      --mac_chip=ethernet.MAC_CHIP_ESP32
-      --mac_mdc=gpio.Pin 23
-      --mac_mdio=gpio.Pin 18
-      --mac_spi_device=null
-      --mac_interrupt=null
-  provider.install
 ```
 */
 class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
