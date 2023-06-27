@@ -56,6 +56,8 @@ run_tests:
     "coinbase.com",
     "helsinki.fi",
     "lund.se",
+    "web.whatsapp.com",
+    "digimedia.com",
     ]
   non_working := [
     "$(dns_lookup "amazon.com")",   // This fails because the name we use to connect (an IP address string) doesn't match the cert name.
@@ -68,6 +70,7 @@ run_tests:
     "elpais.es",                           // Relies on unknown Starfield Tech root.
     "vw.de",                               // Relies on unknown Starfield Tech root.
     "moxie.org",                           // Relies on unknown Starfield Tech root.
+    "signal.org",                          // Relies on unknown Starfield Tech root.
     ]
   working.do: | site |
     test_site site true
