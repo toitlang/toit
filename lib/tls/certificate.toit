@@ -28,7 +28,7 @@ Add a trusted root certificate that can be used for all TLS connections.
 This function is an alternative to adding root certificates to individual TLS
   sockets, or using the --root_certificates argument on the HTTP client.
   If you add root certificates to a specific connection then these global
-  certificates are not consulted for that connection, even as a fallback.
+  certificates are not consulted for that connection, not even as a fallback.
 
 The trusted roots added with this function have a "subject" field that is used
   to match with the "issuer" field that the server provides. Only matching

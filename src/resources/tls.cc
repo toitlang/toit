@@ -146,12 +146,15 @@ static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate
       found_root_with_matching_subject = true;
       *last = cert;
       last = &cert->next;
+      // We could break here, but a CRC32 checksum is not collision proof, so we had
+      // better keep going in case there's a different cert with the same checksum.
     }
     if (!found_root_with_matching_subject) {
       socket->record_unknown_issuer(&certificate->issuer);
     }
-    return 0;
+    return 0;  // No error (but perhaps no certificate was found).
   }
+
 failed:
   for (mbedtls_x509_crt* cert = *chain; cert; ) {
     mbedtls_x509_crt* next = cert->next;
@@ -159,7 +162,7 @@ failed:
     delete cert;
     cert = next;
   }
-  return ret;
+  return ret;  // Problem.  Sadly, this is discarded unless you have a patched MbedTLS.
 }
 
 void BaseMbedTlsSocket::apply_certs(Process* process) {
@@ -282,11 +285,11 @@ uint32_t MbedTlsResourceGroup::on_event(Resource* resource, word data, uint32_t 
 }
 
 BaseMbedTlsSocket::BaseMbedTlsSocket(MbedTlsResourceGroup* group)
-  : TlsSocket(group)
-  , root_certs_(null)
-  , private_key_(null)
-  , error_flags_(0)
-  , error_issuer_(null) {
+    : TlsSocket(group)
+    , root_certs_(null)
+    , private_key_(null)
+    ,   error_flags_(0)
+    , error_issuer_(null) {
   mbedtls_ssl_init(&ssl);
   group->init_conf(&conf_);
 }

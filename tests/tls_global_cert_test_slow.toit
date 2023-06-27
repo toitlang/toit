@@ -65,9 +65,9 @@ run_tests:
     "captive-portal.badssl.com",
     "mitm-software.badssl.com",
     "european-union.europa.eu/Starfield",  // Relies on unknown Starfield Tech root.
-    "elpais.es",                           // Relies on unknown Starfield Tech root.
-    "vw.de",                               // Relies on unknown Starfield Tech root.
-    "moxie.org",                           // Relies on unknown Starfield Tech root.
+    "elpais.es/Starfield",                 // Relies on unknown Starfield Tech root.
+    "vw.de/Starfield",                     // Relies on unknown Starfield Tech root.
+    "moxie.org/Starfield",                 // Relies on unknown Starfield Tech root.
     ]
   working.do: | site |
     test_site site true

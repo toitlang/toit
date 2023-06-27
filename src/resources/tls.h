@@ -95,6 +95,7 @@ class BaseMbedTlsSocket : public TlsSocket {
   char* error_issuer_;
 };
 
+// A size that should be plenty for all known root certificates, but won't overflow the stack.
 static const int MAX_SUBJECT = 400;
 
 // Although it's a resource we never actually wait on a MbedTlsSocket, preferring
@@ -142,8 +143,8 @@ class MbedTlsResourceGroup : public ResourceGroup {
 
   TAG(MbedTlsResourceGroup);
   MbedTlsResourceGroup(Process* process, TlsEventSource* event_source, Mode mode)
-    : ResourceGroup(process, event_source)
-    , mode_(mode) {}
+      : ResourceGroup(process, event_source)
+      , mode_(mode) {}
 
   ~MbedTlsResourceGroup() {
     uninit();

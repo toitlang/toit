@@ -121,8 +121,8 @@ Process::~Process() {
   }
 
   Locker locker(OS::scheduler_mutex());
-  while (!root_certificates_.is_empty()) {
-    delete root_certificates_.remove_first();
+  while (auto certificate = root_certificates_.remove_first()) {
+    delete certificate;
   }
 }
 
