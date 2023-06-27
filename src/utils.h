@@ -531,6 +531,7 @@ class DeferDelete {
  public:
   DeferDelete(T* object) : object_(object) {}
   ~DeferDelete() { delete object_; }
+  void keep() { object_ = null; }
 
  private:
   T* object_;

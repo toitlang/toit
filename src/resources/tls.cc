@@ -597,6 +597,8 @@ PRIMITIVE(add_global_root_certificate) {
     FAIL(MALLOC_FAILED);
   }
 
+  DeferDelete<UnparsedRootCertificate> defer_root_delete(root);
+
   uint32 subject_hash = 0;
   if (hash == process->null_object()) {
     // The global roots are parsed on demand, but we parse them now, then discard
@@ -612,7 +614,6 @@ PRIMITIVE(add_global_root_certificate) {
     }
     if (ret != 0) {
       mbedtls_x509_crt_free(&cert);
-      delete root;
       return tls_error(null, process, ret);
     }
 
@@ -620,7 +621,6 @@ PRIMITIVE(add_global_root_certificate) {
     ret = mbedtls_x509_dn_gets(char_cast(&subject_buffer[0]), MAX_SUBJECT, &cert.subject);
     mbedtls_x509_crt_free(&cert);
     if (ret < 0 || ret >= MAX_SUBJECT) {
-      delete root;
       return tls_error(null, process, ret < 0 ? ret : MBEDTLS_ERR_ASN1_BUF_TOO_SMALL);
     }
     subject_hash = BaseMbedTlsSocket::hash_subject(subject_buffer, ret);
@@ -636,12 +636,11 @@ PRIMITIVE(add_global_root_certificate) {
 
   // No errors found, so lets add the root cert to the chain on the process.
   Locker locker(OS::scheduler_mutex());
-  if (process->already_has_root_certificate(data, length, locker)) {
-    if (!in_flash) delete data;
-    return process->null_object();
-  }
 
-  process->add_root_certificate(root, locker);
+  if (!process->already_has_root_certificate(data, length, locker)) {
+    defer_root_delete.keep();  // Don't delete it, once it's attached to the process.
+    process->add_root_certificate(root, locker);
+  }
 
   return Primitive::integer(subject_hash, process);
 }
