@@ -570,17 +570,30 @@ PRIMITIVE(close) {
 
 PRIMITIVE(add_global_root_certificate) {
   ARGS(Object, unparsed_cert, Object, hash);
-  bool needs_free = false;
+  bool needs_delete = false;
   const uint8* data = null;
   size_t length = 0;
 
-  Object* result = X509ResourceGroup::get_certificate_data(process, unparsed_cert, &needs_free, &data, &length);
+  Object* result = X509ResourceGroup::get_certificate_data(process, unparsed_cert, &needs_delete, &data, &length);
   if (result) return result;  // Error case.
 
   bool in_flash = reinterpret_cast<const HeapObject*>(data)->on_program_heap(process);
-  UnparsedRootCertificate* root = _new UnparsedRootCertificate(data, length);
+  ASSERT(!(in_flash && needs_delete));  // We can't free something in flash.
+
+  if (!needs_delete && !in_flash) {
+    // The raw cert data will not survive the end of this primitive, so we need a copy.
+    uint8* new_data = _new uint8[length];
+    if (!new_data) {
+      FAIL(MALLOC_FAILED);
+    }
+    memcpy(new_data, data, length);
+    data = new_data;
+    needs_delete = true;
+  }
+
+  UnparsedRootCertificate* root = _new UnparsedRootCertificate(data, length, needs_delete);
   if (!root) {
-    if (!in_flash) delete data;
+    if (needs_delete) delete data;
     FAIL(MALLOC_FAILED);
   }
 
@@ -599,7 +612,7 @@ PRIMITIVE(add_global_root_certificate) {
     }
     if (ret != 0) {
       mbedtls_x509_crt_free(&cert);
-      if (needs_free) delete data;
+      delete root;
       return tls_error(null, process, ret);
     }
 
@@ -607,7 +620,7 @@ PRIMITIVE(add_global_root_certificate) {
     ret = mbedtls_x509_dn_gets(char_cast(&subject_buffer[0]), MAX_SUBJECT, &cert.subject);
     mbedtls_x509_crt_free(&cert);
     if (ret < 0 || ret >= MAX_SUBJECT) {
-      if (needs_free) delete data;
+      delete root;
       return tls_error(null, process, ret < 0 ? ret : MBEDTLS_ERR_ASN1_BUF_TOO_SMALL);
     }
     subject_hash = BaseMbedTlsSocket::hash_subject(subject_buffer, ret);
@@ -622,14 +635,6 @@ PRIMITIVE(add_global_root_certificate) {
   root->set_subject_hash(subject_hash);
 
   // No errors found, so lets add the root cert to the chain on the process.
-  if (!needs_free && !in_flash) {
-    // We can't keep around a pointer to the on-heap data, so make a copy.
-    uint8* copy = _new uint8[length];
-    if (!copy) FAIL(MALLOC_FAILED);
-    memcpy(copy, data, length);
-    data = copy;
-  }
-
   Locker locker(OS::scheduler_mutex());
   if (process->already_has_root_certificate(data, length, locker)) {
     if (!in_flash) delete data;

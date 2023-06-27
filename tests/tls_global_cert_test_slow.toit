@@ -161,20 +161,19 @@ add_global_certs -> none:
   tls.add_global_root_certificate GLOBALSIGN_ROOT_CA_R3_BYTES  // Needed for lund.se.
   tls.add_global_root_certificate COMODO_RSA_CERTIFICATION_AUTHORITY_BYTES  // Needed for elpriser.nu.
   tls.add_global_root_certificate BALTIMORE_CYBERTRUST_ROOT_BYTES  // Needed for coinbase.com.
+  // Test a binary root that is a modified copy-on-write byte array.
+  USERTRUST_ECC_CERTIFICATION_AUTHORITY_BYTES[42] ^= 42
+  USERTRUST_ECC_CERTIFICATION_AUTHORITY_BYTES[42] ^= 42
   tls.add_global_root_certificate USERTRUST_ECC_CERTIFICATION_AUTHORITY_BYTES  // Needed for helsinki.fi.
   // Test ASCII (PEM) roots.
   tls.add_global_root_certificate USERTRUST_CERTIFICATE_TEXT 0x0c49cbaf  // Needed for dmi.dk.
   tls.add_global_root_certificate ISRG_ROOT_X1_TEXT
   // Test that the cert can be a slice.
   tls.add_global_root_certificate DIGICERT_ROOT_TEXT[..DIGICERT_ROOT_TEXT.size - 9]
-  // Test a binary root that is a modified copy-on-write byte array.
-  DIGICERT_ASSURED_ID_ROOT_G3_BYTES[42] ^= 42
-  DIGICERT_ASSURED_ID_ROOT_G3_BYTES[42] ^= 42
-  //tls.add_global_root_certificate DIGICERT_ASSURED_ID_ROOT_G3_BYTES  // This one is not needed for the current test sites.
 
   // Test that we get a sensible error when trying to add a parsed root
   // certificate.
-  parsed := net.Certificate.parse DIGICERT_ASSURED_ID_ROOT_G3_BYTES
+  parsed := net.Certificate.parse USERTRUST_CERTIFICATE_TEXT
   expect_error "WRONG_OBJECT_TYPE": tls.add_global_root_certificate parsed
 
   // Test that unparseable cert gives an immediate error.

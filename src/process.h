@@ -30,7 +30,8 @@ typedef LinkedFifo<UnparsedRootCertificate> UnparsedRootCertificateList;
 
 class UnparsedRootCertificate: public UnparsedRootCertificateList::Element {
  public:
-  UnparsedRootCertificate(const uint8* data, size_t length);
+  UnparsedRootCertificate(const uint8* data, size_t length, bool needs_delete);
+  ~UnparsedRootCertificate();
   bool matches(const uint8* data, size_t length) const;
 
   const uint8* data() const { return data_; }
@@ -43,6 +44,7 @@ class UnparsedRootCertificate: public UnparsedRootCertificateList::Element {
   const uint8* data_;
   size_t length_;
   uint32 subject_hash_ = 0;
+  bool needs_delete_;
 };
 
 // Process is linked into two different linked lists, so we have to make

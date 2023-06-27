@@ -112,7 +112,7 @@ PRIMITIVE(init) {
   return proxy;
 }
 
-Object* X509ResourceGroup::get_certificate_data(Process* process, Object* input, bool* needs_free, const uint8** data_return, size_t* length_return) {
+Object* X509ResourceGroup::get_certificate_data(Process* process, Object* input, bool* needs_delete, const uint8** data_return, size_t* length_return) {
   Blob blob;
   const uint8* data = null;
   size_t length = 0;
@@ -144,7 +144,7 @@ Object* X509ResourceGroup::get_certificate_data(Process* process, Object* input,
       new_data[length] = '\0';
       data = new_data;
       length++;
-      *needs_free = true;
+      *needs_delete = true;
     }
   } else {
     FAIL(WRONG_OBJECT_TYPE);
@@ -160,12 +160,12 @@ PRIMITIVE(parse) {
 
   const uint8_t* data = null;
   size_t length = 0;
-  bool needs_free = false;
-  Object* result = X509ResourceGroup::get_certificate_data(process, input, &needs_free, &data, &length);
+  bool needs_delete = false;
+  Object* result = X509ResourceGroup::get_certificate_data(process, input, &needs_delete, &data, &length);
   if (result) return result;  // Error.
   bool in_flash = reinterpret_cast<const HeapObject*>(data)->on_program_heap(process);
   result = resource_group->parse(process, data, length, in_flash);
-  if (needs_free) delete data;
+  if (needs_delete) delete data;
   return result;
 }
 
