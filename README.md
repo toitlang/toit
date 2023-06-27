@@ -106,7 +106,7 @@ To build Toit and its dependencies the build host requires:
 * [CMake >= 3.13.3](https://cmake.org/)
 * [Ninja](https://ninja-build.org/)
 * [GCC](https://gcc.gnu.org/)
-* [Go >= 1.16](https://go.dev/)
+* [Go >= 1.19](https://go.dev/)
 * python-is-python3: on Ubuntu machines
 * glibc-tools: optional and only available on newer Ubuntus
 
@@ -331,17 +331,18 @@ flash.
 build/host/sdk/bin/toit.compile -w hello.snapshot examples/hello.toit
 build/host/sdk/bin/toit.compile -w ntp.snapshot examples/ntp/ntp.toit
 
+# Typically we set the output envelope the first time we change it.
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    -o custom.envelope \
     container install hello hello.snapshot
-build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+build/host/sdk/tools/firmware -e custom.envelope \
     container install ntp ntp.snapshot
 ```
 
 You can list the containers in a given firmware envelope:
 
 ``` sh
-build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    container list
+build/host/sdk/tools/firmware -e custom.envelope container list
 ```
 
 The listing shows the containers that are installed.
