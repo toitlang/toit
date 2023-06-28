@@ -121,8 +121,8 @@ Process::~Process() {
   }
 
   Locker locker(OS::scheduler_mutex());
-  while (!root_certificates_.is_empty()) {
-    delete root_certificates_.remove_first();
+  while (auto certificate = root_certificates_.remove_first()) {
+    delete certificate;
   }
 }
 
@@ -419,8 +419,13 @@ bool Process::already_has_root_certificate(const uint8* data, size_t length, con
   return false;
 }
 
-UnparsedRootCertificate::UnparsedRootCertificate(const uint8* data, size_t length)
-    : data_(data), length_(length) {}
+UnparsedRootCertificate::UnparsedRootCertificate(const uint8* data, size_t length, bool needs_delete)
+    : data_(data), length_(length), needs_delete_(needs_delete) {}
+
+UnparsedRootCertificate::~UnparsedRootCertificate() {
+  if (needs_delete_) delete(data_);
+  data_ = null;
+}
 
 bool UnparsedRootCertificate::matches(const uint8* data, size_t length) const {
   if (length != length_) return false;

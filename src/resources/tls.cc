@@ -146,12 +146,15 @@ static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate
       found_root_with_matching_subject = true;
       *last = cert;
       last = &cert->next;
+      // We could break here, but a CRC32 checksum is not collision proof, so we had
+      // better keep going in case there's a different cert with the same checksum.
     }
     if (!found_root_with_matching_subject) {
       socket->record_unknown_issuer(&certificate->issuer);
     }
-    return 0;
+    return 0;  // No error (but perhaps no certificate was found).
   }
+
 failed:
   for (mbedtls_x509_crt* cert = *chain; cert; ) {
     mbedtls_x509_crt* next = cert->next;
@@ -159,7 +162,7 @@ failed:
     delete cert;
     cert = next;
   }
-  return ret;
+  return ret;  // Problem.  Sadly, this is discarded unless you have a patched MbedTLS.
 }
 
 void BaseMbedTlsSocket::apply_certs(Process* process) {
@@ -282,11 +285,11 @@ uint32_t MbedTlsResourceGroup::on_event(Resource* resource, word data, uint32_t 
 }
 
 BaseMbedTlsSocket::BaseMbedTlsSocket(MbedTlsResourceGroup* group)
-  : TlsSocket(group)
-  , root_certs_(null)
-  , private_key_(null)
-  , error_flags_(0)
-  , error_issuer_(null) {
+    : TlsSocket(group)
+    , root_certs_(null)
+    , private_key_(null)
+    ,   error_flags_(0)
+    , error_issuer_(null) {
   mbedtls_ssl_init(&ssl);
   group->init_conf(&conf_);
 }
@@ -570,19 +573,34 @@ PRIMITIVE(close) {
 
 PRIMITIVE(add_global_root_certificate) {
   ARGS(Object, unparsed_cert, Object, hash);
-  bool needs_free = false;
+  bool needs_delete = false;
   const uint8* data = null;
   size_t length = 0;
 
-  Object* result = X509ResourceGroup::get_certificate_data(process, unparsed_cert, &needs_free, &data, &length);
+  Object* result = X509ResourceGroup::get_certificate_data(process, unparsed_cert, &needs_delete, &data, &length);
   if (result) return result;  // Error case.
 
   bool in_flash = reinterpret_cast<const HeapObject*>(data)->on_program_heap(process);
-  UnparsedRootCertificate* root = _new UnparsedRootCertificate(data, length);
+  ASSERT(!(in_flash && needs_delete));  // We can't free something in flash.
+
+  if (!needs_delete && !in_flash) {
+    // The raw cert data will not survive the end of this primitive, so we need a copy.
+    uint8* new_data = _new uint8[length];
+    if (!new_data) {
+      FAIL(MALLOC_FAILED);
+    }
+    memcpy(new_data, data, length);
+    data = new_data;
+    needs_delete = true;
+  }
+
+  UnparsedRootCertificate* root = _new UnparsedRootCertificate(data, length, needs_delete);
   if (!root) {
-    if (!in_flash) delete data;
+    if (needs_delete) delete data;
     FAIL(MALLOC_FAILED);
   }
+
+  DeferDelete<UnparsedRootCertificate> defer_root_delete(root);
 
   uint32 subject_hash = 0;
   if (hash == process->null_object()) {
@@ -599,7 +617,6 @@ PRIMITIVE(add_global_root_certificate) {
     }
     if (ret != 0) {
       mbedtls_x509_crt_free(&cert);
-      if (needs_free) delete data;
       return tls_error(null, process, ret);
     }
 
@@ -607,7 +624,6 @@ PRIMITIVE(add_global_root_certificate) {
     ret = mbedtls_x509_dn_gets(char_cast(&subject_buffer[0]), MAX_SUBJECT, &cert.subject);
     mbedtls_x509_crt_free(&cert);
     if (ret < 0 || ret >= MAX_SUBJECT) {
-      if (needs_free) delete data;
       return tls_error(null, process, ret < 0 ? ret : MBEDTLS_ERR_ASN1_BUF_TOO_SMALL);
     }
     subject_hash = BaseMbedTlsSocket::hash_subject(subject_buffer, ret);
@@ -622,21 +638,12 @@ PRIMITIVE(add_global_root_certificate) {
   root->set_subject_hash(subject_hash);
 
   // No errors found, so lets add the root cert to the chain on the process.
-  if (!needs_free && !in_flash) {
-    // We can't keep around a pointer to the on-heap data, so make a copy.
-    uint8* copy = _new uint8[length];
-    if (!copy) FAIL(MALLOC_FAILED);
-    memcpy(copy, data, length);
-    data = copy;
-  }
-
   Locker locker(OS::scheduler_mutex());
-  if (process->already_has_root_certificate(data, length, locker)) {
-    if (!in_flash) delete data;
-    return process->null_object();
-  }
 
-  process->add_root_certificate(root, locker);
+  if (!process->already_has_root_certificate(data, length, locker)) {
+    defer_root_delete.keep();  // Don't delete it, once it's attached to the process.
+    process->add_root_certificate(root, locker);
+  }
 
   return Primitive::integer(subject_hash, process);
 }
