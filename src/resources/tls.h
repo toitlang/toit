@@ -35,7 +35,7 @@
 namespace toit {
 
 class MbedTlsResourceGroup;
-class MbedTlsSocket;
+class BaseMbedTlsSocket;
 class X509Certificate;
 
 // These numbers must stay in sync with constants in aes.toit.
@@ -45,7 +45,7 @@ enum AeadAlgorithmType {
   NUMBER_OF_ALGORITHM_TYPES = 2
 };
 
-Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err);
+Object* tls_error(BaseMbedTlsSocket* group, Process* process, int err);
 bool ensure_handshake_memory();
 
 enum TLS_STATE {
@@ -63,12 +63,27 @@ class BaseMbedTlsSocket : public TlsSocket {
 
   mbedtls_ssl_context ssl;
 
-  virtual bool init(const char* transport_id) = 0;
-  void apply_certs();
+  virtual bool init() = 0;
+  void apply_certs(Process* process);
   int add_certificate(X509Certificate* cert, const uint8_t* private_key, size_t private_key_length, const uint8_t* password, int password_length);
   int add_root_certificate(X509Certificate* cert);
+  void register_root_callback();
   void uninit_certs();
   word handshake() override;
+
+  int verify_callback(mbedtls_x509_crt* cert, int certificate_depth, uint32_t* flags);
+
+  void record_unknown_issuer(const mbedtls_asn1_named_data* issuer);
+  // Hash a textual description of the issuer of a certificate, or the
+  // subject of a root certificate. These should match.
+  static uint32 hash_subject(uint8* buffer, int length);
+  uint32_t error_flags() const { return error_flags_; }
+  char* error_issuer() const { return error_issuer_; }
+  void clear_error_flags() {
+    error_flags_ = 0;
+    free(error_issuer_);
+    error_issuer_ = null;
+  }
 
  protected:
   mbedtls_ssl_config conf_;
@@ -76,7 +91,12 @@ class BaseMbedTlsSocket : public TlsSocket {
  private:
   mbedtls_x509_crt* root_certs_;
   mbedtls_pk_context* private_key_;
+  uint32_t error_flags_;
+  char* error_issuer_;
 };
+
+// A size that should be plenty for all known root certificates, but won't overflow the stack.
+static const int MAX_SUBJECT = 400;
 
 // Although it's a resource we never actually wait on a MbedTlsSocket, preferring
 // to wait on the underlying TCP socket.
@@ -88,7 +108,7 @@ class MbedTlsSocket : public BaseMbedTlsSocket {
 
   Object* get_clear_outgoing();
 
-  virtual bool init(const char*);
+  virtual bool init();
 
   void set_incoming(Object* incoming, int from) {
     incoming_packet_ = incoming;
@@ -123,15 +143,10 @@ class MbedTlsResourceGroup : public ResourceGroup {
 
   TAG(MbedTlsResourceGroup);
   MbedTlsResourceGroup(Process* process, TlsEventSource* event_source, Mode mode)
-    : ResourceGroup(process, event_source)
-    , mode_(mode)
-    , error_flags_(0)
-    , error_depth_(0)
-    , error_issuer_(null) {}
+      : ResourceGroup(process, event_source)
+      , mode_(mode) {}
 
   ~MbedTlsResourceGroup() {
-    free(error_issuer_);
-    error_issuer_ = null;
     uninit();
   }
 
@@ -143,18 +158,6 @@ class MbedTlsResourceGroup : public ResourceGroup {
   Object* tls_socket_create(Process* process, const char* hostname);
   Object* tls_handshake(Process* process, TlsSocket* socket);
 
-  int verify_callback(mbedtls_x509_crt* cert, int certificate_depth, uint32_t* flags);
-
-  uint32_t error_flags() const { return error_flags_; }
-  int error_depth() const { return error_depth_; }
-  char* error_issuer() const { return error_issuer_; }
-  void clear_error_flags() {
-    error_flags_ = 0;
-    error_depth_ = 0;
-    free(error_issuer_);
-    error_issuer_ = null;
-  }
-
   mbedtls_entropy_context* entropy() { return &entropy_; }
 
  private:
@@ -162,9 +165,6 @@ class MbedTlsResourceGroup : public ResourceGroup {
   mbedtls_entropy_context entropy_;
   mbedtls_ctr_drbg_context ctr_drbg_;
   Mode mode_;
-  uint32_t error_flags_;
-  int error_depth_;
-  char* error_issuer_;
 
   friend class BaseMbedTlsSocket;
   friend class MbedTlsSocket;

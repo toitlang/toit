@@ -298,6 +298,7 @@ namespace toit {
   PRIMITIVE(read, 1)                         \
   PRIMITIVE(write, 4)                        \
   PRIMITIVE(add_root_certificate, 2)         \
+  PRIMITIVE(add_global_root_certificate, 2)  \
   PRIMITIVE(add_certificate, 4)              \
   PRIMITIVE(error, 2)                        \
   PRIMITIVE(get_internals, 1)                \
@@ -791,17 +792,20 @@ namespace toit {
   if (_value_##name < INT32_MIN || _value_##name > INT32_MAX) FAIL(OUT_OF_RANGE);  \
   int32 name = (int32) _value_##name;
 
-#define _A_T_uint32(N, name)                                                 \
-  Object* _raw_##name = __args[-(N)];                                        \
-  int64 _value_##name;                                                       \
-  if (is_smi(_raw_##name)) {                                                 \
-    _value_##name = Smi::value(_raw_##name);                                 \
-  } else if (is_large_integer(_raw_##name)) {                                \
-    _value_##name = LargeInteger::cast(_raw_##name)->value();                \
+#define GET_UINT32(raw, result)                                              \
+  int64 result;                                                              \
+  if (is_smi(raw)) {                                                         \
+    result = Smi::value(raw);                                                \
+  } else if (is_large_integer(raw)) {                                        \
+    result = LargeInteger::cast(raw)->value();                               \
   } else {                                                                   \
     FAIL(WRONG_OBJECT_TYPE);                                                 \
   }                                                                          \
-  if (_value_##name < 0 || _value_##name > UINT32_MAX) FAIL(OUT_OF_RANGE);   \
+  if (result < 0 || result > UINT32_MAX) FAIL(OUT_OF_RANGE);
+
+#define _A_T_uint32(N, name)                                                 \
+  Object* _raw_##name = __args[-(N)];                                        \
+  GET_UINT32(_raw_##name, _value_##name);                                    \
   uint32 name = (uint32) _value_##name;
 
 #define INT64_VALUE_OR_WRONG_TYPE(destination, raw)     \

@@ -119,6 +119,11 @@ Process::~Process() {
   while (has_messages()) {
     remove_first_message();
   }
+
+  Locker locker(OS::scheduler_mutex());
+  while (auto certificate = root_certificates_.remove_first()) {
+    delete certificate;
+  }
 }
 
 void Process::set_main_arguments(uint8* arguments) {
@@ -406,5 +411,25 @@ String* Process::allocate_string(const wchar_t* content) {
 }
 
 #endif
+
+bool Process::already_has_root_certificate(const uint8* data, size_t length, const Locker& locker) {
+  for (auto root : root_certificates_) {
+    if (root->matches(data, length)) return true;
+  }
+  return false;
+}
+
+UnparsedRootCertificate::UnparsedRootCertificate(const uint8* data, size_t length, bool needs_delete)
+    : data_(data), length_(length), needs_delete_(needs_delete) {}
+
+UnparsedRootCertificate::~UnparsedRootCertificate() {
+  if (needs_delete_) delete(data_);
+  data_ = null;
+}
+
+bool UnparsedRootCertificate::matches(const uint8* data, size_t length) const {
+  if (length != length_) return false;
+  return memcmp(data, data_, length) == 0;
+}
 
 }

@@ -32,6 +32,7 @@ class X509ResourceGroup : public ResourceGroup {
   ~X509ResourceGroup() {}
 
   static bool is_pem_format(const uint8* data, size_t length);
+  static Object* get_certificate_data(Process* process, Object* object, bool* needs_free, const uint8** data, size_t* length);
 
   Object* parse(Process* process, const uint8_t *encoded, size_t encoded_size, bool in_flash);
 };
