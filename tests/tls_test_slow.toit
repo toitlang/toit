@@ -44,6 +44,7 @@ run_tests:
     "$(dns_lookup "amazon.com")/amazon.com",  // Connect to the IP address at the TCP level, but verify the cert name.
 
     "dkhostmaster.dk",
+    "gnu.org",  // Doesn't work with Toit mode, falls back to MbedTLS C code for symmetric stage.
 
     "sha256.badssl.com",
     // "sha384.badssl.com",  Expired.

@@ -310,8 +310,8 @@ class Session:
   extract_key_data_ -> none:
     if reads_encrypted_ and writes_encrypted_:
       key_data /List? := tls_get_internals_ tls_
-      session_state = tison.encode key_data[5..9]
       if key_data != null:
+        session_state = tison.encode key_data[5..9]
         write_key_data := KeyData_ --key=key_data[1] --iv=key_data[3] --algorithm=key_data[0]
         read_key_data := KeyData_ --key=key_data[2] --iv=key_data[4] --algorithm=key_data[0]
         write_key_data.sequence_number_ = outgoing_sequence_numbers_used_
