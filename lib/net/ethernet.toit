@@ -22,10 +22,10 @@ It requires a $ServiceProvider to be installed. On the ESP32, this
 import net.ethernet
 
 main:
-  client := ethernet.open
-  // Use the client for network communication.
+  network := ethernet.open
+  // Use the network for network communication.
   ...
-  client.close
+  network.close
 ```
 */
 
