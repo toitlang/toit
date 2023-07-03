@@ -422,6 +422,7 @@ jobs:
           make ESP32_CHIP=esp32s2 esp32
           make ESP32_CHIP=esp32s3 esp32
           make ESP32_CHIP=esp32s3-spiram-octo esp32
+          make ESP32_CHIP=esp32-eth-rmii esp32
 
       - name: Pack firmware artifacts
         shell: bash
@@ -431,6 +432,7 @@ jobs:
           gzip --to-stdout build/esp32s2/firmware.envelope > build/firmware-esp32s2.gz
           gzip --to-stdout build/esp32s3/firmware.envelope > build/firmware-esp32s3.gz
           gzip --to-stdout build/esp32s3-spiram-octo/firmware.envelope > build/firmware-esp32s3-spiram-octo.gz
+          gzip --to-stdout build/esp32-eth-rmii/firmware.envelope > build/firmware-esp32-eth-rmii.gz
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v3
@@ -442,6 +444,7 @@ jobs:
             build/firmware-esp32s2.gz
             build/firmware-esp32s3.gz
             build/firmware-esp32s3-spiram-octo.gz
+            build/firmware-esp32-eth-rmii.gz
 
       - name: Upload ESP32 release firmware artifacts
         if: |
@@ -495,6 +498,17 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/firmware-esp32s3-spiram-octo.gz
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload ESP32-eth-rmii release firmware artifacts
+        if: |
+          github.event_name == 'release' &&
+          github.repository_owner == 'toitlang'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/firmware-esp32-eth-rmii.gz
           tag: ${{ github.ref }}
           overwrite: true
 
