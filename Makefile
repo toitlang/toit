@@ -35,7 +35,7 @@ ESP32_SYSTEM_ENTRY=system/extensions/esp32/boot.toit
 
 ifeq ($(ESP32_CHIP),esp32s3-spiram-octo)
 	IDF_TARGET=esp32s3
-else ifeq ($(ESP32_CHIP),esp32-eth-rmii)
+else ifeq ($(ESP32_CHIP),esp32-eth-clk-out17)
 	IDF_TARGET=esp32
 else
 	IDF_TARGET=$(ESP32_CHIP)
