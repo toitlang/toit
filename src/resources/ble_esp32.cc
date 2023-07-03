@@ -2140,7 +2140,7 @@ PRIMITIVE(deploy_service) {
     characteristic_index++;
   }
 
-
+  static_assert(BLE_GATT_SVC_TYPE_END == 0, "Unexpected BLE_GATT_SVC_TYPE_END value");
   auto gatt_svcs = static_cast<ble_gatt_svc_def*>(calloc(2, sizeof(ble_gatt_svc_def)));
   if (!gatt_svcs) {
     BleServiceResource::dispose_gatt_svr_chars(gatt_svr_chars);
