@@ -8,9 +8,13 @@ A simple client for an Ethernet network.
 Requires the Ethernet provider to be installed.
 */
 
+import net
 import net.ethernet
+
+use network/net.Client:
+  // Do something with the client.
 
 main:
   network := ethernet.open
-  // Use the network.
+  use network
   network.close
