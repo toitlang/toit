@@ -5,7 +5,7 @@
 /**
 A simple client for an Ethernet network.
 
-Requires the Ethernet service to be installed.
+Requires the Ethernet provider to be installed.
 */
 
 import net.ethernet

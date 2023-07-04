@@ -19,6 +19,7 @@ import esp32.net.ethernet as esp32
 
 class OlimexPoeProvider extends esp32.EthernetServiceProvider:
   power_/gpio.Pin? := null
+  connected_clients_/int := 0
 
   constructor:
     super
@@ -42,15 +43,17 @@ class OlimexPoeProvider extends esp32.EthernetServiceProvider:
           power_.close
           power_ = null
 
-  on_module_closed module:
-    try:
-      super module
-    finally:
-      if power_:
-        critical_do:
-          power_.close
-          power_ = null
+  on_opened client:
+    super client
+    connected_clients_++
+    if connected_clients_ == 1:
+      power_ = gpio.Pin --output 12
+      power_.set 1
 
-main:
-  provider := OlimexPoeProvider
-  provider.install
+  on_closed client:
+    super client
+    connected_clients_--
+    if connected_clients_ == 0 and power_:
+      critical_do:
+        power_.close
+        power_ = null
