@@ -90,7 +90,13 @@ class FileServerProtocol:
           compiler_path := reader.read_line
           entries := directory_cache_.get compiler_path --init=:
             local_path := translator_.compiler_path_to_local_path compiler_path
-            filesystem.directory_entries local_path
+            entries_for_path/List := []
+            exception := catch:  // The path might not exist.
+              entries_for_path = filesystem.directory_entries local_path
+            if exception:
+              verbose: "Couldn't list directory: $local_path"
+            entries_for_path
+
           writer.write "$entries.size\n"
           entries.do: writer.write "$it\n"
         else:

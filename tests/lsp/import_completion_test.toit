@@ -25,4 +25,10 @@ import .dir.in_dir as dir
   + in_dir
   - import_completion_test, core
 */
+
+import core.collections.invalid
+/*                      ^~~~~~~
+  - *
+*/
+
 main:
