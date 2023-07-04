@@ -29,8 +29,12 @@ The pins are configured for the Olimex ESP32-POE board, which
 ```
 */
 import gpio
+import net
 import net.ethernet
 import esp32.net.ethernet as esp32
+
+use network/net.Client:
+  // Use the network.
 
 main:
   power := gpio.Pin --output 12
@@ -45,7 +49,7 @@ main:
       --mac_interrupt=null
   provider.install
   network := ethernet.open
-  // Use the network.
+  use network
   network.close
   provider.uninstall
   power.close
