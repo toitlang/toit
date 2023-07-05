@@ -102,7 +102,11 @@ class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
           mac_interrupt.num
     super "system/ethernet/esp32" --major=0 --minor=1
         --tags=[NetworkService.TAG_ETHERNET]
-    provides EthernetService.SELECTOR --handler=this
+    provides NetworkService.SELECTOR
+        --handler=this
+        --priority=ServiceProvider.PRIORITY_PREFERRED
+    provides EthernetService.SELECTOR
+        --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == EthernetService.CONNECT_INDEX:
