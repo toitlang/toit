@@ -288,6 +288,8 @@ void Backend::emit_method(ir::Method* method,
         // least we do not generate code for this. We should be able
         // to shake this out earlier by realizing that not all static
         // calls lead to live methods.
+        SourceMapper::MethodMapper mapper = source_mapper()->register_method(method);
+        mapper.finalize(0, 0);  // TODO(kasper): This is an ugly workaround.
         return;
       }
       int index = (*typecheck_indexes)[method->holder()];
