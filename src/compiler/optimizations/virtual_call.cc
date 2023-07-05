@@ -76,28 +76,28 @@ Expression* optimize_virtual_call(CallVirtual* node,
     if (direct_method != null && direct_method->is_abstract()) {
       direct_method = null;
     }
+  }
 
-    // We need to be careful not to directly call an operator ==.
-    // If the RHS is nullable, the interpreter shortcuts the call.
-    if (direct_method != null && opcode == INVOKE_EQ) {
-      auto param = node->arguments().first();
-      Type param_type = compute_guaranteed_type(param, holder, method);
-      if (param_type.is_valid()) {
-        // Unless the param-type is nullable, we can change to a static call.
-        if (param_type.is_nullable()) direct_method = null;
-      } else if (param->is_Literal()) {
-        // Unless the literal is `null`, we can change to a static call.
-        if (param->is_LiteralNull()) direct_method = null;
-      } else {
-        // Not enough information, so abandon and assume we can't change to static call.
-        direct_method = null;
-      }
-    }
-    // Similarly, we don't want to change any of the really efficient INVOKE_X opcodes.
-    if (direct_method != null && opcode != INVOKE_VIRTUAL) {
-      // TODO(florian): we may switch to a static call if the receiver isn't an int/Array.
+  // We need to be careful not to directly call an operator ==.
+  // If the RHS is nullable, the interpreter shortcuts the call.
+  if (direct_method != null && opcode == INVOKE_EQ) {
+    auto param = node->arguments().first();
+    Type param_type = compute_guaranteed_type(param, holder, method);
+    if (param_type.is_valid()) {
+      // Unless the param-type is nullable, we can change to a static call.
+      if (param_type.is_nullable()) direct_method = null;
+    } else if (param->is_Literal()) {
+      // Unless the literal is `null`, we can change to a static call.
+      if (param->is_LiteralNull()) direct_method = null;
+    } else {
+      // Not enough information, so abandon and assume we can't change to static call.
       direct_method = null;
     }
+  }
+  // Similarly, we don't want to change any of the really efficient INVOKE_X opcodes.
+  if (direct_method != null && opcode != INVOKE_VIRTUAL) {
+    // TODO(florian): we may switch to a static call if the receiver isn't an int/Array.
+    direct_method = null;
   }
 
   if (direct_method == null) {

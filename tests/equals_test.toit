@@ -15,6 +15,21 @@ class B:
   operator == other -> bool:
     throw "Unreachable since only called with null."
 
+confuse x:
+  return x
+
+class C:
+  x := 0
+
+  foo:
+    // We must keep a virtual equality call here,
+    // since the RHS might be null, and the interpreter
+    // checks for the null case first.
+    return this == (confuse null)
+
+  operator == other:
+    return other.x == 0
+
 nul: return null
 
 foo b / B:
@@ -29,3 +44,6 @@ main:
   expect_equals 1 counter
   expect (not B == null)
   foo B
+
+  c := C
+  expect (not c.foo)

@@ -101,11 +101,28 @@ template<typename T> class UnorderedSet {
   }
   bool erase(T x) { return set_.erase(x) > 0; }
 
+  template<typename F>
+  void erase_if(const F& callback) {
+    auto it = set_.begin();
+    while (it != set_.end()) {
+      if (callback(*it)) {
+        it = set_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
   template<typename E>
   void erase_all(const List<E>& other) {
     for (auto entry : other) {
       set_.erase(entry);
     }
+  }
+
+  template<typename E>
+  void erase_all(const UnorderedSet<E>& other_set) {
+    set_.erase(other_set.set_.begin(), other_set.set_.end());
   }
 
   bool contains(T x) const { return set_.find(x) != set_.end(); }
