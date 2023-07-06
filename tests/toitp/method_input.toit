@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import .confuse
+
 class ClassA:
   constructor:
   constructor.named:
@@ -31,8 +33,6 @@ class Nested:
 
   lambda:
     foo:: true
-
-confuse x -> any: return x
 
 main:
   ClassA

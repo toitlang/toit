@@ -2,15 +2,14 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import .confuse
+
 class ClassA:
   test_foo: print "ClassA.method_a"
   test_bar x: print "ClassA.method_b 1"
 
 class ClassB extends ClassA:
   test_bar x: print "ClassB.method_b 1"
-
-confuse a:
-  return a
 
 main:
   ClassA

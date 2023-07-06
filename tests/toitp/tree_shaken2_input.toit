@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import .confuse
 
 class B:
   foo:
@@ -20,10 +21,6 @@ class A extends ASuper:
     // `B` nor `foo` in the final tree.
     b := B
     (confuse b).foo
-
-
-confuse x:
-  return x
 
 class C:
   foo:
