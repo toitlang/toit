@@ -187,7 +187,7 @@ ifeq ("", "$(shell command -v xtensa-esp32-elf-g++)")
 	$(error xtensa-esp32-elf-g++ not in path. Did you `source third_party/esp-idf/export.sh`?)
 endif
 
-IDF_PY ::= "$(IDF_PATH)/tools/idf.py"
+IDF_PY := "$(IDF_PATH)/tools/idf.py"
 
 .PHONY: esp32
 esp32:
