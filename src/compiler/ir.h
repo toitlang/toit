@@ -316,6 +316,18 @@ class Class : public Node {
     super_ = klass;
   }
 
+  /// Returns whether the given klass is a super of this class.
+  bool is_transitive_super_of(Class* klass) {
+    auto current = klass->super();
+    while (current != null) {
+      if (current == this) {
+        return true;
+      }
+      current = current->super();
+    }
+    return false;
+  }
+
   List<Class*> interfaces() const { return interfaces_; }
   void set_interfaces(List<Class*> interfaces) {
     ASSERT(interfaces_.is_empty());
