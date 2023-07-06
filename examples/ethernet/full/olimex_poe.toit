@@ -56,18 +56,6 @@ class OlimexPoeProvider extends esp32.EthernetServiceProvider:
         --mac_spi_device=null
         --mac_interrupt=null
 
-  connect client/int -> List:
-    try:
-      power_ = gpio.Pin --output 12
-      power_.set 1
-      return super client
-    finally: | is_exception _ |
-      if is_exception and power_:
-        // If we don't succeed here, turn the power off again.
-        critical_do:
-          power_.close
-          power_ = null
-
   on_module_opened module:
     super module
     power_ = gpio.Pin --output 12
