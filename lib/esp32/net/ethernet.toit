@@ -133,6 +133,20 @@ class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
   address resource/NetworkResource -> ByteArray:
     return (state_.module as EthernetModule_).address.to_byte_array
 
+  /**
+  Called when the module is first opened, for example through `ethernet.open`.
+
+  # Inheritance
+  This method must be called by any subclass that overrides it.
+  */
+  on_module_opened module/EthernetModule_ -> none:
+
+  /**
+  Called when the module is closed, for example through `network.close`.
+
+  # Inheritance
+  This method must be called by any subclass that overrides it.
+  */
   on_module_closed module/EthernetModule_ -> none:
     critical_do:
       resources_do: | resource/NetworkResource |
@@ -160,6 +174,7 @@ class EthernetModule_ implements NetworkModule:
     return address_
 
   connect -> none:
+    service.on_module_opened this
     with_timeout ETHERNET_CONNECT_TIMEOUT: wait_for_connected_
     with_timeout ETHERNET_DHCP_TIMEOUT: wait_for_dhcp_ip_address_
 
