@@ -101,7 +101,7 @@ func (cp *CompilerFSProtocol) HandleConn(reader io.Reader, writer io.Writer) {
 			entries, err := cp.directoryCache.Get(path)
 			if err != nil {
 				cp.logger.Error("failed to directory entries", zap.Error(err))
-				return
+				entries = []string{}
 			}
 			w.WriteString(fmt.Sprintf("%d\n", len(entries)))
 			for _, e := range entries {

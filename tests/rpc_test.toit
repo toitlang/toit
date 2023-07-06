@@ -312,6 +312,10 @@ test_map myself/int -> none:
   l := [[{:}]]
   test myself l
 
+  // Non-string keys.
+  m = {42: "foo"}
+  test myself m
+
 cancel queue/RpcRequestQueue_ pid/int id/int -> int:
   result/int := 0
   queue.cancel: | request/RpcRequest_ |

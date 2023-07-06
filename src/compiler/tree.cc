@@ -83,6 +83,7 @@ class TypedSelectorSet {
     // run through them to see if all of the sets are empty.
     return selectors_.empty();
   }
+
  private:
   Map<CallSelector, UnorderedSet<Method*>> selectors_;
 };
