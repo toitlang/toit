@@ -40,7 +40,7 @@ This provider must be installed before Ethernet networking can be used
 # Example
 
 An example of how to install the service provider in the same
-  container:
+  container. This example is for the Olimex ESP32-POE board.
 
 ``` toit
 import gpio
@@ -68,13 +68,12 @@ main:
     power.close
 ```
 
-# Olimex Gateway
-The Olimex gateway needs an SDK config change:
+# Olimex Ethernet boards
+The Olimex Ethernet boards (Gateway and ESP32-POE)
+  need an envelope with an RMII clock output: `firmware-esp32-eth-clk-out17`.
 
-In `make menuconfig` search for the setting
-  `CONFIG_ETH_RMII_CLK_OUTPUT` and set it to true.
-  That should disable `CONFIG_ETH_RMII_CLK_INPUT` and
-  set `CONFIG_ETH_RMII_CLK_OUT_GPIO` to 17 (the default).
+This firmware contains the following sdk-config change (enable
+  `CONFIG_ETH_RMII_CLK_OUTPUT`):
 
 ``` diff
 --- b/toolchains/esp32/sdkconfig

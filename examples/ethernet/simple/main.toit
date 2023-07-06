@@ -6,7 +6,9 @@
 Example of using the ESP32 Ethernet driver.
 
 The pins are configured for the Olimex ESP32-POE board, which
-  needs the following sdkconfig change (enable
+  needs an envelope with an RMII clock output: `firmware-esp32-eth-clk-out17`.
+
+This firmware contains the following sdk-config change (enable
   `CONFIG_ETH_RMII_CLK_OUTPUT`):
 
 ``` diff
@@ -33,9 +35,6 @@ import net
 import net.ethernet
 import esp32.net.ethernet as esp32
 
-use network/net.Client:
-  // Use the network.
-
 main:
   power := gpio.Pin --output 12
   power.set 1
@@ -53,3 +52,6 @@ main:
   network.close
   provider.uninstall
   power.close
+
+use network/net.Client:
+  // Use the network.
