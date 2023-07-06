@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import .confuse
 
 class B:
   foo:
@@ -18,9 +19,6 @@ class A:
 
 create_a -> A?:
   return null
-
-confuse x:
-  return x
 
 class C:
   foo:

@@ -103,7 +103,7 @@ function(toit_postprocess)
     add_custom_command(
             TARGET firmware
             POST_BUILD
-            COMMAND ${TOITC} -w ${CMAKE_BINARY_DIR}/system.snapshot ${BOOT_PROJECT_ROOT_ARGS} ${BOOT}
+            COMMAND ${TOITC} -O2 -w ${CMAKE_BINARY_DIR}/system.snapshot ${BOOT_PROJECT_ROOT_ARGS} ${BOOT}
             VERBATIM)
 
     add_custom_command(
