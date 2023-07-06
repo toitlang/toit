@@ -38,22 +38,19 @@ class OlimexPoeProvider extends esp32.EthernetServiceProvider:
       return super client
     finally: | is_exception _ |
       if is_exception and power_:
-        // If we don't succeed here, turn the power off.
+        // If we don't succeed here, turn the power off again.
         critical_do:
           power_.close
           power_ = null
 
-  on_opened client:
-    super client
-    connected_clients_++
-    if connected_clients_ == 1:
-      power_ = gpio.Pin --output 12
-      power_.set 1
+  on_module_opened module:
+    super module
+    power_ = gpio.Pin --output 12
+    power_.set 1
 
-  on_closed client:
-    super client
-    connected_clients_--
-    if connected_clients_ == 0 and power_:
+  on_module_closed module:
+    super module
+    if power_:
       critical_do:
         power_.close
         power_ = null
