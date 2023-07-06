@@ -129,10 +129,14 @@ class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
           mac_interrupt.num
     super "system/ethernet/esp32" --major=0 --minor=1
         --tags=[NetworkService.TAG_ETHERNET]
-    provides EthernetService.SELECTOR --handler=this
+    provides NetworkService.SELECTOR
+        --handler=this
+        --priority=ServiceProvider.PRIORITY_PREFERRED
+    provides EthernetService.SELECTOR
+        --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
-    if index == EthernetService.CONNECT_INDEX:
+    if index == NetworkService.CONNECT_INDEX:
       return connect client
     if index == NetworkService.ADDRESS_INDEX:
       network := (resource client arguments) as NetworkResource
@@ -156,6 +160,20 @@ class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
   address resource/NetworkResource -> ByteArray:
     return (state_.module as EthernetModule_).address.to_byte_array
 
+  /**
+  Called when the module is first opened, for example through `ethernet.open`.
+
+  # Inheritance
+  This method must be called by any subclass that overrides it.
+  */
+  on_module_opened module/EthernetModule_ -> none:
+
+  /**
+  Called when the module is closed, for example through `network.close`.
+
+  # Inheritance
+  This method must be called by any subclass that overrides it.
+  */
   on_module_closed module/EthernetModule_ -> none:
     critical_do:
       resources_do: | resource/NetworkResource |
@@ -183,6 +201,7 @@ class EthernetModule_ implements NetworkModule:
     return address_
 
   connect -> none:
+    service.on_module_opened this
     with_timeout ETHERNET_CONNECT_TIMEOUT: wait_for_connected_
     with_timeout ETHERNET_DHCP_TIMEOUT: wait_for_dhcp_ip_address_
 

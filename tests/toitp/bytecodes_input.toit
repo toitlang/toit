@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import .confuse
+
 interface I:
 
 class A implements I:
@@ -13,8 +15,6 @@ class B:
 bar: print "global bar"
 
 global_field := 42
-
-confuse x: return x
 
 bytecode_test:
   a := A

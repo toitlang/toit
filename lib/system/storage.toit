@@ -4,6 +4,29 @@
 
 /**
 User-space side of the service API for key-value storage.
+
+# Examples
+Store and read a value in a RAM-backed bucket. The used memory
+  survives deep sleep, but not a restart of the device due to
+  a reset or power loss.
+
+```
+import system.storage
+
+main:
+  bucket := storage.Bucket.open --ram "my-bucket"
+  bucket["key"] = "value"
+  print bucket["key"]
+```
+
+Use a 128 byte region in flash to store binary data.
+```
+import system.storage
+
+main:
+  region := storage.Region.open --flash "my-region" --capacity=128
+  region.write --from=0 #[0x12, 0x34]
+```
 */
 
 import encoding.tison

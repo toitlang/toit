@@ -276,7 +276,7 @@ int AeadContext::finish(uint8* output_data, int size) {
 class MbedTlsResourceGroup;
 
 // From resources/tls.cc.
-extern Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err);
+extern Object* tls_error(BaseMbedTlsSocket* group, Process* process, int err);
 
 AeadContext::~AeadContext(){
   switch (cipher_id_) {

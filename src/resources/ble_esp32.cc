@@ -447,7 +447,7 @@ class BleServiceResource:
 
   ~BleServiceResource() override {
     if (!deployed()) return;
-    dispose_gatt_svr_chars(gatt_svr_chars_, gatt_svr_chars_count_);
+    dispose_gatt_svcs(gatt_svcs_);
   }
 
   BleCharacteristicResource* get_or_create_characteristics_resource(
@@ -469,14 +469,11 @@ class BleServiceResource:
     }
   }
 
-  bool deployed() const { return gatt_svr_chars_count_ >= 0; }
+  bool deployed() const { return gatt_svcs_ != null; }
 
-  void set_svr_chars(ble_gatt_chr_def* chars, int count) {
-    ASSERT(count >= 0);
-    gatt_svr_chars_ = chars;
-    gatt_svr_chars_count_ = count;
+  void set_svcs(ble_gatt_svc_def* svcs) {
+    gatt_svcs_ = svcs;
   }
-
 
   bool characteristics_discovered() const { return characteristics_discovered_; }
   void set_characteristics_discovered(bool discovered) { characteristics_discovered_ = discovered; }
@@ -499,9 +496,20 @@ class BleServiceResource:
     return BLE_ERR_SUCCESS;
   }
 
-  static void dispose_gatt_svr_chars(ble_gatt_chr_def* gatt_svr_chars, int count) {
-    for (int i = 0; i < count; i++) {
-      free(gatt_svr_chars[i].descriptors);
+  static void dispose_gatt_svcs(ble_gatt_svc_def* gatt_svcs) {
+    ble_gatt_svc_def* cursor = gatt_svcs;
+    while (cursor->type != 0) {
+      dispose_gatt_svr_chars(const_cast<ble_gatt_chr_def*>(cursor->characteristics));
+      cursor++;
+    }
+    free(gatt_svcs);
+  }
+
+  static void dispose_gatt_svr_chars(ble_gatt_chr_def* gatt_svr_chars) {
+    ble_gatt_chr_def* cursor = gatt_svr_chars;
+    while (cursor->uuid != null) {
+      free(cursor->descriptors);
+      cursor++;
     }
     free(gatt_svr_chars);
   }
@@ -521,8 +529,7 @@ class BleServiceResource:
   BleRemoteDeviceResource* device_;
   BlePeripheralManagerResource* peripheral_manager_;
 
-  ble_gatt_chr_def* gatt_svr_chars_ = null;
-  int gatt_svr_chars_count_ = -1;
+  ble_gatt_svc_def* gatt_svcs_ = null;
 };
 
 class BleCentralManagerResource : public BleErrorCapableResource {
@@ -2115,7 +2122,7 @@ PRIMITIVE(deploy_service) {
       auto gatt_desc_defs = static_cast<ble_gatt_dsc_def*>(calloc(descriptor_count + 1, sizeof(ble_gatt_dsc_def)));
 
       if (!gatt_desc_defs) {
-        BleServiceResource::dispose_gatt_svr_chars(gatt_svr_chars, characteristic_index);
+        BleServiceResource::dispose_gatt_svr_chars(gatt_svr_chars);
         FAIL(MALLOC_FAILED);
       }
 
@@ -2133,25 +2140,30 @@ PRIMITIVE(deploy_service) {
     characteristic_index++;
   }
 
-  struct ble_gatt_svc_def gatt_svcs[2] = {
-    {
-      .type = BLE_GATT_SVC_TYPE_PRIMARY,
-      .uuid = service_resource->ptr_uuid(),
-      .includes = 0,
-      .characteristics = gatt_svr_chars
-    },
+  static_assert(BLE_GATT_SVC_TYPE_END == 0, "Unexpected BLE_GATT_SVC_TYPE_END value");
+  auto gatt_svcs = static_cast<ble_gatt_svc_def*>(calloc(2, sizeof(ble_gatt_svc_def)));
+  if (!gatt_svcs) {
+    BleServiceResource::dispose_gatt_svr_chars(gatt_svr_chars);
+    FAIL(MALLOC_FAILED);
+  }
+
+  struct ble_gatt_svc_def gatt_svc = {
+    .type = BLE_GATT_SVC_TYPE_PRIMARY,
+    .uuid = service_resource->ptr_uuid(),
+    .includes = 0,
+    .characteristics = gatt_svr_chars
   };
-  gatt_svcs[1].type = 0;
+  gatt_svcs[0] = gatt_svc;
 
   int rc = ble_gatts_count_cfg(gatt_svcs);
   if (rc != BLE_ERR_SUCCESS) {
-    BleServiceResource::dispose_gatt_svr_chars(gatt_svr_chars, characteristic_count);
+    BleServiceResource::dispose_gatt_svcs(gatt_svcs);
     return nimble_stack_error(process, rc);
   }
 
   rc = ble_gatts_add_svcs(gatt_svcs);
   if (rc != BLE_ERR_SUCCESS) {
-    BleServiceResource::dispose_gatt_svr_chars(gatt_svr_chars, characteristic_count);
+    BleServiceResource::dispose_gatt_svcs(gatt_svcs);
     return nimble_stack_error(process, rc);
   }
 
@@ -2165,12 +2177,12 @@ PRIMITIVE(deploy_service) {
   // See https://github.com/apache/mynewt-nimble/issues/556.
   rc = ble_gatts_start();
   if (rc != BLE_ERR_SUCCESS) {
-    BleServiceResource::dispose_gatt_svr_chars(gatt_svr_chars, characteristic_count);
+    BleServiceResource::dispose_gatt_svcs(gatt_svcs);
     return nimble_stack_error(process, rc);
   }
 
-  // Mark the service resource as deployed by setting its characteristics.
-  service_resource->set_svr_chars(gatt_svr_chars, characteristic_count);
+  // Mark the service resource as deployed by setting its services.
+  service_resource->set_svcs(gatt_svcs);
 
   // NimBLE does not do async service deployments, so
   // simulate success event.

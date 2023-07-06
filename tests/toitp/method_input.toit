@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import .confuse
+
 class ClassA:
   constructor:
   constructor.named:
@@ -18,6 +20,11 @@ class ClassA:
 class ClassB extends ClassA:
   method_b x: print "ClassB.method_b 1"
 
+  final_field= x:
+    // Without this setter, the optimizer will treat the
+    // code that follows the illegal setting of A.final_field
+    // as dead code.
+
 global_method: print "global_method"
 global_field := 0
 global_lazy_field := {:}
@@ -31,8 +38,6 @@ class Nested:
 
   lambda:
     foo:: true
-
-confuse x -> any: return x
 
 main:
   ClassA

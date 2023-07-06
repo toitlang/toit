@@ -25,6 +25,28 @@
 
 namespace toit {
 
+class UnparsedRootCertificate;
+typedef LinkedFifo<UnparsedRootCertificate> UnparsedRootCertificateList;
+
+class UnparsedRootCertificate: public UnparsedRootCertificateList::Element {
+ public:
+  UnparsedRootCertificate(const uint8* data, size_t length, bool needs_delete);
+  ~UnparsedRootCertificate();
+  bool matches(const uint8* data, size_t length) const;
+
+  const uint8* data() const { return data_; }
+  size_t length() const { return length_; }
+
+  void set_subject_hash(uint32 hash) { subject_hash_ = hash; }
+  uint32 subject_hash() const { return subject_hash_; }
+
+ private:
+  const uint8* data_;
+  size_t length_;
+  uint32 subject_hash_ = 0;
+  bool needs_delete_;
+};
+
 // Process is linked into two different linked lists, so we have to make
 // use of the arbitrary N template argument to distinguish the two.
 typedef LinkedList<Process, 1> ProcessListFromProcessGroup;
@@ -233,7 +255,7 @@ class Process : public ProcessListFromProcessGroup::Element,
     delete p;
   }
 
-  inline bool on_program_heap(HeapObject* object) {
+  inline bool on_program_heap(const HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     return address - program_heap_address_ < program_heap_size_;
   }
@@ -241,6 +263,17 @@ class Process : public ProcessListFromProcessGroup::Element,
   inline HeapObject* false_object() const { return false_object_; }
   inline HeapObject* true_object() const { return true_object_; }
   inline HeapObject* null_object() const { return null_; }
+
+  // These root certificate functions should be guarded by the scheduler mutex.
+  void add_root_certificate(UnparsedRootCertificate* certificate, const Locker& locker) {
+    root_certificates_.append(certificate);
+  }
+
+  bool already_has_root_certificate(const uint8* data, size_t length, const Locker& locker);
+
+  UnparsedRootCertificateList& root_certificates(const Locker& locker) {
+    return root_certificates_;
+  }
 
  private:
   Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
@@ -291,6 +324,8 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   bool construction_failed_ = false;
   bool idle_since_gc_ = true;
+
+  UnparsedRootCertificateList root_certificates_;
 
   Profiler* profiler_ = null;
 

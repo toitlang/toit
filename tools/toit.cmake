@@ -58,7 +58,7 @@ function(ADD_TOIT_SNAPSHOT SOURCE TARGET DEP_FILE ENV)
     OUTPUT "${TARGET}"
     DEPFILE ${DEP_FILE}
     DEPENDS "${TOITC}" download_packages "${SOURCE}"
-    COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false "${TOITC}" --dependency-file "${DEP_FILE}" --dependency-format ninja -w "${TARGET}" "${SOURCE}"
+    COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false "${TOITC}" --dependency-file "${DEP_FILE}" --dependency-format ninja -O2 -w "${TARGET}" "${SOURCE}"
   )
 endfunction(ADD_TOIT_SNAPSHOT)
 
@@ -83,7 +83,7 @@ function(ADD_TOIT_EXE SOURCE TARGET DEP_FILE ENV)
     OUTPUT "${TARGET}"
     DEPFILE ${DEP_FILE}
     DEPENDS "${TOITC}" download_packages "${SOURCE}"
-    COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false "${TOITC}" --dependency-file "${DEP_FILE}" --dependency-format ninja ${VESSELS_FLAG} -o "${TARGET}" "${SOURCE}"
+    COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false "${TOITC}" --dependency-file "${DEP_FILE}" --dependency-format ninja ${VESSELS_FLAG} -O2 -o "${TARGET}" "${SOURCE}"
   )
 endfunction(ADD_TOIT_EXE)
 

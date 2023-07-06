@@ -106,7 +106,7 @@ To build Toit and its dependencies the build host requires:
 * [CMake >= 3.13.3](https://cmake.org/)
 * [Ninja](https://ninja-build.org/)
 * [GCC](https://gcc.gnu.org/)
-* [Go >= 1.16](https://go.dev/)
+* [Go >= 1.19](https://go.dev/)
 * python-is-python3: on Ubuntu machines
 * glibc-tools: optional and only available on newer Ubuntus
 
@@ -291,13 +291,18 @@ Build firmware that can be flashed onto your ESP32 device. The firmware is gener
 in `build/esp32/firmware.envelope`:
 
 ``` sh
-make esp32 esptool
+make esp32
 ```
 
 If you want to flash the generated firmware on your device, you can use the `firmware`
-too. Internally, the `firmware` tool calls out to `esptool.py` so you need to build
-that first using `make esptool`. Assuming your device is connected through `/dev/ttyUSB0`
-you can achieve all of this through:
+too. Internally, the `firmware` tool calls out to
+[esptool](https://github.com/espressif/esptool)
+so you need to install that one first.
+You can also set the environment variable `ESPTOOL_PATH` to point
+to a valid esptool (for example the one in the shipped esp-idf:
+`export ESPTOOL_PATH=$PWD/third_party/esp-idf/components/esptool_py/esptool/esptool.py`).
+Assuming your device is connected through `/dev/ttyUSB0`
+you can then flash a device as follows:
 
 ``` sh
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
@@ -326,32 +331,45 @@ flash.
 build/host/sdk/bin/toit.compile -w hello.snapshot examples/hello.toit
 build/host/sdk/bin/toit.compile -w ntp.snapshot examples/ntp/ntp.toit
 
+# Typically we set the output envelope the first time we change it.
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    -o custom.envelope \
     container install hello hello.snapshot
-build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+build/host/sdk/tools/firmware -e custom.envelope \
     container install ntp ntp.snapshot
 ```
 
 You can list the containers in a given firmware envelope:
 
 ``` sh
-build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    container list
+build/host/sdk/tools/firmware -e custom.envelope container list
 ```
 
-The listing produces JSON output that can be processed by other tools:
+The listing shows the containers that are installed.
 
 ```
-{ "hello": {
-    "kind" : "snapshot",
-    "id"   : "f0b7e859-9188-52d9-8be3-856bd0e75919"
-  },
-  "ntp": {
-    "kind" : "snapshot",
-    "id"   : "6efefb4b-aa91-5600-ba7d-f76a8dc0ac01"
-  }
-}
+system:
+  Kind: snapshot
+  Id: bf14aa94-4b7e-3ddd-94a9-a22f5d1ec92c
+  Size: 242104
+  Flags:
+    - trigger=boot
+    - critical
+hello:
+  Kind: snapshot
+  Id: adc2babc-d89a-2301-98a1-3a1dfe34f144
+  Size: 141852
+  Flags:
+    - trigger=boot
+ntp:
+  Kind: snapshot
+  Id: 8d8ff2f0-3c51-13e8-6876-84a70fa359b5
+  Size: 187330
+  Flags:
+    - trigger=boot
 ```
+
+You can use the `--output-format=json` flag to get the output in JSON format.
 
 ### Adding container assets
 
