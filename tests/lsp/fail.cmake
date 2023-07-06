@@ -32,5 +32,9 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
 
     # floitsch: not entirely sure why this test fails on Windows.
     tests/lsp/repro_compiler_test_slow.toit
+
+    # Failing pipe on Windows:
+    # https://github.com/toitlang/toit/issues/1369
+    tests/lsp/import_completion_test.toit
   )
 endif()

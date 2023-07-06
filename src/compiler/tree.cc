@@ -31,21 +31,72 @@ using namespace ir;
 
 typedef Selector<CallShape> CallSelector;
 
+/// A typed selector set is a set of selectors, where
+/// each selector only applies to specific types.
+/// In the current implementation the type is represented by the
+/// single target that the selector can reach.
+/// For example, a selector 'foo' that applies only to type `A` (or maybe
+/// its subclasses) would be represented by the method `A.foo`.
+/// This representation is not optimal, but historical. Eventually,
+/// this set should keep track of the types that are available, making
+/// it more flexible, intuitive and powerful.
+class TypedSelectorSet {
+ public:
+  void insert(const CallSelector& selector, Method* target) {
+    selectors_[selector].insert(target);
+  }
+
+  /// Adds all typed selectors of other to this set.
+  /// Ignores all methods that are in the 'ignored_methods' set.
+  /// Ignores all selectors that are in the 'ignored_selectors' set.
+  void insert_all(TypedSelectorSet& other,
+                  const Set<Method*> ignored_methods,
+                  const Set<CallSelector> ignored_selectors) {
+    other.selectors_.for_each([&](const CallSelector& selector, const UnorderedSet<Method*> methods) {
+      if (ignored_selectors.contains(selector)) return;
+      for (auto method : methods.underlying_set()) {
+        if (ignored_methods.contains(method)) continue;
+        selectors_[selector].insert(method);
+      }
+    });
+  }
+
+  void match_and_filter(const QueryableClass& queryable,
+                        const std::function<bool (const CallSelector&, Method*)>& on_match) {
+    // A typed selector hit, if there is a class that has a method for it, and
+    // that method is in the set.
+    selectors_.for_each([&](CallSelector selector, UnorderedSet<Method*>& methods) {
+      if (methods.empty()) return;
+      auto probe = queryable.lookup(selector);
+      if (probe != null && methods.contains(probe)) {
+        bool should_erase = on_match(selector, probe);
+        if (should_erase) methods.erase(probe);
+        // We would like to completely erase entries for call selectors that don't have any
+        // target, but since we are using an ordered `Map`, that functionality is
+        // currently not available.
+      }
+    });
+  }
+
+  bool empty() const {
+    // Only looks at whether there are entries in the map. Does not
+    // run through them to see if all of the sets are empty.
+    return selectors_.empty();
+  }
+
+ private:
+  Map<CallSelector, UnorderedSet<Method*>> selectors_;
+};
+
 class GrowerVisitor : protected TraversingVisitor {
  public:
   explicit GrowerVisitor(Method* as_check_failure)
       : as_check_failure_(as_check_failure) {}
 
-  Set<Class*> found_classes() const { return found_classes_; }
-  Set<Method*> found_methods() const { return found_methods_; }
-  // Selectors that only are valid for the given set of methods.
-  // The optimizer changed the dynamic call to a static call, which means that
-  // it knew that the selector goes to that function. We still need to
-  // verify that the holder was instantiated.
-  Map<CallSelector, UnorderedSet<Method*>> found_filtered_selectors() const {
-    return found_filtered_selectors_;
-  }
-  Set<CallSelector> found_selectors() const { return found_selectors_; }
+  const Set<Class*>& found_classes() const { return found_classes_; }
+  const Set<Method*>& found_methods() const { return found_methods_; }
+  TypedSelectorSet& found_typed_selectors() { return found_typed_selectors_; }
+  const Set<CallSelector>& found_selectors() const { return found_selectors_; }
 
   void grow(Method* method) {
     current_method_ = method;
@@ -63,14 +114,9 @@ class GrowerVisitor : protected TraversingVisitor {
     auto current_holder = current_method_->holder();
     auto target = node->target()->target();
     if (!is_This(node->arguments()[0], current_holder, target)) return false;
-    // Make sure this is actually a super call (and not a sub call).
-    auto current_class = current_holder;
     auto target_holder = target->holder();
-    while (current_class != null) {
-      if (current_class == target_holder) return true;
-      current_class = current_class->super();
-    }
-    return false;
+    // Make sure this is actually a super call (and not a sub call).
+    return target_holder->is_transitive_super_of(current_holder);
   }
 
   void visit_CallStatic(CallStatic* node) {
@@ -78,11 +124,11 @@ class GrowerVisitor : protected TraversingVisitor {
     if (target->is_instance()) {
       if (is_super_call(node)) {
         // For super calls we don't need to ensure that the
-        // holder class is actually instantiated and its method not shadowed..
+        // holder class is actually instantiated and its method isn't shadowed.
         found_methods_.insert(target);
       } else {
         CallSelector selector(target->name(), node->shape());
-        found_filtered_selectors_[selector].insert(target);
+        found_typed_selectors_.insert(selector, target);
       }
     } else {
       found_methods_.insert(target);
@@ -122,7 +168,7 @@ class GrowerVisitor : protected TraversingVisitor {
   Method* as_check_failure_;
   Set<Class*> found_classes_;
   Set<Method*> found_methods_;
-  Map<CallSelector, UnorderedSet<Method*>> found_filtered_selectors_;
+  TypedSelectorSet found_typed_selectors_;
   Set<CallSelector> found_selectors_;
 };
 
@@ -304,6 +350,7 @@ void TreeGrower::grow(Program* program) {
   auto queryables = build_queryables_from_plain_shapes(program->classes());
 
   Set<CallSelector> handled_selectors;
+  TypedSelectorSet handled_typed_selectors;
 
   std::vector<Method*> method_queue;
 
@@ -315,10 +362,6 @@ void TreeGrower::grow(Program* program) {
   } else {
     logger = &null_logger;
   }
-
-  // Selectors for which the dynamic call was changed to a static call to
-  // one of the methods in the set.
-  Map<CallSelector, UnorderedSet<Method*>> filtered_selectors;
 
   for (auto klass : program->tree_roots()) {
     logger->root(klass);
@@ -333,7 +376,7 @@ void TreeGrower::grow(Program* program) {
   while (!method_queue.empty()) {
     Set<Class*> found_classes;
     Set<Method*> found_methods;
-    Map<CallSelector, UnorderedSet<Method*>> found_filtered_selectors;
+    TypedSelectorSet found_typed_selectors;
     Set<CallSelector> found_selectors;
 
     for (auto method : method_queue) {
@@ -347,27 +390,16 @@ void TreeGrower::grow(Program* program) {
       logger->add(method, visitor.found_classes(), visitor.found_methods(), visitor.found_selectors());
       found_classes.insert_all(visitor.found_classes());
       found_methods.insert_all(visitor.found_methods());
-      visitor.found_filtered_selectors().for_each([&](CallSelector selector, UnorderedSet<Method*>& methods) {
-        found_filtered_selectors[selector].insert_all(methods);
-      });
+      // Ignore already grown methods, and selectors that cover every type.
+      found_typed_selectors.insert_all(visitor.found_typed_selectors(),
+                                       grown_methods_,
+                                       handled_selectors);
       found_selectors.insert_all(visitor.found_selectors());
     }
 
     method_queue.clear();
 
     method_queue.insert(method_queue.end(), found_methods.begin(), found_methods.end());
-
-    // Thin out the filtered selectors.
-    // If a selector is unconditionally included, we don't need to do filter checks.
-    filtered_selectors.for_each([&](CallSelector selector, UnorderedSet<Method*>& methods) {
-      if (methods.empty()) return;
-      if (handled_selectors.contains(selector) || found_selectors.contains(selector)) {
-        // No need to handle this filtered selector in a special way anymore.
-        // All the methods this selector is applicable to are included anyway.
-        methods.clear();
-        return;
-      }
-    });
 
     for (auto klass : found_classes) {
       if (grown_classes_.contains(klass)) continue;
@@ -380,40 +412,19 @@ void TreeGrower::grow(Program* program) {
           method_queue.push_back(probe);
         }
       }
-      // Filtered selectors hit, if there is a class that has a method for it, and
-      // that method is in the filtered set.
-      filtered_selectors.for_each([&](CallSelector selector, UnorderedSet<Method*>& methods) {
-        if (methods.empty()) return;
-        auto probe = queryable.lookup(selector);
-        if (probe != null && methods.contains(probe)) {
-          logger->add_method_with_selector(selector, probe);
-          method_queue.push_back(probe);
-          methods.erase(probe);
-        }
+      handled_typed_selectors.match_and_filter(queryable,
+                                               [&](const CallSelector& selector, Method* matched) {
+        logger->add_method_with_selector(selector, matched);
+        method_queue.push_back(matched);
+        // Allow the removal of the now handled method.
+        return true;
       });
     }
 
+    // No need to look for selectors we already know about.
     found_selectors.erase_all(handled_selectors);
-    handled_selectors.insert(found_selectors.begin(), found_selectors.end());
-    bool has_filtered_selectors = false;
-    found_filtered_selectors.for_each([&](CallSelector selector, UnorderedSet<Method*>& methods) {
-      if (handled_selectors.contains(selector)) {
-        // All methods that fit this selector are handled anyway.
-        // No need to filter them.
-        return;
-      }
-      methods.erase_if([&](Method* method) { return grown_methods_.contains(method); });
-      if (methods.empty()) return;
-      auto probe = filtered_selectors.find(selector);
-      if (probe != filtered_selectors.end()) {
-        // Remove the methods that were already known before.
-        methods.erase_if([&](Method* old) { return probe->second.contains(old); });
-      }
-      if (methods.empty()) return;
-      has_filtered_selectors = true;
-    });
 
-    if (!found_selectors.empty() || has_filtered_selectors) {
+    if (!found_selectors.empty() || !found_typed_selectors.empty()) {
       for (auto klass : grown_classes_) {
         auto queryable = queryables[klass];
         for (auto selector : found_selectors) {
@@ -423,23 +434,22 @@ void TreeGrower::grow(Program* program) {
             method_queue.push_back(probe);
           }
         }
-        found_filtered_selectors.for_each([&](CallSelector selector, UnorderedSet<Method*>& methods) {
-          if (methods.empty()) return;
-          auto probe = queryable.lookup(selector);
-          if (probe != null && methods.contains(probe)) {
-            logger->add_method_with_selector(selector, probe);
-            method_queue.push_back(probe);
-            methods.erase(probe);
-          }
+        found_typed_selectors.match_and_filter(queryable,
+                                               [&](const CallSelector& selector, Method* matched) {
+          logger->add_method_with_selector(selector, matched);
+          method_queue.push_back(matched);
+          // Allow the removal of the now handled method.
+          return true;
         });
       }
     }
-    if (has_filtered_selectors) {
-      found_filtered_selectors.for_each([&](CallSelector selector, UnorderedSet<Method*>& methods) {
-        if (methods.empty()) return;
-        filtered_selectors[selector].insert_all(methods);
-      });
-    }
+
+    handled_selectors.insert_all(found_selectors);
+    // Add the newly found typed selectors, but ignore them for
+    // known methods and for selectors that are already matching everything.
+    handled_typed_selectors.insert_all(found_typed_selectors,
+                                       grown_methods_,
+                                       handled_selectors);
   }
 
   logger->print();

@@ -762,6 +762,10 @@ flash parsed/cli.Parsed -> none:
   app_partition ::= partition_table.find_app
   otadata_partition := partition_table.find_otadata
 
+  if firmware_bin.size > app_partition.size:
+    print "Firmware is too big to fit in designated partition ($firmware_bin.size > $app_partition.size)"
+    exit 1
+
   tmp := directory.mkdtemp "/tmp/toit-flash-"
   try:
     write_file "$tmp/bootloader.bin": it.write (envelope.entries.get AR_ENTRY_BOOTLOADER_BIN)

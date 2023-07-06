@@ -40,7 +40,7 @@ template<typename T> class Set {
     }
   }
 
-  void insert_all(Set<T> other_set) {
+  void insert_all(const Set<T>& other_set) {
     for (auto& x : other_set) insert(x);
   }
 
@@ -93,10 +93,10 @@ template<typename T> class UnorderedSet {
  public:
   void insert(T x) { set_.insert(x); }
   template<class InputIt> void insert(InputIt begin, InputIt end) { set_.insert(begin, end); }
-  void insert_all(UnorderedSet<T> other_set) {
+  void insert_all(const UnorderedSet<T>& other_set) {
     set_.insert(other_set.set_.begin(), other_set.set_.end());
   }
-  void insert_all(Set<T> other_set) {
+  void insert_all(const Set<T>& other_set) {
     set_.insert(other_set.begin(), other_set.end());
   }
   bool erase(T x) { return set_.erase(x) > 0; }

@@ -78,25 +78,16 @@ Expression* optimize_virtual_call(CallVirtual* node,
     }
   }
 
-  // We need to be careful not to directly call an operator ==.
-  // If the RHS is nullable, the interpreter shortcuts the call.
-  if (direct_method != null && opcode == INVOKE_EQ) {
-    auto param = node->arguments().first();
-    Type param_type = compute_guaranteed_type(param, holder, method);
-    if (param_type.is_valid()) {
-      // Unless the param-type is nullable, we can change to a static call.
-      if (param_type.is_nullable()) direct_method = null;
-    } else if (param->is_Literal()) {
-      // Unless the literal is `null`, we can change to a static call.
-      if (param->is_LiteralNull()) direct_method = null;
-    } else {
-      // Not enough information, so abandon and assume we can't change to static call.
-      direct_method = null;
-    }
-  }
-  // Similarly, we don't want to change any of the really efficient INVOKE_X opcodes.
   if (direct_method != null && opcode != INVOKE_VIRTUAL) {
-    // TODO(florian): we may switch to a static call if the receiver isn't an int/Array.
+    // We don't want to change any of the really efficient INVOKE_X opcodes.
+    // These bytecodes are optimized for numbers/arrays and shortcut
+    // lots of bytecodes.
+    // TODO(florian): change to a static call when the receiver isn't one of
+    //    the optimized types. In that case make sure to special case
+    //    `INVOKE_EQ`: the virtual machine does a null-check on the RHS before
+    //    calling the virtual method.
+    //    See https://github.com/toitlang/toit/blob/e4f55512efd2880c5ab68960ae4c0a21a69ab349/src/compiler/optimizations/virtual_call.cc#L82
+    //    for how to treat the `INVOKE_EQ`.
     direct_method = null;
   }
 
