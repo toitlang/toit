@@ -61,8 +61,7 @@ class OlimexPoeProvider extends esp32.EthernetServiceProvider:
     power_.set 1
 
   on_module_closed module:
-    super module
     if power_:
-      critical_do:
-        power_.close
-        power_ = null
+      power_.close
+      power_ = null
+    super module
