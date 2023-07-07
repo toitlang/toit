@@ -44,7 +44,6 @@ import esp32.net.ethernet as esp32
 
 class OlimexPoeProvider extends esp32.EthernetServiceProvider:
   power_/gpio.Pin? := null
-  connected_clients_/int := 0
 
   constructor:
     super
