@@ -55,6 +55,29 @@ class PcntUnitResource : public Resource {
     , high_limit_(high_limit)
     , glitch_filter_ns_(glitch_filter_ns) {}
 
+  ~PcntUnitResource() override {
+    for (int i = 0; i < PCNT_CHANNEL_MAX; i++) {
+      if (!used_channels_[i]) continue;
+      auto channel = static_cast<pcnt_channel_t>(i);
+      if (channel != kInvalidChannel) {
+        // In the teardown we don't handle errors for cloning the channel.
+        close_channel(channel);
+      }
+    }
+    cleared_ = false;
+
+    pcnt_unit_ids.put(unit_id());
+
+    // In v4.4.1 there is no way to shut down the counter.
+    // In later versions we have to call `pcnt_del_unit`.
+    // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-unit
+    // This static assert might hit, even though the code is still OK. Check the documentation if
+    // the code from 'master' (as of 2022-07-01) has already made it into the release you are using.
+    // If yes, stop the unit and the delete it.
+    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 4,
+                  "Newer ESP-IDF might need different code");
+  }
+
   bool is_open_channel(pcnt_channel_t channel) {
     if (channel == kInvalidChannel) return false;
     int index = static_cast<int>(channel);
@@ -154,29 +177,6 @@ class PcntUnitResource : public Resource {
     return pcnt_unit_config(&config);
   }
 
-  void tear_down() {
-    for (int i = 0; i < PCNT_CHANNEL_MAX; i++) {
-      if (!used_channels_[i]) continue;
-      auto channel = static_cast<pcnt_channel_t>(i);
-      if (channel != kInvalidChannel) {
-        // In the teardown we don't handle errors for cloning the channel.
-        close_channel(channel);
-      }
-    }
-    cleared_ = false;
-
-    pcnt_unit_ids.put(unit_id());
-
-    // In v4.4.1 there is no way to shut down the counter.
-    // In later versions we have to call `pcnt_del_unit`.
-    // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-unit
-    // This static assert might hit, even though the code is still OK. Check the documentation if
-    // the code from 'master' (as of 2022-07-01) has already made it into the release you are using.
-    // If yes, stop the unit and the delete it.
-    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 4,
-                  "Newer ESP-IDF might need different code");
-  }
-
   // The unit id should not be exposed to the user.
   pcnt_unit_t unit_id() const { return unit_id_; }
 
@@ -200,34 +200,10 @@ class PcntUnitResource : public Resource {
   bool cleared_ = false;
 };
 
-class PcntUnitResourceGroup : public ResourceGroup {
- public:
-  TAG(PcntUnitResourceGroup);
-  explicit PcntUnitResourceGroup(Process* process)
-      : ResourceGroup(process) {}
-
- protected:
-  virtual void on_unregister_resource(Resource* r) override {
-    PcntUnitResource* unit = reinterpret_cast<PcntUnitResource*>(r);
-    unit->tear_down();
-  }
-};
-
 MODULE_IMPLEMENTATION(pcnt, MODULE_PCNT)
 
-PRIMITIVE(init) {
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) FAIL(ALLOCATION_FAILED);
-
-  PcntUnitResourceGroup* pcnt = _new PcntUnitResourceGroup(process);
-  if (pcnt == null) FAIL(MALLOC_FAILED);
-
-  proxy->set_external_address(pcnt);
-  return proxy;
-}
-
 PRIMITIVE(new_unit) {
-  ARGS(PcntUnitResourceGroup, unit_resource_group, int16, low_limit, int16, high_limit, int, glitch_filter_ns)
+  ARGS(SimpleResourceGroup, resource_group, int16, low_limit, int16, high_limit, int, glitch_filter_ns)
 
   if (low_limit > 0 || high_limit < 0) FAIL(OUT_OF_RANGE);
   if (glitch_filter_ns > 0) {
@@ -247,12 +223,12 @@ PRIMITIVE(new_unit) {
     // Similarly, we pass in the glitch_filter_ns which, in recent versions, must be
     // set before the unit is used.
     // For now we pass it to the resource so we can create the channel with the values.
-    unit = _new PcntUnitResource(unit_resource_group, unit_id, low_limit, high_limit, glitch_filter_ns);
+    unit = _new PcntUnitResource(resource_group, unit_id, low_limit, high_limit, glitch_filter_ns);
     if (unit == null) {
       pcnt_unit_ids.put(unit_id);
       FAIL(MALLOC_FAILED);
     }
-    unit_resource_group->register_resource(unit);
+    resource_group->register_resource(unit);
   }
 
   // In v4.4.1 the unit is not allocated, but everything happens when a channel

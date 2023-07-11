@@ -449,7 +449,6 @@ namespace toit {
   PRIMITIVE(stop_receive, 1)                 \
 
 #define MODULE_PCNT(PRIMITIVE)               \
-  PRIMITIVE(init, 0)                         \
   PRIMITIVE(new_unit, 4)                     \
   PRIMITIVE(close_unit, 1)                   \
   PRIMITIVE(new_channel, 7)                  \
