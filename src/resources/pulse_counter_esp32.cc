@@ -165,6 +165,8 @@ class PcntUnitResource : public Resource {
     }
     cleared_ = false;
 
+    pcnt_unit_ids.put(unit_id());
+
     // In v4.4.1 there is no way to shut down the counter.
     // In later versions we have to call `pcnt_del_unit`.
     // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-unit
@@ -250,6 +252,7 @@ PRIMITIVE(new_unit) {
       pcnt_unit_ids.put(unit_id);
       FAIL(MALLOC_FAILED);
     }
+    unit_resource_group->register_resource(unit);
   }
 
   // In v4.4.1 the unit is not allocated, but everything happens when a channel
@@ -268,8 +271,7 @@ PRIMITIVE(new_unit) {
 
 PRIMITIVE(close_unit) {
   ARGS(PcntUnitResource, unit)
-  unit->tear_down();
-  pcnt_unit_ids.put(unit->unit_id());
+  unit->resource_group()->unregister_resource(unit);
   unit_proxy->clear_external_address();
   return process->null_object();
 }
