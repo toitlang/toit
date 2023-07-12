@@ -214,7 +214,7 @@ class DnsClient:
         current_server_ip := servers_[current_server_index_]
         is_last_server := (servers_.size == servers_failed.size + 1)
 
-        catch --unwind=(: it == DEADLINE_EXCEEDED_ERROR or is_last_server):
+        catch --unwind=is_last_server:
           return get_ query current_server_ip
 
         // The current server didn't succeed. Move to the next.
