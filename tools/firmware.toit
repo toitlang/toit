@@ -607,6 +607,7 @@ write_qemu_ output_path/string firmware_bin/ByteArray envelope/Envelope:
 
 find_esptool_ -> List:
   bin_extension := ?
+  // TODO(florian): can we get the absolute path to our binary?
   bin_name := program_name
   if platform == PLATFORM_WINDOWS:
     bin_name = bin_name.replace --all "\\" "/"
@@ -632,16 +633,16 @@ find_esptool_ -> List:
     esptool_py := "$dir/../third_party/esp-idf/components/esptool_py/esptool/esptool.py"
     if file.is_file esptool_py:
       return ["python$bin_extension", esptool_py]
-  else:
+  else if dir != "":
     esptool := ["$dir/esptool$bin_extension"]
     if file.is_file esptool[0]:
       return esptool
   // Try to find esptool in PATH.
-  esptool := ["esptool$bin_extension"]
+  esptool := "esptool$bin_extension"
   catch:
     pipe.backticks esptool "version"
     // Succeeded, so just return it.
-    return esptool
+    return [esptool]
   // An exception was thrown.
   // Try to find esptool.py in PATH.
   if platform != PLATFORM_WINDOWS:
