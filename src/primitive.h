@@ -685,11 +685,12 @@ namespace toit {
   PRIMITIVE(object_histogram, 2)             \
 
 #define MODULE_ESPNOW(PRIMITIVE)             \
-  PRIMITIVE(init, 3)                         \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(create, 4)                       \
+  PRIMITIVE(close, 1)                        \
   PRIMITIVE(send, 3)                         \
   PRIMITIVE(receive, 1)                      \
   PRIMITIVE(add_peer, 3)                     \
-  PRIMITIVE(deinit, 1)                       \
 
 #define MODULE_BIGNUM(PRIMITIVE)             \
   PRIMITIVE(binary_operator, 5)              \
@@ -1020,6 +1021,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
 #define _A_T_PwmResource(N, name)         MAKE_UNPACKING_MACRO(PwmResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
+#define _A_T_EspNowResource(N, name)      MAKE_UNPACKING_MACRO(EspNowResource, N, name)
 #define _A_T_RmtResource(N, name)         MAKE_UNPACKING_MACRO(RmtResource, N, name)
 #define _A_T_BleCentralManagerResource(N, name) MAKE_UNPACKING_MACRO(BleCentralManagerResource, N, name)
 #define _A_T_BleRemoteDeviceResource(N, name)   MAKE_UNPACKING_MACRO(BleRemoteDeviceResource, N, name)

@@ -61,11 +61,17 @@ class EspNowResourceGroup : public ResourceGroup {
  public:
   TAG(EspNowResourceGroup);
 
-  EspNowResourceGroup(Process* process, int id)
-      : ResourceGroup(process)
-      , id_(id) {}
+  EspNowResourceGroup(Process* process) : ResourceGroup(process) {}
+};
 
-  ~EspNowResourceGroup() override;
+class EspNowResource : public Resource {
+ public:
+  TAG(EspNowResource);
+
+  EspNowResource(EspNowResourceGroup* group, int id)
+      : Resource(group)
+      , id_(id) {}
+  ~EspNowResource() override;
 
   bool init();
 
@@ -73,7 +79,7 @@ class EspNowResourceGroup : public ResourceGroup {
   int id_;
 };
 
-EspNowResourceGroup::~EspNowResourceGroup() {
+EspNowResource::~EspNowResource() {
   vSemaphoreDelete(tx_sem);
   tx_sem = NULL;
 
@@ -91,7 +97,7 @@ EspNowResourceGroup::~EspNowResourceGroup() {
   esp_wifi_stop();
 }
 
-bool EspNowResourceGroup::init() {
+bool EspNowResource::init() {
   tx_sem = xSemaphoreCreateCounting(1, 0);
   if (!tx_sem) {
     return false;
@@ -126,8 +132,6 @@ bool EspNowResourceGroup::init() {
 
   return true;
 }
-
-MODULE_IMPLEMENTATION(espnow, MODULE_ESPNOW)
 
 static struct DataGram* alloc_datagram(void) {
   struct DataGram *datagram = NULL;
@@ -224,8 +228,25 @@ static wifi_phy_rate_t map_toit_rate_to_esp_idf_rate(int toit_rate) {
   return static_cast<wifi_phy_rate_t>(-1);
 }
 
+MODULE_IMPLEMENTATION(espnow, MODULE_ESPNOW)
+
 PRIMITIVE(init) {
-  ARGS(int, mode, Blob, pmk, int, rate);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) {
+    FAIL(ALLOCATION_FAILED);
+  }
+
+  auto group = _new EspNowResourceGroup(process);
+  if (!group) {
+    FAIL(MALLOC_FAILED);
+  }
+
+  proxy->set_external_address(group);
+  return proxy;
+}
+
+PRIMITIVE(create) {
+  ARGS(EspNowResourceGroup, group, int, mode, Blob, pmk, int, rate);
 
   wifi_phy_rate_t phy_rate = WIFI_PHY_RATE_1M_L;
   if (rate != -1) {
@@ -236,21 +257,28 @@ PRIMITIVE(init) {
   if (pmk.length() > 0 && pmk.length() != 16) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) FAIL(ALLOCATION_FAILED);
+  if (proxy == null) {
+    FAIL(ALLOCATION_FAILED);
+  }
 
   int id = espnow_pool.any();
   if (id == kInvalidEspNow) FAIL(ALREADY_IN_USE);
 
-  EspNowResourceGroup* group = _new EspNowResourceGroup(process, id);
-  if (!group) {
+  EspNowResource* resource = _new EspNowResource(group, id);
+  if (!resource) {
     espnow_pool.put(id);
     FAIL(MALLOC_FAILED);
   }
 
-  if (!group->init()) {
+  if (!resource->init()) {
     espnow_pool.put(id);
     FAIL(MALLOC_FAILED);
   }
+
+  // TODO(florian): we are leaking the resource and
+  // all the allocated entries (from 'init') if one of the
+  // following calls fails.
+
 
   // Not clear whether we should keep this call to esp_netif_init.
   // The lwip thread is supposed to do this (and normally does so).
@@ -286,9 +314,17 @@ PRIMITIVE(init) {
     if (err != ESP_OK) return Primitive::os_error(err, process);
   }
 
-  proxy->set_external_address(group);
+  group->register_resource(resource);
+  proxy->set_external_address(resource);
 
   return proxy;
+}
+
+PRIMITIVE(close) {
+  ARGS(EspNowResource, resource);
+  resource->resource_group()->unregister_resource(resource);
+  resource_proxy->clear_external_address();
+  return process->null_object();
 }
 
 PRIMITIVE(send) {
@@ -367,15 +403,6 @@ PRIMITIVE(add_peer) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   return process->true_object();
-}
-
-PRIMITIVE(deinit) {
-  ARGS(EspNowResourceGroup, group);
-
-  group->tear_down();
-  group_proxy->clear_external_address();
-
-  return process->null_object();
 }
 
 } // namespace toit

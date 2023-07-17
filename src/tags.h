@@ -61,6 +61,7 @@ namespace toit {
   fn(PipeResource)                      \
   fn(AeadContext)                       \
   fn(TlsHandshakeToken)                 \
+  fn(EspNowResource)                    \
 
 #define TLS_CLASSES_DO(fn)              \
   fn(MbedTlsSocket)                     \
