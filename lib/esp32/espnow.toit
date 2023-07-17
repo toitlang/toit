@@ -2,6 +2,9 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import monitor
+import monitor show ResourceState_
+
 STATION_ ::= 0 // Wi-Fi station mode
 SOFTAP_  ::= 1 // Not support yet
 
@@ -101,7 +104,9 @@ class Datagram:
   constructor .address .data:
 
 class Service:
+  send_mutex_/monitor.Mutex ::= monitor.Mutex
   resource_ := ?
+  state_ := ?
 
   /**
   Constructs a new ESP-Now service in station mode.
@@ -114,6 +119,7 @@ class Service:
     if rate and rate < 0: throw "INVALID_ARGUMENT"
     if not rate: rate = -1
     resource_ = espnow_create_ resource_group_ STATION_ key_data rate
+    state_ = ResourceState_ resource_group_ resource_
 
   close -> none:
     if not resource_: return
@@ -121,23 +127,57 @@ class Service:
       espnow_close_ resource_
       resource_ = null
 
-  send data/ByteArray --address/Address --wait/bool=true -> none:
-    espnow_send_ address.mac data wait
+  /**
+  Deprecated. The $wait flag is ignored.
+  */
+  send data/ByteArray --address/Address --wait/bool -> none:
+    send data --address=address
 
+  /**
+  Sends the given $data to the given $address.
+
+  The $data must be at most 250 bytes long.
+  Waits for the transmission to complete.
+  */
+  send data/ByteArray --address/Address -> none:
+    send_mutex_.do:
+      state_.clear_state SEND_DONE_STATE_
+      espnow_send_ resource_ address.mac data
+      state_.wait_for_state SEND_DONE_STATE_
+      succeeded := espnow_send_succeeded_ resource_
+      if not succeeded:
+        throw "ESP-Now send failed"
+
+  /**
+  Receives a datagram.
+
+  Blocks until a datagram is received.
+  */
   receive -> Datagram?:
-    array := espnow_receive_ (Array_ 2)
-    if not array: return null
-    address := Address array[0]
-    return Datagram address array[1]
+    array := Array_ 2
+    while true:
+      // Always try to read directly. If there is no data available we
+      // will wait for the state to change.
+      state_.clear_state DATA_AVAILABLE_STATE_
+      result := espnow_receive_ resource_ array
+      if not result:
+        state_.wait_for_state DATA_AVAILABLE_STATE_
+        continue
+
+      address := Address array[0]
+      return Datagram address array[1]
 
   add_peer address/Address --channel/int --key/Key?=null -> bool:
     if not 0 <= channel <= 14:
       throw "ESP-Now channel range must be 0-14"
 
     key_data := key ? key.data : #[]
-    return espnow_add_peer_ address.mac channel key_data
+    return espnow_add_peer_ resource_ address.mac channel key_data
 
 resource_group_ ::= espnow_init_
+
+DATA_AVAILABLE_STATE_ ::= 1 << 0
+SEND_DONE_STATE_ ::= 1 << 1
 
 espnow_init_:
   #primitive.espnow.init
@@ -148,11 +188,14 @@ espnow_create_ group mode pmk rate:
 espnow_close_ resource:
   #primitive.espnow.close
 
-espnow_send_ mac data wait:
+espnow_send_ resource mac data:
   #primitive.espnow.send
 
-espnow_receive_ output:
+espnow_send_succeeded_ resource:
+  #primitive.espnow.send_succeeded
+
+espnow_receive_ resource output:
   #primitive.espnow.receive
 
-espnow_add_peer_ mac channel key:
+espnow_add_peer_ resource mac channel key:
   #primitive.espnow.add_peer

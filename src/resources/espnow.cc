@@ -30,10 +30,13 @@
 #include "../vm.h"
 
 #include "../event_sources/system_esp32.h"
+#include "../event_sources/ev_queue_esp32.h"
 
 #define ESPNOW_RX_DATAGRAM_NUM      8
 #define ESPNOW_RX_DATAGRAM_LEN_MAX  250
 #define ESPNOW_TX_WAIT_US           1000
+// The size of the event queue.
+#define ESPNOW_EVENT_NUM            16
 
 namespace toit {
 
@@ -46,43 +49,67 @@ struct DataGram {
 
 const int kInvalidEspNow = -1;
 
+// These constants must be synchronized with the Toit code.
+const int kDataAvailableState = 1 << 0;
+const int kSendDoneState = 1 << 1;
+
+enum class EspNowEvent {
+  new_data_available = 1 << 0,
+  // Indicates that the sending has finished. Verify with 'status'
+  // that it was successful.
+  send_done = 1 << 1,
+};
+
 // Only allow one instance to use espnow.
 static  ResourcePool<int, kInvalidEspNow> espnow_pool(
   0
 );
 
-static SemaphoreHandle_t tx_sem;
 static esp_now_send_status_t tx_status;
 static QueueHandle_t rx_queue;
 static SemaphoreHandle_t rx_datagrams_mutex;
 static struct DataGram* rx_datagrams;
+static QueueHandle_t event_queue;
 
 class EspNowResourceGroup : public ResourceGroup {
  public:
   TAG(EspNowResourceGroup);
 
-  EspNowResourceGroup(Process* process) : ResourceGroup(process) {}
+  EspNowResourceGroup(Process* process, EventSource* event_source)
+      : ResourceGroup(process, event_source) {}
+
+  uint32_t on_event(Resource* r, word data, uint32_t state) {
+    auto event = static_cast<EspNowEvent>(data);
+    switch (event) {
+      case EspNowEvent::new_data_available:
+        state |= kDataAvailableState;
+        break;
+
+      case EspNowEvent::send_done:
+        state |= kSendDoneState;
+        break;
+    };
+    return state;
+  }
 };
 
-class EspNowResource : public Resource {
+class EspNowResource : public EventQueueResource {
  public:
   TAG(EspNowResource);
 
-  EspNowResource(EspNowResourceGroup* group, int id)
-      : Resource(group)
+  EspNowResource(EspNowResourceGroup* group, int id, QueueHandle_t queue)
+      : EventQueueResource(group, queue)
       , id_(id) {}
+
   ~EspNowResource() override;
 
-  bool init();
+  bool receive_event(word* data) override;
 
  private:
   int id_;
 };
 
 EspNowResource::~EspNowResource() {
-  vSemaphoreDelete(tx_sem);
-  tx_sem = NULL;
-
   vQueueDelete(rx_queue);
   rx_queue = NULL;
 
@@ -97,16 +124,9 @@ EspNowResource::~EspNowResource() {
   esp_wifi_stop();
 }
 
-bool EspNowResource::init() {
-  tx_sem = xSemaphoreCreateCounting(1, 0);
-  if (!tx_sem) {
-    return false;
-  }
-
+static bool init() {
   rx_queue = xQueueCreate(ESPNOW_RX_DATAGRAM_NUM, sizeof(void*));
   if (!rx_queue) {
-    vSemaphoreDelete(tx_sem);
-    tx_sem = NULL;
     return false;
   }
 
@@ -114,8 +134,6 @@ bool EspNowResource::init() {
   if (!rx_datagrams_mutex) {
     vQueueDelete(rx_queue);
     rx_queue = NULL;
-    vSemaphoreDelete(tx_sem);
-    tx_sem = NULL;
     return false;
   }
 
@@ -125,12 +143,28 @@ bool EspNowResource::init() {
     rx_datagrams_mutex = NULL;
     vQueueDelete(rx_queue);
     rx_queue = NULL;
-    vSemaphoreDelete(tx_sem);
-    tx_sem = NULL;
+    return false;
+  }
+
+  event_queue = xQueueCreate(ESPNOW_EVENT_NUM, sizeof(EspNowEvent));
+  if (!event_queue) {
+    free(rx_datagrams);
+    rx_datagrams = NULL;
+    vSemaphoreDelete(rx_datagrams_mutex);
+    rx_datagrams_mutex = NULL;
+    vQueueDelete(rx_queue);
+    rx_queue = NULL;
     return false;
   }
 
   return true;
+}
+
+bool EspNowResource::receive_event(word* data) {
+  EspNowEvent event;
+  bool more = xQueueReceive(queue(), &event, 0);
+  if (more) *data = static_cast<uword>(event);
+  return more;
 }
 
 static struct DataGram* alloc_datagram(void) {
@@ -157,10 +191,10 @@ static void free_datagram(struct DataGram* datagram) {
 
 static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status) {
   tx_status = status;
-  portBASE_TYPE ret = xSemaphoreGive(tx_sem);
+  auto event = EspNowEvent::send_done;
+  auto ret = xQueueSend(event_queue, &event, 0);
   if (ret != pdTRUE) {
-    // ESP_LOGE("ESPNow", "Failed to give TX semaphore");
-    return ;
+    ESP_LOGE("ESPNow", "Failed to enqueue receive event");
   }
 }
 
@@ -172,7 +206,7 @@ static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int dat
 
   struct DataGram* datagram = alloc_datagram();
   if (!datagram) {
-    // ESP_LOGE("ESPNow", "Failed to malloc datagram");
+    ESP_LOGE("ESPNow", "Failed to malloc datagram");
     return;
   }
 
@@ -183,7 +217,13 @@ static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int dat
   portBASE_TYPE ret = xQueueSend(rx_queue, &datagram, 0);
   if (ret != pdTRUE) {
     free_datagram(datagram);
-    // ESP_LOGE("ESPNow", "Failed to send datagram to rx_queue");
+    ESP_LOGE("ESPNow", "Failed to send datagram to rx_queue");
+    return;
+  }
+  auto event = EspNowEvent::new_data_available;
+  ret = xQueueSend(event_queue, &event, 0);
+  if (ret != pdTRUE) {
+    ESP_LOGE("ESPNow", "Failed to enqueue receive event");
   }
 }
 
@@ -236,7 +276,7 @@ PRIMITIVE(init) {
     FAIL(ALLOCATION_FAILED);
   }
 
-  auto group = _new EspNowResourceGroup(process);
+  auto group = _new EspNowResourceGroup(process, EventQueueEventSource::instance());
   if (!group) {
     FAIL(MALLOC_FAILED);
   }
@@ -264,13 +304,13 @@ PRIMITIVE(create) {
   int id = espnow_pool.any();
   if (id == kInvalidEspNow) FAIL(ALREADY_IN_USE);
 
-  EspNowResource* resource = _new EspNowResource(group, id);
-  if (!resource) {
+  if (!init()) {
     espnow_pool.put(id);
     FAIL(MALLOC_FAILED);
   }
 
-  if (!resource->init()) {
+  EspNowResource* resource = _new EspNowResource(group, id, event_queue);
+  if (!resource) {
     espnow_pool.put(id);
     FAIL(MALLOC_FAILED);
   }
@@ -328,30 +368,21 @@ PRIMITIVE(close) {
 }
 
 PRIMITIVE(send) {
-  ARGS(Blob, mac, Blob, data, bool, wait);
-
-  // Reset the value of semaphore(max value is 1) to 0, so no need to check the result.
-  xSemaphoreTake(tx_sem, 0);
+  ARGS(EspNowResource, resource, Blob, mac, Blob, data);
 
   esp_err_t err = esp_now_send(mac.address(), data.address(), data.length());
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  if (wait) {
-    portBASE_TYPE ret = xSemaphoreTake(tx_sem, pdMS_TO_TICKS(ESPNOW_TX_WAIT_US));
-    if (ret != pdTRUE) {
-      return Primitive::os_error(ETIMEDOUT, process);
-    } else {
-      if (tx_status != ESP_NOW_SEND_SUCCESS) {
-        return Primitive::os_error(EIO, process);
-      }
-    }
-  }
+  return process->null_object();
+}
 
-  return Smi::from(0);
+PRIMITIVE(send_succeeded) {
+  ARGS(EspNowResource, resource);
+  return BOOL(tx_status == ESP_NOW_SEND_SUCCESS);
 }
 
 PRIMITIVE(receive) {
-  ARGS(Object, output);
+  ARGS(EspNowResource, resource, Object, output);
 
   Array* out = Array::cast(output);
   if (out->length() != 2) FAIL(INVALID_ARGUMENT);
@@ -382,7 +413,7 @@ PRIMITIVE(receive) {
 }
 
 PRIMITIVE(add_peer) {
-  ARGS(Blob, mac, int, channel, Blob, key);
+  ARGS(EspNowResource, resource, Blob, mac, int, channel, Blob, key);
 
   wifi_mode_t wifi_mode;
   esp_err_t err = esp_wifi_get_mode(&wifi_mode);
