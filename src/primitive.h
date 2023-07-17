@@ -690,7 +690,7 @@ namespace toit {
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(send, 3)                         \
   PRIMITIVE(send_succeeded, 1)               \
-  PRIMITIVE(receive, 2)                      \
+  PRIMITIVE(receive, 1)                      \
   PRIMITIVE(add_peer, 4)                     \
 
 #define MODULE_BIGNUM(PRIMITIVE)             \

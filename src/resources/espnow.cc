@@ -468,34 +468,47 @@ PRIMITIVE(send_succeeded) {
 }
 
 PRIMITIVE(receive) {
-  ARGS(EspNowResource, resource, Object, output);
+  ARGS(EspNowResource, resource);
 
-  Array* out = Array::cast(output);
-  if (out->length() != 2) FAIL(INVALID_ARGUMENT);
-
-  ByteArray* mac = null;
-  mac = process->allocate_byte_array(6);
-  if (mac == null) FAIL(ALLOCATION_FAILED);
-
-  ByteArray* data = process->allocate_byte_array(ESPNOW_RX_DATAGRAM_LEN_MAX, true);
-  if (data == null) FAIL(ALLOCATION_FAILED);
-
-  struct Datagram* datagram;
-  portBASE_TYPE ret = xQueueReceive(rx_queue, &datagram, 0);
+  struct Datagram* peeked;
+  portBASE_TYPE ret = xQueuePeek(rx_queue, &peeked, 0);
   if (ret != pdTRUE) {
     return process->null_object();
   }
 
-  data->resize_external(process, datagram->len);
+  ByteArray* data = process->allocate_byte_array(peeked->len);
+  if (data == null) FAIL(ALLOCATION_FAILED);
 
-  memcpy(ByteArray::Bytes(mac).address(), datagram->mac, 6);
-  memcpy(ByteArray::Bytes(data).address(), datagram->buffer, datagram->len);
-  datagram_pool->release(datagram);
+  ByteArray* mac = process->allocate_byte_array(6);
+  if (mac == null) FAIL(ALLOCATION_FAILED);
 
-  out->at_put(0, mac);
-  out->at_put(1, data);
+  Array* result = process->object_heap()->allocate_array(2, process->null_object());
+  if (result == null) FAIL(ALLOCATION_FAILED);
 
-  return out;
+  result->at_put(0, mac);
+  result->at_put(1, data);
+
+  memcpy(ByteArray::Bytes(mac).address(), peeked->mac, 6);
+  memcpy(ByteArray::Bytes(data).address(), peeked->buffer, peeked->len);
+
+  struct Datagram* actual;
+  ret = xQueueReceive(rx_queue, &actual, 0);
+  if (ret != pdTRUE) {
+    // Should not happen: there is only one process owning this resource,
+    // and there can't be two tasks executing a primitive call at the same
+    // time.
+    ESP_LOGE("ESPNow", "Didn't get peeked queue entry");
+    return process->null_object();
+  }
+
+  datagram_pool->release(actual);
+
+  if (actual != peeked) {
+    // As before: this should never happen.
+    ESP_LOGE("ESPNow", "Dequeued and peeked entry not the same");
+  }
+
+  return result;
 }
 
 PRIMITIVE(add_peer) {
