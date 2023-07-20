@@ -169,14 +169,14 @@ add_global_certs -> none:
   USERTRUST_ECC_CERTIFICATION_AUTHORITY_BYTES[42] ^= 42
   tls.add_global_root_certificate USERTRUST_ECC_CERTIFICATION_AUTHORITY_BYTES  // Needed for helsinki.fi.
   // Test ASCII (PEM) roots.
-  tls.add_global_root_certificate USERTRUST_CERTIFICATE_TEXT 0x0c49cbaf  // Needed for dmi.dk.
-  tls.add_global_root_certificate ISRG_ROOT_X1_TEXT
+  tls.add_global_root_certificate USERTRUST_RSA_CERTIFICATE_TEXT 0x0c49cbaf  // Needed for dmi.dk.
+  tls.add_global_root_certificate ISRG_ROOT_X1_TEXT  // Needed by dkhostmaster.dk and digimedia.com.
   // Test that the cert can be a slice.
   tls.add_global_root_certificate DIGICERT_ROOT_TEXT[..DIGICERT_ROOT_TEXT.size - 9]
 
   // Test that we get a sensible error when trying to add a parsed root
   // certificate.
-  parsed := net.Certificate.parse USERTRUST_CERTIFICATE_TEXT
+  parsed := net.Certificate.parse USERTRUST_RSA_CERTIFICATE_TEXT
   expect_error "WRONG_OBJECT_TYPE": tls.add_global_root_certificate parsed
 
   // Test that unparseable cert gives an immediate error.
@@ -190,7 +190,7 @@ add_global_certs -> none:
 
 // Ebay.de sometimes uses this trusted root certificate.
 // Serial number 01:FD:6D:30:FC:A3:CA:51:A8:1B:BC:64:0E:35:03:2D
-USERTRUST_CERTIFICATE_TEXT ::= """\
+USERTRUST_RSA_CERTIFICATE_TEXT ::= """\
 -----BEGIN CERTIFICATE-----
 MIIF3jCCA8agAwIBAgIQAf1tMPyjylGoG7xkDjUDLTANBgkqhkiG9w0BAQwFADCB
 iDELMAkGA1UEBhMCVVMxEzARBgNVBAgTCk5ldyBKZXJzZXkxFDASBgNVBAcTC0pl
