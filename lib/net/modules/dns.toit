@@ -8,6 +8,7 @@ import net
 
 DNS_DEFAULT_TIMEOUT ::= Duration --s=20
 DNS_RETRY_TIMEOUT ::= Duration --s=1
+MAX_QUERY_ATTEMPTS_ ::= 2
 HOSTS_ ::= {"localhost": "127.0.0.1"}
 MAX_CACHE_SIZE_ ::= platform == "FreeRTOS" ? 30 : 1000
 MAX_TRIMMED_CACHE_SIZE_ ::= MAX_CACHE_SIZE_ / 3 * 2
@@ -145,7 +146,7 @@ If a DNS server fails to answer after 2.5 times the $DNS_RETRY_TIMEOUT, then
 */
 class DnsClient:
   servers_/List
-  current_server_/int := ?
+  current_server_index_/int := ?
 
   cache_ ::= Map  // From name to CacheEntry_.
   cache_ipv6_ ::= Map  // From name to CacheEntry_.
@@ -157,9 +158,35 @@ class DnsClient:
   constructor servers/List:
     if servers.size == 0 or (servers.any: it is not string and it is not net.IpAddress): throw "INVALID_ARGUMENT"
     servers_ = servers.map: (it is string) ? net.IpAddress.parse it : it
-    current_server_ = 0
+    current_server_index_ = 0
 
   static DNS_UDP_PORT ::= 53
+
+  get_ query/DnsQuery_ server_ip/net.IpAddress -> net.IpAddress:
+    socket/udp_module.Socket? := null
+    retry_timeout := DNS_RETRY_TIMEOUT
+    attempt_counter := 1
+    try:
+      socket = udp_module.Socket
+
+      socket.connect
+        net.SocketAddress server_ip DNS_UDP_PORT
+
+      // If we don't get an answer resend the query with exponential backoff
+      // until the outer timeout expires or we have tried too many times.
+      while true:
+        socket.write query.query_packet
+
+        last_attempt := attempt_counter > MAX_QUERY_ATTEMPTS_
+        catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR or last_attempt):
+          with_timeout retry_timeout:
+            answer := socket.receive
+            return decode_response_ query answer.data
+
+        retry_timeout = retry_timeout * 1.5
+        attempt_counter++
+    finally:
+      if socket: socket.close
 
   /**
   Look up a domain name and return an A or AAAA record.
@@ -180,61 +207,19 @@ class DnsClient:
     query := DnsQuery_ name --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6
 
     with_timeout timeout:
-      socket/udp_module.Socket? := null
-      servers_immediately_failed := {}
-      try:
-        retry_timeout := DNS_RETRY_TIMEOUT
+      servers_failed := {}
+      while true:
+        // Note that we continue to use the server that worked the last time
+        // since we store the index in a field.
+        current_server_ip := servers_[current_server_index_]
+        is_last_server := (servers_.size == servers_failed.size + 1)
 
-        // Resend the query with exponential backoff until the outer timeout
-        // expires.
-        while true:
-          if not socket:
-            socket = udp_module.Socket
-            server_ip := servers_[current_server_]
-            show_errors := servers_immediately_failed.size == servers_.size
-            exception := null
-            if show_errors:
-              socket.connect
-                net.SocketAddress server_ip DNS_UDP_PORT
-            else:
-              exception = catch:
-                socket.connect
-                  net.SocketAddress server_ip DNS_UDP_PORT
-            if exception != null:
-              // Probably the network is unreachable.  We can still try the
-              // other servers, but if we have tried all of them then we are
-              // done.
-              servers_immediately_failed.add current_server_
-              socket.close
-              socket = null
-              current_server_ = (current_server_ + 1) % servers_.size
-              continue
-          socket.write query.query_packet
+        catch --unwind=is_last_server:
+          return get_ query current_server_ip
 
-          answer := null
-          exception := catch:
-            with_timeout retry_timeout:
-              answer = socket.receive
-          if exception and exception != "DEADLINE_EXCEEDED": throw exception
-
-          if answer:
-            return decode_response_ query answer.data
-
-          retry_timeout = retry_timeout * 1.5
-
-          if retry_timeout > DNS_RETRY_TIMEOUT * 2:
-            // After two short timeouts we rotate to the next server in the
-            // list (if any).
-            new_server_index := (current_server_ + 1) % servers_.size
-            if new_server_index != current_server_:
-              // At this point we close the old socket, so if the previous
-              // server answers late, we won't see it.
-              current_server_ = new_server_index
-              socket.close
-              socket = null
-
-      finally:
-        if socket: socket.close
+        // The current server didn't succeed. Move to the next.
+        servers_failed.add current_server_ip
+        current_server_index_ = (current_server_index_ + 1) % servers_.size
     unreachable
 
   static case_compare_ a/string b/string -> bool:
