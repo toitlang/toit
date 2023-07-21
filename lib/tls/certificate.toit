@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import net.x509 as x509
+import tls
 
 /**
 TLS Certificate used as identity in a TLS session.
@@ -21,6 +22,41 @@ class Certificate:
   An optional password can be given, to unlock the private key if needed.
   */
   constructor .certificate .private_key --.password="":
+
+/**
+Trusted Root TLS Certificate used to verify a server's identity.
+
+It is composed of a x509 certificate and a fingerprint.
+*/
+class RootCertificate:
+  fingerprint/int
+  parsed_/x509.Certificate? := null
+  name/string? := null
+  raw ::= ?
+
+  stringify -> string:
+    return name or "Root certificate w/ fingerprint $fingerprint"
+
+  /**
+  Constructs a RootCertificate from a binary DER-endoded certificate
+    or an ASCII PEM-encoded certificate.
+  */
+  constructor --.name=null .raw .fingerprint:
+
+  /**
+  Gets a parsed form suitable for adding to a TLS socket.
+  */
+  parsed -> x509.Certificate:
+    if parsed_ == null:
+      parsed_ = x509.Certificate.parse raw
+    return parsed_
+
+  /**
+  Installs the unparsed certificate as a trusted root, usable for all
+    TLS connections for this process.
+  */
+  install -> none:
+    add_global_root_certificate raw fingerprint
 
 /**
 Add a trusted root certificate that can be used for all TLS connections.
