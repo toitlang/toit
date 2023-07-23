@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ESPNOW)
+#if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ESPNOW) && defined(NOT_MINIMAL)
 
 #include <esp_wifi.h>
 #include <esp_event.h>

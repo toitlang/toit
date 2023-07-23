@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS) && defined(NOT_MINIMAL)
 
 #include <driver/gpio.h>
 #include <driver/adc.h>
@@ -213,7 +213,7 @@ PRIMITIVE(init) {
   } else {
     FAIL(OUT_OF_RANGE);
   }
-  
+
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
     FAIL(ALLOCATION_FAILED);

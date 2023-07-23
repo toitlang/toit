@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) && !defined(CONFIG_IDF_TARGET_ESP32C3)
+#if defined(TOIT_FREERTOS) && !defined(CONFIG_IDF_TARGET_ESP32C3) && defined(NOT_MINIMAL)
 
 #include <driver/pcnt.h>
 

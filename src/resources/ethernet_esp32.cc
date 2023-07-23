@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
+#if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ETHERNET) && defined(NOT_MINIMAL)
 
 #include <esp_eth.h>
 

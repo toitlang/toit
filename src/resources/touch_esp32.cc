@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)
+#if (defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)) && defined(NOT_MINIMAL)
 
 #include <driver/gpio.h>
 #include <driver/touch_sensor.h>

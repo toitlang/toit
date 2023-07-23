@@ -323,7 +323,7 @@ PRIMITIVE(enable_external_wakeup) {
 }
 
 PRIMITIVE(enable_touchpad_wakeup) {
-#ifndef CONFIG_IDF_TARGET_ESP32C3
+#if !defined(CONFIG_IDF_TARGET_ESP32C3) && defined(NOT_MINIMAL)
   esp_err_t err = esp_sleep_enable_touchpad_wakeup();
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup");
@@ -358,7 +358,7 @@ PRIMITIVE(ext1_wakeup_status) {
 }
 
 PRIMITIVE(touchpad_wakeup_status) {
-#ifndef CONFIG_IDF_TARGET_ESP32C3
+#if !defined(CONFIG_IDF_TARGET_ESP32C3) && defined(NOT_MINIMAL)
   touch_pad_t pad = esp_sleep_get_touchpad_wakeup_status();
   return Primitive::integer(touch_pad_to_pin_num(pad), process);
 #else

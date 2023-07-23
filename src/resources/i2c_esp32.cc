@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS) && defined(NOT_MINIMAL)
 
 #include <driver/i2c.h>
 #include <cmath>
