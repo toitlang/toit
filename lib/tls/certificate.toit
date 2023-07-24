@@ -49,6 +49,7 @@ class RootCertificate:
     needed to complete a TLS handshake.
   */
   constructor --.name=null --.fingerprint=null .raw:
+    if raw is not ByteArray and raw is not string: throw "WRONG_OBJECT_TYPE"
 
   /**
   Gets a parsed form suitable for adding to a TLS socket.
