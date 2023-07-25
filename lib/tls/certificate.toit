@@ -41,7 +41,7 @@ class RootCertificate:
   Constructs a RootCertificate from a binary DER-endoded certificate
     or an ASCII PEM-encoded certificate.
 
-  The $raw certificate, is in unparsed form, ie either in PEM (ASCII) format or
+  The $raw certificate is in unparsed form, either in PEM (ASCII) format or
     in DER format. Usually you would use a byte array constant in DER format,
     which will stay in flash on embedded platforms, using very little memory.
     More memory is used when it is added to a TLS socket.  If it is installed
