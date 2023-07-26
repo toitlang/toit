@@ -248,4 +248,4 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 
 // The ecc256 and ecc384 sites have started using this root.
 /// ISRG Root X1.
-ISRG_ROOT_X1 ::= net.Certificate.parse ISRG_ROOT_X1_TEXT_
+ISRG_ROOT_X1 ::= tls.RootCertificate ISRG_ROOT_X1_TEXT_
