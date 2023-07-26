@@ -1,4 +1,4 @@
-// Copyright (C) 2019 Toitware ApS. All rights reserved.
+// Copyright (C) 2023 Toitware ApS. All rights reserved.
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
@@ -33,13 +33,23 @@ x509_get_common_name_ cert:
 x509_close cert:
   #primitive.x509.close
 
+/**
+Deprecated.
+Please use COMMON_TRUSTED_ROOTS or install_common_trusted_roots from
+  https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
+*/
 TRUSTED_ROOTS ::= [
   DIGICERT_ROOT,
   DIGICERT_GLOBAL,
   DIGICERT_GLOBAL_G2,
 ]
 
-// 02AC5C266A0B409B8F0B79F2AE462577 DigiCert High Assurance EV Root CA
+/**
+DigiCert High Assurance EV Root CA
+Deprecated.
+Please use DIGICERT_HIGH_ASSURANCE_EV_ROOT_CA from
+  https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
+*/
 DIGICERT_ROOT ::= Certificate.parse """
 -----BEGIN CERTIFICATE-----
 MIIDxTCCAq2gAwIBAgIQAqxcJmoLQJuPC3nyrkYldzANBgkqhkiG9w0BAQUFADBs
@@ -65,9 +75,12 @@ vEsXCS+0yx5DaMkHJ8HSXPfqIbloEpw8nL+e/IBcm2PN7EeqJSdnoDfzAIJ9VNep
 +OkuE6N36B9K
 -----END CERTIFICATE-----"""
 
-// 083BE056904246B1A1756AC95991C74A DigiCert Global Root CA
-// This root is SHA1 signed.  Normally we don't want to use SHA1 certs, but
-// root certs are trusted, so the signature is not checked anyway.
+/**
+083BE056904246B1A1756AC95991C74A DigiCert Global Root CA
+Deprecated.
+Please use DIGICERT_GLOBAL_ROOT_CA from
+  https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
+*/
 DIGICERT_GLOBAL ::= Certificate.parse """
 -----BEGIN CERTIFICATE-----
 MIIDrzCCApegAwIBAgIQCDvgVpBCRrGhdWrJWZHHSjANBgkqhkiG9w0BAQUFADBh
@@ -92,7 +105,12 @@ YSEY1QSteDwsOoBrp+uvFRTp2InBuThs4pFsiv9kuXclVzDAGySj4dzp30d8tbQk
 CAUw7C29C79Fv1C5qfPrmAESrciIxpg0X40KPMbp1ZWVbd4=
 -----END CERTIFICATE-----"""
 
-// 033AF1E6A711A9A0BB2864B11D09FAE5 DigiCert Global Root G2
+/**
+033AF1E6A711A9A0BB2864B11D09FAE5 DigiCert Global Root G2
+Deprecated.
+Please use DIGICERT_GLOBAL_ROOT_G2 from
+  https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
+*/
 DIGICERT_GLOBAL_G2 ::= Certificate.parse """
 -----BEGIN CERTIFICATE-----
 MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBh
