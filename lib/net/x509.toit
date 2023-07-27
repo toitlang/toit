@@ -39,9 +39,9 @@ Please use COMMON_TRUSTED_ROOTS or install_common_trusted_roots from
   https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
 */
 TRUSTED_ROOTS ::= [
-  DIGICERT_ROOT,
-  DIGICERT_GLOBAL,
-  DIGICERT_GLOBAL_G2,
+  DIGICERT_ROOT_,
+  DIGICERT_GLOBAL_,
+  DIGICERT_GLOBAL_G2_,
 ]
 
 /**
@@ -50,7 +50,9 @@ Deprecated.
 Please use DIGICERT_HIGH_ASSURANCE_EV_ROOT_CA from
   https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
 */
-DIGICERT_ROOT ::= Certificate.parse """
+DIGICERT_ROOT ::= DIGICERT_ROOT_
+
+DIGICERT_ROOT_ ::= Certificate.parse """
 -----BEGIN CERTIFICATE-----
 MIIDxTCCAq2gAwIBAgIQAqxcJmoLQJuPC3nyrkYldzANBgkqhkiG9w0BAQUFADBs
 MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
@@ -81,7 +83,9 @@ Deprecated.
 Please use DIGICERT_GLOBAL_ROOT_CA from
   https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
 */
-DIGICERT_GLOBAL ::= Certificate.parse """
+DIGICERT_GLOBAL ::= DIGICERT_GLOBAL_
+
+DIGICERT_GLOBAL_ ::= Certificate.parse """
 -----BEGIN CERTIFICATE-----
 MIIDrzCCApegAwIBAgIQCDvgVpBCRrGhdWrJWZHHSjANBgkqhkiG9w0BAQUFADBh
 MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
@@ -111,7 +115,9 @@ Deprecated.
 Please use DIGICERT_GLOBAL_ROOT_G2 from
   https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
 */
-DIGICERT_GLOBAL_G2 ::= Certificate.parse """
+DIGICERT_GLOBAL_G2 ::= DIGICERT_GLOBAL_G2_
+
+DIGICERT_GLOBAL_G2_ ::= Certificate.parse """
 -----BEGIN CERTIFICATE-----
 MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBh
 MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3

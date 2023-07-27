@@ -2,6 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import certificate_roots
 import .dns
 import writer
 import tls
@@ -151,10 +152,16 @@ connect_to_site host port expected_certificate_name:
   try:
     raw.connect host port
 
-    roots := [USERTRUST_CERTIFICATE, ISRG_ROOT_X1]
-    roots.add_all net.TRUSTED_ROOTS
+    ROOTS ::= [
+        certificate_roots.DIGICERT_HIGH_ASSURANCE_EV_ROOT_CA,
+        certificate_roots.DIGICERT_GLOBAL_ROOT_CA,
+        certificate_roots.DIGICERT_GLOBAL_ROOT_G2,
+        certificate_roots.USERTRUST_RSA_CERTIFICATION_AUTHORITY,
+        certificate_roots.USERTRUST_ECC_CERTIFICATION_AUTHORITY,
+        certificate_roots.ISRG_ROOT_X1,
+    ]
     socket := tls.Socket.client raw
-      --root_certificates=roots
+      --root_certificates=ROOTS
       --server_name=expected_certificate_name or host
 
     try:
