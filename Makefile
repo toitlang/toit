@@ -208,6 +208,15 @@ menuconfig:
 menuconfig-no-env: check-env check-esp32-env
 	cmake -E env IDF_TARGET=$(IDF_TARGET) python$(EXE_SUFFIX) $(IDF_PY) -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" menuconfig
 
+.PHONY: size-components
+size-components:
+	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
+	    $(MAKE) size-components-no-env
+
+.PHONY: size-components-no-env
+size-components-no-env: check-env check-esp32-env
+	cmake -E env IDF_TARGET=$(IDF_TARGET) python$(EXE_SUFFIX) $(IDF_PY) -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" size-components
+
 .PHONY: flash
 flash:
 	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
