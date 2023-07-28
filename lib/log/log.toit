@@ -9,6 +9,45 @@ export *
 
 /**
 Logging support.
+
+Each application has a default logger $default that is global to the
+  application. By default it is set to log all messages at $DEBUG_LEVEL.
+
+Messages on the default logger are created by calling $log, $debug,
+  $info, $warn, $error or $fatal. The same functions exist as
+  methods on the $Logger class as well.
+
+Instead of creating strings that contain context relevant information,
+  it is possible to add tags to the log message. Tags are key/value pairs
+  that are added to the log message. For example:
+
+```
+import log
+
+main:
+  log.info "Hello world" --tags={name: "world"}
+```
+
+The default logger can be set with $set_default. For example:
+```
+import log
+
+main:
+  log.set_default (log.default --with_level=log.INFO_LEVEL)
+```
+
+It is common to create a logger for parts of a program. In that case,
+  use `.with --name=<part-name>` to create a sub-logger. Often, the
+  class does this in its constructor:
+
+```
+import log
+
+class Connectivity:
+  logger_/log.Logger
+
+  constructor --.logger=(log.default.with_name "connectivity"):
+```
 */
 
 /** The default logger. */
