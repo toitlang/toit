@@ -87,7 +87,7 @@ test_uninstall:
   logger.open
   service.uninstall
   exception := catch: logger.log "Don't let me do this!"
-  expect.expect_equals "key not found" exception
+  expect.expect_equals "HANDLER_NOT_FOUND" exception
 
 test_hello --close=false:
   logger := SimpleServiceClient

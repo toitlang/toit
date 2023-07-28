@@ -2652,7 +2652,10 @@ class Map extends HashedInsertionOrderedCollection_:
   The $key must be in the map.
   */
   operator [] key:
-    position := find_ key: throw "key not found"
+    position := find_ key:
+      if key is string or key is num:
+        throw "key '$key' not found"
+      throw "key not found"
     assert: position != APPEND_
     return backing_[position + 1]
 

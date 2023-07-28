@@ -112,6 +112,10 @@ test_map:
   expect_equals 12 map2.size
   expect_equals 23 map2[12]
 
+  expect_throw "key '99' not found": map[99]
+  expect_throw "key 'foo' not found": map["foo"]
+  expect_throw "key not found": map[Foo "foo" true]
+
   test_map_clear
 
 test_map_clear:

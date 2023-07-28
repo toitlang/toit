@@ -63,7 +63,7 @@ main:
   service.uninstall
   // TODO(kasper): How do we handle services that come and go
   // from the client side?
-  expect.expect_throw "key not found": log.debug "Oh no"
+  expect.expect_throw "HANDLER_NOT_FOUND": log.debug "Oh no"
 
 class LogServiceProvider extends ServiceProvider
     implements LogService ServiceHandler:

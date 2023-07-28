@@ -21,7 +21,7 @@ main:
   service.uninstall
   // TODO(kasper): How do we handle services that come and go
   // from the client side?
-  expect.expect_throw "key not found": print "Oh no"
+  expect.expect_throw "HANDLER_NOT_FOUND": print "Oh no"
 
 class PrintServiceProvider extends ServiceProvider
     implements PrintService ServiceHandler:
