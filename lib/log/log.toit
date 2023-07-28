@@ -10,7 +10,7 @@ export *
 /**
 Logging support.
 
-Each application has a default logger $default that is global to the
+Each application has a default logger, $default, that is global to the
   application. By default it is set to log all messages at $DEBUG_LEVEL.
 
 Messages on the default logger are created by calling $log, $debug,
@@ -25,7 +25,7 @@ Instead of creating strings that contain context relevant information,
 import log
 
 main:
-  log.info "Hello world" --tags={name: "world"}
+  log.info "Hello world" --tags={"name": "world"}
 ```
 
 The default logger can be set with $set_default. For example:
@@ -33,7 +33,7 @@ The default logger can be set with $set_default. For example:
 import log
 
 main:
-  log.set_default (log.default --with_level=log.INFO_LEVEL)
+  log.set_default (log.default.with_level log.INFO_LEVEL)
 ```
 
 It is common to create a logger for parts of a program. In that case,
@@ -46,7 +46,8 @@ import log
 class Connectivity:
   logger_/log.Logger
 
-  constructor --.logger=(log.default.with_name "connectivity"):
+  constructor --logger/log.Logger=(log.default.with_name "connectivity"):
+    logger_ = logger
 ```
 */
 
