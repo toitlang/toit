@@ -73,6 +73,8 @@ cache_test:
 
 fail_test:
   error := catch: dns_lookup "does-not-resolve.example.com"
+  print error
+  error as DnsException
   expect error is DnsException
   exception := error as DnsException
   expect
