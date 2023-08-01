@@ -23,6 +23,11 @@ class PartitionTable:
   add partition/Partition -> none:
     partitions_.add partition
 
+  find --name/string -> Partition?:
+    partitions_.do: | partition/Partition |
+      if partition.name == name: return partition
+    return null
+
   find_app -> Partition?:
     first/Partition? := null
     partitions_.do: | partition/Partition |
@@ -48,7 +53,7 @@ class PartitionTable:
       offset = max offset end
     return offset
 
-  static decode bytes/ByteArray:
+  static decode bytes/ByteArray -> PartitionTable:
     table := PartitionTable
     checksum := md5.Md5
     cursor := 0
@@ -86,6 +91,9 @@ class PartitionTable:
     partition.replace 0 MAGIC_BYTES_MD5
     partition.replace 16 checksum.get
     return partition
+
+  do [block]:
+    partitions_.do block
 
 class Partition:
   static MAGIC_BYTES ::= #[0xaa, 0x50]
