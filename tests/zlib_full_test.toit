@@ -20,8 +20,8 @@ main:
 
   compressed := simple_encoder
   simple_decoder compressed
-  squashed1 := big_encoder_no_yield
-  squashed2 := big_encoder_with_yield
+  squashed1 := big_encoder_no_wait
+  squashed2 := big_encoder_with_wait
 
   expect_equals squashed1 squashed2
 
@@ -49,16 +49,16 @@ simple_decoder compressed/ByteArray -> none:
   round_trip := reader.read
   expect_equals INPUT round_trip.to_string
 
-big_encoder_no_yield -> ByteArray:
+big_encoder_no_wait -> ByteArray:
   compressor := zlib.Encoder
   task::
     REPEATS.repeat:
-      for pos := 0; pos < INPUT.size; pos += compressor.write --yield=false INPUT[pos..]:
+      for pos := 0; pos < INPUT.size; pos += compressor.write --wait=false INPUT[pos..]:
         yield
     compressor.close
   squashed := #[]
   reader := compressor.reader
-  while data := reader.read --yield=false:
+  while data := reader.read --wait=false:
     if data.size == 0:
       yield
     else:
@@ -67,7 +67,7 @@ big_encoder_no_yield -> ByteArray:
   print "squashed $((REPEATS * INPUT.size) >> 10)k down to $squashed.size bytes"
   return squashed
 
-big_encoder_with_yield -> ByteArray:
+big_encoder_with_wait -> ByteArray:
   compressor := zlib.Encoder
   task::
     REPEATS.repeat:

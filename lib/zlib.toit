@@ -170,24 +170,24 @@ class RunLengthGzipEncoder extends RunLengthDeflateEncoder_:
 /**
 Object that can be read to get output from an $Encoder or a $Decoder.
 */
-class ZlibReader:
+class ZlibReader implements reader.Reader:
   owner_/Coder_? := null
 
   constructor.private_:
 
   /**
   Reads output data.
-  In the default yielding mode this method may block in order to let a
+  In the default $wait mode this method may block in order to let a
     writing task write more data to the compressor or decompressor.
-  In the non-yielding mode, if the compressor or decompressor has run out of
+  In the non-blocking mode, if the compressor or decompressor has run out of
     input data, this method returns a zero length byte array.
   If the compressor or decompressor has been closed, and there is no more output
     data, this method returns null.
   */
-  read --yield/bool=true -> ByteArray?:
+  read --wait/bool=true -> ByteArray?:
     result := owner_.read_
-    while result and yield and result.size == 0:
-      owner_.yield_
+    while result and wait and result.size == 0:
+      yield
       result = owner_.read_
     return result
 
@@ -196,7 +196,7 @@ class ZlibReader:
 
 // An Encoder or Decoder.
 abstract class Coder_:
-  zlib_ ::= ? 
+  zlib_ ::= ?
   closed_write_ := false
   closed_read_ := false
 
@@ -215,9 +215,6 @@ abstract class Coder_:
   read_ -> ByteArray?:
     if closed_read_: return null
     return zlib_read_ zlib_
-
-  yield_ -> none:
-    yield
 
   close_read_ -> none:
     if not closed_read_:
@@ -249,7 +246,7 @@ class Encoder extends Coder_:
 
   /**
   Writes uncompressed data into the compressor.
-  In the default yielding mode this method may block and will not return
+  In the default $wait mode this method may block and will not return
     until all bytes have been written to the compressor.
   Returns the number of bytes that were compressed.  If zero bytes were
     compressed that means that data needs to be read using the reader before
@@ -257,14 +254,14 @@ class Encoder extends Coder_:
   Any bytes that were not compressed need to be resubmitted to this method
     later.
   */
-  write --yield/bool=true data -> int:
-    if not yield: 
+  write --wait/bool=true data -> int:
+    if not wait:
       return zlib_write_ zlib_ data
     pos := 0
     while pos < data.size:
       bytes_written := zlib_write_ zlib_ data[pos..]
       if bytes_written == 0:
-        yield_
+        yield
       pos += bytes_written
     return pos
 
@@ -291,7 +288,7 @@ class Decoder extends Coder_:
 
   /**
   Writes compressed data into the decompressor.
-  In the default yielding mode this method may block and will not return
+  In the default $wait mode this method may block and will not return
     until all bytes have been written to the decompressor.
   Returns the number of bytes that were decompressed.  If zero bytes were
     decompressed that means that data needs to be read using the reader before
@@ -299,14 +296,14 @@ class Decoder extends Coder_:
   Any bytes that were not decompressed need to be resubmitted to this method
     later.
   */
-  write --yield/bool=true data -> int:
-    if not yield: 
+  write --wait/bool=true data -> int:
+    if not wait:
       return zlib_write_ zlib_ data
     pos := 0
     while pos < data.size:
       bytes_written := zlib_write_ zlib_ data[pos..]
       if bytes_written == 0:
-        yield_
+        yield
       pos += bytes_written
     return pos
 
