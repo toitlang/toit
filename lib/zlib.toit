@@ -185,11 +185,7 @@ class ZlibReader implements reader.Reader:
     data, this method returns null.
   */
   read --wait/bool=true -> ByteArray?:
-    result := owner_.read_
-    while result and wait and result.size == 0:
-      yield
-      result = owner_.read_
-    return result
+    return owner_.read_ --wait=wait
 
   close -> none:
     owner_.close_read_
@@ -199,6 +195,11 @@ abstract class Coder_:
   zlib_ ::= ?
   closed_write_ := false
   closed_read_ := false
+  signal_ /monitor.Signal := monitor.Signal
+  state_/int := STATE_READY_TO_READ_ | STATE_READY_TO_WRITE_
+
+  static STATE_READY_TO_READ_ ::= 1
+  static STATE_READY_TO_WRITE_ ::= 2
 
   constructor .zlib_:
     reader = ZlibReader.private_
@@ -212,15 +213,43 @@ abstract class Coder_:
   */
   reader/ZlibReader
 
-  read_ -> ByteArray?:
+  read_ --wait/bool -> ByteArray?:
     if closed_read_: return null
-    return zlib_read_ zlib_
+    state_ |= STATE_READY_TO_WRITE_
+    signal_.raise
+    result := zlib_read_ zlib_
+    while result and wait and result.size == 0:
+      state_ &= ~STATE_READY_TO_READ_
+      signal_.wait: state_ & STATE_READY_TO_READ_ != 0
+      state_ |= STATE_READY_TO_WRITE_
+      signal_.raise
+      result = zlib_read_ zlib_
+    return result
 
   close_read_ -> none:
+    state_ |= STATE_READY_TO_WRITE_
+    signal_.raise
     if not closed_read_:
       closed_read_ = true
       if closed_write_:
         uninit_
+
+  write --wait/bool=true data -> int:
+    if closed_read_: throw "READER_CLOSED"
+    if not wait:
+      state_ |= STATE_READY_TO_READ_
+      signal_.raise
+      return zlib_write_ zlib_ data
+    pos := 0
+    while pos < data.size:
+      state_ |= STATE_READY_TO_READ_
+      signal_.raise
+      bytes_written := zlib_write_ zlib_ data[pos..]
+      if bytes_written == 0:
+        state_ &= ~STATE_READY_TO_WRITE_
+        signal_.wait: state_ & STATE_READY_TO_WRITE_ != 0
+      pos += bytes_written
+    return pos
 
   /**
   Releases memory associated with this compressor.  This is called
@@ -255,15 +284,7 @@ class Encoder extends Coder_:
     later.
   */
   write --wait/bool=true data -> int:
-    if not wait:
-      return zlib_write_ zlib_ data
-    pos := 0
-    while pos < data.size:
-      bytes_written := zlib_write_ zlib_ data[pos..]
-      if bytes_written == 0:
-        yield
-      pos += bytes_written
-    return pos
+    return super --wait=wait data
 
   /**
   Closes the encoder.  This will tell the encoder that no more input
@@ -272,6 +293,8 @@ class Encoder extends Coder_:
   */
   close -> none:
     if not closed_write_:
+      state_ |= Coder_.STATE_READY_TO_READ_
+      signal_.raise
       zlib_close_ zlib_
       closed_write_ = true
 
@@ -297,15 +320,7 @@ class Decoder extends Coder_:
     later.
   */
   write --wait/bool=true data -> int:
-    if not wait:
-      return zlib_write_ zlib_ data
-    pos := 0
-    while pos < data.size:
-      bytes_written := zlib_write_ zlib_ data[pos..]
-      if bytes_written == 0:
-        yield
-      pos += bytes_written
-    return pos
+    return super --wait=wait data
 
   /**
   Closes the decoder.  This will tell the decoder that no more input
@@ -314,6 +329,8 @@ class Decoder extends Coder_:
   */
   close -> none:
     if not closed_write_:
+      state_ |= Coder_.STATE_READY_TO_READ_
+      signal_.raise
       zlib_close_ zlib_
       closed_write_ = true
 
