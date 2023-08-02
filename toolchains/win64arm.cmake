@@ -16,6 +16,7 @@
 # Note: mbedtls fails unless _MSC_VER is replaced with _WIN32 in line 198 of timimg.c
 
 set(CMAKE_SYSTEM_NAME Windows)
+set(TOIT_NO_ZLIB 1)
 
 set(triple armv7-w64-mingw32)
 set(CMAKE_COMPILER_IS_CLANG 1)
