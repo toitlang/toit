@@ -104,7 +104,9 @@
 #define CONFIG_TOIT_BYTE_DISPLAY 1
 #define CONFIG_TOIT_BIT_DISPLAY 1
 #define CONFIG_TOIT_FONT 1
+#ifndef TOIT_WINDOWS
 #define CONFIG_TOIT_FULL_ZLIB 1
+#endif
 #endif
 
 typedef intptr_t word;
