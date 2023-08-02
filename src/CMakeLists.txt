@@ -186,7 +186,7 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   set(TOIT_BLUETOOTH_LIBS "-framework Foundation" "-framework CoreBluetooth" ObjC)
 endif()
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR (${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND NOT CMAKE_SIZEOF_VOID_P EQUAL 32))
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR (${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND NOT CMAKE_SIZEOF_VOID_P EQUAL 4))
   set(TOIT_Z_LIB z)
 endif()
 
