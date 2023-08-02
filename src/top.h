@@ -104,7 +104,7 @@
 #define CONFIG_TOIT_BYTE_DISPLAY 1
 #define CONFIG_TOIT_BIT_DISPLAY 1
 #define CONFIG_TOIT_FONT 1
-#ifndef TOIT_WINDOWS
+#if !defined(TOIT_WINDOWS) and !defined(BUILD_32)
 #define CONFIG_TOIT_FULL_ZLIB 1
 #endif
 #endif

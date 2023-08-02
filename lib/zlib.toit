@@ -136,6 +136,9 @@ class RunLengthDeflateEncoder_ extends ZlibEncoder_:
       from += read
       buffer_fullness_ += written
 
+  /**
+  Closes the encoder for writing.
+  */
   close:
     channel_.send (buffer_.copy 0 buffer_fullness_)
     try:
