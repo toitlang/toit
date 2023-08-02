@@ -198,6 +198,7 @@ set(TOIT_LINK_LIBS
   ${TOIT_LINK_GROUP_END_FLAGS}
   toit_compiler          # TODO(florian): should not be here by default.
   pthread
+  z
   ${CMAKE_DL_LIBS}
   ${TOIT_LINK_LIBS_LIBGCC}
   ${TOIT_LINK_SEGFAULT}
