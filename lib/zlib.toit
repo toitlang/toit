@@ -248,6 +248,13 @@ abstract class Coder_:
       pos += bytes_written
     return pos
 
+  close -> none:
+    if not closed_write_:
+      zlib_close_ zlib_
+      closed_write_ = true
+      state_ |= Coder_.STATE_READY_TO_READ_
+      signal_.raise
+
   /**
   Releases memory associated with this compressor.  This is called
     automatically when this object and the reader have both been closed.
@@ -284,16 +291,12 @@ class Encoder extends Coder_:
     return super --wait=wait data
 
   /**
-  Closes the encoder.  This will tell the encoder that no more input
-    is coming.  Subsequent calls to the reader will return the buffered
+  Closes the encoder.  This will tell the encoder that no more uncompressed
+    input is coming.  Subsequent calls to the reader will return the buffered
     compressed data and then return null.
   */
   close -> none:
-    if not closed_write_:
-      zlib_close_ zlib_
-      state_ |= Coder_.STATE_READY_TO_READ_
-      signal_.raise
-      closed_write_ = true
+    super
 
 /**
 A Zlib decompressor/inflater.
@@ -320,16 +323,12 @@ class Decoder extends Coder_:
     return super --wait=wait data
 
   /**
-  Closes the decoder.  This will tell the decoder that no more input
+  Closes the decoder.  This will tell the decoder that no more compressed input
     is coming.  Subsequent calls to the reader will return the buffered
     decompressed data and then return null.
   */
   close -> none:
-    if not closed_write_:
-      zlib_close_ zlib_
-      state_ |= Coder_.STATE_READY_TO_READ_
-      signal_.raise
-      closed_write_ = true
+    super
 
 rle_start_ group:
   #primitive.zlib.rle_start
