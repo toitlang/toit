@@ -250,6 +250,8 @@ enum Precedence {
   I(run_global_initializer_)                                   \
   I(from)                                                      \
   I(to)                                                        \
+  IN(enum_, "enum")                                            \
+  I(mixin)                                                     \
 
 
 class Token {
@@ -292,7 +294,9 @@ ENTRY_POINTS(E)
     return name == Symbols::throw_ ||
         name == Symbols::rethrow ||
         name == Symbols::catch_ ||
-        name == Symbols::switch_;
+        name == Symbols::switch_ ||
+        name == Symbols::enum_ ||
+        name == Symbols::mixin;
   }
 };
 
