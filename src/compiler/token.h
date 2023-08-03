@@ -296,7 +296,8 @@ ENTRY_POINTS(E)
         name == Symbols::catch_ ||
         name == Symbols::switch_ ||
         name == Symbols::enum_ ||
-        name == Symbols::mixin;
+        name == Symbols::mixin ||
+        name == Symbols::interface_;
   }
 };
 
