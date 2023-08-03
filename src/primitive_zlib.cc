@@ -213,7 +213,10 @@ PRIMITIVE(zlib_init_deflate) {
   Zlib* zlib = _new Zlib(group);
   if (!zlib) FAIL(MALLOC_FAILED);
   int result = zlib->init_deflate(compression_level);
-  if (result < 0) return zlib_error(process, result);
+  if (result < 0) {
+    delete zlib;
+    return zlib_error(process, result);
+  }
   proxy->set_external_address(zlib);
   return proxy;
 #endif
@@ -228,7 +231,10 @@ PRIMITIVE(zlib_init_inflate) {
   Zlib* zlib = _new Zlib(group);
   if (!zlib) FAIL(MALLOC_FAILED);
   int result = zlib->init_inflate();
-  if (result < 0) return zlib_error(process, result);
+  if (result < 0) {
+    delete zlib;
+    return zlib_error(process, result);
+  }
   proxy->set_external_address(zlib);
   return proxy;
 #endif

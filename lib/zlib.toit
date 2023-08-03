@@ -208,8 +208,8 @@ abstract class Coder_:
       this.uninit_
 
   /**
-  Returns a reader that can be used to read the compressed or decompressed data
-    output by the Encoder or Decoder.
+  A reader that can be used to read the compressed or decompressed data output
+    by the Encoder or Decoder.
   */
   reader/ZlibReader
 
@@ -291,9 +291,10 @@ class Encoder extends Coder_:
     return super --wait=wait data
 
   /**
-  Closes the encoder.  This will tell the encoder that no more uncompressed
-    input is coming.  Subsequent calls to the reader will return the buffered
-    compressed data and then return null.
+  Closes the encoder.
+  This tells the encoder that no more uncompressed input is coming.  Subsequent
+    calls to the reader will return the buffered compressed data and then
+    return null.
   */
   close -> none:
     super
@@ -323,9 +324,10 @@ class Decoder extends Coder_:
     return super --wait=wait data
 
   /**
-  Closes the decoder.  This will tell the decoder that no more compressed input
-    is coming.  Subsequent calls to the reader will return the buffered
-    decompressed data and then return null.
+  Closes the decoder.
+  This will tell the decoder that no more compressed input is coming.
+    Subsequent calls to the reader will return the buffered decompressed data
+    and then return null.
   */
   close -> none:
     super
