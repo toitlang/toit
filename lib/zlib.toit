@@ -19,12 +19,14 @@ class ZlibEncoder_ implements reader.Reader:
     channel_.send (ByteArray header.size: header[it])
 
   read:
-    return channel_.receive
+    result := channel_.receive
+    if not result: channel_.send null  // Once it's closed we should be able to keep reading nulls.
+    return result
 
 class UncompressedDeflateEncoder_ extends ZlibEncoder_:
-  summer_/crypto.Checksum := ?
+  summer_/crypto.Checksum? := ?
 
-  constructor this.summer_ --gzip_header/bool:
+  constructor .summer_ --gzip_header/bool:
     super --gzip_header=gzip_header
     buffer_fullness_ = BLOCK_HEADER_SIZE_
 
@@ -35,6 +37,7 @@ class UncompressedDeflateEncoder_ extends ZlibEncoder_:
   static BLOCK_HEADER_SIZE_ ::= 5
 
   write collection from=0 to=collection.size -> int:
+    if not summer_: throw "ALREADY_CLOSED"
     return List.chunk_up from to (buffer_.size - buffer_fullness_) buffer_.size: | from to bytes |
       buffer_.replace buffer_fullness_ collection from to
       buffer_fullness_ += bytes
@@ -59,10 +62,12 @@ class UncompressedDeflateEncoder_ extends ZlibEncoder_:
     buffer_fullness_ = 0
 
   close:
-    send_ --last=true
-    checksum_bytes := summer_.get
-    channel_.send checksum_bytes
-    channel_.send null
+    if summer_:
+      send_ --last=true
+      checksum_bytes := summer_.get
+      summer_ = null
+      channel_.send checksum_bytes
+      channel_.send null
 
 /**
 Creates an uncompressed data stream that is compatible with zlib decoders
@@ -124,6 +129,7 @@ class RunLengthDeflateEncoder_ extends ZlibEncoder_:
   write collection from=0 to=collection.size:
     summer_.add collection from to
     while to != from:
+      if not rle_: throw "ALREADY_CLOSED"
       // The buffer is 256 large, and we don't let it get too full because then the compressor
       // may not be able to make progress, so we flush it when we hit three quarters full.
       assert: buffer_.size == 256
@@ -140,14 +146,18 @@ class RunLengthDeflateEncoder_ extends ZlibEncoder_:
   Closes the encoder for writing.
   */
   close:
-    channel_.send (buffer_.copy 0 buffer_fullness_)
-    try:
-      written := rle_finish_ rle_ buffer_ 0
-      channel_.send (buffer_.copy 0 written)
-      channel_.send summer_.get
-      channel_.send null
-    finally:
-      remove_finalizer this
+    if buffer_fullness_ != 0:
+      channel_.send (buffer_.copy 0 buffer_fullness_)
+      buffer_fullness_ = 0
+    if rle_:
+      try:
+        written := rle_finish_ rle_ buffer_ 0
+        rle_ = null
+        channel_.send (buffer_.copy 0 written)
+        channel_.send summer_.get
+        channel_.send null
+      finally:
+        remove_finalizer this
 
 /**
 Creates a run length encoded data stream that is compatible with zlib decoders
