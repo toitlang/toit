@@ -7,8 +7,8 @@ import net.modules.udp as udp_module
 import net
 
 DNS_DEFAULT_TIMEOUT ::= Duration --s=20
-DNS_RETRY_TIMEOUT ::= Duration --s=1
-MAX_QUERY_ATTEMPTS_ ::= 2
+DNS_RETRY_TIMEOUT ::= Duration --ms=600
+MAX_QUERY_ATTEMPTS_ ::= 3
 HOSTS_ ::= {"localhost": "127.0.0.1"}
 MAX_CACHE_SIZE_ ::= platform == "FreeRTOS" ? 30 : 1000
 MAX_TRIMMED_CACHE_SIZE_ ::= MAX_CACHE_SIZE_ / 3 * 2
