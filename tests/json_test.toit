@@ -96,8 +96,8 @@ test_converter -> none:
   stringify_converter := : | obj |
     obj.stringify  // Returns a string from the block, which is then encoded.
 
-  erik := Time.from_string "1969-05-27T14:00:00Z"
-  moon := Time.from_string "1969-07-20T20:17:00Z"
+  erik := Time.parse "1969-05-27T14:00:00Z"
+  moon := Time.parse "1969-07-20T20:17:00Z"
 
   expect_equals "[\"$erik\",\"$moon\"]" (json.stringify [erik, moon] time_converter)
   expect_equals "[\"$erik\",\"$moon\"]" (json.stringify [erik, moon] stringify_converter)

@@ -2073,8 +2073,7 @@ ToitdocReference* Parser::parse_toitdoc_identifier_reference(int* end_offset) {
       target = id;
     } else {
       auto dot_range = target->range().extend(id->range());
-      target = _new ast::Dot(target, id->as_Identifier());
-      target->set_range(dot_range);
+      target = NEW_NODE(Dot(target, id->as_Identifier()), dot_range);
     }
     if (is_operator) break;
     if (!is_current_token_attached()) break;
