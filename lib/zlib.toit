@@ -215,15 +215,13 @@ abstract class Coder_:
 
   read_ --wait/bool -> ByteArray?:
     if closed_read_: return null
-    state_ |= STATE_READY_TO_WRITE_
-    signal_.raise
     result := zlib_read_ zlib_
     while result and wait and result.size == 0:
       state_ &= ~STATE_READY_TO_READ_
       signal_.wait: state_ & STATE_READY_TO_READ_ != 0
-      state_ |= STATE_READY_TO_WRITE_
-      signal_.raise
       result = zlib_read_ zlib_
+    state_ |= STATE_READY_TO_WRITE_
+    signal_.raise
     return result
 
   close_read_ -> none:
@@ -236,18 +234,17 @@ abstract class Coder_:
 
   write --wait/bool=true data -> int:
     if closed_read_: throw "READER_CLOSED"
-    if not wait:
-      state_ |= STATE_READY_TO_READ_
-      signal_.raise
-      return zlib_write_ zlib_ data
     pos := 0
     while pos < data.size:
-      state_ |= STATE_READY_TO_READ_
-      signal_.raise
       bytes_written := zlib_write_ zlib_ data[pos..]
       if bytes_written == 0:
-        state_ &= ~STATE_READY_TO_WRITE_
-        signal_.wait: state_ & STATE_READY_TO_WRITE_ != 0
+        if wait:
+          state_ &= ~STATE_READY_TO_WRITE_
+          signal_.wait: state_ & STATE_READY_TO_WRITE_ != 0
+      else:
+        state_ |= STATE_READY_TO_READ_
+        signal_.raise
+      if not wait: return bytes_written
       pos += bytes_written
     return pos
 
@@ -293,9 +290,9 @@ class Encoder extends Coder_:
   */
   close -> none:
     if not closed_write_:
+      zlib_close_ zlib_
       state_ |= Coder_.STATE_READY_TO_READ_
       signal_.raise
-      zlib_close_ zlib_
       closed_write_ = true
 
 /**
@@ -329,9 +326,9 @@ class Decoder extends Coder_:
   */
   close -> none:
     if not closed_write_:
+      zlib_close_ zlib_
       state_ |= Coder_.STATE_READY_TO_READ_
       signal_.raise
-      zlib_close_ zlib_
       closed_write_ = true
 
 rle_start_ group:

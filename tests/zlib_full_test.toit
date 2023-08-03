@@ -72,7 +72,7 @@ big_encoder_with_wait -> ByteArray:
   task::
     REPEATS.repeat:
       compressor.write INPUT
-      compressor.close
+    compressor.close
   squashed2 := #[]
   reader := compressor.reader
   while data := reader.read:
