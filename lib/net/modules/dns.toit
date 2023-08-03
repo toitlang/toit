@@ -175,6 +175,7 @@ class DnsClient:
       // If we don't get an answer resend the query with exponential backoff
       // until the outer timeout expires or we have tried too many times.
       while true:
+        print "  Try $query.name on $server_ip\n"
         socket.write query.query_packet
 
         last_attempt := attempt_counter > MAX_RETRY_ATTEMPTS_
@@ -212,6 +213,7 @@ class DnsClient:
         // Note that we continue to use the server that worked the last time
         // since we store the index in a field.
         current_server_ip := servers_[current_server_index_]
+        print "Trying $name on $current_server_ip"
         is_last_server := (servers_.size == servers_failed.size + 1)
 
         catch --unwind=is_last_server:
