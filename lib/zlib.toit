@@ -8,7 +8,7 @@ import crypto
 import crypto.adler32 as crypto
 import crypto.crc as crc_algorithms
 
-class ZlibReader implements reader.Reader:
+class RleReader implements reader.Reader:
   owner_ /ZlibEncoder_? := null
 
   constructor.private_:
@@ -21,7 +21,7 @@ class ZlibReader implements reader.Reader:
 
 class ZlibEncoder_ implements reader.Reader:  // TODO: Should not be a reader.
   channel_ := monitor.Channel 1
-  reader/ZlibReader ::= ZlibReader.private_
+  reader/RleReader ::= RleReader.private_
 
   static SMALL_BUFFER_DEFLATE_HEADER_ ::= [8, 0x1d]
   static MINIMAL_GZIP_HEADER_ ::= [0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]
