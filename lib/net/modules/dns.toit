@@ -8,7 +8,7 @@ import net
 
 DNS_DEFAULT_TIMEOUT ::= Duration --s=20
 DNS_RETRY_TIMEOUT ::= Duration --ms=600
-MAX_QUERY_ATTEMPTS_ ::= 3
+MAX_RETRY_ATTEMPTS_ ::= 3
 HOSTS_ ::= {"localhost": "127.0.0.1"}
 MAX_CACHE_SIZE_ ::= platform == "FreeRTOS" ? 30 : 1000
 MAX_TRIMMED_CACHE_SIZE_ ::= MAX_CACHE_SIZE_ / 3 * 2
@@ -177,7 +177,7 @@ class DnsClient:
       while true:
         socket.write query.query_packet
 
-        last_attempt := attempt_counter > MAX_QUERY_ATTEMPTS_
+        last_attempt := attempt_counter > MAX_RETRY_ATTEMPTS_
         catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR or last_attempt):
           with_timeout retry_timeout:
             answer := socket.receive
