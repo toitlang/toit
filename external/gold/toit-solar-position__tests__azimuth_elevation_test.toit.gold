@@ -1,0 +1,30 @@
+toit-solar-position/tests/azimuth_elevation_test.toit:33:9: warning: Deprecated constructor 'Time.from_string'
+    Time.from_string "2021-10-11T08:00:00Z"
+        ^
+toit-solar-position/tests/azimuth_elevation_test.toit:40:9: warning: Deprecated constructor 'Time.from_string'
+    Time.from_string "2000-01-01T12:00:00Z"
+        ^
+toit-solar-position/tests/azimuth_elevation_test.toit:47:9: warning: Deprecated constructor 'Time.from_string'
+    Time.from_string "2000-01-01T12:00:00Z"
+        ^
+toit-solar-position/tests/azimuth_elevation_test.toit:54:9: warning: Deprecated constructor 'Time.from_string'
+    Time.from_string "2024-06-01T16:10:15Z"
+        ^
+toit-solar-position/tests/azimuth_elevation_test.toit:62:9: warning: Deprecated constructor 'Time.from_string'
+    Time.from_string "2024-06-01T16:10:45Z"
+        ^
+toit-solar-position/tests/azimuth_elevation_test.toit:69:9: warning: Deprecated constructor 'Time.from_string'
+    Time.from_string "2024-06-01T08:30:45Z"
+        ^
+toit-solar-position/tests/azimuth_elevation_test.toit:76:9: warning: Deprecated constructor 'Time.from_string'
+    Time.from_string "2024-06-01T09:00:00Z"
+        ^
+toit-solar-position/tests/azimuth_elevation_test.toit:83:9: warning: Deprecated constructor 'Time.from_string'
+    Time.from_string "2024-06-01T09:00:00Z"
+        ^
+toit-solar-position/tests/azimuth_elevation_test.toit:90:9: warning: Deprecated constructor 'Time.from_string'
+    Time.from_string "2024-06-01T00:05:00Z"
+        ^
+toit-solar-position/tests/azimuth_elevation_test.toit:120:17: warning: Deprecated constructor 'Time.from_string'
+    time := Time.from_string "$(year)-$(%02d month)-$(%02d day)T$(%02d hour):$(%02d minute):$(%02d second)Z"
+                ^
