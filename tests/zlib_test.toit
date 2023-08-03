@@ -26,7 +26,7 @@ do_test chunk_size chunk_offset str zlib_expected uncompressed --gzip/bool:
   accumulator := bytes.Buffer
   done := Semaphore
   t := task::
-    while ba := compressor.read:
+    while ba := compressor.reader.read:
       accumulator.write ba
     done.up
   if chunk_offset != 0:

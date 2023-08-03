@@ -8,17 +8,37 @@ import crypto
 import crypto.adler32 as crypto
 import crypto.crc as crc_algorithms
 
-class ZlibEncoder_ implements reader.Reader:
+class ZlibReader_ implements reader.Reader:
+  owner_ /ZlibEncoder_? := null
+
+  constructor.private_:
+
+  read:
+    return owner_.read_
+
+  close:
+    // Currently does nothing.
+
+class ZlibEncoder_ implements reader.Reader:  // TODO: Should not be a reader.
   channel_ := monitor.Channel 1
+  reader/ZlibReader_ ::= ZlibReader_.private_
 
   static SMALL_BUFFER_DEFLATE_HEADER_ ::= [8, 0x1d]
   static MINIMAL_GZIP_HEADER_ ::= [0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]
 
   constructor --gzip_header/bool:
+    reader.owner_ = this
     header := gzip_header ? MINIMAL_GZIP_HEADER_ : SMALL_BUFFER_DEFLATE_HEADER_
     channel_.send (ByteArray header.size: header[it])
 
+  /**
+  Deprecated.
+  Use the $reader to get an object with a read method.
+  */
   read:
+    return read_
+
+  read_:
     result := channel_.receive
     if not result: channel_.send null  // Once it's closed we should be able to keep reading nulls.
     return result
