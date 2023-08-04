@@ -19,7 +19,11 @@ class RleReader implements reader.Reader:
   close:
     // Currently does nothing.
 
-class ZlibEncoder_ implements reader.Reader:  // TODO: Should not be a reader.
+// TODO: Should not be a Reader, but we have deprecated the read method,
+// and there's no way to deprecate an 'implements' statement. This class
+// is a superclass for some public classes, so we can't just remove it
+// in a backwards compatible way.
+class ZlibEncoder_ implements reader.Reader:
   channel_ := monitor.Channel 1
   reader/RleReader ::= RleReader.private_
 
