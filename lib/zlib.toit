@@ -260,12 +260,11 @@ abstract class Coder_:
 
   close_read_ -> none:
     if not closed_read_:
-      critical_do:
-        closed_read_ = true
-        if closed_write_:
-          uninit_
-        state_ |= STATE_READY_TO_WRITE_
-        signal_.raise
+      closed_read_ = true
+      if closed_write_:
+        uninit_
+      state_ |= STATE_READY_TO_WRITE_
+      signal_.raise
 
   write --wait/bool=true data -> int:
     if closed_read_: throw "READER_CLOSED"
@@ -285,11 +284,10 @@ abstract class Coder_:
 
   close -> none:
     if not closed_write_:
-      critical_do:
-        zlib_close_ zlib_
-        closed_write_ = true
-        state_ |= Coder_.STATE_READY_TO_READ_
-        signal_.raise
+      zlib_close_ zlib_
+      closed_write_ = true
+      state_ |= Coder_.STATE_READY_TO_READ_
+      signal_.raise
 
   /**
   Releases memory associated with this compressor.  This is called
