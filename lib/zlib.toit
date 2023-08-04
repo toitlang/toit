@@ -136,6 +136,9 @@ class RunLengthDeflateEncoder_ extends ZlibEncoder_:
       from += read
       buffer_fullness_ += written
 
+  /**
+  Closes the encoder for writing.
+  */
   close:
     channel_.send (buffer_.copy 0 buffer_fullness_)
     try:
@@ -164,6 +167,171 @@ class RunLengthGzipEncoder extends RunLengthDeflateEncoder_:
   constructor:
     super CrcAndLengthChecksum_ --gzip_header=true
 
+/**
+Object that can be read to get output from an $Encoder or a $Decoder.
+*/
+class ZlibReader implements reader.Reader:
+  owner_/Coder_? := null
+
+  constructor.private_:
+
+  /**
+  Reads output data.
+  In the default $wait mode this method may block in order to let a
+    writing task write more data to the compressor or decompressor.
+  In the non-blocking mode, if the compressor or decompressor has run out of
+    input data, this method returns a zero length byte array.
+  If the compressor or decompressor has been closed, and there is no more output
+    data, this method returns null.
+  */
+  read --wait/bool=true -> ByteArray?:
+    return owner_.read_ --wait=wait
+
+  close -> none:
+    owner_.close_read_
+
+// An Encoder or Decoder.
+abstract class Coder_:
+  zlib_ ::= ?
+  closed_write_ := false
+  closed_read_ := false
+  signal_ /monitor.Signal := monitor.Signal
+  state_/int := STATE_READY_TO_READ_ | STATE_READY_TO_WRITE_
+
+  static STATE_READY_TO_READ_ ::= 1
+  static STATE_READY_TO_WRITE_ ::= 2
+
+  constructor .zlib_:
+    reader = ZlibReader.private_
+    reader.owner_ = this
+    add_finalizer this::
+      this.uninit_
+
+  /**
+  A reader that can be used to read the compressed or decompressed data output
+    by the Encoder or Decoder.
+  */
+  reader/ZlibReader
+
+  read_ --wait/bool -> ByteArray?:
+    if closed_read_: return null
+    result := zlib_read_ zlib_
+    while result and wait and result.size == 0:
+      state_ &= ~STATE_READY_TO_READ_
+      signal_.wait: state_ & STATE_READY_TO_READ_ != 0
+      result = zlib_read_ zlib_
+    state_ |= STATE_READY_TO_WRITE_
+    signal_.raise
+    return result
+
+  close_read_ -> none:
+    state_ |= STATE_READY_TO_WRITE_
+    signal_.raise
+    if not closed_read_:
+      closed_read_ = true
+      if closed_write_:
+        uninit_
+
+  write --wait/bool=true data -> int:
+    if closed_read_: throw "READER_CLOSED"
+    pos := 0
+    while pos < data.size:
+      bytes_written := zlib_write_ zlib_ data[pos..]
+      if bytes_written == 0:
+        if wait:
+          state_ &= ~STATE_READY_TO_WRITE_
+          signal_.wait: state_ & STATE_READY_TO_WRITE_ != 0
+      else:
+        state_ |= STATE_READY_TO_READ_
+        signal_.raise
+      if not wait: return bytes_written
+      pos += bytes_written
+    return pos
+
+  close -> none:
+    if not closed_write_:
+      zlib_close_ zlib_
+      closed_write_ = true
+      state_ |= Coder_.STATE_READY_TO_READ_
+      signal_.raise
+
+  /**
+  Releases memory associated with this compressor.  This is called
+    automatically when this object and the reader have both been closed.
+  */
+  uninit_ -> none:
+    remove_finalizer this
+    zlib_close_ zlib_
+
+/**
+A Zlib compressor/deflater.
+Not usually supported on embedded platforms due to high memory use.
+*/
+class Encoder extends Coder_:
+  /**
+  Creates a new compressor.
+  The compression level can be -1 for default, 0 for no compression, or 1-9 for
+    compression levels 1-9.
+  */
+  constructor --level/int=-1:
+    if not -1 <= level <= 9: throw "ILLEGAL_ARGUMENT"
+    super (zlib_init_deflate_ resource_freeing_module_ level)
+
+  /**
+  Writes uncompressed data into the compressor.
+  In the default $wait mode this method may block and will not return
+    until all bytes have been written to the compressor.
+  Returns the number of bytes that were compressed.  If zero bytes were
+    compressed that means that data needs to be read using the reader before
+    more data can be accepted.
+  Any bytes that were not compressed need to be resubmitted to this method
+    later.
+  */
+  write --wait/bool=true data -> int:
+    return super --wait=wait data
+
+  /**
+  Closes the encoder.
+  This tells the encoder that no more uncompressed input is coming.  Subsequent
+    calls to the reader will return the buffered compressed data and then
+    return null.
+  */
+  close -> none:
+    super
+
+/**
+A Zlib decompressor/inflater.
+Not usually supported on embedded platforms due to high memory use.
+*/
+class Decoder extends Coder_:
+  /**
+  Creates a new decompressor.
+  */
+  constructor:
+    super (zlib_init_inflate_ resource_freeing_module_)
+
+  /**
+  Writes compressed data into the decompressor.
+  In the default $wait mode this method may block and will not return
+    until all bytes have been written to the decompressor.
+  Returns the number of bytes that were decompressed.  If zero bytes were
+    decompressed that means that data needs to be read using the reader before
+    more data can be accepted.
+  Any bytes that were not decompressed need to be resubmitted to this method
+    later.
+  */
+  write --wait/bool=true data -> int:
+    return super --wait=wait data
+
+  /**
+  Closes the decoder.
+  This will tell the decoder that no more compressed input is coming.
+    Subsequent calls to the reader will return the buffered decompressed data
+    and then return null.
+  */
+  close -> none:
+    super
+
 rle_start_ group:
   #primitive.zlib.rle_start
 
@@ -179,3 +347,21 @@ rle_add_ rle destination index source from to:
 /// Returns the number of bytes written to terminate the zlib stream.
 rle_finish_ rle destination index:
   #primitive.zlib.rle_finish
+
+zlib_init_deflate_ group level/int:
+  #primitive.zlib.zlib_init_deflate
+
+zlib_init_inflate_ group:
+  #primitive.zlib.zlib_init_inflate
+
+zlib_read_ zlib -> ByteArray?:
+  #primitive.zlib.zlib_read
+
+zlib_write_ zlib data -> int:
+  #primitive.zlib.zlib_write
+
+zlib_close_ zlib -> none:
+  #primitive.zlib.zlib_close
+
+zlib_uninit_ zlib -> none:
+  #primitive.zlib.zlib_uninit
