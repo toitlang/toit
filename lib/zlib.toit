@@ -198,8 +198,8 @@ abstract class Coder_:
   signal_ /monitor.Signal := monitor.Signal
   state_/int := STATE_READY_TO_READ_ | STATE_READY_TO_WRITE_
 
-  static STATE_READY_TO_READ_ ::= 1
-  static STATE_READY_TO_WRITE_ ::= 2
+  static STATE_READY_TO_READ_  ::= 1 << 0
+  static STATE_READY_TO_WRITE_ ::= 1 << 1
 
   constructor .zlib_:
     reader = ZlibReader.private_
@@ -225,12 +225,13 @@ abstract class Coder_:
     return result
 
   close_read_ -> none:
-    state_ |= STATE_READY_TO_WRITE_
-    signal_.raise
     if not closed_read_:
-      closed_read_ = true
-      if closed_write_:
-        uninit_
+      critical_do:
+        closed_read_ = true
+        if closed_write_:
+          uninit_
+        state_ |= STATE_READY_TO_WRITE_
+        signal_.raise
 
   write --wait/bool=true data -> int:
     if closed_read_: throw "READER_CLOSED"
@@ -250,10 +251,11 @@ abstract class Coder_:
 
   close -> none:
     if not closed_write_:
-      zlib_close_ zlib_
-      closed_write_ = true
-      state_ |= Coder_.STATE_READY_TO_READ_
-      signal_.raise
+      critical_do:
+        zlib_close_ zlib_
+        closed_write_ = true
+        state_ |= Coder_.STATE_READY_TO_READ_
+        signal_.raise
 
   /**
   Releases memory associated with this compressor.  This is called
