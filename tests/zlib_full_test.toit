@@ -115,7 +115,7 @@ rle_test -> none:
     encoder.close
 
   encoded := #[]
-  while data := encoder.read:
+  while data := encoder.reader.read:
     encoded += data
 
   decoder := zlib.Decoder
