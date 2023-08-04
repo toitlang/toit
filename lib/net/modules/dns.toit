@@ -182,7 +182,7 @@ class DnsClient:
         socket.write query.query_packet
 
         last_attempt := attempt_counter > MAX_RETRY_ATTEMPTS_
-        catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR or last_attempt):
+        catch --unwind=(: (not is_server_reachability_error_ it) or last_attempt):
           with_timeout retry_timeout:
             answer := socket.receive
             return decode_response_ query answer.data
@@ -233,7 +233,7 @@ class DnsClient:
 
         // Get here if there was an error. If it's the last server we
         // rethrow it so that it looks like there was no catch.
-        if error != DEADLINE_EXCEEDED_ERROR:
+        if not is_server_reachability_error_ error:
           // Deadline exceeded errors are less informative than other errors.
           saved_error = error
           saved_trace = trace
@@ -438,3 +438,6 @@ create_query_ name/string query_id/int --accept_ipv4/bool=true --accept_ipv6/boo
     position += 6
   assert: position == query.size
   return query
+
+is_server_reachability_error_ error -> bool:
+  return error == DEADLINE_EXCEEDED_ERROR or error is string and error.starts_with "A socket operation was attempted to an unreachable network"
