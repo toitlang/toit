@@ -15,11 +15,15 @@ MAX_TRIMMED_CACHE_SIZE_ ::= MAX_CACHE_SIZE_ / 3 * 2
 
 class DnsException:
   text/string
+  name/string?
 
-  constructor .text:
+  constructor .text --.name=null:
 
   stringify -> string:
-    return "DNS lookup exception $text"
+    if name:
+      return "DNS lookup for '$name' exception $text"
+    else:
+      return "DNS lookup exception $text"
 
 /**
 Look up a domain name and return an A or AAAA record.
@@ -178,7 +182,7 @@ class DnsClient:
         socket.write query.query_packet
 
         last_attempt := attempt_counter > MAX_RETRY_ATTEMPTS_
-        catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR or last_attempt):
+        catch --unwind=(: (not is_server_reachability_error_ it) or last_attempt):
           with_timeout retry_timeout:
             answer := socket.receive
             return decode_response_ query answer.data
@@ -208,14 +212,36 @@ class DnsClient:
 
     with_timeout timeout:
       servers_failed := {}
+      // We try servers one at a time, but if there was a good error
+      // message from one server (eg. no such domain) we save that
+      // error and rethrow it if the last one times out with no usable
+      // response.
+      saved_error := null
+      saved_trace := null
       while true:
         // Note that we continue to use the server that worked the last time
         // since we store the index in a field.
         current_server_ip := servers_[current_server_index_]
         is_last_server := (servers_.size == servers_failed.size + 1)
 
-        catch --unwind=is_last_server:
+        trace := null
+        trace_block := : | _ t |
+          trace = t
+          false
+        error := catch --trace=trace_block:
           return get_ query current_server_ip
+
+        // Get here if there was an error. If it's the last server we
+        // rethrow it so that it looks like there was no catch.
+        if not is_server_reachability_error_ error:
+          // Deadline exceeded errors are less informative than other errors.
+          saved_error = error
+          saved_trace = trace
+        if is_last_server:
+          if saved_error:
+            rethrow saved_error saved_trace
+          else:
+            rethrow error trace
 
         // The current server didn't succeed. Move to the next.
         servers_failed.add current_server_ip
@@ -264,7 +290,7 @@ class DnsClient:
     if error != ERROR_NONE:
       detail := "error code $error"
       if 0 <= error < ERROR_MESSAGES_.size: detail = ERROR_MESSAGES_[error]
-      throw (DnsException "Server responded: $detail")
+      throw (DnsException "Server responded: $detail" --name=query.name)
     position := 12
     queries := BIG_ENDIAN.uint16 response 4
     if queries != 1: throw (DnsException "Unexpected number of queries in response")
@@ -315,7 +341,7 @@ class DnsClient:
       else if type == RECORD_CNAME:
         q_name = decode_name response position: null
       position += rd_length
-    throw (DnsException "Response did not contain matching A record")
+    throw (DnsException "Response did not contain matching A record" --name=query.name)
 
 /**
 Decodes a name from a DNS (RFC 1035) packet.
@@ -385,10 +411,10 @@ create_query_ name/string query_id/int --accept_ipv4/bool=true --accept_ipv6/boo
   parts := name.split "."
   length := 1
   parts.do: | part |
-    if part.size > 63: throw (DnsException "DNS name parts cannot exceed 63 bytes")
-    if part.size < 1: throw (DnsException "DNS name parts cannot be empty")
+    if part.size > 63: throw (DnsException "DNS name parts cannot exceed 63 bytes" --name=name)
+    if part.size < 1: throw (DnsException "DNS name parts cannot be empty" --name=name)
     part.do:
-      if it == 0 or it == null: throw (DnsException "INVALID_DOMAIN_NAME")
+      if it == 0 or it == null: throw (DnsException "INVALID_DOMAIN_NAME" --name=name)
     length += part.size + 1
   query := ByteArray 10 + length + query_count * 6
   BIG_ENDIAN.put_uint16 query 0 query_id
@@ -412,3 +438,6 @@ create_query_ name/string query_id/int --accept_ipv4/bool=true --accept_ipv6/boo
     position += 6
   assert: position == query.size
   return query
+
+is_server_reachability_error_ error -> bool:
+  return error == DEADLINE_EXCEEDED_ERROR or error is string and error.starts_with "A socket operation was attempted to an unreachable network"
