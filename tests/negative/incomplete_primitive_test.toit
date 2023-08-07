@@ -3,16 +3,19 @@
 // be found in the tests/LICENSE file.
 
 foo -> none:
-/*1*/ #primitive
+  #primitive
+
+foo2 -> none:
+  #primitive.
 
 bar -> none:
-/*2*/ #primitive.module
+  #primitive.module
 
 gee -> none:
-/*3*/ #primitive.core
+  #primitive.core
 
 foobar -> none:
-/*4*/ #primitive.intrinsics
+  #primitive.intrinsics
 
 main:
   unresolved
