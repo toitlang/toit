@@ -33,13 +33,13 @@
 #include "../event_sources/ev_queue_esp32.h"
 
 #define ESPNOW_RX_DATAGRAM_LEN_MAX  250
-#define ESPNOW_RX_DATAGRAM_NUM      8
+#define ESPNOW_RX_DATAGRAM_NUM 8
 // The size of the event queue.
 // Can contain up to ESPNOW_RX_DATAGRAM_NUM receival events, and then
 // one for informing that a sent message was handled.
 // We rely on the fact that sending is blocking until it has been sent.
 // As such there can only be one additional event in the queue.
-#define ESPNOW_EVENT_NUM            (ESPNOW_RX_DATAGRAM_NUM + 1)
+#define ESPNOW_EVENT_NUM (ESPNOW_RX_DATAGRAM_NUM + 1)
 
 namespace toit {
 
@@ -47,21 +47,23 @@ class SpinLocker {
  public:
   explicit SpinLocker(spinlock_t* spinlock) : spinlock_(spinlock) { portENTER_CRITICAL(spinlock_); }
   ~SpinLocker() { portEXIT_CRITICAL(spinlock_); }
-  spinlock_t* spinlock() const { return spinlock_; }
  private:
   spinlock_t* spinlock_;
 };
 
 struct Datagram {
   int len;
-  uint8* mac[6];
-  uint8* buffer[ESPNOW_RX_DATAGRAM_LEN_MAX];
+  uint8 mac[6];
+  uint8 buffer[ESPNOW_RX_DATAGRAM_LEN_MAX];
 };
 
 class DatagramPool {
  public:
   DatagramPool() {
     spinlock_initialize(&spinlock_);
+    for (int i = 0; i < ESPNOW_RX_DATAGRAM_NUM; i++) {
+      ASSERT(datagrams_[i] == NULL);
+    }
   }
 
   ~DatagramPool() {
@@ -205,9 +207,9 @@ class EspNowResource : public EventQueueResource {
  public:
   TAG(EspNowResource);
 
-  EspNowResource(EspNowResourceGroup* group, int id, QueueHandle_t queue)
+  EspNowResource(EspNowResourceGroup* group, QueueHandle_t queue)
       : EventQueueResource(group, queue)
-      , id_(id) {}
+      , id_(kInvalidEspNow) {}
 
   ~EspNowResource() override;
 
@@ -218,60 +220,67 @@ class EspNowResource : public EventQueueResource {
 
  private:
   enum class State {
-    constructed,
-    pool_allocated,
-    rx_queue_allocated,
-    wifi_initted,
-    wifi_started,
-    esp_now_initted,
-    send_callback_registered,
-    receive_callback_registered,
-    fully_initialized,
+    CONSTRUCTED,
+    ESPNOW_CLAIMED,
+    POOL_ALLOCATED,
+    RX_QUEUE_ALLOCATED,
+    WIFI_INITTED,
+    WIFI_STARTED,
+    ESPNOW_INITTED,
+    SEND_CALLBACK_REGISTERED,
+    RECEIVE_CALLBACK_REGISTERED,
+    FULLY_INITIALIZED,
   };
-  State state_ = State::constructed;
+  State state_ = State::CONSTRUCTED;
   int id_;
 };
 
 EspNowResource::~EspNowResource() {
   switch (state_) {
-    case State::fully_initialized:
-    case State::receive_callback_registered:
+    case State::FULLY_INITIALIZED:
+    case State::RECEIVE_CALLBACK_REGISTERED:
       esp_now_unregister_recv_cb();
       [[fallthrough]];
-    case State::send_callback_registered:
+    case State::SEND_CALLBACK_REGISTERED:
       esp_now_unregister_send_cb();
       [[fallthrough]];
-    case State::esp_now_initted:
+    case State::ESPNOW_INITTED:
       esp_now_deinit();
       [[fallthrough]];
-    case State::wifi_started:
+    case State::WIFI_STARTED:
       esp_wifi_stop();
       [[fallthrough]];
-    case State::wifi_initted:
+    case State::WIFI_INITTED:
       esp_wifi_deinit();
       [[fallthrough]];
-    case State::rx_queue_allocated:
+    case State::RX_QUEUE_ALLOCATED:
       vQueueDelete(rx_queue);
       rx_queue = null;
       [[fallthrough]];
-    case State::pool_allocated:
+    case State::POOL_ALLOCATED:
       delete datagram_pool;
       datagram_pool = NULL;
       [[fallthrough]];
-    case State::constructed:
+    case State::ESPNOW_CLAIMED:
+      espnow_pool.put(id_);
+      [[fallthrough]];
+    case State::CONSTRUCTED:
       vQueueDelete(event_queue);
       event_queue = null;
   }
-
-  espnow_pool.put(id_);
 }
 
 Object* EspNowResource::init(Process* process, int mode, Blob pmk, wifi_phy_rate_t phy_rate) {
+  id_ = espnow_pool.any();
+  if (id_ == kInvalidEspNow) FAIL(ALREADY_IN_USE);
+
+  state_ = State::ESPNOW_CLAIMED;
+
   datagram_pool = _new DatagramPool();
   if (datagram_pool == null) {
     FAIL(MALLOC_FAILED);
   }
-  state_ = State::pool_allocated;
+  state_ = State::POOL_ALLOCATED;
 
   auto init_result = datagram_pool->init();
   if (init_result != null) {
@@ -282,14 +291,14 @@ Object* EspNowResource::init(Process* process, int mode, Blob pmk, wifi_phy_rate
   if (rx_queue == null) {
     FAIL(MALLOC_FAILED);
   }
-  state_ = State::rx_queue_allocated;
+  state_ = State::RX_QUEUE_ALLOCATED;
 
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   wifi_mode_t wifi_mode = mode == 0 ? WIFI_MODE_STA : WIFI_MODE_AP;
 
   esp_err_t err = esp_wifi_init(&cfg);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  state_ = State::wifi_initted;
+  state_ = State::WIFI_INITTED;
 
   err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
   if (err != ESP_OK) return Primitive::os_error(err, process);
@@ -298,7 +307,7 @@ Object* EspNowResource::init(Process* process, int mode, Blob pmk, wifi_phy_rate
 
   err = esp_wifi_start();
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  state_ = State::wifi_started;
+  state_ = State::WIFI_STARTED;
 
   wifi_interface_t interface = mode == 0 ? WIFI_IF_STA : WIFI_IF_AP;
   err = esp_wifi_config_espnow_rate(interface, phy_rate);
@@ -306,23 +315,23 @@ Object* EspNowResource::init(Process* process, int mode, Blob pmk, wifi_phy_rate
 
   err = esp_now_init();
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  state_ = State::esp_now_initted;
+  state_ = State::ESPNOW_INITTED;
 
   err = esp_now_register_send_cb(espnow_send_cb);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  state_ = State::send_callback_registered;
+  state_ = State::SEND_CALLBACK_REGISTERED;
 
 
   err = esp_now_register_recv_cb(espnow_recv_cb);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  state_ = State::receive_callback_registered;
+  state_ = State::RECEIVE_CALLBACK_REGISTERED;
 
   if (pmk.length() > 0) {
     err = esp_now_set_pmk(pmk.address());
     if (err != ESP_OK) return Primitive::os_error(err, process);
   }
 
-  state_ = State::fully_initialized;
+  state_ = State::FULLY_INITIALIZED;
   return null;
 }
 
@@ -415,18 +424,13 @@ PRIMITIVE(create) {
     FAIL(ALLOCATION_FAILED);
   }
 
-  int id = espnow_pool.any();
-  if (id == kInvalidEspNow) FAIL(ALREADY_IN_USE);
-
   event_queue = xQueueCreate(ESPNOW_EVENT_NUM, sizeof(EspNowEvent));
   if (!event_queue) {
-    espnow_pool.put(id);
     FAIL(MALLOC_FAILED);
   }
 
-  EspNowResource* resource = _new EspNowResource(group, id, event_queue);
+  EspNowResource* resource = _new EspNowResource(group, event_queue);
   if (!resource) {
-    espnow_pool.put(id);
     vQueueDelete(event_queue);
     FAIL(MALLOC_FAILED);
   }
