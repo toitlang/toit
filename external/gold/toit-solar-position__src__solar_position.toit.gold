@@ -1,3 +1,0 @@
-toit-solar-position/src/solar_position.toit:132:19: warning: Deprecated constructor 'Time.from_string'
-NOON_2000 ::= Time.from_string "2000-01-01T12:00:00Z"
-                  ^
