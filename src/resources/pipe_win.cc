@@ -133,7 +133,7 @@ class WritePipeResource : public HandlePipeResource {
   }
 
   ~WritePipeResource() override {
-    if (write_buffer_ != null) free(write_buffer_);
+    if (write_buffer_ != null) ; //free(write_buffer_);
   }
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
@@ -145,7 +145,7 @@ class WritePipeResource : public HandlePipeResource {
 
 
   bool send(const uint8* buffer, int length) {
-    if (write_buffer_ != null) free(write_buffer_);
+    if (write_buffer_ != null) ; //free(write_buffer_);
 
     write_ready_ = false;
 
@@ -484,7 +484,7 @@ static Object* fork_helper(
   if (environment) {
     uint16* old_environment = reinterpret_cast<uint16*>(GetEnvironmentStringsW());
     new_environment = reinterpret_cast<wchar_t*>(Utils::create_new_environment(process, old_environment, environment));
-    FreeEnvironmentStringsW(reinterpret_cast<wchar_t*>(old_environment));
+    //FreeEnvironmentStringsW(reinterpret_cast<wchar_t*>(old_environment));
   }
 
   if (!CreateProcessW(NULL,
@@ -497,11 +497,11 @@ static Object* fork_helper(
                       current_directory,
                       &startup_info,
                       &process_information)) {
-    if (new_environment) free(new_environment);
+    if (new_environment) ;  //free(new_environment);
     WINDOWS_ERROR;
   }
 
-  if (new_environment) free(new_environment);
+  if (new_environment) ; //free(new_environment);
 
   // Release any handles that are pipes and are parsed down to the child
   if (GetFileType(startup_info.hStdInput) == FILE_TYPE_PIPE && !is_inherited(in_object))
