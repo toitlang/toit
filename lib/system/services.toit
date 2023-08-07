@@ -630,7 +630,7 @@ class ServiceManager_ implements SystemMessageHandler_:
       close arguments
     broker_.register_procedure RPC_SERVICES_INVOKE_:: | arguments gid pid |
       client/int ::= arguments[0]
-      handler/ServiceHandler ::= handlers_by_client_[client]
+      handler/ServiceHandler ::= handlers_by_client_.get client --if_absent=(: throw "HANDLER_NOT_FOUND")
       handler.handle arguments[1] arguments[2] --gid=gid --client=client
     broker_.register_procedure RPC_SERVICES_CLOSE_RESOURCE_:: | arguments |
       client/int ::= arguments[0]
