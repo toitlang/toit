@@ -61,10 +61,16 @@ class EspNowResourceGroup : public ResourceGroup {
  public:
   TAG(EspNowResourceGroup);
 
-  EspNowResourceGroup(Process* process) : ResourceGroup(process) {}
-  ~EspNowResourceGroup();
+  EspNowResourceGroup(Process* process, int id)
+      : ResourceGroup(process)
+      , id_(id) {}
+
+  ~EspNowResourceGroup() override;
 
   bool init();
+
+ private:
+  int id_;
 };
 
 EspNowResourceGroup::~EspNowResourceGroup() {
@@ -79,15 +85,19 @@ EspNowResourceGroup::~EspNowResourceGroup() {
 
   free(rx_datagrams);
   rx_datagrams = NULL;
+
+  esp_now_deinit();
+  espnow_pool.put(id_);
+  esp_wifi_stop();
 }
 
-bool EspNowResourceGroup::init(void) {
+bool EspNowResourceGroup::init() {
   tx_sem = xSemaphoreCreateCounting(1, 0);
   if (!tx_sem) {
     return false;
   }
 
-  rx_queue = xQueueCreate(ESPNOW_RX_DATAGRAM_NUM, sizeof(void *));
+  rx_queue = xQueueCreate(ESPNOW_RX_DATAGRAM_NUM, sizeof(void*));
   if (!rx_queue) {
     vSemaphoreDelete(tx_sem);
     tx_sem = NULL;
@@ -220,7 +230,7 @@ PRIMITIVE(init) {
   wifi_phy_rate_t phy_rate = WIFI_PHY_RATE_1M_L;
   if (rate != -1) {
     phy_rate =  map_toit_rate_to_esp_idf_rate(rate);
-    if (phy_rate == -1) FAIL(INVALID_ARGUMENT);
+    if (static_cast<int>(phy_rate) == -1) FAIL(INVALID_ARGUMENT);
   }
 
   if (pmk.length() > 0 && pmk.length() != 16) FAIL(INVALID_ARGUMENT);
@@ -231,7 +241,7 @@ PRIMITIVE(init) {
   int id = espnow_pool.any();
   if (id == kInvalidEspNow) FAIL(ALREADY_IN_USE);
 
-  EspNowResourceGroup* group = _new EspNowResourceGroup(process);
+  EspNowResourceGroup* group = _new EspNowResourceGroup(process, id);
   if (!group) {
     espnow_pool.put(id);
     FAIL(MALLOC_FAILED);
@@ -242,6 +252,11 @@ PRIMITIVE(init) {
     FAIL(MALLOC_FAILED);
   }
 
+  // Not clear whether we should keep this call to esp_netif_init.
+  // The lwip thread is supposed to do this (and normally does so).
+  // However, it doesn't seem to be guaranteed.
+  // The code looks safe to be executed multiple times, but it's
+  // not clear whether it is thread-safe...
   esp_err_t err = esp_netif_init();
   if (err != ESP_OK) return Primitive::os_error(err, process);
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -357,12 +372,9 @@ PRIMITIVE(add_peer) {
 PRIMITIVE(deinit) {
   ARGS(EspNowResourceGroup, group);
 
-  esp_err_t err = esp_now_deinit();
-
   group->tear_down();
   group_proxy->clear_external_address();
 
-  if (err != ESP_OK) return Primitive::os_error(err, process);
   return process->null_object();
 }
 

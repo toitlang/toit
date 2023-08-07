@@ -8,6 +8,10 @@ Tests the ADC.
 Note that this test accesses ADC2 which is restricted and can't be used
   while WiFi is running.
 
+On Jaguar use:
+  `jag container install -D jag.disabled -D jag.timeout=1m adc adc.toit`
+
+
 Setup:
 Connect pin 12 to pin 14 with a 330 Ohm resistor.
 Connect pin 14 to pin 32 with a 330 Ohm resistor.
