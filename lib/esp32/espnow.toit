@@ -101,7 +101,7 @@ class Datagram:
   constructor .address .data:
 
 class Service:
-  _group ::= ?
+  resource_ := ?
 
   /**
   Constructs a new ESP-Now service in station mode.
@@ -113,7 +113,13 @@ class Service:
     key_data := key ? key.data : #[]
     if rate and rate < 0: throw "INVALID_ARGUMENT"
     if not rate: rate = -1
-    _group = espnow_init_ STATION_ key_data rate
+    resource_ = espnow_create_ resource_group_ STATION_ key_data rate
+
+  close -> none:
+    if not resource_: return
+    critical_do:
+      espnow_close_ resource_
+      resource_ = null
 
   send data/ByteArray --address/Address --wait/bool=true -> none:
     espnow_send_ address.mac data wait
@@ -131,8 +137,16 @@ class Service:
     key_data := key ? key.data : #[]
     return espnow_add_peer_ address.mac channel key_data
 
-espnow_init_ mode pmk rate:
+resource_group_ ::= espnow_init_
+
+espnow_init_:
   #primitive.espnow.init
+
+espnow_create_ group mode pmk rate:
+  #primitive.espnow.create
+
+espnow_close_ resource:
+  #primitive.espnow.close
 
 espnow_send_ mac data wait:
   #primitive.espnow.send
