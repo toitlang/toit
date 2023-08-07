@@ -534,7 +534,11 @@ void Compiler::analyze(List<const char*> source_paths,
   bool single_source = source_paths.length() == 1;
   FilesystemHybrid fs(single_source ? source_paths[0] : null);
   SourceManager source_manager(&fs);
-  AnalysisDiagnostics diagnostics(&source_manager, compiler_config.show_package_warnings);
+  AnalysisDiagnostics analysis_diagnostics(&source_manager, compiler_config.show_package_warnings);
+  NullDiagnostics null_diagnostics(&source_manager);
+  Diagnostics* diagnostics = Flags::migrate_dash_ids
+      ? static_cast<Diagnostics*>(&null_diagnostics)
+      : static_cast<Diagnostics*>(&analysis_diagnostics);
   PipelineConfiguration configuration = {
     .out_path = null,
     .dep_file = compiler_config.dep_file,
@@ -542,7 +546,7 @@ void Compiler::analyze(List<const char*> source_paths,
     .project_root = compiler_config.project_root,
     .filesystem = &fs,
     .source_manager = &source_manager,
-    .diagnostics = &diagnostics,
+    .diagnostics = diagnostics,
     .lsp = null,
     .force = compiler_config.force,
     .werror = compiler_config.werror,

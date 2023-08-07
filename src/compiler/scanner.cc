@@ -20,6 +20,10 @@
 #include "diagnostic.h"
 #include "symbol_canonicalizer.h"
 
+// The following two includes are for the migration tool from "foo_bar" to "foo-bar".
+#include "package.h"
+#include "../flags.h"
+
 namespace toit {
 namespace compiler {
 
@@ -787,6 +791,11 @@ Token::Kind Scanner::scan_identifier(int peek) {
   const uint8* canonicalized_from = IdentifierValidator::canonicalize(from, len);
   const uint8* canonicalized_to = canonicalized_from + len;
 
+  if (Flags::migrate_dash_ids && canonicalized_from != from && source_->package_id() == Package::ENTRY_PACKAGE_ID) {
+    auto range = source_->range(begin, index_);
+    auto offset = source_->offset_in_source(range.from());
+    printf("[\"%s\", %d, %d, \"%s\"]\n", source_->error_path().c_str(), offset, offset + len, canonicalized_from);
+  }
   // Note that the symbol could be of length 0, if it was the lsp selection.
   auto token_symbol = symbols_->canonicalize_identifier(canonicalized_from, canonicalized_to);
   if (lsp_buffer != null) free(lsp_buffer);
