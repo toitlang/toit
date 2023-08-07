@@ -130,7 +130,7 @@ class Unit:
       if glitch_filter_ns > 12_787: throw "OUT_OF_RANGE"
     else:
       glitch_filter_ns = -1
-    unit_resource_ = pcnt_new_unit_ resource_group_ low high glitch_filter_ns
+    unit_resource_ = pcnt_new_unit_ resource_freeing_module_ low high glitch_filter_ns
     add_finalizer this:: close
 
   /**
@@ -233,11 +233,6 @@ class Unit:
   */
   stop -> none:
     pcnt_stop_ unit_resource_
-
-resource_group_ ::= pcnt_init_
-
-pcnt_init_:
-  #primitive.pcnt.init
 
 pcnt_new_unit_ resource_group low high glitch_filter_ns:
   #primitive.pcnt.new_unit

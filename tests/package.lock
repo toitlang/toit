@@ -1,6 +1,7 @@
 sdk: ^1.6.10
 prefixes:
   ar: pkg-ar
+  certificate_roots: toit-cert-roots
   cli: pkg-cli
   font_x11_adobe: pkg-font-x11-adobe
   host: pkg-host
@@ -26,3 +27,7 @@ packages:
     url: github.com/toitlang/pkg-tar
     version: 1.0.0
     hash: 72f9f1318b03300657dee12c8cfac72413ca1b56
+  toit-cert-roots:
+    url: github.com/toitware/toit-cert-roots
+    version: 1.5.0
+    hash: 27a9f9ff3d337b6128e98e220126e3cc275bcd73

@@ -449,7 +449,6 @@ namespace toit {
   PRIMITIVE(stop_receive, 1)                 \
 
 #define MODULE_PCNT(PRIMITIVE)               \
-  PRIMITIVE(init, 0)                         \
   PRIMITIVE(new_unit, 4)                     \
   PRIMITIVE(close_unit, 1)                   \
   PRIMITIVE(new_channel, 7)                  \
@@ -644,6 +643,12 @@ namespace toit {
   PRIMITIVE(rle_start, 1)                    \
   PRIMITIVE(rle_add, 6)                      \
   PRIMITIVE(rle_finish, 3)                   \
+  PRIMITIVE(zlib_init_deflate, 2)            \
+  PRIMITIVE(zlib_init_inflate, 1)            \
+  PRIMITIVE(zlib_write, 2)                   \
+  PRIMITIVE(zlib_read, 1)                    \
+  PRIMITIVE(zlib_close, 1)                   \
+  PRIMITIVE(zlib_uninit, 1)                  \
 
 #define MODULE_SUBPROCESS(PRIMITIVE)         \
   PRIMITIVE(init, 0)                         \
@@ -1008,6 +1013,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_Sha(N, name)                 MAKE_UNPACKING_MACRO(Sha, N, name)
 #define _A_T_Adler32(N, name)             MAKE_UNPACKING_MACRO(Adler32, N, name)
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
+#define _A_T_Zlib(N, name)                MAKE_UNPACKING_MACRO(Zlib, N, name)
 #define _A_T_GpioResource(N, name)        MAKE_UNPACKING_MACRO(GpioResource, N, name)
 #define _A_T_UartResource(N, name)        MAKE_UNPACKING_MACRO(UartResource, N, name)
 #define _A_T_UdpSocketResource(N, name)   MAKE_UNPACKING_MACRO(UdpSocketResource, N, name)
