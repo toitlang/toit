@@ -33,12 +33,9 @@ main:
     received := []
     while true:
       datagram := service.receive
-      if datagram:
-        message := datagram.data.to_string
-        received.add message
-        if message == END_TOKEN: break
-        print message
-      else:
-        sleep --ms=10
+      message := datagram.data.to_string
+      received.add message
+      if message == END_TOKEN: break
+      print message
 
     expect_equals TEST_DATA received

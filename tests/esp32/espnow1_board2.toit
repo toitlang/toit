@@ -21,4 +21,3 @@ main:
         it.to_byte_array
         --address=espnow.BROADCAST_ADDRESS
     print it
-    sleep --ms=20
