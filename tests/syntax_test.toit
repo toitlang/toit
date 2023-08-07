@@ -365,6 +365,7 @@ main:
   """$c """
   """"$c """"
   """""$c """""
+  some_fun """"" $c """"" ""
 
   local2 := ?
   local3 := true ? false : null

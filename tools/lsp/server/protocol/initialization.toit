@@ -202,31 +202,31 @@ class CompletionItemCapabilities extends MapWrapper:
 
 // TODO(florian): this should be an enum.
 class CompletionItemKind:
-  static text           ::= 1
-  static method         ::= 2
-  static function       ::= 3
-  static konstructor    ::= 4
-  static field          ::= 5
-  static variable       ::= 6
-  static klass          ::= 7
-  static interface      ::= 8
-  static module         ::= 9
-  static property       ::= 10
-  static unit           ::= 11
-  static value          ::= 12
-  static enum           ::= 13
-  static keyword        ::= 14
-  static snippet        ::= 15
-  static color          ::= 16
-  static file           ::= 17
-  static reference      ::= 18
-  static folder         ::= 19
-  static enum_member    ::= 20
-  static constant       ::= 21
-  static struct         ::= 22
-  static event          ::= 23
-  static operator_      ::= 24
-  static type_parameter ::= 25
+  static TEXT           ::= 1
+  static METHOD         ::= 2
+  static FUNCTION       ::= 3
+  static CONSTRUCTOR    ::= 4
+  static FIELD          ::= 5
+  static VARIABLE       ::= 6
+  static CLASS          ::= 7
+  static INTERFACE      ::= 8
+  static MODULE         ::= 9
+  static PROPERTY       ::= 10
+  static UNIT           ::= 11
+  static VALUE          ::= 12
+  static ENUM           ::= 13
+  static KEYWORD        ::= 14
+  static SNIPPET        ::= 15
+  static COLOR          ::= 16
+  static FILE           ::= 17
+  static REFERENCE      ::= 18
+  static FOLDER         ::= 19
+  static ENUM_MEMBER    ::= 20
+  static CONSTANT       ::= 21
+  static STRUCT         ::= 22
+  static EVENT          ::= 23
+  static OPERATOR       ::= 24
+  static TYPE_PARAMETER ::= 25
 
 class CompletionItemKindCapabilities extends MapWrapper:
   constructor json_map/Map: super json_map

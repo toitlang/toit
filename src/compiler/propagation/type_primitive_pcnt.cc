@@ -20,7 +20,6 @@ namespace compiler {
 
 MODULE_TYPES(pcnt, MODULE_PCNT)
 
-TYPE_PRIMITIVE_ANY(init)
 TYPE_PRIMITIVE_ANY(new_unit)
 TYPE_PRIMITIVE_ANY(close_unit)
 TYPE_PRIMITIVE_ANY(new_channel)

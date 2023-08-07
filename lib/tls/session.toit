@@ -11,6 +11,7 @@ import crypto.sha show Sha256 Sha384
 import encoding.tison
 import monitor
 import net.x509 as x509
+import tls
 import reader
 import writer
 
@@ -285,7 +286,12 @@ class Session:
       handshake_in_progress_ = null
 
   handshake_ tls_state/monitor.ResourceState_ --session_state/ByteArray?=null -> none:
-    root_certificates.do: tls_add_root_certificate_ tls_ it.res_
+    root_certificates.do: | root_certificate |
+      if root_certificate is x509.Certificate:
+        tls_add_root_certificate_ tls_ root_certificate.res_
+      else:
+        root := root_certificate as tls.RootCertificate
+        tls_add_root_certificate_ tls_ root.ensure_parsed_.res_
     if certificate:
       tls_add_certificate_ tls_ certificate.certificate.res_ certificate.private_key certificate.password
     tls_init_socket_ tls_ null

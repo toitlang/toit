@@ -123,10 +123,10 @@ const int kDataAvailableState = 1 << 0;
 const int kSendDoneState = 1 << 1;
 
 enum class EspNowEvent {
-  new_data_available = 1 << 0,
+  NEW_DATA_AVAILABLE,
   // Indicates that the sending has finished. Verify with 'status'
   // that it was successful.
-  send_done = 1 << 1,
+  SEND_DONE,
 };
 
 // Only allow one instance to use espnow.
@@ -141,7 +141,7 @@ static QueueHandle_t event_queue;
 
 static void espnow_send_cb(const uint8* mac_addr, esp_now_send_status_t status) {
   tx_status = status;
-  auto event = EspNowEvent::send_done;
+  auto event = EspNowEvent::SEND_DONE;
   auto ret = xQueueSend(event_queue, &event, 0);
   if (ret != pdTRUE) {
     ESP_LOGE("ESPNow", "Failed to enqueue receive event");
@@ -172,7 +172,7 @@ static void espnow_recv_cb(const uint8* mac_addr, const uint8* data, int data_le
     ESP_LOGE("ESPNow", "Failed to send datagram to rx_queue");
     return;
   }
-  auto event = EspNowEvent::new_data_available;
+  auto event = EspNowEvent::NEW_DATA_AVAILABLE;
   ret = xQueueSend(event_queue, &event, 0);
   if (ret != pdTRUE) {
     ESP_LOGE("ESPNow", "Failed to enqueue receive event");
@@ -189,11 +189,11 @@ class EspNowResourceGroup : public ResourceGroup {
   uint32_t on_event(Resource* r, word data, uint32_t state) {
     auto event = static_cast<EspNowEvent>(data);
     switch (event) {
-      case EspNowEvent::new_data_available:
+      case EspNowEvent::NEW_DATA_AVAILABLE:
         state |= kDataAvailableState;
         break;
 
-      case EspNowEvent::send_done:
+      case EspNowEvent::SEND_DONE:
         state |= kSendDoneState;
         break;
     };

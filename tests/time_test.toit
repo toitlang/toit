@@ -43,7 +43,7 @@ TZ_TIMES ::= [
 ]
 
 test_time_string str/string:
-  time ::= Time.from_string str
+  time ::= Time.parse str
   if str.ends_with "Z":
     expect_equals str time.stringify
     expect_equals str time.utc.stringify
@@ -366,5 +366,9 @@ main:
     left := it[0]
     right := it[1]
     expect_equals
-      Time.from_string left
-      Time.from_string right
+      Time.parse left
+      Time.parse right
+
+  now := Time.now
+  parsed := Time.parse "invalid" --on_error=: now
+  expect_equals now parsed
