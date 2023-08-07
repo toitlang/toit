@@ -26,7 +26,7 @@ do_test chunk_size chunk_offset str zlib_expected uncompressed --gzip/bool:
   accumulator := bytes.Buffer
   done := Semaphore
   t := task::
-    while ba := compressor.read:
+    while ba := compressor.reader.read:
       accumulator.write ba
     done.up
   if chunk_offset != 0:
@@ -36,6 +36,9 @@ do_test chunk_size chunk_offset str zlib_expected uncompressed --gzip/bool:
     compressor.write
       str.copy from to
   compressor.close
+  compressor.close  // Test it is idempotent.
+  e := catch: compressor.write "After close"
+  expect e != null
   done.down
   if not gzip:
     // Test output against expected compressed data.

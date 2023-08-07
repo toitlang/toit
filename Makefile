@@ -208,6 +208,7 @@ menuconfig:
 menuconfig-no-env: check-env check-esp32-env
 	cmake -E env IDF_TARGET=$(IDF_TARGET) python$(EXE_SUFFIX) $(IDF_PY) -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" menuconfig
 
+# ESP32 MENU CONFIG
 .PHONY: size-components
 size-components:
 	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
