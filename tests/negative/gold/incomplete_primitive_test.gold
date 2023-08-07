@@ -1,20 +1,26 @@
-tests/negative/incomplete_primitive_test.toit:6:7: error: Missing library name
-/*1*/ #primitive
-      ^~~~~~~~~~
-tests/negative/incomplete_primitive_test.toit:9:17: error: Missing primitive name
-/*2*/ #primitive.module
-                ^
-tests/negative/incomplete_primitive_test.toit:9:18: error: Unknown primitive library 'module'
+tests/negative/incomplete_primitive_test.toit:6:3: error: Unexpected <illegal>
+  #primitive
+  ^
+tests/negative/incomplete_primitive_test.toit:9:14: error: Incomplete expression
+  #primitive.
+             ^
+tests/negative/incomplete_primitive_test.toit:9:13: error: Missing primitive name
+  #primitive.
+            ^
+tests/negative/incomplete_primitive_test.toit:12:13: error: Missing primitive name
+  #primitive.module
+            ^
+tests/negative/incomplete_primitive_test.toit:12:14: error: Unknown primitive library 'module'
 
-/*2*/ #primitive.module
-                 ^~~~~~
-tests/negative/incomplete_primitive_test.toit:12:17: error: Missing primitive name
-/*3*/ #primitive.core
-                ^
-tests/negative/incomplete_primitive_test.toit:15:17: error: Missing primitive name
-/*4*/ #primitive.intrinsics
-                ^
-tests/negative/incomplete_primitive_test.toit:18:3: error: Unresolved identifier: 'unresolved'
+  #primitive.module
+             ^~~~~~
+tests/negative/incomplete_primitive_test.toit:15:13: error: Missing primitive name
+  #primitive.core
+            ^
+tests/negative/incomplete_primitive_test.toit:18:13: error: Missing primitive name
+  #primitive.intrinsics
+            ^
+tests/negative/incomplete_primitive_test.toit:21:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
 Compilation failed.
