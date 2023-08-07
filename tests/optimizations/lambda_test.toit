@@ -13,7 +13,7 @@ check_0_2 program method:
   method.do_bytecodes: |bytecode bci|
     if bytecode.name == "INVOKE_STATIC":
       target := target_of_invoke_static program method bci
-      if target.name == "constructor" or target.name == "create_array_":
+      if target.name == "constructor" or target.name == "create-array_":
         expect_not seen_array_constructor_call
         seen_array_constructor_call = true
 
@@ -31,11 +31,11 @@ main args:
   snap := run args --entry_path=fold_test_path
   program := snap.decode
   methods := extract_methods program [
-    "create_lambda0",
-    "create_lambda1",
-    "create_lambda2",
+    "create-lambda0",
+    "create-lambda1",
+    "create-lambda2",
   ]
 
-  check_0_2 program methods["create_lambda0"]
-  check_1   program methods["create_lambda1"]
-  check_0_2 program methods["create_lambda2"]
+  check_0_2 program methods["create-lambda0"]
+  check_1   program methods["create-lambda1"]
+  check_0_2 program methods["create-lambda2"]

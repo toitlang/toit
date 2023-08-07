@@ -11,7 +11,7 @@ class SomeClass:
     this_local := 42
     this.this_field = 499
 /*   ^
-  + this, this_local, this_field, this_global
+  + this, this-local, this-field, this-global
 */
 
   constructor.named1 x:
@@ -21,7 +21,7 @@ class SomeClass:
     this_local := 499
     this.member
 /*   ^
-  + this, this_local, this_field, this_global
+  + this, this-local, this-field, this-global
 */
 
   foo -> SomeClass: throw "foo"
@@ -30,8 +30,8 @@ class SomeClass:
     this_local := 42
     this_local
 /*  ^~~~~~~~~~
-  + this_local, this_global
-  - this, this_field
+  + this-local, this-global
+  - this, this-field
 */
 
 class Subclass extends SomeClass:

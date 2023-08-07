@@ -5,8 +5,8 @@
 import .completion_imported
 import .completion_imported as prefix
 /*          ^~~~~~~~~~~~~~~~~~~~~~~~~
-  + completion_imported
-  - filtered_completion_test
+  + completion-imported
+  - filtered-completion-test
 */
 
 import core as core
@@ -44,8 +44,8 @@ class SomeClass:
   static fun:
     static_xfield
 /*           ^
-  + static_xfield
-  - static_field
+  + static-xfield
+  - static-field
 */
 
 
@@ -60,13 +60,13 @@ main:
   global
 /*  ^
   + global, global2
-  - SomeClass, main, toplevel_fun, null, true, false, return, member
+  - SomeClass, main, toplevel-fun, null, true, false, return, member
 */
 
   SomeClass.static_field
 /*                   ^
-  + static_field
-  - static_xfield
+  + static-field
+  - static-xfield
 */
 
   some := SomeClass
@@ -74,19 +74,19 @@ main:
   some.member
 /*       ^
   + member
-  - other_member
+  - other-member
 */
 
   foo:
     some.block_member:
       continue.block_member
 /*              ^~~~~~~~~~~
-  + block_member
+  + block-member
   - *
 */
 
   if_count := 499
   if_count++
 /*  ^~~~~~~~
-  + if_count
+  + if-count
 */

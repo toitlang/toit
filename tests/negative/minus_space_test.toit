@@ -8,7 +8,7 @@ main:
   foo := 1
   bar := 2
 
-  print foo-bar
+  print foo-bar  // Unresolved identifier.
   print foo- bar
   toto foo -bar  // This is a valid use where only bar is inverted.
   

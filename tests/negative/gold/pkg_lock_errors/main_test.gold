@@ -4,10 +4,10 @@
 <...>/tests/negative/pkg_lock_errors/package.lock:2:23: error: Invalid package id: 'not important'
   "<invalid prefix>": not important
                       ^~~~~~~~~~~~~
-<...>/tests/negative/pkg_lock_errors/package.lock:3:24: error: Package 'not_in_list', target of prefix 'package_not_in_list', not found
+<...>/tests/negative/pkg_lock_errors/package.lock:3:24: error: Package 'not_in_list', target of prefix 'package-not-in-list', not found
   package_not_in_list: not_in_list
                        ^~~~~~~~~~~
-<...>/tests/negative/pkg_lock_errors/package.lock:4:15: error: Package '499', target of prefix 'bad_format', not found
+<...>/tests/negative/pkg_lock_errors/package.lock:4:15: error: Package '499', target of prefix 'bad-format', not found
   bad_format: 499
               ^~~
 <...>/tests/negative/pkg_lock_errors/package.lock:13:7: error: Invalid prefix '<invalid prefix>'
@@ -16,10 +16,10 @@
 <...>/tests/negative/pkg_lock_errors/package.lock:13:27: error: Invalid package id: 'not important'
       "<invalid prefix>": not important
                           ^~~~~~~~~~~~~
-<...>/tests/negative/pkg_lock_errors/package.lock:14:28: error: Package 'not_in_list', target of prefix 'package_not_in_list', not found
+<...>/tests/negative/pkg_lock_errors/package.lock:14:28: error: Package 'not_in_list', target of prefix 'package-not-in-list', not found
       package_not_in_list: not_in_list
                            ^~~~~~~~~~~
-<...>/tests/negative/pkg_lock_errors/package.lock:15:19: error: Package '499', target of prefix 'bad_format', not found
+<...>/tests/negative/pkg_lock_errors/package.lock:15:19: error: Package '499', target of prefix 'bad-format', not found
       bad_format: 499
                   ^~~
 <...>/tests/negative/pkg_lock_errors/package.lock:20:20: error: Invalid package lock file. Expected a map, got a scalar

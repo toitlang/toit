@@ -25,7 +25,7 @@ main args:
 
   b_info /ClassInfo := program.class_info_for class_B_id
   expect_equals 1 b_info.fields.size
-  expect_equals "field_b" b_info.fields.first
+  expect_equals "field-b" b_info.fields.first
 
   expect_equals a_info.id b_info.super_id
   expect_equals 0 a_info.super_id

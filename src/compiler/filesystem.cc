@@ -248,6 +248,7 @@ void Filesystem::list_toit_directory_entries(const char* path,
     // TODO(florian): We would like to check here, whether the `full_path` is a directory
     // or not. However, we are not allowed to do another filesystem request
     // while we are still doing the `list_directory_entries` call.
+    IdentifierValidator validator;
     for (int i = 0; true; i++) {
       char c = entry[i];
       if (c == '\0') {
@@ -266,12 +267,12 @@ void Filesystem::list_toit_directory_entries(const char* path,
           char* without_extension = unvoid_cast<char*>(malloc(i + 1));
           strncpy(without_extension, entry, i);
           without_extension[i] = '\0';
-          callback(without_extension, false);
+          const char* canonicalized = IdentifierValidator::canonicalize(without_extension, i);
+          callback(canonicalized, false);
         }
         return;
       }
-      if (i == 0 && !is_identifier_start(c)) return;
-      if (i != 0 && !is_identifier_part(c)) return;
+      if (!validator.check_next_char(c, [&]() { return entry[i + 1]; })) return;
     }
   });
 }

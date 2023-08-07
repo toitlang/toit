@@ -13,35 +13,35 @@ class Foo:
   static bar:
     mem_static
 /*  ^~~~~~~~~~
-  + mem_static
-  - member, this_member
+  + mem-static
+  - member, this-member
 */
     this_static
 /*  ^~~~~~~~~~~
-  + this_static
-  - member, this_member
+  + this-static
+  - member, this-member
 */
 
   constructor:
     member
 /*  ^~~~~~
-  + member, mem_static
+  + member, mem-static
 */
     this_member
 /*      ^~~~~~~
-  + this_member, this_static, this
+  + this-member, this-static, this
 */
 
   constructor.factory:
     mem_static
 /*     ^~~~~~~
-  + mem_static
-  - member, this_member
+  + mem-static
+  - member, this-member
 */
     this_static
 /*      ^~~~~~~
-  + this_static
-  - member, this_member
+  + this-static
+  - member, this-member
 */
     return Foo
 

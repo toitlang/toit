@@ -160,9 +160,6 @@ class Pipeline {
 
   ast::Unit* _parse_source(Source* source);
 
-  void _report_failed_import(ast::Import* import,
-                             ast::Unit* unit,
-                             const PackageLock& package_lock);
   Source* _load_import(ast::Unit* unit,
                        ast::Import* import,
                        const PackageLock& package_lock);
@@ -992,14 +989,19 @@ Source* CompletionPipeline::_load_file(const char* path, const PackageLock& pack
   const uint8* text = result->text();
   int offset = compute_source_offset(text, line_number_, column_number_);
   int start_offset = offset;
-  while (start_offset > 0 && is_identifier_part(text[start_offset - 1])) {
+  IdentifierValidator validator;
+  validator.disable_start_check();
+  while (start_offset > 0 &&
+         validator.check_next_char(text[start_offset - 1], [&]() { return text[start_offset]; })) {
     start_offset--;
   }
 
-  if (start_offset == offset || !is_identifier_start(text[start_offset])) {
+  if (start_offset == offset || !IdentifierValidator::is_identifier_start(text[start_offset])) {
     completion_prefix_ = Symbols::empty_string;
   } else {
-    auto canonicalized = symbol_canonicalizer()->canonicalize_identifier(&text[start_offset], &text[offset]);
+    int len = offset - start_offset;
+    auto dash_canonicalized = IdentifierValidator::canonicalize(&text[start_offset], len);
+    auto canonicalized = symbol_canonicalizer()->canonicalize_identifier(dash_canonicalized, &dash_canonicalized[len]);
     if (canonicalized.kind == Token::Kind::IDENTIFIER) {
       completion_prefix_ = canonicalized.symbol;
     } else {
@@ -1063,120 +1065,148 @@ static const uint8* wrap_direct_script_expression(const char* direct_script, Dia
   return text;
 }
 
-// Provides a better error message for failed imports.
-void Pipeline::_report_failed_import(ast::Import* import,
-                                     ast::Unit* unit,
-                                     const PackageLock& package_lock) {
-  auto segments = import->segments();
-  // Rebuild the path, without replacing the "." with "/" for a good
-  // error message.
-  std::string error_path;
-  if (import->is_relative()) {
-    error_path += '.';
-    for (int i = 0; i < import->dot_outs(); i++) error_path += '.';
-  }
-  for (int i = 0; i < segments.length(); i++) {
-    if (i != 0) error_path += '.';
-    error_path += segments[i]->data().c_str();
-  }
+namespace {
+enum class AddSegmentResult {
+  OK,
+  NOT_A_DIRECTORY,
+  NOT_A_REGULAR_FILE,
+  NOT_FOUND,
+};
+}  // Anonymous namespace.
 
-  // We are duplicating a lot of the work we did in the import loader.
-  // However, this time we look at each segment separately to figure out at which
-  // point things go wrong.
-  auto fs = filesystem();
-  auto unit_package = package_lock.package_for(unit->absolute_path(), filesystem());
-  // Package used to create a relative path for the path in the note.
-  Package build_error_package = Package::invalid();
-  auto build_error_path = [&](const std::string& path) {
-    return build_error_package.build_error_path(filesystem(), path);
-  };
+/// Adds the given segment to the path_builder.
+/// Physically modifies the builder.
+/// If 'check_is_toit_file' is true, also adds the '.toit' extension.
+/// If 'check_is_toit_file' is true, checks that the result is a regular file.
+/// If 'check_is_toit_file' is false, checks that the result is a directory.
+static AddSegmentResult add_segment(PathBuilder* path_builder,
+                                    Symbol segment,
+                                    Filesystem* fs,
+                                    bool should_check_is_toit_file) {
 
-  PathBuilder path_builder(filesystem());
-  bool have_note = false;
-  std::function<void ()> note_fun;
-
-  int segment_start = 0;
-  if (import->is_relative()) {
-    build_error_package = unit_package;
-    path_builder.add(unit->absolute_path());
-    path_builder.join("..");  // Dot the unit filename away.
-    for (int i = 0; i < import->dot_outs(); i++) {
-      path_builder.join("..");
+  auto check_path = [&]() {
+    if (should_check_is_toit_file) {
+      path_builder->add(".toit");
     }
-    path_builder.canonicalize();
-  } else {
-    auto module_name = segments[0]->data();
-    auto import_package = package_lock.resolve_prefix(unit_package, std::string(module_name.c_str()));
-    ASSERT(import_package.is_valid() && import_package.error_state() == Package::OK);
-    if (!import_package.is_sdk_prefix()) segment_start = 1;
-    // The lock-file reader already checked that all packages exist.
-    ASSERT(fs->is_directory(import_package.absolute_path().c_str()));
-    build_error_package = import_package;
-    path_builder.add(import_package.absolute_path());
-  }
-  for (int i = segment_start; i < segments.length(); i++) {
-    path_builder.join(segments[i]->data().c_str());
-    if (i < segments.length() - 1) {
-      // Check if that path fails.
-      std::string built = path_builder.buffer();
-      if (!fs->exists(built.c_str()) || !fs->is_directory(built.c_str())) {
-        auto note_node = segments[i];
-        const char* note_message = fs->exists(built.c_str())
-            ? "Not a folder: '%s'"
-            : "Folder does not exist: '%s'";
-        auto note_path = build_error_path(built);
-        note_fun = [=]() {
-          diagnostics()->report_note(note_node,
-                                     note_message,
-                                     note_path.c_str());
-        };
-        have_note = true;
-        break;
+    std::string path = path_builder->buffer();
+    if (should_check_is_toit_file) {
+      if (fs->is_regular_file(path.c_str())) {
+        return AddSegmentResult::OK;
+      }
+      if (fs->exists(path.c_str())) {
+        return AddSegmentResult::NOT_A_REGULAR_FILE;
+      }
+    } else {
+      if (fs->is_directory(path.c_str())) {
+        return AddSegmentResult::OK;
+      }
+      if (fs->exists(path.c_str())) {
+        return AddSegmentResult::NOT_A_DIRECTORY;
       }
     }
-  }
-  int length_after_segments = path_builder.length();
-  if (!have_note) {
-    auto note_node = segments.last();
-    // We need to append '.toit', or duplicate the last segment.
-    path_builder.add(".toit");
-    auto built = path_builder.buffer();
-    // We would have reported an error earlier if the path existed, but wasn't valid.
-    ASSERT(!fs->exists(built.c_str()));
-    auto toit_path = path_builder.buffer();
-    path_builder.reset_to(length_after_segments);
-    auto potential_dir = path_builder.buffer();
-    path_builder.join(segments.last()->data().c_str());
-    path_builder.add(".toit");
-    auto toit_in_dir = path_builder.buffer();
+    return AddSegmentResult::NOT_FOUND;
+  };
 
-    if (fs->exists(potential_dir.c_str()) && fs->is_directory(potential_dir.c_str())) {
-      auto note_path = build_error_path(potential_dir);
-      // This file must not exist, as we would have reported an error
-      // earlier, otherwise.
-      ASSERT(!fs->exists(toit_in_dir.c_str()) || !fs->is_regular_file(toit_in_dir.c_str()));
-      auto toit_file = std::string(segments.last()->data().c_str()) + ".toit";
-      note_fun = [=]() {
-        diagnostics()->report_note(note_node,
-                                    "Folder '%s' exists, but is missing a '%s' file",
-                                    note_path.c_str(),
-                                    toit_file.c_str());
-      };
+  // We need to handle cases where the segment contains '-' or '_'.
+  // So remember the length of the path before we add the segment.
+  int path_length_before_segment = path_builder->length();
+
+  const char* segment_c = segment.c_str();
+
+  // First add the segment verbatim. In most cases that will just work.
+  path_builder->join(segment_c);
+  auto result = check_path();
+  if (result != AddSegmentResult::NOT_FOUND) return result;
+
+  const char* old_style = IdentifierValidator::deprecated_underscore_identifier(segment_c, strlen(segment_c));
+  if (old_style == segment_c) {
+    // Didn't contain any '-'.
+    return AddSegmentResult::NOT_FOUND;
+  }
+  path_builder->reset_to(path_length_before_segment);
+  path_builder->join(old_style);
+  return check_path();
+}
+
+// Provides a better error message for failed imports.
+static void _report_failed_import(ast::Import* import,
+                                  const Package import_package,
+                                  ast::Node* note_node,
+                                  AddSegmentResult error_result,
+                                  const char* failed_path,
+                                  const char* alternative_path,
+                                  bool found_alternative_directory,
+                                  Filesystem* fs,
+                                  Diagnostics* diagnostics) {
+  auto segments = import->segments();
+  // Build the error-segments. These are just all the segments concatenated
+  // by "." as was in the source.
+  std::string error_segments;
+  if (import->is_relative()) {
+    error_segments += '.';
+    for (int i = 0; i < import->dot_outs(); i++) error_segments += '.';
+  }
+  for (int i = 0; i < segments.length(); i++) {
+    if (i != 0) error_segments += '.';
+    error_segments += segments[i]->data().c_str();
+  }
+
+  auto build_error_path = [&](const char* path) {
+    return import_package.build_error_path(fs, path);
+  };
+
+  diagnostics->start_group();
+  diagnostics->report_error(import, "Failed to import '%s'", error_segments.c_str());
+  if (found_alternative_directory) {
+    // We tried `foo.toit` and `foo/foo.toit`, and found `foo` but `foo/foo.toit`
+    // was not found.
+    // This is common enough that we can provide a better error message.
+    auto note_path = build_error_path(alternative_path);
+    if (error_result == AddSegmentResult::NOT_FOUND) {
+      diagnostics->report_note(note_node,
+                                "Folder '%s' exists, but is missing a '%s.toit' file",
+                                note_path.c_str(),
+                                segments.last()->data().c_str());
     } else {
-      auto note_path1 = build_error_path(toit_path);
-      auto note_path2 = build_error_path(toit_in_dir);
-      note_fun = [=]() {
-        diagnostics()->report_note(note_node,
-                                    "Missing library file. Tried '%s' and '%s'",
-                                    note_path1.c_str(),
-                                    note_path2.c_str());
-      };
+      ASSERT(error_result == AddSegmentResult::NOT_A_REGULAR_FILE);
+      diagnostics->report_note(note_node,
+                                "Not a regular file '%s.toit' file",
+                                note_path.c_str(),
+                                segments.last()->data().c_str());
+    }
+  } else if (failed_path != null && alternative_path != null) {
+    // We tried `foo.toit` and `foo/foo.toit`, and found neither.
+    auto note_path1 = build_error_path(failed_path);
+    auto note_path2 = build_error_path(alternative_path);
+    diagnostics->report_note(note_node,
+                             "Missing library file. Tried '%s' and '%s/%s.toit'",
+                             note_path1.c_str(),
+                             note_path2.c_str(),
+                             segments.last()->data().c_str());
+  } else if (alternative_path != null) {
+    // Special case where we only tried `foo/foo.toit`. In fact, we tried
+    // `src/foo.toit` as the first segment was used for the package name.
+    auto note_path = build_error_path(alternative_path);
+    diagnostics->report_note(note_node,
+                             "Missing library file. Tried '%s'",
+                             note_path.c_str());
+  } else {
+    auto note_path = build_error_path(failed_path);
+    switch (error_result) {
+      case AddSegmentResult::NOT_A_REGULAR_FILE:
+        diagnostics->report_note(note_node, "Not a regular file: '%s'", note_path.c_str());
+        break;
+      case AddSegmentResult::NOT_A_DIRECTORY:
+        diagnostics->report_note(note_node, "Not a folder: '%s'", note_path.c_str());
+        break;
+      case AddSegmentResult::NOT_FOUND:
+        diagnostics->report_note(note_node, "Folder does not exist: '%s'", note_path.c_str());
+        break;
+      default:
+        UNREACHABLE();
     }
   }
-  diagnostics()->start_group();
-  diagnostics()->report_error(import, "Failed to find import '%s'", error_path.c_str());
-  note_fun();
-  diagnostics()->end_group();
+  diagnostics->end_group();
 }
 
 /// Extracts the path for the [import] that is contained in [unit].
@@ -1213,7 +1243,11 @@ Source* Pipeline::_load_import(ast::Unit* unit,
   PathBuilder import_path_builder(filesystem());
   int relative_segment_start = 0;
   bool dotted_out = false;
+  Package import_package;
+
   if (is_relative) {
+    // The file is relative to the unit_package.
+    import_package = unit_package;
     // Relative paths must stay in the same package.
     expected_import_package_id = unit_package_id;
     import_path_builder.join(unit->absolute_path());
@@ -1247,9 +1281,9 @@ Source* Pipeline::_load_import(ast::Unit* unit,
       lsp_path = "",
       lsp_segment = module_segment->data().c_str();
     }
-    auto resolved = package_lock.resolve_prefix(unit_package, prefix);
+    import_package = package_lock.resolve_prefix(unit_package, prefix);
     auto error_range = module_segment->range();
-    switch (resolved.error_state()) {
+    switch (import_package.error_state()) {
       case Package::OK:
         // All good.
         break;
@@ -1275,62 +1309,125 @@ Source* Pipeline::_load_import(ast::Unit* unit,
       case Package::NOT_FOUND:
         diagnostics()->report_error(error_range,
                                     "Package '%s' for prefix '%s' not found",
-                                    resolved.id().c_str(),
+                                    import_package.id().c_str(),
                                     prefix.c_str());
         return null;
     }
-    expected_import_package_id = resolved.id();
-    import_path_builder.join(resolved.absolute_path());
-    relative_segment_start = resolved.is_sdk_prefix() ? 0 : 1;
+    expected_import_package_id = import_package.id();
+    import_path_builder.join(import_package.absolute_path());
+    relative_segment_start = import_package.is_sdk_prefix() ? 0 : 1;
     ASSERT(import_path_builder[import_path_builder.length() - 1] != '/');
   }
-  for (int i = relative_segment_start; i < segments.length(); i++) {
-    auto segment = segments[i];
-    if (segment->is_LspSelection()) {
-      lsp_path = import_path_builder.strdup();
-      lsp_segment = segment->data().c_str();
-    }
-    import_path_builder.join(segment->data().c_str());
-  }
 
-  int length_after_segments = import_path_builder.length();
   Source* result = null;
   auto result_package = Package::invalid();
-  bool already_reported_error = false;
-  for (int j = 0; j < 2; j++) {
-    import_path_builder.reset_to(length_after_segments);
-    if (j == 1) {
-      // In the second run we see if the import points to a directory in which
-      // case we duplicate the segment:
-      // `import foo` then looks for `foo/foo.toit`.
-      const char* last_segment = segments[segments.length() - 1]->data().c_str();
-      import_path_builder.join(last_segment);
+
+  if (relative_segment_start == segments.length()) {
+    // Something like `import foo` where `foo` is the name of a package.
+    // We only allow `foo.toit` (inside the package's `src` directory), but
+    // not `foo/foo.toit`.
+    // TODO(florian): the file name should not be based on the import
+    // segment, but on the package name.
+    int length_before_segment = import_path_builder.length();
+    auto result = add_segment(&import_path_builder,
+                              segments[segments.length() - 1]->data(),
+                              filesystem(),
+                              true);  // Must be a toit file.
+    if (result != AddSegmentResult::OK) {
+      // To make it easier to share the error reporting with the code below
+      // we have to remove the segment again.
+      import_path_builder.reset_to(length_before_segment);
+      _report_failed_import(import,
+                            import_package,
+                            segments[segments.length() - 1],
+                            result,
+                            null,  // No default path.
+                            import_path_builder.c_str(),  // We only tried the alternative path.
+                            true, // Did find the alternative directory, since we found a package and its 'src' directory.
+                            filesystem(),
+                            diagnostics());
+      goto segments_done;
     }
-    import_path_builder.add(".toit");
-    // TODO(florian): in order to show `<pkg1>` messages we can't have long package-ids. Currently
-    // they are something like `package-github.com/toitware/my_package`.
+  }
+  for (int i = relative_segment_start; i < segments.length(); i++) {
+    auto segment_id = segments[i];
+    auto segment = segment_id->data();
+    if (segment_id->is_LspSelection()) {
+      lsp_path = import_path_builder.strdup();
+      lsp_segment = segment.c_str();
+    }
+    bool is_last_segment = i == segments.length() - 1;
+    int length_before_new_segment = import_path_builder.length();
+    auto result = add_segment(&import_path_builder,
+                              segment,
+                              filesystem(),
+                              is_last_segment);  // Check whether it's a toit file for the last segment.
+    if (result != AddSegmentResult::OK) {
+      if (!is_last_segment || result != AddSegmentResult::NOT_FOUND) {
+        _report_failed_import(import,
+                              import_package,
+                              segment_id,
+                              result,
+                              import_path_builder.c_str(),
+                              null,  // No alternative path.
+                              false, // Didn't find the alternative directory.
+                              filesystem(),
+                              diagnostics());
+        // Don't return just yet, but give the lsp handler an opportunity to run.
+        goto segments_done;
+      } else {
+        // We didn't find the toit file.
+        // Keep the toit file path for error reporting.
+        const char* error_path = import_path_builder.strdup();
+
+        // Give it another try, this time duplicating the last segment.
+        // For example, for `import foo` we search for `foo.toit` and `foo/foo.toit`.
+        import_path_builder.reset_to(length_before_new_segment);
+        result = add_segment(&import_path_builder,
+                             segment,
+                             filesystem(),
+                             false);  // Now it must be a directory.
+        bool found_alternative_directory = result == AddSegmentResult::OK;
+        int length_after_folder = import_path_builder.length();
+
+        if (result == AddSegmentResult::OK) {
+
+          // We found a directory, so we duplicate the last segment.
+          result = add_segment(&import_path_builder,
+                               segment,
+                               filesystem(),
+                               true);  // Now it must be a toit file.
+        }
+        if (result != AddSegmentResult::OK) {
+          import_path_builder.reset_to(length_after_folder);
+          _report_failed_import(import,
+                                import_package,
+                                segment_id,
+                                result,
+                                error_path,
+                                import_path_builder.c_str(),
+                                found_alternative_directory,
+                                filesystem(),
+                                diagnostics());
+          // Don't return just yet, but give the lsp handler an opportunity to run.
+          goto segments_done;
+        }
+      }
+    }
+  }
+  {
     std::string import_path = import_path_builder.buffer();
     result_package = package_lock.package_for(import_path, filesystem());
     auto load_result = source_manager()->load_file(import_path, result_package);
-    switch (load_result.status) {
-      case SourceManager::LoadResult::OK:
-        result = load_result.source;
-        goto break_loop;
-
-      case SourceManager::LoadResult::NOT_FOUND:
-        // Do nothing.
-        break;
-
-      case SourceManager::LoadResult::NOT_REGULAR_FILE:
-      case SourceManager::LoadResult::FILE_ERROR:
-        load_result.report_error(import->range(), diagnostics());
-        already_reported_error = true;
-        // Don't return just yet, but give the lsp handler an opportunity to run.
-        goto break_loop;
+    if (load_result.status == SourceManager::LoadResult::OK) {
+      result = load_result.source;
+    } else {
+      load_result.report_error(import->range(), diagnostics());
+      // Don't return just yet, but give the lsp handler an opportunity to run.
+      goto segments_done;
     }
-    if (result != null) break;
   }
-  break_loop:
+  segments_done:
 
   if (lsp_path != null) {
     lsp_selection_import_path(lsp_path,
@@ -1338,18 +1435,16 @@ Source* Pipeline::_load_import(ast::Unit* unit,
                               result == null ? null : result->absolute_path());
   }
 
-  if (result == null && already_reported_error) return null;
-
   if (result == null) {
-    _report_failed_import(import, unit, package_lock);
-  } else {
-    ASSERT(result_package.is_ok());
-    if (result_package.id() != expected_import_package_id) {
-      if (!dotted_out) {  // If we dotted out, then we already reported an error.
-        // We ended up in a nested package.
-        // In theory we could allow this, but it feels brittle.
-        diagnostics()->report_error(import, "Import traverses package boundary: '%s'", import_path_builder.c_str());
-      }
+    return null;
+  }
+
+  ASSERT(result_package.is_ok());
+  if (result_package.id() != expected_import_package_id) {
+    if (!dotted_out) {  // If we dotted out, then we already reported an error.
+      // We ended up in a nested package.
+      // In theory we could allow this, but it feels brittle.
+      diagnostics()->report_error(import, "Import traverses package boundary: '%s'", import_path_builder.c_str());
     }
   }
 

@@ -1,19 +1,19 @@
-tests/negative/import_no_exit_test.toit:9:1: error: Failed to find import '.nonexisting'
+tests/negative/import_no_exit_test.toit:9:1: error: Failed to import '.nonexisting'
 import .nonexisting show ambiguous_unresolved
 ^~~~~~
 tests/negative/import_no_exit_test.toit:9:9: note: Missing library file. Tried 'tests/negative/nonexisting.toit' and 'tests/negative/nonexisting/nonexisting.toit'
 import .nonexisting show ambiguous_unresolved
         ^~~~~~~~~~~
-tests/negative/import_no_exit_test.toit:10:1: error: Failed to find import '.nonexisting'
+tests/negative/import_no_exit_test.toit:10:1: error: Failed to import '.nonexisting'
 import .nonexisting show ambiguous_unresolved
 ^~~~~~
 tests/negative/import_no_exit_test.toit:10:9: note: Missing library file. Tried 'tests/negative/nonexisting.toit' and 'tests/negative/nonexisting/nonexisting.toit'
 import .nonexisting show ambiguous_unresolved
         ^~~~~~~~~~~
-tests/negative/import_no_exit_cycle1.toit:5:1: error: Failed to find import '.no_exit_test'
+tests/negative/import_no_exit_cycle1.toit:5:1: error: Failed to import '.no-exit-test'
 import .no_exit_test
 ^~~~~~
-tests/negative/import_no_exit_cycle1.toit:5:9: note: Missing library file. Tried 'tests/negative/no_exit_test.toit' and 'tests/negative/no_exit_test/no_exit_test.toit'
+tests/negative/import_no_exit_cycle1.toit:5:9: note: Missing library file. Tried 'tests/negative/no_exit_test.toit' and 'tests/negative/no_exit_test/no-exit-test.toit'
 import .no_exit_test
         ^~~~~~~~~~~~
 tests/negative/import_no_exit_test.toit:23:29: error: Prefix clashes with toplevel declaration 'toplevel'
@@ -40,22 +40,22 @@ import .import_no_exit_b show ambiguous
 tests/negative/import_no_exit_test.toit:5:31: note: First show of identifier 'ambiguous'
 import .import_no_exit_a show ambiguous
                               ^~~~~~~~~
-tests/negative/import_no_exit_test.toit:8:31: error: Ambiguous 'show' import for 'ambiguous_unresolved'
+tests/negative/import_no_exit_test.toit:8:31: error: Ambiguous 'show' import for 'ambiguous-unresolved'
 import .import_no_exit_b show ambiguous_unresolved
                               ^~~~~~~~~~~~~~~~~~~~
-tests/negative/import_no_exit_test.toit:7:31: note: First show of identifier 'ambiguous_unresolved'
+tests/negative/import_no_exit_test.toit:7:31: note: First show of identifier 'ambiguous-unresolved'
 import .import_no_exit_a show ambiguous_unresolved
                               ^~~~~~~~~~~~~~~~~~~~
-tests/negative/import_no_exit_test.toit:9:26: error: Ambiguous 'show' import for 'ambiguous_unresolved'
+tests/negative/import_no_exit_test.toit:9:26: error: Ambiguous 'show' import for 'ambiguous-unresolved'
 import .nonexisting show ambiguous_unresolved
                          ^~~~~~~~~~~~~~~~~~~~
-tests/negative/import_no_exit_test.toit:7:31: note: First show of identifier 'ambiguous_unresolved'
+tests/negative/import_no_exit_test.toit:7:31: note: First show of identifier 'ambiguous-unresolved'
 import .import_no_exit_a show ambiguous_unresolved
                               ^~~~~~~~~~~~~~~~~~~~
-tests/negative/import_no_exit_test.toit:10:26: error: Ambiguous 'show' import for 'ambiguous_unresolved'
+tests/negative/import_no_exit_test.toit:10:26: error: Ambiguous 'show' import for 'ambiguous-unresolved'
 import .nonexisting show ambiguous_unresolved
                          ^~~~~~~~~~~~~~~~~~~~
-tests/negative/import_no_exit_test.toit:7:31: note: First show of identifier 'ambiguous_unresolved'
+tests/negative/import_no_exit_test.toit:7:31: note: First show of identifier 'ambiguous-unresolved'
 import .import_no_exit_a show ambiguous_unresolved
                               ^~~~~~~~~~~~~~~~~~~~
 tests/negative/import_no_exit_test.toit:12:31: error: Name clash with toplevel declaration 'toplevel'
@@ -82,7 +82,7 @@ import .import_no_exit_b show prefix
 tests/negative/import_no_exit_test.toit:17:29: error: Definition of prefix 'prefix'
 import .import_no_exit_a as prefix
                             ^~~~~~
-tests/negative/import_no_exit_test.toit:7:31: error: Unresolved show 'ambiguous_unresolved'
+tests/negative/import_no_exit_test.toit:7:31: error: Unresolved show 'ambiguous-unresolved'
 import .import_no_exit_a show ambiguous_unresolved
                               ^~~~~~~~~~~~~~~~~~~~
 tests/negative/import_no_exit_test.toit:12:31: error: Unresolved show 'toplevel'
@@ -100,13 +100,13 @@ import .import_no_exit_b show prefix
 tests/negative/import_no_exit_test.toit:29:8: error: Can't export prefix 'pre'
 export pre
        ^~~
-tests/negative/import_no_exit_test.toit:30:8: error: Ambiguous export of 'ambiguous_cd'
+tests/negative/import_no_exit_test.toit:30:8: error: Ambiguous export of 'ambiguous-cd'
 export ambiguous_cd
        ^~~~~~~~~~~~
-tests/negative/import_no_exit_c.toit:5:1: error: Definition of 'ambiguous_cd'
+tests/negative/import_no_exit_c.toit:5:1: error: Definition of 'ambiguous-cd'
 ambiguous_cd := 42
 ^~~~~~~~~~~~
-tests/negative/import_no_exit_d.toit:5:1: error: Definition of 'ambiguous_cd'
+tests/negative/import_no_exit_d.toit:5:1: error: Definition of 'ambiguous-cd'
 ambiguous_cd := 499
 ^~~~~~~~~~~~
 tests/negative/import_no_exit_test.toit:31:8: error: Unresolved export 'unresolved'

@@ -28,23 +28,23 @@ main:
   //   so it's not crucial to have that filtering.
   o.field = 4
 /*  ^~~~~
-  + field, member, only_setter
+  + field, member, only-setter
   - o
 */
 
-  // In theory we would like not to suggest `only_setter` as
+  // In theory we would like not to suggest `only-setter` as
   //   the compound assignment would fail. However, it's
   //   easier to suggest too much and rely on the error messages
   //   for the users.
   (SomeClass).member += 42
 /*            ^~~~~~
-  + field, member, only_setter
+  + field, member, only-setter
   - o
 */
 
   (prefix.SomeClass).member -= 1
 /*                   ^~~~~~
-  + field, member, only_setter
+  + field, member, only-setter
   - o
 */
 
@@ -53,85 +53,85 @@ main:
   local = 2
 /*^~~~~
   + local, global, SomeClass
-  - member, field, static_field
+  - member, field, static-field
 */
 
   local += 3
 /*^~~~~
   + local, global, SomeClass
-  - member, field, static_field
+  - member, field, static-field
 */
 
   local++  // Should be the same as `local += 1`.
 /*^~~~~
   + local, global, SomeClass
-  - member, field, static_field
+  - member, field, static-field
 */
 
   local = 2
 /*     ^
   + local
-  - member, field, static_field
+  - member, field, static-field
 */
 
   local += 3
 /*^
   + local, global, SomeClass
-  - member, field, static_field
+  - member, field, static-field
 */
 
   local += 3
 /*     ^
   + local
-  - member, field, static_field, global, SomeClass
+  - member, field, static-field, global, SomeClass
 */
 
   global = 2
 /*      ^
   + global
-  - member, field, static_field
+  - member, field, static-field
 */
 
   global += 3
 /*      ^
   + global
-  - member, field, static_field
+  - member, field, static-field
 */
 
   // Since `SomeClass` has a default-constructor, we need to list the
   //   instance members as well.
   SomeClass.static_field = 2
 /*          ^~~~~~~~~~~~
-  + static_field, static_getter_setter
+  + static-field, static-getter-setter
   - global, member, field
 */
 
   SomeClass.static_field += 2
 /*                      ^
-  + static_field
+  + static-field
   - global
 */
 
   SomeClass.static_field += 2
 /*                      ^
-  + static_field
+  + static-field
   - global
 */
 
   SomeClass.static_getter_setter += 2
 /*                              ^
-  + static_getter_setter
+  + static-getter-setter
   - global
 */
 
   prefix.SomeClass.static_field = 2
 /*                 ^~~~~~~~~~~~
-  + static_field, static_getter_setter
+  + static-field, static-getter-setter
   - global, field, member
 */
 
   prefix.SomeClass.static_field += 2
 /*                             ^
-  + static_field
+  + static-field
   - global
 */

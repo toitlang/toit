@@ -2,7 +2,7 @@ tests/negative/primitive_test.toit:6:13: error: Unknown primitive library 'some'
 
  #primitive.some.name
             ^~~~
-tests/negative/primitive_test.toit:8:1: error: Primitive 'core:string_hash_code' takes 1 parameters
+tests/negative/primitive_test.toit:8:1: error: Primitive 'core:string-hash-code' takes 1 parameters
 
 bar a b c d e f -> none:
 ^~~
@@ -40,7 +40,7 @@ tests/negative/primitive_test.toit:24:26: error: Failure parameter can't have a 
 tests/negative/primitive_test.toit:28:18: error: Invalid primitive call
   #primitive.core.name.too_many: |a|
                  ^
-tests/negative/primitive_test.toit:32:25: error: Unknown intrinsic 'not_existent'
+tests/negative/primitive_test.toit:32:25: error: Unknown intrinsic 'not-existent'
 
   #primitive.intrinsics.not_existent
                         ^~~~~~~~~~~~

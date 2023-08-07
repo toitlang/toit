@@ -18,7 +18,7 @@ class B:
 
   constructor .field_B1:
 /*             ^~~~~~~~
-  + field_B1, field_B2, field_B3, field_B4, field_B5, field_B6
+  + field-B1, field-B2, field-B3, field-B4, field-B5, field-B6
   - *
 */
     field_B2 = 0
@@ -29,8 +29,8 @@ class B:
 
   constructor.named .field_B1:
 /*                           ^
-  + field_B1
-  - field_A, setter, member
+  + field-B1
+  - field-A, setter, member
 */
     field_B2 = 0
     field_B3 = 0
@@ -48,7 +48,7 @@ class B:
 
   member .field_B1:
 /*        ^~~~~~~~
-  + field_B1, field_B2, field_B3, field_B4, field_B5, field_B6
+  + field-B1, field-B2, field-B3, field-B4, field-B5, field-B6
   - *
 */
 

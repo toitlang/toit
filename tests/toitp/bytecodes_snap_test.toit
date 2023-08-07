@@ -7,7 +7,7 @@ import ...tools.snapshot
 
 find_bytecode_test_method program/Program -> MethodInfo:
   program.do --method_infos: | method/MethodInfo |
-    if method.name == "bytecode_test" and method.type == MethodInfo.TOP_LEVEL_TYPE:
+    if method.name == "bytecode-test" and method.type == MethodInfo.TOP_LEVEL_TYPE:
       return method
   throw "not found"
 

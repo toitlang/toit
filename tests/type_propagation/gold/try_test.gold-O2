@@ -1,8 +1,8 @@
 main tests/type_propagation/try_test.toit
-  0[053] - invoke static test_nested tests/type_propagation/try_test.toit // {Null_}
+  0[053] - invoke static test-nested tests/type_propagation/try_test.toit // {Null_}
   3[089] - return null S1 0
 
-test_nested tests/type_propagation/try_test.toit
+test-nested tests/type_propagation/try_test.toit
   0[053] - invoke static nested tests/type_propagation/try_test.toit // {Null_|SmallInteger_}
   3[089] - return null S1 0
 

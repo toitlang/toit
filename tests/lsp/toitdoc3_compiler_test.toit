@@ -216,22 +216,22 @@ test client/LspClient:
         ".A.bar",
         ".A.gee",
         ".A.statik",
-        ".A.static_field",
-        ".B.from_super"
+        ".A.static-field",
+        ".B.from-super"
       ]
       """
       /**
-      \$foo and \$bar and \$gee and \$statik \$static_field \$from_super
+      \$foo and \$bar and \$gee and \$statik \$static-field \$from-super
       */
       class A extends B:
         foo:
         bar x:
         gee := null
         static statik:
-        static static_field := 0
+        static static-field := 0
 
       class B:
-        from_super:
+        from-super:
       """
 
   test_toitdoc
@@ -242,11 +242,11 @@ test client/LspClient:
         "A.bar",
         "A.gee",
         "A.statik",
-        "A.static_field",
+        "A.static-field",
       ]
       """
       /**
-      \$A.foo and \$A.bar and \$A.gee and \$A.statik \$A.static_field
+      \$A.foo and \$A.bar and \$A.gee and \$A.statik \$A.static-field
       */
 
       class A:
@@ -254,7 +254,7 @@ test client/LspClient:
         bar x:
         gee := null
         static statik:
-        static static_field := 0
+        static static-field := 0
       """
 
   test_toitdoc
@@ -265,11 +265,11 @@ test client/LspClient:
         "A.bar",
         "A.gee",
         "A.statik",
-        "A.static_field",
+        "A.static-field",
       ]
       """
       /**
-      \$A.foo and \$A.bar and \$A.gee and \$A.statik \$A.static_field can be accessed
+      \$A.foo and \$A.bar and \$A.gee and \$A.statik \$A.static-field can be accessed
       qualified from the class-toitdoc as well.
       */
       class A:
@@ -277,7 +277,7 @@ test client/LspClient:
         bar x:
         gee := null
         static statik:
-        static static_field := 0
+        static static-field := 0
       """
 
   test_toitdoc
@@ -352,8 +352,8 @@ test client/LspClient:
         ["B.bar --foo", "B.bar@3"],
         ["B.bar [x]", "B.bar@4"],
         ["B.bar [--foo]", "B.bar@5"],
-        ["A.field_getter", "A.field_getter@1"],
-        ["B.field_getter", "B.field_getter@1"],
+        ["A.field-getter", "A.field-getter@1"],
+        ["B.field-getter", "B.field-getter@1"],
       ]
       """
       /**
@@ -377,8 +377,8 @@ test client/LspClient:
       \$(B.bar --foo)
       \$(B.bar [x])
       \$(B.bar [--foo])
-      \$(A.field_getter)
-      \$(B.field_getter)
+      \$(A.field-getter)
+      \$(B.field-getter)
       */
       class A:
         constructor x:
@@ -405,10 +405,10 @@ test client/LspClient:
         foo [--foo]:
 
         /**@1*/
-        field_getter := 0
+        field-getter := 0
 
         // Just to make sure the field is resolved correctly.
-        field_getter x:
+        field-getter x:
 
       class B:
         /**@1*/
@@ -423,10 +423,10 @@ test client/LspClient:
         bar [--foo]:
 
         /**@1*/
-        field_getter := 0
+        field-getter := 0
 
         // Just to make sure the field is resolved correctly.
-        field_getter x:
+        field-getter x:
       """
 
   // Make sure we can reference the other path with a relative import.
@@ -437,9 +437,9 @@ test client/LspClient:
       --build_expected_refs=: build_refs --path=OTHER_PATH client [
         ["pre.OtherClass", "OtherClass"],
         ["pre.OtherClass.foo", "OtherClass.foo"],
-        ["pre.other_fun", "other_fun"],
+        ["pre.other-fun", "other-fun"],
         ["pre.OtherClass.foo", "OtherClass.foo"],
-        ["pre.other_fun", "other_fun"],
+        ["pre.other-fun", "other-fun"],
       ]
       """
       import .other as pre
@@ -447,10 +447,10 @@ test client/LspClient:
       /**
       \$pre.OtherClass
       \$pre.OtherClass.foo
-      \$pre.other_fun
+      \$pre.other-fun
 
       \$(pre.OtherClass.foo)
-      \$(pre.other_fun)
+      \$(pre.other-fun)
       */
       """
 
@@ -831,13 +831,13 @@ test client/LspClient:
 
   client.send_did_change --path=FILE_PATH """
       /**
-      \$A.from_super is not valid and should yield a warning.
+      \$A.from-super is not valid and should yield a warning.
       */
 
       class A extends B:
 
       class B:
-        from_super:
+        from-super:
 
       """
 

@@ -8,7 +8,7 @@ import expect show *
 import host.file
 import host.directory
 
-WHITELISTED ::= ["expect", "expect_equals", "identical", "expect_not", "expect_not_null"]
+WHITELISTED ::= ["expect", "expect-equals", "identical", "expect-not", "expect-not-null"]
 
 main args:
   fold_test_path := directory.realpath "$directory.cwd/../fold_test.toit"
@@ -16,12 +16,12 @@ main args:
   snap := run args --entry_path=fold_test_path
   program := snap.decode
   methods := extract_methods program [
-    "int_int_test",
-    "int_float_test",
-    "float_int_test",
-    "float_float_test",
-    "not_test",
-    "if_test"
+    "int-int-test",
+    "int-float-test",
+    "float-int-test",
+    "float-float-test",
+    "not-test",
+    "if-test"
   ]
   methods.do: |name method|
     expect method != null

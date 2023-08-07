@@ -1,11 +1,11 @@
 main tests/type_propagation/lambda_test.toit
-  0[053] - invoke static test_simple tests/type_propagation/lambda_test.toit // {*}
+  0[053] - invoke static test-simple tests/type_propagation/lambda_test.toit // {*}
   3[041] - pop 1
-  4[053] - invoke static test_arguments tests/type_propagation/lambda_test.toit // {Null_}
+  4[053] - invoke static test-arguments tests/type_propagation/lambda_test.toit // {Null_}
   7[089] - return null S1 0
 
-test_simple tests/type_propagation/lambda_test.toit
-  0[029] - load method [lambda] in test_simple tests/type_propagation/lambda_test.toit
+test-simple tests/type_propagation/lambda_test.toit
+  0[029] - load method [lambda] in test-simple tests/type_propagation/lambda_test.toit
   5[023] - load smi 0
   6[022] - load null
   7[053] - invoke static Array_ <sdk>/core/collections.toit // [{SmallInteger_}, {Null_}] -> {LargeArray_|SmallArray_}
@@ -17,12 +17,12 @@ test_simple tests/type_propagation/lambda_test.toit
  18[053] - invoke static Lambda.call <sdk>/core/objects.toit // [{Lambda}] -> {*}
  21[088] - return S2 0
 
-[lambda] in test_simple tests/type_propagation/lambda_test.toit
+[lambda] in test-simple tests/type_propagation/lambda_test.toit
   0[026] - load smi 42
   2[088] - return S1 0
 
-test_arguments tests/type_propagation/lambda_test.toit
-  0[029] - load method [lambda] in test_arguments tests/type_propagation/lambda_test.toit
+test-arguments tests/type_propagation/lambda_test.toit
+  0[029] - load method [lambda] in test-arguments tests/type_propagation/lambda_test.toit
   5[023] - load smi 0
   6[022] - load null
   7[053] - invoke static Array_ <sdk>/core/collections.toit // [{SmallInteger_}, {Null_}] -> {LargeArray_|SmallArray_}
@@ -33,7 +33,7 @@ test_arguments tests/type_propagation/lambda_test.toit
  17[026] - load smi 42
  19[053] - invoke static Lambda.call <sdk>/core/objects.toit // [{Lambda}, {SmallInteger_}] -> {*}
  22[041] - pop 1
- 23[029] - load method [lambda] in test_arguments tests/type_propagation/lambda_test.toit
+ 23[029] - load method [lambda] in test-arguments tests/type_propagation/lambda_test.toit
  28[023] - load smi 0
  29[022] - load null
  30[053] - invoke static Array_ <sdk>/core/collections.toit // [{SmallInteger_}, {Null_}] -> {LargeArray_|SmallArray_}
@@ -46,13 +46,13 @@ test_arguments tests/type_propagation/lambda_test.toit
  44[053] - invoke static Lambda.call <sdk>/core/objects.toit // [{Lambda}, {SmallInteger_}, {String_}] -> {*}
  47[089] - return null S1 0
 
-[lambda] in test_arguments tests/type_propagation/lambda_test.toit
+[lambda] in test-arguments tests/type_propagation/lambda_test.toit
  - argument 0: {*}
   0[016] - load local 2
   1[053] - invoke static id tests/type_propagation/lambda_test.toit // [{*}] -> {*}
   4[088] - return S1 1
 
-[lambda] in test_arguments tests/type_propagation/lambda_test.toit
+[lambda] in test-arguments tests/type_propagation/lambda_test.toit
  - argument 0: {*}
  - argument 1: {*}
   0[017] - load local 3

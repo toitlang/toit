@@ -16,9 +16,9 @@ main args:
   a_bar_info := null
   b_bar_info := null
   program.do --method_infos: | method |
-    if method.name == "test_foo":
+    if method.name == "test-foo":
       a_foo_info = method
-    else if method.name == "test_bar":
+    else if method.name == "test-bar":
       outer_name := program.class_name_for method.outer
       if outer_name == "ClassA":
         a_bar_info = method

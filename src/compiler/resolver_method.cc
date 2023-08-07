@@ -1033,6 +1033,7 @@ static bool has_constant_name(Symbol name) {
     }
     if ('0' <= c && c <= '9') continue;
     if (c == '_') continue;
+    if (c == '-') continue;
     return false;
   }
   return seen_capital;

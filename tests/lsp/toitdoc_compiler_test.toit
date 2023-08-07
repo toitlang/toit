@@ -31,49 +31,49 @@ FILE_TEMPLATE ::= """\
     #Class.method1
     method1:
     #Class.method2
-    method2 x --named_arg optional=3 [block] --optional_named=null:
-    #Class.static_method1
-    static static_method1:
-    #Class.static_method2
-    static static_method2 x --named_arg optional=3 [block] --optional_named=null:
+    method2 x --named-arg optional=3 [block] --optional-named=null:
+    #Class.static-method1
+    static static-method1:
+    #Class.static-method2
+    static static-method2 x --named-arg optional=3 [block] --optional-named=null:
     #Class.field
     field := null
     #Class.field2
     field2 ::= null
     #Class.setter=
     setter= val:
-    #Class.static_field
-    static static_field := null
-    #Class.static_final_field
-    static static_final_field ::= null
-    #Class.STATIC_CONSTANT
-    static STATIC_CONSTANT ::= 499
+    #Class.static-field
+    static static-field := null
+    #Class.static-final-field
+    static static-final-field ::= null
+    #Class.STATIC-CONSTANT
+    static STATIC-CONSTANT ::= 499
   #AbstractClass
   abstract class AbstractClass:
-    #AbstractClass.abstract_method
-    abstract abstract_method
-    #AbstractClass.abstract_method2
-    abstract abstract_method2 x --named_arg [block]
+    #AbstractClass.abstract-method
+    abstract abstract-method
+    #AbstractClass.abstract-method2
+    abstract abstract-method2 x --named-arg [block]
   #Interface
   class Interface:
-    #Interface.interface_method
-    interface_method
-    #Interface.interface_method2
-    interface_method2 x --named_arg [block]
-    #Interface.static_method
-    static static_method
-    #Interface.static_method2
-    static static_method2 x --named_arg  optional=3 [block] --optional_named=null:
+    #Interface.interface-method
+    interface-method
+    #Interface.interface-method2
+    interface-method2 x --named-arg [block]
+    #Interface.static-method
+    static static-method
+    #Interface.static-method2
+    static static-method2 x --named-arg  optional=3 [block] --optional-named=null:
   #global
   global := 499
-  #final_global
-  final_global ::= {:}
+  #final-global
+  final-global ::= {:}
   #CONSTANT
   CONSTANT ::= 499
-  #global_function
-  global_function:
-  #global_function2
-  global_function2 x --named_arg  optional=3 [block] --optional_named=null:
+  #global-function
+  global-function:
+  #global-function2
+  global-function2 x --named-arg  optional=3 [block] --optional-named=null:
   """
 
 class TemplateFiller:

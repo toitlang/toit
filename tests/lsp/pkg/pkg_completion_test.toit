@@ -10,7 +10,7 @@ import target
 
 import target.target as pre
 /*            ^~~~~~~~~~~~~
-  + target, target_completion_test
+  + target, target-completion-test
   - core, foo
 */
 
@@ -36,33 +36,33 @@ class Private_:
 main:
   private_++
 /*^~~~~~~~~~
-  + identify, private_, fun, target_global
-  - target_global_, TargetClass_, fun_
+  + identify, private_, fun, target-global
+  - target-global_, TargetClass_, fun_
 */
 
   target.identify
 /*       ^~~~~~~~
-  + identify, fun, target_global
-  - private_, target_global_, TargetClass_, fun_
+  + identify, fun, target-global
+  - private_, target-global_, TargetClass_, fun_
 */
 
   local := 499
   local++
 /*^~~~~
   + local, private_
-  - target_global_, TargetClass_, fun_
+  - target-global_, TargetClass_, fun_
 */
 
   local_ := 499
   local_++
 /*^~~~~~
   + local, local_, private_
-  - target_global_, TargetClass_, fun_
+  - target-global_, TargetClass_, fun_
 */
 
   target_class := target.TargetClass_.named
 /*                                    ^~~~~
-  + named, statik, static_field
+  + named, statik, static-field
   - *
 */
 
@@ -74,14 +74,14 @@ main:
 
   p := Private_.named
 /*              ^~~~~
-  + named, named_, statik, static_, static_field, static_field_
+  + named, named_, statik, static_, static-field, static-field_
   - *
 */
 
   p.field++
 /*  ^~~~~~~
   + field, field_, member, member_
-  - named, named_, statik, static_, static_field, static_field_
+  - named, named_, statik, static_, static-field, static-field_
 */
 
 gee -> target.TargetClass_?:

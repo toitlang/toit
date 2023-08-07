@@ -158,11 +158,11 @@ enum Precedence {
   I(__throw__)                                                 \
   I(__exit__)                                                  \
   I(__yield__)                                                 \
-  I(__deep_sleep__)                                            \
-  I(__invoke_lambda__)                                         \
-  I(__invoke_initializer__)                                    \
-  I(__store_global_with_id__)                                  \
-  I(__load_global_with_id__)                                   \
+  IN(__deep_sleep__, "__deep-sleep__")                         \
+  IN(__invoke_lambda__, "__invoke-lambda__")                   \
+  IN(__invoke_initializer__, "__invoke-initializer__")         \
+  IN(__store_global_with_id__, "__store-global-with-id__")     \
+  IN(__load_global_with_id__, "__load-global-with-id__")       \
   I(Object)                                                    \
   I(Interface_)                                                \
   I(Task_)                                                     \
@@ -171,14 +171,14 @@ enum Precedence {
   I(Stack_)                                                    \
   I(__Monitor__)                                               \
   I(lambda_)                                                   \
-  I(interpolate_strings_)                                      \
-  I(simple_interpolate_strings_)                               \
+  IN(interpolate_strings_, "interpolate-strings_")             \
+  IN(simple_interpolate_strings_, "simple-interpolate-strings_") \
   I(stringify)                                                 \
-  I(lookup_failure_)                                           \
-  I(as_check_failure_)                                         \
-  I(primitive_lookup_failure_)                                 \
-  I(uninitialized_global_failure_)                             \
-  I(program_failure_)                                          \
+  IN(lookup_failure_, "lookup-failure_")                       \
+  IN(as_check_failure_, "as-check-failure_")                   \
+  IN(primitive_lookup_failure_, "primitive-lookup-failure_")   \
+  IN(uninitialized_global_failure_, "uninitialized-global-failure_") \
+  IN(program_failure_, "program-failure_")                     \
   I(locked_)                                                   \
   IN(throw_, "throw")                                          \
   IN(catch_, "catch")                                          \
@@ -197,10 +197,10 @@ enum Precedence {
   I(List_)                                                     \
   I(ListSlice_)                                                \
   I(Tombstone_)                                                \
-  I(create_array_)                                             \
-  I(create_byte_array_)                                        \
-  I(create_list_literal_from_array_)                           \
-  I(create_cow_byte_array_)                                    \
+  IN(create_array_, "create-array_")                           \
+  IN(create_byte_array_, "create-byte-array_")                 \
+  IN(create_list_literal_from_array_, "create-list-literal-from-array_") \
+  IN(create_cow_byte_array_, "create-cow-byte-array_")         \
   I(Set)                                                       \
   I(Map)                                                       \
   I(it)                                                        \
@@ -228,10 +228,10 @@ enum Precedence {
   IN(empty_string, "")                                         \
   I(assert_)                                                   \
   I(intrinsics)                                                \
-  I(array_do)                                                  \
-  I(hash_find)                                                 \
-  I(hash_do)                                                   \
-  I(smi_repeat)                                                \
+  IN(array_do, "array-do")                                     \
+  IN(hash_find, "hash-find")                                   \
+  IN(hash_do, "hash-do")                                       \
+  IN(smi_repeat, "smi-repeat")                                 \
   I(value_)                                                    \
   IN(index, "[]")                                              \
   IN(index_put, "[]=")                                         \
@@ -246,9 +246,9 @@ enum Precedence {
   I(constructor)                                               \
   I(unreachable)                                               \
   I(_)                                                         \
-  I(debug_string)                                              \
-  I(dispatch_debug_string)                                     \
-  I(run_global_initializer_)                                   \
+  IN(debug_string, "debug-string")                             \
+  IN(dispatch_debug_string, "dispatch-debug-string")           \
+  IN(run_global_initializer_, "run-global-initializer_")       \
   I(from)                                                      \
   I(to)                                                        \
   IN(enum_, "enum")                                            \
