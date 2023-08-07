@@ -60,7 +60,6 @@ class PcntUnitResource : public Resource {
       if (!used_channels_[i]) continue;
       auto channel = static_cast<pcnt_channel_t>(i);
       if (channel != kInvalidChannel) {
-        // In the teardown we don't handle errors for cloning the channel.
         close_channel(channel);
       }
     }
