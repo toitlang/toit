@@ -134,11 +134,11 @@ class LinkedList {
       return entry_->container();
     }
 
-    bool operator==(const Iterator&other) const {
+    bool operator==(const Iterator& other) const {
       return entry_ == other.entry_;
     }
 
-    bool operator!=(const Iterator&other) const {
+    bool operator!=(const Iterator& other) const {
       return entry_ != other.entry_;
     }
 
