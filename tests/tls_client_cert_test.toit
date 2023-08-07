@@ -4,6 +4,7 @@
 
 import expect show *
 
+import certificate_roots
 import tls
 import .tcp as tcp
 import net.x509 as net
@@ -75,9 +76,14 @@ working_site host port cert key expected_cert_name:
 connect_to_site host port cert key expected_cert_name:
   raw := tcp.TcpSocket
   raw.connect host port
+  ROOTS ::= [
+      certificate_roots.DIGICERT_HIGH_ASSURANCE_EV_ROOT_CA,
+      certificate_roots.DIGICERT_GLOBAL_ROOT_CA,
+      certificate_roots.DIGICERT_GLOBAL_ROOT_G2
+      ]
   socket := tls.Socket.client raw
     --server_name=host
-    --root_certificates=net.TRUSTED_ROOTS
+    --root_certificates=ROOTS
     --certificate=key ? tls.Certificate cert key : null
 
   expect_equals cert.common_name expected_cert_name

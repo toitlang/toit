@@ -14,6 +14,7 @@ main:
     sans10 = Font.get "sans10"
   // Some builds of the VM don't have font support.
   if error == "UNIMPLEMENTED":
+    print "No font support"
     return
   else if error:
     throw error

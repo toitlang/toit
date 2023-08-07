@@ -158,39 +158,40 @@ connect_to_site host port expected_certificate_name:
 
 add_global_certs -> none:
   // Test binary (DER) roots.
-  tls.add_global_root_certificate DIGICERT_GLOBAL_ROOT_G2_BYTES 0x025449c2
-  tls.add_global_root_certificate DIGICERT_GLOBAL_ROOT_CA_BYTES
-  tls.add_global_root_certificate GLOBALSIGN_ROOT_CA_BYTES  // Needed for pravda.ru.
-  tls.add_global_root_certificate GLOBALSIGN_ROOT_CA_R3_BYTES  // Needed for lund.se.
-  tls.add_global_root_certificate COMODO_RSA_CERTIFICATION_AUTHORITY_BYTES  // Needed for elpriser.nu.
-  tls.add_global_root_certificate BALTIMORE_CYBERTRUST_ROOT_BYTES  // Needed for coinbase.com.
+  tls.add_global_root_certificate_ DIGICERT_GLOBAL_ROOT_G2_BYTES 0x025449c2
+  tls.add_global_root_certificate_ DIGICERT_GLOBAL_ROOT_CA_BYTES
+  // Test roots that are RootCertificate objects.
+  GLOBALSIGN_ROOT_CA_BYTES.install  // Needed for pravda.ru.
+  GLOBALSIGN_ROOT_CA_R3_BYTES.install  // Needed for lund.se.
+  COMODO_RSA_CERTIFICATION_AUTHORITY_BYTES.install  // Needed for elpriser.nu.
+  BALTIMORE_CYBERTRUST_ROOT_BYTES.install  // Needed for coinbase.com.
   // Test a binary root that is a modified copy-on-write byte array.
   USERTRUST_ECC_CERTIFICATION_AUTHORITY_BYTES[42] ^= 42
   USERTRUST_ECC_CERTIFICATION_AUTHORITY_BYTES[42] ^= 42
-  tls.add_global_root_certificate USERTRUST_ECC_CERTIFICATION_AUTHORITY_BYTES  // Needed for helsinki.fi.
+  tls.add_global_root_certificate_ USERTRUST_ECC_CERTIFICATION_AUTHORITY_BYTES  // Needed for helsinki.fi.
   // Test ASCII (PEM) roots.
-  tls.add_global_root_certificate USERTRUST_CERTIFICATE_TEXT 0x0c49cbaf  // Needed for dmi.dk.
-  tls.add_global_root_certificate ISRG_ROOT_X1_TEXT
+  tls.add_global_root_certificate_ USERTRUST_RSA_CERTIFICATE_TEXT 0x0c49cbaf  // Needed for dmi.dk.
+  tls.add_global_root_certificate_ ISRG_ROOT_X1_TEXT  // Needed by dkhostmaster.dk and digimedia.com.
   // Test that the cert can be a slice.
-  tls.add_global_root_certificate DIGICERT_ROOT_TEXT[..DIGICERT_ROOT_TEXT.size - 9]
+  tls.add_global_root_certificate_ DIGICERT_ROOT_TEXT[..DIGICERT_ROOT_TEXT.size - 9]
 
   // Test that we get a sensible error when trying to add a parsed root
   // certificate.
-  parsed := net.Certificate.parse USERTRUST_CERTIFICATE_TEXT
-  expect_error "WRONG_OBJECT_TYPE": tls.add_global_root_certificate parsed
+  parsed := net.Certificate.parse USERTRUST_RSA_CERTIFICATE_TEXT
+  expect_error "WRONG_OBJECT_TYPE": tls.add_global_root_certificate_ parsed
 
   // Test that unparseable cert gives an immediate error.
   expect_error "OID is not found":
     DIGICERT_GLOBAL_ROOT_CA_BYTES[42] ^= 42
-    tls.add_global_root_certificate DIGICERT_GLOBAL_ROOT_CA_BYTES
+    tls.add_global_root_certificate_ DIGICERT_GLOBAL_ROOT_CA_BYTES
 
   // Test that it's not too costly to add the same cert multiple times.
   1_000_000.repeat:
-    tls.add_global_root_certificate DIGICERT_GLOBAL_ROOT_G2_BYTES 0x025449c2
+    tls.add_global_root_certificate_ DIGICERT_GLOBAL_ROOT_G2_BYTES 0x025449c2
 
 // Ebay.de sometimes uses this trusted root certificate.
 // Serial number 01:FD:6D:30:FC:A3:CA:51:A8:1B:BC:64:0E:35:03:2D
-USERTRUST_CERTIFICATE_TEXT ::= """\
+USERTRUST_RSA_CERTIFICATE_TEXT ::= """\
 -----BEGIN CERTIFICATE-----
 MIIF3jCCA8agAwIBAgIQAf1tMPyjylGoG7xkDjUDLTANBgkqhkiG9w0BAQwFADCB
 iDELMAkGA1UEBhMCVVMxEzARBgNVBAgTCk5ldyBKZXJzZXkxFDASBgNVBAcTC0pl
@@ -418,7 +419,7 @@ DIGICERT_ASSURED_ID_ROOT_G3_BYTES ::= #[
     '!','f',199,'/',234,150,'c','j','e','E',146,149,1,180,
 ]
 
-GLOBALSIGN_ROOT_CA_BYTES ::= #[
+GLOBALSIGN_ROOT_CA_BYTES ::= tls.RootCertificate #[
     '0',0x82,3,'u','0',0x82,2,']',160,3,2,1,2,2,11,4,0,0,0,0,1,21,'K','Z',195,
     0x94,'0',13,6,9,'*',134,'H',134,247,13,1,1,5,5,0,'0','W','1',11,'0',9,6,3,
     'U',4,6,19,2,'B','E','1',25,'0',23,6,3,'U',4,10,19,16,'G','l','o','b','a',
@@ -465,7 +466,7 @@ GLOBALSIGN_ROOT_CA_BYTES ::= #[
     201,222,12,136,10,29,214,'f','U',226,252,'H',201,')','&','i',224,
 ]
 
-COMODO_RSA_CERTIFICATION_AUTHORITY_BYTES ::= #[
+COMODO_RSA_CERTIFICATION_AUTHORITY_BYTES ::= tls.RootCertificate #[
     '0',0x82,5,216,'0',130,3,192,160,3,2,1,2,2,16,'L',170,249,202,219,'c','o',
     224,31,247,'N',216,'[',3,134,157,'0',13,6,9,'*',134,'H',134,247,13,1,1,12,
     0x5,0,'0',129,133,'1',11,'0',9,6,3,'U',4,6,19,2,'G','B','1',27,'0',25,6,3,
@@ -545,7 +546,7 @@ COMODO_RSA_CERTIFICATION_AUTHORITY_BYTES ::= #[
     173,187,27,'_','t',
 ]
 
-BALTIMORE_CYBERTRUST_ROOT_BYTES ::= #[
+BALTIMORE_CYBERTRUST_ROOT_BYTES ::= tls.RootCertificate #[
     '0',0x82,3,'w','0',130,2,'_',160,3,2,1,2,2,4,2,0,0,185,'0',13,6,9,'*',134,
     'H',0x86,0xf7,0xd,1,1,5,5,0,'0','Z','1',11,'0',9,6,3,'U',4,6,19,2,'I','E',
     '1',0x12,'0',16,6,3,'U',4,10,19,9,'B','a','l','t','i','m','o','r','e','1',
@@ -629,7 +630,7 @@ USERTRUST_ECC_CERTIFICATION_AUTHORITY_BYTES ::= #[
     'M',201,'a',218,209,']','W','j',24,
 ]
 
-GLOBALSIGN_ROOT_CA_R3_BYTES ::= #[
+GLOBALSIGN_ROOT_CA_R3_BYTES ::= tls.RootCertificate #[
     '0',0x82,0x3,'_','0',130,2,'G',160,3,2,1,2,2,11,4,0,0,0,0,1,'!','X','S',8,
     162,'0',13,6,9,'*',134,'H',134,247,13,1,1,11,5,0,'0','L','1',' ','0',30,6,
     3,'U',4,0xb,19,23,'G','l','o','b','a','l','S','i','g','n',' ','R','o','o',
