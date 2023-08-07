@@ -634,9 +634,9 @@ find_esptool_ -> List:
     if file.is_file esptool_py:
       return ["python$bin_extension", esptool_py]
   else if dir != "":
-    esptool := ["$dir/esptool$bin_extension"]
-    if file.is_file esptool[0]:
-      return esptool
+    esptool := "$dir/esptool$bin_extension"
+    if file.is_file esptool:
+      return [esptool]
   // Try to find esptool in PATH.
   esptool := "esptool$bin_extension"
   catch:
