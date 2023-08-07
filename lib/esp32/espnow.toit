@@ -154,18 +154,17 @@ class Service:
   Blocks until a datagram is received.
   */
   receive -> Datagram?:
-    array := Array_ 2
     while true:
       // Always try to read directly. If there is no data available we
       // will wait for the state to change.
       state_.clear_state DATA_AVAILABLE_STATE_
-      result := espnow_receive_ resource_ array
+      result := espnow_receive_ resource_
       if not result:
         state_.wait_for_state DATA_AVAILABLE_STATE_
         continue
 
-      address := Address array[0]
-      return Datagram address array[1]
+      address := Address result[0]
+      return Datagram address result[1]
 
   add_peer address/Address --channel/int --key/Key?=null -> bool:
     if not 0 <= channel <= 14:
@@ -194,7 +193,7 @@ espnow_send_ resource mac data:
 espnow_send_succeeded_ resource:
   #primitive.espnow.send_succeeded
 
-espnow_receive_ resource output:
+espnow_receive_ resource:
   #primitive.espnow.receive
 
 espnow_add_peer_ resource mac channel key:
