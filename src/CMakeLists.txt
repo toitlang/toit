@@ -186,6 +186,10 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   set(TOIT_BLUETOOTH_LIBS "-framework Foundation" "-framework CoreBluetooth" ObjC)
 endif()
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR (${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND NOT CMAKE_SIZEOF_VOID_P EQUAL 4 AND NOT ${CMAKE_SYSTEM_PROCESSOR} MATCHES "ARM"))
+  set(TOIT_Z_LIB z)
+endif()
+
 # Because of the `CACHE INTERNAL ""` at the end of the `set` we can
 #   use this variable outside of the directory.
 set(TOIT_LINK_LIBS
@@ -198,6 +202,7 @@ set(TOIT_LINK_LIBS
   ${TOIT_LINK_GROUP_END_FLAGS}
   toit_compiler          # TODO(florian): should not be here by default.
   pthread
+  ${TOIT_Z_LIB}
   ${CMAKE_DL_LIBS}
   ${TOIT_LINK_LIBS_LIBGCC}
   ${TOIT_LINK_SEGFAULT}

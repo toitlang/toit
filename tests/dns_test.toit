@@ -15,7 +15,8 @@ main:
   fail_test
   long_test
   parse_numeric_test
-  fallback_test
+  task:: fallback_test
+  task:: fallback_test_2
 
 localhost_test:
   expect_equals "127.0.0.1" (dns_lookup "localhost").stringify
@@ -73,6 +74,8 @@ cache_test:
 
 fail_test:
   error := catch: dns_lookup "does-not-resolve.example.com"
+  print error
+  error as DnsException
   expect error is DnsException
   exception := error as DnsException
   expect
@@ -135,6 +138,18 @@ fallback_test:
   dns_lookup --server="8.8.4.4" "www.facebook.com"
 
   expect_throw "BAD_FORMAT": dns_lookup --server="5.5.5" "www.google.com"
+
+fallback_test_2:
+  // Start with the server that returns an error, then fall back to the
+  // one that times out. Verify that the good error is thrown.
+  client := DnsClient [
+      "8.8.8.8",    // Google DNS.
+      "240.0.0.0",  // Black hole that never answers.
+      ]
+
+  error := catch: dns_lookup --client=client "no-such-host.example.com"
+  expect
+    (error as DnsException).text.contains "NO_SUCH_DOMAIN"
 
 valid_ipv4 str/string -> none:
   expect

@@ -14,19 +14,22 @@ import pulse_counter
 IN1 /int ::= 18
 IN2 /int ::= 25
 
-allocate_unit --error/bool=false:
+allocate_unit --close/bool=false:
   in := gpio.Pin IN1
   unit := pulse_counter.Unit
   channel := unit.add_channel in
-  if error: throw "fail"
+  if close:
+    unit.close
 
 main:
-  10.repeat:
-    process := spawn::
-      allocate_unit
-    sleep --ms=20
-
+  print "Closing correctly"
   10.repeat:
     spawn::
-      allocate_unit --error
+      allocate_unit --close
+    sleep --ms=20
+
+  print "Not closing"
+  10.repeat:
+    spawn::
+      allocate_unit
     sleep --ms=20

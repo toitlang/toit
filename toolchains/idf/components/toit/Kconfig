@@ -41,7 +41,34 @@ menu "Toit"
         bool "Include primitives for bit-oriented (2-color, 3-color, 4-shades) displays"
         default "y"
 
+    config TOIT_FONT
+        bool "Include primitives for font rendering"
+        default "y"
+        help
+            If selected the font rendering primitives will be included in the
+            Toit binary.  If this is selected you would normally want to also
+            select either TOIT_BYTE_DISPLAY or TOIT_BIT_DISPLAY, otherwise you
+            can only query font metrics, but not actually render characters.
+
     menu "Advanced setup"
+        config TOIT_INTERPRETER_IN_IRAM
+            bool "Run interpreter from IRAM"
+            default "y"
+            help
+                If selected, the interpreter will be placed in IRAM. This will
+                increase the performance dramatically, but reduce the amount of
+                free IRAM by about 13k.  Set to "n" if you cannot link because
+                of exhausted IRAM.
+
+        config TOIT_INTERPRETER_HELPERS_IN_IRAM
+            bool "Run interpreter helper code from IRAM"
+            default "y"
+            help
+                If selected, the interpreter helper functions will be placed in
+                IRAM. This will increase the performance slightly, but reduce
+                the amount of free IRAM by about 2k.  Set to "n" if you cannot
+                link because of exhausted IRAM.
+
         config TOIT_CRYPTO
             boolean "Enable crypto functions on ESP32"
             default "y"

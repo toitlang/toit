@@ -1,3 +1,0 @@
-toit-cert-roots/examples/get_google.toit:16:22: warning: Deprecated 'GLOBALSIGN_ROOT_CA_R2'
-    certificate_roots.GLOBALSIGN_ROOT_CA_R2,
-                     ^
