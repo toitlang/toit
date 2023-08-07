@@ -39,6 +39,7 @@ namespace toit {
   fn(Siphash)                           \
   fn(Adler32)                           \
   fn(ZlibRle)                           \
+  fn(Zlib)                              \
   fn(UartResource)                      \
   fn(GpioResource)                      \
   fn(I2sResource)                       \
