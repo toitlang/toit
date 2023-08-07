@@ -13,7 +13,7 @@ dependencies:
     version: ^0.1.0
   host:
     url: github.com/toitlang/pkg-host
-    version: ^1.8.1
+    version: ^1.9.0
   tar:
     url: github.com/toitlang/pkg-tar
     version: ^1.0.0
