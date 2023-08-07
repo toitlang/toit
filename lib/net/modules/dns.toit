@@ -7,18 +7,23 @@ import net.modules.udp as udp_module
 import net
 
 DNS_DEFAULT_TIMEOUT ::= Duration --s=20
-DNS_RETRY_TIMEOUT ::= Duration --s=1
+DNS_RETRY_TIMEOUT ::= Duration --ms=600
+MAX_RETRY_ATTEMPTS_ ::= 3
 HOSTS_ ::= {"localhost": "127.0.0.1"}
 MAX_CACHE_SIZE_ ::= platform == "FreeRTOS" ? 30 : 1000
 MAX_TRIMMED_CACHE_SIZE_ ::= MAX_CACHE_SIZE_ / 3 * 2
 
 class DnsException:
   text/string
+  name/string?
 
-  constructor .text:
+  constructor .text --.name=null:
 
   stringify -> string:
-    return "DNS lookup exception $text"
+    if name:
+      return "DNS lookup for '$name' exception $text"
+    else:
+      return "DNS lookup exception $text"
 
 /**
 Look up a domain name and return an A or AAAA record.
@@ -145,7 +150,7 @@ If a DNS server fails to answer after 2.5 times the $DNS_RETRY_TIMEOUT, then
 */
 class DnsClient:
   servers_/List
-  current_server_/int := ?
+  current_server_index_/int := ?
 
   cache_ ::= Map  // From name to CacheEntry_.
   cache_ipv6_ ::= Map  // From name to CacheEntry_.
@@ -157,9 +162,35 @@ class DnsClient:
   constructor servers/List:
     if servers.size == 0 or (servers.any: it is not string and it is not net.IpAddress): throw "INVALID_ARGUMENT"
     servers_ = servers.map: (it is string) ? net.IpAddress.parse it : it
-    current_server_ = 0
+    current_server_index_ = 0
 
   static DNS_UDP_PORT ::= 53
+
+  get_ query/DnsQuery_ server_ip/net.IpAddress -> net.IpAddress:
+    socket/udp_module.Socket? := null
+    retry_timeout := DNS_RETRY_TIMEOUT
+    attempt_counter := 1
+    try:
+      socket = udp_module.Socket
+
+      socket.connect
+        net.SocketAddress server_ip DNS_UDP_PORT
+
+      // If we don't get an answer resend the query with exponential backoff
+      // until the outer timeout expires or we have tried too many times.
+      while true:
+        socket.write query.query_packet
+
+        last_attempt := attempt_counter > MAX_RETRY_ATTEMPTS_
+        catch --unwind=(: (not is_server_reachability_error_ it) or last_attempt):
+          with_timeout retry_timeout:
+            answer := socket.receive
+            return decode_response_ query answer.data
+
+        retry_timeout = retry_timeout * 1.5
+        attempt_counter++
+    finally:
+      if socket: socket.close
 
   /**
   Look up a domain name and return an A or AAAA record.
@@ -180,61 +211,41 @@ class DnsClient:
     query := DnsQuery_ name --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6
 
     with_timeout timeout:
-      socket/udp_module.Socket? := null
-      servers_immediately_failed := {}
-      try:
-        retry_timeout := DNS_RETRY_TIMEOUT
+      servers_failed := {}
+      // We try servers one at a time, but if there was a good error
+      // message from one server (eg. no such domain) we save that
+      // error and rethrow it if the last one times out with no usable
+      // response.
+      saved_error := null
+      saved_trace := null
+      while true:
+        // Note that we continue to use the server that worked the last time
+        // since we store the index in a field.
+        current_server_ip := servers_[current_server_index_]
+        is_last_server := (servers_.size == servers_failed.size + 1)
 
-        // Resend the query with exponential backoff until the outer timeout
-        // expires.
-        while true:
-          if not socket:
-            socket = udp_module.Socket
-            server_ip := servers_[current_server_]
-            show_errors := servers_immediately_failed.size == servers_.size
-            exception := null
-            if show_errors:
-              socket.connect
-                net.SocketAddress server_ip DNS_UDP_PORT
-            else:
-              exception = catch:
-                socket.connect
-                  net.SocketAddress server_ip DNS_UDP_PORT
-            if exception != null:
-              // Probably the network is unreachable.  We can still try the
-              // other servers, but if we have tried all of them then we are
-              // done.
-              servers_immediately_failed.add current_server_
-              socket.close
-              socket = null
-              current_server_ = (current_server_ + 1) % servers_.size
-              continue
-          socket.write query.query_packet
+        trace := null
+        trace_block := : | _ t |
+          trace = t
+          false
+        error := catch --trace=trace_block:
+          return get_ query current_server_ip
 
-          answer := null
-          exception := catch:
-            with_timeout retry_timeout:
-              answer = socket.receive
-          if exception and exception != "DEADLINE_EXCEEDED": throw exception
+        // Get here if there was an error. If it's the last server we
+        // rethrow it so that it looks like there was no catch.
+        if not is_server_reachability_error_ error:
+          // Deadline exceeded errors are less informative than other errors.
+          saved_error = error
+          saved_trace = trace
+        if is_last_server:
+          if saved_error:
+            rethrow saved_error saved_trace
+          else:
+            rethrow error trace
 
-          if answer:
-            return decode_response_ query answer.data
-
-          retry_timeout = retry_timeout * 1.5
-
-          if retry_timeout > DNS_RETRY_TIMEOUT * 2:
-            // After two short timeouts we rotate to the next server in the
-            // list (if any).
-            new_server_index := (current_server_ + 1) % servers_.size
-            if new_server_index != current_server_:
-              // At this point we close the old socket, so if the previous
-              // server answers late, we won't see it.
-              current_server_ = new_server_index
-              socket.close
-              socket = null
-
-      finally:
-        if socket: socket.close
+        // The current server didn't succeed. Move to the next.
+        servers_failed.add current_server_ip
+        current_server_index_ = (current_server_index_ + 1) % servers_.size
     unreachable
 
   static case_compare_ a/string b/string -> bool:
@@ -279,7 +290,7 @@ class DnsClient:
     if error != ERROR_NONE:
       detail := "error code $error"
       if 0 <= error < ERROR_MESSAGES_.size: detail = ERROR_MESSAGES_[error]
-      throw (DnsException "Server responded: $detail")
+      throw (DnsException "Server responded: $detail" --name=query.name)
     position := 12
     queries := BIG_ENDIAN.uint16 response 4
     if queries != 1: throw (DnsException "Unexpected number of queries in response")
@@ -330,7 +341,7 @@ class DnsClient:
       else if type == RECORD_CNAME:
         q_name = decode_name response position: null
       position += rd_length
-    throw (DnsException "Response did not contain matching A record")
+    throw (DnsException "Response did not contain matching A record" --name=query.name)
 
 /**
 Decodes a name from a DNS (RFC 1035) packet.
@@ -400,10 +411,10 @@ create_query_ name/string query_id/int --accept_ipv4/bool=true --accept_ipv6/boo
   parts := name.split "."
   length := 1
   parts.do: | part |
-    if part.size > 63: throw (DnsException "DNS name parts cannot exceed 63 bytes")
-    if part.size < 1: throw (DnsException "DNS name parts cannot be empty")
+    if part.size > 63: throw (DnsException "DNS name parts cannot exceed 63 bytes" --name=name)
+    if part.size < 1: throw (DnsException "DNS name parts cannot be empty" --name=name)
     part.do:
-      if it == 0 or it == null: throw (DnsException "INVALID_DOMAIN_NAME")
+      if it == 0 or it == null: throw (DnsException "INVALID_DOMAIN_NAME" --name=name)
     length += part.size + 1
   query := ByteArray 10 + length + query_count * 6
   BIG_ENDIAN.put_uint16 query 0 query_id
@@ -427,3 +438,6 @@ create_query_ name/string query_id/int --accept_ipv4/bool=true --accept_ipv6/boo
     position += 6
   assert: position == query.size
   return query
+
+is_server_reachability_error_ error -> bool:
+  return error == DEADLINE_EXCEEDED_ERROR or error is string and error.starts_with "A socket operation was attempted to an unreachable network"

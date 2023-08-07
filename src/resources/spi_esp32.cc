@@ -44,7 +44,7 @@ ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
   SPI2_HOST,
   SPI3_HOST
 #elif CONFIG_IDF_TARGET_ESP32C3
-  SPI3_HOST
+  SPI2_HOST
 #else
   HSPI_HOST,
   VSPI_HOST
@@ -77,7 +77,7 @@ PRIMITIVE(init) {
       (miso == -1 || miso == 12) &&
       (clock == -1 || clock == 14)) {
 #ifdef CONFIG_IDF_TARGET_ESP32C3
-    host_device = SPI3_HOST;
+    host_device = SPI2_HOST;
 #elif CONFIG_IDF_TARGET_ESP32S3
     host_device = SPI2_HOST;
 #else
@@ -88,7 +88,7 @@ PRIMITIVE(init) {
       (miso == -1 || miso == 19) &&
       (clock == -1 || clock == 18)) {
 #ifdef CONFIG_IDF_TARGET_ESP32C3
-    host_device = SPI3_HOST;
+    host_device = SPI2_HOST;
 #elif CONFIG_IDF_TARGET_ESP32S3
     host_device = SPI3_HOST;
 #elif CONFIG_IDF_TARGET_ESP32S2

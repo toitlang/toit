@@ -720,16 +720,27 @@ class Time implements Comparable:
   /**
   Parses the given $str to construct a UTC time instance.
 
+  Deprecated. Use $parse instead.
+  */
+  constructor.from_string str/string:
+    return parse str
+
+  /**
+  Parses the given $str to construct a UTC time instance.
+
   The $str must be in RFC 3339 format, which is a subset of ISO 8601 format.
   For example "2019-12-18T06:22:48Z".
   Leap seconds are not supported, and lower case 't' and 'z' are not allowed.
+
+  Calls $on_error if there is an error parsing the string. Then rturns the
+    result of $on_error.
   */
-  constructor.from_string str/string:
+  static parse str/string [--on_error] -> Time:
     zone_is_adjusted := str.ends_with "Z"
     str = str.trim --right "Z"
     str_to_int ::= : | s/string |
-      if s[0] == '-': throw "INVALID_ARGUMENT"
-      int.parse s --on_error=: throw "INVALID_ARGUMENT"
+      if s[0] == '-': return on_error.call
+      int.parse s --on_error=: return on_error.call
     zone_minutes := 0
     if not zone_is_adjusted:
       plus := str.index_of "+"
@@ -740,22 +751,22 @@ class Time implements Comparable:
         cut := plus > 0 ? plus : minus
         zone_parts := str[cut + 1..]
         // RFC 3339 requires the zone to be in the form hh:mm.
-        if zone_parts.size != 5: throw "INVALID_ARGUMENT"
+        if zone_parts.size != 5: return on_error.call
         zone_parts.split ":":
-          if it.size != 2: throw "INVALID_ARGUMENT"
+          if it.size != 2: return on_error.call
           zone_minutes *= 60
           zone_minutes += str_to_int.call it
         zone_minutes = plus > 0 ? -zone_minutes : zone_minutes
         str = str[..cut]
     parts ::= str.split "T"
-    if parts.size != 2: throw "INVALID_ARGUMENT"
+    if parts.size != 2: return on_error.call
     date_parts ::= (parts[0].split "-").map str_to_int
-    if date_parts.size != 3: throw "INVALID_ARGUMENT"
+    if date_parts.size != 3: return on_error.call
     time_string_parts ::= parts[1].split ":"
-    if time_string_parts.size != 3: throw "INVALID_ARGUMENT"
+    if time_string_parts.size != 3: return on_error.call
     if time_string_parts[2].contains ".":
       splits := time_string_parts[2].split "."
-      if splits.size != 2: throw "INVALID_ARGUMENT"
+      if splits.size != 2: return on_error.call
       time_string_parts[2] = splits[0]
       time_string_parts.add "$splits[1]000000000"[..9]
     else:
@@ -772,6 +783,14 @@ class Time implements Comparable:
       --us=0
       --ns=time_parts[3]
       --is_utc=zone_is_adjusted
+
+  /**
+  Variant of $(parse str [--on_error]).
+
+  Throws an error if the string cannot be parsed.
+  */
+  static parse str/string -> Time:
+    return parse str --on_error=: throw "INVALID_ARGUMENT"
 
   /**
   Returns a monotonic microsecond value.

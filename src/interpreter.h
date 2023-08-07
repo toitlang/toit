@@ -20,13 +20,24 @@
 #include "objects.h"
 #include "primitive.h"
 
-#ifdef ESP32
+#if defined(ESP32)
 #include <esp_attr.h>
+#endif
+
+#if defined(ESP32) && defined(CONFIG_TOIT_INTERPRETER_IN_IRAM)
 // We put the core interpreter functionality in the IRAM section to avoid
 // spending time on re-reading the code from flash.
 #define INTERPRETER_CORE IRAM_ATTR
 #else
 #define INTERPRETER_CORE
+#endif
+
+#if defined(ESP32) && defined(CONFIG_TOIT_INTERPRETER_HELPER_IN_IRAM)
+// We put the interpreter helper functions in the IRAM section to
+// avoid spending time on re-reading the code from flash.
+#define INTERPRETER_HELPER IRAM_ATTR
+#else
+#define INTERPRETER_HELPER
 #endif
 
 namespace toit {
@@ -108,8 +119,8 @@ class Interpreter {
   Result run() INTERPRETER_CORE;
 
   // Fast helpers for indexing and number comparisons.
-  static bool fast_at(Process* process, Object* receiver, Object* args, bool is_put, Object** value) INTERPRETER_CORE;
-  static int compare_numbers(Object* lhs, Object *rhs) INTERPRETER_CORE;
+  static bool fast_at(Process* process, Object* receiver, Object* args, bool is_put, Object** value) INTERPRETER_HELPER;
+  static int compare_numbers(Object* lhs, Object *rhs) INTERPRETER_HELPER;
 
   // Load stack info from process's stack.
   Object** load_stack(Method* pending = null);
