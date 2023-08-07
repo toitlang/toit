@@ -12,7 +12,10 @@ set(TOIT_SYSTEM_NAME "esp32")
 
 set(TOIT_INTERPRETER_FLAGS "-fno-crossjumping;-fno-tree-tail-merge" CACHE STRING "toit interpreter flags")
 
-set(TOIT_SDK_DIR ${TOIT_BASE_DIR}/build/host/sdk)
+# If TOIT_SDK_DIR is not set, do it now.
+if (NOT TOIT_SDK_DIR)
+    set(TOIT_SDK_DIR ${TOIT_BASE_DIR}/build/host/sdk)
+endif()
 set(TOIT_SDK_DIR ${TOIT_SDK_DIR} PARENT_SCOPE)
 set(TOITC ${TOIT_SDK_DIR}/bin/toit.compile)
 set(TOITPKG ${TOIT_SDK_DIR}/bin/toit.pkg)
