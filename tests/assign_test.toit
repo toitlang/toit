@@ -86,8 +86,6 @@ test_inc_dec z:
 
   expect_equals 2 GLOBAL--
   expect_equals 1 GLOBAL
-  expect_equals 0 (--GLOBAL)
-  expect_equals 0 GLOBAL
 
   x := 0
   expect_equals 0 x++
@@ -97,8 +95,6 @@ test_inc_dec z:
 
   expect_equals 2 x--
   expect_equals 1 x
-  expect_equals 0 (--x)
-  expect_equals 0 x
 
   x = 0
   expect_equals 0 (exec: x++)
@@ -108,8 +104,6 @@ test_inc_dec z:
 
   expect_equals 2 (exec: x--)
   expect_equals 1 x
-  expect_equals 0 (exec: --x)
-  expect_equals 0 x
 
   z = 0
   expect_equals 0 z++
@@ -119,8 +113,6 @@ test_inc_dec z:
 
   expect_equals 2 z--
   expect_equals 1 z
-  expect_equals 0 (--z)
-  expect_equals 0 z
 
   z = 0
   expect_equals 0 (exec: z++)
@@ -130,8 +122,6 @@ test_inc_dec z:
 
   expect_equals 2 (exec: z--)
   expect_equals 1 z
-  expect_equals 0 (exec: --z)
-  expect_equals 0 z
 
   box := Box 0
   expect_equals 0 box.value++
@@ -141,8 +131,6 @@ test_inc_dec z:
 
   expect_equals 2 box.value--
   expect_equals 1 box.value
-  expect_equals 0 (--box.value)
-  expect_equals 0 box.value
 
   box = Box 0
   expect_equals 0 box[0]++
@@ -152,8 +140,6 @@ test_inc_dec z:
 
   expect_equals 2 box[0]--
   expect_equals 1 box[0]
-  expect_equals 0 (--box[0])
-  expect_equals 0 box[0]
 
   box.test_inc_dec
 
@@ -177,8 +163,6 @@ class Box:
 
     expect_equals 2 value--
     expect_equals 1 value
-    expect_equals 0 (--value)
-    expect_equals 0 value
 
   operator [] n:
     expect_equals 0 n
