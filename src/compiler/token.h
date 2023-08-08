@@ -154,105 +154,105 @@ enum Precedence {
   KEYWORDS(T)                                                            \
 
 // List of predefined identifiers.
-#define IDENTIFIERS(I, IN)                                     \
-  I(__throw__)                                                 \
-  I(__exit__)                                                  \
-  I(__yield__)                                                 \
-  IN(__deep_sleep__, "__deep-sleep__")                         \
-  IN(__invoke_lambda__, "__invoke-lambda__")                   \
-  IN(__invoke_initializer__, "__invoke-initializer__")         \
-  IN(__store_global_with_id__, "__store-global-with-id__")     \
-  IN(__load_global_with_id__, "__load-global-with-id__")       \
-  I(Object)                                                    \
-  I(Interface_)                                                \
-  I(Task_)                                                     \
-  I(LargeArray_)                                               \
-  I(Class_)                                                    \
-  I(Stack_)                                                    \
-  I(__Monitor__)                                               \
-  I(lambda_)                                                   \
-  IN(interpolate_strings_, "interpolate-strings_")             \
-  IN(simple_interpolate_strings_, "simple-interpolate-strings_") \
-  I(stringify)                                                 \
-  IN(lookup_failure_, "lookup-failure_")                       \
-  IN(as_check_failure_, "as-check-failure_")                   \
-  IN(primitive_lookup_failure_, "primitive-lookup-failure_")   \
-  IN(uninitialized_global_failure_, "uninitialized-global-failure_") \
-  IN(program_failure_, "program-failure_")                     \
-  I(locked_)                                                   \
-  IN(throw_, "throw")                                          \
-  IN(catch_, "catch")                                          \
-  I(rethrow)                                                   \
-  IN(switch_, "switch")                                        \
-  IN(stack_, "<stack>")                                        \
-  I(Array_)                                                    \
-  I(Box_)                                                      \
-  I(Exception_)                                                \
-  I(LazyInitializer_)                                          \
-  I(SmallArray_)                                               \
-  I(ByteArray)                                                 \
-  I(ByteArray_)                                                \
-  I(CowByteArray_)                                             \
-  I(ByteArraySlice_)                                           \
-  I(List_)                                                     \
-  I(ListSlice_)                                                \
-  I(Tombstone_)                                                \
-  IN(create_array_, "create-array_")                           \
-  IN(create_byte_array_, "create-byte-array_")                 \
+#define IDENTIFIERS(I, IN)                                               \
+  I(__throw__)                                                           \
+  I(__exit__)                                                            \
+  I(__yield__)                                                           \
+  IN(__deep_sleep__, "__deep-sleep__")                                   \
+  IN(__invoke_lambda__, "__invoke-lambda__")                             \
+  IN(__invoke_initializer__, "__invoke-initializer__")                   \
+  IN(__store_global_with_id__, "__store-global-with-id__")               \
+  IN(__load_global_with_id__, "__load-global-with-id__")                 \
+  I(Object)                                                              \
+  I(Interface_)                                                          \
+  I(Task_)                                                               \
+  I(LargeArray_)                                                         \
+  I(Class_)                                                              \
+  I(Stack_)                                                              \
+  I(__Monitor__)                                                         \
+  I(lambda_)                                                             \
+  IN(interpolate_strings_, "interpolate-strings_")                       \
+  IN(simple_interpolate_strings_, "simple-interpolate-strings_")         \
+  I(stringify)                                                           \
+  IN(lookup_failure_, "lookup-failure_")                                 \
+  IN(as_check_failure_, "as-check-failure_")                             \
+  IN(primitive_lookup_failure_, "primitive-lookup-failure_")             \
+  IN(uninitialized_global_failure_, "uninitialized-global-failure_")     \
+  IN(program_failure_, "program-failure_")                               \
+  I(locked_)                                                             \
+  IN(throw_, "throw")                                                    \
+  IN(catch_, "catch")                                                    \
+  I(rethrow)                                                             \
+  IN(switch_, "switch")                                                  \
+  IN(stack_, "<stack>")                                                  \
+  I(Array_)                                                              \
+  I(Box_)                                                                \
+  I(Exception_)                                                          \
+  I(LazyInitializer_)                                                    \
+  I(SmallArray_)                                                         \
+  I(ByteArray)                                                           \
+  I(ByteArray_)                                                          \
+  I(CowByteArray_)                                                       \
+  I(ByteArraySlice_)                                                     \
+  I(List_)                                                               \
+  I(ListSlice_)                                                          \
+  I(Tombstone_)                                                          \
+  IN(create_array_, "create-array_")                                     \
+  IN(create_byte_array_, "create-byte-array_")                           \
   IN(create_list_literal_from_array_, "create-list-literal-from-array_") \
-  IN(create_cow_byte_array_, "create-cow-byte-array_")         \
-  I(Set)                                                       \
-  I(Map)                                                       \
-  I(it)                                                        \
-  I(call)                                                      \
-  I(identical)                                                 \
-  I(no)                                                        \
-  I(add)                                                       \
-  I(show)                                                      \
-  IN(one, "1")                                                 \
-  I(main)                                                      \
-  I(String)                                                    \
-  I(String_)                                                   \
-  I(StringSlice_)                                              \
-  I(LargeInteger_)                                             \
-  I(False_)                                                    \
-  I(Null_)                                                     \
-  I(SmallInteger_)                                             \
-  I(True_)                                                     \
-  I(monitor)                                                   \
-  IN(interface_, "interface")                                  \
-  I(extends)                                                   \
-  I(implements)                                                \
-  I(none)                                                      \
-  I(any)                                                       \
-  IN(empty_string, "")                                         \
-  I(assert_)                                                   \
-  I(intrinsics)                                                \
-  IN(array_do, "array-do")                                     \
-  IN(hash_find, "hash-find")                                   \
-  IN(hash_do, "hash-do")                                       \
-  IN(smi_repeat, "smi-repeat")                                 \
-  I(value_)                                                    \
-  IN(index, "[]")                                              \
-  IN(index_put, "[]=")                                         \
-  IN(index_slice, "[..]")                                      \
-  IN(op, "operator")                                           \
-  IN(int_, "int")                                              \
-  IN(bool_, "bool")                                            \
-  IN(float_, "float")                                          \
-  I(string)                                                    \
-  IN(this_, "this")                                            \
-  I(super)                                                     \
-  I(constructor)                                               \
-  I(unreachable)                                               \
-  I(_)                                                         \
-  IN(debug_string, "debug-string")                             \
-  IN(dispatch_debug_string, "dispatch-debug-string")           \
-  IN(run_global_initializer_, "run-global-initializer_")       \
-  I(from)                                                      \
-  I(to)                                                        \
-  IN(enum_, "enum")                                            \
-  I(mixin)                                                     \
+  IN(create_cow_byte_array_, "create-cow-byte-array_")                   \
+  I(Set)                                                                 \
+  I(Map)                                                                 \
+  I(it)                                                                  \
+  I(call)                                                                \
+  I(identical)                                                           \
+  I(no)                                                                  \
+  I(add)                                                                 \
+  I(show)                                                                \
+  IN(one, "1")                                                           \
+  I(main)                                                                \
+  I(String)                                                              \
+  I(String_)                                                             \
+  I(StringSlice_)                                                        \
+  I(LargeInteger_)                                                       \
+  I(False_)                                                              \
+  I(Null_)                                                               \
+  I(SmallInteger_)                                                       \
+  I(True_)                                                               \
+  I(monitor)                                                             \
+  IN(interface_, "interface")                                            \
+  I(extends)                                                             \
+  I(implements)                                                          \
+  I(none)                                                                \
+  I(any)                                                                 \
+  IN(empty_string, "")                                                   \
+  I(assert_)                                                             \
+  I(intrinsics)                                                          \
+  IN(array_do, "array-do")                                               \
+  IN(hash_find, "hash-find")                                             \
+  IN(hash_do, "hash-do")                                                 \
+  IN(smi_repeat, "smi-repeat")                                           \
+  I(value_)                                                              \
+  IN(index, "[]")                                                        \
+  IN(index_put, "[]=")                                                   \
+  IN(index_slice, "[..]")                                                \
+  IN(op, "operator")                                                     \
+  IN(int_, "int")                                                        \
+  IN(bool_, "bool")                                                      \
+  IN(float_, "float")                                                    \
+  I(string)                                                              \
+  IN(this_, "this")                                                      \
+  I(super)                                                               \
+  I(constructor)                                                         \
+  I(unreachable)                                                         \
+  I(_)                                                                   \
+  IN(debug_string, "debug-string")                                       \
+  IN(dispatch_debug_string, "dispatch-debug-string")                     \
+  IN(run_global_initializer_, "run-global-initializer_")                 \
+  I(from)                                                                \
+  I(to)                                                                  \
+  IN(enum_, "enum")                                                      \
+  I(mixin)                                                               \
 
 
 class Token {

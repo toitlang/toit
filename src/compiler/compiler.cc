@@ -1075,15 +1075,14 @@ enum class AddSegmentResult {
 }  // Anonymous namespace.
 
 /// Adds the given segment to the path_builder.
-/// Physically modifies the builder.
-/// If 'check_is_toit_file' is true, also adds the '.toit' extension.
-/// If 'check_is_toit_file' is true, checks that the result is a regular file.
-/// If 'check_is_toit_file' is false, checks that the result is a directory.
+/// Modifies the builder.
+/// If 'should_check_is_toit_file' is true, also adds the '.toit' extension.
+/// If 'should_check_is_toit_file' is true, checks that the result is a regular file.
+/// If 'should_check_is_toit_file' is false, checks that the result is a directory.
 static AddSegmentResult add_segment(PathBuilder* path_builder,
                                     Symbol segment,
                                     Filesystem* fs,
                                     bool should_check_is_toit_file) {
-
   auto check_path = [&]() {
     if (should_check_is_toit_file) {
       path_builder->add(".toit");
@@ -1139,8 +1138,9 @@ static void _report_failed_import(ast::Import* import,
                                   Filesystem* fs,
                                   Diagnostics* diagnostics) {
   auto segments = import->segments();
-  // Build the error-segments. These are just all the segments concatenated
-  // by "." as was in the source.
+  // Build the error-segments. We are rebuilding the original import line.
+  // Simply join all segments with "." and make sure the leading
+  // dots are correct.
   std::string error_segments;
   if (import->is_relative()) {
     error_segments += '.';
@@ -1170,7 +1170,7 @@ static void _report_failed_import(ast::Import* import,
     } else {
       ASSERT(error_result == AddSegmentResult::NOT_A_REGULAR_FILE);
       diagnostics->report_note(note_node,
-                                "Not a regular file '%s.toit' file",
+                                "Cannot read '%s.toit': not a regular file",
                                 note_path.c_str(),
                                 segments.last()->data().c_str());
     }
@@ -1194,13 +1194,13 @@ static void _report_failed_import(ast::Import* import,
     auto note_path = build_error_path(failed_path);
     switch (error_result) {
       case AddSegmentResult::NOT_A_REGULAR_FILE:
-        diagnostics->report_note(note_node, "Not a regular file: '%s'", note_path.c_str());
+        diagnostics->report_note(note_node, "Cannot read '%s': not a regular file", note_path.c_str());
         break;
       case AddSegmentResult::NOT_A_DIRECTORY:
-        diagnostics->report_note(note_node, "Not a folder: '%s'", note_path.c_str());
+        diagnostics->report_note(note_node, "Cannot enter '%s': not a folder", note_path.c_str());
         break;
       case AddSegmentResult::NOT_FOUND:
-        diagnostics->report_note(note_node, "Folder does not exist: '%s'", note_path.c_str());
+        diagnostics->report_note(note_node, "Cannot enter '%s': folder does not exist", note_path.c_str());
         break;
       default:
         UNREACHABLE();

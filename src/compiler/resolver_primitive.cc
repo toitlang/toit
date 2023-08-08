@@ -79,7 +79,6 @@ int PrimitiveResolver::find_primitive(compiler::Symbol name, int module) {
   ASSERT(module >= 0 && module < static_cast<int>(ARRAY_SIZE(module_names)));
   const char** names = module_primitive_names[module];
   for (int i = 0; names[i] != null; i++) {
-
     if (equals_ignore_dashes(name.c_str(), names[i])) return i;
   }
   return -1;

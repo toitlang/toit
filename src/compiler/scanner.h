@@ -150,7 +150,7 @@ class IdentifierValidator {
   }
 
   // Sets the internal state so it doesn't check for an identifier start.
-  // This is useful when moving backwards (as is done for finding the
+  // This is useful when moving backwards as is done for finding the
   // completion prefix.
   void disable_start_check() {
     at_start_ = false;
@@ -164,42 +164,31 @@ class IdentifierValidator {
   static const uint8* canonicalize(const uint8* identifier, int len) {
     if (len < 3) return identifier;
 
-    // Check whether the identifier has a '_'. If yes, convert it to '-'.
-    // We only change '_'s if they are surrounded by characters.
-    bool needs_canonicalization = false;
+    uint8* copy = null;
     for (int i = 1; i < len - 1; i++) {
       uint8 c = identifier[i];
       if (c != '_') continue;
 
-      uint8 previous = identifier[i - 1];
-      uint8 next = identifier[i + 1];
-      if (previous == '-' || previous == '_') continue;
-      if (next == '-' || next == '_') continue;
-      needs_canonicalization = true;
-      break;
-    }
-    if (!needs_canonicalization) return identifier;
-
-    uint8* copy = reinterpret_cast<uint8*>(malloc(len + 1));
-    memcpy(copy, identifier, len);
-    // The terminating character might not have been present in the
-    // input, but we also use this function for strings that need
-    // to be terminated.
-    copy[len] = '\0';
-
-    for (int i = 1; i < len - 1; i++) {
-      uint8 c = identifier[i];
-      if (c != '_') continue;
-
+      // Check whether the '_' is surrounded by characters. If yes
+      // replace it with a '-'.
       uint8 previous = identifier[i - 1];
       uint8 next = identifier[i + 1];
       if (previous == '-' || previous == '_') continue;
       if (next == '-' || next == '_') continue;
 
+      // We need to change the '_' to a '-'.
+      if (copy == null) {
+        copy = reinterpret_cast<uint8*>(malloc(len + 1));
+        memcpy(copy, identifier, len);
+        // This function can be called with strings that aren't terminated.
+        // However, it may also be called with strings that must be terminated.
+        // We always add a terminator, making it safe to be used in both scenarii.
+        copy[len] = '\0';
+      }
       copy[i] = '-';
     }
-
-    return copy;
+    if (copy != null) return copy;
+    return identifier;
   }
 
   static const std::string canonicalize(const std::string& identifier) {
