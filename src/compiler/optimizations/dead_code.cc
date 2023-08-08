@@ -275,7 +275,9 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   Node* visit_AssignmentGlobal(AssignmentGlobal* node) {
     Global* global = node->global();
     if (global->is_dead()) {
-      return terminate(visit(node->right(), null));
+      bool terminates;
+      Expression* result = visit(node->right(), &terminates);
+      return tag(result, terminates);
     } else {
       return visit_Assignment(node);
     }
