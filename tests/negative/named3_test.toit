@@ -5,7 +5,6 @@
 
 import expect show *
 
-
 foo --no-x:
 
 main:
