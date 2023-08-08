@@ -107,6 +107,7 @@ enum Precedence {
   T(BIT_NOT, "~", PRECEDENCE_NONE)                                       \
   T(INCREMENT, "++", PRECEDENCE_POSTFIX)                                 \
   T(DECREMENT, "--", PRECEDENCE_POSTFIX)                                 \
+  T(NAMED_NO, "--no-", PRECEDENCE_POSTFIX)                               \
                                                                          \
   /* Assignment operators. */                                            \
   T(ASSIGN, "=", PRECEDENCE_ASSIGNMENT)                                  \

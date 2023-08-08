@@ -214,7 +214,19 @@ Token::Kind Scanner::next_token() {
       case '-':  // 45
         peek = advance();
         if (peek == '=') return scan_single(Token::ASSIGN_SUB);
-        if (peek == '-') return scan_single(Token::DECREMENT);
+        if (peek == '-') {
+          if (look_ahead(1) == 'n' &&
+              look_ahead(2) == 'o' &&
+              look_ahead(3) == '-') {
+            advance();  // '-'
+            advance();  // 'n'
+            advance();  // 'o'
+            advance();  // '-'
+            return Token::NAMED_NO;
+          }
+
+          return scan_single(Token::DECREMENT);
+        }
         if (peek == '>') return scan_single(Token::RARROW);
         return Token::SUB;
 

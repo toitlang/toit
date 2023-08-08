@@ -1362,17 +1362,11 @@ Expression* Parser::parse_argument(bool allow_colon, bool full_expression) {
   Identifier* name = null;
   bool is_boolean = false;
   bool inverted = false;
-  if (current_token() == Token::DECREMENT && is_next_token_attached() && peek_token() == Token::IDENTIFIER) {
+  if ((current_token() == Token::DECREMENT || current_token() == Token::NAMED_NO) &&
+      is_next_token_attached() && peek_token() == Token::IDENTIFIER) {
+    inverted = current_token() == Token::NAMED_NO;
     consume();
     name = parse_identifier();
-    if (name->data() == Symbols::no && is_current_token_attached() &&
-        current_token() == Token::SUB && is_next_token_attached() &&
-        peek_token() == Token::IDENTIFIER) {
-      // --no-foo
-      inverted = true;
-      consume();  // Token::SUB.
-      name = parse_identifier();
-    }
     if (current_token() != Token::ASSIGN) {
       is_boolean = true;
     } else {
@@ -1906,8 +1900,8 @@ Expression* Parser::parse_unary(bool allow_colon) {
                      Token::symbol(kind).c_str());
       }
       if (kind == Token::DECREMENT) {
-        diagnostics()->report_warning(range.extend(current_range()),
-                                      "Prefix decrement is deprecated");
+        diagnostics()->report_error(range.extend(current_range()),
+                                    "Prefix decrement has been removed");
       }
       if (kind == Token::SUB &&
           (current_token() == Token::INTEGER || current_token() == Token::DOUBLE)) {
@@ -2547,7 +2541,10 @@ std::pair<Expression*, List<Parameter*>> Parser::parse_parameters(bool allow_ret
       consume();
       is_bracket_block = true;
     }
-    if (current_token() == Token::DECREMENT) {
+    if (current_token() == Token::DECREMENT || current_token() == Token::NAMED_NO) {
+      if (current_token() == Token::NAMED_NO) {
+        report_error("Named parameters can not start with 'no-'");
+      }
       consume();
       if (current_token() == Token::IDENTIFIER ||
           current_token() == Token::PERIOD) {

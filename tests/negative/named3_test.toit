@@ -1,11 +1,13 @@
-// Copyright (C) 2019 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
+// TEST_FLAGS: --force
 
 import expect show *
 
-no --no x:
-  return 400 - x
+foo --no-x:
 
 main:
-  expect_equals 499 (no --no -99)
+  no := 33
+  x := 42
+  --no-x
