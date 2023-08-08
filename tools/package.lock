@@ -3,6 +3,7 @@ prefixes:
   ar: pkg-ar
   cli: pkg-cli
   host: pkg-host
+  semver: toit-semver
 packages:
   pkg-ar:
     url: github.com/toitlang/pkg-ar
@@ -16,3 +17,7 @@ packages:
     url: github.com/toitlang/pkg-host
     version: 1.8.1
     hash: 7f0cc4280065fb18ee09d3803f12180cec852d32
+  toit-semver:
+    url: github.com/toitware/toit-semver
+    version: 1.0.0
+    hash: b416c5a542287a8cdbb86398fdb452eaad4f55f8

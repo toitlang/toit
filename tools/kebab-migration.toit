@@ -1,8 +1,26 @@
+// Copyright (C) 2023 Toitware ApS.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; version
+// 2.1 only.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// The license can be found in the file `LICENSE` in the top level
+// directory of this repository.
+
 import cli
 import encoding.json
 import host.pipe
 import host.os
 import host.file
+import semver
+
+REQUIRED_SDK_VERSION ::= "2.0.0-alpha.94"
 
 main args:
   cmd := cli.Command "root"
@@ -20,7 +38,6 @@ main args:
       --options=[
         cli.Option "toitc"
             --short_help="The path to the toit.compile binary."
-            --default="toitc"
       ]
       --rest=[
         cli.Option "source"
@@ -79,8 +96,9 @@ migrate parsed/cli.Parsed:
     lines.filter --in_place: it != ""
     migration_points.add_all lines
 
+  if migration_points.is_empty: return
+
   migration_points.sort --in_place
-  print migration_points
   // Remove redundant migration points.
   point_count := 1
   for i := 1; i < migration_points.size; i++:
@@ -164,5 +182,8 @@ check_toitc_version toitc:
     print "Could not get toit.compile version."
     exit 1
   parts := version_line.split ":"
-  version := parts[1].trim
-  // TODO(florian): do a correct semver check.
+  version_with_v := parts[1].trim
+  version := version_with_v[1..]
+  if ((semver.compare version REQUIRED_SDK_VERSION) < 0):
+    print "The toit.compile version must be at least $REQUIRED_SDK_VERSION."
+    exit 1
