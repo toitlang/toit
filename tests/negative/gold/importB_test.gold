@@ -1,7 +1,7 @@
 tests/negative/importB_test.toit:5:1: error: Failed to import '.dir'
 import .dir as pre
 ^~~~~~
-tests/negative/importB_test.toit:5:9: note: Not a regular file: 'tests/negative/dir.toit'
+tests/negative/importB_test.toit:5:9: note: Cannot read 'tests/negative/dir.toit': not a regular file
 import .dir as pre
         ^~~
 tests/negative/importB_test.toit:6:1: error: Failed to import '.dir2'
@@ -19,13 +19,13 @@ import .dir2.foo as toto
 tests/negative/importB_test.toit:8:1: error: Failed to import '.dir2.foo.bar'
 import .dir2.foo.bar as toto
 ^~~~~~
-tests/negative/importB_test.toit:8:14: note: Folder does not exist: 'tests/negative/dir2/foo'
+tests/negative/importB_test.toit:8:14: note: Cannot enter 'tests/negative/dir2/foo': folder does not exist
 import .dir2.foo.bar as toto
              ^~~
 tests/negative/importB_test.toit:9:1: error: Failed to import '.dir2.not-directory.bar'
 import .dir2.not_directory.bar as toto
 ^~~~~~
-tests/negative/importB_test.toit:9:14: note: Not a folder: 'tests/negative/dir2/not_directory'
+tests/negative/importB_test.toit:9:14: note: Cannot enter 'tests/negative/dir2/not_directory': not a folder
 import .dir2.not_directory.bar as toto
              ^~~~~~~~~~~~~
 Compilation failed.
