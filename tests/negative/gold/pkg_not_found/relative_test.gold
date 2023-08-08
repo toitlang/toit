@@ -19,13 +19,13 @@ import error2.foo
 tests/negative/pkg_not_found/dir/dir.toit:8:1: error: Failed to import 'error2.foo.bar'
 import error2.foo.bar
 ^~~~~~
-tests/negative/pkg_not_found/dir/dir.toit:8:15: note: Folder does not exist: '<pkg:path2>/foo'
+tests/negative/pkg_not_found/dir/dir.toit:8:15: note: Cannot enter '<pkg:path2>/foo': folder does not exist
 import error2.foo.bar
               ^~~
 tests/negative/pkg_not_found/dir/dir.toit:9:1: error: Failed to import 'error2.not-a-directory.bar'
 import error2.not_a_directory.bar
 ^~~~~~
-tests/negative/pkg_not_found/dir/dir.toit:9:15: note: Not a folder: '<pkg:path2>/not_a_directory'
+tests/negative/pkg_not_found/dir/dir.toit:9:15: note: Cannot enter '<pkg:path2>/not_a_directory': not a folder
 import error2.not_a_directory.bar
               ^~~~~~~~~~~~~~~
 Compilation failed.
