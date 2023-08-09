@@ -18,9 +18,10 @@ import encoding.json
 import host.pipe
 import host.os
 import host.file
+import reader show BufferedReader
 import semver
 
-REQUIRED_SDK_VERSION ::= "2.0.0-alpha.94"
+REQUIRED_SDK_VERSION ::= "2.0.0-alpha.95"
 
 main args:
   cmd := cli.Command "root"
@@ -37,7 +38,10 @@ main args:
         """
       --options=[
         cli.Option "toitc"
-            --short_help="The path to the toit.compile binary."
+            --short_help="The path to the toit.compile binary.",
+        cli.Flag "abort-on-error"
+            --short_help="Abort the migration if a file has errors."
+            --default=false
       ]
       --rest=[
         cli.Option "source"
@@ -83,6 +87,7 @@ main args:
 migrate parsed/cli.Parsed:
   toitc := parsed["toitc"]
   sources := parsed["source"]
+  abort_on_error := parsed["abort-on-error"]
 
   if not toitc:
     toitc = find_toitc_from_jag
@@ -90,8 +95,29 @@ migrate parsed/cli.Parsed:
   check_toitc_version toitc
 
   migration_points := []
-  sources.do:
-    out := pipe.backticks toitc "-Xmigrate_dash_ids" "--analyze" it
+  sources.do: | source/string |
+    print "converting $source"
+
+    pipe_ends := pipe.OpenPipe false
+    stdout := pipe_ends.fd
+    pipes := pipe.fork
+        true  // Whether to use the path or not.
+        pipe.PIPE_INHERITED
+        stdout
+        pipe.PIPE_INHERITED
+        toitc
+        [toitc, "-Xmigrate_dash_ids", "--analyze", source]
+    child_process := pipes[3]
+    reader := BufferedReader pipe_ends
+    reader.buffer_all
+    out := reader.read_string reader.buffered
+    print out
+    exit_value := pipe.wait_for child_process
+    if pipe.exit_signal exit_value:
+      throw "Compiler crashed while migrating $source."
+    if abort_on_error and (pipe.exit_code exit_value) != 0:
+      throw "Compiler reported errors while migrating $source."
+
     lines := out.split "\n"
     lines.filter --in_place: it != ""
     migration_points.add_all lines
