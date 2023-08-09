@@ -1183,9 +1183,10 @@ static void _report_failed_import(ast::Import* import,
     auto note_path1 = build_error_path(failed_path);
     auto note_path2 = build_error_path(alternative_path);
     diagnostics->report_note(note_node,
-                             "Missing library file. Tried '%s' and '%s/%s.toit'",
+                             "Missing library file. Tried '%s' and '%s%c%s.toit'",
                              note_path1.c_str(),
                              note_path2.c_str(),
+                             fs->path_separator(),
                              segments.last()->data().c_str());
   } else if (alternative_path != null) {
     // Special case where we only tried `foo/foo.toit`. In fact, we tried
