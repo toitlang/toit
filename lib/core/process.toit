@@ -10,20 +10,20 @@ May throw if the captured variables can't be serialized.
 */
 spawn lambda/Lambda --priority/int?=null -> Process:
   priority = priority or -1
-  pid := process_spawn_ priority lambda.method_ lambda.arguments_
+  pid := process-spawn_ priority lambda.method_ lambda.arguments_
   return Process_ pid
 
 interface Process:
-  static PRIORITY_IDLE     /int ::= 0
-  static PRIORITY_LOW      /int ::= 43
-  static PRIORITY_NORMAL   /int ::= 128
-  static PRIORITY_HIGH     /int ::= 213
-  static PRIORITY_CRITICAL /int ::= 255
+  static PRIORITY-IDLE     /int ::= 0
+  static PRIORITY-LOW      /int ::= 43
+  static PRIORITY-NORMAL   /int ::= 128
+  static PRIORITY-HIGH     /int ::= 213
+  static PRIORITY-CRITICAL /int ::= 255
 
   /**
   The current process.
   */
-  static current ::= Process_ process_current_id_
+  static current ::= Process_ process-current-id_
 
   /**
   Returns the unique id of the process.
@@ -59,25 +59,25 @@ class Process_ implements Process:
   constructor .id:
 
   priority -> int:
-    return process_get_priority_ id
+    return process-get-priority_ id
   priority= priority/int -> none:
-    process_set_priority_ id priority
+    process-set-priority_ id priority
 
-process_spawn_ priority method arguments -> int:
+process-spawn_ priority method arguments -> int:
   #primitive.core.spawn
 
-process_current_id_ -> int:
-  #primitive.core.process_current_id
+process-current-id_ -> int:
+  #primitive.core.process-current-id
 
-process_get_priority_ pid/int -> int:
-  #primitive.core.process_get_priority
+process-get-priority_ pid/int -> int:
+  #primitive.core.process-get-priority
 
-process_set_priority_ pid/int priority/int -> none:
-  #primitive.core.process_set_priority
+process-set-priority_ pid/int priority/int -> none:
+  #primitive.core.process-set-priority
 
 // --------------------------------------------------------------------------
 
-resource_freeing_module_ ::= get_generic_resource_group_
+resource-freeing-module_ ::= get-generic-resource-group_
 
-get_generic_resource_group_:
-  #primitive.core.get_generic_resource_group
+get-generic-resource-group_:
+  #primitive.core.get-generic-resource-group

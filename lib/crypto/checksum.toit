@@ -55,5 +55,5 @@ checksum summer/Checksum data from/int=0 to/int=data.size -> ByteArray:
   summer.add data from to
   return summer.get
 
-finalize_checksum_ checksum/Checksum -> none:
+finalize-checksum_ checksum/Checksum -> none:
   checksum.get

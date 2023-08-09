@@ -47,19 +47,19 @@ sha512 data from/int=0 to/int=data.size -> ByteArray:
 
 /** SHA-224+ hash state. */
 class Sha_ extends Checksum:
-  sha_state_ := ?
+  sha-state_ := ?
 
   /** Constructs an empty SHA-224+ state */
   constructor bits/int:
-    sha_state_ = sha_start_ resource_freeing_module_ bits
-    add_finalizer this:: finalize_checksum_ this
+    sha-state_ = sha-start_ resource-freeing-module_ bits
+    add-finalizer this:: finalize-checksum_ this
 
-  constructor.private_ .sha_state_:
-    add_finalizer this:: finalize_checksum_ this
+  constructor.private_ .sha-state_:
+    add-finalizer this:: finalize-checksum_ this
 
   /** See $super. */
   add data from/int to/int -> none:
-    sha_add_ sha_state_ data from to
+    sha-add_ sha-state_ data from to
 
   /**
   See $super.
@@ -67,48 +67,48 @@ class Sha_ extends Checksum:
   Calculates the SHA224+ hash.
   */
   get -> ByteArray:
-    remove_finalizer this
-    return sha_get_ sha_state_
+    remove-finalizer this
+    return sha-get_ sha-state_
 
   clone -> Sha_:
-    return Sha_.private_ (sha_clone_ sha_state_)
+    return Sha_.private_ (sha-clone_ sha-state_)
 
 /** SHA-224 hash state. */
 class Sha224 extends Sha_:
-  static BLOCK_SIZE ::= 64
+  static BLOCK-SIZE ::= 64
   constructor:
     super 224
 
 /** SHA-256 hash state. */
 class Sha256 extends Sha_:
-  static BLOCK_SIZE ::= 64
+  static BLOCK-SIZE ::= 64
   constructor:
     super 256
 
 /** SHA-384 hash state. */
 class Sha384 extends Sha_:
-  static BLOCK_SIZE ::= 128
+  static BLOCK-SIZE ::= 128
   constructor:
     super 384
 
 /** SHA-512 hash state. */
 class Sha512 extends Sha_:
-  static BLOCK_SIZE ::= 128
+  static BLOCK-SIZE ::= 128
   constructor:
     super 512
 
 // Gets a new empty Sha224+ object.
-sha_start_ group bits/int:
-  #primitive.crypto.sha_start
+sha-start_ group bits/int:
+  #primitive.crypto.sha-start
 
 // Clones a Sha224+ object.
-sha_clone_ sha:
-  #primitive.crypto.sha_clone
+sha-clone_ sha:
+  #primitive.crypto.sha-clone
 
 // Adds a UTF-8 string or a byte array to the sha224+ hash.
-sha_add_ sha data from/int to/int -> none:
-  #primitive.crypto.sha_add
+sha-add_ sha data from/int to/int -> none:
+  #primitive.crypto.sha-add
 
 // Rounds off a sha224+ hash and returns the hash.
-sha_get_ sha -> ByteArray:
-  #primitive.crypto.sha_get
+sha-get_ sha -> ByteArray:
+  #primitive.crypto.sha-get

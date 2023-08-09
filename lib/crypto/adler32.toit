@@ -30,15 +30,15 @@ class Adler32 extends Checksum:
   Constructs an Adler-32 checksummer.
   */
   constructor:
-    adler_ = adler32_start_ resource_freeing_module_
-    add_finalizer this:: finalize_checksum_ this
+    adler_ = adler32-start_ resource-freeing-module_
+    add-finalizer this:: finalize-checksum_ this
 
   constructor.private_ .adler_:
-    add_finalizer this:: finalize_checksum_ this
+    add-finalizer this:: finalize-checksum_ this
 
   /** See $super. */
   add data from/int to/int -> none:
-    adler32_add_ adler_ data from to false
+    adler32-add_ adler_ data from to false
 
   /**
   Removes the $data from the start of the checksummed data.
@@ -49,7 +49,7 @@ class Adler32 extends Checksum:
   The $data must be a string or a byte array.
   */
   unadd data from/int=0 to/int=data.size -> none:
-    adler32_add_ adler_ data from to true
+    adler32-add_ adler_ data from to true
 
   /**
   See $super.
@@ -70,20 +70,20 @@ class Adler32 extends Checksum:
   */
   get --destructive -> ByteArray:
     if destructive:
-      remove_finalizer this
-    return adler32_get_ adler_ destructive
+      remove-finalizer this
+    return adler32-get_ adler_ destructive
 
   clone -> Adler32:
-    return Adler32.private_ (adler32_clone_ adler_)
+    return Adler32.private_ (adler32-clone_ adler_)
 
-adler32_start_ group:
-  #primitive.zlib.adler32_start
+adler32-start_ group:
+  #primitive.zlib.adler32-start
 
-adler32_clone_ adler:
-  #primitive.zlib.adler32_clone
+adler32-clone_ adler:
+  #primitive.zlib.adler32-clone
 
-adler32_add_ adler collection from/int to/int unadd/bool:
-  #primitive.zlib.adler32_add
+adler32-add_ adler collection from/int to/int unadd/bool:
+  #primitive.zlib.adler32-add
 
-adler32_get_ adler destructive:
-  #primitive.zlib.adler32_get
+adler32-get_ adler destructive:
+  #primitive.zlib.adler32-get

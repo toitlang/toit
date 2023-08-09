@@ -3,11 +3,11 @@
 // found in the lib/LICENSE file.
 
 import encoding.tison
-import .socket_address
+import .socket-address
 
 interface Interface:
-  udp_open -> Socket
-  udp_open --port/int? -> Socket
+  udp-open -> Socket
+  udp-open --port/int? -> Socket
 
 // Datagram to be sent on, or received from, a socket.
 class Datagram:
@@ -22,11 +22,11 @@ class Datagram:
       values[0]
       SocketAddress.deserialize values[1]
 
-  to_byte_array:
-    return tison.encode [data, address.to_byte_array]
+  to-byte-array:
+    return tison.encode [data, address.to-byte-array]
 
 interface Socket:
-  local_address -> SocketAddress
+  local-address -> SocketAddress
 
   // Receive datagram from any peer.
   receive -> Datagram

@@ -4,10 +4,10 @@
 
 import binary
 
-OPTION_OBSERVE ::= 6
-OPTION_URI_PATH ::= 11
-OPTION_BLOCK_2 ::= 23
-OPTION_SIZE_2 ::= 28
+OPTION-OBSERVE ::= 6
+OPTION-URI-PATH ::= 11
+OPTION-BLOCK-2 ::= 23
+OPTION-SIZE-2 ::= 28
 
 class Option:
   number/int ::= ?
@@ -16,7 +16,7 @@ class Option:
   constructor.bytes .number .value:
 
   constructor.string .number str/string:
-    value = str.to_byte_array
+    value = str.to-byte-array
 
   constructor.uint .number u/int:
     if u == 0:
@@ -25,14 +25,14 @@ class Option:
       value = ByteArray 1 --filler=u
     else if u < 256 * 256:
       value = ByteArray 2
-      binary.BIG_ENDIAN.put_uint16 value 0 u
+      binary.BIG-ENDIAN.put-uint16 value 0 u
     else:
       value = ByteArray 4
-      binary.BIG_ENDIAN.put_uint32 value 0 u
+      binary.BIG-ENDIAN.put-uint32 value 0 u
 
-  as_string: return value.to_string
+  as-string: return value.to-string
 
-  as_uint:
+  as-uint:
     n := 0
     value.do: n = (n << 8) | it
     return n

@@ -23,68 +23,68 @@ abstract class FirmwareServiceProviderBase extends ServiceProvider
     provides FirmwareService.SELECTOR --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
-    if index == FirmwareService.IS_VALIDATION_PENDING_INDEX:
-      return is_validation_pending
-    if index == FirmwareService.IS_ROLLBACK_POSSIBLE_INDEX:
-      return is_rollback_possible
-    if index == FirmwareService.VALIDATE_INDEX:
+    if index == FirmwareService.IS-VALIDATION-PENDING-INDEX:
+      return is-validation-pending
+    if index == FirmwareService.IS-ROLLBACK-POSSIBLE-INDEX:
+      return is-rollback-possible
+    if index == FirmwareService.VALIDATE-INDEX:
       return validate
-    if index == FirmwareService.UPGRADE_INDEX:
+    if index == FirmwareService.UPGRADE-INDEX:
       return upgrade
-    if index == FirmwareService.ROLLBACK_INDEX:
+    if index == FirmwareService.ROLLBACK-INDEX:
       return rollback
-    if index == FirmwareService.CONFIG_UBJSON_INDEX:
-      return config_ubjson
-    if index == FirmwareService.CONFIG_ENTRY_INDEX:
-      return config_entry arguments
-    if index == FirmwareService.CONTENT_INDEX:
+    if index == FirmwareService.CONFIG-UBJSON-INDEX:
+      return config-ubjson
+    if index == FirmwareService.CONFIG-ENTRY-INDEX:
+      return config-entry arguments
+    if index == FirmwareService.CONTENT-INDEX:
       return content
-    if index == FirmwareService.URI_INDEX:
+    if index == FirmwareService.URI-INDEX:
       return uri
-    if index == FirmwareService.FIRMWARE_WRITER_OPEN_INDEX:
-      return firmware_writer_open client arguments[0] arguments[1]
-    if index == FirmwareService.FIRMWARE_WRITER_WRITE_INDEX:
+    if index == FirmwareService.FIRMWARE-WRITER-OPEN-INDEX:
+      return firmware-writer-open client arguments[0] arguments[1]
+    if index == FirmwareService.FIRMWARE-WRITER-WRITE-INDEX:
       writer ::= (resource client arguments[0]) as FirmwareWriter
-      return firmware_writer_write writer arguments[1]
-    if index == FirmwareService.FIRMWARE_WRITER_PAD_INDEX:
+      return firmware-writer-write writer arguments[1]
+    if index == FirmwareService.FIRMWARE-WRITER-PAD-INDEX:
       writer ::= (resource client arguments[0]) as FirmwareWriter
-      return firmware_writer_pad writer arguments[1] arguments[2]
-    if index == FirmwareService.FIRMWARE_WRITER_FLUSH_INDEX:
+      return firmware-writer-pad writer arguments[1] arguments[2]
+    if index == FirmwareService.FIRMWARE-WRITER-FLUSH-INDEX:
       writer ::= (resource client arguments) as FirmwareWriter
-      return firmware_writer_flush writer
-    if index == FirmwareService.FIRMWARE_WRITER_COMMIT_INDEX:
+      return firmware-writer-flush writer
+    if index == FirmwareService.FIRMWARE-WRITER-COMMIT-INDEX:
       writer ::= (resource client arguments[0]) as FirmwareWriter
-      return firmware_writer_commit writer arguments[1]
+      return firmware-writer-commit writer arguments[1]
     unreachable
 
-  abstract is_validation_pending -> bool
-  abstract is_rollback_possible -> bool
+  abstract is-validation-pending -> bool
+  abstract is-rollback-possible -> bool
 
   abstract validate -> bool
   abstract rollback -> none
   abstract upgrade -> none
 
-  abstract config_ubjson -> ByteArray
-  abstract config_entry key/string -> any
+  abstract config-ubjson -> ByteArray
+  abstract config-entry key/string -> any
 
   abstract content -> ByteArray?
   abstract uri -> string?
 
-  firmware_writer_open from/int to/int -> int:
+  firmware-writer-open from/int to/int -> int:
     unreachable  // TODO(kasper): Nasty.
 
-  abstract firmware_writer_open client/int from/int to/int -> FirmwareWriter
+  abstract firmware-writer-open client/int from/int to/int -> FirmwareWriter
 
-  firmware_writer_write writer/FirmwareWriter bytes/ByteArray -> none:
+  firmware-writer-write writer/FirmwareWriter bytes/ByteArray -> none:
     writer.write bytes
 
-  firmware_writer_pad writer/FirmwareWriter size/int value/int -> none:
+  firmware-writer-pad writer/FirmwareWriter size/int value/int -> none:
     writer.pad size value
 
-  firmware_writer_flush writer/FirmwareWriter -> int:
+  firmware-writer-flush writer/FirmwareWriter -> int:
     return writer.flush
 
-  firmware_writer_commit writer/FirmwareWriter checksum/ByteArray? -> none:
+  firmware-writer-commit writer/FirmwareWriter checksum/ByteArray? -> none:
     writer.commit checksum
 
 interface FirmwareWriter:

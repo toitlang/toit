@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary show LITTLE_ENDIAN
+import binary show LITTLE-ENDIAN
 import .checksum
 
 /**
@@ -28,10 +28,10 @@ class Md5 extends Checksum:
     0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
   ]
 
-  static BLOCK_SIZE ::= 64
+  static BLOCK-SIZE ::= 64
 
   size_/int := 0
-  buffer_/ByteArray? := ByteArray BLOCK_SIZE
+  buffer_/ByteArray? := ByteArray BLOCK-SIZE
 
   a_/int := 0x67452301
   b_/int := 0xefcdab89
@@ -49,16 +49,16 @@ class Md5 extends Checksum:
   add data from/int to/int -> none:
     if not buffer_: throw "ALREADY_CLOSED"
     slice := data[from..to]
-    add_bytes_ (slice is ByteArray ? slice : slice.to_byte_array)
+    add-bytes_ (slice is ByteArray ? slice : slice.to-byte-array)
 
-  add_bytes_ bytes/ByteArray -> none:
+  add-bytes_ bytes/ByteArray -> none:
     extra := bytes.size
     fullness := size_ & 0x3f
     size_ += extra
 
     // See if we can fit all the extra bytes into the buffer.
     buffer := buffer_
-    n := BLOCK_SIZE - fullness
+    n := BLOCK-SIZE - fullness
     if extra < n:
       buffer.replace fullness bytes
       return
@@ -66,23 +66,23 @@ class Md5 extends Checksum:
     // We have enough extra bytes to fill up the
     // buffer completely.
     buffer.replace fullness bytes 0 n
-    add_chunk_ buffer 0
+    add-chunk_ buffer 0
 
     // Run through the extra bytes and add the
     // full chunks we can find without copying
     // the bytes into the buffer.
     while true:
-      next := n + BLOCK_SIZE
+      next := n + BLOCK-SIZE
       if next > extra:
         // Save the last extra bytes in the buffer,
         // so we have them for the next add.
         buffer.replace 0 bytes n
         return
-      add_chunk_ bytes n
+      add-chunk_ bytes n
       n = next
 
   // Takes the 64 bytes, starting at $from.
-  add_chunk_ chunk/ByteArray from/int -> none:
+  add-chunk_ chunk/ByteArray from/int -> none:
     noise := NOISE_
     shifts := SHIFTS_
     f := F_
@@ -93,7 +93,7 @@ class Md5 extends Checksum:
     c := c_
     d := d_
 
-    BLOCK_SIZE.repeat: | i/int |
+    BLOCK-SIZE.repeat: | i/int |
       e := ?
       if i < 32:
         if i < 16:
@@ -110,7 +110,7 @@ class Md5 extends Checksum:
       d = c
       c = b
       ae := a + e
-      cf := LITTLE_ENDIAN.uint32 chunk (from + f[i])
+      cf := LITTLE-ENDIAN.uint32 chunk (from + f[i])
       nc := noise[i] + cf
       aenc := (ae + nc) & mask32
       shift := shifts[i]
@@ -130,27 +130,27 @@ class Md5 extends Checksum:
     // in the content encoded in them.
     size := size_
     signature := ByteArray 8
-    LITTLE_ENDIAN.put_int64 signature 0 (size * 8)
+    LITTLE-ENDIAN.put-int64 signature 0 (size * 8)
 
     // The padding starts with a 1 bit and then enough
     // zeros to make the total size a multiple of 64.
     padding := #[ 0x80 ]
     size += 1 + signature.size
-    aligned := round_up size 64
+    aligned := round-up size 64
     if aligned > size:
       padding += ByteArray (aligned - size)
       size = aligned
 
     // Add the padding and the signature.
     bytes := padding + signature
-    add_bytes_ bytes
+    add-bytes_ bytes
     assert: size_ == size
 
     digest := ByteArray 16
-    LITTLE_ENDIAN.put_uint32 digest  0 a_
-    LITTLE_ENDIAN.put_uint32 digest  4 b_
-    LITTLE_ENDIAN.put_uint32 digest  8 c_
-    LITTLE_ENDIAN.put_uint32 digest 12 d_
+    LITTLE-ENDIAN.put-uint32 digest  0 a_
+    LITTLE-ENDIAN.put-uint32 digest  4 b_
+    LITTLE-ENDIAN.put-uint32 digest  8 c_
+    LITTLE-ENDIAN.put-uint32 digest 12 d_
     buffer_ = null
     return digest
 

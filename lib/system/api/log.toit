@@ -11,7 +11,7 @@ interface LogService:
       --minor=1
 
   log level/int message/string names/List? keys/List? values/List? -> none
-  static LOG_INDEX /int ::= 0
+  static LOG-INDEX /int ::= 0
 
 class LogServiceClient extends ServiceClient implements LogService:
   static SELECTOR ::= LogService.SELECTOR
@@ -20,4 +20,4 @@ class LogServiceClient extends ServiceClient implements LogService:
     super selector
 
   log level/int message/string names/List? keys/List? values/List? -> none:
-    invoke_ LogService.LOG_INDEX [level, message, names, keys, values]
+    invoke_ LogService.LOG-INDEX [level, message, names, keys, values]

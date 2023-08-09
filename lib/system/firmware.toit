@@ -11,7 +11,7 @@ import system.services show ServiceResourceProxy
 import system.storage  // For toitdoc.
 
 _client_ /FirmwareServiceClient? ::= (FirmwareServiceClient).open
-    --if_absent=: null
+    --if-absent=: null
 
 /**
 The identifier for the current firmware.
@@ -39,7 +39,7 @@ The mapping is only valid while executing the given
 map --from/int=0 --to/int?=null [block] -> none:
   mapping/FirmwareMapping_? := null
   if _client_:
-    data := firmware_map_ _client_.content
+    data := firmware-map_ _client_.content
     if data:
       if not to: to = data.size
       if 0 <= from <= to <= data.size:
@@ -47,7 +47,7 @@ map --from/int=0 --to/int?=null [block] -> none:
   try:
     block.call mapping
   finally:
-    if mapping: firmware_unmap_ mapping.data_
+    if mapping: firmware-unmap_ mapping.data_
 
 /**
 Returns whether the currently executing firmware is
@@ -58,17 +58,17 @@ Firmware that is not validated automatically rolls back to
   pending, you must $validate the firmware if you want
   to reboot into the current firmware.
 */
-is_validation_pending -> bool:
+is-validation-pending -> bool:
   if not _client_: return false
-  return _client_.is_validation_pending
+  return _client_.is-validation-pending
 
 /**
 Returns whether another firmware is installed and
   can be rolled back to.
 */
-is_rollback_possible -> bool:
+is-rollback-possible -> bool:
   if not _client_: return false
-  return _client_.is_rollback_possible
+  return _client_.is-rollback-possible
 
 /**
 Validates the current firmware and tells the
@@ -76,7 +76,7 @@ Validates the current firmware and tells the
 
 Returns true if the validation was successful and
   false if the validation was unsuccessful or just
-  not needed ($is_validation_pending is false).
+  not needed ($is-validation-pending is false).
 */
 validate -> bool:
   if not _client_: throw "UNSUPPORTED"
@@ -114,16 +114,16 @@ Once the firmware has been built, the firmware must be
   start running it.
 
 It is common that newly installed firmware boots with
-  pending validation; see $is_validation_pending.
+  pending validation; see $is-validation-pending.
 */
 class FirmwareWriter extends ServiceResourceProxy:
-  static BUFFER_SIZE_ ::= 4096
+  static BUFFER-SIZE_ ::= 4096
   buffer_/ByteArray? := null
   buffered_/int := 0
 
   constructor from/int to/int:
     if not _client_: throw "UNSUPPORTED"
-    super _client_ (_client_.firmware_writer_open from to)
+    super _client_ (_client_.firmware-writer-open from to)
 
   /**
   Write the $bytes into the target firmware.
@@ -137,22 +137,22 @@ class FirmwareWriter extends ServiceResourceProxy:
     size := bytes.size
     if buffer := buffer_:
       buffered := buffered_
-      free := BUFFER_SIZE_ - buffered
+      free := BUFFER-SIZE_ - buffered
       if size <= free:
         buffer.replace buffered bytes 0 size
         buffered_ += size
         return
       // Fill buffer and flush it.
       buffer.replace buffered bytes 0 free
-      flush_ buffer BUFFER_SIZE_
+      flush_ buffer BUFFER-SIZE_
       // Adjust remaining bytes.
       size -= free
       bytes = bytes[free..]
 
-    if size >= BUFFER_SIZE_:
-      _client_.firmware_writer_write handle_ bytes
+    if size >= BUFFER-SIZE_:
+      _client_.firmware-writer-write handle_ bytes
     else:
-      buffer := ByteArray BUFFER_SIZE_
+      buffer := ByteArray BUFFER-SIZE_
       buffer.replace 0 bytes 0 size
       buffer_ = buffer
       buffered_ = size
@@ -166,31 +166,31 @@ class FirmwareWriter extends ServiceResourceProxy:
   */
   copy mapping/FirmwareMapping [progress] -> none:
     flush_
-    List.chunk_up 0 mapping.size BUFFER_SIZE_: | from to size |
-      buffer := ByteArray BUFFER_SIZE_
+    List.chunk-up 0 mapping.size BUFFER-SIZE_: | from to size |
+      buffer := ByteArray BUFFER-SIZE_
       mapping.copy from to --into=buffer
-      if size < BUFFER_SIZE_:
+      if size < BUFFER-SIZE_:
         buffer_ = buffer
         buffered_ = size
       else:
-        _client_.firmware_writer_write handle_ buffer
+        _client_.firmware-writer-write handle_ buffer
       progress.call size
 
   pad size/int --value/int=0 -> none:
     flush_
-    _client_.firmware_writer_pad handle_ size value
+    _client_.firmware-writer-pad handle_ size value
 
   flush -> int:
     flush_
-    return _client_.firmware_writer_flush handle_
+    return _client_.firmware-writer-flush handle_
 
   commit --checksum/ByteArray?=null -> none:
     flush_
-    _client_.firmware_writer_commit handle_ checksum
+    _client_.firmware-writer-commit handle_ checksum
 
   flush_ buffer/ByteArray?=buffer_ buffered/int=buffered_ -> none:
     if not buffer: return
-    _client_.firmware_writer_write handle_ buffer[..buffered]
+    _client_.firmware-writer-write handle_ buffer[..buffered]
     buffer_ = null
     buffered_ = 0
 
@@ -232,10 +232,10 @@ interface FirmwareMapping:
 
 class FirmwareConfig_ implements FirmwareConfig:
   operator [] key/string -> any:
-    return _client_.config_entry key
+    return _client_.config-entry key
 
   ubjson -> ByteArray:
-    return _client_.config_ubjson
+    return _client_.config-ubjson
 
 class FirmwareMapping_ implements FirmwareMapping:
   data_/ByteArray
@@ -245,7 +245,7 @@ class FirmwareMapping_ implements FirmwareMapping:
   constructor .data_ .offset_=0 .size=data_.size:
 
   operator [] index/int -> int:
-    #primitive.core.firmware_mapping_at
+    #primitive.core.firmware-mapping-at
 
   operator [..] --from/int=0 --to/int=size -> FirmwareMapping:
     if not 0 <= from <= to <= size: throw "OUT_OF_BOUNDS"
@@ -256,25 +256,25 @@ class FirmwareMapping_ implements FirmwareMapping:
     // Determine if we can do an aligned block copy taking
     // the offset into account.
     offset := offset_
-    block_from := min to ((round_up (from + offset) 4) - offset)
-    block_to := (round_down (to + offset) 4) - offset
+    block-from := min to ((round-up (from + offset) 4) - offset)
+    block-to := (round-down (to + offset) 4) - offset
     // Copy the bytes in up to three chunks.
-    cursor := copy_range_ from block_from into 0
-    if block_from < block_to:
-      cursor = copy_block_ block_from block_to into cursor
+    cursor := copy-range_ from block-from into 0
+    if block-from < block-to:
+      cursor = copy-block_ block-from block-to into cursor
     else:
-      block_to = block_from
-    copy_range_ block_to to into cursor
+      block-to = block-from
+    copy-range_ block-to to into cursor
 
-  copy_range_ from/int to/int into/ByteArray index/int -> int:
+  copy-range_ from/int to/int into/ByteArray index/int -> int:
     while from < to: into[index++] = this[from++]
     return index
 
-  copy_block_ from/int to/int into/ByteArray index/int -> int:
-    #primitive.core.firmware_mapping_copy
+  copy-block_ from/int to/int into/ByteArray index/int -> int:
+    #primitive.core.firmware-mapping-copy
 
-firmware_map_ data/ByteArray? -> ByteArray?:
-  #primitive.core.firmware_map
+firmware-map_ data/ByteArray? -> ByteArray?:
+  #primitive.core.firmware-map
 
-firmware_unmap_ data/ByteArray -> none:
-  #primitive.core.firmware_unmap
+firmware-unmap_ data/ByteArray -> none:
+  #primitive.core.firmware-unmap

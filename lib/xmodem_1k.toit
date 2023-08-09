@@ -10,7 +10,7 @@ import writer
 import uart
 import crypto.checksum
 import crypto.crc
-import binary show BIG_ENDIAN
+import binary show BIG-ENDIAN
 
 /**
 Writer for writing data in the XMODEM-1K format on the UART port.
@@ -18,8 +18,8 @@ Writer for writing data in the XMODEM-1K format on the UART port.
 Deprecated.
 */
 class Writer:
-  static MAX_RETRY_/int ::= 3
-  static RETRY_DELAY_/Duration ::= Duration --ms=500
+  static MAX-RETRY_/int ::= 3
+  static RETRY-DELAY_/Duration ::= Duration --ms=500
   static ACK_/int ::= 0x06
   static NAK_/int ::= 0x15
 
@@ -29,28 +29,28 @@ class Writer:
 
   constructor .uart_:
     writer_ = writer.Writer uart_
-    wait_for_ready_
+    wait-for-ready_
 
   write data:
     buffer_.next data
-    write_package_ buffer_.to_byte_array
+    write-package_ buffer_.to-byte-array
 
   done:
-    write_package_ buffer_.eot
+    write-package_ buffer_.eot
 
-  write_package_ data/ByteArray:
-    MAX_RETRY_.repeat:
+  write-package_ data/ByteArray:
+    MAX-RETRY_.repeat:
       writer_.write data
       r := uart_.read
       if r.size != 1: throw "INVALID XMODEL RESPONSE: $r"
       if r[0] == ACK_: return
       if r[0] != NAK_: throw "INVALID XMODEL RESPONSE: $r"
 
-      sleep RETRY_DELAY_
+      sleep RETRY-DELAY_
 
-    throw "ERROR AFTER $MAX_RETRY_ RETRIES"
+    throw "ERROR AFTER $MAX-RETRY_ RETRIES"
 
-  wait_for_ready_:
+  wait-for-ready_:
     r := uart_.read
     if r.size == 1 and r[0] == 'C': return
     throw "INVALID XMODEL INIT: $r"
@@ -63,29 +63,29 @@ Note that only the last packet should be less than DATA_SIZE.
 Deprecated.
 */
 class Buffer:
-  static DATA_SIZE/int ::= 1024
-  static DATA_OFFSET_/int ::= 3
+  static DATA-SIZE/int ::= 1024
+  static DATA-OFFSET_/int ::= 3
   static STX_/int ::= 0x02
-  static CTRL_Z_/int ::= 0x1A
+  static CTRL-Z_/int ::= 0x1A
   static EOT_/int ::= 0x04
 
-  buffer_ ::= ByteArray DATA_SIZE + 5
-  packet_no_ := 1
+  buffer_ ::= ByteArray DATA-SIZE + 5
+  packet-no_ := 1
 
   next data/ByteArray:
     buffer_[0] = STX_
-    buffer_[1] = packet_no_
-    buffer_[2] = ~packet_no_
-    buffer_.replace DATA_OFFSET_ data
-    END ::= DATA_OFFSET_ + DATA_SIZE
-    buffer_.fill --from=(DATA_OFFSET_ + data.size) --to=END CTRL_Z_
+    buffer_[1] = packet-no_
+    buffer_[2] = ~packet-no_
+    buffer_.replace DATA-OFFSET_ data
+    END ::= DATA-OFFSET_ + DATA-SIZE
+    buffer_.fill --from=(DATA-OFFSET_ + data.size) --to=END CTRL-Z_
 
     buffer_.replace
         END
-        checksum.checksum crc.Crc16Xmodem buffer_ DATA_OFFSET_ END
+        checksum.checksum crc.Crc16Xmodem buffer_ DATA-OFFSET_ END
 
-    packet_no_++
+    packet-no_++
 
-  to_byte_array: return buffer_
+  to-byte-array: return buffer_
 
   eot: return ByteArray 1 --filler=EOT_

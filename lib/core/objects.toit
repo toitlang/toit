@@ -47,13 +47,13 @@ class Object:
     this method. The default string is based on the internal class-ID.
   */
   stringify -> string:
-    return "an instance with class-id $(class_id this)"
+    return "an instance with class-id $(class-id this)"
 
   /**
   Looks up the class ID of the $object.
   */
-  static class_id object -> int:
-    #primitive.core.object_class_id
+  static class-id object -> int:
+    #primitive.core.object-class-id
 
 // For simplicity add the Object properties to the base interface class.
 // This way, the type-checker doesn't complain when we use them on interface types.
@@ -122,31 +122,31 @@ class Lambda:
   Calls this lambda with no arguments.
   */
   call:
-    return __invoke_lambda__ 0
+    return __invoke-lambda__ 0
 
   /**
   Calls this lambda with one argument.
   */
   call a:
-    return __invoke_lambda__ 1
+    return __invoke-lambda__ 1
 
   /**
   Calls this lambda with two argument.
   */
   call a b:
-    return __invoke_lambda__ 2
+    return __invoke-lambda__ 2
 
   /**
   Calls this lambda with three arguments.
   */
   call a b c:
-    return __invoke_lambda__ 3
+    return __invoke-lambda__ 3
 
   /**
   Calls this lambda with four arguments.
   */
   call a b c d:
-    return __invoke_lambda__ 4
+    return __invoke-lambda__ 4
 
   /**
   See $super.
@@ -157,8 +157,8 @@ class Lambda:
   /**
   Returns the hash code of this lambda.
   */
-  hash_code:
-    return method_.hash_code
+  hash-code:
+    return method_.hash-code
 
 /**
 Creates a new Lambda.
@@ -166,120 +166,120 @@ Creates a new Lambda.
 The $arguments are generally an array, except if the lambda only captures one
   argument. In that case, the captured value is passed directly.
 */
-lambda_ method arguments/any arg_count -> Lambda:
+lambda_ method arguments/any arg-count -> Lambda:
   // If the arg-count is 1, then the arguments are not wrapped.
   // If the argument is not an array, then the interpreter knows that the
   //   lambda just captured a single value.
   // However, if it is an array, then the interpreter would not
   //   know whether the lambda captured the array, or the values in the array. As such
   //   we have to wrap the array in an array. This removes the ambiguity.
-  if arg_count == 1 and arguments is Array_:
-    arguments = create_array_ arguments
+  if arg-count == 1 and arguments is Array_:
+    arguments = create-array_ arguments
   return Lambda.__ method arguments
 
 /**
 The task that runs an initializer and all blocked tasks that are
   waiting for that task to finish.
 
-Uses a tasks $Task_.next_blocked_ to maintain the list of blocked tasks.
+Uses a tasks $Task_.next-blocked_ to maintain the list of blocked tasks.
 */
 class LazyInitializerBlockedTasks_:
   initializing /Task_
-  blocked_first /Task_ := ?
-  blocked_last /Task_ := ?
+  blocked-first /Task_ := ?
+  blocked-last /Task_ := ?
 
-  constructor .initializing first_blocked/Task_:
-    blocked_first = first_blocked
-    blocked_last = first_blocked
+  constructor .initializing first-blocked/Task_:
+    blocked-first = first-blocked
+    blocked-last = first-blocked
 
   add waiting/Task_:
-    assert: blocked_last.next_blocked_ == null
-    assert: waiting.next_blocked_ == null
-    blocked_last.next_blocked_ = waiting
-    blocked_last = waiting
+    assert: blocked-last.next-blocked_ == null
+    assert: waiting.next-blocked_ == null
+    blocked-last.next-blocked_ = waiting
+    blocked-last = waiting
 
-  do_and_clear [block]:
-    current /Task_? := blocked_first
+  do-and-clear [block]:
+    current /Task_? := blocked-first
     while current:
-      next := current.next_blocked_
-      current.next_blocked_ = null
+      next := current.next-blocked_
+      current.next-blocked_ = null
       block.call current
       current = next
 
 /**
 Class to correctly initialize lazy statics.
 
-The $id_or_tasks_ can be:
+The $id-or-tasks_ can be:
 - the method ID that should be called to initialize the global
 - the task that is currently running the initializer, or
 - a $LazyInitializerBlockedTasks_ object that has the initializing task and all blocked tasks.
 */
 class LazyInitializer_:
-  id_or_tasks_ / any := ?
+  id-or-tasks_ / any := ?
 
-  constructor .id_or_tasks_:
+  constructor .id-or-tasks_:
 
   call:
-    assert: id_or_tasks_ is int
+    assert: id-or-tasks_ is int
     // The __invoke_initializer__ builtin does a tail call to the method with the given id.
-    return __invoke_initializer__ id_or_tasks_
+    return __invoke-initializer__ id-or-tasks_
 
   initializing -> Task_:
-    if id_or_tasks_ is Task_: return id_or_tasks_
-    return (id_or_tasks_ as LazyInitializerBlockedTasks_).initializing
+    if id-or-tasks_ is Task_: return id-or-tasks_
+    return (id-or-tasks_ as LazyInitializerBlockedTasks_).initializing
 
-  suspend_blocked blocked/Task_:
-    if id_or_tasks_ is Task_:
+  suspend-blocked blocked/Task_:
+    if id-or-tasks_ is Task_:
       // First blocked task.
-      id_or_tasks_ = LazyInitializerBlockedTasks_ id_or_tasks_ blocked
+      id-or-tasks_ = LazyInitializerBlockedTasks_ id-or-tasks_ blocked
     else:
       // Add to the blocked queue.
-      (id_or_tasks_ as LazyInitializerBlockedTasks_).add blocked
+      (id-or-tasks_ as LazyInitializerBlockedTasks_).add blocked
 
     // Suspend the task.
     next := blocked.suspend_
-    task_transfer_to_ next false
+    task-transfer-to_ next false
 
   /**
   Resumes all blocked tasks and removes them from the linked list.
   */
-  wake_blocked:
-    if id_or_tasks_ is not LazyInitializerBlockedTasks_: return
-    (id_or_tasks_ as LazyInitializerBlockedTasks_).do_and_clear: | blocked/Task_ |
+  wake-blocked:
+    if id-or-tasks_ is not LazyInitializerBlockedTasks_: return
+    (id-or-tasks_ as LazyInitializerBlockedTasks_).do-and-clear: | blocked/Task_ |
       blocked.resume_
 
 /**
 Runs the $initializer function for the given $global.
 */
-run_global_initializer_ global/int initializer/LazyInitializer_:
-  this_task := Task_.current
+run-global-initializer_ global/int initializer/LazyInitializer_:
+  this-task := Task_.current
   while true:
-    if initializer.id_or_tasks_ is not int:
+    if initializer.id-or-tasks_ is not int:
       // There is already an initialization in progress.
-      initializing_task := initializer.initializing
-      if initializing_task == this_task:
+      initializing-task := initializer.initializing
+      if initializing-task == this-task:
         // The initializer of the variable is trying to access the global
         // that is currently initialized.
-        initialization_in_progress_failure_ global
+        initialization-in-progress-failure_ global
 
       // Another task is already initializing this global.
       // Suspend us and mark us as waiting.
-      initializer.suspend_blocked this_task
+      initializer.suspend-blocked this-task
 
       // We have been woken up. This means that the previous initializer finished (successfully or not).
-      new_value := __load_global_with_id__ global
-      if new_value is not LazyInitializer_:
-        return new_value
+      new-value := __load-global-with-id__ global
+      if new-value is not LazyInitializer_:
+        return new-value
       // We still don't have a value. Either we have to try ourselves, or another task is already trying.
       // Start from the beginning of this function.
-      initializer = new_value as LazyInitializer_
+      initializer = new-value as LazyInitializer_
       continue
 
     // We are the first to initialize this global.
     // Replace the existing initializer with an initializer with our task. Other tasks may
     // add themselves to wait for us to finish.
-    task_initializer := (LazyInitializer_ this_task)
-    __store_global_with_id__ global task_initializer
+    task-initializer := (LazyInitializer_ this-task)
+    __store-global-with-id__ global task-initializer
     // If the initializer fails, we store the original initializer back in
     // the global. This means that it is possible to invoke a global that throws
     // again.
@@ -290,6 +290,6 @@ run_global_initializer_ global/int initializer/LazyInitializer_:
     finally:
       // Either store the computed result, if the initializer succeeded, or
       // store the original initializer if it failed.
-      __store_global_with_id__ global result
+      __store-global-with-id__ global result
       // Wake up all waiting tasks.
-      task_initializer.wake_blocked
+      task-initializer.wake-blocked

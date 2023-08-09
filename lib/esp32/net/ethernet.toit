@@ -21,14 +21,14 @@ import system.api.network show NetworkService
 import system.services show ServiceProvider ServiceHandler
 import system.base.network show NetworkModule NetworkState NetworkResource
 
-MAC_CHIP_ESP32    ::= 0
-MAC_CHIP_W5500    ::= 1
-MAC_CHIP_OPENETH  ::= 2
+MAC-CHIP-ESP32    ::= 0
+MAC-CHIP-W5500    ::= 1
+MAC-CHIP-OPENETH  ::= 2
 
-PHY_CHIP_NONE     ::= 0
-PHY_CHIP_IP101    ::= 1
-PHY_CHIP_LAN8720  ::= 2
-PHY_CHIP_DP83848  ::= 3
+PHY-CHIP-NONE     ::= 0
+PHY-CHIP-IP101    ::= 1
+PHY-CHIP-LAN8720  ::= 2
+PHY-CHIP-DP83848  ::= 3
 
 /**
 Service provider for networking via the Ethernet peripheral.
@@ -96,68 +96,68 @@ This firmware contains the following sdk-config change (enable
 */
 class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
   state_/NetworkState ::= NetworkState
-  create_resource_group_/Lambda
+  create-resource-group_/Lambda
 
   /**
-  The $mac_chip must be one of $MAC_CHIP_ESP32 or $MAC_CHIP_W5500.
-  The $phy_chip must be one of $PHY_CHIP_NONE, $PHY_CHIP_IP101 or $PHY_CHIP_LAN8720.
+  The $mac-chip must be one of $MAC-CHIP-ESP32 or $MAC-CHIP-W5500.
+  The $phy-chip must be one of $PHY-CHIP-NONE, $PHY-CHIP-IP101 or $PHY-CHIP-LAN8720.
   */
   constructor
-      --phy_chip/int
-      --phy_address/int=-1
-      --phy_reset/gpio.Pin?=null
-      --mac_chip/int
-      --mac_mdc/gpio.Pin?
-      --mac_mdio/gpio.Pin?
-      --mac_spi_device/spi.Device?
-      --mac_interrupt/gpio.Pin?:
-    if mac_chip == MAC_CHIP_ESP32 or mac_chip == MAC_CHIP_OPENETH:
-      create_resource_group_ = :: ethernet_init_esp32_
-          mac_chip
-          phy_chip
-          phy_address
-          phy_reset ? phy_reset.num : -1
-          mac_mdc ? mac_mdc.num : -1
-          mac_mdio ? mac_mdio.num : -1
-    else if phy_chip != PHY_CHIP_NONE:
+      --phy-chip/int
+      --phy-address/int=-1
+      --phy-reset/gpio.Pin?=null
+      --mac-chip/int
+      --mac-mdc/gpio.Pin?
+      --mac-mdio/gpio.Pin?
+      --mac-spi-device/spi.Device?
+      --mac-interrupt/gpio.Pin?:
+    if mac-chip == MAC-CHIP-ESP32 or mac-chip == MAC-CHIP-OPENETH:
+      create-resource-group_ = :: ethernet-init-esp32_
+          mac-chip
+          phy-chip
+          phy-address
+          phy-reset ? phy-reset.num : -1
+          mac-mdc ? mac-mdc.num : -1
+          mac-mdio ? mac-mdio.num : -1
+    else if phy-chip != PHY-CHIP-NONE:
       throw "unexpected PHY chip selection"
     else:
-      create_resource_group_ = :: ethernet_init_spi_
-          mac_chip
-          (mac_spi_device as spi.Device_).device_
-          mac_interrupt.num
+      create-resource-group_ = :: ethernet-init-spi_
+          mac-chip
+          (mac-spi-device as spi.Device_).device_
+          mac-interrupt.num
     super "system/ethernet/esp32" --major=0 --minor=1
-        --tags=[NetworkService.TAG_ETHERNET]
+        --tags=[NetworkService.TAG-ETHERNET]
     provides NetworkService.SELECTOR
         --handler=this
-        --priority=ServiceProvider.PRIORITY_PREFERRED
+        --priority=ServiceProvider.PRIORITY-PREFERRED
     provides EthernetService.SELECTOR
         --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
-    if index == NetworkService.CONNECT_INDEX:
+    if index == NetworkService.CONNECT-INDEX:
       return connect client
-    if index == NetworkService.ADDRESS_INDEX:
+    if index == NetworkService.ADDRESS-INDEX:
       network := (resource client arguments) as NetworkResource
       return address network
     unreachable
 
   connect client/int -> List:
-    state_.up: EthernetModule_ this create_resource_group_
+    state_.up: EthernetModule_ this create-resource-group_
     try:
       resource := NetworkResource this client state_ --notifiable
       return [
-        resource.serialize_for_rpc,
-        NetworkService.PROXY_ADDRESS,
+        resource.serialize-for-rpc,
+        NetworkService.PROXY-ADDRESS,
         "ethernet"
       ]
-    finally: | is_exception exception |
+    finally: | is-exception exception |
       // If we're not returning a network resource to the client, we
       // must take care to decrement the usage count correctly.
-      if is_exception: state_.down
+      if is-exception: state_.down
 
   address resource/NetworkResource -> ByteArray:
-    return (state_.module as EthernetModule_).address.to_byte_array
+    return (state_.module as EthernetModule_).address.to-byte-array
 
   /**
   Called when the module is first opened, for example through `ethernet.open`.
@@ -165,7 +165,7 @@ class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
   # Inheritance
   This method must be called by any subclass that overrides it.
   */
-  on_module_opened module/EthernetModule_ -> none:
+  on-module-opened module/EthernetModule_ -> none:
 
   /**
   Called when the module is closed, for example through `network.close`.
@@ -173,86 +173,86 @@ class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
   # Inheritance
   This method must be called by any subclass that overrides it.
   */
-  on_module_closed module/EthernetModule_ -> none:
-    critical_do:
-      resources_do: | resource/NetworkResource |
-        if not resource.is_closed:
-          resource.notify_ NetworkService.NOTIFY_CLOSED --close
+  on-module-closed module/EthernetModule_ -> none:
+    critical-do:
+      resources-do: | resource/NetworkResource |
+        if not resource.is-closed:
+          resource.notify_ NetworkService.NOTIFY-CLOSED --close
 
 class EthernetModule_ implements NetworkModule:
-  static ETHERNET_CONNECT_TIMEOUT ::= Duration --s=10
-  static ETHERNET_DHCP_TIMEOUT    ::= Duration --s=16
+  static ETHERNET-CONNECT-TIMEOUT ::= Duration --s=10
+  static ETHERNET-DHCP-TIMEOUT    ::= Duration --s=16
 
-  static ETHERNET_CONNECTED    ::= 1 << 0
-  static ETHERNET_DHCP_SUCCESS ::= 1 << 1
-  static ETHERNET_DISCONNECTED ::= 1 << 2
+  static ETHERNET-CONNECTED    ::= 1 << 0
+  static ETHERNET-DHCP-SUCCESS ::= 1 << 1
+  static ETHERNET-DISCONNECTED ::= 1 << 2
 
-  logger_/log.Logger ::= log.default.with_name "ethernet"
+  logger_/log.Logger ::= log.default.with-name "ethernet"
   service/EthernetServiceProvider
 
-  resource_group_ := ?
+  resource-group_ := ?
   address_/net.IpAddress? := null
 
-  constructor .service create_resource_group/Lambda:
-    resource_group_ = create_resource_group.call
+  constructor .service create-resource-group/Lambda:
+    resource-group_ = create-resource-group.call
 
   address -> net.IpAddress:
     return address_
 
   connect -> none:
-    service.on_module_opened this
-    with_timeout ETHERNET_CONNECT_TIMEOUT: wait_for_connected_
-    with_timeout ETHERNET_DHCP_TIMEOUT: wait_for_dhcp_ip_address_
+    service.on-module-opened this
+    with-timeout ETHERNET-CONNECT-TIMEOUT: wait-for-connected_
+    with-timeout ETHERNET-DHCP-TIMEOUT: wait-for-dhcp-ip-address_
 
   disconnect -> none:
-    if not resource_group_: return
+    if not resource-group_: return
     logger_.debug "closing"
-    ethernet_close_ resource_group_
-    resource_group_ = null
+    ethernet-close_ resource-group_
+    resource-group_ = null
     address_ = null
-    service.on_module_closed this
+    service.on-module-closed this
 
-  wait_for_connected_ -> none:
+  wait-for-connected_ -> none:
     logger_.debug "connecting"
     while true:
-      resource := ethernet_connect_ resource_group_
-      ethernet_events := monitor.ResourceState_ resource_group_ resource
-      state := ethernet_events.wait
-      ethernet_events.dispose
-      if (state & ETHERNET_CONNECTED) != 0:
+      resource := ethernet-connect_ resource-group_
+      ethernet-events := monitor.ResourceState_ resource-group_ resource
+      state := ethernet-events.wait
+      ethernet-events.dispose
+      if (state & ETHERNET-CONNECTED) != 0:
         logger_.debug "connected"
         return
-      else if (state & ETHERNET_DISCONNECTED) != 0:
+      else if (state & ETHERNET-DISCONNECTED) != 0:
         logger_.warn "connect failed"
         throw "CONNECT_FAILED"
 
-  wait_for_dhcp_ip_address_ -> none:
-    resource := ethernet_setup_ip_ resource_group_
-    ip_events := monitor.ResourceState_ resource_group_ resource
-    state := ip_events.wait
-    ip_events.dispose
-    if (state & ETHERNET_DHCP_SUCCESS) == 0: throw "IP_ASSIGN_FAILED"
-    ip := ethernet_get_ip_ resource
+  wait-for-dhcp-ip-address_ -> none:
+    resource := ethernet-setup-ip_ resource-group_
+    ip-events := monitor.ResourceState_ resource-group_ resource
+    state := ip-events.wait
+    ip-events.dispose
+    if (state & ETHERNET-DHCP-SUCCESS) == 0: throw "IP_ASSIGN_FAILED"
+    ip := ethernet-get-ip_ resource
     address_ = net.IpAddress ip
     logger_.info "network address dynamically assigned through dhcp" --tags={"ip": address_}
 
-ethernet_init_esp32_ mac_chip/int phy_chip/int phy_addr/int phy_reset_num/int mac_mdc_num/int mac_mdio_num/int:
-  #primitive.ethernet.init_esp32
+ethernet-init-esp32_ mac-chip/int phy-chip/int phy-addr/int phy-reset-num/int mac-mdc-num/int mac-mdio-num/int:
+  #primitive.ethernet.init-esp32
 
-ethernet_init_spi_ mac_chip/int spi_device int_num/int:
-  #primitive.ethernet.init_spi
+ethernet-init-spi_ mac-chip/int spi-device int-num/int:
+  #primitive.ethernet.init-spi
 
-ethernet_close_ resource_group:
+ethernet-close_ resource-group:
   #primitive.ethernet.close
 
-ethernet_connect_ resource_group:
+ethernet-connect_ resource-group:
   #primitive.ethernet.connect
 
-ethernet_setup_ip_ resource_group:
-  #primitive.ethernet.setup_ip
+ethernet-setup-ip_ resource-group:
+  #primitive.ethernet.setup-ip
 
-ethernet_disconnect_ resource_group resource:
+ethernet-disconnect_ resource-group resource:
   #primitive.ethernet.disconnect
 
-ethernet_get_ip_ resource:
-  #primitive.ethernet.get_ip
+ethernet-get-ip_ resource:
+  #primitive.ethernet.get-ip

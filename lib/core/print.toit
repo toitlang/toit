@@ -52,39 +52,39 @@ Dumps the string of $object and a newline on stdout and flushes it.
 Does not yield the currently running task.
 */
 print_ object:
-  write_on_stdout_ object.stringify true
+  write-on-stdout_ object.stringify true
 
 /**
 Dumps the string $message on stdout and flushes it.
-If $add_newline is true adds a "\n" to the output.
+If $add-newline is true adds a "\n" to the output.
 
 Does not yield the currently running task.
 */
-write_on_stdout_ message/string add_newline/bool -> none:
-  #primitive.core.write_string_on_stdout
+write-on-stdout_ message/string add-newline/bool -> none:
+  #primitive.core.write-string-on-stdout
 
 /**
 Dumps the string of $object and a newline on stderr and flushes it.
 
 Does not yield the currently running task.
 */
-print_on_stderr_ object:
-  write_on_stderr_ object.stringify true
+print-on-stderr_ object:
+  write-on-stderr_ object.stringify true
 
 /**
 Dumps the string $message on stderr and flushes it.
-If $add_newline is true adds a "\n" to the output.
+If $add-newline is true adds a "\n" to the output.
 
 Does not yield the currently running task.
 */
-write_on_stderr_ message/string add_newline/bool -> none:
-  #primitive.core.write_string_on_stderr
+write-on-stderr_ message/string add-newline/bool -> none:
+  #primitive.core.write-string-on-stderr
 
 /**
 Print service used by $print.
 */
 service_/PrintService ::= (PrintServiceClient).open
-    --if_absent=: StandardPrintService_
+    --if-absent=: StandardPrintService_
 
 /**
 Standard print service used when the system print service cannot
@@ -92,4 +92,4 @@ Standard print service used when the system print service cannot
 */
 class StandardPrintService_ implements PrintService:
   print message/string -> none:
-    write_on_stdout_ message true
+    write-on-stdout_ message true

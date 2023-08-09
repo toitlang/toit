@@ -13,10 +13,10 @@ Functionality available on devices (ESP32).
 
 /** Name of this device. */
 name -> string:
-  return hardware_id.stringify
+  return hardware-id.stringify
 
 /** Hardware ID of this device. */
-hardware_id/uuid.Uuid ::= uuid.uuid5 "hw_id" get_mac_address_
+hardware-id/uuid.Uuid ::= uuid.uuid5 "hw_id" get-mac-address_
 
 /**
 Simple key-value store.
@@ -46,7 +46,7 @@ class FlashStore implements Store:
     return instance_
 
   constructor.internal_:
-    group_ = flash_kv_init_ "nvs" "kv store" false
+    group_ = flash-kv-init_ "nvs" "kv store" false
 
   /**
   Gets the value for the given $key.
@@ -54,7 +54,7 @@ class FlashStore implements Store:
   Returns null if no value is available.
   */
   get key/string -> any:
-    bytes := flash_kv_read_bytes_ group_ key
+    bytes := flash-kv-read-bytes_ group_ key
     return bytes ? (tison.decode bytes) : null
 
   /**
@@ -63,7 +63,7 @@ class FlashStore implements Store:
   The $key does not need to be present in the store.
   */
   delete key/string -> none:
-    flash_kv_delete_ group_ key
+    flash-kv-delete_ group_ key
 
   /**
   Inserts the given $key-$value pair in the store.
@@ -76,21 +76,21 @@ class FlashStore implements Store:
   - maps. The keys must be strings, and the values must be valid TISON objects.
   */
   set key/string value/any -> none:
-    flash_kv_write_bytes_ group_ key (tison.encode value)
+    flash-kv-write-bytes_ group_ key (tison.encode value)
 
 // --------------------------------------------------------------------------
 
-get_mac_address_:
-  #primitive.esp32.get_mac_address
+get-mac-address_:
+  #primitive.esp32.get-mac-address
 
-flash_kv_init_ volume name read_only:
-  #primitive.flash_kv.init
+flash-kv-init_ volume name read-only:
+  #primitive.flash-kv.init
 
-flash_kv_read_bytes_ resource_group key:
-  #primitive.flash_kv.read_bytes
+flash-kv-read-bytes_ resource-group key:
+  #primitive.flash-kv.read-bytes
 
-flash_kv_write_bytes_ resource_group key value:
-  #primitive.flash_kv.write_bytes
+flash-kv-write-bytes_ resource-group key value:
+  #primitive.flash-kv.write-bytes
 
-flash_kv_delete_ resource_group key:
-  #primitive.flash_kv.delete
+flash-kv-delete_ resource-group key:
+  #primitive.flash-kv.delete

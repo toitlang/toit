@@ -46,22 +46,22 @@ class Touch:
     conceptually disables the $get function and makes the pin unavailable as wakeup source.
   */
   constructor .pin --threshold/int?=null:
-    group := resource_group_
-    resource_ = touch_use_ group pin.num (threshold or 0)
+    group := resource-group_
+    resource_ = touch-use_ group pin.num (threshold or 0)
 
   /**
   Reads the raw value of the touch pad.
   */
   read --raw/bool -> int:
     if not raw: throw "INVALID_ARGUMENT"
-    if is_closed: throw "CLOSED"
-    return touch_read_ resource_
+    if is-closed: throw "CLOSED"
+    return touch-read_ resource_
 
   /**
   Compares the $read raw value against the threshold and returns whether the touch pad is touched.
   */
   get -> bool:
-    if is_closed: throw "CLOSED"
+    if is-closed: throw "CLOSED"
     return (read --raw) < threshold
 
   /**
@@ -70,23 +70,23 @@ class Touch:
   This value is used for the $get functiond and for the deep-sleep wakeup.
   */
   threshold -> int:
-    if is_closed: throw "CLOSED"
-    return touch_get_threshold_ resource_
+    if is-closed: throw "CLOSED"
+    return touch-get-threshold_ resource_
 
   /**
   Sets a new threshold value.
 
-  The $new_value must be between 0 and 0xFFFF.
+  The $new-value must be between 0 and 0xFFFF.
   */
-  threshold= new_value/int:
-    if is_closed: throw "CLOSED"
-    if not 0 <= new_value <= 0xFFFF: throw "INVALID_ARGUMENT"
-    touch_set_threshold_ resource_ new_value
+  threshold= new-value/int:
+    if is-closed: throw "CLOSED"
+    if not 0 <= new-value <= 0xFFFF: throw "INVALID_ARGUMENT"
+    touch-set-threshold_ resource_ new-value
 
   /**
   Whether this touch pad is closed.
   */
-  is_closed -> bool:
+  is-closed -> bool:
     return resource_ == null
 
   /**
@@ -96,24 +96,24 @@ class Touch:
     resource := resource_
     if resource:
       resource_ = null
-      touch_unuse_ resource_group_ resource
+      touch-unuse_ resource-group_ resource
 
-resource_group_ ::= touch_init_
+resource-group_ ::= touch-init_
 
-touch_init_:
+touch-init_:
   #primitive.touch.init
 
-touch_use_ group pin_num threshold:
+touch-use_ group pin-num threshold:
   #primitive.touch.use
 
-touch_unuse_ group resource:
+touch-unuse_ group resource:
   #primitive.touch.unuse
 
-touch_read_ resource:
+touch-read_ resource:
   #primitive.touch.read
 
-touch_get_threshold_ resource:
-  #primitive.touch.get_threshold
+touch-get-threshold_ resource:
+  #primitive.touch.get-threshold
 
-touch_set_threshold_ resource new_threshold:
-  #primitive.touch.set_threshold
+touch-set-threshold_ resource new-threshold:
+  #primitive.touch.set-threshold
