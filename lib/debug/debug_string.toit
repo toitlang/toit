@@ -5,9 +5,9 @@
 // import pipe
 import reader show BufferedReader
 
-/// Decodes the given arguments, and invokes $dispatch_fun to
+/// Decodes the given arguments, and invokes $dispatch-fun to
 ///   invoke the static `debug_string` function for each object.
-do_debug_string args dispatch_fun/Lambda:
+do-debug-string args dispatch-fun/Lambda:
   /*
   // TODO(florian): reenable this code.
   reader := (BufferedReader pipe.stdin)

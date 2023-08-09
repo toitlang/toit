@@ -12,7 +12,7 @@ interface CellularService extends NetworkService:
       --minor=2
 
   connect config/Map? -> List
-  static CONNECT_INDEX /int ::= 1000
+  static CONNECT-INDEX /int ::= 1000
 
 class CellularServiceClient extends NetworkServiceClient implements CellularService:
   static SELECTOR ::= CellularService.SELECTOR
@@ -21,4 +21,4 @@ class CellularServiceClient extends NetworkServiceClient implements CellularServ
     super selector
 
   connect config/Map? -> List:
-    return invoke_ CellularService.CONNECT_INDEX config
+    return invoke_ CellularService.CONNECT-INDEX config

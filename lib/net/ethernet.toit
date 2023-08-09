@@ -30,20 +30,20 @@ main:
 */
 
 service_/EthernetServiceClient? := null
-service_initialized_/bool := false
+service-initialized_/bool := false
 
 open --name/string?=null -> net.Client:
-  if not service_initialized_:
+  if not service-initialized_:
     // We typically run the ethernet service in a non-system
     // container with --trigger=boot, so we need to give it
     // time to start so it can be discovered. We should really
     // generalize this handling for net.open and wifi.open too,
     // so we get a shared pattern for dealing with discovering
     // such network services at start up.
-    service_initialized_ = true
+    service-initialized_ = true
     service_ = (EthernetServiceClient).open
         --timeout=(Duration --s=5)
-        --if_absent=: null
+        --if-absent=: null
   service := service_
   if not service: throw "ethernet unavailable"
   return net.Client service --name=name service.connect

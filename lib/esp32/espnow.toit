@@ -8,74 +8,74 @@ import monitor show ResourceState_
 STATION_ ::= 0 // Wi-Fi station mode
 SOFTAP_  ::= 1 // Not support yet
 
-BROADCAST_ADDRESS ::= Address #[0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
+BROADCAST-ADDRESS ::= Address #[0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
 
 /** 1 Mbps with long preamble. */
-RATE_1M_L ::= 0x00
+RATE-1M-L ::= 0x00
 /** 2 Mbps with long preamble. */
-RATE_2M_L ::= 0x01
+RATE-2M-L ::= 0x01
 /** 5.5 Mbps with long preamble. */
-RATE_5M_L ::= 0x02
+RATE-5M-L ::= 0x02
 /** 11 Mbps with long preamble. */
-RATE_11M_L ::= 0x03
+RATE-11M-L ::= 0x03
 /** 2 Mbps with short preamble. */
-RATE_2M_S ::= 0x05
+RATE-2M-S ::= 0x05
 /** 5.5 Mbps with short preamble. */
-RATE_5M_S ::= 0x06
+RATE-5M-S ::= 0x06
 /** 11 Mbps with short preamble. */
-RATE_11M_S ::= 0x07
+RATE-11M-S ::= 0x07
 /** 48 Mbps. */
-RATE_48M ::= 0x08
+RATE-48M ::= 0x08
 /** 24 Mbps. */
-RATE_24M ::= 0x09
+RATE-24M ::= 0x09
 /** 12 Mbps. */
-RATE_12M ::= 0x0A
+RATE-12M ::= 0x0A
 /** 6 Mbps. */
-RATE_6M ::= 0x0B
+RATE-6M ::= 0x0B
 /** 54 Mbps. */
-RATE_54M ::= 0x0C
+RATE-54M ::= 0x0C
 /** 36 Mbps. */
-RATE_36M ::= 0x0D
+RATE-36M ::= 0x0D
 /** 18 Mbps. */
-RATE_18M ::= 0x0E
+RATE-18M ::= 0x0E
 /** 9 Mbps. */
-RATE_9M ::= 0x0F
+RATE-9M ::= 0x0F
 /** MCS0 with long GI, 6.5 Mbps for 20MHz, 13.5 Mbps for 40MHz. */
-RATE_MCS0_LGI ::= 0x10
+RATE-MCS0-LGI ::= 0x10
 /** MCS1 with long GI, 13 Mbps for 20MHz, 27 Mbps for 40MHz. */
-RATE_MCS1_LGI ::= 0x11
+RATE-MCS1-LGI ::= 0x11
 /** MCS2 with long GI, 19.5 Mbps for 20MHz, 40.5 Mbps for 40MHz. */
-RATE_MCS2_LGI ::= 0x12
+RATE-MCS2-LGI ::= 0x12
 /** MCS3 with long GI, 26 Mbps for 20MHz, 54 Mbps for 40MHz. */
-RATE_MCS3_LGI ::= 0x13
+RATE-MCS3-LGI ::= 0x13
 /** MCS4 with long GI, 39 Mbps for 20MHz, 81 Mbps for 40MHz. */
-RATE_MCS4_LGI ::= 0x14
+RATE-MCS4-LGI ::= 0x14
 /** MCS5 with long GI, 52 Mbps for 20MHz, 108 Mbps for 40MHz. */
-RATE_MCS5_LGI ::= 0x15
+RATE-MCS5-LGI ::= 0x15
 /** MCS6 with long GI, 58.5 Mbps for 20MHz, 121.5 Mbps for 40MHz. */
-RATE_MCS6_LGI ::= 0x16
+RATE-MCS6-LGI ::= 0x16
 /** MCS7 with long GI, 65 Mbps for 20MHz, 135 Mbps for 40MHz. */
-RATE_MCS7_LGI ::= 0x17
+RATE-MCS7-LGI ::= 0x17
 /** MCS0 with short GI, 7.2 Mbps for 20MHz, 15 Mbps for 40MHz. */
-RATE_MCS0_SGI ::= 0x18
+RATE-MCS0-SGI ::= 0x18
 /** MCS1 with short GI, 14.4 Mbps for 20MHz, 30 Mbps for 40MHz. */
-RATE_MCS1_SGI ::= 0x19
+RATE-MCS1-SGI ::= 0x19
 /** MCS2 with short GI, 21.7 Mbps for 20MHz, 45 Mbps for 40MHz. */
-RATE_MCS2_SGI ::= 0x1A
+RATE-MCS2-SGI ::= 0x1A
 /** MCS3 with short GI, 28.9 Mbps for 20MHz, 60 Mbps for 40MHz. */
-RATE_MCS3_SGI ::= 0x1B
+RATE-MCS3-SGI ::= 0x1B
 /** MCS4 with short GI, 43.3 Mbps for 20MHz, 90 Mbps for 40MHz. */
-RATE_MCS4_SGI ::= 0x1C
+RATE-MCS4-SGI ::= 0x1C
 /** MCS5 with short GI, 57.8 Mbps for 20MHz, 120 Mbps for 40MHz. */
-RATE_MCS5_SGI ::= 0x1D
+RATE-MCS5-SGI ::= 0x1D
 /** MCS6 with short GI, 65 Mbps for 20MHz, 135 Mbps for 40MHz. */
-RATE_MCS6_SGI ::= 0x1E
+RATE-MCS6-SGI ::= 0x1E
 /** MCS7 with short GI, 72.2 Mbps for 20MHz, 150 Mbps for 40MHz. */
-RATE_MCS7_SGI ::= 0x1F
+RATE-MCS7-SGI ::= 0x1F
 /** 250 Kbps. */
-RATE_LORA_250K ::= 0x29
+RATE-LORA-250K ::= 0x29
 /** 500 Kbps. */
-RATE_LORA_500K ::= 0x2A
+RATE-LORA-500K ::= 0x2A
 
 class Address:
   mac/ByteArray
@@ -94,8 +94,8 @@ class Key:
     if data.size != 16:
         throw "ESP-Now key length must be 16 bytes"
 
-  constructor.from_string string_data/string:
-    return Key string_data.to_byte_array
+  constructor.from-string string-data/string:
+    return Key string-data.to-byte-array
 
 class Datagram:
   address/Address
@@ -104,7 +104,7 @@ class Datagram:
   constructor .address .data:
 
 class Service:
-  send_mutex_/monitor.Mutex ::= monitor.Mutex
+  send-mutex_/monitor.Mutex ::= monitor.Mutex
   resource_ := ?
   state_ := ?
 
@@ -112,19 +112,19 @@ class Service:
   Constructs a new ESP-Now service in station mode.
 
   The $rate parameter, if provided, must be a valid ESP-Now rate constant. See
-    $RATE_1M_L for example. By default, the rate is set to 1Mbps.
+    $RATE-1M-L for example. By default, the rate is set to 1Mbps.
   */
   constructor.station --key/Key? --rate/int?=null:
-    key_data := key ? key.data : #[]
+    key-data := key ? key.data : #[]
     if rate and rate < 0: throw "INVALID_ARGUMENT"
     if not rate: rate = -1
-    resource_ = espnow_create_ resource_group_ STATION_ key_data rate
-    state_ = ResourceState_ resource_group_ resource_
+    resource_ = espnow-create_ resource-group_ STATION_ key-data rate
+    state_ = ResourceState_ resource-group_ resource_
 
   close -> none:
     if not resource_: return
-    critical_do:
-      espnow_close_ resource_
+    critical-do:
+      espnow-close_ resource_
       resource_ = null
 
   /**
@@ -140,11 +140,11 @@ class Service:
   Waits for the transmission to complete.
   */
   send data/ByteArray --address/Address -> none:
-    send_mutex_.do:
-      state_.clear_state SEND_DONE_STATE_
-      espnow_send_ resource_ address.mac data
-      state_.wait_for_state SEND_DONE_STATE_
-      succeeded := espnow_send_succeeded_ resource_
+    send-mutex_.do:
+      state_.clear-state SEND-DONE-STATE_
+      espnow-send_ resource_ address.mac data
+      state_.wait-for-state SEND-DONE-STATE_
+      succeeded := espnow-send-succeeded_ resource_
       if not succeeded:
         throw "ESP-Now send failed"
 
@@ -157,44 +157,44 @@ class Service:
     while true:
       // Always try to read directly. If there is no data available we
       // will wait for the state to change.
-      state_.clear_state DATA_AVAILABLE_STATE_
-      result := espnow_receive_ resource_
+      state_.clear-state DATA-AVAILABLE-STATE_
+      result := espnow-receive_ resource_
       if not result:
-        state_.wait_for_state DATA_AVAILABLE_STATE_
+        state_.wait-for-state DATA-AVAILABLE-STATE_
         continue
 
       address := Address result[0]
       return Datagram address result[1]
 
-  add_peer address/Address --channel/int --key/Key?=null -> bool:
+  add-peer address/Address --channel/int --key/Key?=null -> bool:
     if not 0 <= channel <= 14:
       throw "ESP-Now channel range must be 0-14"
 
-    key_data := key ? key.data : #[]
-    return espnow_add_peer_ resource_ address.mac channel key_data
+    key-data := key ? key.data : #[]
+    return espnow-add-peer_ resource_ address.mac channel key-data
 
-resource_group_ ::= espnow_init_
+resource-group_ ::= espnow-init_
 
-DATA_AVAILABLE_STATE_ ::= 1 << 0
-SEND_DONE_STATE_ ::= 1 << 1
+DATA-AVAILABLE-STATE_ ::= 1 << 0
+SEND-DONE-STATE_ ::= 1 << 1
 
-espnow_init_:
+espnow-init_:
   #primitive.espnow.init
 
-espnow_create_ group mode pmk rate:
+espnow-create_ group mode pmk rate:
   #primitive.espnow.create
 
-espnow_close_ resource:
+espnow-close_ resource:
   #primitive.espnow.close
 
-espnow_send_ resource mac data:
+espnow-send_ resource mac data:
   #primitive.espnow.send
 
-espnow_send_succeeded_ resource:
-  #primitive.espnow.send_succeeded
+espnow-send-succeeded_ resource:
+  #primitive.espnow.send-succeeded
 
-espnow_receive_ resource:
+espnow-receive_ resource:
   #primitive.espnow.receive
 
-espnow_add_peer_ resource mac channel key:
-  #primitive.espnow.add_peer
+espnow-add-peer_ resource mac channel key:
+  #primitive.espnow.add-peer

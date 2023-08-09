@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-UNEXPECTED_END_OF_READER_EXCEPTION ::= "UNEXPECTED_END_OF_READER"
+UNEXPECTED-END-OF-READER-EXCEPTION ::= "UNEXPECTED_END_OF_READER"
 
 /** A byte reader. */
 interface Reader:
@@ -43,10 +43,10 @@ class BufferedReader implements Reader:
   arrays_/ByteArrayList_ := ByteArrayList_
 
   // The position in the first byte array that we got to.
-  first_array_position_ := 0
+  first-array-position_ := 0
 
   // The number of bytes in byte arrays that have been used up.
-  base_consumed_ := 0
+  base-consumed_ := 0
 
   /*
   Constructs a buffered reader that wraps the given $reader_.
@@ -56,17 +56,17 @@ class BufferedReader implements Reader:
   /** Clears any buffered data. */
   clear -> none:
     arrays_ = ByteArrayList_
-    base_consumed_ += first_array_position_
-    first_array_position_ = 0
+    base-consumed_ += first-array-position_
+    first-array-position_ = 0
 
   /**
   Ensures a number of bytes is available.
-    If this is not possible, calls $on_end.
+    If this is not possible, calls $on-end.
   */
-  ensure_ requested [on_end] -> none:
+  ensure_ requested [on-end] -> none:
     if requested < 0: throw "INVALID_ARGUMENT"
     while buffered < requested:
-      if not more_: on_end.call
+      if not more_: on-end.call
 
   /**
   Reads more data from the reader.
@@ -82,30 +82,30 @@ class BufferedReader implements Reader:
       data = reader_.read
       if not data: return null
       if data.size != 0: break
-    add_byte_array_ data
+    add-byte-array_ data
     return data.size
 
-  add_byte_array_ data -> none:
+  add-byte-array_ data -> none:
     arrays_.add data
     if arrays_.size == 1:
-      base_consumed_ += first_array_position_
-      first_array_position_ = 0
+      base-consumed_ += first-array-position_
+      first-array-position_ = 0
 
   /**
   Ensures that at least $n bytes are available.
 
   # Errors
   At least $n bytes must be available in the underlying reader. Use
-    $can_ensure if a non-throwing version is necessary.
+    $can-ensure if a non-throwing version is necessary.
   */
   ensure n/int -> none:
-    ensure_ n: throw UNEXPECTED_END_OF_READER_EXCEPTION
+    ensure_ n: throw UNEXPECTED-END-OF-READER-EXCEPTION
 
   /**
   Whether $n bytes can be ensured (see $ensure).
   Tries to buffer $n bytes, and returns whether it was able to.
   */
-  can_ensure n/int -> bool:
+  can-ensure n/int -> bool:
     ensure_ n: return false
     return true
 
@@ -115,11 +115,11 @@ class BufferedReader implements Reader:
     so it only tells you the bytes that can be read without
     a read operation that might block.
   */
-  are_available n/int -> bool:
+  are-available n/int -> bool:
     return buffered >= n
 
   /** Reads and buffers until the end of the reader. */
-  buffer_all -> none:
+  buffer-all -> none:
     while more_: null
 
   /**
@@ -129,13 +129,13 @@ class BufferedReader implements Reader:
     a read operation that might block.
   */
   buffered -> int:
-    return arrays_.size_in_bytes - first_array_position_
+    return arrays_.size-in-bytes - first-array-position_
 
   /**
   The number of bytes that have been consumed from the BufferedReader.
   */
   consumed -> int:
-    return base_consumed_ + first_array_position_
+    return base-consumed_ + first-array-position_
 
   /**
   Skips $n bytes.
@@ -148,22 +148,22 @@ class BufferedReader implements Reader:
       // Skip buffered data first; we make sure to only shift (or clear)
       // the buffer-array once per iteration.
       arrays_.size.repeat:
-        size := arrays_.first.size - first_array_position_
+        size := arrays_.first.size - first-array-position_
 
         if n < size:
-          first_array_position_ += n
+          first-array-position_ += n
           return
 
         n -= size
-        base_consumed_ += arrays_.first.size
-        first_array_position_ = 0
+        base-consumed_ += arrays_.first.size
+        first-array-position_ = 0
 
-        arrays_.remove_first
+        arrays_.remove-first
 
       if n == 0: return
 
       if not more_:
-        throw UNEXPECTED_END_OF_READER_EXCEPTION
+        throw UNEXPECTED-END-OF-READER-EXCEPTION
 
   /**
   Reads the $n'th byte from the current position.
@@ -177,7 +177,7 @@ class BufferedReader implements Reader:
   byte n -> int:
     if n < 0: throw "INVALID_ARGUMENT"
     ensure n + 1
-    n += first_array_position_
+    n += first-array-position_
     arrays_.do:
       size := it.size
       if n < size: return it[n]
@@ -198,7 +198,7 @@ class BufferedReader implements Reader:
       if n == 0: return ByteArray 0
       throw "INVALID_ARGUMENT"
     ensure n
-    start := first_array_position_
+    start := first-array-position_
     first := arrays_.first
     if start + n <= first.size: return first[start..start + n]
     result := ByteArray n
@@ -221,9 +221,9 @@ class BufferedReader implements Reader:
   Returns the index of the first occurrence of the $byte.
   Throws if the byte is not found.
   */
-  index_of_or_throw byte:
-    index := index_of byte
-    if not index: throw UNEXPECTED_END_OF_READER_EXCEPTION
+  index-of-or-throw byte:
+    index := index-of byte
+    if not index: throw UNEXPECTED-END-OF-READER-EXCEPTION
     return index
 
   /**
@@ -234,11 +234,11 @@ class BufferedReader implements Reader:
   Returns the index of the first occurrence of the $byte.
   Returns null otherwise.
   */
-  index_of byte -> int?:
+  index-of byte -> int?:
     offset := 0
-    start := first_array_position_
+    start := first-array-position_
     arrays_.do:
-      index := it.index_of byte --from=start
+      index := it.index-of byte --from=start
       if index >= 0: return offset + (index - start)
       offset += it.size - start
       start = 0
@@ -246,7 +246,7 @@ class BufferedReader implements Reader:
     while true:
       if not more_: return null
       array := arrays_.last
-      index := array.index_of byte
+      index := array.index-of byte
       if index >= 0: return offset + index
       offset += array.size
 
@@ -258,12 +258,12 @@ class BufferedReader implements Reader:
   Returns the index of the first occurrence of the $byte.
   Returns -1 otherwise.
   */
-  index_of byte --to/int -> int:
+  index-of byte --to/int -> int:
     offset := 0
-    start := first_array_position_
+    start := first-array-position_
     arrays_.do:
       end := min start + to it.size
-      index := it.index_of byte --from=start --to=end
+      index := it.index-of byte --from=start --to=end
       if index >= 0: return offset + index - start
       to -= it.size - start
       if to <= 0: return -1
@@ -271,10 +271,10 @@ class BufferedReader implements Reader:
       start = 0
 
     while true:
-      if not more_: throw UNEXPECTED_END_OF_READER_EXCEPTION
+      if not more_: throw UNEXPECTED-END-OF-READER-EXCEPTION
       array := arrays_.last
       end := min to array.size
-      index := array.index_of byte --to=end
+      index := array.index-of byte --to=end
       if index >= 0: return offset + index
       to -= array.size
       if to <= 0: return -1
@@ -285,66 +285,66 @@ class BufferedReader implements Reader:
 
   The read bytes are consumed.
 
-  If $max_size is specified the returned byte array will never be larger than
+  If $max-size is specified the returned byte array will never be larger than
     that size, but it may be smaller, even if there is more data available from
-    the underlying reader. Use $read_bytes to read exactly n bytes.
+    the underlying reader. Use $read-bytes to read exactly n bytes.
 
   Returns null if the reader is at the end.
   */
-  read --max_size/int?=null -> ByteArray?:
+  read --max-size/int?=null -> ByteArray?:
     if arrays_.size > 0:
       array := arrays_.first
-      if first_array_position_ == 0 and (max_size == null or array.size <= max_size):
-        arrays_.remove_first
-        base_consumed_ += array.size
+      if first-array-position_ == 0 and (max-size == null or array.size <= max-size):
+        arrays_.remove-first
+        base-consumed_ += array.size
         return array
-      byte_count := array.size - first_array_position_
-      if max_size:
-        byte_count = min byte_count max_size
-      end := first_array_position_ + byte_count
-      result := array[first_array_position_..end]
+      byte-count := array.size - first-array-position_
+      if max-size:
+        byte-count = min byte-count max-size
+      end := first-array-position_ + byte-count
+      result := array[first-array-position_..end]
       if end == array.size:
-        base_consumed_ += array.size
-        first_array_position_ = 0
-        arrays_.remove_first
+        base-consumed_ += array.size
+        first-array-position_ = 0
+        arrays_.remove-first
       else:
-        first_array_position_ = end
+        first-array-position_ = end
       return result
 
     array := reader_.read
     if array == null: return null
-    if max_size == null or array.size <= max_size:
-      base_consumed_ += array.size
+    if max-size == null or array.size <= max-size:
+      base-consumed_ += array.size
       return array
     arrays_.add array
-    first_array_position_ = max_size
-    return array[..max_size]
+    first-array-position_ = max-size
+    return array[..max-size]
 
   /**
-  Reads up to the $max_size amount of bytes from the reader.
+  Reads up to the $max-size amount of bytes from the reader.
 
   The read bytes are consumed.
 
   # Errors
   At least 1 byte must be available.
 
-  Deprecated.  Use $(read --max_size) instead.
+  Deprecated.  Use $(read --max-size) instead.
   */
-  read_up_to max_size/int -> ByteArray:
-    if max_size < 0: throw "INVALID_ARGUMENT"
+  read-up-to max-size/int -> ByteArray:
+    if max-size < 0: throw "INVALID_ARGUMENT"
     ensure 1
     array := arrays_.first
-    if first_array_position_ == 0 and array.size <= max_size:
-      arrays_.remove_first
-      base_consumed_ += array.size
+    if first-array-position_ == 0 and array.size <= max-size:
+      arrays_.remove-first
+      base-consumed_ += array.size
       return array
-    size := min (array.size - first_array_position_) max_size
-    result := array[first_array_position_..first_array_position_ + size]
-    first_array_position_ += size
-    if first_array_position_ == array.size:
-      base_consumed_ += array.size
-      first_array_position_ = 0
-      arrays_.remove_first
+    size := min (array.size - first-array-position_) max-size
+    result := array[first-array-position_..first-array-position_ + size]
+    first-array-position_ += size
+    if first-array-position_ == array.size:
+      base-consumed_ += array.size
+      first-array-position_ = 0
+      arrays_.remove-first
     return result
 
   /**
@@ -369,27 +369,27 @@ class BufferedReader implements Reader:
       reader.read_string 5  // >> Error!
   ```
   */
-  read_string n -> string:
-    str := peek_string n
+  read-string n -> string:
+    str := peek-string n
     skip n
     return str
 
   // Indexed by the top nibble of a UTF-8 byte this tells you how many bytes
   // long the UTF-8 sequence is.
-  static UTF_FIRST_CHAR_TABLE_ ::= [
+  static UTF-FIRST-CHAR-TABLE_ ::= [
     1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 2, 2, 3, 4,
   ]
 
   /**
-  Reads at most $max_size bytes as a string.
+  Reads at most $max-size bytes as a string.
 
   The read bytes are consumed.
 
   Note that this method is different from $read followed by to_string as it
     ensures that the data is split into valid UTF-8 chunks.
 
-  If $max_size is specified the returned string will never be larger than
+  If $max-size is specified the returned string will never be larger than
     that size (in bytes), but it may be smaller, even if there is more data
     available from the underlying reader.
 
@@ -404,19 +404,19 @@ class BufferedReader implements Reader:
     malformed UTF-8 character.
 
   Instead of returning a zero length string it throws an exception.  This can
-    happen if $max_size is less than 4 bytes and the next thing is a UTF-8
+    happen if $max-size is less than 4 bytes and the next thing is a UTF-8
     character that is coded in more bytes than were requested.  This also means
-    $max_size should never be zero.
+    $max-size should never be zero.
   */
-  read_string --max_size/int?=null -> string?:
-    if max_size and max_size < 0: throw "INVALID_ARGUMENT"
+  read-string --max-size/int?=null -> string?:
+    if max-size and max-size < 0: throw "INVALID_ARGUMENT"
     if arrays_.size == 0:
       array := reader_.read
       if array == null: return null
       // Instead of adding the array to the arrays we may just be able more
       // efficiently pass it on in string from.
-      if (max_size == null or array.size <= max_size) and array[array.size - 1] <= 0x7f:
-        return array.to_string
+      if (max-size == null or array.size <= max-size) and array[array.size - 1] <= 0x7f:
+        return array.to-string
       arrays_.add array
 
     array := arrays_.first
@@ -424,37 +424,37 @@ class BufferedReader implements Reader:
     // Ensure there is at least one full UTF-8 character.  Does a blocking read
     // if we only have part of a character.  This may throw if the stream ends
     // with a malformed UTF-8 character.
-    ensure UTF_FIRST_CHAR_TABLE_[array[first_array_position_] >> 4]
+    ensure UTF-FIRST-CHAR-TABLE_[array[first-array-position_] >> 4]
 
     // Try to take whole byte arrays from the input and convert them
     // to strings without first having to concatenate byte arrays.
     // Remember to avoid chopping up UTF-8 characters while doing this.
-    if not max_size: max_size = buffered
-    if first_array_position_ == 0 and array.size <= max_size and array[array.size - 1] <= 0x7f:
-      arrays_.remove_first
-      base_consumed_ += array.size
-      return array.to_string
+    if not max-size: max-size = buffered
+    if first-array-position_ == 0 and array.size <= max-size and array[array.size - 1] <= 0x7f:
+      arrays_.remove-first
+      base-consumed_ += array.size
+      return array.to-string
 
-    size := min buffered max_size
+    size := min buffered max-size
 
-    start_of_last_char := size - 1
-    if (byte start_of_last_char) > 0x7f:
+    start-of-last-char := size - 1
+    if (byte start-of-last-char) > 0x7f:
       // There is a non-ASCII UTF-8 sequence near the end.  We need to check if
       // we are chopping it up by finding where it starts.  It will start with
       // a byte >= 0xc0.
-      while (byte start_of_last_char) < 0xc0:
-        start_of_last_char--
-        if start_of_last_char < 0: throw "ILLEGAL_UTF_8"
+      while (byte start-of-last-char) < 0xc0:
+        start-of-last-char--
+        if start-of-last-char < 0: throw "ILLEGAL_UTF_8"
       // If the UTF-8 encoding of the last character extends beyond the byte
       // array we were going to convert to a string, then start just before the
       // start of that character instead.
-      if start_of_last_char + UTF_FIRST_CHAR_TABLE_[(byte start_of_last_char) >> 4] > size:
-        size = start_of_last_char
+      if start-of-last-char + UTF-FIRST-CHAR-TABLE_[(byte start-of-last-char) >> 4] > size:
+        size = start-of-last-char
 
     if size == 0: throw "max_size was too small to read a single UTF-8 character"
 
-    array = read_bytes size
-    return array.to_string
+    array = read-bytes size
+    return array.to-string
 
   /**
   Reads the first byte.
@@ -464,7 +464,7 @@ class BufferedReader implements Reader:
   # Errors
   At least 1 byte must be available.
   */
-  read_byte -> int:
+  read-byte -> int:
     b := byte 0
     skip 1
     return b
@@ -474,7 +474,7 @@ class BufferedReader implements Reader:
 
   The read bytes are consumed.
 
-  At least $n bytes must be available. That is, a call to $(can_ensure n) must return true.
+  At least $n bytes must be available. That is, a call to $(can-ensure n) must return true.
 
   If you want to read either $n bytes, if they are available, or the maximum number of
     available bytes otherwise, use the following code:
@@ -487,10 +487,10 @@ class BufferedReader implements Reader:
     return reader.read_bytes reader.buffered
   ```
   */
-  read_bytes n -> ByteArray:
-    byte_array := bytes n
+  read-bytes n -> ByteArray:
+    byte-array := bytes n
     skip n
-    return byte_array
+    return byte-array
 
   /**
   Peeks the first $n bytes and converts them to a string.
@@ -512,20 +512,20 @@ class BufferedReader implements Reader:
       reader.peek_string 5  // >> Error!
   ```
   */
-  peek_string n -> string:
+  peek-string n -> string:
     // Fast case.
     if n == 0: return ""
     if buffered >= n:
       first := arrays_.first
-      end := first_array_position_ + n
+      end := first-array-position_ + n
       if first.size >= end:
-        return first.to_string first_array_position_ end
+        return first.to-string first-array-position_ end
     // Slow case.
-    return (bytes n).to_string
+    return (bytes n).to-string
 
   /** Deprecated. */
-  read_word -> string:
-    return read_until ' '
+  read-word -> string:
+    return read-until ' '
 
   /**
   Reads a line as a string.
@@ -534,21 +534,21 @@ class BufferedReader implements Reader:
     line.
   Carriage returns (`'\r'`) are removed from lines terminated by `'\r\n'`.
   */
-  read_line keep_newlines=false -> string?:
-    delimiter_pos := index_of '\n'
-    if delimiter_pos == null:
-      rest_size := buffered
-      if rest_size == 0: return null
-      return read_string rest_size
+  read-line keep-newlines=false -> string?:
+    delimiter-pos := index-of '\n'
+    if delimiter-pos == null:
+      rest-size := buffered
+      if rest-size == 0: return null
+      return read-string rest-size
 
-    if keep_newlines: return read_string delimiter_pos
+    if keep-newlines: return read-string delimiter-pos
 
-    result_size := delimiter_pos
-    if delimiter_pos > 0 and (byte delimiter_pos - 1) == '\r':
-      result_size--
+    result-size := delimiter-pos
+    if delimiter-pos > 0 and (byte delimiter-pos - 1) == '\r':
+      result-size--
 
-    result := peek_string result_size
-    skip delimiter_pos + 1  // Also consume the delimiter.
+    result := peek-string result-size
+    skip delimiter-pos + 1  // Also consume the delimiter.
     return result
 
   /**
@@ -559,9 +559,9 @@ class BufferedReader implements Reader:
   # Errors
   The $delimiter must be available.
   */
-  read_until delimiter -> string:
-    length := index_of delimiter
-    str := peek_string length
+  read-until delimiter -> string:
+    length := index-of delimiter
+    str := peek-string length
     skip length + 1 // Skip delimiter char
     return str
 
@@ -573,9 +573,9 @@ class BufferedReader implements Reader:
   # Errors
   The $delimiter must be available.
   */
-  read_bytes_until delimiter -> ByteArray:
-    length := index_of delimiter
-    if not length: throw UNEXPECTED_END_OF_READER_EXCEPTION
+  read-bytes-until delimiter -> ByteArray:
+    length := index-of delimiter
+    if not length: throw UNEXPECTED-END-OF-READER-EXCEPTION
     bytes := bytes length
     skip length + 1 // Skip delimiter char
     return bytes
@@ -590,14 +590,14 @@ class BufferedReader implements Reader:
   */
   unget value/ByteArray -> none:
     if value.size == 0: return
-    if first_array_position_ != 0:
+    if first-array-position_ != 0:
       first := arrays_.first
-      arrays_.remove_first
-      base_consumed_ += first_array_position_
-      first = first[first_array_position_..]
+      arrays_.remove-first
+      base-consumed_ += first-array-position_
+      first = first[first-array-position_..]
       arrays_.prepend first
-      first_array_position_ = 0
-    base_consumed_ -= value.size
+      first-array-position_ = 0
+    base-consumed_ -= value.size
     arrays_.prepend value
 
 class Element_:
@@ -611,7 +611,7 @@ class ByteArrayList_:
   tail_/Element_? := null
 
   size := 0
-  size_in_bytes := 0
+  size-in-bytes := 0
 
   add value/ByteArray:
     element := Element_ value
@@ -621,7 +621,7 @@ class ByteArrayList_:
       head_ = element
     tail_ = element
     size++
-    size_in_bytes += value.size
+    size-in-bytes += value.size
 
   prepend value/ByteArray:
     element := Element_ value
@@ -631,15 +631,15 @@ class ByteArrayList_:
       tail_ = element
     head_ = element
     size++
-    size_in_bytes += value.size
+    size-in-bytes += value.size
 
-  remove_first:
+  remove-first:
     element := head_
     next := element.next
     head_ = next
     if not next: tail_ = null
     size--
-    size_in_bytes -= element.value.size
+    size-in-bytes -= element.value.size
 
   first -> ByteArray: return head_.value
   last -> ByteArray: return tail_.value

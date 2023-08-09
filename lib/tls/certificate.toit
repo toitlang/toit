@@ -13,7 +13,7 @@ It's composed of a x509 certificate and the associated private key.
 class Certificate:
   certificate/x509.Certificate
   /** The private key can be either string or ByteArray. */
-  private_key/any
+  private-key/any
   password/string
 
   /**
@@ -21,7 +21,7 @@ class Certificate:
 
   An optional password can be given, to unlock the private key if needed.
   */
-  constructor .certificate .private_key --.password="":
+  constructor .certificate .private-key --.password="":
 
 /**
 Trusted Root TLS Certificate used to verify a server's identity.
@@ -54,7 +54,7 @@ class RootCertificate:
   /**
   Gets a parsed form suitable for adding to a TLS socket.
   */
-  ensure_parsed_ -> x509.Certificate:
+  ensure-parsed_ -> x509.Certificate:
     if parsed_ == null:
       parsed_ = x509.Certificate.parse raw
     return parsed_
@@ -74,7 +74,7 @@ class RootCertificate:
     supported.
   */
   install -> none:
-    add_global_root_certificate_ raw fingerprint
+    add-global-root-certificate_ raw fingerprint
 
 /**
 Add a trusted root certificate that can be used for all TLS connections.
@@ -100,5 +100,5 @@ Certificates, the $cert argument, are added here in unparsed form, ie either in
 Returns the hash of the added certificate, which can be used to add it more
   efficiently, without parsing the certificate at startup time.
 */
-add_global_root_certificate_ cert hash/int?=null -> int:
-  #primitive.tls.add_global_root_certificate
+add-global-root-certificate_ cert hash/int?=null -> int:
+  #primitive.tls.add-global-root-certificate

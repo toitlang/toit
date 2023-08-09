@@ -5,45 +5,45 @@
 import net
 import system.api.cellular show CellularServiceClient
 
-CONFIG_LOG_LEVEL /string ::= "cellular.log.level"
+CONFIG-LOG-LEVEL /string ::= "cellular.log.level"
 
-CONFIG_APN   /string ::= "cellular.apn"
-CONFIG_BANDS /string ::= "cellular.bands"
-CONFIG_RATS  /string ::= "cellular.rats"
+CONFIG-APN   /string ::= "cellular.apn"
+CONFIG-BANDS /string ::= "cellular.bands"
+CONFIG-RATS  /string ::= "cellular.rats"
 
-CONFIG_UART_BAUD_RATE /string ::= "cellular.uart.baud"
-CONFIG_UART_PRIORITY  /string ::= "cellular.uart.priority"
-CONFIG_UART_RX        /string ::= "cellular.uart.rx"
-CONFIG_UART_TX        /string ::= "cellular.uart.tx"
-CONFIG_UART_CTS       /string ::= "cellular.uart.cts"
-CONFIG_UART_RTS       /string ::= "cellular.uart.rts"
+CONFIG-UART-BAUD-RATE /string ::= "cellular.uart.baud"
+CONFIG-UART-PRIORITY  /string ::= "cellular.uart.priority"
+CONFIG-UART-RX        /string ::= "cellular.uart.rx"
+CONFIG-UART-TX        /string ::= "cellular.uart.tx"
+CONFIG-UART-CTS       /string ::= "cellular.uart.cts"
+CONFIG-UART-RTS       /string ::= "cellular.uart.rts"
 
-CONFIG_POWER /string ::= "cellular.power"
-CONFIG_RESET /string ::= "cellular.reset"
+CONFIG-POWER /string ::= "cellular.power"
+CONFIG-RESET /string ::= "cellular.reset"
 
-CONFIG_ACTIVE_LOW  /int ::= 0
-CONFIG_ACTIVE_HIGH /int ::= 1
-CONFIG_OPEN_DRAIN  /int ::= 2
+CONFIG-ACTIVE-LOW  /int ::= 0
+CONFIG-ACTIVE-HIGH /int ::= 1
+CONFIG-OPEN-DRAIN  /int ::= 2
 
-CONFIG_PRIORITY_LOW  /int ::= 0
-CONFIG_PRIORITY_HIGH /int ::= 1
+CONFIG-PRIORITY-LOW  /int ::= 0
+CONFIG-PRIORITY-HIGH /int ::= 1
 
 service_/CellularServiceClient? := null
-service_initialized_/bool := false
+service-initialized_/bool := false
 
 open config/Map? -> net.Client
     --name/string?=null:
-  if not service_initialized_:
+  if not service-initialized_:
     // We typically run the cellular service in a non-system
     // container with --trigger=boot, so we need to give it
     // time to start so it can be discovered. We should really
     // generalize this handling for net.open and wifi.open too,
     // so we get a shared pattern for dealing with discovering
     // such network services at start up.
-    service_initialized_ = true
+    service-initialized_ = true
     service_ = (CellularServiceClient).open
         --timeout=(Duration --s=5)
-        --if_absent=: null
+        --if-absent=: null
   service := service_
   if not service: throw "cellular unavailable"
   return net.Client service --name=name (service.connect config)

@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 import encoding.tison
-import .ip_address
+import .ip-address
 
 class SocketAddress:
   ip/IpAddress ::= ?
@@ -17,8 +17,8 @@ class SocketAddress:
       IpAddress.deserialize values[0]
       values[1]
 
-  hash_code:
-    return (ip.hash_code * 11 + port * 1719) & 0xfffffff
+  hash-code:
+    return (ip.hash-code * 11 + port * 1719) & 0xfffffff
 
   operator == other:
     if other is not SocketAddress: return false
@@ -27,5 +27,5 @@ class SocketAddress:
   stringify -> string:
     return "$ip:$port"
 
-  to_byte_array:
-    return tison.encode [ip.to_byte_array, port]
+  to-byte-array:
+    return tison.encode [ip.to-byte-array, port]

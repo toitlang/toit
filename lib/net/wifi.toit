@@ -5,33 +5,33 @@
 import net
 import system.api.wifi show WifiServiceClient
 
-CONFIG_SSID      /string ::= "wifi.ssid"
-CONFIG_PASSWORD  /string ::= "wifi.password"
+CONFIG-SSID      /string ::= "wifi.ssid"
+CONFIG-PASSWORD  /string ::= "wifi.password"
 
-CONFIG_BROADCAST /string ::= "wifi.broadcast"
-CONFIG_CHANNEL   /string ::= "wifi.channel"
+CONFIG-BROADCAST /string ::= "wifi.broadcast"
+CONFIG-CHANNEL   /string ::= "wifi.channel"
 
-CONFIG_SCAN_CHANNELS /string ::= "scan.channels"
-CONFIG_SCAN_PASSIVE  /string ::= "scan.passive"
-CONFIG_SCAN_PERIOD   /string ::= "scan.period"
+CONFIG-SCAN-CHANNELS /string ::= "scan.channels"
+CONFIG-SCAN-PASSIVE  /string ::= "scan.passive"
+CONFIG-SCAN-PERIOD   /string ::= "scan.period"
 
-SCAN_AP_SSID     /string ::= "scan.ap.ssid"
-SCAN_AP_BSSID    /string ::= "scan.ap.bssid"
-SCAN_AP_RSSI     /string ::= "scan.ap.rssi"
-SCAN_AP_AUTHMODE /string ::= "scan.ap.authmode"
-SCAN_AP_CHANNEL  /string ::= "scan.ap.channel"
+SCAN-AP-SSID     /string ::= "scan.ap.ssid"
+SCAN-AP-BSSID    /string ::= "scan.ap.bssid"
+SCAN-AP-RSSI     /string ::= "scan.ap.rssi"
+SCAN-AP-AUTHMODE /string ::= "scan.ap.authmode"
+SCAN-AP-CHANNEL  /string ::= "scan.ap.channel"
 
-WIFI_SCAN_SSID_     ::= 0
-WIFI_SCAN_BSSID_    ::= 1
-WIFI_SCAN_RSSI_     ::= 2
-WIFI_SCAN_AUTHMODE_ ::= 3
-WIFI_SCAN_CHANNEL_  ::= 4
-WIFI_SCAN_ELEMENT_COUNT_ ::= 5
+WIFI-SCAN-SSID_     ::= 0
+WIFI-SCAN-BSSID_    ::= 1
+WIFI-SCAN-RSSI_     ::= 2
+WIFI-SCAN-AUTHMODE_ ::= 3
+WIFI-SCAN-CHANNEL_  ::= 4
+WIFI-SCAN-ELEMENT-COUNT_ ::= 5
 
-SCAN_TIMEOUT_MS_/int := 1000
+SCAN-TIMEOUT-MS_/int := 1000
 
 service_/WifiServiceClient? ::= (WifiServiceClient).open
-    --if_absent=: null
+    --if-absent=: null
 
 class AccessPoint:
   ssid/string
@@ -40,7 +40,7 @@ class AccessPoint:
   authmode/int
   channel/int
 
-  static WIFI_AUTHMODE_NAME_/List ::= [
+  static WIFI-AUTHMODE-NAME_/List ::= [
     "Open",
     "WEP",
     "WPA PSK",
@@ -54,12 +54,12 @@ class AccessPoint:
 
   constructor --.ssid/string --.bssid/ByteArray --.rssi/int --.authmode/int --.channel/int:
 
-  authmode_name -> string:
-    if authmode < 0 or authmode >= WIFI_AUTHMODE_NAME_.size:
+  authmode-name -> string:
+    if authmode < 0 or authmode >= WIFI-AUTHMODE-NAME_.size:
       return "Undefined"
-    return WIFI_AUTHMODE_NAME_[authmode]
+    return WIFI-AUTHMODE-NAME_[authmode]
 
-  bssid_name -> string:
+  bssid-name -> string:
     return (List bssid.size: "$(%02x bssid[it])").join ":"
 
 class Client extends net.Client:
@@ -73,14 +73,14 @@ class Client extends net.Client:
   Throws an exception if this network isn't currently connected to an
     access point.
   */
-  access_point -> AccessPoint:
-    info := (client_ as WifiServiceClient).ap_info handle_
+  access-point -> AccessPoint:
+    info := (client_ as WifiServiceClient).ap-info handle_
     return AccessPoint
-        --ssid=info[WIFI_SCAN_SSID_]
-        --bssid=info[WIFI_SCAN_BSSID_]
-        --rssi=info[WIFI_SCAN_RSSI_]
-        --authmode=info[WIFI_SCAN_AUTHMODE_]
-        --channel=info[WIFI_SCAN_CHANNEL_]
+        --ssid=info[WIFI-SCAN-SSID_]
+        --bssid=info[WIFI-SCAN-BSSID_]
+        --rssi=info[WIFI-SCAN-RSSI_]
+        --authmode=info[WIFI-SCAN-AUTHMODE_]
+        --channel=info[WIFI-SCAN-CHANNEL_]
 
   /**
   Returns the signal strength of the current access point association
@@ -89,9 +89,9 @@ class Client extends net.Client:
   Throws an exception if this network isn't currently connected to an
     access point.
   */
-  signal_strength -> float:
-    info := (client_ as WifiServiceClient).ap_info handle_
-    rssi := info[WIFI_SCAN_RSSI_]
+  signal-strength -> float:
+    info := (client_ as WifiServiceClient).ap-info handle_
+    rssi := info[WIFI-SCAN-RSSI_]
     // RSSI is usually in the range [-100..-35].
     rssi = min 65 (max 0 rssi + 100)
     return rssi / 65.0
@@ -100,8 +100,8 @@ open --ssid/string --password/string -> Client
     --name/string?=null
     --save/bool=false:
   return open --name=name --save=save {
-    CONFIG_SSID: ssid,
-    CONFIG_PASSWORD: password,
+    CONFIG-SSID: ssid,
+    CONFIG-PASSWORD: password,
   }
 
 open config/Map? -> Client
@@ -118,10 +118,10 @@ establish --ssid/string --password/string -> Client
     --broadcast/bool=true
     --channel/int=1:
   return establish --name=name {
-    CONFIG_SSID: ssid,
-    CONFIG_PASSWORD: password,
-    CONFIG_BROADCAST: broadcast,
-    CONFIG_CHANNEL: channel,
+    CONFIG-SSID: ssid,
+    CONFIG-PASSWORD: password,
+    CONFIG-BROADCAST: broadcast,
+    CONFIG-CHANNEL: channel,
   }
 
 establish config/Map? -> Client
@@ -130,28 +130,28 @@ establish config/Map? -> Client
   if not service: throw "WiFi unavailable"
   return Client service --name=name (service.establish config)
 
-scan channels/ByteArray --passive/bool=false --period_per_channel_ms/int=SCAN_TIMEOUT_MS_ -> List:
+scan channels/ByteArray --passive/bool=false --period-per-channel-ms/int=SCAN-TIMEOUT-MS_ -> List:
   if channels.size < 1: throw "Channels are unspecified"
 
   service := service_
   if not service: throw "WiFi unavailable"
 
   config ::= {
-    CONFIG_SCAN_PASSIVE: passive,
-    CONFIG_SCAN_CHANNELS: channels,
-    CONFIG_SCAN_PERIOD: period_per_channel_ms,
+    CONFIG-SCAN-PASSIVE: passive,
+    CONFIG-SCAN-CHANNELS: channels,
+    CONFIG-SCAN-PERIOD: period-per-channel-ms,
   }
 
-  data_list := service.scan config
-  ap_count := data_list.size / WIFI_SCAN_ELEMENT_COUNT_
-  return List ap_count:
-    offset := it * WIFI_SCAN_ELEMENT_COUNT_
+  data-list := service.scan config
+  ap-count := data-list.size / WIFI-SCAN-ELEMENT-COUNT_
+  return List ap-count:
+    offset := it * WIFI-SCAN-ELEMENT-COUNT_
     AccessPoint
-        --ssid=data_list[offset + WIFI_SCAN_SSID_]
-        --bssid=data_list[offset + WIFI_SCAN_BSSID_]
-        --rssi=data_list[offset + WIFI_SCAN_RSSI_]
-        --authmode=data_list[offset + WIFI_SCAN_AUTHMODE_]
-        --channel=data_list[offset + WIFI_SCAN_CHANNEL_]
+        --ssid=data-list[offset + WIFI-SCAN-SSID_]
+        --bssid=data-list[offset + WIFI-SCAN-BSSID_]
+        --rssi=data-list[offset + WIFI-SCAN-RSSI_]
+        --authmode=data-list[offset + WIFI-SCAN-AUTHMODE_]
+        --channel=data-list[offset + WIFI-SCAN-CHANNEL_]
 
 /**
 Configure the WiFi service to connect using the given $ssid and
@@ -165,8 +165,8 @@ Use $(open --ssid --password --save) to configure the WiFi
 */
 configure --ssid/string --password/string -> none:
   configure {
-    CONFIG_SSID: ssid,
-    CONFIG_PASSWORD: password,
+    CONFIG-SSID: ssid,
+    CONFIG-PASSWORD: password,
   }
 
 /**

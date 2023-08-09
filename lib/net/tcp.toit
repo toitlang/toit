@@ -4,25 +4,25 @@
 
 import reader
 
-import .socket_address
+import .socket-address
 
 interface Interface:
-  tcp_connect host/string port/int -> Socket
-  tcp_connect address/SocketAddress -> Socket
-  tcp_listen port/int -> ServerSocket
+  tcp-connect host/string port/int -> Socket
+  tcp-connect address/SocketAddress -> Socket
+  tcp-listen port/int -> ServerSocket
 
 interface Socket implements reader.Reader:
-  local_address -> SocketAddress
-  peer_address -> SocketAddress
+  local-address -> SocketAddress
+  peer-address -> SocketAddress
 
   // TODO(kasper): Remove this.
-  set_no_delay enabled/bool -> none
+  set-no-delay enabled/bool -> none
 
   // Returns true if TCP_NODELAY option is enabled.
-  no_delay -> bool
+  no-delay -> bool
 
   // Enable or disable TCP_NODELAY option.
-  no_delay= value/bool
+  no-delay= value/bool
 
   read -> ByteArray?
   write data from/int=0 to/int=data.size -> int
@@ -30,12 +30,12 @@ interface Socket implements reader.Reader:
   mtu -> int
 
   // Close the socket for write. The socket will still be able to read incoming data.
-  close_write
+  close-write
 
   // Immediately close the socket and release any resources associated.
   close
 
 interface ServerSocket:
-  local_address -> SocketAddress
+  local-address -> SocketAddress
   accept -> Socket?
   close

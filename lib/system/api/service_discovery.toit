@@ -12,10 +12,10 @@ interface ServiceDiscoveryService:
       --minor=3
 
   discover uuid/string --wait/bool -> List?
-  static DISCOVER_INDEX /int ::= 0
+  static DISCOVER-INDEX /int ::= 0
 
   watch pid/int -> none
-  static WATCH_INDEX /int ::= 3
+  static WATCH-INDEX /int ::= 3
 
   listen id/int uuid/string -> none
       --name/string
@@ -23,10 +23,10 @@ interface ServiceDiscoveryService:
       --minor/int
       --priority/int
       --tags/List?
-  static LISTEN_INDEX /int ::= 1
+  static LISTEN-INDEX /int ::= 1
 
   unlisten id/int -> none
-  static UNLISTEN_INDEX /int ::= 2
+  static UNLISTEN-INDEX /int ::= 2
 
 class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDiscoveryService:
   static SELECTOR ::= ServiceDiscoveryService.SELECTOR
@@ -39,10 +39,10 @@ class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDisc
     return client and this
 
   discover uuid/string --wait/bool -> List?:
-    return invoke_ ServiceDiscoveryService.DISCOVER_INDEX [uuid, wait]
+    return invoke_ ServiceDiscoveryService.DISCOVER-INDEX [uuid, wait]
 
   watch pid/int -> none:
-    invoke_ ServiceDiscoveryService.WATCH_INDEX pid
+    invoke_ ServiceDiscoveryService.WATCH-INDEX pid
 
   listen id/int uuid/string -> none
       --name/string
@@ -50,9 +50,9 @@ class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDisc
       --minor/int
       --priority/int
       --tags/List?:
-    invoke_ ServiceDiscoveryService.LISTEN_INDEX [
+    invoke_ ServiceDiscoveryService.LISTEN-INDEX [
       id, uuid, name, major, minor, priority, tags
     ]
 
   unlisten id/int -> none:
-    invoke_ ServiceDiscoveryService.UNLISTEN_INDEX id
+    invoke_ ServiceDiscoveryService.UNLISTEN-INDEX id

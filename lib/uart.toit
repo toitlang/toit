@@ -25,20 +25,20 @@ The UART Port exposes the hardware features for communicating with an external
   peripheral using asynchronous communication.
 */
 class Port implements reader.Reader:
-  static STOP_BITS_1   ::= StopBits.private_ 1
-  static STOP_BITS_1_5 ::= StopBits.private_ 2
-  static STOP_BITS_2   ::= StopBits.private_ 3
+  static STOP-BITS-1   ::= StopBits.private_ 1
+  static STOP-BITS-1-5 ::= StopBits.private_ 2
+  static STOP-BITS-2   ::= StopBits.private_ 3
 
-  static PARITY_DISABLED ::= 1
-  static PARITY_EVEN     ::= 2
-  static PARITY_ODD      ::= 3
+  static PARITY-DISABLED ::= 1
+  static PARITY-EVEN     ::= 2
+  static PARITY-ODD      ::= 3
 
   /** Normal UART mode. */
-  static MODE_UART ::= 0
+  static MODE-UART ::= 0
   /** Uses the RTS pin to reserve the RS485 line when sending. */
-  static MODE_RS485_HALF_DUPLEX ::= 1
+  static MODE-RS485-HALF-DUPLEX ::= 1
   /** IRDA UART mode. */
-  static MODE_IRDA ::= 2
+  static MODE-IRDA ::= 2
 
   uart_ := ?
   state_/ResourceState_
@@ -50,21 +50,21 @@ class Port implements reader.Reader:
   Constructs a UART port using the given $tx for transmission and $rx
     for read.
 
-  The pins use the given $baud_rate. The baud rate must match the baud
+  The pins use the given $baud-rate. The baud rate must match the baud
     rate of the device.
 
   The $rts and $cts pins are optional flow-control pins. The host can signal
     on $rts that whether it is ready to receive data. The peripheral can
     signal the host on $cts whether it is ready to receive data.
 
-  The $data_bits, $parity, and $stop_bits define the data framing of the UART
+  The $data-bits, $parity, and $stop-bits define the data framing of the UART
     messages.
 
   The $mode parameter must be one of:
-  - $MODE_UART (default)
-  - $MODE_RS485_HALF_DUPLEX: uses the $rts pin to reserve the RS485 line when sending.
+  - $MODE-UART (default)
+  - $MODE-RS485-HALF-DUPLEX: uses the $rts pin to reserve the RS485 line when sending.
     Disables flow control, and $cts must be null.
-  - $MODE_IRDA
+  - $MODE-IRDA
 
   Some pins are preferred (more efficient) for use as UART pins on the ESP 32:
 
@@ -73,7 +73,7 @@ class Port implements reader.Reader:
   (Note that pins 16 and 17 are used for PSRAM on some modules, so they cannot
    be used for UART0.)
 
-  Setting a $high_priority increases the interrupt priority to level 3 on the ESP32.
+  Setting a $high-priority increases the interrupt priority to level 3 on the ESP32.
     If you do not specify true or false for this argument, the high priority is
     automatically selected for baud rates of 460800 or above.
 
@@ -82,65 +82,65 @@ class Port implements reader.Reader:
   */
   constructor
       --tx/gpio.Pin? --rx/gpio.Pin? --rts/gpio.Pin?=null --cts/gpio.Pin?=null
-      --baud_rate/int --data_bits/int=8 --stop_bits/StopBits=STOP_BITS_1
-      --invert_tx/bool=false --invert_rx/bool=false
-      --parity/int=PARITY_DISABLED
-      --mode/int=MODE_UART
-      --high_priority/bool?=null:
+      --baud-rate/int --data-bits/int=8 --stop-bits/StopBits=STOP-BITS-1
+      --invert-tx/bool=false --invert-rx/bool=false
+      --parity/int=PARITY-DISABLED
+      --mode/int=MODE-UART
+      --high-priority/bool?=null:
     if (not tx) and (not rx): throw "INVALID_ARGUMENT"
-    if mode == MODE_RS485_HALF_DUPLEX and cts: throw "INVALID_ARGUMENT"
-    if not MODE_UART <= mode <= MODE_IRDA: throw "INVALID_ARGUMENT"
+    if mode == MODE-RS485-HALF-DUPLEX and cts: throw "INVALID_ARGUMENT"
+    if not MODE-UART <= mode <= MODE-IRDA: throw "INVALID_ARGUMENT"
 
-    tx_flags := (invert_tx ? 1 : 0) + (invert_rx ? 2 : 0)
-    if high_priority == null: high_priority = baud_rate >= 460800
-    if high_priority:
-      tx_flags |= 8
-    uart_ = uart_create_
-      resource_group_
+    tx-flags := (invert-tx ? 1 : 0) + (invert-rx ? 2 : 0)
+    if high-priority == null: high-priority = baud-rate >= 460800
+    if high-priority:
+      tx-flags |= 8
+    uart_ = uart-create_
+      resource-group_
       tx ? tx.num : -1
       rx ? rx.num : -1
       rts ? rts.num : -1
       cts ? cts.num : -1
-      baud_rate
-      data_bits
-      stop_bits.value_
+      baud-rate
+      data-bits
+      stop-bits.value_
       parity
-      tx_flags
+      tx-flags
       mode
-    state_ = ResourceState_ resource_group_ uart_
+    state_ = ResourceState_ resource-group_ uart_
 
   /**
   Constructs a UART port using a $device path.
 
   This constructor does not work on embedded devices, such as the ESP32.
 
-  On some platforms the $baud_rate must match one that is supported by the operating system. See $Port.baud_rate=.
+  On some platforms the $baud-rate must match one that is supported by the operating system. See $Port.baud-rate=.
   */
   constructor device/string
-      --baud_rate/int
-      --data_bits/int=8
-      --stop_bits/StopBits=STOP_BITS_1
-      --parity/int=PARITY_DISABLED:
-    return HostPort device --baud_rate=baud_rate --data_bits=data_bits --stop_bits=stop_bits --parity=parity
+      --baud-rate/int
+      --data-bits/int=8
+      --stop-bits/StopBits=STOP-BITS-1
+      --parity/int=PARITY-DISABLED:
+    return HostPort device --baud-rate=baud-rate --data-bits=data-bits --stop-bits=stop-bits --parity=parity
 
-  constructor.host_port_ device/string
-       --baud_rate/int
-       --data_bits/int=8
-       --stop_bits/StopBits=STOP_BITS_1
-       --parity/int=PARITY_DISABLED:
-     group := resource_group_
-     uart_ = uart_create_path_ group device baud_rate data_bits stop_bits.value_ parity
+  constructor.host-port_ device/string
+       --baud-rate/int
+       --data-bits/int=8
+       --stop-bits/StopBits=STOP-BITS-1
+       --parity/int=PARITY-DISABLED:
+     group := resource-group_
+     uart_ = uart-create-path_ group device baud-rate data-bits stop-bits.value_ parity
      state_ = ResourceState_ group uart_
 
   /**
   Changes the baud rate.
-  Deprecated. Use $baud_rate= instead
+  Deprecated. Use $baud-rate= instead
   */
-  set_baud_rate new_rate/int:
-    uart_set_baud_rate_ uart_ new_rate
+  set-baud-rate new-rate/int:
+    uart-set-baud-rate_ uart_ new-rate
 
   /**
-  Sets the baud rate to the given $new_rate.
+  Sets the baud rate to the given $new-rate.
 
   The receiver should be ready to read and write data at the specified
     baud rate.
@@ -152,28 +152,28 @@ class Port implements reader.Reader:
 
   On macOS the baud rate can be set to arbitrary values.
   */
-  baud_rate= new_rate/int:
-    uart_set_baud_rate_ uart_ new_rate
+  baud-rate= new-rate/int:
+    uart-set-baud-rate_ uart_ new-rate
 
   /** The current baud rate. */
-  baud_rate -> int:
-    return uart_get_baud_rate_ uart_
+  baud-rate -> int:
+    return uart-get-baud-rate_ uart_
 
   /**
   Closes this UART port and releases all associated resources.
   */
   close:
     if not uart_: return
-    critical_do:
+    critical-do:
       state_.dispose
-      uart_close_ resource_group_ uart_
+      uart-close_ resource-group_ uart_
       uart_ = null
 
   /**
   Writes data to the Port.
 
-  If $break_length is greater than 0, an additional break signal is added after
-    the data is written. The duration of the break signal is bit-duration * $break_length,
+  If $break-length is greater than 0, an additional break signal is added after
+    the data is written. The duration of the break signal is bit-duration * $break-length,
     where bit-duration is the duration it takes to write one bit at the current baud rate.
 
   If not all bytes could be written without blocking, this will be indicated by
@@ -192,10 +192,10 @@ class Port implements reader.Reader:
 
   Returns the number of bytes written.
   */
-  write data from=0 to=data.size --break_length=0 --wait=false -> int:
+  write data from=0 to=data.size --break-length=0 --wait=false -> int:
     size := to - from
     while from < to:
-      from += write_no_wait_ data from to --break_length=break_length
+      from += write-no-wait_ data from to --break-length=break-length
 
     if wait: flush
 
@@ -210,15 +210,15 @@ class Port implements reader.Reader:
   */
   read -> ByteArray?:
     while true:
-      state_bits := state_.wait_for_state READ_STATE_ | ERROR_STATE_
+      state-bits := state_.wait-for-state READ-STATE_ | ERROR-STATE_
       if not uart_: return null
-      if state_bits & ERROR_STATE_ != 0:
-        state_.clear_state ERROR_STATE_
+      if state-bits & ERROR-STATE_ != 0:
+        state_.clear-state ERROR-STATE_
         errors++
-      else if state_bits & READ_STATE_ != 0:
-        data := uart_read_ uart_
+      else if state-bits & READ-STATE_ != 0:
+        data := uart-read_ uart_
         if data and data.size > 0: return data
-        state_.clear_state READ_STATE_
+        state_.clear-state READ-STATE_
 
   /**
   Flushes the output buffer, waiting until all written data has been transmitted.
@@ -228,18 +228,18 @@ class Port implements reader.Reader:
   flush -> none:
     while true:
       if not uart_: throw "CLOSED"
-      flushed := uart_wait_tx_ uart_
+      flushed := uart-wait-tx_ uart_
       if flushed: return
       yield
 
-  write_no_wait_ data from=0 to=data.size --break_length=0:
+  write-no-wait_ data from=0 to=data.size --break-length=0:
     while true:
-      s := state_.wait_for_state WRITE_STATE_ | ERROR_STATE_
+      s := state_.wait-for-state WRITE-STATE_ | ERROR-STATE_
       if not uart_: throw "CLOSED"
-      written := uart_write_ uart_ data from to break_length
+      written := uart-write_ uart_ data from to break-length
       if written < to - from:
         // Not everything was written, clear write flag and try again.
-        state_.clear_state WRITE_STATE_
+        state_.clear-state WRITE-STATE_
         if written == 0: continue
 
       return written
@@ -253,94 +253,94 @@ class HostPort extends Port:
     See super class constructor.
   */
   constructor device/string
-      --baud_rate/int
-      --data_bits/int=8
-      --stop_bits/StopBits=Port.STOP_BITS_1
-      --parity/int=Port.PARITY_DISABLED:
-    super.host_port_ device --baud_rate=baud_rate --data_bits=data_bits --stop_bits=stop_bits --parity=parity
+      --baud-rate/int
+      --data-bits/int=8
+      --stop-bits/StopBits=Port.STOP-BITS-1
+      --parity/int=Port.PARITY-DISABLED:
+    super.host-port_ device --baud-rate=baud-rate --data-bits=data-bits --stop-bits=stop-bits --parity=parity
 
-  static CONTROL_FLAG_LE  ::= 1 << 0            /* line enable */
-  static CONTROL_FLAG_DTR ::= 1 << 1            /* data terminal ready */
-  static CONTROL_FLAG_RTS ::= 1 << 2            /* request to send */
-  static CONTROL_FLAG_ST  ::= 1 << 3            /* secondary transmit */
-  static CONTROL_FLAG_SR  ::= 1 << 4            /* secondary receive */
-  static CONTROL_FLAG_CTS ::= 1 << 5            /* clear to send */
-  static CONTROL_FLAG_CAR ::= 1 << 6            /* carrier detect */
-  static CONTROL_FLAG_RNG ::= 1 << 7            /* ring */
-  static CONTROL_FLAG_DSR ::= 1 << 8            /* data set ready */
+  static CONTROL-FLAG-LE  ::= 1 << 0            /* line enable */
+  static CONTROL-FLAG-DTR ::= 1 << 1            /* data terminal ready */
+  static CONTROL-FLAG-RTS ::= 1 << 2            /* request to send */
+  static CONTROL-FLAG-ST  ::= 1 << 3            /* secondary transmit */
+  static CONTROL-FLAG-SR  ::= 1 << 4            /* secondary receive */
+  static CONTROL-FLAG-CTS ::= 1 << 5            /* clear to send */
+  static CONTROL-FLAG-CAR ::= 1 << 6            /* carrier detect */
+  static CONTROL-FLAG-RNG ::= 1 << 7            /* ring */
+  static CONTROL-FLAG-DSR ::= 1 << 8            /* data set ready */
 
   /**
   Read the value of the given control $flag. $flag must be one of the CONTROL_ constants.
 
   Returns the state of the $flag
   */
-  read_control_flag flag/int -> bool:
-    return (uart_get_control_flags_ uart_) & flag != 0
+  read-control-flag flag/int -> bool:
+    return (uart-get-control-flags_ uart_) & flag != 0
 
   /**
   Read the value of all the control flags. Each bit in the returned value corresponds to the bit position indicated
   by the CONTROL_ constants.
   */
-  read_control_flags -> int:
-    return uart_get_control_flags_ uart_
+  read-control-flags -> int:
+    return uart-get-control-flags_ uart_
 
   /**
   Sets the $state of a control $flag. $flag must be one of the CONTROL_ constants.
   */
-  set_control_flag flag/int state/bool:
-    flags := uart_get_control_flags_ uart_
+  set-control-flag flag/int state/bool:
+    flags := uart-get-control-flags_ uart_
     if state:
       flags |= flag
     else:
       flags &= ~flag
-    uart_set_control_flags_ uart_ flags
+    uart-set-control-flags_ uart_ flags
 
   /**
   Sets all control $flags to the specified value. Each bit in the $flags corresponds to one of the CONTROL_ constants.
   */
-  set_control_flags flags/int:
-    uart_set_control_flags_ uart_ flags
+  set-control-flags flags/int:
+    uart-set-control-flags_ uart_ flags
 
-resource_group_ ::= uart_init_
+resource-group_ ::= uart-init_
 
-READ_STATE_  ::= 1 << 0
-ERROR_STATE_ ::= 1 << 1
-WRITE_STATE_ ::= 1 << 2
+READ-STATE_  ::= 1 << 0
+ERROR-STATE_ ::= 1 << 1
+WRITE-STATE_ ::= 1 << 2
 
-uart_init_:
+uart-init_:
   #primitive.uart.init
 
-uart_create_ group tx rx rts cts baud_rate data_bits stop_bits parity tx_flags mode:
+uart-create_ group tx rx rts cts baud-rate data-bits stop-bits parity tx-flags mode:
   #primitive.uart.create
 
-uart_create_path_ resource_group device baud_rate data_bits stop_bits parity:
-  #primitive.uart.create_path
+uart-create-path_ resource-group device baud-rate data-bits stop-bits parity:
+  #primitive.uart.create-path
 
-uart_set_baud_rate_ uart baud:
-  #primitive.uart.set_baud_rate
+uart-set-baud-rate_ uart baud:
+  #primitive.uart.set-baud-rate
 
-uart_get_baud_rate_ uart:
-  #primitive.uart.get_baud_rate
+uart-get-baud-rate_ uart:
+  #primitive.uart.get-baud-rate
 
-uart_close_ group uart:
+uart-close_ group uart:
   #primitive.uart.close
 
 /**
 Writes the $data to the uart.
 Returns the amount of bytes that were written.
 */
-uart_write_ uart data from to break_length:
+uart-write_ uart data from to break-length:
   #primitive.uart.write
 
-uart_wait_tx_ uart:
-  #primitive.uart.wait_tx
+uart-wait-tx_ uart:
+  #primitive.uart.wait-tx
 
-uart_read_ uart:
+uart-read_ uart:
   #primitive.uart.read
 
-uart_set_control_flags_ uart flags:
-  #primitive.uart.set_control_flags
+uart-set-control-flags_ uart flags:
+  #primitive.uart.set-control-flags
 
-uart_get_control_flags_ uart:
-  #primitive.uart.get_control_flags
+uart-get-control-flags_ uart:
+  #primitive.uart.get-control-flags
 

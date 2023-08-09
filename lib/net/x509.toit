@@ -2,35 +2,35 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-x509_module_ := x509_init_
+x509-module_ := x509-init_
 
 class Certificate:
   res_ ::= ?
 
   // Load a certificate from a PEM or DER encoded string or byte array.
   constructor.parse input:
-    res := x509_parse_ x509_module_ input
+    res := x509-parse_ x509-module_ input
     return Certificate.resource_ res
 
   constructor.resource_ .res_:
-    add_finalizer this::
-      remove_finalizer this
-      x509_close this.res_
+    add-finalizer this::
+      remove-finalizer this
+      x509-close this.res_
 
   // Get the Common Name (CN) of the certificate.
-  common_name -> string:
-    return x509_get_common_name_ res_
+  common-name -> string:
+    return x509-get-common-name_ res_
 
-x509_init_:
+x509-init_:
   #primitive.x509.init
 
-x509_parse_ module input:
+x509-parse_ module input:
   #primitive.x509.parse
 
-x509_get_common_name_ cert:
-  #primitive.x509.get_common_name
+x509-get-common-name_ cert:
+  #primitive.x509.get-common-name
 
-x509_close cert:
+x509-close cert:
   #primitive.x509.close
 
 /**
@@ -38,10 +38,10 @@ Deprecated.
 Please use COMMON_TRUSTED_ROOTS or install_common_trusted_roots from
   https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
 */
-TRUSTED_ROOTS ::= [
-  DIGICERT_ROOT_,
-  DIGICERT_GLOBAL_,
-  DIGICERT_GLOBAL_G2_,
+TRUSTED-ROOTS ::= [
+  DIGICERT-ROOT_,
+  DIGICERT-GLOBAL_,
+  DIGICERT-GLOBAL-G2_,
 ]
 
 /**
@@ -50,9 +50,9 @@ Deprecated.
 Please use DIGICERT_HIGH_ASSURANCE_EV_ROOT_CA from
   https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
 */
-DIGICERT_ROOT ::= DIGICERT_ROOT_
+DIGICERT-ROOT ::= DIGICERT-ROOT_
 
-DIGICERT_ROOT_ ::= Certificate.parse """
+DIGICERT-ROOT_ ::= Certificate.parse """
 -----BEGIN CERTIFICATE-----
 MIIDxTCCAq2gAwIBAgIQAqxcJmoLQJuPC3nyrkYldzANBgkqhkiG9w0BAQUFADBs
 MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
@@ -83,9 +83,9 @@ Deprecated.
 Please use DIGICERT_GLOBAL_ROOT_CA from
   https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
 */
-DIGICERT_GLOBAL ::= DIGICERT_GLOBAL_
+DIGICERT-GLOBAL ::= DIGICERT-GLOBAL_
 
-DIGICERT_GLOBAL_ ::= Certificate.parse """
+DIGICERT-GLOBAL_ ::= Certificate.parse """
 -----BEGIN CERTIFICATE-----
 MIIDrzCCApegAwIBAgIQCDvgVpBCRrGhdWrJWZHHSjANBgkqhkiG9w0BAQUFADBh
 MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
@@ -115,9 +115,9 @@ Deprecated.
 Please use DIGICERT_GLOBAL_ROOT_G2 from
   https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
 */
-DIGICERT_GLOBAL_G2 ::= DIGICERT_GLOBAL_G2_
+DIGICERT-GLOBAL-G2 ::= DIGICERT-GLOBAL-G2_
 
-DIGICERT_GLOBAL_G2_ ::= Certificate.parse """
+DIGICERT-GLOBAL-G2_ ::= Certificate.parse """
 -----BEGIN CERTIFICATE-----
 MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBh
 MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3

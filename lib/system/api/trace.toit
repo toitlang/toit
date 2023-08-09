@@ -18,8 +18,8 @@ interface TraceService:
     processing from the system's built-in trace message handler.
     Otherwise, returns the message.
   */
-  handle_trace message/ByteArray -> ByteArray?
-  static HANDLE_TRACE_INDEX /int ::= 0
+  handle-trace message/ByteArray -> ByteArray?
+  static HANDLE-TRACE-INDEX /int ::= 0
 
 class TraceServiceClient extends ServiceClient implements TraceService:
   static SELECTOR ::= TraceService.SELECTOR
@@ -27,5 +27,5 @@ class TraceServiceClient extends ServiceClient implements TraceService:
     assert: selector.matches SELECTOR
     super selector
 
-  handle_trace message/ByteArray -> ByteArray?:
-    return invoke_ TraceService.HANDLE_TRACE_INDEX message
+  handle-trace message/ByteArray -> ByteArray?:
+    return invoke_ TraceService.HANDLE-TRACE-INDEX message

@@ -6,41 +6,41 @@
 //             should not be part of the public interface.
 monitor ResourceState_:
   constructor .group_ .resource_:
-    register_monitor_notifier_ this group_ resource_
-    add_finalizer this:: dispose
+    register-monitor-notifier_ this group_ resource_
+    add-finalizer this:: dispose
 
   group: return group_
   resource: return resource_
 
-  set_callback callback/Lambda -> none:
+  set-callback callback/Lambda -> none:
     callback_ = callback
 
-  wait_for_state bits:
-    return wait_for_state_ bits
+  wait-for-state bits:
+    return wait-for-state_ bits
 
   wait:
-    return wait_for_state_ 0x3fff_ffff
+    return wait-for-state_ 0x3fff_ffff
 
   clear:
     state_ = 0
 
-  clear_state bits:
+  clear-state bits:
     state_ &= ~bits
 
   dispose:
     if resource_:
-      unregister_monitor_notifier_ group_ resource_
+      unregister-monitor-notifier_ group_ resource_
       resource_ = null
       group_ = null
       callback_ = null
-      remove_finalizer this
+      remove-finalizer this
 
   // Called on timeouts and when the state changes because of the call
   // to [register_object_notifier] in the constructor.
   notify_:
     resource := resource_
     if resource:
-      state := state_ | (read_state_ group_ resource)
+      state := state_ | (read-state_ group_ resource)
       state_ = state
       callback := callback_
       if callback:
@@ -49,7 +49,7 @@ monitor ResourceState_:
     // into a situation, where timeouts might be ignored.
     super
 
-  wait_for_state_ bits:
+  wait-for-state_ bits:
     result := null
     if not resource_: return 0
     await:
@@ -65,11 +65,11 @@ monitor ResourceState_:
   callback_/Lambda? := null
   state_ := 0
 
-read_state_ module id:
-  #primitive.events.read_state
+read-state_ module id:
+  #primitive.events.read-state
 
-register_monitor_notifier_ monitor/__Monitor__? module id -> none:
-  #primitive.events.register_monitor_notifier
+register-monitor-notifier_ monitor/__Monitor__? module id -> none:
+  #primitive.events.register-monitor-notifier
 
-unregister_monitor_notifier_ module id -> none:
-  #primitive.events.unregister_monitor_notifier
+unregister-monitor-notifier_ module id -> none:
+  #primitive.events.unregister-monitor-notifier
