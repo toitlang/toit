@@ -106,7 +106,7 @@ migrate parsed/cli.Parsed:
         stdout
         pipe.PIPE_INHERITED
         toitc
-        [toitc, "-Xmigrate_dash_ids", "--analyze", source]
+        [toitc, "-Xmigrate-dash-ids", "--analyze", source]
     child_process := pipes[3]
     reader := BufferedReader pipe_ends
     reader.buffer_all
