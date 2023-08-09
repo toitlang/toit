@@ -80,7 +80,7 @@ class SomeClass2 extends SomeClass:
   // TODO(florian): not sure we should have "constructor"
   /** $SomeClass.static_field */
   /*             ^~~~~~~~~~~~
-    + member, member2 field, setter, super_target1, static_fun, static_field, constructor
+    + member, member2 field, setter, super-target1, static-fun, static-field, constructor
     - *
   */
   foo3 param1:
@@ -88,7 +88,7 @@ class SomeClass2 extends SomeClass:
   // TODO(florian): not sure if we should have "constructor".
   /** $imported.ImportedClass.imported_member */
   /*                          ^~~~~~~~~~~~~~~
-    - imported_member, imported_static_member, constructor
+    - imported-member, imported-static-member, constructor
     - *
   */
   foo4 --named:
@@ -105,7 +105,7 @@ bar1 param1:
 // TODO(florian): not sure if we should have "constructor".
 /** $imported.ImportedClass.imported_member */
 /*                          ^~~~~~~~~~~~~~~
-  + imported_member, imported_static_member, constructor
+  + imported-member, imported-static-member, constructor
   - *
 */
 bar2 --named:

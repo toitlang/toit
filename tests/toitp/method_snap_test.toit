@@ -10,22 +10,22 @@ main args:
   snapshot := SnapshotBundle.from_file snapshot_path
   program := snapshot.decode
 
-  not_methods := ["global_field", "global_lazy_field="]
+  not_methods := ["global-field", "global-lazy-field="]
 
   needles := {
-    "ClassA.field_a",
-    "ClassA.field_a=",
-    "ClassA.final_field",
-    "ClassA.final_field=",
-    "ClassA.method_a",
-    "ClassA.method_b",
-    "ClassB.method_b",
+    "ClassA.field-a",
+    "ClassA.field-a=",
+    "ClassA.final-field",
+    "ClassA.final-field=",
+    "ClassA.method-a",
+    "ClassA.method-b",
+    "ClassB.method-b",
     "ClassA.constructor",
     "ClassB.constructor",
-    "ClassA.static_method",
+    "ClassA.static-method",
     "ClassA.named",
-    "global_method",
-    "global_lazy_field",
+    "global-method",
+    "global-lazy-field",
     "Nested.block",
     "Nested.lambda",
   }
@@ -66,7 +66,7 @@ main args:
     expect (found_methods.contains it)
 
   // Do some spot checks.
-  method_bs := found_methods["ClassA.method_b"]
+  method_bs := found_methods["ClassA.method-b"]
   expect_equals 2 method_bs.size
   method1 := program.method_from_absolute_bci method_bs[0].absolute_entry_bci
   method2 := program.method_from_absolute_bci method_bs[1].absolute_entry_bci
@@ -74,27 +74,27 @@ main args:
   expect (method1.arity == 2 and method2.arity == 3 or
       method1.arity == 3 and method2.arity == 2)
 
-  lazy_fields := found_methods["global_lazy_field"]
+  lazy_fields := found_methods["global-lazy-field"]
   expect_equals 1 lazy_fields.size
   info1 := lazy_fields[0]
   expect_equals MethodInfo.GLOBAL_TYPE info1.type
 
-  field_getter_entry := found_methods["ClassA.field_a"].first.absolute_entry_bci
+  field_getter_entry := found_methods["ClassA.field-a"].first.absolute_entry_bci
   field_getter := program.method_from_absolute_bci field_getter_entry
   expect field_getter.is_field_accessor
-  field_setter_entry := found_methods["ClassA.field_a="].first.absolute_entry_bci
+  field_setter_entry := found_methods["ClassA.field-a="].first.absolute_entry_bci
   field_setter := program.method_from_absolute_bci field_setter_entry
   expect field_setter.is_field_accessor
 
-  final_field_getter_entry := found_methods["ClassA.final_field"].first.absolute_entry_bci
+  final_field_getter_entry := found_methods["ClassA.final-field"].first.absolute_entry_bci
   final_field_getter := program.method_from_absolute_bci final_field_getter_entry
   expect final_field_getter.is_field_accessor
-  final_field_setter_entry := found_methods["ClassA.final_field="].first.absolute_entry_bci
+  final_field_setter_entry := found_methods["ClassA.final-field="].first.absolute_entry_bci
   final_field_setter := program.method_from_absolute_bci final_field_setter_entry
   // The final field setter is not considered an accessor.
   expect_not final_field_setter.is_field_accessor
 
-  method_a_entry := found_methods["ClassA.method_a"].first.absolute_entry_bci
+  method_a_entry := found_methods["ClassA.method-a"].first.absolute_entry_bci
   method_a := program.method_from_absolute_bci method_a_entry
   expect_not method_a.is_field_accessor
   expect method_a.is_normal_method

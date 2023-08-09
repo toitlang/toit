@@ -38,7 +38,7 @@ test args filter:
   return last_matched_line
 
 main args:
-  last_matched_line := test args "bytecode_test"
+  last_matched_line := test args "bytecode-test"
   // Try again. This time using the absolute bci of the last line as filter.
   absolute_bci_start := last_matched_line.index_of "/"
   absolute_bci_end := last_matched_line.index_of "["

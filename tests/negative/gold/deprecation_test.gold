@@ -13,10 +13,10 @@ tests/negative/deprecation_test.toit:76:8: warning: Deprecated constructor of 'A
 tests/negative/deprecation_test.toit:79:5: warning: Deprecated 'A.method1'
   a.method1
     ^~~~~~~
-tests/negative/deprecation_test.toit:82:5: warning: Deprecated 'A.some_field'
+tests/negative/deprecation_test.toit:82:5: warning: Deprecated 'A.some-field'
   a.some_field
     ^~~~~~~~~~
-tests/negative/deprecation_test.toit:84:4: warning: Deprecated 'A.some_static_field'
+tests/negative/deprecation_test.toit:84:4: warning: Deprecated 'A.some-static-field'
   A.some_static_field
    ^
 tests/negative/deprecation_test.toit:86:3: warning: Deprecated 'global'

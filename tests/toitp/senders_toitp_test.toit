@@ -6,10 +6,10 @@ import expect show *
 import .utils
 
 main args:
-  out := run_toitp args ["--senders"] --filter="the_target"
+  out := run_toitp args ["--senders"] --filter="the-target"
   lines := out.split LINE_TERMINATOR
-  expect_equals """Methods with calls to "the_target"[3]:""" lines[0]
+  expect_equals """Methods with calls to "the-target"[3]:""" lines[0]
 
-  ["global_lazy_field", "global_fun", "foo"].do: |needle|
+  ["global-lazy-field", "global-fun", "foo"].do: |needle|
     expect
       lines.any: it.starts_with "$needle "

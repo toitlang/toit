@@ -4,7 +4,7 @@ import .error_recovery1 as 4
 tests/negative/error_recovery_test.toit:6:25: error: 'as' must be followed by identifier
 import .error_recovery2 as 5
                         ^~
-tests/negative/error_recovery_test.toit:9:9: error: Unresolved identifier: 'from_module'
+tests/negative/error_recovery_test.toit:9:9: error: Unresolved identifier: 'from-module'
   print from_module
         ^~~~~~~~~~~
 Compilation failed.

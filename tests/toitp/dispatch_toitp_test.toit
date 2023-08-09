@@ -18,7 +18,7 @@ main args:
   // Two ClassA.test_foo next to each other.
   found_test_foo := false
   for i := 0; i < methods.size - 1; i++:
-    if methods[i] == "ClassA.test_foo":
+    if methods[i] == "ClassA.test-foo":
       expect methods[i + 1] == methods[i]
       found_test_foo = true
       break
@@ -27,8 +27,8 @@ main args:
   // ClassA.test_bar followed by ClassB.test_bar.
   found_test_bar := false
   for i := 0; i < methods.size - 1; i++:
-    if methods[i] == "ClassA.test_bar":
-      expect methods[i + 1] == "ClassB.test_bar"
+    if methods[i] == "ClassA.test-bar":
+      expect methods[i + 1] == "ClassB.test-bar"
       found_test_bar = true
       break
   expect found_test_bar

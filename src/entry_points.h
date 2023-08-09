@@ -19,14 +19,14 @@ namespace toit {
 
 // All functions that can be called directly from the interpreter.
 #define ENTRY_POINTS(E) \
-  E(entry_main,               __entry__main, 1)                   \
-  E(entry_spawn,              __entry__spawn, 1)                  \
-  E(entry_task,               __entry__task, 1)                   \
-  E(lookup_failure,           lookup_failure_, 2)                 \
-  E(as_check_failure,         as_check_failure_, 2)               \
-  E(primitive_lookup_failure, primitive_lookup_failure_, 2)       \
-  E(code_failure,             too_few_code_arguments_failure_, 4) \
-  E(program_failure,          program_failure_, 1)                \
-  E(run_global_initializer,   run_global_initializer_, 2)         \
+  E(entry_main,               "__entry__main", 1)                   \
+  E(entry_spawn,              "__entry__spawn", 1)                  \
+  E(entry_task,               "__entry__task", 1)                   \
+  E(lookup_failure,           "lookup-failure_", 2)                 \
+  E(as_check_failure,         "as-check-failure_", 2)               \
+  E(primitive_lookup_failure, "primitive-lookup-failure_", 2)       \
+  E(code_failure,             "too-few-code-arguments-failure_", 4) \
+  E(program_failure,          "program-failure_", 1)                \
+  E(run_global_initializer,   "run-global-initializer_", 2)         \
 
 } // namespace toit

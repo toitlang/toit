@@ -1,8 +1,8 @@
 main tests/type_propagation/field_test.toit
-  0[053] - invoke static test_simple tests/type_propagation/field_test.toit // {Null_}
+  0[053] - invoke static test-simple tests/type_propagation/field_test.toit // {Null_}
   3[089] - return null S1 0
 
-test_simple tests/type_propagation/field_test.toit
+test-simple tests/type_propagation/field_test.toit
   0[042] - allocate instance A
   2[026] - load smi 12
   4[053] - invoke static A tests/type_propagation/field_test.toit // [{A}, {SmallInteger_}] -> {A}

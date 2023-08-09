@@ -36,6 +36,6 @@ main:
 
   some4 := pre3.top_level
 /*              ^~~~~~~~~
-  + top_level, main, ExportedClass, ExportedClass2, foo
+  + top-level, main, ExportedClass, ExportedClass2, foo
   - *
 */

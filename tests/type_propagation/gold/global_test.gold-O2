@@ -1,5 +1,5 @@
 main tests/type_propagation/global_test.toit
-  0[053] - invoke static test_simple tests/type_propagation/global_test.toit // {Null_}
+  0[053] - invoke static test-simple tests/type_propagation/global_test.toit // {Null_}
   3[089] - return null S1 0
 
 X tests/type_propagation/global_test.toit
@@ -14,7 +14,7 @@ Z tests/type_propagation/global_test.toit
   0[053] - invoke static foo tests/type_propagation/global_test.toit // {SmallInteger_}
   3[088] - return S1 0
 
-test_simple tests/type_propagation/global_test.toit
+test-simple tests/type_propagation/global_test.toit
   0[032] - load global var lazy G0 // {SmallInteger_}
   2[053] - invoke static id tests/type_propagation/global_test.toit // [{SmallInteger_}] -> {SmallInteger_}
   5[041] - pop 1

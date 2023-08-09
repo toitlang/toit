@@ -333,7 +333,7 @@ static bool is_constant_name(Symbol name) {
   // Must start with capitalized character.
   if (!isupper(*ptr)) return false;
   while (*ptr != '\0') {
-    if (!(*ptr == '_' || isupper(*ptr))) return false;
+    if (!(*ptr == '_' || *ptr == '-' || isupper(*ptr))) return false;
     ptr++;
   }
   return true;

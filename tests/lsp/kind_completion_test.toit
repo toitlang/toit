@@ -4,7 +4,7 @@
 
 import .kind_completion_test as prefix
 /*      ^
-  + kind_completion_test#Module
+  + kind-completion-test#Module
 */
 
 class SomeClass:
@@ -45,8 +45,8 @@ main:
   local
 /*^~~~~
   + SomeClass#Class, SomeClass2#Class, main#Function
-  + global#Variable, CONSTANT#Constant, CONSTANT_OTHER#Constant
-  + toplevel_fun#Function, true#Keyword, I#Interface
+  + global#Variable, CONSTANT#Constant, CONSTANT-OTHER#Constant
+  + toplevel-fun#Function, true#Keyword, I#Interface
   + prefix#Module
   + local#Variable
   + __#Variable
@@ -54,7 +54,7 @@ main:
 
   SomeClass.fun
 /*          ^~~
-  + fun#Function, static_field#Variable, CONSTANT#Constant
+  + fun#Function, static-field#Variable, CONSTANT#Constant
 */
 
   SomeClass2.factory

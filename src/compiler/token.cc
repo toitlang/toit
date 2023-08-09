@@ -36,7 +36,7 @@ IDENTIFIERS(I, IN)
 #undef IN
 #undef I
 
-#define E(n, lib_name, a) const Symbol Symbols:: n = Symbol::synthetic(#lib_name);
+#define E(n, lib_name, a) const Symbol Symbols:: n = Symbol::synthetic(lib_name);
 ENTRY_POINTS(E)
 #undef E
 

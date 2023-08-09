@@ -29,15 +29,15 @@ test client/LspClient:
     // Don't create the files in parallel, to avoid launching all the diagnostic
     // requests.
     client.send_did_open --uri="untitled:Untitled-$i" --text="""
-      some_function: return 499
-      some_other_function: return 42
+      some-function: return 499
+      some-other_function: return 42
       """
     client.wait_for_idle
 
   drive := platform == PLATFORM_WINDOWS ? "c:" : ""
   completion_document := "$drive/tmp/completion.toit"
   client.send_did_open --path=completion_document  --text="""
-     completion_fun: return 499
+     completion-fun: return 499
      main: com
      """
 
@@ -49,7 +49,7 @@ test client/LspClient:
     CONCURRENT_REQUEST_COUNT.repeat:
       task::
         response := client.send_completion_request --path=completion_document 1 8
-        expect (response.any: it["label"] == "completion_fun")
+        expect (response.any: it["label"] == "completion-fun")
         semaphore.up
 
     CONCURRENT_REQUEST_COUNT.repeat:

@@ -86,6 +86,7 @@ class CompletionTestRunner extends LocationCompilerTestRunner:
         expected_kind = null
       if not actual.contains expected_name:
         print "Missing completion: $it"
+        print "Actual: $actual"
       expect (actual.contains expected_name)
       if expected_kind:
         expect_equals expected_kind actual[expected_name]

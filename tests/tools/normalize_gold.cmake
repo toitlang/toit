@@ -30,7 +30,7 @@ function(LOCALIZE_GOLD INPUT OUTPUT)
 
   # Find all potential paths and replace them.
   string(REGEX
-         MATCHALL "(/?tests[a-zA-Z_0-9/]+)|([a-zA-Z_0-9/]+[.]toit)|(<(sdk|pkg:[a-zA-Z_0-9]+)>/[a-zA-Z_0-9/.]+)"
+         MATCHALL "(/?tests[a-zA-Z_0-9/-]+)|([a-zA-Z_0-9/-]+[.]toit)|(<(sdk|pkg:[a-zA-Z_0-9-]+)>/[a-zA-Z_0-9/.-]+)"
          PATHS
          "${INPUT}")
   list(REMOVE_DUPLICATES PATHS)

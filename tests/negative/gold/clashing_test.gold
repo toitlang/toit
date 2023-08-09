@@ -28,22 +28,22 @@ tests/negative/clashing_test.toit:40:3: error: Redefinition of 'bar'
 tests/negative/clashing_test.toit:39:3: note: First definition of 'bar'
   bar: unresolved
   ^~~
-tests/negative/clashing_test.toit:43:3: error: Redefinition of 'field_method'
+tests/negative/clashing_test.toit:43:3: error: Redefinition of 'field-method'
   field_method: return unresolved
   ^~~~~~~~~~~~
-tests/negative/clashing_test.toit:42:3: note: First definition of 'field_method'
+tests/negative/clashing_test.toit:42:3: note: First definition of 'field-method'
   field_method := unresolved
   ^~~~~~~~~~~~
-tests/negative/clashing_test.toit:46:10: error: Redefinition of 'field_static_method'
+tests/negative/clashing_test.toit:46:10: error: Redefinition of 'field-static-method'
   static field_static_method: unresolved
          ^~~~~~~~~~~~~~~~~~~
-tests/negative/clashing_test.toit:45:3: note: First definition of 'field_static_method'
+tests/negative/clashing_test.toit:45:3: note: First definition of 'field-static-method'
   field_static_method := unresolved
   ^~~~~~~~~~~~~~~~~~~
-tests/negative/clashing_test.toit:49:10: error: Redefinition of 'field_static_field'
+tests/negative/clashing_test.toit:49:10: error: Redefinition of 'field-static-field'
   static field_static_field := unresolved
          ^~~~~~~~~~~~~~~~~~
-tests/negative/clashing_test.toit:48:3: note: First definition of 'field_static_field'
+tests/negative/clashing_test.toit:48:3: note: First definition of 'field-static-field'
   field_static_field := unresolved
   ^~~~~~~~~~~~~~~~~~
 tests/negative/clashing_test.toit:18:3: error: Redefinition of 'named'
@@ -82,10 +82,10 @@ tests/negative/clashing_test.toit:53:10: error: Redefinition of 'named4'
 tests/negative/clashing_test.toit:51:3: note: First definition of 'named4'
   constructor.named4: unresolved
   ^~~~~~~~~~~
-tests/negative/clashing_test.toit:56:10: error: Redefinition of 'static_method_field'
+tests/negative/clashing_test.toit:56:10: error: Redefinition of 'static-method-field'
   static static_method_field := unresolved
          ^~~~~~~~~~~~~~~~~~~
-tests/negative/clashing_test.toit:55:10: note: First definition of 'static_method_field'
+tests/negative/clashing_test.toit:55:10: note: First definition of 'static-method-field'
   static static_method_field: unresolved
          ^~~~~~~~~~~~~~~~~~~
 tests/negative/clashing_test.toit:11:3: error: Unresolved identifier: 'unresolved'

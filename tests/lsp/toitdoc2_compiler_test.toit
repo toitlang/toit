@@ -453,13 +453,13 @@ test client/LspClient:
         If this instance contains the \$key, calls the \$updater with the current value,
           and replaces the old value with the result. Returns the result of the call.
 
-        If this instance does not contain the \$key, calls \$if_absent instead, and
+        If this instance does not contain the \$key, calls \$if-absent instead, and
           stores the result of the call in this instance. Returns the result of the call.
         */
 
       key:
       updater:
-      if_absent:
+      if-absent:
       """
       Contents [
         Section null
@@ -480,7 +480,7 @@ test client/LspClient:
               Text "If this instance does not contain the ",
               global_thunk "key",
               Text ", calls ",
-              global_thunk "if_absent",
+              global_thunk "if-absent",
               Text " instead, and stores the result of the call in this instance. Returns the result of the call.",
             ],
           ],
@@ -495,14 +495,14 @@ test client/LspClient:
           If this instance contains the \$key, calls the \$updater with the current value,
             and replaces the old value with the result. Returns the result of the call.
 
-          If this instance does not contain the \$key, calls \$if_absent instead, and
+          If this instance does not contain the \$key, calls \$if-absent instead, and
             stores the result of the call in this instance. Returns the result of the call.
         - 2
         */
 
       key:
       updater:
-      if_absent:
+      if-absent:
       """
       Contents [
         Section null
@@ -525,7 +525,7 @@ test client/LspClient:
                   Text "If this instance does not contain the ",
                   global_thunk "key",
                   Text ", calls ",
-                  global_thunk "if_absent",
+                  global_thunk "if-absent",
                   Text " instead, and stores the result of the call in this instance. Returns the result of the call.",
                 ],
               ],
