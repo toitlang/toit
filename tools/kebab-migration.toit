@@ -96,8 +96,6 @@ migrate parsed/cli.Parsed:
 
   migration_points := []
   sources.do: | source/string |
-    print "converting $source"
-
     pipe_ends := pipe.OpenPipe false
     stdout := pipe_ends.fd
     pipes := pipe.fork
