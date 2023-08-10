@@ -96,8 +96,6 @@ migrate parsed/cli.Parsed:
 
   migration_points := []
   sources.do: | source/string |
-    print "converting $source"
-
     pipe_ends := pipe.OpenPipe false
     stdout := pipe_ends.fd
     pipes := pipe.fork
@@ -111,7 +109,6 @@ migrate parsed/cli.Parsed:
     reader := BufferedReader pipe_ends
     reader.buffer_all
     out := reader.read_string reader.buffered
-    print out
     exit_value := pipe.wait_for child_process
     if pipe.exit_signal exit_value:
       throw "Compiler crashed while migrating $source."
