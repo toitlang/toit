@@ -37,7 +37,7 @@ class SystemImage extends ContainerImage:
     // This container is already running as the system process.
     return Process.current.id
 
-  stop_all -> none:
+  stop-all -> none:
     unreachable  // Not implemented yet.
 
   delete -> none:
@@ -45,11 +45,11 @@ class SystemImage extends ContainerImage:
 
 main:
   registry ::= FlashRegistry.scan
-  container_manager ::= initialize_system registry [
+  container-manager ::= initialize-system registry [
       FirmwareServiceProvider,
       StorageServiceProvider registry,
       WifiServiceProvider,
   ]
-  container_manager.register_system_image
-      SystemImage container_manager
-  exit (boot container_manager)
+  container-manager.register-system-image
+      SystemImage container-manager
+  exit (boot container-manager)

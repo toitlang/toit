@@ -65,7 +65,6 @@ main args:
             find /path/to/directory \\
                 -type d \\( -name .packages -o -name .git \\) -prune -o \\
                 -type f -name '*.toit' \\
-                -exec /opt/bin/migrate {} \\
               | xargs kebab-migration files --git
         """
       --options=[
@@ -173,9 +172,7 @@ build-kebab-path path/string -> string:
 
     return "$path[..last-separator + 1]$new-file-path"
 
-  if not path.ends-with ".toit": return path
-
-  bytes := (path.trim --right ".toit").to-byte-array
+  bytes := path.to-byte-array
   for i := 1; i < bytes.size - 1; i++:
     // We only change '_' to '-' if it is surrounded by alphanumeric characters.
     c := bytes[i]
@@ -185,7 +182,7 @@ build-kebab-path path/string -> string:
     if previous == '-' or previous == '_': continue
     if next == '-' or next == '_': continue
     bytes[i] = '-'
-  return "$(bytes.to-string).toit"
+  return "$(bytes.to-string)"
 
 find-toitc-from-jag -> string:
   home := ?

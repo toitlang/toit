@@ -25,7 +25,7 @@ import system.services show ServiceHandler ServiceProvider ServiceResource
 import system.api.containers show ContainerService
 
 import .flash.allocation
-import .flash.image_writer
+import .flash.image-writer
 import .flash.registry
 import .services
 
@@ -40,58 +40,58 @@ class Container:
   id -> int:
     return gid_
 
-  is_process_running pid/int -> bool:
+  is-process-running pid/int -> bool:
     return pids_.contains pid
 
-  start arguments/any=image.default_arguments -> none:
+  start arguments/any=image.default-arguments -> none:
     if pids_: throw "Already started"
     pids_ = {}
     pids_.add (image.spawn this arguments)
 
   stop -> none:
     if not pids_: throw "Not started"
-    if pids_.is_empty: return
-    pids_.do: container_kill_pid_ it
+    if pids_.is-empty: return
+    pids_.do: container-kill-pid_ it
     pids_.clear
-    image.manager.on_container_stop_ this 0
-    resources.do: it.on_container_stop 0
+    image.manager.on-container-stop_ this 0
+    resources.do: it.on-container-stop 0
 
-  on_stop_ -> none:
-    pids_.do: on_process_stop_ it 0
+  on-stop_ -> none:
+    pids_.do: on-process-stop_ it 0
 
-  on_process_start_ pid/int -> none:
-    assert: not pids_.is_empty
+  on-process-start_ pid/int -> none:
+    assert: not pids_.is-empty
     pids_.add pid
 
-  on_process_stop_ pid/int error/int -> none:
+  on-process-stop_ pid/int error/int -> none:
     pids_.remove pid
     if error != 0:
-      pids_.do: container_kill_pid_ it
+      pids_.do: container-kill-pid_ it
       pids_.clear
-    else if not pids_.is_empty:
+    else if not pids_.is-empty:
       return
-    image.manager.on_container_stop_ this error
-    resources.do: it.on_container_stop error
+    image.manager.on-container-stop_ this error
+    resources.do: it.on-container-stop error
 
 class ContainerResource extends ServiceResource:
   container/Container
-  hash_code/int ::= hash_code_next
+  hash-code/int ::= hash-code-next
 
   constructor .container provider/ServiceProvider client/int:
     super provider client --notifiable
     container.resources.add this
 
-  static hash_code_next_/int := 0
-  static hash_code_next -> int:
-    next := hash_code_next_
-    hash_code_next_ = (next + 1) & 0x1fff_ffff
+  static hash-code-next_/int := 0
+  static hash-code-next -> int:
+    next := hash-code-next_
+    hash-code-next_ = (next + 1) & 0x1fff_ffff
     return next
 
-  on_container_stop code/int -> none:
-    if is_closed: return
+  on-container-stop code/int -> none:
+    if is-closed: return
     notify_ code
 
-  on_closed -> none:
+  on-closed -> none:
     container.resources.remove this
 
 abstract class ContainerImage:
@@ -108,9 +108,9 @@ abstract class ContainerImage:
     // inherently asynchronous and we need the client and the
     // container manager to be ready for processing messages
     // and close notifications.
-    gid ::= container_next_gid_
+    gid ::= container-next-gid_
     container := Container this gid
-    manager.on_container_load_ container
+    manager.on-container-load_ container
     return container
 
   trace encoded/ByteArray -> bool:
@@ -122,20 +122,20 @@ abstract class ContainerImage:
   data -> int:
     return 0
 
-  run_boot -> bool:
-    return flags & ContainerService.FLAG_RUN_BOOT != 0
+  run-boot -> bool:
+    return flags & ContainerService.FLAG-RUN-BOOT != 0
 
-  run_critical -> bool:
-    return flags & ContainerService.FLAG_RUN_CRITICAL != 0
+  run-critical -> bool:
+    return flags & ContainerService.FLAG-RUN-CRITICAL != 0
 
-  default_arguments -> any:
+  default-arguments -> any:
     // TODO(kasper): For now, the default arguments passed
     // to a container on start is an empty list. We could
     // consider making it null instead.
     return []
 
   abstract spawn container/Container arguments/any -> int
-  abstract stop_all -> none
+  abstract stop-all -> none
   abstract delete -> none
 
 class ContainerImageFlash extends ContainerImage:
@@ -151,29 +151,29 @@ class ContainerImageFlash extends ContainerImage:
     return allocation_.metadata[0]
 
   data -> int:
-    return binary.LITTLE_ENDIAN.uint32 allocation_.metadata 1
+    return binary.LITTLE-ENDIAN.uint32 allocation_.metadata 1
 
   spawn container/Container arguments/any:
-    return container_spawn_ allocation_.offset container.id arguments
+    return container-spawn_ allocation_.offset container.id arguments
 
-  stop_all -> none:
+  stop-all -> none:
     attempts := 0
-    while container_is_running_ allocation_.offset:
-      result := container_kill_flash_image_ allocation_.offset
+    while container-is-running_ allocation_.offset:
+      result := container-kill-flash-image_ allocation_.offset
       if result: attempts++
       sleep --ms=10
-    manager.on_image_stop_all_ this
+    manager.on-image-stop-all_ this
 
   delete -> none:
-    stop_all
+    stop-all
     // TODO(kasper): We clear the allocation field, so maybe we should check for
     // null in the methods that use the field?
     allocation := allocation_
     allocation_ = null
     try:
-      manager.unregister_image allocation.id
+      manager.unregister-image allocation.id
     finally:
-      manager.image_registry.free allocation
+      manager.image-registry.free allocation
 
 abstract class ContainerServiceProvider extends ServiceProvider
     implements ContainerService ServiceHandler:
@@ -183,190 +183,190 @@ abstract class ContainerServiceProvider extends ServiceProvider
     install
 
   handle index/int arguments/any --gid/int --client/int -> any:
-    if index == ContainerService.LIST_IMAGES_INDEX:
-      return list_images
-    if index == ContainerService.LOAD_IMAGE_INDEX:
-      return load_image client (uuid.Uuid arguments)
-    if index == ContainerService.START_CONTAINER_INDEX:
+    if index == ContainerService.LIST-IMAGES-INDEX:
+      return list-images
+    if index == ContainerService.LOAD-IMAGE-INDEX:
+      return load-image client (uuid.Uuid arguments)
+    if index == ContainerService.START-CONTAINER-INDEX:
       resource ::= (resource client arguments[0]) as ContainerResource
-      return start_container resource arguments[1]
-    if index == ContainerService.STOP_CONTAINER_INDEX:
+      return start-container resource arguments[1]
+    if index == ContainerService.STOP-CONTAINER-INDEX:
       resource ::= (resource client arguments) as ContainerResource
-      return stop_container resource
-    if index == ContainerService.UNINSTALL_IMAGE_INDEX:
-      return uninstall_image (uuid.Uuid arguments)
-    if index == ContainerService.IMAGE_WRITER_OPEN_INDEX:
-      return image_writer_open client arguments
-    if index == ContainerService.IMAGE_WRITER_WRITE_INDEX:
+      return stop-container resource
+    if index == ContainerService.UNINSTALL-IMAGE-INDEX:
+      return uninstall-image (uuid.Uuid arguments)
+    if index == ContainerService.IMAGE-WRITER-OPEN-INDEX:
+      return image-writer-open client arguments
+    if index == ContainerService.IMAGE-WRITER-WRITE-INDEX:
       writer ::= (resource client arguments[0]) as ContainerImageWriter
-      return image_writer_write writer arguments[1]
-    if index == ContainerService.IMAGE_WRITER_COMMIT_INDEX:
+      return image-writer-write writer arguments[1]
+    if index == ContainerService.IMAGE-WRITER-COMMIT-INDEX:
       writer ::= (resource client arguments[0]) as ContainerImageWriter
-      return (image_writer_commit writer arguments[1] arguments[2]).to_byte_array
+      return (image-writer-commit writer arguments[1] arguments[2]).to-byte-array
     unreachable
 
-  abstract image_registry -> FlashRegistry
+  abstract image-registry -> FlashRegistry
   abstract images -> List
-  abstract add_flash_image allocation/FlashAllocation -> ContainerImage
-  abstract lookup_image id/uuid.Uuid -> ContainerImage?
+  abstract add-flash-image allocation/FlashAllocation -> ContainerImage
+  abstract lookup-image id/uuid.Uuid -> ContainerImage?
 
-  list_images -> List:
+  list-images -> List:
     names := {:}
-    assets.decode.get "images" --if_present=: | encoded |
+    assets.decode.get "images" --if-present=: | encoded |
       map := tison.decode encoded
       map.do: | name/string id/ByteArray | names[uuid.Uuid id] = name
     raw := images
     result := []
     raw.do: | image/ContainerImage |
       id/uuid.Uuid := image.id
-      result.add id.to_byte_array
+      result.add id.to-byte-array
       result.add (names.get id)
       result.add image.flags
       result.add image.data
     return result
 
-  load_image id/uuid.Uuid -> List?:
+  load-image id/uuid.Uuid -> List?:
     unreachable  // <-- TODO(kasper): Nasty.
 
-  load_image client/int id/uuid.Uuid -> List?:
-    image/ContainerImage? := lookup_image id
+  load-image client/int id/uuid.Uuid -> List?:
+    image/ContainerImage? := lookup-image id
     if not image: return null
     container := image.load
     resource := ContainerResource container this client
-    return [resource.serialize_for_rpc, container.id]
+    return [resource.serialize-for-rpc, container.id]
 
-  start_container resource/ContainerResource arguments/any -> none:
+  start-container resource/ContainerResource arguments/any -> none:
     resource.container.start arguments
 
-  stop_container resource/ContainerResource -> none:
+  stop-container resource/ContainerResource -> none:
     resource.container.stop
 
-  uninstall_image id/uuid.Uuid -> none:
-    image/ContainerImage? := lookup_image id
+  uninstall-image id/uuid.Uuid -> none:
+    image/ContainerImage? := lookup-image id
     if not image: return
     image.delete
 
-  image_writer_open size/int -> int:
+  image-writer-open size/int -> int:
     unreachable  // <-- TODO(kasper): Nasty.
 
-  image_writer_open client/int size/int -> ServiceResource:
-    relocated_size := size - (size / IMAGE_CHUNK_SIZE) * IMAGE_WORD_SIZE
-    reservation := image_registry.reserve relocated_size
+  image-writer-open client/int size/int -> ServiceResource:
+    relocated-size := size - (size / IMAGE-CHUNK-SIZE) * IMAGE-WORD-SIZE
+    reservation := image-registry.reserve relocated-size
     if reservation == null: throw "No space left in flash"
     return ContainerImageWriter this client reservation
 
-  image_writer_write writer/ContainerImageWriter bytes/ByteArray -> none:
+  image-writer-write writer/ContainerImageWriter bytes/ByteArray -> none:
     writer.write bytes
 
-  image_writer_commit writer/ContainerImageWriter flags/int data/int -> uuid.Uuid:
+  image-writer-commit writer/ContainerImageWriter flags/int data/int -> uuid.Uuid:
     allocation := writer.commit --flags=flags --data=data
-    image := add_flash_image allocation
+    image := add-flash-image allocation
     return image.id
 
 class ContainerManager extends ContainerServiceProvider implements SystemMessageHandler_:
-  image_registry/FlashRegistry ::= ?
-  service_manager_/SystemServiceManager ::= ?
+  image-registry/FlashRegistry ::= ?
+  service-manager_/SystemServiceManager ::= ?
 
   images_/Map ::= {:}               // Map<uuid.Uuid, ContainerImage>
-  containers_by_id_/Map ::= {:}     // Map<int, Container>
-  containers_by_image_/Map ::= {:}  // Map<uuid.Uuid, Container>
+  containers-by-id_/Map ::= {:}     // Map<int, Container>
+  containers-by-image_/Map ::= {:}  // Map<uuid.Uuid, Container>
 
-  system_image_/ContainerImage? := null
+  system-image_/ContainerImage? := null
   done_ ::= monitor.Latch
 
-  constructor .image_registry .service_manager_:
-    set_system_message_handler_ SYSTEM_TERMINATED_ this
-    set_system_message_handler_ SYSTEM_SPAWNED_ this
-    set_system_message_handler_ SYSTEM_TRACE_ this
+  constructor .image-registry .service-manager_:
+    set-system-message-handler_ SYSTEM-TERMINATED_ this
+    set-system-message-handler_ SYSTEM-SPAWNED_ this
+    set-system-message-handler_ SYSTEM-TRACE_ this
 
-    image_registry.do: | allocation/FlashAllocation |
-      if allocation.type != FLASH_ALLOCATION_TYPE_PROGRAM: continue.do
-      add_flash_image allocation
+    image-registry.do: | allocation/FlashAllocation |
+      if allocation.type != FLASH-ALLOCATION-TYPE-PROGRAM: continue.do
+      add-flash-image allocation
 
     // Run through the bundled images in the VM, but skip the
     // first one which is always the system image. Every image
     // takes up two entries in the $bundled array: The first
     // entry is the address and the second is the size.
-    bundled := container_bundled_images_
+    bundled := container-bundled-images_
     for i := 2; i < bundled.size; i += 2:
       allocation := FlashAllocation bundled[i]
-      if not images_.contains allocation.id: add_flash_image allocation
+      if not images_.contains allocation.id: add-flash-image allocation
 
-  system_image -> ContainerImage:
-    return system_image_
+  system-image -> ContainerImage:
+    return system-image_
 
   images -> List:
-    return images_.values.filter: it != system_image_
+    return images_.values.filter: it != system-image_
 
-  lookup_image id/uuid.Uuid -> ContainerImage?:
+  lookup-image id/uuid.Uuid -> ContainerImage?:
     return images_.get id
 
-  register_image image/ContainerImage -> none:
+  register-image image/ContainerImage -> none:
     images_[image.id] = image
 
-  register_system_image image/ContainerImage -> none:
-    register_image image
-    system_image_ = image
+  register-system-image image/ContainerImage -> none:
+    register-image image
+    system-image_ = image
 
-  unregister_image id/uuid.Uuid -> none:
+  unregister-image id/uuid.Uuid -> none:
     images_.remove id
 
-  lookup_container id/int -> Container?:
-    return containers_by_id_.get id
+  lookup-container id/int -> Container?:
+    return containers-by-id_.get id
 
-  add_flash_image allocation/FlashAllocation -> ContainerImage:
+  add-flash-image allocation/FlashAllocation -> ContainerImage:
     image := ContainerImageFlash this allocation
-    register_image image
+    register-image image
     return image
 
   // TODO(kasper): Not so happy with this name.
-  wait_until_done -> int:
-    if containers_by_id_.is_empty: return 0
+  wait-until-done -> int:
+    if containers-by-id_.is-empty: return 0
     return done_.get
 
-  on_container_load_ container/Container -> none:
-    containers/Map ::= containers_by_image_.get container.image.id --init=: {:}
+  on-container-load_ container/Container -> none:
+    containers/Map ::= containers-by-image_.get container.image.id --init=: {:}
     containers[container.id] = container
-    containers_by_id_[container.id] = container
+    containers-by-id_[container.id] = container
 
-  on_container_stop_ container/Container error/int -> none:
-    containers_by_id_.remove container.id
+  on-container-stop_ container/Container error/int -> none:
+    containers-by-id_.remove container.id
     // If we've got an error in an image that run with the run.critical
     // flag, we treat that as a fatal error and terminate the system process.
-    if error != 0 and container.image.run_critical:
+    if error != 0 and container.image.run-critical:
       done_.set error
       return
     // TODO(kasper): We are supposed to always have a running system process. Maybe
     // we can generalize this handling and support background processes that do not
     // restrict us from exiting?
-    remaining ::= containers_by_id_.size
-    if remaining <= 1 and not done_.has_value: done_.set 0
+    remaining ::= containers-by-id_.size
+    if remaining <= 1 and not done_.has-value: done_.set 0
 
-  on_image_stop_all_ image/ContainerImage -> none:
-    containers/Map? ::= containers_by_image_.get image.id
-    containers_by_image_.remove image.id
+  on-image-stop-all_ image/ContainerImage -> none:
+    containers/Map? ::= containers-by-image_.get image.id
+    containers-by-image_.remove image.id
     if containers:
       containers.do: | id/int container/Container |
-        container.on_stop_
+        container.on-stop_
 
-  on_message type/int gid/int pid/int arguments/any -> none:
-    container/Container? := lookup_container gid
-    if type == SYSTEM_TERMINATED_:
-      service_manager_.on_process_stop pid
+  on-message type/int gid/int pid/int arguments/any -> none:
+    container/Container? := lookup-container gid
+    if type == SYSTEM-TERMINATED_:
+      service-manager_.on-process-stop pid
       if container:
         error/int := arguments
-        container.on_process_stop_ pid error
-    else if type == SYSTEM_SPAWNED_:
-      if container: container.on_process_start_ pid
-    else if type == SYSTEM_TRACE_:
-      origin_id/uuid.Uuid? ::= trace_find_origin_id arguments
-      origin/ContainerImage? ::= origin_id and lookup_image origin_id
+        container.on-process-stop_ pid error
+    else if type == SYSTEM-SPAWNED_:
+      if container: container.on-process-start_ pid
+    else if type == SYSTEM-TRACE_:
+      origin-id/uuid.Uuid? ::= trace-find-origin-id arguments
+      origin/ContainerImage? ::= origin-id and lookup-image origin-id
       if not (origin and origin.trace arguments):
-        trace_using_print arguments
+        trace-using-print arguments
     else:
       unreachable
 
-trace_using_print message/ByteArray --from=0 --to=message.size:
+trace-using-print message/ByteArray --from=0 --to=message.size:
   // Print a trace message on output so that that you can easily decode.
   // The message is base64 encoded to limit the output size.
   print_ "----"
@@ -375,17 +375,17 @@ trace_using_print message/ByteArray --from=0 --to=message.size:
   print_ "----"
   // Block size must be a multiple of 3 for this to work, due to the 3/4 nature
   // of base64 encoding.
-  BLOCK_SIZE := 1500
-  for i := from; i < to; i += BLOCK_SIZE:
-    end := i >= to - BLOCK_SIZE
+  BLOCK-SIZE := 1500
+  for i := from; i < to; i += BLOCK-SIZE:
+    end := i >= to - BLOCK-SIZE
     prefix := i == from ? "jag decode " : ""
-    base64_text := base64.encode message[i..(end ? to : i + BLOCK_SIZE)]
+    base64-text := base64.encode message[i..(end ? to : i + BLOCK-SIZE)]
     postfix := end ? "\n" : ""
-    write_on_stdout_ "$prefix$base64_text$postfix" false
+    write-on-stdout_ "$prefix$base64-text$postfix" false
 
-trace_find_origin_id trace/ByteArray -> uuid.Uuid?:
+trace-find-origin-id trace/ByteArray -> uuid.Uuid?:
   // Short strings are encoded with a single unsigned byte length ('U').
-  skip_string ::= : | p |
+  skip-string ::= : | p |
     if trace[p] != 'S' or trace[p + 1] != 'U': return null
     p + trace[p + 2] + 3
 
@@ -394,8 +394,8 @@ trace_find_origin_id trace/ByteArray -> uuid.Uuid?:
     // is an integer encoding of the 'X' character.
     if trace[0..6] != #['[', '#', 'U', 5, 'U', 'X']: return null
     // The next two entries are short version strings.
-    position := skip_string.call 6
-    position = skip_string.call position
+    position := skip-string.call 6
+    position = skip-string.call position
     // The fourth entry is the byte array for the program id.
     if trace[position..position + 6] != #['[', '$', 'U', '#', 'U', 16]: return null
     return uuid.Uuid trace[position + 6..position + 22]
@@ -403,20 +403,20 @@ trace_find_origin_id trace/ByteArray -> uuid.Uuid?:
 
 // ----------------------------------------------------------------------------
 
-container_spawn_ offset gid arguments -> int:
-  #primitive.programs_registry.spawn
+container-spawn_ offset gid arguments -> int:
+  #primitive.programs-registry.spawn
 
-container_is_running_ offset -> bool:
-  #primitive.programs_registry.is_running
+container-is-running_ offset -> bool:
+  #primitive.programs-registry.is-running
 
-container_kill_flash_image_ offset -> bool:
-  #primitive.programs_registry.kill
+container-kill-flash-image_ offset -> bool:
+  #primitive.programs-registry.kill
 
-container_next_gid_ -> int:
-  #primitive.programs_registry.next_group_id
+container-next-gid_ -> int:
+  #primitive.programs-registry.next-group-id
 
-container_kill_pid_ pid/int -> bool:
-  #primitive.core.process_signal_kill
+container-kill-pid_ pid/int -> bool:
+  #primitive.core.process-signal-kill
 
-container_bundled_images_ -> Array_:
-  #primitive.programs_registry.bundled_images
+container-bundled-images_ -> Array_:
+  #primitive.programs-registry.bundled-images
