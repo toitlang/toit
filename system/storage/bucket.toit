@@ -36,32 +36,32 @@ abstract class BucketResource extends ServiceResource:
   abstract set key/string value/ByteArray -> none
   abstract remove key/string -> none
 
-  on_closed -> none:
+  on-closed -> none:
     // Do nothing.
 
-  compute_id_ key/string -> string:
+  compute-id_ key/string -> string:
     return ids_.get key --init=:
       id := uuid.uuid5 root key
-      encoded := base64.encode id.to_byte_array
+      encoded := base64.encode id.to-byte-array
       // Keys used in nvs must be 15 bytes or less, so we
       // pick the first 12 encoded bytes which correspond
       // to the first 9 bytes of the 16 uuid bytes.
       encoded[..12]
 
 class FlashBucketResource extends BucketResource:
-  static group ::= flash_kv_init_ "nvs" "toit" false
+  static group ::= flash-kv-init_ "nvs" "toit" false
   root/string
   constructor provider/StorageServiceProvider client/int .root:
     super provider client
 
   get key/string -> ByteArray?:
-    return flash_kv_read_bytes_ group (compute_id_ key)
+    return flash-kv-read-bytes_ group (compute-id_ key)
 
   set key/string value/ByteArray -> none:
-    flash_kv_write_bytes_ group (compute_id_ key) value
+    flash-kv-write-bytes_ group (compute-id_ key) value
 
   remove key/string -> none:
-    flash_kv_delete_ group (compute_id_ key)
+    flash-kv-delete_ group (compute-id_ key)
 
 class RamBucketResource extends BucketResource:
   static memory ::= RtcMemory
@@ -71,20 +71,20 @@ class RamBucketResource extends BucketResource:
     super provider client
 
   get key/string -> ByteArray?:
-    return memory.cache.get (compute_id_ key)
+    return memory.cache.get (compute-id_ key)
 
   set key/string value/ByteArray -> none:
-    memory.update: it[compute_id_ key] = value
+    memory.update: it[compute-id_ key] = value
 
   remove key/string -> none:
-    memory.update: it.remove (compute_id_ key)
+    memory.update: it.remove (compute-id_ key)
 
 class RtcMemory:
   // We use a naive encoding strategy, where we re-encode the
   // entire mapping on all updates. It would be possible to
   // do this in a more incremental way, where we update the
   // cache and shuffle the sections of the memory area around.
-  bytes_/ByteArray ::= rtc_memory_
+  bytes_/ByteArray ::= rtc-memory_
   cache_/Map? := null
 
   cache -> Map:
@@ -105,17 +105,17 @@ class RtcMemory:
 
 // --------------------------------------------------------------------------
 
-flash_kv_init_ partition/string volume/string read_only/bool:
-  #primitive.flash_kv.init
+flash-kv-init_ partition/string volume/string read-only/bool:
+  #primitive.flash-kv.init
 
-flash_kv_read_bytes_ group key/string:
-  #primitive.flash_kv.read_bytes
+flash-kv-read-bytes_ group key/string:
+  #primitive.flash-kv.read-bytes
 
-flash_kv_write_bytes_ group key/string value/ByteArray:
-  #primitive.flash_kv.write_bytes
+flash-kv-write-bytes_ group key/string value/ByteArray:
+  #primitive.flash-kv.write-bytes
 
-flash_kv_delete_ group key/string:
-  #primitive.flash_kv.delete
+flash-kv-delete_ group key/string:
+  #primitive.flash-kv.delete
 
-rtc_memory_ -> ByteArray:
-  #primitive.core.rtc_user_bytes
+rtc-memory_ -> ByteArray:
+  #primitive.core.rtc-user-bytes
