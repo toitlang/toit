@@ -3,4 +3,4 @@
 // be found in the tests/LICENSE file.
 
 main:
-  print vm_sdk_version
+  print vm-sdk-version

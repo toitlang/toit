@@ -1,0 +1,10 @@
+tests/negative/prefixed-assign6b-test.toit:9:6: error: Ambiguous resolution of 'x'
+  pa.x += 3
+     ^
+tests/negative/prefixed-assign.toit:16:1: note: Resolution candidate for 'x'
+x := 0
+^
+tests/negative/prefixed-assign2.toit:16:1: note: Resolution candidate for 'x'
+x := 0
+^
+Compilation failed.

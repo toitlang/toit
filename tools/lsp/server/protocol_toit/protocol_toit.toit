@@ -23,7 +23,7 @@ class ArchiveParams extends MapWrapper:
   Parameters:
   - uri: entry uri
   */
-  constructor json_map/Map: super json_map
+  constructor json-map/Map: super json-map
 
   uri -> string?:
     return lookup_ "uri"
@@ -31,7 +31,7 @@ class ArchiveParams extends MapWrapper:
   uris -> List?:
     return lookup_ "uris"
 
-  include_sdk -> bool?:
+  include-sdk -> bool?:
     return lookup_ "includeSdk"
 
 class FetchSdkFileParams extends MapWrapper:
@@ -42,7 +42,7 @@ class FetchSdkFileParams extends MapWrapper:
   Parameters:
   - path: path of the sdk file
   */
-  constructor json_map/Map: super json_map
+  constructor json-map/Map: super json-map
 
   path -> string:
     return at_ "path"
@@ -55,7 +55,7 @@ class SnapshotBundleParams extends MapWrapper:
   Parameters:
   - uri: entry uri
   */
-  constructor json_map/Map: super json_map
+  constructor json-map/Map: super json-map
 
   uri -> string:
     return at_ "uri"

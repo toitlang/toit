@@ -13,7 +13,7 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-file(GLOB STRIP_TESTS RELATIVE "${TOIT_SDK_SOURCE_DIR}" "*_test.toit")
+file(GLOB STRIP_TESTS RELATIVE "${TOIT_SDK_SOURCE_DIR}" "*-test.toit")
 
 foreach(file ${STRIP_TESTS})
   set(test_name "${file}")

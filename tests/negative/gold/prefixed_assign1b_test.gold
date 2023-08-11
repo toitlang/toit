@@ -1,4 +1,0 @@
-tests/negative/prefixed_assign1b_test.toit:8:6: error: Can't assign to unknown 'non-existent'
-  pa.non_existent += 3
-     ^~~~~~~~~~~~
-Compilation failed.

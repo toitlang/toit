@@ -1,3 +1,0 @@
-As check failed: an int (499) is not a string.
-  0: A                         tests/negative/field_type2_test.toit:7:15
-  1: main                      tests/negative/field_type2_test.toit:12:3

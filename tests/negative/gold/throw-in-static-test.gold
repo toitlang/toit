@@ -1,0 +1,4 @@
+EXCEPTION error. 
+x
+  0: A.foo                     tests/negative/throw-in-static-test.toit:6:15
+  1: main                      tests/negative/throw-in-static-test.toit:9:4

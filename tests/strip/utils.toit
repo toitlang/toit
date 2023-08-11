@@ -7,19 +7,19 @@ import expect show *
 import host.pipe
 import host.directory
 
-with_tmp_directory [block]:
-  tmp_dir := directory.mkdtemp "/tmp/toit-strip-test-"
+with-tmp-directory [block]:
+  tmp-dir := directory.mkdtemp "/tmp/toit-strip-test-"
   try:
-    block.call tmp_dir
+    block.call tmp-dir
   finally:
-    directory.rmdir --recursive tmp_dir
+    directory.rmdir --recursive tmp-dir
 
-backticks_failing args/List -> string:
+backticks-failing args/List -> string:
   pipes := pipe.fork
       true                // use_path
-      pipe.PIPE_CREATED   // stdin
-      pipe.PIPE_CREATED   // stdout
-      pipe.PIPE_CREATED   // stderr
+      pipe.PIPE-CREATED   // stdin
+      pipe.PIPE-CREATED   // stdout
+      pipe.PIPE-CREATED   // stderr
       args[0]
       args
   pipes[0].close
@@ -28,42 +28,42 @@ backticks_failing args/List -> string:
   pid  := pipes[3]
 
   // We are merging stdout and stderr into one stream.
-  stdout_output := #[]
+  stdout-output := #[]
   task::
     while chunk := stdout.read:
-      stdout_output += chunk
+      stdout-output += chunk
 
-  stderr_output := #[]
+  stderr-output := #[]
   task::
     while chunk := stderr.read:
-      stderr_output += chunk
+      stderr-output += chunk
 
   // The test is supposed to fail.
-  expect_not_equals 0 (pipe.wait_for pid)
+  expect-not-equals 0 (pipe.wait-for pid)
 
-  return (stdout_output + stderr_output).to_string
+  return (stdout-output + stderr-output).to-string
 
 /**
 Compiles the $input and returns three variants.
 The first entry is a non-stripped snapshot. The others are stripped.
 */
-compile_variants --compiler/string input/string --tmp_dir/string -> List:
+compile-variants --compiler/string input/string --tmp-dir/string -> List:
   result := []
 
-  non_stripped_snapshot := "$tmp_dir/non_stripped.snapshot"
-  output := pipe.backticks compiler "-w" non_stripped_snapshot input
-  expect_equals "" output.trim
-  result.add non_stripped_snapshot
+  non-stripped-snapshot := "$tmp-dir/non_stripped.snapshot"
+  output := pipe.backticks compiler "-w" non-stripped-snapshot input
+  expect-equals "" output.trim
+  result.add non-stripped-snapshot
 
-  stripped_snapshot := "$tmp_dir/stripped.snapshot"
-  output = pipe.backticks compiler "--strip" "-w" stripped_snapshot input
-  expect_equals "" output.trim
-  result.add stripped_snapshot
+  stripped-snapshot := "$tmp-dir/stripped.snapshot"
+  output = pipe.backticks compiler "--strip" "-w" stripped-snapshot input
+  expect-equals "" output.trim
+  result.add stripped-snapshot
 
   // Now strip the unstripped snapshot and run that one.
-  stripped_snapshot2 := "$tmp_dir/stripped2.snapshot"
-  output = pipe.backticks compiler "--strip" "-w" stripped_snapshot2 non_stripped_snapshot
-  expect_equals "" output.trim
-  result.add stripped_snapshot2
+  stripped-snapshot2 := "$tmp-dir/stripped2.snapshot"
+  output = pipe.backticks compiler "--strip" "-w" stripped-snapshot2 non-stripped-snapshot
+  expect-equals "" output.trim
+  result.add stripped-snapshot2
 
   return result

@@ -4,9 +4,9 @@
 
 import expect show *
 
-import ..dot_out_test.test as pre
+import ..dot-out-test.test as pre
 
 foo: return "OK"
 
 main:
-  expect_equals "OK" pre.foo
+  expect-equals "OK" pre.foo

@@ -1,0 +1,79 @@
+tests/negative/number-test.toit:54:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/number-test.toit:13:9: error: Type mismatch. Expected 'int'. Got 'float'
+  foo 1 + 2.0
+        ^
+tests/negative/number-test.toit:14:11: error: Type mismatch. Expected 'int'. Got 'float'
+  foo 1.0 + 2
+          ^
+tests/negative/number-test.toit:15:9: error: Type mismatch. Expected 'float'. Got 'int'
+  bar 1 + 2
+        ^
+tests/negative/number-test.toit:16:15: error: Type mismatch. Expected 'int'. Got 'float'
+  foo int-fun + 2.0
+              ^
+tests/negative/number-test.toit:17:11: error: Type mismatch. Expected 'int'. Got 'float'
+  foo 2.0 + int-fun
+          ^
+tests/negative/number-test.toit:18:7: error: Type mismatch. Expected 'float'. Got 'int'
+  bar int-fun
+      ^~~~~~~
+tests/negative/number-test.toit:19:15: error: Type mismatch. Expected 'float'. Got 'int'
+  bar int-fun + 1
+              ^
+tests/negative/number-test.toit:20:9: error: Type mismatch. Expected 'float'. Got 'int'
+  bar 0 + int-fun
+        ^
+tests/negative/number-test.toit:21:15: error: Type mismatch. Expected 'int'. Got 'float'
+  foo int-fun + float-fun
+              ^
+tests/negative/number-test.toit:22:17: error: Type mismatch. Expected 'int'. Got 'float'
+  foo float-fun + int-fun
+                ^
+tests/negative/number-test.toit:23:15: error: Type mismatch. Expected 'float'. Got 'int'
+  bar int-fun + int-fun
+              ^
+tests/negative/number-test.toit:27:15: error: Type mismatch. Expected 'int'. Got 'float'
+  foo int-fun - float-fun
+              ^
+tests/negative/number-test.toit:28:17: error: Type mismatch. Expected 'int'. Got 'float'
+  foo float-fun - int-fun
+                ^
+tests/negative/number-test.toit:29:15: error: Type mismatch. Expected 'float'. Got 'int'
+  bar int-fun - int-fun
+              ^
+tests/negative/number-test.toit:33:15: error: Type mismatch. Expected 'int'. Got 'float'
+  foo int-fun * float-fun
+              ^
+tests/negative/number-test.toit:34:17: error: Type mismatch. Expected 'int'. Got 'float'
+  foo float-fun * int-fun
+                ^
+tests/negative/number-test.toit:35:15: error: Type mismatch. Expected 'float'. Got 'int'
+  bar int-fun * int-fun
+              ^
+tests/negative/number-test.toit:39:15: error: Type mismatch. Expected 'int'. Got 'float'
+  foo int-fun / float-fun
+              ^
+tests/negative/number-test.toit:40:17: error: Type mismatch. Expected 'int'. Got 'float'
+  foo float-fun / int-fun
+                ^
+tests/negative/number-test.toit:41:15: error: Type mismatch. Expected 'float'. Got 'int'
+  bar int-fun / int-fun
+              ^
+tests/negative/number-test.toit:45:15: error: Type mismatch. Expected 'int'. Got 'float'
+  foo int-fun % float-fun
+              ^
+tests/negative/number-test.toit:46:17: error: Type mismatch. Expected 'int'. Got 'float'
+  foo float-fun % int-fun
+                ^
+tests/negative/number-test.toit:47:15: error: Type mismatch. Expected 'float'. Got 'int'
+  bar int-fun % int-fun
+              ^
+tests/negative/number-test.toit:51:7: error: Type mismatch. Expected 'int'. Got 'float'
+  foo -float-fun
+      ^
+tests/negative/number-test.toit:52:7: error: Type mismatch. Expected 'float'. Got 'int'
+  bar -int-fun
+      ^
+Compilation failed.

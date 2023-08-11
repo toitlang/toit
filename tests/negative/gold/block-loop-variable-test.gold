@@ -1,0 +1,13 @@
+tests/negative/block-loop-variable-test.toit:7:14: error: Condition may not be a block
+  while x := block:
+             ^~~~~
+tests/negative/block-loop-variable-test.toit:10:12: error: Loop variables may not be blocks
+  for x := block; x.call; y++:
+           ^~~~~
+tests/negative/block-loop-variable-test.toit:14:14: error: Condition may not be a block
+  while x := block:
+             ^~~~~
+tests/negative/block-loop-variable-test.toit:18:12: error: Loop variables may not be blocks
+  for x := block; x.call; y++:
+           ^~~~~
+Compilation failed.

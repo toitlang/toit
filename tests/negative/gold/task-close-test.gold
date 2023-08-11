@@ -1,0 +1,3 @@
+EXCEPTION error. 
+nope
+  0: main.<lambda>             tests/negative/task-close-test.toit:7:5

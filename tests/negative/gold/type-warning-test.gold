@@ -1,0 +1,43 @@
+tests/negative/type-warning-test.toit:38:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/type-warning-test.toit:12:3: error: Type mismatch. Expected 'A'. Got 'B'
+  return b
+  ^~~~~~
+tests/negative/type-warning-test.toit:26:9: error: Type mismatch. Expected 'B'. Got 'A'
+  a.gee a
+        ^
+tests/negative/type-warning-test.toit:27:5: error: Class 'A' does not have any method 'bar'
+  a.bar a
+    ^~~
+tests/negative/type-warning-test.toit:28:5: error: Class 'B' does not have any method 'gee'
+  b.gee a
+    ^~~
+tests/negative/type-warning-test.toit:29:9: error: Type mismatch. Expected 'B'. Got 'A'
+  b.bar a
+        ^
+tests/negative/type-warning-test.toit:30:11: error: Type mismatch. Expected 'B'. Got 'A'
+  b = foo a
+          ^
+tests/negative/type-warning-test.toit:30:5: error: Type mismatch. Expected 'B'. Got 'A'
+  b = foo a
+    ^
+tests/negative/type-warning-test.toit:32:12: error: Class 'bool' does not have any method 'foo'
+  (D is I).foo
+           ^~~
+tests/negative/type-warning-test.toit:33:12: error: Class 'bool' does not have any method 'foo'
+  (A is B).foo
+           ^~~
+tests/negative/type-warning-test.toit:34:11: error: Class 'bool' does not have any method 'foo'
+  (not c).foo
+          ^~~
+tests/negative/type-warning-test.toit:35:12: error: Class 'A' does not have any method 'foo'
+  (a or a).foo
+           ^~~
+tests/negative/type-warning-test.toit:36:13: error: Class 'B' does not have any method 'foo'
+  (b and b).foo
+            ^~~
+tests/negative/type-warning-test.toit:17:7: error: Type mismatch. Expected 'A'. Got 'B'
+    x = B
+      ^
+Compilation failed.

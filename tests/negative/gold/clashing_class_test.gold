@@ -1,7 +1,0 @@
-tests/negative/clashing_class_test.toit:8:7: error: Redefinition of 'A'
-class A:
-      ^
-tests/negative/clashing_class_test.toit:5:7: note: First definition of 'A'
-class A:
-      ^
-Compilation failed.

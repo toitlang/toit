@@ -1,4 +1,0 @@
-tests/negative/bad_literal8_test.toit:8:9: error: Invalid number literal
-  print 0.123456_
-        ^~~~~~~~~
-Compilation failed.

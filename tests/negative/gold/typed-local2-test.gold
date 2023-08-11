@@ -1,0 +1,5 @@
+tests/negative/typed-local2-test.toit:7:14: error: Type mismatch. Expected 'int'. Got 'string'
+  local /int := "str"
+             ^~
+As check failed: a string ("str") is not a int.
+  0: main                      tests/negative/typed-local2-test.toit:7:14

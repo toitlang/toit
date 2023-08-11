@@ -1,2 +1,0 @@
-Class 'A' does not have any method 'foo='.
-  0: main                      tests/negative/setter2_test.toit:11:9

@@ -1,4 +1,0 @@
-tests/negative/indentation_werror_test.toit:7:3: warning: Unusual indentation for parameter
-  x:
-  ^
-Compilation failed.

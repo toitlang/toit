@@ -1,5 +1,0 @@
-tests/negative/typed_assign_local_test.toit:8:9: error: Type mismatch. Expected 'int'. Got 'string'
-  local = "str"
-        ^
-As check failed: a string ("str") is not a int.
-  0: main                      tests/negative/typed_assign_local_test.toit:8:9

@@ -27,8 +27,8 @@ A diagnostic, such as a compiler error or warning.
 */
 class Diagnostic extends MapWrapper:
 
-  related_information= new_value/List/*<DiagnosticRelatedInformation>*/:
-    return map_["relatedInformation"] = new_value
+  related-information= new-value/List/*<DiagnosticRelatedInformation>*/:
+    return map_["relatedInformation"] = new-value
   /**
   Creates a diagnostic object.
 
@@ -49,17 +49,17 @@ class Diagnostic extends MapWrapper:
       --severity /int?    = null  // Of type [DiagnosticSeverity].
       --code     /any     = null
       --source   /string? = null
-      --related_information /List?/*<DiagnosticRelatedInformation>*/ = null:
+      --related-information /List?/*<DiagnosticRelatedInformation>*/ = null:
     map_["range"]    = range
     map_["message"]  = message
     map_["severity"] = severity
     map_["code"]     = code
     map_["source"]   = source
-    map_["relatedInformation"] = related_information
+    map_["relatedInformation"] = related-information
 
 class DiagnosticRelatedInformation extends MapWrapper:
   location -> Location:
-    return at_ "location": Location.from_map it
+    return at_ "location": Location.from-map it
 
   message -> string:
     return at_ "message"

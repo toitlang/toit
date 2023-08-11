@@ -1,0 +1,49 @@
+// Copyright (C) 2019 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
+
+import expect show *
+
+use x:
+  // Do nothing.
+
+trace := []
+class A:
+  x := 0
+  constructor:
+    trace.add "in A"
+
+class B extends A:
+  constructor:
+    trace.add "in B"
+
+class C
+  extends B:
+
+class D
+  extends B
+  implements I1
+    I2
+    I3:
+  foo:
+
+interface
+  I1:
+interface I2:
+interface I3
+ implements I2:
+
+monitor
+  X:
+
+main:
+  b := B
+  expect-list-equals ["in B", "in A"] trace
+  trace = []
+  c := C
+  expect-list-equals ["in B", "in A"] trace
+  trace = []
+  d := D
+  expect-list-equals ["in B", "in A"] trace
+  trace = []
+  x := X

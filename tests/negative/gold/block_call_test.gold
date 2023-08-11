@@ -1,4 +1,0 @@
-tests/negative/block_call_test.toit:8:4: error: Unexpected block
-  (: it).call 499
-   ^~~~
-Compilation failed.
