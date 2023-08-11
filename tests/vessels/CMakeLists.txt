@@ -18,10 +18,10 @@ set(TEST_EXECUTABLES)
 set(VESSEL_TEST_ASSETS)
 
 # Test that the Toit compiler can compile a simple program from a snapshot.
-set(SNAPSHOT_TEST_INPUT "${CMAKE_CURRENT_LIST_DIR}/snapshot_input.toit")
-set(SNAPSHOT_TEST_SNAPSHOT "${CMAKE_CURRENT_BINARY_DIR}/snapshot_input.snapshot")
-set(SNAPSHOT_TEST_DEP "${CMAKE_CURRENT_BINARY_DIR}/snapshot_input.dep")
-set(SNAPSHOT_TEST_EXE "${CMAKE_CURRENT_BINARY_DIR}/snapshot_input.exe")
+set(SNAPSHOT_TEST_INPUT "${CMAKE_CURRENT_LIST_DIR}/snapshot-input.toit")
+set(SNAPSHOT_TEST_SNAPSHOT "${CMAKE_CURRENT_BINARY_DIR}/snapshot-input.snapshot")
+set(SNAPSHOT_TEST_DEP "${CMAKE_CURRENT_BINARY_DIR}/snapshot-input.dep")
+set(SNAPSHOT_TEST_EXE "${CMAKE_CURRENT_BINARY_DIR}/snapshot-input.exe")
 
 ADD_TOIT_SNAPSHOT(
   "${SNAPSHOT_TEST_INPUT}"
@@ -53,7 +53,7 @@ add_test(
 # By varying the size we ensure that the compiler picks the correct vessel (or at
 # least one that is bigger than the snapshot).
 set(SIZES 1 128 256 512 1024 1048576)
-set(TEST_GENERATOR_SRC "${CMAKE_CURRENT_LIST_DIR}/test_generator.toit")
+set(TEST_GENERATOR_SRC "${CMAKE_CURRENT_LIST_DIR}/test-generator.toit")
 
 foreach(SIZE ${SIZES})
   set(GENERATED_TEST "${CMAKE_CURRENT_BINARY_DIR}/test-${SIZE}.toit")

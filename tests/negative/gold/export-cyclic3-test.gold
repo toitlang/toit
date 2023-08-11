@@ -1,0 +1,16 @@
+tests/negative/export-cyclic3-b.toit:6:1: error: Cyclic export dependency
+export *
+^~~~~~
+tests/negative/export-cyclic3-c.toit:6:1: note: This clause contributes to the 'export' cycle
+export *
+^~~~~~
+tests/negative/export-cyclic3-c.toit:6:1: error: Cyclic export dependency
+export *
+^~~~~~
+tests/negative/export-cyclic3-b.toit:6:1: note: This clause contributes to the 'export' cycle
+export *
+^~~~~~
+tests/negative/export-cyclic3-a.toit:6:8: error: Unresolved export 'foo'
+export foo
+       ^~~
+Compilation failed.

@@ -1,4 +1,0 @@
-tests/negative/import_parser_test.toit:5:7: error: Incomplete import clause
-import
-      ^
-Compilation failed.

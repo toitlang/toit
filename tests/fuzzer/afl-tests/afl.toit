@@ -37,7 +37,7 @@ class B extends A:
   static fun x/int -> none:
     gee 1 2
 
-  static static_field := 499
+  static static-field := 499
 
   instance:
     return instance --name=:: 2

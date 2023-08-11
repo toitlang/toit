@@ -1,3 +1,0 @@
-As check failed: null is not a string.
-  0: foo                       tests/negative/return_type3_test.toit:8:3
-  1: main                      tests/negative/return_type3_test.toit:11:3

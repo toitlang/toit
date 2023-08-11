@@ -13,7 +13,7 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-file(GLOB MINUS_S_TESTS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*_test.snippet")
+file(GLOB MINUS_S_TESTS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*-test.snippet")
 
 add_custom_target(update_minus_s_gold)
 

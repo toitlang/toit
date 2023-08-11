@@ -1,0 +1,47 @@
+tests/negative/primitive-test.toit:6:13: error: Unknown primitive library 'some'
+
+ #primitive.some.name
+            ^~~~
+tests/negative/primitive-test.toit:8:1: error: Primitive 'core:string-hash-code' takes 1 parameters
+
+bar a b c d e f -> none:
+^~~
+tests/negative/primitive-test.toit:12:14: error: Unknown primitive library 'some'
+
+  #primitive.some.name: |a b|
+             ^~~~
+tests/negative/primitive-test.toit:12:23: error: Failure blocks can take at most one argument
+  #primitive.some.name: |a b|
+                      ^
+tests/negative/primitive-test.toit:13:11: error: Unresolved identifier: 'a'
+    throw a
+          ^
+tests/negative/primitive-test.toit:16:19: error: Unknown primitive 'name' in library 'core'
+
+  #primitive.core.name: |.a|
+                  ^~~~
+tests/negative/primitive-test.toit:16:26: error: Failure blocks can't have field-storing parameters
+  #primitive.core.name: |.a|
+                         ^~
+tests/negative/primitive-test.toit:20:19: error: Unknown primitive 'name' in library 'core'
+
+  #primitive.core.name: |a/int|
+                  ^~~~
+tests/negative/primitive-test.toit:20:26: error: Failure parameter can't have a type
+  #primitive.core.name: |a/int|
+                         ^
+tests/negative/primitive-test.toit:24:19: error: Unknown primitive 'name' in library 'core'
+
+  #primitive.core.name: |a = 499|
+                  ^~~~
+tests/negative/primitive-test.toit:24:26: error: Failure parameter can't have a default value
+  #primitive.core.name: |a = 499|
+                         ^
+tests/negative/primitive-test.toit:28:18: error: Invalid primitive call
+  #primitive.core.name.too-many: |a|
+                 ^
+tests/negative/primitive-test.toit:32:25: error: Unknown intrinsic 'not-existent'
+
+  #primitive.intrinsics.not-existent
+                        ^~~~~~~~~~~~
+Compilation failed.

@@ -1,0 +1,6 @@
+tests/negative/type-no-optimize-test.toit:11:3: error: Field 'field' must be initialized in a constructor
+  field/string
+  ^~~~~
+Class 'Null_' does not have any method 'copy'.
+  0: A.foo                     tests/negative/type-no-optimize-test.toit:14:18
+  1: main                      tests/negative/type-no-optimize-test.toit:18:5

@@ -1,3 +1,0 @@
-As check failed: an A is not a Inter.
-  0: foo                       tests/negative/param_type5_test.toit:11:5
-  1: main                      tests/negative/param_type5_test.toit:19:3

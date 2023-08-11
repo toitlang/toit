@@ -1,0 +1,37 @@
+tests/negative/no-arg-named-test.toit:6:3: error: Argument mismatch for 'must'
+No argument named '--no'
+Required named argument '--have' not provided
+  must --no
+  ^~~~
+tests/negative/no-arg-named-test.toit:7:3: error: Argument mismatch for 'foo'
+No argument named '--foo'
+Valid named arguments include '--bar'
+  foo --foo
+  ^~~
+tests/negative/no-arg-named-test.toit:8:3: error: Argument mismatch for 'foo2'
+No argument named '--foo'
+Valid named arguments include '--bar', '--bar2'
+  foo2 --foo
+  ^~~~
+tests/negative/no-arg-named-test.toit:9:3: error: Argument mismatch for 'fizz'
+Valid named arguments include '--bar'
+Some overloads also allow arguments named '--baz'
+  fizz
+  ^~~~
+tests/negative/no-arg-named-test.toit:10:3: error: Argument mismatch for 'fish'
+Some overloads allow arguments named '--hest', '--fisk'
+  fish
+  ^~~~
+tests/negative/no-arg-named-test.toit:11:3: error: Argument mismatch for 'block-foo'
+The argument '--foo' was passed with non-block type, but must be block
+  block-foo --foo=0
+  ^~~~~~~~~
+tests/negative/no-arg-named-test.toit:12:3: error: Argument mismatch for 'non-block-foo'
+The argument '--foo' was passed with block type, but must be non-block
+  non-block-foo --foo=(: 0)
+  ^~~~~~~~~~~~~
+tests/negative/no-arg-named-test.toit:13:3: error: Argument mismatch for 'block-unnamed'
+Method does not take any non-block arguments, but one was provided
+  block-unnamed 0
+  ^~~~~~~~~~~~~
+Compilation failed.

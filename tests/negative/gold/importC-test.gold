@@ -1,0 +1,31 @@
+tests/negative/importC-test.toit:5:1: error: Failed to import '.relative-dir.dir'
+import .relative-dir.dir as pre
+^~~~~~
+tests/negative/importC-test.toit:5:22: note: Cannot read 'tests/negative/relative_dir/dir.toit': not a regular file
+import .relative-dir.dir as pre
+                     ^~~
+tests/negative/importC-test.toit:6:1: error: Failed to import '.relative-dir.dir2'
+import .relative-dir.dir2 as pre
+^~~~~~
+tests/negative/importC-test.toit:6:22: note: Folder 'tests/negative/relative_dir/dir2' exists, but is missing a 'dir2.toit' file
+import .relative-dir.dir2 as pre
+                     ^~~~
+tests/negative/importC-test.toit:7:1: error: Failed to import '.relative-dir.dir2.foo'
+import .relative-dir.dir2.foo as toto
+^~~~~~
+tests/negative/importC-test.toit:7:27: note: Missing library file. Tried 'tests/negative/relative_dir/dir2/foo.toit' and 'tests/negative/relative_dir/dir2/foo/foo.toit'
+import .relative-dir.dir2.foo as toto
+                          ^~~
+tests/negative/importC-test.toit:8:1: error: Failed to import '.relative-dir.dir2.foo.bar'
+import .relative-dir.dir2.foo.bar as toto
+^~~~~~
+tests/negative/importC-test.toit:8:27: note: Cannot enter 'tests/negative/relative_dir/dir2/foo': folder does not exist
+import .relative-dir.dir2.foo.bar as toto
+                          ^~~
+tests/negative/importC-test.toit:9:1: error: Failed to import '.relative-dir.dir2.not-a-directory.bar'
+import .relative-dir.dir2.not-a-directory.bar as toto
+^~~~~~
+tests/negative/importC-test.toit:9:27: note: Cannot enter 'tests/negative/relative_dir/dir2/not_a_directory': not a folder
+import .relative-dir.dir2.not-a-directory.bar as toto
+                          ^~~~~~~~~~~~~~~
+Compilation failed.

@@ -13,8 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-is_verbose / bool := false
+is-verbose / bool := false
 
 verbose [block]:
-  if is_verbose:
-    print_on_stderr_ block.call
+  if is-verbose:
+    print-on-stderr_ block.call

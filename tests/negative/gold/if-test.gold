@@ -1,0 +1,28 @@
+tests/negative/if-test.toit:6:5: error: Incomplete expression
+  if
+    ^
+tests/negative/if-test.toit:6:3: error: Missing colon for 'if' condition
+  if
+  ^~
+tests/negative/if-test.toit:7:3: error: Missing colon for 'if' condition
+  if break
+  ^~
+tests/negative/if-test.toit:9:9: error: Incomplete expression
+  if "".
+        ^
+tests/negative/if-test.toit:9:3: error: Missing colon for 'if' condition
+  if "".
+  ^~
+tests/negative/if-test.toit:10:5: error: Missing condition
+  if:
+    ^
+tests/negative/if-test.toit:7:6: error: 'break' must be inside loop
+  if break
+     ^~~~~
+tests/negative/if-test.toit:8:11: error: Unresolved identifier: 'unresolved'
+    print unresolved
+          ^~~~~~~~~~
+tests/negative/if-test.toit:11:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed.

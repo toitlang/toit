@@ -13,14 +13,14 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-file(GLOB PROFILER_TESTS "*_test.toit")
+file(GLOB PROFILER_TESTS "*-test.toit")
 
 include(fail.cmake)
 
 foreach(profiler_test ${PROFILER_TESTS})
   get_filename_component(base ${profiler_test} NAME_WE)
-  string(REGEX REPLACE "_test$" "" test_name ${base})
-  set(profiler_input ${CMAKE_CURRENT_SOURCE_DIR}/${test_name}_input.toit)
+  string(REGEX REPLACE "-test$" "" test_name ${base})
+  set(profiler_input ${CMAKE_CURRENT_SOURCE_DIR}/${test_name}-input.toit)
   file(RELATIVE_PATH profiler_test_name ${TOIT_SDK_SOURCE_DIR} ${profiler_test})
 
   if("${profiler_test_name}" IN_LIST TOIT_SKIP_TESTS)

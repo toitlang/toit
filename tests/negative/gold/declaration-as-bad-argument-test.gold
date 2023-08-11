@@ -1,0 +1,16 @@
+tests/negative/declaration-as-bad-argument-test.toit:9:11: error: Definition of variable not allowed at this location
+    local := unresolved + (A).foo
+          ^~
+tests/negative/declaration-as-bad-argument-test.toit:9:14: error: Unresolved identifier: 'unresolved'
+    local := unresolved + (A).foo
+             ^~~~~~~~~~
+tests/negative/declaration-as-bad-argument-test.toit:8:15: error: Can't call result of evaluating expression
+  compiler := null
+              ^~~~
+tests/negative/declaration-as-bad-argument-test.toit:10:13: error: Unresolved identifier: 'local'
+  fun := :: local
+            ^~~~~
+tests/negative/declaration-as-bad-argument-test.toit:9:31: error: Class 'A' does not have any method 'foo'
+    local := unresolved + (A).foo
+                              ^~~
+Compilation failed.

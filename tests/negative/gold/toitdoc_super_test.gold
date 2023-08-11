@@ -1,7 +1,0 @@
-tests/negative/toitdoc_super_test.toit:9:3: error: Expected name of declaration
-  : // invalid name
-  ^
-tests/negative/toitdoc_super_test.toit:7:4: warning: Unresolved reference 'super'
-  $super
-   ^~~~~
-Compilation failed.

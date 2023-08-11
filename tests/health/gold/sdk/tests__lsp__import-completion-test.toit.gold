@@ -1,0 +1,6 @@
+tests/lsp/import-completion-test.toit:29:1: error: Failed to import 'core.collections.invalid'
+import core.collections.invalid
+^~~~~~
+tests/lsp/import-completion-test.toit:29:13: note: Cannot enter '<sdk>/core/collections': folder does not exist
+import core.collections.invalid
+            ^~~~~~~~~~~
