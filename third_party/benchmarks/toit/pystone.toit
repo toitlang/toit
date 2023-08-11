@@ -34,7 +34,7 @@ TRUE ::= true
 FALSE ::= false
 
 main:
-  log_execution_time "Pystone" --iterations=10:
+  log-execution-time "Pystone" --iterations=10:
     pystones --loops=LOOPS
 
 pystones --loops=LOOPS:
