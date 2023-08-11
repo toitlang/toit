@@ -1,4 +1,4 @@
-main tests/type_propagation/time_test.toit
+main tests/type_propagation/time-test.toit
   0[023] - load smi 0
   1[020] - load literal counter = 
   3[015] - load local 1
