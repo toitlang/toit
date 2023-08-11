@@ -17,7 +17,7 @@ import host.file
 import tar show *
 import .summary
 
-import .uri_path_translator
+import .uri-path-translator
 import .utils
 
 /**
@@ -26,40 +26,40 @@ Keeps track of unsaved files.
 class Documents:
   documents_ /Map/*<string, Document>*/ ::= {:}
   translator_ /UriPathTranslator ::= ?
-  error_reporter_ / Lambda ::= ?
+  error-reporter_ / Lambda ::= ?
 
-  constructor .translator_ --.error_reporter_=(:: /* do nothing */):
+  constructor .translator_ --.error-reporter_=(:: /* do nothing */):
 
-  did_open --uri/string content/string? revision/int -> none:
+  did-open --uri/string content/string? revision/int -> none:
     document := documents_.get uri
-    if document: error_reporter_.call "Document $uri already open"
+    if document: error-reporter_.call "Document $uri already open"
     if not document: document = Document --uri=uri
     document.content = content
-    document.content_revision = revision
-    document.is_open = true
+    document.content-revision = revision
+    document.is-open = true
     documents_[uri] = document
 
-  did_change --uri/string new_content/string revision/int-> none:
-    document := get_existing_document --uri=uri --is_open
-    document.content = new_content
-    document.content_revision = revision
+  did-change --uri/string new-content/string revision/int-> none:
+    document := get-existing-document --uri=uri --is-open
+    document.content = new-content
+    document.content-revision = revision
 
-  did_save --uri/string -> none:
-    document := get_existing_document --uri=uri --is_open
+  did-save --uri/string -> none:
+    document := get-existing-document --uri=uri --is-open
     document.content = null
     // Keep the content-version number, as it could be useful for `update_document_after_analysis`.
 
-  did_close --uri/string -> none:
+  did-close --uri/string -> none:
     // We keep the entry, as the LSP client might still show errors, even if the file isn't open anymore.
-    document := get_existing_document --uri=uri --is_open
+    document := get-existing-document --uri=uri --is-open
     document.content = null
-    document.is_open = false
+    document.is-open = false
 
   delete --uri/string -> none:
     document := documents_.get uri
     if document:
       document.summary.dependencies.do:
-        (get_existing_document --uri=it).reverse_deps.remove uri
+        (get-existing-document --uri=it).reverse-deps.remove uri
     documents_.remove uri
 
   /**
@@ -68,60 +68,60 @@ class Documents:
     import this summary, then the bit is not set. For example, changes to
     the documentation, or to code inside a method will not set this bit.
   */
-  static SUMMARY_CHANGED_EXTERNALLY_BIT ::= 1
+  static SUMMARY-CHANGED-EXTERNALLY-BIT ::= 1
   /**
   This bit is set, if this analysis was the first to provide a fresh
   analysis for new content.
   */
-  static FIRST_ANALYSIS_AFTER_CONTENT_CHANGE_BIT ::= 2
+  static FIRST-ANALYSIS-AFTER-CONTENT-CHANGE-BIT ::= 2
 
   /**
   Updates the $summary for the given $uri.
 
   Updates reverse-dependencies.
 
-  Returns a bitset, using $SUMMARY_CHANGED_EXTERNALLY_BIT and $FIRST_ANALYSIS_AFTER_CONTENT_CHANGE_BIT.
+  Returns a bitset, using $SUMMARY-CHANGED-EXTERNALLY-BIT and $FIRST-ANALYSIS-AFTER-CONTENT-CHANGE-BIT.
   The caller can use these to see whether reverse-dependencies need to be analyzed, or whether
     diagnostics of this analysis need to be reported.
   */
-  update_document_after_analysis --uri/string -> int  // Returns a bitset.
-      --analysis_revision/int
+  update-document-after-analysis --uri/string -> int  // Returns a bitset.
+      --analysis-revision/int
       --summary/Module:
-    document := get_dependency_document_ --uri=uri
+    document := get-dependency-document_ --uri=uri
 
     // If there was already a newer analysis we can completely ignore this update.
-    if document.analysis_revision >= analysis_revision: return 0
+    if document.analysis-revision >= analysis-revision: return 0
 
-    old_deps := {}
+    old-deps := {}
     if document.summary:
-      old_deps.add_all document.summary.dependencies
-    new_deps := {}
-    new_deps.add_all summary.dependencies
+      old-deps.add-all document.summary.dependencies
+    new-deps := {}
+    new-deps.add-all summary.dependencies
 
     // Delete all obsolete reverse dependencies.
-    old_deps.do: |dep_uri|
-      if not new_deps.contains dep_uri:
-        dep_doc := get_existing_document --uri=dep_uri
-        dep_doc.reverse_deps.remove uri --if_absent=:
-          error_reporter_.call "Couldn't delete reverse dependency for $dep_uri (not dep of $uri anymore)"
+    old-deps.do: |dep-uri|
+      if not new-deps.contains dep-uri:
+        dep-doc := get-existing-document --uri=dep-uri
+        dep-doc.reverse-deps.remove uri --if-absent=:
+          error-reporter_.call "Couldn't delete reverse dependency for $dep-uri (not dep of $uri anymore)"
     // Set up the new reverse dependencies.
-    new_deps.do: |dep_uri|
-      if not old_deps.contains dep_uri:
-        dep_doc := get_dependency_document_ --uri=dep_uri
-        dep_doc.reverse_deps.add uri
+    new-deps.do: |dep-uri|
+      if not old-deps.contains dep-uri:
+        dep-doc := get-dependency-document_ --uri=dep-uri
+        dep-doc.reverse-deps.add uri
 
-    old_summary := document.summary
-    old_analysis_revision := document.analysis_revision
+    old-summary := document.summary
+    old-analysis-revision := document.analysis-revision
 
     document.summary = summary
-    document.analysis_revision = analysis_revision
+    document.analysis-revision = analysis-revision
 
     result := 0
-    if old_analysis_revision < document.content_revision and
-        analysis_revision >= document.content_revision:
-      result |= FIRST_ANALYSIS_AFTER_CONTENT_CHANGE_BIT
-    if not (old_summary and old_summary.equals_external summary):
-      result |= SUMMARY_CHANGED_EXTERNALLY_BIT
+    if old-analysis-revision < document.content-revision and
+        analysis-revision >= document.content-revision:
+      result |= FIRST-ANALYSIS-AFTER-CONTENT-CHANGE-BIT
+    if not (old-summary and old-summary.equals-external summary):
+      result |= SUMMARY-CHANGED-EXTERNALLY-BIT
 
     return result
 
@@ -129,36 +129,36 @@ class Documents:
   Returns the document for $uri.
 
   The document must exist.
-  If $is_open, then also checks that the document is currently open.
+  If $is-open, then also checks that the document is currently open.
   */
-  get_existing_document --uri/string --is_open/bool=false -> Document:
+  get-existing-document --uri/string --is-open/bool=false -> Document:
     result := documents_.get uri --init=:
-      error_reporter_.call "Document $uri doesn't exist yet"
-      Document --uri=uri --is_open=is_open
-    if is_open and not result.is_open:
-      error_reporter_.call "Document $uri isn't open as expected"
+      error-reporter_.call "Document $uri doesn't exist yet"
+      Document --uri=uri --is-open=is-open
+    if is-open and not result.is-open:
+      error-reporter_.call "Document $uri isn't open as expected"
     return result
-  get_existing_document --path/string --is_open/bool=false -> Document:
-    return get_existing_document --uri=(translator_.to_uri path) --is_open=is_open
+  get-existing-document --path/string --is-open/bool=false -> Document:
+    return get-existing-document --uri=(translator_.to-uri path) --is-open=is-open
 
-  get_dependency_document_ --uri/string -> Document:
+  get-dependency-document_ --uri/string -> Document:
     return documents_.get uri --init=: Document --uri=uri
 
-  save_as_tar file_name:
-    writer := file.Stream file_name file.CREAT | file.WRONLY 0x1ff
+  save-as-tar file-name:
+    writer := file.Stream file-name file.CREAT | file.WRONLY 0x1ff
     try:
-      write_as_tar writer
+      write-as-tar writer
     finally:
       writer.close
 
-  write_as_tar writer -> none:
+  write-as-tar writer -> none:
     tar := Tar writer
     documents_.do: |uri entry|
-      if entry.content: tar.add (translator_.to_path entry.uri) entry.content
-    tar.close --no-close_writer
+      if entry.content: tar.add (translator_.to-path entry.uri) entry.content
+    tar.close --no-close-writer
 
   get --uri/string -> Document?: return documents_.get uri
-  get --path/string -> Document?: return get --uri=(translator_.to_uri path)
+  get --path/string -> Document?: return get --uri=(translator_.to-uri path)
 
   do [block] -> none:
     documents_.do: |uri doc| block.call doc
@@ -166,10 +166,10 @@ class Documents:
 
 class Document:
   uri      / string ::= ?
-  is_open  / bool    := ?
+  is-open  / bool    := ?
   content  / string? := ?
   summary  / Module? := ?
-  reverse_deps / Set := ?
+  reverse-deps / Set := ?
 
   /**
   The revision of the $content.
@@ -178,26 +178,26 @@ class Document:
   Any analysis result that is equal or greater than the content revision provides
     up-to-date results.
   */
-  content_revision / int := ?
+  content-revision / int := ?
 
   /**
   Whether the summary is correct. That is, whether the summary could be used instead
     of the content to analyze other files.
   */
-  is_summary_up_to_date -> bool:
-    return summary and analysis_revision >= content_revision
+  is-summary-up-to-date -> bool:
+    return summary and analysis-revision >= content-revision
 
   // The revision of the analysis that last ran on this document.
   // -1 if no analysis has been run yet.
-  analysis_revision / int := -1
+  analysis-revision / int := -1
 
   // The revision of an analysis that requested to update the diagnostics of this document.
   // -1 if no request is pending.
-  analysis_requested_by_revision / int := -1
+  analysis-requested-by-revision / int := -1
 
   constructor --.uri
-      --.is_open=false
+      --.is-open=false
       --.content=null
-      --.content_revision=-1
+      --.content-revision=-1
       --.summary=null
-      --.reverse_deps={}:
+      --.reverse-deps={}:

@@ -201,7 +201,9 @@ function(add_repo_tests REPO)
   get_filename_component(REPO_NAME "${REPO}" NAME)
   set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
   file(GLOB TEST_FILES RELATIVE "${REPO_PATH}"
+      "${REPO_PATH}/tests/*-test.toit"
       "${REPO_PATH}/tests/*_test.toit"
+      "${REPO_PATH}/tests/*-test-slow.toit"
       "${REPO_PATH}/tests/*_test_slow.toit")
 
   # Set the TEST_PREFIX which will be used by the 'fail.cmake' files.

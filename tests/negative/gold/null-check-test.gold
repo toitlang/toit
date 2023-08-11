@@ -1,0 +1,24 @@
+tests/negative/null-check-test.toit:22:7: error: Type mismatch. Expected 'int'. Got 'string'
+  foo null-string            // Error, even though null could match.
+      ^~~~~~~~~~~
+tests/negative/null-check-test.toit:23:18: error: Type mismatch. Expected 'int'. Got 'string'
+  bar --optional=null-string // Error, even though null could match.
+                 ^~~~~~~~~~~
+tests/negative/null-check-test.toit:25:5: error: Type mismatch. Expected 'int'. Got 'string'
+  A null-string
+    ^~~~~~~~~~~
+tests/negative/null-check-test.toit:26:19: error: Type mismatch. Expected 'int'. Got 'string'
+  A.named --field=null-string
+                  ^~~~~~~~~~~
+tests/negative/null-check-test.toit:29:5: error: Type mismatch: can't assign 'null' to non-nullable 'A'
+  a = null
+    ^
+tests/negative/null-check-test.toit:31:7: error: Type mismatch: can't assign 'null' to non-nullable 'int'
+  gee null
+      ^~~~
+tests/negative/null-check-test.toit:37:7: error: Type mismatch: can't assign 'null' to non-nullable 'int'
+  gee null-local2
+      ^~~~~~~~~~~
+As check failed: null is not a int.
+  0: gee                       tests/negative/null-check-test.toit:17:5
+  1: main                      tests/negative/null-check-test.toit:31:3

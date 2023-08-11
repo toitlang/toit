@@ -3,13 +3,13 @@
 // be found in the tests/LICENSE file.
 
 import gpio
-import hc_sr04
+import hc-sr04
 
 main:
   echo := gpio.Pin.in 19
   trigger := gpio.Pin.out 18
-  driver := hc_sr04.Driver --echo=echo --trigger=trigger
+  driver := hc-sr04.Driver --echo=echo --trigger=trigger
 
   while true:
-    print "The distance is: $driver.read_distance mm"
+    print "The distance is: $driver.read-distance mm"
     sleep --ms=2_000

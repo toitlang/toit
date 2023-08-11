@@ -1,0 +1,25 @@
+tests/negative/constructor-keyword-test.toit:7:1: error: Invalid name
+constructor:
+^~~~~~~~~~~
+tests/negative/constructor-keyword-test.toit:9:1: error: Invalid name
+constructor.named:
+^~~~~~~~~~~~~~~~~
+tests/negative/constructor-keyword-test.toit:5:16: error: Prefix clashes with toplevel declaration 'constructor'
+import core as constructor
+               ^~~~~~~~~~~
+tests/negative/constructor-keyword-test.toit:7:1: error: Toplevel declaration 'constructor'
+constructor:
+^~~~~~~~~~~
+tests/negative/constructor-keyword-test.toit:12:10: error: Constructors can't be static
+  static constructor x y:
+         ^~~~~~~~~~~
+tests/negative/constructor-keyword-test.toit:15:15: error: Can't use 'constructor' as name for a constructor
+  constructor.constructor x y:
+              ^~~~~~~~~~~
+tests/negative/constructor-keyword-test.toit:13:3: error: Redefinition of 'constructor'
+  constructor x y:
+  ^~~~~~~~~~~
+tests/negative/constructor-keyword-test.toit:12:10: note: First definition of 'constructor'
+  static constructor x y:
+         ^~~~~~~~~~~
+Compilation failed.

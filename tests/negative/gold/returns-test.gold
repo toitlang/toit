@@ -1,0 +1,10 @@
+tests/negative/returns-test.toit:5:1: error: Method can't have 'return's with and without value
+foo:
+^~~
+tests/negative/returns-test.toit:6:3: note: Return without value
+  return
+  ^~~~~~
+tests/negative/returns-test.toit:7:3: note: Return with value
+  return 499
+  ^~~~~~
+Compilation failed.

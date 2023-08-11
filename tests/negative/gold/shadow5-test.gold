@@ -1,0 +1,7 @@
+tests/negative/shadow5-test.toit:9:7: error: Definition of 'x' shadows earlier definition
+  for x := 1; x < 10; x++:
+      ^
+tests/negative/shadow5-test.toit:8:3: note: Earlier definition of 'x'
+  x := 0
+  ^
+Compilation failed.

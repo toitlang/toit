@@ -14,8 +14,8 @@
 # directory of this repository.
 
 file(GLOB CC_FILES "*.cc")
-file(GLOB CC_TESTS "*_test.cc")
-file(GLOB TOIT_TESTS "*_test.toit")
+file(GLOB CC_TESTS "*-test.cc")
+file(GLOB TOIT_TESTS "*-test.toit")
 
 set(CTEST_DIR ${CMAKE_BINARY_DIR}/ctest)
 
@@ -66,7 +66,7 @@ foreach(file ${CC_TESTS})
   endif()
 
   get_filename_component(exe ${file} NAME_WE)
-  string(REGEX REPLACE "_test.cc$" "_input.toit" test_input ${file})
+  string(REGEX REPLACE "-test.cc$" "-input.toit" test_input ${file})
   add_test(
     NAME ${test_name}
     COMMAND ${CTEST_DIR}/${exe} ${test_input}

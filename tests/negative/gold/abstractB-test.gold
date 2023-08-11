@@ -1,0 +1,13 @@
+tests/negative/abstractB-test.toit:7:12: error: Abstract members can't have bodies
+  abstract bar:
+           ^~~
+tests/negative/abstractB-test.toit:10:7: error: Non-abstract class 'B' is missing implementations
+class B extends A:
+      ^
+tests/negative/abstractB-test.toit:7:12: note: Missing implementation for 'bar'
+  abstract bar:
+           ^~~
+tests/negative/abstractB-test.toit:8:5: error: Unresolved identifier: 'gee'
+    gee
+    ^~~
+Compilation failed.

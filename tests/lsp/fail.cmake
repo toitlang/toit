@@ -19,22 +19,22 @@ set(TOIT_FAILING_TESTS
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS
-    tests/lsp/dump_crash_compiler_test.toit
-    tests/lsp/timeout_compiler_test.toit
+    tests/lsp/dump-crash-compiler-test.toit
+    tests/lsp/timeout-compiler-test.toit
   )
   set(TOIT_SKIP_TESTS
     # Currently times out.
     # Most likely because signals aren't handled correctly on Windows.
-    tests/lsp/crash_compiler_test.toit
-    tests/lsp/crash_rate_limit_compiler_test.toit
-    tests/lsp/error_compiler_test.toit
-    tests/lsp/mock_compiler_test_slow.toit
+    tests/lsp/crash-compiler-test.toit
+    tests/lsp/crash-rate-limit-compiler-test.toit
+    tests/lsp/error-compiler-test.toit
+    tests/lsp/mock-compiler-test-slow.toit
 
     # floitsch: not entirely sure why this test fails on Windows.
-    tests/lsp/repro_compiler_test_slow.toit
+    tests/lsp/repro-compiler-test-slow.toit
 
     # Failing pipe on Windows:
     # https://github.com/toitlang/toit/issues/1369
-    tests/lsp/import_completion_test.toit
+    tests/lsp/import-completion-test.toit
   )
 endif()

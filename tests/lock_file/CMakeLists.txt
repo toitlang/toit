@@ -13,7 +13,7 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-file(GLOB PACKAGE_LOCK_TESTS "*_test")
+file(GLOB PACKAGE_LOCK_TESTS "*-test")
 
 include(fail.cmake)
 

@@ -1,6 +1,0 @@
-tests/string_test.toit:432:7: warning: Deprecated 'string.write-to-byte-array'
-  str.write_to_byte_array bytes 1 4 5
-      ^~~~~~~~~~~~~~~~~~~
-tests/string_test.toit:461:7: warning: Deprecated 'string.write-to-byte-array'
-  str.write_to_byte_array bytes 17 21 5
-      ^~~~~~~~~~~~~~~~~~~

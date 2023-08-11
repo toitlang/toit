@@ -1,4 +1,0 @@
-tests/negative/prefixed_assign5b_test.toit:8:6: error: No setter method 'some-method=' found.
-  pa.some_method += 3
-     ^~~~~~~~~~~
-Compilation failed.

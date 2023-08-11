@@ -14,26 +14,26 @@ Throws if the program didn't terminate with exit code 0.
 */
 run args -> List:
   toitrun := args[0]
-  profiled_path := args[1]
+  profiled-path := args[1]
 
   pipes := pipe.fork
       true    // use_path
-      pipe.PIPE_INHERITED  // stdin
-      pipe.PIPE_INHERITED  // stdout
-      pipe.PIPE_CREATED    // stderr
+      pipe.PIPE-INHERITED  // stdin
+      pipe.PIPE-INHERITED  // stdout
+      pipe.PIPE-CREATED    // stderr
       toitrun
-      [ toitrun, profiled_path ]
+      [ toitrun, profiled-path ]
 
   stderr := pipes[2]
   pid := pipes[3]
 
   reader := BufferedReader stderr
-  reader.buffer_all
-  output := reader.read_string (reader.buffered)
+  reader.buffer-all
+  output := reader.read-string (reader.buffered)
 
-  exit_value := pipe.wait_for pid
-  exit_code := pipe.exit_code exit_value
+  exit-value := pipe.wait-for pid
+  exit-code := pipe.exit-code exit-value
 
-  if exit_code != 0: throw "Program didn't exit with 0."
-  lines := output.split LINE_TERMINATOR
+  if exit-code != 0: throw "Program didn't exit with 0."
+  lines := output.split LINE-TERMINATOR
   return lines

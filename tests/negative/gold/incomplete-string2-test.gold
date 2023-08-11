@@ -1,0 +1,7 @@
+tests/negative/incomplete-string2-test.toit:11:9: error: Unterminated string
+    $(z)
+        ^
+tests/negative/incomplete-string2-test.toit:9:7: error: Type mismatch. Expected 'int'. Got 'string'
+  foo "str"
+      ^~~~~
+Compilation failed.

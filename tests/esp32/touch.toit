@@ -18,40 +18,40 @@ import gpio
 import gpio.touch as gpio
 import esp32
 
-TOUCH_PIN1 ::= 2
-TOUCH_PIN2 ::= 4
+TOUCH-PIN1 ::= 2
+TOUCH-PIN2 ::= 4
 
 calibrate touch/gpio.Touch:
-  CALIBRATION_ITERATIONS ::= 16
+  CALIBRATION-ITERATIONS ::= 16
 
   sum := 0
-  CALIBRATION_ITERATIONS.repeat:
+  CALIBRATION-ITERATIONS.repeat:
     sum += touch.read --raw
-  touch.threshold = sum * 2 / (3 * CALIBRATION_ITERATIONS)
+  touch.threshold = sum * 2 / (3 * CALIBRATION-ITERATIONS)
 
 main:
-  if esp32.wakeup_cause == esp32.WAKEUP_TOUCHPAD:
+  if esp32.wakeup-cause == esp32.WAKEUP-TOUCHPAD:
     print "Woken up from touchpad"
-    print esp32.touchpad_wakeup_status
+    print esp32.touchpad-wakeup-status
   else:
-    touch1 := gpio.Touch (gpio.Pin TOUCH_PIN1)
+    touch1 := gpio.Touch (gpio.Pin TOUCH-PIN1)
     calibrate touch1
-    print "pin $TOUCH_PIN1: $touch1.threshold $(touch1.read --raw)"
+    print "pin $TOUCH-PIN1: $touch1.threshold $(touch1.read --raw)"
 
-    touch2 := gpio.Touch (gpio.Pin TOUCH_PIN2)
+    touch2 := gpio.Touch (gpio.Pin TOUCH-PIN2)
     calibrate touch2
-    print "pin $TOUCH_PIN2: $touch2.threshold $(touch2.read --raw)"
+    print "pin $TOUCH-PIN2: $touch2.threshold $(touch2.read --raw)"
 
-    print "waiting for touch on pin $TOUCH_PIN1"
+    print "waiting for touch on pin $TOUCH-PIN1"
     while not touch1.get: sleep --ms=1
 
-    print "waiting for touch on pin $TOUCH_PIN2"
+    print "waiting for touch on pin $TOUCH-PIN2"
     while not touch2.get: sleep --ms=1
 
     touch2.close
 
     print "going into deep sleep"
     sleep --ms=500
-    print "ESP32 should not wake up from pin $TOUCH_PIN2, but should wake up from pin $TOUCH_PIN1"
-    esp32.enable_touchpad_wakeup
-    esp32.deep_sleep (Duration --s=10)
+    print "ESP32 should not wake up from pin $TOUCH-PIN2, but should wake up from pin $TOUCH-PIN1"
+    esp32.enable-touchpad-wakeup
+    esp32.deep-sleep (Duration --s=10)

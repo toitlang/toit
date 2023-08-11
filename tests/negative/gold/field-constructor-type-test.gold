@@ -1,0 +1,3 @@
+As check failed: a string ("str") is not a A.
+  0: B                         tests/negative/field-constructor-type-test.toit:16:7
+  1: main                      tests/negative/field-constructor-type-test.toit:22:8

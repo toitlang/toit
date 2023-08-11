@@ -1,0 +1,3 @@
+As check failed: null is not a A.
+  0: foo                       tests/negative/uninstantiated-type2-test.toit:11:5
+  1: main                      tests/negative/uninstantiated-type2-test.toit:16:3

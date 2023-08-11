@@ -1,7 +1,0 @@
-tests/negative/super3_test.toit:7:16: error: Super constructor calls must be at the top-level
-    unresolved super
-               ^~~~~
-tests/negative/super3_test.toit:7:5: error: Unresolved identifier: 'unresolved'
-    unresolved super
-    ^~~~~~~~~~
-Compilation failed.

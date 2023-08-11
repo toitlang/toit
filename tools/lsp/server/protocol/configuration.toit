@@ -37,7 +37,7 @@ class ConfigurationItem extends MapWrapper:
   - [section]: the configuration section asked for.
   */
   constructor
-      --scope_uri /string? = null
+      --scope-uri /string? = null
       --section   /string? = null:
-    map_["scopeUri"] = scope_uri
+    map_["scopeUri"] = scope-uri
     map_["section"]  = section

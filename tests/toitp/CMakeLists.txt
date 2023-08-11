@@ -13,7 +13,7 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-file(GLOB TOITP_TESTS "*_toitp_test.toit")
+file(GLOB TOITP_TESTS "*-toitp-test.toit")
 
 set(TOITP_TEST_DIR ${CMAKE_BINARY_DIR}/toitp_test)
 
@@ -55,9 +55,9 @@ add_custom_command(
   DEPENDS $<TARGET_FILE:bytecode_lister>
 )
 
-set(BYTECODE_MATCH_TEST ${CMAKE_CURRENT_SOURCE_DIR}/bytecode_match_test.toit)
+set(BYTECODE_MATCH_TEST ${CMAKE_CURRENT_SOURCE_DIR}/bytecode-match-test.toit)
 file(RELATIVE_PATH BYTECODE_MATCH_TEST_NAME ${TOIT_SDK_SOURCE_DIR} ${BYTECODE_MATCH_TEST})
-set(BYTECODE_MATCH_TEST_NAME tests-toitp-bytecode_match_test)
+set(BYTECODE_MATCH_TEST_NAME tests-toitp-bytecode-match-test)
 add_test(
   NAME ${BYTECODE_MATCH_TEST_NAME}
   COMMAND $<TARGET_FILE:toit.run> ${BYTECODE_MATCH_TEST} ${BYTECODE_LIST}
@@ -66,13 +66,13 @@ add_test(
 
 foreach(file ${TOITP_TESTS})
   get_filename_component(base ${file} NAME_WE)
-  string(REGEX REPLACE "_toitp_test$" "" test_name ${base})
-  set(input ${CMAKE_CURRENT_SOURCE_DIR}/${test_name}_input.toit)
-  set(toitp_test ${CMAKE_CURRENT_SOURCE_DIR}/${test_name}_toitp_test.toit)
-  set(snap_test ${CMAKE_CURRENT_SOURCE_DIR}/${test_name}_snap_test.toit)
+  string(REGEX REPLACE "-toitp-test$" "" test_name ${base})
+  set(input ${CMAKE_CURRENT_SOURCE_DIR}/${test_name}-input.toit)
+  set(toitp_test ${CMAKE_CURRENT_SOURCE_DIR}/${test_name}-toitp-test.toit)
+  set(snap_test ${CMAKE_CURRENT_SOURCE_DIR}/${test_name}-snap-test.toit)
 
-  set(snap ${TOITP_TEST_DIR}/${test_name}_input.snap)
-  set(dep ${TOITP_TEST_DIR}/${test_name}_input.dep)
+  set(snap ${TOITP_TEST_DIR}/${test_name}-input.snap)
+  set(dep ${TOITP_TEST_DIR}/${test_name}-input.dep)
 
   ADD_TOIT_SNAPSHOT(
     ${input}
@@ -81,7 +81,7 @@ foreach(file ${TOITP_TESTS})
     "")
 
 
-  set(build_snap tests-toitp-build_${test_name}_input)
+  set(build_snap tests-toitp-build_${test_name}-input)
   add_custom_target(${build_snap} DEPENDS ${snap})
 
   # Make sure the test input is built before we run the tests.

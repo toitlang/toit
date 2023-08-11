@@ -13,10 +13,10 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-file(GLOB TOIT_COMPLETION_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*completion_test.toit" "*/*completion_test.toit" "*/*/*completion_test.toit" "*/*/*/*completion_test.toit")
-file(GLOB TOIT_GOTO_DEFINITION_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*definition_test.toit"  "*/*definition_test.toit" "*/*/*definition_test.toit" "*/*/*/*definition_test.toit")
-file(GLOB TOIT_COMPILER_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*compiler_test.toit")
-file(GLOB TOIT_SLOW_COMPILER_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*compiler_test_slow.toit")
+file(GLOB TOIT_COMPLETION_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*completion-test.toit" "*/*completion-test.toit" "*/*/*completion-test.toit" "*/*/*/*completion-test.toit")
+file(GLOB TOIT_GOTO_DEFINITION_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*definition-test.toit"  "*/*definition-test.toit" "*/*/*definition-test.toit" "*/*/*/*definition-test.toit")
+file(GLOB TOIT_COMPILER_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*compiler-test.toit")
+file(GLOB TOIT_SLOW_COMPILER_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*compiler-test-slow.toit")
 
 set(ALL_TESTS ${TOIT_COMPLETION_TESTS} ${TOIT_GOTO_DEFINITION_TESTS} ${TOIT_COMPILER_TESTS} ${TOIT_SLOW_COMPILER_TESTS})
 
@@ -54,7 +54,7 @@ foreach(file ${ALL_TESTS})
   if ("${file}" IN_LIST TOIT_COMPLETION_TESTS)
     add_test(
       NAME ${file}
-      COMMAND $<TARGET_FILE:toit.run> ${CMAKE_CURRENT_SOURCE_DIR}/completion_test_runner.toit ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
+      COMMAND $<TARGET_FILE:toit.run> ${CMAKE_CURRENT_SOURCE_DIR}/completion-test-runner.toit ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
       CONFIGURATIONS slow
       )
@@ -62,7 +62,7 @@ foreach(file ${ALL_TESTS})
   elseif ("${file}" IN_LIST TOIT_GOTO_DEFINITION_TESTS)
     add_test(
       NAME ${file}
-      COMMAND $<TARGET_FILE:toit.run> ${CMAKE_CURRENT_SOURCE_DIR}/goto_definition_test_runner.toit ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
+      COMMAND $<TARGET_FILE:toit.run> ${CMAKE_CURRENT_SOURCE_DIR}/goto-definition-test-runner.toit ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
       CONFIGURATIONS slow
       )

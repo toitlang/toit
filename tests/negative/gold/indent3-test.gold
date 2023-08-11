@@ -1,0 +1,4 @@
+tests/negative/indent3-test.toit:9:5: error: All expressions in a sequence must be indented the same way
+    "bad indent"
+    ^~~~~~~~~~~~
+Compilation failed.
