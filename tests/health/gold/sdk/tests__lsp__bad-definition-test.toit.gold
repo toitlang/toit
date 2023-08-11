@@ -1,47 +1,47 @@
-tests/lsp/bad_definition_test.toit:48:3: error: Argument mismatch for 'fun'
+tests/lsp/bad-definition-test.toit:48:3: error: Argument mismatch for 'fun'
 Too few arguments provided
   fun
   ^~~
-tests/lsp/bad_definition_test.toit:53:3: error: Argument mismatch for 'A'
+tests/lsp/bad-definition-test.toit:53:3: error: Argument mismatch for 'A'
 Method does not take any arguments, but one was provided
   A 499
   ^
-tests/lsp/bad_definition_test.toit:58:5: error: Argument mismatch for 'single'
+tests/lsp/bad-definition-test.toit:58:5: error: Argument mismatch for 'single'
 Too few arguments provided
   A.single
     ^~~~~~
-tests/lsp/bad_definition_test.toit:63:5: error: Argument mismatch for 'named'
+tests/lsp/bad-definition-test.toit:63:5: error: Argument mismatch for 'named'
 Too few arguments provided
   A.named
     ^~~~~
-tests/lsp/bad_definition_test.toit:68:5: error: Argument mismatch for 'foo'
+tests/lsp/bad-definition-test.toit:68:5: error: Argument mismatch for 'foo'
 Too few arguments provided
   A.foo
     ^~~
-tests/lsp/bad_definition_test.toit:73:5: error: Argument mismatch for 'bar'
+tests/lsp/bad-definition-test.toit:73:5: error: Argument mismatch for 'bar'
 Too few arguments provided
   A.bar
     ^~~
-tests/lsp/bad_definition_test.toit:78:4: error: Class 'A' does not have any static member or constructor with name 'fo'
+tests/lsp/bad-definition-test.toit:78:4: error: Class 'A' does not have any static member or constructor with name 'fo'
   A.fo
    ^
-tests/lsp/bad_definition_test.toit:83:4: error: Class 'A' does not have any static member or constructor with name 'name'
+tests/lsp/bad-definition-test.toit:83:4: error: Class 'A' does not have any static member or constructor with name 'name'
   A.name
    ^
-tests/lsp/bad_definition_test.toit:109:4: error: Class 'C' does not have any static member or constructor with name 'foo'
+tests/lsp/bad-definition-test.toit:109:4: error: Class 'C' does not have any static member or constructor with name 'foo'
   C.foo
    ^
-tests/lsp/bad_definition_test.toit:88:7: error: Class 'A' does not have any method 'fo'
+tests/lsp/bad-definition-test.toit:88:7: error: Class 'A' does not have any method 'fo'
   (A).fo
       ^~
-tests/lsp/bad_definition_test.toit:93:7: error: Class 'A' does not have any method 'name'
+tests/lsp/bad-definition-test.toit:93:7: error: Class 'A' does not have any method 'name'
   (A).name
       ^~~~
-tests/lsp/bad_definition_test.toit:99:5: error: Argument mismatch for 'C.foo'
+tests/lsp/bad-definition-test.toit:99:5: error: Argument mismatch for 'C.foo'
 Too few arguments provided
   c.foo
     ^~~
-tests/lsp/bad_definition_test.toit:104:7: error: Argument mismatch for 'C.foo'
+tests/lsp/bad-definition-test.toit:104:7: error: Argument mismatch for 'C.foo'
 Too few arguments provided
   (C).foo
       ^~~
