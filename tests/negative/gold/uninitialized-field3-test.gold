@@ -1,0 +1,46 @@
+tests/negative/uninitialized-field3-test.toit:26:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/uninitialized-field3-test.toit:18:12: error: Can't assign to final field 'field0'
+  b.field0 = 111
+           ^
+tests/negative/uninitialized-field3-test.toit:19:12: error: Can't assign to final field 'field4'
+  b.field4 = 499
+           ^
+tests/negative/uninitialized-field3-test.toit:20:12: error: Can't assign to final field 'field5'
+  b.field5 = 42
+           ^
+tests/negative/uninitialized-field3-test.toit:21:12: error: Can't assign to final field 'field6'
+  b.field6 = null
+           ^
+tests/negative/uninitialized-field3-test.toit:23:14: error: Type mismatch. Expected 'int'. Got 'string'
+  b.field3 = "str"
+             ^~~~~
+tests/negative/uninitialized-field3-test.toit:24:14: error: Type mismatch. Expected 'int'. Got 'string'
+  b.field6 = "str"
+             ^~~~~
+tests/negative/uninitialized-field3-test.toit:24:12: error: Can't assign to final field 'field6'
+  b.field6 = "str"
+           ^
+tests/negative/uninitialized-field3-test.toit:6:3: error: Field 'field0' must be initialized in a constructor
+  field0 /any
+  ^~~~~~
+tests/negative/uninitialized-field3-test.toit:8:3: error: Field 'field1' must be initialized in a constructor
+  field1 := ?
+  ^~~~~~
+tests/negative/uninitialized-field3-test.toit:9:3: error: Field 'field2' must be initialized in a constructor
+  field2 /any := ?
+  ^~~~~~
+tests/negative/uninitialized-field3-test.toit:10:3: error: Field 'field3' must be initialized in a constructor
+  field3 /int := ?
+  ^~~~~~
+tests/negative/uninitialized-field3-test.toit:12:3: error: Field 'field4' must be initialized in a constructor
+  field4 ::= ?
+  ^~~~~~
+tests/negative/uninitialized-field3-test.toit:13:3: error: Field 'field5' must be initialized in a constructor
+  field5 /any ::= ?
+  ^~~~~~
+tests/negative/uninitialized-field3-test.toit:14:3: error: Field 'field6' must be initialized in a constructor
+  field6 /int? ::= ?
+  ^~~~~~
+Compilation failed.

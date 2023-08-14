@@ -76,7 +76,9 @@ PRIMITIVE(init) {
   if ((mosi == -1 || mosi == 13) &&
       (miso == -1 || miso == 12) &&
       (clock == -1 || clock == 14)) {
-#if defined(CONFIG_IDF_TARGET_ESP32C3) || CONFIG_IDF_TARGET_ESP32S3
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+    host_device = SPI2_HOST;
+#elif CONFIG_IDF_TARGET_ESP32S3
     host_device = SPI2_HOST;
 #else
     host_device = HSPI_HOST;
@@ -85,8 +87,10 @@ PRIMITIVE(init) {
   if ((mosi == -1 || mosi == 23) &&
       (miso == -1 || miso == 19) &&
       (clock == -1 || clock == 18)) {
-#if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32S3)
+#ifdef CONFIG_IDF_TARGET_ESP32C3
     host_device = SPI2_HOST;
+#elif CONFIG_IDF_TARGET_ESP32S3
+    host_device = SPI3_HOST;
 #elif CONFIG_IDF_TARGET_ESP32S2
     host_device = SPI3_HOST;
 #else
@@ -94,19 +98,19 @@ PRIMITIVE(init) {
 #endif
   }
   host_device = spi_host_devices.preferred(host_device);
-  if (host_device == kInvalidHostDevice) OUT_OF_RANGE;
+  if (host_device == kInvalidHostDevice) FAIL(OUT_OF_RANGE);
 
   int dma_chan = dma_channels.any();
   if (dma_chan == 0) {
     spi_host_devices.put(host_device);
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
     spi_host_devices.put(host_device);
     dma_channels.put(dma_chan);
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   spi_bus_config_t conf = {};
@@ -145,7 +149,7 @@ PRIMITIVE(init) {
   if (!spi) {
     spi_host_devices.put(host_device);
     dma_channels.put(dma_chan);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
   proxy->set_external_address(spi);
 
@@ -156,7 +160,7 @@ PRIMITIVE(close) {
   ARGS(SpiResourceGroup, spi);
   spi->tear_down();
   spi_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 IRAM_ATTR static void spi_pre_transfer_callback(spi_transaction_t* t) {
@@ -172,7 +176,7 @@ PRIMITIVE(device) {
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   spi_device_interface_config_t conf = {
@@ -204,7 +208,7 @@ PRIMITIVE(device) {
   SpiDevice* spi_device = _new SpiDevice(spi, device, dc);
   if (spi_device == null) {
     spi_bus_remove_device(device);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   spi->register_resource(spi_device);
@@ -215,13 +219,13 @@ PRIMITIVE(device) {
 PRIMITIVE(device_close) {
   ARGS(SpiResourceGroup, spi, SpiDevice, device);
   spi->unregister_resource(device);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(transfer) {
   ARGS(SpiDevice, device, MutableBlob, tx, int, command, int64, address, int, from, int, to, bool, read, int, dc, bool, keep_cs_active);
 
-  if (from < 0 || from > to || to > tx.length()) OUT_OF_BOUNDS;
+  if (from < 0 || from > to || to > tx.length()) FAIL(OUT_OF_BOUNDS);
 
   size_t length = to - from;
 
@@ -263,7 +267,7 @@ PRIMITIVE(transfer) {
     memcpy(tx.address() + from, trans.rx_buffer, length);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(acquire_bus) {
@@ -272,13 +276,13 @@ PRIMITIVE(acquire_bus) {
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(release_bus) {
   ARGS(SpiDevice, device);
   spi_device_release_bus(device->handle());
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

@@ -1,0 +1,6 @@
+tests/lsp/return-label-definition-test.toit:16:12: error: Unresolved label 'foo'
+  continue.foo
+           ^~~
+tests/lsp/return-label-definition-test.toit:98:16: error: Can't return out of lambda
+      continue.foo
+               ^~~

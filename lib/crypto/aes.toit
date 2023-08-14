@@ -15,12 +15,12 @@ abstract class Aes:
 
   /**
   Initialize an Aes class from a subclass.
-  If the $initialization_vector is empty, then AES ECB mode is selected.
-  If the $initialization_vector has length 16, then AES CBC mode is selected.
+  If the $initialization-vector is empty, then AES ECB mode is selected.
+  If the $initialization-vector has length 16, then AES CBC mode is selected.
   */
-  constructor.initialize_ key/ByteArray initialization_vector/ByteArray --encrypt/bool:
-    aes_ = aes_init_ resource_freeing_module_ key initialization_vector encrypt
-    add_finalizer this:: this.close
+  constructor.initialize_ key/ByteArray initialization-vector/ByteArray --encrypt/bool:
+    aes_ = aes-init_ resource-freeing-module_ key initialization-vector encrypt
+    add-finalizer this:: this.close
 
   /**
   Encrypts the given $plaintext.
@@ -50,14 +50,14 @@ abstract class Aes:
   /** Closes this encrypter and releases associated resources. */
   close -> none:
     if not aes_: return
-    close_aes_
+    close-aes_
     aes_ = null
-    remove_finalizer this
+    remove-finalizer this
 
   /**
   Calls the associated primitive for the selected AES mode.
   */
-  abstract close_aes_ -> none
+  abstract close-aes_ -> none
 
 /**
 Advanced Encryption Standard Cipher Blocker Chaining (AES-CBC).
@@ -78,38 +78,38 @@ Close the AES state with $close to release system resources.
 */
 class AesCbc extends Aes:
   /** Deprecated. Use $AesCbc.encryptor instead. */
-  constructor.encrypt key/ByteArray initialization_vector/ByteArray:
-    return AesCbc.encryptor key initialization_vector
+  constructor.encrypt key/ByteArray initialization-vector/ByteArray:
+    return AesCbc.encryptor key initialization-vector
 
   /**
   Creates an AES-CBC state for encryption.
 
   The $key must be 16, 24 or 32 secret bytes and the
-    $initialization_vector must be 16 random bytes.
+    $initialization-vector must be 16 random bytes.
   */
-  constructor.encryptor key/ByteArray initialization_vector/ByteArray:
-    super.initialize_ key initialization_vector --encrypt
+  constructor.encryptor key/ByteArray initialization-vector/ByteArray:
+    super.initialize_ key initialization-vector --encrypt
 
   /** Deprecated. Use $AesCbc.decryptor instead. */
-  constructor.decrypt key/ByteArray initialization_vector/ByteArray:
-    return AesCbc.decryptor key initialization_vector
+  constructor.decrypt key/ByteArray initialization-vector/ByteArray:
+    return AesCbc.decryptor key initialization-vector
 
   /**
   Creates an AES-CBC state for decryption.
 
   The $key must be 16, 24 or 32 secret bytes and the
-    $initialization_vector must be 16 bytes.
+    $initialization-vector must be 16 bytes.
   */
-  constructor.decryptor key/ByteArray initialization_vector/ByteArray:
-    super.initialize_ key initialization_vector --no-encrypt
+  constructor.decryptor key/ByteArray initialization-vector/ByteArray:
+    super.initialize_ key initialization-vector --no-encrypt
 
   /** See $super. */
   crypt_ input/ByteArray --encrypt/bool -> ByteArray:
-    return aes_cbc_crypt_ aes_ input encrypt
+    return aes-cbc-crypt_ aes_ input encrypt
 
   /** See $super. */
-  close_aes_ -> none:
-    aes_cbc_close_ aes_
+  close-aes_ -> none:
+    aes-cbc-close_ aes_
 
 /**
 Advanced Encryption Standard Electronic codebook (AES-ECB).
@@ -154,14 +154,14 @@ class AesEcb extends Aes:
   crypt_ input/ByteArray --encrypt/bool -> ByteArray:
     from := 0
     to := input.size
-    return aes_ecb_crypt_ aes_ input encrypt
+    return aes-ecb-crypt_ aes_ input encrypt
 
   /** See $super. */
-  close_aes_ -> none:
-    aes_ecb_close_ aes_
+  close-aes_ -> none:
+    aes-ecb-close_ aes_
 
-ALGORITHM_AES_GCM ::= 0
-ALGORITHM_CHACHA20_POLY1305 ::= 1
+ALGORITHM-AES-GCM ::= 0
+ALGORITHM-CHACHA20-POLY1305 ::= 1
 
 /**
 Encryptor/decryptor for Galois/Counter Mode of AES, an encryption mode that is
@@ -172,28 +172,28 @@ An instance of this class can encrypt or decrypt one message.
 See https://en.wikipedia.org/wiki/Galois/Counter_Mode.
 */
 class AesGcm extends Aead_:
-  static IV_SIZE ::= 12
-  static TAG_SIZE ::= 16
-  static BLOCK_SIZE_ ::= 16
+  static IV-SIZE ::= 12
+  static TAG-SIZE ::= 16
+  static BLOCK-SIZE_ ::= 16
 
   /**
   Initialize a AesGcm AEAD class for encryption.
   The $key must be 16, 24, or 32 bytes of AES key.
-  The $initialization_vector must be 12 bytes of data.  It is extremely
+  The $initialization-vector must be 12 bytes of data.  It is extremely
     important that the initialization_vector is not reused with the same key.
     The initialization_vector must be known to the decrypting counterparty.
   */
-  constructor.encryptor key/ByteArray initialization_vector/ByteArray:
-    super.encryptor key initialization_vector --algorithm=ALGORITHM_AES_GCM
+  constructor.encryptor key/ByteArray initialization-vector/ByteArray:
+    super.encryptor key initialization-vector --algorithm=ALGORITHM-AES-GCM
 
   /**
   Initialize a AesGcm AEAD class for encryption or decryption.
   The $key must be 16, 24, or 32 bytes of AES key.
-  The $initialization_vector must be 12 bytes of data, obtained from the
+  The $initialization-vector must be 12 bytes of data, obtained from the
     encrypting counterparty.
   */
-  constructor.decryptor key/ByteArray initialization_vector/ByteArray:
-    super.decryptor key initialization_vector --algorithm=ALGORITHM_AES_GCM
+  constructor.decryptor key/ByteArray initialization-vector/ByteArray:
+    super.decryptor key initialization-vector --algorithm=ALGORITHM-AES-GCM
 
 /**
 Encryptor/decryptor for authenicated encryption with AEAD, an encryption mode
@@ -206,86 +206,86 @@ See https://en.wikipedia.org/wiki/Authenticated_encryption
 */
 class Aead_:
   aead_ := ?
-  initialization_vector_ /ByteArray := ?
+  initialization-vector_ /ByteArray := ?
   buffer_ /ByteArray? := null
   size /int := 0
 
-  static IV_SIZE ::= 12
-  static TAG_SIZE ::= 16
-  static BLOCK_SIZE_ ::= 16
+  static IV-SIZE ::= 12
+  static TAG-SIZE ::= 16
+  static BLOCK-SIZE_ ::= 16
 
   /**
   Initialize an AEAD class for encryption.
   The $key must be of an appropriate size for the algorithm.
-  The $initialization_vector must be 12 bytes of data.  It is extremely
+  The $initialization-vector must be 12 bytes of data.  It is extremely
     important that the initialization_vector is not reused with the same key.
     The initialization_vector must be known to the decrypting counterparty.
-  The $algorithm must be $ALGORITHM_AES_GCM or ALGORITHM_CHACHA20_POLY1305.
+  The $algorithm must be $ALGORITHM-AES-GCM or ALGORITHM_CHACHA20_POLY1305.
   */
-  constructor.encryptor key/ByteArray initialization_vector/ByteArray --algorithm/int:
-    aead_ = aead_init_ resource_freeing_module_ key algorithm true
-    initialization_vector_ = initialization_vector
-    add_finalizer this:: this.close
+  constructor.encryptor key/ByteArray initialization-vector/ByteArray --algorithm/int:
+    aead_ = aead-init_ resource-freeing-module_ key algorithm true
+    initialization-vector_ = initialization-vector
+    add-finalizer this:: this.close
 
   /**
   Initialize an AEAD class for decryption.
   The $key must be of an appropriate size for the algorithm.
-  The $initialization_vector must be 12 bytes of data, obtained from the
+  The $initialization-vector must be 12 bytes of data, obtained from the
     encrypting counterparty.
-  The $algorithm must be $ALGORITHM_AES_GCM or ALGORITHM_CHACHA20_POLY1305.
+  The $algorithm must be $ALGORITHM-AES-GCM or ALGORITHM_CHACHA20_POLY1305.
   */
-  constructor.decryptor key/ByteArray initialization_vector/ByteArray --algorithm/int:
-    aead_ = aead_init_ resource_freeing_module_ key algorithm false
-    initialization_vector_ = initialization_vector
-    add_finalizer this:: this.close
+  constructor.decryptor key/ByteArray initialization-vector/ByteArray --algorithm/int:
+    aead_ = aead-init_ resource-freeing-module_ key algorithm false
+    initialization-vector_ = initialization-vector
+    add-finalizer this:: this.close
 
   /**
   Encrypts the given $plaintext.
   The plaintext must be a ByteArray or a string.
-  If provided, the $authenticated_data is data that takes part in the
+  If provided, the $authenticated-data is data that takes part in the
     verification tag, but does not get encrypted.
   Returns the encrypted plaintext.  The verification tag, 16 bytes, is
     appended to the result.
   This method is equivalent to calling $start, $add, and $finish, and
     therefore it closes this instance.
   */
-  encrypt plaintext --authenticated_data="" -> ByteArray:
+  encrypt plaintext --authenticated-data="" -> ByteArray:
     if not aead_: throw "ALREADY_CLOSED"
 
-    result := ByteArray plaintext.size + TAG_SIZE
+    result := ByteArray plaintext.size + TAG-SIZE
 
-    aead_start_message_ aead_ authenticated_data initialization_vector_
-    number_of_bytes /int := aead_add_ aead_ plaintext result
-    if number_of_bytes != (round_down plaintext.size BLOCK_SIZE_): throw "UNKNOWN_ERROR"
-    rest_and_tag := aead_finish_ aead_
-    if number_of_bytes + rest_and_tag.size != plaintext.size + TAG_SIZE: throw "UNKNOWN_ERROR"
-    result.replace number_of_bytes rest_and_tag
+    aead-start-message_ aead_ authenticated-data initialization-vector_
+    number-of-bytes /int := aead-add_ aead_ plaintext result
+    if number-of-bytes != (round-down plaintext.size BLOCK-SIZE_): throw "UNKNOWN_ERROR"
+    rest-and-tag := aead-finish_ aead_
+    if number-of-bytes + rest-and-tag.size != plaintext.size + TAG-SIZE: throw "UNKNOWN_ERROR"
+    result.replace number-of-bytes rest-and-tag
     close
     return result
 
   /**
   Decrypts the given $ciphertext.
-  The $verification_tag, 16 bytes, is checked and an exception is thrown if it
+  The $verification-tag, 16 bytes, is checked and an exception is thrown if it
     fails.
   If the verification_tag is not provided, it is assumed to be appended to the
     $ciphertext.
   This method is equivalent to calling $start, $add, and $verify, and
     therefore it closes this instance.
   */
-  decrypt ciphertext/ByteArray --authenticated_data="" --verification_tag/ByteArray?=null -> ByteArray:
+  decrypt ciphertext/ByteArray --authenticated-data="" --verification-tag/ByteArray?=null -> ByteArray:
     if not aead_: throw "ALREADY_CLOSED"
 
-    if not verification_tag:
+    if not verification-tag:
       edge := ciphertext.size - 16
-      verification_tag = ciphertext[edge..]
+      verification-tag = ciphertext[edge..]
       ciphertext = ciphertext[..edge]
 
-    aead_start_message_ aead_ authenticated_data initialization_vector_
+    aead-start-message_ aead_ authenticated-data initialization-vector_
     result := ByteArray ciphertext.size
-    number_of_bytes /int := aead_add_ aead_ ciphertext result
-    if number_of_bytes != (round_down ciphertext.size BLOCK_SIZE_): throw "UNKNOWN_ERROR"
+    number-of-bytes /int := aead-add_ aead_ ciphertext result
+    if number-of-bytes != (round-down ciphertext.size BLOCK-SIZE_): throw "UNKNOWN_ERROR"
 
-    check := aead_verify_ aead_ verification_tag result[number_of_bytes..]
+    check := aead-verify_ aead_ verification-tag result[number-of-bytes..]
     if check != 0:
       throw "INVALID_SIGNATURE"
 
@@ -298,8 +298,8 @@ class Aead_:
   When decrypting, it is vital that the decrypted data is not used in any way
     before the verification tag has been verified with a call to $verify.
   */
-  start --authenticated_data="" -> none:
-    aead_start_message_ aead_ authenticated_data initialization_vector_
+  start --authenticated-data="" -> none:
+    aead-start-message_ aead_ authenticated-data initialization-vector_
 
   /**
   Encrypts or decrypts some data.
@@ -314,17 +314,17 @@ class Aead_:
   add data/ByteArray -> ByteArray:
     size += data.size
     if buffer_:
-      number_of_bytes := aead_add_ aead_ data buffer_
-      if number_of_bytes:
-        result := buffer_[0..number_of_bytes]
+      number-of-bytes := aead-add_ aead_ data buffer_
+      if number-of-bytes:
+        result := buffer_[0..number-of-bytes]
         buffer_ = data
         return result
     // Output buffer was too small.  Make one that is certainly big enough.
     result := ByteArray
-        round_up data.size BLOCK_SIZE_
-    number_of_bytes /int := aead_add_ aead_ data result
+        round-up data.size BLOCK-SIZE_
+    number-of-bytes /int := aead-add_ aead_ data result
     if not buffer_ or data.size > buffer_.size: buffer_ = data
-    return result[..number_of_bytes]
+    return result[..number-of-bytes]
 
   /**
   Finishes encrypting.
@@ -335,14 +335,14 @@ class Aead_:
   Closes this instance.
   */
   finish -> ByteArray:
-    result := aead_finish_ aead_
+    result := aead-finish_ aead_
     close
     return result
 
   /**
   Finishes decrypting.
   Can be called after $start and $add.
-  Throws an exception if the 16 byte $verification_tag does not match the
+  Throws an exception if the 16 byte $verification-tag does not match the
     decrypted data.
   It is vital that the decrypted data is not used in any way before this method
     has been called.
@@ -352,10 +352,10 @@ class Aead_:
     if the size of the ciphertext was a multiple of 16.
   Closes this instance.
   */
-  verify verification_tag/ByteArray -> ByteArray:
+  verify verification-tag/ByteArray -> ByteArray:
     result := ByteArray
-        size & (BLOCK_SIZE_ - 1)
-    check := aead_verify_ aead_ verification_tag result
+        size & (BLOCK-SIZE_ - 1)
+    check := aead-verify_ aead_ verification-tag result
     close
     if check != 0: throw "INVALID_SIGNATURE"
     return result
@@ -363,18 +363,18 @@ class Aead_:
   /** Closes this encrypter/decrypter and releases associated resources. */
   close -> none:
     if not aead_: return
-    aead_close_ aead_
+    aead-close_ aead_
     aead_ = null
-    remove_finalizer this
+    remove-finalizer this
 
-aead_init_ group key/ByteArray algorithm/int encrypt/bool:
-  #primitive.crypto.aead_init
+aead-init_ group key/ByteArray algorithm/int encrypt/bool:
+  #primitive.crypto.aead-init
 
-aead_close_ aead:
-  #primitive.crypto.aead_close
+aead-close_ aead:
+  #primitive.crypto.aead-close
 
-aead_start_message_ aead authenticated_data initialization_vector/ByteArray -> none:
-  #primitive.crypto.aead_start_message
+aead-start-message_ aead authenticated-data initialization-vector/ByteArray -> none:
+  #primitive.crypto.aead-start-message
 
 /**
 If the result byte array was big enough, returns a Smi to indicate how much
@@ -382,33 +382,33 @@ If the result byte array was big enough, returns a Smi to indicate how much
 If the result byte array was not big enough, returns null.  In this case no
   data was consumed.
 */
-aead_add_ aead data result/ByteArray -> int?:
-  #primitive.crypto.aead_add
+aead-add_ aead data result/ByteArray -> int?:
+  #primitive.crypto.aead-add
 
 /**
 Returns the last ciphertext bytes and the tag, concatenated.
 */
-aead_finish_ aead -> ByteArray:
-  #primitive.crypto.aead_finish
+aead-finish_ aead -> ByteArray:
+  #primitive.crypto.aead-finish
 
 /**
 The rest_of_decrypted_data should be at least the size of the added data %
   BLOCK_SIZE_.
 */
-aead_verify_ aead verification_tag/ByteArray rest_of_decrypted_data/ByteArray -> int:
-  #primitive.crypto.aead_verify
+aead-verify_ aead verification-tag/ByteArray rest-of-decrypted-data/ByteArray -> int:
+  #primitive.crypto.aead-verify
 
-aes_init_ group key/ByteArray initialization_vector/ByteArray? encrypt/bool:
-  #primitive.crypto.aes_init
+aes-init_ group key/ByteArray initialization-vector/ByteArray? encrypt/bool:
+  #primitive.crypto.aes-init
 
-aes_cbc_crypt_ aes input/ByteArray encrypt/bool:
-  #primitive.crypto.aes_cbc_crypt
+aes-cbc-crypt_ aes input/ByteArray encrypt/bool:
+  #primitive.crypto.aes-cbc-crypt
 
-aes_ecb_crypt_ aes input/ByteArray encrypt/bool:
-  #primitive.crypto.aes_ecb_crypt
+aes-ecb-crypt_ aes input/ByteArray encrypt/bool:
+  #primitive.crypto.aes-ecb-crypt
 
-aes_cbc_close_ aes:
-  #primitive.crypto.aes_cbc_close
+aes-cbc-close_ aes:
+  #primitive.crypto.aes-cbc-close
 
-aes_ecb_close_ aes:
-  #primitive.crypto.aes_ecb_close
+aes-ecb-close_ aes:
+  #primitive.crypto.aes-ecb-close

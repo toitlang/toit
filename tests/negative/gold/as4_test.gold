@@ -1,4 +1,0 @@
-tests/negative/as4_test.toit:6:8: error: Type 'none' is only allowed as return type
-  4 as none
-       ^~~~
-Compilation failed.

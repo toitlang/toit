@@ -620,10 +620,10 @@ MODULE_IMPLEMENTATION(uart, MODULE_UART)
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
   UartResourceGroup* uart = _new UartResourceGroup(process, EventQueueEventSource::instance());
-  if (!uart) MALLOC_FAILED;
+  if (!uart) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(uart);
   return proxy;
@@ -728,17 +728,17 @@ PRIMITIVE(create) {
        int, baud_rate, int, data_bits, int, stop_bits, int, parity,
        int, options, int, mode)
 
-  if (data_bits < 5 || data_bits > 8) INVALID_ARGUMENT;
-  if (stop_bits < 1 || stop_bits > 3) INVALID_ARGUMENT;
-  if (parity < 1 || parity > 3) INVALID_ARGUMENT;
-  if (options < 0 || options > 15) INVALID_ARGUMENT;
-  if (mode < UART_MODE_UART || mode > UART_MODE_IRDA) INVALID_ARGUMENT;
-  if (mode == UART_MODE_RS485_HALF_DUPLEX && (rts == -1 || cts != -1)) INVALID_ARGUMENT;
-  if (baud_rate < 0 || baud_rate > SOC_UART_BITRATE_MAX) INVALID_ARGUMENT;
-  if (tx >= 0 && !GPIO_IS_VALID_OUTPUT_GPIO(tx)) INVALID_ARGUMENT;
-  if (rx >= 0 && !GPIO_IS_VALID_GPIO(rx)) INVALID_ARGUMENT;
-  if (rts >= 0 && !GPIO_IS_VALID_OUTPUT_GPIO(rts)) INVALID_ARGUMENT;
-  if (cts >= 0 && !GPIO_IS_VALID_GPIO(cts)) INVALID_ARGUMENT;
+  if (data_bits < 5 || data_bits > 8) FAIL(INVALID_ARGUMENT);
+  if (stop_bits < 1 || stop_bits > 3) FAIL(INVALID_ARGUMENT);
+  if (parity < 1 || parity > 3) FAIL(INVALID_ARGUMENT);
+  if (options < 0 || options > 15) FAIL(INVALID_ARGUMENT);
+  if (mode < UART_MODE_UART || mode > UART_MODE_IRDA) FAIL(INVALID_ARGUMENT);
+  if (mode == UART_MODE_RS485_HALF_DUPLEX && (rts == -1 || cts != -1)) FAIL(INVALID_ARGUMENT);
+  if (baud_rate < 0 || baud_rate > SOC_UART_BITRATE_MAX) FAIL(INVALID_ARGUMENT);
+  if (tx >= 0 && !GPIO_IS_VALID_OUTPUT_GPIO(tx)) FAIL(INVALID_ARGUMENT);
+  if (rx >= 0 && !GPIO_IS_VALID_GPIO(rx)) FAIL(INVALID_ARGUMENT);
+  if (rts >= 0 && !GPIO_IS_VALID_OUTPUT_GPIO(rts)) FAIL(INVALID_ARGUMENT);
+  if (cts >= 0 && !GPIO_IS_VALID_GPIO(cts)) FAIL(INVALID_ARGUMENT);
 
   uint8 full_interrupt_threshold;
   uint16 rx_buffer_size, tx_buffer_size;
@@ -767,33 +767,33 @@ PRIMITIVE(create) {
   uart_port_t port = determine_preferred_port(tx, rx, rts, cts);
 
   port = uart_ports.preferred(port);
-  if (port == kInvalidUartPort) OUT_OF_RANGE;
+  if (port == kInvalidUartPort) FAIL(OUT_OF_RANGE);
   init.port = port;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   init.queue = xQueueCreate(UART_QUEUE_SIZE, sizeof(uart_event_types_t));
   if (!init.queue) {
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   init.hal = uart_toit_hal_init(port);
   if (!init.hal) {
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   const int caps_flags = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
   init.rx_buffer = static_cast<uint8*>(heap_caps_malloc(rx_buffer_size, caps_flags));
   if (!init.rx_buffer) {
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   init.tx_buffer = static_cast<uint8*>(heap_caps_malloc(tx_buffer_size, caps_flags));
   if (!init.tx_buffer) {
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   init.uart = _new UartResource(group, port, init.queue,
@@ -801,7 +801,7 @@ PRIMITIVE(create) {
                                 init.rx_buffer, rx_buffer_size,
                                 init.tx_buffer, tx_buffer_size);
   if (!init.uart) {
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   periph_module_enable(uart_periph_signal[port].module);
@@ -901,14 +901,14 @@ PRIMITIVE(create) {
 }
 
 PRIMITIVE(create_path) {
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(close) {
   ARGS(UartResourceGroup, uart, UartResource, res)
   uart->unregister_resource(res);
   res_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_baud_rate) {
@@ -919,14 +919,14 @@ PRIMITIVE(get_baud_rate) {
 PRIMITIVE(set_baud_rate) {
   ARGS(UartResource, uart, int, baud_rate)
   uart->set_baud_rate(baud_rate);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(write) {
   ARGS(UartResource, uart, Blob, data, int, from, int, to, int, break_length)
 
-  if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
-  if (break_length < 0 || break_length >= 256) OUT_OF_RANGE;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
+  if (break_length < 0 || break_length >= 256) FAIL(OUT_OF_RANGE);
 
   TxBuffer* buffer = uart->tx_buffer();
   uint16 written = buffer->write(uart, data.address() + from, to - from, break_length);
@@ -946,14 +946,14 @@ PRIMITIVE(read) {
 
   RxBuffer* buffer = uart->rx_buffer();
   uword available = buffer->available();
-  if (available == 0) return process->program()->null_object();
+  if (available == 0) return process->null_object();
 
   // For high-speed UART communication, it is important
   // that we consume as much as we can when we read.
   // This immediately gives the ISR more available space
   // in the RX buffer.
   ByteArray* data = process->allocate_byte_array(available);
-  if (data == null) ALLOCATION_FAILED;
+  if (data == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes rx(data);
   buffer->read(uart, rx.address(), available);
@@ -961,11 +961,11 @@ PRIMITIVE(read) {
 }
 
 PRIMITIVE(set_control_flags) {
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(get_control_flags) {
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 }
 
 } // namespace toit

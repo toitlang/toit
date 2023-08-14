@@ -21,8 +21,8 @@ import .allocation
 import .registry
 import .reservation
 
-IMAGE_WORD_SIZE  ::= BYTES_PER_WORD
-IMAGE_CHUNK_SIZE ::= (BITS_PER_WORD + 1) * IMAGE_WORD_SIZE
+IMAGE-WORD-SIZE  ::= BYTES-PER-WORD
+IMAGE-CHUNK-SIZE ::= (BITS-PER-WORD + 1) * IMAGE-WORD-SIZE
 
 class ContainerImageWriter extends ServiceResource:
   reservation_/FlashReservation? := ?
@@ -30,51 +30,51 @@ class ContainerImageWriter extends ServiceResource:
 
   // We buffer the partial last chunk, because we have to write
   // the image in full chunks.
-  partial_chunk_/ByteArray? := ByteArray IMAGE_CHUNK_SIZE
-  partial_chunk_fill_/int := 0
+  partial-chunk_/ByteArray? := ByteArray IMAGE-CHUNK-SIZE
+  partial-chunk-fill_/int := 0
 
   constructor provider/ServiceProvider client/int .reservation_:
-    image_ = image_writer_create_ reservation_.offset reservation_.size
+    image_ = image-writer-create_ reservation_.offset reservation_.size
     super provider client
 
   write data/ByteArray -> none:
-    List.chunk_up 0 data.size (IMAGE_CHUNK_SIZE - partial_chunk_fill_) IMAGE_CHUNK_SIZE: | from to size |
-      if size == IMAGE_CHUNK_SIZE:
-        assert: partial_chunk_fill_ == 0
-        image_writer_write_ image_ data from to
+    List.chunk-up 0 data.size (IMAGE-CHUNK-SIZE - partial-chunk-fill_) IMAGE-CHUNK-SIZE: | from to size |
+      if size == IMAGE-CHUNK-SIZE:
+        assert: partial-chunk-fill_ == 0
+        image-writer-write_ image_ data from to
       else:
-        partial_chunk_.replace partial_chunk_fill_ data from to
-        partial_chunk_fill_ += size
-        if partial_chunk_fill_ == IMAGE_CHUNK_SIZE:
-          image_writer_write_ image_ partial_chunk_ 0 IMAGE_CHUNK_SIZE
-          partial_chunk_fill_ = 0
+        partial-chunk_.replace partial-chunk-fill_ data from to
+        partial-chunk-fill_ += size
+        if partial-chunk-fill_ == IMAGE-CHUNK-SIZE:
+          image-writer-write_ image_ partial-chunk_ 0 IMAGE-CHUNK-SIZE
+          partial-chunk-fill_ = 0
 
   commit --flags/int --data/int -> FlashAllocation:
     try:
-      if partial_chunk_fill_ > 0: throw "Incomplete image"
+      if partial-chunk-fill_ > 0: throw "Incomplete image"
       metadata := #[flags, 0, 0, 0, 0]
-      binary.LITTLE_ENDIAN.put_uint32 metadata 1 data
-      image_writer_commit_ image_ metadata
+      binary.LITTLE-ENDIAN.put-uint32 metadata 1 data
+      image-writer-commit_ image_ metadata
       return FlashAllocation reservation_.offset
     finally:
       close
 
-  on_closed -> none:
+  on-closed -> none:
     reservation_.close
     reservation_ = null
-    partial_chunk_ = null
-    image_writer_close_ image_
+    partial-chunk_ = null
+    image-writer-close_ image_
 
 // ----------------------------------------------------------------------------
 
-image_writer_create_ offset size:
-  #primitive.image.writer_create
+image-writer-create_ offset size:
+  #primitive.image.writer-create
 
-image_writer_write_ image part/ByteArray from/int to/int:
-  #primitive.image.writer_write
+image-writer-write_ image part/ByteArray from/int to/int:
+  #primitive.image.writer-write
 
-image_writer_commit_ image metadata/ByteArray:
-  #primitive.image.writer_commit
+image-writer-commit_ image metadata/ByteArray:
+  #primitive.image.writer-commit
 
-image_writer_close_ image:
-  #primitive.image.writer_close
+image-writer-close_ image:
+  #primitive.image.writer-close

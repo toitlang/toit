@@ -12,8 +12,8 @@ __entry__main task -> none:
   // requires access to the task.
   Task_.current = task
   task.evaluate_:
-    task.initialize_entry_task_
-    #primitive.intrinsics.main main_arguments_
+    task.initialize-entry-task_
+    #primitive.intrinsics.main main-arguments_
 
 // This is the entry point for processes just being spawned.
 // It calls the lambda passed in the spawn arguments.
@@ -24,8 +24,8 @@ __entry__spawn task -> none:
   // requires access to the task.
   Task_.current = task
   task.evaluate_:
-    task.initialize_entry_task_
-    lambda := Lambda.__ spawn_method_ spawn_arguments_
+    task.initialize-entry-task_
+    lambda := Lambda.__ spawn-method_ spawn-arguments_
     lambda.call
 
 // This is the entry point for newly created tasks.
@@ -47,14 +47,14 @@ Returns the name of the toit file, image, or snapshot that the
   current program was run from.  May return null if this information
   is not available.
 */
-program_name -> string?:
+program-name -> string?:
   #primitive.core.command
 
-main_arguments_ -> any:
-  #primitive.core.main_arguments
+main-arguments_ -> any:
+  #primitive.core.main-arguments
 
-spawn_method_ -> int:
-  #primitive.core.spawn_method
+spawn-method_ -> int:
+  #primitive.core.spawn-method
 
-spawn_arguments_ -> any:
-  #primitive.core.spawn_arguments
+spawn-arguments_ -> any:
+  #primitive.core.spawn-arguments

@@ -1,0 +1,7 @@
+tests/negative/final-field-no-value-test.toit:11:19: error: Can't assign to final field 'field'
+  (A "str").field = "can't assign to final"
+                  ^
+EXCEPTION error. 
+FINAL_FIELD_ASSIGNMENT_FAILED
+  0: A.field=                  tests/negative/final-field-no-value-test.toit:7:3
+  1: main                      tests/negative/final-field-no-value-test.toit:11:19

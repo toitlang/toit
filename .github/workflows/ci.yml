@@ -30,11 +30,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-
-      - name: Fetch tags
-        # The github checkout is shallow and doesn't have tags.
-        run: |
-          git fetch --tags
+        with:
+          fetch-depth: 0
 
       - name: Set up constants
         id: constants
@@ -45,6 +42,7 @@ jobs:
           echo "debug_root_dir=debug-ci" >> $GITHUB_OUTPUT
           echo "debug_dir=debug-ci/$RUNNER_OS-${{ matrix.shard }}" >> $GITHUB_OUTPUT
           TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
+          echo $TOIT_VERSION
           echo "toit_version=$TOIT_VERSION" >> $GITHUB_OUTPUT
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo "artifact=toit-linux.tar.gz" >> $GITHUB_OUTPUT
@@ -166,6 +164,8 @@ jobs:
       - name: Install python packages needed by MbedTLS
         run:
           pip install -r third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
+        with:
+          cache: 'pip'
 
       - name: Setup compilation env
         shell: bash
@@ -345,11 +345,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-
-      - name: Fetch tags
-        # The github checkout is shallow and doesn't have tags.
-        run: |
-          git fetch --tags
+        with:
+          fetch-depth: 0
 
       - name: Initialize submodules
         run: |
@@ -427,6 +424,7 @@ jobs:
           make ESP32_CHIP=esp32s2 esp32
           make ESP32_CHIP=esp32s3 esp32
           make ESP32_CHIP=esp32s3-spiram-octo esp32
+          make ESP32_CHIP=esp32-eth-clk-out17 esp32
 
       - name: Pack firmware artifacts
         shell: bash
@@ -436,6 +434,7 @@ jobs:
           gzip --to-stdout build/esp32s2/firmware.envelope > build/firmware-esp32s2.gz
           gzip --to-stdout build/esp32s3/firmware.envelope > build/firmware-esp32s3.gz
           gzip --to-stdout build/esp32s3-spiram-octo/firmware.envelope > build/firmware-esp32s3-spiram-octo.gz
+          gzip --to-stdout build/esp32-eth-clk-out17/firmware.envelope > build/firmware-esp32-eth-clk-out17.gz
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v3
@@ -447,6 +446,7 @@ jobs:
             build/firmware-esp32s2.gz
             build/firmware-esp32s3.gz
             build/firmware-esp32s3-spiram-octo.gz
+            build/firmware-esp32-eth-clk-out17.gz
 
       - name: Upload ESP32 release firmware artifacts
         if: |
@@ -503,6 +503,17 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
 
+      - name: Upload ESP32-eth-clk-out17 release firmware artifacts
+        if: |
+          github.event_name == 'release' &&
+          github.repository_owner == 'toitlang'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/firmware-esp32-eth-clk-out17.gz
+          tag: ${{ github.ref }}
+          overwrite: true
+
   # Really annoying that we need to duplicate so much.
   cross:
     runs-on: ubuntu-latest
@@ -515,11 +526,8 @@ jobs:
           echo raspberry_pi_artifact=toit-rpi.tar.gz >> $GITHUB_OUTPUT
 
       - uses: actions/checkout@v3
-
-      - name: Fetch tags
-        # The github checkout is shallow and doesn't have tags.
-        run: |
-          git fetch --tags
+        with:
+          fetch-depth: 0
 
       # We only need a subset of all submodules for building.
       - name: Initialize submodules
@@ -716,6 +724,7 @@ jobs:
               EXTENSION=.exe
             fi
             cp esptool-$ESPTOOL_VERSION-$arch/esptool$EXTENSION $TARGET/toit/tools/esptool$EXTENSION
+            chmod +x $TARGET/toit/tools/esptool$EXTENSION
           done
 
       - name: Compress SDKs
@@ -845,8 +854,8 @@ jobs:
 
       - name: Build installer
         run: |
-          & tools\windows_installer\build.bat ${{ steps.version.outputs.version }} $PWD\toit $PWD\toit_installer_x64.exe
-          signtool sign /debug /n "Toitware ApS" /t http://timestamp.digicert.com/ $PWD\toit_installer_x64.exe
+          & tools\windows_installer\build.bat ${{ steps.version.outputs.version }} $PWD\toit $PWD\toit-windows-x64-installer.exe
+          signtool sign /debug /n "Toitware ApS" /t http://timestamp.digicert.com/ $PWD\toit-windows-x64-installer.exe
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
@@ -854,7 +863,7 @@ jobs:
           name: Windows-build
           path: |
             toit-windows.tar.gz
-            toit_installer_x64.exe
+            toit-windows-x64-installer.exe
 
       - name: Upload release artifacts
         if: github.event_name == 'release'
@@ -870,7 +879,7 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: toit_installer_x64.exe
+          file: toit-windows-x64-installer.exe
           tag: ${{ github.ref }}
           overwrite: true
 

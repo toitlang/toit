@@ -9,9 +9,9 @@ import .entry
 import .events_
 import .exceptions
 import .finalization
-import .for_testing_
+import .for-testing_
 import .message_
-import .monitor_impl_
+import .monitor-impl_
 import .numbers
 import .objects
 import .print

@@ -20,11 +20,15 @@
 #include "diagnostic.h"
 #include "symbol_canonicalizer.h"
 
+// The following two includes are for the migration tool from "foo_bar" to "foo-bar".
+#include "package.h"
+#include "../flags.h"
+
 namespace toit {
 namespace compiler {
 
 bool Scanner::is_identifier_start(int c) {
-  return ::toit::compiler::is_identifier_start(c);
+  return IdentifierValidator::is_identifier_start(c);
 }
 
 void Scanner::skip_hash_bang_line() {
@@ -150,7 +154,7 @@ Token::Kind Scanner::next_token() {
             look_ahead(7) == 'i' &&
             look_ahead(8) == 'v' &&
             look_ahead(9) == 'e' &&
-            !is_identifier_part(look_ahead(10))) {
+            look_ahead(10) == '.') {
           // We use `advance` (instead of just updating the index_ field), so we
           // get the checks from that function.
           advance(); // #
@@ -214,7 +218,19 @@ Token::Kind Scanner::next_token() {
       case '-':  // 45
         peek = advance();
         if (peek == '=') return scan_single(Token::ASSIGN_SUB);
-        if (peek == '-') return scan_single(Token::DECREMENT);
+        if (peek == '-') {
+          if (look_ahead(1) == 'n' &&
+              look_ahead(2) == 'o' &&
+              look_ahead(3) == '-') {
+            advance();  // '-'
+            advance();  // 'n'
+            advance();  // 'o'
+            advance();  // '-'
+            return Token::NAMED_NO;
+          }
+
+          return scan_single(Token::DECREMENT);
+        }
         if (peek == '>') return scan_single(Token::RARROW);
         return Token::SUB;
 
@@ -352,8 +368,11 @@ Token::Kind Scanner::next_token() {
       case '`':  // 96
         return scan_illegal(peek);
 
-      case 'i':  // 105
-        if (look_ahead() == 's' && !is_identifier_part(look_ahead(2))) {
+      case 'i': { // 105
+        IdentifierValidator validator;
+        validator.disable_start_check();
+        if (look_ahead() == 's' &&
+            !validator.check_next_char(look_ahead(2), [&]() { return look_ahead(3); })) {
           advance();
           peek = advance();
           if (peek == '!') {
@@ -364,6 +383,7 @@ Token::Kind Scanner::next_token() {
           return Token::IS;
         }
         [[fallthrough]];
+      }
 
       case 'a':  // 97
       case 'b':
@@ -735,7 +755,8 @@ Token::Kind Scanner::scan_identifier(int peek) {
   ASSERT(is_identifier_start(peek));
 
   is_lsp_selection_ = false;
-  do {
+  IdentifierValidator validator;
+  while (validator.check_next_char(peek, [&]() { return look_ahead(); })) {
     if (peek == LSP_SELECTION_MARKER) {
       // If we are hitting an LSP-selection marker at a location where it
       // shouldn't be, consider it a non-identifier character.
@@ -752,7 +773,7 @@ Token::Kind Scanner::scan_identifier(int peek) {
       is_lsp_selection_ = true;
     }
     peek = advance();
-  } while (is_identifier_part(peek));
+  }
 
   if (!is_lsp_selection_ && begin == index_) {
     ASSERT(peek == LSP_SELECTION_MARKER);
@@ -765,8 +786,18 @@ Token::Kind Scanner::scan_identifier(int peek) {
   const uint8* from;
   const uint8* to;
   source()->text_range_without_marker(begin, index_, &from, &to);
+
+  int len = to - from;
+  const uint8* canonicalized_from = IdentifierValidator::canonicalize(from, len);
+  const uint8* canonicalized_to = canonicalized_from + len;
+
+  if (Flags::migrate_dash_ids && canonicalized_from != from && source_->package_id() == Package::ENTRY_PACKAGE_ID) {
+    auto range = source_->range(begin, index_);
+    auto offset = source_->offset_in_source(range.from());
+    printf("[\"%s\", %d, %d, \"%s\"]\n", source_->error_path().c_str(), offset, offset + len, canonicalized_from);
+  }
   // Note that the symbol could be of length 0, if it was the lsp selection.
-  auto token_symbol = symbols_->canonicalize_identifier(from, to);
+  auto token_symbol = symbols_->canonicalize_identifier(canonicalized_from, canonicalized_to);
   if (lsp_buffer != null) free(lsp_buffer);
   data_ = token_symbol.symbol;
   if (is_lsp_selection_ && lsp_selection_is_identifier_) {

@@ -1,0 +1,61 @@
+tests/negative/none2-test.toit:58:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/none2-test.toit:8:10: error: Condition can't be 'none'
+  while (return 499):
+         ^~~~~~
+tests/negative/none2-test.toit:12:4: error: Logical operation argument can't be 'none'
+  (return 499) or (throw "bad")
+   ^~~~~~
+tests/negative/none2-test.toit:12:20: error: Logical operation argument can't be 'none'
+  (return 499) or (throw "bad")
+                   ^~~~~
+tests/negative/none2-test.toit:15:4: error: Logical operation argument can't be 'none'
+  (return 499) and (throw "bad")
+   ^~~~~~
+tests/negative/none2-test.toit:15:21: error: Logical operation argument can't be 'none'
+  (return 499) and (throw "bad")
+                    ^~~~~
+tests/negative/none2-test.toit:22:6: error: Condition can't be 'none'
+  if none-fun: null
+     ^~~~~~~~
+tests/negative/none2-test.toit:23:3: error: Condition can't be 'none'
+  none-fun ? true : false
+  ^~~~~~~~
+tests/negative/none2-test.toit:24:7: error: Argument to 'not' can't be 'none'
+  not none-fun
+      ^~~~~~~~
+tests/negative/none2-test.toit:25:9: error: Condition can't be 'none'
+  while none-fun: null
+        ^~~~~~~~
+tests/negative/none2-test.toit:26:9: error: Condition can't be 'none'
+  for ; none-fun;: null
+        ^~~~~~~~
+tests/negative/none2-test.toit:28:3: error: Logical operation argument can't be 'none'
+  none-fun or none-fun
+  ^~~~~~~~
+tests/negative/none2-test.toit:28:15: error: Logical operation argument can't be 'none'
+  none-fun or none-fun
+              ^~~~~~~~
+tests/negative/none2-test.toit:29:3: error: Logical operation argument can't be 'none'
+  none-fun and none-fun
+  ^~~~~~~~
+tests/negative/none2-test.toit:29:16: error: Logical operation argument can't be 'none'
+  none-fun and none-fun
+               ^~~~~~~~
+tests/negative/none2-test.toit:31:12: error: Variable can't be initialized with 'none'
+  local := none-fun
+           ^~~~~~~~
+tests/negative/none2-test.toit:39:13: error: Logical operation argument can't be 'none'
+  a2 = a or unreachable
+            ^~~~~~~~~~~
+tests/negative/none2-test.toit:41:6: warning: Condition always evaluates to true
+  "" ? 4 : null
+     ^
+tests/negative/none2-test.toit:42:3: warning: Condition always evaluates to true
+  if "":
+  ^~
+tests/negative/none2-test.toit:53:3: warning: Condition always evaluates to true
+  if 0:
+  ^~
+Compilation failed.

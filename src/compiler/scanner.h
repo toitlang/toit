@@ -129,15 +129,113 @@ static inline bool is_binary_digit(int c) {
   return c == '0' || c == '1';
 }
 
-static inline bool is_identifier_start(int c) {
-  ASSERT(c >= 0);
-  return c == LSP_SELECTION_MARKER || is_letter(c) || (c == '_');
-}
+class IdentifierValidator {
+ public:
+  // Returns whether the given character is part of the started identifier.
+  // If this is the first character also checks that it can start an
+  // identifier (unless `disable_start_check` was called before).
+   // The given `peek` function is only invoked if 'c' is equal to '-'.
+  bool check_next_char(uint8 c, const std::function<uint8 ()>& peek) {
+    if (c == 0) return false;
+    if (at_start_) {
+      at_start_ = false;
+      return is_identifier_start(c);
+    }
+    if (c == '-') {
+      uint8 next = peek();
+      if (next == 0) return false;
+      return is_identifier_part_no_dash(next);
+    }
+    return is_identifier_part_no_dash(c);
+  }
 
-static inline bool is_identifier_part(int c) {
-  ASSERT(c >= 0);
-  return c == LSP_SELECTION_MARKER || is_letter(c) || is_decimal_digit(c) || (c == '_');
-}
+  // Sets the internal state so it doesn't check for an identifier start.
+  // This is useful when moving backwards as is done for finding the
+  // completion prefix.
+  void disable_start_check() {
+    at_start_ = false;
+  }
+
+  static bool is_identifier_start(int c) {
+    ASSERT(c >= 0);
+    return c == LSP_SELECTION_MARKER || is_letter(c) || (c == '_');
+  }
+
+  static const uint8* canonicalize(const uint8* identifier, int len) {
+    if (len < 3) return identifier;
+
+    uint8* copy = null;
+    for (int i = 1; i < len - 1; i++) {
+      uint8 c = identifier[i];
+      if (c != '_') continue;
+
+      // Check whether the '_' is surrounded by characters. If yes
+      // replace it with a '-'.
+      uint8 previous = identifier[i - 1];
+      uint8 next = identifier[i + 1];
+      if (previous == '-' || previous == '_') continue;
+      if (next == '-' || next == '_') continue;
+
+      // We need to change the '_' to a '-'.
+      if (copy == null) {
+        copy = reinterpret_cast<uint8*>(malloc(len + 1));
+        memcpy(copy, identifier, len);
+        // This function can be called with strings that aren't terminated.
+        // However, it may also be called with strings that must be terminated.
+        // We always add a terminator, making it safe to be used in both scenarii.
+        copy[len] = '\0';
+      }
+      copy[i] = '-';
+    }
+    if (copy != null) return copy;
+    return identifier;
+  }
+
+  static const std::string canonicalize(const std::string& identifier) {
+    const uint8* str = reinterpret_cast<const uint8*>(identifier.c_str());
+    auto canonicalized = canonicalize(str, identifier.size());
+    if (canonicalized == str) {
+      return identifier;
+    }
+    std::string result(reinterpret_cast<const char*>(canonicalized));
+    free(const_cast<uint8*>(canonicalized));
+    return result;
+  }
+
+  static const char* canonicalize(const char* identifier, int len) {
+    const uint8* buffer = reinterpret_cast<const uint8*>(identifier);
+    const uint8* canonicalized = canonicalize(buffer, len);
+    return reinterpret_cast<const char*>(canonicalized);
+  }
+
+  /// Returns the, now deprecated, old-style identifier where '-'
+  /// are replaced with '_'.
+  static const char* deprecated_underscore_identifier(const char* identifier, int len) {
+    bool contains_dashes = false;
+    for (int i = 0; i < len; i++) {
+      if (identifier[i] == '-') {
+        contains_dashes = true;
+        break;
+      }
+    }
+    if (!contains_dashes) return identifier;
+    char* old_style = unvoid_cast<char*>(malloc(len + 1));
+    for (int i = 0; i < len; i++) {
+      char c = identifier[i];
+      old_style[i] = (c == '-') ? '_' : c;
+    }
+    old_style[len] = '\0';
+    return old_style;
+  }
+
+ private:
+  bool at_start_ = true;
+
+  bool is_identifier_part_no_dash(int c) {
+    ASSERT(c >= 0);
+    return c == LSP_SELECTION_MARKER || is_letter(c) || is_decimal_digit(c) || (c == '_');
+  }
+};
 
 class Diagnostics;
 class SymbolCanonicalizer;

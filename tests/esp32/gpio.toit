@@ -29,10 +29,10 @@ main:
   // Test pin configurations.
 
   2.repeat: | i |
-    should_use_constructor := (i == 1)
-    print "Using constructors: $should_use_constructor"
+    should-use-constructor := (i == 1)
+    print "Using constructors: $should-use-constructor"
 
-    if should_use_constructor:
+    if should-use-constructor:
       pin1.close
       pin1 = gpio.Pin PIN1 --output
       pin2.close
@@ -41,139 +41,139 @@ main:
       pin1.configure --output
       pin2.configure --input
 
-    expect_equals 0 pin2.get
+    expect-equals 0 pin2.get
     pin1.set 1
-    expect_equals 1 pin2.get
+    expect-equals 1 pin2.get
 
-    if should_use_constructor:
+    if should-use-constructor:
       pin1.close
-      pin1 = gpio.Pin PIN1 --input --pull_down
+      pin1 = gpio.Pin PIN1 --input --pull-down
     else:
-      pin1.configure --input --pull_down
-    expect_equals 0 pin1.get
-    expect_equals 0 pin2.get
+      pin1.configure --input --pull-down
+    expect-equals 0 pin1.get
+    expect-equals 0 pin2.get
 
-    if should_use_constructor:
+    if should-use-constructor:
       pin1.close
-      pin1 = gpio.Pin PIN1 --input --pull_up
+      pin1 = gpio.Pin PIN1 --input --pull-up
     else:
-      pin1.configure --input --pull_up
-    expect_equals 1 pin1.get
-    expect_equals 1 pin2.get
+      pin1.configure --input --pull-up
+    expect-equals 1 pin1.get
+    expect-equals 1 pin2.get
 
     // Try the pull-down/pull-up again to ensure that we weren't just lucky.
-    if should_use_constructor:
+    if should-use-constructor:
       pin1.close
-      pin1 = gpio.Pin PIN1 --input --pull_down
+      pin1 = gpio.Pin PIN1 --input --pull-down
     else:
-      pin1.configure --input --pull_down
-    expect_equals 0 pin1.get
-    expect_equals 0 pin2.get
+      pin1.configure --input --pull-down
+    expect-equals 0 pin1.get
+    expect-equals 0 pin2.get
 
-    if should_use_constructor:
+    if should-use-constructor:
       pin1.close
-      pin1 = gpio.Pin PIN1 --input --pull_up
+      pin1 = gpio.Pin PIN1 --input --pull-up
     else:
-      pin1.configure --input --pull_up
-    expect_equals 1 pin1.get
-    expect_equals 1 pin2.get
+      pin1.configure --input --pull-up
+    expect-equals 1 pin1.get
+    expect-equals 1 pin2.get
 
-    if should_use_constructor:
+    if should-use-constructor:
       pin1.close
-      expect_throw "INVALID_ARGUMENT": pin1 = gpio.Pin PIN1 --input --pull_up --pull_down
-      expect_throw "INVALID_ARGUMENT": pin1 = gpio.Pin PIN1 --output --pull_up --pull_down
+      expect-throw "INVALID_ARGUMENT": pin1 = gpio.Pin PIN1 --input --pull-up --pull-down
+      expect-throw "INVALID_ARGUMENT": pin1 = gpio.Pin PIN1 --output --pull-up --pull-down
       pin1 = gpio.Pin PIN1
     else:
-      expect_throw "INVALID_ARGUMENT": pin1.configure --input --pull_up --pull_down
-      expect_throw "INVALID_ARGUMENT": pin1.configure --output --pull_up --pull_down
+      expect-throw "INVALID_ARGUMENT": pin1.configure --input --pull-up --pull-down
+      expect-throw "INVALID_ARGUMENT": pin1.configure --output --pull-up --pull-down
 
-    if should_use_constructor:
+    if should-use-constructor:
       pin1.close
-      pin1 = gpio.Pin PIN1 --input --pull_up
+      pin1 = gpio.Pin PIN1 --input --pull-up
       pin2.close
       pin2 = gpio.Pin PIN2 --output
     else:
-      pin1.configure --input --pull_up
+      pin1.configure --input --pull-up
       pin2.configure --output
 
     // Override the pull up of pin1
     pin2.set 0
-    expect_equals 0 pin1.get
+    expect-equals 0 pin1.get
     pin2.set 1
-    expect_equals 1 pin1.get
+    expect-equals 1 pin1.get
 
-    if should_use_constructor:
+    if should-use-constructor:
       pin1.close
-      pin1 = gpio.Pin PIN1 --input --pull_down
+      pin1 = gpio.Pin PIN1 --input --pull-down
       pin2.close
       pin2 = gpio.Pin PIN2 --output
     else:
-      pin1.configure --input --pull_down
+      pin1.configure --input --pull-down
       pin2.configure --output
     pin2.set 0
-    expect_equals 0 pin1.get
+    expect-equals 0 pin1.get
     // Override the pull down of pin1
     pin2.set 1
-    expect_equals 1 pin1.get
+    expect-equals 1 pin1.get
 
-    if should_use_constructor:
+    if should-use-constructor:
       pin1.close
-      pin1 = gpio.Pin PIN1 --input --pull_up
+      pin1 = gpio.Pin PIN1 --input --pull-up
       pin2.close
-      pin2 = gpio.Pin PIN2 --output --open_drain
+      pin2 = gpio.Pin PIN2 --output --open-drain
     else:
-      pin1.configure --input --pull_up
-      pin2.configure --output --open_drain
+      pin1.configure --input --pull-up
+      pin2.configure --output --open-drain
 
     pin2.set 1
-    expect_equals 1 pin1.get
+    expect-equals 1 pin1.get
     // Since pin2 is output only, we can't ask for its value.
 
     pin2.set 0
-    expect_equals 0 pin1.get
+    expect-equals 0 pin1.get
 
-    if should_use_constructor:
+    if should-use-constructor:
       pin1.close
-      pin1 = gpio.Pin PIN1 --input --pull_up
+      pin1 = gpio.Pin PIN1 --input --pull-up
       pin2.close
-      pin2 = gpio.Pin PIN2 --input --output --open_drain
+      pin2 = gpio.Pin PIN2 --input --output --open-drain
     else:
-      pin1.configure --input --pull_up
-      pin2.configure --input --output --open_drain
+      pin1.configure --input --pull-up
+      pin2.configure --input --output --open-drain
 
     pin2.set 1
-    expect_equals 1 pin1.get
-    expect_equals 1 pin2.get
+    expect-equals 1 pin1.get
+    expect-equals 1 pin2.get
 
     pin2.set 0
-    expect_equals 0 pin1.get
-    expect_equals 0 pin2.get
+    expect-equals 0 pin1.get
+    expect-equals 0 pin2.get
 
-    if should_use_constructor:
+    if should-use-constructor:
       pin1.close
-      pin1 = gpio.Pin PIN1 --input --output --open_drain --pull_up
+      pin1 = gpio.Pin PIN1 --input --output --open-drain --pull-up
     else:
-      pin1.configure --input --output --open_drain --pull_up
+      pin1.configure --input --output --open-drain --pull-up
 
     pin1.set 0
     pin2.set 0
-    expect_equals 0 pin1.get
-    expect_equals 0 pin2.get
+    expect-equals 0 pin1.get
+    expect-equals 0 pin2.get
 
     pin1.set 1
     pin2.set 0
-    expect_equals 0 pin1.get
-    expect_equals 0 pin2.get
+    expect-equals 0 pin1.get
+    expect-equals 0 pin2.get
 
     pin1.set 0
     pin2.set 1
-    expect_equals 0 pin1.get
-    expect_equals 0 pin2.get
+    expect-equals 0 pin1.get
+    expect-equals 0 pin2.get
 
     pin1.set 1
     pin2.set 1
-    expect_equals 1 pin1.get
-    expect_equals 1 pin2.get
+    expect-equals 1 pin1.get
+    expect-equals 1 pin2.get
 
   pin1.close
   pin2.close

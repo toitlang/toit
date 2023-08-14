@@ -26,15 +26,15 @@ list(APPEND TOIT_SKIP_TESTS
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS
-    tests/time_test.toit
-    tests/zlib_test.toit
-    tests/cow_read_only_test_compiler.toit
-    tests/uart_test.toit
+    tests/time-test.toit # https://github.com/toitlang/toit/issues/1369
+    tests/zlib-test.toit
+    tests/cow-read-only-test-compiler.toit
+    tests/uart-test.toit
   )
 endif()
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
   list(APPEND TOIT_FAILING_TESTS
-    tests/uart_test.toit
+    tests/uart-test.toit
   )
 endif()

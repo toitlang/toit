@@ -25,9 +25,9 @@ Cannot encode data structures with cycles in them.  In this case it will
   throw "NESTING_TOO_DEEP".
 */
 encode object/any -> ByteArray:
-  #primitive.encoding.tison_encode:
+  #primitive.encoding.tison-encode:
     if it is List and it.size != 0 and it[0] is int:
-      serialization_failure_ it[0]
+      serialization-failure_ it[0]
     throw it
 
 /**
@@ -38,4 +38,4 @@ The result is null or an instance of int, bool, float, string, ByteArray,
   these types.
 */
 decode bytes/ByteArray -> any:
-  #primitive.encoding.tison_decode
+  #primitive.encoding.tison-decode

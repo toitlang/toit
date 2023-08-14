@@ -40,7 +40,7 @@ template<typename T> class Set {
     }
   }
 
-  void insert_all(Set<T> other_set) {
+  void insert_all(const Set<T>& other_set) {
     for (auto& x : other_set) insert(x);
   }
 
@@ -93,19 +93,36 @@ template<typename T> class UnorderedSet {
  public:
   void insert(T x) { set_.insert(x); }
   template<class InputIt> void insert(InputIt begin, InputIt end) { set_.insert(begin, end); }
-  void insert_all(UnorderedSet<T> other_set) {
+  void insert_all(const UnorderedSet<T>& other_set) {
     set_.insert(other_set.set_.begin(), other_set.set_.end());
   }
-  void insert_all(Set<T> other_set) {
+  void insert_all(const Set<T>& other_set) {
     set_.insert(other_set.begin(), other_set.end());
   }
   bool erase(T x) { return set_.erase(x) > 0; }
+
+  template<typename F>
+  void erase_if(const F& callback) {
+    auto it = set_.begin();
+    while (it != set_.end()) {
+      if (callback(*it)) {
+        it = set_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
 
   template<typename E>
   void erase_all(const List<E>& other) {
     for (auto entry : other) {
       set_.erase(entry);
     }
+  }
+
+  template<typename E>
+  void erase_all(const UnorderedSet<E>& other_set) {
+    set_.erase(other_set.set_.begin(), other_set.set_.end());
   }
 
   bool contains(T x) const { return set_.find(x) != set_.end(); }

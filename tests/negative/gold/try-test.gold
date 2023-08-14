@@ -1,0 +1,37 @@
+tests/negative/try-test.toit:6:6: error: Missing colon after 'try'
+  try
+     ^
+tests/negative/try-test.toit:10:15: error: Missing 'finally' block
+    unresolved
+              ^
+tests/negative/try-test.toit:14:10: error: Missing colon after finally
+  finally
+         ^
+tests/negative/try-test.toit:24:10: error: Missing colon after finally
+  finally
+         ^
+tests/negative/try-test.toit:7:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/try-test.toit:10:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/try-test.toit:13:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/try-test.toit:15:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/try-test.toit:18:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/try-test.toit:20:7: error: Unresolved identifier: 'unresolved'
+      unresolved
+      ^~~~~~~~~~
+tests/negative/try-test.toit:23:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/try-test.toit:25:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+Compilation failed.

@@ -1,46 +1,58 @@
-// Copyright (C) 2019 Toitware ApS. All rights reserved.
+// Copyright (C) 2023 Toitware ApS. All rights reserved.
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-x509_module_ := x509_init_
+x509-module_ := x509-init_
 
 class Certificate:
   res_ ::= ?
 
   // Load a certificate from a PEM or DER encoded string or byte array.
   constructor.parse input:
-    res := x509_parse_ x509_module_ input
+    res := x509-parse_ x509-module_ input
     return Certificate.resource_ res
 
   constructor.resource_ .res_:
-    add_finalizer this::
-      remove_finalizer this
-      x509_close this.res_
+    add-finalizer this::
+      remove-finalizer this
+      x509-close this.res_
 
   // Get the Common Name (CN) of the certificate.
-  common_name -> string:
-    return x509_get_common_name_ res_
+  common-name -> string:
+    return x509-get-common-name_ res_
 
-x509_init_:
+x509-init_:
   #primitive.x509.init
 
-x509_parse_ module input:
+x509-parse_ module input:
   #primitive.x509.parse
 
-x509_get_common_name_ cert:
-  #primitive.x509.get_common_name
+x509-get-common-name_ cert:
+  #primitive.x509.get-common-name
 
-x509_close cert:
+x509-close cert:
   #primitive.x509.close
 
-TRUSTED_ROOTS ::= [
-  DIGICERT_ROOT,
-  DIGICERT_GLOBAL,
-  DIGICERT_GLOBAL_G2,
+/**
+Deprecated.
+Please use COMMON_TRUSTED_ROOTS or install_common_trusted_roots from
+  https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
+*/
+TRUSTED-ROOTS ::= [
+  DIGICERT-ROOT_,
+  DIGICERT-GLOBAL_,
+  DIGICERT-GLOBAL-G2_,
 ]
 
-// 02AC5C266A0B409B8F0B79F2AE462577 DigiCert High Assurance EV Root CA
-DIGICERT_ROOT ::= Certificate.parse """
+/**
+DigiCert High Assurance EV Root CA
+Deprecated.
+Please use DIGICERT_HIGH_ASSURANCE_EV_ROOT_CA from
+  https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
+*/
+DIGICERT-ROOT ::= DIGICERT-ROOT_
+
+DIGICERT-ROOT_ ::= Certificate.parse """
 -----BEGIN CERTIFICATE-----
 MIIDxTCCAq2gAwIBAgIQAqxcJmoLQJuPC3nyrkYldzANBgkqhkiG9w0BAQUFADBs
 MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
@@ -65,10 +77,15 @@ vEsXCS+0yx5DaMkHJ8HSXPfqIbloEpw8nL+e/IBcm2PN7EeqJSdnoDfzAIJ9VNep
 +OkuE6N36B9K
 -----END CERTIFICATE-----"""
 
-// 083BE056904246B1A1756AC95991C74A DigiCert Global Root CA
-// This root is SHA1 signed.  Normally we don't want to use SHA1 certs, but
-// root certs are trusted, so the signature is not checked anyway.
-DIGICERT_GLOBAL ::= Certificate.parse """
+/**
+083BE056904246B1A1756AC95991C74A DigiCert Global Root CA
+Deprecated.
+Please use DIGICERT_GLOBAL_ROOT_CA from
+  https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
+*/
+DIGICERT-GLOBAL ::= DIGICERT-GLOBAL_
+
+DIGICERT-GLOBAL_ ::= Certificate.parse """
 -----BEGIN CERTIFICATE-----
 MIIDrzCCApegAwIBAgIQCDvgVpBCRrGhdWrJWZHHSjANBgkqhkiG9w0BAQUFADBh
 MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
@@ -92,8 +109,15 @@ YSEY1QSteDwsOoBrp+uvFRTp2InBuThs4pFsiv9kuXclVzDAGySj4dzp30d8tbQk
 CAUw7C29C79Fv1C5qfPrmAESrciIxpg0X40KPMbp1ZWVbd4=
 -----END CERTIFICATE-----"""
 
-// 033AF1E6A711A9A0BB2864B11D09FAE5 DigiCert Global Root G2
-DIGICERT_GLOBAL_G2 ::= Certificate.parse """
+/**
+033AF1E6A711A9A0BB2864B11D09FAE5 DigiCert Global Root G2
+Deprecated.
+Please use DIGICERT_GLOBAL_ROOT_G2 from
+  https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
+*/
+DIGICERT-GLOBAL-G2 ::= DIGICERT-GLOBAL-G2_
+
+DIGICERT-GLOBAL-G2_ ::= Certificate.parse """
 -----BEGIN CERTIFICATE-----
 MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBh
 MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3

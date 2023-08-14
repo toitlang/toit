@@ -1,0 +1,3 @@
+EXCEPTION error. 
+oops
+  0: main                      tests/negative/throw-test.toit:6:3

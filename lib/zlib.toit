@@ -6,44 +6,71 @@ import monitor
 import reader
 import crypto
 import crypto.adler32 as crypto
-import crypto.crc as crc_algorithms
+import crypto.crc as crc-algorithms
 
-class ZlibEncoder_ implements reader.Reader:
-  channel_ := monitor.Channel 1
+class RleReader implements reader.Reader:
+  owner_ /ZlibEncoder_? := null
 
-  static SMALL_BUFFER_DEFLATE_HEADER_ ::= [8, 0x1d]
-  static MINIMAL_GZIP_HEADER_ ::= [0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]
-
-  constructor --gzip_header/bool:
-    header := gzip_header ? MINIMAL_GZIP_HEADER_ : SMALL_BUFFER_DEFLATE_HEADER_
-    channel_.send (ByteArray header.size: header[it])
+  constructor.private_:
 
   read:
-    return channel_.receive
+    return owner_.read_
+
+  close:
+    // Currently does nothing.
+
+// TODO: Should not be a Reader, but we have deprecated the read method,
+// and there's no way to deprecate an 'implements' statement. This class
+// is a superclass for some public classes, so we can't just remove it
+// in a backwards compatible way.
+class ZlibEncoder_ implements reader.Reader:
+  channel_ := monitor.Channel 1
+  reader/RleReader ::= RleReader.private_
+
+  static SMALL-BUFFER-DEFLATE-HEADER_ ::= [8, 0x1d]
+  static MINIMAL-GZIP-HEADER_ ::= [0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]
+
+  constructor --gzip-header/bool:
+    reader.owner_ = this
+    header := gzip-header ? MINIMAL-GZIP-HEADER_ : SMALL-BUFFER-DEFLATE-HEADER_
+    channel_.send (ByteArray header.size: header[it])
+
+  /**
+  Deprecated.
+  Use the $reader to get an object with a read method.
+  */
+  read:
+    return read_
+
+  read_:
+    result := channel_.receive
+    if not result: channel_.send null  // Once it's closed we should be able to keep reading nulls.
+    return result
 
 class UncompressedDeflateEncoder_ extends ZlibEncoder_:
-  summer_/crypto.Checksum := ?
+  summer_/crypto.Checksum? := ?
 
-  constructor this.summer_ --gzip_header/bool:
-    super --gzip_header=gzip_header
-    buffer_fullness_ = BLOCK_HEADER_SIZE_
+  constructor .summer_ --gzip-header/bool:
+    super --gzip-header=gzip-header
+    buffer-fullness_ = BLOCK-HEADER-SIZE_
 
   buffer_ := ByteArray 256
-  buffer_fullness_ := 0
-  last_buffer_ := ByteArray 256
+  buffer-fullness_ := 0
+  last-buffer_ := ByteArray 256
 
-  static BLOCK_HEADER_SIZE_ ::= 5
+  static BLOCK-HEADER-SIZE_ ::= 5
 
   write collection from=0 to=collection.size -> int:
-    return List.chunk_up from to (buffer_.size - buffer_fullness_) buffer_.size: | from to bytes |
-      buffer_.replace buffer_fullness_ collection from to
-      buffer_fullness_ += bytes
-      if buffer_fullness_ == buffer_.size:
+    if not summer_: throw "ALREADY_CLOSED"
+    return List.chunk-up from to (buffer_.size - buffer-fullness_) buffer_.size: | from to bytes |
+      buffer_.replace buffer-fullness_ collection from to
+      buffer-fullness_ += bytes
+      if buffer-fullness_ == buffer_.size:
         send_ --last=false
 
   send_ --last:
     outgoing := buffer_
-    length := buffer_fullness_ - BLOCK_HEADER_SIZE_
+    length := buffer-fullness_ - BLOCK-HEADER-SIZE_
     outgoing[0] = last ? 1 : 0
     outgoing[1] = length & 0xff
     outgoing[2] = length >> 8
@@ -52,17 +79,19 @@ class UncompressedDeflateEncoder_ extends ZlibEncoder_:
     channel_.send
       // Make a copy even if the buffer is full, since the reading end expects
       // to get a fresh byte array every time it calls read.
-      outgoing.copy 0 buffer_fullness_
-    summer_.add outgoing BLOCK_HEADER_SIZE_ length + BLOCK_HEADER_SIZE_
-    buffer_ = last_buffer_
-    last_buffer_ = outgoing
-    buffer_fullness_ = 0
+      outgoing.copy 0 buffer-fullness_
+    summer_.add outgoing BLOCK-HEADER-SIZE_ length + BLOCK-HEADER-SIZE_
+    buffer_ = last-buffer_
+    last-buffer_ = outgoing
+    buffer-fullness_ = 0
 
   close:
-    send_ --last=true
-    checksum_bytes := summer_.get
-    channel_.send checksum_bytes
-    channel_.send null
+    if summer_:
+      send_ --last=true
+      checksum-bytes := summer_.get
+      summer_ = null
+      channel_.send checksum-bytes
+      channel_.send null
 
 /**
 Creates an uncompressed data stream that is compatible with zlib decoders
@@ -71,7 +100,7 @@ Creates an uncompressed data stream that is compatible with zlib decoders
 */
 class UncompressedZlibEncoder extends UncompressedDeflateEncoder_:
   constructor:
-    super crypto.Adler32 --gzip_header=false
+    super crypto.Adler32 --gzip-header=false
 
 /**
 An 8 byte checksum that consists of the 4 byte CRC32 checksum followed by
@@ -79,7 +108,7 @@ An 8 byte checksum that consists of the 4 byte CRC32 checksum followed by
   the checksum that gzip uses.
 */
 class CrcAndLengthChecksum_ extends crypto.Checksum:
-  crc_ := crc_algorithms.Crc32
+  crc_ := crc-algorithms.Crc32
   length_ := 0
 
   constructor:
@@ -108,43 +137,51 @@ Creates an uncompressed data stream that is compatible with gzip decoders
 */
 class UncompressedGzipEncoder extends UncompressedDeflateEncoder_:
   constructor:
-    super CrcAndLengthChecksum_ --gzip_header=true
+    super CrcAndLengthChecksum_ --gzip-header=true
 
 class RunLengthDeflateEncoder_ extends ZlibEncoder_:
   buffer_ := ByteArray 256
-  buffer_fullness_ := 0
-  rle_ := rle_start_ resource_freeing_module_
+  buffer-fullness_ := 0
+  rle_ := rle-start_ resource-freeing-module_
   summer_/crypto.Checksum := ?
 
-  constructor this.summer_ --gzip_header/bool:
-    super --gzip_header=gzip_header
-    add_finalizer this::
+  constructor this.summer_ --gzip-header/bool:
+    super --gzip-header=gzip-header
+    add-finalizer this::
       this.close
 
   write collection from=0 to=collection.size:
     summer_.add collection from to
     while to != from:
+      if not rle_: throw "ALREADY_CLOSED"
       // The buffer is 256 large, and we don't let it get too full because then the compressor
       // may not be able to make progress, so we flush it when we hit three quarters full.
       assert: buffer_.size == 256
-      if buffer_fullness_ > 192:
-        channel_.send (buffer_.copy 0 buffer_fullness_)
-        buffer_fullness_ = 0
-      result := rle_add_ rle_ buffer_ buffer_fullness_ collection from to
+      if buffer-fullness_ > 192:
+        channel_.send (buffer_.copy 0 buffer-fullness_)
+        buffer-fullness_ = 0
+      result := rle-add_ rle_ buffer_ buffer-fullness_ collection from to
       written := result >> 15
       read := result & 0x7fff
       from += read
-      buffer_fullness_ += written
+      buffer-fullness_ += written
 
+  /**
+  Closes the encoder for writing.
+  */
   close:
-    channel_.send (buffer_.copy 0 buffer_fullness_)
-    try:
-      written := rle_finish_ rle_ buffer_ 0
-      channel_.send (buffer_.copy 0 written)
-      channel_.send summer_.get
-      channel_.send null
-    finally:
-      remove_finalizer this
+    if buffer-fullness_ != 0:
+      channel_.send (buffer_.copy 0 buffer-fullness_)
+      buffer-fullness_ = 0
+    if rle_:
+      try:
+        written := rle-finish_ rle_ buffer_ 0
+        rle_ = null
+        channel_.send (buffer_.copy 0 written)
+        channel_.send summer_.get
+        channel_.send null
+      finally:
+        remove-finalizer this
 
 /**
 Creates a run length encoded data stream that is compatible with zlib decoders
@@ -153,7 +190,7 @@ Creates a run length encoded data stream that is compatible with zlib decoders
 */
 class RunLengthZlibEncoder extends RunLengthDeflateEncoder_:
   constructor:
-    super crypto.Adler32 --gzip_header=false
+    super crypto.Adler32 --gzip-header=false
 
 /**
 Creates a run length encoded data stream that is compatible with gzip decoders
@@ -162,10 +199,175 @@ Creates a run length encoded data stream that is compatible with gzip decoders
 */
 class RunLengthGzipEncoder extends RunLengthDeflateEncoder_:
   constructor:
-    super CrcAndLengthChecksum_ --gzip_header=true
+    super CrcAndLengthChecksum_ --gzip-header=true
 
-rle_start_ group:
-  #primitive.zlib.rle_start
+/**
+Object that can be read to get output from an $Encoder or a $Decoder.
+*/
+class ZlibReader implements reader.Reader:
+  owner_/Coder_? := null
+
+  constructor.private_:
+
+  /**
+  Reads output data.
+  In the default $wait mode this method may block in order to let a
+    writing task write more data to the compressor or decompressor.
+  In the non-blocking mode, if the compressor or decompressor has run out of
+    input data, this method returns a zero length byte array.
+  If the compressor or decompressor has been closed, and there is no more output
+    data, this method returns null.
+  */
+  read --wait/bool=true -> ByteArray?:
+    return owner_.read_ --wait=wait
+
+  close -> none:
+    owner_.close-read_
+
+// An Encoder or Decoder.
+abstract class Coder_:
+  zlib_ ::= ?
+  closed-write_ := false
+  closed-read_ := false
+  signal_ /monitor.Signal := monitor.Signal
+  state_/int := STATE-READY-TO-READ_ | STATE-READY-TO-WRITE_
+
+  static STATE-READY-TO-READ_  ::= 1 << 0
+  static STATE-READY-TO-WRITE_ ::= 1 << 1
+
+  constructor .zlib_:
+    reader = ZlibReader.private_
+    reader.owner_ = this
+    add-finalizer this::
+      this.uninit_
+
+  /**
+  A reader that can be used to read the compressed or decompressed data output
+    by the Encoder or Decoder.
+  */
+  reader/ZlibReader
+
+  read_ --wait/bool -> ByteArray?:
+    if closed-read_: return null
+    result := zlib-read_ zlib_
+    while result and wait and result.size == 0:
+      state_ &= ~STATE-READY-TO-READ_
+      signal_.wait: state_ & STATE-READY-TO-READ_ != 0
+      result = zlib-read_ zlib_
+    state_ |= STATE-READY-TO-WRITE_
+    signal_.raise
+    return result
+
+  close-read_ -> none:
+    if not closed-read_:
+      closed-read_ = true
+      if closed-write_:
+        uninit_
+      state_ |= STATE-READY-TO-WRITE_
+      signal_.raise
+
+  write --wait/bool=true data -> int:
+    if closed-read_: throw "READER_CLOSED"
+    pos := 0
+    while pos < data.size:
+      bytes-written := zlib-write_ zlib_ data[pos..]
+      if bytes-written == 0:
+        if wait:
+          state_ &= ~STATE-READY-TO-WRITE_
+          signal_.wait: state_ & STATE-READY-TO-WRITE_ != 0
+      else:
+        state_ |= STATE-READY-TO-READ_
+        signal_.raise
+      if not wait: return bytes-written
+      pos += bytes-written
+    return pos
+
+  close -> none:
+    if not closed-write_:
+      zlib-close_ zlib_
+      closed-write_ = true
+      state_ |= Coder_.STATE-READY-TO-READ_
+      signal_.raise
+
+  /**
+  Releases memory associated with this compressor.  This is called
+    automatically when this object and the reader have both been closed.
+  */
+  uninit_ -> none:
+    remove-finalizer this
+    zlib-close_ zlib_
+
+/**
+A Zlib compressor/deflater.
+Not usually supported on embedded platforms due to high memory use.
+*/
+class Encoder extends Coder_:
+  /**
+  Creates a new compressor.
+  The compression level can be -1 for default, 0 for no compression, or 1-9 for
+    compression levels 1-9.
+  */
+  constructor --level/int=-1:
+    if not -1 <= level <= 9: throw "ILLEGAL_ARGUMENT"
+    super (zlib-init-deflate_ resource-freeing-module_ level)
+
+  /**
+  Writes uncompressed data into the compressor.
+  In the default $wait mode this method may block and will not return
+    until all bytes have been written to the compressor.
+  Returns the number of bytes that were compressed.  If zero bytes were
+    compressed that means that data needs to be read using the reader before
+    more data can be accepted.
+  Any bytes that were not compressed need to be resubmitted to this method
+    later.
+  */
+  write --wait/bool=true data -> int:
+    return super --wait=wait data
+
+  /**
+  Closes the encoder.
+  This tells the encoder that no more uncompressed input is coming.  Subsequent
+    calls to the reader will return the buffered compressed data and then
+    return null.
+  */
+  close -> none:
+    super
+
+/**
+A Zlib decompressor/inflater.
+Not usually supported on embedded platforms due to high memory use.
+*/
+class Decoder extends Coder_:
+  /**
+  Creates a new decompressor.
+  */
+  constructor:
+    super (zlib-init-inflate_ resource-freeing-module_)
+
+  /**
+  Writes compressed data into the decompressor.
+  In the default $wait mode this method may block and will not return
+    until all bytes have been written to the decompressor.
+  Returns the number of bytes that were decompressed.  If zero bytes were
+    decompressed that means that data needs to be read using the reader before
+    more data can be accepted.
+  Any bytes that were not decompressed need to be resubmitted to this method
+    later.
+  */
+  write --wait/bool=true data -> int:
+    return super --wait=wait data
+
+  /**
+  Closes the decoder.
+  This will tell the decoder that no more compressed input is coming.
+    Subsequent calls to the reader will return the buffered decompressed data
+    and then return null.
+  */
+  close -> none:
+    super
+
+rle-start_ group:
+  #primitive.zlib.rle-start
 
 /**
 Compresses the bytes in source in the given range, and writes them into the
@@ -173,9 +375,27 @@ Compresses the bytes in source in the given range, and writes them into the
   The number of bytes read is v & 0x7fff, and the number of bytes written is
   v >> 15.
 */
-rle_add_ rle destination index source from to:
-  #primitive.zlib.rle_add
+rle-add_ rle destination index source from to:
+  #primitive.zlib.rle-add
 
 /// Returns the number of bytes written to terminate the zlib stream.
-rle_finish_ rle destination index:
-  #primitive.zlib.rle_finish
+rle-finish_ rle destination index:
+  #primitive.zlib.rle-finish
+
+zlib-init-deflate_ group level/int:
+  #primitive.zlib.zlib-init-deflate
+
+zlib-init-inflate_ group:
+  #primitive.zlib.zlib-init-inflate
+
+zlib-read_ zlib -> ByteArray?:
+  #primitive.zlib.zlib-read
+
+zlib-write_ zlib data -> int:
+  #primitive.zlib.zlib-write
+
+zlib-close_ zlib -> none:
+  #primitive.zlib.zlib-close
+
+zlib-uninit_ zlib -> none:
+  #primitive.zlib.zlib-uninit

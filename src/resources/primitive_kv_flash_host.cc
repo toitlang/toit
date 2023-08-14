@@ -57,10 +57,10 @@ PRIMITIVE(init) {
   // TODO: We should find a way to honor these properties.
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   PersistentResourceGroup* resource_group = _new PersistentResourceGroup(process);
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
@@ -69,16 +69,16 @@ PRIMITIVE(init) {
 PRIMITIVE(read_bytes) {
   ARGS(PersistentResourceGroup, resource_group, cstring, key);
   USE(resource_group);
-  if (!is_valid_key(key, process)) INVALID_ARGUMENT;
+  if (!is_valid_key(key, process)) FAIL(INVALID_ARGUMENT);
 
   std::string str(key);
   auto it = persistent_bytes_map.find(str);
   if (it == persistent_bytes_map.end()) {
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   ByteArray* array = process->allocate_byte_array(it->second.size());
-  if (array == null) ALLOCATION_FAILED;
+  if (array == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes bytes(array);
   memmove(bytes.address(), it->second.data(), bytes.length());
@@ -88,7 +88,7 @@ PRIMITIVE(read_bytes) {
 PRIMITIVE(write_bytes) {
   ARGS(PersistentResourceGroup, resource_group, cstring, key, ByteArray, value);
   USE(resource_group);
-  if (!is_valid_key(key, process)) INVALID_ARGUMENT;
+  if (!is_valid_key(key, process)) FAIL(INVALID_ARGUMENT);
 
   std::string str(key);
   ByteArray::Bytes bytes(value);
@@ -96,14 +96,14 @@ PRIMITIVE(write_bytes) {
   std::vector<uint8_t> data(bytes.address(), bytes.address() + bytes.length());
   persistent_bytes_map[str] = data;
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(delete) {
   ARGS(PersistentResourceGroup, resource_group, cstring, key);
   USE(resource_group);
 
-  if (!is_valid_key(key, process)) INVALID_ARGUMENT;
+  if (!is_valid_key(key, process)) FAIL(INVALID_ARGUMENT);
 
   std::string str(key);
   AllowThrowingNew host_only;
@@ -111,7 +111,7 @@ PRIMITIVE(delete) {
   persistent_int64_map.erase(str);
   persistent_bytes_map.erase(str);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(erase) {
@@ -122,7 +122,7 @@ PRIMITIVE(erase) {
   persistent_int64_map.clear();
   persistent_bytes_map.clear();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

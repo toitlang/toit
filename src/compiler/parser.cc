@@ -1362,17 +1362,11 @@ Expression* Parser::parse_argument(bool allow_colon, bool full_expression) {
   Identifier* name = null;
   bool is_boolean = false;
   bool inverted = false;
-  if (current_token() == Token::DECREMENT && is_next_token_attached() && peek_token() == Token::IDENTIFIER) {
+  if ((current_token() == Token::DECREMENT || current_token() == Token::NAMED_NO) &&
+      is_next_token_attached() && peek_token() == Token::IDENTIFIER) {
+    inverted = current_token() == Token::NAMED_NO;
     consume();
     name = parse_identifier();
-    if (name->data() == Symbols::no && is_current_token_attached() &&
-        current_token() == Token::SUB && is_next_token_attached() &&
-        peek_token() == Token::IDENTIFIER) {
-      // --no-foo
-      inverted = true;
-      consume();  // Token::SUB.
-      name = parse_identifier();
-    }
     if (current_token() != Token::ASSIGN) {
       is_boolean = true;
     } else {
@@ -1906,8 +1900,8 @@ Expression* Parser::parse_unary(bool allow_colon) {
                      Token::symbol(kind).c_str());
       }
       if (kind == Token::DECREMENT) {
-        diagnostics()->report_warning(range.extend(current_range()),
-                                      "Prefix decrement is deprecated");
+        diagnostics()->report_error(range.extend(current_range()),
+                                    "Prefix decrement has been removed");
       }
       if (kind == Token::SUB &&
           (current_token() == Token::INTEGER || current_token() == Token::DOUBLE)) {
@@ -2073,8 +2067,7 @@ ToitdocReference* Parser::parse_toitdoc_identifier_reference(int* end_offset) {
       target = id;
     } else {
       auto dot_range = target->range().extend(id->range());
-      target = _new ast::Dot(target, id->as_Identifier());
-      target->set_range(dot_range);
+      target = NEW_NODE(Dot(target, id->as_Identifier()), dot_range);
     }
     if (is_operator) break;
     if (!is_current_token_attached()) break;
@@ -2280,25 +2273,13 @@ Expression* Parser::parse_string_interpolate() {
   ListBuilder<Expression*> expressions;
 
   bool is_multiline = current_token() == Token::STRING_PART_MULTI_LINE;
-  bool last_interpolated_was_identifier = false;
-  auto last_identifier_range = Source::Range::invalid();
-  auto check_minus_after_identifier = [&](Symbol current_data) {
-    if (last_interpolated_was_identifier &&
-        current_data.c_str()[0] == '-' &&
-        is_identifier_part(current_data.c_str()[1])) {
-      diagnostics()->report_warning(last_identifier_range,
-                                    "Interpolated identifiers followed by '-' must be parenthesized");
-    }
-  };
   Token::Kind end_token = is_multiline ? Token::STRING_END_MULTI_LINE : Token::STRING_END;
   Token::Kind kind;
   auto range = start;
   do {
     Symbol current_data = current_token_data();
-    check_minus_after_identifier(current_data);
     parts.add(NEW_NODE(LiteralString(current_data, is_multiline), range));
     consume();
-    last_interpolated_was_identifier = false;
     scan_interpolated_part();
     // We just passed $.
     LiteralString* format = null;
@@ -2321,8 +2302,6 @@ Expression* Parser::parse_string_interpolate() {
       if (encountered_error) discard_buffered_scanner_states();
     } else if (current_token() == Token::IDENTIFIER) {
       expression = parse_identifier();
-      last_interpolated_was_identifier = true;
-      last_identifier_range = expression->range();
     } else {
       if (current_token() == Token::EOS || current_token() == Token::DEDENT) {
         report_error("Incomplete string interpolation");
@@ -2339,7 +2318,6 @@ Expression* Parser::parse_string_interpolate() {
     if (!was_parenthesized) {
       while (true) {
         if (scanner_peek() == '[') {
-          last_interpolated_was_identifier = false;
           bool encountered_error;
           expression = parse_postfix_index(expression, &encountered_error);
           if (encountered_error) {
@@ -2357,8 +2335,6 @@ Expression* Parser::parse_string_interpolate() {
           if (current_token() == Token::IDENTIFIER && is_current_token_attached()) {
             Identifier* name = parse_identifier();
             expression = NEW_NODE(Dot(expression, name), range);
-            last_interpolated_was_identifier = true;
-            last_identifier_range = range;
             continue;  // Try for another postfix.
           } else {
             report_error("Non-identifier member name");
@@ -2376,7 +2352,6 @@ Expression* Parser::parse_string_interpolate() {
   } while (kind != end_token);
 
   Symbol current_data  = current_token_data();
-  check_minus_after_identifier(current_data);
   parts.add(NEW_NODE(LiteralString(current_data, is_multiline), range));
   consume();
   return NEW_NODE(LiteralStringInterpolation(parts.build(), formats.build(), expressions.build()), start);
@@ -2548,7 +2523,10 @@ std::pair<Expression*, List<Parameter*>> Parser::parse_parameters(bool allow_ret
       consume();
       is_bracket_block = true;
     }
-    if (current_token() == Token::DECREMENT) {
+    if (current_token() == Token::DECREMENT || current_token() == Token::NAMED_NO) {
+      if (current_token() == Token::NAMED_NO) {
+        report_error("Named parameters can not start with 'no-'");
+      }
       consume();
       if (current_token() == Token::IDENTIFIER ||
           current_token() == Token::PERIOD) {

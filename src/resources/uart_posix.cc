@@ -262,21 +262,21 @@ MODULE_IMPLEMENTATION(uart, MODULE_UART);
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
 #if defined(TOIT_LINUX)
   UartResourceGroup* resource_group = _new UartResourceGroup(process, EpollEventSource::instance());
 #elif defined(TOIT_BSD)
   UartResourceGroup* resource_group = _new UartResourceGroup(process, KQueueEventSource::instance());
 #endif
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
 }
 
 PRIMITIVE(create) {
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(create_path) {
@@ -284,24 +284,24 @@ PRIMITIVE(create_path) {
 
   speed_t speed;
   bool arbitrary_baud_rate;
-  if (int_to_baud_rate(baud_rate, &speed, &arbitrary_baud_rate) < 0) INVALID_ARGUMENT;
+  if (int_to_baud_rate(baud_rate, &speed, &arbitrary_baud_rate) < 0) FAIL(INVALID_ARGUMENT);
 
-  if (data_bits < 5 || data_bits > 8) INVALID_ARGUMENT;
-  if (stop_bits < 1 || stop_bits > 3) INVALID_ARGUMENT;
-  if (parity < 1 || parity > 3) INVALID_ARGUMENT;
+  if (data_bits < 5 || data_bits > 8) FAIL(INVALID_ARGUMENT);
+  if (stop_bits < 1 || stop_bits > 3) FAIL(INVALID_ARGUMENT);
+  if (parity < 1 || parity > 3) FAIL(INVALID_ARGUMENT);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = resource_group->create_uart(path, speed, data_bits, stop_bits, parity);
   if (id == -1) return Primitive::os_error(errno, process);
-  if (id == -2) INVALID_ARGUMENT;
+  if (id == -2) FAIL(INVALID_ARGUMENT);
 
   IntResource* resource = resource_group->register_id(id);
   // We are running on Linux. As such we should never have malloc that fails.
   // Normally, we would need to clean up, if the allocation fails, but if that
   // happens on Linux, we are in big trouble anyway.
-  if (!resource) MALLOC_FAILED;
+  if (!resource) FAIL(MALLOC_FAILED);
   resource_proxy->set_external_address(resource);
   return resource_proxy;
 }
@@ -310,7 +310,7 @@ PRIMITIVE(close) {
   ARGS(UartResourceGroup, resource_group, IntResource, uart_resource);
   resource_group->close_uart(uart_resource->id());
   uart_resource_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_baud_rate) {
@@ -324,7 +324,7 @@ PRIMITIVE(get_baud_rate) {
   // We assume that the input and output speed are the same and only query the output speed.
   speed_t speed = cfgetospeed(&tty);
   int int_speed = baud_rate_to_int(speed);
-  if (int_speed == -1) OTHER_ERROR;
+  if (int_speed == -1) FAIL(ERROR);
   return Primitive::integer(int_speed, process);
 }
 
@@ -335,7 +335,7 @@ PRIMITIVE(set_baud_rate) {
   speed_t speed;
   bool arbitrary_rate;
   int result = int_to_baud_rate(baud_rate, &speed, &arbitrary_rate);
-  if (result != 0) INVALID_ARGUMENT;
+  if (result != 0) FAIL(INVALID_ARGUMENT);
   if (!arbitrary_rate) {
     // Use standard Posix/Linux line speed setup
     struct termios tty;
@@ -348,11 +348,11 @@ PRIMITIVE(set_baud_rate) {
 #ifdef TOIT_DARWIN
     if (ioctl(fd, IOSSIOSPEED, &speed) != 0) return Primitive::os_error(errno, process);
 #else
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
 #endif
 
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 // Writes the data to the UART.
@@ -360,8 +360,8 @@ PRIMITIVE(write) {
   ARGS(IntResource, resource, Blob, data, int, from, int, to, int, break_length);
   int fd = resource->id();
 
-  if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
-  if (break_length < 0) OUT_OF_RANGE;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
+  if (break_length < 0) FAIL(OUT_OF_RANGE);
 
   ssize_t written = write(fd, data.address() + from, to - from);
   if (written < 0) {
@@ -420,10 +420,10 @@ PRIMITIVE(read) {
 
   size_t available = 0;
   if (ioctl(fd, FIONREAD, &available) != 0) return Primitive::os_error(errno, process);
-  if (available == 0) return process->program()->null_object();
+  if (available == 0) return process->null_object();
 
   ByteArray* data = process->allocate_byte_array(static_cast<int>(available));
-  if (data == null) ALLOCATION_FAILED;
+  if (data == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes rx(data);
   int received = read(fd, rx.address(), rx.length());
@@ -449,7 +449,7 @@ PRIMITIVE(set_control_flags) {
 
   if (ioctl(fd, TIOCMSET, &flags) != 0) return Primitive::os_error(errno, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_control_flags) {

@@ -57,6 +57,28 @@ class PcntUnitResource : public Resource {
     , high_limit_(high_limit)
     , glitch_filter_ns_(glitch_filter_ns) {}
 
+  ~PcntUnitResource() override {
+    for (int i = 0; i < PCNT_CHANNEL_MAX; i++) {
+      if (!used_channels_[i]) continue;
+      auto channel = static_cast<pcnt_channel_t>(i);
+      if (channel != kInvalidChannel) {
+        close_channel(channel);
+      }
+    }
+    cleared_ = false;
+
+    pcnt_unit_ids.put(unit_id());
+
+    // In v4.4.1 there is no way to shut down the counter.
+    // In later versions we have to call `pcnt_del_unit`.
+    // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-unit
+    // This static assert might hit, even though the code is still OK. Check the documentation if
+    // the code from 'master' (as of 2022-07-01) has already made it into the release you are using.
+    // If yes, stop the unit and the delete it.
+    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 4,
+                  "Newer ESP-IDF might need different code");
+  }
+
   bool is_open_channel(pcnt_channel_t channel) {
     if (channel == kInvalidChannel) return false;
     int index = static_cast<int>(channel);
@@ -156,27 +178,6 @@ class PcntUnitResource : public Resource {
     return pcnt_unit_config(&config);
   }
 
-  void tear_down() {
-    for (int i = 0; i < PCNT_CHANNEL_MAX; i++) {
-      if (!used_channels_[i]) continue;
-      auto channel = static_cast<pcnt_channel_t>(i);
-      if (channel != kInvalidChannel) {
-        // In the teardown we don't handle errors for cloning the channel.
-        close_channel(channel);
-      }
-    }
-    cleared_ = false;
-
-    // In v4.4.1 there is no way to shut down the counter.
-    // In later versions we have to call `pcnt_del_unit`.
-    // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-unit
-    // This static assert might hit, even though the code is still OK. Check the documentation if
-    // the code from 'master' (as of 2022-07-01) has already made it into the release you are using.
-    // If yes, stop the unit and the delete it.
-    static_assert(ESP_IDF_VERSION_MAJOR == 5 && ESP_IDF_VERSION_MINOR == 0,
-                  "Newer ESP-IDF might need different code");
-  }
-
   // The unit id should not be exposed to the user.
   pcnt_unit_t unit_id() const { return unit_id_; }
 
@@ -200,46 +201,22 @@ class PcntUnitResource : public Resource {
   bool cleared_ = false;
 };
 
-class PcntUnitResourceGroup : public ResourceGroup {
- public:
-  TAG(PcntUnitResourceGroup);
-  explicit PcntUnitResourceGroup(Process* process)
-      : ResourceGroup(process) {}
-
- protected:
-  virtual void on_unregister_resource(Resource* r) override {
-    PcntUnitResource* unit = reinterpret_cast<PcntUnitResource*>(r);
-    unit->tear_down();
-  }
-};
-
 MODULE_IMPLEMENTATION(pcnt, MODULE_PCNT)
 
-PRIMITIVE(init) {
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
-
-  PcntUnitResourceGroup* pcnt = _new PcntUnitResourceGroup(process);
-  if (pcnt == null) MALLOC_FAILED;
-
-  proxy->set_external_address(pcnt);
-  return proxy;
-}
-
 PRIMITIVE(new_unit) {
-  ARGS(PcntUnitResourceGroup, unit_resource_group, int16, low_limit, int16, high_limit, int, glitch_filter_ns)
+  ARGS(SimpleResourceGroup, resource_group, int16, low_limit, int16, high_limit, int, glitch_filter_ns)
 
-  if (low_limit > 0 || high_limit < 0) OUT_OF_RANGE;
+  if (low_limit > 0 || high_limit < 0) FAIL(OUT_OF_RANGE);
   if (glitch_filter_ns > 0) {
     int ticks = PcntUnitResource::glitch_filter_ns_to_ticks(glitch_filter_ns);
-    if (!PcntUnitResource::validate_glitch_filter_ticks(ticks)) OUT_OF_RANGE;
+    if (!PcntUnitResource::validate_glitch_filter_ticks(ticks)) FAIL(OUT_OF_RANGE);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   pcnt_unit_t unit_id = pcnt_unit_ids.any();
-  if (unit_id == kInvalidUnitId) ALREADY_IN_USE;
+  if (unit_id == kInvalidUnitId) FAIL(ALREADY_IN_USE);
 
   PcntUnitResource* unit = null;
   { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
@@ -247,11 +224,12 @@ PRIMITIVE(new_unit) {
     // Similarly, we pass in the glitch_filter_ns which, in recent versions, must be
     // set before the unit is used.
     // For now we pass it to the resource so we can create the channel with the values.
-    unit = _new PcntUnitResource(unit_resource_group, unit_id, low_limit, high_limit, glitch_filter_ns);
+    unit = _new PcntUnitResource(resource_group, unit_id, low_limit, high_limit, glitch_filter_ns);
     if (unit == null) {
       pcnt_unit_ids.put(unit_id);
-      MALLOC_FAILED;
+      FAIL(MALLOC_FAILED);
     }
+    resource_group->register_resource(unit);
   }
 
   // In v4.4.1 the unit is not allocated, but everything happens when a channel
@@ -270,19 +248,18 @@ PRIMITIVE(new_unit) {
 
 PRIMITIVE(close_unit) {
   ARGS(PcntUnitResource, unit)
-  unit->tear_down();
-  pcnt_unit_ids.put(unit->unit_id());
+  unit->resource_group()->unregister_resource(unit);
   unit_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(new_channel) {
   ARGS(PcntUnitResource, unit, int, pin_number, int, on_positive_edge, int, on_negative_edge,
        int, control_pin_number, int, when_control_low, int, when_control_high)
-  if (on_positive_edge < 0 || on_positive_edge >= PCNT_COUNT_MAX) INVALID_ARGUMENT;
-  if (on_negative_edge < 0 || on_negative_edge >= PCNT_COUNT_MAX) INVALID_ARGUMENT;
-  if (when_control_low < 0 || when_control_low >= PCNT_MODE_MAX) INVALID_ARGUMENT;
-  if (when_control_high < 0 || when_control_high >= PCNT_MODE_MAX) INVALID_ARGUMENT;
+  if (on_positive_edge < 0 || on_positive_edge >= PCNT_COUNT_MAX) FAIL(INVALID_ARGUMENT);
+  if (on_negative_edge < 0 || on_negative_edge >= PCNT_COUNT_MAX) FAIL(INVALID_ARGUMENT);
+  if (when_control_low < 0 || when_control_low >= PCNT_MODE_MAX) FAIL(INVALID_ARGUMENT);
+  if (when_control_high < 0 || when_control_high >= PCNT_MODE_MAX) FAIL(INVALID_ARGUMENT);
 
   pcnt_channel_t channel = kInvalidChannel;
   esp_err_t err = unit->add_channel(pin_number,
@@ -293,17 +270,17 @@ PRIMITIVE(new_channel) {
                                     static_cast<pcnt_ctrl_mode_t>(when_control_high),
                                     &channel);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  if (channel == kInvalidChannel) ALREADY_IN_USE;
+  if (channel == kInvalidChannel) FAIL(ALREADY_IN_USE);
   return Smi::from(static_cast<int>(channel));
 }
 
 PRIMITIVE(close_channel) {
   ARGS(PcntUnitResource, unit, int, channel_id)
   pcnt_channel_t channel = static_cast<pcnt_channel_t>(channel_id);
-  if (!unit->is_open_channel(channel)) INVALID_ARGUMENT;
+  if (!unit->is_open_channel(channel)) FAIL(INVALID_ARGUMENT);
   esp_err_t err = unit->close_channel(channel);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(start) {
@@ -311,7 +288,7 @@ PRIMITIVE(start) {
 
   esp_err_t err = pcnt_counter_resume(unit->unit_id());
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(stop) {
@@ -319,7 +296,7 @@ PRIMITIVE(stop) {
 
   esp_err_t err = pcnt_counter_pause(unit->unit_id());
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(clear) {
@@ -327,7 +304,7 @@ PRIMITIVE(clear) {
 
   esp_err_t err = pcnt_counter_clear(unit->unit_id());
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_count) {

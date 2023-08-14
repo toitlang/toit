@@ -20,7 +20,7 @@ On board 1 connect as follows:
 7. IO18 (or IO34) - GND with 1MOhm (or similar high number).
 5. IO18 - IO19 with 330Ohm
 8. IO26 - IO33
-9. IO15 - IO19 with 330Ohm
+9. IO21 - IO19 with 330Ohm
 
 Connect board 1 to board 2 as follows:
 1. GND - GND

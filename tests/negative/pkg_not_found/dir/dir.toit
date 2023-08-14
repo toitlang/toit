@@ -6,4 +6,4 @@ import error
 import error2
 import error2.foo
 import error2.foo.bar
-import error2.not_a_directory.bar
+import error2.not-a-directory.bar

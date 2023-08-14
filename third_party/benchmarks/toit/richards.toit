@@ -37,37 +37,37 @@
 import .benchmark
 
 main:
-  log_execution_time "Richards" --iterations=10: run_richards
+  log-execution-time "Richards" --iterations=10: run-richards
 
 /**
 The Richards benchmark simulates the task dispatcher of an
   operating system.
 */
-run_richards:
+run-richards:
   scheduler := Scheduler
-  scheduler.add_idle_task ID_IDLE 0 null COUNT
+  scheduler.add-idle-task ID-IDLE 0 null COUNT
 
-  queue := Packet null ID_WORKER KIND_WORK
-  queue = Packet queue ID_WORKER KIND_WORK
-  scheduler.add_worker_task ID_WORKER 1000 queue
+  queue := Packet null ID-WORKER KIND-WORK
+  queue = Packet queue ID-WORKER KIND-WORK
+  scheduler.add-worker-task ID-WORKER 1000 queue
 
-  queue = Packet null ID_DEVICE_A KIND_DEVICE
-  queue = Packet queue ID_DEVICE_A KIND_DEVICE
-  queue = Packet queue ID_DEVICE_A KIND_DEVICE
-  scheduler.add_handler_task ID_HANDLER_A 2000 queue
+  queue = Packet null ID-DEVICE-A KIND-DEVICE
+  queue = Packet queue ID-DEVICE-A KIND-DEVICE
+  queue = Packet queue ID-DEVICE-A KIND-DEVICE
+  scheduler.add-handler-task ID-HANDLER-A 2000 queue
 
-  queue = Packet null ID_DEVICE_B KIND_DEVICE
-  queue = Packet queue ID_DEVICE_B KIND_DEVICE
-  queue = Packet queue ID_DEVICE_B KIND_DEVICE
-  scheduler.add_handler_task ID_HANDLER_B 3000 queue
+  queue = Packet null ID-DEVICE-B KIND-DEVICE
+  queue = Packet queue ID-DEVICE-B KIND-DEVICE
+  queue = Packet queue ID-DEVICE-B KIND-DEVICE
+  scheduler.add-handler-task ID-HANDLER-B 3000 queue
 
-  scheduler.add_device_task ID_DEVICE_A 4000 null
-  scheduler.add_device_task ID_DEVICE_B 5000 null
+  scheduler.add-device-task ID-DEVICE-A 4000 null
+  scheduler.add-device-task ID-DEVICE-B 5000 null
 
   scheduler.schedule
 
-  assert: scheduler.queue_count == EXPECTED_QUEUE_COUNT
-  assert: scheduler.hold_count == EXPECTED_HOLD_COUNT
+  assert: scheduler.queue-count == EXPECTED-QUEUE-COUNT
+  assert: scheduler.hold-count == EXPECTED-HOLD-COUNT
 
 /**
 These constants specify how many times a packet is queued and
@@ -77,19 +77,19 @@ They don't have any meaning a such but are characteristic of a
   the expected there must be a bug in the implementation.
 */
 COUNT                ::= 10000
-EXPECTED_QUEUE_COUNT ::= 23246
-EXPECTED_HOLD_COUNT  ::= 9297
+EXPECTED-QUEUE-COUNT ::= 23246
+EXPECTED-HOLD-COUNT  ::= 9297
 
-ID_IDLE       ::= 0
-ID_WORKER     ::= 1
-ID_HANDLER_A  ::= 2
-ID_HANDLER_B  ::= 3
-ID_DEVICE_A   ::= 4
-ID_DEVICE_B   ::= 5
-NUMBER_OF_IDS ::= 6
+ID-IDLE       ::= 0
+ID-WORKER     ::= 1
+ID-HANDLER-A  ::= 2
+ID-HANDLER-B  ::= 3
+ID-DEVICE-A   ::= 4
+ID-DEVICE-B   ::= 5
+NUMBER-OF-IDS ::= 6
 
-KIND_DEVICE   ::= 0
-KIND_WORK     ::= 1
+KIND-DEVICE   ::= 0
+KIND-WORK     ::= 1
 
 
 /**
@@ -98,12 +98,12 @@ A scheduler can be used to schedule a set of tasks based on their relative
   which holds tasks and the data queue they are processing.
 */
 class Scheduler:
-  queue_count := 0
-  hold_count := 0
-  blocks := List NUMBER_OF_IDS
+  queue-count := 0
+  hold-count := 0
+  blocks := List NUMBER-OF-IDS
   list := null
-  current_tcb := null
-  current_id := null
+  current-tcb := null
+  current-id := null
 
   /**
   Adds an idle task to this scheduler.
@@ -112,8 +112,8 @@ class Scheduler:
   - $queue: the queue of work to be processed by the task.
   - $count: the number of times to schedule the task.
   */
-  add_idle_task id/int priority/int queue/Packet? count/int:
-    add_running_task id priority queue
+  add-idle-task id/int priority/int queue/Packet? count/int:
+    add-running-task id priority queue
       IdleTask this 1 count
 
   /**
@@ -122,9 +122,9 @@ class Scheduler:
   - $priority: the task's priority.
   - $queue: the queue of work to be processed by the task.
   */
-  add_worker_task id/int priority/int queue/Packet:
-    add_task id priority queue
-      WorkerTask this ID_HANDLER_A 0
+  add-worker-task id/int priority/int queue/Packet:
+    add-task id priority queue
+      WorkerTask this ID-HANDLER-A 0
 
   /**
   Adds a handler task to this scheduler.
@@ -132,8 +132,8 @@ class Scheduler:
   - $priority: the task's priority.
   - $queue: the queue of work to be processed by the task.
   */
-  add_handler_task id/int priority/int queue/Packet:
-    add_task id priority queue
+  add-handler-task id/int priority/int queue/Packet:
+    add-task id priority queue
       HandlerTask this
 
   /**
@@ -142,8 +142,8 @@ class Scheduler:
   - $priority: the task's priority.
   - $queue: the queue of work to be processed by the task.
   */
-  add_device_task id/int priority/int queue/Packet?:
-    add_task id priority queue
+  add-device-task id/int priority/int queue/Packet?:
+    add-task id priority queue
       DeviceTask this
 
   /**
@@ -153,9 +153,9 @@ class Scheduler:
   - $queue: the queue of work to be processed by the task.
   - $task: the task to add.
   */
-  add_running_task id/int priority/int queue/Packet? task:
-    add_task id priority queue task
-    current_tcb.set_running
+  add-running-task id/int priority/int queue/Packet? task:
+    add-task id priority queue task
+    current-tcb.set-running
 
   /**
   Add the specified task to this scheduler.
@@ -164,38 +164,38 @@ class Scheduler:
   - $queue: the queue of work to be processed by the task.
   - $task: the task to add.
    */
-  add_task id/int priority/int queue/Packet? task:
-    current_tcb = TaskControlBlock list id priority queue task
-    list = current_tcb
-    blocks[id] = current_tcb
+  add-task id/int priority/int queue/Packet? task:
+    current-tcb = TaskControlBlock list id priority queue task
+    list = current-tcb
+    blocks[id] = current-tcb
 
   /** Executes the tasks managed by this scheduler. */
   schedule:
-    current_tcb = list
-    while current_tcb:
-      if current_tcb.is_held_or_suspended:
-        current_tcb = current_tcb.link
+    current-tcb = list
+    while current-tcb:
+      if current-tcb.is-held-or-suspended:
+        current-tcb = current-tcb.link
       else:
-        current_id = current_tcb.id
-        current_tcb = current_tcb.run
+        current-id = current-tcb.id
+        current-tcb = current-tcb.run
 
   /**
   Blocks the currently executing task and return the next task control block
     to run.  The blocked task will not be made runnable until it is explicitly
     released, even if new work is added to it.
   */
-  hold_current:
-    hold_count++
-    current_tcb.mark_as_held
-    return current_tcb.link
+  hold-current:
+    hold-count++
+    current-tcb.mark-as-held
+    return current-tcb.link
 
   /**
   Suspends the currently executing task and return the next task control block
     to run.  If new work is added to the suspended task it will be made runnable.
   */
-  suspend_current:
-    current_tcb.mark_as_suspended
-    return current_tcb
+  suspend-current:
+    current-tcb.mark-as-suspended
+    return current-tcb
 
   /**
   Release a task that is currently blocked and return the next block to run.
@@ -204,8 +204,8 @@ class Scheduler:
   release id:
     tcb := blocks[id]
     if not tcb: return tcb
-    tcb.mark_as_not_held
-    return tcb.priority > current_tcb.priority ? tcb : current_tcb
+    tcb.mark-as-not-held
+    return tcb.priority > current-tcb.priority ? tcb : current-tcb
 
   /**
   Adds the specified packet to the end of the worklist used by the task
@@ -216,28 +216,28 @@ class Scheduler:
   queue packet/Packet:
     t := blocks[packet.id]
     if not t: return t
-    queue_count++
+    queue-count++
     packet.link = null
-    packet.id = current_id
-    return t.check_priority_add current_tcb packet
+    packet.id = current-id
+    return t.check-priority-add current-tcb packet
 
 /** The task is running and is currently scheduled. */
-STATE_RUNNING ::= 0
+STATE-RUNNING ::= 0
 
 /** The task has packets left to process. */
-STATE_RUNNABLE ::= 1
+STATE-RUNNABLE ::= 1
 
 /**
 The task is not currently running.
 The task is not blocked as such and may be started by the scheduler.
 */
-STATE_SUSPENDED ::= 2
+STATE-SUSPENDED ::= 2
 
 /** The task is blocked and cannot be run until it is explicitly released. */
-STATE_HELD ::= 4
+STATE-HELD ::= 4
 
-STATE_SUSPENDED_RUNNABLE ::= STATE_SUSPENDED | STATE_RUNNABLE
-STATE_NOT_HELD ::= ~STATE_HELD
+STATE-SUSPENDED-RUNNABLE ::= STATE-SUSPENDED | STATE-RUNNABLE
+STATE-NOT-HELD ::= ~STATE-HELD
 
 /**
 A task control block manages a task and the queue of work packages associated
@@ -260,33 +260,33 @@ class TaskControlBlock:
   - $task: the task.
   */
   constructor .link .id .priority .queue .task:
-    state = queue ? STATE_SUSPENDED_RUNNABLE : STATE_SUSPENDED
+    state = queue ? STATE-SUSPENDED-RUNNABLE : STATE-SUSPENDED
 
-  set_running:
-    state = STATE_RUNNING
+  set-running:
+    state = STATE-RUNNING
 
-  mark_as_not_held:
-    state &= STATE_NOT_HELD
+  mark-as-not-held:
+    state &= STATE-NOT-HELD
 
-  mark_as_held:
-    state |= STATE_HELD
+  mark-as-held:
+    state |= STATE-HELD
 
-  is_held_or_suspended:
-    return state & STATE_HELD != 0 or state == STATE_SUSPENDED
+  is-held-or-suspended:
+    return state & STATE-HELD != 0 or state == STATE-SUSPENDED
 
-  mark_as_suspended:
-    state |= STATE_SUSPENDED
+  mark-as-suspended:
+    state |= STATE-SUSPENDED
 
-  mark_as_runnable:
-    state |= STATE_RUNNABLE
+  mark-as-runnable:
+    state |= STATE-RUNNABLE
 
   /** Runs this task, if it is ready to be run, and returns the next task to run. */
   run:
     packet := null
-    if state == STATE_SUSPENDED_RUNNABLE:
+    if state == STATE-SUSPENDED-RUNNABLE:
       packet = queue
       queue = packet.link
-      state = queue ? STATE_RUNNABLE : STATE_RUNNING
+      state = queue ? STATE-RUNNABLE : STATE-RUNNING
     return task.run packet
 
   /**
@@ -294,13 +294,13 @@ class TaskControlBlock:
     necessary, and returns the next runnable object to run (the one
     with the highest priority).
   */
-  check_priority_add task packet:
+  check-priority-add task packet:
     if not queue:
       queue = packet
-      mark_as_runnable
+      mark-as-runnable
       if priority > task.priority: return this
     else:
-      queue = packet.add_to queue
+      queue = packet.add-to queue
     return task
 
 /**
@@ -322,13 +322,13 @@ class IdleTask:
 
   run packet:
     count--
-    if count == 0: return scheduler.hold_current
+    if count == 0: return scheduler.hold-current
     if v1 & 1 == 0:
       v1 >>= 1
-      return scheduler.release ID_DEVICE_A
+      return scheduler.release ID-DEVICE-A
     else:
       v1 = v1 >> 1 ^ 0xd008
-      return scheduler.release ID_DEVICE_B
+      return scheduler.release ID-DEVICE-B
 
 /**
 A task that suspends itself after each time it has been run to simulate
@@ -346,13 +346,13 @@ class DeviceTask:
 
   run packet:
     if not packet:
-      if not v1: return scheduler.suspend_current
+      if not v1: return scheduler.suspend-current
       v := v1
       v1 = null
       return scheduler.queue v
     else:
       v1 = packet
-      return scheduler.hold_current
+      return scheduler.hold-current
 
 /** A task that manipulates work packets. */
 class WorkerTask:
@@ -369,11 +369,11 @@ class WorkerTask:
   v2 / int := ?
 
   run packet:
-    if not packet: return scheduler.suspend_current
-    v1 = v1 == ID_HANDLER_A ? ID_HANDLER_B : ID_HANDLER_A
+    if not packet: return scheduler.suspend-current
+    v1 = v1 == ID-HANDLER-A ? ID-HANDLER-B : ID-HANDLER-A
     packet.id = v1
     packet.a1 = 0
-    for i := 0; i < DATA_SIZE; i++:
+    for i := 0; i < DATA-SIZE; i++:
       if ++v2 > 26: v2 = 1
       packet.a2[i] = v2
     return scheduler.queue packet
@@ -392,13 +392,13 @@ class HandlerTask:
 
   run packet:
     if packet:
-      if packet.kind == KIND_WORK:
-        v1 = packet.add_to v1
+      if packet.kind == KIND-WORK:
+        v1 = packet.add-to v1
       else:
-        v2 = packet.add_to v2
+        v2 = packet.add-to v2
     if v1:
       count := v1.a1
-      if count < DATA_SIZE:
+      if count < DATA-SIZE:
         if v2:
           v := v2
           v2 = v2.link
@@ -409,12 +409,12 @@ class HandlerTask:
         v := v1
         v1 = v1.link
         return scheduler.queue v
-    return scheduler.suspend_current
+    return scheduler.suspend-current
 
 /* --- *
  * P a c k e t
  * --- */
-DATA_SIZE := 4
+DATA-SIZE := 4
 
 /**
 A simple package of data that is manipulated by the tasks.  The exact layout
@@ -437,9 +437,9 @@ class Packet:
   id   / int := ?
   kind / int := ?
   a1 := 0
-  a2 := List DATA_SIZE
+  a2 := List DATA-SIZE
 
-  add_to queue:
+  add-to queue:
     link = null
     if not queue: return this
     next := queue

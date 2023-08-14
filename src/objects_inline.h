@@ -66,7 +66,7 @@ T* ByteArray::as_external() {
   return 0;
 }
 
-inline bool HeapObject::on_program_heap(Process* process) {
+inline bool HeapObject::on_program_heap(Process* process) const {
   return process->on_program_heap(this);
 }
 

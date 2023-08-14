@@ -1,5 +1,0 @@
-tests/negative/named_test.toit:9:5: error: Argument mismatch for 'x'
-No argument named '--val'
-    x --val=499
-    ^
-Compilation failed.

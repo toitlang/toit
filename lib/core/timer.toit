@@ -6,11 +6,11 @@ import monitor
 
 /** Makes the current task sleep for the $duration. */
 sleep duration/Duration:
-  sleeper_.sleep_until_ (Time.monotonic_us + duration.in_us)
+  sleeper_.sleep-until_ (Time.monotonic-us + duration.in-us)
 
 /** Makes the current task sleep for the given $ms of milliseconds. */
 sleep --ms/int:
-  sleeper_.sleep_until_ (Time.monotonic_us + ms * 1000)
+  sleeper_.sleep-until_ (Time.monotonic-us + ms * 1000)
 
 /**
 Timer resource group.
@@ -18,7 +18,7 @@ Timer resource group.
 The resource group is used by the timer primitives to keep track of timers
   in this process.
 */
-timer_resource_group_ ::= timer_init_
+timer-resource-group_ ::= timer-init_
 
 /** Sleeper monitor. */
 sleeper_/Sleeper_ ::= Sleeper_
@@ -30,26 +30,26 @@ monitor Sleeper_:
   /**
   Sleep until $wakeup.
   */
-  sleep_until_ wakeup/int -> none:
+  sleep-until_ wakeup/int -> none:
     self := Task_.current
     // Eagerly throw if we trying to sleep past the task deadline.
     deadline := self.deadline
-    if deadline and deadline < wakeup: throw DEADLINE_EXCEEDED_ERROR
+    if deadline and deadline < wakeup: throw DEADLINE-EXCEEDED-ERROR
     // Acquire a suitable timer. These are often reused, so this is
     // unlikely to allocate.
-    timer ::= self.acquire_timer_ this
+    timer ::= self.acquire-timer_ this
     try:
-      is_non_critical ::= self.critical_count_ == 0
+      is-non-critical ::= self.critical-count_ == 0
       while true:
         // Check for task cancelation and timeout.
-        if is_non_critical and self.is_canceled_: throw CANCELED_ERROR
-        if Time.monotonic_us >= wakeup: return
+        if is-non-critical and self.is-canceled_: throw CANCELED-ERROR
+        if Time.monotonic-us >= wakeup: return
         // Arm the timer and wait until we're notified. We might be notified
         // too early (spurious wakeup), so we arm the timer on every iteration.
         timer.arm wakeup
         await_ self
     finally:
-      self.release_timer_ timer
+      self.release-timer_ timer
 
 /**
 Internal timer used by sleep to wake up at the appropriate time.
@@ -62,43 +62,43 @@ class Timer_:
   Constructs a timer with an internal timer resource.
   */
   constructor:
-    timer_ = timer_create_ timer_resource_group_
+    timer_ = timer-create_ timer-resource-group_
 
   close:
-    timer_delete_ timer_resource_group_ timer_
+    timer-delete_ timer-resource-group_ timer_
 
   arm deadline/int -> none:
-    timer_arm_ timer_ deadline
+    timer-arm_ timer_ deadline
 
-  set_target monitor/__Monitor__ -> none:
-    register_monitor_notifier_ monitor timer_resource_group_ timer_
+  set-target monitor/__Monitor__ -> none:
+    register-monitor-notifier_ monitor timer-resource-group_ timer_
 
-  clear_target -> none:
+  clear-target -> none:
     // We're reusing the timers, so it is faster to clear out the
     // monitor object on the notifier than it is to clear out the
     // whole notifier structure. This way, we typically do not have
     // to allocate when calling $set_target and instead we just
     // update the monitor reference in the notifier.
-    register_monitor_notifier_ null timer_resource_group_ timer_
+    register-monitor-notifier_ null timer-resource-group_ timer_
 
 /**
 Initiates the timer resource group.
 Must only be called once in each process.
 */
-timer_init_:
+timer-init_:
   #primitive.timer.init
 
-/** Creates a timer resource attached to $timer_resource_group. */
-timer_create_ timer_resource_group:
+/** Creates a timer resource attached to $timer-resource-group. */
+timer-create_ timer-resource-group:
   #primitive.timer.create
 
 /**
 Arm $timer for notification in $us microseconds.
 The $timer resource is notified when the time has elapsed.
 */
-timer_arm_ timer us:
+timer-arm_ timer us:
   #primitive.timer.arm
 
-/** Delete the $timer resource from the $timer_resource_group. */
-timer_delete_ timer_resource_group timer:
+/** Delete the $timer resource from the $timer-resource-group. */
+timer-delete_ timer-resource-group timer:
   #primitive.timer.delete

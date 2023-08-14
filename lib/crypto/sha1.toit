@@ -22,19 +22,19 @@ sha1 data from/int=0 to/int=data.size -> ByteArray:
 
 /** SHA-1 hash state. */
 class Sha1 extends Checksum:
-  sha1_state_ := ?
+  sha1-state_ := ?
 
   /** Constructs an empty SHA-1 state. */
   constructor:
-    sha1_state_ = sha1_start_ resource_freeing_module_
-    add_finalizer this:: finalize_checksum_ this
+    sha1-state_ = sha1-start_ resource-freeing-module_
+    add-finalizer this:: finalize-checksum_ this
 
-  constructor.private_ .sha1_state_:
-    add_finalizer this:: finalize_checksum_ this
+  constructor.private_ .sha1-state_:
+    add-finalizer this:: finalize-checksum_ this
 
   /** See $super. */
   add data from/int to/int -> none:
-    sha1_add_ sha1_state_ data from to
+    sha1-add_ sha1-state_ data from to
 
   /**
   See $super.
@@ -42,24 +42,24 @@ class Sha1 extends Checksum:
   Calculates the SHA1 hash.
   */
   get -> ByteArray:
-    remove_finalizer this
-    return sha1_get_ sha1_state_
+    remove-finalizer this
+    return sha1-get_ sha1-state_
 
   clone -> Sha1:
-    return Sha1.private_ (sha1_clone_ sha1_state_)
+    return Sha1.private_ (sha1-clone_ sha1-state_)
 
 // Gets a new empty Sha1 object.
-sha1_start_ group:
-  #primitive.crypto.sha1_start
+sha1-start_ group:
+  #primitive.crypto.sha1-start
 
 // Clones a Sha1 object.
-sha1_clone_ sha1:
-  #primitive.crypto.sha1_clone
+sha1-clone_ sha1:
+  #primitive.crypto.sha1-clone
 
 // Adds a UTF-8 string or a byte array to the sha1 hash.
-sha1_add_ sha1 data from/int to/int -> none:
-  #primitive.crypto.sha1_add
+sha1-add_ sha1 data from/int to/int -> none:
+  #primitive.crypto.sha1-add
 
 // Rounds off a sha1 hash.
-sha1_get_ sha1 -> ByteArray:
-  #primitive.crypto.sha1_get
+sha1-get_ sha1 -> ByteArray:
+  #primitive.crypto.sha1-get

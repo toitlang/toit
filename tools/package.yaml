@@ -8,3 +8,6 @@ dependencies:
   host:
     url: github.com/toitlang/pkg-host
     version: ^1.8.1
+  semver:
+    url: github.com/toitware/toit-semver
+    version: ^1.0.0

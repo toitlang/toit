@@ -1,0 +1,40 @@
+tests/negative/final-field-test.toit:9:11: error: Can't assign final field in dynamic part of constructor
+    field = 499
+          ^
+tests/negative/final-field-test.toit:10:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/final-field-test.toit:14:11: error: Can't assign final field in dynamic part of constructor
+    field = 499
+          ^
+tests/negative/final-field-test.toit:13:5: note: Expression that switched to dynamic part
+    foo 1
+    ^~~
+tests/negative/final-field-test.toit:15:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/final-field-test.toit:18:5: error: Expression assigns to final field but accesses 'this'
+    foo (if true: field = 499)
+    ^~~
+tests/negative/final-field-test.toit:18:25: note: Assignment to final field 'field'
+    foo (if true: field = 499)
+                        ^
+tests/negative/final-field-test.toit:19:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/final-field-test.toit:22:11: error: Expression assigns to final field but accesses 'this'
+    field = foo 499
+          ^
+tests/negative/final-field-test.toit:22:11: note: Assignment to final field 'field'
+    field = foo 499
+          ^
+tests/negative/final-field-test.toit:23:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/final-field-test.toit:26:5: error: Expression assigns to final field but accesses 'this'
+    if arg:
+    ^~
+tests/negative/final-field-test.toit:27:12: note: Assignment to final field 'field'
+      field--  // A hidden assignment.
+           ^~
+Compilation failed.

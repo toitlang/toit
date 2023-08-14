@@ -11,7 +11,7 @@ interface PrintService:
       --minor=1
 
   print message/string -> none
-  static PRINT_INDEX /int ::= 0
+  static PRINT-INDEX /int ::= 0
 
 class PrintServiceClient extends ServiceClient implements PrintService:
   static SELECTOR ::= PrintService.SELECTOR
@@ -20,4 +20,4 @@ class PrintServiceClient extends ServiceClient implements PrintService:
     super selector
 
   print message/string -> none:
-    invoke_ PrintService.PRINT_INDEX message
+    invoke_ PrintService.PRINT-INDEX message

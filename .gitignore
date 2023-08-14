@@ -28,3 +28,4 @@ tedi_test.go
 *.swn
 
 /toolchains/esp32*/sdkconfig.old
+/toolchains/esp32*/dependencies.lock

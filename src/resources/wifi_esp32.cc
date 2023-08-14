@@ -367,16 +367,26 @@ PRIMITIVE(init) {
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = wifi_pool.any();
-  if (id == kInvalidWifi) OUT_OF_BOUNDS;
+  if (id == kInvalidWifi) FAIL(OUT_OF_BOUNDS);
 
   // We cannot use the esp_netif_create_default_wifi_xxx() functions,
   // because they do not correctly check for malloc failure.
   esp_netif_t* netif = null;
   if (ap) {
+    // We use this static IP for the access point because it causes
+    // Samsung phones to pop up the captive portal login page.
+    // TODO: Make this configurable.
+    esp_netif_ip_info_t two_hundred_network;
+    two_hundred_network.ip.addr = ESP_IP4TOADDR( 200, 200, 200, 1);
+    two_hundred_network.gw.addr = ESP_IP4TOADDR( 200, 200, 200, 1);
+    two_hundred_network.netmask.addr = ESP_IP4TOADDR( 255, 255, 255, 0);
+    esp_netif_inherent_config_t netif_config = ESP_NETIF_INHERENT_DEFAULT_WIFI_AP();
+    netif_config.ip_info = &two_hundred_network;
     esp_netif_config_t netif_ap_config = ESP_NETIF_DEFAULT_WIFI_AP();
+    netif_ap_config.base = &netif_config;
     netif = esp_netif_new(&netif_ap_config);
   } else {
     esp_netif_config_t netif_sta_config = ESP_NETIF_DEFAULT_WIFI_STA();
@@ -385,7 +395,7 @@ PRIMITIVE(init) {
 
   if (!netif) {
     wifi_pool.put(id);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   if (ap) {
@@ -434,7 +444,7 @@ PRIMITIVE(init) {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy_default_wifi(netif);
     wifi_pool.put(id);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   if (ap) {
@@ -454,7 +464,7 @@ PRIMITIVE(close) {
 
   group->tear_down();
   group_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(connect) {
@@ -462,14 +472,14 @@ PRIMITIVE(connect) {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
   if (ssid == null || password == null) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   WifiEvents* wifi = _new WifiEvents(group);
-  if (wifi == null) MALLOC_FAILED;
+  if (wifi == null) FAIL(MALLOC_FAILED);
 
   group->register_resource(wifi);
 
@@ -488,14 +498,14 @@ PRIMITIVE(establish) {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
   if (ssid == null || password == null) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   WifiEvents* wifi = _new WifiEvents(group);
-  if (wifi == null) MALLOC_FAILED;
+  if (wifi == null) FAIL(MALLOC_FAILED);
 
   group->register_resource(wifi);
 
@@ -514,10 +524,10 @@ PRIMITIVE(setup_ip) {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   WifiIpEvents* ip_events = _new WifiIpEvents(group);
-  if (ip_events == null) MALLOC_FAILED;
+  if (ip_events == null) FAIL(MALLOC_FAILED);
 
   group->register_resource(ip_events);
   proxy->set_external_address(ip_events);
@@ -529,7 +539,7 @@ PRIMITIVE(disconnect) {
 
   group->unregister_resource(wifi);
   wifi_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(disconnect_reason) {
@@ -558,15 +568,15 @@ PRIMITIVE(disconnect_reason) {
 PRIMITIVE(get_ip) {
   ARGS(WifiResourceGroup, group, int, index);
   if (index < 0 || index >= WifiResourceGroup::NUMBER_OF_ADDRESSES) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
 
   if (!group->has_ip_address(index)) {
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   ByteArray* result = process->object_heap()->allocate_internal_byte_array(4);
-  if (!result) ALLOCATION_FAILED;
+  if (!result) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes bytes(result);
   Utils::write_unaligned_uint32_le(bytes.address(), group->ip_address(index));
   return result;
@@ -576,10 +586,10 @@ PRIMITIVE(init_scan) {
   ARGS(WifiResourceGroup, group)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   WifiEvents* wifi = _new WifiEvents(group);
-  if (wifi == null) MALLOC_FAILED;
+  if (wifi == null) FAIL(MALLOC_FAILED);
 
   group->register_resource(wifi);
 
@@ -601,7 +611,7 @@ PRIMITIVE(start_scan) {
     return Primitive::os_error(ret, process);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(read_scan) {
@@ -615,7 +625,7 @@ PRIMITIVE(read_scan) {
 
   size_t size = count * sizeof(wifi_ap_record_t);
   MallocedBuffer data_buffer(size);
-  if (!data_buffer.has_content()) MALLOC_FAILED;
+  if (!data_buffer.has_content()) FAIL(MALLOC_FAILED);
 
   uint16_t get_count = count;
   wifi_ap_record_t* ap_record = reinterpret_cast<wifi_ap_record_t*>(data_buffer.content());
@@ -625,16 +635,16 @@ PRIMITIVE(read_scan) {
   const size_t element_count = 5;
   size = element_count * get_count;
   Array* ap_array = process->object_heap()->allocate_array(size, Smi::zero());
-  if (ap_array == null) ALLOCATION_FAILED;
+  if (ap_array == null) FAIL(ALLOCATION_FAILED);
 
   for (int i = 0; i < get_count; i++) {
     size_t offset = i * element_count;
     String* ssid = process->allocate_string((char *)ap_record[i].ssid);
-    if (ssid == null) ALLOCATION_FAILED;
+    if (ssid == null) FAIL(ALLOCATION_FAILED);
 
     size_t bssid_size = 6;
     ByteArray* bssid = process->allocate_byte_array(bssid_size);
-    if (bssid == null) ALLOCATION_FAILED;
+    if (bssid == null) FAIL(ALLOCATION_FAILED);
 
     memcpy(ByteArray::Bytes(bssid).address(), ap_record[i].bssid, bssid_size);
 
@@ -657,14 +667,14 @@ PRIMITIVE(ap_info) {
 
   const size_t element_count = 5;
   Array* ap_array = process->object_heap()->allocate_array(element_count, Smi::zero());
-  if (ap_array == null) ALLOCATION_FAILED;
+  if (ap_array == null) FAIL(ALLOCATION_FAILED);
 
   String* ssid = process->allocate_string((char*)ap_record.ssid);
-  if (ssid == null) ALLOCATION_FAILED;
+  if (ssid == null) FAIL(ALLOCATION_FAILED);
 
   const size_t bssid_size = 6;
   ByteArray* bssid = process->allocate_byte_array(bssid_size);
-  if (bssid == null) ALLOCATION_FAILED;
+  if (bssid == null) FAIL(ALLOCATION_FAILED);
 
   memcpy(ByteArray::Bytes(bssid).address(), ap_record.bssid, bssid_size);
 

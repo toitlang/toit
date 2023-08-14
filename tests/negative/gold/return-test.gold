@@ -1,0 +1,9 @@
+tests/negative/return-test.toit:6:12: warning: Missing return value
+  if true: return
+           ^~~~~~
+tests/negative/return-test.toit:10:3: warning: Return type of function is 'none'. Can't return a value
+  return 499
+  ^~~~~~
+EXCEPTION error. 
+negative
+  0: main                      tests/negative/return-test.toit:13:3

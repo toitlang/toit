@@ -1,0 +1,3 @@
+As check failed: null is not a string.
+  0: A                         tests/negative/field-type3-test.toit:7:15
+  1: main                      tests/negative/field-type3-test.toit:12:3

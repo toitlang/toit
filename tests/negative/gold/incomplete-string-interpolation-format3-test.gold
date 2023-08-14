@@ -1,0 +1,13 @@
+tests/negative/incomplete-string-interpolation-format3-test.toit:6:7: error: Invalid format string
+  "$(%
+      ^
+tests/negative/incomplete-string-interpolation-format3-test.toit:6:7: error: Incomplete expression
+  "$(%
+      ^
+tests/negative/incomplete-string-interpolation-format3-test.toit:6:5: error: Missing closing ')'
+  "$(%
+    ^~
+tests/negative/incomplete-string-interpolation-format3-test.toit:6:7: error: Unterminated string
+  "$(%
+      ^
+Compilation failed.

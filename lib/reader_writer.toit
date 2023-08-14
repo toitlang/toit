@@ -18,10 +18,10 @@ class ReaderWriter:
   /**
   Constructs a reader-writer.
 
-  The $buffer_size determines the size of the communication buffer.
+  The $buffer-size determines the size of the communication buffer.
   */
-  constructor buffer_size/int=64:
-    writer_ = ReaderWriterHelper_ buffer_size
+  constructor buffer-size/int=64:
+    writer_ = ReaderWriterHelper_ buffer-size
     reader_ = ReaderWriterReader_ writer_
 
   /** The corresponding $CloseableReader. */
@@ -41,7 +41,7 @@ class ReaderWriter:
   Closes the ReaderWriter for writing.
   */
   close -> none:
-    writer_.writer_close
+    writer_.writer-close
 
 class ReaderWriterReader_ implements CloseableReader:
   helper_/ReaderWriterHelper_ ::= ?
@@ -52,49 +52,49 @@ class ReaderWriterReader_ implements CloseableReader:
     return helper_.read
 
   close -> none:
-    helper_.reader_close
+    helper_.reader-close
 
 // This class could be combined with the ReaderWriter, if we had some other way
 // than privacy to indicate which methods are synchronized.
 monitor ReaderWriterHelper_:
-  buffer_size_/int ::= ?
+  buffer-size_/int ::= ?
   buffer_/ByteArray
   fullness_ := 0
-  writer_closed_ := false
-  reader_closed_ := false
+  writer-closed_ := false
+  reader-closed_ := false
 
-  constructor .buffer_size_:
-    buffer_ = ByteArray buffer_size_
+  constructor .buffer-size_:
+    buffer_ = ByteArray buffer-size_
 
-  writer_close -> none:
-    writer_closed_ = true
+  writer-close -> none:
+    writer-closed_ = true
 
-  reader_close -> none:
-    reader_closed_ = true
+  reader-close -> none:
+    reader-closed_ = true
 
   write data from/int to/int -> int:
-    if writer_closed_: throw "CLOSED"
+    if writer-closed_: throw "CLOSED"
     result := to - from
     while from != to:
-      await: fullness_ != buffer_.size or reader_closed_
-      if reader_closed_: throw "CLOSED"
+      await: fullness_ != buffer_.size or reader-closed_
+      if reader-closed_: throw "CLOSED"
       space := buffer_.size - fullness_
       remaining := to - from
-      chunk_size := min space remaining
+      chunk-size := min space remaining
       // Put as much as possible into the buffer.
       // If we fill it up entirely, then the 'await' above will make us
       // wait until a reader empties the buffer.
-      buffer_.replace fullness_ data from from + chunk_size
-      from += chunk_size
-      fullness_ += chunk_size
+      buffer_.replace fullness_ data from from + chunk-size
+      from += chunk-size
+      fullness_ += chunk-size
     return result
 
   read:
-    await: fullness_ != 0 or writer_closed_
+    await: fullness_ != 0 or writer-closed_
     result := ?
     if fullness_ != 0:
       result = buffer_.copy 0 fullness_
       fullness_ = 0
       return result
-    assert: writer_closed_
+    assert: writer-closed_
     return null

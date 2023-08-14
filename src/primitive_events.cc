@@ -34,8 +34,8 @@ PRIMITIVE(register_monitor_notifier) {
   ARGS(Object, monitor, ResourceGroup, group, Resource, resource);
 
   EventSource* source = group->event_source();
-  if (!source->update_resource_monitor(resource, process, monitor)) MALLOC_FAILED;
-  return process->program()->null_object();
+  if (!source->update_resource_monitor(resource, process, monitor)) FAIL(MALLOC_FAILED);
+  return process->null_object();
 }
 
 PRIMITIVE(unregister_monitor_notifier) {
@@ -46,7 +46,7 @@ PRIMITIVE(unregister_monitor_notifier) {
   if (group && resource) {
     group->event_source()->delete_resource_monitor(resource);
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

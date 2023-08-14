@@ -13,7 +13,7 @@ CMakeLists.txt text
 
 # File that should not be converted.
 tests/default_values_test.toit -text
-tests/font_test.toit -text
-tests/string_large_literal_test.toit -text
-tests/string_trailing_test.toit -text
-tests/string_test.toit -text
+tests/font-test.toit -text
+tests/string-large-literal-test.toit -text
+tests/string-trailing-test.toit -text
+tests/string-test.toit -text

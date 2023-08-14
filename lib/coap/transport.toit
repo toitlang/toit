@@ -19,7 +19,7 @@ interface Transport:
 
   close
 
-  new_message --reliable=true -> Message
+  new-message --reliable=true -> Message
 
   // Returns true if the underlying protocol is reliable, meaning no
   // messages are lost and are delivered in order.

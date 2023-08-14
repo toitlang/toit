@@ -1,0 +1,3 @@
+As check failed: a B is not a A.
+  0: test                      tests/negative/shaken-method2-test.toit:13:6
+  1: main                      tests/negative/shaken-method2-test.toit:20:3

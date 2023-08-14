@@ -1,0 +1,7 @@
+tests/negative/no-nl2-test.toit:9:5: error: Incomplete expression
+  if
+    ^
+tests/negative/no-nl2-test.toit:9:3: error: Missing colon for 'if' condition
+  if
+  ^~
+Compilation failed.

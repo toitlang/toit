@@ -1,6 +1,0 @@
-<pkg:..>/color_tft.toit:158:31: warning: Deprecated 'Pin.config'
-    if backlight_: backlight_.config --output
-                              ^~~~~~
-<pkg:..>/color_tft.toit:160:14: warning: Deprecated 'Pin.config'
-      reset_.config --output
-             ^~~~~~

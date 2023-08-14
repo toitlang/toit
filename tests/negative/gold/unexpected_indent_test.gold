@@ -1,4 +1,0 @@
-tests/negative/unexpected_indent_test.toit:12:5: error: All arguments must have the same indentation.
-    2
-    ^
-Compilation failed.

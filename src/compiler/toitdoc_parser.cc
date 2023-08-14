@@ -85,8 +85,7 @@ class ToitdocSource : public Source {
 
   int size() const { return size_; }
 
-  // This functionality isn't supported.
-  int offset_in_source(Position position) const { UNREACHABLE();  }
+  int offset_in_source(Position position) const { return source_->offset_in_source(position); }
 
   bool is_lsp_marker_at(int offset);
 
@@ -600,7 +599,7 @@ toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
         // We want to allow $5.2 or even a simple $ in the text.
         // Only if the $ is followed by an identifier we treat it like a ref.
         is_special_char = look_ahead() == '(' ||
-            is_identifier_start(look_ahead()) ||
+            IdentifierValidator::is_identifier_start(look_ahead()) ||
             (is_operator_start(look_ahead()) && !is_comment_start(look_ahead(1), look_ahead(2)));
         break;
 

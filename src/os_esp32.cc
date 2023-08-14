@@ -42,6 +42,7 @@
 
 #include <soc/soc.h>
 #include <soc/uart_reg.h>
+#include <hal/efuse_hal.h>
 
 #if CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rtc.h>

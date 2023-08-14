@@ -228,8 +228,8 @@ static bool is_valid_package_id(const std::string& package_id) {
   if (package_id.empty()) return false;
   for (size_t i = 0; i < package_id.size(); i++) {
     char c = package_id[i];
-    if (is_identifier_part(c)) continue;
-    if (c == '+' || c == '-' || c == '*' || c == '/' || c == '\\' || c == '.') continue;
+    if (is_letter(c) || is_decimal_digit(c)) continue;
+    if (c == '_' || c == '+' || c == '-' || c == '*' || c == '/' || c == '\\' || c == '.') continue;
     return false;
   }
   return true;
@@ -237,9 +237,12 @@ static bool is_valid_package_id(const std::string& package_id) {
 
 static bool is_valid_prefix(const std::string& prefix) {
   if (prefix.empty()) return false;
-  if (!is_identifier_start(prefix[0])) return false;
-  for (size_t i = 1; i < prefix.size(); i++) {
-    if (!is_identifier_part(prefix[i])) return false;
+  IdentifierValidator validator;
+
+  for (size_t i = 0; i < prefix.size(); i++) {
+    if (!validator.check_next_char(prefix[i], [&]() { return prefix[i + 1]; })) {
+      return false;
+    }
   }
   return true;
 }
@@ -561,6 +564,8 @@ static LockFileContent parse_lock_file(const std::string& lock_file_path,
         has_errors = true;
       }
 
+      auto canonicalized = IdentifierValidator::canonicalize(prefix);
+
       std::string target_id;
       auto target_range = Source::Range::invalid();
       auto status = parser.parse_string([&](const std::string& str, const Source::Range& range) {
@@ -580,11 +585,11 @@ static LockFileContent parse_lock_file(const std::string& lock_file_path,
         diagnostics->report_error(target_range,
                                   "Package '%s', target of prefix '%s', not found",
                                   target_id.c_str(),
-                                  prefix.c_str());
+                                  canonicalized.c_str());
         target_id = Package::ERROR_PACKAGE_ID;
       }
 
-      pkg_prefixes[prefix] = target_id;
+      pkg_prefixes[canonicalized] = target_id;
       return YamlParser::OK;
     });
 

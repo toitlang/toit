@@ -17,14 +17,14 @@ Computes the CRC-16/XMODEM checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 2 element byte array in little-endian order.
 
-Deprecated.  Use $crc.crc16_xmodem or $crc.Crc16Xmodem instead.
+Deprecated.  Use $crc.crc16-xmodem or $crc.Crc16Xmodem instead.
 
 Note that this returns the checksum in byte-swapped (little-endian)
   order.  The Xmodem CRC is a big-endian CRC algorithm and you
   would normally expect the result to be big-endian.
 */
 crc16 data from/int=0 to/int=data.size -> ByteArray:
-  state := crc.Crc.big_endian 16 --polynomial=0x1021
+  state := crc.Crc.big-endian 16 --polynomial=0x1021
   state.add data from to
   result := state.get
   return #[result[1], result[0]]
@@ -40,7 +40,7 @@ Note that this class returns the checksum in byte-swapped (little-endian)
 */
 class Crc16 extends crc.Crc:
   constructor:
-    super.big_endian 16 --polynomial=0x1021
+    super.big-endian 16 --polynomial=0x1021
 
   get -> ByteArray:
     result := super

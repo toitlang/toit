@@ -1,0 +1,40 @@
+tests/negative/duplicate-param-test.toit:5:11: error: Duplicate parameter 'x'
+foo x/int x/string y/string y/int:
+          ^
+tests/negative/duplicate-param-test.toit:5:5: note: First declaration of 'x'
+foo x/int x/string y/string y/int:
+    ^
+tests/negative/duplicate-param-test.toit:5:29: error: Duplicate parameter 'y'
+foo x/int x/string y/string y/int:
+                            ^
+tests/negative/duplicate-param-test.toit:5:20: note: First declaration of 'y'
+foo x/int x/string y/string y/int:
+                   ^
+tests/negative/duplicate-param-test.toit:8:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/duplicate-param-test.toit:9:12: error: Duplicate parameter 'name'
+bar --name [--name]:
+           ^~~~~~~
+tests/negative/duplicate-param-test.toit:9:5: note: First declaration of 'name'
+bar --name [--name]:
+    ^~~~~~
+tests/negative/duplicate-param-test.toit:10:12: error: Duplicate parameter 'name'
+gee --name --name:
+           ^~~~~~
+tests/negative/duplicate-param-test.toit:10:5: note: First declaration of 'name'
+gee --name --name:
+    ^~~~~~
+tests/negative/duplicate-param-test.toit:14:3: error: Argument mismatch for 'bar'
+The argument '--name' was passed with block type, but must be non-block
+Required named argument '--name' not provided
+  bar --name=(: it) --name
+  ^~~
+tests/negative/duplicate-param-test.toit:15:3: error: Argument mismatch for 'gee'
+Required named argument '--name' not provided
+  gee --name --name
+  ^~~
+tests/negative/duplicate-param-test.toit:7:5: error: Class 'int' does not have any method 'copy'
+  y.copy 2
+    ^~~~
+Compilation failed.

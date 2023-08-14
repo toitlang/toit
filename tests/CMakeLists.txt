@@ -13,15 +13,16 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-file(GLOB TOIT_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*_test.toit" "regress/*_test.toit")
-file(GLOB TOIT_SLOW_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*_test_slow.toit" "regress/*_test_slow.toit")
-file(GLOB TOIT_FORCE_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*_test_force.toit" "regress/*_test_force.toit")
-file(GLOB TOIT_NO_BOOT_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*_test_no_boot.toit" "regress/*_test_no_boot.toit")
-file(GLOB TOIT_COMPILER_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*_test_compiler.toit" "regress/*_test_compiler.toit")
+file(GLOB TOIT_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test.toit" "regress/*-test.toit")
+file(GLOB TOIT_SLOW_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test-slow.toit" "regress/*-test-slow.toit")
+file(GLOB TOIT_FORCE_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test-force.toit" "regress/*-test-force.toit")
+file(GLOB TOIT_NO_BOOT_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test-no-boot.toit" "regress/*-test-no-boot.toit")
+file(GLOB TOIT_COMPILER_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test-compiler.toit" "regress/*-test-compiler.toit")
 
 set(ALL_TESTS ${TOIT_TESTS} ${TOIT_SLOW_TESTS} ${TOIT_FORCE_TESTS} ${TOIT_NO_BOOT_TESTS} ${TOIT_COMPILER_TESTS})
 
 toit_project(tests "${CMAKE_CURRENT_LIST_DIR}")
+toit_project(esp32_tests "${CMAKE_CURRENT_LIST_DIR}/esp32")
 
 include(ProcessorCount)
 ProcessorCount(NUM_CPU)
@@ -100,7 +101,7 @@ foreach(file ${ALL_TESTS})
   endif()
 endforeach()
 
-set(PREEMPT_A_LOT_TEST "tests/json_test.toit")
+set(PREEMPT_A_LOT_TEST "tests/json-test.toit")
 add_test(
   NAME "${PREEMPT_A_LOT_TEST}-PREEMPT_A_LOT"
   COMMAND $<TARGET_FILE:toit.run> -Xpreempt_a_lot ${PREEMPT_A_LOT_TEST}

@@ -24,7 +24,7 @@ class Contents extends Node:
   constructor .sections:
 
   accept visitor / ToitdocVisitor:
-    return visitor.visit_Contents this
+    return visitor.visit-Contents this
 
 class Section extends Node:
   title / string? ::= ?
@@ -33,7 +33,7 @@ class Section extends Node:
   constructor .title .statements:
 
   accept visitor / ToitdocVisitor:
-    return visitor.visit_Section this
+    return visitor.visit-Section this
 
 abstract class Statement extends Node:
 
@@ -43,7 +43,7 @@ class CodeSection extends Statement:
   constructor .text:
 
   accept visitor / ToitdocVisitor:
-    return visitor.visit_CodeSection this
+    return visitor.visit-CodeSection this
 
 class Itemized extends Statement:
   items / List ::= ?
@@ -51,7 +51,7 @@ class Itemized extends Statement:
   constructor .items:
 
   accept visitor / ToitdocVisitor:
-    return visitor.visit_Itemized this
+    return visitor.visit-Itemized this
 
 class Item extends Node:
   statements / List ::= ?
@@ -59,7 +59,7 @@ class Item extends Node:
   constructor .statements:
 
   accept visitor / ToitdocVisitor:
-    return visitor.visit_Item this
+    return visitor.visit-Item this
 
 class Paragraph extends Statement:
   expressions / List ::= ?
@@ -67,7 +67,7 @@ class Paragraph extends Statement:
   constructor .expressions:
 
   accept visitor / ToitdocVisitor:
-    return visitor.visit_Paragraph this
+    return visitor.visit-Paragraph this
 
 abstract class Expression extends Node:
 
@@ -77,7 +77,7 @@ class Text extends Expression:
   constructor .text:
 
   accept visitor / ToitdocVisitor:
-    return visitor.visit_Text this
+    return visitor.visit-Text this
 
 class Code extends Expression:
   text / string ::= ?
@@ -85,28 +85,28 @@ class Code extends Expression:
   constructor .text:
 
   accept visitor / ToitdocVisitor:
-    return visitor.visit_Code this
+    return visitor.visit-Code this
 
 class Shape:
   arity / int ::= -1
-  total_block_count / int ::= -1
-  named_block_count / int ::= -1
-  is_setter / bool ::= false
+  total-block-count / int ::= -1
+  named-block-count / int ::= -1
+  is-setter / bool ::= false
   names / List ::= ?
 
   constructor
       --.arity
-      --.total_block_count
-      --.named_block_count
-      --.is_setter
+      --.total-block-count
+      --.named-block-count
+      --.is-setter
       --.names:
 
 class ToitdocRef extends Expression:
   static OTHER ::= 0
   static CLASS ::= 1
   static GLOBAL ::= 2
-  static GLOBAL_METHOD ::= 3
-  static STATIC_METHOD ::= 4
+  static GLOBAL-METHOD ::= 3
+  static STATIC-METHOD ::= 4
   static CONSTRUCTOR ::= 5
   static FACTORY ::= 6
   static METHOD ::= 7
@@ -114,7 +114,7 @@ class ToitdocRef extends Expression:
 
   text       / string  ::= ?
   kind       / int     ::= ?
-  module_uri / string? ::= null
+  module-uri / string? ::= null
   holder     / string? ::= null
   name       / string? ::= null
   shape      / Shape?  ::= null
@@ -125,21 +125,21 @@ class ToitdocRef extends Expression:
   constructor
       --.text
       --.kind
-      --.module_uri
+      --.module-uri
       --.holder
       --.name
       --.shape:
 
   accept visitor / ToitdocVisitor:
-    return visitor.visit_ToitdocRef this
+    return visitor.visit-ToitdocRef this
 
 interface ToitdocVisitor:
-  visit_Contents    node / Contents
-  visit_Section     node / Section
-  visit_CodeSection node / CodeSection
-  visit_Itemized    node / Itemized
-  visit_Item        node / Item
-  visit_Paragraph   node / Paragraph
-  visit_Text        node / Text
-  visit_Code        node / Code
-  visit_ToitdocRef  node / ToitdocRef
+  visit-Contents    node / Contents
+  visit-Section     node / Section
+  visit-CodeSection node / CodeSection
+  visit-Itemized    node / Itemized
+  visit-Item        node / Item
+  visit-Paragraph   node / Paragraph
+  visit-Text        node / Text
+  visit-Code        node / Code
+  visit-ToitdocRef  node / ToitdocRef

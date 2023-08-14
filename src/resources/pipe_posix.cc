@@ -140,7 +140,7 @@ MODULE_IMPLEMENTATION(pipe, MODULE_PIPE)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
 #ifdef TOIT_LINUX
   PipeResourceGroup* resource_group = _new PipeResourceGroup(process, EpollEventSource::instance());
@@ -148,7 +148,7 @@ PRIMITIVE(init) {
 #ifdef TOIT_BSD
   PipeResourceGroup* resource_group = _new PipeResourceGroup(process, KQueueEventSource::instance());
 #endif
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
@@ -161,7 +161,7 @@ PRIMITIVE(close) {
 
   fd_resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 // Create a writable or readable pipe, as used for stdin/stdout/stderr of a child process.
@@ -171,14 +171,14 @@ PRIMITIVE(create_pipe) {
   ARGS(PipeResourceGroup, resource_group, bool, in);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
   Array* array = process->object_heap()->allocate_array(2, Smi::zero());
-  if (array == null) ALLOCATION_FAILED;
+  if (array == null) FAIL(ALLOCATION_FAILED);
 
   int fds[2];
   int result = pipe2_portable(fds, FD_CLOEXEC);
   if (result < 0) {
-    QUOTA_EXCEEDED;
+    FAIL(QUOTA_EXCEEDED);
   }
   int read = fds[0];
   int write = fds[1];
@@ -193,7 +193,7 @@ PRIMITIVE(create_pipe) {
   if (!resource) {
     close(read);
     close(write);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
   resource_proxy->set_external_address(resource);
 
@@ -207,16 +207,16 @@ PRIMITIVE(fd_to_pipe) {
   ARGS(PipeResourceGroup, resource_group, int, fd);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
-  if (resource_group->is_control_fd(fd)) INVALID_ARGUMENT;
+  if (resource_group->is_control_fd(fd)) FAIL(INVALID_ARGUMENT);
 
   if (!mark_non_blocking(fd)) {
     return Primitive::os_error(errno, process);
   }
 
   IntResource* resource = resource_group->register_id(fd);
-  if (!resource) MALLOC_FAILED;
+  if (!resource) FAIL(MALLOC_FAILED);
   resource_proxy->set_external_address(resource);
 
   return resource_proxy;
@@ -224,15 +224,15 @@ PRIMITIVE(fd_to_pipe) {
 
 PRIMITIVE(is_a_tty) {
   ARGS(IntResource, fd_resource);
-  if (isatty(fd_resource->id())) return process->program()->true_object();
-  return process->program()->false_object();
+  if (isatty(fd_resource->id())) return process->true_object();
+  return process->false_object();
 }
 
 PRIMITIVE(write) {
   ARGS(IntResource, fd_resource, Blob, data, int, from, int, to);
   int fd = fd_resource->id();
 
-  if (from < 0 || from > to || to > data.length()) OUT_OF_BOUNDS;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_BOUNDS);
 
   int written = write(fd, data.address() + from, to - from);
   if (written >= 0) {
@@ -262,14 +262,14 @@ PRIMITIVE(read) {
   available = Utils::min(available, ByteArray::PREFERRED_IO_BUFFER_SIZE);
 
   ByteArray* array = process->allocate_byte_array(available, /*force_external*/ true);
-  if (array == null) ALLOCATION_FAILED;
+  if (array == null) FAIL(ALLOCATION_FAILED);
 
   int read = ::read(fd, ByteArray::Bytes(array).address(), available);
   if (read == -1) {
     if (errno == EWOULDBLOCK) return Smi::from(-1);
     return Primitive::os_error(errno, process);
   }
-  if (read == 0) return process->program()->null_object();
+  if (read == 0) return process->null_object();
 
   array->resize_external(process, read);
 
@@ -349,50 +349,50 @@ static Object* fork_helper(
     const char* command,
     Array* args,
     Object* environment_object) {
-  HeapObject* null_object = process->program()->null_object();
+  HeapObject* null_object = process->null_object();
 
-  if (args->length() > 1000000) OUT_OF_BOUNDS;
+  if (args->length() > 1000000) FAIL(OUT_OF_BOUNDS);
 
   Array* environment = null;
   if (environment_object != null_object) {
-    if (!is_array(environment_object)) INVALID_ARGUMENT;
+    if (!is_array(environment_object)) FAIL(INVALID_ARGUMENT);
     environment = Array::cast(environment_object);
 
     // Validate environment array.
-    if (environment->length() >= 0x100000 || (environment->length() & 1) != 0) OUT_OF_BOUNDS;
+    if (environment->length() >= 0x100000 || (environment->length() & 1) != 0) FAIL(OUT_OF_BOUNDS);
     for (int i = 0; i < environment->length(); i++) {
       Blob blob;
       Object* element = environment->at(i);
       bool is_key = (i & 1) == 0;
-      if (!is_key && element == process->program()->null_object()) continue;
-      if (!element->byte_content(process->program(), &blob, STRINGS_ONLY)) WRONG_TYPE;
-      if (blob.length() == 0) INVALID_ARGUMENT;
+      if (!is_key && element == process->null_object()) continue;
+      if (!element->byte_content(process->program(), &blob, STRINGS_ONLY)) FAIL(WRONG_OBJECT_TYPE);
+      if (blob.length() == 0) FAIL(INVALID_ARGUMENT);
       const uint8* str = blob.address();
-      if (is_key && memchr(str, '=', blob.length()) != null) INVALID_ARGUMENT;  // Key can't contain "=".
+      if (is_key && memchr(str, '=', blob.length()) != null) FAIL(INVALID_ARGUMENT);  // Key can't contain "=".
     }
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   // We allocate memory for the IntResource early here so we can handle failure
   // and restart the primitive.  If we wait until after the fork, the
   // subprocess is already running and it's too late to GC-and-retry.
   AllocationManager resource_allocation(process);
   if (resource_allocation.alloc(sizeof(IntResource)) == null) {
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   AllocationManager allocation(process);
   char** argv = reinterpret_cast<char**>(allocation.calloc(args->length() + 1, sizeof(char*)));
-  if (argv == null) ALLOCATION_FAILED;
+  if (argv == null) FAIL(ALLOCATION_FAILED);
   for (word i = 0; i < args->length(); i++) {
     if (is_string(args->at(i))) {
       argv[i] = String::cast(args->at(i))->as_cstr();
     } else {
       Blob blob;
       if (!args->at(i)->byte_content(process->program(), &blob, STRINGS_ONLY)) {
-        WRONG_TYPE;
+        FAIL(WRONG_OBJECT_TYPE);
       }
       int len = blob.length();
       char* c_string = unvoid_cast<char*>(malloc(len + 1));
@@ -409,7 +409,7 @@ static Object* fork_helper(
 
   if (pipe_result < 0) {
     free_args(argv, args);
-    QUOTA_EXCEEDED;
+    FAIL(QUOTA_EXCEEDED);
   }
 
   int control_read = control_fds[0];
@@ -427,7 +427,7 @@ static Object* fork_helper(
       if (highest_child_fd < 0) highest_child_fd = i;
       if (data_fds[i] < -1) {
         free_args(argv, args);
-        WRONG_TYPE;
+        FAIL(WRONG_OBJECT_TYPE);
       }
     }
   }
@@ -438,9 +438,9 @@ static Object* fork_helper(
     close(control_read);
     close(control_write);
     free_args(argv, args);
-    if (errno == EAGAIN) QUOTA_EXCEEDED;
-    if (errno == ENOMEM) MALLOC_FAILED;
-    OTHER_ERROR;
+    if (errno == EAGAIN) FAIL(QUOTA_EXCEEDED);
+    if (errno == ENOMEM) FAIL(MALLOC_FAILED);
+    FAIL(ERROR);
   }
 
   if (child_pid != 0) {
@@ -482,7 +482,7 @@ static Object* fork_helper(
       // will exec soon.
       auto key_cstr = strndup(char_cast(key.address()), key.length());
       Object* value = environment->at(i + 1);
-      if (value == process->program()->null_object()) {
+      if (value == process->null_object()) {
         unsetenv(key_cstr);
       } else {
         Blob value_blob;
@@ -592,7 +592,7 @@ PRIMITIVE(fork) {
        cstring, command,
        Array, args);
   return fork_helper(process, resource_group, use_path, in_obj, out_obj, err_obj,
-                     fd_3, fd_4, command, args, process->program()->null_object());
+                     fd_3, fd_4, command, args, process->null_object());
 }
 
 PRIMITIVE(fork2) {

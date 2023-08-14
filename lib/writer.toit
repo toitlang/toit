@@ -19,7 +19,7 @@ class Writer:
   constructor .writer_:
 
   /** Writes everything provided by the $reader. */
-  write_from reader/reader.Reader -> none:
+  write-from reader/reader.Reader -> none:
     while data := reader.read: write data
 
   /**
@@ -45,11 +45,11 @@ class Writer:
           // extract the rest of the character as a byte array and write it
           // this way.  Uses `while` instead of `if` because even a 2-byte
           // byte array might not be written in one operation.
-          cut_point := from + 1
-          while cut_point != to and data[cut_point] == null:
-            cut_point++
+          cut-point := from + 1
+          while cut-point != to and data[cut-point] == null:
+            cut-point++
           // `to_byte_array` doesn't have an issue with character boundaries.
-          snip := data.to_byte_array from cut_point
+          snip := data.to-byte-array from cut-point
           from += writer_.write snip
     return size
 
@@ -57,8 +57,8 @@ class Writer:
   Closes the writer.
   The internal writer must have a `close_writer` method.
   */
-  close_write -> none:
-    writer_.close_write
+  close-write -> none:
+    writer_.close-write
 
   /**
   Closes the writer.

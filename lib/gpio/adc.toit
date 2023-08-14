@@ -32,7 +32,7 @@ main:
 ADC unit for reading the voltage on GPIO Pins.
 */
 class Adc:
-  static MAX_SAMPLES_PER_CALL_ ::= 64
+  static MAX-SAMPLES-PER-CALL_ ::= 64
 
   pin/Pin
   resource_ := ?
@@ -40,11 +40,11 @@ class Adc:
   /**
   Initializes an Adc unit for the $pin.
 
-  Use $max_voltage to indicate max voltage expected to measure. This helps to
-    tune the attenuation of the underlying ADC unit. If no $max_voltage is
+  Use $max-voltage to indicate max voltage expected to measure. This helps to
+    tune the attenuation of the underlying ADC unit. If no $max-voltage is
     provided, the ADC uses the maximum voltage range of the pin.
 
-  If $allow_restricted is provided, allows pins that are restricted.
+  If $allow-restricted is provided, allows pins that are restricted.
     See the ESP32 section below.
 
   # ESP32
@@ -52,28 +52,28 @@ class Adc:
     ADC2 (pins 0, 2, 4, 12-15, 25-27) has lots of restrictions. It can't be
     used when WiFi is active, and some of the pins are
     strapping pins). By default, ADC2 is disabled, and users need to pass in the
-    $allow_restricted flag to allow its use.
+    $allow-restricted flag to allow its use.
   */
-  constructor .pin --max_voltage/float?=null --allow_restricted/bool=false:
-    resource_ = adc_init_ resource_freeing_module_ pin.num allow_restricted (max_voltage ? max_voltage : 0.0)
+  constructor .pin --max-voltage/float?=null --allow-restricted/bool=false:
+    resource_ = adc-init_ resource-freeing-module_ pin.num allow-restricted (max-voltage ? max-voltage : 0.0)
 
   /**
   Measures the voltage on the pin.
   */
   get --samples=64 -> float:
     if samples < 1: throw "OUT_OF_BOUNDS"
-    if samples <= MAX_SAMPLES_PER_CALL_: return adc_get_ resource_ samples
+    if samples <= MAX-SAMPLES-PER-CALL_: return adc-get_ resource_ samples
     // Sample in chunks of 64, so we don't spend too much time in
     // the primitive.
-    full_chunk_factor := MAX_SAMPLES_PER_CALL_.to_float / samples
+    full-chunk-factor := MAX-SAMPLES-PER-CALL_.to-float / samples
     result := 0.0
     sampled := 0
     while sampled < samples:
-      is_full_chunk := sampled + MAX_SAMPLES_PER_CALL_ <= samples
-      chunk_size := is_full_chunk ? MAX_SAMPLES_PER_CALL_ : samples - sampled
-      value := adc_get_ resource_ chunk_size
-      result += value * (is_full_chunk ? full_chunk_factor : (chunk_size.to_float / samples))
-      sampled += chunk_size
+      is-full-chunk := sampled + MAX-SAMPLES-PER-CALL_ <= samples
+      chunk-size := is-full-chunk ? MAX-SAMPLES-PER-CALL_ : samples - sampled
+      value := adc-get_ resource_ chunk-size
+      result += value * (is-full-chunk ? full-chunk-factor : (chunk-size.to-float / samples))
+      sampled += chunk-size
     return result
 
   /**
@@ -87,24 +87,24 @@ class Adc:
   */
   get --raw/bool -> int:
     if not raw: throw "INVALID_ARGUMENT"
-    return adc_get_raw_ resource_
+    return adc-get-raw_ resource_
 
   /**
   Closes the ADC unit and releases the associated resources.
   */
   close:
     if resource_:
-      adc_close_ resource_
+      adc-close_ resource_
       resource_ = null
 
-adc_init_ group num allow_restricted max:
+adc-init_ group num allow-restricted max:
   #primitive.adc.init
 
-adc_get_ resource samples:
+adc-get_ resource samples:
   #primitive.adc.get
 
-adc_get_raw_ resource:
-  #primitive.adc.get_raw
+adc-get-raw_ resource:
+  #primitive.adc.get-raw
 
-adc_close_ resource:
+adc-close_ resource:
   #primitive.adc.close

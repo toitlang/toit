@@ -8,6 +8,6 @@ import foo
 import expect show *
 
 main:
-  expect_equals "foo" foo.identify
-  expect_equals "target" redirected.identify
-  expect_equals "sub" sub.identify
+  expect-equals "foo" foo.identify
+  expect-equals "target" redirected.identify
+  expect-equals "sub" sub.identify

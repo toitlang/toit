@@ -38,10 +38,10 @@ I've kept it this way to avoid deviating too much from the original implementati
 import .benchmark
 
 main -> none:
-  log_execution_time "Deltablue" --iterations=10:
+  log-execution-time "Deltablue" --iterations=10:
     10.repeat:
-      chain_test 50
-      projection_test 50
+      chain-test 50
+      projection-test 50
 
 /**
 Strengths are used to measure the relative importance of constraints.
@@ -56,22 +56,22 @@ class Strength:
   value /int    := ?
   name  /string := ?
 
-  next_weaker -> Strength:
+  next-weaker -> Strength:
     if value == 0: return WEAKEST
-    if value == 1: return WEAK_DEFAULT
+    if value == 1: return WEAK-DEFAULT
     if value == 2: return NORMAL
-    if value == 3: return STRONG_DEFAULT
+    if value == 3: return STRONG-DEFAULT
     if value == 4: return PREFERRED
-    if value == 5: return STRONG_REFERRED
+    if value == 5: return STRONG-REFERRED
     unreachable
 
 
 REQUIRED        ::= Strength 0 "required"
-STRONG_REFERRED ::= Strength 1 "strongPreferred"
+STRONG-REFERRED ::= Strength 1 "strongPreferred"
 PREFERRED       ::= Strength 2 "preferred"
-STRONG_DEFAULT  ::= Strength 3 "strongDefault"
+STRONG-DEFAULT  ::= Strength 3 "strongDefault"
 NORMAL          ::= Strength 4 "normal"
-WEAK_DEFAULT    ::= Strength 5 "weakDefault"
+WEAK-DEFAULT    ::= Strength 5 "weakDefault"
 WEAKEST         ::= Strength 6 "weakest"
 
 stronger s1/Strength s2/Strength -> bool:
@@ -93,22 +93,22 @@ strongest -> Strength
 abstract class Constraint:
 
   abstract output            -> Variable
-  abstract mark_unsatisfied  -> none
-  abstract add_to_graph      -> none
-  abstract remove_from_graph -> none
-  abstract is_satisfied      -> bool
+  abstract mark-unsatisfied  -> none
+  abstract add-to-graph      -> none
+  abstract remove-from-graph -> none
+  abstract is-satisfied      -> bool
   abstract execute           -> none
-  abstract choose_method mark/int -> none
-  abstract mark_inputs   mark/int -> none
+  abstract choose-method mark/int -> none
+  abstract mark-inputs   mark/int -> none
 
   strength /Strength := ?
 
   constructor .strength:
 
   /** Activate this constraint and attempt to satisfy it. */
-  add_constraint:
-    add_to_graph
-    planner.incremental_add this
+  add-constraint:
+    add-to-graph
+    planner.incremental-add this
 
   /**
   Attempts to find a way to enforce this constraint. If successful,
@@ -119,58 +119,58 @@ abstract class Constraint:
   */
   satisfy -> Constraint?
       mark /int:
-    choose_method mark
-    if not is_satisfied:
+    choose-method mark
+    if not is-satisfied:
       if strength == REQUIRED: throw "Could not satisfy a required constraint!"
       return null
-    mark_inputs mark
+    mark-inputs mark
     out := output
-    overridden := out.determined_by
-    if overridden: overridden.mark_unsatisfied
-    out.determined_by = this
-    if not planner.add_propagate this mark: throw "Cycle encountered"
+    overridden := out.determined-by
+    if overridden: overridden.mark-unsatisfied
+    out.determined-by = this
+    if not planner.add-propagate this mark: throw "Cycle encountered"
     out.mark = mark
     return overridden
 
-  destroy_constraint -> none:
-    if is_satisfied: planner.incremental_remove this
-    remove_from_graph
+  destroy-constraint -> none:
+    if is-satisfied: planner.incremental-remove this
+    remove-from-graph
 
   /**
   Normal constraints are not input constraints.  An input constraint
     is one that depends on external state, such as the mouse, the
     keyboard, a clock, or some arbitrary piece of imperative code.
   */
-  is_input -> bool:
+  is-input -> bool:
     return false
 
 /** Abstract superclass for constraints having a single possible output variable. */
 abstract class UnaryConstraint extends Constraint:
 
-  my_output    /Variable := ?
-  is_satisfied /bool     := false
+  my-output    /Variable := ?
+  is-satisfied /bool     := false
 
   constructor
       strength /Strength
-      .my_output:
+      .my-output:
     super strength
-    add_constraint
+    add-constraint
 
   /// Adds this constraint to the constraint graph
-  add_to_graph -> none:
-    my_output.add_constraint this
-    is_satisfied = false
+  add-to-graph -> none:
+    my-output.add-constraint this
+    is-satisfied = false
 
   /// Decides if this constraint can be satisfied and records that decision.
-  choose_method mark/int -> none:
-    is_satisfied = my_output.mark != mark and stronger strength my_output.walk_strength
+  choose-method mark/int -> none:
+    is-satisfied = my-output.mark != mark and stronger strength my-output.walk-strength
 
-  mark_inputs mark/int -> none:
+  mark-inputs mark/int -> none:
     // has no inputs.
 
   /// Returns the current output variable.
   output -> Variable:
-    return my_output
+    return my-output
 
   /**
   Calculates the walkabout strength, the stay flag, and, if it is
@@ -178,21 +178,21 @@ abstract class UnaryConstraint extends Constraint:
     this constraint is satisfied.
   */
   recalculate -> none:
-    my_output.walk_strength = strength
-    my_output.stay = not is_input
-    if my_output.stay: execute // Stay optimization.
+    my-output.walk-strength = strength
+    my-output.stay = not is-input
+    if my-output.stay: execute // Stay optimization.
 
   /// Records that this constraint is unsatisfied.
-  mark_unsatisfied -> none:
-    is_satisfied = false
+  mark-unsatisfied -> none:
+    is-satisfied = false
 
-  inputs_known -> bool
+  inputs-known -> bool
       mark /int:
     return true
 
-  remove_from_graph -> none:
-    my_output.remove_constraint this
-    is_satisfied = false
+  remove-from-graph -> none:
+    my-output.remove-constraint this
+    is-satisfied = false
 
 
 /**
@@ -202,8 +202,8 @@ Planners may exploit the fact that instances, if satisfied, will not
 */
 class StayConstraint extends UnaryConstraint:
 
-  constructor strength/Strength my_output/Variable:
-    super strength my_output
+  constructor strength/Strength my-output/Variable:
+    super strength my-output
 
   execute -> none:
     // Stay constraints do nothing.
@@ -216,11 +216,11 @@ class EditConstraint extends UnaryConstraint:
 
   constructor
       strength  /Strength
-      my_output /Variable:
-    super strength my_output
+      my-output /Variable:
+    super strength my-output
 
   /// Edits indicate that a variable is to be changed by imperative code.
-  is_input -> bool:
+  is-input -> bool:
     return true
 
   execute -> none:
@@ -243,35 +243,35 @@ abstract class BinaryConstraint extends Constraint:
       .v1
       .v2:
     super strength
-    add_constraint
+    add-constraint
 
   /**
   Decides if this constraint can be satisfied and which way it
     should flow based on the relative strength of the variables related,
     and record that decision.
   */
-  choose_method mark/int -> none:
+  choose-method mark/int -> none:
     if v1.mark == mark:
-      direction = (v2.mark != mark and stronger strength v2.walk_strength) ? FORWARD : NONE
+      direction = (v2.mark != mark and stronger strength v2.walk-strength) ? FORWARD : NONE
     else if v2.mark == mark:
-      direction = (v1.mark != mark and stronger strength v1.walk_strength) ? BACKWARD : NONE
-    else if weaker v1.walk_strength v2.walk_strength:
-      direction = (stronger strength v1.walk_strength) ? BACKWARD : NONE
+      direction = (v1.mark != mark and stronger strength v1.walk-strength) ? BACKWARD : NONE
+    else if weaker v1.walk-strength v2.walk-strength:
+      direction = (stronger strength v1.walk-strength) ? BACKWARD : NONE
     else:
-      direction = (stronger strength v2.walk_strength) ? FORWARD : BACKWARD
+      direction = (stronger strength v2.walk-strength) ? FORWARD : BACKWARD
 
   /// Adds this constraint to the constraint graph.
-  add_to_graph -> none:
-    v1.add_constraint this
-    v2.add_constraint this
+  add-to-graph -> none:
+    v1.add-constraint this
+    v2.add-constraint this
     direction = NONE
 
   /// Whether this constraint is satisfied in the current solution.
-  is_satisfied -> bool:
+  is-satisfied -> bool:
     return direction != NONE
 
   /// Marks the input variable with the given mark.
-  mark_inputs mark/int -> none:
+  mark-inputs mark/int -> none:
     input.mark = mark
 
   /// Returns the current input variable
@@ -290,21 +290,21 @@ abstract class BinaryConstraint extends Constraint:
   recalculate -> none:
     in := input
     out := output
-    out.walk_strength = weakest strength in.walk_strength
+    out.walk-strength = weakest strength in.walk-strength
     out.stay = in.stay
     if out.stay: execute
 
   /// Records the fact that this constraint is unsatisfied.
-  mark_unsatisfied -> none:
+  mark-unsatisfied -> none:
     direction = NONE
 
-  inputs_known mark/int -> bool:
+  inputs-known mark/int -> bool:
     i := input
-    return i.mark == mark or i.stay or i.determined_by
+    return i.mark == mark or i.stay or i.determined-by
 
-  remove_from_graph -> none:
-    v1.remove_constraint this
-    v2.remove_constraint this
+  remove-from-graph -> none:
+    v1.remove-constraint this
+    v2.remove-constraint this
     direction = NONE
 
 
@@ -327,17 +327,17 @@ class ScaleConstraint extends BinaryConstraint:
     super strength v1 v2
 
   /// Adds this constraint to the constraint graph.
-  add_to_graph -> none:
+  add-to-graph -> none:
     super
-    scale.add_constraint this
-    offset.add_constraint this
+    scale.add-constraint this
+    offset.add-constraint this
 
-  remove_from_graph -> none:
+  remove-from-graph -> none:
     super
-    scale.remove_constraint this
-    offset.remove_constraint this
+    scale.remove-constraint this
+    offset.remove-constraint this
 
-  mark_inputs mark/int -> none:
+  mark-inputs mark/int -> none:
     super mark
     scale.mark = offset.mark = mark
 
@@ -354,7 +354,7 @@ class ScaleConstraint extends BinaryConstraint:
   recalculate -> none:
     in := input
     out := output
-    out.walk_strength = weakest strength in.walk_strength
+    out.walk-strength = weakest strength in.walk-strength
     out.stay = in.stay and scale.stay and offset.stay
     if out.stay: execute
 
@@ -382,25 +382,25 @@ class Variable:
   name  /string := ?
   value /int    := ?
 
-  determined_by := null
+  determined-by := null
   mark := 0
-  walk_strength := WEAKEST
+  walk-strength := WEAKEST
   stay := true
   constraints := []
 
   /**
   Adds the given constraint to the set of all constraints that refer this variable.
   */
-  add_constraint c/Constraint -> none:
+  add-constraint c/Constraint -> none:
     constraints.add c
 
   /// Removes all traces of c from this variable.
-  remove_constraint c/Constraint -> none:
-    constraints.filter --in_place: it != c
-    if determined_by == c: determined_by = null
+  remove-constraint c/Constraint -> none:
+    constraints.filter --in-place: it != c
+    if determined-by == c: determined-by = null
 
 class Planner:
-  current_mark := 0
+  current-mark := 0
 
   /**
   Attempts to satisfy the given constraint and, if successful,
@@ -418,8 +418,8 @@ class Planner:
     the algorithm to avoid getting into an infinite loop even if the
     constraint graph has an inadvertent cycle.
   */
-  incremental_add c/Constraint -> none:
-    mark := new_mark
+  incremental-add c/Constraint -> none:
+    mark := new-mark
     for overridden := c.satisfy mark;
         overridden;
         overridden = overridden.satisfy mark:
@@ -439,20 +439,20 @@ class Planner:
 
   Assumes: $c is satisfied.
   */
-  incremental_remove c/Constraint -> none:
+  incremental-remove c/Constraint -> none:
     out := c.output
-    c.mark_unsatisfied
-    c.remove_from_graph
-    unsatisfied := remove_propagate_from out
+    c.mark-unsatisfied
+    c.remove-from-graph
+    unsatisfied := remove-propagate-from out
     strength := REQUIRED
     while true:
-      unsatisfied.do: if it.strength == strength: incremental_add it
-      strength = strength.next_weaker
+      unsatisfied.do: if it.strength == strength: incremental-add it
+      strength = strength.next-weaker
       if strength == WEAKEST: break
 
   /// Selects a previously unused mark value.
-  new_mark -> int:
-    return ++current_mark
+  new-mark -> int:
+    return ++current-mark
 
   /**
   Extracts a plan for resatisfaction starting from the given source
@@ -476,28 +476,28 @@ class Planner:
 
   Assumes: $sources are all satisfied.
   */
-  make_plan sources/List -> Plan:
-    mark := new_mark
+  make-plan sources/List -> Plan:
+    mark := new-mark
     plan := Plan
     todo := sources
-    while not todo.is_empty:
-      c := todo.remove_last
-      if c.output.mark != mark and c.inputs_known mark:
-        plan.add_constraint c
+    while not todo.is-empty:
+      c := todo.remove-last
+      if c.output.mark != mark and c.inputs-known mark:
+        plan.add-constraint c
         c.output.mark = mark
-        add_constraints_consuming_to c.output todo
+        add-constraints-consuming-to c.output todo
     return plan
 
   /**
   Extracts a plan for resatisfying starting from the output of the
     given $constraints, usually a set of input constraints.
   */
-  extract_plan_from_constraints constraints/List -> Plan:
+  extract-plan-from-constraints constraints/List -> Plan:
     sources := []
     constraints.do:
       // if not in plan already and eligible for inclusion.
-      if it.is_input and it.is_satisfied: sources.add it
-    return make_plan sources
+      if it.is-input and it.is-satisfied: sources.add it
+    return make-plan sources
 
   /**
   Recomputes the walkabout strengths and stay flags of all variables
@@ -514,17 +514,17 @@ class Planner:
     the output constraint means that there is a path from the
     constraint's output to one of its inputs.
   */
-  add_propagate -> bool
+  add-propagate -> bool
       c    /Constraint
       mark /int:
     todo := [c]
-    while not todo.is_empty:
-      d := todo.remove_last
+    while not todo.is-empty:
+      d := todo.remove-last
       if d.output.mark == mark:
-        incremental_remove c
+        incremental-remove c
         return false
       d.recalculate
-      add_constraints_consuming_to d.output todo
+      add-constraints-consuming-to d.output todo
     return true
 
   /**
@@ -532,25 +532,25 @@ class Planner:
     downstream of the given constraint. Answers a collection of
     unsatisfied constraints sorted in order of decreasing strength.
   */
-  remove_propagate_from out/Variable -> List:
-    out.determined_by = null
-    out.walk_strength = WEAKEST
+  remove-propagate-from out/Variable -> List:
+    out.determined-by = null
+    out.walk-strength = WEAKEST
     out.stay = true
     unsatisfied := []
     todo := [out]
-    while not todo.is_empty:
-      v := todo.remove_last
-      v.constraints.do: if not it.is_satisfied: unsatisfied.add it
-      determining := v.determined_by
+    while not todo.is-empty:
+      v := todo.remove-last
+      v.constraints.do: if not it.is-satisfied: unsatisfied.add it
+      determining := v.determined-by
       v.constraints.do:
-        if it != determining and it.is_satisfied:
+        if it != determining and it.is-satisfied:
           it.recalculate
           todo.add it.output
     return unsatisfied
 
-  add_constraints_consuming_to v/Variable coll/List -> none:
-    determining := v.determined_by
-    v.constraints.do: if it != determining and it.is_satisfied: coll.add it
+  add-constraints-consuming-to v/Variable coll/List -> none:
+    determining := v.determined-by
+    v.constraints.do: if it != determining and it.is-satisfied: coll.add it
 
 
 /**
@@ -561,7 +561,7 @@ A $Plan is an ordered list of constraints to be executed in sequence
 class Plan:
   list_ /List := []
 
-  add_constraint c/Constraint -> none:
+  add-constraint c/Constraint -> none:
     list_.add c
 
   execute -> none:
@@ -585,7 +585,7 @@ A long chain of equality
   of course, very low. Typical situations lie somewhere between these
   two extremes.
 */
-chain_test n/int -> none:
+chain-test n/int -> none:
   planner = Planner
   prev := null
   first := null
@@ -597,9 +597,9 @@ chain_test n/int -> none:
     if i == 0: first = v
     if i == n: last = v
     prev = v
-  StayConstraint STRONG_DEFAULT last
+  StayConstraint STRONG-DEFAULT last
   edit := EditConstraint PREFERRED first
-  plan := planner.extract_plan_from_constraints [edit]
+  plan := planner.extract-plan-from-constraints [edit]
   for i := 0; i < 100; i++:
     first.value = i
     plan.execute
@@ -612,7 +612,7 @@ This test constructs a two sets of variables related to each
   time is measured to change a variable on either side of the
   mapping and to change the scale and offset factors.
 */
-projection_test n/int -> none:
+projection-test n/int -> none:
   planner = Planner
   scale := Variable "scale" 10
   offset := Variable "offset" 1000
@@ -637,10 +637,10 @@ projection_test n/int -> none:
   for i := 0; i < n - 1; i++:
     if dests[i].value != i * 5 + 2000: throw "Projection 4 failed"
 
-change v/Variable new_value/int -> none:
+change v/Variable new-value/int -> none:
   edit := EditConstraint PREFERRED v
-  plan := planner.extract_plan_from_constraints [edit]
+  plan := planner.extract-plan-from-constraints [edit]
   10.repeat:
-    v.value = new_value
+    v.value = new-value
     plan.execute
-  edit.destroy_constraint
+  edit.destroy-constraint

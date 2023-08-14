@@ -20,9 +20,9 @@ import .document
 Parameters for the document-symbol request.
 */
 class DocumentSymbolParams extends MapWrapper:
-  constructor json_map/Map: super json_map
+  constructor json-map/Map: super json-map
 
-  text_document -> TextDocumentIdentifier:
+  text-document -> TextDocumentIdentifier:
     return at_ "textDocument": TextDocumentIdentifier it
 
 class SymbolKind:
@@ -47,11 +47,11 @@ class SymbolKind:
   static OBJECT ::= 19
   static KEY ::= 20
   static NULL ::= 21
-  static ENUM_MEMBER ::= 22
+  static ENUM-MEMBER ::= 22
   static STRUCT ::= 23
   static EVENT ::= 24
   static OPERATOR ::= 25
-  static TYPE_PARAMETER ::= 26
+  static TYPE-PARAMETER ::= 26
 
 /**
 Programming constructs like variables, classes, interfaces etc. that appear in a document.
@@ -80,14 +80,14 @@ class DocumentSymbol extends MapWrapper:
       --kind / int  // A SymbolKind
       --deprecated / bool? = null
       --range / Range
-      --selection_range / Range
+      --selection-range / Range
       --children / List? = null:
     map_["name"]   = name
     map_["kind"]   = kind
     map_["detail"] = detail
     if deprecated != null: map_["deprecated"] = deprecated
     map_["range"] = range
-    map_["selectionRange"] = selection_range
+    map_["selectionRange"] = selection-range
     if children != null: map_["children"] = children
 
 

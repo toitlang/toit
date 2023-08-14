@@ -1,4 +1,0 @@
-tests/negative/type2_test.toit:5:7: error: Unresolved type: 'NonExisting'
-glob /NonExisting := null
-      ^~~~~~~~~~~
-Compilation failed.

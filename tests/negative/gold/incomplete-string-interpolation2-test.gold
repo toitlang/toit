@@ -1,0 +1,10 @@
+tests/negative/incomplete-string-interpolation2-test.toit:6:11: error: Incomplete string interpolation
+  print "$
+          ^
+tests/negative/incomplete-string-interpolation2-test.toit:7:14: error: Unterminated string
+  unresolved1 // This line is consumed as part of the unterminated string.
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/incomplete-string-interpolation2-test.toit:8:3: error: Unresolved identifier: 'unresolved2'
+  unresolved2 // This line gives an error.
+  ^~~~~~~~~~~
+Compilation failed.

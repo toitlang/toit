@@ -83,6 +83,7 @@ foreach(file ${HEALTH_SOURCES})
     LIB_DIR "${TOIT_SDK_SOURCE_DIR}"
     GOLD_DIR "${GOLD_DIR}"
     CONFIGURATION health
+    SHOW_PACKAGE_WARNINGS ON
     UPDATE_TARGET update_health_gold
   )
 endforeach()

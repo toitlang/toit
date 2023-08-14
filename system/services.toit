@@ -15,7 +15,7 @@
 
 import monitor
 import system.services show ServiceProvider ServiceHandler
-import system.api.service_discovery show ServiceDiscoveryService
+import system.api.service-discovery show ServiceDiscoveryService
 
 class DiscoverableService:
   pid/int
@@ -30,10 +30,10 @@ class DiscoverableService:
 
 class SystemServiceManager extends ServiceProvider
     implements ServiceDiscoveryService ServiceHandler:
-  service_managers_/Map ::= {:}  // Map<int, Set<int>>
+  service-managers_/Map ::= {:}  // Map<int, Set<int>>
 
-  services_by_pid_/Map ::= {:}   // Map<int, Map<int, DiscoverableService>>>
-  services_by_uuid_/Map ::= {:}  // Map<string, List<DiscoverableService>>
+  services-by-pid_/Map ::= {:}   // Map<int, Map<int, DiscoverableService>>>
+  services-by-uuid_/Map ::= {:}  // Map<string, List<DiscoverableService>>
 
   signal_/monitor.Signal ::= monitor.Signal
 
@@ -44,18 +44,18 @@ class SystemServiceManager extends ServiceProvider
 
   handle index/int arguments/any --gid/int --client/int -> any:
     pid := pid --client=client
-    if index == ServiceDiscoveryService.DISCOVER_INDEX:
+    if index == ServiceDiscoveryService.DISCOVER-INDEX:
       return discover arguments[0] --wait=arguments[1]
-    if index == ServiceDiscoveryService.WATCH_INDEX:
+    if index == ServiceDiscoveryService.WATCH-INDEX:
       return watch pid arguments
-    if index == ServiceDiscoveryService.LISTEN_INDEX:
+    if index == ServiceDiscoveryService.LISTEN-INDEX:
       return listen pid arguments
-    if index == ServiceDiscoveryService.UNLISTEN_INDEX:
+    if index == ServiceDiscoveryService.UNLISTEN-INDEX:
       return unlisten pid arguments
     unreachable
 
   listen pid/int arguments/List -> none:
-    services := services_by_pid_.get pid --init=(: {:})
+    services := services-by-pid_.get pid --init=(: {:})
     id := arguments[0]
     if services.contains id: throw "Service id $id is already in use"
 
@@ -73,40 +73,40 @@ class SystemServiceManager extends ServiceProvider
 
     // Register the service based on its uuid and sort the all services
     // with the same uuid by descending priority.
-    uuids := services_by_uuid_.get uuid --init=(: [])
+    uuids := services-by-uuid_.get uuid --init=(: [])
     uuids.add service
-    uuids.sort --in_place: | a b | b.priority.compare_to a.priority
+    uuids.sort --in-place: | a b | b.priority.compare-to a.priority
 
     // Register the process as a service manager and signal
     // anyone waiting for services to appear.
-    service_managers_.get pid --init=(: {})
+    service-managers_.get pid --init=(: {})
     signal_.raise
 
   unlisten pid/int id/int -> none:
-    services := services_by_pid_.get pid
+    services := services-by-pid_.get pid
     if not services: return
     service := services.get id
     if not service: return
     services.remove id
 
     uuid := service.uuid
-    uuids := services_by_uuid_.get uuid
+    uuids := services-by-uuid_.get uuid
     if uuids:
       uuids.remove service
-      if uuids.is_empty: services_by_uuid_.remove uuid
+      if uuids.is-empty: services-by-uuid_.remove uuid
 
-    if not services.is_empty: return
-    service_managers_.remove pid
-    services_by_pid_.remove pid
+    if not services.is-empty: return
+    service-managers_.remove pid
+    services-by-pid_.remove pid
 
   discover uuid/string --wait/bool -> List?:
     services/List? := null
     if wait:
       signal_.wait:
-        services = services_by_uuid_.get uuid
+        services = services-by-uuid_.get uuid
         services != null
     else:
-      services = services_by_uuid_.get uuid
+      services = services-by-uuid_.get uuid
       if not services: return null
 
     // TODO(kasper): Consider keeping the list of
@@ -126,20 +126,20 @@ class SystemServiceManager extends ServiceProvider
 
   watch pid/int target/int -> none:
     if pid == target: return
-    processes := service_managers_.get pid
+    processes := service-managers_.get pid
     if processes: processes.add target
 
-  on_process_stop pid/int -> none:
-    services := services_by_pid_.get pid
+  on-process-stop pid/int -> none:
+    services := services-by-pid_.get pid
     // Iterate over a copy of the values, so we can manipulate the
     // underlying map in the call to unlisten.
     if services: services.values.do: | service/DiscoverableService |
       unlisten service.pid service.id
     // Tell service managers about the termination.
-    service_managers_.do: | manager/int processes/Set |
+    service-managers_.do: | manager/int processes/Set |
       if not processes.contains pid: continue.do
       processes.remove pid
-      process_send_ manager SYSTEM_RPC_NOTIFY_TERMINATED_ pid
+      process-send_ manager SYSTEM-RPC-NOTIFY-TERMINATED_ pid
 
   listen id/int uuid/string -> none
       --name/string
