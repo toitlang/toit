@@ -8,7 +8,7 @@ Example of an Ethernet provider container.
 Providers should be started at boot.
 */
 
-import .olimex_poe
+import .olimex-poe
 
 main:
   provider := OlimexPoeProvider

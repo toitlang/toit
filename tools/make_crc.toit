@@ -1,7 +1,7 @@
 main args:
-  make_test := args.size > 0 and args[0] == "--test"
+  make-test := args.size > 0 and args[0] == "--test"
 
-  if make_test:
+  if make-test:
     print """
       // Copyright (C) 2022 Toitware ApS.
       // Use of this source code is governed by a Zero-Clause BSD license that can
@@ -12,41 +12,41 @@ main args:
 
       main:"""
 
-  lines := CRCCALC_TABLE.split "\n"
+  lines := CRCCALC-TABLE.split "\n"
   for i := 0; i < lines.size - 1; i += 2:
     name := lines[i]
     fields := lines[i + 1].split "\t"
 
-    name_camel := ""
-    name_snake := ""
+    name-camel := ""
+    name-snake := ""
     upper := true
-    name.to_byte_array.do:
+    name.to-byte-array.do:
       if it == '/' or it == '-':
         upper = true
         continue.do
       if 'A' <= it <= 'Z':
-        name_camel += "$(%c upper ? it : it + 0x20)"
-        if upper and name_snake != "": name_snake += "_"
-        name_snake += "$(%c it + 0x20)"
+        name-camel += "$(%c upper ? it : it + 0x20)"
+        if upper and name-snake != "": name-snake += "_"
+        name-snake += "$(%c it + 0x20)"
       else if '0' <= it <= '9':
-        name_camel += "$(%c it)"
-        name_snake += "$(%c it)"
+        name-camel += "$(%c it)"
+        name-snake += "$(%c it)"
       else:
         throw "What to do about '$(%c it)'?"
       upper = false
 
     if fields[4] != fields[5]: throw "$lines[i]: Inconsistent endianism"
     endian := ?
-    endian_upper := ?
-    polynomial_argument := ?
+    endian-upper := ?
+    polynomial-argument := ?
     if fields[4] == "true":
       endian = "little"
-      endian_upper = "LITTLE"
-      polynomial_argument = "normal_polynomial"
+      endian-upper = "LITTLE"
+      polynomial-argument = "normal_polynomial"
     else if fields[4] == "false":
       endian = "big"
-      endian_upper = "BIG"
-      polynomial_argument = "polynomial"
+      endian-upper = "BIG"
+      polynomial-argument = "polynomial"
     else:
       throw lines[i]
     width := ?
@@ -59,17 +59,17 @@ main args:
     else:
       throw name
 
-    if not fields[3].starts_with "0x": throw fields[3]
-    if not fields[6].starts_with "0x": throw fields[6]
+    if not fields[3].starts-with "0x": throw fields[3]
+    if not fields[6].starts-with "0x": throw fields[6]
 
     initial := int.parse --radix=16 fields[3][2..]
     xor := int.parse --radix=16 fields[6][2..]
 
-    initial_string := initial == 0 ? "" : " --initial_state=0x$(%x initial)"
-    xor_string     := xor == 0     ? "" : " --xor_result=0x$(%x xor)"
+    initial-string := initial == 0 ? "" : " --initial_state=0x$(%x initial)"
+    xor-string     := xor == 0     ? "" : " --xor_result=0x$(%x xor)"
 
-    if make_test:
-      print """  expect_equals $fields[1] (crc.$name_snake "123456789")"""
+    if make-test:
+      print """  expect_equals $fields[1] (crc.$name-snake "123456789")"""
     else:
       print """
 
@@ -79,17 +79,17 @@ main args:
           The \$data must be a string or byte array.
           Returns the checksum as a$(width == 8 ? "n" : "") $(width)-bit integer.
           */
-          $name_snake data -> int:
-            crc := Crc.$(endian)_endian $width --$polynomial_argument=$fields[2]$initial_string$xor_string
+          $name-snake data -> int:
+            crc := Crc.$(endian)_endian $width --$polynomial-argument=$fields[2]$initial-string$xor-string
             crc.add data
             return crc.get_as_int
 
           /** $name checksum state. */
-          class $name_camel extends Crc:
+          class $name-camel extends Crc:
             constructor:
-              super.$(endian)_endian $width --$polynomial_argument=$fields[2]$initial_string$xor_string"""
+              super.$(endian)_endian $width --$polynomial-argument=$fields[2]$initial-string$xor-string"""
 
-CRCCALC_TABLE ::= """
+CRCCALC-TABLE ::= """
     CRC-16/CCITT-FALSE
     0x29B1	0x29B1	0x1021	0xFFFF	false	false	0x0000
     CRC-16/ARC
