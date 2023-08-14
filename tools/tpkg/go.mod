@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/pflag v1.0.5
-	github.com/toitlang/tpkg v0.0.0-20230808155737-8dc0ec31866d
+	github.com/toitlang/tpkg v0.0.0-20230814090526-98c6923a4908
 )
 
 require (
