@@ -202,18 +202,10 @@ check-toitc-version toitc:
   if not version-line.starts-with "Toit version:":
     print "Could not get toit.compile version."
     exit 1
-<<<<<<< HEAD
-  parts := version_line.split ":"
-  version_with_v := parts[1].trim
-  version := version_with_v[1..]
-  if ((semver.compare version REQUIRED_SDK_VERSION) < 0):
-    print "The toit.compile version must be at least $REQUIRED_SDK_VERSION."
-    print "(Using `$toitc` to invoke toit.compile.)"
-=======
   parts := version-line.split ":"
   version-with-v := parts[1].trim
   version := version-with-v[1..]
   if ((semver.compare version REQUIRED-SDK-VERSION) < 0):
     print "The toit.compile version must be at least $REQUIRED-SDK-VERSION."
->>>>>>> origin/master
+    print "(Using `$toitc` to invoke toit.compile.)"
     exit 1
