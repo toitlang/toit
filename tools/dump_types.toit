@@ -26,92 +26,92 @@ import .snapshot
 main args:
   command := null
   command = cli.Command "root"
-      --long_help="""
+      --long-help="""
       Dumps propagated types.
 
       Run the compiler with '-Xpropagate -w program.snapshot program.toit > program.types'.
       Then use the generated snapshot and types for this tool.
       """
-      --short_help="Dumps propagated types."
+      --short-help="Dumps propagated types."
       --options=[
-        cli.OptionString "snapshot" --required --short_name="s"
-            --short_help="The snapshot file for the program."
+        cli.OptionString "snapshot" --required --short-name="s"
+            --short-help="The snapshot file for the program."
             --type="file",
-        cli.OptionString "types" --required --short_name="t"
-            --short_help="The collected types in a JSON file."
+        cli.OptionString "types" --required --short-name="t"
+            --short-help="The collected types in a JSON file."
             --type="file",
         cli.Flag "sdk"
-            --short_help="Show types for the sdk."
+            --short-help="Show types for the sdk."
             --default=false,
-        cli.Flag "show-positions" --short_name="p"
+        cli.Flag "show-positions" --short-name="p"
             --default=false,
       ]
-      --run=:: decode_types it command
+      --run=:: decode-types it command
   command.run args
 
-decode_types parsed command -> none:
-  snapshot_content := file.read_content parsed["snapshot"]
-  types_content := file.read_content parsed["types"]
-  types := json.decode types_content
-  show_types types snapshot_content
+decode-types parsed command -> none:
+  snapshot-content := file.read-content parsed["snapshot"]
+  types-content := file.read-content parsed["types"]
+  types := json.decode types-content
+  show-types types snapshot-content
       --sdk=parsed["sdk"]
-      --show_positions=parsed["show-positions"]
+      --show-positions=parsed["show-positions"]
 
-show_types types/List snapshot_content/ByteArray -> none
+show-types types/List snapshot-content/ByteArray -> none
     --sdk/bool
-    --show_positions/bool:
-  bundle := SnapshotBundle snapshot_content
+    --show-positions/bool:
+  bundle := SnapshotBundle snapshot-content
   program := bundle.decode
   methods := {}
-  input_strings := {:}
-  output_strings := {:}
-  method_args := {:}
+  input-strings := {:}
+  output-strings := {:}
+  method-args := {:}
   types.do: | entry/Map |
     position := entry["position"]
     method/ToitMethod := ?
     if entry.contains "output":
-      method = program.method_from_absolute_bci position
-      output_strings[position] = type_string program entry["output"]
+      method = program.method-from-absolute-bci position
+      output-strings[position] = type-string program entry["output"]
       if entry.contains "input":
-        input_strings[position] = entry["input"].map: | x |
-          type_string program x
+        input-strings[position] = entry["input"].map: | x |
+          type-string program x
     else:
-      method = program.method_from_absolute_bci (position + ToitMethod.HEADER_SIZE)
-      method_args[position] = entry["arguments"].map: | x |
-        type_string program x
+      method = program.method-from-absolute-bci (position + ToitMethod.HEADER-SIZE)
+      method-args[position] = entry["arguments"].map: | x |
+        type-string program x
     methods.add method
 
-  sorted_methods := List.from methods
+  sorted-methods := List.from methods
   if not sdk:
-    sorted_methods = sorted_methods.filter: | method/ToitMethod |
-      info := program.method_info_for method.id
-      not info.error_path.starts_with "<sdk>"
-  sorted_methods.sort --in_place: | a/ToitMethod b/ToitMethod |
-    ia := program.method_info_for a.id
-    ib := program.method_info_for b.id
-    ia.error_path.compare_to ib.error_path --if_equal=:
-      ia.position.line.compare_to ib.position.line --if_equal=:
-        ia.name.compare_to ib.name --if_equal=:
+    sorted-methods = sorted-methods.filter: | method/ToitMethod |
+      info := program.method-info-for method.id
+      not info.error-path.starts-with "<sdk>"
+  sorted-methods.sort --in-place: | a/ToitMethod b/ToitMethod |
+    ia := program.method-info-for a.id
+    ib := program.method-info-for b.id
+    ia.error-path.compare-to ib.error-path --if-equal=:
+      ia.position.line.compare-to ib.position.line --if-equal=:
+        ia.name.compare-to ib.name --if-equal=:
           // Being dependant on the method position in the
           // bytecode stream isn't great, but as a last
           // resort for sorting it works since it is only
           // used to sort different adapter stubs using
           // their (predictable) order of generation.
-          ia.id.compare_to ib.id
+          ia.id.compare-to ib.id
 
   first := true
-  sorted_methods.do: | method/ToitMethod |
+  sorted-methods.do: | method/ToitMethod |
     if first: first = false
     else: print ""
-    args := method_args.get method.id
-    method.output program args --show_positions=show_positions: | position/int |
-      input_part := input_strings.get position
-      output_part := output_strings.get position
-      input_part ? "$input_part -> $output_part" : output_part
+    args := method-args.get method.id
+    method.output program args --show-positions=show-positions: | position/int |
+      input-part := input-strings.get position
+      output-part := output-strings.get position
+      input-part ? "$input-part -> $output-part" : output-part
 
-type_string program/Program type/any -> string:
+type-string program/Program type/any -> string:
   if type == "[]": return "[block]"
   if type == "*": return "{*}"
   names := type.map: | id |
-    program.class_name_for id
+    program.class-name-for id
   return "{$(names.join "|")}"

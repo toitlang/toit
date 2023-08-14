@@ -17,11 +17,11 @@ import gpio
 import gpio.touch as gpio
 import esp32
 
-TOUCH_CALIBRATION_ITERATIONS ::= 16
-TOUCH_PIN ::= 32
+TOUCH-CALIBRATION-ITERATIONS ::= 16
+TOUCH-PIN ::= 32
 
 main:
-  if esp32.wakeup_cause == esp32.WAKEUP_TOUCHPAD:
+  if esp32.wakeup-cause == esp32.WAKEUP-TOUCHPAD:
     print "Woken up from touchpad"
     // Chances are that when we just woke up because of registered
     // touch, it is the wrong time to re-calibrate because you might
@@ -34,20 +34,20 @@ main:
   // Before using touch, we need to calibrate it. This also applies to
   // the 'wakeup' which will trigger on any unclosed touch pins after
   // calling $esp32.enable_touchpad_wakeup when going into deep sleep.
-  touch := gpio.Touch (gpio.Pin TOUCH_PIN)
+  touch := gpio.Touch (gpio.Pin TOUCH-PIN)
   calibrate touch
 
   // Calibrated. Let's report the threshold and read it!
-  print "Pin $TOUCH_PIN: $touch.threshold $(touch.read --raw)"
-  esp32.enable_touchpad_wakeup
+  print "Pin $TOUCH-PIN: $touch.threshold $(touch.read --raw)"
+  esp32.enable-touchpad-wakeup
 
   // Now, the touch pin is still open and we've enabled touch 'wakeup'.
   // The device will wakeup in 30 seconds (for other reasons) unless
   // we touch it before then.
-  esp32.deep_sleep (Duration --s=30)
+  esp32.deep-sleep (Duration --s=30)
 
 calibrate touch/gpio.Touch -> none:
   sum := 0
-  TOUCH_CALIBRATION_ITERATIONS.repeat:
+  TOUCH-CALIBRATION-ITERATIONS.repeat:
     sum += touch.read --raw
-  touch.threshold = sum * 2 / (3 * TOUCH_CALIBRATION_ITERATIONS)
+  touch.threshold = sum * 2 / (3 * TOUCH-CALIBRATION-ITERATIONS)

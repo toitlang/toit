@@ -26,7 +26,7 @@ matching name:
 qualifier:
   return filter == "" ? "" : " (only printing elements matching: \"$filter\")"
 
-print_collection title collection program [filter] [stringify]:
+print-collection title collection program [filter] [stringify]:
   print "$(title)[$(collection.size)]:$qualifier"
   collection.size.repeat:
     | index |
@@ -34,77 +34,77 @@ print_collection title collection program [filter] [stringify]:
     if filter.call element index: print "$(%3d index): $(stringify.call element index)"
   print
 
-print_classes program/Program:
-  print_collection "Classes" program.class_tags program
-    : | _ id | matching (program.class_name_for id)
-    : | _ id | (program.class_info_for id).stringify
+print-classes program/Program:
+  print-collection "Classes" program.class-tags program
+    : | _ id | matching (program.class-name-for id)
+    : | _ id | (program.class-info-for id).stringify
 
-print_literals program/Program:
-  print_collection "Literals" program.literals program
+print-literals program/Program:
+  print-collection "Literals" program.literals program
     : matching (it.stringify)
     : it
 
-print_literal program/Program index/int:
+print-literal program/Program index/int:
   if not 0 <= index < program.literals.size:
     print "Invalid index."
     exit 1
   print program.literals[index]
 
-print_dispatch_table program/Program:
+print-dispatch-table program/Program:
   // The dispatch entry contains either an integer or a method.
-  print_collection "Dispatch Table" program.dispatch_table program
-    : filter == "" or (it != -1 and matching (program.method_name_for it))
-    : it == -1 ? "<empty>" : (program.method_info_for it).stringify program
+  print-collection "Dispatch Table" program.dispatch-table program
+    : filter == "" or (it != -1 and matching (program.method-name-for it))
+    : it == -1 ? "<empty>" : (program.method-info-for it).stringify program
 
-print_method_table program/Program:
-  print "Method Table[$(program.method_info_size)]:$qualifier"
-  program.do --method_infos: | method_info/MethodInfo |
-    if matching method_info.name:
-      print "$(%5d method_info.id): $(method_info.stringify program)"
+print-method-table program/Program:
+  print "Method Table[$(program.method-info-size)]:$qualifier"
+  program.do --method-infos: | method-info/MethodInfo |
+    if matching method-info.name:
+      print "$(%5d method-info.id): $(method-info.stringify program)"
 
-print_method_sizes program/Program:
-  print "Method Table[$(program.method_info_size)]:$qualifier"
-  program.do --method_infos: | method_info/MethodInfo |
-    if matching method_info.name:
-      print "$(method_info.bytecode_size) $(method_info.prefix_string program) $(method_info.error_path)"
+print-method-sizes program/Program:
+  print "Method Table[$(program.method-info-size)]:$qualifier"
+  program.do --method-infos: | method-info/MethodInfo |
+    if matching method-info.name:
+      print "$(method-info.bytecode-size) $(method-info.prefix-string program) $(method-info.error-path)"
 
-print_primitive_table program/Program:
-  modules := program.primitive_table
+print-primitive-table program/Program:
+  modules := program.primitive-table
   size := 0
   modules.do: size += it.primitives.size
   print "Primitive Table:$qualifier"
   modules.size.repeat:
-    | module_index |
-    modules[module_index].primitives.size.repeat:
-      | primitive_index |
-      name := program.primitive_name module_index primitive_index
+    | module-index |
+    modules[module-index].primitives.size.repeat:
+      | primitive-index |
+      name := program.primitive-name module-index primitive-index
       if matching name: print "  {$name}"
   print
 
-print_bytecodes program/Program:
+print-bytecodes program/Program:
   methods/List := ?
   suffix := ?
-  absolute_bci := -1
-  if not filter.is_empty: absolute_bci = int.parse filter --on_error=: -1
-  if absolute_bci >= 0:
-    methods = [program.method_from_absolute_bci absolute_bci]
-    suffix = " (only printing methods containing absolute bci $absolute_bci)"
+  absolute-bci := -1
+  if not filter.is-empty: absolute-bci = int.parse filter --on-error=: -1
+  if absolute-bci >= 0:
+    methods = [program.method-from-absolute-bci absolute-bci]
+    suffix = " (only printing methods containing absolute bci $absolute-bci)"
   else:
     methods = program.methods
     methods = methods.filter:
-      (program.method_name_for it.id).contains filter
+      (program.method-name-for it.id).contains filter
     suffix = qualifier
   print "Bytecodes for methods[$(methods.size)]:$suffix"
   print
   methods.do: it.output program
 
-has_call program method:
-  method.do_calls program: if matching it: return true
+has-call program method:
+  method.do-calls program: if matching it: return true
   return false
 
-print_senders program bc:
+print-senders program bc:
   methods := program.methods
-  methods = methods.filter: has_call program it
+  methods = methods.filter: has-call program it
   print "Methods with calls to \"$filter\"[$(methods.size)]:"
   methods.do:
     if bc: it.output program
@@ -121,31 +121,31 @@ main args:
           cli.OptionString "filter",
       ]
       --options=[
-          cli.Flag "literals"        --short_name="l",
+          cli.Flag "literals"        --short-name="l",
           cli.OptionInt "literal",
-          cli.Flag "classes"         --short_name="c",
-          cli.Flag "dispatch_table"  --short_name="d",
-          cli.Flag "method_table"    --short_name="m",
+          cli.Flag "classes"         --short-name="c",
+          cli.Flag "dispatch_table"  --short-name="d",
+          cli.Flag "method_table"    --short-name="m",
           cli.Flag "method_sizes",
-          cli.Flag "bytecodes"       --short_name="bc",
-          cli.Flag "senders"         --short_name="s",
-          cli.Flag "primitive_table" --short_name="p",
+          cli.Flag "bytecodes"       --short-name="bc",
+          cli.Flag "senders"         --short-name="s",
+          cli.Flag "primitive_table" --short-name="p",
       ]
       --run=:: parsed = it
   parser.run args
   if not parsed: exit 0
 
   if parsed["filter"]: filter = parsed["filter"]
-  snapshot := SnapshotBundle.from_file parsed["snapshot"]
+  snapshot := SnapshotBundle.from-file parsed["snapshot"]
   program := snapshot.decode
 
-  if parsed["classes"]:         print_classes program; return
-  if parsed["literals"]:        print_literals program; return
-  if parsed["literal"]:         print_literal program parsed["literal"]; return
-  if parsed["dispatch_table"]:  print_dispatch_table program; return
-  if parsed["method_table"]:    print_method_table program; return
-  if parsed["method_sizes"]:    print_method_sizes program; return
-  if parsed["primitive_table"]: print_primitive_table program; return
-  if parsed["senders"]:         print_senders program parsed["bytecodes"]; return
-  if parsed["bytecodes"]:       print_bytecodes program; return
+  if parsed["classes"]:         print-classes program; return
+  if parsed["literals"]:        print-literals program; return
+  if parsed["literal"]:         print-literal program parsed["literal"]; return
+  if parsed["dispatch_table"]:  print-dispatch-table program; return
+  if parsed["method_table"]:    print-method-table program; return
+  if parsed["method_sizes"]:    print-method-sizes program; return
+  if parsed["primitive_table"]: print-primitive-table program; return
+  if parsed["senders"]:         print-senders program parsed["bytecodes"]; return
+  if parsed["bytecodes"]:       print-bytecodes program; return
   print snapshot.stringify

@@ -7,10 +7,10 @@ import log
 import ntp
 
 main:
-  logger := log.default.with_name "ntp"
+  logger := log.default.with-name "ntp"
   result := ntp.synchronize
   if not result: return
-  esp32.adjust_real_time_clock result.adjustment
+  esp32.adjust-real-time-clock result.adjustment
   logger.info "synchronized" --tags={
     "adjustment": result.adjustment,
     "time": Time.now.local,

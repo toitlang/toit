@@ -22,14 +22,14 @@ import reader show BufferedReader
 import .utils
 import .rpc
 import .server
-import .uri_path_translator
+import .uri-path-translator
 
 
 // Request id must be global, as lambdas only capture the current value of a variable.
-current_request_id := -1
+current-request-id := -1
 
-log_packet --to_server=false packet:
-  prefix := to_server ? "-> " : "<- "
+log-packet --to-server=false packet:
+  prefix := to-server ? "-> " : "<- "
   if packet.contains "result":
     print "$prefix $packet["id"] $packet["result"]\n"
   else if packet.contains "id":
@@ -68,55 +68,55 @@ main args:
   parser.run args
   if not parsed: exit 0
 
-  use_std_ports := parsed["use-std-ports"]
-  log_formatted := parsed["log-formatted"]
-  if use_std_ports and log_formatted:
+  use-std-ports := parsed["use-std-ports"]
+  log-formatted := parsed["log-formatted"]
+  if use-std-ports and log-formatted:
     print "Can't use std ports and log formatted at same time"
     exit 1
 
-  server_to   := null
-  server_from := null
-  if use_std_ports:
-    server_from = pipe.stdin
-    server_to   = pipe.stdout
+  server-to   := null
+  server-from := null
+  if use-std-ports:
+    server-from = pipe.stdin
+    server-to   = pipe.stdout
   else:
-    server_from = FakePipe
-    server_to   = FakePipe
-    server_rpc_connection := RpcConnection (BufferedReader server_to) server_from
-    server := LspServer server_rpc_connection null UriPathTranslator
+    server-from = FakePipe
+    server-to   = FakePipe
+    server-rpc-connection := RpcConnection (BufferedReader server-to) server-from
+    server := LspServer server-rpc-connection null UriPathTranslator
     task:: catch --trace: server.run
 
-  debug_file := parsed["debug-file"]
-  replay_rpc := RpcConnection (BufferedReader (file.Stream.for_read debug_file)) pipe.stderr
-  std_rpc := RpcConnection (BufferedReader server_from) server_to
+  debug-file := parsed["debug-file"]
+  replay-rpc := RpcConnection (BufferedReader (file.Stream.for-read debug-file)) pipe.stderr
+  std-rpc := RpcConnection (BufferedReader server-from) server-to
 
   channel := monitor.Channel 1
 
   task:: catch --trace:
     while true:
-      packet := replay_rpc.read_packet
+      packet := replay-rpc.read-packet
       if packet == null: break
       if packet.contains "result" and packet.contains "id":
         // Don't send responses before they have been requested.
-        while packet["id"] > current_request_id:
+        while packet["id"] > current-request-id:
           channel.receive
       if parsed["print-out"]:
-        if log_formatted:
-          log_packet --to_server packet
+        if log-formatted:
+          log-packet --to-server packet
         else:
-          replay_rpc.write_packet packet
-      std_rpc.write_packet packet
+          replay-rpc.write-packet packet
+      std-rpc.write-packet packet
       sleep --ms=100
 
   task:: catch --trace:
     while true:
-      packet := std_rpc.read_packet
-      if log_formatted:
-        log_packet packet
+      packet := std-rpc.read-packet
+      if log-formatted:
+        log-packet packet
       else:
-        replay_rpc.write_packet packet
+        replay-rpc.write-packet packet
       if packet.contains "result": continue
       // If it contains an id, but isn't a result, it's a request.
-      packet.get "id" --if_present=:
-        current_request_id = it
+      packet.get "id" --if-present=:
+        current-request-id = it
         channel.send it
