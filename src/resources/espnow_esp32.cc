@@ -92,7 +92,7 @@ class DatagramPool {
     int mask = 1;
     for (int i = 0; i < ESPNOW_RX_DATAGRAM_NUM; i++) {
       if ((used_ & mask) == 0) {
-        used_ |= mask;
+        used_ = used_ | mask;
         return datagrams_[i];
       }
       mask <<= 1;
@@ -105,7 +105,7 @@ class DatagramPool {
     for (int i = 0; i < ESPNOW_RX_DATAGRAM_NUM; i++) {
       if (datagrams_[i] == datagram) {
         SpinLocker locker(&spinlock_);
-        used_ &= ~mask;
+        used_ = used_ & ~mask;
         return;
       }
       mask <<= 1;

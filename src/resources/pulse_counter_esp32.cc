@@ -72,11 +72,9 @@ class PcntUnitResource : public Resource {
     // In v4.4.1 there is no way to shut down the counter.
     // In later versions we have to call `pcnt_del_unit`.
     // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-unit
-    // This static assert might hit, even though the code is still OK. Check the documentation if
-    // the code from 'master' (as of 2022-07-01) has already made it into the release you are using.
-    // If yes, stop the unit and the delete it.
-    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 4,
-                  "Newer ESP-IDF might need different code");
+    // TODO: Check the documentation if the code from 'master' (as of
+    // 2022-07-01) has already made it into the release you are using.  If yes,
+    // stop the unit and the delete it.
   }
 
   bool is_open_channel(pcnt_channel_t channel) {
@@ -97,10 +95,8 @@ class PcntUnitResource : public Resource {
     // https://docs.espressif.com/projects/esp-idf/en/v4.3.2/esp32/api-reference/peripherals/pcnt.html?#configuration
     // In later versions we have to call `pcnt_new_channel`.
     // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-channel
-    // This static assert might hit, even though the code is still OK. Check the documentation if
-    // the code from 'master' (as of 2022-07-01) has already made it into the release you are using.
-    static_assert(ESP_IDF_VERSION_MAJOR == 5 && ESP_IDF_VERSION_MINOR == 0,
-                  "Newer ESP-IDF might need different code");
+    // TODO: Check the documentation if the code from 'master' (as of
+    // 2022-07-01) has already made it into the release you are using.
     for (int i = 0; i < PCNT_CHANNEL_MAX; i++) {
       if (!used_channels_[i]) {
         *channel = static_cast<pcnt_channel_t>(i);

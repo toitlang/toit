@@ -175,7 +175,7 @@ uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t
 MODULE_IMPLEMENTATION(ethernet, MODULE_ETHERNET)
 
 PRIMITIVE(init_esp32) {
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 #if 0
   ARGS(int, mac_chip, int, phy_chip, int, phy_addr, int, phy_reset_num, int, mdc_num, int, mdio_num)
 
@@ -284,7 +284,7 @@ PRIMITIVE(init_esp32) {
 
 
 PRIMITIVE(init_spi) {
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 #if 0
   ARGS(int, mac_chip, SpiDevice, spi_device, int, int_num)
 
