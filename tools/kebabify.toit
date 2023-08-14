@@ -108,6 +108,7 @@ migrate parsed/cli.Parsed:
     reader := BufferedReader pipe-ends
     reader.buffer-all
     out := reader.read-string reader.buffered
+    pipe-ends.close
     exit-value := pipe.wait-for child-process
     if pipe.exit-signal exit-value:
       throw "Compiler crashed while migrating $source."
@@ -206,4 +207,5 @@ check-toitc-version toitc:
   version := version-with-v[1..]
   if ((semver.compare version REQUIRED-SDK-VERSION) < 0):
     print "The toit.compile version must be at least $REQUIRED-SDK-VERSION."
+    print "(Using `$toitc` to invoke toit.compile.)"
     exit 1
