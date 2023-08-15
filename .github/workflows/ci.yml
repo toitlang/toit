@@ -365,7 +365,13 @@ jobs:
         run: |
           echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
           echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
-          echo "espressif_sha=$(git submodule status third_party/esp-idf | awk '{print $1}')" >> $GITHUB_ENV
+
+      # Get values for sha hashes to be used in later steps
+      - name: Get Sha hashes
+        id: sha-hashes
+        shell: bash
+        run: |
+          echo "espressif_sha=$(git submodule status third_party/esp-idf | awk '{print $1}')" >> $GITHUB_OUTPUT
 
       # Cache go build cache, used to speedup go test
       - name: Go Build Cache
@@ -400,7 +406,7 @@ jobs:
         # is no match (which should almost always be the case).
         with:
           path: $HOME/.espressif
-          key: espressif-cache-${{ espressif_sha }}
+          key: espressif-cache-${{ steps.sha-hashes.outputs.espressif_sha }}
           restore-keys: espressif-cache-
 
       - name: Install dependencies - Linux
