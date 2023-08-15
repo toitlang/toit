@@ -160,6 +160,7 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
           cache-dependency-path: third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
+        run: pip install jsonschema jinja2
 
       - name: Setup compilation env
         shell: bash
