@@ -150,7 +150,7 @@ static void espnow_send_cb(const uint8* mac_addr, esp_now_send_status_t status) 
   }
 }
 
-static void espnow_recv_cb(const uint8* mac_addr, const uint8* data, int data_len) {
+static void espnow_recv_cb(const esp_now_recv_info_t* esp_now_info, const uint8* data, int data_len) {
   if (data_len > ESPNOW_RX_DATAGRAM_LEN_MAX) {
     ESP_LOGE("ESPNow", "Receive datagram length=%d is larger than max=%d", data_len, ESPNOW_RX_DATAGRAM_LEN_MAX);
     return ;
@@ -163,7 +163,7 @@ static void espnow_recv_cb(const uint8* mac_addr, const uint8* data, int data_le
   }
 
   datagram->len = data_len;
-  memcpy(datagram->mac, mac_addr, 6);
+  memcpy(datagram->mac, esp_now_info->src_addr, 6);
   memcpy(datagram->buffer, data, data_len);
 
   portBASE_TYPE ret = xQueueSend(rx_queue, &datagram, 0);
@@ -320,7 +320,6 @@ Object* EspNowResource::init(Process* process, int mode, Blob pmk, wifi_phy_rate
   err = esp_now_register_send_cb(espnow_send_cb);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   state_ = State::SEND_CALLBACK_REGISTERED;
-
 
   err = esp_now_register_recv_cb(espnow_recv_cb);
   if (err != ESP_OK) return Primitive::os_error(err, process);
