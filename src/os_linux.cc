@@ -92,12 +92,6 @@ void OS::set_writable(ProgramBlock* block, bool value) {
   mprotect(void_cast(block), TOIT_PAGE_SIZE, PROT_READ | (value ? PROT_WRITE : 0));
 }
 
-void OS::tear_down() {
-  dispose(global_mutex_);
-  dispose(scheduler_mutex_);
-  dispose(resource_mutex_);
-}
-
 const char* OS::get_platform() {
   return "Linux";
 }

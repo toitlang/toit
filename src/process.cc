@@ -120,7 +120,7 @@ Process::~Process() {
     remove_first_message();
   }
 
-  Locker locker(OS::scheduler_mutex());
+  Locker locker(OS::tls_mutex());
   while (auto certificate = root_certificates_.remove_first()) {
     delete certificate;
   }
@@ -290,7 +290,7 @@ ByteArray* Process::allocate_byte_array(int length, bool force_external) {
 }
 
 void Process::_append_message(Message* message) {
-  Locker locker(OS::scheduler_mutex());  // Fix this
+  Locker locker(OS::process_mutex());
   if (message->is_object_notify()) {
     ObjectNotifyMessage* obj_notify = static_cast<ObjectNotifyMessage*>(message);
     if (obj_notify->is_queued()) return;
@@ -300,17 +300,17 @@ void Process::_append_message(Message* message) {
 }
 
 bool Process::has_messages() {
-  Locker locker(OS::scheduler_mutex());  // Fix this
+  Locker locker(OS::process_mutex());
   return !messages_.is_empty();
 }
 
 Message* Process::peek_message() {
-  Locker locker(OS::scheduler_mutex());  // Fix this
+  Locker locker(OS::process_mutex());
   return messages_.first();
 }
 
 void Process::remove_first_message() {
-  Locker locker(OS::scheduler_mutex());  // Fix this
+  Locker locker(OS::process_mutex());
   ASSERT(!messages_.is_empty());
   Message* message = messages_.remove_first();
   if (message->is_object_notify()) {
@@ -320,7 +320,7 @@ void Process::remove_first_message() {
 }
 
 int Process::message_count() {
-  Locker locker(OS::scheduler_mutex());  // Fix this
+  Locker locker(OS::process_mutex());
   int count = 0;
   for (MessageFIFO::Iterator it = messages_.begin(); it != messages_.end(); ++it) {
     count++;
