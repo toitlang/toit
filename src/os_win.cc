@@ -223,9 +223,11 @@ void OS::set_up() {
   ASSERT(sizeof(void*) == sizeof(pthread_t));
   (void) pthread_key_create(&thread_key, null);
   Thread::ensure_system_thread();
-  global_mutex_ = allocate_mutex(0, "Global mutex");
-  scheduler_mutex_ = allocate_mutex(4, "Scheduler mutex");
-  resource_mutex_ = allocate_mutex(99, "Resource mutex");
+  set_up_mutexes();
+}
+
+void OS::tear_down() {
+  tear_down_mutexes();
 }
 
 Thread* Thread::current() {
@@ -356,12 +358,6 @@ void OS::free_block(ProgramBlock* block) {
 
 void OS::set_writable(ProgramBlock* block, bool value) {
   // TODO(anders): Unimplemented.
-}
-
-void OS::tear_down() {
-  dispose(global_mutex_);
-  dispose(scheduler_mutex_);
-  dispose(resource_mutex_);
 }
 
 const char* OS::get_platform() {

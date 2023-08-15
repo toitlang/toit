@@ -370,9 +370,7 @@ Thread* Thread::current() {
 
 void OS::set_up() {
   Thread::ensure_system_thread();
-  global_mutex_ = allocate_mutex(0, "Global mutex");
-  scheduler_mutex_ = allocate_mutex(4, "Scheduler mutex");
-  resource_mutex_ = allocate_mutex(99, "Resource mutex");
+  set_up_mutexes();
 #ifdef CONFIG_IDF_TARGET_ESP32
   // This will normally return 1 or 3.  Perhaps later, more
   // CPU revisions will appear.

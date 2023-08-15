@@ -172,7 +172,8 @@ class OS {
   static void out_of_memory(const char* reason);
 
   static Mutex* global_mutex() { return global_mutex_; }
-  static Mutex* scheduler_mutex() { return scheduler_mutex_; }
+  static Mutex* tls_mutex() { return tls_mutex_; }
+  static Mutex* process_mutex() { return process_mutex_; }
   static Mutex* resource_mutex() { return resource_mutex_; }
 
   // Mutex (used with Locker).
@@ -257,11 +258,15 @@ class OS {
 #endif
 
  private:
+  static void set_up_mutexes();
+  static void tear_down_mutexes();
+
   static bool monotonic_gettime(int64* timestamp);
   static void timespec_increment(timespec* ts, int64 ns);
 
   static Mutex* global_mutex_;
-  static Mutex* scheduler_mutex_;
+  static Mutex* tls_mutex_;
+  static Mutex* process_mutex_;
   static Mutex* resource_mutex_;
   static HeapMemoryRange single_range_;
   static int cpu_revision_;
