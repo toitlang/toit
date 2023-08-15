@@ -155,7 +155,9 @@ jobs:
           sudo chown $(whoami) apt-cacher-ng/cache.tar.gz
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        run: pip install jsonschema jinja2
+
+      - name: Set up Python 2
         with:
           python-version: '3.11'
           cache: 'pip'
