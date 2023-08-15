@@ -15,7 +15,8 @@ jobs:
       # The matrix will run all possible combinations in parallel.
       matrix:
         # ubuntu-20.04 so that we don't depend on a recent glibc.
-        container: [ ubuntu-20.04, macos-latest, windows-latest ]
+        #container: [ ubuntu-20.04, macos-latest, windows-latest ]
+        container: [ ubuntu-20.04 ]
         shard: [1, 2, 3, 4, 5]
 
         include:
@@ -364,6 +365,7 @@ jobs:
         run: |
           echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
           echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
+          echo "espressif_sha=$(git submodule status third_party/esp-idf | awk '{print $1}')" >> $GITHUB_ENV
 
       # Cache go build cache, used to speedup go test
       - name: Go Build Cache
@@ -391,6 +393,16 @@ jobs:
           key: esp32-ccache-${{ github.sha }}
           restore-keys: esp32-ccache-
 
+      - name: ESP32 tools cache
+        uses: actions/cache@v3
+        # Store and retrieve the cache with the given sha.
+        # The 'restore-keys' prefix finds the most recent cache in case there
+        # is no match (which should almost always be the case).
+        with:
+          path: $HOME/.espressif
+          key: espressif-cache-${{ espressif_sha }}
+          restore-keys: espressif-cache-
+
       - name: Install dependencies - Linux
         run: |
           sudo apt-get update
@@ -398,6 +410,10 @@ jobs:
           ninja --version
           cmake --version
           gcc --version
+
+      - name: Install ESP32 tools
+        run: |
+          sh third_party/esp-idf/install.sh
 
       # Build using make.
       - name: make
