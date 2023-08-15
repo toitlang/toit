@@ -398,8 +398,8 @@ jobs:
       - name: Install ESP32 tools
         run: |
           third_party/esp-idf/install.sh
-          $HOME/.espressif/python_env/idf5.0_py3.10_env/bin/python3.10 -m pip install jsonschema
-          $HOME/.espressif/python_env/idf5.0_py3.10_env/bin/python3.10 -m pip install jinja2
+          $HOME/.espressif/python_env/idf5.0_py3.11_env/bin/python3.11 -m pip install jsonschema
+          $HOME/.espressif/python_env/idf5.0_py3.11_env/bin/python3.11 -m pip install jinja2
 
       # Build using make.
       - name: make
