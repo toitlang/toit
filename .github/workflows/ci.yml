@@ -524,7 +524,8 @@ jobs:
 
       - name: Upload ESP32-eth-clk-out17 release firmware artifacts
         if: |
-          false &&  # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          false &&
           github.event_name == 'release' &&
           github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2
