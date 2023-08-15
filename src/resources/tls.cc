@@ -886,12 +886,11 @@ class TlsHandshakeToken : public Resource, public TlsHandshakeTokenList::Element
   }
 
  private:
-  static Mutex* mutex;
   static int count;
   static TlsHandshakeTokenList waiters;
 
   TlsHandshakeToken* acquire() {
-    Locker locker(mutex);
+    Locker locker(OS::tls_mutex());
     if (count > 0) {
       count--;
       return this;
@@ -902,7 +901,7 @@ class TlsHandshakeToken : public Resource, public TlsHandshakeTokenList::Element
   }
 
   TlsHandshakeToken* release() {
-    Locker locker(mutex);
+    Locker locker(OS::tls_mutex());
     if (waiters.is_linked(this)) {
       waiters.unlink(this);
       return null;
@@ -915,7 +914,6 @@ class TlsHandshakeToken : public Resource, public TlsHandshakeTokenList::Element
   }
 };
 
-Mutex* TlsHandshakeToken::mutex = OS::tls_mutex();
 int TlsHandshakeToken::count = HANDSHAKE_CONCURRENCY;
 TlsHandshakeTokenList TlsHandshakeToken::waiters;
 
