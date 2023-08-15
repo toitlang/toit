@@ -437,6 +437,7 @@ jobs:
           CCACHE_MAXSIZE: 400M
         run: |
           source third_party/esp-idf/export.sh
+          pip install jsonschema jinja2
           make esp32
           make ESP32_CHIP=esp32c3 esp32
           make ESP32_CHIP=esp32s2 esp32
