@@ -461,7 +461,10 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   return range;
 }
 
-void OS::tear_down() {}
+void OS::tear_down() {
+  // Shutting down quickly is very important on the ESP32, so we
+  // simply avoid freeing memory and resources here.
+}
 
 const char* OS::get_platform() {
   return "FreeRTOS";
