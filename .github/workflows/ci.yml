@@ -421,6 +421,10 @@ jobs:
         run: |
           sh third_party/esp-idf/install.sh
 
+      - name: Set up Python modules for MbedTLS
+        run: |
+          pip install jsonschema jinja2
+
       # Build using make.
       - name: make
         env:
