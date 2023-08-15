@@ -161,12 +161,6 @@ jobs:
           cache: 'pip'
           cache-dependency-path: third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
 
-      - name: Install python packages needed by MbedTLS
-        run:
-          pip install -r third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
-        with:
-          cache: 'pip'
-
       - name: Setup compilation env
         shell: bash
         run: |
