@@ -24,29 +24,21 @@
 
 #include "rtc_memory_esp32.h"
 #include "esp_attr.h"
-#include <soc/rtc.h>
+#include "esp_system.h"
 
 #ifdef CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rom/ets_sys.h>
+  #include <esp32c3/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S3
   #include <esp32s3/rom/ets_sys.h>
+  #include <esp32s3/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S2
   #include <esp32s2/rom/ets_sys.h>
+  #include <esp32s2/rtc.h>
 #else
   #include <esp32/rom/ets_sys.h>
+  #include <esp32/rtc.h>
 #endif
-
-#include "esp_system.h"
-
-extern "C" {
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-  #include <esp32c3/clk.h>
-#elif CONFIG_IDF_TARGET_ESP32S3
-  #include <esp32s3/clk.h>
-#else
-  #include <esp32/clk.h>
-#endif
-}
 
 #ifndef CONFIG_IDF_TARGET_ESP32
 extern "C" {
@@ -75,10 +67,6 @@ extern "C" void start_cpu0_default(void) IRAM_ATTR __attribute__((noreturn));
 
 extern int _rtc_bss_start;
 extern int _rtc_bss_end;
-
-static inline uint64 rtc_time_us_calibrated() {
-  return rtc_time_slowclk_to_us(rtc_time_get(), esp_clk_slowclk_cal_get());
-}
 
 static uint32 compute_rtc_checksum() {
   uint32 vm_checksum = toit::Utils::crc32(0x12345678, toit::EmbeddedData::uuid(), toit::UUID_SIZE);
@@ -126,7 +114,7 @@ extern "C" void IRAM_ATTR start_cpu0() {
     reset_rtc("invalid checksum");
   } else {
     rtc.boot_count++;
-    uint64 elapsed = rtc_time_us_calibrated() - rtc.rtc_time_us_before_deep_sleep;
+    uint64 elapsed = esp_rtc_get_time_us() - rtc.rtc_time_us_before_deep_sleep;
     rtc.rtc_time_us_accumulated_deep_sleep += elapsed;
   }
 
@@ -167,7 +155,7 @@ void RtcMemory::set_up() {
 
 void RtcMemory::on_deep_sleep_start() {
   rtc.system_time_us_before_deep_sleep = OS::get_system_time();
-  rtc.rtc_time_us_before_deep_sleep = rtc_time_us_calibrated();
+  rtc.rtc_time_us_before_deep_sleep = esp_rtc_get_time_us();
   update_rtc_checksum();
 }
 
@@ -185,7 +173,7 @@ uint32 RtcMemory::out_of_memory_count() {
 }
 
 uint64 RtcMemory::accumulated_run_time_us() {
-  return rtc_time_us_calibrated();
+  return esp_rtc_get_time_us();
 }
 
 uint64 RtcMemory::accumulated_deep_sleep_time_us() {

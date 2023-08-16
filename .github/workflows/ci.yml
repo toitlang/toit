@@ -77,7 +77,7 @@ jobs:
         run:
           echo "$GOROOT_1_20_X64"/bin >> $GITHUB_PATH
 
-      # Get values for cache paths to be used in later steps
+      # Get values for cache paths to be used in later steps.
       - name: Get Go paths
         id: go-cache-paths
         shell: bash
@@ -154,18 +154,16 @@ jobs:
           sudo tar -czf apt-cacher-ng/cache.tar.gz -C /var/cache/apt-cacher-ng .
           sudo chown $(whoami) apt-cacher-ng/cache.tar.gz
 
-      - name: Set up Python - non-Windows
+      - name: Set up Python
         uses: actions/setup-python@v4
-        if: matrix.shard == 1 && runner.os != 'Windows'
         with:
-          python-version: '3.10'
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: third_party/esp-idf/components/mbedtls/mbedtls/scripts/driver.requirements.txt
 
-      - name: Set up Python - Windows
-        uses: actions/setup-python@v4
-        if: matrix.shard == 1 && runner.os == 'Windows'
-        with:
-          # Use 3.8 since that version still works on Windows 7.
-          python-version: '3.8'
+      - name: Set up Python modules for MbedTLS
+        run: |
+          pip install jsonschema jinja2
 
       - name: Setup compilation env
         shell: bash
@@ -359,7 +357,7 @@ jobs:
         run:
           echo "$GOROOT_1_20_X64"/bin >> $GITHUB_PATH
 
-      # Get values for cache paths to be used in later steps
+      # Get values for cache paths to be used in later steps.
       - name: Get Go paths
         id: go-cache-paths
         shell: bash
@@ -367,7 +365,14 @@ jobs:
           echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
           echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
-      # Cache go build cache, used to speedup go test
+      # Get values for sha hashes to be used in later steps.
+      - name: Get Sha hashes
+        id: sha-hashes
+        shell: bash
+        run: |
+          echo "espressif_sha=$(git submodule status third_party/esp-idf | awk '{print $1}')" >> $GITHUB_OUTPUT
+
+      # Cache go build cache, used to speedup go test.
       - name: Go Build Cache
         uses: actions/cache@v3
         with:
@@ -375,7 +380,7 @@ jobs:
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-go-build-
 
-      # Cache go mod cache, used to speedup builds
+      # Cache go mod cache, used to speedup builds.
       - name: Go Mod Cache
         uses: actions/cache@v3
         with:
@@ -393,6 +398,16 @@ jobs:
           key: esp32-ccache-${{ github.sha }}
           restore-keys: esp32-ccache-
 
+      - name: ESP32 tools cache
+        uses: actions/cache@v3
+        # Store and retrieve the cache with the given sha.
+        # The 'restore-keys' prefix finds the most recent cache in case there
+        # is no match (which should almost always be the case).
+        with:
+          path: $HOME/.espressif
+          key: espressif-cache-${{ steps.sha-hashes.outputs.espressif_sha }}
+          restore-keys: espressif-cache-
+
       - name: Install dependencies - Linux
         run: |
           sudo apt-get update
@@ -403,7 +418,7 @@ jobs:
 
       - name: Install ESP32 tools
         run: |
-          third_party/esp-idf/install.sh
+          sh third_party/esp-idf/install.sh
 
       # Build using make.
       - name: make
@@ -417,12 +432,15 @@ jobs:
           CCACHE_MAXSIZE: 400M
         run: |
           source third_party/esp-idf/export.sh
+          # Install the Python packages necessary for MbedTLS after
+          # setting up the virtual Python environment.
+          pip install jsonschema jinja2
           make esp32
           make ESP32_CHIP=esp32c3 esp32
           make ESP32_CHIP=esp32s2 esp32
           make ESP32_CHIP=esp32s3 esp32
           make ESP32_CHIP=esp32s3-spiram-octo esp32
-          make ESP32_CHIP=esp32-eth-clk-out17 esp32
+          #make ESP32_CHIP=esp32-eth-clk-out17 esp32
 
       - name: Pack firmware artifacts
         shell: bash
@@ -432,7 +450,7 @@ jobs:
           gzip --to-stdout build/esp32s2/firmware.envelope > build/firmware-esp32s2.gz
           gzip --to-stdout build/esp32s3/firmware.envelope > build/firmware-esp32s3.gz
           gzip --to-stdout build/esp32s3-spiram-octo/firmware.envelope > build/firmware-esp32s3-spiram-octo.gz
-          gzip --to-stdout build/esp32-eth-clk-out17/firmware.envelope > build/firmware-esp32-eth-clk-out17.gz
+          #gzip --to-stdout build/esp32-eth-clk-out17/firmware.envelope > build/firmware-esp32-eth-clk-out17.gz
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v3
@@ -444,7 +462,7 @@ jobs:
             build/firmware-esp32s2.gz
             build/firmware-esp32s3.gz
             build/firmware-esp32s3-spiram-octo.gz
-            build/firmware-esp32-eth-clk-out17.gz
+            #build/firmware-esp32-eth-clk-out17.gz
 
       - name: Upload ESP32 release firmware artifacts
         if: |
@@ -503,6 +521,7 @@ jobs:
 
       - name: Upload ESP32-eth-clk-out17 release firmware artifacts
         if: |
+          false &&
           github.event_name == 'release' &&
           github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2

@@ -59,8 +59,15 @@ void uart_toit_hal_set_sclk(uart_hal_handle_t hal, uart_sclk_t sclk) {
   uart_hal_set_sclk(HAL, sclk);
 }
 
+int uart_get_sclk_freq(uart_sclk_t sclk, uint32_t* out_freq_hz);
+
 void uart_toit_hal_set_baudrate(uart_hal_handle_t hal, uint32_t baud_rate) {
-  uart_hal_set_baudrate(HAL, baud_rate);
+  uart_sclk_t src_clk;
+  uart_hal_get_sclk(HAL, &src_clk);
+  uint32_t sclk_frequency;
+  uart_get_sclk_freq(src_clk, &sclk_frequency);
+
+  uart_hal_set_baudrate(HAL, baud_rate, sclk_frequency);
 }
 
 void uart_toit_hal_set_stop_bits(uart_hal_handle_t hal, uart_stop_bits_t stop_bit) {
@@ -99,8 +106,13 @@ void uart_toit_hal_inverse_signal(uart_hal_handle_t hal, uint32_t inv_mask) {
   uart_hal_inverse_signal(HAL, inv_mask);
 }
 
-void uart_toit_hal_get_baudrate(uart_hal_handle_t hal, uint32_t *baud_rate) {
-  uart_hal_get_baudrate(HAL, baud_rate);
+void uart_toit_hal_get_baudrate(uart_hal_handle_t hal, uint32_t* baud_rate) {
+  uart_sclk_t src_clk;
+  uart_hal_get_sclk(HAL, &src_clk);
+  uint32_t sclk_frequency;
+  uart_get_sclk_freq(src_clk, &sclk_frequency);
+
+  uart_hal_get_baudrate(HAL, baud_rate, sclk_frequency);
 }
 
 #if SOC_UART_REQUIRE_CORE_RESET

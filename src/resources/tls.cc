@@ -794,6 +794,9 @@ PRIMITIVE(get_internals) {
 #if SOC_AES_SUPPORT_GCM
     mbedtls_aes_context* out_aes_context = &out_gcm_context->aes_ctx;
     mbedtls_aes_context* in_aes_context = &in_gcm_context->aes_ctx;
+#elif defined(MBEDTLS_GCM_ALT)
+    esp_aes_context* out_aes_context = &out_gcm_context->aes_ctx;
+    esp_aes_context* in_aes_context = &in_gcm_context->aes_ctx;
 #else
     mbedtls_cipher_context_t* out_cipher_context = &out_gcm_context->cipher_ctx;
     mbedtls_cipher_context_t* in_cipher_context = &in_gcm_context->cipher_ctx;
@@ -805,8 +808,13 @@ PRIMITIVE(get_internals) {
       return process->null_object();
     }
 #if MBEDTLS_VERSION_MAJOR >= 3
+#ifdef MBEDTLS_GCM_ALT
+    memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->key, key_len);
+    memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->key, key_len);
+#else
     memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->buf + out_aes_context->rk_offset, key_len);
     memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->buf + in_aes_context->rk_offset, key_len);
+#endif
 #elif defined(TOIT_FREERTOS)
     if (out_aes_context->key_bytes != key_len ||
         in_aes_context->key_bytes != key_len) {

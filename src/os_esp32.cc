@@ -17,15 +17,15 @@
 
 #ifdef TOIT_FREERTOS
 
-#ifdef CONFIG_IDF_TARGET_ESP32
 #include <esp_efuse.h>
-#endif
+#include <esp_chip_info.h>
 #include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_sleep.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
+#include <hal/efuse_hal.h>
 #include <malloc.h>
 #include <sys/time.h>
 #include <sys/queue.h>
@@ -371,11 +371,9 @@ Thread* Thread::current() {
 void OS::set_up() {
   Thread::ensure_system_thread();
   set_up_mutexes();
-#ifdef CONFIG_IDF_TARGET_ESP32
   // This will normally return 1 or 3.  Perhaps later, more
   // CPU revisions will appear.
   cpu_revision_ = efuse_hal_chip_revision();
-#endif
 }
 
 // Mutex forwarders.

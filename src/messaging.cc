@@ -478,7 +478,7 @@ Object* TisonDecoder::decode() {
       printf("[message decoder: wrong tison version %d - expected %d]\n",
           version, TISON_VERSION);
     } else {
-      printf("[message decoder: wrong tison marker 0x%x - expected 0x%x]\n",
+      printf("[message decoder: wrong tison marker 0x%" PRIx32 " - expected 0x%" PRIx32 "]\n",
           marker, expected);
     }
     return mark_malformed();

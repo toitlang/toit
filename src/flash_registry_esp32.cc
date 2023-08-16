@@ -22,7 +22,7 @@
 #include <math.h>
 
 #include "esp_partition.h"
-#include "esp_spi_flash.h"
+#include "spi_flash_mmap.h"
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 #include <esp32/rom/cache.h>
@@ -75,7 +75,7 @@ void FlashRegistry::set_up() {
   ASSERT(allocations_partition != null);
   ASSERT(allocations_memory() == null);
   const void* memory = null;
-  esp_partition_mmap(allocations_partition, 0, allocations_size(), SPI_FLASH_MMAP_DATA, &memory, &allocations_handle);
+  esp_partition_mmap(allocations_partition, 0, allocations_size(), ESP_PARTITION_MMAP_DATA, &memory, &allocations_handle);
   allocations_memory_ = reinterpret_cast<uint8*>(const_cast<void*>(memory));
   ASSERT(allocations_memory() != null);
 }

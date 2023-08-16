@@ -31,45 +31,41 @@
 #include "uuid.h"
 #include "vm.h"
 
-#include <math.h>
-#include <unistd.h>
-#include <sys/types.h> /* See NOTES */
-#include <errno.h>
 #include <atomic>
+#include <errno.h>
+#include <math.h>
+#include <sys/types.h> /* See NOTES */
+#include <unistd.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
-#include <driver/adc.h>
 #include <driver/rtc_io.h>
-#include <esp_adc_cal.h>
+#include <esp_image_format.h>
 #include <esp_log.h>
+#include <esp_mac.h>
 #include <esp_sleep.h>
 #include <esp_ota_ops.h>
-#include <esp_spi_flash.h>
 #include <esp_timer.h>
+#include <rom/ets_sys.h>
 
 #include <soc/rtc_cntl_reg.h>
 
 #ifdef CONFIG_IDF_TARGET_ESP32C3
 //  #include <soc/esp32/include/soc/sens_reg.h>
   #include <esp32c3/rom/rtc.h>
-  #include <esp32c3/rom/ets_sys.h>
 #elif CONFIG_IDF_TARGET_ESP32S3
   #include <esp32s3/rom/rtc.h>
-  #include <esp32s3/rom/ets_sys.h>
   #include <driver/touch_sensor.h>
-  #include <esp32s3/ulp.h>
+#elif CONFIG_IDF_TARGET_ESP32S2
+  #include <esp32s2/rom/rtc.h>
 #else
   #include <soc/sens_reg.h>
   #include <esp32/rom/rtc.h>
-  #include <esp32/rom/ets_sys.h>
   #include <driver/touch_sensor.h>
-  #include <esp32/ulp.h>
 #endif
 
 #include "esp_partition.h"
-#include "esp_spi_flash.h"
 
 #include "event_sources/system_esp32.h"
 #include "resources/touch_esp32.h"
@@ -110,7 +106,7 @@ PRIMITIVE(ota_begin) {
   }
 
   if (to > ota_partition->size) {
-    ESP_LOGE("Toit", "Oversized ota_begin args: %d-%d", to, ota_partition->size);
+    ESP_LOGE("Toit", "Oversized ota_begin args: %d-%" PRId32, to, ota_partition->size);
     FAIL(OUT_OF_BOUNDS);
   }
 

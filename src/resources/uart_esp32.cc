@@ -23,6 +23,7 @@
 #include "soc/uart_periph.h"
 #include "hal/gpio_hal.h"
 #include "esp_rom_gpio.h"
+#include "esp_timer.h"
 #include "driver/periph_ctrl.h"
 #include "freertos/FreeRTOS.h"
 
@@ -287,7 +288,8 @@ UART_ISR_INLINE void RxTxBuffer::read(const SpinLocker& locker, uint8* data, uwo
     memcpy(data + head, buffer, overflow);
     cursor_ = buffer + overflow;
   }
-  available_ -= length;
+  // Composite assignments are not allowed on volatile variables.
+  available_ = available_ - length;
 }
 
 UART_ISR_INLINE void RxTxBuffer::write(const SpinLocker& locker, const uint8* data, uword length) {
@@ -305,7 +307,8 @@ UART_ISR_INLINE void RxTxBuffer::write(const SpinLocker& locker, const uint8* da
     memcpy(start, data, head);
     memcpy(buffer, data + head, overflow);
   }
-  available_ += length;
+  // Composite assignments are not allowed on volatile variables.
+  available_ = available_ + length;
 }
 
 uint16 TxBuffer::write(UartResource* uart, const uint8* buffer, uint16 length, uint8 break_length) {
@@ -356,7 +359,8 @@ UART_ISR_INLINE uword TxBuffer::read_to_fifo(UartResource* uart, uword max) {
         length = limit - start;
         cursor_ = buffer;
       }
-      available_ -= length;
+      // Composite assignments are not allowed on volatile variables.
+      available_ = available_ - length;
       uart->write_tx_fifo(start, length);
       transfer_header_.remaining_data_length = remaining_data_length - length;
       return length;

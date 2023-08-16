@@ -18,6 +18,8 @@
 #if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
 
 #include <esp_eth.h>
+#include <esp_netif.h>
+#include <rom/ets_sys.h>
 
 #include "../resource.h"
 #include "../objects.h"
@@ -78,7 +80,6 @@ class EthernetResourceGroup : public ResourceGroup {
 
   ~EthernetResourceGroup() {
     ESP_ERROR_CHECK(esp_eth_stop(eth_handle_));
-    ESP_ERROR_CHECK(esp_eth_clear_default_handlers(eth_handle_));
     ESP_ERROR_CHECK(esp_eth_del_netif_glue(netif_glue_));
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle_));
     esp_netif_destroy(netif_);
@@ -198,13 +199,14 @@ PRIMITIVE(init_esp32) {
 
   phy_config.phy_addr = phy_addr;
   phy_config.reset_gpio_num = phy_reset_num;
-  mac_config.smi_mdc_gpio_num = mdc_num;
-  mac_config.smi_mdio_gpio_num = mdio_num;
 
   // TODO(anders): If phy initialization fails, we're leaking this.
   esp_eth_mac_t* mac;
   if (mac_chip == MAC_CHIP_ESP32) {
-    mac = esp_eth_mac_new_esp32(&mac_config);
+    eth_esp32_emac_config_t emac_config = ETH_ESP32_EMAC_DEFAULT_CONFIG();
+    emac_config.smi_mdc_gpio_num = mdc_num;
+    emac_config.smi_mdio_gpio_num = mdio_num;
+    mac = esp_eth_mac_new_esp32(&emac_config, &mac_config);
   } else if (mac_chip == MAC_CHIP_OPENETH) {
     // Openeth is the network driver that is used with QEMU.
     mac = esp_eth_mac_new_openeth(&mac_config);
@@ -224,7 +226,7 @@ PRIMITIVE(init_esp32) {
       phy = esp_eth_phy_new_ip101(&phy_config);
       break;
     case PHY_CHIP_LAN8720:
-      phy = esp_eth_phy_new_lan8720(&phy_config);
+      phy = esp_eth_phy_new_lan87xx(&phy_config);
       break;
     case PHY_CHIP_DP83848: {
       phy = esp_eth_phy_new_dp83848(&phy_config);
@@ -279,6 +281,8 @@ PRIMITIVE(init_esp32) {
 
 
 PRIMITIVE(init_spi) {
+  FAIL(UNIMPLEMENTED);
+#if 0
   ARGS(int, mac_chip, SpiDevice, spi_device, int, int_num)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -361,6 +365,7 @@ PRIMITIVE(init_spi) {
 
   proxy->set_external_address(resource_group);
   return proxy;
+#endif
 }
 
 PRIMITIVE(close) {

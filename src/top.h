@@ -18,9 +18,10 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
-#include <stdint.h>
 #include <cstring>
+#include <inttypes.h>
 #include <new>
+#include <stdint.h>
 
 #ifdef TOIT_DEBUG
 #include <typeinfo>

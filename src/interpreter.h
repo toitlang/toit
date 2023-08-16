@@ -32,7 +32,7 @@
 #define INTERPRETER_CORE
 #endif
 
-#if defined(ESP32) && defined(CONFIG_TOIT_INTERPRETER_HELPER_IN_IRAM)
+#if defined(ESP32) && defined(CONFIG_TOIT_INTERPRETER_HELPERS_IN_IRAM)
 // We put the interpreter helper functions in the IRAM section to
 // avoid spending time on re-reading the code from flash.
 #define INTERPRETER_HELPER IRAM_ATTR
