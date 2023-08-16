@@ -14,6 +14,11 @@
 # directory of this repository.
 
 if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+  find_package(ZLIB REQUIRED)
+  set(ZLIB_USE_STATIC_LIBS "ON")
+  include_directories(${ZLIB_INCLUDE_DIRS})
+  target_link_libraries(toit ${ZLIB_LIBRARIES})
+
   add_custom_target(build_tools)
   add_subdirectory(compiler)
 endif()
@@ -184,10 +189,6 @@ endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   set(TOIT_BLUETOOTH_LIBS "-framework Foundation" "-framework CoreBluetooth" ObjC)
-endif()
-
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR (${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND NOT CMAKE_SIZEOF_VOID_P EQUAL 4 AND NOT ${CMAKE_SYSTEM_PROCESSOR} MATCHES "ARM"))
-  set(TOIT_Z_LIB z)
 endif()
 
 # Because of the `CACHE INTERNAL ""` at the end of the `set` we can
