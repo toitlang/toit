@@ -127,7 +127,7 @@ static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate
     mbedtls_x509_crt_init(&cert);
     mbedtls_x509_crt** last = chain;
     bool found_root_with_matching_subject = false;
-    Locker locker(OS::scheduler_mutex());
+    Locker locker(OS::tls_mutex());
     for (auto unparsed : process->root_certificates(locker)) {
       if (unparsed->subject_hash() != issuer_hash) continue;
       mbedtls_x509_crt* cert = _new mbedtls_x509_crt;
@@ -638,7 +638,7 @@ PRIMITIVE(add_global_root_certificate) {
   root->set_subject_hash(subject_hash);
 
   // No errors found, so lets add the root cert to the chain on the process.
-  Locker locker(OS::scheduler_mutex());
+  Locker locker(OS::tls_mutex());
 
   if (!process->already_has_root_certificate(data, length, locker)) {
     defer_root_delete.keep();  // Don't delete it, once it's attached to the process.
@@ -894,12 +894,11 @@ class TlsHandshakeToken : public Resource, public TlsHandshakeTokenList::Element
   }
 
  private:
-  static Mutex* mutex;
   static int count;
   static TlsHandshakeTokenList waiters;
 
   TlsHandshakeToken* acquire() {
-    Locker locker(OS::global_mutex());
+    Locker locker(OS::tls_mutex());
     if (count > 0) {
       count--;
       return this;
@@ -910,7 +909,7 @@ class TlsHandshakeToken : public Resource, public TlsHandshakeTokenList::Element
   }
 
   TlsHandshakeToken* release() {
-    Locker locker(OS::global_mutex());
+    Locker locker(OS::tls_mutex());
     if (waiters.is_linked(this)) {
       waiters.unlink(this);
       return null;
@@ -923,7 +922,6 @@ class TlsHandshakeToken : public Resource, public TlsHandshakeTokenList::Element
   }
 };
 
-Mutex* TlsHandshakeToken::mutex = OS::global_mutex();
 int TlsHandshakeToken::count = HANDSHAKE_CONCURRENCY;
 TlsHandshakeTokenList TlsHandshakeToken::waiters;
 

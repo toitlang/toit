@@ -47,20 +47,20 @@ class OlimexPoeProvider extends esp32.EthernetServiceProvider:
 
   constructor:
     super
-        --phy_chip=esp32.PHY_CHIP_LAN8720
-        --phy_address=0
-        --mac_chip=esp32.MAC_CHIP_ESP32
-        --mac_mdc=gpio.Pin 23
-        --mac_mdio=gpio.Pin 18
-        --mac_spi_device=null
-        --mac_interrupt=null
+        --phy-chip=esp32.PHY-CHIP-LAN8720
+        --phy-address=0
+        --mac-chip=esp32.MAC-CHIP-ESP32
+        --mac-mdc=gpio.Pin 23
+        --mac-mdio=gpio.Pin 18
+        --mac-spi-device=null
+        --mac-interrupt=null
 
-  on_module_opened module:
+  on-module-opened module:
     super module
     power_ = gpio.Pin --output 12
     power_.set 1
 
-  on_module_closed module:
+  on-module-closed module:
     if power_:
       power_.close
       power_ = null

@@ -4,8 +4,8 @@
 
 import ble
 
-BATTERY_SERVICE ::= ble.BleUuid "180F"
-SCAN_DURATION   ::= Duration --s=3
+BATTERY-SERVICE ::= ble.BleUuid "180F"
+SCAN-DURATION   ::= Duration --s=3
 
 main:
   adapter := ble.Adapter
@@ -13,8 +13,8 @@ main:
 
   addresses := []
 
-  central.scan --duration=SCAN_DURATION: | device/ble.RemoteScannedDevice |
-    if device.data.service_classes.contains BATTERY_SERVICE:
+  central.scan --duration=SCAN-DURATION: | device/ble.RemoteScannedDevice |
+    if device.data.service-classes.contains BATTERY-SERVICE:
       addresses.add device.address
 
   print addresses

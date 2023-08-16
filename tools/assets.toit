@@ -23,48 +23,48 @@ import encoding.json
 import encoding.ubjson
 import encoding.tison
 
-import .firmware show read_file write_file
+import .firmware show read-file write-file
 
-OPTION_ASSETS       ::= "assets"
-OPTION_OUTPUT       ::= "output"
-OPTION_OUTPUT_SHORT ::= "o"
+OPTION-ASSETS       ::= "assets"
+OPTION-OUTPUT       ::= "output"
+OPTION-OUTPUT-SHORT ::= "o"
 
-option_output ::= cli.OptionString OPTION_OUTPUT
-    --short_name=OPTION_OUTPUT_SHORT
-    --short_help="Set the output assets file."
+option-output ::= cli.OptionString OPTION-OUTPUT
+    --short-name=OPTION-OUTPUT-SHORT
+    --short-help="Set the output assets file."
     --type="file"
 
 main arguments/List:
-  root_cmd := cli.Command "root"
+  root-cmd := cli.Command "root"
       --options=[
-        cli.OptionString OPTION_ASSETS
-            --short_name="e"
-            --short_help="Set the assets to work on."
+        cli.OptionString OPTION-ASSETS
+            --short-name="e"
+            --short-help="Set the assets to work on."
             --type="file"
             --required
       ]
-  root_cmd.add create_cmd
-  root_cmd.add add_cmd
-  root_cmd.add get_cmd
-  root_cmd.add remove_cmd
-  root_cmd.add list_cmd
-  root_cmd.run arguments
+  root-cmd.add create-cmd
+  root-cmd.add add-cmd
+  root-cmd.add get-cmd
+  root-cmd.add remove-cmd
+  root-cmd.add list-cmd
+  root-cmd.run arguments
 
-create_cmd -> cli.Command:
+create-cmd -> cli.Command:
   return cli.Command "create"
-      --run=:: create_assets it
+      --run=:: create-assets it
 
-create_assets parsed/cli.Parsed -> none:
-  output_path := parsed[OPTION_ASSETS]
-  store_assets output_path {:}
+create-assets parsed/cli.Parsed -> none:
+  output-path := parsed[OPTION-ASSETS]
+  store-assets output-path {:}
 
-add_cmd -> cli.Command:
+add-cmd -> cli.Command:
   return cli.Command "add"
       --options=[
-        option_output,
+        option-output,
         cli.OptionEnum "format" ["binary", "ubjson", "tison"]
             --default="binary"
-            --short_help="Pick the encoding format."
+            --short-help="Pick the encoding format."
 
       ]
       --rest=[
@@ -74,14 +74,14 @@ add_cmd -> cli.Command:
             --type="file"
             --required
       ]
-      --short_help="Add or update asset with the given name."
-      --run=:: add_asset it
+      --short-help="Add or update asset with the given name."
+      --run=:: add-asset it
 
-add_asset parsed/cli.Parsed -> none:
+add-asset parsed/cli.Parsed -> none:
   name := parsed["name"]
   path := parsed["path"]
-  asset := read_file path
-  update_assets parsed: | entries/Map |
+  asset := read-file path
+  update-assets parsed: | entries/Map |
     if parsed["format"] != "binary":
       decoded := null
       exception := catch: decoded = json.decode asset
@@ -96,15 +96,15 @@ add_asset parsed/cli.Parsed -> none:
         unreachable
     entries[name] = asset
 
-get_cmd -> cli.Command:
+get-cmd -> cli.Command:
   return cli.Command "get"
       --options=[
         cli.OptionEnum "format" ["auto", "binary", "ubjson", "tison"]
             --default="auto"
-            --short_help="Pick the encoding format.",
+            --short-help="Pick the encoding format.",
         cli.OptionString "output"
-            --short_name="o"
-            --short_help="Set the name of the output file."
+            --short-name="o"
+            --short-help="Set the name of the output file."
             --type="file"
             --required,
       ]
@@ -112,15 +112,15 @@ get_cmd -> cli.Command:
         cli.OptionString "name"
             --required,
       ]
-      --short_help="Get the asset with the given name."
-      --run=:: get_asset it
+      --short-help="Get the asset with the given name."
+      --run=:: get-asset it
 
-get_asset parsed/cli.Parsed -> none:
-  input_path := parsed[OPTION_ASSETS]
-  output_path := parsed["output"]
+get-asset parsed/cli.Parsed -> none:
+  input-path := parsed[OPTION-ASSETS]
+  output-path := parsed["output"]
   name := parsed["name"]
   format := parsed["format"]
-  entries := load_assets input_path
+  entries := load-assets input-path
   entry := entries.get name
   if not entry:
     print "No such asset: $name"
@@ -138,29 +138,29 @@ get_asset parsed/cli.Parsed -> none:
   else if format == "ubjson":
     exception = catch: content = "$(json.stringify (ubjson.decode content))\n"
   if exception:
-    print "Failed to decode asset '$name' as $format.to_ascii_upper"
+    print "Failed to decode asset '$name' as $format.to-ascii-upper"
     exit 1
-  write_file output_path: it.write content
+  write-file output-path: it.write content
 
-remove_cmd -> cli.Command:
+remove-cmd -> cli.Command:
   return cli.Command "remove"
-      --options=[ option_output ]
+      --options=[ option-output ]
       --rest=[
         cli.OptionString "name"
             --required,
       ]
-      --short_help="Remove asset with the given name."
-      --run=:: remove_asset it
+      --short-help="Remove asset with the given name."
+      --run=:: remove-asset it
 
-remove_asset parsed/cli.Parsed -> none:
+remove-asset parsed/cli.Parsed -> none:
   name := parsed["name"]
-  update_assets parsed: | entries/Map |
+  update-assets parsed: | entries/Map |
     entries.remove name
 
-list_cmd -> cli.Command:
+list-cmd -> cli.Command:
   return cli.Command "list"
-      --short_help="Print all assets in JSON."
-      --run=:: list_assets it
+      --short-help="Print all assets in JSON."
+      --run=:: list-assets it
 
 decode entry/Map content/ByteArray -> string:
   catch:
@@ -174,28 +174,28 @@ decode entry/Map content/ByteArray -> string:
     return "json"
   return "binary"
 
-list_assets parsed/cli.Parsed -> none:
-  input_path := parsed[OPTION_ASSETS]
-  entries := load_assets input_path
+list-assets parsed/cli.Parsed -> none:
+  input-path := parsed[OPTION-ASSETS]
+  entries := load-assets input-path
   mapped := entries.map: | _ content/ByteArray |
     entry := { "size": content.size }
     entry["kind"] = decode entry content
     entry
   print (json.stringify mapped)
 
-update_assets parsed/cli.Parsed [block] -> none:
-  input_path := parsed[OPTION_ASSETS]
-  output_path := parsed[OPTION_OUTPUT]
-  if not output_path: output_path = input_path
+update-assets parsed/cli.Parsed [block] -> none:
+  input-path := parsed[OPTION-ASSETS]
+  output-path := parsed[OPTION-OUTPUT]
+  if not output-path: output-path = input-path
 
-  existing := load_assets input_path
+  existing := load-assets input-path
   block.call existing
-  store_assets output_path existing
+  store-assets output-path existing
 
-load_assets path/string -> Map:
-  bytes := read_file path
+load-assets path/string -> Map:
+  bytes := read-file path
   return assets.decode bytes
 
-store_assets path/string entries/Map -> none:
+store-assets path/string entries/Map -> none:
   bytes := assets.encode entries
-  write_file path: it.write bytes
+  write-file path: it.write bytes

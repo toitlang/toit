@@ -12,30 +12,30 @@ Running this program on multiple ESP32 devices will result in them printing
 
 import esp32.espnow
 
-PMK ::= espnow.Key.from_string "pmk1234567890123"
+PMK ::= espnow.Key.from-string "pmk1234567890123"
 
 main:
   service := espnow.Service.station --key=PMK
-  service.add_peer
-      espnow.BROADCAST_ADDRESS
+  service.add-peer
+      espnow.BROADCAST-ADDRESS
       --channel=1
-  task:: send_task service
-  task:: receive_task service
+  task:: send-task service
+  task:: receive-task service
 
-send_task service/espnow.Service:
+send-task service/espnow.Service:
   count := 0
   while true:
     buffer := "hello $count"
     service.send
-        buffer.to_byte_array
-        --address=espnow.BROADCAST_ADDRESS
+        buffer.to-byte-array
+        --address=espnow.BROADCAST-ADDRESS
     print "Send datagram: \"$buffer\""
 
     count++
     sleep --ms=1_000
 
-receive_task service/espnow.Service:
+receive-task service/espnow.Service:
   while true:
     datagram := service.receive
-    received_data := datagram.data.to_string
-    print "Receive datagram from \"$datagram.address\", data: \"$received_data\""
+    received-data := datagram.data.to-string
+    print "Receive datagram from \"$datagram.address\", data: \"$received-data\""

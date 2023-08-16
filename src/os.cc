@@ -34,11 +34,27 @@
 namespace toit {
 
 Mutex* OS::global_mutex_ = null;
-Mutex* OS::scheduler_mutex_ = null;
+Mutex* OS::tls_mutex_ = null;
+Mutex* OS::process_mutex_ = null;
 Mutex* OS::resource_mutex_ = null;
+
 // Unless we explicily detect an old CPU revision we assume we have a high
 // (recent) CPU with no problems.
-int    OS::cpu_revision_ = 1000000;
+int OS::cpu_revision_ = 1000000;
+
+void OS::set_up_mutexes() {
+  global_mutex_ = allocate_mutex(0, "Global mutex");
+  tls_mutex_ = allocate_mutex(4, "TLS mutex");
+  process_mutex_ = allocate_mutex(4, "Process mutex");
+  resource_mutex_ = allocate_mutex(99, "Resource mutex");
+}
+
+void OS::tear_down_mutexes() {
+  dispose(global_mutex_);
+  dispose(tls_mutex_);
+  dispose(process_mutex_);
+  dispose(resource_mutex_);
+}
 
 void OS::timespec_increment(timespec* ts, int64 ns) {
   const int64 ns_per_second = 1000000000LL;

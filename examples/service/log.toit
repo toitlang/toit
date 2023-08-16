@@ -31,7 +31,7 @@ interface LogService:
       --minor=0
 
   log message/string -> none
-  static LOG_INDEX ::= 0
+  static LOG-INDEX ::= 0
 
 // ------------------------------------------------------------------
 
@@ -42,7 +42,7 @@ class LogServiceClient extends services.ServiceClient implements LogService:
     super selector
 
   log message/string -> none:
-    invoke_ LogService.LOG_INDEX message
+    invoke_ LogService.LOG-INDEX message
 
 // ------------------------------------------------------------------
 
@@ -53,8 +53,8 @@ class LogServiceProvider extends services.ServiceProvider
     provides LogService.SELECTOR --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
-    if index == LogService.LOG_INDEX: return log arguments
+    if index == LogService.LOG-INDEX: return log arguments
     unreachable
 
   log message/string -> none:
-    print "$(%08d Time.monotonic_us): $message"
+    print "$(%08d Time.monotonic-us): $message"

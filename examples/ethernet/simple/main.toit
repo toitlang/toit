@@ -39,13 +39,13 @@ main:
   power := gpio.Pin --output 12
   power.set 1
   provider := esp32.EthernetServiceProvider
-      --phy_chip=esp32.PHY_CHIP_LAN8720
-      --phy_address=0
-      --mac_chip=esp32.MAC_CHIP_ESP32
-      --mac_mdc=gpio.Pin 23
-      --mac_mdio=gpio.Pin 18
-      --mac_spi_device=null
-      --mac_interrupt=null
+      --phy-chip=esp32.PHY-CHIP-LAN8720
+      --phy-address=0
+      --mac-chip=esp32.MAC-CHIP-ESP32
+      --mac-mdc=gpio.Pin 23
+      --mac-mdio=gpio.Pin 18
+      --mac-spi-device=null
+      --mac-interrupt=null
   provider.install
   network := ethernet.open
   use network

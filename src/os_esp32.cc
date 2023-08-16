@@ -370,9 +370,7 @@ Thread* Thread::current() {
 
 void OS::set_up() {
   Thread::ensure_system_thread();
-  global_mutex_ = allocate_mutex(0, "Global mutex");
-  scheduler_mutex_ = allocate_mutex(4, "Scheduler mutex");
-  resource_mutex_ = allocate_mutex(99, "Resource mutex");
+  set_up_mutexes();
   // This will normally return 1 or 3.  Perhaps later, more
   // CPU revisions will appear.
   cpu_revision_ = efuse_hal_chip_revision();
@@ -461,7 +459,10 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   return range;
 }
 
-void OS::tear_down() {}
+void OS::tear_down() {
+  // Shutting down quickly is very important on the ESP32, so we
+  // simply avoid freeing memory and resources here.
+}
 
 const char* OS::get_platform() {
   return "FreeRTOS";

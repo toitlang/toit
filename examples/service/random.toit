@@ -17,13 +17,13 @@ interface RandomService:
       --minor=1
 
   next limit/int -> int
-  static NEXT_INDEX /int ::= 0
+  static NEXT-INDEX /int ::= 0
 
-  create_die sides/int -> int
-  static CREATE_DIE_INDEX /int ::= 1
+  create-die sides/int -> int
+  static CREATE-DIE-INDEX /int ::= 1
 
-  roll_die handle/int -> int
-  static ROLL_DIE_INDEX /int ::= 2
+  roll-die handle/int -> int
+  static ROLL-DIE-INDEX /int ::= 2
 
 main:
   spawn::
@@ -36,7 +36,7 @@ main:
   10.repeat:
     print "random = $(client.next 100)"
 
-  die := client.create_die 6
+  die := client.create-die 6
   10.repeat:
     print "die roll = $(die.roll)"
   sleep (Duration --s=10)
@@ -49,15 +49,15 @@ class RandomServiceClient extends ServiceClient implements RandomService:
     super selector
 
   next limit/int -> int:
-    return invoke_ RandomService.NEXT_INDEX limit
+    return invoke_ RandomService.NEXT-INDEX limit
 
-  create_die sides/int -> DieProxy:
-    handle := invoke_ RandomService.CREATE_DIE_INDEX sides
+  create-die sides/int -> DieProxy:
+    handle := invoke_ RandomService.CREATE-DIE-INDEX sides
     proxy := DieProxy this handle
     return proxy
 
-  roll_die handle/int -> int:
-    return invoke_ RandomService.ROLL_DIE_INDEX handle
+  roll-die handle/int -> int:
+    return invoke_ RandomService.ROLL-DIE-INDEX handle
 
 class RandomServiceProvider extends ServiceProvider
     implements ServiceHandler:
@@ -66,11 +66,11 @@ class RandomServiceProvider extends ServiceProvider
     provides RandomService.SELECTOR --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
-    if index == RandomService.NEXT_INDEX: return next arguments
-    if index == RandomService.CREATE_DIE_INDEX:
+    if index == RandomService.NEXT-INDEX: return next arguments
+    if index == RandomService.CREATE-DIE-INDEX:
       resource := DieResource arguments this client
       return resource
-    if index == RandomService.ROLL_DIE_INDEX:
+    if index == RandomService.ROLL-DIE-INDEX:
       die := (resource client arguments) as DieResource
       return die.roll
     unreachable
@@ -85,14 +85,14 @@ class DieResource extends ServiceResource:
 
   constructor .sides_ provider/ServiceProvider client/int:
     super provider client --notifiable
-    task_ = task:: notify_periodically
+    task_ = task:: notify-periodically
 
-  notify_periodically -> none:
-    while not Task.current.is_canceled:
+  notify-periodically -> none:
+    while not Task.current.is-canceled:
       sleep --ms=(random 500) + 500
       notify_ 87
 
-  on_closed -> none:
+  on-closed -> none:
     task_.cancel
 
   roll -> int:
@@ -105,8 +105,8 @@ class DieProxy extends ServiceResourceProxy:
     super client handle
 
   roll -> int:
-    return (client_ as RandomServiceClient).roll_die handle_
+    return (client_ as RandomServiceClient).roll-die handle_
 
-  on_notified_ notification/any -> none:
+  on-notified_ notification/any -> none:
     log.info "got notified" --tags={"notification": notification}
     pinged_.raise
