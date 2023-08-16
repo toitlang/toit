@@ -22,7 +22,7 @@
 #include <math.h>
 
 #include "esp_partition.h"
-#include "esp_spi_flash.h"
+#include "spi_flash_mmap.h"
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 #include <esp32/rom/cache.h>
