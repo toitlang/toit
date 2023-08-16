@@ -18,7 +18,6 @@
 #if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
 
 #include <esp_eth.h>
-#include <esp_eth_netif_glue.h>
 #include <esp_netif.h>
 #include <rom/ets_sys.h>
 
@@ -175,8 +174,6 @@ uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t
 MODULE_IMPLEMENTATION(ethernet, MODULE_ETHERNET)
 
 PRIMITIVE(init_esp32) {
-  FAIL(UNIMPLEMENTED);
-#if 0
   ARGS(int, mac_chip, int, phy_chip, int, phy_addr, int, phy_reset_num, int, mdc_num, int, mdio_num)
 
 #if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
@@ -202,13 +199,14 @@ PRIMITIVE(init_esp32) {
 
   phy_config.phy_addr = phy_addr;
   phy_config.reset_gpio_num = phy_reset_num;
-  mac_config.smi_mdc_gpio_num = mdc_num;
-  mac_config.smi_mdio_gpio_num = mdio_num;
 
   // TODO(anders): If phy initialization fails, we're leaking this.
   esp_eth_mac_t* mac;
   if (mac_chip == MAC_CHIP_ESP32) {
-    mac = esp_eth_mac_new_esp32(&mac_config);
+    eth_esp32_emac_config_t emac_config = ETH_ESP32_EMAC_DEFAULT_CONFIG();
+    emac_config.smi_mdc_gpio_num = mdc_num;
+    emac_config.smi_mdio_gpio_num = mdio_num;
+    mac = esp_eth_mac_new_esp32(&emac_config, &mac_config);
   } else if (mac_chip == MAC_CHIP_OPENETH) {
     // Openeth is the network driver that is used with QEMU.
     mac = esp_eth_mac_new_openeth(&mac_config);
@@ -228,7 +226,7 @@ PRIMITIVE(init_esp32) {
       phy = esp_eth_phy_new_ip101(&phy_config);
       break;
     case PHY_CHIP_LAN8720:
-      phy = esp_eth_phy_new_lan8720(&phy_config);
+      phy = esp_eth_phy_new_lan87xx(&phy_config);
       break;
     case PHY_CHIP_DP83848: {
       phy = esp_eth_phy_new_dp83848(&phy_config);
@@ -278,7 +276,6 @@ PRIMITIVE(init_esp32) {
 
   proxy->set_external_address(resource_group);
   return proxy;
-#endif
 #endif
 }
 
