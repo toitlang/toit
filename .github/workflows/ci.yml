@@ -404,7 +404,7 @@ jobs:
         # The 'restore-keys' prefix finds the most recent cache in case there
         # is no match (which should almost always be the case).
         with:
-          path: ${{ github.workspace }}/.espressif
+          path: /home/runner/.espressif
           key: espressif-cache-${{ steps.sha-hashes.outputs.espressif_sha }}
           restore-keys: espressif-cache-
 
