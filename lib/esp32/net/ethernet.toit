@@ -30,6 +30,9 @@ PHY-CHIP-IP101    ::= 1
 PHY-CHIP-LAN8720  ::= 2
 PHY-CHIP-DP83848  ::= 3
 
+// The private base class is used only for sharing parts of the
+// construction code, so the constructors in the subclass are
+// kept small without turning them into factory constructors.
 abstract class EthernetServiceProviderBase_ extends ServiceProvider
     implements ServiceHandler:
   create-resource-group_/Lambda
@@ -126,7 +129,7 @@ class EthernetServiceProvider extends EthernetServiceProviderBase_:
     if mac-chip != MAC-CHIP-ESP32 and mac-chip != MAC-CHIP-OPENETH:
       throw "unsupported mac type: $mac-chip"
     super::
-      ethernet-init-esp32_
+      ethernet-init_
           mac-chip
           phy-chip
           phy-address
@@ -144,7 +147,7 @@ class EthernetServiceProvider extends EthernetServiceProviderBase_:
       --mac-mdc/gpio.Pin?=null
       --mac-mdio/gpio.Pin?=null:
     super::
-      ethernet-init-esp32_
+      ethernet-init_
           MAC-CHIP-ESP32
           phy-chip
           phy-address
@@ -160,7 +163,7 @@ class EthernetServiceProvider extends EthernetServiceProviderBase_:
       --phy-address/int=-1
       --phy-reset/gpio.Pin?=null:
     super::
-      ethernet-init-esp32_
+      ethernet-init_
           MAC-CHIP-OPENETH
           phy-chip
           phy-address
@@ -283,8 +286,8 @@ class EthernetModule_ implements NetworkModule:
     address_ = net.IpAddress ip
     logger_.info "network address dynamically assigned through dhcp" --tags={"ip": address_}
 
-ethernet-init-esp32_ mac-chip/int phy-chip/int phy-addr/int phy-reset-num/int mac-mdc-num/int mac-mdio-num/int:
-  #primitive.ethernet.init-esp32
+ethernet-init_ mac-chip/int phy-chip/int phy-addr/int phy-reset-num/int mac-mdc-num/int mac-mdio-num/int:
+  #primitive.ethernet.init
 
 ethernet-init-spi_ mac-chip/int spi frequency/int cs-num/int int-num/int:
   #primitive.ethernet.init-spi

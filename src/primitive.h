@@ -321,7 +321,7 @@ namespace toit {
   PRIMITIVE(ap_info, 1)                      \
 
 #define MODULE_ETHERNET(PRIMITIVE)           \
-  PRIMITIVE(init_esp32, 6)                   \
+  PRIMITIVE(init, 6)                         \
   PRIMITIVE(init_spi, 5)                     \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(connect, 1)                      \
