@@ -30,6 +30,19 @@ PHY-CHIP-IP101    ::= 1
 PHY-CHIP-LAN8720  ::= 2
 PHY-CHIP-DP83848  ::= 3
 
+abstract class EthernetServiceProviderBase_ extends ServiceProvider
+    implements ServiceHandler:
+  create-resource-group_/Lambda
+  constructor .create-resource-group_:
+    super "system/ethernet/esp32" --major=0 --minor=2
+        --tags=[NetworkService.TAG-ETHERNET]
+    provides NetworkService.SELECTOR
+        --handler=this
+        --priority=ServiceProvider.PRIORITY-PREFERRED
+    provides EthernetService.SELECTOR
+        --handler=this
+  abstract handle index/int arguments/any --gid/int --client/int -> any
+
 /**
 Service provider for networking via the Ethernet peripheral.
 
@@ -91,9 +104,8 @@ This firmware contains the following sdk-config change (enable
  CONFIG_ETH_DMA_TX_BUFFER_NUM=10
 ```
 */
-class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
+class EthernetServiceProvider extends EthernetServiceProviderBase_:
   state_/NetworkState ::= NetworkState
-  create-resource-group_/Lambda
 
   /**
   The $mac-chip must be one of $MAC-CHIP-ESP32 or $MAC_CHIP_OPENETH.
@@ -113,7 +125,7 @@ class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
       --mac-interrupt/gpio.Pin?:
     if mac-chip != MAC-CHIP-ESP32 and mac-chip != MAC-CHIP-OPENETH:
       throw "unsupported mac type: $mac-chip"
-    return EthernetServiceProvider.internal_::
+    super::
       ethernet-init-esp32_
           mac-chip
           phy-chip
@@ -131,7 +143,7 @@ class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
       --phy-reset/gpio.Pin?=null
       --mac-mdc/gpio.Pin?=null
       --mac-mdio/gpio.Pin?=null:
-    return EthernetServiceProvider.internal_::
+    super::
       ethernet-init-esp32_
           MAC-CHIP-ESP32
           phy-chip
@@ -147,7 +159,7 @@ class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
       --phy-chip/int
       --phy-address/int=-1
       --phy-reset/gpio.Pin?=null:
-    return EthernetServiceProvider.internal_::
+    super::
       ethernet-init-esp32_
           MAC-CHIP-OPENETH
           phy-chip
@@ -161,22 +173,13 @@ class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
       --frequency/int
       --cs/gpio.Pin
       --interrupt/gpio.Pin:
-    return EthernetServiceProvider.internal_::
+    super::
       ethernet-init-spi_
           MAC-CHIP-W5500
           bus.spi_
           frequency
           cs.num
           interrupt.num
-
-  constructor.internal_ .create-resource-group_:
-    super "system/ethernet/esp32" --major=0 --minor=1
-        --tags=[NetworkService.TAG-ETHERNET]
-    provides NetworkService.SELECTOR
-        --handler=this
-        --priority=ServiceProvider.PRIORITY-PREFERRED
-    provides EthernetService.SELECTOR
-        --handler=this
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == NetworkService.CONNECT-INDEX:
