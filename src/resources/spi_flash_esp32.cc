@@ -42,7 +42,7 @@ class SpiFlashResourceGroup: public ResourceGroup {
     if (card_) esp_vfs_fat_sdcard_unmount(mount_point_, card_);
 
     // NOR flash.
-    if (wl_handle_ != -1) esp_vfs_fat_spiflash_unmount(mount_point_, wl_handle_);
+    if (wl_handle_ != -1) esp_vfs_fat_spiflash_unmount_rw_wl(mount_point_, wl_handle_);
     if (data_partition_) esp_partition_deregister_external(data_partition_);
     if (chip_) spi_bus_remove_flash_device(chip_);
 
@@ -123,7 +123,8 @@ PRIMITIVE(init_sdcard) {
   esp_vfs_fat_sdmmc_mount_config_t mount_config = {
       .format_if_mount_failed = static_cast<bool>(format_if_mount_failed),
       .max_files = max_files,
-      .allocation_unit_size = static_cast<size_t>(allocation_unit_size)
+      .allocation_unit_size = static_cast<size_t>(allocation_unit_size),
+      .disk_status_check_enable = false
   };
   sdmmc_card_t* card;
   esp_err_t ret = esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_config, &card);
@@ -151,9 +152,9 @@ PRIMITIVE(init_nor_flash) {
       .host_id = spi_bus->host_device(),
       .cs_io_num = gpio_cs,
       .io_mode = SPI_FLASH_FASTRD,
-      .speed = static_cast<esp_flash_speed_t>(frequency),
       .input_delay_ns = 0,
-      .cs_id = 0
+      .cs_id = 0,
+      .freq_mhz = frequency
   };
 
   esp_flash_t* chip;
@@ -194,11 +195,12 @@ PRIMITIVE(init_nor_flash) {
   esp_vfs_fat_mount_config_t mount_config = {
       .format_if_mount_failed = static_cast<bool>(format_if_mount_failed),
       .max_files = max_files,
-      .allocation_unit_size = static_cast<size_t>(allocation_unit_size)
+      .allocation_unit_size = static_cast<size_t>(allocation_unit_size),
+      .disk_status_check_enable = false
   };
 
   wl_handle_t wl_handle;
-  ret = esp_vfs_fat_spiflash_mount(mount_point, mount_point, &mount_config, &wl_handle);
+  ret = esp_vfs_fat_spiflash_mount_rw_wl(mount_point, mount_point, &mount_config, &wl_handle);
   if (ret != ESP_OK) {
     group->tear_down();
     return Primitive::os_error(ret, process);
