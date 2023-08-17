@@ -20,7 +20,7 @@ namespace compiler {
 
 MODULE_TYPES(ethernet, MODULE_ETHERNET)
 
-TYPE_PRIMITIVE_ANY(init_esp32)
+TYPE_PRIMITIVE_ANY(init)
 TYPE_PRIMITIVE_ANY(init_spi)
 TYPE_PRIMITIVE_ANY(close)
 TYPE_PRIMITIVE_ANY(connect)

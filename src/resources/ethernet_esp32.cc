@@ -18,6 +18,7 @@
 #if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
 
 #include <esp_eth.h>
+#include <esp_mac.h>
 #include <esp_netif.h>
 #include <rom/ets_sys.h>
 
@@ -173,13 +174,12 @@ uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t
 
 MODULE_IMPLEMENTATION(ethernet, MODULE_ETHERNET)
 
-PRIMITIVE(init_esp32) {
+PRIMITIVE(init) {
   ARGS(int, mac_chip, int, phy_chip, int, phy_addr, int, phy_reset_num, int, mdc_num, int, mdio_num)
 
 #if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
   return Primitive::os_error(ESP_FAIL, process);
 #else
-
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
@@ -187,7 +187,7 @@ PRIMITIVE(init_esp32) {
   if (id == kInvalidEthernet) FAIL(OUT_OF_BOUNDS);
 
   esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
-  esp_netif_t *netif = esp_netif_new(&cfg);
+  esp_netif_t* netif = esp_netif_new(&cfg);
   if (!netif) {
     ethernet_pool.put(id);
     FAIL(MALLOC_FAILED);
@@ -200,7 +200,6 @@ PRIMITIVE(init_esp32) {
   phy_config.phy_addr = phy_addr;
   phy_config.reset_gpio_num = phy_reset_num;
 
-  // TODO(anders): If phy initialization fails, we're leaking this.
   esp_eth_mac_t* mac;
   if (mac_chip == MAC_CHIP_ESP32) {
     eth_esp32_emac_config_t emac_config = ETH_ESP32_EMAC_DEFAULT_CONFIG();
@@ -281,9 +280,7 @@ PRIMITIVE(init_esp32) {
 
 
 PRIMITIVE(init_spi) {
-  FAIL(UNIMPLEMENTED);
-#if 0
-  ARGS(int, mac_chip, SpiDevice, spi_device, int, int_num)
+  ARGS(int, mac_chip, SpiResourceGroup, spi, int, frequency, int, cs, int, int_num)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -292,16 +289,32 @@ PRIMITIVE(init_spi) {
   if (id == kInvalidEthernet) FAIL(OUT_OF_BOUNDS);
 
   esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
-  esp_netif_t *netif = esp_netif_new(&cfg);
+  esp_netif_t* netif = esp_netif_new(&cfg);
   if (!netif) {
     ethernet_pool.put(id);
     FAIL(MALLOC_FAILED);
   }
 
+  spi_host_device_t spi_host = spi->host_device();
+  spi_device_interface_config_t spi_config = {
+    .command_bits     = 0,
+    .address_bits     = 0,
+    .dummy_bits       = 0,
+    .mode             = 0,
+    .duty_cycle_pos   = 0,
+    .cs_ena_pretrans  = 0,
+    .cs_ena_posttrans = 0,
+    .clock_speed_hz   = frequency,
+    .input_delay_ns   = 0,
+    .spics_io_num     = cs,
+    .flags            = 0,
+    .queue_size       = 1,
+    .pre_cb           = null,
+    .post_cb          = null,
+  };
+
   // Init MAC and PHY configs to default.
   eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG();
-  mac_config.smi_mdc_gpio_num = -1;
-  mac_config.smi_mdio_gpio_num = -1;
   eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
   phy_config.reset_gpio_num = -1;
 
@@ -309,7 +322,7 @@ PRIMITIVE(init_spi) {
   esp_eth_phy_t* phy = null;
   switch (mac_chip) {
     case MAC_CHIP_W5500: {
-      eth_w5500_config_t w5500_config = ETH_W5500_DEFAULT_CONFIG(spi_device->handle());
+      eth_w5500_config_t w5500_config = ETH_W5500_DEFAULT_CONFIG(spi_host, &spi_config);
       w5500_config.int_gpio_num = int_num;
       mac = esp_eth_mac_new_w5500(&w5500_config, &mac_config);
       phy = esp_eth_phy_new_w5500(&phy_config);
@@ -352,7 +365,7 @@ PRIMITIVE(init_spi) {
   }
 
   EthernetResourceGroup* resource_group = _new EthernetResourceGroup(
-    process, SystemEventSource::instance(), id, mac, phy, netif, eth_handle, netif_glue);
+      process, SystemEventSource::instance(), id, mac, phy, netif, eth_handle, netif_glue);
   if (!resource_group) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
@@ -365,7 +378,6 @@ PRIMITIVE(init_spi) {
 
   proxy->set_external_address(resource_group);
   return proxy;
-#endif
 }
 
 PRIMITIVE(close) {
