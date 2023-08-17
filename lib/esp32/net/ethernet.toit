@@ -111,8 +111,8 @@ class EthernetServiceProvider extends EthernetServiceProviderBase_:
   state_/NetworkState ::= NetworkState
 
   /**
-  The $mac-chip must be one of $MAC-CHIP-ESP32 or $MAC_CHIP_OPENETH.
-  The $phy-chip must be one of $PHY-CHIP-IP101, $PHY-CHIP-LAN8720, or $PHY_CHIP_DP83848.
+  The $mac-chip must be one of $MAC-CHIP-ESP32 or $MAC-CHIP-OPENETH.
+  The $phy-chip must be one of $PHY-CHIP-IP101, $PHY-CHIP-LAN8720, or $PHY-CHIP-DP83848.
 
   Deprecated. Use $EthernetServiceProvider.mac-esp32,
     $EthernetServiceProvider.mac-openeth, or $EthernetServiceProvider.w5500 instead.
@@ -138,7 +138,7 @@ class EthernetServiceProvider extends EthernetServiceProviderBase_:
           mac-mdio ? mac-mdio.num : -1
 
   /**
-  The $phy-chip must be one of $PHY-CHIP-IP101, $PHY-CHIP-LAN8720, or $PHY_CHIP_DP83848.
+  The $phy-chip must be one of $PHY-CHIP-IP101, $PHY-CHIP-LAN8720, or $PHY-CHIP-DP83848.
   */
   constructor.mac-esp32
       --phy-chip/int
@@ -156,7 +156,7 @@ class EthernetServiceProvider extends EthernetServiceProviderBase_:
           mac-mdio ? mac-mdio.num : -1
 
   /**
-  The $phy-chip must be one of $PHY-CHIP-IP101, $PHY-CHIP-LAN8720, or $PHY_CHIP_DP83848.
+  The $phy-chip must be one of $PHY-CHIP-IP101, $PHY-CHIP-LAN8720, or $PHY-CHIP-DP83848.
   */
   constructor.mac-openeth
       --phy-chip/int
