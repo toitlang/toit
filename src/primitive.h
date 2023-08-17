@@ -321,8 +321,8 @@ namespace toit {
   PRIMITIVE(ap_info, 1)                      \
 
 #define MODULE_ETHERNET(PRIMITIVE)           \
-  PRIMITIVE(init_esp32, 6)                   \
-  PRIMITIVE(init_spi, 3)                     \
+  PRIMITIVE(init, 6)                         \
+  PRIMITIVE(init_spi, 5)                     \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(connect, 1)                      \
   PRIMITIVE(setup_ip, 1)                     \
@@ -844,7 +844,7 @@ namespace toit {
     name = Smi::value(_raw_##name);                    \
   } else if (is_large_integer(_raw_##name)) {          \
     name = LargeInteger::cast(_raw_##name)->value();   \
-  } else FAIL(WRONG_OBJECT_TYPE);   
+  } else FAIL(WRONG_OBJECT_TYPE);
 
 #define _A_T_double(N, name)                                   \
   Object* _raw_##name = __args[-(N)];                          \
@@ -860,7 +860,7 @@ namespace toit {
     name = (double) LargeInteger::cast(_raw_##name)->value();  \
   } else if (is_double(_raw_##name)) {                         \
     name = Double::cast(_raw_##name)->value();                 \
-  } else FAIL(WRONG_OBJECT_TYPE);   
+  } else FAIL(WRONG_OBJECT_TYPE);
 
 #define _A_T_bool(N, name)                             \
   Object* _raw_##name = __args[-(N)];                  \
@@ -868,7 +868,7 @@ namespace toit {
   if (_raw_##name == process->true_object()) {         \
   } else if (_raw_##name == process->false_object()) { \
     name = false;                                      \
-  } else FAIL(WRONG_OBJECT_TYPE);   
+  } else FAIL(WRONG_OBJECT_TYPE);
 
 #define _A_T_cstring(N, name)                                                    \
   Object* _raw_##name = __args[-(N)];                                            \

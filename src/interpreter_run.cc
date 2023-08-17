@@ -1509,6 +1509,10 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_HASH_FIND); {
+#if defined(ESP32) && !defined(CONFIG_TOIT_INTERPRETER_HELPERS_IN_IRAM)
+    DROP(7);  // NUMBER_OF_ARGUMENTS from Interpreter::hash_find.
+    DISPATCH(INTRINSIC_HASH_FIND_LENGTH);
+#else
     Method block_to_call(0);
     HashFindAction action;
     Object* result;
@@ -1527,6 +1531,7 @@ Interpreter::Result Interpreter::run() {
       ASSERT(action == kCallBlockThenRestartBytecode);
       CALL_METHOD(block_to_call, 0);  // Continue at the same bytecode after the block call.
     }
+#endif
   }
   OPCODE_END();
 }
@@ -1579,7 +1584,7 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
     HASH                = 4,
     KEY                 = 5,
     COLLECTION          = 6,
-    NUMBER_OF_ARGUMENTS = 7,  // Must be last.
+    NUMBER_OF_ARGUMENTS = 7,  // Must be last.  See also INTRINSIC_HASH_FIND implementation.
   };
   // States.
   enum {
