@@ -421,7 +421,7 @@ class Session:
       tls-close_ tls_
       tls_ = null
     if tls_group_:
-      tls-group_.unuse
+      critical_do: tls-group_.unuse
       tls-group_ = null
       remove-finalizer this  // Added when tls-group_ is set.
     if reader_:
