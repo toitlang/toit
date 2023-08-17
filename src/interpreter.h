@@ -163,8 +163,8 @@ class Interpreter {
   Object** push_error(Object** sp, Object* type, const char* message);
   Object** push_out_of_memory_error(Object** sp);
 
-  Object* hash_do(Program* program, Object* current, Object* backing, int step, Object* block, Object** entry_return);
-  Object** hash_find(Object** sp, Program* program, HashFindAction* action_return, Method* block_return, Object** result_return);
+  Object* hash_do(Program* program, Object* current, Object* backing, int step, Object* block, Object** entry_return) INTERPRETER_HELPER;
+  Object** hash_find(Object** sp, Program* program, HashFindAction* action_return, Method* block_return, Object** result_return) INTERPRETER_HELPER;
 
   inline bool is_true_value(Program* program, Object* value) const;
 
