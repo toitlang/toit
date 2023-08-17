@@ -50,7 +50,7 @@ import esp32.net.ethernet as esp32
 main:
   power := gpio.Pin --output 12
   power.set 1
-  provider := esp32.EthernetServiceProvider.esp32
+  provider := esp32.EthernetServiceProvider.mac-esp32
       --phy-chip=esp32.PHY-CHIP-LAN8720
       --phy-address=0
       --mac-mdc=gpio.Pin 23
@@ -99,8 +99,8 @@ class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
   The $mac-chip must be one of $MAC-CHIP-ESP32 or $MAC_CHIP_OPENETH.
   The $phy-chip must be one of $PHY-CHIP-IP101, $PHY-CHIP-LAN8720, or $PHY_CHIP_DP83848.
 
-  Deprecated. Use $EthernetServiceProvider.esp32, $EthernetServiceProvider.openeth, or
-  $EthernetServiceProvider.w5500 instead.
+  Deprecated. Use $EthernetServiceProvider.mac-esp32,
+    $EthernetServiceProvider.mac-openeth, or $EthernetServiceProvider.w5500 instead.
   */
   constructor
       --phy-chip/int
@@ -125,7 +125,7 @@ class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
   /**
   The $phy-chip must be one of $PHY-CHIP-IP101, $PHY-CHIP-LAN8720, or $PHY_CHIP_DP83848.
   */
-  constructor.esp32
+  constructor.mac-esp32
       --phy-chip/int
       --phy-address/int=-1
       --phy-reset/gpio.Pin?=null
@@ -143,7 +143,7 @@ class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
   /**
   The $phy-chip must be one of $PHY-CHIP-IP101, $PHY-CHIP-LAN8720, or $PHY_CHIP_DP83848.
   */
-  constructor.openeth
+  constructor.mac-openeth
       --phy-chip/int
       --phy-address/int=-1
       --phy-reset/gpio.Pin?=null:
