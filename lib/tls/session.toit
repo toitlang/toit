@@ -256,34 +256,37 @@ class Session:
       handshake_ tls-state --session-state=session-state
 
     finally: | is-exception exception |
-      if token-state: token-state.dispose
-      if tls-state: tls-state.dispose
-      if is-exception: reader_ = null
+      // If the task that is doing the handshake gets canceled,
+      // we have to be careful and clean up anyway.
+      critical_do:
+        if token-state: token-state.dispose
+        if tls-state: tls-state.dispose
+        if is-exception: reader_ = null
 
-      if is-exception or symmetric-session_ != null:
-        // We do not need the resources any more. Either
-        // because we're running in Toit mode using a
-        // symmetric session or because we failed to do
-        // the handshake.
-        if tls: tls-close_ tls
-        tls-group.unuse
-        tls_ = null
-      else:
-        // Delay the closing of the TLS group and resource
-        // until $close is called.
-        tls-group_ = tls-group
-        add-finalizer this:: close
+        if is-exception or symmetric-session_ != null:
+          // We do not need the resources any more. Either
+          // because we're running in Toit mode using a
+          // symmetric session or because we failed to do
+          // the handshake.
+          if tls: tls-close_ tls
+          tls-group.unuse
+          tls_ = null
+        else:
+          // Delay the closing of the TLS group and resource
+          // until $close is called.
+          tls-group_ = tls-group
+          add-finalizer this:: close
 
-      // Release the handshake token if we managed to
-      // create the resource group.
-      if token: tls-token-release_ token
+        // Release the handshake token if we managed to
+        // create the resource group.
+        if token: tls-token-release_ token
 
-      // Mark the handshake as no longer in progress and
-      // send back any exception to whoever may be waiting
-      // for the handshake to complete.
-      handshake-in-progress_.set (is-exception ? exception : null)
-          --exception=is-exception
-      handshake-in-progress_ = null
+        // Mark the handshake as no longer in progress and
+        // send back any exception to whoever may be waiting
+        // for the handshake to complete.
+        handshake-in-progress_.set (is-exception ? exception : null)
+            --exception=is-exception
+        handshake-in-progress_ = null
 
   handshake_ tls-state/monitor.ResourceState_ --session-state/ByteArray?=null -> none:
     root-certificates.do: | root-certificate |
@@ -417,17 +420,18 @@ class Session:
     if tls_:
       tls-close_ tls_
       tls_ = null
+    if tls_group_:
       tls-group_.unuse
       tls-group_ = null
-      reader_.clear
-      outgoing-buffer_ = #[]
-      remove-finalizer this
+      remove-finalizer this  // Added when tls-group_ is set.
     if reader_:
+      reader_.clear
       reader_ = null
       writer_.close
     if unbuffered-reader_:
       unbuffered-reader_.close
       unbuffered-reader_ = null
+    outgoing-buffer_ = #[]
     symmetric-session_ = null
 
   ensure-handshaken_:
