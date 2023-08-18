@@ -41,6 +41,7 @@
 #include <signal.h>
 #include <string.h>
 #include <cinttypes>
+#include <ctype.h>
 #include <errno.h>
 #include <sys/time.h>
 

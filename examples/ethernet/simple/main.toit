@@ -38,14 +38,11 @@ import esp32.net.ethernet as esp32
 main:
   power := gpio.Pin --output 12
   power.set 1
-  provider := esp32.EthernetServiceProvider
+  provider := esp32.EthernetServiceProvider.mac-esp32
       --phy-chip=esp32.PHY-CHIP-LAN8720
       --phy-address=0
-      --mac-chip=esp32.MAC-CHIP-ESP32
       --mac-mdc=gpio.Pin 23
       --mac-mdio=gpio.Pin 18
-      --mac-spi-device=null
-      --mac-interrupt=null
   provider.install
   network := ethernet.open
   use network

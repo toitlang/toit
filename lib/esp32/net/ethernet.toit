@@ -30,6 +30,22 @@ PHY-CHIP-IP101    ::= 1
 PHY-CHIP-LAN8720  ::= 2
 PHY-CHIP-DP83848  ::= 3
 
+// The private base class is used only for sharing parts of the
+// construction code, so the constructors in the subclass are
+// kept small without turning them into factory constructors.
+abstract class EthernetServiceProviderBase_ extends ServiceProvider
+    implements ServiceHandler:
+  create-resource-group_/Lambda
+  constructor .create-resource-group_:
+    super "system/ethernet/esp32" --major=0 --minor=2
+        --tags=[NetworkService.TAG-ETHERNET]
+    provides NetworkService.SELECTOR
+        --handler=this
+        --priority=ServiceProvider.PRIORITY-PREFERRED
+    provides EthernetService.SELECTOR
+        --handler=this
+  abstract handle index/int arguments/any --gid/int --client/int -> any
+
 /**
 Service provider for networking via the Ethernet peripheral.
 
@@ -50,14 +66,11 @@ import esp32.net.ethernet as esp32
 main:
   power := gpio.Pin --output 12
   power.set 1
-  provider := esp32.EthernetServiceProvider
-      --phy_chip=esp32.PHY_CHIP_LAN8720
-      --phy_address=0
-      --mac_chip=esp32.MAC_CHIP_ESP32
-      --mac_mdc=gpio.Pin 23
-      --mac_mdio=gpio.Pin 18
-      --mac_spi_device=null
-      --mac_interrupt=null
+  provider := esp32.EthernetServiceProvider.mac-esp32
+      --phy-chip=esp32.PHY-CHIP-LAN8720
+      --phy-address=0
+      --mac-mdc=gpio.Pin 23
+      --mac-mdio=gpio.Pin 18
   provider.install
   network := ethernet.open
   try:
@@ -94,13 +107,15 @@ This firmware contains the following sdk-config change (enable
  CONFIG_ETH_DMA_TX_BUFFER_NUM=10
 ```
 */
-class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
+class EthernetServiceProvider extends EthernetServiceProviderBase_:
   state_/NetworkState ::= NetworkState
-  create-resource-group_/Lambda
 
   /**
-  The $mac-chip must be one of $MAC-CHIP-ESP32 or $MAC-CHIP-W5500.
-  The $phy-chip must be one of $PHY-CHIP-NONE, $PHY-CHIP-IP101 or $PHY-CHIP-LAN8720.
+  The $mac-chip must be one of $MAC-CHIP-ESP32 or $MAC-CHIP-OPENETH.
+  The $phy-chip must be one of $PHY-CHIP-IP101, $PHY-CHIP-LAN8720, or $PHY-CHIP-DP83848.
+
+  Deprecated. Use $EthernetServiceProvider.mac-esp32,
+    $EthernetServiceProvider.mac-openeth, or $EthernetServiceProvider.w5500 instead.
   */
   constructor
       --phy-chip/int
@@ -111,28 +126,63 @@ class EthernetServiceProvider extends ServiceProvider implements ServiceHandler:
       --mac-mdio/gpio.Pin?
       --mac-spi-device/spi.Device?
       --mac-interrupt/gpio.Pin?:
-    if mac-chip == MAC-CHIP-ESP32 or mac-chip == MAC-CHIP-OPENETH:
-      create-resource-group_ = :: ethernet-init-esp32_
+    if mac-chip != MAC-CHIP-ESP32 and mac-chip != MAC-CHIP-OPENETH:
+      throw "unsupported mac type: $mac-chip"
+    super::
+      ethernet-init_
           mac-chip
           phy-chip
           phy-address
           phy-reset ? phy-reset.num : -1
           mac-mdc ? mac-mdc.num : -1
           mac-mdio ? mac-mdio.num : -1
-    else if phy-chip != PHY-CHIP-NONE:
-      throw "unexpected PHY chip selection"
-    else:
-      create-resource-group_ = :: ethernet-init-spi_
-          mac-chip
-          (mac-spi-device as spi.Device_).device_
-          mac-interrupt.num
-    super "system/ethernet/esp32" --major=0 --minor=1
-        --tags=[NetworkService.TAG-ETHERNET]
-    provides NetworkService.SELECTOR
-        --handler=this
-        --priority=ServiceProvider.PRIORITY-PREFERRED
-    provides EthernetService.SELECTOR
-        --handler=this
+
+  /**
+  The $phy-chip must be one of $PHY-CHIP-IP101, $PHY-CHIP-LAN8720, or $PHY-CHIP-DP83848.
+  */
+  constructor.mac-esp32
+      --phy-chip/int
+      --phy-address/int=-1
+      --phy-reset/gpio.Pin?=null
+      --mac-mdc/gpio.Pin?=null
+      --mac-mdio/gpio.Pin?=null:
+    super::
+      ethernet-init_
+          MAC-CHIP-ESP32
+          phy-chip
+          phy-address
+          phy-reset ? phy-reset.num : -1
+          mac-mdc ? mac-mdc.num : -1
+          mac-mdio ? mac-mdio.num : -1
+
+  /**
+  The $phy-chip must be one of $PHY-CHIP-IP101, $PHY-CHIP-LAN8720, or $PHY-CHIP-DP83848.
+  */
+  constructor.mac-openeth
+      --phy-chip/int
+      --phy-address/int=-1
+      --phy-reset/gpio.Pin?=null:
+    super::
+      ethernet-init_
+          MAC-CHIP-OPENETH
+          phy-chip
+          phy-address
+          phy-reset ? phy-reset.num : -1
+          -1
+          -1
+
+  constructor.w5500
+      --bus/spi.Bus
+      --frequency/int
+      --cs/gpio.Pin
+      --interrupt/gpio.Pin:
+    super::
+      ethernet-init-spi_
+          MAC-CHIP-W5500
+          bus.spi_
+          frequency
+          cs.num
+          interrupt.num
 
   handle index/int arguments/any --gid/int --client/int -> any:
     if index == NetworkService.CONNECT-INDEX:
@@ -236,10 +286,10 @@ class EthernetModule_ implements NetworkModule:
     address_ = net.IpAddress ip
     logger_.info "network address dynamically assigned through dhcp" --tags={"ip": address_}
 
-ethernet-init-esp32_ mac-chip/int phy-chip/int phy-addr/int phy-reset-num/int mac-mdc-num/int mac-mdio-num/int:
-  #primitive.ethernet.init-esp32
+ethernet-init_ mac-chip/int phy-chip/int phy-addr/int phy-reset-num/int mac-mdc-num/int mac-mdio-num/int:
+  #primitive.ethernet.init
 
-ethernet-init-spi_ mac-chip/int spi-device int-num/int:
+ethernet-init-spi_ mac-chip/int spi frequency/int cs-num/int int-num/int:
   #primitive.ethernet.init-spi
 
 ethernet-close_ resource-group:
