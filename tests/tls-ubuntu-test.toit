@@ -7,7 +7,13 @@ import writer
 // Test connections to a site that immediately starts sending 16k TLS records.
 
 main:
-  test-site "cdimage.ubuntu.com"
+  test-site-with-retry "cdimage.ubuntu.com"
+
+test-site-with-retry url/string:
+  2.repeat: | attempt-number |
+    error := catch --unwind=(:attempt-number == 1):
+      test-site url
+    if not error: return
 
 test-site url:
   host := url
