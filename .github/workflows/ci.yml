@@ -86,7 +86,7 @@ jobs:
           echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
       - name: Go cache
-        if: runner.os == 'Windows'
+        if: runner.os != 'Windows'
         uses: actions/cache@v3
         with:
           path: |
