@@ -124,6 +124,7 @@ parse-numeric-test:
   invalid-ipv6 "::12345"             // Too long segment at end.
 
 fallback-test:
+  print "Doing fallback test - may pause for a few seconds"
   // There will be a short timeout (about 2.5 seconds), then it will switch to
   // Google and succeed.
   client := DnsClient [
@@ -131,6 +132,7 @@ fallback-test:
       "8.8.8.8",    // Google DNS.
       ]
   dns-lookup --client=client "www.apple.com"
+  print "Fell back to good server, should go fast again now."
   // Check that we switched permanently to the DNS server that answers quickly.
   with-timeout (DNS-RETRY-TIMEOUT * 2): dns-lookup --client=client "www.google.com"
 
