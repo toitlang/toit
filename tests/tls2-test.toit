@@ -141,12 +141,18 @@ non-working-site site port:
 working-site host port:
   error := true
   try:
-    connect-to-site host port true
+    connect-to-site-with-retry host port true
     error = false
   finally:
     if error:
       load-limiter.log-test-failure "*** Incorrectly failed to connect to $host ***"
     load-limiter.dec
+
+connect-to-site-with-retry host port expected-certificate-name:
+  2.repeat: | attempt-number |
+    error := catch --unwind=(:attempt-number == 1):
+      connect-to-site host port expected-certificate-name
+    if not error: return
 
 connect-to-site host port add-root:
   raw := tcp.TcpSocket
