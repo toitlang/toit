@@ -185,6 +185,8 @@ class DnsClient:
       // until the outer timeout expires or we have tried too many times.
       while true:
         socket.write query.query-packet
+        ms := (Time.monotonic-us / 1000) % 1_000_000
+        print "$(%3d ms / 1000).$(%03d ms % 1000): Write..."
 
         last-attempt := attempt-counter > MAX-RETRY-ATTEMPTS_
         catch --unwind=(: (not is-server-reachability-error_ it) or last-attempt):
@@ -232,6 +234,7 @@ class DnsClient:
 
         // The current server didn't respond after about 3 seconds. Move to the next.
         current-server-index_ = (current-server-index_ + 1) % servers_.size
+        print "Rotated to $servers_[current-server-index_]"
     unreachable
 
   static case-compare_ a/string b/string -> bool:
