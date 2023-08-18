@@ -218,7 +218,7 @@ class DnsClient:
     with-timeout timeout:  // Typically a 20s timeout.
       // We try servers one at a time, but if there was a good error
       // message from one server (eg. no such domain) we let that
-      // error unwind the stack and not try the next server.
+      // error unwind the stack and do not try the next server.
       unwind-block := : | exception |
         not is-server-reachability-error_ exception
       while true:
