@@ -33,6 +33,11 @@ If given a numeric address like 127.0.0.1 it merely parses
 
 By default the server is determined by the network interface.  The fallback
   servers if none are configured are the Google and Cloudflare DNS services.
+
+If there are multiple servers then they are tried in rotation until one
+  responds.  If one responds with an error (eg. no such domain) we do not try
+  the next one.  This is in line with the way that Linux handles multiple
+  servers on the same lookup request.
 */
 dns-lookup -> net.IpAddress
     host/string
@@ -210,41 +215,22 @@ class DnsClient:
 
     query := DnsQuery_ name --accept-ipv4=accept-ipv4 --accept-ipv6=accept-ipv6
 
-    with-timeout timeout:
-      servers-failed := {}
+    with-timeout timeout:  // Typically a 20s timeout.
       // We try servers one at a time, but if there was a good error
-      // message from one server (eg. no such domain) we save that
-      // error and rethrow it if the last one times out with no usable
-      // response.
-      saved-error := null
-      saved-trace := null
+      // message from one server (eg. no such domain) we let that
+      // error unwind the stack and do not try the next server.
+      unwind-block := : | exception |
+        not is-server-reachability-error_ exception
       while true:
         // Note that we continue to use the server that worked the last time
         // since we store the index in a field.
         current-server-ip := servers_[current-server-index_]
-        is-last-server := (servers_.size == servers-failed.size + 1)
 
         trace := null
-        trace-block := : | _ t |
-          trace = t
-          false
-        error := catch --trace=trace-block:
+        catch --unwind=unwind-block:
           return get_ query current-server-ip
 
-        // Get here if there was an error. If it's the last server we
-        // rethrow it so that it looks like there was no catch.
-        if not is-server-reachability-error_ error:
-          // Deadline exceeded errors are less informative than other errors.
-          saved-error = error
-          saved-trace = trace
-        if is-last-server:
-          if saved-error:
-            rethrow saved-error saved-trace
-          else:
-            rethrow error trace
-
-        // The current server didn't succeed. Move to the next.
-        servers-failed.add current-server-ip
+        // The current server didn't respond after about 3 seconds. Move to the next.
         current-server-index_ = (current-server-index_ + 1) % servers_.size
     unreachable
 
