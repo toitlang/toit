@@ -13,7 +13,7 @@ monitor LimitLoad:
   current := 0
   has-test-failure := null
   // FreeRTOS does not have enough memory to run 10 in parallel.
-  concurrent-processes ::= platform == "FreeRTOS" ? 1 : 2
+  concurrent-processes ::= platform == "FreeRTOS" ? 1 : 3
 
   inc:
     await: current < concurrent-processes
@@ -44,8 +44,9 @@ run-tests:
     // "ebay.de",  // Currently the IP that is returned first from DNS has connection refused.
     "$(dns-lookup "amazon.com")/amazon.com",  // Connect to the IP address at the TCP level, but verify the cert name.
 
-    "dkhostmaster.dk",
-    "gnu.org",  // Doesn't work with Toit mode, falls back to MbedTLS C code for symmetric stage.
+    //"dkhostmaster.dk",
+    // Gnu.org is down for everyone 2023-08-18.
+    // "gnu.org",  // Doesn't work with Toit mode, falls back to MbedTLS C code for symmetric stage.
 
     "sha256.badssl.com",
     // "sha384.badssl.com",  Expired.
@@ -137,12 +138,18 @@ non-working-site site port exception-text1:
 working-site host port expected-certificate-name:
   error := true
   try:
-    connect-to-site host port expected-certificate-name
+    connect-to-site-with-retry host port expected-certificate-name
     error = false
   finally:
     if error:
       load-limiter.log-test-failure "*** Incorrectly failed to connect to $host ***"
     load-limiter.dec
+
+connect-to-site-with-retry host port expected-certificate-name:
+  2.repeat: | attempt-number |
+    error := catch --unwind=(:attempt-number == 1):
+      connect-to-site host port expected-certificate-name
+    if not error: return
 
 connect-to-site host port expected-certificate-name:
   bytes := 0
