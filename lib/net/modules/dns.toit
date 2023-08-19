@@ -185,6 +185,10 @@ class DnsClient:
       // until the outer timeout expires or we have tried too many times.
       while true:
         socket.write query.query-packet
+        intro := "Sent query"
+        List.chunk_up 0 query.query-packet.size 10: | from to length |
+          print "$intro $query.query-packet[from..to]"
+          intro = " " * intro.size
         ms := (Time.monotonic-us / 1000) % 1_000_000
         print "$(%3d ms / 1000).$(%03d ms % 1000): Write..."
 
@@ -192,6 +196,10 @@ class DnsClient:
         catch --unwind=(: (not is-server-reachability-error_ it) or last-attempt):
           with-timeout retry-timeout:
             answer := socket.receive
+            intro = "Got answer"
+            List.chunk_up 0 answer.data.size 10: | from to length |
+              print "$intro $answer.data[from..to]"
+              intro = " " * intro.size
             return decode-response_ query answer.data
 
         retry-timeout = retry-timeout * 1.5

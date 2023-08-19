@@ -236,6 +236,7 @@ PRIMITIVE(send) {
     return Primitive::os_error(errno, process);
   }
 
+  printf("UDP: Wrote %d bytes\n", wrote);
   return Smi::from(wrote);
 }
 

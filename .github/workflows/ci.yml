@@ -409,12 +409,19 @@ jobs:
           restore-keys: espressif-cache-
 
       - name: Install dependencies - Linux
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_COMPRESS: true
+          CCACHE_COMPRESSLEVEL: '6'
+          CCACHE_MAXSIZE: 400M
         run: |
           sudo apt-get update
           sudo apt-get install ninja-build ccache
           ninja --version
           cmake --version
           gcc --version
+          ccache -p
 
       - name: Install ESP32 tools
         run: |
@@ -441,6 +448,7 @@ jobs:
           make ESP32_CHIP=esp32s3 esp32
           make ESP32_CHIP=esp32s3-spiram-octo esp32
           make ESP32_CHIP=esp32-eth-clk-out17 esp32
+          du -sk $CCACHE_DIR
 
       - name: Pack firmware artifacts
         shell: bash
