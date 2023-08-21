@@ -24,17 +24,11 @@
 #include "esp_partition.h"
 #include "spi_flash_mmap.h"
 
-#ifdef CONFIG_IDF_TARGET_ESP32
-#include <esp32/rom/cache.h>
-#endif
-
 namespace toit {
 
 static const esp_partition_t* allocations_partition = null;
 static spi_flash_mmap_handle_t allocations_handle;
 uint8* FlashRegistry::allocations_memory_ = null;
-
-static bool is_dirty = false;
 
 static bool is_erased_page(int offset) {
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
@@ -55,9 +49,7 @@ static esp_err_t ensure_erased(int offset, int size) {
       }
       // Erase dirty range: [cursor, dirty_to).
       esp_err_t result = esp_partition_erase_range(allocations_partition, cursor, dirty_to - cursor);
-      if (result == ESP_OK) {
-        is_dirty = true;
-      } else {
+      if (result != ESP_OK) {
         return result;
       }
       cursor = dirty_to;  // Will continue at [dirty_to] + FLASH_PAGE_SIZE.
@@ -87,14 +79,6 @@ void FlashRegistry::tear_down() {
 }
 
 void FlashRegistry::flush() {
-  if (!is_dirty) return;
-#if !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(CONFIG_IDF_TARGET_ESP32S2)
-  Cache_Flush(0);
-#ifndef CONFIG_FREERTOS_UNICORE
-  Cache_Flush(1);
-#endif
-#endif
-  is_dirty = false;
 }
 
 int FlashRegistry::allocations_size() {
@@ -117,7 +101,6 @@ int FlashRegistry::erase_chunk(int offset, int size) {
 bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
   esp_err_t result = esp_partition_write(allocations_partition, offset, chunk, size);
   if (result == ESP_OK) {
-    is_dirty = true;
     return true;
   } else {
     return false;
