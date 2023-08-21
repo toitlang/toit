@@ -374,6 +374,7 @@ void OS::set_up() {
   // This will normally return 1 or 3.  Perhaps later, more
   // CPU revisions will appear.
   cpu_revision_ = efuse_hal_chip_revision();
+  printf("ESP32 cpu_revision_ is %d\n", cpu_revision_);
 }
 
 // Mutex forwarders.
@@ -426,13 +427,14 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
 
   bool has_spiram = info.lowest_address != null;
 
-  caps = toit_heap_caps_flags_for_heap();
-  heap_caps_get_info(&info, caps);
-
   if (has_spiram) {
     use_spiram_for_metadata_ = true;
-    printf("[toit] INFO: using SPIRAM for heap metadata.\n");
+    use_spiram_for_heap_ = true;
+    printf("[toit] INFO: using SPIRAM for heap metadata and heap.\n");
   }
+
+  caps = toit_heap_caps_flags_for_heap();
+  heap_caps_get_info(&info, caps);
 
   // Older esp-idfs or mallocs other than cmpctmalloc won't set the
   // lowest_address and highest_address fields.
