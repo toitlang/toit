@@ -96,7 +96,12 @@ class Socket implements net.Socket:
     while true:
       state := ensure-state_ TOIT-UDP-WRITE_
       wrote := udp-send_ state.group state.resource data from to address port
-      if wrote > 0 or wrote == to  - from: return null
+      if wrote > 0 or wrote == to - from:
+        if wrote != to - from:
+          throw "NOT_ALL_WRITTEN"
+        return null
+      if wrote != -1:
+        throw "Unexpected write result: $wrote"
       assert: wrote == -1
       state.clear-state TOIT-UDP-WRITE_
 
