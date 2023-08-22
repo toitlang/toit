@@ -374,9 +374,9 @@ void OS::set_up() {
   // This will normally return 100 or 300.  Perhaps later, more
   // CPU revisions will appear.
   cpu_revision_ = efuse_hal_chip_revision();
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
   const char* chip_name = "ESP32S3";
-#elif defined(CONFIG_IDF_TARGET_ESP32S2
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
   const char* chip_name = "ESP32S2";
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
   const char* chip_name = "ESP32C3";
