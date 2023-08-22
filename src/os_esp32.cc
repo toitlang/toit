@@ -383,7 +383,7 @@ void OS::set_up() {
 #else
   const char* chip_name = "ESP32";
 #endif
-  printf("[toit] running on %s - revision %d.%d\n", chip_name, cpu_revision_ / 100, cpu_revision_ % 100);
+  printf("[toit] INFO: running on %s - revision %d.%d\n", chip_name, cpu_revision_ / 100, cpu_revision_ % 100);
 }
 
 // Mutex forwarders.
