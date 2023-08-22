@@ -371,9 +371,19 @@ Thread* Thread::current() {
 void OS::set_up() {
   Thread::ensure_system_thread();
   set_up_mutexes();
-  // This will normally return 1 or 3.  Perhaps later, more
+  // This will normally return 100 or 300.  Perhaps later, more
   // CPU revisions will appear.
   cpu_revision_ = efuse_hal_chip_revision();
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  const char* chip_name = "ESP32S3";
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
+  const char* chip_name = "ESP32S2";
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+  const char* chip_name = "ESP32C3";
+#else
+  const char* chip_name = "ESP32";
+#endif
+  printf("[toit] running on %s - revision %d.%d\n", chip_name, cpu_revision_ / 100, cpu_revision_ % 100);
 }
 
 // Mutex forwarders.
