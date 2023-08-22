@@ -15,7 +15,7 @@
 namespace toit {
 
 #ifdef TOIT_FREERTOS
-// ESP32 has a cache line is 32 bytes, as does Cortex M7.
+// ESP32 has a cache line of 32 bytes, as does Cortex M7.
 static const uword CACHE_LINE = 32;
 #else
 // It's OK to round up a little too much on other platforms, even if they have
