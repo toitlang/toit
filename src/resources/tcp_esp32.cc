@@ -300,19 +300,21 @@ PRIMITIVE(listen) {
 PRIMITIVE(connect) {
   ARGS(SocketResourceGroup, resource_group, Blob, address, int, port, int, window_size);
 
+  // Validate the IP address before we start allocating any
+  // memory to trivially avoid leaks.
+  ip_addr_t addr;
+  if (address.length() == 4) {
+    const uint8* a = address.address();
+    IP_ADDR4(&addr, a[0], a[1], a[2], a[3]);
+  } else {
+    FAIL(OUT_OF_BOUNDS);
+  }
+
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
   LwipSocket* socket = _new LwipSocket(resource_group, LwipSocket::kConnection);
   if (socket == null) FAIL(MALLOC_FAILED);
-
-  ip_addr_t addr;
-  if (address.length() == 4) {
-    const uint8_t* a = address.address();
-    IP_ADDR4(&addr, a[0], a[1], a[2], a[3]);
-  } else {
-    FAIL(OUT_OF_BOUNDS);
-  }
 
   CAPTURE5(
       SocketResourceGroup*, resource_group,
