@@ -100,11 +100,7 @@ int FlashRegistry::erase_chunk(int offset, int size) {
 
 bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
   esp_err_t result = esp_partition_write(allocations_partition, offset, chunk, size);
-  if (result == ESP_OK) {
-    return true;
-  } else {
-    return false;
-  }
+  return result == ESP_OK;
 }
 
 bool FlashRegistry::erase_flash_registry() {
