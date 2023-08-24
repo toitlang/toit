@@ -740,13 +740,13 @@ PRIMITIVE(create) {
   int interrupt_flags = ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_SHARED;
 #ifdef CONFIG_IDF_TARGET_ESP32C3
   // Level 3 interrupts hang the C3 for some reason.
-  static const int HI  = ESP_INTR_FLAG_LEVEL2
-  static const int MED = ESP_INTR_FLAG_LEVEL2
-  static const int LO  = ESP_INTR_FLAG_LEVEL2 | ESP_INTR_FLAG_LEVEL1
+  static const int HI  = ESP_INTR_FLAG_LEVEL2;
+  static const int MED = ESP_INTR_FLAG_LEVEL2;
+  static const int LO  = ESP_INTR_FLAG_LEVEL2 | ESP_INTR_FLAG_LEVEL1;
 #else
-  static const int HI  = ESP_INTR_FLAG_LEVEL3
-  static const int MED = ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_LEVEL2
-  static const int LO  = ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_LEVEL2 | ESP_INTR_FLAG_LEVEL1
+  static const int HI  = ESP_INTR_FLAG_LEVEL3;
+  static const int MED = ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_LEVEL2;
+  static const int LO  = ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_LEVEL2 | ESP_INTR_FLAG_LEVEL1;
 #endif
   if ((options & 8) != 0) {
     // High speed setting.
