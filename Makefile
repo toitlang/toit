@@ -125,6 +125,14 @@ rebuild-cmake:
 	mkdir -p $(BUILD)/$(TARGET)
 	(cd $(BUILD)/$(TARGET) && cmake $(CURDIR) -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=$(CURDIR)/toolchains/$(TOOLCHAIN).cmake --no-warn-unused-cli)
 
+.PHONY: sync
+sync: sync-packages
+	git submodule update --init --recursive
+
+.PHONY: sync-packages
+sync-packages: check-env $(BUILD)/$(HOST)/CMakeCache.txt
+	(cd $(BUILD)/$(HOST) && ninja sync_packages)
+
 .PHONY: host-tools
 host-tools: check-env $(BUILD)/$(HOST)/CMakeCache.txt
 	(cd $(BUILD)/$(HOST) && ninja build_tools)

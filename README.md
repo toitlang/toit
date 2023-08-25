@@ -120,7 +120,9 @@ sudo apt install build-essential cmake ninja-build golang
 You can then build Toit by running the following commands in a checkout of this repository:
 
 ``` bash
-git submodule update --init --recursive
+# Get git submodules and Toit package list.
+make sync
+# Build SDK.
 make
 ```
 

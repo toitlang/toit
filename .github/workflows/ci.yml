@@ -179,6 +179,11 @@ jobs:
           echo "SHARD_START=${{ matrix.shard }}" >> $GITHUB_ENV
           echo "SHARD_STRIDE=${{ steps.constants.outputs.total_shards }}" >> $GITHUB_ENV
 
+      - name: Sync Toit packages
+        shell: bash
+        run: |
+          make sync-packages
+
       # Build using make.
       - name: Build sdk
         shell: bash
@@ -422,6 +427,11 @@ jobs:
         run: |
           sh third_party/esp-idf/install.sh
 
+      - name: Sync Toit packages
+        shell: bash
+        run: |
+          make sync-packages
+
       # Build using make.
       - name: make
         env:
@@ -601,6 +611,11 @@ jobs:
           ninja --version
           cmake --version
           gcc --version
+
+      - name: Sync Toit packages
+        shell: bash
+        run: |
+          make sync-packages
 
       - name: Make
         env:
