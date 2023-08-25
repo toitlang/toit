@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import ..tests.syntax
-import .syntax
+import .syntax show show-foo2
 import bytes
 
 import ..tests.syntax show global-x global-y
@@ -36,6 +36,9 @@ import core as core
 export global-x
 export global-x global-y
 export *
+
+import-foo:
+show-foo:
 
 // Normal comment
 /* Normal multiline // with normal
@@ -398,3 +401,8 @@ main:
   (Slice)[..]
 
   "string with\\ \" escapes"
+
+  assert-x := 499
+  as-something := assert-x + 42
+  null-foo := as-something + assert-x
+  assert-x += null-foo
