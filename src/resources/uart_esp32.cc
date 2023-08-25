@@ -41,12 +41,6 @@
 #endif
 #define UART_NUM_MAX           (SOC_UART_NUM) /*!< UART port max */
 
-#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S2
-    #define UART_PORT UART_NUM_1
-#else
-    #define UART_PORT UART_NUM_2
-#endif
-
 namespace toit {
 
 class UartResource;
@@ -712,8 +706,9 @@ static uart_port_t determine_preferred_port(int tx, int rx, int rts, int cts) {
     if ((tx == -1 || tx == uart_periph_signal[uart].pins[SOC_UART_TX_PIN_IDX].default_gpio) &&
         (rx == -1 || rx == uart_periph_signal[uart].pins[SOC_UART_RX_PIN_IDX].default_gpio) &&
         (rts == -1 || rts == uart_periph_signal[uart].pins[SOC_UART_RTS_PIN_IDX].default_gpio) &&
-        (cts == -1 || cts == uart_periph_signal[uart].pins[SOC_UART_CTS_PIN_IDX].default_gpio))
+        (cts == -1 || cts == uart_periph_signal[uart].pins[SOC_UART_CTS_PIN_IDX].default_gpio)) {
       return uart;
+    }
   }
   return kInvalidUartPort;
 }
@@ -743,21 +738,31 @@ PRIMITIVE(create) {
   uint8 full_interrupt_threshold;
   uint16 rx_buffer_size, tx_buffer_size;
   int interrupt_flags = ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_SHARED;
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+  // Level 3 interrupts hang the C3 for some reason.
+  static const int HI  = ESP_INTR_FLAG_LEVEL2;
+  static const int MED = ESP_INTR_FLAG_LEVEL2;
+  static const int LO  = ESP_INTR_FLAG_LEVEL2 | ESP_INTR_FLAG_LEVEL1;
+#else
+  static const int HI  = ESP_INTR_FLAG_LEVEL3;
+  static const int MED = ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_LEVEL2;
+  static const int LO  = ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_LEVEL2 | ESP_INTR_FLAG_LEVEL1;
+#endif
   if ((options & 8) != 0) {
     // High speed setting.
-    interrupt_flags |= ESP_INTR_FLAG_LEVEL3;
+    interrupt_flags |= HI;
     full_interrupt_threshold = 35;
     tx_buffer_size = 1024;
     rx_buffer_size = 2048;
   } else if ((options & 4) != 0) {
     // Medium speed setting.
-    interrupt_flags |= ESP_INTR_FLAG_LEVEL2 | ESP_INTR_FLAG_LEVEL3;
+    interrupt_flags |= MED;
     full_interrupt_threshold = 92;
     tx_buffer_size = 512;
     rx_buffer_size = 1536;
   } else {
     // Low speed setting.
-    interrupt_flags |= ESP_INTR_FLAG_LEVEL1 | ESP_INTR_FLAG_LEVEL2 | ESP_INTR_FLAG_LEVEL3;
+    interrupt_flags |= LO;
     full_interrupt_threshold = 105;
     tx_buffer_size = 256;
     rx_buffer_size = 768;
