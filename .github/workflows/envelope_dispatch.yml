@@ -19,7 +19,7 @@ jobs:
               workflow_id: 'build.yml',
               ref: 'main',
               inputs: {
-                'toit-version': ${{ github.event.release.tag_name }},
+                'toit-version': '${{ github.event.release.tag_name }}',
                 'upload-release': 'true',
               },
             });
