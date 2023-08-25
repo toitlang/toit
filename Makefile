@@ -152,6 +152,7 @@ toit-tools: tools download-packages
 # Ninja files with Cmake.
 .PHONY: fast
 fast: fast-tools fast-toit-tools
+	@echo "Warning: Did not rerun cmake!"
 
 .PHONY: fast-tools
 fast-tools:
