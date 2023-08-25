@@ -246,6 +246,8 @@ github.com/toitlang/tpkg v0.0.0-20230808155737-8dc0ec31866d h1:XTtzVdqk4AsOr9NQ5
 github.com/toitlang/tpkg v0.0.0-20230808155737-8dc0ec31866d/go.mod h1:6Yf3ioRYccdtpfmCDKjAK0zFqqz5v64tgz66zAB0Txc=
 github.com/toitlang/tpkg v0.0.0-20230814090526-98c6923a4908 h1:YCVq61PJBMqiGmNNdhIOaHTom9xyO9EUMjiW/Z5XOOA=
 github.com/toitlang/tpkg v0.0.0-20230814090526-98c6923a4908/go.mod h1:6Yf3ioRYccdtpfmCDKjAK0zFqqz5v64tgz66zAB0Txc=
+github.com/toitlang/tpkg v0.0.0-20230825090848-be35b7cde30e h1:2V7LnPhq1a+Nn4oAxMyZTaA4gFGbR8ZlSWQzHBl8PdM=
+github.com/toitlang/tpkg v0.0.0-20230825090848-be35b7cde30e/go.mod h1:6Yf3ioRYccdtpfmCDKjAK0zFqqz5v64tgz66zAB0Txc=
 github.com/xanzy/ssh-agent v0.3.3 h1:+/15pJfg/RsTxqYcX6fHqOXZwwMP+2VyYWJeWM2qQFM=
 github.com/xanzy/ssh-agent v0.3.3/go.mod h1:6dzNDKs0J9rVPHPhaGCukekBHKqfl+L3KghI1Bc68Uw=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
