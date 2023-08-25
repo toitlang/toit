@@ -133,6 +133,11 @@ sync: sync-packages
 sync-packages: check-env $(BUILD)/$(HOST)/CMakeCache.txt
 	(cd $(BUILD)/$(HOST) && ninja sync_packages)
 
+.PHONY: disable-auto-sync
+disable-auto-sync:
+	$(MAKE) rebuild-cmake
+	cmake -DTOIT_PKG_AUTO_SYNC=OFF $(BUILD)/$(HOST)
+
 .PHONY: host-tools
 host-tools: check-env $(BUILD)/$(HOST)/CMakeCache.txt
 	(cd $(BUILD)/$(HOST) && ninja build_tools)
