@@ -148,6 +148,19 @@ tools: host-tools check-env $(BUILD)/$(TARGET)/CMakeCache.txt
 toit-tools: tools download-packages
 	(cd $(BUILD)/$(TARGET) && ninja build_toit_tools)
 
+# Rebuilds the SDK using only Ninja, without rebuilding the
+# Ninja files with Cmake.
+.PHONY: fast
+fast: fast-tools fast-toit-tools
+
+.PHONY: fast-tools
+fast-tools:
+	(cd $(BUILD)/$(TARGET) && ninja build_tools)
+
+.PHONY: fast-toit-tools
+fast-toit-tools:
+	(cd $(BUILD)/$(TARGET) && ninja build_toit_tools)
+
 .PHONY: vessels
 vessels: check-env $(BUILD)/$(TARGET)/CMakeCache.txt
 	(cd $(BUILD)/$(TARGET) && ninja build_vessels)
