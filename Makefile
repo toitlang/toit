@@ -207,7 +207,8 @@ menuconfig:
 
 .PHONY: menuconfig-no-env
 menuconfig-no-env: check-env check-esp32-env
-	cmake -E env IDF_TARGET=$(IDF_TARGET) python$(EXE_SUFFIX) $(IDF_PY) -C toolchains/$(ESP32_CHIP) -B $(BUILD)/$(ESP32_CHIP) -p "$(ESP32_PORT)" menuconfig
+	cmake -E env IDF_TARGET=$(IDF_TARGET) python$(EXE_SUFFIX) $(IDF_PY) -C toolchains/$(ESP32_CHIP) -B $(BUILD)/$(ESP32_CHIP) menuconfig
+	cmake -E env IDF_TARGET=$(IDF_TARGET) python$(EXE_SUFFIX) $(IDF_PY) -C toolchains/$(ESP32_CHIP) -B $(BUILD)/$(ESP32_CHIP) save-defconfig
 
 # ESP32 MENU CONFIG
 .PHONY: size-components
