@@ -31,16 +31,10 @@ Connect board 1 to board 2 as follows:
 
 As of 2023-05-30.
 Run the tests individually. All test run on board 1, except for the
-uart and wait_for tests. (See their respective files for more info.)
+uart, ultrasound, and wait_for tests. (See their respective files for more info.)
 
-The adc test only works if no other program is using WiFi.
+The adc and espnow tests only work if no other program is using WiFi.
 For Jaguar:
 `jag container install -D jag.disabled -D jag.timeout=1m adc adc.toit`
 
 Note that the touch test requires human interaction.
-
-Known issues:
-- dac.toit: the wave generator isn't working correctly. A patch
-  https://github.com/espressif/esp-idf/pull/9430 to the ESP-IDF is needed.
-- pulse_counter2.toit: the Pulse counter isn't correctly released. If, for
-  any reason, pulse_counter1.toit fails it also requires a reset.
