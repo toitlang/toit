@@ -30,12 +30,14 @@ if (DEFINED EXECUTING_SCRIPT)
       message(FATAL_ERROR "Missing TOITPKG")
     endif()
 
-    if (EXISTS "${TOIT_PROJECT}/package.yaml" OR EXISTS "${TOIT_PROJECT}/package.lock")
-      execute_process(
-        COMMAND "${TOITPKG}" install --auto-sync=false "--project-root=${TOIT_PROJECT}"
-        COMMAND_ERROR_IS_FATAL ANY
-      )
-    endif()
+    execute_process(
+      COMMAND "${TOITPKG}" install --auto-sync=false "--project-root=${TOIT_PROJECT}"
+      COMMAND_ERROR_IS_FATAL ANY
+    )
+    set(PACKAGE_TIMESTAMP "${TOIT_PROJECT}/.packages/package-timestamp")
+    file(REMOVE "${PACKAGE_TIMESTAMP}")
+    file(APPEND "${PACKAGE_TIMESTAMP}" ${TOIT_PROJECT}/package.yaml)
+    file(APPEND "${PACKAGE_TIMESTAMP}" ${TOIT_PROJECT}/package.lock)
   else()
     message(FATAL_ERROR "Unknown script command ${SCRIPT_COMMAND}")
   endif()
@@ -91,39 +93,51 @@ function(ADD_TOIT_EXE SOURCE TARGET DEP_FILE ENV)
 endfunction(ADD_TOIT_EXE)
 
 macro(toit_project NAME PATH)
-  if (NOT DEFINED TOITPKG)
-    set(TOITPKG "$ENV{TOITPKG}")
-    if ("${TOITPKG}" STREQUAL "")
-      # TOITPKG is normally set to the toit.pkg executable.
-      # However, for cross-compilation the compiler must be provided manually.
-      message(FATAL_ERROR "TOITPKG not provided")
+  if (EXISTS "${PATH}/package.yaml" OR EXISTS "${PATH}/package.lock")
+    if (NOT DEFINED TOITPKG)
+      set(TOITPKG "$ENV{TOITPKG}")
+      if ("${TOITPKG}" STREQUAL "")
+        # TOITPKG is normally set to the toit.pkg executable.
+        # However, for cross-compilation the compiler must be provided manually.
+        message(FATAL_ERROR "TOITPKG not provided")
+      endif()
     endif()
+
+    if (NOT TARGET download_packages)
+      add_custom_target(
+        download_packages
+      )
+      add_custom_target(
+        sync_packages
+        COMMAND "${TOITPKG}" sync
+        DEPENDS "${TOITPKG}"
+      )
+    endif()
+
+    add_custom_target(sync-${NAME}-packages)
+
+    if (${TOIT_PKG_AUTO_SYNC})
+      add_dependencies(sync-${NAME}-packages sync_packages)
+    endif()
+
+    set(PACKAGE_TIMESTAMP "${PATH}/.packages/package-timestamp")
+    add_custom_command(
+      OUTPUT "${PACKAGE_TIMESTAMP}"
+      COMMAND "${CMAKE_COMMAND}"
+          -DEXECUTING_SCRIPT=true
+          -DSCRIPT_COMMAND=install_packages
+          "-DTOIT_PROJECT=${PATH}"
+          "-DTOITPKG=${TOITPKG}"
+          -P "${TOIT_DOWNLOAD_PACKAGE_SCRIPT}"
+      DEPENDS "${TOITPKG}" "${PATH}/package.yaml" "${PATH}/package.lock" sync-${NAME}-packages
+    )
+
+    add_custom_target(
+      install-${NAME}-packages
+      DEPENDS "${PACKAGE_TIMESTAMP}"
+    )
+
+    add_dependencies(download_packages install-${NAME}-packages)
   endif()
 
-  if (NOT TARGET download_packages)
-    add_custom_target(
-      download_packages
-    )
-    add_custom_target(
-      sync_packages
-      COMMAND "${TOITPKG}" sync
-      DEPENDS "${TOITPKG}"
-    )
-  endif()
-
-  set(DOWNLOAD_TARGET_NAME "download-${NAME}-packages")
-  add_custom_target(
-    "${DOWNLOAD_TARGET_NAME}"
-    COMMAND "${CMAKE_COMMAND}"
-        -DEXECUTING_SCRIPT=true
-        -DSCRIPT_COMMAND=install_packages
-        "-DTOIT_PROJECT=${PATH}"
-        "-DTOITPKG=${TOITPKG}"
-        -P "${TOIT_DOWNLOAD_PACKAGE_SCRIPT}"
-    DEPENDS "${TOITPKG}"
-  )
-  add_dependencies(download_packages "${DOWNLOAD_TARGET_NAME}")
-  if (${TOIT_PKG_AUTO_SYNC})
-    add_dependencies("${DOWNLOAD_TARGET_NAME}" sync_packages)
-  endif()
 endmacro()

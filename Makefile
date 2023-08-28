@@ -64,6 +64,11 @@ debug:
 .PHONY: sdk
 sdk: tools toit-tools version-file
 
+# Rebuilds the SDK using only Ninja, without rebuilding the
+# Ninja files with Cmake.
+.PHONY: sdk-no-cmake
+sdk-no-cmake: tools-no-cmake toit-tools-no-cmake
+
 check-env:
 ifndef IGNORE_SUBMODULE
 	@ if git submodule status | grep '^[-+]' ; then \
@@ -146,25 +151,19 @@ host-tools: check-env $(BUILD)/$(HOST)/CMakeCache.txt
 # This rule contains a reference to host-tools.
 # This means that on host we will try to build host twice, but
 # the second attempt will be a no-op.
-tools: host-tools check-env $(BUILD)/$(TARGET)/CMakeCache.txt
+tools: host-tools check-env $(BUILD)/$(TARGET)/CMakeCache.txt tools-no-cmake
+	(cd $(BUILD)/$(TARGET) && ninja build_tools)
+
+.PHONY: tools-no-cmake
+tools-no-cmake:
 	(cd $(BUILD)/$(TARGET) && ninja build_tools)
 
 .PHONY: toit-tools
 toit-tools: tools download-packages
 	(cd $(BUILD)/$(TARGET) && ninja build_toit_tools)
 
-# Rebuilds the SDK using only Ninja, without rebuilding the
-# Ninja files with Cmake.
-.PHONY: fast
-fast: fast-tools fast-toit-tools
-	@echo "Warning: Did not rerun cmake!"
-
-.PHONY: fast-tools
-fast-tools:
-	(cd $(BUILD)/$(TARGET) && ninja build_tools)
-
-.PHONY: fast-toit-tools
-fast-toit-tools:
+.PHONY: toit-tools-no-cmake
+toit-tools-no-cmake:
 	(cd $(BUILD)/$(TARGET) && ninja build_toit_tools)
 
 .PHONY: vessels
