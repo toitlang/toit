@@ -103,6 +103,16 @@ if (DEFINED EXECUTING_SCRIPT)
     set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
     if (EXISTS "${REPO_PATH}")
       execute_process(
+        COMMAND "${GIT_EXECUTABLE}" reset --hard
+        WORKING_DIRECTORY "${REPO_PATH}"
+        COMMAND_ERROR_IS_FATAL ANY
+      )
+      execute_process(
+        COMMAND "${GIT_EXECUTABLE}" clean -fd
+        WORKING_DIRECTORY "${REPO_PATH}"
+        COMMAND_ERROR_IS_FATAL ANY
+      )
+      execute_process(
         COMMAND "${GIT_EXECUTABLE}" pull
         WORKING_DIRECTORY "${REPO_PATH}"
         COMMAND_ERROR_IS_FATAL ANY

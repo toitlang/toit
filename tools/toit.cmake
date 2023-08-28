@@ -36,8 +36,12 @@ if (DEFINED EXECUTING_SCRIPT)
     )
     set(PACKAGE_TIMESTAMP "${TOIT_PROJECT}/.packages/package-timestamp")
     file(REMOVE "${PACKAGE_TIMESTAMP}")
-    file(APPEND "${PACKAGE_TIMESTAMP}" ${TOIT_PROJECT}/package.yaml)
-    file(APPEND "${PACKAGE_TIMESTAMP}" ${TOIT_PROJECT}/package.lock)
+    if (EXISTS "${TOIT_PROJECT}/package.yaml")
+      file(APPEND "${PACKAGE_TIMESTAMP}" ${TOIT_PROJECT}/package.yaml)
+    endif()
+    if (EXISTS "${TOIT_PROJECT}/package.lock")
+      file(APPEND "${PACKAGE_TIMESTAMP}" ${TOIT_PROJECT}/package.lock)
+    endif()
   else()
     message(FATAL_ERROR "Unknown script command ${SCRIPT_COMMAND}")
   endif()
@@ -94,6 +98,13 @@ endfunction(ADD_TOIT_EXE)
 
 macro(toit_project NAME PATH)
   if (EXISTS "${PATH}/package.yaml" OR EXISTS "${PATH}/package.lock")
+    set(PACKAGE_FILES)
+    if (EXISTS "${PATH}/package.yaml")
+      list(APPEND PACKAGE_FILES "${PATH}/package.yaml")
+    endif()
+    if (EXISTS "${PATH}/package.lock")
+      list(APPEND PACKAGE_FILES "${PATH}/package.lock")
+    endif()
     if (NOT DEFINED TOITPKG)
       set(TOITPKG "$ENV{TOITPKG}")
       if ("${TOITPKG}" STREQUAL "")
@@ -129,7 +140,7 @@ macro(toit_project NAME PATH)
           "-DTOIT_PROJECT=${PATH}"
           "-DTOITPKG=${TOITPKG}"
           -P "${TOIT_DOWNLOAD_PACKAGE_SCRIPT}"
-      DEPENDS "${TOITPKG}" "${PATH}/package.yaml" "${PATH}/package.lock" sync-${NAME}-packages
+      DEPENDS "${TOITPKG}" ${PACKAGE_FILES} sync-${NAME}-packages
     )
 
     add_custom_target(
