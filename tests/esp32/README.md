@@ -33,7 +33,7 @@ As of 2023-05-30.
 Run the tests individually. All test run on board 1, except for the
 uart, ultrasound, and wait_for tests. (See their respective files for more info.)
 
-The adc and espnow test only works if no other program is using WiFi.
+The adc and espnow tests only work if no other program is using WiFi.
 For Jaguar:
 `jag container install -D jag.disabled -D jag.timeout=1m adc adc.toit`
 
