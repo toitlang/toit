@@ -206,10 +206,12 @@ PRIMITIVE(init) {
     emac_config.smi_mdc_gpio_num = mdc_num;
     emac_config.smi_mdio_gpio_num = mdio_num;
     mac = esp_eth_mac_new_esp32(&emac_config, &mac_config);
+#ifdef CONFIG_ETH_USE_OPENETH
   } else if (mac_chip == MAC_CHIP_OPENETH) {
     // Openeth is the network driver that is used with QEMU.
     mac = esp_eth_mac_new_openeth(&mac_config);
     phy_config.autonego_timeout_ms = 100;
+#endif
   } else {
     FAIL(INVALID_ARGUMENT);
   }
