@@ -183,11 +183,13 @@ jobs:
       - name: Build sdk
         shell: bash
         run: |
+          ccache -s
           make sdk
           if [ "$RUNNER_OS" == "Linux" ]; then
             make HOST=host32 BUILD_TYPE=Debug sdk
             make HOST=host-ctp TOOLCHAIN=host TOIT_CHECK_PROPAGATED_TYPES=1 sdk
           fi
+          ccache -s
 
       # Test.
       - name: Test
@@ -433,6 +435,7 @@ jobs:
           CCACHE_COMPRESSLEVEL: '6'
           CCACHE_MAXSIZE: 400M
         run: |
+          ccache -s
           source third_party/esp-idf/export.sh
           # Install the Python packages necessary for MbedTLS after
           # setting up the virtual Python environment.
@@ -441,6 +444,7 @@ jobs:
           make ESP32_CHIP=esp32c3 esp32
           make ESP32_CHIP=esp32s2 esp32
           make ESP32_CHIP=esp32s3 esp32
+          ccache -s
 
       - name: Pack firmware artifacts
         shell: bash
