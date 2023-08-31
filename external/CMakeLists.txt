@@ -85,7 +85,6 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-tl19a08
     https://github.com/toitware/toit-tm1640
     https://github.com/toitware/toit-vcnl4040
-    https://github.com/toitware/toit-x509
     https://github.com/toitware/toit-1-wire
     https://github.com/toitware/ublox-gnss-driver
 )
