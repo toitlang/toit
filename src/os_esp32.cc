@@ -59,18 +59,10 @@ namespace toit {
 // Flags used to get memory for the Toit heap, which needs to be fast and 8-bit
 // capable.  We will set this to the most useful value when we have detected
 // which types of RAM are available.
-#if CONFIG_TOIT_SPIRAM_HEAP
-bool OS::use_spiram_for_heap_ = true;
-#else
 bool OS::use_spiram_for_heap_ = false;
-#endif
 bool OS::use_spiram_for_metadata_ = false;
 
-#if CONFIG_TOIT_SPIRAM_HEAP_ONLY
-static const int EXTERNAL_CAPS = MALLOC_CAP_SPIRAM;
-#else
 static const int EXTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM;
-#endif
 static const int INTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
 
 int OS::toit_heap_caps_flags_for_heap() {
@@ -434,15 +426,41 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   int caps = EXTERNAL_CAPS;
   heap_caps_get_info(&info, caps);
 
-  bool has_spiram = info.lowest_address != null;
+  bool use_spiram = info.lowest_address != null;
+
+#if !defined(CONFIG_CMPCT_MALLOC_HEAP)
+  printf("[toit] WARN: not using cmpctmalloc - memory is not used efficiently\n");
+#if defined(CONFIG_SPIRAM)
+  printf("[toit] INFO: not using cmpctmalloc - cannot detect any SPIRAM\n");
+#endif
+#endif
+
+#ifdef CONFIG_TOIT_SPIRAM_HEAP
+  if (use_spiram) {
+#if defined(CONFIG_IDF_TARGET_ESP32) && !defined(CONFIG_SPIRAM_CACHE_WORKAROUND)
+    int cpu_revision = efuse_hal_chip_revision();
+    if (cpu_revision < 300) {
+      printf("[toit] INFO: SPIRAM detected, but CPU revision is only %d.%d\n", cpu_revision / 100, cpu_revision % 100);
+      printf("[toit] INFO: no SPIRAM cache workaround configured\n");
+      printf("[toit] INFO: not using SPIRAM\n");
+      use_spiram = false;
+    }
+#endif
+  }
+#else  // ndef CONFIG_TOIT_SPIRAM_HEAP.
+  if (use_spiram) {
+    printf("[toit] INFO: SPIRAM detected, but Toit is not configured to use it\n");
+    use_spiram = false;
+  }
+#endif
+  if (use_spiram) {
+    use_spiram_for_metadata_ = true;
+    use_spiram_for_heap_ = true;
+    printf("[toit] INFO: using SPIRAM for heap metadata and heap\n");
+  }
 
   caps = toit_heap_caps_flags_for_heap();
   heap_caps_get_info(&info, caps);
-
-  if (has_spiram) {
-    use_spiram_for_metadata_ = true;
-    printf("[toit] INFO: using SPIRAM for heap metadata.\n");
-  }
 
   // Older esp-idfs or mallocs other than cmpctmalloc won't set the
   // lowest_address and highest_address fields.
@@ -456,8 +474,8 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   // In this case use hard coded ranges for internal RAM.
   HeapMemoryRange range;
 #ifdef CONFIG_IDF_TARGET_ESP32S3
-  range.address = reinterpret_cast<void*>(0x3ffa0000);
-  range.size = 512 * KB;
+  range.address = reinterpret_cast<void*>(0x3fca0000);
+  range.size = 384 * KB;
 #else
   //                           DRAM range            IRAM range
   // Internal SRAM 2 200k 3ffa_e000 - 3ffe_0000
