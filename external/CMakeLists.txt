@@ -23,12 +23,15 @@ set(TOIT_REPOS
     https://github.com/nilwes/LIS3DH
     https://github.com/toitlang/jaguar
     https://github.com/toitlang/pkg-ar
+    https://github.com/toitlang/pkg-font-tiny
     https://github.com/toitlang/pkg-host
     https://github.com/toitlang/pkg-http
     https://github.com/toitlang/pkg-modbus
     https://github.com/toitlang/pkg-ntp
     https://github.com/toitlang/pkg-tar
     https://github.com/toitlang/pkg-testing
+    https://github.com/toitlang/pkg-websocket
+    https://github.com/toitlang/toit-font-tools
     https://github.com/toitware/bme280-driver
     https://github.com/toitware/cellular
     https://github.com/toitware/dbc
@@ -39,6 +42,7 @@ set(TOIT_REPOS
     https://github.com/toitware/mqtt
     https://github.com/toitware/sts3x-driver
     https://github.com/toitware/toit-A3967
+    https://github.com/toitware/toit-artemis
     https://github.com/toitware/toit-axp192
     https://github.com/toitware/toit-cert-roots
     https://github.com/toitware/toit-color-tft
@@ -60,6 +64,7 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-morse-tutorial
     https://github.com/toitware/toit-msa311
     https://github.com/toitware/toit-newton-raphson
+    https://github.com/toitware/toit-openai
     https://github.com/toitware/toit-pixel-display
     https://github.com/toitware/toit-pixel-strip
     https://github.com/toitware/toit-png-display
@@ -71,9 +76,13 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-si7006
     https://github.com/toitware/toit-solar-position
     https://github.com/toitware/toit-ssd1306
+    https://github.com/toitware/toit-semver
+    https://github.com/toitware/toit-supabase
     https://github.com/toitware/toit-tl19a08
+    https://github.com/toitware/toit-tls
     https://github.com/toitware/toit-tm1640
     https://github.com/toitware/toit-vcnl4040
+    https://github.com/toitware/toit-x509
     https://github.com/toitware/toit-1-wire
     https://github.com/toitware/ublox-gnss-driver
 )
