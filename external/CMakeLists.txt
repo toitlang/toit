@@ -79,7 +79,6 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-semver
     https://github.com/toitware/toit-supabase
     https://github.com/toitware/toit-tl19a08
-    https://github.com/toitware/toit-tls
     https://github.com/toitware/toit-tm1640
     https://github.com/toitware/toit-vcnl4040
     https://github.com/toitware/toit-x509
