@@ -429,9 +429,9 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   bool use_spiram = info.lowest_address != null;
 
 #if !defined(CONFIG_CMPCT_MALLOC_HEAP)
-  printf("[toit] WARN: Not using cmpctmalloc - memory is not used efficiently.\n");
+  printf("[toit] WARN: not using cmpctmalloc - memory is not used efficiently\n");
 #if defined(CONFIG_SPIRAM)
-  printf("[toit] INFO: Not using cmpctmalloc - cannot detect any SPIRAM.\n");
+  printf("[toit] INFO: not using cmpctmalloc - cannot detect any SPIRAM\n");
 #endif
 #endif
 
@@ -441,22 +441,22 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
     int cpu_revision = efuse_hal_chip_revision();
     if (cpu_revision < 300) {
       printf("[toit] INFO: SPIRAM detected, but CPU revision is only %d.%d\n", cpu_revision / 100, cpu_revision % 100);
-      printf("[toit] INFO: No SPIRAM cache workaround configured.\n");
-      printf("[toit] INFO: Not using SPIRAM.\n");
+      printf("[toit] INFO: no SPIRAM cache workaround configured\n");
+      printf("[toit] INFO: not using SPIRAM\n");
       use_spiram = false;
     }
 #endif
   }
 #else  // ndef CONFIG_TOIT_SPIRAM_HEAP.
   if (use_spiram) {
-    printf("[toit] INFO: SPIRAM detected, but Toit is not configured to use it.\n");
+    printf("[toit] INFO: SPIRAM detected, but Toit is not configured to use it\n");
     use_spiram = false;
   }
 #endif
   if (use_spiram) {
     use_spiram_for_metadata_ = true;
     use_spiram_for_heap_ = true;
-    printf("[toit] INFO: using SPIRAM for heap metadata and heap.\n");
+    printf("[toit] INFO: using SPIRAM for heap metadata and heap\n");
   }
 
   caps = toit_heap_caps_flags_for_heap();
