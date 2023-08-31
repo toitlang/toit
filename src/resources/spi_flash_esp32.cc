@@ -278,10 +278,14 @@ PRIMITIVE(init_nand_flash) {
 }
 
 PRIMITIVE(close) {
+#ifndef CONFIG_TOIT_FATFS
+  FAIL(UNIMPLEMENTED);
+#else
   ARGS(SpiFlashResourceGroup, group)
   group->tear_down();
   group_proxy->clear_external_address();
   return process->null_object();
+#endif
 }
 
 }
