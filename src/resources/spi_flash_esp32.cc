@@ -29,6 +29,8 @@
 
 namespace toit {
 
+#ifdef CONFIG_TOIT_FATFS
+
 class SpiFlashResourceGroup: public ResourceGroup {
  public:
   TAG(SpiFlashResourceGroup);
@@ -106,7 +108,12 @@ static ByteArray* init_common(Process* process, const char* mount_point,
   return proxy;
 }
 
+#endif
+
 PRIMITIVE(init_sdcard) {
+#ifndef CONFIG_TOIT_FATFS
+  FAIL(UNIMPLEMENTED);
+#else
   ARGS(cstring, mount_point, SpiResourceGroup, spi_host, int, gpio_cs, int, format_if_mount_failed, int, max_files, int, allocation_unit_size)
   SpiFlashResourceGroup* group;
   HeapObject* error;
@@ -136,9 +143,13 @@ PRIMITIVE(init_sdcard) {
   group->set_card(card);
 
   return proxy;
+#endif
 }
 
 PRIMITIVE(init_nor_flash) {
+#ifndef CONFIG_TOIT_FATFS
+  FAIL(UNIMPLEMENTED);
+#else
   ARGS(cstring, mount_point, SpiResourceGroup, spi_bus, int, gpio_cs,int, frequency, int, format_if_mount_failed, int, max_files, int, allocation_unit_size)
 
   if (frequency < 0 || frequency > ESP_FLASH_80MHZ) FAIL(INVALID_ARGUMENT);
@@ -209,10 +220,11 @@ PRIMITIVE(init_nor_flash) {
   group->set_wl_handle(wl_handle);
 
   return proxy;
+#endif
 }
 
 PRIMITIVE(init_nand_flash) {
-#ifdef CONFIG_SPI_FLASH_NAND_ENABLED
+#if defined(CONFIG_SPI_FLASH_NAND_ENABLED) && defined(CONFIG_TOIT_FATFS)
   ARGS(cstring, mount_point, SpiResourceGroup, spi_bus, int, gpio_cs, int, frequency, int, format_if_mount_failed, int, max_files, int, allocation_unit_size);
 
   SpiFlashResourceGroup* group;
