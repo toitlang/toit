@@ -16,6 +16,10 @@
 set(TOIT_EXTERNAL_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt")
 
 set(TOIT_REPOS
+    https://github.com/floitsch/toit-telegram
+    https://github.com/floitsch/toit-discord
+    https://github.com/floitsch/toit-device-bot
+    https://github.com/floitsch/toit-chatbot
     https://github.com/kasperl/toit-datacake
     https://github.com/kasperl/toit-qubitro
     https://github.com/kasperl/toit-zygote
