@@ -30,7 +30,6 @@ set(TOIT_REPOS
     https://github.com/toitlang/pkg-ntp
     https://github.com/toitlang/pkg-tar
     https://github.com/toitlang/pkg-testing
-    https://github.com/toitlang/pkg-websocket
     https://github.com/toitlang/toit-font-tools
     https://github.com/toitware/bme280-driver
     https://github.com/toitware/cellular
