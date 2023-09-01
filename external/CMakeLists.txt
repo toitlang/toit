@@ -34,7 +34,6 @@ set(TOIT_REPOS
     https://github.com/toitlang/pkg-ntp
     https://github.com/toitlang/pkg-tar
     https://github.com/toitlang/pkg-testing
-    https://github.com/toitlang/pkg-websocket
     https://github.com/toitlang/toit-font-tools
     https://github.com/toitware/bme280-driver
     https://github.com/toitware/cellular
@@ -203,7 +202,7 @@ endforeach()
 function(find_toit_projects REPO)
   get_filename_component(REPO_NAME "${REPO}" NAME)
   set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
-  foreach(LOCATION "" "examples" "tests" "tools")
+  foreach(LOCATION "" "examples" "tests" "tools" "app")
     set(LOCATION_PATH "${REPO_PATH}/${LOCATION}")
     if (EXISTS "${LOCATION_PATH}/package.yaml" OR EXISTS "${LOCATION_PATH}/package.lock")
       set(PROJECT_NAME "${REPO_NAME}")
