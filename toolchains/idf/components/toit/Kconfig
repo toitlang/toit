@@ -50,6 +50,13 @@ menu "Toit"
             select either TOIT_BYTE_DISPLAY or TOIT_BIT_DISPLAY, otherwise you
             can only query font metrics, but not actually render characters.
 
+    config TOIT_FATFS
+        bool "Include primitives for the FAT filesystem"
+        default "y"
+        help
+            If selected, embedded platforms will include the FAT filesystem
+            primitives.
+
     menu "Advanced setup"
         config TOIT_INTERPRETER_IN_IRAM
             bool "Run interpreter from IRAM"
