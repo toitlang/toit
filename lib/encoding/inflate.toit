@@ -2,6 +2,11 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+/**
+Pure-Toit implementation of decompression of the DEFLATE
+  format, as used by PNG, zlib and gzip.
+*/
+
 import binary show LITTLE_ENDIAN
 import crypto.adler32
 import expect show *
@@ -26,13 +31,13 @@ This implementation holds on to copies of the buffers it delivers with the read
   method, for up to 32k of data.  This is a simple way to handle the
   buffer requirements.
 */
-class CopyingInflator extends BufferingInflator:
+class CopyingInflater extends BufferingInflater:
   /**
-  Construct a copying inflator.
+  Construct a copying inflater.
   The $maximum number of bytes it will buffer can be provided to limit memory
     use. Unless the compressor had special parameters, this must be 32k.
   */
-  constructor maximum/int:
+  constructor maximum/int=32768:
     super maximum
 
   read -> ByteArray?:
@@ -49,7 +54,7 @@ This implementation holds on to the buffers it delivers with the read
   and it can use some memory.  May return the same byte arrays several times,
   or slices of the same byte arrays.
 */
-class BufferingInflator extends Inflator:
+class BufferingInflater extends Inflater:
   maximum/int
 
   /**
@@ -94,7 +99,7 @@ This abstract class does not know how to look back in the output stream.
   To use it you have to be able to deliver up to 32k of previously decompressed
   data in the look-back method (or whatever size the compressor was set to).
 */
-abstract class Inflator:
+abstract class Inflater:
   window-size := 32768
   zlib-header-footer/bool
   adler_/adler32.Adler32? := null
@@ -596,43 +601,45 @@ zlib-test:
     round-trip-test: zlib.Encoder --level=i
 
 round-trip-test [block]:
-  compressor := block.call
-  task:: print-round-tripped_ compressor BufferingInflator
-  compressor.write "Hello, World!"
-  compressor.close
+  2.repeat:
+    buffering := it == 0
+    compressor := block.call
+    task:: print-round-tripped_ compressor (buffering ? BufferingInflater : CopyingInflater)
+    compressor.write "Hello, World!"
+    compressor.close
 
-  compressor2 := block.call
-  task:: print-round-tripped_ compressor2 BufferingInflator
-  input2 := ("a" * 12) + ("b" * 25) + ("a" * 12)
-  print " in: $input2"
-  compressor2.write input2
-  compressor2.close
+    compressor2 := block.call
+    task:: print-round-tripped_ compressor2 (buffering ? BufferingInflater : CopyingInflater)
+    input2 := ("a" * 12) + ("b" * 25) + ("a" * 12)
+    print " in: $input2"
+    compressor2.write input2
+    compressor2.close
 
-  compressor3 := block.call
-  task:: print-round-tripped_ compressor3 BufferingInflator
-  input3 := "kdjflskdkldskdkdskdkdkdkdlskfjsalædkfjaæsldkfjaæsldkfjaæsldkfældjflsakdfjlaskdjflsadkfjsalædkfj"
-  print " in: $input3"
-  compressor3.write input3
-  compressor3.close
+    compressor3 := block.call
+    task:: print-round-tripped_ compressor3 (buffering ? BufferingInflater : CopyingInflater)
+    input3 := "kdjflskdkldskdkdskdkdkdkdlskfjsalædkfjaæsldkfjaæsldkfjaæsldkfældjflsakdfjlaskdjflsadkfjsalædkfj"
+    print " in: $input3"
+    compressor3.write input3
+    compressor3.close
 
-  compressor4 := block.call
-  task:: print-round-tripped_ compressor4 BufferingInflator
-  input4a := "LSDLKFJLSDKFJLSDKJFLSDKJFLDSK"
-  input4b := "OWIEUROIWEUROIUWEORIUWEORIUWEORIU"
-  input4c := "X:C;MV:XCMV:XC;MV:;XCMV:;MXC:V;MXC:;V"
-  unusual-chars := "abloidpolkbksadbahbieoaweighojlaskdaowgoakjsadlkjsal"
-  unusual-chars2 := "opiogbjlvcjlakbjpoabapobhaowubnkscsvlkfdjasldkjblayweb"
-  unusual-chars3 := "dpogsdapgosigpaosgmaslæ,ambæsaodgjaosdigjasopdgjpsaogd"
-  unusual-chars4 := "opaiyyfahpoibhpaowbæaw.e-.!#%&/(awe,maaopgaeoibaweopawemobea"
-  input4 := input4a + input4b + input4a + input4c
-      + unusual-chars + unusual-chars2 + unusual-chars3 + unusual-chars4
-      + "z"
-      + (input4b * 10) + input4a + input4c + input4b + input4b
-  // Add a lot of fairly random digits to get a nicely asymmetric Huffman
-  // table.
-  1000.repeat: input4 += "$it"
-  compressor4.write input4
-  compressor4.close
+    compressor4 := block.call
+    task:: print-round-tripped_ compressor4 (buffering ? BufferingInflater : CopyingInflater)
+    input4a := "LSDLKFJLSDKFJLSDKJFLSDKJFLDSK"
+    input4b := "OWIEUROIWEUROIUWEORIUWEORIUWEORIU"
+    input4c := "X:C;MV:XCMV:XC;MV:;XCMV:;MXC:V;MXC:;V"
+    unusual-chars := "abloidpolkbksadbahbieoaweighojlaskdaowgoakjsadlkjsal"
+    unusual-chars2 := "opiogbjlvcjlakbjpoabapobhaowubnkscsvlkfdjasldkjblayweb"
+    unusual-chars3 := "dpogsdapgosigpaosgmaslæ,ambæsaodgjaosdigjasopdgjpsaogd"
+    unusual-chars4 := "opaiyyfahpoibhpaowbæaw.e-.!#%&/(awe,maaopgaeoibaweopawemobea"
+    input4 := input4a + input4b + input4a + input4c
+        + unusual-chars + unusual-chars2 + unusual-chars3 + unusual-chars4
+        + "z"
+        + (input4b * 10) + input4a + input4c + input4b + input4b
+    // Add a lot of fairly random digits to get a nicely asymmetric Huffman
+    // table.
+    1000.repeat: input4 += "$it"
+    compressor4.write input4
+    compressor4.close
 
 print-round-tripped_ compressor decompressor:
   while round-tripped := decompressor.read:
