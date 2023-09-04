@@ -112,9 +112,9 @@ abstract class Inflator:
   hdist_/int := 0
   hclen_/int := 0
   state_/int := INITIAL_
-  meta-table_/HuffmanTables? := null
-  symbol-and-length-table_/HuffmanTables? := null
-  distance-table_/HuffmanTables? := null
+  meta-table_/HuffmanTables_? := null
+  symbol-and-length-table_/HuffmanTables_? := null
+  distance-table_/HuffmanTables_? := null
   output-buffer_/ByteArray := ByteArray 256
   output-buffer-position_/int := 0  // Always less than the size.
   copy-length_ := 0  // Number of bytes to copy.
@@ -150,7 +150,7 @@ abstract class Inflator:
     while true:
       if state_ == ZLIB-HEADER_:
         header := n-bits_ 16
-        if header < 0: return #[]
+        if header < 0: return NEED-MORE-DATA_
         if header & 0xf != 8: throw "header=$(%04x header) Not a deflate stream"
         window-size = 1 << (8 + ((header & 0xf0) >> 4))
         if window-size > 32768: throw "Corrupt data"
@@ -162,7 +162,7 @@ abstract class Inflator:
       else if state_ == ZLIB-FOOTER_:
         n-bits_ (valid-bits_ & 7)  // Discard rest of byte.
         adler32 := n-bits_ 32
-        if adler32 < 0: return #[]
+        if adler32 < 0: return NEED-MORE-DATA_
         calculated := LITTLE_ENDIAN.uint32 adler_.get 0
         adler_ = null // Only read the checksum once.
         if calculated != adler32: throw "Checksum mismatch"
@@ -180,7 +180,7 @@ abstract class Inflator:
             return null
         else:
           raw := n-bits_ 3
-          if raw < 0: return #[]
+          if raw < 0: return NEED-MORE-DATA_
           in-final-block_ = (raw & 1) == 1
           type := raw >> 1
           if type == 0:
@@ -202,7 +202,7 @@ abstract class Inflator:
         if output-buffer-position_ != 0:
           return flush-output-buffer_
         len-nlen := n-bits_ 32
-        if len-nlen < 0: return #[]
+        if len-nlen < 0: return NEED-MORE-DATA_
         counter_ = len-nlen & 0xffff
         complement := len-nlen >> 16
         if counter_ ^ 0xffff != complement:
@@ -227,11 +227,11 @@ abstract class Inflator:
             buffer-pos_ += length
             if adler_: adler_.add result
             return result
-          return #[]
+          return NEED-MORE-DATA_
 
       else if state_ == GET-TABLE-SIZES_:
         raw := n-bits_ 14
-        if raw < 0: return #[]
+        if raw < 0: return NEED-MORE-DATA_
         hlit_ = (raw & 0x1f) + 257
         raw >>= 5
         hdist_ = (raw & 0x1f) + 1
@@ -244,10 +244,10 @@ abstract class Inflator:
       else if state_ == GET-HCLEN_:
         while counter_ < lengths_.size:
           length-code := n-bits_ 3
-          if length-code < 0: return #[]
+          if length-code < 0: return NEED-MORE-DATA_
           lengths_[counter_] = SymbolBitLen HCLEN-ORDER_[counter_] length-code
           counter_++
-        meta-table_ = HuffmanTables lengths_
+        meta-table_ = HuffmanTables_ lengths_
         counter_ = 0
         lengths_ = List hlit_
         state_ = GET-HLIT_
@@ -255,14 +255,14 @@ abstract class Inflator:
       else if state_ == GET-HLIT_ or state_ == GET-HDIST_:
         if repeat-bits_ > 0:
           repeats := n-bits_ repeat-bits_
-          if repeats < 0: return #[]
+          if repeats < 0: return NEED-MORE-DATA_
           last := lengths_[counter_ - 1].bit-len
           repeats.repeat:
             lengths_[counter_] = SymbolBitLen counter_ last
             counter_++
           repeat-bits_ = 0
         length-code := next_ meta-table_
-        if length-code < 0: return #[]
+        if length-code < 0: return NEED-MORE-DATA_
         if length-code < 16:
           lengths_[counter_] = SymbolBitLen counter_ length-code
           counter_++
@@ -283,18 +283,18 @@ abstract class Inflator:
             counter_++
         if counter_ == lengths_.size:
           if state_ == GET-HLIT_:
-            symbol-and-length-table_ = HuffmanTables lengths_
+            symbol-and-length-table_ = HuffmanTables_ lengths_
             state_ = GET-HDIST_
             lengths_ = List hdist_
             counter_ = 0
           else:
-            distance-table_ = HuffmanTables lengths_
+            distance-table_ = HuffmanTables_ lengths_
             state_ = DECOMRESSING_
 
       else if state_ == DECOMRESSING_:
         if copy-length_ == 0:
           symbol := next_ symbol-and-length-table_
-          if symbol < 0: return #[]
+          if symbol < 0: return NEED-MORE-DATA_
           if symbol == 256:
             state_ = INITIAL_
           else if symbol < 255:
@@ -314,17 +314,17 @@ abstract class Inflator:
         if copy-length_ != 0:
           if copy-length-bits_ > 0:
             bits := n-bits_ copy-length-bits_
-            if bits < 0: return #[]
+            if bits < 0: return NEED-MORE-DATA_
             copy-length_ += bits
             copy-length-bits_ = 0
           if copy-distance_ < 0:
             symbol := next_ distance-table_
-            if symbol < 0: return #[]
+            if symbol < 0: return NEED-MORE-DATA_
             copy-distance-bits_ = "\x00\x00\x00\x00\x01\x01\x02\x02\x03\x03\x04\x04\x05\x05\x06\x06\x07\x07\x08\x08\x09\x09\x0a\x0a\x0b\x0b\x0c\x0c\x0d\x0d"[symbol]
             copy-distance_ = DISTANCES_[symbol]
           if copy-distance-bits_ != 0:
             bits := n-bits_ copy-distance-bits_
-            if bits < 0: return #[]
+            if bits < 0: return NEED-MORE-DATA_
             copy-distance_ += bits
             copy-distance-bits_ = 0
           // We have a copy length and distance.
@@ -402,6 +402,8 @@ abstract class Inflator:
 
   static HCLEN-ORDER_ ::= #[16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
 
+  static NEED-MORE-DATA_ ::= #[]
+
   /**
   Writes a new byte array to the decompressor. Cannot be called until
     the reader has returned null.
@@ -421,22 +423,19 @@ abstract class Inflator:
       return #[data_] + buffer_[buffer-pos_..]
     return buffer_[buffer-pos_..]
 
-
   // Gets next symbol or -1 if we need more data.
-  next_ tables/HuffmanTables -> int:
+  next_ tables/HuffmanTables_ -> int:
     ensure-bits :=:
       if valid-bits_ < it:
         if buffer-pos_ == buffer_.size:
           return -1
         data_ |= buffer_[buffer-pos_++] << valid-bits_
         valid-bits_ += 8
-    // Ensure we have at least 1 bit of data to look up with.
-    ensure-bits.call 1
     value1 := tables.first-level[data_ & 0xff]
     bits := value1 & 0xf
     if bits > valid-bits_ and valid_bits_ < 8:
       // We did a lookup with too few bits - get the next byte and retry.
-      ensure-bits.call 8
+      ensure-bits.call 8  // Enough for first level table.
       value1 = tables.first-level[data_ & 0xff]
       bits = value1 & 0xf
     if bits <= 8:
@@ -446,8 +445,8 @@ abstract class Inflator:
     // Failed to hit in the first level table - look in the somewhat slower
     // second level.
     while true:
-      print "Second level - need at least $bits"
-      // We need at least bits bits of data to get a match in the second level.
+      // First level table told us we need at least bits bits of data to get a
+      // match in the second level.
       ensure-bits.call bits
       key := ((data_ & ((1 << bits) - 1)) << 4) | bits
       value2 := tables.second-level.get key
@@ -455,6 +454,7 @@ abstract class Inflator:
         data_ >>= bits
         valid-bits_ -= bits
         return value2 >> 4
+      // Still don't have enough bits - look for a hit with one more bit.
       bits++
       if bits > 15:
         throw "Corrupt data"
@@ -471,7 +471,7 @@ abstract class Inflator:
     valid-bits_ -= bits
     return result
 
-class HuffmanTables:
+class HuffmanTables_:
   // A list of 256 ints.
   // The first 4 bits are the bit length of the symbol. If it is <= 8 then
   // we don't need a second level lookup.  If it is >8 then that is the
@@ -563,7 +563,7 @@ simple-test:
       SymbolBitLen 'D' 3,
   ]
 
-  lookup := HuffmanTables ex
+  lookup := HuffmanTables_ ex
 
   for i := 0; i < 256; i++:
     value := lookup.first-level[i]
@@ -620,7 +620,17 @@ round-trip-test [block]:
   input4a := "LSDLKFJLSDKFJLSDKJFLSDKJFLDSK"
   input4b := "OWIEUROIWEUROIUWEORIUWEORIUWEORIU"
   input4c := "X:C;MV:XCMV:XC;MV:;XCMV:;MXC:V;MXC:;V"
-  input4 := input4a + input4b + input4a + input4c + "abcacbaz" + (input4b * 10) + input4a + input4c + input4b + input4b
+  unusual-chars := "abloidpolkbksadbahbieoaweighojlaskdaowgoakjsadlkjsal"
+  unusual-chars2 := "opiogbjlvcjlakbjpoabapobhaowubnkscsvlkfdjasldkjblayweb"
+  unusual-chars3 := "dpogsdapgosigpaosgmaslæ,ambæsaodgjaosdigjasopdgjpsaogd"
+  unusual-chars4 := "opaiyyfahpoibhpaowbæaw.e-.!#%&/(awe,maaopgaeoibaweopawemobea"
+  input4 := input4a + input4b + input4a + input4c
+      + unusual-chars + unusual-chars2 + unusual-chars3 + unusual-chars4
+      + "z"
+      + (input4b * 10) + input4a + input4c + input4b + input4b
+  // Add a lot of fairly random digits to get a nicely asymmetric Huffman
+  // table.
+  1000.repeat: input4 += "$it"
   compressor4.write input4
   compressor4.close
 
@@ -633,7 +643,7 @@ print-round-tripped_ compressor decompressor:
     else:
       print "out: $round-tripped.to-string"
 
-create-fixed-symbol-and-length_ -> HuffmanTables:
+create-fixed-symbol-and-length_ -> HuffmanTables_:
   bit-lens := List 288:
     if it <= 143:
       SymbolBitLen it 8
@@ -644,8 +654,8 @@ create-fixed-symbol-and-length_ -> HuffmanTables:
     else:
       SymbolBitLen it 8
 
-  return HuffmanTables bit-lens
+  return HuffmanTables_ bit-lens
 
-create-fixed-distance_ -> HuffmanTables:
+create-fixed-distance_ -> HuffmanTables_:
   bit-lens := List 32: SymbolBitLen it 5
-  return HuffmanTables bit-lens
+  return HuffmanTables_ bit-lens
