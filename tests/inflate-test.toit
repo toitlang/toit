@@ -9,6 +9,8 @@ import encoding.inflate show CopyingInflater BufferingInflater
 
 main:
   simple-test
+  // These tests don't check the output, but the checksum that is built into
+  // the zlib format will do that for us.
   uncompressed-test
   rle-test
   zlib-test

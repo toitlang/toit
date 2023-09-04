@@ -97,7 +97,7 @@ class BufferingInflater extends Inflater:
 A pure Toit decompressor for the DEFLATE format.
 This abstract class does not know how to look back in the output stream.
   To use it you have to be able to deliver up to 32k of previously decompressed
-  data in the look-back method (or whatever size the compressor was set to).
+  data in the $look-back method (or whatever size the compressor was set to).
 */
 abstract class Inflater:
   window-size := 32768
@@ -111,8 +111,8 @@ abstract class Inflater:
   counter_/int := 0
   // List of SymbolBitLen_ objects we are building up.
   lengths_/List? := null
-  // Bits of repeat we are waiting for.
-  repeat-bits_/int := 0
+  // Bits we are waiting for.
+  pending-bits_/int := 0
   hlit_/int := 0
   hdist_/int := 0
   hclen_/int := 0
@@ -123,9 +123,7 @@ abstract class Inflater:
   output-buffer_/ByteArray := ByteArray 256
   output-buffer-position_/int := 0  // Always less than the size.
   copy-length_ := 0  // Number of bytes to copy.
-  copy-length-bits_ := 0  // Number of extra length bits we are waiting for.
-  copy-distance_ := -1  // Distance to copy from.  -1 means waiting for this info.
-  copy-distance-bits_ := 0  // Number of extra distance bits we are waiting for.
+  copy-distance_ := 0  // Distance to copy from.
 
   // Should call the block with a byte array and an offset.
   abstract look-back distance/int [block] -> none
@@ -152,6 +150,15 @@ abstract class Inflater:
   // Returns an empty byte array if we need more input.
   // Returns null if there is no more data.
   read -> ByteArray?:
+    get-pending-bits :=:
+      if pending-bits_ > 0:
+        bits := n-bits_ pending-bits_
+        if bits < 0: return NEED-MORE-DATA_
+        pending-bits_ = 0
+        bits  // Result of block.
+      else:
+        0
+
     while true:
       if state_ == ZLIB-HEADER_:
         header := n-bits_ 16
@@ -178,7 +185,7 @@ abstract class Inflater:
         if in-final-block_:
           // We are after the final block.
           if output-buffer-position_ != 0:
-            return flush-output-buffer_
+            return flush-output-buffer_ output-buffer-position_
           if adler_:
             state_ = ZLIB-FOOTER_
           else:
@@ -205,7 +212,7 @@ abstract class Inflater:
 
       else if state_ == NO-COMPRESSION_:
         if output-buffer-position_ != 0:
-          return flush-output-buffer_
+          return flush-output-buffer_ output-buffer-position_
         len-nlen := n-bits_ 32
         if len-nlen < 0: return NEED-MORE-DATA_
         counter_ = len-nlen & 0xffff
@@ -238,10 +245,8 @@ abstract class Inflater:
         raw := n-bits_ 14
         if raw < 0: return NEED-MORE-DATA_
         hlit_ = (raw & 0x1f) + 257
-        raw >>= 5
-        hdist_ = (raw & 0x1f) + 1
-        raw >>= 5
-        hclen_ = raw + 4
+        hdist_ = ((raw >> 5) & 0x1f) + 1
+        hclen_ = (raw >> 10) + 4
         lengths_ = List hclen_
         counter_ = 0
         state_ = GET-HCLEN_
@@ -258,14 +263,12 @@ abstract class Inflater:
         state_ = GET-HLIT_
 
       else if state_ == GET-HLIT_ or state_ == GET-HDIST_:
-        if repeat-bits_ > 0:
-          repeats := n-bits_ repeat-bits_
-          if repeats < 0: return NEED-MORE-DATA_
+        extra-repeats := get-pending-bits.call
+        if extra-repeats != 0:
           last := lengths_[counter_ - 1].bit-len
-          repeats.repeat:
+          extra-repeats.repeat:
             lengths_[counter_] = SymbolBitLen_ counter_ last
             counter_++
-          repeat-bits_ = 0
         length-code := next_ meta-table_
         if length-code < 0: return NEED-MORE-DATA_
         if length-code < 16:
@@ -276,12 +279,12 @@ abstract class Inflater:
           repeats := 3
           if length-code == 16:
             last = lengths_[counter_ - 1].bit-len
-            repeat-bits_ = 2
+            pending-bits_ = 2
           else if length-code == 17:
-            repeat-bits_ = 3
+            pending-bits_ = 3
           else:
             assert: length-code == 18
-            repeat-bits_ = 7
+            pending-bits_ = 7
             repeats = 11
           repeats.repeat:
             lengths_[counter_] = SymbolBitLen_ counter_ last
@@ -295,6 +298,7 @@ abstract class Inflater:
           else:
             distance-table_ = HuffmanTables_ lengths_
             state_ = DECOMRESSING_
+            meta-table_ = null  // Don't need this any more.
 
       else if state_ == DECOMRESSING_:
         if copy-length_ == 0:
@@ -305,59 +309,53 @@ abstract class Inflater:
           else if symbol < 255:
             output-buffer_[output-buffer-position_++] = symbol
             if output-buffer-position_ == output-buffer_.size:
-              return flush-output-buffer_
+              return flush-output-buffer_ output-buffer-position_
           else:
-            copy-distance_ = -1
+            copy-distance_ = 0
             if symbol < 265:
               copy-length_ = symbol - 254
             else if symbol < 285:
               copy-length_ = LENGTHS_[symbol - 257]
-              copy-length-bits_ = "\x00\x00\x00\x00\x00\x00\x00\x00\x01\x01\x01\x01\x02\x02\x02\x02\x03\x03\x03\x03\x04\x04\x04\x04\x05\x05\x05\x05"[symbol - 257]
+              pending-bits_ = "\x00\x00\x00\x00\x00\x00\x00\x00\x01\x01\x01\x01\x02\x02\x02\x02\x03\x03\x03\x03\x04\x04\x04\x04\x05\x05\x05\x05"[symbol - 257]
             else:
               assert: symbol == 285
               copy-length_ = 258
         if copy-length_ != 0:
-          if copy-length-bits_ > 0:
-            bits := n-bits_ copy-length-bits_
-            if bits < 0: return NEED-MORE-DATA_
-            copy-length_ += bits
-            copy-length-bits_ = 0
-          if copy-distance_ < 0:
+          copy-length_ += get-pending-bits.call
+          if copy-distance_ == 0:
             symbol := next_ distance-table_
             if symbol < 0: return NEED-MORE-DATA_
-            copy-distance-bits_ = "\x00\x00\x00\x00\x01\x01\x02\x02\x03\x03\x04\x04\x05\x05\x06\x06\x07\x07\x08\x08\x09\x09\x0a\x0a\x0b\x0b\x0c\x0c\x0d\x0d"[symbol]
+            pending-bits_ = "\x00\x00\x00\x00\x01\x01\x02\x02\x03\x03\x04\x04\x05\x05\x06\x06\x07\x07\x08\x08\x09\x09\x0a\x0a\x0b\x0b\x0c\x0c\x0d\x0d"[symbol]
             copy-distance_ = DISTANCES_[symbol]
-          if copy-distance-bits_ != 0:
-            bits := n-bits_ copy-distance-bits_
-            if bits < 0: return NEED-MORE-DATA_
-            copy-distance_ += bits
-            copy-distance-bits_ = 0
+          copy-distance_ += get-pending-bits.call
           // We have a copy length and distance.
           // If some of the copy length is before the current output buffer,
           // we have to use the look-back method.
-          while copy-length_ > 0 and copy-distance_ > output-buffer-position_:
-            look-back copy-distance_ - output-buffer-position_: | byte-array/ByteArray position/int |
+          pos := output-buffer-position_
+          while copy-length_ > 0 and copy-distance_ > pos:
+            look-back copy-distance_ - pos: | byte-array/ByteArray offset/int |
               available := min
                   copy-length_
-                  byte-array.size - position
+                  byte-array.size - offset
               copyable := min
                   available
-                  output-buffer_.size - output-buffer-position_
-              if output-buffer-position_ == 0 and available > 32:
+                  output-buffer_.size - pos
+              if pos == 0 and copyable > 32:
                 copy-length_ -= available
-                result := byte-array[position..position + copyable]
+                result := byte-array[offset..offset + copyable]
                 if adler_: adler_.add result
+                output-buffer-position_ = pos
                 return result
-              output-buffer_.replace output-buffer-position_ byte-array position (position + copyable)
-              output-buffer-position_ += copyable
+              output-buffer_.replace pos byte-array offset (offset + copyable)
+              pos += copyable
               copy-length_ -= copyable
-              if output-buffer-position_ == output-buffer_.size:
-                return flush-output-buffer_
+              if pos == output-buffer_.size:
+                return flush-output-buffer_ pos
           // Copy from the current output buffer.
           // Replace uses memmove semantics, which means it can't be used to do
           // the DEFLATE semantics of making repeated patterns.
           while copy-length_ > 0:
-            space := output-buffer_.size - output-buffer-position_
+            space := output-buffer_.size - pos
             want := min
                 space
                 copy-length_
@@ -366,29 +364,30 @@ abstract class Inflater:
                 copy-distance_  // Limit because of memmove semantics.
             if copyable < 8 and want > 32:
               // More efficient to use a byte loop than repeated calls to replace.
-              from := output-buffer-position_ - copy-distance_
-              to := output-buffer-position_
+              from := pos - copy-distance_
+              to := pos
               want.repeat:
                 output-buffer_[to + it] = output-buffer_[from + it]
-              output-buffer-position_ += want
+              pos += want
               copy-length_ -= want
             else:
               // More efficient to use replace.
-              position := output-buffer-position_ - copy-distance_
-              output-buffer_.replace output-buffer-position_ output-buffer_ position (position + copyable)
-              output-buffer-position_ += copyable
+              offset := pos - copy-distance_
+              output-buffer_.replace pos output-buffer_ offset (offset + copyable)
+              pos += copyable
               copy-length_ -= copyable
-            if output-buffer-position_ == output-buffer_.size:
-              return flush-output-buffer_
+            if pos == output-buffer_.size:
+              return flush-output-buffer_ pos
+          output-buffer-position_ = pos
 
-  flush-output-buffer_ -> ByteArray:
-    if output-buffer-position_ == output-buffer_.size:
-      result := output-buffer_[..output-buffer-position_]
+  flush-output-buffer_ pos/int -> ByteArray:
+    if pos == output-buffer_.size:
+      result := output-buffer_[..pos]
       output-buffer_ = ByteArray 256
       output-buffer-position_ = 0
       if adler_: adler_.add result
       return result
-    result := output-buffer_.copy 0 output-buffer-position_
+    result := output-buffer_.copy 0 pos
     output-buffer-position_ = 0
     if adler_: adler_.add result
     return result
@@ -430,23 +429,31 @@ abstract class Inflater:
 
   // Gets next symbol or -1 if we need more data.
   next_ tables/HuffmanTables_ -> int:
+    value1 := tables.first-level[data_ & 0xff]
+    bits := value1 & 0xf
+    if bits <= valid_bits_ and bits <= 8:
+      valid-bits_ -= bits
+      data_ >>= bits
+      return value1 >> 4
+
     ensure-bits :=:
       if valid-bits_ < it:
         if buffer-pos_ == buffer_.size:
           return -1
         data_ |= buffer_[buffer-pos_++] << valid-bits_
         valid-bits_ += 8
-    value1 := tables.first-level[data_ & 0xff]
-    bits := value1 & 0xf
+
     if bits > valid-bits_ and valid_bits_ < 8:
       // We did a lookup with too few bits - get the next byte and retry.
       ensure-bits.call 8  // Enough for first level table.
       value1 = tables.first-level[data_ & 0xff]
       bits = value1 & 0xf
-    if bits <= 8:
-      valid-bits_ -= bits
-      data_ >>= bits
-      return value1 >> 4
+      if bits <= 8:
+        assert: bits <= valid-bits_
+        valid-bits_ -= bits
+        data_ >>= bits
+        return value1 >> 4
+
     // Failed to hit in the first level table - look in the somewhat slower
     // second level.
     while true:
