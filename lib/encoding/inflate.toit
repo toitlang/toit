@@ -2,7 +2,10 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import binary show LITTLE_ENDIAN
+import crypto.adler32
 import expect show *
+import zlib
 
 class SymbolBitLen:
   symbol/int
@@ -15,7 +18,7 @@ class SymbolBitLen:
     return "SymbolBitLen($symbol, len=$bit-len) encoding=$(%b encoding)"
 
 FIXED-SYMBOL-AND-LENGTH_ ::= create-fixed-symbol-and-length_
-FIXED_DISTANCE_ ::= create-fixed-distance_
+FIXED-DISTANCE_ ::= create-fixed-distance_
 
 /**
 A decompressor for the DEFLATE algorithm.
@@ -92,13 +95,15 @@ This abstract class does not know how to look back in the output stream.
   data in the look-back method (or whatever size the compressor was set to).
 */
 abstract class Inflator:
+  window-size := 32768
+  zlib-header-footer/bool
+  adler_/adler32.Adler32? := null
   buffer_/ByteArray := #[]
   buffer-pos_/int := 0
-  buffer-2_/ByteArray := #[]
   valid-bits_/int := 0
   data_/int := 0
   in-final-block_ := false
-  to_go_/int := 0
+  to-go_/int := 0
   // List of SymbolBitLen objects we are building up.
   lengths_/List? := null
   // Bits of repeat we are waiting for.
@@ -107,8 +112,8 @@ abstract class Inflator:
   hdist_/int := 0
   hclen_/int := 0
   state_/int := INITIAL_
-  meta_table_/HuffmanTables? := null
-  symbol-and-length_table_/HuffmanTables? := null
+  meta-table_/HuffmanTables? := null
+  symbol-and-length-table_/HuffmanTables? := null
   distance-table_/HuffmanTables? := null
   output-buffer_/ByteArray := ByteArray 256
   output-buffer-position_/int := 0  // Always less than the size.
@@ -120,6 +125,8 @@ abstract class Inflator:
   // Should call the block with a byte array and an offset.
   abstract look-back distance/int [block] -> none
 
+  static ZLIB-HEADER_         ::= -2 // Reading zlib header.
+  static ZLIB-FOOTER_         ::= -1 // Reading Adler checksum.
   static INITIAL_             ::= 0  // Reading initial 3 bits of block.
   static NO-COMPRESSION_      ::= 2  // Reading 4 bytes of LEN and NLEN.
   static NO-COMPRESSION-BODY_ ::= 3  // Reading to-go_ bytes of data.
@@ -129,55 +136,98 @@ abstract class Inflator:
   static GET-HDIST_           ::= 7  // Reading bit lengths for HDIST table.
   static DECOMRESSING_        ::= 8  // Decompressing data.
 
+  constructor --.zlib-header-footer/bool=true:
+    if zlib-header-footer:
+      state_ = ZLIB-HEADER_
+      adler_ = adler32.Adler32
+    else:
+      state_ = INITIAL_
+
   // Returns the next data.
   // Returns an empty byte array if we need more input.
   // Returns null if there is no more data.
   read -> ByteArray?:
     while true:
-      if state_ == INITIAL_:
+      print "Top of loop, state=$state_ valid-bits_=$valid-bits_, data_=$(%b data_)"
+      print "buffer-pos_=$buffer-pos_ buffer_.size=$buffer_.size $buffer_"
+      if state_ == ZLIB-HEADER_:
+        header := n-bits_ 16
+        if header < 0: return #[]
+        if header & 0xf != 8: throw "header=$(%04x header) Not a deflate stream"
+        window-size = 1 << (8 + ((header & 0xf0) >> 4))
+        if window-size > 32768: throw "Corrupt data"
+        if header & 0x2000 != 0: throw "Preset dictionary not supported"
+        big-endian := header >> 8 + ((header & 0xff) << 8)
+        if big-endian % 31 != 0: throw "Corrupt data"
+        state_ = INITIAL_
+
+      else if state_ == ZLIB-FOOTER_:
+        n-bits_ (valid-bits_ & 7)  // Discard rest of byte.
+        adler32 := n-bits_ 32
+        if adler32 < 0: return #[]
+        calculated := LITTLE_ENDIAN.uint32 adler_.get 0
+        adler_ = null // Only read the checksum once.
+        if calculated != adler32: throw "Checksum mismatch"
+        state_ = INITIAL_
+        return null
+
+      else if state_ == INITIAL_:
         if in-final-block_:
-          return null
-        raw := n-bits_ 3
-        if raw < 0: return #[]
-        in-final-block_ = (raw & 1) == 1
-        type := raw >> 1
-        if type == 0:
-          // No compression.
-          n-bits_ (valid-bits_ & 7)  // Discard rest of byte.
-          state_ = NO-COMPRESSION_
-        else if type == 1:
-          // Fixed Huffman tables.
-          symbol-and-length_table_ = FIXED-SYMBOL-AND-LENGTH_
-          distance-table_ = FIXED_DISTANCE_
-          state_ = DECOMRESSING_
-        else if type == 2:
-          // Dynamic Huffman tables.
-          state_ = GET-TABLE-SIZES_
+          if output-buffer-position_ != 0:
+            return flush-output-buffer_
+          if adler_:
+            state_ = ZLIB-FOOTER_
+          else:
+            return null
         else:
-          throw "Corrupt data"
+          raw := n-bits_ 3
+          print "three bits are $raw"
+          if raw < 0: return #[]
+          in-final-block_ = (raw & 1) == 1
+          type := raw >> 1
+          if type == 0:
+            // No compression.
+            n-bits_ (valid-bits_ & 7)  // Discard rest of byte.
+            state_ = NO-COMPRESSION_
+          else if type == 1:
+            // Fixed Huffman tables.
+            symbol-and-length-table_ = FIXED-SYMBOL-AND-LENGTH_
+            distance-table_ = FIXED-DISTANCE_
+            state_ = DECOMRESSING_
+          else if type == 2:
+            // Dynamic Huffman tables.
+            state_ = GET-TABLE-SIZES_
+          else:
+            throw "Corrupt data"
 
       else if state_ == NO-COMPRESSION_:
         if output-buffer-position_ != 0:
           return flush-output-buffer_
         len-nlen := n-bits_ 32
         if len-nlen < 0: return #[]
-        to_go_ = len-nlen & 0xffff
+        to-go_ = len-nlen & 0xffff
         complement := len-nlen >> 16
         if to-go_ ^ 0xffff != complement:
           throw "Corrupt data"
         state_ = NO-COMPRESSION-BODY_
 
       else if state_ == NO-COMPRESSION-BODY_:
-        if to_go_ == 0:
+        if to-go_ == 0:
           state_ = INITIAL_
         else:
-          if valid_bits_ >= 8:
+          if valid-bits_ >= 8:
             to-go_--
-            return #[n-bits_ 8]
+            result := #[n-bits_ 8]
+            if adler_: adler_.add result
+            return result
           if buffer-pos_ < buffer_.size:
-            result := buffer_[buffer-pos_..]
-            to-go_ -= result.size
-            buffer-pos_ = buffer_.size
+            length := min
+                to-go_
+                buffer_.size - buffer-pos_
+            result := buffer_[buffer-pos_..buffer-pos_ + length]
+            to-go_ -= length
+            buffer-pos_ += length
+            if adler_: adler_.add result
             return result
           return #[]
 
@@ -197,9 +247,9 @@ abstract class Inflator:
         while to-go_ < lengths_.size:
           length-code := n-bits_ 3
           if length-code < 0: return #[]
-          lengths_[to_go_] = SymbolBitLen HCLEN-ORDER_[to-go_] length_code
+          lengths_[to-go_] = SymbolBitLen HCLEN-ORDER_[to-go_] length-code
           to-go_++
-        meta_table_ = HuffmanTables lengths_
+        meta-table_ = HuffmanTables lengths_
         to-go_ = 0
         lengths_ = List hlit_
         state_ = GET-HLIT_
@@ -213,7 +263,7 @@ abstract class Inflator:
             lengths_[to-go_] = SymbolBitLen to-go_ last
             to-go_++
           repeat-bits_ = 0
-        length-code := next_ meta_table_
+        length-code := next_ meta-table_
         if length-code < 0: return #[]
         if length-code < 16:
           lengths_[to-go_] = SymbolBitLen to-go_ length-code
@@ -235,7 +285,7 @@ abstract class Inflator:
             to-go_++
         if to-go_ == lengths_.size:
           if state_ == GET-HLIT_:
-            symbol-and-length_table_ = HuffmanTables lengths_
+            symbol-and-length-table_ = HuffmanTables lengths_
             state_ = GET-HDIST_
             lengths_ = List hdist_
             to-go_ = 0
@@ -245,8 +295,9 @@ abstract class Inflator:
 
       else if state_ == DECOMRESSING_:
         if copy-length_ == 0:
-          symbol := next_ symbol-and-length_table_
+          symbol := next_ symbol-and-length-table_
           if symbol < 0: return #[]
+          print "Copy length symbol $symbol"
           if symbol == 256:
             state_ = INITIAL_
           else if symbol < 255:
@@ -258,11 +309,12 @@ abstract class Inflator:
             if symbol < 265:
               copy-length_ = symbol - 254
             else if symbol < 285:
-              copy-length-bits_ = (symbol - 261) >> 2
-              copy-length_ = (3 + (symbol - 265) & 3) << copy-length-bits_
+              copy-length_ = LENGTHS_[symbol - 257]
+              copy-length-bits_ = "\x00\x00\x00\x00\x00\x00\x00\x00\x01\x01\x01\x01\x02\x02\x02\x02\x03\x03\x03\x03\x04\x04\x04\x04\x05\x05\x05\x05"[symbol - 257]
             else:
               assert: symbol == 285
               copy-length_ = 258
+            print "Copy length $copy-length_, adding $copy-length-bits_ bits"
         if copy-length_ != 0:
           if copy-length-bits_ > 0:
             bits := n-bits_ copy-length-bits_
@@ -282,8 +334,8 @@ abstract class Inflator:
           // We have a copy length and distance.
           // If some of the copy length is before the current output buffer,
           // we have to use the look-back method.
-          while copy_distance_ > output-buffer-position_:
-            look-back copy_distance_ - output-buffer-position_: | byte-array/ByteArray position/int |
+          while copy-distance_ > output-buffer-position_:
+            look-back copy-distance_ - output-buffer-position_: | byte-array/ByteArray position/int |
               available := min
                   copy-length_
                   byte-array.size - position
@@ -292,7 +344,9 @@ abstract class Inflator:
                   output-buffer_.size - output-buffer-position_
               if output-buffer-position_ == 0 and available > 32:
                 copy-length_ -= available
-                return byte-array[position..position + copyable]
+                result := byte-array[position..position + copyable]
+                if adler_: adler_.add result
+                return result
               output-buffer_.replace output-buffer-position_ byte-array position copyable
               output-buffer-position_ += copyable
               copy-length_ -= copyable
@@ -330,15 +384,23 @@ abstract class Inflator:
       result := output-buffer_[..output-buffer-position_]
       output-buffer_ = ByteArray 256
       output-buffer-position_ = 0
+      if adler_: adler_.add result
       return result
     result := output-buffer_.copy 0 output-buffer-position_
     output-buffer-position_ = 0
+    if adler_: adler_.add result
     return result
 
   static DISTANCES_ ::= [
       1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
       257, 385, 513, 769, 1025, 1537, 2049, 3073,
       4097, 6145, 8193, 12289, 16385, 24577
+      ]
+
+  static LENGTHS_ ::= #[
+      3, 4, 5, 6, 7, 8, 9, 10, 11, 13,
+      15, 17, 19, 23, 27, 31, 35, 43, 51, 59,
+      67, 83, 99, 115, 131, 163, 195, 227,
       ]
 
   static HCLEN-ORDER_ ::= #[16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
@@ -349,6 +411,7 @@ abstract class Inflator:
   */
   write buffer/ByteArray:
     if buffer-pos_ != buffer_.size:
+      print "buffer-pos_=$buffer-pos_ buffer_.size=$buffer_.size"
       throw "Too early to add data"
     buffer_ = buffer
     buffer-pos_ = 0
@@ -358,7 +421,7 @@ abstract class Inflator:
   */
   rest -> ByteArray:
     assert: valid-bits_ == 0 or valid-bits_ == 8
-    if valid_bits_ == 8:
+    if valid-bits_ == 8:
       return #[data_] + buffer_[buffer-pos_..]
     return buffer_[buffer-pos_..]
 
@@ -369,13 +432,17 @@ abstract class Inflator:
       if valid-bits_ < it:
         if buffer-pos_ == buffer_.size:
           return -1
-        data_ = (data_ << 8) | buffer_[buffer-pos_++]
+        data_ |= buffer_[buffer-pos_++] << valid-bits_
         valid-bits_ += 8
-    // Ensure we have at least 8 bits of data so we can look in the first level
-    // table.
-    ensure-bits.call 8
+    // Ensure we have at least 1 bit of data to look up with.
+    ensure-bits.call 1
     value1 := tables.first-level[data_ & 0xff]
     bits := value1 & 0xf
+    if bits > valid-bits_ and valid_bits_ < 8:
+      // We did a lookup with too few bits - get the next byte and retry.
+      ensure-bits.call 8
+      value1 = tables.first-level[data_ & 0xff]
+      bits = value1 & 0xf
     if bits <= 8:
       valid-bits_ -= bits
       data_ >>= bits
@@ -395,25 +462,14 @@ abstract class Inflator:
       if bits > 15:
         throw "Corrupt data"
 
-  // Slower version of next_ that does not ask for more data.  Should only be
-  // used when there is no more input data.  Throws if no more symbols can be
-  // produced.
-  next-near-end_ tables/HuffmanTables -> int:
-    valid-bits_ += 15
-    result := next_ tables
-    valid-bits_ -= 15
-    if valid-bits_ < 0:
-      throw "Not enough data"
-    return result
-
   // Gets next n bits of data or -1 if we need more data.
   n-bits_ bits/int -> int:
     while valid-bits_ < bits:
       if buffer-pos_ == buffer_.size:
         return -1
-      data_ = (data_ << 8) | buffer_[buffer-pos_++]
+      print "Feeding in $(%08b buffer_[buffer-pos_])"
+      data_ |= buffer_[buffer-pos_++] << valid-bits_
       valid-bits_ += 8
-      return -1
     result := data_ & ((1 << bits) - 1)
     data_ >>= bits
     valid-bits_ -= bits
@@ -484,6 +540,12 @@ REVERSED_ ::= ByteArray 0x100: 0
   | (it & 0x80) >> 7
 
 main:
+  simple-test
+  uncompressed-test
+  rle-test
+  zlib-test
+
+simple-test:
   expect-equals 0 (reverse_ 0 1)
   expect-equals 1 (reverse_ 1 1)
   expect-equals 0b00 (reverse_ 0b00 2)
@@ -523,6 +585,40 @@ main:
   // Reconstruct the static Huffman table from the RFC.
   create-fixed-symbol-and-length_
   create-fixed-distance_
+
+uncompressed-test:
+  print "***uncompressed-test"
+  round-trip-test: zlib.UncompressedZlibEncoder
+
+rle-test:
+  print "***rle-test"
+  round-trip-test: zlib.RunLengthZlibEncoder
+
+zlib-test:
+  10.repeat: | i |
+    print "***zlib-test --level=$i"
+    round-trip-test: zlib.Encoder --level=i
+
+round-trip-test [block]:
+  compressor := block.call
+  task:: print-round-tripped_ compressor BufferingInflator
+  compressor.write "Hello, World!"
+  compressor.close
+
+  compressor2 := block.call
+  task:: print-round-tripped_ compressor2 BufferingInflator
+  compressor2.write ("a" * 12) + ("b" * 25) + ("a" * 12)
+  compressor2.close
+
+print-round-tripped_ compressor decompressor:
+  while round-tripped := decompressor.read:
+    if round-tripped.size == 0:
+      compressed := compressor.reader.read
+      if not compressed: break
+      decompressor.write compressed
+    else:
+      print round-tripped
+      print round-tripped.to-string
 
 create-fixed-symbol-and-length_ -> HuffmanTables:
   bit-lens := List 288:
