@@ -71,7 +71,7 @@ class UncompressedDeflateEncoder_ extends ZlibEncoder_:
   send_ --last:
     outgoing := buffer_
     length := buffer-fullness_ - BLOCK-HEADER-SIZE_
-    outgoing[0] = last ? 1 : 0
+    outgoing[0] = last ? 1 : 0  // Final bit is 0 or 1, type bits are 00, the other 5 are ignored.
     outgoing[1] = length & 0xff
     outgoing[2] = length >> 8
     outgoing[3] = outgoing[1] ^ 0xff

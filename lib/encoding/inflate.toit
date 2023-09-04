@@ -103,7 +103,7 @@ abstract class Inflator:
   valid-bits_/int := 0
   data_/int := 0
   in-final-block_ := false
-  to-go_/int := 0
+  counter_/int := 0
   // List of SymbolBitLen objects we are building up.
   lengths_/List? := null
   // Bits of repeat we are waiting for.
@@ -129,7 +129,7 @@ abstract class Inflator:
   static ZLIB-FOOTER_         ::= -1 // Reading Adler checksum.
   static INITIAL_             ::= 0  // Reading initial 3 bits of block.
   static NO-COMPRESSION_      ::= 2  // Reading 4 bytes of LEN and NLEN.
-  static NO-COMPRESSION-BODY_ ::= 3  // Reading to-go_ bytes of data.
+  static NO-COMPRESSION-BODY_ ::= 3  // Reading counter_ bytes of data.
   static GET-TABLE-SIZES_     ::= 4  // Reading HLIT, HDIST and HCLEN.
   static GET-HCLEN_           ::= 5  // Reading n x 3 bits of HLIT.
   static GET-HLIT_            ::= 6  // Reading bit lengths for HLIT table.
@@ -148,8 +148,6 @@ abstract class Inflator:
   // Returns null if there is no more data.
   read -> ByteArray?:
     while true:
-      print "Top of loop, state=$state_ valid-bits_=$valid-bits_, data_=$(%b data_)"
-      print "buffer-pos_=$buffer-pos_ buffer_.size=$buffer_.size $buffer_"
       if state_ == ZLIB-HEADER_:
         header := n-bits_ 16
         if header < 0: return #[]
@@ -173,6 +171,7 @@ abstract class Inflator:
 
       else if state_ == INITIAL_:
         if in-final-block_:
+          // We are after the final block.
           if output-buffer-position_ != 0:
             return flush-output-buffer_
           if adler_:
@@ -181,7 +180,6 @@ abstract class Inflator:
             return null
         else:
           raw := n-bits_ 3
-          print "three bits are $raw"
           if raw < 0: return #[]
           in-final-block_ = (raw & 1) == 1
           type := raw >> 1
@@ -205,27 +203,27 @@ abstract class Inflator:
           return flush-output-buffer_
         len-nlen := n-bits_ 32
         if len-nlen < 0: return #[]
-        to-go_ = len-nlen & 0xffff
+        counter_ = len-nlen & 0xffff
         complement := len-nlen >> 16
-        if to-go_ ^ 0xffff != complement:
+        if counter_ ^ 0xffff != complement:
           throw "Corrupt data"
         state_ = NO-COMPRESSION-BODY_
 
       else if state_ == NO-COMPRESSION-BODY_:
-        if to-go_ == 0:
+        if counter_ == 0:
           state_ = INITIAL_
         else:
           if valid-bits_ >= 8:
-            to-go_--
+            counter_--
             result := #[n-bits_ 8]
             if adler_: adler_.add result
             return result
           if buffer-pos_ < buffer_.size:
             length := min
-                to-go_
+                counter_
                 buffer_.size - buffer-pos_
             result := buffer_[buffer-pos_..buffer-pos_ + length]
-            to-go_ -= length
+            counter_ -= length
             buffer-pos_ += length
             if adler_: adler_.add result
             return result
@@ -240,17 +238,17 @@ abstract class Inflator:
         raw >>= 5
         hclen_ = raw + 4
         lengths_ = List hclen_
-        to-go_ = 0
+        counter_ = 0
         state_ = GET-HCLEN_
 
       else if state_ == GET-HCLEN_:
-        while to-go_ < lengths_.size:
+        while counter_ < lengths_.size:
           length-code := n-bits_ 3
           if length-code < 0: return #[]
-          lengths_[to-go_] = SymbolBitLen HCLEN-ORDER_[to-go_] length-code
-          to-go_++
+          lengths_[counter_] = SymbolBitLen HCLEN-ORDER_[counter_] length-code
+          counter_++
         meta-table_ = HuffmanTables lengths_
-        to-go_ = 0
+        counter_ = 0
         lengths_ = List hlit_
         state_ = GET-HLIT_
 
@@ -258,21 +256,21 @@ abstract class Inflator:
         if repeat-bits_ > 0:
           repeats := n-bits_ repeat-bits_
           if repeats < 0: return #[]
-          last := lengths_[to-go_ - 1].bit-len
+          last := lengths_[counter_ - 1].bit-len
           repeats.repeat:
-            lengths_[to-go_] = SymbolBitLen to-go_ last
-            to-go_++
+            lengths_[counter_] = SymbolBitLen counter_ last
+            counter_++
           repeat-bits_ = 0
         length-code := next_ meta-table_
         if length-code < 0: return #[]
         if length-code < 16:
-          lengths_[to-go_] = SymbolBitLen to-go_ length-code
-          to-go_++
+          lengths_[counter_] = SymbolBitLen counter_ length-code
+          counter_++
         else:
           last := 0
           repeats := 3
           if length-code == 16:
-            last = lengths_[to-go_ - 1].bit-len
+            last = lengths_[counter_ - 1].bit-len
             repeat-bits_ = 2
           else if length-code == 17:
             repeat-bits_ = 3
@@ -281,14 +279,14 @@ abstract class Inflator:
             repeat-bits_ = 7
             repeats = 11
           repeats.repeat:
-            lengths_[to-go_] = SymbolBitLen to-go_ last
-            to-go_++
-        if to-go_ == lengths_.size:
+            lengths_[counter_] = SymbolBitLen counter_ last
+            counter_++
+        if counter_ == lengths_.size:
           if state_ == GET-HLIT_:
             symbol-and-length-table_ = HuffmanTables lengths_
             state_ = GET-HDIST_
             lengths_ = List hdist_
-            to-go_ = 0
+            counter_ = 0
           else:
             distance-table_ = HuffmanTables lengths_
             state_ = DECOMRESSING_
@@ -297,7 +295,6 @@ abstract class Inflator:
         if copy-length_ == 0:
           symbol := next_ symbol-and-length-table_
           if symbol < 0: return #[]
-          print "Copy length symbol $symbol"
           if symbol == 256:
             state_ = INITIAL_
           else if symbol < 255:
@@ -314,7 +311,6 @@ abstract class Inflator:
             else:
               assert: symbol == 285
               copy-length_ = 258
-            print "Copy length $copy-length_, adding $copy-length-bits_ bits"
         if copy-length_ != 0:
           if copy-length-bits_ > 0:
             bits := n-bits_ copy-length-bits_
@@ -334,7 +330,7 @@ abstract class Inflator:
           // We have a copy length and distance.
           // If some of the copy length is before the current output buffer,
           // we have to use the look-back method.
-          while copy-distance_ > output-buffer-position_:
+          while copy-length_ > 0 and copy-distance_ > output-buffer-position_:
             look-back copy-distance_ - output-buffer-position_: | byte-array/ByteArray position/int |
               available := min
                   copy-length_
@@ -347,7 +343,7 @@ abstract class Inflator:
                 result := byte-array[position..position + copyable]
                 if adler_: adler_.add result
                 return result
-              output-buffer_.replace output-buffer-position_ byte-array position copyable
+              output-buffer_.replace output-buffer-position_ byte-array position (position + copyable)
               output-buffer-position_ += copyable
               copy-length_ -= copyable
               if output-buffer-position_ == output-buffer_.size:
@@ -363,7 +359,7 @@ abstract class Inflator:
             copyable := min
                 want
                 copy-distance_  // Limit because of memmove semantics.
-            if copyable < 8 and want > (copyable << 3):
+            if copyable < 8 and want > 32:
               // More efficient to use a byte loop than repeated calls to replace.
               from := output-buffer-position_ - copy-distance_
               to := output-buffer-position_
@@ -373,7 +369,8 @@ abstract class Inflator:
               copy-length_ -= want
             else:
               // More efficient to use replace.
-              output-buffer_.replace output-buffer-position_ output-buffer_ output-buffer-position_ - copy-distance_ copyable
+              position := output-buffer-position_ - copy-distance_
+              output-buffer_.replace output-buffer-position_ output-buffer_ position (position + copyable)
               output-buffer-position_ += copyable
               copy-length_ -= copyable
             if output-buffer-position_ == output-buffer_.size:
@@ -411,7 +408,6 @@ abstract class Inflator:
   */
   write buffer/ByteArray:
     if buffer-pos_ != buffer_.size:
-      print "buffer-pos_=$buffer-pos_ buffer_.size=$buffer_.size"
       throw "Too early to add data"
     buffer_ = buffer
     buffer-pos_ = 0
@@ -450,6 +446,7 @@ abstract class Inflator:
     // Failed to hit in the first level table - look in the somewhat slower
     // second level.
     while true:
+      print "Second level - need at least $bits"
       // We need at least bits bits of data to get a match in the second level.
       ensure-bits.call bits
       key := ((data_ & ((1 << bits) - 1)) << 4) | bits
@@ -467,7 +464,6 @@ abstract class Inflator:
     while valid-bits_ < bits:
       if buffer-pos_ == buffer_.size:
         return -1
-      print "Feeding in $(%08b buffer_[buffer-pos_])"
       data_ |= buffer_[buffer-pos_++] << valid-bits_
       valid-bits_ += 8
     result := data_ & ((1 << bits) - 1)
@@ -607,8 +603,26 @@ round-trip-test [block]:
 
   compressor2 := block.call
   task:: print-round-tripped_ compressor2 BufferingInflator
-  compressor2.write ("a" * 12) + ("b" * 25) + ("a" * 12)
+  input2 := ("a" * 12) + ("b" * 25) + ("a" * 12)
+  print " in: $input2"
+  compressor2.write input2
   compressor2.close
+
+  compressor3 := block.call
+  task:: print-round-tripped_ compressor3 BufferingInflator
+  input3 := "kdjflskdkldskdkdskdkdkdkdlskfjsalædkfjaæsldkfjaæsldkfjaæsldkfældjflsakdfjlaskdjflsadkfjsalædkfj"
+  print " in: $input3"
+  compressor3.write input3
+  compressor3.close
+
+  compressor4 := block.call
+  task:: print-round-tripped_ compressor4 BufferingInflator
+  input4a := "LSDLKFJLSDKFJLSDKJFLSDKJFLDSK"
+  input4b := "OWIEUROIWEUROIUWEORIUWEORIUWEORIU"
+  input4c := "X:C;MV:XCMV:XC;MV:;XCMV:;MXC:V;MXC:;V"
+  input4 := input4a + input4b + input4a + input4c + "abcacbaz" + (input4b * 10) + input4a + input4c + input4b + input4b
+  compressor4.write input4
+  compressor4.close
 
 print-round-tripped_ compressor decompressor:
   while round-tripped := decompressor.read:
@@ -617,8 +631,7 @@ print-round-tripped_ compressor decompressor:
       if not compressed: break
       decompressor.write compressed
     else:
-      print round-tripped
-      print round-tripped.to-string
+      print "out: $round-tripped.to-string"
 
 create-fixed-symbol-and-length_ -> HuffmanTables:
   bit-lens := List 288:
