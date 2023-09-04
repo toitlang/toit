@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 /**
-Pure-Toit implementation of decompression of the DEFLATE
+Pure Toit implementation of decompression of the DEFLATE
   format, as used by PNG, zlib and gzip.
 */
 
@@ -12,7 +12,7 @@ import crypto.adler32
 import expect show *
 import zlib
 
-class SymbolBitLen:
+class SymbolBitLen_:
   symbol/int
   bit-len/int
   encoding/int? := null
@@ -20,13 +20,13 @@ class SymbolBitLen:
   constructor .symbol .bit-len:
 
   stringify:
-    return "SymbolBitLen($symbol, len=$bit-len) encoding=$(%b encoding)"
+    return "SymbolBitLen_($symbol, len=$bit-len) encoding=$(%b encoding)"
 
 FIXED-SYMBOL-AND-LENGTH_ ::= create-fixed-symbol-and-length_
 FIXED-DISTANCE_ ::= create-fixed-distance_
 
 /**
-A decompressor for the DEFLATE algorithm.
+A pure Toit decompressor for the DEFLATE format.
 This implementation holds on to copies of the buffers it delivers with the read
   method, for up to 32k of data.  This is a simple way to handle the
   buffer requirements.
@@ -47,7 +47,7 @@ class CopyingInflater extends BufferingInflater:
     return result.copy
 
 /**
-A decompressor for the DEFLATE algorithm, as used by zlib.
+A pure Toit decompressor for the DEFLATE format, as used by zlib.
 This implementation holds on to the buffers it delivers with the read
   method, for up to 32k of data.  This is a simple way to handle the
   buffer requirements, but it means the user may not overwrite the buffers,
@@ -94,7 +94,7 @@ class BufferingInflater extends Inflater:
     block.call ba (ba.size - distance)
 
 /**
-A decompressor for the DEFLATE algorithm.
+A pure Toit decompressor for the DEFLATE format.
 This abstract class does not know how to look back in the output stream.
   To use it you have to be able to deliver up to 32k of previously decompressed
   data in the look-back method (or whatever size the compressor was set to).
@@ -109,7 +109,7 @@ abstract class Inflater:
   data_/int := 0
   in-final-block_ := false
   counter_/int := 0
-  // List of SymbolBitLen objects we are building up.
+  // List of SymbolBitLen_ objects we are building up.
   lengths_/List? := null
   // Bits of repeat we are waiting for.
   repeat-bits_/int := 0
@@ -250,7 +250,7 @@ abstract class Inflater:
         while counter_ < lengths_.size:
           length-code := n-bits_ 3
           if length-code < 0: return NEED-MORE-DATA_
-          lengths_[counter_] = SymbolBitLen HCLEN-ORDER_[counter_] length-code
+          lengths_[counter_] = SymbolBitLen_ HCLEN-ORDER_[counter_] length-code
           counter_++
         meta-table_ = HuffmanTables_ lengths_
         counter_ = 0
@@ -263,13 +263,13 @@ abstract class Inflater:
           if repeats < 0: return NEED-MORE-DATA_
           last := lengths_[counter_ - 1].bit-len
           repeats.repeat:
-            lengths_[counter_] = SymbolBitLen counter_ last
+            lengths_[counter_] = SymbolBitLen_ counter_ last
             counter_++
           repeat-bits_ = 0
         length-code := next_ meta-table_
         if length-code < 0: return NEED-MORE-DATA_
         if length-code < 16:
-          lengths_[counter_] = SymbolBitLen counter_ length-code
+          lengths_[counter_] = SymbolBitLen_ counter_ length-code
           counter_++
         else:
           last := 0
@@ -284,7 +284,7 @@ abstract class Inflater:
             repeat-bits_ = 7
             repeats = 11
           repeats.repeat:
-            lengths_[counter_] = SymbolBitLen counter_ last
+            lengths_[counter_] = SymbolBitLen_ counter_ last
             counter_++
         if counter_ == lengths_.size:
           if state_ == GET-HLIT_:
@@ -493,7 +493,7 @@ class HuffmanTables_:
   // we get a hit.
   second-level/Map
 
-  // Takes a list of SymbolBitLen objects, and creates the tables.
+  // Takes a list of SymbolBitLen_ objects, and creates the tables.
   constructor bitlens/List:
     bitlens = bitlens.sort: | a b |
       a.bit-len.compare-to b.bit-len --if-equal=:
@@ -502,7 +502,7 @@ class HuffmanTables_:
     second-level = Map
     counter := 0
     bit-len := 0
-    bitlens.do: | sbl/SymbolBitLen |
+    bitlens.do: | sbl/SymbolBitLen_ |
       if sbl.bit-len > 0:
         if sbl.bit-len > bit-len:
           counter = counter << (sbl.bit-len - bit-len)
@@ -540,129 +540,19 @@ REVERSED_ ::= ByteArray 0x100: 0
   | (it & 0x40) >> 5
   | (it & 0x80) >> 7
 
-main:
-  simple-test
-  uncompressed-test
-  rle-test
-  zlib-test
-
-simple-test:
-  expect-equals 0 (reverse_ 0 1)
-  expect-equals 1 (reverse_ 1 1)
-  expect-equals 0b00 (reverse_ 0b00 2)
-  expect-equals 0b10 (reverse_ 0b01 2)
-  expect-equals 0b01 (reverse_ 0b10 2)
-  expect-equals 0b11 (reverse_ 0b11 2)
-  expect-equals 0b110100 (reverse_ 0b001011 6)
-  expect-equals 0b0110100 (reverse_ 0b0010110 7)
-  expect-equals 0b10100110 (reverse_ 0b01100101 8)
-  expect-equals 0b110100110 (reverse_ 0b011001011 9)
-  expect-equals 0b1110100110 (reverse_ 0b0110010111 10)
-  expect-equals 0b11101001101 (reverse_ 0b10110010111 11)
-
-  // From the RFC section 3.2.2
-  ex := [
-      SymbolBitLen 'A' 2,
-      SymbolBitLen 'B' 1,
-      SymbolBitLen 'C' 3,
-      SymbolBitLen 'D' 3,
-  ]
-
-  lookup := HuffmanTables_ ex
-
-  for i := 0; i < 256; i++:
-    value := lookup.first-level[i]
-    if i & 1 == 0:
-      expect-equals (('B' << 4) + 1) value
-    else if i & 0b11 == 0b01:
-      expect-equals (('A' << 4) + 2) value
-    else if i & 0b111 == 0b011:
-      expect-equals (('C' << 4) + 3) value
-    else if i & 0b111 == 0b111:
-      expect-equals (('D' << 4) + 3) value
-    else:
-      expect-equals 0 value
-
-  // Reconstruct the static Huffman table from the RFC.
-  create-fixed-symbol-and-length_
-  create-fixed-distance_
-
-uncompressed-test:
-  print "***uncompressed-test"
-  round-trip-test: zlib.UncompressedZlibEncoder
-
-rle-test:
-  print "***rle-test"
-  round-trip-test: zlib.RunLengthZlibEncoder
-
-zlib-test:
-  10.repeat: | i |
-    print "***zlib-test --level=$i"
-    round-trip-test: zlib.Encoder --level=i
-
-round-trip-test [block]:
-  2.repeat:
-    buffering := it == 0
-    compressor := block.call
-    task:: print-round-tripped_ compressor (buffering ? BufferingInflater : CopyingInflater)
-    compressor.write "Hello, World!"
-    compressor.close
-
-    compressor2 := block.call
-    task:: print-round-tripped_ compressor2 (buffering ? BufferingInflater : CopyingInflater)
-    input2 := ("a" * 12) + ("b" * 25) + ("a" * 12)
-    print " in: $input2"
-    compressor2.write input2
-    compressor2.close
-
-    compressor3 := block.call
-    task:: print-round-tripped_ compressor3 (buffering ? BufferingInflater : CopyingInflater)
-    input3 := "kdjflskdkldskdkdskdkdkdkdlskfjsalædkfjaæsldkfjaæsldkfjaæsldkfældjflsakdfjlaskdjflsadkfjsalædkfj"
-    print " in: $input3"
-    compressor3.write input3
-    compressor3.close
-
-    compressor4 := block.call
-    task:: print-round-tripped_ compressor4 (buffering ? BufferingInflater : CopyingInflater)
-    input4a := "LSDLKFJLSDKFJLSDKJFLSDKJFLDSK"
-    input4b := "OWIEUROIWEUROIUWEORIUWEORIUWEORIU"
-    input4c := "X:C;MV:XCMV:XC;MV:;XCMV:;MXC:V;MXC:;V"
-    unusual-chars := "abloidpolkbksadbahbieoaweighojlaskdaowgoakjsadlkjsal"
-    unusual-chars2 := "opiogbjlvcjlakbjpoabapobhaowubnkscsvlkfdjasldkjblayweb"
-    unusual-chars3 := "dpogsdapgosigpaosgmaslæ,ambæsaodgjaosdigjasopdgjpsaogd"
-    unusual-chars4 := "opaiyyfahpoibhpaowbæaw.e-.!#%&/(awe,maaopgaeoibaweopawemobea"
-    input4 := input4a + input4b + input4a + input4c
-        + unusual-chars + unusual-chars2 + unusual-chars3 + unusual-chars4
-        + "z"
-        + (input4b * 10) + input4a + input4c + input4b + input4b
-    // Add a lot of fairly random digits to get a nicely asymmetric Huffman
-    // table.
-    1000.repeat: input4 += "$it"
-    compressor4.write input4
-    compressor4.close
-
-print-round-tripped_ compressor decompressor:
-  while round-tripped := decompressor.read:
-    if round-tripped.size == 0:
-      compressed := compressor.reader.read
-      if not compressed: break
-      decompressor.write compressed
-    else:
-      print "out: $round-tripped.to-string"
-
 create-fixed-symbol-and-length_ -> HuffmanTables_:
   bit-lens := List 288:
     if it <= 143:
-      SymbolBitLen it 8
+      SymbolBitLen_ it 8
     else if it <= 255:
-      SymbolBitLen it 9
+      SymbolBitLen_ it 9
     else if it <= 279:
-      SymbolBitLen it 7
+      SymbolBitLen_ it 7
     else:
-      SymbolBitLen it 8
+      SymbolBitLen_ it 8
 
   return HuffmanTables_ bit-lens
 
 create-fixed-distance_ -> HuffmanTables_:
-  bit-lens := List 32: SymbolBitLen it 5
+  bit-lens := List 32: SymbolBitLen_ it 5
   return HuffmanTables_ bit-lens
