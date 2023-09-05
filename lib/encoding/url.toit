@@ -154,10 +154,10 @@ class QueryString:
         key/string := ?
         value/string := ?
         if assign >= 0:
-          key = (decode component[..assign]).to-string
-          value = (decode component[assign + 1 ..]).to-string
+          key = decode-form-urlencoded_ component[..assign]
+          value = decode-form-urlencoded_ component[assign + 1 ..]
         else:
-          key = (decode component).to-string
+          key = decode-form-urlencoded_ component
           value = ""
         existing := parameters.get key
         if existing is string:
@@ -171,3 +171,8 @@ class QueryString:
         --resource=(decode resource).to-string
         --parameters=parameters
         --fragment=(decode fragment).to-string
+
+  /// Decodes the application/x-www-form-urlencoded $component string.
+  static decode-form-urlencoded_ component/string -> string:
+    decoded := decode (component.replace --all "+" " ")
+    return decoded.to-string
