@@ -46,7 +46,7 @@ void GcMetadata::set_up_singleton() {
   // Assume that the first 160k of memory can be used for C allocations, so we
   // remove that from the area that needs to be covered by the heap metadata.
   // This reduces the heap metadata from 24k or 28k to 12k or 16k.
-  const uword ONLY_FOR_MALLOC = 160 * KB;
+  const uword ONLY_FOR_MALLOC = 108 * KB;
   const uword TWELVE_K_METADATA_LIMIT = 148 * KB;
   const uword SIXTEEN_K_METADATA_LIMIT = 200 * KB;
   if (!OS::use_spiram_for_metadata() && !OS::use_spiram_for_heap()) {
