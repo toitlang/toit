@@ -220,3 +220,8 @@ test-query-string:
   expect-equals "http://quux+.com/foo" qs.resource
   expect-structural-equals {:} qs.parameters
   expect-equals "+bar" qs.fragment
+
+  qs = url.QueryString.parse "http://www.example.com/fish+chips?peas=mushy"
+  expect-equals "http://www.example.com/fish+chips" qs.resource
+  expect-structural-equals { "peas": "mushy"} qs.parameters
+  expect-equals "" qs.fragment
