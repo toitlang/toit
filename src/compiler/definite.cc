@@ -392,6 +392,7 @@ class DefiniteChecker : public Visitor {
 
   void visit_Super(Super* node) {
     ASSERT(method_->is_constructor());
+    if (node->expression() != null) visit(node->expression());
     if (state_.empty()) return;
     for (auto field : method_->holder()->fields()) {
       if (state_.is_undefined(field)) {
