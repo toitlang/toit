@@ -1,4 +1,4 @@
-# Toit programming language
+# Toit programming languagex
 
 This repository contains the Toit language implementation. It consists of the compiler,
 virtual machine, and standard libraries that together enable Toit programs to run on an ESP32.
