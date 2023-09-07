@@ -4,8 +4,6 @@
 
 import expect show *
 import zlib
-import encoding.inflate
-import encoding.inflate show CopyingInflater BufferingInflater
 
 main:
   simple-test
@@ -16,28 +14,28 @@ main:
   zlib-test
 
 simple-test:
-  expect-equals 0 (inflate.reverse_ 0 1)
-  expect-equals 1 (inflate.reverse_ 1 1)
-  expect-equals 0b00 (inflate.reverse_ 0b00 2)
-  expect-equals 0b10 (inflate.reverse_ 0b01 2)
-  expect-equals 0b01 (inflate.reverse_ 0b10 2)
-  expect-equals 0b11 (inflate.reverse_ 0b11 2)
-  expect-equals 0b110100 (inflate.reverse_ 0b001011 6)
-  expect-equals 0b0110100 (inflate.reverse_ 0b0010110 7)
-  expect-equals 0b10100110 (inflate.reverse_ 0b01100101 8)
-  expect-equals 0b110100110 (inflate.reverse_ 0b011001011 9)
-  expect-equals 0b1110100110 (inflate.reverse_ 0b0110010111 10)
-  expect-equals 0b11101001101 (inflate.reverse_ 0b10110010111 11)
+  expect-equals 0 (zlib.reverse_ 0 1)
+  expect-equals 1 (zlib.reverse_ 1 1)
+  expect-equals 0b00 (zlib.reverse_ 0b00 2)
+  expect-equals 0b10 (zlib.reverse_ 0b01 2)
+  expect-equals 0b01 (zlib.reverse_ 0b10 2)
+  expect-equals 0b11 (zlib.reverse_ 0b11 2)
+  expect-equals 0b110100 (zlib.reverse_ 0b001011 6)
+  expect-equals 0b0110100 (zlib.reverse_ 0b0010110 7)
+  expect-equals 0b10100110 (zlib.reverse_ 0b01100101 8)
+  expect-equals 0b110100110 (zlib.reverse_ 0b011001011 9)
+  expect-equals 0b1110100110 (zlib.reverse_ 0b0110010111 10)
+  expect-equals 0b11101001101 (zlib.reverse_ 0b10110010111 11)
 
   // From the RFC section 3.2.2
   ex := [
-      inflate.SymbolBitLen_ 'A' 2,
-      inflate.SymbolBitLen_ 'B' 1,
-      inflate.SymbolBitLen_ 'C' 3,
-      inflate.SymbolBitLen_ 'D' 3,
+      zlib.SymbolBitLen_ 'A' 2,
+      zlib.SymbolBitLen_ 'B' 1,
+      zlib.SymbolBitLen_ 'C' 3,
+      zlib.SymbolBitLen_ 'D' 3,
   ]
 
-  lookup := inflate.HuffmanTables_ ex
+  lookup := zlib.HuffmanTables_ ex
 
   for i := 0; i < 256; i++:
     value := lookup.first-level[i]
@@ -53,8 +51,8 @@ simple-test:
       expect-equals 0 value
 
   // Reconstruct the static Huffman table from the RFC.
-  inflate.create-fixed-symbol-and-length_
-  inflate.create-fixed-distance_
+  zlib.create-fixed-symbol-and-length_
+  zlib.create-fixed-distance_
 
 uncompressed-test:
   print "***uncompressed-test"
@@ -79,26 +77,26 @@ round-trip-test [block]:
   2.repeat:
     buffering := it == 0
     compressor := block.call
-    task:: print-round-tripped_ compressor (buffering ? BufferingInflater : CopyingInflater)
+    task:: print-round-tripped_ compressor (buffering ? zlib.BufferingInflater : zlib.CopyingInflater)
     compressor.write "Hello, World!"
     compressor.close
 
     compressor2 := block.call
-    task:: print-round-tripped_ compressor2 (buffering ? BufferingInflater : CopyingInflater)
+    task:: print-round-tripped_ compressor2 (buffering ? zlib.BufferingInflater : zlib.CopyingInflater)
     input2 := ("a" * 12) + ("b" * 25) + ("a" * 12)
     print " in: $input2"
     compressor2.write input2
     compressor2.close
 
     compressor3 := block.call
-    task:: print-round-tripped_ compressor3 (buffering ? BufferingInflater : CopyingInflater)
+    task:: print-round-tripped_ compressor3 (buffering ? zlib.BufferingInflater : zlib.CopyingInflater)
     input3 := "kdjflskdkldskdkdskdkdkdkdlskfjsalædkfjaæsldkfjaæsldkfjaæsldkfældjflsakdfjlaskdjflsadkfjsalædkfj"
     print " in: $input3"
     compressor3.write input3
     compressor3.close
 
     compressor4 := block.call
-    task:: print-round-tripped_ compressor4 (buffering ? BufferingInflater : CopyingInflater)
+    task:: print-round-tripped_ compressor4 (buffering ? zlib.BufferingInflater : zlib.CopyingInflater)
     input4a := "LSDLKFJLSDKFJLSDKJFLSDKJFLDSK"
     input4b := "OWIEUROIWEUROIUWEORIUWEORIUWEORIU"
     input4c := "X:C;MV:XCMV:XC;MV:;XCMV:;MXC:V;MXC:;V"
