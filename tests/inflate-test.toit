@@ -115,7 +115,7 @@ round-trip-test [block]:
     compressor4.close
 
 print-round-tripped_ compressor decompressor:
-  while round-tripped := decompressor.read:
+  while round-tripped := decompressor.reader.read --wait=false:
     if round-tripped.size == 0:
       compressed := compressor.reader.read
       if not compressed: break

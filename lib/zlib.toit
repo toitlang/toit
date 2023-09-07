@@ -383,46 +383,33 @@ class Decoder extends Coder_:
     super
 
 /**
-A pure Toit decompressor for the DEFLATE format.
-This implementation holds on to copies of the buffers it delivers with the read
-  method, for up to 32k of data.  This is a simple way to handle the
-  buffer requirements.
+A utility class for the pure Toit DEFLATE Inflater (zlib decompresser).
+This implementation holds on to copies of the buffers that are delivered with
+  the read method, for up to 32k of data.  This is a simple way to handle the
+  buffer requirements, but it may use some memory.
 */
-class CopyingInflater extends BufferingInflater:
-  /**
-  Construct a copying inflater.
-  */
-  constructor:
-
-  read -> ByteArray?:
-    result := super
-    if result == null or result.size == 0:
-      return result
-    return result.copy
+class CopyingHistory_ extends BufferingHistory_:
+  record result/ByteArray:
+    super result.copy
 
 /**
-A pure Toit decompressor for the DEFLATE format, as used by zlib.
-This implementation holds on to the buffers it delivers with the read
+A utility class for the pure Toit DEFLATE Inflater (zlib decompresser).
+This implementation holds on to the buffers that are delivered with the read
   method, for up to 32k of data.  This is a simple way to handle the
   buffer requirements, but it means the user may not overwrite the buffers,
   and it can use some memory.  May return the same byte arrays several times,
   or slices of the same byte arrays.
 */
-class BufferingInflater extends Inflater:
-  /**
-  Construct a buffering inflator.
-  */
-  constructor:
-
-  // Previous byte arrays we have returned.
+class BufferingHistory_ implements InflateHistory:
+  // Previous byte arrays that have been returned.
   previous_/List? := []
   // Number of bytes we have buffered.
   buffered_ := 0
+  window-size/int := 32768
 
-  read -> ByteArray?:
-    result := super
-    if result == null or result.size == 0:
-      return result
+  record result/ByteArray -> none:
+    if result.size == 0:
+      return
     if previous_.size > 0 and result.size < 32 and previous_[previous_.size - 1].size < 32:
       previous_[previous_.size - 1] += result
     else:
@@ -443,22 +430,96 @@ class BufferingInflater extends Inflater:
     ba := previous_[start]
     block.call ba (ba.size - distance)
 
-/**
-A pure Toit decompressor for the DEFLATE format.
-This abstract class does not know how to look back in the output stream.
-  To use it you have to be able to deliver up to 32k of previously decompressed
-  data in the $look-back method (or whatever size the compressor was set to).
-*/
-abstract class Inflater implements BackEnd_:
+interface InflateHistory:
   /**
-  This is the maximum buffer size of the compresser, and the decompresser
-    must also be able to buffer this much data.  It may be automatically
-    set to a lower level based on the zlib header.  If you have knowledge
-    of the settings of the compresser, you may set it lower.
-  Does not currently support streams with a gzip header (as opposed to the
-    zlib header).
+  Records a byte array that has been decompressed, and is about to be returned
+    from the read method.
   */
-  window-size := 32768
+  record ByteArray -> none
+  /**
+  The block should be called with a ByteArray and an offset where the required
+    data starts.  The distance is measured in bytes, backwards from the last
+    data returned by the read method.
+  */
+  look-back distance/int [block] -> none
+  /**
+  The maximum size of the look-back window.  Can be implemented with a public
+    field instead of a getter and a setter.
+  */
+  window-size= bytes/int
+  window-size -> int
+
+/**
+A pure Toit DEFLATE Inflater (zlib decompresser).
+This implementation holds on to the byte arrays that are delivered with the read
+  method, for up to 32k of data.  This is a simple way to handle the
+  buffer requirements, but it means the user may not overwrite the byte arrays,
+  and it can use some memory.  May return the same byte arrays several times,
+  or slices of the same byte arrays.
+*/
+class BufferingInflater extends Coder_:
+  /**
+  If a reduced window size (look-behind distance) is set here, then that is the
+    maximum size that will be buffered.  The zlib header may specify an even
+    smaller window size, but will be ignored if it specifies a larger window
+    size.
+  */
+  constructor --window-size/int=32768 --zlib-header/bool=true:
+    history := BufferingHistory_
+    history.window-size = window-size
+    super
+        InflaterBackEnd history --zlib-header-footer=zlib-header
+
+/**
+A pure Toit DEFLATE Inflater (zlib decompresser).
+This implementation holds on to copies of the byte arrays that are delivered with
+  the read method, for up to 32k of data.  This is a simple way to handle the
+  buffer requirements, but it may use some memory.
+*/
+class CopyingInflater extends Coder_:
+  /**
+  If a reduced window size (look-behind distance) is set here, then that is the
+    maximum size that will be buffered.  The zlib header may specify an even
+    smaller window size, but will be ignored if it specifies a larger window
+    size.
+  */
+  constructor --window-size/int=32768 --zlib-header/bool=true:
+    history := CopyingHistory_
+    history.window-size = window-size
+    super
+        InflaterBackEnd history --zlib-header-footer=zlib-header
+
+/**
+A pure Toit DEFLATE Inflater (zlib decompresser).
+To use this implementation, you must supply an $InflateHistory object to help
+  decompress, by remembering previously decompressed data.  For example, if
+  the decompressed data is being written into flash, that $InflateHistory object
+  could find the data in flash.
+*/
+class Inflater extends Coder_:
+  /**
+  If a reduced window size (look-behind distance) is set here, then that is the
+    maximum size that will be buffered.  The zlib header may specify an even
+    smaller window size, but will be ignored if it specifies a larger window
+    size.
+  */
+  constructor history/InflateHistory --window-size/int=32768 --zlib-header/bool=true:
+    history.window-size = window-size
+    super
+        InflaterBackEnd history --zlib-header-footer=zlib-header
+
+/**
+A pure Toit decompressing back end for the DEFLATE format.
+You would normally use $BufferingInflater, $CopyingInflater or $Inflater
+  which wrap this class in a more convenient API.
+This class needs an $InflateHistory object to help it look back in up to
+  32k of previously decompressed data (or whatever size the compressor was
+  set to.
+Does not currently support streams with a gzip header (as opposed to the
+  zlib header).
+*/
+class InflaterBackEnd implements BackEnd_:
+  history_/InflateHistory
   adler_/adler32.Adler32? := null
   buffer_/ByteArray := #[]
   buffer-pos_/int := 0
@@ -482,10 +543,6 @@ abstract class Inflater implements BackEnd_:
   copy-length_ := 0  // Number of bytes to copy.
   copy-distance_ := 0  // Distance to copy from.
 
-  // Should call the block with a byte array and an offset.
-  abstract look-back distance/int [block] -> none
-
-
   static FIXED-SYMBOL-AND-LENGTH_ ::= create-fixed-symbol-and-length_
   static FIXED-DISTANCE_ ::= create-fixed-distance_
 
@@ -500,7 +557,7 @@ abstract class Inflater implements BackEnd_:
   static GET-HDIST_           ::= 7  // Reading bit lengths for HDIST table.
   static DECOMRESSING_        ::= 8  // Decompressing data.
 
-  constructor --zlib-header-footer/bool=true:
+  constructor .history_ --zlib-header-footer/bool=true:
     if zlib-header-footer:
       state_ = ZLIB-HEADER_
       adler_ = adler32.Adler32
@@ -525,8 +582,9 @@ abstract class Inflater implements BackEnd_:
         header := n-bits_ 16
         if header < 0: return NEED-MORE-DATA_
         if header & 0xf != 8: throw "header=$(%04x header) Not a deflate stream"
-        window-size = 1 << (8 + ((header & 0xf0) >> 4))
-        if window-size > 32768: throw "Corrupt data"
+        window-size := 1 << (8 + ((header & 0xf0) >> 4))
+        if window-size < history_.window-size:
+          history_.window-size = window-size
         if header & 0x2000 != 0: throw "Preset dictionary not supported"
         big-endian := header >> 8 + ((header & 0xff) << 8)
         if big-endian % 31 != 0: throw "Corrupt data"
@@ -589,8 +647,7 @@ abstract class Inflater implements BackEnd_:
           if valid-bits_ >= 8:
             counter_--
             result := #[n-bits_ 8]
-            if adler_: adler_.add result
-            return result
+            return record_ result
           if buffer-pos_ < buffer_.size:
             length := min
                 counter_
@@ -598,8 +655,7 @@ abstract class Inflater implements BackEnd_:
             result := buffer_[buffer-pos_..buffer-pos_ + length]
             counter_ -= length
             buffer-pos_ += length
-            if adler_: adler_.add result
-            return result
+            return record_ result
           return NEED-MORE-DATA_
 
       else if state_ == GET-TABLE-SIZES_:
@@ -694,7 +750,7 @@ abstract class Inflater implements BackEnd_:
           // we have to use the look-back method.
           pos := output-buffer-position_
           while copy-length_ > 0 and copy-distance_ > pos:
-            look-back copy-distance_ - pos: | byte-array/ByteArray offset/int |
+            history_.look-back copy-distance_ - pos: | byte-array/ByteArray offset/int |
               available := min
                   copy-length_
                   byte-array.size - offset
@@ -704,9 +760,8 @@ abstract class Inflater implements BackEnd_:
               if pos == 0 and copyable > 32:
                 copy-length_ -= available
                 result := byte-array[offset..offset + copyable]
-                if adler_: adler_.add result
                 output-buffer-position_ = pos
-                return result
+                return record_ result
               output-buffer_.replace pos byte-array offset (offset + copyable)
               pos += copyable
               copy-length_ -= copyable
@@ -741,17 +796,22 @@ abstract class Inflater implements BackEnd_:
               return flush-output-buffer_ pos
           output-buffer-position_ = pos
 
+  // Records a byte array that has been decompressed.
+  // Returns the byte array.
+  record_ result/ByteArray -> ByteArray:
+    if adler_: adler_.add result
+    history_.record result
+    return result
+
   flush-output-buffer_ pos/int -> ByteArray:
     if pos == output-buffer_.size:
       result := output-buffer_[..pos]
       output-buffer_ = ByteArray 256
       output-buffer-position_ = 0
-      if adler_: adler_.add result
-      return result
+      return record_ result
     result := output-buffer_.copy 0 pos
     output-buffer-position_ = 0
-    if adler_: adler_.add result
-    return result
+    return record_ result
 
   static DISTANCES_ ::= [
       1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
