@@ -9,19 +9,24 @@ import crypto.adler32 as crypto
 import crypto.crc as crc-algorithms
 
 class CompressionReader implements reader.Reader:
-  owner_ := null
+  wrapped_ := null
 
   constructor.private_:
 
   read --wait/bool=true -> ByteArray?:
-    return owner_.read_ --wait=wait
+    return wrapped_.read_ --wait=wait
 
   close:
-    owner_.close-read_
+    wrapped_.close-read_
 
 SMALL-BUFFER-DEFLATE-HEADER_ ::= [8, 0x1d]
 MINIMAL-GZIP-HEADER_ ::= [0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]
 
+/**
+Typically creates blocks of 256 bytes (5 bytes of block header, 251 bytes of
+  uncompressed data) for a 2% size increase.  Adds a header and a checksum.
+*/
+*/
 class UncompressedDeflateBackEnd_ implements BackEnd_:
   summer_/crypto.Checksum? := ?  // When this is null, we are closed for write.
   buffer_/ByteArray? := ?        // When this is null, everything has been read.
@@ -239,7 +244,7 @@ abstract class Coder_:
 
   constructor .back_end_:
     reader = CompressionReader.private_
-    reader.owner_ = this
+    reader.wrapped_ = this
     add-finalizer this::
       this.uninit_
 
