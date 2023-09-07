@@ -26,7 +26,6 @@ MINIMAL-GZIP-HEADER_ ::= [0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]
 Typically creates blocks of 256 bytes (5 bytes of block header, 251 bytes of
   uncompressed data) for a 2% size increase.  Adds a header and a checksum.
 */
-*/
 class UncompressedDeflateBackEnd_ implements BackEnd_:
   summer_/crypto.Checksum? := ?  // When this is null, we are closed for write.
   buffer_/ByteArray? := ?        // When this is null, everything has been read.
