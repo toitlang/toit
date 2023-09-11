@@ -380,9 +380,9 @@ PRIMITIVE(init) {
     // Samsung phones to pop up the captive portal login page.
     // TODO: Make this configurable.
     esp_netif_ip_info_t two_hundred_network;
-    two_hundred_network.ip.addr = ESP_IP4TOADDR( 200, 200, 200, 1);
-    two_hundred_network.gw.addr = ESP_IP4TOADDR( 200, 200, 200, 1);
-    two_hundred_network.netmask.addr = ESP_IP4TOADDR( 255, 255, 255, 0);
+    two_hundred_network.ip.addr = ESP_IP4TOADDR(200, 200, 200, 1);
+    two_hundred_network.gw.addr = ESP_IP4TOADDR(200, 200, 200, 1);
+    two_hundred_network.netmask.addr = ESP_IP4TOADDR(255, 255, 255, 0);
     esp_netif_inherent_config_t netif_config = ESP_NETIF_INHERENT_DEFAULT_WIFI_AP();
     netif_config.ip_info = &two_hundred_network;
     esp_netif_config_t netif_ap_config = ESP_NETIF_DEFAULT_WIFI_AP();
