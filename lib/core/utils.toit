@@ -500,10 +500,29 @@ Produces a histogram of object types and their memory
   mirror message, which means it is usually printed on
   the console.
 */
-print-objects marker/string="" gc/bool=true:
-  full-gcs := (process-stats)[STATS-INDEX-FULL-GC-COUNT]
+print-objects --marker/string="" --gc/bool=false -> none:
+  full-gcs/int? := null
+  if gc:
+    list := List STATS-INDEX-FULL-GC-COUNT + 1
+    full-gcs = (process-stats list)[STATS-INDEX-FULL-GC-COUNT]
   encoded-histogram := object-histogram_ marker full-gcs
   send-trace-message encoded-histogram
 
-object-histogram_ marker/string full-gcs/int -> ByteArray:
+/**
+Variant of $(print-objects --marker --gc).
+
+Deprecated.
+*/
+print-objects marker/string -> none:
+  print-objects --marker=marker --gc
+
+/**
+Variant of $(print-objects --marker --gc).
+
+Deprecated.
+*/
+print-objects marker/string gc/bool -> none:
+  print-objects --marker=marker --gc=gc
+
+object-histogram_ marker/string full-gcs/int? -> ByteArray:
   #primitive.debug.object-histogram

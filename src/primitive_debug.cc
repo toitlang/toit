@@ -43,9 +43,14 @@ static int encode_histogram(ProgramOrientedEncoder* encoder, PerClass* data, int
 }
 
 PRIMITIVE(object_histogram) {
-  ARGS(cstring, marker, int, full_gc_count);
-  // Return ALLOCATION_FAILED until we cause a full GC.
-  if (process->gc_count(FULL_GC) == full_gc_count) FAIL(ALLOCATION_FAILED);
+  ARGS(cstring, marker, Object, gc_count);
+
+  if (gc_count != process->null_object()) {
+    INT64_VALUE_OR_WRONG_TYPE(word_gc_count, gc_count);
+    // Return ALLOCATION_FAILED until we cause a full GC.
+    if (process->gc_count(FULL_GC) == word_gc_count) FAIL(ALLOCATION_FAILED);
+  }
+
   Program* program = process->program();
   int length = program->class_bits.length();
   int size = length * sizeof(PerClass);
