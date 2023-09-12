@@ -8,13 +8,13 @@ main:
 
 simple -> none:
   x := 2.2342342
-  print-objects
+  print-objects --gc
 
 // We can't see the result, so we have to check visually the output of this
 // test.  The second histogram should not have any more objects than the first.
 check-gc-is-caused -> none:
   cause-floating-garbage
-  print-objects
+  print-objects --gc
 
 cause-floating-garbage:
   10.repeat:
