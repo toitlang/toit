@@ -102,7 +102,8 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
     finally: | is-exception exception |
       // If we're not returning a network resource to the client, we
       // must take care to decrement the usage count correctly.
-      if is-exception: state_.down
+      if is-exception:
+        critical-do: state_.down
 
   establish client/int config/Map? -> List:
     if not config: config = {:}
@@ -137,7 +138,8 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
     finally: | is-exception exception |
       // If we're not returning a network resource to the client, we
       // must take care to decrement the usage count correctly.
-      if is-exception: state_.down
+      if is-exception:
+        critical-do: state_.down
 
   address resource/NetworkResource -> ByteArray:
     return (state_.module as WifiModule).address.to-byte-array
@@ -222,14 +224,19 @@ class WifiModule implements NetworkModule:
     if not resource-group_:
       return
 
-    if wifi-events_:
-      wifi-events_.dispose
-      wifi-events_ = null
-    if ip-events_:
-      ip-events_.dispose
-      ip-events_ = null
+    // If we're disconnecting because of cancelation, we have
+    // to make sure we still clean up. Logging and disposing
+    // are (potentially) monitor operations, so we have to be
+    // extra careful around those.
+    critical-do:
+      logger_.debug "closing"
+      if wifi-events_:
+        wifi-events_.dispose
+        wifi-events_ = null
+      if ip-events_:
+        ip-events_.dispose
+        ip-events_ = null
 
-    logger_.debug "closing"
     wifi-close_ resource-group_
     resource-group_ = null
     address_ = null
