@@ -154,16 +154,42 @@ class WifiResourceGroup : public ResourceGroup {
   }
 
   ~WifiResourceGroup() {
+#if CONFIG_WPA_DEBUG_PRINT
+    printf("[wifi] ~WifiResourceGroup()\n");
+    printf("[wifi] esp_wifi_deinit()\n");
+#endif
     esp_err_t err = esp_wifi_deinit();
+#if CONFIG_WPA_DEBUG_PRINT
+    printf("[wifi] esp_wifi_deinit() -> done\n");
+#endif
     if (err == ESP_ERR_WIFI_NOT_STOPPED) {
+#if CONFIG_WPA_DEBUG_PRINT
+      printf("[wifi] esp_wifi_stop()\n");
+#endif
       FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
+#if CONFIG_WPA_DEBUG_PRINT
+      printf("[wifi] esp_wifi_stop() -> done\n");
+      printf("[wifi] esp_wifi_deinit()\n");
+#endif
       FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
+#if CONFIG_WPA_DEBUG_PRINT
+      printf("[wifi] esp_wifi_deinit() -> done\n");
+#endif
     } else {
       FATAL_IF_NOT_ESP_OK(err);
     }
 
+#if CONFIG_WPA_DEBUG_PRINT
+    printf("[wifi] esp_netif_destroy_default_wifi()\n");
+#endif
     esp_netif_destroy_default_wifi(netif_);
+#if CONFIG_WPA_DEBUG_PRINT
+    printf("[wifi] esp_netif_destroy_default_wifi() -> done\n");
+#endif
     wifi_pool.put(id_);
+#if CONFIG_WPA_DEBUG_PRINT
+    printf("[wifi] ~WifiResourceGroup() -> done\n");
+#endif
   }
 
   uint32_t on_event(Resource* resource, word data, uint32_t state) override;
