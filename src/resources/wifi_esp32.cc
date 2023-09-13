@@ -398,6 +398,13 @@ uint32 WifiResourceGroup::on_event_ip(Resource* resource, word data, uint32 stat
       break;
     }
 
+    case IP_EVENT_ETH_GOT_IP:
+    case IP_EVENT_ETH_LOST_IP:
+    case IP_EVENT_PPP_GOT_IP:
+    case IP_EVENT_PPP_LOST_IP:
+      // Ignore ethernet and PPP events.
+      break;
+
     default: {
       printf("[wifi] unhandled IP event: %" PRId32 "\n", system_event->id);
       break;
