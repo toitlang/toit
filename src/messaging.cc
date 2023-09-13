@@ -660,11 +660,8 @@ bool MessageDecoder::decode_byte_array_external(void** data, int* length) {
     return true;
   } else if (tag == TAG_BYTE_ARRAY_INLINE) {
     int encoded_length = *length = read_cardinal();
-    if (encoded_length == 0) {
-      *data = null;
-      return true;
-    }
-    void* copy = malloc(encoded_length);
+    int malloc_length = encoded_length == 0 ? 1 : encoded_length;
+    void* copy = malloc(malloc_length);
     if (copy == null) return mark_allocation_failed();
     memcpy(copy, &buffer_[cursor_], encoded_length);
     *data = copy;
