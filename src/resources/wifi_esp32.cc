@@ -320,7 +320,12 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
 
     case WIFI_EVENT_STA_START:
       events->set_state(WifiEvents::STARTED);
+      // If connecting fails here, we do not want to retry
+      // because something is seriously wrong. We let the
+      // higher level code know that we're disconnected and
+      // clean up from there.
       if (esp_wifi_connect() != ESP_OK) {
+        reconnects_remaining_ = 0;
         state |= WIFI_DISCONNECTED;
       }
       break;
