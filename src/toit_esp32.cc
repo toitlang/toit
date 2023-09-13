@@ -90,6 +90,8 @@ const Program* setup_program(bool supports_ota) {
   return boot.program;
 }
 
+void create_and_start_external_message_handlers(VM* vm);
+
 static void start() {
   RtcMemory::set_up();
   FlashRegistry::set_up();
@@ -113,6 +115,7 @@ static void start() {
   { VM vm;
     vm.load_platform_event_sources();
     int group_id = vm.scheduler()->next_group_id();
+    create_and_start_external_message_handlers(&vm);
     exit_state = vm.scheduler()->run_boot_program(const_cast<Program*>(program), group_id);
   }
 

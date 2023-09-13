@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "messaging.h"
+#include "messaging_c.h"
 
 #include "objects.h"
 #include "process.h"
@@ -829,4 +830,95 @@ void ExternalSystemMessageHandler::collect_garbage(bool try_hard) {
   }
 }
 
+namespace {
+
+struct RegisteredHandler {
+  int requested_pid;
+  void* user_context;
+  void (*create_handler)(void* user_context, HandlerContext* handler_context);
+};
+
+struct RegisteredHandlerList {
+  RegisteredHandlerList* next;
+  RegisteredHandler handler;
+};
+
+RegisteredHandlerList* registered_handlers = null;
+
+typedef void (*ReceiverCallback)(void* user_context, int sender, int type, void* data, int length);
+
+class ExternalMessageHandler : public ExternalSystemMessageHandler {
+ public:
+  ExternalMessageHandler(VM* vm,
+                         void* user_context)
+      : ExternalSystemMessageHandler(vm)
+      , user_context_(user_context) {}
+  virtual ~ExternalMessageHandler() {}
+
+  void on_message(int pid, int type, void* data, int length) override {
+    if (on_message_ == null) return;
+    printf("Calling on-message %p\n", user_context_);
+    on_message_(user_context_, pid, type, data, length);
+  }
+
+  void set_on_message(ReceiverCallback on_message) {
+    on_message_ = on_message;
+  }
+
+ private:
+  void* user_context_;
+  ReceiverCallback on_message_ = null;
+};
+
+}  // anonymous namespace.
+
+void create_and_start_external_message_handlers(VM* vm) {
+  for (RegisteredHandlerList* list = registered_handlers; list != null; list = list->next) {
+    // TODO(florian): use requested pid.
+    ExternalMessageHandler* handler = _new ExternalMessageHandler(vm, list->handler.user_context);
+    if (!handler->start()) {
+      FATAL("[failed to start external message handler]");
+    }
+    list->handler.create_handler(list->handler.user_context, reinterpret_cast<HandlerContext*>(handler));
+  }
+  // Free the list.
+  while (registered_handlers != null) {
+    RegisteredHandlerList* next = registered_handlers->next;
+    free(registered_handlers);
+    registered_handlers = next;
+  }
+}
+
 }  // namespace toit
+
+extern "C" {
+
+void toit_register_external_message_handler(void* user_context,
+                                            int requested_pid,
+                                            void (*create_handler)(void* user_context, HandlerContext* handler_context)) {
+  auto old = toit::registered_handlers;
+  auto list = reinterpret_cast<toit::RegisteredHandlerList*>(malloc(sizeof(toit::RegisteredHandlerList)));
+  if (list == null) return;
+  list->next = old;
+  list->handler.requested_pid = requested_pid;
+  list->handler.user_context = user_context;
+  list->handler.create_handler = create_handler;
+  toit::registered_handlers = list;
+}
+
+void toit_set_callback(HandlerContext* handler_context, toit::ReceiverCallback on_message) {
+  auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(handler_context);
+  handler->set_on_message(on_message);
+}
+
+bool toit_send_message(HandlerContext* handler_context, int target_pid, int type, void* data, int length, bool free_on_failure) {
+  auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(handler_context);
+  return handler->send(target_pid, type, data, length, free_on_failure);
+}
+
+void toit_release_handler(HandlerContext* handler_context) {
+  auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(handler_context);
+  delete handler;
+}
+
+} // Extern C.
