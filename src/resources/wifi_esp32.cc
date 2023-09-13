@@ -271,12 +271,13 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
   WifiEvents* events = static_cast<WifiEvents*>(resource);
 
   switch (system_event->id) {
-    case WIFI_EVENT_STA_CONNECTED:
+    case WIFI_EVENT_STA_CONNECTED: {
       events->set_state(WifiEvents::CONNECTED);
       reconnects_remaining_ = 0;
       state |= WIFI_CONNECTED;
       cache_wifi_channel();
       break;
+    }
 
     case WIFI_EVENT_STA_DISCONNECTED: {
       events->set_state(WifiEvents::STARTED);
@@ -318,7 +319,7 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
       break;
     }
 
-    case WIFI_EVENT_STA_START:
+    case WIFI_EVENT_STA_START: {
       events->set_state(WifiEvents::STARTED);
       // If connecting fails here, we do not want to retry
       // because something is seriously wrong. We let the
@@ -329,16 +330,19 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
         state |= WIFI_DISCONNECTED;
       }
       break;
+    }
 
-    case WIFI_EVENT_STA_STOP:
+    case WIFI_EVENT_STA_STOP: {
       events->set_state(WifiEvents::STOPPED);
       break;
+    }
 
-    case WIFI_EVENT_SCAN_DONE:
+    case WIFI_EVENT_SCAN_DONE: {
       state |= WIFI_SCAN_DONE;
       break;
+    }
 
-    case WIFI_EVENT_STA_BEACON_TIMEOUT:
+    case WIFI_EVENT_STA_BEACON_TIMEOUT: {
       // The beacon timeout mechanism is used by ESP32 station to detect whether the AP
       // is alive or not. If the station continuously loses 60 beacons of the connected
       // AP, the beacon timeout happens.
@@ -347,28 +351,29 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
       // still no probe response or beacon is received from AP, the station disconnects
       // from the AP and raises the WIFI_EVENT_STA_DISCONNECTED event.
       break;
+    }
 
-    case WIFI_EVENT_AP_START:
+    case WIFI_EVENT_AP_START: {
       events->set_state(WifiEvents::STARTED);
       state |= WIFI_CONNECTED;
       break;
+    }
 
-    case WIFI_EVENT_AP_STOP:
+    case WIFI_EVENT_AP_STOP: {
       events->set_state(WifiEvents::STOPPED);
       state |= WIFI_DISCONNECTED;
       break;
+    }
 
     case WIFI_EVENT_AP_STACONNECTED:
+    case WIFI_EVENT_AP_STADISCONNECTED: {
       break;
+    }
 
-    case WIFI_EVENT_AP_STADISCONNECTED:
+    default: {
+      printf("[wifi] unhandled Wi-Fi event: %" PRId32 "\n", system_event->id);
       break;
-
-    default:
-      printf(
-          "unhandled Wi-Fi event: %" PRId32 "\n",
-          system_event->id
-      );
+    }
   }
 
   return state;
@@ -393,11 +398,10 @@ uint32 WifiResourceGroup::on_event_ip(Resource* resource, word data, uint32 stat
       break;
     }
 
-    default:
-      printf(
-          "unhandled IP event: %" PRId32 "\n",
-          system_event->id
-      );
+    default: {
+      printf("[wifi] unhandled IP event: %" PRId32 "\n", system_event->id);
+      break;
+    }
   }
 
   return state;
