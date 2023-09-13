@@ -14,9 +14,13 @@ TOIT-UDP-WRITE_   ::= 1 << 1
 TOIT-UDP-ERROR_   ::= 1 << 2
 TOIT-UDP-NEEDS-GC_ ::= 1 << 3
 
-TOIT-UDP-OPTION-PORT_      ::= 1
-TOIT-UDP-OPTION-ADDRESS_   ::= 2
-TOIT-UDP-OPTION-BROADCAST_ ::= 3
+TOIT-UDP-OPTION-PORT_                ::= 1
+TOIT-UDP-OPTION-ADDRESS_             ::= 2
+TOIT-UDP-OPTION-BROADCAST_           ::= 3
+TOIT-UDP-OPTION-MULTICAST-MEMBERSHIP ::= 4
+TOIT-UDP-OPTION-MULTICAST-LOOPBACK   ::= 5
+TOIT-UDP-OPTION-MULTICAST-TTL        ::= 6
+
 
 class Socket implements net.Socket:
   state_/ResourceState_? := ?
@@ -83,6 +87,18 @@ class Socket implements net.Socket:
   broadcast= value/bool:
     state := ensure-state_
     return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-BROADCAST_ value
+
+  multicast-add-membership address/net.IpAddress:
+    state := ensure-state_
+    return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-MEMBERSHIP address.raw
+
+  multicast-loopback -> bool:
+    state := ensure-state_
+    return udp-get-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-LOOPBACK
+
+  multicast-loopback= value/bool:
+    state := ensure-state_
+    return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-LOOPBACK value
 
   receive_ output:
     while true:

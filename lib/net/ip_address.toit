@@ -23,6 +23,8 @@ class IpAddress:
       i++
     if i != 4: throw "BAD_FORMAT"
 
+  is-ipv6 -> bool: return raw.size == 16
+
   operator == other:
     other-raw := other.raw
     if other-raw.size != raw.size: return false
