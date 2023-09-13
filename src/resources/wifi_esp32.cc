@@ -97,16 +97,16 @@ class WifiResourceGroup : public ResourceGroup {
     err = esp_wifi_set_config(WIFI_IF_STA, &config);
     if (err != ESP_OK) return err;
 
-    err = esp_wifi_start();
-    if (err != ESP_OK) return err;
-
     // When connecting to Android mobile hotspot APs, we
     // quite often get WIFI_REASON_AUTH_FAIL followed by
     // WIFI_REASON_CONNECTION_FAIL. The next connect still
     // has a good chance of succeeding, so we allow two
     // reconnect attempts.
     reconnects_remaining_ = 2;
-    return esp_wifi_connect();
+
+    // Request to start the WiFi stack. We will try to connect to
+    // the network when we get the WIFI_EVENT_STA_START callback.
+    return esp_wifi_start();
   }
 
   esp_err_t establish(const char* ssid, const char* password, bool broadcast, int channel) {
@@ -156,36 +156,17 @@ class WifiResourceGroup : public ResourceGroup {
   ~WifiResourceGroup() {
 #if CONFIG_WPA_DEBUG_PRINT
     printf("[wifi] ~WifiResourceGroup()\n");
+#endif
+
+#if CONFIG_WPA_DEBUG_PRINT
     printf("[wifi] esp_wifi_deinit()\n");
 #endif
     esp_err_t err = esp_wifi_deinit();
 #if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] esp_wifi_deinit() -> done\n");
+    printf("[wifi] esp_wifi_deinit() -> done: %d\n", err);
 #endif
-    if (err == ESP_ERR_WIFI_NOT_STOPPED) {
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[wifi] esp_wifi_stop()\n");
-#endif
-      FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[wifi] esp_wifi_stop() -> done\n");
-      printf("[wifi] esp_wifi_deinit()\n");
-#endif
-      FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[wifi] esp_wifi_deinit() -> done\n");
-#endif
-    } else {
-      FATAL_IF_NOT_ESP_OK(err);
-    }
-
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] esp_netif_destroy_default_wifi()\n");
-#endif
+    FATAL_IF_NOT_ESP_OK(err);
     esp_netif_destroy_default_wifi(netif_);
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] esp_netif_destroy_default_wifi() -> done\n");
-#endif
     wifi_pool.put(id_);
 #if CONFIG_WPA_DEBUG_PRINT
     printf("[wifi] ~WifiResourceGroup() -> done\n");
@@ -219,21 +200,63 @@ class WifiResourceGroup : public ResourceGroup {
 
 class WifiEvents : public SystemResource {
  public:
+  enum State {
+    STOPPED,
+    STARTED,
+    CONNECTED
+  };
+
   TAG(WifiEvents);
   explicit WifiEvents(WifiResourceGroup* group)
       : SystemResource(group, WIFI_EVENT)
-      , disconnect_reason_(WIFI_REASON_UNSPECIFIED) {}
+      , disconnect_reason_(WIFI_REASON_UNSPECIFIED)
+      , state_(STOPPED) {}
 
   ~WifiEvents() {
-    FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
+#if CONFIG_WPA_DEBUG_PRINT
+    printf("[wifi] ~WifiEvents()\n");
+#endif
+    State state = this->state();
+    if (state >= CONNECTED) {
+#if CONFIG_WPA_DEBUG_PRINT
+      printf("[wifi] esp_wifi_disconnect\n");
+#endif
+      esp_err_t err = esp_wifi_disconnect();
+#if CONFIG_WPA_DEBUG_PRINT
+      printf("[wifi] esp_wifi_disconnect() -> done: %d\n", err);
+#endif
+      FATAL_IF_NOT_ESP_OK(err);
+    }
+    if (state >= STARTED) {
+#if CONFIG_WPA_DEBUG_PRINT
+      printf("[wifi] esp_wifi_stop()\n");
+#endif
+      esp_err_t err = esp_wifi_stop();
+#if CONFIG_WPA_DEBUG_PRINT
+      printf("[wifi] esp_wifi_stop() -> done: %d\n", err);
+#endif
+      FATAL_IF_NOT_ESP_OK(err);
+    }
+#if CONFIG_WPA_DEBUG_PRINT
+    printf("[wifi] ~WifiEvents() -> done\n");
+#endif
   }
 
   uint8 disconnect_reason() const { return disconnect_reason_; }
   void set_disconnect_reason(uint8 reason) { disconnect_reason_ = reason; }
 
+  State state() const { return state_; }
+  void set_state(State state) {
+#if CONFIG_WPA_DEBUG_PRINT
+    printf("[wifi] state updated: %d->%d\n", state_, state);
+#endif
+    state_ = state;
+  }
+
  private:
   friend class WifiResourceGroup;
   uint8 disconnect_reason_;
+  State state_;
 };
 
 class WifiIpEvents : public SystemResource {
@@ -245,17 +268,20 @@ class WifiIpEvents : public SystemResource {
 
 uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 state) {
   SystemEvent* system_event = reinterpret_cast<SystemEvent*>(data);
+  WifiEvents* events = static_cast<WifiEvents*>(resource);
 
   switch (system_event->id) {
     case WIFI_EVENT_STA_CONNECTED:
+      events->set_state(WifiEvents::CONNECTED);
       reconnects_remaining_ = 0;
       state |= WIFI_CONNECTED;
       cache_wifi_channel();
       break;
 
     case WIFI_EVENT_STA_DISCONNECTED: {
+      events->set_state(WifiEvents::STARTED);
       uint8 reason = reinterpret_cast<wifi_event_sta_disconnected_t*>(system_event->event_data)->reason;
-      static_cast<WifiEvents*>(resource)->set_disconnect_reason(reason);
+      events->set_disconnect_reason(reason);
 
       bool reconnect = false;
       uint32 outcome = WIFI_DISCONNECTED;
@@ -293,13 +319,19 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
     }
 
     case WIFI_EVENT_STA_START:
-    case WIFI_EVENT_STA_STOP:
+      events->set_state(WifiEvents::STARTED);
+      if (esp_wifi_connect() != ESP_OK) {
+        state |= WIFI_DISCONNECTED;
+      }
       break;
 
-    case WIFI_EVENT_SCAN_DONE: {
+    case WIFI_EVENT_STA_STOP:
+      events->set_state(WifiEvents::STOPPED);
+      break;
+
+    case WIFI_EVENT_SCAN_DONE:
       state |= WIFI_SCAN_DONE;
       break;
-    }
 
     case WIFI_EVENT_STA_BEACON_TIMEOUT:
       // The beacon timeout mechanism is used by ESP32 station to detect whether the AP
@@ -312,10 +344,12 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
       break;
 
     case WIFI_EVENT_AP_START:
+      events->set_state(WifiEvents::STARTED);
       state |= WIFI_CONNECTED;
       break;
 
     case WIFI_EVENT_AP_STOP:
+      events->set_state(WifiEvents::STOPPED);
       state |= WIFI_DISCONNECTED;
       break;
 
