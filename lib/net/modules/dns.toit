@@ -273,8 +273,7 @@ class DnsClient:
     if net.IpAddress.is-valid name
         --accept-ipv4 = record-types.contains RECORD-A
         --accept-ipv6 = record-types.contains RECORD-AAAA:
-      easy-result := net.IpAddress.parse name
-      if easy-result: return [easy-result]
+      return [net.IpAddress.parse name]
 
     record-types.do: | record-type |
       HOSTS_.get name --if-present=: | text |
