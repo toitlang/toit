@@ -59,6 +59,7 @@ ipv6-dns-test:
   // A domain that has no IPv6 address, but that's the only thing we will
   // accept.
   error := catch: dns-lookup "toitlang.org" --accept-ipv6 --no-accept-ipv4
+  print "IPv6: $error"
   expect
       error is DnsException
 
@@ -82,7 +83,7 @@ cache-test:
 
 fail-test:
   error := catch: dns-lookup "does-not-resolve.example.com"
-  print error
+  print "      $error"
   error as DnsException
   expect error is DnsException
   exception := error as DnsException
@@ -119,6 +120,8 @@ cname-test:
   // Normally CNAME results are just consumed internally in our DNS code, but
   // we can explicitly ask for them.
   cname := client.get --record-type=RECORD-CNAME "www.yahoo.com"
+  expect
+      cname.size > 0
   cname.do: | name |
     expect
         name != "www.yahoo.com"
