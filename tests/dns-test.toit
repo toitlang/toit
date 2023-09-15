@@ -14,6 +14,8 @@ main:
   cache-test
   fail-test
   long-test
+  txt-test
+  cname-test
   parse-numeric-test
   task:: fallback-test
   task:: fallback-test-2
@@ -39,11 +41,11 @@ ipv6-dns-test:
   expect
       ipv6.stringify.starts-with "2a00:8a60:450:0:"
 
-  ipv6 = dns-lookup "ipv6.google.com" --no-accept-ipv4 --accept-ipv6
+  ipv6 = dns-lookup "ipv6.google.com" --accept-ipv4 --accept-ipv6
   print ipv6
   expect (ipv6.stringify.index-of ":") != -1
 
-  ipv6 = dns-lookup "ipv6.google.com" --accept-ipv4 --accept-ipv6
+  ipv6 = dns-lookup "ipv6.google.com" --no-accept-ipv4 --accept-ipv6
   print ipv6
   expect (ipv6.stringify.index-of ":") != -1
 
@@ -53,6 +55,12 @@ ipv6-dns-test:
 
   either := dns-lookup "www.google.com" --accept-ipv6
   print either
+
+  // A domain that has no IPv6 address, but that's the only thing we will
+  // accept.
+  error := catch: dns-lookup "toitlang.org" --accept-ipv6 --no-accept-ipv4
+  expect
+      error is DnsException
 
 cache-test:
   // Prime cache.
@@ -89,6 +97,33 @@ long-test:
       dns-lookup "llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch.co.uk"
   print
       dns-lookup "llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogochuchaf.com"
+
+txt-test:
+  client := DnsClient [
+      "8.8.8.8",    // Google DNS.
+      ]
+  texts := client.get --record-type=RECORD-TXT "toit.io"
+  expect
+      texts.contains "OSSRH-61647"
+  ptr := client.get --record-type=RECORD-PTR "toit.io"
+  expect
+      ptr.size == 0
+  srv := client.get --record-type=RECORD-SRV "toit.io"
+  expect
+      srv.size == 0
+
+cname-test:
+  client := DnsClient [
+      "8.8.8.8",    // Google DNS.
+      ]
+  // Normally CNAME results are just consumed internally in our DNS code, but
+  // we can explicitly ask for them.
+  cname := client.get --record-type=RECORD-CNAME "www.yahoo.com"
+  cname.do: | name |
+    expect
+        name != "www.yahoo.com"
+    expect
+        name.ends-with ".yahoo.com"
 
 parse-numeric-test:
   valid-ipv4 "0.0.0.0"
