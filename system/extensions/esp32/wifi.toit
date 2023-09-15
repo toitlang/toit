@@ -145,7 +145,7 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
     return (state_.module as WifiModule).address.to-byte-array
 
   resolve resource/ServiceResource host/string -> List:
-    return [(dns-module.dns-lookup host).raw]
+    return (dns-module.dns-lookup-ips host).map: it.raw
 
   ap-info resource/NetworkResource -> List:
     return (state_.module as WifiModule).ap-info

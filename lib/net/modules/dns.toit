@@ -26,7 +26,28 @@ class DnsException:
       return "DNS lookup exception $text"
 
 /**
-Look up a domain name and return an A or AAAA record.
+Look up a domain name and return a single net.IpAddress.
+
+See $dns-lookup-ips.
+*/
+dns-lookup -> net.IpAddress
+    host/string
+    --server/string?=null
+    --client/DnsClient?=null
+    --timeout/Duration=DNS-DEFAULT-TIMEOUT
+    --accept-ipv4/bool=true
+    --accept-ipv6/bool=false:
+
+  return select-random-ip_ host
+      dns-lookup-ips host
+          --server=server
+          --client=client
+          --timeout=timeout
+          --accept-ipv4=accept-ipv4
+          --accept-ipv6=accept-ipv6
+
+/**
+Look up a domain name and return a list of net.IpAddress records.
 
 If given a numeric address like 127.0.0.1 it merely parses
   the numbers without a network round trip.
@@ -39,7 +60,7 @@ If there are multiple servers then they are tried in rotation until one
   the next one.  This is in line with the way that Linux handles multiple
   servers on the same lookup request.
 */
-dns-lookup -> net.IpAddress
+dns-lookup-ips -> List
     host/string
     --server/string?=null
     --client/DnsClient?=null
@@ -53,7 +74,10 @@ dns-lookup -> net.IpAddress
     else:
       client = AUTO-CREATED-CLIENTS_.get server --init=:
         DnsClient [server]
-  return client.get host --accept-ipv4=accept-ipv4 --accept-ipv6=accept-ipv6 --timeout=timeout
+  types := {}
+  if accept-ipv4: types.add RECORD-A
+  if accept-ipv6: types.add RECORD-AAAA
+  return client.get_ host --record-types=types --timeout=timeout
 
 DEFAULT-CLIENT ::= DnsClient [
     "8.8.8.8",  // Google.
@@ -261,12 +285,10 @@ class DnsClient:
     types := {}
     if accept-ipv4: types.add RECORD-A
     if accept-ipv6: types.add RECORD-AAAA
-    list := get_ name --record-types=types --timeout=timeout
-    if list and list.size > 0:
-      return list[random list.size]  // Randomize which of the IP's we return.
-    throw (DnsException "No name record found" --name=name)
+    return select-random-ip_ name
+        get_ name --record-types=types --timeout=timeout
 
-  get_ name -> List?
+  get_ name -> List
       --record-types/Set
       --timeout/Duration=DNS-DEFAULT-TIMEOUT:
 
@@ -515,6 +537,11 @@ create-query_ name/string query-id/int record-type/int -> ByteArray:
   position += 4
   assert: position == query.size
   return query
+
+select-random-ip_ name/string list/List -> net.IpAddress:
+  if list and list.size > 0:
+    return list[random list.size]  // Randomize which of the IP's we return.
+  throw (DnsException "No name record found" --name=name)
 
 is-server-reachability-error_ error -> bool:
   return error == DEADLINE-EXCEEDED-ERROR or error is string and error.starts-with "A socket operation was attempted to an unreachable network"
