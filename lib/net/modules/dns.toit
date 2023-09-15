@@ -342,14 +342,11 @@ class DnsClient:
     return 'a' <= c <= 'z' or 'A' <= c <= 'Z'
 
   find-in-cache_ name type/int -> List?:
-    if cache_.contains type:
-      map := cache_[type]
-      if map.contains name:
-        entry := map[name]
-        if entry.valid:
-          return entry.value
-        else:
-          map.remove name
+    map := cache_.get type --if-absent=: return null
+    entry := map.get name --if-absent=: return null
+    if entry.valid:
+      return entry.value
+    map.remove name
     return null
 
   // Returns null if the packet was not relevant (wrong ID).
@@ -408,18 +405,18 @@ class DnsClient:
       position += 2
       if type == overall-type and case-compare_ r-name q-name:
         if type == RECORD-A or type == RECORD-AAAA:
-          len := type == RECORD-A ? 4 : 16
-          if rd-length != len: throw (DnsException "Unexpected IP address length $rd-length")
+          length := type == RECORD-A ? 4 : 16
+          if rd-length != length: throw (DnsException "Unexpected IP address length $rd-length")
           result.add
               net.IpAddress
-                  response.copy position position + len
+                  response.copy position position + length
         else if type == RECORD-CNAME or type == RECORD-PTR:
           result.add
               decode-name response position: null
         else if type == RECORD-TXT:
-          if response[position] != rd-length - 1: throw "WTF"
-          len := min (rd-length - 1) response[position]
-          result.add response[position + 1..position + 1 + len].to-string
+          if response[position] != rd-length - 1: throw (DnsException "Unexpected TXT record length")
+          length := min (rd-length - 1) response[position]
+          result.add response[position + 1..position + 1 + length].to-string
         else if type == RECORD-SRV:
           priority := BIG-ENDIAN.uint16 response position
           weight := BIG-ENDIAN.uint16 response (position + 2)
@@ -434,13 +431,32 @@ class DnsClient:
         // right A or AAAA record.
         q-name = decode-name response position: null
       position += rd-length
-    if result.size > 0:
-      if min-ttl > 0:
-        trim-cache_ cache_ overall-type
-        type-cache := cache_.get overall-type --init=: {:}
-        type-cache[query.name] = CacheEntry_ result min-ttl
-      return result
-    return []
+    if result.size > 0 and min-ttl > 0:
+      trim-cache_ overall-type
+      type-cache := cache_.get overall-type --init=: {:}
+      type-cache[query.name] = CacheEntry_ result min-ttl
+    return result
+
+  /// Limits the size of the cache to avoid using too much memory.
+  trim-cache_ type/int -> none:
+    cache := cache_.get type --if-absent=: return
+    if cache.size < MAX-CACHE-SIZE_: return
+
+    // Cache too big.  Start by removing entries where the TTL has
+    // expired.
+    now := Time.monotonic-us
+    cache.filter --in-place: | key value |
+      value.end > now
+
+    // Set the limit a bit lower now - we want to remove at least one third of
+    // the entries when we trim the cache since it's an expensive operation.
+    if cache.size < MAX-TRIMMED-CACHE-SIZE_: return
+
+    // Remove every second entry.
+    toggle := true
+    cache.filter --in-place: | key value |
+      toggle = not toggle
+      toggle
 
 class SrvRecord:
   name/string
@@ -475,27 +491,6 @@ parts_ packet/ByteArray position/int parts/List [position-block] -> none:
       position-block.call position + 2
       return
   position-block.call position + 1
-
-/// Limits the size of the cache to avoid using too much memory.
-trim-cache_ map/Map type/int -> none:
-  cache := map.get type --if-absent=: return
-  if cache.size < MAX-CACHE-SIZE_: return
-
-  // Cache too big.  Start by removing entries where the TTL has
-  // expired.
-  now := Time.monotonic-us
-  cache.filter --in-place: | key value |
-    value.end > now
-
-  // Set the limit a bit lower now - we want to remove at least one third of
-  // the entries when we trim the cache since it's an expensive operation.
-  if cache.size < MAX-TRIMMED-CACHE-SIZE_: return
-
-  // Remove every second entry.
-  toggle := true
-  cache.filter --in-place: | key value |
-    toggle = not toggle
-    toggle
 
 class CacheEntry_:
   end / int                // Time in µs, compatible with Time.monotonic-us.
