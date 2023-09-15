@@ -28,7 +28,7 @@ class DnsException:
 /**
 Look up a domain name and return a single net.IpAddress.
 
-See $dns-lookup-ips.
+See $dns-lookup-multi.
 */
 dns-lookup -> net.IpAddress
     host/string
@@ -39,7 +39,7 @@ dns-lookup -> net.IpAddress
     --accept-ipv6/bool=false:
 
   return select-random-ip_ host
-      dns-lookup-ips host
+      dns-lookup-multi host
           --server=server
           --client=client
           --timeout=timeout
@@ -60,7 +60,7 @@ If there are multiple servers then they are tried in rotation until one
   the next one.  This is in line with the way that Linux handles multiple
   servers on the same lookup request.
 */
-dns-lookup-ips -> List
+dns-lookup-multi -> List
     host/string
     --server/string?=null
     --client/DnsClient?=null

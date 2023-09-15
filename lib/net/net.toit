@@ -85,7 +85,7 @@ class Client extends NetworkResourceProxy implements Interface:
   resolve host/string -> List /* of IpAddress */:
     if is-closed: throw "Network closed"
     if (proxy-mask & NetworkService.PROXY-RESOLVE) != 0: return super host
-    return dns-module.dns-lookup-ips host
+    return dns-module.dns-lookup-multi host
 
   quarantine -> none:
     if (proxy-mask & NetworkService.PROXY-QUARANTINE) == 0: return
