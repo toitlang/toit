@@ -153,6 +153,7 @@ RECORD-PTR     ::= 12
 RECORD-TXT     ::= 16
 RECORD-SRV     ::= 33
 RECORD-AAAA    ::= 28  // IPv6 DNS lookup.
+RECORD-ANY     ::= 255
 
 QTYPE-NAMES ::= {
     1: "A",
@@ -161,6 +162,7 @@ QTYPE-NAMES ::= {
     16: "TXT",
     28: "AAAA",
     33: "SRV",
+    255: "ANY",
 }
 
 ERROR-NONE            ::= 0
@@ -193,7 +195,7 @@ class DnsQuery_:
     // two different query packets, for IPv4 and IPv6 and send them at the same
     // time.
     record-types.do: | type |
-      query-packets[type] = create-query_ name ((base-id + id-offset++) & 0xffff) type
+      query-packets[type] = create-query name ((base-id + id-offset++) & 0xffff) type
 
 /**
 A DnsClient contains a list of DNS servers in the form of IP addresses in
@@ -356,7 +358,7 @@ class DnsClient:
   Decodes a DNS packet.
   The $error-name is only used for error messages.
   */
-  static decode-packet packet/ByteArray --error-name/string?=null -> DecodedPacket:
+  static decode-packet_ packet/ByteArray --error-name/string?=null -> DecodedPacket:
     response := packet
     received-id    := BIG-ENDIAN.uint16 response 0
     status-bits    := BIG-ENDIAN.uint16 response 2
@@ -369,92 +371,70 @@ class DnsClient:
       detail := ERROR-NAMES.get error --if-absent=: "error code $error"
       throw (DnsException "Server responded: $detail" --name=error-name)
     position := 12
-    print "$queries queries, $response-count responses"
-    if queries > 1: throw (DnsException "Unexpected number of queries in response $(queries)")
 
-    q-type/int? := null
-    relevant-name/string? := null
-    q-name/string? := null
-    unicast-ok/bool? := null
+    result := DecodedPacket --id=received-id --status-bits=status-bits
 
     queries.repeat:
-      q-name = decode-name response position: position = it
-      relevant-name = q-name
-
-      q-type = BIG-ENDIAN.uint16 response position
+      q-name := decode-name response position: position = it
+      q-type := BIG-ENDIAN.uint16 response position
       q-class := BIG-ENDIAN.uint16 response position + 2
       position += 4
-      unicast-ok = q-class & 0x8000 != 0
+      unicast-ok := q-class & 0x8000 != 0
       if q-class & 0x7fff != CLASS-INTERNET: protocol-error_  // Unexpected response class.
 
-    result := []
-    min-ttl := int.MAX
+      result.queries-or-records.add
+          Query q-name q-type unicast-ok
+
     response-count.repeat:
       r-name := decode-name response position: position = it
       clas := BIG-ENDIAN.uint16 response (position + 2)
       type := BIG-ENDIAN.uint16 response position
-      min-ttl = min min-ttl (BIG-ENDIAN.int32 response position)
-      position += 8
+      ttl  := BIG-ENDIAN.int32 response (position + 4)
+      rd-length := BIG-ENDIAN.uint16 response (position + 8)
+      position += 10
+
       flush := clas & 0x8000 != 0
       if clas & 0x7fff != CLASS-INTERNET: protocol-error_  // Unexpected response class.
 
-      rd-length := BIG-ENDIAN.uint16 response position
-      position += 2
-
-      if relevant-name:
-        if not case-compare_ r-name relevant-name:
-          print "Skipping irrelevant name $r-name (relevant is $relevant-name)"
-          position += rd-length
-          continue.repeat
-      else:
-        relevant-name = r-name
-        q-name = r-name
-
-      if not q-type or type == q-type:
-        q-type = type
-        if type == RECORD-A or type == RECORD-AAAA:
-          length := type == RECORD-A ? 4 : 16
-          if rd-length != length: protocol-error_  // Unexpected IP address length.
-          result.add
-              net.IpAddress
-                  response.copy position position + length
-        else if type == RECORD-CNAME or type == RECORD-PTR:
-          result.add
-              decode-name response position: null
-        else if type == RECORD-TXT:
-          if response[position] != rd-length - 1: protocol-error_  // Unexpected TXT record length.
-          length := min (rd-length - 1) response[position]
-          result.add response[position + 1..position + 1 + length].to-string
-        else if type == RECORD-SRV:
-          priority := BIG-ENDIAN.uint16 response position
-          weight := BIG-ENDIAN.uint16 response (position + 2)
-          port := BIG-ENDIAN.uint16 response (position + 4)
-          length := response[position + 6]
-          name := response[position + 7..position + 7 + length].to-string
-          result.add
-              SrvRecord name priority weight port
-        else:
-          print "Ignoring unknown record type $type"
-      else if type == RECORD-CNAME:
-        relevant-name = decode-name response position: null
+      if type == RECORD-A or type == RECORD-AAAA:
+        length := type == RECORD-A ? 4 : 16
+        if rd-length != length: protocol-error_  // Unexpected IP address length.
+        result.queries-or-records.add
+            ARecord r-name type ttl flush
+                net.IpAddress
+                    response.copy position position + length
+      else if type == RECORD-CNAME or type == RECORD-PTR or type == RECORD-CNAME:
+        result.queries-or-records.add
+            StringRecord r-name type ttl flush
+                decode-name response position: null
+      else if type == RECORD-TXT:
+        length := response[position]
+        if rd-length < length + 1: protocol-error_  // Unexpected TXT length.
+        value := response[position + 1..position + 1 + length].to-string
+        result.queries-or-records.add
+            StringRecord r-name type ttl flush value
+      else if type == RECORD-SRV:
+        priority := BIG-ENDIAN.uint16 response position
+        weight := BIG-ENDIAN.uint16 response (position + 2)
+        port := BIG-ENDIAN.uint16 response (position + 4)
+        length := response[position + 6]
+        value := response[position + 7..position + 7 + length].to-string
+        result.queries-or-records.add
+            SrvRecord r-name type ttl flush value priority weight port
       position += rd-length
 
-    if not q-type or not q-name: throw (DnsException "No data in packet")
-
-    return DecodedPacket
-        --id=received-id
-        --name=q-name
-        --type=q-type
-        --answers=result
-        --ttl=min-ttl
-        --status-bits=status-bits
+    return result
 
   static protocol-error_ -> none:
     throw (DnsException "DNS protocol error")
     unreachable
 
+  /**
+  This is just for regular DNS A and AAAA responses, it doesn't queries and the
+    more funky record types needed for mDNS.
+  */
   decode-and-cache-response_ query/DnsQuery_ response/ByteArray -> List?:
-    decoded := decode-packet response --error-name=query.name
+    decoded := decode-packet_ response --error-name=query.name
 
     // Check for expected response, but mask out the authoritative bit
     // and the recursion available bit, which we do not care about.
@@ -467,25 +447,50 @@ class DnsClient:
       if decoded.id == id:
         expected-type = type
       id = (id + 1) & 0xffff
-    if expected-type == null: return null  // Id did not match.
+    list := decoded.queries-or-records
+    // Id did not match or otherwise useless response.
+    if expected-type == null or list.size == 0 or list[0] is not Query: return null
+    decoded-query/Query := list[0] as Query
 
-    if not case-compare_ decoded.name query.name:
+    if not case-compare_ decoded-query.name query.name:
       // Suspicious that the id matched, but the name didn't.
       // Possible DNS poisoning attack.
       throw (DnsException "Response name mismatch")
 
-    ttl := decoded.ttl
+    // Simplified list of answers for the caller.
+    answers := []
+
+    relevant-name := decoded-query.name
+
+    ttl := int.MAX
+
+    // Since we sent a single query we expect answers that start with a repreat
+    // of that query and then just contain data for that one query.
+    for i := 1; i < list.size; i++:
+      record := list[i] as Record
+      if record.type == expected-type:
+        if record.name != relevant-name: continue
+        if record is StringRecord:
+          answers.add (record as StringRecord).value
+        else if record is ARecord:
+          answers.add (record as ARecord).address
+        else:
+          answers.add (record as SrvRecord)
+        ttl = min ttl record.ttl
+      else if record.type == RECORD-CNAME:
+        relevant-name = (record as StringRecord).value
+
     // We won't cache more than a day, even if the TTL is very high.  (In
     // practice TTLs over one hour are rare.)
     ttl = min ttl (3600 * 24)
     // Ignore negative TTLs.
     ttl = max 0 ttl
 
-    if decoded.answers.size > 0 and ttl > 0:
-      trim-cache cache_ decoded.type
-      type-cache := cache_.get decoded.type --init=: {:}
-      type-cache[query.name] = CacheEntry_ decoded.answers ttl
-    return decoded.answers
+    if answers.size > 0 and ttl > 0:
+      trim-cache cache_ expected-type
+      type-cache := cache_.get expected-type --init=: {:}
+      type-cache[query.name] = CacheEntry_ answers ttl
+    return answers
 
   /// Limits the size of the cache to avoid using too much memory.
   static trim-cache top-cache/Map type/int --max-cache-size/int=MAX-CACHE-SIZE_ -> none:
@@ -511,13 +516,10 @@ class DnsClient:
 
 class DecodedPacket:
   id/int
-  name/string
-  type/int
-  answers/List
-  ttl/int
   status_bits/int
+  queries-or-records/List := []
 
-  constructor --.id --.name --.type --.answers --.ttl --.status-bits:
+  constructor --.id --.status-bits:
     if status-bits & 0x6070 != 0 or opcode > 2:
       DnsClient.protocol-error_  // Unexpected flags in response.
 
@@ -542,13 +544,68 @@ class DecodedPacket:
   opcode -> int:
     return (status-bits & 0x7800) >> 11
 
-class SrvRecord:
+class QueryOrRecord:
   name/string
+  type/int
+
+  constructor .name .type:
+
+class Query extends QueryOrRecord:
+  unicast-ok/bool
+
+  constructor name/string type/int .unicast-ok:
+    super name type
+
+  is-query -> bool:
+    return true
+
+class Record extends QueryOrRecord:
+  ttl/int
+  flush/bool
+
+  constructor name/string type/int .ttl .flush:
+    super name type
+
+  is-query -> bool:
+    return false
+
+class ARecord extends Record:
+  address/net.IpAddress
+
+  constructor name/string type/int ttl/int flush/bool .address:
+    super name type ttl flush
+
+  value-string -> string:
+    return address.stringify
+
+class StringRecord extends Record:
+  value/string
+
+  constructor name/string type/int ttl/int flush/bool .value:
+    super name type ttl flush
+
+  is-cname -> bool:
+    return type == RECORD-CNAME
+
+  is-ptr -> bool:
+    return type == RECORD-PTR
+
+  is-txt -> bool:
+    return type == RECORD-TXT
+
+  value-string -> string:
+    return value
+
+class SrvRecord extends StringRecord:
   priority/int
   weight/int
   port/int
 
-  constructor .name .priority .weight .port:
+  constructor name/string type/int ttl/int flush/bool value/string .priority .weight .port:
+    super name type ttl flush value
+
+  value-string -> string:
+    return "$super prio=$priority weight=$weight port=$port"
 
 /**
 Decodes a name from a DNS (RFC 1035) packet.
@@ -578,7 +635,7 @@ parts_ packet/ByteArray position/int parts/List [position-block] -> none:
 
 class CacheEntry_:
   end / int                // Time in µs, compatible with Time.monotonic-us.
-  value / any
+  value / List
 
   constructor .value ttl/int:
     end = Time.monotonic-us + ttl * 1_000_000
@@ -587,12 +644,18 @@ class CacheEntry_:
     return Time.monotonic-us <= end
 
 /**
+Decodes a DNS packet.
+The $error-name is only used for error messages.
+*/
+decode-packet packet/ByteArray --error-name/string?=null -> DecodedPacket:
+  return DnsClient.decode-packet_ packet --error-name=error-name
+
+/**
 Creates a UDP packet to look up the given name.
-Regular DNS lookup is used, namely the A record for the domain.
 The $query-id should be a 16 bit unsigned number which will be included in
   the reply.
 */
-create-query_ name/string query-id/int record-type/int -> ByteArray:
+create-query name/string query-id/int record-type/int --unicast-ok/bool=false -> ByteArray:
   parts := name.split "."
   length := 1
   parts.do: | part |
@@ -612,7 +675,8 @@ create-query_ name/string query-id/int record-type/int -> ByteArray:
     position += part.size
   query[position++] = 0
   BIG-ENDIAN.put-uint16 query position record-type
-  BIG-ENDIAN.put-uint16 query (position + 2) CLASS-INTERNET
+  clas := CLASS-INTERNET + (unicast-ok ? 0x8000 : 0)
+  BIG-ENDIAN.put-uint16 query (position + 2) clas
   position += 4
   assert: position == query.size
   return query
