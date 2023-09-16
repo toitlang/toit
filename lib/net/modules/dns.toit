@@ -564,6 +564,9 @@ class AResource extends Resource:
   constructor name/string type/int ttl/int flush/bool .address:
     super name type ttl flush
 
+  constructor name/string ttl/int --flush/bool=false .address/net.IpAddress:
+    super name (address.is-ipv6 ? RECORD-AAAA : RECORD-A) ttl flush
+
   value-string -> string:
     return address.stringify
 
