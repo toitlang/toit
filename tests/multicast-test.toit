@@ -15,41 +15,6 @@ main:
   encode-decode-packets-test
   multicast-test
 
-encode-decode-packets-test:
-  queries := [
-      dns.Question "toitlang.org" dns.RECORD-A
-  ]
-
-  packet := create-dns-packet queries [] --id=123 --is-response=false
-  decoded := dns.DnsClient.decode-packet packet
-
-  expect-equals 123 decoded.id
-  expect-equals 1 decoded.questions.size
-  expect-equals 0 decoded.resources.size
-  expect-equals "toitlang.org" decoded.questions[0].name
-
-  resources := [
-      dns.AResource "toitlang.org" 120 (net.IpAddress.parse "10.11.12.13")
-  ]
-  packet-2 := create-dns-packet queries resources --id=42 --is-response=true
-  decoded-2 := dns.DnsClient.decode-packet packet-2
-  
-  expect-equals 42 decoded-2.id
-  expect-equals 1 decoded-2.questions.size
-  expect-equals 1 decoded-2.resources.size
-  expect decoded-2.questions[0] is dns.Question
-  expect decoded-2.resources[0] is dns.AResource
-  expect-equals "toitlang.org" decoded-2.questions[0].name
-  expect-equals "toitlang.org" decoded-2.resources[0].name
-  expect-equals "10.11.12.13"
-      (decoded-2.resources[0] as dns.AResource).address.stringify
-
-  // Check we compressed so there is only one '1' in the binary encoding.
-  first-l := packet.index-of 'l'
-  expect first-l > 0
-  second-l := packet[first-l + 1..].index-of 'l'
-  expect second-l < 0  // Not found.
-
 multicast-test:
   times := 10
 
@@ -65,7 +30,7 @@ multicast-test:
   while true:
     datagram/net.Datagram := socket.receive
     if datagram.address.port == 5353:
-      decoded := dns.DnsClient.decode-packet datagram.data
+      decoded := dns.decode-packet datagram.data
       print "Received $(decoded.is-response ? "response" : "query") packet from $datagram.address.ip"
       decoded.questions.do: | question |
         type := dns.QTYPE-NAMES.get question.type --if-absent=: "Unknown $question.type"
