@@ -45,6 +45,7 @@
 #include "heap.h"
 #include "process.h"
 #include "memory.h"
+#include "messaging.h"
 #include "embedded_data.h"
 #include "os.h"
 #include "program.h"
@@ -89,8 +90,6 @@ const Program* setup_program(bool supports_ota) {
   EmbeddedImage boot = extension->image(0);
   return boot.program;
 }
-
-void create_and_start_external_message_handlers(VM* vm);
 
 static void start() {
   RtcMemory::set_up();

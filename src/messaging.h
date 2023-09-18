@@ -393,4 +393,6 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   virtual void set_process(Process* process) override;
 };
 
+void create_and_start_external_message_handlers(VM* vm);
+
 }  // namespace toit
