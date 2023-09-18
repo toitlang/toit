@@ -418,7 +418,6 @@ class BufferingHistory_ implements InflateHistory:
     while buffered_ > window-size and buffered_ - previous_[0].size > window-size:
       buffered_ -= previous_[0].size
       previous_ = previous_.copy 1
-    return result
 
   look-back distance/int [block]:
     if distance > buffered_:
