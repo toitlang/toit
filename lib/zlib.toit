@@ -918,6 +918,14 @@ class SymbolBitLen_:
   stringify:
     return "SymbolBitLen_($symbol, len=$bit-len) encoding=$(%b encoding)"
 
+class L2_:
+  set/Set := {}
+  max-bit-len/int := ?
+  discard-bits/int := 8
+
+  constructor .max-bit-len:
+    discard-bits = max-bit-len - 8
+
 class HuffmanTables_:
   // A list of 256 ints.
   // The first 4 bits are the bit length of the symbol. If it is <= 8 then
@@ -940,6 +948,7 @@ class HuffmanTables_:
     bitlens = bitlens.sort: | a b |
       a.bit-len.compare-to b.bit-len --if-equal=:
         a.symbol - b.symbol
+    list := List 256
     first-level = List 256: 0
     second-level = Map
     counter := 0
@@ -952,19 +961,53 @@ class HuffmanTables_:
         sbl.encoding = counter
         value := sbl.bit-len | (sbl.symbol << 4)
         if bit-len <= 8:
-          step := 1 << bit-len
-          for i := reverse_ counter bit-len; i < 256; i += step:
-            first-level[i] = value
+          copies := 1 << (8 - bit-len)
+          idx := counter << (8 - bit-len)
+          copies.repeat:
+            list[idx++] = value
         else:
-          idx := REVERSED_[(counter >> (bit-len - 8)) & 0xff]
-          // Set the entry to be "overflow" ie a bit length of more than 8,
-          // but the minimum bit length for symbols that hit this entry.
-          if first-level[idx] == 0: first-level[idx] = sbl.bit-len
-          // Add to second-level map.  We combine with the bit length to
-          // avoid clashes caused by the reversed order.
-          map-index := ((reverse_ counter bit-len) << 4) | bit-len
-          second-level[map-index] = value
+          idx := counter >> (bit-len - 8)
+          if first-level[idx] == null:
+            first-level[idx] = L2_ bit-len
+          else:
+            first-level[idx].max-bit-len = max first-level.max-bit-len bit-len
+          first-level[idx].set.add value
         counter++
+      accumulator/L2_? := null
+      surviving-l2s := []
+      for i := 255; i >= 0; i--:
+        if list[i] is int or list[i] == null:
+          continue
+        if accumulator == null:
+          accumulator = list[i]
+          surviving-l2s.add accumulator
+          continue
+        d := accumulator.discard-bits
+        if i >> d == (i + 1 >> d):
+          accumulator.set.addAll list[i].set
+          list[i] = accumulator
+          continue
+        else:
+          accumulator = list[i]
+          surviving-l2s.add accumulator
+      first-level =  List 256 * (1 + surviving-l2s.size)
+      256.do: | i |
+        entry := list[i]
+        if entry is int:
+          first-level[REVERSE_[i]] = entry
+        else:
+          l2 := entry as L2_
+          l2-index := surviving-l2s.index-of entry
+          value := ls.discard-bits | ((l2-index + 1) * 256)
+          first-level[REVERSE_[i]] = -value
+      for i := 1; i <= surviving-l2s.size; i++:
+        l2 := surviving-l2s[i - 1]
+        l2.set.do: | value |
+          // value := sbl.bit-len | (sbl.symbol << 4)
+          symbol := value >> 4
+          bit-len = value & 0xf
+          bit-len -= s2.discard-bits
+          assert: bit-len <= 8
 
 reverse_ n/int bits/int:
   if bits <= 8:
