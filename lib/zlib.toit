@@ -857,6 +857,7 @@ class InflaterBackEnd implements BackEnd_:
       value := tables.first-level[data_ & 0xff]
       if value < 0:
         // Look in L2.
+        print "Missed in L2, got $(%x value) when looking up with $(%x data_) ($valid-bits_ valid bits)"
         value = tables.first-level[(value & 0xff00) + ((data_ >> (value & 0xf)) & 0xff)]
       bits := value & 0xf
       if bits <= valid-bits_:
