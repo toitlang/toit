@@ -85,7 +85,7 @@ class Client extends NetworkResourceProxy implements Interface:
   resolve host/string -> List /* of IpAddress */:
     if is-closed: throw "Network closed"
     if (proxy-mask & NetworkService.PROXY-RESOLVE) != 0: return super host
-    return [dns-module.dns-lookup host]
+    return dns-module.dns-lookup-multi host
 
   quarantine -> none:
     if (proxy-mask & NetworkService.PROXY-QUARANTINE) == 0: return
@@ -99,7 +99,9 @@ class Client extends NetworkResourceProxy implements Interface:
   tcp-connect host/string port/int -> tcp.Socket:
     ips := resolve host
     return tcp-connect
-        SocketAddress ips[0] port
+        SocketAddress
+            dns-module.select-random-ip_ host ips
+            port
 
   tcp-connect address/net.SocketAddress -> tcp.Socket:
     if is-closed: throw "Network closed"
