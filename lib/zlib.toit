@@ -853,47 +853,21 @@ class InflaterBackEnd implements BackEnd_:
 
   // Gets next symbol or -1 if we need more data.
   next_ tables/HuffmanTables_ -> int:
-    value1 := tables.first-level[data_ & 0xff]
-    bits := value1 & 0xf
-    if bits <= valid_bits_ and bits <= 8:
-      valid-bits_ -= bits
-      data_ >>= bits
-      return value1 >> 4
-
-    ensure-bits :=:
-      if valid-bits_ < it:
-        if buffer-pos_ == buffer_.size:
-          return -1
-        data_ |= buffer_[buffer-pos_++] << valid-bits_
-        valid-bits_ += 8
-
-    if bits > valid-bits_ and valid_bits_ < 8:
-      // We did a lookup with too few bits - get the next byte and retry.
-      ensure-bits.call 8  // Enough for first level table.
-      value1 = tables.first-level[data_ & 0xff]
-      bits = value1 & 0xf
-      if bits <= 8:
-        assert: bits <= valid-bits_
-        valid-bits_ -= bits
-        data_ >>= bits
-        return value1 >> 4
-
-    // Failed to hit in the first level table - look in the somewhat slower
-    // second level.
     while true:
-      // First level table told us we need at least bits bits of data to get a
-      // match in the second level.
-      ensure-bits.call bits
-      key := ((data_ & ((1 << bits) - 1)) << 4) | bits
-      value2 := tables.second-level.get key
-      if value2:
-        data_ >>= bits
+      value := tables.first-level[data_ & 0xff]
+      if value < 0:
+        // Look in L2.
+        value = tables.first-level[(value & 0xff00) + ((data_ >> (value & 0xf)) & 0xff)]
+      bits := value & 0xf
+      if bits <= valid-bits_:
         valid-bits_ -= bits
-        return value2 >> 4
-      // Still don't have enough bits - look for a hit with one more bit.
-      bits++
-      if bits > 15:
-        throw "Corrupt data"
+        data_ >>= bits
+        return value >> 4
+
+      if buffer-pos_ == buffer_.size:
+        return -1
+      data_ |= buffer_[buffer-pos_++] << valid-bits_
+      valid-bits_ += 8
 
   // Gets next n bits of data or -1 if we need more data.
   n-bits_ bits/int -> int:
@@ -919,12 +893,17 @@ class SymbolBitLen_:
     return "SymbolBitLen_($symbol, len=$bit-len) encoding=$(%b encoding)"
 
 class L2_:
-  set/Set := {}
+  symbols/List := []
   max-bit-len/int := ?
-  discard-bits/int := 8
 
-  constructor .max-bit-len:
-    discard-bits = max-bit-len - 8
+  constructor sbl/SymbolBitLen_:
+    symbols.add sbl
+    max-bit-len = sbl.bit-len
+
+  add sbl/SymbolBitLen_:
+    symbols.add sbl
+    assert: max-bit-len <= sbl.bit-len
+    max-bit-len = sbl.bit-len
 
 class HuffmanTables_:
   // A list of 256 ints.
@@ -935,79 +914,97 @@ class HuffmanTables_:
   // Index is a byte of raw input, ie with the Huffman codes reversed.
   first-level/List
 
-  // A map from int to int.
-  // The value is as above (4 bits of bit length, rest is symbol).
-  // The key is made up as follows:
-  // 1-(n bits of reversed Huffman input).
-  // The bits must be added one at a time from the input until
-  // we get a hit.
-  second-level/Map
-
   // Takes a list of SymbolBitLen_ objects, and creates the tables.
   constructor bitlens/List:
     bitlens = bitlens.sort: | a b |
       a.bit-len.compare-to b.bit-len --if-equal=:
         a.symbol - b.symbol
     list := List 256
-    first-level = List 256: 0
-    second-level = Map
     counter := 0
     bit-len := 0
+    l2-needed := false
     bitlens.do: | sbl/SymbolBitLen_ |
       if sbl.bit-len > 0:
         if sbl.bit-len > bit-len:
           counter = counter << (sbl.bit-len - bit-len)
           bit-len = sbl.bit-len
         sbl.encoding = counter
-        value := sbl.bit-len | (sbl.symbol << 4)
         if bit-len <= 8:
           copies := 1 << (8 - bit-len)
           idx := counter << (8 - bit-len)
+          value := sbl.bit-len | (sbl.symbol << 4)
           copies.repeat:
             list[idx++] = value
         else:
           idx := counter >> (bit-len - 8)
-          if first-level[idx] == null:
-            first-level[idx] = L2_ bit-len
+          if list[idx] == null:
+            list[idx] = L2_ sbl
+            l2-needed = true
           else:
-            first-level[idx].max-bit-len = max first-level.max-bit-len bit-len
-          first-level[idx].set.add value
+            list[idx].add sbl
         counter++
-      accumulator/L2_? := null
-      surviving-l2s := []
-      for i := 255; i >= 0; i--:
-        if list[i] is int or list[i] == null:
-          continue
-        if accumulator == null:
-          accumulator = list[i]
-          surviving-l2s.add accumulator
-          continue
-        d := accumulator.discard-bits
-        if i >> d == (i + 1 >> d):
-          accumulator.set.addAll list[i].set
-          list[i] = accumulator
-          continue
-        else:
-          accumulator = list[i]
-          surviving-l2s.add accumulator
-      first-level =  List 256 * (1 + surviving-l2s.size)
-      256.do: | i |
-        entry := list[i]
-        if entry is int:
-          first-level[REVERSE_[i]] = entry
-        else:
-          l2 := entry as L2_
-          l2-index := surviving-l2s.index-of entry
-          value := ls.discard-bits | ((l2-index + 1) * 256)
-          first-level[REVERSE_[i]] = -value
-      for i := 1; i <= surviving-l2s.size; i++:
-        l2 := surviving-l2s[i - 1]
-        l2.set.do: | value |
-          // value := sbl.bit-len | (sbl.symbol << 4)
-          symbol := value >> 4
-          bit-len = value & 0xf
-          bit-len -= s2.discard-bits
-          assert: bit-len <= 8
+
+    // All the codes that are less than 8 bits long are in the list.  Some of
+    // the shorter ones are there more than once, eg. the 7 bit codes are
+    // there twice so they match regardless of whether they are followed by a
+    // 0 or a 1.
+
+    // The codes that are 9 bits or longer have been put in L2_
+    // objects, indexed by the first 8 bits of the code.
+
+    // We can merge the L2_ objects so that we don't need so many tables to
+    // represent them.  Two L2_ tables can be merged if the encoding has the
+    // same prefix, and if throwing away the prefix leaves less than 8 bits
+    // (the level two tables will also be 256 long).  We do that from the end
+    // because the long codes are guaranteed to be at the end with this
+    // construction method.  They are indexed by the first 8 bits of the
+    // encoding.
+    current/L2_? := null
+    surviving-l2s := []
+    for i := 255; i >= 0; i--:
+      if list[i] is int or list[i] == null:
+        continue
+      l2 := list[i] as L2_
+      if current == null:
+        current = l2
+        surviving-l2s.add current
+        continue
+      d := current.max-bit-len - 8  // How many of the first 8 bits to discard.
+      if i >> d == (i + 1 >> d):
+        // We can merge if the non-discarded index bits are the same.
+        current.symbols.add-all l2.symbols
+        list[i] = current
+        continue
+      // Can't merge, start a new one.
+      current = l2
+      surviving-l2s.add current
+
+    // L2 tables are merged, so now we know how many there are and how big
+    // the first-level table needs to be.
+    number-of-tables := 1 + surviving-l2s.size
+    // Set up the first 256 entries that are for codes <= 8 bits and contain
+    // references to the other entries.
+    first-level =  List number-of-tables << 8
+    256.repeat: | i |
+      entry := list[i]
+      if entry is int:
+        first-level[REVERSED_[i]] = entry
+      else:
+        l2 := entry as L2_
+        l2-index := surviving-l2s.index-of entry
+        // Negative value in the L1 table discard some bits and look in L2.
+        value := (l2.max-bit-len - 8) | ((l2-index + 1) << 8)
+        first-level[REVERSED_[i]] = 0xffff_ffff_ffff_0000 | value
+    // Set up the level two tables later in the list.
+    offset := 0
+    surviving-l2s.do: | l2/L2_ |
+      offset += 256
+      discard := l2.max-bit-len - 8
+      l2.symbols.do: | sbl/SymbolBitLen_ |
+        value := sbl.bit-len | (sbl.symbol << 4)
+        step := 1 << (sbl.bit-len - discard)
+        for i := REVERSED_[sbl.encoding >> discard]; i < 256; i += step:
+          first-level[offset + i] = value
 
 reverse_ n/int bits/int:
   if bits <= 8:
