@@ -251,7 +251,21 @@ class TypeChecker : public ReturningVisitor<Type> {
   }
 
   Type visit_While(While* node) {
-    auto condition_type = visit(node->condition());
+    auto condition = node->condition();
+    auto condition_type = visit(condition);
+    if (condition->is_AssignmentLocal()) {
+      // This is not allowed in normal Toit code. If we have an assignment, then
+      // it's because we moved a declaration out of the look.
+      // For example:
+      //   `while chunk := read: ...`
+      // This became:
+      //   chunk := ?
+      //   while chunk = read: ...
+      auto local = condition->as_AssignmentLocal()->local();
+      if (local->type().is_any()) {
+        local->set_type(condition_type);
+      }
+    }
     if (condition_type.is_none()) {
       report_error(node->condition()->range(), "Condition can't be 'none'");
     } else if (condition_type != boolean_type_ &&
