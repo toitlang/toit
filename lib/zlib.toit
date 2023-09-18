@@ -258,12 +258,14 @@ abstract class Coder_:
   read_ --wait/bool -> ByteArray?:
     if closed-read_: return null
     result := back_end_.read
+    state_ |= STATE-READY-TO-WRITE_
+    signal_.raise
     while result and wait and result.size == 0:
       state_ &= ~STATE-READY-TO-READ_
       signal_.wait: state_ & STATE-READY-TO-READ_ != 0
       result = back_end_.read
-    state_ |= STATE-READY-TO-WRITE_
-    signal_.raise
+      state_ |= STATE-READY-TO-WRITE_
+      signal_.raise
     return result
 
   close-read_ -> none:
@@ -285,13 +287,12 @@ abstract class Coder_:
     pos := from
     while pos < to:
       bytes-written := back_end_.write data pos to
+      state_ |= STATE-READY-TO-READ_
+      signal_.raise
       if bytes-written == 0:
         if wait:
           state_ &= ~STATE-READY-TO-WRITE_
           signal_.wait: state_ & STATE-READY-TO-WRITE_ != 0
-      else:
-        state_ |= STATE-READY-TO-READ_
-        signal_.raise
       if not wait: return bytes-written
       pos += bytes-written
     return pos - from
@@ -722,7 +723,7 @@ class InflaterBackEnd implements BackEnd_:
           if symbol < 0: return NEED-MORE-DATA_
           if symbol == 256:
             state_ = INITIAL_
-          else if symbol < 255:
+          else if symbol <= 255:
             output-buffer_[output-buffer-position_++] = symbol
             if output-buffer-position_ == output-buffer_.size:
               return flush-output-buffer_ output-buffer-position_
@@ -733,6 +734,7 @@ class InflaterBackEnd implements BackEnd_:
             else if symbol < 285:
               copy-length_ = LENGTHS_[symbol - 257]
               pending-bits_ = "\x00\x00\x00\x00\x00\x00\x00\x00\x01\x01\x01\x01\x02\x02\x02\x02\x03\x03\x03\x03\x04\x04\x04\x04\x05\x05\x05\x05"[symbol - 257]
+
             else:
               assert: symbol == 285
               copy-length_ = 258
@@ -804,7 +806,7 @@ class InflaterBackEnd implements BackEnd_:
 
   flush-output-buffer_ pos/int -> ByteArray:
     if pos == output-buffer_.size:
-      result := output-buffer_[..pos]
+      result := output-buffer_
       output-buffer_ = ByteArray 256
       output-buffer-position_ = 0
       return record_ result
