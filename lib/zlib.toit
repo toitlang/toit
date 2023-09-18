@@ -857,7 +857,6 @@ class InflaterBackEnd implements BackEnd_:
       value := tables.first-level[data_ & 0xff]
       if value < 0:
         // Look in L2.
-        print "Missed in L2, got $(%x value) when looking up with $(%x data_) ($valid-bits_ valid bits)"
         value = tables.first-level[(value & 0xff00) + ((data_ >> (value & 0xf)) & 0xff)]
       bits := value & 0xf
       if bits <= valid-bits_:
@@ -971,8 +970,9 @@ class HuffmanTables_:
         surviving-l2s.add current
         continue
       d := current.max-bit-len - 8  // How many of the first 8 bits to discard.
-      if i >> d == (i + 1 >> d):
-        // We can merge if the non-discarded index bits are the same.
+      // We can merge if the discarded index bits are the same.  We will be
+      // discarding the high bits of the encoding (low bits after reversal).
+      if i >> (8 - d) == (i + 1 >> (8 - d)):
         current.symbols.add-all l2.symbols
         list[i] = current
         continue
@@ -1004,7 +1004,7 @@ class HuffmanTables_:
       l2.symbols.do: | sbl/SymbolBitLen_ |
         value := sbl.bit-len | (sbl.symbol << 4)
         step := 1 << (sbl.bit-len - discard)
-        for i := REVERSED_[sbl.encoding >> discard]; i < 256; i += step:
+        for i := (reverse_ sbl.encoding sbl.bit-len) >> discard; i < 256; i += step:
           first-level[offset + i] = value
 
 reverse_ n/int bits/int:
