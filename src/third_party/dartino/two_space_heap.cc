@@ -364,6 +364,9 @@ bool TwoSpaceHeap::perform_garbage_collection(bool force_compact) {
   SemiSpace* semi_space = new_space();
   MarkingStack stack(program_);
   MarkingVisitor marking_visitor(semi_space, &stack);
+  if (force_compact || Flags::shrink_stacks_a_lot) {
+    marking_visitor.set_shrink_stacks(true);
+  }
 
   process_heap_->iterate_roots(&marking_visitor);
 
