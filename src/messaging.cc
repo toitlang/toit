@@ -14,7 +14,7 @@
 // directory of this repository.
 
 #include "messaging.h"
-#include "messaging_c.h"
+#include <toit/cmessaging.h>
 
 #include "objects.h"
 #include "process.h"
@@ -846,6 +846,7 @@ struct RegisteredHandlerList {
 RegisteredHandlerList* registered_handlers = null;
 
 typedef void (*ReceiverCallback)(void* user_context, int sender, int type, void* data, int length);
+typedef void (*ReleaseCallback)(void* user_context);
 
 class ExternalMessageHandler : public ExternalSystemMessageHandler {
  public:
@@ -853,7 +854,9 @@ class ExternalMessageHandler : public ExternalSystemMessageHandler {
                          void* user_context)
       : ExternalSystemMessageHandler(vm)
       , user_context_(user_context) {}
-  virtual ~ExternalMessageHandler() {}
+  virtual ~ExternalMessageHandler() {
+    if (release_ != null) release_(user_context_);
+  }
 
   void on_message(int pid, int type, void* data, int length) override {
     if (on_message_ == null) return;
@@ -865,9 +868,14 @@ class ExternalMessageHandler : public ExternalSystemMessageHandler {
     on_message_ = on_message;
   }
 
+  void set_release(ReleaseCallback release) {
+    release_ = release;
+  }
+
  private:
   void* user_context_;
   ReceiverCallback on_message_ = null;
+  ReleaseCallback release_ = null;
 };
 
 }  // anonymous namespace.
@@ -906,9 +914,10 @@ void toit_register_external_message_handler(void* user_context,
   toit::registered_handlers = list;
 }
 
-void toit_set_callback(HandlerContext* handler_context, toit::ReceiverCallback on_message) {
+void toit_set_callbacks(HandlerContext* handler_context, toit::ReceiverCallback on_message, toit::ReleaseCallback release) {
   auto handler = reinterpret_cast<toit::ExternalMessageHandler*>(handler_context);
   handler->set_on_message(on_message);
+  handler->set_release(release);
 }
 
 bool toit_send_message(HandlerContext* handler_context, int target_pid, int type, void* data, int length, bool free_on_failure) {
