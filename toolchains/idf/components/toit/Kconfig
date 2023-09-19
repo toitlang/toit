@@ -57,6 +57,32 @@ menu "Toit"
             If selected, embedded platforms will include the FAT filesystem
             primitives.
 
+    config TOIT_FULL_ZLIB
+        bool "Include primitives for zlib compression/decompression in native code"
+        default "n"
+        help
+            If selected, embedded platforms will include code for compressing
+            and decompressing.  It is based on the MiniZ library.  It is
+            available with `import zlib show Encoder Decoder`
+
+            Note that decompressing needs a contiguous
+            32k buffer, so for systems without SPIRAM this is unlikely to work
+            well.
+
+            As an alternative there is a pure Toit implementation of zlib
+            decompression in the Toit standard library.  Use
+            `import zlib show BufferingInflater CopyingInflater` to get
+            access to this implmentation.  The pure Toit version is slower,
+            but always available, and does not suffer from fragmentation
+            issues when allocating buffer space.
+
+            There are also simple pure Toit implementations of zlib compression.
+            These do not deliver large compression, but generate data streams
+            compatible with zlib compression, eg for browsers that insist on
+            getting zlib compressed data.  Use
+            `import zlib show RunLengthZlibEncoder UncompressedZlibEncoder` to
+            get access to these.
+
     menu "Advanced setup"
         config TOIT_INTERPRETER_IN_IRAM
             bool "Run interpreter from IRAM"
