@@ -258,14 +258,12 @@ abstract class Coder_:
   read_ --wait/bool -> ByteArray?:
     if closed-read_: return null
     result := back_end_.read
-    state_ |= STATE-READY-TO-WRITE_
-    signal_.raise
     while result and wait and result.size == 0:
       state_ &= ~STATE-READY-TO-READ_
-      signal_.wait: state_ & STATE-READY-TO-READ_ != 0
-      result = back_end_.read
       state_ |= STATE-READY-TO-WRITE_
       signal_.raise
+      signal_.wait: state_ & STATE-READY-TO-READ_ != 0
+      result = back_end_.read
     return result
 
   close-read_ -> none:
@@ -287,11 +285,11 @@ abstract class Coder_:
     pos := from
     while pos < to:
       bytes-written := back_end_.write data pos to
-      state_ |= STATE-READY-TO-READ_
-      signal_.raise
       if bytes-written == 0:
         if wait:
           state_ &= ~STATE-READY-TO-WRITE_
+          state_ |= STATE-READY-TO-READ_
+          signal_.raise
           signal_.wait: state_ & STATE-READY-TO-WRITE_ != 0
       if not wait: return bytes-written
       pos += bytes-written
@@ -301,7 +299,7 @@ abstract class Coder_:
     if not closed-write_:
       back_end_.close
       closed-write_ = true
-      state_ |= Coder_.STATE-READY-TO-READ_
+      state_ |= STATE-READY-TO-READ_
       signal_.raise
 
   /**
@@ -739,8 +737,8 @@ class InflaterBackEnd implements BackEnd_:
               assert: symbol == 285
               copy-length_ = 258
         if copy-length_ != 0:
-          copy-length_ += get-pending-bits.call
           if copy-distance_ == 0:
+            copy-length_ += get-pending-bits.call
             symbol := next_ distance-table_
             if symbol < 0: return NEED-MORE-DATA_
             pending-bits_ = "\x00\x00\x00\x00\x01\x01\x02\x02\x03\x03\x04\x04\x05\x05\x06\x06\x07\x07\x08\x08\x09\x09\x0a\x0a\x0b\x0b\x0c\x0c\x0d\x0d"[symbol]
