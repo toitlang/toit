@@ -65,7 +65,7 @@ rle-test:
 zlib-test:
   enabled := false
   catch:
-    zlib.Decoder
+    zlib.Encoder
     print "Zlib support is compiled in."
     enabled = true
   if enabled:
@@ -77,26 +77,30 @@ round-trip-test [block]:
   2.repeat:
     buffering := it == 0
     compressor := block.call
-    task:: print-round-tripped_ compressor (buffering ? zlib.BufferingInflater : zlib.CopyingInflater)
+    task::
+      print-round-tripped_ compressor (buffering ? zlib.BufferingInflater : zlib.CopyingInflater)::
+        expect-equals "Hello, World!" it
+
     compressor.write "Hello, World!"
     compressor.close
 
     compressor2 := block.call
-    task:: print-round-tripped_ compressor2 (buffering ? zlib.BufferingInflater : zlib.CopyingInflater)
     input2 := ("a" * 12) + ("b" * 25) + ("a" * 12)
-    print " in: $input2"
+    task::
+      print-round-tripped_ compressor2 (buffering ? zlib.BufferingInflater : zlib.CopyingInflater)::
+        expect-equals input2 it
     compressor2.write input2
     compressor2.close
 
     compressor3 := block.call
-    task:: print-round-tripped_ compressor3 (buffering ? zlib.BufferingInflater : zlib.CopyingInflater)
     input3 := "kdjflskdkldskdkdskdkdkdkdlskfjsalædkfjaæsldkfjaæsldkfjaæsldkfældjflsakdfjlaskdjflsadkfjsalædkfj"
-    print " in: $input3"
+    task::
+      print-round-tripped_ compressor3 (buffering ? zlib.BufferingInflater : zlib.CopyingInflater)::
+        expect-equals input3 it
     compressor3.write input3
     compressor3.close
 
     compressor4 := block.call
-    task:: print-round-tripped_ compressor4 (buffering ? zlib.BufferingInflater : zlib.CopyingInflater)
     input4a := "LSDLKFJLSDKFJLSDKJFLSDKJFLDSK"
     input4b := "OWIEUROIWEUROIUWEORIUWEORIUWEORIU"
     input4c := "X:C;MV:XCMV:XC;MV:;XCMV:;MXC:V;MXC:;V"
@@ -111,14 +115,22 @@ round-trip-test [block]:
     // Add a lot of fairly random digits to get a nicely asymmetric Huffman
     // table.
     1000.repeat: input4 += "$it"
+    task::
+      print-round-tripped_ compressor4 (buffering ? zlib.BufferingInflater : zlib.CopyingInflater)::
+        expect-equals input4 it
     compressor4.write input4
     compressor4.close
 
-print-round-tripped_ compressor decompressor:
+print-round-tripped_ compressor decompressor complete/Lambda:
+  accumulator := []
+  start/int? := null
   while round-tripped := decompressor.reader.read --wait=false:
     if round-tripped.size == 0:
+      if not start: start = Time.monotonic-us
       compressed := compressor.reader.read
       if not compressed: break
       decompressor.write compressed
     else:
-      print "out: $round-tripped.to-string"
+      accumulator.add round-tripped.to-string
+  complete.call
+    accumulator.join ""
