@@ -512,7 +512,7 @@ You would normally use $BufferingInflater, $CopyingInflater or $Inflater
   which wrap this class in a more convenient API.
 This class needs an $InflateHistory object to help it look back in up to
   32k of previously decompressed data (or whatever size the compressor was
-  set to.
+  set to).
 Does not currently support streams with a gzip header (as opposed to the
   zlib header).
 */
@@ -857,7 +857,7 @@ class InflaterBackEnd implements BackEnd_:
       value := tables.first-level[data_ & 0xff]
       if value < 0:
         // Look in L2.
-        value = tables.first-level[(value & 0xff00) + ((data_ >> (value & 0xf)) & 0xff)]
+        value = tables.second-level[(value >> 8) & 0xff][(data_ >> (value & 0xf)) & 0xff]
       bits := value & 0xf
       if bits <= valid-bits_:
         valid-bits_ -= bits
@@ -892,6 +892,7 @@ class SymbolBitLen_:
   stringify:
     return "SymbolBitLen_($symbol, len=$bit-len) encoding=$(%b encoding)"
 
+// Used for the second level lookup in the pure Toit inflater.
 class L2_:
   symbols/List := []
   max-bit-len/int := ?
@@ -902,6 +903,7 @@ class L2_:
 
   add sbl/SymbolBitLen_:
     symbols.add sbl
+    // Symbols are added in increasing bit length order.
     assert: max-bit-len <= sbl.bit-len
     max-bit-len = sbl.bit-len
 
@@ -914,6 +916,10 @@ class HuffmanTables_:
   // Index is a byte of raw input, ie with the Huffman codes reversed.
   first-level/List
 
+  // A list of lists of 256 ints.  Entries in the first level may refer to an
+  // entry in one of these lists.
+  second-level/List
+
   // Takes a list of SymbolBitLen_ objects, and creates the tables.
   constructor bitlens/List:
     bitlens = bitlens.sort: | a b |
@@ -922,7 +928,6 @@ class HuffmanTables_:
     list := List 256
     counter := 0
     bit-len := 0
-    l2-needed := false
     bitlens.do: | sbl/SymbolBitLen_ |
       if sbl.bit-len > 0:
         if sbl.bit-len > bit-len:
@@ -939,7 +944,6 @@ class HuffmanTables_:
           idx := counter >> (bit-len - 8)
           if list[idx] == null:
             list[idx] = L2_ sbl
-            l2-needed = true
           else:
             list[idx].add sbl
         counter++
@@ -980,12 +984,10 @@ class HuffmanTables_:
       current = l2
       surviving-l2s.add current
 
-    // L2 tables are merged, so now we know how many there are and how big
-    // the first-level table needs to be.
-    number-of-tables := 1 + surviving-l2s.size
     // Set up the first 256 entries that are for codes <= 8 bits and contain
     // references to the other entries.
-    first-level =  List number-of-tables << 8
+    first-level =  List 256
+    second-level = List surviving-l2s.size: List 256
     256.repeat: | i |
       entry := list[i]
       if entry is int:
@@ -993,19 +995,19 @@ class HuffmanTables_:
       else:
         l2 := entry as L2_
         l2-index := surviving-l2s.index-of entry
-        // Negative value in the L1 table discard some bits and look in L2.
-        value := (l2.max-bit-len - 8) | ((l2-index + 1) << 8)
+        // Negative value in the first level table: Discard some bits and look
+        // in a second level table.
+        value := (l2.max-bit-len - 8) | (l2-index << 8)
         first-level[REVERSED_[i]] = 0xffff_ffff_ffff_0000 | value
     // Set up the level two tables later in the list.
-    offset := 0
-    surviving-l2s.do: | l2/L2_ |
-      offset += 256
+    for l2-index := 0; l2-index < surviving-l2s.size; l2-index++:
+      l2/L2_ := surviving-l2s[l2-index]
       discard := l2.max-bit-len - 8
       l2.symbols.do: | sbl/SymbolBitLen_ |
         value := sbl.bit-len | (sbl.symbol << 4)
         step := 1 << (sbl.bit-len - discard)
         for i := (reverse_ sbl.encoding sbl.bit-len) >> discard; i < 256; i += step:
-          first-level[offset + i] = value
+          second-level[l2-index][i] = value
 
 reverse_ n/int bits/int:
   if bits <= 8:
