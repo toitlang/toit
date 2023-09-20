@@ -43,6 +43,24 @@ enum {
   WIFI_SCAN_DONE    = 1 << 5,
 };
 
+class LogMeTender {
+ public:
+  LogMeTender(const char* message) : message_(message) {
+#if CONFIG_WPA_DEBUG_PRINT
+    printf("[wifi] %s - enter\n", message);
+#endif
+  }
+
+#if CONFIG_WPA_DEBUG_PRINT
+  ~LogMeTender() {
+    printf("[wifi] %s - leave\n", message_);
+  }
+#endif
+
+ private:
+  const char* message_;
+};
+
 const int kInvalidWifi = -1;
 
 // Only allow one instance of WiFi running.
@@ -440,6 +458,7 @@ uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t sta
 MODULE_IMPLEMENTATION(wifi, MODULE_WIFI)
 
 PRIMITIVE(init) {
+  LogMeTender lmt("init");
   ARGS(bool, ap);
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
@@ -537,6 +556,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(close) {
+  LogMeTender lmt("close");
   ARGS(WifiResourceGroup, group);
 
   group->tear_down();
@@ -545,6 +565,7 @@ PRIMITIVE(close) {
 }
 
 PRIMITIVE(connect) {
+  LogMeTender lmt("connect");
   ARGS(WifiResourceGroup, group, cstring, ssid, cstring, password);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
@@ -571,6 +592,7 @@ PRIMITIVE(connect) {
 }
 
 PRIMITIVE(establish) {
+  LogMeTender lmt("establish");
   ARGS(WifiResourceGroup, group, cstring, ssid, cstring, password, bool, broadcast, int, channel);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
@@ -597,6 +619,7 @@ PRIMITIVE(establish) {
 }
 
 PRIMITIVE(setup_ip) {
+  LogMeTender lmt("setup_ip");
   ARGS(WifiResourceGroup, group);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
@@ -612,6 +635,7 @@ PRIMITIVE(setup_ip) {
 }
 
 PRIMITIVE(disconnect) {
+  LogMeTender lmt("disconnect");
   ARGS(WifiResourceGroup, group, WifiEvents, wifi);
 
   group->unregister_resource(wifi);
@@ -620,6 +644,7 @@ PRIMITIVE(disconnect) {
 }
 
 PRIMITIVE(disconnect_reason) {
+  LogMeTender lmt("disconnect_reason");
   ARGS(WifiEvents, wifi);
   switch (wifi->disconnect_reason()) {
     case WIFI_REASON_ASSOC_EXPIRE:
@@ -643,6 +668,7 @@ PRIMITIVE(disconnect_reason) {
 }
 
 PRIMITIVE(get_ip) {
+  LogMeTender lmt("get_ip");
   ARGS(WifiResourceGroup, group, int, index);
   if (index < 0 || index >= WifiResourceGroup::NUMBER_OF_ADDRESSES) {
     FAIL(INVALID_ARGUMENT);
@@ -660,6 +686,7 @@ PRIMITIVE(get_ip) {
 }
 
 PRIMITIVE(init_scan) {
+  LogMeTender lmt("init_scan");
   ARGS(WifiResourceGroup, group)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -681,6 +708,7 @@ PRIMITIVE(init_scan) {
 }
 
 PRIMITIVE(start_scan) {
+  LogMeTender lmt("start_scan");
   ARGS(WifiResourceGroup, group, int, channel, bool, passive, int, period_ms);
 
   esp_err_t ret = group->start_scan(passive, channel, period_ms);
@@ -692,6 +720,7 @@ PRIMITIVE(start_scan) {
 }
 
 PRIMITIVE(read_scan) {
+  LogMeTender lmt("read_scan");
   ARGS(WifiResourceGroup, group);
 
   uint16_t count;
@@ -736,6 +765,7 @@ PRIMITIVE(read_scan) {
 }
 
 PRIMITIVE(ap_info) {
+  LogMeTender lmt("ap_info");
   ARGS(WifiResourceGroup, group);
 
   wifi_ap_record_t ap_record;
