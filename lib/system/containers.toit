@@ -10,11 +10,13 @@ User-space side of the RPC API for installing container images in flash, and
 import uuid
 import monitor
 
-import system.api.containers show ContainerService ContainerServiceClient
+import system.api.containers show ContainerService ContainerServiceClient ContainerMessageServiceClient
 import system.services show ServiceResourceProxy ServiceHandler
 
 _client_ /ContainerServiceClient ::=
     (ContainerServiceClient).open as ContainerServiceClient
+_message-client_ /ContainerMessageServiceClient ::=
+    (ContainerMessageServiceClient).open as ContainerMessageServiceClient
 
 images -> List:
   return _client_.list-images
@@ -43,6 +45,10 @@ start id/uuid.Uuid arguments/any=[] -> Container:
 uninstall id/uuid.Uuid -> none:
   _client_.uninstall-image id
 
+/** Sends a message to the system, with this container as the sender. */
+send-container-message message/any -> none:
+  _message-client_.send-container-message message
+
 class ContainerImage:
   id/uuid.Uuid
   name/string?
@@ -70,6 +76,7 @@ class Container extends ServiceResourceProxy:
 
   result_/monitor.Latch ::= monitor.Latch
   on-stopped_/Lambda? := null
+  on-message_/Lambda? := null
 
   constructor.internal_ --handle/int --.id --.gid:
     super _client_ handle
@@ -101,14 +108,34 @@ class Container extends ServiceResourceProxy:
     else:
       on-stopped_ = lambda
 
-  on-notified_ code/int -> none:
-    result_.set code
-    on-stopped := on-stopped_
-    on-stopped_ = null
-    if on-stopped: on-stopped.call code
-    // We no longer expect or care about notifications, so
-    // close the resource.
-    close
+  on-message lambda/Lambda? -> none:
+    if not lambda:
+      on-message_ = null
+      return
+    if on-message_: throw "ALREADY_IN_USE"
+    on-message_ = lambda
+
+  on-notified_ notification/any -> none:
+    if notification is int and notification & 1 == 0:
+      code := notification >> 1
+      result_.set code
+      on-stopped := on-stopped_
+      on-stopped_ = null
+      if on-stopped: on-stopped.call code
+      // We no longer expect or care about notifications, so
+      // close the resource.
+      close
+    else if on-message_:
+      message := ?
+      if notification is int:
+        message = notification >> 1
+      else if notification is not List:
+        message = notification
+      else:
+        message = notification[0]
+      on-message_.call message
+    // Otherwise discard the message.
+
 
 class ContainerImageWriter extends ServiceResourceProxy:
   size/int ::= ?

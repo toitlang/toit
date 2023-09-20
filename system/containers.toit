@@ -22,7 +22,7 @@ import encoding.tison
 
 import system.assets
 import system.services show ServiceHandler ServiceProvider ServiceResource
-import system.api.containers show ContainerService
+import system.api.containers show ContainerService ContainerMessageService
 
 import .flash.allocation
 import .flash.image-writer
@@ -45,8 +45,7 @@ class Container:
 
   start arguments/any=image.default-arguments -> none:
     if pids_: throw "Already started"
-    pids_ = {}
-    pids_.add (image.spawn this arguments)
+    pids_ = {image.spawn this arguments}
 
   stop -> none:
     if not pids_: throw "Not started"
@@ -55,6 +54,11 @@ class Container:
     pids_.clear
     image.manager.on-container-stop_ this 0
     resources.do: it.on-container-stop 0
+
+  send-message message/any:
+    if not pids_: throw "Not started"
+    if pids_.is-empty: return
+    resources.do: it.send-message message
 
   on-stop_ -> none:
     pids_.do: on-process-stop_ it 0
@@ -89,7 +93,16 @@ class ContainerResource extends ServiceResource:
 
   on-container-stop code/int -> none:
     if is-closed: return
-    notify_ code
+    notify_ code << 1
+
+  send-message message/any -> none:
+    if is-closed: return
+    if message is int and message < 0x3fff_ffff:
+      notify_ (message << 2) | 1
+    else if message is List or message is int:
+      notify_ [message]
+    else:
+      notify_ message
 
   on-closed -> none:
     container.resources.remove this
@@ -176,10 +189,11 @@ class ContainerImageFlash extends ContainerImage:
       manager.image-registry.free allocation
 
 abstract class ContainerServiceProvider extends ServiceProvider
-    implements ContainerService ServiceHandler:
+    implements ContainerService ContainerMessageService ServiceHandler:
   constructor:
     super "system/containers" --major=0 --minor=2
     provides ContainerService.SELECTOR --handler=this
+    provides ContainerMessageService.SELECTOR --handler=this
     install
 
   handle index/int arguments/any --gid/int --client/int -> any:
@@ -203,12 +217,15 @@ abstract class ContainerServiceProvider extends ServiceProvider
     if index == ContainerService.IMAGE-WRITER-COMMIT-INDEX:
       writer ::= (resource client arguments[0]) as ContainerImageWriter
       return (image-writer-commit writer arguments[1] arguments[2]).to-byte-array
+    if index == ContainerMessageService.SEND-CONTAINER-MESSAGE-INDEX:
+      return send-container-message --gid=gid arguments
     unreachable
 
   abstract image-registry -> FlashRegistry
   abstract images -> List
   abstract add-flash-image allocation/FlashAllocation -> ContainerImage
   abstract lookup-image id/uuid.Uuid -> ContainerImage?
+  abstract send-container-message --gid/int message/any -> none
 
   list-images -> List:
     names := {:}
@@ -262,6 +279,10 @@ abstract class ContainerServiceProvider extends ServiceProvider
     allocation := writer.commit --flags=flags --data=data
     image := add-flash-image allocation
     return image.id
+
+  send-container-message message:
+    unreachable  // Here to satisfy the checker.
+
 
 class ContainerManager extends ContainerServiceProvider implements SystemMessageHandler_:
   image-registry/FlashRegistry ::= ?
@@ -370,6 +391,10 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
         trace-using-print arguments
     else:
       unreachable
+
+  send-container-message --gid/int message/any -> none:
+    container/Container? := lookup-container gid
+    if container: container.send-message message
 
 trace-using-print message/ByteArray --from=0 --to=message.size:
   // Print a trace message on output so that that you can easily decode.
