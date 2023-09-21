@@ -909,16 +909,18 @@ class L2_:
     max-bit-len = sbl.bit-len
 
 class HuffmanTables_:
-  // A list of 256 ints.
-  // The first 4 bits are the bit length of the symbol. If it is <= 8 then
-  // we don't need a second level lookup.  If it is >8 then that is the
-  // minimum bit length for symbols that hit this entry.
-  // For bit lengths <= 8, the rest of int is the symbol.
+  // A regular entry of in the first level or one of the second level
+  // lookup tables consists of a symbol shifted left by 4 bits.  The
+  // low 4 bits contain the bit length of the code that fits that
+  // symbol.
+
+  // A list of 256 ints as described above.
+  // If an entry is negative, it is a reference to a second level table.
   // Index is a byte of raw input, ie with the Huffman codes reversed.
   first-level/List
 
-  // A list of lists of 256 ints.  Entries in the first level may refer to an
-  // entry in one of these lists.
+  // A list of lists of 256 ints as described above.  Entries in the first
+  // level may refer to an entry in one of these lists.
   second-level/List
 
   // Takes a list of SymbolBitLen_ objects, and creates the tables.
@@ -997,7 +999,9 @@ class HuffmanTables_:
         l2 := entry as L2_
         l2-index := surviving-l2s.index-of entry
         // Negative value in the first level table: Discard some bits and look
-        // in a second level table.
+        // in a second level table.  Low byte indicates which level two table
+        // to look in.  Next byte indicates how many bits to discard before doing
+        // the level 2 lookup.
         value := (l2.max-bit-len - 8) | (l2-index << 8)
         first-level[REVERSED_[i]] = 0xffff_ffff_ffff_0000 | value
     // Set up the level two tables later in the list.
