@@ -285,6 +285,7 @@ class WifiIpEvents : public SystemResource {
 };
 
 uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 state) {
+  LogMeTender lmt("on_event_wifi");
   SystemEvent* system_event = reinterpret_cast<SystemEvent*>(data);
   WifiEvents* events = static_cast<WifiEvents*>(resource);
 
@@ -324,7 +325,14 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
       bool reconnecting = false;
       if (reconnect && reconnects_remaining_ > 0) {
         reconnects_remaining_--;
-        reconnecting = esp_wifi_connect() == ESP_OK;
+        esp_err_t cr = ESP_OK;
+        { LogMeTender lmt("esp_wifi_connect:STA_DISCONNECTED");
+          cr = esp_wifi_connect();
+#if CONFIG_WPA_DEBUG_PRINT
+          printf("[wifi] esp_wifi_connect -> %d\n", cr);
+#endif
+        }
+        reconnecting = cr == ESP_OK;
       }
 
       // If we're attempting to reconnect, we do not
@@ -343,7 +351,14 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
       // because something is seriously wrong. We let the
       // higher level code know that we're disconnected and
       // clean up from there.
-      if (esp_wifi_connect() != ESP_OK) {
+      esp_err_t cr = ESP_OK;
+      { LogMeTender lmt("esp_wifi_connect:STA_START");
+        cr = esp_wifi_connect();
+#if CONFIG_WPA_DEBUG_PRINT
+        printf("[wifi] esp_wifi_connect -> %d\n", cr);
+#endif
+      }
+      if (cr != ESP_OK) {
         reconnects_remaining_ = 0;
         state |= WIFI_DISCONNECTED;
       }
@@ -398,6 +413,7 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
 }
 
 uint32 WifiResourceGroup::on_event_ip(Resource* resource, word data, uint32 state) {
+  LogMeTender lmt("on_event_ip");
   SystemEvent* system_event = reinterpret_cast<SystemEvent*>(data);
 
   switch (system_event->id) {
