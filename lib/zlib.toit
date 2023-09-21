@@ -996,7 +996,7 @@ class HuffmanTables_:
       entry := list[i]
       if entry is int:
         first-level[REVERSED_[i]] = entry
-      else:
+      else if entry:
         l2 := entry as L2_
         l2-index := surviving-l2s.index-of entry
         // Negative value in the first level table: Discard some bits and look
