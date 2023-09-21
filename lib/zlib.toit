@@ -705,6 +705,7 @@ class InflaterBackEnd implements BackEnd_:
             lengths_[counter_] = SymbolBitLen_ counter_ last
             counter_++
         if counter_ == lengths_.size:
+          get-pending-bits.call  // Discard any pending bits.
           if state_ == GET-HLIT_:
             symbol-and-length-table_ = HuffmanTables_ lengths_
             state_ = GET-HDIST_
@@ -890,7 +891,10 @@ class SymbolBitLen_:
   constructor .symbol .bit-len:
 
   stringify:
-    return "SymbolBitLen_($symbol, len=$bit-len) encoding=$(%b encoding)"
+    enc-string := "null"
+    if encoding:
+      enc-string = string.format "0$(bit-len)b" encoding
+    return "SymbolBitLen_($symbol, len=$bit-len) encoding=$enc-string"
 
 // Used for the second level lookup in the pure Toit inflater.
 class L2_:
