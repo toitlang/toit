@@ -285,7 +285,11 @@ void fail(const char* format, ...) __attribute__ ((__noreturn__));
 #endif
 #endif  // TOIT_DEPLOY
 
+#ifdef TOIT_FREERTOS
 #define UNIMPLEMENTED() FATAL("unimplemented")
+#else
+#define UNIMPLEMENTED() FATAL("unimplemented %f %d", __FILE__, __LINE__)
+#endif
 #define UNREACHABLE() FATAL("unreachable")
 #define TOIT_CHECK(cond) if (!(cond)) { toit::fail(__FILE__, __LINE__, "check failure, %s.", #cond); }
 
