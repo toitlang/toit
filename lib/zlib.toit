@@ -531,7 +531,6 @@ class InflaterBackEnd implements BackEnd_:
   pending-bits_/int := 0
   hlit_/int := 0
   hdist_/int := 0
-  hclen_/int := 0
   state_/int := INITIAL_
   meta-table_/HuffmanTables_? := null
   symbol-and-length-table_/HuffmanTables_? := null
@@ -551,9 +550,8 @@ class InflaterBackEnd implements BackEnd_:
   static NO-COMPRESSION-BODY_ ::= 3  // Reading counter_ bytes of data.
   static GET-TABLE-SIZES_     ::= 4  // Reading HLIT, HDIST and HCLEN.
   static GET-HCLEN_           ::= 5  // Reading n x 3 bits of HLIT.
-  static GET-HLIT_            ::= 6  // Reading bit lengths for HLIT table.
-  static GET-HDIST_           ::= 7  // Reading bit lengths for HDIST table.
-  static DECOMRESSING_        ::= 8  // Decompressing data.
+  static GET-HLIT-AND-HDIST_  ::= 6  // Reading bit lengths for HLIT and HDIST tables.
+  static DECOMPRESSING_       ::= 7  // Decompressing data.
 
   constructor .history_ --zlib-header-footer/bool=true:
     if zlib-header-footer:
@@ -620,7 +618,7 @@ class InflaterBackEnd implements BackEnd_:
             // Fixed Huffman tables.
             symbol-and-length-table_ = FIXED-SYMBOL-AND-LENGTH_
             distance-table_ = FIXED-DISTANCE_
-            state_ = DECOMRESSING_
+            state_ = DECOMPRESSING_
           else if type == 2:
             // Dynamic Huffman tables.
             state_ = GET-TABLE-SIZES_
@@ -661,8 +659,8 @@ class InflaterBackEnd implements BackEnd_:
         if raw < 0: return NEED-MORE-DATA_
         hlit_ = (raw & 0x1f) + 257
         hdist_ = ((raw >> 5) & 0x1f) + 1
-        hclen_ = (raw >> 10) + 4
-        lengths_ = List hclen_
+        hclen := (raw >> 10) + 4
+        lengths_ = List hclen
         counter_ = 0
         state_ = GET-HCLEN_
 
@@ -674,21 +672,23 @@ class InflaterBackEnd implements BackEnd_:
           counter_++
         meta-table_ = HuffmanTables_ lengths_
         counter_ = 0
-        lengths_ = List hlit_
-        state_ = GET-HLIT_
+        lengths_ = List (hlit_ + hdist_)
+        state_ = GET-HLIT-AND-HDIST_
 
-      else if state_ == GET-HLIT_ or state_ == GET-HDIST_:
+      else if state_ == GET-HLIT-AND-HDIST_:
+        add-symbol := :: | last |
+          symbol := counter_ < hlit_ ? counter_ : counter_ - hlit_
+          lengths_[counter_] = SymbolBitLen_ symbol last
+          counter_++
+
         extra-repeats := get-pending-bits.call
         if extra-repeats != 0:
           last := lengths_[counter_ - 1].bit-len
-          extra-repeats.repeat:
-            lengths_[counter_] = SymbolBitLen_ counter_ last
-            counter_++
+          extra-repeats.repeat: add-symbol.call last
         length-code := next_ meta-table_
         if length-code < 0: return NEED-MORE-DATA_
         if length-code < 16:
-          lengths_[counter_] = SymbolBitLen_ counter_ length-code
-          counter_++
+          add-symbol.call length-code
         else:
           last := 0
           repeats := 3
@@ -701,22 +701,19 @@ class InflaterBackEnd implements BackEnd_:
             assert: length-code == 18
             pending-bits_ = 7
             repeats = 11
-          repeats.repeat:
-            lengths_[counter_] = SymbolBitLen_ counter_ last
-            counter_++
+          (min repeats (lengths_.size - counter_)).repeat:
+            add-symbol.call last
         if counter_ == lengths_.size:
           get-pending-bits.call  // Discard any pending bits.
-          if state_ == GET-HLIT_:
-            symbol-and-length-table_ = HuffmanTables_ lengths_
-            state_ = GET-HDIST_
-            lengths_ = List hdist_
-            counter_ = 0
-          else:
-            distance-table_ = HuffmanTables_ lengths_
-            state_ = DECOMRESSING_
-            meta-table_ = null  // Don't need this any more.
+          symbol-and-length-table_ = HuffmanTables_ lengths_[..hlit_]
+          distance-table_ = HuffmanTables_ lengths_[hlit_..]
+          state_ = DECOMPRESSING_
+          meta-table_ = null  // Don't jeed this any more.
+          lengths_ = null  // Or this.
+          counter_ = 0
+          state_ = DECOMPRESSING_
 
-      else if state_ == DECOMRESSING_:
+      else if state_ == DECOMPRESSING_:
         if copy-length_ == 0:
           symbol := next_ symbol-and-length-table_
           if symbol < 0: return NEED-MORE-DATA_
