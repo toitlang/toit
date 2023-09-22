@@ -63,12 +63,29 @@ void SystemEventSource::run(const std::function<void ()>& func) {
 
 void SystemEventSource::on_register_resource(Locker& locker, Resource* resource) {
   SystemResource* system_resource = static_cast<SystemResource*>(resource);
-  FATAL_IF_NOT_ESP_OK(esp_event_handler_register(system_resource->event_base(), system_resource->event_id(), on_event, this));
+  esp_event_base_t base = system_resource->event_base();
+  int32_t id = system_resource->event_id();
+  { // The call to register the event handler must be done
+    // without holding the lock, because registering might
+    // be forced to wait until any ongoing event handling
+    // is done. If the event handling itself is blocked on
+    // the mutex in SystemEventSource::on_event, then we
+    // would get stuck here if we do not release the lock.
+    Unlocker unlock(locker);
+    FATAL_IF_NOT_ESP_OK(esp_event_handler_register(base, id, on_event, this));
+  }
 }
 
 void SystemEventSource::on_unregister_resource(Locker& locker, Resource* resource) {
   SystemResource* system_resource = static_cast<SystemResource*>(resource);
-  FATAL_IF_NOT_ESP_OK(esp_event_handler_unregister(system_resource->event_base(), system_resource->event_id(), on_event));
+  esp_event_base_t base = system_resource->event_base();
+  int32_t id = system_resource->event_id();
+  { // The call to unregister the event handler must be done
+    // without holding the lock. See comment for the equivalent
+    // situation in SystemEventSource::on_register_resource.
+    Unlocker unlock(locker);
+    FATAL_IF_NOT_ESP_OK(esp_event_handler_unregister(base, id, on_event));
+  }
 }
 
 void SystemEventSource::on_event(esp_event_base_t base, int32_t id, void* event_data) {
