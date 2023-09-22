@@ -190,6 +190,9 @@ class ContainerImageFlash extends ContainerImage:
 
 abstract class ContainerServiceProvider extends ServiceProvider
     implements ContainerService ContainerEventService ServiceHandler:
+  // These event constants should be kept in sync with the ones in lib/system/containers.toit.
+  static EVENT-BACKGROUND-STATE-CHANGE ::= 0
+
   constructor:
     super "system/containers" --major=0 --minor=2
     provides ContainerService.SELECTOR --handler=this
@@ -218,14 +221,15 @@ abstract class ContainerServiceProvider extends ServiceProvider
       writer ::= (resource client arguments[0]) as ContainerImageWriter
       return (image-writer-commit writer arguments[1] arguments[2]).to-byte-array
     if index == ContainerEventService.BACKGROUND-STATE-CHANGE-EVENT-SEND-INDEX:
-      return send-container-message --gid=gid arguments
+      return send-container-event --gid=gid EVENT-BACKGROUND-STATE-CHANGE arguments
+      // Otherwise ignore the event.
     unreachable
 
   abstract image-registry -> FlashRegistry
   abstract images -> List
   abstract add-flash-image allocation/FlashAllocation -> ContainerImage
   abstract lookup-image id/uuid.Uuid -> ContainerImage?
-  abstract send-container-message --gid/int message/any -> none
+  abstract send-container-event --gid/int event-kind/int event-value/any -> none
 
   list-images -> List:
     names := {:}
@@ -280,7 +284,7 @@ abstract class ContainerServiceProvider extends ServiceProvider
     image := add-flash-image allocation
     return image.id
 
-  send-container-message message:
+  background-state-change-event-send new-state/bool:
     unreachable  // Here to satisfy the checker.
 
 
@@ -392,9 +396,9 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
     else:
       unreachable
 
-  send-container-message --gid/int message/any -> none:
+  send-container-event --gid/int event-kind/int event-value/any -> none:
     container/Container? := lookup-container gid
-    if container: container.send-message message
+    if container: container.send-message [event-kind, event-value]
 
 trace-using-print message/ByteArray --from=0 --to=message.size:
   // Print a trace message on output so that that you can easily decode.

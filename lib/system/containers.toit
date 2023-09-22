@@ -128,15 +128,12 @@ class Container extends ServiceResourceProxy:
       // close the resource.
       close
     else if on-event_:
-      message := ?
-      if notification is int:
-        message = notification >> 1
-      else if notification is not List:
-        message = notification
-      else:
-        message = notification[0]
-      on-event_.call message
-    // Otherwise discard the message.
+      if notification is not List or notification.size != 2 or notification[0] is not int:
+        // Discard unknown event.
+        return
+      event-kind := notification[0]
+      event-value := notification[1]
+      on-event_.call event-kind event-value
 
 
 class ContainerImageWriter extends ServiceResourceProxy:
