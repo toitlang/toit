@@ -322,12 +322,7 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
   // TODO(kasper): Not so happy with this name.
   wait-until-done -> int:
     if containers-by-id_.is-empty: return 0
-    if platform != PLATFORM-FREERTOS: return done_.get
-    while true:
-      interval := Duration --s=1
-      catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
-        with_timeout interval: return done_.get
-      print_ "[toit] DEBUG: system process is running ($Time.monotonic-us)"
+    return done_.get
 
   on-container-load_ container/Container -> none:
     containers/Map ::= containers-by-image_.get container.image.id --init=: {:}
