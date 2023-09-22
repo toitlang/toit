@@ -172,10 +172,6 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
     }
   }
 
-#if CONFIG_WPA_DEBUG_PRINT
-  printf("[scheduler] exit - reason=%d\n", exit_state_.reason);
-#endif
-
   if (!has_exit_reason()) {
     exit_state_.reason = EXIT_DONE;
   }
@@ -185,10 +181,6 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
     thread->join();
     delete thread;
   }
-
-#if CONFIG_WPA_DEBUG_PRINT
-  printf("[scheduler] exit - threads deleted\n");
-#endif
 
   for (int i = 0; i < NUMBER_OF_READY_QUEUES; i++) {
     ProcessListFromScheduler& ready_queue = ready_queue_[i];
@@ -207,10 +199,6 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
     }
     delete group;
   }
-
-#if CONFIG_WPA_DEBUG_PRINT
-  printf("[scheduler] exit - processes deleted\n");
-#endif
 
   return exit_state_;
 }
@@ -416,11 +404,6 @@ void Scheduler::run(SchedulerThread* scheduler_thread) {
 
     run_process(locker, process, scheduler_thread);
   }
-
-#ifdef CONFIG_WPA_DEBUG_PRINT
-  printf("[scheduler] stopping scheduler thread (threads=%d->%d)\n",
-      num_threads_, num_threads_ - 1);
-#endif
 
   // Notify potential other thread, that no more processes are left.
   OS::signal(has_processes_);
@@ -739,10 +722,6 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     }
 
     case Interpreter::Result::DEEP_SLEEP: {
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[scheduler] process requested deep sleep (processes=%d, threads=%d)\n",
-          num_processes_, num_threads_);
-#endif
       ExitState exit(EXIT_DEEP_SLEEP, result.value());
       terminate_execution(locker, exit);
       break;
@@ -892,20 +871,12 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
     exit_state_ = exit;
   }
 
-#if CONFIG_WPA_DEBUG_PRINT
-  printf("[scheduler] terminating - reason=%d\n", exit_state_.reason);
-#endif
-
   for (SchedulerThread* thread : threads_) {
     Process* process = thread->interpreter()->process();
     if (process != null) {
       process->signal(Process::KILL);
     }
   }
-
-#if CONFIG_WPA_DEBUG_PRINT
-  printf("[scheduler] terminating - processes signalled\n");
-#endif
 
   OS::signal(has_processes_);
 }
