@@ -39,19 +39,18 @@ interface ContainerService:
   image-writer-commit handle/int flags/int data/int -> uuid.Uuid
   static IMAGE-WRITER-COMMIT-INDEX /int ::= 5
 
-  // INDEX 8 is reserved for ContainerMessageService so that
-  // a provider can implement both ContainerService and ContainerMessageService
+  // Indexes 100+ are reserved for ContainerEventService so that
+  // a provider can implement both ContainerService and ContainerEventService
   // in the same class.
 
-interface ContainerMessageService:
+interface ContainerEventService:
   static SELECTOR ::= ServiceSelector
       --uuid="8f689304-16bd-45ec-9e06-03af84c840d0"
       --major=0
       --minor=1
 
-  /** Sends a message to all container resources of the current container. */
-  send-container-message message/any -> none
-  static SEND_CONTAINER_MESSAGE_INDEX /int ::= 8
+  background-state-change-event-send message/any -> none
+  static BACKGROUND-STATE-CHANGE-EVENT-SEND-INDEX /int ::= 100
 
 class ContainerServiceClient extends ServiceClient implements ContainerService:
   static SELECTOR ::= ContainerService.SELECTOR
@@ -90,11 +89,11 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
   image-writer-commit handle/int flags/int data/int -> uuid.Uuid:
     return uuid.Uuid (invoke_ ContainerService.IMAGE-WRITER-COMMIT-INDEX [handle, flags, data])
 
-class ContainerMessageServiceClient extends ServiceClient implements ContainerMessageService:
-  static SELECTOR ::= ContainerMessageService.SELECTOR
+class ContainerEventServiceClient extends ServiceClient implements ContainerEventService:
+  static SELECTOR ::= ContainerEventService.SELECTOR
   constructor selector/ServiceSelector=SELECTOR:
     assert: selector.matches SELECTOR
     super selector
 
-  send-container-message message/any -> none:
-    invoke_ ContainerMessageService.SEND_CONTAINER_MESSAGE_INDEX message
+  background-state-change-event-send message/any -> none:
+    invoke_ ContainerEventService.BACKGROUND-STATE-CHANGE-EVENT-SEND-INDEX message

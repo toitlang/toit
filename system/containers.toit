@@ -22,7 +22,7 @@ import encoding.tison
 
 import system.assets
 import system.services show ServiceHandler ServiceProvider ServiceResource
-import system.api.containers show ContainerService ContainerMessageService
+import system.api.containers show ContainerService ContainerEventService
 
 import .flash.allocation
 import .flash.image-writer
@@ -189,11 +189,11 @@ class ContainerImageFlash extends ContainerImage:
       manager.image-registry.free allocation
 
 abstract class ContainerServiceProvider extends ServiceProvider
-    implements ContainerService ContainerMessageService ServiceHandler:
+    implements ContainerService ContainerEventService ServiceHandler:
   constructor:
     super "system/containers" --major=0 --minor=2
     provides ContainerService.SELECTOR --handler=this
-    provides ContainerMessageService.SELECTOR --handler=this
+    provides ContainerEventService.SELECTOR --handler=this
     install
 
   handle index/int arguments/any --gid/int --client/int -> any:
@@ -217,7 +217,7 @@ abstract class ContainerServiceProvider extends ServiceProvider
     if index == ContainerService.IMAGE-WRITER-COMMIT-INDEX:
       writer ::= (resource client arguments[0]) as ContainerImageWriter
       return (image-writer-commit writer arguments[1] arguments[2]).to-byte-array
-    if index == ContainerMessageService.SEND-CONTAINER-MESSAGE-INDEX:
+    if index == ContainerEventService.BACKGROUND-STATE-CHANGE-EVENT-SEND-INDEX:
       return send-container-message --gid=gid arguments
     unreachable
 

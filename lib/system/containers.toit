@@ -10,13 +10,13 @@ User-space side of the RPC API for installing container images in flash, and
 import uuid
 import monitor
 
-import system.api.containers show ContainerService ContainerServiceClient ContainerMessageServiceClient
+import system.api.containers show ContainerService ContainerServiceClient ContainerEventServiceClient
 import system.services show ServiceResourceProxy ServiceHandler
 
 _client_ /ContainerServiceClient ::=
     (ContainerServiceClient).open as ContainerServiceClient
-_message-client_ /ContainerMessageServiceClient ::=
-    (ContainerMessageServiceClient).open as ContainerMessageServiceClient
+_message-client_ /ContainerEventServiceClient ::=
+    (ContainerEventServiceClient).open as ContainerEventServiceClient
 
 images -> List:
   return _client_.list-images
@@ -45,9 +45,9 @@ start id/uuid.Uuid arguments/any=[] -> Container:
 uninstall id/uuid.Uuid -> none:
   _client_.uninstall-image id
 
-/** Sends a message to the system, with this container as the sender. */
-send-container-message message/any -> none:
-  _message-client_.send-container-message message
+/** Notifies the system about a background-state change. */
+notify-background-state-change new-state/bool -> none:
+  _message-client_.background-state-change-event-send new-state
 
 class ContainerImage:
   id/uuid.Uuid
@@ -57,6 +57,8 @@ class ContainerImage:
   constructor --.id --.name --.flags --.data:
 
 class Container extends ServiceResourceProxy:
+  static EVENT-BACKGROUND-STATE-CHANGE ::= 0
+
   // TODO(kasper): Rename this and document it.
   id/uuid.Uuid
 
@@ -76,7 +78,7 @@ class Container extends ServiceResourceProxy:
 
   result_/monitor.Latch ::= monitor.Latch
   on-stopped_/Lambda? := null
-  on-message_/Lambda? := null
+  on-event_/Lambda? := null
 
   constructor.internal_ --handle/int --.id --.gid:
     super _client_ handle
@@ -108,12 +110,12 @@ class Container extends ServiceResourceProxy:
     else:
       on-stopped_ = lambda
 
-  on-message lambda/Lambda? -> none:
+  on-event lambda/Lambda? -> none:
     if not lambda:
-      on-message_ = null
+      on-event_ = null
       return
-    if on-message_: throw "ALREADY_IN_USE"
-    on-message_ = lambda
+    if on-event_: throw "ALREADY_IN_USE"
+    on-event_ = lambda
 
   on-notified_ notification/any -> none:
     if notification is int and notification & 1 == 0:
@@ -125,7 +127,7 @@ class Container extends ServiceResourceProxy:
       // We no longer expect or care about notifications, so
       // close the resource.
       close
-    else if on-message_:
+    else if on-event_:
       message := ?
       if notification is int:
         message = notification >> 1
@@ -133,7 +135,7 @@ class Container extends ServiceResourceProxy:
         message = notification
       else:
         message = notification[0]
-      on-message_.call message
+      on-event_.call message
     // Otherwise discard the message.
 
 
