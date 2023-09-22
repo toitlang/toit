@@ -262,6 +262,11 @@ PRIMITIVE(readdir) {
     FAIL(ALLOCATION_FAILED);
   }
 
+  const int MAX_VFAT = 260;  // Max filename length.
+  AllocationManager allocation(process);
+  uint8 *backing = allocation.alloc(MAX_VFAT);
+  if (!backing) FAIL(MALLOC_FAILED);
+
   struct dirent* entry = readdir(directory->dir());
   // After this point we can't bail out for GC because readdir is not really
   // restartable in Unix.
@@ -272,18 +277,25 @@ PRIMITIVE(readdir) {
 
   int len = strlen(entry->d_name);
 
-  if (!Utils::is_valid_utf_8(unsigned_cast(entry->d_name), len)) {
-    FAIL(ILLEGAL_UTF_8);
+  if (len <= MAX_VFAT) {
+    memcpy(backing, reinterpret_cast<const uint8*>(entry->d_name), len);
+    process->register_external_allocation(len);
+    proxy->set_external_address(len, backing);
+    proxy->resize_external(process, len);
+    allocation.keep_result();
+    return proxy;
+  } else {
+#ifdef TOIT_FREERTOS
+    FAIL(OUT_OF_BOUNDS);  // Filename too long.
+#else
+    uint8* new_backing = unvoid_cast<uint8*>(malloc(len));  // Can't fail on non-embedded.
+    ASSERT(new_backing);
+    memcpy(new_backing, reinterpret_cast<const uint8*>(entry->d_name), len);
+    process->register_external_allocation(len);
+    proxy->set_external_address(len, new_backing);
+    return proxy;
+#endif
   }
-
-  process->register_external_allocation(len);
-
-  uint8 *backing = unvoid_cast<uint8*>(malloc(len));  // Can't fail on non-embedded.
-  ASSERT(backing);
-  memcpy(backing, reinterpret_cast<const uint8*>(entry->d_name), len);
-
-  proxy->set_external_address(len, backing);
-  return proxy;
 }
 
 PRIMITIVE(closedir) {
