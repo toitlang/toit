@@ -37,5 +37,8 @@ multicast-test:
         print "  Q $question.name $type"
       decoded.resources.do: | resource |
         type := dns.QTYPE-NAMES.get resource.type --if-absent=: "Unknown $resource.type"
-        print "  R $resource.name $resource.ttl $type $resource.value"
+        if resource is dns-tools.AResource:
+          print "  R $resource.name $resource.ttl $type $resource.address"
+        else:
+          print "  R $resource.name $resource.ttl $type $resource.value"
 
