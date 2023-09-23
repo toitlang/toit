@@ -441,3 +441,7 @@ select-random-ip_ name/string list/List -> net.IpAddress:
 
 is-server-reachability-error_ error -> bool:
   return error == DEADLINE-EXCEEDED-ERROR or error is string and error.starts-with "A socket operation was attempted to an unreachable network"
+
+/// Deprecated.
+decode-name packet/ByteArray offset/int [update-offset]:
+  return dns-tools.decode-name_ packet offset update-offset

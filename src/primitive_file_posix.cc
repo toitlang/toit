@@ -309,7 +309,11 @@ PRIMITIVE(closedir) {
 
 PRIMITIVE(read) {
   ARGS(int, fd);
+#ifdef TOIT_FREERTOS
+  const int SIZE = 4 * KB;
+#else
   const int SIZE = 64 * KB;
+#endif
 
   AllocationManager allocation(process);
   uint8* buffer = allocation.alloc(SIZE);

@@ -154,23 +154,9 @@ class WifiResourceGroup : public ResourceGroup {
   }
 
   ~WifiResourceGroup() {
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] ~WifiResourceGroup()\n");
-#endif
-
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] esp_wifi_deinit()\n");
-#endif
-    esp_err_t err = esp_wifi_deinit();
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] esp_wifi_deinit() -> done: %d\n", err);
-#endif
-    FATAL_IF_NOT_ESP_OK(err);
+    FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy_default_wifi(netif_);
     wifi_pool.put(id_);
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] ~WifiResourceGroup() -> done\n");
-#endif
   }
 
   uint32_t on_event(Resource* resource, word data, uint32_t state) override;
@@ -213,45 +199,20 @@ class WifiEvents : public SystemResource {
       , state_(STOPPED) {}
 
   ~WifiEvents() {
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] ~WifiEvents()\n");
-#endif
     State state = this->state();
     if (state >= CONNECTED) {
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[wifi] esp_wifi_disconnect\n");
-#endif
-      esp_err_t err = esp_wifi_disconnect();
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[wifi] esp_wifi_disconnect() -> done: %d\n", err);
-#endif
-      FATAL_IF_NOT_ESP_OK(err);
+      FATAL_IF_NOT_ESP_OK(esp_wifi_disconnect());
     }
     if (state >= STARTED) {
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[wifi] esp_wifi_stop()\n");
-#endif
-      esp_err_t err = esp_wifi_stop();
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[wifi] esp_wifi_stop() -> done: %d\n", err);
-#endif
-      FATAL_IF_NOT_ESP_OK(err);
+      FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
     }
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] ~WifiEvents() -> done\n");
-#endif
   }
 
   uint8 disconnect_reason() const { return disconnect_reason_; }
   void set_disconnect_reason(uint8 reason) { disconnect_reason_ = reason; }
 
   State state() const { return state_; }
-  void set_state(State state) {
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] state updated: %d->%d\n", state_, state);
-#endif
-    state_ = state;
-  }
+  void set_state(State state) { state_ = state; }
 
  private:
   friend class WifiResourceGroup;
