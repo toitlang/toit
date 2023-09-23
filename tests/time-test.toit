@@ -402,10 +402,10 @@ duration-compare-test:
 rounded-test:
   t := Time.parse "2019-06-19T00:00:00Z"
   i := t.utc
-  expect-equals "2019-06-19" i.to-date-string
+  expect-equals "2019-06-19" i.to-iso-date-string
   t2 := Time.parse "2019-06-18T23:59:59Z"
   i2 := t2.utc
-  expect-equals "2019-06-18" i2.to-date-string
+  expect-equals "2019-06-18" i2.to-iso-date-string
   t3 := Time.parse "2023-01-26T15:59:33.000001Z"
   i3 := t3.utc
   expect-equals "2023-01-26T15:59:33Z" (i3.with --ns=0).to-iso8601-string
