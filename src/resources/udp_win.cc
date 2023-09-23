@@ -20,6 +20,7 @@
 #include "../error_win.h"
 
 #include <windows.h>
+#include <winsock2.h>
 
 #include <sys/types.h>
 
