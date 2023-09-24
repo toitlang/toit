@@ -402,11 +402,10 @@ PRIMITIVE(set_option) {
     case UDP_MULTICAST_MEMBERSHIP: {
       Blob group_bytes;
       if (!raw->byte_content(process->program(), &group_bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
-      struct ip_mreqn group;
+      struct ip_mreq group;
       memcpy(&group.imr_multiaddr.s_addr, group_bytes.address(), group_bytes.length());
-      memset(&group.imr_address, 0, sizeof(group.imr_address));  // Any interface.
-      group.imr_ifindex = 0;  // Any interface.
-      if (setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
+      memset(&group.imr_interface, 0, sizeof(group.imr_interface));  // Any interface.
+      if (setsockopt(socket, IPPROTO_IP, IP_ADD_MEMBERSHIP,
                      reinterpret_cast<char*>(&group), sizeof(group)) == SOCKET_ERROR) {
           WINDOWS_ERROR;
         }
