@@ -63,7 +63,7 @@ menu "Toit"
         help
             If selected, embedded platforms will include code for compressing
             and decompressing.  It is based on the MiniZ library.  It is
-            available with `import zlib show Encoder Decoder`
+            available with `import zlib show Encoder Decoder`.
 
             Note that decompressing needs a contiguous
             32k buffer, so for systems without SPIRAM this is unlikely to work
@@ -72,7 +72,7 @@ menu "Toit"
             As an alternative there is a pure Toit implementation of zlib
             decompression in the Toit standard library.  Use
             `import zlib show BufferingInflater CopyingInflater` to get
-            access to this implmentation.  The pure Toit version is slower,
+            access to this implementation.  The pure Toit version is slower,
             but always available, and does not suffer from fragmentation
             issues when allocating buffer space.
 
