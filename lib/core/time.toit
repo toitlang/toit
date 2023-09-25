@@ -587,6 +587,8 @@ class TimeInfo:
     of ISO 8601.
   For example, the time of the first moonlanding would be written as:
     `1969-07-20T20:17:00Z`.
+  To get a string that is rounded down to the nearest second use
+    `(my-time-info.with --ns=0).to-iso8601-string`.
   */
   to-iso8601-string:
     fraction := ""
@@ -598,6 +600,13 @@ class TimeInfo:
           fraction = fraction[..i + 1]
           break
     return "$(year)-$(%02d month)-$(%02d day)T$(%02d h):$(%02d m):$(%02d s)$fraction$(is-utc ? "Z" : "")"
+
+  /**
+  Converts this instance to a date string of the form 'yyyy-mm-dd'.
+  Hours, minutes and seconds are ignored.
+  */
+  to-iso-date-string -> string:
+    return "$year-$(%02d month)-$(%02d day)"
 
   /** See $super. */
   stringify -> string:

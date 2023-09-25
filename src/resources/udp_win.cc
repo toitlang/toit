@@ -20,6 +20,9 @@
 #include "../error_win.h"
 
 #include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <ws2ipdef.h>
 
 #include <sys/types.h>
 
@@ -339,10 +342,21 @@ PRIMITIVE(get_option) {
     case UDP_PORT:
       return get_port_or_error(socket, process);
 
+    case UDP_MULTICAST_LOOPBACK:
     case UDP_BROADCAST: {
       int value = 0;
       int size = sizeof(value);
-      if (getsockopt(socket, SOL_SOCKET, SO_BROADCAST,
+      int option_name = 0;
+      int level = 0;
+      if (option == UDP_MULTICAST_LOOPBACK) {
+        level = IPPROTO_IP;
+        option_name = IP_MULTICAST_LOOP;
+      } else {
+        ASSERT(option == UDP_BROADCAST);
+        level = SOL_SOCKET;
+        option_name = SO_BROADCAST;
+      }
+      if (getsockopt(socket, level, option_name,
                      reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
         WINDOWS_ERROR;
       }
@@ -360,6 +374,7 @@ PRIMITIVE(set_option) {
   SOCKET socket = udp_resource->socket();
 
   switch (option) {
+    case UDP_MULTICAST_LOOPBACK:
     case UDP_BROADCAST: {
       int value = 0;
       if (raw == process->true_object()) {
@@ -367,10 +382,33 @@ PRIMITIVE(set_option) {
       } else if (raw != process->false_object()) {
         FAIL(WRONG_OBJECT_TYPE);
       }
-      if (setsockopt(socket, SOL_SOCKET, SO_BROADCAST,
+      int option_name = 0;
+      int level = 0;
+      if (option == UDP_MULTICAST_LOOPBACK) {
+        level = IPPROTO_IP;
+        option_name = IP_MULTICAST_LOOP;
+      } else {
+        ASSERT(option == UDP_BROADCAST);
+        level = SOL_SOCKET;
+        option_name = SO_BROADCAST;
+      }
+      if (setsockopt(socket, level, option_name,
                      reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
         WINDOWS_ERROR;
       }
+      break;
+    }
+
+    case UDP_MULTICAST_MEMBERSHIP: {
+      Blob group_bytes;
+      if (!raw->byte_content(process->program(), &group_bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+      struct ip_mreq group;
+      memcpy(&group.imr_multiaddr.s_addr, group_bytes.address(), group_bytes.length());
+      memset(&group.imr_interface, 0, sizeof(group.imr_interface));  // Any interface.
+      if (setsockopt(socket, IPPROTO_IP, IP_ADD_MEMBERSHIP,
+                     reinterpret_cast<char*>(&group), sizeof(group)) == SOCKET_ERROR) {
+          WINDOWS_ERROR;
+        }
       break;
     }
 
