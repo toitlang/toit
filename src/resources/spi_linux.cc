@@ -27,7 +27,7 @@
 
 namespace toit {
 
-// Defined in primitive_file_posix.cc.
+// Defined in primitive_file_posix_and_esp32.cc.
 extern Object* return_open_error(Process* process, int err);
 
 MODULE_IMPLEMENTATION(spi_linux, MODULE_SPI_LINUX);
