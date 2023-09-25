@@ -39,8 +39,8 @@ interface ContainerService:
   image-writer-commit handle/int flags/int data/int -> uuid.Uuid
   static IMAGE-WRITER-COMMIT-INDEX /int ::= 5
 
-  background-state-change-event-send message/any -> none
-  static BACKGROUND-STATE-CHANGE-EVENT-SEND-INDEX /int ::= 8
+  notify-background-state-changed new-state/any -> none
+  static NOTIFY-BACKGROUND-STATE-CHANGED-INDEX /int ::= 8
 
 class ContainerServiceClient extends ServiceClient implements ContainerService:
   static SELECTOR ::= ContainerService.SELECTOR
@@ -79,5 +79,5 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
   image-writer-commit handle/int flags/int data/int -> uuid.Uuid:
     return uuid.Uuid (invoke_ ContainerService.IMAGE-WRITER-COMMIT-INDEX [handle, flags, data])
 
-  background-state-change-event-send message/any -> none:
-    invoke_ ContainerService.BACKGROUND-STATE-CHANGE-EVENT-SEND-INDEX message
+  notify-background-state-changed new-state/bool -> none:
+    invoke_ ContainerService.NOTIFY-BACKGROUND-STATE-CHANGED-INDEX new-state

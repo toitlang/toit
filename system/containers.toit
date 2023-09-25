@@ -94,16 +94,11 @@ class ContainerResource extends ServiceResource:
 
   on-container-stop code/int -> none:
     if is-closed: return
-    notify_ code << 1
+    notify_ code
 
-  send-event event/any -> none:
+  send-event event/List -> none:
     if is-closed: return
-    if event is int and event < 0x3fff_ffff:
-      notify_ (event << 2) | 1
-    else if event is List or event is int:
-      notify_ [event]
-    else:
-      notify_ event
+    notify_ event
 
   on-closed -> none:
     container.resources.remove this
@@ -218,7 +213,7 @@ abstract class ContainerServiceProvider extends ServiceProvider
     if index == ContainerService.IMAGE-WRITER-COMMIT-INDEX:
       writer ::= (resource client arguments[0]) as ContainerImageWriter
       return (image-writer-commit writer arguments[1] arguments[2]).to-byte-array
-    if index == ContainerService.BACKGROUND-STATE-CHANGE-EVENT-SEND-INDEX:
+    if index == ContainerService.NOTIFY-BACKGROUND-STATE-CHANGED-INDEX:
       return send-container-event --gid=gid
           system-containers.Container.EVENT-BACKGROUND-STATE-CHANGE
           arguments
@@ -283,7 +278,7 @@ abstract class ContainerServiceProvider extends ServiceProvider
     image := add-flash-image allocation
     return image.id
 
-  background-state-change-event-send new-state/bool:
+  notify-background-state-changed new-state/bool:
     unreachable  // Here to satisfy the checker.
 
 class ContainerManager extends ContainerServiceProvider implements SystemMessageHandler_:

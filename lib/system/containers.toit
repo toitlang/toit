@@ -44,8 +44,8 @@ uninstall id/uuid.Uuid -> none:
   _client_.uninstall-image id
 
 /** Notifies the system about a background-state change. */
-notify-background-state-change new-state/bool -> none:
-  _client_.background-state-change-event-send new-state
+notify-background-state-changed new-state/bool -> none:
+  _client_.notify-background-state-changed new-state
 
 class ContainerImage:
   id/uuid.Uuid
@@ -116,8 +116,8 @@ class Container extends ServiceResourceProxy:
     on-event_ = lambda
 
   on-notified_ notification/any -> none:
-    if notification is int and notification & 1 == 0:
-      code := notification >> 1
+    if notification is int:
+      code/int := notification
       result_.set code
       on-stopped := on-stopped_
       on-stopped_ = null

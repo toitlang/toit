@@ -2,6 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import monitor
 import system.containers
 import expect show *
 
@@ -15,6 +16,7 @@ main arguments:
 
   test-images
   test-start
+  test-background-state-changed
 
 test-images:
   images/List := containers.images
@@ -58,5 +60,19 @@ test-start:
   expect-equals 0 lambda4-value
   expect-equals 0 sub4.wait
 
+test-background-state-changed:
+  sub := containers.start containers.current { "background-state-test": true }
+  channel := monitor.Channel 1
+  sub.on-event:: | event-id/int value |
+    expect-equals containers.Container.EVENT-BACKGROUND-STATE-CHANGE event-id
+    channel.send value
+
+  expect_equals true channel.receive
+  expect_equals false channel.receive
+
 main-child arguments/Map:
+  if arguments.contains "background-state-test":
+    sleep --ms=10
+    containers.notify-background-state-changed true
+    containers.notify-background-state-changed false
   sleep --ms=100
