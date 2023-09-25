@@ -222,7 +222,18 @@ void BaseMbedTlsSocket::record_unknown_issuer(const mbedtls_asn1_named_data* iss
   error_flags_ = MBEDTLS_X509_BADCERT_NOT_TRUSTED;
 }
 
+static int calloc_counter = -1;
+
 static void* tagging_mbedtls_calloc(size_t nelem, size_t size) {
+  if (calloc_counter < 0) {
+    const char* ctr = getenv("MBEDTLS_CALLOC_COUNTER");
+    if (ctr) {
+      calloc_counter = atoi(getenv("MBEDTLS_CALLOC_COUNTER"));
+    }
+  }
+  if (calloc_counter >= 0 && calloc_counter-- == 0) {
+    return NULL;
+  }
   // Sanity check inputs for security.
   if (nelem > 0xffff || size > 0xffff) return null;
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
@@ -326,9 +337,7 @@ MbedTlsSocket::~MbedTlsSocket() {
 
 MODULE_IMPLEMENTATION(tls, MODULE_TLS)
 
-Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
-  static const size_t BUFFER_LEN = 400;
-  char buffer[BUFFER_LEN];
+bool is_tls_malloc_failure(int err) {
   // For some reason Mbedtls doesn't seem to export this mask.
   static const int MBED_LOW_LEVEL_ERROR_MASK = 0x7f;
   // Error codes are negative so we use or-not instead of and.
@@ -343,6 +352,15 @@ Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
       hi_error == MBEDTLS_ERR_PK_ALLOC_FAILED ||
       hi_error == MBEDTLS_ERR_SSL_ALLOC_FAILED ||
       hi_error == MBEDTLS_ERR_X509_ALLOC_FAILED) {
+    return true;
+  }
+  return false;
+}
+
+Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
+  static const size_t BUFFER_LEN = 400;
+  char buffer[BUFFER_LEN];
+  if (is_tls_malloc_failure(err)) {
     FAIL(MALLOC_FAILED);
   }
   const char* issuer = socket ? socket->error_issuer() : null;
@@ -714,8 +732,8 @@ PRIMITIVE(error) {
 
 bool MbedTlsSocket::init() {
   if (int ret = mbedtls_ssl_setup(&ssl, &conf_)) {
-    if (ret == MBEDTLS_ERR_SSL_ALLOC_FAILED) return false;
-    FATAL("mbedtls_ssl_setup returned %d (not %d)", ret, MBEDTLS_ERR_SSL_ALLOC_FAILED);
+    if (is_tls_malloc_failure(ret)) return false;
+    FATAL("mbedtls_ssl_setup returned %x", ret);
   }
 
   mbedtls_ssl_set_bio(&ssl, this, toit_tls_send, toit_tls_recv, null);

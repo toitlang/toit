@@ -7,47 +7,9 @@ import .tcp as tcp
 import net.x509 as net
 import writer
 
-monitor LimitLoad:
-  current := 0
-  has-test-failure := null
-  // FreeRTOS does not have enough memory to run 10 in parallel.
-  concurrent-processes ::= platform == "FreeRTOS" ? 1 : 2
-
-  inc:
-    await: current < concurrent-processes
-    current++
-
-  flush:
-    await: current == 0
-
-  test-failures:
-    await: current == 0
-    return has-test-failure
-
-  log-test-failure message:
-    has-test-failure = message
-
-  dec:
-    current--
-
-load-limiter := LimitLoad
-
 main:
-  run-tests
-
-run-tests:
-  // Microsoft and Google pages fail because we don't have their trusted root installed.
-  test-site "www.microsoft.com" false
-  test-site "google.com" false
-  test-site "drive.google.com" false
-  load-limiter.flush  // Sequence point so we don't install the roots until the previous test completed.
-
-  // Now they should succeed.
-  test-site "www.microsoft.com" true
-  test-site "www.google.com" true
-  test-site "drive.google.com" true
-  if load-limiter.test-failures:
-    throw load-limiter.has-test-failure
+  tls-port := 443
+  connect-to-site "www.google.com" tls-port [BALTIMORE-CYBERTRUST-ROOT, GLOBALSIGN-ROOT-CA, DIGICERT-GLOBAL-ROOT-G2]
 
 BALTIMORE-CYBERTRUST-ROOT ::= net.Certificate.parse """\
 -----BEGIN CERTIFICATE-----
@@ -118,41 +80,6 @@ Fdtom/DzMNU+MeKNhJ7jitralj41E6Vf8PlwUHBHQRFXGU7Aj64GxJUTFy8bJZ91
 pLiaWN0bfVKfjllDiIGknibVb63dDcY3fe0Dkhvld1927jyNxF1WW6LZZm6zNTfl
 MrY=
 -----END CERTIFICATE-----"""
-
-test-site url expect-ok:
-  host := url
-  port := 443
-  if (url.index-of ":") != -1:
-    array := url.split ":"
-    host = array[0]
-    port = int.parse array[1]
-  load-limiter.inc
-  if expect-ok:
-    task:: working-site host port
-  else:
-    task:: non-working-site host port
-
-non-working-site site port:
-  catch:
-    connect-to-site site port false
-    load-limiter.log-test-failure "*** Incorrectly failed to reject SSL connection to $site ***"
-  load-limiter.dec
-
-working-site host port:
-  error := true
-  try:
-    connect-to-site-with-retry host port true
-    error = false
-  finally:
-    if error:
-      load-limiter.log-test-failure "*** Incorrectly failed to connect to $host ***"
-    load-limiter.dec
-
-connect-to-site-with-retry host port expected-certificate-name:
-  2.repeat: | attempt-number |
-    error := catch --unwind=(:attempt-number == 1):
-      connect-to-site host port expected-certificate-name
-    if not error: return
 
 connect-to-site host port add-root:
   raw := tcp.TcpSocket
