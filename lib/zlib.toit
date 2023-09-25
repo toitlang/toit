@@ -258,6 +258,8 @@ abstract class Coder_:
     result := back_end_.read
     while result and wait and result.size == 0:
       state_ &= ~STATE-READY-TO-READ_
+      state_ |= STATE-READY-TO-WRITE_
+      signal_.raise
       signal_.wait: state_ & STATE-READY-TO-READ_ != 0
       result = back_end_.read
     state_ |= STATE-READY-TO-WRITE_
@@ -286,10 +288,9 @@ abstract class Coder_:
       if bytes-written == 0:
         if wait:
           state_ &= ~STATE-READY-TO-WRITE_
+          state_ |= STATE-READY-TO-READ_
+          signal_.raise
           signal_.wait: state_ & STATE-READY-TO-WRITE_ != 0
-      else:
-        state_ |= STATE-READY-TO-READ_
-        signal_.raise
       if not wait: return bytes-written
       pos += bytes-written
     return pos - from
@@ -298,7 +299,7 @@ abstract class Coder_:
     if not closed-write_:
       back_end_.close
       closed-write_ = true
-      state_ |= Coder_.STATE-READY-TO-READ_
+      state_ |= STATE-READY-TO-READ_
       signal_.raise
 
   /**
