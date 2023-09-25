@@ -22,7 +22,8 @@ import encoding.tison
 
 import system.assets
 import system.services show ServiceHandler ServiceProvider ServiceResource
-import system.api.containers show ContainerService ContainerEventService
+import system.api.containers show ContainerService
+import system.containers as system-containers
 
 import .flash.allocation
 import .flash.image-writer
@@ -55,10 +56,10 @@ class Container:
     image.manager.on-container-stop_ this 0
     resources.do: it.on-container-stop 0
 
-  send-message message/any:
+  send-event event/any:
     if not pids_: throw "Not started"
     if pids_.is-empty: return
-    resources.do: it.send-message message
+    resources.do: it.send-event event
 
   on-stop_ -> none:
     pids_.do: on-process-stop_ it 0
@@ -95,14 +96,14 @@ class ContainerResource extends ServiceResource:
     if is-closed: return
     notify_ code << 1
 
-  send-message message/any -> none:
+  send-event event/any -> none:
     if is-closed: return
-    if message is int and message < 0x3fff_ffff:
-      notify_ (message << 2) | 1
-    else if message is List or message is int:
-      notify_ [message]
+    if event is int and event < 0x3fff_ffff:
+      notify_ (event << 2) | 1
+    else if event is List or event is int:
+      notify_ [event]
     else:
-      notify_ message
+      notify_ event
 
   on-closed -> none:
     container.resources.remove this
@@ -189,14 +190,11 @@ class ContainerImageFlash extends ContainerImage:
       manager.image-registry.free allocation
 
 abstract class ContainerServiceProvider extends ServiceProvider
-    implements ContainerService ContainerEventService ServiceHandler:
-  // These event constants should be kept in sync with the ones in lib/system/containers.toit.
-  static EVENT-BACKGROUND-STATE-CHANGE ::= 0
+    implements ContainerService ServiceHandler:
 
   constructor:
     super "system/containers" --major=0 --minor=2
     provides ContainerService.SELECTOR --handler=this
-    provides ContainerEventService.SELECTOR --handler=this
     install
 
   handle index/int arguments/any --gid/int --client/int -> any:
@@ -220,9 +218,10 @@ abstract class ContainerServiceProvider extends ServiceProvider
     if index == ContainerService.IMAGE-WRITER-COMMIT-INDEX:
       writer ::= (resource client arguments[0]) as ContainerImageWriter
       return (image-writer-commit writer arguments[1] arguments[2]).to-byte-array
-    if index == ContainerEventService.BACKGROUND-STATE-CHANGE-EVENT-SEND-INDEX:
-      return send-container-event --gid=gid EVENT-BACKGROUND-STATE-CHANGE arguments
-      // Otherwise ignore the event.
+    if index == ContainerService.BACKGROUND-STATE-CHANGE-EVENT-SEND-INDEX:
+      return send-container-event --gid=gid
+          system-containers.Container.EVENT-BACKGROUND-STATE-CHANGE
+          arguments
     unreachable
 
   abstract image-registry -> FlashRegistry
@@ -286,7 +285,6 @@ abstract class ContainerServiceProvider extends ServiceProvider
 
   background-state-change-event-send new-state/bool:
     unreachable  // Here to satisfy the checker.
-
 
 class ContainerManager extends ContainerServiceProvider implements SystemMessageHandler_:
   image-registry/FlashRegistry ::= ?
@@ -398,7 +396,7 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
 
   send-container-event --gid/int event-kind/int event-value/any -> none:
     container/Container? := lookup-container gid
-    if container: container.send-message [event-kind, event-value]
+    if container: container.send-event [event-kind, event-value]
 
 trace-using-print message/ByteArray --from=0 --to=message.size:
   // Print a trace message on output so that that you can easily decode.

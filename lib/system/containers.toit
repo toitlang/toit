@@ -10,13 +10,11 @@ User-space side of the RPC API for installing container images in flash, and
 import uuid
 import monitor
 
-import system.api.containers show ContainerService ContainerServiceClient ContainerEventServiceClient
+import system.api.containers show ContainerService ContainerServiceClient
 import system.services show ServiceResourceProxy ServiceHandler
 
 _client_ /ContainerServiceClient ::=
     (ContainerServiceClient).open as ContainerServiceClient
-_message-client_ /ContainerEventServiceClient ::=
-    (ContainerEventServiceClient).open as ContainerEventServiceClient
 
 images -> List:
   return _client_.list-images
@@ -47,7 +45,7 @@ uninstall id/uuid.Uuid -> none:
 
 /** Notifies the system about a background-state change. */
 notify-background-state-change new-state/bool -> none:
-  _message-client_.background-state-change-event-send new-state
+  _client_.background-state-change-event-send new-state
 
 class ContainerImage:
   id/uuid.Uuid
@@ -134,7 +132,6 @@ class Container extends ServiceResourceProxy:
       event-kind := notification[0]
       event-value := notification[1]
       on-event_.call event-kind event-value
-
 
 class ContainerImageWriter extends ServiceResourceProxy:
   size/int ::= ?

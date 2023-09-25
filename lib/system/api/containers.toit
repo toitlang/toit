@@ -39,18 +39,8 @@ interface ContainerService:
   image-writer-commit handle/int flags/int data/int -> uuid.Uuid
   static IMAGE-WRITER-COMMIT-INDEX /int ::= 5
 
-  // Indexes 100+ are reserved for ContainerEventService so that
-  // a provider can implement both ContainerService and ContainerEventService
-  // in the same class.
-
-interface ContainerEventService:
-  static SELECTOR ::= ServiceSelector
-      --uuid="8f689304-16bd-45ec-9e06-03af84c840d0"
-      --major=0
-      --minor=1
-
   background-state-change-event-send message/any -> none
-  static BACKGROUND-STATE-CHANGE-EVENT-SEND-INDEX /int ::= 100
+  static BACKGROUND-STATE-CHANGE-EVENT-SEND-INDEX /int ::= 8
 
 class ContainerServiceClient extends ServiceClient implements ContainerService:
   static SELECTOR ::= ContainerService.SELECTOR
@@ -89,11 +79,5 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
   image-writer-commit handle/int flags/int data/int -> uuid.Uuid:
     return uuid.Uuid (invoke_ ContainerService.IMAGE-WRITER-COMMIT-INDEX [handle, flags, data])
 
-class ContainerEventServiceClient extends ServiceClient implements ContainerEventService:
-  static SELECTOR ::= ContainerEventService.SELECTOR
-  constructor selector/ServiceSelector=SELECTOR:
-    assert: selector.matches SELECTOR
-    super selector
-
   background-state-change-event-send message/any -> none:
-    invoke_ ContainerEventService.BACKGROUND-STATE-CHANGE-EVENT-SEND-INDEX message
+    invoke_ ContainerService.BACKGROUND-STATE-CHANGE-EVENT-SEND-INDEX message
