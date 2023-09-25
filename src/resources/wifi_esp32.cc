@@ -286,7 +286,7 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
       // because something is seriously wrong. We let the
       // higher level code know that we're disconnected and
       // clean up from there.
-      if (esp_wifi_connect() != ESP_OK) {
+      if (reconnects_remaining_ > 0 && esp_wifi_connect() != ESP_OK) {
         reconnects_remaining_ = 0;
         state |= WIFI_DISCONNECTED;
       }
