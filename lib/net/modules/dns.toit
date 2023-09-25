@@ -474,7 +474,7 @@ decode-packet packet/ByteArray --error-name/string?=null -> DecodedPacket:
   result := DecodedPacket --id=received-id --status-bits=status-bits
 
   queries.repeat:
-    q-name := decode-name_ response position: position = it
+    q-name := decode-name response position: position = it
     q-type := BIG-ENDIAN.uint16 response position
     q-class := BIG-ENDIAN.uint16 response position + 2
     position += 4
@@ -485,7 +485,7 @@ decode-packet packet/ByteArray --error-name/string?=null -> DecodedPacket:
         Question q-name q-type --unicast-ok=unicast-ok
 
   response-count.repeat:
-    r-name := decode-name_ response position: position = it
+    r-name := decode-name response position: position = it
     clas := BIG-ENDIAN.uint16 response (position + 2)
     type := BIG-ENDIAN.uint16 response position
     ttl  := BIG-ENDIAN.int32 response (position + 4)
@@ -505,7 +505,7 @@ decode-packet packet/ByteArray --error-name/string?=null -> DecodedPacket:
     else if type == RECORD-PTR or type == RECORD-CNAME:
       result.resources.add
           StringResource r-name type ttl flush
-              decode-name_ response position: null
+              decode-name response position: null
     else if type == RECORD-TXT:
       length := response[position]
       if rd-length < length + 1: protocol-error_  // Unexpected TXT length.
@@ -638,7 +638,7 @@ class SrvResource extends StringResource:
 Decodes a name from a DNS (RFC 1035) packet.
 The block is invoked with the index of the next data in the packet.
 */
-decode-name_ packet/ByteArray position/int [position-block] -> string:
+decode-name packet/ByteArray position/int [position-block] -> string:
   parts := []
   parts_ packet position parts position-block
   return parts.join "."
