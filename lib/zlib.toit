@@ -407,13 +407,15 @@ class BufferingHistory_ implements InflateHistory:
   window-size/int := 32768
 
   record result/ByteArray -> none:
-    if result.size == 0:
+    result-size := result.size
+    if result-size == 0:
       return
-    if previous_.size > 0 and result.size < 32 and previous_[previous_.size - 1].size < 32:
-      previous_[previous_.size - 1] += result
+    previous-size := previous_.size
+    if previous-size > 0 and result-size < 32 and previous_[previous-size - 1].size < 32:
+      previous_[previous-size - 1] += result
     else:
       previous_.add result
-    buffered_ += result.size
+    buffered_ += result-size
     while buffered_ > window-size and buffered_ - previous_[0].size > window-size:
       buffered_ -= previous_[0].size
       previous_ = previous_.copy 1
@@ -591,7 +593,7 @@ class InflaterBackEnd implements BackEnd_:
         adler32 := n-bits_ 32
         if adler32 < 0: return NEED-MORE-DATA_
         calculated := LITTLE_ENDIAN.uint32 adler_.get 0
-        adler_ = null // Only read the checksum once.
+        adler_ = null  // Only read the checksum once.
         if calculated != adler32: throw "Checksum mismatch"
         state_ = INITIAL_
         return null
@@ -708,7 +710,7 @@ class InflaterBackEnd implements BackEnd_:
           symbol-and-length-table_ = HuffmanTables_ lengths_[..hlit_]
           distance-table_ = HuffmanTables_ lengths_[hlit_..]
           state_ = DECOMPRESSING_
-          meta-table_ = null  // Don't jeed this any more.
+          meta-table_ = null  // Don't need this any more.
           lengths_ = null  // Or this.
           counter_ = 0
           state_ = DECOMPRESSING_
@@ -814,13 +816,13 @@ class InflaterBackEnd implements BackEnd_:
       1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
       257, 385, 513, 769, 1025, 1537, 2049, 3073,
       4097, 6145, 8193, 12289, 16385, 24577
-      ]
+  ]
 
   static LENGTHS_ ::= #[
       3, 4, 5, 6, 7, 8, 9, 10, 11, 13,
       15, 17, 19, 23, 27, 31, 35, 43, 51, 59,
       67, 83, 99, 115, 131, 163, 195, 227,
-      ]
+  ]
 
   static HCLEN-ORDER_ ::= #[16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
 
@@ -845,8 +847,6 @@ class InflaterBackEnd implements BackEnd_:
       return #[data_] + buffer_[buffer-pos_..]
     return buffer_[buffer-pos_..]
 
-  /**
-  */
   close:
 
   // Gets next symbol or -1 if we need more data.

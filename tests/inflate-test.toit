@@ -27,7 +27,7 @@ simple-test:
   expect-equals 0b1110100110 (zlib.reverse_ 0b0110010111 10)
   expect-equals 0b11101001101 (zlib.reverse_ 0b10110010111 11)
 
-  // From the RFC section 3.2.2
+  // From the RFC section 3.2.2.
   ex := [
       zlib.SymbolBitLen_ 'A' 2,
       zlib.SymbolBitLen_ 'B' 1,
