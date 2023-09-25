@@ -22,16 +22,24 @@ multicast-test:
 
   socket := udp.Socket "224.0.0.251" port
 
+  socket.multicast-loopback = true
+  socket.multicast-ttl = 3
   socket.multicast-add-membership
-      net.IpAddress.parse "224.0.0.0"
-  //socket.multicast-loopback = false
+      net.IpAddress.parse "224.0.0.251"
+  socket.multicast-loopback = true
 
   socket.connect
     net.SocketAddress
       net.IpAddress.parse "224.0.0.251"
       port
 
-  for i := 0; i < times; i++:
-    socket.write "testing"
+  task::
+    print "Waiting for data"
     expect-equals "testing" socket.read.to-string
-  socket.close
+    print "Got it"
+    socket.close
+
+  sleep --ms=2000
+
+  socket.write "testing"
+  print "Wrote"

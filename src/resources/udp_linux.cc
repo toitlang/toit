@@ -322,7 +322,7 @@ PRIMITIVE(set_option) {
   switch (option) {
     case UDP_MULTICAST_LOOPBACK:
     case UDP_BROADCAST: {
-      int value = 0;
+      uint8 value = 0;
       if (raw == process->true_object()) {
         value = 1;
       } else if (raw != process->false_object()) {
@@ -331,6 +331,7 @@ PRIMITIVE(set_option) {
       int option_name = 0;
       int level = 0;
       if (option == UDP_MULTICAST_LOOPBACK) {
+        printf("Setting multicast loopback to %s\n", (value ? "true" : "false"));
         level = IPPROTO_IP;
         option_name = IP_MULTICAST_LOOP;
       } else {
@@ -341,18 +342,25 @@ PRIMITIVE(set_option) {
       if (setsockopt(fd, level, option_name, &value, sizeof(value)) == -1) {
         return Primitive::os_error(errno, process);
       }
+      printf("Setsockopt OK\n");
       break;
     }
     case UDP_MULTICAST_MEMBERSHIP: {
       Blob group_bytes;
       if (!raw->byte_content(process->program(), &group_bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
       struct ip_mreqn group;
+      printf("Group-bytes.length: %d\n", group_bytes.length());
+      printf("   Group-bytes[0}: %d\n", group_bytes.address()[0]);
+      printf("   Group-bytes[1}: %d\n", group_bytes.address()[1]);
+      printf("   Group-bytes[2}: %d\n", group_bytes.address()[2]);
+      printf("   Group-bytes[3}: %d\n", group_bytes.address()[3]);
       memcpy(&group.imr_multiaddr.s_addr, group_bytes.address(), group_bytes.length());
       memset(&group.imr_address, 0, sizeof(group.imr_address));  // Any interface.
       group.imr_ifindex = 0;  // Any interface.
       if (setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &group, sizeof(group)) == -1) {
         return Primitive::os_error(errno, process);
       }
+      printf("Setsockopt multicast membership OK\n");
       break;
     }
     case UDP_MULTICAST_TTL: {

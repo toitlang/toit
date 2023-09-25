@@ -100,6 +100,14 @@ class Socket implements net.Socket:
     state := ensure-state_
     return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-LOOPBACK value
 
+  multicast-ttl -> int:
+    state := ensure-state_
+    return udp-get-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-TTL
+
+  multicast-ttl= value/int:
+    state := ensure-state_
+    return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-TTL value
+
   receive_ output:
     while true:
       state := ensure-state_ TOIT-UDP-READ_
