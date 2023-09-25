@@ -6,8 +6,7 @@ import expect show *
 
 import .dns
 import net
-import net.modules.dns as dns-module
-import net.modules.dns-tools
+import net.modules.dns
 
 main:
   txt-test
@@ -95,11 +94,11 @@ invalid-ipv6 str/string -> none:
 
 encode-decode-packets-test:
   queries := [
-      dns-tools.Question "toitlang.org" dns-module.RECORD-A
+      dns.Question "toitlang.org" dns.RECORD-A
   ]
 
-  packet := dns-tools.create-dns-packet queries [] --id=123 --is-response=false
-  decoded := dns-tools.decode-packet packet
+  packet := dns.create-dns-packet queries [] --id=123 --is-response=false
+  decoded := dns.decode-packet packet
 
   expect-equals 123 decoded.id
   expect-equals 1 decoded.questions.size
@@ -107,20 +106,20 @@ encode-decode-packets-test:
   expect-equals "toitlang.org" decoded.questions[0].name
 
   resources := [
-      dns-tools.AResource "toitlang.org" 120 (net.IpAddress.parse "10.11.12.13")
+      dns.AResource "toitlang.org" 120 (net.IpAddress.parse "10.11.12.13")
   ]
-  packet-2 := dns-tools.create-dns-packet queries resources --id=42 --is-response=true
-  decoded-2 := dns-tools.decode-packet packet-2
+  packet-2 := dns.create-dns-packet queries resources --id=42 --is-response=true
+  decoded-2 := dns.decode-packet packet-2
   
   expect-equals 42 decoded-2.id
   expect-equals 1 decoded-2.questions.size
   expect-equals 1 decoded-2.resources.size
-  expect decoded-2.questions[0] is dns-tools.Question
-  expect decoded-2.resources[0] is dns-tools.AResource
+  expect decoded-2.questions[0] is dns.Question
+  expect decoded-2.resources[0] is dns.AResource
   expect-equals "toitlang.org" decoded-2.questions[0].name
   expect-equals "toitlang.org" decoded-2.resources[0].name
   expect-equals "10.11.12.13"
-      (decoded-2.resources[0] as dns-tools.AResource).address.stringify
+      (decoded-2.resources[0] as dns.AResource).address.stringify
 
   // Check we compressed so there is only one '1' in the binary encoding.
   first-l := packet.index-of 'l'
