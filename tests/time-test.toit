@@ -51,6 +51,21 @@ test-time-string str/string:
     expect-equals str time.local.stringify
 
 main:
+  time-test
+  nanosecond-normalization-test
+  negative-ns-test
+  time-operations-test
+  set-time-info-test
+  simple-constructor-test
+  examples-test
+  duration-test
+  set-timezone-test
+  duration-operator-test
+  duration-stringify-test
+  duration-compare-test
+  rounded-test
+
+time-test:
   time := Time.now
   expect time == time       --message="Time == #0"
   expect time - m1 < time   --message="Time >"
@@ -60,6 +75,7 @@ main:
   expect h1 - m1 == m59     --message="Duration =="
   expect time + m59 == time + (h1 - m1) --message="Time == #1"
 
+nanosecond-normalization-test:
   // Check nanoseconds normalization.
   duration := (Time.epoch --s=0 --ns=600_000_000).to (Time.epoch --s=1 --ns=500_000_000)
   expect duration == (Duration 900_000_000) --message="Time - underflow"
@@ -68,6 +84,7 @@ main:
   duration = (Duration 1_000_000_000) / 2
   expect duration == (Duration 500_000_000) --message="Duration division"
 
+time-operations-test:
   // Check Time operations.
   t0 / Time ::= Time.now
   t1 / Time ::= t0.plus --s=1
@@ -78,6 +95,7 @@ main:
     Duration.ZERO
     (t0.to t1) + (t1.to t0)
 
+negative-ns-test:
   // Check passed negative ns are normalized.
   expect-equals
     Time.epoch --s=0 --ns=500_000_000
@@ -86,7 +104,9 @@ main:
     Time.epoch --s=0 --ns=2_500_000_000
     Time.epoch --s=5 --ns=-2_500_000_000
 
+set-time-info-test:
   // Check setting time info and checking the result.
+  time := Time.now
   info := time.utc
   expect-equals 13 (info.with --s=13).s
   expect-equals 12 (info.with --m=12).m
@@ -104,7 +124,8 @@ main:
   expect-equals 3  (info.with --month=3).time.utc.month
   expect-equals 1908 (info.with --year=1908).time.utc.year
 
-  info = (Time.utc 2020 10 01 15 24 37).utc
+simple-constructor-test:
+  info := (Time.utc 2020 10 01 15 24 37).utc
   expect-equals 2020 info.year
   expect-equals 10 info.month
   expect-equals 01 info.day
@@ -155,8 +176,10 @@ main:
   expect-equals 9  (info.with --month=9).time.local.month
   expect-equals 1908 (info.with --year=1908).time.local.year
 
+examples-test:
   EXAMPLES.do: test-time-string it
 
+duration-test:
   d / Duration := Duration --h=1 --m=2 --s=3 --ms=4 --us=5 --ns=6
   expect-equals 3723004005006 d.in-ns
 
@@ -199,12 +222,13 @@ main:
   expect-equals 11 local.s
   expect-equals 123456789 local.ns
 
+set-timezone-test:
   set-timezone "CET-1CEST,M3.5.0,M10.5.0/3"
-  time3 = Time.local 2020 09 08 18 03 11 --ns=123456789
-  expect-equals 1599580991 time3.s-since-epoch
-  expect-equals 123456789 time3.ns-part
+  time := Time.local 2020 09 08 18 03 11 --ns=123456789
+  expect-equals 1599580991 time.s-since-epoch
+  expect-equals 123456789 time.ns-part
 
-  local = time3.local
+  local := time.local
   expect-equals 2020 local.year
   expect-equals 09 local.month
   expect-equals 08 local.day
@@ -215,11 +239,11 @@ main:
   expect local.is-dst
 
   set-timezone "EST5EDT,M3.2.0,M11.1.0"
-  time4 := Time.local 2020 09 08 18 03 11 --ns=123456789
-  expect-equals 1599602591 time4.s-since-epoch
-  expect-equals 123456789 time4.ns-part
+  time2 := Time.local 2020 09 08 18 03 11 --ns=123456789
+  expect-equals 1599602591 time2.s-since-epoch
+  expect-equals 123456789 time2.ns-part
 
-  local = time4.local
+  local = time2.local
   expect-equals 2020 local.year
   expect-equals 09 local.month
   expect-equals 08 local.day
@@ -229,7 +253,7 @@ main:
   expect-equals 123456789 local.ns
   expect local.is-dst
 
-  time4-100-days-later := time4 + (Duration --h=24 * 100)
+  time4-100-days-later := time2 + (Duration --h=24 * 100)
   expect-not time4-100-days-later.local.is-dst
 
   set-timezone "CET-1CEST,M3.5.0,M10.5.0/3"
@@ -270,9 +294,9 @@ main:
   expect-equals 1 TimeInfo.MONDAY
   expect-equals 7 TimeInfo.SUNDAY
 
-  // Duration operators
+duration-operator-test:
   d1 := Duration --h=1
-  d2 = Duration --h=2 --m=1
+  d2 := Duration --h=2 --m=1
   expect-equals (Duration --h=3 --m=1)  d1 + d2
   expect-equals (Duration --h=2) d1 +   d1
   expect-equals (Duration --h=1 --m=1)  d2 - d1
@@ -287,7 +311,7 @@ main:
   without-dst := Time.local 2020 10 25 2 59 --no-dst
   expect with-dst < without-dst
 
-  info = with-dst.local
+  info := with-dst.local
   expect-equals 2020 info.year
   expect-equals 10 info.month
   expect-equals 25 info.day
@@ -296,7 +320,7 @@ main:
   expect-equals 0 info.s
   expect info.is-dst
 
-  info2 = without-dst.local
+  info2 := without-dst.local
   expect-equals 2020 info2.year
   expect-equals 10 info2.month
   expect-equals 25 info2.day
@@ -323,6 +347,7 @@ main:
   expect-not after-dst-info.is-dst
   expect-not after-dst-info2.is-dst
 
+duration-stringify-test:
   expect-equals "0s" (Duration --s=0).stringify
   expect-equals "1s" (Duration --s=1).stringify
   expect-equals "1h1m1s" (Duration --m=1 --h=1 --s=1).stringify
@@ -343,6 +368,7 @@ main:
   expect-equals "-2562047h47m16.854775808s" (Duration --ns=0x8000_0000_0000_0000).stringify
   expect-equals "-2562047h47m16.854775807s" (Duration --ns=0x8000_0000_0000_0001).stringify
 
+duration-compare-test:
   zero-duration := Duration
   expect-equals zero-duration zero-duration.abs
   expect-equals (Duration --h=1 --s=3) (Duration --h=-1 --s=-3).abs
@@ -372,3 +398,14 @@ main:
   now := Time.now
   parsed := Time.parse "invalid" --on-error=: now
   expect-equals now parsed
+
+rounded-test:
+  t := Time.parse "2019-06-19T00:00:00Z"
+  i := t.utc
+  expect-equals "2019-06-19" i.to-iso-date-string
+  t2 := Time.parse "2019-06-18T23:59:59Z"
+  i2 := t2.utc
+  expect-equals "2019-06-18" i2.to-iso-date-string
+  t3 := Time.parse "2023-01-26T15:59:33.000001Z"
+  i3 := t3.utc
+  expect-equals "2023-01-26T15:59:33Z" (i3.with --ns=0).to-iso8601-string
