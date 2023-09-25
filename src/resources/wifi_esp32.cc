@@ -94,6 +94,9 @@ class WifiResourceGroup : public ResourceGroup {
     strncpy(char_cast(config.sta.ssid), ssid, sizeof(config.sta.ssid) - 1);
     strncpy(char_cast(config.sta.password), password, sizeof(config.sta.password) - 1);
     config.sta.channel = channel;
+    config.sta.scan_method = (channel == 0)
+        ? WIFI_ALL_CHANNEL_SCAN
+        : WIFI_FAST_SCAN;
     err = esp_wifi_set_config(WIFI_IF_STA, &config);
     if (err != ESP_OK) return err;
 
