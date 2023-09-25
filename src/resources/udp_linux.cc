@@ -299,6 +299,16 @@ PRIMITIVE(get_option) {
       return BOOL(value != 0);
     }
 
+    case UDP_MULTICAST_TTL: {
+      int value = 0;
+      socklen_t size = sizeof(value);
+      if (getsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &value, &size) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      if (!(0 <= value && value <= 0xffff)) FAIL(OUT_OF_BOUNDS);
+      return Smi::from(value);
+    }
+
     default:
       FAIL(UNIMPLEMENTED);
   }
@@ -341,6 +351,15 @@ PRIMITIVE(set_option) {
       memset(&group.imr_address, 0, sizeof(group.imr_address));  // Any interface.
       group.imr_ifindex = 0;  // Any interface.
       if (setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &group, sizeof(group)) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      break;
+    }
+    case UDP_MULTICAST_TTL: {
+      if (!is_smi(raw)) FAIL(WRONG_OBJECT_TYPE);
+      int value = Smi::value(raw);
+      if (!(0 <= value && value <= 0xffff)) FAIL(OUT_OF_BOUNDS);
+      if (setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &value, sizeof(value)) == -1) {
         return Primitive::os_error(errno, process);
       }
       break;

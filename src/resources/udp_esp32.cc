@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -423,10 +423,8 @@ PRIMITIVE(error_number) {
   FAIL(WRONG_OBJECT_TYPE);
 }
 
-static Object* get_address_or_error(UdpSocket* socket, Process* process, bool peer) {
-  uint32_t address = peer ?
-    ip_addr_get_ip4_u32(&socket->upcb()->remote_ip) :
-    ip_addr_get_ip4_u32(&socket->upcb()->local_ip);
+static Object* get_address_or_error(UdpSocket* socket, Process* process) {
+  uint32_t address = ip_addr_get_ip4_u32(&socket->upcb()->local_ip);
   char buffer[16];
   int length = sprintf(buffer,
                        "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32,
@@ -447,7 +445,7 @@ PRIMITIVE(get_option) {
         return Smi::from(capture.socket->upcb()->local_port);
 
       case UDP_ADDRESS:
-        return get_address_or_error(capture.socket, capture.process, false);
+        return get_address_or_error(capture.socket, capture.process);
 
       case UDP_MULTICAST_LOOPBACK:
         return BOOL(capture.socket->upcb()->flags & UDP_FLAGS_MULTICAST_LOOP);

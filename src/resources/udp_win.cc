@@ -363,6 +363,17 @@ PRIMITIVE(get_option) {
       return BOOL(value != 0);
     }
 
+    case UDP_MULTICAST_TTL: {
+      int value = 0;
+      int size = sizeof(value);
+      if (getsockopt(socket, IPPROTO_IP, IP_MULTICAST_TTL,
+                     reinterpret_cast<char*>(&value), &size) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
+      if (!(0 <= value && value <= 0xffff)) FAIL(OUT_OF_BOUNDS);
+      return Smi::from(value);
+    }
+
     default:
       FAIL(UNIMPLEMENTED);
   }
@@ -409,6 +420,17 @@ PRIMITIVE(set_option) {
                      reinterpret_cast<char*>(&group), sizeof(group)) == SOCKET_ERROR) {
           WINDOWS_ERROR;
         }
+      break;
+    }
+
+    case UDP_MULTICAST_TTL: {
+      if (!is_smi(raw)) FAIL(WRONG_OBJECT_TYPE);
+      int value = Smi::value(raw);
+      if (!(0 <= value && value <= 0xffff)) FAIL(OUT_OF_BOUNDS);
+      if (setsockopt(socket, IPPROTO_IP, IP_MULTICAST_TTL,
+                     reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
+        WINDOWS_ERROR;
+      }
       break;
     }
 
