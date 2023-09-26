@@ -141,6 +141,7 @@ static esp_now_send_status_t tx_status;
 static QueueHandle_t rx_queue;
 static QueueHandle_t event_queue;
 
+// This function is registered as callback and will then be called on the high-priority WiFi task.
 static void espnow_send_cb(const uint8* mac_addr, esp_now_send_status_t status) {
   tx_status = status;
   auto event = EspNowEvent::SEND_DONE;
@@ -150,6 +151,7 @@ static void espnow_send_cb(const uint8* mac_addr, esp_now_send_status_t status) 
   }
 }
 
+// This function is registered as callback and will then be called on the high-priority WiFi task.
 static void espnow_recv_cb(const esp_now_recv_info_t* esp_now_info, const uint8* data, int data_len) {
   if (data_len > ESPNOW_RX_DATAGRAM_LEN_MAX) {
     ESP_LOGE("ESPNow", "Receive datagram length=%d is larger than max=%d", data_len, ESPNOW_RX_DATAGRAM_LEN_MAX);

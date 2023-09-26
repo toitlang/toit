@@ -43,24 +43,6 @@ enum {
   WIFI_SCAN_DONE    = 1 << 5,
 };
 
-class LogMeTender {
- public:
-  LogMeTender(const char* message) : message_(message) {
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] %s - enter\n", message);
-#endif
-  }
-
-#if CONFIG_WPA_DEBUG_PRINT
-  ~LogMeTender() {
-    printf("[wifi] %s - leave\n", message_);
-  }
-#endif
-
- private:
-  const char* message_;
-};
-
 const int kInvalidWifi = -1;
 
 // Only allow one instance of WiFi running.
@@ -112,6 +94,9 @@ class WifiResourceGroup : public ResourceGroup {
     strncpy(char_cast(config.sta.ssid), ssid, sizeof(config.sta.ssid) - 1);
     strncpy(char_cast(config.sta.password), password, sizeof(config.sta.password) - 1);
     config.sta.channel = channel;
+    config.sta.scan_method = (channel == 0)
+        ? WIFI_ALL_CHANNEL_SCAN
+        : WIFI_FAST_SCAN;
     err = esp_wifi_set_config(WIFI_IF_STA, &config);
     if (err != ESP_OK) return err;
 
@@ -172,23 +157,9 @@ class WifiResourceGroup : public ResourceGroup {
   }
 
   ~WifiResourceGroup() {
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] ~WifiResourceGroup()\n");
-#endif
-
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] esp_wifi_deinit()\n");
-#endif
-    esp_err_t err = esp_wifi_deinit();
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] esp_wifi_deinit() -> done: %d\n", err);
-#endif
-    FATAL_IF_NOT_ESP_OK(err);
+    FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy_default_wifi(netif_);
     wifi_pool.put(id_);
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] ~WifiResourceGroup() -> done\n");
-#endif
   }
 
   uint32_t on_event(Resource* resource, word data, uint32_t state) override;
@@ -231,45 +202,20 @@ class WifiEvents : public SystemResource {
       , state_(STOPPED) {}
 
   ~WifiEvents() {
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] ~WifiEvents()\n");
-#endif
     State state = this->state();
     if (state >= CONNECTED) {
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[wifi] esp_wifi_disconnect\n");
-#endif
-      esp_err_t err = esp_wifi_disconnect();
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[wifi] esp_wifi_disconnect() -> done: %d\n", err);
-#endif
-      FATAL_IF_NOT_ESP_OK(err);
+      FATAL_IF_NOT_ESP_OK(esp_wifi_disconnect());
     }
     if (state >= STARTED) {
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[wifi] esp_wifi_stop()\n");
-#endif
-      esp_err_t err = esp_wifi_stop();
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[wifi] esp_wifi_stop() -> done: %d\n", err);
-#endif
-      FATAL_IF_NOT_ESP_OK(err);
+      FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
     }
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] ~WifiEvents() -> done\n");
-#endif
   }
 
   uint8 disconnect_reason() const { return disconnect_reason_; }
   void set_disconnect_reason(uint8 reason) { disconnect_reason_ = reason; }
 
   State state() const { return state_; }
-  void set_state(State state) {
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] state updated: %d->%d\n", state_, state);
-#endif
-    state_ = state;
-  }
+  void set_state(State state) { state_ = state; }
 
  private:
   friend class WifiResourceGroup;
@@ -285,7 +231,6 @@ class WifiIpEvents : public SystemResource {
 };
 
 uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 state) {
-  LogMeTender lmt("on_event_wifi");
   SystemEvent* system_event = reinterpret_cast<SystemEvent*>(data);
   WifiEvents* events = static_cast<WifiEvents*>(resource);
 
@@ -325,14 +270,7 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
       bool reconnecting = false;
       if (reconnect && reconnects_remaining_ > 0) {
         reconnects_remaining_--;
-        esp_err_t cr = ESP_OK;
-        { LogMeTender lmt("esp_wifi_connect:STA_DISCONNECTED");
-          cr = esp_wifi_connect();
-#if CONFIG_WPA_DEBUG_PRINT
-          printf("[wifi] esp_wifi_connect -> %d\n", cr);
-#endif
-        }
-        reconnecting = cr == ESP_OK;
+        reconnecting = esp_wifi_connect() == ESP_OK;
       }
 
       // If we're attempting to reconnect, we do not
@@ -351,14 +289,7 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
       // because something is seriously wrong. We let the
       // higher level code know that we're disconnected and
       // clean up from there.
-      esp_err_t cr = ESP_OK;
-      { LogMeTender lmt("esp_wifi_connect:STA_START");
-        cr = esp_wifi_connect();
-#if CONFIG_WPA_DEBUG_PRINT
-        printf("[wifi] esp_wifi_connect -> %d\n", cr);
-#endif
-      }
-      if (cr != ESP_OK) {
+      if (reconnects_remaining_ > 0 && esp_wifi_connect() != ESP_OK) {
         reconnects_remaining_ = 0;
         state |= WIFI_DISCONNECTED;
       }
@@ -413,7 +344,6 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
 }
 
 uint32 WifiResourceGroup::on_event_ip(Resource* resource, word data, uint32 state) {
-  LogMeTender lmt("on_event_ip");
   SystemEvent* system_event = reinterpret_cast<SystemEvent*>(data);
 
   switch (system_event->id) {
@@ -474,7 +404,6 @@ uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t sta
 MODULE_IMPLEMENTATION(wifi, MODULE_WIFI)
 
 PRIMITIVE(init) {
-  LogMeTender lmt("init");
   ARGS(bool, ap);
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
@@ -572,7 +501,6 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(close) {
-  LogMeTender lmt("close");
   ARGS(WifiResourceGroup, group);
 
   group->tear_down();
@@ -581,7 +509,6 @@ PRIMITIVE(close) {
 }
 
 PRIMITIVE(connect) {
-  LogMeTender lmt("connect");
   ARGS(WifiResourceGroup, group, cstring, ssid, cstring, password);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
@@ -608,7 +535,6 @@ PRIMITIVE(connect) {
 }
 
 PRIMITIVE(establish) {
-  LogMeTender lmt("establish");
   ARGS(WifiResourceGroup, group, cstring, ssid, cstring, password, bool, broadcast, int, channel);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
@@ -635,7 +561,6 @@ PRIMITIVE(establish) {
 }
 
 PRIMITIVE(setup_ip) {
-  LogMeTender lmt("setup_ip");
   ARGS(WifiResourceGroup, group);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
@@ -651,7 +576,6 @@ PRIMITIVE(setup_ip) {
 }
 
 PRIMITIVE(disconnect) {
-  LogMeTender lmt("disconnect");
   ARGS(WifiResourceGroup, group, WifiEvents, wifi);
 
   group->unregister_resource(wifi);
@@ -660,7 +584,6 @@ PRIMITIVE(disconnect) {
 }
 
 PRIMITIVE(disconnect_reason) {
-  LogMeTender lmt("disconnect_reason");
   ARGS(WifiEvents, wifi);
   switch (wifi->disconnect_reason()) {
     case WIFI_REASON_ASSOC_EXPIRE:
@@ -684,7 +607,6 @@ PRIMITIVE(disconnect_reason) {
 }
 
 PRIMITIVE(get_ip) {
-  LogMeTender lmt("get_ip");
   ARGS(WifiResourceGroup, group, int, index);
   if (index < 0 || index >= WifiResourceGroup::NUMBER_OF_ADDRESSES) {
     FAIL(INVALID_ARGUMENT);
@@ -702,7 +624,6 @@ PRIMITIVE(get_ip) {
 }
 
 PRIMITIVE(init_scan) {
-  LogMeTender lmt("init_scan");
   ARGS(WifiResourceGroup, group)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -724,7 +645,6 @@ PRIMITIVE(init_scan) {
 }
 
 PRIMITIVE(start_scan) {
-  LogMeTender lmt("start_scan");
   ARGS(WifiResourceGroup, group, int, channel, bool, passive, int, period_ms);
 
   esp_err_t ret = group->start_scan(passive, channel, period_ms);
@@ -736,7 +656,6 @@ PRIMITIVE(start_scan) {
 }
 
 PRIMITIVE(read_scan) {
-  LogMeTender lmt("read_scan");
   ARGS(WifiResourceGroup, group);
 
   uint16_t count;
@@ -781,7 +700,6 @@ PRIMITIVE(read_scan) {
 }
 
 PRIMITIVE(ap_info) {
-  LogMeTender lmt("ap_info");
   ARGS(WifiResourceGroup, group);
 
   wifi_ap_record_t ap_record;
