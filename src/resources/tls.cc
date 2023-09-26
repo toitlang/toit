@@ -347,11 +347,11 @@ bool is_tls_malloc_failure(int err) {
 }
 
 Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
-  static const size_t BUFFER_LEN = 400;
-  char buffer[BUFFER_LEN];
   if (is_tls_malloc_failure(err)) {
     FAIL(MALLOC_FAILED);
   }
+  static const size_t BUFFER_LEN = 400;
+  char buffer[BUFFER_LEN];
   const char* issuer = socket ? socket->error_issuer() : null;
   if (err == MBEDTLS_ERR_X509_CERT_VERIFY_FAILED &&
       socket &&
