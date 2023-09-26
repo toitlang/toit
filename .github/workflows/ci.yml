@@ -21,14 +21,6 @@ jobs:
         container: [ windows-latest ]
         shard: [1]
 
-        include:
-          - container: ubuntu-20.04
-            shard: 6
-          - container: ubuntu-20.04
-            shard: 7
-          - container: ubuntu-20.04
-            shard: 8
-
     runs-on: ${{ matrix.container }}
 
     steps:
@@ -40,11 +32,13 @@ jobs:
         id: constants
         shell: bash
         run: |
+          export TOIT_GIT_VERSION=v2.0.0-alpha.107+florian
+          echo "TOIT_GIT_VERSION=$TOIT_GIT_VERSION" >> $GITHUB_ENV
           echo "external_result=external-result/$RUNNER_OS-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
           echo "external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }}" >> $GITHUB_OUTPUT
           echo "debug_root_dir=debug-ci" >> $GITHUB_OUTPUT
           echo "debug_dir=debug-ci/$RUNNER_OS-${{ matrix.shard }}" >> $GITHUB_OUTPUT
-          TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
+          TOIT_VERSION=$TOIT_GIT_VERSION
           echo $TOIT_VERSION
           echo "toit_version=$TOIT_VERSION" >> $GITHUB_OUTPUT
           if [ "$RUNNER_OS" == "Linux" ]; then
