@@ -1157,6 +1157,7 @@ int BlePeripheralManagerResource::_on_gap(struct ble_gap_event* event) {
           ESP_LOGW("BLE", "Could not restart advertising: err=%d", err);
         }
       }
+      break;
     case BLE_GAP_EVENT_ADV_COMPLETE:
       // TODO(mikkel): Add stopped event.
       // BleEventSource::instance()->on_event(this, kBleAdvertiseStopped);
