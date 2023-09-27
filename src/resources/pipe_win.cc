@@ -217,9 +217,12 @@ PRIMITIVE(create_pipe) {
   security_attributes.bInheritHandle = input;
   security_attributes.lpSecurityDescriptor = NULL;
 
+  int read_overlap_flag = input ? 0 : FILE_FLAG_OVERLAPPED;
+  int write_overlap_flag = input ? FILE_FLAG_OVERLAPPED : 0;
+
   HANDLE read = CreateNamedPipe(
       pipe_name_buffer,
-      PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED,
+      PIPE_ACCESS_INBOUND | read_overlap_flag,
       PIPE_TYPE_BYTE | PIPE_WAIT,
       1,             // Number of pipes
       8192,          // Out buffer size
@@ -241,7 +244,7 @@ PRIMITIVE(create_pipe) {
       0,                         // No sharing
       &security_attributes,
       OPEN_EXISTING,
-      FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,
+      FILE_ATTRIBUTE_NORMAL | write_overlap_flag,
       NULL                       // Template file
   );
 
@@ -267,6 +270,8 @@ PRIMITIVE(create_pipe) {
   resource_proxy->set_external_address(pipe_resource);
 
   array->at_put(0, resource_proxy);
+  // Windows handles are actually limited to 24 bit so this should work
+  // OK.
   array->at_put(1, Smi::from(reinterpret_cast<word>(input ? read : write)));
 
   return array;
