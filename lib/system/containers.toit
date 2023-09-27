@@ -43,6 +43,10 @@ start id/uuid.Uuid arguments/any=[] -> Container:
 uninstall id/uuid.Uuid -> none:
   _client_.uninstall-image id
 
+/** Notifies the system about a background-state change. */
+notify-background-state-changed new-state/bool -> none:
+  _client_.notify-background-state-changed new-state
+
 class ContainerImage:
   id/uuid.Uuid
   name/string?
@@ -51,6 +55,8 @@ class ContainerImage:
   constructor --.id --.name --.flags --.data:
 
 class Container extends ServiceResourceProxy:
+  static EVENT-BACKGROUND-STATE-CHANGE ::= 0
+
   // TODO(kasper): Rename this and document it.
   id/uuid.Uuid
 
@@ -70,6 +76,7 @@ class Container extends ServiceResourceProxy:
 
   result_/monitor.Latch ::= monitor.Latch
   on-stopped_/Lambda? := null
+  on-event_/Lambda? := null
 
   constructor.internal_ --handle/int --.id --.gid:
     super _client_ handle
@@ -101,14 +108,30 @@ class Container extends ServiceResourceProxy:
     else:
       on-stopped_ = lambda
 
-  on-notified_ code/int -> none:
-    result_.set code
-    on-stopped := on-stopped_
-    on-stopped_ = null
-    if on-stopped: on-stopped.call code
-    // We no longer expect or care about notifications, so
-    // close the resource.
-    close
+  on-event lambda/Lambda? -> none:
+    if not lambda:
+      on-event_ = null
+      return
+    if on-event_: throw "ALREADY_IN_USE"
+    on-event_ = lambda
+
+  on-notified_ notification/any -> none:
+    if notification is int:
+      code/int := notification
+      result_.set code
+      on-stopped := on-stopped_
+      on-stopped_ = null
+      if on-stopped: on-stopped.call code
+      // We no longer expect or care about notifications, so
+      // close the resource.
+      close
+    else if on-event_:
+      if notification is not List or notification.size != 2 or notification[0] is not int:
+        // Discard unknown event.
+        return
+      event-kind := notification[0]
+      event-value := notification[1]
+      on-event_.call event-kind event-value
 
 class ContainerImageWriter extends ServiceResourceProxy:
   size/int ::= ?

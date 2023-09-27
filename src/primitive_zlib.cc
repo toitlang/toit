@@ -16,7 +16,9 @@
 #include "top.h"
 
 #ifdef CONFIG_TOIT_FULL_ZLIB
-#include <zlib.h>
+#include "third_party/miniz/miniz.h"
+// It's an include-only library with a .c file.
+#include "third_party/miniz/miniz.c"
 #endif
 
 #include "process.h"
@@ -63,14 +65,14 @@ PRIMITIVE(adler32_add) {
 }
 
 PRIMITIVE(adler32_get) {
-  ARGS(Adler32, adler32, bool, destructive);
+  ARGS(Adler32, adler_32, bool, destructive);
   ByteArray* result = process->allocate_byte_array(4);
   if (result == null) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes bytes(result);
-  adler32->get(bytes.address());
+  adler_32->get(bytes.address());
   if (destructive) {
-    adler32->resource_group()->unregister_resource(adler32);
-    adler32_proxy->set_external_address(static_cast<Adler32*>(null));
+    adler_32->resource_group()->unregister_resource(adler_32);
+    adler_32_proxy->set_external_address(static_cast<Adler32*>(null));
   }
   return result;
 }
@@ -145,7 +147,6 @@ int Zlib::init_deflate(int compression_level) {
   int result = deflateInit(&stream_, compression_level);
   stream_.next_out = &output_buffer_[0];
   stream_.avail_out = ZLIB_BUFFER_SIZE;
-  stream_.data_type = Z_UNKNOWN;
   deflate_ = true;
   return result;
 }
