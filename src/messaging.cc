@@ -660,7 +660,9 @@ bool MessageDecoder::decode_byte_array_external(void** data, int* length) {
     return true;
   } else if (tag == TAG_BYTE_ARRAY_INLINE) {
     int encoded_length = *length = read_cardinal();
-    int malloc_length = encoded_length == 0 ? 1 : encoded_length;
+    // 'malloc' is allowed to return 'null' if the length is zero.
+    // We always want to have a valid pointer, so we allocate at least one byte.
+    int malloc_length = Utils::max(1, encoded_length);
     void* copy = malloc(malloc_length);
     if (copy == null) return mark_allocation_failed();
     memcpy(copy, &buffer_[cursor_], encoded_length);
