@@ -37,7 +37,7 @@ test-start:
 
   lambda2-value := null
   sub2 := containers.start containers.current {:}
-  sub2.on-stopped:: lambda2-value = it
+      --on-stopped=:: lambda2-value = it
   expect-equals 0 sub2.wait
   expect-equals 0 lambda2-value
 
@@ -50,10 +50,10 @@ test-start:
   lambda4-called := false
   lambda4-value := null
   sub4 := containers.start containers.current {:}
-  sub4.on-stopped::
-    expect-not lambda4-called
-    lambda4-value = it
-    lambda4-called = true
+      --on-stopped=::
+        expect-not lambda4-called
+        lambda4-value = it
+        lambda4-called = true
   // Make sure we get the lambda called before we call
   // wait on the container. Shouldn't take too long.
   with-timeout --ms=5_000: while not lambda4-called: sleep --ms=50
@@ -61,11 +61,11 @@ test-start:
   expect-equals 0 sub4.wait
 
 test-background-state-changed:
-  sub := containers.start containers.current { "background-state-test": true }
   channel := monitor.Channel 1
-  sub.on-event:: | event-id/int value |
-    expect-equals containers.Container.EVENT-BACKGROUND-STATE-CHANGE event-id
-    channel.send value
+  sub := containers.start containers.current { "background-state-test": true }
+      --on-event=:: | event-id/int value |
+        expect-equals containers.Container.EVENT-BACKGROUND-STATE-CHANGE event-id
+        channel.send value
 
   expect_equals true channel.receive
   expect_equals false channel.receive
