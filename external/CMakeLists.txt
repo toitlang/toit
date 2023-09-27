@@ -66,7 +66,9 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-openai
     https://github.com/toitware/toit-pixel-display
     https://github.com/toitware/toit-pixel-strip
-    https://github.com/toitware/toit-png-display
+# TODO(kasper): Temporarily removed because the tests cannot be
+# run correctly by the external test harness.
+#   https://github.com/toitware/toit-png-display
     https://github.com/toitware/toit-protobuf
     https://github.com/toitware/toit-provision
     https://github.com/toitware/toit-r46ca01
