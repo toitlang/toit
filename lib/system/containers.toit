@@ -25,7 +25,9 @@ current -> uuid.Uuid:
   // external byte arrays across the RPC boundary.
   return uuid.Uuid current-image-id_.copy
 
-start id/uuid.Uuid arguments/any=[] -> Container:
+start id/uuid.Uuid arguments/any=[] -> Container
+    --on-event/Lambda?=null
+    --on-stopped/Lambda?=null:
   image/List? := _client_.load-image id
   if not image: throw "No such container: $id"
   handle := image[0]
@@ -34,6 +36,8 @@ start id/uuid.Uuid arguments/any=[] -> Container:
       --handle=handle
       --id=id
       --gid=gid
+      --on-event=on-event
+      --on-stopped=on-stopped
   try:
     _client_.start-container handle arguments
     return container
@@ -75,10 +79,12 @@ class Container extends ServiceResourceProxy:
   gid/int
 
   result_/monitor.Latch ::= monitor.Latch
-  on-stopped_/Lambda? := null
-  on-event_/Lambda? := null
+  on-event_/Lambda? := ?
+  on-stopped_/Lambda? := ?
 
-  constructor.internal_ --handle/int --.id --.gid:
+  constructor.internal_ --handle/int --.id --.gid --on-event/Lambda? --on-stopped/Lambda?:
+    on-event_ = on-event
+    on-stopped_ = on-stopped
     super _client_ handle
 
   close -> none:
@@ -96,6 +102,7 @@ class Container extends ServiceResourceProxy:
     if not code: throw "CLOSED"
     return code
 
+  /// Deprecated.
   on-stopped lambda/Lambda? -> none:
     if not lambda:
       on-stopped_ = null
@@ -108,6 +115,7 @@ class Container extends ServiceResourceProxy:
     else:
       on-stopped_ = lambda
 
+  /// Deprecated.
   on-event lambda/Lambda? -> none:
     if not lambda:
       on-event_ = null
