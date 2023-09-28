@@ -88,38 +88,21 @@ class HandlePipeResource : public WindowsResource {
 class ReadPipeResource : public HandlePipeResource {
  public:
   ReadPipeResource(ResourceGroup* resource_group, HANDLE handle, HANDLE event)
-    : HandlePipeResource(resource_group, handle, event) {
-    issue_read_request();
-  }
+    : HandlePipeResource(resource_group, handle, event) {}
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
     read_ready_ = true;
     return state | PIPE_READ;
   }
 
-  bool issue_read_request() {
+  void not_ready() {
     read_ready_ = false;
-    read_count_ = 0;
-    bool success = ReadFile(handle(), read_data_, READ_BUFFER_SIZE, &read_count_, overlapped());
-    if (!success && WSAGetLastError() != ERROR_IO_PENDING) {
-      return false;
-    }
-    return true;
   }
 
-  bool receive_read_response() {
-    bool overlapped_result = GetOverlappedResult(handle(), overlapped(), &read_count_, false);
-    return overlapped_result;
-  }
-
-  DWORD read_count() const { return read_count_; }
   bool read_ready() const { return read_ready_; }
-  char* read_buffer() { return read_data_; }
   void set_pipe_ended(bool pipe_ended) { pipe_ended_ = pipe_ended; }
   bool pipe_ended() const { return pipe_ended_; }
  private:
-  char read_data_[READ_BUFFER_SIZE]{};
-  DWORD read_count_ = 0;
   bool read_ready_ = false;
   bool pipe_ended_ = false;
 };
@@ -363,23 +346,29 @@ PRIMITIVE(read) {
   ByteArray* array = process->allocate_byte_array(READ_BUFFER_SIZE, true);
   if (array == null) FAIL(ALLOCATION_FAILED);
 
-  if (!read_resource->receive_read_response()) {
-    if (GetLastError() == ERROR_BROKEN_PIPE) return process->null_object();
+  ByteArray::Bytes bytes(array);
+
+  int result = WaitForSingleObject(read_resource->handle(), 0);  // Zero timeout.
+  if (result == WAIT_TIMEOUT) {
+    read_resource->not_ready();
+    return Smi::from(-1);  // No data available.
+  }
+  if (result != WAIT_OBJECT_0) {
+    read_resource->set_pipe_ended(true);
     WINDOWS_ERROR;
   }
 
-  // A read count of 0 means EOF
-  if (read_resource->read_count() == 0) return process->null_object();
-
-  array->resize_external(process, read_resource->read_count());
-
-  memcpy(ByteArray::Bytes(array).address(), read_resource->read_buffer(), read_resource->read_count());
-
-  if (!read_resource->issue_read_request()) {
-    if (GetLastError() != ERROR_BROKEN_PIPE) WINDOWS_ERROR;
-    read_resource->set_pipe_ended(true);
+  DWORD read_count;
+  if (!ReadFile(read_resource->handle(), bytes.address(), READ_BUFFER_SIZE, &read_count, NULL)) {
+    int result = GetLastError();
+    if (result == ERROR_HANDLE_EOF) {
+      read_resource->set_pipe_ended(true);
+      return process->null_object();
+    }
+    WINDOWS_ERROR;
   }
 
+  array->resize_external(process, read_count);
   return array;
 }
 

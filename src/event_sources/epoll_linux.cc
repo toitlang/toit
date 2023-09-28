@@ -151,8 +151,14 @@ void EpollEventSource::entry() {
                 if (epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, id, null) == -1) {
                   FATAL("failed to remove 0x%lx from epoll: %d", id, errno);
                 }
-                // Don't close STD pipes.
-                if (id > 2) close(id);
+                // We close even the standard file descriptors, because it's
+                // unexpected not to be able to close them.  But we immediately
+                // reopen them on the actual terminal in case there is a crash
+                // and we want to see the stack trace.
+                close(id);
+                if (id <= 2) {
+                  open("/dev/tty", id == 0 ? O_RDONLY : O_WRONLY);
+                }
               }
               break;
           }
