@@ -183,7 +183,7 @@ class WifiModule implements NetworkModule:
   static WIFI-SCAN-DONE    ::= 1 << 5
 
   static WIFI-RETRY-DELAY_     ::= Duration --s=1
-  static WIFI-CONNECT-TIMEOUT_ ::= Duration --s=12
+  static WIFI-CONNECT-TIMEOUT_ ::= Duration --s=24
   static WIFI-DHCP-TIMEOUT_    ::= Duration --s=16
 
   logger_/log.Logger ::= log.default.with-name "wifi"
