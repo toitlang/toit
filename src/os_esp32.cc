@@ -511,7 +511,7 @@ void OS::out_of_memory(const char* reason) {
 
     // We use deep sleep here to preserve the RTC memory that contains our
     // bookkeeping data for out-of-memory situations. Using esp_restart()
-    // would clear the RTC memory.
+    // might clear the RTC memory.
     esp_sleep_enable_timer_wakeup(100000);  // 100 ms.
     RtcMemory::on_deep_sleep_start();
     esp_deep_sleep_start();
