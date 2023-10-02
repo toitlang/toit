@@ -339,15 +339,26 @@ PRIMITIVE(write) {
 
 PRIMITIVE(read) {
   ARGS(ReadPipeResource, read_resource);
+  fprintf(stderr, "read: entered\n");
 
-  if (read_resource->pipe_ended()) return process->null_object();
-  if (!read_resource->read_ready()) return Smi::from(-1);
+  if (read_resource->pipe_ended()) {
+    fprintf(stderr, "read: pipe ended.\n");
+    return process->null_object();
+  }
+  if (!read_resource->read_ready()) {
+    fprintf(stderr, "read: not ready - returning -1\n");
+    return Smi::from(-1);
+  }
 
   ByteArray* array = process->allocate_byte_array(READ_BUFFER_SIZE, true);
-  if (array == null) FAIL(ALLOCATION_FAILED);
+  if (array == null) {
+    fprintf(stderr, "read: allocation failed\n");
+    FAIL(ALLOCATION_FAILED);
+  }
 
   ByteArray::Bytes bytes(array);
 
+  fprintf(stderr, "read: WaitForSingleObject in read\n");
   int result = WaitForSingleObject(read_resource->handle(), 0);  // Zero timeout.
   if (result == WAIT_TIMEOUT) {
     read_resource->not_ready();

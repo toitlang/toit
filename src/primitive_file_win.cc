@@ -506,14 +506,19 @@ PRIMITIVE(mkdtemp) {
 
 PRIMITIVE(is_open_file) {
   ARGS(int, fd);
-  int result = lseek(fd, 0, SEEK_CUR);
-  if (result < 0) {
-    if (errno == ESPIPE || errno == EINVAL || errno == EBADF) {
-      return process->false_object();
-    }
-    FAIL(ERROR);
+  HANDLE handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
+  if (handle == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
+  int type = GetFileType(handle);
+  if (type == FILE_TYPE_DISK) {
+    fprintf(stderr, "%d is a file\n", fd);
+    return process->true_object();
+  } else if (type == FILE_TYPE_PIPE || type == FILE_TYPE_CHAR) {
+    fprintf(stderr, "%d is a pipe or the console\n", fd);
+    return process->false_object();
+  } else {
+    fprintf(stderr, "%d is %d\n", fd, type);
+    FAIL(INVALID_ARGUMENT);
   }
-  return process->true_object();
 }
 
 PRIMITIVE(realpath) {
