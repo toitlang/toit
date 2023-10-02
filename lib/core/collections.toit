@@ -3207,10 +3207,12 @@ class Deque implements Collection:
   add-first element -> none:
     first := first_
     if first == 0:
-      new_size := backing_.size * 3 / 2 + 1
-      new_backing := List new_size
-      new_backing.replace (new_size - backing_.size) backing_
-      first = new_size - backing_.size
+      first = backing_.size / 2 + 1
+      new_size := backing_.size + first
+      // Pad both ends so we are not inefficient in the case where the next
+      // operation adds to the end.
+      new_backing := List_.private_ (new_size + first) new_size
+      new_backing.replace first backing_
       backing_ = new_backing
     first--
     backing_[first] = element
