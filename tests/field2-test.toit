@@ -12,9 +12,6 @@ side x: side-sum += x
 call-block should-call/bool [block]:
   if should-call: block.call
 
-call-lambda should-call/bool fun/Lambda:
-  if should-call: fun.call
-
 class A:
   field / any
 
@@ -63,11 +60,9 @@ class A:
     (if true: field = arg else: field = arg) and field++
 
   constructor.return-local:
-    field = 497
+    field = 498
     call-block true:
       continue.call-block field++
-    call-lambda true::
-      continue.call-lambda field++
 
 main:
   expect-equals 42 (A 42).field
