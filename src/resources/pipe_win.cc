@@ -225,8 +225,9 @@ PRIMITIVE(create_pipe) {
   security_attributes.bInheritHandle = input;
   security_attributes.lpSecurityDescriptor = NULL;
 
-  int read_overlap_flag = input ? FILE_FLAG_OVERLAPPED : 0;
-  int write_overlap_flag = input ? 0 : FILE_FLAG_OVERLAPPED;
+  // 'input' is from the point of view of the child process.
+  int read_overlap_flag = input ? FILE_FLAG_OVERLAPPED : FILE_FLAG_OVERLAPPED;
+  int write_overlap_flag = input ? FILE_FLAG_OVERLAPPED : 0;
 
   HANDLE read = CreateNamedPipe(
       pipe_name_buffer,
@@ -315,7 +316,11 @@ static DWORD copy_pipe_thread(void* data) {
 
 PRIMITIVE(fd_to_pipe) {
   ARGS(PipeResourceGroup, resource_group, int, fd);
-  fprintf(stderr, "fd_to_pipe: %d\n", fd);
+
+  // We have no way to detect the direction of the file descriptor, so
+  // we assume they are used in the traditional directions: 0 - stdin,
+  // 1 - stdout, 2 - stderr.
+  if (fd < 0 || fd > 2) FAIL(INVALID_ARGUMENT);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
@@ -335,97 +340,76 @@ PRIMITIVE(fd_to_pipe) {
     FAIL(INVALID_ARGUMENT);  // Not a pipe.
   }
 
-  // Check if the handle is already a pipe.
-  auto result = ReadFile(handle, NULL, 0, NULL, NULL);
-  // Check if it is only for writing:
-  bool for_writing = false;
-  bool overlapped = false;
-  if (result == 0) {
-    if (GetLastError() == ERROR_BROKEN_PIPE) {
-      for_writing = true;
-      char dummy[1];
-      DWORD dummy_2;
-      result = WriteFile(handle, &dummy[0], 0, &dummy_2, NULL);
-      if (result == 0) {
-        if (GetLastError() == FILE_SYNCHRONOUS_IO_NONALERT) {
-          overlapped = true;
-        } else {
-          WINDOWS_ERROR;
-        }
-      }
-    } else if (GetLastError() == FILE_SYNCHRONOUS_IO_NONALERT) {
-      overlapped = true;
-    } else {
-      WINDOWS_ERROR;
-    }
+  bool for_writing = fd != 0;  // Stdin vs stdout or stderr.
+
+  // If the pipe was in overlapped mode we could just make a PipeResource with
+  // _new WritePipeResource(resource_group, handle, event) or _new
+  // ReadPipeResource(resource_group, handle, event).  This is what our parent
+  // process has done if it is a Toit process.  But it is not normal to give a
+  // child process stdio pipes in overlapped mode, and it's really hard to
+  // detect it even if it happened (see
+  // https://microsoft.public.win32.programmer.kernel.narkive.com/VYscuhWn/was-handle-opened-using-file-flag-overlapped
+  // or https://archive.vn/wip/bmGhS), so we assume the pipes are in
+  // non-overlapped (synchronous) mode.
+
+  // Our pipe is not in overlapped mode, and unfortunately Windows has
+  // no way to switch to overlapped mode.  So we create a new pipe,
+  // and copy the data from the old pipe to the new pipe in a separate
+  // thread.
+  int read_overlap_flag = for_writing ? 0 : FILE_FLAG_OVERLAPPED;
+  int write_overlap_flag = for_writing ? FILE_FLAG_OVERLAPPED : 0;
+
+  char pipe_name_buffer[MAX_PATH];
+  snprintf(pipe_name_buffer,
+           MAX_PATH,
+           R"(\\.\Pipe\Toit.%08lx.%08lx)",
+           GetCurrentProcessId(),
+           InterlockedIncrement(&resource_group->pipe_serial_number())
+  );
+  HANDLE read = CreateNamedPipe(
+      pipe_name_buffer,
+      PIPE_ACCESS_INBOUND | read_overlap_flag,
+      PIPE_TYPE_BYTE | PIPE_WAIT,
+      1,             // Number of pipes.
+      8192,          // Out buffer size.
+      8192,          // In buffer size.
+      0,             // Default timeout (50 ms).
+      NULL           // Security attributes.
+  );
+  if (read == INVALID_HANDLE_VALUE) {
+    close_handle_keep_errno(event);
+    WINDOWS_ERROR;
   }
-
-  if (overlapped) {
-    if (for_writing) {
-      pipe_resource = _new WritePipeResource(resource_group, handle, event);
-    } else {
-      pipe_resource = _new ReadPipeResource(resource_group, handle, event);
-    }
+  HANDLE write = CreateFileA(
+      pipe_name_buffer,
+      GENERIC_WRITE,
+      0,                         // No sharing.
+      NULL,                      // Security attributes.
+      OPEN_EXISTING,
+      FILE_ATTRIBUTE_NORMAL | write_overlap_flag,
+      NULL                       // Template file.
+  );
+  if (write == INVALID_HANDLE_VALUE) {
+    close_handle_keep_errno(event);
+    close_handle_keep_errno(read);
+    WINDOWS_ERROR;
+  }
+  CopyPipeState* state = for_writing
+      ? _new CopyPipeState(read, handle)
+      : _new CopyPipeState(handle, write);
+  ASSERT(state);  // Can't fail on Windows.
+  HANDLE thread = CreateThread(NULL, 0, copy_pipe_thread, state, 0, NULL);
+  if (thread == NULL) {
+    close_handle_keep_errno(event);
+    close_handle_keep_errno(read);
+    close_handle_keep_errno(write);
+    delete state;
+    WINDOWS_ERROR;
+  }
+  if (for_writing) {
+    pipe_resource = _new WritePipeResource(resource_group, write, event);
   } else {
-    // Our pipe is not in overlapped mode, and unfortunately Windows has
-    // no way to switch to overlapped mode.  So we create a new pipe,
-    // and copy the data from the old pipe to the new pipe in a separate
-    // thread.
-    int read_overlap_flag = for_writing ? 0 : FILE_FLAG_OVERLAPPED;
-    int write_overlap_flag = for_writing ? FILE_FLAG_OVERLAPPED : 0;
-
-    char pipe_name_buffer[MAX_PATH];
-    snprintf(pipe_name_buffer,
-             MAX_PATH,
-             R"(\\.\Pipe\Toit.%08lx.%08lx)",
-             GetCurrentProcessId(),
-             InterlockedIncrement(&resource_group->pipe_serial_number())
-    );
-    HANDLE read = CreateNamedPipe(
-        pipe_name_buffer,
-        PIPE_ACCESS_INBOUND | read_overlap_flag,
-        PIPE_TYPE_BYTE | PIPE_WAIT,
-        1,             // Number of pipes.
-        8192,          // Out buffer size.
-        8192,          // In buffer size.
-        0,             // Default timeout (50 ms).
-        NULL           // Security attributes.
-    );
-    if (read == INVALID_HANDLE_VALUE) {
-      close_handle_keep_errno(event);
-      WINDOWS_ERROR;
-    }
-    HANDLE write = CreateFileA(
-        pipe_name_buffer,
-        GENERIC_WRITE,
-        0,                         // No sharing.
-        NULL,                      // Security attributes.
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL | write_overlap_flag,
-        NULL                       // Template file.
-    );
-    if (write == INVALID_HANDLE_VALUE) {
-      close_handle_keep_errno(event);
-      close_handle_keep_errno(read);
-      WINDOWS_ERROR;
-    }
-    CopyPipeState* state = for_writing
-        ? _new CopyPipeState(read, handle)
-        : _new CopyPipeState(handle, write);
-    ASSERT(state);  // Can't fail on Windows.
-    HANDLE thread = CreateThread(NULL, 0, copy_pipe_thread, state, 0, NULL);
-    if (thread == NULL) {
-      close_handle_keep_errno(event);
-      close_handle_keep_errno(read);
-      close_handle_keep_errno(write);
-      delete state;
-      WINDOWS_ERROR;
-    }
-    if (for_writing) {
-      pipe_resource = _new WritePipeResource(resource_group, write, event);
-    } else {
-      pipe_resource = _new ReadPipeResource(resource_group, read, event);
-    }
+    pipe_resource = _new ReadPipeResource(resource_group, read, event);
   }
 
   ASSERT(pipe_resource);  // Can't fail on Windows.
