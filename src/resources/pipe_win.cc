@@ -315,6 +315,7 @@ static DWORD copy_pipe_thread(void* data) {
 
 PRIMITIVE(fd_to_pipe) {
   ARGS(PipeResourceGroup, resource_group, int, fd);
+  fprintf(stderr, "fd_to_pipe: %d\n", fd);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
