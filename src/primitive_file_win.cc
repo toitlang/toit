@@ -505,6 +505,7 @@ PRIMITIVE(mkdtemp) {
 }
 
 PRIMITIVE(is_open_file) {
+  ARGS(int, fd);
   HANDLE handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
   if (handle == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
   int type = GetFileType(handle);

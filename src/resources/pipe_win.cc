@@ -285,6 +285,34 @@ PRIMITIVE(create_pipe) {
   return array;
 }
 
+class CopyPipeState {
+ public:
+  CopyPipeState(HANDLE from, HANDLE to) : from_(from), to_(to) {}
+
+  DWORD copy_loop() {
+    char buffer[4096];
+    DWORD read_count;
+    DWORD write_count;
+    while (ReadFile(from_, buffer, sizeof(buffer), &read_count, NULL) && read_count > 0) {
+      if (!WriteFile(to_, buffer, read_count, &write_count, NULL)) {
+        return 1;
+      }
+    }
+    CloseHandle(from_);
+    CloseHandle(to_);
+    delete(this);
+    return 0;
+  }
+
+ private:
+  HANDLE from_;
+  HANDLE to_;
+};
+
+static DWORD copy_pipe_thread(void* data) {
+  return reinterpret_cast<CopyPipeState*>(data)->copy_loop();
+}
+
 PRIMITIVE(fd_to_pipe) {
   ARGS(PipeResourceGroup, resource_group, int, fd);
 
@@ -384,8 +412,8 @@ PRIMITIVE(fd_to_pipe) {
         ? _new CopyPipeState(read, handle)
         : _new CopyPipeState(handle, write);
     ASSERT(state);  // Can't fail on Windows.
-    result = CreateThread(NULL, 0, copy_pipe_thread, state, 0, NULL);
-    if (result == NULL) {
+    HANDLE thread = CreateThread(NULL, 0, copy_pipe_thread, state, 0, NULL);
+    if (thread == NULL) {
       close_handle_keep_errno(event);
       close_handle_keep_errno(read);
       close_handle_keep_errno(write);
