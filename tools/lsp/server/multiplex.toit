@@ -39,11 +39,13 @@ class MultiplexConnection:
   buffered-from-compiler_ / BufferedReader
 
   constructor .from-compiler_:
+    from-compiler := from-compiler_
+
     closed-count := 0
     close-check := ::
       closed-count++
       if closed-count == 2:
-        from-compiler_.close
+        from-compiler.close
 
     compiler-to-fs = SimplePipe --on-close=close-check
     compiler-to-parser = SimplePipe --on-close=close-check
@@ -106,4 +108,3 @@ class SimplePipe implements CloseableReader:
   write_ data/ByteArray:
     buffered_.add data
     sem_.up
-

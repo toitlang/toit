@@ -2030,8 +2030,8 @@ ir::Code* MethodResolver::_create_block(ast::Block* node,
   BlockScope block_scope(scope_);
   scope_ = &block_scope;
 
-  auto old_may_mutate = block_may_mutate_final_;
-  block_may_mutate_final_ = old_may_mutate && may_mutate_final;
+  auto old_has_direct_access = block_has_direct_field_access_;
+  block_has_direct_field_access_ = old_has_direct_access && may_mutate_final;
 
   auto result = _create_code(node,
                              node->parameters(),
@@ -2042,7 +2042,7 @@ ir::Code* MethodResolver::_create_block(ast::Block* node,
   ASSERT(scope_ == &block_scope);
   scope_ = scope_->outer();
 
-  block_may_mutate_final_ = old_may_mutate;
+  block_has_direct_field_access_ = old_has_direct_access;
 
   return result;
 }
@@ -2885,51 +2885,58 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
 
   bool is_constructor_super_call = false;
 
-  switch (resolution_mode_) {
-    case CONSTRUCTOR_SUPER: {
-      ASSERT(is_literal_super(ast_target) || ast_target->is_Dot());
-      is_constructor_super_call = true;
-      // Make sure the arguments are compiled in a static context.
-      resolution_mode_ = CONSTRUCTOR_STATIC;
-      break;
-    }
-
-    case CONSTRUCTOR_STATIC:
-    case CONSTRUCTOR_LIMBO_STATIC: {
-      // In the static part of constructors, accesses to fields are direct.
-      Symbol name = Symbol::invalid();
-      bool lookup_class_scope = false;
-      if (ast_target->is_Dot() && is_literal_this(ast_target->as_Dot()->receiver())) {
-        name = ast_target->as_Dot()->name()->data();
-        lookup_class_scope = true;
-      } else if (ast_target->is_Identifier()) {
-        name = ast_target->as_Identifier()->data();
-        lookup_class_scope = false;
+  // If we are in the static part of the constructor we have direct
+  // access to the field.
+  // We must not be in a lambda (since that would capture 'this'), nor
+  // in a block that "captures" the field.
+  if (current_lambda_ == null &&
+      block_has_direct_field_access_) {
+    switch (resolution_mode_) {
+      case CONSTRUCTOR_SUPER: {
+        ASSERT(is_literal_super(ast_target) || ast_target->is_Dot());
+        is_constructor_super_call = true;
+        // Make sure the arguments are compiled in a static context.
+        resolution_mode_ = CONSTRUCTOR_STATIC;
+        break;
       }
-      bool is_lsp_selection =
-          ast_target->is_LspSelection() ||
-          (ast_target->is_Dot() &&
-            (ast_target->as_Dot()->receiver()->is_LspSelection() ||
-             ast_target->as_Dot()->name()->is_LspSelection()));
 
-      // We don't want to skip the "normal" handling when we do completion or
-      //   goto-definition.
-      if (ast_arguments.is_empty() && !is_lsp_selection) {
-        auto load = _potentially_load_field(name, lookup_class_scope, ast_target->range());
-        if (load != null) {
-          push(load);
-          return;
+      case CONSTRUCTOR_STATIC:
+      case CONSTRUCTOR_LIMBO_STATIC: {
+        // In the static part of constructors, accesses to fields are direct.
+        Symbol name = Symbol::invalid();
+        bool lookup_class_scope = false;
+        if (ast_target->is_Dot() && is_literal_this(ast_target->as_Dot()->receiver())) {
+          name = ast_target->as_Dot()->name()->data();
+          lookup_class_scope = true;
+        } else if (ast_target->is_Identifier()) {
+          name = ast_target->as_Identifier()->data();
+          lookup_class_scope = false;
+        }
+        bool is_lsp_selection =
+            ast_target->is_LspSelection() ||
+            (ast_target->is_Dot() &&
+              (ast_target->as_Dot()->receiver()->is_LspSelection() ||
+              ast_target->as_Dot()->name()->is_LspSelection()));
+
+        // We don't want to skip the "normal" handling when we do completion or
+        //   goto-definition.
+        if (ast_arguments.is_empty() && !is_lsp_selection) {
+          auto load = _potentially_load_field(name, lookup_class_scope, ast_target->range());
+          if (load != null) {
+            push(load);
+            return;
+          }
         }
       }
-    }
 
-    case CONSTRUCTOR_INSTANCE:
-    case CONSTRUCTOR_LIMBO_INSTANCE:
-    case FIELD:
-    case INSTANCE:
-    case STATIC:
-      // Nothing to do here.
-      break;
+      case CONSTRUCTOR_INSTANCE:
+      case CONSTRUCTOR_LIMBO_INSTANCE:
+      case FIELD:
+      case INSTANCE:
+      case STATIC:
+        // Nothing to do here.
+        break;
+    }
   }
 
   ast::Node* target_name_node = null;
@@ -3525,11 +3532,6 @@ ir::Expression* MethodResolver::_potentially_store_field(ast::Node* node,
     auto field = candidate->as_FieldStub()->field();
     bool is_final = field->is_final();
 
-    if (is_final && (current_lambda_ != null || !block_may_mutate_final_)) {
-      // We don't allow to modify final fields in lambdas or some blocks even if we
-      // are currently in a section that would allow so.
-      return null;
-    }
     if (resolution_mode_ == CONSTRUCTOR_INSTANCE) {
       if (is_final) {
         report_error(node, "Can't assign final field in dynamic part of constructor");
@@ -3643,7 +3645,11 @@ ir::Expression* MethodResolver::_assign_dot(ast::Binary* node,
 
   // `this.x` in a constructor is treated specially in the static part of
   // the constructor.
-  if (is_literal_this(dot->receiver()) &&
+  // However, we must not be inside a lambda, or inside a block that
+  // doesn't have direct field access.
+  if (current_lambda_ == null &&
+      block_has_direct_field_access_ &&
+      is_literal_this(dot->receiver()) &&
       // We prefer treating the `this.x` "normally" when handling
       // lsp selections.
       !dot->receiver()->is_LspSelection() &&
@@ -3972,9 +3978,15 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
   auto ast_left = node->left();
   auto ast_right = node->right();
   auto range = node->range();
-  // When doing completion or goto-definition we prefer to go through the
-  //   "normal" paths.
-  if (ast_left->is_Identifier() && !ast_left->is_LspSelection()) {
+  // In constructors we have a direct access to fields.
+  // We must be in the static section of the constructor, and not
+  // "capture" the field.
+  // We also prefer the "normal" path when doing completion or
+  // goto-definition.
+  if (ast_left->is_Identifier() &&
+      !ast_left->is_LspSelection() &&
+      current_lambda_ == null &&
+      block_has_direct_field_access_) {
     switch (resolution_mode_) {
       case CONSTRUCTOR_STATIC:
       case CONSTRUCTOR_LIMBO_STATIC:
