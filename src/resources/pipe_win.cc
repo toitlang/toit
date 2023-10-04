@@ -226,7 +226,7 @@ PRIMITIVE(create_pipe) {
   security_attributes.lpSecurityDescriptor = NULL;
 
   // 'input' is from the point of view of the child process.
-  int read_overlap_flag = input ? FILE_FLAG_OVERLAPPED : FILE_FLAG_OVERLAPPED;
+  int read_overlap_flag = input ? 0 : FILE_FLAG_OVERLAPPED;
   int write_overlap_flag = input ? FILE_FLAG_OVERLAPPED : 0;
 
   HANDLE read = CreateNamedPipe(
