@@ -2895,10 +2895,8 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
     }
 
     case CONSTRUCTOR_STATIC:
-    case CONSTRUCTOR_INSTANCE:
-    case CONSTRUCTOR_LIMBO_INSTANCE:
     case CONSTRUCTOR_LIMBO_STATIC: {
-      // In constructors, accesses to fields are direct.
+      // In the static part of constructors, accesses to fields are direct.
       Symbol name = Symbol::invalid();
       bool lookup_class_scope = false;
       if (ast_target->is_Dot() && is_literal_this(ast_target->as_Dot()->receiver())) {
@@ -2925,6 +2923,8 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
       }
     }
 
+    case CONSTRUCTOR_INSTANCE:
+    case CONSTRUCTOR_LIMBO_INSTANCE:
     case FIELD:
     case INSTANCE:
     case STATIC:
@@ -3530,20 +3530,42 @@ ir::Expression* MethodResolver::_potentially_store_field(ast::Node* node,
       // are currently in a section that would allow so.
       return null;
     }
-    if (is_final && resolution_mode_ == CONSTRUCTOR_INSTANCE) {
-      report_error(node, "Can't assign final field in dynamic part of constructor");
-    } else if (is_final && resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE) {
-      if (super_forcing_expression_ == null) {
-        // Do nothing.
-        // We will run through the expression again and then report an error.
-        // It might be this assignment, or an earlier one. Either way we don't need
-        // to do anything.
-      } else {
-        diagnostics()->start_group();
+    if (resolution_mode_ == CONSTRUCTOR_INSTANCE) {
+      if (is_final) {
         report_error(node, "Can't assign final field in dynamic part of constructor");
-        report_note(super_forcing_expression_,
-                    "Expression that switched to dynamic part");
-        diagnostics()->end_group();
+        // Don't return here, but actually compile to a field-store.
+        // This way we don't get a duplicate error message later when the type checker
+        // realizes the same error.
+      } else {
+        // In the instance part of a constructor we never directly access fields.
+        // The only reason we called this method is for the 'final' check to have a
+        // good error message.
+        return null;
+      }
+    }
+
+    if (resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE) {
+      if (is_final) {
+        if (super_forcing_expression_ == null) {
+          // Do nothing.
+          // We will run through the expression again and then report an error.
+          // It might be this assignment, or an earlier one. Either way we don't need
+          // to do anything.
+        } else {
+          diagnostics()->start_group();
+          report_error(node, "Can't assign final field in dynamic part of constructor");
+          report_note(super_forcing_expression_,
+                      "Expression that switched to dynamic part");
+          diagnostics()->end_group();
+        }
+        // Don't return here, but actually compile to a field-store.
+        // This way we don't get a duplicate error message later when the type checker
+        // realizes the same error.
+      } else {
+        // In the instance part of a constructor we never directly access fields.
+        // The only reason we called this method is for the 'final' check to have a
+        // good error message.
+        return null;
       }
     }
 
@@ -3580,9 +3602,7 @@ ir::Expression* MethodResolver::_potentially_load_field(Symbol name,
                                                         bool lookup_class_scope,
                                                         Source::Range range) {
   ASSERT(resolution_mode_ == CONSTRUCTOR_STATIC ||
-         resolution_mode_ == CONSTRUCTOR_INSTANCE ||
-         resolution_mode_ == CONSTRUCTOR_LIMBO_STATIC ||
-         resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE);
+         resolution_mode_ == CONSTRUCTOR_LIMBO_STATIC);
   Scope* scope = lookup_class_scope ? scope_->enclosing_class_scope() : scope_;
   auto lookup_result = scope->lookup(name);
   if (lookup_result.entry.is_prefix()) return null;
@@ -3621,7 +3641,8 @@ ir::Expression* MethodResolver::_assign_dot(ast::Binary* node,
   bool is_compound = node->kind() != Token::ASSIGN;
   auto dot = node->left()->as_Dot();
 
-  // `this.x` in a constructor is treated specially.
+  // `this.x` in a constructor is treated specially in the static part of
+  // the constructor.
   if (is_literal_this(dot->receiver()) &&
       // We prefer treating the `this.x` "normally" when handling
       // lsp selections.
@@ -3629,8 +3650,12 @@ ir::Expression* MethodResolver::_assign_dot(ast::Binary* node,
       !dot->name()->is_LspSelection()) {
     switch (resolution_mode_) {
       case CONSTRUCTOR_STATIC:
-      case CONSTRUCTOR_INSTANCE:
       case CONSTRUCTOR_LIMBO_STATIC:
+      // We also do the `potentially_store_field` call for instance cases.
+      // This is for better error messages, but semantically we do a
+      // dynamic lookup in these modes. Unless the function reports an
+      // error it will return 'null', and we will continue normally below.
+      case CONSTRUCTOR_INSTANCE:
       case CONSTRUCTOR_LIMBO_INSTANCE: {
         Symbol name = dot->name()->data();
         auto field_initialization =
@@ -3638,6 +3663,7 @@ ir::Expression* MethodResolver::_assign_dot(ast::Binary* node,
         if (field_initialization != null) return field_initialization;
         break;
       }
+
       case FIELD:
       case CONSTRUCTOR_SUPER:
       case INSTANCE:
@@ -3951,8 +3977,12 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
   if (ast_left->is_Identifier() && !ast_left->is_LspSelection()) {
     switch (resolution_mode_) {
       case CONSTRUCTOR_STATIC:
-      case CONSTRUCTOR_INSTANCE:
       case CONSTRUCTOR_LIMBO_STATIC:
+      // We also do the `potentially_store_field` call for instance cases.
+      // This is for better error messages, but semantically we do a
+      // dynamic lookup in these modes. Unless the function reports an
+      // error it will return 'null', and we will continue normally below.
+      case CONSTRUCTOR_INSTANCE:
       case CONSTRUCTOR_LIMBO_INSTANCE: {
         // Not prefixed.
         auto name = ast_left->as_Identifier()->data();
@@ -3961,6 +3991,7 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
         if (field_initialization != null) return field_initialization;
         break;
       }
+
       case FIELD:
       case CONSTRUCTOR_SUPER:
       case INSTANCE:

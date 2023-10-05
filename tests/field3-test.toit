@@ -15,8 +15,9 @@ class A:
     fun  = :: field
     fun2 = :: this.field
     super
+    // After a `super` call, `this` is dynamic.
     fun3 = :: this.field
-    fun4 = :: (this).field  // This is the only lambda that does a dynamic lookup.
+    fun4 = :: (this).field
 
 class B extends A:
   constructor:
@@ -29,5 +30,5 @@ main:
   b := B
   expect-equals 42 b.fun.call
   expect-equals 42 b.fun2.call
-  expect-equals 42 b.fun3.call
+  expect-equals 499 b.fun3.call
   expect-equals 499 b.fun4.call
