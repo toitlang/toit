@@ -215,7 +215,7 @@ PRIMITIVE(opendir2) {
     if (GetLastError() == ERROR_NO_MORE_FILES) {
       directory->set_done(true);
     } else {
-      delete directory;
+      group->unregister_resource(directory);
       WINDOWS_ERROR;
     }
   }
