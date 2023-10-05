@@ -38,8 +38,8 @@ class MultiplexConnection:
   from-compiler_          / OpenPipe
   buffered-from-compiler_ / BufferedReader
 
-  constructor .from-compiler_:
-    from-compiler := from-compiler_
+  constructor from-compiler/OpenPipe:
+    from-compiler_ = from-compiler
 
     closed-count := 0
     close-check := ::
