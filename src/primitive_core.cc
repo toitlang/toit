@@ -2362,7 +2362,7 @@ PRIMITIVE(firmware_map) {
   // because there is a larger virtual address space for that.
   esp_partition_mmap_memory_t memory = ESP_PARTITION_MMAP_DATA;
 #if defined(CONFIG_IDF_TARGET_ESP32)
-  memory = ESP_PARTITION_MMAP_INSTR;
+  memory = ESP_PARTITION_MMAP_INST;
 #endif
 
   const void* mapped_to = null;
