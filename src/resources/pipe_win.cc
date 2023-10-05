@@ -47,12 +47,12 @@ class PipeResourceGroup : public ResourceGroup {
 
   bool is_standard_piped(int fd) const {
     if (!(0 <= fd && fd <= 2)) return false;
-    return (standard_pipes_ & ( 1 << fd)) != 0;
+    return (standard_pipes_ & (1 << fd)) != 0;
   }
 
   void set_standard_piped(int fd) {
     if (0 <= fd && fd <= 2) {
-      standard_pipes_ |= ( 1 << fd);
+      standard_pipes_ |= (1 << fd);
     }
   }
   volatile long& pipe_serial_number() { return pipe_serial_number_; }
@@ -313,7 +313,7 @@ class CopyPipeState {
 };
 
 static DWORD copy_pipe_thread(void* data) {
-  auto state = reinterpret_cast<CopyPipeState*>(data)->copy_loop();
+  auto state = reinterpret_cast<CopyPipeState*>(data);
   DWORD result = state->copy_loop();
   delete state;
   return result;
@@ -402,7 +402,7 @@ PRIMITIVE(fd_to_pipe) {
   CopyPipeState* state = for_writing
       ? _new CopyPipeState(read, handle)
       : _new CopyPipeState(handle, write);
-  ASSERT(state);  // Can't fail on Windows.
+  ASSERT(state);  // Can't fail on host platforms.
   HANDLE thread = CreateThread(NULL, 0, copy_pipe_thread, state, 0, NULL);
   if (thread == NULL) {
     close_handle_keep_errno(event);
@@ -417,7 +417,7 @@ PRIMITIVE(fd_to_pipe) {
     pipe_resource = _new ReadPipeResource(resource_group, read, event);
   }
 
-  ASSERT(pipe_resource);  // Can't fail on Windows.
+  ASSERT(pipe_resource);  // Can't fail on host platforms.
 
   resource_group->set_standard_piped(fd);
 
