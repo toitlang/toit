@@ -290,6 +290,11 @@ class CopyPipeState {
  public:
   CopyPipeState(HANDLE from, HANDLE to) : from_(from), to_(to) {}
 
+  ~CopyPipeState() {
+    CloseHandle(from_);
+    CloseHandle(to_);
+  }
+
   DWORD copy_loop() {
     char buffer[4096];
     DWORD read_count;
@@ -299,9 +304,6 @@ class CopyPipeState {
         return 1;
       }
     }
-    CloseHandle(from_);
-    CloseHandle(to_);
-    delete(this);
     return 0;
   }
 
@@ -311,7 +313,10 @@ class CopyPipeState {
 };
 
 static DWORD copy_pipe_thread(void* data) {
-  return reinterpret_cast<CopyPipeState*>(data)->copy_loop();
+  auto state = reinterpret_cast<CopyPipeState*>(data)->copy_loop();
+  DWORD result = state->copy_loop();
+  delete state;
+  return result;
 }
 
 PRIMITIVE(fd_to_pipe) {
@@ -337,7 +342,7 @@ PRIMITIVE(fd_to_pipe) {
   if (handle == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
   int type = GetFileType(handle);
   if (type != FILE_TYPE_PIPE && type != FILE_TYPE_CHAR) {
-    FAIL(INVALID_ARGUMENT);  // Not a pipe.
+    FAIL(INVALID_ARGUMENT);  // Ceci n'est pas une pipe.
   }
 
   bool for_writing = fd != 0;  // Stdin vs stdout or stderr.
