@@ -21,9 +21,5 @@ list(APPEND TOIT_SKIP_TESTS
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_SKIP_TESTS
-    # Temporarely disable fork tests on Windows.
-    # See https://github.com/toitlang/pkg-host/issues/47
-    pkg-host/tests/fork_stress_test_slow.toit
-    pkg-host/tests/pipe2_test.toit
   )
 endif()
