@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -423,10 +423,8 @@ PRIMITIVE(error_number) {
   FAIL(WRONG_OBJECT_TYPE);
 }
 
-static Object* get_address_or_error(UdpSocket* socket, Process* process, bool peer) {
-  uint32_t address = peer ?
-    ip_addr_get_ip4_u32(&socket->upcb()->remote_ip) :
-    ip_addr_get_ip4_u32(&socket->upcb()->local_ip);
+static Object* get_address_or_error(UdpSocket* socket, Process* process) {
+  uint32_t address = ip_addr_get_ip4_u32(&socket->upcb()->local_ip);
   char buffer[16];
   int length = sprintf(buffer,
                        "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32,
@@ -447,7 +445,13 @@ PRIMITIVE(get_option) {
         return Smi::from(capture.socket->upcb()->local_port);
 
       case UDP_ADDRESS:
-        return get_address_or_error(capture.socket, capture.process, false);
+        return get_address_or_error(capture.socket, capture.process);
+
+      case UDP_MULTICAST_LOOPBACK:
+        return BOOL(capture.socket->upcb()->flags & UDP_FLAGS_MULTICAST_LOOP);
+
+      case UDP_MULTICAST_TTL:
+        return Smi::from(udp_get_multicast_ttl(capture.socket->upcb()));
 
       case UDP_BROADCAST:
         return BOOL(capture.socket->upcb()->so_options & SOF_BROADCAST);
@@ -468,15 +472,38 @@ PRIMITIVE(set_option) {
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     switch (capture.option) {
+      case UDP_MULTICAST_LOOPBACK:
       case UDP_BROADCAST:
+        bool value;
         if (capture.raw == capture.process->true_object()) {
-          capture.socket->upcb()->so_options |= SOF_BROADCAST;
+          value = true;
         } else if (capture.raw == capture.process->false_object()) {
-          capture.socket->upcb()->so_options &= ~SOF_BROADCAST;
+          value = false;
         } else {
           FAIL(WRONG_OBJECT_TYPE);
         }
+        if (capture.option == UDP_BROADCAST) {
+          if (value) {
+            capture.socket->upcb()->so_options |= SOF_BROADCAST;
+          } else {
+            capture.socket->upcb()->so_options &= ~SOF_BROADCAST;
+          }
+        } else if (capture.option == UDP_MULTICAST_LOOPBACK) {
+          if (value) {
+            capture.socket->upcb()->flags |= UDP_FLAGS_MULTICAST_LOOP;
+          } else {
+            capture.socket->upcb()->flags &= ~UDP_FLAGS_MULTICAST_LOOP;
+          }
+        }
         break;
+
+      case UDP_MULTICAST_TTL: {
+        if (!is_smi(capture.raw)) FAIL(WRONG_OBJECT_TYPE);
+        int ttl = Smi::value(capture.raw);
+        if (!(0 <= ttl && ttl <= 255)) FAIL(OUT_OF_BOUNDS);
+        udp_set_multicast_ttl(capture.socket->upcb(), ttl);
+        break;
+      }
 
       default:
         FAIL(UNIMPLEMENTED);

@@ -295,13 +295,34 @@ PRIMITIVE(get_option) {
     case UDP_PORT:
       return get_port_or_error(fd, process, false);
 
+    case UDP_MULTICAST_LOOPBACK:
     case UDP_BROADCAST: {
       int value = 0;
+      int option_name = 0;
+      int level = 0;
+      if (option == UDP_MULTICAST_LOOPBACK) {
+        level = IPPROTO_IP;
+        option_name = IP_MULTICAST_LOOP;
+      } else {
+        ASSERT(option == UDP_BROADCAST);
+        level = SOL_SOCKET;
+        option_name = SO_BROADCAST;
+      }
       socklen_t size = sizeof(value);
-      if (getsockopt(fd, SOL_SOCKET, SO_BROADCAST, &value, &size) == -1) {
+      if (getsockopt(fd, level, option_name, &value, &size) == -1) {
         return Primitive::os_error(errno, process);
       }
       return BOOL(value != 0);
+    }
+
+    case UDP_MULTICAST_TTL: {
+      int value = 0;
+      socklen_t size = sizeof(value);
+      if (getsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &value, &size) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      if (!(0 <= value && value <= 0xffff)) FAIL(OUT_OF_BOUNDS);
+      return Smi::from(value);
     }
 
     default:
@@ -315,6 +336,7 @@ PRIMITIVE(set_option) {
   int fd = connection_resource->id();
 
   switch (option) {
+    case UDP_MULTICAST_LOOPBACK:
     case UDP_BROADCAST: {
       int value = 0;
       if (raw == process->true_object()) {
@@ -322,12 +344,42 @@ PRIMITIVE(set_option) {
       } else if (raw != process->false_object()) {
         FAIL(WRONG_OBJECT_TYPE);
       }
-      if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &value, sizeof(value)) == -1) {
+      int option_name = 0;
+      int level = 0;
+      if (option == UDP_MULTICAST_LOOPBACK) {
+        level = IPPROTO_IP;
+        option_name = IP_MULTICAST_LOOP;
+      } else {
+        ASSERT(option == UDP_BROADCAST);
+        level = SOL_SOCKET;
+        option_name = SO_BROADCAST;
+      }
+      if (setsockopt(fd, level, option_name, &value, sizeof(value)) == -1) {
         return Primitive::os_error(errno, process);
       }
       break;
     }
-
+    case UDP_MULTICAST_MEMBERSHIP: {
+      Blob group_bytes;
+      if (!raw->byte_content(process->program(), &group_bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+      struct ip_mreqn group;
+      memcpy(&group.imr_multiaddr.s_addr, group_bytes.address(), group_bytes.length());
+      memset(&group.imr_address, 0, sizeof(group.imr_address));  // Any interface.
+      group.imr_ifindex = 0;  // Any interface.
+      if (setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &group, sizeof(group)) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      break;
+    }
+    case UDP_MULTICAST_TTL: {
+      if (!is_smi(raw)) FAIL(WRONG_OBJECT_TYPE);
+      int value = Smi::value(raw);
+      if (!(0 <= value && value <= 0xffff)) FAIL(OUT_OF_BOUNDS);
+      if (setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &value, sizeof(value)) == -1) {
+        return Primitive::os_error(errno, process);
+      }
+      break;
+    }
     default:
       FAIL(UNIMPLEMENTED);
   }
