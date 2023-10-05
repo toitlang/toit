@@ -151,8 +151,7 @@ void EpollEventSource::entry() {
                 if (epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, id, null) == -1) {
                   FATAL("failed to remove 0x%lx from epoll: %d", id, errno);
                 }
-                // Don't close STD pipes.
-                if (id > 2) close(id);
+                close(id);
               }
               break;
           }
