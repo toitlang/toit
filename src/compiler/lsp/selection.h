@@ -67,7 +67,12 @@ class LspSelectionHandler {
   ///
   /// This is used when a class resolves a superclass (in the extends clause) or for
   ///   finding interfaces (in the implements clause).
-  virtual void class_or_interface(ast::Node* node, IterableScope* scope, ir::Class* holder, ir::Node* resolved, bool needs_interface) = 0;
+  virtual void class_interface_or_mixin(ast::Node* node,
+                                        IterableScope* scope,
+                                        ir::Class* holder,
+                                        ir::Node* resolved,
+                                        bool needs_interface,
+                                        bool needs_mixin) = 0;
 
   /// Handles a type node.
   ///

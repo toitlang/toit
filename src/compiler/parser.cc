@@ -981,12 +981,17 @@ Declaration* Parser::parse_declaration(bool is_abstract) {
 }
 
 Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract) {
+  auto at = [&](Symbol symbol) -> bool {
+    return current_token() == Token::IDENTIFIER && current_token_data() == symbol;
+  };
+
   ASSERT(current_token() == Token::CLASS ||
-         (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::interface_)||
-         (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::monitor) ||
-         (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::mixin));
+         at(Symbols::interface_) ||
+         at(Symbols::monitor) ||
+         at(Symbols::mixin));
 
   ListBuilder<Expression*> interfaces;
+  ListBuilder<Expression*> mixins;
   ListBuilder<Declaration*> members;
 
   start_multiline_construct(IndentationStack::CLASS);   // Classes/monitors go over multiple lines.
@@ -994,13 +999,14 @@ Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract) {
   ast::Class::Kind kind;
   if (current_token() == Token::IDENTIFIER) {
     const char* kind_string;
-    if (current_token_data() == Symbols::interface_) {
+    if (at(Symbols::interface_)) {
       kind = ast::Class::INTERFACE;
       kind_string = "Interfaces";
-    } else if (current_token_data() == Symbols::monitor) {
+    } else if (at(Symbols::monitor)) {
       kind = ast::Class::MONITOR;
       kind_string = "Monitors";
     } else {
+      ASSERT(at(Symbols::mixin));
       kind = ast::Class::MIXIN;
       kind_string = "Mixins";
     }
@@ -1048,14 +1054,36 @@ Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract) {
   } else {
     name = parse_identifier();
     bool requires_super = false;
-    if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::extends) {
+    if (at(Symbols::extends)) {
       consume();
       requires_super = true;
     }
-    if (current_token() == Token::IDENTIFIER && current_token_data() != Symbols::implements) {
+
+    if (current_token() == Token::IDENTIFIER && !at(Symbols::implements) && !at(Symbols::with)) {
       super = parse_type(false);
     }
-    if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::implements) {
+    if (at(Symbols::with)) {
+      if (!requires_super) {
+        // "requires_super" indicates that there was an `extends`.
+        // TODO(florian): do we really want this requirement.
+        // The `class A with Foo` reads a bit worth than `class A extends Object with Foo`, but
+        // it still feels okish.
+        report_error("'with' requires an 'extends' clause");
+      }
+      if (super == null && requires_super) {
+        report_error("Missing super class");
+        // We reported an error. No need for a super class anymore.
+        requires_super = false;
+      }
+      consume();
+      while (current_token() == Token::IDENTIFIER && !at(Symbols::implements)) {
+        mixins.add(parse_type(false));
+      }
+      if (mixins.is_empty()) {
+        report_error("'with' without any mixin type");
+      }
+    }
+    if (at(Symbols::implements)) {
       if (super == null && requires_super) {
         report_error("Missing super class");
         // We reported an error. No need for a super class anymore.
@@ -1093,6 +1121,7 @@ Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract) {
   return NEW_NODE(Class(name,
                         super,
                         interfaces.build(),
+                        mixins.build(),
                         members.build(),
                         kind,
                         is_abstract),
@@ -2480,7 +2509,8 @@ Expression* Parser::parse_type(bool is_type_annotation) {
     }
     auto id = parse_identifier();
     if (id->data() == Symbols::implements ||
-        id->data() == Symbols::extends) {
+        id->data() == Symbols::extends ||
+        id->data() == Symbols::with) {
       report_error(id->range(), "Unexpected token in type: '%s'", id->data().c_str());
       encountered_pseudo_keyword = true;
     }

@@ -225,6 +225,7 @@ enum Precedence {
   I(mixin)                                                               \
   I(extends)                                                             \
   I(implements)                                                          \
+  I(with)                                                      \
   I(none)                                                                \
   I(any)                                                                 \
   IN(empty_string, "")                                                   \

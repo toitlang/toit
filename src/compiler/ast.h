@@ -255,12 +255,14 @@ class Class : public Node {
   Class(Identifier* name,
         Expression* super,
         List<Expression*> interfaces,
+        List<Expression*> mixins,
         List<Declaration*> members,
         Kind kind,
         bool has_abstract_modifier)
       : name_(name)
       , super_(super)
       , interfaces_(interfaces)
+      , mixins_(mixins)
       , members_(members)
       , kind_(kind)
       , has_abstract_modifier_(has_abstract_modifier) {}
@@ -271,6 +273,7 @@ class Class : public Node {
   Identifier* name() const { return name_; }
   Expression* super() const { return super_; }
   List<Expression*> interfaces() const { return interfaces_; }
+  List<Expression*> mixins() const { return mixins_; }
   List<Declaration*> members() const { return members_; }
 
   Kind kind() const { return kind_; }
@@ -293,6 +296,7 @@ class Class : public Node {
   Identifier* name_;
   Expression* super_;
   List<Expression*> interfaces_;
+  List<Expression*> mixins_;
   List<Declaration*> members_;
   Kind kind_;
   bool has_abstract_modifier_;

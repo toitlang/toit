@@ -14,4 +14,22 @@ class B extends MixB:
 mixin NonAbstractMixin:
   abstract foo x y -> int
 
+mixin MixC extends:
+
+interface I1:
+
+mixin MixD extends implements I1:
+
+class C with MixD:
+
+class D extends Object with implements I1:
+
+some_method:
+
+class ClassB extends Object with ClassA UnknownMixin some_method:
+
+mixin MixE extends Object with MixD:
+
+mixin MixF extends MixE with B:
+
 main:
