@@ -393,7 +393,11 @@ class Class : public Node {
   void replace_methods(List<MethodInstance*> new_methods) { methods_ = new_methods; }
 
   List<Field*> fields() const { return fields_; }
-  void set_fields(List<Field*> fields) { fields_ = fields; }
+  void set_fields(List<Field*> fields) {
+    ASSERT(fields_.is_empty());
+    fields_ = fields;
+  }
+  void replace_fields(List<Field*> fields) { fields_ = fields; }
 
   Kind kind() const { return kind_; }
 

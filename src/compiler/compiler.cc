@@ -1660,7 +1660,7 @@ toit::Program* construct_program(ir::Program* ir_program,
   add_stub_methods_and_switch_to_plain_shapes(ir_program);
   add_interface_stub_methods(ir_program);
 
-  add_mixin_stubs(ir_program);
+  apply_mixins(ir_program);
 
   ASSERT(_sorted_by_inheritance(ir_program->classes()));
 

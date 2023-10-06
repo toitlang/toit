@@ -483,12 +483,14 @@ void MethodResolver::resolve_fill_field_stub() {
   auto this_ref = _new ir::ReferenceLocal(this_parameter, 0, ast_field->range());
 
   if (field_stub->is_getter()) {
+    // Some of the code here is duplicated in the mixin code.
     auto range = ast_field->range();
     body = _new ir::Sequence(list_of(_new ir::Return(_new ir::FieldLoad(this_ref, field, range),
                                                      false,
                                                      range)),
                              range);
   } else {
+    // Some of the code here is duplicated in the mixin code.
     auto new_value_parameter = _new ir::Parameter(Symbol::synthetic("<new value>"),
                                                   ir_type,
                                                   false,  // Not a block.
@@ -511,6 +513,7 @@ void MethodResolver::resolve_fill_field_stub() {
                                        range);
       auto ret = _new ir::Return(store, false, range);
       List<ir::Expression*> expressions;
+      // Some of the code here is duplicated in the mixin code.
       if (field->type().is_class()) {
         auto type = field->type();
         field_stub->set_checked_type(type);
