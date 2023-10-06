@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED
+#if defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ENABLED
 
 #include "../resource.h"
 #include "../objects_inline.h"
@@ -673,6 +673,10 @@ static Object* nimble_stack_error(Process* process, int error_code) {
   return nimble_error_code_to_string(process, error_code, false);
 }
 
+Object* nimble_host_stack_error(Process* process, int error_code) {
+  return nimble_error_code_to_string(process, error_code, true);
+}
+
 static ble_uuid_any_t uuid_from_blob(Blob& blob) {
   ble_uuid_any_t uuid = {};
   switch (blob.length()) {
@@ -1124,19 +1128,31 @@ bool BleCharacteristicResource::update_subscription_status(uint8_t indicate, uin
   return true;
 }
 
+static int do_start_advertising(BlePeripheralManagerResource* peripheral_manager) {
+  return ble_gap_adv_start(
+      BLE_OWN_ADDR_PUBLIC,
+      null,
+      BLE_HS_FOREVER,
+      &peripheral_manager->advertising_params(),
+      BlePeripheralManagerResource::on_gap,
+      peripheral_manager);
+}
+
 int BlePeripheralManagerResource::_on_gap(struct ble_gap_event* event) {
   switch (event->type) {
     case BLE_GAP_EVENT_CONNECT:
       if (advertising_started()) {
         // NimBLE stops advertising on connection event. To keep the library consistent
         // with other platforms the advertising is restarted.
-        int err = ble_gap_adv_start(
-            BLE_OWN_ADDR_PUBLIC,
-            null,
-            BLE_HS_FOREVER,
-            &advertising_params(),
-            BlePeripheralManagerResource::on_gap,
-            this);
+        int err = do_start_advertising(this);
+        if (err != BLE_ERR_SUCCESS && err != BLE_HS_ENOMEM) {
+          ESP_LOGW("BLE", "Could not restart advertising: err=%d", err);
+        }
+      }
+      break;
+    case BLE_GAP_EVENT_DISCONNECT:
+      if (advertising_started() && !ble_gap_adv_active()) {
+        int err = do_start_advertising(this);
         if (err != BLE_ERR_SUCCESS) {
           ESP_LOGW("BLE", "Could not restart advertising: err=%d", err);
         }
@@ -1917,13 +1933,7 @@ PRIMITIVE(advertise_start) {
   peripheral_manager->advertising_params().itvl_min = advertising_interval;
   peripheral_manager->advertising_params().itvl_max = advertising_interval;
 
-  err = ble_gap_adv_start(
-      BLE_OWN_ADDR_PUBLIC,
-      null,
-      BLE_HS_FOREVER,
-      &peripheral_manager->advertising_params(),
-      BlePeripheralManagerResource::on_gap,
-      peripheral_manager);
+  err = do_start_advertising(peripheral_manager);
   if (err != BLE_ERR_SUCCESS) {
     return nimble_stack_error(process, err);
   }
@@ -2229,11 +2239,11 @@ PRIMITIVE(notify_characteristics_value) {
     err = ble_gattc_indicate_custom(subscription->conn_handle(), characteristic->handle(), om);
   }
 
-  if (err != BLE_ERR_SUCCESS) {
+  if (err != BLE_ERR_SUCCESS && err != BLE_HS_ENOTCONN) {
     // The 'om' buffer is always consumed by the call to
     // ble_gattc_notify_custom() or ble_gattc_indicate_custom()
     // regardless of the outcome.
-    return nimble_stack_error(process, err);
+    return nimble_host_stack_error(process, err);
   }
 
   return process->null_object();

@@ -1476,7 +1476,9 @@ void MethodResolver::visit_Block(ast::Block* node) {
   // Blocks are only allowed at specific locations. These locations deal with
   // the blocks directly.
   report_error(node, "Unexpected block");
-  push(_create_block(node, true, Symbol::invalid()));
+  bool has_implicit_it_parameter;
+  bool may_mutate_final;
+  push(_create_block(node, has_implicit_it_parameter=true, may_mutate_final=true, Symbol::invalid()));
 }
 
 void MethodResolver::visit_Lambda(ast::Lambda* node) {
@@ -1572,8 +1574,11 @@ void MethodResolver::visit_DeclarationLocal(ast::DeclarationLocal* node) {
 void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
   ast::Block ast_block(node->body(), List<ast::Parameter*>());
   ast_block.set_range(node->range());
+  bool has_implicit_it_parameter;
+  bool may_mutate_final;  // Assuming we are in the static part of a constructor.
   auto ir_body = _create_block(&ast_block, // Create a block from the sequence.
-                               false,      // Does not have an implicit `it` parameter.
+                               has_implicit_it_parameter=false,
+                               may_mutate_final=true,
                                Symbol::invalid());
   LocalScope handler_scope(scope_);
   scope_ = &handler_scope;
@@ -2017,11 +2022,16 @@ ir::Code* MethodResolver::_create_code(
                        node->range());
 }
 
+
 ir::Code* MethodResolver::_create_block(ast::Block* node,
                                         bool has_implicit_it_parameter,
+                                        bool may_mutate_final,
                                         Symbol label) {
   BlockScope block_scope(scope_);
   scope_ = &block_scope;
+
+  auto old_has_direct_access = block_has_direct_field_access_;
+  block_has_direct_field_access_ = old_has_direct_access && may_mutate_final;
 
   auto result = _create_code(node,
                              node->parameters(),
@@ -2031,6 +2041,8 @@ ir::Code* MethodResolver::_create_block(ast::Block* node,
                              label);
   ASSERT(scope_ == &block_scope);
   scope_ = scope_->outer();
+
+  block_has_direct_field_access_ = old_has_direct_access;
 
   return result;
 }
@@ -2873,51 +2885,58 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
 
   bool is_constructor_super_call = false;
 
-  switch (resolution_mode_) {
-    case CONSTRUCTOR_SUPER: {
-      ASSERT(is_literal_super(ast_target) || ast_target->is_Dot());
-      is_constructor_super_call = true;
-      // Make sure the arguments are compiled in a static context.
-      resolution_mode_ = CONSTRUCTOR_STATIC;
-      break;
-    }
-
-    case CONSTRUCTOR_STATIC:
-    case CONSTRUCTOR_INSTANCE:
-    case CONSTRUCTOR_LIMBO_INSTANCE:
-    case CONSTRUCTOR_LIMBO_STATIC: {
-      // In constructors, accesses to fields are direct.
-      Symbol name = Symbol::invalid();
-      bool lookup_class_scope = false;
-      if (ast_target->is_Dot() && is_literal_this(ast_target->as_Dot()->receiver())) {
-        name = ast_target->as_Dot()->name()->data();
-        lookup_class_scope = true;
-      } else if (ast_target->is_Identifier()) {
-        name = ast_target->as_Identifier()->data();
-        lookup_class_scope = false;
+  // If we are in the static part of the constructor we have direct
+  // access to the field.
+  // We must not be in a lambda (since that would capture 'this'), nor
+  // in a block that "captures" the field.
+  if (current_lambda_ == null &&
+      block_has_direct_field_access_) {
+    switch (resolution_mode_) {
+      case CONSTRUCTOR_SUPER: {
+        ASSERT(is_literal_super(ast_target) || ast_target->is_Dot());
+        is_constructor_super_call = true;
+        // Make sure the arguments are compiled in a static context.
+        resolution_mode_ = CONSTRUCTOR_STATIC;
+        break;
       }
-      bool is_lsp_selection =
-          ast_target->is_LspSelection() ||
-          (ast_target->is_Dot() &&
-            (ast_target->as_Dot()->receiver()->is_LspSelection() ||
-             ast_target->as_Dot()->name()->is_LspSelection()));
 
-      // We don't want to skip the "normal" handling when we do completion or
-      //   goto-definition.
-      if (ast_arguments.is_empty() && !is_lsp_selection) {
-        auto load = _potentially_load_field(name, lookup_class_scope, ast_target->range());
-        if (load != null) {
-          push(load);
-          return;
+      case CONSTRUCTOR_STATIC:
+      case CONSTRUCTOR_LIMBO_STATIC: {
+        // In the static part of constructors, accesses to fields are direct.
+        Symbol name = Symbol::invalid();
+        bool lookup_class_scope = false;
+        if (ast_target->is_Dot() && is_literal_this(ast_target->as_Dot()->receiver())) {
+          name = ast_target->as_Dot()->name()->data();
+          lookup_class_scope = true;
+        } else if (ast_target->is_Identifier()) {
+          name = ast_target->as_Identifier()->data();
+          lookup_class_scope = false;
+        }
+        bool is_lsp_selection =
+            ast_target->is_LspSelection() ||
+            (ast_target->is_Dot() &&
+              (ast_target->as_Dot()->receiver()->is_LspSelection() ||
+              ast_target->as_Dot()->name()->is_LspSelection()));
+
+        // We don't want to skip the "normal" handling when we do completion or
+        //   goto-definition.
+        if (ast_arguments.is_empty() && !is_lsp_selection) {
+          auto load = _potentially_load_field(name, lookup_class_scope, ast_target->range());
+          if (load != null) {
+            push(load);
+            return;
+          }
         }
       }
-    }
 
-    case FIELD:
-    case INSTANCE:
-    case STATIC:
-      // Nothing to do here.
-      break;
+      case CONSTRUCTOR_INSTANCE:
+      case CONSTRUCTOR_LIMBO_INSTANCE:
+      case FIELD:
+      case INSTANCE:
+      case STATIC:
+        // Nothing to do here.
+        break;
+    }
   }
 
   ast::Node* target_name_node = null;
@@ -2963,8 +2982,10 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
         bool is_assert = ast_target->is_Identifier() &&
             ast_target->as_Identifier()->data() == Token::symbol(Token::AZZERT);
         bool has_implicit_it_parameter = !is_assert;
+        bool may_mutate_final;  // Assuming we are in the static part of a constructor.
         ir_argument = _create_block(argument->as_Block(),
                                     has_implicit_it_parameter,
+                                    may_mutate_final=true,
                                     target_name);
       } else if (argument->is_Lambda()) {
         ir_argument = _create_lambda(argument->as_Lambda(), target_name);
@@ -3265,7 +3286,9 @@ ir::Expression* MethodResolver::_as_or_is(ast::Binary* node) {
 ir::Expression* MethodResolver::_definition_rhs(ast::Expression* node, Symbol name) {
   auto right = _without_parenthesis(node);
   if (right->is_Block()) {
-    return _create_block(right->as_Block(), true, name);
+    bool has_implicit_it_parameter;
+    bool may_mutate_final;
+    return _create_block(right->as_Block(), has_implicit_it_parameter=true, may_mutate_final=false, name);
   } else if (right->is_Lambda()) {
     return _create_lambda(right->as_Lambda(), name);
   }
@@ -3480,6 +3503,7 @@ ir::Expression* MethodResolver::_potentially_store_field(ast::Node* node,
          resolution_mode_ == CONSTRUCTOR_INSTANCE ||
          resolution_mode_ == CONSTRUCTOR_LIMBO_STATIC ||
          resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE);
+
   Scope* scope = lookup_class_scope ? scope_->enclosing_class_scope() : scope_;
   auto lookup_result = scope->lookup(name);
   if (lookup_result.entry.is_prefix()) return null;
@@ -3506,22 +3530,44 @@ ir::Expression* MethodResolver::_potentially_store_field(ast::Node* node,
     }
 
     auto field = candidate->as_FieldStub()->field();
+    bool is_final = field->is_final();
 
-    if (resolution_mode_ == CONSTRUCTOR_INSTANCE && field->is_final()) {
-      report_error(node, "Can't assign final field in dynamic part of constructor");
-    }
-    if (resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE && field->is_final()) {
-      if (super_forcing_expression_ == null) {
-        // Do nothing.
-        // We will run through the expression again and then report an error.
-        // It might be this assignment, or an earlier one. Either way we don't need
-        // to do anything.
-      } else {
-        diagnostics()->start_group();
+    if (resolution_mode_ == CONSTRUCTOR_INSTANCE) {
+      if (is_final) {
         report_error(node, "Can't assign final field in dynamic part of constructor");
-        report_note(super_forcing_expression_,
-                    "Expression that switched to dynamic part");
-        diagnostics()->end_group();
+        // Don't return here, but actually compile to a field-store.
+        // This way we don't get a duplicate error message later when the type checker
+        // realizes the same error.
+      } else {
+        // In the instance part of a constructor we never directly access fields.
+        // The only reason we called this method is for the 'final' check to have a
+        // good error message.
+        return null;
+      }
+    }
+
+    if (resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE) {
+      if (is_final) {
+        if (super_forcing_expression_ == null) {
+          // Do nothing.
+          // We will run through the expression again and then report an error.
+          // It might be this assignment, or an earlier one. Either way we don't need
+          // to do anything.
+        } else {
+          diagnostics()->start_group();
+          report_error(node, "Can't assign final field in dynamic part of constructor");
+          report_note(super_forcing_expression_,
+                      "Expression that switched to dynamic part");
+          diagnostics()->end_group();
+        }
+        // Don't return here, but actually compile to a field-store.
+        // This way we don't get a duplicate error message later when the type checker
+        // realizes the same error.
+      } else {
+        // In the instance part of a constructor we never directly access fields.
+        // The only reason we called this method is for the 'final' check to have a
+        // good error message.
+        return null;
       }
     }
 
@@ -3558,9 +3604,7 @@ ir::Expression* MethodResolver::_potentially_load_field(Symbol name,
                                                         bool lookup_class_scope,
                                                         Source::Range range) {
   ASSERT(resolution_mode_ == CONSTRUCTOR_STATIC ||
-         resolution_mode_ == CONSTRUCTOR_INSTANCE ||
-         resolution_mode_ == CONSTRUCTOR_LIMBO_STATIC ||
-         resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE);
+         resolution_mode_ == CONSTRUCTOR_LIMBO_STATIC);
   Scope* scope = lookup_class_scope ? scope_->enclosing_class_scope() : scope_;
   auto lookup_result = scope->lookup(name);
   if (lookup_result.entry.is_prefix()) return null;
@@ -3599,20 +3643,39 @@ ir::Expression* MethodResolver::_assign_dot(ast::Binary* node,
   bool is_compound = node->kind() != Token::ASSIGN;
   auto dot = node->left()->as_Dot();
 
-  // `this.x` in a constructor is treated specially.
-  if (is_literal_this(dot->receiver()) &&
+  // `this.x` in a constructor is treated specially in the static part of
+  // the constructor.
+  // However, we must not be inside a lambda, or inside a block that
+  // doesn't have direct field access.
+  if (current_lambda_ == null &&
+      block_has_direct_field_access_ &&
+      is_literal_this(dot->receiver()) &&
       // We prefer treating the `this.x` "normally" when handling
       // lsp selections.
       !dot->receiver()->is_LspSelection() &&
-      !dot->name()->is_LspSelection() &&
-      (resolution_mode_ == CONSTRUCTOR_STATIC ||
-       resolution_mode_ == CONSTRUCTOR_INSTANCE ||
-       resolution_mode_ == CONSTRUCTOR_LIMBO_STATIC ||
-       resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE)) {
-    Symbol name = dot->name()->data();
-    auto field_initialization =
-        _potentially_store_field(node, name, true, node->right(), store_old);
-    if (field_initialization != null) return field_initialization;
+      !dot->name()->is_LspSelection()) {
+    switch (resolution_mode_) {
+      case CONSTRUCTOR_STATIC:
+      case CONSTRUCTOR_LIMBO_STATIC:
+      // We also do the `potentially_store_field` call for instance cases.
+      // This is for better error messages, but semantically we do a
+      // dynamic lookup in these modes. Unless the function reports an
+      // error it will return 'null', and we will continue normally below.
+      case CONSTRUCTOR_INSTANCE:
+      case CONSTRUCTOR_LIMBO_INSTANCE: {
+        Symbol name = dot->name()->data();
+        auto field_initialization =
+            _potentially_store_field(node, name, true, node->right(), store_old);
+        if (field_initialization != null) return field_initialization;
+        break;
+      }
+
+      case FIELD:
+      case CONSTRUCTOR_SUPER:
+      case INSTANCE:
+      case STATIC:
+        break;
+    }
   }
 
   auto create_dot = [&](ir::Expression* receiver, Symbol selector) {
@@ -3915,18 +3978,26 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
   auto ast_left = node->left();
   auto ast_right = node->right();
   auto range = node->range();
-  // When doing completion or goto-definition we prefer to go through the
-  //   "normal" paths.
-  if (ast_left->is_Identifier() && !ast_left->is_LspSelection()) {
-    // Not prefixed.
-    auto name = ast_left->as_Identifier()->data();
+  // In constructors we have a direct access to fields.
+  // We must be in the static section of the constructor, and not
+  // "capture" the field.
+  // We also prefer the "normal" path when doing completion or
+  // goto-definition.
+  if (ast_left->is_Identifier() &&
+      !ast_left->is_LspSelection() &&
+      current_lambda_ == null &&
+      block_has_direct_field_access_) {
     switch (resolution_mode_) {
       case CONSTRUCTOR_STATIC:
-      case CONSTRUCTOR_INSTANCE:
       case CONSTRUCTOR_LIMBO_STATIC:
+      // We also do the `potentially_store_field` call for instance cases.
+      // This is for better error messages, but semantically we do a
+      // dynamic lookup in these modes. Unless the function reports an
+      // error it will return 'null', and we will continue normally below.
+      case CONSTRUCTOR_INSTANCE:
       case CONSTRUCTOR_LIMBO_INSTANCE: {
-        // In constructors, accesses to fields are always direct and not virtual.
-
+        // Not prefixed.
+        auto name = ast_left->as_Identifier()->data();
         auto field_initialization =
             _potentially_store_field(node, name, false, ast_right, store_old);
         if (field_initialization != null) return field_initialization;

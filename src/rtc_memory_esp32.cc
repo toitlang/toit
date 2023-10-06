@@ -153,6 +153,12 @@ void RtcMemory::set_up() {
   }
 }
 
+void RtcMemory::invalidate() {
+  // Set the RTC checksum to an invalid value, so we get
+  // the memory cleared on next boot.
+  rtc_checksum = compute_rtc_checksum() + 1;
+}
+
 void RtcMemory::on_deep_sleep_start() {
   rtc.system_time_us_before_deep_sleep = OS::get_system_time();
   rtc.rtc_time_us_before_deep_sleep = esp_rtc_get_time_us();

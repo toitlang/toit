@@ -27,6 +27,9 @@ class RtcMemory {
   // Run at program startup (after FreeRTOS is initialized).
   static void set_up();
 
+  // Force clearing of the RTC memory on next boot.
+  static void invalidate();
+
   // Event registration.
   static void on_out_of_memory();
   static void on_deep_sleep_start();
