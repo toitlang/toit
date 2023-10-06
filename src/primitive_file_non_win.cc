@@ -264,7 +264,7 @@ PRIMITIVE(readdir) {
 
   const int MAX_VFAT = 260;  // Max filename length.
   AllocationManager allocation(process);
-  uint8 *backing = allocation.alloc(MAX_VFAT);
+  uint8* backing = allocation.alloc(MAX_VFAT);
   if (!backing) FAIL(ALLOCATION_FAILED);
 
   struct dirent* entry = readdir(directory->dir());
