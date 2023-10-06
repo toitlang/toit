@@ -1857,14 +1857,22 @@ static void fill_abstract_methods_map(ir::Class* ir_class,
   if (probe != abstract_methods->end()) return;
   auto super = ir_class->super();
   Map<Selector<ResolutionShape>, ir::Method*> super_abstracts;
-  // If the super is not abstract, we assume that this `ir_class` doesn't need to
-  //   implement anything from the super. If necessary, we will provide error
-  //   messages on the super.
+  // If the super or the class' mixins are not abstract, we assume that this
+  //   `ir_class` doesn't need to implement anything from any of its parents.
+  //   If necessary, we will provide error messages on the super/mixin, as they
+  //   should have been marked 'abstract' otherwise.
   if (super != null && super->is_abstract()) {
     fill_abstract_methods_map(super, abstract_methods, diagnostics);
     super_abstracts = abstract_methods->at(super);
   }
-  if (super_abstracts.empty() && !ir_class->is_abstract()) {
+  bool all_mixins_are_non_abstract = true;
+  for (auto mixin : ir_class->mixins()) {
+    if (mixin->is_abstract()) {
+      all_mixins_are_non_abstract = false;
+      break;
+    }
+  }
+  if (super_abstracts.empty() && all_mixins_are_non_abstract && !ir_class->is_abstract()) {
     // Handle the most common case.
     (*abstract_methods)[ir_class] = Map<Selector<ResolutionShape>, ir::Method*>();
     return;
@@ -1872,8 +1880,17 @@ static void fill_abstract_methods_map(ir::Class* ir_class,
 
   Map<Selector<ResolutionShape>, ir::Method*> class_abstracts;
   for (auto selector : super_abstracts.keys()) {
-    if (super_abstracts[selector]->is_abstract()) {
-      class_abstracts[selector] = super_abstracts[selector];
+    ir::Method* method = super_abstracts.at(selector);
+    if (method->is_abstract()) {
+      class_abstracts[selector] = method;
+    }
+  }
+  for (auto mixin : ir_class->mixins()) {
+    fill_abstract_methods_map(mixin, abstract_methods, diagnostics);
+    auto mixin_abstracts = abstract_methods->at(mixin);
+    for (auto selector : mixin_abstracts.keys()) {
+      ir::Method* method = mixin_abstracts.at(selector);
+      class_abstracts[selector] = method;
     }
   }
   if (ir_class->is_abstract() || !class_abstracts.empty()) {
@@ -1904,15 +1921,45 @@ void Resolver::report_abstract_classes(std::vector<Module*> modules) {
 
   Map<ir::Class*, Map<Symbol, std::vector<ResolutionShape>>> all_method_shapes;
   // Lazily fill the method shapes.
-  auto method_shapes_for = [&](ir::Class* cls) {
-    auto probe = all_method_shapes.find(cls);
+  auto method_shapes_for = [&](ir::Class* klass) {
+    auto probe = all_method_shapes.find(klass);
     if (probe != all_method_shapes.end()) return probe->second;
     Map<Symbol, std::vector<ResolutionShape>> result;
-    for (auto method : cls->methods()) {
+    for (auto method : klass->methods()) {
       if (method->is_abstract()) continue;
       auto name = method->name();
       result[name].push_back(method->resolution_shape());
     }
+    return result;
+  };
+
+  UnorderedMap<ir::Class*, Set<ir::Class*>> all_contributing;
+  // Lazily fill the contributing classes.
+  std::function<Set<ir::Class*> (ir::Class*)> contributing_for;
+  contributing_for = [&](ir::Class* klass) {
+    auto probe = all_contributing.find(klass);
+    if (probe != all_contributing.end()) return probe->second;
+    Set<ir::Class*> result;
+    for (int i = -1; i < klass->mixins().length(); i++) {
+      auto parent = i == -1
+          ? klass->super()
+          : klass->mixins()[i];
+      if (parent == null) {
+        ASSERT(i == -1);  // No super.
+        continue;
+      }
+      auto parent_probe = all_contributing.find(parent);
+      Set<ir::Class*> transitive_parents;
+      if (parent_probe == all_contributing.end()) {
+        transitive_parents = contributing_for(parent);
+      } else {
+        transitive_parents = parent_probe->second;
+      }
+      result.insert_all(transitive_parents);
+    }
+    // The class itself also contributes.
+    result.insert(klass);
+    all_contributing[klass] = result;
     return result;
   };
 
@@ -1949,10 +1996,11 @@ void Resolver::report_abstract_classes(std::vector<Module*> modules) {
           auto name = method->name();
           std::vector<ResolutionShape> potentially_implementing;
 
-          for (auto current = ir_class;
-               current != null;
-               current = current->super()) {
-            auto shapes = method_shapes_for(current);
+          // Classes that can contribute methods.
+          auto contributing_classes = contributing_for(ir_class);
+
+          for (auto contributing : contributing_classes) {
+            auto shapes = method_shapes_for(contributing);
             auto probe = shapes.find(name);
             if (probe != shapes.end()) {
               for (auto shape : probe->second) {

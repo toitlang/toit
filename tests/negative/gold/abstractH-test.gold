@@ -1,0 +1,25 @@
+tests/negative/abstractH-test.toit:8:7: error: Non-abstract class 'A' is missing implementations
+class A extends Object with M1:
+      ^
+tests/negative/abstractH-test.toit:6:12: note: Missing implementation for 'foo'
+  abstract foo x y=null
+           ^~~
+tests/negative/abstractH-test.toit:10:7: error: Non-abstract class 'B' is missing implementations
+class B extends Object with M1:
+      ^
+tests/negative/abstractH-test.toit:6:12: note: Method 'foo' is only partially implemented
+  abstract foo x y=null
+           ^~~
+tests/negative/abstractH-test.toit:16:7: error: Non-abstract class 'D' is missing implementations
+class D extends C with M1:
+      ^
+tests/negative/abstractH-test.toit:6:12: note: Method 'foo' is only partially implemented
+  abstract foo x y=null
+           ^~~
+tests/negative/abstractH-test.toit:20:7: error: Non-abstract class 'M3' is missing implementations
+mixin M3 extends M2 with M1:
+      ^~
+tests/negative/abstractH-test.toit:6:12: note: Missing implementation for 'foo'
+  abstract foo x y=null
+           ^~~
+Compilation failed.
