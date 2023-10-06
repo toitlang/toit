@@ -16,6 +16,7 @@ SLOW := true
 
 main:
   feature-detect
+  bytemap-test
   simple-test
   blit-test
   bitmap-test
@@ -644,3 +645,92 @@ blur-test:
   gold = blur-gold ba 9 0 3
   bytemap-blur ba 9 0 3
   blur-compare ba gold 9 0 3
+
+bytemap-test -> none:
+  W ::= 42
+  H ::= 17
+  canvas := ByteArray (W * H)
+
+  sprite := ""
+      + "__######__"
+      + "__#O##O#__"
+      + "_########_"
+      + "_########_"
+      + "__#_#__#__"
+      + "__#_#__#__"
+
+  SPRITE-WIDTH := 10
+  SPRITE-HEIGHT := 6
+
+  expect_equals 0 canvas[0]
+
+  bytemap-zap canvas ' '  // Set background to test transparency.
+
+  /*
+  // Plain copy to middle.
+  bitmap-draw-bytemap 19 7  // x, y.
+      -1   // No transparency.
+      0    // No rotation.
+      sprite
+      SPRITE-WIDTH
+      #[]  // No palette.
+      canvas
+      W
+
+  // Top left corner to test clipping and transparency.
+  bitmap-draw-bytemap -5 3  // x, y.
+      '_'  // Underscore is transparent.
+      0    // No rotation.
+      sprite
+      SPRITE-WIDTH
+      #[]  // No palette.
+      canvas
+      W
+
+  // bottom left corner to test clipping and transparency.
+  bitmap-draw-bytemap -2 (H - 5)  // x, y.
+      '_'  // Underscore is transparent.
+      0    // No rotation.
+      sprite
+      SPRITE-WIDTH
+      #[]  // No palette.
+      canvas
+      W
+
+      */
+
+  // bottom right corner, rotated.
+  bitmap-draw-bytemap W - 6 12  //(W - 1) (H - 5)  // x, y.
+      '_'  // Underscore is transparent.
+      1    // 90 degrees anticlockwise.
+      sprite
+      SPRITE-WIDTH
+      #[]  // No palette.
+      canvas
+      W
+
+  /*
+  // top right corner, rotated.
+  bitmap-draw-bytemap (W + 2) 5  // x, y.
+      '_'  // Underscore is transparent.
+      2    // 180 degrees.
+      sprite
+      SPRITE-WIDTH
+      #[]  // No palette.
+      canvas
+      W
+
+  // 
+  bitmap-draw-bytemap -1 8  // x, y.
+      '_'  // Underscore is transparent.
+      3    // 270 degrees anticlockwise.
+      sprite
+      SPRITE-WIDTH
+      #[]  // No palette.
+      canvas
+      W
+      */
+
+  bytemap-rectangle (W - 1) 0 '\n' 1 H canvas W
+
+  print canvas.to-string
