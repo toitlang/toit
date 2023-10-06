@@ -79,12 +79,18 @@ bitmap-draw-bitmap ->none
 Draws an indexed bytemap on a byte-oriented frame buffer.
 $x, $y is the top left of the source bytemap.
 $transparent-color is between 0 and 255, or -1 to indicate no color is
-  transparent.
+  transparent.  This corresponds to the way transparency is specified in
+  a GIF file.  Alternatively, transparent-color can be a byte array
+  of alpha values.  Any index that is beyond the end of the byte array
+  will be treated as fully opaque.  This corresponds to the transparency
+  info in an indexed PNG file.
 The $orientation is 0, 1, 2, 3 for 90 degree increments, anticlockwise.
 The $palette is a byte array where every third byte is used to look up
-  values from the source array.
-The source may be wholly or partially outside the area of the byte array.  The drawn
-  bitmap will be clipped.
+  values from the source array.  This corresponds to the layout of a
+  palette in an indexed PNG file.  If the palette is too short, indexes
+  above the palette index are treated as having a 1:1 mapping.
+The source may be wholly or partially outside the area of the byte array.
+  The drawn bitmap will be clipped.
 The assumed pixel layout for both input and output is rows from top to
   bottom.  Within each row pixels are arranged from left to right, one
   byte per pixel.
@@ -92,7 +98,7 @@ The assumed pixel layout for both input and output is rows from top to
 bitmap-draw-bytemap -> none
     x /int
     y /int
-    transparent-color /int
+    transparent-color
     orientation /int
     source-array
     source-width /int
