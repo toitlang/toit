@@ -3200,9 +3200,24 @@ class Deque implements Collection:
     if first == backing.size: throw "OUT_OF_RANGE"
     result := backing[first]
     backing[first] = null
-    first_ = first + 1
+    first_++
     shrink-if-needed_
     return result
+
+  add-first element -> none:
+    first := first_
+    if first == 0:
+      padding-size := (backing_.size >> 1) + 1
+      new_size := backing_.size + padding-size
+      // Pad both ends so we are not inefficient in the case where the next
+      // operation adds to the end.
+      new_backing := List_.private_ (new_size + padding-size) new_size
+      new_backing.replace padding-size backing_
+      backing_ = new_backing
+      first = padding-size
+    first--
+    backing_[first] = element
+    first_ = first
 
   shrink-if-needed_ -> none:
     backing := backing_
