@@ -225,8 +225,9 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
         check_class(klass);
         Symbol name = klass->name()->data();
         auto position = klass->range();
-        bool is_abstract = klass->is_interface() || klass->is_abstract();
-        ir::Class* ir = _new ir::Class(name, klass->is_interface(), is_abstract, position);
+        bool is_interface = klass->is_interface();
+        bool is_abstract = is_interface || klass->has_abstract_modifier();
+        ir::Class* ir = _new ir::Class(name, is_interface, is_abstract, position);
         ir_to_ast_map_[ir] = klass;
         classes.add(ir);
       } else {

@@ -988,11 +988,12 @@ Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
 
   start_multiline_construct(IndentationStack::CLASS);   // Classes/monitors go over multiple lines.
 
-  bool is_monitor = false;
-  bool is_interface = false;
+  ast::Class::Kind kind;
   if (current_token() == Token::IDENTIFIER) {
-    is_monitor = current_token_data() == Symbols::monitor;
-    is_interface = current_token_data() == Symbols::interface_;
+    bool is_interface = current_token_data() == Symbols::interface_;
+    kind = is_interface
+        ? ast::Class::INTERFACE
+        : ast::Class::MONITOR;
     if (is_abstract) {
       report_error("%s can't be abstract", is_interface ? "Interfaces" : "Monitors");
       is_abstract = false;
@@ -1000,6 +1001,7 @@ Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
     consume();
   } else {
     ASSERT(current_token() == Token::CLASS);
+    kind = ast::Class::CLASS;
     consume();
   }
 
@@ -1008,9 +1010,18 @@ Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
   Identifier* name;
   Expression* super = null;
   if (current_token() != Token::IDENTIFIER) {
-    const char* kind_name = "class";
-    if (is_monitor) kind_name = "monitor";
-    if (is_interface) kind_name = "interface";
+    const char* kind_name;
+    switch (kind) {
+      case ast::Class::CLASS:
+        kind_name = "class";
+        break;
+      case ast::Class::MONITOR:
+        kind_name = "monitor";
+        break;
+      case ast::Class::INTERFACE:
+        kind_name = "interface";
+        break;
+    }
     if (is_eol(current_token())) {
       report_error(eol_range(previous_range(), current_range()),
                    "Expected %s name", kind_name);
@@ -1071,9 +1082,8 @@ Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
                         super,
                         interfaces.build(),
                         members.build(),
-                        is_abstract,
-                        is_monitor,
-                        is_interface),
+                        kind,
+                        is_abstract),
                   name->range());
 }
 
