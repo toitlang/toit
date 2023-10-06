@@ -44,6 +44,7 @@
 #include "lsp/multiplex_stdout.h"
 #include "lock.h"
 #include "map.h"
+#include "mixin.h"
 #include "monitor.h"
 #include "optimizations/optimizations.h"
 #include "parser.h"
@@ -1659,6 +1660,8 @@ toit::Program* construct_program(ir::Program* ir_program,
   add_stub_methods_and_switch_to_plain_shapes(ir_program);
   add_interface_stub_methods(ir_program);
 
+  add_mixin_stubs(ir_program);
+
   ASSERT(_sorted_by_inheritance(ir_program->classes()));
 
   if (run_optimizations) optimize(ir_program, oracle);
@@ -1774,7 +1777,6 @@ static void sort_classes(List<ir::Class*> classes) {
     classes[index++] = klass;
   }
 }
-
 
 Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   // TODO(florian): this is hackish. We want to analyze asserts also in release mode,

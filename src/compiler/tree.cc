@@ -122,8 +122,8 @@ class GrowerVisitor : protected TraversingVisitor {
   void visit_CallStatic(CallStatic* node) {
     auto target = node->target()->target();
     if (target->is_instance()) {
-      if (is_super_call(node)) {
-        // For super calls we don't need to ensure that the
+      if (is_super_call(node) || target->holder()->is_mixin()) {
+        // For super calls or mixins we don't need to ensure that the
         // holder class is actually instantiated and its method isn't shadowed.
         found_methods_.insert(target);
       } else {
@@ -632,7 +632,7 @@ static void shake(Program* program,
   ListBuilder<Class*> remaining_classes;
   // Keep the order of the classes.
   for (auto klass : program->classes()) {
-    if (grown_classes.contains(klass)) {
+    if (klass->is_mixin() || grown_classes.contains(klass)) {
       remaining_classes.add(klass);
     }
   }

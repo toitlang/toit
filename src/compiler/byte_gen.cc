@@ -270,6 +270,7 @@ void ByteGen::visit_MonitorMethod(MonitorMethod* node) { _generate_method(node);
 void ByteGen::visit_MethodStatic(MethodStatic* node) { _generate_method(node); }
 void ByteGen::visit_Constructor(Constructor* node) { _generate_method(node); }
 void ByteGen::visit_AdapterStub(AdapterStub* node) { _generate_method(node); }
+void ByteGen::visit_MixinStub(MixinStub* node) { _generate_method(node); }
 void ByteGen::visit_IsInterfaceStub(IsInterfaceStub* node) { _generate_method(node); }
 void ByteGen::visit_FieldStub(FieldStub* node) { _generate_method(node); }
 
