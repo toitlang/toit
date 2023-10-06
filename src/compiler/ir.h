@@ -1174,8 +1174,9 @@ class LoopBranch : public Expression {
 
 class Code : public Expression {
  public:
-  Code(List<Parameter*> parameters, Expression* body, bool is_block, Source::Range range)
+  Code(Symbol name, List<Parameter*> parameters, Expression* body, bool is_block, Source::Range range)
       : Expression(range)
+      , name_(name)
       , parameters_(parameters)
       , body_(body)
       , is_block_(is_block)
@@ -1183,6 +1184,8 @@ class Code : public Expression {
     ASSERT(captured_count_ == 0 || !is_block);
   }
   IMPLEMENTS(Code)
+
+  Symbol name() const { return name_; }
 
   // Contains the captured arguments, but not the block-parameter (if it is a block).
   List<Parameter*> parameters() const { return parameters_; }
@@ -1199,6 +1202,7 @@ class Code : public Expression {
   void kill() { is_dead_ = true; }
 
  private:
+  Symbol name_;
   List<Parameter*> parameters_;
   Expression* body_;
   bool is_block_;

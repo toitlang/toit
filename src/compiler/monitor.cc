@@ -35,7 +35,8 @@ class MonitorVisitor : public ReplacingVisitor {
     //   accessed correctly.
     auto blocked_body = visit(node->body())->as_Expression();
     parameters_.clear();
-    auto code = _new Code(List<Parameter*>(),
+    auto code = _new Code(Symbol::synthetic("<monitor-block>"),
+                          List<Parameter*>(),
                           blocked_body,
                           true,  // It's a block.
                           node->range());

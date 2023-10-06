@@ -456,7 +456,9 @@ class ConstructorVisitor : protected SuperCallVisitor {
       // Take these expressions and pass them to the next mixin constructor (wrapped
       // in a code/block object).
       auto body_sequence = _new ir::Sequence(body, range);
-      auto block_code = _new ir::Code(parameters,
+      auto name = Symbol::synthetic("<mixin-super>");
+      auto block_code = _new ir::Code(name,
+                                      parameters,
                                       body_sequence,
                                       is_block=true,
                                       range);
@@ -464,7 +466,7 @@ class ConstructorVisitor : protected SuperCallVisitor {
       original_args_block_depth++;
 
       // Blocks must be inside locals so that they can be referenced with `ReferenceBlock`.
-      auto block = _new ir::Block(Symbol::synthetic("<mixin-super-block>"), range);
+      auto block = _new ir::Block(name, range);
       auto block_assig = _new ir::AssignmentDefine(block, block_code, range);
       ASSERT(mixin->constructors().length() == 1);
       auto constructor = mixin->constructors()[0];
@@ -476,9 +478,9 @@ class ConstructorVisitor : protected SuperCallVisitor {
       arguments[0] = outer_this;
       arguments[1] = _new ir::ReferenceBlock(block, 0, range);
       auto call = _new ir::CallStatic(constructor_ref,
-                                             constructor->plain_shape().to_equivalent_call_shape(),
-                                             arguments,
-                                             range);
+                                      constructor->plain_shape().to_equivalent_call_shape(),
+                                      arguments,
+                                      range);
       auto expressions = ListBuilder<ir::Expression*>::build(block_assig, call);
       super_expression = _new ir::Sequence(expressions, range);
     }

@@ -2019,7 +2019,9 @@ ir::Code* MethodResolver::_create_code(
                                 node->range());
   }
 
-  return _new ir::Code(ir_parameters,
+  auto name = Symbol::synthetic(is_block ? "<block>" : "<lambda>");
+  return _new ir::Code(name,
+                       ir_parameters,
                        ir_body,
                        is_block,
                        node->range());

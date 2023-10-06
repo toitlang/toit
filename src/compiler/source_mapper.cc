@@ -461,7 +461,7 @@ SourceMapper::MethodMapper SourceMapper::register_global(ir::Global* global) {
 
 SourceMapper::MethodMapper SourceMapper::register_lambda(int outer_index, ir::Code* code) {
   int index = source_information_.size();
-  auto name = "<lambda>";
+  auto name = code->name().c_str();
   auto range = code->range();
   int encoded_outer = encode_outer_index(outer_index);
   source_information_.push_back(build_method_entry(code, index, MethodType::LAMBDA, encoded_outer, name, "", range));
@@ -470,7 +470,7 @@ SourceMapper::MethodMapper SourceMapper::register_lambda(int outer_index, ir::Co
 
 SourceMapper::MethodMapper SourceMapper::register_block(int outer_index, ir::Code* code) {
   int index = source_information_.size();
-  auto name = "<block>";
+  auto name = code->name().c_str();
   auto range = code->range();
   int encoded_outer = encode_outer_index(outer_index);
   source_information_.push_back(build_method_entry(code, index, MethodType::BLOCK, encoded_outer, name, "", range));
