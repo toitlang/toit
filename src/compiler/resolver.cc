@@ -2166,6 +2166,7 @@ void Resolver::flatten_mixins(std::vector<Module*> modules) {
   UnorderedMap<ir::Class*, List<ir::Class*>> flattened_mixins;
 
   // Recursively flattens the mixins of the given class.
+  // Drop any 'Mixin_' class, since it doesn't add anything.
   // If the given class is a mixin, also remembers the full list of
   // mixins that are mixed in in the 'flattened_mixins' map.
   std::function<List<ir::Class*> (ir::Class*)> flatten;
@@ -2176,6 +2177,10 @@ void Resolver::flatten_mixins(std::vector<Module*> modules) {
     ListBuilder<ir::Class*> flattened_builder;
     for (int i = klass->mixins().length() - 1; i >= 0; i--) {
       auto ir_mixin = klass->mixins()[i];
+      if (!ir_mixin->has_super()) {
+        // Skip the Mixin_ top.
+        continue;
+      }
       flattened_builder.add(flatten(ir_mixin));
     }
     // Contrary to the 'flattened_mixins' map, each class only has the set
@@ -2187,9 +2192,9 @@ void Resolver::flatten_mixins(std::vector<Module*> modules) {
 
     if (klass->has_super()) flattened_builder.add(flatten(klass->super()));
     auto flattened = flattened_builder.build();
-    // Now add ourselves to the front.
+    // Now add ourselves to the front, unless we are the `Mixin_` class.
     ListBuilder<ir::Class*> with_self;
-    with_self.add(klass);
+    if (klass->has_super()) with_self.add(klass);
     with_self.add(flattened);
     auto flattened_with_self = with_self.build();
     flattened_mixins[klass] = flattened_with_self;
