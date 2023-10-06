@@ -11,6 +11,12 @@ class C1:
 interface I1:
 /*        @ I1 */
 
+mixin Mix1:
+/*    @ Mix1 */
+
+mixin Mix1b:
+/*    @ Mix1b */
+
 class C2 extends C1:
 /*               ^
   [C1]
@@ -26,6 +32,17 @@ class C4 extends prefix.ImportedClass:
   [ImportedClass]
 */
 
+class C5 implements I1:
+/*                   ^
+  [I1]
+*/
+  imported_member:
+
+class C6 extends Object with Mix1:
+/*                            ^
+  [Mix1]
+*/
+
 interface I2 extends I1:
 /*                   ^
   [I1]
@@ -39,4 +56,19 @@ interface I3 extends ImportedInterface:
 interface I4 extends prefix.ImportedInterface:
 /*                            ^
   [ImportedInterface]
+*/
+
+mixin Mix2 extends Mix1:
+/*                   ^
+  [Mix1]
+*/
+
+mixin Mix3 extends prefix.ImportedMixin:
+/*                        ^
+  [ImportedMixin]
+*/
+
+mixin Mix4 extends Mix1 with Mix1b:
+/*                            ^
+  [Mix1b]
 */

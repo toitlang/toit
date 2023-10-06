@@ -399,7 +399,7 @@ void Writer::print_class(ir::Class* klass) {
   const char* kind = "";  // Initialize with value to silence compiler warnings.
   switch (klass->kind()) {
     case ir::Class::CLASS:
-      kind = klass->is_abstract() ? "abstract" : "class";
+      kind = "class";
       break;
     case ir::Class::MONITOR:
       kind = "class";
@@ -408,16 +408,18 @@ void Writer::print_class(ir::Class* klass) {
       kind = "interface";
       break;
     case ir::Class::MIXIN:
-      kind = "class";
+      kind = "mixin";
       break;
   }
   this->printf("%s\n", kind);
+  this->printf("%s\n", klass->is_abstract() ? "abstract" : "not-abstract");
   if (klass->super() == null) {
     this->printf("-1\n");
   } else {
     this->print_toplevel_ref(klass->super());
   }
   print_list(klass->interfaces(), &Writer::print_toplevel_ref);
+  print_list(klass->mixins(), &Writer::print_toplevel_ref);
   print_list(klass->statics()->nodes(), &Writer::print_method);
   print_list(klass->constructors(), &Writer::print_method);
   print_list(klass->factories(), &Writer::print_method);
