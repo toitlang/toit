@@ -1,4 +1,4 @@
-tests/negative/class-cycle-test.toit:5:7: error: Cycle in super/interface chain
+tests/negative/class-cycle-test.toit:5:7: error: Cycle in super chain
 class A extends B:
       ^
 tests/negative/class-cycle-test.toit:5:17: error: This clause contributes to the cycle
