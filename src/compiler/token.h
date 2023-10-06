@@ -165,6 +165,7 @@ enum Precedence {
   IN(__load_global_with_id__, "__load-global-with-id__")                 \
   I(Object)                                                              \
   I(Interface_)                                                          \
+  I(Mixin_)                                                    \
   I(Task_)                                                               \
   I(LargeArray_)                                                         \
   I(Class_)                                                              \

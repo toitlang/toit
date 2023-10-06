@@ -56,6 +56,7 @@ class BackendCollector : public ir::TraversingVisitor {
         case ir::Class::MONITOR:
           class_usage_counts_[klass]++;
           break;
+        case ir::Class::MIXIN:
         case ir::Class::INTERFACE:
           interface_usage_counts_[klass]++;
           break;

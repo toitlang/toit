@@ -44,6 +44,7 @@ class CowByteArray_:
 class ByteArraySlice_:
 
 interface Interface_:
+mixin Mixin_:
 class Class_:
 class Stack_:
 class Exception_:

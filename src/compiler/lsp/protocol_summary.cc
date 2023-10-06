@@ -407,6 +407,9 @@ void Writer::print_class(ir::Class* klass) {
     case ir::Class::INTERFACE:
       kind = "interface";
       break;
+    case ir::Class::MIXIN:
+      kind = "class";
+      break;
   }
   this->printf("%s\n", kind);
   if (klass->super() == null) {

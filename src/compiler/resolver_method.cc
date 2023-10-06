@@ -2648,6 +2648,10 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
         case ir::Class::INTERFACE:
           report_error(ast_target, "Can't instantiate interface class without factory");
           break;
+        case ir::Class::MIXIN:
+          // TODO(florian): do we want to allow it?
+          report_error(ast_target, "Can't instantiate mixin class without factory");
+          break;
       }
       push(call_builder.call_constructor(ref));
     } else if (ref->target()->is_instance()) {

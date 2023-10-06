@@ -230,6 +230,7 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
           case ast::Class::CLASS: kind = ir::Class::CLASS; break;
           case ast::Class::INTERFACE: kind = ir::Class::INTERFACE; break;
           case ast::Class::MONITOR: kind = ir::Class::MONITOR; break;
+          case ast::Class::MIXIN: kind = ir::Class::MIXIN; break;
         }
         bool is_abstract = kind == ir::Class::INTERFACE || klass->has_abstract_modifier();
         ir::Class* ir = _new ir::Class(name, kind, is_abstract, position);
@@ -1143,6 +1144,7 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
   auto core_scope = core_module->scope();
   ir::Class* top = core_scope->lookup_shallow(Symbols::Object).klass();
   ir::Class* interface_top = core_scope->lookup_shallow(Symbols::Interface_).klass();
+  ir::Class* mixin_top = core_scope->lookup_shallow(Symbols::Mixin_).klass();
   ASSERT(top != null);
 
   ir::Class* monitor = core_scope->lookup_shallow(Symbols::__Monitor__).klass();
@@ -1167,10 +1169,13 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
         case ast::Class::MONITOR:
           default_super = monitor;
           break;
+        case ast::Class::MIXIN:
+          default_super = mixin_top;
+          break;
       }
 
       if (!ast_class->has_super() || ast_class->super()->is_Error()) {
-        if (klass != top && klass != interface_top) {
+        if (klass != top && klass != interface_top && klass != mixin_top) {
           klass->set_super(default_super);
         }
       } else {
@@ -1183,10 +1188,15 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
           detected_error = true;
         }
         if (ir_super_class != null) {
-          if (klass->is_interface() != ir_super_class->is_interface()) {
+          bool super_matches_kind =
+              klass->is_interface() == ir_super_class->is_interface() &&
+              klass->is_mixin() == ir_super_class->is_mixin();
+          if (!super_matches_kind) {
             detected_error = true;
             if (klass->is_interface()) {
               report_error(ast_class->super(), "Super of an interface must be an interface");
+            } else if (klass->is_mixin()) {
+              report_error(ast_class->super(), "Super of a mixin must be a mixin");
             } else {
               report_error(ast_class->super(), "Super of a class must be a class");
             }
@@ -1198,7 +1208,19 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
           }
         } else {
           detected_error = true;
-          const char* class_type = klass->is_interface() ? "interface" : "class";
+          const char* class_type = "";
+          switch (ast_class->kind()) {
+            case ast::Class::CLASS:
+            case ast::Class::MONITOR:
+              class_type = "class";
+              break;
+            case ast::Class::INTERFACE:
+              class_type = "interface";
+              break;
+            case ast::Class::MIXIN:
+              class_type = "mixin";
+              break;
+          }
           report_error(ast_class->super(), "Unresolved super %s", class_type);
         }
         if (detected_error) {
@@ -1559,7 +1581,8 @@ void Resolver::check_method(ast::Method* method, ir::Class* holder,
     if (class_is_interface && method_is_abstract) {
       report_error(name_or_dot, "Interface members can't be declared abstract");
     } else if (!holder->is_abstract() && method_is_abstract) {
-      report_error(name_or_dot, "Members can't be abstract in non-abstract class");
+      const char* kind_name = holder->is_mixin() ? "mixin" : "class";
+      report_error(name_or_dot, "Members can't be abstract in non-abstract %s", kind_name);
     }
     if (class_is_interface && method->body() != null) {
       report_error(name_or_dot, "Interface members can't have bodies");
@@ -1730,7 +1753,8 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
         if (!ir_class->is_runtime_class() && !ir_class->is_interface()) {
           // The internal `Array` class only has factories, which is why we exclude
           // runtime classes.
-          report_error(ir_class, "A class with factories must have a constructor.");
+          const char* kind_name = ir_class->is_mixin() ? "mixin" : "class";
+          report_error(ir_class, "A %s with factories must have a constructor.", kind_name);
         }
       } else if (!class_is_interface && !class_has_constructors) {
         // Create default-constructor place-holder (which takes `this` as argument).
@@ -2107,12 +2131,17 @@ void Resolver::_dfs_traverse(ir::Class* current, List<ir::Class*> classes, int* 
 void Resolver::sort_classes(List<ir::Class*> classes) const {
   ir::Class* top = null;
   ir::Class* interface_top = null;
+  ir::Class* mixin_top = null;
   for (auto& klass : classes) {
     if (klass->super() == null) {
-      if (klass->is_interface()) {
-        interface_top = klass;
-      } else {
-        top = klass;
+      switch (klass->kind()) {
+        case ir::Class::CLASS:
+        case ir::Class::MONITOR:
+          top = klass;
+        case ir::Class::INTERFACE:
+          interface_top = klass;
+        case ir::Class::MIXIN:
+          mixin_top = klass;
       }
     } else {
       klass->super()->link_subclass(klass);
@@ -2122,6 +2151,7 @@ void Resolver::sort_classes(List<ir::Class*> classes) const {
   int index = 0;
   _dfs_traverse(top, classes, &index);
   _dfs_traverse(interface_top, classes, &index);
+  _dfs_traverse(mixin_top, classes, &index);
   ASSERT(index == classes.length());
 }
 
