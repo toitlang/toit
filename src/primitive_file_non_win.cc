@@ -264,7 +264,7 @@ PRIMITIVE(readdir) {
 
   const int MAX_VFAT = 260;  // Max filename length.
   AllocationManager allocation(process);
-  uint8 *backing = allocation.alloc(MAX_VFAT);
+  uint8* backing = allocation.alloc(MAX_VFAT);
   if (!backing) FAIL(MALLOC_FAILED);
 
   struct dirent* entry = readdir(directory->dir());
@@ -329,7 +329,7 @@ PRIMITIVE(read) {
 
   AllocationManager allocation(process);
   uint8* buffer = allocation.alloc(SIZE);
-  if (!buffer) FAIL(ALLOCATION_FAILED);
+  if (!buffer) FAIL(MALLOC_FAILED);
 
   ByteArray* result = process->object_heap()->allocate_external_byte_array(
       SIZE, buffer, true /* dispose */, false /* clear */);
