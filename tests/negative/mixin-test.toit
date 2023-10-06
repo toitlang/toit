@@ -32,4 +32,6 @@ mixin MixE extends Object with MixD:
 
 mixin MixF extends MixE with B:
 
+interface I2 extends I1 with MixB:
+
 main:
