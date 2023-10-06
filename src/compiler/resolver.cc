@@ -2153,6 +2153,9 @@ void Resolver::sort_classes(List<ir::Class*> classes) const {
   _dfs_traverse(interface_top, classes, &index);
   _dfs_traverse(mixin_top, classes, &index);
   ASSERT(index == classes.length());
+  // It is important that the 'Object' class is at index 0.
+  // We are using this later when building queryables.
+  ASSERT(classes[0] == top);
 }
 
 static ir::Class* resolve_tree_root(Symbol name, ModuleScope* scope) {
