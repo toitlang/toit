@@ -35,7 +35,7 @@ class CallSelectorVisitor : public ir::TraversingVisitor {
 
 } // namespace anonymous
 
-UnorderedMap<Class*, QueryableClass> build_queryables_from_plain_shapes(List<Class*> classes) {
+UnorderedMap<Class*, QueryableClass> build_queryables_from_plain_shapes(List<Class*> classes, bool include_abstracts) {
   UnorderedMap<Class*, QueryableClass> result;
   for (auto klass : classes) {
     QueryableClass::SelectorMap methods;
@@ -47,6 +47,7 @@ UnorderedMap<Class*, QueryableClass> build_queryables_from_plain_shapes(List<Cla
       methods.add_all(result[klass->super()].methods());
     }
     for (auto method : klass->methods()) {
+      if (!include_abstracts && method->is_abstract()) continue;
       Selector<PlainShape> selector(method->name(), method->plain_shape());
       methods[selector] = method;
     }
@@ -56,7 +57,7 @@ UnorderedMap<Class*, QueryableClass> build_queryables_from_plain_shapes(List<Cla
   return result;
 }
 
-UnorderedMap<Class*, QueryableClass> build_queryables_from_resolution_shapes(Program* program) {
+UnorderedMap<Class*, QueryableClass> build_queryables_from_resolution_shapes(Program* program, bool include_abstracts) {
   CallSelectorVisitor visitor;
   program->accept(&visitor);
   auto invoked_selectors = visitor.selectors;
@@ -97,6 +98,7 @@ UnorderedMap<Class*, QueryableClass> build_queryables_from_resolution_shapes(Pro
       }
 
       for (auto method : klass->methods()) {
+        if (!include_abstracts && method->is_abstract()) continue;
         auto name = method->name();
         auto method_shape = method->resolution_shape();
         auto plain_shape = method_shape.to_plain_shape();

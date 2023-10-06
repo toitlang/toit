@@ -376,6 +376,8 @@ void Resolver::check_clashing_or_conflicting(Symbol name, List<ir::Node*> declar
     for (auto declaration : declarations) {
       ASSERT(declaration->is_Method());
       ir::Method* method = declaration->as_Method();
+      // Ignore abstract methods. They are allowed to overlap.
+      if (method->is_abstract()) continue;
       // For the purpose of conflict resolution we don't include implicit
       // this arguments.
       auto shape = method->resolution_shape_no_this();
@@ -1939,31 +1941,31 @@ void Resolver::report_abstract_classes(std::vector<Module*> modules) {
 
       // We might have a non-implemented abstract method.
       // Do a more thorough check that handles optional arguments as well.
+      // We also look at super classes of the abstract class now.
       for (auto selector : class_abstracts.keys()) {
         auto method = class_abstracts[selector];
         if (method->is_abstract()) {
-          auto abstract_holder = method->holder();
+          auto shape = method->resolution_shape();
           auto name = method->name();
-          std::vector<ResolutionShape> potentially_shadowing;
+          std::vector<ResolutionShape> potentially_implementing;
 
           for (auto current = ir_class;
-               current != abstract_holder;
+               current != null;
                current = current->super()) {
             auto shapes = method_shapes_for(current);
             auto probe = shapes.find(name);
             if (probe != shapes.end()) {
               for (auto shape : probe->second) {
-                potentially_shadowing.push_back(shape);
+                potentially_implementing.push_back(shape);
               }
             }
           }
-          if (potentially_shadowing.empty()) {
+          if (potentially_implementing.empty()) {
             missing_methods.set(method, CallShape::invalid());
             continue;
           }
           auto missing_shape = CallShape::invalid();
-          auto shape = method->resolution_shape();
-          if (!shape.is_fully_shadowed_by(potentially_shadowing, &missing_shape)) {
+          if (!shape.is_fully_shadowed_by(potentially_implementing, &missing_shape)) {
             // If the missing_shape is valid, then we have partial shadowing.
             missing_methods.set(method, missing_shape);
           }

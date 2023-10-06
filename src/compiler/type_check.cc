@@ -775,7 +775,8 @@ void check_types_and_deprecations(ir::Program* program,
                                   ToitdocRegistry* toitdocs,
                                   Diagnostics* diagnostics) {
   auto deprecated = collect_deprecated_elements(program, toitdocs);
-  auto queryables = build_queryables_from_resolution_shapes(program);
+  bool include_abstracts;
+  auto queryables = build_queryables_from_resolution_shapes(program, include_abstracts=true);
   TypeChecker checker(program->literal_types(), program->classes(), &queryables, &deprecated, lsp, diagnostics);
   program->accept(&checker);
 }

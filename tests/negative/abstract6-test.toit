@@ -11,5 +11,13 @@ abstract class B extends A:
 
 class C extends B:
 
+mixin M1:
+  foo:
+
+abstract mixin M2 extends M1:
+  abstract foo
+
+
 main:
   (C).foo
+  unresolved
