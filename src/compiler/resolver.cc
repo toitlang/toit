@@ -107,6 +107,7 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
 
   report_abstract_classes(modules);
   check_interface_implementations_and_flatten(modules);
+  flatten_mixins(modules);
 
   auto entry_module = modules[entry_index];
   auto core_module = modules[core_index];
@@ -2092,6 +2093,59 @@ void Resolver::check_interface_implementations_and_flatten(std::vector<Module*> 
           diagnostics()->end_group();
         }
       }
+    }
+  }
+}
+
+void Resolver::flatten_mixins(std::vector<Module*> modules) {
+  // For each mixin, the flatten list of mixins it represents.
+  // For example:
+  //     mixin Mix1:
+  //     mixin Mix2 extends Mix1:
+  //     mixin Mix3:
+  //     mixin Mix4 extends Mix3 with Mix2:
+  //     class A extends Object with Mix4:
+  // Here the flattened list of mixins for A is [Mix4, Mix2, Mix1, Mix3]
+  // The mixins are ordered so that earlier mixins shadow methods of later mixins.
+  // Note that mixins may appear multiple times.
+  // For mixins their own set does not include the super mixins.
+  // In our example the list of mixins for Mix4 is [Mix2, Mix1].
+  UnorderedMap<ir::Class*, List<ir::Class*>> flattened_mixins;
+
+  // Recursively flattens the mixins of the given class.
+  // If the given class is a mixin, also remembers the full list of
+  // mixins that are mixed in in the 'flattened_mixins' map.
+  std::function<List<ir::Class*> (ir::Class*)> flatten;
+  flatten = [&](ir::Class* klass) {
+    auto probe = flattened_mixins.find(klass);
+    if (probe != flattened_mixins.end()) return probe->second;
+
+    ListBuilder<ir::Class*> flattened_builder;
+    for (int i = klass->mixins().length() - 1; i >= 0; i--) {
+      auto ir_mixin = klass->mixins()[i];
+      flattened_builder.add(flatten(ir_mixin));
+    }
+    // Contrary to the 'flattened_mixins' map, each class only has the set
+    // of mixins between itself and super as mixin list.
+    // The map contains all the mixins (including the class and super mixins).
+    klass->replace_mixins(flattened_builder.build());
+
+    if (!klass->is_mixin()) return List<ir::Class*>();
+
+    if (klass->has_super()) flattened_builder.add(flatten(klass->super()));
+    auto flattened = flattened_builder.build();
+    // Now add ourselves to the front.
+    ListBuilder<ir::Class*> with_self;
+    with_self.add(klass);
+    with_self.add(flattened);
+    auto flattened_with_self = with_self.build();
+    flattened_mixins[klass] = flattened_with_self;
+    return flattened_with_self;
+  };
+
+  for (auto module : modules) {
+    for (auto ir_class : module->classes()) {
+      flatten(ir_class);
     }
   }
 }

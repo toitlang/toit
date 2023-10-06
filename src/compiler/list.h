@@ -73,6 +73,9 @@ class ListBuilder {
     return List<T>(data, length);
   }
 
+  /// Builds the fixed-sized list for this builder.
+  /// This function may be called multiple times (with calls to 'add' in
+  /// between).
   List<T> build() {
     return build_from_vector(data_);
   }

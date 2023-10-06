@@ -1708,7 +1708,7 @@ static void sort_classes(List<ir::Class*> classes) {
 
   auto are_all_mixin_parents_done = [&](ir::Class* klass) -> bool {
     if (!klass->is_mixin()) return true;
-    if (klass->super() != null && !done.contains(klass->super())) return false;
+    if (klass->has_super() && !done.contains(klass->super())) return false;
     for (auto mixin : klass->mixins()) {
       if (!done.contains(mixin)) return false;
     }

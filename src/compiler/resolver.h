@@ -90,6 +90,7 @@ class Resolver {
   void setup_inheritance(std::vector<Module*> modules, int core_module_index);
   void report_abstract_classes(std::vector<Module*> modules);
   void check_interface_implementations_and_flatten(std::vector<Module*> modules);
+  void flatten_mixins(std::vector<Module*> modules);
   List<ir::Class*> find_tree_roots(Module* core_module);
   List<ir::Method*> find_entry_points(Module* core_module);
   List<ir::Type> find_literal_types(Module* core_module);
