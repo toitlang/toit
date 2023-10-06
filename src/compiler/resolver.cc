@@ -1596,11 +1596,7 @@ void Resolver::check_method(ast::Method* method, ir::Class* holder,
         report_error(name_or_dot, "Constructors can't be static");
       }
       if (method_is_abstract) {
-        if (class_is_interface) {
-          report_error(name_or_dot, "Interfaces can only have factories");
-        } else {
-          report_error(name_or_dot, "Constructors can't be abstract");
-        }
+        report_error(name_or_dot, "Constructors can't be abstract");
       }
 
       HasExplicitReturnVisitor visitor;
