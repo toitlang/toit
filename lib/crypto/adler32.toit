@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import .checksum
+import ..io as io
 
 /**
 Support for the Adler-32 checksum algorithm
@@ -16,10 +17,8 @@ This implementation uses native primitives.
 
 /**
 Computes the Adler32 checksum of the given $data.
-
-The $data must be a string or byte array.
 */
-adler32 data from/int=0 to/int=data.size -> ByteArray:
+adler32 data/io.Data from/int=0 to/int=data.size -> ByteArray:
   return checksum Adler32 data from to
 
 /** Checksummer that implements Adler-32. */
@@ -37,7 +36,7 @@ class Adler32 extends Checksum:
     add-finalizer this:: finalize-checksum_ this
 
   /** See $super. */
-  add data from/int to/int -> none:
+  add data/io.Data from/int to/int -> none:
     adler32-add_ adler_ data from to false
 
   /**
@@ -48,7 +47,7 @@ class Adler32 extends Checksum:
 
   The $data must be a string or a byte array.
   */
-  unadd data from/int=0 to/int=data.size -> none:
+  unadd data/io.Data from/int=0 to/int=data.size -> none:
     adler32-add_ adler_ data from to true
 
   /**
@@ -82,8 +81,13 @@ adler32-start_ group:
 adler32-clone_ adler:
   #primitive.zlib.adler32-clone
 
-adler32-add_ adler collection from/int to/int unadd/bool:
-  #primitive.zlib.adler32-add
+adler32-add_ adler data/io.Data from/int to/int unadd/bool:
+  #primitive.zlib.adler32-add:
+    if it == "WRONG_BYTES_TYPE":
+      // TODO(florian): we could chunk the data to avoid creating a bit copy.
+      adler32-add_ adler (ByteArray data from to) 0 (to - from) unadd
+    else:
+      throw it
 
 adler32-get_ adler destructive:
   #primitive.zlib.adler32-get

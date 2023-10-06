@@ -4,6 +4,7 @@
 
 import .checksum
 import .crc as crc
+import ..io as io
 
 /**
 16-bit Cyclic redundancy check (CRC-16/XMODEM).
@@ -14,7 +15,6 @@ https://en.wikipedia.org/wiki/XMODEM#XMODEM-CRC
 /**
 Computes the CRC-16/XMODEM checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 2 element byte array in little-endian order.
 
 Deprecated.  Use $crc.crc16-xmodem or $crc.Crc16Xmodem instead.
@@ -23,7 +23,7 @@ Note that this returns the checksum in byte-swapped (little-endian)
   order.  The Xmodem CRC is a big-endian CRC algorithm and you
   would normally expect the result to be big-endian.
 */
-crc16 data from/int=0 to/int=data.size -> ByteArray:
+crc16 data/io.Data from/int=0 to/int=data.size -> ByteArray:
   state := crc.Crc.big-endian 16 --polynomial=0x1021
   state.add data from to
   result := state.get

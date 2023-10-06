@@ -60,6 +60,7 @@ namespace toit {
   ERROR_STRING(stack_overflow, STACK_OVERFLOW)                      \
   ERROR_STRING(unimplemented, UNIMPLEMENTED)                        \
   ERROR_STRING(wrong_object_type, WRONG_OBJECT_TYPE)                \
+  ERROR_STRING(wrong_bytes_type, WRONG_BYTES_TYPE)                \
   ERROR_STRING(invalid_signature, INVALID_SIGNATURE)                \
 
 #define BUILTIN_CLASS_IDS(ID)    \

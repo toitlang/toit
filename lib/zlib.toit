@@ -8,6 +8,7 @@ import reader
 import crypto
 import crypto.adler32
 import crypto.crc as crc-algorithms
+import io
 import expect show *
 
 class CompressionReader implements reader.Reader:
@@ -21,8 +22,8 @@ class CompressionReader implements reader.Reader:
   close:
     wrapped_.close-read_
 
-SMALL-BUFFER-DEFLATE-HEADER_ ::= [8, 0x1d]
-MINIMAL-GZIP-HEADER_ ::= [0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]
+SMALL-BUFFER-DEFLATE-HEADER_ ::= #[8, 0x1d]
+MINIMAL-GZIP-HEADER_ ::= #[0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]
 
 /**
 Typically creates blocks of 256 bytes (5 bytes of block header, 251 bytes of
@@ -43,13 +44,13 @@ class UncompressedDeflateBackEnd_ implements BackEnd_:
 
   static BLOCK-HEADER-SIZE_ ::= 5
 
-  write collection from=0 to=collection.size -> int:
+  write data/io.Data from=0 to=data.size -> int:
     if not summer_: throw "ALREADY_CLOSED"
     length := min
         buffer_.size - buffer-fullness_
         to - from
-    buffer_.replace buffer-fullness_ collection from (from + length)
-    summer_.add collection from (from + length)
+    buffer_.replace buffer-fullness_ data from (from + length)
+    summer_.add data from (from + length)
     buffer-fullness_ += length
     return length
 
@@ -108,8 +109,8 @@ class CrcAndLengthChecksum_ extends crypto.Checksum:
 
   constructor.private_ .length_ .crc_:
 
-  add collection from/int to/int -> none:
-    crc_.add collection from to
+  add data/io.Data from/int to/int -> none:
+    crc_.add data from to
     length_ += to - from
 
   get:
@@ -160,7 +161,7 @@ class RunLengthDeflateBackEnd_ implements BackEnd_:
     buffer-fullness_ = 0
     return result
 
-  write collection from=0 to=collection.size:
+  write data/io.Data from=0 to=data.size:
     if not rle_: throw "ALREADY_CLOSED"
     // The buffer is 256 large, and we don't let it get too full because then the compressor
     // may not be able to make progress, so we flush it when we hit three quarters full.
@@ -168,12 +169,12 @@ class RunLengthDeflateBackEnd_ implements BackEnd_:
     if buffer-fullness_ > 192:
       return 0  // Read more.
 
-    result := rle-add_ rle_ buffer_ buffer-fullness_ collection from to
+    result := rle-add_ rle_ buffer_ buffer-fullness_ data from to
     written := result >> 15
     read := result & 0x7fff
     assert: read != 0  // Not enough slack in the buffer.
     buffer-fullness_ += written
-    summer_.add collection from from + read
+    summer_.add data from from + read
     return read
 
   /**
@@ -226,7 +227,7 @@ class ZlibBackEnd_ implements BackEnd_:
   read -> ByteArray?:
     return zlib-read_ zlib_
 
-  write data from/int=0 to/int=data.size -> int:
+  write data/io.Data from/int=0 to/int=data.size -> int:
     return zlib-write_ zlib_ data[from..to]
 
   close -> none:
@@ -1055,8 +1056,13 @@ Compresses the bytes in source in the given range, and writes them into the
   The number of bytes read is v & 0x7fff, and the number of bytes written is
   v >> 15.
 */
-rle-add_ rle destination index source from to:
-  #primitive.zlib.rle-add
+rle-add_ rle destination index source/io.Data from/int to/int:
+  #primitive.zlib.rle-add:
+    if it == "WRONG_BYTES_TYPE" and source is not ByteArray:
+      // TODO(florian): can/should we chunk the data?
+      rle-add_ rle destination index (ByteArray.from source from to) 0 (to - from)
+    else:
+      throw it
 
 /// Returns the number of bytes written to terminate the zlib stream.
 rle-finish_ rle destination index:
@@ -1072,7 +1078,12 @@ zlib-read_ zlib -> ByteArray?:
   #primitive.zlib.zlib-read
 
 zlib-write_ zlib data -> int:
-  #primitive.zlib.zlib-write
+  #primitive.zlib.zlib-write:
+    if it == "WRONG_BYTES_TYPE":
+      // TODO(florian): can/should we chunk the data?
+      zlib-write_ zlib (ByteArray.from data)
+    else:
+      throw it
 
 zlib-close_ zlib -> none:
   #primitive.zlib.zlib-close

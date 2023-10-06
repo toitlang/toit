@@ -4,18 +4,18 @@
 
 import .checksum
 import .crc as crc
+import ..io as io
 
 /** 32-bit Cyclic redundancy check (CRC-32). */
 
 /**
 Computes the CRC32 checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 4 element byte array in little-endian order.
 
 Deprecated.  Use $crc.crc32 or $crc.Crc32 instead.
 */
-crc32 data from/int=0 to/int=data.size -> ByteArray:
+crc32 data/io.Data from/int=0 to/int=data.size -> ByteArray:
   state := crc.Crc.little-endian 32
       --polynomial=0xEDB88320
       --initial-state=0xffff_ffff

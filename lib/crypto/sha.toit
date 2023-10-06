@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 import .checksum
-import .sha
+import ..io as io
 
 /**
 Secure Hash Algorithm (SHA-224, SHA-256, SHA-384, and SHA-512).
@@ -15,18 +15,14 @@ See https://en.wikipedia.org/wiki/SHA-256.
 
 /**
 Computes the SHA224 hash of the given $data.
-
-The $data must be a string or byte array.
 */
-sha224 data from/int=0 to/int=data.size -> ByteArray:
+sha224 data/io.Data from/int=0 to/int=data.size -> ByteArray:
   return checksum Sha224 data from to
 
 /**
 Computes the SHA256 hash of the given $data.
-
-The $data must be a string or byte array.
 */
-sha256 data from/int=0 to/int=data.size -> ByteArray:
+sha256 data/io.Data from/int=0 to/int=data.size -> ByteArray:
   return checksum Sha256 data from to
 
 /**
@@ -34,7 +30,7 @@ Computes the SHA384 hash of the given $data.
 
 The $data must be a string or byte array.
 */
-sha384 data from/int=0 to/int=data.size -> ByteArray:
+sha384 data/io.Data from/int=0 to/int=data.size -> ByteArray:
   return checksum Sha384 data from to
 
 /**
@@ -42,7 +38,7 @@ Computes the SHA512 hash of the given $data.
 
 The $data must be a string or byte array.
 */
-sha512 data from/int=0 to/int=data.size -> ByteArray:
+sha512 data/io.Data from/int=0 to/int=data.size -> ByteArray:
   return checksum Sha512 data from to
 
 /** SHA-224+ hash state. */
@@ -58,7 +54,7 @@ class Sha_ extends Checksum:
     add-finalizer this:: finalize-checksum_ this
 
   /** See $super. */
-  add data from/int to/int -> none:
+  add data/io.Data from/int to/int -> none:
     sha-add_ sha-state_ data from to
 
   /**
@@ -106,8 +102,13 @@ sha-clone_ sha:
   #primitive.crypto.sha-clone
 
 // Adds a UTF-8 string or a byte array to the sha224+ hash.
-sha-add_ sha data from/int to/int -> none:
-  #primitive.crypto.sha-add
+sha-add_ sha data/io.Data from/int to/int -> none:
+  #primitive.crypto.sha-add:
+    if it == "WRONG_BYTES_TYPE":
+      // TODO(florian): we could chunk the input to avoid a full copy in memory.
+      sha-add_ sha (ByteArray.from data from to) 0 (to - from)
+    else:
+      throw it
 
 // Rounds off a sha224+ hash and returns the hash.
 sha-get_ sha -> ByteArray:

@@ -5,6 +5,8 @@
 import binary show LITTLE-ENDIAN
 import system.trace show send-trace-message
 
+import ..io as io
+
 /**
 Contains various utility functions.
 */
@@ -140,11 +142,19 @@ Seeds the random number generator with the $seed.
 The $seed must be a byte array or a string.
 Currently only the first 16 bytes of the $seed are used.
 */
-set-random-seed seed:
-  #primitive.core.random-seed
+set-random-seed seed -> none:
+  #primitive.core.random-seed:
+    if it == "WRONG_BYTES_TYPE":
+      set-random-seed (ByteArray.from seed 0 (min seed.size 16))
+    else:
+      throw it
 
-random-add-entropy_ data:
-  #primitive.core.add-entropy
+random-add-entropy_ data/io.Data -> none:
+  #primitive.core.add-entropy:
+    if it == "WRONG_BYTES_TYPE":
+      random-add-entropy_ (ByteArray.from data)
+    else:
+      throw it
 
 /**
 Returns the number of initial zeros in binary representation of the argument.

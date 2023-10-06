@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import ..io as io
+
 /**
 A number.
 This is an abstract super class for $int and $float.
@@ -571,8 +573,6 @@ abstract class int extends num:
   /**
   Parses the $data as an integer.
 
-  The data must be a $string or $ByteArray.
-
   The given $radix must be in the range 2 and 36 (inclusive).
 
   Use slices to parse only a subset of the data (for example `data[..3]`).
@@ -599,11 +599,11 @@ abstract class int extends num:
   int.parse "A" --radix=16        // => 10
   ```
   */
-  static parse data --radix=10 -> int:
+  static parse data/io.Data --radix=10 -> int:
     return parse_ data 0 data.size --radix=radix --on-error=: throw it
 
   /** Deprecated. Use $(parse data --radix) with a slice instead. */
-  static parse data from/int to/int=data.size --radix=10 -> int:
+  static parse data/io.Data from/int to/int=data.size --radix=10 -> int:
     return parse_ data from to --radix=radix --on-error=: throw it
 
   /**
@@ -612,16 +612,16 @@ abstract class int extends num:
   If the data can't be parsed correctly, returns the result of calling the $on-error
     lambda.
   */
-  static parse data --radix=10 [--on-error] -> int?:
+  static parse data/io.Data --radix=10 [--on-error] -> int?:
     return parse_ data 0 data.size --radix=radix --on-error=on-error
 
   /**
   Deprecated. Use $(parse data --radix [--on-error]) with a slice instead.
   */
-  static parse data from/int to/int=data.size --radix=10 [--on-error] -> int?:
+  static parse data/io.Data from/int to/int=data.size --radix=10 [--on-error] -> int?:
     return parse_ data from to --radix=10 --on-error=on-error
 
-  static parse_ data from/int to/int=data.size --radix [--on-error] -> int?:
+  static parse_ data/io.Data from/int to/int=data.size --radix [--on-error] -> int?:
     if radix == 10:
       return parse-10_ data from to --on-error=on-error
     else if radix == 16:
@@ -635,7 +635,7 @@ abstract class int extends num:
     else if 'a' <= c <= 'z': return 10 + c - 'a'
     throw PARSE-ERR_
 
-  static parse-generic-radix_ radix/int data from/int to/int [--on-error] -> int?:
+  static parse-generic-radix_ radix/int data/io.Data from/int to/int [--on-error] -> int?:
     if not 2 <= radix <= 36: throw "INVALID_RADIX"
 
     max-num := (min radix 10) + '0' - 1
@@ -671,16 +671,19 @@ abstract class int extends num:
       result += value
       continue.generic-parser_ result
 
-  static parse-10_ data from/int to/int [--on-error] -> int?:
+  static parse-10_ data/io.Data from/int to/int [--on-error] -> int?:
     #primitive.core.int-parse:
-      return generic-parser_ data from to --on-error=on-error: | char result is-last negative |
-        if not '0' <= char <= '9': return on-error.call PARSE-ERR_
-        // The max int64 ends with a '7' and the min int64 ends with an '8'
-        if result > MAX-INT64-DIV-10_ or (result == MAX-INT64-DIV-10_ and char > '7'):
-          if negative and result == MAX-INT64-DIV-10_ and is-last and char == '8':
-            return int.MIN
-          return on-error.call RANGE-ERR_
-        continue.generic-parser_ result * 10 + char - '0'
+      if it == "WRONG_BYTES_TYPE":
+        return parse-10_ (ByteArray.from data) from to --on-error=on-error
+      else:
+        return generic-parser_ data from to --on-error=on-error: | char result is-last negative |
+          if not '0' <= char <= '9': return on-error.call PARSE-ERR_
+          // The max int64 ends with a '7' and the min int64 ends with an '8'
+          if result > MAX-INT64-DIV-10_ or (result == MAX-INT64-DIV-10_ and char > '7'):
+            if negative and result == MAX-INT64-DIV-10_ and is-last and char == '8':
+              return int.MIN
+            return on-error.call RANGE-ERR_
+          continue.generic-parser_ result * 10 + char - '0'
 
   static generic-parser_ data from/int to/int [--on-error] [parse-char] -> int?:
     result := 0
@@ -1398,8 +1401,6 @@ class float extends num:
 /**
   Parses the $data to a float.
 
-  The data must be a $string or $ByteArray.
-
   Returns the nearest floating point number for $data not representable by any
     floating point number.
 
@@ -1417,17 +1418,18 @@ class float extends num:
   float.parse "anno 2017"  // Error.
   ```
   */
-  static parse data -> float:
+  static parse data/io.Data -> float:
     return parse_ data 0 data.size
 
   /**
   Deprecated. Use $(parse data) with slices instead.
   */
-  static parse data from/int to/int=data.size -> float:
+  static parse data/io.Data from/int to/int=data.size -> float:
     return parse_ data from to
 
-  static parse_ data from/int to/int -> float:
+  static parse_ data/io.Data from/int to/int -> float:
     #primitive.core.float-parse:
+      if it == "WRONG_BYTES_TYPE": return parse_ (ByteArray.from data) from to
       if it == "ERROR": throw "FLOAT_PARSING_ERROR"
       throw it
 
