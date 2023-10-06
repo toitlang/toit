@@ -45,30 +45,15 @@ Expression* optimize_typecheck(Typecheck* node, Class* holder, Method* method) {
     return node;
   }
   if (checked_class->is_interface()) {
-    std::vector<ir::Class*> queued;
-    UnorderedSet<ir::Class*> handled;
-
-    queued.push_back(expression_class);
-    while (!queued.empty()) {
-      // Note that `current` can be an interface class or not.
-      auto current = queued.back();
-      queued.pop_back();
-      // Avoid infinite loops with interfaces.
-      if (handled.contains(current)) {
-        continue;
-      }
-      handled.insert(current);
-      if (current == checked_class) goto success;
-      if (current->super() != null) queued.push_back(current->super());
-      for (auto inter : current->interfaces()) {
-        queued.push_back(inter);
-      }
+    for (auto inter : expression_class->interfaces()) {
+      if (inter == checked_class) goto success;
     }
     // Without more work we can't know whether the check would actually succeed, so
     // let the check happen at runtime.
     return node;
   }
-  if (!checked_class->is_interface()) {
+  {
+    ASSERT(!checked_class->is_interface());
     ASSERT(!expression_class->is_interface());
     // Just need to check whether the checked_class is a superclass of the expression_class.
     auto current = expression_class;
