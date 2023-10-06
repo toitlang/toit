@@ -235,16 +235,16 @@ class BleReadWriteElement : public BleErrorCapableResource {
   }
 
   static int on_attribute_read(uint16_t conn_handle,
-                               const ble_gatt_error *error,
-                               ble_gatt_attr *attr,
-                               void *arg) {
+                               const ble_gatt_error* error,
+                               ble_gatt_attr* attr,
+                               void* arg) {
     USE(conn_handle);
     unvoid_cast<BleReadWriteElement*>(arg)->_on_attribute_read(error, attr);
     return BLE_ERR_SUCCESS;
   }
 
   static int on_access(uint16_t conn_handle, uint16_t attr_handle,
-                       struct ble_gatt_access_ctxt *ctxt, void *arg) {
+                       struct ble_gatt_access_ctxt* ctxt, void* arg) {
     USE(conn_handle);
     USE(attr_handle);
     return unvoid_cast<BleReadWriteElement*>(arg)->_on_access(ctxt);
@@ -280,7 +280,7 @@ class BleReadWriteElement : public BleErrorCapableResource {
   }
 
  private:
-  void _on_attribute_read(const ble_gatt_error *error, ble_gatt_attr *attr);
+  void _on_attribute_read(const ble_gatt_error* error, ble_gatt_attr* attr);
   int _on_access(ble_gatt_access_ctxt* ctxt);
 
   ble_uuid_any_t uuid_;
@@ -300,7 +300,7 @@ class BleCharacteristicResource;
 class BleDescriptorResource: public BleReadWriteElement, public DescriptorList::Element, public DiscoverableResource {
  public:
   TAG(BleDescriptorResource);
-  BleDescriptorResource(ResourceGroup* group, BleCharacteristicResource *characteristic,
+  BleDescriptorResource(ResourceGroup* group, BleCharacteristicResource* characteristic,
                         ble_uuid_any_t uuid, uint16 handle, int properties)
     : BleReadWriteElement(group, DESCRIPTOR, uuid, handle)
     , characteristic_(characteristic)
@@ -485,10 +485,10 @@ class BleServiceResource:
   }
 
   static int on_descriptor_discovered(uint16_t conn_handle,
-                                      const struct ble_gatt_error *error,
+                                      const struct ble_gatt_error* error,
                                       uint16_t chr_val_handle,
-                                      const struct ble_gatt_dsc *dsc,
-                                      void *arg) {
+                                      const struct ble_gatt_dsc* dsc,
+                                      void* arg) {
     USE(conn_handle);
     unvoid_cast<BleServiceResource*>(arg)->_on_descriptor_discovered(error, dsc, chr_val_handle, false);
     return BLE_ERR_SUCCESS;
@@ -513,7 +513,7 @@ class BleServiceResource:
   }
 
  private:
-  void _on_characteristic_discovered(const ble_gatt_error *error, const ble_gatt_chr *chr);
+  void _on_characteristic_discovered(const ble_gatt_error* error, const ble_gatt_chr* chr);
   void _on_descriptor_discovered(const struct ble_gatt_error* error,
                                  const struct ble_gatt_dsc* dsc,
                                  uint16_t chr_val_handle,
@@ -560,13 +560,13 @@ class BleCentralManagerResource : public BleErrorCapableResource {
     return newly_discovered_peripherals_.remove_first();
   }
 
-  static int on_discovery(ble_gap_event *event, void *arg) {
+  static int on_discovery(ble_gap_event* event, void* arg) {
     unvoid_cast<BleCentralManagerResource*>(arg)->_on_discovery(event);
     return BLE_ERR_SUCCESS;
   }
 
  private:
-  void _on_discovery(ble_gap_event *event);
+  void _on_discovery(ble_gap_event* event);
   DiscoveredPeripheralList newly_discovered_peripherals_;
 };
 
@@ -632,15 +632,15 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
 
   BleRemoteDeviceResource* type() override { return this; }
 
-  static int on_event(ble_gap_event *event, void *arg) {
+  static int on_event(ble_gap_event* event, void* arg) {
     unvoid_cast<BleRemoteDeviceResource*>(arg)->_on_event(event);
     return BLE_ERR_SUCCESS;
   }
 
   static int on_service_discovered(uint16_t conn_handle,
-                                   const struct ble_gatt_error *error,
-                                   const struct ble_gatt_svc *service,
-                                   void *arg) {
+                                   const struct ble_gatt_error* error,
+                                   const struct ble_gatt_svc* service,
+                                   void* arg) {
     unvoid_cast<BleRemoteDeviceResource*>(arg)->_on_service_discovered(error, service);
     return BLE_ERR_SUCCESS;
   }
@@ -649,7 +649,7 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   void set_handle(uint16 handle) { handle_ = handle; }
 
  private:
-  void _on_event(ble_gap_event *event);
+  void _on_event(ble_gap_event* event);
   void _on_service_discovered(const ble_gatt_error* error, const ble_gatt_svc* service);
 
   uint16 handle_;

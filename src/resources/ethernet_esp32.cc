@@ -95,7 +95,7 @@ class EthernetResourceGroup : public ResourceGroup {
   int id_;
   esp_eth_mac_t* mac_;
   esp_eth_phy_t* phy_;
-  esp_netif_t *netif_;
+  esp_netif_t* netif_;
   esp_eth_handle_t eth_handle_;
   esp_eth_netif_glue_handle_t netif_glue_;
  };
