@@ -404,7 +404,7 @@ void DispatchTableBuilder::handle_classes(List<Class*> classes, int static_metho
     for (auto method : holder->methods()) {
       ASSERT(!method->is_dead());
       DispatchSelector selector(method->name(), method->plain_shape());
-      if (!method->is_IsInterfaceStub() && !selectors_.contains(selector)) continue;
+      if (!method->is_IsInterfaceOrMixinStub() && !selectors_.contains(selector)) continue;
       fitter.define(selector, holder, method);
     }
   }

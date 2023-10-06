@@ -375,7 +375,7 @@ ir::Node* TypeOracle::lookup(ir::Node* node) const {
 }
 
 bool TypeOracle::is_dead(ir::Method* method) const {
-  if (method->is_IsInterfaceStub()) return false;
+  if (method->is_IsInterfaceOrMixinStub()) return false;
   auto probe = lookup(method);
   if (!probe) return false;
   int position = source_mapper_->position_for_method(probe->as_Method());

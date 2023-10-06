@@ -52,14 +52,26 @@ Expression* optimize_typecheck(Typecheck* node, Class* holder, Method* method) {
     // let the check happen at runtime.
     return node;
   }
+  ASSERT(!checked_class->is_interface());
+  ASSERT(!expression_class->is_interface());
+
+  if (!expression_class->is_mixin() && checked_class->is_mixin()) {
+    // For simplicity look for the `is-X` stub method.
+    for (auto current = expression_class; current != null; current = current->super()) {
+      for (auto method : current->methods()) {
+        if (method->is_IsInterfaceOrMixinStub() &&
+            method->as_IsInterfaceOrMixinStub()->interface_or_mixin() == checked_class) {
+          goto success;
+        }
+      }
+    }
+    // TODO(florian): we can check whether any subclass would satisfy the mixin check.
+    return node;
+  }
   {
-    ASSERT(!checked_class->is_interface());
-    ASSERT(!expression_class->is_interface());
     // Just need to check whether the checked_class is a superclass of the expression_class.
-    auto current = expression_class;
-    while (current != null) {
+    for (auto current = expression_class; current != null; current = current->super()) {
       if (current == checked_class) goto success;
-      current = current->super();
     }
     // TODO(florian): we can easily check whether checked_class is a subclass of expression_class.
     //   If it is not, we know that the check will fail.

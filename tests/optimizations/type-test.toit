@@ -13,14 +13,23 @@ main args:
     interface I2:
     interface I3 extends I1 implements I2:
 
+    mixin M1:
+    mixin M2 extends M1:
+    mixin M3:
+    mixin M4 extends M3 with M2:
+
     class A implements I3:
-    class B extends A:
+    class B extends A with M4:
 
     foo:
       b := B
       b as I1
       b as I2
       b as I3
+      b as M1
+      b as M2
+      b as M3
+      b as M4
 
     main:
       foo

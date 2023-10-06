@@ -23,7 +23,6 @@ confuse x -> any: return x
 
 main:
   a := ClassA
-  // The static type check doesn't complain, but we still have a dynamic error.
-  if (confuse false): foo-MixA a
-  if (confuse false): foo-MixB a
-  if (confuse false): foo-MixC a
+  foo-MixA a
+  foo-MixB a
+  foo-MixC a

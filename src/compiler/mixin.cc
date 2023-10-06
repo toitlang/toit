@@ -31,7 +31,7 @@ static void add_stubs(ir::Class* klass) {
     existing_methods[method->name()].insert(method->plain_shape());
   }
 
-  std::vector<ir::MixinStub*> new_stubs;
+  std::vector<ir::MethodInstance*> new_stubs;
 
   // We only copy a method if it doesn't exist yet. The mixin list
   // is ordered such that the first mixin shadows methods of later
@@ -40,7 +40,6 @@ static void add_stubs(ir::Class* klass) {
   // single selector. That means that we don't need to worry about
   // overlapping methods.
   for (auto mixin : klass->mixins()) {
-    // TODO(florian): add interface-methods.
     for (auto method : mixin->methods()) {
       // Don't create forwarder stubs to mixin stubs.
       // The flattened list of mixins will make sure we get all the methods we need.
@@ -77,7 +76,19 @@ static void add_stubs(ir::Class* klass) {
                                               forward_arguments,
                                               range);
 
-      auto stub = _new ir::MixinStub(method_name, klass, shape, method->range());
+      ir::MethodInstance* stub;
+      if (method->is_IsInterfaceOrMixinStub()) {
+        // We copy over the method (used to know if a class is an interface or mixin).
+        // The body will not be compiled, so it's not important what we put in there.
+        auto is_stub = method->as_IsInterfaceOrMixinStub();
+        stub = _new ir::IsInterfaceOrMixinStub(method_name,
+                                               klass,
+                                               shape,
+                                               is_stub->interface_or_mixin(),
+                                               method->range());
+      } else {
+        stub = _new ir::MixinStub(method_name, klass, shape, method->range());
+      }
       stub->set_parameters(stub_parameters);
       stub->set_body(_new ir::Return(forward_call, false, range));
       stub->set_return_type(method->return_type());
