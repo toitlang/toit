@@ -277,13 +277,19 @@ class Program : public Node {
 
 class Class : public Node {
  public:
-  Class(Symbol name, bool is_interface, bool is_abstract, Source::Range range)
+  enum Kind {
+    CLASS,
+    INTERFACE,
+    MONITOR,
+  };
+
+  Class(Symbol name, Kind kind, bool is_abstract, Source::Range range)
       : name_(name)
       , range_(range)
       , is_runtime_class_(false)
       , super_(null)
+      , kind_(kind)
       , is_abstract_(is_abstract)
-      , is_interface_(is_interface)
       , typecheck_selector_(Selector<CallShape>(Symbol::invalid(), CallShape::invalid()))
       , id_(-1)
       , start_id_(-1)
@@ -379,9 +385,12 @@ class Class : public Node {
   List<Field*> fields() const { return fields_; }
   void set_fields(List<Field*> fields) { fields_ = fields; }
 
-  bool is_abstract() const { return is_abstract_; }
+  Kind kind() const { return kind_; }
 
-  bool is_interface() const { return is_interface_; }
+  /// Whether the class is abstract.
+  /// A class is abstract if it cannot be instantiated.
+  bool is_abstract() const { return is_abstract_; }
+  bool is_interface() const { return kind_ == INTERFACE; }
 
   Source::Range range() const { return range_; }
 
@@ -409,8 +418,8 @@ class Class : public Node {
   bool is_runtime_class_;
   Class* super_;
   List<Class*> interfaces_;
+  Kind kind_;
   bool is_abstract_;
-  bool is_interface_;
   // Only set for interfaces.
   Selector<CallShape> typecheck_selector_;
 

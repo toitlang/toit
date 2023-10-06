@@ -396,13 +396,17 @@ void Writer::print_class(ir::Class* klass) {
   safe_print_symbol(klass->name());
   print_range(klass->range());
   this->printf("%d\n", toplevel_ids_.at(klass));
-  const char* kind;
-  if (klass->is_interface()) {
-    kind = "interface";
-  } else if (klass->is_abstract()) {
-    kind = "abstract";
-  } else {
-    kind = "class";
+  const char* kind = "";  // Initialize with value to silence compiler warnings.
+  switch (klass->kind()) {
+    case ir::Class::CLASS:
+      kind = klass->is_abstract() ? "abstract" : "class";
+      break;
+    case ir::Class::MONITOR:
+      kind = "class";
+      break;
+    case ir::Class::INTERFACE:
+      kind = "interface";
+      break;
   }
   this->printf("%s\n", kind);
   if (klass->super() == null) {

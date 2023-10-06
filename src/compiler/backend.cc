@@ -51,10 +51,14 @@ class BackendCollector : public ir::TraversingVisitor {
     TraversingVisitor::visit_Typecheck(node);
     if (node->type().is_class()) {
       auto klass = node->type().klass();
-      if (klass->is_interface()) {
-        interface_usage_counts_[klass]++;
-      } else {
-        class_usage_counts_[klass]++;
+      switch (klass->kind()) {
+        case ir::Class::CLASS:
+        case ir::Class::MONITOR:
+          class_usage_counts_[klass]++;
+          break;
+        case ir::Class::INTERFACE:
+          interface_usage_counts_[klass]++;
+          break;
       }
     }
   }
