@@ -179,6 +179,10 @@ class CallShape {
   CallShape with_implicit_this() const {
     return CallShape(arity_ + 1, total_block_count_, names_, named_block_count_, is_setter_);
   }
+  CallShape with_implimit_block_arg() const {
+    return CallShape(arity_ + 1, total_block_count_, names_, named_block_count_, is_setter_);
+  }
+
   CallShape without_implicit_this() const {
     ASSERT(unnamed_non_block_count() > 0);
     return CallShape(arity_ - 1, total_block_count_, names_, named_block_count_, is_setter_);
