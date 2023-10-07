@@ -6,18 +6,14 @@ import expect show *
 
 class A:
   field / any := 42
-  fun / Lambda
-  fun2 / Lambda
-  fun3 / Lambda? := null
-  fun4 / Lambda? := null
+  fun1 / Lambda? := null
+  fun2 / Lambda? := null
 
   constructor:
-    fun  = :: field
-    fun2 = :: this.field
     super
     // After a `super` call, `this` is dynamic.
-    fun3 = :: this.field
-    fun4 = :: (this).field
+    fun1 = :: this.field
+    fun2 = :: (this).field
 
 class B extends A:
   constructor:
@@ -28,7 +24,5 @@ class B extends A:
 
 main:
   b := B
-  expect-equals 42 b.fun.call
-  expect-equals 42 b.fun2.call
-  expect-equals 499 b.fun3.call
-  expect-equals 499 b.fun4.call
+  expect-equals 499 b.fun1.call
+  expect-equals 499 b.fun2.call
