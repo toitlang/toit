@@ -164,10 +164,10 @@ hash-test -> none:
 
   // Takes a string or a byte array.
   expect-wrong-type: base64.decode (confuse 10000)
-  expect-wrong-type: sha1.add 10000
-  expect-wrong-type: sha2.add 10000
-  expect-wrong-type: crc32.add 10000
-  expect-wrong-type: crc16.add 10000
+  expect-wrong-type: sha1.add (confuse 10000)
+  expect-wrong-type: sha2.add (confuse 10000)
+  expect-wrong-type: crc32.add (confuse 10000)
+  expect-wrong-type: crc16.add (confuse 10000)
 
   // Missing trailing '=' signs.
   expect-out-of-range: base64.decode "aaa"

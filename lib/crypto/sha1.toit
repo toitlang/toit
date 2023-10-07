@@ -58,11 +58,8 @@ sha1-clone_ sha1:
 // Adds a UTF-8 string or a byte array to the sha1 hash.
 sha1-add_ sha1 data/io.Data from/int to/int -> none:
   #primitive.crypto.sha1-add:
-    if it == "WRONG_BYTES_TYPE":
-      // TODO(florian): we could chunk the input to avoid a full copy in memory.
-      sha1-add_ sha1 (ByteArray.from data from to) 0 (to - from)
-    else:
-      throw it
+    io.Data.redo it data from to: | chunk size |
+      sha1-add_ sha1 chunk 0 size
 
 // Rounds off a sha1 hash.
 sha1-get_ sha1 -> ByteArray:

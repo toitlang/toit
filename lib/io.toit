@@ -35,3 +35,11 @@ interface Data:
   Returns a slice of this data.
   */
   operator[..] --from/int=0 --to/int=size -> Data
+
+  static redo error data from/int to/int [block] -> none:
+    if error == "WRONG_BYTES_TYPE":
+      List.chunk_up from to 4096: | from-2 to-2 size-2 |
+        chunk := ByteArray.from data from-2 to-2
+        block.call chunk size-2
+    else:
+      throw error
