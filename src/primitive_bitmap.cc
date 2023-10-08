@@ -318,7 +318,7 @@ static void byte_draw_orientation_90_270_helper(BitmapDecompresser& decompresser
   int xoffset = sign * bit_box.box_xoffset();
   int yoffset = sign * bit_box.box_yoffset();
   if (bit_box.box_height() == 0) return;
-  int bottom = Utils::min(capture.byte_array_width, capture.x_base + yoffset);
+  int bottom = capture.x_base + yoffset;
   int top = capture.x_base + yoffset + height;
   if (sign < 0) {
     bottom = Utils::min(capture.byte_array_width, bottom);
@@ -368,7 +368,7 @@ static void byte_draw_orientation_90_270_byte_helper(BytemapDecompresser& decomp
   int xoffset = sign * bit_box.box_xoffset();
   int yoffset = sign * bit_box.box_yoffset();
   if (bit_box.box_height() == 0) return;
-  int bottom = Utils::min(capture.byte_array_width, capture.x_base + yoffset);
+  int bottom = capture.x_base + yoffset;
   int top = capture.x_base + yoffset + height;
   if (sign < 0) {
     bottom = Utils::min(capture.byte_array_width, bottom);
