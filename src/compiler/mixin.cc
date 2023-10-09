@@ -87,7 +87,7 @@ static void apply_mixins(ir::Class* klass) {
       ir::MethodInstance* stub;
 
       if (method->is_FieldStub()) {
-        // Copy of what's happening in `resolver_method`.
+        // Mostly a copy of what's happening in `resolver_method`.
         auto range = method->range();
         auto field_stub = method->as_FieldStub();
         auto probe = new_fields.find(field_stub->field());
