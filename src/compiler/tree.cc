@@ -486,21 +486,9 @@ class Fixup : public ReplacingVisitor {
       , as_check_failure_(as_check_failure) {
     grown_classes_and_interfaces_.insert_all(grown_classes);
 
-    std::function<void (Class*)> add_interface;
-    add_interface = [&](Class* interface) {
-      if (grown_classes_and_interfaces_.contains(interface)) return;
-      grown_classes_and_interfaces_.insert(interface);
-      for (auto sub_interface : interface->interfaces()) {
-        add_interface(sub_interface);
-      }
-      if (interface->super() != null) {
-        add_interface(interface->super());
-      }
-    };
-
     for (auto klass : grown_classes) {
       for (auto interface : klass->interfaces()) {
-        add_interface(interface);
+        grown_classes_and_interfaces_.insert(interface);
       }
     }
   }
