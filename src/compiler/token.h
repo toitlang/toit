@@ -221,6 +221,7 @@ enum Precedence {
   I(True_)                                                               \
   I(monitor)                                                             \
   IN(interface_, "interface")                                            \
+  I(mixin)                                                               \
   I(extends)                                                             \
   I(implements)                                                          \
   I(none)                                                                \
@@ -252,7 +253,6 @@ enum Precedence {
   I(from)                                                                \
   I(to)                                                                  \
   IN(enum_, "enum")                                                      \
-  I(mixin)                                                               \
 
 
 class Token {
