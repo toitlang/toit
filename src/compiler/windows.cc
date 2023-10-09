@@ -22,9 +22,9 @@
 
 #include "windows.h"
 
-size_t getline(char **lineptr, size_t *n, FILE *stream) {
-    char *bufptr = NULL;
-    char *p = bufptr;
+size_t getline(char** lineptr, size_t* n, FILE* stream) {
+    char* bufptr = NULL;
+    char* p = bufptr;
     word size;
     int c;
 
