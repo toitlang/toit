@@ -83,10 +83,10 @@ class Object {
   bool byte_content(Program* program, Blob* blob, BlobKind strings_only);
 
   // Primitive support that sets content and length iff receiver is a ByteArray.
-  // Returns whether the content and length are set.
-  // The content can be set to `null` in which case the 'error' indicates the
-  // reason. Most likely the function tried to allocate a ByteArray (for making a
-  // CowByteArray mutable), but failed due to out-of-memory.
+  // Returns whether the content and length are set.  If it returns false, the
+  // 'error' indicates the reason.  Most likely this is either a type error or
+  // the function tried to allocate a ByteArray (for making a CowByteArray
+  // mutable), but failed due to out-of-memory.
   bool mutable_byte_content(Process* process, uint8** content, int* length, Error** error);
 
   // Same as above, but with a blob.
