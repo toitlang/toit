@@ -136,11 +136,11 @@ Unit* Parser::parse_unit(Source* override_source) {
     bool is_abstract = optional(Token::ABSTRACT);
     if (current_token() == Token::CLASS) {
       declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
-    } else if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::monitor) {
+    } else if (at_pseudo(Symbols::monitor)) {
       declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
-    } else if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::interface_) {
+    } else if (at_pseudo(Symbols::interface_)) {
       declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
-    } else if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::mixin) {
+    } else if (at_pseudo(Symbols::mixin)) {
       declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
     } else {
       declarations.add(parse_declaration(is_abstract));
@@ -687,7 +687,7 @@ Import* Parser::parse_import() {
         prefix = NEW_NODE(Identifier(Symbol::invalid()), as_range);
         skip_to_end_of_multiline_construct();
       }
-    } else if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::show) {
+    } else if (at_pseudo(Symbols::show)) {
       auto show_range = current_range();
       consume();
       ListBuilder<Identifier*> builder;
@@ -981,14 +981,10 @@ Declaration* Parser::parse_declaration(bool is_abstract) {
 }
 
 Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract) {
-  auto at = [&](Symbol symbol) -> bool {
-    return current_token() == Token::IDENTIFIER && current_token_data() == symbol;
-  };
-
   ASSERT(current_token() == Token::CLASS ||
-         at(Symbols::interface_) ||
-         at(Symbols::monitor) ||
-         at(Symbols::mixin));
+         at_pseudo(Symbols::interface_) ||
+         at_pseudo(Symbols::monitor) ||
+         at_pseudo(Symbols::mixin));
 
   ListBuilder<Expression*> interfaces;
   ListBuilder<Expression*> mixins;
@@ -999,14 +995,14 @@ Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract) {
   ast::Class::Kind kind;
   if (current_token() == Token::IDENTIFIER) {
     const char* kind_string;
-    if (at(Symbols::interface_)) {
+    if (at_pseudo(Symbols::interface_)) {
       kind = ast::Class::INTERFACE;
       kind_string = "Interfaces";
-    } else if (at(Symbols::monitor)) {
+    } else if (at_pseudo(Symbols::monitor)) {
       kind = ast::Class::MONITOR;
       kind_string = "Monitors";
     } else {
-      ASSERT(at(Symbols::mixin));
+      ASSERT(at_pseudo(Symbols::mixin));
       kind = ast::Class::MIXIN;
       kind_string = "Mixins";
     }
@@ -1054,20 +1050,19 @@ Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract) {
   } else {
     name = parse_identifier();
     bool requires_super = false;
-    if (at(Symbols::extends)) {
+    if (at_pseudo(Symbols::extends)) {
       consume();
       requires_super = true;
     }
 
-    if (current_token() == Token::IDENTIFIER && !at(Symbols::implements) && !at(Symbols::with)) {
+    if (current_token() == Token::IDENTIFIER &&
+        current_token_data() != Symbols::implements &&
+        current_token_data() != Symbols::with) {
       super = parse_type(false);
     }
-    if (at(Symbols::with)) {
+    if (at_pseudo(Symbols::with)) {
       if (!requires_super) {
         // "requires_super" indicates that there was an `extends`.
-        // TODO(florian): do we really want this requirement.
-        // The `class A with Foo` reads a bit worth than `class A extends Object with Foo`, but
-        // it still feels okish.
         report_error("'with' requires an 'extends' clause");
       }
       if (super == null && requires_super) {
@@ -1076,14 +1071,15 @@ Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract) {
         requires_super = false;
       }
       consume();
-      while (current_token() == Token::IDENTIFIER && !at(Symbols::implements)) {
+      while (current_token() == Token::IDENTIFIER &&
+             current_token_data() != Symbols::implements) {
         mixins.add(parse_type(false));
       }
       if (mixins.is_empty()) {
         report_error("'with' without any mixin type");
       }
     }
-    if (at(Symbols::implements)) {
+    if (at_pseudo(Symbols::implements)) {
       if (super == null && requires_super) {
         report_error("Missing super class");
         // We reported an error. No need for a super class anymore.
