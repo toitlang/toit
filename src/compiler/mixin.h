@@ -22,8 +22,7 @@ namespace compiler {
 
 /// Creates mixin stub methods.
 ///
-/// Adds mixed in methods as stubs to the classes. Also adds the "interface"
-/// stubs.
+/// Adds mixed in methods as stubs to the classes.
 void add_mixin_stubs(ir::Program* program);
 
 } // namespace toit::compiler

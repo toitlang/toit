@@ -170,7 +170,7 @@ class TypeChecker : public ReturningVisitor<Type> {
   Type visit_Constructor(Constructor* node) { return visit_Method(node); }
   Type visit_AdapterStub(AdapterStub* node) { return visit_Method(node); }
   Type visit_MixinStub(MixinStub* node) { return visit_Method(node); }
-  Type visit_IsInterfaceStub(IsInterfaceStub* node) { return visit_Method(node); }
+  Type visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStub* node) { return visit_Method(node); }
   Type visit_FieldStub(FieldStub* node) { return visit_Method(node); }
 
   Type visit_Expression(Expression* node) { UNREACHABLE(); return Type::invalid(); }

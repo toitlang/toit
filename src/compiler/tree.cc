@@ -484,11 +484,25 @@ class Fixup : public ReplacingVisitor {
       : null_type_(null_type)
       , grown_methods_(grown_methods)
       , as_check_failure_(as_check_failure) {
-    grown_classes_and_interfaces_.insert_all(grown_classes);
+    valid_check_targets_.insert_all(grown_classes);
 
     for (auto klass : grown_classes) {
       for (auto interface : klass->interfaces()) {
-        grown_classes_and_interfaces_.insert(interface);
+        valid_check_targets_.insert(interface);
+      }
+      for (auto current = klass; current != null; current = current->super()) {
+        if (current != klass && valid_check_targets_.contains(current)) {
+          // No need to duplicate work. The current class will be (or was already)
+          // traversed independently.
+          break;
+        }
+        for (auto method : current->methods()) {
+          // This looks like the simplest way to figure out whether a class
+          // "implements" a mixin.
+          if (method->is_IsInterfaceOrMixinStub()) {
+            valid_check_targets_.insert(method->as_IsInterfaceOrMixinStub()->interface_or_mixin());
+          }
+        }
       }
     }
   }
@@ -497,7 +511,7 @@ class Fixup : public ReplacingVisitor {
     auto result = ReplacingVisitor::visit_Typecheck(node)->as_Typecheck();
     ASSERT(result == node);
     if (node->type().is_any()) return node;
-    if (grown_classes_and_interfaces_.contains(node->type().klass())) return result;
+    if (valid_check_targets_.contains(node->type().klass())) return result;
 
     // At this point, neither the class nor any of its subclasses were instantiated.
 
@@ -555,7 +569,7 @@ class Fixup : public ReplacingVisitor {
   Node* visit_FieldLoad(FieldLoad* node) {
     auto result = ReplacingVisitor::visit_FieldLoad(node);
     auto holder = node->field()->holder();
-    if (grown_classes_and_interfaces_.contains(holder)) {
+    if (valid_check_targets_.contains(holder)) {
       return result;
     }
     // The load is dead code, as a type-check earlier would have thrown earlier.
@@ -566,7 +580,7 @@ class Fixup : public ReplacingVisitor {
   Node* visit_FieldStore(FieldStore* node) {
     auto result = ReplacingVisitor::visit_FieldStore(node);
     auto holder = node->field()->holder();
-    if (grown_classes_and_interfaces_.contains(holder)) {
+    if (valid_check_targets_.contains(holder)) {
       return result;
     }
     // The store is dead code, as a type-check earlier would have thrown earlier.
@@ -577,7 +591,7 @@ class Fixup : public ReplacingVisitor {
 
  private:
   Type null_type_;
-  Set<Class*> grown_classes_and_interfaces_;
+  Set<Class*> valid_check_targets_;
   Set<Method*> grown_methods_;
   Method* as_check_failure_;
 };

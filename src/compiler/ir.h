@@ -47,7 +47,7 @@ class Node;
   V(Constructor)                \
   V(AdapterStub)                \
   V(MixinStub)                  \
-  V(IsInterfaceStub)            \
+  V(IsInterfaceOrMixinStub)     \
   V(FieldStub)                  \
   V(Code)                       \
   V(Block)                      \
@@ -412,7 +412,7 @@ class Class : public Node {
 
   Selector<CallShape> typecheck_selector() const { return typecheck_selector_; }
   void set_typecheck_selector(Selector<CallShape> selector) {
-    ASSERT(is_interface());
+    ASSERT(is_interface() || is_mixin());
     typecheck_selector_ = selector;
   }
 
@@ -719,11 +719,18 @@ class MixinStub : public MethodInstance {
   IMPLEMENTS(MixinStub)
 };
 
-class IsInterfaceStub : public MethodInstance {
+class IsInterfaceOrMixinStub : public MethodInstance {
  public:
-  IsInterfaceStub(Symbol name, Class* holder, const PlainShape& shape, Source::Range range)
-      : MethodInstance(name, holder, shape, false, range) {}
-  IMPLEMENTS(IsInterfaceStub);
+  IsInterfaceOrMixinStub(Symbol name, Class* holder, const PlainShape& shape, Class* interface_or_mixin, Source::Range range)
+      : MethodInstance(name, holder, shape, false, range)
+      , interface_or_mixin_(interface_or_mixin) {}
+
+  IMPLEMENTS(IsInterfaceOrMixinStub);
+
+  ir::Class* interface_or_mixin() const { return interface_or_mixin_; }
+
+ private:
+  ir::Class* interface_or_mixin_;
 };
 
 // TODO(florian): the kind is called "GLOBAL_FUN", but the class is called
@@ -1693,7 +1700,7 @@ class Typecheck : public Expression {
   void replace_expression(Expression* expression) { expression_ = expression; }
 
   bool is_interface_check() const {
-    return type_.is_class() && type_.klass()->is_interface();
+    return type_.is_class() && (type_.klass()->is_interface() || type_.klass()->is_mixin());
   }
 
   /// Returns the type name of this check.
