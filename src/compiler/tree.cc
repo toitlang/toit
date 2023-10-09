@@ -347,7 +347,8 @@ class TreeGrower {
 };
 
 void TreeGrower::grow(Program* program) {
-  auto queryables = build_queryables_from_plain_shapes(program->classes());
+  bool include_abstracts;
+  auto queryables = build_queryables_from_plain_shapes(program->classes(), include_abstracts=false);
 
   Set<CallSelector> handled_selectors;
   TypedSelectorSet handled_typed_selectors;

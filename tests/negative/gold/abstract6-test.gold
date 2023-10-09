@@ -1,7 +1,4 @@
-tests/negative/abstract6-test.toit:12:7: error: Non-abstract class 'C' is missing implementations
-class C extends B:
-      ^
-tests/negative/abstract6-test.toit:10:12: note: Missing implementation for 'foo'
-  abstract foo
-           ^~~
+tests/negative/abstract6-test.toit:22:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
 Compilation failed.
