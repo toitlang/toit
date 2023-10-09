@@ -982,9 +982,9 @@ Declaration* Parser::parse_declaration(bool is_abstract) {
 
 Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract) {
   ASSERT(current_token() == Token::CLASS ||
-         at(Symbols::interface_) ||
-         at(Symbols::monitor) ||
-         at(Symbols::mixin));
+         at_pseudo(Symbols::interface_) ||
+         at_pseudo(Symbols::monitor) ||
+         at_pseudo(Symbols::mixin));
 
   ListBuilder<Expression*> interfaces;
   ListBuilder<Expression*> mixins;
