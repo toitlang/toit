@@ -947,8 +947,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
   Object* _raw_##name = __args[-(N)];                                        \
   MutableBlob name;                                                          \
   Error* _mutable_blob_error_##name;                                         \
-  if (!_raw_##name->mutable_byte_content(process, &name, &_mutable_blob_error_##name)) FAIL(WRONG_OBJECT_TYPE); \
-  if (name.address() == null) return _mutable_blob_error_##name;
+  if (!_raw_##name->mutable_byte_content(process, &name, &_mutable_blob_error_##name)) return _mutable_blob_error_##name;
 
 #define MAKE_UNPACKING_MACRO(Type, N, name)                      \
   __ARG__(N, name##_proxy, ByteArray, is_byte_array)             \

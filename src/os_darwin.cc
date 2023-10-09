@@ -101,7 +101,7 @@ const char* OS::get_platform() {
 }
 
 int OS::read_entire_file(char* name, uint8** buffer) {
-  FILE *file;
+  FILE* file;
   int length;
   file = fopen(name, "rb");
   if (!file) return -1;
