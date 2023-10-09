@@ -9,3 +9,7 @@ class ImportedClass:
 interface ImportedInterface:
   static imported-static-member:
   imported-member
+
+abstract mixin ImportedMixin:
+  static imported_static_member:
+  abstract imported_member

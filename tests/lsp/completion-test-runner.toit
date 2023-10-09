@@ -93,6 +93,9 @@ class CompletionTestRunner extends LocationCompilerTestRunner:
 
     if unexpected.contains "*":
       expect-equals 1 unexpected.size
+      if expected.size != actual.size:
+        print "Expected: $expected"
+        print "Actual: $actual"
       expect-equals expected.size actual.size
     else:
       unexpected.do:
