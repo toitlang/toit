@@ -434,6 +434,11 @@ class Parser {
     }
   }
 
+  /// Whether the current token is an identifier and is equal to the given pseudo keyword.
+  bool at_pseudo(Symbol pseudo_keyword) {
+    return current_token() == Token::IDENTIFIER && current_token_data() == pseudo_keyword;
+  }
+
   Token::Kind current_token() {
     return current_state().token;
   }
