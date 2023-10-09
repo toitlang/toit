@@ -1299,7 +1299,20 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
         if (in_cycle) cycle_nodes.push_back(sub_class);
       }
       diagnostics()->start_group();
-      report_error(cycle_nodes[0], "Cycle in super/interface chain");
+      const char* chain_kind = null;
+      switch (cycle_nodes[0]->kind()) {
+        case ir::Class::CLASS:
+        case ir::Class::MONITOR:
+          chain_kind = "super";
+          break;
+        case ir::Class::INTERFACE:
+          chain_kind = "interface";
+          break;
+        case ir::Class::MIXIN:
+          chain_kind = "mixin";
+          break;
+      }
+      report_error(cycle_nodes[0], "Cycle in %s chain", chain_kind);
       for (size_t i = 0; i < cycle_nodes.size(); i++) {
         auto current = cycle_nodes[i];
         cycling_classes.insert(current);
@@ -1309,23 +1322,29 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
         if (next == current->super()) {
           error_range = ast_current->super()->range();
         } else {
-          auto ir_interfaces = current->interfaces();
-          auto ast_interfaces = ast_current->interfaces();
-          // If interfaces are not resolved the length of the IR and AST interfaces
+          List<ir::Class*> ir_nodes;
+          List<ast::Expression*> ast_nodes;
+          if (next->is_interface()) {
+            ir_nodes = current->interfaces();
+            ast_nodes = ast_current->interfaces();
+          } else {
+            ASSERT(next->is_mixin());
+            ir_nodes = current->mixins();
+            ast_nodes = ast_current->mixins();
+          }
+          // If interfaces/mixins are not resolved the length of the IR and AST interfaces
           // may differ. In that case, we don't have an easy 1:1 relationship between
-          // the resolved interfaces and the AST nodes.
-          // In that case, we take the range of all interfaces.
-          if (ir_interfaces.length() < ast_interfaces.length()) {
-            auto first = ast_interfaces[0];
-            auto last = ast_interfaces[ast_interfaces.length() - 1];
+          // the resolved interfaces/mixins and the AST nodes.
+          // In that case, we take the range of all interfaces/mixins.
+          if (ir_nodes.length() < ast_nodes.length()) {
+            auto first = ast_nodes[0];
+            auto last = ast_nodes.last();
             error_range = first->range().extend(last->range());
           } else {
-            ASSERT(current->interfaces().length() == ast_current->interfaces().length());
             ast::Node* ast_position_node = null;
-            auto ir_interfaces = current->interfaces();
-            for (int j = 0; j < ir_interfaces.length(); j++) {
-              if (ir_interfaces[j] == next) {
-                ast_position_node = ast_current->interfaces()[j];
+            for (int j = 0; j < ir_nodes.length(); j++) {
+              if (ir_nodes[j] == next) {
+                ast_position_node = ast_nodes[j];
                 break;
               }
             }
@@ -1342,6 +1361,9 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
     check_cycles(klass->super());
     for (auto ir_interface : klass->interfaces()) {
       check_cycles(ir_interface);
+    }
+    for (auto ir_mixin : klass->mixins()) {
+      check_cycles(ir_mixin);
     }
     sub_classes.erase_last(klass);
     checked_classes.insert(klass);
