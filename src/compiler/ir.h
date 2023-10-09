@@ -295,8 +295,6 @@ class Class : public Node {
       , id_(-1)
       , start_id_(-1)
       , end_id_(-1)
-      , first_subclass_(null)
-      , subclass_sibling_link_(null)
       , total_field_count_(-1) {}
   IMPLEMENTS(Class)
 
@@ -446,23 +444,6 @@ class Class : public Node {
   int id_;
   int start_id_;
   int end_id_;
-
- private:
-  // This is redundant information.
-  // For now we restrict its use to the resolver, so that modifications to the
-  // program structure don't need to update these fields.
-  friend class ::toit::compiler::Resolver;
-
-  Class* first_subclass_;
-  Class* subclass_sibling_link_;
-
-  Class* first_subclass() { return first_subclass_; }
-  Class* subclass_sibling() { return subclass_sibling_link_; }
-
-  void link_subclass(Class* next_subclass) {
-    next_subclass->subclass_sibling_link_ = first_subclass_;
-    first_subclass_ = next_subclass;
-  }
 
  public:
   // Reserved for DispatchTable and the backend:

@@ -180,7 +180,6 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
                                   as_check_failure,
                                   lambda_box);
 
-  sort_classes(program->classes());
   return program;
 }
 
@@ -2171,44 +2170,6 @@ void Resolver::resolve_fill_globals(Module* module,
     ASSERT(global->body() == null);
     resolve_fill_method(global, null, scope, entry_module, core_module);
   }
-}
-
-
-void Resolver::_dfs_traverse(ir::Class* current, List<ir::Class*> classes, int* index) const {
-  classes[(*index)++] = current;
-  for (auto it = current->first_subclass(); it != null; it = it->subclass_sibling()) {
-    _dfs_traverse(it, classes, index);
-  }
-}
-
-void Resolver::sort_classes(List<ir::Class*> classes) const {
-  ir::Class* top = null;
-  ir::Class* interface_top = null;
-  ir::Class* mixin_top = null;
-  for (auto& klass : classes) {
-    if (klass->super() == null) {
-      switch (klass->kind()) {
-        case ir::Class::CLASS:
-        case ir::Class::MONITOR:
-          top = klass;
-        case ir::Class::INTERFACE:
-          interface_top = klass;
-        case ir::Class::MIXIN:
-          mixin_top = klass;
-      }
-    } else {
-      klass->super()->link_subclass(klass);
-    }
-  }
-
-  int index = 0;
-  _dfs_traverse(top, classes, &index);
-  _dfs_traverse(interface_top, classes, &index);
-  _dfs_traverse(mixin_top, classes, &index);
-  ASSERT(index == classes.length());
-  // It is important that the 'Object' class is at index 0.
-  // We are using this later when building queryables.
-  ASSERT(classes[0] == top);
 }
 
 static ir::Class* resolve_tree_root(Symbol name, ModuleScope* scope) {

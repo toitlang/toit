@@ -90,7 +90,6 @@ class Resolver {
   void setup_inheritance(std::vector<Module*> modules, int core_module_index);
   void report_abstract_classes(std::vector<Module*> modules);
   void check_interface_implementations_and_flatten(std::vector<Module*> modules);
-  void sort_classes(List<ir::Class*> classes) const;
   List<ir::Class*> find_tree_roots(Module* core_module);
   List<ir::Method*> find_entry_points(Module* core_module);
   List<ir::Type> find_literal_types(Module* core_module);
@@ -132,8 +131,6 @@ class Resolver {
                                               ir::Class* holder,
                                               bool needs_class,
                                               bool needs_mixin);
-
-  void _dfs_traverse(ir::Class* current, List<ir::Class*> classes, int* index) const;
 };
 
 } // namespace toit::compiler

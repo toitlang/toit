@@ -490,16 +490,33 @@ void Compiler::lsp_semantic_tokens(const char* source_path,
 }
 
 static bool _sorted_by_inheritance(List<ir::Class*> classes) {
+  UnorderedSet<ir::Class*> seen_mixins;
   std::vector<ir::Class*> super_hierarchy;
   ir::Class* current_super = null;
   ir::Class* last = null;
   for (auto klass : classes) {
+    if (klass->is_mixin()) {
+      // For mixins we don't require subclasses to be in depth-first order.
+      // We just require that all its parents have already been seen.
+      if (klass->super() != null && !seen_mixins.contains(klass->super())) return false;
+      for (auto mixin : klass->mixins()) {
+        if (!seen_mixins.contains(mixin)) return false;
+      }
+      seen_mixins.insert(klass);
+      continue;
+    }
+
+    // Check that the hierarchy is depth-first.
+    // Directly after a class must be its first subclass.
     if (klass->super() == current_super) {
       // Do nothing.
     } else if (klass->super() == last) {
+      // The 'last' has subclasses.
       super_hierarchy.push_back(current_super);
       current_super = last;
     } else {
+      // A subclass is done. Walk up the chain to find again the super of this
+      // class.
       while (!super_hierarchy.empty() && current_super != klass->super()) {
         current_super = super_hierarchy.back();
         super_hierarchy.pop_back();
@@ -1642,6 +1659,95 @@ toit::Program* construct_program(ir::Program* ir_program,
   return program;
 }
 
+// Sorts all classes.
+// Changes the given 'classes' list so that:
+// - top is the first class.
+// - all other classes follow top in a depth-first order.
+//   A super class is always directly preceded by its first sub (if there is any).
+//   Any sibling of a sub follows after the first sub's children (and their children...).
+// - After all classes, are all mixins.
+// - Mixins are order in such a way that all dependencies are before their "subs". In
+//   the case of mixins a dependency is either the super, or another mixin that is
+//   referenced in a `with` clause. Here these are available as `m->mixins()`.
+// - Finally, we have all interfaces.
+//   These are, again, in depth-first order.
+static void sort_classes(List<ir::Class*> classes) {
+  ir::Class* top = null;
+  ir::Class* top_mixin = null;
+  ir::Class* top_interface = null;
+  UnorderedMap<ir::Class*, std::vector<ir::Class*>> subs;
+
+  for (auto klass : classes) {
+    if (klass->super() != null) {
+      subs[klass->super()].push_back(klass);
+      if (klass->is_mixin() && !klass->mixins().is_empty()) {
+        for (auto mixin : klass->mixins()) {
+          subs[mixin].push_back(klass);
+        }
+      }
+      continue;
+    }
+    switch (klass->kind()) {
+      case ir::Class::Kind::CLASS:
+      case ir::Class::Kind::MONITOR:
+        top = klass;
+        break;
+      case ir::Class::Kind::MIXIN:
+        top_mixin = klass;
+        break;
+      case ir::Class::Kind::INTERFACE:
+        top_interface = klass;
+        break;
+    }
+  }
+  ASSERT(top != null);
+  ASSERT(top_mixin != null);
+  ASSERT(top_interface != null);
+
+  Set<ir::Class*> done;
+
+  auto are_all_mixin_parents_done = [&](ir::Class* klass) -> bool {
+    if (!klass->is_mixin()) return true;
+    if (klass->super() != null && !done.contains(klass->super())) return false;
+    for (auto mixin : klass->mixins()) {
+      if (!done.contains(mixin)) return false;
+    }
+    return true;
+  };
+
+  auto dfs_traverse = [&](ir::Class* klass) -> void {
+    std::vector<ir::Class*> queue;
+    queue.push_back(klass);
+    while (!queue.empty()) {
+      ir::Class* current = queue.back();
+      queue.pop_back();
+      if (done.contains(current)) {
+        ASSERT(current->is_mixin());
+        continue;
+      }
+      if (!are_all_mixin_parents_done(current)) {
+        continue;
+      }
+      done.insert(current);
+      auto probe = subs.find(current);
+      if (probe != subs.end()) {
+        queue.insert(queue.end(), probe->second.begin(), probe->second.end());
+      }
+    }
+  };
+
+  dfs_traverse(top);
+  dfs_traverse(top_mixin);
+  dfs_traverse(top_interface);
+
+  ASSERT(done.size() == classes.length());
+  int index = 0;
+  for (auto klass : done) {
+    classes[index++] = klass;
+  }
+}
+
+
 Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   // TODO(florian): this is hackish. We want to analyze asserts also in release mode,
   // but then remove the code when we generate code.
@@ -1689,6 +1795,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   setup_lsp_selection_handler();
 
   ir::Program* ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
+  sort_classes(ir_program->classes());
 
   bool encountered_error_before_type_checks = diagnostics()->encountered_error();
 
@@ -1733,6 +1840,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   if (run_optimizations && configuration_.optimization_level >= 2) {
     bool quiet = true;
     ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX, quiet);
+    sort_classes(ir_program->classes());
     patch(ir_program);
     // We check the types again, because the compiler computes types as
     // a side-effect of this and the types are necessary for the
