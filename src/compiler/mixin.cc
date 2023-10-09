@@ -78,7 +78,7 @@ static void add_stubs(ir::Class* klass) {
 
       ir::MethodInstance* stub;
       if (method->is_IsInterfaceOrMixinStub()) {
-        // We copy over the method (used to know if a class is an interface or mixin).
+        // We copy over the method (used to determine if a class is an interface or mixin).
         // The body will not be compiled, so it's not important what we put in there.
         auto is_stub = method->as_IsInterfaceOrMixinStub();
         stub = _new ir::IsInterfaceOrMixinStub(method_name,
