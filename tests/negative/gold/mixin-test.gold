@@ -28,7 +28,7 @@ class ClassB extends Object with ClassA UnknownMixin some_method:
 tests/negative/mixin-test.toit:31:20: error: Super of a mixin must be a mixin
 mixin MixE extends Object with MixD:
                    ^~~~~~
-tests/negative/mixin-test.toit:33:30: error: Not an mixin
+tests/negative/mixin-test.toit:33:30: error: Not a mixin
 mixin MixF extends MixE with B:
                              ^
 tests/negative/mixin-test.toit:35:30: error: Interfaces may not have mixins
