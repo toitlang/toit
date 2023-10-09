@@ -2413,6 +2413,16 @@ void Resolver::resolve_fill_class(ir::Class* klass,
         declarations[name].push_back(ClassScope::SUPER_CLASS_SEPARATOR);
       }
     }
+    // The mixins must happen after the `SUPER_CLASS_SEPARATOR`.
+    // Note that the mixins are already in the correct order:
+    // For `class A extends B with C D`, the `mixins` are [D, C].
+    for (auto mixin : current->mixins()) {
+      for (auto method : mixin->methods()) {
+        auto name = method->name();
+        if (!name.is_valid()) continue;
+        declarations[name].push_back(method);
+      }
+    }
   }
 
   ClassScope class_scope(klass, module_scope);
