@@ -67,9 +67,16 @@ UnorderedMap<Class*, QueryableClass> build_queryables_from_resolution_shapes(Pro
   UnorderedMap<Class*, QueryableClass> result;
 
   for (int i = 0; i < 2; i++) {
-    // We run in two phases:
-    // The first phase only does mixins.
-    // The second the rest.
+    // Classes are sorted such that all supers are before their subclasses.
+    // Similarly, within mixins, all mixins that are mixed in are before the mixin
+    // that uses them. For example, for `mixin M2 extends M1 with M3` the mixins
+    // `M1` and `M3` are before `M2`.
+    // However, mixins are after classes that mix them in (`class A extends B with M1`).
+    // Therefore we run in two phases:
+    // - the first phase only does mixins.
+    // - the second the rest.
+    // This way we know that all our dependencies (super and mixins) have already
+    // been handled.
     for (auto klass : program->classes()) {
       if (i == 0 && !klass->is_mixin()) continue;
       if (i == 1 && klass->is_mixin()) continue;
