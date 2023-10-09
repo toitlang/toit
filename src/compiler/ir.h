@@ -347,6 +347,9 @@ class Class : public Node {
     ASSERT(mixins_.is_empty());
     mixins_ = mixins;
   }
+  void replace_mixins(List<Class*> mixins) {
+    mixins_ = mixins;
+  }
 
   /// The unnamed constructors.
   ///
