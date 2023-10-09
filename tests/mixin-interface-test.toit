@@ -25,7 +25,6 @@ mixin MixD extends MixB with MixC implements I4:
 mixin MixE implements I5:
   e-method: return 45
 
-
 class ClassA extends Object with MixD MixE:
 
 class ClassB extends Object with MixD:

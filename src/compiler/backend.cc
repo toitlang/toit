@@ -274,7 +274,7 @@ void Backend::emit_method(ir::Method* method,
   int dispatch_offset;
   bool is_field_accessor;
 
-  bool is_mixin_method = method->holder() && method->holder()->is_mixin();
+  bool is_mixin_method = method->holder() != null && method->holder()->is_mixin();
   if (method->is_static() || is_mixin_method) {
     dispatch_offset = -1;
     is_field_accessor = false;
