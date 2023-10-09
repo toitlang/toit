@@ -1619,6 +1619,33 @@ static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
   };
 }
 
+static void drop_abstract_methods(ir::Program* ir_program) {
+  for (auto klass : ir_program->classes()) {
+    switch (klass->kind()) {
+      case ir::Class::Kind::CLASS:
+      case ir::Class::Kind::MIXIN:
+      case ir::Class::Kind::MONITOR:
+        break;
+      case ir::Class::Kind::INTERFACE:
+        continue;
+    }
+    bool has_abstract_methods = false;
+    for (auto method : klass->methods()) {
+      if (method->is_abstract()) {
+        has_abstract_methods = true;
+        break;
+      }
+    }
+    if (!has_abstract_methods) continue;
+    ListBuilder<ir::MethodInstance*> remaining_methods;
+    for (auto method : klass->methods()) {
+      if (method->is_abstract()) continue;
+      remaining_methods.add(method);
+    }
+    klass->replace_methods(remaining_methods.build());
+  }
+}
+
 toit::Program* construct_program(ir::Program* ir_program,
                                  SourceMapper* source_mapper,
                                  TypeOracle* oracle,
@@ -1626,6 +1653,7 @@ toit::Program* construct_program(ir::Program* ir_program,
                                  bool run_optimizations) {
   source_mapper->register_selectors(ir_program->classes());
 
+  drop_abstract_methods(ir_program);
   add_lambda_boxes(ir_program);
   add_monitor_locks(ir_program);
   add_stub_methods_and_switch_to_plain_shapes(ir_program);
