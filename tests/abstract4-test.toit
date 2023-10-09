@@ -14,7 +14,7 @@ class C extends B:
   foo x=null:
     return super
 
-class D:
+class D extends C:
   foo:
     return 33
 
@@ -27,3 +27,4 @@ main:
 
   d := confuse D
   expect_equals 33 d.foo
+  expect_equals 1 (d.foo 1)
