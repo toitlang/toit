@@ -25,11 +25,17 @@
 namespace toit {
 namespace compiler {
 
-void CompletionHandler::class_or_interface(ast::Node* node, IterableScope* scope, ir::Class* holder, ir::Node* resolved, bool needs_interface) {
+void CompletionHandler::class_interface_or_mixin(ast::Node* node,
+                                                 IterableScope* scope,
+                                                 ir::Class* holder,
+                                                 ir::Node* resolved,
+                                                 bool needs_interface,
+                                                 bool needs_mixin) {
   scope->for_each([&](Symbol name, const ResolutionEntry& entry) {
     if (entry.is_class()) {
       auto klass = entry.klass();
-      if (needs_interface != klass->is_interface()) return;
+      if ((needs_interface && !klass->is_interface()) || (!needs_interface && klass->is_interface())) return;
+      if ((needs_mixin && !klass->is_mixin()) || (!needs_mixin && klass->is_mixin())) return;
       if (klass == holder) return;
       complete_entry(name, entry);
     } else if (entry.is_prefix()) {

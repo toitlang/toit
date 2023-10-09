@@ -127,10 +127,11 @@ class Resolver {
                      Scope* scope,
                      Module* entry_module,
                      Module* core_module);
-  ir::Class* resolve_class_or_interface(ast::Expression* ast_node,
-                                        Scope* scope,
-                                        ir::Class* holder,
-                                        bool needs_class);
+  ir::Class* resolve_class_interface_or_mixin(ast::Expression* ast_node,
+                                              Scope* scope,
+                                              ir::Class* holder,
+                                              bool needs_class,
+                                              bool needs_mixin);
 
   void _dfs_traverse(ir::Class* current, List<ir::Class*> classes, int* index) const;
 };

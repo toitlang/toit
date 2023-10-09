@@ -1,9 +1,36 @@
+tests/negative/mixin-test.toit:17:19: error: Missing super class
+mixin MixC extends:
+                  ^
+tests/negative/mixin-test.toit:21:20: error: Missing super class
+mixin MixD extends implements I1:
+                   ^~~~~~~~~~
+tests/negative/mixin-test.toit:23:9: error: 'with' requires an 'extends' clause
+class C with MixD:
+        ^~~~
+tests/negative/mixin-test.toit:25:29: error: 'with' without any mixin type
+class D extends Object with implements I1:
+                            ^~~~~~~~~~
 tests/negative/mixin-test.toit:8:20: error: Super of a mixin must be a mixin
 mixin MixB extends A:
                    ^
 tests/negative/mixin-test.toit:11:17: error: Super of a class must be a class
 class B extends MixB:
                 ^~~~
+tests/negative/mixin-test.toit:29:34: error: Unresolved mixin
+class ClassB extends Object with ClassA UnknownMixin some_method:
+                                 ^~~~~~
+tests/negative/mixin-test.toit:29:41: error: Unresolved mixin
+class ClassB extends Object with ClassA UnknownMixin some_method:
+                                        ^~~~~~~~~~~~
+tests/negative/mixin-test.toit:29:54: error: Unresolved mixin
+class ClassB extends Object with ClassA UnknownMixin some_method:
+                                                     ^~~~~~~~~~~
+tests/negative/mixin-test.toit:31:20: error: Super of a mixin must be a mixin
+mixin MixE extends Object with MixD:
+                   ^~~~~~
+tests/negative/mixin-test.toit:33:30: error: Not a mixin
+mixin MixF extends MixE with B:
+                             ^
 tests/negative/mixin-test.toit:15:12: error: Members can't be abstract in non-abstract mixin
   abstract foo x y -> int
            ^~~

@@ -58,8 +58,12 @@ void GotoDefinitionHandler::_print_all(List<ir::Node*> nodes) {
   }
 }
 
-void GotoDefinitionHandler::class_or_interface(ast::Node* node, IterableScope* scope,
-                                               ir::Class* holder, ir::Node* resolved, bool needs_interface) {
+void GotoDefinitionHandler::class_interface_or_mixin(ast::Node* node,
+                                                     IterableScope* scope,
+                                                     ir::Class* holder,
+                                                     ir::Node* resolved,
+                                                     bool needs_interface,
+                                                     bool needs_mixin) {
   if (resolved != null && resolved->is_Class()) {
     _print_range(resolved);
   }

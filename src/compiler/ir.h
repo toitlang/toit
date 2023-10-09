@@ -344,6 +344,12 @@ class Class : public Node {
     interfaces_ = interfaces;
   }
 
+  List<Class*> mixins() const { return mixins_; }
+  void set_mixins(List<Class*> mixins) {
+    ASSERT(mixins_.is_empty());
+    mixins_ = mixins;
+  }
+
   /// The unnamed constructors.
   ///
   /// The named constructors are stored in the [statics] scope.
@@ -421,6 +427,7 @@ class Class : public Node {
   bool is_runtime_class_;
   Class* super_;
   List<Class*> interfaces_;
+  List<Class*> mixins_;
   Kind kind_;
   bool is_abstract_;
   // Only set for interfaces.

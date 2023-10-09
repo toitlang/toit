@@ -1089,17 +1089,23 @@ void Resolver::mark_non_returning(Module* core_module) {
   }
 }
 
-ir::Class* Resolver::resolve_class_or_interface(ast::Expression* ast_node,
-                                                Scope* scope,
-                                                ir::Class* holder,
-                                                bool needs_interface) {
+ir::Class* Resolver::resolve_class_interface_or_mixin(ast::Expression* ast_node,
+                                                      Scope* scope,
+                                                      ir::Class* holder,
+                                                      bool needs_interface,
+                                                      bool needs_mixin) {
   ResolutionEntry type_declaration;
   if (ast_node->is_Identifier()) {
     auto type_name = ast_node->as_Identifier()->data();
     type_declaration = scope->lookup_shallow(type_name);
     if (ast_node->is_LspSelection()) {
       ir::Node* ir_resolved = type_declaration.is_single() ? type_declaration.single() : null;
-      lsp_->selection_handler()->class_or_interface(ast_node, scope, holder, ir_resolved, needs_interface);
+      lsp_->selection_handler()->class_interface_or_mixin(ast_node,
+                                                          scope,
+                                                          holder,
+                                                          ir_resolved,
+                                                          needs_interface,
+                                                          needs_mixin);
     }
   } else if (ast_node->is_Dot()) {
     auto ast_dot = ast_node->as_Dot();
@@ -1112,18 +1118,24 @@ ir::Class* Resolver::resolve_class_or_interface(ast::Expression* ast_node,
       auto prefix_scope = prefix_lookup_result.entry.is_prefix()
           ? static_cast<IterableScope*>(prefix_lookup_result.entry.prefix())
           : static_cast<IterableScope*>(&empty_scope);
-      lsp_->selection_handler()->class_or_interface(ast_dot->name(),
-                                                    prefix_scope,
-                                                    holder,
-                                                     ir_resolved,
-                                                    needs_interface);
+      lsp_->selection_handler()->class_interface_or_mixin(ast_dot->name(),
+                                                          prefix_scope,
+                                                          holder,
+                                                          ir_resolved,
+                                                          needs_interface,
+                                                          needs_mixin);
     } else if (ast_dot->receiver()->is_LspSelection()) {
       auto receiver_as_type_name = ast_dot->receiver()->as_Identifier()->data();
       auto receiver_as_type_declaration = scope->lookup_shallow(receiver_as_type_name);
       ir::Node* ir_resolved = receiver_as_type_declaration.is_single()
           ? receiver_as_type_declaration.single()
           : null;
-      lsp_->selection_handler()->class_or_interface(ast_node, scope, holder, ir_resolved, needs_interface);
+      lsp_->selection_handler()->class_interface_or_mixin(ast_node,
+                                                          scope,
+                                                          holder,
+                                                          ir_resolved,
+                                                          needs_interface,
+                                                          needs_mixin);
     }
   } else {
     ASSERT(ast_node->is_Error());
@@ -1181,7 +1193,11 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
       } else {
         bool detected_error = false;
         auto ast_super = ast_class->super();
-        auto ir_super_class = resolve_class_or_interface(ast_super, scope, klass, klass->is_interface());
+        auto ir_super_class = resolve_class_interface_or_mixin(ast_super,
+                                                               scope,
+                                                               klass,
+                                                               klass->is_interface(),
+                                                               klass->is_mixin());
 
         if (ast_class->is_monitor()) {
           report_error(ast_class->super(), "Monitors may not have a super class");
@@ -1228,11 +1244,26 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
         }
       }
 
+      auto ast_mixins = ast_class->mixins();
+      ListBuilder<ir::Class*> ir_mixins;
+      for (int i = 0; i < ast_mixins.length(); i++) {
+        auto ast_mixin = ast_mixins[i];
+        auto ir_mixin = resolve_class_interface_or_mixin(ast_mixin, scope, klass, false, true);
+        if (ir_mixin == null) {
+          report_error(ast_mixin, "Unresolved mixin");
+        } else if (!ir_mixin->is_mixin()) {
+          report_error(ast_mixin, "Not a mixin");
+        } else {
+          ir_mixins.add(ir_mixin);
+        }
+      }
+      klass->set_mixins(ir_mixins.build());
+
       auto ast_interfaces = ast_class->interfaces();
       ListBuilder<ir::Class*> ir_interfaces;
       for (int i = 0; i < ast_interfaces.length(); i++) {
         auto ast_interface = ast_interfaces[i];
-        auto ir_interface = resolve_class_or_interface(ast_interface, scope, klass, true);
+        auto ir_interface = resolve_class_interface_or_mixin(ast_interface, scope, klass, true, false);
         if (ir_interface == null) {
           report_error(ast_interface, "Unresolved interface");
         } else if (!ir_interface->is_interface()) {
