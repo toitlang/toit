@@ -225,9 +225,14 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
         check_class(klass);
         Symbol name = klass->name()->data();
         auto position = klass->range();
-        bool is_interface = klass->is_interface();
-        bool is_abstract = is_interface || klass->has_abstract_modifier();
-        ir::Class* ir = _new ir::Class(name, is_interface, is_abstract, position);
+        ir::Class::Kind kind = ir::Class::CLASS;  // Initialized with value to silence compiler warnings.
+        switch (klass->kind()) {
+          case ast::Class::CLASS: kind = ir::Class::CLASS; break;
+          case ast::Class::INTERFACE: kind = ir::Class::INTERFACE; break;
+          case ast::Class::MONITOR: kind = ir::Class::MONITOR; break;
+        }
+        bool is_abstract = kind == ir::Class::INTERFACE || klass->has_abstract_modifier();
+        ir::Class* ir = _new ir::Class(name, kind, is_abstract, position);
         ir_to_ast_map_[ir] = klass;
         classes.add(ir);
       } else {
@@ -1152,12 +1157,16 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
 
       // When the class doesn't have a super, or there is an error, the default_super is used.
       ir::Class* default_super = null;
-      if (ast_class->is_monitor()) {
-        default_super = monitor;
-      } else if (ast_class->is_interface()) {
-        default_super = interface_top;
-      } else {
-        default_super = top;
+      switch (ast_class->kind()) {
+        case ast::Class::CLASS:
+          default_super = top;
+          break;
+        case ast::Class::INTERFACE:
+          default_super = interface_top;
+          break;
+        case ast::Class::MONITOR:
+          default_super = monitor;
+          break;
       }
 
       if (!ast_class->has_super() || ast_class->super()->is_Error()) {

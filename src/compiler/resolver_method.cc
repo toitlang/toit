@@ -2637,12 +2637,17 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
     auto ref = ir_target->as_ReferenceMethod();
     if (ref->target()->is_constructor()) {
       auto ir_class = ref->target()->as_Constructor()->klass();
-      if (ir_class->is_abstract()) {
-        if (ir_class->is_interface()) {
+      switch (ir_class->kind()) {
+        case ir::Class::CLASS:
+          if (ir_class->is_abstract()) {
+            report_error(ast_target, "Can't instantiate abstract class");
+          }
+          break;
+        case ir::Class::MONITOR:
+          break;
+        case ir::Class::INTERFACE:
           report_error(ast_target, "Can't instantiate interface class without factory");
-        } else {
-          report_error(ast_target, "Can't instantiate abstract class");
-        }
+          break;
       }
       push(call_builder.call_constructor(ref));
     } else if (ref->target()->is_instance()) {
