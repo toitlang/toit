@@ -751,8 +751,6 @@ bytemap-test -> none:
     canvas[it * W + W - 2] = char
   bytemap-rectangle (W - 1) 0 '\n' 1 H canvas W
 
-  print canvas.to-string
-
   EXPECTED ::= """
       ###                                #####0
       #O#                                 #O##1
