@@ -625,7 +625,13 @@ class Method : public Node {
   void kill() { is_dead_ = true; }
 
   List<Parameter*> parameters() const { return parameters_; }
+  // Use 'set' for the initial setting, and 'replace' for later replacements.
   void set_parameters(List<Parameter*> parameters) {
+    ASSERT(parameters_.is_empty());
+    ASSERT(_parameters_have_correct_index(parameters));
+    parameters_ = parameters;
+  }
+  void replace_parameters(List<Parameter*> parameters) {
     ASSERT(_parameters_have_correct_index(parameters));
     parameters_ = parameters;
   }
@@ -1562,6 +1568,9 @@ class Lambda : public CallStatic {
   Map<Local*, int> captured_depths_;
 };
 
+/// A call to a constructor.
+/// Allocates an object first.
+/// This class is not used for super-calls.
 class CallConstructor : public CallStatic {
  public:
   CallConstructor(ReferenceMethod* target,
