@@ -20,7 +20,6 @@ class ClassA extends Object with MixC:
 
 main:
   a := ClassA
-  // The static type check doesn't complain, but we still have a dynamic error.
-  // expect-equals 41 a.a-method
-  // expect-equals 42 a.b-method
-  // expect-equals 43 a.c-method
+  expect-equals 41 a.a-method
+  expect-equals 42 a.b-method
+  expect-equals 43 a.c-method

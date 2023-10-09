@@ -412,7 +412,7 @@ void Writer::print_class(ir::Class* klass) {
       break;
   }
   this->printf("%s\n", kind);
-  this->printf("%s\n", klass->is_abstract() ? "abstract" : "not-abstract");
+  this->printf("%s\n", klass->is_abstract() ? "abstract" : "non-abstract");
   if (klass->super() == null) {
     this->printf("-1\n");
   } else {

@@ -501,7 +501,7 @@ HANDLE handle_from_object(Object* object, DWORD std_handle) {
   return INVALID_HANDLE_VALUE;
 }
 
-bool is_inherited(Object *object) {
+bool is_inherited(Object* object) {
   return is_smi(object) && static_cast<int>(Smi::value(object)) == -1;
 }
 const int MAX_COMMAND_LINE_LENGTH = 32768;

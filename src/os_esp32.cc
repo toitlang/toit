@@ -86,7 +86,7 @@ void panic_put_char(char c) {
   WRITE_PERI_REG(UART_FIFO_REG(CONFIG_ESP_CONSOLE_UART_NUM), c);
 }
 
-void panic_put_string(const char *str) {
+void panic_put_string(const char* str) {
   for (int i = 0; str[i]; i++) panic_put_char(str[i]);
 }
 
