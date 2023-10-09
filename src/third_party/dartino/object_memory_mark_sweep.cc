@@ -370,7 +370,7 @@ bool OldSpace::complete_scavenge(
     if (traverse != end) {
       found_work = true;
     }
-    for (HeapObject *obj = HeapObject::from_address(traverse); traverse != end;
+    for (HeapObject* obj = HeapObject::from_address(traverse); traverse != end;
          traverse += obj->size(program_), obj = HeapObject::from_address(traverse)) {
       visitor->set_record_new_space_pointers(GcMetadata::remembered_set_for(obj));
       obj->roots_do(program_, visitor);

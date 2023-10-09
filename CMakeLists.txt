@@ -171,7 +171,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   separate_arguments(GO_ENV)
   list(APPEND GO_ENV GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
 
-  set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.sdkVersion=${TOIT_GIT_VERSION}")
+  set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.version=${TOIT_GIT_VERSION}")
 
   add_custom_command(
     OUTPUT "${TOITLSP_BIN}"
