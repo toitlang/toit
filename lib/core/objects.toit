@@ -55,11 +55,7 @@ class Object:
   static class-id object -> int:
     #primitive.core.object-class-id
 
-// For simplicity add the Object properties to the base interface class.
-// This way, the type-checker doesn't complain when we use them on interface types.
 interface Interface_:
-  operator == other
-  stringify -> string
 
 mixin Mixin_:
 

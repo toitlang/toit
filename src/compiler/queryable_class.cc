@@ -61,6 +61,9 @@ UnorderedMap<Class*, QueryableClass> build_queryables_from_resolution_shapes(Pro
   program->accept(&visitor);
   auto invoked_selectors = visitor.selectors;
 
+  ir::Class* object_class = program->classes()[0];
+  ASSERT(object_class->name() == Symbols::Object);
+
   UnorderedMap<Class*, QueryableClass> result;
 
   for (auto klass : program->classes()) {
@@ -71,6 +74,10 @@ UnorderedMap<Class*, QueryableClass> build_queryables_from_resolution_shapes(Pro
       //   by inheritance.
       // Insert the superclass methods first, and then overwrite the ones that this class has.
       methods.add_all(result[klass->super()].methods());
+    } else if (klass != object_class) {
+      // Interface or Mixin.
+      // Add the Object methods as they have to be available for every object.
+      methods.add_all(result[object_class].methods());
     }
 
     for (auto method : klass->methods()) {

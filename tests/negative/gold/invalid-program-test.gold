@@ -1,4 +1,4 @@
 INVALID_PROGRAM error. 
 2620
-  0: run-global-initializer_   <sdk>/core/objects.toit:256:1
+  0: run-global-initializer_   <sdk>/core/objects.toit:252:1
   1: main                      tests/negative/invalid-program-test.toit:9:3
