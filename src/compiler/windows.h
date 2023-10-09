@@ -18,5 +18,5 @@
 #include "../top.h"
 
 #ifdef TOIT_WINDOWS
-size_t getline(char **lineptr, size_t *n, FILE *stream);
+size_t getline(char** lineptr, size_t* n, FILE* stream);
 #endif
