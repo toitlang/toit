@@ -46,6 +46,7 @@ class Node;
   V(MethodStatic)               \
   V(Constructor)                \
   V(AdapterStub)                \
+  V(MixinStub)                  \
   V(IsInterfaceStub)            \
   V(FieldStub)                  \
   V(Code)                       \
@@ -292,6 +293,7 @@ class Class : public Node {
       , kind_(kind)
       , is_abstract_(is_abstract)
       , typecheck_selector_(Selector<CallShape>(Symbol::invalid(), CallShape::invalid()))
+      , is_instantiated_(kind != MIXIN)
       , id_(-1)
       , start_id_(-1)
       , end_id_(-1)
@@ -442,7 +444,7 @@ class Class : public Node {
   StaticsScope* statics_ = null;
   Scope* toitdoc_scope_ = null;
 
-  bool is_instantiated_ = true;
+  bool is_instantiated_;
 
   int id_;
   int start_id_;
@@ -708,6 +710,13 @@ class AdapterStub : public MethodInstance {
   AdapterStub(Symbol name, Class* holder, const PlainShape& shape, Source::Range range)
       : MethodInstance(name, holder, shape, false, range) {}
   IMPLEMENTS(AdapterStub)
+};
+
+class MixinStub : public MethodInstance {
+ public:
+  MixinStub(Symbol name, Class* holder, const PlainShape& shape, Source::Range range)
+      : MethodInstance(name, holder, shape, false, range) {}
+  IMPLEMENTS(MixinStub)
 };
 
 class IsInterfaceStub : public MethodInstance {

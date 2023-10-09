@@ -36,3 +36,7 @@ class ClassB extends Object with MixD:
     expect-equals 499 e-method
 
 main:
+  a := ClassA
+  a.check-this-calls
+  b := ClassB
+  b.check-this-calls
