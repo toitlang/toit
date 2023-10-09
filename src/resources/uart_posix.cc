@@ -83,7 +83,7 @@ static int baud_rate_to_int(speed_t speed) {
   }
 }
 
-static int int_to_baud_rate(int baud_rate, speed_t* speed, bool *arbitrary_baud_rate) {
+static int int_to_baud_rate(int baud_rate, speed_t* speed, bool* arbitrary_baud_rate) {
   // TODO: On linux using gcc, it should be possible to just set the bit rate as an integer.
   *arbitrary_baud_rate = false;
   switch (baud_rate) {
