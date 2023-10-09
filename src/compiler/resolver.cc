@@ -1252,7 +1252,7 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
         if (ir_mixin == null) {
           report_error(ast_mixin, "Unresolved mixin");
         } else if (!ir_mixin->is_mixin()) {
-          report_error(ast_mixin, "Not an mixin");
+          report_error(ast_mixin, "Not a mixin");
         } else {
           ir_mixins.add(ir_mixin);
         }
