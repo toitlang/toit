@@ -1,0 +1,10 @@
+tests/negative/mixin-test.toit:8:20: error: Super of a mixin must be a mixin
+mixin MixB extends A:
+                   ^
+tests/negative/mixin-test.toit:11:17: error: Super of a class must be a class
+class B extends MixB:
+                ^~~~
+tests/negative/mixin-test.toit:15:12: error: Members can't be abstract in non-abstract mixin
+  abstract foo x y -> int
+           ^~~
+Compilation failed.

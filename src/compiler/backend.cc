@@ -56,6 +56,11 @@ class BackendCollector : public ir::TraversingVisitor {
         case ir::Class::MONITOR:
           class_usage_counts_[klass]++;
           break;
+        // Mixins typechecks are implemented similar to interface checks:
+        // They have a stub method (without body) to indicate that a class
+        // "implements" the mixin.
+        // This is, because mixins can't be checked with a range check.
+        case ir::Class::MIXIN:
         case ir::Class::INTERFACE:
           interface_usage_counts_[klass]++;
           break;

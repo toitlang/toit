@@ -523,7 +523,7 @@ class Parser {
   // view.
   bool peek_type(ParserPeeker* peeker);
   ast::Expression* parse_type(bool is_type_annotation);
-  ast::Class* parse_class_interface_or_monitor(bool is_abstract);
+  ast::Class* parse_class_interface_monitor_or_mixin(bool is_abstract);
 
   ast::Sequence* parse_sequence();
   ast::Expression* parse_block_or_lambda(int indentation);

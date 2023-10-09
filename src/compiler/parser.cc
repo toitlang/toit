@@ -135,11 +135,13 @@ Unit* Parser::parse_unit(Source* override_source) {
     }
     bool is_abstract = optional(Token::ABSTRACT);
     if (current_token() == Token::CLASS) {
-      declarations.add(parse_class_interface_or_monitor(is_abstract));
+      declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
     } else if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::monitor) {
-      declarations.add(parse_class_interface_or_monitor(is_abstract));
+      declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
     } else if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::interface_) {
-      declarations.add(parse_class_interface_or_monitor(is_abstract));
+      declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
+    } else if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::mixin) {
+      declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
     } else {
       declarations.add(parse_declaration(is_abstract));
     }
@@ -978,10 +980,11 @@ Declaration* Parser::parse_declaration(bool is_abstract) {
   return NEW_NODE(Method(name, return_type, is_setter, is_static, is_abstract, parameters, body), declaration_range);
 }
 
-Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
+Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract) {
   ASSERT(current_token() == Token::CLASS ||
          (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::interface_)||
-         (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::monitor));
+         (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::monitor) ||
+         (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::mixin));
 
   ListBuilder<Expression*> interfaces;
   ListBuilder<Declaration*> members;
@@ -990,12 +993,19 @@ Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
 
   ast::Class::Kind kind;
   if (current_token() == Token::IDENTIFIER) {
-    bool is_interface = current_token_data() == Symbols::interface_;
-    kind = is_interface
-        ? ast::Class::INTERFACE
-        : ast::Class::MONITOR;
-    if (is_abstract) {
-      report_error("%s can't be abstract", is_interface ? "Interfaces" : "Monitors");
+    const char* kind_string;
+    if (current_token_data() == Symbols::interface_) {
+      kind = ast::Class::INTERFACE;
+      kind_string = "Interfaces";
+    } else if (current_token_data() == Symbols::monitor) {
+      kind = ast::Class::MONITOR;
+      kind_string = "Monitors";
+    } else {
+      kind = ast::Class::MIXIN;
+      kind_string = "Mixins";
+    }
+    if (is_abstract && kind != ast::Class::MIXIN) {
+      report_error("%s can't be abstract", kind_string);
       is_abstract = false;
     }
     consume();
@@ -1021,6 +1031,8 @@ Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
       case ast::Class::INTERFACE:
         kind_name = "interface";
         break;
+      case ast::Class::MIXIN:
+        kind_name = "mixin";
     }
     if (is_eol(current_token())) {
       report_error(eol_range(previous_range(), current_range()),

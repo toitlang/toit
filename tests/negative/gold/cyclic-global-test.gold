@@ -1,7 +1,7 @@
 Initialization of global 'global' in progress.
-  0: run-global-initializer_   <sdk>/core/objects.toit:263:9
+  0: run-global-initializer_   <sdk>/core/objects.toit:265:9
   1: foo                       tests/negative/cyclic-global-test.toit:6:13
   2: global                    tests/negative/cyclic-global-test.toit:5:11
-  3: run-global-initializer_.<block> <sdk>/core/objects.toit:288:28
-  4: run-global-initializer_   <sdk>/core/objects.toit:254:1
+  3: run-global-initializer_.<block> <sdk>/core/objects.toit:290:28
+  4: run-global-initializer_   <sdk>/core/objects.toit:256:1
   5: main                      tests/negative/cyclic-global-test.toit:13:7

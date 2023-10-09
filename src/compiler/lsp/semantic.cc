@@ -104,6 +104,7 @@ class TokenVisitor : public TraversingVisitor {
       switch (klass->kind()) {
         case ir::Class::CLASS:
         case ir::Class::MONITOR:
+        case ir::Class::MIXIN:
           token_type = TokenType::CLASS;
           break;
         case ir::Class::INTERFACE:

@@ -248,6 +248,7 @@ class Class : public Node {
     CLASS,
     INTERFACE,
     MONITOR,
+    MIXIN,
   };
 
   // Super is either an identifier or a prefixed identifier (that is, a Dot).
@@ -276,6 +277,7 @@ class Class : public Node {
 
   bool is_monitor() const { return kind_ == MONITOR; }
   bool is_interface() const { return kind_ == INTERFACE; }
+  bool is_mixin() const { return kind_ == MIXIN; }
 
   // Whether this class was marked with "abstract".
   // We use this name instead of `is_abstract`, as the latter has a different

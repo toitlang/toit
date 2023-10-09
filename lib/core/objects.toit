@@ -61,6 +61,8 @@ interface Interface_:
   operator == other
   stringify -> string
 
+mixin Mixin_:
+
 // A stub entry representing the internal Stack.
 class Stack_:
   constructor: throw "Must not be instantiated"

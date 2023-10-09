@@ -43,6 +43,7 @@ static CompletionKind completion_kind_for(ir::Class* klass) {
   switch (klass->kind()) {
     case ir::Class::CLASS:
     case ir::Class::MONITOR:
+    case ir::Class::MIXIN:
       return CompletionKind::CLASS;
     case ir::Class::INTERFACE:
       return CompletionKind::INTERFACE;

@@ -281,6 +281,7 @@ class Class : public Node {
     CLASS,
     INTERFACE,
     MONITOR,
+    MIXIN,
   };
 
   Class(Symbol name, Kind kind, bool is_abstract, Source::Range range)
@@ -390,7 +391,9 @@ class Class : public Node {
   /// Whether the class is abstract.
   /// A class is abstract if it cannot be instantiated.
   bool is_abstract() const { return is_abstract_; }
+
   bool is_interface() const { return kind_ == INTERFACE; }
+  bool is_mixin() const { return kind_ == MIXIN; }
 
   Source::Range range() const { return range_; }
 
