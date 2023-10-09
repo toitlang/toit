@@ -65,7 +65,7 @@ word Space::offset_of(HeapObject* object) {
   return address - start;
 }
 
-HeapObject *Space::object_at_offset(word offset) {
+HeapObject* Space::object_at_offset(word offset) {
   uword start = chunk_list_.first()->start();
   uword address = offset + start;
 
