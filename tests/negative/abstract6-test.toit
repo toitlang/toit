@@ -17,7 +17,6 @@ mixin M1:
 abstract mixin M2 extends M1:
   abstract foo
 
-
 main:
   (C).foo
   unresolved

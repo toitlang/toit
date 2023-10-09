@@ -625,11 +625,14 @@ class Method : public Node {
   void kill() { is_dead_ = true; }
 
   List<Parameter*> parameters() const { return parameters_; }
+  // Use 'set' for the initial setting, and 'replace' for later replacements.
   void set_parameters(List<Parameter*> parameters) {
+    ASSERT(parameters_.is_empty());
     ASSERT(_parameters_have_correct_index(parameters));
     parameters_ = parameters;
   }
   void replace_parameters(List<Parameter*> parameters) {
+    ASSERT(_parameters_have_correct_index(parameters));
     parameters_ = parameters;
   }
 
