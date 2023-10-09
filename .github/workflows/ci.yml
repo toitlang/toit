@@ -5,6 +5,11 @@ on:
     branches:
       - "*"
       - "*/*"
+    branches-ignore:
+      - "wip/**"
+      - "wip-**"
+      - "*/wip-**"
+      - "*/wip/**"
   release:
     types: [published]
   workflow_dispatch:
