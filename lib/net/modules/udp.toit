@@ -88,9 +88,12 @@ class Socket implements net.Socket:
     state := ensure-state_
     return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-BROADCAST_ value
 
-  multicast-add-membership address/net.IpAddress:
+  multicast-add-membership address/net.IpAddress --interface-address/net.IpAddress?=null:
     state := ensure-state_
-    return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-MEMBERSHIP address.raw
+    bytes := address.raw
+    if interface-address:
+      bytes = bytes + interface-address.raw
+    return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-MEMBERSHIP bytes
 
   multicast-loopback -> bool:
     state := ensure-state_

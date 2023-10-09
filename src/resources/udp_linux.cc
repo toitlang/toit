@@ -347,8 +347,13 @@ PRIMITIVE(set_option) {
       Blob group_bytes;
       if (!raw->byte_content(process->program(), &group_bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
       struct ip_mreqn group;
-      memcpy(&group.imr_multiaddr.s_addr, group_bytes.address(), group_bytes.length());
-      memset(&group.imr_address, 0, sizeof(group.imr_address));  // Any interface.
+      if (group_bytes.length() != 4 && group_bytes.length() != 8) FAIL(OUT_OF_BOUNDS);
+      memcpy(&group.imr_multiaddr.s_addr, group_bytes.address(), 4);
+      if (group_bytes.length() == 8) {
+        memcpy(&group.imr_address.s_addr, group_bytes.address() + 4, 4);
+      } else {
+        memset(&group.imr_address, 0, sizeof(group.imr_address));  // Any interface.
+      }
       group.imr_ifindex = 0;  // Any interface.
       if (setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &group, sizeof(group)) == -1) {
         return Primitive::os_error(errno, process);
