@@ -55,7 +55,7 @@ class HostBleEventSource: public LazyEventSource, public Thread {
 
 class BleEvent: public BleEventList::Element {
  public:
-  BleEvent(BleResource *resource, word event): resource_(resource), event_(event) {}
+  BleEvent(BleResource* resource, word event): resource_(resource), event_(event) {}
   BleResource* resource() { return resource_; }
   word event() { return event_; }
  private:
