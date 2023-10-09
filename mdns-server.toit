@@ -20,8 +20,9 @@ class MdnsServer:
   my-ip/net.IpAddress := ?
   cache/Map := {:}
 
-  static PORT ::= 5353  // MDNS.
-  static ADDR ::= net.SocketAddress (net.IpAddress.parse "224.0.0.251") PORT
+  static PORT ::= 8080  // MDNS would be 5353.
+  static IP ::= net.IpAddress.parse "224.0.0.80"  // MDNS would be 224.0.0.251.
+  static ADDR ::= net.SocketAddress IP PORT
 
   constructor .network:
     socket = network.udp_open --port=PORT
