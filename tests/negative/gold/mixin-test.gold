@@ -31,6 +31,9 @@ mixin MixE extends Object with MixD:
 tests/negative/mixin-test.toit:33:30: error: Not a mixin
 mixin MixF extends MixE with B:
                              ^
+tests/negative/mixin-test.toit:35:30: error: Interfaces may not have mixins
+interface I2 extends I1 with MixB:
+                             ^~~~
 tests/negative/mixin-test.toit:15:12: error: Members can't be abstract in non-abstract mixin
   abstract foo x y -> int
            ^~~

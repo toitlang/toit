@@ -1150,6 +1150,7 @@ ir::Class* Resolver::resolve_class_interface_or_mixin(ast::Expression* ast_node,
 /// Checks that:
 /// - the supers of classes exist.
 /// - the class hierarchy isn't cyclic.
+/// - there aren't any mismatches (classes extending interfaces, ...)
 void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_index) {
   Module* core_module = modules[core_module_index];
   auto core_scope = core_module->scope();
@@ -1244,6 +1245,9 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
       }
 
       auto ast_mixins = ast_class->mixins();
+      if (klass->is_interface() && !ast_mixins.is_empty()) {
+        report_error(ast_mixins[0], "Interfaces may not have mixins");
+      }
       ListBuilder<ir::Class*> ir_mixins;
       for (int i = 0; i < ast_mixins.length(); i++) {
         auto ast_mixin = ast_mixins[i];
