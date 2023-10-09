@@ -492,7 +492,7 @@ class Fixup : public ReplacingVisitor {
       }
       for (auto current = klass; current != null; current = current->super()) {
         if (current != klass && valid_check_targets_.contains(current)) {
-          // No need to duplicate work. The current class will (or was already) be
+          // No need to duplicate work. The current class will be (or was already)
           // traversed independently.
           break;
         }

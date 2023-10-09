@@ -252,9 +252,14 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
       ASSERT(original_parameters.length() == arity);
       auto stub_parameters = duplicate_parameters(original_parameters);
       ir::MethodInstance* stub;
+      ir::Expression* body;
 
-      if (method->is_FieldStub()) {
-        // Copy of what's happening in `resolver_method`.
+      if (method->is_FieldStub() &&
+          (method->as_FieldStub()->is_getter() ||
+          // If this is the setter for a final field we just forward the call.
+          // That's easier than recreating the 'throw' again.
+           !method->as_FieldStub()->field()->is_final())) {
+        // Mostly a copy of what's happening in `resolver_method`.
         auto range = method->range();
         auto field_stub = method->as_FieldStub();
         auto probe = field_map.find(field_stub->field());
@@ -266,7 +271,6 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
                                                            range);
         new_field_stub->set_plain_shape(shape);
         auto this_ref = _new ir::ReferenceLocal(stub_parameters[0], 0, range);
-        ir::Sequence* body;
         if (field_stub->is_getter()) {
           ASSERT(stub_parameters.length() == 1);
           auto load = _new ir::FieldLoad(this_ref, new_field, range);
@@ -292,12 +296,9 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
             body = _new ir::Sequence(ListBuilder<ir::Expression*>::build(check, ret), range);
           }
         }
-        new_field_stub->set_parameters(stub_parameters);
-        new_field_stub->set_body(body);
-        new_field_stub->set_return_type(method->return_type());
         stub = new_field_stub;
       } else if (method->is_IsInterfaceOrMixinStub()) {
-        // We copy over the method (used to know if a class is an interface or mixin).
+        // We copy over the method (used to determine if a class is an interface or mixin).
         // The body will not be compiled, so it's not important what we put in there.
         auto is_stub = method->as_IsInterfaceOrMixinStub();
         stub = _new ir::IsInterfaceOrMixinStub(method_name,
@@ -306,9 +307,7 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
                                                is_stub->interface_or_mixin(),
                                                method->range());
 
-        stub->set_parameters(stub_parameters);
-        stub->set_body(_new ir::Return(_new ir::LiteralBoolean(true, range), false, range));
-        stub->set_return_type(method->return_type());
+        body = _new ir::Return(_new ir::LiteralBoolean(true, range), false, range);
       } else {
         auto forward_arguments = ListBuilder<ir::Expression*>::allocate(arity);
         for (int i = 0; i < arity; i++) {
@@ -322,10 +321,12 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
                                                 range);
 
         stub = _new ir::MixinStub(method_name, klass, shape, method->range());
-        stub->set_parameters(stub_parameters);
-        stub->set_body(_new ir::Return(forward_call, false, range));
-        stub->set_return_type(method->return_type());
+        body = _new ir::Return(forward_call, false, range);
       }
+      stub->set_parameters(stub_parameters);
+      stub->set_body(body);
+      stub->set_return_type(method->return_type());
+      if (method->does_not_return()) stub->mark_does_not_return();
       new_stubs.push_back(stub);
       existing_methods[method_name].insert(shape);
     }

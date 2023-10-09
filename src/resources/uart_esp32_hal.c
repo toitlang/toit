@@ -149,11 +149,11 @@ uint32_t IRAM_ATTR uart_toit_hal_get_txfifo_len(uart_hal_handle_t hal) {
   return uart_hal_get_txfifo_len(HAL);
 }
 
-void IRAM_ATTR uart_toit_hal_write_txfifo(uart_hal_handle_t hal, const uint8_t *buf, uint32_t data_size, uint32_t *write_size) {
+void IRAM_ATTR uart_toit_hal_write_txfifo(uart_hal_handle_t hal, const uint8_t* buf, uint32_t data_size, uint32_t* write_size) {
   uart_hal_write_txfifo(HAL, buf, data_size, write_size);
 }
 
-void IRAM_ATTR uart_toit_hal_read_rxfifo(uart_hal_handle_t hal, uint8_t *buf, int *inout_rd_len) {
+void IRAM_ATTR uart_toit_hal_read_rxfifo(uart_hal_handle_t hal, uint8_t* buf, int* inout_rd_len) {
   uart_hal_read_rxfifo(HAL, buf, inout_rd_len);
 }
 
