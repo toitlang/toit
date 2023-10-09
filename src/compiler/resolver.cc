@@ -2056,6 +2056,9 @@ void Resolver::check_interface_implementations_and_flatten(std::vector<Module*> 
     Set<ir::Class*> flattened;
     if (klass->is_interface()) flattened.insert(klass);
     if (klass->has_super()) flattened.insert_all(flatten(klass->super()));
+    for (auto mixin : klass->mixins()) {
+      flattened.insert_all(flatten(mixin));
+    }
     for (auto ir_interface : klass->interfaces()) {
       flattened.insert_all(flatten(ir_interface));
     }
