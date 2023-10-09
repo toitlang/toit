@@ -20,10 +20,8 @@
 namespace toit {
 namespace compiler {
 
-/// Creates mixin stub methods.
-///
-/// Adds mixed in methods as stubs to the classes.
-void add_mixin_stubs(ir::Program* program);
+/// Creates mixin stub methods, and inserts fields.
+void apply_mixins(ir::Program* program);
 
 } // namespace toit::compiler
 } // namespace toit
