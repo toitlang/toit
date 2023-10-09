@@ -1603,8 +1603,14 @@ void Resolver::check_method(ast::Method* method, ir::Class* holder,
       visitor.visit(method);
       bool has_explicit_return = visitor.result();
 
-      if (class_is_interface && !has_explicit_return) {
-        report_error(name_or_dot, "Interfaces can't have constructors");
+      if (!has_explicit_return) {
+        if (class_is_interface) {
+          report_error(name_or_dot, "Interfaces can't have constructors");
+        } else if (holder->is_mixin()) {
+          if (method->arity() != 0) {
+            report_error(name_or_dot, "Mixins can only have default constructors");
+          }
+        }
       }
       if (has_explicit_return) {
         *kind = ir::Method::FACTORY;
