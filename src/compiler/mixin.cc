@@ -23,21 +23,22 @@
 namespace toit {
 namespace compiler {
 
-/// A visitor that finds the actual super call.
-/// The 'Super' class contains the full expression that is
-/// responsible for a super call. This could have been compiled
-/// to a sequence, if some of the arguments had to be hoisted.
-/// This visitor finds the 'CallStatic' of the constructor call.
+/// A visitor that special cases the actual super call.
+///
+/// The 'Super' node has an expression field, but that field might not
+/// contain the actual static call to the super constructor. Instead,
+/// it might have hoisted argument fields, ...
+///
+/// This visitor adds an additional `visit_static_super_call` which is
+/// called with `null` (if `Super` has no expression), or with the
+/// `CallStatic` of the actual call to the super constructor.
+///
+/// This visitor is still a replacing visitor, so all methods must
+/// return an expression that replaces the node that was given to the
+/// visit_X method.
 class SuperCallVisitor : protected ir::ReplacingVisitor {
  public:
-  explicit SuperCallVisitor(ir::Class* holder) : super_(holder->super()) {}
-
-  bool has_seen_super() const { return has_seen_super_; }
-
-  // Make `visit` public.
-  ir::Node* visit(ir::Node* node) override {
-    return ReplacingVisitor::visit(node);
-  }
+  explicit SuperCallVisitor(ir::Class* holder) : holder_(holder) {}
 
  protected:
   ir::Node* visit_Super(ir::Super* node) override {
@@ -48,6 +49,12 @@ class SuperCallVisitor : protected ir::ReplacingVisitor {
       }
       return node;
     }
+    // A super expressions must be at the top-level of the constructor. As such,
+    // they can't be nested.
+    // Also, there can only be one.
+    // These are checked in resolver-method.
+    ASSERT(!in_super_);
+    ASSERT(!has_seen_super_);
     in_super_ = true;
     auto result = ir::ReplacingVisitor::visit_Super(node);
     in_super_ = false;
@@ -56,9 +63,15 @@ class SuperCallVisitor : protected ir::ReplacingVisitor {
   }
 
   ir::Node* visit_CallStatic(ir::CallStatic* node) override {
-    if (!in_super_) return ir::ReplacingVisitor::visit_CallStatic(node);
+    if (!in_super_ || node->is_CallConstructor()) {
+      return ir::ReplacingVisitor::visit_CallStatic(node);
+    }
+    // The call-static might be an argument to the constructor.
+    // Make sure it is actually the call to the constructor.
+    // Note that other calls to constructors that intend to instantiate a new
+    // object would use `CallConstructor` (which we already checked).
     auto method = node->target()->target();
-    if (method->is_constructor() && method->holder() == super_) {
+    if (method->is_constructor() && method->holder() == holder_->super()) {
       return visit_static_super_call(node, node->range());
     }
     return ir::ReplacingVisitor::visit_CallStatic(node);
@@ -68,28 +81,78 @@ class SuperCallVisitor : protected ir::ReplacingVisitor {
   virtual ir::Node* visit_static_super_call(ir::CallStatic* node, const Source::Range& range) = 0;
 
  private:
-  ir::Class* super_;
+  ir::Class* const holder_;
   bool in_super_ = false;
+  // This boolean only tracks whether we have seen the `Super` node; not the actual static call.
   bool has_seen_super_ = false;
 };
 
+/// Changes mixin constructors so they take a block and then call the
+/// block instead of calling their super.
+/// During the construction all field accesses are replaced with
+/// local variable accesses.
+/// The block receives the values of these fields, so that the caller can
+/// initialize the actual fields correctly.
+/// Example:
+/// Given:
+///        mixin M1:
+///          field1 := 499
+///
+///          constructor:
+///            print 1
+///            super
+///            print 2
+///
+/// Will be changed to:
+///        mixin M1:
+///          field1  // Not relevant anymore.
+///          constructor <implicit-this> [super-next]:
+///            local-field1 := 499
+///            print 1
+///            super-next.call implicit-this local-field1
+///            print 2
 class MixinConstructorVisitor : protected SuperCallVisitor {
  public:
   MixinConstructorVisitor(ir::Class* holder, List<ir::Field*> fields)
       : SuperCallVisitor(holder)
       , fields_(fields) {}
 
-  bool has_seen_super() const { return has_seen_super_; }
+  bool has_seen_static_super() const { return has_seen_static_super_; }
 
   // Make `visit` public.
-  ir::Node* visit(ir::Node* node) override {
+  ir::Node* insert_mixin_block_calls(ir::Method* node) {
     return SuperCallVisitor::visit(node);
   }
 
  protected:
+  /// Updates the constructor.
+  /// Adds an additional block argument to the parameter list.
+  /// Creates local variables that will be used instead of the fields.
   ir::Node* visit_Method(ir::Method* node) override {
     ASSERT(node->is_constructor());
+    ASSERT(node->parameters().length() == 1 && node->parameters()[0]->index() == 0);
+
+    // Add an additional parameter to the constructor.
+    // The given block will be called instead of the original static super call.
+    bool is_block, default_value;
+    int block_index;
+    this_ = node->parameters()[0];
+    next_super_ = _new ir::Parameter(Symbol::synthetic("<next-super>"),
+                                     ir::Type::any(),
+                                     is_block=true,
+                                     block_index=1,
+                                     default_value=false,
+                                     node->range());
+    auto new_parameters = ListBuilder<ir::Parameter*>::allocate(2);
+    new_parameters[0] = this_;
+    new_parameters[1] = next_super_;
+    node->replace_parameters(new_parameters);
+    PlainShape shape(CallShape(2, 1));  // Two arguments, of which one is a block.
+    node->set_plain_shape(shape);
+
     if (!fields_.is_empty()) {
+      // For each field create a local variable that we can then pass to the additional
+      // block.
       ListBuilder<ir::Expression*> new_body;
       for (auto field : fields_) {
         auto range = field->range();
@@ -107,25 +170,11 @@ class MixinConstructorVisitor : protected SuperCallVisitor {
       new_body.add(node->body());
       node->replace_body(_new ir::Sequence(new_body.build(), node->range()));
     }
-    ASSERT(node->parameters().length() == 1 && node->parameters()[0]->index() == 0);
-    bool is_block, default_value;
-    int block_index = 1;
-    this_ = node->parameters()[0];
-    next_super_ = _new ir::Parameter(Symbol::synthetic("<next-super>"),
-                                     ir::Type::any(),
-                                     is_block=true,
-                                     block_index,
-                                     default_value=false,
-                                     node->range());
-    auto new_parameters = ListBuilder<ir::Parameter*>::allocate(2);
-    new_parameters[0] = this_;
-    new_parameters[1] = next_super_;
-    node->replace_parameters(new_parameters);
-    PlainShape shape(CallShape(2, 1));  // Two arguments, of which one is a block.
-    node->set_plain_shape(shape);
     return SuperCallVisitor::visit_Method(node);
   }
 
+  /// Keeps track of how deep we are for field accesses.
+  /// We need this when we replace field accesses with accesses to the local variable.
   ir::Node* visit_Code(ir::Code* node) override {
     if (node->is_block()) block_depth_++;
     auto result = SuperCallVisitor::visit_Code(node);
@@ -133,6 +182,7 @@ class MixinConstructorVisitor : protected SuperCallVisitor {
     return result;
   }
 
+  /// Replaces the static super call with a call to the block.
   ir::Node* visit_static_super_call(ir::CallStatic* node, const Source::Range& range) override {
     ASSERT(node == null || node->arguments().length() == 1);
     auto block_ref = _new ir::ReferenceLocal(next_super_, block_depth_, range);
@@ -146,19 +196,21 @@ class MixinConstructorVisitor : protected SuperCallVisitor {
     bool is_setter;
     auto shape = CallShape(arity, 0, List<Symbol>(), 0, is_setter=false).with_implicit_this();
     auto block_call = _new ir::CallBlock(block_ref, shape, arguments, range);
-    has_seen_super_ = true;
+    has_seen_static_super_ = true;
     return SuperCallVisitor::visit(block_call);
   }
 
+  /// Field accesses are replaced with local variable accesses.
   ir::Node* visit_FieldLoad(ir::FieldLoad* node) override {
     ASSERT(field_to_local_.contains_key(node->field()));
-    ASSERT(!has_seen_super_);
+    ASSERT(!has_seen_static_super_);
     return _new ir::ReferenceLocal(field_to_local_.at(node->field()), block_depth_, node->range());
   }
 
+  /// Field accesses are replaced with local variable accesses.
   ir::Node* visit_FieldStore(ir::FieldStore* node) override {
     ASSERT(field_to_local_.contains_key(node->field()));
-    ASSERT(!has_seen_super_);
+    ASSERT(!has_seen_static_super_);
     auto result = _new ir::AssignmentLocal(field_to_local_.at(node->field()),
                                            block_depth_,
                                            node->value(),
@@ -172,7 +224,7 @@ class MixinConstructorVisitor : protected SuperCallVisitor {
   ir::Parameter* next_super_ = null;
   List<ir::Field*> fields_;
   Map<ir::Field*, ir::Local*> field_to_local_;
-  bool has_seen_super_ = false;
+  bool has_seen_static_super_ = false;
 };
 
 /// Changes the mixin constructor so it takes a block as argument.
@@ -184,8 +236,8 @@ static void modify_mixin_constructor(ir::Class* mixin) {
   ASSERT(mixin->constructors()[0]->parameters().length() == 1);  // The object but no other parameter.
   auto constructor = mixin->constructors()[0];
   MixinConstructorVisitor visitor(mixin, mixin->fields());
-  visitor.visit(constructor);
-  ASSERT(visitor.has_seen_super());
+  visitor.insert_mixin_block_calls(constructor);
+  ASSERT(visitor.has_seen_static_super());
 }
 
 static List<ir::Parameter*> duplicate_parameters(List<ir::Parameter*> parameters) {
@@ -202,7 +254,7 @@ static List<ir::Parameter*> duplicate_parameters(List<ir::Parameter*> parameters
   return result;
 }
 
-// Applies the mixins by adding addition stub methods.
+// Applies the mixins by adding stub methods.
 // Also adds fields.
 // Returns a map from mixin-field to new-field (where 'new-field' is
 // the newly added field in the given class).
@@ -252,9 +304,14 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
       ASSERT(original_parameters.length() == arity);
       auto stub_parameters = duplicate_parameters(original_parameters);
       ir::MethodInstance* stub;
+      ir::Expression* body;
 
-      if (method->is_FieldStub()) {
-        // Copy of what's happening in `resolver_method`.
+      if (method->is_FieldStub() &&
+          (method->as_FieldStub()->is_getter() ||
+          // If this is the setter for a final field we just forward the call.
+          // That's easier than recreating the 'throw' again.
+           !method->as_FieldStub()->field()->is_final())) {
+        // Mostly a copy of what's happening in `resolver_method`.
         auto range = method->range();
         auto field_stub = method->as_FieldStub();
         auto probe = field_map.find(field_stub->field());
@@ -266,7 +323,6 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
                                                            range);
         new_field_stub->set_plain_shape(shape);
         auto this_ref = _new ir::ReferenceLocal(stub_parameters[0], 0, range);
-        ir::Sequence* body;
         if (field_stub->is_getter()) {
           ASSERT(stub_parameters.length() == 1);
           auto load = _new ir::FieldLoad(this_ref, new_field, range);
@@ -292,12 +348,9 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
             body = _new ir::Sequence(ListBuilder<ir::Expression*>::build(check, ret), range);
           }
         }
-        new_field_stub->set_parameters(stub_parameters);
-        new_field_stub->set_body(body);
-        new_field_stub->set_return_type(method->return_type());
         stub = new_field_stub;
       } else if (method->is_IsInterfaceOrMixinStub()) {
-        // We copy over the method (used to know if a class is an interface or mixin).
+        // We copy over the method (used to determine if a class is an interface or mixin).
         // The body will not be compiled, so it's not important what we put in there.
         auto is_stub = method->as_IsInterfaceOrMixinStub();
         stub = _new ir::IsInterfaceOrMixinStub(method_name,
@@ -306,9 +359,7 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
                                                is_stub->interface_or_mixin(),
                                                method->range());
 
-        stub->set_parameters(stub_parameters);
-        stub->set_body(_new ir::Return(_new ir::LiteralBoolean(true, range), false, range));
-        stub->set_return_type(method->return_type());
+        body = _new ir::Return(_new ir::LiteralBoolean(true, range), false, range);
       } else {
         auto forward_arguments = ListBuilder<ir::Expression*>::allocate(arity);
         for (int i = 0; i < arity; i++) {
@@ -322,10 +373,12 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
                                                 range);
 
         stub = _new ir::MixinStub(method_name, klass, shape, method->range());
-        stub->set_parameters(stub_parameters);
-        stub->set_body(_new ir::Return(forward_call, false, range));
-        stub->set_return_type(method->return_type());
+        body = _new ir::Return(forward_call, false, range);
       }
+      stub->set_parameters(stub_parameters);
+      stub->set_body(body);
+      stub->set_return_type(method->return_type());
+      if (method->does_not_return()) stub->mark_does_not_return();
       new_stubs.push_back(stub);
       existing_methods[method_name].insert(shape);
     }
@@ -348,6 +401,10 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
   return field_map;
 }
 
+/// This visitor modifies the class that mixes in other mixins.
+/// It replaces its static super call with calls to mixins. It provides a block
+/// to the mixin which is called when the next super class's constructer should be
+/// invoked.
 class ConstructorVisitor : protected SuperCallVisitor {
  public:
   ConstructorVisitor(ir::Class* holder, Map<ir::Field*, ir::Field*> field_map)
@@ -406,12 +463,12 @@ class ConstructorVisitor : protected SuperCallVisitor {
 
     ir::Expression* super_expression = original_super_expression;
     for (int i = 0; i < mixins_.length(); i++) {
-      // Parameter index 0 is reserved for the implicit block parameter.
-      int parameter_index = 1;
+      int parameter_index;
       auto this_param = _new ir::Parameter(Symbols::this_,
                                           ir::Type::any(),
                                           is_block=false,
-                                          parameter_index,
+                                          // Parameter index 0 is reserved for the implicit block parameter.
+                                          parameter_index=1,
                                           has_default_value=false,
                                           range);
       this_params[i] = this_param;
