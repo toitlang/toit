@@ -1387,11 +1387,14 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
       default_super = monitor;
     } else if (klass->is_interface()) {
       default_super = interface_top;
+    } else if (klass->is_mixin()) {
+      default_super = mixin_top;
     } else {
       default_super = top;
     }
     klass->replace_super(default_super);
     klass->replace_interfaces(List<ir::Class*>());
+    klass->replace_mixins(List<ir::Class*>());
   }
 }
 
