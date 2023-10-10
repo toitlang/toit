@@ -40,6 +40,8 @@ jobs:
         id: constants
         shell: bash
         run: |
+          echo "flaky_result=flaky-result/$RUNNER_OS-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
+          echo "flaky_result_name=flaky-result-${{ github.run_id }}-${{ github.run_attempt }}" >> $GITHUB_OUTPUT
           echo "external_result=external-result/$RUNNER_OS-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
           echo "external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }}" >> $GITHUB_OUTPUT
           echo "debug_root_dir=debug-ci" >> $GITHUB_OUTPUT
@@ -201,6 +203,15 @@ jobs:
           make test
           make test-health
 
+      - name: Test flaky
+        continue-on-error: true
+        shell: bash # This is crucial, as the powershell doesn't abort when there is an error.
+        run: |
+          echo fail > ${{ steps.constants.outputs.flaky_result }}
+          make test-flaky
+          # If we reach here, then the test-flaky target succeeded.
+          echo success > ${{ steps.constants.outputs.flaky_result }}
+
       - name: Test type propagator
         if: runner.os == 'Linux'
         run: |
@@ -243,6 +254,12 @@ jobs:
           fi
           # If we reach here, all steps of this step succeeded.
           echo success > ${{ steps.constants.outputs.external_result }}
+
+      - name: Store flaky test result
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.constants.outputs.flaky_result_name }}
+          path: ${{ steps.constants.outputs.flaky_result }}
 
       - name: Store external test result
         uses: actions/upload-artifact@v3
@@ -893,7 +910,7 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
 
-  external:
+  external-and-flaky:
     needs: build
 
     runs-on: ubuntu-latest
@@ -903,8 +920,16 @@ jobs:
         id: constants
         shell: bash
         run: |
+          echo flaky_result_dir=flaky-result >> $GITHUB_OUTPUT
+          echo flaky_result_name=flaky-result-${{ github.run_id }}-${{ github.run_attempt }} >> $GITHUB_OUTPUT
           echo external_result_dir=external-result >> $GITHUB_OUTPUT
           echo external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }} >> $GITHUB_OUTPUT
+
+      - name: Retrieve
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ steps.constants.outputs.flaky_result_name }}
+          path: flaky-result
 
       - name: Retrieve
         uses: actions/download-artifact@v3
@@ -918,6 +943,8 @@ jobs:
           find .
           cat external-result/*
           ! grep "fail" external-result/*
+          cat flaky-result/*
+          ! grep "fail" flaky-result/*
 
   AUR:
     name: Update AUR package

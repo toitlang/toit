@@ -43,19 +43,26 @@ set(TEST_SHARD_STRIDE "$ENV{SHARD_STRIDE}")
 
 add_custom_target(
   check
-  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} --label-exclude "flaky" -T test --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
   USES_TERMINAL
   DEPENDS build_tools
   )
 
 add_custom_target(
   check_slow
-  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C slow --output-on-failure  -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} --label-exclude "flaky" -T test -C slow --output-on-failure  -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
   USES_TERMINAL
   DEPENDS build_tools
   )
 
-include(fail.cmake)
+add_custom_target(
+  check_flaky
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} --label-regex "flaky" -T test -C slow --output-on-failure  -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
+  USES_TERMINAL
+  DEPENDS build_tools
+  )
+
+include(fail.cmake OPTIONAL)
 
 foreach(file ${ALL_TESTS})
   if("${file}" IN_LIST TOIT_SKIP_TESTS)
@@ -98,6 +105,9 @@ foreach(file ${ALL_TESTS})
   endif()
   if("${file}" IN_LIST TOIT_FAILING_TESTS)
     set_tests_properties(${file} PROPERTIES WILL_FAIL TRUE)
+  endif()
+  if("${file}" IN_LIST TOIT_FLAKY_TESTS)
+    set_tests_properties(${file} PROPERTIES LABELS "flaky")
   endif()
 endforeach()
 
