@@ -95,7 +95,11 @@ List<const char*> FilesystemLocal::package_cache_paths() {
     has_computed_cache_paths_ = true;
     char* cache_paths = getenv("TOIT_PACKAGE_CACHE_PATHS");
     if (cache_paths != null) {
-      package_cache_paths_ = string_split(strdup(cache_paths), ":");
+      const char* separator = ":";
+      if (strcmp(OS::get_platform(), "Windows") == 0) {
+        separator = ";";
+      }
+      package_cache_paths_ = string_split(strdup(cache_paths), separator);
     } else {
       char* home_path;
       if (strcmp(OS::get_platform(), "Windows") == 0) {
