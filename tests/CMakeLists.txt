@@ -62,6 +62,15 @@ add_custom_target(
   DEPENDS build_tools
   )
 
+# Create 15 flaky dummy tests, so that the strides mechanism works.
+foreach(i RANGE 15)
+  add_test(
+    NAME "flaky_dummy_${i}"
+    COMMAND ${CMAKE_COMMAND} -E echo "Flaky dummy test ${i}"
+    )
+  set_tests_properties("flaky_dummy_${i}" PROPERTIES LABELS "flaky")
+endforeach()
+
 include(fail.cmake OPTIONAL)
 
 foreach(file ${ALL_TESTS})
