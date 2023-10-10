@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import .confuse
 
 counter := 0
 
@@ -14,9 +15,6 @@ class A:
 class B:
   operator == other -> bool:
     throw "Unreachable since only called with null."
-
-confuse x:
-  return x
 
 class C:
   x := 0

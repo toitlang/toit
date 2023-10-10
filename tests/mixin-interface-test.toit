@@ -4,6 +4,8 @@
 
 import expect show *
 
+import .confuse
+
 interface I1:
 interface I2:
 interface I3:
@@ -28,8 +30,6 @@ mixin MixE implements I5:
 class ClassA extends Object with MixD MixE:
 
 class ClassB extends Object with MixD:
-
-confuse x -> any: return x
 
 main:
   a := ClassA

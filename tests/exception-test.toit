@@ -4,6 +4,8 @@
 
 import expect show *
 
+import .confuse
+
 expect_ name [code]:
   expect-equals
     name
@@ -42,8 +44,6 @@ expect-allocation-size-exceeded [code]:
 
 expect-negative-argument [code]:
   expect_ "NEGATIVE_ARGUMENT" code
-
-confuse x -> any: return x
 
 class TheOther:
 

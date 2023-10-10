@@ -4,6 +4,8 @@
 
 import expect show *
 
+import .confuse
+
 class A:
   foo: return 1
 
@@ -17,8 +19,6 @@ class C extends B:
 class D extends C:
   foo:
     return 33
-
-confuse x: return x
 
 main:
   c := confuse C

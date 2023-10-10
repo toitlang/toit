@@ -4,7 +4,7 @@
 
 import expect show *
 
-confuse x: return x
+import .confuse
 
 create-array x: return Array_ 1: x
 create-array x y:
