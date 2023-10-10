@@ -251,7 +251,7 @@ enum Precedence {
   I(_)                                                                   \
   IN(debug_string, "debug-string")                                       \
   IN(dispatch_debug_string, "dispatch-debug-string")                     \
-  IN(run_global_initializer_, "run-global-initializer_")                 \
+  IN(run_global_initializer__, "run-global-initializer__")               \
   I(from)                                                                \
   I(to)                                                                  \
   IN(enum_, "enum")                                                      \

@@ -12,3 +12,6 @@ main:
   __protected-global-getter-setter_ += 4
   Protected_.__
   Protected_.__named
+
+  Lambda.__ 499 1
+  LazyInitializer_.__ 42
