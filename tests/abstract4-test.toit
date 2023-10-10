@@ -22,9 +22,9 @@ confuse x: return x
 
 main:
   c := confuse C
-  expect_equals 1 c.foo
-  expect_equals 1 (c.foo 1)
+  expect-equals 1 c.foo
+  expect-equals 1 (c.foo 1)
 
   d := confuse D
-  expect_equals 33 d.foo
-  expect_equals 1 (d.foo 1)
+  expect-equals 33 d.foo
+  expect-equals 1 (d.foo 1)

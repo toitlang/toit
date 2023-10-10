@@ -92,7 +92,7 @@ main:
     "in block a",
     499,
   ]
-  expect_equals expected events
+  expect-equals expected events
 
   expect a is MixA
   expect a is MixB
@@ -100,11 +100,11 @@ main:
   expect a is MixD
   expect a is MixE
 
-  expect_equals "A" a.fieldA.x
-  expect_equals "B1" a.fieldB1.x
-  expect_equals "B2" a.fieldB2.x
-  expect_equals "C" a.fieldC.x
-  expect_equals "D1" a.fieldD1.x
-  expect_equals "D2" a.fieldD2.x
-  expect_equals "D3" a.fieldD3.x
-  expect_equals "E" a.fieldE.x
+  expect-equals "A" a.fieldA.x
+  expect-equals "B1" a.fieldB1.x
+  expect-equals "B2" a.fieldB2.x
+  expect-equals "C" a.fieldC.x
+  expect-equals "D1" a.fieldD1.x
+  expect-equals "D2" a.fieldD2.x
+  expect-equals "D3" a.fieldD3.x
+  expect-equals "E" a.fieldE.x

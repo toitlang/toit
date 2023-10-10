@@ -14,7 +14,7 @@ abstract mixin MixC extends MixB:
   abstract c-method -> int
 
 class ClassA extends Object with MixC:
-  c_method: return 43
+  c-method: return 43
 
   check-this-calls:
     expect-equals 41 a-method
@@ -25,10 +25,10 @@ abstract mixin MixForMixin:
   abstract e-method -> int
 
 mixin MixD extends MixA with MixForMixin:
-  e_method: return 499
+  e-method: return 499
 
 class ClassB extends Object with MixD:
-  c_method: return 42
+  c-method: return 42
 
   check-this-calls:
     expect-equals 41 a-method

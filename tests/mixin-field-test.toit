@@ -90,10 +90,10 @@ do-test a-or-sub-a/ClassA -> Map:
   untyped/any := a-or-sub-a
   expect-throw "AS_CHECK_FAILED": untyped.field-A = true
   untyped.field-A2 = true
-  expect_equals true untyped.field-A2
+  expect-equals true untyped.field-A2
   expect-throw "AS_CHECK_FAILED": untyped.field-B = true
   untyped.field-B2 = true
-  expect_equals true untyped.field-B2
+  expect-equals true untyped.field-B2
 
   return {
     "field-A": a-or-sub-a.field-A,
@@ -111,15 +111,15 @@ main:
 
   values := do-test a
   // Check that a static resolution also works.
-  expect_equals values["field-A"] a.field-A
-  expect_equals values["field-A2"] a.field-A2
-  expect_equals values["field-B"] a.field-B
-  expect_equals values["field-B2"] a.field-B2
-  expect_equals values["field-classA"] a.field-classA
+  expect-equals values["field-A"] a.field-A
+  expect-equals values["field-A2"] a.field-A2
+  expect-equals values["field-B"] a.field-B
+  expect-equals values["field-B2"] a.field-B2
+  expect-equals values["field-classA"] a.field-classA
 
   values = do-test sub-a
-  expect_equals values["field-A"] sub-a.field-A
-  expect_equals values["field-A2"] sub-a.field-A2
-  expect_equals values["field-B"] sub-a.field-B
-  expect_equals values["field-B2"] sub-a.field-B2
-  expect_equals values["field-classA"] sub-a.field-classA
+  expect-equals values["field-A"] sub-a.field-A
+  expect-equals values["field-A2"] sub-a.field-A2
+  expect-equals values["field-B"] sub-a.field-B
+  expect-equals values["field-B2"] sub-a.field-B2
+  expect-equals values["field-classA"] sub-a.field-classA

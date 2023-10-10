@@ -67,8 +67,8 @@ test-background-state-changed:
         expect-equals containers.Container.EVENT-BACKGROUND-STATE-CHANGE event-id
         channel.send value
 
-  expect_equals true channel.receive
-  expect_equals false channel.receive
+  expect-equals true channel.receive
+  expect-equals false channel.receive
 
 main-child arguments/Map:
   if arguments.contains "background-state-test":

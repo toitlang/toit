@@ -5,31 +5,31 @@
 import expect show *
 
 mixin MixA:
-  a_method: return 41
+  a-method: return 41
 
 mixin MixB extends MixA:
-  b_method: return 42
+  b-method: return 42
 
 abstract mixin MixC extends MixB:
-  abstract c_method -> int
+  abstract c-method -> int
 
 class ClassA extends Object with MixC:
-  c_method: return 43
+  c-method: return 43
 
 class SubClassA extends ClassA:
-  c_method: return 44
+  c-method: return 44
 
 abstract mixin MixForMixin:
-  abstract e_method -> int
+  abstract e-method -> int
 
 mixin MixD extends MixA with MixForMixin:
-  e_method: return 499
+  e-method: return 499
 
 class ClassB extends Object with MixD:
-  c_method: return 44
+  c-method: return 44
 
 class SubClassB extends ClassB:
-  c_method: return 45
+  c-method: return 45
 
 confuse x -> any: return x
 
@@ -39,38 +39,38 @@ main:
   b := ClassB
   sub-b := SubClassB
 
-  expect-equals 41 a.a_method
-  expect-equals 42 a.b_method
-  expect-equals 43 a.c_method
+  expect-equals 41 a.a-method
+  expect-equals 42 a.b-method
+  expect-equals 43 a.c-method
 
-  expect-equals 41 sub-a.a_method
-  expect-equals 42 sub-a.b_method
-  expect-equals 44 sub-a.c_method
+  expect-equals 41 sub-a.a-method
+  expect-equals 42 sub-a.b-method
+  expect-equals 44 sub-a.c-method
 
-  expect-equals 41 b.a_method
-  expect-equals 44 b.c_method
-  expect-equals 499 b.e_method
+  expect-equals 41 b.a-method
+  expect-equals 44 b.c-method
+  expect-equals 499 b.e-method
 
-  expect-equals 41 sub-b.a_method
-  expect-equals 45 sub-b.c_method
-  expect-equals 499 sub-b.e_method
+  expect-equals 41 sub-b.a-method
+  expect-equals 45 sub-b.c-method
+  expect-equals 499 sub-b.e-method
 
   confused := confuse a
-  expect-equals 41 confused.a_method
-  expect-equals 42 confused.b_method
-  expect-equals 43 confused.c_method
+  expect-equals 41 confused.a-method
+  expect-equals 42 confused.b-method
+  expect-equals 43 confused.c-method
 
   confused = confuse sub-a
-  expect-equals 41 confused.a_method
-  expect-equals 42 confused.b_method
-  expect-equals 44 confused.c_method
+  expect-equals 41 confused.a-method
+  expect-equals 42 confused.b-method
+  expect-equals 44 confused.c-method
 
   confused = confuse b
-  expect-equals 41 confused.a_method
-  expect-equals 44 confused.c_method
-  expect-equals 499 confused.e_method
+  expect-equals 41 confused.a-method
+  expect-equals 44 confused.c-method
+  expect-equals 499 confused.e-method
 
   confused = confuse sub-b
-  expect-equals 41 confused.a_method
-  expect-equals 45 confused.c_method
-  expect-equals 499 confused.e_method
+  expect-equals 41 confused.a-method
+  expect-equals 45 confused.c-method
+  expect-equals 499 confused.e-method

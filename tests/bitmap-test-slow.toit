@@ -659,9 +659,9 @@ bytemap-test -> none:
       + "__#_#__#__"
       + "__#_#__#__"
 
-  ALIEN_WIDTH := 10
+  ALIEN-WIDTH := 10
 
-  expect_equals 0 canvas[0]
+  expect-equals 0 canvas[0]
 
   bytemap-zap canvas ' '  // Set background to test transparency.
 
@@ -672,7 +672,7 @@ bytemap-test -> none:
       -1   // No transparency.
       0    // No rotation.
       alien
-      ALIEN_WIDTH
+      ALIEN-WIDTH
       #[]  // No palette.
       canvas
       W
@@ -686,7 +686,7 @@ bytemap-test -> none:
       -1   // No transparency.
       2    // 180 degrees.
       alien
-      ALIEN_WIDTH
+      ALIEN-WIDTH
       #[]  // No palette.
       canvas
       W
@@ -696,7 +696,7 @@ bytemap-test -> none:
       '_'  // Underscore is transparent.
       0    // No rotation.
       alien
-      ALIEN_WIDTH
+      ALIEN-WIDTH
       #[]  // No palette.
       canvas
       W
@@ -715,7 +715,7 @@ bytemap-test -> none:
       '_'  // Underscore is transparent.
       1    // 90 degrees anticlockwise.
       alien
-      ALIEN_WIDTH
+      ALIEN-WIDTH
       PALETTE
       canvas
       W
@@ -725,7 +725,7 @@ bytemap-test -> none:
       '_'  // Underscore is transparent.
       2    // 180 degrees.
       alien
-      ALIEN_WIDTH
+      ALIEN-WIDTH
       #[]  // No palette.
       canvas
       W
@@ -738,7 +738,7 @@ bytemap-test -> none:
       ALPHA
       3    // 270 degrees anticlockwise.
       alien
-      ALIEN_WIDTH
+      ALIEN-WIDTH
       #[]  // No palette.
       canvas
       W
@@ -771,4 +771,4 @@ bytemap-test -> none:
       01234567890123456789012345678901234567896
       """
 
-  expect_equals EXPECTED canvas.to_string
+  expect-equals EXPECTED canvas.to-string
