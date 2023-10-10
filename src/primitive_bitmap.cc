@@ -1145,12 +1145,16 @@ PRIMITIVE(composit) {
         if (frame_factor == 0xff) {
           mix = frame_pixels[i];
         } else if (frame_factor == 0) {
+          if (painting_factor == 0) {
+            // No painting and no frame, so just leave the background.
+            continue;
+          }
           mix = dest_address[i];
         } else {
-          mix = (frame_pixels[i] * frame_factor + dest_address[i] * (255 - frame_factor)) >> 8;
+          mix = (frame_pixels[i] * frame_factor + dest_address[i] * (256 - frame_factor)) >> 8;
         }
         // Now mix shaded background with window area.
-        dest_address[i] = (painting_pixels[i] * painting_factor + mix * (255 - painting_factor)) >> 8;
+        dest_address[i] = (painting_pixels[i] * painting_factor + mix * (256 - painting_factor)) >> 8;
       }
     }
   }
