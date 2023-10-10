@@ -371,6 +371,7 @@ static Map<ir::Field*, ir::Field*> apply_mixins(ir::Class* klass) {
                                                 shape.to_equivalent_call_shape(),
                                                 forward_arguments,
                                                 range);
+        forward_call->mark_tail_call();
 
         stub = _new ir::MixinStub(method_name, klass, shape, method->range());
         body = _new ir::Return(forward_call, false, range);
