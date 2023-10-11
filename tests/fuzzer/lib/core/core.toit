@@ -71,7 +71,7 @@ create-cow-byte-array_ byte-array:
 
 identical x y:
 
-lambda_ method arguments arg-count:
+lambda__ method arguments arg-count:
 class Lambda:
 
 simple-interpolate-strings_ array:

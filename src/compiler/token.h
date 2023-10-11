@@ -165,13 +165,13 @@ enum Precedence {
   IN(__load_global_with_id__, "__load-global-with-id__")                 \
   I(Object)                                                              \
   I(Interface_)                                                          \
-  I(Mixin_)                                                    \
+  I(Mixin_)                                                              \
   I(Task_)                                                               \
   I(LargeArray_)                                                         \
   I(Class_)                                                              \
   I(Stack_)                                                              \
   I(__Monitor__)                                                         \
-  I(lambda_)                                                             \
+  I(lambda__)                                                            \
   IN(interpolate_strings_, "interpolate-strings_")                       \
   IN(simple_interpolate_strings_, "simple-interpolate-strings_")         \
   I(stringify)                                                           \

@@ -164,7 +164,7 @@ Creates a new Lambda.
 The $arguments are generally an array, except if the lambda only captures one
   argument. In that case, the captured value is passed directly.
 */
-lambda_ method arguments/any arg-count -> Lambda:
+lambda__ method arguments/any arg-count -> Lambda:
   // If the arg-count is 1, then the arguments are not wrapped.
   // If the argument is not an array, then the interpreter knows that the
   //   lambda just captured a single value.
