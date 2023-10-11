@@ -22,9 +22,9 @@ class E extends D:
 
 main:
   c := C
-  expect_equals 1 c.foo
-  expect_equals 2 (c.foo 1)
+  expect-equals 1 c.foo
+  expect-equals 2 (c.foo 1)
 
   e := E
-  expect_equals 1 e.foo
-  expect_equals 2 (e.foo 1)
+  expect-equals 1 e.foo
+  expect-equals 2 (e.foo 1)

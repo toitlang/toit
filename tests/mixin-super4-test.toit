@@ -20,7 +20,7 @@ class ClassB:
     events.add "ClassB"
     o := block.call
     if i == 0: expect o is ClassB
-    if i == 1: expect_null o
+    if i == 1: expect-null o
 
 class ClassA extends ClassB with MixA:
   constructor:
