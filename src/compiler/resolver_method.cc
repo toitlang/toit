@@ -1547,7 +1547,7 @@ ir::Expression* MethodResolver::_create_lambda(ast::Lambda* node, Symbol label) 
                                   captured_args,
                                   _new ir::LiteralInteger(arguments.length(), node->range()));
   auto shape = CallShape::for_static_call_no_named(lambda_args_list);
-  auto lambda_ = _resolve_runtime_call(Symbols::lambda_, shape);
+  auto lambda_ = _resolve_runtime_call(Symbols::lambda__, shape);
   return _new ir::Lambda(lambda_,
                          shape,
                          lambda_args_list,

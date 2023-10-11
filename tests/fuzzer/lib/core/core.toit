@@ -8,7 +8,7 @@ throw exception:
 rethrow exception trace:
 lookup-failure_ receiver selector-or-selector-offset:
 as-check-failure_ receiver id:
-run-global-initializer_ id initializer:
+run-global-initializer__ id initializer:
 program-failure_ bci:
 unreachable:
 
@@ -71,7 +71,7 @@ create-cow-byte-array_ byte-array:
 
 identical x y:
 
-lambda_ method arguments arg-count:
+lambda__ method arguments arg-count:
 class Lambda:
 
 simple-interpolate-strings_ array:

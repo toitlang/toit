@@ -164,7 +164,7 @@ Creates a new Lambda.
 The $arguments are generally an array, except if the lambda only captures one
   argument. In that case, the captured value is passed directly.
 */
-lambda_ method arguments/any arg-count -> Lambda:
+lambda__ method arguments/any arg-count -> Lambda:
   // If the arg-count is 1, then the arguments are not wrapped.
   // If the argument is not an array, then the interpreter knows that the
   //   lambda just captured a single value.
@@ -215,7 +215,7 @@ The $id-or-tasks_ can be:
 class LazyInitializer_:
   id-or-tasks_ / any := ?
 
-  constructor .id-or-tasks_:
+  constructor.__ .id-or-tasks_:
 
   call:
     assert: id-or-tasks_ is int
@@ -249,7 +249,7 @@ class LazyInitializer_:
 /**
 Runs the $initializer function for the given $global.
 */
-run-global-initializer_ global/int initializer/LazyInitializer_:
+run-global-initializer__ global/int initializer/LazyInitializer_:
   this-task := Task_.current
   while true:
     if initializer.id-or-tasks_ is not int:
@@ -276,7 +276,7 @@ run-global-initializer_ global/int initializer/LazyInitializer_:
     // We are the first to initialize this global.
     // Replace the existing initializer with an initializer with our task. Other tasks may
     // add themselves to wait for us to finish.
-    task-initializer := (LazyInitializer_ this-task)
+    task-initializer := (LazyInitializer_.__ this-task)
     __store-global-with-id__ global task-initializer
     // If the initializer fails, we store the original initializer back in
     // the global. This means that it is possible to invoke a global that throws
