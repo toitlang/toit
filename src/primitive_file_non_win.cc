@@ -165,11 +165,11 @@ PRIMITIVE(open) {
   return Smi::from(fd);
 }
 
-class LeakyDirectory {
+class Directory : public SimpleResource {
  public:
-  TAG(LeakyDirectory);
-  LeakyDirectory(DIR* dir) : dir_(dir) {}
-  ~LeakyDirectory() { closedir(dir_); }
+  TAG(Directory);
+  Directory(SimpleResourceGroup* group, DIR* dir) : SimpleResource(group), dir_(dir) {}
+  ~Directory() override { closedir(dir_); }
 
   DIR* dir() const { return dir_; }
 
@@ -177,41 +177,9 @@ class LeakyDirectory {
   DIR* dir_;
 };
 
-class Directory : public SimpleResource, public LeakyDirectory {
- public:
-  TAG(Directory);
-  Directory(SimpleResourceGroup* group, DIR* dir) : SimpleResource(group), LeakyDirectory(dir) {}
-};
-
 // Deprecated primitive that can leak memory if you forget to call close.
 PRIMITIVE(opendir) {
-  ARGS(cstring, pathname);
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) FAIL(ALLOCATION_FAILED);
-
-#ifndef TOIT_FREERTOS
-  int fd = FILE_OPEN_(current_dir(process), pathname, O_RDONLY | O_DIRECTORY);
-  if (fd < 0) return return_open_error(process, errno);
-  DIR* dir = fdopendir(fd);
-  if (dir == null) {
-    close(fd);
-    return return_open_error(process, errno);
-  }
-#else
-  DIR* dir = opendir(pathname);
-  if (dir == null) {
-    return return_open_error(process, errno);
-  }
-#endif
-
-  LeakyDirectory* directory = _new LeakyDirectory(dir);
-  if (directory == null) {
-    closedir(dir);  // Also closes fd.
-    FAIL(MALLOC_FAILED);
-  }
-
-  proxy->set_external_address(directory);
-  return proxy;
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(opendir2) {
@@ -244,18 +212,7 @@ PRIMITIVE(opendir2) {
 }
 
 PRIMITIVE(readdir) {
-  ARGS(ByteArray, directory_proxy);
-
-  if (!directory_proxy->has_external_address()) FAIL(WRONG_OBJECT_TYPE);
-
-  LeakyDirectory* directory;
-  if (directory_proxy->external_tag() == Directory::tag_min) {
-    directory = directory_proxy->as_external<Directory>();
-  } else if (directory_proxy->external_tag() == LeakyDirectory::tag_min) {
-    directory = directory_proxy->as_external<LeakyDirectory>();
-  } else {
-    FAIL(WRONG_OBJECT_TYPE);
-  }
+  ARGS(Directory, directory);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy(true);
   if (proxy == null) {
@@ -299,23 +256,10 @@ PRIMITIVE(readdir) {
 }
 
 PRIMITIVE(closedir) {
-  ARGS(ByteArray, proxy);
+  ARGS(Directory, directory);
 
-  if (!proxy->has_external_address()) FAIL(WRONG_OBJECT_TYPE);
-
-  if (proxy->external_tag() == Directory::tag_min) {
-    Directory* directory = proxy->as_external<Directory>();
-    if (directory != null) {
-      directory->resource_group()->unregister_resource(directory);
-    }
-  } else if (proxy->external_tag() == LeakyDirectory::tag_min) {
-    LeakyDirectory* directory = proxy->as_external<LeakyDirectory>();
-    delete directory;
-  } else {
-    FAIL(WRONG_OBJECT_TYPE);
-  }
-
-  proxy->clear_external_address();
+  directory->resource_group()->unregister_resource(directory);
+  directory_proxy->clear_external_address();
   return process->null_object();
 }
 
