@@ -215,9 +215,7 @@ PRIMITIVE(readdir) {
   ARGS(Directory, directory);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy(true);
-  if (proxy == null) {
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   const int MAX_VFAT = 260;  // Max filename length.
   AllocationManager allocation(process);

@@ -230,6 +230,7 @@ PRIMITIVE(zlib_init_inflate) {
 #else
   ARGS(SimpleResourceGroup, group);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
   Zlib* zlib = _new Zlib(group);
   if (!zlib) FAIL(MALLOC_FAILED);
   int result = zlib->init_inflate();
