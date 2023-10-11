@@ -38,10 +38,10 @@ class E extends Object with M5:
 
 main:
   a := A
-  expect_equals 3 (a.foo 1 2)
+  expect-equals 3 (a.foo 1 2)
   c := C
-  expect_equals 6 c.foo
+  expect-equals 6 c.foo
   d := D
-  expect_equals 42 (d.foo 42)
+  expect-equals 42 (d.foo 42)
   e := E
-  expect_equals 42 (e.foo 42)
+  expect-equals 42 (e.foo 42)

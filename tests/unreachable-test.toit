@@ -4,12 +4,12 @@
 
 import expect show *
 
+import .confuse
+
 foo -> int:
   while confuse true:
     return 499
   unreachable
-
-confuse x -> any: return x
 
 main:
   expect-equals 499 foo

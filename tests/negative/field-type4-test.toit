@@ -3,10 +3,10 @@
 // be found in the tests/LICENSE file.
 // TEST_FLAGS: --force
 
+import ..confuse
+
 class A:
   x / string := null
-
-confuse x: return x
 
 main:
   a := A

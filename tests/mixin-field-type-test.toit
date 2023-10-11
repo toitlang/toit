@@ -4,12 +4,12 @@
 
 import expect show *
 
+import .confuse
+
 mixin MixA:
   field-A/int := 499
 
 class ClassA extends Object with MixA:
-
-confuse x -> any: return x
 
 main:
   a := ClassA

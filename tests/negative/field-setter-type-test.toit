@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import ..confuse
+
 class A:
 class B extends A:
   foo: return 499
@@ -18,8 +20,6 @@ test2 c /C -> B:
 test3 c /C -> string:
   // No warning for the return type, but a warning for the field assignment.
   return c.field = "str"
-
-confuse x: return x
 
 main:
   c := C

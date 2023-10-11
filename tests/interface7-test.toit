@@ -4,6 +4,8 @@
 
 import expect show *
 
+import .confuse
+
 interface I1:
 interface I2:
 interface I3:
@@ -20,8 +22,6 @@ expect-I1 o/I1:
 expect-I2 o/I2:
 expect-I3 o/I3:
 expect-I4 o/I4:
-
-confuse x -> any: return x
 
 main:
   a := A

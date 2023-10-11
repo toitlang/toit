@@ -4,6 +4,8 @@
 
 import expect show *
 
+import .confuse
+
 expect-throws name [code]:
   expect-equals
     name
@@ -22,8 +24,6 @@ class A:
 
 class B:
   bar := 499
-
-confuse x -> any: return x
 
 as-B x -> B: return x
 
