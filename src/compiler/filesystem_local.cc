@@ -90,23 +90,20 @@ const char* FilesystemLocal::sdk_path() {
   return sdk_path_;
 }
 
-static bool is_windows() {
-  return strcmp(OS::get_platform(), "Windows") == 0;
-}
-
 List<const char*> FilesystemLocal::package_cache_paths() {
   if (!has_computed_cache_paths_) {
+    bool is_windows = strcmp(OS::get_platform(), "Windows") == 0;
     has_computed_cache_paths_ = true;
     char* cache_paths = getenv("TOIT_PACKAGE_CACHE_PATHS");
     if (cache_paths != null) {
       const char* separator = ":";
-      if (is_windows()) {
+      if (is_windows) {
         separator = ";";
       }
       package_cache_paths_ = string_split(strdup(cache_paths), separator);
     } else {
       char* home_path;
-      if (is_windows()) {
+      if (is_windows) {
         home_path = getenv("USERPROFILE");
       } else {
         home_path = getenv("HOME");
