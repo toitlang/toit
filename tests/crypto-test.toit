@@ -21,6 +21,8 @@ import binary show BIG-ENDIAN
 import encoding.hex
 import encoding.base64
 
+import .confuse
+
 expect name [code]:
   expect-equals
     name
@@ -46,8 +48,6 @@ expect-equal-arrays a b:
   expect-equals a.size b.size
   a.size.repeat:
     expect-equals a[it] b[it]
-
-confuse x -> any: return x
 
 main:
   hex-test

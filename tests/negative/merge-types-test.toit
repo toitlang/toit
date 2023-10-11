@@ -3,7 +3,8 @@
 // be found in the tests/LICENSE file.
 // TEST_FLAGS: --force
 
-confuse x -> any: return x
+import ..confuse
+
 main:
   x := (confuse true) ? 1 : 0
   x.foo

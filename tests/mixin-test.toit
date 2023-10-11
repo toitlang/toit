@@ -4,6 +4,8 @@
 
 import expect show *
 
+import .confuse
+
 mixin MixA:
   a-method: return 41
 
@@ -30,8 +32,6 @@ class ClassB extends Object with MixD:
 
 class SubClassB extends ClassB:
   c-method: return 45
-
-confuse x -> any: return x
 
 main:
   a := ClassA
