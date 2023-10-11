@@ -396,8 +396,8 @@ class DnsClient:
     // We won't cache more than a day, even if the TTL is very high.  (In
     // practice TTLs over one hour are rare.)
     ttl = min ttl (3600 * 24)
-    // Ignore negative TTLs.
-    ttl = max 0 ttl
+    // Ignore negative TTLs and very short TTLs.
+    ttl = max 10 ttl
 
     if answers.size > 0 and ttl > 0:
       trim-cache cache_ expected-type
