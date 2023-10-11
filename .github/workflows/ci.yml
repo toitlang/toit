@@ -896,7 +896,8 @@ jobs:
             toit-windows-x64-installer.exe
 
       - name: Upload release artifacts
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' &&
+            github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -905,7 +906,8 @@ jobs:
           overwrite: true
 
       - name: Upload release installer
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' &&
+            github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -953,9 +955,9 @@ jobs:
     name: Update AUR package
     runs-on: ubuntu-latest
     needs: [build]
-    # While we are developing Toit 2.0.0 alpha we want to publish prereleases as well.
-    # if: github.event_name == 'release' && !github.event.release.prerelease
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' &&
+        !github.event.release.prerelease &&
+        github.repository_owner == 'toitlang'
     steps:
       # This shouldn't be necessary, but the archlinux-package-action
       # doesn't work without it.
