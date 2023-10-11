@@ -1488,7 +1488,7 @@ PRIMITIVE(connect) {
   memcpy_reverse(addr.val, address.address() + 1, 6);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) FAIL(ALLOCATION_FAILED);
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto device = _new BleRemoteDeviceResource(central_manager->group(), secure_connection);
   if (!device) FAIL(MALLOC_FAILED);

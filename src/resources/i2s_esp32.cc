@@ -105,9 +105,7 @@ MODULE_IMPLEMENTATION(i2s, MODULE_I2S);
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   I2sResourceGroup* i2s = _new I2sResourceGroup(process, EventQueueEventSource::instance());
   if (!i2s) {

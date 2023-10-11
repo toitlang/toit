@@ -237,9 +237,7 @@ PRIMITIVE(readdir) {
   if (directory->done()) return process->null_object();
 
   ByteArray* proxy = process->object_heap()->allocate_proxy(true);
-  if (proxy == null) {
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   const wchar_t* utf_16 = directory->find_file_data()->cFileName;
   size_t utf_16_len = wcslen(utf_16);

@@ -613,9 +613,8 @@ MODULE_IMPLEMENTATION(uart, MODULE_UART)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
   UartResourceGroup* uart = _new UartResourceGroup(process, EventQueueEventSource::instance());
   if (!uart) FAIL(MALLOC_FAILED);
 
@@ -776,9 +775,7 @@ PRIMITIVE(create) {
   init.port = port;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   init.queue = xQueueCreate(UART_QUEUE_SIZE, sizeof(uart_event_types_t));
   if (!init.queue) {
