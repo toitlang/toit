@@ -235,11 +235,12 @@ PRIMITIVE(readdir) {
   int len = strlen(entry->d_name);
 
   if (len <= MAX_VFAT) {
-    memcpy(backing, reinterpret_cast<const uint8*>(entry->d_name), len);
-    process->register_external_allocation(len);
-    proxy->set_external_address(len, backing);
-    proxy->resize_external(process, len);
+    // Take ownership of the entire allocated backing array.
     allocation.keep_result();
+    proxy->set_external_address(MAX_VFAT, backing);
+    // Copy the name into the backing array and resize it.
+    memcpy(backing, reinterpret_cast<const uint8*>(entry->d_name), len);
+    proxy->resize_external(process, len);
     return proxy;
   } else {
 #ifdef TOIT_FREERTOS
