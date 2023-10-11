@@ -23,7 +23,7 @@ check-1 program method:
   method.do-bytecodes: |bytecode bci|
     if bytecode.name == "INVOKE_STATIC":
       target := target-of-invoke-static program method bci
-      expect-equals "lambda_" target.name
+      expect-equals "lambda__" target.name
 
 main args:
   fold-test-path := directory.realpath "$directory.cwd/../lambda6-test.toit"
