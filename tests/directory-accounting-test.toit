@@ -6,16 +6,17 @@ import host.directory
 import expect show *
 
 main:
-  stats := process-stats --gc=true
+  stats := process-stats --gc
   base := stats[STATS-INDEX-ALLOCATED-MEMORY]
   10.repeat:
-    stats2 := process-stats --gc=true
-    print "Object heap $stats2[STATS-INDEX-ALLOCATED-MEMORY] bytes on heap."
-    expect:
-      stats2[STATS-INDEX-ALLOCATED-MEMORY] - base <= 64 * 1024
+    stats2 := process-stats --gc
+    expect
+        stats2[STATS-INDEX-ALLOCATED-MEMORY] - base <= 64 * 1024
+    dir := null
     catch:
       // If there is no directory with this name, silently let the test pass.
-      dir := directory.DirectoryStream "/usr/bin"
+      dir = directory.DirectoryStream "/usr/bin"
+    if dir:
       i := 0
       while entry := dir.next:
         i++
