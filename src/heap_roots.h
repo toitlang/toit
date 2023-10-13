@@ -29,14 +29,14 @@ class VmFinalizerNode;
 
 typedef LinkedFifo<FinalizerNode> FinalizerNodeFifo;
 
-class FinalizerNode : public FinalizerNodeFifo::Element {
+abstract class FinalizerNode : public FinalizerNodeFifo::Element {
  public:
   virtual ~FinalizerNode();
   virtual bool has_key(HeapObject* value);
 
-  virtual void roots_do(RootCallback* cb);
+  virtual void roots_do(RootCallback* cb) = 0;
   // Should return false if the node needs GC processing.
-  virtual bool alive(LivenessOracle* oracle);
+  virtual bool alive(LivenessOracle* oracle) = 0;
   // Should return null if the node should be deleted.
   virtual bool handle_not_alive(RootCallback* process_slots, ObjectHeap* heap) = 0;
 };
