@@ -184,10 +184,6 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
 
     visitor.complete_scavenge();
 
-    process_heap_->process_registered_vm_finalizers(&visitor, from);
-
-    visitor.complete_scavenge();
-
     old_space()->end_scavenge();
 
     total_bytes_allocated_ -= to->used();
@@ -373,10 +369,6 @@ bool TwoSpaceHeap::perform_garbage_collection(bool force_compact) {
 
   stack.process(&marking_visitor, old_space(), semi_space);
 
-  process_heap_->process_registered_vm_finalizers(&marking_visitor, old_space());
-
-  stack.process(&marking_visitor, old_space(), semi_space);
-
   word regained_by_compacting = old_space()->compute_compaction_destinations();
 
   bool compact = force_compact || regained_by_compacting > 0;
@@ -464,7 +456,6 @@ void TwoSpaceHeap::compact_heap() {
   // At this point dead objects have been cleared out of the finalizer lists.
   EverythingIsAlive yes;
   process_heap_->process_registered_finalizers(&fix, &yes);
-  process_heap_->process_registered_vm_finalizers(&fix, &yes);
 
   semi_space->clear_mark_bits();
   old_space()->clear_mark_bits();

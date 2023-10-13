@@ -17,6 +17,7 @@
 
 #include "flags.h"
 #include "heap_report.h"
+#include "heap_roots.h"
 #include "interpreter.h"
 #include "objects_inline.h"
 #include "os.h"
@@ -155,13 +156,6 @@ ObjectHeap::~ObjectHeap() {
   while (auto finalizer = runnable_finalizers_.remove_first()) {
     delete finalizer;
   }
-
-  while (auto finalizer = registered_vm_finalizers_.remove_first()) {
-    finalizer->free_external_memory(owner());
-    delete finalizer;
-  }
-
-  delete finalizer_notifier_;
 
   OS::dispose(mutex_);
 
@@ -335,45 +329,29 @@ void ObjectHeap::install_heap_limit() {
 }
 
 void ObjectHeap::process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space) {
-  // Process the registered finalizer list.
-  if (!registered_finalizers_.is_empty() && Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizers\n");
-  ObjectHeap* heap = this;
-  registered_finalizers_.remove_wherever([ss, heap, from_space](FinalizerNode* node) -> bool {
-    bool is_alive = from_space->is_alive(node->key());
-    if (!is_alive) {
-      // Clear the key so it is not retained.
-      node->set_key(heap->program()->null_object());
-    }
-    node->roots_do(ss);
-    if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
-    if (is_alive) return false;  // Keep node in list.
-    // From here down, the node is going to be unlinked by returning true.
-    if (Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is unreachable\n", node);
-    heap->runnable_finalizers_.append(node);
-    return true; // Remove node from list.
-  });
+  process_registered_finalizers_helper(ss, from_space, this);
 }
 
-void ObjectHeap::process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space) {
-  // Process registered VM finalizers.
-  registered_vm_finalizers_.remove_wherever([ss, this, from_space](VmFinalizerNode* node) -> bool {
-    bool is_alive = from_space->is_alive(node->key());
-
-    if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
+void ObjectHeap::process_registered_finalizers_helper(RootCallback* ss, LivenessOracle* from_space, ObjectHeap* heap) {
+  // Process the registered finalizer list.
+  CAPTURE3(
+      RootCallback*, ss,
+      LivenessOracle*, from_space,
+      ObjectHeap*, heap);
+  registered_finalizers_.remove_wherever([capture](FinalizerNode* node) -> bool {
+    bool is_alive = node->alive(capture.from_space);
     if (is_alive) {
-      node->roots_do(ss);
-      return false; // Keep node in list.
+      node->roots_do(capture.ss);
+      return false;  // Keep node in list.
     }
-    if (Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizer %p for external memory.\n", node);
-    node->free_external_memory(owner());
-    delete node;
+    node->handle_not_alive(capture.ss, capture.heap);
     return true; // Remove node from list.
   });
 }
 
 bool ObjectHeap::has_finalizer(HeapObject* key, Object* lambda) {
   for (FinalizerNode* node : registered_finalizers_) {
-    if (node->key() == key) return true;
+    if (node->has_key(key)) return true;
   }
   return false;
 }
@@ -381,7 +359,7 @@ bool ObjectHeap::has_finalizer(HeapObject* key, Object* lambda) {
 bool ObjectHeap::add_finalizer(HeapObject* key, Object* lambda) {
   // We should already have checked whether the object is already registered.
   ASSERT(!has_finalizer(key, lambda));
-  auto node = _new FinalizerNode(key, lambda);
+  auto node = _new ToitFinalizerNode(key, lambda);
   if (node == null) return false;  // Allocation failed.
   registered_finalizers_.append(node);
   return true;
@@ -391,27 +369,14 @@ bool ObjectHeap::add_vm_finalizer(HeapObject* key) {
   // We should already have checked whether the object is already registered.
   auto node = _new VmFinalizerNode(key);
   if (node == null) return false;  // Allocation failed.
-  registered_vm_finalizers_.append(node);
+  registered_finalizers_.append(node);
   return true;
 }
 
 bool ObjectHeap::remove_finalizer(HeapObject* key) {
   bool found = false;
   registered_finalizers_.remove_wherever([key, &found](FinalizerNode* node) -> bool {
-    if (node->key() == key) {
-      delete node;
-      found = true;
-      return true;
-    }
-    return false;
-  });
-  return found;
-}
-
-bool ObjectHeap::remove_vm_finalizer(HeapObject* key) {
-  bool found = false;
-  registered_vm_finalizers_.remove_wherever([key, &found](VmFinalizerNode* node) -> bool {
-    if (node->key() == key) {
+    if (node->has_key(key)) {
       delete node;
       found = true;
       return true;
@@ -422,7 +387,7 @@ bool ObjectHeap::remove_vm_finalizer(HeapObject* key) {
 }
 
 Object* ObjectHeap::next_finalizer_to_run() {
-  FinalizerNode* node = runnable_finalizers_.remove_first();
+  ToitFinalizerNode* node = static_cast<ToitFinalizerNode*>(runnable_finalizers_.remove_first());
   if (node == null) {
     return program()->null_object();
   }

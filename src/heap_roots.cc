@@ -14,19 +14,42 @@
 // directory of this repository.
 
 #include "flags.h"
+#include "heap.h"
 #include "heap_roots.h"
 #include "objects.h"
 #include "process.h"
 
 namespace toit {
 
-void FinalizerNode::roots_do(RootCallback* cb) {
+void ToitFinalizerNode::roots_do(RootCallback* cb) {
   cb->do_root(reinterpret_cast<Object**>(&key_));
   cb->do_root(reinterpret_cast<Object**>(&lambda_));
 }
 
+bool ToitFinalizerNode::alive(LivenessOracle* oracle) {
+  return oracle->is_alive(key_);
+}
+
+bool ToitFinalizerNode::handle_not_alive(RootCallback* ss, ObjectHeap* heap) {
+  // Clear the key so it is not retained.
+  set_key(heap->program()->null_object());
+  roots_do(ss);
+  // Since the object is not alive, we queue the finalizer for execution.
+  heap->queue_finalizer(this);
+  return false;  // Don't delete me, I'm on the other queue now.
+}
+
 void VmFinalizerNode::roots_do(RootCallback* cb) {
   cb->do_root(reinterpret_cast<Object**>(&key_));
+}
+
+bool VmFinalizerNode::alive(LivenessOracle* oracle) {
+  return oracle->is_alive(key_);
+}
+
+bool VmFinalizerNode::handle_not_alive(RootCallback* ss, ObjectHeap* heap) {
+  free_external_memory(heap->owner());
+  return true;  // Delete me now.
 }
 
 void VmFinalizerNode::free_external_memory(Process* process) {
