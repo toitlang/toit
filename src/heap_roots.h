@@ -31,7 +31,7 @@ typedef LinkedFifo<FinalizerNode> FinalizerNodeFifo;
 
 class FinalizerNode : public FinalizerNodeFifo::Element {
  public:
-  virtual ~FinalizerNode() {}
+  virtual ~FinalizerNode();
   virtual bool has_key(HeapObject* value);
 
   virtual void roots_do(RootCallback* cb);

@@ -21,6 +21,8 @@
 
 namespace toit {
 
+FinalizerNode::~FinalizerNode() {}
+
 void ToitFinalizerNode::roots_do(RootCallback* cb) {
   cb->do_root(reinterpret_cast<Object**>(&key_));
   cb->do_root(reinterpret_cast<Object**>(&lambda_));
