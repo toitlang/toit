@@ -24,6 +24,15 @@ main:
   test-add-finalizer
   test-remove-finalizer
 
+  test-double-finalizer
+
+test-double-finalizer:
+  str := "x" * 35_000  // Big enough string that it is external.
+
+  expect-throw "OUT_OF_BOUNDS":
+    add-finalizer str::
+      print "String is dead"
+
 test-finalizers:
   add-finalizer should-never-die:: throw "Wrong object to declare dead"
   limit.repeat: add-finalizer List:: count++
