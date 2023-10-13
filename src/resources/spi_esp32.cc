@@ -175,9 +175,7 @@ PRIMITIVE(device) {
   ARGS(SpiResourceGroup, spi, int, cs, int, dc, int, command_bits, int, address_bits, int, frequency, int, mode);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   spi_device_interface_config_t conf = {
     .command_bits     = uint8(command_bits),

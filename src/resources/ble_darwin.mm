@@ -904,7 +904,7 @@ PRIMITIVE(connect) {
   if (peripheral == nil) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) FAIL(ALLOCATION_FAILED);
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto device =
       _new BleRemoteDeviceResource(

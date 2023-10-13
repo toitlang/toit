@@ -27,8 +27,6 @@ abstract class Mirror:
 
   constructor .json .program:
 
-  abstract stringify -> string
-
   terminal-stringify: return stringify
 
 class Stack extends Mirror:

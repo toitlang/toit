@@ -396,9 +396,7 @@ PRIMITIVE(init) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto group = _new EspNowResourceGroup(process, EventQueueEventSource::instance());
   if (!group) {
@@ -421,9 +419,7 @@ PRIMITIVE(create) {
   if (pmk.length() > 0 && pmk.length() != 16) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   event_queue = xQueueCreate(ESPNOW_EVENT_NUM, sizeof(EspNowEvent));
   if (!event_queue) {

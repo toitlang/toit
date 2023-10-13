@@ -193,12 +193,12 @@ static void draw_orientation_0_180_helper(BitmapDecompresser& decompresser, cons
   int xoffset = sign * bit_box.box_xoffset();
   int yoffset = sign * bit_box.box_yoffset();
   int bottom = capture.y_base - yoffset;
-  if (bottom > capture.byte_array_height) bottom = capture.byte_array_height;
-  if (bottom < 0) bottom = -1;
   int top = capture.y_base - yoffset - height;
   if (sign < 0) {
+    bottom = Utils::max(-1, bottom);
     if (top <= bottom) return;
   } else {
+    bottom = Utils::min(capture.byte_array_height, bottom);
     if (top >= bottom) return;
   }
   int left = capture.x_base + xoffset;
@@ -273,12 +273,12 @@ static void draw_orientation_0_180_byte_helper(BytemapDecompresser& decompresser
   int xoffset = sign * bit_box.box_xoffset();
   int yoffset = sign * bit_box.box_yoffset();
   int bottom = capture.y_base - yoffset;
-  if (bottom > capture.byte_array_height) bottom = capture.byte_array_height;
-  if (bottom < 0) bottom = -1;
   int top = capture.y_base - yoffset - height;
   if (sign < 0) {
+    bottom = Utils::max(-1, bottom);
     if (top <= bottom) return;
   } else {
+    bottom = Utils::min(capture.byte_array_height, bottom);
     if (top >= bottom) return;
   }
   int left = capture.x_base + xoffset;
@@ -318,11 +318,13 @@ static void byte_draw_orientation_90_270_helper(BitmapDecompresser& decompresser
   int xoffset = sign * bit_box.box_xoffset();
   int yoffset = sign * bit_box.box_yoffset();
   if (bit_box.box_height() == 0) return;
-  int bottom = Utils::max(-1, Utils::min(capture.byte_array_width, capture.x_base + yoffset));
+  int bottom = capture.x_base + yoffset;
   int top = capture.x_base + yoffset + height;
   if (sign < 0) {
+    bottom = Utils::min(capture.byte_array_width, bottom);
     if (top >= bottom) return;
   } else {
+    bottom = Utils::max(-1, bottom);
     if (top <= bottom) return;
   }
   int left = capture.y_base + xoffset;
@@ -366,11 +368,13 @@ static void byte_draw_orientation_90_270_byte_helper(BytemapDecompresser& decomp
   int xoffset = sign * bit_box.box_xoffset();
   int yoffset = sign * bit_box.box_yoffset();
   if (bit_box.box_height() == 0) return;
-  int bottom = Utils::max(-1, Utils::min(capture.byte_array_width, capture.x_base + yoffset));
+  int bottom = capture.x_base + yoffset;
   int top = capture.x_base + yoffset + height;
   if (sign < 0) {
+    bottom = Utils::min(capture.byte_array_width, bottom);
     if (top >= bottom) return;
   } else {
+    bottom = Utils::max(-1, bottom);
     if (top <= bottom) return;
   }
   int left = capture.y_base + xoffset;
@@ -429,7 +433,7 @@ static void SOMETIMES_UNUSED byte_draw_text_orientation_90_270(int x_base, int y
 static void draw_orientation_90_helper(BitmapDecompresser& decompresser, const PixelBox& bit_box, const DrawData& capture) {
   uint8* contents = capture.contents;
   int bottom = capture.x_base - bit_box.box_yoffset();
-  if (bottom > capture.byte_array_width) bottom = capture.byte_array_width;
+  bottom = Utils::min(capture.byte_array_width, bottom);
   int top = capture.x_base - bit_box.box_yoffset() - bit_box.box_height();
   int bytes_per_row = (bit_box.box_width() + 7) >> 3;
   for (int y = top; y < bottom; y++) {
@@ -488,7 +492,7 @@ static void SOMETIMES_UNUSED draw_text_orientation_90(int x_base, int y_base, in
 static void SOMETIMES_UNUSED draw_orientation_270_helper(BitmapDecompresser& decompresser, const PixelBox& bit_box, const DrawData& capture) {
   uint8* contents = capture.contents;
   int bottom = capture.x_base + bit_box.box_yoffset();
-  if (bottom < 0) bottom = -1;
+  bottom = Utils::max(-1, bottom);
   int top = capture.x_base + bit_box.box_yoffset() + bit_box.box_height();
   int bytes_per_row = (bit_box.box_width() + 7) >> 3;
   for (int y = top; y > bottom; y--) {
@@ -620,12 +624,13 @@ class IndexedBytemapSource : public BytemapDecompresser {
  public:
   // After calling the constructor, out_of_memory must be checked on the
   // resulting object.
-  IndexedBytemapSource(const uint8* pixels, word pixels_per_line, const uint8* palette, word palette_size, int transparent_color_index)
+  IndexedBytemapSource(const uint8* pixels, word pixels_per_line, const uint8* palette, word palette_size, const uint8* alpha_map, word alpha_length)
     : pixels_(pixels)
     , pixels_per_line_(pixels_per_line)
     , palette_(palette)
     , palette_size_(palette_size)
-    , transparent_color_index_(transparent_color_index) {
+    , alpha_map_(alpha_map)
+    , alpha_length_(alpha_length) {
     line_buffer_ = unvoid_cast<uint8*>(malloc(pixels_per_line_));
     opacity_buffer_ = unvoid_cast<uint8*>(malloc(pixels_per_line_));
   }
@@ -641,9 +646,9 @@ class IndexedBytemapSource : public BytemapDecompresser {
 
   virtual void compute_next_line() {
     for (word i = 0; i < pixels_per_line_; i++) {
-      uint8 color_index = *pixels_++;
+      word color_index = *pixels_++;
       line_buffer_[i] = (color_index * 3 < palette_size_) ? palette_[color_index * 3] : color_index;
-      opacity_buffer_[i] = color_index == transparent_color_index_ ? 0 : 0xff;
+      opacity_buffer_[i] = color_index >= alpha_length_ ? 0xff : alpha_map_[color_index];
     }
   }
 
@@ -660,7 +665,8 @@ class IndexedBytemapSource : public BytemapDecompresser {
   word pixels_per_line_;
   const uint8* palette_;
   word palette_size_;
-  int transparent_color_index_;
+  const uint8* alpha_map_;
+  word alpha_length_;
   uint8* line_buffer_;
   uint8* opacity_buffer_;
 };
@@ -757,7 +763,7 @@ static void byte_draw(int, BytemapDecompresser&, const PixelBox&, DrawData&);
 
 // Draw a bytemap on a bytemap.  A palette is given, where every third byte is used.
 PRIMITIVE(draw_bytemap) {
-  ARGS(int, x_base, int, y_base, int, transparent_color, int, orientation, Blob, in_bytes, int, bytes_per_line, Blob, palette, MutableBlob, bytes, int, byte_array_width);
+  ARGS(int, x_base, int, y_base, Object, transparent_color, int, orientation, Blob, in_bytes, int, bytes_per_line, Blob, palette, MutableBlob, bytes, int, byte_array_width);
   // Both the input and output byte arrays are arranged as n rows, each byte_array_width long.
   if (byte_array_width < 1) FAIL(OUT_OF_BOUNDS);
   int byte_array_height = bytes.length() / byte_array_width;
@@ -772,9 +778,25 @@ PRIMITIVE(draw_bytemap) {
   if (!(0 <= orientation && orientation <= 3)) FAIL(INVALID_ARGUMENT);
 
   int color = 0;  // Unused.
+  uint8 stack_alpha_map[256];
+  const uint8* alpha_map;
+  word alpha_length;
+  if (is_smi(transparent_color)) {
+    int index = Smi::value(transparent_color);
+    if (!(-1 <= index && index < 256)) FAIL(INVALID_ARGUMENT);
+    memset(stack_alpha_map, 0xff, sizeof(stack_alpha_map));
+    if (index != -1) stack_alpha_map[index] = 0;
+    alpha_map = &stack_alpha_map[0];
+    alpha_length = 256;
+  } else {
+    Blob alpha;
+    if (!transparent_color->byte_content(process->program(), &alpha, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+    alpha_map = alpha.address();
+    alpha_length = alpha.length();
+  }
 
   DrawData capture(x_base, y_base, color, orientation * 90, byte_array_width, byte_array_height, output_contents);
-  IndexedBytemapSource bytemap_source(in_bytes.address(), bytes_per_line, palette.address(), palette.length(), transparent_color);
+  IndexedBytemapSource bytemap_source(in_bytes.address(), bytes_per_line, palette.address(), palette.length(), alpha_map, alpha_length);
   if (bytemap_source.out_of_memory()) FAIL(MALLOC_FAILED);
 
   BitmapPixelBox bit_box(bytes_per_line, bitmap_height);
@@ -1141,12 +1163,16 @@ PRIMITIVE(composit) {
         if (frame_factor == 0xff) {
           mix = frame_pixels[i];
         } else if (frame_factor == 0) {
+          if (painting_factor == 0) {
+            // No painting and no frame, so just leave the background.
+            continue;
+          }
           mix = dest_address[i];
         } else {
-          mix = (frame_pixels[i] * frame_factor + dest_address[i] * (255 - frame_factor)) >> 8;
+          mix = (frame_pixels[i] * frame_factor + dest_address[i] * (256 - frame_factor)) >> 8;
         }
         // Now mix shaded background with window area.
-        dest_address[i] = (painting_pixels[i] * painting_factor + mix * (255 - painting_factor)) >> 8;
+        dest_address[i] = (painting_pixels[i] * painting_factor + mix * (256 - painting_factor)) >> 8;
       }
     }
   }

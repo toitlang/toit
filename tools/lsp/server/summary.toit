@@ -141,14 +141,20 @@ class Type:
 hash-code-counter_ := 0
 
 class Class:
+  static KIND_CLASS ::= "class"
+  static KIND_INTERFACE ::= "interface"
+  static KIND_MIXIN ::= "mixin"
+
   name  / string ::= ?
   range / Range  ::= ?
   toplevel-id / int ::= ?
 
-  is-abstract  / bool ::= false
-  is-interface / bool ::= false
+  kind         / string ::= ?
+  is_abstract  / bool ::= false
+
   superclass   / ToplevelRef? ::= ?
   interfaces   / List ::= ?
+  mixins       / List ::= ?
 
   statics      / List ::= ?
   constructors / List ::= ?  // Only unnamed constructors
@@ -159,16 +165,18 @@ class Class:
 
   toitdoc / Contents? ::= ?
 
-  constructor --.name --.range --.toplevel-id --.is-abstract --.is-interface --.superclass --.interfaces
+  constructor --.name --.range --.toplevel-id --.kind --.is-abstract
+      --.superclass --.interfaces --.mixins
       --.statics --.constructors --.factories --.fields --.methods  --.toitdoc:
 
   equals-external other/Class -> bool:
     return other and
         name == other.name and
-        is-interface == other.is-interface and
+        kind == other.kind and
         is-abstract == other.is-abstract and
         (superclass == other.superclass or (superclass and superclass.equals-external other.superclass)) and
         (interfaces.equals other.interfaces --element-equals=: |a b| a.equals-external b) and
+        (mixins.equals other.mixins --element_equals=: |a b| a.equals-external b) and
         (statics.equals other.statics --element-equals=: |a b| a.equals-external b) and
         (constructors.equals other.constructors --element-equals=: |a b| a.equals-external b) and
         (factories.equals other.factories --element-equals=: |a b| a.equals-external b) and
@@ -189,7 +197,7 @@ class Class:
     fields.do: children.add (it.to-lsp-document-symbol lines)
     return lsp.DocumentSymbol
         --name=safe-name_ name
-        --kind= is-interface ? lsp.SymbolKind.INTERFACE : lsp.SymbolKind.CLASS
+        --kind= kind == KIND-INTERFACE ? lsp.SymbolKind.INTERFACE : lsp.SymbolKind.CLASS  // Mixins count as class.
         --range=range.to-lsp-range lines
         --selection-range=range.to-lsp-range lines
         --children=children
@@ -363,10 +371,11 @@ class SummaryReader:
     global-id := read-int
     assert: global-id == toplevel-id + module-toplevel-offsets_[current-module-id_]
     kind := read-line
-    is-interface := kind == "interface"
-    is-abstract := kind == "abstract"
+    assert: kind == Class.KIND-CLASS or kind == Class.KIND-INTERFACE or kind == Class.KIND-MIXIN
+    is-abstract := read-line == "abstract"
     superclass := read-toplevel-ref
     interfaces := read-list: read-toplevel-ref
+    mixins := read-list: read-toplevel-ref
     statics := read-list: read-method
     constructors := read-list: read-method
     factories := read-list: read-method
@@ -377,10 +386,11 @@ class SummaryReader:
         --name=name
         --range=range
         --toplevel-id=toplevel-id
-        --is-interface=is-interface
+        --kind=kind
         --is-abstract=is-abstract
         --superclass=superclass
         --interfaces=interfaces
+        --mixins=mixins
         --statics=statics
         --constructors=constructors
         --factories=factories

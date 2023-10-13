@@ -483,12 +483,14 @@ void MethodResolver::resolve_fill_field_stub() {
   auto this_ref = _new ir::ReferenceLocal(this_parameter, 0, ast_field->range());
 
   if (field_stub->is_getter()) {
+    // Some of the code here is duplicated in the mixin code.
     auto range = ast_field->range();
     body = _new ir::Sequence(list_of(_new ir::Return(_new ir::FieldLoad(this_ref, field, range),
                                                      false,
                                                      range)),
                              range);
   } else {
+    // Some of the code here is duplicated in the mixin code.
     auto new_value_parameter = _new ir::Parameter(Symbol::synthetic("<new value>"),
                                                   ir_type,
                                                   false,  // Not a block.
@@ -511,6 +513,7 @@ void MethodResolver::resolve_fill_field_stub() {
                                        range);
       auto ret = _new ir::Return(store, false, range);
       List<ir::Expression*> expressions;
+      // Some of the code here is duplicated in the mixin code.
       if (field->type().is_class()) {
         auto type = field->type();
         field_stub->set_checked_type(type);
@@ -1544,7 +1547,7 @@ ir::Expression* MethodResolver::_create_lambda(ast::Lambda* node, Symbol label) 
                                   captured_args,
                                   _new ir::LiteralInteger(arguments.length(), node->range()));
   auto shape = CallShape::for_static_call_no_named(lambda_args_list);
-  auto lambda_ = _resolve_runtime_call(Symbols::lambda_, shape);
+  auto lambda_ = _resolve_runtime_call(Symbols::lambda__, shape);
   return _new ir::Lambda(lambda_,
                          shape,
                          lambda_args_list,
@@ -2016,7 +2019,9 @@ ir::Code* MethodResolver::_create_code(
                                 node->range());
   }
 
-  return _new ir::Code(ir_parameters,
+  auto name = Symbol::synthetic(is_block ? "<block>" : "<lambda>");
+  return _new ir::Code(name,
+                       ir_parameters,
                        ir_body,
                        is_block,
                        node->range());
@@ -2637,12 +2642,21 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
     auto ref = ir_target->as_ReferenceMethod();
     if (ref->target()->is_constructor()) {
       auto ir_class = ref->target()->as_Constructor()->klass();
-      if (ir_class->is_abstract()) {
-        if (ir_class->is_interface()) {
+      switch (ir_class->kind()) {
+        case ir::Class::CLASS:
+          if (ir_class->is_abstract()) {
+            report_error(ast_target, "Can't instantiate abstract class");
+          }
+          break;
+        case ir::Class::MONITOR:
+          break;
+        case ir::Class::INTERFACE:
           report_error(ast_target, "Can't instantiate interface class without factory");
-        } else {
-          report_error(ast_target, "Can't instantiate abstract class");
-        }
+          break;
+        case ir::Class::MIXIN:
+          // TODO(florian): do we want to allow it?
+          report_error(ast_target, "Can't instantiate mixin class without factory");
+          break;
       }
       push(call_builder.call_constructor(ref));
     } else if (ref->target()->is_instance()) {

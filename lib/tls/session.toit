@@ -221,9 +221,12 @@ class Session:
         // Connected.
         return
       finally: | is-exception exception |
-        value := is-exception ? exception.value : null
-        handshake-in-progress_.set value --exception=is-exception
-        handshake-in-progress_ = null
+        // If the task that is doing the handshake gets canceled,
+        // we have to be careful and clean up anyway.
+        critical-do:
+          value := is-exception ? exception.value : null
+          handshake-in-progress_.set value --exception=is-exception
+          handshake-in-progress_ = null
 
     tls-group := is-server ? tls-group-server_ : tls-group-client_
 

@@ -84,7 +84,7 @@ MODULE_IMPLEMENTATION(spi_flash, MODULE_SPI_FLASH)
 static ByteArray* init_common(Process* process, const char* mount_point,
                                SpiFlashResourceGroup** group, HeapObject** error) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) {
+  if (proxy == null) {
     *error = Primitive::mark_as_error(process->program()->allocation_failed());
     return null;
   }

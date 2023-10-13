@@ -24,6 +24,12 @@ endif()
 list(APPEND TOIT_SKIP_TESTS
 )
 
+list(APPEND TOIT_FLAKY_TESTS
+  tests/tls-client-cert-test.toit
+  tests/tls-global-cert-test-slow.toit
+  tests/tls-test-slow.toit
+)
+
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS
     tests/time-test.toit # https://github.com/toitlang/toit/issues/1369

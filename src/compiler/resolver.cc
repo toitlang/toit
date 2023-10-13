@@ -107,6 +107,7 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
 
   report_abstract_classes(modules);
   check_interface_implementations_and_flatten(modules);
+  flatten_mixins(modules);
 
   auto entry_module = modules[entry_index];
   auto core_module = modules[core_index];
@@ -180,7 +181,6 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
                                   as_check_failure,
                                   lambda_box);
 
-  sort_classes(program->classes());
   return program;
 }
 
@@ -225,8 +225,15 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
         check_class(klass);
         Symbol name = klass->name()->data();
         auto position = klass->range();
-        bool is_abstract = klass->is_interface() || klass->is_abstract();
-        ir::Class* ir = _new ir::Class(name, klass->is_interface(), is_abstract, position);
+        ir::Class::Kind kind = ir::Class::CLASS;  // Initialized with value to silence compiler warnings.
+        switch (klass->kind()) {
+          case ast::Class::CLASS: kind = ir::Class::CLASS; break;
+          case ast::Class::INTERFACE: kind = ir::Class::INTERFACE; break;
+          case ast::Class::MONITOR: kind = ir::Class::MONITOR; break;
+          case ast::Class::MIXIN: kind = ir::Class::MIXIN; break;
+        }
+        bool is_abstract = kind == ir::Class::INTERFACE || klass->has_abstract_modifier();
+        ir::Class* ir = _new ir::Class(name, kind, is_abstract, position);
         ir_to_ast_map_[ir] = klass;
         classes.add(ir);
       } else {
@@ -369,6 +376,8 @@ void Resolver::check_clashing_or_conflicting(Symbol name, List<ir::Node*> declar
     for (auto declaration : declarations) {
       ASSERT(declaration->is_Method());
       ir::Method* method = declaration->as_Method();
+      // Ignore abstract methods. They are allowed to overlap.
+      if (method->is_abstract()) continue;
       // For the purpose of conflict resolution we don't include implicit
       // this arguments.
       auto shape = method->resolution_shape_no_this();
@@ -1082,17 +1091,23 @@ void Resolver::mark_non_returning(Module* core_module) {
   }
 }
 
-ir::Class* Resolver::resolve_class_or_interface(ast::Expression* ast_node,
-                                                Scope* scope,
-                                                ir::Class* holder,
-                                                bool needs_interface) {
+ir::Class* Resolver::resolve_class_interface_or_mixin(ast::Expression* ast_node,
+                                                      Scope* scope,
+                                                      ir::Class* holder,
+                                                      bool needs_interface,
+                                                      bool needs_mixin) {
   ResolutionEntry type_declaration;
   if (ast_node->is_Identifier()) {
     auto type_name = ast_node->as_Identifier()->data();
     type_declaration = scope->lookup_shallow(type_name);
     if (ast_node->is_LspSelection()) {
       ir::Node* ir_resolved = type_declaration.is_single() ? type_declaration.single() : null;
-      lsp_->selection_handler()->class_or_interface(ast_node, scope, holder, ir_resolved, needs_interface);
+      lsp_->selection_handler()->class_interface_or_mixin(ast_node,
+                                                          scope,
+                                                          holder,
+                                                          ir_resolved,
+                                                          needs_interface,
+                                                          needs_mixin);
     }
   } else if (ast_node->is_Dot()) {
     auto ast_dot = ast_node->as_Dot();
@@ -1105,18 +1120,24 @@ ir::Class* Resolver::resolve_class_or_interface(ast::Expression* ast_node,
       auto prefix_scope = prefix_lookup_result.entry.is_prefix()
           ? static_cast<IterableScope*>(prefix_lookup_result.entry.prefix())
           : static_cast<IterableScope*>(&empty_scope);
-      lsp_->selection_handler()->class_or_interface(ast_dot->name(),
-                                                    prefix_scope,
-                                                    holder,
-                                                     ir_resolved,
-                                                    needs_interface);
+      lsp_->selection_handler()->class_interface_or_mixin(ast_dot->name(),
+                                                          prefix_scope,
+                                                          holder,
+                                                          ir_resolved,
+                                                          needs_interface,
+                                                          needs_mixin);
     } else if (ast_dot->receiver()->is_LspSelection()) {
       auto receiver_as_type_name = ast_dot->receiver()->as_Identifier()->data();
       auto receiver_as_type_declaration = scope->lookup_shallow(receiver_as_type_name);
       ir::Node* ir_resolved = receiver_as_type_declaration.is_single()
           ? receiver_as_type_declaration.single()
           : null;
-      lsp_->selection_handler()->class_or_interface(ast_node, scope, holder, ir_resolved, needs_interface);
+      lsp_->selection_handler()->class_interface_or_mixin(ast_node,
+                                                          scope,
+                                                          holder,
+                                                          ir_resolved,
+                                                          needs_interface,
+                                                          needs_mixin);
     }
   } else {
     ASSERT(ast_node->is_Error());
@@ -1132,11 +1153,13 @@ ir::Class* Resolver::resolve_class_or_interface(ast::Expression* ast_node,
 /// Checks that:
 /// - the supers of classes exist.
 /// - the class hierarchy isn't cyclic.
+/// - there aren't any mismatches (classes extending interfaces, ...)
 void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_index) {
   Module* core_module = modules[core_module_index];
   auto core_scope = core_module->scope();
   ir::Class* top = core_scope->lookup_shallow(Symbols::Object).klass();
   ir::Class* interface_top = core_scope->lookup_shallow(Symbols::Interface_).klass();
+  ir::Class* mixin_top = core_scope->lookup_shallow(Symbols::Mixin_).klass();
   ASSERT(top != null);
 
   ir::Class* monitor = core_scope->lookup_shallow(Symbols::__Monitor__).klass();
@@ -1151,32 +1174,48 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
 
       // When the class doesn't have a super, or there is an error, the default_super is used.
       ir::Class* default_super = null;
-      if (ast_class->is_monitor()) {
-        default_super = monitor;
-      } else if (ast_class->is_interface()) {
-        default_super = interface_top;
-      } else {
-        default_super = top;
+      switch (ast_class->kind()) {
+        case ast::Class::CLASS:
+          default_super = top;
+          break;
+        case ast::Class::INTERFACE:
+          default_super = interface_top;
+          break;
+        case ast::Class::MONITOR:
+          default_super = monitor;
+          break;
+        case ast::Class::MIXIN:
+          default_super = mixin_top;
+          break;
       }
 
       if (!ast_class->has_super() || ast_class->super()->is_Error()) {
-        if (klass != top && klass != interface_top) {
+        if (klass != top && klass != interface_top && klass != mixin_top) {
           klass->set_super(default_super);
         }
       } else {
         bool detected_error = false;
         auto ast_super = ast_class->super();
-        auto ir_super_class = resolve_class_or_interface(ast_super, scope, klass, klass->is_interface());
+        auto ir_super_class = resolve_class_interface_or_mixin(ast_super,
+                                                               scope,
+                                                               klass,
+                                                               klass->is_interface(),
+                                                               klass->is_mixin());
 
         if (ast_class->is_monitor()) {
           report_error(ast_class->super(), "Monitors may not have a super class");
           detected_error = true;
         }
         if (ir_super_class != null) {
-          if (klass->is_interface() != ir_super_class->is_interface()) {
+          bool super_matches_kind =
+              klass->is_interface() == ir_super_class->is_interface() &&
+              klass->is_mixin() == ir_super_class->is_mixin();
+          if (!super_matches_kind) {
             detected_error = true;
             if (klass->is_interface()) {
               report_error(ast_class->super(), "Super of an interface must be an interface");
+            } else if (klass->is_mixin()) {
+              report_error(ast_class->super(), "Super of a mixin must be a mixin");
             } else {
               report_error(ast_class->super(), "Super of a class must be a class");
             }
@@ -1188,7 +1227,19 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
           }
         } else {
           detected_error = true;
-          const char* class_type = klass->is_interface() ? "interface" : "class";
+          const char* class_type = "";
+          switch (ast_class->kind()) {
+            case ast::Class::CLASS:
+            case ast::Class::MONITOR:
+              class_type = "class";
+              break;
+            case ast::Class::INTERFACE:
+              class_type = "interface";
+              break;
+            case ast::Class::MIXIN:
+              class_type = "mixin";
+              break;
+          }
           report_error(ast_class->super(), "Unresolved super %s", class_type);
         }
         if (detected_error) {
@@ -1196,11 +1247,29 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
         }
       }
 
+      auto ast_mixins = ast_class->mixins();
+      if (klass->is_interface() && !ast_mixins.is_empty()) {
+        report_error(ast_mixins[0], "Interfaces may not have mixins");
+      }
+      ListBuilder<ir::Class*> ir_mixins;
+      for (int i = 0; i < ast_mixins.length(); i++) {
+        auto ast_mixin = ast_mixins[i];
+        auto ir_mixin = resolve_class_interface_or_mixin(ast_mixin, scope, klass, false, true);
+        if (ir_mixin == null) {
+          report_error(ast_mixin, "Unresolved mixin");
+        } else if (!ir_mixin->is_mixin()) {
+          report_error(ast_mixin, "Not a mixin");
+        } else {
+          ir_mixins.add(ir_mixin);
+        }
+      }
+      klass->set_mixins(ir_mixins.build());
+
       auto ast_interfaces = ast_class->interfaces();
       ListBuilder<ir::Class*> ir_interfaces;
       for (int i = 0; i < ast_interfaces.length(); i++) {
         auto ast_interface = ast_interfaces[i];
-        auto ir_interface = resolve_class_or_interface(ast_interface, scope, klass, true);
+        auto ir_interface = resolve_class_interface_or_mixin(ast_interface, scope, klass, true, false);
         if (ir_interface == null) {
           report_error(ast_interface, "Unresolved interface");
         } else if (!ir_interface->is_interface()) {
@@ -1236,7 +1305,20 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
         if (in_cycle) cycle_nodes.push_back(sub_class);
       }
       diagnostics()->start_group();
-      report_error(cycle_nodes[0], "Cycle in super/interface chain");
+      const char* chain_kind = null;
+      switch (cycle_nodes[0]->kind()) {
+        case ir::Class::CLASS:
+        case ir::Class::MONITOR:
+          chain_kind = "super";
+          break;
+        case ir::Class::INTERFACE:
+          chain_kind = "interface";
+          break;
+        case ir::Class::MIXIN:
+          chain_kind = "mixin";
+          break;
+      }
+      report_error(cycle_nodes[0], "Cycle in %s chain", chain_kind);
       for (size_t i = 0; i < cycle_nodes.size(); i++) {
         auto current = cycle_nodes[i];
         cycling_classes.insert(current);
@@ -1246,23 +1328,29 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
         if (next == current->super()) {
           error_range = ast_current->super()->range();
         } else {
-          auto ir_interfaces = current->interfaces();
-          auto ast_interfaces = ast_current->interfaces();
-          // If interfaces are not resolved the length of the IR and AST interfaces
+          List<ir::Class*> ir_nodes;
+          List<ast::Expression*> ast_nodes;
+          if (next->is_interface()) {
+            ir_nodes = current->interfaces();
+            ast_nodes = ast_current->interfaces();
+          } else {
+            ASSERT(next->is_mixin());
+            ir_nodes = current->mixins();
+            ast_nodes = ast_current->mixins();
+          }
+          // If interfaces/mixins are not resolved the length of the IR and AST interfaces
           // may differ. In that case, we don't have an easy 1:1 relationship between
-          // the resolved interfaces and the AST nodes.
-          // In that case, we take the range of all interfaces.
-          if (ir_interfaces.length() < ast_interfaces.length()) {
-            auto first = ast_interfaces[0];
-            auto last = ast_interfaces[ast_interfaces.length() - 1];
+          // the resolved interfaces/mixins and the AST nodes.
+          // In that case, we take the range of all interfaces/mixins.
+          if (ir_nodes.length() < ast_nodes.length()) {
+            auto first = ast_nodes[0];
+            auto last = ast_nodes.last();
             error_range = first->range().extend(last->range());
           } else {
-            ASSERT(current->interfaces().length() == ast_current->interfaces().length());
             ast::Node* ast_position_node = null;
-            auto ir_interfaces = current->interfaces();
-            for (int j = 0; j < ir_interfaces.length(); j++) {
-              if (ir_interfaces[j] == next) {
-                ast_position_node = ast_current->interfaces()[j];
+            for (int j = 0; j < ir_nodes.length(); j++) {
+              if (ir_nodes[j] == next) {
+                ast_position_node = ast_nodes[j];
                 break;
               }
             }
@@ -1280,6 +1368,9 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
     for (auto ir_interface : klass->interfaces()) {
       check_cycles(ir_interface);
     }
+    for (auto ir_mixin : klass->mixins()) {
+      check_cycles(ir_mixin);
+    }
     sub_classes.erase_last(klass);
     checked_classes.insert(klass);
   };
@@ -1296,11 +1387,14 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
       default_super = monitor;
     } else if (klass->is_interface()) {
       default_super = interface_top;
+    } else if (klass->is_mixin()) {
+      default_super = mixin_top;
     } else {
       default_super = top;
     }
     klass->replace_super(default_super);
     klass->replace_interfaces(List<ir::Class*>());
+    klass->replace_mixins(List<ir::Class*>());
   }
 }
 
@@ -1512,19 +1606,21 @@ void Resolver::check_method(ast::Method* method, ir::Class* holder,
         report_error(name_or_dot, "Constructors can't be static");
       }
       if (method_is_abstract) {
-        if (class_is_interface) {
-          report_error(name_or_dot, "Interfaces can only have factories");
-        } else {
-          report_error(name_or_dot, "Constructors can't be abstract");
-        }
+        report_error(name_or_dot, "Constructors can't be abstract");
       }
 
       HasExplicitReturnVisitor visitor;
       visitor.visit(method);
       bool has_explicit_return = visitor.result();
 
-      if (class_is_interface && !has_explicit_return) {
-        report_error(name_or_dot, "Interfaces can't have constructors");
+      if (!has_explicit_return) {
+        if (class_is_interface) {
+          report_error(name_or_dot, "Interfaces can't have constructors");
+        } else if (holder->is_mixin()) {
+          if (method->arity() != 0) {
+            report_error(name_or_dot, "Mixins can only have default constructors");
+          }
+        }
       }
       if (has_explicit_return) {
         *kind = ir::Method::FACTORY;
@@ -1549,7 +1645,8 @@ void Resolver::check_method(ast::Method* method, ir::Class* holder,
     if (class_is_interface && method_is_abstract) {
       report_error(name_or_dot, "Interface members can't be declared abstract");
     } else if (!holder->is_abstract() && method_is_abstract) {
-      report_error(name_or_dot, "Members can't be abstract in non-abstract class");
+      const char* kind_name = holder->is_mixin() ? "mixin" : "class";
+      report_error(name_or_dot, "Members can't be abstract in non-abstract %s", kind_name);
     }
     if (class_is_interface && method->body() != null) {
       report_error(name_or_dot, "Interface members can't have bodies");
@@ -1720,7 +1817,8 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
         if (!ir_class->is_runtime_class() && !ir_class->is_interface()) {
           // The internal `Array` class only has factories, which is why we exclude
           // runtime classes.
-          report_error(ir_class, "A class with factories must have a constructor.");
+          const char* kind_name = ir_class->is_mixin() ? "mixin" : "class";
+          report_error(ir_class, "A %s with factories must have a constructor.", kind_name);
         }
       } else if (!class_is_interface && !class_has_constructors) {
         // Create default-constructor place-holder (which takes `this` as argument).
@@ -1762,14 +1860,22 @@ static void fill_abstract_methods_map(ir::Class* ir_class,
   if (probe != abstract_methods->end()) return;
   auto super = ir_class->super();
   Map<Selector<ResolutionShape>, ir::Method*> super_abstracts;
-  // If the super is not abstract, we assume that this `ir_class` doesn't need to
-  //   implement anything from the super. If necessary, we will provide error
-  //   messages on the super.
+  // If the super or the class' mixins are not abstract, we assume that this
+  //   `ir_class` doesn't need to implement anything from any of its parents.
+  //   If necessary, we will provide error messages on the super/mixin, as they
+  //   should have been marked 'abstract' otherwise.
   if (super != null && super->is_abstract()) {
     fill_abstract_methods_map(super, abstract_methods, diagnostics);
     super_abstracts = abstract_methods->at(super);
   }
-  if (super_abstracts.empty() && !ir_class->is_abstract()) {
+  bool all_mixins_are_non_abstract = true;
+  for (auto mixin : ir_class->mixins()) {
+    if (mixin->is_abstract()) {
+      all_mixins_are_non_abstract = false;
+      break;
+    }
+  }
+  if (super_abstracts.empty() && all_mixins_are_non_abstract && !ir_class->is_abstract()) {
     // Handle the most common case.
     (*abstract_methods)[ir_class] = Map<Selector<ResolutionShape>, ir::Method*>();
     return;
@@ -1777,8 +1883,17 @@ static void fill_abstract_methods_map(ir::Class* ir_class,
 
   Map<Selector<ResolutionShape>, ir::Method*> class_abstracts;
   for (auto selector : super_abstracts.keys()) {
-    if (super_abstracts[selector]->is_abstract()) {
-      class_abstracts[selector] = super_abstracts[selector];
+    ir::Method* method = super_abstracts.at(selector);
+    if (method->is_abstract()) {
+      class_abstracts[selector] = method;
+    }
+  }
+  for (auto mixin : ir_class->mixins()) {
+    fill_abstract_methods_map(mixin, abstract_methods, diagnostics);
+    auto mixin_abstracts = abstract_methods->at(mixin);
+    for (auto selector : mixin_abstracts.keys()) {
+      ir::Method* method = mixin_abstracts.at(selector);
+      class_abstracts[selector] = method;
     }
   }
   if (ir_class->is_abstract() || !class_abstracts.empty()) {
@@ -1809,15 +1924,45 @@ void Resolver::report_abstract_classes(std::vector<Module*> modules) {
 
   Map<ir::Class*, Map<Symbol, std::vector<ResolutionShape>>> all_method_shapes;
   // Lazily fill the method shapes.
-  auto method_shapes_for = [&](ir::Class* cls) {
-    auto probe = all_method_shapes.find(cls);
+  auto method_shapes_for = [&](ir::Class* klass) {
+    auto probe = all_method_shapes.find(klass);
     if (probe != all_method_shapes.end()) return probe->second;
     Map<Symbol, std::vector<ResolutionShape>> result;
-    for (auto method : cls->methods()) {
+    for (auto method : klass->methods()) {
       if (method->is_abstract()) continue;
       auto name = method->name();
       result[name].push_back(method->resolution_shape());
     }
+    return result;
+  };
+
+  UnorderedMap<ir::Class*, Set<ir::Class*>> all_contributing;
+  // Lazily fill the contributing classes.
+  std::function<Set<ir::Class*> (ir::Class*)> contributing_for;
+  contributing_for = [&](ir::Class* klass) {
+    auto probe = all_contributing.find(klass);
+    if (probe != all_contributing.end()) return probe->second;
+    Set<ir::Class*> result;
+    for (int i = -1; i < klass->mixins().length(); i++) {
+      auto parent = i == -1
+          ? klass->super()
+          : klass->mixins()[i];
+      if (parent == null) {
+        ASSERT(i == -1);  // No super.
+        continue;
+      }
+      auto parent_probe = all_contributing.find(parent);
+      Set<ir::Class*> transitive_parents;
+      if (parent_probe == all_contributing.end()) {
+        transitive_parents = contributing_for(parent);
+      } else {
+        transitive_parents = parent_probe->second;
+      }
+      result.insert_all(transitive_parents);
+    }
+    // The class itself also contributes.
+    result.insert(klass);
+    all_contributing[klass] = result;
     return result;
   };
 
@@ -1846,31 +1991,32 @@ void Resolver::report_abstract_classes(std::vector<Module*> modules) {
 
       // We might have a non-implemented abstract method.
       // Do a more thorough check that handles optional arguments as well.
+      // We also look at super classes of the abstract class now.
       for (auto selector : class_abstracts.keys()) {
         auto method = class_abstracts[selector];
         if (method->is_abstract()) {
-          auto abstract_holder = method->holder();
+          auto shape = method->resolution_shape();
           auto name = method->name();
-          std::vector<ResolutionShape> potentially_shadowing;
+          std::vector<ResolutionShape> potentially_implementing;
 
-          for (auto current = ir_class;
-               current != abstract_holder;
-               current = current->super()) {
-            auto shapes = method_shapes_for(current);
+          // Classes that can contribute methods.
+          auto contributing_classes = contributing_for(ir_class);
+
+          for (auto contributing : contributing_classes) {
+            auto shapes = method_shapes_for(contributing);
             auto probe = shapes.find(name);
             if (probe != shapes.end()) {
               for (auto shape : probe->second) {
-                potentially_shadowing.push_back(shape);
+                potentially_implementing.push_back(shape);
               }
             }
           }
-          if (potentially_shadowing.empty()) {
+          if (potentially_implementing.empty()) {
             missing_methods.set(method, CallShape::invalid());
             continue;
           }
           auto missing_shape = CallShape::invalid();
-          auto shape = method->resolution_shape();
-          if (!shape.is_fully_shadowed_by(potentially_shadowing, &missing_shape)) {
+          if (!shape.is_fully_shadowed_by(potentially_implementing, &missing_shape)) {
             // If the missing_shape is valid, then we have partial shadowing.
             missing_methods.set(method, missing_shape);
           }
@@ -1913,6 +2059,9 @@ void Resolver::check_interface_implementations_and_flatten(std::vector<Module*> 
     Set<ir::Class*> flattened;
     if (klass->is_interface()) flattened.insert(klass);
     if (klass->has_super()) flattened.insert_all(flatten(klass->super()));
+    for (auto mixin : klass->mixins()) {
+      flattened.insert_all(flatten(mixin));
+    }
     for (auto ir_interface : klass->interfaces()) {
       flattened.insert_all(flatten(ir_interface));
     }
@@ -2004,6 +2153,64 @@ void Resolver::check_interface_implementations_and_flatten(std::vector<Module*> 
   }
 }
 
+void Resolver::flatten_mixins(std::vector<Module*> modules) {
+  // For each mixin, the flatten list of mixins it represents.
+  // For example:
+  //     mixin Mix1:
+  //     mixin Mix2 extends Mix1:
+  //     mixin Mix3:
+  //     mixin Mix4 extends Mix3 with Mix2:
+  //     class A extends Object with Mix4:
+  // Here the flattened list of mixins for A is [Mix4, Mix2, Mix1, Mix3]
+  // The mixins are ordered so that earlier mixins shadow methods of later mixins.
+  // Note that mixins may appear multiple times.
+  // For mixins their own set does not include the super mixins.
+  // In our example the list of mixins for Mix4 is [Mix2, Mix1].
+  UnorderedMap<ir::Class*, List<ir::Class*>> flattened_mixins;
+
+  // Recursively flattens the mixins of the given class.
+  // Drop any 'Mixin_' class, since it doesn't add anything.
+  // If the given class is a mixin, also remembers the full list of
+  // mixins that are mixed in in the 'flattened_mixins' map.
+  std::function<List<ir::Class*> (ir::Class*)> flatten;
+  flatten = [&](ir::Class* klass) {
+    auto probe = flattened_mixins.find(klass);
+    if (probe != flattened_mixins.end()) return probe->second;
+
+    ListBuilder<ir::Class*> flattened_builder;
+    for (int i = klass->mixins().length() - 1; i >= 0; i--) {
+      auto ir_mixin = klass->mixins()[i];
+      if (!ir_mixin->has_super()) {
+        // Skip the Mixin_ top.
+        continue;
+      }
+      flattened_builder.add(flatten(ir_mixin));
+    }
+    // Contrary to the 'flattened_mixins' map, each class only has the set
+    // of mixins between itself and super as mixin list.
+    // The map contains all the mixins (including the class and super mixins).
+    klass->replace_mixins(flattened_builder.build());
+
+    if (!klass->is_mixin()) return List<ir::Class*>();
+
+    if (klass->has_super()) flattened_builder.add(flatten(klass->super()));
+    auto flattened = flattened_builder.build();
+    // Now add ourselves to the front, unless we are the `Mixin_` class.
+    ListBuilder<ir::Class*> with_self;
+    if (klass->has_super()) with_self.add(klass);
+    with_self.add(flattened);
+    auto flattened_with_self = with_self.build();
+    flattened_mixins[klass] = flattened_with_self;
+    return flattened_with_self;
+  };
+
+  for (auto module : modules) {
+    for (auto ir_class : module->classes()) {
+      flatten(ir_class);
+    }
+  }
+}
+
 void Resolver::resolve_fill_method(ir::Method* method,
                                    ir::Class* holder,
                                    Scope* scope,
@@ -2084,35 +2291,6 @@ void Resolver::resolve_fill_globals(Module* module,
     ASSERT(global->body() == null);
     resolve_fill_method(global, null, scope, entry_module, core_module);
   }
-}
-
-
-void Resolver::_dfs_traverse(ir::Class* current, List<ir::Class*> classes, int* index) const {
-  classes[(*index)++] = current;
-  for (auto it = current->first_subclass(); it != null; it = it->subclass_sibling()) {
-    _dfs_traverse(it, classes, index);
-  }
-}
-
-void Resolver::sort_classes(List<ir::Class*> classes) const {
-  ir::Class* top = null;
-  ir::Class* interface_top = null;
-  for (auto& klass : classes) {
-    if (klass->super() == null) {
-      if (klass->is_interface()) {
-        interface_top = klass;
-      } else {
-        top = klass;
-      }
-    } else {
-      klass->super()->link_subclass(klass);
-    }
-  }
-
-  int index = 0;
-  _dfs_traverse(top, classes, &index);
-  _dfs_traverse(interface_top, classes, &index);
-  ASSERT(index == classes.length());
 }
 
 static ir::Class* resolve_tree_root(Symbol name, ModuleScope* scope) {
@@ -2241,6 +2419,16 @@ void Resolver::resolve_fill_class(ir::Class* klass,
       // find super class entries.
       for (auto name : declarations.keys()) {
         declarations[name].push_back(ClassScope::SUPER_CLASS_SEPARATOR);
+      }
+    }
+    // The mixins must happen after the `SUPER_CLASS_SEPARATOR`.
+    // Note that the mixins are already in the correct order:
+    // For `class A extends B with C D`, the `mixins` are [D, C].
+    for (auto mixin : current->mixins()) {
+      for (auto method : mixin->methods()) {
+        auto name = method->name();
+        if (!name.is_valid()) continue;
+        declarations[name].push_back(method);
       }
     }
   }

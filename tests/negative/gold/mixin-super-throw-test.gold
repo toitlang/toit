@@ -1,0 +1,11 @@
+EXCEPTION error. 
+foo
+  0: M1                        tests/negative/mixin-super-throw-test.toit:7:5
+  1: A.<mixin-super>.<mixin-super>.<mixin-super> tests/negative/mixin-super-throw-test.toit:13:7
+  2: M2                        tests/negative/mixin-super-throw-test.toit:9:7
+  3: A.<mixin-super>.<mixin-super> tests/negative/mixin-super-throw-test.toit:13:7
+  4: M3                        tests/negative/mixin-super-throw-test.toit:10:7
+  5: A.<mixin-super>           tests/negative/mixin-super-throw-test.toit:13:7
+  6: M4                        tests/negative/mixin-super-throw-test.toit:11:7
+  7: A                         tests/negative/mixin-super-throw-test.toit:13:7
+  8: main                      tests/negative/mixin-super-throw-test.toit:16:8

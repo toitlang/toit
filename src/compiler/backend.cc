@@ -51,10 +51,19 @@ class BackendCollector : public ir::TraversingVisitor {
     TraversingVisitor::visit_Typecheck(node);
     if (node->type().is_class()) {
       auto klass = node->type().klass();
-      if (klass->is_interface()) {
-        interface_usage_counts_[klass]++;
-      } else {
-        class_usage_counts_[klass]++;
+      switch (klass->kind()) {
+        case ir::Class::CLASS:
+        case ir::Class::MONITOR:
+          class_usage_counts_[klass]++;
+          break;
+        // Mixins typechecks are implemented similar to interface checks:
+        // They have a stub method (without body) to indicate that a class
+        // "implements" the mixin.
+        // This is, because mixins can't be checked with a range check.
+        case ir::Class::MIXIN:
+        case ir::Class::INTERFACE:
+          interface_usage_counts_[klass]++;
+          break;
       }
     }
   }
@@ -265,7 +274,8 @@ void Backend::emit_method(ir::Method* method,
   int dispatch_offset;
   bool is_field_accessor;
 
-  if (method->is_static()) {
+  bool is_mixin_method = method->holder() != null && method->holder()->is_mixin();
+  if (method->is_static() || is_mixin_method) {
     dispatch_offset = -1;
     is_field_accessor = false;
   } else {

@@ -1264,13 +1264,10 @@ class MethodInfo:
       .position .bytecode-positions .as-class-names:
 
   stacktrace-string program/Program:
-    if type == BLOCK-TYPE:
+    if type == BLOCK-TYPE or type == LAMBDA-TYPE:
       info := program.method-info-for outer
-      return "$(info.stacktrace-string program).<block>"
-
-    if type == LAMBDA-TYPE:
-      info := program.method-info-for outer
-      return "$(info.stacktrace-string program).<lambda>"
+      code-info := program.method-info-for id
+      return "$(info.stacktrace-string program).$(code-info.name)"
 
     return prefix-string program
 

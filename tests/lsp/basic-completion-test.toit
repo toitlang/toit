@@ -49,7 +49,7 @@ main:
 
   prefix.ImportedClass
 /*       ^~~~~~~~~~~~~
-  + ImportedClass, ImportedInterface
+  + ImportedClass, ImportedInterface, ImportedMixin
   - *
 */
 

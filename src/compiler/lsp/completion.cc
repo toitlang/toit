@@ -25,11 +25,17 @@
 namespace toit {
 namespace compiler {
 
-void CompletionHandler::class_or_interface(ast::Node* node, IterableScope* scope, ir::Class* holder, ir::Node* resolved, bool needs_interface) {
+void CompletionHandler::class_interface_or_mixin(ast::Node* node,
+                                                 IterableScope* scope,
+                                                 ir::Class* holder,
+                                                 ir::Node* resolved,
+                                                 bool needs_interface,
+                                                 bool needs_mixin) {
   scope->for_each([&](Symbol name, const ResolutionEntry& entry) {
     if (entry.is_class()) {
       auto klass = entry.klass();
-      if (needs_interface != klass->is_interface()) return;
+      if ((needs_interface && !klass->is_interface()) || (!needs_interface && klass->is_interface())) return;
+      if ((needs_mixin && !klass->is_mixin()) || (!needs_mixin && klass->is_mixin())) return;
       if (klass == holder) return;
       complete_entry(name, entry);
     } else if (entry.is_prefix()) {
@@ -37,6 +43,19 @@ void CompletionHandler::class_or_interface(ast::Node* node, IterableScope* scope
     }
   });
   exit(0);
+}
+
+static CompletionKind completion_kind_for(ir::Class* klass) {
+  switch (klass->kind()) {
+    case ir::Class::CLASS:
+    case ir::Class::MONITOR:
+    case ir::Class::MIXIN:
+      return CompletionKind::CLASS;
+    case ir::Class::INTERFACE:
+      return CompletionKind::INTERFACE;
+      break;
+  }
+  UNREACHABLE();
 }
 
 void CompletionHandler::type(ast::Node* node,
@@ -67,11 +86,7 @@ void CompletionHandler::type(ast::Node* node,
         // We don't use `complete_entry` here, as we want classes to be
         //   shown as classes and not as constructors.
         auto klass = entry.klass();
-        if (klass->is_interface()) {
-          complete_entry(name, entry, CompletionKind::INTERFACE);
-        } else {
-          complete_entry(name, entry, CompletionKind::CLASS);
-        }
+        complete_entry(name, entry, completion_kind_for(klass));
       }
     } else if (entry.is_prefix()) {
       complete_entry(name, entry);
@@ -392,7 +407,7 @@ void CompletionHandler::complete_entry(Symbol name,
 
   if (node->is_Class()) {
     auto klass = node->as_Class();
-    kind = klass->is_interface() ? CompletionKind::INTERFACE : CompletionKind::CLASS;
+    kind = completion_kind_for(klass);
     range = klass->range();
   } else if (node->is_Field()) {
     range = node->as_Field()->range();
