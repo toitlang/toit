@@ -32,7 +32,7 @@ typedef LinkedFifo<FinalizerNode> FinalizerNodeFifo;
 class FinalizerNode : public FinalizerNodeFifo::Element {
  public:
   virtual ~FinalizerNode();
-  virtual bool has_key(HeapObject* value);
+  virtual bool has_key(HeapObject* value) = 0;
 
   virtual void roots_do(RootCallback* cb) = 0;
   // Should return false if the node needs GC processing.
