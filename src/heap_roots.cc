@@ -26,6 +26,10 @@ void ToitFinalizerNode::roots_do(RootCallback* cb) {
   cb->do_root(reinterpret_cast<Object**>(&lambda_));
 }
 
+bool ToitFinalizerNode::has_key(HeapObject* key) {
+  return key_ == key;
+}
+
 bool ToitFinalizerNode::alive(LivenessOracle* oracle) {
   return oracle->is_alive(key_);
 }
@@ -41,6 +45,10 @@ bool ToitFinalizerNode::handle_not_alive(RootCallback* ss, ObjectHeap* heap) {
 
 void VmFinalizerNode::roots_do(RootCallback* cb) {
   cb->do_root(reinterpret_cast<Object**>(&key_));
+}
+
+bool VmFinalizerNode::has_key(HeapObject* key) {
+  return key_ == key;
 }
 
 bool VmFinalizerNode::alive(LivenessOracle* oracle) {

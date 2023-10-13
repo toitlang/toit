@@ -48,7 +48,7 @@ class ToitFinalizerNode : public FinalizerNode {
 
   HeapObject* key() { return key_; }
   void set_key(HeapObject* value) { key_ = value; }
-  virtual bool has_key(HeapObject* value) { return key_ == value; }
+  virtual bool has_key(HeapObject* value);
   Object* lambda() { return lambda_; }
 
   // Garbage collection support.
@@ -67,7 +67,7 @@ class VmFinalizerNode : public FinalizerNode {
   : key_(key) {}
 
   HeapObject* key() { return key_; }
-  void set_key(HeapObject* value) { key_ = value; }
+  void set_key(HeapObject* value);
   virtual bool has_key(HeapObject* value) { return key_ == value; }
 
   // Garbage collection support.
