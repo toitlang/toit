@@ -164,7 +164,7 @@ FreeListRegion* FreeListRegion::create_at(uword start, uword size) {
 
 Object* FreeListRegion::single_free_word_header() {
   uword header = SINGLE_FREE_WORD_CLASS_ID;
-  header = (header << CLASS_TAG_BIT_SIZE) | SINGLE_FREE_WORD_TAG;
+  header = (header << CLASS_ID_OFFSET) | SINGLE_FREE_WORD_TAG;
   return Smi::from(header);
 }
 
@@ -400,7 +400,7 @@ bool String::_is_valid_utf8() {
 
 void PromotedTrack::zap() {
   uword header = SINGLE_FREE_WORD_CLASS_ID;
-  header = (header << CLASS_TAG_BIT_SIZE) | SINGLE_FREE_WORD_TAG;
+  header = (header << CLASS_ID_OFFSET) | SINGLE_FREE_WORD_TAG;
   Object* filler = Smi::from(header);
   for (uword p = _raw(); p < _raw() + HEADER_SIZE; p += WORD_SIZE) {
     *reinterpret_cast<Object**>(p) = filler;

@@ -62,9 +62,10 @@ class Program:
   global-table    / List ::= ?          // List of GlobalInfo
   selectors_      / Map  ::= {:}        // Map from location-id to SelectorClass.
 
-  static CLASS-TAG-SIZE_     ::= 4
+  static CLASS-TAG-SIZE_     ::= ToitHeapObject.CLASS-TAG-BIT-SIZE
   static CLASS-TAG-MASK_     ::= (1 << CLASS-TAG-SIZE_) - 1
-  static INSTANCE-SIZE-MASK_ ::= (1 << (16 - CLASS-TAG-SIZE_)) - 1
+  static CLASS-ID-SIZE_      ::= ToitHeapObject.CLASS-ID-BIT-SIZE
+  static CLASS-ID-OFFSET_    ::= ToitHeapObject.CLASS-ID-OFFSET
 
 
   constructor snapshot/SnapshotBundle:
@@ -74,7 +75,7 @@ class Program:
     built-in-class-ids        = snapshot.program-snapshot.program-segment.built-in-class-ids_
     invoke-bytecode-offsets   = snapshot.program-snapshot.program-segment.invoke-bytecode-offsets_
     class-tags                = snapshot.program-snapshot.program-segment.class-bits_.map: it & CLASS-TAG-MASK_
-    class-instance-sizes      = snapshot.program-snapshot.program-segment.class-bits_.map: it >> CLASS-TAG-SIZE_
+    class-instance-sizes      = snapshot.program-snapshot.program-segment.class-bits_.map: it >> CLASS-ID-OFFSET_
     entry-point-indexes       = snapshot.program-snapshot.program-segment.entry-point-indexes_
     global-variables          = snapshot.program-snapshot.program-segment.global-variables_
     class-check-ids           = snapshot.program-snapshot.program-segment.class-check-ids_
@@ -416,8 +417,12 @@ abstract class ToitHeapObject extends ToitObject:
   static CLASS-TAG-OFFSET/int ::= 0
   static CLASS-TAG-MASK/int ::= (1 << CLASS-TAG-BIT-SIZE) - 1
 
+  static FINALIZER-BIT-SIZE/int ::= 2
+  static FINALIZER-BIT-OFFSET/int ::= CLASS-TAG-OFFSET + CLASS-TAG-BIT-SIZE
+  static FINALIZER-BIT-MASK/int ::= (1 << FINALIZER-BIT-SIZE) - 1
+
   static CLASS-ID-BIT-SIZE/int ::= 10
-  static CLASS-ID-OFFSET/int ::= CLASS-TAG-OFFSET + CLASS-TAG-BIT-SIZE
+  static CLASS-ID-OFFSET/int ::= FINALIZER-BIT-OFFSET + FINALIZER-BIT-SIZE
   static CLASS-ID-MASK/int ::= (1 << CLASS-ID-BIT-SIZE) - 1
 
   header/int? := null

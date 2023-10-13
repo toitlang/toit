@@ -262,8 +262,12 @@ class HeapObject : public Object {
   static const int CLASS_TAG_OFFSET = 0;
   static const uword CLASS_TAG_MASK = (1 << CLASS_TAG_BIT_SIZE) - 1;
 
+  static const int FINALIZER_BIT_SIZE = 2;
+  static const int FINALIZER_BIT_OFFSET = CLASS_TAG_OFFSET + CLASS_TAG_BIT_SIZE;
+  static const uword FINALIZER_BIT_MASK = (1 << FINALIZER_BIT_SIZE) - 1;
+
   static const int CLASS_ID_BIT_SIZE = 10;
-  static const int CLASS_ID_OFFSET = CLASS_TAG_OFFSET + CLASS_TAG_BIT_SIZE;
+  static const int CLASS_ID_OFFSET = FINALIZER_BIT_OFFSET + FINALIZER_BIT_SIZE;
   // This mask lets class_id() return negative values.  The GC uses
   // negative class ids for on-heap pseudo-objects like free memory.
   static const uword CLASS_ID_MASK = -1;
@@ -313,7 +317,7 @@ class HeapObject : public Object {
  protected:
   void _set_header(Smi* class_id, TypeTag class_tag) {
     uword header = Smi::value(class_id);
-    header = (header << CLASS_TAG_BIT_SIZE) | class_tag;
+    header = (header << CLASS_ID_OFFSET) | class_tag;
 
     _set_header(Smi::from(header));
     ASSERT(this->class_id() == class_id);

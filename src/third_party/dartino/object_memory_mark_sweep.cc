@@ -499,7 +499,7 @@ uword OldSpace::sweep() {
   // Clear the free list. It will be rebuilt during sweeping.
   free_list_.clear();
   uword used = 0;
-  const word SINGLE_FREE_WORD = -44;
+  const word SINGLE_FREE_WORD = -236;
   ASSERT(reinterpret_cast<Object*>(SINGLE_FREE_WORD) == FreeListRegion::single_free_word_header());
   chunk_list_.remove_wherever([&](Chunk* chunk) -> bool {
     uword line = chunk->start();
