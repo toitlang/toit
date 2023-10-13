@@ -29,7 +29,7 @@ class VmFinalizerNode;
 
 typedef LinkedFifo<FinalizerNode> FinalizerNodeFifo;
 
-abstract class FinalizerNode : public FinalizerNodeFifo::Element {
+class FinalizerNode : public FinalizerNodeFifo::Element {
  public:
   virtual ~FinalizerNode();
   virtual bool has_key(HeapObject* value);
