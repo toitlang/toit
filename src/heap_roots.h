@@ -65,9 +65,9 @@ class VmFinalizerNode : public FinalizerNode {
  public:
   VmFinalizerNode(HeapObject* key)
   : key_(key) {}
+  virtual ~VmFinalizerNode();
 
   HeapObject* key() { return key_; }
-  void set_key(HeapObject* value) { key_ = value; }
   virtual bool has_key(HeapObject* value);
 
   // Garbage collection support.

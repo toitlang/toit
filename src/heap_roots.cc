@@ -43,6 +43,8 @@ bool ToitFinalizerNode::handle_not_alive(RootCallback* ss, ObjectHeap* heap) {
   return false;  // Don't delete me, I'm on the other queue now.
 }
 
+VmFinalizerNode::~VmFinalizerNode() {}
+
 void VmFinalizerNode::roots_do(RootCallback* cb) {
   cb->do_root(reinterpret_cast<Object**>(&key_));
 }
