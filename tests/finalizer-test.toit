@@ -24,15 +24,6 @@ main:
   test-add-finalizer
   test-remove-finalizer
 
-  test-double-finalizer
-
-test-double-finalizer:
-  str := "x" * 35_000  // Big enough string that it is external.
-
-  expect-throw "OUT_OF_BOUNDS":
-    add-finalizer str::
-      print "String is dead"
-
 test-finalizers:
   add-finalizer should-never-die:: throw "Wrong object to declare dead"
   limit.repeat: add-finalizer List:: count++
@@ -56,11 +47,13 @@ test-add-finalizer:
   expect-null
     add-finalizer byte-array:: null
 
-  expect-no-throw:
+  // Can't add a finalizer to an object that already has one.
+  // Large strings become external and need a VM finalizer.
+  expect-throw "OUT_OF_BOUNDS":
     add-finalizer make-huge-string:: null
 
 make-huge-string -> string:
-  return "x" * 4097
+  return "x" * 35000
 
 test-remove-finalizer:
   object ::= List
