@@ -104,11 +104,8 @@ sha-clone_ sha:
 // Adds a UTF-8 string or a byte array to the sha224+ hash.
 sha-add_ sha data/io.Data from/int to/int -> none:
   #primitive.crypto.sha-add:
-    if it == "WRONG_BYTES_TYPE":
-      // TODO(florian): we could chunk the input to avoid a full copy in memory.
-      sha-add_ sha (ByteArray.from data from to) 0 (to - from)
-    else:
-      throw it
+    io.primitive-redo-chunked-io-data_ it data from to: | bytes |
+      sha-add_ sha bytes 0 bytes.size
 
 // Rounds off a sha224+ hash and returns the hash.
 sha-get_ sha -> ByteArray:

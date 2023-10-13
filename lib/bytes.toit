@@ -13,6 +13,7 @@ The $Reader class makes a byte array readable, by providing a `read` method.
 
 import binary show BIG-ENDIAN LITTLE-ENDIAN
 import reader
+import io
 
 INITIAL-BUFFER-LENGTH_ ::= 64
 MIN-BUFFER-GROWTH_ ::= 64
@@ -382,7 +383,7 @@ class Buffer extends BufferConsumer:
     while data := r.read: write data
 
   /** See $BufferConsumer.write. */
-  write data from/int=0 to/int=data.size -> int:
+  write data/io.Data from/int=0 to/int=data.size -> int:
     count := to - from
     ensure_ count
     buffer_.replace offset_ data from to

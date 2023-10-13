@@ -9,10 +9,8 @@ Encodes the given $data as base64 or base64url.
 */
 encode data/io.Data --url-mode/bool=false -> string:
   #primitive.encoding.base64-encode:
-    if it == "WRONG_BYTES_TYPE":
-      return encode (ByteArray.from data) --url-mode=url-mode
-    else:
-      throw it
+    return io.primitive-redo-io-data_ it data: | bytes |
+      encode bytes --url-mode=url-mode
 
 
 /**
@@ -22,7 +20,5 @@ In URL mode the data must be valid base64url encoding.
 */
 decode data/io.Data --url-mode/bool=false -> ByteArray:
   #primitive.encoding.base64-decode:
-    if it == "WRONG_BYTES_TYPE":
-      return decode (ByteArray.from data) --url-mode=url-mode
-    else:
-      throw it
+    return io.primitive-redo-io-data_ it data: | bytes |
+      decode bytes --url-mode=url-mode

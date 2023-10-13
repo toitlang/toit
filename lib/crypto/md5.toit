@@ -4,7 +4,7 @@
 
 import binary show LITTLE-ENDIAN
 import .checksum
-import ..io as io
+import io
 
 /**
 Pure Toit MD5 implementation.

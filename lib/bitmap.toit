@@ -64,7 +64,7 @@ The assumed pixel layout is the one used by the SSD1306 display.
   $byte-array-width bytes, where the least significant bit is at the
   top.)
 */
-bitmap-draw-bitmap ->none
+bitmap-draw-bitmap -> none
     x /int
     y /int
     color /int
@@ -75,12 +75,10 @@ bitmap-draw-bitmap ->none
     byte-array /ByteArray
     byte-array-width /int
     bytewise /bool:
-  #primitive.bitmap.draw-bitmap:
-    if it == "WRONG_BYTES_TYPE":
-      bitmap-draw-bitmap x y color orientation (ByteArray.from source) \
+  #primitive.bitmap.draw-bitmap: | error |
+    io.primitive-redo-io-data_ error source: | bytes-source |
+      bitmap-draw-bitmap x y color orientation bytes-source \
           byte-array-offset source-width byte-array byte-array-width bytewise
-    else:
-      throw it
 
 /**
 Draws an indexed bytemap on a byte-oriented frame buffer.
@@ -112,12 +110,10 @@ bitmap-draw-bytemap -> none
     palette /ByteArray
     destination-array /ByteArray
     destination-width /int:
-  #primitive.bitmap.draw-bytemap:
-    if it == "WRONG_BYTES_TYPE":
-      bitmap-draw-bytemap x y transparent-color orientation (ByteArray.from source) \
+  #primitive.bitmap.draw-bytemap: | error |
+    io.primitive-redo-io-data_ error source: | bytes-source |
+      bitmap-draw-bytemap x y transparent-color orientation bytes-source \
           source-width palette destination-array destination-width
-    else:
-      throw it
 
 /// Fills a frame buffer with a single color (0: black, 1: white)
 bitmap-zap byte-array/ByteArray color/int:
@@ -206,12 +202,10 @@ blit source/io.Data destination/ByteArray pixels-per-line/int -> none
   blit_ destination destination-pixel-stride destination-line-stride source source-pixel-stride source-line-stride pixels-per-line lookup-table shift mask operation
 
 blit_ destination destination-pixel-stride destination-line-stride source source-pixel-stride source-line-stride pixels-per-line lookup-table shift mask operation -> none:
-  #primitive.bitmap.blit:
-    if it == "WRONG_BYTES_TYPE":
-      blit_ destination destination-pixel-stride destination-line-stride (ByteArray.from source) \
+  #primitive.bitmap.blit: | error |
+    io.primitive-redo-io-data_ error source: | bytes-source |
+      blit_ destination destination-pixel-stride destination-line-stride bytes-source \
           source-pixel-stride source-line-stride pixels-per-line lookup-table shift mask operation
-    else:
-      throw it
 
 /**
 Transform a ByteArray in-place, using a 256-entry look-up table.

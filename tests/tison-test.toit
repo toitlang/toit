@@ -6,6 +6,8 @@ import expect show *
 import encoding.tison
 import encoding.ubjson
 
+import .io-data
+
 main:
   test-simple-types
   test-strings
@@ -104,6 +106,8 @@ test-complex -> none:
 test-round-trip x/any -> none:
   encoded := tison.encode x
   decoded := tison.decode encoded
+  decoded2 := tison.decode (FakeData encoded)
+  expect-structural-equals decoded decoded2
   expect-bytes-equal
       ubjson.encode x
       ubjson.encode decoded

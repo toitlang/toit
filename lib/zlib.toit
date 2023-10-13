@@ -8,8 +8,8 @@ import reader
 import crypto
 import crypto.adler32
 import crypto.crc as crc-algorithms
-import io
 import expect show *
+import .io as io
 
 class CompressionReader implements reader.Reader:
   wrapped_ := null
@@ -1056,13 +1056,10 @@ Compresses the bytes in source in the given range, and writes them into the
   The number of bytes read is v & 0x7fff, and the number of bytes written is
   v >> 15.
 */
-rle-add_ rle destination index source/io.Data from/int to/int:
+rle-add_ rle destination index source/io.Data from/int to/int -> int:
   #primitive.zlib.rle-add:
-    if it == "WRONG_BYTES_TYPE" and source is not ByteArray:
-      // TODO(florian): can/should we chunk the data?
-      rle-add_ rle destination index (ByteArray.from source from to) 0 (to - from)
-    else:
-      throw it
+    return io.primitive-redo-io-data_ it source from to: | bytes/ByteArray |
+      rle-add_ rle destination index bytes 0 bytes.size
 
 /// Returns the number of bytes written to terminate the zlib stream.
 rle-finish_ rle destination index:
@@ -1079,11 +1076,8 @@ zlib-read_ zlib -> ByteArray?:
 
 zlib-write_ zlib data -> int:
   #primitive.zlib.zlib-write:
-    if it == "WRONG_BYTES_TYPE":
-      // TODO(florian): can/should we chunk the data?
-      zlib-write_ zlib (ByteArray.from data)
-    else:
-      throw it
+    return io.primitive-redo-io-data_ it data: | bytes/ByteArray |
+      zlib-write_ zlib bytes
 
 zlib-close_ zlib -> none:
   #primitive.zlib.zlib-close

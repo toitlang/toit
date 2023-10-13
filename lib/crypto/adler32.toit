@@ -81,13 +81,10 @@ adler32-start_ group:
 adler32-clone_ adler:
   #primitive.zlib.adler32-clone
 
-adler32-add_ adler data/io.Data from/int to/int unadd/bool:
+adler32-add_ adler data/io.Data from/int to/int unadd/bool -> none:
   #primitive.zlib.adler32-add:
-    if it == "WRONG_BYTES_TYPE":
-      // TODO(florian): we could chunk the data to avoid creating a bit copy.
-      adler32-add_ adler (ByteArray data from to) 0 (to - from) unadd
-    else:
-      throw it
+    io.primitive-redo-chunked-io-data_ it data from to: | bytes |
+      adler32-add_ adler bytes 0 bytes.size unadd
 
 adler32-get_ adler destructive:
   #primitive.zlib.adler32-get

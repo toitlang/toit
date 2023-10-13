@@ -150,11 +150,9 @@ set-random-seed seed -> none:
       throw it
 
 random-add-entropy_ data/io.Data -> none:
-  #primitive.core.add-entropy:
-    if it == "WRONG_BYTES_TYPE":
-      random-add-entropy_ (ByteArray.from data)
-    else:
-      throw it
+  #primitive.core.add-entropy: | error |
+    // TODO(florian): should we do this in a chunked way?
+    io.primitive-redo-io-data_ error data: random-add-entropy_ it
 
 /**
 Returns the number of initial zeros in binary representation of the argument.

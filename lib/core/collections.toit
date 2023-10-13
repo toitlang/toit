@@ -4,8 +4,7 @@
 
 import binary
 import bitmap
-
-import ..io as io
+import io
 
 LIST-INITIAL-LENGTH_ ::= 4
 HASHED-COLLECTION-INITIAL-LENGTH_ ::= 4

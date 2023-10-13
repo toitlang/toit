@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import io
+import ..io as io
 
 /**
 The encoding format TISON is a binary encoded JSON variant similar
@@ -33,15 +33,13 @@ encode object/any -> ByteArray:
     throw it
 
 /**
-Decodes $bytes, which is a $ByteArray in TISON format.
+Decodes the given $data.
 
 The result is null or an instance of int, bool, float, string, ByteArray,
   List, or Map.  The list elements and map values will also be one of
   these types.
 */
-decode bytes/io.Data -> any:
+decode data/io.Data -> any:
   #primitive.encoding.tison-decode:
-    if it == "WRONG_BYTES_TYPE":
-      return decode (ByteArray.from bytes)
-    else:
-      throw it
+    return io.primitive-redo-io-data_ it data: | bytes |
+      decode bytes

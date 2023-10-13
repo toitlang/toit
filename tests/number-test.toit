@@ -5,6 +5,8 @@
 import math
 import expect show *
 
+import .io-data
+
 main:
   test-smis-and-floats
   test-float-nan-and-infinite
@@ -28,6 +30,7 @@ main:
   test-operators
   test-bit-fields
   test-abs-floor-ceil-truncate
+  test-io-data
 
 expect-error name [code]:
   expect-equals
@@ -1254,3 +1257,7 @@ test-abs-floor-ceil-truncate:
   expect-identical float.NAN float.NAN.floor
   expect-identical float.NAN float.NAN.ceil
   expect-identical float.NAN float.NAN.truncate
+
+test-io-data:
+  expect-equals 3 (int.parse (FakeData.str "3"))
+  expect-equals 3.1 (float.parse (FakeData.str "3.1"))
