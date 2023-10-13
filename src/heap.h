@@ -77,8 +77,9 @@ class ObjectHeap {
   void queue_finalizer(ToitFinalizerNode* node) {
     runnable_finalizers_.append(node);
   }
-  void process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space);
-  void process_registered_finalizers_helper(RootCallback* ss, LivenessOracle* from_space, ObjectHeap* heap);
+  void process_registered_toit_finalizers(RootCallback* ss, LivenessOracle* from_space);
+  void process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space);
+  void process_registered_finalizers_helper(FinalizerNodeFifo* list, RootCallback* ss, LivenessOracle* from_space, ObjectHeap* heap);
 
   Program* program() const { return program_; }
 
@@ -129,10 +130,13 @@ class ObjectHeap {
   // Garbage collection operation for runtime objects.
   GcType gc(bool try_hard);
 
-  bool add_finalizer(HeapObject* key, Object* lambda);
+  bool add_toit_finalizer(HeapObject* key, Object* lambda);
+  bool add_vm_finalizer(HeapObject* key, Object* lambda);
   bool add_vm_finalizer(HeapObject* key);
   bool has_finalizer(HeapObject* key, Object* lambda);
-  bool remove_finalizer(HeapObject* key);
+  bool remove_finalizer(FinalizerNodeFifo* list, HeapObject* key);
+  bool remove_toit_finalizer(HeapObject* key);
+  bool remove_vm_finalizer(HeapObject* key);
 
   bool has_finalizer_to_run() const { return !runnable_finalizers_.is_empty(); }
   Object* next_finalizer_to_run();
@@ -206,7 +210,8 @@ class ObjectHeap {
   // A finalizer is either on this list or the two-space-heap's list of
   // registered finalizers.
   FinalizerNodeFifo runnable_finalizers_;         // Contains finalizers that must be executed.
-  FinalizerNodeFifo registered_finalizers_;       // Contains registered finalizers.
+  FinalizerNodeFifo registered_toit_finalizers_;  // Contains registered finalizers.
+  FinalizerNodeFifo registered_vm_finalizers_;    // Contains registered finalizers.
 
   int gc_count_ = 0;
   int full_gc_count_ = 0;

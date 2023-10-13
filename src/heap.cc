@@ -149,11 +149,16 @@ ObjectHeap::~ObjectHeap() {
   // from the destructor of the Process.
   free(global_variables_);
 
-  while (auto finalizer = registered_finalizers_.remove_first()) {
+  while (auto finalizer = registered_toit_finalizers_.remove_first()) {
     delete finalizer;
   }
 
   while (auto finalizer = runnable_finalizers_.remove_first()) {
+    delete finalizer;
+  }
+
+  while (auto finalizer = registered_vm_finalizers_.remove_first()) {
+    finalizer->handle_not_alive(null, this);  // Frees the external memory.
     delete finalizer;
   }
 
@@ -328,17 +333,21 @@ void ObjectHeap::install_heap_limit() {
   limit_ = pending_limit_;
 }
 
-void ObjectHeap::process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space) {
-  process_registered_finalizers_helper(ss, from_space, this);
+void ObjectHeap::process_registered_toit_finalizers(RootCallback* ss, LivenessOracle* from_space) {
+  process_registered_finalizers_helper(&registered_toit_finalizers_, ss, from_space, this);
 }
 
-void ObjectHeap::process_registered_finalizers_helper(RootCallback* ss, LivenessOracle* from_space, ObjectHeap* heap) {
+void ObjectHeap::process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space) {
+  process_registered_finalizers_helper(&registered_vm_finalizers_, ss, from_space, this);
+}
+
+void ObjectHeap::process_registered_finalizers_helper(FinalizerNodeFifo* list, RootCallback* ss, LivenessOracle* from_space, ObjectHeap* heap) {
   // Process the registered finalizer list.
   CAPTURE3(
       RootCallback*, ss,
       LivenessOracle*, from_space,
       ObjectHeap*, heap);
-  registered_finalizers_.remove_wherever([capture](FinalizerNode* node) -> bool {
+  list->remove_wherever([capture](FinalizerNode* node) -> bool {
     bool is_alive = node->alive(capture.from_space);
     if (is_alive) {
       node->roots_do(capture.ss);
@@ -350,18 +359,21 @@ void ObjectHeap::process_registered_finalizers_helper(RootCallback* ss, Liveness
 }
 
 bool ObjectHeap::has_finalizer(HeapObject* key, Object* lambda) {
-  for (FinalizerNode* node : registered_finalizers_) {
+  for (FinalizerNode* node : registered_toit_finalizers_) {
+    if (node->has_key(key)) return true;
+  }
+  for (FinalizerNode* node : registered_vm_finalizers_) {
     if (node->has_key(key)) return true;
   }
   return false;
 }
 
-bool ObjectHeap::add_finalizer(HeapObject* key, Object* lambda) {
+bool ObjectHeap::add_toit_finalizer(HeapObject* key, Object* lambda) {
   // We should already have checked whether the object is already registered.
   ASSERT(!has_finalizer(key, lambda));
   auto node = _new ToitFinalizerNode(key, lambda);
   if (node == null) return false;  // Allocation failed.
-  registered_finalizers_.append(node);
+  registered_toit_finalizers_.append(node);
   return true;
 }
 
@@ -369,13 +381,21 @@ bool ObjectHeap::add_vm_finalizer(HeapObject* key) {
   // We should already have checked whether the object is already registered.
   auto node = _new VmFinalizerNode(key);
   if (node == null) return false;  // Allocation failed.
-  registered_finalizers_.append(node);
+  registered_vm_finalizers_.append(node);
   return true;
 }
 
-bool ObjectHeap::remove_finalizer(HeapObject* key) {
+bool ObjectHeap::remove_toit_finalizer(HeapObject* key) {
+  return remove_finalizer(&registered_toit_finalizers_, key);
+}
+
+bool ObjectHeap::remove_vm_finalizer(HeapObject* key) {
+  return remove_finalizer(&registered_vm_finalizers_, key);
+}
+
+bool ObjectHeap::remove_finalizer(FinalizerNodeFifo* list, HeapObject* key) {
   bool found = false;
-  registered_finalizers_.remove_wherever([key, &found](FinalizerNode* node) -> bool {
+  list->remove_wherever([key, &found](FinalizerNode* node) -> bool {
     if (node->has_key(key)) {
       delete node;
       found = true;
