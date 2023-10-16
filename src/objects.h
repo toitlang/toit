@@ -230,7 +230,7 @@ class HeapObject : public Object {
     return static_cast<TypeTag>((Smi::value(header()) >> HeapObject::CLASS_TAG_OFFSET) & HeapObject::CLASS_TAG_MASK);
   }
 
-  INLINE bool has_forwarding_address() {
+  INLINE bool has_forwarding_address() const {
     return is_heap_object(_at(HEADER_OFFSET));
   }
 
