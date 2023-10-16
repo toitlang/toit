@@ -133,7 +133,6 @@ class ObjectHeap {
   bool add_toit_finalizer(HeapObject* key, Object* lambda);
   bool add_vm_finalizer(HeapObject* key, Object* lambda);
   bool add_vm_finalizer(HeapObject* key);
-  bool has_finalizer(HeapObject* key, Object* lambda);
 
   bool has_finalizer_to_run() const { return !runnable_finalizers_.is_empty(); }
   Object* next_finalizer_to_run();

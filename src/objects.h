@@ -230,14 +230,17 @@ class HeapObject : public Object {
     return static_cast<TypeTag>((Smi::value(header()) >> HeapObject::CLASS_TAG_OFFSET) & HeapObject::CLASS_TAG_MASK);
   }
   INLINE bool has_active_finalizer() const {
+    ASSERT(!has_forwarding_address());
     return (Smi::value(header()) & (1 << HeapObject::FINALIZER_BIT_OFFSET)) != 0;
   }
   INLINE void set_has_active_finalizer() {
+    ASSERT(!has_forwarding_address());
     uword header_word = Smi::value(header());
     header_word |= 1 << HeapObject::FINALIZER_BIT_OFFSET;
     _set_header(Smi::from(header_word));
   }
   INLINE void clear_has_active_finalizer() {
+    ASSERT(!has_forwarding_address());
     uword header_word = Smi::value(header());
     header_word &= ~(1 << HeapObject::FINALIZER_BIT_OFFSET);
     _set_header(Smi::from(header_word));

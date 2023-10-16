@@ -39,6 +39,8 @@ class FinalizerNode : public FinalizerNodeFifo::Element {
   virtual bool alive(LivenessOracle* oracle) = 0;
   // Should return null if the node should be deleted.
   virtual bool handle_not_alive(RootCallback* process_slots, ObjectHeap* heap) = 0;
+  // Should return true if the node has the active finalizer bit set.
+  virtual bool has_active_finalizer(LivenessOracle* oracle) = 0;
 };
 
 class ToitFinalizerNode : public FinalizerNode {
@@ -55,6 +57,7 @@ class ToitFinalizerNode : public FinalizerNode {
   virtual void roots_do(RootCallback* cb);
   virtual bool alive(LivenessOracle* oracle);
   virtual bool handle_not_alive(RootCallback* process_slots, ObjectHeap* heap);
+  virtual bool has_active_finalizer(LivenessOracle* oracle);
 
  private:
   HeapObject* key_;
@@ -74,6 +77,7 @@ class VmFinalizerNode : public FinalizerNode {
   virtual void roots_do(RootCallback* cb);
   virtual bool alive(LivenessOracle* oracle);
   virtual bool handle_not_alive(RootCallback* process_slots, ObjectHeap* heap);
+  virtual bool has_active_finalizer(LivenessOracle* oracle);
 
   void free_external_memory(Process* process);
 
