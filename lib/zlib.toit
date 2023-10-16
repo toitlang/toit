@@ -44,7 +44,7 @@ class UncompressedDeflateBackEnd_ implements BackEnd_:
 
   static BLOCK-HEADER-SIZE_ ::= 5
 
-  write data/io.Data from=0 to=data.size -> int:
+  write data/io.Data from=0 to=data.byte-size -> int:
     if not summer_: throw "ALREADY_CLOSED"
     length := min
         buffer_.size - buffer-fullness_
@@ -161,7 +161,7 @@ class RunLengthDeflateBackEnd_ implements BackEnd_:
     buffer-fullness_ = 0
     return result
 
-  write data/io.Data from=0 to=data.size:
+  write data/io.Data from/int=0 to/int=data.byte-size:
     if not rle_: throw "ALREADY_CLOSED"
     // The buffer is 256 large, and we don't let it get too full because then the compressor
     // may not be able to make progress, so we flush it when we hit three quarters full.
@@ -227,8 +227,8 @@ class ZlibBackEnd_ implements BackEnd_:
   read -> ByteArray?:
     return zlib-read_ zlib_
 
-  write data/io.Data from/int=0 to/int=data.size -> int:
-    return zlib-write_ zlib_ data[from..to]
+  write data/io.Data from/int=0 to/int=data.byte-size -> int:
+    return zlib-write_ zlib_ (data.byte-slice from to)
 
   close -> none:
     zlib-close_ zlib_
@@ -281,7 +281,7 @@ abstract class Coder_:
     If it returns zero, then that means the read method must be called
     because the buffers are full.
   */
-  write --wait/bool=true data from/int=0 to/int=data.size -> int:
+  write --wait/bool=true data/io.Data from/int=0 to/int=data.byte-size -> int:
     if closed-read_: throw "READER_CLOSED"
     pos := from
     while pos < to:

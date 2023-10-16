@@ -162,5 +162,5 @@ class Md5 extends Checksum:
 /**
 Computes the MD5 hash of the given $data.
 */
-md5 data/io.Data from/int=0 to/int=data.size -> ByteArray:
+md5 data/io.Data from/int=0 to/int=data.byte-size -> ByteArray:
   return checksum Md5 data from to

@@ -1111,8 +1111,8 @@ interface ByteArray extends io.Data:
     size.repeat: result[it] = initializer.call it
     return result
 
-  constructor.from bytes/io.Data from/int=0 to/int=bytes.size:
-    if not 0 <= from <= to <= bytes.size: throw "OUT_OF_BOUNDS"
+  constructor.from bytes/io.Data from/int=0 to/int=bytes.byte-size:
+    if not 0 <= from <= to <= bytes.byte-size: throw "OUT_OF_BOUNDS"
     size := to - from
     result := ByteArray size
     bytes.write-to-byte-array result --at=0 from to
@@ -1543,6 +1543,9 @@ abstract class ByteArrayBase_ implements ByteArray:
   byte-slice from/int to/int -> io.Data:
     return this[from..to]
 
+  byte-at index/int -> int:
+    return this[index]
+
   write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
     target.replace at this from to
 
@@ -1758,6 +1761,15 @@ class CowByteArray_ implements ByteArray:
       backing_ = backing_.copy
       is-mutable_ = true
     return backing_
+
+  byte-size -> int:
+    return backing_.byte-size
+
+  byte-slice from/int to/int -> io.Data:
+    return this[from..to]
+
+  byte-at index/int -> int:
+    return this[index]
 
   write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
     backing_.write-to-byte-array target --at=at from to

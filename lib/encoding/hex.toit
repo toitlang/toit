@@ -23,24 +23,19 @@ Takes an input $data and returns the corresponding string of hex digits.
 ```
 */
 encode data/io.Data -> string:
-  if data.size == 0: return ""
-  if data.size == 1:
-    c := ?
-    if data is ByteArray: c = (data as ByteArray)[0]
-    else if data is string: c = (data as string)[0]
-    else:
-      bytes := ByteArray.from data
-      c = bytes[0]
+  if data.byte-size == 0: return ""
+  if data.byte-size == 1:
+    c := data.byte-at 0
     return "$(%02x c)"
-  result := ByteArray data.size * 2
-  blit data result data.size
+  result := ByteArray data.byte-size * 2
+  blit data result data.byte-size
       --destination-pixel-stride=2
       --shift=4
       --mask=0b1111
-  blit data result[1..] data.size
+  blit data result[1..] data.byte-size
       --destination-pixel-stride=2
       --mask=0b1111
-  blit result result result.size
+  blit result result result.byte-size
       --lookup-table=ENCODING-MAP_
   return result.to-string
 

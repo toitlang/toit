@@ -20,11 +20,11 @@ main:
   expect-equals "~~~~" (base64.decode (base64.encode "~~~~")).to-string
   expect-equals "~~~~~" (base64.decode (base64.encode "~~~~~")).to-string
 
-  expect-equals "fn5+fn4=" (base64.encode (FakeData.str "~~~~~"))
-  expect-equals "fn5-fn4" (base64.encode --url-mode (FakeData.str "~~~~~"))
+  expect-equals "fn5+fn4=" (base64.encode (FakeData "~~~~~"))
+  expect-equals "fn5-fn4" (base64.encode --url-mode (FakeData "~~~~~"))
 
-  expect-equals "~~~~~" (base64.decode (FakeData.str "fn5+fn4=")).to-string
-  expect-equals "~~~~~" (base64.decode --url-mode (FakeData.str "fn5-fn4")).to-string
+  expect-equals "~~~~~" (base64.decode (FakeData "fn5+fn4=")).to-string
+  expect-equals "~~~~~" (base64.decode --url-mode (FakeData "fn5-fn4")).to-string
 
   expect-equals "" (base64.decode --url-mode (base64.encode "" --url-mode)).to-string
   expect-equals "a" (base64.decode --url-mode (base64.encode "a" --url-mode)).to-string

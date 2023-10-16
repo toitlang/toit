@@ -23,7 +23,7 @@ Note that this returns the checksum in byte-swapped (little-endian)
   order.  The Xmodem CRC is a big-endian CRC algorithm and you
   would normally expect the result to be big-endian.
 */
-crc16 data/io.Data from/int=0 to/int=data.size -> ByteArray:
+crc16 data/io.Data from/int=0 to/int=data.byte-size -> ByteArray:
   state := crc.Crc.big-endian 16 --polynomial=0x1021
   state.add data from to
   result := state.get

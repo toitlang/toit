@@ -600,10 +600,10 @@ abstract class int extends num:
   ```
   */
   static parse data/io.Data --radix=10 -> int:
-    return parse_ data 0 data.size --radix=radix --on-error=: throw it
+    return parse_ data 0 data.byte-size --radix=radix --on-error=: throw it
 
   /** Deprecated. Use $(parse data --radix) with a slice instead. */
-  static parse data/io.Data from/int to/int=data.size --radix=10 -> int:
+  static parse data/io.Data from/int to/int=data.byte-size --radix=10 -> int:
     return parse_ data from to --radix=radix --on-error=: throw it
 
   /**
@@ -613,15 +613,15 @@ abstract class int extends num:
     lambda.
   */
   static parse data/io.Data --radix=10 [--on-error] -> int?:
-    return parse_ data 0 data.size --radix=radix --on-error=on-error
+    return parse_ data 0 data.byte-size --radix=radix --on-error=on-error
 
   /**
   Deprecated. Use $(parse data --radix [--on-error]) with a slice instead.
   */
-  static parse data/io.Data from/int to/int=data.size --radix=10 [--on-error] -> int?:
+  static parse data/io.Data from/int to/int=data.byte-size --radix=10 [--on-error] -> int?:
     return parse_ data from to --radix=10 --on-error=on-error
 
-  static parse_ data/io.Data from/int to/int=data.size --radix [--on-error] -> int?:
+  static parse_ data/io.Data from/int to/int=data.byte-size --radix [--on-error] -> int?:
     if radix == 10:
       return parse-10_ data from to --on-error=on-error
     else if radix == 16:
@@ -1419,12 +1419,12 @@ class float extends num:
   ```
   */
   static parse data/io.Data -> float:
-    return parse_ data 0 data.size
+    return parse_ data 0 data.byte-size
 
   /**
   Deprecated. Use $(parse data) with slices instead.
   */
-  static parse data/io.Data from/int to/int=data.size -> float:
+  static parse data/io.Data from/int to/int=data.byte-size -> float:
     return parse_ data from to
 
   static parse_ data/io.Data from/int to/int -> float:

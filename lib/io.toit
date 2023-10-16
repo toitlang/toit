@@ -20,6 +20,9 @@ interface Data:
   */
   byte-slice from/int to/int -> Data
 
+  /** Returns the byte at the given index. */
+  byte-at index/int -> int
+
   /**
   Copies the bytes in the range $from-$to into the given $byte-array at the
     position $at.

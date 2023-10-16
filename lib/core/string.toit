@@ -134,9 +134,6 @@ abstract class string implements Comparable io.Data:
   rune-size_ -> int:
     #primitive.core.string-rune-count
 
-  byte-size -> int:
-    return size
-
   /**
   The rune (Unicode "code point") at position $i of the underlying bytes.
 
@@ -197,12 +194,6 @@ abstract class string implements Comparable io.Data:
     if this is String_: return StringSlice_ (this as String_) from to
     slice := this as StringSlice_
     return StringSlice_ slice.str_ (slice.from_ + from) (slice.from_ + to)
-
-  byte-slice from to/int -> io.Data:
-    if not 0 <= from <= to <= byte-size: throw "OUT_OF_BOUNDS"
-    if this is String_: return StringByteSlice_ (this as String_) from to
-    slice := this as StringSlice_
-    return StringByteSlice_ slice.str_ (slice.from_ + from) (slice.from_ + to)
 
   /**
   The raw byte (Unicode codeunit) at position $i in the UTF-8 byte representation
@@ -1343,6 +1334,18 @@ abstract class string implements Comparable io.Data:
   write-to-byte-array_ byte-array/ByteArray start end dest-index:
     #primitive.core.string-write-to-byte-array
 
+  byte-size -> int:
+    return size
+
+  byte-slice from to/int -> io.Data:
+    if not 0 <= from <= to <= byte-size: throw "OUT_OF_BOUNDS"
+    if this is String_: return StringByteSlice_ (this as String_) from to
+    slice := this as StringSlice_
+    return StringByteSlice_ slice.str_ (slice.from_ + from) (slice.from_ + to)
+
+  byte-at index/int -> int:
+    return at --raw index
+
   write-to-byte-array byte-array/ByteArray --at/int from/int to/int:
     write-to-byte-array_ byte-array from to at
 
@@ -1407,6 +1410,13 @@ class StringByteSlice_ implements io.Data:
 
   constructor .str_ .from_ .to_:
 
+  // TODO(florian): this method is only here for backwards-compatability.
+  // Some methods used to take 'any' and then take the 'size' of it.
+  // Once we have migrated all these locations to use 'io.Data' and 'byte-size', it
+  // can be removed.
+  size -> int:
+    return byte-size
+
   byte-size -> int:
     return to_ - from_
 
@@ -1415,6 +1425,10 @@ class StringByteSlice_ implements io.Data:
     actual-to := from_ + to
     if not from_ <= actual-from <= actual-to <= to_: throw "OUT_OF_BOUNDS"
     return StringByteSlice_ str_ actual-from actual-to
+
+  byte-at index/int -> int:
+    actual-index := from_ + index
+    return str_.byte-at actual-index
 
   write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none:
     actual-from := from_ + from
