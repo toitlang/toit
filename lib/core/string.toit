@@ -134,6 +134,9 @@ abstract class string implements Comparable io.Data:
   rune-size_ -> int:
     #primitive.core.string-rune-count
 
+  byte-size -> int:
+    return size
+
   /**
   The rune (Unicode "code point") at position $i of the underlying bytes.
 
@@ -194,6 +197,12 @@ abstract class string implements Comparable io.Data:
     if this is String_: return StringSlice_ (this as String_) from to
     slice := this as StringSlice_
     return StringSlice_ slice.str_ (slice.from_ + from) (slice.from_ + to)
+
+  byte-slice from/int=0 to/int=byte-size -> io.Data:
+    if not 0 <= from <= to <= byte-size: throw "OUT_OF_BOUNDS"
+    if this is String_: return StringByteSlice_ (this as String_) from to
+    slice := this as StringSlice_
+    return StringByteSlice_ slice.str_ (slice.from_ + from) (slice.from_ + to)
 
   /**
   The raw byte (Unicode codeunit) at position $i in the UTF-8 byte representation
@@ -1390,6 +1399,28 @@ class StringSlice_ extends string:
 
   compute-hash_ -> int:
     #primitive.core.blob-hash-code
+
+class StringByteSlice_ implements io.Data:
+  str_ / String_
+  from_ / int
+  to_   / int
+
+  constructor .str_ .from_ .to_:
+
+  byte-size -> int:
+    return to_ - from_
+
+  byte-slice from/int to/int -> io.Data:
+    actual-from := from_ + from
+    actual-to := from_ + to
+    if not from_ <= actual-from <= actual-to <= to_: throw "OUT_OF_BOUNDS"
+    return StringByteSlice_ str_ actual-from actual-to
+
+  write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none:
+    actual-from := from_ + from
+    actual-to := from_ + to
+    if not from_ <= actual-from <= actual-to <= to_: throw "OUT_OF_BOUNDS"
+    byte-array.replace at str_ actual-from actual-to
 
 // Unsigned base 2, 8, and 16 stringification.
 printf-style-int-stringify_ value/int base/int -> string:

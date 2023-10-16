@@ -1583,7 +1583,7 @@ class ByteArray_ extends ByteArrayBase_:
   /**
   Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[
   */
-  replace index/int source/io.Data from/int=0 to/int=source.size -> none:
+  replace index/int source/io.Data from/int=0 to/int=source.byte-size -> none:
     #primitive.core.byte-array-replace:
       if it == "WRONG_BYTES_TYPE" and source is not ByteArray:
         source.write-to-byte-array this --at=index from to
