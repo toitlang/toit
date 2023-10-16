@@ -33,9 +33,9 @@ import host.directory
 import host.file
 import host.os
 import host.pipe
+import partition-table show *
 
 import .image
-import .partition-table
 import .snapshot
 import .snapshot-to-image
 
