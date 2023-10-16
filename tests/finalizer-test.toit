@@ -36,20 +36,24 @@ test-add-finalizer:
     add-finalizer object null
 
   expect-throw
-    "OUT_OF_BOUNDS"
+    "ALREADY_EXISTS"
     : add-finalizer object:: null
 
   expect-throw
     "WRONG_OBJECT_TYPE"
     : add-finalizer 5:: null
 
-  byte-array ::= ByteArray 0
-  expect-null
-    add-finalizer byte-array:: null
+  expect-throw
+    "WRONG_OBJECT_TYPE"
+    : add-finalizer "Horse":: null
+
+  expect-throw
+    "WRONG_OBJECT_TYPE"
+    : add-finalizer (ByteArray 5):: null
 
   // Can't add a finalizer to an object that already has one.
   // Large strings become external and need a VM finalizer.
-  expect-throw "OUT_OF_BOUNDS":
+  expect-throw "WRONG_OBJECT_TYPE":
     add-finalizer make-huge-string:: null
 
 make-huge-string -> string:
@@ -60,11 +64,6 @@ test-remove-finalizer:
   add-finalizer object:: null
   expect
     remove-finalizer object
-
-  string-obj ::= "test"
-  add-finalizer string-obj:: null
-  expect
-    remove-finalizer string-obj
 
   expect-not
     remove-finalizer List

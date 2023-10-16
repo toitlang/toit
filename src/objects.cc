@@ -206,6 +206,18 @@ void HeapObject::do_pointers(Program* program, PointerCallback* cb) {
   }
 }
 
+bool HeapObject::can_be_toit_finalized(Program* program) const {
+  auto tag = class_tag();
+  if (tag != INSTANCE_TAG) return false;
+  // Some instances are banned for Toit finalizers.  These are typically
+  // things like string slices, which are implemented as special instances,
+  // but don't have identity.  We reuse the byte_content function to check
+  // this.
+  const uint8* dummy1;
+  int dummy2;
+  return !byte_content(program, &dummy1, &dummy2, STRINGS_OR_BYTE_ARRAYS);
+}
+
 void ByteArray::do_pointers(PointerCallback* cb) {
   if (has_external_address()) {
     cb->c_address(reinterpret_cast<void**>(_raw_at(EXTERNAL_ADDRESS_OFFSET)));

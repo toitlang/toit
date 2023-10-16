@@ -1948,14 +1948,26 @@ PRIMITIVE(task_receive_message) {
 
 PRIMITIVE(add_finalizer) {
   ARGS(HeapObject, object, Object, finalizer)
-  if (process->has_finalizer(object, finalizer)) FAIL(OUT_OF_BOUNDS);
-  if (!process->add_toit_finalizer(object, finalizer)) FAIL(MALLOC_FAILED);
+  if (!object->can_be_toit_finalized(process->program())) {
+    FAIL(WRONG_OBJECT_TYPE);
+  }
+  // Objects on the program heap will never die, so it makes no difference
+  // whether we have a finalizer on them.
+  if (!object->on_program_heap(process)) {
+    if (object->has_active_finalizer()) FAIL(ALREADY_EXISTS);
+    if (!process->add_toit_finalizer(object, finalizer)) FAIL(MALLOC_FAILED);
+    object->set_has_active_finalizer();
+  }
   return process->null_object();
 }
 
 PRIMITIVE(remove_finalizer) {
   ARGS(HeapObject, object)
-  return BOOL(process->remove_toit_finalizer(object));
+  bool result = object->has_active_finalizer();
+  // We don't remove it from the finalizer list, so that must happen at the
+  // next GC.
+  object->clear_has_active_finalizer();
+  return BOOL(result);
 }
 
 PRIMITIVE(gc_count) {

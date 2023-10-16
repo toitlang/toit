@@ -54,6 +54,10 @@ bool OldSpace::is_alive(HeapObject* old_location) {
   return GcMetadata::is_marked(old_location);
 }
 
+bool OldSpace::has_active_finalizer(HeapObject* old_location) {
+  return old_location->has_active_finalizer();
+}
+
 void OldSpace::use_whole_chunk(Chunk* chunk) {
   top_ = chunk->start();
   limit_ = top_ + chunk->size() - WORD_SIZE;

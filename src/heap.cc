@@ -350,30 +350,26 @@ void ObjectHeap::process_registered_finalizers_helper(FinalizerNodeFifo* list, R
   list->remove_wherever([capture](FinalizerNode* node) -> bool {
     bool is_alive = node->alive(capture.from_space);
     if (is_alive) {
-      node->roots_do(capture.ss);
-      return false;  // Keep node in list.
+      if (node->has_active_finalizer(capture.from_space)) {
+        node->roots_do(capture.ss);
+        return false;  // Keep node in list.
+      }
+      // Remove node from list - no point in visiting the roots in this case.
+      return true;
     }
     node->handle_not_alive(capture.ss, capture.heap);
-    return true; // Remove node from list.
+    return true;  // Remove node from list.
   });
-}
-
-bool ObjectHeap::has_finalizer(HeapObject* key, Object* lambda) {
-  for (FinalizerNode* node : registered_toit_finalizers_) {
-    if (node->has_key(key)) return true;
-  }
-  for (FinalizerNode* node : registered_vm_finalizers_) {
-    if (node->has_key(key)) return true;
-  }
-  return false;
 }
 
 bool ObjectHeap::add_toit_finalizer(HeapObject* key, Object* lambda) {
   // We should already have checked whether the object is already registered.
-  ASSERT(!has_finalizer(key, lambda));
+  ASSERT(!key->has_active_finalizer());
   auto node = _new ToitFinalizerNode(key, lambda);
   if (node == null) return false;  // Allocation failed.
-  registered_toit_finalizers_.append(node);
+  // Add it at the head of the list in case there is an old finalizer lower
+  // down on the list.
+  registered_toit_finalizers_.prepend(node);
   return true;
 }
 
@@ -383,27 +379,6 @@ bool ObjectHeap::add_vm_finalizer(HeapObject* key) {
   if (node == null) return false;  // Allocation failed.
   registered_vm_finalizers_.append(node);
   return true;
-}
-
-bool ObjectHeap::remove_toit_finalizer(HeapObject* key) {
-  return remove_finalizer(&registered_toit_finalizers_, key);
-}
-
-bool ObjectHeap::remove_vm_finalizer(HeapObject* key) {
-  return remove_finalizer(&registered_vm_finalizers_, key);
-}
-
-bool ObjectHeap::remove_finalizer(FinalizerNodeFifo* list, HeapObject* key) {
-  bool found = false;
-  list->remove_wherever([key, &found](FinalizerNode* node) -> bool {
-    if (node->has_key(key)) {
-      delete node;
-      found = true;
-      return true;
-    }
-    return false;
-  });
-  return found;
 }
 
 Object* ObjectHeap::next_finalizer_to_run() {
