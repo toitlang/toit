@@ -373,9 +373,7 @@ bool ObjectHeap::add_toit_finalizer(HeapObject* key, Object* lambda) {
   ASSERT(!has_finalizer(key, lambda));
   auto node = _new ToitFinalizerNode(key, lambda);
   if (node == null) return false;  // Allocation failed.
-  // Add it at the head of the list in case there is an old finalizer lower
-  // down on the list.
-  registered_toit_finalizers_.prepend(node);
+  registered_toit_finalizers_.append(node);
   return true;
 }
 
@@ -385,6 +383,27 @@ bool ObjectHeap::add_vm_finalizer(HeapObject* key) {
   if (node == null) return false;  // Allocation failed.
   registered_vm_finalizers_.append(node);
   return true;
+}
+
+bool ObjectHeap::remove_toit_finalizer(HeapObject* key) {
+  return remove_finalizer(&registered_toit_finalizers_, key);
+}
+
+bool ObjectHeap::remove_vm_finalizer(HeapObject* key) {
+  return remove_finalizer(&registered_vm_finalizers_, key);
+}
+
+bool ObjectHeap::remove_finalizer(FinalizerNodeFifo* list, HeapObject* key) {
+  bool found = false;
+  list->remove_wherever([key, &found](FinalizerNode* node) -> bool {
+    if (node->has_key(key)) {
+      delete node;
+      found = true;
+      return true;
+    }
+    return false;
+  });
+  return found;
 }
 
 Object* ObjectHeap::next_finalizer_to_run() {

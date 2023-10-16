@@ -85,7 +85,10 @@ PRIMITIVE(main_arguments) {
 
   MessageDecoder decoder(process, arguments);
   Object* decoded = decoder.decode();
-  if (decoder.allocation_failed()) FAIL(ALLOCATION_FAILED);
+  if (decoder.allocation_failed()) {
+    decoder.remove_disposing_finalizers();
+    FAIL(ALLOCATION_FAILED);
+  }
 
   process->clear_main_arguments();
   free(arguments);
@@ -99,7 +102,10 @@ PRIMITIVE(spawn_arguments) {
 
   MessageDecoder decoder(process, arguments);
   Object* decoded = decoder.decode();
-  if (decoder.allocation_failed()) FAIL(ALLOCATION_FAILED);
+  if (decoder.allocation_failed()) {
+    decoder.remove_disposing_finalizers();
+    FAIL(ALLOCATION_FAILED);
+  }
 
   process->clear_spawn_arguments();
   free(arguments);
@@ -1920,7 +1926,10 @@ PRIMITIVE(task_receive_message) {
     MessageDecoder decoder(process, system_message->data());
 
     Object* decoded = decoder.decode();
-    if (decoder.allocation_failed()) FAIL(ALLOCATION_FAILED);
+    if (decoder.allocation_failed()) {
+      decoder.remove_disposing_finalizers();
+      FAIL(ALLOCATION_FAILED);
+    }
     decoder.register_external_allocations();
     system_message->free_data_but_keep_externals();
 
@@ -1939,26 +1948,14 @@ PRIMITIVE(task_receive_message) {
 
 PRIMITIVE(add_finalizer) {
   ARGS(HeapObject, object, Object, finalizer)
-  if (!object->can_be_toit_finalized(process->program())) {
-    FAIL(WRONG_OBJECT_TYPE);
-  }
-  // Objects on the program heap will never die, so it makes no difference
-  // whether we have a finalizer on them.
-  if (!object->on_program_heap(process)) {
-    if (object->has_active_finalizer()) FAIL(ALREADY_EXISTS);
-    if (!process->add_toit_finalizer(object, finalizer)) FAIL(MALLOC_FAILED);
-    object->set_has_active_finalizer();
-  }
+  if (process->has_finalizer(object, finalizer)) FAIL(OUT_OF_BOUNDS);
+  if (!process->add_toit_finalizer(object, finalizer)) FAIL(MALLOC_FAILED);
   return process->null_object();
 }
 
 PRIMITIVE(remove_finalizer) {
   ARGS(HeapObject, object)
-  bool result = object->has_active_finalizer();
-  // We don't remove it from the finalizer list, so that must happen at the
-  // next GC.
-  object->clear_has_active_finalizer();
-  return BOOL(result);
+  return BOOL(process->remove_toit_finalizer(object));
 }
 
 PRIMITIVE(gc_count) {

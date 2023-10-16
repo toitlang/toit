@@ -229,21 +229,8 @@ class HeapObject : public Object {
   INLINE TypeTag class_tag() const {
     return static_cast<TypeTag>((Smi::value(header()) >> HeapObject::CLASS_TAG_OFFSET) & HeapObject::CLASS_TAG_MASK);
   }
-  INLINE bool has_active_finalizer() const {
-    return (Smi::value(header()) & (1 << HeapObject::FINALIZER_BIT_OFFSET)) != 0;
-  }
-  INLINE void set_has_active_finalizer() {
-    uword header_word = Smi::value(header());
-    header_word |= 1 << HeapObject::FINALIZER_BIT_OFFSET;
-    _set_header(Smi::from(header_word));
-  }
-  INLINE void clear_has_active_finalizer() {
-    uword header_word = Smi::value(header());
-    header_word &= ~(1 << HeapObject::FINALIZER_BIT_OFFSET);
-    _set_header(Smi::from(header_word));
-  }
 
-  INLINE bool has_forwarding_address() const {
+  INLINE bool has_forwarding_address() {
     return is_heap_object(_at(HEADER_OFFSET));
   }
 
@@ -275,7 +262,7 @@ class HeapObject : public Object {
   static const int CLASS_TAG_OFFSET = 0;
   static const uword CLASS_TAG_MASK = (1 << CLASS_TAG_BIT_SIZE) - 1;
 
-  static const int FINALIZER_BIT_SIZE = 1;
+  static const int FINALIZER_BIT_SIZE = 2;
   static const int FINALIZER_BIT_OFFSET = CLASS_TAG_OFFSET + CLASS_TAG_BIT_SIZE;
   static const uword FINALIZER_BIT_MASK = (1 << FINALIZER_BIT_SIZE) - 1;
 
@@ -318,12 +305,6 @@ class HeapObject : public Object {
     ASSERT((address & NON_SMI_TAG_MASK) == SMI_TAG);
     return reinterpret_cast<HeapObject*>(address + HEAP_TAG);
   }
-
-  // Returns true for objects that can have a Toit-level finalizer added.
-  // Immortal objects with no identity like integers and strings cannot
-  // have Toit-level finalizers.  (External byte arrays and strings can
-  // have VM finalizers though.)
-  bool can_be_toit_finalized(Program* program) const;
 
   inline bool on_program_heap(Process* process) const;
 
