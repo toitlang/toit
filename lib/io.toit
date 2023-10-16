@@ -67,7 +67,7 @@ abstract class Writer:
   */
   write-from reader/Reader -> none:
     if is-closed_: throw "WRITER_CLOSED"
-    while data := reader.consume:
+    while data := reader.read:
       write data
 
   /**
@@ -145,14 +145,14 @@ abstract class Reader:
 
 
   /**
-  Consumes a chunk of data.
+  Reads a chunk of data.
 
   If no more data is left returns null.
 
   If data has been buffered returns the buffered data first.
   Otherwise attempts to read new data from the resource.
   */
-  consume -> ByteArray?:
+  read -> ByteArray?:
     if buffered_.is_empty:
       if is-closed_: return null
       return consume_
