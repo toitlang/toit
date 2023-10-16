@@ -66,44 +66,62 @@ func parseModule(uri lsp.DocumentURI, str string) *toit.Module {
 
 	currentClassName := ""
 	var currentSuperClass *toit.TopLevelReference
+	var currentMixins []*toit.TopLevelReference
 	currentMethods := []*toit.Method{}
 
-	finishClass := func() {
+	finishClass := func(kind toit.ClassKind) {
 		if currentClassName != "" {
 			classIDs[currentClassName] = len(classes)
 			classes = append(classes, &toit.Class{
 				Name:       currentClassName,
 				SuperClass: currentSuperClass,
 				Methods:    currentMethods,
+				Kind:       kind,
+				Mixins:     currentMixins,
 			})
 		}
 		currentClassName = ""
 		currentSuperClass = nil
+		currentMixins = []*toit.TopLevelReference{}
 		currentMethods = []*toit.Method{}
 	}
+	var kind toit.ClassKind
 	for _, line := range lines {
 		line = strings.Trim(line, ":")
 		if strings.HasPrefix(line, "//") || strings.Trim(line, " ") == "" {
 			continue
 		}
-		if !strings.HasPrefix(line, "class ") {
+		if strings.HasPrefix(line, "class ") {
+			kind = toit.KindClass
+		} else if strings.HasPrefix(line, "mixin ") {
+			kind = toit.KindMixin
+		} else {
 			currentMethods = append(currentMethods, parseMethod(line))
 			continue
 		}
-		finishClass()
+		finishClass(kind)
 		parts := strings.Split(line, " ")
 		currentClassName = parts[1]
 		if len(parts) > 2 {
 			if parts[2] != "extends" {
 				log.Fatal("Syntax must be 'class name extends name'")
 			}
+			if len(parts) > 4 && (parts[4] != "with" || len(parts) < 6) {
+				log.Fatal("Syntax must be 'class name extends name with name+'")
+			}
 			currentSuperClass = &toit.TopLevelReference{
 				Module: uri,
 				ID:     toit.ID(classIDs[parts[3]]),
 			}
+			for i := 5; i < len(parts); i++ {
+				currentMixins = append(currentMixins, &toit.TopLevelReference{
+					Module: uri,
+					ID:     toit.ID(classIDs[parts[i]]),
+				})
+			}
 		}
 	}
-	finishClass()
+	finishClass(kind)
 	return &toit.Module{
 		Classes: classes,
 	}
@@ -585,5 +603,103 @@ class B extends A:
 		}]
 		assert.Len(t, overridingFooB, 1)
 		assert.Equal(t, overridingFooB[0], fooA)
+	})
+
+	t.Run("Mixins - simple", func(t *testing.T) {
+		summaries := createSummaries(`
+mixin M1:
+  foo:
+
+class B:
+
+class A extends B with M1:
+`)
+		result := ComputeInheritance(summaries)
+		classes := summaries[moduleURI].Classes
+		classM1 := classes[0]
+		classB := classes[1]
+		classA := classes[2]
+		inheritedM1 := result.Inherited[classM1]
+		inheritedB := result.Inherited[classB]
+		inheritedA := result.Inherited[classA]
+		assert.Len(t, inheritedM1, 0)
+		assert.Len(t, inheritedB, 0)
+		assert.Len(t, inheritedA, 1)
+		foo := inheritedA[0]
+		assert.Equal(t, "foo", foo.Member.ToString())
+		assert.True(t, foo.Member.IsMethod())
+		assert.True(t, foo.IsMethod())
+	})
+
+	t.Run("Mixins - multiple", func(t *testing.T) {
+		summaries := createSummaries(`
+mixin M1:
+  foo:
+
+mixin M2:
+  bar:
+
+class B:
+
+class A extends B with M1 M2:
+`)
+		result := ComputeInheritance(summaries)
+		classes := summaries[moduleURI].Classes
+		classM1 := classes[0]
+		classM2 := classes[1]
+		classB := classes[2]
+		classA := classes[3]
+		inheritedM1 := result.Inherited[classM1]
+		inheritedM2 := result.Inherited[classM2]
+		inheritedB := result.Inherited[classB]
+		inheritedA := result.Inherited[classA]
+		assert.Len(t, inheritedM1, 0)
+		assert.Len(t, inheritedM2, 0)
+		assert.Len(t, inheritedB, 0)
+		assert.Len(t, inheritedA, 2)
+		bar := inheritedA[0]
+		assert.Equal(t, "bar", bar.Member.ToString())
+		assert.True(t, bar.Member.IsMethod())
+		assert.True(t, bar.IsMethod())
+		foo := inheritedA[1]
+		assert.Equal(t, "foo", foo.Member.ToString())
+		assert.True(t, foo.Member.IsMethod())
+		assert.True(t, foo.IsMethod())
+	})
+
+	t.Run("Mixins - extended", func(t *testing.T) {
+		summaries := createSummaries(`
+mixin M1:
+  foo:
+
+mixin M2 extends M1:
+  bar:
+
+class B:
+
+class A extends B with M2:
+`)
+		result := ComputeInheritance(summaries)
+		classes := summaries[moduleURI].Classes
+		classM1 := classes[0]
+		classM2 := classes[1]
+		classB := classes[2]
+		classA := classes[3]
+		inheritedM1 := result.Inherited[classM1]
+		inheritedM2 := result.Inherited[classM2]
+		inheritedB := result.Inherited[classB]
+		inheritedA := result.Inherited[classA]
+		assert.Len(t, inheritedM1, 0)
+		assert.Len(t, inheritedM2, 1)
+		assert.Len(t, inheritedB, 0)
+		assert.Len(t, inheritedA, 2)
+		foo := inheritedA[0]
+		assert.Equal(t, "foo", foo.Member.ToString())
+		assert.True(t, foo.Member.IsMethod())
+		assert.True(t, foo.IsMethod())
+		bar := inheritedA[1]
+		assert.Equal(t, "bar", bar.Member.ToString())
+		assert.True(t, bar.Member.IsMethod())
+		assert.True(t, bar.IsMethod())
 	})
 }

@@ -63,7 +63,7 @@ type ShadowKey struct {
 	member ToitMember
 }
 
-// computeInheritance.
+// ComputeInheritance.
 // Computes the inheritance information for the toitdoc viewer.
 // For each class computes the inherited members that are still accessible.
 // For each method computes the super members that are shadowed.
@@ -347,27 +347,6 @@ func (ir *InheritanceResult) doClass(cls *toit.Class) {
 		return
 	}
 
-	superClass := ir.resolveClassRef(cls.SuperClass)
-	// Do the superclass first, so we can use its inherited members and don't
-	// need to recursively hunt for all members.
-	ir.doClass(superClass)
-	ir.classDepth[cls] = ir.classDepth[superClass] + 1
-
-	// Build the shapedMembers of the super class.
-	superShaped := map[string][]*shapedMember{}
-	for _, method := range superClass.Methods {
-		shaped := newMemberFromMethod(method).makeShaped()
-		superShaped[shaped.name] = append(superShaped[shaped.name], shaped)
-	}
-	for _, field := range superClass.Fields {
-		shaped := newMemberFromField(field).makeShaped()
-		superShaped[shaped.name] = append(superShaped[shaped.name], shaped)
-	}
-	for _, inherited := range ir.Inherited[superClass] {
-		shaped := newMemberFromInherited(inherited).makeShaped()
-		superShaped[shaped.name] = append(superShaped[shaped.name], shaped)
-	}
-
 	clsShaped := map[string][]*shapedMember{}
 	for _, method := range cls.Methods {
 		shaped := newMemberFromMethod(method).makeShaped()
@@ -379,36 +358,75 @@ func (ir *InheritanceResult) doClass(cls *toit.Class) {
 	}
 
 	inherited := InheritedMembers{}
-	for name, superMembers := range superShaped {
-		clsMembers := clsShaped[name]
-		if len(clsMembers) == 0 {
-			// All superMembers are inherited.
-			for _, superMember := range superMembers {
-				if superMember.member.IsInherited() {
-					inherited = append(inherited, superMember.member.AsInherited())
-				} else {
-					inherited =
-						append(inherited, newInheritedMember(superMember.member, []*Member{}))
+
+	// Do the mixins and superclass first, so we can use its inherited members and don't
+	// need to recursively hunt for all members.
+	// Note that we run to <= len. The last iteration is for the super.
+	for i := 0; i <= len(cls.Mixins); i++ {
+		var currentClass *toit.Class
+		if i < len(cls.Mixins) {
+			currentClass = ir.resolveClassRef(cls.Mixins[i])
+		} else {
+			currentClass = ir.resolveClassRef(cls.SuperClass)
+		}
+		ir.doClass(currentClass)
+		ir.classDepth[cls] = ir.classDepth[currentClass] + 1
+
+		// Build the shapedMembers of the current super/mixin class.
+		currentShaped := map[string][]*shapedMember{}
+		for _, method := range currentClass.Methods {
+			shaped := newMemberFromMethod(method).makeShaped()
+			currentShaped[shaped.name] = append(currentShaped[shaped.name], shaped)
+		}
+		for _, field := range currentClass.Fields {
+			shaped := newMemberFromField(field).makeShaped()
+			currentShaped[shaped.name] = append(currentShaped[shaped.name], shaped)
+		}
+		for _, inherited := range ir.Inherited[currentClass] {
+			shaped := newMemberFromInherited(inherited).makeShaped()
+			currentShaped[shaped.name] = append(currentShaped[shaped.name], shaped)
+		}
+
+		// The newly inherited members due to the current super/mixin class.
+		currentInherited := InheritedMembers{}
+		for name, currentMembers := range currentShaped {
+			clsMembers := clsShaped[name]
+			if len(clsMembers) == 0 {
+				// All currentMembers are inherited.
+				for _, superMember := range currentMembers {
+					if superMember.member.IsInherited() {
+						currentInherited = append(currentInherited, superMember.member.AsInherited())
+					} else {
+						currentInherited =
+							append(currentInherited, newInheritedMember(superMember.member, []*Member{}))
+					}
 				}
+				continue
 			}
-			continue
+			for _, currentMember := range currentMembers {
+				partialOverriders := []*Member{}
+				if currentMember.member.IsInherited() {
+					partialOverriders =
+						currentMember.member.AsInherited().PartiallyShadowedBy
+					currentMember = currentMember.member.AsInherited().Member.makeShaped()
+				}
+				// This map will be filled by the `computeOverride` function.
+				overriddenBy := overriddenByMap{}
+				fullyOverridden := ir.computeOverride(currentMember, partialOverriders, clsMembers, overriddenBy)
+				overriddenByList := overriddenBy.toList()
+				if !fullyOverridden {
+					currentInherited = append(currentInherited, newInheritedMember(currentMember.member, overriddenByList))
+				}
+				ir.markOverriding(cls, currentMember, overriddenByList)
+			}
 		}
-		for _, superMember := range superMembers {
-			partialOverriders := []*Member{}
-			if superMember.member.IsInherited() {
-				partialOverriders =
-					superMember.member.AsInherited().PartiallyShadowedBy
-				superMember = superMember.member.AsInherited().Member.makeShaped()
-			}
-			// This map will be filled by the `computeOverride` function.
-			overriddenBy := overriddenByMap{}
-			fullyOverridden := ir.computeOverride(superMember, partialOverriders, clsMembers, overriddenBy)
-			overriddenByList := overriddenBy.toList()
-			if !fullyOverridden {
-				inherited = append(inherited, newInheritedMember(superMember.member, overriddenByList))
-			}
-			ir.markOverriding(cls, superMember, overriddenByList)
+		// Add all new inherited members to the class shape, so we can use it for the next super/mixin.
+		for _, inherited := range currentInherited {
+			clsShaped[inherited.Member.GetName()] =
+				append(clsShaped[inherited.Member.GetName()], newMemberFromInherited(inherited).makeShaped())
 		}
+		// Add the current inherited members to the inherited members of the class.
+		inherited = append(inherited, currentInherited...)
 	}
 	ir.Inherited[cls] = inherited
 }
