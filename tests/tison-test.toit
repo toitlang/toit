@@ -103,12 +103,12 @@ test-complex -> none:
   }
 
 test-too-much-map-nesting -> none:
-    nested := {
-      "foo": "bar"
-    }
-    nested["baz"] = nested
-    expect-throw "NESTING_TOO_DEEP":
-      test-round-trip nested
+  nested := {
+    "foo": "bar"
+  }
+  nested["baz"] = nested
+  expect-throw "NESTING_TOO_DEEP":
+    test-round-trip nested
 
 test-round-trip x/any -> none:
   encoded := tison.encode x
