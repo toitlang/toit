@@ -403,7 +403,7 @@ String* Process::allocate_string(const wchar_t* content) {
   String* result = allocate_string(length);
   if (result == null) return null;
 
-  String::Bytes bytes(result);
+  String::MutableBytes bytes(result);
 
   Utils::utf_16_to_8(reinterpret_cast<const uint16*>(content), utf_16_length, bytes.address(), bytes.length());
 
