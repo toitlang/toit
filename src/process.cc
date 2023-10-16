@@ -189,7 +189,7 @@ String* Process::allocate_string(const char* content, int length) {
   String* result = allocate_string(length);
   if (result == null) return result;  // Allocation failure.
   // Initialize object.
-  String::Bytes bytes(result);
+  String::MutableBytes bytes(result);
   bytes._initialize(content);
   return result;
 }
@@ -385,6 +385,17 @@ uint8 Process::update_priority() {
   uint8 priority = target_priority_;
   priority_ = priority;
   return priority;
+}
+
+bool Process::add_toit_finalizer(HeapObject* key, Object* lambda) {
+  ASSERT(key->can_be_toit_finalized(program()));
+  ASSERT(!key->has_active_finalizer());
+  return object_heap()->add_toit_finalizer(key, lambda);
+}
+
+bool Process::add_vm_finalizer(HeapObject* key) {
+  ASSERT(!key->can_be_toit_finalized(program()));
+  return object_heap()->add_vm_finalizer(key);
 }
 
 #if defined(TOIT_WINDOWS)

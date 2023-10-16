@@ -113,10 +113,6 @@ uint8* MessageEncoder::take_buffer() {
     // an enqueued SystemMessage and will be used to construct a new external
     // byte array in the receiving process.
     array->neuter(process_);
-
-    // Optimization: Eagerly remove any disposing finalizer, so the garbage
-    // collector does not have to deal with disposing a neutered byte array.
-    heap->remove_vm_finalizer(array);
   }
   for (unsigned i = 0; i < copied_count_; i++) {
     copied_[i] = null;
@@ -446,14 +442,6 @@ void MessageDecoder::register_external_allocations() {
   ObjectHeap* heap = process_->object_heap();
   for (unsigned i = 0; i < externals_count(); i++) {
     heap->register_external_allocation(externals_sizes_[i]);
-  }
-}
-
-void MessageDecoder::remove_disposing_finalizers() {
-  ASSERT(!decoding_tison());
-  ObjectHeap* heap = process_->object_heap();
-  for (unsigned i = 0; i < externals_count(); i++) {
-    heap->remove_vm_finalizer(externals_[i]);
   }
 }
 

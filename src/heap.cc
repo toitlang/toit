@@ -102,7 +102,7 @@ String* ObjectHeap::allocate_internal_string(int length) {
   result->_set_header(string_id, program()->class_tag_for(string_id));
   String::cast(result)->_set_length(length);
   String::cast(result)->_raw_set_hash_code(String::NO_HASH_CODE);
-  String::Bytes bytes(String::cast(result));
+  String::MutableBytes bytes(String::cast(result));
   bytes._set_end();
   ASSERT(bytes.length() == length);
   return String::cast(result);
@@ -240,7 +240,7 @@ String* ObjectHeap::allocate_external_string(int length, uint8* memory, bool dis
   ASSERT(!result->content_on_heap());
   if (memory[length] != '\0') {
     // TODO(florian): we should not have '\0' at the end of strings anymore.
-    String::Bytes bytes(String::cast(result));
+    String::MutableBytes bytes(String::cast(result));
     bytes._set_end();
   }
   if (dispose) {
@@ -373,7 +373,9 @@ bool ObjectHeap::add_toit_finalizer(HeapObject* key, Object* lambda) {
   ASSERT(!has_finalizer(key, lambda));
   auto node = _new ToitFinalizerNode(key, lambda);
   if (node == null) return false;  // Allocation failed.
-  registered_toit_finalizers_.append(node);
+  // Add it at the head of the list in case there is an old finalizer lower
+  // down on the list.
+  registered_toit_finalizers_.prepend(node);
   return true;
 }
 
@@ -383,27 +385,6 @@ bool ObjectHeap::add_vm_finalizer(HeapObject* key) {
   if (node == null) return false;  // Allocation failed.
   registered_vm_finalizers_.append(node);
   return true;
-}
-
-bool ObjectHeap::remove_toit_finalizer(HeapObject* key) {
-  return remove_finalizer(&registered_toit_finalizers_, key);
-}
-
-bool ObjectHeap::remove_vm_finalizer(HeapObject* key) {
-  return remove_finalizer(&registered_vm_finalizers_, key);
-}
-
-bool ObjectHeap::remove_finalizer(FinalizerNodeFifo* list, HeapObject* key) {
-  bool found = false;
-  list->remove_wherever([key, &found](FinalizerNode* node) -> bool {
-    if (node->has_key(key)) {
-      delete node;
-      found = true;
-      return true;
-    }
-    return false;
-  });
-  return found;
 }
 
 Object* ObjectHeap::next_finalizer_to_run() {

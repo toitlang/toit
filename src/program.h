@@ -176,7 +176,7 @@ class Program : public FlashAllocation {
     return ((class_bits >> HeapObject::CLASS_ID_OFFSET) & INSTANCE_SIZE_MASK) * WORD_SIZE;
   }
 
-  int instance_size_for(HeapObject* object) {
+  int instance_size_for(const HeapObject* object) {
     return instance_size_for(object->class_id());
   }
 

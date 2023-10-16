@@ -425,6 +425,10 @@ class List {
   List(T* data, int length) : data_(data), length_(length) {
     ASSERT(length >= 0);
   }
+  template <typename U>
+  List(List<U> other) : data_(other.data_), length_(other.length_) {
+    ASSERT(other.length_ >= 0);
+  }
 
   T* data() const { return data_; }
   T*& data() { return data_; }
@@ -483,6 +487,9 @@ class List {
  private:
   T* data_;
   int length_;
+
+  template <typename U>
+  friend class List;
 };
 
 class Base64Encoder {

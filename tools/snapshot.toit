@@ -417,7 +417,7 @@ abstract class ToitHeapObject extends ToitObject:
   static CLASS-TAG-OFFSET/int ::= 0
   static CLASS-TAG-MASK/int ::= (1 << CLASS-TAG-BIT-SIZE) - 1
 
-  static FINALIZER-BIT-SIZE/int ::= 2
+  static FINALIZER-BIT-SIZE/int ::= 1
   static FINALIZER-BIT-OFFSET/int ::= CLASS-TAG-OFFSET + CLASS-TAG-BIT-SIZE
   static FINALIZER-BIT-MASK/int ::= (1 << FINALIZER-BIT-SIZE) - 1
 

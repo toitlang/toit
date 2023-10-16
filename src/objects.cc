@@ -25,7 +25,7 @@
 
 namespace toit {
 
-bool Object::byte_content(Program* program, const uint8** content, int* length, BlobKind strings_only) {
+bool Object::byte_content(Program* program, const uint8** content, int* length, BlobKind strings_only) const {
   if (is_string(this)) {
     String::Bytes bytes(String::cast(this));
     *length = bytes.length();
@@ -33,11 +33,11 @@ bool Object::byte_content(Program* program, const uint8** content, int* length, 
     return true;
   }
   if (strings_only == STRINGS_OR_BYTE_ARRAYS && is_byte_array(this)) {
-    ByteArray* byte_array = ByteArray::cast(this);
+    const ByteArray* byte_array = ByteArray::cast(this);
     // External byte arrays can have structs in them. This is captured in the external tag.
     // We only allow extracting the byte content from an external byte arrays iff it is tagged with RawByteType.
     if (byte_array->has_external_address() && byte_array->external_tag() != RawByteTag) return false;
-    ByteArray::Bytes bytes(byte_array);
+    ByteArray::ConstBytes bytes(byte_array);
     *length = bytes.length();
     *content = bytes.address();
     return true;
@@ -74,7 +74,7 @@ bool Object::byte_content(Program* program, const uint8** content, int* length, 
   return false;
 }
 
-bool Object::byte_content(Program* program, Blob* blob, BlobKind strings_only) {
+bool Object::byte_content(Program* program, Blob* blob, BlobKind strings_only) const {
   const uint8* content = null;
   int length = 0;
   bool result = byte_content(program, &content, &length, strings_only);
@@ -87,7 +87,7 @@ bool Blob::slow_equals(const char* c_string) const {
   return memcmp(address(), c_string, length()) == 0;
 }
 
-int HeapObject::size(Program* program) {
+int HeapObject::size(Program* program) const {
   int size = program->instance_size_for(this);
   if (size != 0) return size;
   switch (class_tag()) {
@@ -204,6 +204,18 @@ void HeapObject::do_pointers(Program* program, PointerCallback* cb) {
     PointerRootCallback root_callback(cb);
     roots_do(program, &root_callback);
   }
+}
+
+bool HeapObject::can_be_toit_finalized(Program* program) const {
+  auto tag = class_tag();
+  if (tag != INSTANCE_TAG) return false;
+  // Some instances are banned for Toit finalizers.  These are typically
+  // things like string slices, which are implemented as special instances,
+  // but don't have identity.  We reuse the byte_content function to check
+  // this.
+  const uint8* dummy1;
+  int dummy2;
+  return !byte_content(program, &dummy1, &dummy2, STRINGS_OR_BYTE_ARRAYS);
 }
 
 void ByteArray::do_pointers(PointerCallback* cb) {
@@ -420,7 +432,7 @@ void ByteArray::write_content(SnapshotWriter* st) {
     if (has_external_address() && external_tag() != RawByteTag) {
       FATAL("Can only serialize raw bytes");
     }
-    st->write_external_list_uint8(List<uint8>(bytes.address(), bytes.length()));
+    st->write_external_list_uint8(List<const uint8>(bytes.address(), bytes.length()));
   } else {
     for (int index = 0; index < bytes.length(); index++) {
       st->write_cardinal(bytes.at(index));
@@ -441,7 +453,7 @@ void String::write_content(SnapshotWriter* st) {
   int len = bytes.length();
   if (len > String::SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
     // TODO(florian): we should remove the '\0'.
-    st->write_external_list_uint8(List<uint8>(bytes.address(), bytes.length() + 1));
+    st->write_external_list_uint8(List<const uint8>(bytes.address(), bytes.length() + 1));
   } else {
     ASSERT(content_on_heap());
     for (int index = 0; index < len; index++) st->write_byte(bytes.at(index));
@@ -469,7 +481,7 @@ void String::read_content(SnapshotReader* st, int len) {
     _assign_hash_code();
   } else {
     _set_length(len);
-    Bytes bytes(this);
+    MutableBytes bytes(this);
     for (int index = 0; index < len; index++) bytes._at_put(index, st->read_byte());
     bytes._set_end();
     _assign_hash_code();
