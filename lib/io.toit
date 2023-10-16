@@ -147,7 +147,7 @@ abstract class Reader:
   /**
   Reads a chunk of data.
 
-  If no more data is left returns null.
+  Returns null if no more data is left.
 
   If data has been buffered returns the buffered data first.
   Otherwise attempts to read new data from the resource.
