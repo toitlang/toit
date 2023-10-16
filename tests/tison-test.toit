@@ -15,6 +15,7 @@ main:
   test-lists
   test-byte-arrays
   test-complex
+  test-too-much-map-nesting
 
   test-wrong-marker
   test-wrong-version
@@ -102,6 +103,14 @@ test-complex -> none:
       "buz": 999,
     },
   }
+
+test-too-much-map-nesting -> none:
+  nested := {
+    "foo": "bar"
+  }
+  nested["baz"] = nested
+  expect-throw "NESTING_TOO_DEEP":
+    test-round-trip nested
 
 test-round-trip x/any -> none:
   encoded := tison.encode x

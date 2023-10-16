@@ -70,6 +70,11 @@ test-throwing-process-send:
   // We catch this, which means we don't get information about which class failed.
   // If we left it uncaught, the stack trace decoder would tell us.
   expect-throw "SERIALIZATION_FAILED": process-send_ 0 0 l
+  // We had an issue where sending an object with an embedded map
+  // would lead to a crash during deallocation -- but only if sent
+  // to a non-existing process. Check that it now works.
+  mappy := [ {"foo": "bar"}, #[1, 2, 3] ]
+  expect-not (process-send_ 100000000 -10 mappy)
 
 test-tison-throwing:
   l := []
