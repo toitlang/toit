@@ -189,7 +189,7 @@ String* Process::allocate_string(const char* content, int length) {
   String* result = allocate_string(length);
   if (result == null) return result;  // Allocation failure.
   // Initialize object.
-  String::Bytes bytes(result);
+  String::MutableBytes bytes(result);
   bytes._initialize(content);
   return result;
 }

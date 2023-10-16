@@ -174,7 +174,7 @@ void Stack::transfer_from_interpreter(Interpreter* interpreter) {
   GcMetadata::insert_into_remembered_set(this);
 }
 
-bool HeapObject::in_remembered_set() {
+bool HeapObject::in_remembered_set() const {
   if (*GcMetadata::remembered_set_for(this) == GcMetadata::NEW_SPACE_POINTERS) {
     return true;
   }
