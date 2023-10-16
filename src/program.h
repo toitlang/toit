@@ -63,29 +63,30 @@ namespace toit {
   ERROR_STRING(wrong_bytes_type, WRONG_BYTES_TYPE)                  \
   ERROR_STRING(invalid_signature, INVALID_SIGNATURE)                \
 
-#define BUILTIN_CLASS_IDS(ID)    \
-  ID(string_class_id)            \
-  ID(array_class_id)             \
-  ID(byte_array_class_id)        \
-  ID(byte_array_cow_class_id)    \
-  ID(byte_array_slice_class_id)  \
-  ID(string_slice_class_id)      \
-  ID(list_class_id)              \
-  ID(list_slice_class_id)        \
-  ID(map_class_id)               \
-  ID(tombstone_class_id)         \
-  ID(stack_class_id)             \
-  ID(null_class_id)              \
-  ID(true_class_id)              \
-  ID(false_class_id)             \
-  ID(object_class_id)            \
-  ID(double_class_id)            \
-  ID(large_integer_class_id)     \
-  ID(smi_class_id)               \
-  ID(task_class_id)              \
-  ID(large_array_class_id)       \
-  ID(lazy_initializer_class_id)  \
-  ID(exception_class_id)         \
+#define BUILTIN_CLASS_IDS(ID)     \
+  ID(string_class_id)             \
+  ID(array_class_id)              \
+  ID(byte_array_class_id)         \
+  ID(byte_array_cow_class_id)     \
+  ID(byte_array_slice_class_id)   \
+  ID(string_slice_class_id)       \
+  ID(string_byte_slice_class_id)  \
+  ID(list_class_id)               \
+  ID(list_slice_class_id)         \
+  ID(map_class_id)                \
+  ID(tombstone_class_id)          \
+  ID(stack_class_id)              \
+  ID(null_class_id)               \
+  ID(true_class_id)               \
+  ID(false_class_id)              \
+  ID(object_class_id)             \
+  ID(double_class_id)             \
+  ID(large_integer_class_id)      \
+  ID(smi_class_id)                \
+  ID(task_class_id)               \
+  ID(large_array_class_id)        \
+  ID(lazy_initializer_class_id)   \
+  ID(exception_class_id)          \
 
 static const int FREE_LIST_REGION_CLASS_ID = -1;
 static const int SINGLE_FREE_WORD_CLASS_ID = -2;

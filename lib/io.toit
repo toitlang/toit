@@ -18,7 +18,7 @@ interface Data:
   /**
   Returns a slice of this data.
   */
-  byte-slice from/int=0 to/int=byte-size -> Data
+  byte-slice from/int to/int -> Data
 
   /**
   Copies the bytes in the range $from-$to into the given $byte-array at the

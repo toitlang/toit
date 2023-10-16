@@ -1538,6 +1538,11 @@ abstract class ByteArrayBase_ implements ByteArray:
   index-of byte/int --from/int=0 --to/int=size -> int:
     #primitive.core.blob-index-of
 
+  byte-size -> int: return size
+
+  byte-slice from/int to/int -> io.Data:
+    return this[from..to]
+
   write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
     target.replace at this from to
 
@@ -1640,7 +1645,7 @@ class ByteArraySlice_ extends ByteArrayBase_:
   /**
   Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[
   */
-  replace index/int source/io.Data from/int=0 to/int=source.size -> none:
+  replace index/int source/io.Data from/int=0 to/int=source.byte-size -> none:
     actual-index := from_ + index
     if from == to and actual-index == to_: return
     if not from_ <= actual-index < to_: throw "OUT_OF_BOUNDS"

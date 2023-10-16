@@ -198,7 +198,7 @@ abstract class string implements Comparable io.Data:
     slice := this as StringSlice_
     return StringSlice_ slice.str_ (slice.from_ + from) (slice.from_ + to)
 
-  byte-slice from/int=0 to/int=byte-size -> io.Data:
+  byte-slice from to/int -> io.Data:
     if not 0 <= from <= to <= byte-size: throw "OUT_OF_BOUNDS"
     if this is String_: return StringByteSlice_ (this as String_) from to
     slice := this as StringSlice_
@@ -1420,7 +1420,7 @@ class StringByteSlice_ implements io.Data:
     actual-from := from_ + from
     actual-to := from_ + to
     if not from_ <= actual-from <= actual-to <= to_: throw "OUT_OF_BOUNDS"
-    byte-array.replace at str_ actual-from actual-to
+    str_.write-to-byte-array --at=at byte-array actual-from actual-to
 
 // Unsigned base 2, 8, and 16 stringification.
 printf-style-int-stringify_ value/int base/int -> string:

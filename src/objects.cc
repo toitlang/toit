@@ -48,8 +48,11 @@ bool Object::byte_content(Program* program, const uint8** content, int* length, 
     if (strings_only == STRINGS_OR_BYTE_ARRAYS && class_id == program->byte_array_cow_class_id()) {
       auto backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
       return backing->byte_content(program, content, length, strings_only);
-    } else if ((strings_only == STRINGS_OR_BYTE_ARRAYS && class_id == program->byte_array_slice_class_id()) || class_id == program->string_slice_class_id()) {
+    } else if ((strings_only == STRINGS_OR_BYTE_ARRAYS && class_id == program->byte_array_slice_class_id())
+          || class_id == program->string_slice_class_id()
+          || class_id == program->string_byte_slice_class_id()) {
       ASSERT(Instance::STRING_SLICE_STRING_INDEX == Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
+      ASSERT(Instance::STRING_BYTE_SLICE_STRING_INDEX == Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
       ASSERT(Instance::STRING_SLICE_FROM_INDEX == Instance::BYTE_ARRAY_SLICE_FROM_INDEX);
       ASSERT(Instance::STRING_SLICE_TO_INDEX == Instance::BYTE_ARRAY_SLICE_TO_INDEX);
       auto wrapped = instance->at(Instance::STRING_SLICE_STRING_INDEX);
