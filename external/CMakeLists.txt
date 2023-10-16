@@ -64,6 +64,7 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-msa311
     https://github.com/toitware/toit-newton-raphson
     https://github.com/toitware/toit-openai
+    https://github.com/toitware/toit-partition-table-esp32
     https://github.com/toitware/toit-pixel-display
     https://github.com/toitware/toit-pixel-strip
 # TODO(kasper): Temporarily removed because the tests cannot be

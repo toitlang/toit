@@ -344,6 +344,7 @@ type Class struct {
 	ExportedFrom *TopLevelReference `json:"exported_from"`
 	Toitdoc      DocContents        `json:"toitdoc"`
 	Interfaces   TopLevelReferences `json:"interfaces"`
+	Mixins       TopLevelReferences `json:"mixins"`
 	Extends      *TopLevelReference `json:"extends"`
 	Structure    ClassStructure     `json:"structure"`
 }
@@ -402,6 +403,7 @@ func (b *builder) class(class *toit.Class, exportRef *toit.TopLevelReference) Cl
 		ExportedFrom: b.exportedFrom(exportRef),
 		Toitdoc:      b.toitdoc(class.Toitdoc),
 		Interfaces:   b.topLevelReferences(interfaces),
+		Mixins:       b.topLevelReferences(class.Mixins),
 		Extends:      b.topLevelReference(class.SuperClass, nil),
 		Structure: ClassStructure{
 			Statics:      b.methods(class.Statics),
