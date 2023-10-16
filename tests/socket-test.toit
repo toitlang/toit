@@ -8,6 +8,8 @@ import .tcp
 import monitor show *
 import writer show *
 
+import .io-data
+
 expect-error name [code]:
   exception := "$(catch code)"
   if (exception.index-of name) == -1:
@@ -21,7 +23,9 @@ main:
   connect-error-test
   blocking-send-test
   already-in-use-test
+  io-data-test
   print "done"
+
 connect-error-test:
   // Port 47 is reserved/unassigned.
   socket := TcpSocket
@@ -62,7 +66,29 @@ blocking-send-test:
   socket.close
   server.close
 
-sleepy-reader port:
+io-data-test:
+  ITERATIONS ::= 500
+  2.repeat: | iteration |
+    server := TcpServerSocket
+    server.listen "" 0
+    task:: sleepy-reader server.local-address.port --iterations=ITERATIONS
+    socket := server.accept
+    writer := Writer socket
+    if iteration == 0:
+      ITERATIONS.repeat:
+        writer.write (FakeData "")
+        writer.write (FakeData "Message for sleepy reader $it")
+    else:
+      data := ""
+      ITERATIONS.repeat:
+        data += "Message for sleepy reader $it"
+      writer.write (FakeData data)
+    socket.close-write
+    while socket.read != null:
+    socket.close
+    server.close
+
+sleepy-reader port --iterations/int=100:
   socket := TcpSocket
   socket.connect "localhost" port
   done := false
@@ -85,5 +111,5 @@ sleepy-reader port:
         expected = "Message for sleepy reader $index"
       expect str.size < expected.size
   print "End at $index"
-  expect-equals index 100
+  expect-equals index iterations
   socket.close-write

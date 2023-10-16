@@ -62,11 +62,8 @@ siphash-clone_ other:
 // Adds a UTF-8 string or a byte array to the Sip hash.
 siphash-add_ siphash data/io.Data from/int to/int -> none:
   #primitive.crypto.siphash-add:
-    if it == "WRONG_BYTES_TYPE":
-      // TODO(florian): we could chunk the input to avoid a full copy in memory.
-      siphash-add_ siphash (ByteArray.from data from to) 0 (to - from)
-    else:
-      throw it
+    io.primitive-redo-chunked-io-data_ it data from to: | bytes |
+      siphash-add_ siphash bytes 0 bytes.size
 
 // Rounds off a Sip hash.
 siphash-get_ siphash -> ByteArray:
