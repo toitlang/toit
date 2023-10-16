@@ -24,6 +24,8 @@ main:
   test-add-finalizer
   test-remove-finalizer
 
+  test-multiple-add-remove
+
 test-finalizers:
   add-finalizer should-never-die:: throw "Wrong object to declare dead"
   limit.repeat: add-finalizer List:: count++
@@ -67,3 +69,24 @@ test-remove-finalizer:
 
   expect-not
     remove-finalizer List
+
+test-multiple-add-remove:
+  object/List? := List
+
+  first-called := false
+  second-called := false
+
+  add-finalizer object::
+    first-called = true
+
+  remove-finalizer object
+
+  add-finalizer object::
+    second-called = true
+
+  object = null  // Now it can be GCed.
+
+  provoke-finalization-processing
+
+  expect (not first-called)  // This one was removed - should not be called.
+  expect second-called

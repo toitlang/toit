@@ -37,11 +37,9 @@ bool ToitFinalizerNode::alive(LivenessOracle* oracle) {
 }
 
 bool ToitFinalizerNode::handle_not_alive(RootCallback* ss, ObjectHeap* heap) {
-  // When a finalizer has its finalizer removed we remove the bit, but we
-  // don't iterate the whole finalizer list looking for the object.  This
-  // means it's still in the list until the next GC cleans the list.  In thi
-  // period it can again be given a finalizer, so it can be in the list twice.
-  // We don't want to run both finalizers, so we remove the bit here.
+  if (!key_->has_active_finalizer()) {
+    return true;  // Delete me, the object no longer needs a finalizer.
+  }
   key_->clear_has_active_finalizer();
   // Clear the key so it is not retained.
   set_key(heap->program()->null_object());
@@ -70,6 +68,7 @@ bool VmFinalizerNode::alive(LivenessOracle* oracle) {
 }
 
 bool VmFinalizerNode::handle_not_alive(RootCallback* ss, ObjectHeap* heap) {
+  if (!key_->has_active_finalizer()) return true;
   free_external_memory(heap->owner());
   return true;  // Delete me now.
 }

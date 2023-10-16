@@ -357,7 +357,9 @@ void ObjectHeap::process_registered_finalizers_helper(FinalizerNodeFifo* list, R
       // Remove node from list - no point in visiting the roots in this case.
       return true;
     }
-    node->handle_not_alive(capture.ss, capture.heap);
+    if (node->handle_not_alive(capture.ss, capture.heap)) {
+      delete node;
+    }
     return true;  // Remove node from list.
   });
 }

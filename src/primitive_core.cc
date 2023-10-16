@@ -1956,7 +1956,6 @@ PRIMITIVE(add_finalizer) {
   if (!object->on_program_heap(process)) {
     if (object->has_active_finalizer()) FAIL(ALREADY_EXISTS);
     if (!process->add_toit_finalizer(object, finalizer)) FAIL(MALLOC_FAILED);
-    object->set_has_active_finalizer();
   }
   return process->null_object();
 }

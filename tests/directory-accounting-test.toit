@@ -18,5 +18,10 @@ main:
       dir = directory.DirectoryStream "/usr/bin"
     if dir:
       i := 0
+      // Read all the directory entries.
+      // Because we read until we are done (and there's no rewind), the
+      // directory also gets closed, so we are not testing the Toit finalizers
+      // here, only the VM finalizers (on the external byte arrays that are
+      // used to create the dirname strings).
       while entry := dir.next:
         i++
