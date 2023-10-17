@@ -387,25 +387,6 @@ uint8 Process::update_priority() {
   return priority;
 }
 
-bool Process::add_toit_finalizer(HeapObject* key, Object* lambda) {
-  ASSERT(key->can_be_toit_finalized(program()));
-  ASSERT(!key->has_active_finalizer());
-  bool result = object_heap()->add_toit_finalizer(key, lambda);
-  if (result) {
-    key->set_has_active_finalizer();
-  }
-  return result;
-}
-
-bool Process::add_vm_finalizer(HeapObject* key) {
-  ASSERT(!key->can_be_toit_finalized(program()));
-  bool result = object_heap()->add_vm_finalizer(key);
-  if (result) {
-    key->set_has_active_finalizer();
-  }
-  return result;
-}
-
 #if defined(TOIT_WINDOWS)
 
 const wchar_t* Process::current_directory() { return current_directory_; }

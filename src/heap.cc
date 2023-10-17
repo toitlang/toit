@@ -221,7 +221,7 @@ ByteArray* ObjectHeap::allocate_external_byte_array(int length, uint8* memory, b
     if (Flags::allocation) printf("External memory for byte array %p [length = %d] setup for finalization.\n", memory, length);
     Process* process = owner();
     ASSERT(process != null);
-    if (!process->add_vm_finalizer(result)) {
+    if (!add_vm_finalizer(result)) {
       set_last_allocation_result(ALLOCATION_OUT_OF_MEMORY);
       return null;  // Allocation failure.
     }
@@ -248,7 +248,7 @@ String* ObjectHeap::allocate_external_string(int length, uint8* memory, bool dis
     if (Flags::allocation) printf("External memory for string %p [length = %d] setup for finalization.\n", memory, length);
     Process* process = owner();
     ASSERT(process != null);
-    if (!process->add_vm_finalizer(result)) {
+    if (!add_vm_finalizer(result)) {
       set_last_allocation_result(ALLOCATION_OUT_OF_MEMORY);
       return null;  // Allocation failure.
     }
@@ -366,20 +366,24 @@ void ObjectHeap::process_registered_finalizers_helper(FinalizerNodeFifo* list, R
 
 bool ObjectHeap::add_toit_finalizer(HeapObject* key, Object* lambda) {
   // We should already have checked whether the object is already registered.
+  ASSERT(key->can_be_toit_finalized(program()));
   ASSERT(!key->has_active_finalizer());
   auto node = _new ToitFinalizerNode(key, lambda);
   if (node == null) return false;  // Allocation failed.
   // Add it at the head of the list in case there is an old finalizer lower
   // down on the list.
   registered_toit_finalizers_.prepend(node);
+  key->set_has_active_finalizer();
   return true;
 }
 
 bool ObjectHeap::add_vm_finalizer(HeapObject* key) {
+  ASSERT(!key->can_be_toit_finalized(program()));
   // We should already have checked whether the object is already registered.
   auto node = _new VmFinalizerNode(key);
   if (node == null) return false;  // Allocation failed.
   registered_vm_finalizers_.append(node);
+  key->set_has_active_finalizer();
   return true;
 }
 
