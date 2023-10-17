@@ -1338,13 +1338,13 @@ abstract class string implements Comparable io.Data:
     return size
 
   byte-slice from to/int -> io.Data:
-    if not 0 <= from <= to <= byte-size: throw "OUT_OF_BOUNDS"
     if this is String_: return StringByteSlice_ (this as String_) from to
+    if not 0 <= from <= to <= byte-size: throw "OUT_OF_BOUNDS"
     slice := this as StringSlice_
     return StringByteSlice_ slice.str_ (slice.from_ + from) (slice.from_ + to)
 
   byte-at index/int -> int:
-    return at --raw index
+    return raw-at_ index
 
   write-to-byte-array byte-array/ByteArray --at/int from/int to/int:
     write-to-byte-array_ byte-array from to at
@@ -1406,7 +1406,7 @@ class StringSlice_ extends string:
 class StringByteSlice_ implements io.Data:
   str_ / String_
   from_ / int
-  to_   / int
+  to_ / int
 
   constructor .str_ .from_ .to_:
 
@@ -1427,6 +1427,7 @@ class StringByteSlice_ implements io.Data:
     return StringByteSlice_ str_ actual-from actual-to
 
   byte-at index/int -> int:
+    if not 0 <= index < (to_ - from_): throw "OUT_OF_BOUNDS"
     actual-index := from_ + index
     return str_.byte-at actual-index
 
