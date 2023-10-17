@@ -512,7 +512,7 @@ abstract class Reader:
   /**
   Closes this reader.
 
-  After this method has been called, the reader's $consume method must return null.
+  After this method has been called, the reader's $consume_ method must return null.
   This method may be called multiple times.
   */
   // This is a protected method. It should not be "private".
