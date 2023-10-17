@@ -64,6 +64,7 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-msa311
     https://github.com/toitware/toit-newton-raphson
     https://github.com/toitware/toit-openai
+    https://github.com/toitware/toit-partition-table-esp32
     https://github.com/toitware/toit-pixel-display
     https://github.com/toitware/toit-pixel-strip
 # TODO(kasper): Temporarily removed because the tests cannot be
@@ -132,6 +133,14 @@ if (DEFINED EXECUTING_SCRIPT)
         COMMAND_ERROR_IS_FATAL ANY
       )
     endif()
+    # If bin/version.toit.in (or app/version.toit.in) exists, copy it to
+    # bin/version.toit (resp. app/version.toit).
+    foreach(LOCATION "app" "bin")
+      set(LOCATION_PATH "${REPO_PATH}/${LOCATION}")
+      if (EXISTS "${LOCATION_PATH}/version.toit.in")
+        configure_file("${LOCATION_PATH}/version.toit.in" "${LOCATION_PATH}/version.toit" COPYONLY)
+      endif()
+    endforeach()
   else()
     message(FATAL_ERROR "Unknown script command ${SCRIPT_COMMAND}")
   endif()
