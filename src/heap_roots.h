@@ -38,15 +38,15 @@ class FinalizerNode : public FinalizerNodeFifo::Element {
   // Should return false if the node needs GC processing.
   virtual bool alive(LivenessOracle* oracle) = 0;
   // Should return null if the node should be deleted.
-  virtual bool handle_not_alive(RootCallback* process_slots, ObjectHeap* heap) = 0;
+  virtual bool handle_not_alive(RootCallback* process_slots) = 0;
   // Should return true if the node has the active finalizer bit set.
   virtual bool has_active_finalizer(LivenessOracle* oracle) = 0;
 };
 
 class ToitFinalizerNode : public FinalizerNode {
  public:
-  ToitFinalizerNode(HeapObject* key, Object* lambda)
-  : key_(key), lambda_(lambda) {}
+  ToitFinalizerNode(HeapObject* key, Object* lambda, ObjectHeap* heap)
+  : key_(key), lambda_(lambda), heap_(heap) {}
 
   HeapObject* key() { return key_; }
   void set_key(HeapObject* value) { key_ = value; }
@@ -56,18 +56,19 @@ class ToitFinalizerNode : public FinalizerNode {
   // Garbage collection support.
   virtual void roots_do(RootCallback* cb);
   virtual bool alive(LivenessOracle* oracle);
-  virtual bool handle_not_alive(RootCallback* process_slots, ObjectHeap* heap);
+  virtual bool handle_not_alive(RootCallback* process_slots);
   virtual bool has_active_finalizer(LivenessOracle* oracle);
 
  private:
   HeapObject* key_;
   Object* lambda_;
+  ObjectHeap* heap_;
 };
 
 class VmFinalizerNode : public FinalizerNode {
  public:
-  VmFinalizerNode(HeapObject* key)
-  : key_(key) {}
+  VmFinalizerNode(HeapObject* key, ObjectHeap* heap)
+  : key_(key), heap_(heap) {}
   virtual ~VmFinalizerNode();
 
   HeapObject* key() { return key_; }
@@ -76,13 +77,14 @@ class VmFinalizerNode : public FinalizerNode {
   // Garbage collection support.
   virtual void roots_do(RootCallback* cb);
   virtual bool alive(LivenessOracle* oracle);
-  virtual bool handle_not_alive(RootCallback* process_slots, ObjectHeap* heap);
+  virtual bool handle_not_alive(RootCallback* process_slots);
   virtual bool has_active_finalizer(LivenessOracle* oracle);
 
   void free_external_memory(Process* process);
 
  private:
   HeapObject* key_;
+  ObjectHeap* heap_;
 };
 
 typedef DoubleLinkedList<ObjectNotifier> ObjectNotifierList;

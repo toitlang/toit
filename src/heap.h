@@ -79,7 +79,7 @@ class ObjectHeap {
   }
   void process_registered_toit_finalizers(RootCallback* ss, LivenessOracle* from_space);
   void process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space);
-  void process_registered_finalizers_helper(FinalizerNodeFifo* list, RootCallback* ss, LivenessOracle* from_space, ObjectHeap* heap);
+  void process_registered_finalizers_helper(FinalizerNodeFifo* list, RootCallback* ss, LivenessOracle* from_space);
 
   Program* program() const { return program_; }
 
