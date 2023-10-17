@@ -378,7 +378,7 @@ class Session:
         cipher-suite-id,
     ]
 
-  write data from=0 to=data.size:
+  write data/io.Data from/int=0 to/int=data.byte-size:
     ensure-handshaken_
     if symmetric-session_: return symmetric-session_.write data from to
     if not tls_: throw "TLS_SOCKET_NOT_CONNECTED"
