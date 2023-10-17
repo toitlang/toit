@@ -791,23 +791,68 @@ class Buffer extends Writer:
   /**
   Provides endian-aware functions to write to this instance.
 
-  The little-endian byte order writes lower-order bytes first. For example, if
-    the target of the write operation is a byte array, the first byte written (at
-    position 0) is the least significant byte of any integer that is written.
+  The little-endian byte order writes lower-order ("little") bytes first.
+    For example, if the target of the write operation is a byte array, the
+    first byte written (at position 0) is the least significant byte of the
+    number that is written.
 
-  # Example
+  # Examples
   ```
   import io
 
   main:
     buffer := io.Buffer
     buffer.little-endian.write-int32 0x12345678
+    // The least significant byte 0x78 is at index 0.
     print buffer.bytes  // => #[0x78, 0x56, 0x34, 0x12]
+  ```
+
+  ```
+  import io
+
+  main:
+    buffer := io.Buffer
+    writer := buffer.little-endian
+    writer.write "Can be used like a normal writer."
+    writer.write-int32 0x12345678
+    result := buffer.bytes
+    ...
   ```
   */
   little-endian -> EndianWriter:
     return EndianWriter.private_ this binary.LITTLE_ENDIAN
 
+  /**
+  Provides endian-aware functions to write to this instance.
+
+  The big-endian byte order writes higher-order (big) bytes first.
+    For example, if  the target of the write operation is a byte array, the
+    first byte written (at position 0) is the most significant byte of
+    the number that is written.
+
+  # Examples
+  ```
+  import io
+
+  main:
+    buffer := io.Buffer
+    buffer.big-endian.write-int32 0x12345678
+    // The most significant byte 0x12 is at index 0.
+    print buffer.bytes  // => #[0x12, 0x34, 0x56, 0x78]
+  ```
+
+  ```
+  import io
+
+  main:
+    buffer := io.Buffer
+    writer := buffer.big-endian
+    writer.write "Can be used like a normal writer."
+    writer.write-int32 0x12345678
+    result := buffer.bytes
+    ...
+  ```
+  */
   big-endian -> EndianWriter:
     return EndianWriter.private_ this binary.BIG_ENDIAN
 
