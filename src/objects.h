@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -216,6 +216,17 @@ enum TypeTag {
   PROMOTED_TRACK_TAG,
 };
 
+#define STANDARD_FUNCTIONS(CamelName, snake_name)           \
+  static inline CamelName* cast(Object* obj) {              \
+    ASSERT(is_##snake_name(obj));                           \
+    return static_cast<CamelName*>(obj);                    \
+  }                                                         \
+                                                            \
+  static inline const CamelName* cast(const Object* obj) {  \
+    ASSERT(is_##snake_name(obj));                           \
+    return static_cast<const CamelName*>(obj);              \
+  }                                                         \
+
 class HeapObject : public Object {
  public:
   INLINE Smi* header() const {
@@ -281,15 +292,7 @@ class HeapObject : public Object {
     return result;
   }
 
-  static HeapObject* cast(Object* obj) {
-    ASSERT(is_heap_object(obj));
-    return static_cast<HeapObject*>(obj);
-  }
-
-  static const HeapObject* cast(const Object* obj) {
-    ASSERT(is_heap_object(obj));
-    return static_cast<const HeapObject*>(obj);
-  }
+  STANDARD_FUNCTIONS(HeapObject, heap_object)
 
   static HeapObject* cast(void* address) {
     uword value = reinterpret_cast<uword>(address);
@@ -416,15 +419,7 @@ class Array : public HeapObject {
   void read_content(SnapshotReader* st, int length);
 #endif
 
-  static Array* cast(Object* array) {
-     ASSERT(is_array(array));
-     return static_cast<Array*>(array);
-  }
-
-  static const Array* cast(const Object* array) {
-     ASSERT(is_array(array));
-     return static_cast<const Array*>(array);
-  }
+  STANDARD_FUNCTIONS(Array, array)
 
   Object** base() { return reinterpret_cast<Object**>(_raw_at(_offset_from(0))); }
 
@@ -588,15 +583,7 @@ class ByteArray : public HeapObject {
   void read_content(SnapshotReader* st, int byte_length);
 #endif
 
-  static ByteArray* cast(Object* byte_array) {
-     ASSERT(is_byte_array(byte_array));
-     return static_cast<ByteArray*>(byte_array);
-  }
-
-  static const ByteArray* cast(const Object* byte_array) {
-     ASSERT(is_byte_array(byte_array));
-     return static_cast<const ByteArray*>(byte_array);
-  }
+  STANDARD_FUNCTIONS(ByteArray, byte_array)
 
   // Only for external byte arrays that were malloced.  Does not change the
   // accounting, so we may overestimate the external memory pressure.  May fail
@@ -713,15 +700,7 @@ class LargeInteger : public HeapObject {
  public:
   int64 value() { return _int64_at(VALUE_OFFSET); }
 
-  static LargeInteger* cast(Object* value) {
-     ASSERT(is_large_integer(value));
-     return static_cast<LargeInteger*>(value);
-  }
-
-  static const LargeInteger* cast(const Object* value) {
-     ASSERT(is_large_integer(value));
-     return static_cast<const LargeInteger*>(value);
-  }
+  STANDARD_FUNCTIONS(LargeInteger, large_integer)
 
   static int allocation_size() { return SIZE; }
   static void allocation_size(int* word_count, int* extra_bytes) {
@@ -908,15 +887,7 @@ class Stack : public HeapObject {
   static INLINE int initial_length() { return 64; }
   static INLINE int max_length();
 
-  static Stack* cast(Object* stack) {
-    ASSERT(is_stack(stack));
-    return static_cast<Stack*>(stack);
-  }
-
-  static const Stack* cast(const Object* stack) {
-    ASSERT(is_stack(stack));
-    return static_cast<const Stack*>(stack);
-  }
+  STANDARD_FUNCTIONS(Stack, stack)
 
   static int allocation_size(int length) { return  _align(HEADER_SIZE + length * WORD_SIZE); }
   static void allocation_size(int length, int* word_count, int* extra_bytes) {
@@ -1012,10 +983,7 @@ class Double : public HeapObject {
   double value() { return _double_at(VALUE_OFFSET); }
   int64 bits() { return _int64_at(VALUE_OFFSET); }
 
-  static Double* cast(Object* value) {
-     ASSERT(is_double(value));
-     return static_cast<Double*>(value);
-  }
+  STANDARD_FUNCTIONS(Double, double)
 
 #ifndef TOIT_FREERTOS
   void write_content(SnapshotWriter* st);
@@ -1123,15 +1091,7 @@ class String : public HeapObject {
   // Returns a malloced string with the same content as this string.
   char* cstr_dup();
 
-  static String* cast(Object* object) {
-     ASSERT(is_string(object));
-     return static_cast<String*>(object);
-  }
-
-  static const String* cast(const Object* object) {
-     ASSERT(is_string(object));
-     return static_cast<const String*>(object);
-  }
+  STANDARD_FUNCTIONS(String, string)
 
   static inline word max_internal_size_in_process();
   static inline word max_internal_size_in_program();
@@ -1378,15 +1338,7 @@ class Instance : public HeapObject {
     return (instance_size - HEADER_SIZE) / WORD_SIZE;
   }
 
-  static Instance* cast(Object* value) {
-    ASSERT(is_instance(value) || is_task(value));
-    return static_cast<Instance*>(value);
-  }
-
-  static const Instance* cast(const Object* value) {
-    ASSERT(is_instance(value) || is_task(value));
-    return static_cast<const Instance*>(value);
-  }
+  STANDARD_FUNCTIONS(Instance, instance)
 
   static int allocation_size(int length) { return  _align(_offset_from(length)); }
   static void allocation_size(int length, int* word_count, int* extra_bytes) {
@@ -1451,15 +1403,7 @@ class FreeListRegion : public HeapObject {
 
   void roots_do(int instance_size, RootCallback* cb) {}
 
-  static FreeListRegion* cast(Object* value) {
-    ASSERT(is_free_list_region(value));
-    return static_cast<FreeListRegion*>(value);
-  }
-
-  static const FreeListRegion* cast(const Object* value) {
-    ASSERT(is_free_list_region(value));
-    return static_cast<const FreeListRegion*>(value);
-  }
+  STANDARD_FUNCTIONS(FreeListRegion, free_list_region)
 
   void set_next_region(FreeListRegion* next) {
     ASSERT(can_be_daisychained());
@@ -1511,15 +1455,7 @@ class PromotedTrack : public HeapObject {
   // track, so nothing to do here.
   void roots_do(int instance_size, RootCallback* cb) {}
 
-  static PromotedTrack* cast(Object* value) {
-    ASSERT(is_promoted_track(value));
-    return static_cast<PromotedTrack*>(value);
-  }
-
-  static const PromotedTrack* cast(const Object* value) {
-    ASSERT(is_promoted_track(value));
-    return static_cast<const PromotedTrack*>(value);
-  }
+  STANDARD_FUNCTIONS(PromotedTrack, promoted_track)
 
   void set_next(PromotedTrack* next) {
     _at_put(NEXT_OFFSET, next);
@@ -1563,10 +1499,7 @@ class Task : public Instance {
 
   int id() { return Smi::value(at(ID_INDEX)); }
 
-  static Task* cast(Object* value) {
-    ASSERT(is_task(value));
-    return static_cast<Task*>(value);
-  }
+  STANDARD_FUNCTIONS(Task, task)
 
   void detach_stack() {
     at_put(STACK_INDEX, Smi::zero());
