@@ -512,7 +512,7 @@ abstract class Reader:
   /**
   Closes this reader.
 
-  After this method has been called, the reader's $consume method must return null.
+  After this method has been called, the reader's $consume_ method must return null.
   This method may be called multiple times.
   */
   // This is a protected method. It should not be "private".
@@ -535,6 +535,117 @@ class ByteArrayReader_ extends Reader:
 
   close_ -> none:
     data_ = null
+
+
+interface OutStrategy:
+  /**
+  Writes the given $data to this writer.
+
+  Returns the number of bytes written.
+
+  See $Writer.try-write_.
+  */
+  // This is a protected method. It should not be "private".
+  try-write_ data/Data from/int to/int -> int
+
+  /**
+  Closes this writer.
+
+  See $Writer.close_.
+  */
+  // This is a protected method. It should not be "private".
+  close-writer_ -> none
+
+class Out_ extends Writer:
+  strategy_/OutStrategy
+
+  constructor .strategy_:
+
+  try-write_ data/Data from/int to/int -> int:
+    return strategy_.try-write_ data from to
+
+  close_ -> none:
+    strategy_.close-writer_
+
+abstract mixin OutMixin implements OutStrategy:
+  out_/Out_? := null
+
+  out -> Writer:
+    if not out_: out_ = Out_ this
+    return out_
+
+  /**
+  Writes the given $data to this writer.
+
+  Returns the number of bytes written.
+
+  # Inheritance
+  See $Writer.try-write_.
+  */
+  // This is a protected method. It should not be "private".
+  abstract try-write_ data/Data from/int to/int -> int
+
+  /**
+  Closes this writer.
+
+  # Inheritance
+  See $Writer.close_.
+  */
+  // This is a protected method. It should not be "private".
+  abstract close-writer_ -> none
+
+interface InStrategy:
+  /**
+  Reads the next bytes.
+
+  See $Reader.consume_.
+  */
+  // This is a protected method. It should not be "private".
+  consume_ -> ByteArray?
+
+  /**
+  Closes this reader.
+
+  See $Reader.close_.
+  */
+  // This is a protected method. It should not be "private".
+  close-reader_ -> none
+
+class In_ extends Reader:
+  strategy_/InStrategy
+
+  constructor .strategy_:
+
+  consume_ -> ByteArray?:
+    return strategy_.consume_
+
+  close_ -> none:
+    strategy_.close-reader_
+
+abstract mixin InMixin implements InStrategy:
+  in_/In_? := null
+
+  in -> Reader:
+    if not in_: in_ = In_ this
+    return in_
+
+  /**
+  Reads the next bytes.
+
+  # Inheritance
+  See $Reader.consume_.
+  */
+  // This is a protected method. It should not be "private".
+  abstract consume_ -> ByteArray?
+
+  /**
+  Closes this reader.
+
+  # Inheritance
+  See $Reader.close_.
+  */
+  // This is a protected method. It should not be "private".
+  abstract close-reader_ -> none
 
 /**
 Executes the given $block on chunks of the $data if the error indicates

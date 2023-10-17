@@ -114,7 +114,7 @@ class TcpServerSocket extends TcpSocket_ implements net.ServerSocket:
     return socket
 
 
-class TcpSocket extends TcpSocket_ implements net.Socket Reader:
+class TcpSocket extends TcpSocket_ with io.InMixin io.OutMixin implements net.Socket Reader:
   window-size_ := 0
 
   constructor: return TcpSocket 0
@@ -153,6 +153,9 @@ class TcpSocket extends TcpSocket_ implements net.Socket Reader:
       throw error
 
   read -> ByteArray?:
+    return consume_
+
+  consume_ -> ByteArray?:
     while true:
       state := ensure-state_ TOIT-TCP-READ_ --failure=: throw it
       result := tcp-read_ state.group state.resource
@@ -161,13 +164,22 @@ class TcpSocket extends TcpSocket_ implements net.Socket Reader:
       state.clear-state TOIT-TCP-READ_
 
   write data/io.Data from/int=0 to/int=data.byte-size -> int:
+    return try-write_ data from to
+
+  try-write_ data/io.Data from/int to/int -> int:
     while true:
       state := ensure-state_ TOIT-TCP-WRITE_ --error-bits=(TOIT-TCP-ERROR_ | TOIT-TCP-CLOSE_) --failure=: throw it
       wrote := tcp-write_ state.group state.resource data from to
       if wrote != -1: return wrote
       state.clear-state TOIT-TCP-WRITE_
 
+  close-reader_:
+    // Do nothing.
+
   close-write -> none:
+    close-writer_
+
+  close-writer_ -> none:
     state := state_
     if state == null: return
     tcp-close-write_ state.group state.resource
