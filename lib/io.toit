@@ -1,5 +1,7 @@
 // Copyright (C) 2023 Toitware ApS. All rights reserved.
 
+import binary
+
 /**
 A producer of bytes.
 
@@ -646,6 +648,215 @@ abstract mixin InMixin implements InStrategy:
   */
   // This is a protected method. It should not be "private".
   abstract close-reader_ -> none
+
+/**
+A buffer that can be used to build byte data.
+
+# Aliases
+- `BytesBuilder`: Dart
+- `ByteArrayOutputStream`: Java
+*/
+class Buffer extends Writer:
+  static INITIAL-BUFFER-SIZE_ ::= 64
+  static MIN-BUFFER-GROWTH_ ::= 64
+
+  init-size_/int
+  offset_ := 0
+  buffer_/ByteArray := ?
+  is-growable_/bool := ?
+
+  /**
+  Constructs a new buffer.
+
+  The backing byte array is allocated with a default size and will grow if needed.
+  */
+  constructor:
+    return Buffer (ByteArray INITIAL-BUFFER-SIZE_) --growable
+
+  /**
+  Constructs a new buffer, using the given $bytes as backing array.
+
+  If $growable is true, then the $bytes array might be replaced with a bigger one
+    if needed.
+
+  The current backing array can be accessed with $backing-array.
+  A view, only containing the data that has been written so far, can be accessed
+    with $bytes.
+  */
+  constructor bytes/ByteArray --growable/bool=false:
+    buffer_ = bytes
+    is-growable_ = growable
+    init-size_ = bytes.size
+
+  /**
+  Whether this instance is allowed to replace the backing store with a bigger one.
+
+  If false, then the $backing-array is always equal to the array that was passed
+    to the constructor.
+  */
+  is-growable -> bool:
+    return is-growable_
+
+  /**
+  The amount of bytes that have been written to this buffer.
+
+  This is not necessarily the size of the backing array.
+  */
+  size -> int:
+    return offset_
+
+  /**
+  The backing array of this buffer.
+
+  If $is-growable is false, always returns the array that was passed to the constructor.
+  This array might have a bigger size than the number of bytes that have been written.
+  */
+  backing-array -> ByteArray:
+    return buffer_
+
+  /**
+  A view of the backing array that only contains the bytes that have been written so far.
+  */
+  bytes -> ByteArray:
+    return buffer_[..offset_]
+
+  /**
+  Converts the consumed data to a string.
+  This operation is equivalent to `bytes.to-string`.
+  */
+  to-string -> string:
+    return bytes.to-string
+
+  /**
+  Reserves $amount bytes.
+
+  Ensures that the backing array has $amount unused bytes available.
+  If this is not the case replaces the backing array with a bigger one. In this
+    case this instance must be growable. (See $is-growable.)
+
+  This method is purely for efficiency, so that this consumer doesn't need to
+    regrow its internal backing store too often.
+  */
+  reserve amount/int -> none:
+    ensure_ amount
+
+  /**
+  Closes this instance.
+
+  If this instance is growable, trims the backing store to avoid waste.
+  */
+  close -> none:
+    super
+
+  /**
+  Resets this instance, discarding all accumulated data.
+  */
+  clear -> none:
+    offset_ = 0
+
+  ensure_ size/int:
+    new-minimum-size := offset_ + size
+    if new-minimum-size <= backing-array.size: return
+
+    if not is-growable_: throw "BUFFER_FULL"
+
+    // If we are ensuring a very big size, then make the buffer fit exactly.
+    // This is good for ubjson encodings that end with a large byte array,
+    // because there is no waste.  Otherwise grow by at least a factor (of 1.5)
+    // to avoid quadratic running times.
+    new-size := max
+      buffer_.size +
+        max
+          buffer_.size >> 1
+          MIN-BUFFER-GROWTH_
+      new-minimum-size
+
+    assert: offset_ + size  <= new-size
+
+    new := ByteArray new-size
+    new.replace 0 buffer_ 0 offset_
+    buffer_ = new
+
+  try-write_ data/Data from/int to/int -> int:
+    ensure_ to - from
+    buffer_.replace offset_ data from to
+    offset_ += to - from
+    return to - from
+
+  /** See $close. */
+  close_:
+    if is-growable_ and offset_  != buffer_.size:
+      buffer_ = buffer_.copy 0 offset_
+
+  /**
+  Provides endian-aware functions to write to this instance.
+
+  The little-endian byte order writes lower-order bytes first. For example, if
+    the target of the write operation is a byte array, the first byte written (at
+    position 0) is the least significant byte of any integer that is written.
+
+  # Example
+  ```
+  import io
+
+  main:
+    buffer := io.Buffer
+    buffer.little-endian.write-int32 0x12345678
+    print buffer.bytes  // => #[0x78, 0x56, 0x34, 0x12]
+  ```
+  */
+  little-endian -> EndianWriter:
+    return EndianWriter.private_ this binary.LITTLE_ENDIAN
+
+  big-endian -> EndianWriter:
+    return EndianWriter.private_ this binary.BIG_ENDIAN
+
+class EndianWriter extends Writer:
+  writer_/Writer
+  endian_/binary.ByteOrder
+
+  constructor.private_ .writer_ .endian_:
+
+  /** Writes an 8-bit integer. */
+  write-int8 value/int -> none:
+    writer_.write #[value]
+
+  /** Writes a 16-bit integer, using the endiannes of this instance. */
+  write-int16 value/int -> none:
+    tmp := ByteArray 2
+    endian_.put-int16 tmp 0 value
+    writer_.write tmp
+
+  /** Writes a 24-bit integer, using the endiannes of this instance. */
+  write-int24 value/int -> none:
+    tmp := ByteArray 3
+    endian_.put-int24 tmp 0 value
+    writer_.write tmp
+
+  /** Writes a 32-bit integer, using the endiannes of this instance. */
+  write-int32 value/int -> none:
+    tmp := ByteArray 4
+    endian_.put-int32 tmp 0 value
+    writer_.write tmp
+
+  /** Writes a 64-bit integer, using the endiannes of this instance. */
+  write-int64 data/int -> none:
+    tmp := ByteArray 8
+    endian_.put-int64 tmp 0 data
+    writer_.write tmp
+
+  /** See $Writer.try-write_. */
+  try-write_ data/Data from/int to/int -> int:
+    // Note that we go through the "try-write" public function, and not
+    // the private one. The data could be buffered, in which case
+    // we don't want to go through the private function, yet.
+    return writer_.try-write data from to
+
+  // TODO(florian): feels wrong to have a `close` on the endian writer.
+  // We should probably make a ClosableReader/Writer and make them supclasses of
+  // the normal Reader/Writer.
+  close_ -> none:
+    writer_.close
 
 /**
 Executes the given $block on chunks of the $data if the error indicates
