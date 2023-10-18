@@ -105,9 +105,11 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
 
   check_future_reserved_globals(modules);
 
+  // Mixins must be flattened before we report abstract classes
+  // and check the interface implementations.
+  flatten_mixins(modules);
   report_abstract_classes(modules);
   check_interface_implementations_and_flatten(modules);
-  flatten_mixins(modules);
 
   auto entry_module = modules[entry_index];
   auto core_module = modules[core_index];
@@ -1919,7 +1921,40 @@ static void fill_abstract_methods_map(ir::Class* ir_class,
   (*abstract_methods)[ir_class] = class_abstracts;
 }
 
+/// Checks that the klass has its mixins flattened.
+/// Only does a conservative check.
+static bool mixins_are_flattened(std::vector<Module*> modules) {
+  for (auto module : modules) {
+    for (auto klass : module->classes()) {
+      if (klass->mixins().is_empty()) continue;
+      UnorderedSet<ir::Class*> mixins;
+      for (auto mixin : klass->mixins()) {
+        mixins.insert(mixin);
+      }
+      for (auto mixin : klass->mixins()) {
+        // Require that the super is in the mixins list, unless it is
+        // the 'Mixin_' top.
+        if (mixin->has_super()) {
+          auto super = mixin->super();
+          bool is_top = !super->has_super();
+          if (!is_top && !mixins.contains(super)) {
+            return false;
+          }
+        }
+        // Require that all its mixins are in the mixins list.
+        for (auto mixin_mixin : mixin->mixins()) {
+          if (!mixins.contains(mixin_mixin)) {
+            return false;
+          }
+        }
+      }
+    }
+  }
+  return true;
+}
+
 void Resolver::report_abstract_classes(std::vector<Module*> modules) {
+  ASSERT(mixins_are_flattened(modules));
   UnorderedMap<ir::Class*, Map<Selector<ResolutionShape>, ir::Method*>> abstract_methods;
 
   Map<ir::Class*, Map<Symbol, std::vector<ResolutionShape>>> all_method_shapes;
@@ -1943,22 +1978,16 @@ void Resolver::report_abstract_classes(std::vector<Module*> modules) {
     auto probe = all_contributing.find(klass);
     if (probe != all_contributing.end()) return probe->second;
     Set<ir::Class*> result;
-    for (int i = -1; i < klass->mixins().length(); i++) {
-      auto parent = i == -1
-          ? klass->super()
-          : klass->mixins()[i];
-      if (parent == null) {
-        ASSERT(i == -1);  // No super.
-        continue;
-      }
-      auto parent_probe = all_contributing.find(parent);
-      Set<ir::Class*> transitive_parents;
-      if (parent_probe == all_contributing.end()) {
-        transitive_parents = contributing_for(parent);
-      } else {
-        transitive_parents = parent_probe->second;
-      }
-      result.insert_all(transitive_parents);
+    if (klass->has_super()) {
+      auto super_probe = all_contributing.find(klass->super());
+      Set<ir::Class*> super_contributing = (super_probe != all_contributing.end())
+          ? super_probe->second
+          : contributing_for(klass->super());
+
+      result.insert_all(super_contributing);
+    }
+    for (auto mixin : klass->mixins()) {
+      result.insert(mixin);
     }
     // The class itself also contributes.
     result.insert(klass);
@@ -2048,6 +2077,7 @@ void Resolver::report_abstract_classes(std::vector<Module*> modules) {
 }
 
 void Resolver::check_interface_implementations_and_flatten(std::vector<Module*> modules) {
+  ASSERT(mixins_are_flattened(modules));
   // For each interface, the set it represents.
   UnorderedMap<ir::Class*, Set<ir::Class*>> flattened_interfaces;
 
@@ -2098,12 +2128,18 @@ void Resolver::check_interface_implementations_and_flatten(std::vector<Module*> 
       // TODO(florian): we could cache super methods.
       auto current = ir_class;
       while (current != null) {
-        for (auto class_method : current->methods()) {
-          auto name = class_method->name();
-          auto shape = class_method->resolution_shape();
-          all_existing_shapes[name].push_back(shape);
-          Selector<ResolutionShape> selector(name, shape);
-          maybe_missing_methods.erase(selector);
+        for (int i = -1; i < current->mixins().length(); i++) {
+          ir::Class* current_or_mixin = i == -1
+              ? current
+              : current->mixins()[i];
+          for (auto class_method : current_or_mixin->methods()) {
+            auto name = class_method->name();
+            auto shape = class_method->resolution_shape();
+            all_existing_shapes[name].push_back(shape);
+            Selector<ResolutionShape> selector(name, shape);
+            maybe_missing_methods.erase(selector);
+            if (maybe_missing_methods.empty()) break;
+          }
           if (maybe_missing_methods.empty()) break;
         }
         current = current->super();
