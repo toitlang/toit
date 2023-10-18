@@ -2,9 +2,9 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import reader
 import writer
-import bytes
 import log
 
 import .locker
@@ -54,7 +54,7 @@ class Command:
     type = RAW_
     data = s3-data
 
-  write-parameters writer:
+  write-parameters writer/io.Writer:
     first := true
     parameters.do:
       if first: first = false
@@ -70,9 +70,8 @@ class Command:
 
   stringify -> string:
     if type == RAW_: return "raw[$name]$(data ? "+s3" : "")"
-    buffer := bytes.Buffer
-    write-parameters
-      writer.Writer buffer
+    buffer := io.Buffer
+    write-parameters buffer
     return "AT$name$type$buffer.bytes.to-string-non-throwing"
 
 /**
@@ -141,8 +140,8 @@ class Session:
   command-delay/Duration
   data-delay/Duration?
 
-  reader_/reader.BufferedReader
-  writer_/writer.Writer
+  reader_/io.Reader
+  writer_/io.Writer
   logger_/log.Logger?
 
   processor_/Processer_ ::= Processer_
@@ -161,6 +160,7 @@ class Session:
   task_ := null
   error_/string? := null
 
+  // TODO(florian): make this take $io.Reader and $io.Writer.
   constructor r/reader.Reader w
       --logger=log.default
       --.s3=CR
@@ -169,8 +169,8 @@ class Session:
       --.data-delay=null:
     s3-data_ = #[CR]
     logger_ = logger
-    reader_ = reader.BufferedReader r
-    writer_ = writer.Writer w
+    reader_ = r is io.Reader ? (r as io.Reader) : (io.Reader.adapt r)
+    writer_ = w is io.Writer ? (w as io.Writer) : (io.Writer.adapt w)
 
     task_ = task::
       error := catch --trace=(: it != EOF):
@@ -380,7 +380,7 @@ class Session:
 
   run_:
     while true:
-      c := reader_.byte 0
+      c := reader_.peek-byte 0
       if c == '+':
         read-formatted_
       else if c == data-marker:
@@ -414,7 +414,7 @@ class Session:
       dispatch-urc_ cmd []
       return
 
-    cmd-bytes := reader_.bytes cmd-end
+    cmd-bytes := reader_.peek-bytes cmd-end
     if is-terminating_ cmd-bytes:
       line := reader_.read-string line-end
       reader_.skip 1  // Skip s3.
@@ -424,7 +424,7 @@ class Session:
 
     cmd := cmd-bytes.to-string
     cmd-end++
-    if (reader_.byte cmd-end) == ' ': cmd-end++
+    if (reader_.peek-byte cmd-end) == ' ': cmd-end++
     reader_.skip cmd-end
 
     parsed := response-parsers_.get cmd
