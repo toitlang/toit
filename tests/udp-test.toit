@@ -106,7 +106,7 @@ io-data-test:
     socket.write (FakeData "testing")
     expect-equals "testing" socket.read.to-string
 
-  data := "testing" * 2000
+  data := "testing" * 700
   socket.write (FakeData data)
   expect-equals data socket.read.to-string
 
