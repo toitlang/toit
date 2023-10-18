@@ -8,6 +8,7 @@ import encoding.json
 import fixed-point show FixedPoint
 import math
 import reader show Reader BufferedReader
+import io
 
 main:
   test-parse
@@ -363,6 +364,13 @@ class TestReader implements Reader:
       throw "READ_ERROR"
     return list[pos++]
 
+class TestIoReader extends TestReader with io.InMixin:
+  constructor list:
+    super list
+
+  consume_ -> ByteArray?:
+    return read
+
 test-multiple-objects -> none:
   VECTORS ::= [
       // Put the border between the reads in different places.
@@ -374,6 +382,12 @@ test-multiple-objects -> none:
     buffered := BufferedReader (TestReader it)
     first := json.decode-stream buffered
     second := json.decode-stream buffered
+    expect-equals 42 first["foo"]
+    expect-equals 103 second["bar"]
+
+    reader := (TestIoReader it).in
+    first = json.decode-stream reader
+    second = json.decode-stream reader
     expect-equals 42 first["foo"]
     expect-equals 103 second["bar"]
 

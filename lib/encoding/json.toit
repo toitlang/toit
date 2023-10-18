@@ -4,6 +4,7 @@
 
 import binary show LITTLE-ENDIAN
 import bitmap
+import io
 import reader show Reader BufferedReader
 
 INITIAL-BUFFER-SIZE_ ::= 64
@@ -96,7 +97,8 @@ parse str/string:
   // makes the string more like a ByteArray.
   return d.decode (StringView_ str)
 
-/// $reader can be either a $Reader or a $BufferedReader.
+/// $reader can be either an io.Reader, $Reader or a $BufferedReader.
+/// Supportfor $Reader and $BufferedReader will be removed in the future.
 decode-stream reader:
   d := StreamingDecoder
   return d.decode-stream reader
@@ -294,7 +296,7 @@ class Decoder:
   tmp-buffer_ ::= Buffer_
   utf-8-buffer_/ByteArray? := null
   seen-strings_/Set? := null
-  buffered-reader_/BufferedReader? := null
+  buffered-reader_/io.Reader? := null
   static MAX-DEDUPED-STRING-SIZE_ ::= 128
   static MAX-DEDUPED-STRINGS_ ::= 128
 
@@ -538,11 +540,13 @@ class Decoder:
       return offset
 
 class StreamingDecoder extends Decoder:
-  /// $reader can be either a $Reader or a $BufferedReader.
+  /// $reader can be either an $io.Reader, $Reader or a $BufferedReader.
+  /// Support for $Reader and $BufferedReader will be removed in a future.
   decode-stream reader -> any:
-    if reader is not BufferedReader:
-      reader = BufferedReader reader
-    buffered-reader_ = reader as BufferedReader
+    if reader is not io.Reader:
+      buffered-reader_ = io.Reader.adapt reader
+    else:
+      buffered-reader_ = reader as io.Reader
     seen-strings_ = {}
     // Skip whitespace to get to the first data, which might be
     // a top-level number.
@@ -572,6 +576,9 @@ class StreamingDecoder extends Decoder:
         result := decode_
         if offset_ != bytes_.size:
           buffered-reader_.unget bytes_[offset_..]
+          if reader is BufferedReader and buffered-reader_.buffered-size != 0:
+            // Copy over the buffered data to the reader that was passed in.
+            (reader as BufferedReader).unget (buffered-reader_.peek-bytes buffered-reader_.buffered-size)
         bytes_ = null
         offset_ = 0
         return result
@@ -581,11 +588,11 @@ class StreamingDecoder extends Decoder:
       if not get-more_:
         throw error
 
-  // Returns true if we ran out of input.
+  // Returns true if we still have input.
   get-more_ -> bool:
     if not buffered-reader_: return false
     old-bytes := bytes_
-    next-bytes := #[]
+    next-bytes/ByteArray? := #[]
     while next-bytes.size == 0:
       error := catch:
         next-bytes = buffered-reader_.read

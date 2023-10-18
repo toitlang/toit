@@ -620,6 +620,7 @@ abstract class Reader implements old-reader.Reader:
       first = first[first-bytes-position_..]
       buffered_.add-first first
       first-bytes-position_ = 0
+    if not buffered_: buffered_ = Deque
     buffered_.add-first value
 
   /**
