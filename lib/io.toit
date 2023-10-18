@@ -138,7 +138,7 @@ abstract class Writer:
 /**
 A source of bytes.
 */
-abstract class Reader implements reader.Reader:
+abstract class Reader implements old-reader.Reader:
   static UNEXPECTED-END-OF-READER ::= "UNEXPECTED_END_OF_READER"
 
   is-closed_/bool := false
@@ -166,9 +166,28 @@ abstract class Reader implements reader.Reader:
 
   If data has been buffered returns the buffered data first.
   Otherwise attempts to read new data from the resource.
+
+  If $max-size is given, returns at most $max-size bytes.
   */
-  read -> ByteArray?:
-    if buffered_.is_empty:
+  read --max-size/int?=null -> ByteArray?:
+    is-empty := not buffered_ or buffered_.is-empty
+    if is-empty and is-closed_: return null
+
+    if max-size:
+      if is-empty:
+        size := more_
+        if not size: return null
+      bytes := buffered_.first
+      if bytes.size - first-bytes-position_ > max-size:
+        result := bytes[first-bytes-position_ .. first-bytes-position_ + max-size]
+        first-bytes-position_ += max-size
+        return result
+      result := bytes[first-bytes-position_..]
+      first-bytes-position_ = 0
+      buffered_.remove-first
+      return result
+
+    if is-empty:
       if is-closed_: return null
       return consume_
     bytes := buffered_.remove-first
@@ -256,8 +275,9 @@ abstract class Reader implements reader.Reader:
 
   If necessary reads more data and buffers it.
   */
-  is_available n/int -> bool:
-    return (peek_byte n - 1) != -1
+  can-ensure n/int -> bool:
+    ensure_ n: return false
+    return true
 
   /**
   Buffers all the remaining data of this reader.
@@ -351,7 +371,21 @@ abstract class Reader implements reader.Reader:
       offset += size
       if offset == n: return result
       start = 0
-    return ByteArray 0
+    return #[]
+
+  /**
+  Reads the rest of the data and returns it.
+  */
+  read-all -> ByteArray?:
+    buffer-all
+    return read-bytes buffered-size
+
+  /**
+  Drains the reader without buffering or returning the data.
+  */
+  drain -> none:
+    clear
+    while consume_: null // Do nothing.
 
   /**
   Reads $n bytes.
@@ -458,7 +492,7 @@ abstract class Reader implements reader.Reader:
   Returns null if no more data is available.
   */
   read-line --keep-newline/bool=false -> string?:
-    if not is-available 1: return null
+    if not can-ensure 1: return null
     delimiter-pos := index-of '\n'
     if delimiter_pos == null:
       return read_string buffered-size
@@ -513,6 +547,69 @@ abstract class Reader implements reader.Reader:
     bytes := read_bytes (index_of delimiter)
     skip 1 // Skip delimiter char
     return bytes
+
+  /**
+  Prepends the values in the $value byte-array.
+  These will be the first bytes to be read in subsequent read
+    operations.
+
+  If $hand-over is true, then this instance takes ownership of $value.
+    In this case, its contents should not be modified after being
+    given to this method.
+  */
+  unget value/ByteArray --hand-over/bool=false -> none:
+    if value.size == 0: return
+    if not hand-over: value = value.copy
+    if first-bytes-position_ != 0:
+      first := buffered_.remove-first
+      first = first[first-bytes-position_..]
+      buffered_.add-first first
+      first-bytes-position_ = 0
+    buffered_.add-first value
+
+  /**
+  Provides endian-aware functions to read from this instance.
+
+  The little-endian byte order reads lower-order ("little") bytes first.
+    For example, if the source of the read operation is a byte array, then
+    first byte read (from position 0) is the least significant byte of the
+    number that is read.
+
+  # Examples
+  ```
+  import io
+
+  main:
+    reader := io.Reader #[0x78, 0x56, 0x34, 0x12]
+    number := reader.little-endian.read-int32
+    // The least significant byte 0x78 was at index 0.
+    print "0x$(%x number)"  // => 0x12345678
+  ```
+  */
+  little-endian -> EndianReader:
+    return EndianReader --reader=this --byte-order=binary.LITTLE_ENDIAN
+
+  /**
+  Provides endian-aware functions to read from this instance.
+
+  The big-endian byte order reads higher-order (big) bytes first.
+    For example, if the source of the read operation is a byte array, then
+    first byte read (from position 0) is the most significant byte of the
+    number that is read.
+
+  # Examples
+  ```
+  import io
+
+  main:
+    reader := io.Reader #[0x12, 0x34, 0x56, 0x78]
+    number := reader.big-endian.read-int32
+    // The most significant byte 0x12 was at index 0.
+    print "0x$(%x number)"  // => 0x12345678
+  ```
+  */
+  big-endian -> EndianReader:
+    return EndianReader --reader=this --byte-order=binary.BIG_ENDIAN
 
   /**
   Reads the next byte array ignoring the buffered data.
@@ -856,6 +953,11 @@ class Buffer extends Writer:
     if not 0 <= index < offset_: throw "OUT_OF_BOUNDS"
     buffer_[index] = value
 
+  /** Writes a single byte $b. */
+  write-byte b/int:
+    ensure_ 1
+    buffer_[offset_++] = b
+
   try-write_ data/Data from/int to/int -> int:
     ensure_ to - from
     buffer_.replace offset_ data from to
@@ -871,7 +973,7 @@ class Buffer extends Writer:
   Provides endian-aware functions to write to this instance.
 
   The little-endian byte order writes lower-order ("little") bytes first.
-    For example, if the target of the write operation is a byte array, the
+    For example, if the target of the write operation is a byte array, then the
     first byte written (at position 0) is the least significant byte of the
     number that is written.
 
@@ -905,7 +1007,7 @@ class Buffer extends Writer:
   Provides endian-aware functions to write to this instance.
 
   The big-endian byte order writes higher-order (big) bytes first.
-    For example, if  the target of the write operation is a byte array, the
+    For example, if  the target of the write operation is a byte array, then the
     first byte written (at position 0) is the most significant byte of
     the number that is written.
 
@@ -935,6 +1037,210 @@ class Buffer extends Writer:
   big-endian -> EndianBuffer:
     return EndianBuffer --buffer=this --byte-order=binary.BIG_ENDIAN
 
+class EndianReader:
+  reader_/Reader
+  endian_/binary.ByteOrder
+  cached-byte-array_/ByteArray ::= ByteArray 8
+
+  constructor --reader/Reader --byte-order/binary.ByteOrder:
+    reader_ = reader
+    endian_ = byte-order
+
+  /**
+  Peeks an unsigned 8-bit integer without consuming it.
+
+  This function is an alias for $Reader.peek-byte.
+  */
+  peek-uint8 -> int:
+    return reader_.peek-byte 0
+
+  /**
+  Reads an unsigned 8-bit integer.
+
+  This function is an alias for $Reader.read-byte.
+  */
+  read-uint8 -> int:
+    return reader_.read-byte
+
+  /**
+  Peeks a signed 8-bit integer without consuming it.
+  */
+  peek-int8 -> int:
+    byte := reader_.peek-byte 0
+    if (byte & 0x80) != 0: return byte - 0x100
+    return byte
+
+  /** Reads a signed 8-bit integer. */
+  read-int8 -> int:
+    result := peek-int8
+    reader_.skip 1
+    return result
+
+  /**
+  Peeks an unsigned 16-bit integer without consuming it.
+  */
+  peek-uint16 -> int:
+    cached-byte-array_[0] = reader_.peek-byte 0
+    cached-byte-array_[1] = reader_.peek-byte 1
+    return endian_.uint16 cached-byte-array_ 0
+
+  /**
+  Reads an unsigned 16-bit integer.
+  */
+  read-uint16 -> int:
+    result := peek-uint16
+    reader_.skip 2
+    return result
+
+  /**
+  Peeks a signed 16-bit integer without consuming it.
+  */
+  peek-int16 -> int:
+    cached-byte-array_[0] = reader_.peek-byte 0
+    cached-byte-array_[1] = reader_.peek-byte 1
+    return endian_.int16 cached-byte-array_ 0
+
+  /**
+  Reads a signed 16-bit integer.
+  */
+  read-int16 -> int:
+    result := peek-int16
+    reader_.skip 2
+    return result
+
+  /**
+  Peeks an unsigned 24-bit integer without consuming it.
+  */
+  peek-uint24 -> int:
+    cached-byte-array_[0] = reader_.peek-byte 0
+    cached-byte-array_[1] = reader_.peek-byte 1
+    cached-byte-array_[2] = reader_.peek-byte 2
+    return endian_.uint24 cached-byte-array_ 0
+
+  /**
+  Reads an unsigned 24-bit integer.
+  */
+  read-uint24 -> int:
+    result := peek-uint24
+    reader_.skip 3
+    return result
+
+  /**
+  Peeks a signed 24-bit integer without consuming it.
+  */
+  peek-int24 -> int:
+    cached-byte-array_[0] = reader_.peek-byte 0
+    cached-byte-array_[1] = reader_.peek-byte 1
+    cached-byte-array_[2] = reader_.peek-byte 2
+    return endian_.int24 cached-byte-array_ 0
+
+  /**
+  Reads a signed 24-bit integer.
+  */
+  read-int24 -> int:
+    result := peek-int24
+    reader_.skip 3
+    return result
+
+  /**
+  Peeks an unsigned 32-bit integer without consuming it.
+  */
+  peek-uint32 -> int:
+    cached-byte-array_[0] = reader_.peek-byte 0
+    cached-byte-array_[1] = reader_.peek-byte 1
+    cached-byte-array_[2] = reader_.peek-byte 2
+    cached-byte-array_[3] = reader_.peek-byte 3
+    return endian_.uint32 cached-byte-array_ 0
+
+  /**
+  Reads an unsigned 32-bit integer.
+  */
+  read-uint32 -> int:
+    result := peek-uint32
+    reader_.skip 4
+    return result
+
+  /**
+  Peeks a signed 32-bit integer without consuming it.
+  */
+  peek-int32 -> int:
+    cached-byte-array_[0] = reader_.peek-byte 0
+    cached-byte-array_[1] = reader_.peek-byte 1
+    cached-byte-array_[2] = reader_.peek-byte 2
+    cached-byte-array_[3] = reader_.peek-byte 3
+    return endian_.int32 cached-byte-array_ 0
+
+  /**
+  Reads a signed 32-bit integer.
+  */
+  read-int32 -> int:
+    result := peek-int32
+    reader_.skip 4
+    return result
+
+  /**
+  Peeks a signed 64-bit integer without consuming it.
+  */
+  peek-int64 -> int:
+    cached-byte-array_[0] = reader_.peek-byte 0
+    cached-byte-array_[1] = reader_.peek-byte 1
+    cached-byte-array_[2] = reader_.peek-byte 2
+    cached-byte-array_[3] = reader_.peek-byte 3
+    cached-byte-array_[4] = reader_.peek-byte 4
+    cached-byte-array_[5] = reader_.peek-byte 5
+    cached-byte-array_[6] = reader_.peek-byte 6
+    cached-byte-array_[7] = reader_.peek-byte 7
+    return endian_.int64 cached-byte-array_ 0
+
+  /**
+  Reads a signed 64-bit integer.
+  */
+  read-int64 -> int:
+    result := peek-int64
+    reader_.skip 8
+    return result
+
+  /**
+  Peeks a 32-bit floating-point number without consuming it.
+  */
+  peek-float32 -> float:
+    cached-byte-array_[0] = reader_.peek-byte 0
+    cached-byte-array_[1] = reader_.peek-byte 1
+    cached-byte-array_[2] = reader_.peek-byte 2
+    cached-byte-array_[3] = reader_.peek-byte 3
+    return endian_.float32 cached-byte-array_ 0
+
+  /**
+  Reads a 32-bit floating-point number.
+  */
+  read-float32 -> float:
+    result := peek-float32
+    reader_.skip 4
+    return result
+
+  /**
+  Peeks a 64-bit floating-point number without consuming it.
+  */
+  peek-float64 -> float:
+    cached-byte-array_[0] = reader_.peek-byte 0
+    cached-byte-array_[1] = reader_.peek-byte 1
+    cached-byte-array_[2] = reader_.peek-byte 2
+    cached-byte-array_[3] = reader_.peek-byte 3
+    cached-byte-array_[4] = reader_.peek-byte 4
+    cached-byte-array_[5] = reader_.peek-byte 5
+    cached-byte-array_[6] = reader_.peek-byte 6
+    cached-byte-array_[7] = reader_.peek-byte 7
+    return endian_.float64 cached-byte-array_ 0
+
+  /**
+  Reads a 64-bit floating-point number.
+  */
+  read-float64 -> float:
+    result := peek-float64
+    reader_.skip 8
+    return result
+
+
 class EndianWriter:
   writer_/Writer
   endian_/binary.ByteOrder
@@ -944,27 +1250,47 @@ class EndianWriter:
     writer_ = writer
     endian_ = byte-order
 
-  /** Writes an 8-bit integer. */
+  /** Writes a singed 8-bit integer. */
   write-int8 value/int -> none:
     cached-byte-array_[0] = value
     writer_.write cached-byte-array_ 0 1
 
-  /** Writes a 16-bit integer, using the endiannes of this instance. */
+  /** Writes an unsigned 8-bit integer. */
+  write-uint8 value/int -> none:
+    cached-byte-array_[0] = value
+    writer_.write cached-byte-array_ 0 1
+
+  /** Writes a signed 16-bit integer, using the endiannes of this instance. */
   write-int16 value/int -> none:
     endian_.put-int16 cached-byte-array_ 0 value
     writer_.write cached-byte-array_ 0 2
 
-  /** Writes a 24-bit integer, using the endiannes of this instance. */
+  /** Writes an unsigned 16-bit integer, using the endiannes of this instance. */
+  write-uint16 value/int -> none:
+    endian_.put-uint16 cached-byte-array_ 0 value
+    writer_.write cached-byte-array_ 0 2
+
+  /** Writes a signed 24-bit integer, using the endiannes of this instance. */
   write-int24 value/int -> none:
     endian_.put-int24 cached-byte-array_ 0 value
     writer_.write cached-byte-array_ 0 3
 
-  /** Writes a 32-bit integer, using the endiannes of this instance. */
+  /** Writes an unsigned 24-bit integer, using the endiannes of this instance. */
+  write-uint24 value/int -> none:
+    endian_.put-uint24 cached-byte-array_ 0 value
+    writer_.write cached-byte-array_ 0 3
+
+  /** Writes a signed 32-bit integer, using the endiannes of this instance. */
   write-int32 value/int -> none:
     endian_.put-int32 cached-byte-array_ 0 value
     writer_.write cached-byte-array_ 0 4
 
-  /** Writes a 64-bit integer, using the endiannes of this instance. */
+  /** Writes an unsigned 32-bit integer, using the endiannes of this instance. */
+  write-uint32 value/int -> none:
+    endian_.put-uint32 cached-byte-array_ 0 value
+    writer_.write cached-byte-array_ 0 4
+
+  /** Writes a signed 64-bit integer, using the endiannes of this instance. */
   write-int64 data/int -> none:
     endian_.put-int64 cached-byte-array_ 0 data
     writer_.write cached-byte-array_ 0 8
@@ -994,20 +1320,57 @@ class EndianBuffer extends EndianWriter:
   put-int8 --at/int value/int:
     buffer_[at] = value
 
-  /** Writes the given int16 $value to this buffer at the given index $at. */
+  /**
+  Writes the given unsigned uint8 $value to this buffer at the given index $at.
+
+  This function is an alias for $Buffer.[]= and $put-int8.
+  */
+  put-uint8 --at/int value/int:
+    buffer_[at] = value
+
+  /**
+  Writes the given signed int16 $value to this buffer at the given index $at.
+  */
   put-int16 --at/int value/int:
     endian_.put-int16 cached-byte-array_ at value
     buffer_.put --at=at cached-byte-array_ 0 2
 
-  /** Writes the given int24 $value to this buffer at the given index $at. */
+  /**
+  Writes the given unsigned uint16 $value to this buffer at the given index $at.
+
+  This function is an alias for $put-int16.
+  */
+  put-uint16 --at/int value/int:
+    put-int16 --at=value value
+
+  /**
+  Writes the given signed int24 $value to this buffer at the given index $at.
+  */
   put-int24 --at/int value/int:
     endian_.put-int24 cached-byte-array_ at value
     buffer_.put --at=at cached-byte-array_ 0 3
 
-  /** Writes the given int32 $value to this buffer at the given index $at. */
+  /**
+  Writes the given unsigned uint24 $value to this buffer at the given index $at.
+
+  This function is an alias for $put-int24.
+  */
+  put-uint24 --at/int value/int:
+    put-int24 --at=value value
+
+  /**
+  Writes the given signed int32 $value to this buffer at the given index $at. */
   put-int32 --at/int value/int:
     endian_.put-int32 cached-byte-array_ at value
     buffer_.put --at=at cached-byte-array_ 0 4
+
+  /**
+  Writes the given unsigned uint32 $value to this buffer at the given index $at.
+
+  This function is an alias for $put-int32.
+  */
+  put-uint32 --at/int value/int:
+    put-int32 --at=value value
 
   /** Writes the given int64 $value to this buffer at the given index $at. */
   put-int64 --at/int value/int:
@@ -1051,6 +1414,35 @@ class ReaderAdapter_ extends Reader:
 
   close_ -> none:
     r_.close
+
+/**
+An interface for objects that can provide data of a given size.
+
+The $size might be null to indicate that the size is unknown.
+*/
+interface SizedInput:
+  constructor bytes/ByteArray:
+    return SizedInput_ bytes.size (Reader bytes)
+
+  constructor size/int reader/Reader:
+    return SizedInput_ size reader
+
+  /**
+  The amount of bytes the reader $in can produce.
+
+  May be null to indicate that the size is unknown. This case must be
+    explicitly allowed by receivers of this object.
+  */
+  size -> int?
+
+  /** The reader that provides data. */
+  in -> Reader
+
+class SizedInput_ implements SizedInput:
+  size/int?
+  in/Reader
+
+  constructor .size .in:
 
 /**
 Executes the given $block on chunks of the $data if the error indicates
