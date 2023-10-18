@@ -114,7 +114,7 @@ class TcpServerSocket extends TcpSocket_ implements net.ServerSocket:
     return socket
 
 
-class TcpSocket extends TcpSocket_ with io.InMixin io.OutMixin implements net.Socket Reader:
+class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin implements net.Socket Reader:
   window-size_ := 0
 
   constructor: return TcpSocket 0

@@ -43,7 +43,6 @@ interface Data:
   */
   write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none
 
-
 /**
 A consumer of bytes.
 */
@@ -99,17 +98,6 @@ abstract class Writer:
     return try-write_ data from to
 
   /**
-  Closes this writer.
-
-  After this method has been called, no more data can be written to this writer.
-  This method may be called multiple times.
-  */
-  close:
-    if is-closed_: return
-    close_
-    is-closed_ = true
-
-  /**
   Tries to write the given $data to this writer.
   If the writer can't write all the data at once, it writes as much as possible.
   Always returns the number of bytes written.
@@ -123,6 +111,19 @@ abstract class Writer:
   // This is a protected method. It should not be "private".
   abstract try-write_ data/Data from/int to/int -> int
 
+
+abstract class CloseableWriter extends Writer:
+  /**
+  Closes this writer.
+
+  After this method has been called, no more data can be written to this writer.
+  This method may be called multiple times.
+  */
+  close:
+    if is-closed_: return
+    close_
+    is-closed_ = true
+
   /**
   See $close.
 
@@ -133,7 +134,6 @@ abstract class Writer:
   */
   // This is a protected method. It should not be "private".
   abstract close_ -> none
-
 
 /**
 A source of bytes.
@@ -153,9 +153,18 @@ abstract class Reader implements old-reader.Reader:
   first-bytes-position_ := 0
 
   constructor:
+
+  /**
+  Constructs a new reader that uses the given $data as source.
+  */
   constructor data/ByteArray:
     return ByteArrayReader_ data
 
+  /**
+  Constructs a new reader that wraps the old-style reader $r.
+
+  This constructor will be removed and should only be used temporarily.
+  */
   constructor.adapt r/old-reader.Reader:
     return ReaderAdapter_ r
 
@@ -194,21 +203,6 @@ abstract class Reader implements old-reader.Reader:
     result := bytes[first-bytes-position_..]
     first-bytes-position_ = 0
     return result
-
-  /**
-  Closes this reader.
-
-  Reading from the reader after this method has been called is allowed and
-    returns the buffered data and then null.
-
-  If $clear-buffered is true, then the buffered data is dropped and reading
-    from the reader after this method has been called returns null.
-  */
-  close --clear-buffered/bool=false -> none:
-    if clear-buffered: clear
-    if is-closed_: return
-    close_
-    is-closed_ = true
 
   /**
   Clears the buffered data.
@@ -623,6 +617,22 @@ abstract class Reader implements old-reader.Reader:
   // This is a protected method. It should not be "private".
   abstract consume_ -> ByteArray?
 
+abstract class CloseableReader extends Reader:
+  /**
+  Closes this reader.
+
+  Reading from the reader after this method has been called is allowed and
+    returns the buffered data and then null.
+
+  If $clear-buffered is true, then the buffered data is dropped and reading
+    from the reader after this method has been called returns null.
+  */
+  close --clear-buffered/bool=false -> none:
+    if clear-buffered: clear
+    if is-closed_: return
+    close_
+    is-closed_ = true
+
   /**
   Closes this reader.
 
@@ -662,16 +672,25 @@ interface OutStrategy:
   // This is a protected method. It should not be "private".
   try-write_ data/Data from/int to/int -> int
 
+interface CloseableOutStrategy extends OutStrategy:
   /**
   Closes this writer.
 
-  See $Writer.close_.
+  See $CloseableWriter.close_.
   */
   // This is a protected method. It should not be "private".
   close-writer_ -> none
 
 class Out_ extends Writer:
   strategy_/OutStrategy
+
+  constructor .strategy_:
+
+  try-write_ data/Data from/int to/int -> int:
+    return strategy_.try-write_ data from to
+
+class CloseableOut_ extends CloseableWriter:
+  strategy_/CloseableOutStrategy
 
   constructor .strategy_:
 
@@ -699,11 +718,29 @@ abstract mixin OutMixin implements OutStrategy:
   // This is a protected method. It should not be "private".
   abstract try-write_ data/Data from/int to/int -> int
 
+abstract mixin CloseableOutMixin implements CloseableOutStrategy:
+  out_/CloseableOut_? := null
+
+  out -> CloseableWriter:
+    if not out_: out_ = CloseableOut_ this
+    return out_
+
+  /**
+  Writes the given $data to this writer.
+
+  Returns the number of bytes written.
+
+  # Inheritance
+  See $Writer.try-write_.
+  */
+  // This is a protected method. It should not be "private".
+  abstract try-write_ data/Data from/int to/int -> int
+
   /**
   Closes this writer.
 
   # Inheritance
-  See $Writer.close_.
+  See $CloseableWriter.close_.
   */
   // This is a protected method. It should not be "private".
   abstract close-writer_ -> none
@@ -717,16 +754,25 @@ interface InStrategy:
   // This is a protected method. It should not be "private".
   consume_ -> ByteArray?
 
+interface CloseableInStrategy extends InStrategy:
   /**
   Closes this reader.
 
-  See $Reader.close_.
+  See $CloseableReader.close_.
   */
   // This is a protected method. It should not be "private".
   close-reader_ -> none
 
 class In_ extends Reader:
   strategy_/InStrategy
+
+  constructor .strategy_:
+
+  consume_ -> ByteArray?:
+    return strategy_.consume_
+
+class CloseableIn_ extends CloseableReader:
+  strategy_/CloseableInStrategy
 
   constructor .strategy_:
 
@@ -752,11 +798,27 @@ abstract mixin InMixin implements InStrategy:
   // This is a protected method. It should not be "private".
   abstract consume_ -> ByteArray?
 
+abstract mixin CloseableInMixin implements CloseableInStrategy:
+  in_/CloseableIn_? := null
+
+  in -> CloseableReader:
+    if not in_: in_ = CloseableIn_ this
+    return in_
+
+  /**
+  Reads the next bytes.
+
+  # Inheritance
+  See $Reader.consume_.
+  */
+  // This is a protected method. It should not be "private".
+  abstract consume_ -> ByteArray?
+
   /**
   Closes this reader.
 
   # Inheritance
-  See $Reader.close_.
+  See $CloseableReader.close_.
   */
   // This is a protected method. It should not be "private".
   abstract close-reader_ -> none
@@ -768,7 +830,7 @@ A buffer that can be used to build byte data.
 - `BytesBuilder`: Dart
 - `ByteArrayOutputStream`: Java
 */
-class Buffer extends Writer:
+class Buffer extends CloseableWriter:
   static INITIAL-BUFFER-SIZE_ ::= 64
   static MIN-BUFFER-GROWTH_ ::= 64
 
@@ -1398,9 +1460,6 @@ class WriterAdapter_ extends Writer:
   try-write_ data/Data from/int to/int -> int:
     return w_.write data from to
 
-  close_ -> none:
-    w_.close
-
 /**
 Adapter to use an $old-reader.Reader as $Reader.
 */
@@ -1411,9 +1470,6 @@ class ReaderAdapter_ extends Reader:
 
   consume_ -> ByteArray?:
     return r_.read
-
-  close_ -> none:
-    r_.close
 
 /**
 An interface for objects that can provide data of a given size.
