@@ -1338,7 +1338,17 @@ class Instance : public HeapObject {
     return (instance_size - HEADER_SIZE) / WORD_SIZE;
   }
 
-  STANDARD_FUNCTIONS(Instance, instance)
+  // Can't use STANDARD_FUNCTIONS here because the cast differs from the usual
+  // pattern.
+  static Instance* cast(Object* value) {
+    ASSERT(is_instance(value) || is_task(value));
+    return static_cast<Instance*>(value);
+  }
+
+  static const Instance* cast(const Object* value) {
+    ASSERT(is_instance(value) || is_task(value));
+    return static_cast<const Instance*>(value);
+  }
 
   static int allocation_size(int length) { return  _align(_offset_from(length)); }
   static void allocation_size(int length, int* word_count, int* extra_bytes) {
