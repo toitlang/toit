@@ -49,6 +49,7 @@ A consumer of bytes.
 abstract class Writer:
   is-closed_/bool := false
   endian_/EndianWriter? := null
+  byte-cache_/ByteArray? := null
 
   constructor:
 
@@ -74,6 +75,14 @@ abstract class Writer:
       yield
     assert: is-closed_
     throw "WRITER_CLOSED"
+
+  /**
+  Writes a single byte.
+  */
+  write-byte b/int -> none:
+    if not byte-cache_: byte-cache_ = ByteArray 1
+    byte-cache_[0] = b
+    write byte-cache_
 
   /**
   Writes all data that is provided by the given $reader.

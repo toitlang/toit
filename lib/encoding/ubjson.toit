@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 import binary
-import bytes
+import io
 
 INVALID-INPUT-ERROR ::= "INVALID_UBJSON_INPUT"
 INVALID-OBJECT-ERROR ::= "INVALID_UBJSON_OBJECT"
@@ -20,8 +20,18 @@ decode bytes/ByteArray -> any:
   if not d.is-done: throw INVALID-INPUT-ERROR
   return val
 
+class BufferSizeCounter_ extends io.Writer:
+  size := 0
+
+  write-byte b/int:
+    size++
+
+  try-write_ data/io.Data from/int to/int -> int:
+    size += to - from
+    return to - from
+
 class Encoder:
-  buffer_/bytes.BufferConsumer? := null
+  buffer_/io.Writer? := null
 
   encode obj -> none:
     if buffer_ == null:
@@ -29,10 +39,10 @@ class Encoder:
       // the exact right size.  If we are only called once this enables the
       // buffer to be the exact right size.  However, if we are called again we
       // just continue building without knowing the final size.
-      size-counter := bytes.BufferSizeCounter
+      size-counter := BufferSizeCounter_
       buffer_ = size-counter
       encode_ obj  // Calculate size.
-      buffer := bytes.Buffer.with-initial-size size-counter.size
+      buffer := io.Buffer.with-initial-size size-counter.size
       buffer_ = buffer
     encode_ obj
 
@@ -46,14 +56,13 @@ class Encoder:
     else if obj is Map: encode-map_ obj
     else if obj is ByteArray: encode-bytes_ obj
     else if obj is List or obj is Array_: encode-list_ obj
-    else if obj is bytes.Producer: encode-byte-producer_ obj
     else: throw INVALID-OBJECT-ERROR
 
   /**
   Returns the objects serialized up to this point as a byte array.
   */
   to-byte-array:
-    return (buffer_ as bytes.Buffer).bytes
+    return (buffer_ as io.Buffer).bytes
 
   encode-map_ map:
     buffer_.write-byte '{'
@@ -70,14 +79,6 @@ class Encoder:
     buffer_.write-byte '#'
     encode-int_ bytes.size
     buffer_.write bytes
-
-  encode-byte-producer_ bytes:
-    buffer_.write-byte '['
-    buffer_.write-byte '$'
-    buffer_.write-byte 'U'
-    buffer_.write-byte '#'
-    encode-int_ bytes.size
-    buffer_.write-producer bytes
 
   encode-list_ list:
     buffer_.write-byte '['
@@ -96,8 +97,7 @@ class Encoder:
 
   encode-float_ f:
     buffer_.write-byte 'D'
-    offset := offset-reserved_ 8
-    buffer_.put-int64-big-endian offset f.bits
+    buffer_.big-endian.write-float64 f
 
   encode-int_ i:
     if 0 <= i <= binary.UINT8-MAX:
@@ -108,16 +108,13 @@ class Encoder:
       buffer_.write-byte i
     else if binary.INT16-MIN <= i <= binary.INT16-MAX:
       buffer_.write-byte 'I'
-      offset := offset-reserved_ 2
-      buffer_.put-int16-big-endian offset i
+      buffer_.big-endian.write-int16 i
     else if binary.INT32-MIN <= i <= binary.INT32-MAX:
       buffer_.write-byte 'l'
-      offset := offset-reserved_ 4
-      buffer_.put-int32-big-endian offset i
+      buffer_.big-endian.write-int32 i
     else:
       buffer_.write-byte 'L'
-      offset := offset-reserved_ 8
-      buffer_.put-int64-big-endian offset i
+      buffer_.big-endian.write-int64 i
 
   encode-true_:
     buffer_.write-byte 'T'
@@ -128,13 +125,8 @@ class Encoder:
   encode-null_:
     buffer_.write-byte 'Z'
 
-  offset-reserved_ size:
-    offset := buffer_.size
-    buffer_.grow size
-    return offset
-
 class Decoder:
-  bytes_ := ?
+  bytes_/ByteArray := ?
   offset_ := 0
 
   constructor .bytes_:
