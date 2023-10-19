@@ -425,6 +425,9 @@ class List {
   List(T* data, int length) : data_(data), length_(length) {
     ASSERT(length >= 0);
   }
+
+  // Mainly for use in passing a non-const List to something that expects a
+  // const List.
   template <typename U>
   List(List<U> other) : data_(other.data_), length_(other.length_) {
     ASSERT(other.length_ >= 0);

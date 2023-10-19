@@ -1214,7 +1214,6 @@ class String : public HeapObject {
       }
       ASSERT(length() >= 0);
     }
-    //Bytes(uint8* address, const int length) : address_(address), length_(length) {}
 
     uint8* address() { return address_; }
     int length() { return length_; }
