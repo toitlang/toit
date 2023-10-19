@@ -1466,7 +1466,7 @@ static String* concat_strings(Process* process,
   String* result = process->allocate_string(len_a + len_b);
   if (result == null) return null;
   // Initialize object.
-  String::Bytes bytes(result);
+  String::MutableBytes bytes(result);
   bytes._initialize(0, bytes_a, 0, len_a);
   bytes._initialize(len_a, bytes_b, 0, len_b);
   return result;
@@ -1525,7 +1525,7 @@ PRIMITIVE(string_slice) {
   String* result = process->allocate_string(result_len);
   if (result == null) FAIL(ALLOCATION_FAILED);
   // Initialize object.
-  String::Bytes result_bytes(result);
+  String::MutableBytes result_bytes(result);
   result_bytes._initialize(0, receiver, from, to - from);
   return result;
 }
@@ -1545,7 +1545,7 @@ PRIMITIVE(concat_strings) {
   }
   String* result = process->allocate_string(length);
   if (result == null) FAIL(ALLOCATION_FAILED);
-  String::Bytes bytes(result);
+  String::MutableBytes bytes(result);
   int pos = 0;
   for (int index = 0; index < array->length(); index++) {
     Blob blob;

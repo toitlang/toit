@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -101,7 +101,7 @@ String* ObjectHeap::allocate_internal_string(int length) {
   result->_set_header(string_id, program()->class_tag_for(string_id));
   String::cast(result)->_set_length(length);
   String::cast(result)->_raw_set_hash_code(String::NO_HASH_CODE);
-  String::Bytes bytes(String::cast(result));
+  String::MutableBytes bytes(String::cast(result));
   bytes._set_end();
   ASSERT(bytes.length() == length);
   return String::cast(result);
@@ -241,7 +241,7 @@ String* ObjectHeap::allocate_external_string(int length, uint8* memory, bool dis
   ASSERT(!result->content_on_heap());
   if (memory[length] != '\0') {
     // TODO(florian): we should not have '\0' at the end of strings anymore.
-    String::Bytes bytes(String::cast(result));
+    String::MutableBytes bytes(String::cast(result));
     bytes._set_end();
   }
   if (dispose) {

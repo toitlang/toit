@@ -426,6 +426,13 @@ class List {
     ASSERT(length >= 0);
   }
 
+  // Mainly for use in passing a non-const List to something that expects a
+  // const List.
+  template <typename U>
+  List(List<U> other) : data_(other.data_), length_(other.length_) {
+    ASSERT(other.length_ >= 0);
+  }
+
   T* data() const { return data_; }
   T*& data() { return data_; }
   int length() const { return length_; }
@@ -483,6 +490,9 @@ class List {
  private:
   T* data_;
   int length_;
+
+  template <typename U>
+  friend class List;
 };
 
 class Base64Encoder {
