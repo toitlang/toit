@@ -692,6 +692,8 @@ flash-cmd -> cli.Command:
             --short-help="Add a custom partition to the flashed image."
             --split-commas
             --multi,
+        cli.Option "flash-size"
+            --short-help="The size of the flash. Typically 4MB, 8MB or 16MB."
       ]
       --run=:: flash it
 
@@ -700,6 +702,9 @@ flash parsed/cli.Parsed -> none:
   config-path := parsed["config"]
   port := parsed["port"]
   baud := parsed["baud"]
+  flash-size := parsed["flash-size"]
+  flash-size-args := flash-size ? ["--flash_size", flash-size] : []
+
   envelope := Envelope.load input-path
 
   if platform != PLATFORM-WINDOWS:
@@ -789,13 +794,18 @@ flash parsed/cli.Parsed -> none:
       partition-args.add "0x$(%x offset)"
       partition-args.add path
 
-    code := pipe.run-program esptool + [
+    args := [
       "--port", port,
       "--baud", "$baud",
       "--chip", parsed["chip"],
       "--before", flashing["extra_esptool_args"]["before"],
-      "--after",  flashing["extra_esptool_args"]["after"]
-    ] + [ "write_flash" ] + flashing["write_flash_args"] + partition-args
+      "--after",  flashing["extra_esptool_args"]["after"],
+    ]
+    args += ["write_flash"] + flashing["write_flash_args"]
+    args += flash-size-args
+    args += partition-args
+
+    code := pipe.run-program esptool + args
     if code != 0: exit 1
   finally:
     directory.rmdir --recursive tmp
