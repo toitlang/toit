@@ -312,7 +312,7 @@ class CopyPipeState {
   HANDLE to_;
 };
 
-static DWORD copy_pipe_thread(void* data) {
+static DWORD __attribute__((stdcall)) copy_pipe_thread(void* data) {
   auto state = reinterpret_cast<CopyPipeState*>(data);
   DWORD result = state->copy_loop();
   delete state;

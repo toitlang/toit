@@ -314,6 +314,11 @@ class HeapObject : public Object {
 
   STANDARD_FUNCTIONS(HeapObject, heap_object)
 
+  static const HeapObject* cast(const Object* obj) {
+    ASSERT(is_heap_object(obj));
+    return static_cast<const HeapObject*>(obj);
+  }
+
   static HeapObject* cast(void* address) {
     uword value = reinterpret_cast<uword>(address);
     ASSERT((value & NON_SMI_TAG_MASK) == SMI_TAG);
@@ -446,6 +451,11 @@ class Array : public HeapObject {
 #endif
 
   STANDARD_FUNCTIONS(Array, array)
+
+  static const Array* cast(const Object* array) {
+     ASSERT(is_array(array));
+     return static_cast<const Array*>(array);
+  }
 
   Object** base() { return reinterpret_cast<Object**>(_raw_at(_offset_from(0))); }
 
@@ -611,6 +621,11 @@ class ByteArray : public HeapObject {
 
   STANDARD_FUNCTIONS(ByteArray, byte_array)
 
+  static const ByteArray* cast(const Object* byte_array) {
+     ASSERT(is_byte_array(byte_array));
+     return static_cast<const ByteArray*>(byte_array);
+  }
+
   // Only for external byte arrays that were malloced.  Does not change the
   // accounting, so we may overestimate the external memory pressure.  May fail
   // under memory pressure, in which case the size of the Toit ByteArray object
@@ -727,6 +742,11 @@ class LargeInteger : public HeapObject {
   int64 value() { return _int64_at(VALUE_OFFSET); }
 
   STANDARD_FUNCTIONS(LargeInteger, large_integer)
+
+  static const LargeInteger* cast(const Object* value) {
+     ASSERT(is_large_integer(value));
+     return static_cast<const LargeInteger*>(value);
+  }
 
   static int allocation_size() { return SIZE; }
   static void allocation_size(int* word_count, int* extra_bytes) {
@@ -914,6 +934,11 @@ class Stack : public HeapObject {
   static INLINE int max_length();
 
   STANDARD_FUNCTIONS(Stack, stack)
+
+  static const Stack* cast(const Object* stack) {
+    ASSERT(is_stack(stack));
+    return static_cast<const Stack*>(stack);
+  }
 
   static int allocation_size(int length) { return  _align(HEADER_SIZE + length * WORD_SIZE); }
   static void allocation_size(int length, int* word_count, int* extra_bytes) {
@@ -1119,6 +1144,11 @@ class String : public HeapObject {
 
   STANDARD_FUNCTIONS(String, string)
 
+  static const String* cast(const Object* object) {
+     ASSERT(is_string(object));
+     return static_cast<const String*>(object);
+  }
+
   static inline word max_internal_size_in_process();
   static inline word max_internal_size_in_program();
   static word max_internal_size();
@@ -1200,11 +1230,37 @@ class String : public HeapObject {
       }
       ASSERT(length() >= 0);
     }
-    //Bytes(uint8* address, const int length) : address_(address), length_(length) {}
 
     uint8* address() { return address_; }
     int length() { return length_; }
 
+    bool is_valid_index(int index) {
+      return index >= 0 && index < length();
+    }
+
+   private:
+    const uint8* address_;
+    int length_;
+  };
+
+  class MutableBytes {
+   public:
+    explicit MutableBytes(String* string) {
+      int len = string->_internal_length();
+      if (len != SENTINEL) {
+        address_ = string->_as_utf8bytes();
+        length_ = len;
+      } else {
+        address_ = string->as_external();
+        length_ = string->_external_length();
+      }
+      ASSERT(length() >= 0);
+    }
+
+    uint8* address() { return address_; }
+    int length() { return length_; }
+
+>>>>>>> origin/master
     void _initialize(const char* str) {
       memcpy(address(), str, length());
     }
@@ -1366,6 +1422,11 @@ class Instance : public HeapObject {
 
   STANDARD_FUNCTIONS(Instance, instance)
 
+  static const Instance* cast(const Object* value) {
+    ASSERT(is_instance(value) || is_task(value));
+    return static_cast<const Instance*>(value);
+  }
+
   static int allocation_size(int length) { return  _align(_offset_from(length)); }
   static void allocation_size(int length, int* word_count, int* extra_bytes) {
     *word_count = HEADER_SIZE / WORD_SIZE + length;
@@ -1431,6 +1492,11 @@ class FreeListRegion : public HeapObject {
 
   STANDARD_FUNCTIONS(FreeListRegion, free_list_region)
 
+  static const FreeListRegion* cast(const Object* value) {
+    ASSERT(is_free_list_region(value));
+    return static_cast<const FreeListRegion*>(value);
+  }
+
   void set_next_region(FreeListRegion* next) {
     ASSERT(can_be_daisychained());
     _at_put(NEXT_OFFSET, next);
@@ -1482,6 +1548,11 @@ class PromotedTrack : public HeapObject {
   void roots_do(int instance_size, RootCallback* cb) {}
 
   STANDARD_FUNCTIONS(PromotedTrack, promoted_track)
+
+  static const PromotedTrack* cast(const Object* value) {
+    ASSERT(is_promoted_track(value));
+    return static_cast<const PromotedTrack*>(value);
+  }
 
   void set_next(PromotedTrack* next) {
     _at_put(NEXT_OFFSET, next);
