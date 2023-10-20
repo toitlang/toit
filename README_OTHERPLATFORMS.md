@@ -18,7 +18,6 @@ Wine is also a good idea.
 
 ```shell
 make clean
-make disable-auto-sync  # Optional - faster builds.
 make TARGET=win64
 make TARGET=win32
 # For Linux targets the Makefile has aliases.  The following
@@ -26,7 +25,6 @@ make TARGET=win32
 make aarch64     # 64 bit ARM.
 make armv7       # 32 bit ARM.
 make riscv64
-make riscv32
 make raspbian    # Sysroot based on 32 bit Raspbian image.
 make pi          # Same as raspbian.
 make arm-linux-gnueabi
