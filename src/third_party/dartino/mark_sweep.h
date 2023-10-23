@@ -60,6 +60,9 @@ class MarkingVisitor : public RootCallback {
 
   bool shrink_stacks() const override { return true; }
 
+  // TODO - only when forced to compact.
+  bool aggressive() const override { return true; }
+
  private:
   void INLINE mark_pointer(Object* object) {
     if (!GcMetadata::in_new_or_old_space(object)) return;

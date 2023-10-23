@@ -141,6 +141,13 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, O
   limit_ = pending_limit_;
 }
 
+static clean_up_finalizers(FinalizerNodeFifo* list) {
+  while (auto finalizer = list->remove_first()) {
+    node->heap_dying();
+    delete node;
+  }
+}
+
 ObjectHeap::~ObjectHeap() {
   // If the process is still linked into the ProcessGroup then this is
   // only called with the scheduler lock.  Once the process has been
@@ -149,18 +156,9 @@ ObjectHeap::~ObjectHeap() {
   // from the destructor of the Process.
   free(global_variables_);
 
-  while (auto finalizer = registered_toit_finalizers_.remove_first()) {
-    delete finalizer;
-  }
-
-  while (auto finalizer = runnable_finalizers_.remove_first()) {
-    delete finalizer;
-  }
-
-  while (auto finalizer = registered_vm_finalizers_.remove_first()) {
-    finalizer->handle_not_alive(null);  // Frees the external memory.
-    delete finalizer;
-  }
+  clean_up_finalizers(&registered_callback_finalizers_);
+  clean_up_finalizers(&runnable_finalizers_);
+  clean_up_finalizers(&registered_vm_finalizers_);
 
   OS::dispose(mutex_);
 
@@ -358,6 +356,19 @@ void ObjectHeap::process_registered_finalizers_helper(FinalizerNodeFifo* list, R
     }
     return true;  // Remove node from list.
   });
+}
+
+bool ObjectHeap::add_weak_map_finalizer(Instance* map, Object* lambda) {
+  // We should already have checked whether the object is already registered.
+  ASSERT(!map->can_be_toit_finalized(program()));
+  ASSERT(!map->has_active_finalizer());
+  auto node = _new WeakMapFinalizerNode(map, lambda, this);
+  if (node == null) return false;  // Allocation failed.
+  // Add it at the head of the list in case there is an old finalizer lower
+  // down on the list.
+  registered_weak_map_finalizers_.prepend(node);
+  map->set_has_active_finalizer();
+  return true;
 }
 
 bool ObjectHeap::add_toit_finalizer(HeapObject* key, Object* lambda) {

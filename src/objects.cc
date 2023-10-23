@@ -215,7 +215,19 @@ bool HeapObject::can_be_toit_finalized(Program* program) const {
   // this.
   const uint8* dummy1;
   int dummy2;
-  return !byte_content(program, &dummy1, &dummy2, STRINGS_OR_BYTE_ARRAYS);
+  if (byte_content(program, &dummy1, &dummy2, STRINGS_OR_BYTE_ARRAYS)) {
+    // Can't finalize strings and byte arrays.  This is partly because
+    // it doesn't make sense, but also because we only have one finalizer
+    // bit in the header, and it's for VM finalizers, that free external
+    // memory.
+    return false;
+  }
+  if (is_instance(this) && class_id() == program->map_class_id()) {
+    // Can't finalize maps, because we use the finalize bit in the header to
+    // mark weak maps.
+    return false;
+  }
+  return true;
 }
 
 void ByteArray::do_pointers(PointerCallback* cb) {

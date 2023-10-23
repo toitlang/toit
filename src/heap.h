@@ -131,6 +131,7 @@ class ObjectHeap {
   GcType gc(bool try_hard);
 
   bool add_toit_finalizer(HeapObject* key, Object* lambda);
+  bool add_weak_map_finalizer(Instance* map, Object* lambda);
   bool add_vm_finalizer(HeapObject* key);
 
   bool has_finalizer_to_run() const { return !runnable_finalizers_.is_empty(); }
@@ -204,7 +205,7 @@ class ObjectHeap {
 
   // A Toit finalizer is on one of these lists.
   FinalizerNodeFifo runnable_finalizers_;         // Contains finalizers that must be executed.
-  FinalizerNodeFifo registered_toit_finalizers_;
+  FinalizerNodeFifo registered_weak_handlers_;    // Toit finalizers and weak maps.
 
   // A VM finalizer is on this list.
   FinalizerNodeFifo registered_vm_finalizers_;

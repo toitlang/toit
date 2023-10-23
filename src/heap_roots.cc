@@ -23,34 +23,89 @@ namespace toit {
 
 FinalizerNode::~FinalizerNode() {}
 
+void WeakMapFinalizerNode::roots_do(RootCallback* cb) {
+  cb->do_root(reinterpret_cast<Object**>(&key_));
+  cb->do_root(reinterpret_cast<Object**>(&lambda_));
+}
+
+bool WeakMapFinalizerNode::process(bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
+  if (!oracle->has_active_finalizer(key_) {
+    delete this;
+    return true;  // Unlink me, the object no longer needs a finalizer.
+  }
+  if (oracle->is_alive(key_)) {
+    roots_do(cb);
+    if (!cb->aggressive()) {
+      // Everything was already handled.
+      return false;  // Don't unlink me.
+    }
+    // We are in aggressive mode, so we need to zap values in the map that are
+    // not reachable by other ways.
+    bool has_zapped = false;
+    Instance* map = Instance::cast(key_);
+    Object* backing = map->at(Instance::MAP_BACKING_INDEX);
+    word size = Smit::cast(map->at(Instance::MAP_SIZE_INDEX))->value();
+    for (word i = 0; i < size; i += 2) {
+      Object* key;
+      bool ok = Interpreter::fast_at(process, backing, i, false, &key);
+      ASSERT(ok);
+      cb->do_root(reinterpret_cast<Object**>(&key));
+      ok = Interpreter::fast_at(process, backing, i, true, &key);  // Put back the key.
+      Object* value;
+      ok = Interpreter::fast_at(process, backing, i + 1, false, &value);
+      ASSERT(ok);
+      if (oracle->is_alive(value)) {
+        cb->do_root(reinterpret_cast<Object**>(&value));
+
+
+    ...
+    if (has_zapped) {
+      if (in_closure_queue) {
+        return false;  // Stay in the queue, processing is already scheduled.
+      }
+      heap_->queue_finalizer(this);
+      return true;  // Unlink me, I'm in the other list now.
+    }
+    return false;  // Don't unlink me.
+  }
+  // The map is not reachable.  Zap all its content, and remove the weakness,
+  // so that we can remove it from this list, even if it is revived (in that
+  // case it has lost its weakness, but that's better than being marked weak
+  // when it is not on the list, which would cause dangling pointers).
+  key_->clear_has_active_finalizer();
+  map->at_put(Instance::MAP_SIZE_INDEX, Smi::from(0));
+  map->at_put(Instance::MAP_SPACES_LEFT_INDEX, Smi::from(0));
+  map->at_put(Instance::MAP_INDEX_INDEX, program_->null_object());
+  map->at_put(Instance::MAP_BACKING_INDEX, program_->null_object());
+  delete this;
+  return true;  // Unlink me.
+}
+
 void ToitFinalizerNode::roots_do(RootCallback* cb) {
   cb->do_root(reinterpret_cast<Object**>(&key_));
   cb->do_root(reinterpret_cast<Object**>(&lambda_));
 }
 
-bool ToitFinalizerNode::has_key(HeapObject* key) {
-  return key_ == key;
-}
-
-bool ToitFinalizerNode::alive(LivenessOracle* oracle) {
-  return oracle->is_alive(key_);
-}
-
-bool ToitFinalizerNode::handle_not_alive(RootCallback* ss) {
-  if (!key_->has_active_finalizer()) {
-    return true;  // Delete me, the object no longer needs a finalizer.
+bool ToitFinalizerNode::process(bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
+  if (in_closure_queue) {
+    roots_do(cb);
+    return false;  // Don't unlink me.
+  }
+  if (!oracle->has_active_finalizer(key_) {
+    delete this;
+    return true;  // Unlink me, the object no longer needs a finalizer.
+  }
+  if (oracle->is_alive(key_)) {
+    do_roots(cb);
+    return false;  // Don't unlink me.
   }
   key_->clear_has_active_finalizer();
   // Clear the key so it is not retained.
-  set_key(heap_->program()->null_object());
-  roots_do(ss);
+  key_ = heap_->program()->null_object();
+  cb->do_root(reinterpret_cast<Object**>(&lambda_));
   // Since the object is not alive, we queue the finalizer for execution.
   heap_->queue_finalizer(this);
-  return false;  // Don't delete me, I'm on the other queue now.
-}
-
-bool ToitFinalizerNode::has_active_finalizer(LivenessOracle* oracle) {
-  return oracle->has_active_finalizer(key_);
+  return true;  // Unlink me, I'm in the other list now.
 }
 
 VmFinalizerNode::~VmFinalizerNode() {}
@@ -59,22 +114,14 @@ void VmFinalizerNode::roots_do(RootCallback* cb) {
   cb->do_root(reinterpret_cast<Object**>(&key_));
 }
 
-bool VmFinalizerNode::has_key(HeapObject* key) {
-  return key_ == key;
-}
-
-bool VmFinalizerNode::alive(LivenessOracle* oracle) {
-  return oracle->is_alive(key_);
-}
-
-bool VmFinalizerNode::handle_not_alive(RootCallback* ss) {
-  if (!key_->has_active_finalizer()) return true;
-  free_external_memory(heap_->owner());
-  return true;  // Delete me now.
-}
-
-bool VmFinalizerNode::has_active_finalizer(LivenessOracle* oracle) {
-  return oracle->has_active_finalizer(key_);
+bool VmFinalizerNode::process(Process* process, bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
+  if (oracle->is_alive(key_)) {
+    cb->do_root(reinterpret_cast<Object**>(&key_));
+    return false;  // Don't unlink me.
+  }
+  free_external_memory(process);
+  delete this;
+  return true;  // Unlink me.
 }
 
 void VmFinalizerNode::free_external_memory(Process* process) {

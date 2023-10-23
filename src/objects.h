@@ -197,6 +197,7 @@ class RootCallback {
   void do_root(Object** root) { do_roots(root, 1); }
   virtual void do_roots(Object** roots, int length) = 0;
   virtual bool shrink_stacks() const { return false; }
+  virtual bool aggressive() const { return false; }
 };
 
 // Note that these enum numbers must match the constants (called TAG) found in
@@ -230,8 +231,11 @@ class HeapObject : public Object {
     return static_cast<TypeTag>((Smi::value(header()) >> HeapObject::CLASS_TAG_OFFSET) & HeapObject::CLASS_TAG_MASK);
   }
   INLINE bool has_active_finalizer() const {
-    ASSERT(!has_forwarding_address());
-    return (Smi::value(header()) & (1 << HeapObject::FINALIZER_BIT_OFFSET)) != 0;
+    const HeapObject* self = this;
+    if (has_forwarding_address()) {
+      self = forwarding_address();
+    }
+    return (Smi::value(self->header()) & (1 << HeapObject::FINALIZER_BIT_OFFSET)) != 0;
   }
   INLINE void set_has_active_finalizer() {
     ASSERT(!has_forwarding_address());
