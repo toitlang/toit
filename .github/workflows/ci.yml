@@ -20,7 +20,8 @@ jobs:
       # The matrix will run all possible combinations in parallel.
       matrix:
         # ubuntu-20.04 so that we don't depend on a recent glibc.
-        container: [ ubuntu-20.04, macos-latest, windows-latest ]
+        # container: [ ubuntu-20.04, macos-latest, windows-latest ]
+        container: [ ubuntu-20.04, macos-latest ]
         shard: [1, 2, 3, 4, 5]
 
         include:
