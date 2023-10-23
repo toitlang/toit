@@ -140,6 +140,16 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
   return false;
 }
 
+int Interpreter::int_comparison(word lhs_int, word rhs_int) {
+  if (lhs_int < rhs_int) {
+    return COMPARE_RESULT_MINUS_1 | COMPARE_FLAG_STRICTLY_LESS | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
+  } else if (lhs_int == rhs_int) {
+    return COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL;
+  } else {
+    return COMPARE_RESULT_PLUS_1 | COMPARE_FLAG_STRICTLY_GREATER | COMPARE_FLAG_GREATER_EQUAL;
+  }
+}
+
 int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
   int64 lhs_int = 0;
   int64 rhs_int = 0;
@@ -165,13 +175,7 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
   }
   // Handle two ints.
   if (lhs_is_int && rhs_is_int) {
-    if (lhs_int < rhs_int) {
-      return COMPARE_RESULT_MINUS_1 | COMPARE_FLAG_STRICTLY_LESS | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
-    } else if (lhs_int == rhs_int) {
-      return COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL;
-    } else {
-      return COMPARE_RESULT_PLUS_1 | COMPARE_FLAG_STRICTLY_GREATER | COMPARE_FLAG_GREATER_EQUAL;
-    }
+    return int_comparison(lhs_int, rhs_int);
   }
   // At least one is a double, so we convert to double.
   double lhs_double;
@@ -212,7 +216,42 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
         return COMPARE_RESULT_PLUS_1 | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL;
       }
     } else {
-      return COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
+      // They compared equal, non-zero, non-NaN, but we need to be careful if
+      // one of them originally was an integer.  We know the other had no
+      // fractional part and was in the 64 bit signed range (otherwise they
+      // would not have tested equal), but it could be that they only appear
+      // equal because precision was lost in the conversion to double.
+      //
+      // Things get a bit strange near the limits of the 64 bit signed range.
+      // Decimal             Nearest IEEE value  Hex of IEEE value     JS prints as
+      // 9223372036854775295 9223372036854774784 0x7fff_ffff_ffff_f800 9223372036854775000
+      // 9223372036854775296 9223372036854775808 0x8000_0000_0000_0000 9223372036854776000
+      // 9223372036854776832 9223372036854775808 0x8000_0000_0000_0000 9223372036854776000
+      // 9223372036854776833 9223372036854777856 0x8000_0000_0000_0800 9223372036854778000
+      int equal = COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
+      word SHORTCUT_LIMIT = 0x20000000000000LL;
+      if (rhs_is_int) {
+        if (-SHORTCUT_LIMIT <= rhs_int && rhs_int <= SHORTCUT_LIMIT) return equal; // Optimization.
+        if (lhs_double <= -9223372036854778e3) {
+          return int_comparison(0, 1);  // LHS is below int.MIN, so they cannot be equal.
+        }
+        if (lhs_double >= 9223372036854776e3) {
+          return int_comparison(1, 0);  // LHS is above int.MAX, so they cannot be equal.
+        }
+        // We now know the static cast can't fail, because we are in range.
+        return int_comparison(static_cast<word>(lhs_double), rhs_int);
+      } else if (lhs_is_int) {
+        if (-SHORTCUT_LIMIT <= lhs_int && lhs_int <= SHORTCUT_LIMIT) return equal; // Optimization.
+        if (rhs_double <= -9223372036854778e3) {
+          return int_comparison(1, 0);  // RHS is below int.MIN, so they cannot be equal.
+        }
+        if (rhs_double >= 9223372036854776e3) {
+          return int_comparison(0, 1);  // RHS is above int.MAX, so they cannot be equal.
+        }
+        // We now know the static cast can't fail, because we are in range.
+        return int_comparison(lhs_int, static_cast<word>(rhs_double));
+      }
+      return equal;
     }
   }
   if (lhs_double < rhs_double) {
