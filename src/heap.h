@@ -207,11 +207,12 @@ class ObjectHeap {
   Task* task_ = null;
   ObjectNotifierList object_notifiers_;
 
-  // A finalizer is either on this list or the two-space-heap's list of
-  // registered finalizers.
+  // A Toit finalizer is on one of these lists.
   FinalizerNodeFifo runnable_finalizers_;         // Contains finalizers that must be executed.
-  FinalizerNodeFifo registered_toit_finalizers_;  // Contains registered finalizers.
-  FinalizerNodeFifo registered_vm_finalizers_;    // Contains registered finalizers.
+  FinalizerNodeFifo registered_toit_finalizers_;
+
+  // A VM finalizer is on this list.
+  FinalizerNodeFifo registered_vm_finalizers_;
 
   int gc_count_ = 0;
   int full_gc_count_ = 0;
