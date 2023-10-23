@@ -1949,13 +1949,13 @@ PRIMITIVE(task_receive_message) {
 PRIMITIVE(add_finalizer) {
   ARGS(HeapObject, object, Object, finalizer)
   if (process->has_finalizer(object, finalizer)) FAIL(OUT_OF_BOUNDS);
-  if (!process->add_finalizer(object, finalizer)) FAIL(MALLOC_FAILED);
+  if (!process->add_toit_finalizer(object, finalizer)) FAIL(MALLOC_FAILED);
   return process->null_object();
 }
 
 PRIMITIVE(remove_finalizer) {
   ARGS(HeapObject, object)
-  return BOOL(process->remove_finalizer(object));
+  return BOOL(process->remove_toit_finalizer(object));
 }
 
 PRIMITIVE(gc_count) {
