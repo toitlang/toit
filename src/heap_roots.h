@@ -46,7 +46,7 @@ class FinalizerNode : public FinalizerNodeFifo::Element {
 class ToitFinalizerNode : public FinalizerNode {
  public:
   ToitFinalizerNode(HeapObject* key, Object* lambda, ObjectHeap* heap)
-  : key_(key), lambda_(lambda), heap_(heap) {}
+    : key_(key), lambda_(lambda), heap_(heap) {}
 
   HeapObject* key() { return key_; }
   void set_key(HeapObject* value) { key_ = value; }
@@ -68,7 +68,7 @@ class ToitFinalizerNode : public FinalizerNode {
 class VmFinalizerNode : public FinalizerNode {
  public:
   VmFinalizerNode(HeapObject* key, ObjectHeap* heap)
-  : key_(key), heap_(heap) {}
+    : key_(key), heap_(heap) {}
   virtual ~VmFinalizerNode();
 
   HeapObject* key() { return key_; }
