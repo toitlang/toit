@@ -28,6 +28,24 @@ void WeakMapFinalizerNode::roots_do(RootCallback* cb) {
   cb->do_root(reinterpret_cast<Object**>(&lambda_));
 }
 
+// The WeakMapFinalizer has the problem that the backing collection (normally a
+// list) may point at parts (arraylets) that have already been moved to the
+// other new-space, leaving forwarding pointers in the headers.  We need to
+// update those pointers before regular functions that work on arrays and lists
+// can be used.
+// Returns false if something unexpected happens.  In that case we fall back
+// to a strong map without weak processing.
+static bool update_forwarding_pointers(Process* process, RootCallback* cb, Object* backing, word size) {
+  // Sometimes a deserialized map contains a backing that is an array, not a
+  // list.
+  Object* array_object = backing;
+  if (!is_array(backing)) {
+    if (!is_instance(backing)) {
+      return false;  // Not a list or an array.
+    }
+  }
+}
+
 bool WeakMapFinalizerNode::process(bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
   if (!oracle->has_active_finalizer(key_) {
     delete this;
@@ -42,9 +60,13 @@ bool WeakMapFinalizerNode::process(bool in_closure_queue, RootCallback* cb, Live
     // We are in aggressive mode, so we need to zap values in the map that are
     // not reachable by other ways.
     bool has_zapped = false;
+    // We already visited the roots, so the key is updated to the destination.
     Instance* map = Instance::cast(key_);
+    // Update the pointer to the backing collection.
+    cb->do_root(reinterpret_cast<Object**>(map->root_at(Instance::MAP_BACKING_INDEX)));
     Object* backing = map->at(Instance::MAP_BACKING_INDEX);
     word size = Smit::cast(map->at(Instance::MAP_SIZE_INDEX))->value();
+    update_forwarding_pointers(process, backing, size);
     for (word i = 0; i < size; i += 2) {
       Object* key;
       bool ok = Interpreter::fast_at(process, backing, i, false, &key);

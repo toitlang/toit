@@ -1384,6 +1384,10 @@ class Instance : public HeapObject {
     _at_put(_offset_from(index), value);
   }
 
+  INLINE Object** root_at(int index) {
+    return _root_at(_offset_from(index));
+  }
+
   void at_put_no_write_barrier(int index, Object* value) {
     _at_put(_offset_from(index), value);
   }
