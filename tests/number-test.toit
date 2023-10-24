@@ -18,7 +18,6 @@ main:
   test-sign
   test-minus-zero
   test-compare-to
-  test-mixed-compare-to
   test-shift
   test-minus
   test-random
@@ -654,6 +653,10 @@ test-minus-zero:
   expect-equals 0x8000_0000_0000_0000 (-0.0).bits
 
 test-compare-to:
+  test-simple-compare-to
+  test-mixed-compare-to
+
+test-simple-compare-to:
   expect-equals 1 (1.compare-to 0)
   expect-equals -1 (0.compare-to 1)
   expect-equals 0 (0.compare-to 0)
