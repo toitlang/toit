@@ -17,6 +17,7 @@
 #include "heap.h"
 #include "heap_roots.h"
 #include "objects.h"
+#include "objects_inline.h"
 #include "process.h"
 
 namespace toit {
@@ -28,23 +29,59 @@ void WeakMapFinalizerNode::roots_do(RootCallback* cb) {
   cb->do_root(reinterpret_cast<Object**>(&lambda_));
 }
 
-// The WeakMapFinalizer has the problem that the backing collection (normally a
-// list) may point at parts (arraylets) that have already been moved to the
-// other new-space, leaving forwarding pointers in the headers.  We need to
-// update those pointers before regular functions that work on arrays and lists
-// can be used.
-// Returns false if something unexpected happens.  In that case we fall back
-// to a strong map without weak processing.
-static bool update_forwarding_pointers(Process* process, RootCallback* cb, Object* backing, word size) {
-  // Sometimes a deserialized map contains a backing that is an array, not a
-  // list.
-  Object* array_object = backing;
-  if (!is_array(backing)) {
-    if (!is_instance(backing)) {
-      return false;  // Not a list or an array.
+static bool recursive_zap_dead_values(Program* program, Object* backing_array_object, LivenessOracle* oracle) {
+  bool has_zapped = false;
+  if (!is_heap_object(backing_array_object)) return false;  // Defensive.
+  if (is_array(backing_array_object)) {
+    Array* backing_array = Array::cast(backing_array_object);
+    int size = backing_array->length();
+    // The backing has the order key, value, key, value...
+    // We only zap the values.
+    for (int i = 1; i < size; i += 2) {
+      Object* entry_object = backing_array->at(i);
+      if (is_smi(entry_object)) continue;
+      HeapObject* entry = HeapObject::cast(entry_object);
+      if (entry->class_id() == program->tombstone_class_id()) continue;
+      if (!oracle->is_alive(entry)) {
+        backing_array->at_put(i, program->null_object());
+        has_zapped = true;
+      }
+    }
+  } else {
+    Smi* class_id = HeapObject::cast(backing_array_object)->class_id();
+    if (class_id != program->large_array_class_id()) return false;  // Defensive.
+    Instance* instance = Instance::cast(backing_array_object);
+    Object* size_object = instance->at(Instance::LARGE_ARRAY_SIZE_INDEX);
+    Object* vector_object = instance->at(Instance::LARGE_ARRAY_VECTOR_INDEX);
+    if (!is_smi(size_object) || !is_array(vector_object)) return false;  // Defensive.
+    word size = Smi::value(Smi::cast(size_object));
+    Array* vector = Array::cast(vector_object);
+    for (int i = 0; i < size; i++) {
+      bool arraylet_had_zaps = recursive_zap_dead_values(program, vector->at(i), oracle);
+      if (arraylet_had_zaps) has_zapped = true;
     }
   }
-  return true;
+  return has_zapped;
+}
+
+static bool zap_dead_values(Program* program, Instance* map, RootCallback* cb, LivenessOracle* oracle) {
+  // Update the pointer to the backing collection - this was skipped when
+  // the map was visited because we were in aggressive mode.  This ensures
+  // that the backing is pushed on the marking stack.
+  cb->do_root(map->root_at(Instance::MAP_BACKING_INDEX));
+  // If we ever allow agressive mode on scavenges we will have to start
+  // using roots_do on the objects that hold the backing (list, arrays, large
+  // arrays) so that we get the new location of the collections we are zapping
+  // entries in.  Mark-sweep-compact does not move objects until later, so we
+  // don't currently need to worry about that.
+  Object* backing_object = map->at(Instance::MAP_BACKING_INDEX);
+  if (!is_instance(backing_object)) return false;
+  Instance* backing_list = Instance::cast(backing_object);
+  Smi* class_id = backing_list->class_id();
+  if (class_id != program->list_class_id()) return false;
+  Object *backing_array_object = backing_list->at(Instance::LIST_ARRAY_INDEX);
+  bool has_zapped = recursive_zap_dead_values(program, backing_array_object, oracle);
+  return has_zapped;
 }
 
 bool WeakMapFinalizerNode::weak_processing(bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
@@ -53,34 +90,18 @@ bool WeakMapFinalizerNode::weak_processing(bool in_closure_queue, RootCallback* 
     return true;  // Unlink me, the object no longer needs a finalizer.
   }
   Process* process = heap_->owner();
+  Program* program = process->program();
   if (oracle->is_alive(map())) {
+    // In scavenges this will update this node's map pointer to the new location.
     roots_do(cb);
     if (!cb->aggressive()) {
-      // Everything was already handled.
+      // Not zapping weak pointers in this GC.
       return false;  // Don't unlink me.
     }
-    // We are in aggressive mode, so we need to zap values in the map that are
-    // not reachable by other ways.
-    bool has_zapped = false;
-    // We already visited the roots, so the key is updated to the destination.
-    // Update the pointer to the backing collection.
-    cb->do_root(map()->root_at(Instance::MAP_BACKING_INDEX));
-    Object* backing = map()->at(Instance::MAP_BACKING_INDEX);
-    word size = Smi::value(Smi::cast(map()->at(Instance::MAP_SIZE_INDEX)));
-    update_forwarding_pointers(process, cb, backing, size);
-    for (word i = 0; i < size; i += 2) {
-      Object* key;
-      bool ok = Interpreter::fast_at(process, backing, Smi::from(i), false, &key);
-      ASSERT(ok);
-      cb->do_root(reinterpret_cast<Object**>(&key));
-      ok = Interpreter::fast_at(process, backing, Smi::from(i), true, &key);  // Put back the key.
-      Object* value;
-      ok = Interpreter::fast_at(process, backing, Smi::from(i + 1), false, &value);
-      ASSERT(ok);
-      if (is_heap_object(value) && oracle->is_alive(HeapObject::cast(value))) {
-        cb->do_root(reinterpret_cast<Object**>(&value));
-      }
-    }
+    // We are in aggressive mode, so the normal marking or scavenging did not
+    // necessarily process the backing.  We need to zap values in the map that
+    // are not reachable by other ways.
+    bool has_zapped = zap_dead_values(program, map(), cb, oracle);
     if (has_zapped) {
       if (in_closure_queue) {
         return false;  // Stay in the queue, processing is already scheduled.
