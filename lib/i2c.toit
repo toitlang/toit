@@ -59,8 +59,7 @@ class Bus:
 
   /** Tests if the $address responds. */
   test address -> bool:
-    empty := ByteArray 0
-    write_ address empty: return false
+    write_ address #[]: return false
     return true
 
   /**

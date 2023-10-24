@@ -1425,7 +1425,7 @@ PRIMITIVE(number_to_integer) {
   if (is_double(receiver)) {
     double value = Double::cast(receiver)->value();
     if (isnan(value)) FAIL(INVALID_ARGUMENT);
-    if (value < (double) INT64_MIN || value > (double) INT64_MAX) FAIL(OUT_OF_RANGE);
+    if (value < (double) INT64_MIN || value >= (double) INT64_MAX) FAIL(OUT_OF_RANGE);
     return Primitive::integer((int64) value, process);
   }
   FAIL(WRONG_OBJECT_TYPE);
