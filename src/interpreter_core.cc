@@ -140,7 +140,7 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
   return false;
 }
 
-int Interpreter::int_comparison(word lhs_int, word rhs_int) {
+int Interpreter::int_comparison(int64 lhs_int, int64 rhs_int) {
   if (lhs_int < rhs_int) {
     return COMPARE_RESULT_MINUS_1 | COMPARE_FLAG_STRICTLY_LESS | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
   } else if (lhs_int == rhs_int) {
@@ -229,7 +229,7 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
       // 9223372036854776832 9223372036854775808 0x8000_0000_0000_0000 9223372036854776000
       // 9223372036854776833 9223372036854777856 0x8000_0000_0000_0800 9223372036854778000
       int equal = COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
-      word SHORTCUT_LIMIT = 0x20000000000000LL;
+      int64 SHORTCUT_LIMIT = 0x20000000000000LL;
       if (rhs_is_int) {
         if (-SHORTCUT_LIMIT <= rhs_int && rhs_int <= SHORTCUT_LIMIT) return equal; // Optimization.
         if (lhs_double <= -9223372036854778e3) {
@@ -239,7 +239,7 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
           return int_comparison(1, 0);  // LHS is above int.MAX, so they cannot be equal.
         }
         // We now know the static cast can't fail, because we are in range.
-        return int_comparison(static_cast<word>(lhs_double), rhs_int);
+        return int_comparison(static_cast<int64>(lhs_double), rhs_int);
       } else if (lhs_is_int) {
         if (-SHORTCUT_LIMIT <= lhs_int && lhs_int <= SHORTCUT_LIMIT) return equal; // Optimization.
         if (rhs_double <= -9223372036854778e3) {
@@ -249,7 +249,7 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
           return int_comparison(0, 1);  // RHS is above int.MAX, so they cannot be equal.
         }
         // We now know the static cast can't fail, because we are in range.
-        return int_comparison(lhs_int, static_cast<word>(rhs_double));
+        return int_comparison(lhs_int, static_cast<int64>(rhs_double));
       }
       return equal;
     }
