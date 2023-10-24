@@ -77,9 +77,9 @@ class ObjectHeap {
   void queue_finalizer(CallableFinalizerNode* node) {
     runnable_finalizers_.append(node);
   }
-  void process_registered_callback_finalizers(RootCallback* ss, LivenessOracle* from_space);
-  void process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space);
-  void process_registered_finalizers_helper(FinalizerNodeFifo* list, RootCallback* ss, LivenessOracle* from_space);
+  void process_registered_callback_finalizers(RootCallback* cb, LivenessOracle* oracle);
+  void process_finalizer_queue(RootCallback* cb, LivenessOracle* oracle);
+  void process_registered_vm_finalizers(RootCallback* cb, LivenessOracle* oracle);
 
   Program* program() const { return program_; }
 
@@ -184,6 +184,8 @@ class ObjectHeap {
 
   bool retrying_primitive_ = false;
   AllocationResult last_allocation_result_ = ALLOCATION_SUCCESS;
+
+  void process_registered_finalizers_helper(FinalizerNodeFifo* list, RootCallback* cb, LivenessOracle* oracle, bool in_closure_queue);
 
   Process* owner_;
   TwoSpaceHeap two_space_heap_;

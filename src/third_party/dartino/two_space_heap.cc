@@ -178,12 +178,21 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
 
     old_space()->visit_remembered_set(&visitor);
 
+    // Scavenge as much as possible so we can identify which objects need
+    // finalizing.
     visitor.complete_scavenge();
 
+    // Process finalizers.
     process_heap_->process_registered_callback_finalizers(&visitor, from);
+    process_heap_->process_finalizer_queue(&visitor, from);
 
+    // Scavenge as much as possible to find things that are reachable through
+    // the finalization lambdas.  This may revive some objects that are
+    // scheduled for finalization.
     visitor.complete_scavenge();
 
+    // No more objects can be revived now, so we can process the external
+    // memory freeing finalizers.
     process_heap_->process_registered_vm_finalizers(&visitor, from);
 
     visitor.complete_scavenge();
@@ -370,6 +379,7 @@ bool TwoSpaceHeap::perform_garbage_collection(bool force_compact) {
   stack.process(&marking_visitor, old_space(), semi_space);
 
   process_heap_->process_registered_callback_finalizers(&marking_visitor, old_space());
+  process_heap_->process_finalizer_queue(&marking_visitor, old_space());
 
   stack.process(&marking_visitor, old_space(), semi_space);
 
@@ -465,6 +475,7 @@ void TwoSpaceHeap::compact_heap() {
   // At this point dead objects have been cleared out of the finalizer lists.
   EverythingIsAlive yes;
   process_heap_->process_registered_callback_finalizers(&fix, &yes);
+  process_heap_->process_finalizer_queue(&fix, &yes);
   process_heap_->process_registered_vm_finalizers(&fix, &yes);
 
   semi_space->clear_mark_bits();

@@ -288,10 +288,6 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
 
   // Process roots in the object_notifiers_ list.
   for (ObjectNotifier* n : object_notifiers_) n->roots_do(callback);
-  // Process roots in the runnable_finalizers_.
-  for (FinalizerNode* node : runnable_finalizers_) {
-    node->roots_do(callback);
-  }
 }
 
 void ObjectHeap::iterate_chunks(void* context, process_chunk_callback_t* callback) {
@@ -332,17 +328,20 @@ void ObjectHeap::install_heap_limit() {
 }
 
 void ObjectHeap::process_registered_callback_finalizers(RootCallback* ss, LivenessOracle* from_space) {
-  process_registered_finalizers_helper(&registered_callback_finalizers_, ss, from_space);
+  process_registered_finalizers_helper(&registered_callback_finalizers_, ss, from_space, false);
 }
 
 void ObjectHeap::process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space) {
-  process_registered_finalizers_helper(&registered_vm_finalizers_, ss, from_space);
+  process_registered_finalizers_helper(&registered_vm_finalizers_, ss, from_space, false);
 }
 
-void ObjectHeap::process_registered_finalizers_helper(FinalizerNodeFifo* list, RootCallback* ss, LivenessOracle* from_space) {
-  // Process the registered finalizer list.
-  list->remove_wherever([ss, from_space](FinalizerNode* node) -> bool {
-    return node->weak_processing(false, ss, from_space);
+void ObjectHeap::process_finalizer_queue(RootCallback* ss, LivenessOracle* from_space) {
+  process_registered_finalizers_helper(&runnable_finalizers_, ss, from_space, true);
+}
+
+void ObjectHeap::process_registered_finalizers_helper(FinalizerNodeFifo* list, RootCallback* ss, LivenessOracle* from_space, bool in_closure_queue) {
+  list->remove_wherever([ss, from_space, in_closure_queue](FinalizerNode* node) -> bool {
+    return node->weak_processing(in_closure_queue, ss, from_space);
   });
 }
 
