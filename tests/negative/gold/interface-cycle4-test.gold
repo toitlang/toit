@@ -1,4 +1,4 @@
-tests/negative/interface-cycle4-test.toit:5:11: error: Cycle in super/interface chain
+tests/negative/interface-cycle4-test.toit:5:11: error: Cycle in interface chain
 interface A implements C D:
           ^
 tests/negative/interface-cycle4-test.toit:5:24: error: This clause contributes to the cycle

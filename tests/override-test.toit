@@ -4,6 +4,8 @@
 
 import expect show *
 
+import .confuse
+
 class A:
   foo x=0:
     return "A $x"
@@ -11,8 +13,6 @@ class A:
 class B extends A:
   foo x:
     return "B $x"
-
-confuse x: return x
 
 main:
   actually-b := (confuse 0) == 0 ? B : A

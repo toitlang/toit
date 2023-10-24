@@ -27,6 +27,6 @@ namespace toit {
   E(primitive_lookup_failure, "primitive-lookup-failure_", 2)       \
   E(code_failure,             "too-few-code-arguments-failure_", 4) \
   E(program_failure,          "program-failure_", 1)                \
-  E(run_global_initializer,   "run-global-initializer_", 2)         \
+  E(run_global_initializer,   "run-global-initializer__", 2)        \
 
 } // namespace toit

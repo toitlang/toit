@@ -20,43 +20,60 @@
 
 namespace toit {
 
-class ObjectNotifier;
 class FinalizerNode;
+class Heap;
+class LivenessOracle;
+class ObjectNotifier;
+class ToitFinalizerNode;
 class VmFinalizerNode;
 
 typedef LinkedFifo<FinalizerNode> FinalizerNodeFifo;
 
 class FinalizerNode : public FinalizerNodeFifo::Element {
  public:
-  FinalizerNode(HeapObject* key, Object* lambda)
-  : key_(key), lambda_(lambda) {}
-  virtual ~FinalizerNode() {}
+  virtual ~FinalizerNode();
+  virtual bool has_key(HeapObject* value) = 0;
+
+  virtual void roots_do(RootCallback* cb) = 0;
+  // Should return false if the node needs GC processing.
+  virtual bool alive(LivenessOracle* oracle) = 0;
+  // Should return null if the node should be deleted.
+  virtual bool handle_not_alive(RootCallback* process_slots, ObjectHeap* heap) = 0;
+};
+
+class ToitFinalizerNode : public FinalizerNode {
+ public:
+  ToitFinalizerNode(HeapObject* key, Object* lambda)
+    : key_(key), lambda_(lambda) {}
 
   HeapObject* key() { return key_; }
   void set_key(HeapObject* value) { key_ = value; }
+  virtual bool has_key(HeapObject* value);
   Object* lambda() { return lambda_; }
 
   // Garbage collection support.
-  void roots_do(RootCallback* cb);
+  virtual void roots_do(RootCallback* cb);
+  virtual bool alive(LivenessOracle* oracle);
+  virtual bool handle_not_alive(RootCallback* process_slots, ObjectHeap* heap);
 
  private:
   HeapObject* key_;
   Object* lambda_;
 };
 
-typedef LinkedFifo<VmFinalizerNode> VmFinalizerNodeFifo;
-
-class VmFinalizerNode : public VmFinalizerNodeFifo::Element {
+class VmFinalizerNode : public FinalizerNode {
  public:
   VmFinalizerNode(HeapObject* key)
-  : key_(key) {}
-  virtual ~VmFinalizerNode() {}
+    : key_(key) {}
+  virtual ~VmFinalizerNode();
 
   HeapObject* key() { return key_; }
-  void set_key(HeapObject* value) { key_ = value; }
+  virtual bool has_key(HeapObject* value);
 
   // Garbage collection support.
-  void roots_do(RootCallback* cb);
+  virtual void roots_do(RootCallback* cb);
+  virtual bool alive(LivenessOracle* oracle);
+  virtual bool handle_not_alive(RootCallback* process_slots, ObjectHeap* heap);
 
   void free_external_memory(Process* process);
 

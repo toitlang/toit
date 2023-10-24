@@ -312,7 +312,7 @@ PRIMITIVE(region_open) {
 
   if (!found) FAIL(PERMISSION_DENIED);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) FAIL(ALLOCATION_FAILED);
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
   FlashRegion* resource = _new FlashRegion(group, offset, size, writable);
   if (!resource) FAIL(MALLOC_FAILED);
   proxy->set_external_address(resource);

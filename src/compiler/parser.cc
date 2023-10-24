@@ -135,11 +135,13 @@ Unit* Parser::parse_unit(Source* override_source) {
     }
     bool is_abstract = optional(Token::ABSTRACT);
     if (current_token() == Token::CLASS) {
-      declarations.add(parse_class_interface_or_monitor(is_abstract));
-    } else if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::monitor) {
-      declarations.add(parse_class_interface_or_monitor(is_abstract));
-    } else if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::interface_) {
-      declarations.add(parse_class_interface_or_monitor(is_abstract));
+      declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
+    } else if (at_pseudo(Symbols::monitor)) {
+      declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
+    } else if (at_pseudo(Symbols::interface_)) {
+      declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
+    } else if (at_pseudo(Symbols::mixin)) {
+      declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
     } else {
       declarations.add(parse_declaration(is_abstract));
     }
@@ -685,7 +687,7 @@ Import* Parser::parse_import() {
         prefix = NEW_NODE(Identifier(Symbol::invalid()), as_range);
         skip_to_end_of_multiline_construct();
       }
-    } else if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::show) {
+    } else if (at_pseudo(Symbols::show)) {
       auto show_range = current_range();
       consume();
       ListBuilder<Identifier*> builder;
@@ -978,28 +980,40 @@ Declaration* Parser::parse_declaration(bool is_abstract) {
   return NEW_NODE(Method(name, return_type, is_setter, is_static, is_abstract, parameters, body), declaration_range);
 }
 
-Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
+Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract) {
   ASSERT(current_token() == Token::CLASS ||
-         (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::interface_)||
-         (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::monitor));
+         at_pseudo(Symbols::interface_) ||
+         at_pseudo(Symbols::monitor) ||
+         at_pseudo(Symbols::mixin));
 
   ListBuilder<Expression*> interfaces;
+  ListBuilder<Expression*> mixins;
   ListBuilder<Declaration*> members;
 
   start_multiline_construct(IndentationStack::CLASS);   // Classes/monitors go over multiple lines.
 
-  bool is_monitor = false;
-  bool is_interface = false;
+  ast::Class::Kind kind;
   if (current_token() == Token::IDENTIFIER) {
-    is_monitor = current_token_data() == Symbols::monitor;
-    is_interface = current_token_data() == Symbols::interface_;
-    if (is_abstract) {
-      report_error("%s can't be abstract", is_interface ? "Interfaces" : "Monitors");
+    const char* kind_string;
+    if (at_pseudo(Symbols::interface_)) {
+      kind = ast::Class::INTERFACE;
+      kind_string = "Interfaces";
+    } else if (at_pseudo(Symbols::monitor)) {
+      kind = ast::Class::MONITOR;
+      kind_string = "Monitors";
+    } else {
+      ASSERT(at_pseudo(Symbols::mixin));
+      kind = ast::Class::MIXIN;
+      kind_string = "Mixins";
+    }
+    if (is_abstract && kind != ast::Class::MIXIN) {
+      report_error("%s can't be abstract", kind_string);
       is_abstract = false;
     }
     consume();
   } else {
     ASSERT(current_token() == Token::CLASS);
+    kind = ast::Class::CLASS;
     consume();
   }
 
@@ -1008,9 +1022,20 @@ Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
   Identifier* name;
   Expression* super = null;
   if (current_token() != Token::IDENTIFIER) {
-    const char* kind_name = "class";
-    if (is_monitor) kind_name = "monitor";
-    if (is_interface) kind_name = "interface";
+    const char* kind_name;
+    switch (kind) {
+      case ast::Class::CLASS:
+        kind_name = "class";
+        break;
+      case ast::Class::MONITOR:
+        kind_name = "monitor";
+        break;
+      case ast::Class::INTERFACE:
+        kind_name = "interface";
+        break;
+      case ast::Class::MIXIN:
+        kind_name = "mixin";
+    }
     if (is_eol(current_token())) {
       report_error(eol_range(previous_range(), current_range()),
                    "Expected %s name", kind_name);
@@ -1025,14 +1050,36 @@ Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
   } else {
     name = parse_identifier();
     bool requires_super = false;
-    if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::extends) {
+    if (at_pseudo(Symbols::extends)) {
       consume();
       requires_super = true;
     }
-    if (current_token() == Token::IDENTIFIER && current_token_data() != Symbols::implements) {
+
+    if (current_token() == Token::IDENTIFIER &&
+        current_token_data() != Symbols::implements &&
+        current_token_data() != Symbols::with) {
       super = parse_type(false);
     }
-    if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::implements) {
+    if (at_pseudo(Symbols::with)) {
+      if (!requires_super) {
+        // "requires_super" indicates that there was an `extends`.
+        report_error("'with' requires an 'extends' clause");
+      }
+      if (super == null && requires_super) {
+        report_error("Missing super class");
+        // We reported an error. No need for a super class anymore.
+        requires_super = false;
+      }
+      consume();
+      while (current_token() == Token::IDENTIFIER &&
+             current_token_data() != Symbols::implements) {
+        mixins.add(parse_type(false));
+      }
+      if (mixins.is_empty()) {
+        report_error("'with' without any mixin type");
+      }
+    }
+    if (at_pseudo(Symbols::implements)) {
       if (super == null && requires_super) {
         report_error("Missing super class");
         // We reported an error. No need for a super class anymore.
@@ -1070,10 +1117,10 @@ Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
   return NEW_NODE(Class(name,
                         super,
                         interfaces.build(),
+                        mixins.build(),
                         members.build(),
-                        is_abstract,
-                        is_monitor,
-                        is_interface),
+                        kind,
+                        is_abstract),
                   name->range());
 }
 
@@ -2458,7 +2505,8 @@ Expression* Parser::parse_type(bool is_type_annotation) {
     }
     auto id = parse_identifier();
     if (id->data() == Symbols::implements ||
-        id->data() == Symbols::extends) {
+        id->data() == Symbols::extends ||
+        id->data() == Symbols::with) {
       report_error(id->range(), "Unexpected token in type: '%s'", id->data().c_str());
       encountered_pseudo_keyword = true;
     }

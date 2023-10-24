@@ -122,8 +122,8 @@ class GrowerVisitor : protected TraversingVisitor {
   void visit_CallStatic(CallStatic* node) {
     auto target = node->target()->target();
     if (target->is_instance()) {
-      if (is_super_call(node)) {
-        // For super calls we don't need to ensure that the
+      if (is_super_call(node) || target->holder()->is_mixin()) {
+        // For super calls or mixins we don't need to ensure that the
         // holder class is actually instantiated and its method isn't shadowed.
         found_methods_.insert(target);
       } else {
@@ -347,7 +347,8 @@ class TreeGrower {
 };
 
 void TreeGrower::grow(Program* program) {
-  auto queryables = build_queryables_from_plain_shapes(program->classes());
+  bool include_abstracts;
+  auto queryables = build_queryables_from_plain_shapes(program->classes(), include_abstracts=false);
 
   Set<CallSelector> handled_selectors;
   TypedSelectorSet handled_typed_selectors;
@@ -483,23 +484,25 @@ class Fixup : public ReplacingVisitor {
       : null_type_(null_type)
       , grown_methods_(grown_methods)
       , as_check_failure_(as_check_failure) {
-    grown_classes_and_interfaces_.insert_all(grown_classes);
-
-    std::function<void (Class*)> add_interface;
-    add_interface = [&](Class* interface) {
-      if (grown_classes_and_interfaces_.contains(interface)) return;
-      grown_classes_and_interfaces_.insert(interface);
-      for (auto sub_interface : interface->interfaces()) {
-        add_interface(sub_interface);
-      }
-      if (interface->super() != null) {
-        add_interface(interface->super());
-      }
-    };
+    valid_check_targets_.insert_all(grown_classes);
 
     for (auto klass : grown_classes) {
       for (auto interface : klass->interfaces()) {
-        add_interface(interface);
+        valid_check_targets_.insert(interface);
+      }
+      for (auto current = klass; current != null; current = current->super()) {
+        if (current != klass && valid_check_targets_.contains(current)) {
+          // No need to duplicate work. The current class will be (or was already)
+          // traversed independently.
+          break;
+        }
+        for (auto method : current->methods()) {
+          // This looks like the simplest way to figure out whether a class
+          // "implements" a mixin.
+          if (method->is_IsInterfaceOrMixinStub()) {
+            valid_check_targets_.insert(method->as_IsInterfaceOrMixinStub()->interface_or_mixin());
+          }
+        }
       }
     }
   }
@@ -508,7 +511,7 @@ class Fixup : public ReplacingVisitor {
     auto result = ReplacingVisitor::visit_Typecheck(node)->as_Typecheck();
     ASSERT(result == node);
     if (node->type().is_any()) return node;
-    if (grown_classes_and_interfaces_.contains(node->type().klass())) return result;
+    if (valid_check_targets_.contains(node->type().klass())) return result;
 
     // At this point, neither the class nor any of its subclasses were instantiated.
 
@@ -566,7 +569,7 @@ class Fixup : public ReplacingVisitor {
   Node* visit_FieldLoad(FieldLoad* node) {
     auto result = ReplacingVisitor::visit_FieldLoad(node);
     auto holder = node->field()->holder();
-    if (grown_classes_and_interfaces_.contains(holder)) {
+    if (valid_check_targets_.contains(holder)) {
       return result;
     }
     // The load is dead code, as a type-check earlier would have thrown earlier.
@@ -577,7 +580,7 @@ class Fixup : public ReplacingVisitor {
   Node* visit_FieldStore(FieldStore* node) {
     auto result = ReplacingVisitor::visit_FieldStore(node);
     auto holder = node->field()->holder();
-    if (grown_classes_and_interfaces_.contains(holder)) {
+    if (valid_check_targets_.contains(holder)) {
       return result;
     }
     // The store is dead code, as a type-check earlier would have thrown earlier.
@@ -588,7 +591,7 @@ class Fixup : public ReplacingVisitor {
 
  private:
   Type null_type_;
-  Set<Class*> grown_classes_and_interfaces_;
+  Set<Class*> valid_check_targets_;
   Set<Method*> grown_methods_;
   Method* as_check_failure_;
 };
@@ -631,7 +634,7 @@ static void shake(Program* program,
   ListBuilder<Class*> remaining_classes;
   // Keep the order of the classes.
   for (auto klass : program->classes()) {
-    if (grown_classes.contains(klass)) {
+    if (klass->is_mixin() || grown_classes.contains(klass)) {
       remaining_classes.add(klass);
     }
   }

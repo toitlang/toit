@@ -147,7 +147,8 @@ class ByteGen : private ir::Visitor {
   void visit_MethodStatic(ir::MethodStatic* node);
   void visit_Constructor(ir::Constructor* node);
   void visit_AdapterStub(ir::AdapterStub* node);
-  void visit_IsInterfaceStub(ir::IsInterfaceStub* node);
+  void visit_MixinStub(ir::MixinStub* node);
+  void visit_IsInterfaceOrMixinStub(ir::IsInterfaceOrMixinStub* node);
   void visit_FieldStub(ir::FieldStub* node);
   void visit_Code(ir::Code* node);
   void visit_Nop(ir::Nop* node);

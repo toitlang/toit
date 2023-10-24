@@ -558,8 +558,11 @@ void MessageDecoder::deallocate() {
       cursor_ += length;
       break;
     }
-    case TAG_ARRAY: {
+    case TAG_ARRAY:
+    case TAG_MAP: {
       int length = read_cardinal();
+      // Maps have two nested encodings per entry.
+      if (tag == TAG_MAP) length *= 2;
       for (int i = 0; i < length; i++) deallocate();
       break;
     }

@@ -50,7 +50,6 @@ PRIMITIVE(create) {
   ByteArray* timer_proxy = process->object_heap()->allocate_proxy();
   if (timer_proxy == null) FAIL(ALLOCATION_FAILED);
 
-
   Timer* timer = _new Timer(resource_group);
   if (timer == null) FAIL(MALLOC_FAILED);
 

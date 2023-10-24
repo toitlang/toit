@@ -17,6 +17,7 @@ package toitdoc
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"strings"
@@ -221,16 +222,18 @@ func (b *builder) build() *Doc {
 		}
 
 		exports := computeModuleExports(u, b.summaries)
-		classes, interfaces := b.classesAndInterfaces(m.Classes)
-		exportClasses, exportInterfaces := b.refsToClassesAndInterfaces(exports.Classes)
+		classes, interfaces, mixins := b.classesInterfacesAndMixins(m.Classes)
+		exportClasses, exportInterfaces, exportMixins := b.refsToClassesInterfacesAndMixins(exports.Classes)
 		library.Modules[moduleName] = Module{
 			ObjectType:       ObjectTypeModule,
 			Name:             moduleName,
 			IsPrivate:        IsPrivate(moduleName),
 			Classes:          classes,
 			Interfaces:       interfaces,
+			Mixins:           mixins,
 			ExportClasses:    exportClasses,
 			ExportInterfaces: exportInterfaces,
+			ExportMixins:     exportMixins,
 			Functions:        b.functions(m.Functions),
 			ExportFunctions:  b.refsToFunctions(exports.Functions),
 			Globals:          b.globals(m.Globals),
@@ -269,8 +272,10 @@ type Module struct {
 	IsPrivate        bool        `json:"is_private"`
 	Classes          Classes     `json:"classes"`
 	Interfaces       Classes     `json:"interfaces"`
+	Mixins           Classes     `json:"mixins"`
 	ExportClasses    Classes     `json:"export_classes"`
 	ExportInterfaces Classes     `json:"export_interfaces"`
+	ExportMixins     Classes     `json:"export_mixins"`
 	Functions        Functions   `json:"functions"`
 	ExportFunctions  Functions   `json:"export_functions"`
 	Globals          Globals     `json:"globals"`
@@ -281,38 +286,48 @@ type Module struct {
 
 type Classes []Class
 
-func (b *builder) classesAndInterfaces(classes []*toit.Class) (Classes, Classes) {
+func (b *builder) classesInterfacesAndMixins(classes []*toit.Class) (Classes, Classes, Classes) {
 	resClasses := Classes{}
 	resInterfaces := Classes{}
+	resMixins := Classes{}
 	for _, class := range classes {
 		if !b.includeClass(class) {
 			continue
 		}
-		if class.IsInterface {
-			resInterfaces = append(resInterfaces, b.class(class, nil))
-		} else {
+		if class.Kind == toit.KindClass {
 			resClasses = append(resClasses, b.class(class, nil))
+		} else if class.Kind == toit.KindInterface {
+			resInterfaces = append(resInterfaces, b.class(class, nil))
+		} else if class.Kind == toit.KindMixin {
+			resMixins = append(resMixins, b.class(class, nil))
+		} else {
+			log.Fatalf("unexpected class kind: %v", class.Kind)
 		}
 	}
-	return resClasses, resInterfaces
+	return resClasses, resInterfaces, resMixins
 }
 
-func (b *builder) refsToClassesAndInterfaces(refs []*toit.TopLevelReference) (Classes, Classes) {
+func (b *builder) refsToClassesInterfacesAndMixins(refs []*toit.TopLevelReference) (Classes, Classes, Classes) {
 	resClasses := Classes{}
 	resInterfaces := Classes{}
+	resMixins := Classes{}
 	for i := range refs {
 		ref := refs[i]
 		class := b.summaries[ref.Module].TopLevelElementByID(ref.ID).(*toit.Class)
 		if !b.includeClass(class) {
 			continue
 		}
-		if class.IsInterface {
-			resInterfaces = append(resInterfaces, b.class(class, ref))
-		} else {
+		if class.Kind == toit.KindClass {
 			resClasses = append(resClasses, b.class(class, ref))
+		} else if class.Kind == toit.KindInterface {
+			resInterfaces = append(resInterfaces, b.class(class, ref))
+		} else if class.Kind == toit.KindMixin {
+			resMixins = append(resMixins, b.class(class, ref))
+		} else {
+			log.Fatalf("unexpected class kind: %v", class.Kind)
 		}
 	}
-	return resClasses, resInterfaces
+	return resClasses, resInterfaces, resMixins
 }
 
 func (b *builder) includeClass(class *toit.Class) bool {
@@ -322,12 +337,14 @@ func (b *builder) includeClass(class *toit.Class) bool {
 type Class struct {
 	ObjectType   ObjectType         `json:"object_type"`
 	Name         string             `json:"name"`
+	Kind         toit.ClassKind     `json:"kind"`
+	IsInterface  bool               `json:"is_interface"` // Deprecated. For backwards compatibility.
 	IsAbstract   bool               `json:"is_abstract"`
-	IsInterface  bool               `json:"is_interface"`
 	IsPrivate    bool               `json:"is_private"`
 	ExportedFrom *TopLevelReference `json:"exported_from"`
 	Toitdoc      DocContents        `json:"toitdoc"`
 	Interfaces   TopLevelReferences `json:"interfaces"`
+	Mixins       TopLevelReferences `json:"mixins"`
 	Extends      *TopLevelReference `json:"extends"`
 	Structure    ClassStructure     `json:"structure"`
 }
@@ -357,10 +374,10 @@ func (b *builder) class(class *toit.Class, exportRef *toit.TopLevelReference) Cl
 		methods = append(methods, convertedMethods...)
 	}
 
-	// According to the summary interfaces also implement themselves.
+	// According to the summary, interfaces also implement themselves.
 	// We don't want that in the toitdoc, so we remove them here.
 	interfaces := class.Interfaces
-	if class.IsInterface {
+	if class.Kind == toit.KindInterface {
 		filteredInterfaces := []*toit.TopLevelReference{}
 		alreadyRemoved := false
 		for _, inter := range interfaces {
@@ -379,12 +396,14 @@ func (b *builder) class(class *toit.Class, exportRef *toit.TopLevelReference) Cl
 	return Class{
 		ObjectType:   ObjectTypeClass,
 		Name:         class.Name,
+		Kind:         class.Kind,
 		IsAbstract:   class.IsAbstract,
-		IsInterface:  class.IsInterface,
+		IsInterface:  class.Kind == toit.KindInterface,
 		IsPrivate:    IsPrivate(class.Name),
 		ExportedFrom: b.exportedFrom(exportRef),
 		Toitdoc:      b.toitdoc(class.Toitdoc),
 		Interfaces:   b.topLevelReferences(interfaces),
+		Mixins:       b.topLevelReferences(class.Mixins),
 		Extends:      b.topLevelReference(class.SuperClass, nil),
 		Structure: ClassStructure{
 			Statics:      b.methods(class.Statics),

@@ -279,6 +279,10 @@ install: install-sdk
 test:
 	(cd $(BUILD)/$(HOST) && ninja check_slow check_fuzzer_lib)
 
+.PHONY: test-flaky
+test-flaky:
+	(cd $(BUILD)/$(HOST) && ninja check_flaky)
+
 .PHONY: test-fast
 test-fast:
 	(cd $(BUILD)/$(HOST) && ninja check)

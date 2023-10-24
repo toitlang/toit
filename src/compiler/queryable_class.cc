@@ -35,7 +35,7 @@ class CallSelectorVisitor : public ir::TraversingVisitor {
 
 } // namespace anonymous
 
-UnorderedMap<Class*, QueryableClass> build_queryables_from_plain_shapes(List<Class*> classes) {
+UnorderedMap<Class*, QueryableClass> build_queryables_from_plain_shapes(List<Class*> classes, bool include_abstracts) {
   UnorderedMap<Class*, QueryableClass> result;
   for (auto klass : classes) {
     QueryableClass::SelectorMap methods;
@@ -47,6 +47,7 @@ UnorderedMap<Class*, QueryableClass> build_queryables_from_plain_shapes(List<Cla
       methods.add_all(result[klass->super()].methods());
     }
     for (auto method : klass->methods()) {
+      if (!include_abstracts && method->is_abstract()) continue;
       Selector<PlainShape> selector(method->name(), method->plain_shape());
       methods[selector] = method;
     }
@@ -56,50 +57,82 @@ UnorderedMap<Class*, QueryableClass> build_queryables_from_plain_shapes(List<Cla
   return result;
 }
 
-UnorderedMap<Class*, QueryableClass> build_queryables_from_resolution_shapes(Program* program) {
+UnorderedMap<Class*, QueryableClass> build_queryables_from_resolution_shapes(Program* program, bool include_abstracts) {
   CallSelectorVisitor visitor;
   program->accept(&visitor);
   auto invoked_selectors = visitor.selectors;
 
+  ir::Class* object_class = program->classes()[0];
+  ASSERT(object_class->name() == Symbols::Object);
+
   UnorderedMap<Class*, QueryableClass> result;
 
-  for (auto klass : program->classes()) {
-    QueryableClass::SelectorMap methods;
+  for (int i = 0; i < 2; i++) {
+    // Classes are sorted such that all supers are before their subclasses.
+    // Similarly, within mixins, all mixins that are mixed in are before the mixin
+    // that uses them. For example, for `mixin M2 extends M1 with M3` the mixins
+    // `M1` and `M3` are before `M2`.
+    // However, mixins are after classes that mix them in (`class A extends B with M1`).
+    // Therefore we run in two phases:
+    // - the first phase only does mixins.
+    // - the second the rest.
+    // This way we know that all our dependencies (super and mixins) have already
+    // been handled.
+    for (auto klass : program->classes()) {
+      if (i == 0 && !klass->is_mixin()) continue;
+      if (i == 1 && klass->is_mixin()) continue;
 
-    if (klass->super() != null) {
-      // We know we already dealt with the super, because the classes are sorted
-      //   by inheritance.
-      // Insert the superclass methods first, and then overwrite the ones that this class has.
-      methods.add_all(result[klass->super()].methods());
-    }
+      QueryableClass::SelectorMap methods;
 
-    for (auto method : klass->methods()) {
-      auto name = method->name();
-      auto method_shape = method->resolution_shape();
-      auto plain_shape = method_shape.to_plain_shape();
-
-      if (!method_shape.has_optional_parameters()) {
-        // No need to see which versions of the method-shape are needed.
-        Selector<PlainShape> selector(name, plain_shape);
-        methods[selector] = method;
-        continue;
+      if (klass->super() != null) {
+        // We know we already dealt with the super, because the classes are sorted
+        //   by inheritance.
+        // Insert the superclass methods first, and then overwrite the ones that this class has.
+        ASSERT(result.find(klass->super()) != result.end());
+        methods.add_all(result[klass->super()].methods());
+      } else if (klass != object_class) {
+        // Interface or Mixin.
+        // Add the Object methods as they have to be available for every object.
+        methods.add_all(result[object_class].methods());
       }
 
-      auto probe = invoked_selectors.find(name);
-      if (probe == invoked_selectors.end()) {
-        // Not called at all. We can just ignore it.
-        continue;
+      for (auto mixin : klass->mixins()) {
+        // We do mixins first, and also have sorted mixins in such a way
+        // that their "parents" are always first.
+        // The mixin must thus already be handled.
+        ASSERT(result.find(mixin) != result.end());
+        methods.add_all(result[mixin].methods());
       }
 
-      for (auto call_shape : probe->second) {
-        if (method_shape.accepts(call_shape)) {
-          Selector<PlainShape> selector(name, call_shape.to_plain_shape());
+      for (auto method : klass->methods()) {
+        if (!include_abstracts && method->is_abstract()) continue;
+        auto name = method->name();
+        auto method_shape = method->resolution_shape();
+        auto plain_shape = method_shape.to_plain_shape();
+
+        if (!method_shape.has_optional_parameters()) {
+          // No need to see which versions of the method-shape are needed.
+          Selector<PlainShape> selector(name, plain_shape);
           methods[selector] = method;
+          continue;
+        }
+
+        auto probe = invoked_selectors.find(name);
+        if (probe == invoked_selectors.end()) {
+          // Not called at all. We can just ignore it.
+          continue;
+        }
+
+        for (auto call_shape : probe->second) {
+          if (method_shape.accepts(call_shape)) {
+            Selector<PlainShape> selector(name, call_shape.to_plain_shape());
+            methods[selector] = method;
+          }
         }
       }
-    }
 
-    result[klass] = QueryableClass(klass, methods);
+      result[klass] = QueryableClass(klass, methods);
+    }
   }
   return result;
 }

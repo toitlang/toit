@@ -143,7 +143,8 @@ void optimize(Program* program, TypeOracle* oracle) {
   killer.visit(program);
 
   auto classes = program->classes();
-  auto queryables = build_queryables_from_plain_shapes(classes);
+  bool include_abstracts;
+  auto queryables = build_queryables_from_plain_shapes(classes, include_abstracts=false);
 
   UnorderedSet<Symbol> field_names;
 

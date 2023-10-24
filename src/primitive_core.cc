@@ -1425,7 +1425,7 @@ PRIMITIVE(number_to_integer) {
   if (is_double(receiver)) {
     double value = Double::cast(receiver)->value();
     if (isnan(value)) FAIL(INVALID_ARGUMENT);
-    if (value < (double) INT64_MIN || value > (double) INT64_MAX) FAIL(OUT_OF_RANGE);
+    if (value < (double) INT64_MIN || value >= (double) INT64_MAX) FAIL(OUT_OF_RANGE);
     return Primitive::integer((int64) value, process);
   }
   FAIL(WRONG_OBJECT_TYPE);
@@ -1466,7 +1466,7 @@ static String* concat_strings(Process* process,
   String* result = process->allocate_string(len_a + len_b);
   if (result == null) return null;
   // Initialize object.
-  String::Bytes bytes(result);
+  String::MutableBytes bytes(result);
   bytes._initialize(0, bytes_a, 0, len_a);
   bytes._initialize(len_a, bytes_b, 0, len_b);
   return result;
@@ -1525,7 +1525,7 @@ PRIMITIVE(string_slice) {
   String* result = process->allocate_string(result_len);
   if (result == null) FAIL(ALLOCATION_FAILED);
   // Initialize object.
-  String::Bytes result_bytes(result);
+  String::MutableBytes result_bytes(result);
   result_bytes._initialize(0, receiver, from, to - from);
   return result;
 }
@@ -1545,7 +1545,7 @@ PRIMITIVE(concat_strings) {
   }
   String* result = process->allocate_string(length);
   if (result == null) FAIL(ALLOCATION_FAILED);
-  String::Bytes bytes(result);
+  String::MutableBytes bytes(result);
   int pos = 0;
   for (int index = 0; index < array->length(); index++) {
     Blob blob;
@@ -1949,13 +1949,13 @@ PRIMITIVE(task_receive_message) {
 PRIMITIVE(add_finalizer) {
   ARGS(HeapObject, object, Object, finalizer)
   if (process->has_finalizer(object, finalizer)) FAIL(OUT_OF_BOUNDS);
-  if (!process->add_finalizer(object, finalizer)) FAIL(MALLOC_FAILED);
+  if (!process->add_toit_finalizer(object, finalizer)) FAIL(MALLOC_FAILED);
   return process->null_object();
 }
 
 PRIMITIVE(remove_finalizer) {
   ARGS(HeapObject, object)
-  return BOOL(process->remove_finalizer(object));
+  return BOOL(process->remove_toit_finalizer(object));
 }
 
 PRIMITIVE(gc_count) {
@@ -2358,15 +2358,26 @@ PRIMITIVE(firmware_map) {
   const esp_partition_t* current_partition = esp_ota_get_running_partition();
   if (current_partition == null) FAIL(ERROR);
 
+  // On the ESP32, it is beneficial to map the partition in as instructions
+  // because there is a larger virtual address space for that.
+  esp_partition_mmap_memory_t memory = ESP_PARTITION_MMAP_DATA;
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  memory = ESP_PARTITION_MMAP_INST;
+#endif
+
   const void* mapped_to = null;
   esp_err_t err = esp_partition_mmap(
       current_partition,
       0,  // Offset from start of partition.
       current_partition->size,
-      ESP_PARTITION_MMAP_INST,
+      memory,
       &mapped_to,
       &firmware_mmap_handle);
-  if (err != ESP_OK) FAIL(ERROR);
+  if (err == ESP_ERR_NO_MEM) {
+    FAIL(MALLOC_FAILED);
+  } else if (err != ESP_OK) {
+    FAIL(ERROR);
+  }
 
   firmware_is_mapped = true;
   proxy->set_external_address(

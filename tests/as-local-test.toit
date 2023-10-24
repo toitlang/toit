@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import .confuse
+
 class A00:
 class A01:
 class A02:
@@ -66,8 +68,6 @@ class A3C:
 class A3D:
 class A3E:
 class A3F:
-
-confuse x: return x
 
 main:
   x00 := confuse A00
@@ -160,7 +160,7 @@ main:
   x1D := confuse A1D
   x1E := confuse A1E
   x1F := confuse A1F
-  x20 := confuse A20  
+  x20 := confuse A20
   x21 := confuse A21
   x22 := confuse A22
   x23 := confuse A23
@@ -176,7 +176,7 @@ main:
   x2D := confuse A2D
   x2E := confuse A2E
   x2F := confuse A2F
-  x30 := confuse A30  
+  x30 := confuse A30
   x31 := confuse A31
   x32 := confuse A32
   x33 := confuse A33

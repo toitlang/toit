@@ -23,8 +23,8 @@ test args filter:
     "store global var",
     "is class A",
     "as class A",
-    "is interface is-I",
-    "as interface is-I",
+    "is interface *is-I",
+    "as interface *is-I",
   ]
 
   lines-index := 2

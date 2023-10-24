@@ -59,7 +59,8 @@ void TraversingVisitor::visit_MethodStatic(MethodStatic* node) { visit_Method(no
 void TraversingVisitor::visit_Constructor(Constructor* node) { visit_Method(node); }
 void TraversingVisitor::visit_Global(Global* node) { visit_Method(node); }
 void TraversingVisitor::visit_AdapterStub(AdapterStub* node) { visit_Method(node); }
-void TraversingVisitor::visit_IsInterfaceStub(IsInterfaceStub* node) { visit_Method(node); }
+void TraversingVisitor::visit_MixinStub(MixinStub* node) { visit_Method(node); }
+void TraversingVisitor::visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStub* node) { visit_Method(node); }
 void TraversingVisitor::visit_FieldStub(FieldStub* node) { visit_Method(node); }
 
 void TraversingVisitor::visit_Expression(Expression* node) { UNREACHABLE(); }
@@ -249,7 +250,8 @@ Node* ReplacingVisitor::visit_MethodStatic(MethodStatic* node) { return visit_Me
 Node* ReplacingVisitor::visit_Constructor(Constructor* node) { return visit_Method(node); }
 Node* ReplacingVisitor::visit_Global(Global* node) { return visit_Method(node); }
 Node* ReplacingVisitor::visit_AdapterStub(AdapterStub* node) { return visit_Method(node); }
-Node* ReplacingVisitor::visit_IsInterfaceStub(IsInterfaceStub* node) { return visit_Method(node); }
+Node* ReplacingVisitor::visit_MixinStub(MixinStub* node) { return visit_Method(node); }
+Node* ReplacingVisitor::visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStub* node) { return visit_Method(node); }
 Node* ReplacingVisitor::visit_FieldStub(FieldStub* node) { return visit_Method(node); }
 
 Expression* ReplacingVisitor::_replace_expression(Expression* expression) {
@@ -627,9 +629,10 @@ class Printer : public Visitor {
   void visit_Constructor(Constructor* node) { visit_Method(node); }
   void visit_Global(Global* node) { visit_Method(node); }
   void visit_AdapterStub(AdapterStub* node) { visit_Method(node); }
+  void visit_MixinStub(MixinStub* node) { visit_Method(node); }
   void visit_FieldStub(FieldStub* node) { visit_Method(node); }
 
-  void visit_IsInterfaceStub(IsInterfaceStub* node) {
+  void visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStub* node) {
     indent();
     printf("Is-interface stub: %s\n", node->name().c_str());
   }

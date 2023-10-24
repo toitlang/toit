@@ -12,7 +12,7 @@ test-simple tests/type_propagation/lambda-test.toit
  10[014] - load local 0
  11[004] - store local, pop S1
  13[023] - load smi 0
- 14[053] - invoke static lambda_ <sdk>/core/objects.toit // [{SmallInteger_}, {LargeArray_|SmallArray_}, {SmallInteger_}] -> {Lambda}
+ 14[053] - invoke static lambda__ <sdk>/core/objects.toit // [{SmallInteger_}, {LargeArray_|SmallArray_}, {SmallInteger_}] -> {Lambda}
  17[014] - load local 0
  18[053] - invoke static Lambda.call <sdk>/core/objects.toit // [{Lambda}] -> {*}
  21[088] - return S2 0
@@ -29,7 +29,7 @@ test-arguments tests/type_propagation/lambda-test.toit
  10[014] - load local 0
  11[004] - store local, pop S1
  13[023] - load smi 0
- 14[053] - invoke static lambda_ <sdk>/core/objects.toit // [{SmallInteger_}, {LargeArray_|SmallArray_}, {SmallInteger_}] -> {Lambda}
+ 14[053] - invoke static lambda__ <sdk>/core/objects.toit // [{SmallInteger_}, {LargeArray_|SmallArray_}, {SmallInteger_}] -> {Lambda}
  17[026] - load smi 42
  19[053] - invoke static Lambda.call <sdk>/core/objects.toit // [{Lambda}, {SmallInteger_}] -> {*}
  22[041] - pop 1
@@ -40,7 +40,7 @@ test-arguments tests/type_propagation/lambda-test.toit
  33[014] - load local 0
  34[004] - store local, pop S1
  36[023] - load smi 0
- 37[053] - invoke static lambda_ <sdk>/core/objects.toit // [{SmallInteger_}, {LargeArray_|SmallArray_}, {SmallInteger_}] -> {Lambda}
+ 37[053] - invoke static lambda__ <sdk>/core/objects.toit // [{SmallInteger_}, {LargeArray_|SmallArray_}, {SmallInteger_}] -> {Lambda}
  40[026] - load smi 42
  42[020] - load literal fisk
  44[053] - invoke static Lambda.call <sdk>/core/objects.toit // [{Lambda}, {SmallInteger_}, {String_}] -> {*}
