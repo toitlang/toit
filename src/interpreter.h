@@ -121,7 +121,7 @@ class Interpreter {
   // Fast helpers for indexing and number comparisons.
   static bool fast_at(Process* process, Object* receiver, Object* args, bool is_put, Object** value) INTERPRETER_HELPER;
   static int compare_numbers(Object* lhs, Object* rhs) INTERPRETER_HELPER;
-  static int int_comparison(word lhs, word rhs) INTERPRETER_HELPER;
+  static int int_comparison(int64 lhs, int64 rhs) INTERPRETER_HELPER;
 
   // Load stack info from process's stack.
   Object** load_stack(Method* pending = null);
