@@ -135,6 +135,10 @@ void VmFinalizerNode::roots_do(RootCallback* cb) {
 }
 
 bool VmFinalizerNode::weak_processing(bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
+  if (!oracle->has_active_finalizer(key())) {
+    delete this;
+    return true;  // Unlink me, the object no longer needs a finalizer.
+  }
   if (oracle->is_alive(key())) {
     cb->do_root(reinterpret_cast<Object**>(&key_));
     return false;  // Don't unlink me.

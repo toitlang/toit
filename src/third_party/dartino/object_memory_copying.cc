@@ -122,8 +122,7 @@ bool SemiSpace::is_alive(HeapObject* old_location) {
 }
 
 bool SemiSpace::has_active_finalizer(HeapObject* old_location) {
-  if (!includes(old_location->_raw())) return old_location->has_active_finalizer();
-  return old_location->forwarding_address()->has_active_finalizer();
+  return old_location->has_active_finalizer();
 }
 
 void Space::append(Chunk* chunk) {
