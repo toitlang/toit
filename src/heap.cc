@@ -141,10 +141,10 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, O
   limit_ = pending_limit_;
 }
 
-static clean_up_finalizers(FinalizerNodeFifo* list) {
+static void clean_up_finalizers(FinalizerNodeFifo* list) {
   while (auto finalizer = list->remove_first()) {
-    node->heap_dying();
-    delete node;
+    finalizer->heap_dying();
+    delete finalizer;
   }
 }
 
@@ -331,8 +331,8 @@ void ObjectHeap::install_heap_limit() {
   limit_ = pending_limit_;
 }
 
-void ObjectHeap::process_registered_toit_finalizers(RootCallback* ss, LivenessOracle* from_space) {
-  process_registered_finalizers_helper(&registered_toit_finalizers_, ss, from_space);
+void ObjectHeap::process_registered_callback_finalizers(RootCallback* ss, LivenessOracle* from_space) {
+  process_registered_finalizers_helper(&registered_callback_finalizers_, ss, from_space);
 }
 
 void ObjectHeap::process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space) {
@@ -342,19 +342,7 @@ void ObjectHeap::process_registered_vm_finalizers(RootCallback* ss, LivenessOrac
 void ObjectHeap::process_registered_finalizers_helper(FinalizerNodeFifo* list, RootCallback* ss, LivenessOracle* from_space) {
   // Process the registered finalizer list.
   list->remove_wherever([ss, from_space](FinalizerNode* node) -> bool {
-    bool is_alive = node->alive(from_space);
-    if (is_alive) {
-      if (node->has_active_finalizer(from_space)) {
-        node->roots_do(ss);
-        return false;  // Keep node in list.
-      }
-      // Remove node from list - no point in visiting the roots in this case.
-      return true;
-    }
-    if (node->handle_not_alive(ss)) {
-      delete node;
-    }
-    return true;  // Remove node from list.
+    return node->weak_processing(false, ss, from_space);
   });
 }
 
@@ -366,12 +354,12 @@ bool ObjectHeap::add_weak_map_finalizer(Instance* map, Object* lambda) {
   if (node == null) return false;  // Allocation failed.
   // Add it at the head of the list in case there is an old finalizer lower
   // down on the list.
-  registered_weak_map_finalizers_.prepend(node);
+  registered_callback_finalizers_.prepend(node);
   map->set_has_active_finalizer();
   return true;
 }
 
-bool ObjectHeap::add_toit_finalizer(HeapObject* key, Object* lambda) {
+bool ObjectHeap::add_toit_finalizer(Instance* key, Object* lambda) {
   // We should already have checked whether the object is already registered.
   ASSERT(key->can_be_toit_finalized(program()));
   ASSERT(!key->has_active_finalizer());
@@ -379,7 +367,7 @@ bool ObjectHeap::add_toit_finalizer(HeapObject* key, Object* lambda) {
   if (node == null) return false;  // Allocation failed.
   // Add it at the head of the list in case there is an old finalizer lower
   // down on the list.
-  registered_toit_finalizers_.prepend(node);
+  registered_callback_finalizers_.prepend(node);
   key->set_has_active_finalizer();
   return true;
 }

@@ -200,6 +200,7 @@ namespace toit {
   PRIMITIVE(string_from_rune, 1)             \
   PRIMITIVE(string_write_to_byte_array, 5)   \
   PRIMITIVE(create_off_heap_byte_array, 1)   \
+  PRIMITIVE(make_weak_map, 2)                \
   PRIMITIVE(add_finalizer, 2)                \
   PRIMITIVE(remove_finalizer, 1)             \
   PRIMITIVE(large_integer_unary_minus, 1)    \

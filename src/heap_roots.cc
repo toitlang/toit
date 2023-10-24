@@ -44,14 +44,16 @@ static bool update_forwarding_pointers(Process* process, RootCallback* cb, Objec
       return false;  // Not a list or an array.
     }
   }
+  return true;
 }
 
-bool WeakMapFinalizerNode::process(bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
-  if (!oracle->has_active_finalizer(key_) {
+bool WeakMapFinalizerNode::weak_processing(bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
+  if (!oracle->has_active_finalizer(map())) {
     delete this;
     return true;  // Unlink me, the object no longer needs a finalizer.
   }
-  if (oracle->is_alive(key_)) {
+  Process* process = heap_->owner();
+  if (oracle->is_alive(map())) {
     roots_do(cb);
     if (!cb->aggressive()) {
       // Everything was already handled.
@@ -61,26 +63,24 @@ bool WeakMapFinalizerNode::process(bool in_closure_queue, RootCallback* cb, Live
     // not reachable by other ways.
     bool has_zapped = false;
     // We already visited the roots, so the key is updated to the destination.
-    Instance* map = Instance::cast(key_);
     // Update the pointer to the backing collection.
-    cb->do_root(reinterpret_cast<Object**>(map->root_at(Instance::MAP_BACKING_INDEX)));
-    Object* backing = map->at(Instance::MAP_BACKING_INDEX);
-    word size = Smit::cast(map->at(Instance::MAP_SIZE_INDEX))->value();
-    update_forwarding_pointers(process, backing, size);
+    cb->do_root(map()->root_at(Instance::MAP_BACKING_INDEX));
+    Object* backing = map()->at(Instance::MAP_BACKING_INDEX);
+    word size = Smi::value(Smi::cast(map()->at(Instance::MAP_SIZE_INDEX)));
+    update_forwarding_pointers(process, cb, backing, size);
     for (word i = 0; i < size; i += 2) {
       Object* key;
-      bool ok = Interpreter::fast_at(process, backing, i, false, &key);
+      bool ok = Interpreter::fast_at(process, backing, Smi::from(i), false, &key);
       ASSERT(ok);
       cb->do_root(reinterpret_cast<Object**>(&key));
-      ok = Interpreter::fast_at(process, backing, i, true, &key);  // Put back the key.
+      ok = Interpreter::fast_at(process, backing, Smi::from(i), true, &key);  // Put back the key.
       Object* value;
-      ok = Interpreter::fast_at(process, backing, i + 1, false, &value);
+      ok = Interpreter::fast_at(process, backing, Smi::from(i + 1), false, &value);
       ASSERT(ok);
-      if (oracle->is_alive(value)) {
+      if (is_heap_object(value) && oracle->is_alive(HeapObject::cast(value))) {
         cb->do_root(reinterpret_cast<Object**>(&value));
-
-
-    ...
+      }
+    }
     if (has_zapped) {
       if (in_closure_queue) {
         return false;  // Stay in the queue, processing is already scheduled.
@@ -94,11 +94,11 @@ bool WeakMapFinalizerNode::process(bool in_closure_queue, RootCallback* cb, Live
   // so that we can remove it from this list, even if it is revived (in that
   // case it has lost its weakness, but that's better than being marked weak
   // when it is not on the list, which would cause dangling pointers).
-  key_->clear_has_active_finalizer();
-  map->at_put(Instance::MAP_SIZE_INDEX, Smi::from(0));
-  map->at_put(Instance::MAP_SPACES_LEFT_INDEX, Smi::from(0));
-  map->at_put(Instance::MAP_INDEX_INDEX, program_->null_object());
-  map->at_put(Instance::MAP_BACKING_INDEX, program_->null_object());
+  map()->clear_has_active_finalizer();
+  map()->at_put(Instance::MAP_SIZE_INDEX, Smi::from(0));
+  map()->at_put(Instance::MAP_SPACES_LEFT_INDEX, Smi::from(0));
+  map()->at_put(Instance::MAP_INDEX_INDEX, process->null_object());
+  map()->at_put(Instance::MAP_BACKING_INDEX, process->null_object());
   delete this;
   return true;  // Unlink me.
 }
@@ -108,20 +108,20 @@ void ToitFinalizerNode::roots_do(RootCallback* cb) {
   cb->do_root(reinterpret_cast<Object**>(&lambda_));
 }
 
-bool ToitFinalizerNode::process(bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
+bool ToitFinalizerNode::weak_processing(bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
   if (in_closure_queue) {
     roots_do(cb);
     return false;  // Don't unlink me.
   }
-  if (!oracle->has_active_finalizer(key_) {
+  if (!oracle->has_active_finalizer(key())) {
     delete this;
     return true;  // Unlink me, the object no longer needs a finalizer.
   }
-  if (oracle->is_alive(key_)) {
-    do_roots(cb);
+  if (oracle->is_alive(key())) {
+    roots_do(cb);
     return false;  // Don't unlink me.
   }
-  key_->clear_has_active_finalizer();
+  key()->clear_has_active_finalizer();
   // Clear the key so it is not retained.
   key_ = heap_->program()->null_object();
   cb->do_root(reinterpret_cast<Object**>(&lambda_));
@@ -130,23 +130,21 @@ bool ToitFinalizerNode::process(bool in_closure_queue, RootCallback* cb, Livenes
   return true;  // Unlink me, I'm in the other list now.
 }
 
-VmFinalizerNode::~VmFinalizerNode() {}
-
 void VmFinalizerNode::roots_do(RootCallback* cb) {
   cb->do_root(reinterpret_cast<Object**>(&key_));
 }
 
-bool VmFinalizerNode::process(Process* process, bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
-  if (oracle->is_alive(key_)) {
+bool VmFinalizerNode::weak_processing(bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
+  if (oracle->is_alive(key())) {
     cb->do_root(reinterpret_cast<Object**>(&key_));
     return false;  // Don't unlink me.
   }
-  free_external_memory(process);
+  free_external_memory();
   delete this;
   return true;  // Unlink me.
 }
 
-void VmFinalizerNode::free_external_memory(Process* process) {
+void VmFinalizerNode::free_external_memory() {
   uint8* memory = null;
   word accounting_size = 0;
   if (is_byte_array(key())) {
@@ -168,7 +166,7 @@ void VmFinalizerNode::free_external_memory(Process* process) {
   if (memory != null) {
     if (Flags::allocation) printf("Deleting external memory for string %p\n", memory);
     free(memory);
-    process->unregister_external_allocation(accounting_size);
+    heap_->owner()->unregister_external_allocation(accounting_size);
   }
 }
 

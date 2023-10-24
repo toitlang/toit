@@ -31,58 +31,71 @@ typedef LinkedFifo<FinalizerNode> FinalizerNodeFifo;
 
 class FinalizerNode : public FinalizerNodeFifo::Element {
  public:
+  FinalizerNode(Object* key, ObjectHeap* heap) : key_(key), heap_(heap) {}
   virtual ~FinalizerNode();
 
   // Called at the end of compaction and at other times where all pointers
   // should be visited with no weakness/finalization processing.
   virtual void roots_do(RootCallback* cb) = 0;
   // Cleanup when a heap is deleted.
-  virtual bool heap_dying() {}
+  virtual void heap_dying() {}
   // Should return true if the node should be unlinked.
-  virtual bool process(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle) = 0;
+  virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle) = 0;
+
+ protected:
+  Object* key_;
+  ObjectHeap* heap_;
 };
 
-class WeakMapFinalizerNode: public FinalizerNode {
+class CallableFinalizerNode : public FinalizerNode {
  public:
-  WeakMapFinalizerNode(Instance* map, HeapObject* value, ObjectHeap* heap)
-    : key_(key), value_(value), heap_(heap) {}
+  CallableFinalizerNode(Object* key, Object* lambda, ObjectHeap* heap)
+    : FinalizerNode(key, heap), lambda_(lambda) {}
 
-  virtual void roots_do(RootCallback* cb) = 0;
-  virtual bool process(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle) = 0;
-};
-
-class ToitFinalizerNode : public FinalizerNode {
- public:
-  ToitFinalizerNode(HeapObject* key, Object* lambda, ObjectHeap* heap)
-    : key_(key), lambda_(lambda), heap_(heap) {}
-
-  HeapObject* key() { return key_; }
   Object* lambda() { return lambda_; }
 
-  virtual void roots_do(RootCallback* cb) = 0;
-  virtual bool process(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle) = 0;
+ protected:
+  Object* lambda_;
+};
+
+typedef LinkedFifo<CallableFinalizerNode> CallableFinalizerNodeFifo;
+
+class WeakMapFinalizerNode: public CallableFinalizerNode {
+ public:
+  WeakMapFinalizerNode(Instance* map, Object* lambda, ObjectHeap* heap)
+    : CallableFinalizerNode(map, lambda, heap) {}
+
+  virtual void roots_do(RootCallback* cb);
+  virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle);
 
  private:
-  HeapObject* key_;
-  Object* lambda_;
-  ObjectHeap* heap_;
+  Instance* map() { return Instance::cast(key_); }
+};
+
+class ToitFinalizerNode : public CallableFinalizerNode {
+ public:
+  ToitFinalizerNode(Instance* map, Object* lambda, ObjectHeap* heap)
+    : CallableFinalizerNode(map, lambda, heap) {}
+
+  virtual void roots_do(RootCallback* cb);
+  virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle);
+
+ private:
+  HeapObject* key() { return HeapObject::cast(key_); }
 };
 
 class VmFinalizerNode : public FinalizerNode {
  public:
   VmFinalizerNode(HeapObject* key, ObjectHeap* heap)
-    : key_(key), heap_(heap) {}
-  virtual ~VmFinalizerNode();
+    : FinalizerNode(key, heap) {}
 
-  virtual void roots_do(RootCallback* cb) = 0;
-  virtual bool heap_dying(Process* process) { free_external_memory(process); }
-  virtual bool process(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle) = 0;
+  virtual void roots_do(RootCallback* cb);
+  virtual void heap_dying() { free_external_memory(); }
+  virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle);
 
  private:
-  void free_external_memory(Process* process);
-
-  HeapObject* key_;
-  ObjectHeap* heap_;
+  HeapObject* key() { return HeapObject::cast(key_); }
+  void free_external_memory();
 };
 
 typedef DoubleLinkedList<ObjectNotifier> ObjectNotifierList;

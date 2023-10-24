@@ -1947,14 +1947,14 @@ PRIMITIVE(task_receive_message) {
 }
 
 PRIMITIVE(make_weak_map) {
-  ARGS(Instance, instance, Object closure);
+  ARGS(Instance, instance, Object, closure);
   ASSERT(!instance->can_be_toit_finalized(process->program()));
-  if (!instance->class_id() != process->program()->map_class_id()) FAIL(WRONG_OBJECT_TYPE);
+  if (instance->class_id() != process->program()->map_class_id()) FAIL(WRONG_OBJECT_TYPE);
   if (instance->has_active_finalizer()) FAIL(ALREADY_EXISTS);
   if (!instance->on_program_heap(process)) {
-    if (!process->object_heap()->add_weak_map_finalizer(instance, finalizer)) FAIL(MALLOC_FAILED);
+    if (!process->object_heap()->add_weak_map_finalizer(instance, closure)) FAIL(MALLOC_FAILED);
   }
-  return 
+  return process->null_object();
 }
 
 PRIMITIVE(add_finalizer) {
@@ -1962,11 +1962,12 @@ PRIMITIVE(add_finalizer) {
   if (!object->can_be_toit_finalized(process->program())) {
     FAIL(WRONG_OBJECT_TYPE);
   }
+  ASSERT(is_instance(object));  // Guaranteed by can_be_toit_finalized.
   // Objects on the program heap will never die, so it makes no difference
   // whether we have a finalizer on them.
   if (!object->on_program_heap(process)) {
     if (object->has_active_finalizer()) FAIL(ALREADY_EXISTS);
-    if (!process->object_heap()->add_toit_finalizer(object, finalizer)) FAIL(MALLOC_FAILED);
+    if (!process->object_heap()->add_toit_finalizer(Instance::cast(object), finalizer)) FAIL(MALLOC_FAILED);
   }
   return process->null_object();
 }

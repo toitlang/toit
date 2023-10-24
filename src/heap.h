@@ -74,10 +74,10 @@ class ObjectHeap {
   Double* allocate_double(double value);
   LargeInteger* allocate_large_integer(int64 value);
 
-  void queue_finalizer(ToitFinalizerNode* node) {
+  void queue_finalizer(CallableFinalizerNode* node) {
     runnable_finalizers_.append(node);
   }
-  void process_registered_toit_finalizers(RootCallback* ss, LivenessOracle* from_space);
+  void process_registered_callback_finalizers(RootCallback* ss, LivenessOracle* from_space);
   void process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space);
   void process_registered_finalizers_helper(FinalizerNodeFifo* list, RootCallback* ss, LivenessOracle* from_space);
 
@@ -130,7 +130,7 @@ class ObjectHeap {
   // Garbage collection operation for runtime objects.
   GcType gc(bool try_hard);
 
-  bool add_toit_finalizer(HeapObject* key, Object* lambda);
+  bool add_toit_finalizer(Instance* key, Object* lambda);
   bool add_weak_map_finalizer(Instance* map, Object* lambda);
   bool add_vm_finalizer(HeapObject* key);
 
@@ -204,8 +204,8 @@ class ObjectHeap {
   ObjectNotifierList object_notifiers_;
 
   // A Toit finalizer is on one of these lists.
-  FinalizerNodeFifo runnable_finalizers_;         // Contains finalizers that must be executed.
-  FinalizerNodeFifo registered_weak_handlers_;    // Toit finalizers and weak maps.
+  FinalizerNodeFifo runnable_finalizers_;  // Contains finalizers that must be executed.
+  FinalizerNodeFifo registered_callback_finalizers_;  // Toit finalizers and weak maps.
 
   // A VM finalizer is on this list.
   FinalizerNodeFifo registered_vm_finalizers_;
