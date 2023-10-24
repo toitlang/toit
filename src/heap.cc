@@ -345,6 +345,12 @@ void ObjectHeap::process_registered_finalizers_helper(FinalizerNodeFifo* list, R
   });
 }
 
+void ObjectHeap::iterate_finalization_roots(RootCallback* cb) {
+  for (auto finalizer : registered_callback_finalizers_) finalizer->roots_do(cb);
+  for (auto finalizer : registered_vm_finalizers_) finalizer->roots_do(cb);
+  for (auto finalizer : runnable_finalizers_) finalizer->roots_do(cb);
+}
+
 bool ObjectHeap::add_weak_map_finalizer(Instance* map, Object* lambda) {
   // We should already have checked whether the object is already registered.
   ASSERT(!map->can_be_toit_finalized(program()));

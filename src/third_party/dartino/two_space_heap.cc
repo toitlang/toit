@@ -472,11 +472,7 @@ void TwoSpaceHeap::compact_heap() {
   semi_space->iterate_objects(&new_space_visitor, old_space());
 
   process_heap_->iterate_roots(&fix);
-  // At this point dead objects have been cleared out of the finalizer lists.
-  EverythingIsAlive yes;
-  process_heap_->process_registered_callback_finalizers(&fix, &yes);
-  process_heap_->process_finalizer_queue(&fix, &yes);
-  process_heap_->process_registered_vm_finalizers(&fix, &yes);
+  process_heap_->iterate_finalization_roots(&fix);
 
   semi_space->clear_mark_bits();
   old_space()->clear_mark_bits();

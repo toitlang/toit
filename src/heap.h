@@ -81,6 +81,8 @@ class ObjectHeap {
   void process_finalizer_queue(RootCallback* cb, LivenessOracle* oracle);
   void process_registered_vm_finalizers(RootCallback* cb, LivenessOracle* oracle);
 
+  void iterate_finalization_roots(RootCallback* cb);
+
   Program* program() const { return program_; }
 
   int64 total_bytes_allocated() const { return total_external_memory_ + two_space_heap_.total_bytes_allocated(); }
