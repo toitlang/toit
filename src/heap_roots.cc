@@ -64,10 +64,6 @@ static bool recursive_zap_dead_values(Program* program, Object* backing_array_ob
 }
 
 static bool zap_dead_values(Program* program, Instance* map, RootCallback* cb, LivenessOracle* oracle) {
-  // Update the pointer to the backing collection - this was skipped when
-  // the map was visited because we were in aggressive mode.  This ensures
-  // that the backing is pushed on the marking stack.
-  cb->do_root(map->root_at(Instance::MAP_BACKING_INDEX));
   // If we ever allow agressive mode on scavenges we will have to start
   // using roots_do on the objects that hold the backing (list, arrays, large
   // arrays) so that we get the new location of the collections we are zapping
@@ -83,6 +79,21 @@ static bool zap_dead_values(Program* program, Instance* map, RootCallback* cb, L
   return has_zapped;
 }
 
+class MarkingShim : public RootCallback {
+ public:
+  MarkingShim(RootCallback* cb) : cb_(cb) {}
+  virtual void do_roots(Object** roots, int length) {
+    cb_->do_roots(roots, length);
+  }
+  virtual bool shrink_stacks() const { UNREACHABLE(); }
+  virtual bool skip_marking(HeapObject* object) const {
+    return false;  // Always mark.
+  }
+
+ private:
+  RootCallback* cb_;
+};
+
 bool WeakMapFinalizerNode::weak_processing(bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
   if (!oracle->has_active_finalizer(key_)) {
     delete this;
@@ -93,13 +104,18 @@ bool WeakMapFinalizerNode::weak_processing(bool in_closure_queue, RootCallback* 
   if (oracle->is_alive(key_)) {
     // In scavenges this will update this node's map pointer to the new location.
     roots_do(cb);
-    if (!cb->aggressive()) {
+    if (!cb->skip_marking(map())) {
       // Not zapping weak pointers in this GC.
       return false;  // Don't unlink me.
     }
-    // We are in aggressive mode, so the normal marking or scavenging did not
+    // We are in map cleaning mode, so the normal marking or scavenging did not
     // necessarily process the backing.  We need to zap values in the map that
     // are not reachable by other ways.
+    // We skipped the visiting of the map members during the initial marking
+    // phase, otherwise the values would already be marked reachable.  But we
+    // need to do that now, so that the backing and index are marked live.
+    MarkingShim shim(cb);
+    map()->roots_do(program, &shim);
     bool has_zapped = zap_dead_values(program, map(), cb, oracle);
     if (has_zapped) {
       if (in_closure_queue) {

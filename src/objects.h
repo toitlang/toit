@@ -197,7 +197,7 @@ class RootCallback {
   void do_root(Object** root) { do_roots(root, 1); }
   virtual void do_roots(Object** roots, int length) = 0;
   virtual bool shrink_stacks() const { return false; }
-  virtual bool aggressive() const { return false; }
+  virtual bool skip_marking(HeapObject* object) const { return false; }
 };
 
 // Note that these enum numbers must match the constants (called TAG) found in
@@ -1399,7 +1399,7 @@ class Instance : public HeapObject {
   // Fills instance fields with Smi zero.
   void initialize(int instance_size);
 
-  void roots_do(int instance_size, RootCallback* cb);
+  void instance_roots_do(int instance_size, RootCallback* cb);
 
 #ifndef TOIT_FREERTOS
   void write_content(int instance_size, SnapshotWriter* st);

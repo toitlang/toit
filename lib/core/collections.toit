@@ -2627,7 +2627,19 @@ class Map extends HashedInsertionOrderedCollection_:
   */
   constructor.weak:
     super
-    make-map-weak_ this
+    make-weak-map_ this::
+      length := backing_.size
+      for position := 0; position < length; position += 2:
+        key := backing_[position]
+        value := backing_[position + 1]
+        if key is not Tombstone_:
+          if value == null:
+            backing_[position] = SMALL-TOMBSTONE_
+            backing_[position + 1] = SMALL-TOMBSTONE_
+            size_--
+
+  static make-weak-map_ map/Map lambda/Object -> none:
+    #primitive.core.make-weak-map
 
   /**
   Constructs a Map with a given $size.

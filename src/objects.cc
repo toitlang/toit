@@ -123,7 +123,7 @@ void HeapObject::roots_do(Program* program, RootCallback* cb) {
       break;
     case TypeTag::TASK_TAG:
     case TypeTag::INSTANCE_TAG:
-      Instance::cast(this)->roots_do(program->instance_size_for(this), cb);
+      Instance::cast(this)->instance_roots_do(program->instance_size_for(this), cb);
       break;
     case TypeTag::STRING_TAG:
     case TypeTag::ODDBALL_TAG:
@@ -330,7 +330,8 @@ int Stack::frames_do(Program* program, FrameCallback* cb) {
   return frame_no;
 }
 
-void Instance::roots_do(int instance_size, RootCallback* cb) {
+void Instance::instance_roots_do(int instance_size, RootCallback* cb) {
+  if (has_active_finalizer() && cb->skip_marking(this)) return;
   int fields = fields_from_size(instance_size);
   cb->do_roots(_root_at(_offset_from(0)), fields);
 }

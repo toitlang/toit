@@ -250,6 +250,8 @@ class Space : public LivenessOracle {
 
   void validate_before_mark_sweep(PageType page_type, bool object_starts_should_be_clear);
 
+  Program* program() const { return program_; }
+
  protected:
   Space(Program* program, Resizing resizeable, PageType page_type);
 

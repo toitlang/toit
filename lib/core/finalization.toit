@@ -27,13 +27,6 @@ An arbitrary amount of time may pass from the $object becomes unreachable and
 add-finalizer object lambda -> none:
   #primitive.core.add-finalizer
 
-make-map-weak_ map/Map -> none:
-  make-weak-map_ map::
-    print "Weak map callback called on $map"
-
-make-weak-map_ map/Map lambda/Object -> none:
-  #primitive.core.make-weak-map
-
 /**
 Unregisters the finalizer registered for $object.
 Returns whether the object had a finalizer.

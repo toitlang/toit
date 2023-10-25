@@ -48,7 +48,8 @@ class MarkingStack {
 class MarkingVisitor : public RootCallback {
  public:
   MarkingVisitor(SemiSpace* new_space, MarkingStack* marking_stack)
-      : new_space_address_(new_space->single_chunk_start()),
+      : program_(new_space->program()),
+        new_space_address_(new_space->single_chunk_start()),
         new_space_size_(new_space->size()),
         marking_stack_(marking_stack) {}
 
@@ -60,8 +61,14 @@ class MarkingVisitor : public RootCallback {
 
   bool shrink_stacks() const override { return true; }
 
+  // Should we skip marking of a weak map.
   // TODO - only when forced to compact.
-  bool aggressive() const override { return true; }
+  bool skip_marking(HeapObject* object) const override {
+    if (!object->has_active_finalizer()) return false;
+    if (!is_instance(object)) return false;
+    if (object->class_id() != program_->map_class_id()) return false;
+    return true;
+  }
 
  private:
   void INLINE mark_pointer(Object* object) {
@@ -72,6 +79,7 @@ class MarkingVisitor : public RootCallback {
     }
   }
 
+  Program* program_;
   uword new_space_address_;
   uword new_space_size_;
   MarkingStack* marking_stack_;
