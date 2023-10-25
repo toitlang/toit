@@ -2625,7 +2625,8 @@ class Map extends HashedInsertionOrderedCollection_:
   Constructs a weak map where the values may be replaced by null when there is
     memory pressure.
   A cleanup task may remove keys whose values are null at some later point, but
-    your program should not rely on this.
+    your program should not rely on this.  This cleanup task will also remove
+    key-value pairs where the value was deliberately set to null.
   */
   constructor.weak:
     super
