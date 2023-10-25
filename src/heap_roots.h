@@ -54,6 +54,8 @@ class CallableFinalizerNode : public FinalizerNode {
 
   Object* lambda() { return lambda_; }
 
+  virtual bool keep_after_callback() const = 0;
+
  protected:
   Object* lambda_;
 };
@@ -68,6 +70,8 @@ class WeakMapFinalizerNode: public CallableFinalizerNode {
   virtual void roots_do(RootCallback* cb);
   virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle);
 
+  virtual bool keep_after_callback() const { return true; }
+
  private:
   Instance* map() { return Instance::cast(key_); }
 };
@@ -79,6 +83,7 @@ class ToitFinalizerNode : public CallableFinalizerNode {
 
   virtual void roots_do(RootCallback* cb);
   virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle);
+  virtual bool keep_after_callback() const { return false; }
 };
 
 class VmFinalizerNode : public FinalizerNode {

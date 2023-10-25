@@ -394,7 +394,11 @@ Object* ObjectHeap::next_finalizer_to_run() {
   }
 
   Object* result = node->lambda();
-  delete node;
+  if (node->keep_after_callback()) {
+    registered_callback_finalizers_.prepend(node);
+  } else {
+    delete node;
+  }
   return result;
 }
 
