@@ -351,24 +351,18 @@ void ObjectHeap::iterate_finalization_roots(RootCallback* cb) {
   for (auto finalizer : runnable_finalizers_) finalizer->roots_do(cb);
 }
 
-bool ObjectHeap::add_weak_map_finalizer(Instance* map, Object* lambda) {
+bool ObjectHeap::add_callable_finalizer(Instance* key, Object* lambda, bool weak_map) {
   // We should already have checked whether the object is already registered.
-  ASSERT(!map->can_be_toit_finalized(program()));
-  ASSERT(!map->has_active_finalizer());
-  auto node = _new WeakMapFinalizerNode(map, lambda, this);
-  if (node == null) return false;  // Allocation failed.
-  // Add it at the head of the list in case there is an old finalizer lower
-  // down on the list.
-  registered_callback_finalizers_.prepend(node);
-  map->set_has_active_finalizer();
-  return true;
-}
-
-bool ObjectHeap::add_toit_finalizer(Instance* key, Object* lambda) {
-  // We should already have checked whether the object is already registered.
-  ASSERT(key->can_be_toit_finalized(program()));
-  ASSERT(!key->has_active_finalizer());
-  auto node = _new ToitFinalizerNode(key, lambda, this);
+  CallableFinalizerNode* node;
+  if (weak_map) {
+    ASSERT(!key->can_be_toit_finalized(program()));
+    ASSERT(!key->has_active_finalizer());
+    node = _new WeakMapFinalizerNode(key, lambda, this);
+  } else {
+    ASSERT(key->can_be_toit_finalized(program()));
+    ASSERT(!key->has_active_finalizer());
+    node = _new ToitFinalizerNode(key, lambda, this);
+  }
   if (node == null) return false;  // Allocation failed.
   // Add it at the head of the list in case there is an old finalizer lower
   // down on the list.

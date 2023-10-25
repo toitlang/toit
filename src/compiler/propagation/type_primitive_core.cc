@@ -225,7 +225,6 @@ TYPE_PRIMITIVE_BYTE_ARRAY(encode_error)
 TYPE_PRIMITIVE_SMI(word_size)
 TYPE_PRIMITIVE_NULL(rebuild_hash_index)
 TYPE_PRIMITIVE_NULL(add_finalizer)
-TYPE_PRIMITIVE_NULL(make_weak_map)
 TYPE_PRIMITIVE_BOOL(remove_finalizer)
 TYPE_PRIMITIVE_BYTE_ARRAY(create_off_heap_byte_array)  // TODO(kasper): Should we try to get rid of this?
 TYPE_PRIMITIVE_INT(crc)

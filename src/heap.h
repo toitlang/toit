@@ -132,8 +132,7 @@ class ObjectHeap {
   // Garbage collection operation for runtime objects.
   GcType gc(bool try_hard);
 
-  bool add_toit_finalizer(Instance* key, Object* lambda);
-  bool add_weak_map_finalizer(Instance* map, Object* lambda);
+  bool add_callable_finalizer(Instance* key, Object* lambda, bool make_weak);
   bool add_vm_finalizer(HeapObject* key);
 
   bool has_finalizer_to_run() const { return !runnable_finalizers_.is_empty(); }
