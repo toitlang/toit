@@ -2615,15 +2615,17 @@ See also https://docs.toit.io/language/listsetmap.
 class Map extends HashedInsertionOrderedCollection_:
   static STEP_ ::= 2
 
-  // A map that only works with strings, integers, and objects supporting hash_code and equals.
+  /**
+  Constructs an empty map.
+  */
   constructor:
     super
 
   /**
-  A weak map where the values may be replaced by null when there is memory
-    pressure.
-  A cleanup task may remove keys whose values are null at some
-    later point, but your program should not rely on this.
+  Constructs a weak map where the values may be replaced by null when there is
+    memory pressure.
+  A cleanup task may remove keys whose values are null at some later point, but
+    your program should not rely on this.
   */
   constructor.weak:
     super

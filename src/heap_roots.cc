@@ -52,7 +52,7 @@ static bool recursive_zap_dead_values(Program* program, Object* backing_array_ob
     if (class_id != program->large_array_class_id()) return false;  // Defensive.
     Instance* instance = Instance::cast(backing_array_object);
     Object* vector_object = instance->at(Instance::LARGE_ARRAY_VECTOR_INDEX);
-    if (is_array(vector_object)) return false;  // Defensive.
+    if (!is_array(vector_object)) return false;  // Defensive.
     Array* vector = Array::cast(vector_object);
     int size = vector->length();
     for (int i = 0; i < size; i++) {
