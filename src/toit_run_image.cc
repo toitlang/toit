@@ -21,6 +21,7 @@
 #include "process.h"
 #include "flash_registry.h"
 #include "interpreter.h"
+#include "messaging.h"
 #include "scheduler.h"
 #include "vm.h"
 #include "os.h"
@@ -48,6 +49,7 @@ static int run_program(Program* program) {
       VM vm;
       vm.load_platform_event_sources();
       int group_id = vm.scheduler()->next_group_id();
+      create_and_start_external_message_handlers(&vm);
       exit = vm.scheduler()->run_boot_program(program, null, group_id);
     }
     switch (exit.reason) {

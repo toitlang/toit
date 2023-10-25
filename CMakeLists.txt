@@ -97,6 +97,7 @@ endif()
 set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wall -ffunction-sections -fdata-sections")
 
 include_directories(
+  "${TOIT_SDK_SOURCE_DIR}/include"
   "${IDF_PATH}/components/mbedtls/mbedtls/include"
   )
 
