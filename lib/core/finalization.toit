@@ -26,7 +26,7 @@ An arbitrary amount of time may pass from the $object becomes unreachable and
 */
 add-finalizer object lambda -> none:
   if object is Map: throw "WRONG_OBJECT_TYPE"
-  return add-gc-processing_ object lambda
+  add-gc-processing_ object lambda
 
 add-gc-processing_ object lambda -> none:
   #primitive.core.add-finalizer

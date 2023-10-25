@@ -64,7 +64,7 @@ static bool recursive_zap_dead_values(Program* program, Object* backing_array_ob
 }
 
 static bool zap_dead_values(Program* program, Instance* map, RootCallback* cb, LivenessOracle* oracle) {
-  // If we ever allow agressive mode on scavenges we will have to start
+  // If we ever allow weak map zapping on scavenges we will have to start
   // using roots_do on the objects that hold the backing (list, arrays, large
   // arrays) so that we get the new location of the collections we are zapping
   // entries in.  Mark-sweep-compact does not move objects until later, so we

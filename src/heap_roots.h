@@ -69,7 +69,6 @@ class WeakMapFinalizerNode: public CallableFinalizerNode {
 
   virtual void roots_do(RootCallback* cb);
   virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle);
-
   virtual bool keep_after_callback() const { return true; }
 
  private:
