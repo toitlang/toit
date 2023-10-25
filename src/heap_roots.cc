@@ -51,11 +51,10 @@ static bool recursive_zap_dead_values(Program* program, Object* backing_array_ob
     Smi* class_id = HeapObject::cast(backing_array_object)->class_id();
     if (class_id != program->large_array_class_id()) return false;  // Defensive.
     Instance* instance = Instance::cast(backing_array_object);
-    Object* size_object = instance->at(Instance::LARGE_ARRAY_SIZE_INDEX);
     Object* vector_object = instance->at(Instance::LARGE_ARRAY_VECTOR_INDEX);
-    if (!is_smi(size_object) || !is_array(vector_object)) return false;  // Defensive.
-    word size = Smi::value(Smi::cast(size_object));
+    if (is_array(vector_object)) return false;  // Defensive.
     Array* vector = Array::cast(vector_object);
+    int size = vector->length();
     for (int i = 0; i < size; i++) {
       bool arraylet_had_zaps = recursive_zap_dead_values(program, vector->at(i), oracle);
       if (arraylet_had_zaps) has_zapped = true;
@@ -85,13 +84,13 @@ static bool zap_dead_values(Program* program, Instance* map, RootCallback* cb, L
 }
 
 bool WeakMapFinalizerNode::weak_processing(bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
-  if (!oracle->has_active_finalizer(map())) {
+  if (!oracle->has_active_finalizer(key_)) {
     delete this;
     return true;  // Unlink me, the object no longer needs a finalizer.
   }
   Process* process = heap_->owner();
   Program* program = process->program();
-  if (oracle->is_alive(map())) {
+  if (oracle->is_alive(key_)) {
     // In scavenges this will update this node's map pointer to the new location.
     roots_do(cb);
     if (!cb->aggressive()) {
@@ -134,15 +133,15 @@ bool ToitFinalizerNode::weak_processing(bool in_closure_queue, RootCallback* cb,
     roots_do(cb);
     return false;  // Don't unlink me.
   }
-  if (!oracle->has_active_finalizer(key())) {
+  if (!oracle->has_active_finalizer(key_)) {
     delete this;
     return true;  // Unlink me, the object no longer needs a finalizer.
   }
-  if (oracle->is_alive(key())) {
+  if (oracle->is_alive(key_)) {
     roots_do(cb);
     return false;  // Don't unlink me.
   }
-  key()->clear_has_active_finalizer();
+  key_->clear_has_active_finalizer();
   // Clear the key so it is not retained.
   key_ = heap_->program()->null_object();
   cb->do_root(reinterpret_cast<Object**>(&lambda_));
@@ -157,11 +156,11 @@ void VmFinalizerNode::roots_do(RootCallback* cb) {
 
 bool VmFinalizerNode::weak_processing(bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
   ASSERT(!in_closure_queue);
-  if (!oracle->has_active_finalizer(key())) {
+  if (!oracle->has_active_finalizer(key_)) {
     delete this;
     return true;  // Unlink me, the object no longer needs a finalizer.
   }
-  if (oracle->is_alive(key())) {
+  if (oracle->is_alive(key_)) {
     cb->do_root(reinterpret_cast<Object**>(&key_));
     return false;  // Don't unlink me.
   }
@@ -173,8 +172,8 @@ bool VmFinalizerNode::weak_processing(bool in_closure_queue, RootCallback* cb, L
 void VmFinalizerNode::free_external_memory() {
   uint8* memory = null;
   word accounting_size = 0;
-  if (is_byte_array(key())) {
-    ByteArray* byte_array = ByteArray::cast(key());
+  if (is_byte_array(key_)) {
+    ByteArray* byte_array = ByteArray::cast(key_);
     if (byte_array->external_tag() == MappedFileTag) return;  // TODO(erik): release mapped file, so flash storage can be reclaimed.
     ASSERT(byte_array->has_external_address());
     ByteArray::Bytes bytes(byte_array);
@@ -183,8 +182,8 @@ void VmFinalizerNode::free_external_memory() {
     // Accounting size is 0 if the byte array is tagged, since we don't account
     // memory for Resources etc.
     ASSERT(byte_array->external_tag() == RawByteTag || byte_array->external_tag() == NullStructTag);
-  } else if (is_string(key())) {
-    String* string = String::cast(key());
+  } else if (is_string(key_)) {
+    String* string = String::cast(key_);
     memory = string->as_external();
     // Add one because the strings are allocated with a null termination byte.
     accounting_size = string->length() + 1;

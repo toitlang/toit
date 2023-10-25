@@ -44,6 +44,9 @@ void OldSpace::flush() {
 }
 
 bool OldSpace::is_alive(HeapObject* old_location) {
+  // Objects like null are in the program space and live forever.
+  if (!GcMetadata::in_new_or_old_space(old_location)) return true;
+
   // We can't assert that the object is in old-space, because
   // at the end of a mark-sweep the new-space objects are also
   // marked and can be checked for liveness.  The finalizers

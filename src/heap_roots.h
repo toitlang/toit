@@ -31,7 +31,7 @@ typedef LinkedFifo<FinalizerNode> FinalizerNodeFifo;
 
 class FinalizerNode : public FinalizerNodeFifo::Element {
  public:
-  FinalizerNode(Object* key, ObjectHeap* heap) : key_(key), heap_(heap) {}
+  FinalizerNode(HeapObject* key, ObjectHeap* heap) : key_(key), heap_(heap) {}
   virtual ~FinalizerNode();
 
   // Called at the end of compaction and at other times where all pointers
@@ -43,13 +43,13 @@ class FinalizerNode : public FinalizerNodeFifo::Element {
   virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle) = 0;
 
  protected:
-  Object* key_;
+  HeapObject* key_;
   ObjectHeap* heap_;
 };
 
 class CallableFinalizerNode : public FinalizerNode {
  public:
-  CallableFinalizerNode(Object* key, Object* lambda, ObjectHeap* heap)
+  CallableFinalizerNode(HeapObject* key, Object* lambda, ObjectHeap* heap)
     : FinalizerNode(key, heap), lambda_(lambda) {}
 
   Object* lambda() { return lambda_; }
@@ -79,9 +79,6 @@ class ToitFinalizerNode : public CallableFinalizerNode {
 
   virtual void roots_do(RootCallback* cb);
   virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle);
-
- private:
-  HeapObject* key() { return HeapObject::cast(key_); }
 };
 
 class VmFinalizerNode : public FinalizerNode {
@@ -94,7 +91,6 @@ class VmFinalizerNode : public FinalizerNode {
   virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle);
 
  private:
-  HeapObject* key() { return HeapObject::cast(key_); }
   void free_external_memory();
 };
 

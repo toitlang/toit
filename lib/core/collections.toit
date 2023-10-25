@@ -2620,6 +2620,16 @@ class Map extends HashedInsertionOrderedCollection_:
     super
 
   /**
+  A weak map where the values may be replaced by null when there is memory
+    pressure.
+  A cleanup task may remove keys whose values are null at some
+    later point, but your program should not rely on this.
+  */
+  constructor.weak:
+    super
+    make-map-weak_ this
+
+  /**
   Constructs a Map with a given $size.
   For each key-value pair, first the block $get-key and then the block $get-value are called.
   */

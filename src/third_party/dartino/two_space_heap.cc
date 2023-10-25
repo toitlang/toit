@@ -440,12 +440,6 @@ class HeapObjectPointerVisitor : public HeapObjectVisitor {
   RootCallback* visitor_;
 };
 
-class EverythingIsAlive : public LivenessOracle {
- public:
-  bool is_alive(HeapObject* object) override { return true; }
-  bool has_active_finalizer(HeapObject* object) override { return true; }
-};
-
 void TwoSpaceHeap::compact_heap() {
   SemiSpace* semi_space = new_space();
 
