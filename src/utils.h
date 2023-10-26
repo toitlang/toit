@@ -216,6 +216,12 @@ class Utils {
   }
 
   template<typename T>
+  static inline uint16 read_unaligned_uint16_be(T* ptr) {
+    uint16 le = read_unaligned_uint16(ptr);
+    return (le >> 8) | (le << 8);
+  }
+
+  template<typename T>
   static inline void write_unaligned_uint16(T* ptr, uint16 value) {
     memcpy(ptr, &value, sizeof(value));
   }
@@ -224,6 +230,12 @@ class Utils {
   template<typename T>
   static inline uint32 read_unaligned_uint32_le(T* ptr) {
     return read_unaligned_uint32(ptr);
+  }
+
+  template<typename T>
+  static inline uint32 read_unaligned_uint32_be(T* ptr) {
+    uint32 le = read_unaligned_uint32(ptr);
+    return (le >> 24) | ((le >> 8) & 0xff00) | ((le << 8) & 0xff0000) | (le << 24);
   }
 
   template<typename T>

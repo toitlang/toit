@@ -240,7 +240,7 @@ class OS {
   // the origin of allocations on the current thread.
   static void set_heap_tag(word tag);
   static word get_heap_tag();
-  static void heap_summary_report(int max_pages, const char* marker);
+  static void heap_summary_report(int max_pages, const char* marker, Process* process);
 
   // Returns a malloced string.
   static char* getenv(const char* variable);
