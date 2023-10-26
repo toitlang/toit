@@ -736,11 +736,17 @@ class HeapSummaryCollector {
 
     int size = 0;
     int count = 0;
+    uword metadata_location, metadata_size;
+    GcMetadata::get_metadata_extent(&metadata_location, &metadata_size);
     for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
       // Leave out free space and allocation types with no allocations.
       if (i == FREE_MALLOC_TAG || sizes_[i] == 0) continue;
+      auto this_size = sizes_[i];
+      if (i == TOIT_HEAP_MALLOC_TAG) {
+        this_size -= TOIT_PAGE_SIZE + metadata_size;
+      }
       printf("  │ %7d   │ %6d   │  %-50s │\n",
-          sizes_[i], counts_[i], HeapSummaryPage::name_of_type(i));
+          this_size, counts_[i], HeapSummaryPage::name_of_type(i));
       size += sizes_[i];
       // The reported overhead isn't really separate allocations, so
       // don't count them as such.
@@ -769,8 +775,6 @@ class HeapSummaryCollector {
                 uuid_buffer);
           }
         }
-        uword metadata_location, metadata_size;
-        GcMetadata::get_metadata_extent(&metadata_location, &metadata_size);
         printf("  │ %7d   │      1   │  heap metadata                                      │\n"
                "  │ %7d   │      1   │  spare new-space                                    │\n",
                static_cast<int>(metadata_size),
