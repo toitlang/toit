@@ -283,7 +283,8 @@ bool OS::set_real_time(struct timespec* time) {
 
 void OS::heap_summary_report(int max_pages, const char* marker, Process* process) {
   const uint8* uuid = process->program()->id();
-  fprintf(stderr, "Out of memory: %08x-%04x-%04x-%04x-%04x%08x.\n",
+  fprintf(stderr, "Out of memory process %d: %08x-%04x-%04x-%04x-%04x%08x.\n",
+      process->id(),
       static_cast<int>(Utils::read_unaligned_uint32_be(uuid)),
       static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 4)),
       static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 6)),

@@ -649,7 +649,9 @@ class HeapSummaryPage {
 
 class HeapSummaryCollector {
  public:
-  explicit HeapSummaryCollector(int max_pages) : max_pages_(max_pages) {
+  HeapSummaryCollector(int max_pages, Process* current_process)
+      : current_process_(current_process)
+      , max_pages_(max_pages) {
     if (max_pages > 0) {
       pages_ = _new HeapSummaryPage[max_pages];
       out_of_memory_ = (pages_ == null);
@@ -750,6 +752,8 @@ class HeapSummaryCollector {
           if (processes_[j]) {
             const uint8* uuid = processes_[j]->program()->id();
             char uuid_buffer[37];
+            bool is_system = VM::current()->scheduler()->is_boot_process(processes_[j]);
+            bool is_current = current_process_ == processes_[j];
             sprintf(uuid_buffer, "%08x-%04x-%04x-%04x-%04x%08x",
                 static_cast<int>(Utils::read_unaligned_uint32_be(uuid)),
                 static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 4)),
@@ -757,9 +761,10 @@ class HeapSummaryCollector {
                 static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 8)),
                 static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 10)),
                 static_cast<int>(Utils::read_unaligned_uint32_be(uuid + 12)));
-            printf("  │   %7d │   %6d │    process%4d %s │\n",
+            printf("  │   %7d │   %6d │    %s%4d %s │\n",
                 static_cast<int>(toit_memory_[j]),
                 static_cast<int>(toit_memory_[j] / TOIT_PAGE_SIZE),
+                is_system ? "system " : is_current ? "current" : "process",
                 processes_[j]->id(),
                 uuid_buffer);
           }
@@ -806,6 +811,7 @@ class HeapSummaryCollector {
   uword counts_[NUMBER_OF_MALLOC_TAGS];
   uword toit_memory_[MAX_PROCESSES];
   Process* processes_[MAX_PROCESSES];
+  Process* current_process_;
   const int max_pages_;
   int dropped_pages_ = 0;
   bool out_of_memory_ = false;
@@ -818,7 +824,7 @@ bool register_allocation(void* self, void* tag, void* address, uword size) {
 }
 
 void OS::heap_summary_report(int max_pages, const char* marker, Process* process) {
-  HeapSummaryCollector collector(max_pages);
+  HeapSummaryCollector collector(max_pages, process);
   if (collector.out_of_memory()) {
     printf("Not enough memory for a heap report (%d bytes)\n", static_cast<int>(collector.allocation_requirement()));
     return;
