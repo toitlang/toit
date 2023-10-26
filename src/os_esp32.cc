@@ -728,16 +728,16 @@ class HeapSummaryCollector {
     } else {
       printf("Heap report:\n");
     }
-    printf("  ┌───────────┬──────────┬───────────────────────┐\n");
-    printf("  │   Bytes   │  Count   │  Type                 │\n");
-    printf("  ├───────────┼──────────┼───────────────────────┤\n");
+    printf("  ┌───────────┬──────────┬─────────────────────────────────────────────────────┐\n");
+    printf("  │   Bytes   │  Count   │  Type                                               │\n");
+    printf("  ├───────────┼──────────┼─────────────────────────────────────────────────────┤\n");
 
     int size = 0;
     int count = 0;
     for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
       // Leave out free space and allocation types with no allocations.
       if (i == FREE_MALLOC_TAG || sizes_[i] == 0) continue;
-      printf("  │ %7d   │ %6d   │  %-20s │\n",
+      printf("  │ %7d   │ %6d   │  %-50s │\n",
           sizes_[i], counts_[i], HeapSummaryPage::name_of_type(i));
       size += sizes_[i];
       // The reported overhead isn't really separate allocations, so
@@ -748,16 +748,26 @@ class HeapSummaryCollector {
       if (i == TOIT_HEAP_MALLOC_TAG) {
         for (int j = 0; j < MAX_PROCESSES; j++) {
           if (processes_[j]) {
-            printf("  │   %7d │   %6d │    process %p │\n",
+            const uint8* uuid = processes_[j]->program()->id();
+            char uuid_buffer[37];
+            sprintf(uuid_buffer, "%08x-%04x-%04x-%04x-%04x%08x",
+                static_cast<int>(Utils::read_unaligned_uint32_be(uuid)),
+                static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 4)),
+                static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 6)),
+                static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 8)),
+                static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 10)),
+                static_cast<int>(Utils::read_unaligned_uint32_be(uuid + 12)));
+            printf("  │   %7d │   %6d │    process%4d %s │\n",
                 static_cast<int>(toit_memory_[j]),
                 static_cast<int>(toit_memory_[j] / TOIT_PAGE_SIZE),
-                processes_[j]);
+                processes_[j]->id(),
+                uuid_buffer);
           }
         }
         uword metadata_location, metadata_size;
         GcMetadata::get_metadata_extent(&metadata_location, &metadata_size);
-        printf("  │   %7d │        1 │    GC heap metadata   │\n"
-               "  │   %7d │        1 │    Spare new-space    │\n",
+        printf("  │   %7d │        1 │    GC heap metadata                                 │\n"
+               "  │   %7d │        1 │    Spare new-space                                  │\n",
                static_cast<int>(metadata_size),
                TOIT_PAGE_SIZE);
       }
@@ -768,7 +778,7 @@ class HeapSummaryCollector {
     heap_caps_get_info(&info, caps);
     int capacity_bytes = info.total_allocated_bytes + info.total_free_bytes;
     int used_bytes = size * 100 / capacity_bytes;
-    printf("  └───────────┴──────────┴───────────────────────┘\n");
+    printf("  └───────────┴──────────┴─────────────────────────────────────────────────────┘\n");
     printf("  Total: %d bytes in %d allocations (%d%%), largest free %dk, total free %dk\n",
         size, count, used_bytes,
         static_cast<int>(info.largest_free_block >> 10),
@@ -807,7 +817,7 @@ bool register_allocation(void* self, void* tag, void* address, uword size) {
   return false;
 }
 
-void OS::heap_summary_report(int max_pages, const char* marker) {
+void OS::heap_summary_report(int max_pages, const char* marker, Process* process) {
   HeapSummaryCollector collector(max_pages);
   if (collector.out_of_memory()) {
     printf("Not enough memory for a heap report (%d bytes)\n", static_cast<int>(collector.allocation_requirement()));
@@ -824,7 +834,7 @@ void OS::heap_summary_report(int max_pages, const char* marker) {
 
 void OS::set_heap_tag(word tag) {}
 word OS::get_heap_tag() { return 0; }
-void OS::heap_summary_report(int max_pages, const char* marker) {}
+void OS::heap_summary_report(int max_pages, const char* marker, Process* process) {}
 
 #endif // def TOIT_CMPCTMALLOC
 

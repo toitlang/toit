@@ -18,6 +18,8 @@
 #ifdef TOIT_POSIX
 
 #include "os.h"
+#include "process.h"
+#include "program.h"
 #include "utils.h"
 #include "uuid.h"
 #include "vm.h"
@@ -277,6 +279,17 @@ bool OS::unsetenv(const char* variable) {
 
 bool OS::set_real_time(struct timespec* time) {
   FATAL("cannot set the time");
+}
+
+void OS::heap_summary_report(int max_pages, const char* marker, Process* process) {
+  const uint8* uuid = process->program()->id();
+  fprintf(stderr, "Out of memory: %08x-%04x-%04x-%04x-%04x%08x.\n",
+      static_cast<int>(Utils::read_unaligned_uint32_be(uuid)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 4)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 6)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 8)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 10)),
+      static_cast<int>(Utils::read_unaligned_uint32_be(uuid + 12)));
 }
 
 ProtectableAlignedMemory::~ProtectableAlignedMemory() {

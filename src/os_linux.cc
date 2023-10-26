@@ -143,8 +143,6 @@ word OS::get_heap_tag() { return 0; }
 
 #endif // def TOIT_CMPCTMALLOC
 
-void OS::heap_summary_report(int max_pages, const char* marker) {}
-
 }
 
 #endif // TOIT_LINUX
