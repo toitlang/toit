@@ -619,7 +619,7 @@ class HeapSummaryPage {
       case EXTERNAL_BYTE_ARRAY_MALLOC_TAG: return "external byte array";
       case BIGNUM_MALLOC_TAG: return "tls/bignum";
       case EXTERNAL_STRING_MALLOC_TAG: return "external string";
-      case TOIT_HEAP_MALLOC_TAG: return "toit";
+      case TOIT_HEAP_MALLOC_TAG: return "toit processes";
       case FREE_MALLOC_TAG: return "free";
       case LWIP_MALLOC_TAG: return "lwip";
       case HEAP_OVERHEAD_MALLOC_TAG: return "heap overhead";
@@ -764,15 +764,15 @@ class HeapSummaryCollector {
             printf("  │   %7d │   %6d │    %s%4d %s │\n",
                 static_cast<int>(toit_memory_[j]),
                 static_cast<int>(toit_memory_[j] / TOIT_PAGE_SIZE),
-                is_system ? "system " : is_current ? "current" : "process",
+                is_system ? "system " : is_current ? "current" : "other  ",
                 processes_[j]->id(),
                 uuid_buffer);
           }
         }
         uword metadata_location, metadata_size;
         GcMetadata::get_metadata_extent(&metadata_location, &metadata_size);
-        printf("  │   %7d │        1 │    GC heap metadata                                 │\n"
-               "  │   %7d │        1 │    Spare new-space                                  │\n",
+        printf("  │ %7d   │      1   │  heap metadata                                      │\n"
+               "  │ %7d   │      1   │  spare new-space                                    │\n",
                static_cast<int>(metadata_size),
                TOIT_PAGE_SIZE);
       }
