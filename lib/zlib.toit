@@ -33,25 +33,34 @@ class UncompressedDeflateBackEnd_ implements BackEnd_:
   buffer_/ByteArray? := ?        // When this is null, everything has been read.
   buffer-fullness_/int := ?
   position-of-block-header_/int := ?
+  split-writes/bool
 
-  constructor .summer_ --gzip-header/bool:
+  constructor .summer_ --gzip-header/bool --.split-writes=true:
     header := gzip-header ? MINIMAL-GZIP-HEADER_ : SMALL-BUFFER-DEFLATE-HEADER_
-    buffer_ = ByteArray 256
-    buffer_.replace 0 header
     buffer-fullness_ = header.size + BLOCK-HEADER-SIZE_
+    buffer_ = ByteArray (split-writes ? 256 : 64)
+    buffer_.replace 0 header
     position-of-block-header_ = header.size
 
   static BLOCK-HEADER-SIZE_ ::= 5
 
   write collection from=0 to=collection.size -> int:
     if not summer_: throw "ALREADY_CLOSED"
-    length := min
-        buffer_.size - buffer-fullness_
-        to - from
-    buffer_.replace buffer-fullness_ collection from (from + length)
-    summer_.add collection from (from + length)
-    buffer-fullness_ += length
-    return length
+    if buffer-fullness_ == buffer_.size:
+      return 0  // Read more.
+    if split-writes or to - from <= buffer_.size - buffer-fullness_:
+      length := min
+          buffer_.size - buffer-fullness_
+          to - from
+      buffer_.replace buffer-fullness_ collection from (from + length)
+      summer_.add collection from (from + length)
+      buffer-fullness_ += length
+      return length
+    else:
+      // Construct a new buffer that can hold the whole write.
+      buffer_ = buffer_[..buffer-fullness_] + collection[from..to]
+      buffer-fullness_ = buffer_.size
+      return to - from
 
   read -> ByteArray?:
     if not summer_:
@@ -60,10 +69,11 @@ class UncompressedDeflateBackEnd_ implements BackEnd_:
       return result
     if buffer-fullness_ != buffer_.size: return #[]  // Write more.
     result := buffer_
-    buffer_ = ByteArray 256
-    buffer-fullness_ = BLOCK-HEADER-SIZE_
     length := buffer_.size - BLOCK-HEADER-SIZE_ - position-of-block-header_
+
     fill-block-header_ result position-of-block-header_ length --last=false
+    buffer_ = ByteArray (split-writes ? 256 : 64)
+    buffer-fullness_ = BLOCK-HEADER-SIZE_
     position-of-block-header_ = 0
     return result
 
@@ -91,9 +101,15 @@ Creates an uncompressed data stream that is compatible with zlib decoders
   be used from different tasks to prevent deadlocks.
 */
 class UncompressedZlibEncoder extends Coder_:
-  constructor:
+  /**
+  Normally the literal blocks in the output will bear no releation
+    to the write operations on this encoder.  This reduces peak
+    memory use.  However, if $split-writes is true then a single
+    write operation will never span two blocks.
+  */
+  constructor --split-writes/bool=true:
     super
-        UncompressedDeflateBackEnd_ adler32.Adler32 --gzip-header=false
+        UncompressedDeflateBackEnd_ adler32.Adler32 --gzip-header=false --split-writes=split-writes
 
 /**
 An 8 byte checksum that consists of the 4 byte CRC32 checksum followed by
