@@ -59,6 +59,7 @@ class UncompressedDeflateBackEnd_ implements BackEnd_:
     else:
       // Construct a new buffer that can hold the whole write.
       buffer_ = buffer_[..buffer-fullness_] + collection[from..to]
+      summer_.add collection from to
       buffer-fullness_ = buffer_.size
       return to - from
 
