@@ -18,6 +18,8 @@
 #ifdef TOIT_WINDOWS
 
 #include "os.h"
+#include "process.h"
+#include "program.h"
 #include "utils.h"
 #include "uuid.h"
 #include "memory.h"
@@ -372,7 +374,17 @@ void OS::set_heap_tag(word tag) {}
 
 word OS::get_heap_tag() { return 0; }
 
-void OS::heap_summary_report(int max_pages, const char* marker) {}
+void OS::heap_summary_report(int max_pages, const char* marker, Process* process) {
+  const uint8* uuid = process->program()->id();
+  fprintf(stderr, "Out of memory in process %d: %08x-%04x-%04x-%04x-%04x%08x.\n",
+      process->id(),
+      static_cast<int>(Utils::read_unaligned_uint32_be(uuid)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 4)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 6)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 8)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 10)),
+      static_cast<int>(Utils::read_unaligned_uint32_be(uuid + 12)));
+}
 
 } // namespace toit
 

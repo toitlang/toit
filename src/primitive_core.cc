@@ -2295,7 +2295,7 @@ PRIMITIVE(dump_heap) {
 PRIMITIVE(serial_print_heap_report) {
 #ifdef TOIT_CMPCTMALLOC
   ARGS(cstring, marker, int, max_pages);
-  OS::heap_summary_report(max_pages, marker);
+  OS::heap_summary_report(max_pages, marker, process);
 #endif // def TOIT_CMPCTMALLOC
   return process->null_object();
 }
