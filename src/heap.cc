@@ -352,7 +352,10 @@ void ObjectHeap::iterate_finalization_roots(RootCallback* cb) {
 }
 
 bool ObjectHeap::add_callable_finalizer(Instance* key, Object* lambda, bool weak_map) {
-  // We should already have checked whether the object is already registered.
+  // We should already have checked whether the object already has the bit set.
+  // It may be on the finalizer list because we remove finalizers by unsetting
+  // the bit, but we don't traverse and clean the list before the next GC.
+  ASSERT(!key->has_active_finalizer());
   CallableFinalizerNode* node;
   if (weak_map) {
     ASSERT(!key->can_be_toit_finalized(program()));
@@ -364,8 +367,8 @@ bool ObjectHeap::add_callable_finalizer(Instance* key, Object* lambda, bool weak
     node = _new ToitFinalizerNode(key, lambda, this);
   }
   if (node == null) return false;  // Allocation failed.
-  // Add it at the head of the list in case there is an old finalizer lower
-  // down on the list.
+  // Add it at the head of the list in case there is an old "removed" finalizer
+  // lower down on the list, waiting to be unlinked at the next GC.
   registered_callback_finalizers_.prepend(node);
   key->set_has_active_finalizer();
   return true;

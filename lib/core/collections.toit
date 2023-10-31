@@ -2631,15 +2631,15 @@ class Map extends HashedInsertionOrderedCollection_:
   constructor.weak:
     super
     add-gc-processing_ this::
-      length := backing_.size
+      backing := backing_
+      length := backing.size
       for position := 0; position < length; position += 2:
-        key := backing_[position]
-        value := backing_[position + 1]
-        if key is not Tombstone_:
-          if value == null:
-            backing_[position] = SMALL-TOMBSTONE_
-            backing_[position + 1] = SMALL-TOMBSTONE_
-            size_--
+        key := backing[position]
+        value := backing[position + 1]
+        if key is Tombstone_ or value != null: continue
+        backing[position] = SMALL-TOMBSTONE_
+        backing[position + 1] = SMALL-TOMBSTONE_
+        size_--
 
   /**
   Constructs a Map with a given $size.

@@ -173,6 +173,10 @@ void VmFinalizerNode::roots_do(RootCallback* cb) {
 bool VmFinalizerNode::weak_processing(bool in_closure_queue, RootCallback* cb, LivenessOracle* oracle) {
   ASSERT(!in_closure_queue);
   if (!oracle->has_active_finalizer(key_)) {
+    // If the bit is not set on the object we can delete the finalizer node -
+    // this is usually because an external byte array was neutered in RPC, so
+    // there is nothing to do.  We don't traverse the finalizer list when
+    // neutering for performance reasons, so clean up here.
     delete this;
     return true;  // Unlink me, the object no longer needs a finalizer.
   }

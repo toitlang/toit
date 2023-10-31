@@ -52,7 +52,7 @@ class CallableFinalizerNode : public FinalizerNode {
   CallableFinalizerNode(HeapObject* key, Object* lambda, ObjectHeap* heap)
     : FinalizerNode(key, heap), lambda_(lambda) {}
 
-  Object* lambda() { return lambda_; }
+  Object* lambda() const { return lambda_; }
 
   virtual bool keep_after_callback() const = 0;
 
