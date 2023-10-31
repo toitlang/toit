@@ -121,6 +121,10 @@ bool SemiSpace::is_alive(HeapObject* old_location) {
   return old_location->has_forwarding_address();
 }
 
+bool SemiSpace::has_active_finalizer(HeapObject* old_location) {
+  return old_location->has_active_finalizer();
+}
+
 void Space::append(Chunk* chunk) {
   chunk->set_owner(this);
   // Insert chunk in increasing address order in the list.  This means when

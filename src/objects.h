@@ -197,6 +197,7 @@ class RootCallback {
   void do_root(Object** root) { do_roots(root, 1); }
   virtual void do_roots(Object** roots, int length) = 0;
   virtual bool shrink_stacks() const { return false; }
+  virtual bool skip_marking(HeapObject* object) const { return false; }
 };
 
 // Note that these enum numbers must match the constants (called TAG) found in
@@ -228,6 +229,25 @@ class HeapObject : public Object {
   }
   INLINE TypeTag class_tag() const {
     return static_cast<TypeTag>((Smi::value(header()) >> HeapObject::CLASS_TAG_OFFSET) & HeapObject::CLASS_TAG_MASK);
+  }
+  INLINE bool has_active_finalizer() const {
+    const HeapObject* self = this;
+    if (has_forwarding_address()) {
+      self = forwarding_address();
+    }
+    return (Smi::value(self->header()) & (1 << HeapObject::FINALIZER_BIT_OFFSET)) != 0;
+  }
+  INLINE void set_has_active_finalizer() {
+    ASSERT(!has_forwarding_address());
+    uword header_word = Smi::value(header());
+    header_word |= 1 << HeapObject::FINALIZER_BIT_OFFSET;
+    _set_header(Smi::from(header_word));
+  }
+  INLINE void clear_has_active_finalizer() {
+    ASSERT(!has_forwarding_address());
+    uword header_word = Smi::value(header());
+    header_word &= ~(1 << HeapObject::FINALIZER_BIT_OFFSET);
+    _set_header(Smi::from(header_word));
   }
 
   INLINE bool has_forwarding_address() const {
@@ -262,8 +282,12 @@ class HeapObject : public Object {
   static const int CLASS_TAG_OFFSET = 0;
   static const uword CLASS_TAG_MASK = (1 << CLASS_TAG_BIT_SIZE) - 1;
 
+  static const int FINALIZER_BIT_SIZE = 1;
+  static const int FINALIZER_BIT_OFFSET = CLASS_TAG_OFFSET + CLASS_TAG_BIT_SIZE;
+  static const uword FINALIZER_BIT_MASK = (1 << FINALIZER_BIT_SIZE) - 1;
+
   static const int CLASS_ID_BIT_SIZE = 10;
-  static const int CLASS_ID_OFFSET = CLASS_TAG_OFFSET + CLASS_TAG_BIT_SIZE;
+  static const int CLASS_ID_OFFSET = FINALIZER_BIT_OFFSET + FINALIZER_BIT_SIZE;
   // This mask lets class_id() return negative values.  The GC uses
   // negative class ids for on-heap pseudo-objects like free memory.
   static const uword CLASS_ID_MASK = -1;
@@ -302,6 +326,12 @@ class HeapObject : public Object {
     return reinterpret_cast<HeapObject*>(address + HEAP_TAG);
   }
 
+  // Returns true for objects that can have a Toit-level finalizer added.
+  // Immortal objects with no identity like integers and strings cannot
+  // have Toit-level finalizers.  (External byte arrays and strings can
+  // have VM finalizers though.)
+  bool can_be_toit_finalized(Program* program) const;
+
   inline bool on_program_heap(Process* process) const;
 
   static int allocation_size() { return _align(SIZE); }
@@ -318,7 +348,7 @@ class HeapObject : public Object {
  protected:
   void _set_header(Smi* class_id, TypeTag class_tag) {
     uword header = Smi::value(class_id);
-    header = (header << CLASS_TAG_BIT_SIZE) | class_tag;
+    header = (header << CLASS_ID_OFFSET) | class_tag;
 
     _set_header(Smi::from(header));
     ASSERT(this->class_id() == class_id);
@@ -1354,6 +1384,10 @@ class Instance : public HeapObject {
     _at_put(_offset_from(index), value);
   }
 
+  INLINE Object** root_at(int index) {
+    return _root_at(_offset_from(index));
+  }
+
   void at_put_no_write_barrier(int index, Object* value) {
     _at_put(_offset_from(index), value);
   }
@@ -1365,7 +1399,7 @@ class Instance : public HeapObject {
   // Fills instance fields with Smi zero.
   void initialize(int instance_size);
 
-  void roots_do(int instance_size, RootCallback* cb);
+  void instance_roots_do(int instance_size, RootCallback* cb);
 
 #ifndef TOIT_FREERTOS
   void write_content(int instance_size, SnapshotWriter* st);
