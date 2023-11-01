@@ -533,7 +533,7 @@ PRIMITIVE(watchdog_init) {
   ARGS(uint32, ms);
 
   int watchdog = watchdog_timers.any();
-  if (watchdog == kInvalidWatchdogTimer) FAIL(OUT_OF_RANGE);
+  if (watchdog == kInvalidWatchdogTimer) FAIL(ALREADY_IN_USE);
 
   esp_task_wdt_config_t config = {
     .timeout_ms = ms,
@@ -546,7 +546,7 @@ PRIMITIVE(watchdog_init) {
   }
 
   SystemEventSource::instance()->run([&]() {
-    err = esp_task_wdt_add(null);  // Add the current thread.
+    err = esp_task_wdt_add(null);  // Add the SystemEventSource thread.
   });
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
