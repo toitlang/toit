@@ -28,14 +28,14 @@ MINIMAL-GZIP-HEADER_ ::= [0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]
 Typically creates blocks of 256 bytes (5 bytes of block header, 251 bytes of
   uncompressed data) for a 2% size increase.  Adds a header and a checksum.
 */
-class UncompressedDeflateBackEnd_ implements BackEnd_:
+class UncompressedDeflateBackend_ implements Backend_:
   summer_/crypto.Checksum? := ?  // When this is null, we are closed for write.
   buffer_/ByteArray? := ?        // When this is null, everything has been read.
   buffer-fullness_/int := ?
   position-of-block-header_/int := ?
   split-writes/bool
 
-  constructor .summer_ --gzip-header/bool --.split-writes=true:
+  constructor .summer_ --gzip-header/bool --.split-writes:
     header := gzip-header ? MINIMAL-GZIP-HEADER_ : SMALL-BUFFER-DEFLATE-HEADER_
     buffer-fullness_ = header.size + BLOCK-HEADER-SIZE_
     buffer_ = ByteArray (split-writes ? 256 : 64)
@@ -110,7 +110,7 @@ class UncompressedZlibEncoder extends Coder_:
   */
   constructor --split-writes/bool=true:
     super
-        UncompressedDeflateBackEnd_ adler32.Adler32 --gzip-header=false --split-writes=split-writes
+        UncompressedDeflateBackend_ adler32.Adler32 --gzip-header=false --split-writes=split-writes
 
 /**
 An 8 byte checksum that consists of the 4 byte CRC32 checksum followed by
@@ -148,9 +148,9 @@ Creates an uncompressed data stream that is compatible with gzip decoders
 class UncompressedGzipEncoder extends Coder_:
   constructor:
     super
-        UncompressedDeflateBackEnd_ CrcAndLengthChecksum_ --gzip-header=true
+        UncompressedDeflateBackend_ CrcAndLengthChecksum_ --gzip-header=true --split-writes=true
 
-class RunLengthDeflateBackEnd_ implements BackEnd_:
+class RunLengthDeflateBackend_ implements Backend_:
   summer_/crypto.Checksum := ?
   rle_ := rle-start_ resource-freeing-module_  // When this is null, we are closed for write.
   buffer_ := ByteArray 256                     // When this is null, everything has been read.
@@ -212,7 +212,7 @@ Creates a run length encoded data stream that is compatible with zlib decoders
 class RunLengthZlibEncoder extends Coder_:
   constructor:
     super
-        RunLengthDeflateBackEnd_ adler32.Adler32 --gzip-header=false
+        RunLengthDeflateBackend_ adler32.Adler32 --gzip-header=false
 
 /**
 Creates a run length encoded data stream that is compatible with gzip decoders
@@ -222,12 +222,12 @@ Creates a run length encoded data stream that is compatible with gzip decoders
 class RunLengthGzipEncoder extends Coder_:
   constructor:
     super
-        RunLengthDeflateBackEnd_ CrcAndLengthChecksum_ --gzip-header=true
+        RunLengthDeflateBackend_ CrcAndLengthChecksum_ --gzip-header=true
 
 /**
 A compression/decompression implementation.
 */
-interface BackEnd_:
+interface Backend_:
   /// Returns null on end of file.
   /// Returns a zero length ByteArray if it needs a write operation.
   read -> ByteArray?
@@ -235,7 +235,7 @@ interface BackEnd_:
   write data from/int to/int -> int
   close -> none
 
-class ZlibBackEnd_ implements BackEnd_:
+class ZlibBackend_ implements Backend_:
   zlib_ ::= ?
 
   constructor .zlib_:
@@ -251,7 +251,7 @@ class ZlibBackEnd_ implements BackEnd_:
 
 // An Encoder or Decoder.
 abstract class Coder_:
-  back_end_/BackEnd_
+  backend_/Backend_
   closed-write_ := false
   closed-read_ := false
   signal_ /monitor.Signal := monitor.Signal
@@ -260,7 +260,7 @@ abstract class Coder_:
   static STATE-READY-TO-READ_  ::= 1 << 0
   static STATE-READY-TO-WRITE_ ::= 1 << 1
 
-  constructor .back_end_:
+  constructor .backend_:
     reader = CompressionReader.private_
     reader.wrapped_ = this
     add-finalizer this::
@@ -274,13 +274,13 @@ abstract class Coder_:
 
   read_ --wait/bool -> ByteArray?:
     if closed-read_: return null
-    result := back_end_.read
+    result := backend_.read
     while result and wait and result.size == 0:
       state_ &= ~STATE-READY-TO-READ_
       state_ |= STATE-READY-TO-WRITE_
       signal_.raise
       signal_.wait: state_ & STATE-READY-TO-READ_ != 0
-      result = back_end_.read
+      result = backend_.read
     return result
 
   close-read_ -> none:
@@ -301,7 +301,7 @@ abstract class Coder_:
     if closed-read_: throw "READER_CLOSED"
     pos := from
     while pos < to:
-      bytes-written := back_end_.write data pos to
+      bytes-written := backend_.write data pos to
       if bytes-written == 0:
         if wait:
           state_ &= ~STATE-READY-TO-WRITE_
@@ -314,7 +314,7 @@ abstract class Coder_:
 
   close -> none:
     if not closed-write_:
-      back_end_.close
+      backend_.close
       closed-write_ = true
       state_ |= STATE-READY-TO-READ_
       signal_.raise
@@ -325,7 +325,7 @@ abstract class Coder_:
   */
   uninit_ -> none:
     remove-finalizer this
-    back_end_.close
+    backend_.close
 
 /**
 A Zlib compressor/deflater.
@@ -340,7 +340,7 @@ class Encoder extends Coder_:
   constructor --level/int=-1:
     if not -1 <= level <= 9: throw "ILLEGAL_ARGUMENT"
     super
-        ZlibBackEnd_ (zlib-init-deflate_ resource-freeing-module_ level)
+        ZlibBackend_ (zlib-init-deflate_ resource-freeing-module_ level)
 
   /**
   Writes uncompressed data into the compressor.
@@ -374,7 +374,7 @@ class Decoder extends Coder_:
   */
   constructor:
     super
-        ZlibBackEnd_ (zlib-init-inflate_ resource-freeing-module_)
+        ZlibBackend_ (zlib-init-inflate_ resource-freeing-module_)
 
   /**
   Writes compressed data into the decompressor.
@@ -485,7 +485,7 @@ class BufferingInflater extends Coder_:
     history := BufferingHistory_
     history.window-size = window-size
     super
-        InflaterBackEnd history --zlib-header-footer=zlib-header
+        InflaterBackend history --zlib-header-footer=zlib-header
 
 /**
 A pure Toit DEFLATE Inflater (zlib decompresser).
@@ -504,7 +504,7 @@ class CopyingInflater extends Coder_:
     history := CopyingHistory_
     history.window-size = window-size
     super
-        InflaterBackEnd history --zlib-header-footer=zlib-header
+        InflaterBackend history --zlib-header-footer=zlib-header
 
 /**
 A pure Toit DEFLATE Inflater (zlib decompresser).
@@ -523,10 +523,10 @@ class Inflater extends Coder_:
   constructor history/InflateHistory --window-size/int=32768 --zlib-header/bool=true:
     history.window-size = window-size
     super
-        InflaterBackEnd history --zlib-header-footer=zlib-header
+        InflaterBackend history --zlib-header-footer=zlib-header
 
 /**
-A pure Toit decompressing back end for the DEFLATE format.
+A pure Toit decompressing backend for the DEFLATE format.
 You would normally use $BufferingInflater, $CopyingInflater or $Inflater
   which wrap this class in a more convenient API.
 This class needs an $InflateHistory object to help it look back in up to
@@ -535,7 +535,7 @@ This class needs an $InflateHistory object to help it look back in up to
 Does not currently support streams with a gzip header (as opposed to the
   zlib header).
 */
-class InflaterBackEnd implements BackEnd_:
+class InflaterBackend implements Backend_:
   history_/InflateHistory
   adler_/adler32.Adler32? := null
   buffer_/ByteArray := #[]
