@@ -48,6 +48,7 @@
 #include <esp_ota_ops.h>
 #include <esp_timer.h>
 #include <rom/ets_sys.h>
+#include <esp_task_wdt.h>
 
 #include <soc/rtc_cntl_reg.h>
 
@@ -68,9 +69,16 @@
 #include "esp_partition.h"
 
 #include "event_sources/system_esp32.h"
+#include "resource_pool.h"
 #include "resources/touch_esp32.h"
 
 namespace toit {
+
+const int kInvalidWatchdogTimer = -1;
+const int kWatchdogSingletonId = 0;
+ResourcePool<int, kInvalidWatchdogTimer> watchdog_timers(
+  kWatchdogSingletonId
+);
 
 MODULE_IMPLEMENTATION(esp32, MODULE_ESP32)
 
@@ -519,6 +527,58 @@ PRIMITIVE(memory_page_report) {
   ByteArray::Bytes bytes(result);
   memcpy(bytes.address(), buffer.content(), buffer.size());
   return result;
+}
+
+PRIMITIVE(watchdog_init) {
+  ARGS(uint32, ms);
+
+  int watchdog = watchdog_timers.any();
+  if (watchdog == kInvalidWatchdogTimer) FAIL(ALREADY_IN_USE);
+
+  esp_task_wdt_config_t config = {
+    .timeout_ms = ms,
+    .idle_core_mask = 0,
+    .trigger_panic = true,
+  };
+  esp_err_t err = esp_task_wdt_init(&config);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  SystemEventSource::instance()->run([&]() {
+    err = esp_task_wdt_add(null);  // Add the SystemEventSource thread.
+  });
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  return process->null_object();
+}
+
+PRIMITIVE(watchdog_reset) {
+  esp_err_t err;
+  SystemEventSource::instance()->run([&]() {
+    err = esp_task_wdt_reset();
+  });
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  return process->null_object();
+}
+
+PRIMITIVE(watchdog_deinit) {
+  esp_err_t err;
+  SystemEventSource::instance()->run([&]() {
+    err = esp_task_wdt_delete(null);  // Remove the SystemEventSource thread.
+  });
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  err = esp_task_wdt_deinit();
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  watchdog_timers.put(kWatchdogSingletonId);
+  return process->null_object();
 }
 
 } // namespace toit

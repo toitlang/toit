@@ -37,6 +37,9 @@ TYPE_PRIMITIVE_ANY(total_deep_sleep_time)
 TYPE_PRIMITIVE_ANY(total_run_time)
 TYPE_PRIMITIVE_ANY(get_mac_address)
 TYPE_PRIMITIVE_ANY(memory_page_report)
+TYPE_PRIMITIVE_ANY(watchdog_init)
+TYPE_PRIMITIVE_ANY(watchdog_reset)
+TYPE_PRIMITIVE_ANY(watchdog_deinit)
 
 }  // namespace toit::compiler
 }  // namespace toit
