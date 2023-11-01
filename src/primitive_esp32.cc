@@ -566,7 +566,14 @@ PRIMITIVE(watchdog_reset) {
 }
 
 PRIMITIVE(watchdog_deinit) {
-  esp_err_t err = esp_task_wdt_deinit();
+  esp_err_t err;
+  SystemEventSource::instance()->run([&]() {
+    err = esp_task_wdt_delete(null);  // Remove the SystemEventSource thread.
+  });
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  err = esp_task_wdt_deinit();
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
