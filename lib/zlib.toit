@@ -103,7 +103,7 @@ Creates an uncompressed data stream that is compatible with zlib decoders
 */
 class UncompressedZlibEncoder extends Coder_:
   /**
-  Normally the literal blocks in the output will bear no releation
+  Normally the literal blocks in the output will bear no relation
     to the write operations on this encoder.  This reduces peak
     memory use.  However, if $split-writes is true then a single
     write operation will never span two blocks.
