@@ -712,6 +712,7 @@ SnapshotBundle Compiler::compile(const char* source_path,
   // TODO(florian): the dep-file needs to keep track of both compilations.
   debug_configuration.dep_file = null;
   debug_configuration.dep_format = DepFormat::none;
+  debug_configuration.werror = false;
 
   auto source_paths = ListBuilder<const char*>::build(source_path);
 

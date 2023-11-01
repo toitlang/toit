@@ -138,9 +138,10 @@ void Diagnostics::report_location(Source::Range range, const char* prefix) {
   fprintf(stderr, "%s %s:%d:%d %d\n", prefix, path, line_number, column_number, offset_in_source);
 }
 
-void CompilationDiagnostics::emit(Severity severity, const char* format, va_list& arguments) {
+bool CompilationDiagnostics::emit(Severity severity, const char* format, va_list& arguments) {
   vprintf(format, arguments);
   putchar('\n');
+  return true;
 }
 
 void CompilationDiagnostics::start_group() {
@@ -153,7 +154,7 @@ void CompilationDiagnostics::end_group() {
   in_group_ = false;
 }
 
-void CompilationDiagnostics::emit(Severity severity,
+bool CompilationDiagnostics::emit(Severity severity,
                                   Source::Range range,
                                   const char* format,
                                   va_list& arguments) {
@@ -182,7 +183,7 @@ void CompilationDiagnostics::emit(Severity severity,
           break;
         case Severity::warning:
         case Severity::note:
-          return;
+          return false;
       }
     }
   }
@@ -265,13 +266,15 @@ void CompilationDiagnostics::emit(Severity severity,
   }
   printf("\n");
   reset_colors(stdout);
+  return true;
 }
 
-void LanguageServerAnalysisDiagnostics::emit(Severity severity, const char* format, va_list& arguments) {
+bool LanguageServerAnalysisDiagnostics::emit(Severity severity, const char* format, va_list& arguments) {
   lsp()->diagnostics()->emit(severity, format, arguments);
+  return true;
 }
 
-void LanguageServerAnalysisDiagnostics::emit(Severity severity,
+bool LanguageServerAnalysisDiagnostics::emit(Severity severity,
                                              Source::Range range,
                                              const char* format,
                                              va_list& arguments) {
@@ -279,6 +282,7 @@ void LanguageServerAnalysisDiagnostics::emit(Severity severity,
                              range_to_lsp_range(range, source_manager()),
                              format,
                              arguments);
+  return true;
 }
 
 void LanguageServerAnalysisDiagnostics::start_group() {
