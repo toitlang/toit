@@ -106,7 +106,6 @@ MessageEncoder::~MessageEncoder() {
 }
 
 uint8* MessageEncoder::take_buffer() {
-  ObjectHeap* heap = process_->object_heap();
   for (unsigned i = 0; i < externals_count_; i++) {
     ByteArray* array = externals_[i];
     // Neuter the byte array. The contents of the array is now linked to from
@@ -116,7 +115,7 @@ uint8* MessageEncoder::take_buffer() {
 
     // Optimization: Eagerly remove any disposing finalizer, so the garbage
     // collector does not have to deal with disposing a neutered byte array.
-    heap->remove_vm_finalizer(array);
+    array->clear_has_active_finalizer();
   }
   for (unsigned i = 0; i < copied_count_; i++) {
     copied_[i] = null;
@@ -451,9 +450,8 @@ void MessageDecoder::register_external_allocations() {
 
 void MessageDecoder::remove_disposing_finalizers() {
   ASSERT(!decoding_tison());
-  ObjectHeap* heap = process_->object_heap();
   for (unsigned i = 0; i < externals_count(); i++) {
-    heap->remove_vm_finalizer(externals_[i]);
+    externals_[i]->clear_has_active_finalizer();
   }
 }
 

@@ -50,6 +50,9 @@ class Bus:
   Scans all valid addresses.
 
   Returns the set of addresses that responded.
+
+  Some addresses are reserved and are not scanned. See
+    https://www.i2c-bus.org/addressing/.
   */
   scan -> Set:
     result := {}
