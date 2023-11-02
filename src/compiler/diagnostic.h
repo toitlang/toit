@@ -185,8 +185,10 @@ class NullDiagnostics : public Diagnostics {
   void end_group() {}
 
  protected:
-  bool emit(Severity severity, const char* format, va_list& arguments) { return false; }
-  bool emit(Severity severity, Source::Range range, const char* format, va_list& arguments) { return false; }
+  // We return true for the 'emit' methods, so that asserts that test whether we encountered errors
+  // still work.
+  bool emit(Severity severity, const char* format, va_list& arguments) { return true; }
+  bool emit(Severity severity, Source::Range range, const char* format, va_list& arguments) { return true; }
 };
 
 } // namespace toit::compiler
