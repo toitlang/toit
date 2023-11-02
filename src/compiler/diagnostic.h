@@ -185,8 +185,8 @@ class NullDiagnostics : public Diagnostics {
   void end_group() {}
 
  protected:
-  bool emit(Severity severity, const char* format, va_list& arguments) { return true; }
-  bool emit(Severity severity, Source::Range range, const char* format, va_list& arguments) { return true; }
+  bool emit(Severity severity, const char* format, va_list& arguments) { return false; }
+  bool emit(Severity severity, Source::Range range, const char* format, va_list& arguments) { return false; }
 };
 
 } // namespace toit::compiler
