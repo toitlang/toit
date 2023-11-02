@@ -752,6 +752,14 @@ test-simple-compare-to:
   expect-equals 1 ((-0.0).compare-to -0.0 --if-equal=: 1)
 
 less --negate=false a/num b/num:
+  expect a < b
+  expect b > a
+  expect a <= b
+  expect b >= a
+  expect-not a == b
+  expect-not b == a
+  expect-not a >= b
+  expect-not b <= a
   expect-equals -1 (a.compare-to b)
   expect-equals  1 (b.compare-to a)
   if negate:
@@ -759,6 +767,16 @@ less --negate=false a/num b/num:
     expect-equals -1 ((-b).compare-to (-a))
 
 same --negate=false a/num b/num:
+  expect a == b
+  expect b == a
+  expect a <= b
+  expect b <= a
+  expect a >= b
+  expect b >= a
+  expect-not a < b
+  expect-not b < a
+  expect-not a > b
+  expect-not b > a
   expect-equals 0 (a.compare-to b)
   expect-equals 0 (b.compare-to a)
   if negate:
@@ -766,6 +784,14 @@ same --negate=false a/num b/num:
     expect-equals 0 ((-b).compare-to (-a))
 
 more --negate=false a/num b/num:
+  expect a > b
+  expect b < a
+  expect a >= b
+  expect b <= a
+  expect-not a == b
+  expect-not b == a
+  expect-not a <= b
+  expect-not b >= a
   expect-equals  1 (a.compare-to b)
   expect-equals -1 (b.compare-to a)
   if negate:

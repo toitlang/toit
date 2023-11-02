@@ -140,7 +140,7 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
   return false;
 }
 
-int Interpreter::int_comparison(int64 lhs_int, int64 rhs_int) {
+int Interpreter::compare_ints(int64 lhs_int, int64 rhs_int) {
   if (lhs_int < rhs_int) {
     return COMPARE_RESULT_MINUS_1 | COMPARE_FLAG_STRICTLY_LESS | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
   } else if (lhs_int == rhs_int) {
@@ -175,7 +175,7 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
   }
   // Handle two ints.
   if (lhs_is_int && rhs_is_int) {
-    return int_comparison(lhs_int, rhs_int);
+    return compare_ints(lhs_int, rhs_int);
   }
   // At least one is a double, so we convert to double.
   double lhs_double;
@@ -233,23 +233,23 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
       if (rhs_is_int) {
         if (-SHORTCUT_LIMIT <= rhs_int && rhs_int <= SHORTCUT_LIMIT) return equal; // Optimization.
         if (lhs_double <= -9223372036854778e3) {
-          return int_comparison(0, 1);  // LHS is below int.MIN, so they cannot be equal.
+          return compare_ints(0, 1);  // LHS is below int.MIN, so they cannot be equal.
         }
         if (lhs_double >= 9223372036854776e3) {
-          return int_comparison(1, 0);  // LHS is above int.MAX, so they cannot be equal.
+          return compare_ints(1, 0);  // LHS is above int.MAX, so they cannot be equal.
         }
         // We now know the static cast can't fail, because we are in range.
-        return int_comparison(static_cast<int64>(lhs_double), rhs_int);
+        return compare_ints(static_cast<int64>(lhs_double), rhs_int);
       } else if (lhs_is_int) {
         if (-SHORTCUT_LIMIT <= lhs_int && lhs_int <= SHORTCUT_LIMIT) return equal; // Optimization.
         if (rhs_double <= -9223372036854778e3) {
-          return int_comparison(1, 0);  // RHS is below int.MIN, so they cannot be equal.
+          return compare_ints(1, 0);  // RHS is below int.MIN, so they cannot be equal.
         }
         if (rhs_double >= 9223372036854776e3) {
-          return int_comparison(0, 1);  // RHS is above int.MAX, so they cannot be equal.
+          return compare_ints(0, 1);  // RHS is above int.MAX, so they cannot be equal.
         }
         // We now know the static cast can't fail, because we are in range.
-        return int_comparison(lhs_int, static_cast<int64>(rhs_double));
+        return compare_ints(lhs_int, static_cast<int64>(rhs_double));
       }
       return equal;
     }
