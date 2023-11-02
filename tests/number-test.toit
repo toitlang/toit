@@ -1020,6 +1020,13 @@ test-to-int:
   expect-number-out-of-range: float.INFINITY.to-int
   expect-number-invalid-argument: float.NAN.to-int
 
+  expect-equals int.MIN int.MIN.to-float.to-int
+  // int.MAX is rounded up when converted to a float.  The resulting float is
+  //   too large to convert back to an int.
+  expect-equals int.MAX          9223372036854775807
+  expect-equals int.MAX.to-float 9223372036854775808.0
+  expect-number-out-of-range: int.MAX.to-float.to-int
+
 test-is-power-of-two:
   expect 1.is-power-of-two
   expect 2.is-power-of-two
