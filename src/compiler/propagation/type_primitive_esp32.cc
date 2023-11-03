@@ -40,6 +40,10 @@ TYPE_PRIMITIVE_ANY(memory_page_report)
 TYPE_PRIMITIVE_ANY(watchdog_init)
 TYPE_PRIMITIVE_ANY(watchdog_reset)
 TYPE_PRIMITIVE_ANY(watchdog_deinit)
+TYPE_PRIMITIVE_ANY(pin_hold_enable)
+TYPE_PRIMITIVE_ANY(pin_hold_disable)
+TYPE_PRIMITIVE_ANY(deep_sleep_pin_hold_enable)
+TYPE_PRIMITIVE_ANY(deep_sleep_pin_hold_disable)
 
 }  // namespace toit::compiler
 }  // namespace toit

@@ -390,6 +390,10 @@ namespace toit {
   PRIMITIVE(watchdog_init, 1)                \
   PRIMITIVE(watchdog_reset, 0)               \
   PRIMITIVE(watchdog_deinit, 0)              \
+  PRIMITIVE(pin_hold_enable, 1)              \
+  PRIMITIVE(pin_hold_disable, 1)             \
+  PRIMITIVE(deep_sleep_pin_hold_enable, 0)   \
+  PRIMITIVE(deep_sleep_pin_hold_disable, 0)  \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
