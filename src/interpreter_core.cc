@@ -237,7 +237,7 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
   int64 the_int = lhs_is_int ? lhs_int : rhs_int;
 
   const int64 SHORTCUT_LIMIT = 0x20000000000000LL;
-  if (-SHORTCUT_LIMIT <= the_int && the_int <= SHORTCUT_LIMIT) return SIMPLE_EQUAL; // Optimization.
+  if (-SHORTCUT_LIMIT <= the_int && the_int <= SHORTCUT_LIMIT) return SIMPLE_EQUAL;  // Optimization.
 
   double the_double = lhs_is_int ? rhs_double : lhs_double;
 
