@@ -256,6 +256,19 @@ PLATFORM-WINDOWS ::= "Windows"
 PLATFORM-MACOS ::= "macOS"
 PLATFORM-LINUX ::= "Linux"
 
+/** Returns a string identifying the underlying architecture. */
+architecture:
+  #primitive.core.architecture
+
+ARCHITECTURE-ARM64 ::= "arm64"
+ARCHITECTURE-ARM ::= "arm"
+ARCHITECTURE-X86 ::= "x86"
+ARCHITECTURE-X86-64 ::= "x86_64"
+ARCHITECTURE-ESP32 ::= "esp32"
+ARCHITECTURE-ESP32S2 ::= "esp32s2"
+ARCHITECTURE-ESP32S3 ::= "esp32s3"
+ARCHITECTURE-ESP32C3 ::= "esp32c3"
+
 LINE-TERMINATOR ::= platform == PLATFORM-WINDOWS ? "\r\n" : "\n"
 
 /// Index for $process-stats.
