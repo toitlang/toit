@@ -30,7 +30,7 @@ main:
 */
 
 import encoding.tison
-import reader show Reader
+import io
 
 import system.api.storage show StorageService StorageServiceClient
 import system.services show ServiceResourceProxy
@@ -358,7 +358,7 @@ class Region extends ServiceResourceProxy:
     read --from=from bytes
     return bytes
 
-  stream --from/int=0 --to/int=size --max-size/int=256 -> Reader:
+  stream --from/int=0 --to/int=size --max-size/int=256 -> io.Reader:
     if not 0 <= from <= to <= size: throw "OUT_OF_BOUNDS"
     if max-size < 16: throw "Bad Argument"
     return RegionReader_
@@ -393,7 +393,7 @@ class Region extends ServiceResourceProxy:
       resource_ = null
     super
 
-class RegionReader_ implements Reader:
+class RegionReader_ extends io.Reader:
   region_/Region
   from_/int := ?
   to_/int
@@ -405,7 +405,7 @@ class RegionReader_ implements Reader:
     to_ = to
     max-size_ = max-size
 
-  read -> ByteArray?:
+  consume_ -> ByteArray?:
     from := from_
     remaining := to_ - from
     if remaining == 0: return null
