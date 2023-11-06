@@ -2,9 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-// import pipe
-import reader show BufferedReader
-
 /// Decodes the given arguments, and invokes $dispatch-fun to
 ///   invoke the static `debug_string` function for each object.
 do-debug-string args dispatch-fun/Lambda:
