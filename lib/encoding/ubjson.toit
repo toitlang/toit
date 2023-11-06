@@ -20,7 +20,7 @@ decode bytes/ByteArray -> any:
   if not d.is-done: throw INVALID-INPUT-ERROR
   return val
 
-class BufferSizeCounter_ extends io.Writer:
+class BufferSizeCounter_ extends Object with io.Writer:
   size := 0
 
   write-byte b/int:

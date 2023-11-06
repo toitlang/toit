@@ -46,7 +46,7 @@ interface Data:
 /**
 A consumer of bytes.
 */
-abstract class Writer:
+abstract mixin Writer:
   is-closed_/bool := false
   endian_/EndianWriter? := null
   byte-cache_/ByteArray? := null
@@ -170,7 +170,7 @@ abstract class Writer:
   abstract try-write_ data/Data from/int to/int -> int
 
 
-abstract class CloseableWriter extends Writer:
+abstract mixin CloseableWriter extends Writer:
   /**
   Closes this writer.
 
@@ -196,7 +196,7 @@ abstract class CloseableWriter extends Writer:
 /**
 A source of bytes.
 */
-abstract class Reader implements old-reader.Reader:
+abstract mixin Reader implements old-reader.Reader:
   static UNEXPECTED-END-OF-READER ::= "UNEXPECTED_END_OF_READER"
 
   is-closed_/bool := false
@@ -683,7 +683,7 @@ abstract class Reader implements old-reader.Reader:
   // This is a protected method. It should not be "private".
   abstract consume_ -> ByteArray?
 
-abstract class CloseableReader extends Reader:
+abstract mixin CloseableReader extends Reader:
   /**
   Closes this reader.
 
@@ -713,7 +713,7 @@ A producer of bytes from an existing $ByteArray.
 
 See $(Reader.constructor data).
 */
-class ByteArrayReader_ extends Reader:
+class ByteArrayReader_ extends Object with Reader:
   data_ / ByteArray? := ?
 
   constructor .data_:
@@ -747,7 +747,7 @@ interface CloseableOutStrategy extends OutStrategy:
   // This is a protected method. It should not be "private".
   close-writer_ -> none
 
-class Out_ extends Writer:
+class Out_ extends Object with Writer:
   strategy_/OutStrategy
 
   constructor .strategy_:
@@ -755,7 +755,7 @@ class Out_ extends Writer:
   try-write_ data/Data from/int to/int -> int:
     return strategy_.try-write_ data from to
 
-class CloseableOut_ extends CloseableWriter:
+class CloseableOut_ extends Object with CloseableWriter:
   strategy_/CloseableOutStrategy
 
   constructor .strategy_:
@@ -829,7 +829,7 @@ interface CloseableInStrategy extends InStrategy:
   // This is a protected method. It should not be "private".
   close-reader_ -> none
 
-class In_ extends Reader:
+class In_ extends Object with Reader:
   strategy_/InStrategy
 
   constructor .strategy_:
@@ -837,7 +837,7 @@ class In_ extends Reader:
   consume_ -> ByteArray?:
     return strategy_.consume_
 
-class CloseableIn_ extends CloseableReader:
+class CloseableIn_ extends Object with CloseableReader:
   strategy_/CloseableInStrategy
 
   constructor .strategy_:
@@ -896,7 +896,7 @@ A buffer that can be used to build byte data.
 - `BytesBuilder`: Dart
 - `ByteArrayOutputStream`: Java
 */
-class Buffer extends CloseableWriter:
+class Buffer extends Object with CloseableWriter:
   static INITIAL-BUFFER-SIZE_ ::= 64
   static MIN-BUFFER-GROWTH_ ::= 64
 
@@ -1504,7 +1504,7 @@ class EndianBuffer extends EndianWriter:
 /**
 Adapter to use an old-style writer as $Writer.
 */
-class WriterAdapter_ extends Writer:
+class WriterAdapter_ extends Object with Writer:
   w_/any
 
   constructor .w_:
@@ -1515,7 +1515,7 @@ class WriterAdapter_ extends Writer:
 /**
 Adapter to use an $old-reader.Reader as $Reader.
 */
-class ReaderAdapter_ extends Reader:
+class ReaderAdapter_ extends Object with Reader:
   r_/any
 
   constructor .r_:
