@@ -300,7 +300,7 @@ process-stats --gc/bool=false list/List=(List system.STATS-LIST-SIZE_) -> List:
 process-stats --gc/bool=false group id list/List=(List system.STATS-LIST-SIZE_) -> List?:
   return system.process-stats --gc=gc group id list
 
-/** Returns the number of garbage collections. */
+/** Deprecated: Use system.gc-count instead. */
 gc-count -> int:
   #primitive.core.gc-count
 
