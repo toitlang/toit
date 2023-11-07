@@ -627,3 +627,51 @@ class BufferedReader implements Reader:
       first-array-position_ = 0
     base-consumed_ -= value.size
     buffered_.prepend value
+
+class Element_:
+  value/ByteArray
+  next/Element_? := null
+
+  constructor .value:
+
+class ByteArrayList_:
+  head_/Element_? := null
+  tail_/Element_? := null
+
+  size := 0
+  size-in-bytes := 0
+
+  add value/ByteArray:
+    element := Element_ value
+    if tail_:
+      tail_.next = element
+    else:
+      head_ = element
+    tail_ = element
+    size++
+    size-in-bytes += value.size
+
+  prepend value/ByteArray:
+    element := Element_ value
+    if head_:
+      element.next = head_
+    else:
+      tail_ = element
+    head_ = element
+    size++
+    size-in-bytes += value.size
+
+  remove-first:
+    element := head_
+    next := element.next
+    head_ = next
+    if not next: tail_ = null
+    size--
+    size-in-bytes -= element.value.size
+
+  first -> ByteArray: return head_.value
+  last -> ByteArray: return tail_.value
+
+  do [block]:
+    for current := head_; current; current = current.next:
+      block.call current.value
