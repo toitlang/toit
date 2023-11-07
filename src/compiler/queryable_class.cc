@@ -67,20 +67,30 @@ UnorderedMap<Class*, QueryableClass> build_queryables_from_resolution_shapes(Pro
 
   UnorderedMap<Class*, QueryableClass> result;
 
-  for (int i = 0; i < 2; i++) {
+  for (int phase = 0; phase < 3; phase++) {
     // Classes are sorted such that all supers are before their subclasses.
     // Similarly, within mixins, all mixins that are mixed in are before the mixin
     // that uses them. For example, for `mixin M2 extends M1 with M3` the mixins
     // `M1` and `M3` are before `M2`.
     // However, mixins are after classes that mix them in (`class A extends B with M1`).
-    // Therefore we run in two phases:
-    // - the first phase only does mixins.
-    // - the second the rest.
+    // Therefore we run in three phases:
+    // - start by doing the 'Object' root class. We need it for mixins so we have the Object methods.
+    // - the second phase only does mixins.
+    // - the third the rest.
     // This way we know that all our dependencies (super and mixins) have already
     // been handled.
     for (auto klass : program->classes()) {
-      if (i == 0 && !klass->is_mixin()) continue;
-      if (i == 1 && klass->is_mixin()) continue;
+      if (phase == 0 && klass != object_class) {
+        // The 'Object' class is the first in the list of program classes.
+        // If we are here, then we already dealt with it.
+        ASSERT(!result[object_class].methods().empty());
+        break;
+      }
+      if (phase != 0 && klass == object_class) continue;
+      // Second phase only does mixins.
+      if (phase == 1 && !klass->is_mixin()) continue;
+      // Third phase the rest.
+      if (phase == 2 && klass->is_mixin()) continue;
 
       QueryableClass::SelectorMap methods;
 
