@@ -68,7 +68,7 @@ class BufferedReader implements Reader:
   reader_/Reader := ?
 
   // An array of byte arrays that have arrived but are not yet processed.
-  arrays_/ByteArrayList_ := ByteArrayList_
+  buffered_/ByteArrayList_ := ByteArrayList_
 
   // The position in the first byte array that we got to.
   first-array-position_ := 0
@@ -83,7 +83,7 @@ class BufferedReader implements Reader:
 
   /** Clears any buffered data. */
   clear -> none:
-    arrays_ = ByteArrayList_
+    buffered_ = ByteArrayList_
     base-consumed_ += first-array-position_
     first-array-position_ = 0
 
@@ -114,8 +114,8 @@ class BufferedReader implements Reader:
     return data.size
 
   add-byte-array_ data -> none:
-    arrays_.add data
-    if arrays_.size == 1:
+    buffered_.add data
+    if buffered_.size == 1:
       base-consumed_ += first-array-position_
       first-array-position_ = 0
 
@@ -157,7 +157,7 @@ class BufferedReader implements Reader:
     a read operation that might block.
   */
   buffered -> int:
-    return arrays_.size-in-bytes - first-array-position_
+    return buffered_.size-in-bytes - first-array-position_
 
   /**
   The number of bytes that have been consumed from the BufferedReader.
@@ -175,18 +175,18 @@ class BufferedReader implements Reader:
     while true:
       // Skip buffered data first; we make sure to only shift (or clear)
       // the buffer-array once per iteration.
-      arrays_.size.repeat:
-        size := arrays_.first.size - first-array-position_
+      buffered_.size.repeat:
+        size := buffered_.first.size - first-array-position_
 
         if n < size:
           first-array-position_ += n
           return
 
         n -= size
-        base-consumed_ += arrays_.first.size
+        base-consumed_ += buffered_.first.size
         first-array-position_ = 0
 
-        arrays_.remove-first
+        buffered_.remove-first
 
       if n == 0: return
 
@@ -206,7 +206,7 @@ class BufferedReader implements Reader:
     if n < 0: throw "INVALID_ARGUMENT"
     ensure n + 1
     n += first-array-position_
-    arrays_.do:
+    buffered_.do:
       size := it.size
       if n < size: return it[n]
       n -= size
@@ -227,11 +227,11 @@ class BufferedReader implements Reader:
       throw "INVALID_ARGUMENT"
     ensure n
     start := first-array-position_
-    first := arrays_.first
+    first := buffered_.first
     if start + n <= first.size: return first[start..start + n]
     result := ByteArray n
     offset := 0
-    arrays_.do:
+    buffered_.do:
       size := min
           it.size - start
           n - offset
@@ -265,7 +265,7 @@ class BufferedReader implements Reader:
   index-of byte -> int?:
     offset := 0
     start := first-array-position_
-    arrays_.do:
+    buffered_.do:
       index := it.index-of byte --from=start
       if index >= 0: return offset + (index - start)
       offset += it.size - start
@@ -273,7 +273,7 @@ class BufferedReader implements Reader:
 
     while true:
       if not more_: return null
-      array := arrays_.last
+      array := buffered_.last
       index := array.index-of byte
       if index >= 0: return offset + index
       offset += array.size
@@ -289,7 +289,7 @@ class BufferedReader implements Reader:
   index-of byte --to/int -> int:
     offset := 0
     start := first-array-position_
-    arrays_.do:
+    buffered_.do:
       end := min start + to it.size
       index := it.index-of byte --from=start --to=end
       if index >= 0: return offset + index - start
@@ -300,7 +300,7 @@ class BufferedReader implements Reader:
 
     while true:
       if not more_: throw UNEXPECTED-END-OF-READER-EXCEPTION
-      array := arrays_.last
+      array := buffered_.last
       end := min to array.size
       index := array.index-of byte --to=end
       if index >= 0: return offset + index
@@ -320,10 +320,10 @@ class BufferedReader implements Reader:
   Returns null if the reader is at the end.
   */
   read --max-size/int?=null -> ByteArray?:
-    if arrays_.size > 0:
-      array := arrays_.first
+    if buffered_.size > 0:
+      array := buffered_.first
       if first-array-position_ == 0 and (max-size == null or array.size <= max-size):
-        arrays_.remove-first
+        buffered_.remove-first
         base-consumed_ += array.size
         return array
       byte-count := array.size - first-array-position_
@@ -334,7 +334,7 @@ class BufferedReader implements Reader:
       if end == array.size:
         base-consumed_ += array.size
         first-array-position_ = 0
-        arrays_.remove-first
+        buffered_.remove-first
       else:
         first-array-position_ = end
       return result
@@ -344,7 +344,7 @@ class BufferedReader implements Reader:
     if max-size == null or array.size <= max-size:
       base-consumed_ += array.size
       return array
-    arrays_.add array
+    buffered_.add array
     first-array-position_ = max-size
     return array[..max-size]
 
@@ -361,9 +361,9 @@ class BufferedReader implements Reader:
   read-up-to max-size/int -> ByteArray:
     if max-size < 0: throw "INVALID_ARGUMENT"
     ensure 1
-    array := arrays_.first
+    array := buffered_.first
     if first-array-position_ == 0 and array.size <= max-size:
-      arrays_.remove-first
+      buffered_.remove-first
       base-consumed_ += array.size
       return array
     size := min (array.size - first-array-position_) max-size
@@ -372,7 +372,7 @@ class BufferedReader implements Reader:
     if first-array-position_ == array.size:
       base-consumed_ += array.size
       first-array-position_ = 0
-      arrays_.remove-first
+      buffered_.remove-first
     return result
 
   /**
@@ -438,16 +438,16 @@ class BufferedReader implements Reader:
   */
   read-string --max-size/int?=null -> string?:
     if max-size and max-size < 0: throw "INVALID_ARGUMENT"
-    if arrays_.size == 0:
+    if buffered_.size == 0:
       array := reader_.read
       if array == null: return null
       // Instead of adding the array to the arrays we may just be able more
       // efficiently pass it on in string from.
       if (max-size == null or array.size <= max-size) and array[array.size - 1] <= 0x7f:
         return array.to-string
-      arrays_.add array
+      buffered_.add array
 
-    array := arrays_.first
+    array := buffered_.first
 
     // Ensure there is at least one full UTF-8 character.  Does a blocking read
     // if we only have part of a character.  This may throw if the stream ends
@@ -459,7 +459,7 @@ class BufferedReader implements Reader:
     // Remember to avoid chopping up UTF-8 characters while doing this.
     if not max-size: max-size = buffered
     if first-array-position_ == 0 and array.size <= max-size and array[array.size - 1] <= 0x7f:
-      arrays_.remove-first
+      buffered_.remove-first
       base-consumed_ += array.size
       return array.to-string
 
@@ -544,7 +544,7 @@ class BufferedReader implements Reader:
     // Fast case.
     if n == 0: return ""
     if buffered >= n:
-      first := arrays_.first
+      first := buffered_.first
       end := first-array-position_ + n
       if first.size >= end:
         return first.to-string first-array-position_ end
@@ -619,11 +619,11 @@ class BufferedReader implements Reader:
   unget value/ByteArray -> none:
     if value.size == 0: return
     if first-array-position_ != 0:
-      first := arrays_.first
-      arrays_.remove-first
+      first := buffered_.first
+      buffered_.remove-first
       base-consumed_ += first-array-position_
       first = first[first-array-position_..]
-      arrays_.prepend first
+      buffered_.prepend first
       first-array-position_ = 0
     base-consumed_ -= value.size
-    arrays_.prepend value
+    buffered_.prepend value
