@@ -366,7 +366,7 @@ const char* OS::get_platform() {
   return "Windows";
 }
 
-const char* get_architecture() {
+const char* OS::get_architecture() {
 #if defined(_M_AMD64)
   return "x86_64";
 #elif defined(_M_ARM64)
