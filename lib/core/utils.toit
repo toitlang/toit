@@ -3,20 +3,21 @@
 // found in the lib/LICENSE file.
 
 import binary show LITTLE-ENDIAN
+import system
 import system.trace show send-trace-message
 
 /**
 Contains various utility functions.
 */
 
-/** The number of bits per byte. */
+/** Deprecated. Use system.BITS-PER-BYTE instead. */
 BITS-PER-BYTE ::= 8
 
-/** The number of bits per word. */
-BITS-PER-WORD ::= BYTES-PER-WORD * BITS-PER-BYTE
+/** Deprecated. Use system.BITS-PER-WORD instead. */
+BITS-PER-WORD ::= system.BYTES-PER-WORD * system.BITS-PER-BYTE
 
-/** The number of bytes per word. */
-BYTES-PER-WORD ::= word-size_
+/** Deprecated. Use system.BYTES-PER-WORD instead. */
+BYTES-PER-WORD ::= system.word-size_
 
 /** The number of bytes per kilobyte. */
 KB ::= 1024
@@ -247,149 +248,67 @@ simple-interpolate-strings_ array:
 
 // Query primitives for system information.
 
-/** Returns a string identifying the underlying platform. */
-platform:
-  #primitive.core.platform
+/** Deprecated: Use system.platform instead. */
+platform -> string:
+  return system.platform
 
+/** Deprecated: Use system.PLATFORM-FREERTOS instead. */
 PLATFORM-FREERTOS ::= "FreeRTOS"
+
+/** Deprecated: Use system.PLATFORM-WINDOWS instead. */
 PLATFORM-WINDOWS ::= "Windows"
+
+/** Deprecated: Use system.PLATFORM-MACOS instead. */
 PLATFORM-MACOS ::= "macOS"
+
+/** Deprecated: Use system.PLATFORM-LINUX instead. */
 PLATFORM-LINUX ::= "Linux"
 
-LINE-TERMINATOR ::= platform == PLATFORM-WINDOWS ? "\r\n" : "\n"
+/** Deprecated: Use system.PLATFORM-LINUX instead. */
+LINE-TERMINATOR ::= system.platform == system.PLATFORM-WINDOWS ? "\r\n" : "\n"
 
-/// Index for $process-stats.
+/** Deprecated: Use system.STATS-INDEX-GC-COUNT instead. */
 STATS-INDEX-GC-COUNT                       ::= 0
-/// Index for $process-stats.
+/** Deprecated: Use system.STATS-INDEX-ALLOCATED-MEMORY instead. */
 STATS-INDEX-ALLOCATED-MEMORY               ::= 1
-/// Index for $process-stats.
+/** Deprecated: Use system.STATS-INDEX-RESERVED-MEMORY instead. */
 STATS-INDEX-RESERVED-MEMORY                ::= 2
-/// Index for $process-stats.
+/** Deprecated: Use system.STATS-INDEX-PROCESS-MESSAGE-COUNT instead. */
 STATS-INDEX-PROCESS-MESSAGE-COUNT          ::= 3
-/// Index for $process-stats.
+/** Deprecated: Use system.STATS-INDEX-BYTES-ALLOCATED-IN-OBJECT-HEAP instead. */
 STATS-INDEX-BYTES-ALLOCATED-IN-OBJECT-HEAP ::= 4
-/// Index for $process-stats.
+/** Deprecated: Use system.STATS-INDEX-GROUP-ID instead. */
 STATS-INDEX-GROUP-ID                       ::= 5
-/// Index for $process-stats.
+/** Deprecated: Use system.STATS-INDEX-PROCESS-ID instead. */
 STATS-INDEX-PROCESS-ID                     ::= 6
-/// Index for $process-stats.
+/** Deprecated: Use system.STATS-INDEX-SYSTEM-FREE-MEMORY instead. */
 STATS-INDEX-SYSTEM-FREE-MEMORY             ::= 7
-/// Index for $process-stats.
+/** Deprecated: Use system.STATS-INDEX-SYSTEM-LARGEST-FREE instead. */
 STATS-INDEX-SYSTEM-LARGEST-FREE            ::= 8
-/// Index for $process-stats.
+/** Deprecated: Use system.STATS-INDEX-FULL-GC-COUNT instead. */
 STATS-INDEX-FULL-GC-COUNT                  ::= 9
-/// Index for $process-stats.
+/** Deprecated: Use system.STATS-INDEX-FULL-COMPACTING-GC-COUNT instead. */
 STATS-INDEX-FULL-COMPACTING-GC-COUNT       ::= 10
-// The size the list needs to have to contain all these stats.  Must be last.
+/** Deprecated: Use system.STATS-LIST-SIZE_ instead. */
 STATS-LIST-SIZE_                           ::= 11
 
-/**
-Collect statistics about the system and the current process.
-The $gc flag indicates whether a garbage collection should be performed
-  before collecting the stats.  This is a fairly expensive operation, so
-  it should be avoided if possible.
-Returns an array with stats for the current process.
-The stats, listed by index in the array, are:
-0. New-space (small collection) GC count for the process
-1. Allocated memory on the Toit heap of the process
-2. Reserved memory on the Toit heap of the process
-3. Process message count
-4. Bytes allocated in object heap
-5. Group ID
-6. Process ID
-7. Free memory in the system
-8. Largest free area in the system
-9. Full GC count for the process (including compacting GCs)
-10. Full compacting GC count for the process
+/** Deprecated: Use system.process-stats instead. */
+process-stats --gc/bool=false list/List=(List system.STATS-LIST-SIZE_) -> List:
+  return system.process-stats --gc=gc list
 
-The "bytes allocated in the heap" tracks the total number of allocations, but
-  doesn't deduct the sizes of objects that die. It is a way to follow the
-  allocation pressure of the process.  It corresponds to the value returned
-  by $bytes-allocated-delta.
-
-The "allocated memory" is the combined size of all live objects on the heap.
-The "reserved memory" is the size of the heap.
-
-By passing the optional $list argument to be filled in, you can avoid causing
-  an allocation, which may interfere with the tracking of allocations.  But note
-  that at some point the bytes_allocated number becomes so large that it needs
-  a small allocation of its own.
-
-# Examples
-```
-print "There have been $((process_stats)[STATS_INDEX_GC_COUNT]) GCs for this process"
-```
-*/
-process-stats --gc/bool=false list/List=(List STATS-LIST-SIZE_) -> List:
-  full-gcs/int? := null
-  if gc:
-    full-gcs = (process-stats list)[STATS-INDEX-FULL-GC-COUNT]
-  result := process-stats_ list -1 -1 full-gcs
-  assert: result  // The current process always exists.
-  return result
-
-/**
-Variant of $(process-stats).
-
-Returns an array with stats for the process identified by the $group and the
-  $id.
-*/
-process-stats --gc/bool=false group id list/List=(List STATS-LIST-SIZE_) -> List?:
-  full-gcs/int? := null
-  if gc:
-    full-gcs = (process-stats list)[STATS-INDEX-FULL-GC-COUNT]
-  return process-stats_ list group id full-gcs
-
-process-stats_ list group id gc-count:
-  #primitive.core.process-stats
-
-/**
-Returns the number of bytes allocated, since the last call to this function.
-For the first call, returns number of allocated bytes since system start.
-Deprecated.  This function doesn't nest.  Use $process-stats instead.
-*/
-bytes-allocated-delta -> int:
-  #primitive.core.bytes-allocated-delta
+/** Deprecated: Use system.process-stats instead. */
+process-stats --gc/bool=false group id list/List=(List system.STATS-LIST-SIZE_) -> List?:
+  return system.process-stats --gc=gc group id list
 
 /** Returns the number of garbage collections. */
 gc-count -> int:
   #primitive.core.gc-count
-
-// TODO(Lau): does it still make sense to say SDK here?
-/**
-Returns the Toit SDK version that this virtual machine has been built from.
-*/
-vm-sdk-version -> string:
-  #primitive.core.vm-sdk-version
-
-/** Returns information about who built this virtual machine. */
-vm-sdk-info -> string:
-  #primitive.core.vm-sdk-info
-
-// TODO(Lau): does it still make sense to say SDK here?
-/**
-Returns the Toit SDK model that this virtual machine has been built from.
-*/
-vm-sdk-model -> string:
-  #primitive.core.vm-sdk-model
-
-// TODO(Lau): does it still make sense to say SDK here?
-/** Returns the Toit SDK version that generated this application snapshot. */
-app-sdk-version -> string:
-  #primitive.core.app-sdk-version
-
-/** Returns information about who build this application snapshot. */
-app-sdk-info -> string:
-  #primitive.core.app-sdk-info
 
 // TODO: This is certainly not the right interface. We want to be able to set
 // this from the system for other/new processes.
 /** Sets the max size for the heap to $size. */
 set-max-heap-size_ size/int -> none:
   #primitive.core.set-max-heap-size
-
-serial-print-heap-report marker/string="" max-pages/int=0 -> none:
-  #primitive.core.serial-print-heap-report
 
 /** Simplistic profiler based on bytecode invocation counts. */
 class Profiler:
@@ -449,9 +368,6 @@ This function can be slow as it requires a linear search for objects.
 literal-index_ o -> int?:
   #primitive.core.literal-index
 
-word-size_ -> int:
-  #primitive.core.word-size
-
 /// Deprecated.
 hex-digit char/int [error-block] -> int:
   return hex-char-to-value char --on-error=error-block
@@ -494,19 +410,9 @@ Converts a number between 0 and 15 to an upper case
 to-upper-case-hex c/int -> int:
   return "0123456789ABCDEF"[c]
 
-/**
-Produces a histogram of object types and their memory
-  requirements.  The histogram is sent as a system
-  mirror message, which means it is usually printed on
-  the console.
-*/
+/** Deprecated. Use system.print-objects instead. */
 print-objects --marker/string="" --gc/bool=false -> none:
-  full-gcs/int? := null
-  if gc:
-    list := List STATS-INDEX-FULL-GC-COUNT + 1
-    full-gcs = (process-stats list)[STATS-INDEX-FULL-GC-COUNT]
-  encoded-histogram := object-histogram_ marker full-gcs
-  send-trace-message encoded-histogram
+  system.print-objects --marker=marker --gc=gc
 
 /**
 Variant of $(print-objects --marker --gc).
@@ -514,7 +420,7 @@ Variant of $(print-objects --marker --gc).
 Deprecated.
 */
 print-objects marker/string -> none:
-  print-objects --marker=marker --gc
+  system.print-objects --marker=marker --gc
 
 /**
 Variant of $(print-objects --marker --gc).
@@ -522,7 +428,4 @@ Variant of $(print-objects --marker --gc).
 Deprecated.
 */
 print-objects marker/string gc/bool -> none:
-  print-objects --marker=marker --gc=gc
-
-object-histogram_ marker/string full-gcs/int? -> ByteArray:
-  #primitive.debug.object-histogram
+  system.print-objects --marker=marker --gc=gc
