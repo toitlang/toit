@@ -374,7 +374,7 @@ const char* get_architecture() {
 #elif defined(_M_IX86)
   return "x86";
 #else
-  return "unknown";
+  #error "Unknown CPU architecture"
 #endif
 }
 

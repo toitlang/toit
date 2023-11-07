@@ -248,7 +248,7 @@ simple-interpolate-strings_ array:
 // Query primitives for system information.
 
 /** Returns a string identifying the underlying platform. */
-platform:
+platform -> string:
   #primitive.core.platform
 
 PLATFORM-FREERTOS ::= "FreeRTOS"
@@ -257,7 +257,7 @@ PLATFORM-MACOS ::= "macOS"
 PLATFORM-LINUX ::= "Linux"
 
 /** Returns a string identifying the underlying architecture. */
-architecture:
+architecture -> string:
   #primitive.core.architecture
 
 ARCHITECTURE-ARM64 ::= "arm64"

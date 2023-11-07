@@ -318,7 +318,7 @@ const char* OS::get_architecture() {
 #elif defined(__i386__)
   return "x86";
 #else
-  return "unkonwn";
+  #error "Unknown CPU architecture"
 #endif
 }
 
