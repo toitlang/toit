@@ -35,7 +35,7 @@ IO16 must stay unconnected.
 
 As of 2023-05-30.
 Run the tests individually. All test run on board 1, except for the
-uart, ultrasound, wait_for tests, and pin-hold tests. (See their respective files for more info.)
+uart, ultrasound, wait-for tests, and pin-hold tests. (See their respective files for more info.)
 
 The adc and espnow tests only work if no other program is using WiFi.
 For Jaguar:
