@@ -11,7 +11,6 @@ Setup: see uart_big_data_shared.toit.
 import expect show *
 import gpio
 import uart
-import writer
 import .uart-big-data-shared
 
 
@@ -23,8 +22,7 @@ main:
     port = uart.Port UART-PATH --baud-rate=BAUD-RATE
 
   TEST-ITERATIONS.repeat:
-    writer := writer.Writer port
-    writer.write TEST-BYTES
+    port.out.write TEST-BYTES
     sleep --ms=200
 
   port.close

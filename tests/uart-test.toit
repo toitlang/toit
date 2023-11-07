@@ -7,8 +7,6 @@ import host.pipe
 import host.directory
 import log
 import monitor
-import reader
-import writer
 import expect show *
 
 main:
@@ -98,15 +96,15 @@ run-test tty0/string tty1/string:
     expect-equals rate port1.baud-rate
     expect-equals rate port2.baud-rate
 
-    reader1 := reader.BufferedReader port1
-    writer1 := writer.Writer port1
+    reader1 := port1.in
+    writer1 := port1.out
 
-    reader2 := reader.BufferedReader port2
-    writer2 := writer.Writer port2
+    reader2 := port2.in
+    writer2 := port2.out
 
     str := "foobar"
     writer1.write str
-    reader2.ensure str.size
+    reader2.ensure-buffered str.size
     expect-equals str reader2.read-string
 
     bytes := ByteArray 100_000: it
@@ -123,7 +121,7 @@ run-test tty0/string tty1/string:
     task::
       written := 0
       while written < bytes.size:
-        written += port1.write bytes[written ..] --wait
+        written += port1.out.try-write bytes[written ..] --wait
       // Use a gate, as the port could be closed before the --wait is done otherwise
       write-done.unlock
 

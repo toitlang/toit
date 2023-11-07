@@ -23,7 +23,7 @@ main:
   data := #[]
   TEST-ITERATIONS.repeat:
     while true:
-      chunk := port.read
+      chunk := port.in.read
       data += chunk
       if data.size >= TEST-BYTES.size:
         check-read-data data[..TEST-BYTES.size]

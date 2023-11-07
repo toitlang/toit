@@ -6,11 +6,9 @@
 Implementation of the XMODEM-1K file transfer protocol.
 */
 
-import writer
 import uart
 import crypto.checksum
 import crypto.crc
-import binary show BIG-ENDIAN
 
 /**
 Writer for writing data in the XMODEM-1K format on the UART port.
@@ -24,11 +22,9 @@ class Writer:
   static NAK_/int ::= 0x15
 
   uart_/uart.Port
-  writer_/writer.Writer
   buffer_ ::= Buffer
 
   constructor .uart_:
-    writer_ = writer.Writer uart_
     wait-for-ready_
 
   write data:
@@ -40,8 +36,8 @@ class Writer:
 
   write-package_ data/ByteArray:
     MAX-RETRY_.repeat:
-      writer_.write data
-      r := uart_.read
+      uart_.out.write data
+      r := uart_.in.read
       if r.size != 1: throw "INVALID XMODEL RESPONSE: $r"
       if r[0] == ACK_: return
       if r[0] != NAK_: throw "INVALID XMODEL RESPONSE: $r"
@@ -51,7 +47,7 @@ class Writer:
     throw "ERROR AFTER $MAX-RETRY_ RETRIES"
 
   wait-for-ready_:
-    r := uart_.read
+    r := uart_.in.read
     if r.size == 1 and r[0] == 'C': return
     throw "INVALID XMODEL INIT: $r"
 
