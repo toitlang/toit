@@ -16,187 +16,362 @@
 import net
 import monitor
 import log
-import esp32
+
+import net.modules.dns as dns-module
+import net.wifi
+
+import encoding.tison
+import system.assets
+import system.firmware
+import system.storage
 
 import system.api.wifi show WifiService
 import system.api.network show NetworkService
-import system.services show ServiceDefinition ServiceResource
+import system.services show ServiceResource
+import system.base.network show NetworkModule NetworkResource NetworkState
 
-import ..shared.network_base
+import ..shared.network-base
 
-WIFI_RETRY_DELAY_     ::= Duration --s=1
-WIFI_CONNECT_TIMEOUT_ ::= Duration --s=10
-WIFI_DHCP_TIMEOUT_    ::= Duration --s=16
+// Keep in sync with the definitions in WifiResourceGroup.
+OWN-ADDRESS-INDEX_        ::= 0
+MAIN-DNS-ADDRESS-INDEX_   ::= 1
+BACKUP-DNS-ADDRESS-INDEX_ ::= 2
 
-class WifiServiceDefinition extends NetworkServiceDefinitionBase:
-  state_/WifiState? := null
+// Use lazy initialization to delay opening the storage bucket
+// until we need it the first time. From that point forward,
+// we keep it around forever.
+bucket_/storage.Bucket ::= storage.Bucket.open --flash "toitlang.org/wifi"
+
+class WifiServiceProvider extends NetworkServiceProviderBase:
+  static WIFI-CONFIG-STORE-KEY ::= "system/wifi"
+  state_/NetworkState ::= NetworkState
 
   constructor:
     super "system/wifi/esp32" --major=0 --minor=1
-    provides WifiService.UUID WifiService.MAJOR WifiService.MINOR
+        --tags=[NetworkService.TAG-WIFI]
+    provides WifiService.SELECTOR --handler=this
 
-  handle pid/int client/int index/int arguments/any -> any:
-    if index == WifiService.CONNECT_SSID_PASSWORD_INDEX:
-      return connect client arguments[0] arguments[1]
-    return super pid client index arguments
+  handle index/int arguments/any --gid/int --client/int -> any:
+    if index == WifiService.CONNECT-INDEX:
+      return connect client arguments
+    if index == WifiService.ESTABLISH-INDEX:
+      return establish client arguments
+    if index == WifiService.AP-INFO-INDEX:
+      network := (resource client arguments) as NetworkResource
+      return ap-info network
+    if index == WifiService.SCAN-INDEX:
+      return scan arguments
+    if index == WifiService.CONFIGURE-INDEX:
+      return configure arguments
+    return super index arguments --gid=gid --client=client
 
   connect client/int -> List:
-    return connect client null null
+    return connect client null
 
-  connect client/int ssid/string? password/string? -> List:
-    if not ssid:
-      config := esp32.image_config or {:}
-      wifi_config := config.get "wifi" --if_absent=: {:}
-      ssid = wifi_config["ssid"]
-      password = wifi_config.get "password" --if_absent=: ""
-    if not state_: state_ = WifiState this
-    module ::= state_.up ssid password
-    if module.ssid_ != ssid or module.password_ != password:
-      throw "wifi already connected with different credentials"
-    resource := WifiResource this client state_
-    return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]
+  connect client/int config/Map? -> List:
+    effective := config
+    if not effective:
+      catch --trace: effective = bucket_.get WIFI-CONFIG-STORE-KEY
+      if not effective:
+        effective = firmware.config["wifi"]
+      if not effective:
+        effective = {:}
+        // If we move the WiFi service out of the system process,
+        // the asset might simply be known as "config". For now,
+        // it co-exists with other system assets.
+        assets.decode.get "wifi" --if-present=: | encoded |
+          catch --trace: effective = tison.decode encoded
 
-  address resource/WifiResource -> ByteArray:
-    return state_.wifi.address.to_byte_array
+    ssid/string? := effective.get wifi.CONFIG-SSID
+    if not ssid or ssid.is-empty: throw "wifi ssid not provided"
+    password/string := effective.get wifi.CONFIG-PASSWORD --if-absent=: ""
 
-  turn_on ssid/string password/string -> WifiModule:
-    module := WifiModule
+    module ::= (state_.up: WifiModule.sta this ssid password) as WifiModule
     try:
-      module.set_ssid ssid password
-      with_timeout WIFI_CONNECT_TIMEOUT_: module.connect
-      with_timeout WIFI_DHCP_TIMEOUT_: module.get_ip
-      return module
-    finally: | is_exception exception |
-      if is_exception:
-        module.close
+      if module.ap:
+        throw "wifi already established in AP mode"
+      if module.ssid != ssid or module.password != password:
+        throw "wifi already connected with different credentials"
 
-  turn_off module/WifiModule -> none:
-    module.close
+      resource := NetworkResource this client state_ --notifiable
+      return [
+        resource.serialize-for-rpc,
+        NetworkService.PROXY-ADDRESS | NetworkService.PROXY-RESOLVE,
+        "wifi:sta"
+      ]
+    finally: | is-exception exception |
+      // If we're not returning a network resource to the client, we
+      // must take care to decrement the usage count correctly.
+      if is-exception:
+        critical-do: state_.down
 
-class WifiResource extends ServiceResource:
-  state_/WifiState ::= ?
-  constructor service/ServiceDefinition client/int .state_:
-    super service client
+  establish client/int config/Map? -> List:
+    if not config: config = {:}
 
-  on_closed -> none:
-    state_.down
+    ssid/string? := config.get wifi.CONFIG-SSID
+    if not ssid or ssid.is-empty: throw "wifi ssid not provided"
+    password/string := config.get wifi.CONFIG-PASSWORD --if-absent=: ""
+    if password.size != 0 and password.size < 8:
+      throw "wifi password must be at least 8 characters"
+    channel/int := config.get wifi.CONFIG-CHANNEL --if-absent=: 1
+    if channel < 1 or channel > 13:
+      throw "wifi channel must be between 1 and 13"
+    broadcast/bool := config.get wifi.CONFIG-BROADCAST --if-absent=: true
 
-monitor WifiState:
-  service_/WifiServiceDefinition ::= ?
-  wifi_/WifiModule? := null
-  usage_/int := 0
-  constructor .service_:
-
-  wifi -> WifiModule?:
-    return wifi_
-
-  up ssid/string password/string -> WifiModule:
-    usage_++
-    if wifi_: return wifi_
-    return wifi_ = service_.turn_on ssid password
-
-  down -> none:
-    usage_--
-    if usage_ > 0 or not wifi_: return
+    module ::= (state_.up: WifiModule.ap this ssid password broadcast channel) as WifiModule
     try:
-      service_.turn_off wifi_
+      if not module.ap:
+        throw "wifi already connected in STA mode"
+      if module.ssid != ssid or module.password != password:
+        throw "wifi already established with different credentials"
+      if module.channel != channel:
+        throw "wifi already established on channel $module.channel"
+      if module.broadcast != broadcast:
+        no := broadcast ? "no " : ""
+        throw "wifi already established with $(no)ssid broadcasting"
+      resource := NetworkResource this client state_ --notifiable
+      return [
+        resource.serialize-for-rpc,
+        NetworkService.PROXY-ADDRESS | NetworkService.PROXY-RESOLVE,
+        "wifi:ap"
+      ]
+    finally: | is-exception exception |
+      // If we're not returning a network resource to the client, we
+      // must take care to decrement the usage count correctly.
+      if is-exception:
+        critical-do: state_.down
+
+  address resource/NetworkResource -> ByteArray:
+    return (state_.module as WifiModule).address.to-byte-array
+
+  resolve resource/ServiceResource host/string -> List:
+    return (dns-module.dns-lookup-multi host).map: it.raw
+
+  ap-info resource/NetworkResource -> List:
+    return (state_.module as WifiModule).ap-info
+
+  scan config/Map -> List:
+    if state_.module:
+      throw "wifi already connected or established"
+    module := WifiModule.sta this "" ""
+    try:
+      channels := config.get wifi.CONFIG-SCAN-CHANNELS
+      passive := config.get wifi.CONFIG-SCAN-PASSIVE
+      period := config.get wifi.CONFIG-SCAN-PERIOD
+      return module.scan channels passive period
     finally:
-      // Assume the WiFi is off even if turning
-      // it off threw an exception.
-      wifi_ = null
+      module.disconnect
 
-class WifiModule:
-  static WIFI_CONNECTED    ::= 1 << 0
-  static WIFI_DHCP_SUCCESS ::= 1 << 1
-  static WIFI_DISCONNECTED ::= 1 << 2
-  static WIFI_RETRY        ::= 1 << 3
+  configure config/Map? -> none:
+    if config:
+      bucket_[WIFI-CONFIG-STORE-KEY] = config
+    else:
+      bucket_.remove WIFI-CONFIG-STORE-KEY
 
-  logger_/log.Logger ::= log.default.with_name "wifi"
+  on-module-closed module/WifiModule -> none:
+    critical-do:
+      resources-do: | resource/NetworkResource |
+        if not resource.is-closed:
+          resource.notify_ NetworkService.NOTIFY-CLOSED --close
 
-  resource_group_ := wifi_init_
+class WifiModule implements NetworkModule:
+  static WIFI-CONNECTED    ::= 1 << 0
+  static WIFI-IP-ASSIGNED  ::= 1 << 1
+  static WIFI-IP-LOST      ::= 1 << 2
+  static WIFI-DISCONNECTED ::= 1 << 3
+  static WIFI-RETRY        ::= 1 << 4
+  static WIFI-SCAN-DONE    ::= 1 << 5
 
-  ssid_ := null
-  password_ := null
+  static WIFI-RETRY-DELAY_     ::= Duration --s=1
+  static WIFI-CONNECT-TIMEOUT_ ::= Duration --s=24
+  static WIFI-DHCP-TIMEOUT_    ::= Duration --s=16
 
+  logger_/log.Logger ::= log.default.with-name "wifi"
+  service/WifiServiceProvider
+
+  // TODO(kasper): Consider splitting the AP and non-AP case out
+  // into two subclasses.
+  ap/bool
+  ssid/string
+  password/string
+  broadcast/bool? := null
+  channel/int? := null
+
+  resource-group_ := ?
+  wifi-events_/monitor.ResourceState_? := null
+  ip-events_/monitor.ResourceState_? := null
   address_/net.IpAddress? := null
 
-  set_ssid ssid password:
-    ssid_ = ssid
-    password_ = password
+  constructor.sta .service .ssid .password:
+    resource-group_ = wifi-init_ false
+    ap = false
 
-  close:
-    if resource_group_:
-      logger_.debug "closing"
-      wifi_close_ resource_group_
-      resource_group_ = null
+  constructor.ap .service .ssid .password .broadcast .channel:
+    resource-group_ = wifi-init_ true
+    ap = true
 
   address -> net.IpAddress:
     return address_
 
-  connect:
+  connect -> none:
+    with-timeout WIFI-CONNECT-TIMEOUT_: wait-for-connected_
+    if ap:
+      wait-for-static-ip-address_
+    else:
+      with-timeout WIFI-DHCP-TIMEOUT_: wait-for-dhcp-ip-address_
+
+  disconnect -> none:
+    if not resource-group_:
+      return
+
+    // If we're disconnecting because of cancelation, we have
+    // to make sure we still clean up. Logging and disposing
+    // are (potentially) monitor operations, so we have to be
+    // extra careful around those.
+    critical-do:
+      logger_.debug "closing"
+      if wifi-events_:
+        wifi-events_.dispose
+        wifi-events_ = null
+      if ip-events_:
+        ip-events_.dispose
+        ip-events_ = null
+
+    wifi-close_ resource-group_
+    resource-group_ = null
+    address_ = null
+    service.on-module-closed this
+
+  wait-for-connected_:
     try:
       logger_.debug "connecting"
       while true:
-        resource := wifi_connect_ resource_group_ ssid_ password_
-        res := monitor.ResourceState_ resource_group_ resource
-        state := res.wait
-        res.dispose
-        if (state & WIFI_CONNECTED) != 0:
+        resource ::= ap
+            ? wifi-establish_ resource-group_ ssid password broadcast channel
+            : wifi-connect_ resource-group_ ssid password
+        wifi-events_ = monitor.ResourceState_ resource-group_ resource
+        state := wifi-events_.wait
+        if (state & WIFI-CONNECTED) != 0:
+          wifi-events_.clear-state WIFI-CONNECTED
           logger_.debug "connected"
+          wifi-events_.set-callback:: on-event_ it
           return
-        else if (state & WIFI_RETRY) != 0:
-          reason ::= wifi_disconnect_reason_ resource
+        else if (state & WIFI-RETRY) != 0:
+          // We will be creating a new ResourceState object on the next
+          // iteration, so we need to dispose the one from this attempt.
+          wifi-events_.dispose
+          wifi-events_ = null
+          reason ::= wifi-disconnect-reason_ resource
           logger_.info "retrying" --tags={"reason": reason}
-          wifi_disconnect_ resource_group_ resource
-          sleep WIFI_RETRY_DELAY_
+          wifi-disconnect_ resource-group_ resource
+          sleep WIFI-RETRY-DELAY_
           continue
-        else if (state & WIFI_DISCONNECTED) != 0:
-          reason ::= wifi_disconnect_reason_ resource
+        else if (state & WIFI-DISCONNECTED) != 0:
+          reason ::= wifi-disconnect-reason_ resource
           logger_.warn "connect failed" --tags={"reason": reason}
-          close
           throw "CONNECT_FAILED: $reason"
-    finally: | is_exception exception |
-      if is_exception and exception.value == DEADLINE_EXCEEDED_ERROR:
+    finally: | is-exception exception |
+      if is-exception and exception.value == DEADLINE-EXCEEDED-ERROR:
         logger_.warn "connect failed" --tags={"reason": "timeout"}
 
-  get_ip:
-    resource := wifi_setup_ip_ resource_group_
-    res := monitor.ResourceState_ resource_group_ resource
-    state := res.wait
-    res.dispose
-    if (state & WIFI_DHCP_SUCCESS) != 0:
-      ip := wifi_get_ip_ resource
-      address_ = net.IpAddress.parse ip
-      logger_.info "dhcp assigned address" --tags={"ip": ip}
-      return ip
-    close
-    throw "IP_ASSIGN_FAILED"
+  wait-for-dhcp-ip-address_ -> none:
+    resource := wifi-setup-ip_ resource-group_
+    ip-events_ = monitor.ResourceState_ resource-group_ resource
+    state := ip-events_.wait
+    if (state & WIFI-IP-ASSIGNED) == 0: throw "IP_ASSIGN_FAILED"
+    ip-events_.clear-state WIFI-IP-ASSIGNED
+    ip ::= (wifi-get-ip_ resource-group_ OWN-ADDRESS-INDEX_) or #[0, 0, 0, 0]
+    address_ = net.IpAddress ip
+    logger_.info "network address dynamically assigned through dhcp" --tags={"ip": address_}
+    configure-dns_ --from-dhcp
+    ip-events_.set-callback:: on-event_ it
 
-  rssi -> int?:
-    return wifi_get_rssi_ resource_group_
+  wait-for-static-ip-address_ -> none:
+    ip ::= (wifi-get-ip_ resource-group_ OWN-ADDRESS-INDEX_) or #[0, 0, 0, 0]
+    address_ = net.IpAddress ip
+    logger_.info "network address statically assigned" --tags={"ip": address_}
+    configure-dns_ --from-dhcp=false
+
+  configure-dns_ --from-dhcp/bool -> none:
+    main-dns := wifi-get-ip_ resource-group_ MAIN-DNS-ADDRESS-INDEX_
+    backup-dns := wifi-get-ip_ resource-group_ BACKUP-DNS-ADDRESS-INDEX_
+    dns-ips := []
+    if main-dns: dns-ips.add (net.IpAddress main-dns)
+    if backup-dns: dns-ips.add (net.IpAddress backup-dns)
+    if dns-ips.size != 0:
+      dns-module.dhcp-client_ = dns-module.DnsClient dns-ips
+      if from-dhcp:
+        logger_.info "dns server address dynamically assigned through dhcp" --tags={"ip": dns-ips}
+      else:
+        logger_.info "dns server address statically assigned" --tags={"ip": dns-ips}
+    else:
+      dns-module.dhcp-client_ = null
+      logger_.info "dns server address not supplied by network; using fallback dns servers"
+
+  ap-info -> List:
+    return wifi-get-ap-info_ resource-group_
+
+  scan channels/ByteArray passive/bool period/int -> List:
+    if ap or not resource-group_:
+      throw "wifi is AP mode or not initialized"
+
+    resource := wifi-init-scan_ resource-group_
+    scan-events := monitor.ResourceState_ resource-group_ resource
+    result := []
+    try:
+      channels.do:
+        wifi-start-scan_ resource-group_ it passive period
+        state := scan-events.wait
+        if (state & WIFI-SCAN-DONE) == 0: throw "WIFI_SCAN_ERROR"
+        scan-events.clear-state WIFI-SCAN-DONE
+        array := wifi-read-scan_ resource-group_
+        result.add-all array
+    finally:
+      scan-events.dispose
+
+    return result
+
+  on-event_ state/int:
+    // TODO(kasper): We should be clearing the state in the
+    // $monitor.ResourceState_ object, but since we're only
+    // closing here it doesn't really matter. Room for
+    // improvement though.
+    if (state & (WIFI-DISCONNECTED | WIFI-IP-LOST)) != 0: disconnect
 
 // ----------------------------------------------------------------------------
 
-wifi_init_:
+wifi-init_ ap:
   #primitive.wifi.init
 
-wifi_close_ resource_group:
+wifi-close_ resource-group:
   #primitive.wifi.close
 
-wifi_connect_ resource_group ssid password:
+wifi-connect_ resource-group ssid password:
   #primitive.wifi.connect
 
-wifi_setup_ip_ resource_group:
-  #primitive.wifi.setup_ip
+wifi-establish_ resource-group ssid password broadcast channel:
+  #primitive.wifi.establish
 
-wifi_disconnect_ resource_group resource:
+wifi-setup-ip_ resource-group:
+  #primitive.wifi.setup-ip
+
+wifi-disconnect_ resource-group resource:
   #primitive.wifi.disconnect
 
-wifi_disconnect_reason_ resource:
-  #primitive.wifi.disconnect_reason
+wifi-disconnect-reason_ resource:
+  #primitive.wifi.disconnect-reason
 
-wifi_get_ip_ resource:
-  #primitive.wifi.get_ip
+wifi-get-ip_ resource-group index/int -> ByteArray?:
+  #primitive.wifi.get-ip
 
-wifi_get_rssi_ resource_group:
-  #primitive.wifi.get_rssi
+wifi-init-scan_ resource-group:
+  #primitive.wifi.init-scan
+
+wifi-start-scan_ resource-group channel passive period-ms:
+  #primitive.wifi.start-scan
+
+wifi-read-scan_ resource-group -> Array_:
+  #primitive.wifi.read-scan
+
+wifi-get-ap-info_ resource-group -> Array_:
+  #primitive.wifi.ap-info

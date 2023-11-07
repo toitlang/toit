@@ -19,7 +19,7 @@
 #include "objects.h"
 #include "primitive_font.h"
 #include "primitive.h"
-#include "sha256.h"
+#include "sha.h"
 
 namespace toit {
 
@@ -43,8 +43,8 @@ bool FontBlock::verify(const uint8* data, uint32 length, const char* name) {
   if (Utils::read_unaligned_uint32(data + 4) != length) return false;
   if (data[length - 1] != 0xff) return false;
   uint32 offset = 40;
-  uint32 from = -1;
-  uint32 to = -1;
+  int32 from = -1;
+  int32 to = -1;
   while (true) {
     if (offset >= length) return false;
     int key = (signed char)data[offset];
@@ -84,15 +84,15 @@ bool FontBlock::verify(const uint8* data, uint32 length, const char* name) {
   if (from < 0 || to < 0 || from > Utils::MAX_UNICODE || from >= to) return false;
   // Check integrity with Sha256 in case encrypted file has been tampered with.
   uint8 has_checksum = 0;
-  for (int i = 0; i < Sha256::HASH_LENGTH; i++) has_checksum |= data[i + 8];
+  for (int i = 0; i < Sha::HASH_LENGTH_256; i++) has_checksum |= data[i + 8];
   if (has_checksum) {
-    Sha256 sha(null);
+    Sha sha(null, 256);
     sha.add(data + 40, length - 40);
-    uint8 calculated[Sha256::HASH_LENGTH];
+    uint8 calculated[Sha::HASH_LENGTH_256];
     sha.get(calculated);
     // Check sha256 checksum without bailing out early.
     uint8 sha256_errors = 0;
-    for (int i = 0; i < Sha256::HASH_LENGTH; i++) sha256_errors |= calculated[i] ^ data[i + 8];
+    for (int i = 0; i < Sha::HASH_LENGTH_256; i++) sha256_errors |= calculated[i] ^ data[i + 8];
     if (sha256_errors) return false;
   }
   return true;
@@ -145,7 +145,7 @@ static const FontCharacter* create_replacement(int code_point);
 const FontCharacter* Font::get_char(int cp, bool substitue_mojibake) {
   int hashed = (cp >> _CACHE_GRANULARITY_BITS) ^ (cp >> 6) ^ (cp >> 10) ^ (cp >> 14);
   hashed &= _CACHE_SIZE - 1;
-  if (!_does_section_match(_cache[hashed], cp)) {
+  if (!_does_section_match(cache_[hashed], cp)) {
     const FontCharacter* c = _get_section_for_code_point(cp);
     if (c == null) {
       if (substitue_mojibake)
@@ -153,9 +153,9 @@ const FontCharacter* Font::get_char(int cp, bool substitue_mojibake) {
       else
         return null;
     }
-    _cache[hashed] = c;
+    cache_[hashed] = c;
   }
-  const FontCharacter* c = _cache[hashed];
+  const FontCharacter* c = cache_[hashed];
   while (c != null) {
     if (c->code_point() == cp) return c;
     if (!_does_section_match(c, cp)) return create_replacement(cp);
@@ -166,8 +166,8 @@ const FontCharacter* Font::get_char(int cp, bool substitue_mojibake) {
 
 const FontCharacter* Font::_get_section_for_code_point(int code_point) {
   code_point &= _CACHE_MASK;
-  for (int i = 0; i < _block_count; i++) {
-    const FontBlock* block = _blocks[i];
+  for (int i = 0; i < block_count_; i++) {
+    const FontBlock* block = blocks_[i];
     if ((block->from() & _CACHE_MASK) <= code_point && code_point < block->to()) {
       for (const FontCharacter* c = block->data(); !c->is_terminator(); c = c->next()) {
         // Check if we found the first character in the same granularity
@@ -362,20 +362,20 @@ static const FontCharacter* create_replacement(int code_point) {
 }
 
 void FontDecompresser::compute_next_line() {
-  int bytes = (_width + 7) >> 3;
+  int bytes = (width_ + 7) >> 3;
   for (int i = 0; i < bytes; i++) {
     int next = line_[i];
-    if (_saved_sames != 0) {
-      _saved_sames--;
+    if (saved_sames_ != 0) {
+      saved_sames_--;
       continue;
     }
-    switch (_command(_control_position++)) {
+    switch (_command(control_position_++)) {
       case SAME_1:
         break;
       case PREFIX_2:
-        switch (_command(_control_position++)) {
+        switch (_command(control_position_++)) {
           case SAME_4_7:
-            _saved_sames = 3 + (_command(_control_position++));
+            saved_sames_ = 3 + (_command(control_position_++));
             break;
           case GROW_RIGHT:
             next |= next >> 1;
@@ -384,11 +384,11 @@ void FontDecompresser::compute_next_line() {
             next >>= 1;
             break;
           case PREFIX_2_3: 
-            switch (_command(_control_position++)) {
+            switch (_command(control_position_++)) {
               case SAME_10_25: {
-                int hi = _command(_control_position++);
-                int lo = _command(_control_position++);
-                _saved_sames = 9 + (hi << 2) + lo;
+                int hi = _command(control_position_++);
+                int lo = _command(control_position_++);
+                saved_sames_ = 9 + (hi << 2) + lo;
                 break;
               }
               case LO_BIT:
@@ -405,7 +405,7 @@ void FontDecompresser::compute_next_line() {
         }
         break;
       case PREFIX_3:
-        switch (_command(_control_position++)) {
+        switch (_command(control_position_++)) {
           case LEFT:
             next <<= 1;
             break;
@@ -416,7 +416,7 @@ void FontDecompresser::compute_next_line() {
             next = 0;
             break;
           case PREFIX_3_3:
-            switch (_command(_control_position++)) {
+            switch (_command(control_position_++)) {
               case SHRINK_LEFT:
                 next &= next >> 1;
                 break;
@@ -434,10 +434,10 @@ void FontDecompresser::compute_next_line() {
         }
         break;
       case NEW: {
-        next = _command(_control_position++) << 6;
-        next |= _command(_control_position++) << 4;
-        next |= _command(_control_position++) << 2;
-        next |= _command(_control_position++);
+        next = _command(control_position_++) << 6;
+        next |= _command(control_position_++) << 4;
+        next |= _command(control_position_++) << 2;
+        next |= _command(control_position_++);
         break;
       }
     }
@@ -446,14 +446,14 @@ void FontDecompresser::compute_next_line() {
 }
 
 PRIMITIVE(get_font) {
-#if !defined(CONFIG_TOIT_BIT_DISPLAY) && !defined(CONFIG_TOIT_BYTE_DISPLAY)
-  UNIMPLEMENTED_PRIMITIVE;
+#if (!defined(CONFIG_TOIT_BIT_DISPLAY) && !defined(CONFIG_TOIT_BYTE_DISPLAY)) || !defined(CONFIG_TOIT_FONT)
+  FAIL(UNIMPLEMENTED);
 #else
   ARGS(SimpleResourceGroup, resource_group, StringOrSlice, string);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
   Font* font = _new Font(resource_group);
-  if (!font) MALLOC_FAILED;
+  if (!font) FAIL(MALLOC_FAILED);
   SimpleResourceAllocationManager<Font> font_allocation_manager(font);
   const uint8* page1 = null;
   size_t page1_length = 0;
@@ -464,13 +464,13 @@ PRIMITIVE(get_font) {
     page1 = FONT_PAGE_ToitLogo;
     page1_length = sizeof(FONT_PAGE_ToitLogo);
   }
-  if (page1 == null) return process->program()->null_object();
-  if (!FontBlock::verify(page1, page1_length, null)) INVALID_ARGUMENT;
+  if (page1 == null) return process->null_object();
+  if (!FontBlock::verify(page1, page1_length, null)) FAIL(INVALID_ARGUMENT);
   FontBlock* block1 = _new FontBlock(page1, false);
-  if (!block1) ALLOCATION_FAILED;
+  if (!block1) FAIL(ALLOCATION_FAILED);
   if (!font->add(block1)) {
     delete block1;
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
   proxy->set_external_address(font_allocation_manager.keep_result());
   return proxy;
@@ -478,12 +478,15 @@ PRIMITIVE(get_font) {
 }
 
 PRIMITIVE(get_nonbuiltin) {
+#ifndef CONFIG_TOIT_FONT
+  FAIL(UNIMPLEMENTED);
+#else
   ARGS(SimpleResourceGroup, group, Array, arrays);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   Font* font = _new Font(group);
-  if (!font) ALLOCATION_FAILED;
+  if (!font) FAIL(ALLOCATION_FAILED);
 
   SimpleResourceAllocationManager<Font> font_manager(font);
 
@@ -491,12 +494,12 @@ PRIMITIVE(get_nonbuiltin) {
     Object* block_array = arrays->at(index);
     const uint8* bytes;
     int length;
-    if (!block_array->is_heap_object()) WRONG_TYPE;
-    if (!block_array->byte_content(process->program(), &bytes, &length, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+    if (!is_heap_object(block_array)) FAIL(WRONG_OBJECT_TYPE);
+    if (!block_array->byte_content(process->program(), &bytes, &length, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
     // TODO: We should perhaps avoid redoing this verification if the data is
     // in flash and we already did it once.
     if (!FontBlock::verify(bytes, length, null)) {
-      INVALID_ARGUMENT;
+      FAIL(INVALID_ARGUMENT);
     }
     AllocationManager manager(process);
     const uint8* font_characters;
@@ -507,13 +510,13 @@ PRIMITIVE(get_nonbuiltin) {
     } else {
       auto mutable_font_characters = manager.alloc(length);
       was_allocated = true;
-      if (!mutable_font_characters) ALLOCATION_FAILED;
+      if (!mutable_font_characters) FAIL(ALLOCATION_FAILED);
       memcpy(mutable_font_characters, bytes, length);
       font_characters = mutable_font_characters;
     }
     FontBlock* block = _new FontBlock(font_characters, was_allocated);
-    if (!block) MALLOC_FAILED;
-    if (!font->add(block)) MALLOC_FAILED;
+    if (!block) FAIL(MALLOC_FAILED);
+    if (!font->add(block)) FAIL(MALLOC_FAILED);
     // TODO(kasper): This looks fishy. What happens if processing the next
     // entry fails? Do we just leak the memory allocated up to that point?
     manager.keep_result();
@@ -522,22 +525,31 @@ PRIMITIVE(get_nonbuiltin) {
   proxy->set_external_address(font_manager.keep_result());
 
   return proxy;
+#endif
 }
 
 PRIMITIVE(contains) {
+#ifndef CONFIG_TOIT_FONT
+  FAIL(UNIMPLEMENTED);
+#else
   ARGS(Font, font, int, code_point);
-  if (code_point < 0 || code_point > Utils::MAX_UNICODE) OUT_OF_RANGE;
+  if (code_point < 0 || code_point > Utils::MAX_UNICODE) FAIL(OUT_OF_RANGE);
   const bool mojibake = false;
   const FontCharacter* fc = font->get_char(code_point, mojibake);
   return BOOL(fc != null);
+#endif
 }
 
 PRIMITIVE(delete_font) {
+#ifndef CONFIG_TOIT_FONT
+  FAIL(UNIMPLEMENTED);
+#else
   ARGS(Font, font);
   font->resource_group()->unregister_resource(font);
 
   font_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
+#endif
 }
 
 void iterate_font_characters(Blob bytes, Font* font, const std::function<void (const FontCharacter*)>& f) {
@@ -569,6 +581,9 @@ struct CaptureBundle {
 };
 
 PRIMITIVE(get_text_size) {
+#ifndef CONFIG_TOIT_FONT
+  FAIL(UNIMPLEMENTED);
+#else
   ARGS(StringOrSlice, bytes, Font, font, Array, result);
   int pixels = 0;
   const int A_LARGE_NUMBER = 1000000;
@@ -597,8 +612,10 @@ PRIMITIVE(get_text_size) {
   }
 
   return Smi::from(pixels);
+#endif
 }
 
+#ifdef CONFIG_TOIT_FONT
 
 // Copyright: "Copyright (c) 1984, 1987 Adobe Systems Incorporated. All Rights Reserved. Copyright (c) 1988, 1991 Digital Equipment Corporation. All Rights Reserved."
 
@@ -853,5 +870,7 @@ const unsigned char FONT_PAGE_ToitLogo[235] = {
   65, 64, 40, 0, 0, // 0041 U+0041
   65, 117, 0x1c, 0x22, 0xe, 0x3f, 0x84, 0x3, 0x3f, 0x13, 0xe2, 0x1, 0xfd, 0x7, 0xff, 0x54, 0x3, 0xd3, 0x82, 0xd4, 0xf8, 0x51, 0xff, 0x3b, 0x80, 0xff, 0xcc, 0x0, 0x3f, 0x4c, 0x5, 0xb5, 0x3f, 0x3f, 0xce, 0x5e, 0x3, 0xff, 0x4c, 0x8, 0x39, 0x3f, 0x3a, 0x10, 0x7c, 0xe0, 0x8a, 0xb2, 0x2a, 0xcb, 0x3e, 0xcf, 0xb2, 0xb6, 0x62, 0xd9, 0xb1, 0x3, 0xc9, 0x54, 0x40, 0x5f, 0x7c, 0x50, 0x22, 0xf5, 0xd9, 0x5b, 0xe5, 0x72, 0x97, 0x69, 0x73, 0xc5, 0xca, 0x6d, 0x65, 0x72, 0x9d, 0xca, 0x6d, 0xca, 0x87, 0x72, 0x9d, 0xca, 0xb9, 0xc6, 0xe7, 0xa9, 0xd6, 0xa7, 0x56, 0x77, 0xaa, 0x71, 0xa9, 0xc7, 0xa7, 0x1e, 0x9c, 0x51, 0xf3, 0x56, 0x4f, 0x85, 0xf, 0xf1, 0x47, 0xfc, 0x5a, 0xc5, 0xac, 0x50, 0x1c, 0xc0, 0x50, 0x3e, 0xe4,
   0xff};
+
+#endif  // CONFIG_TOIT_FONT.
 
 }

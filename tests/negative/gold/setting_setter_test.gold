@@ -1,4 +1,0 @@
-tests/negative/setting_setter_test.toit:7:7: error: Field-storing parameters may not call setters.
-  foo .setter:
-      ^~~~~~~
-Compilation failed.

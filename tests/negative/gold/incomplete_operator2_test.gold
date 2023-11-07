@@ -1,8 +1,0 @@
-tests/negative/incomplete_operator2_test.toit:6:11: error: Missing closing ']'
-  operator[
-          ^
-tests/negative/incomplete_operator2_test.toit:6:3: error: Missing body
-  operator[
-  ^~~~~~~~~
-Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/incomplete_operator2_test.toit'
-Compilation failed.

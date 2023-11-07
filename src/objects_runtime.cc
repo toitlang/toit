@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -22,7 +22,8 @@
 namespace toit {
 
 bool Object::mutable_byte_content(Process* process, uint8** content, int* length, Error** error) {
-  if (is_byte_array()) {
+  *error = Error::from(process->program()->wrong_object_type());  // Default error if we return false.
+  if (is_byte_array(this)) {
     auto byte_array = ByteArray::cast(this);
     // External byte arrays can have structs in them. This is captured in the external tag.
     // We only allow extracting the byte content from an external byte arrays iff it is tagged with RawByteType.
@@ -32,17 +33,17 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
     *content = bytes.address();
     return true;
   }
-  if (!is_instance()) return false;
+  if (!is_instance(this)) return false;
 
   auto program = process->program();
   auto instance = Instance::cast(this);
   if (instance->class_id() == program->byte_array_cow_class_id()) {
-    Object* backing = instance->at(0);
-    auto is_mutable = instance->at(1);
-    if (is_mutable == process->program()->true_object()) {
+    Object* backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
+    auto is_mutable = instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX);
+    if (is_mutable == process->true_object()) {
       return backing->mutable_byte_content(process, content, length, error);
     }
-    ASSERT(is_mutable == process->program()->false_object());
+    ASSERT(is_mutable == process->false_object());
 
     const uint8* immutable_content;
     int immutable_length;
@@ -50,31 +51,28 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
       return false;
     }
 
-    Object* new_backing = process->allocate_byte_array(immutable_length, error);
+    Object* new_backing = process->allocate_byte_array(immutable_length);
     if (new_backing == null) {
-      *content = null;
-      *length = 0;
-      // We return 'true' as this should have worked, but we might just have
-      // run out of memory. The 'error' contains the reason things failed.
-      return true;
+      *error = Error::from(program->allocation_failed());
+      return false;
     }
 
     ByteArray::Bytes bytes(ByteArray::cast(new_backing));
     memcpy(bytes.address(), immutable_content, immutable_length);
 
     instance->at_put(0, new_backing);
-    instance->at_put(1, process->program()->true_object());
+    instance->at_put(1, process->true_object());
     return new_backing->mutable_byte_content(process, content, length, error);
   } else if (instance->class_id() == program->byte_array_slice_class_id()) {
-    auto byte_array = instance->at(0);
-    auto from = instance->at(1);
-    auto to = instance->at(2);
-    if (!byte_array->is_heap_object()) return false;
+    auto byte_array = instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
+    auto from = instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX);
+    auto to = instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX);
+    if (!is_heap_object(byte_array)) return false;
     // TODO(florian): we could eventually accept larger integers here.
-    if (!from->is_smi()) return false;
-    if (!to->is_smi()) return false;
-    int from_value = Smi::cast(from)->value();
-    int to_value = Smi::cast(to)->value();
+    if (!is_smi(from)) return false;
+    if (!is_smi(to)) return false;
+    int from_value = Smi::value(from);
+    int to_value = Smi::value(to);
     bool inner_success = HeapObject::cast(byte_array)->mutable_byte_content(process, content, length, error);
     if (!inner_success) return false;
     // If the content is null, then we probably failed allocating the object.
@@ -131,18 +129,53 @@ void ByteArray::resize_external(Process* process, word new_length) {
   }
 }
 
-void Task::_initialize(Stack* stack, Smi* id) {
-  set_stack(stack);
-  at_put(ID_INDEX, id);
+void Stack::copy_to(Stack* other) {
+  int used = length() - top();
+  ASSERT(other->length() >= used);
+  int displacement = other->length() - length();
+  memcpy(other->_array_address(top() + displacement), _array_address(top()), used * WORD_SIZE);
+  other->_set_top(displacement + top());
+  other->_set_try_top(displacement + try_top());
+  // We've updated the other stack without using the write barrier.
+  // This is typically only done from within the interpreter, where
+  // the other stack immediately becomes the current interpreter
+  // stack through a call of other->transfer_to_interpreter(...). In
+  // such cases, it isn't strictly necessary to insert the other
+  // stack in the remembered set here, because it will always happen
+  // before leaving the interpreter; also before garbage collections.
+  // However, we play it safe and add it here because we have
+  // written into the stack and it might point to new objects.
+  GcMetadata::insert_into_remembered_set(other);
 }
 
-void Task::set_stack(Stack* value) {
-  at_put(STACK_INDEX, value);
-  GcMetadata::insert_into_remembered_set(value);
+void Stack::transfer_to_interpreter(Interpreter* interpreter) {
+  if (is_guard_zone_touched()) FATAL("stack overflow detected");
+  ASSERT(top() >= 0);
+  ASSERT(top() <= length());
+  interpreter->limit_ = _stack_limit_addr();
+  interpreter->base_ = _stack_base_addr();
+  interpreter->sp_ = _stack_sp_addr();
+  interpreter->try_sp_ = _stack_try_sp_addr();
+  ASSERT(top() == (interpreter->sp_ - _stack_limit_addr()));
+  _set_top(-1);
 }
 
-bool HeapObject::in_remembered_set() {
-  if (*GcMetadata::remembered_set_for(_raw()) == GcMetadata::NEW_SPACE_POINTERS) {
+void Stack::transfer_from_interpreter(Interpreter* interpreter) {
+  if (is_guard_zone_touched()) FATAL("stack overflow detected");
+  ASSERT(top() == -1);
+  _set_top(interpreter->sp_ - _stack_limit_addr());
+  _set_try_top(interpreter->try_sp_ - _stack_limit_addr());
+  ASSERT(top() >= 0);
+  ASSERT(top() <= length());
+  // The interpreter doesn't use the write barrier when pushing to the
+  // stack, so we have to add it here. This is always done before
+  // garbage collections, so any stack that has been used by the
+  // interpreter since the last GC will be part of the remembered set.
+  GcMetadata::insert_into_remembered_set(this);
+}
+
+bool HeapObject::in_remembered_set() const {
+  if (*GcMetadata::remembered_set_for(this) == GcMetadata::NEW_SPACE_POINTERS) {
     return true;
   }
   return GcMetadata::get_page_type(this) == NEW_SPACE_PAGE;

@@ -35,10 +35,10 @@ MODULE_IMPLEMENTATION(timer, MODULE_TIMER)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   TimerResourceGroup* resource_group = _new TimerResourceGroup(process, TimerEventSource::instance());
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
@@ -48,11 +48,10 @@ PRIMITIVE(create) {
   ARGS(TimerResourceGroup, resource_group);
 
   ByteArray* timer_proxy = process->object_heap()->allocate_proxy();
-  if (timer_proxy == null) ALLOCATION_FAILED;
-
+  if (timer_proxy == null) FAIL(ALLOCATION_FAILED);
 
   Timer* timer = _new Timer(resource_group);
-  if (timer == null) MALLOC_FAILED;
+  if (timer == null) FAIL(MALLOC_FAILED);
 
   resource_group->register_resource(timer);
   timer_proxy->set_external_address(timer);
@@ -65,7 +64,7 @@ PRIMITIVE(arm) {
 
   TimerEventSource::instance()->arm(timer, usec);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(delete) {
@@ -75,7 +74,7 @@ PRIMITIVE(delete) {
 
   timer_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

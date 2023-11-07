@@ -1,7 +1,0 @@
-tests/negative/delimited_test.toit:7:9: error: Missing closing ']'
-  y := x[499
-        ^~~~
-tests/negative/delimited_test.toit:8:7: error: Incomplete expression
-  z :=
-      ^
-Compilation failed.

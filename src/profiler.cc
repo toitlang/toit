@@ -18,8 +18,6 @@
 #include "profiler.h"
 #include "encoder.h"
 
-#ifdef PROFILER
-
 namespace toit {
 
 Profiler::Profiler(int task_id) : task_id_(task_id) {
@@ -30,9 +28,9 @@ Profiler::Profiler(int task_id) : task_id_(task_id) {
   if (offset_table == null || counter_table == null) {
     free(offset_table);
     free(counter_table);
-    _allocated_bytes = -1;
+    allocated_bytes_ = -1;
   } else {
-    _allocated_bytes = table_size * sizeof(int) + table_size * sizeof(int64);
+    allocated_bytes_ = table_size * sizeof(int) + table_size * sizeof(int64);
     offset_table[0] = 0;
     counter_table[0] = 0;
   }
@@ -54,7 +52,7 @@ void Profiler::stop() {
 
 void Profiler::print() {
   printf("Profile:\n");
-  for (int index = 0; index < table_size; index++) {
+  for (int index = 1; index < table_size; index++) {
     int method_id = offset_table[index];
     int64 count = counter_table[index];
     if (count > 0) printf("  %5d:%8lld\n", method_id, static_cast<long long>(count));
@@ -64,13 +62,13 @@ void Profiler::print() {
 void Profiler::encode_on(ProgramOrientedEncoder* encoder, String* title, int cutoff) {
   // Compute total number of counts.
   int64 total_count = 0;
-  for (int index = 0; index < table_size; index++) {
+  for (int index = 1; index < table_size; index++) {
     total_count += counter_table[index];
   }
   // Compute number of reported lines based on cutoff.
   const int64 cutoff_count = (int64) (((double) total_count * cutoff) / 1000.0);
   int real_entries = 0;
-  for (int index = 0; index < table_size; index++) {
+  for (int index = 1; index < table_size; index++) {
     if (counter_table[index] > cutoff_count) real_entries++;
   }
   // Encode the report.
@@ -78,7 +76,7 @@ void Profiler::encode_on(ProgramOrientedEncoder* encoder, String* title, int cut
   encoder->encode(title);
   encoder->write_int(cutoff);
   encoder->write_int(total_count);
-  for (int index = 0; index < table_size; index++) {
+  for (int index = 1; index < table_size; index++) {
     if (counter_table[index] > cutoff_count) {
       int method_id = offset_table[index];
       encoder->write_int(method_id);
@@ -91,7 +89,7 @@ void Profiler::register_method(int absolute_bci) {
   int index = compute_index_for_absolute_bci(absolute_bci);
   if (index == -1) {
     // Couldn't allocate the tables.
-    ASSERT(_allocated_bytes == -1);
+    ASSERT(allocated_bytes_ == -1);
     return;
   }
   if (offset_table[index] == absolute_bci) {
@@ -111,12 +109,12 @@ void Profiler::register_method(int absolute_bci) {
     table_size = -1;
     offset_table = null;
     counter_table = null;
-    _allocated_bytes = -1;
+    allocated_bytes_ = -1;
   } else {
     table_size = new_table_size;
     offset_table = new_offset_table;
     counter_table = new_counter_table;
-    _allocated_bytes = new_offset_size + new_counter_size;
+    allocated_bytes_ = new_offset_size + new_counter_size;
     // The entry at index is lower than the new method's bci.
     // Therefore, index + 1 will be the slot where we insert the new method.
     // We need to move all entries [index + 1, old-table_size[ to [index + 2, new-table_size[
@@ -138,7 +136,7 @@ void Profiler::increment(int absolute_bci) {
   int index = compute_index_for_absolute_bci(absolute_bci);
   if (index == -1) {
     // Couldn't allocate the tables.
-    ASSERT(_allocated_bytes == -1);
+    ASSERT(allocated_bytes_ == -1);
     return;
   }
   counter_table[index]++;
@@ -172,5 +170,3 @@ int Profiler::compute_index_for_absolute_bci(int absolute_bci) {
 }
 
 } // namespace toit
-
-#endif

@@ -145,67 +145,85 @@ class IsInterfaceVisitor : public ir::TraversingVisitor {
     TraversingVisitor::visit_Typecheck(node);
     if (node->type().is_any()) return;
     auto klass = node->type().klass();
-    if (!klass->is_interface()) return;
+    if (!klass->is_interface() && !klass->is_mixin()) return;
     if (klass->typecheck_selector().is_valid()) return;
 
     // Names might be the same as two modules might have interfaces with
     //   the same name. However, we need to ensure that the Symbol is
     //   different, by pointing to different memory locations.
+    // The name doesn't need to be an invalid Toit identifier, but we
+    //   show the name in the dispatch-table, so it helps if it can
+    //   be distinguished from them.
     int name_len = strlen(klass->name().c_str());
-    int fresh_length = 3 + name_len;
+    int fresh_length = 4 + name_len;
     char* fresh_name = unvoid_cast<char*>(malloc(fresh_length + 1));
-    memcpy(fresh_name, "is-", 3);
-    memcpy(fresh_name + 3, klass->name().c_str(), name_len);
+    memcpy(fresh_name, "*is-", 4);
+    memcpy(fresh_name + 4, klass->name().c_str(), name_len);
     fresh_name[fresh_length] = '\0';
     Selector<CallShape> selector(Symbol::synthetic(fresh_name),
                                  interface_selector_call_shape());
     klass->set_typecheck_selector(selector);
 
     // We still need to add stub methods.
-    _interfaces_to_selectors.add(klass, selector);
+    needed_selectors_.add(klass, selector);
   }
 
-  UnorderedMap<ir::Class*, Selector<CallShape>> interfaces_to_selectors() const {
-    return _interfaces_to_selectors;
+  UnorderedMap<ir::Class*, Selector<CallShape>> needed_selectors() const {
+    return needed_selectors_;
   }
 
  private:
-  // We have to use `const char*` since we don't have a default constructor for
-  // symbols.
-  UnorderedMap<ir::Class*, Selector<CallShape>> _interfaces_to_selectors;
+  UnorderedMap<ir::Class*, Selector<CallShape>> needed_selectors_;
 };
+
+static ir::IsInterfaceOrMixinStub* create_stub(ir::Class* holder,
+                                               Selector<CallShape> selector,
+                                               ir::Class* interface_or_mixin) {
+  auto stub = _new ir::IsInterfaceOrMixinStub(selector.name(),
+                                              holder,
+                                              selector.shape().to_plain_shape(),
+                                              interface_or_mixin,
+                                              holder->range());
+  auto this_parameter = _new ir::Parameter(Symbols::this_,
+                                            ir::Type::any(),
+                                            false,
+                                            0,
+                                            false,
+                                            stub->range());
+  auto parameters = ListBuilder<ir::Parameter*>::build(this_parameter);
+  stub->set_parameters(parameters);
+  // TODO(florian): this should be type boolean.
+  stub->set_return_type(ir::Type::any());
+  // The body should never get compiled, but this makes it easier to deal
+  // with the stub.
+  stub->set_body(_new ir::Return(_new ir::LiteralBoolean(true, stub->range()), false, stub->range()));
+  return stub;
+}
 
 void add_interface_stub_methods(ir::Program* program) {
   IsInterfaceVisitor visitor;
   program->accept(&visitor);
 
-  auto interfaces_to_selectors = visitor.interfaces_to_selectors();
+  auto selectors = visitor.needed_selectors();
   for (auto klass : program->classes()) {
     if (klass->is_interface()) continue;
-    if (klass->interfaces().is_empty()) continue;
+    if (klass->interfaces().is_empty() && !klass->is_mixin()) continue;
+
     ListBuilder<ir::MethodInstance*> new_methods;
     for (auto ir_interface : klass->interfaces()) {
-      auto probe = interfaces_to_selectors.find(ir_interface);
-      if (probe == interfaces_to_selectors.end()) continue;
+      auto probe = selectors.find(ir_interface);
+      if (probe == selectors.end()) continue;
       auto selector = probe->second;
-      auto stub = _new ir::IsInterfaceStub(selector.name(),
-                                           klass,
-                                           selector.shape().to_plain_shape(),
-                                           klass->range());
-      auto this_parameter = _new ir::Parameter(Symbols::this_,
-                                               ir::Type::any(),
-                                               false,
-                                               0,
-                                               false,
-                                               stub->range());
-      auto parameters = ListBuilder<ir::Parameter*>::build(this_parameter);
-      stub->set_parameters(parameters);
-      // TODO(florian): this should be type boolean.
-      stub->set_return_type(ir::Type::any());
-      // The body should never get compiled, but this makes it easier to deal
-      // with the stub.
-      stub->set_body(_new ir::Return(_new ir::LiteralBoolean(true, stub->range()), false, stub->range()));
+      auto stub = create_stub(klass, selector, ir_interface);
       new_methods.add(stub);
+    }
+    if (klass->is_mixin()) {
+      auto probe = selectors.find(klass);
+      if (probe != selectors.end()) {
+        auto selector = probe->second;
+        auto stub = create_stub(klass, selector, klass);
+        new_methods.add(stub);
+      }
     }
     if (new_methods.is_empty()) continue;
     new_methods.add(klass->methods());

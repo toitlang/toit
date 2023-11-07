@@ -2,6 +2,15 @@ dependencies:
   ar:
     url: github.com/toitlang/pkg-ar
     version: ^1.0.0
+  cli:
+    url: github.com/toitlang/pkg-cli
+    version: ^1.2.0
   host:
     url: github.com/toitlang/pkg-host
+    version: ^1.8.1
+  partition-table:
+    url: github.com/toitware/toit-partition-table-esp32
+    version: ^1.0.2
+  semver:
+    url: github.com/toitware/toit-semver
     version: ^1.0.0

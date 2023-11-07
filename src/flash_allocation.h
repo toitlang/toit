@@ -22,116 +22,119 @@
 namespace toit {
 
 // Keep in sync with system/flash/allocation.toit.
-static const uint8 PROGRAM_TYPE = 0;
-static const uint8 PROGRAM_UNRELOCATED_TYPE = 1;
+static const uint8 FLASH_ALLOCATION_TYPE_PROGRAM = 0;
+static const uint8 FLASH_ALLOCATION_TYPE_REGION = 1;
 
-static const int FLASH_PAGE_SIZE = 4 * KB;
+static const int FLASH_PAGE_SIZE_LOG2 = 12;
+static const int FLASH_PAGE_SIZE = 1 << FLASH_PAGE_SIZE_LOG2;
 static const int FLASH_SEGMENT_SIZE = 16;
 
 class FlashAllocation {
  public:
-  explicit FlashAllocation(uint32 offset);
-  FlashAllocation();
-
-  bool is_valid_allocation(const uint32 allocation_offset) const;
-
-  void validate();
-
-  static bool initialize(uint32 offset, uint8 type, const uint8* id, int size, uint8* meta_data);
-
   class __attribute__ ((__packed__)) Header {
    public:
-    explicit Header(uint32 allocation_offset);
+    static const uint8  FORMAT_VERSION = 0;
+    static const uint32 FORMAT_MARKER  = 0xdeadface;
 
-    Header(uint32 allocation_offset, uint8 type, const uint8* id, const uint8* uuid, int size, uint8* meta_data) {
-      _marker = MARKER;
-      _me = allocation_offset;
-      _type = type;
-      ASSERT(Utils::is_aligned(size, FLASH_PAGE_SIZE));
-      memcpy(_id, id, id_size());
-      _pages_in_flash = static_cast<uint16>(Utils::round_up(size, FLASH_PAGE_SIZE) >> 12);
-      memcpy(_meta_data, meta_data, meta_data_size());
-      set_uuid(uuid);
-    }
+    static const int FLAGS_PROGRAM_HAS_ASSETS_MASK = 1 << 7;
+    static const unsigned ID_SIZE = UUID_SIZE;
+    static const unsigned METADATA_SIZE = 5;  // Picked for 16 byte alignment.
 
-    static int meta_data_size() { return sizeof(_meta_data); }
-    static int id_size() { return sizeof(_id); }
+    Header(const void* memory, uint8 type, const uint8* id, int size, const uint8* metadata);
+
+    const uint8* id() const { return id_; }
+    int size() const { return size_in_pages_ << FLASH_PAGE_SIZE_LOG2; }
 
    private:
     // Data section for the header.
-    uint32 _marker;  // Magic marker.
-    uint32 _me;      // Offset in allocation partition for validation.
+    uint32 marker_;  // Magic marker.
+    uint32 checksum_;
+    uint8 id_[ID_SIZE];
+    uint8 metadata_[METADATA_SIZE];
+    uint8 type_;
+    uint16 size_in_pages_;
+    uint8 uuid_[UUID_SIZE];
 
-    uint8 _id[16];
-
-    uint8 _meta_data[5];  // Allocation specific meta data (picked to ensure 16 byte alignment).
-    uint16 _pages_in_flash;
-    uint8 _type;
-
-    uint8 _uuid[UUID_SIZE];
-
-    static const uint32 MARKER = 0xDEADFACE;
-
-    bool is_valid(const uint8* uuid) const;
-    const uint8* id() const { return _id; }
-    uint8 type() const { return _type; }
-    const uint8* meta_data() const { return _meta_data; }
-
-    int size() const { return _pages_in_flash << 12; }
-
-    bool is_valid_allocation(const uint32 allocation_offset) const;
-
-    // Let the image uuid be the last part of the header so that only
-    // a complete flash write will mark this allocation as valid.
-    void set_uuid(const uint8* uuid);
-
-    void initialize(uint32 allocation_offset, const uint8* uuid, const uint8* id) {
-      _marker = MARKER;
-      _me = allocation_offset;
-      if (id == null) {
-        memset(_id, 0, id_size());
-      } else {
-        memcpy(_id, id, id_size());
-      }
-      _pages_in_flash = 0;
-      memset(_meta_data, 0xFF, meta_data_size());
-      set_uuid(uuid);
-    }
+    bool is_valid(bool embedded) const;
+    uint8 type() const { return type_; }
+    const uint8* metadata() const { return metadata_; }
+    uint32 compute_checksum(const void* memory) const;
 
     friend class FlashAllocation;
   };
 
-  void set_header(uint32 allocation_offset, uint8* uuid, const uint8* id = null) {
-    _header.initialize(allocation_offset, uuid, id);
+  // Type tests.
+  bool is_program() const { return type() == FLASH_ALLOCATION_TYPE_PROGRAM; }
+  bool is_region() const { return type() == FLASH_ALLOCATION_TYPE_REGION; }
+
+  // Simple accessors.
+  int size() const { return header_.size(); }
+  uint8 type() const { return header_.type(); }
+  const uint8* id() const { return header_.id(); }
+  const uint8* metadata() const { return header_.metadata(); }
+
+  // Check if the allocation is valid.
+  bool is_valid() const { return header_.is_valid(false); }
+  bool is_valid_embedded() const { return header_.is_valid(true); }
+
+  // Commit an allocation by providing it with the correct header. Returns
+  // whether the allocation is valid after the commit.
+  // Includes the virtual memory address of the allocation in the checksum
+  // just in case the flash is mapped at an incompatible address.
+  static bool commit(const void* memory, int size, const Header* header);
+
+  // Get the flags encoded in the first metadata byte. Only valid for programs.
+  int program_flags() const { ASSERT(is_program()); return header_.metadata()[0]; }
+
+  // Returns whether the program has appended assets.
+  bool program_has_assets() const {
+    return (program_flags() & Header::FLAGS_PROGRAM_HAS_ASSETS_MASK) != 0;
   }
 
-  // Returns the size for programs stored in flash.
-  int size() const { return _header.size(); }
-  uint8 type() const { return _header.type(); }
+  // Get the total size of the appended program assets if any.
+  int program_assets_size(uint8** bytes, int* length) const;
 
-  bool is_valid(uint32 allocation_offset, const uint8* uuid) const;
-
-  // Returns a pointer to the id of the program.
-  const uint8* id() const { return _header.id(); }
-  const uint8* meta_data() const { return _header.meta_data(); }
+ protected:
+  FlashAllocation(const uint8* id, int size) : header_(0, FLASH_ALLOCATION_TYPE_PROGRAM, id, size, null) {}
 
  private:
-  Header _header;
+  Header header_;
 };
 
 class Reservation;
 typedef LinkedList<Reservation> ReservationList;
 class Reservation : public ReservationList::Element {
  public:
-  Reservation(int offset, int size) : _offset(offset), _size(size) {}
+  Reservation(int offset, int size) : offset_(offset), size_(size) {}
 
-  const int left() const { return _offset; }
-  const int right() const { return _offset + _size; }
-  const int size() const { return _size; }
+  int left() const { return offset_; }
+  int right() const { return offset_ + size_; }
+  int size() const { return size_; }
 
  private:
-  int _offset;
-  int _size;
+  int offset_;
+  int size_;
+};
+
+class RegionGrant;
+typedef LinkedList<RegionGrant> RegionGrantList;
+class RegionGrant : public RegionGrantList::Element {
+ public:
+  RegionGrant(int client, int handle, uword offset, uword size, bool writable)
+      : client_(client), handle_(handle), offset_(offset), size_(size), writable_(writable) {}
+
+  int client() const { return client_; }
+  int handle() const { return handle_; }
+  uword offset() const { return offset_; }
+  uword size() const { return size_; }
+  bool writable() const { return writable_; }
+
+ private:
+  int client_;
+  int handle_;
+  uword offset_;
+  uword size_;
+  bool writable_;
 };
 
 } // namespace toit

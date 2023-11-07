@@ -1,0 +1,16 @@
+tests/negative/incomplete-string-interpolation-format-test.toit:6:7: error: Invalid format string
+  "$(% 499)"
+      ^
+tests/negative/incomplete-string-interpolation-format-test.toit:7:7: error: Invalid format string
+  "$(%x
+      ^
+tests/negative/incomplete-string-interpolation-format-test.toit:7:7: error: Incomplete expression
+  "$(%x
+      ^
+tests/negative/incomplete-string-interpolation-format-test.toit:7:5: error: Missing closing ')'
+  "$(%x
+    ^~
+tests/negative/incomplete-string-interpolation-format-test.toit:8:1: error: Unterminated string
+
+^
+Compilation failed.

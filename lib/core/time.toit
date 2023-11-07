@@ -2,8 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import serialization show serialize deserialize
-import .time_impl
+import encoding.tison
+import .time-impl_
 
 /**
 Support for time and durations.
@@ -43,17 +43,38 @@ Durations are limited to ~292 years (signed 64 bit nanoseconds).
 class Duration implements Comparable:
 
   /** The number of nanoseconds per microsecond. */
-  static NANOSECONDS_PER_MICROSECOND ::=            1_000
+  static NANOSECONDS-PER-MICROSECOND /int ::=            1_000
   /** The number of nanoseconds per millisecond. */
-  static NANOSECONDS_PER_MILLISECOND ::=        1_000_000
+  static NANOSECONDS-PER-MILLISECOND /int ::=        1_000_000
   /** The number of nanoseconds per second. */
-  static NANOSECONDS_PER_SECOND      ::=    1_000_000_000
+  static NANOSECONDS-PER-SECOND /int      ::=    1_000_000_000
   /** The number of nanoseconds per minute. */
-  static NANOSECONDS_PER_MINUTE      ::=   60_000_000_000
+  static NANOSECONDS-PER-MINUTE /int      ::=   60_000_000_000
   /** The number of nanoseconds per hour. */
-  static NANOSECONDS_PER_HOUR        ::= 3600_000_000_000
+  static NANOSECONDS-PER-HOUR /int        ::= 3600_000_000_000
 
-  ns_ / int
+  /** The number of microseconds per millisecond. */
+  static MICROSECONDS-PER-MILLISECOND /int ::=        1_000
+  /** The number of microseconds per second. */
+  static MICROSECONDS-PER-SECOND /int      ::=    1_000_000
+  /** The number of microseconds per minute. */
+  static MICROSECONDS-PER-MINUTE /int      ::=   60_000_000
+  /** The number of microseconds per hour. */
+  static MICROSECONDS-PER-HOUR /int        ::= 3600_000_000
+
+  /** The number of milliseconds per second. */
+  static MILLISECONDS-PER-SECOND /int ::=    1_000
+  /** The number of milliseconds per minute. */
+  static MILLISECONDS-PER-MINUTE /int ::=   60_000
+  /** The number of milliseconds per hour. */
+  static MILLISECONDS-PER-HOUR /int   ::= 3600_000
+
+  /** The number of seconds per minute. */
+  static SECONDS-PER-MINUTE /int ::=   60
+  /** The number of seconds per hour. */
+  static SECONDS-PER-HOUR /int   ::= 3600
+
+  ns_ /int
 
   /**
   Constructs a duration of $h hours, $m minutes, $ms milliseconds, $us
@@ -61,11 +82,11 @@ class Duration implements Comparable:
   */
   constructor --h/int=0 --m/int=0 --s/int=0 --ms/int=0 --us/int=0 --ns/int=0:
     ns_ = ns
-        + (us * NANOSECONDS_PER_MICROSECOND)
-        + (ms * NANOSECONDS_PER_MILLISECOND)
-        + (s  * NANOSECONDS_PER_SECOND)
-        + (m  * NANOSECONDS_PER_MINUTE)
-        + (h  * NANOSECONDS_PER_HOUR)
+        + (us * NANOSECONDS-PER-MICROSECOND)
+        + (ms * NANOSECONDS-PER-MILLISECOND)
+        + (s  * NANOSECONDS-PER-SECOND)
+        + (m  * NANOSECONDS-PER-MINUTE)
+        + (h  * NANOSECONDS-PER-HOUR)
 
   /**
   Constructs a duration of $ns_ nanoseconds.
@@ -80,9 +101,9 @@ class Duration implements Comparable:
   - `Date` difference: JavaScript
   */
   constructor.of [block]:
-    start ::= Time.monotonic_us
+    start ::= Time.monotonic-us
     block.call
-    ns_ = (Time.monotonic_us - start) * 1000
+    ns_ = (Time.monotonic-us - start) * 1000
 
   /**
   Constructs a duration from the given $time to now ($Time.now).
@@ -94,7 +115,7 @@ class Duration implements Comparable:
   */
   constructor.since time/Time:
     now := Time.now
-    ns_ = (now.seconds_ - time.seconds_) * Duration.NANOSECONDS_PER_SECOND + (now.ns_ - time.ns_)
+    ns_ = (now.seconds_ - time.seconds_) * Duration.NANOSECONDS-PER-SECOND + (now.ns_ - time.ns_)
 
   /**
   Constructs a duration from now ($Time.now) to the given $time.
@@ -116,7 +137,7 @@ class Duration implements Comparable:
   */
   constructor.until time/Time:
     now := Time.now
-    ns_ = (time.seconds_ - now.seconds_) * Duration.NANOSECONDS_PER_SECOND + (time.ns_ - now.ns_)
+    ns_ = (time.seconds_ - now.seconds_) * Duration.NANOSECONDS-PER-SECOND + (time.ns_ - now.ns_)
 
   /**
   Calls the given $block periodically.
@@ -136,14 +157,14 @@ class Duration implements Comparable:
   */
   periodic [block] -> none:
     while true:
-      run_time := Duration.of block
+      run-time := Duration.of block
       // If runtime passes period we skip to start of period.
-      sleep (Duration ns_ - run_time.ns_ % ns_)
+      sleep (Duration ns_ - run-time.ns_ % ns_)
 
   /**
   The absolute value of this duration.
   */
-  abs:
+  abs -> Duration:
     if ns_ == int.MIN: throw "OUT_OF_RANGE"
     if ns_ < 0: return Duration --ns=-ns_
     return this
@@ -165,27 +186,28 @@ class Duration implements Comparable:
 
     value := ns_.abs
 
-    print_char := : | c |
-      buffer[--index] = c
+    print-char := : | c |
+      index--
+      buffer[index] = c
 
-    print_int := : | i |
+    print-int := : | i |
       fraction := i.stringify
       index -= fraction.size
       buffer.replace index fraction
 
     // Print a fraction to the buffer. Any trailing '0's are skipped.
-    print_fraction := : | f digits |
-      found_non_zero := false
+    print-fraction := : | f digits |
+      found-non-zero := false
       digits.repeat:
         digit := f % 10
         f /= 10
-        if digit != 0 or found_non_zero:
-          found_non_zero = true
-          print_char.call '0' + digit
-      if found_non_zero: print_char.call '.'
+        if digit != 0 or found-non-zero:
+          found-non-zero = true
+          print-char.call '0' + digit
+      if found-non-zero: print-char.call '.'
       f
 
-    print_char.call 's'
+    print-char.call 's'
 
     if value == 0:
       return "0s"
@@ -193,38 +215,38 @@ class Duration implements Comparable:
       // Edge case. This number is possible to represent as the positive-signed counterpart
       // as int64.
       return "-2562047h47m16.854775808s"
-    else if value < NANOSECONDS_PER_SECOND:
-      if value < NANOSECONDS_PER_MICROSECOND:
-        print_char.call 'n'
+    else if value < NANOSECONDS-PER-SECOND:
+      if value < NANOSECONDS-PER-MICROSECOND:
+        print-char.call 'n'
       else:
         digits ::= ?
-        if value < NANOSECONDS_PER_MILLISECOND:
-          print_char.call 'u'
+        if value < NANOSECONDS-PER-MILLISECOND:
+          print-char.call 'u'
           digits = 3
         else:
-          print_char.call 'm'
+          print-char.call 'm'
           digits = 6
-        value = print_fraction.call value digits
-      print_int.call value
+        value = print-fraction.call value digits
+      print-int.call value
     else:
-      value = print_fraction.call value 9
-      print_int.call value % 60
+      value = print-fraction.call value 9
+      print-int.call value % 60
 
       // Minutes.
       value /= 60
       if value > 0:
-        print_char.call 'm'
-        print_int.call value % 60
+        print-char.call 'm'
+        print-int.call value % 60
 
         // Hours.
         value /= 60
         if value > 0:
-          print_char.call 'h'
-          print_int.call value
+          print-char.call 'h'
+          print-int.call value
 
-    if ns_ < 0: print_char.call '-'
+    if ns_ < 0: print-char.call '-'
 
-    return buffer.to_string index buffer.size
+    return buffer.to-string index buffer.size
 
   /**
   Whether this duration is equal to the $other.
@@ -308,33 +330,33 @@ class Duration implements Comparable:
     return ns_ >= other.ns_
 
   /**
-  See $(Comparable.compare_to other).
+  See $(Comparable.compare-to other).
   */
-  compare_to other/Duration -> int:
-    return ns_.compare_to other.ns_
+  compare-to other/Duration -> int:
+    return ns_.compare-to other.ns_
 
   /**
-  See $(Comparable.compare_to other [--if_equal]).
+  See $(Comparable.compare-to other [--if-equal]).
   */
-  compare_to other/Duration [--if_equal] -> int:
-    return ns_.compare_to other.ns_ --if_equal=if_equal
+  compare-to other/Duration [--if-equal] -> int:
+    return ns_.compare-to other.ns_ --if-equal=if-equal
 
   // Accessors for various time units.
   /** This duration in nanoseconds. */
-  in_ns -> int: return ns_
+  in-ns -> int: return ns_
   /** This duration in microseconds. */
-  in_us -> int: return ns_ / NANOSECONDS_PER_MICROSECOND
+  in-us -> int: return ns_ / NANOSECONDS-PER-MICROSECOND
   /** This duration in milleseconds. */
-  in_ms -> int: return ns_ / NANOSECONDS_PER_MILLISECOND
+  in-ms -> int: return ns_ / NANOSECONDS-PER-MILLISECOND
   /** This duration in seconds. */
-  in_s  -> int: return ns_ / NANOSECONDS_PER_SECOND
+  in-s  -> int: return ns_ / NANOSECONDS-PER-SECOND
   /** This duration in minutes. */
-  in_m  -> int: return ns_ / NANOSECONDS_PER_MINUTE
+  in-m  -> int: return ns_ / NANOSECONDS-PER-MINUTE
   /** This duration in hours. */
-  in_h  -> int: return ns_ / NANOSECONDS_PER_HOUR
+  in-h  -> int: return ns_ / NANOSECONDS-PER-HOUR
 
   /** Whether this duration is 0 ($Duration.ZERO). */
-  is_zero -> bool:
+  is-zero -> bool:
     return ns_ == 0
 
   /**
@@ -397,8 +419,8 @@ class Duration implements Comparable:
   print 5 * t_5s  // Error, num's * does not know Duration!
   ```
   */
-  operator * factor/int -> Duration:
-    return Duration ns_ * factor
+  operator * factor/num -> Duration:
+    return Duration (factor * ns_).to-int
 
   /**
   Divides the duration by the $factor.
@@ -410,15 +432,15 @@ class Duration implements Comparable:
   print t_9s / 3  // >> 3s
   ```
   */
-  operator / factor/int -> Duration:
-    return Duration ns_ / factor
+  operator / factor/num -> Duration:
+    return Duration (ns_ / factor).to-int
 
   /**
   A constant 0-duration singleton.
 
   Prefer to use this for 0-durations to avoid allocations.
   */
-  static ZERO / Duration ::= Duration 0
+  static ZERO /Duration ::= Duration 0
 
 
 /** A decomposed view of a $Time object. */
@@ -440,16 +462,16 @@ class TimeInfo:
   static SUNDAY    ::= 7
 
   /** The corresponding time instance. */
-  time / Time
+  time /Time
 
   /** Year. */
-  year / int
+  year /int
 
   /**
   Month of the year.
   In the range 1-12.
   */
-  month / int
+  month /int
 
   /**
   Day of the month.
@@ -473,13 +495,13 @@ class TimeInfo:
   Seconds after the minute.
   Generally in the range 0 to 59. May be 60 in case of leap-seconds.
   */
-  s / int
+  s /int
 
   /**
   Nanoseconds after the second.
   In the range 0-999_999_999.
   */
-  ns / int
+  ns /int
 
   /**
   Weekday.
@@ -489,7 +511,7 @@ class TimeInfo:
     $weekday value module 7, which gives a value in the range 0 to 6, but shuffles
     Sunday down to the beginning of the week.
   */
-  weekday / int
+  weekday /int
 
   /**
   Days since January 1st.
@@ -497,16 +519,16 @@ class TimeInfo:
   In combination with the year also known as ordinal date.
   */
   // 0-365, days since January 1.
-  yearday / int
+  yearday /int
 
   /** Whether this instance is in UTC. */
-  is_utc / bool
+  is-utc /bool
 
   /** Whether this instance is computed with daylight saving active. */
-  is_dst / bool
+  is-dst /bool
 
-  constructor.__ .time --.is_utc:
-    info := time_info_ time.s_since_epoch is_utc
+  constructor.__ .time --.is-utc:
+    info := time-info_ time.s-since-epoch is-utc
     ns = time.ns_
     s = info[0]
     m = info[1]
@@ -516,7 +538,7 @@ class TimeInfo:
     year = info[5]
     weekday = info[6] == 0 ? 7 : info[6]  // Toit starts weeks with Monday == 1.
     yearday = info[7]
-    is_dst = info[8]
+    is-dst = info[8]
 
   /**
   Adds the given parameters to this time info.
@@ -531,7 +553,7 @@ class TimeInfo:
     m += this.m
     s += this.s
     ns += this.ns
-    new_time := Time.local_or_utc_
+    new-time := Time.local-or-utc_
           years
           months
           days
@@ -541,12 +563,12 @@ class TimeInfo:
           --ms=ms
           --us=us
           --ns=ns
-          --is_utc=is_utc
-    return TimeInfo.__ new_time --is_utc=is_utc
+          --is-utc=is-utc
+    return TimeInfo.__ new-time --is-utc=is-utc
 
   /** Creates a new $TimeInfo with the given parameters updated. */
   with --year/int=year --month/int=month --day/int=day --h/int=h --m/int=m --s/int=s --ns/int=ns --dst/bool?=null -> TimeInfo:
-    new_time := Time.local_or_utc_
+    new-time := Time.local-or-utc_
           year
           month
           day
@@ -556,21 +578,58 @@ class TimeInfo:
           --ms=0
           --us=0
           --ns=ns
-          --is_utc=is_utc
+          --is-utc=is-utc
           --dst=dst
-    return TimeInfo.__ new_time --is_utc=is_utc
+    return TimeInfo.__ new-time --is-utc=is-utc
 
   /**
-  Converts this instance to an string in ISO 8601 format.
+  Converts this instance to an string conforming to RFC 3339, which is a subset
+    of ISO 8601.
   For example, the time of the first moonlanding would be written as:
     `1969-07-20T20:17:00Z`.
+  To get a string that is rounded down to the nearest second use
+    `(my-time-info.with --ns=0).to-iso8601-string`.
   */
-  to_iso8601_string:
-    return "$(year)-$(%02d month)-$(%02d day)T$(%02d h):$(%02d m):$(%02d s)$(is_utc ? "Z" : "")"
+  to-iso8601-string:
+    fraction := ""
+    if ns != 0:
+      fraction = ".$(%09d ns)"
+      // Trim trailing zeros.
+      for i := fraction.size - 1; true; i--:
+        if fraction[i] != '0':
+          fraction = fraction[..i + 1]
+          break
+    return "$(year)-$(%02d month)-$(%02d day)T$(%02d h):$(%02d m):$(%02d s)$fraction$(is-utc ? "Z" : "")"
+
+  /**
+  Converts this instance to a date string of the form 'yyyy-mm-dd'.
+  Hours, minutes and seconds are ignored.
+  */
+  to-iso-date-string -> string:
+    return "$year-$(%02d month)-$(%02d day)"
 
   /** See $super. */
   stringify -> string:
-    return to_iso8601_string
+    return to-iso8601-string
+
+/**
+Stores the given $rules in the `TZ` environment variable and
+  calls `tzset`, thus activating it.
+
+Valid TZ values can be easily obtained by looking at the last line of the
+  zoneinfo files on Linux machines:
+```
+tail -n1 /usr/share/zoneinfo/Europe/Copenhagen
+```
+
+# Examples
+```
+set_timezone "CET-1CEST,M3.5.0,M10.5.0/3"  // Central European Timezone (as of 2022).
+set_timezone "PST8PDT,M3.2.0,M11.1.0"  // Pacific Time (as of 2022).
+```
+*/
+set-timezone rules/string:
+  #primitive.core.set-tz
 
 /**
 A wall clock time.
@@ -584,31 +643,31 @@ If you need a decomposed view of a $Time, then convert it to a $TimeInfo
 */
 class Time implements Comparable:
 
-  seconds_ / int
-  ns_      / int
-  local_   / TimeInfo? := null
-  utc_     / TimeInfo? := null
+  seconds_ /int
+  ns_      /int
+  local_   /TimeInfo? := null
+  utc_     /TimeInfo? := null
 
   /**
   Constructs a time instance from the given parameters.
   */
   constructor.epoch --h/int=0 --m/int=0 --s/int=0 --ms/int=0 --us/int=0 --ns/int=0:
     s += (h*60 + m) * 60
-    ns += ms * Duration.NANOSECONDS_PER_MILLISECOND
-    ns += us * Duration.NANOSECONDS_PER_MICROSECOND
+    ns += ms * Duration.NANOSECONDS-PER-MILLISECOND
+    ns += us * Duration.NANOSECONDS-PER-MICROSECOND
     // Normalize if needed.
-    seconds_ = s + ns / Duration.NANOSECONDS_PER_SECOND
-    ns_ = ns % Duration.NANOSECONDS_PER_SECOND
+    seconds_ = s + ns / Duration.NANOSECONDS-PER-SECOND
+    ns_ = ns % Duration.NANOSECONDS-PER-SECOND
     if ns_ < 0:
       // Ensure ns is non-negative.
       seconds_ -= 1
-      ns_ += Duration.NANOSECONDS_PER_SECOND
+      ns_ += Duration.NANOSECONDS-PER-SECOND
 
   /**
   Constructs a time instance for the current moment in time.
   */
   constructor.now:
-    pair ::= get_real_time_clock
+    pair ::= get-real-time-clock
     return Time.epoch --s=pair[0] --ns=pair[1]
 
   /**
@@ -622,77 +681,125 @@ class Time implements Comparable:
     cases. The flag should *not* be used otherwise.
   */
   constructor.local --year/int --month/int --day/int --h/int=0 --m/int=0 --s/int=0 --ms/int=0 --us/int=0 --ns/int=0 --dst/bool?=null:
-    return Time.local_or_utc_ year month day h m s --ms=ms --us=us --ns=ns --is_utc=false --dst=dst
+    return Time.local-or-utc_ year month day h m s --ms=ms --us=us --ns=ns --is-utc=false --dst=dst
 
   /** Variant of $(Time.local --year --month --day --h --m --s --ms --us --ns --dst). */
   constructor.local year/int month/int day/int h/int=0 m/int=0 s/int=0 --ms/int=0 --us/int=0 --ns/int=0 --dst/bool?=null:
-    return Time.local_or_utc_ year month day h m s --ms=ms --us=us --ns=ns --is_utc=false --dst=dst
+    return Time.local-or-utc_ year month day h m s --ms=ms --us=us --ns=ns --is-utc=false --dst=dst
 
   /** Constructs a time instance in UTC from the given parameters. */
   constructor.utc --year/int --month/int --day/int --h/int=0 --m/int=0 --s/int=0 --ms/int=0 --us/int=0 --ns/int=0:
-    return Time.local_or_utc_ year month day h m s --ms=ms --us=us --ns=ns --is_utc=true
+    return Time.local-or-utc_ year month day h m s --ms=ms --us=us --ns=ns --is-utc=true
 
   /** Variant of $(Time.utc --year --month --day --h --m --s --ms --us --ns) */
   constructor.utc year/int month/int day/int h/int=0 m/int=0 s/int=0 --ms/int=0 --us/int=0 --ns/int=0:
-    return Time.local_or_utc_ year month day h m s --ms=ms --us=us --ns=ns --is_utc=true
+    return Time.local-or-utc_ year month day h m s --ms=ms --us=us --ns=ns --is-utc=true
 
   /**
   Constructs a time instance in local time or UTC.
 
-  The given $is_utc decides whether the instance is in local time or UTC.
+  The given $is-utc decides whether the instance is in local time or UTC.
   If the time is UTC, then the $dst parameter is ignored (see
     $(Time.local --year --month --day --h --m --s --ms --us --ns --dst) for
     more on the use of the $dst parameter).
   */
-  constructor.local_or_utc_ year/int month/int day/int h/int m/int s/int --ms/int --us/int --ns/int --is_utc/bool --dst/bool?=null:
-    ns += ms * Duration.NANOSECONDS_PER_MILLISECOND + us * Duration.NANOSECONDS_PER_MICROSECOND
-    s += ns / Duration.NANOSECONDS_PER_SECOND
-    ns = ns % Duration.NANOSECONDS_PER_SECOND
+  constructor.local-or-utc_ year/int month/int day/int h/int m/int s/int --ms/int --us/int --ns/int --is-utc/bool --dst/bool?=null:
+    ns += ms * Duration.NANOSECONDS-PER-MILLISECOND + us * Duration.NANOSECONDS-PER-MICROSECOND
+    s += ns / Duration.NANOSECONDS-PER-SECOND
+    ns = ns % Duration.NANOSECONDS-PER-SECOND
     if ns < 0:
       s--
-      ns += Duration.NANOSECONDS_PER_SECOND
+      ns += Duration.NANOSECONDS-PER-SECOND
     // TODO(florian): take is_utc into account.
-    if is_utc:
-      seconds_ = seconds_since_epoch_utc_ year (month - 1) day h m s
+    if is-utc:
+      seconds_ = seconds-since-epoch-utc_ year (month - 1) day h m s
     else:
-      seconds_ = seconds_since_epoch_local_ year (month - 1) day h m s dst
+      seconds_ = seconds-since-epoch-local_ year (month - 1) day h m s dst
     ns_ = ns
 
   /**
   Constructs a time instance from the given bytes.
 
-  This operation is the inverse of $to_byte_array.
+  This operation is the inverse of $to-byte-array.
   */
   constructor.deserialize bytes/ByteArray:
-    values := deserialize bytes
+    values := tison.decode bytes
     return Time.epoch --s=values[0] --ns=values[1]
 
   /**
   Parses the given $str to construct a UTC time instance.
 
-  The $str must be in ISO 8601 format. For example "2019-12-18T06:22:48Z".
+  Deprecated. Use $parse instead.
   */
-  constructor.from_string str/string:
-    is_utc := str.ends_with "Z"
+  constructor.from-string str/string:
+    return parse str
+
+  /**
+  Parses the given $str to construct a UTC time instance.
+
+  The $str must be in RFC 3339 format, which is a subset of ISO 8601 format.
+  For example "2019-12-18T06:22:48Z".
+  Leap seconds are not supported, and lower case 't' and 'z' are not allowed.
+
+  Calls $on-error if there is an error parsing the string. Then rturns the
+    result of $on-error.
+  */
+  static parse str/string [--on-error] -> Time:
+    zone-is-adjusted := str.ends-with "Z"
     str = str.trim --right "Z"
+    str-to-int ::= : | s/string |
+      if s[0] == '-': return on-error.call
+      int.parse s --on-error=: return on-error.call
+    zone-minutes := 0
+    if not zone-is-adjusted:
+      plus := str.index-of "+"
+      colon := str.index-of ":"
+      minus := str.index-of --last "-"
+      if plus > 0 or 0 < colon < minus:
+        zone-is-adjusted = true
+        cut := plus > 0 ? plus : minus
+        zone-parts := str[cut + 1..]
+        // RFC 3339 requires the zone to be in the form hh:mm.
+        if zone-parts.size != 5: return on-error.call
+        zone-parts.split ":":
+          if it.size != 2: return on-error.call
+          zone-minutes *= 60
+          zone-minutes += str-to-int.call it
+        zone-minutes = plus > 0 ? -zone-minutes : zone-minutes
+        str = str[..cut]
     parts ::= str.split "T"
-    str_to_int ::= :int.parse it --on_error=: throw "Cannot parse $it as integer"
-    if parts.size != 2: throw "Expected T to separate date and time"
-    date_parts ::= (parts[0].split "-").map str_to_int
-    if date_parts.size != 3: throw "Expected 3 segments separated by - for date"
-    time_parts ::= (parts[1].split ":").map str_to_int
-    if time_parts.size != 3: throw "Expected 3 segments separated by : for time"
-    return Time.local_or_utc_
-      date_parts[0]
-      date_parts[1]
-      date_parts[2]
-      time_parts[0]
-      time_parts[1]
-      time_parts[2]
+    if parts.size != 2: return on-error.call
+    date-parts ::= (parts[0].split "-").map str-to-int
+    if date-parts.size != 3: return on-error.call
+    time-string-parts ::= parts[1].split ":"
+    if time-string-parts.size != 3: return on-error.call
+    if time-string-parts[2].contains ".":
+      splits := time-string-parts[2].split "."
+      if splits.size != 2: return on-error.call
+      time-string-parts[2] = splits[0]
+      time-string-parts.add "$splits[1]000000000"[..9]
+    else:
+      time-string-parts.add "0"
+    time-parts := time-string-parts.map str-to-int
+    return Time.local-or-utc_
+      date-parts[0]
+      date-parts[1]
+      date-parts[2]
+      time-parts[0]
+      time-parts[1] + zone-minutes
+      time-parts[2]
       --ms=0
       --us=0
-      --ns=0
-      --is_utc=is_utc
+      --ns=time-parts[3]
+      --is-utc=zone-is-adjusted
+
+  /**
+  Variant of $(parse str [--on-error]).
+
+  Throws an error if the string cannot be parsed.
+  */
+  static parse str/string -> Time:
+    return parse str --on-error=: throw "INVALID_ARGUMENT"
 
   /**
   Returns a monotonic microsecond value.
@@ -703,7 +810,7 @@ class Time implements Comparable:
   If the system time is updated (for example because of an NTP adjustment),
     then this function is unaffected.
   */
-  static monotonic_us -> int:
+  static monotonic-us -> int:
     #primitive.core.time
 
   /**
@@ -719,16 +826,16 @@ class Time implements Comparable:
     return seconds_ == other.seconds_ and ns_ == other.ns_
 
   /** Whether this time is before the $other. */
-  operator < other/Time -> bool: return (compare_to other) < 0
+  operator < other/Time -> bool: return (compare-to other) < 0
 
   /** Whether this time is after the $other. */
-  operator > other/Time -> bool: return (compare_to other) > 0
+  operator > other/Time -> bool: return (compare-to other) > 0
 
   /** Whether this time is before or at the same time as the $other. */
-  operator <= other/Time -> bool: return (compare_to other) <= 0
+  operator <= other/Time -> bool: return (compare-to other) <= 0
 
   /** Whether this time is after or at the same time as the $other. */
-  operator >= other/Time -> bool: return (compare_to other) >= 0
+  operator >= other/Time -> bool: return (compare-to other) >= 0
 
   /**
   Compares this time to the $other.
@@ -756,7 +863,7 @@ class Time implements Comparable:
   t2.compare_to t0  // => 1
   ```
   */
-  compare_to other/Time -> int:
+  compare-to other/Time -> int:
     if seconds_ < other.seconds_: return -1
     if seconds_ > other.seconds_: return 1
     if ns_ < other.ns_: return -1
@@ -764,52 +871,52 @@ class Time implements Comparable:
     return 0
 
   /**
-  Variant of $(compare_to other).
+  Variant of $(compare-to other).
 
-  Calls $if_equal if this time is equal to the $other.
+  Calls $if-equal if this time is equal to the $other.
   */
-  compare_to other/Time [--if_equal] -> int:
-    result := compare_to other
-    if result == 0: return if_equal.call
+  compare-to other/Time [--if-equal] -> int:
+    result := compare-to other
+    if result == 0: return if-equal.call
     return result
 
   /** Seconds since the epoch 1970-01-01T00:00:00Z. */
-  s_since_epoch -> int:
+  s-since-epoch -> int:
     return seconds_
 
   /** Milliseconds since the epoch 1970-01-01T00:00:00Z. */
-  ms_since_epoch -> int:
-    return seconds_ * 1000 + ns_ / Duration.NANOSECONDS_PER_MILLISECOND
+  ms-since-epoch -> int:
+    return seconds_ * 1000 + ns_ / Duration.NANOSECONDS-PER-MILLISECOND
 
   /** Nanoseconds since the epoch 1970-01-01T00:00:00Z. */
-  ns_since_epoch -> int:
-    return seconds_ * Duration.NANOSECONDS_PER_SECOND + ns_
+  ns-since-epoch -> int:
+    return seconds_ * Duration.NANOSECONDS-PER-SECOND + ns_
 
   /** The nanosecond component of this time. */
-  ns_part -> int:
+  ns-part -> int:
     return ns_
 
   /** The hashcode of this time. */
-  hash_code -> int:
+  hash-code -> int:
     return (seconds_ * 17) ^ ns_
 
   /** Adds the $duration to this time. */
   operator + duration/Duration -> Time:
     return Time.epoch
-      --s=seconds_ + duration.in_s
-      --ns=ns_ + duration.ns_ % Duration.NANOSECONDS_PER_SECOND
+      --s=seconds_ + duration.in-s
+      --ns=ns_ + duration.ns_ % Duration.NANOSECONDS-PER-SECOND
 
   /** Subtracts the $duration from this time. */
   operator - duration/Duration -> Time:
     return Time.epoch
         --s=seconds_
-        --ns=(ns_ - duration.in_ns)
+        --ns=(ns_ - duration.in-ns)
 
   /** Computes the duration from this time to the $other. */
   to other/Time -> Duration:
-    sec_diff := other.seconds_ - seconds_
-    ns_diff := other.ns_ - ns_
-    return Duration sec_diff * Duration.NANOSECONDS_PER_SECOND + ns_diff
+    sec-diff := other.seconds_ - seconds_
+    ns-diff := other.ns_ - ns_
+    return Duration sec-diff * Duration.NANOSECONDS-PER-SECOND + ns-diff
 
   /**
   Computes the duration from this time to now ($Time.now).
@@ -825,21 +932,21 @@ class Time implements Comparable:
     print time.to_now  // >> --3h0m0s
   ```
   */
-  to_now -> Duration:
+  to-now -> Duration:
     return Duration.since this
 
   /**
   Decomposes this time to a human-friendly version using the local time.
   */
   local -> TimeInfo:
-    if not local_: local_ = TimeInfo.__ this --is_utc=false
+    if not local_: local_ = TimeInfo.__ this --is-utc=false
     return local_
 
   /**
   Decomposes this time to a human-friendly version using UTC.
   */
   utc -> TimeInfo:
-    if not utc_: utc_ = TimeInfo.__ this --is_utc=true
+    if not utc_: utc_ = TimeInfo.__ this --is-utc=true
     return utc_
 
   /**
@@ -854,5 +961,5 @@ class Time implements Comparable:
   The returned byte array is a valid input for the constructor
     $Time.deserialize.
   */
-  to_byte_array:
-    return serialize [seconds_, ns_]
+  to-byte-array:
+    return tison.encode [seconds_, ns_]

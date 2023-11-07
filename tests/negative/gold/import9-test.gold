@@ -1,0 +1,10 @@
+tests/negative/import9-test.toit:5:1: error: Failed to import '.non-existing'
+import .non-existing show A
+^~~~~~
+tests/negative/import9-test.toit:5:9: note: Missing library file. Tried 'tests/negative/non_existing.toit' and 'tests/negative/non_existing/non-existing.toit'
+import .non-existing show A
+        ^~~~~~~~~~~~
+tests/negative/import9-test.toit:12:5: error: Class 'B' does not have any method 'bar'
+  b.bar  // Bad.
+    ^~~
+Compilation failed.

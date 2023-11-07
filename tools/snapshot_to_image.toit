@@ -16,174 +16,172 @@
 /**
 This program reads a snapshot, converts it into an image
   and dumps the content as a binary file or a source file to
-  be read by the GNU assembler. Binary image outputs can be
-  relocated to a specific address or left relocatable.
+  be read by the GNU assembler. Binary image outputs are left
+  relocatable.
 */
 
 import .image
 import .snapshot
+import .firmware show pad
 
-import binary show LITTLE_ENDIAN ByteOrder
+import binary show LITTLE-ENDIAN ByteOrder
+import bytes
+import encoding.ubjson
 import uuid
 import host.file
-import services.arguments
+import cli
 
-BINARY_FLAG      ::= "binary"
-M32_FLAG         ::= "machine-32-bit"
-M64_FLAG         ::= "machine-64-bit"
-OFFSET_OPTION    ::= "offset"
-UNIQUE_ID_OPTION ::= "unique_id"
+BINARY-FLAG      ::= "binary"
+M32-FLAG         ::= "machine-32-bit"
+M64-FLAG         ::= "machine-64-bit"
+OUTPUT-OPTION    ::= "output"
+FORMAT-OPTION    ::= "format"
+ASSETS-OPTION    ::= "assets"
+SNAPSHOT-FILE    ::= "snapshot-file"
 
 abstract class RelocatedOutput:
-  static ENDIAN/ByteOrder ::= LITTLE_ENDIAN
+  static ENDIAN/ByteOrder ::= LITTLE-ENDIAN
 
   out ::= ?
   constructor .out:
 
-  abstract write_start -> none
-  abstract write_word word/int is_relocatable/bool -> none
-  abstract write_end -> none
+  abstract write-start -> none
+  abstract write-word word/int is-relocatable/bool -> none
+  abstract write-end -> none
 
-  write word_size/int relocatable/ByteArray -> none:
-    if word_size != 4: unreachable
-    chunk_size := (word_size * 8 + 1) * word_size
-    write_start
-    List.chunk_up 0 relocatable.size chunk_size: | from to |
-      write_chunk relocatable[from..to]
-    write_end
+  write word-size/int relocatable/ByteArray -> none:
+    if word-size != 4: unreachable
+    chunk-size := (word-size * 8 + 1) * word-size
+    write-start
+    List.chunk-up 0 relocatable.size chunk-size: | from to |
+      write-chunk relocatable[from..to]
+    write-end
 
-  write_chunk chunk/ByteArray -> none:
+  write-chunk chunk/ByteArray -> none:
     mask := ENDIAN.uint32 chunk 0
     for pos := 4; pos < chunk.size; pos += 4:
-      write_word
+      write-word
           ENDIAN.uint32 chunk pos
           (mask & 1) != 0
       mask = mask >> 1
 
-class BinaryRelocatableOutput:
-  static HEADER_SIZE ::= 48
-
-  out ::= ?
-  relocatable/ByteArray ::= ?
-  offset/int ::= ?
-  image_uuid/uuid.Uuid ::= ?
+class BinaryRelocatedOutput extends RelocatedOutput:
+  relocation-base/int ::= ?
   buffer_/ByteArray := ByteArray 4
 
-  constructor .out .relocatable .offset .image_uuid:
-
-  write -> none:
-    write_uint32 0xDEADFACE                        // Marker.
-    write_uint32 offset                            // Offset in partition.
-    write_uuid (uuid.uuid5 "program" "$Time.now")  // Program id.
-    metadata := ByteArray 5: 0xFF
-    RelocatedOutput.ENDIAN.put_uint32 metadata 0 relocatable.size
-    out.write metadata                             // Metadata.
-    size := relocatable.size + HEADER_SIZE
-    write_uint16 (size + 4095) / 4096              // Pages in flash.
-    out.write #[0x01]                              // Type = program unrelocated.
-    write_uuid image_uuid                          // Image uuid.
-    out.write relocatable
-
-  write_uint16 halfword/int:
-    RelocatedOutput.ENDIAN.put_uint16 buffer_ 0 halfword
-    out.write buffer_[0..2]
-
-  write_uint32 word/int:
-    RelocatedOutput.ENDIAN.put_uint32 buffer_ 0 word
-    out.write buffer_
-
-  write_uuid uuid/uuid.Uuid:
-    out.write uuid.to_byte_array
-
-class SourceRelocatedOutput extends RelocatedOutput:
-  constructor out:
+  constructor out .relocation-base:
     super out
 
-  write_start -> none:
-    writeln "        .globl toit_image"
-    writeln "        .globl toit_image_size"
-    writeln "        .section .rodata"
-    writeln "        .align 4"
-    writeln "toit_image:"
+  write-start -> none:
+    // Nothing to add here.
 
-  write_word word/int is_relocatable/bool:
-    if is_relocatable: writeln "        .long toit_image + 0x$(%x word)"
-    else:              writeln "        .long 0x$(%x word)"
+  write-end -> none:
+    // Nothing to add here.
 
-  write_end -> none:
-    writeln "toit_image_size: .long toit_image_size - toit_image"
+  write-word word/int is-relocatable/bool -> none:
+    if is-relocatable: word += relocation-base
+    write-uint32 word
 
-  writeln text/string:
-    out.write text
-    out.write "\n"
+  write-uint16 halfword/int:
+    RelocatedOutput.ENDIAN.put-uint16 buffer_ 0 halfword
+    out.write buffer_[0..2]
 
-print_usage:
-  print_ "Usage: snapshot_to_image [--$BINARY_FLAG] [--$OFFSET_OPTION=0x...] [-m32|-m64] <snapshot> <output>"
+  write-uint32 word/int:
+    RelocatedOutput.ENDIAN.put-uint32 buffer_ 0 word
+    out.write buffer_
+
+print-usage parser/cli.Command --error/string?=null:
+  if error: print-on-stderr_ "Error: $error\n"
+  print-on-stderr_ parser.usage
+  exit 1
 
 main args:
-  parser := arguments.ArgumentParser
-  parser.add_flag M32_FLAG --short="m32"
-  parser.add_flag M64_FLAG --short="m64"
-  parser.add_flag BINARY_FLAG
+  parsed := null
+  parser := cli.Command "snapshot_to_image"
+      --rest=[cli.OptionString SNAPSHOT-FILE]
+      --options=[
+          cli.Flag M32-FLAG --short-name="m32",
+          cli.Flag M64-FLAG --short-name="m64",
+          cli.Flag BINARY-FLAG,
+          cli.OptionEnum FORMAT-OPTION ["binary", "ubjson"],
+          cli.OptionString OUTPUT-OPTION --short-name="o",
+          cli.OptionString ASSETS-OPTION,
+        ]
+      --run=:: parsed = it
 
-  parser.add_option OFFSET_OPTION
-  parser.add_option UNIQUE_ID_OPTION --default="00000000-0000-0000-0000-000000000000"
+  parser.run args
 
-  parsed := parser.parse args
-  if parsed.rest.size != 2:
-    print_usage
-    return
+  output-path/string? := parsed[OUTPUT-OPTION]
 
-  snapshot_path/string := parsed.rest[0]
-  output_path/string := parsed.rest[1]
+  if not output-path:
+    print-usage parser --error="-o flag is not optional"
 
-  default_word_size := BYTES_PER_WORD
-  binary_output := false
-  if parsed[BINARY_FLAG]:
-    binary_output = true
+  format := ?
+  if parsed[BINARY-FLAG]:
+    if parsed[FORMAT-OPTION] != null:
+      print-usage parser --error="cannot use --binary with --format option"
+    format = "binary"
   else:
-    default_word_size = 4  // Use 32-bit non-binary output.
+    format = parsed[FORMAT-OPTION]
 
-  offset/int? := null
-  offset_option := parsed[OFFSET_OPTION]
-  if offset_option:
-    if not (offset_option.starts_with "0x"):
-      print_usage
-      return
-    offset = int.parse offset_option[2..] --radix=16
+  if not format:
+    print-usage parser --error="no output format specified"
 
-  word_size := null
-  if parsed[M32_FLAG]:
-    word_size = 4
-  if parsed[M64_FLAG]:
-    if word_size:
-      print_usage  // Already set to -m32.
-      return
-    word_size = 8
-  if not word_size:
-    word_size = default_word_size
+  machine-word-sizes := []
+  if parsed[M32-FLAG]:
+    machine-word-sizes.add 4
+  if parsed[M64-FLAG]:
+    machine-word-sizes.add 8
+  if machine-word-sizes.is-empty:
+    machine-word-sizes.add BYTES-PER-WORD
 
-  if not binary_output and word_size != 4:
-    print_ "Error: Cannot generate 64-bit non-binary output"
-    return
+  if format == "binary" and machine-word-sizes.size > 1:
+    print-usage parser --error="more than one machine flag provided"
 
-  if not binary_output and offset:
-    print_ "Error: Offsets only work for 32-bit binary output"
-    return
+  snapshot-path/string := parsed[SNAPSHOT-FILE]
+  snapshot-bundle := SnapshotBundle.from-file snapshot-path
+  snapshot-uuid ::= snapshot-bundle.uuid
+  program := snapshot-bundle.decode
+  system-uuid ::= sdk-version-uuid --sdk-version=snapshot-bundle.sdk-version
+  assets-path := parsed[ASSETS-OPTION]
+  assets := assets-path ? file.read-content assets-path : null
+  id := image-id --snapshot-uuid=snapshot-uuid --assets=assets
 
-  out := file.Stream.for_write output_path
-  snapshot_bundle := SnapshotBundle.from_file snapshot_path
-  program := snapshot_bundle.decode
-  image := build_image program word_size
-  relocatable := image.build_relocatable
-  if binary_output:
-    if offset:
-      image_uuid := uuid.parse parsed[UNIQUE_ID_OPTION]
-      output := BinaryRelocatableOutput out relocatable offset image_uuid
-      output.write
-    else:
-      out.write relocatable
+  output := { "id": id.stringify }
+  machine-word-sizes.do: | word-size/int |
+    image := build-image program word-size
+        --system-uuid=system-uuid
+        --snapshot-uuid=snapshot-uuid
+        --id=id
+    buffer := bytes.Buffer
+    buffer.write image.build-relocatable
+    if assets:
+      // Send the assets prefixed with the size and make sure
+      // to round up to full "flash" pages.
+      assets-size := ByteArray 4
+      LITTLE-ENDIAN.put-uint32 assets-size 0 assets.size
+      assets = pad (assets-size + assets) 4096
+      // Encode the assets with dummy relocation information for
+      // every chunk. The assets do not need relocation, but it
+      // is simpler to just use the same image format for the
+      // asset pages.
+      chunk-size := word-size * 8 * word-size
+      no-relocation := ByteArray word-size
+      List.chunk-up 0 assets.size chunk-size: | from to |
+        buffer.write no-relocation
+        buffer.write assets[from..to]
+    images := output.get "images" --init=: []
+    machine := "-m$(word-size * 8)"
+    images.add { "flags": [machine], "bytes": buffer.bytes }
+
+  out := file.Stream.for-write output-path
+  if format == "binary":
+    out.write output["images"].first["bytes"]
   else:
-    output := SourceRelocatedOutput out
-    output.write word_size relocatable
+    out.write (ubjson.encode output)
   out.close
+
+sdk-version-uuid --sdk-version/string -> uuid.Uuid:
+  return sdk-version.is-empty
+      ? uuid.uuid5 "$random" "$Time.now-$Time.monotonic-us"
+      : uuid.uuid5 "toit:sdk-version" sdk-version

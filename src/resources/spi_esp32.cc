@@ -37,36 +37,33 @@ ResourcePool<int, 0> dma_channels(1, 2);
 const spi_host_device_t kInvalidHostDevice = spi_host_device_t(-1);
 
 ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
-#ifdef CONFIG_IDF_TARGET_ESP32C3
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+  SPI2_HOST,
   SPI3_HOST
+#elif CONFIG_IDF_TARGET_ESP32S2
+  SPI2_HOST,
+  SPI3_HOST
+#elif CONFIG_IDF_TARGET_ESP32C3
+  SPI2_HOST
 #else
   HSPI_HOST,
   VSPI_HOST
 #endif
 );
 
-class SPIResourceGroup : public ResourceGroup {
- public:
-  TAG(SPIResourceGroup);
-  SPIResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device, int dma_chan)
+SpiResourceGroup::SpiResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device,
+                                   int dma_channel)
     : ResourceGroup(process, event_source)
-    , _host_device(host_device)
-    , _dma_chan(dma_chan) { }
+    , host_device_(host_device)
+    , dma_channel_(dma_channel) {}
 
-  ~SPIResourceGroup() {
-    SystemEventSource::instance()->run([&]() -> void {
-      FATAL_IF_NOT_ESP_OK(spi_bus_free(_host_device));
-    });
-    spi_host_devices.put(_host_device);
-    dma_channels.put(_dma_chan);
-  }
-
-  spi_host_device_t host_device() { return _host_device; }
-
- private:
-  spi_host_device_t _host_device;
-  int _dma_chan;
-};
+SpiResourceGroup::~SpiResourceGroup() {
+  SystemEventSource::instance()->run([&]() -> void {
+    FATAL_IF_NOT_ESP_OK(spi_bus_free(host_device_));
+  });
+  spi_host_devices.put(host_device_);
+  dma_channels.put(dma_channel_);
+}
 
 MODULE_IMPLEMENTATION(spi, MODULE_SPI);
 
@@ -80,7 +77,9 @@ PRIMITIVE(init) {
       (miso == -1 || miso == 12) &&
       (clock == -1 || clock == 14)) {
 #ifdef CONFIG_IDF_TARGET_ESP32C3
-    host_device = SPI3_HOST;
+    host_device = SPI2_HOST;
+#elif CONFIG_IDF_TARGET_ESP32S3
+    host_device = SPI2_HOST;
 #else
     host_device = HSPI_HOST;
 #endif
@@ -89,25 +88,29 @@ PRIMITIVE(init) {
       (miso == -1 || miso == 19) &&
       (clock == -1 || clock == 18)) {
 #ifdef CONFIG_IDF_TARGET_ESP32C3
+    host_device = SPI2_HOST;
+#elif CONFIG_IDF_TARGET_ESP32S3
+    host_device = SPI3_HOST;
+#elif CONFIG_IDF_TARGET_ESP32S2
     host_device = SPI3_HOST;
 #else
     host_device = VSPI_HOST;
 #endif
   }
   host_device = spi_host_devices.preferred(host_device);
-  if (host_device == kInvalidHostDevice) OUT_OF_RANGE;
+  if (host_device == kInvalidHostDevice) FAIL(OUT_OF_RANGE);
 
   int dma_chan = dma_channels.any();
   if (dma_chan == 0) {
     spi_host_devices.put(host_device);
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
     spi_host_devices.put(host_device);
     dma_channels.put(dma_chan);
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   spi_bus_config_t conf = {};
@@ -125,7 +128,12 @@ PRIMITIVE(init) {
     esp_err_t err;
   } args {
     .host_device = host_device,
-    .dma_chan = dma_chan
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+    .dma_chan = SPI_DMA_CH_AUTO,
+#else
+    .dma_chan = dma_chan,
+#endif
+    .err = ESP_OK,
   };
   SystemEventSource::instance()->run([&]() -> void {
     args.err = spi_bus_initialize(args.host_device, &conf, args.dma_chan);
@@ -137,11 +145,11 @@ PRIMITIVE(init) {
   }
 
   // TODO: Reclaim dma channel.
-  SPIResourceGroup* spi = _new SPIResourceGroup(process, null, host_device, dma_chan);
+  SpiResourceGroup* spi = _new SpiResourceGroup(process, null, host_device, dma_chan);
   if (!spi) {
     spi_host_devices.put(host_device);
     dma_channels.put(dma_chan);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
   proxy->set_external_address(spi);
 
@@ -149,10 +157,10 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(close) {
-  ARGS(SPIResourceGroup, spi);
+  ARGS(SpiResourceGroup, spi);
   spi->tear_down();
   spi_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 IRAM_ATTR static void spi_pre_transfer_callback(spi_transaction_t* t) {
@@ -164,20 +172,26 @@ IRAM_ATTR static void spi_pre_transfer_callback(spi_transaction_t* t) {
 }
 
 PRIMITIVE(device) {
-  ARGS(SPIResourceGroup, spi, int, cs, int, dc, int, command_bits, int, address_bits, int, frequency, int, mode);
+  ARGS(SpiResourceGroup, spi, int, cs, int, dc, int, command_bits, int, address_bits, int, frequency, int, mode);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    ALLOCATION_FAILED;
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   spi_device_interface_config_t conf = {
-    .command_bits   = uint8(command_bits),
-    .address_bits   = uint8(address_bits),
-    .mode           = uint8(mode),
-    .clock_speed_hz = frequency,
-    .spics_io_num   = cs,
-    .queue_size     = 1,
+    .command_bits     = uint8(command_bits),
+    .address_bits     = uint8(address_bits),
+    .dummy_bits       = 0,
+    .mode             = uint8(mode),
+    .duty_cycle_pos   = 0,
+    .cs_ena_pretrans  = 0,
+    .cs_ena_posttrans = 0,
+    .clock_speed_hz   = frequency,
+    .input_delay_ns   = 0,
+    .spics_io_num     = cs,
+    .flags            = 0,
+    .queue_size       = 1,
+    .pre_cb           = null,
+    .post_cb          = null,
   };
   if (dc != -1) {
     conf.pre_cb = spi_pre_transfer_callback;
@@ -189,10 +203,10 @@ PRIMITIVE(device) {
     return Primitive::os_error(err, process);
   }
 
-  SPIDevice* spi_device = _new SPIDevice(spi, device, dc);
+  SpiDevice* spi_device = _new SpiDevice(spi, device, dc);
   if (spi_device == null) {
     spi_bus_remove_device(device);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   spi->register_resource(spi_device);
@@ -201,28 +215,35 @@ PRIMITIVE(device) {
 }
 
 PRIMITIVE(device_close) {
-  ARGS(SPIResourceGroup, spi, SPIDevice, device);
+  ARGS(SpiResourceGroup, spi, SpiDevice, device);
   spi->unregister_resource(device);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(transfer) {
-  ARGS(SPIDevice, device, MutableBlob, tx, int, command, int64, address, int, from, int, to, bool, read, int, dc);
+  ARGS(SpiDevice, device, MutableBlob, tx, int, command, int64, address, int, from, int, to, bool, read, int, dc, bool, keep_cs_active);
 
-  if (from < 0 || from > to || to > tx.length()) OUT_OF_BOUNDS;
+  if (from < 0 || from > to || to > tx.length()) FAIL(OUT_OF_BOUNDS);
 
   size_t length = to - from;
 
+  uint32_t flags = 0;
+  if (keep_cs_active) flags |= SPI_TRANS_CS_KEEP_ACTIVE;
+
   spi_transaction_t trans = {
+    .flags = flags,
     .cmd = uint16(command),
     .addr = uint64(address),
     .length = length * 8,
+    .rxlength = 0,
+    .user = null,
     .tx_buffer = tx.address() + from,
+    .rx_buffer = null,
   };
 
   bool using_buffer = false;
   if (read) {
-    if (length <= SPIDevice::BUFFER_SIZE) {
+    if (length <= SpiDevice::BUFFER_SIZE) {
       trans.rx_buffer = device->buffer();
       using_buffer = true;
     } else {
@@ -244,7 +265,22 @@ PRIMITIVE(transfer) {
     memcpy(tx.address() + from, trans.rx_buffer, length);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
+}
+
+PRIMITIVE(acquire_bus) {
+  ARGS(SpiDevice, device);
+  esp_err_t err = spi_device_acquire_bus(device->handle(), portMAX_DELAY);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  return process->null_object();
+}
+
+PRIMITIVE(release_bus) {
+  ARGS(SpiDevice, device);
+  spi_device_release_bus(device->handle());
+  return process->null_object();
 }
 
 } // namespace toit

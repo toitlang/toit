@@ -1,0 +1,28 @@
+tests/negative/block-lambda-test.toit:6:12: error: Block parameters can't be blocks
+  b := (: |[x]| x.call)
+           ^~
+tests/negative/block-lambda-test.toit:7:13: error: Lambda parameters can't be blocks
+  l := (:: |[x]| x.call)
+            ^~
+tests/negative/block-lambda-test.toit:8:13: error: Block can't have field-storing parameters
+  b2 := (: |this.x| x)
+            ^~~~~~
+tests/negative/block-lambda-test.toit:9:14: error: Lambda can't have field-storing parameters
+  l2 := (:: |this.x| x)
+             ^~~~~~
+tests/negative/block-lambda-test.toit:10:13: error: Block can't have field-storing parameters
+  b3 := (: |.x| x)
+            ^~
+tests/negative/block-lambda-test.toit:11:14: error: Lambda can't have field-storing parameters
+  l3 := (:: |.x| x)
+             ^~
+tests/negative/block-lambda-test.toit:12:13: error: Block parameters can't be named
+  b4 := (: |--x| x)
+            ^~~
+tests/negative/block-lambda-test.toit:13:14: error: Lambda parameters can't be named
+  l4 := (:: |--x| x)
+             ^~~
+tests/negative/block-lambda-test.toit:14:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed.

@@ -14,8 +14,9 @@
 // directory of this repository.
 
 #include "top.h"
-#include "os.h"
+#include "embedded_data.h"
 #include "flash_registry.h"
+#include "program.h"
 
 namespace toit {
 
@@ -27,9 +28,10 @@ int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
   if ((*it) != ReservationList::Iterator(null) && (*it)->left() == offset) {
     return (*it)->right();
   }
+
   // If we are at an allocation, we return the address immediately after the allocation.
   const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(allocations_memory() + offset);
-  if (probe->is_valid(offset, OS::image_uuid())) {
+  if (probe->is_valid()) {
     return offset + probe->size();
   }
 
@@ -37,38 +39,66 @@ int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
   for (int i = offset + FLASH_PAGE_SIZE; i < allocations_size(); i += FLASH_PAGE_SIZE) {
     if ((*it) != ReservationList::Iterator(null) && (*it)->left() == i) return i;
     const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(allocations_memory() + i);
-    if (probe->is_valid(i, OS::image_uuid())) return i;
+    if (probe->is_valid()) return i;
   }
   return allocations_size();
 }
 
-const FlashAllocation* FlashRegistry::at(int offset) {
-  ASSERT(is_allocations_set_up());
-  ASSERT(0 <= offset && offset < allocations_size());
-  const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(allocations_memory() + offset);
-  return (probe->is_valid(offset, OS::image_uuid())) ? probe : null;
+const FlashAllocation* FlashRegistry::allocation(int offset) {
+  const FlashAllocation* result = null;
+  if ((offset & 1) == 0) {
+    FlashAllocation* probe = reinterpret_cast<FlashAllocation*>(region(offset, 0));
+    if (probe->is_valid()) result = probe;
+  } else {
+#ifdef TOIT_FREERTOS
+    const EmbeddedDataExtension* extension = EmbeddedData::extension();
+    const Program* probe = const_cast<Program*>(extension->program(offset - 1));
+    if (probe->is_valid_embedded()) result = probe;
+#endif
+  }
+  return result;
 }
 
-bool FlashRegistry::pad_and_write(const void* chunk, int offset, int size) {
-  if (size % FLASH_SEGMENT_SIZE == 0) {
-    return FlashRegistry::write_chunk(chunk, offset, size);
+static bool is_erased_unaligned(const uint8* memory, int from, int to) {
+  for (int i = from; i < to; i++) {
+    if (memory[i] != 0xff) return false;
   }
-  int aligned_size = Utils::round_down(size, FLASH_SEGMENT_SIZE);
-  bool success = FlashRegistry::write_chunk(chunk, offset, aligned_size);
-  if (!success) {
-    return false;
-  }
-  uint8_t last_segment[FLASH_SEGMENT_SIZE];  // TODO(Lau): Make statically allocated.
-  memset(last_segment, 0xFF, FLASH_SEGMENT_SIZE);
-  int remainder_length = size % FLASH_SEGMENT_SIZE;
-  memcpy(last_segment, static_cast<char*>(const_cast<void*>(chunk)) + aligned_size, remainder_length);
-  return FlashRegistry::write_chunk(last_segment, offset + aligned_size, FLASH_SEGMENT_SIZE);
+  return true;
 }
 
-void* FlashRegistry::memory(int offset, int size) {
-  ASSERT(allocations_memory() != null);
-  ASSERT(0 <= offset && offset + size <= allocations_size());
-  return const_cast<char*>(allocations_memory()) + offset;
+static bool is_erased_aligned(const uint8* memory, int from, int to) {
+  ASSERT(Utils::is_aligned(memory + from, sizeof(uword)));
+  ASSERT(Utils::is_aligned(memory + to, sizeof(uword)));
+  const uword* cursor = reinterpret_cast<const uword*>(memory + from);
+  const uword* limit = reinterpret_cast<const uword*>(memory + to);
+  while (cursor < limit) {
+    if (*cursor != static_cast<uword>(-1)) return false;
+    ++cursor;
+  }
+  return true;
+}
+
+bool FlashRegistry::is_erased(int offset, int size) {
+  const uint8* memory = region(offset, size);
+  int cursor = 0;
+
+  int from_aligned = Utils::round_up(offset, sizeof(uword));
+  int unaligned_prefix = from_aligned - offset;
+  if (unaligned_prefix > 0) {
+    if (!is_erased_unaligned(memory, 0, unaligned_prefix)) return false;
+    cursor = unaligned_prefix;
+  }
+
+  int to = offset + size;
+  int to_aligned = Utils::round_down(to, sizeof(uword));
+  int aligned_middle = to_aligned - from_aligned;
+  if (aligned_middle > 0) {
+    int cursor_next = cursor + aligned_middle;
+    if (!is_erased_aligned(memory, cursor, cursor_next)) return false;
+    cursor = cursor_next;
+  }
+
+  return is_erased_unaligned(memory, cursor, size);
 }
 
 }

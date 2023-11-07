@@ -64,16 +64,16 @@ bool read_full(int fd, uint8_t* data, int length) {
   return true;
 }
 
-KQueueEventSource* KQueueEventSource::_instance = null;
+KQueueEventSource* KQueueEventSource::instance_ = null;
 
 KQueueEventSource::KQueueEventSource()
     : EventSource("KQueue")
     , Thread("KQueue") {
-  ASSERT(_instance == null);
-  _instance = this;
+  ASSERT(instance_ == null);
+  instance_ = this;
 
-  _kqueue_fd = kqueue();
-  if (_kqueue_fd < 0) {
+  kqueue_fd_ = kqueue();
+  if (kqueue_fd_ < 0) {
     FATAL("failed allocating kqueue file descriptor: %d", errno)
   }
 
@@ -82,23 +82,23 @@ KQueueEventSource::KQueueEventSource()
     FATAL("failed allocating pipe file descriptors: %d", errno)
   }
 
-  _control_read = fds[0];
-  _control_write = fds[1];
+  control_read_ = fds[0];
+  control_write_ = fds[1];
 
   struct kevent event;
-  EV_SET(&event, _control_read, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, null);
-  int ret = kevent(_kqueue_fd, &event, 1, null, 0, null);
+  EV_SET(&event, control_read_, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, null);
+  int ret = kevent(kqueue_fd_, &event, 1, null, 0, null);
   if (ret != 0) FATAL("failed adding close fd: %d", ret);
 
   spawn();
 }
 
 KQueueEventSource::~KQueueEventSource() {
-  close(_control_write);
+  close(control_write_);
   join();
-  close(_kqueue_fd);
+  close(kqueue_fd_);
 
-  _instance = null;
+  instance_ = null;
 }
 
 void KQueueEventSource::on_register_resource(Locker& locker, Resource* r) {
@@ -106,7 +106,7 @@ void KQueueEventSource::on_register_resource(Locker& locker, Resource* r) {
   uint64_t cmd = resource->id();
   cmd <<= 32;
   cmd |= kAdd;
-  if (!write_full(_control_write, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
+  if (!write_full(control_write_, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
     FATAL("failed to send 0x%llx to kqueue: %d", cmd, errno);
   }
 }
@@ -116,7 +116,7 @@ void KQueueEventSource::on_unregister_resource(Locker& locker, Resource* r) {
   uint64_t cmd = resource->id();
   cmd <<= 32;
   cmd |= kRemove;
-  if (!write_full(_control_write, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
+  if (!write_full(control_write_, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
     FATAL("failed to send 0x%llx to kqueue: %d", cmd, errno);
   }
 }
@@ -124,17 +124,17 @@ void KQueueEventSource::on_unregister_resource(Locker& locker, Resource* r) {
 void KQueueEventSource::entry() {
   while (true) {
     struct kevent event;
-    int ready = kevent(_kqueue_fd, null, 0, &event, 1, null);
+    int ready = kevent(kqueue_fd_, null, 0, &event, 1, null);
     switch (ready) {
       case 1: {
-        if (int(event.ident) == _control_read) {
+        if (int(event.ident) == control_read_) {
           if (event.flags & EV_EOF) {
-            close(_control_read);
+            close(control_read_);
             return;
           }
 
           uint64_t cmd = 0;
-          if (!read_full(_control_read, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
+          if (!read_full(control_read_, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
             FATAL("failed to receive 0x%llx in epoll: %d", cmd, errno);
           }
 
@@ -143,12 +143,12 @@ void KQueueEventSource::entry() {
             case kAdd: {
               struct kevent event;
               EV_SET(&event, id, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, null);
-              int ret = kevent(_kqueue_fd, &event, 1, null, 0, null);
+              int ret = kevent(kqueue_fd_, &event, 1, null, 0, null);
               if (ret != 0) FATAL("failed adding event/read: %d for id %d", ret, id);
 
               if (id > 0) {
                 EV_SET(&event, id, EVFILT_WRITE, EV_ADD | EV_CLEAR, 0, 0, null);
-                ret = kevent(_kqueue_fd, &event, 1, null, 0, null);
+                ret = kevent(kqueue_fd_, &event, 1, null, 0, null);
                 if (ret != 0) FATAL("failed adding event/write: %d for id %d", ret, id);
               }
             }
@@ -157,12 +157,12 @@ void KQueueEventSource::entry() {
             case kRemove: {
               struct kevent event;
               EV_SET(&event, id, EVFILT_READ, EV_DELETE, 0, 0, null);
-              int ret = kevent(_kqueue_fd, &event, 1, null, 0, null);
+              int ret = kevent(kqueue_fd_, &event, 1, null, 0, null);
               if (ret != 0) FATAL("failed removing event/read: %d for id %d", ret, id);
 
               if (id > 0) {
                 EV_SET(&event, id, EVFILT_WRITE, EV_DELETE, 0, 0, null);
-                ret = kevent(_kqueue_fd, &event, 1, null, 0, null);
+                ret = kevent(kqueue_fd_, &event, 1, null, 0, null);
                 if (ret != 0) FATAL("failed removing event/write: %d for id %d", ret, id);
               }
               close(id);

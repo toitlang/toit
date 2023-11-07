@@ -21,6 +21,7 @@
 
 #include "../top.h"
 
+#include "filesystem_local.h"
 #include "lock.h"
 #include "scanner.h"
 #include "sources.h"
@@ -58,47 +59,47 @@ const char* compute_package_cache_path_from_home(const char* home, Filesystem* f
 
 Package PackageLock::resolve_prefix(const Package& package,
                                     const std::string& prefix) const {
-  auto prefix_probe = package._prefixes.find(prefix);
-  if (prefix_probe != package._prefixes.end()) {
+  auto prefix_probe = package.prefixes_.find(prefix);
+  if (prefix_probe != package.prefixes_.end()) {
     auto prefix_id = prefix_probe->second;
-    auto pkg_probe = _packages.find(prefix_id);
-    if (pkg_probe == _packages.end()) {
+    auto pkg_probe = packages_.find(prefix_id);
+    if (pkg_probe == packages_.end()) {
       // The prefix points to a package-id that is in the lock file, but we
       // weren't able to find the actual package.
-      return _packages.at(Package::ERROR_PACKAGE_ID);
+      return packages_.at(Package::ERROR_PACKAGE_ID);
     }
     return pkg_probe->second;
   }
   // No prefix mapping for this package-id.
   // Assume it's for the SDK.
-  if (_sdk_prefixes.contains(prefix)) {
-    return _packages.at(Package::SDK_PACKAGE_ID);
+  if (sdk_prefixes_.contains(prefix)) {
+    return packages_.at(Package::SDK_PACKAGE_ID);
   }
   return Package::invalid();
 }
 
 Package PackageLock::package_for(const std::string& path, Filesystem* fs) const {
   if (SourceManager::is_virtual_file(path.c_str())) {
-    return _packages.at(Package::VIRTUAL_PACKAGE_ID);
+    return packages_.at(Package::VIRTUAL_PACKAGE_ID);
   }
 
   // Paths that come in here must be absolute.
   ASSERT(fs->is_absolute(path.c_str()));
-  auto cache_probe = _path_to_package_cache.find(path);
-  if (cache_probe != _path_to_package_cache.end()) {
-    return _packages.at(cache_probe->second);
+  auto cache_probe = path_to_package_cache_.find(path);
+  if (cache_probe != path_to_package_cache_.end()) {
+    return packages_.at(cache_probe->second);
   }
   std::vector<std::string> to_cache;
   for (int i = path.size() - 1; i >= 0; i--) {
-    if (path[i] == fs->path_separator()) {
+    if (fs->is_path_separator(path[i])) {
       auto sub = path.substr(0, i);
-      auto probe = _path_to_package_cache.find(sub);
-      if (probe != _path_to_package_cache.end()) {
-        _path_to_package_cache[path] = probe->second;
+      auto probe = path_to_package_cache_.find(sub);
+      if (probe != path_to_package_cache_.end()) {
+        path_to_package_cache_[path] = probe->second;
         for (auto p : to_cache) {
-          _path_to_package_cache[p] = probe->second;
+          path_to_package_cache_[p] = probe->second;
         }
-        return _packages.at(probe->second);
+        return packages_.at(probe->second);
       }
       to_cache.push_back(sub);
     }
@@ -108,7 +109,7 @@ Package PackageLock::package_for(const std::string& path, Filesystem* fs) const 
   // much as they want.
   // It also simplifies handling of package.lock files that aren't stored at
   // the root of a project.
-  return _packages.at(Package::ENTRY_PACKAGE_ID);
+  return packages_.at(Package::ENTRY_PACKAGE_ID);
 }
 
 // Searches for the lock file in the given directory.
@@ -118,7 +119,7 @@ std::string find_lock_file_at(const char* dir,
 
   PathBuilder builder(fs);
   if (!fs->is_absolute(dir)) {
-    builder.join(fs->cwd());
+    builder.join(fs->relative_anchor(dir));
   }
   builder.join(dir);
   builder.join(LOCK_FILE);
@@ -136,7 +137,7 @@ std::string find_lock_file(const char* source_path,
 
   PathBuilder builder(fs);
   if (!fs->is_absolute(source_path)) {
-    builder.join(fs->cwd());
+    builder.join(fs->relative_anchor(source_path));
   }
   builder.join(source_path);
   // Drop the filename.
@@ -147,7 +148,7 @@ std::string find_lock_file(const char* source_path,
   builder.add(fs->path_separator());
 
   for (int i = builder.length() - 1; i >= 0; i--) {
-    if (builder[i] == fs->path_separator()) {
+    if (fs->is_path_separator(builder[i])) {
       builder.reset_to(i + 1);
       builder.join(LOCK_FILE);
       if (fs->exists(builder.c_str())) {
@@ -162,7 +163,7 @@ static std::string build_canonical_sdk_dir(Filesystem* fs) {
   const char* sdk_lib_dir = fs->library_root();
   PathBuilder sdk_builder(fs);
   if (!fs->is_absolute(sdk_lib_dir)) {
-    sdk_builder.join(fs->cwd());
+    sdk_builder.join(fs->relative_anchor(sdk_lib_dir));
   }
   sdk_builder.join(sdk_lib_dir);
   sdk_builder.canonicalize();
@@ -170,7 +171,7 @@ static std::string build_canonical_sdk_dir(Filesystem* fs) {
 }
 
 void PackageLock::list_sdk_prefixes(const std::function<void (const std::string& candidate)>& callback) const {
-  for (auto sdk_prefix : _sdk_prefixes) {
+  for (auto sdk_prefix : sdk_prefixes_) {
     callback(sdk_prefix);
   }
 }
@@ -180,15 +181,15 @@ PackageLock::PackageLock(Source* lock_source,
                          const Map<std::string, Package>& packages,
                          const Set<std::string>& sdk_prefixes,
                          bool has_errors)
-    : _lock_file_source(lock_source)
-    , _has_errors(has_errors)
-    , _sdk_prefixes(sdk_prefixes)
-    , _packages(packages)
-    , _sdk_constraint(sdk_constraint) {
+    : lock_file_source_(lock_source)
+    , has_errors_(has_errors)
+    , sdk_prefixes_(sdk_prefixes)
+    , packages_(packages)
+    , sdk_constraint_(sdk_constraint) {
   for (auto id : packages.keys()) {
     auto package = packages.at(id);
     if (!package.has_valid_path()) continue;
-    _path_to_package_cache[package.absolute_path()] = id;
+    path_to_package_cache_[package.absolute_path()] = id;
   }
 }
 
@@ -227,8 +228,8 @@ static bool is_valid_package_id(const std::string& package_id) {
   if (package_id.empty()) return false;
   for (size_t i = 0; i < package_id.size(); i++) {
     char c = package_id[i];
-    if (is_identifier_part(c)) continue;
-    if (c == '+' || c == '-' || c == '*' || c == '/' || c == '\\' || c == '.') continue;
+    if (is_letter(c) || is_decimal_digit(c)) continue;
+    if (c == '_' || c == '+' || c == '-' || c == '*' || c == '/' || c == '\\' || c == '.') continue;
     return false;
   }
   return true;
@@ -236,9 +237,12 @@ static bool is_valid_package_id(const std::string& package_id) {
 
 static bool is_valid_prefix(const std::string& prefix) {
   if (prefix.empty()) return false;
-  if (!is_identifier_start(prefix[0])) return false;
-  for (size_t i = 1; i < prefix.size(); i++) {
-    if (!is_identifier_part(prefix[i])) return false;
+  IdentifierValidator validator;
+
+  for (size_t i = 0; i < prefix.size(); i++) {
+    if (!validator.check_next_char(prefix[i], [&]() { return prefix[i + 1]; })) {
+      return false;
+    }
   }
   return true;
 }
@@ -278,15 +282,15 @@ class YamlParser {
   bool is_at_end() const;
 
  private:
-  Source* _source;
-  Diagnostics* _diagnostics;
-  yaml_parser_t _parser;
-  yaml_event_t _event;
-  bool _needs_freeing = false;
+  Source* source_;
+  Diagnostics* diagnostics_;
+  yaml_parser_t parser_;
+  yaml_event_t event_;
+  bool needs_freeing_ = false;
 
   yaml_event_t peek() {
-    ASSERT(_needs_freeing);
-    return _event;
+    ASSERT(needs_freeing_);
+    return event_;
   }
   Status next();
 
@@ -297,31 +301,31 @@ class YamlParser {
 }
 
 YamlParser::YamlParser(Source* source, Diagnostics* diagnostics)
-  : _source(source), _diagnostics(diagnostics) {
-  yaml_parser_initialize(&_parser);
+  : source_(source), diagnostics_(diagnostics) {
+  yaml_parser_initialize(&parser_);
   auto ucontent = reinterpret_cast<const unsigned char*>(source->text());
-  yaml_parser_set_input_string(&_parser, ucontent, source->size());
+  yaml_parser_set_input_string(&parser_, ucontent, source->size());
 }
 
 YamlParser::~YamlParser() {
-  if (_needs_freeing) {
-    yaml_event_delete(&_event);
+  if (needs_freeing_) {
+    yaml_event_delete(&event_);
   }
-  yaml_parser_delete(&_parser);
+  yaml_parser_delete(&parser_);
 }
 
 YamlParser::Status YamlParser::skip_to_body() {
   auto status = next();
   if (status != OK) return status;
-  if (_event.type != YAML_STREAM_START_EVENT) {
+  if (event_.type != YAML_STREAM_START_EVENT) {
     report_parse_error();
     return FATAL;
   }
   status = next();
   if (status != OK) return status;
   // Empty files don't have a body. We are ok with that.
-  if (_event.type == YAML_STREAM_END_EVENT) return OK;
-  if (_event.type != YAML_DOCUMENT_START_EVENT) {
+  if (event_.type == YAML_STREAM_END_EVENT) return OK;
+  if (event_.type != YAML_DOCUMENT_START_EVENT) {
     report_parse_error();
     return FATAL;
   }
@@ -329,7 +333,7 @@ YamlParser::Status YamlParser::skip_to_body() {
 }
 
 bool YamlParser::is_at_end() const {
-  return _event.type == YAML_STREAM_END_EVENT || _event.type == YAML_DOCUMENT_END_EVENT;
+  return event_.type == YAML_STREAM_END_EVENT || event_.type == YAML_DOCUMENT_END_EVENT;
 }
 
 YamlParser::Status YamlParser::parse_map(const std::function<YamlParser::Status (const std::string& key,
@@ -370,23 +374,23 @@ YamlParser::Status YamlParser::parse_string(const std::function<YamlParser::Stat
   // TODO(florian): check whether we need to read 'event.data.scalar.style'.
   unsigned char* scalar_str = event.data.scalar.value;
   std::string str(char_cast(scalar_str));
-  auto range = _source->range(event.start_mark.index, event.end_mark.index);
+  auto range = source_->range(event.start_mark.index, event.end_mark.index);
   auto status = next();
   if (status != OK) return status;
   return callback(str, range);
 }
 
 YamlParser::Status YamlParser::next() {
-  if (_needs_freeing) {
-    yaml_event_delete(&_event);
-    _needs_freeing = false;
+  if (needs_freeing_) {
+    yaml_event_delete(&event_);
+    needs_freeing_ = false;
   }
-  if (!yaml_parser_parse(&_parser, &_event)) {
+  if (!yaml_parser_parse(&parser_, &event_)) {
     report_parse_error();
     return FATAL;
   }
-  _needs_freeing = true;
-  if (_event.type == YAML_NO_EVENT) {
+  needs_freeing_ = true;
+  if (event_.type == YAML_NO_EVENT) {
     FATAL("shouldn't get a no-event");
   }
   return OK;
@@ -442,9 +446,9 @@ YamlParser::Status YamlParser::skip() {
 }
 
 void YamlParser::report_parse_error() {
-  auto error_range = _source->range(_parser.problem_mark.index, _parser.problem_mark.index);
-  auto message = _parser.problem;
-  _diagnostics->report_error(error_range, "Couldn't parse package lock file: %s", message);
+  auto error_range = source_->range(parser_.problem_mark.index, parser_.problem_mark.index);
+  auto message = parser_.problem;
+  diagnostics_->report_error(error_range, "Couldn't parse package lock file: %s", message);
 }
 
 static const char* type_to_string(yaml_event_type_t type) {
@@ -478,9 +482,9 @@ static const char* type_to_string(yaml_event_type_t type) {
 
 void YamlParser::report_unexpected(const char* expected_type) {
 
-  auto error_range(_source->range(_event.start_mark.index, _event.end_mark.index));
-  auto actual = type_to_string(_event.type);
-  _diagnostics->report_error(error_range,
+  auto error_range(source_->range(event_.start_mark.index, event_.end_mark.index));
+  auto actual = type_to_string(event_.type);
+  diagnostics_->report_error(error_range,
                              "Invalid package lock file. Expected a %s, got a%s %s",
                              expected_type,
                              actual[0] == 'a' || actual[0] == '<' || actual[0] == 'e' ? "n" : "",
@@ -560,6 +564,8 @@ static LockFileContent parse_lock_file(const std::string& lock_file_path,
         has_errors = true;
       }
 
+      auto canonicalized = IdentifierValidator::canonicalize(prefix);
+
       std::string target_id;
       auto target_range = Source::Range::invalid();
       auto status = parser.parse_string([&](const std::string& str, const Source::Range& range) {
@@ -579,11 +585,11 @@ static LockFileContent parse_lock_file(const std::string& lock_file_path,
         diagnostics->report_error(target_range,
                                   "Package '%s', target of prefix '%s', not found",
                                   target_id.c_str(),
-                                  prefix.c_str());
+                                  canonicalized.c_str());
         target_id = Package::ERROR_PACKAGE_ID;
       }
 
-      pkg_prefixes[prefix] = target_id;
+      pkg_prefixes[canonicalized] = target_id;
       return YamlParser::OK;
     });
 
@@ -856,10 +862,22 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
 
   ASSERT(!is_valid_package_id(Package::ENTRY_PACKAGE_ID));
   std::string root(fs->root(entry_path));
+  std::string absolute_error_path = root;
+  std::string relative_error_path = root;
+  if (!entry_is_absolute) {
+    // On Windows this is a drive-relative path.
+    if (fs->is_path_separator(entry_path[0])) {
+      relative_error_path = std::string(fs->relative_anchor("\\"));
+      absolute_error_path = relative_error_path;
+    } else {
+      relative_error_path = std::string(".");
+      absolute_error_path = std::string(fs->cwd());
+    }
+  }
   Package entry_package(Package::ENTRY_PACKAGE_ID,
                         entry_pkg_path,
-                        entry_is_absolute ? root : fs->cwd(),
-                        entry_is_absolute ? root : std::string("."),
+                        absolute_error_path,
+                        relative_error_path,
                         Package::OK,
                         entry_prefixes);
   packages[Package::ENTRY_PACKAGE_ID] = entry_package;
@@ -896,16 +914,20 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
 
       std::string error_path;
       if (!entry.path.empty()) {
+        char* localized = FilesystemLocal::to_local_path(entry.path.c_str());
         ASSERT(i == -1);
-        if (!fs->is_absolute(entry.path.c_str())) {
+        if (!fs->is_absolute(localized)) {
+          // TODO(florian): this is not correct for Windows paths that are drive-relative: '\foo'.
           builder.join(package_lock_dir);
         }
-        error_path = entry.path;
-        builder.join(entry.path);
+        error_path = std::string(localized);
+        builder.join(error_path);
         builder.canonicalize();
+        free(localized);
       } else {
         if (i == -1) continue;
         if (!fs->is_absolute(package_dirs[i])) {
+          // TODO(florian): this is not correct for Windows paths that are drive-relative: '\foo'.
           builder.join(fs->cwd());
         }
         builder.join(package_dirs[i]);

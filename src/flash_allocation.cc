@@ -15,54 +15,93 @@
 
 #include "flash_registry.h"
 #include "flash_allocation.h"
-#include "os.h"
+#include "embedded_data.h"
 #include "uuid.h"
 
 namespace toit {
 
-FlashAllocation::FlashAllocation(uint32 allocation_offset) : _header(allocation_offset) {}
+// Flash allocations that only contain data can be tagged with
+// the special constructed UUID. This allows future versions
+// of the SDK to continue to read those allocations as long as
+// the Header::FORMAT_VERSION hasn't changed.
+static const uint8 DATA_UUID[UUID_SIZE] = {
+  0x3d,
+  0x29 ^ FlashAllocation::Header::FORMAT_VERSION,
+  0x85, 0x96, 0x63, 0x7f, 0x43, 0x9c,
+  0xb6, 0x51, 0x90, 0xfd, 0xcb, 0xc0, 0xdf, 0x9a
+};
 
-FlashAllocation::FlashAllocation() : _header(0) {}
-
-FlashAllocation::Header::Header(uint32 allocation_offset) {
-  uint8 uuid[UUID_SIZE] = {0};
-  initialize(allocation_offset, uuid, null);
-}
-
-void FlashAllocation::Header::set_uuid(const uint8* uuid) {
-  memmove(_uuid, uuid, UUID_SIZE);
-}
-
-void FlashAllocation::validate() {  }
-
-bool FlashAllocation::is_valid(uint32 allocation_offset, const uint8* uuid) const {
-  if (!is_valid_allocation(allocation_offset)) return false;
-  return _header.is_valid(uuid);
-}
-
-bool FlashAllocation::Header::is_valid(const uint8* uuid) const {
-  for (unsigned i = 0; i < UUID_SIZE; i++) {
-    if (uuid[i] != _uuid[i]) return false;
+static void initialize(void* dst, const void* src, size_t size) {
+  if (src != null) {
+    memcpy(dst, src, size);
+  } else {
+    memset(dst, 0, size);
   }
-  return true;
 }
 
-bool FlashAllocation::is_valid_allocation(const uint32 allocation_offset) const {
-  return _header.is_valid_allocation(allocation_offset);
+uint32 FlashAllocation::Header::compute_checksum(const void* memory) const {
+  // The checksum covers the virtual address of the allocation. This
+  // is useful if the allocation contains relocated pointers to parts
+  // of itself. In that case, those pointers are only correct if the
+  // allocation is always access from the same virtual memory address.
+  uint32 initial = Utils::crc32(FORMAT_MARKER, reinterpret_cast<uint8*>(&memory), sizeof(memory));
+  // The rest of the header is also covered. This gives a much
+  // stronger header validation check and reduces the risk of
+  // accidentally treating garbage in the flash as allocations.
+  return Utils::crc32(initial, id_, sizeof(Header) - offsetof(Header, id_));
 }
 
-bool FlashAllocation::Header::is_valid_allocation(const uint32 allocation_offset) const {
-  return (_marker == MARKER) && (_me == allocation_offset);
+FlashAllocation::Header::Header(const void* memory,
+                                uint8 type,
+                                const uint8* id,
+                                int size,
+                                const uint8* metadata) {
+  marker_ = FORMAT_MARKER;
+  initialize(id_, id, sizeof(id_));
+  initialize(metadata_, metadata, sizeof(metadata_));
+  ASSERT(Utils::is_aligned(size, FLASH_PAGE_SIZE));
+  type_ = type;
+  size_in_pages_ = static_cast<uint16>(Utils::round_up(size, FLASH_PAGE_SIZE) >> 12);
+  if (type == FLASH_ALLOCATION_TYPE_REGION) {
+    memcpy(uuid_, DATA_UUID, sizeof(uuid_));
+  } else {
+    memcpy(uuid_, EmbeddedData::uuid(), sizeof(uuid_));
+  }
+  checksum_ = compute_checksum(memory);
 }
 
-bool FlashAllocation::initialize(uint32 offset, uint8 type, const uint8* id, int size, uint8* meta_data) {
+bool FlashAllocation::Header::is_valid(bool embedded) const {
+  if (marker_ != FORMAT_MARKER || size_in_pages_ == 0) return false;
+  if (embedded) {
+    // All programs embedded in the binary have a zero checksum.
+    if (checksum_ != 0) return false;
+  } else {
+    uint32 checksum = compute_checksum(this);
+    if (checksum_ != checksum) return false;
+    if (type_ == FLASH_ALLOCATION_TYPE_REGION) {
+      return memcmp(uuid_, DATA_UUID, UUID_SIZE) == 0;
+    }
+  }
+  if (type_ != FLASH_ALLOCATION_TYPE_PROGRAM) return false;
+  return memcmp(uuid_, EmbeddedData::uuid(), UUID_SIZE) == 0;
+}
+
+bool FlashAllocation::commit(const void* memory, int size, const Header* header) {
   if (static_cast<unsigned>(size) < sizeof(Header)) return false;
-  const uint8* uuid = OS::image_uuid();
-  void* result = FlashRegistry::memory(offset, size);
-  Header header(offset, type, id, uuid, size, meta_data);
-  bool success = FlashRegistry::write_chunk(&header, offset, sizeof(header));
+  uint32 offset = FlashRegistry::offset(memory);
+  bool success = FlashRegistry::write_chunk(header, offset, sizeof(Header));
   FlashRegistry::flush();
-  return success && static_cast<FlashAllocation*>(result)->is_valid(offset, uuid);
+  return success && static_cast<const FlashAllocation*>(memory)->is_valid();
+}
+
+int FlashAllocation::program_assets_size(uint8** bytes, int* length) const {
+  if (!program_has_assets()) return 0;
+  uword allocation_address = reinterpret_cast<uword>(this);
+  uword assets_address = allocation_address + size();
+  int assets_length = *reinterpret_cast<uint32*>(assets_address);
+  if (bytes) *bytes = reinterpret_cast<uint8*>(assets_address + sizeof(uint32));
+  if (length) *length = assets_length;
+  return Utils::round_up(assets_length + sizeof(uint32), FLASH_PAGE_SIZE);
 }
 
 }  // namespace toit

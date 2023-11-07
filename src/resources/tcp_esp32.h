@@ -24,53 +24,46 @@
 
 namespace toit {
 
-class LwIPSocket;
+class LwipSocket;
 
-typedef LinkedFIFO<LwIPSocket> BacklogSocketList;
+typedef LinkedFifo<LwipSocket> BacklogSocketList;
 
-class LwIPSocket : public Resource, public BacklogSocketList::Element {
+class LwipSocket : public Resource, public BacklogSocketList::Element {
  public:
-  TAG(LwIPSocket);
+  TAG(LwipSocket);
   enum Kind { kListening, kConnection };
 
-  LwIPSocket(ResourceGroup* group, Kind kind)
-    : Resource(group)
-    , _kind(kind)
-    , _tpcb(null)
-    , _error(ERR_OK)
-    , _send_pending(0)
-    , _send_closed(false)
-    , _read_buffer(null)
-    , _read_offset(0)
-    , _read_closed(false) {
-  }
+  LwipSocket(ResourceGroup* group, Kind kind)
+      : Resource(group)
+      , kind_(kind) {}
 
-  ~LwIPSocket() {
-    ASSERT(_tpcb == null);
+  ~LwipSocket() {
+    ASSERT(tpcb_ == null);
+    ASSERT(read_buffer_ == null);
   }
 
   void tear_down();
 
   static err_t on_accept(void* arg, tcp_pcb* tpcb, err_t err) {
-    int result = unvoid_cast<LwIPSocket*>(arg)->on_accept(tpcb, err);
+    int result = unvoid_cast<LwipSocket*>(arg)->on_accept(tpcb, err);
     return result;
   }
   int on_accept(tcp_pcb* tpcb, err_t err);
 
   static err_t on_connected(void* arg, tcp_pcb* tpcb, err_t err) {
-    int result = unvoid_cast<LwIPSocket*>(arg)->on_connected(err);
+    int result = unvoid_cast<LwipSocket*>(arg)->on_connected(err);
     return result;
   }
   int on_connected(err_t err);
 
   static err_t on_read(void* arg, tcp_pcb* tpcb, pbuf* p, err_t err) {
-    unvoid_cast<LwIPSocket*>(arg)->on_read(p, err);
+    unvoid_cast<LwipSocket*>(arg)->on_read(p, err);
     return ERR_OK;
   }
   void on_read(pbuf* p, err_t err);
 
   static err_t on_wrote(void* arg, tcp_pcb* tpcb, uint16_t length) {
-    unvoid_cast<LwIPSocket*>(arg)->on_wrote(length);
+    unvoid_cast<LwipSocket*>(arg)->on_wrote(length);
     return ERR_OK;
   }
   void on_wrote(int length);
@@ -78,58 +71,54 @@ class LwIPSocket : public Resource, public BacklogSocketList::Element {
   static void on_error(void* arg, err_t err) {
     // Ignore if already deleted.
     if (arg == null) return;
-    unvoid_cast<LwIPSocket*>(arg)->on_error(err);
+    unvoid_cast<LwipSocket*>(arg)->on_error(err);
   }
   void on_error(err_t err);
 
   void send_state();
   void socket_error(err_t err);
 
-  Smi* as_smi() {
-    return Smi::from(reinterpret_cast<uintptr_t>(this) >> 2);
+  tcp_pcb* tpcb() const { return tpcb_; }
+  void set_tpcb(tcp_pcb* tpcb) { tpcb_ = tpcb; }
+
+  err_t error() { return error_; }
+
+  Kind kind() { return kind_; }
+
+  int send_pending() { return send_pending_; }
+  void set_send_pending(int pending) { send_pending_ = pending; }
+  bool send_closed() { return send_closed_; }
+  void mark_send_closed() { send_closed_ = true; }
+
+  void set_read_buffer(pbuf* p, int offset) {
+    read_buffer_ = p;
+    read_offset_ = offset;
   }
-
-  static LwIPSocket* from_id(int id) {
-    return reinterpret_cast<LwIPSocket*>(id << 2);
+  pbuf* get_read_buffer(int* offset_return) {
+    *offset_return = read_offset_;
+    return read_buffer_;
   }
-
-  tcp_pcb* tpcb() { return _tpcb; }
-  void set_tpcb(tcp_pcb* tpcb) { _tpcb = tpcb; }
-
-  err_t error() { return _error; }
-
-  Kind kind() { return _kind; }
-
-  int send_pending() { return _send_pending; }
-  void set_send_pending(int pending) { _send_pending = pending; }
-  bool send_closed() { return _send_closed; }
-  void mark_send_closed() { _send_closed = true; }
-
-  void set_read_buffer(pbuf* p) { _read_buffer = p; }
-  pbuf* read_buffer() { return _read_buffer; }
-  void set_read_offset(int offset) { _read_offset = offset; }
-  int read_offset() { return _read_offset; }
-  bool read_closed() { return _read_closed; }
-  void mark_read_closed() { _read_closed = true; }
+  bool read_closed() { return read_closed_; }
+  void mark_read_closed() { read_closed_ = true; }
 
   int new_backlog_socket(tcp_pcb* tpcb);
-  LwIPSocket* accept();
+  LwipSocket* accept();
 
  private:
-  Kind _kind;
-  tcp_pcb* _tpcb;
-  err_t _error;
+  Kind kind_;
+  tcp_pcb* tpcb_ = null;
+  err_t error_ = ERR_OK;
 
-  int _send_pending;
-  bool _send_closed;
+  int send_pending_ = 0;
+  bool send_closed_ = false;
 
-  pbuf* _read_buffer;
-  int _read_offset;
-  bool _read_closed;
+  pbuf* read_buffer_ = null;
+  int read_offset_ = 0;
+  bool read_closed_ = false;
 
   // Sockets that are connected on a listening socket, but have not yet been
   // accepted by the application.
-  BacklogSocketList _backlog;
+  BacklogSocketList backlog_;
 };
 
 } // namespace toit

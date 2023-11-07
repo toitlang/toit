@@ -13,7 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import .tcp as tcp
+import net
+import net.tcp
 import reader show BufferedReader Reader CloseableReader
 import writer show Writer
 import host.pipe show OpenPipe
@@ -23,92 +24,114 @@ import monitor
 
 import .documents
 import .rpc
+import .uri-path-translator
 import .utils
 import .verbose
 
-sdk_path_from_compiler compiler_path/string -> string:
-  index := compiler_path.index_of --last "/"
+sdk-path-from-compiler compiler-path/string -> string:
+  is-absolute/bool := ?
+  if platform == PLATFORM-WINDOWS:
+    compiler-path = compiler-path.replace "\\" "/"
+    if compiler-path.starts-with "/":
+      is-absolute = true
+    else if compiler-path.size >= 3 and compiler-path[1] == ':' and compiler-path[2] == '/':
+      is-absolute = true
+    else:
+      is-absolute = false
+  else:
+    is-absolute = compiler-path.starts-with "/"
+
+  index := compiler-path.index-of --last "/"
   if index < 0: throw "Couldn't determine SDK path"
-  result := compiler_path.copy 0 index
-  if not result.starts_with "/":
+  result := compiler-path.copy 0 index
+  if not is-absolute:
     // Make it absolute.
     result = "$directory.cwd/$result"
   return result
 
 
 class File:
-  path / string ::= ?
   exists / bool ::= ?
-  is_regular / bool ::= ?
-  is_directory / bool ::= ?
+  is-regular / bool ::= ?
+  is-directory / bool ::= ?
   content / ByteArray? ::= ?
 
-  constructor .path .exists .is_regular .is_directory .content:
+  constructor .exists .is-regular .is-directory .content:
 
 
 class FileServerProtocol:
   filesystem / Filesystem ::= ?
   documents_  / Documents  ::= ?
+  translator_ / UriPathTranslator ::= ?
 
-  file_cache_ / Map ::= {:}
-  directory_cache_ / Map ::= {:}
-  sdk_path_ / string? := null
-  package_cache_paths_ / List? := null
+  file-cache_ / Map ::= {:}
+  directory-cache_ / Map ::= {:}
+  sdk-path_ / string? := null
+  package-cache-paths_ / List? := null
 
-  constructor .documents_ .filesystem:
+  constructor .documents_ .filesystem .translator_:
 
-  constructor.local compiler_path/string sdk_path/string .documents_:
-    filesystem = FilesystemLocal sdk_path
+  constructor.local compiler-path/string sdk-path/string .documents_ .translator_:
+    filesystem = FilesystemLocal sdk-path
 
   handle reader/BufferedReader writer/Writer:
       while true:
-        line := reader.read_line
+        line := reader.read-line
         if line == null: break
         if line == "SDK PATH":
-          if not sdk_path_: sdk_path_ = filesystem.sdk_path
-          writer.write "$sdk_path_\n"
+          if not sdk-path_:
+            sdk-path_ = translator_.local-path-to-compiler-path filesystem.sdk-path
+          writer.write "$sdk-path_\n"
         else if line == "PACKAGE CACHE PATHS":
-          if not package_cache_paths_: package_cache_paths_ = filesystem.package_cache_paths
-          writer.write "$package_cache_paths_.size\n"
-          package_cache_paths_.do: writer.write "$it\n"
+          if not package-cache-paths_: package-cache-paths_ = filesystem.package-cache-paths
+          writer.write "$package-cache-paths_.size\n"
+          package-cache-paths_.do: writer.write "$it\n"
         else if line == "LIST DIRECTORY":
-          path := reader.read_line
-          entries := directory_cache_.get path --init=: filesystem.directory_entries path
+          compiler-path := reader.read-line
+          entries := directory-cache_.get compiler-path --init=:
+            local-path := translator_.compiler-path-to-local-path compiler-path
+            entries-for-path/List := []
+            exception := catch:  // The path might not exist.
+              entries-for-path = filesystem.directory-entries local-path
+            if exception:
+              verbose: "Couldn't list directory: $local-path"
+            entries-for-path
+
           writer.write "$entries.size\n"
           entries.do: writer.write "$it\n"
         else:
           assert: line == "INFO"
-          path := reader.read_line
+          compiler-path := reader.read-line
+          file := get-file compiler-path
+          encoded-size := file.content == null ? -1 : file.content.size
+          encoded-content := file.content == null ? "" : file.content
+          writer.write "$file.exists\n$file.is-regular\n$file.is-directory\n$encoded-size\n"
+          writer.write encoded-content
 
-          file := get_file path
-          encoded_size := file.content == null ? -1 : file.content.size
-          encoded_content := file.content == null ? "" : file.content
-          writer.write "$file.exists\n$file.is_regular\n$file.is_directory\n$encoded_size\n"
-          writer.write encoded_content
+  get-file compiler-path/string -> File:
+    return file-cache_.get compiler-path --init=: create-file-entry_ compiler-path
 
-  get_file path /string -> File:
-    return file_cache_.get path --init=: create_file_entry_ path
-
-  create_file_entry_ path / string -> File:
+  create-file-entry_ compiler-path / string -> File:
     exists := false
-    is_regular := false
-    is_directory := false
+    is-regular := false
+    is-directory := false
     content := null
-    document := documents_.get --path=path
+    document := documents_.get --uri=(translator_.to-uri compiler-path --from-compiler)
     // Just having a document is not enough, as we might still have entries for
     // deleted files.
     if document and document.content:
       exists = true
-      is_regular = true
-      is_directory = false
-      content = document.content.to_byte_array
-      return File path exists is_regular is_directory content
-    return filesystem.create_file_entry path
+      is-regular = true
+      is-directory = false
+      content = document.content.to-byte-array
+      return File exists is-regular is-directory content
+    local-path := translator_.compiler-path-to-local-path compiler-path
+    return filesystem.create-file-entry local-path
 
-  served_files -> Map: return file_cache_
-  served_directories -> Map: return directory_cache_
-  served_sdk_path -> string?: return sdk_path_
-  served_package_cache_paths -> List?: return package_cache_paths_
+  served-files -> Map: return file-cache_
+  served-directories -> Map: return directory-cache_
+  served-sdk-path -> string?: return sdk-path_
+  served-package-cache-paths -> List?: return package-cache-paths_
 
 interface FileServer:
   // Starts the file server and returns the line that should be given
@@ -119,10 +142,10 @@ interface FileServer:
 
 class PipeFileServer implements FileServer:
   protocol / FileServerProtocol
-  to_compiler_   / OpenPipe
-  from_compiler_ / CloseableReader
+  to-compiler_   / OpenPipe
+  from-compiler_ / CloseableReader
 
-  constructor .protocol .to_compiler_ .from_compiler_:
+  constructor .protocol .to-compiler_ .from-compiler_:
 
   /**
   Starts the pipe file server in a new task.
@@ -131,18 +154,18 @@ class PipeFileServer implements FileServer:
   run -> string:
     task::
       catch --trace:
-        reader := BufferedReader from_compiler_
-        writer := Writer to_compiler_
+        reader := BufferedReader from-compiler_
+        writer := Writer to-compiler_
         protocol.handle reader writer
     return "-2"
 
   close:
-    from_compiler_.close
-    to_compiler_.close
+    from-compiler_.close
+    to-compiler_.close
 
 
 class TcpFileServer implements FileServer:
-  server_   / tcp.TcpServerSocket? := null
+  server_   / tcp.ServerSocket? := null
   semaphore_ ::= monitor.Semaphore
   protocol / FileServerProtocol
 
@@ -154,14 +177,14 @@ class TcpFileServer implements FileServer:
   If a $port is given, binds to that port.
   Otherwise binds to an arbitrary port.
 
-  Returns the port at which the server can be reached.
+  Returns the port at which the server can be reached as a string.
   */
   run --port=0 -> string:
-    server_ = tcp.TcpServerSocket
-    server_.listen "" port
-    port = server_.local_address.port
+    network := net.open
+    server_ = network.tcp-listen port
+    local-port := server_.local-address.port
     task:: catch --trace: accept_
-    return "$port"
+    return "$local-port"
 
   close:
     server_.close
@@ -170,7 +193,7 @@ class TcpFileServer implements FileServer:
   accept_:
     socket := server_.accept
     try:
-      socket.set_no_delay true
+      socket.no-delay = true
       reader := BufferedReader socket
       writer := Writer socket
       protocol.handle reader writer
@@ -178,180 +201,78 @@ class TcpFileServer implements FileServer:
       socket.close
       close
 
-  wait_for_done -> none:
+  wait-for-done -> none:
     semaphore_.down
 
 
 interface Filesystem:
   /** The path to the SDK. */
-  sdk_path -> string
+  sdk-path -> string
 
   /**
   The directories in which to look for packages.
   */
-  package_cache_paths -> List
+  package-cache-paths -> List
 
   /**
   Creates a $File entry for the $path.
 
   The content should be null if the file isn't regular.
   */
-  create_file_entry path/string -> File
+  create-file-entry path/string -> File
 
   /**
   Returns a list of entries in the given $path directory.
   */
-  directory_entries path/string -> List
+  directory-entries path/string -> List
 
 
 abstract class FilesystemBase implements Filesystem:
-  create_file_entry path/string -> File:
-    does_exist := exists path
-    is_reg := does_exist and is_regular_file path
-    is_dir := does_exist and not is_reg and is_directory path
-    content := is_reg ? read_content path : null
-    return File path does_exist is_reg is_dir content
+  create-file-entry path/string -> File:
+    does-exist := exists path
+    is-reg := does-exist and is-regular-file path
+    is-dir := does-exist and not is-reg and is-directory path
+    content := is-reg ? read-content path : null
+    return File does-exist is-reg is-dir content
 
-  abstract sdk_path -> string
-  abstract package_cache_paths -> List
+  abstract sdk-path -> string
+  abstract package-cache-paths -> List
 
   abstract exists path/string -> bool
   /// Whether the file (or the file a symlink is pointing to) is regular.
-  abstract is_regular_file path/string -> bool
-  abstract is_directory path/string -> bool
-  abstract read_content path/string -> ByteArray
-  abstract directory_entries path/string -> List
+  abstract is-regular-file path/string -> bool
+  abstract is-directory path/string -> bool
+  abstract read-content path/string -> ByteArray
+  abstract directory-entries path/string -> List
 
 
 class FilesystemLocal extends FilesystemBase:
-  sdk_path_ / string  ::= ?
-  package_cache_paths_ / List? := null
+  sdk-path_ / string  ::= ?
+  package-cache-paths_ / List? := null
 
-  constructor .sdk_path_:
+  constructor .sdk-path_:
 
   exists path/string -> bool:
     return (file.stat path) != null
 
-  is_regular_file path/string -> bool:
-    return file.is_file path
+  is-regular-file path/string -> bool:
+    return file.is-file path
 
-  is_directory path/string -> bool:
-    return file.is_directory path
+  is-directory path/string -> bool:
+    return file.is-directory path
 
-  sdk_path -> string: return sdk_path_
-  package_cache_paths -> List:
-    if not package_cache_paths_:
-      package_cache_paths_ = find_package_cache_paths
-    return package_cache_paths_
+  sdk-path -> string: return sdk-path_
+  package-cache-paths -> List:
+    if not package-cache-paths_:
+      package-cache-paths_ = find-package-cache-paths
+    return package-cache-paths_
 
-  read_content path/string -> ByteArray: return file.read_content path
+  read-content path/string -> ByteArray: return file.read-content path
 
-  directory_entries path/string -> List:
+  directory-entries path/string -> List:
     entries := []
     stream := directory.DirectoryStream path
     while entry := stream.next:
       entries.add entry
     stream.close
     return entries
-
-
-class FilesystemLspRpc implements Filesystem:
-  rpc_connection_ / RpcConnection ::= ?
-
-  constructor .rpc_connection_:
-
-  sdk_path -> string:
-    // We expect a response of the form:
-    //   `{ "id": <id>, "result": <path> }`
-    // See rpc.toit for the underlying format.
-    return rpc_connection_.request "toit/sdk_path" {:}
-
-  package_cache_paths -> List:
-    // We expect a response of the form:
-    //   `{ "id": <id>, "result": <List of paths> }`
-    // See rpc.toit for the underlying format.
-    return rpc_connection_.request "toit/package_cache_paths" {:}
-
-  create_file_entry path/string -> File:
-    // See $Filesystem.create_file_entry for a description on how the
-    //   response should be computed.
-    // We expect a response of the form:
-    // ```
-    // { "id": <id>,
-    //   "result": {
-    //      "path": <path>          // For sanity checking.
-    //      "exists": <bool>        // Whether the path exists.
-    //      "is_regular": <bool>    // Whether this is a regular file.
-    //      "is_directory": <bool>  // Whether this is a directory.
-    //      "content": <content>    // May be null.
-    //    }
-    //  }
-    // ```
-    // See rpc.toit for the underlying format.
-    verbose: "Requesting $path through RPC protocol"
-    response := rpc_connection_.request "toit/file" {"path": path}
-    verbose: "Got answer for $path"
-    assert: response["path"] == path
-    // Content is string for json, ByteArray for ubjson.
-    content := response.get "content"
-    if content is string: content = content.to_byte_array
-    exists := ?
-    // TODO(florian): remove 'realpath' support.
-    if response.contains "exists":
-      exists = response["exists"]
-    else:
-      exists = response.get "realpath" != null
-    return File
-        response["path"]
-        exists
-        response["is_regular"]
-        response["is_directory"]
-        content
-
-  directory_entries path/string -> List:
-    return rpc_connection_.request "toit/list" {"path": path}
-
-
-class FilesystemHybrid implements Filesystem:
-  /// The placeholder (if any) for the SDK path.
-  /// If null, then the client's SDK library is used.
-  /// Otherwise the placeholder is replaced with the compiler's SDK library path.
-  rpc_sdk_path_placeholder_ /string  ::= ?
-  sdk_path_ /string   ::= ?
-  sdk_fs_ /Filesystem ::= ?
-  rpc_fs_ /Filesystem ::= ?
-
-  constructor .rpc_sdk_path_placeholder_ compiler_path rpc_connection:
-    sdk_path_ = (sdk_path_from_compiler compiler_path)
-    rpc_fs_ = FilesystemLspRpc rpc_connection
-    sdk_fs_ = FilesystemLocal sdk_path_
-
-  is_rpc_sdk_path_ path/string -> bool:
-    return path.starts_with rpc_sdk_path_placeholder_
-
-  sdk_path -> string:
-    return rpc_sdk_path_placeholder_
-
-  package_cache_paths -> List:
-    return rpc_fs_.package_cache_paths
-
-  convert_sdk_path_ path/string -> string:
-    return path.replace rpc_sdk_path_placeholder_ sdk_path_
-
-  create_file_entry path/string -> File:
-    if not is_rpc_sdk_path_ path:
-      return rpc_fs_.create_file_entry path
-
-    verbose: "SDK path handled locally: $path"
-    // We always send a request to the rpc-filesystem, even if the path will be served from the
-    // sdk-filesystem. This makes it possible for the bridge to request the file from the server.
-    // However, we don't need to wait for the response and can serve the response faster.
-    task:: catch --trace: rpc_fs_.create_file_entry path
-    sdk_file := sdk_fs_.create_file_entry (convert_sdk_path_ path)
-    return File sdk_file.path sdk_file.exists sdk_file.is_regular sdk_file.is_directory sdk_file.content
-
-  directory_entries path/string -> List:
-    if is_rpc_sdk_path_ path:
-      return sdk_fs_.directory_entries (convert_sdk_path_ path)
-    else:
-      return rpc_fs_.directory_entries path

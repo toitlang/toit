@@ -17,8 +17,6 @@
 
 #include "top.h"
 
-#ifdef PROFILER
-
 namespace toit {
 
 // This is a simple profile designed for an interpreter and minimal space usage.
@@ -29,7 +27,7 @@ class Profiler {
   ~Profiler();
 
   bool is_active() { return is_active_; }
-  int allocated_bytes() { return _allocated_bytes; }
+  int allocated_bytes() { return allocated_bytes_; }
 
   void start();
   void stop();
@@ -58,7 +56,7 @@ class Profiler {
   int* offset_table = null;
   int64* counter_table = null;
   bool is_active_ = false;
-  int _allocated_bytes = 0;
+  int allocated_bytes_ = 0;
 
   // Computes the highest index in the offset_table that is lower than
   //   the given [absolute_bci].
@@ -66,5 +64,3 @@ class Profiler {
 };
 
 } // namespace toit
-
-#endif

@@ -22,34 +22,48 @@
 #include "../resource.h"
 #include "../os.h"
 
+#define GPIO_QUEUE_SIZE 32
+#define UART_QUEUE_SIZE 32
+
 namespace toit {
+
+struct GpioEvent {
+  word pin;
+  word timestamp;
+};
 
 class EventQueueResource : public Resource {
 public:
   EventQueueResource(ResourceGroup* group, QueueHandle_t queue)
       : Resource(group)
-      , _queue(queue){}
+      , queue_(queue){}
 
-  virtual ~EventQueueResource() { };
+  virtual ~EventQueueResource() {};
 
-  QueueHandle_t queue() const { return _queue; }
+  QueueHandle_t queue() const { return queue_; }
 
   // Receives one event with a zero timeout.  Provides the data argument for the
   // dispatch call on the event source.  Returns whether an event was available.
-  virtual bool receive_event(word* data) = 0;
+  virtual bool receive_event(word* data) { return false; }
+
+  // Checks if the pin number matches the resource it dispatches with the new
+  // value.
+  // Returns whether the pin number matched.
+  virtual bool check_gpio(word pin) { return false; }
+
 
 private:
-  QueueHandle_t _queue; // Note: The queue is freed from the driver uninstall.
+  QueueHandle_t queue_; // Note: The queue is freed from the driver uninstall.
 };
-
-
 
 class EventQueueEventSource : public EventSource, public Thread {
  public:
-  static EventQueueEventSource* instance() { return _instance; }
+  static EventQueueEventSource* instance() { return instance_; }
 
   EventQueueEventSource();
   ~EventQueueEventSource() override;
+
+  QueueHandle_t gpio_queue() { return gpio_queue_; }
 
  private:
   void entry() override;
@@ -57,10 +71,11 @@ class EventQueueEventSource : public EventSource, public Thread {
   void on_register_resource(Locker& locker, Resource* r) override;
   void on_unregister_resource(Locker& locker, Resource* r) override;
 
-  static EventQueueEventSource* _instance;
+  static EventQueueEventSource* instance_;
 
-  QueueHandle_t _stop;
-  QueueSetHandle_t _queue_set;
+  QueueHandle_t stop_;
+  QueueHandle_t gpio_queue_;
+  QueueSetHandle_t queue_set_;
 };
 
 } // namespace toit

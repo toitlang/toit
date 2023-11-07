@@ -38,16 +38,16 @@ const int kErrorState = 1 << 2;
 
 ResourcePool<i2s_port_t, kInvalidPort> i2s_ports(
     I2S_NUM_0
-#ifndef CONFIG_IDF_TARGET_ESP32C3
+#if SOC_I2S_NUM > 1
     , I2S_NUM_1
 #endif
 );
 
-class I2SResourceGroup : public ResourceGroup {
+class I2sResourceGroup : public ResourceGroup {
  public:
-  TAG(I2SResourceGroup);
+  TAG(I2sResourceGroup);
 
-  I2SResourceGroup(Process* process, EventSource* event_source)
+  I2sResourceGroup(Process* process, EventSource* event_source)
       : ResourceGroup(process, event_source) {}
 
   uint32_t on_event(Resource* r, word data, uint32_t state) {
@@ -69,72 +69,47 @@ class I2SResourceGroup : public ResourceGroup {
   }
 };
 
-class I2SResource: public EventQueueResource {
+class I2sResource: public EventQueueResource {
  public:
-  TAG(I2SResource);
-  I2SResource(I2SResourceGroup* group, i2s_port_t port, int alignment, QueueHandle_t queue)
+  TAG(I2sResource);
+  I2sResource(I2sResourceGroup* group, i2s_port_t port, int max_read_buffer_size, QueueHandle_t queue)
     : EventQueueResource(group, queue)
-    , _port(port)
-    , _alignment(alignment) { }
+    , port_(port)
+    , max_read_buffer_size_(max_read_buffer_size) {}
 
-  ~I2SResource() override {
+  ~I2sResource() override {
     SystemEventSource::instance()->run([&]() -> void {
-      FATAL_IF_NOT_ESP_OK(i2s_driver_uninstall(_port));
+      FATAL_IF_NOT_ESP_OK(i2s_driver_uninstall(port_));
     });
-    i2s_ports.put(_port);
+    i2s_ports.put(port_);
   }
 
-  i2s_port_t port() const { return _port; }
-  int alignment() const { return _alignment; }
+  i2s_port_t port() const { return port_; }
+  int max_read_buffer_size() const { return max_read_buffer_size_; }
 
   bool receive_event(word* data) override;
 
  private:
-  i2s_port_t _port;
-  int _alignment;
+  i2s_port_t port_;
+  int max_read_buffer_size_;
 };
 
-bool I2SResource::receive_event(word* data) {
+bool I2sResource::receive_event(word* data) {
   i2s_event_t event;
   bool more = xQueueReceive(queue(), &event, 0);
   if (more) *data = event.type;
   return more;
 }
 
-static bool set_mclk_pin(i2s_port_t i2s_num, int io_num) {
-  bool is_0 = i2s_num == I2S_NUM_0;
-
-  switch (io_num) {
-    case GPIO_NUM_0:
-      PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO0_U, FUNC_GPIO0_CLK_OUT1);
-      WRITE_PERI_REG(PIN_CTRL, is_0 ? 0xFFF0 : 0xFFFF);
-      break;
-    case GPIO_NUM_1:
-      PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0TXD_U, FUNC_U0TXD_CLK_OUT3);
-      WRITE_PERI_REG(PIN_CTRL, is_0 ? 0xF0F0 : 0xF0FF);
-      break;
-    case GPIO_NUM_3:
-      PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0RXD_U, FUNC_U0RXD_CLK_OUT2);
-      WRITE_PERI_REG(PIN_CTRL, is_0 ? 0xFF00 : 0xFF0F);
-      break;
-    default:
-      return false;
-  }
-
-  return true;
-}
-
 MODULE_IMPLEMENTATION(i2s, MODULE_I2S);
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    ALLOCATION_FAILED;
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  I2SResourceGroup* i2s = _new I2SResourceGroup(process, EventQueueEventSource::instance());
+  I2sResourceGroup* i2s = _new I2sResourceGroup(process, EventQueueEventSource::instance());
   if (!i2s) {
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(i2s);
@@ -143,26 +118,26 @@ PRIMITIVE(init) {
 
 
 PRIMITIVE(create) {
-  ARGS(I2SResourceGroup, group, int, sck_pin, int, ws_pin, int, tx_pin,
+  ARGS(I2sResourceGroup, group, int, sck_pin, int, ws_pin, int, tx_pin,
        int, rx_pin, int, mclk_pin,
-       int, sample_rate, int, bits_per_sample, int, buffer_size,
+       uint32, sample_rate, int, bits_per_sample, int, buffer_size,
        bool, is_master, int, mclk_multiplier, bool, use_apll);
 
-  int fixed_mclk = 0;
+  uint32 fixed_mclk = 0;
   if (mclk_pin != -1) {
-    if (mclk_multiplier != 128 && mclk_multiplier != 256 && mclk_multiplier != 384) INVALID_ARGUMENT;
+    if (mclk_multiplier != 128 && mclk_multiplier != 256 && mclk_multiplier != 384) FAIL(INVALID_ARGUMENT);
     fixed_mclk = mclk_multiplier * sample_rate;
   }
 
-  if (bits_per_sample != 16 && bits_per_sample != 24 && bits_per_sample != 32) INVALID_ARGUMENT;
+  if (bits_per_sample != 16 && bits_per_sample != 24 && bits_per_sample != 32) FAIL(INVALID_ARGUMENT);
 
   i2s_port_t port = i2s_ports.any();
-  if (port == kInvalidPort) OUT_OF_RANGE;
+  if (port == kInvalidPort) FAIL(OUT_OF_RANGE);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
     i2s_ports.put(port);
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   int mode;
@@ -187,12 +162,21 @@ PRIMITIVE(create) {
     .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
     .communication_format = I2S_COMM_FORMAT_STAND_I2S,
     .intr_alloc_flags = 0, // default interrupt priority
-    // TODO(anders): Buffer count should be computed as a rate (buffer_size and sample rate).
     .dma_buf_count = 4,
-    // TODO(anders): Divide buf_len (and grow buf-count) if buffer_size is > 1024.
-    .dma_buf_len = buffer_size / (bits_per_sample / 8),
+    .dma_buf_len = buffer_size / 4,
     .use_apll = use_apll,
-    .fixed_mclk = fixed_mclk
+    .tx_desc_auto_clear = false,
+    .fixed_mclk = static_cast<int>(fixed_mclk),
+    .mclk_multiple = I2S_MCLK_MULTIPLE_256,
+    .bits_per_chan = I2S_BITS_PER_CHAN_DEFAULT,
+#if SOC_I2S_SUPPORTS_TDM
+    .chan_mask = static_cast<i2s_channel_t>(0),
+    .total_chan = 0,
+    .left_align = false,
+    .big_edin = false,
+    .bit_order_msb = false,
+    .skip_msk = false,
+#endif // SOC_I2S_SUPPORTS_TDM
   };
 
   struct {
@@ -202,7 +186,9 @@ PRIMITIVE(create) {
     esp_err_t err;
   } args {
     .port = port,
-    .config = config
+    .config = config,
+    .queue = QueueHandle_t{},
+    .err = esp_err_t{},
   };
   SystemEventSource::instance()->run([&]() -> void {
     args.err = i2s_driver_install(args.port, &args.config, 32, &args.queue);
@@ -213,6 +199,7 @@ PRIMITIVE(create) {
   }
 
   i2s_pin_config_t pin_config = {
+    .mck_io_num = mclk_pin >=0 ? mclk_pin: I2S_PIN_NO_CHANGE,
     .bck_io_num = sck_pin >= 0 ? sck_pin : I2S_PIN_NO_CHANGE,
     .ws_io_num = ws_pin >= 0 ? ws_pin : I2S_PIN_NO_CHANGE,
     .data_out_num = tx_pin >= 0 ? tx_pin : I2S_PIN_NO_CHANGE,
@@ -227,23 +214,13 @@ PRIMITIVE(create) {
     return Primitive::os_error(err, process);
   }
 
-  if (mclk_pin != -1) {
-    if (!set_mclk_pin(port, mclk_pin)) {
-      SystemEventSource::instance()->run([&]() -> void {
-        i2s_driver_uninstall(port);
-      });
-      i2s_ports.put(port);
-      return Primitive::os_error(err, process);
-    }
-  }
-
-  I2SResource* i2s = _new I2SResource(group, port, buffer_size, args.queue);
+  I2sResource* i2s = _new I2sResource(group, port, buffer_size, args.queue);
   if (!i2s) {
     SystemEventSource::instance()->run([&]() -> void {
       i2s_driver_uninstall(port);
     });
     i2s_ports.put(port);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   group->register_resource(i2s);
@@ -253,16 +230,14 @@ PRIMITIVE(create) {
 }
 
 PRIMITIVE(close) {
-  ARGS(I2SResourceGroup, group, I2SResource, i2s);
+  ARGS(I2sResourceGroup, group, I2sResource, i2s);
   group->unregister_resource(i2s);
   i2s_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(write) {
-  ARGS(I2SResource, i2s, Blob, buffer);
-
-  if (buffer.length() % i2s->alignment() != 0) INVALID_ARGUMENT;
+  ARGS(I2sResource, i2s, Blob, buffer);
 
   size_t written = 0;
   esp_err_t err = i2s_write(i2s->port(), buffer.address(), buffer.length(), &written, 0);
@@ -270,15 +245,14 @@ PRIMITIVE(write) {
     return Primitive::os_error(err, process);
   }
 
-  return Smi::from(written);
+  return Smi::from(static_cast<word>(written));
 }
 
 PRIMITIVE(read) {
-  ARGS(I2SResource, i2s);
+  ARGS(I2sResource, i2s);
 
-  Error* error = null;
-  ByteArray* data = process->allocate_byte_array(i2s->alignment(), &error, /*force_external*/ true);
-  if (data == null) return error;
+  ByteArray* data = process->allocate_byte_array(i2s->max_read_buffer_size(), /*force_external*/ true);
+  if (data == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes rx(data);
   size_t read = 0;
@@ -287,14 +261,12 @@ PRIMITIVE(read) {
     return Primitive::os_error(err, process);
   }
 
-  data->resize_external(process, read);
+  data->resize_external(process, static_cast<word>(read));
   return data;
 }
 
 PRIMITIVE(read_to_buffer) {
-  ARGS(I2SResource, i2s, MutableBlob, buffer);
-
-  if (buffer.length() % i2s->alignment() != 0) INVALID_ARGUMENT;
+  ARGS(I2sResource, i2s, MutableBlob, buffer);
 
   size_t read = 0;
   esp_err_t err = i2s_read(i2s->port(), static_cast<void*>(buffer.address()), buffer.length(), &read, 0);
@@ -302,7 +274,7 @@ PRIMITIVE(read_to_buffer) {
     return Primitive::os_error(err, process);
   }
 
-  return Smi::from(read);
+  return Smi::from(static_cast<word>(read));
 }
 
 } // namespace toit

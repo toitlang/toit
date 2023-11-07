@@ -13,7 +13,7 @@ import .certificate
 TLS Socket implementation that can upgrade a TCP socket to a secure TLS socket.
 */
 class Socket implements tcp.Socket:
-  TLS_HEADER_SIZE_ ::= 29
+  static TLS-HEADER-SIZE_ ::= 29
 
   socket_/tcp.Socket
   session_/Session
@@ -21,58 +21,53 @@ class Socket implements tcp.Socket:
   /**
   Creates a new TLS socket for a client-side TCP socket.
 
-  If $server_name is provided, it will validate the peer certificate against that. If
-    the $server_name is omitted, it will skip verification.
-  The $root_certificates are used to validate the peer certificate.
+  If $server-name is provided, it will validate the peer certificate against that. If
+    the $server-name is omitted, it will skip verification.
+  The $root-certificates are used to validate the peer certificate.
   If $certificate is given, the certificate is used by the server to validate the
     authority of the client. This is not done using e.g. HTTPS communication.
-  The handshake routine requires at most $handshake_timeout between each step
+  The handshake routine requires at most $handshake-timeout between each step
     in the handshake process.
   */
   constructor.client .socket_/tcp.Socket
-      --server_name/string?=null
+      --server-name/string?=null
       --certificate/Certificate?=null
-      --root_certificates=[]
-      --handshake_timeout/Duration=Session.DEFAULT_HANDSHAKE_TIMEOUT:
+      --root-certificates=[]
+      --handshake-timeout/Duration=Session.DEFAULT-HANDSHAKE-TIMEOUT:
     session_ = Session.client socket_ socket_
-      --server_name=server_name
+      --server-name=server-name
       --certificate=certificate
-      --root_certificates=root_certificates
-      --handshake_timeout=handshake_timeout
+      --root-certificates=root-certificates
+      --handshake-timeout=handshake-timeout
 
   /**
   Creates a new TLS socket for a server-side TCP socket.
 
-  The $root_certificates are used to validate the peer certificate if present.
+  The $root-certificates are used to validate the peer certificate if present.
   If $certificate is used as the authority of the server.
-  The handshake routine requires at most $handshake_timeout between each step
+  The handshake routine requires at most $handshake-timeout between each step
     in the handshake process.
   */
   constructor.server .socket_/tcp.Socket
       --certificate/Certificate
-      --root_certificates=[]
-      --handshake_timeout/Duration=Session.DEFAULT_HANDSHAKE_TIMEOUT:
+      --root-certificates=[]
+      --handshake-timeout/Duration=Session.DEFAULT-HANDSHAKE-TIMEOUT:
     session_ = Session.server socket_ socket_
       --certificate=certificate
-      --root_certificates=root_certificates
-      --handshake_timeout=handshake_timeout
+      --root-certificates=root-certificates
+      --handshake-timeout=handshake-timeout
 
   /**
   Explicitly completes the handshake step.
 
   This method will automatically be called by read and write if the handshake
     is not completed yet.
-
-  If $session_state is given, the handshake operation will use it to resume the TLS
-    session from the previous stored session state. This can greatly improve the
-    duration of a complete TLS handshake. If the session state is invalid, the
-    operation will fall back to performing the full handshake.
   */
-  handshake --session_state/ByteArray?=null -> none:
-    socket_.set_no_delay true
-    session_.handshake --session_state=session_state
-    // TODO(anders): Set as before handshake, when state can be read.
-    socket_.set_no_delay false
+  handshake -> none:
+    no-delay ::= socket_.no-delay
+    socket_.no-delay = true
+    session_.handshake
+    socket_.no-delay = no-delay
 
   /**
   Gets the session state, a ByteArray that can be used to resume
@@ -81,8 +76,24 @@ class Socket implements tcp.Socket:
   The session can be read at any point after a handshake, but before the session
     is closed.
   */
-  session_state -> ByteArray:
-    return session_.session_state
+  session-state -> ByteArray?:
+    return session_.session-state
+
+  /**
+  Set the state from a previous connection to the same TLS server.
+  This can dramatically speed up the handshake process.
+  Note that we don't currently have the ability to fall back from a resumed
+    session to a full handshake, so if the session is invalid, or the server has
+    forgotten about it, the handshake will fail.
+  */
+  session-state= state/ByteArray:
+    session_.session-state = state
+
+  /**
+  Returns one of $SESSION-MODE-CONNECTING, $SESSION-MODE-MBED-TLS, $SESSION-MODE-TOIT, $SESSION-MODE-CLOSED.
+  */
+  session-mode -> int:
+    return session_.mode
 
   read -> ByteArray?:
     return session_.read
@@ -94,18 +105,25 @@ class Socket implements tcp.Socket:
     session_.close
     socket_.close
 
-  close_write -> none:
-    session_.close_write
-    socket_.close_write
+  close-write -> none:
+    session_.close-write
+    socket_.close-write
 
-  local_address -> net.SocketAddress:
-    return socket_.local_address
+  local-address -> net.SocketAddress:
+    return socket_.local-address
 
-  peer_address -> net.SocketAddress:
-    return socket_.peer_address
+  peer-address -> net.SocketAddress:
+    return socket_.peer-address
 
-  set_no_delay value/bool:
-    socket_.set_no_delay value
+  // TODO(kasper): Remove this.
+  set-no-delay enabled/bool -> none:
+    no-delay = enabled
+
+  no-delay -> bool:
+    return socket_.no-delay
+
+  no-delay= value/bool:
+    socket_.no-delay = value
 
   mtu -> int:
-    return socket_.mtu - TLS_HEADER_SIZE_
+    return socket_.mtu - TLS-HEADER-SIZE_

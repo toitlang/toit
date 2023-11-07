@@ -1,0 +1,49 @@
+tests/negative/finally-params-test.toit:12:14: error: Handler parameters may not have a default value
+  finally: | in-throw=true exception=null |
+             ^~~~~~~~
+tests/negative/finally-params-test.toit:12:28: error: Handler parameters may not have a default value
+  finally: | in-throw=true exception=null |
+                           ^~~~~~~~~
+tests/negative/finally-params-test.toit:15:14: error: Handler parameters may not be named
+  finally: | --in-throw exception |
+             ^~~~~~~~~~
+tests/negative/finally-params-test.toit:18:14: error: There must be either 0 or 2 handler parameters
+  finally: | exception |
+             ^~~~~~~~~
+tests/negative/finally-params-test.toit:21:12: error: Unresolved identifier: 'it'
+  finally: it
+           ^~
+tests/negative/finally-params-test.toit:24:14: error: There must be either 0 or 2 handler parameters
+  finally: | a b c |
+             ^
+tests/negative/finally-params-test.toit:27:14: error: Can't use 'this' as name for handler parameter
+  finally: | this super |
+             ^~~~
+tests/negative/finally-params-test.toit:27:19: error: Can't use 'super' as name for handler parameter
+  finally: | this super |
+                  ^~~~~
+tests/negative/finally-params-test.toit:30:14: error: Handler parameters may not be blocks
+  finally: | [a] [b] |
+             ^~
+tests/negative/finally-params-test.toit:30:18: error: Handler parameters may not be blocks
+  finally: | [a] [b] |
+                 ^~
+tests/negative/finally-params-test.toit:33:16: error: Handler parameters may not be blocks
+  finally: | a [b] |
+               ^~
+tests/negative/finally-params-test.toit:36:14: error: Handler parameters may not be field-storing
+  finally: | .field other |
+             ^~~~~~
+tests/negative/finally-params-test.toit:39:19: error: Duplicate parameter 'same'
+  finally: | same same |
+                  ^~~~
+tests/negative/finally-params-test.toit:43:5: error: Can't reference '_'
+    _
+    ^
+tests/negative/finally-params-test.toit:47:5: error: Can't reference '_'
+    _
+    ^
+tests/negative/finally-params-test.toit:9:14: error: Type mismatch. Expected 'string'. Got 'bool'
+  finally: | in-throw/string exception |
+             ^~~~~~~~
+Compilation failed.

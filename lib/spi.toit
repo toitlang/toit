@@ -4,6 +4,7 @@
 
 import gpio
 import serial
+import monitor
 
 /**
 SPI is a serial communication bus able to address multiple devices along a main 3-wire bus with an additional 1 wire per device.
@@ -39,19 +40,28 @@ Each device on the bus is enabled with its own chip-select pin. See $Bus.device.
 */
 class Bus:
   spi_ := ?
+  /**
+  Mutex to serialize reservation attempts of multiple devices.
+  See $Device.with-reserved-bus.
+
+  When trying to acquire the bus, the ESP-IDF currently (as of 2022-07-19) does not allow to set a timeout.
+    This means that the program would be stuck in the primitive. We thus use this mutex to avoid that
+    situation.
+  */
+  reservation-mutex_/monitor.Mutex ::= monitor.Mutex
 
   /**
   Constructs a new SPI bus using the given $mosi, $miso, and $clock pins.
   */
   constructor --mosi/gpio.Pin?=null --miso/gpio.Pin?=null --clock/gpio.Pin:
-    spi_ = spi_init_
+    spi_ = spi-init_
       mosi ? mosi.num : -1
       miso ? miso.num : -1
       clock.num
 
   /** Closes this SPI bus and frees the associated resources. */
   close:
-    spi_close_ spi_
+    spi-close_ spi_
 
   /**
   Configures a device on this SPI bus.
@@ -66,7 +76,7 @@ class Bus:
     to 0.
 
   Some SPI devices have an explicit command and/or address section that can be configured
-    using $command_bits and $address_bits.
+    using $command-bits and $address-bits.
 
   # Parameters
   The $mode parameter configures the clock polarity and phase (CPOL and CPHA) for this bus.
@@ -81,18 +91,18 @@ class Bus:
       --dc/gpio.Pin?=null
       --frequency/int
       --mode/int=0
-      --command_bits/int=0
-      --address_bits/int=0
+      --command-bits/int=0
+      --address-bits/int=0
       -> Device:
     if mode < 0 or mode > 3: throw "Argument Error"
-    cs_num := -1
-    if cs: cs_num = cs.num
-    dc_num := -1
+    cs-num := -1
+    if cs: cs-num = cs.num
+    dc-num := -1
     if dc:
-      dc_num = dc.num
-      dc.config --output
+      dc-num = dc.num
+      dc.configure --output
 
-    d := spi_device_ spi_ cs_num dc_num command_bits address_bits frequency mode
+    d := spi-device_ spi_ cs-num dc-num command-bits address-bits frequency mode
     return Device_.init_ this d
 
 /**
@@ -111,6 +121,10 @@ interface Device extends serial.Device:
     value of $dc.
   If a commands and/or address sections was defined, use $command and
     $address to set the values.
+
+  When $keep-cs-active is true, then the chip select pin is kept active
+    after the transfer. This functionality is only allowed when the
+    bus is reserved for this device. See $with-reserved-bus.
   */
   transfer
       data/ByteArray
@@ -120,6 +134,21 @@ interface Device extends serial.Device:
       --dc/int=0
       --command/int=0
       --address/int=0
+      --keep-cs-active/bool=false
+
+  /**
+  Reserves the bus for this device while executing the given $block.
+
+  Starts by acquiring the bus. Once that's succeeded, executes the $block. Finally, releases
+    the bus before returning.
+
+  Reserving the bus can be useful in two contexts:
+  1. The CS pin is controlled by the user. Since the hardware only supports a limited number of
+    automatic CS pins, it might be necessary to set some CS pins by hand. This should be done
+    after the bus has been reserved.
+  2. When using the `--keep_cs_active` flag of the $transfer function, the bus must be reserved.
+  */
+  with-reserved-bus [block]
 
   /** Closes this SPI device and releases resources associated with it. */
   close
@@ -128,6 +157,7 @@ interface Device extends serial.Device:
 class Device_ implements Device:
   spi_/Bus := ?
   device_ := ?
+  owning-bus_/bool := false
 
   registers_/Registers? := null
 
@@ -158,7 +188,7 @@ class Device_ implements Device:
   /** See $Device.close. */
   close:
     if device_:
-      spi_device_close_ spi_.spi_ device_
+      spi-device-close_ spi_.spi_ device_
       device_ = null
 
   /** See $Device.transfer. */
@@ -169,14 +199,27 @@ class Device_ implements Device:
       --read/bool=false
       --dc/int=0
       --command/int=0
-      --address/int=0:
-    return spi_transfer_ device_ data command address from to read dc
+      --address/int=0
+      --keep-cs-active/bool=false:
+    if keep-cs-active and not owning-bus_: throw "INVALID_STATE"
+    return spi-transfer_ device_ data command address from to read dc keep-cs-active
+
+  /** See $Device.with-reserved-bus. */
+  with-reserved-bus [block]:
+    spi_.reservation-mutex_.do:
+      spi-acquire-bus_ device_
+      owning-bus_ = true
+      try:
+        block.call
+      finally:
+        owning-bus_ = false
+        spi-release-bus_ device_
 
 /** Register description of a device connected to an SPI bus. */
 class Registers extends serial.Registers:
   device_/Device
 
-  msb_write_ := false
+  msb-write_ := false
 
   /** Deprecated. Use $Device.registers. */
   constructor .device_:
@@ -194,55 +237,61 @@ class Registers extends serial.Registers:
 
   The default is false.
   */
-  set_msb_write value/bool:
-    msb_write_ = value
+  set-msb-write value/bool:
+    msb-write_ = value
 
   /**
   See $super.
 
-  If `msb_write` is set (see $set_msb_write) modifies the register
+  If `msb_write` is set (see $set-msb-write) modifies the register
     value so it has a low most-significant bit.
   */
-  read_bytes register/int count/int:
+  read-bytes register/int count/int:
     data := ByteArray 1 + count
-    data[0] = mask_reg_ (not msb_write_) register
+    data[0] = mask-reg_ (not msb-write_) register
     transfer_ data --read
     return data.copy 1
 
   /** See $super. */
-  read_bytes register count [failure]:
+  read-bytes register count [failure]:
     // TODO(anders): Can SPI fail?
-    return read_bytes register count
+    return read-bytes register count
 
   /**
   See $super.
 
-  If `msb_write` is set (see $set_msb_write) modifies the register
+  If `msb_write` is set (see $set-msb-write) modifies the register
     value so it has a high most-significant bit.
   */
-  write_bytes reg bytes:
+  write-bytes reg bytes:
     data := ByteArray 1 + bytes.size
-    data[0] = mask_reg_ msb_write_ reg
+    data[0] = mask-reg_ msb-write_ reg
     data.replace 1 bytes
     transfer_ data
 
   transfer_ data --read=false:
     device_.transfer data --read=read
 
-  mask_reg_ msb_high reg:
-    return (msb_high ? reg | 0x80 : reg & 0x7f).to_int
+  mask-reg_ msb-high reg:
+    return (msb-high ? reg | 0x80 : reg & 0x7f).to-int
 
-spi_init_ mosi/int miso/int clock/int:
+spi-init_ mosi/int miso/int clock/int:
   #primitive.spi.init
 
-spi_close_ spi:
+spi-close_ spi:
   #primitive.spi.close
 
-spi_device_ spi cs/int dc/int frequency/int mode/int command_bits/int address_bits/int:
+spi-device_ spi cs/int dc/int frequency/int mode/int command-bits/int address-bits/int:
   #primitive.spi.device
 
-spi_device_close_ spi device:
-  #primitive.spi.device_close
+spi-device-close_ spi device:
+  #primitive.spi.device-close
 
-spi_transfer_ device data/ByteArray command/int address/int from to read/bool dc/int:
+spi-transfer_ device data/ByteArray command/int address/int from to read/bool dc/int keep-cs-active/bool:
   #primitive.spi.transfer
+
+spi-acquire-bus_ device:
+  #primitive.spi.acquire-bus
+
+spi-release-bus_ device:
+  #primitive.spi.release-bus

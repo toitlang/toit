@@ -52,7 +52,6 @@ namespace toit {
   FORMAT(OP_BC, 2)               \
   FORMAT(OP_BG, 2)               \
   FORMAT(OP_BF, 2)               \
-  FORMAT(OP_BB, 2)               \
   FORMAT(OP_BCI, 2)              \
   FORMAT(OP_BII, 2)              \
   FORMAT(OP_BLC, 2)              \
@@ -74,9 +73,8 @@ namespace toit {
   FORMAT(OP_SS_SO, 5)            \
   FORMAT(OP_SCI, 3)              \
   FORMAT(OP_SII, 3)              \
-  FORMAT(OP_SB, 3)               \
+  FORMAT(OP_SB_SB, 5)            \
   FORMAT(OP_SU_SU, 5)            \
-
 
 
 // Format Toit bytecodes
@@ -119,12 +117,13 @@ enum BytecodeFormat {
   BYTECODE(LOAD_SMI_U8,                2, OP_BU, "load smi")                   \
   BYTECODE(LOAD_SMI_U16,               3, OP_SU, "load smi")                   \
   BYTECODE(LOAD_SMI_U32,               5, OP_WU, "load smi")                   \
+  BYTECODE(LOAD_METHOD,                5, OP_WU, "load method")                \
   \
   BYTECODE(LOAD_GLOBAL_VAR,            2, OP_BG, "load global var")            \
-  BYTECODE(LOAD_GLOBAL_VAR_DYNAMIC,    1, OP,    "load global var dynamic")    \
   BYTECODE(LOAD_GLOBAL_VAR_WIDE,       3, OP_SG, "load global var wide")       \
   BYTECODE(LOAD_GLOBAL_VAR_LAZY,       2, OP_BG, "load global var lazy")       \
   BYTECODE(LOAD_GLOBAL_VAR_LAZY_WIDE,  3, OP_SG, "load global var lazy wide")  \
+  BYTECODE(LOAD_GLOBAL_VAR_DYNAMIC,    1, OP,    "load global var dynamic")    \
   BYTECODE(STORE_GLOBAL_VAR,           2, OP_BG, "store global var")           \
   BYTECODE(STORE_GLOBAL_VAR_WIDE,      3, OP_SG, "store global var wide")      \
   BYTECODE(STORE_GLOBAL_VAR_DYNAMIC,   1, OP,    "store global var dynamic")   \
@@ -145,7 +144,7 @@ enum BytecodeFormat {
   BYTECODE(AS_CLASS_WIDE,              3, OP_SCI, "as class wide")             \
   BYTECODE(AS_INTERFACE,               2, OP_BII, "as interface")              \
   BYTECODE(AS_INTERFACE_WIDE,          3, OP_SII, "as interface wide")         \
-  BYTECODE(AS_LOCAL,                   2, OP_BLC, "load local, as, pop")       \
+  BYTECODE(AS_LOCAL,                   2, OP_BLC, "load local, as class, pop") \
   \
   BYTECODE(INVOKE_STATIC,              3, OP_SD, "invoke static")              \
   BYTECODE(INVOKE_STATIC_TAIL,         5, OP_SD_BS_BU, "invoke static tail")   \
@@ -180,12 +179,9 @@ enum BytecodeFormat {
   BYTECODE(BRANCH,                     3, OP_SF, "branch")                     \
   BYTECODE(BRANCH_IF_TRUE,             3, OP_SF, "branch if true")             \
   BYTECODE(BRANCH_IF_FALSE,            3, OP_SF, "branch if false")            \
-  BYTECODE(BRANCH_BACK,                2, OP_BB, "branch back")                \
-  BYTECODE(BRANCH_BACK_WIDE,           3, OP_SB, "branch back wide")           \
-  BYTECODE(BRANCH_BACK_IF_TRUE,        2, OP_BB, "branch back if true")        \
-  BYTECODE(BRANCH_BACK_IF_TRUE_WIDE,   3, OP_SB, "branch back if true wide")   \
-  BYTECODE(BRANCH_BACK_IF_FALSE,       2, OP_BB, "branch back if false")       \
-  BYTECODE(BRANCH_BACK_IF_FALSE_WIDE,  3, OP_SB, "branch back if false wide")  \
+  BYTECODE(BRANCH_BACK,                5, OP_SB_SB, "branch back")             \
+  BYTECODE(BRANCH_BACK_IF_TRUE,        5, OP_SB_SB, "branch back if true")     \
+  BYTECODE(BRANCH_BACK_IF_FALSE,       5, OP_SB_SB, "branch back if false")    \
   BYTECODE(PRIMITIVE,                  4, OP_BU_SU, "invoke primitive")        \
   BYTECODE(THROW,                      2, OP_BU, "throw")                      \
   BYTECODE(RETURN,                     3, OP_BS_BU, "return")                  \
@@ -193,6 +189,7 @@ enum BytecodeFormat {
   BYTECODE(NON_LOCAL_RETURN,           2, OP_BU, "non-local return")           \
   BYTECODE(NON_LOCAL_RETURN_WIDE,      4, OP_SU_SU, "non-local return wide")   \
   BYTECODE(NON_LOCAL_BRANCH,           6, OP_BU_WU, "non-local branch")        \
+  BYTECODE(IDENTICAL,                  1, OP, "identical")                     \
   BYTECODE(LINK,                       2, OP_BU, "link try")                   \
   BYTECODE(UNLINK,                     2, OP_BU, "unlink try")                 \
   BYTECODE(UNWIND,                     1, OP, "unwind")                        \

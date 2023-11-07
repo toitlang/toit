@@ -1,0 +1,8 @@
+tests/negative/bad-parameter-test.toit:5:5: error: Can't use 'this' as name for a parameter
+foo this x:
+    ^~~~
+tests/negative/bad-parameter-test.toit:9:3: error: Argument mismatch for 'foo'
+Too few arguments provided
+  foo 3
+  ^~~
+Compilation failed.

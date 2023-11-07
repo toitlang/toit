@@ -46,6 +46,10 @@ ResourcePool<ledc_timer_t, kInvalidLedcTimer> ledc_timers(
     LEDC_TIMER_0, LEDC_TIMER_1, LEDC_TIMER_2, LEDC_TIMER_3
 );
 
+#ifndef SOC_LEDC_CHANNEL_NUM
+#error "SOC_LEDC_CHANNEL_NUM not defined"
+#endif
+
 const ledc_channel_t kInvalidLedcChannel = ledc_channel_t(-1);
 ResourcePool<ledc_channel_t, kInvalidLedcChannel> ledc_channels(
     LEDC_CHANNEL_0,
@@ -64,46 +68,56 @@ ResourcePool<ledc_channel_t, kInvalidLedcChannel> ledc_channels(
 const uint32_t kMaxFrequencyBits = 26;
 const uint32_t kMaxFrequency = 40000000;  // 40MHz with duty resolution of 1 bit.
 
-class PWMResource : public Resource {
+class PwmResource : public Resource {
  public:
-  TAG(PWMResource);
-  PWMResource(ResourceGroup* group, ledc_channel_t channel)
+  TAG(PwmResource);
+  PwmResource(ResourceGroup* group, ledc_channel_t channel, gpio_num_t num)
     : Resource(group)
-    , _channel(channel) {
-  }
+    , channel_(channel)
+    , num_(num) {}
 
-  ledc_channel_t channel() { return _channel; }
+  ledc_channel_t channel() const { return channel_; }
+  gpio_num_t num() const { return num_; }
 
  private:
-  ledc_channel_t _channel;
+  ledc_channel_t channel_;
+  gpio_num_t num_;
 };
 
-class PWMResourceGroup : public ResourceGroup {
+class PwmResourceGroup : public ResourceGroup {
  public:
-  TAG(PWMResourceGroup);
-  PWMResourceGroup(Process* process, ledc_timer_t timer, uint32 max_value)
+  TAG(PwmResourceGroup);
+  PwmResourceGroup(Process* process, ledc_timer_t timer, uint32 max_value)
      : ResourceGroup(process)
-     , _timer(timer)
-     , _max_value(max_value) {}
+     , timer_(timer)
+     , max_value_(max_value) {}
 
-  ~PWMResourceGroup() {
-    ledc_timer_rst(SPEED_MODE, _timer);
-    ledc_timers.put(_timer);
+  ~PwmResourceGroup() {
+    ledc_timer_rst(SPEED_MODE, timer_);
+    ledc_timers.put(timer_);
   }
 
-  ledc_timer_t timer() { return _timer; }
-  uint32 max_value() { return _max_value; }
+  ledc_timer_t timer() { return timer_; }
+  uint32 max_value() { return max_value_; }
 
  protected:
   virtual void on_unregister_resource(Resource* r) {
-    PWMResource* pwm = reinterpret_cast<PWMResource*>(r);
+    PwmResource* pwm = reinterpret_cast<PwmResource*>(r);
     ledc_stop(SPEED_MODE, pwm->channel(), 0);
+    gpio_config_t cfg = {
+        .pin_bit_mask = BIT64(pwm->num()),
+        .mode = GPIO_MODE_DISABLE,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&cfg);
     ledc_channels.put(pwm->channel());
   }
 
  private:
-  ledc_timer_t _timer;
-  uint32 _max_value;
+  ledc_timer_t timer_;
+  uint32 max_value_;
 };
 
 uint32 msb(uint32 n){
@@ -115,16 +129,16 @@ MODULE_IMPLEMENTATION(pwm, MODULE_PWM)
 PRIMITIVE(init) {
   ARGS(int, frequency, int, max_frequency)
 
-  if (frequency <= 0 || frequency > max_frequency || max_frequency > kMaxFrequency) OUT_OF_BOUNDS;
+  if (frequency <= 0 || frequency > max_frequency || max_frequency > kMaxFrequency) FAIL(OUT_OF_BOUNDS);
 
   uint32 bits = msb(max_frequency << 1);
   uint32 resolution_bits = kMaxFrequencyBits - bits;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   ledc_timer_t timer = ledc_timers.any();
-  if (timer == kInvalidLedcTimer) ALREADY_IN_USE;
+  if (timer == kInvalidLedcTimer) FAIL(ALREADY_IN_USE);
 
   ledc_timer_config_t config = {
     .speed_mode = SPEED_MODE,
@@ -148,11 +162,11 @@ PRIMITIVE(init) {
     return Primitive::os_error(err, process);
   }
 
-  PWMResourceGroup* gpio = _new PWMResourceGroup(process, timer, (1 << resolution_bits) - 1);
+  PwmResourceGroup* gpio = _new PwmResourceGroup(process, timer, (1 << resolution_bits) - 1);
   if (!gpio) {
     ledc_timer_rst(SPEED_MODE, timer);
     ledc_timers.put(timer);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
   proxy->set_external_address(gpio);
 
@@ -160,36 +174,38 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(close) {
-  ARGS(PWMResourceGroup, resource_group);
+  ARGS(PwmResourceGroup, resource_group);
 
   resource_group->tear_down();
 
   resource_group_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
-static uint32 compute_duty_factor(PWMResourceGroup* pwm, double factor) {
+static uint32 compute_duty_factor(PwmResourceGroup* pwm, double factor) {
   factor = Utils::max(Utils::min(factor, 1.0), 0.0);
   return uint32(factor * pwm->max_value());
 }
 
 PRIMITIVE(start) {
-  ARGS(PWMResourceGroup, resource_group, int, pin, double, factor);
+  ARGS(PwmResourceGroup, resource_group, int, pin, double, factor);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   ledc_channel_t channel = ledc_channels.any();
-  if (channel == kInvalidLedcChannel) OUT_OF_RANGE;
+  if (channel == kInvalidLedcChannel) FAIL(OUT_OF_RANGE);
 
   ledc_channel_config_t config = {
     .gpio_num = pin,
     .speed_mode = SPEED_MODE,
     .channel = channel,
+    .intr_type = LEDC_INTR_DISABLE,
     .timer_sel = resource_group->timer(),
     .duty = compute_duty_factor(resource_group, factor),
     .hpoint = 0,
+    .flags{},
   };
   esp_err_t err = ledc_channel_config(&config);
   if (err != ESP_OK) {
@@ -197,11 +213,11 @@ PRIMITIVE(start) {
     return Primitive::os_error(err, process);
   }
 
-  PWMResource* pwm = _new PWMResource(resource_group, channel);
+  PwmResource* pwm = _new PwmResource(resource_group, channel, static_cast<gpio_num_t>(pin));
   if (!pwm) {
     ledc_stop(SPEED_MODE, channel, 0);
     ledc_channels.put(channel);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   resource_group->register_resource(pwm);
@@ -212,7 +228,7 @@ PRIMITIVE(start) {
 }
 
 PRIMITIVE(factor) {
-  ARGS(PWMResourceGroup, resource_group, PWMResource, resource);
+  ARGS(PwmResourceGroup, resource_group, PwmResource, resource);
 
   uint32 duty = ledc_get_duty(SPEED_MODE, resource->channel());
   if (duty == LEDC_ERR_DUTY) {
@@ -223,7 +239,7 @@ PRIMITIVE(factor) {
 }
 
 PRIMITIVE(set_factor) {
-  ARGS(PWMResourceGroup, resource_group, PWMResource, resource, double, factor);
+  ARGS(PwmResourceGroup, resource_group, PwmResource, resource, double, factor);
 
   uint32 duty = compute_duty_factor(resource_group, factor);
   esp_err_t err = ledc_set_duty(SPEED_MODE, resource->channel(), duty);
@@ -236,23 +252,23 @@ PRIMITIVE(set_factor) {
     return Primitive::os_error(err, process);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(frequency) {
-  ARGS(PWMResourceGroup, resource_group);
+  ARGS(PwmResourceGroup, resource_group);
 
   uint32 frequency = ledc_get_freq(SPEED_MODE, resource_group->timer());
-  if (frequency == 0) OTHER_ERROR;
+  if (frequency == 0) FAIL(ERROR);
 
   ASSERT(frequency <= kMaxFrequency);
   return Smi::from(static_cast<word>(frequency));
 }
 
 PRIMITIVE(set_frequency) {
-  ARGS(PWMResourceGroup, resource_group, int, frequency);
+  ARGS(PwmResourceGroup, resource_group, int, frequency);
 
-  if (frequency <= 0 || frequency > kMaxFrequency) OUT_OF_BOUNDS;
+  if (frequency <= 0 || frequency > kMaxFrequency) FAIL(OUT_OF_BOUNDS);
 
   esp_err_t err = ledc_set_freq(SPEED_MODE, resource_group->timer(), static_cast<uint32>(frequency));
   if (err != ESP_OK) {
@@ -260,17 +276,17 @@ PRIMITIVE(set_frequency) {
     return Primitive::os_error(err, process);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(close_channel) {
-  ARGS(PWMResourceGroup, resource_group, PWMResource, resource);
+  ARGS(PwmResourceGroup, resource_group, PwmResource, resource);
 
   resource_group->unregister_resource(resource);
 
   resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit

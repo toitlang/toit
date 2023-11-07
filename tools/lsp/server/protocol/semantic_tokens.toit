@@ -17,10 +17,10 @@ import ..rpc
 import .document
 
 class SemanticTokensParams extends MapWrapper:
-  constructor json_map/Map: super json_map
+  constructor json-map/Map: super json-map
 
   /** The document we need the semantic tokens for. */
-  text_document -> TextDocumentIdentifier:
+  text-document -> TextDocumentIdentifier:
     return at_ "textDocument": TextDocumentIdentifier it
 
 class SemanticTokens extends MapWrapper:

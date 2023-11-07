@@ -30,10 +30,31 @@
   (ts)->tv_nsec = (tv)->tv_usec * 1000;                 \
 }
 #endif
+
 namespace toit {
 
-Mutex* OS::_global_mutex = null;
-Mutex* OS::_scheduler_mutex = null;
+Mutex* OS::global_mutex_ = null;
+Mutex* OS::tls_mutex_ = null;
+Mutex* OS::process_mutex_ = null;
+Mutex* OS::resource_mutex_ = null;
+
+// Unless we explicily detect an old CPU revision we assume we have a high
+// (recent) CPU with no problems.
+int OS::cpu_revision_ = 1000000;
+
+void OS::set_up_mutexes() {
+  global_mutex_ = allocate_mutex(0, "Global mutex");
+  tls_mutex_ = allocate_mutex(4, "TLS mutex");
+  process_mutex_ = allocate_mutex(4, "Process mutex");
+  resource_mutex_ = allocate_mutex(99, "Resource mutex");
+}
+
+void OS::tear_down_mutexes() {
+  dispose(global_mutex_);
+  dispose(tls_mutex_);
+  dispose(process_mutex_);
+  dispose(resource_mutex_);
+}
 
 void OS::timespec_increment(timespec* ts, int64 ns) {
   const int64 ns_per_second = 1000000000LL;
@@ -49,7 +70,7 @@ void OS::timespec_increment(timespec* ts, int64 ns) {
 }
 
 bool OS::monotonic_gettime(int64* timestamp) {
-  struct timespec time = { 0, };
+  struct timespec time{};
   if (clock_gettime(CLOCK_MONOTONIC, &time) != 0) return false;
   *timestamp = (time.tv_sec * 1000000LL) + (time.tv_nsec / 1000LL);
   return true;
@@ -82,7 +103,7 @@ bool OS::get_real_time(struct timespec* time) {
   // make progress by using a less precise alternative: gettimeofday.
   // One day, we should try to get rid of this workaround again.
   int gettime_errno = errno;
-  struct timeval timeofday = { 0, };
+  struct timeval timeofday{};
   if (gettimeofday(&timeofday, NULL) != 0) {
     int gettimeofday_errno = errno;
     printf("WARNING: cannot get time: clock_gettime -> %s, gettimeofday -> %s\n",
@@ -98,7 +119,7 @@ AlignedMemoryBase::~AlignedMemoryBase() {}
 
 AlignedMemory::AlignedMemory(size_t size_in_bytes, size_t alignment) : size_in_bytes(size_in_bytes) {
   raw = malloc(alignment + size_in_bytes);
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   memset(raw, 0xcd, alignment + size_in_bytes);
 #endif
   aligned = void_cast(Utils::round_up(unvoid_cast<char*>(raw), alignment));
@@ -106,7 +127,7 @@ AlignedMemory::AlignedMemory(size_t size_in_bytes, size_t alignment) : size_in_b
 
 AlignedMemory::~AlignedMemory() {
   if (raw != null) {
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
     memset(address(), 0xde, size_in_bytes);
 #endif
     free(raw);
@@ -132,39 +153,58 @@ static void* try_grab_aligned(void* suggestion, uword size) {
   // then it's a pretty good guess that the next few aligned
   // addresses might work.
   OS::ungrab_virtual_memory(result, size);
-  for (int i = 0; i < 4; i++) {
+  uword increment = size;
+  for (int i = 0; i < 16; i++) {
     void* next_suggestion = reinterpret_cast<void*>(rounded);
     result = OS::grab_virtual_memory(next_suggestion, size);
     if (result == next_suggestion) return result;
     if (result) OS::ungrab_virtual_memory(result, size);
-    rounded += size;
+    rounded += increment;
+    if ((i & 3) == 3) increment *= 2;
   }
   return OS::grab_virtual_memory(reinterpret_cast<void*>(rounded), size);
 }
 
-OS::HeapMemoryRange OS::_single_range = { 0 };
+OS::HeapMemoryRange OS::single_range_ = { 0 };
+
+// Protected by the resource mutex.
+// We keep a list of recently freed addresses, to cut down on virtual memory
+// fragmentation when an application keeps growing and then shrinking its
+// memory use.  This size covers about 320MB of memory fluctuation with a 32k
+// page (default on 64 bit).
+static const int RECENTLY_FREED_SIZE = 10000;
+static int recently_freed_index = 0;
+void* recently_freed[RECENTLY_FREED_SIZE];
 
 void* OS::allocate_pages(uword size) {
-  if (_single_range.size == 0) FATAL("GcMetadata::set_up not called");
+  Locker locker(OS::resource_mutex());
+  if (single_range_.size == 0) FATAL("GcMetadata::set_up not called");
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
   uword original_size = size;
-  // First attempt, let the OS pick a location.
-  void* result = try_grab_aligned(null, size);
-  if (result == null) return null;
+  // First attempt, use a recently freed address.
+  void* result = null;
+  if (recently_freed_index != 0) {
+    result = try_grab_aligned(recently_freed[--recently_freed_index], size);
+  }
+  if (result == null) {
+    // Second attempt, let the OS pick a location.
+    result = try_grab_aligned(null, size);
+    if (result == null) return null;
+  }
   uword numeric_address = reinterpret_cast<uword>(result);
   uword result_end = numeric_address + size;
   int attempt = 0;
-  while (result < _single_range.address ||
-         result_end > reinterpret_cast<uword>(_single_range.address) + _single_range.size ||
+  while (result < single_range_.address ||
+         result_end > reinterpret_cast<uword>(single_range_.address) + single_range_.size ||
          numeric_address != Utils::round_up(numeric_address, TOIT_PAGE_SIZE)) {
-    if (attempt++ > 20) FATAL("Out of memory");
+    if (attempt++ > 20) FATAL("Out of memory (cannot allocate pages)");
     // We did not get a result in the right range.
     // Try to use a random address in the right range.
     ungrab_virtual_memory(result, size);
     uword mask = MAX_HEAP - 1;
     uword r = rand();
     r <<= TOIT_PAGE_SIZE_LOG2;  // Do this on a separate line so that it is done on a word-sized integer.
-    uword suggestion = reinterpret_cast<uword>(_single_range.address) + (r & mask);
+    uword suggestion = reinterpret_cast<uword>(single_range_.address) + (r & mask);
     result = try_grab_aligned(reinterpret_cast<void*>(suggestion), size);
     numeric_address = reinterpret_cast<uword>(result);
     result_end = numeric_address + size;
@@ -174,6 +214,10 @@ void* OS::allocate_pages(uword size) {
 }
 
 void OS::free_pages(void* address, uword size) {
+  Locker locker(OS::resource_mutex());
+  if (recently_freed_index < RECENTLY_FREED_SIZE) {
+    recently_freed[recently_freed_index++] = address;
+  }
   ungrab_virtual_memory(address, size);
 }
 
@@ -187,18 +231,32 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   if (addr < HALF_MAX) {
     // Address is near the start of address space, so we set the range
     // to be the first MAX_HEAP of the address space.
-    _single_range.address = reinterpret_cast<void*>(TOIT_PAGE_SIZE);
+    single_range_.address = reinterpret_cast<void*>(TOIT_PAGE_SIZE);
   } else if (addr + HALF_MAX + TOIT_PAGE_SIZE < addr) {
     // Address is near the end of address space, so we set the range to
     // be the last MAX_HEAP of the address space.
-    _single_range.address = reinterpret_cast<void*>(-static_cast<word>(MAX_HEAP + TOIT_PAGE_SIZE));
+    single_range_.address = reinterpret_cast<void*>(-static_cast<word>(MAX_HEAP + TOIT_PAGE_SIZE));
   } else {
-    // We will be allocating within a symmetric range either side of this
-    // single allocation.
-    _single_range.address = reinterpret_cast<void*>(addr - HALF_MAX);
+    uword from = addr - MAX_HEAP / 2;
+#if defined(TOIT_DARWIN) && defined(BUILD_64)
+    uword to = from + MAX_HEAP;
+    // On macOS, we never get addresses in the first 4Gbytes, in order to flush
+    // out 32 bit uncleanness, so let's try to avoid having the range cover
+    // both sides of the 4Gbytes boundary.
+    const uword FOUR_GB = 4LL * GB;
+    if (from < FOUR_GB && to > FOUR_GB) {
+      single_range_.address = reinterpret_cast<void*>(FOUR_GB);
+    } else {
+#else
+    {
+#endif
+      // We will be allocating within a symmetric range either side of this
+      // single allocation.
+      single_range_.address = reinterpret_cast<void*>(from);
+    }
   }
-  _single_range.size = MAX_HEAP;
-  return _single_range;
+  single_range_.size = MAX_HEAP;
+  return single_range_;
 }
 
 #endif  // ndef TOIT_FREERTOS

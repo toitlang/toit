@@ -19,7 +19,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
+#if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP) && CONFIG_TOIT_ENABLE_IP
 
 #include <lwip/udp.h>
 #include "lwip/ip_addr.h"
@@ -39,54 +39,77 @@ namespace toit {
 
 const int MAX_QUEUE_SIZE = 1024 * 8;
 
-class Packet : public LinkedFIFO<Packet>::Element {
+class Packet : public LinkedFifo<Packet>::Element {
  public:
   Packet(struct pbuf* pbuf, ip_addr_t addr, u16_t port)
-    : _pbuf(pbuf)
-    , _addr(addr)
-    , _port(port) {
-  }
+      : pbuf_(pbuf)
+      , addr_(addr)
+      , port_(port) {}
+
+  Packet()
+      : pbuf_(null) {}
 
   ~Packet() {
-    pbuf_free(_pbuf);
+    clear();
   }
 
-  struct pbuf* pbuf() { return _pbuf; }
-  ip_addr_t addr() { return _addr; }
-  u16_t port() { return _port; }
+  void clear() {
+    if (pbuf_) pbuf_free(pbuf_);
+    pbuf_ = null;
+  }
+
+  void set(struct pbuf* pbuf, ip_addr_t addr, u16_t port) {
+    pbuf_ = pbuf;
+    addr_ = addr;
+    port_ = port;
+  }
+
+  struct pbuf* pbuf() const { return pbuf_; }
+  ip_addr_t addr() const { return addr_; }
+  u16_t port() const { return port_; }
 
  private:
-  struct pbuf* _pbuf;
-  ip_addr_t _addr;
-  u16_t _port;
+  struct pbuf* pbuf_;
+  ip_addr_t addr_;
+  u16_t port_;
 };
 
-class UDPSocket : public Resource {
+class UdpSocket : public Resource {
  public:
-  TAG(UDPSocket);
-  UDPSocket(ResourceGroup* group, udp_pcb* upcb)
+  TAG(UdpSocket);
+  UdpSocket(ResourceGroup* group, udp_pcb* upcb)
     : Resource(group)
-    , _mutex(null)
-    , _upcb(upcb)
-    , _buffered_bytes(0) {
+    , upcb_(upcb)
+    , buffered_bytes_(0) {
+    // We can cope with this failing, just means we don't have
+    // a spare packet object ready.
+    spare_packet_ = _new Packet();
   }
 
-  ~UDPSocket() {
-    while (auto packet = _packages.remove_first()) {
-      delete packet;
-    }
+  ~UdpSocket() {
+    ASSERT(upcb_ == null);
+    ASSERT(packets_.is_empty());
+    ASSERT(spare_packet_ == null);
   }
 
   void tear_down() {
-    if (_upcb) {
-      udp_recv(_upcb, null, null);
-      udp_remove(_upcb);
-      _upcb = null;
+    if (upcb_) {
+      udp_recv(upcb_, null, null);
+      udp_remove(upcb_);
+      upcb_ = null;
     }
+
+    // We make sure to delete packets and consequently call pbuf_free() from
+    // this tear_down() method that is called on the lwIP task.
+    while (auto packet = packets_.remove_first()) {
+      delete packet;
+    }
+    delete spare_packet_;
+    spare_packet_ = null;
   }
 
   static void on_recv(void* arg, udp_pcb* upcb, pbuf* p, const ip_addr_t* addr, u16_t port) {
-    unvoid_cast<UDPSocket*>(arg)->on_recv(p, addr, port);
+    unvoid_cast<UdpSocket*>(arg)->on_recv(p, addr, port);
   }
   void on_recv(pbuf* p, const ip_addr_t* addr, u16_t port);
 
@@ -94,59 +117,73 @@ class UDPSocket : public Resource {
 
   void set_recv();
 
-  udp_pcb* upcb() { return _upcb; }
+  udp_pcb* upcb() { return upcb_; }
 
   void queue_packet(Packet* packet) {
-    _buffered_bytes += packet->pbuf()->len;
-    _packages.append(packet);
+    buffered_bytes_ += packet->pbuf()->len;
+    packets_.append(packet);
   }
 
   void take_packet() {
-    Packet* packet = _packages.remove_first();
-    if (packet != null) _buffered_bytes -= packet->pbuf()->len;
-    delete packet;
+    Packet* packet = packets_.remove_first();
+    if (packet != null) {
+      buffered_bytes_ -= packet->pbuf()->len;
+      if (spare_packet_ == null) {
+        packet->clear();
+        spare_packet_ = packet;
+      } else {
+        delete packet;
+      }
+    }
   }
 
   Packet* next_packet() {
-    return _packages.first();
+    return packets_.first();
   }
 
  private:
-  Mutex* _mutex;
-  udp_pcb* _upcb;
-  LinkedFIFO<Packet> _packages;
-  int _buffered_bytes;
+  udp_pcb* upcb_;
+  LinkedFifo<Packet> packets_;
+  // This often contains a spare packet object, which reduces the frequency of
+  // the unfortunate case where we have to drop a packet because we can't
+  // allocate this little management struct.
+  Packet* spare_packet_;
+  int buffered_bytes_;
 };
 
-class UDPResourceGroup : public ResourceGroup {
+class UdpResourceGroup : public ResourceGroup {
  public:
-  TAG(UDPResourceGroup);
-  UDPResourceGroup(Process* process, LwIPEventSource* event_source)
+  TAG(UdpResourceGroup);
+  UdpResourceGroup(Process* process, LwipEventSource* event_source)
       : ResourceGroup(process, event_source)
-      , _event_source(event_source) {}
+      , event_source_(event_source) {}
 
-  LwIPEventSource* event_source() { return _event_source; }
+  LwipEventSource* event_source() { return event_source_; }
 
  protected:
   virtual void on_unregister_resource(Resource* r) {
     event_source()->call_on_thread([&]() -> Object* {
-      r->as<UDPSocket*>()->tear_down();
+      r->as<UdpSocket*>()->tear_down();
       return null;
     });
   }
 
  private:
-  LwIPEventSource* _event_source;
+  LwipEventSource* event_source_;
 };
 
-void UDPSocket::on_recv(pbuf* p, const ip_addr_t* addr, u16_t port) {
-  Locker locker(LwIPEventSource::instance()->mutex());
-
-  Packet* packet = _new Packet(p, *addr, port);
+void UdpSocket::on_recv(pbuf* p, const ip_addr_t* addr, u16_t port) {
+  Packet* packet = spare_packet_;
+  spare_packet_ = null;
+  if (packet != null) {
+    packet->set(p, *addr, port);
+  } else {
+    packet = _new Packet(p, *addr, port);
+  }
   if (packet == null) {
-    // TODO(kasper): It would be better to try to pre-allocate the Packet
-    // object, so we can push the allocation failure out and not drop
-    // received pbufs on the floor.
+    // The packet object itself is very small, so the allocation will
+    // rarely fail.  If it still fails we trigger a GC and drop the
+    // UDP packet.
     pbuf_free(p);
     needs_gc = true;
     return;
@@ -157,61 +194,63 @@ void UDPSocket::on_recv(pbuf* p, const ip_addr_t* addr, u16_t port) {
   send_state();
 }
 
-void UDPSocket::set_recv() {
-  if (_buffered_bytes < MAX_QUEUE_SIZE) {
-    udp_recv(upcb(), UDPSocket::on_recv, this);
+void UdpSocket::set_recv() {
+  if (buffered_bytes_ < MAX_QUEUE_SIZE) {
+    udp_recv(upcb(), UdpSocket::on_recv, this);
   } else {
+    // When too many packets have been received and not picked up by the Toit
+    // program, we set the udp_recv to null so that packets are dropped for a
+    // while.
     udp_recv(upcb(), null, null);
   }
 }
 
-void UDPSocket::send_state() {
+void UdpSocket::send_state() {
   uint32_t state = UDP_WRITE;
 
-  if (!_packages.is_empty()) state |= UDP_READ;
+  if (!packets_.is_empty()) state |= UDP_READ;
   if (needs_gc) state |= UDP_NEEDS_GC;
 
   // TODO: Avoid instance usage.
-  LwIPEventSource::instance()->set_state(this, state);
+  LwipEventSource::instance()->set_state(this, state);
 }
 
 MODULE_IMPLEMENTATION(udp, MODULE_UDP)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  UDPResourceGroup* resource_group = _new UDPResourceGroup(process, LwIPEventSource::instance());
-  if (!resource_group) MALLOC_FAILED;
+  UdpResourceGroup* resource_group = _new UdpResourceGroup(process, LwipEventSource::instance());
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;
 }
 
 PRIMITIVE(bind) {
-  ARGS(UDPResourceGroup, resource_group, Blob, address, int, port);
+  ARGS(UdpResourceGroup, resource_group, Blob, address, int, port);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   ip_addr_t addr;
   if (address.length() == 4) {
     const uint8_t* a = address.address();
     IP_ADDR4(&addr, a[0], a[1], a[2], a[3]);
   } else {
-    OUT_OF_BOUNDS;
+    FAIL(OUT_OF_BOUNDS);
   }
 
   CAPTURE4(
-      UDPResourceGroup*, resource_group,
+      UdpResourceGroup*, resource_group,
       ip_addr_t&, addr,
       int, port,
       Process*, process);
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
-    Process* process = capture.process;
     udp_pcb* upcb = udp_new();
-    if (upcb == null) MALLOC_FAILED;
+    if (upcb == null) FAIL(MALLOC_FAILED);
 
     err_t err = udp_bind(upcb, &capture.addr, capture.port);
     if (err != ERR_OK) {
@@ -219,12 +258,12 @@ PRIMITIVE(bind) {
       return lwip_error(capture.process, err);
     }
 
-    UDPSocket* socket = _new UDPSocket(capture.resource_group, upcb);
+    UdpSocket* socket = _new UdpSocket(capture.resource_group, upcb);
     if (socket == null) {
       udp_remove(upcb);
-      MALLOC_FAILED;
+      FAIL(MALLOC_FAILED);
     }
-    udp_recv(upcb, UDPSocket::on_recv, socket);
+    udp_recv(upcb, UdpSocket::on_recv, socket);
     proxy->set_external_address(socket);
 
     capture.resource_group->register_resource(socket);
@@ -235,21 +274,21 @@ PRIMITIVE(bind) {
 }
 
 PRIMITIVE(connect) {
-  ARGS(UDPResourceGroup, resource_group, UDPSocket, socket, Blob, address, int, port);
+  ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, Blob, address, int, port);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   ip_addr_t addr;
   if (address.length() == 4) {
     const uint8_t* a = address.address();
     IP_ADDR4(&addr, a[0], a[1], a[2], a[3]);
   } else {
-    OUT_OF_BOUNDS;
+    FAIL(OUT_OF_BOUNDS);
   }
 
   CAPTURE4(
-      UDPSocket*, socket,
+      UdpSocket*, socket,
       int, port,
       ip_addr_t&, addr,
       Process*, process);
@@ -260,16 +299,16 @@ PRIMITIVE(connect) {
       return lwip_error(capture.process, err);
     }
 
-    return capture.process->program()->null_object();
+    return capture.process->null_object();
   });
 }
 
 PRIMITIVE(receive)  {
-  ARGS(UDPResourceGroup, resource_group, UDPSocket, socket, Object, output);
+  ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, Object, output);
 
   CAPTURE3(
       Process*, process,
-      UDPSocket*, socket,
+      UdpSocket*, socket,
       Object*, output);
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
@@ -277,23 +316,25 @@ PRIMITIVE(receive)  {
     if (packet == null) return Smi::from(-1);
 
     ByteArray* address = null;
-    if (capture.output->is_array()) {
+    if (is_array(capture.output)) {
       // TODO: Support IPv6.
-      Error* error = null;
-      address = capture.process->allocate_byte_array(4, &error);
-      if (address == null) return error;
+      address = capture.process->allocate_byte_array(4);
+      if (address == null) {
+        return Primitive::mark_as_error(capture.process->program()->allocation_failed());
+      }
     }
 
     pbuf* p = packet->pbuf();
-    Error* error = null;
-    ByteArray* array = capture.process->allocate_byte_array(p->len, &error);
-    if (array == null) return error;
+    ByteArray* array = capture.process->allocate_byte_array(p->len);
+    if (array == null) {
+      return Primitive::mark_as_error(capture.process->program()->allocation_failed());
+    }
 
     memcpy(ByteArray::Bytes(array).address(), p->payload, p->len);
 
-    if (capture.output->is_array()) {
+    if (is_array(capture.output)) {
       Array* out = Array::cast(capture.output);
-      ASSERT(out->length() == 3);
+      if (out->length() < 3) FAIL(INVALID_ARGUMENT);
       out->at_put(0, array);
       ip_addr_t addr = packet->addr();
       uint32_t ipv4_address = ip_addr_get_ip4_u32(&addr);
@@ -312,28 +353,28 @@ PRIMITIVE(receive)  {
 
 
 PRIMITIVE(send) {
-  ARGS(UDPResourceGroup, resource_group, UDPSocket, socket, Blob, data, int, from, int, to, Object, address, int, port);
+  ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, Blob, data, int, from, int, to, Object, address, int, port);
 
   const uint8* content = data.address();
-  if (from < 0 || from > to || to > data.length()) OUT_OF_BOUNDS;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_BOUNDS);
 
   content += from;
   to -= from;
 
   ip_addr_t addr;
-  if (address != process->program()->null_object()) {
+  if (address != process->null_object()) {
     Blob address_bytes;
-    if (!address->byte_content(process->program(), &address_bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+    if (!address->byte_content(process->program(), &address_bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
     if (address_bytes.length() == 4) {
       const uint8_t* a = address_bytes.address();
       IP_ADDR4(&addr, a[0], a[1], a[2], a[3]);
     } else {
-      OUT_OF_BOUNDS;
+      FAIL(OUT_OF_BOUNDS);
     }
   }
 
   CAPTURE6(
-      UDPSocket*, socket,
+      UdpSocket*, socket,
       int, to,
       ip_addr_t&, addr,
       Process*, process,
@@ -342,11 +383,13 @@ PRIMITIVE(send) {
 
   Object* result = resource_group->event_source()->call_on_thread([&]() -> Object* {
     pbuf* p = pbuf_alloc(PBUF_TRANSPORT, capture.to, PBUF_REF);
-    if (p == NULL) return Smi::from(capture.to);
+    if (p == NULL) {
+      return Primitive::mark_as_error(capture.process->program()->allocation_failed());
+    }
     p->payload = const_cast<uint8_t*>(content);
 
     err_t err;
-    if (capture.address->is_byte_array()) {
+    if (is_byte_array(capture.address)) {
       err = udp_sendto(capture.socket->upcb(), p, &capture.addr, capture.port);
     } else {
       err = udp_send(capture.socket->upcb(), p);
@@ -364,33 +407,29 @@ PRIMITIVE(send) {
 }
 
 PRIMITIVE(close) {
-  ARGS(UDPResourceGroup, resource_group, UDPSocket, socket);
+  ARGS(UdpResourceGroup, resource_group, UdpSocket, socket);
 
   resource_group->unregister_resource(socket);
 
   socket_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
-PRIMITIVE(error) {
+PRIMITIVE(error_number) {
   ARGS(ByteArray, socket_proxy);
   USE(socket_proxy);
 
-  WRONG_TYPE;
+  FAIL(WRONG_OBJECT_TYPE);
 }
 
-static Object* get_address_or_error(UDPSocket* socket, Process* process, bool peer) {
+static Object* get_address_or_error(UdpSocket* socket, Process* process, bool peer) {
   uint32_t address = peer ?
     ip_addr_get_ip4_u32(&socket->upcb()->remote_ip) :
     ip_addr_get_ip4_u32(&socket->upcb()->local_ip);
   char buffer[16];
-  int length = sprintf(buffer, 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-		       "%lu.%lu.%lu.%lu",
-#else
-		       "%d.%d.%d.%d",
-#endif
+  int length = sprintf(buffer,
+                       "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32,
                        (address >> 0) & 0xff,
                        (address >> 8) & 0xff,
                        (address >> 16) & 0xff,
@@ -399,8 +438,8 @@ static Object* get_address_or_error(UDPSocket* socket, Process* process, bool pe
 }
 
 PRIMITIVE(get_option) {
-  ARGS(UDPResourceGroup, resource_group, UDPSocket, socket, int, option);
-  CAPTURE3(UDPSocket*, socket, int, option, Process*, process);
+  ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, int, option);
+  CAPTURE3(UdpSocket*, socket, int, option, Process*, process);
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     switch (capture.option) {
@@ -411,21 +450,18 @@ PRIMITIVE(get_option) {
         return get_address_or_error(capture.socket, capture.process, false);
 
       case UDP_BROADCAST:
-        if (capture.socket->upcb()->so_options & SOF_BROADCAST) {
-          return capture.process->program()->true_object();
-        }
-        return capture.process->program()->false_object();
+        return BOOL(capture.socket->upcb()->so_options & SOF_BROADCAST);
 
       default:
-        return capture.process->program()->unimplemented();
+        FAIL(UNIMPLEMENTED);
     }
   });
 }
 
 PRIMITIVE(set_option) {
-  ARGS(UDPResourceGroup, resource_group, UDPSocket, socket, int, option, Object, raw);
+  ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, int, option, Object, raw);
   CAPTURE4(
-      UDPSocket*, socket,
+      UdpSocket*, socket,
       int, option,
       Object*, raw,
       Process*, process);
@@ -433,31 +469,32 @@ PRIMITIVE(set_option) {
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     switch (capture.option) {
       case UDP_BROADCAST:
-        if (capture.raw == capture.process->program()->true_object()) {
+        if (capture.raw == capture.process->true_object()) {
           capture.socket->upcb()->so_options |= SOF_BROADCAST;
-        } else if (capture.raw == capture.process->program()->false_object()) {
+        } else if (capture.raw == capture.process->false_object()) {
           capture.socket->upcb()->so_options &= ~SOF_BROADCAST;
         } else {
-          return capture.process->program()->wrong_object_type();
+          FAIL(WRONG_OBJECT_TYPE);
         }
+        break;
 
       default:
-        return capture.process->program()->unimplemented();
+        FAIL(UNIMPLEMENTED);
     }
 
-    return capture.process->program()->null_object();
+    return capture.process->null_object();
   });
 }
 
 PRIMITIVE(gc) {
-  ARGS(UDPResourceGroup, group);
+  ARGS(UdpResourceGroup, group);
   Object* do_gc = group->event_source()->call_on_thread([&]() -> Object* {
     bool result = needs_gc;
     needs_gc = false;
     return BOOL(result);
   });
-  if (do_gc == process->program()->true_object()) CROSS_PROCESS_GC;
-  return process->program()->null_object();
+  if (do_gc == process->true_object()) FAIL(CROSS_PROCESS_GC);
+  return process->null_object();
 }
 
 } // namespace toit

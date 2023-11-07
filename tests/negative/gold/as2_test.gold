@@ -1,2 +1,0 @@
-As check failed: a B is not a A.
-  0: main                      tests/negative/as2_test.toit:10:5

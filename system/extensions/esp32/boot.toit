@@ -14,6 +14,7 @@
 // directory of this repository.
 
 import uuid
+import system.containers
 
 import .firmware
 import .wifi
@@ -21,32 +22,34 @@ import .wifi
 import ...boot
 import ...initialize
 import ...containers
+import ...storage
+import ...flash.registry
 
 // TODO(kasper): It feels annoying to have to put this here. Maybe we
 // can have some sort of reasonable default in the ContainerManager?
 class SystemImage extends ContainerImage:
-  id ::= uuid.NIL
+  id ::= containers.current
+
   constructor manager/ContainerManager:
     super manager
 
-  start -> Container:
+  spawn container/Container arguments/any -> int:
     // This container is already running as the system process.
-    container := Container this 0 (current_process_)
-    manager.on_container_start_ container
-    return container
+    return Process.current.id
 
-  stop_all -> none:
+  stop-all -> none:
     unreachable  // Not implemented yet.
 
   delete -> none:
     unreachable  // Not implemented yet.
 
 main:
-  container_manager ::= initialize_system [
-      FirmwareServiceDefinition,
-      WifiServiceDefinition
+  registry ::= FlashRegistry.scan
+  container-manager ::= initialize-system registry [
+      FirmwareServiceProvider,
+      StorageServiceProvider registry,
+      WifiServiceProvider,
   ]
-  container_manager.register_system_image
-      SystemImage container_manager
-  boot container_manager
-  // TODO(kasper): Should we reboot here after a little while?
+  container-manager.register-system-image
+      SystemImage container-manager
+  exit (boot container-manager)

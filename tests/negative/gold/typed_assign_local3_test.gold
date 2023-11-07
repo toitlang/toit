@@ -1,5 +1,0 @@
-tests/negative/typed_assign_local3_test.toit:12:4: error: Type mismatch. Expected 'A'. Got 'int'
-  a++
-   ^~
-As check failed: an int (1) is not a A.
-  0: main                      tests/negative/typed_assign_local3_test.toit:12:4

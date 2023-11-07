@@ -24,9 +24,6 @@
 
 namespace toit {
 
-extern "C" uword toit_image;
-extern "C" uword toit_image_size;
-
 int Array::max_length_in_process() {
   return (ObjectHeap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
 }
@@ -69,7 +66,7 @@ T* ByteArray::as_external() {
   return 0;
 }
 
-inline bool HeapObject::on_program_heap(Process* process) {
+inline bool HeapObject::on_program_heap(Process* process) const {
   return process->on_program_heap(this);
 }
 
@@ -90,15 +87,6 @@ inline void Array::fill(int from, Object* filler) {
 inline void Instance::at_put(int index, Object* value) {
   GcMetadata::insert_into_remembered_set(this);
   _at_put(_offset_from(index), value);
-}
-
-inline void Stack::set_task(Task* value) {
-  GcMetadata::insert_into_remembered_set(this);
-  _at_put(TASK_OFFSET, value);
-}
-
-inline void Task::set_result(Object* value) {
-  at_put(RESULT_INDEX, value);
 }
 
 } // namespace toit

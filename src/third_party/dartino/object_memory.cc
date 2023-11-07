@@ -46,7 +46,7 @@ void Space::free_all_chunks() {
   top_ = limit_ = 0;
 }
 
-uword Space::size() {
+uword Space::size() const {
   uword result = 0;
   for (auto chunk : chunk_list_) result += chunk->size();
   ASSERT(used() <= result);
@@ -65,7 +65,7 @@ word Space::offset_of(HeapObject* object) {
   return address - start;
 }
 
-HeapObject *Space::object_at_offset(word offset) {
+HeapObject* Space::object_at_offset(word offset) {
   uword start = chunk_list_.first()->start();
   uword address = offset + start;
 
@@ -76,22 +76,6 @@ HeapObject *Space::object_at_offset(word offset) {
   ASSERT(start <= address);
 
   return HeapObject::from_address(address);
-}
-
-void Space::adjust_allocation_budget(uword used_outside_space) {
-  uword used_bytes = used() + used_outside_space;
-  // Allow heap size to double (but we may hit maximum heap size limits before
-  // that).
-  allocation_budget_ = used_bytes + TOIT_PAGE_SIZE;
-}
-
-void Space::increase_allocation_budget(uword size) { allocation_budget_ += size; }
-
-void Space::decrease_allocation_budget(uword size) { allocation_budget_ -= size; }
-
-void Space::set_allocation_budget(word new_budget) {
-  allocation_budget_ = Utils::max(
-      static_cast<word>(get_default_chunk_size(new_budget)), new_budget);
 }
 
 void Space::iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack) {
@@ -124,8 +108,8 @@ void Space::iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stac
                object_address += object->size(program_)) {
             object = HeapObject::from_address(object_address);
             if (GcMetadata::is_grey(object)) {
+              object->roots_do(program_, visitor);  // This changes the size of stacks!
               GcMetadata::mark_all(object, object->size(program_));
-              object->roots_do(program_, visitor);
             }
           }
         }
@@ -135,7 +119,14 @@ void Space::iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stac
   }
 }
 
-void Space::iterate_objects(HeapObjectVisitor* visitor) {
+void Space::iterate_chunks(void* context, Process* process, process_chunk_callback_t* callback) {
+  if (is_empty()) return;
+  for (auto chunk : chunk_list_) {
+    callback(context, process, chunk->start(), chunk->size());
+  }
+}
+
+void Space::iterate_objects(HeapObjectVisitor* visitor, LivenessOracle* filter) {
   if (is_empty()) return;
   flush();
   for (auto chunk : chunk_list_) {
@@ -143,9 +134,21 @@ void Space::iterate_objects(HeapObjectVisitor* visitor) {
     uword current = chunk->start();
     while (!has_sentinel_at(current)) {
       HeapObject* object = HeapObject::from_address(current);
-      word size = visitor->visit(object);
-      ASSERT(size > 0);
-      current += size;
+      if (!filter || filter->is_alive(object)) {
+        word size = visitor->visit(object);
+        ASSERT(size > 0);
+        current += size;
+      } else {
+        word size = object->size(program_);
+#ifdef DEBUG
+        // Zapping words after the header should be harmless in new-space.
+        // In old-space this would interfere with the remembered set scanning,
+        // but there we don't use this call with a non-null filter.
+        uword address = object->_raw();
+        memset(reinterpret_cast<void*>(address + WORD_SIZE), 0x55, size - WORD_SIZE);
+#endif
+        current += size;
+      }
     }
     visitor->chunk_end(chunk, current);
   }
@@ -154,18 +157,6 @@ void Space::iterate_objects(HeapObjectVisitor* visitor) {
 void Space::clear_mark_bits() {
   flush();
   for (auto chunk : chunk_list_) GcMetadata::clear_mark_bits_for_chunk(chunk);
-}
-
-void SemiSpace::prepare_metadata_for_mark_sweep() {
-  flush();
-  for (auto chunk : chunk_list_) {
-    GcMetadata::clear_mark_bits_for_chunk(chunk);
-    // Starts in new-space are only used for mark stack overflows,
-    // not for the remembered set.  The mark stack overflow sets the
-    // object start for the cards it needs.
-    GcMetadata::initialize_starts_for_chunk(chunk);
-    GcMetadata::initialize_overflow_bits_for_chunk(chunk);
-  }
 }
 
 bool Space::includes(uword address) {
@@ -180,7 +171,7 @@ class InSpaceVisitor : public RootCallback {
   void do_roots(Object** p, int length) {
     for (int i = 0; i < length; i++) {
       Object* object = p[i];
-      if (object->is_smi()) continue;
+      if (is_smi(object)) continue;
       if (space->includes(reinterpret_cast<uword>(object))) {
         in_space = true;
         break;
@@ -199,7 +190,7 @@ bool HeapObject::contains_pointers_to(Program* program, Space* space) {
   return visitor.in_space;
 }
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 void Space::find(uword w, const char* name) {
   for (auto chunk : chunk_list_) chunk->find(w, name);
 }
@@ -218,7 +209,7 @@ void ObjectMemory::tear_down() {
   spare_chunk_ = null;
 }
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 void Chunk::scramble() {
   void* p = reinterpret_cast<void*>(start_);
   memset(p, 0xab, size());
@@ -240,15 +231,28 @@ void Chunk::find(uword word, const char* name) {
 #endif
 
 Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
+  static const int UNUSABLE_SIZE = 50;
+  void* unusable_pages[UNUSABLE_SIZE];
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
-  void* memory = OS::allocate_pages(size);
   uword lowest = GcMetadata::lowest_old_space_address();
-  USE(lowest);
-  if (memory == null) return null;
-  if (reinterpret_cast<uword>(memory) < lowest ||
-      reinterpret_cast<uword>(memory) - lowest + size > GcMetadata::heap_extent()) {
-    FATAL("Toit heap outside expected range");
+  for (int i = 0; i < UNUSABLE_SIZE; i++) {
+    void* memory = OS::allocate_pages(size);
+    if (memory == null ||
+        (GcMetadata::in_metadata_range(memory) &&
+         GcMetadata::in_metadata_range(reinterpret_cast<uword>(memory) + size - 1))) {
+      for (int j = 0; j < i; j++) OS::free_pages(unusable_pages[j], size);
+      return allocate_chunk_helper(owner, size, memory);
+    }
+    unusable_pages[i] = memory;
   }
+  printf("New allocation %p-%p\n", unusable_pages[0], unvoid_cast<char*>(unusable_pages[0]) + size);
+  printf("Metadata range %p-%p\n", reinterpret_cast<void*>(lowest), reinterpret_cast<uint8*>(lowest) + GcMetadata::heap_extent());
+  FATAL("Toit heap outside expected range");
+}
+
+
+Chunk* ObjectMemory::allocate_chunk_helper(Space* owner, uword size, void* memory) {
+  if (memory == null) return null;
 
   uword base = reinterpret_cast<uword>(memory);
   Chunk* chunk = _new Chunk(owner, base, size);
@@ -260,7 +264,7 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   ASSERT(base == Utils::round_up(base, TOIT_PAGE_SIZE));
   ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   chunk->scramble();
 #endif
   if (owner) {
@@ -285,7 +289,7 @@ void Chunk::initialize_metadata() const {
 }
 
 void ObjectMemory::free_chunk(Chunk* chunk) {
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   chunk->scramble();
 #endif
   allocated_ -= chunk->size();
@@ -298,7 +302,8 @@ void ObjectMemory::set_up() {
   spare_chunk_ = allocate_chunk(null, TOIT_PAGE_SIZE);
   if (!spare_chunk_) FATAL("Can't allocate initial spare chunk");
   if (spare_chunk_mutex_) FATAL("Can't call ObjectMemory::set_up twice");
-  spare_chunk_mutex_ = OS::allocate_mutex(6, "Spare memory chunk");
+  spare_chunk_mutex_ = OS::allocate_mutex(7, "Spare memory chunk");
+  if (!spare_chunk_mutex_) FATAL("Can't allocate spare memory mutex");
 }
 
 }  // namespace toit

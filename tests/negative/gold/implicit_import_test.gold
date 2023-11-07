@@ -1,4 +1,0 @@
-tests/negative/implicit_import_test.toit:10:7: error: Unresolved identifier: 'List'
-  pre.List
-      ^~~~
-Compilation failed.

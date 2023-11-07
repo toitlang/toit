@@ -5,8 +5,8 @@
 import esp32
 
 main:
-  run_time ::= Duration --us=esp32.total_run_time
-  sleep_time ::= Duration --us=esp32.total_deep_sleep_time
-  print "Awake for $(run_time - sleep_time) so far"
-  print "Slept for $sleep_time so far"
-  esp32.deep_sleep (Duration --s=10)
+  run-time ::= Duration --us=esp32.total-run-time
+  sleep-time ::= Duration --us=esp32.total-deep-sleep-time
+  print "Awake for $(run-time - sleep-time) so far"
+  print "Slept for $sleep-time so far"
+  esp32.deep-sleep (Duration --s=10)

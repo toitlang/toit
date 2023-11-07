@@ -1,0 +1,6 @@
+tests/negative/type-force2-test.toit:10:5: error: Type mismatch. Expected 'B'. Got 'A'
+    return A
+    ^~~~~~
+As check failed: an A is not a B.
+  0: B                         tests/negative/type-force2-test.toit:10:5
+  1: main                      tests/negative/type-force2-test.toit:15:8

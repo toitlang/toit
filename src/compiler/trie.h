@@ -28,10 +28,10 @@ class Trie {
 
   Trie* get(int id) {
     int index = 0;
-    while (index < _capacity) {
-      Trie* child = _children[index];
+    while (index < capacity_) {
+      Trie* child = children_[index];
       if (child == null) break;
-      if (child->_id == id) return child;
+      if (child->id_ == id) return child;
       index++;
     }
     return allocate(index, id);
@@ -46,13 +46,13 @@ class Trie {
   Symbol data;
 
  private:
-  int _id;
-  int _capacity;
-  Trie** _children;
+  int id_;
+  int capacity_;
+  Trie** children_;
 
   // Keep a couple of children inlined in the trie node.
   static const int INLINED_CHILDREN = 2;
-  Trie* _inlined[INLINED_CHILDREN];
+  Trie* inlined_[INLINED_CHILDREN];
 
   // Allocate and fill in slot for new child.
   Trie* allocate(int index, int id);

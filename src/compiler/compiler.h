@@ -65,6 +65,8 @@ class Compiler {
     bool werror;
     /// Whether to show warnings in packages.
     bool show_package_warnings;
+    /// Optimization level.
+    int optimization_level;
   };
 
   Compiler();
@@ -93,7 +95,6 @@ class Compiler {
   /// If one is given, the other one must be null.
   SnapshotBundle compile(const char* source_path,
                          const char* direct_script,
-                         char** snapshot_args,
                          const char* out_path,
                          const Configuration& config);
 

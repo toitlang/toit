@@ -1,7 +1,0 @@
-tests/negative/no_nl2_test.toit:9:5: error: Incomplete expression
-  if
-    ^
-tests/negative/no_nl2_test.toit:9:5: error: Missing ':' for 'if' condition
-  if
-    ^
-Compilation failed.

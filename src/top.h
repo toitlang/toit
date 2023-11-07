@@ -18,46 +18,41 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
-#include <stdint.h>
 #include <cstring>
+#include <inttypes.h>
 #include <new>
+#include <stdint.h>
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 #include <typeinfo>
 #endif
 
 // Support for profiling configuration
 #if defined(PROF)
-#define DEPLOY
+#define TOIT_DEPLOY
 #endif
 
 // -----------------------------------------------------------------------------
 // Build configuration:
-//  DEBUG  : Debug build with plenty of debug information and verification.
-//           All test code is included.
-//  FAST   : Optimized build but this includes printing and validation code.
-//           All test code is included.
-//  DEPLOY : Optimized and minimal build for deployment.
+//  TOIT_DEBUG  : Debug build with plenty of debug information and verification.
+//                All test code is included.
+//  TOIT_DEPLOY : Optimized and minimal build for deployment.
 //
-//  BUILD set to either "DEBUG", "FAST", or "DEPLOY".
-#if defined(DEBUG)
-#if defined(FAST) || defined(DEPLOY)
+//  BUILD set to either "TOIT_DEBUG" or "TOIT_DEPLOY".
+#if defined(TOIT_DEBUG)
+#if defined(TOIT_DEPLOY)
 #define MULTIPLE_CONFIGURATION_ERROR
 #endif
-#elif defined(FAST)
-#if defined(DEBUG) ||defined(DEPLOY)
-#define MULTIPLE_CONFIGURATION_ERROR
-#endif
-#elif defined(DEPLOY)
-#if defined(DEBUG) || defined(FAST)
+#elif defined(TOIT_DEPLOY)
+#if defined(TOIT_DEBUG)
 #define MULTIPLE_CONFIGURATION_ERROR
 #endif
 #else
-#error "No build configuration specified: use only one of -DDEBUG -DFAST -DDEPLOY"
+#error "No build configuration specified: use one of -DTOIT_DEBUG -DTOIT_DEPLOY"
 #endif
 
 #if defined(MULTIPLE_CONFIGURATION_ERROR)
-#error "More than one build configuration specified: use only one of -DDEBUG -DFAST -DDEPLOY"
+#error "More than one build configuration specified: use only one of -DTOIT_DEBUG -DTOIT_DEPLOY"
 #endif
 
 // -----------------------------------------------------------------------------
@@ -109,10 +104,10 @@
 // device.
 #define CONFIG_TOIT_BYTE_DISPLAY 1
 #define CONFIG_TOIT_BIT_DISPLAY 1
+#define CONFIG_TOIT_FONT 1
+#define CONFIG_TOIT_FULL_ZLIB 1
+#define CONFIG_TOIT_ZLIB_RLE 1
 #endif
-
-// Define PROFILER if the bytecode profiler should be included.
-#define PROFILER
 
 typedef intptr_t word;
 typedef uintptr_t uword;
@@ -126,15 +121,15 @@ static const int WORD_SHIFT = 2;
 #endif
 static_assert(sizeof(uhalf_word) == sizeof(uword) / 2, "Unexpected half-word size");
 
-typedef signed char int8;
-typedef short int16;
-typedef int int32;
-typedef long long int int64;
+typedef int8_t int8;
+typedef int16_t int16;
+typedef int32_t int32;
+typedef int64_t int64;
 
-typedef unsigned char uint8;
-typedef unsigned short uint16;
-typedef unsigned int uint32;
-typedef unsigned long long int uint64;
+typedef uint8_t uint8;
+typedef uint16_t uint16;
+typedef uint32_t uint32;
+typedef uint64_t uint64;
 
 static const word KB_LOG2 = 10;
 static const int KB = 1 << KB_LOG2;
@@ -177,6 +172,12 @@ static const uword MAX_HEAP = 1ull * GB;  // Metadata ca. 8.5Mbytes.
 static const uword MAX_HEAP = 512ull * MB;  // Metadata ca. 8.2Mbytes.
 #endif
 
+// Perhaps some ARM CPUs and platforms allow unaligned operations, but to be
+// safe we disable them here.
+#if !defined(__arm__)
+#define ALLOW_UNALIGNED_ACCESS
+#endif
+
 static_assert(sizeof(int32) == 4, "invalid type size");
 static_assert(sizeof(int64) == 8, "invalid type size");
 #ifdef BUILD_64
@@ -200,11 +201,11 @@ static_assert(sizeof(word) == 4, "invalid type size");
 // Please use _new at allocation point to ensure proper tracking of memory usage.
 // This also ensures that we call the nothrow version of new, which can handle an
 // allocation failure (returns null instead of calling the constructor).
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 #define malloc(size) toit::tracing_malloc(size, __FILE__, __LINE__)
 #define realloc(ptr, size) toit::tracing_realloc(ptr, size, __FILE__, __LINE__)
 #define free(p) toit::tracing_free(p, __FILE__, __LINE__)
-#define _new NewMarker(__FILE__, __LINE__) * new (std::nothrow)
+#define _new toit::NewMarker(__FILE__, __LINE__) * new (std::nothrow)
 #else
 #define _new new (std::nothrow)
 #endif
@@ -220,7 +221,7 @@ extern bool throwing_new_allowed;
 #undef ASSERT
 #endif
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 void* tracing_malloc(size_t size, const char* file, int line);
 
 void* tracing_realloc(void* ptr, size_t size, const char* file, int line);
@@ -229,7 +230,7 @@ void tracing_free(void* ptr, const char* file, int line);
 
 class NewMarker	{
  public:
-  NewMarker(char const* file, int line) : file(file), line(line) { }
+  NewMarker(char const* file, int line) : file(file), line(line) {}
   char const* const file;
   int const line;
 };
@@ -267,29 +268,31 @@ class AllowThrowingNew {
   bool old_throwing_new_allowed;
 };
 
-#ifndef DEPLOY
+#ifndef TOIT_DEPLOY
 void fail(const char* file, int line, const char* format, ...) __attribute__ ((__noreturn__));
 #define ASSERT(cond) if (!(cond)) { toit::fail(__FILE__, __LINE__, "assertion failure, %s.", #cond); }
-#define FATAL(message, ...) toit::fail(__FILE__, __LINE__, #message, ##__VA_ARGS__);
+#define FATAL(message, ...) toit::fail(__FILE__, __LINE__, message, ##__VA_ARGS__);
 #ifdef TOIT_FREERTOS
 #define FATAL_IF_NOT_ESP_OK(cond) do { if ((cond) != ESP_OK) toit::fail(__FILE__, __LINE__, "%s", #cond); } while (0)
 #endif
-#else  // DEPLOY
+#else  // TOIT_DEPLOY
 void fail(const char* format, ...) __attribute__ ((__noreturn__));
-#define ASSERT(cond) while (false && (cond)) { }
-#define FATAL(message, ...) toit::fail(#message, ##__VA_ARGS__);
+#define ASSERT(cond) while (false && (cond)) {}
+#define FATAL(message, ...) toit::fail(message, ##__VA_ARGS__);
 #ifdef TOIT_FREERTOS
 #define FATAL_IF_NOT_ESP_OK(cond) do { if ((cond) != ESP_OK) toit::fail("%s", #cond); } while (0)
 #endif
-#endif  // DEPLOY
+#endif  // TOIT_DEPLOY
 
 #define UNIMPLEMENTED() FATAL("unimplemented")
 #define UNREACHABLE() FATAL("unreachable")
+#define TOIT_CHECK(cond) if (!(cond)) { toit::fail(__FILE__, __LINE__, "check failure, %s.", #cond); }
 
 
 // Common forward declarations.
 class AlignedMemory;
 class Block;
+class Chunk;
 class ProgramBlock;
 class ConditionVariable;
 class Encoder;
@@ -320,21 +323,18 @@ namespace compiler {
   class ProgramBuilder;
 }
 
-class Object;
-class Smi;
 class Array;
 class ByteArray;
-class Instance;
-class HeapObject;
 class Double;
-class Stack;
-class Task;
-class String;
+class HeapObject;
+class Instance;
 class LargeInteger;
-
-#ifdef PROFILER
+class Object;
 class Profiler;
-#endif
+class Smi;
+class Stack;
+class String;
+class Task;
 
 // If you capture too many variables, then the functor does heap allocations.
 // These can fail on the device, and we can't catch that deep in the compiler's
@@ -410,10 +410,8 @@ static const word ITERATE_TAG_HEAP_OVERHEAD = -2;
 
 static const word ITERATE_CUSTOM_TAGS = -100;
 
-inline void memcpy_reverse(void* dst, const void* src, size_t n) {
-  for (size_t i = 0; i < n; ++i) {
-    reinterpret_cast<uint8*>(dst)[n-1-i] = reinterpret_cast<const uint8*>(src)[i];
-  }
-}
+static const int DEFAULT_OPTIMIZATION_LEVEL = 1;
+
+typedef void process_chunk_callback_t(void* context, Process* process, uword address, uword size);
 
 } // namespace toit

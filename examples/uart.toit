@@ -22,11 +22,11 @@ main:
   port := uart.Port
       --rx=gpio.Pin RX
       --tx=gpio.Pin TX
-      --baud_rate=115200
+      --baud-rate=115200
 
   task::
     reader := BufferedReader port
-    while line := reader.read_line:
+    while line := reader.read-line:
       print "Received: $line"
 
   writer := Writer port

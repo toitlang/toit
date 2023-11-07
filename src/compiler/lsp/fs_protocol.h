@@ -36,7 +36,7 @@ struct LspFsConnection {
 
 class LspFsProtocol {
  public:
-  LspFsProtocol(LspFsConnection* connection) : _connection(connection) { }
+  LspFsProtocol(LspFsConnection* connection) : connection_(connection) {}
   struct PathInfo {
     bool exists;
     bool is_regular_file;
@@ -46,7 +46,7 @@ class LspFsProtocol {
   };
 
   void initialize(Diagnostics* diagnostics) {
-    _connection->initialize(diagnostics);
+    connection_->initialize(diagnostics);
   }
 
   const char* sdk_path();
@@ -57,7 +57,7 @@ class LspFsProtocol {
   PathInfo fetch_info_for(const char* path);
 
  private:
-  LspFsConnection* _connection;
+  LspFsConnection* connection_;
 };
 
 } // namespace toit::compiler

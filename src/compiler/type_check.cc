@@ -17,6 +17,7 @@
 
 #include <stdarg.h>
 
+#include "cycle_detector.h"
 #include "deprecation.h"
 #include "diagnostic.h"
 #include "ir.h"
@@ -48,17 +49,17 @@ class TypeChecker : public ReturningVisitor<Type> {
               const Set<ir::Node*>* deprecated,
               Lsp* lsp,
               Diagnostics* diagnostics)
-      : _classes(classes)
-      , _queryables(queryables)
-      , _deprecated(deprecated)
-      , _lsp(lsp)
-      , _diagnostics(diagnostics)
-      , _method(null)
-      , _boolean_type(Type::invalid())
-      , _integer_type(Type::invalid())
-      , _float_type(Type::invalid())
-      , _string_type(Type::invalid())
-      , _null_type(Type::invalid()) {
+      : classes_(classes)
+      , queryables_(queryables)
+      , deprecated_(deprecated)
+      , lsp_(lsp)
+      , diagnostics_(diagnostics)
+      , method_(null)
+      , boolean_type_(Type::invalid())
+      , integer_type_(Type::invalid())
+      , float_type_(Type::invalid())
+      , string_type_(Type::invalid())
+      , null_type_(Type::invalid()) {
 
     auto find_type = [=](Symbol symbol) {
       for (auto literal_type : literal_types) {
@@ -68,11 +69,11 @@ class TypeChecker : public ReturningVisitor<Type> {
       return Type::invalid();
     };
 
-    _boolean_type = find_type(Symbols::bool_);
-    _integer_type = find_type(Symbols::int_);
-    _float_type = find_type(Symbols::float_);
-    _string_type = find_type(Symbols::string);
-    _null_type = find_type(Symbols::Null_).to_nullable();
+    boolean_type_ = find_type(Symbols::bool_);
+    integer_type_ = find_type(Symbols::int_);
+    float_type_ = find_type(Symbols::float_);
+    string_type_ = find_type(Symbols::string);
+    null_type_ = find_type(Symbols::Null_).to_nullable();
   }
 
   Type visit(Node* node) {
@@ -81,9 +82,12 @@ class TypeChecker : public ReturningVisitor<Type> {
 
 
   Type visit_Program(Program* node) {
+    // Visit globals first.
+    // While traversing we are inferring their type which will then be used in the
+    // other visits.
+    for (auto global: node->globals()) visit(global);
     for (auto klass: node->classes()) visit(klass);
     for (auto method: node->methods()) visit(method);
-    for (auto global: node->globals()) visit(global);
     return Type::invalid();
   }
 
@@ -98,9 +102,65 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   Type visit_Field(Field* node) { UNREACHABLE(); return Type::invalid(); }
 
+  // Methods are only visited for their side-effect.
+  // In theory there should be no user of these types, and they all return `Type::invalid`.
+  // The return-type is extracted when the methods are referenced.
   Type visit_Method(Method* node) {
-    _method = node;
+    method_ = node;
     if (node->has_body()) visit(node->body());
+    return Type::invalid();
+  }
+  // Globals are handled like methods. As such, they are only visited for the side-effect.
+  // Their return type should not be used and they all return `Type::invalid`.
+  // References to globals extract the return-type.
+  Type visit_Global(Global* node) {
+    if (handled_globals_.contains(node)) return Type::invalid();
+    if (node->has_explicit_type()) {
+      visit_Method(node);
+      handled_globals_.insert(node);
+      return Type::invalid();
+    }
+    if (reported_cyclic_globals_.contains(node)) {
+      return Type::invalid();
+    }
+    bool detected_cycle = globals_cycle_detector_.check_cycle(node, [&](const std::vector<ir::Global*>& cycle) {
+      report_cyclic_global_types(cycle);
+      reported_cyclic_globals_.insert(node);
+    });
+    if (detected_cycle) return Type::invalid();
+    method_ = node;
+    // TODO(florian): this is a bit hacky, but we have already rewritten the expression of
+    // the global, so we need to extract it now again.
+    auto body = node->body();
+    TOIT_CHECK(body->is_Sequence());
+    auto expressions = body->as_Sequence()->expressions();
+    TOIT_CHECK(expressions.length() == 1);
+    auto last = expressions.last();
+    if (last->is_CallStatic()) {
+      // Call to "uninitialized_global_failure_".
+      TOIT_CHECK(last->as_CallStatic()->target()->as_ReferenceMethod()->target()->name() == Symbols::uninitialized_global_failure_);
+      // The uninitialized_global_failure_ call references its own global recursively.
+      // Mark the node as handled already now and give it the 'any' type.
+      // Alternatively, we could also just not visit the body.
+      handled_globals_.insert(node);
+      node->set_return_type(Type::any());
+      visit(node->body());
+      return Type::invalid();
+    }
+    globals_cycle_detector_.start(node);
+    TOIT_CHECK(last->is_Return());
+    auto ret = last->as_Return();
+    auto value_type = visit(ret->value());
+    if (value_type.is_none()) {
+      report_error(ret->value()->range(), "Globals can't be initialized with 'none'");
+      node->set_return_type(Type::any());
+    } else if (ret->value()->is_LiteralNull()) {
+      node->set_return_type(Type::any());
+    } else {
+      node->set_return_type(value_type);
+    }
+    globals_cycle_detector_.stop(node);
+    handled_globals_.insert(node);
     return Type::invalid();
   }
 
@@ -108,9 +168,9 @@ class TypeChecker : public ReturningVisitor<Type> {
   Type visit_MonitorMethod(MonitorMethod* node) { return visit_Method(node); }
   Type visit_MethodStatic(MethodStatic* node) { return visit_Method(node); }
   Type visit_Constructor(Constructor* node) { return visit_Method(node); }
-  Type visit_Global(Global* node) { return visit_Method(node); }
   Type visit_AdapterStub(AdapterStub* node) { return visit_Method(node); }
-  Type visit_IsInterfaceStub(IsInterfaceStub* node) { return visit_Method(node); }
+  Type visit_MixinStub(MixinStub* node) { return visit_Method(node); }
+  Type visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStub* node) { return visit_Method(node); }
   Type visit_FieldStub(FieldStub* node) { return visit_Method(node); }
 
   Type visit_Expression(Expression* node) { UNREACHABLE(); return Type::invalid(); }
@@ -125,7 +185,7 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   Type visit_FieldStore(FieldStore* node) {
     auto field = node->field();
-    if (!_method->is_constructor()) {
+    if (!method_->is_constructor()) {
       // Don't report warnings for fields that are assigned in the constructor.
       // We would like to report warnings for explicit assignments, but we
       // don't have that information anymore. So we assume that it's the
@@ -173,7 +233,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     auto condition_type = visit(node->condition());
     if (condition_type.is_none()) {
       report_error(node->condition()->range(), "Condition can't be 'none'");
-    } else if (condition_type != _boolean_type &&
+    } else if (condition_type != boolean_type_ &&
                condition_type.is_class() &&
                !condition_type.is_nullable()) {
       report_warning(node->range(), "Condition always evaluates to true");
@@ -188,14 +248,14 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (value_type.is_none()) {
       report_error(node->value()->range(), "Argument to 'not' can't be 'none'");
     }
-    return _boolean_type;
+    return boolean_type_;
   }
 
   Type visit_While(While* node) {
     auto condition_type = visit(node->condition());
     if (condition_type.is_none()) {
       report_error(node->condition()->range(), "Condition can't be 'none'");
-    } else if (condition_type != _boolean_type &&
+    } else if (condition_type != boolean_type_ &&
                condition_type.is_class() &&
                !condition_type.is_nullable()) {
       report_warning(node->range(), "Condition always evaluates to true");
@@ -226,7 +286,21 @@ class TypeChecker : public ReturningVisitor<Type> {
   Type visit_ReferenceBlock(ReferenceBlock* node) { return visit_ReferenceLocal(node); }
   Type visit_ReferenceGlobal(ReferenceGlobal* node) {
     check_deprecated(node->range(), node->target());
-    return node->target()->return_type();
+    auto target = node->target();
+    // The second test (whether the method_ is a global) is just a shortcut, as a non-global 'method_'
+    // mean that we already handled all of them.
+    if (target->has_explicit_type() || !method_->is_Global()) {
+      return target->return_type();
+    }
+    auto current_method = method_;
+    visit_Global(target);
+    method_ = current_method;
+    auto type = target->return_type();
+    if (!type.is_valid()) {
+      ASSERT(diagnostics()->encountered_error());
+      return Type::any();
+    }
+    return type;
   }
 
   Type visit_Local(Local* node) { UNREACHABLE(); return Type::invalid(); }
@@ -289,7 +363,7 @@ class TypeChecker : public ReturningVisitor<Type> {
 
     auto receiver_type = visit(node->receiver());
     if (is_lsp_selection) {
-      _lsp->selection_handler()->call_virtual(node, receiver_type, _classes);
+      lsp_->selection_handler()->call_virtual(node, receiver_type, classes_);
     }
     auto arguments = node->arguments();
 
@@ -317,7 +391,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     ASSERT(receiver_type.is_class());
     auto klass = receiver_type.klass();
     Selector<CallShape> selector(node->selector(), node->shape());
-    auto queryable = _queryables->at(klass);
+    auto queryable = queryables_->at(klass);
     auto method = queryable.lookup(selector);
     if (method == null) {
       report_no_such_instance_method(klass, selector, node->range(), diagnostics());
@@ -359,9 +433,9 @@ class TypeChecker : public ReturningVisitor<Type> {
       }
     }
     if (is_arithmetic_operation(selector)) {
-      if (receiver_type == _integer_type) {
-        if (argument_types[0] == _integer_type) return _integer_type;
-        if (argument_types[0] == _float_type) return _float_type;
+      if (receiver_type == integer_type_) {
+        if (argument_types[0] == integer_type_) return integer_type_;
+        if (argument_types[0] == float_type_) return float_type_;
       }
     }
     return method->return_type();
@@ -373,7 +447,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (node->target()->kind() == Builtin::STORE_GLOBAL) {
       if (node->arguments().length() == 2) {
         auto index_type = visit(node->arguments()[0]);
-        check(node->range(), _integer_type, index_type);
+        check(node->range(), integer_type_, index_type);
         return visit(node->arguments()[1]);
       }
     }
@@ -381,7 +455,6 @@ class TypeChecker : public ReturningVisitor<Type> {
     visit_Call(node);
     switch (node->target()->kind()) {
       case Builtin::THROW:
-      case Builtin::HALT:
       case Builtin::EXIT:
         // These are not returning.
         return Type::none();
@@ -405,7 +478,10 @@ class TypeChecker : public ReturningVisitor<Type> {
 
       case Builtin::GLOBAL_ID:
         ASSERT(node->arguments().length() == 1 && node->arguments()[0]->is_ReferenceGlobal());
-        return _integer_type;
+        return integer_type_;
+
+      case Builtin::IDENTICAL:
+        return boolean_type_;
     };
     UNREACHABLE();
   }
@@ -414,7 +490,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     auto expression_type = visit(node->expression());
     switch (node->kind()) {
       case Typecheck::IS_CHECK:
-        return _boolean_type;
+        return boolean_type_;
       case Typecheck::AS_CHECK:
         return node->type();
       case Typecheck::PARAMETER_AS_CHECK:
@@ -431,9 +507,9 @@ class TypeChecker : public ReturningVisitor<Type> {
   }
 
   Type visit_Return(Return* node) {
-    auto return_type = visit(node->value());
+    auto value_type = visit(node->value());
     if (node->depth() == -1) {
-      check(node->range(), _method->return_type(), return_type);
+      check(node->range(), method_->return_type(), value_type);
     }
     return Type::none();
   }
@@ -501,51 +577,55 @@ class TypeChecker : public ReturningVisitor<Type> {
   Type visit_Literal(Literal* node) { UNREACHABLE(); return Type::invalid(); }
 
   Type visit_LiteralNull(LiteralNull* node) {
-    return _null_type;
+    return null_type_;
   }
   Type visit_LiteralUndefined(LiteralUndefined* node) {
     // TODO(florian): should have the type of the corresponding assignments.
     return Type::any();
   }
   Type visit_LiteralInteger(LiteralInteger* node) {
-    return _integer_type;
+    return integer_type_;
   }
   Type visit_LiteralFloat(LiteralFloat* node) {
-    return _float_type;
+    return float_type_;
   }
   Type visit_LiteralString(LiteralString* node) {
-    return _string_type;
+    return string_type_;
   }
   Type visit_LiteralBoolean(LiteralBoolean* node) {
-    return _boolean_type;
+    return boolean_type_;
   }
   Type visit_LiteralByteArray(LiteralByteArray* node) {
     return Type::any();
   }
-
-
   Type visit_PrimitiveInvocation(PrimitiveInvocation* node) {
     // TODO(florian): get the type of primitive invocations.
     return Type::any();
   }
 
  private:
-  List<ir::Class*> _classes;
-  const UnorderedMap<ir::Class*, QueryableClass>* _queryables;
-  const Set<ir::Node*>* _deprecated;
-  Lsp* _lsp;
-  Diagnostics* _diagnostics;
+  List<ir::Class*> classes_;
+  const UnorderedMap<ir::Class*, QueryableClass>* queryables_;
+  const Set<ir::Node*>* deprecated_;
+  Lsp* lsp_;
+  Diagnostics* diagnostics_;
+
+  // Since globals can be visited out of order (recursively), we need to
+  // keep track which globals are already fully done.
+  Set<ir::Global*> handled_globals_;
+  CycleDetector<ir::Global*> globals_cycle_detector_;
+  UnorderedSet<ir::Global*> reported_cyclic_globals_;
 
   // The current method.
-  Method* _method;
+  Method* method_;
 
-  Type _boolean_type;
-  Type _integer_type;
-  Type _float_type;
-  Type _string_type;
-  Type _null_type;
+  Type boolean_type_;
+  Type integer_type_;
+  Type float_type_;
+  Type string_type_;
+  Type null_type_;
 
-  Diagnostics* diagnostics() const { return _diagnostics; }
+  Diagnostics* diagnostics() const { return diagnostics_; }
 
   void report_error(Source::Range range, const char* format, ...) {
     va_list arguments;
@@ -561,23 +641,35 @@ class TypeChecker : public ReturningVisitor<Type> {
     va_end(arguments);
   }
 
+  void report_cyclic_global_types(const std::vector<ir::Global*>& cycle) {
+    for (auto global : cycle) {
+      diagnostics()->start_group();
+      diagnostics()->report_error(global->range(), "Cyclic type dependency");
+      for (auto cyclic : cycle) {
+        if (cyclic == global) continue;
+        diagnostics()->report_note(cyclic->range(), "This global contributes to the type-dependency cycle");
+      }
+      diagnostics()->end_group();
+    }
+  }
+
   void check_deprecated(Source::Range range, ir::Node* node) {
     // Don't give warnings for synthetic stubs.
-    if (_method->is_FieldStub()) return;
+    if (method_->is_FieldStub()) return;
     auto name = Symbol::invalid();
     auto holder_name = Symbol::invalid();
     Class* holder;
     if (node->is_FieldStub()) {
       node = node->as_FieldStub()->field();
     }
-    bool is_deprecated = _deprecated->contains(node);
+    bool is_deprecated = deprecated_->contains(node);
     if (node->is_Method()) {
       auto method = node->as_Method();
       name = method->name();
       holder = method->holder();
       bool holder_is_deprecated = false;
       if (holder != null) {
-        holder_is_deprecated = _deprecated->contains(holder);
+        holder_is_deprecated = deprecated_->contains(holder);
         holder_name = holder->name();
       }
       if (method->is_constructor() || method->is_factory()) {
@@ -621,19 +713,19 @@ class TypeChecker : public ReturningVisitor<Type> {
       report_error(range, "Can't use value that is typed 'none'");
       return;
     }
-    if (receiver_type.is_nullable() && value_type == _null_type) return;
+    if (receiver_type.is_nullable() && value_type == null_type_) return;
     if (receiver_type == value_type) return;  // This also covers `Null_` == `null`.
 
     auto receiver_class = receiver_type.klass();
     auto value_class = value_type.klass();
     auto receiver_name = receiver_class->name();
     auto value_name = value_class->name();
-    if (!receiver_type.is_nullable() && value_type == _null_type) {
+    if (!receiver_type.is_nullable() && value_type == null_type_) {
       if (receiver_name.is_valid()) {
         report_error(range, "Type mismatch: can't assign 'null' to non-nullable '%s'", receiver_name.c_str());
       } else {
         // The receiver-type has no name.
-        ASSERT(_method->is_factory() && receiver_class == _method->holder());
+        ASSERT(method_->is_factory() && receiver_class == method_->holder());
         ASSERT(diagnostics()->encountered_error());
         // We just assume that this must be the return-check.
         report_error(range, "Can't return `null` from factory");
@@ -641,12 +733,17 @@ class TypeChecker : public ReturningVisitor<Type> {
       return;
     }
     ASSERT(receiver_type.is_class() && value_type.is_class());
-    for (int i = -1; i < value_class->interfaces().length(); i++) {
-      Class* current = i == -1 ? value_class : value_class->interfaces()[i];
-      do {
-        if (current == receiver_class) return;
-        current = current->super();
-      } while (current != null);
+    for (Class* current = value_class; current != null; current = current->super()) {
+      if (current == receiver_class) return;
+      for (auto inter : current->interfaces()) {
+        // The interfaces list contains a flattened list of all interfaces this class implements.
+        if (inter == receiver_class) return;
+      }
+      for (auto mixin : current->mixins()) {
+        // The mixin list contains a flattened list of all mixins that are between this
+        // class and the super.
+        if (mixin == receiver_class) return;
+      }
     }
     if (receiver_name.is_valid() && value_name.is_valid()) {
       // TODO(florian); fix internal names (such as "_SmallInteger").
@@ -656,7 +753,7 @@ class TypeChecker : public ReturningVisitor<Type> {
                    value_name.c_str());
     } else if (value_name.is_valid()) {
       // The receiver-type has no name.
-      ASSERT(_method->is_factory() && receiver_class == _method->holder());
+      ASSERT(method_->is_factory() && receiver_class == method_->holder());
       ASSERT(diagnostics()->encountered_error());
       // We just assume that this must be the return-check.
       report_error(range,
@@ -665,7 +762,7 @@ class TypeChecker : public ReturningVisitor<Type> {
     } else {
       ASSERT(receiver_name.is_valid());
       // The value-type has no name.
-      ASSERT(_method->is_constructor() && value_class == _method->holder());
+      ASSERT(method_->is_constructor() && value_class == method_->holder());
       ASSERT(diagnostics()->encountered_error());
       // We already reported an error that the constructor must not have a
       //   return type.
@@ -684,7 +781,8 @@ void check_types_and_deprecations(ir::Program* program,
                                   ToitdocRegistry* toitdocs,
                                   Diagnostics* diagnostics) {
   auto deprecated = collect_deprecated_elements(program, toitdocs);
-  auto queryables = build_queryables_from_resolution_shapes(program);
+  bool include_abstracts;
+  auto queryables = build_queryables_from_resolution_shapes(program, include_abstracts=true);
   TypeChecker checker(program->literal_types(), program->classes(), &queryables, &deprecated, lsp, diagnostics);
   program->accept(&checker);
 }

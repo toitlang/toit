@@ -36,51 +36,51 @@ int ByteGen::assemble_method(Method* method,
   return assemble_function(method,
                            dispatch_offset,
                            is_field_accessor,
-                           _source_mapper->register_method(method));
+                           source_mapper_->register_method(method));
 }
 
 int ByteGen::assemble_global(ir::Global* global) {
   return assemble_function(global,
-                           0,      // dispatch_offset.
+                           -1,     // dispatch_offset.
                            false,  // is_field_accessor.
-                           _source_mapper->register_global(global));
+                           source_mapper_->register_global(global));
 }
 
 int ByteGen::assemble_function(ir::Method* function,
                                int dispatch_offset,
                                bool is_field_accessor,
                                SourceMapper::MethodMapper method_mapper) {
-  ASSERT(!_method_mapper.is_valid());
-  ASSERT(_method == null);
-  ASSERT(_emitter == null);
+  ASSERT(!method_mapper_.is_valid());
+  ASSERT(method_ == null);
+  ASSERT(emitter_ == null);
 
-  _method_mapper = method_mapper;
-  _method = function;
+  method_mapper_ = method_mapper;
+  method_ = function;
   int arity = function->plain_shape().arity();
   Emitter emitter(arity);
-  _locals_count = 0;
-  _emitter = &emitter;
+  locals_count_ = 0;
+  emitter_ = &emitter;
 
   visit(function);
 
   auto bytecodes = emitter.bytecodes();
   int max_height = emitter.max_height();
 
-  int id = _program_builder->create_method(dispatch_offset,
+  int id = program_builder_->create_method(dispatch_offset,
                                            is_field_accessor,
                                            arity,
                                            bytecodes,
                                            max_height);
 
-  _method_mapper.finalize(id, bytecodes.length());
+  method_mapper_.finalize(id, bytecodes.length());
 
-  update_absolute_positions(_program_builder->absolute_bci_for(id),
+  update_absolute_positions(program_builder_->absolute_bci_for(id),
                             emitter.build_absolute_uses(),
                             emitter.build_absolute_references());
 
-  _method = null;
-  _method_mapper = SourceMapper::MethodMapper::invalid();
-  _emitter = null;
+  method_ = null;
+  method_mapper_ = SourceMapper::MethodMapper::invalid();
+  emitter_ = null;
 
   return id;
 }
@@ -93,26 +93,22 @@ int ByteGen::_assemble_block(Code* node) {
   // extra block parameter.
   ASSERT(arity == 1 || node->parameters()[0]->index() != 0);
 
-  auto mapper = _method_mapper.register_block(node);
+  auto mapper = method_mapper_.register_block(node);
   return _assemble_nested_function(node->body(),
                                    arity,
                                    true,  // A block.
                                    0,     // Ignored captured_count
-                                   false,
-                                   true,  // Should push the outer emitter.
                                    mapper);
 }
 
 int ByteGen::_assemble_lambda(Code* node) {
   ASSERT(!node->is_block());
   int arity = node->parameters().length();
-  auto mapper = _method_mapper.register_lambda(node);
+  auto mapper = method_mapper_.register_lambda(node);
   return _assemble_nested_function(node->body(),
                                    arity,
                                    false, // Not a block.
                                    node->captured_count(),
-                                   false,
-                                   true,  // Should push the outer emitter.
                                    mapper);
 }
 
@@ -120,24 +116,17 @@ int ByteGen::_assemble_nested_function(Node* body,
                                        int arity,
                                        bool is_block,
                                        int captured_count,
-                                       bool body_has_explicit_return,
-                                       bool should_push_old_emitter,
                                        SourceMapper::MethodMapper method_mapper) {
-  auto old_emitter = _emitter;
-  if (should_push_old_emitter) {
-    _outer_emitters_stack.push_back(old_emitter);
-  }
-  Emitter nested_emitter(arity);
-  _emitter = &nested_emitter;
-  auto old_mapper = _method_mapper;
-  _method_mapper = method_mapper;
+  auto old_emitter = emitter_;
+  outer_emitters_stack_.push_back(old_emitter);
 
-  if (body_has_explicit_return) {
-    visit_for_effect(body);
-  } else {
-    visit_for_value(body);
-    __ ret();
-  }
+  Emitter nested_emitter(arity);
+  emitter_ = &nested_emitter;
+  auto old_mapper = method_mapper_;
+  method_mapper_ = method_mapper;
+
+  visit_for_value(body);
+  __ ret();
 
   List<uint8> bytecodes = nested_emitter.bytecodes();
   int max_height = nested_emitter.max_height();
@@ -147,19 +136,16 @@ int ByteGen::_assemble_nested_function(Node* body,
   } else {
     id = program_builder()->create_lambda(captured_count, arity, bytecodes, max_height);
   }
-  _method_mapper.finalize(id, bytecodes.length());
+  method_mapper_.finalize(id, bytecodes.length());
 
-  update_absolute_positions(_program_builder->absolute_bci_for(id),
+  update_absolute_positions(program_builder_->absolute_bci_for(id),
                             nested_emitter.build_absolute_uses(),
                             nested_emitter.build_absolute_references());
 
 
-  _method_mapper = old_mapper;
-  _emitter = old_emitter;
-  if (should_push_old_emitter) {
-    _outer_emitters_stack.pop_back();
-  }
-
+  method_mapper_ = old_mapper;
+  emitter_ = old_emitter;
+  outer_emitters_stack_.pop_back();
   return id;
 }
 
@@ -176,7 +162,7 @@ void ByteGen::update_absolute_positions(int absolute_entry_bci,
     int absolute_label_bci = ref.absolute_position(absolute_entry_bci);
     for (auto label_use : ref.absolute_uses()) {
       ASSERT(label_use->has_absolute_position());
-      _program_builder->patch_uint32_at(label_use->absolute_position(),
+      program_builder_->patch_uint32_at(label_use->absolute_position(),
                                         absolute_label_bci);
     }
     ref.free_absolute_uses();
@@ -184,15 +170,15 @@ void ByteGen::update_absolute_positions(int absolute_entry_bci,
 }
 
 void ByteGen::visit(Node* node) {
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   bool is_for_value = this->is_for_value();
   int height = emitter()->height();
-  int locals = _locals_count;
+  int locals = locals_count_;
 #endif
   node->accept(this);
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   ASSERT(is_for_value == this->is_for_value());
-  int definitions = _locals_count - locals;
+  int definitions = locals_count_ - locals;
   int expected = height + definitions + (is_for_value ? 1 : 0);
   if (emitter()->height() != expected) {
     printf("wrong stack height; expected %d but was %d\n", expected, emitter()->height());
@@ -202,17 +188,17 @@ void ByteGen::visit(Node* node) {
 }
 
 void ByteGen::visit_for_effect(Node* node) {
-  bool saved = _is_for_value;
-  _is_for_value = false;
+  bool saved = is_for_value_;
+  is_for_value_ = false;
   visit(node);
-  _is_for_value = saved;
+  is_for_value_ = saved;
 }
 
 void ByteGen::visit_for_value(Node* expression) {
-  bool saved = _is_for_value;
-  _is_for_value = true;
+  bool saved = is_for_value_;
+  is_for_value_ = true;
   visit(expression);
-  _is_for_value = saved;
+  is_for_value_ = saved;
 }
 
 void ByteGen::visit_for_control(Expression* expression,
@@ -274,7 +260,8 @@ void ByteGen::_generate_method(Method* node) {
   if (Flags::compiler) printf("-compiling %s\n", node->name().c_str());
 
   // No need to build the interface-stub.
-  if (node->is_IsInterfaceStub()) return;
+  if (node->is_IsInterfaceOrMixinStub()) return;
+  ASSERT(!node->is_dead());
   visit_for_effect(node->body());
 }
 
@@ -283,7 +270,8 @@ void ByteGen::visit_MonitorMethod(MonitorMethod* node) { _generate_method(node);
 void ByteGen::visit_MethodStatic(MethodStatic* node) { _generate_method(node); }
 void ByteGen::visit_Constructor(Constructor* node) { _generate_method(node); }
 void ByteGen::visit_AdapterStub(AdapterStub* node) { _generate_method(node); }
-void ByteGen::visit_IsInterfaceStub(IsInterfaceStub* node) { _generate_method(node); }
+void ByteGen::visit_MixinStub(MixinStub* node) { _generate_method(node); }
+void ByteGen::visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStub* node) { _generate_method(node); }
 void ByteGen::visit_FieldStub(FieldStub* node) { _generate_method(node); }
 
 void ByteGen::visit_Global(Global* node) { _generate_method(node); }
@@ -294,7 +282,7 @@ void ByteGen::visit_Code(Code* node) {
   // Push a block-construction token on the stack now, so that references
   // using load_outer are relative to the height of the stack, as if they were
   // locals or parameters.
-  _emitter->remember(1, ExpressionStack::BLOCK_CONSTRUCTION_TOKEN);
+  emitter_->remember(1, ExpressionStack::BLOCK_CONSTRUCTION_TOKEN);
 
 
   int id = node->is_block()
@@ -302,20 +290,23 @@ void ByteGen::visit_Code(Code* node) {
       : _assemble_lambda(node);
 
   // Push the method id on the stack.
-  __ load_integer(id);
+  __ load_method(id);
 
   // Pop the block-token, and replace it with the top of the stack (which is
   // an ExpressionStack::Object).
-  _emitter->forget(2);
-  _emitter->remember(1, ExpressionStack::OBJECT);
+  emitter_->forget(2);
+  emitter_->remember(1, ExpressionStack::OBJECT);
 }
 
 void ByteGen::visit_Nop(Nop* node) {
-  // Do nothing.
+  if (is_for_effect()) return;
+  // Empty sequences may be translated to nops. If we need a
+  // value for such a sequence, it is safe to produce null.
+  __ load_null();
 }
 
 void ByteGen::visit_Sequence(Sequence* node) {
-  int old_locals_count = _locals_count;
+  int old_locals_count = locals_count_;
   int old_height = emitter()->height();
 
   List<Expression*> expressions = node->expressions();
@@ -333,35 +324,39 @@ void ByteGen::visit_Sequence(Sequence* node) {
   }
 
   // Pop all the locals of this sequence.
-  int introduced_locals = _locals_count - old_locals_count;
+  int introduced_locals = locals_count_ - old_locals_count;
   if (is_for_value() && introduced_locals > 0) {
     // We need to store the value that is currently on the top of the stack
     // in the slot that is currently occupied by the first variable.
     __ store_local(old_height);
   }
 
-  // Avoid popping locals after return. It is dead code.
-  int extra = _locals_count - old_locals_count;
-  if (length > 0 && expressions.last()->is_Return()) {
+  // Avoid popping locals at the end of the method or after returns
+  // and non-local loop branches. It is dead code.
+  int extra = locals_count_ - old_locals_count;
+  bool end_of_method = node == method_->body();
+  bool ends_with_return = length > 0 && expressions.last()->is_Return();
+  bool ends_with_branch = length > 0 && expressions.last()->is_LoopBranch();
+  if (end_of_method || ends_with_return || ends_with_branch) {
     emitter()->forget(extra);
   } else {
     __ pop(extra);
   }
 
   ASSERT(emitter()->height() == old_height + (is_for_value() ? 1 : 0));
-  _locals_count = old_locals_count;
+  locals_count_ = old_locals_count;
 }
 
 void ByteGen::visit_TryFinally(TryFinally* node) {
   // Create the try block.
-  int block_slot = _emitter->height();
+  int block_slot = emitter_->height();
   visit_for_value(node->body());
 
   __ link();
-  int link_height = _emitter->height();
+  int link_height = emitter_->height();
 
   __ load_block(block_slot);
-  int after_body_height = _emitter->height();
+  int after_body_height = emitter_->height();
   // The unwind code relies on the fact that there is only one stack-slot used
   // between the block-call and the pushed link information.
   ASSERT(after_body_height == link_height + 1);
@@ -371,7 +366,7 @@ void ByteGen::visit_TryFinally(TryFinally* node) {
   // Unlink, invoke finally block, and continue unwinding.
   __ unlink();
 
-  int old_locals_count = _locals_count;
+  int old_locals_count = locals_count_;
   auto handler_parameters = node->handler_parameters();
   if (!handler_parameters.is_empty()) {
     ASSERT(handler_parameters.length() == 2);
@@ -385,8 +380,8 @@ void ByteGen::visit_TryFinally(TryFinally* node) {
   visit_for_effect(node->handler());
 
   if (!handler_parameters.is_empty()) {
-    ASSERT(_locals_count == old_locals_count + 2);
-    _locals_count = old_locals_count;
+    ASSERT(locals_count_ == old_locals_count + 2);
+    locals_count_ = old_locals_count;
   }
   __ unwind();
 
@@ -430,8 +425,7 @@ void ByteGen::visit_If(If* node) {
     visit(ir_yes);
 
     if (is_for_value()) {
-      ASSERT(!ir_no->is_Nop());
-       __ branch(Emitter::UNCONDITIONAL, &done_label);
+      __ branch(Emitter::UNCONDITIONAL, &done_label);
       emitter()->forget(1);
     } else if (ir_no->is_Nop() || ir_no->is_Literal()) {
       // We avoid emitting a branch at the end of the 'yes' part if we know that
@@ -472,20 +466,20 @@ void ByteGen::visit_While(While* node) {
   __ bind(&entry);
   visit_for_control(node->condition(), &loop, &done, &loop);
 
-  auto old_break = _break_target;
-  auto old_continue = _continue_target;
-  int old_loop_height = _loop_height;
-  _break_target = &done;
-  _continue_target = &update;
-  _loop_height = emitter()->height();
+  auto old_break = break_target_;
+  auto old_continue = continue_target_;
+  int old_loop_height = loop_height_;
+  break_target_ = &done;
+  continue_target_ = &update;
+  loop_height_ = emitter()->height();
 
   // Visit body in current state.
   __ bind(&loop);
   visit(node->body());
 
-  _break_target = old_break;
-  _continue_target = old_continue;
-  _loop_height = old_loop_height;
+  break_target_ = old_break;
+  continue_target_ = old_continue;
+  loop_height_ = old_loop_height;
 
   __ bind(&update);
   visit(node->update());
@@ -502,14 +496,14 @@ void ByteGen::visit_While(While* node) {
 }
 
 void ByteGen::visit_LoopBranch(LoopBranch* node) {
-  auto target = node->is_break() ? _break_target : _continue_target;
+  auto target = node->is_break() ? break_target_ : continue_target_;
   if (node->block_depth() > 0) {
     auto outer_emitter = _load_block_at_depth(node->block_depth());
-    __ nl_branch(target, outer_emitter->height() - _loop_height);
+    __ nl_branch(target, outer_emitter->height() - loop_height_);
     emitter()->remember(is_for_value() ? 1 : 0);
   } else {
     ASSERT(target != null);
-    int extra = emitter()->height() - _loop_height;
+    int extra = emitter()->height() - loop_height_;
     auto extra_types = emitter()->stack_types(extra);
     __ pop(extra);
     __ branch(Emitter::UNCONDITIONAL, target);
@@ -585,23 +579,6 @@ int ByteGen::register_integer64_literal(int64 data) {
   return program_builder()->add_integer(data);
 }
 
-static void potentially_register_pubsub_call(Call* node,
-                                             List<Expression*> arguments,
-                                             int bytecode_position,
-                                             SourceMapper::MethodMapper method_mapper,
-                                             DispatchTable* dispatch_table) {
-  if (!node->is_CallStatic()) return;
-  auto method = node->as_CallStatic()->target()->target();
-  if (strcmp(method->name().c_str(), "subscribe") != 0) return;
-  if (arguments.length() != 4) return;
-  int target_dispatch_index = dispatch_table->slot_index_for(method);
-  const char* topic = null;
-  if (arguments[0]->is_LiteralString()) {
-    topic = arguments[0]->as_LiteralString()->value();
-  }
-  method_mapper.register_pubsub_call(bytecode_position, target_dispatch_index, topic);
-}
-
 template<typename T, typename T2>
 void ByteGen::_generate_call(Call* node,
                              const T& compile_target,
@@ -617,12 +594,7 @@ void ByteGen::_generate_call(Call* node,
 
   if (node->range().is_valid()) {
     int bytecode_position = emitter()->position();
-    _method_mapper.register_call(bytecode_position, node->range());
-    potentially_register_pubsub_call(node,
-                                     arguments,
-                                     bytecode_position,
-                                     _method_mapper,
-                                     dispatch_table());
+    method_mapper_.register_call(node, bytecode_position);
   }
 
   if (is_for_effect()) __ pop(1);
@@ -697,9 +669,9 @@ void ByteGen::visit_CallVirtual(CallVirtual* node) {
       // Note that we don't need to pop the pushed block methods, as this will
       // happen unconditionally in [generate_call].
 
-      __ pop(arity - 1);  // Keep the receiver since we need this as argument _lookup_failure.
+      __ pop(arity - 1);  // Keep the receiver since we need this as argument lookup_failure_.
 
-      int target_index = dispatch_table()->slot_index_for(_lookup_failure);
+      int target_index = dispatch_table()->slot_index_for(lookup_failure_);
       if (shape.is_setter()) {
         std::string name(selector.name().c_str());
         name += "=";
@@ -741,17 +713,12 @@ void ByteGen::visit_CallBuiltin(CallBuiltin* node) {
       if (is_for_effect()) emitter()->forget(1);
       break;
 
-    case Builtin::HALT:
-      __ halt(1);
-      if (is_for_value()) emitter()->remember(1);
-      break;
-
     case Builtin::INVOKE_LAMBDA: {
         ASSERT(node->arguments().length() == 1 &&
                node->arguments()[0]->is_LiteralInteger());
         int64 val = node->arguments()[0]->as_LiteralInteger()->value();
         ASSERT(Smi::is_valid(val));
-        __ invoke_lambda_tail(val, _max_captured_count);
+        __ invoke_lambda_tail(val, max_captured_count_);
         if (is_for_value()) emitter()->remember(1);
       }
       break;
@@ -763,13 +730,13 @@ void ByteGen::visit_CallBuiltin(CallBuiltin* node) {
 
     case Builtin::EXIT:
       visit_for_value(node->arguments()[0]);
-      __ halt(2);
+      __ halt(1);
       if (is_for_effect()) emitter()->forget(1);
       break;
 
     case Builtin::DEEP_SLEEP:
       visit_for_value(node->arguments()[0]);
-      __ halt(3);
+      __ halt(2);
       if (is_for_effect()) emitter()->forget(1);
       break;
 
@@ -790,16 +757,33 @@ void ByteGen::visit_CallBuiltin(CallBuiltin* node) {
       if (is_for_value()) emitter()->remember(1);
       break;
 
-    case Builtin::GLOBAL_ID:
+    case Builtin::GLOBAL_ID: {
       ASSERT(node->arguments()[0]->is_ReferenceGlobal());
       auto global = node->arguments()[0]->as_ReferenceGlobal()->target();
       __ load_integer(global->global_id());
+      break;
+    }
+
+    case Builtin::IDENTICAL:
+      if (is_for_effect()) {
+        visit_for_effect(node->arguments()[0]);
+        visit_for_effect(node->arguments()[1]);
+      } else {
+        visit_for_value(node->arguments()[0]);
+        visit_for_value(node->arguments()[1]);
+        __ identical();
+      }
       break;
   }
 }
 
 void ByteGen::visit_Typecheck(Typecheck* node) {
   if (node->type().is_any()) {
+    // We will not hit this part of the code generation when we're
+    // optimizing and that is important, because we will not be
+    // registering any 'as' or 'is' check bytecodes, so we risk
+    // concluding that the check was never executed and therefore
+    // always throws. Hmm.
     if (node->is_as_check()) {
       visit(node->expression());
     } else if (is_for_value()) {
@@ -810,7 +794,7 @@ void ByteGen::visit_Typecheck(Typecheck* node) {
   }
 
   bool is_interface_check = node->is_interface_check();
-  int typecheck_index = (*_typecheck_indexes)[node->type().klass()];
+  int typecheck_index = (*typecheck_indexes_)[node->type().klass()];
   bool is_nullable = node->type().is_nullable();
   bool is_as_check = node->is_as_check();
 
@@ -828,9 +812,7 @@ void ByteGen::visit_Typecheck(Typecheck* node) {
       int height = local_height(target->as_Local()->index());
       bytecode_position = __ typecheck_local(height, typecheck_index);
     }
-    _method_mapper.register_as_check(bytecode_position,
-                                     node->range(),
-                                     node->type_name().c_str());
+    method_mapper_.register_as_check(node, bytecode_position);
     return;
   }
 
@@ -845,18 +827,16 @@ void ByteGen::visit_Typecheck(Typecheck* node) {
 
   if (is_as_check) {
     int bytecode_position = emitter()->position();
-    _method_mapper.register_as_check(bytecode_position,
-                                     node->range(),
-                                     node->type_name().c_str());
+    method_mapper_.register_as_check(node, bytecode_position);
   }
   if (is_for_effect()) __ pop(1);
 }
 
 void ByteGen::visit_Return(Return* node) {
   if (node->depth() == -1) {
-    if (!_outer_emitters_stack.empty()) {
+    if (!outer_emitters_stack_.empty()) {
       visit_for_value(node->value());
-      Emitter* outer = _load_block_at_depth(_outer_emitters_stack.size());
+      Emitter* outer = _load_block_at_depth(outer_emitters_stack_.size());
       __ nlr(outer->height() - 1, outer->arity());
     } else if (node->value()->is_LiteralNull()) {
       __ ret_null();
@@ -943,12 +923,12 @@ void ByteGen::visit_LiteralBoolean(LiteralBoolean* node) {
 
 Emitter* ByteGen::_load_block_at_depth(int block_depth) {
   ASSERT(block_depth > 0);
-  int stack_size = _outer_emitters_stack.size();
+  int stack_size = outer_emitters_stack_.size();
   __ load_parameter(0, ExpressionStack::BLOCK);
   for (int i = 1; i < block_depth; i++) {
-    __ load_outer_parameter(0, ExpressionStack::BLOCK, _outer_emitters_stack[stack_size - i]);
+    __ load_outer_parameter(0, ExpressionStack::BLOCK, outer_emitters_stack_[stack_size - i]);
   }
-  return _outer_emitters_stack[stack_size - block_depth];
+  return outer_emitters_stack_[stack_size - block_depth];
 }
 
 void ByteGen::visit_ReferenceLocal(ReferenceLocal* node) {
@@ -991,7 +971,7 @@ void ByteGen::visit_ReferenceGlobal(ReferenceGlobal* node) {
 
   __ load_global_var(node->target()->global_id(), is_lazy);
   int bytecode_position = emitter()->position();
-  _method_mapper.register_call(bytecode_position, node->range());
+  method_mapper_.register_call(node, bytecode_position);
 
   if (is_for_effect()) __ pop(1);
 }

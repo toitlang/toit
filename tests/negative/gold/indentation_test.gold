@@ -1,4 +1,0 @@
-tests/negative/indentation_test.toit:6:3: warning: Unusual indentation for parameter
-  x:
-  ^
-499

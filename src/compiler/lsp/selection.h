@@ -60,14 +60,19 @@ class LspSelectionHandler {
  public:
   /// The constructor takes a protocol as argument. All information that is
   /// sent to the LSP server must go through the protocol.
-  explicit LspSelectionHandler(LspProtocol* protocol) : _protocol(protocol) { }
-  virtual ~LspSelectionHandler() { }
+  explicit LspSelectionHandler(LspProtocol* protocol) : protocol_(protocol) {}
+  virtual ~LspSelectionHandler() {}
 
   /// Handles a class or interface node.
   ///
   /// This is used when a class resolves a superclass (in the extends clause) or for
   ///   finding interfaces (in the implements clause).
-  virtual void class_or_interface(ast::Node* node, IterableScope* scope, ir::Class* holder, ir::Node* resolved, bool needs_interface) = 0;
+  virtual void class_interface_or_mixin(ast::Node* node,
+                                        IterableScope* scope,
+                                        ir::Class* holder,
+                                        ir::Node* resolved,
+                                        bool needs_interface,
+                                        bool needs_mixin) = 0;
 
   /// Handles a type node.
   ///
@@ -126,10 +131,10 @@ class LspSelectionHandler {
 
 
  protected:
-  LspProtocol* protocol() { return _protocol; }
+  LspProtocol* protocol() { return protocol_; }
 
  private:
-  LspProtocol* _protocol;
+  LspProtocol* protocol_;
 };
 
 } // namespace toit::compiler

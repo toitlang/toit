@@ -1,0 +1,25 @@
+name: Build envelopes
+
+on:
+  release:
+    types: [ published ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.LEON_REPOSITORY_DISPATCH }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'toitlang',
+              repo: 'envelopes',
+              workflow_id: 'build.yml',
+              ref: 'main',
+              inputs: {
+                'toit-version': '${{ github.event.release.tag_name }}',
+                'upload-release': 'true',
+              },
+            });

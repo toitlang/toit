@@ -22,7 +22,7 @@ namespace compiler{
 #define PRIMITIVE_NAME(name, arity) \
   #name,
 #define PRIMITIVE_NAME_TABLE(name, entries) \
-static const char* name##_names[] = { \
+static const char* name##names_[] = { \
   entries(PRIMITIVE_NAME) \
   null \
 };
@@ -39,7 +39,7 @@ MODULES(PRIMITIVE_ARITY_TABLE)
 #define MODULE_NAME(name, entries) \
   #name,
 #define MODULE_PRIMITIVE_NAMES(name, entries) \
-  name##_names,
+  name##names_,
 #define MODULE_PRIMITIVE_ARITIES(name, entries) \
   name##_arities,
 static const char* module_names[] = {
@@ -58,9 +58,19 @@ static int* module_primitive_arities[] = {
 #undef MODULE_PRIMITIVE_NAMES
 #undef MODULE_PRIMITIVE_ARITIES
 
+static bool equals_ignore_dashes(const char* a, const char* b) {
+  for (; *a != '\0'; a++, b++) {
+    if (*a == *b) continue;
+    if (*a == '_' && *b == '-') continue;
+    if (*a == '-' && *b == '_') continue;
+    return false;
+  }
+  return *b == '\0';
+}
+
 int PrimitiveResolver::find_module(compiler::Symbol name) {
   for (unsigned i = 0; i < ARRAY_SIZE(module_names); i++) {
-    if (strcmp(name.c_str(), module_names[i]) == 0) return i;
+    if (equals_ignore_dashes(name.c_str(), module_names[i])) return i;
   }
   return -1;
 }
@@ -69,7 +79,7 @@ int PrimitiveResolver::find_primitive(compiler::Symbol name, int module) {
   ASSERT(module >= 0 && module < static_cast<int>(ARRAY_SIZE(module_names)));
   const char** names = module_primitive_names[module];
   for (int i = 0; names[i] != null; i++) {
-    if (strcmp(names[i], name.c_str()) == 0) return i;
+    if (equals_ignore_dashes(name.c_str(), names[i])) return i;
   }
   return -1;
 }

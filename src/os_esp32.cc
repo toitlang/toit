@@ -17,28 +17,37 @@
 
 #ifdef TOIT_FREERTOS
 
+#include <esp_efuse.h>
+#include <esp_chip_info.h>
 #include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_sleep.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
+#include <hal/efuse_hal.h>
 #include <malloc.h>
 #include <sys/time.h>
 #include <sys/queue.h>
 
-#include "os.h"
+#include "driver/uart.h"
 #include "flags.h"
 #include "heap_report.h"
 #include "memory.h"
+#include "os.h"
 #include "rtc_memory_esp32.h"
-#include "driver/uart.h"
+#include "scheduler.h"
+#include "utils.h"
+#include "vm.h"
 
 #include <soc/soc.h>
 #include <soc/uart_reg.h>
+#include <hal/efuse_hal.h>
 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
+#if CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32S3
+  #include <esp32s3/rtc.h>
 #else
   #include <esp32/rtc.h>
 #endif
@@ -48,15 +57,36 @@
 namespace toit {
 
 // Flags used to get memory for the Toit heap, which needs to be fast and 8-bit
-// capable.
-static const int TOIT_HEAP_CAPS_FLAGS = MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
+// capable.  We will set this to the most useful value when we have detected
+// which types of RAM are available.
+bool OS::use_spiram_for_heap_ = false;
+bool OS::use_spiram_for_metadata_ = false;
+
+static const int EXTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM;
+static const int INTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
+
+int OS::toit_heap_caps_flags_for_heap() {
+  if (use_spiram_for_heap()) {
+    return EXTERNAL_CAPS;
+  } else {
+    return INTERNAL_CAPS;
+  }
+}
+
+int OS::toit_heap_caps_flags_for_metadata() {
+  if (use_spiram_for_metadata()) {
+    return EXTERNAL_CAPS;
+  } else {
+    return INTERNAL_CAPS;
+  }
+}
 
 void panic_put_char(char c) {
   while (((READ_PERI_REG(UART_STATUS_REG(CONFIG_ESP_CONSOLE_UART_NUM)) >> UART_TXFIFO_CNT_S)&UART_TXFIFO_CNT) >= 126) ;
   WRITE_PERI_REG(UART_FIFO_REG(CONFIG_ESP_CONSOLE_UART_NUM), c);
 }
 
-void panic_put_string(const char *str) {
+void panic_put_string(const char* str) {
   for (int i = 0; str[i]; i++) panic_put_char(str[i]);
 }
 
@@ -90,35 +120,35 @@ void OS::close(int fd) {
 class Mutex {
  public:
   Mutex(int level, const char* name)
-    : _level(level)
-    , _sem(xSemaphoreCreateMutex()) {
-    if (!_sem) FATAL("Failed allocating mutex semaphore")
+    : level_(level)
+    , sem_(xSemaphoreCreateMutex()) {
+    if (!sem_) FATAL("Failed allocating mutex semaphore")
   }
 
   ~Mutex() {
-    vSemaphoreDelete(_sem);
+    vSemaphoreDelete(sem_);
   }
 
   void lock() {
-    if (xSemaphoreTake(_sem, portMAX_DELAY) != pdTRUE) {
+    if (xSemaphoreTake(sem_, portMAX_DELAY) != pdTRUE) {
       FATAL("Mutex lock failed");
     }
   }
 
   void unlock() {
-    if (xSemaphoreGive(_sem) != pdTRUE) {
+    if (xSemaphoreGive(sem_) != pdTRUE) {
       FATAL("Mutex unlock failed");
     }
   }
 
   bool is_locked() {
-    return xSemaphoreGetMutexHolder(_sem) != null;
+    return xSemaphoreGetMutexHolder(sem_) != null;
   }
 
-  int level() const { return _level; }
+  int level() const { return level_; }
 
-  int _level;
-  SemaphoreHandle_t _sem;
+  int level_;
+  SemaphoreHandle_t sem_;
 };
 
 // Inspired by pthread_cond_t impl on esp32-idf.
@@ -132,75 +162,73 @@ struct ConditionVariableWaiter {
 class ConditionVariable {
  public:
   explicit ConditionVariable(Mutex* mutex)
-    : _mutex(mutex) {
-    TAILQ_INIT(&_waiter_list);
+    : mutex_(mutex) {
+    TAILQ_INIT(&waiter_list_);
   }
 
-  ~ConditionVariable() {
-  }
+  ~ConditionVariable() {}
 
   void wait() {
-    wait(0);
+    wait_ticks(portMAX_DELAY);
   }
 
-  bool wait(int timeout_in_ms) {
-    if (!_mutex->is_locked()) {
+  bool wait_us(int64 us) {
+    if (us <= 0LL) return false;
+
+    // Use ceiling divisions to avoid rounding the ticks down and thus
+    // not waiting long enough.
+    uint32 ms = 1 + static_cast<uint32>((us - 1) / 1000LL);
+    uint32 ticks = (ms + portTICK_PERIOD_MS - 1) / portTICK_PERIOD_MS;
+    return wait_ticks(ticks);
+  }
+
+  bool wait_ticks(uint32 ticks) {
+    if (!mutex_->is_locked()) {
       FATAL("wait on unlocked mutex");
     }
 
-    // Use ceiling division to avoid rounding the ticks down and thus
-    // not waiting long enough.
-    int timeout_ticks = (timeout_in_ms > 0)
-        ? (timeout_in_ms + portTICK_PERIOD_MS - 1) / portTICK_PERIOD_MS
-        : portMAX_DELAY;
+    ConditionVariableWaiter w{};
+    w.task = xTaskGetCurrentTaskHandle();
 
-    ConditionVariableWaiter w = {
-      .task = xTaskGetCurrentTaskHandle()
-    };
+    TAILQ_INSERT_TAIL(&waiter_list_, &w, link);
 
-    TAILQ_INSERT_TAIL(&_waiter_list, &w, link);
+    mutex_->unlock();
 
-    _mutex->unlock();
-
-#ifdef CONFIG_IDF_TARGET_ESP32C3
     uint32_t value = 0;
-#else
-    uint32 value = 0;
-#endif
-    bool success = xTaskNotifyWait(0x00, 0xffffffff, &value, timeout_ticks) == pdTRUE;
+    bool success = xTaskNotifyWait(0x00, 0xffffffff, &value, ticks) == pdTRUE;
 
-    _mutex->lock();
-    TAILQ_REMOVE(&_waiter_list, &w, link);
+    mutex_->lock();
+    TAILQ_REMOVE(&waiter_list_, &w, link);
 
     if ((value & SIGNAL_ALL) != 0) signal_all();
     return success;
   }
 
   void signal() {
-    if (!_mutex->is_locked()) {
+    if (!mutex_->is_locked()) {
       FATAL("signal on unlocked mutex");
     }
-    ConditionVariableWaiter* entry = TAILQ_FIRST(&_waiter_list);
+    ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_);
     if (entry) {
       xTaskNotify(entry->task, SIGNAL_ONE, eSetBits);
     }
   }
 
   void signal_all() {
-    if (!_mutex->is_locked()) {
+    if (!mutex_->is_locked()) {
       FATAL("signal_all on unlocked mutex");
     }
-    ConditionVariableWaiter* entry = TAILQ_FIRST(&_waiter_list);
+    ConditionVariableWaiter* entry = TAILQ_FIRST(&waiter_list_);
     if (entry) {
       xTaskNotify(entry->task, SIGNAL_ALL, eSetBits);
     }
   }
 
  private:
-  Mutex* _mutex;
+  Mutex* mutex_;
 
   // Head of the list of semaphores.
-  TAILQ_HEAD(, ConditionVariableWaiter) _waiter_list;
+  TAILQ_HEAD(, ConditionVariableWaiter) waiter_list_;
 
   static const uint32 SIGNAL_ONE = 1 << 0;
   static const uint32 SIGNAL_ALL = 1 << 1;
@@ -208,29 +236,29 @@ class ConditionVariable {
 
 void Locker::leave() {
   Thread* thread = Thread::current();
-  if (thread->_locker != this) FATAL("unlocking would break lock order");
-  thread->_locker = _previous;
+  if (thread->locker_ != this) FATAL("unlocking would break lock order");
+  thread->locker_ = previous_;
   // Perform the actual unlock.
-  _mutex->unlock();
+  mutex_->unlock();
 }
 
 void Locker::enter() {
   Thread* thread = Thread::current();
-  int level = _mutex->level();
-  Locker* previous_locker = thread->_locker;
+  int level = mutex_->level();
+  Locker* previous_locker = thread->locker_;
   if (previous_locker != null) {
-    int previous_level = previous_locker->_mutex->level();
+    int previous_level = previous_locker->mutex_->level();
     if (level <= previous_level) {
       FATAL("trying to take lock of level %d while holding lock of level %d", level, previous_level);
     }
   }
   // Lock after checking the precondition to avoid deadlocking
   // instead of just failing the precondition check.
-  _mutex->lock();
+  mutex_->lock();
   // Only update variables after we have the lock - that grants right
   // to update the locker.
-  _previous = thread->_locker;
-  thread->_locker = this;
+  previous_ = thread->locker_;
+  thread->locker_ = this;
 }
 
 const int DEFAULT_STACK_SIZE = 2 * KB;
@@ -247,10 +275,9 @@ struct ThreadData {
 };
 
 Thread::Thread(const char* name)
-    : _name(name)
-    , _handle(null)
-    , _locker(null) {
-}
+    : name_(name)
+    , handle_(null)
+    , locker_(null) {}
 
 void* thread_start(void* arg) {
   Thread* thread = unvoid_cast<Thread*>(arg);
@@ -258,8 +285,12 @@ void* thread_start(void* arg) {
   return null;
 }
 
+static void esp_thread_start(void* arg) {
+  thread_start(arg);
+}
+
 void Thread::_boot() {
-  auto thread = reinterpret_cast<ThreadData*>(_handle);
+  auto thread = reinterpret_cast<ThreadData*>(handle_);
   current_thread_ = this;
   ASSERT(current() == this);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + OTHER_THREADS_MALLOC_TAG);
@@ -277,14 +308,14 @@ bool Thread::spawn(int stack_size, int core) {
     delete thread;
     return false;
   }
-  _handle = void_cast(thread);
+  handle_ = void_cast(thread);
 
   if (stack_size == 0) stack_size = DEFAULT_STACK_SIZE;
   if (core == -1) core = tskNO_AFFINITY;
 
   BaseType_t res = xTaskCreatePinnedToCore(
-    reinterpret_cast<TaskFunction_t>(thread_start),
-    _name,
+    esp_thread_start,
+    name_,
     stack_size,
     this,
     tskIDLE_PRIORITY + 1,  // We want to be scheduled before IDLE, but still after WiFi, etc.
@@ -300,18 +331,19 @@ bool Thread::spawn(int stack_size, int core) {
 
 // Run on current thread.
 void Thread::run() {
-  ASSERT(_handle == null);
+  ASSERT(handle_ == null);
   thread_start(void_cast(this));
 }
 
 void Thread::join() {
-  ASSERT(_handle != null);
-  auto thread = reinterpret_cast<ThreadData*>(_handle);
+  ASSERT(handle_ != null);
+  auto thread = reinterpret_cast<ThreadData*>(handle_);
   if (xSemaphoreTake(thread->terminated, portMAX_DELAY) != pdTRUE) {
     FATAL("Thread join failed");
   }
+  vSemaphoreDelete(thread->terminated);
   delete thread;
-  _handle = null;
+  handle_ = null;
 }
 
 void Thread::ensure_system_thread() {
@@ -330,8 +362,20 @@ Thread* Thread::current() {
 
 void OS::set_up() {
   Thread::ensure_system_thread();
-  _global_mutex = allocate_mutex(0, "Global mutex");
-  _scheduler_mutex = allocate_mutex(4, "Scheduler mutex");
+  set_up_mutexes();
+  // This will normally return 100 or 300.  Perhaps later, more
+  // CPU revisions will appear.
+  cpu_revision_ = efuse_hal_chip_revision();
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  const char* chip_name = "ESP32S3";
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
+  const char* chip_name = "ESP32S2";
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+  const char* chip_name = "ESP32C3";
+#else
+  const char* chip_name = "ESP32";
+#endif
+  printf("[toit] INFO: running on %s - revision %d.%d\n", chip_name, cpu_revision_ / 100, cpu_revision_ % 100);
 }
 
 // Mutex forwarders.
@@ -343,20 +387,16 @@ void OS::unlock(Mutex* mutex) { mutex->unlock(); }
 
 // Condition variable forwarders.
 ConditionVariable* OS::allocate_condition_variable(Mutex* mutex) { return _new ConditionVariable(mutex); }
-void OS::wait(ConditionVariable* condition_variable) { condition_variable->wait(); }
-bool OS::wait(ConditionVariable* condition_variable, int timeout_in_ms) { return condition_variable->wait(timeout_in_ms); }
-void OS::signal(ConditionVariable* condition_variable) { condition_variable->signal(); }
-void OS::signal_all(ConditionVariable* condition_variable) { condition_variable->signal_all(); }
-void OS::dispose(ConditionVariable* condition_variable) { delete condition_variable; }
-
-void OS::free_block(Block* block) {
-  heap_caps_free(reinterpret_cast<void*>(block));
-}
+void OS::wait(ConditionVariable* condition) { condition->wait(); }
+bool OS::wait_us(ConditionVariable* condition, int64 us) { return condition->wait_us(us); }
+void OS::signal(ConditionVariable* condition) { condition->signal(); }
+void OS::signal_all(ConditionVariable* condition) { condition->signal_all(); }
+void OS::dispose(ConditionVariable* condition) { delete condition; }
 
 void* OS::allocate_pages(uword size) {
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + TOIT_HEAP_MALLOC_TAG);
-  void* allocation = heap_caps_aligned_alloc(TOIT_PAGE_SIZE, size, TOIT_HEAP_CAPS_FLAGS);
+  void* allocation = heap_caps_aligned_alloc(TOIT_PAGE_SIZE, size, toit_heap_caps_flags_for_heap());
   return allocation;
 }
 
@@ -364,15 +404,10 @@ void OS::free_pages(void* address, uword size) {
   heap_caps_free(address);
 }
 
-Block* OS::allocate_block() {
-  void* allocation = allocate_pages(TOIT_PAGE_SIZE);
-  if (allocation == null) return null;
-  ASSERT(Utils::is_aligned(reinterpret_cast<intptr_t>(allocation), TOIT_PAGE_SIZE));
-  return new (allocation) Block();
-}
-
 void* OS::grab_virtual_memory(void* address, uword size) {
-  return malloc(size);
+  // On ESP32 this is only used for allocating the heap metadata.  We put this
+  // in the same space as the heap itself.
+  return heap_caps_malloc(size, toit_heap_caps_flags_for_metadata());
 }
 
 void OS::ungrab_virtual_memory(void* address, uword size) {
@@ -386,8 +421,46 @@ bool OS::use_virtual_memory(void* address, uword size) {
 void OS::unuse_virtual_memory(void* address, uword size) {}
 
 OS::HeapMemoryRange OS::get_heap_memory_range() {
-  multi_heap_info_t info {};
-  heap_caps_get_info(&info, TOIT_HEAP_CAPS_FLAGS);
+  multi_heap_info_t info{};
+
+  int caps = EXTERNAL_CAPS;
+  heap_caps_get_info(&info, caps);
+
+  bool use_spiram = info.lowest_address != null;
+
+#if !defined(CONFIG_CMPCT_MALLOC_HEAP)
+  printf("[toit] WARN: not using cmpctmalloc - memory is not used efficiently\n");
+#if defined(CONFIG_SPIRAM)
+  printf("[toit] INFO: not using cmpctmalloc - cannot detect any SPIRAM\n");
+#endif
+#endif
+
+#ifdef CONFIG_TOIT_SPIRAM_HEAP
+  if (use_spiram) {
+#if defined(CONFIG_IDF_TARGET_ESP32) && !defined(CONFIG_SPIRAM_CACHE_WORKAROUND)
+    int cpu_revision = efuse_hal_chip_revision();
+    if (cpu_revision < 300) {
+      printf("[toit] INFO: SPIRAM detected, but CPU revision is only %d.%d\n", cpu_revision / 100, cpu_revision % 100);
+      printf("[toit] INFO: no SPIRAM cache workaround configured\n");
+      printf("[toit] INFO: not using SPIRAM\n");
+      use_spiram = false;
+    }
+#endif
+  }
+#else  // ndef CONFIG_TOIT_SPIRAM_HEAP.
+  if (use_spiram) {
+    printf("[toit] INFO: SPIRAM detected, but Toit is not configured to use it\n");
+    use_spiram = false;
+  }
+#endif
+  if (use_spiram) {
+    use_spiram_for_metadata_ = true;
+    use_spiram_for_heap_ = true;
+    printf("[toit] INFO: using SPIRAM for heap metadata and heap\n");
+  }
+
+  caps = toit_heap_caps_flags_for_heap();
+  heap_caps_get_info(&info, caps);
 
   // Older esp-idfs or mallocs other than cmpctmalloc won't set the
   // lowest_address and highest_address fields.
@@ -398,10 +471,11 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
     return range;
   }
 
+  // In this case use hard coded ranges for internal RAM.
   HeapMemoryRange range;
 #ifdef CONFIG_IDF_TARGET_ESP32S3
-  range.address = reinterpret_cast<void*>(0x3ffa0000);
-  range.size = 512 * KB;
+  range.address = reinterpret_cast<void*>(0x3fca0000);
+  range.size = 384 * KB;
 #else
   //                           DRAM range            IRAM range
   // Internal SRAM 2 200k 3ffa_e000 - 3ffe_0000
@@ -414,6 +488,8 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
 }
 
 void OS::tear_down() {
+  // Shutting down quickly is very important on the ESP32, so we
+  // simply avoid freeing memory and resources here.
 }
 
 const char* OS::get_platform() {
@@ -425,7 +501,7 @@ int OS::read_entire_file(char* name, uint8** buffer) {
 }
 
 void OS::out_of_memory(const char* reason) {
-  RtcMemory::register_out_of_memory();
+  RtcMemory::on_out_of_memory();
 
   // The heap fragmentation dumper code has been temporarily disabled.
   // See https://github.com/toitware/toit/issues/3153.
@@ -435,9 +511,9 @@ void OS::out_of_memory(const char* reason) {
 
     // We use deep sleep here to preserve the RTC memory that contains our
     // bookkeeping data for out-of-memory situations. Using esp_restart()
-    // would clear the RTC memory.
+    // might clear the RTC memory.
     esp_sleep_enable_timer_wakeup(100000);  // 100 ms.
-    RtcMemory::before_deep_sleep();
+    RtcMemory::on_deep_sleep_start();
     esp_deep_sleep_start();
   }
 
@@ -504,29 +580,12 @@ class HeapSummaryPage {
     memset(void_cast(counts_), 0, sizeof counts_);
     users_ = 0;
     largest_free_ = 0;
-  }
-
-  static int compute_type(uword tag) {
-    if (tag == 0) {
-      tag = NULL_MALLOC_TAG;
-    } else if (tag == 'W') {
-      tag = WIFI_MALLOC_TAG;
-    } else if (tag == ITERATE_TAG_FREE) {
-      tag = FREE_MALLOC_TAG;
-    } else if (tag == ITERATE_TAG_HEAP_OVERHEAD) {
-      tag = HEAP_OVERHEAD_MALLOC_TAG;
-    } else {
-      tag -= ITERATE_CUSTOM_TAGS;
-      if (tag < 0 || tag >= NUMBER_OF_MALLOC_TAGS) {
-        tag = UNKNOWN_MALLOC_TAG;
-      }
-    }
-    return tag;
+    owning_process_ = null;
   }
 
   int register_user(uword tag, uword size) {
     uint16 saturated_size = Utils::min(size, 0xffffu);
-    int type = compute_type(tag);
+    int type = compute_allocation_type(tag);
     users_ |= 1 << type;
     sizes_[type] += saturated_size;
     counts_[type]++;
@@ -538,40 +597,42 @@ class HeapSummaryPage {
 
   void print() {
     if (address_ == 0) return;
-    printf("  ├────────────┼─────────────────────────────────────────────┤\n");
-    printf("  │ %p │   Largest free = %-5d                      │\n",
-        reinterpret_cast<void*>(address_), largest_free_);
-    printf("  │            ├───────────┬─────────┬───────────────────────┤\n");
+    printf("  ┌────────────┬─────────────────────────────────────────────┐\n");
+    printf("  │ Page:      │   Largest free = %-5d                      │\n",
+        largest_free_);
+    printf("  │ %p ├───────────┬─────────┬───────────────────────┤\n",
+        reinterpret_cast<void*>(address_));
     printf("  │            │   Bytes   │  Count  │  Type                 │\n");
     printf("  │            ├───────────┼─────────┼───────────────────────┤\n");
     for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
       if (users_ & (1 << i)) {
-        printf("  │            │ %7d   │ %6d  │  %-19s  │\n",
+        printf("  │            │ %7d   │ %6d  │  %-20s │\n",
              sizes_[i], counts_[i], HeapSummaryPage::name_of_type(i));
       }
     }
-    printf("  ├────────────┼───────────┴─────────┴───────────────────────┤\n");
+    printf("  └────────────┴───────────┴─────────┴───────────────────────┘\n");
   }
 
   static const char* name_of_type(int tag) {
     switch (tag) {
       case MISC_MALLOC_TAG: return "misc";
       case EXTERNAL_BYTE_ARRAY_MALLOC_TAG: return "external byte array";
-      case BIGNUM_MALLOC_TAG: return "bignum";
+      case BIGNUM_MALLOC_TAG: return "tls/bignum";
       case EXTERNAL_STRING_MALLOC_TAG: return "external string";
-      case TOIT_HEAP_MALLOC_TAG: return "toit";
-      case UNUSED_TOIT_HEAP_MALLOC_TAG: return "unused";
+      case TOIT_HEAP_MALLOC_TAG: return "toit processes";
       case FREE_MALLOC_TAG: return "free";
       case LWIP_MALLOC_TAG: return "lwip";
       case HEAP_OVERHEAD_MALLOC_TAG: return "heap overhead";
       case EVENT_SOURCE_MALLOC_TAG: return "event source";
-      case OTHER_THREADS_MALLOC_TAG: return "other threads";
-      case THREAD_SPAWN_MALLOC_TAG: return "thread spawn";
-      case NULL_MALLOC_TAG: return "null tag";
+      case OTHER_THREADS_MALLOC_TAG: return "thread/other";
+      case THREAD_SPAWN_MALLOC_TAG: return "thread/spawn";
+      case NULL_MALLOC_TAG: return "untagged";
       case WIFI_MALLOC_TAG: return "wifi";
     }
     return "unknown";
   }
+
+  void set_owning_process(Process* process) { owning_process_ = process; }
 
  private:
   uword address_;
@@ -583,17 +644,22 @@ class HeapSummaryPage {
   uint16 counts_[NUMBER_OF_MALLOC_TAGS];
   uint16 largest_free_;
   uint16 largest_allocation_;
+  Process* owning_process_;
 };
 
 class HeapSummaryCollector {
  public:
-  explicit HeapSummaryCollector(int max_pages) : max_pages_(max_pages) {
+  HeapSummaryCollector(int max_pages, Process* current_process)
+      : current_process_(current_process)
+      , max_pages_(max_pages) {
     if (max_pages > 0) {
       pages_ = _new HeapSummaryPage[max_pages];
       out_of_memory_ = (pages_ == null);
     }
     memset(void_cast(sizes_), 0, sizeof sizes_);
     memset(void_cast(counts_), 0, sizeof counts_);
+    memset(void_cast(toit_memory_), 0, sizeof toit_memory_);
+    memset(void_cast(processes_), 0, sizeof processes_);
   }
 
   word allocation_requirement() {
@@ -626,11 +692,35 @@ class HeapSummaryCollector {
     }
     int type = current_page_
         ? current_page_->register_user(tag, size)
-        : HeapSummaryPage::compute_type(tag);
-    // Disregard IRAM allocations.
-    if (reinterpret_cast<uword>(address) < 0x40000000) {
-      sizes_[type] += size;
-      counts_[type]++;
+        : compute_allocation_type(tag);
+    sizes_[type] += size;
+    counts_[type]++;
+  }
+
+  void identify_processes() {
+    VM::current()->scheduler()->iterate_process_chunks(this, chunk_callback);
+  }
+
+  static void chunk_callback(void* context, Process* process, uword address, uword size) {
+    reinterpret_cast<HeapSummaryCollector*>(context)->chunk_callback(process, address, size);
+  }
+
+  void chunk_callback(Process* process, uword address, uword size) {
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+      if (processes_[i] == null || processes_[i] == process) {
+        toit_memory_[i] += size;
+        processes_[i] = process;
+        break;
+      }
+    }
+    while (size >= TOIT_PAGE_SIZE) {
+      for (int i = 0; i < max_pages_; i++) {
+        if (pages_[i].matches(reinterpret_cast<void*>(address))) {
+          pages_[i].set_owning_process(process);
+        }
+      }
+      size -= TOIT_PAGE_SIZE;
+      address += TOIT_PAGE_SIZE;
     }
   }
 
@@ -640,32 +730,68 @@ class HeapSummaryCollector {
     } else {
       printf("Heap report:\n");
     }
-    printf("  ┌───────────┬─────────┬───────────────────────┐\n");
-    printf("  │   Bytes   │  Count  │  Type                 │\n");
-    printf("  ├───────────┼─────────┼───────────────────────┤\n");
+    printf("  ┌───────────┬──────────┬─────────────────────────────────────────────────────┐\n");
+    printf("  │   Bytes   │  Count   │  Type                                               │\n");
+    printf("  ├───────────┼──────────┼─────────────────────────────────────────────────────┤\n");
 
     int size = 0;
     int count = 0;
+    uword metadata_location, metadata_size;
+    GcMetadata::get_metadata_extent(&metadata_location, &metadata_size);
     for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
       // Leave out free space and allocation types with no allocations.
       if (i == FREE_MALLOC_TAG || sizes_[i] == 0) continue;
-      printf("  | %7d   | %6d  |  %-19s  |\n",
-          sizes_[i], counts_[i], HeapSummaryPage::name_of_type(i));
+      auto this_size = sizes_[i];
+      if (i == TOIT_HEAP_MALLOC_TAG) {
+        this_size -= TOIT_PAGE_SIZE + metadata_size;
+      }
+      printf("  │ %7d   │ %6d   │  %-50s │\n",
+          this_size, counts_[i], HeapSummaryPage::name_of_type(i));
       size += sizes_[i];
       // The reported overhead isn't really separate allocations, so
       // don't count them as such.
       if (i != HEAP_OVERHEAD_MALLOC_TAG) {
         count += counts_[i];
       }
+      if (i == TOIT_HEAP_MALLOC_TAG) {
+        for (int j = 0; j < MAX_PROCESSES; j++) {
+          if (processes_[j]) {
+            const uint8* uuid = processes_[j]->program()->id();
+            char uuid_buffer[37];
+            bool is_system = VM::current()->scheduler()->is_boot_process(processes_[j]);
+            bool is_current = current_process_ == processes_[j];
+            sprintf(uuid_buffer, "%08x-%04x-%04x-%04x-%04x%08x",
+                static_cast<int>(Utils::read_unaligned_uint32_be(uuid)),
+                static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 4)),
+                static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 6)),
+                static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 8)),
+                static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 10)),
+                static_cast<int>(Utils::read_unaligned_uint32_be(uuid + 12)));
+            printf("  │   %7d │   %6d │    %s%4d %s │\n",
+                static_cast<int>(toit_memory_[j]),
+                static_cast<int>(toit_memory_[j] / TOIT_PAGE_SIZE),
+                is_system ? "system " : is_current ? "current" : "other  ",
+                processes_[j]->id(),
+                uuid_buffer);
+          }
+        }
+        printf("  │ %7d   │      1   │  heap metadata                                      │\n"
+               "  │ %7d   │      1   │  spare new-space                                    │\n",
+               static_cast<int>(metadata_size),
+               TOIT_PAGE_SIZE);
+      }
     }
 
     multi_heap_info_t info;
-    heap_caps_get_info(&info, MALLOC_CAP_8BIT);
+    int caps = OS::toit_heap_caps_flags_for_heap();
+    heap_caps_get_info(&info, caps);
     int capacity_bytes = info.total_allocated_bytes + info.total_free_bytes;
     int used_bytes = size * 100 / capacity_bytes;
-    printf("  └───────────┴─────────┴───────────────────────┘\n");
-    printf("  Total: %d bytes in %d allocations (%d%%)\n",
-        size, count, used_bytes);
+    printf("  └───────────┴──────────┴─────────────────────────────────────────────────────┘\n");
+    printf("  Total: %d bytes in %d allocations (%d%%), largest free %dk, total free %dk\n",
+        size, count, used_bytes,
+        static_cast<int>(info.largest_free_block >> 10),
+        static_cast<int>(info.total_free_bytes >> 10));
 
     int page_count = 0;
     for (int i = 0; i < max_pages_; i++) {
@@ -673,24 +799,23 @@ class HeapSummaryCollector {
     }
     if (page_count == 0) return;
 
-    printf("  ┌────────────┬─────────────────────────────────────────────┐\n");
     for (int i = 0; i < max_pages_; i++) {
       pages_[i].print();
     }
     if (dropped_pages_ > 0) {
-      printf("  ├────────────┼─────────────────────────────────────────────┤\n");
-      printf("  │   %8d │   Unreported pages, hit limit of %-4d       │\n",
-        dropped_pages_, max_pages_);
-      printf("  ├────────────┼─────────────────────────────────────────────┤\n");
+      printf("\n  %d unreported pages, hit limit of %d.\n", dropped_pages_, max_pages_);
     }
-    printf("  └────────────┴─────────────────────────────────────────────┘\n");
   }
 
  private:
+  static const int MAX_PROCESSES = 10;
   HeapSummaryPage* pages_ = null;
   HeapSummaryPage* current_page_ = null;
   uword sizes_[NUMBER_OF_MALLOC_TAGS];
   uword counts_[NUMBER_OF_MALLOC_TAGS];
+  uword toit_memory_[MAX_PROCESSES];
+  Process* processes_[MAX_PROCESSES];
+  Process* current_process_;
   const int max_pages_;
   int dropped_pages_ = 0;
   bool out_of_memory_ = false;
@@ -702,66 +827,28 @@ bool register_allocation(void* self, void* tag, void* address, uword size) {
   return false;
 }
 
-void OS::heap_summary_report(int max_pages, const char* marker) {
-  HeapSummaryCollector collector(max_pages);
+void OS::heap_summary_report(int max_pages, const char* marker, Process* process) {
+  HeapSummaryCollector collector(max_pages, process);
   if (collector.out_of_memory()) {
     printf("Not enough memory for a heap report (%d bytes)\n", static_cast<int>(collector.allocation_requirement()));
     return;
   }
   int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
-  heap_caps_iterate_tagged_memory_areas(&collector, null, &register_allocation, flags);
+  int caps = OS::toit_heap_caps_flags_for_heap();
+  heap_caps_iterate_tagged_memory_areas(&collector, null, &register_allocation, flags, caps);
+  collector.identify_processes();
   collector.print(marker);
 }
 
 #else // def TOIT_CMPCTMALLOC
 
-void OS::set_heap_tag(word tag) { }
+void OS::set_heap_tag(word tag) {}
 word OS::get_heap_tag() { return 0; }
-void OS::heap_summary_report(int max_pages, const char* marker) { }
-
+void OS::heap_summary_report(int max_pages, const char* marker, Process* process) {}
 
 #endif // def TOIT_CMPCTMALLOC
 
-static const int TOIT_IMAGE_DATA_SIZE = 1024;
-static const int TOIT_CONFIG_IMAGE_SIZE = TOIT_IMAGE_DATA_SIZE - UUID_SIZE;
-
-class ImageData {
- public:
-  uint32_t image_pad = 0;
-  uint32_t image_magic1 = 0x7017da7a;  // "Toitdata"
-  // The data between image_magic1 and image_magic2 must be a multiple of 512
-  // bytes, otherwise the patching utility will not detect it. Search for
-  // 0x7017da7a. Note when updating this restriction is baked into the SDK that
-  // you are updating *from* so it can't be fixed without multiple SDK updates.
-  uint8_t image_config[TOIT_CONFIG_IMAGE_SIZE] = {0};
-  uint8_t image_uuid[UUID_SIZE] = {0};
-  uint32_t image_magic2 = 0xc09f19;    // "config"
-} __attribute__((packed));
-
-// Note, you can't declare this const because then the compiler thinks it can
-// just const propagate, but we are going to patch this before we flash it, so
-// we don't want that.  But it's still const because it goes in a flash section.
-__attribute__((section(".rodata_custom_desc"))) ImageData toit_image_data;
-
-const uint8* OS::image_uuid() {
-  return toit_image_data.image_uuid;
-}
-
-uint8* OS::image_config(size_t *length) {
-  if (length) *length = TOIT_CONFIG_IMAGE_SIZE;
-  // See 512-byte restriction above.
-  ASSERT(((TOIT_CONFIG_IMAGE_SIZE + UUID_SIZE) & 0x1ff) == 0);
-  uint8* result = (uint8*)toit_image_data.image_config;
-  if (result[0] == 0) {
-    // A null byte is not a valid start of a UBJSON stream.  This indicates
-    // that the config data was not patched in, or was patched in at the wrong
-    // address.
-    FATAL("No config data in image at %x: %02x %02x", &(result[0]), result[0], result[1]);
-  }
-  return result;
-}
-
-const char* OS::getenv(const char* variable) {
+char* OS::getenv(const char* variable) {
   // Unimplemented on purpose.
   // We currently prefer not to expose environment variables on embedded devices.
   // There is no technical reason for it, so if circumstances change, one can
@@ -769,9 +856,19 @@ const char* OS::getenv(const char* variable) {
   UNIMPLEMENTED();
 }
 
+bool OS::setenv(const char* variable, const char* value) {
+  // Unimplemented on purpose.
+  UNIMPLEMENTED();
+}
+
+bool OS::unsetenv(const char* variable) {
+  // Unimplemented on purpose.
+  UNIMPLEMENTED();
+}
+
 bool OS::set_real_time(struct timespec* time) {
   if (clock_settime(CLOCK_REALTIME, time) == 0) return true;
-  struct timeval timeofday = { 0, };
+  struct timeval timeofday{};
   TIMESPEC_TO_TIMEVAL(&timeofday, time);
   return settimeofday(&timeofday, NULL) == 0;
 }

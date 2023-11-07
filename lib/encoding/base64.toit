@@ -6,8 +6,8 @@
 Encodes the given $data as base64 or base64url.
 The $data must be a string or byte array.
 */
-encode data --url_mode/bool=false -> string:
-  #primitive.encoding.base64_encode
+encode data --url-mode/bool=false -> string:
+  #primitive.encoding.base64-encode
 
 
 /**
@@ -16,5 +16,5 @@ Takes a valid base64 encoding (without newlines or other non-base64 characters)
 The @data must be a string or byte array.
 In URL mode the data must be valid base64url encoding.
 */
-decode data --url_mode/bool=false -> ByteArray:
-  #primitive.encoding.base64_decode
+decode data --url-mode/bool=false -> ByteArray:
+  #primitive.encoding.base64-decode

@@ -1,3 +1,0 @@
-<sdk>/drivers/cellular.toit:112:12: warning: Class 'GnssLocation' is deprecated
-    return GnssLocation
-           ^~~~~~~~~~~~

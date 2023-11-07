@@ -16,36 +16,32 @@ class HeapObjectFunctionVisitor : public HeapObjectVisitor {
  public:
   HeapObjectFunctionVisitor(Program* program, const std::function<void (HeapObject*)>& func)
     : HeapObjectVisitor(program)
-    , _func(func) {}
+    , func_(func) {}
 
   virtual uword visit(HeapObject* object) override {
-    _func(object);
+    func_(object);
     return object->size(program_);
   }
 
  private:
-  const std::function<void (HeapObject*)>& _func;
+  const std::function<void (HeapObject*)>& func_;
 };
 
 // TwoSpaceHeap represents the container for all HeapObjects.
 class TwoSpaceHeap {
  public:
   TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk);
-  ~TwoSpaceHeap();
 
   // Allocate raw object. Returns null if a garbage collection is
   // needed.
   HeapObject* allocate(uword size);
 
-  // Max memory that can be added by adding new chunks.  Accounts for whole
-  // chunks, not just the used memory in them.
-  uword max_expansion();
-
   SemiSpace* new_space() { return &semi_space_; }
+  const SemiSpace* new_space() const { return &semi_space_; }
 
   SemiSpace* take_space();
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   // Used for debugging.  Give it an address, and it will tell you where there
   // are pointers to that address.  If the address is part of the heap it will
   // also tell you which part.  Reduced functionality if you are not on Linux,
@@ -58,6 +54,8 @@ class TwoSpaceHeap {
   void validate();
 
   OldSpace* old_space() { return &old_space_; }
+
+  word size() const { return old_space_.size() + new_space()->size(); }
 
   void swap_semi_spaces(SemiSpace& from, SemiSpace& to);
 
@@ -74,6 +72,11 @@ class TwoSpaceHeap {
     iterate_objects(&visitor);
   }
 
+  void iterate_chunks(void* context, process_chunk_callback_t* callback) {
+    semi_space_.iterate_chunks(context, process(), callback);
+    old_space_.iterate_chunks(context, process(), callback);
+  }
+
   // Flush will write cached values back to object memory.
   // Flush must be called before traveral of heap.
   void flush() {
@@ -82,21 +85,9 @@ class TwoSpaceHeap {
   }
 
   // Returns the number of bytes allocated in the space.
-  int used() { return old_space_.used() + semi_space_.used(); }
+  int used() const { return old_space_.used() + semi_space_.used(); }
 
-  HeapObject* new_space_allocation_failure(uword size) {
-    if (size >= (semi_space_size_ >> 1)) {
-      uword result = old_space_.allocate(size);
-      if (result != 0) {
-        // The code that populates newly allocated objects assumes that they
-        // are in new space and does not have a write barrier.  We mark the
-        // object dirty immediately, so it is checked by the next GC.
-        GcMetadata::insert_into_remembered_set(result);
-        return HeapObject::from_address(result);
-      }
-    }
-    return null;
-  }
+  HeapObject* new_space_allocation_failure(uword size);
 
   bool has_empty_new_space() { return semi_space_.top() == semi_space_.single_chunk_start(); }
 
@@ -104,20 +95,21 @@ class TwoSpaceHeap {
 
   void freed_foreign_memory(uword size);
 
-  void collect_new_space(bool try_hard);
-  void collect_old_space(bool force_compact);
-  void collect_old_space_if_needed(bool force_compact, bool force);
+  GcType collect_new_space(bool try_hard);
+  GcType collect_old_space(bool force_compact);
+  GcType collect_old_space_if_needed(bool force_compact, bool force);
   bool perform_garbage_collection(bool force_compact);
   bool cross_process_gc_needed() const { return malloc_failed_; }
   void report_malloc_failed() { malloc_failed_ = true; }
   void sweep_heap();
   void compact_heap();
+  void set_promotion_failed() { old_space_.set_promotion_failed(true); }
 
-  uword total_bytes_allocated();
+  uword total_bytes_allocated() const;
+
+  word max_external_allocation();
 
  private:
-  static const uword UNLIMITED_EXPANSION = 0x80000000u - TOIT_PAGE_SIZE;
-
   friend class ScavengeVisitor;
 
   Program* program_;
@@ -157,7 +149,7 @@ class ScavengeVisitor : public RootCallback {
   virtual void do_root(Object** p) { do_roots(p, 1); }
 
   inline bool in_from_space(Object* object) {
-    if (object->is_smi()) return false;
+    if (is_smi(object)) return false;
     return reinterpret_cast<uword>(object) - from_start_ < from_size_;
   }
 

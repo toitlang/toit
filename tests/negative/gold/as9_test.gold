@@ -1,2 +1,0 @@
-As check failed: null is not a A.
-  0: main                      tests/negative/as9_test.toit:10:5

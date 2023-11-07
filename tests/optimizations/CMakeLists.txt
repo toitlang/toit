@@ -13,18 +13,24 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-file(GLOB TOIT_OPTIMIZATION_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*_test.toit")
+file(GLOB TOIT_OPTIMIZATION_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*-test.toit")
+
+include(fail.cmake)
 
 foreach(file ${TOIT_OPTIMIZATION_TESTS})
+  if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
+
   add_test(
     NAME ${file}
     COMMAND $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/tools/lsp/server/server.toit
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    CONFIGURATIONS slow
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT 40)
-endforeach()
 
-include(fail.cmake)
-foreach(test ${TOIT_FAILING_TESTS})
-  set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)
+  if("${file}" IN_LIST TOIT_FAILING_TESTS)
+    set_tests_properties(${file} PROPERTIES WILL_FAIL TRUE)
+  endif()
 endforeach()

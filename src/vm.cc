@@ -38,29 +38,27 @@ VM::VM() {
   ::signal(SIGPIPE, SIG_IGN);  // We check return values and don't want signals.
 #endif
 
-  ASSERT(_current == null);
-  _current = this;
+  ASSERT(current_ == null);
+  current_ = this;
 
   OS::reset_monotonic_time();  // Reset "up time".
   Primitive::set_up();
-  _heap_memory = _new HeapMemory();
-  _scheduler = _new Scheduler();
+  scheduler_ = _new Scheduler();
 
-  _event_manager = _new EventSourceManager();
-  _nop_event_source = _new NopEventSource();
-  _event_manager->add_event_source(_nop_event_source);
+  event_manager_ = _new EventSourceManager();
+  nop_event_source_ = _new NopEventSource();
+  event_manager_->add_event_source(nop_event_source_);
 }
 
 VM::~VM() {
-  delete _event_manager;
-  delete _scheduler;
-  delete _heap_memory;
-  _current = null;
+  delete event_manager_;
+  delete scheduler_;
+  current_ = null;
 }
 
-VM* VM::_current = null;
+VM* VM::current_ = null;
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 
 void print_heap_console(ObjectHeap* heap, const char* title) {
   ConsolePrinter p(null);

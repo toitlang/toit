@@ -22,21 +22,21 @@ class Rpc implements SystemMessageHandler_:
     return instance
 
   constructor.internal_:
-    set_system_message_handler_ SYSTEM_RPC_REPLY_ this
+    set-system-message-handler_ SYSTEM-RPC-REPLY_ this
 
   invoke pid/int name/int arguments/any --sequential/bool -> any:
-    if arguments is RpcSerializable: arguments = arguments.serialize_for_rpc
+    if arguments is RpcSerializable: arguments = arguments.serialize-for-rpc
     send ::= :
       synchronizer_.send pid: | id pid |
-        process_send_ pid SYSTEM_RPC_REQUEST_ [ id, name, arguments ]
+        process-send_ pid SYSTEM-RPC-REQUEST_ [ id, name, arguments ]
     return sequential ? (sequencer_.do send) : send.call
 
-  on_message type gid pid reply -> none:
-    assert: type == SYSTEM_RPC_REPLY_
+  on-message type gid pid reply -> none:
+    assert: type == SYSTEM-RPC-REPLY_
     id/int := reply[0]
-    is_exception/bool := reply[1]
+    is-exception/bool := reply[1]
     result/any := reply[2]
-    if is_exception: result = RpcException_ result reply[3]
+    if is-exception: result = RpcException_ result reply[3]
     synchronizer_.receive id result
 
 class RpcException_:
@@ -58,25 +58,28 @@ monitor RpcSynchronizer_:
     result/any := EMPTY
     try:
       map[id] = EMPTY
-      send.call id pid  // Lock is kept during the non-blocking send.
-      await:
-        result = map[id]
-        not identical EMPTY result
-    finally: | is_exception exception |
+      // Lock is kept during the non-blocking send.
+      if send.call id pid:
+        await:
+          result = map[id]
+          not identical EMPTY result
+    finally: | is-exception exception |
       map.remove id
-      if is_exception:
-        if exception.value == DEADLINE_EXCEEDED_ERROR or task.is_canceled:
-          process_send_ pid SYSTEM_RPC_CANCEL_ [ id ]
+      if is-exception:
+        if exception.value == DEADLINE-EXCEEDED-ERROR or Task.current.is-canceled:
+          process-send_ pid SYSTEM-RPC-CANCEL_ [ id ]
 
-    if result is not RpcException_: return result
+    if result is not RpcException_:
+      if not identical EMPTY result: return result
+      throw "NO_SUCH_PROCESS"
     exception := result.exception
-    if exception == CANCELED_ERROR: task.cancel
+    if exception == CANCELED-ERROR: Task.current.cancel
     trace := result.trace
     if trace: rethrow exception trace
     throw exception
 
   receive id/int value/any -> none:
-    map_.update id --if_absent=(: return): | existing |
+    map_.update id --if-absent=(: return): | existing |
       // Unless the existing value indicates that we are ready to receive
       // the result of the RPC call, we discard it.
       if not identical EMPTY existing: return
@@ -88,4 +91,4 @@ Objects that are RPC-serializable can be serialized to a RPC-compatible
 */
 interface RpcSerializable:
   /// Must return a value that can be encoded using the built-in message encoder.
-  serialize_for_rpc -> any
+  serialize-for-rpc -> any

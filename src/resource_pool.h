@@ -25,13 +25,13 @@ namespace toit {
 template<typename T, T Invalid>
 class ResourcePool {
  public:
-  ResourcePool() : _values(null) {}
+  ResourcePool() : values_(null) {}
 
   // TODO: Single allocation?
   template<typename... Ts>
   ResourcePool(T value, Ts... rest)
       : ResourcePool(rest...) {
-    _values = _new Value({value, _values});
+    values_ = _new Value({value, values_});
   }
 
   // Get any resource from the pool. Returns Invalid if none is available.
@@ -60,7 +60,7 @@ class ResourcePool {
   // Put a resource back in the pool.
   void put(T value) {
     Locker locker(OS::global_mutex());
-    _values = _new Value({value, _values});
+    values_ = _new Value({value, values_});
   }
 
  private:
@@ -71,12 +71,12 @@ class ResourcePool {
 
   bool take(Locker& locker, T t) {
     Value* p = null;
-    for (Value* c = _values; c != null; c = c->next) {
+    for (Value* c = values_; c != null; c = c->next) {
       if (c->t == t) {
         if (p != null) {
           p->next = c->next;
         } else {
-          _values = c->next;
+          values_ = c->next;
         }
         delete c;
         return true;
@@ -88,20 +88,20 @@ class ResourcePool {
   }
 
   T any(Locker& locker) {
-    Value* value = _values;
+    Value* value = values_;
     if (value == null) {
       return Invalid;
     }
 
     T t = value->t;
-    _values = value->next;
+    values_ = value->next;
 
     delete value;
 
     return t;
   }
 
-  Value* _values;
+  Value* values_;
 };
 
 } // namespace toit

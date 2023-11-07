@@ -27,6 +27,13 @@ class Sha1 : public SimpleResource {
   void add(const uint8* contents, intptr_t extra);
   void get_hash(uint8* hash);
 
+  void clone(Sha1* child) {
+    memcpy(child->data_, data_, BLOCK_SIZE);
+    memcpy(child->h_, h_, sizeof(h_));
+    child->block_posn_ = block_posn_;
+    child->length_ = length_;
+  }
+
  private:
   static const uint32_t BLOCK_SIZE = 64;
   static const uint32_t BLOCK_MASK = BLOCK_SIZE - 1;
@@ -35,16 +42,16 @@ class Sha1 : public SimpleResource {
 
   inline uint32_t get_big_endian_word(int byte_index) {
     return
-      (_data[byte_index + 0] << 24) |
-      (_data[byte_index + 1] << 16) |
-      (_data[byte_index + 2] << 8) |
-      (_data[byte_index + 3] << 0);
+      (data_[byte_index + 0] << 24) |
+      (data_[byte_index + 1] << 16) |
+      (data_[byte_index + 2] << 8) |
+      (data_[byte_index + 3] << 0);
   }
 
-  uint8 _data[BLOCK_SIZE];
-  uint32_t _h[5];
-  uint32_t _block_posn;
-  intptr_t _length;
+  uint8 data_[BLOCK_SIZE];
+  uint32_t h_[5];
+  uint32_t block_posn_;
+  intptr_t length_;
 };
 
 }

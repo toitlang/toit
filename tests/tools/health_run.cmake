@@ -31,9 +31,17 @@ endif()
 if (NOT DEFINED TMP)
   message(FATAL_ERROR "Missing TMP argument")
 endif()
+IF (NOT DEFINED SHOW_PACKAGE_WARNINGS)
+  message(FATAL_ERROR "Missing SHOW_PACKAGE_WARNINGS argument")
+endif()
+
+set(SHOW_PACKAGE_WARNINGS_FLAG)
+if (SHOW_PACKAGE_WARNINGS)
+  set(SHOW_PACKAGE_WARNINGS_FLAG "--show-package-warnings")
+endif()
 
 execute_process(
-  COMMAND ${TOITC} --analyze --show-package-warnings "-Xlib_path=${LIB_DIR}" "${TEST}"
+  COMMAND ${TOITC} --analyze "-Xlib_path=${LIB_DIR}" ${SHOW_PACKAGE_WARNINGS_FLAG} "${TEST}"
   OUTPUT_VARIABLE STDOUT
   ERROR_VARIABLE STDERR
   RESULT_VARIABLE EXIT_CODE
@@ -46,6 +54,8 @@ set(OUTPUT "${STDOUT}${STDERR}")
 include("${CMAKE_CURRENT_LIST_DIR}/normalize_gold.cmake")
 
 NORMALIZE_GOLD("${OUTPUT}" "${TEST_ROOT}" "" NORMALIZED)
+get_filename_component(REAL_TEST_ROOT "${TEST_ROOT}" REALPATH)
+NORMALIZE_GOLD("${NORMALIZED}" "${REAL_TEST_ROOT}" "" NORMALIZED)
 
 if ((DEFINED UPDATE_GOLD) OR (NOT "$ENV{TOIT_UPDATE_GOLD}" STREQUAL ""))
   if (NOT "${NORMALIZED}" STREQUAL "")

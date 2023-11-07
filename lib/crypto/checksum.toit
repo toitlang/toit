@@ -40,6 +40,12 @@ abstract class Checksum:
   /** Computes the checksum from the added data. */
   abstract get -> ByteArray
 
+  /**
+  Clones the internal state so we can compute checksums of multiple data with
+    the same prefix.
+  */
+  abstract clone -> Checksum
+
 /**
 Computes the hash of the given $data.
 
@@ -49,5 +55,5 @@ checksum summer/Checksum data from/int=0 to/int=data.size -> ByteArray:
   summer.add data from to
   return summer.get
 
-finalize_checksum_ checksum/Checksum -> none:
+finalize-checksum_ checksum/Checksum -> none:
   checksum.get

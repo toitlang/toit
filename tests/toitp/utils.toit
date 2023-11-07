@@ -4,22 +4,24 @@
 
 import host.pipe
 
-run_toitp test_args/List toitp_args/List -> string:
+run-toitp test-args/List toitp-args/List --filter/string?=null -> string:
   i := 0
-  snap := test_args[i++]
-  toitc := test_args[i++]
-  toitp := test_args[i++]
+  snap := test-args[i++]
+  toitc := test-args[i++]
+  toitp := test-args[i++]
 
-  command_list := [toitc, toitp, snap]
-  command_list.add_all toitp_args
-  return pipe.backticks command_list
+  command-list := [toitp]
+  command-list.add-all toitp-args
+  command-list.add snap
+  if filter: command-list.add filter
+  return pipe.backticks command-list
 
 // Extracts the entry names, discarding the index and the location.
-extract_entries output/string --max_length/int -> List:
-  lines := output.split "\n"
+extract-entries output/string --max-length/int -> List:
+  lines := output.split LINE-TERMINATOR
   result := lines.copy 1
-  result.filter --in_place: it != ""
-  result.map --in_place:
-    colon_pos := it.index_of ": "
-    (it.copy (colon_pos + 2) (colon_pos + max_length)).trim
+  result.filter --in-place: it != ""
+  result.map --in-place:
+    colon-pos := it.index-of ": "
+    (it.copy (colon-pos + 2) (colon-pos + max-length)).trim
   return result

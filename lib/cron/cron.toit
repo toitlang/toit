@@ -23,7 +23,7 @@ class CronSchedule:
 
   constructor .second .minute .hour .dom .month .dow:
 
-  constructor.from_map map/Map:
+  constructor.from-map map/Map:
     second = map["second"]
     minute = map["minute"]
     hour   = map["hour"]
@@ -42,20 +42,20 @@ class CronSchedule:
         - weekdays -> 0-6  * , -
   */
   constructor.parse description/string:
-    if description.is_empty: throw "Cron: empty string"
+    if description.is-empty: throw "Cron: empty string"
     if description[0] == '@':
-      description = get_predefined_description_ description
+      description = get-predefined-description_ description
     fields ::= description.split " "
     if fields.size != 6: throw "Cron: expected six fields"
     return CronSchedule
-      parse_field_ fields[0] 0 59
-      parse_field_ fields[1] 0 59
-      parse_field_ fields[2] 0 23
-      parse_field_ fields[3] 1 31
-      parse_field_ fields[4] 1 12
-      parse_field_ fields[5] 0  6
+      parse-field_ fields[0] 0 59
+      parse-field_ fields[1] 0 59
+      parse-field_ fields[2] 0 23
+      parse-field_ fields[3] 1 31
+      parse-field_ fields[4] 1 12
+      parse-field_ fields[5] 0  6
 
-  as_map:
+  as-map:
     return {
       "second": second,
       "minute": minute,
@@ -77,7 +77,7 @@ class CronSchedule:
   */
   next t/Time -> Time?:
     // Clear out the nanoseconds (including milli and microseconds).
-    t = t.plus --ns=-t.ns_part
+    t = t.plus --ns=-t.ns-part
 
     // Add 1 second (as the earliest possible time).
     t = t.plus --s=1
@@ -89,10 +89,10 @@ class CronSchedule:
     limit := (t.utc.plus --years=5).time
 
     while t < limit:
-      start_over := false
+      start-over := false
 
       // Find the first applicable month.
-      while not (month_matches_ t):
+      while not (month-matches_ t):
         if not added:
           added = true
           t = (t.utc.with --s=0 --m=0 --h=0 --day=1).time
@@ -100,15 +100,15 @@ class CronSchedule:
         t = (t.utc.plus --months=1).time
 
         if t.utc.month == 2:
-          start_over = true
+          start-over = true
           break
 
-      if start_over:
+      if start-over:
         continue
 
       // Find the first applicable day.
       // Note: We do not handle daylight savings regimes where midnight does not exist.
-      while not (day_matches_ t):
+      while not (day-matches_ t):
         if not added:
           added = true
           t = (t.utc.with --s=0 --m=0 --h=0).time
@@ -116,12 +116,12 @@ class CronSchedule:
         t = (t.utc.plus --days=1).time
 
         if t.utc.day == 1:
-          start_over = true
+          start-over = true
           break
 
-      if start_over:/// Parse field
+      if start-over:/// Parse field
       // Find the first applicable hour.
-      while not (hour_matches_ t):
+      while not (hour-matches_ t):
         if not added:
           added = true
           t = (t.utc.with --s=0 --m=0).time
@@ -129,14 +129,14 @@ class CronSchedule:
         t = t.plus --h=1
 
         if t.utc.h == 0:
-          start_over = true
+          start-over = true
           break
 
-      if start_over:
+      if start-over:
         continue
 
       // Find the first applicable minute.
-      while not (minute_matches_ t):
+      while not (minute-matches_ t):
         if not added:
           added = true
           t = (t.utc.with --s=0).time
@@ -144,24 +144,24 @@ class CronSchedule:
         t = t.plus --m=1
 
         if t.utc.m == 0:
-          start_over = true
+          start-over = true
           break
 
-      if start_over:
+      if start-over:
         continue
 
       // Find the first applicable second.
-      while not (second_matches_ t):
+      while not (second-matches_ t):
         if not added:
           added = true
 
         t = t.plus --s=1
 
         if t.utc.s == 0:
-          start_over = true
+          start-over = true
           break
 
-      if start_over:
+      if start-over:
         continue
 
       return t
@@ -169,29 +169,29 @@ class CronSchedule:
     // If no time is found within five years, return null.
     return null
 
-  month_matches_ t/Time -> bool:
+  month-matches_ t/Time -> bool:
     return (((1 << t.utc.month) & month) != 0)
 
-  day_matches_ t/Time -> bool:
-    dom_match := ((1 << t.utc.day) & dom) != 0
-    dow_match := ((1 << (t.utc.weekday % 7)) & dow) != 0
-    if (dom & STAR_BIT != 0) or (dow & STAR_BIT != 0):
-      return dom_match and dow_match
-    return dom_match or dow_match
+  day-matches_ t/Time -> bool:
+    dom-match := ((1 << t.utc.day) & dom) != 0
+    dow-match := ((1 << (t.utc.weekday % 7)) & dow) != 0
+    if (dom & STAR-BIT != 0) or (dow & STAR-BIT != 0):
+      return dom-match and dow-match
+    return dom-match or dow-match
 
-  hour_matches_ t/Time -> bool:
+  hour-matches_ t/Time -> bool:
     return (((1 << t.utc.h) & hour) != 0)
 
-  minute_matches_ t/Time -> bool:
+  minute-matches_ t/Time -> bool:
     return (((1 << t.utc.m) & minute) != 0)
 
-  second_matches_ t/Time -> bool:
+  second-matches_ t/Time -> bool:
     return (((1 << t.utc.s) & second) != 0)
 
-  static STAR_BIT ::= 1 << 63
+  static STAR-BIT ::= 1 << 63
 
   /// Lookup predefined crontab descriptions.
-  static get_predefined_description_ keyword/string -> string:
+  static get-predefined-description_ keyword/string -> string:
     if keyword == "@yearly" or keyword == "@annually": return  "0 0 0 1 1 *"
     if keyword == "@monthly": return "0 0 0 1 * *"
     if keyword == "@weekly":  return "0 0 0 * * 0"
@@ -200,50 +200,50 @@ class CronSchedule:
     throw "Cron: unknown predefined $keyword"
 
   /// Parse field: comma separated ranges and merge the results.
-  static parse_field_ field/string min/int max/int -> int:
+  static parse-field_ field/string min/int max/int -> int:
     result := 0
-    field.split ",": result |= parse_range_ it min max
+    field.split ",": result |= parse-range_ it min max
     return result
 
   /// Parse range: cardinal | cardinal "-" cardinal [ "/" cardinal ].
-  static parse_range_ range/string min/int max/int -> int:
-    range_and_step ::= range.split "/"
-    low_and_high   ::= range_and_step[0].split "-"
-    single_digit   ::= low_and_high.size == 1
+  static parse-range_ range/string min/int max/int -> int:
+    range-and-step ::= range.split "/"
+    low-and-high   ::= range-and-step[0].split "-"
+    single-digit   ::= low-and-high.size == 1
     start := 0
     end := 0
     extra := 0
-    if low_and_high[0] == "*":
+    if low-and-high[0] == "*":
       start = min
       end = max
-      extra = STAR_BIT
+      extra = STAR-BIT
     else:
-      start = parse_cardinal_ low_and_high[0]
-      if low_and_high.size == 1: end = start
-      else if low_and_high.size == 2:
-        end = parse_cardinal_ low_and_high[1]
+      start = parse-cardinal_ low-and-high[0]
+      if low-and-high.size == 1: end = start
+      else if low-and-high.size == 2:
+        end = parse-cardinal_ low-and-high[1]
       else: throw "Cron: too many hyphens: $range"
     step := 0
-    if range_and_step.size == 1: step = 1
-    else if range_and_step.size == 2:
-      step = parse_cardinal_ range_and_step[1]
-      if single_digit: end = max
+    if range-and-step.size == 1: step = 1
+    else if range-and-step.size == 2:
+      step = parse-cardinal_ range-and-step[1]
+      if single-digit: end = max
       if step > 1: extra = 0
     else: throw "Cron: too many slashes: $range"
     if start < min: throw "Cron: beginning of range $start below min $min"
     if end   > max: throw "Cron: end of range $end above max $max"
     if start > end: throw "Cron: beginning of range $start beyond end of range $end"
     if step == 0:   throw "Cron: step of range should be a positive number $step"
-    return (step_bits_ start end step) | extra
+    return (step-bits_ start end step) | extra
 
   /// Parse a non-negative integer.
-  static parse_cardinal_ number/string -> int:
-    value ::= int.parse number --on_error=: throw "Cron: cannot parse $number as integer"
+  static parse-cardinal_ number/string -> int:
+    value ::= int.parse number --on-error=: throw "Cron: cannot parse $number as integer"
     if value < 0: throw "Cron: parsed integer $number is negative"
     return value
 
   /// Compute step bit pattern,
-  static step_bits_ min/int max/int step/int -> int:
+  static step-bits_ min/int max/int step/int -> int:
     bits := 0
     for i := min; i <= max; i += step: bits |= 1 << i
     return bits

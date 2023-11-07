@@ -23,10 +23,10 @@ namespace compiler {
 Trie::Trie(int id)
     : kind(Token::EOS)
     , data(Symbol::invalid())
-    , _id(id)
-    , _capacity(INLINED_CHILDREN)
-    , _children(_inlined) {
-  memset(_inlined, 0, sizeof(_inlined));
+    , id_(id)
+    , capacity_(INLINED_CHILDREN)
+    , children_(inlined_) {
+  memset(inlined_, 0, sizeof(inlined_));
 }
 
 Trie* Trie::get(const uint8* string) {
@@ -47,15 +47,15 @@ Trie* Trie::get(const uint8* from, const uint8* to) {
 }
 
 Trie* Trie::allocate(int index, int id) {
-  if (index == _capacity) {
-    int new_capacity = _capacity * 4;
+  if (index == capacity_) {
+    int new_capacity = capacity_ * 4;
     Trie** new_children = unvoid_cast<Trie**>(malloc(sizeof(Trie*) * new_capacity));
-    memcpy(new_children, _children, sizeof(Trie*) * _capacity);
-    memset(new_children + _capacity, 0, sizeof(Trie*) * (new_capacity - _capacity));
-    _capacity = new_capacity;
-    _children = new_children;
+    memcpy(new_children, children_, sizeof(Trie*) * capacity_);
+    memset(new_children + capacity_, 0, sizeof(Trie*) * (new_capacity - capacity_));
+    capacity_ = new_capacity;
+    children_ = new_children;
   }
-  return _children[index] = _new Trie(id);
+  return children_[index] = _new Trie(id);
 }
 
 } // namespace toit::compiler

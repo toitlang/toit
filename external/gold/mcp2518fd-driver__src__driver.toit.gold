@@ -1,0 +1,3 @@
+mcp2518fd-driver/src/driver.toit:340:15: warning: Deprecated 'Pin.config'
+    interrupt.config --input
+              ^~~~~~

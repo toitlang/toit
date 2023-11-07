@@ -11,6 +11,6 @@ import expect show *
 // See the package.lock file.
 
 main:
-  expect_equals "foo" foo.identify
-  expect_equals "target + foo.sub=(sub foo.target=target self.sub=(still self))" redirected.identify
-  expect_equals "sub foo.target=target self.sub=(still self)" sub.identify
+  expect-equals "foo" foo.identify
+  expect-equals "target + foo.sub=(sub foo.target=target self.sub=(still self))" redirected.identify
+  expect-equals "sub foo.target=target self.sub=(still self)" sub.identify

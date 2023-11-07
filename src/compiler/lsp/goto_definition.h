@@ -28,9 +28,14 @@ class GotoDefinitionHandler : public LspSelectionHandler {
  public:
   explicit GotoDefinitionHandler(SourceManager* source_manager, LspProtocol* protocol)
       : LspSelectionHandler(protocol)
-      , _source_manager(source_manager) { }
+      , source_manager_(source_manager) {}
 
-  void class_or_interface(ast::Node* node, IterableScope* scope, ir::Class* holder, ir::Node* resolved, bool needs_interface);
+  void class_interface_or_mixin(ast::Node* node,
+                                IterableScope* scope,
+                                ir::Class* holder,
+                                ir::Node* resolved,
+                                bool needs_interface,
+                                bool needs_mixin);
   void type(ast::Node* node, IterableScope* scope, ResolutionEntry resolved, bool allow_none);
   void call_virtual(ir::CallVirtual* node, ir::Type type, List<ir::Class*> classes);
   void call_prefixed(ast::Dot* node,
@@ -74,8 +79,8 @@ class GotoDefinitionHandler : public LspSelectionHandler {
   static void import_path(const char* resolved, LspProtocol* protocol);
 
  private:
-  SourceManager* _source_manager;
-  UnorderedSet<Source::Range> _printed_definitions;
+  SourceManager* source_manager_;
+  UnorderedSet<Source::Range> printed_definitions_;
 
   void call_statically_resolved(ir::Node* resolved1, ir::Node* resolved2, List<ir::Node*> candidates);
   void _print_range(ir::Node* resolved);

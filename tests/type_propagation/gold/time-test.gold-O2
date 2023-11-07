@@ -1,0 +1,20 @@
+main tests/type_propagation/time-test.toit
+  0[023] - load smi 0
+  1[020] - load literal counter = 
+  3[015] - load local 1
+  4[058] - invoke virtual stringify // [{LargeInteger_|SmallInteger_}] -> {String_}
+  8[073] - invoke add // [{String_}, {String_}] -> {String_}
+  9[053] - invoke static print <sdk>/core/print.toit // [{String_}] -> {Null_}
+ 12[041] - pop 1
+ 13[053] - invoke static Time.now <sdk>/core/time.toit // {Time}
+ 16[002] - pop, load local S0
+ 18[014] - load local 0
+ 19[025] - load smi 1
+ 20[073] - invoke add // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {LargeInteger_|SmallInteger_}
+ 21[004] - store local, pop S2
+ 23[041] - pop 1
+ 24[027] - load smi 1000
+ 27[053] - invoke static sleep <sdk>/core/timer.toit // [{SmallInteger_}] -> {Null_}
+ 30[041] - pop 1
+ 31[083] - branch back T1
+ 36[089] - return null S1 0

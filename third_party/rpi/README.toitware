@@ -1,0 +1,12 @@
+Name: rpi
+Short Name: rpi
+URL: https://github.com/mmozeiko/rpi
+Version: -
+Revision: 4756900efa83f1cefd60e01a20b04f84b0626e0b
+Date: 2022-07-06
+License: Unlicense license
+
+Description:
+Tools to create Raspberry pi toolchains.
+
+We only use the sysroot.py file.

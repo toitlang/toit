@@ -38,15 +38,15 @@ extern bool needs_gc;
 // Returns the error as a string. Returns null on allocation failure.
 Object* lwip_error(Process* process, err_t err);
 
-// The LwIPEventSource handles the LwIP thread, which is system-wide.  All LwIP
+// The LwipEventSource handles the LwIP thread, which is system-wide.  All LwIP
 // code must run on this thread, and it blocks when nothing is happening in
 // LwIP.
-class LwIPEventSource : public EventSource {
+class LwipEventSource : public EventSource {
  public:
-  static LwIPEventSource* instance() { return _instance; }
+  static LwipEventSource* instance() { return instance_; }
 
-  LwIPEventSource();
-  ~LwIPEventSource();
+  LwipEventSource();
+  ~LwipEventSource();
 
   // Calls a closure on the LwIP thread, while temporarily blocking the thread
   // that calls call_on_thread. The LwIP thread code runs for a short time and
@@ -68,14 +68,10 @@ class LwIPEventSource : public EventSource {
     }
 
     // Wait for the LwIP thread to perform our task.
-    Locker locker(_mutex);
-    while (!call.done) OS::wait(_call_done);
+    Locker locker(mutex());
+    while (!call.done) OS::wait(call_done_);
     return call.result;
   }
-
-  // This event source (and LwIP thread) is shared across all Toit processes,
-  // so there is a mutex to control access.
-  Mutex* mutex() { return _mutex; }
 
  private:
   struct CallContext {
@@ -85,11 +81,10 @@ class LwIPEventSource : public EventSource {
   };
 
   static void on_thread(void* arg);
+  ConditionVariable* call_done() const { return call_done_; }
 
-  static LwIPEventSource* _instance;
-
-  Mutex* _mutex;
-  ConditionVariable* _call_done;
+  static LwipEventSource* instance_;
+  ConditionVariable* call_done_;
 };
 
 } // namespace toit

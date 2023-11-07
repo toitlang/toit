@@ -27,132 +27,107 @@
 
 namespace toit {
 
-// We push the exception and two elements for the unwinding implementation
-// on the stack when we handle stack overflows.
-static const int RESERVED_STACK_FOR_STACK_OVERFLOWS = 3;
-
 Interpreter::Interpreter()
-    : _process(null)
-    , _limit(null)
-    , _base(null)
-    , _sp(null)
-    , _try_sp(null)
-    , _watermark(null) {
-#ifdef PROFILER
-  _is_profiler_active = false;
-#endif
-}
+    : process_(null)
+    , limit_(null)
+    , base_(null)
+    , sp_(null)
+    , try_sp_(null)
+    , watermark_(null) {}
 
 void Interpreter::activate(Process* process) {
-  _process = process;
+  process_ = process;
 }
 
 void Interpreter::deactivate() {
-  _process = null;
+  process_ = null;
 }
 
 void Interpreter::preempt() {
-  _watermark = PREEMPTION_MARKER;
+  watermark_ = PREEMPTION_MARKER;
 }
-
-#ifdef PROFILER
-void Interpreter::profile_register_method(Method method) {
-  int absolute_bci = process()->program()->absolute_bci_from_bcp(method.header_bcp());
-  Profiler* profiler = process()->profiler();
-  if (profiler != null) profiler->register_method(absolute_bci);
-}
-
-void Interpreter::profile_increment(uint8* bcp) {
-  int absolute_bci = process()->program()->absolute_bci_from_bcp(bcp);
-  Profiler* profiler = process()->profiler();
-  if (profiler != null) profiler->increment(absolute_bci);
-}
-#endif
 
 Method Interpreter::lookup_entry() {
-  Method result = _process->entry();
+  Method result = process_->entry();
   if (!result.is_valid()) FATAL("Cannot locate entry method for interpreter");
   return result;
 }
 
-Object** Interpreter::load_stack() {
-  Stack* stack = _process->task()->stack();
-  GcMetadata::insert_into_remembered_set(stack);
+Object** Interpreter::load_stack(Method* pending) {
+  Stack* stack = process_->task()->stack();
   stack->transfer_to_interpreter(this);
-#ifdef PROFILER
-  set_profiler_state();
-#endif
-  Object** watermark = _watermark;
-  Object** new_watermark = _limit + RESERVED_STACK_FOR_STACK_OVERFLOWS;
+  if (pending) {
+    *pending = stack->pending_stack_check_method();
+    stack->set_pending_stack_check_method(Method::invalid());
+  }
+  Object** watermark = watermark_;
+  Object** new_watermark = limit_ + RESERVED_STACK_FOR_CALLS;
   while (true) {
     // Updates watermark unless preemption marker is set (will be set after preemption).
     if (watermark == PREEMPTION_MARKER) break;
-    if (_watermark.compare_exchange_strong(watermark, new_watermark)) break;
+    if (watermark_.compare_exchange_strong(watermark, new_watermark)) break;
   }
-  return _sp;
+  return sp_;
 }
 
-void Interpreter::store_stack(Object** sp) {
-  if (sp != null) _sp = sp;
-  Stack* stack = _process->task()->stack();
+void Interpreter::store_stack(Object** sp, Method pending) {
+  if (sp != null) sp_ = sp;
+  Stack* stack = process_->task()->stack();
   stack->transfer_from_interpreter(this);
-  _limit = null;
-  _base = null;
-  _sp = null;
+  ASSERT(!stack->pending_stack_check_method().is_valid());
+  if (pending.is_valid()) stack->set_pending_stack_check_method(pending);
+  limit_ = null;
+  base_ = null;
+  sp_ = null;
 
-  Object** watermark = _watermark;
+  Object** watermark = watermark_;
   while (true) {
     if (watermark == PREEMPTION_MARKER) break;
-    if (_watermark.compare_exchange_strong(watermark, null)) break;
+    if (watermark_.compare_exchange_strong(watermark, null)) break;
   }
 }
-
-#ifdef PROFILER
-void Interpreter::set_profiler_state() {
-  Profiler* profiler = process()->profiler();
-  _is_profiler_active = profiler != null && profiler->should_profile_task(process()->task()->id());
-}
-#endif
 
 void Interpreter::prepare_task(Method entry, Instance* code) {
   push(code);
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
   push(reinterpret_cast<Object*>(entry.entry()));
-  push(_process->program()->frame_marker());
+  push(process_->program()->frame_marker());
 
-  push(Smi::from(0));  // Argument: stack
-  push(Smi::from(0));  // Argument: value
+  // Push the arguments to the faked call to 'task_transfer_'.
+  push(process_->task());                     // Argument: to/Task
+  push(process_->program()->false_object());  // Argument: detach_stack/bool
 
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
   push(reinterpret_cast<Object*>(entry.bcp_from_bci(LOAD_NULL_LENGTH)));
-  push(_process->program()->frame_marker());
+  push(process_->program()->frame_marker());
 }
 
 Object** Interpreter::gc(Object** sp, bool malloc_failed, int attempts, bool force_cross_process) {
   ASSERT(attempts >= 1 && attempts <= 3);  // Allocation attempts.
   if (attempts == 3) {
-    OS::heap_summary_report(0, "out of memory");
-    if (VM::current()->scheduler()->is_boot_process(_process)) {
+    OS::heap_summary_report(0, "out of memory", process_);
+    if (VM::current()->scheduler()->is_boot_process(process_)) {
       OS::out_of_memory("Out of memory in system process");
     }
     return sp;
   }
   store_stack(sp);
-  VM::current()->scheduler()->gc(_process, malloc_failed, attempts > 1 || force_cross_process);
+  VM::current()->scheduler()->gc(process_, malloc_failed, attempts > 1 || force_cross_process);
   return load_stack();
 }
 
 void Interpreter::prepare_process() {
   load_stack();
+  push(process_->task());
 
   Method entry = lookup_entry();
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
   push(reinterpret_cast<Object*>(entry.entry()));
-  push(_process->program()->frame_marker());
+  push(process_->program()->frame_marker());
 
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
   push(reinterpret_cast<Object*>(entry.entry()));
-  push(_process->program()->frame_marker());
+  push(process_->program()->frame_marker());
 
   store_stack();
 }
@@ -171,7 +146,7 @@ void Interpreter::prepare_process() {
 #define STACK_AT_PUT(n, o) ({ int _n_ = n; Object* _o_ = o; *(sp + _n_) = _o_; })
 
 Object** Interpreter::push_error(Object** sp, Object* type, const char* message) {
-  Process* process = _process;
+  Process* process = process_;
   PUSH(type);
 
   // Stack: Type, ...
@@ -181,6 +156,8 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
     sp = gc(sp, false, attempts, false);
     instance = process->object_heap()->allocate_instance(process->program()->exception_class_id());
   }
+  process->object_heap()->leave_primitive();
+
   if (instance == null) {
     DROP(1);
     return push_out_of_memory_error(sp);
@@ -197,6 +174,8 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
     sp = gc(sp, true, attempts, false);
     buffer.allocate(STACK_ENCODING_BUFFER_SIZE);
   }
+  process->object_heap()->leave_primitive();
+
   if (!buffer.has_content()) {
     DROP(2);
     return push_out_of_memory_error(sp);
@@ -208,12 +187,13 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
   sp = load_stack();
 
   if (success) {
-    Error* error = null;
-    ByteArray* trace = process->allocate_byte_array(buffer.size(), &error);
+    ByteArray* trace = process->allocate_byte_array(buffer.size());
     for (int attempts = 1; trace == null && attempts < 4; attempts++) {
       sp = gc(sp, false, attempts, false);
-      trace = process->allocate_byte_array(buffer.size(), &error);
+      trace = process->allocate_byte_array(buffer.size());
     }
+    process->object_heap()->leave_primitive();
+
     if (trace == null) {
       DROP(2);
       return push_out_of_memory_error(sp);
@@ -223,7 +203,7 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
     PUSH(trace);
   } else {
     STACK_AT_PUT(0, process->program()->out_of_bounds());
-    PUSH(process->program()->null_object());
+    PUSH(process->null_object());
   }
 
   // Stack: Trace, Type, Instance, ...
@@ -235,44 +215,30 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
 }
 
 Object** Interpreter::push_out_of_memory_error(Object** sp) {
-  PUSH(_process->program()->out_of_memory_error());
-  return sp;
-}
-
-Object** Interpreter::handle_preempt(Object** sp, OverflowState* state) {
-  // Reset the watermark now that we're handling the preemption.
-  _watermark = null;
-
-  Process* process = _process;
-  if (process->signals() & Process::WATCHDOG) {
-    *state = OVERFLOW_EXCEPTION;
-    Object* type = process->program()->watchdog_interrupt();
-    return push_error(sp, type, "");
-  } else {
-    *state = OVERFLOW_PREEMPT;
-  }
+  PUSH(process_->program()->out_of_memory_error());
   return sp;
 }
 
 Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, Method method) {
-  if (_watermark == PREEMPTION_MARKER) {
-    return handle_preempt(sp, state);
+  if (watermark_ == PREEMPTION_MARKER) {
+    // Reset the watermark now that we're handling the preemption.
+    watermark_ = null;
+    *state = OVERFLOW_PREEMPT;
+    return sp;
   }
 
-  Process* process = _process;
-  int length = _process->task()->stack()->length();
+  Process* process = process_;
+  int length = process->task()->stack()->length();
   int new_length = -1;
   if (length < Stack::max_length()) {
-    // The max_height doesn't include space for the frame of the next call (if there is one).
-    // For simplicity just always assume that there will be a call at max-height and add `FRAME_SIZE`.
-    int needed_space = method.max_height() + Interpreter::FRAME_SIZE + RESERVED_STACK_FOR_STACK_OVERFLOWS;
-    int headroom = sp - _limit;
+    int needed_space = method.max_height() + RESERVED_STACK_FOR_CALLS;
+    int headroom = sp - limit_;
     ASSERT(headroom < needed_space);  // We shouldn't try to grow the stack otherwise.
 
     new_length = Utils::max(length + (length >> 1), (length - headroom) + needed_space);
     new_length = Utils::min(Stack::max_length(), new_length);
     int new_headroom = headroom + (new_length - length);
-    if (new_headroom < needed_space) new_length = -1;  // Growing the stack will not bring us out of the red zone.
+    if (new_headroom < needed_space) new_length = -1;  // Growing the stack will not give us enough space.
   }
 
   if (new_length < 0) {
@@ -295,6 +261,7 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
     sp = gc(sp, false, attempts, false);
     new_stack = process->object_heap()->allocate_stack(new_length);
   }
+  process->object_heap()->leave_primitive();
 
   // Then check for out of memory.
   if (new_stack == null) {
@@ -303,7 +270,7 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
   }
 
   store_stack(sp);
-  process->task()->stack()->copy_to(new_stack, new_length);
+  process->task()->stack()->copy_to(new_stack);
   process->task()->set_stack(new_stack);
   sp = load_stack();
   *state = OVERFLOW_RESUME;
@@ -311,8 +278,8 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
 }
 
 void Interpreter::trace(uint8* bcp) {
-#ifdef DEBUG
-  auto program = _process->program();
+#ifdef TOIT_DEBUG
+  auto program = process_->program();
   ConsolePrinter printer(program);
   printf("[%6d] ", program->absolute_bci_from_bcp(bcp));
   print_bytecode(&printer, bcp, 0);

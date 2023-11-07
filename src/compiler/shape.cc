@@ -58,14 +58,14 @@ struct Parameter {
 
 class NameIterator {
  public:
-  NameIterator(const ResolutionShape& shape) : _shape(shape), _index(0) {}
+  NameIterator(const ResolutionShape& shape) : shape_(shape), index_(0) {}
 
   Parameter current() const {
-    auto names = _shape.names();
-    if (_index >= names.length()) return Parameter::invalid();
-    Symbol name = names[_index];
-    bool is_optional = _shape.optional_names()[_index];
-    bool is_block = _index >= names.length() - _shape.named_block_count();
+    auto names = shape_.names();
+    if (index_ >= names.length()) return Parameter::invalid();
+    Symbol name = names[index_];
+    bool is_optional = shape_.optional_names()[index_];
+    bool is_block = index_ >= names.length() - shape_.named_block_count();
     return {
       .name = name,
       .is_optional = is_optional,
@@ -74,7 +74,7 @@ class NameIterator {
   }
 
   Parameter advance() {
-    if (_index < _shape.names().length()) _index++;
+    if (index_ < shape_.names().length()) index_++;
     return current();
   }
 
@@ -97,17 +97,17 @@ class NameIterator {
     return Parameter::invalid();
   }
 
-  ResolutionShape shape() const { return _shape; }
+  ResolutionShape shape() const { return shape_; }
 
  private:
-  ResolutionShape _shape;
-  int _index;
+  ResolutionShape shape_;
+  int index_;
 };
 
 }  // anonymous namespace.
 
 PlainShape ResolutionShape::to_plain_shape() const {
-  return PlainShape(_call_shape);
+  return PlainShape(call_shape_);
 }
 
 bool ResolutionShape::overlaps_with(const ResolutionShape& other) {
@@ -347,7 +347,7 @@ bool ResolutionShape::accepts(const CallShape& call_shape) {
     while (parameter_index < parameter_names.length()) {
       bool found = parameter_names[parameter_index] == argument_name;
       if (found) break;
-      if (!_optional_names[parameter_index]) return false;
+      if (!optional_names_[parameter_index]) return false;
       parameter_index++;
     }
     bool argument_is_block = argument_index >= call_named_non_block;
@@ -357,7 +357,7 @@ bool ResolutionShape::accepts(const CallShape& call_shape) {
     parameter_index++;
   }
   for (; parameter_index < parameter_names.length(); parameter_index++) {
-    if (!_optional_names[parameter_index]) return false;
+    if (!optional_names_[parameter_index]) return false;
   }
   return true;
 }

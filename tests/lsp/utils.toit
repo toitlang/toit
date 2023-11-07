@@ -7,15 +7,15 @@ import bytes
 import host.pipe
 import reader show BufferedReader
 
-combine_and_replace lines replacement_index replacement_line:
+combine-and-replace lines replacement-index replacement-line:
   builder := bytes.Buffer
   for i := 0; i < lines.size; i++:
-    if i == replacement_index:
-      builder.write replacement_line
+    if i == replacement-index:
+      builder.write replacement-line
     else:
       builder.write lines[i]
-    builder.put_byte '\n'
-  return builder.bytes.to_string
+    builder.write-byte '\n'
+  return builder.bytes.to-string
 
 class Location:
   path / string ::= ""
@@ -25,38 +25,45 @@ class Location:
   constructor .path .line .column:
 
   operator== other/Location:
-    return path == other.path and line == other.line and column == other.column
+    return (to-slash_ path) == (to-slash_ other.path) and line == other.line and column == other.column
 
   stringify -> string:
     return "$path:$line:$column"
 
+  static to-slash_ path/string -> string:
+    if platform == PLATFORM-WINDOWS:
+      return path.replace --all "\\" "/"
+    return path
+
 // Also imports all relatively imported files.
 // Fails if there is an indirect recursion (directly importing itself is ok).
-extract_locations path -> Map/*<string, Location>*/:
-  content := (file.read_content path).to_string
+extract-locations path -> Map/*<string, Location>*/:
+  content := (file.read-content path).to-string
   lines := (content.trim --right "\n").split "\n"
+  if platform == PLATFORM-WINDOWS:
+    lines = lines.map: |line| line.trim --right "\r"
   result := {:}
   for i := 0; i < lines.size; i++:
     line := lines[i]
-    if line.starts_with "import ." or line.starts_with "// import_for_locations .":
-      first_dot := line.index_of "."
-      imported_id := line.copy first_dot + 1
-      if imported_id.contains " ":
-        imported_id = imported_id.copy 0 (imported_id.index_of " ")
-      dir := path.copy 0 (path.index_of --last "/")
-      while imported_id.starts_with ".":
-        dir = dir.copy 0 (dir.index_of --last "/")
-        imported_id = imported_id.copy 1
-      imported_id = imported_id.replace --all "." "/"
-      imported_path := "$dir/$(imported_id).toit"
-      if imported_path != path:
-        imported_locations := extract_locations imported_path
-        imported_locations.do: |key value|
+    if line.starts-with "import ." or line.starts-with "// import_for_locations .":
+      first-dot := line.index-of "."
+      imported-id := line.copy first-dot + 1
+      if imported-id.contains " ":
+        imported-id = imported-id.copy 0 (imported-id.index-of " ")
+      dir := path.copy 0 (path.index-of --last "/")
+      while imported-id.starts-with ".":
+        dir = dir.copy 0 (dir.index-of --last "/")
+        imported-id = imported-id.copy 1
+      imported-id = imported-id.replace --all "." "/"
+      imported-path := "$dir/$(imported-id).toit"
+      if imported-path != path:
+        imported-locations := extract-locations imported-path
+        imported-locations.do: |key value|
           assert: not result.contains key or result[key] == value
           result[key] = value
 
-    if line.starts_with "/*":
-      definition_line := i - 1
+    if line.starts-with "/*":
+      definition-line := i - 1
       if not line.contains "@":
         // This should only happen if we want to have a test/location at the
         // beginning of the line. (Or if this is the data for a test).
@@ -64,42 +71,42 @@ extract_locations path -> Map/*<string, Location>*/:
         line = lines[i]
       if not line.contains "@": continue
 
-      if line.ends_with "*/": line = line.trim --right "*/"
+      if line.ends-with "*/": line = line.trim --right "*/"
       line = line.trim
-      column := line.index_of "@"
+      column := line.index-of "@"
 
       name := line.copy (column + 2)
       assert: not result.contains name
-      result[name] = Location path definition_line column
+      result[name] = Location path definition-line column
   return result
 
-run_toit toitc args -> List?:
-  cpp_pipes := pipe.fork
+run-toit toitc args -> List?:
+  cpp-pipes := pipe.fork
       true                // use_path
-      pipe.PIPE_CREATED   // stdin
-      pipe.PIPE_CREATED   // stdout
-      pipe.PIPE_INHERITED // stderr
+      pipe.PIPE-CREATED   // stdin
+      pipe.PIPE-CREATED   // stdout
+      pipe.PIPE-INHERITED // stderr
       toitc
       [toitc] + args
-  cpp_to   := cpp_pipes[0]
-  cpp_from := cpp_pipes[1]
-  cpp_pid  := cpp_pipes[3]
+  cpp-to   := cpp-pipes[0]
+  cpp-from := cpp-pipes[1]
+  cpp-pid  := cpp-pipes[3]
   try:
-    cpp_to.close
+    cpp-to.close
 
     lines := []
     try:
-      reader := BufferedReader cpp_from
-      while line := reader.read_line:
+      reader := BufferedReader cpp-from
+      while line := reader.read-line:
         lines.add line
     finally:
-      cpp_from.close
+      cpp-from.close
     return lines
   finally:
-    exit_value := pipe.wait_for cpp_pid
-    exit_code := pipe.exit_code exit_value
-    exit_signal := pipe.exit_signal exit_value
-    if exit_signal:
-      throw "$toitc exited with signal $exit_signal"
-    if exit_code != 0:
-      throw "$toitc exited with code $exit_code"
+    exit-value := pipe.wait-for cpp-pid
+    exit-code := pipe.exit-code exit-value
+    exit-signal := pipe.exit-signal exit-value
+    if exit-signal:
+      throw "$toitc exited with signal $exit-signal"
+    if exit-code != 0:
+      throw "$toitc exited with code $exit-code"

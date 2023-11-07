@@ -1,0 +1,15 @@
+// Copyright (C) 2018 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
+
+import expect show *
+
+class List:
+  foo:
+    return "foo"
+main:
+  a := List
+  expect-equals "foo" a.foo
+
+  a2 := []
+  expect-equals 0 a2.size

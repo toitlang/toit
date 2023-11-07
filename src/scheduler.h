@@ -37,17 +37,22 @@ class SchedulerThread : public Thread, public SchedulerThreadList::Element {
  public:
   explicit SchedulerThread(Scheduler* scheduler)
       : Thread("Toit")
-      , _scheduler(scheduler) {}
+      , scheduler_(scheduler) {}
 
   ~SchedulerThread() {}
 
-  Interpreter* interpreter() { return &_interpreter; }
+  Interpreter* interpreter() { return &interpreter_; }
 
   void entry();
 
+  bool is_pinned() const { return is_pinned_; }
+  void pin() { is_pinned_ = true; }
+  void unpin() { is_pinned_ = false; }
+
  private:
-  Scheduler* const _scheduler;
-  Interpreter _interpreter;
+  Scheduler* const scheduler_;
+  Interpreter interpreter_;
+  bool is_pinned_ = false;
 };
 
 class Scheduler {
@@ -71,21 +76,25 @@ class Scheduler {
   Scheduler();
   ~Scheduler();
 
+#ifdef TOIT_FREERTOS
   // Run the boot program and wait for all processes to run to completion.
-  ExitState run_boot_program(Program* program, char** args, int group_id);
+  ExitState run_boot_program(Program* program, int group_id);
+#else
+  // Run the boot program and wait for all processes to run to completion.
+  ExitState run_boot_program(Program* program, char** argv, int group_id);
 
-#ifndef TOIT_FREERTOS
   // Run the boot program and wait for all processes to run to completion.
   ExitState run_boot_program(
-    Program* boot_program,
+    Program* program,
     SnapshotBundle system,  // It is then the responsibility of the system process to launch the application.
     SnapshotBundle application,
-    char** args,
+    char** argv,
     int group_id);
-#endif  // TOIT_FREERTOS
+#endif
 
   // Run a new program. Returns the process ID of the root process.
-  int run_program(Program* program, char** args, ProcessGroup* group, Chunk* initial_chunk);
+  // Takes over the arguments and initial memory.
+  int run_program(Program* program, MessageEncoder* arguments, ProcessGroup* group, InitialMemoryManager* initial_memory);
 
   // Run a new external program. Returns the process.
   Process* run_external(ProcessRunner* runner);
@@ -94,16 +103,20 @@ class Scheduler {
   scheduler_err_t send_system_message(SystemMessage* message);
 
   // Send message to the process by id. Returns an error code to signal whether the message was delivered.
-  scheduler_err_t send_message(ProcessGroup* group, int process_id, Message* message);
+  // Takes over the message (should not be freed on success or failure).
+  // This only fails if the process id is invalid there are no retryable (allocation related) failures.
+  scheduler_err_t send_message(int process_id, Message* message, bool free_on_failure = true);
 
-  // Send message to the process by id. Returns an error code to signal whether the message was delivered.
-  scheduler_err_t send_message(int process_id, Message* message);
+  // Send notify message.
+  void send_notify_message(ObjectNotifier* notifier);
 
   // Send a signal to a target process. Returns true if sender was able to
   // deliver the signal.
   bool signal_process(Process* sender, int target_id, Process::Signal signal);
 
-  Process* hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_chunk);
+  // Takes over the arguments and the initial memory.
+  int spawn(Program* program, ProcessGroup* process_group, int priority,
+            Method method, MessageEncoder* arguments, InitialMemoryManager* initial_memory);
 
   // Returns a new process id (only called from Process constructor).
   int next_process_id();
@@ -126,6 +139,14 @@ class Scheduler {
   // processes in the system.
   void gc(Process* process, bool malloc_failed, bool try_hard);
 
+  // Profiler support.
+  void activate_profiler(Process* process) { notify_profiler(1); }
+  void deactivate_profiler(Process* process) { notify_profiler(-1); }
+
+  // Process priority support.
+  int get_priority(int pid);
+  bool set_priority(int pid, uint8 priority);
+
   // Primitive support.
 
   // Fills in an array with stats for the process with the given ids.
@@ -134,17 +155,25 @@ class Scheduler {
 
   static const int INVALID_PROCESS_ID = -1;
 
-  bool is_locked() const { return OS::is_locked(_mutex); }
-  bool is_boot_process(Process* process) const { return _boot_process == process; }
+  bool is_locked() const { return OS::is_locked(mutex_); }
+  bool is_boot_process(Process* process) const { return boot_process_ == process; }
+
+  void iterate_process_chunks(void* context, process_chunk_callback_t callback);
 
  private:
-  // Introduce a new process to the Scheduler. The Scheduler will not terminate until
+  // Introduce a new process to the scheduler. The scheduler will not terminate until
   // all processes has completed.
   void new_process(Locker& locker, Process* process);
-
   void add_process(Locker& locker, Process* process);
-
   void run_process(Locker& locker, Process* process, SchedulerThread* scheduler_thread);
+
+  // Update the priority of a process. This may cause preemption of the process
+  // or it may move the process to another ready queue.
+  void update_priority(Locker& locker, Process* process, uint8 value);
+
+  // Profiler support.
+  void notify_profiler(int change);
+  void notify_profiler(Locker& locker, int change);
 
   // Suspend/resume support for processes. Allows other threads to temporarily suspend
   // a process and remove it from the ready list (if it's not idle). Resuming a process
@@ -157,17 +186,12 @@ class Scheduler {
   // waiting transition to the new state.
   void wait_for_any_gc_to_complete(Locker& locker, Process* process, Process::State new_state);
 
-  typedef enum {
-    ONLY_IF_PROCESSES_ARE_READY,
-    EVEN_IF_PROCESSES_NOT_READY
-  } StartThreadRule;
-
-  void start_thread(Locker& locker, StartThreadRule force);
+  SchedulerThread* start_thread(Locker& locker);
 
   void process_ready(Process* process);
   void process_ready(Locker& locker, Process* process);
 
-  bool has_exit_reason() { return _exit_state.reason != EXIT_NONE; }
+  bool has_exit_reason() { return exit_state_.reason != EXIT_NONE; }
 
   scheduler_err_t send_system_message(Locker& locker, SystemMessage* message);
 
@@ -175,49 +199,75 @@ class Scheduler {
 
   Scheduler::ExitState launch_program(Locker& locker, Process* process);
 
-  Process* find_process(Locker& locker, int process_id);
+  Process* find_process(Locker& locker, int pid);
 
+  Process* new_boot_process(Locker& locker, Program* program, int group_id);
   SystemMessage* new_process_message(SystemMessage::Type type, int gid);
 
-  // Called by the launch thread, to signal that time has passed.
-  // The tick is used to drive process preemption.
-  static const int64 TICK_PERIOD_US = 100000;  // 100 ms.
+  static const int TICK_PERIOD_US = 100 * 1000;          // 100 ms.
 #ifdef TOIT_FREERTOS
-  static const int64 WATCHDOG_PERIOD_US = 10 * 1000 * 1000;  // 10 s.
+  static const int TICK_PERIOD_PROFILING_US = 10 * 100;  // 10 ms.
 #else
-  static const int64 WATCHDOG_PERIOD_US = 600 * 1000 * 1000;  // 10 m.
+  static const int TICK_PERIOD_PROFILING_US = 500;       // 0.5 ms.
 #endif
-  void tick(Locker& locker);
 
-  Mutex* _mutex;
-  ConditionVariable* _has_processes;
-  ConditionVariable* _has_threads;
-  ExitState _exit_state;
+  // Called by the launch thread to signal that time has passed.
+  // The tick is used to drive process preemption.
+  void tick(Locker& locker, int64 now);
+  void tick_schedule(Locker& locker, int64 now, bool reschedule);
 
-  // Condition variable used for both _gc_cross_processes and _gc_waiting_for_preemption.
-  ConditionVariable* _gc_condition;
+  // Get the time for the next tick for process preemption.
+  int64 tick_next() const { return next_tick_; }
+
+  Mutex* mutex_;
+  ConditionVariable* has_processes_;
+  ConditionVariable* has_threads_;
+  ExitState exit_state_;
+
+  // Condition variable used for both gc_cross_processes_ and gc_waiting_for_preemption_.
+  ConditionVariable* gc_condition_;
 
   // Are we currently doing a cross-process GC?
-  bool _gc_cross_processes;
+  bool gc_cross_processes_;
 
   // Number of OS threads that we're waiting for to be preempted for GC.
-  int _gc_waiting_for_preemption;
+  int gc_waiting_for_preemption_;
 
-  int _num_processes;
-  int _next_group_id;
-  int _next_process_id;
-  ProcessListFromScheduler _ready_processes;
+  int num_processes_;
+  int next_group_id_;
+  int next_process_id_;
+  int64 next_tick_ = 0;
 
-  int _num_threads;
-  int _max_threads;
-  SchedulerThreadList _threads;
+  static const int NUMBER_OF_READY_QUEUES = 5;
+  ProcessListFromScheduler ready_queue_[NUMBER_OF_READY_QUEUES];
+
+  ProcessListFromScheduler& ready_queue(uint8 priority) {
+    return ready_queue_[compute_ready_queue_index(priority)];
+  }
+
+  static int compute_ready_queue_index(uint8 priority) {
+    if (priority == Process::PRIORITY_CRITICAL) return 0;
+    if (priority >= 171) return 1;
+    if (priority >= 85) return 2;
+    if (priority != Process::PRIORITY_IDLE) return 3;
+    return 4;
+  }
+
+  bool has_ready_processes(Locker& locker);
+
+  int num_threads_;
+  int max_threads_;
+  SchedulerThreadList threads_;
+
+  // Keep track of the number of ready processes with an active profiler.
+  int num_profiled_processes_ = 0;
 
   // Keep track of the boot process if it still alive.
-  Process* _boot_process;
+  Process* boot_process_;
 
   // The scheduler keeps track of all live process groups. The linked
   // list is only manipulated while holding the scheduler mutex.
-  ProcessGroupList _groups;
+  ProcessGroupList groups_;
 
   friend class Process;
 };

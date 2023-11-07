@@ -61,7 +61,7 @@ class FixedPoint implements Comparable:
     if value is float:
       return FixedPoint.private_
         decimals
-        (value * MULTIPLIERS_[decimals] + value.sign * 0.5).to_int
+        (value * MULTIPLIERS_[decimals] + value.sign * 0.5).to-int
     if value is FixedPoint:
       return (FixedPoint.private_ decimals 0) + value  // Get at least the right number of decimals.
     throw "INVALID_TYPE"
@@ -71,10 +71,10 @@ class FixedPoint implements Comparable:
       other *= MULTIPLIERS_[decimals]
       return block.call value other decimals
     if other is FixedPoint:
-      new_decimals := max decimals other.decimals
-      value1 := value * MULTIPLIERS_[new_decimals - decimals]
-      value2 := other.value * MULTIPLIERS_[new_decimals - other.decimals]
-      return block.call value1 value2 new_decimals
+      new-decimals := max decimals other.decimals
+      value1 := value * MULTIPLIERS_[new-decimals - decimals]
+      value2 := other.value * MULTIPLIERS_[new-decimals - other.decimals]
+      return block.call value1 value2 new-decimals
     throw "INVALID_TYPE"
 
   operator == other -> bool:
@@ -92,14 +92,14 @@ class FixedPoint implements Comparable:
   operator >= other -> bool:
     return common_ other: | a b | a >= b
 
-  /** See $(Comparable.compare_to other). */
-  compare_to other -> int:
-    return common_ other: | a b | a.compare_to b
+  /** See $(Comparable.compare-to other). */
+  compare-to other -> int:
+    return common_ other: | a b | a.compare-to b
 
-  /** See $(Comparable.compare_to other [--if_equal]). */
-  compare_to other [--if_equal] -> int:
-    result := compare_to other
-    if result == 0: return if_equal.call
+  /** See $(Comparable.compare-to other [--if-equal]). */
+  compare-to other [--if-equal] -> int:
+    result := compare-to other
+    if result == 0: return if-equal.call
     return result
 
   /**
@@ -109,7 +109,7 @@ class FixedPoint implements Comparable:
   */
   operator + other:
     if other is float:
-      return value.to_float / MULTIPLIERS_[decimals] + other
+      return value.to-float / MULTIPLIERS_[decimals] + other
     return common_ other: | a b decimals |
       FixedPoint.private_ decimals a + b
 
@@ -120,7 +120,7 @@ class FixedPoint implements Comparable:
   */
   operator - other:
     if other is float:
-      return value.to_float / MULTIPLIERS_[decimals] - other
+      return value.to-float / MULTIPLIERS_[decimals] - other
     return common_ other: | a b decimals |
       FixedPoint.private_ decimals a - b
 
@@ -166,11 +166,11 @@ class FixedPoint implements Comparable:
     return FixedPoint.private_ decimals -value
 
   /// Rounds down like the / operator.
-  to_int -> int:
+  to-int -> int:
     return value / MULTIPLIERS_[decimals]
 
-  to_float -> float:
-    return value.to_float / MULTIPLIERS_[decimals]
+  to-float -> float:
+    return value.to-float / MULTIPLIERS_[decimals]
 
   abs -> FixedPoint:
     return FixedPoint.private_ decimals (value.abs as int)
@@ -184,19 +184,19 @@ class FixedPoint implements Comparable:
     after the decimal point is used for the precision.
   */
   static parse str/string from/int=0 to/int=str.size --radix=10 --decimals/int?=null -> FixedPoint:
-    dot := str.index_of "." from to
-    int_part := int.parse str[from..(dot == -1 ? to : dot)] --radix=radix --on_error=: throw it
+    dot := str.index-of "." from to
+    int-part := int.parse str[from..(dot == -1 ? to : dot)] --radix=radix --on-error=: throw it
     if dot == -1 or dot == to - 1:
       if not decimals: decimals = 0
       return FixedPoint.private_
         decimals
-        int_part * MULTIPLIERS_[decimals]
+        int-part * MULTIPLIERS_[decimals]
     if radix != 10: throw "Can't parse fixed-point non-decimal numbers"
     decimals = decimals or to - 1 - dot
     if from != 0 or to != str.size:
       str = str.copy from to
-    float_representation := float.parse str
-    return FixedPoint --decimals=decimals float_representation
+    float-representation := float.parse str
+    return FixedPoint --decimals=decimals float-representation
 
   stringify -> string:
     if value == 0: return "0"
@@ -212,11 +212,11 @@ class FixedPoint implements Comparable:
   with --decimals/int:
     if decimals == this.decimals: return this
     if decimals > this.decimals: return (FixedPoint.private_ decimals 0) + this
-    chopped_digits := this.decimals - decimals
-    rounding := (MULTIPLIERS_[chopped_digits] >> 1) * value.sign
+    chopped-digits := this.decimals - decimals
+    rounding := (MULTIPLIERS_[chopped-digits] >> 1) * value.sign
     return FixedPoint.private_
       decimals
-      (value + rounding) / MULTIPLIERS_[chopped_digits]
+      (value + rounding) / MULTIPLIERS_[chopped-digits]
 
-  hash_code -> int:
+  hash-code -> int:
     return value

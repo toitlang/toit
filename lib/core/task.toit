@@ -2,25 +2,21 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-// How many tasks are active.
-task_count_ := 0
-// How many tasks are blocked.
-task_blocked_ := 0
-// How many tasks are running in the background.
-task_background_ := 0
+import monitor
+import ..system.services show ServiceManager_
 
-// Whether the system is idle.
-is_task_idle_ := false
-
-task_resumed_ := null
-
-exit_with_error_ := false
+// How many tasks are alive?
+task-count_ := 0
+// How many tasks are alive, but running in the background?
+task-background_ := 0
 
 /**
 Returns the object for the current task.
+
+Deprecated: Use $Task.current instead.
 */
-task:
-  #primitive.core.task_current
+task -> Task:
+  return Task_.current
 
 /**
 Creates a new user task.
@@ -30,19 +26,20 @@ Calls $code in a new task.
 If the $background flag is set, then the new task will not block termination.
   The $background task flag is passed on to sub-tasks.
 */
-task code/Lambda --name/string="User task" --background/bool=false:
-  return create_task_ code name background
+task code/Lambda --name/string="User task" --background/bool?=null -> Task:
+  if background == null: background = Task_.current.background
+  return create-task_ code name background
 
 // Base API for creating and activating a task.
-create_task_ code/Lambda name/string background/bool -> Task_:
-  new_task := task_new_ code
-  new_task.name = name
-  new_task.background = background or task.background
-  new_task.initialize_
+create-task_ code/Lambda name/string background/bool -> Task:
+  new-task := task-new_ code
+  new-task.name_ = name
+  new-task.background_ = background
+  new-task.initialize_
   // Activate the new task.
-  new_task.previous_running_ = new_task.next_running_ = new_task
-  new_task.resume_
-  return new_task
+  new-task.previous-running_ = new-task.next-running_ = new-task
+  new-task.resume_
+  return new-task
 
 /**
 Voluntarily yields control of the CPU to other tasks.
@@ -53,190 +50,360 @@ The Toit programming language is cooperatively scheduled, so it is important
   opportunity to run.
 */
 yield:
-  task_yield_to_ task.next_running_
+  process-messages_
+  task-transfer-to_ Task_.current.next-running_ false
 
 // ----------------------------------------------------------------------------
 
-class Task_:
+/**
+A task.
+
+Tasks represent a thread of running code.
+Tasks are cooperative and thus must yield in order to allow other tasks to run.
+
+Tasks are created by calling $(task code). They can either terminate by themselves
+  (gracefully or with an exception) or by being canceled from the outside with
+  $cancel.
+
+See more on tasks at https://docs.toit.io/language/tasks.
+
+If a task finishes with an exception it brings down the whole program.
+*/
+interface Task:
+  /**
+  Returns the current task.
+  */
+  static current -> Task:
+    return Task_.current
+
+  /**
+  Runs the given $lambdas as a group of concurrent tasks.
+
+  Returns the results of running the $lambdas as a $Map
+    keyed by the lambda index. If the lambda at a given
+    index did not return, the results map will not contain
+    and entry for it. The results map is insertion ordered,
+    so it is possible to tell which lambda returned first.
+
+  If any of the $lambdas throws an exception, the exception is
+    propagated to the caller of $Task.group which in
+    return also throws.
+
+  If $required is less than the number of $lambdas, the
+    method returns when $required tasks have completed.
+  */
+  static group lambdas/List -> Map
+      --required/int=lambdas.size:
+    count ::= lambdas.size
+    tasks ::= Array_ count
+    results ::= {:}
+    if count < 2 or not (1 <= required <= count):
+      throw "Bad Argument"
+
+    is-stopping/bool := false
+    is-canceled/bool := false
+    caught/Exception_? := null
+
+    terminated := 0
+    signal ::= monitor.Signal
+    for index := 0; index < count; index++:
+      tasks[index] = task::
+        while true:
+          try:
+            results[index] = lambdas[index].call
+          finally: | is-exception exception |
+            if Task.current.is-canceled:
+              // If we get canceled after we decided to stop, we
+              // avoid propagating the cancelation to the task
+              // that invoked Task.group.
+              if not is-stopping:
+                is-canceled = true
+                is-stopping = true
+            else if is-exception:
+              // We prefer the first exception and that is the
+              // one we propagate to the caller of Task.group.
+              if not caught: caught = exception
+              is-stopping = true
+            tasks[index] = null
+            terminated++
+            critical-do: signal.raise
+            break  // Stop the unwinding.
+
+      // We prefer giving the new tasks a chance to run eagerly,
+      // so we yield here to start it up. In return, this makes
+      // it possible that we get stopped before creating all the
+      // tasks, so we deal with that by leaving the loop.
+      yield
+      if is-stopping:
+        // Count remaining tasks as eagerly terminated.
+        terminated += count - index - 1
+        break
+
+    try:
+      signal.wait: is-stopping or terminated >= required
+    finally:
+      if terminated < count:
+        // We're either stopping or we got the required results.
+        // Make sure we're marked as stopping and cancel all
+        // the tasks that are still live.
+        is-stopping = true
+        tasks.do: if it: it.cancel
+        // Wait until all tasks have terminated.
+        critical-do --no-respect-deadline:
+          // TODO(kasper): Consider letting the user control the timeout.
+          with-timeout --ms=1_000: signal.wait: terminated == count
+
+    if caught:
+      rethrow caught.value caught.trace
+    else if is-canceled:
+      Task.current.cancel
+    return results
+
+  /**
+  Cancels the task.
+
+  If the task has `finally` clauses, those are executed.
+  However, these must not yield, as the task won't run again. Use $critical-do to
+  run code that must yield.
+  */
+  cancel -> none
+
+  /** Whether this task is canceled. */
+  is-canceled -> bool
+
+  /**
+  Returns the deadline for the task as a microsecond timestamp that can be
+    compared against return values from $Time.monotonic-us.
+
+  Returns null if the task has no deadline.
+  */
+  deadline -> int?
+
+class Task_ implements Task:
+  /**
+  Same as $Task.current, but returns it as a $Task_ object instead.
+  */
+  static current/Task_? := null
+
+  background -> bool:
+    return background_
+
   operator == other:
     return other is Task_ and other.id_ == id_
 
   stringify:
-    return "$name<$(id_)@$(current_process_)>"
+    return "$name_<$(id_)@$(Process.current.id)>"
 
-  with_deadline_ deadline [block]:
-    assert: task == this
+  with-deadline_ deadline [block]:
+    assert: Task_.current == this
     if not deadline_ or deadline < deadline_:
-      old_deadline := deadline_
+      old-deadline := deadline_
       deadline_ = deadline
       try:
-        return block.call old_deadline
+        return block.call old-deadline
       finally:
-        deadline_ = old_deadline
+        deadline_ = old-deadline
     else:
       return block.call deadline_
 
   deadline: return deadline_
 
   // Mark the task for cancellation, at the next idle operation.
-  cancel:
-    is_canceled_ = true
-    if monitor_ and critical_count_ == 0: monitor_.notify_
+  cancel -> none:
+    is-canceled_ = true
+    if monitor_ and critical-count_ == 0: monitor_.notify_
 
-  is_canceled -> bool: return is_canceled_
+  is-canceled -> bool: return is-canceled_
 
   id: return id_
 
   initialize_:
-    is_canceled_ = false
-    critical_count_ = 0
-    task_count_++
-    if background: task_background_++
+    is-canceled_ = false
+    critical-count_ = 0
+    state_ = STATE-SUSPENDED
+    task-count_++
+    if background_: task-background_++
 
-  // Configures the main task. Called by __entry__
-  initialize_entry_task_:
-    assert: task_count_ == 0
-    name = "Main task"
+  // Configures the main task. Called by __entry__main and __entry__spawn.
+  initialize-entry-task_:
+    assert: task-count_ == 0
+    name_ = "Main task"
+    background_ = false
     initialize_
-    previous_running_ = next_running_ = this
+    state_ = STATE-RUNNING
+    previous-running_ = next-running_ = this
 
-  evaluate_ [code]:
-    exception := null
-    // Always have an outer catch clause. Without this, a throw will crash the VM.
-    // In that, we have an inner, but very pretty, root exception handling.
-    // This can fail in rare cases where --trace will OOM, kernel reject the message, etc.
+  evaluate_ [code] -> none:
     try:
-      exception = catch --trace code
-    finally: | is_exception trace_exception |
-      // If we got an exception here, either
-      // 1) the catch failed to guard against the exception so we assume
-      //    nothing works and just print the error.
-      // 2) the task was canceled.
-      if is_exception:
-        exception = trace_exception.value
-        if exception == CANCELED_ERROR and is_canceled:
-          exception = null
-        else:
-          print_ exception
-      exit_ exception != null
+      evaluate-and-trace_ code
 
-  exit_ has_error/bool:
-    if has_error: exit_with_error_ = true
-    task_count_--
-    if background: task_background_--
-    // Yield to the next task.
-    next := suspend_
-    if timer_:
-      timer_.close
-      timer_ = null
-    task_transfer_ next true  // Passing null will detach the calling execution stack from the task.
+      // Process messages now. We do this before we determine
+      // if the process is done to allow new tasks to spin
+      // up as part of the processing and impact the decision.
+      evaluate-and-trace_: process-messages_
+
+      // If no services are defined and only background tasks are
+      // alive at this point, we terminate the process gracefully.
+      task-count := task-count_ - 1
+      task-background := task-background_
+      if background_: task-background--
+      if task-count == task-background and ServiceManager_.is-empty:
+        __exit__ 0
+
+      // We still have tasks left, so we need to update the counts
+      // and process messages until some other running task can
+      // take that responsibility over.
+      task-count_ = task-count
+      task-background_ = task-background
+      while identical this previous-running_:
+        __yield__
+        evaluate-and-trace_: process-messages_
+
+      // Mark this task as terminated and unlink it from the
+      // list of running tasks.
+      state_ = STATE-TERMINATED
+      next := unlink_
+      task-transfer-to_ next true  // Never returns.
+
+    finally:
+      __exit__ 1
+
+  /**
+  Evaluates the $block and safely traces any exceptions.
+
+  If evaluating the $block causes an exception, we let
+    the unwinding continue, unless it is due to
+    cancelation.
+  */
+  evaluate-and-trace_ [block] -> none:
+    traced := false
+    try:
+      catch block
+          --trace=:
+            true
+          --unwind=:
+            // The --trace block is invoked before
+            // the --unwind block, so we only get
+            // here if tracing did not cause an
+            // exception itself.
+            traced = true
+            true
+    finally: | is-exception exception |
+      // Release any acquired timer resource. We
+      // probably do not need it going forward and
+      // it will be re-acquired on demand.
+      timer := timer_
+      if timer:
+        timer.close
+        timer_ = null
+      // Check if we need to consume any cancelation
+      // errors and try to print a helpful message
+      // if we failed to trace the exception in the
+      // first attempt.
+      if is-exception:
+        value := exception.value
+        if is-canceled_ and value == CANCELED-ERROR:
+          return
+        else if not traced:
+          write-on-stdout_ "Uncaught exception: " false
+          print_ value
 
   suspend_:
-    previous := previous_running_
-    if previous == this:
-      // If we encounted a root-error, terminate the process.
-      if exit_with_error_: __exit__ 1
-      // Check whether only background tasks are running.
-      if task_count_ == task_background_: __halt__
-      is_task_idle_ = true
-      while true:
-        process_messages_
-        resumed := task_resumed_
-        if resumed:
-          is_task_idle_ = false
-          task_resumed_ = null
-          return resumed
-        __yield__
-    else:
-      // Unlink from the linked of running tasks.
-      next := next_running_
-      previous.next_running_ = next
-      next.previous_running_ = previous
-      next_running_ = previous_running_ = this
-      return next
+    state_ = STATE-SUSPENDING
+    while true:
+      process-messages_
+      // Check if we got resumed through the message processing.
+      if state_ == STATE-RUNNING: return this
+      // If this task not the only task left, we unlink it from
+      // the linked list of running tasks and mark it suspended.
+      if not identical this previous-running_:
+        state_ = STATE-SUSPENDED
+        return unlink_
+      // This task is the only task left. We keep it in the
+      // suspending state and tell the system to wake us up when
+      // new messages arrive.
+      __yield__
 
   resume_ -> none:
-    current := null
-    if is_task_idle_:
-      current = task_resumed_
-      if not current:
-        task_resumed_ = this
-        return
-    else:
-      current = task
-
     // Link the task into the linked list of running tasks
     // at the very end of it.
-    previous := current.previous_running_
-    current.previous_running_ = this
-    previous.next_running_ = this
-    previous_running_ = previous
-    next_running_ = current
+    if state_ == STATE-SUSPENDED:
+      current ::= Task_.current
+      previous := current.previous-running_
+      current.previous-running_ = this
+      previous.next-running_ = this
+      previous-running_ = previous
+      next-running_ = current
+    state_ = STATE-RUNNING
+
+  unlink_:
+    assert: not identical this previous-running_
+    next := next-running_
+    previous := previous-running_
+    previous.next-running_ = next
+    next.previous-running_ = previous
+    next-running_ = previous-running_ = this
+    return next
 
   // Acquiring a timer will reuse the first previously released timer if
   // available. We use a single element cache to avoid creating timer objects
   // repeatedly when it isn't necessary.
-  acquire_timer_ monitor/__Monitor__ -> Timer_:
+  acquire-timer_ monitor/__Monitor__ -> Timer_:
     timer := timer_
     if timer:
       timer_ = null
     else:
       timer = Timer_
-    timer.set_target monitor
+    timer.set-target monitor
     return timer
 
   // Releasing a timer will make it available for reuse or close it if the
   // single element cache is already filled.
-  release_timer_ timer/Timer_:
+  release-timer_ timer/Timer_:
     existing := timer_
     if existing:
       timer.close
     else:
-      timer.clear_target
+      timer.clear-target
       timer_ = timer
 
   // Task state initialized by the VM.
   id_ := null
 
-  // Deadline and cancel support.
+  // Task state initialized by Toit code.
+  name_ := null
+  background_ := null
+
+  // Deadline and cancelation support.
   deadline_ := null
-  is_canceled_ := null
-  critical_count_ := null
+  is-canceled_ := null
+  critical-count_ := null
 
   // If the task is blocked in a monitor, this reference that monitor.
   monitor_ := null
 
-  // All running tasks are chained together in linked list.
-  next_running_ := null
-  previous_running_ := null
-  next_blocked_ := null
+  // All running tasks are chained together in a doubly linked list.
+  next-running_ := null
+  previous-running_ := null
 
-  // TODO(kasper): Generalize this a bit. It is only used
-  // for implementing generators for now.
-  tls := null
+  // Waiting tasks are chained together in a singly linked list.
+  next-blocked_ := null
 
   // Timer used for all sleep operations on this task.
   timer_ := null
 
-  name := null
-
-  background := null
+  static STATE-RUNNING    /int ::= 0
+  static STATE-SUSPENDING /int ::= 1
+  static STATE-SUSPENDED  /int ::= 2
+  static STATE-TERMINATED /int ::= 3
+  state_ := null  // TODO(kasper): Document this.
 
 // ----------------------------------------------------------------------------
 
-task_new_ lambda/Lambda:
-  #primitive.core.task_new
+task-new_ lambda/Lambda -> Task_:
+  #primitive.core.task-new
 
-task_transfer_ to detach_stack:
-  #primitive.core.task_transfer
-
-task_yield_to_ to:
-  if task != to:   // Skip self transfer.
-    task_transfer_ to false
-
-  // TODO(kasper): Consider not looking at the incoming messages at
-  // all yield points. Maybe only once per run through the runnable tasks?
-
-  // Messages must be processed after returning to a running task,
-  // not before transfering away from a suspended one.
-  process_messages_
+task-transfer-to_ to/Task_ detach-stack:
+  #primitive.core.task-transfer: | task |
+    Task_.current = task
+    return task

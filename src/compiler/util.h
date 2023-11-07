@@ -27,10 +27,10 @@ namespace compiler {
 class StringBuilder {
  public:
   StringBuilder(char* buffer, int buffer_size, bool should_be_null_terminated)
-      : _buffer(buffer)
-      , _buffer_size(buffer_size)
-      , _pos(0)
-      , _should_be_null_terminated(should_be_null_terminated) {}
+      : buffer_(buffer)
+      , buffer_size_(buffer_size)
+      , pos_(0)
+      , should_be_null_terminated_(should_be_null_terminated) {}
 
   void add(const char* str) {
     add(str, strlen(str));
@@ -42,66 +42,66 @@ class StringBuilder {
     add(char_buffer, 1);
   }
   void add(const char* str, int len) {
-    int null_terminator_size = _should_be_null_terminated ? 1 : 0;
+    int null_terminator_size = should_be_null_terminated_ ? 1 : 0;
     if (len + null_terminator_size > remaining()) {
       // Mark as overrun.
-      _pos = _buffer_size + 1;
+      pos_ = buffer_size_ + 1;
       return;
     }
-    strncpy(&_buffer[_pos], str, remaining());
-    _pos = len > remaining() ? 0 : _pos + len;
-    ASSERT(!_should_be_null_terminated || _buffer[_pos] == '\0');
+    strncpy(&buffer_[pos_], str, remaining());
+    pos_ = len > remaining() ? 0 : pos_ + len;
+    ASSERT(!should_be_null_terminated_ || buffer_[pos_] == '\0');
   }
 
   bool overrun() const {
-    int null_terminator_size = _should_be_null_terminated ? 1 : 0;
+    int null_terminator_size = should_be_null_terminated_ ? 1 : 0;
     return remaining() < null_terminator_size;
   }
 
-  int length() const { return _pos; }
+  int length() const { return pos_; }
 
   void reset_to(int position) {
-    _pos = position;
-    if (_should_be_null_terminated && !overrun()) {
-      _buffer[_pos] = '\0';
+    pos_ = position;
+    if (should_be_null_terminated_ && !overrun()) {
+      buffer_[pos_] = '\0';
     }
   }
 
  private:
-  char* _buffer;
-  int _buffer_size;
-  int _pos;
-  bool _should_be_null_terminated;
+  char* buffer_;
+  int buffer_size_;
+  int pos_;
+  bool should_be_null_terminated_;
 
-  int remaining() const { return _buffer_size - _pos; }
+  int remaining() const { return buffer_size_ - pos_; }
 };
 
 class PathBuilder {
  public:
-  explicit PathBuilder(Filesystem* fs) : _fs(fs) {}
+  explicit PathBuilder(Filesystem* fs) : fs_(fs) {}
 
-  int length() const { return _buffer.size(); }
-  std::string buffer() const { return _buffer; }
-  const char* c_str() const { return _buffer.c_str(); }
+  int length() const { return buffer_.size(); }
+  std::string buffer() const { return buffer_; }
+  const char* c_str() const { return buffer_.c_str(); }
   char* strdup() const { return ::strdup(c_str()); }
 
-  void add(const std::string& str) { _buffer += str; }
-  void add(char c) { _buffer += c; }
+  void add(const std::string& str) { buffer_ += str; }
+  void add(char c) { buffer_ += c; }
 
   void reset_to(int size) {
-    _buffer.resize(size);
+    buffer_.resize(size);
   }
 
-  char operator[](int index) const { return _buffer[index]; }
+  char operator[](int index) const { return buffer_[index]; }
 
   // Ensures that there is a path-separator between the existing buffer
   // and the new segment.
   // Only inserts the separator if the buffer isn't empty.
   void join(const std::string& segment) {
-    if (!_buffer.empty() && _buffer[_buffer.size() - 1] != _fs->path_separator()) {
-      _buffer += _fs->path_separator();
+    if (!buffer_.empty() && buffer_[buffer_.size() - 1] != fs_->path_separator()) {
+      buffer_ += fs_->path_separator();
     }
-    _buffer += segment;
+    buffer_ += segment;
   }
 
   void join(const std::string& segment, const std::string& segment2) {
@@ -125,8 +125,8 @@ class PathBuilder {
   void canonicalize();
 
  private:
-  Filesystem* _fs;
-  std::string _buffer;
+  Filesystem* fs_;
+  std::string buffer_;
 };
 
 // Splits the given string according to the delimiters.

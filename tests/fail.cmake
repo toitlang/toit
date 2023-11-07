@@ -14,36 +14,33 @@
 # directory of this repository.
 
 if ("${CMAKE_SIZEOF_VOID_P}" EQUAL 4)
-  # The test crashes (instead of failing). Ctest doesn't have a way to deal with that.
+  # For tests that crash (instead of failing). Ctest doesn't have a way to deal
+  # with that, so we skip the test.
   # See https://gitlab.kitware.com/cmake/cmake/-/issues/20397
-  # For now simply skip it.
   set(TOIT_SKIP_TESTS
-    # Note: the test shouldn't crash. In the internal version the test succeeds.
-    tests/max_heap_size_test.toit
   )
 endif()
 
 list(APPEND TOIT_SKIP_TESTS
 )
 
+list(APPEND TOIT_FLAKY_TESTS
+  tests/tls-client-cert-test.toit
+  tests/tls-global-cert-test-slow.toit
+  tests/tls-test-slow.toit
+)
+
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS
-    tests/close_test.toit
-    tests/dns_test.toit
-    tests/interface_address_test.toit
-    tests/keepalive_test.toit
-    tests/regress/issue3_test.toit
-    tests/socket_close_test.toit
-    tests/socket_option_test.toit
-    tests/socket_task_test.toit
-    tests/socket_test.toit
-    tests/socket_timeout_test.toit
-    tests/time_test.toit
-    tests/tls2_test.toit
-    tests/udp_test.toit
-    tests/zlib_test.toit
-    tests/class_field_limit_test_compiler.toit
-    tests/cow_read_only_test_compiler.toit
-    tests/tls_test_slow.toit
+    tests/time-test.toit # https://github.com/toitlang/toit/issues/1369
+    tests/zlib-test.toit
+    tests/cow-read-only-test-compiler.toit
+    tests/uart-test.toit
+  )
+endif()
+
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
+  list(APPEND TOIT_FAILING_TESTS
+    tests/uart-test.toit
   )
 endif()

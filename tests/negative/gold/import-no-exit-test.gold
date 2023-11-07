@@ -1,0 +1,124 @@
+tests/negative/import-no-exit-test.toit:9:1: error: Failed to import '.nonexisting'
+import .nonexisting show ambiguous-unresolved
+^~~~~~
+tests/negative/import-no-exit-test.toit:9:9: note: Missing library file. Tried 'tests/negative/nonexisting.toit' and 'tests/negative/nonexisting/nonexisting.toit'
+import .nonexisting show ambiguous-unresolved
+        ^~~~~~~~~~~
+tests/negative/import-no-exit-test.toit:10:1: error: Failed to import '.nonexisting'
+import .nonexisting show ambiguous-unresolved
+^~~~~~
+tests/negative/import-no-exit-test.toit:10:9: note: Missing library file. Tried 'tests/negative/nonexisting.toit' and 'tests/negative/nonexisting/nonexisting.toit'
+import .nonexisting show ambiguous-unresolved
+        ^~~~~~~~~~~
+tests/negative/import-no-exit-cycle1.toit:5:1: error: Failed to import '.no-exit-test'
+import .no-exit-test
+^~~~~~
+tests/negative/import-no-exit-cycle1.toit:5:9: note: Missing library file. Tried 'tests/negative/no_exit_test.toit' and 'tests/negative/no_exit_test/no-exit-test.toit'
+import .no-exit-test
+        ^~~~~~~~~~~~
+tests/negative/import-no-exit-test.toit:23:29: error: Prefix clashes with toplevel declaration 'toplevel'
+import .import-no-exit-a as toplevel
+                            ^~~~~~~~
+tests/negative/import-no-exit-test.toit:35:1: error: Toplevel declaration 'toplevel'
+toplevel := null
+^~~~~~~~
+tests/negative/import-no-exit-test.toit:24:29: error: Prefix clashes with toplevel declaration 'toplevel2'
+import .import-no-exit-a as toplevel2
+                            ^~~~~~~~~
+tests/negative/import-no-exit-test.toit:36:1: error: Toplevel declaration 'toplevel2'
+toplevel2: return null
+^~~~~~~~~
+tests/negative/import-no-exit-test.toit:25:29: error: Prefix clashes with toplevel declaration 'Toplevel3'
+import .import-no-exit-a as Toplevel3
+                            ^~~~~~~~~
+tests/negative/import-no-exit-test.toit:37:7: error: Toplevel declaration 'Toplevel3'
+class Toplevel3:
+      ^~~~~~~~~
+tests/negative/import-no-exit-test.toit:6:31: error: Ambiguous 'show' import for 'ambiguous'
+import .import-no-exit-b show ambiguous
+                              ^~~~~~~~~
+tests/negative/import-no-exit-test.toit:5:31: note: First show of identifier 'ambiguous'
+import .import-no-exit-a show ambiguous
+                              ^~~~~~~~~
+tests/negative/import-no-exit-test.toit:8:31: error: Ambiguous 'show' import for 'ambiguous-unresolved'
+import .import-no-exit-b show ambiguous-unresolved
+                              ^~~~~~~~~~~~~~~~~~~~
+tests/negative/import-no-exit-test.toit:7:31: note: First show of identifier 'ambiguous-unresolved'
+import .import-no-exit-a show ambiguous-unresolved
+                              ^~~~~~~~~~~~~~~~~~~~
+tests/negative/import-no-exit-test.toit:9:26: error: Ambiguous 'show' import for 'ambiguous-unresolved'
+import .nonexisting show ambiguous-unresolved
+                         ^~~~~~~~~~~~~~~~~~~~
+tests/negative/import-no-exit-test.toit:7:31: note: First show of identifier 'ambiguous-unresolved'
+import .import-no-exit-a show ambiguous-unresolved
+                              ^~~~~~~~~~~~~~~~~~~~
+tests/negative/import-no-exit-test.toit:10:26: error: Ambiguous 'show' import for 'ambiguous-unresolved'
+import .nonexisting show ambiguous-unresolved
+                         ^~~~~~~~~~~~~~~~~~~~
+tests/negative/import-no-exit-test.toit:7:31: note: First show of identifier 'ambiguous-unresolved'
+import .import-no-exit-a show ambiguous-unresolved
+                              ^~~~~~~~~~~~~~~~~~~~
+tests/negative/import-no-exit-test.toit:12:31: error: Name clash with toplevel declaration 'toplevel'
+import .import-no-exit-a show toplevel
+                              ^~~~~~~~
+tests/negative/import-no-exit-test.toit:35:1: note: Toplevel declaration of 'toplevel'
+toplevel := null
+^~~~~~~~
+tests/negative/import-no-exit-test.toit:13:31: error: Name clash with toplevel declaration 'toplevel2'
+import .import-no-exit-a show toplevel2
+                              ^~~~~~~~~
+tests/negative/import-no-exit-test.toit:36:1: note: Toplevel declaration of 'toplevel2'
+toplevel2: return null
+^~~~~~~~~
+tests/negative/import-no-exit-test.toit:14:31: error: Name clash with toplevel declaration 'Toplevel3'
+import .import-no-exit-a show Toplevel3
+                              ^~~~~~~~~
+tests/negative/import-no-exit-test.toit:37:7: note: Toplevel declaration of 'Toplevel3'
+class Toplevel3:
+      ^~~~~~~~~
+tests/negative/import-no-exit-test.toit:18:31: error: Name clash with prefix 'prefix'
+import .import-no-exit-b show prefix
+                              ^~~~~~
+tests/negative/import-no-exit-test.toit:17:29: error: Definition of prefix 'prefix'
+import .import-no-exit-a as prefix
+                            ^~~~~~
+tests/negative/import-no-exit-test.toit:7:31: error: Unresolved show 'ambiguous-unresolved'
+import .import-no-exit-a show ambiguous-unresolved
+                              ^~~~~~~~~~~~~~~~~~~~
+tests/negative/import-no-exit-test.toit:12:31: error: Unresolved show 'toplevel'
+import .import-no-exit-a show toplevel
+                              ^~~~~~~~
+tests/negative/import-no-exit-test.toit:13:31: error: Unresolved show 'toplevel2'
+import .import-no-exit-a show toplevel2
+                              ^~~~~~~~~
+tests/negative/import-no-exit-test.toit:14:31: error: Unresolved show 'Toplevel3'
+import .import-no-exit-a show Toplevel3
+                              ^~~~~~~~~
+tests/negative/import-no-exit-test.toit:18:31: error: Unresolved show 'prefix'
+import .import-no-exit-b show prefix
+                              ^~~~~~
+tests/negative/import-no-exit-test.toit:29:8: error: Can't export prefix 'pre'
+export pre
+       ^~~
+tests/negative/import-no-exit-test.toit:30:8: error: Ambiguous export of 'ambiguous-cd'
+export ambiguous-cd
+       ^~~~~~~~~~~~
+tests/negative/import-no-exit-c.toit:5:1: error: Definition of 'ambiguous-cd'
+ambiguous-cd := 42
+^~~~~~~~~~~~
+tests/negative/import-no-exit-d.toit:5:1: error: Definition of 'ambiguous-cd'
+ambiguous-cd := 499
+^~~~~~~~~~~~
+tests/negative/import-no-exit-test.toit:31:8: error: Unresolved export 'unresolved'
+export unresolved
+       ^~~~~~~~~~
+tests/negative/import-no-exit-test.toit:32:8: error: Unresolved export 'bad'
+export bad
+       ^~~
+tests/negative/import-no-exit-test.toit:40:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/import-no-exit-test.toit:41:5: error: Class 'int' does not have any method 'foo'
+  1.foo
+    ^~~
+Compilation failed.

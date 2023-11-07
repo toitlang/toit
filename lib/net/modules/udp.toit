@@ -9,14 +9,18 @@ import net.udp as net
 import .dns
 import .mtu
 
-TOIT_UDP_READ_    ::= 1 << 0
-TOIT_UDP_WRITE_   ::= 1 << 1
-TOIT_UDP_ERROR_   ::= 1 << 2
-TOIT_UDP_NEEDS_GC_ ::= 1 << 3
+TOIT-UDP-READ_    ::= 1 << 0
+TOIT-UDP-WRITE_   ::= 1 << 1
+TOIT-UDP-ERROR_   ::= 1 << 2
+TOIT-UDP-NEEDS-GC_ ::= 1 << 3
 
-TOIT_UDP_OPTION_PORT_      ::= 1
-TOIT_UDP_OPTION_ADDRESS_   ::= 2
-TOIT_UDP_OPTION_BROADCAST_ ::= 3
+TOIT-UDP-OPTION-PORT_                ::= 1
+TOIT-UDP-OPTION-ADDRESS_             ::= 2
+TOIT-UDP-OPTION-BROADCAST_           ::= 3
+TOIT-UDP-OPTION-MULTICAST-MEMBERSHIP ::= 4
+TOIT-UDP-OPTION-MULTICAST-LOOPBACK   ::= 5
+TOIT-UDP-OPTION-MULTICAST-TTL        ::= 6
+
 
 class Socket implements net.Socket:
   state_/ResourceState_? := ?
@@ -30,31 +34,32 @@ class Socket implements net.Socket:
   // particular one.  The port can be zero, in which case the system picks a
   // free port.
   constructor hostname port:
-    group := udp_resource_group_
-    id := udp_bind_ group (dns_lookup hostname).raw port
+    group := udp-resource-group_
+    id := udp-bind_ group (dns-lookup hostname).raw port
     state_ = ResourceState_ group id
-    add_finalizer this::
+    add-finalizer this::
       this.close
 
-  local_address:
-    state := ensure_state_
+  local-address:
+    state := ensure-state_
     return net.SocketAddress
       net.IpAddress.parse
-        udp_get_option_ state.group state.resource TOIT_UDP_OPTION_ADDRESS_
-      udp_get_option_ state.group state.resource TOIT_UDP_OPTION_PORT_
+        udp-get-option_ state.group state.resource TOIT-UDP-OPTION-ADDRESS_
+      udp-get-option_ state.group state.resource TOIT-UDP-OPTION-PORT_
 
   close:
     state := state_
     if state == null: return
-    state_ = null
-    udp_close_ state.group state.resource
-    state.dispose
-    // Remove the finalizer installed in the constructor.
-    remove_finalizer this
+    critical-do:
+      state_ = null
+      udp-close_ state.group state.resource
+      state.dispose
+      // Remove the finalizer installed in the constructor.
+      remove-finalizer this
 
   connect address/net.SocketAddress:
-    state := ensure_state_
-    udp_connect_ state.group state.resource address.ip.raw address.port
+    state := ensure-state_
+    udp-connect_ state.group state.resource address.ip.raw address.port
 
   read:
     return receive_ null
@@ -76,84 +81,97 @@ class Socket implements net.Socket:
     return send_ msg.data 0 msg.data.size msg.address.ip.raw msg.address.port
 
   broadcast -> bool:
-    state := ensure_state_
-    return udp_get_option_ state.group state.resource TOIT_UDP_OPTION_BROADCAST_
+    state := ensure-state_
+    return udp-get-option_ state.group state.resource TOIT-UDP-OPTION-BROADCAST_
 
   broadcast= value/bool:
-    state := ensure_state_
-    return udp_set_option_ state.group state.resource TOIT_UDP_OPTION_BROADCAST_ value
+    state := ensure-state_
+    return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-BROADCAST_ value
+
+  multicast-add-membership address/net.IpAddress:
+    state := ensure-state_
+    return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-MEMBERSHIP address.raw
+
+  multicast-loopback -> bool:
+    state := ensure-state_
+    return udp-get-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-LOOPBACK
+
+  multicast-loopback= value/bool:
+    state := ensure-state_
+    return udp-set-option_ state.group state.resource TOIT-UDP-OPTION-MULTICAST-LOOPBACK value
 
   receive_ output:
     while true:
-      state := ensure_state_ TOIT_UDP_READ_
+      state := ensure-state_ TOIT-UDP-READ_
       if not state: return null
-      result := udp_receive_ state.group state.resource output
+      result := udp-receive_ state.group state.resource output
       if result != -1: return result
-      state.clear_state TOIT_UDP_READ_
+      state.clear-state TOIT-UDP-READ_
 
   send_ data from to address port:
     while true:
-      state := ensure_state_ TOIT_UDP_WRITE_
-      wrote := udp_send_ state.group state.resource data from to address port
+      state := ensure-state_ TOIT-UDP-WRITE_
+      wrote := udp-send_ state.group state.resource data from to address port
       if wrote > 0 or wrote == to  - from: return null
       assert: wrote == -1
-      state.clear_state TOIT_UDP_WRITE_
+      state.clear-state TOIT-UDP-WRITE_
 
-  ensure_state_ bits:
-    state := ensure_state_
-    state_bits / int? := null
-    while state_bits == null:
-      state_bits = state.wait_for_state (bits | TOIT_UDP_ERROR_ | TOIT_UDP_NEEDS_GC_)
-      if state_bits & TOIT_UDP_NEEDS_GC_ != 0:
-        state_bits = null
-        udp_gc_ state.group
-        // Avoid watchdog trigger when we are overwhelmed with packets.
-        sleep --ms=1
-    if not state_.resource: return null  // Closed from a different task.
-    assert: state_bits != 0
-    if (state_bits & TOIT_UDP_ERROR_) == 0:
+  ensure-state_ bits:
+    state := ensure-state_
+    state-bits /int? := null
+    while state-bits == null:
+      state-bits = state.wait-for-state (bits | TOIT-UDP-ERROR_ | TOIT-UDP-NEEDS-GC_)
+      if state-bits & TOIT-UDP-NEEDS-GC_ != 0:
+        state-bits = null
+        udp-gc_ state.group
+    if not state_: return null  // Closed from a different task.
+    assert: state-bits != 0
+    if (state-bits & TOIT-UDP-ERROR_) == 0:
       return state
-    error := udp_error_ state.resource
+    error := udp-error_ (udp-error-number_ state.resource)
     close
     throw error
 
-  ensure_state_:
+  ensure-state_:
     if state_: return state_
     throw "NOT_CONNECTED"
 
-  mtu -> int: return TOIT_MTU_UDP
+  mtu -> int: return TOIT-MTU-UDP
 
 // Lazily-initialized resource group reference.
-udp_resource_group_ ::= udp_init_
+udp-resource-group_ ::= udp-init_
 
 
 // Top level UDP primitives.
-udp_init_:
+udp-init_:
   #primitive.udp.init
 
-udp_bind_ udp_resource_group address port:
+udp-bind_ udp-resource-group address port:
   #primitive.udp.bind
 
-udp_connect_ udp_resource_group id address port:
+udp-connect_ udp-resource-group id address port:
   #primitive.udp.connect
 
-udp_receive_ udp_resource_group id output:
+udp-receive_ udp-resource-group id output:
   #primitive.udp.receive
 
-udp_send_ udp_resource_group id data from to address port:
+udp-send_ udp-resource-group id data from to address port:
   #primitive.udp.send
 
-udp_error_ id:
-  #primitive.udp.error
+udp-error-number_ id:
+  #primitive.udp.error-number
 
-udp_close_ udp_resource_group id:
+udp-error_ id:
+  #primitive.tcp.error
+
+udp-close_ udp-resource-group id:
   #primitive.udp.close
 
-udp_get_option_ udp_resource_group id option:
-  #primitive.udp.get_option
+udp-get-option_ udp-resource-group id option:
+  #primitive.udp.get-option
 
-udp_set_option_ udp_resource_group id option value:
-  #primitive.udp.set_option
+udp-set-option_ udp-resource-group id option value:
+  #primitive.udp.set-option
 
-udp_gc_ resource_group:
+udp-gc_ resource-group:
   #primitive.udp.gc

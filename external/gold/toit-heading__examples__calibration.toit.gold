@@ -1,0 +1,3 @@
+toit-heading/examples/calibration.toit:25:12: warning: Class 'FlashStore' is deprecated
+  store := FlashStore
+           ^~~~~~~~~~

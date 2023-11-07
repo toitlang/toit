@@ -1,6 +1,0 @@
-tests/negative/typed_assign_local2_test.toit:7:9: error: Type mismatch. Expected 'int'. Got 'string'
-  param = "str"
-        ^
-As check failed: a string ("str") is not a int.
-  0: foo                       tests/negative/typed_assign_local2_test.toit:7:9
-  1: main                      tests/negative/typed_assign_local2_test.toit:10:3

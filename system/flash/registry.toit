@@ -18,11 +18,12 @@ import uuid
 import .allocation
 import .reservation
 
-FLASH_REGISTRY_PAGE_SIZE ::= 4096
+FLASH-REGISTRY-PAGE-SIZE-LOG2 ::= 12
+FLASH-REGISTRY-PAGE-SIZE ::= 1 << FLASH-REGISTRY-PAGE-SIZE-LOG2
 
 class FlashRegistry:
-  static SCAN_HOLE_ ::= 0
-  static SCAN_ALLOCATION_ ::= 1
+  static SCAN-HOLE_ ::= 0
+  static SCAN-ALLOCATION_ ::= 1
 
   allocations_/Map ::= {:}  // Map<int, FlashAllocation>
   holes_/List? := null      // List<FlashHole_>
@@ -36,30 +37,45 @@ class FlashRegistry:
     allocations_.do --values block
 
   // Reserves a region in the flash.
-  reserve size/int --attempt_rescan=true -> FlashReservation?:
-    size = (size + FLASH_REGISTRY_PAGE_SIZE - 1) & (-FLASH_REGISTRY_PAGE_SIZE)
+  reserve size/int --attempt-rescan=true -> FlashReservation?:
+    size = (size + FLASH-REGISTRY-PAGE-SIZE - 1) & (-FLASH-REGISTRY-PAGE-SIZE)
     holes := holes_.filter: it.size >= size
-    if holes.is_empty:
-      if not attempt_rescan: return null
+    if holes.is-empty:
+      if not attempt-rescan: return null
       holes_ = scan_
-      return reserve size --attempt_rescan=false
+      return reserve size --attempt-rescan=false
     // Pick at suitable hole and return the offset for it.
     slot/FlashHole_ := holes[random holes.size]
     result := slot.offset
     // Make sure we can erase the slot before we return it.
-    if (flash_registry_erase_ result size) < size: throw "Unable to erase flash at $result"
+    if (flash-registry-erase_ result size) < size: throw "Unable to erase flash at $result"
     // Remember to adjust the hole slot so that future calls to this method
     // will not return an overlapping region.
     slot.offset += size
     slot.size -= size
     return FlashReservation result size
 
+  allocate reservation/FlashReservation -> FlashAllocation
+      --type/int
+      --id/uuid.Uuid
+      --metadata/ByteArray
+      --content/ByteArray=#[]:
+    try:
+      offset := reservation.offset
+      size := reservation.size
+      flash-registry-allocate_ offset size type id.to-byte-array metadata content
+      allocation := FlashAllocation offset size
+      allocations_[offset] = allocation
+      return allocation
+    finally:
+      reservation.close
+
   // Frees a previously allocated region in the flash.
   free allocation/FlashAllocation -> none:
     allocations_.remove allocation.offset
     // Erasing the first page removes the full header. This is enough
     // to fully invalidate the allocation.
-    flash_registry_erase_ allocation.offset FLASH_REGISTRY_PAGE_SIZE
+    flash-registry-erase_ allocation.offset FLASH-REGISTRY-PAGE-SIZE
 
   // Scan through the flash and update the given allocations map to reflect that
   // actual allocations found. If an allocation exists before and after the scan, we
@@ -70,26 +86,26 @@ class FlashRegistry:
     holes := []
     offset := -1
     while true:
-      offset = flash_registry_next_ offset
+      offset = flash-registry-next_ offset
       if not offset: break
-      info := flash_registry_info_ offset
+      info := flash-registry-info_ offset
       flag := info & 3
-      if flag == SCAN_HOLE_:
-        size := (info >> 2) * FLASH_REGISTRY_PAGE_SIZE
+      if flag == SCAN-HOLE_:
+        size := (info >> 2) * FLASH-REGISTRY-PAGE-SIZE
         holes.add (FlashHole_ offset size)
-      else if flag == SCAN_ALLOCATION_:
-        size := (info >> 10) * FLASH_REGISTRY_PAGE_SIZE
+      else if flag == SCAN-ALLOCATION_:
+        size := (info >> 10) * FLASH-REGISTRY-PAGE-SIZE
         type := (info >> 2) & 0xFF
-        allocation/FlashAllocation := FlashAllocation offset size type
+        allocation/FlashAllocation := FlashAllocation offset size
         found[allocation.offset] = allocation
     // Update the allocations map, keeping existing allocation objects.
-    update_allocations_ found
+    update-allocations_ found
     // Return the coalesced list of holes.
     return coalesce_ holes
 
   static coalesce_ holes/List -> List:
-    if holes.is_empty: return holes
-    holes.sort --in_place: | a b | a.offset - b.offset
+    if holes.is-empty: return holes
+    holes.sort --in-place: | a b | a.offset - b.offset
     // Run through the sorted list of holes and build a new list
     // with the coalesced holes.
     last/FlashHole_ := holes[0]
@@ -103,7 +119,7 @@ class FlashRegistry:
         last = hole
     return result
 
-  update_allocations_ found/Map -> none:
+  update-allocations_ found/Map -> none:
     // Use an extra list for the allocations to be freed because we cannot update
     // the allocations map while iterating over it.
     freed := []
@@ -125,12 +141,14 @@ class FlashHole_:
 
 // ----------------------------------------------------------------------------
 
-flash_registry_info_ offset:
+flash-registry-info_ offset:
   #primitive.flash.info
 
-flash_registry_next_ offset:
+flash-registry-next_ offset:
   #primitive.flash.next
 
-flash_registry_erase_ offset size:
+flash-registry-erase_ offset size:
   #primitive.flash.erase
 
+flash-registry-allocate_ offset size type id metadata content:
+  #primitive.flash.allocate

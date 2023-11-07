@@ -6,17 +6,32 @@
 
 #include <stdio.h>
 
-#include "../../utils.h"
+#include "../../heap_report.h"
 #include "../../objects.h"
+#include "../../utils.h"
 
 #include "gc_metadata.h"
 
 namespace toit {
 
+#ifdef TOIT_FREERTOS
+// ESP32 has a cache line of 32 bytes, as does Cortex M7.
+static const uword CACHE_LINE = 32;
+#else
+// It's OK to round up a little too much on other platforms, even if they have
+// a 32 byte cache line.  Intel CPUs tend to have 64 bytes.
+static const uword CACHE_LINE = 64;
+#endif
+
 GcMetadata GcMetadata::singleton_;
 
 void GcMetadata::tear_down() {
   OS::free_pages(singleton_.metadata_, singleton_.metadata_size_);
+}
+
+void GcMetadata::get_metadata_extent(uword* address_return, uword* size_return) {
+  *address_return = reinterpret_cast<uword>(singleton_.metadata_);
+  *size_return = singleton_.metadata_size_;
 }
 
 void GcMetadata::set_up() { singleton_.set_up_singleton(); }
@@ -27,33 +42,55 @@ void GcMetadata::set_up_singleton() {
   uword range_address = reinterpret_cast<uword>(range.address);
   lowest_address_ = Utils::round_down(range_address, TOIT_PAGE_SIZE);
   uword size = Utils::round_up(range.size + range_address - lowest_address_, TOIT_PAGE_SIZE);
+#ifdef TOIT_FREERTOS
+  // Assume that the first 108k of memory can be used for C allocations, so we
+  // remove that from the area that needs to be covered by the heap metadata.
+  // This reduces the heap metadata from 24k or 28k to 16k.
+  const uword ONLY_FOR_MALLOC = 108 * KB;
+  const uword TWELVE_K_METADATA_LIMIT = 148 * KB;
+  const uword SIXTEEN_K_METADATA_LIMIT = 200 * KB;
+  if (!OS::use_spiram_for_metadata() && !OS::use_spiram_for_heap()) {
+    word adjust = ONLY_FOR_MALLOC;
+    // Metadata sizes are rounded up to the next 4k boundary, so we might as
+    // well increase the covered size to make use of the extra space.
+    if (size - adjust < TWELVE_K_METADATA_LIMIT) {
+      adjust = size - TWELVE_K_METADATA_LIMIT;
+    } else if (size - adjust < SIXTEEN_K_METADATA_LIMIT) {
+      adjust = size - SIXTEEN_K_METADATA_LIMIT;
+    }
+    if (adjust > 0) {
+      lowest_address_ += adjust;
+      size -= adjust;
+    }
+  }
+#endif
   heap_extent_ = size;
   heap_start_munged_ = (lowest_address_ >> 1) |
                        (static_cast<uword>(1) << (8 * sizeof(uword) - 1));
   heap_extent_munged_ = size >> 1;
 
-  number_of_cards_ = size >> CARD_SIZE_LOG_2;
+  // Round up the byte counts for various uses of Metadata so that there is no
+  // false sharing of cache lines.  This is an optimization, and should not
+  // affect correctness.
+  number_of_cards_ = Utils::round_up(size >> CARD_SIZE_LOG_2, CACHE_LINE);
 
-  uword mark_bits_size = size >> MARK_BITS_SHIFT;
-  // Ensure there is a little slack after the mark bits for the border case
-  // where we check a one-word object at the end of a page for blackness.
-  // We need everything to stay word-aligned, so we add a full word of padding.
-  mark_bits_size += sizeof(uword);
+  uword mark_bits_size = Utils::round_up(size >> MARK_BITS_SHIFT, CACHE_LINE);
 
-  uword mark_stack_overflow_bits_size = size >> CARD_SIZE_IN_BITS_LOG_2;
+  uword mark_stack_overflow_bits_size = Utils::round_up(size >> CARD_SIZE_IN_BITS_LOG_2, CACHE_LINE);
 
-  uword cumulative_mark_bits_size = size >> CUMULATIVE_MARK_BITS_SHIFT;
+  uword cumulative_mark_bits_size = Utils::round_up(size >> CUMULATIVE_MARK_BITS_SHIFT, CACHE_LINE);
 
-  uword page_type_size_ = size >> TOIT_PAGE_SIZE_LOG2;
+  uword page_type_size_ = Utils::round_up(size >> TOIT_PAGE_SIZE_LOG2, CACHE_LINE);
 
   metadata_size_ = Utils::round_up(
-                                                               // Overhead on:        32bit   64bit
-      number_of_cards_ +                   // One remembered set byte per card.       1/128   1/256
-          number_of_cards_ +               // One object start offset byte per card.  1/128   1/256
-          mark_bits_size +                 // One mark bit per word.                  1/32    1/64
-          cumulative_mark_bits_size +      // One uword per 32 mark bits              1/32    1/32
-          mark_stack_overflow_bits_size +  // One bit per card                        1/1024  1/2048
-          page_type_size_,                 // One byte per page                       1/4096  1/32768
+                                           //                                                          Size per 4k
+                                           //                     Overhead on:        32bit   64bit    page on 32 bit.
+      number_of_cards_ +                   // One remembered set byte per card.       1/128   1/256    32 bytes
+          number_of_cards_ +               // One object start offset byte per card.  1/128   1/256    32 bytes
+          mark_bits_size +                 // One mark bit per word.                  1/32    1/64     128 bytes
+          cumulative_mark_bits_size +      // One uword per 32 mark bits              1/32    1/32     128 bytes
+          mark_stack_overflow_bits_size +  // One bit per card                        1/1024  1/2048   4 bytes
+          page_type_size_,                 // One byte per page                       1/4096  1/32768  1 byte
                                            //            Total:                       7.9%    5.5%
                                            //            Total without mark bits:     1.6%    0.8%
       TOIT_PAGE_SIZE);
@@ -61,26 +98,34 @@ void GcMetadata::set_up_singleton() {
   // We create all the metadata with just one allocation.  Otherwise we will
   // lose memory when the malloc rounds a series of big allocations up to 4k
   // page boundaries.
-  metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
+  {
+    HeapTagScope scope(ITERATE_CUSTOM_TAGS + TOIT_HEAP_MALLOC_TAG);
+    metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
+  }
 
-  remembered_set_ = metadata_;
+  if (metadata_ == null) {
+    printf("[toit] ERROR: failed to allocate GC metadata\n");
+    abort();
+  }
 
-  object_starts_ = metadata_ + number_of_cards_;
+  // Mark bits must be page aligned so that mark_all detects page boundary
+  // crossings, so we do that first.
+  mark_bits_ = reinterpret_cast<uint32*>(metadata_);
 
-  mark_bits_ = reinterpret_cast<uint32*>(metadata_ + 2 * number_of_cards_);
-  cumulative_mark_bit_counts_ = reinterpret_cast<uword*>(
-      reinterpret_cast<uword>(mark_bits_) + mark_bits_size);
+  cumulative_mark_bit_counts_ = reinterpret_cast<uword*>(metadata_ + mark_bits_size);
 
-  mark_stack_overflow_bits_ =
-      reinterpret_cast<uint8_t*>(cumulative_mark_bit_counts_) +
-      cumulative_mark_bits_size;
+  remembered_set_ = metadata_ + mark_bits_size + cumulative_mark_bits_size;
+
+  object_starts_ = remembered_set_ + number_of_cards_;
+
+  mark_stack_overflow_bits_ = object_starts_ + number_of_cards_;
 
   page_type_bytes_ = mark_stack_overflow_bits_ + mark_stack_overflow_bits_size;
 
   // The mark bits and cumulative mark bits are the biggest, so they are not
   // mapped in immediately in order to reduce the memory footprint of very
   // small programs.  We do it when we create pages that need them.
-  OS::use_virtual_memory(metadata_, number_of_cards_);
+  OS::use_virtual_memory(remembered_set_, number_of_cards_);
   OS::use_virtual_memory(object_starts_, number_of_cards_);
   OS::use_virtual_memory(mark_stack_overflow_bits_, mark_stack_overflow_bits_size);
   OS::use_virtual_memory(page_type_bytes_, page_type_size_);
@@ -189,19 +234,14 @@ restart:
     dest = dest.next_chunk();
     int overhang =
         end_of_last_source_object_moved - end_of_last_src_line_that_fits;
-    overhang >>= WORD_SHIFT;
+    // We are starting a new destination chunk, but the src is pointing at
+    // the start of a line that may start with the tail end of an object that
+    // was moved to a different destination chunk. In order for the destination
+    // calculation to work the dest address actually needs to point before the
+    // start of the chunk, to compensate for the count of live bits that apply
+    // to a different destination chunk.
     if (overhang > 0) {
-      // We are starting a new destination chunk, but the src is pointing at
-      // the start of a line that may start with the tail end of an object that
-      // was moved to a different destination chunk. This confuses the
-      // destination calculation, and it turns out that the easiest way to
-      // handle this is to zap the bits associated with the tail of the already
-      // moved object. This can have the effect of making a black object look
-      // grey, but we are done marking so that would only affect asserts.
-      uint32* overhang_bits =
-          mark_bits_for(end_of_last_source_object_moved - WORD_SIZE);
-      ASSERT((*overhang_bits & 1) != 0);
-      *overhang_bits &= ~((1u << overhang) - 1);
+      dest.address -= overhang;
     }
     src_start = src;
   }
@@ -253,27 +293,20 @@ uword GcMetadata::object_address_from_start(uword card, uint8 start) {
   return object_address;
 }
 
-// Mark all bits of an object whose mark bits cross a 32 bit boundary.
+// Mark all bits of an object whose mark bits may cross a 32 bit boundary.
+// This routine only uses aligned 32 bit operations for the marking.
 void GcMetadata::slow_mark(HeapObject* object, uword size) {
   int mask_shift = ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
-  uint32* bits = mark_bits_for(object);
-
-  ASSERT(mask_shift < 32);
-  uint32 mask = 0xffffffffu << mask_shift;
-  *bits |= mask;
-
-  bits++;
+  uint32* data = mark_bits_for(object);
   uint32 words = size >> WORD_SHIFT;
-  ASSERT(words + mask_shift > 32);
-  for (words -= 32 - mask_shift; words >= 32; words -= 32)
-    *bits++ = 0xffffffffu;
-  *bits |= (1u << words) - 1;
+
+  Utils::mark_bits(data, mask_shift, words);
 }
 
 void GcMetadata::mark_stack_overflow(HeapObject* object) {
-  uword address = object->_raw();
+  uword address = object->_raw();  // Note we need this untagged because we write the low byte into the starts_for.
   uint8* overflow_bits = overflow_bits_for(address);
-  *overflow_bits |= 1u << ((address >> CARD_SIZE_LOG_2) & 7);
+  *overflow_bits |= 1U << ((address >> CARD_SIZE_LOG_2) & 7);
   // We can have a mark stack overflow in new-space where we do not normally
   // maintain object starts. By updating the object starts for this card we
   // can be sure that the necessary objects in this card are walkable.

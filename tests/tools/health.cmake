@@ -20,7 +20,7 @@ set(HEALTH_TEST_PREFIX "health-")
 # Adds a health-test.
 # Adds the tests to test configuration 'health'.
 function (add_health_test PATH)
-  set(PARAMS RELATIVE_TO LIB_DIR GOLD_DIR CONFIGURATION UPDATE_TARGET)
+  set(PARAMS RELATIVE_TO LIB_DIR GOLD_DIR CONFIGURATION UPDATE_TARGET SHOW_PACKAGE_WARNINGS)
   cmake_parse_arguments(
       MY_HEALTH    # Prefix
       ""
@@ -32,6 +32,7 @@ function (add_health_test PATH)
   set(GOLD_DIR "${MY_HEALTH_GOLD_DIR}")
   set(CONFIGURATION "${MY_HEALTH_CONFIGURATION}")
   set(UPDATE_TARGET "${MY_HEALTH_UPDATE_TARGET}")
+  set(SHOW_PACKAGE_WARNINGS "${MY_HEALTH_SHOW_PACKAGE_WARNINGS}")
 
   get_filename_component(NAME "${PATH}" NAME_WE)
   file(RELATIVE_PATH TEST_NAME "${CMAKE_SOURCE_DIR}" "${PATH}")
@@ -52,6 +53,7 @@ function (add_health_test PATH)
         "-DTEST_ROOT=${RELATIVE_TO}"
         "-DTMP=${CMAKE_BINARY_DIR}/tmp"
         "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}"
+        "-DSHOW_PACKAGE_WARNINGS=${SHOW_PACKAGE_WARNINGS}"
         -P "${TOOLS_DIR}/health_run.cmake"
     WORKING_DIRECTORY "${RELATIVE_TO}"
     CONFIGURATIONS "${CONFIGURATION}"
@@ -73,6 +75,7 @@ function (add_health_test PATH)
         "-DTEST_ROOT=${RELATIVE_TO}"
         "-DTMP=${CMAKE_BINARY_DIR}/tmp"
         "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}"
+        "-DSHOW_PACKAGE_WARNINGS=${SHOW_PACKAGE_WARNINGS}"
         -P "${TOOLS_DIR}/health_run.cmake"
     WORKING_DIRECTORY "${RELATIVE_TO}"
   )

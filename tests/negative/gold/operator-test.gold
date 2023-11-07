@@ -1,0 +1,628 @@
+tests/negative/operator-test.toit:6:3: error: Invalid method shape for '=='
+  operator == other bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:8:3: error: Invalid method shape for '<'
+  operator < other bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:10:3: error: Invalid method shape for '<='
+  operator <= other bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:12:3: error: Invalid method shape for '>='
+  operator >= other bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:14:3: error: Invalid method shape for '>'
+  operator > other bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:16:3: error: Invalid method shape for '+'
+  operator + other bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:18:3: error: Invalid method shape for '-'
+  operator - other bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:20:3: error: Invalid method shape for '*'
+  operator * other bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:22:3: error: Invalid method shape for '/'
+  operator / other bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:24:3: error: Invalid method shape for '%'
+  operator % other bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:26:3: error: Invalid method shape for '~'
+  operator ~ bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:28:3: error: Invalid method shape for '&'
+  operator & other bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:30:3: error: Invalid method shape for '|'
+  operator | other bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:32:3: error: Invalid method shape for '^'
+  operator ^ other bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:34:3: error: Invalid method shape for '<<'
+  operator << other bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:36:3: error: Invalid method shape for '>>'
+  operator >> other bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:38:3: error: Invalid method shape for '>>>'
+  operator >>> other bad:
+  ^~~~~~~~~~~~
+tests/negative/operator-test.toit:42:3: error: Invalid method shape for '=='
+  operator ==:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:44:3: error: Invalid method shape for '<'
+  operator <:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:46:3: error: Invalid method shape for '<='
+  operator <=:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:48:3: error: Invalid method shape for '>='
+  operator >=:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:50:3: error: Invalid method shape for '>'
+  operator >:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:52:3: error: Invalid method shape for '+'
+  operator +:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:56:3: error: Invalid method shape for '*'
+  operator *:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:58:3: error: Invalid method shape for '/'
+  operator /:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:60:3: error: Invalid method shape for '%'
+  operator %:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:62:3: error: Invalid method shape for '&'
+  operator &:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:64:3: error: Invalid method shape for '|'
+  operator |:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:66:3: error: Invalid method shape for '^'
+  operator ^:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:68:3: error: Invalid method shape for '<<'
+  operator <<:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:70:3: error: Invalid method shape for '>>'
+  operator >>:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:72:3: error: Invalid method shape for '>>>'
+  operator >>>:
+  ^~~~~~~~~~~~
+tests/negative/operator-test.toit:75:3: error: Invalid method shape for '[]'
+  operator []:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:78:3: error: Invalid method shape for '[]='
+  operator []=:
+  ^~~~~~~~~~~~
+tests/negative/operator-test.toit:81:3: error: Invalid method shape for '[]='
+  operator []= x:
+  ^~~~~~~~~~~~
+tests/negative/operator-test.toit:85:3: error: Invalid method shape for '=='
+  operator == other [bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:87:3: error: Invalid method shape for '<'
+  operator < other [bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:89:3: error: Invalid method shape for '<='
+  operator <= other [bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:91:3: error: Invalid method shape for '>='
+  operator >= other [bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:93:3: error: Invalid method shape for '>'
+  operator > other [bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:95:3: error: Invalid method shape for '+'
+  operator + other [bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:97:3: error: Invalid method shape for '-'
+  operator - other [bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:99:3: error: Invalid method shape for '*'
+  operator * other [bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:101:3: error: Invalid method shape for '/'
+  operator / other [bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:103:3: error: Invalid method shape for '%'
+  operator % other [bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:105:3: error: Invalid method shape for '~'
+  operator ~ [bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:107:3: error: Invalid method shape for '&'
+  operator & other [bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:109:3: error: Invalid method shape for '|'
+  operator | other [bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:111:3: error: Invalid method shape for '^'
+  operator ^ other [bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:113:3: error: Invalid method shape for '<<'
+  operator << other [bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:115:3: error: Invalid method shape for '>>'
+  operator >> other [bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:117:3: error: Invalid method shape for '>>>'
+  operator >>> other [bad]:
+  ^~~~~~~~~~~~
+tests/negative/operator-test.toit:121:3: error: Invalid method shape for '=='
+  operator == other bad=null:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:123:3: error: Invalid method shape for '<'
+  operator < other bad=null:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:125:3: error: Invalid method shape for '<='
+  operator <= other bad=null:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:127:3: error: Invalid method shape for '>='
+  operator >= other bad=null:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:129:3: error: Invalid method shape for '>'
+  operator > other bad=null:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:131:3: error: Invalid method shape for '+'
+  operator + other bad=null:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:133:3: error: Invalid method shape for '-'
+  operator - other bad=null:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:135:3: error: Invalid method shape for '*'
+  operator * other bad=null:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:137:3: error: Invalid method shape for '/'
+  operator / other bad=null:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:139:3: error: Invalid method shape for '%'
+  operator % other bad=null:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:141:3: error: Invalid method shape for '~'
+  operator ~ bad=null:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:143:3: error: Invalid method shape for '&'
+  operator & other bad=null:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:145:3: error: Invalid method shape for '|'
+  operator | other bad=null:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:147:3: error: Invalid method shape for '^'
+  operator ^ other bad=null:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:149:3: error: Invalid method shape for '<<'
+  operator << other bad=null:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:151:3: error: Invalid method shape for '>>'
+  operator >> other bad=null:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:153:3: error: Invalid method shape for '>>>'
+  operator >>> other bad=null:
+  ^~~~~~~~~~~~
+tests/negative/operator-test.toit:157:3: error: Invalid method shape for '=='
+  operator == other --bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:159:3: error: Invalid method shape for '<'
+  operator < other --bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:161:3: error: Invalid method shape for '<='
+  operator <= other --bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:163:3: error: Invalid method shape for '>='
+  operator >= other --bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:165:3: error: Invalid method shape for '>'
+  operator > other --bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:167:3: error: Invalid method shape for '+'
+  operator + other --bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:169:3: error: Invalid method shape for '-'
+  operator - other --bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:171:3: error: Invalid method shape for '*'
+  operator * other --bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:173:3: error: Invalid method shape for '/'
+  operator / other --bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:175:3: error: Invalid method shape for '%'
+  operator % other --bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:177:3: error: Invalid method shape for '~'
+  operator ~ --bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:179:3: error: Invalid method shape for '&'
+  operator & other --bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:181:3: error: Invalid method shape for '|'
+  operator | other --bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:183:3: error: Invalid method shape for '^'
+  operator ^ other --bad:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:185:3: error: Invalid method shape for '<<'
+  operator << other --bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:187:3: error: Invalid method shape for '>>'
+  operator >> other --bad:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:189:3: error: Invalid method shape for '>>>'
+  operator >>> other --bad:
+  ^~~~~~~~~~~~
+tests/negative/operator-test.toit:192:3: error: Invalid method shape for '[]='
+  operator []= --bad:
+  ^~~~~~~~~~~~
+tests/negative/operator-test.toit:196:3: error: Invalid method shape for '=='
+  operator == other [--bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:198:3: error: Invalid method shape for '<'
+  operator < other [--bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:200:3: error: Invalid method shape for '<='
+  operator <= other [--bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:202:3: error: Invalid method shape for '>='
+  operator >= other [--bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:204:3: error: Invalid method shape for '>'
+  operator > other [--bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:206:3: error: Invalid method shape for '+'
+  operator + other [--bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:208:3: error: Invalid method shape for '-'
+  operator - other [--bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:210:3: error: Invalid method shape for '*'
+  operator * other [--bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:212:3: error: Invalid method shape for '/'
+  operator / other [--bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:214:3: error: Invalid method shape for '%'
+  operator % other [--bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:216:3: error: Invalid method shape for '~'
+  operator ~ [--bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:218:3: error: Invalid method shape for '&'
+  operator & other [--bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:220:3: error: Invalid method shape for '|'
+  operator | other [--bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:222:3: error: Invalid method shape for '^'
+  operator ^ other [--bad]:
+  ^~~~~~~~~~
+tests/negative/operator-test.toit:224:3: error: Invalid method shape for '<<'
+  operator << other [--bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:226:3: error: Invalid method shape for '>>'
+  operator >> other [--bad]:
+  ^~~~~~~~~~~
+tests/negative/operator-test.toit:228:3: error: Invalid method shape for '>>>'
+  operator >>> other [--bad]:
+  ^~~~~~~~~~~~
+tests/negative/operator-test.toit:7:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:9:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:11:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:13:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:15:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:17:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:19:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:21:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:23:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:25:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:27:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:29:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:31:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:33:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:35:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:37:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:39:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:43:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:45:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:47:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:49:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:51:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:53:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:55:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:57:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:59:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:61:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:63:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:65:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:67:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:69:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:71:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:73:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:76:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:79:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:82:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:86:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:88:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:90:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:92:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:94:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:96:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:98:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:100:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:102:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:104:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:106:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:108:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:110:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:112:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:114:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:116:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:118:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:122:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:124:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:126:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:128:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:130:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:132:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:134:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:136:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:138:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:140:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:142:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:144:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:146:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:148:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:150:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:152:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:154:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:158:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:160:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:162:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:164:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:166:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:168:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:170:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:172:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:174:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:176:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:178:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:180:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:182:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:184:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:186:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:188:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:190:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:193:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:197:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:199:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:201:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:203:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:205:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:207:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:209:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:211:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:213:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:215:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:217:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:219:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:221:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:223:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:225:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:227:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator-test.toit:229:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+Compilation failed.

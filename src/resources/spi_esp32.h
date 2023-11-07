@@ -27,35 +27,47 @@
 
 namespace toit {
 
-class SPIDevice : public Resource {
+class SpiResourceGroup : public ResourceGroup {
+ public:
+  TAG(SpiResourceGroup);
+  SpiResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device, int dma_channel);
+  ~SpiResourceGroup() override;
+
+  spi_host_device_t host_device() { return host_device_; }
+
+ private:
+  spi_host_device_t host_device_;
+  int dma_channel_;
+};
+
+class SpiDevice : public Resource {
  public:
   static const int BUFFER_SIZE = 16;
 
-  TAG(SPIDevice);
-  SPIDevice(ResourceGroup* group, spi_device_handle_t handle, int dc)
+  TAG(SpiDevice);
+  SpiDevice(ResourceGroup* group, spi_device_handle_t handle, int dc)
     : Resource(group)
-    , _handle(handle)
-    , _dc(dc) {
+    , handle_(handle)
+    , dc_(dc) {}
+
+  ~SpiDevice() {
+    spi_bus_remove_device(handle_);
   }
 
-  ~SPIDevice() {
-    spi_bus_remove_device(_handle);
-  }
+  spi_device_handle_t handle() { return handle_; }
 
-  spi_device_handle_t handle() { return _handle; }
-
-  int dc() { return _dc; }
+  int dc() { return dc_; }
 
   uint8_t* buffer() {
-    return _buffer;
+    return buffer_;
   }
 
  private:
-  spi_device_handle_t _handle;
-  int _dc;
+  spi_device_handle_t handle_;
+  int dc_;
 
   // Pre-allocated buffer for small transfers. Must be 4-byte aligned.
-  alignas(4) uint8_t _buffer[BUFFER_SIZE];
+  alignas(4) uint8_t buffer_[BUFFER_SIZE];
 };
 
 } // namespace toit

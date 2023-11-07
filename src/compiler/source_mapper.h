@@ -26,10 +26,15 @@ namespace toit {
 namespace compiler {
 
 namespace ir {
+class Call;
+class Class;
+class Code;
+class Expression;
 class Global;
 class Method;
-class Code;
-class Class;
+class Node;
+class ReferenceGlobal;
+class Typecheck;
 }  // namespace toit::compiler::ir
 
 class SourceInfoCollector;
@@ -48,59 +53,50 @@ class SourceMapper {
    public:
     static MethodMapper invalid() { return MethodMapper(null, -1); }
 
-    bool is_valid() const { return _source_mapper != null; }
+    bool is_valid() const { return source_mapper_ != null; }
 
-    void register_call(int bytecode_offset, Source::Range range) {
-      ASSERT(is_valid());
-      ASSERT(!_is_finalized);
-      _source_mapper->register_bytecode(_method_index, bytecode_offset, range);
+    void register_call(ir::Call* call, int bytecode_offset);
+    void register_call(ir::ReferenceGlobal* call, int bytecode_offset);
+    void register_as_check(ir::Typecheck* check, int bytecode_offset);
+
+    MethodMapper register_lambda(ir::Code* code) {
+      return source_mapper()->register_lambda(method_index_, code);
     }
 
-    void register_as_check(int bytecode_offset, Source::Range range, const char* class_name) {
-      ASSERT(is_valid());
-      ASSERT(!_is_finalized);
-      _source_mapper->register_bytecode(_method_index, bytecode_offset, range);
-      _source_mapper->register_as(_method_index, bytecode_offset, class_name);
-    }
-
-    void register_pubsub_call(int bytecode_offset, int target_dispatch_index, const char* topic) {
-      ASSERT(is_valid());
-      ASSERT(!_is_finalized);
-      _source_mapper->register_pubsub_call(_method_index, bytecode_offset, target_dispatch_index, topic);
+    MethodMapper register_block(ir::Code* code) {
+      return source_mapper()->register_block(method_index_, code);
     }
 
     void finalize(int method_id, int size) {
-      ASSERT(is_valid());
-      ASSERT(!_is_finalized);
-      _is_finalized = true;
+      SourceMapper* mapper = source_mapper();
+      is_finalized_ = true;
       ASSERT(method_id >= 0);
       ASSERT(size >= 0);
-      ASSERT(_source_mapper->_source_information[_method_index].id == -1);
-      _source_mapper->_source_information[_method_index].id = method_id;
-      ASSERT(_source_mapper->_source_information[_method_index].bytecode_size == -1);
-      _source_mapper->_source_information[_method_index].bytecode_size = size;
-    }
-
-    MethodMapper register_lambda(ir::Code* code) {
-      ASSERT(is_valid());
-      return _source_mapper->register_lambda(_method_index, code);
-    }
-    MethodMapper register_block(ir::Code* code) {
-      ASSERT(is_valid());
-      return _source_mapper->register_block(_method_index, code);
+      ASSERT(mapper->source_information_[method_index_].id == -1);
+      mapper->source_information_[method_index_].id = method_id;
+      ASSERT(mapper->source_information_[method_index_].bytecode_size == -1);
+      mapper->source_information_[method_index_].bytecode_size = size;
     }
 
    private:
     friend class SourceMapper;
     MethodMapper(SourceMapper* source_mapper, int method_index)
-        : _source_mapper(source_mapper), _method_index(method_index) { }
+        : source_mapper_(source_mapper), method_index_(method_index) {}
 
-    SourceMapper* _source_mapper;
-    int _method_index;
-    bool _is_finalized = false;
+    SourceMapper* source_mapper_;
+    int method_index_;
+    bool is_finalized_ = false;
+
+    SourceMapper* source_mapper() const {
+      ASSERT(is_valid());
+      ASSERT(!is_finalized_);
+      return source_mapper_;
+    }
   };
 
-  explicit SourceMapper(SourceManager* manager) : _manager(manager) { }
+  explicit SourceMapper(SourceManager* manager) : manager_(manager) {}
+
+  SourceManager* manager() const { return manager_; }
 
   /// Returns a malloced buffer of the source-map.
   uint8* cook(int* size);
@@ -112,29 +108,26 @@ class SourceMapper {
   // introducing stub-methods. (At least as much as possible).
   void register_selectors(List<ir::Class*> classes);
 
+  void register_selector_offset(int offset, const char* name) {
+    selector_offsets_[offset] = name;
+  }
+
   void add_class_entry(int id, ir::Class* klass);
   void add_global_entry(ir::Global* global);
 
-  int id_for_class(ir::Class* klass) {
-    auto probe = _class_information.find(klass);
-    if (probe == _class_information.end()) return -1;
+  int id_for_class(ir::Class* klass) const {
+    auto probe = class_information_.find(klass);
+    if (probe == class_information_.end()) return -1;
     return probe->second.id;
   }
 
-  void register_selector_offset(int offset, const char* name) {
-    _selector_offsets[offset] = name;
-  }
+  int position_for_method(ir::Node* node) const;
+  int position_for_expression(ir::Expression* expression) const;
 
  private:
   struct FilePosition {
     int line;
     int column;
-  };
-
-  struct PubsubEntry {
-    int bytecode_offset;
-    int target_dispatch_index;
-    const char* topic;
   };
 
   struct MethodEntry {
@@ -160,7 +153,6 @@ class SourceMapper {
     // bytecodes.
     std::map<int, FilePosition> bytecode_positions;
     std::map<int, const char*> as_class_names;
-    std::vector<PubsubEntry> pubsub_info;
   };
 
   struct ClassEntry {
@@ -193,7 +185,7 @@ class SourceMapper {
   };
 
   friend class MethodMapper;
-  SourceManager* _manager;
+  SourceManager* manager_;
 
   MethodMapper register_lambda(int outer_id, ir::Code* code);
   MethodMapper register_block(int outer_id, ir::Code* code);
@@ -206,22 +198,27 @@ class SourceMapper {
   void visit_selector_offset_info(SourceInfoCollector* collector);
   void visit_global_info(SourceInfoCollector* collector);
 
-  MethodEntry build_method_entry(int id,
+  MethodEntry build_method_entry(ir::Node* node,
+                                 int id,
                                  MethodType type,
                                  int outer,
                                  const char* name,
                                  const char* holder_name,
                                  Source::Range range);
-  void register_bytecode(int method_id, int bytecode_offset, Source::Range range);
-  void register_as(int method_id, int bytecode_offset, const char* class_name);
-  void register_pubsub_call(int method_id, int bytecode_offset, int target_dispatch_index, const char* topic);
+  void register_expression(ir::Expression* expression, int method_id, int bytecode_offset);
+  void register_as_check(ir::Typecheck* check, int method_id, int bytecode_offset);
 
-  std::vector<MethodEntry> _source_information;
-  Map<ir::Class*, ClassEntry> _class_information;
-  std::map<int, const char*> _selector_offsets;
-  std::vector<GlobalEntry> _global_information;
+  std::vector<MethodEntry> source_information_;
+  Map<ir::Class*, ClassEntry> class_information_;
+  std::map<int, const char*> selector_offsets_;
+  std::vector<GlobalEntry> global_information_;
   // Map from location-id to selector class-entry.
-  Map<int, SelectorClassEntry> _selectors;
+  Map<int, SelectorClassEntry> selectors_;
+
+  // Map from method or code to method index.
+  Map<ir::Node*, int> method_indexes_;
+  // Map from expressions to method index and bytecode offset.
+  Map<ir::Expression*, std::pair<int, int>> expression_positions_;
 
   void extract_holder_information(ir::Class* holder,
                                   int* holder_id,
@@ -234,7 +231,7 @@ class SourceMapper {
   bool is_encoded_outer_index(int outer) { return outer < -1; }
   int decode_outer_index(int outer) {
     ASSERT(is_encoded_outer_index(outer));
-    return _source_information[-outer - 2].id;
+    return source_information_[-outer - 2].id;
   }
 };
 

@@ -59,7 +59,7 @@ void SemiSpace::flush() {
   }
 }
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 void SemiSpace::validate() {
   // Iterate all objects, checking their size makes sense.
   for (auto chunk : chunk_list_) {
@@ -114,11 +114,6 @@ void Space::validate_before_mark_sweep(PageType expected_page_type, bool object_
 }
 #endif
 
-HeapObject* SemiSpace::new_location(HeapObject* old_location) {
-  ASSERT(includes(old_location->_raw()));
-  return old_location->forwarding_address();
-}
-
 bool SemiSpace::is_alive(HeapObject* old_location) {
   // If we are doing a scavenge and are asked whether an old-space object is
   // alive, return true.
@@ -126,11 +121,21 @@ bool SemiSpace::is_alive(HeapObject* old_location) {
   return old_location->has_forwarding_address();
 }
 
+bool SemiSpace::has_active_finalizer(HeapObject* old_location) {
+  return old_location->has_active_finalizer();
+}
+
 void Space::append(Chunk* chunk) {
   chunk->set_owner(this);
-  // Insert chunk in increasing address order in the list.  This is
-  // useful for the partial compactor.
-  chunk_list_.insert_before(chunk, [&chunk](Chunk* it) { return it->start() > chunk->start(); });
+  // Insert chunk in increasing address order in the list.  This means when
+  // the heap shrinks the highest addresses will be freed.  However, we group
+  // similar sized chunks together so that the big chunks will always be at the
+  // end.  This means when the heap shrinks because of successful GC we won't
+  // be left with one big (mostly empty) chunk.  On ESP32 all the chunks are 4k.
+  chunk_list_.insert_before(chunk, [&chunk](Chunk* it) {
+    if (it->size() > chunk->size()) return true;
+    return it->start() > chunk->start() && it->size() == chunk->size();
+  });
 }
 
 void SemiSpace::append(Chunk* chunk) {
@@ -161,7 +166,7 @@ uword SemiSpace::allocate(uword size) {
   return 0;
 }
 
-uword SemiSpace::used() {
+uword SemiSpace::used() const {
   ASSERT(chunk_list_.first() == chunk_list_.last());
   return (top() - chunk_list_.last()->start());
 }

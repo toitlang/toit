@@ -3,59 +3,81 @@
 // found in the lib/LICENSE file.
 
 import uuid
-import system.services show ServiceClient
+import system.services show ServiceSelector ServiceClient
+import system.containers show ContainerImage
 
 interface ContainerService:
-  static UUID  /string ::= "358ee529-45a4-409e-8fab-7a28f71e5c51"
-  static MAJOR /int    ::= 0
-  static MINOR /int    ::= 2
+  static SELECTOR ::= ServiceSelector
+      --uuid="358ee529-45a4-409e-8fab-7a28f71e5c51"
+      --major=0
+      --minor=7
 
-  static LIST_IMAGES_INDEX /int ::= 0
-  list_images -> List
+  static FLAG-RUN-BOOT     /int ::= 1 << 0
+  static FLAG-RUN-CRITICAL /int ::= 1 << 1
 
-  static CURRENT_IMAGE_INDEX /int ::= 6
-  current_image -> uuid.Uuid
+  list-images -> List
+  static LIST-IMAGES-INDEX /int ::= 0
 
-  static START_IMAGE_INDEX /int ::= 1
-  start_image id/uuid.Uuid -> int?
+  load-image id/uuid.Uuid -> List?
+  static LOAD-IMAGE-INDEX /int ::= 1
 
-  static UNINSTALL_IMAGE_INDEX /int ::= 2
-  uninstall_image id/uuid.Uuid -> none
+  start-container handle/int arguments/any -> none
+  static START-CONTAINER-INDEX /int ::= 7
 
-  static IMAGE_WRITER_OPEN_INDEX /int ::= 3
-  image_writer_open size/int -> int
+  stop-container handle/int -> none
+  static STOP-CONTAINER-INDEX /int ::= 6
 
-  static IMAGE_WRITER_WRITE_INDEX /int ::= 4
-  image_writer_write handle/int bytes/ByteArray -> none
+  uninstall-image id/uuid.Uuid -> none
+  static UNINSTALL-IMAGE-INDEX /int ::= 2
 
-  static IMAGE_WRITER_COMMIT_INDEX /int ::= 5
-  image_writer_commit handle/int -> uuid.Uuid
+  image-writer-open size/int -> int
+  static IMAGE-WRITER-OPEN-INDEX /int ::= 3
+
+  image-writer-write handle/int bytes/ByteArray -> none
+  static IMAGE-WRITER-WRITE-INDEX /int ::= 4
+
+  image-writer-commit handle/int flags/int data/int -> uuid.Uuid
+  static IMAGE-WRITER-COMMIT-INDEX /int ::= 5
+
+  notify-background-state-changed new-state/any -> none
+  static NOTIFY-BACKGROUND-STATE-CHANGED-INDEX /int ::= 8
 
 class ContainerServiceClient extends ServiceClient implements ContainerService:
-  constructor --open/bool=true:
-    super --open=open
+  static SELECTOR ::= ContainerService.SELECTOR
+  constructor selector/ServiceSelector=SELECTOR:
+    assert: selector.matches SELECTOR
+    super selector
 
-  open -> ContainerServiceClient?:
-    return (open_ ContainerService.UUID ContainerService.MAJOR ContainerService.MINOR) and this
+  list-images -> List:
+    array := invoke_ ContainerService.LIST-IMAGES-INDEX null
+    return List array.size / 4:
+      cursor := it * 4
+      ContainerImage
+          --id=uuid.Uuid array[cursor]
+          --name=array[cursor + 1]
+          --flags=array[cursor + 2]
+          --data=array[cursor + 3]
 
-  list_images -> List:
-    array := invoke_ ContainerService.LIST_IMAGES_INDEX null
-    return List array.size: uuid.Uuid array[it]
+  load-image id/uuid.Uuid -> List?:
+    return invoke_ ContainerService.LOAD-IMAGE-INDEX id.to-byte-array
 
-  current_image -> uuid.Uuid:
-    return uuid.Uuid (invoke_ ContainerService.CURRENT_IMAGE_INDEX null)
+  start-container handle/int arguments/any -> none:
+    invoke_ ContainerService.START-CONTAINER-INDEX [handle, arguments]
 
-  start_image id/uuid.Uuid -> int?:
-    return invoke_ ContainerService.START_IMAGE_INDEX id.to_byte_array
+  stop-container handle/int -> none:
+    invoke_ ContainerService.STOP-CONTAINER-INDEX handle
 
-  uninstall_image id/uuid.Uuid -> none:
-    invoke_ ContainerService.UNINSTALL_IMAGE_INDEX id.to_byte_array
+  uninstall-image id/uuid.Uuid -> none:
+    invoke_ ContainerService.UNINSTALL-IMAGE-INDEX id.to-byte-array
 
-  image_writer_open size/int -> int:
-    return invoke_ ContainerService.IMAGE_WRITER_OPEN_INDEX size
+  image-writer-open size/int -> int:
+    return invoke_ ContainerService.IMAGE-WRITER-OPEN-INDEX size
 
-  image_writer_write handle/int bytes/ByteArray -> none:
-    invoke_ ContainerService.IMAGE_WRITER_WRITE_INDEX [handle, bytes]
+  image-writer-write handle/int bytes/ByteArray -> none:
+    invoke_ ContainerService.IMAGE-WRITER-WRITE-INDEX [handle, bytes]
 
-  image_writer_commit handle/int -> uuid.Uuid:
-    return uuid.Uuid (invoke_ ContainerService.IMAGE_WRITER_COMMIT_INDEX handle)
+  image-writer-commit handle/int flags/int data/int -> uuid.Uuid:
+    return uuid.Uuid (invoke_ ContainerService.IMAGE-WRITER-COMMIT-INDEX [handle, flags, data])
+
+  notify-background-state-changed new-state/bool -> none:
+    invoke_ ContainerService.NOTIFY-BACKGROUND-STATE-CHANGED-INDEX new-state

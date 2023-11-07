@@ -33,100 +33,149 @@ const char* Process::StateName[] = {
   "RUNNING",
 };
 
-Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk)
-    : _id(VM::current()->scheduler()->next_process_id())
-    , _next_task_id(0)
-    , _program(program)
-    , _runner(runner)
-    , _group(group)
-    , _program_heap_address(program ? program->_program_heap_address : 0)
-    , _program_heap_size(program ? program->_program_heap_size : 0)
-    , _entry(Method::invalid())
-    , _hatch_method(Method::invalid())
-    , _hatch_arguments(null)
-    , _object_heap(program, this, initial_chunk)
-    , _memory_usage(Usage("initial object heap"))
-    , _last_bytes_allocated(0)
-    , _termination_message(termination)
-    , _random_seeded(false)
-    , _random_state0(1)
-    , _random_state1(2)
-    , _current_directory(-1)
-    , _signals(0)
-    , _state(IDLE)
-    , _scheduler_thread(null) {
+Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory)
+    : id_(VM::current()->scheduler()->next_process_id())
+    , next_task_id_(0)
+    , program_(program)
+    , runner_(runner)
+    , group_(group)
+    , program_heap_address_(reinterpret_cast<uword>(program))
+    , program_heap_size_(program ? program->size() : 0)
+    , entry_(Method::invalid())
+    , spawn_method_(Method::invalid())
+    , object_heap_(
+        program,
+        this,
+        initial_memory ? initial_memory->initial_chunk : null,
+        initial_memory ? initial_memory->global_variables : null,
+        initial_memory ? initial_memory->heap_mutex : null)
+    , last_bytes_allocated_(0)
+    , termination_message_(termination)
+    , random_seeded_(false)
+    , random_state0_(1)
+    , random_state1_(2)
+    , signals_(0)
+    , state_(IDLE)
+    , scheduler_thread_(null) {
+  if (initial_memory) initial_memory->dont_auto_free();
   // We can't start a process from a heap that has not been linearly allocated
   // because we use the address range to distinguish program pointers and
   // process pointers.
-  ASSERT(!program || _program_heap_size > 0);
+  ASSERT(!program || program_heap_size_ > 0);
   // Link this process to the program heap.
-  _group->add(this);
-  ASSERT(_group->lookup(_id) == this);
-}
-
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, Chunk* initial_chunk)
-   : Process(program, null, group, termination, initial_chunk) {
-  _entry = program->entry_main();
-  _args = args;
-}
-
-#ifndef TOIT_FREERTOS
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle system, SnapshotBundle application, char** args, Chunk* initial_chunk)
-  : Process(program, null, group, termination, initial_chunk) {
-  _entry = program->entry_main();
-  _args = args;
-
-  int size;
-  { MessageEncoder encoder(null);
-    encoder.encode_bundles(system, application);
-    size = encoder.size();
-  }
-
-  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
-  ASSERT(buffer != null)
-  MessageEncoder encoder(buffer);
-  encoder.encode_bundles(system, application);
-  _hatch_arguments = buffer;
-}
+  group_->add(this);
+#if defined(TOIT_WINDOWS)
+  current_directory_ = null;
+#else
+  current_directory_ = -1;
 #endif
+  ASSERT(group_->lookup(id_) == this);
 
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, Chunk* initial_chunk)
-   : Process(program, null, group, termination, initial_chunk) {
-  _entry = program->entry_spawn();
-  _args = null;
-  _hatch_method = method;
-  _hatch_arguments = arguments;
+  if (program) {
+    false_object_ = program->false_object();
+    true_object_ = program->true_object();
+    null_ = program->null_object();
+  } else {
+    false_object_ = null;
+    true_object_ = null;
+    null_ = null;
+  }
 }
 
-// Constructor for an external process (no Toit code).
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory)
+    : Process(program, null, group, termination, initial_memory) {
+  entry_ = program->entry_main();
+}
+
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, InitialMemoryManager* initial_memory)
+    : Process(program, null, group, termination, initial_memory) {
+  entry_ = program->entry_spawn();
+  spawn_method_ = method;
+}
+
 Process::Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination)
-    : Process(null, runner, group, termination, null) {
-}
+    : Process(null, runner, group, termination, null) {}
 
 Process::~Process() {
-  _state = TERMINATING;
-  MessageDecoder::deallocate(_hatch_arguments);
-  delete _termination_message;
+  state_ = TERMINATING;
+  MessageDecoder::deallocate(spawn_arguments_);
+  delete termination_message_;
 
   // Clean up unclaimed resource groups.
-  while (ResourceGroup* r = _resource_groups.first()) {
+  while (ResourceGroup* r = resource_groups_.first()) {
     r->tear_down();  // Also removes from linked list.
   }
 
-  if (_current_directory >= 0) {
-    OS::close(_current_directory);
+#if defined(TOIT_WINDOWS)
+  free(const_cast<void*>(void_cast(current_directory_)));
+#else
+  if (current_directory_ >= 0) {
+    OS::close(current_directory_);
   }
+#endif
 
   // Use [has_message] to ensure that system_acks are processed and message
   // budget is returned.
   while (has_messages()) {
     remove_first_message();
   }
+
+  Locker locker(OS::tls_mutex());
+  while (auto certificate = root_certificates_.remove_first()) {
+    delete certificate;
+  }
 }
 
+void Process::set_main_arguments(uint8* arguments) {
+  ASSERT(main_arguments_ == null);
+  main_arguments_ = arguments;
+}
+
+void Process::set_spawn_arguments(uint8* arguments) {
+  ASSERT(spawn_arguments_ == null);
+  spawn_arguments_ = arguments;
+}
+
+#ifndef TOIT_FREERTOS
+void Process::set_main_arguments(char** argv) {
+  ASSERT(main_arguments_ == null);
+  int argc = 0;
+  if (argv) {
+    while (argv[argc] != null) argc++;
+  }
+
+  int size;
+  { MessageEncoder encoder(null);
+    encoder.encode_arguments(argv, argc);
+    size = encoder.size();
+  }
+
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));  // Never fails on host.
+  ASSERT(buffer != null)
+  MessageEncoder encoder(buffer);  // Takes over buffer.
+  encoder.encode_arguments(argv, argc);
+  main_arguments_ = encoder.take_buffer();
+}
+
+void Process::set_spawn_arguments(SnapshotBundle system, SnapshotBundle application) {
+  ASSERT(spawn_arguments_ == null);
+  int size;
+  { MessageEncoder encoder(null);
+    encoder.encode_bundles(system, application);
+    size = encoder.size();
+  }
+
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));  // Never fails on host.
+  ASSERT(buffer != null)
+  MessageEncoder encoder(buffer);  // Takes over buffer.
+  encoder.encode_bundles(system, application);
+  spawn_arguments_ = encoder.take_buffer();
+}
+#endif
+
 SystemMessage* Process::take_termination_message(uint8 result) {
-  SystemMessage* message = _termination_message;
-  _termination_message = null;
+  SystemMessage* message = termination_message_;
+  termination_message_ = null;
   message->set_pid(id());
 
   // Encode the exit value as small integer in the termination message.
@@ -136,16 +185,16 @@ SystemMessage* Process::take_termination_message(uint8 result) {
 }
 
 
-String* Process::allocate_string(const char* content, int length, Error** error) {
-  String* result = allocate_string(length, error);
+String* Process::allocate_string(const char* content, int length) {
+  String* result = allocate_string(length);
   if (result == null) return result;  // Allocation failure.
   // Initialize object.
-  String::Bytes bytes(result);
+  String::MutableBytes bytes(result);
   bytes._initialize(content);
   return result;
 }
 
-String* Process::allocate_string(int length, Error** error) {
+String* Process::allocate_string(int length) {
   ASSERT(length >= 0);
   bool can_fit_in_heap_block = length <= String::max_internal_size_in_process();
   if (can_fit_in_heap_block) {
@@ -156,7 +205,6 @@ String* Process::allocate_string(int length, Error** error) {
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
         length);
 #endif
-    *error = Error::from(program()->allocation_failed());
     return null;
   }
 
@@ -172,7 +220,6 @@ String* Process::allocate_string(int length, Error** error) {
           this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
           length);
 #endif
-    *error = Error::from(program()->allocation_failed());
     return null;
   }
   memory[length] = '\0';  // External strings should be zero-terminated.
@@ -186,26 +233,24 @@ String* Process::allocate_string(int length, Error** error) {
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
         length);
 #endif
-    *error = Error::from(program()->allocation_failed());
     return null;
-}
-
-Object* Process::allocate_string_or_error(const char* content, int length) {
-  Error* error = null;
-  String* result = allocate_string(content, length, &error);
-  if (result == null) return error;
-  return result;
-}
-
-String* Process::allocate_string(const char* content, Error** error) {
-  return allocate_string(content, strlen(content), error);
 }
 
 Object* Process::allocate_string_or_error(const char* content) {
   return allocate_string_or_error(content, strlen(content));
 }
 
-ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_external) {
+Object* Process::allocate_string_or_error(const char* content, int length) {
+  String* result = allocate_string(content, length);
+  if (result == null) return Error::from(program()->allocation_failed());
+  return result;
+}
+
+String* Process::allocate_string(const char* content) {
+  return allocate_string(content, strlen(content));
+}
+
+ByteArray* Process::allocate_byte_array(int length, bool force_external) {
   ASSERT(length >= 0);
   if (force_external || length > ByteArray::max_internal_size_in_process()) {
     // Byte array cannot fit within a heap block so place content in malloced space.
@@ -222,7 +267,6 @@ ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_ex
           this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
           length);
 #endif
-      *error = Error::from(program()->allocation_failed());
       return null;
     }
     if (ByteArray* result = object_heap()->allocate_external_byte_array(length, memory, true)) {
@@ -234,7 +278,6 @@ ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_ex
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
         length);
 #endif
-    *error = Error::from(program()->allocation_failed());
     return null;
   }
   if (ByteArray* result = object_heap()->allocate_internal_byte_array(length)) return result;
@@ -243,34 +286,33 @@ ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_ex
       this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
       length);
 #endif
-  *error = Error::from(program()->allocation_failed());
   return null;
 }
 
 void Process::_append_message(Message* message) {
-  Locker locker(OS::scheduler_mutex());  // Fix this
+  Locker locker(OS::process_mutex());
   if (message->is_object_notify()) {
     ObjectNotifyMessage* obj_notify = static_cast<ObjectNotifyMessage*>(message);
     if (obj_notify->is_queued()) return;
     obj_notify->mark_queued();
   }
-  _messages.append(message);
+  messages_.append(message);
 }
 
 bool Process::has_messages() {
-  Locker locker(OS::scheduler_mutex());  // Fix this
-  return !_messages.is_empty();
+  Locker locker(OS::process_mutex());
+  return !messages_.is_empty();
 }
 
 Message* Process::peek_message() {
-  Locker locker(OS::scheduler_mutex());  // Fix this
-  return _messages.first();
+  Locker locker(OS::process_mutex());
+  return messages_.first();
 }
 
 void Process::remove_first_message() {
-  Locker locker(OS::scheduler_mutex());  // Fix this
-  ASSERT(!_messages.is_empty());
-  Message* message = _messages.remove_first();
+  Locker locker(OS::process_mutex());
+  ASSERT(!messages_.is_empty());
+  Message* message = messages_.remove_first();
   if (message->is_object_notify()) {
     if (!static_cast<ObjectNotifyMessage*>(message)->mark_dequeued()) return;
   }
@@ -278,79 +320,116 @@ void Process::remove_first_message() {
 }
 
 int Process::message_count() {
-  Locker locker(OS::scheduler_mutex());  // Fix this
+  Locker locker(OS::process_mutex());
   int count = 0;
-  for (MessageFIFO::Iterator it = _messages.begin(); it != _messages.end(); ++it) {
+  for (MessageFIFO::Iterator it = messages_.begin(); it != messages_.end(); ++it) {
     count++;
   }
   return count;
 }
 
-void Process::send_mail(Message* message) {
-  if (_state == TERMINATING) return;
-  _append_message(message);
-  VM::current()->scheduler()->process_ready(this);
-}
-
 void Process::_ensure_random_seeded() {
-  if (_random_seeded) return;
+  if (random_seeded_) return;
   uint8 seed[16];
   EntropyMixer::instance()->get_entropy(seed, sizeof(seed));
   random_seed(seed, sizeof(seed));
-  _random_seeded = true;
+  random_seeded_ = true;
 }
 
 uint64_t Process::random() {
   _ensure_random_seeded();
   // xorshift128+.
-  uint64_t s1 = _random_state0;
-  uint64_t s0 = _random_state1;
-  _random_state0 = s0;
+  uint64_t s1 = random_state0_;
+  uint64_t s0 = random_state1_;
+  random_state0_ = s0;
   s1 ^= s1 << 23;
   s1 ^= s1 >> 18;
   s1 ^= s0;
   s1 ^= s0 >> 5;
-  _random_state1 = s1;
-  return _random_state0 + _random_state1;
+  random_state1_ = s1;
+  return random_state0_ + random_state1_;
 }
 
 void Process::random_seed(const uint8* buffer, size_t size) {
-  _random_state0 = 0xdefa17;
-  _random_state1 = 0xf00baa;
-  memcpy(&_random_state0, buffer, Utils::min(size, sizeof(_random_state0)));
-  if (size >= sizeof(_random_state0)) {
-    buffer += sizeof(_random_state0);
-    size -= sizeof(_random_state0);
-    memcpy(&_random_state1, buffer, Utils::min(size, sizeof(_random_state1)));
+  random_state0_ = 0xdefa17;
+  random_state1_ = 0xf00baa;
+  memcpy(&random_state0_, buffer, Utils::min(size, sizeof(random_state0_)));
+  if (size >= sizeof(random_state0_)) {
+    buffer += sizeof(random_state0_);
+    size -= sizeof(random_state0_);
+    memcpy(&random_state1_, buffer, Utils::min(size, sizeof(random_state1_)));
   }
-  _random_seeded = true;
+  random_seeded_ = true;
 }
 
 void Process::add_resource_group(ResourceGroup* r) {
-  _resource_groups.prepend(r);
+  resource_groups_.prepend(r);
 }
 
 void Process::remove_resource_group(ResourceGroup* group) {
-  ResourceGroup* g = _resource_groups.remove(group);
+  ResourceGroup* g = resource_groups_.remove(group);
   ASSERT(g == group);
 }
 
 void Process::signal(Signal signal) {
-  _signals |= signal;
-  SchedulerThread* s = _scheduler_thread;
+  signals_ |= signal;
+  SchedulerThread* s = scheduler_thread_;
   if (s != null) s->interpreter()->preempt();
 }
 
 void Process::clear_signal(Signal signal) {
-  _signals &= ~signal;
+  signals_ &= ~signal;
 }
 
-void Process::print() {
-  printf("Process #%d\n", _id);
-  Usage u = object_heap()->usage("heap");
-  ProgramUsage p = program()->usage();
-  u.print(2);
-  p.print(2);
+uint8 Process::update_priority() {
+  uint8 priority = target_priority_;
+  priority_ = priority;
+  return priority;
+}
+
+#if defined(TOIT_WINDOWS)
+
+const wchar_t* Process::current_directory() { return current_directory_; }
+void Process::set_current_directory(const wchar_t* current_directory) {
+  free(const_cast<void*>(void_cast(current_directory_)));
+  current_directory_ = current_directory;
+}
+
+String* Process::allocate_string(const wchar_t* content) {
+  word utf_16_length = wcslen(content);
+
+  word length = Utils::utf_16_to_8(reinterpret_cast<const uint16*>(content), utf_16_length, null, 0);
+
+  String* result = allocate_string(length);
+  if (result == null) return null;
+
+  String::MutableBytes bytes(result);
+
+  Utils::utf_16_to_8(reinterpret_cast<const uint16*>(content), utf_16_length, bytes.address(), bytes.length());
+
+  return result;
+}
+
+#endif
+
+bool Process::already_has_root_certificate(const uint8* data, size_t length, const Locker& locker) {
+  for (auto root : root_certificates_) {
+    if (root->matches(data, length)) return true;
+  }
+  return false;
+}
+
+UnparsedRootCertificate::UnparsedRootCertificate(const uint8* data, size_t length, bool needs_delete)
+    : data_(data), length_(length), needs_delete_(needs_delete) {}
+
+UnparsedRootCertificate::~UnparsedRootCertificate() {
+  if (needs_delete_) delete(data_);
+  data_ = null;
+}
+
+bool UnparsedRootCertificate::matches(const uint8* data, size_t length) const {
+  if (length != length_) return false;
+  return memcmp(data, data_, length) == 0;
 }
 
 }

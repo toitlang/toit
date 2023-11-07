@@ -22,6 +22,7 @@ endfunction()
 
 set(IN_FILE1 "${INPUT_DIR}/input.toit")
 set(IN_FILE2 "${INPUT_DIR}/input2.toit")
+set(SOURCE_TRIGGER "${INPUT_DIR}/source.trigger")
 
 file(WRITE ${IN_FILE1} "
 import .input2
@@ -32,16 +33,26 @@ main:
 file(WRITE ${IN_FILE2} "
 message := \"hello world\"
 ")
-backtick(${CMAKE_COMMAND} --build "${BIN_DIR}" --target test_cmake_snapshot)
+
+file(WRITE "${SOURCE_TRIGGER}" "
+test1
+")
+backtick(${CMAKE_COMMAND} --build "${BIN_DIR}" --target test_cmake)
 
 file(WRITE ${IN_FILE2} "
 message := \"hello world2\"
 ")
-backtick(${CMAKE_COMMAND} --build "${BIN_DIR}" --target test_cmake_snapshot)
+file(WRITE "${SOURCE_TRIGGER}" "
+test2
+")
+backtick(${CMAKE_COMMAND} --build "${BIN_DIR}" --target test_cmake)
 
 file(REMOVE ${IN_FILE2})
 file(WRITE ${IN_FILE1} "
 main:
   print \"compiles after rm\"
 ")
-backtick(${CMAKE_COMMAND} --build "${BIN_DIR}" --target test_cmake_snapshot)
+file(WRITE "${SOURCE_TRIGGER}" "
+test3
+")
+backtick(${CMAKE_COMMAND} --build "${BIN_DIR}" --target test_cmake)

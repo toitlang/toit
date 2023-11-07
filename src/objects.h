@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -34,6 +34,26 @@ enum BlobKind {
   STRINGS_ONLY
 };
 
+enum GcType {
+  NEW_SPACE_GC  = 0,
+  FULL_GC       = 1,
+  COMPACTING_GC = 2,
+};
+
+// Type testers.
+INLINE bool is_smi(const Object* o);
+INLINE bool is_heap_object(const Object* o);
+INLINE bool is_double(const Object* o);
+INLINE bool is_task(const Object* o);
+INLINE bool is_instance(const Object* o);
+INLINE bool is_array(const Object* o);
+INLINE bool is_byte_array(const Object* o);
+INLINE bool is_stack(const Object* o);
+INLINE bool is_string(const Object* o);
+INLINE bool is_large_integer(const Object* o);
+INLINE bool is_free_list_region(const Object* o);
+INLINE bool is_promoted_track(const Object* o);
+
 class Object {
  public:
   static const int SMI_TAG_SIZE = 1;
@@ -46,20 +66,6 @@ class Object {
   static const int HEAP_TAG = 0x1;
   static const int MARKED_TAG = 0x3;
 
-  // Type testers.
-  INLINE bool is_smi() const { return (reinterpret_cast<uword>(this) & SMI_TAG_MASK) == SMI_TAG; }
-  INLINE bool is_heap_object() const { return (reinterpret_cast<uword>(this) & NON_SMI_TAG_MASK) == HEAP_TAG; }
-  INLINE bool is_double();
-  INLINE bool is_instance();
-  INLINE bool is_array();
-  INLINE bool is_byte_array();
-  INLINE bool is_stack();
-  INLINE bool is_string();
-  INLINE bool is_task();
-  INLINE bool is_large_integer();
-  INLINE bool is_free_list_region();
-  INLINE bool is_promoted_track();
-
   static Object* cast(Object* obj) { return obj; }
 
   // Tells whether this is a temporary marked heap object.
@@ -71,16 +77,16 @@ class Object {
 
   // Primitive support that sets content and length iff receiver is String or ByteArray.
   // Returns whether the content and length are set.
-  bool byte_content(Program* program, const uint8** content, int* length, BlobKind strings_only);
+  bool byte_content(Program* program, const uint8** content, int* length, BlobKind strings_only) const;
 
   // Same as above, but with a blob.
-  bool byte_content(Program* program, Blob* blob, BlobKind strings_only);
+  bool byte_content(Program* program, Blob* blob, BlobKind strings_only) const;
 
   // Primitive support that sets content and length iff receiver is a ByteArray.
-  // Returns whether the content and length are set.
-  // The content can be set to `null` in which case the 'error' indicates the
-  // reason. Most likely the function tried to allocate a ByteArray (for making a
-  // CowByteArray mutable), but failed due to out-of-memory.
+  // Returns whether the content and length are set.  If it returns false, the
+  // 'error' indicates the reason.  Most likely this is either a type error or
+  // the function tried to allocate a ByteArray (for making a CowByteArray
+  // mutable), but failed due to out-of-memory.
   bool mutable_byte_content(Process* process, uint8** content, int* length, Error** error);
 
   // Same as above, but with a blob.
@@ -90,37 +96,41 @@ class Object {
   bool encode_on(ProgramOrientedEncoder* encoder);
 };
 
+// A struct that is only used to get a different overload of the constructor.
+struct uninitialized_t {};
+
 // A class that combines a memory address with the size of it.
 class Blob {
  public:
-  Blob() : _address(null), _length(0) {}
+  inline Blob(uninitialized_t& u) {}
+  inline Blob() : address_(null), length_(0) {}
   Blob(const uint8* address, int length)
-      : _address(address), _length(length) {}
+      : address_(address), length_(length) {}
 
-  const uint8* address() const { return _address; }
-  int length() const { return _length; }
+  const uint8* address() const { return address_; }
+  int length() const { return length_; }
 
   bool slow_equals(const char* c_string) const;
 
  private:
-  const uint8* _address;
-  int _length;
+  const uint8* address_;
+  int length_;
 };
 
 // A class that combines a memory address with the size of it.
 // Same as `Blob` but the mutable version of it.
 class MutableBlob {
  public:
-  MutableBlob() : _address(null), _length(0) {}
+  MutableBlob() : address_(null), length_(0) {}
   MutableBlob(uint8* address, int length)
-      : _address(address), _length(length) {}
+      : address_(address), length_(length) {}
 
-  uint8* address() { return _address; }
-  int length() { return _length; }
+  uint8* address() { return address_; }
+  int length() { return length_; }
 
  private:
-  uint8* _address;
-  int _length;
+  uint8* address_;
+  int length_;
 };
 
 // An error is a temporary object (a tagged string) only used for signaling a primitive has failed.
@@ -128,11 +138,24 @@ class Error : public Object {
  public:
   static INLINE Error* from(String* string);
   INLINE String* as_string();
+  // Errors are tagged with binary 11 in the low bits.
+  // Within primitives, errors are sometimes represented as small integers,
+  // which are shifted indices into the program roots.
+  static const int ERROR_SHIFT = 2;
+  static const int ERROR_TAG = 3;
+  static const int MAX_TAGGED_ERROR = 256;
 };
 
 class Smi : public Object {
  public:
-  word value() const { return reinterpret_cast<word>(this) >> SMI_TAG_SIZE; }
+  static word value(Smi* smi) {
+    return reinterpret_cast<word>(smi) >> SMI_TAG_SIZE;
+  }
+
+  static word value(Object* object) {
+    ASSERT(is_smi(object));
+    return reinterpret_cast<word>(object) >> SMI_TAG_SIZE;
+  }
 
   template<typename T> static bool is_valid(T value) {
     return (value >= MIN_SMI_VALUE) && (value <= MAX_SMI_VALUE);
@@ -148,12 +171,12 @@ class Smi : public Object {
 
   static Smi* from(word value) {
     ASSERT(is_valid(value));
-    return reinterpret_cast<Smi*>(value << SMI_TAG_SIZE);
+    return reinterpret_cast<Smi*>(static_cast<uword>(value) << SMI_TAG_SIZE);
   }
 
-  static Smi* cast(Object* obj) {
-    ASSERT(obj->is_smi());
-    return static_cast<Smi*>(obj);
+  static Smi* cast(Object* object) {
+    ASSERT(is_smi(object));
+    return static_cast<Smi*>(object);
   }
 
   static Smi* zero() { return from(0); }
@@ -173,6 +196,8 @@ class RootCallback {
  public:
   void do_root(Object** root) { do_roots(root, 1); }
   virtual void do_roots(Object** roots, int length) = 0;
+  virtual bool shrink_stacks() const { return false; }
+  virtual bool skip_marking(HeapObject* object) const { return false; }
 };
 
 // Note that these enum numbers must match the constants (called TAG) found in
@@ -194,24 +219,43 @@ enum TypeTag {
 
 class HeapObject : public Object {
  public:
-  INLINE Smi* header() {
+  INLINE Smi* header() const {
     Object* result = _at(HEADER_OFFSET);
-    ASSERT(result->is_smi());
+    ASSERT(is_smi(result));
     return Smi::cast(result);
   }
-  INLINE Smi* class_id() {
-    return Smi::from((header()->value() >> HeapObject::CLASS_ID_OFFSET) & HeapObject::CLASS_ID_MASK);
+  INLINE Smi* class_id() const {
+    return Smi::from((Smi::value(header()) >> HeapObject::CLASS_ID_OFFSET) & HeapObject::CLASS_ID_MASK);
   }
-  INLINE TypeTag class_tag() {
-    return static_cast<TypeTag>((header()->value() >> HeapObject::CLASS_TAG_OFFSET) & HeapObject::CLASS_TAG_MASK);
+  INLINE TypeTag class_tag() const {
+    return static_cast<TypeTag>((Smi::value(header()) >> HeapObject::CLASS_TAG_OFFSET) & HeapObject::CLASS_TAG_MASK);
+  }
+  INLINE bool has_active_finalizer() const {
+    const HeapObject* self = this;
+    if (has_forwarding_address()) {
+      self = forwarding_address();
+    }
+    return (Smi::value(self->header()) & (1 << HeapObject::FINALIZER_BIT_OFFSET)) != 0;
+  }
+  INLINE void set_has_active_finalizer() {
+    ASSERT(!has_forwarding_address());
+    uword header_word = Smi::value(header());
+    header_word |= 1 << HeapObject::FINALIZER_BIT_OFFSET;
+    _set_header(Smi::from(header_word));
+  }
+  INLINE void clear_has_active_finalizer() {
+    ASSERT(!has_forwarding_address());
+    uword header_word = Smi::value(header());
+    header_word &= ~(1 << HeapObject::FINALIZER_BIT_OFFSET);
+    _set_header(Smi::from(header_word));
   }
 
-  INLINE bool has_forwarding_address() {
-    return _at(HEADER_OFFSET)->is_heap_object();
+  INLINE bool has_forwarding_address() const {
+    return is_heap_object(_at(HEADER_OFFSET));
   }
 
   // During GC the header can be a heap object (a forwarding pointer).
-  INLINE HeapObject* forwarding_address() {
+  INLINE HeapObject* forwarding_address() const {
     ASSERT(has_forwarding_address());
     return HeapObject::cast(_at(HEADER_OFFSET));
   }
@@ -223,10 +267,10 @@ class HeapObject : public Object {
   // For asserts.  The remembered set is a card marking scheme, so it may
   // return true when neighbouring objects are in the set.  Always returns true
   // for objects in the new-space.
-  bool in_remembered_set();
+  bool in_remembered_set() const;
 
   // Pseudo virtual member functions.
-  int size(Program* program);  // Returns the byte size of this object.
+  int size(Program* program) const;  // Returns the byte size of this object.
   void roots_do(Program* program, RootCallback* cb);  // For GC.
   void do_pointers(Program* program, PointerCallback* cb);  // For snapshots.
 
@@ -238,8 +282,12 @@ class HeapObject : public Object {
   static const int CLASS_TAG_OFFSET = 0;
   static const uword CLASS_TAG_MASK = (1 << CLASS_TAG_BIT_SIZE) - 1;
 
+  static const int FINALIZER_BIT_SIZE = 1;
+  static const int FINALIZER_BIT_OFFSET = CLASS_TAG_OFFSET + CLASS_TAG_BIT_SIZE;
+  static const uword FINALIZER_BIT_MASK = (1 << FINALIZER_BIT_SIZE) - 1;
+
   static const int CLASS_ID_BIT_SIZE = 10;
-  static const int CLASS_ID_OFFSET = CLASS_TAG_OFFSET + CLASS_TAG_BIT_SIZE;
+  static const int CLASS_ID_OFFSET = FINALIZER_BIT_OFFSET + FINALIZER_BIT_SIZE;
   // This mask lets class_id() return negative values.  The GC uses
   // negative class ids for on-heap pseudo-objects like free memory.
   static const uword CLASS_ID_MASK = -1;
@@ -251,15 +299,20 @@ class HeapObject : public Object {
   // used in the class field to mark a forwarding pointer.
   HeapObject* mark() {
     ASSERT(!is_marked());
-    uword raw = reinterpret_cast<uword>(this) | 0x3;
+    uword raw = reinterpret_cast<uword>(this) | Error::ERROR_TAG;
     HeapObject* result = reinterpret_cast<HeapObject*>(raw);
     ASSERT(result->is_marked());
     return result;
   }
 
   static HeapObject* cast(Object* obj) {
-    ASSERT(obj->is_heap_object());
+    ASSERT(is_heap_object(obj));
     return static_cast<HeapObject*>(obj);
+  }
+
+  static const HeapObject* cast(const Object* obj) {
+    ASSERT(is_heap_object(obj));
+    return static_cast<const HeapObject*>(obj);
   }
 
   static HeapObject* cast(void* address) {
@@ -273,7 +326,13 @@ class HeapObject : public Object {
     return reinterpret_cast<HeapObject*>(address + HEAP_TAG);
   }
 
-  inline bool on_program_heap(Process* process);
+  // Returns true for objects that can have a Toit-level finalizer added.
+  // Immortal objects with no identity like integers and strings cannot
+  // have Toit-level finalizers.  (External byte arrays and strings can
+  // have VM finalizers though.)
+  bool can_be_toit_finalized(Program* program) const;
+
+  inline bool on_program_heap(Process* process) const;
 
   static int allocation_size() { return _align(SIZE); }
   static void allocation_size(int* word_count, int* extra_bytes) {
@@ -288,8 +347,8 @@ class HeapObject : public Object {
 
  protected:
   void _set_header(Smi* class_id, TypeTag class_tag) {
-    uword header = class_id->value();
-    header = (header << CLASS_TAG_BIT_SIZE) | class_tag;
+    uword header = Smi::value(class_id);
+    header = (header << CLASS_ID_OFFSET) | class_tag;
 
     _set_header(Smi::from(header));
     ASSERT(this->class_id() == class_id);
@@ -304,24 +363,25 @@ class HeapObject : public Object {
 
   uword _raw() const { return reinterpret_cast<uword>(this) - HEAP_TAG; }
   uword* _raw_at(int offset) { return reinterpret_cast<uword*>(_raw() + offset); }
+  const uword* _raw_at(int offset) const { return reinterpret_cast<const uword*>(_raw() + offset); }
 
-  Object* _at(int offset) { return *reinterpret_cast<Object**>(_raw_at(offset)); }
+  Object* _at(int offset) const { return *reinterpret_cast<Object* const*>(_raw_at(offset)); }
   void _at_put(int offset, Object* value) { *reinterpret_cast<Object**>(_raw_at(offset)) = value; }
   Object** _root_at(int offset) { return reinterpret_cast<Object**>(_raw_at(offset)); }
 
-  uword _word_at(int offset) { return *_raw_at(offset); }
+  uword _word_at(int offset) const { return *_raw_at(offset); }
   void _word_at_put(int offset, uword value) { *_raw_at(offset) = value; }
 
-  uint8 _byte_at(int offset) { return *reinterpret_cast<uint8*>(_raw_at(offset)); }
+  uint8 _byte_at(int offset) const { return *reinterpret_cast<const uint8*>(_raw_at(offset)); }
   void _byte_at_put(int offset, uint8 value) { *reinterpret_cast<uint8*>(_raw_at(offset)) = value; }
 
-  uhalf_word _half_word_at(int offset) { return *reinterpret_cast<uhalf_word*>(_raw_at(offset)); }
+  uhalf_word _half_word_at(int offset) const { return *reinterpret_cast<const uhalf_word*>(_raw_at(offset)); }
   void _half_word_at_put(int offset, uhalf_word value) { *reinterpret_cast<uhalf_word*>(_raw_at(offset)) = value; }
 
-  double _double_at(int offset) { return bit_cast<double>(_int64_at(offset)); }
+  double _double_at(int offset) const { return bit_cast<double>(_int64_at(offset)); }
   void _double_at_put(int offset, double value) { _int64_at_put(offset, bit_cast<int64>(value)); }
 
-  int64 _int64_at(int offset) { return *reinterpret_cast<int64*>(_raw_at(offset)); }
+  int64 _int64_at(int offset) const { return *reinterpret_cast<const int64*>(_raw_at(offset)); }
   void _int64_at_put(int offset, int64 value) { *reinterpret_cast<int64*>(_raw_at(offset)) = value; }
 
   static int _align(int byte_size) { return (byte_size + (WORD_SIZE - 1)) & ~(WORD_SIZE - 1); }
@@ -345,7 +405,7 @@ class HeapObject : public Object {
 
 class Array : public HeapObject {
  public:
-  int length() { return _word_at(LENGTH_OFFSET); }
+  int length() const { return _word_at(LENGTH_OFFSET); }
 
   static INLINE int max_length_in_process();
   static INLINE int max_length_in_program();
@@ -353,7 +413,7 @@ class Array : public HeapObject {
   // Must match collections.toit.
   static const int ARRAYLET_SIZE = 500;
 
-  INLINE Object* at(int index) {
+  INLINE Object* at(int index) const {
     ASSERT(index >= 0 && index < length());
     return _at(_offset_from(index));
   }
@@ -377,7 +437,7 @@ class Array : public HeapObject {
   uint8* content() { return reinterpret_cast<uint8*>(_raw() + _offset_from(0)); }
 
 
-  int size() { return allocation_size(length()); }
+  int size() const { return allocation_size(length()); }
 
   void roots_do(RootCallback* cb);
 
@@ -387,8 +447,13 @@ class Array : public HeapObject {
 #endif
 
   static Array* cast(Object* array) {
-     ASSERT(array->is_array());
+     ASSERT(is_array(array));
      return static_cast<Array*>(array);
+  }
+
+  static const Array* cast(const Object* array) {
+     ASSERT(is_array(array));
+     return static_cast<const Array*>(array);
   }
 
   Object** base() { return reinterpret_cast<Object**>(_raw_at(_offset_from(0))); }
@@ -439,18 +504,18 @@ class ByteArray : public HeapObject {
     explicit Bytes(ByteArray* array) {
       int l = array->raw_length();
       if (l >= 0) {
-        _address = array->content();
-        _length = l;
+        address_ = array->content();
+        length_ = l;
       } else {
-        _address = array->as_external();
-        _length = -1 -l;
+        address_ = array->as_external();
+        length_ = -1 -l;
       }
       ASSERT(length() >= 0);
     }
-    Bytes(uint8* address, const int length) : _address(address), _length(length) {}
+    Bytes(uint8* address, const int length) : address_(address), length_(length) {}
 
-    uint8* address() { return _address; }
-    int length() { return _length; }
+    uint8* address() { return address_; }
+    int length() { return length_; }
 
     uint8 at(int index) {
       ASSERT(index >= 0 && index < length());
@@ -467,11 +532,35 @@ class ByteArray : public HeapObject {
     }
 
    private:
-    uint8* _address;
-    int _length;
+    uint8* address_;
+    int length_;
   };
 
-  bool has_external_address() { return raw_length() < 0; }
+  class ConstBytes {
+   public:
+    explicit ConstBytes(const ByteArray* array) {
+      int l = array->raw_length();
+      if (l >= 0) {
+        address_ = array->content();
+        length_ = l;
+      } else {
+        address_ = array->as_external();
+        length_ = -1 -l;
+      }
+      ASSERT(length() >= 0);
+    }
+    ConstBytes(const uint8* address, const int length) : address_(address), length_(length) {}
+
+    const uint8* address() { return address_; }
+    int length() { return length_; }
+
+   private:
+    const uint8* address_;
+    int length_;
+  };
+
+
+  bool has_external_address() const { return raw_length() < 0; }
 
   template<typename T> T* as_external();
 
@@ -485,7 +574,13 @@ class ByteArray : public HeapObject {
     return 0;
   }
 
-  int size() {
+  const uint8* as_external() const {
+    ASSERT(external_tag() == RawByteTag || external_tag() == NullStructTag);
+    if (has_external_address()) return unsigned_cast(_external_address());
+    return 0;
+  }
+
+  int size() const {
     return has_external_address()
          ? external_allocation_size()
          : internal_allocation_size(raw_length());
@@ -524,8 +619,13 @@ class ByteArray : public HeapObject {
 #endif
 
   static ByteArray* cast(Object* byte_array) {
-     ASSERT(byte_array->is_byte_array());
+     ASSERT(is_byte_array(byte_array));
      return static_cast<ByteArray*>(byte_array);
+  }
+
+  static const ByteArray* cast(const Object* byte_array) {
+     ASSERT(is_byte_array(byte_array));
+     return static_cast<const ByteArray*>(byte_array);
   }
 
   // Only for external byte arrays that were malloced.  Does not change the
@@ -549,7 +649,7 @@ class ByteArray : public HeapObject {
 
   uint8* neuter(Process* process);
 
-  word external_tag() {
+  word external_tag() const {
     ASSERT(has_external_address());
     return _word_at(EXTERNAL_TAG_OFFSET);
   }
@@ -557,8 +657,9 @@ class ByteArray : public HeapObject {
   void do_pointers(PointerCallback* cb);
 
  private:
-  word raw_length() { return _word_at(LENGTH_OFFSET); }
+  word raw_length() const { return _word_at(LENGTH_OFFSET); }
   uint8* content() { return reinterpret_cast<uint8*>(_raw() + _offset_from(0)); }
+  const uint8* content() const { return reinterpret_cast<const uint8*>(_raw() + _offset_from(0)); }
 
   static const int LENGTH_OFFSET = HeapObject::SIZE;
   static const int HEADER_SIZE = LENGTH_OFFSET + WORD_SIZE;
@@ -573,7 +674,7 @@ class ByteArray : public HeapObject {
   // byte array.
   static const int SNAPSHOT_INTERNAL_SIZE_CUTOFF = TOIT_PAGE_SIZE_32 >> 2;
 
-  uint8* _external_address() {
+  uint8* _external_address() const {
     return reinterpret_cast<uint8*>(_word_at(EXTERNAL_ADDRESS_OFFSET));
   }
 
@@ -621,7 +722,7 @@ class ByteArray : public HeapObject {
   friend class ObjectHeap;
   friend class ProgramHeap;
   friend class ShortPrintVisitor;
-  friend class VMFinalizerNode;
+  friend class VmFinalizerNode;
 
  protected:
   static int _offset_from(int index) {
@@ -643,8 +744,13 @@ class LargeInteger : public HeapObject {
   int64 value() { return _int64_at(VALUE_OFFSET); }
 
   static LargeInteger* cast(Object* value) {
-     ASSERT(value->is_large_integer());
+     ASSERT(is_large_integer(value));
      return static_cast<LargeInteger*>(value);
+  }
+
+  static const LargeInteger* cast(const Object* value) {
+     ASSERT(is_large_integer(value));
+     return static_cast<const LargeInteger*>(value);
   }
 
   static int allocation_size() { return SIZE; }
@@ -670,25 +776,159 @@ class LargeInteger : public HeapObject {
 
 class FrameCallback {
  public:
-  virtual void do_frame(Stack* frame, int number, int absolute_bci) { }
+  virtual void do_frame(Stack* frame, int number, int absolute_bci) {}
+};
+
+
+class Method {
+ public:
+  Method(List<uint8> all_bytes, int offset) : Method(&all_bytes[offset]) {}
+  explicit Method(uint8* bytes) : bytes_(bytes) {}
+
+  static Method invalid() { return Method(null); }
+  static int allocation_size(int bytecode_size, int max_height) {
+    return HEADER_SIZE + bytecode_size;
+  }
+
+  bool is_valid() const { return bytes_ != null; }
+
+  bool is_normal_method() const { return kind_() == METHOD; }
+  bool is_field_accessor() const { return kind_() == FIELD_ACCESSOR; }
+  bool is_lambda_method() const { return kind_() == LAMBDA; }
+  bool is_block_method() const { return  kind_() == BLOCK; }
+
+  int arity() const { return bytes_[ARITY_OFFSET]; }
+  int captured_count() const { return value_(); }
+  int selector_offset() const { return value_(); }
+  uint8* entry() const { return &bytes_[ENTRY_OFFSET]; }
+  int max_height() const { return (bytes_[KIND_HEIGHT_OFFSET] >> KIND_BITS) * 4; }
+
+  uint8* bcp_from_bci(int bci) const { return &bytes_[ENTRY_OFFSET + bci]; }
+  uint8* header_bcp() const { return bytes_; }
+
+  static int entry_offset() { return ENTRY_OFFSET; }
+  static uint8* header_from_entry(uint8* entry) { return entry - ENTRY_OFFSET; }
+
+ private: // Friend access for ProgramBuilder.
+  void _initialize_block(int arity, List<uint8> bytecodes, int max_height) {
+    _initialize(BLOCK, 0, arity, bytecodes, max_height);
+    ASSERT(this->arity() == arity);
+    ASSERT(!this->is_field_accessor());
+  }
+
+  void _initialize_lambda(int captured_count, int arity, List<uint8> bytecodes, int max_height) {
+    _initialize(LAMBDA, captured_count, arity, bytecodes, max_height);
+    ASSERT(this->arity() == arity);
+    ASSERT(!this->is_field_accessor());
+    ASSERT(this->captured_count() == captured_count);
+  }
+
+  void _initialize_method(int selector_offset, bool is_field_accessor, int arity, List<uint8> bytecodes, int max_height) {
+    Kind kind = is_field_accessor ? FIELD_ACCESSOR : METHOD;
+    _initialize(kind, selector_offset, arity, bytecodes, max_height);
+    ASSERT(this->arity() == arity);
+    ASSERT(this->selector_offset() == selector_offset);
+  }
+
+  friend class compiler::ProgramBuilder;
+
+ private:
+  static const int ARITY_OFFSET = 0;
+  static const int KIND_HEIGHT_OFFSET = ARITY_OFFSET + BYTE_SIZE;
+  static const int KIND_BITS = 2;
+  static const int KIND_MASK = (1 << KIND_BITS) - 1;
+  static const int HEIGHT_BITS = 8 - KIND_BITS;
+  static const int VALUE_OFFSET = KIND_HEIGHT_OFFSET + BYTE_SIZE;
+  static const int ENTRY_OFFSET = VALUE_OFFSET + 2;
+  static const int HEADER_SIZE = ENTRY_OFFSET;
+
+  uint8* bytes_;
+
+  enum Kind { METHOD = 0, FIELD_ACCESSOR, LAMBDA, BLOCK };
+
+  Kind kind_() const { return static_cast<Kind>(bytes_[KIND_HEIGHT_OFFSET] & KIND_MASK); }
+
+  void _initialize(Kind kind, int value, int arity, List<uint8> bytecodes, int max_height) {
+    ASSERT(0 <= arity && arity < (1 <<  BYTE_BIT_SIZE));
+    _set_kind_height(kind, max_height);
+    _set_arity(arity);
+    _set_value(value);
+    _set_bytecodes(bytecodes);
+
+    ASSERT(this->kind_()  == kind);
+    ASSERT(this->arity()  == arity);
+    ASSERT(this->value_() == value);
+  }
+
+  int _int16_at(int offset) const {
+    int16 result;
+    memcpy(&result, &bytes_[offset], 2);
+    return result;
+  }
+
+  void _set_int16_at(int offset, int value) {
+    int16 source = value;
+    memcpy(&bytes_[offset], &source, 2);
+  }
+
+  int value_() const { return _int16_at(VALUE_OFFSET); }
+  void _set_value(int value) { _set_int16_at(VALUE_OFFSET, value); }
+
+  void _set_arity(int arity) {
+    ASSERT(arity <= 0xFF);
+    bytes_[ARITY_OFFSET] = arity;
+  }
+  void _set_kind_height(Kind kind, int max_height) {
+    // We need two bits for the kind.
+    ASSERT(kind <= KIND_MASK);
+    // We store multiples of 4 as max height.
+    int scaled_height = (max_height + 3) / 4;
+    const int MAX_SCALED_HEIGHT = (1 << HEIGHT_BITS) - 1;
+    if (scaled_height > MAX_SCALED_HEIGHT) {
+      FATAL("Max stack height too big");
+    }
+    int encoded_height = scaled_height << KIND_BITS;
+    bytes_[KIND_HEIGHT_OFFSET] = kind | encoded_height;
+  }
+  void _set_captured_count(int value) { _set_value(value); }
+  void _set_selector_offset(int value) { _set_value(value); }
+  void _set_bytecodes(List<uint8> bytecodes) {
+    if (bytecodes.length() > 0) {
+      memcpy(&bytes_[ENTRY_OFFSET], bytecodes.data(), bytecodes.length());
+    }
+  }
 };
 
 
 class Stack : public HeapObject {
  public:
-  INLINE Task* task();
-  INLINE void set_task(Task* value);
+  int length() const { return _word_at(LENGTH_OFFSET); }
+  int top() const { return _word_at(TOP_OFFSET); }
+  int try_top() const { return _word_at(TRY_TOP_OFFSET); }
+  int absolute_bci_at_preemption(Program* program);
 
-  int length() { return _word_at(LENGTH_OFFSET); }
-  int top() { return _word_at(TOP_OFFSET); }
-  int try_top() { return _word_at(TRY_TOP_OFFSET); }
+  // We keep track of a single method that we have invoked, but where the
+  // check for stack overflow and any necessary growth of the stack hasn't
+  // been taken care of, because we got interrupted by preemption. The
+  // interpreter checks this field when it resumes execution on a stack,
+  // so we are sure that there is enough stack space available for the
+  // already invoked method.
+  Method pending_stack_check_method() const {
+    uword pending = _word_at(PENDING_STACK_CHECK_METHOD_OFFSET);
+    return Method(reinterpret_cast<uint8*>(pending));
+  }
+
+  void set_pending_stack_check_method(Method method) {
+    uword bcp = reinterpret_cast<uword>(method.header_bcp());
+    _word_at_put(PENDING_STACK_CHECK_METHOD_OFFSET, bcp);
+  }
 
   void transfer_to_interpreter(Interpreter* interpreter);
   void transfer_from_interpreter(Interpreter* interpreter);
 
-  int size() { return allocation_size(length()); }
+  int size() const { return allocation_size(length()); }
 
-  void copy_to(HeapObject* other, int other_length);
+  void copy_to(Stack* other);
 
   void roots_do(Program* program, RootCallback* cb);
 
@@ -699,8 +939,13 @@ class Stack : public HeapObject {
   static INLINE int max_length();
 
   static Stack* cast(Object* stack) {
-    ASSERT(stack->is_stack());
+    ASSERT(is_stack(stack));
     return static_cast<Stack*>(stack);
+  }
+
+  static const Stack* cast(const Object* stack) {
+    ASSERT(is_stack(stack));
+    return static_cast<const Stack*>(stack);
   }
 
   static int allocation_size(int length) { return  _align(HEADER_SIZE + length * WORD_SIZE); }
@@ -711,20 +956,58 @@ class Stack : public HeapObject {
   }
 
  private:
-  static const int TASK_OFFSET = HeapObject::SIZE;
-  static const int LENGTH_OFFSET = TASK_OFFSET + WORD_SIZE;
+  // We keep a 'guard zone' of words that must not be touched right after
+  // the header of the stack object. The stack grows downwards towards lower
+  // addresses. If the stack overflows into the guard zone we will catch the
+  // issue when enter or leave the interpreter - or when we transfer control
+  // between tasks.
+#ifdef BUILD_32
+  static const uword GUARD_ZONE_MARKER = 0xcaadabe7;
+#elif BUILD_64
+  static const uword GUARD_ZONE_MARKER = 0x7eb91112caadabe7;
+#endif
+#ifdef DEBUG
+  static const int GUARD_ZONE_WORDS = 8;
+#else
+  // TODO(kasper): We do not want to pay for the guard zone in deployments,
+  // so we should keep the zone empty there after a bit of testing..
+  static const int GUARD_ZONE_WORDS = 4;
+#endif
+  static const int GUARD_ZONE_SIZE = GUARD_ZONE_WORDS * WORD_SIZE;
+
+  static const int LENGTH_OFFSET = HeapObject::SIZE + WORD_SIZE;
   static const int TOP_OFFSET = LENGTH_OFFSET + WORD_SIZE;
   static const int TRY_TOP_OFFSET = TOP_OFFSET + WORD_SIZE;
-  static const int HEADER_SIZE = TRY_TOP_OFFSET + WORD_SIZE;
+  static const int PENDING_STACK_CHECK_METHOD_OFFSET = TRY_TOP_OFFSET + WORD_SIZE;
+  static const int GUARD_ZONE_OFFSET = PENDING_STACK_CHECK_METHOD_OFFSET + WORD_SIZE;
+  static const int HEADER_SIZE = GUARD_ZONE_OFFSET + GUARD_ZONE_SIZE;
 
   void _set_length(int value) { _word_at_put(LENGTH_OFFSET, value); }
   void _set_top(int value) { _word_at_put(TOP_OFFSET, value); }
   void _set_try_top(int value) { _word_at_put(TRY_TOP_OFFSET, value); }
+
   void _initialize(int length) {
     _set_length(length);
     _set_top(length);
     _set_try_top(length);
+    set_pending_stack_check_method(Method::invalid());
+    for (int i = 0; i < GUARD_ZONE_WORDS; i++) {
+      *guard_zone_address(i) = GUARD_ZONE_MARKER;
+    }
   }
+
+  bool is_guard_zone_touched() {
+    for (int i = 0; i < GUARD_ZONE_WORDS; i++) {
+      if (*guard_zone_address(i) != GUARD_ZONE_MARKER) return true;
+    }
+    return false;
+  }
+
+  uword* guard_zone_address(int index) {
+    ASSERT(index >= 0 && index < GUARD_ZONE_WORDS);
+    return _raw_at(GUARD_ZONE_OFFSET + index * WORD_SIZE);
+  }
+
   Object** _stack_base_addr() { return reinterpret_cast<Object**>(_raw_at(_array_offset_from(length()))); }
   Object** _stack_limit_addr() { return reinterpret_cast<Object**>(_raw_at(_array_offset_from(0))); }
   Object** _stack_sp_addr() { return reinterpret_cast<Object**>(_raw_at(_array_offset_from(top()))); }
@@ -736,7 +1019,7 @@ class Stack : public HeapObject {
   }
 
   Object** _from_block(Smi* block) {
-    return _stack_base_addr() - (block->value() - BLOCK_SALT);
+    return _stack_base_addr() - (Smi::value(block) - BLOCK_SALT);
   }
 
   Smi* _to_block(Object** pointer) {
@@ -748,8 +1031,8 @@ class Stack : public HeapObject {
   }
 
   uword* _array_address(int index) { return _raw_at(_array_offset_from(index)); }
-
   static int _array_offset_from(int index) { return HEADER_SIZE + index  * WORD_SIZE; }
+
   friend class ObjectHeap;
   friend class ProgramHeap;
 };
@@ -760,7 +1043,7 @@ class Double : public HeapObject {
   int64 bits() { return _int64_at(VALUE_OFFSET); }
 
   static Double* cast(Object* value) {
-     ASSERT(value->is_double());
+     ASSERT(is_double(value));
      return static_cast<Double*>(value);
   }
 
@@ -792,20 +1075,20 @@ class String : public HeapObject {
     return result != NO_HASH_CODE ? result : _assign_hash_code();
   }
 
-  int length() {
+  int length() const {
      int result = _internal_length();
      return result != SENTINEL ? result : _external_length();
   }
 
   // Tells whether the string content is on the heap or external.
-  bool content_on_heap() { return _internal_length() != SENTINEL; }
+  bool content_on_heap() const { return _internal_length() != SENTINEL; }
 
   static INLINE int max_length_in_process();
   static INLINE int max_length_in_program();
 
   bool is_empty() { return length() == 0; }
 
-  int size() {
+  int size() const {
     int len = _internal_length();
     if (len != SENTINEL) return internal_allocation_size(length());
     return external_allocation_size();
@@ -871,8 +1154,13 @@ class String : public HeapObject {
   char* cstr_dup();
 
   static String* cast(Object* object) {
-     ASSERT(object->is_string());
+     ASSERT(is_string(object));
      return static_cast<String*>(object);
+  }
+
+  static const String* cast(const Object* object) {
+     ASSERT(is_string(object));
+     return static_cast<const String*>(object);
   }
 
   static inline word max_internal_size_in_process();
@@ -913,26 +1201,52 @@ class String : public HeapObject {
   // Note that a String can either have on-heap or off-heap content.
   class Bytes {
    public:
-    explicit Bytes(String* string) {
+    explicit Bytes(const String* string) {
       int len = string->_internal_length();
       if (len != SENTINEL) {
-        _address = string->_as_utf8bytes();
-        _length = len;
+        address_ = string->_as_utf8bytes();
+        length_ = len;
       } else {
-        _address = string->as_external();
-        _length = string->_external_length();
+        address_ = string->as_external();
+        length_ = string->_external_length();
       }
       ASSERT(length() >= 0);
     }
-    Bytes(uint8* address, const int length) : _address(address), _length(length) {}
+    Bytes(const uint8* address, const int length) : address_(address), length_(length) {}
 
-    uint8* address() { return _address; }
-    int length() { return _length; }
+    const uint8* address() { return address_; }
+    int length() { return length_; }
 
     uint8 at(int index) {
       ASSERT(index >= 0 && index < length());
       return *(address() + index);
     }
+
+    bool is_valid_index(int index) {
+      return index >= 0 && index < length();
+    }
+
+   private:
+    const uint8* address_;
+    int length_;
+  };
+
+  class MutableBytes {
+   public:
+    explicit MutableBytes(String* string) {
+      int len = string->_internal_length();
+      if (len != SENTINEL) {
+        address_ = string->_as_utf8bytes();
+        length_ = len;
+      } else {
+        address_ = string->as_external();
+        length_ = string->_external_length();
+      }
+      ASSERT(length() >= 0);
+    }
+
+    uint8* address() { return address_; }
+    int length() { return length_; }
 
     void _initialize(const char* str) {
       memcpy(address(), str, length());
@@ -962,8 +1276,8 @@ class String : public HeapObject {
     }
 
    private:
-    uint8* _address;
-    int _length;
+    uint8* address_;
+    int length_;
   };
 
  private:
@@ -988,7 +1302,7 @@ class String : public HeapObject {
   // Any string that is bigger than this size is snapshotted as external string.
   static const int SNAPSHOT_INTERNAL_SIZE_CUTOFF = TOIT_PAGE_SIZE_32 >> 2;
 
-  uint16 _raw_hash_code() { return _half_word_at(HASH_CODE_OFFSET); }
+  uint16 _raw_hash_code() const { return _half_word_at(HASH_CODE_OFFSET); }
   void _raw_set_hash_code(uint16 value) { _half_word_at_put(HASH_CODE_OFFSET, value); }
   void _set_length(int value) { _half_word_at_put(INTERNAL_LENGTH_OFFSET, value); }
 
@@ -1008,11 +1322,18 @@ class String : public HeapObject {
     return _external_address();
   }
 
-  int _internal_length() {
+  const uint8* _as_utf8bytes() const {
+    if (content_on_heap()) {
+      return reinterpret_cast<const uint8*>(_raw_at(INTERNAL_HEADER_SIZE));
+    }
+    return _external_address();
+  }
+
+  int _internal_length() const {
      return _half_word_at(INTERNAL_LENGTH_OFFSET);
   }
 
-  int _external_length() {
+  int _external_length() const {
      ASSERT(_internal_length() == SENTINEL);
      return _word_at(EXTERNAL_LENGTH_OFFSET);
   }
@@ -1027,11 +1348,16 @@ class String : public HeapObject {
     return null;
   }
 
+  const uint8* as_external() const {
+    if (!content_on_heap()) return unsigned_cast(_external_address());
+    return null;
+  }
+
   void clear_external_address() {
     _set_external_address(null);
   }
 
-  uint8* _external_address() {
+  uint8* _external_address() const {
     return reinterpret_cast<uint8*>(_word_at(EXTERNAL_ADDRESS_OFFSET));
   }
 
@@ -1044,134 +1370,22 @@ class String : public HeapObject {
 
   friend class ObjectHeap;
   friend class ProgramHeap;
-  friend class VMFinalizerNode;
-};
-
-class Method {
- public:
-  Method(List<uint8> all_bytes, int offset) : Method(&all_bytes[offset]) {}
-  Method(uint8* bytes) : _bytes(bytes) { }
-
-  static Method invalid() { return Method(null); }
-  static int allocation_size(int bytecode_size, int max_height) {
-    return HEADER_SIZE + bytecode_size;
-  }
-
-  bool is_valid() const { return _bytes != null; }
-
-  bool is_normal_method() const { return _kind() == METHOD; }
-  bool is_block_method() const { return  _kind() == BLOCK; }
-  bool is_lambda_method() const { return _kind() == LAMBDA; }
-  bool is_field_accessor() const { return _kind() == FIELD_ACCESSOR; }
-
-  int arity() const { return _bytes[ARITY_OFFSET]; }
-  int captured_count() const { return _value(); }
-  int selector_offset() const { return _value(); }
-  uint8* entry() const { return &_bytes[ENTRY_OFFSET]; }
-  int max_height() const { return (_bytes[KIND_HEIGHT_OFFSET] >> KIND_BITS) * 4; }
-
-  uint8* bcp_from_bci(int bci) const { return &_bytes[ENTRY_OFFSET + bci]; }
-  uint8* header_bcp() const { return _bytes; }
-
- private: // Friend access for ProgramBuilder.
-  void _initialize_block(int arity, List<uint8> bytecodes, int max_height) {
-    _initialize(BLOCK, 0, arity, bytecodes, max_height);
-    ASSERT(this->arity() == arity);
-    ASSERT(!this->is_field_accessor());
-  }
-
-  void _initialize_lambda(int captured_count, int arity, List<uint8> bytecodes, int max_height) {
-    _initialize(LAMBDA, captured_count, arity, bytecodes, max_height);
-    ASSERT(this->arity() == arity);
-    ASSERT(!this->is_field_accessor());
-    ASSERT(this->captured_count() == captured_count);
-  }
-
-  void _initialize_method(int selector_offset, bool is_field_accessor, int arity, List<uint8> bytecodes, int max_height) {
-    Kind kind = is_field_accessor ? FIELD_ACCESSOR : METHOD;
-    _initialize(kind, selector_offset, arity, bytecodes, max_height);
-    ASSERT(this->arity() == arity);
-    ASSERT(this->selector_offset() == selector_offset);
-  }
-
-  friend class compiler::ProgramBuilder;
-
- private:
-  static const int ARITY_OFFSET = 0;
-  static const int KIND_HEIGHT_OFFSET = ARITY_OFFSET + BYTE_SIZE;
-  static const int KIND_BITS = 2;
-  static const int KIND_MASK = (1 << KIND_BITS) - 1;
-  static const int HEIGHT_BITS = 8 - KIND_BITS;
-  static const int VALUE_OFFSET = KIND_HEIGHT_OFFSET + BYTE_SIZE;
-  static const int ENTRY_OFFSET = VALUE_OFFSET + 2;
-  static const int HEADER_SIZE = ENTRY_OFFSET;
-
-  uint8* _bytes;
-
-  enum Kind { METHOD = 0, LAMBDA, BLOCK, FIELD_ACCESSOR };
-
-  Kind _kind() const { return static_cast<Kind>(_bytes[KIND_HEIGHT_OFFSET] & KIND_MASK); }
-
-  void _initialize(Kind kind, int value, int arity, List<uint8> bytecodes, int max_height) {
-    ASSERT(0 <= arity && arity < (1 <<  BYTE_BIT_SIZE));
-    _set_kind_height(kind, max_height);
-    _set_arity(arity);
-    _set_value(value);
-    _set_bytecodes(bytecodes);
-
-    ASSERT(this->_kind()  == kind);
-    ASSERT(this->arity()  == arity);
-    ASSERT(this->_value() == value);
-  }
-
-  int _int16_at(int offset) const {
-    int16 result;
-    memcpy(&result, &_bytes[offset], 2);
-    return result;
-  }
-
-  void _set_int16_at(int offset, int value) {
-    int16 source = value;
-    memcpy(&_bytes[offset], &source, 2);
-  }
-
-  int _value() const { return _int16_at(VALUE_OFFSET); }
-  void _set_value(int value) { _set_int16_at(VALUE_OFFSET, value); }
-
-  void _set_arity(int arity) {
-    ASSERT(arity <= 0xFF);
-    _bytes[ARITY_OFFSET] = arity;
-  }
-  void _set_kind_height(Kind kind, int max_height) {
-    // We need two bits for the kind.
-    ASSERT(kind <= KIND_MASK);
-    // We store multiples of 4 as max height.
-    int scaled_height = (max_height + 3) / 4;
-    const int MAX_SCALED_HEIGHT = (1 << HEIGHT_BITS) - 1;
-    if (scaled_height > MAX_SCALED_HEIGHT) {
-      FATAL("Max stack height too big");
-    }
-    int encoded_height = scaled_height << KIND_BITS;
-    _bytes[KIND_HEIGHT_OFFSET] = kind | encoded_height;
-  }
-  void _set_captured_count(int value) { _set_value(value); }
-  void _set_selector_offset(int value) { _set_value(value); }
-  void _set_bytecodes(List<uint8> bytecodes) {
-    if (bytecodes.length() > 0) {
-      memcpy(&_bytes[ENTRY_OFFSET], bytecodes.data(), bytecodes.length());
-    }
-  }
+  friend class VmFinalizerNode;
 };
 
 
 class Instance : public HeapObject {
  public:
-  Object* at(int index) {
+  Object* at(int index) const {
     return _at(_offset_from(index));
   }
 
   INLINE void at_put(int index, Smi* value) {
     _at_put(_offset_from(index), value);
+  }
+
+  INLINE Object** root_at(int index) {
+    return _root_at(_offset_from(index));
   }
 
   void at_put_no_write_barrier(int index, Object* value) {
@@ -1185,7 +1399,7 @@ class Instance : public HeapObject {
   // Fills instance fields with Smi zero.
   void initialize(int instance_size);
 
-  void roots_do(int instance_size, RootCallback* cb);
+  void instance_roots_do(int instance_size, RootCallback* cb);
 
 #ifndef TOIT_FREERTOS
   void write_content(int instance_size, SnapshotWriter* st);
@@ -1198,8 +1412,13 @@ class Instance : public HeapObject {
   }
 
   static Instance* cast(Object* value) {
-    ASSERT(value->is_instance() || value->is_task());
+    ASSERT(is_instance(value) || is_task(value));
     return static_cast<Instance*>(value);
+  }
+
+  static const Instance* cast(const Object* value) {
+    ASSERT(is_instance(value) || is_task(value));
+    return static_cast<const Instance*>(value);
   }
 
   static int allocation_size(int length) { return  _align(_offset_from(length)); }
@@ -1207,6 +1426,37 @@ class Instance : public HeapObject {
     *word_count = HEADER_SIZE / WORD_SIZE + length;
     *extra_bytes = 0;
   }
+
+  // Some of the instance types have field offsets that are known both
+  // on the native and the Toit side.
+  // These numbers must stay synced with the fields in collections.toit.
+  static const int MAP_SIZE_INDEX        = 0;
+  static const int MAP_SPACES_LEFT_INDEX = 1;
+  static const int MAP_INDEX_INDEX       = 2;
+  static const int MAP_BACKING_INDEX     = 3;
+
+  static const int LIST_ARRAY_INDEX = 0;
+  static const int LIST_SIZE_INDEX  = 1;
+
+  static const int LIST_SLICE_LIST_INDEX = 0;
+  static const int LIST_SLICE_FROM_INDEX = 1;
+  static const int LIST_SLICE_TO_INDEX   = 2;
+
+  static const int BYTE_ARRAY_COW_BACKING_INDEX    = 0;
+  static const int BYTE_ARRAY_COW_IS_MUTABLE_INDEX = 1;
+
+  static const int BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX = 0;
+  static const int BYTE_ARRAY_SLICE_FROM_INDEX       = 1;
+  static const int BYTE_ARRAY_SLICE_TO_INDEX         = 2;
+
+  static const int LARGE_ARRAY_SIZE_INDEX   = 0;
+  static const int LARGE_ARRAY_VECTOR_INDEX = 1;
+
+  static const int STRING_SLICE_STRING_INDEX = 0;
+  static const int STRING_SLICE_FROM_INDEX   = 1;
+  static const int STRING_SLICE_TO_INDEX     = 2;
+
+  static const int TOMBSTONE_DISTANCE_INDEX = 0;
 
  private:
   static const int HEADER_SIZE = HeapObject::SIZE;
@@ -1224,19 +1474,24 @@ They are never accessible from Toit code.
 */
 class FreeListRegion : public HeapObject {
  public:
-  uword size() {
+  uword size() const {
     if (class_tag() == SINGLE_FREE_WORD_TAG) return WORD_SIZE;
     ASSERT(class_tag() == FREE_LIST_REGION_TAG);
     return _word_at(SIZE_OFFSET);
   }
 
-  bool can_be_daisychained() { return class_tag() == FREE_LIST_REGION_TAG; }
+  bool can_be_daisychained() const { return class_tag() == FREE_LIST_REGION_TAG; }
 
   void roots_do(int instance_size, RootCallback* cb) {}
 
   static FreeListRegion* cast(Object* value) {
-    ASSERT(value->is_free_list_region());
+    ASSERT(is_free_list_region(value));
     return static_cast<FreeListRegion*>(value);
+  }
+
+  static const FreeListRegion* cast(const Object* value) {
+    ASSERT(is_free_list_region(value));
+    return static_cast<const FreeListRegion*>(value);
   }
 
   void set_next_region(FreeListRegion* next) {
@@ -1275,7 +1530,7 @@ class PromotedTrack : public HeapObject {
   // Returns the whole size of the PromotedTrack so that
   // when traversing the heap we will skip the promoted track.
   // We only want to traverse the newly-promoted objects explicitly.
-  uword size() {
+  uword size() const {
     ASSERT(class_tag() == PROMOTED_TRACK_TAG);
     return end() - _raw();
   }
@@ -1290,8 +1545,13 @@ class PromotedTrack : public HeapObject {
   void roots_do(int instance_size, RootCallback* cb) {}
 
   static PromotedTrack* cast(Object* value) {
-    ASSERT(value->is_promoted_track());
+    ASSERT(is_promoted_track(value));
     return static_cast<PromotedTrack*>(value);
+  }
+
+  static const PromotedTrack* cast(const Object* value) {
+    ASSERT(is_promoted_track(value));
+    return static_cast<const PromotedTrack*>(value);
   }
 
   void set_next(PromotedTrack* next) {
@@ -1308,7 +1568,7 @@ class PromotedTrack : public HeapObject {
     _word_at_put(END_OFFSET, end);
   }
 
-  uword end() {
+  uword end() const {
     return _word_at(END_OFFSET);
   }
 
@@ -1330,17 +1590,14 @@ class Task : public Instance {
  public:
   static const int STACK_INDEX = 0;
   static const int ID_INDEX = STACK_INDEX + 1;
-  static const int RESULT_INDEX = ID_INDEX + 1;
 
   Stack* stack() { return Stack::cast(at(STACK_INDEX)); }
-  void set_stack(Stack* value);
+  void set_stack(Stack* value) { at_put(STACK_INDEX, value); }
 
-  int id() { return Smi::cast(at(ID_INDEX))->value(); }
-
-  inline void set_result(Object* value);
+  int id() { return Smi::value(at(ID_INDEX)); }
 
   static Task* cast(Object* value) {
-    ASSERT(value->is_task());
+    ASSERT(is_task(value));
     return static_cast<Task*>(value);
   }
 
@@ -1349,58 +1606,65 @@ class Task : public Instance {
   }
 
   bool has_stack() {
-    return at(STACK_INDEX)->is_stack();
+    return is_stack(at(STACK_INDEX));
   }
 
  private:
-  void _initialize(Stack* stack, Smi* id);
+  void _initialize(Stack* stack, Smi* id) {
+    at_put(ID_INDEX, id);
+    set_stack(stack);
+  }
 
   friend class ObjectHeap;
 };
 
-inline Task* Stack::task() {
-  return Task::cast(_at(TASK_OFFSET));
+inline bool is_smi(const Object* o) {
+  return (reinterpret_cast<uword>(o) & Object::SMI_TAG_MASK) == Object::SMI_TAG;
 }
 
-inline bool Object::is_double() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == DOUBLE_TAG;
+inline bool is_heap_object(const Object* o) {
+  return (reinterpret_cast<uword>(o) & Object::NON_SMI_TAG_MASK) == Object::HEAP_TAG;
 }
 
-inline bool Object::is_task() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == TASK_TAG;
+inline bool is_double(const Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == DOUBLE_TAG;
 }
 
-inline bool Object::is_instance() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == INSTANCE_TAG;
+inline bool is_task(const Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == TASK_TAG;
 }
 
-inline bool Object::is_array() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == ARRAY_TAG;
+inline bool is_instance(const Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == INSTANCE_TAG;
 }
 
-inline bool Object::is_byte_array() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == BYTE_ARRAY_TAG;
+inline bool is_array(const Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == ARRAY_TAG;
 }
 
-inline bool Object::is_stack() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == STACK_TAG;
+inline bool is_byte_array(const Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == BYTE_ARRAY_TAG;
 }
 
-inline bool Object::is_string() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == STRING_TAG;
+inline bool is_stack(const Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == STACK_TAG;
 }
 
-inline bool Object::is_large_integer() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == LARGE_INTEGER_TAG;
+inline bool is_string(const Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == STRING_TAG;
 }
 
-inline bool Object::is_free_list_region() {
-  return is_heap_object() && (HeapObject::cast(this)->class_tag() == FREE_LIST_REGION_TAG ||
-                              HeapObject::cast(this)->class_tag() == SINGLE_FREE_WORD_TAG);
+inline bool is_large_integer(const Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == LARGE_INTEGER_TAG;
 }
 
-inline bool Object::is_promoted_track() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == PROMOTED_TRACK_TAG;
+inline bool is_free_list_region(const Object* o) {
+  return is_heap_object(o) && (HeapObject::cast(o)->class_tag() == FREE_LIST_REGION_TAG ||
+                               HeapObject::cast(o)->class_tag() == SINGLE_FREE_WORD_TAG);
+}
+
+inline bool is_promoted_track(const Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == PROMOTED_TRACK_TAG;
 }
 
 inline HeapObject* Object::unmark() {

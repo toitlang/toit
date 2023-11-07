@@ -14,82 +14,147 @@
 // directory of this repository.
 
 import system.api.firmware show FirmwareService
-import system.services show ServiceDefinition ServiceResource
+import system.services show ServiceProvider ServiceResource
+import system.base.firmware show FirmwareServiceProviderBase FirmwareWriter
 
-class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareService:
+import esp32
+import encoding.ubjson
+
+class FirmwareServiceProvider extends FirmwareServiceProviderBase:
+  config_/Map ::= {:}
+
   constructor:
+    catch: config_ = ubjson.decode firmware-embedded-config_
     super "system/firmware/esp32" --major=0 --minor=1
-    provides FirmwareService.UUID FirmwareService.MAJOR FirmwareService.MINOR
 
-  handle pid/int client/int index/int arguments/any -> any:
-    if index == FirmwareService.FIRMWARE_WRITER_OPEN_INDEX:
-      return firmware_writer_open client arguments[0] arguments[1]
-    if index == FirmwareService.FIRMWARE_WRITER_WRITE_INDEX:
-      writer ::= (resource client arguments[0]) as FirmwareWriter
-      return firmware_writer_write writer arguments[1]
-    if index == FirmwareService.FIRMWARE_WRITER_COMMIT_INDEX:
-      writer ::= (resource client arguments[0]) as FirmwareWriter
-      return firmware_writer_commit writer arguments[1]
-    unreachable
+  is-validation-pending -> bool:
+    return (ota-state_ & OTA-STATE-VALIDATION-PENDING_) != 0
 
-  firmware_writer_open from/int to/int -> int:
-    unreachable  // TODO(kasper): Nasty.
+  is-rollback-possible -> bool:
+    return (ota-state_ & OTA-STATE-ROLLBACK-POSSIBLE_) != 0
 
-  firmware_writer_open client/int from/int to/int -> ServiceResource:
-    return FirmwareWriter this client from to
+  validate -> bool:
+    return ota-validate_
 
-  firmware_writer_write writer/FirmwareWriter bytes/ByteArray -> none:
-    writer.write bytes
+  rollback -> none:
+    ota-rollback_
 
-  firmware_writer_commit writer/FirmwareWriter checksum/ByteArray? -> none:
-    writer.commit checksum
+  upgrade -> none:
+    // TODO(kasper): Verify that we have a new firmware installed?
+    // TODO(kasper): Don't just reboot from here. Shut down the
+    // system properly instead.
+    esp32.deep-sleep (Duration --ms=10)
+
+  config-ubjson -> ByteArray:
+    // TODO(kasper): We have to copy this for now, because we
+    // cannot transfer a non-disposable byte array across the
+    // RPC boundary just yet.
+    return firmware-embedded-config_.copy
+
+  config-entry key/string -> any:
+    return config_.get key
+
+  content -> ByteArray?:
+    // We deliberately return null here to let the caller know that
+    // it should try to use the firmware content provided by the
+    // underlying system (if any). On the ESP32, the system will
+    // use this to give access to the content of the currently
+    // running OTA partition.
+    return null
+
+  uri -> string?:
+    return "partition:$ota-current-partition-name_"
+
+  firmware-writer-open client/int from/int to/int -> FirmwareWriter:
+    return FirmwareWriter_ this client from to
 
 /**
-The $FirmwareWriter uses the OTA support of the ESP32 to let you
+The $FirmwareWriter_ uses the OTA support of the ESP32 to let you
   update the firmware image. After writing and commiting the firmware,
   you must reboot (use deep_sleep) for the update to take effect.
 */
-class FirmwareWriter extends ServiceResource:
-  buffer_/ByteArray? := ByteArray 4096
+class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
+  static REQUIRED-WRITE-ALIGNMENT ::= 16
+  static PAGE-SIZE ::= 4096
+
+  buffer_/ByteArray? := ByteArray PAGE-SIZE
   fullness_/int := 0
   written_/int := ?
 
-  constructor service/ServiceDefinition client/int from/int to/int:
-    ota_begin_ from to
+  constructor provider/ServiceProvider client/int from/int to/int:
+    ota-begin_ from to
     written_ = from
-    super service client
+    super provider client
 
-  write bytes/ByteArray from=0 to=bytes.size -> int:
-    return List.chunk_up from to (buffer_.size - fullness_) buffer_.size: | from to chunk |
-      buffer_.replace fullness_ bytes from to
-      fullness_ += chunk
-      if fullness_ == buffer_.size:
-        written_ = ota_write_ buffer_
-        fullness_ = 0
+  write bytes/ByteArray -> int:
+    return write_ bytes.size: | index from to |
+      buffer_.replace index bytes from to
+
+  pad size/int value/int -> int:
+    return write_ size: | index from to |
+      buffer_.fill --from=index --to=(index + to - from) value
+
+  write_ size [block] -> int:
+    // We try to write just enough to get back to writing full pages
+    // after an early flush. We do this by computing the fullness level
+    // at which we want to flush. If we're already page aligned, we will
+    // flush after writing another page.
+    fullness-flush := (round-up (written_ + 1) PAGE-SIZE) - written_
+    return List.chunk-up 0 size (fullness-flush - fullness_) PAGE-SIZE: | from to |
+      block.call fullness_ from to
+      fullness_ += to - from
+      if fullness_ == fullness-flush:
+        unflushed := flush
+        assert: unflushed == 0
+        fullness-flush = PAGE-SIZE
+
+  flush -> int:
+    flushable := round-down fullness_ REQUIRED-WRITE-ALIGNMENT
+    if flushable == 0: return 0
+    written_ = ota-write_ buffer_[..flushable]
+    buffer_.replace 0 buffer_ flushable fullness_
+    fullness_ -= flushable
+    return fullness_
 
   commit checksum/ByteArray? -> none:
-    if fullness_ != 0:
-      written_ = ota_write_ buffer_[..fullness_]
-      fullness_ = 0
     // Always commit. Always.
-    ota_end_ written_ checksum
+    flush
+    ota-end_ written_ checksum
     buffer_ = null
 
-  on_closed -> none:
+  on-closed -> none:
     if not buffer_: return
-    ota_end_ 0 null  // Ensure that the OTA process is cleared so a new one can start.
+    ota-end_ 0 null  // Ensure that the OTA process is cleared so a new one can start.
     buffer_ = null
 
 // ----------------------------------------------------------------------------
 
-ota_begin_ from/int to/int -> none:
-  #primitive.esp32.ota_begin
+ota-current-partition-name_ -> string:
+  #primitive.esp32.ota-current-partition-name
 
-ota_write_ bytes/ByteArray -> int:
-  #primitive.esp32.ota_write
+ota-begin_ from/int to/int -> none:
+  #primitive.esp32.ota-begin
+
+ota-write_ bytes/ByteArray -> int:
+  #primitive.esp32.ota-write
 
 /// If size is non-zero, checks the new partition and sets the system to boot from it.
 /// If checksum is non-null, uses that SHA256 hash to perform the check.
 /// Also clears the current OTA process so a new one can start.
-ota_end_ size/int checksum/ByteArray? -> none:
-  #primitive.esp32.ota_end
+ota-end_ size/int checksum/ByteArray? -> none:
+  #primitive.esp32.ota-end
+
+OTA-STATE-VALIDATION-PENDING_ /int ::= 1 << 0
+OTA-STATE-ROLLBACK-POSSIBLE_  /int ::= 1 << 1
+
+ota-state_ -> int:
+  #primitive.esp32.ota-state
+
+ota-validate_ -> bool:
+  #primitive.esp32.ota-validate
+
+ota-rollback_ -> none:
+  #primitive.esp32.ota-rollback
+
+firmware-embedded-config_ -> any:
+  #primitive.programs-registry.config

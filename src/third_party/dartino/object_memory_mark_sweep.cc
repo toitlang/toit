@@ -21,7 +21,7 @@ OldSpace::OldSpace(Program* program, TwoSpaceHeap* owner)
     : Space(program, CAN_RESIZE, OLD_SPACE_PAGE),
       heap_(owner) {}
 
-OldSpace::~OldSpace() { }
+OldSpace::~OldSpace() {}
 
 void OldSpace::flush() {
   if (top_ != 0) {
@@ -43,17 +43,10 @@ void OldSpace::flush() {
   }
 }
 
-HeapObject* OldSpace::new_location(HeapObject* old_location) {
-  ASSERT(includes(old_location->_raw()));
-  ASSERT(GcMetadata::is_marked(old_location));
-  if (compacting_) {
-    return HeapObject::from_address(GcMetadata::get_destination(old_location));
-  } else {
-    return old_location;
-  }
-}
-
 bool OldSpace::is_alive(HeapObject* old_location) {
+  // Objects like null are in the program space and live forever.
+  if (!GcMetadata::in_new_or_old_space(old_location)) return true;
+
   // We can't assert that the object is in old-space, because
   // at the end of a mark-sweep the new-space objects are also
   // marked and can be checked for liveness.  The finalizers
@@ -62,6 +55,10 @@ bool OldSpace::is_alive(HeapObject* old_location) {
   // they will remain (untouched) in the new-space until the
   // next scavenge.
   return GcMetadata::is_marked(old_location);
+}
+
+bool OldSpace::has_active_finalizer(HeapObject* old_location) {
+  return old_location->has_active_finalizer();
 }
 
 void OldSpace::use_whole_chunk(Chunk* chunk) {
@@ -94,35 +91,37 @@ Chunk* OldSpace::allocate_and_use_chunk(uword size) {
 }
 
 uword OldSpace::allocate_in_new_chunk(uword size) {
-  if (allocation_budget_ < 0) return 0;
+  if (promotion_failed_) return 0;
   ASSERT(top_ == 0);  // Space is flushed.
   // Allocate new chunk.  After a certain heap size we start allocating
   // multi-page chunks to improve fragmentation.
   int tracking_size = tracking_allocations_ ? 0 : PromotedTrack::header_size();
-  uword max_expansion = heap_->max_expansion();
-  uword smallest_chunk_size = Utils::min(get_default_chunk_size(used()), max_expansion);
-  uword max_space_needed = size + tracking_size + WORD_SIZE;  // Make room for sentinel.
-  // Toit uses arraylets and external objects, so all objects should fit on a page.
-  ASSERT(max_space_needed <= TOIT_PAGE_SIZE);
-  uword chunk_size = Utils::max(max_space_needed, smallest_chunk_size);
+  word max_expansion_signed = heap_->max_external_allocation();
+  if (max_expansion_signed > 0) {
+    uword max_expansion = max_expansion_signed;
+    uword smallest_chunk_size = Utils::round_down(Utils::min(get_default_chunk_size(used()), max_expansion), TOIT_PAGE_SIZE);
+    uword min_space_needed = size + tracking_size + WORD_SIZE;  // Make room for sentinel.
+    // Toit uses arraylets and external objects, so all objects should fit on a page.
+    ASSERT(min_space_needed <= TOIT_PAGE_SIZE);
+    uword chunk_size = Utils::round_up(Utils::max(min_space_needed, smallest_chunk_size), TOIT_PAGE_SIZE);
 
-  if (chunk_size <= max_expansion) {
-    chunk_size = Utils::round_up(chunk_size, TOIT_PAGE_SIZE);
-    Chunk* chunk = allocate_and_use_chunk(chunk_size);
-    while (chunk == null && chunk_size > TOIT_PAGE_SIZE) {
-      // If we fail to get a multi-page chunk, try for a smaller chunk.
-      chunk_size = Utils::round_up(chunk_size >> 1, TOIT_PAGE_SIZE);
-      chunk = allocate_and_use_chunk(chunk_size);
-    }
-    if (chunk != null) {
-      return allocate(size);
-    } else {
-      heap_->report_malloc_failed();
+    if (chunk_size <= max_expansion) {
+      Chunk* chunk = allocate_and_use_chunk(chunk_size);
+      while (chunk == null && chunk_size > TOIT_PAGE_SIZE && chunk_size >= min_space_needed) {
+        // If we fail to get a multi-page chunk, try for a smaller chunk.
+        chunk_size = Utils::round_up(chunk_size >> 1, TOIT_PAGE_SIZE);
+        chunk = allocate_and_use_chunk(chunk_size);
+      }
+      if (chunk != null) {
+        return allocate(size);
+      } else {
+        heap_->report_malloc_failed();
+      }
     }
   }
 
   // Speed up later attempts during this scavenge to promote objects.
-  allocation_budget_ = -1;
+  set_promotion_failed(true);
   return 0;
 }
 
@@ -170,7 +169,6 @@ uword OldSpace::allocate(uword size) {
   if (limit_ - top_ >= static_cast<uword>(size)) {
     uword result = top_;
     top_ += size;
-    allocation_budget_ -= size;
     GcMetadata::record_start(result);
     return result;
   }
@@ -185,7 +183,7 @@ uword OldSpace::allocate(uword size) {
   return result;
 }
 
-uword OldSpace::used() { return used_; }
+uword OldSpace::used() const { return used_; }
 
 void OldSpace::start_tracking_allocations() {
   flush();
@@ -200,19 +198,29 @@ void OldSpace::end_tracking_allocations() {
   tracking_allocations_ = false;
 }
 
-void OldSpace::compute_compaction_destinations() {
-  if (is_empty()) return;
+word OldSpace::compute_compaction_destinations() {
+  if (is_empty()) return 0;
+  word memory_that_can_only_be_reclaimed_by_compacting = 0;
   auto it = chunk_list_.begin();
   GcMetadata::Destination dest(it, it->start(), it->usable_end());
   for (auto chunk : chunk_list_) {
-    dest = GcMetadata::calculate_object_destinations(program_, chunk, dest);
+    GcMetadata::Destination new_dest = GcMetadata::calculate_object_destinations(program_, chunk, dest);
+    if (new_dest.address == dest.address) {
+      // The chunk was completely empty, so we can free it even without
+      // compacting.
+      memory_that_can_only_be_reclaimed_by_compacting -= chunk->size();
+    }
+    dest = new_dest;
   }
   dest.chunk()->set_compaction_top(dest.address);
   while (dest.has_next_chunk()) {
     dest = dest.next_chunk();
     Chunk* unused = dest.chunk();
+    // Completely empty destination chunks can be freed if we compact.
+    memory_that_can_only_be_reclaimed_by_compacting += unused->size();
     unused->set_compaction_top(unused->start());
   }
+  return memory_that_can_only_be_reclaimed_by_compacting;
 }
 
 void OldSpace::zap_object_starts() {
@@ -244,7 +252,7 @@ class RememberedSetRebuilder : public HeapObjectVisitor {
     pointer_callback.found = false;
     object->roots_do(program_, &pointer_callback);
     if (pointer_callback.found) {
-      *GcMetadata::remembered_set_for(reinterpret_cast<uword>(object)) = GcMetadata::NEW_SPACE_POINTERS;
+      *GcMetadata::remembered_set_for(object) = GcMetadata::NEW_SPACE_POINTERS;
     }
     return object->size(program_);
   }
@@ -252,13 +260,6 @@ class RememberedSetRebuilder : public HeapObjectVisitor {
  private:
   RememberedSetRebuilder2 pointer_callback;
 };
-
-// Until we have a write barrier we have to iterate the whole
-// of old space.
-void OldSpace::rebuild_remembered_set() {
-  RememberedSetRebuilder rebuilder(program_);
-  iterate_objects(&rebuilder);
-}
 
 void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
   flush();
@@ -376,9 +377,9 @@ bool OldSpace::complete_scavenge(
     if (traverse != end) {
       found_work = true;
     }
-    for (HeapObject *obj = HeapObject::from_address(traverse); traverse != end;
+    for (HeapObject* obj = HeapObject::from_address(traverse); traverse != end;
          traverse += obj->size(program_), obj = HeapObject::from_address(traverse)) {
-      visitor->set_record_new_space_pointers(GcMetadata::remembered_set_for(obj->_raw()));
+      visitor->set_record_new_space_pointers(GcMetadata::remembered_set_for(obj));
       obj->roots_do(program_, visitor);
     }
     PromotedTrack* previous = promoted;
@@ -426,9 +427,13 @@ void FixPointersVisitor::do_roots(Object** start, int length) {
 // This is faster than the builtin memmove because we know the source and
 // destination are aligned and we know the size is at least 1 word.  Also
 // we know that any overlap is only in one direction.
-// TODO(Erik): Check this is still true on ESP32.
+// In particular this is a big win on the ESP32, giving about 15% improvement
+// on the speed of mark-sweep-compact.
 static void INLINE object_mem_move(uword dest, uword source, uword size) {
-  ASSERT(source > dest);
+  // Within one page we can be sure that source > dest because we are
+  // compacting down, but the chunks are not in any particular order so we
+  // can't guarantee that in general.
+  ASSERT(source / TOIT_PAGE_SIZE != dest / TOIT_PAGE_SIZE || source > dest);
   ASSERT(size >= WORD_SIZE);
   uword t0 = *reinterpret_cast<uword*>(source);
   *reinterpret_cast<uword*>(dest) = t0;
@@ -440,16 +445,6 @@ static void INLINE object_mem_move(uword dest, uword source, uword size) {
     source += WORD_SIZE;
     dest += WORD_SIZE;
   }
-}
-
-static int INLINE find_first_set(uint32 x) {
-#ifdef _MSC_VER
-  unsigned long index;  // NOLINT
-  bool non_zero = _BitScanForward(&index, x);
-  return index + non_zero;
-#else
-  return __builtin_ffs(x);
-#endif
 }
 
 CompactingVisitor::CompactingVisitor(Program* program,
@@ -467,7 +462,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
   if ((bits & 1) == 0) {
     // Object is unmarked.
     if (bits != 0) {
-      return (find_first_set(bits) - 1) << WORD_SIZE_LOG_2;
+      return Utils::ctz(bits) << WORD_SIZE_LOG_2;
     }
     // If all the bits in this mark word are zero, then let's see if we can
     // skip a bit more.
@@ -475,7 +470,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
     // This never runs over the end of the chunk because the last word in the
     // chunk (the sentinel) is artificially marked live.
     while (*++bits_addr == 0) next_live_object += GcMetadata::CARD_SIZE;
-    next_live_object += (find_first_set(*bits_addr) - 1) << WORD_SIZE_LOG_2;
+    next_live_object += Utils::ctz(*bits_addr) << WORD_SIZE_LOG_2;
     ASSERT(next_live_object - object->_raw() >= (uword)object->size(program_));
     return next_live_object - object->_raw();
   }
@@ -492,7 +487,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
   if (object->_raw() != dest_.address) {
     object_mem_move(dest_.address, object->_raw(), size);
 
-    if (*GcMetadata::remembered_set_for(object->_raw()) !=
+    if (*GcMetadata::remembered_set_for(object) !=
         GcMetadata::NO_NEW_SPACE_POINTERS) {
       *GcMetadata::remembered_set_for(dest_.address) =
           GcMetadata::NEW_SPACE_POINTERS;
@@ -511,9 +506,9 @@ uword OldSpace::sweep() {
   // Clear the free list. It will be rebuilt during sweeping.
   free_list_.clear();
   uword used = 0;
-  const word SINGLE_FREE_WORD = -44;
+  const word SINGLE_FREE_WORD = -108;
   ASSERT(reinterpret_cast<Object*>(SINGLE_FREE_WORD) == FreeListRegion::single_free_word_header());
-  for (auto chunk : chunk_list_) {
+  chunk_list_.remove_wherever([&](Chunk* chunk) -> bool {
     uword line = chunk->start();
     uword end = line + chunk->size();
     uint32* mark_bits = GcMetadata::mark_bits_for(chunk->start());
@@ -529,7 +524,6 @@ uword OldSpace::sweep() {
           // areas are at least 32 words long.
           // The object starts may end up pointing at one of these single free
           // word things, but that's OK because they are iterable.
-          // TODO: Use fast SIMD instructions to write these 32 pointers.
           for (int i = 0; i < GcMetadata::CARD_SIZE / WORD_SIZE; i++) {
             if ((bits & (1U << i)) == 0) {
               *reinterpret_cast<word*>(line + (i << WORD_SIZE_LOG_2)) = SINGLE_FREE_WORD;
@@ -571,6 +565,10 @@ uword OldSpace::sweep() {
         ASSERT(object_start_location == GcMetadata::starts_for(line));
         ASSERT(mark_bits == GcMetadata::mark_bits_for(line));
         if (line == end) {
+          if (start_of_free == chunk->start()) {
+            ObjectMemory::free_chunk(chunk);
+            return true;  // Remove empty chunks from list.
+          }
           // The last free space must end one word earlier to make space for
           // the end-of-chunk sentinel.
           free_list_.add_region(start_of_free, end - start_of_free - WORD_SIZE);
@@ -606,15 +604,16 @@ uword OldSpace::sweep() {
   end_of_chunk:
     // Repair sentinel in case it was zapped by a marking bitmap.
     *reinterpret_cast<Object**>(end - WORD_SIZE) = chunk_end_sentinel();
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
     validate_sweep(chunk);
 #endif
     GcMetadata::clear_mark_bits_for_chunk(chunk);
-  }
+    return false;  // Keep chunk in space.
+  });
   return used << WORD_SIZE_LOG_2;
 }
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 // Check that all dead objects are replaced with freelist objects and
 // that starts point at valid iteration points.
 void OldSpace::validate_sweep(Chunk* chunk) {
@@ -700,8 +699,8 @@ void OldSpace::validate() {
 void MarkingStack::empty(RootCallback* visitor) {
   while (!is_empty()) {
     HeapObject* object = *--next_;
+    object->roots_do(program_, visitor);  // Changes size of stacks!
     GcMetadata::mark_all(object, object->size(program_));
-    object->roots_do(program_, visitor);
   }
 }
 

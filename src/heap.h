@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -19,27 +19,27 @@
 
 #include "heap_roots.h"
 #include "linked.h"
-#include "memory.h"
 #include "objects.h"
 #include "primitive.h"
 #include "printing.h"
 #include "third_party/dartino/two_space_heap.h"
-
-extern "C" uword toit_image;
-extern "C" uword toit_image_size;
 
 namespace toit {
 
 class ObjectNotifier;
 
 // A class that uses a RAII destructor to free memory already
-// allocated if a later alllocation fails.
+// allocated if a later allocation fails.
 class InitialMemoryManager {
  public:
   Chunk* initial_chunk = null;
+  Object** global_variables = null;
+  Mutex* heap_mutex = null;
 
   void dont_auto_free() {
     initial_chunk = null;
+    global_variables = null;
+    heap_mutex = null;
   }
 
   // Allocates initial pages for heap.  Returns success.
@@ -51,17 +51,17 @@ class InitialMemoryManager {
 
 class ObjectHeap {
  public:
-  ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk);
+  ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, Object** global_variables, Mutex* mutex);
   ~ObjectHeap();
 
   // TODO: In the new heap there need not be a max allocation size.
   static int max_allocation_size() { return TOIT_PAGE_SIZE - 96; }
 
   inline void do_objects(const std::function<void (HeapObject*)>& func) {
-    _two_space_heap.do_objects(func);
+    two_space_heap_.do_objects(func);
   }
 
-  inline bool cross_process_gc_needed() const { return _two_space_heap.cross_process_gc_needed(); }
+  inline bool cross_process_gc_needed() const { return two_space_heap_.cross_process_gc_needed(); }
 
   // Shared allocation operations.
   Instance* allocate_instance(Smi* class_id);
@@ -74,23 +74,28 @@ class ObjectHeap {
   Double* allocate_double(double value);
   LargeInteger* allocate_large_integer(int64 value);
 
-  void process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space);
-  void process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space);
+  void queue_finalizer(CallableFinalizerNode* node) {
+    runnable_finalizers_.append(node);
+  }
+  void process_registered_callback_finalizers(RootCallback* cb, LivenessOracle* oracle);
+  void process_finalizer_queue(RootCallback* cb, LivenessOracle* oracle);
+  void process_registered_vm_finalizers(RootCallback* cb, LivenessOracle* oracle);
 
-  Program* program() { return _program; }
+  void iterate_finalization_roots(RootCallback* cb);
 
-  int64 total_bytes_allocated() { return _external_bytes_allocated + _two_space_heap.total_bytes_allocated(); }
-  uword limit() const { return _limit; }
+  Program* program() const { return program_; }
 
-  void enter_gc() {}
-  void leave_gc() {}
-  void enter_no_gc() {}
-  void leave_no_gc() {}
+  int64 total_bytes_allocated() const { return total_external_memory_ + two_space_heap_.total_bytes_allocated(); }
+  int64 bytes_reserved() const { return external_memory_ + two_space_heap_.size(); }
+  int64 bytes_allocated() const { return external_memory_ + two_space_heap_.used(); }
+  uword external_memory() const { return external_memory_; }
+  bool has_limit() const { return limit_ != max_heap_size_; }
+  uword limit() const { return limit_; }
 
   bool system_refused_memory() const {
     return
-        _last_allocation_result == ALLOCATION_OUT_OF_MEMORY ||
-        _two_space_heap.cross_process_gc_needed();
+        last_allocation_result_ == ALLOCATION_OUT_OF_MEMORY ||
+        two_space_heap_.cross_process_gc_needed();
   }
 
   enum AllocationResult {
@@ -100,11 +105,10 @@ class ObjectHeap {
   };
 
   void set_last_allocation_result(AllocationResult result) {
-    _last_allocation_result = result;
+    last_allocation_result_ = result;
   }
 
-  Usage usage(const char* name);
-  Process* owner() { return _owner; }
+  Process* owner() { return owner_; }
 
  public:
   ObjectHeap(Program* program, Process* owner);
@@ -121,100 +125,109 @@ class ObjectHeap {
 
   void print(Printer* printer);
 
-  Object** global_variables() const { return _global_variables; }
-  Task* task() { return _task; }
-  void set_task(Task* task);
+  Object** global_variables() const { return global_variables_; }
+  Task* task() { return task_; }
+  void set_task(Task* task) { task_ = task; }
 
   // Garbage collection operation for runtime objects.
-  int gc(bool try_hard);
+  GcType gc(bool try_hard);
 
-  bool add_finalizer(HeapObject* key, Object* lambda);
-  bool has_finalizer(HeapObject* key, Object* lambda);
-  bool remove_finalizer(HeapObject* key);
-
+  bool add_callable_finalizer(Instance* key, Object* lambda, bool make_weak);
   bool add_vm_finalizer(HeapObject* key);
-  bool remove_vm_finalizer(HeapObject* key);
 
-  bool has_finalizer_to_run() const { return !_runnable_finalizers.is_empty(); }
+  bool has_finalizer_to_run() const { return !runnable_finalizers_.is_empty(); }
   Object* next_finalizer_to_run();
 
   // Tells how many gc operations this heap has experienced.
-  int gc_count() { return _gc_count; }
+  int gc_count(GcType type) {
+    if (type == NEW_SPACE_GC) return gc_count_;
+    if (type == FULL_GC) return full_gc_count_;
+    if (type == COMPACTING_GC) return full_compacting_gc_count_;
+    UNREACHABLE();
+  }
 
-  void add_external_root(HeapRoot* element) { _external_roots.prepend(element); }
+  void add_external_root(HeapRoot* element) { external_roots_.prepend(element); }
   void remove_external_root(HeapRoot* element) { element->unlink(); }
 
-  void set_max_heap_size(word bytes) { _max_heap_size = bytes; }
-  word max_heap_size() const { return _max_heap_size; }
+  void iterate_chunks(void* context, process_chunk_callback_t* callback);
 
-  bool should_allow_external_allocation(word size);
+  void set_max_heap_size(word bytes) { max_heap_size_ = bytes; }
+  word max_heap_size() const { return max_heap_size_; }
+
+  word max_external_allocation();
   void register_external_allocation(word size);
   void unregister_external_allocation(word size);
-  bool has_max_heap_size() const { return _max_heap_size != 0; }
-  void install_heap_limit() { _limit = _pending_limit; }
+
+  bool has_max_heap_size() const { return max_heap_size_ != 0; }
+  bool has_pending_limit() const { return limit_ != pending_limit_; }
+
+  bool retrying_primitive() const { return retrying_primitive_; }
+
+  void leave_primitive() {
+    retrying_primitive_ = false;
+    if (limit_ != pending_limit_) install_heap_limit();
+  }
+
   void iterate_roots(RootCallback* callback);
 
+  // Update the memory limit for triggering the next old-space GC.  We base
+  // this on a multiple of the number of chunks in use and the externally
+  // allocated memory just after the previous GC.
+  word update_pending_limit();
+
  private:
-  Program* const _program;
+  Program* const program_;
   HeapObject* _allocate_raw(int byte_size) {
-    return _two_space_heap.allocate(byte_size);
+    return two_space_heap_.allocate(byte_size);
   }
 
-  bool _in_gc = false;
-  bool _gc_allowed = true;
-  int64 _external_bytes_allocated = 0;
-  AllocationResult _last_allocation_result = ALLOCATION_SUCCESS;
+  void install_heap_limit();
 
-  Process* _owner;
-  TwoSpaceHeap _two_space_heap;
+  bool retrying_primitive_ = false;
+  AllocationResult last_allocation_result_ = ALLOCATION_SUCCESS;
 
-  // An estimate of how much memory overhead malloc has.
-  static const word _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD = 2 * sizeof(word);
+  void process_registered_finalizers_helper(FinalizerNodeFifo* list, RootCallback* cb, LivenessOracle* oracle, bool in_closure_queue);
 
-  // Minimum number of heap blocks we limit ourselves to.
-  static const word _MIN_BLOCK_LIMIT = 4;
+  Process* owner_;
+  TwoSpaceHeap two_space_heap_;
 
-  // Number of bytes used before forcing a scavenge, including external memory.
-  // Set to zero to have no limit.
-  word _limit = 0;
+  static const word _UNLIMITED_EXPANSION = 0x7fffffff;
+
+  // Number of bytes used before forcing a GC, including external memory.
+  // Set to max_heap_size_ to have no limit.
+  word limit_ = 0;
   // This limit will be installed at the end of the current primitive.
-  word _pending_limit = 0;
+  word pending_limit_ = 0;
 
-  word _max_heap_size = 0;  // Configured max heap size, incl. external allocation.
-  std::atomic<word> _external_memory;  // Allocated external memory in bytes.
+  word max_heap_size_ = 0;  // Configured max heap size, incl. external allocation.
+  std::atomic<word> external_memory_;  // Allocated external memory in bytes.
+  std::atomic<word> total_external_memory_;  // Includes memory that was later freed.
 
-  Task* _task = null;
-  ObjectNotifierList _object_notifiers;
+  Task* task_ = null;
+  ObjectNotifierList object_notifiers_;
 
-  // A finalizer is in one of the following lists.
-  FinalizerNodeFIFO _registered_finalizers;       // Contains registered finalizers.
-  FinalizerNodeFIFO _runnable_finalizers;         // Contains finalizers that must be executed.
-  VMFinalizerNodeFIFO _registered_vm_finalizers;  // Contains registered VM finalizers.
-  ObjectNotifier* _finalizer_notifier = null;
+  // A Toit finalizer is on one of these lists.
+  FinalizerNodeFifo runnable_finalizers_;  // Contains finalizers that must be executed.
+  FinalizerNodeFifo registered_callback_finalizers_;  // Toit finalizers and weak maps.
 
-  int _gc_count = 0;
-  Object** _global_variables = null;
+  // A VM finalizer is on this list.
+  FinalizerNodeFifo registered_vm_finalizers_;
 
-  HeapRootList _external_roots;
+  int gc_count_ = 0;
+  int full_gc_count_ = 0;
+  int full_compacting_gc_count_ = 0;
+  Object** global_variables_ = null;
 
-  // Calculate the memory limit for scavenge based on the number of live blocks
-  // and the externally allocated memory.
-  word _calculate_limit();
+  HeapRootList external_roots_;
+
+  // We can iterate all processes and their chunks in order
+  // to produce a memory report, but we can't do that in the
+  // middle of a GC that frees and allocates chunks, so this
+  // per-heap mutex protects against that.
+  Mutex* mutex_;
 
   friend class ObjectNotifier;
-};
-
-class NoGC {
- public:
-  explicit NoGC(ObjectHeap* heap) : _heap(heap) {
-    heap->enter_no_gc();
-  }
-  ~NoGC() {
-    _heap->leave_no_gc();
-  }
-
- private:
-  ObjectHeap* _heap;
+  friend class Process;
 };
 
 } // namespace toit

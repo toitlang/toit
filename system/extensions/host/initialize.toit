@@ -14,9 +14,14 @@
 // directory of this repository.
 
 import .network
+
 import ...containers
 import ...initialize
+import ...storage
+import ...flash.registry
 
-initialize_host -> ContainerManager:
-  network := NetworkServiceDefinition
-  return initialize_system [network]
+initialize-host -> ContainerManager:
+  registry ::= FlashRegistry.scan
+  network ::= NetworkServiceProvider
+  storage ::= StorageServiceProvider registry
+  return initialize-system registry [network, storage]

@@ -41,10 +41,6 @@ int OS::num_cores() {
 }
 
 
-void OS::free_block(Block* block) {
-  free_pages(void_cast(block), TOIT_PAGE_SIZE);
-}
-
 void OS::free_block(ProgramBlock* block) {
   free_pages(void_cast(block), TOIT_PAGE_SIZE);
 }
@@ -96,19 +92,8 @@ void OS::unuse_virtual_memory(void* addr, uword sz) {
   }
 }
 
-Block* OS::allocate_block() {
-  void* result = allocate_pages(TOIT_PAGE_SIZE);
-  if (!result) return null;
-  return new (result) Block();
-}
-
 void OS::set_writable(ProgramBlock* block, bool value) {
   mprotect(void_cast(block), TOIT_PAGE_SIZE, PROT_READ | (value ? PROT_WRITE : 0));
-}
-
-void OS::tear_down() {
-  free(_global_mutex);
-  free(_scheduler_mutex);
 }
 
 const char* OS::get_platform() {
@@ -116,7 +101,7 @@ const char* OS::get_platform() {
 }
 
 int OS::read_entire_file(char* name, uint8** buffer) {
-  FILE *file;
+  FILE* file;
   int length;
   file = fopen(name, "rb");
   if (!file) return -1;
@@ -137,9 +122,8 @@ int OS::read_entire_file(char* name, uint8** buffer) {
   return length;
 }
 
-void OS::set_heap_tag(word tag) { }
+void OS::set_heap_tag(word tag) {}
 word OS::get_heap_tag() { return 0; }
-void OS::heap_summary_report(int max_pages, const char* marker) { }
 
 }
 

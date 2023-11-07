@@ -34,11 +34,16 @@ class CompletionHandler : public LspSelectionHandler {
  public:
   CompletionHandler(Symbol prefix, const std::string& package_id, SourceManager* source_manager, LspProtocol* protocol)
       : LspSelectionHandler(protocol)
-      , _prefix(prefix)
-      , _package_id(package_id)
-      , _source_manager(source_manager) {}
+      , prefix_(prefix)
+      , package_id_(package_id)
+      , source_manager_(source_manager) {}
 
-  void class_or_interface(ast::Node* node, IterableScope* scope, ir::Class* holder, ir::Node* resolved, bool needs_interface);
+  void class_interface_or_mixin(ast::Node* node,
+                                IterableScope* scope,
+                                ir::Class* holder,
+                                ir::Node* resolved,
+                                bool needs_interface,
+                                bool needs_mixin);
   void type(ast::Node* node, IterableScope* scope, ResolutionEntry resolved, bool allow_none);
   void call_virtual(ir::CallVirtual* node, ir::Type type, List<ir::Class*> classes);
   void call_prefixed(ast::Dot* node,
@@ -108,9 +113,9 @@ class CompletionHandler : public LspSelectionHandler {
                       CompletionKind kind_override = CompletionKind::NONE);
   void complete(const std::string& name, CompletionKind kind);
 
-  Symbol _prefix;
-  std::string _package_id;
-  SourceManager* _source_manager;
+  Symbol prefix_;
+  std::string package_id_;
+  SourceManager* source_manager_;
   UnorderedSet<std::string> emitted;
 };
 

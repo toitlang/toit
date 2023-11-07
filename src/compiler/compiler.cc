@@ -44,9 +44,11 @@
 #include "lsp/multiplex_stdout.h"
 #include "lock.h"
 #include "map.h"
+#include "mixin.h"
 #include "monitor.h"
 #include "optimizations/optimizations.h"
 #include "parser.h"
+#include "propagation/type_database.h"
 #include "resolver.h"
 #include "../snapshot_bundle.h"
 #include "stubs.h"
@@ -71,8 +73,6 @@ const int ENTRY_UNIT_INDEX = 0;
 const int CORE_UNIT_INDEX = 1;
 
 struct PipelineConfiguration {
-  char** snapshot_args;
-
   const char* out_path;
   const char* dep_file;
   Compiler::DepFormat dep_format;
@@ -90,6 +90,8 @@ struct PipelineConfiguration {
   bool werror;
   bool parse_only;
   bool is_for_analysis;
+  /// Optimization level.
+  int optimization_level;
 };
 
 class Pipeline {
@@ -120,9 +122,9 @@ class Pipeline {
   };
 
   explicit Pipeline(const PipelineConfiguration& configuration)
-      : _configuration(configuration) { }
+      : configuration_(configuration) {}
 
-  Result run(List<const char*> source_paths);
+  Result run(List<const char*> source_paths, bool propagate);
 
  protected:
   virtual Source* _load_file(const char* path, const PackageLock& package_lock);
@@ -135,42 +137,41 @@ class Pipeline {
 
   virtual void lsp_selection_import_path(const char* path,
                                          const char* segment,
-                                         const char* resolved) { }
+                                         const char* resolved) {}
   virtual void lsp_complete_import_first_segment(ast::Identifier* segment,
                                                  const Package& current_package,
-                                                 const PackageLock& package_lock) { }
+                                                 const PackageLock& package_lock) {}
 
   virtual List<const char*> adjust_source_paths(List<const char*> source_paths);
   virtual PackageLock load_package_lock(List<const char*> source_paths);
 
-  SourceManager* source_manager() const { return _configuration.source_manager; }
-  Diagnostics* diagnostics() const { return _configuration.diagnostics; }
-  SymbolCanonicalizer* symbol_canonicalizer() { return &_symbols; }
-  Filesystem* filesystem() const { return _configuration.filesystem; }
-  Lsp* lsp() { return _configuration.lsp; }
+  SourceManager* source_manager() const { return configuration_.source_manager; }
+  Diagnostics* diagnostics() const { return configuration_.diagnostics; }
+  SymbolCanonicalizer* symbol_canonicalizer() { return &symbols_; }
+  Filesystem* filesystem() const { return configuration_.filesystem; }
+  Lsp* lsp() { return configuration_.lsp; }
   // The toitdoc registry is filled during the resolution stage.
-  ToitdocRegistry* toitdocs() { return &_toitdoc_registry; }
+  ToitdocRegistry* toitdocs() { return &toitdoc_registry_; }
 
 
  private:
-  PipelineConfiguration _configuration;
-  SymbolCanonicalizer _symbols;
-  ToitdocRegistry _toitdoc_registry;
+  PipelineConfiguration configuration_;
+  SymbolCanonicalizer symbols_;
+  ToitdocRegistry toitdoc_registry_;
 
   ast::Unit* _parse_source(Source* source);
 
-  void _report_failed_import(ast::Import* import,
-                             ast::Unit* unit,
-                             const PackageLock& package_lock);
   Source* _load_import(ast::Unit* unit,
                        ast::Import* import,
                        const PackageLock& package_lock);
   std::vector<ast::Unit*> _parse_units(List<const char*> source_paths,
                                        const PackageLock& package_lock);
   ir::Program* resolve(const std::vector<ast::Unit*>& units,
-                       int entry_unit_index, int core_unit_index);
-  void check_types_and_deprecations(ir::Program* program);
-  void set_toitdocs(const ToitdocRegistry& registry) { _toitdoc_registry = registry; }
+                       int entry_unit_index,
+                       int core_unit_index,
+                       bool quiet = false);
+  void check_types_and_deprecations(ir::Program* program, bool quiet = false);
+  void set_toitdocs(const ToitdocRegistry& registry) { toitdoc_registry_ = registry; }
 };
 
 class DebugCompilationPipeline : public Pipeline {
@@ -215,10 +216,9 @@ class LocationLanguageServerPipeline : public LanguageServerPipeline {
                                  int column_number, // 1-based
                                  const PipelineConfiguration& configuration)
       : LanguageServerPipeline(configuration)
-      , _lsp_selection_path(path)
-      , _line_number(line_number)
-      , _column_number(column_number) {
-  }
+      , lsp_selection_path_(path)
+      , line_number_(line_number)
+      , column_number_(column_number) {}
 
  protected:
   ast::Unit* parse(Source* source);
@@ -227,9 +227,9 @@ class LocationLanguageServerPipeline : public LanguageServerPipeline {
   /// at the LSP-selection point.
   virtual bool is_lsp_selection_identifier() = 0;
 
-  const char* _lsp_selection_path;
-  int _line_number;
-  int _column_number;
+  const char* lsp_selection_path_;
+  int line_number_;
+  int column_number_;
 };
 
 class CompletionPipeline : public LocationLanguageServerPipeline {
@@ -253,8 +253,8 @@ class CompletionPipeline : public LocationLanguageServerPipeline {
   bool is_lsp_selection_identifier() { return true; }
 
  private:
-  Symbol _completion_prefix = Symbol::invalid();
-  std::string _package_id = Package::INVALID_PACKAGE_ID;
+  Symbol completion_prefix_ = Symbol::invalid();
+  std::string package_id_ = Package::INVALID_PACKAGE_ID;
 };
 
 class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
@@ -264,8 +264,7 @@ class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
                          int column_number, // 1-based
                          const PipelineConfiguration& configuration)
       : LocationLanguageServerPipeline(completion_path, line_number, column_number,
-                                       configuration) {
-  }
+                                       configuration) {}
 
  protected:
   void setup_lsp_selection_handler();
@@ -279,35 +278,35 @@ class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
 
 class LineReader {
  public:
-  explicit LineReader(FILE* file) : _file(file), _line(null), _line_size(0) { }
+  explicit LineReader(FILE* file) : file_(file), line_(null), line_size_(0) {}
   ~LineReader() {
-    free(_line);
+    free(line_);
   }
 
  /// Returns the next line without terminating `\n`.
  ///
  /// The returned string has been allocated with malloc.
  char* next(const char* kind, bool must_be_non_empty = true) {
-  auto characters_read = getline(&_line, &_line_size, _file);
+  auto characters_read = getline(&line_, &line_size_, file_);
   if (characters_read <= (must_be_non_empty ? 1 : 0)) {
     FATAL("LANGUAGE SERVER ERROR - Expected %s", kind);
   }
-  _line[characters_read - 1] = '\0';  // Remove trailing newline.
-  return strdup(_line);
+  line_[characters_read - 1] = '\0';  // Remove trailing newline.
+  return strdup(line_);
  }
 
  int next_int(const char* kind) {
-  auto characters_read = getline(&_line, &_line_size, _file);
+  auto characters_read = getline(&line_, &line_size_, file_);
   if (characters_read <= 1) {
     FATAL("LANGUAGE SERVER ERROR - Expected %s", kind);
   }
-  return atoi(_line);
+  return atoi(line_);
  }
 
  private:
-  FILE* _file;
-  char* _line;
-  size_t _line_size;
+  FILE* file_;
+  char* line_;
+  size_t line_size_;
 };
 
 Compiler::Compiler() {
@@ -368,7 +367,6 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
   const char* mode = reader.next("mode");
   SourceManager source_manager(fs);
   PipelineConfiguration configuration = {
-    .snapshot_args = null,
     .out_path = null,
     .dep_file = null,
     .dep_format = DepFormat::none,
@@ -381,6 +379,7 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = true,
+    .optimization_level = compiler_config.optimization_level,
   };
 
   if (strcmp("ANALYZE", mode) == 0) {
@@ -451,7 +450,7 @@ void Compiler::lsp_complete(const char* source_path,
                             const PipelineConfiguration& configuration) {
   ASSERT(configuration.diagnostics != null);
   CompletionPipeline pipeline(source_path, line_number, column_number, configuration);
-  pipeline.run(ListBuilder<const char*>::build(source_path));
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
 void Compiler::lsp_goto_definition(const char* source_path,
@@ -461,14 +460,14 @@ void Compiler::lsp_goto_definition(const char* source_path,
   ASSERT(configuration.diagnostics != null);
   GotoDefinitionPipeline pipeline(source_path, line_number, column_number, configuration);
 
-  pipeline.run(ListBuilder<const char*>::build(source_path));
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
 void Compiler::lsp_analyze(List<const char*> source_paths,
                            const PipelineConfiguration& configuration) {
   ASSERT(configuration.diagnostics != null);
   LanguageServerPipeline pipeline(configuration);
-  pipeline.run(source_paths);
+  pipeline.run(source_paths, false);
 }
 
 void Compiler::lsp_snapshot(const char* source_path,
@@ -488,20 +487,37 @@ void Compiler::lsp_semantic_tokens(const char* source_path,
   configuration.lsp->set_should_emit_semantic_tokens(true);
   ASSERT(configuration.diagnostics != null);
   LanguageServerPipeline pipeline(configuration);
-  pipeline.run(ListBuilder<const char*>::build(source_path));
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
 static bool _sorted_by_inheritance(List<ir::Class*> classes) {
+  UnorderedSet<ir::Class*> seen_mixins;
   std::vector<ir::Class*> super_hierarchy;
   ir::Class* current_super = null;
   ir::Class* last = null;
   for (auto klass : classes) {
+    if (klass->is_mixin()) {
+      // For mixins we don't require subclasses to be in depth-first order.
+      // We just require that all its parents have already been seen.
+      if (klass->super() != null && !seen_mixins.contains(klass->super())) return false;
+      for (auto mixin : klass->mixins()) {
+        if (!seen_mixins.contains(mixin)) return false;
+      }
+      seen_mixins.insert(klass);
+      continue;
+    }
+
+    // Check that the hierarchy is depth-first.
+    // Directly after a class must be its first subclass.
     if (klass->super() == current_super) {
       // Do nothing.
     } else if (klass->super() == last) {
+      // The 'last' has subclasses.
       super_hierarchy.push_back(current_super);
       current_super = last;
     } else {
+      // A subclass is done. Walk up the chain to find again the super of this
+      // class.
       while (!super_hierarchy.empty() && current_super != klass->super()) {
         current_super = super_hierarchy.back();
         super_hierarchy.pop_back();
@@ -536,24 +552,28 @@ void Compiler::analyze(List<const char*> source_paths,
   bool single_source = source_paths.length() == 1;
   FilesystemHybrid fs(single_source ? source_paths[0] : null);
   SourceManager source_manager(&fs);
-  AnalysisDiagnostics diagnostics(&source_manager, compiler_config.show_package_warnings);
+  AnalysisDiagnostics analysis_diagnostics(&source_manager, compiler_config.show_package_warnings);
+  NullDiagnostics null_diagnostics(&source_manager);
+  Diagnostics* diagnostics = Flags::migrate_dash_ids
+      ? static_cast<Diagnostics*>(&null_diagnostics)
+      : static_cast<Diagnostics*>(&analysis_diagnostics);
   PipelineConfiguration configuration = {
-    .snapshot_args = null,
     .out_path = null,
     .dep_file = compiler_config.dep_file,
     .dep_format = compiler_config.dep_format,
     .project_root = compiler_config.project_root,
     .filesystem = &fs,
     .source_manager = &source_manager,
-    .diagnostics = &diagnostics,
+    .diagnostics = diagnostics,
     .lsp = null,
     .force = compiler_config.force,
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = true,
+    .optimization_level = compiler_config.optimization_level,
   };
   Pipeline pipeline(configuration);
-  pipeline.run(source_paths);
+  pipeline.run(source_paths, false);
 }
 
 #ifdef TOIT_POSIX
@@ -640,7 +660,6 @@ static const uint8* wrap_direct_script_expression(const char* direct_script, Dia
 
 SnapshotBundle Compiler::compile(const char* source_path,
                                  const char* direct_script,
-                                 char** snapshot_args,
                                  const char* out_path,
                                  const Compiler::Configuration& compiler_config) {
   // We accept '/' paths on Windows as well.
@@ -665,7 +684,6 @@ SnapshotBundle Compiler::compile(const char* source_path,
   ASSERT(source_path != null);
 
   PipelineConfiguration configuration = {
-    .snapshot_args = snapshot_args,
     .out_path = out_path,
     .dep_file = compiler_config.dep_file,
     .dep_format = compiler_config.dep_format,
@@ -678,6 +696,7 @@ SnapshotBundle Compiler::compile(const char* source_path,
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = false,
+    .optimization_level = compiler_config.optimization_level,
   };
 
   return compile(source_path, configuration);
@@ -690,10 +709,10 @@ SnapshotBundle Compiler::compile(const char* source_path,
   NullDiagnostics null_diagnostics(configuration.source_manager);
   PipelineConfiguration debug_configuration = main_configuration;
   debug_configuration.diagnostics = &null_diagnostics;
-  debug_configuration.snapshot_args = null;
   // TODO(florian): the dep-file needs to keep track of both compilations.
   debug_configuration.dep_file = null;
   debug_configuration.dep_format = DepFormat::none;
+  debug_configuration.werror = false;
 
   auto source_paths = ListBuilder<const char*>::build(source_path);
 
@@ -706,10 +725,10 @@ SnapshotBundle Compiler::compile(const char* source_path,
       exit(1);
     }
     Pipeline main_pipeline(main_configuration);
-    pipeline_main_result = main_pipeline.run(source_paths);
+    pipeline_main_result = main_pipeline.run(source_paths, Flags::propagate);
     if (pipeline_main_result.is_valid()) {
       DebugCompilationPipeline debug_pipeline(debug_configuration);
-      pipeline_debug_result = debug_pipeline.run(source_paths);
+      pipeline_debug_result = debug_pipeline.run(source_paths, false);
     }
   } else {
 #ifdef TOIT_POSIX
@@ -727,11 +746,11 @@ SnapshotBundle Compiler::compile(const char* source_path,
       close(read_fd);
 
       Pipeline pipeline(main_configuration);
-      auto pipeline_result = pipeline.run(source_paths);
+      auto pipeline_result = pipeline.run(source_paths, Flags::propagate);
       send_pipeline_result(write_fd, pipeline_result);
       if (pipeline_result.is_valid()) {
         DebugCompilationPipeline debug_pipeline(debug_configuration);
-        pipeline_result = debug_pipeline.run(source_paths);
+        pipeline_result = debug_pipeline.run(source_paths, false);
         send_pipeline_result(write_fd, pipeline_result);
       }
       close(write_fd);
@@ -824,9 +843,13 @@ void Pipeline::setup_lsp_selection_handler() {
 }
 
 ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
-                               int entry_unit_index, int core_unit_index) {
+                               int entry_unit_index,
+                               int core_unit_index,
+                               bool quiet) {
   // Resolve all units.
-  Resolver resolver(_configuration.lsp, source_manager(), diagnostics());
+  NullDiagnostics null_diagnostics(this->diagnostics());
+  Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
+  Resolver resolver(configuration_.lsp, source_manager(), diagnostics);
   auto result = resolver.resolve(units,
                                  entry_unit_index,
                                  core_unit_index);
@@ -898,8 +921,10 @@ void DebugCompilationPipeline::patch(ir::Program* program) {
   dispatch_method->replace_body(_new ir::Sequence(dispatch_statements.build(), range));
 }
 
-void Pipeline::check_types_and_deprecations(ir::Program* program) {
-  ::toit::compiler::check_types_and_deprecations(program, _configuration.lsp, toitdocs(), diagnostics());
+void Pipeline::check_types_and_deprecations(ir::Program* program, bool quiet) {
+  NullDiagnostics null_diagnostics(this->diagnostics());
+  Diagnostics* diagnostics = quiet ? &null_diagnostics : this->diagnostics();
+  ::toit::compiler::check_types_and_deprecations(program, configuration_.lsp, toitdocs(), diagnostics);
 }
 
 List<const char*> Pipeline::adjust_source_paths(List<const char*> source_paths) {
@@ -926,8 +951,8 @@ List<const char*> DebugCompilationPipeline::adjust_source_paths(List<const char*
 PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
   auto entry_path = source_paths.first();
   std::string lock_file;
-  if (_configuration.project_root != null) {
-    lock_file = find_lock_file_at(_configuration.project_root, filesystem());
+  if (configuration_.project_root != null) {
+    lock_file = find_lock_file_at(configuration_.project_root, filesystem());
   } else {
     lock_file = find_lock_file(entry_path, filesystem());
   }
@@ -953,10 +978,10 @@ PackageLock DebugCompilationPipeline::load_package_lock(const List<const char*> 
 }
 
 ast::Unit* LocationLanguageServerPipeline::parse(Source* source) {
-  if (strcmp(source->absolute_path(), _lsp_selection_path) != 0) return Pipeline::parse(source);
+  if (strcmp(source->absolute_path(), lsp_selection_path_) != 0) return Pipeline::parse(source);
 
   const uint8* text = source->text();
-  int offset = compute_source_offset(text, _line_number, _column_number);
+  int offset = compute_source_offset(text, line_number_, column_number_);
 
   // We only provide completions after a `-` if we are after a " --".
   if (offset >= 1 && text[offset - 1] == '-') {
@@ -977,42 +1002,47 @@ ast::Unit* LocationLanguageServerPipeline::parse(Source* source) {
 
 Source* CompletionPipeline::_load_file(const char* path, const PackageLock& package_lock) {
   auto result = LocationLanguageServerPipeline::_load_file(path, package_lock);
-  if (strcmp(path, _lsp_selection_path) != 0) return result;
+  if (strcmp(path, lsp_selection_path_) != 0) return result;
 
   // Now that we have loaded the file that contains the LSP selection, extract
   // the prefix (if there is any), and the package it is from.
 
-  _package_id = package_lock.package_for(path, filesystem()).id();
+  package_id_ = package_lock.package_for(path, filesystem()).id();
 
   const uint8* text = result->text();
-  int offset = compute_source_offset(text, _line_number, _column_number);
+  int offset = compute_source_offset(text, line_number_, column_number_);
   int start_offset = offset;
-  while (start_offset > 0 && is_identifier_part(text[start_offset - 1])) {
+  IdentifierValidator validator;
+  validator.disable_start_check();
+  while (start_offset > 0 &&
+         validator.check_next_char(text[start_offset - 1], [&]() { return text[start_offset]; })) {
     start_offset--;
   }
 
-  if (start_offset == offset || !is_identifier_start(text[start_offset])) {
-    _completion_prefix = Symbols::empty_string;
+  if (start_offset == offset || !IdentifierValidator::is_identifier_start(text[start_offset])) {
+    completion_prefix_ = Symbols::empty_string;
   } else {
-    auto canonicalized = symbol_canonicalizer()->canonicalize_identifier(&text[start_offset], &text[offset]);
+    int len = offset - start_offset;
+    auto dash_canonicalized = IdentifierValidator::canonicalize(&text[start_offset], len);
+    auto canonicalized = symbol_canonicalizer()->canonicalize_identifier(dash_canonicalized, &dash_canonicalized[len]);
     if (canonicalized.kind == Token::Kind::IDENTIFIER) {
-      _completion_prefix = canonicalized.symbol;
+      completion_prefix_ = canonicalized.symbol;
     } else {
-      _completion_prefix = Token::symbol(canonicalized.kind);
+      completion_prefix_ = Token::symbol(canonicalized.kind);
     }
   }
   return result;
 }
 
 void CompletionPipeline::setup_lsp_selection_handler() {
-  lsp()->setup_completion_handler(_completion_prefix, _package_id, source_manager());
+  lsp()->setup_completion_handler(completion_prefix_, package_id_, source_manager());
 }
 
 
 void CompletionPipeline::lsp_complete_import_first_segment(ast::Identifier* segment,
                                                            const Package& current_package,
                                                            const PackageLock& package_lock) {
-  lsp()->complete_first_segment(_completion_prefix,
+  lsp()->complete_first_segment(completion_prefix_,
                                 segment,
                                 current_package,
                                 package_lock);
@@ -1021,7 +1051,7 @@ void CompletionPipeline::lsp_complete_import_first_segment(ast::Identifier* segm
 void CompletionPipeline::lsp_selection_import_path(const char* path,
                                                    const char* segment,
                                                    const char* resolved) {
-  lsp()->complete_import_path(_completion_prefix, path, filesystem());
+  lsp()->complete_import_path(completion_prefix_, path, filesystem());
 }
 
 void GotoDefinitionPipeline::setup_lsp_selection_handler() {
@@ -1058,120 +1088,149 @@ static const uint8* wrap_direct_script_expression(const char* direct_script, Dia
   return text;
 }
 
-// Provides a better error message for failed imports.
-void Pipeline::_report_failed_import(ast::Import* import,
-                                     ast::Unit* unit,
-                                     const PackageLock& package_lock) {
-  auto segments = import->segments();
-  // Rebuild the path, without replacing the "." with "/" for a good
-  // error message.
-  std::string error_path;
-  if (import->is_relative()) {
-    error_path += '.';
-    for (int i = 0; i < import->dot_outs(); i++) error_path += '.';
-  }
-  for (int i = 0; i < segments.length(); i++) {
-    if (i != 0) error_path += '.';
-    error_path += segments[i]->data().c_str();
-  }
+namespace {
+enum class AddSegmentResult {
+  OK,
+  NOT_A_DIRECTORY,
+  NOT_A_REGULAR_FILE,
+  NOT_FOUND,
+};
+}  // Anonymous namespace.
 
-  // We are duplicating a lot of the work we did in the import loader.
-  // However, this time we look at each segment separately to figure out at which
-  // point things go wrong.
-  auto fs = filesystem();
-  auto unit_package = package_lock.package_for(unit->absolute_path(), filesystem());
-  // Package used to create a relative path for the path in the note.
-  Package build_error_package = Package::invalid();
-  auto build_error_path = [&](const std::string& path) {
-    return build_error_package.build_error_path(filesystem(), path);
-  };
-
-  PathBuilder path_builder(filesystem());
-  bool have_note = false;
-  std::function<void ()> note_fun;
-
-  int segment_start = 0;
-  if (import->is_relative()) {
-    build_error_package = unit_package;
-    path_builder.add(unit->absolute_path());
-    path_builder.join("..");  // Dot the unit filename away.
-    for (int i = 0; i < import->dot_outs(); i++) {
-      path_builder.join("..");
+/// Adds the given segment to the path_builder.
+/// Modifies the builder.
+/// If 'should_check_is_toit_file' is true, also adds the '.toit' extension.
+/// If 'should_check_is_toit_file' is true, checks that the result is a regular file.
+/// If 'should_check_is_toit_file' is false, checks that the result is a directory.
+static AddSegmentResult add_segment(PathBuilder* path_builder,
+                                    Symbol segment,
+                                    Filesystem* fs,
+                                    bool should_check_is_toit_file) {
+  auto check_path = [&]() {
+    if (should_check_is_toit_file) {
+      path_builder->add(".toit");
     }
-    path_builder.canonicalize();
-  } else {
-    auto module_name = segments[0]->data();
-    auto import_package = package_lock.resolve_prefix(unit_package, std::string(module_name.c_str()));
-    ASSERT(import_package.is_valid() && import_package.error_state() == Package::OK);
-    if (!import_package.is_sdk_prefix()) segment_start = 1;
-    // The lock-file reader already checked that all packages exist.
-    ASSERT(fs->is_directory(import_package.absolute_path().c_str()));
-    build_error_package = import_package;
-    path_builder.add(import_package.absolute_path());
-  }
-  for (int i = segment_start; i < segments.length(); i++) {
-    path_builder.join(segments[i]->data().c_str());
-    if (i < segments.length() - 1) {
-      // Check if that path fails.
-      std::string built = path_builder.buffer();
-      if (!fs->exists(built.c_str()) || !fs->is_directory(built.c_str())) {
-        auto note_node = segments[i];
-        const char* note_message = fs->exists(built.c_str())
-            ? "Not a folder: '%s'"
-            : "Folder does not exist: '%s'";
-        auto note_path = build_error_path(built);
-        note_fun = [=]() {
-          diagnostics()->report_note(note_node,
-                                     note_message,
-                                     note_path.c_str());
-        };
-        have_note = true;
-        break;
+    std::string path = path_builder->buffer();
+    if (should_check_is_toit_file) {
+      if (fs->is_regular_file(path.c_str())) {
+        return AddSegmentResult::OK;
+      }
+      if (fs->exists(path.c_str())) {
+        return AddSegmentResult::NOT_A_REGULAR_FILE;
+      }
+    } else {
+      if (fs->is_directory(path.c_str())) {
+        return AddSegmentResult::OK;
+      }
+      if (fs->exists(path.c_str())) {
+        return AddSegmentResult::NOT_A_DIRECTORY;
       }
     }
-  }
-  int length_after_segments = path_builder.length();
-  if (!have_note) {
-    auto note_node = segments.last();
-    // We need to append '.toit', or duplicate the last segment.
-    path_builder.add(".toit");
-    auto built = path_builder.buffer();
-    // We would have reported an error earlier if the path existed, but wasn't valid.
-    ASSERT(!fs->exists(built.c_str()));
-    auto toit_path = path_builder.buffer();
-    path_builder.reset_to(length_after_segments);
-    auto potential_dir = path_builder.buffer();
-    path_builder.join(segments.last()->data().c_str());
-    path_builder.add(".toit");
-    auto toit_in_dir = path_builder.buffer();
+    return AddSegmentResult::NOT_FOUND;
+  };
 
-    if (fs->exists(potential_dir.c_str()) && fs->is_directory(potential_dir.c_str())) {
-      auto note_path = build_error_path(potential_dir);
-      // This file must not exist, as we would have reported an error
-      // earlier, otherwise.
-      ASSERT(!fs->exists(toit_in_dir.c_str()) || !fs->is_regular_file(toit_in_dir.c_str()));
-      auto toit_file = std::string(segments.last()->data().c_str()) + ".toit";
-      note_fun = [=]() {
-        diagnostics()->report_note(note_node,
-                                    "Folder '%s' exists, but is missing a '%s' file",
-                                    note_path.c_str(),
-                                    toit_file.c_str());
-      };
+  // We need to handle cases where the segment contains '-' or '_'.
+  // So remember the length of the path before we add the segment.
+  int path_length_before_segment = path_builder->length();
+
+  const char* segment_c = segment.c_str();
+
+  // First add the segment verbatim. In most cases that will just work.
+  path_builder->join(segment_c);
+  auto result = check_path();
+  if (result != AddSegmentResult::NOT_FOUND) return result;
+
+  const char* old_style = IdentifierValidator::deprecated_underscore_identifier(segment_c, strlen(segment_c));
+  if (old_style == segment_c) {
+    // Didn't contain any '-'.
+    return AddSegmentResult::NOT_FOUND;
+  }
+  path_builder->reset_to(path_length_before_segment);
+  path_builder->join(old_style);
+  return check_path();
+}
+
+// Provides a better error message for failed imports.
+static void _report_failed_import(ast::Import* import,
+                                  const Package import_package,
+                                  ast::Node* note_node,
+                                  AddSegmentResult error_result,
+                                  const char* failed_path,
+                                  const char* alternative_path,
+                                  bool found_alternative_directory,
+                                  Filesystem* fs,
+                                  Diagnostics* diagnostics) {
+  auto segments = import->segments();
+  // Build the error-segments. We are rebuilding the original import line.
+  // Simply join all segments with "." and make sure the leading
+  // dots are correct.
+  std::string error_segments;
+  if (import->is_relative()) {
+    error_segments += '.';
+    for (int i = 0; i < import->dot_outs(); i++) error_segments += '.';
+  }
+  for (int i = 0; i < segments.length(); i++) {
+    if (i != 0) error_segments += '.';
+    error_segments += segments[i]->data().c_str();
+  }
+
+  auto build_error_path = [&](const char* path) {
+    return import_package.build_error_path(fs, path);
+  };
+
+  diagnostics->start_group();
+  diagnostics->report_error(import, "Failed to import '%s'", error_segments.c_str());
+  if (found_alternative_directory) {
+    // We tried `foo.toit` and `foo/foo.toit`, and found `foo` but `foo/foo.toit`
+    // was not found.
+    // This is common enough that we can provide a better error message.
+    auto note_path = build_error_path(alternative_path);
+    if (error_result == AddSegmentResult::NOT_FOUND) {
+      diagnostics->report_note(note_node,
+                                "Folder '%s' exists, but is missing a '%s.toit' file",
+                                note_path.c_str(),
+                                segments.last()->data().c_str());
     } else {
-      auto note_path1 = build_error_path(toit_path);
-      auto note_path2 = build_error_path(toit_in_dir);
-      note_fun = [=]() {
-        diagnostics()->report_note(note_node,
-                                    "Missing library file. Tried '%s' and '%s'",
-                                    note_path1.c_str(),
-                                    note_path2.c_str());
-      };
+      ASSERT(error_result == AddSegmentResult::NOT_A_REGULAR_FILE);
+      diagnostics->report_note(note_node,
+                                "Cannot read '%s.toit': not a regular file",
+                                note_path.c_str(),
+                                segments.last()->data().c_str());
+    }
+  } else if (failed_path != null && alternative_path != null) {
+    // We tried `foo.toit` and `foo/foo.toit`, and found neither.
+    auto note_path1 = build_error_path(failed_path);
+    auto note_path2 = build_error_path(alternative_path);
+    diagnostics->report_note(note_node,
+                             "Missing library file. Tried '%s' and '%s%c%s.toit'",
+                             note_path1.c_str(),
+                             note_path2.c_str(),
+                             fs->path_separator(),
+                             segments.last()->data().c_str());
+  } else if (alternative_path != null) {
+    // Special case where we only tried `foo/foo.toit`. In fact, we tried
+    // `src/foo.toit` as the first segment was used for the package name.
+    auto note_path = build_error_path(alternative_path);
+    diagnostics->report_note(note_node,
+                             "Missing library file. Tried '%s'",
+                             note_path.c_str());
+  } else {
+    auto note_path = build_error_path(failed_path);
+    switch (error_result) {
+      case AddSegmentResult::NOT_A_REGULAR_FILE:
+        diagnostics->report_note(note_node, "Cannot read '%s': not a regular file", note_path.c_str());
+        break;
+      case AddSegmentResult::NOT_A_DIRECTORY:
+        diagnostics->report_note(note_node, "Cannot enter '%s': not a folder", note_path.c_str());
+        break;
+      case AddSegmentResult::NOT_FOUND:
+        diagnostics->report_note(note_node, "Cannot enter '%s': folder does not exist", note_path.c_str());
+        break;
+      default:
+        UNREACHABLE();
     }
   }
-  diagnostics()->start_group();
-  diagnostics()->report_error(import, "Failed to find import '%s'", error_path.c_str());
-  note_fun();
-  diagnostics()->end_group();
+  diagnostics->end_group();
 }
 
 /// Extracts the path for the [import] that is contained in [unit].
@@ -1208,7 +1267,11 @@ Source* Pipeline::_load_import(ast::Unit* unit,
   PathBuilder import_path_builder(filesystem());
   int relative_segment_start = 0;
   bool dotted_out = false;
+  Package import_package;
+
   if (is_relative) {
+    // The file is relative to the unit_package.
+    import_package = unit_package;
     // Relative paths must stay in the same package.
     expected_import_package_id = unit_package_id;
     import_path_builder.join(unit->absolute_path());
@@ -1242,9 +1305,9 @@ Source* Pipeline::_load_import(ast::Unit* unit,
       lsp_path = "",
       lsp_segment = module_segment->data().c_str();
     }
-    auto resolved = package_lock.resolve_prefix(unit_package, prefix);
+    import_package = package_lock.resolve_prefix(unit_package, prefix);
     auto error_range = module_segment->range();
-    switch (resolved.error_state()) {
+    switch (import_package.error_state()) {
       case Package::OK:
         // All good.
         break;
@@ -1270,62 +1333,125 @@ Source* Pipeline::_load_import(ast::Unit* unit,
       case Package::NOT_FOUND:
         diagnostics()->report_error(error_range,
                                     "Package '%s' for prefix '%s' not found",
-                                    resolved.id().c_str(),
+                                    import_package.id().c_str(),
                                     prefix.c_str());
         return null;
     }
-    expected_import_package_id = resolved.id();
-    import_path_builder.join(resolved.absolute_path());
-    relative_segment_start = resolved.is_sdk_prefix() ? 0 : 1;
+    expected_import_package_id = import_package.id();
+    import_path_builder.join(import_package.absolute_path());
+    relative_segment_start = import_package.is_sdk_prefix() ? 0 : 1;
     ASSERT(import_path_builder[import_path_builder.length() - 1] != '/');
   }
-  for (int i = relative_segment_start; i < segments.length(); i++) {
-    auto segment = segments[i];
-    if (segment->is_LspSelection()) {
-      lsp_path = import_path_builder.strdup();
-      lsp_segment = segment->data().c_str();
-    }
-    import_path_builder.join(segment->data().c_str());
-  }
 
-  int length_after_segments = import_path_builder.length();
   Source* result = null;
   auto result_package = Package::invalid();
-  bool already_reported_error = false;
-  for (int j = 0; j < 2; j++) {
-    import_path_builder.reset_to(length_after_segments);
-    if (j == 1) {
-      // In the second run we see if the import points to a directory in which
-      // case we duplicate the segment:
-      // `import foo` then looks for `foo/foo.toit`.
-      const char* last_segment = segments[segments.length() - 1]->data().c_str();
-      import_path_builder.join(last_segment);
+
+  if (relative_segment_start == segments.length()) {
+    // Something like `import foo` where `foo` is the name of a package.
+    // We only allow `foo.toit` (inside the package's `src` directory), but
+    // not `foo/foo.toit`.
+    // TODO(florian): the file name should not be based on the import
+    // segment, but on the package name.
+    int length_before_segment = import_path_builder.length();
+    auto result = add_segment(&import_path_builder,
+                              segments[segments.length() - 1]->data(),
+                              filesystem(),
+                              true);  // Must be a toit file.
+    if (result != AddSegmentResult::OK) {
+      // To make it easier to share the error reporting with the code below
+      // we have to remove the segment again.
+      import_path_builder.reset_to(length_before_segment);
+      _report_failed_import(import,
+                            import_package,
+                            segments[segments.length() - 1],
+                            result,
+                            null,  // No default path.
+                            import_path_builder.c_str(),  // We only tried the alternative path.
+                            true, // Did find the alternative directory, since we found a package and its 'src' directory.
+                            filesystem(),
+                            diagnostics());
+      goto segments_done;
     }
-    import_path_builder.add(".toit");
-    // TODO(florian): in order to show `<pkg1>` messages we can't have long package-ids. Currently
-    // they are something like `package-github.com/toitware/my_package`.
+  }
+  for (int i = relative_segment_start; i < segments.length(); i++) {
+    auto segment_id = segments[i];
+    auto segment = segment_id->data();
+    if (segment_id->is_LspSelection()) {
+      lsp_path = import_path_builder.strdup();
+      lsp_segment = segment.c_str();
+    }
+    bool is_last_segment = i == segments.length() - 1;
+    int length_before_new_segment = import_path_builder.length();
+    auto result = add_segment(&import_path_builder,
+                              segment,
+                              filesystem(),
+                              is_last_segment);  // Check whether it's a toit file for the last segment.
+    if (result != AddSegmentResult::OK) {
+      if (!is_last_segment || result != AddSegmentResult::NOT_FOUND) {
+        _report_failed_import(import,
+                              import_package,
+                              segment_id,
+                              result,
+                              import_path_builder.c_str(),
+                              null,  // No alternative path.
+                              false, // Didn't find the alternative directory.
+                              filesystem(),
+                              diagnostics());
+        // Don't return just yet, but give the lsp handler an opportunity to run.
+        goto segments_done;
+      } else {
+        // We didn't find the toit file.
+        // Keep the toit file path for error reporting.
+        const char* error_path = import_path_builder.strdup();
+
+        // Give it another try, this time duplicating the last segment.
+        // For example, for `import foo` we search for `foo.toit` and `foo/foo.toit`.
+        import_path_builder.reset_to(length_before_new_segment);
+        result = add_segment(&import_path_builder,
+                             segment,
+                             filesystem(),
+                             false);  // Now it must be a directory.
+        bool found_alternative_directory = result == AddSegmentResult::OK;
+        int length_after_folder = import_path_builder.length();
+
+        if (result == AddSegmentResult::OK) {
+
+          // We found a directory, so we duplicate the last segment.
+          result = add_segment(&import_path_builder,
+                               segment,
+                               filesystem(),
+                               true);  // Now it must be a toit file.
+        }
+        if (result != AddSegmentResult::OK) {
+          import_path_builder.reset_to(length_after_folder);
+          _report_failed_import(import,
+                                import_package,
+                                segment_id,
+                                result,
+                                error_path,
+                                import_path_builder.c_str(),
+                                found_alternative_directory,
+                                filesystem(),
+                                diagnostics());
+          // Don't return just yet, but give the lsp handler an opportunity to run.
+          goto segments_done;
+        }
+      }
+    }
+  }
+  {
     std::string import_path = import_path_builder.buffer();
     result_package = package_lock.package_for(import_path, filesystem());
     auto load_result = source_manager()->load_file(import_path, result_package);
-    switch (load_result.status) {
-      case SourceManager::LoadResult::OK:
-        result = load_result.source;
-        goto break_loop;
-
-      case SourceManager::LoadResult::NOT_FOUND:
-        // Do nothing.
-        break;
-
-      case SourceManager::LoadResult::NOT_REGULAR_FILE:
-      case SourceManager::LoadResult::FILE_ERROR:
-        load_result.report_error(import->range(), diagnostics());
-        already_reported_error = true;
-        // Don't return just yet, but give the lsp handler an opportunity to run.
-        goto break_loop;
+    if (load_result.status == SourceManager::LoadResult::OK) {
+      result = load_result.source;
+    } else {
+      load_result.report_error(import->range(), diagnostics());
+      // Don't return just yet, but give the lsp handler an opportunity to run.
+      goto segments_done;
     }
-    if (result != null) break;
   }
-  break_loop:
+  segments_done:
 
   if (lsp_path != null) {
     lsp_selection_import_path(lsp_path,
@@ -1333,18 +1459,16 @@ Source* Pipeline::_load_import(ast::Unit* unit,
                               result == null ? null : result->absolute_path());
   }
 
-  if (result == null && already_reported_error) return null;
-
   if (result == null) {
-    _report_failed_import(import, unit, package_lock);
-  } else {
-    ASSERT(result_package.is_ok());
-    if (result_package.id() != expected_import_package_id) {
-      if (!dotted_out) {  // If we dotted out, then we already reported an error.
-        // We ended up in a nested package.
-        // In theory we could allow this, but it feels brittle.
-        diagnostics()->report_error(import, "Import traverses package boundary: '%s'", import_path_builder.c_str());
-      }
+    return null;
+  }
+
+  ASSERT(result_package.is_ok());
+  if (result_package.id() != expected_import_package_id) {
+    if (!dotted_out) {  // If we dotted out, then we already reported an error.
+      // We ended up in a nested package.
+      // In theory we could allow this, but it feels brittle.
+      diagnostics()->report_error(import, "Import traverses package boundary: '%s'", import_path_builder.c_str());
     }
   }
 
@@ -1356,7 +1480,7 @@ Source* Pipeline::_load_file(const char* path, const PackageLock& package_lock) 
   if (filesystem()->is_absolute(path)) {
     builder.join(path);
   } else {
-    builder.join(filesystem()->cwd());
+    builder.join(filesystem()->relative_anchor(path));
     builder.join(path);
   }
   builder.canonicalize();
@@ -1476,18 +1600,6 @@ static void assign_global_ids(List<ir::Global*> globals) {
   }
 }
 
-static void mark_eager_globals(List<ir::Global*> globals) {
-  for (auto global : globals) {
-    auto body = global->body();
-    if (!body->is_Return()) continue;
-    auto value = body->as_Return()->value();
-    if (value->is_Literal()) {
-      ASSERT(!value->is_LiteralUndefined());
-      global->mark_eager();
-    }
-  }
-}
-
 static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
   semver_t constraint_semver;
   ASSERT(constraint[0] == '^');
@@ -1509,8 +1621,173 @@ static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
   };
 }
 
-Pipeline::Result Pipeline::run(List<const char*> source_paths) {
-  auto fs = _configuration.filesystem;
+static void drop_abstract_methods(ir::Program* ir_program) {
+  for (auto klass : ir_program->classes()) {
+    switch (klass->kind()) {
+      case ir::Class::Kind::CLASS:
+      case ir::Class::Kind::MIXIN:
+      case ir::Class::Kind::MONITOR:
+        break;
+      case ir::Class::Kind::INTERFACE:
+        continue;
+    }
+    bool has_abstract_methods = false;
+    for (auto method : klass->methods()) {
+      if (method->is_abstract()) {
+        has_abstract_methods = true;
+        break;
+      }
+    }
+    if (!has_abstract_methods) continue;
+    ListBuilder<ir::MethodInstance*> remaining_methods;
+    for (auto method : klass->methods()) {
+      if (method->is_abstract()) continue;
+      remaining_methods.add(method);
+    }
+    klass->replace_methods(remaining_methods.build());
+  }
+}
+
+toit::Program* construct_program(ir::Program* ir_program,
+                                 SourceMapper* source_mapper,
+                                 TypeOracle* oracle,
+                                 TypeDatabase* propagated_types,
+                                 bool run_optimizations) {
+  source_mapper->register_selectors(ir_program->classes());
+
+  drop_abstract_methods(ir_program);
+  add_lambda_boxes(ir_program);
+  add_monitor_locks(ir_program);
+  add_stub_methods_and_switch_to_plain_shapes(ir_program);
+  add_interface_stub_methods(ir_program);
+
+  apply_mixins(ir_program);
+
+  ASSERT(_sorted_by_inheritance(ir_program->classes()));
+
+  if (run_optimizations) optimize(ir_program, oracle);
+  tree_shake(ir_program);
+
+  // It is important that we seed and finalize the oracle in the same
+  // state, so the IR nodes used to produce the somewhat unoptimized
+  // program that we propagate types through can be matched up to the
+  // corresponding IR nodes for the fully optimized version.
+  if (propagated_types) {
+    oracle->finalize(ir_program, propagated_types);
+    optimize(ir_program, oracle);
+    tree_shake(ir_program);
+  } else {
+    oracle->seed(ir_program);
+  }
+
+  // We assign the field ids very late in case we can inline field-accesses.
+  assign_field_indexes(ir_program->classes());
+  // Similarly, assign the global ids at the end, in case they can be tree
+  // shaken or inlined.
+  assign_global_ids(ir_program->globals());
+
+  Backend backend(source_mapper->manager(), source_mapper);
+  auto program = backend.emit(ir_program);
+  return program;
+}
+
+// Sorts all classes.
+// Changes the given 'classes' list so that:
+// - top is the first class.
+// - all other classes follow top in a depth-first order.
+//   A super class is always directly preceded by its first sub (if there is any).
+//   Any sibling of a sub follows after the first sub's children (and their children...).
+// - After all classes, are all mixins.
+// - Mixins are order in such a way that all dependencies are before their "subs". In
+//   the case of mixins a dependency is either the super, or another mixin that is
+//   referenced in a `with` clause. Here these are available as `m->mixins()`.
+// - Finally, we have all interfaces.
+//   These are, again, in depth-first order.
+static void sort_classes(List<ir::Class*> classes) {
+  ir::Class* top = null;
+  ir::Class* top_mixin = null;
+  ir::Class* top_interface = null;
+  UnorderedMap<ir::Class*, std::vector<ir::Class*>> subs;
+
+  for (auto klass : classes) {
+    if (klass->super() != null) {
+      subs[klass->super()].push_back(klass);
+      if (klass->is_mixin() && !klass->mixins().is_empty()) {
+        for (auto mixin : klass->mixins()) {
+          subs[mixin].push_back(klass);
+        }
+      }
+      continue;
+    }
+    switch (klass->kind()) {
+      case ir::Class::Kind::CLASS:
+      case ir::Class::Kind::MONITOR:
+        top = klass;
+        break;
+      case ir::Class::Kind::MIXIN:
+        top_mixin = klass;
+        break;
+      case ir::Class::Kind::INTERFACE:
+        top_interface = klass;
+        break;
+    }
+  }
+  ASSERT(top != null);
+  ASSERT(top_mixin != null);
+  ASSERT(top_interface != null);
+
+  Set<ir::Class*> done;
+
+  auto are_all_mixin_parents_done = [&](ir::Class* klass) -> bool {
+    if (!klass->is_mixin()) return true;
+    if (klass->has_super() && !done.contains(klass->super())) return false;
+    for (auto mixin : klass->mixins()) {
+      if (!done.contains(mixin)) return false;
+    }
+    return true;
+  };
+
+  auto dfs_traverse = [&](ir::Class* klass) -> void {
+    std::vector<ir::Class*> queue;
+    queue.push_back(klass);
+    while (!queue.empty()) {
+      ir::Class* current = queue.back();
+      queue.pop_back();
+      if (done.contains(current)) {
+        ASSERT(current->is_mixin());
+        continue;
+      }
+      if (!are_all_mixin_parents_done(current)) {
+        continue;
+      }
+      done.insert(current);
+      auto probe = subs.find(current);
+      if (probe != subs.end()) {
+        queue.insert(queue.end(), probe->second.begin(), probe->second.end());
+      }
+    }
+  };
+
+  dfs_traverse(top);
+  dfs_traverse(top_mixin);
+  dfs_traverse(top_interface);
+
+  ASSERT(done.size() == classes.length());
+  int index = 0;
+  for (auto klass : done) {
+    classes[index++] = klass;
+  }
+}
+
+Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
+  // TODO(florian): this is hackish. We want to analyze asserts also in release mode,
+  // but then remove the code when we generate code.
+  // For now just enable asserts when we are analyzing.
+  if (configuration_.is_for_analysis) {
+    Flags::enable_asserts = true;
+  }
+
+  auto fs = configuration_.filesystem;
   fs->initialize(diagnostics());
   source_paths = adjust_source_paths(source_paths);
   auto package_lock = load_package_lock(source_paths);
@@ -1523,12 +1800,12 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths) {
 
   auto units = _parse_units(source_paths, package_lock);
 
-  if (_configuration.dep_file != null) {
-    ASSERT(_configuration.dep_format != Compiler::DepFormat::none);
+  if (configuration_.dep_file != null) {
+    ASSERT(configuration_.dep_format != Compiler::DepFormat::none);
     PlainDepWriter plain_writer;
     NinjaDepWriter ninja_writer;
     DepWriter* chosen_writer = null;
-    switch (_configuration.dep_format) {
+    switch (configuration_.dep_format) {
       case Compiler::DepFormat::plain:
         chosen_writer = &plain_writer;
         break;
@@ -1538,17 +1815,18 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths) {
       case Compiler::DepFormat::none:
         UNREACHABLE();
     }
-    chosen_writer->write_deps_to_file_if_different(_configuration.dep_file,
-                                                   _configuration.out_path,
+    chosen_writer->write_deps_to_file_if_different(configuration_.dep_file,
+                                                   configuration_.out_path,
                                                    units,
                                                    CORE_UNIT_INDEX);
   }
 
-  if (_configuration.parse_only) return Result::invalid();
+  if (configuration_.parse_only) return Result::invalid();
 
   setup_lsp_selection_handler();
 
   ir::Program* ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
+  sort_classes(ir_program->classes());
 
   bool encountered_error_before_type_checks = diagnostics()->encountered_error();
 
@@ -1558,7 +1836,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths) {
   check_types_and_deprecations(ir_program);
   check_definite_assignments_returns(ir_program, diagnostics());
 
-  if (_configuration.is_for_analysis) {
+  if (configuration_.is_for_analysis) {
     if (diagnostics()->encountered_error()) exit(1);
     return Result::invalid();
   }
@@ -1571,48 +1849,55 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths) {
   }
   // If we encountered errors abort unless the `--force` flag is on.
   bool encountered_error = diagnostics()->encountered_error();
-  if (_configuration.werror && diagnostics()->encountered_warning()) {
+  if (configuration_.werror && diagnostics()->encountered_warning()) {
     encountered_error = true;
   }
-  if (!_configuration.force && encountered_error) {
+  if (!configuration_.force && encountered_error) {
     printf("Compilation failed.\n");
     exit(1);
   }
 
-  SourceMapper source_mapper(source_manager());
-
-  source_mapper.register_selectors(ir_program->classes());
-
-  add_lambda_boxes(ir_program);
-  add_monitor_locks(ir_program);
-  add_stub_methods_and_switch_to_plain_shapes(ir_program);
-  add_interface_stub_methods(ir_program);
-
-  ASSERT(_sorted_by_inheritance(ir_program->classes()));
-
   // Only optimize the program, if we didn't encounter any errors.
   // If there was an error, we might not be able to trust the type annotations.
-  if (!diagnostics()->encountered_error()) {
-    optimize(ir_program);
+  bool run_optimizations = !diagnostics()->encountered_error() &&
+      configuration_.optimization_level >= 1;
+
+  SourceMapper unoptimized_source_mapper(source_manager());
+  auto source_mapper = &unoptimized_source_mapper;
+  TypeOracle oracle(source_mapper);
+  auto program = construct_program(ir_program, source_mapper, &oracle, null, run_optimizations);
+
+  SourceMapper optimized_source_mapper(source_manager());
+  if (run_optimizations && configuration_.optimization_level >= 2) {
+    bool quiet = true;
+    ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX, quiet);
+    sort_classes(ir_program->classes());
+    patch(ir_program);
+    // We check the types again, because the compiler computes types as
+    // a side-effect of this and the types are necessary for the
+    // optimizations. This feels a little bit unfortunate, but it is
+    // important that the second compilation pass where we use propagated
+    // types is based on the same IR nodes, so we need the optimizations
+    // to behave the same way for the output to be correct.
+    check_types_and_deprecations(ir_program, quiet);
+    ASSERT(!diagnostics()->encountered_error());
+    TypeDatabase* types = TypeDatabase::compute(program);
+    source_mapper = &optimized_source_mapper;
+    program = construct_program(ir_program, source_mapper, &oracle, types, true);
+    delete types;
   }
-  tree_shake(ir_program);
 
-  // We assign the field ids very late in case we can inline field-accesses.
-  assign_field_indexes(ir_program->classes());
-  // Similarly, assign the global ids at the end, in case they can be tree
-  // shaken or inlined.
-  assign_global_ids(ir_program->globals());
+  if (propagate) {
+    TypeDatabase* types = TypeDatabase::compute(program);
+    auto json = types->as_json();
+    printf("%s", json.c_str());
+    delete types;
+  }
 
-  // Mark globals that can be accessed directly without going through the
-  //   lazy getter.
-  mark_eager_globals(ir_program->globals());
-
-  Backend backend(source_manager(), &source_mapper);
-  auto program = backend.emit(ir_program, _configuration.snapshot_args);
   SnapshotGenerator generator(program);
   generator.generate(program);
   int source_map_size;
-  uint8* source_map_data = source_mapper.cook(&source_map_size);
+  uint8* source_map_data = source_mapper->cook(&source_map_size);
   int snapshot_size;
   uint8* snapshot = generator.take_buffer(&snapshot_size);
   return {

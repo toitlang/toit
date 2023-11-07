@@ -16,41 +16,43 @@
 set(TOIT_EXTERNAL_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt")
 
 set(TOIT_REPOS
+    https://github.com/kasperl/toit-datacake
+    https://github.com/kasperl/toit-qubitro
+    https://github.com/kasperl/toit-zygote
+    https://github.com/lask/toit-hc-sr04
     https://github.com/nilwes/LIS3DH
     https://github.com/toitlang/jaguar
     https://github.com/toitlang/pkg-ar
+    https://github.com/toitlang/pkg-font-tiny
     https://github.com/toitlang/pkg-host
     https://github.com/toitlang/pkg-http
     https://github.com/toitlang/pkg-modbus
     https://github.com/toitlang/pkg-ntp
     https://github.com/toitlang/pkg-tar
     https://github.com/toitlang/pkg-testing
+    https://github.com/toitlang/toit-font-tools
     https://github.com/toitware/bme280-driver
-    # https://github.com/toitware/cellular
+    https://github.com/toitware/cellular
     https://github.com/toitware/dbc
     https://github.com/toitware/icm20948-driver
     https://github.com/toitware/max31865-driver
     https://github.com/toitware/mcp2518fd-driver
     https://github.com/toitware/mcp342x-driver
     https://github.com/toitware/mqtt
-    # https://github.com/toitware/quectel-cellular
-    # https://github.com/toitware/sequans-cellular
     https://github.com/toitware/sts3x-driver
     https://github.com/toitware/toit-A3967
+    https://github.com/toitware/toit-artemis
     https://github.com/toitware/toit-axp192
     https://github.com/toitware/toit-cert-roots
     https://github.com/toitware/toit-color-tft
+    https://github.com/toitware/toit-ds18b20
     https://github.com/toitware/toit-e-paper
     https://github.com/toitware/toit-font-clock
     https://github.com/toitware/toit-font-google-100dpi-roboto
-    https://github.com/toitware/toit-font-welch-tiny
-    https://github.com/toitware/toit-font-x11-adobe-100
-    https://github.com/toitware/toit-font-x11-adobe-75
-    https://github.com/toitware/toit-font-x11-b-and-h
-    https://github.com/toitware/toit-font-x11-mutt
     https://github.com/toitware/toit-gnss-location
     https://github.com/toitware/toit-heading
     https://github.com/toitware/toit-hx711
+    https://github.com/toitware/toit-ibutton
     https://github.com/toitware/toit-icons-pictogrammers
     https://github.com/toitware/toit-location
     https://github.com/toitware/toit-lsm303d
@@ -61,19 +63,42 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-morse-tutorial
     https://github.com/toitware/toit-msa311
     https://github.com/toitware/toit-newton-raphson
+    https://github.com/toitware/toit-openai
+    https://github.com/toitware/toit-partition-table-esp32
     https://github.com/toitware/toit-pixel-display
-    https://github.com/toitware/toit-png-display
+    https://github.com/toitware/toit-pixel-strip
+# TODO(kasper): Temporarily removed because the tests cannot be
+# run correctly by the external test harness.
+#   https://github.com/toitware/toit-png-display
+    https://github.com/toitware/toit-protobuf
+    https://github.com/toitware/toit-provision
+    https://github.com/toitware/toit-r46ca01
     https://github.com/toitware/toit-resistance-to-temperature
+    https://github.com/toitware/toit-rs485
     https://github.com/toitware/toit-si7006
     https://github.com/toitware/toit-solar-position
     https://github.com/toitware/toit-ssd1306
+    https://github.com/toitware/toit-semver
+    https://github.com/toitware/toit-supabase
+    https://github.com/toitware/toit-tl19a08
     https://github.com/toitware/toit-tm1640
     https://github.com/toitware/toit-vcnl4040
-    # https://github.com/toitware/ublox-cellular
+    https://github.com/toitware/toit-1-wire
     https://github.com/toitware/ublox-gnss-driver
 )
 
 set(DOWNLOADS_DIR "${CMAKE_CURRENT_LIST_DIR}/downloads")
+
+include(ProcessorCount)
+ProcessorCount(NUM_CPU)
+
+IF(APPLE)
+  set(DEFAULT_TIMEOUT 80)
+  set(SLOW_TIMEOUT 800)
+else()
+  set(DEFAULT_TIMEOUT 40)
+  set(SLOW_TIMEOUT 400)
+endif()
 
 # This file serves as CMakeLists.txt, as well as a cmake-script, run with `cmake -P`.
 # In the latter case the `EXECUTING_SCRIPT` variable is defined, and we only
@@ -87,6 +112,16 @@ if (DEFINED EXECUTING_SCRIPT)
     set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
     if (EXISTS "${REPO_PATH}")
       execute_process(
+        COMMAND "${GIT_EXECUTABLE}" reset --hard
+        WORKING_DIRECTORY "${REPO_PATH}"
+        COMMAND_ERROR_IS_FATAL ANY
+      )
+      execute_process(
+        COMMAND "${GIT_EXECUTABLE}" clean -fd
+        WORKING_DIRECTORY "${REPO_PATH}"
+        COMMAND_ERROR_IS_FATAL ANY
+      )
+      execute_process(
         COMMAND "${GIT_EXECUTABLE}" pull
         WORKING_DIRECTORY "${REPO_PATH}"
         COMMAND_ERROR_IS_FATAL ANY
@@ -98,6 +133,14 @@ if (DEFINED EXECUTING_SCRIPT)
         COMMAND_ERROR_IS_FATAL ANY
       )
     endif()
+    # If bin/version.toit.in (or app/version.toit.in) exists, copy it to
+    # bin/version.toit (resp. app/version.toit).
+    foreach(LOCATION "app" "bin")
+      set(LOCATION_PATH "${REPO_PATH}/${LOCATION}")
+      if (EXISTS "${LOCATION_PATH}/version.toit.in")
+        configure_file("${LOCATION_PATH}/version.toit.in" "${LOCATION_PATH}/version.toit" COPYONLY)
+      endif()
+    endforeach()
   else()
     message(FATAL_ERROR "Unknown script command ${SCRIPT_COMMAND}")
   endif()
@@ -166,7 +209,7 @@ endforeach()
 function(find_toit_projects REPO)
   get_filename_component(REPO_NAME "${REPO}" NAME)
   set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
-  foreach(LOCATION "" "examples" "tests")
+  foreach(LOCATION "" "examples" "tests" "tools" "app" "bin")
     set(LOCATION_PATH "${REPO_PATH}/${LOCATION}")
     if (EXISTS "${LOCATION_PATH}/package.yaml" OR EXISTS "${LOCATION_PATH}/package.lock")
       set(PROJECT_NAME "${REPO_NAME}")
@@ -179,33 +222,45 @@ function(find_toit_projects REPO)
   endforeach()
 endfunction()
 
+include(fail.cmake OPTIONAL)
+
 function(add_repo_tests REPO)
   get_filename_component(REPO_NAME "${REPO}" NAME)
   set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
-  file(GLOB TEST_FILES RELATIVE "${CMAKE_SOURCE_DIR}"
+  file(GLOB TEST_FILES RELATIVE "${REPO_PATH}"
+      "${REPO_PATH}/tests/*-test.toit"
       "${REPO_PATH}/tests/*_test.toit"
+      "${REPO_PATH}/tests/*-test-slow.toit"
       "${REPO_PATH}/tests/*_test_slow.toit")
 
-  file(RELATIVE_PATH TEST_PREFIX "${CMAKE_SOURCE_DIR}" "${REPO_PATH}")
+  # Set the TEST_PREFIX which will be used by the 'fail.cmake' files.
+  set(TEST_PREFIX "${REPO_NAME}")
   set(FAILING_TESTS)
   set(SKIP_TESTS)
   include("${REPO_PATH}/test/fail.cmake" OPTIONAL)
   include("${REPO_PATH}/tests/fail.cmake" OPTIONAL)
 
   foreach(FILE ${TEST_FILES})
-    if("${FILE}" IN_LIST SKIP_TESTS)
+    set(TEST_NAME "${REPO_NAME}/${FILE}")
+    if("${TEST_NAME}" IN_LIST SKIP_TESTS OR "${TEST_NAME}" IN_LIST TOIT_SKIP_TESTS)
       continue()
     endif()
+
     add_test(
-      NAME "${FILE}"
-      COMMAND $<TARGET_FILE:toit.run> "${FILE}"
-      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      NAME "${TEST_NAME}"
+      COMMAND $<TARGET_FILE:toit.run> "${FILE}" $<TARGET_FILE:toit.run>
+      WORKING_DIRECTORY "${REPO_PATH}"
       CONFIGURATIONS external
     )
-  endforeach()
+    if("${TEST_NAME}" IN_LIST FAILING_TESTS OR "${TEST_NAME}" IN_LIST TOIT_FAILING_TESTS)
+      set_tests_properties(${TEST_NAME} PROPERTIES WILL_FAIL TRUE)
+    endif()
 
-  foreach(test ${FAILING_TESTS})
-    set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)
+    if ("${TEST_NAME}" MATCHES "_slow\\.toit$")
+      set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
+    else()
+      set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+    endif()
   endforeach()
 endfunction()
 
@@ -223,11 +278,17 @@ foreach(FILE ${HEALTH_SOURCES})
     continue()
   endif()
 
+  file(RELATIVE_PATH RELATIVE_FILE "${CMAKE_CURRENT_LIST_DIR}" "${FILE}")
+  if ("health-external/${RELATIVE_FILE}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
+
   add_health_test("${FILE}"
     RELATIVE_TO "${DOWNLOADS_DIR}"
     LIB_DIR "${TOIT_SDK_SOURCE_DIR}"
     GOLD_DIR "${EXTERNAL_GOLD_DIR}"
     CONFIGURATION external_health
+    SHOW_PACKAGE_WARNINGS OFF
     UPDATE_TARGET update_external_health_gold
   )
 endforeach()

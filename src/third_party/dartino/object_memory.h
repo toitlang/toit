@@ -44,7 +44,7 @@ static inline bool has_sentinel_at(uword address) {
 }
 
 enum PageType {
-  UNKNOWN_SPACE_PAGE,  // Probably a program space page.
+  UNKNOWN_SPACE_PAGE,  // Probably a metadata page.
   OLD_SPACE_PAGE,
   NEW_SPACE_PAGE
 };
@@ -88,7 +88,7 @@ class Chunk : public ChunkList::Element {
 
   void initialize_metadata() const;
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   // Fill the space with garbage.
   void scramble();
 
@@ -133,58 +133,60 @@ class HeapObjectVisitor {
 class LivenessOracle {
  public:
   virtual bool is_alive(HeapObject* object) = 0;
+  virtual bool has_active_finalizer(HeapObject* object) = 0;
 };
 
 // Space is a chain of chunks. It supports allocation and traversal.
 class Space : public LivenessOracle {
  public:
   static const uword DEFAULT_MINIMUM_CHUNK_SIZE = TOIT_PAGE_SIZE;
+#ifdef TOIT_FREERTOS
+  static const uword DEFAULT_MAXIMUM_CHUNK_SIZE = TOIT_PAGE_SIZE;
+#else
   static const uword DEFAULT_MAXIMUM_CHUNK_SIZE = 256 * KB;
+#endif
 
   virtual ~Space();
 
   enum Resizing { CAN_RESIZE, CANNOT_RESIZE };
 
   // Returns the total size of allocated objects.
-  virtual uword used() = 0;
+  virtual uword used() const = 0;
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush() = 0;
   virtual bool is_flushed() = 0;
 
-  // Used for weak processing.  Can only be called:
+  // Used for weak processing and compacting.  Can only be called:
   // 1) For copying collections: right after copying but before you delete the
   //    from-space.  Only for heap objects originally in the from-space.
   // 2) For mark-sweep collections: Between marking and sweeping.  Only makes
   //    sense for the mark-sweep space, since objects in the semispace will
   //    survive regardless of their mark bit.
+  // 3) For mark-compact collections: Called on new-space objects to avoid
+  //    updating pointers from dead new-space objects that point into old
+  //    space when compacting.  Note that the mark bits are used to determine
+  //    liveness although we are in new space - marking will mark object in
+  //    new-space even though they are not compacted or swept.
   virtual bool is_alive(HeapObject* old_location) = 0;
 
-  // Do not call if the object died in the current GC.  Used for weak
-  // processing.
-  virtual HeapObject* new_location(HeapObject* old_location) = 0;
+  // Used for weak processing (finalizers).
+  virtual bool has_active_finalizer(HeapObject* object) = 0;
 
   // Returns the total size of allocated chunks.
-  uword size();
+  uword size() const;
 
   // Iterate over all objects in this space.
-  void iterate_objects(HeapObjectVisitor* visitor);
+  void iterate_objects(HeapObjectVisitor* visitor, LivenessOracle* filter = null);
 
   // Iterate all the objects that are grey, after a mark stack overflow.
   void iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack);
 
+  void iterate_chunks(void* context, Process* process, process_chunk_callback_t* callback);
+
   // Returns true if the address is inside this space.  Not particularly fast.
   // See GcMetadata::PageType for a faster possibility.
   bool includes(uword address);
-
-  // Adjust the allocation budget based on the current heap size.
-  void adjust_allocation_budget(uword used_outside_space);
-
-  void increase_allocation_budget(uword size);
-
-  void decrease_allocation_budget(uword size);
-
-  void set_allocation_budget(word new_budget);
 
   void clear_mark_bits();
 
@@ -207,7 +209,7 @@ class Space : public LivenessOracle {
   word offset_of(HeapObject* object);
   HeapObject* object_at_offset(word offset);
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   void find(uword word, const char* name);
 #endif
 
@@ -243,11 +245,12 @@ class Space : public LivenessOracle {
     swap(chunk_list_, other.chunk_list_);
     swap(top_, other.top_);
     swap(limit_, other.limit_);
-    swap(allocation_budget_, other.allocation_budget_);
     swap(page_type_, other.page_type_);
   }
 
   void validate_before_mark_sweep(PageType page_type, bool object_starts_should_be_clear);
+
+  Program* program() const { return program_; }
 
  protected:
   Space(Program* program, Resizing resizeable, PageType page_type);
@@ -259,18 +262,12 @@ class Space : public LivenessOracle {
 
   void free_all_chunks();
 
-  uword top() { return top_; }
+  uword top() const { return top_; }
 
   Program* program_ = null;
   ChunkList chunk_list_;
   uword top_ = 0;               // Allocation top in current chunk.
   uword limit_ = 0;             // Allocation limit in current chunk.
-  // The allocation budget can be used to trigger a GC early, eg. in response
-  // to large amounts of external allocation. If the allocation budget is not
-  // hit, we may still trigger a GC because we are getting close to the limit
-  // for the committed size of the chunks in the heap.
-  word allocation_budget_ = TOIT_PAGE_SIZE;
-
   PageType page_type_;
 };
 
@@ -283,19 +280,15 @@ class SemiSpace : public Space {
   SemiSpace(Program* program, Chunk* chunk);
 
   // Returns the total size of allocated objects.
-  virtual uword used();
+  virtual uword used() const;
 
   virtual bool is_alive(HeapObject* old_location);
-  virtual HeapObject* new_location(HeapObject* old_location);
+  virtual bool has_active_finalizer(HeapObject* old_location);
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
 
-  void prepare_metadata_for_mark_sweep();
-
   virtual bool is_flushed();
-
-  void trigger_gc_soon() { limit_ = top_ + SENTINEL_SIZE; }
 
   // Allocate raw object. Returns 0 if a garbage collection is needed
   // and causes a fatal error if no garbage collection is needed and
@@ -431,10 +424,9 @@ class OldSpace : public Space {
   virtual ~OldSpace();
 
   virtual bool is_alive(HeapObject* old_location);
+  virtual bool has_active_finalizer(HeapObject* object);
 
-  virtual HeapObject* new_location(HeapObject* old_location);
-
-  virtual uword used();
+  virtual uword used() const;
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
@@ -455,9 +447,6 @@ class OldSpace : public Space {
   // Find pointers to young-space.
   void visit_remembered_set(ScavengeVisitor* visitor);
 
-  // Until the write barrier works.
-  void rebuild_remembered_set();
-
   // For the objects promoted to the old space during scavenge.
   void start_scavenge();
   bool complete_scavenge(ScavengeVisitor* visitor);
@@ -469,12 +458,11 @@ class OldSpace : public Space {
 
   void use_whole_chunk(Chunk* chunk);
 
-  void compute_compaction_destinations();
+  word compute_compaction_destinations();
 
   void validate();
 
   void set_compacting(bool value) { compacting_ = value; }
-  bool compacting() { return compacting_; }
 
   void set_used_after_last_gc(uword used) { used_after_last_gc_ = used; }
 
@@ -484,14 +472,13 @@ class OldSpace : public Space {
   // bump allocation has failed, or on old space after a new-space GC.
   bool needs_garbage_collection() {
     if (tracking_allocations_) return false;  // We are already in a scavenge.
-    return used_ > 0 && allocation_budget_ <= 0;
+    return used_ > 0 && promotion_failed_;
   }
 
-  // For detecting pointless GCs that are really an out-of-memory situation.
-  inline void evaluate_pointlessness() {};  // TODO: Implement.
   uword minimum_progress();
   void report_new_space_progress(uword bytes_collected);
   void set_used(uword used) { used_ = used; }
+  void set_promotion_failed(bool value) { promotion_failed_ = value; }
 
  private:
   uword allocate_from_free_list(uword size);
@@ -511,6 +498,11 @@ class OldSpace : public Space {
   int successive_pointless_gcs_ = 0;
   uword used_after_last_gc_ = 0;
   uword used_ = 0;               // Allocated bytes.
+  // Record whether a promotion failed during a scavenge, so we can save time
+  // by not trying to promote later objects - they are put in the other
+  // semispace even though they are old enough for promotion.  We also use this
+  // to trigger an old-space GC early.
+  bool promotion_failed_ = false;
 };
 
 // ObjectMemory controls all memory used by object heaps.
@@ -536,6 +528,8 @@ class ObjectMemory {
   static inline void set_spare_chunk(Locker& locker, Chunk* spare_chunk) { spare_chunk_ = spare_chunk; }
 
  private:
+  static Chunk* allocate_chunk_helper(Space* space, uword size, void* memory);
+
   static std::atomic<uword> allocated_;
 
   static Chunk* spare_chunk_;

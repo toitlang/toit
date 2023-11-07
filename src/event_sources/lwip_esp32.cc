@@ -62,7 +62,11 @@ bool needs_gc = false;
 
 #if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
 
-String* lwip_strerror(Process* process, err_t err, Error** error) {
+static bool is_toit_error(int err) {
+  return FIRST_TOIT_ERROR >= err && err >= LAST_TOIT_ERROR;
+}
+
+String* lwip_strerror(Process* process, err_t err) {
   // Normal codes returned by LWIP, but LWIP does not have string versions
   // unless it is compiled with debug options.
   static const char* error_names[] = {
@@ -94,21 +98,20 @@ String* lwip_strerror(Process* process, err_t err, Error** error) {
 
   if (err <= 0 && static_cast<unsigned>(-err) < sizeof(error_names) / sizeof(error_names[0])) {
     str = error_names[-err];
-  } else if (FIRST_TOIT_ERROR >= err && err >= LAST_TOIT_ERROR) {
+  } else if (is_toit_error(err)) {
     str = custom_strerr[err - FIRST_TOIT_ERROR];
   }
-  return process->allocate_string(str, error);
+  return process->allocate_string(str);
 }
 
 Object* lwip_error(Process* process, err_t err) {
-  if (err == ERR_MEM) MALLOC_FAILED;
-  Error* error = null;
-  String* str = lwip_strerror(process, err, &error);
-  if (str == null) return error;
+  if (err == ERR_MEM) FAIL(MALLOC_FAILED);
+  String* str = lwip_strerror(process, err);
+  if (str == null) FAIL(ALLOCATION_FAILED);
   return Primitive::mark_as_error(str);
 }
 
-LwIPEventSource* LwIPEventSource::_instance = null;
+LwipEventSource* LwipEventSource::instance_ = null;
 
 MODULE_IMPLEMENTATION(dhcp, MODULE_DHCP)
 
@@ -121,11 +124,11 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
     fprintf(stderr, "Waiting for DHCP server\n");
 
     err_t err;
-    LwIPEventSource::instance()->call_on_thread([&]() -> Object *{
+    LwipEventSource::instance()->call_on_thread([&]() -> Object* {
       dhcp_set_struct(&global_netif, &static_dhcp);
       netif_set_up(&global_netif);
       err = dhcp_start(&global_netif);
-      return process->program()->null_object();
+      return process->null_object();
     });
     if (err != ERR_OK) {
       return lwip_error(process, err);
@@ -151,7 +154,7 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
     uint8_t byte3 = 128 + (ip_addr_offset >> 8);
     uint8_t byte4 = ip_addr_offset &0xff;
     fprintf(stderr, "Set IP address %d.%d.%d.%d, mask 255.255.0.0, gw %d.%d.0.1\n", byte1, byte2, byte3, byte4, byte1, byte2);
-    LwIPEventSource::instance()->call_on_thread([&]() -> Object *{
+    LwipEventSource::instance()->call_on_thread([&]() -> Object* {
       ip4_addr_t ip, netmask, gateway;
       ip4_addr_set_u32(&ip, (byte1 << 0) | (byte2 << 8) | (byte3 << 16) | (byte4 << 24));  // IP:      172.27.128.xx
       ip4_addr_set_u32(&netmask, 0x0000FFFF);                                              // Netmask: 255.255.0.0
@@ -162,22 +165,21 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
       return 0;
     });
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 #else
 
 PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 #endif
 
 
-LwIPEventSource::LwIPEventSource()
+LwipEventSource::LwipEventSource()
     : EventSource("LwIP", 1)
-    , _mutex(OS::allocate_mutex(0, "LwIPEventSource"))
-    , _call_done(OS::allocate_condition_variable(_mutex)) {
+    , call_done_(OS::allocate_condition_variable(mutex())) {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + LWIP_MALLOC_TAG);
 #if defined(TOIT_FREERTOS)
   // Create the LWIP thread.
@@ -196,31 +198,34 @@ LwIPEventSource::LwIPEventSource()
   sys_sem_free(&init_semaphore);
 #endif
 
-  ASSERT(_instance == null);
-  _instance = this;
+  ASSERT(instance_ == null);
+  instance_ = this;
 
-  call_on_thread([&]() -> Object *{
+  call_on_thread([&]() -> Object* {
+    Thread::ensure_system_thread();
     OS::set_heap_tag(ITERATE_CUSTOM_TAGS + LWIP_MALLOC_TAG);
-    return null;
+    return Smi::from(0);
   });
 }
 
-LwIPEventSource::~LwIPEventSource() {
-  _instance = null;
-  OS::dispose(_call_done);
-  OS::dispose(_mutex);
+LwipEventSource::~LwipEventSource() {
+  instance_ = null;
+  OS::dispose(call_done_);
 }
 
-void LwIPEventSource::on_thread(void* arg) {
-  Thread::ensure_system_thread();
+void LwipEventSource::on_thread(void* arg) {
   CallContext* call = unvoid_cast<CallContext*>(arg);
-  auto event_source = instance();
+  Object* result = call->func();
 
-  call->result = call->func();
-
-  Locker lock(event_source->_mutex);
+  auto lwip = instance();
+  Locker locker(lwip->mutex());
+  call->result = result;
   call->done = true;
-  OS::signal(event_source->_call_done);
+
+  // We must signal all waiters to make sure we don't end
+  // up in a situation where the LWIP calls are done in a
+  // different order than the waiting.
+  OS::signal_all(lwip->call_done());
 }
 
 #else // defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
@@ -228,7 +233,7 @@ void LwIPEventSource::on_thread(void* arg) {
 MODULE_IMPLEMENTATION(dhcp, MODULE_DHCP)
 
 PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 #endif // defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)

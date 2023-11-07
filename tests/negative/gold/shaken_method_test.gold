@@ -1,3 +1,0 @@
-As check failed: null is not a A.
-  0: test                      tests/negative/shaken_method_test.toit:8:6
-  1: main                      tests/negative/shaken_method_test.toit:17:3

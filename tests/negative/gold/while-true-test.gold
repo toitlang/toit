@@ -1,0 +1,28 @@
+tests/negative/while-true-test.toit:86:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/while-true-test.toit:9:1: error: Method doesn't return a value on all paths
+test1 x -> int:
+^~~~~
+tests/negative/while-true-test.toit:14:1: error: Method doesn't return a value
+test2 x -> int:
+^~~~~
+tests/negative/while-true-test.toit:25:10: error: Local 'local' must be initialized before first use
+  return local
+         ^~~~~
+tests/negative/while-true-test.toit:32:35: error: Local 'local' must be initialized before first use
+  for ; true; done = returns-true local:
+                                  ^~~~~
+tests/negative/while-true-test.toit:47:10: error: Local 'local' must be initialized before first use
+  return local
+         ^~~~~
+tests/negative/while-true-test.toit:60:10: error: Local 'local' must be initialized before first use
+  return local
+         ^~~~~
+tests/negative/while-true-test.toit:68:10: error: Local 'local' must be initialized before first use
+  return local
+         ^~~~~
+tests/negative/while-true-test.toit:75:10: error: Local 'local' must be initialized before first use
+  return local
+         ^~~~~
+Compilation failed.
