@@ -368,7 +368,7 @@ const char* OS::get_platform() {
 
 const char* get_architecture() {
 #if defined(_M_AMD64)
-  return "x86_64"
+  return "x86_64";
 #elif defined(_M_ARM64)
   return "arm64";
 #elif defined(_M_IX86)
