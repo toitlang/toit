@@ -340,19 +340,6 @@ abstract class Reader:
     unreachable
 
   /**
-  Searches forwards for the index of the $byte.
-
-  Consumes no bytes.
-
-  Returns the index of the first occurrence of the $byte.
-  Throws if the byte is not found.
-  */
-  index-of-or-throw byte/int:
-    index := index-of byte
-    if not index: throw UNEXPECTED-END-OF-READER
-    return index
-
-  /**
   Searches forwards for the $byte.
 
   Consumes no bytes.
@@ -623,7 +610,7 @@ abstract class Reader:
   */
   read-line --keep-newline/bool=false -> string?:
     delimiter-pos := index-of '\n'
-    if delimiter-pos == null:
+    if delimiter-pos == -1:
       rest-size := buffered-size
       if rest-size == 0: return null
       return read-string rest-size
@@ -659,7 +646,7 @@ abstract class Reader:
   The $delimiter must be available.
   */
   read-string-up-to delimiter/int -> string:
-    length := index-of delimiter
+    length := index-of delimiter --throw-if-missing
     str := peek-string length
     skip length + 1 // Skip delimiter char
     return str
@@ -674,8 +661,7 @@ abstract class Reader:
   The $delimiter must be available.
   */
   read-bytes-up-to delimiter/int -> ByteArray:
-    length := index-of delimiter
-    if not length: throw UNEXPECTED-END-OF-READER
+    length := index-of delimiter --throw-if-missing
     bytes := peek-bytes length
     skip length + 1 // Skip delimiter char
     return bytes
