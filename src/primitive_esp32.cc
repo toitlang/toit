@@ -52,6 +52,8 @@
 
 #include <soc/rtc_cntl_reg.h>
 
+#include <driver/gpio.h>
+
 #ifdef CONFIG_IDF_TARGET_ESP32C3
 //  #include <soc/esp32/include/soc/sens_reg.h>
   #include <esp32c3/rom/rtc.h>
@@ -578,6 +580,34 @@ PRIMITIVE(watchdog_deinit) {
     return Primitive::os_error(err, process);
   }
   watchdog_timers.put(kWatchdogSingletonId);
+  return process->null_object();
+}
+
+PRIMITIVE(pin_hold_enable) {
+  ARGS(int, num);
+  esp_err_t err = gpio_hold_en(static_cast<gpio_num_t>(num));
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  return process->null_object();
+}
+
+PRIMITIVE(pin_hold_disable) {
+  ARGS(int, num);
+  esp_err_t err = gpio_hold_dis(static_cast<gpio_num_t>(num));
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  return process->null_object();
+}
+
+PRIMITIVE(deep_sleep_pin_hold_enable) {
+  gpio_deep_sleep_hold_en();
+  return process->null_object();
+}
+
+PRIMITIVE(deep_sleep_pin_hold_disable) {
+  gpio_deep_sleep_hold_dis();
   return process->null_object();
 }
 
