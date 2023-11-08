@@ -1,6 +1,9 @@
-toit-heading/examples/main.toit:15:12: warning: Class 'FlashStore' is deprecated
+toit-heading/examples/main.toit:9:20: error: Unresolved show 'FlashStore'
+import device show FlashStore
+                   ^~~~~~~~~~
+toit-heading/examples/main.toit:15:12: error: Unresolved identifier: 'FlashStore'
   store := FlashStore
            ^~~~~~~~~~
-toit-heading/examples/main.toit:20:19: warning: Class 'FlashStore' is deprecated
+toit-heading/examples/main.toit:20:19: error: Unresolved identifier: 'FlashStore'
   calibration := (FlashStore).get "mag-calibration"
                   ^~~~~~~~~~
