@@ -5,24 +5,11 @@
 import gpio
 import monitor
 import rmt
-import .wait-for1-shared show
-  ITERATIONS MEDIUM-PULSE-ITERATIONS SHORT-PULSE-ITERATIONS ULTRA-SHORT-PULSE-ITERATIONS
+import .wait-for1-shared
 
 /**
-Tests the $gpio.Pin.wait-for functionality.
-
-# Setup
-You need two boards.
-- Connect GND of board1 to GND of board2.
-- Connect pin 22 of board1 to pin 23 of board2.
-- Connect pin 23 of board1 to pin 22 of board2.
-
-Run `wait_for1.toit` on board1.
-Once that one is running, run `wait_for2.toit` on board2.
+See 'wait-for1-shared.toit'.
 */
-
-PIN-IN ::= 22
-PIN-OUT ::= 23
 
 MEDIUM-PULSE-DURATION-MS ::= 5
 

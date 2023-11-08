@@ -3,8 +3,10 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import system
+import system show platform
 
-ON-DEVICE ::= platform == PLATFORM-FREERTOS
+ON-DEVICE ::= platform == system.PLATFORM-FREERTOS
 
 main:
   10.repeat:

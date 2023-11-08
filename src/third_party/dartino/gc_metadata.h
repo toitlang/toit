@@ -137,7 +137,7 @@ class GcMetadata {
   }
 
   // Safe to call with any object, even a Smi.
-  static INLINE PageType get_page_type(Object* object) {
+  static INLINE PageType get_page_type(const Object* object) {
     uword addr = reinterpret_cast<uword>(object);
     uword offset = addr >> 1 | addr << (8 * sizeof(uword) - 1);
     offset -= singleton_.heap_start_munged_;
@@ -168,6 +168,10 @@ class GcMetadata {
   }
 
   static inline uint8* remembered_set_for(HeapObject* object) {
+    return remembered_set_for(reinterpret_cast<uword>(object));
+  }
+
+  static inline const uint8* remembered_set_for(const HeapObject* object) {
     return remembered_set_for(reinterpret_cast<uword>(object));
   }
 

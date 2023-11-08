@@ -352,9 +352,6 @@ Reuse an instance for multiple accesses or use the singleton $LITTLE-ENDIAN
   to avoid multiple unnecessary object allocations.
 */
 class LittleEndian extends ByteOrder:
-  /** Deprecated. Use $LITTLE-ENDIAN. */
-  constructor:
-
   constructor.private_:
 
   /** See $super. */
@@ -416,11 +413,7 @@ Support for big endian byte order.
 Reuse an instance for multiple accesses or use the singleton $LITTLE-ENDIAN
   to avoid multiple unnecessary object allocations.
 */
-// TODO(4199): Make constructor private.
 class BigEndian extends ByteOrder:
-  /** Deprecated. Use $BIG-ENDIAN. */
-  constructor:
-
   constructor.private_:
 
   /** See $super. */
