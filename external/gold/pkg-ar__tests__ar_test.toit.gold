@@ -1,0 +1,3 @@
+pkg-ar/tests/ar_test.toit:109:6: warning: Deprecated 'platform'
+  if platform == "FreeRTOS": return
+     ^~~~~~~~

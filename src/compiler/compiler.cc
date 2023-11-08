@@ -187,17 +187,13 @@ class DebugCompilationPipeline : public Pipeline {
  public:
   static constexpr const char* const DEBUG_ENTRY_PATH = "///<debug>";
   static constexpr const char* const DEBUG_ENTRY_CONTENT = R"""(
-import debug.debug_string show do_debug_string
-
 // We are avoiding types to make the patching easier.
 dispatch_debug_string location_token obj nested -> any:
   // Calls to the static dispatch methods will be patched in here.
   throw "Unknown location token"
 
 main args:
-  do_debug_string args:: |location_token obj nested|
-    dispatch_debug_string location_token obj nested
-     )""";
+  throw "Unimplemented")""";
 };
 
 class LanguageServerPipeline : public Pipeline {

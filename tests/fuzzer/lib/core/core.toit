@@ -27,6 +27,7 @@ class LargeInteger_:
 class False_:
 class Null_:
 class Object:
+  stringify:
 class SmallInteger_:
 class Task_:
 class True_:
