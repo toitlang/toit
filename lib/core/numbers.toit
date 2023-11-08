@@ -1712,17 +1712,28 @@ class float extends num:
   mod-from-large-integer_ other:
     return other.to-float % this
 
+  // For int/float comparisons we should never get to these routines because
+  // the byte code takes care of it, even getting the tricky cases right where
+  // the int is too large to convert exactly to a float without rounding.  That
+  // tricky case is not replicated here, so we want to ensure we never get
+  // here.
+
   equals-from-large-integer_ other:
+    if other is int: unreachable
     return other.to-float == this
 
   less-than-from-large-integer_ other:
+    if other is int: unreachable
     return other.to-float < this
 
   less-than-or-equal-from-large-integer_ other:
+    if other is int: unreachable
     return other.to-float <= this
 
   greater-than-from-large-integer_ other:
+    if other is int: unreachable
     return other.to-float > this
 
   greater-than-or-equal-from-large-integer_ other:
+    if other is int: unreachable
     return other.to-float >= this

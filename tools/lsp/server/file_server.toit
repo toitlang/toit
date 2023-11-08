@@ -21,6 +21,8 @@ import host.pipe show OpenPipe
 import host.file
 import host.directory
 import monitor
+import system
+import system show platform
 
 import .documents
 import .rpc
@@ -30,7 +32,7 @@ import .verbose
 
 sdk-path-from-compiler compiler-path/string -> string:
   is-absolute/bool := ?
-  if platform == PLATFORM-WINDOWS:
+  if platform == system.PLATFORM-WINDOWS:
     compiler-path = compiler-path.replace "\\" "/"
     if compiler-path.starts-with "/":
       is-absolute = true

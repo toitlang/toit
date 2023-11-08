@@ -656,6 +656,10 @@ test-minus-zero:
   expect-equals 0x8000_0000_0000_0000 (-0.0).bits
 
 test-compare-to:
+  test-simple-compare-to
+  test-mixed-compare-to
+
+test-simple-compare-to:
   expect-equals 1 (1.compare-to 0)
   expect-equals -1 (0.compare-to 1)
   expect-equals 0 (0.compare-to 0)
@@ -749,6 +753,113 @@ test-compare-to:
   expect-equals -1 ((-0.0).compare-to 0.0 --if-equal=: throw "not used")
   expect-equals -1 ((-0.0).compare-to -0.0 --if-equal=: -1)
   expect-equals 1 ((-0.0).compare-to -0.0 --if-equal=: 1)
+
+less --negate=false a/num b/num:
+  expect a < b
+  expect b > a
+  expect a <= b
+  expect b >= a
+  expect-not a == b
+  expect-not b == a
+  expect-not a >= b
+  expect-not b <= a
+  expect-equals -1 (a.compare-to b)
+  expect-equals  1 (b.compare-to a)
+  if negate:
+    expect-equals 1 ((-a).compare-to (-b))
+    expect-equals -1 ((-b).compare-to (-a))
+
+same --negate=false a/num b/num:
+  expect a == b
+  expect b == a
+  expect a <= b
+  expect b <= a
+  expect a >= b
+  expect b >= a
+  expect-not a < b
+  expect-not b < a
+  expect-not a > b
+  expect-not b > a
+  expect-equals 0 (a.compare-to b)
+  expect-equals 0 (b.compare-to a)
+  if negate:
+    expect-equals 0 ((-a).compare-to (-b))
+    expect-equals 0 ((-b).compare-to (-a))
+
+more --negate=false a/num b/num:
+  expect a > b
+  expect b < a
+  expect a >= b
+  expect b <= a
+  expect-not a == b
+  expect-not b == a
+  expect-not a <= b
+  expect-not b >= a
+  expect-equals  1 (a.compare-to b)
+  expect-equals -1 (b.compare-to a)
+  if negate:
+    expect-equals -1 ((-a).compare-to (-b))
+    expect-equals  1 ((-b).compare-to (-a))
+
+test-mixed-compare-to:
+  more --negate 1 0.0
+  less --negate 0 1.0
+  same 0 0.0  // Negating floating zero changes it, but not negating int zero.
+  more --negate 100 99.0
+  less --negate 99 100.0
+  same --negate 42 42.0
+
+  // Here is a double that is on the absolute limit of the int64 range.
+  // Adding and subtracting 1000 changes the double representation by one bit -
+  // the last 13 bits are truncated by the limited size of the mantissa.
+  LIMIT0 ::= 9223372036854775e3  // 0x7fff_ffff_ffff_F800.
+  LIMIT1 ::= 9223372036854776e3  // 0x8000_0000_0000_0000.
+  LIMIT2 ::= 9223372036854777e3  // 0x8000_0000_0000_0800.
+
+  // The int runs out of range here, and the double has run out of precision a
+  // while back.
+  // A double that is slightly below int.MAX, then two that are slightly above.
+  // There is no double that matches int.MAX exactly.
+  less LIMIT0 int.MAX
+  more LIMIT1 int.MAX
+  more LIMIT2 int.MAX
+  // Doubles that are slightly less, equal and more than int.MIN.
+  more -LIMIT0 int.MIN
+  same -LIMIT1 int.MIN
+  less -LIMIT2 int.MIN
+
+  // Exact matches and ints either side of that.
+  more LIMIT0 9223372036854774783
+  same LIMIT0 9223372036854774784  // Nearest double to ...5e3
+  less LIMIT0 9223372036854774785
+
+  less -LIMIT0 -9223372036854774783
+  same -LIMIT0 -9223372036854774784  // Nearest double to ...5e3
+  more -LIMIT0 -9223372036854774785
+  less -LIMIT1 -9223372036854775807
+  same -LIMIT1 -9223372036854775808  // Nearest double to ...6e3
+  //           -9223372036854775809     This int is out of 64 bit signed range.
+
+  // Test around where doubles start to run out of precision.
+  // The first missing integral double is 2^53+1.
+  TWO_53 ::= 0x20_0000_0000_0000
+  TWO_53_F ::= TWO_53.to-float
+  same --negate (TWO_53_F - 1) (TWO_53 - 1)
+  less --negate (TWO_53_F - 1) (TWO_53    )
+  less --negate (TWO_53_F - 1) (TWO_53 + 1)
+  more --negate (TWO_53_F    ) (TWO_53 - 1)
+  same --negate (TWO_53_F    ) (TWO_53    )
+  less --negate (TWO_53_F    ) (TWO_53 + 1)
+  // Adding 1 to this double doesn't change it.
+  more --negate (TWO_53_F + 1) (TWO_53 - 1)
+  same --negate (TWO_53_F + 1) (TWO_53    )
+  less --negate (TWO_53_F + 1) (TWO_53 + 1)
+  // Adding 2 does work though.
+  more --negate (TWO_53_F + 2) (TWO_53 - 1)
+  more --negate (TWO_53_F + 2) (TWO_53    )
+  more --negate (TWO_53_F + 2) (TWO_53 + 1)
+  same --negate (TWO_53_F + 2) (TWO_53 + 2)
+  less --negate (TWO_53_F + 2) (TWO_53 + 3)
 
 test-shift:
   expect-equals 2 (1 << 1)
@@ -937,6 +1048,13 @@ test-to-int:
   expect-number-out-of-range: float.MAX-FINITE.to-int
   expect-number-out-of-range: float.INFINITY.to-int
   expect-number-invalid-argument: float.NAN.to-int
+
+  expect-equals int.MIN int.MIN.to-float.to-int
+  // int.MAX is rounded up when converted to a float.  The resulting float is
+  //   too large to convert back to an int.
+  expect-equals int.MAX          9223372036854775807
+  expect-equals int.MAX.to-float 9223372036854775808.0
+  expect-number-out-of-range: int.MAX.to-float.to-int
 
 test-is-power-of-two:
   expect 1.is-power-of-two

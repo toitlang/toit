@@ -204,7 +204,7 @@ class SnapshotWriter {
   virtual void write_external_object_table(Object** table, int length) = 0;
   virtual void write_external_list_int32(List<int32> list) = 0;
   virtual void write_external_list_uint16(List<uint16> list) = 0;
-  virtual void write_external_list_uint8(List<uint8> list) = 0;
+  virtual void write_external_list_uint8(List<const uint8> list) = 0;
 
 };
 

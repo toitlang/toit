@@ -152,3 +152,28 @@ dump-heap -> none:
 
 dump-heap_ slack/int -> ByteArray:
   #primitive.core.dump-heap
+
+/**
+Initializes the watchdog timer.
+
+If there is an interval of $ms milliseconds between calls to $watchdog-reset,
+  the ESP32 will reset.
+
+Use $watchdog-deinit to disable the watchdog timer.
+*/
+watchdog-init --ms/int -> none:
+  #primitive.esp32.watchdog-init
+
+/**
+Resets the watchdog timer.
+
+See $watchdog-init.
+*/
+watchdog-reset -> none:
+  #primitive.esp32.watchdog-reset
+
+/**
+Disables the watchdog timer.
+*/
+watchdog-deinit -> none:
+  #primitive.esp32.watchdog-deinit

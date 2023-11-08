@@ -4,6 +4,8 @@
 
 import .lsp-client show LspClient run-client-test
 import expect show *
+import system
+import system show platform
 
 main args:
   run-client-test args: test it
@@ -12,7 +14,7 @@ main args:
 PATH0-CODE ::= """
   // Modules that use monitors.
   import monitor
-  import at
+  import zlib
   import coap
 
   main:
@@ -22,7 +24,7 @@ PATH1-CODE ::= """
   // Modules that use monitors.
   // In reverse order.
   import coap
-  import at
+  import zlib
   import monitor
 
   main:
@@ -31,7 +33,7 @@ PATH1-CODE ::= """
 PATH0-ERROR-CODE ::= """
   // Modules that use monitors.
   import monitor
-  import at
+  import zlib
   import coap
 
   main:
@@ -42,7 +44,7 @@ test client/LspClient:
   // The paths don't really need to be non-existing, as we provide content for it
   // anyways.
   DOC-COUNT ::= 2
-  DRIVE ::= platform == PLATFORM-WINDOWS ? "c:" : ""
+  DRIVE ::= platform == system.PLATFORM-WINDOWS ? "c:" : ""
   MODULE-NAME-PREFIX ::= "some_non_existing_path"
   relatives := List DOC-COUNT: ".$MODULE-NAME-PREFIX$it"
   paths := List DOC-COUNT: "$DRIVE/tmp/$MODULE-NAME-PREFIX$(it).toit"

@@ -20,6 +20,8 @@ import host.os
 import host.file
 import reader show BufferedReader
 import semver
+import system
+import system show platform
 
 REQUIRED-SDK-VERSION ::= "2.0.0-alpha.95"
 
@@ -165,7 +167,7 @@ rename-files parsed/cli.Parsed:
 
 build-kebab-path path/string -> string:
   last-separator := path.index-of --last "/"
-  if platform == PLATFORM-WINDOWS:
+  if platform == system.PLATFORM-WINDOWS:
     last-separator = max last-separator (path.index-of --last "\\")
 
   if last-separator != -1:
@@ -187,14 +189,14 @@ build-kebab-path path/string -> string:
 
 find-toitc-from-jag -> string:
   home := ?
-  if platform == PLATFORM-WINDOWS:
+  if platform == system.PLATFORM-WINDOWS:
     home = os.env.get "USERPROFILE"
   else:
     home = os.env.get "HOME"
   if not home:
     print "Could not find home directory."
     exit 1
-  exe-extension := platform == PLATFORM-WINDOWS ? ".exe" : ""
+  exe-extension := platform == system.PLATFORM-WINDOWS ? ".exe" : ""
   return "$home/.cache/jaguar/sdk/bin/toit.compile$exe-extension"
 
 check-toitc-version toitc:

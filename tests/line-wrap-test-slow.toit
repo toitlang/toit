@@ -5,6 +5,8 @@
 import font show *
 import font-x11-adobe.sans-08
 import expect show *
+import system
+import system show platform
 
 import line-wrap show line-wrap
 
@@ -104,7 +106,7 @@ variable-width:
     one-pixel-wrapped-hello
     one-pixel-wrapped-hello-split-anywhere
 
-  if platform != "FreeRTOS":
+  if platform != system.PLATFORM-FREERTOS:
     pixel-long := "I wholly disapprove of what you say and will defend to the death your right to say it. "
     long := pixel-long
 
