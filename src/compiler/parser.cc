@@ -1022,7 +1022,7 @@ Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract) {
   Identifier* name;
   Expression* super = null;
   if (current_token() != Token::IDENTIFIER) {
-    const char* kind_name;
+    const char* kind_name = null;
     switch (kind) {
       case ast::Class::CLASS:
         kind_name = "class";
