@@ -3,9 +3,11 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import system
+import system show platform
 
 main:
-  if platform != "FreeRTOS":
+  if platform != system.PLATFORM-FREERTOS:
     test-huge
 
 test-huge:

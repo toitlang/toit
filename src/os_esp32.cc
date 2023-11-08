@@ -496,6 +496,20 @@ const char* OS::get_platform() {
   return "FreeRTOS";
 }
 
+const char* OS::get_architecture() {
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  return "esp32s3";
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+  return "esp32c3";
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
+  return "esp32s2";
+#elif defined(CONFIG_IDF_TARGET_ESP32)
+  return "esp32";
+#else
+  #error "Unknown architecture"
+#endif
+}
+
 int OS::read_entire_file(char* name, uint8** buffer) {
   return -1;
 }
@@ -619,7 +633,7 @@ class HeapSummaryPage {
       case EXTERNAL_BYTE_ARRAY_MALLOC_TAG: return "external byte array";
       case BIGNUM_MALLOC_TAG: return "tls/bignum";
       case EXTERNAL_STRING_MALLOC_TAG: return "external string";
-      case TOIT_HEAP_MALLOC_TAG: return "toit";
+      case TOIT_HEAP_MALLOC_TAG: return "toit processes";
       case FREE_MALLOC_TAG: return "free";
       case LWIP_MALLOC_TAG: return "lwip";
       case HEAP_OVERHEAD_MALLOC_TAG: return "heap overhead";
@@ -649,7 +663,9 @@ class HeapSummaryPage {
 
 class HeapSummaryCollector {
  public:
-  explicit HeapSummaryCollector(int max_pages) : max_pages_(max_pages) {
+  HeapSummaryCollector(int max_pages, Process* current_process)
+      : current_process_(current_process)
+      , max_pages_(max_pages) {
     if (max_pages > 0) {
       pages_ = _new HeapSummaryPage[max_pages];
       out_of_memory_ = (pages_ == null);
@@ -728,17 +744,23 @@ class HeapSummaryCollector {
     } else {
       printf("Heap report:\n");
     }
-    printf("  ┌───────────┬──────────┬───────────────────────┐\n");
-    printf("  │   Bytes   │  Count   │  Type                 │\n");
-    printf("  ├───────────┼──────────┼───────────────────────┤\n");
+    printf("  ┌───────────┬──────────┬─────────────────────────────────────────────────────┐\n");
+    printf("  │   Bytes   │  Count   │  Type                                               │\n");
+    printf("  ├───────────┼──────────┼─────────────────────────────────────────────────────┤\n");
 
     int size = 0;
     int count = 0;
+    uword metadata_location, metadata_size;
+    GcMetadata::get_metadata_extent(&metadata_location, &metadata_size);
     for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
       // Leave out free space and allocation types with no allocations.
       if (i == FREE_MALLOC_TAG || sizes_[i] == 0) continue;
-      printf("  │ %7d   │ %6d   │  %-20s │\n",
-          sizes_[i], counts_[i], HeapSummaryPage::name_of_type(i));
+      auto this_size = sizes_[i];
+      if (i == TOIT_HEAP_MALLOC_TAG) {
+        this_size -= TOIT_PAGE_SIZE + metadata_size;
+      }
+      printf("  │ %7d   │ %6d   │  %-50s │\n",
+          this_size, counts_[i], HeapSummaryPage::name_of_type(i));
       size += sizes_[i];
       // The reported overhead isn't really separate allocations, so
       // don't count them as such.
@@ -748,16 +770,27 @@ class HeapSummaryCollector {
       if (i == TOIT_HEAP_MALLOC_TAG) {
         for (int j = 0; j < MAX_PROCESSES; j++) {
           if (processes_[j]) {
-            printf("  │   %7d │   %6d │    process %p │\n",
+            const uint8* uuid = processes_[j]->program()->id();
+            char uuid_buffer[37];
+            bool is_system = VM::current()->scheduler()->is_boot_process(processes_[j]);
+            bool is_current = current_process_ == processes_[j];
+            sprintf(uuid_buffer, "%08x-%04x-%04x-%04x-%04x%08x",
+                static_cast<int>(Utils::read_unaligned_uint32_be(uuid)),
+                static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 4)),
+                static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 6)),
+                static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 8)),
+                static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 10)),
+                static_cast<int>(Utils::read_unaligned_uint32_be(uuid + 12)));
+            printf("  │   %7d │   %6d │    %s%4d %s │\n",
                 static_cast<int>(toit_memory_[j]),
                 static_cast<int>(toit_memory_[j] / TOIT_PAGE_SIZE),
-                processes_[j]);
+                is_system ? "system " : is_current ? "current" : "other  ",
+                processes_[j]->id(),
+                uuid_buffer);
           }
         }
-        uword metadata_location, metadata_size;
-        GcMetadata::get_metadata_extent(&metadata_location, &metadata_size);
-        printf("  │   %7d │        1 │    GC heap metadata   │\n"
-               "  │   %7d │        1 │    Spare new-space    │\n",
+        printf("  │ %7d   │      1   │  heap metadata                                      │\n"
+               "  │ %7d   │      1   │  spare new-space                                    │\n",
                static_cast<int>(metadata_size),
                TOIT_PAGE_SIZE);
       }
@@ -768,7 +801,7 @@ class HeapSummaryCollector {
     heap_caps_get_info(&info, caps);
     int capacity_bytes = info.total_allocated_bytes + info.total_free_bytes;
     int used_bytes = size * 100 / capacity_bytes;
-    printf("  └───────────┴──────────┴───────────────────────┘\n");
+    printf("  └───────────┴──────────┴─────────────────────────────────────────────────────┘\n");
     printf("  Total: %d bytes in %d allocations (%d%%), largest free %dk, total free %dk\n",
         size, count, used_bytes,
         static_cast<int>(info.largest_free_block >> 10),
@@ -796,6 +829,7 @@ class HeapSummaryCollector {
   uword counts_[NUMBER_OF_MALLOC_TAGS];
   uword toit_memory_[MAX_PROCESSES];
   Process* processes_[MAX_PROCESSES];
+  Process* current_process_;
   const int max_pages_;
   int dropped_pages_ = 0;
   bool out_of_memory_ = false;
@@ -807,8 +841,8 @@ bool register_allocation(void* self, void* tag, void* address, uword size) {
   return false;
 }
 
-void OS::heap_summary_report(int max_pages, const char* marker) {
-  HeapSummaryCollector collector(max_pages);
+void OS::heap_summary_report(int max_pages, const char* marker, Process* process) {
+  HeapSummaryCollector collector(max_pages, process);
   if (collector.out_of_memory()) {
     printf("Not enough memory for a heap report (%d bytes)\n", static_cast<int>(collector.allocation_requirement()));
     return;
@@ -824,7 +858,7 @@ void OS::heap_summary_report(int max_pages, const char* marker) {
 
 void OS::set_heap_tag(word tag) {}
 word OS::get_heap_tag() { return 0; }
-void OS::heap_summary_report(int max_pages, const char* marker) {}
+void OS::heap_summary_report(int max_pages, const char* marker, Process* process) {}
 
 #endif // def TOIT_CMPCTMALLOC
 

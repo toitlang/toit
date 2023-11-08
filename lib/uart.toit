@@ -134,13 +134,6 @@ class Port implements reader.Reader:
      state_ = ResourceState_ group uart_
 
   /**
-  Changes the baud rate.
-  Deprecated. Use $baud-rate= instead
-  */
-  set-baud-rate new-rate/int:
-    uart-set-baud-rate_ uart_ new-rate
-
-  /**
   Sets the baud rate to the given $new-rate.
 
   The receiver should be ready to read and write data at the specified

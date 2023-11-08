@@ -2,6 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import system
+
 import host.pipe
 
 run-toitp test-args/List toitp-args/List --filter/string?=null -> string:
@@ -18,7 +20,7 @@ run-toitp test-args/List toitp-args/List --filter/string?=null -> string:
 
 // Extracts the entry names, discarding the index and the location.
 extract-entries output/string --max-length/int -> List:
-  lines := output.split LINE-TERMINATOR
+  lines := output.split system.LINE-TERMINATOR
   result := lines.copy 1
   result.filter --in-place: it != ""
   result.map --in-place:

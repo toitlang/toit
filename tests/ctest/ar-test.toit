@@ -11,6 +11,8 @@ import host.pipe
 import host.directory
 import host.file
 import bytes
+import system
+import system show platform
 import ar show *
 import tar show *
 import writer show Writer
@@ -119,7 +121,7 @@ run-test file-mapping/Map tmp-dir [generate-ar]:
       expect-null file
 
   // FreeRTOS doesn't have `ar`.
-  if platform == "FreeRTOS": return
+  if platform == system.PLATFORM-FREERTOS: return
 
   test-path := "$tmp-dir/test.a"
   stream := file.Stream.for-write test-path
@@ -158,7 +160,7 @@ run-tests [generate-ar]:
 
 main args:
   // FreeRTOS doesn't run c tests.
-  if platform == "FreeRTOS": return
+  if platform == system.PLATFORM-FREERTOS: return
 
   exe-dir := args[0]
   run-tests: |tmp-dir file-mapping|

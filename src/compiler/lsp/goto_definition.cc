@@ -120,29 +120,41 @@ void GotoDefinitionHandler::call_virtual(ir::CallVirtual* node,
   // Keep track of the possible candidates, in case we don't find a full match.
   Map<ResolutionShape, ir::Method*> candidates;
   while (klass != null) {
-    for (auto method : klass->methods()) {
-      if (method->name() != selector) continue;
-      if (method->resolution_shape().accepts(node->shape())) {
-        if (is_for_named) {
-          auto name = lsp_selection_dot->name();
-          for (auto parameter : method->parameters()) {
-            if (parameter->name() == name) {
-              _print_range(parameter->range());
-              break;
+    for (int i = -1; i < klass->mixins().length(); i++) {
+      auto current = i == -1
+          ? klass
+          : klass->mixins()[i];
+      for (auto method : current->methods()) {
+        if (method->name() != selector) continue;
+        if (method->resolution_shape().accepts(node->shape())) {
+          if (is_for_named) {
+            auto name = lsp_selection_dot->name();
+            for (auto parameter : method->parameters()) {
+              if (parameter->name() == name) {
+                _print_range(parameter->range());
+                break;
+              }
             }
+          } else {
+            _print_range(method->range());
           }
-        } else {
-          _print_range(method->range());
+          return;
         }
-        return;
+        // Only add new candidates, if they aren't shadowed.
+        // TODO(florian): different resolution shapes could still shadow each other.
+        if (candidates.find(method->resolution_shape()) != candidates.end()) continue;
+        candidates[method->resolution_shape()] = method;
       }
-      // Only add new candidates, if they aren't shadowed.
-      // TODO(florian): different resolution shapes could still shadow each other.
-      if (candidates.find(method->resolution_shape()) != candidates.end()) continue;
-      candidates[method->resolution_shape()] = method;
     }
-    klass = klass->super();
+    if (klass->super() == null &&
+        (klass->is_interface() || klass->is_mixin())) {
+      // Add the Object methods, which every object has.
+      klass = classes[0];
+    } else {
+      klass = klass->super();
+    }
   }
+
   // Apparently we didn't find a full match. Propose the candidates instead.
   for (auto shape : candidates.keys()) {
     _print_range(candidates[shape]->range());

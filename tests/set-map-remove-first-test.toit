@@ -2,11 +2,14 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import system
+import system show platform
+
 // Tests that we don't go quadratic in running time when using sets and maps as
 // queues or FIFOs, ie always removing the oldest or newest entries first.
 // Runs in < 1.4s on release and <3.0s on debug.
 main:
-  size := platform == "FreeRTOS" ? 2048 : 80000
+  size := platform == system.PLATFORM-FREERTOS ? 2048 : 80000
   print "set_test_first"
   set-test-first size
   print "map_test_first"
