@@ -20,48 +20,82 @@
 
 namespace toit {
 
-class ObjectNotifier;
 class FinalizerNode;
+class Heap;
+class LivenessOracle;
+class ObjectNotifier;
+class ToitFinalizerNode;
 class VmFinalizerNode;
 
 typedef LinkedFifo<FinalizerNode> FinalizerNodeFifo;
 
 class FinalizerNode : public FinalizerNodeFifo::Element {
  public:
-  FinalizerNode(HeapObject* key, Object* lambda)
-  : key_(key), lambda_(lambda) {}
-  virtual ~FinalizerNode() {}
+  FinalizerNode(HeapObject* key, ObjectHeap* heap) : key_(key), heap_(heap) {}
+  virtual ~FinalizerNode();
 
-  HeapObject* key() { return key_; }
-  void set_key(HeapObject* value) { key_ = value; }
-  Object* lambda() { return lambda_; }
+  // Called at the end of compaction and at other times where all pointers
+  // should be visited with no weakness/finalization processing.
+  virtual void roots_do(RootCallback* cb) = 0;
+  // Cleanup when a heap is deleted.
+  virtual void heap_dying() {}
+  // Should return true if the node should be unlinked.
+  virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle) = 0;
 
-  // Garbage collection support.
-  void roots_do(RootCallback* cb);
-
- private:
+ protected:
   HeapObject* key_;
+  ObjectHeap* heap_;
+};
+
+class CallableFinalizerNode : public FinalizerNode {
+ public:
+  CallableFinalizerNode(HeapObject* key, Object* lambda, ObjectHeap* heap)
+    : FinalizerNode(key, heap), lambda_(lambda) {}
+
+  Object* lambda() const { return lambda_; }
+
+  virtual bool keep_after_callback() const = 0;
+
+ protected:
   Object* lambda_;
 };
 
-typedef LinkedFifo<VmFinalizerNode> VmFinalizerNodeFifo;
+typedef LinkedFifo<CallableFinalizerNode> CallableFinalizerNodeFifo;
 
-class VmFinalizerNode : public VmFinalizerNodeFifo::Element {
+class WeakMapFinalizerNode: public CallableFinalizerNode {
  public:
-  VmFinalizerNode(HeapObject* key)
-  : key_(key) {}
-  virtual ~VmFinalizerNode() {}
+  WeakMapFinalizerNode(Instance* map, Object* lambda, ObjectHeap* heap)
+    : CallableFinalizerNode(map, lambda, heap) {}
 
-  HeapObject* key() { return key_; }
-  void set_key(HeapObject* value) { key_ = value; }
-
-  // Garbage collection support.
-  void roots_do(RootCallback* cb);
-
-  void free_external_memory(Process* process);
+  virtual void roots_do(RootCallback* cb);
+  virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle);
+  virtual bool keep_after_callback() const { return true; }
 
  private:
-  HeapObject* key_;
+  Instance* map() { return Instance::cast(key_); }
+};
+
+class ToitFinalizerNode : public CallableFinalizerNode {
+ public:
+  ToitFinalizerNode(Instance* map, Object* lambda, ObjectHeap* heap)
+    : CallableFinalizerNode(map, lambda, heap) {}
+
+  virtual void roots_do(RootCallback* cb);
+  virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle);
+  virtual bool keep_after_callback() const { return false; }
+};
+
+class VmFinalizerNode : public FinalizerNode {
+ public:
+  VmFinalizerNode(HeapObject* key, ObjectHeap* heap)
+    : FinalizerNode(key, heap) {}
+
+  virtual void roots_do(RootCallback* cb);
+  virtual void heap_dying() { free_external_memory(); }
+  virtual bool weak_processing(bool in_closure_queue, RootCallback* visitor, LivenessOracle* oracle);
+
+ private:
+  void free_external_memory();
 };
 
 typedef DoubleLinkedList<ObjectNotifier> ObjectNotifierList;

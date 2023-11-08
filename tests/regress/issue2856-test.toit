@@ -4,6 +4,9 @@
 
 // Regression test for https://github.com/toitware/toit/issues/2856.
 
+import system
+import system show platform
+
 make-huge -> ByteArray:
   return ByteArray 12_000
 
@@ -21,7 +24,7 @@ main:
 
   repetitions := 10_000
 
-  if platform == "FreeRTOS":
+  if platform == system.PLATFORM-FREERTOS:
     repetitions = 1000
 
   repetitions.repeat:
