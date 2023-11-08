@@ -4,14 +4,16 @@
 
 import host.directory
 import expect show *
+import system
+import system show process-stats
 
 main:
   stats := process-stats --gc
-  base := stats[STATS-INDEX-ALLOCATED-MEMORY]
+  base := stats[system.STATS-INDEX-ALLOCATED-MEMORY]
   10.repeat:
     stats2 := process-stats --gc
     expect
-        stats2[STATS-INDEX-ALLOCATED-MEMORY] - base <= 64 * 1024
+        stats2[system.STATS-INDEX-ALLOCATED-MEMORY] - base <= 64 * 1024
     dir := null
     catch:
       // If there is no directory with this name, silently let the test pass.

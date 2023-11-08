@@ -27,7 +27,9 @@ import .firmware show pad
 import binary show LITTLE-ENDIAN ByteOrder
 import bytes
 import encoding.ubjson
+import system
 import uuid
+
 import host.file
 import cli
 
@@ -133,7 +135,7 @@ main args:
   if parsed[M64-FLAG]:
     machine-word-sizes.add 8
   if machine-word-sizes.is-empty:
-    machine-word-sizes.add BYTES-PER-WORD
+    machine-word-sizes.add system.BYTES-PER-WORD
 
   if format == "binary" and machine-word-sizes.size > 1:
     print-usage parser --error="more than one machine flag provided"
