@@ -4,6 +4,8 @@
 
 import .lsp-client show LspClient run-client-test
 import expect show *
+import system
+import system show platform
 
 main args:
   run-client-test args: test it
@@ -12,7 +14,7 @@ main args:
 test client/LspClient:
   // The path doesn't really need to be non-existing, as we provide content for it
   // anyways.
-  DRIVE ::= platform == PLATFORM-WINDOWS ? "c:" : ""
+  DRIVE ::= platform == system.PLATFORM-WINDOWS ? "c:" : ""
   DIR ::= "$DRIVE/non_existing_dir_toit_test"
   path := "$DIR/file.toit"
 
