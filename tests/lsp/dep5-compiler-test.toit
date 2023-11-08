@@ -14,7 +14,7 @@ main args:
 PATH0-CODE ::= """
   // Modules that use monitors.
   import monitor
-  import at
+  import zlib
   import coap
 
   main:
@@ -24,7 +24,7 @@ PATH1-CODE ::= """
   // Modules that use monitors.
   // In reverse order.
   import coap
-  import at
+  import zlib
   import monitor
 
   main:
@@ -33,7 +33,7 @@ PATH1-CODE ::= """
 PATH0-ERROR-CODE ::= """
   // Modules that use monitors.
   import monitor
-  import at
+  import zlib
   import coap
 
   main:
