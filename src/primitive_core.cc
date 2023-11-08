@@ -1584,6 +1584,55 @@ PRIMITIVE(string_raw_at) {
   return Smi::from(c);
 }
 
+PRIMITIVE(utf_16_to_string) {
+  ARGS(Blob, utf_16);
+  if ((utf_16.length() & 1) != 0) FAIL(INVALID_ARGUMENT);
+  if (utf_16.length() > 0x3fffffff) FAIL(OUT_OF_BOUNDS);
+
+  int utf_8_length = Utils::utf_16_to_8(
+      reinterpret_cast<const uint16*>(utf_16.address()),
+      utf_16.length() >> 1,
+      null,
+      0);
+
+  String* result = process->allocate_string(utf_8_length);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+
+  String::MutableBytes utf_8(result);
+
+  Utils::utf_16_to_8(
+      reinterpret_cast<const uint16*>(utf_16.address()),
+      utf_16.length() >> 1,
+      utf_8.address(),
+      utf_8.length());
+
+  return result;
+}
+
+PRIMITIVE(string_to_utf_16) {
+  ARGS(StringOrSlice, utf_8);
+  if (utf_8.length() > 0xfffffff) FAIL(OUT_OF_BOUNDS);
+
+  int utf_16_length = Utils::utf_8_to_16(
+      utf_8.address(),
+      utf_8.length(),
+      null,
+      0);
+
+  ByteArray* result = process->allocate_byte_array(utf_16_length << 1);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+
+  ByteArray::Bytes bytes(result);
+
+  Utils::utf_8_to_16(
+      utf_8.address(),
+      utf_8.length(),
+      reinterpret_cast<uint16*>(bytes.address()),
+      utf_16_length);
+
+  return result;
+}
+
 PRIMITIVE(array_length) {
   ARGS(Array, receiver);
   return Smi::from(receiver->length());

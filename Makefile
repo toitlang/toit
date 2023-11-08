@@ -20,7 +20,7 @@ SHELL=bash
 # General options.
 BUILD ?= build
 HOST ?= host
-BUILD_TYPE ?= Release
+BUILD_TYPE ?= Debug
 TARGET ?= $(HOST)
 TOOLCHAIN ?= $(TARGET)
 
