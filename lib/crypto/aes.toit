@@ -79,10 +79,6 @@ To decrypt, construct and AES decryption state with $AesCbc.decryptor and
 Close the AES state with $close to release system resources.
 */
 class AesCbc extends Aes:
-  /** Deprecated. Use $AesCbc.encryptor instead. */
-  constructor.encrypt key/ByteArray initialization-vector/ByteArray:
-    return AesCbc.encryptor key initialization-vector
-
   /**
   Creates an AES-CBC state for encryption.
 
@@ -91,10 +87,6 @@ class AesCbc extends Aes:
   */
   constructor.encryptor key/ByteArray initialization-vector/ByteArray:
     super.initialize_ key initialization-vector --encrypt
-
-  /** Deprecated. Use $AesCbc.decryptor instead. */
-  constructor.decrypt key/ByteArray initialization-vector/ByteArray:
-    return AesCbc.decryptor key initialization-vector
 
   /**
   Creates an AES-CBC state for decryption.

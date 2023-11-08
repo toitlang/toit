@@ -57,6 +57,7 @@ TYPE_PRIMITIVE_INT(time)
 TYPE_PRIMITIVE_ARRAY(time_info)
 TYPE_PRIMITIVE_NULL(set_tz)
 TYPE_PRIMITIVE_STRING(platform)
+TYPE_PRIMITIVE_STRING(architecture)
 TYPE_PRIMITIVE_INT(bytes_allocated_delta)
 
 TYPE_PRIMITIVE(seconds_since_epoch_local) {

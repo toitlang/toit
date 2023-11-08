@@ -4,6 +4,8 @@
 
 import .lsp-client show LspClient run-client-test
 import expect show *
+import system
+import system show platform
 
 main args:
   run-client-test args: test it
@@ -13,7 +15,7 @@ test client/LspClient:
   // The paths must not exist. We are closing one file, and are testing
   // whether the LSP can deal with it.
   DOC-COUNT ::= 2
-  DRIVE ::= platform == PLATFORM-WINDOWS ? "c:" : ""
+  DRIVE ::= platform == system.PLATFORM-WINDOWS ? "c:" : ""
   MODULE-NAME-PREFIX ::= "some_non_existing_path_1234134123422"
   relatives := List DOC-COUNT: ".$MODULE-NAME-PREFIX$it"
   paths := List DOC-COUNT: "$DRIVE/tmp/$MODULE-NAME-PREFIX$(it).toit"
