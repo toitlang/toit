@@ -5,7 +5,6 @@
 import io
 import net
 import net.tcp
-import reader
 
 import .session
 import .certificate
@@ -35,7 +34,7 @@ class Socket extends Object with io.CloseableInMixin io.CloseableOutMixin implem
       --certificate/Certificate?=null
       --root-certificates=[]
       --handshake-timeout/Duration=Session.DEFAULT-HANDSHAKE-TIMEOUT:
-    session_ = Session.client socket_ socket_
+    session_ = Session.client socket_.in socket_.out
       --server-name=server-name
       --certificate=certificate
       --root-certificates=root-certificates
@@ -53,7 +52,7 @@ class Socket extends Object with io.CloseableInMixin io.CloseableOutMixin implem
       --certificate/Certificate
       --root-certificates=[]
       --handshake-timeout/Duration=Session.DEFAULT-HANDSHAKE-TIMEOUT:
-    session_ = Session.server socket_ socket_
+    session_ = Session.server socket_.in socket_.out
       --certificate=certificate
       --root-certificates=root-certificates
       --handshake-timeout=handshake-timeout
