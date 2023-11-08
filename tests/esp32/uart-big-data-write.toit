@@ -10,13 +10,15 @@ Setup: see uart_big_data_shared.toit.
 
 import expect show *
 import gpio
+import system
+import system show platform
 import uart
 import .uart-big-data-shared
 
 
 main:
   port/uart.Port := ?
-  if platform == "FreeRTOS":
+  if platform == system.PLATFORM-FREERTOS:
     port = uart.Port --rx=null --tx=(gpio.Pin TX) --baud-rate=BAUD-RATE
   else:
     port = uart.Port UART-PATH --baud-rate=BAUD-RATE

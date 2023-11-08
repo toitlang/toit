@@ -1,6 +1,0 @@
-tests/crc-test.toit:52:15: warning: Class 'Crc32' is deprecated
-        crc = Crc32
-              ^~~~~
-tests/crc-test.toit:60:10: warning: Class 'Crc16' is deprecated
-  crc := Crc16
-         ^~~~~

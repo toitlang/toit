@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -17,6 +17,7 @@
 
 #include "flags.h"
 #include "heap_report.h"
+#include "heap_roots.h"
 #include "interpreter.h"
 #include "objects_inline.h"
 #include "os.h"
@@ -101,7 +102,7 @@ String* ObjectHeap::allocate_internal_string(int length) {
   result->_set_header(string_id, program()->class_tag_for(string_id));
   String::cast(result)->_set_length(length);
   String::cast(result)->_raw_set_hash_code(String::NO_HASH_CODE);
-  String::Bytes bytes(String::cast(result));
+  String::MutableBytes bytes(String::cast(result));
   bytes._set_end();
   ASSERT(bytes.length() == length);
   return String::cast(result);
@@ -140,6 +141,13 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, O
   limit_ = pending_limit_;
 }
 
+static void clean_up_finalizers(FinalizerNodeFifo* list) {
+  while (auto finalizer = list->remove_first()) {
+    finalizer->heap_dying();
+    delete finalizer;
+  }
+}
+
 ObjectHeap::~ObjectHeap() {
   // If the process is still linked into the ProcessGroup then this is
   // only called with the scheduler lock.  Once the process has been
@@ -148,20 +156,9 @@ ObjectHeap::~ObjectHeap() {
   // from the destructor of the Process.
   free(global_variables_);
 
-  while (auto finalizer = registered_finalizers_.remove_first()) {
-    delete finalizer;
-  }
-
-  while (auto finalizer = runnable_finalizers_.remove_first()) {
-    delete finalizer;
-  }
-
-  while (auto finalizer = registered_vm_finalizers_.remove_first()) {
-    finalizer->free_external_memory(owner());
-    delete finalizer;
-  }
-
-  delete finalizer_notifier_;
+  clean_up_finalizers(&registered_callback_finalizers_);
+  clean_up_finalizers(&runnable_finalizers_);
+  clean_up_finalizers(&registered_vm_finalizers_);
 
   OS::dispose(mutex_);
 
@@ -222,7 +219,7 @@ ByteArray* ObjectHeap::allocate_external_byte_array(int length, uint8* memory, b
     if (Flags::allocation) printf("External memory for byte array %p [length = %d] setup for finalization.\n", memory, length);
     Process* process = owner();
     ASSERT(process != null);
-    if (!process->add_vm_finalizer(result)) {
+    if (!add_vm_finalizer(result)) {
       set_last_allocation_result(ALLOCATION_OUT_OF_MEMORY);
       return null;  // Allocation failure.
     }
@@ -241,7 +238,7 @@ String* ObjectHeap::allocate_external_string(int length, uint8* memory, bool dis
   ASSERT(!result->content_on_heap());
   if (memory[length] != '\0') {
     // TODO(florian): we should not have '\0' at the end of strings anymore.
-    String::Bytes bytes(String::cast(result));
+    String::MutableBytes bytes(String::cast(result));
     bytes._set_end();
   }
   if (dispose) {
@@ -249,7 +246,7 @@ String* ObjectHeap::allocate_external_string(int length, uint8* memory, bool dis
     if (Flags::allocation) printf("External memory for string %p [length = %d] setup for finalization.\n", memory, length);
     Process* process = owner();
     ASSERT(process != null);
-    if (!process->add_vm_finalizer(result)) {
+    if (!add_vm_finalizer(result)) {
       set_last_allocation_result(ALLOCATION_OUT_OF_MEMORY);
       return null;  // Allocation failure.
     }
@@ -291,10 +288,6 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
 
   // Process roots in the object_notifiers_ list.
   for (ObjectNotifier* n : object_notifiers_) n->roots_do(callback);
-  // Process roots in the runnable_finalizers_.
-  for (FinalizerNode* node : runnable_finalizers_) {
-    node->roots_do(callback);
-  }
 }
 
 void ObjectHeap::iterate_chunks(void* context, process_chunk_callback_t* callback) {
@@ -334,101 +327,75 @@ void ObjectHeap::install_heap_limit() {
   limit_ = pending_limit_;
 }
 
-void ObjectHeap::process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space) {
-  // Process the registered finalizer list.
-  if (!registered_finalizers_.is_empty() && Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizers\n");
-  ObjectHeap* heap = this;
-  registered_finalizers_.remove_wherever([ss, heap, from_space](FinalizerNode* node) -> bool {
-    bool is_alive = from_space->is_alive(node->key());
-    if (!is_alive) {
-      // Clear the key so it is not retained.
-      node->set_key(heap->program()->null_object());
-    }
-    node->roots_do(ss);
-    if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
-    if (is_alive) return false;  // Keep node in list.
-    // From here down, the node is going to be unlinked by returning true.
-    if (Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is unreachable\n", node);
-    heap->runnable_finalizers_.append(node);
-    return true; // Remove node from list.
-  });
+void ObjectHeap::process_registered_callback_finalizers(RootCallback* ss, LivenessOracle* from_space) {
+  process_registered_finalizers_helper(&registered_callback_finalizers_, ss, from_space, false);
 }
 
 void ObjectHeap::process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space) {
-  // Process registered VM finalizers.
-  registered_vm_finalizers_.remove_wherever([ss, this, from_space](VmFinalizerNode* node) -> bool {
-    bool is_alive = from_space->is_alive(node->key());
+  process_registered_finalizers_helper(&registered_vm_finalizers_, ss, from_space, false);
+}
 
-    if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
-    if (is_alive) {
-      node->roots_do(ss);
-      return false; // Keep node in list.
-    }
-    if (Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizer %p for external memory.\n", node);
-    node->free_external_memory(owner());
-    delete node;
-    return true; // Remove node from list.
+void ObjectHeap::process_finalizer_queue(RootCallback* ss, LivenessOracle* from_space) {
+  process_registered_finalizers_helper(&runnable_finalizers_, ss, from_space, true);
+}
+
+void ObjectHeap::process_registered_finalizers_helper(FinalizerNodeFifo* list, RootCallback* ss, LivenessOracle* from_space, bool in_closure_queue) {
+  list->remove_wherever([ss, from_space, in_closure_queue](FinalizerNode* node) -> bool {
+    return node->weak_processing(in_closure_queue, ss, from_space);
   });
 }
 
-bool ObjectHeap::has_finalizer(HeapObject* key, Object* lambda) {
-  for (FinalizerNode* node : registered_finalizers_) {
-    if (node->key() == key) return true;
-  }
-  return false;
+void ObjectHeap::iterate_finalization_roots(RootCallback* cb) {
+  for (auto finalizer : registered_callback_finalizers_) finalizer->roots_do(cb);
+  for (auto finalizer : registered_vm_finalizers_) finalizer->roots_do(cb);
+  for (auto finalizer : runnable_finalizers_) finalizer->roots_do(cb);
 }
 
-bool ObjectHeap::add_finalizer(HeapObject* key, Object* lambda) {
-  // We should already have checked whether the object is already registered.
-  ASSERT(!has_finalizer(key, lambda));
-  auto node = _new FinalizerNode(key, lambda);
+bool ObjectHeap::add_callable_finalizer(Instance* key, Object* lambda, bool weak_map) {
+  // We should already have checked whether the object already has the bit set.
+  // It may be on the finalizer list because we remove finalizers by unsetting
+  // the bit, but we don't traverse and clean the list before the next GC.
+  ASSERT(!key->has_active_finalizer());
+  CallableFinalizerNode* node;
+  if (weak_map) {
+    ASSERT(!key->can_be_toit_finalized(program()));
+    ASSERT(!key->has_active_finalizer());
+    node = _new WeakMapFinalizerNode(key, lambda, this);
+  } else {
+    ASSERT(key->can_be_toit_finalized(program()));
+    ASSERT(!key->has_active_finalizer());
+    node = _new ToitFinalizerNode(key, lambda, this);
+  }
   if (node == null) return false;  // Allocation failed.
-  registered_finalizers_.append(node);
+  // Add it at the head of the list in case there is an old "removed" finalizer
+  // lower down on the list, waiting to be unlinked at the next GC.
+  registered_callback_finalizers_.prepend(node);
+  key->set_has_active_finalizer();
   return true;
 }
 
 bool ObjectHeap::add_vm_finalizer(HeapObject* key) {
+  ASSERT(!key->can_be_toit_finalized(program()));
   // We should already have checked whether the object is already registered.
-  auto node = _new VmFinalizerNode(key);
+  auto node = _new VmFinalizerNode(key, this);
   if (node == null) return false;  // Allocation failed.
   registered_vm_finalizers_.append(node);
+  key->set_has_active_finalizer();
   return true;
 }
 
-bool ObjectHeap::remove_finalizer(HeapObject* key) {
-  bool found = false;
-  registered_finalizers_.remove_wherever([key, &found](FinalizerNode* node) -> bool {
-    if (node->key() == key) {
-      delete node;
-      found = true;
-      return true;
-    }
-    return false;
-  });
-  return found;
-}
-
-bool ObjectHeap::remove_vm_finalizer(HeapObject* key) {
-  bool found = false;
-  registered_vm_finalizers_.remove_wherever([key, &found](VmFinalizerNode* node) -> bool {
-    if (node->key() == key) {
-      delete node;
-      found = true;
-      return true;
-    }
-    return false;
-  });
-  return found;
-}
-
 Object* ObjectHeap::next_finalizer_to_run() {
-  FinalizerNode* node = runnable_finalizers_.remove_first();
+  ToitFinalizerNode* node = static_cast<ToitFinalizerNode*>(runnable_finalizers_.remove_first());
   if (node == null) {
     return program()->null_object();
   }
 
   Object* result = node->lambda();
-  delete node;
+  if (node->keep_after_callback()) {
+    registered_callback_finalizers_.prepend(node);
+  } else {
+    delete node;
+  }
   return result;
 }
 

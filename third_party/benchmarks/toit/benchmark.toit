@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import system show process-stats
+
 // Utility for measuring execution time and memory allocations for a block
 // and then printing the results.
 log-execution-time name/string --iterations/int=1 --allocations/bool=true [block] -> none:

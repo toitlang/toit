@@ -1,0 +1,3 @@
+toit-cert-roots/tests/tls_global_cert_test_slow.toit:21:28: warning: Deprecated 'platform'
+  concurrent_processes ::= platform == "FreeRTOS" ? 1 : 4
+                           ^~~~~~~~
