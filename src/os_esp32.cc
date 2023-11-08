@@ -506,7 +506,7 @@ const char* OS::get_architecture() {
 #elif defined(CONFIG_IDF_TARGET_ESP32)
   return "esp32";
 #else
-  #error "Unknown MCU architecture"
+  #error "Unknown architecture"
 #endif
 }
 
