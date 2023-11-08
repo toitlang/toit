@@ -452,12 +452,12 @@ class BaseSnapshotWriter : public SnapshotWriter {
   void write_external_object_table(Object** table, int length);
   void write_external_list_int32(List<int32> list);
   void write_external_list_uint16(List<uint16> list);
-  void write_external_list_uint8(List<uint8> list);
+  void write_external_list_uint8(List<const uint8> list);
 
  protected:
   VirtualAllocator allocator_;
 
-  virtual void write_bytes(uint8* data, int length) = 0;
+  virtual void write_bytes(const uint8* data, int length) = 0;
 
   /// Whether the object with the given key is a back reference.
   /// Fills the back_reference_id if the object is a back reference.
@@ -499,7 +499,7 @@ class CollectingSnapshotWriter : public BaseSnapshotWriter {
   const WorkAroundSet<uword>& back_reference_targets() const { return back_reference_targets_; }
 
  protected:
-  void write_bytes(uint8* data, int length);
+  void write_bytes(const uint8* data, int length);
 
   bool is_back_reference(uword object_key, int* back_reference_id);
   bool is_back_reference_target(uword object_key);
@@ -533,7 +533,7 @@ class EmittingSnapshotWriter : public BaseSnapshotWriter {
   int remaining() const { return length_ - pos_; }
 
  protected:
-  void write_bytes(uint8* data, int length);
+  void write_bytes(const uint8* data, int length);
 
   bool is_back_reference(uword object_key, int* back_reference_id);
   bool is_back_reference_target(uword object_key);
@@ -990,7 +990,7 @@ void CollectingSnapshotWriter::reserve_header(int header_byte_size) {
 void CollectingSnapshotWriter::write_byte(uint8 value) {
   length_ += 1;
 }
-void CollectingSnapshotWriter::write_bytes(uint8* data, int length) {
+void CollectingSnapshotWriter::write_bytes(const uint8* data, int length) {
   length_ += length;
 }
 
@@ -1026,7 +1026,7 @@ void EmittingSnapshotWriter::write_byte(uint8 value) {
   ASSERT(pos_ + 1 <= length_);
   buffer_[pos_++] = value;
 }
-void EmittingSnapshotWriter::write_bytes(uint8* data, int length) {
+void EmittingSnapshotWriter::write_bytes(const uint8* data, int length) {
   ASSERT(pos_ + length <= length_);
   memcpy(&buffer_[pos_], data, length);
   pos_ += length;
@@ -1179,7 +1179,7 @@ void BaseSnapshotWriter::write_external_list_uint16(List<uint16> list) {
   allocator_.allocate_external_uint16s(list.length());
 }
 
-void BaseSnapshotWriter::write_external_list_uint8(List<uint8> list) {
+void BaseSnapshotWriter::write_external_list_uint8(List<const uint8> list) {
   write_int32(list.length());
   write_bytes(list.data(), list.length());
   allocator_.allocate_external_bytes(list.length());

@@ -110,16 +110,6 @@ class Uuid:
     if bytes_.size != SIZE: throw "INVALID_UUID"
 
   /**
-  Creates the NIL UUID.
-  All bits of the UUID are zero.
-
-  Deprecated. Use $NIL instead.
-  */
-  constructor.all-zeros:
-    zeros := ByteArray SIZE
-    return Uuid zeros
-
-  /**
   Converts this instance to a string.
 
   Use $to-string to get the canonical text representation of UUIDs.

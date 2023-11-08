@@ -6,6 +6,8 @@ import host.directory
 import .lsp-client show LspClient run-client-test
 import expect show *
 import host.file
+import system
+import system show platform
 
 main args:
   run-client-test --use-toitlsp args: test it
@@ -15,7 +17,7 @@ test client/LspClient:
   space-foo := "$(directory.cwd)/with space/foo.toit"
   space-bar := "$(directory.cwd)/with space/bar.toit"
 
-  if platform == PLATFORM-WINDOWS:
+  if platform == system.PLATFORM-WINDOWS:
     space-foo = space-foo.replace --all "/" "\\"
     space-bar = space-bar.replace --all "/" "\\"
 

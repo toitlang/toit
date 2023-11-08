@@ -1,6 +1,0 @@
-toit-heading/examples/main.toit:15:12: warning: Class 'FlashStore' is deprecated
-  store := FlashStore
-           ^~~~~~~~~~
-toit-heading/examples/main.toit:20:19: warning: Class 'FlashStore' is deprecated
-  calibration := (FlashStore).get "mag-calibration"
-                  ^~~~~~~~~~
