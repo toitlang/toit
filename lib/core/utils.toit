@@ -264,8 +264,8 @@ PLATFORM-MACOS ::= "macOS"
 /** Deprecated: Use system.PLATFORM-LINUX instead. */
 PLATFORM-LINUX ::= "Linux"
 
-/** Deprecated: Use system.PLATFORM-LINUX instead. */
-LINE-TERMINATOR ::= system.platform == system.PLATFORM-WINDOWS ? "\r\n" : "\n"
+/** Deprecated: Use system.LINE-TERMINATOR instead. */
+LINE-TERMINATOR ::= system.LINE-TERMINATOR
 
 /** Deprecated: Use system.STATS-INDEX-GC-COUNT instead. */
 STATS-INDEX-GC-COUNT                       ::= 0

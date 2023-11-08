@@ -366,6 +366,18 @@ const char* OS::get_platform() {
   return "Windows";
 }
 
+const char* OS::get_architecture() {
+#if defined(_M_AMD64)
+  return "x86_64";
+#elif defined(_M_ARM64)
+  return "arm64";
+#elif defined(_M_IX86)
+  return "x86";
+#else
+  #error "Unknown architecture"
+#endif
+}
+
 int OS::read_entire_file(char* name, uint8** buffer) {
   FATAL("read_entire_file unimplemented");
 }

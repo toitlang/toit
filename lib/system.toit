@@ -29,8 +29,37 @@ PLATFORM-LINUX ::= "Linux"
 platform -> string:
   #primitive.core.platform
 
+/** Return value from $architecture. */
+ARCHITECTURE-ARM64 ::= "arm64"
+
+/** Return value from $architecture. */
+ARCHITECTURE-ARM ::= "arm"
+
+/** Return value from $architecture. */
+ARCHITECTURE-X86 ::= "x86"
+
+/** Return value from $architecture. */
+ARCHITECTURE-X86-64 ::= "x86_64"
+
+/** Return value from $architecture. */
+ARCHITECTURE-ESP32 ::= "esp32"
+
+/** Return value from $architecture. */
+ARCHITECTURE-ESP32S2 ::= "esp32s2"
+
+/** Return value from $architecture. */
+ARCHITECTURE-ESP32S3 ::= "esp32s3"
+
+/** Return value from $architecture. */
+ARCHITECTURE-ESP32C3 ::= "esp32c3"
+
+/** Returns a string identifying the underlying architecture. */
+architecture -> string:
+  #primitive.core.architecture
+
 /** Returns either "\r\n" or "\n" depending on the underlying platform. */
 LINE-TERMINATOR ::= platform == PLATFORM-WINDOWS ? "\r\n" : "\n"
+
 
 /// Index for $process-stats.
 STATS-INDEX-GC-COUNT                       ::= 0

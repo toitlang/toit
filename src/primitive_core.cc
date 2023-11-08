@@ -1065,6 +1065,11 @@ PRIMITIVE(platform) {
   return process->allocate_string_or_error(platform_name, strlen(platform_name));
 }
 
+PRIMITIVE(architecture) {
+  const char* architecture_name = OS::get_architecture();
+  return process->allocate_string_or_error(architecture_name, strlen(architecture_name));
+}
+
 PRIMITIVE(bytes_allocated_delta) {
   return Primitive::integer(process->bytes_allocated_delta(), process);
 }
