@@ -25,8 +25,8 @@ interface Socket implements reader.Reader:
   // Enable or disable TCP_NODELAY option.
   no-delay= value/bool
 
-  in -> io.Reader
-  out -> io.Writer
+  in -> io.CloseableReader
+  out -> io.CloseableWriter
 
   read -> ByteArray?
   write data/io.Data from/int=0 to/int=data.byte-size -> int
