@@ -84,7 +84,7 @@ UnorderedMap<Class*, QueryableClass> build_queryables_from_resolution_shapes(Pro
         // The 'Object' class is the first in the list of program classes.
         // If we are here, then we already dealt with it.
         ASSERT(!result[object_class].methods().empty());
-        break;
+        break;  // Go to next phase.
       }
       if (phase != 0 && klass == object_class) continue;
       // Second phase only does mixins.
