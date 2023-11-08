@@ -1,9 +1,0 @@
-<pkg:..>/location.toit:5:8: error: Package for prefix 'serialization' not found
-import serialization
-       ^~~~~~~~~~~~~
-<pkg:..>/location.toit:30:29: error: Unresolved identifier: 'deserialize'
-    values := serialization.deserialize bytes
-                            ^~~~~~~~~~~
-<pkg:..>/location.toit:44:26: error: Unresolved identifier: 'serialize'
-    return serialization.serialize [latitude, longitude]
-                         ^~~~~~~~~
