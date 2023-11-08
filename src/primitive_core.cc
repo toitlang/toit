@@ -1591,9 +1591,7 @@ PRIMITIVE(utf_16_to_string) {
 
   int utf_8_length = Utils::utf_16_to_8(
       reinterpret_cast<const uint16*>(utf_16.address()),
-      utf_16.length() >> 1,
-      null,
-      0);
+      utf_16.length() >> 1);
 
   String* result = process->allocate_string(utf_8_length);
   if (result == null) FAIL(ALLOCATION_FAILED);
@@ -1615,9 +1613,7 @@ PRIMITIVE(string_to_utf_16) {
 
   int utf_16_length = Utils::utf_8_to_16(
       utf_8.address(),
-      utf_8.length(),
-      null,
-      0);
+      utf_8.length());
 
   ByteArray* result = process->allocate_byte_array(utf_16_length << 1);
   if (result == null) FAIL(ALLOCATION_FAILED);
