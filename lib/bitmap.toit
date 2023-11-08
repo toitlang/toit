@@ -123,12 +123,6 @@ bitmap-zap byte-array/ByteArray color/int:
 bytemap-zap byte-array/ByteArray color/int:
   #primitive.bitmap.byte-zap
 
-/**
-Deprecated.
-Use null for the lookup table instead.
-*/
-IDENTITY-LOOKUP-TABLE ::= ByteArray 0x100: it
-
 OVERWRITE ::= 0
 OR ::= 1
 ADD ::= 2

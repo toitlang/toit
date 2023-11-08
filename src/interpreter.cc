@@ -105,7 +105,7 @@ void Interpreter::prepare_task(Method entry, Instance* code) {
 Object** Interpreter::gc(Object** sp, bool malloc_failed, int attempts, bool force_cross_process) {
   ASSERT(attempts >= 1 && attempts <= 3);  // Allocation attempts.
   if (attempts == 3) {
-    OS::heap_summary_report(0, "out of memory");
+    OS::heap_summary_report(0, "out of memory", process_);
     if (VM::current()->scheduler()->is_boot_process(process_)) {
       OS::out_of_memory("Out of memory in system process");
     }

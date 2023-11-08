@@ -3,6 +3,8 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import system
+import system show process-stats
 
 test-map:
   n := 213
@@ -586,8 +588,8 @@ class Stringlike:
 
 main:
   stats := process-stats
-  initial-gcs := stats[STATS-INDEX-FULL-GC-COUNT]
-  initial-compacts := stats[STATS-INDEX-FULL-COMPACTING-GC-COUNT]
+  initial-gcs := stats[system.STATS-INDEX-FULL-GC-COUNT]
+  initial-compacts := stats[system.STATS-INDEX-FULL-COMPACTING-GC-COUNT]
 
   test-map
   test-set
@@ -599,8 +601,8 @@ main:
   test-set-find {"one", "two", "three", "four", "five", "2650"}
 
   stats = process-stats
-  final-gcs := stats[STATS-INDEX-FULL-GC-COUNT]
+  final-gcs := stats[system.STATS-INDEX-FULL-GC-COUNT]
   gcs := final-gcs - initial-gcs
-  final-compacts := stats[STATS-INDEX-FULL-COMPACTING-GC-COUNT]
+  final-compacts := stats[system.STATS-INDEX-FULL-COMPACTING-GC-COUNT]
   print "Performed $(gcs) full GC$(gcs == 1 ? "" : "s"), $(final-compacts - initial-compacts) of them compacting"
   expect 0 <= initial-gcs <= final-gcs

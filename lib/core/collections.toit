@@ -2651,9 +2651,31 @@ See also https://docs.toit.io/language/listsetmap.
 class Map extends HashedInsertionOrderedCollection_:
   static STEP_ ::= 2
 
-  // A map that only works with strings, integers, and objects supporting hash_code and equals.
+  /**
+  Constructs an empty map.
+  */
   constructor:
     super
+
+  /**
+  Constructs a weak map where the values may be replaced by null when there is
+    memory pressure.
+  A cleanup task may remove keys whose values are null at some later point, but
+    your program should not rely on this.  This cleanup task will also remove
+    key-value pairs where the value was deliberately set to null.
+  */
+  constructor.weak:
+    super
+    add-gc-processing_ this::
+      backing := backing_
+      length := backing.size
+      for position := 0; position < length; position += 2:
+        key := backing[position]
+        value := backing[position + 1]
+        if key is Tombstone_ or value != null: continue
+        backing[position] = SMALL-TOMBSTONE_
+        backing[position + 1] = SMALL-TOMBSTONE_
+        size_--
 
   /**
   Constructs a Map with a given $size.

@@ -7,8 +7,10 @@ import host.directory
 import expect show *
 import host.file
 import monitor
+import system
+import system show platform
 
-DRIVE ::= platform == PLATFORM-WINDOWS ? "c:" : ""
+DRIVE ::= platform == system.PLATFORM-WINDOWS ? "c:" : ""
 PATH-PREFIX ::= "$DRIVE/non_existent/some path with spaces and :/toit_test"
 
 PATH1 ::= "$PATH-PREFIX/p1.toit"

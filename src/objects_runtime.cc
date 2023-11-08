@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -174,7 +174,7 @@ void Stack::transfer_from_interpreter(Interpreter* interpreter) {
   GcMetadata::insert_into_remembered_set(this);
 }
 
-bool HeapObject::in_remembered_set() {
+bool HeapObject::in_remembered_set() const {
   if (*GcMetadata::remembered_set_for(this) == GcMetadata::NEW_SPACE_POINTERS) {
     return true;
   }
