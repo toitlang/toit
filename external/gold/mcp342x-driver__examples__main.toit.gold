@@ -1,9 +1,0 @@
-mcp342x-driver/examples/main.toit:6:1: error: Failed to import 'serial.protocols.i2c'
-import serial.protocols.i2c as i2c
-^~~~~~
-mcp342x-driver/examples/main.toit:6:15: note: Cannot enter '<sdk>/serial/protocols': folder does not exist
-import serial.protocols.i2c as i2c
-              ^~~~~~~~~
-mcp342x-driver/examples/main.toit:12:14: error: Unresolved identifier: 'Bus'
-  bus := i2c.Bus --sda=sda --scl=scl
-             ^~~
