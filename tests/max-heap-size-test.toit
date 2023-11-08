@@ -3,6 +3,8 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import system
+import system show platform
 
 expect_ name [code]:
   expect-equals
@@ -14,7 +16,7 @@ expect-allocation-failed [code]:
   expect
       exception == "ALLOCATION_FAILED" or exception == "OUT_OF_MEMORY"
 
-PAGE-SIZE-LOG-2 ::= platform == "FreeRTOS" ? 12 : 15
+PAGE-SIZE-LOG-2 ::= platform == system.PLATFORM-FREERTOS ? 12 : 15
 
 main:
   // We can limit ourselves to as little as a 4k heap (on 32 bit) which

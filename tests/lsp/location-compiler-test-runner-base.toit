@@ -7,10 +7,12 @@ import host.pipe
 import reader show BufferedReader
 import .lsp-client show LspClient run-client-test
 import .utils
+import system
+import system show platform
 
 is-absolute_ path/string -> bool:
   if path.starts-with "/": return true
-  if platform != PLATFORM-WINDOWS: return false
+  if platform != system.PLATFORM-WINDOWS: return false
   return path.size > 1 and path[1] == ':'
 
 abstract class LocationCompilerTestRunner:
