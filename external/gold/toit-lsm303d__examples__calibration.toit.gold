@@ -1,6 +1,0 @@
-toit-lsm303d/examples/calibration.toit:8:20: error: Unresolved show 'FlashStore'
-import device show FlashStore
-                   ^~~~~~~~~~
-toit-lsm303d/examples/calibration.toit:24:12: error: Unresolved identifier: 'FlashStore'
-  store := FlashStore
-           ^~~~~~~~~~
