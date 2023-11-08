@@ -304,6 +304,46 @@ process-stats --gc/bool=false group id list/List=(List system.STATS-LIST-SIZE_) 
 gc-count -> int:
   #primitive.core.gc-count
 
+/**
+Returns the Toit SDK version that this virtual machine has been built from.
+
+Deprecated. Use $system.vm-sdk-version instead.
+*/
+vm-sdk-version -> string:
+  #primitive.core.vm-sdk-version
+
+/**
+Returns information about who built this virtual machine.
+
+Deprecated. Use $system.vm-sdk-info instead.
+*/
+vm-sdk-info -> string:
+  #primitive.core.vm-sdk-info
+
+/**
+Returns the Toit SDK model that this virtual machine has been built from.
+
+Deprecated. Use $system.vm-sdk-model instead.
+*/
+vm-sdk-model -> string:
+  #primitive.core.vm-sdk-model
+
+/**
+Returns the Toit SDK version that generated this application snapshot.
+
+Deprecated. Use $system.app-sdk-version instead.
+*/
+app-sdk-version -> string:
+  #primitive.core.app-sdk-version
+
+/**
+Returns information about who build this application snapshot.
+
+Deprecated. Use $system.app-sdk-info instead.
+*/
+app-sdk-info -> string:
+  #primitive.core.app-sdk-info
+
 // TODO: This is certainly not the right interface. We want to be able to set
 // this from the system for other/new processes.
 /** Sets the max size for the heap to $size. */
