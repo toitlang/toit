@@ -1,21 +1,21 @@
-jaguar/src/jaguar.toit:329:25: error: Unresolved identifier: 'vm-sdk-version'
+jaguar/src/jaguar.toit:329:25: warning: Deprecated 'vm-sdk-version'
         "sdkVersion": "$vm-sdk-version",
                         ^~~~~~~~~~~~~~
-jaguar/src/jaguar.toit:378:43: error: Unresolved identifier: 'vm-sdk-version'
-                <p><b class="text-black">$vm-sdk-version</b></p>
-                                          ^~~~~~~~~~~~~~
-jaguar/src/jaguar.toit:450:35: error: Unresolved identifier: 'vm-sdk-version'
-    else if sdk-version-header != vm-sdk-version:
-                                  ^~~~~~~~~~~~~~
-jaguar/src/jaguar.toit:451:98: error: Unresolved identifier: 'vm-sdk-version'
-      logger.info "denied request, header: '$HEADER-SDK-VERSION' was '$sdk-version-header' not '$vm-sdk-version'"
-                                                                                                 ^~~~~~~~~~~~~~
-jaguar/src/jaguar.toit:452:78: error: Unresolved identifier: 'vm-sdk-version'
-      writer.write-headers http.STATUS-NOT-ACCEPTABLE --message="Device has $vm-sdk-version, jag has $sdk-version-header"
-                                                                             ^~~~~~~~~~~~~~
 jaguar/src/jaguar.toit:331:22: warning: Deprecated 'BYTES-PER-WORD'
         "wordSize": $BYTES-PER-WORD
                      ^~~~~~~~~~~~~~
+jaguar/src/jaguar.toit:378:43: warning: Deprecated 'vm-sdk-version'
+                <p><b class="text-black">$vm-sdk-version</b></p>
+                                          ^~~~~~~~~~~~~~
+jaguar/src/jaguar.toit:450:35: warning: Deprecated 'vm-sdk-version'
+    else if sdk-version-header != vm-sdk-version:
+                                  ^~~~~~~~~~~~~~
+jaguar/src/jaguar.toit:451:98: warning: Deprecated 'vm-sdk-version'
+      logger.info "denied request, header: '$HEADER-SDK-VERSION' was '$sdk-version-header' not '$vm-sdk-version'"
+                                                                                                 ^~~~~~~~~~~~~~
+jaguar/src/jaguar.toit:452:78: warning: Deprecated 'vm-sdk-version'
+      writer.write-headers http.STATUS-NOT-ACCEPTABLE --message="Device has $vm-sdk-version, jag has $sdk-version-header"
+                                                                             ^~~~~~~~~~~~~~
 jaguar/src/jaguar.toit:147:8: warning: Deprecated 'platform'
     if platform == PLATFORM-FREERTOS:
        ^~~~~~~~
