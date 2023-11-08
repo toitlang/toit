@@ -11,19 +11,17 @@ import monitor show *
 
 import .io-data
 
-test-compress str/string expected/ByteArray --uncompressed=false:
-  do-test 10000 0 str expected uncompressed --gzip=false
-  do-test 1 0 str expected uncompressed --gzip=false
-  do-test 2 0 str expected uncompressed --gzip=false
-  do-test 2 1 str expected uncompressed --gzip=false
-  do-test 10000 0 str expected uncompressed --gzip=true
-  do-test 1 0 str expected uncompressed --gzip=true
-  do-test 2 0 str expected uncompressed --gzip=true
-  do-test 2 1 str expected uncompressed --gzip=true
+test-compress str/string expected/ByteArray --uncompressed/bool=false:
+  [true, false].do: | gzip |
+    [true, false].do: | split-writes |
+      do-test 10000 0 str expected uncompressed --gzip=gzip --split-writes=split-writes
+      do-test 1 0 str expected uncompressed --gzip=gzip --split-writes=split-writes
+      do-test 2 0 str expected uncompressed --gzip=gzip --split-writes=split-writes
+      do-test 2 1 str expected uncompressed --gzip=gzip --split-writes=split-writes
 
-do-test chunk-size chunk-offset str/string zlib-expected/ByteArray uncompressed --gzip/bool:
+do-test chunk-size chunk-offset str/string zlib-expected/ByteArray uncompressed --gzip/bool --split-writes/bool:
   compressor := uncompressed ?
-    gzip ? UncompressedGzipEncoder : UncompressedZlibEncoder :
+    gzip ? UncompressedGzipEncoder : (UncompressedZlibEncoder --split-writes=split-writes) :
     gzip ? RunLengthGzipEncoder : RunLengthZlibEncoder
   accumulator := bytes.Buffer
   done := Semaphore

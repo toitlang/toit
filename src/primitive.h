@@ -81,6 +81,7 @@ namespace toit {
   PRIMITIVE(seconds_since_epoch_local, 7)    \
   PRIMITIVE(set_tz, 1)                       \
   PRIMITIVE(platform, 0)                     \
+  PRIMITIVE(architecture, 0)                 \
   PRIMITIVE(process_stats, 4)                \
   PRIMITIVE(bytes_allocated_delta, 0)        \
   PRIMITIVE(string_length, 1)                \
@@ -387,6 +388,13 @@ namespace toit {
   PRIMITIVE(total_run_time, 0)               \
   PRIMITIVE(get_mac_address, 0)              \
   PRIMITIVE(memory_page_report, 0)           \
+  PRIMITIVE(watchdog_init, 1)                \
+  PRIMITIVE(watchdog_reset, 0)               \
+  PRIMITIVE(watchdog_deinit, 0)              \
+  PRIMITIVE(pin_hold_enable, 1)              \
+  PRIMITIVE(pin_hold_disable, 1)             \
+  PRIMITIVE(deep_sleep_pin_hold_enable, 0)   \
+  PRIMITIVE(deep_sleep_pin_hold_disable, 0)  \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \

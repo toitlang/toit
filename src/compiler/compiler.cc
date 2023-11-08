@@ -187,17 +187,13 @@ class DebugCompilationPipeline : public Pipeline {
  public:
   static constexpr const char* const DEBUG_ENTRY_PATH = "///<debug>";
   static constexpr const char* const DEBUG_ENTRY_CONTENT = R"""(
-import debug.debug_string show do_debug_string
-
 // We are avoiding types to make the patching easier.
 dispatch_debug_string location_token obj nested -> any:
   // Calls to the static dispatch methods will be patched in here.
   throw "Unknown location token"
 
 main args:
-  do_debug_string args:: |location_token obj nested|
-    dispatch_debug_string location_token obj nested
-     )""";
+  throw "Unimplemented")""";
 };
 
 class LanguageServerPipeline : public Pipeline {
@@ -712,6 +708,7 @@ SnapshotBundle Compiler::compile(const char* source_path,
   // TODO(florian): the dep-file needs to keep track of both compilations.
   debug_configuration.dep_file = null;
   debug_configuration.dep_format = DepFormat::none;
+  debug_configuration.werror = false;
 
   auto source_paths = ListBuilder<const char*>::build(source_path);
 
