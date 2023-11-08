@@ -18,6 +18,8 @@
 #ifdef TOIT_POSIX
 
 #include "os.h"
+#include "process.h"
+#include "program.h"
 #include "utils.h"
 #include "uuid.h"
 #include "vm.h"
@@ -279,6 +281,18 @@ bool OS::set_real_time(struct timespec* time) {
   FATAL("cannot set the time");
 }
 
+void OS::heap_summary_report(int max_pages, const char* marker, Process* process) {
+  const uint8* uuid = process->program()->id();
+  fprintf(stderr, "Out of memory process %d: %08x-%04x-%04x-%04x-%04x%08x.\n",
+      process->id(),
+      static_cast<int>(Utils::read_unaligned_uint32_be(uuid)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 4)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 6)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 8)),
+      static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 10)),
+      static_cast<int>(Utils::read_unaligned_uint32_be(uuid + 12)));
+}
+
 ProtectableAlignedMemory::~ProtectableAlignedMemory() {
   int status = mprotect(address(), byte_size(), PROT_READ | PROT_WRITE);
   if (status != 0) perror("~ProtectableAlignedMemory. mark_read_write");
@@ -292,6 +306,20 @@ void ProtectableAlignedMemory::mark_read_only() {
 size_t ProtectableAlignedMemory::compute_alignment(size_t alignment) {
   size_t system_page_size = getpagesize();
   return Utils::max(alignment, system_page_size);
+}
+
+const char* OS::get_architecture() {
+#if defined(__aarch64__)
+  return "arm64";
+#elif defined(__arm__)
+  return "arm";
+#elif defined(__amd64__)
+  return "x86_64";
+#elif defined(__i386__)
+  return "x86";
+#else
+  #error "Unknown architecture"
+#endif
 }
 
 } // namespace toit
