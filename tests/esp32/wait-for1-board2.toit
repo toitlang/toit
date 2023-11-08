@@ -5,15 +5,11 @@
 import expect show *
 import gpio
 import monitor
-import .wait-for1-shared show
-  ITERATIONS MEDIUM-PULSE-ITERATIONS SHORT-PULSE-ITERATIONS ULTRA-SHORT-PULSE-ITERATIONS
+import .wait-for1-shared
 
 /**
-See 'wait_for1.toit'.
+See 'wait-for1-shared.toit'.
 */
-
-PIN-IN ::= 22
-PIN-OUT ::= 23
 
 main:
   pin-in := gpio.Pin PIN-IN --input

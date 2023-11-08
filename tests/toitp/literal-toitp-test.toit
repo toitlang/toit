@@ -3,11 +3,13 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import system
+
 import .utils
 
 main args:
   out := run-toitp args ["-l"]
-  lines := out.split LINE-TERMINATOR
+  lines := out.split system.LINE-TERMINATOR
 
   found-foo-string := false
   found-int-literal := false
