@@ -5,13 +5,15 @@
 import tls
 import .tcp as tcp
 import net.x509 as net
+import system
+import system show platform
 import writer
 
 monitor LimitLoad:
   current := 0
   has-test-failure := null
   // FreeRTOS does not have enough memory to run 10 in parallel.
-  concurrent-processes ::= platform == "FreeRTOS" ? 1 : 2
+  concurrent-processes ::= platform == system.PLATFORM-FREERTOS ? 1 : 2
 
   inc:
     await: current < concurrent-processes

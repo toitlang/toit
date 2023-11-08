@@ -1065,6 +1065,11 @@ PRIMITIVE(platform) {
   return process->allocate_string_or_error(platform_name, strlen(platform_name));
 }
 
+PRIMITIVE(architecture) {
+  const char* architecture_name = OS::get_architecture();
+  return process->allocate_string_or_error(architecture_name, strlen(architecture_name));
+}
+
 PRIMITIVE(bytes_allocated_delta) {
   return Primitive::integer(process->bytes_allocated_delta(), process);
 }
@@ -1425,7 +1430,7 @@ PRIMITIVE(number_to_integer) {
   if (is_double(receiver)) {
     double value = Double::cast(receiver)->value();
     if (isnan(value)) FAIL(INVALID_ARGUMENT);
-    if (value < (double) INT64_MIN || value > (double) INT64_MAX) FAIL(OUT_OF_RANGE);
+    if (value < (double) INT64_MIN || value >= (double) INT64_MAX) FAIL(OUT_OF_RANGE);
     return Primitive::integer((int64) value, process);
   }
   FAIL(WRONG_OBJECT_TYPE);
@@ -1466,7 +1471,7 @@ static String* concat_strings(Process* process,
   String* result = process->allocate_string(len_a + len_b);
   if (result == null) return null;
   // Initialize object.
-  String::Bytes bytes(result);
+  String::MutableBytes bytes(result);
   bytes._initialize(0, bytes_a, 0, len_a);
   bytes._initialize(len_a, bytes_b, 0, len_b);
   return result;
@@ -1525,7 +1530,7 @@ PRIMITIVE(string_slice) {
   String* result = process->allocate_string(result_len);
   if (result == null) FAIL(ALLOCATION_FAILED);
   // Initialize object.
-  String::Bytes result_bytes(result);
+  String::MutableBytes result_bytes(result);
   result_bytes._initialize(0, receiver, from, to - from);
   return result;
 }
@@ -1545,7 +1550,7 @@ PRIMITIVE(concat_strings) {
   }
   String* result = process->allocate_string(length);
   if (result == null) FAIL(ALLOCATION_FAILED);
-  String::Bytes bytes(result);
+  String::MutableBytes bytes(result);
   int pos = 0;
   for (int index = 0; index < array->length(); index++) {
     Blob blob;
@@ -1948,14 +1953,30 @@ PRIMITIVE(task_receive_message) {
 
 PRIMITIVE(add_finalizer) {
   ARGS(HeapObject, object, Object, finalizer)
-  if (process->has_finalizer(object, finalizer)) FAIL(OUT_OF_BOUNDS);
-  if (!process->add_finalizer(object, finalizer)) FAIL(MALLOC_FAILED);
+  bool make_weak = false;
+  if (!object->can_be_toit_finalized(process->program())) {
+    if (!is_instance(object) || Instance::cast(object)->class_id() != process->program()->map_class_id()) {
+      FAIL(WRONG_OBJECT_TYPE);
+    }
+    make_weak = true;
+  }
+  ASSERT(is_instance(object));  // Guaranteed by can_be_toit_finalized.
+  // Objects on the program heap will never die, so it makes no difference
+  // whether we have a finalizer on them.
+  if (!object->on_program_heap(process)) {
+    if (object->has_active_finalizer()) FAIL(ALREADY_EXISTS);
+    if (!process->object_heap()->add_callable_finalizer(Instance::cast(object), finalizer, make_weak)) FAIL(MALLOC_FAILED);
+  }
   return process->null_object();
 }
 
 PRIMITIVE(remove_finalizer) {
   ARGS(HeapObject, object)
-  return BOOL(process->remove_finalizer(object));
+  bool result = object->has_active_finalizer();
+  // We don't remove it from the finalizer list, so that must happen at the
+  // next GC.
+  object->clear_has_active_finalizer();
+  return BOOL(result);
 }
 
 PRIMITIVE(gc_count) {
@@ -2279,7 +2300,7 @@ PRIMITIVE(dump_heap) {
 PRIMITIVE(serial_print_heap_report) {
 #ifdef TOIT_CMPCTMALLOC
   ARGS(cstring, marker, int, max_pages);
-  OS::heap_summary_report(max_pages, marker);
+  OS::heap_summary_report(max_pages, marker, process);
 #endif // def TOIT_CMPCTMALLOC
   return process->null_object();
 }

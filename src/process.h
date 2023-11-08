@@ -117,23 +117,6 @@ class Process : public ProcessListFromProcessGroup::Element,
   bool idle_since_gc() const { return idle_since_gc_; }
   void set_idle_since_gc(bool value) { idle_since_gc_ = value; }
 
-  bool has_finalizer(HeapObject* key, Object* lambda) {
-    return object_heap()->has_finalizer(key, lambda);
-  }
-  bool add_finalizer(HeapObject* key, Object* lambda) {
-    return object_heap()->add_finalizer(key, lambda);
-  }
-  bool add_vm_finalizer(HeapObject* key) {
-    return object_heap()->add_vm_finalizer(key);
-  }
-  bool remove_finalizer(HeapObject* key) {
-    return object_heap()->remove_finalizer(key);
-  }
-
-  Object* next_finalizer_to_run() {
-    return object_heap()->next_finalizer_to_run();
-  }
-
   Program* program() { return program_; }
   ProcessGroup* group() { return group_; }
   ObjectHeap* object_heap() { return &object_heap_; }

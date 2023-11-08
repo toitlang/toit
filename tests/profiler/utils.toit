@@ -2,8 +2,10 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import host.pipe
 import reader show BufferedReader
+import system
+
+import host.pipe
 
 /**
 Runs the given test with $args containing `toit.run` as first argument, and
@@ -35,5 +37,5 @@ run args -> List:
   exit-code := pipe.exit-code exit-value
 
   if exit-code != 0: throw "Program didn't exit with 0."
-  lines := output.split LINE-TERMINATOR
+  lines := output.split system.LINE-TERMINATOR
   return lines
