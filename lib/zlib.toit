@@ -4,26 +4,58 @@
 
 import binary show LITTLE_ENDIAN
 import monitor
-import reader
 import crypto
 import crypto.adler32
 import crypto.crc as crc-algorithms
 import expect show *
 import .io as io
 
-class CompressionReader implements reader.Reader:
-  wrapped_ := null
-
-  constructor.private_:
-
-  read --wait/bool=true -> ByteArray?:
-    return wrapped_.read_ --wait=wait
-
-  close:
-    wrapped_.close-read_
-
 SMALL-BUFFER-DEFLATE-HEADER_ ::= #[8, 0x1d]
 MINIMAL-GZIP-HEADER_ ::= #[0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]
+
+/**
+An extension of the $io.Writer interface that improves the
+  $io.Writer.wait-for-more-room_ method.
+*/
+class CompressionWriter_ extends Object with io.CloseableWriter:
+  coder_/Coder_
+
+  constructor.private_ .coder_:
+
+  wait-for-more-room_:
+    coder_.wait-for-more-room_
+
+  try-write_ data/io.Data from/int to/int -> int:
+    return coder_.try-write_ data from to
+
+  close_:
+    coder_.close-writer_
+
+/**
+An $io.CloseableReader that supports '--no-wait' for the $read method.
+
+In that case the result might be an empty byte-array, indicating that more
+  data needs to be fed into the encoder.
+*/
+class CompressionReader extends Object with io.CloseableReader:
+  coder_/Coder_
+
+  constructor.private_ .coder_:
+
+  read --max-size/int?=null --wait/bool=true -> ByteArray?:
+    // It's important that all non-empty byte arrays go through the
+    // normal consume method, as this affects the 'consumed' count.
+    if wait or buffered-size != 0 or coder_.has-data_:
+      return super --max-size=max-size
+
+    if is-closed_: return null
+    return #[]
+
+  consume_ -> ByteArray?:
+    return coder_.consume_
+
+  close_ -> none:
+    coder_.close-reader_
 
 /**
 Typically creates blocks of 256 bytes (5 bytes of block header, 251 bytes of
@@ -199,8 +231,13 @@ class RunLengthDeflateBackend_ implements Backend_:
 
   /**
   Closes the encoder for writing.
+
+  Deprecated. Use 'out.close' instead.
   */
   close:
+    close-writer_
+
+  close-writer_:
     if rle_:
       buffer-fullness_ += rle-finish_ rle_ buffer_ buffer-fullness_
       rle_ = null
@@ -235,6 +272,7 @@ interface Backend_:
   /// Returns null on end of file.
   /// Returns a zero length ByteArray if it needs a write operation.
   read -> ByteArray?
+
   /// Returns zero if it needs a read operation.
   write data from/int to/int -> int
   close -> none
@@ -256,72 +294,131 @@ class ZlibBackend_ implements Backend_:
 // An Encoder or Decoder.
 abstract class Coder_:
   backend_/Backend_
-  closed-write_ := false
-  closed-read_ := false
   signal_ /monitor.Signal := monitor.Signal
   state_/int := STATE-READY-TO-READ_ | STATE-READY-TO-WRITE_
+  in_/CompressionReader? := null
+  out_/CompressionWriter_? := null
+  /**
+  A temporarily buffered byte-array.
+  */
+  buffered_/ByteArray? := null
 
   static STATE-READY-TO-READ_  ::= 1 << 0
   static STATE-READY-TO-WRITE_ ::= 1 << 1
 
   constructor .backend_:
-    reader = CompressionReader.private_
-    reader.wrapped_ = this
     add-finalizer this::
       this.uninit_
 
   /**
   A reader that can be used to read the compressed or decompressed data output
     by the Encoder or Decoder.
+
+  By default the $CompressionReader blocks until there is data available.
+  Use $CompressionReader.read with the '--wait' flag set to false to get an empty
+    ByteArray when the buffers are empty, and a call to the write method is
+    needed.
   */
-  reader/CompressionReader
+  in -> CompressionReader:
+    if not in_: in_ = CompressionReader.private_ this
+    return in_
+
+  /**
+  Deprecated. Use $in instead.
+  */
+  reader -> CompressionReader:
+    return in
+
+  /**
+  A writer that can be used to write data to the Encoder or Decoder.
+
+  If the writers $io.Writer.try-write returns 0, then that means that the
+    read method must be called because the buffers are full.
+  */
+  out -> io.CloseableWriter:
+    if not out_: out_ = CompressionWriter_.private_ this
+    return out_
 
   read_ --wait/bool -> ByteArray?:
-    if closed-read_: return null
+    return in.read --wait=wait
+
+  consume_ -> ByteArray?:
+    if buffered_:
+      result := buffered_
+      buffered_ = null
+      return result
     result := backend_.read
-    while result and wait and result.size == 0:
-      state_ &= ~STATE-READY-TO-READ_
-      state_ |= STATE-READY-TO-WRITE_
-      signal_.raise
-      signal_.wait: state_ & STATE-READY-TO-READ_ != 0
+    while result and result.size == 0:
+      wait-for-more-data_
       result = backend_.read
     return result
 
-  close-read_ -> none:
-    if not closed-read_:
-      closed-read_ = true
-      if closed-write_:
-        uninit_
-      state_ |= STATE-READY-TO-WRITE_
-      signal_.raise
+  /**
+  Returns, whether there is more data available.
+
+  This is done by asking the backend and then, potentially, storing the
+    returned data in this instance.
+  */
+  has-data_ -> bool:
+    assert: not buffered_
+    data := backend_.read
+    if data and data.size != 0:
+      buffered_ = data
+      return true
+    return false
+
+  close-reader_ -> none:
+    if out.is-closed:
+      uninit_
+    state_ |= STATE-READY-TO-WRITE_
+    signal_.raise
 
   /**
   Writes data to the compressor or decompressor.
   If $wait is false, it may return before all data has been written.
     If it returns zero, then that means the read method must be called
     because the buffers are full.
+
+  Deprecated. Use out.try-write or out.write instead.
   */
   write --wait/bool=true data/io.Data from/int=0 to/int=data.byte-size -> int:
-    if closed-read_: throw "READER_CLOSED"
+    if not wait: return try-write_ data from to
     pos := from
     while pos < to:
-      bytes-written := backend_.write data pos to
-      if bytes-written == 0:
-        if wait:
-          state_ &= ~STATE-READY-TO-WRITE_
-          state_ |= STATE-READY-TO-READ_
-          signal_.raise
-          signal_.wait: state_ & STATE-READY-TO-WRITE_ != 0
-      if not wait: return bytes-written
+      bytes-written := try-write_ data pos to
+      if bytes-written == 0: wait-for-more-room_
       pos += bytes-written
-    return pos - from
+    return to - from
 
+  try-write_ data/io.Data from/int to/int -> int:
+    if in.is-closed: throw "READER_CLOSED"
+    return backend_.write data from to
+
+  wait-for-more-room_:
+    state_ &= ~STATE-READY-TO-WRITE_
+    state_ |= STATE-READY-TO-READ_
+    signal_.raise
+    signal_.wait: state_ & STATE-READY-TO-WRITE_ != 0
+
+  wait-for-more-data_:
+    state_ &= ~STATE-READY-TO-READ_
+    state_ |= STATE-READY-TO-WRITE_
+    signal_.raise
+    signal_.wait: state_ & STATE-READY-TO-READ_ != 0
+
+  /**
+  Closes the writer.
+
+  Deprecated. Use out.close instead.
+  */
+  // TODO(florian): this should close in and out and uninit.
   close -> none:
-    if not closed-write_:
-      backend_.close
-      closed-write_ = true
-      state_ |= STATE-READY-TO-READ_
-      signal_.raise
+    close-writer_
+
+  close-writer_:
+    backend_.close
+    state_ |= STATE-READY-TO-READ_
+    signal_.raise
 
   /**
   Releases memory associated with this compressor.  This is called
@@ -346,28 +443,6 @@ class Encoder extends Coder_:
     super
         ZlibBackend_ (zlib-init-deflate_ resource-freeing-module_ level)
 
-  /**
-  Writes uncompressed data into the compressor.
-  In the default $wait mode this method may block and will not return
-    until all bytes have been written to the compressor.
-  Returns the number of bytes that were compressed.  If zero bytes were
-    compressed that means that data needs to be read using the reader before
-    more data can be accepted.
-  Any bytes that were not compressed need to be resubmitted to this method
-    later.
-  */
-  write --wait/bool=true data -> int:
-    return super --wait=wait data
-
-  /**
-  Closes the encoder.
-  This tells the encoder that no more uncompressed input is coming.  Subsequent
-    calls to the reader will return the buffered compressed data and then
-    return null.
-  */
-  close -> none:
-    super
-
 /**
 A Zlib decompressor/inflater.
 Not usually supported on embedded platforms due to high memory use.
@@ -379,28 +454,6 @@ class Decoder extends Coder_:
   constructor:
     super
         ZlibBackend_ (zlib-init-inflate_ resource-freeing-module_)
-
-  /**
-  Writes compressed data into the decompressor.
-  In the default $wait mode this method may block and will not return
-    until all bytes have been written to the decompressor.
-  Returns the number of bytes that were decompressed.  If zero bytes were
-    decompressed that means that data needs to be read using the reader before
-    more data can be accepted.
-  Any bytes that were not decompressed need to be resubmitted to this method
-    later.
-  */
-  write --wait/bool=true data -> int:
-    return super --wait=wait data
-
-  /**
-  Closes the decoder.
-  This will tell the decoder that no more compressed input is coming.
-    Subsequent calls to the reader will return the buffered decompressed data
-    and then return null.
-  */
-  close -> none:
-    super
 
 /**
 A utility class for the pure Toit DEFLATE Inflater (zlib decompresser).

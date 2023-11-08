@@ -73,7 +73,7 @@ abstract mixin Writer:
     while not is-closed_:
       from += try-write data from to
       if from >= to: return
-      yield
+      wait-for-more-room_
     assert: is-closed_
     throw "WRITER_CLOSED"
 
@@ -187,6 +187,17 @@ abstract mixin Writer:
   close-writer_:
     is-closed_ = true
 
+  /**
+  Gives the resource the opportunity to make room for more data.
+
+  # Inheritance
+  By default this function just ($yield)s, but subclasses may have better
+    ways of detecting that buffers are emptied.
+  */
+  // This is a protected method. It should not be "private".
+  wait-for-more-room_ -> none:
+    yield
+
 abstract mixin CloseableWriter extends Writer:
   /**
   Closes this writer.
@@ -198,6 +209,10 @@ abstract mixin CloseableWriter extends Writer:
     if is-closed_: return
     close_
     is-closed_ = true
+
+  /** Whether this writer is closed. */
+  is-closed -> bool:
+    return is-closed_
 
   /**
   See $close.
@@ -875,6 +890,10 @@ abstract mixin CloseableReader extends Reader:
     if is-closed_: return
     close_
     close-reader_
+
+  /** Whether this reader is closed. */
+  is-closed -> bool:
+    return is-closed_
 
   /**
   Closes this reader.
