@@ -3,6 +3,8 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import system
+
 import host.pipe
 import .utils
 
@@ -13,7 +15,7 @@ main args:
 
   // Get the indexes from the program.
   out /string := pipe.backticks [toit-run, snap]
-  lines := out.split LINE-TERMINATOR
+  lines := out.split system.LINE-TERMINATOR
   lines.do:
     if it == "": continue.do
     parts := it.split " - "

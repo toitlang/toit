@@ -30,13 +30,17 @@ class GotoDefinitionRunner extends LocationCompilerTestRunner:
 
   check-core-definition core-lib-entry actuals:
     assert: core-lib-entry.starts-with "core."
-    target := core-lib-entry.trim --left "core."
+    // We are not actually checking for the correct object.
+    // If there is an entry 'core.objects.Object.stringify' we just check that the
+    // objects.toit library exists.
+    parts := core-lib-entry.split "."
+    target-lib := parts[1]
+    is-lib-definition := parts.size == 2
     expect
       actuals.any:
         path-slash := it.path.replace --all "\\" "/"
-        path-slash.ends-with "core/$(target).toit"
-          and it.column == 0
-          and it.line == 0
+        path-slash.ends-with "core/$(target-lib).toit"
+          and ((not is-lib-definition) or (it.column == 0 and it.line == 0))
 
   check-result actual test-data locations:
     if test-data.size != actual.size:

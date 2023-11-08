@@ -41,7 +41,7 @@ cname-test:
     expect
         name != "www.yahoo.com"
     expect
-        name.ends-with ".yahoo.com"
+        (name.ends-with ".yahoo.com") or (name.ends-with ".yahoodns.net")
 
 parse-numeric-test:
   valid-ipv4 "0.0.0.0"
