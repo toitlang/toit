@@ -1,0 +1,27 @@
+ublox-gnss-driver/examples/i2c.toit:6:1: error: Failed to import 'serial.protocols.i2c'
+import serial.protocols.i2c as i2c
+^~~~~~
+ublox-gnss-driver/examples/i2c.toit:6:15: note: Cannot enter '<sdk>/serial/protocols': folder does not exist
+import serial.protocols.i2c as i2c
+              ^~~~~~~~~
+<pkg:toit-gnss-location>/gnss_location.toit:6:8: error: Package for prefix 'serialization' not found
+import serialization
+       ^~~~~~~~~~~~~
+<pkg:toit-location>/location.toit:5:8: error: Package for prefix 'serialization' not found
+import serialization
+       ^~~~~~~~~~~~~
+ublox-gnss-driver/examples/i2c.toit:14:14: error: Unresolved identifier: 'Bus'
+  bus := i2c.Bus --sda=SDA --scl=SCL
+             ^~~
+<pkg:toit-gnss-location>/gnss_location.toit:39:29: error: Unresolved identifier: 'deserialize'
+    values := serialization.deserialize bytes
+                            ^~~~~~~~~~~
+<pkg:toit-gnss-location>/gnss_location.toit:53:26: error: Unresolved identifier: 'serialize'
+    return serialization.serialize [
+                         ^~~~~~~~~
+<pkg:toit-location>/location.toit:30:29: error: Unresolved identifier: 'deserialize'
+    values := serialization.deserialize bytes
+                            ^~~~~~~~~~~
+<pkg:toit-location>/location.toit:44:26: error: Unresolved identifier: 'serialize'
+    return serialization.serialize [latitude, longitude]
+                         ^~~~~~~~~

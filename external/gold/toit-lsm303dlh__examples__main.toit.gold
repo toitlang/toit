@@ -1,0 +1,3 @@
+toit-lsm303dlh/examples/main.toit:8:20: error: Unresolved show 'FlashStore'
+import device show FlashStore
+                   ^~~~~~~~~~

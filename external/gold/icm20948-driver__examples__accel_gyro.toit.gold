@@ -1,0 +1,9 @@
+icm20948-driver/examples/accel_gyro.toit:10:1: error: Failed to import 'serial.protocols.i2c'
+import serial.protocols.i2c as i2c
+^~~~~~
+icm20948-driver/examples/accel_gyro.toit:10:15: note: Cannot enter '<sdk>/serial/protocols': folder does not exist
+import serial.protocols.i2c as i2c
+              ^~~~~~~~~
+icm20948-driver/examples/accel_gyro.toit:14:14: error: Unresolved identifier: 'Bus'
+  bus := i2c.Bus
+             ^~~

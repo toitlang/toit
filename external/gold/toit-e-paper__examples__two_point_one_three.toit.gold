@@ -1,0 +1,27 @@
+toit-e-paper/examples/two_point_one_three.toit:7:1: error: Failed to import 'serial.protocols.spi'
+import serial.protocols.spi
+^~~~~~
+toit-e-paper/examples/two_point_one_three.toit:7:15: note: Cannot enter '<sdk>/serial/protocols': folder does not exist
+import serial.protocols.spi
+              ^~~~~~~~~
+<pkg:..>/waveshare_gray_2_13d.toit:14:1: error: Failed to import 'serial.protocols.spi'
+import serial.protocols.spi
+^~~~~~
+<pkg:..>/waveshare_gray_2_13d.toit:14:15: note: Cannot enter '<sdk>/serial/protocols': folder does not exist
+import serial.protocols.spi
+              ^~~~~~~~~
+<pkg:..>/e_paper.toit:10:1: error: Failed to import 'serial.protocols.spi'
+import serial.protocols.spi
+^~~~~~
+<pkg:..>/e_paper.toit:10:15: note: Cannot enter '<sdk>/serial/protocols': folder does not exist
+import serial.protocols.spi
+              ^~~~~~~~~
+toit-e-paper/examples/two_point_one_three.toit:25:14: error: Unresolved identifier: 'Bus'
+  bus := spi.Bus
+             ^~~
+<pkg:..>/waveshare_gray_2_13d.toit:189:26: error: Unresolved type: 'Device'
+  constructor device/spi.Device
+                         ^~~~~~
+<pkg:..>/e_paper.toit:177:15: error: Unresolved type: 'Device'
+  device_/spi.Device := ?
+              ^~~~~~
