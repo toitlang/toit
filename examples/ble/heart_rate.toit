@@ -5,6 +5,8 @@
 // The standard BLE peripheral demo for simulating a heart rate monitor.
 
 import ble show *
+import system
+import system show platform
 import uuid show Uuid
 
 GATT-IO-UUID ::= #[0x18, 0x25]
@@ -28,7 +30,7 @@ main:
 
   service.deploy
 
-  connection-mode := platform == PLATFORM-MACOS
+  connection-mode := platform == system.PLATFORM-MACOS
     ? BLE-CONNECT-MODE-NONE
     : BLE-CONNECT-MODE-UNDIRECTIONAL
   peripheral.start-advertise

@@ -78,6 +78,9 @@ PRIMITIVE(adler32_get) {
 }
 
 PRIMITIVE(rle_start) {
+#ifndef CONFIG_TOIT_ZLIB_RLE
+  FAIL(UNIMPLEMENTED);
+#else
   ARGS(SimpleResourceGroup, group);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -85,9 +88,13 @@ PRIMITIVE(rle_start) {
   if (!rle) FAIL(MALLOC_FAILED);
   proxy->set_external_address(rle);
   return proxy;
+#endif
 }
 
 PRIMITIVE(rle_add) {
+#ifndef CONFIG_TOIT_ZLIB_RLE
+  FAIL(UNIMPLEMENTED);
+#else
   ARGS(ZlibRle, rle, MutableBlob, destination_bytes, int, index, Blob, data, int, from, int, to);
   if (!rle) FAIL(INVALID_ARGUMENT);
   if (from < 0 || to > data.length() || from > to) FAIL(OUT_OF_RANGE);
@@ -101,9 +108,13 @@ PRIMITIVE(rle_add) {
   word written = rle->get_output_index() - index;
   ASSERT(read < 0x8000 && written < 0x8000 && read >= 0 && written >= 0);
   return Smi::from(read | (written << 15));
+#endif
 }
 
 PRIMITIVE(rle_finish) {
+#ifndef CONFIG_TOIT_ZLIB_RLE
+  FAIL(UNIMPLEMENTED);
+#else
   ARGS(ZlibRle, rle, MutableBlob, destination_bytes, int, index);
   word destination_length = Utils::min(0x7000, destination_bytes.length());
   if (index < 0 || index >= destination_length) FAIL(OUT_OF_RANGE);
@@ -113,6 +124,7 @@ PRIMITIVE(rle_finish) {
   rle->resource_group()->unregister_resource(rle);
   rle_proxy->set_external_address(static_cast<ZlibRle*>(null));
   return Smi::from(written);
+#endif
 }
 
 #ifdef CONFIG_TOIT_FULL_ZLIB

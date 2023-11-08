@@ -74,6 +74,10 @@ class Interpreter {
   static const int COMPARE_FLAG_GREATER_EQUAL      = 64;
   static const int COMPARE_FLAG_STRICTLY_GREATER   = 128;
 
+  static const int SIMPLE_LESS = COMPARE_RESULT_MINUS_1 | COMPARE_FLAG_STRICTLY_LESS | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
+  static const int SIMPLE_EQUAL = COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL;
+  static const int SIMPLE_GREATER = COMPARE_RESULT_PLUS_1 | COMPARE_FLAG_STRICTLY_GREATER | COMPARE_FLAG_GREATER_EQUAL;
+
   class Result {
    public:
     enum State {
@@ -121,6 +125,7 @@ class Interpreter {
   // Fast helpers for indexing and number comparisons.
   static bool fast_at(Process* process, Object* receiver, Object* args, bool is_put, Object** value) INTERPRETER_HELPER;
   static int compare_numbers(Object* lhs, Object* rhs) INTERPRETER_HELPER;
+  static int compare_ints(int64 lhs, int64 rhs) INTERPRETER_HELPER;
 
   // Load stack info from process's stack.
   Object** load_stack(Method* pending = null);

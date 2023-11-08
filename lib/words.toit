@@ -2,39 +2,13 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-/** Deprecated. Use $words. */
-words1 ::= words[0..120]
-/** Deprecated. Use $words. */
-words2 ::= words[120..220]
-/** Deprecated. Use $words. */
-words3 ::= words[220..321]
-/** Deprecated. Use $words. */
-words4 ::= words[321..422]
-/** Deprecated. Use $words. */
-words5 ::= words[422..523]
-/** Deprecated. Use $words. */
-words6 ::= words[523..624]
-/** Deprecated. Use $words. */
-words7 ::= words[624..725]
-/** Deprecated. Use $words. */
-words8 ::= words[725..826]
-/** Deprecated. Use $words. */
-words9 ::= words[826..927]
-/** Deprecated. Use $words. */
-words10 ::= words[927..1028]
-/** Deprecated. Use $words. */
-words11 ::= words[1028..1129]
-/** Deprecated. Use $words. */
-words12 ::= words[1129..1230]
-/** Deprecated. Use $words. */
-words13 ::= words[1230..1311]
-
 /**
 List of English words.
 
 All words are between 1 and 8 characters.
 */
-words ::= [ "people",
+words ::= [
+  "people",
   "history",
   "way",
   "art",
@@ -1344,4 +1318,5 @@ words ::= [ "people",
   "tear",
   "tomorrow",
   "wake",
-  "wrap"]
+  "wrap"
+]

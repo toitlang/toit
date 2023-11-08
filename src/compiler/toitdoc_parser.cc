@@ -37,11 +37,11 @@ class ToitdocDiagnostics : public Diagnostics {
     if (severity == Severity::error) return Severity::warning;
     return severity;
   }
-  void emit(Severity severity, const char* format, va_list& arguments) {
-    wrapped_->emit(severity, format, arguments);
+  bool emit(Severity severity, const char* format, va_list& arguments) {
+    return wrapped_->emit(severity, format, arguments);
   }
-  void emit(Severity severity, Source::Range range, const char* format, va_list& arguments) {
-    wrapped_->emit(severity, range, format, arguments);
+  bool emit(Severity severity, Source::Range range, const char* format, va_list& arguments) {
+    return wrapped_->emit(severity, range, format, arguments);
   }
 
  private:

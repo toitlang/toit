@@ -7,6 +7,8 @@ import host.directory
 import expect show *
 import monitor
 import host.pipe
+import system
+import system show platform
 
 main args:
   run-client-test args
@@ -34,7 +36,7 @@ test client/LspClient:
       """
     client.wait-for-idle
 
-  drive := platform == PLATFORM-WINDOWS ? "c:" : ""
+  drive := platform == system.PLATFORM-WINDOWS ? "c:" : ""
   completion-document := "$drive/tmp/completion.toit"
   client.send-did-open --path=completion-document  --text="""
      completion-fun: return 499

@@ -5,6 +5,8 @@
 import .lsp-client show LspClient run-client-test
 import ...tools.lsp.server.summary
 import .utils
+import system
+import system show platform
 
 import expect show *
 
@@ -27,7 +29,7 @@ check-foo-export summary client foo-path:
 
 test client/LspClient:
   LEVELS ::= 3
-  DRIVE ::= platform == PLATFORM-WINDOWS ? "c:" : ""
+  DRIVE ::= platform == system.PLATFORM-WINDOWS ? "c:" : ""
   DIR ::= "$DRIVE/non_existing_dir_toit_test"
   MODULE-NAME-PREFIX ::= "some_non_existing_path"
   relatives := List LEVELS: ".$MODULE-NAME-PREFIX$it"

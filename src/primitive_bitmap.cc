@@ -564,7 +564,6 @@ PRIMITIVE(draw_text) {
   int byte_array_height = bytes.length() / byte_array_width;
   if (byte_array_height * byte_array_width != bytes.length()) FAIL(OUT_OF_BOUNDS);
   byte_array_height <<= 3;  // Height in pixels, not bytes.
-  if ((byte_array_width & 7) != 0) FAIL(OUT_OF_BOUNDS);
   if (!(0 <= orientation && orientation <= 3)) FAIL(INVALID_ARGUMENT);
 
   uint8* contents = bytes.address();
