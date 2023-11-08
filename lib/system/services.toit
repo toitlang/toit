@@ -273,17 +273,6 @@ interface ServiceHandler:
   handle index/int arguments/any --gid/int --client/int -> any
 
 /**
-A handler for requests from clients.
-
-A $ServiceProvider may provide multiple services, each of which comes with a
-  handler. That handler is then called for the corresponding request from the
-  client.
-
-Deprecated. Implement $ServiceHandler instead.
-*/
-interface ServiceHandlerNew extends ServiceHandler:
-
-/**
 A service provider.
 
 Service providers are classes that expose APIs through remote
@@ -345,28 +334,6 @@ class ServiceProvider:
       --id/int?=null
       --priority/int=PRIORITY-NORMAL
       --tags/List?=null:
-    provider-tags := this.tags
-    if provider-tags: tags = tags ? (provider-tags + tags) : provider-tags
-    service := Service_
-        --selector=selector
-        --handler=handler
-        --id=id
-        --priority=priority
-        --tags=tags
-    _services_.add service
-
-  /**
-  Registers a handler for the given $selector.
-
-  This function should only be called from subclasses (typically in their constructor).
-
-  Deprecated. Use $(provides selector --handler) instead.
-  */
-  provides selector/ServiceSelector --handler/ServiceHandler --new/bool -> none
-      --id/int?=null
-      --priority/int=PRIORITY-NORMAL
-      --tags/List?=null:
-    if not new: throw "Bad Argument"
     provider-tags := this.tags
     if provider-tags: tags = tags ? (provider-tags + tags) : provider-tags
     service := Service_

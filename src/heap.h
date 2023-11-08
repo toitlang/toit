@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -74,8 +74,14 @@ class ObjectHeap {
   Double* allocate_double(double value);
   LargeInteger* allocate_large_integer(int64 value);
 
-  void process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space);
-  void process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space);
+  void queue_finalizer(CallableFinalizerNode* node) {
+    runnable_finalizers_.append(node);
+  }
+  void process_registered_callback_finalizers(RootCallback* cb, LivenessOracle* oracle);
+  void process_finalizer_queue(RootCallback* cb, LivenessOracle* oracle);
+  void process_registered_vm_finalizers(RootCallback* cb, LivenessOracle* oracle);
+
+  void iterate_finalization_roots(RootCallback* cb);
 
   Program* program() const { return program_; }
 
@@ -126,12 +132,8 @@ class ObjectHeap {
   // Garbage collection operation for runtime objects.
   GcType gc(bool try_hard);
 
-  bool add_finalizer(HeapObject* key, Object* lambda);
-  bool has_finalizer(HeapObject* key, Object* lambda);
-  bool remove_finalizer(HeapObject* key);
-
+  bool add_callable_finalizer(Instance* key, Object* lambda, bool make_weak);
   bool add_vm_finalizer(HeapObject* key);
-  bool remove_vm_finalizer(HeapObject* key);
 
   bool has_finalizer_to_run() const { return !runnable_finalizers_.is_empty(); }
   Object* next_finalizer_to_run();
@@ -184,6 +186,8 @@ class ObjectHeap {
   bool retrying_primitive_ = false;
   AllocationResult last_allocation_result_ = ALLOCATION_SUCCESS;
 
+  void process_registered_finalizers_helper(FinalizerNodeFifo* list, RootCallback* cb, LivenessOracle* oracle, bool in_closure_queue);
+
   Process* owner_;
   TwoSpaceHeap two_space_heap_;
 
@@ -202,11 +206,12 @@ class ObjectHeap {
   Task* task_ = null;
   ObjectNotifierList object_notifiers_;
 
-  // A finalizer is in one of the following lists.
-  FinalizerNodeFifo registered_finalizers_;       // Contains registered finalizers.
-  FinalizerNodeFifo runnable_finalizers_;         // Contains finalizers that must be executed.
-  VmFinalizerNodeFifo registered_vm_finalizers_;  // Contains registered VM finalizers.
-  ObjectNotifier* finalizer_notifier_ = null;
+  // A Toit finalizer is on one of these lists.
+  FinalizerNodeFifo runnable_finalizers_;  // Contains finalizers that must be executed.
+  FinalizerNodeFifo registered_callback_finalizers_;  // Toit finalizers and weak maps.
+
+  // A VM finalizer is on this list.
+  FinalizerNodeFifo registered_vm_finalizers_;
 
   int gc_count_ = 0;
   int full_gc_count_ = 0;

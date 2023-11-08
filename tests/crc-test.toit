@@ -5,9 +5,7 @@
 import binary show LITTLE-ENDIAN
 import expect show *
 
-import crypto.crc show Crc
-import crypto.crc16 show Crc16
-import crypto.crc32 show Crc32
+import crypto.crc show Crc Crc16Xmodem Crc32
 
 main:
   crc-polynomial-test
@@ -57,6 +55,6 @@ crc-32-test -> none:
       expect-equals 0xec4ac3d0 (LITTLE-ENDIAN.uint32 crc.get 0)
 
 crc-xmodem-test -> none:
-  crc := Crc16
+  crc := Crc16Xmodem
   crc.add "Hello, World!"
-  expect-equals #[0xd6, 0x4f] crc.get
+  expect-equals #[0x4f, 0xd6] crc.get
