@@ -1,0 +1,9 @@
+pkg-host/tests/pipe_crash_test.toit:13:6: warning: Deprecated 'platform'
+  if platform == "FreeRTOS": return
+     ^~~~~~~~
+pkg-host/tests/pipe_crash_test.toit:38:6: warning: Deprecated 'platform'
+  if platform != PLATFORM_WINDOWS:
+     ^~~~~~~~
+pkg-host/tests/pipe_crash_test.toit:38:18: warning: Deprecated 'PLATFORM-WINDOWS'
+  if platform != PLATFORM_WINDOWS:
+                 ^~~~~~~~~~~~~~~~

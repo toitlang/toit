@@ -233,6 +233,7 @@ class OS {
   static void set_up();
   static void tear_down();
   static const char* get_platform();
+  static const char* get_architecture();
 
   static int read_entire_file(char* name, uint8** buffer);
 
@@ -240,7 +241,7 @@ class OS {
   // the origin of allocations on the current thread.
   static void set_heap_tag(word tag);
   static word get_heap_tag();
-  static void heap_summary_report(int max_pages, const char* marker);
+  static void heap_summary_report(int max_pages, const char* marker, Process* process);
 
   // Returns a malloced string.
   static char* getenv(const char* variable);

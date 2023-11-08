@@ -3,11 +3,13 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import system
+
 import .utils
 
 test args filter:
   out := run-toitp args ["-bc"] --filter=filter
-  lines := out.split LINE-TERMINATOR
+  lines := out.split system.LINE-TERMINATOR
   expect (lines.first.starts-with "Bytecodes for methods")
 
   expected-bytecodes := [

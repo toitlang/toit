@@ -15,12 +15,6 @@ class Font:
     add-finalizer this:: this.finalize_
 
   /**
-  Deprecated, use the unnamed constructor instead.
-  */
-  constructor.from-pages unicode-blocks/List:
-    return Font unicode-blocks
-
-  /**
   Constructs a font with support for selected Unicode blocks.
   $unicode-blocks is a list of arrays with byte data, each describing a
     Unicode block.
@@ -78,10 +72,6 @@ class Font:
   finalize_:
     if proxy_:
       font-delete_ proxy_
-
-/// Deprecated. Use $Font.get instead.
-font-get font-name:
-  return Font.get font-name
 
 font-get_ module font-name:
   #primitive.font.get-font
