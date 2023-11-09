@@ -220,7 +220,7 @@ void CompletionHandler::call_class(ast::Dot* node,
                                    IterableScope* scope) {
   bool has_default_constructor = false;
   CallShape default_constructor_shape(1);  // 1 argument for `this`.
-  for (auto constructor : klass->constructors()) {
+  for (auto constructor : klass->unnamed_constructors()) {
     if (constructor->resolution_shape().accepts(default_constructor_shape)) {
       has_default_constructor = true;
       break;
