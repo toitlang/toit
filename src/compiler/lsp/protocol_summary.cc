@@ -421,7 +421,7 @@ void Writer::print_class(ir::Class* klass) {
   print_list(klass->interfaces(), &Writer::print_toplevel_ref);
   print_list(klass->mixins(), &Writer::print_toplevel_ref);
   print_list(klass->statics()->nodes(), &Writer::print_method);
-  print_list(klass->constructors(), &Writer::print_method);
+  print_list(klass->unnamed_constructors(), &Writer::print_method);
   print_list(klass->factories(), &Writer::print_method);
   print_list(klass->fields(), &Writer::print_field);
   print_list(klass->methods(), &Writer::print_method);
@@ -560,7 +560,7 @@ class ToitdocPathMappingCreator {
       visit_container(ToitdocPath::Kind::GLOBAL, module, null, module->globals());
       for (auto klass : module->classes()) {
         visit_container(ToitdocPath::Kind::STATIC_METHOD, module, klass, klass->statics()->nodes());
-        visit_container(ToitdocPath::Kind::CONSTRUCTOR, module, klass, klass->constructors());
+        visit_container(ToitdocPath::Kind::CONSTRUCTOR, module, klass, klass->unnamed_constructors());
         visit_container(ToitdocPath::Kind::FACTORY, module, klass, klass->factories());
         visit_container(ToitdocPath::Kind::FIELD, module, klass, klass->fields());
         visit_container(ToitdocPath::Kind::METHOD, module, klass, klass->methods());

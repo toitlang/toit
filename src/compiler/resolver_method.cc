@@ -2057,7 +2057,7 @@ List<ir::Node*> MethodResolver::_compute_constructor_super_candidates(ast::Node*
   auto super = constructor->klass()->super();
   if (is_literal_super(target_node)) {
     ListBuilder<ir::Node*> candidates;
-    for (auto super_constructor : super->constructors()) {
+    for (auto super_constructor : super->unnamed_constructors()) {
       candidates.add(super_constructor);
     }
     return candidates.build();
@@ -2197,7 +2197,7 @@ MethodResolver::Candidates MethodResolver::_compute_target_candidates(ast::Node*
         continue;
       }
       klass = candidate->as_Class();
-      for (auto constructor : klass->constructors()) candidates_builder.add(constructor);
+      for (auto constructor : klass->unnamed_constructors()) candidates_builder.add(constructor);
       for (auto factory : klass->factories()) candidates_builder.add(factory);
     }
     starting_index = 0;
