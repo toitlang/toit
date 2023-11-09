@@ -138,7 +138,7 @@ abstract class Writer:
 /**
 A source of bytes.
 */
-abstract class Reader implements reader.Reader:
+abstract class Reader implements old-reader.Reader:
   static UNEXPECTED-END-OF-READER ::= "UNEXPECTED_END_OF_READER"
 
   is-closed_/bool := false
