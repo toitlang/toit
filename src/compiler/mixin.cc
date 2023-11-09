@@ -19,6 +19,7 @@
 #include "mixin.h"
 #include "set.h"
 #include "shape.h"
+#include "resolver_scope.h"
 
 namespace toit {
 namespace compiler {
@@ -232,9 +233,9 @@ class MixinConstructorVisitor : protected SuperCallVisitor {
 /// Instead of doing a super call, it calls the block with the values for
 /// the fields.
 static void modify_mixin_constructor(ir::Class* mixin) {
-  ASSERT(mixin->constructors().length() == 1);  // A single default constructor.
-  ASSERT(mixin->constructors()[0]->parameters().length() == 1);  // The object but no other parameter.
-  auto constructor = mixin->constructors()[0];
+  ASSERT(mixin->unnamed_constructors().length() == 1);  // A single default constructor.
+  ASSERT(mixin->unnamed_constructors()[0]->parameters().length() == 1);  // The object but no other parameter.
+  auto constructor = mixin->unnamed_constructors()[0];
   MixinConstructorVisitor visitor(mixin, mixin->fields());
   visitor.insert_mixin_block_calls(constructor);
   ASSERT(visitor.has_seen_static_super());
@@ -526,8 +527,8 @@ class ConstructorVisitor : protected SuperCallVisitor {
       // Blocks must be inside locals so that they can be referenced with `ReferenceBlock`.
       auto block = _new ir::Block(name, range);
       auto block_assig = _new ir::AssignmentDefine(block, block_code, range);
-      ASSERT(mixin->constructors().length() == 1);
-      auto constructor = mixin->constructors()[0];
+      ASSERT(mixin->unnamed_constructors().length() == 1);
+      auto constructor = mixin->unnamed_constructors()[0];
       auto constructor_ref = _new ir::ReferenceMethod(constructor, range);
       auto arguments = ListBuilder<ir::Expression*>::allocate(2);
       auto outer_this = i == 0
@@ -605,9 +606,17 @@ class ConstructorVisitor : protected SuperCallVisitor {
 /// Changes super calls so that they call mixin constructors as well.
 void adjust_super_calls(ir::Class* klass, Map<ir::Field*, ir::Field*> field_map) {
   ConstructorVisitor visitor(klass, field_map);
-  for (auto constructor : klass->constructors()) {
+  for (auto constructor : klass->unnamed_constructors()) {
     visitor.visit(constructor);
   }
+  for (auto node : klass->statics()->nodes()) {
+    if (node->is_Method()) {
+      auto method = node->as_Method();
+      if (method->is_constructor()) {
+        visitor.visit(method);
+      }
+    }
+  };
 }
 
 void apply_mixins(ir::Program* program) {
