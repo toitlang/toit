@@ -187,7 +187,7 @@ class BoxVisitor : public ir::ReplacingVisitor {
 
 void add_lambda_boxes(ir::Program* program) {
   ir::Class* box = program->lambda_box();
-  ir::Constructor* constructor = box->constructors()[0]->as_Constructor();
+  ir::Constructor* constructor = box->unnamed_constructors()[0]->as_Constructor();
   ASSERT(constructor != null);
   ir::Field* field = box->fields()[0];
   BoxVisitor visitor(constructor, field);
