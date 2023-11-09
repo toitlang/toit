@@ -672,8 +672,8 @@ static void shake(Program* program,
   for (auto klass : program->classes()) {
     // Note that we already shook the copies of constructors/factories/statics that had
     //   been copied into program->methods.
-    auto remaining_constructors = shake_methods(klass->constructors(), grown_methods);
-    klass->replace_constructors(remaining_constructors);
+    auto remaining_constructors = shake_methods(klass->unnamed_constructors(), grown_methods);
+    klass->replace_unnamed_constructors(remaining_constructors);
     auto remaining_factories = shake_methods(klass->factories(), grown_methods);
     klass->replace_factories(remaining_factories);
     klass->statics()->invalidate_resolution_map();
