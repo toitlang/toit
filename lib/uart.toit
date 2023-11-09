@@ -127,13 +127,13 @@ class Port extends Object with io.InMixin implements reader.Reader:
     return HostPort device --baud-rate=baud-rate --data-bits=data-bits --stop-bits=stop-bits --parity=parity
 
   constructor.host-port_ device/string
-       --baud-rate/int
-       --data-bits/int=8
-       --stop-bits/StopBits=STOP-BITS-1
-       --parity/int=PARITY-DISABLED:
-     group := resource-group_
-     uart_ = uart-create-path_ group device baud-rate data-bits stop-bits.value_ parity
-     state_ = ResourceState_ group uart_
+      --baud-rate/int
+      --data-bits/int=8
+      --stop-bits/StopBits=STOP-BITS-1
+      --parity/int=PARITY-DISABLED:
+    group := resource-group_
+    uart_ = uart-create-path_ group device baud-rate data-bits stop-bits.value_ parity
+    state_ = ResourceState_ group uart_
 
   out -> UartWriter:
     if not out_: out_ = UartWriter.private_ this
@@ -375,7 +375,7 @@ class UartWriter extends Object with io.Writer:
     if wait and (result > 0 or data.byte-size == 0): flush
     return result
 
-  try-write_ data/io.Data from/int to/int --break-length/int:
+  try-write_ data/io.Data from/int to/int --break-length/int=0:
     return port_.try-write_ data from to --break-length=break-length
 
 resource-group_ ::= uart-init_

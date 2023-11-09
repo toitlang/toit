@@ -143,7 +143,7 @@ class TcpMessage extends Message:
 
   // Parse a Stream message from the reader.
   static parse transport/Transport reader/io.Reader -> TcpMessage?:
-    if not reader.can-ensure 1: return null
+    if not reader.try-ensure-buffered 1: return null
     data0 := reader.read-byte
     length := (data0 >> LENGTH-SHIFT_) & LENGTH-MASK_
     if length == _4-BYTE-MARKER:
