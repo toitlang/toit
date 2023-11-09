@@ -84,11 +84,12 @@ test-io-data:
   accumulator := bytes.Buffer
   done := Semaphore
   t := task::
-    while ba := compressor.reader.read:
+    while ba := compressor.in.read:
       accumulator.write ba
+    compressor.in.close
     done.up
-  compressor.write input
-  compressor.close
+  compressor.out.write input
+  compressor.out.close
   done.down
   expect-equals expected accumulator.bytes
 

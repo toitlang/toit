@@ -45,7 +45,7 @@ class CompressionReader extends Object with io.CloseableReader:
   read --max-size/int?=null --wait/bool=true -> ByteArray?:
     // It's important that all non-empty byte arrays go through the
     // normal consume method, as this affects the 'consumed' count.
-    if wait or buffered-size != 0 or coder_.has-data_:
+    if wait or buffered-size != 0 or not coder_.backend-needs-input_:
       return super --max-size=max-size
 
     if is-closed_: return null
@@ -354,18 +354,23 @@ abstract class Coder_:
     return result
 
   /**
-  Returns, whether there is more data available.
+  Whether the backend needs more input.
 
   This is done by asking the backend and then, potentially, storing the
     returned data in this instance.
   */
-  has-data_ -> bool:
+  backend-needs-input_ -> bool:
     assert: not buffered_
     data := backend_.read
-    if data and data.size != 0:
+    if not data:
+      // The backend is closed.
+      return false
+    if data.size != 0:
       buffered_ = data
-      return true
-    return false
+      // Data is available.
+      return false
+    // No data. The backend needs input.
+    return true
 
   close-reader_ -> none:
     if out.is-closed:
