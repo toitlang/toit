@@ -1315,6 +1315,22 @@ abstract class string implements Comparable io.Data:
     return write-to-byte-array_ byte-array start end 0
 
   /**
+  Converts the string to little-endian UTF-16 and writes the raw UTF-16 bytes
+    to a new ByteArray.
+  */
+  to-utf-16 -> ByteArray:
+    #primitive.core.string-to-utf-16
+
+  /**
+  Treats the byte array as little endian UTF-16 and converts it to a string.
+  If the byte array is not a valid UTF-16 string, error characters
+    (U+FFFD) are inserted as replacements. Unpaired surrogates are
+    considered invalid and replaced with the error character.
+  */
+  constructor.from-utf-16 byte-array/ByteArray:
+    return string-from-utf-16_ byte-array
+
+  /**
   Writes the raw UTF-8 bytes of the string to an existing ByteArray.
   */
   write-to-byte-array byte-array/ByteArray:
@@ -1440,3 +1456,6 @@ class StringByteSlice_ implements io.Data:
 // Unsigned base 2, 8, and 16 stringification.
 printf-style-int-stringify_ value/int base/int -> string:
   #primitive.core.printf-style-int64-to-string
+
+string-from-utf-16_ byte-array/ByteArray -> string:
+  #primitive.core.utf-16-to-string
