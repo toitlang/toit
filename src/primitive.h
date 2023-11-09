@@ -511,7 +511,7 @@ namespace toit {
   PRIMITIVE(draw_text, 8)                    \
   PRIMITIVE(byte_draw_text, 8)               \
   PRIMITIVE(draw_bitmap, 10)                 \
-  PRIMITIVE(draw_bytemap, 9)                 \
+  PRIMITIVE(draw_bytemap, 10)                \
   PRIMITIVE(byte_zap, 2)                     \
   PRIMITIVE(blit, 11)                        \
   PRIMITIVE(rectangle, 7)                    \
