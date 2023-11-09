@@ -177,7 +177,7 @@ void optimize(Program* program, TypeOracle* oracle) {
     // We need to handle constructors (named and unnamed) here, as we use a
     //   different visitor, than for the globals.
     // Unnamed constructors:
-    for (auto constructor : klass->constructors()) {
+    for (auto constructor : klass->unnamed_constructors()) {
       visitor.visit(constructor);
     }
     // Named constructors are mixed together with the other static entries.
