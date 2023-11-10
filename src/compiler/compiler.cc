@@ -1844,7 +1844,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   // If we already encountered errors before the type-check we won't be able
   // to compile the program.
   if (encountered_error_before_type_checks) {
-    printf("Compilation failed.\n");
+    diagnostics()->report_error("Compilation failed.");
     exit(1);
   }
   // If we encountered errors abort unless the `--force` flag is on.
@@ -1853,7 +1853,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     encountered_error = true;
   }
   if (!configuration_.force && encountered_error) {
-    printf("Compilation failed.\n");
+    diagnostics()->report_error("Compilation failed.");
     exit(1);
   }
 
