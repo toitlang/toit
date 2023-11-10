@@ -28,12 +28,15 @@ interface Socket implements reader.Reader:
   in -> io.Reader
   out -> io.Writer
 
+  /** Deprecated. Use $(in).read instead. */
   read -> ByteArray?
+  /** Deprecated. Use $(out).write or $(out).try-write instead. */
   write data/io.Data from/int=0 to/int=data.byte-size -> int
 
   mtu -> int
 
   // Close the socket for write. The socket will still be able to read incoming data.
+  /** Deprecated. Use $(out).close instead. */
   close-write
 
   // Immediately close the socket and release any resources associated.
