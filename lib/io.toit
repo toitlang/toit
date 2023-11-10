@@ -51,6 +51,7 @@ abstract mixin Writer:
   is-closed_/bool := false
   endian_/EndianWriter? := null
   byte-cache_/ByteArray? := null
+  written_/int := 0
 
   constructor:
 
@@ -62,6 +63,12 @@ abstract mixin Writer:
   */
   constructor.adapt writer:
     return WriterAdapter_ writer
+
+  /**
+  The amount of bytes that have been written so far.
+  */
+  written -> int:
+    return written_
 
   /**
   Writes the given $data to this writer.
@@ -113,7 +120,9 @@ abstract mixin Writer:
   */
   try-write data/Data from/int=0 to/int=data.byte-size -> int:
     if is-closed_: throw "WRITER_CLOSED"
-    return try-write_ data from to
+    written := try-write_ data from to
+    written_ += written
+    return written
 
   /**
   Provides endian-aware functions to write to this instance.
