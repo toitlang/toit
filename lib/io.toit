@@ -73,13 +73,16 @@ abstract mixin Writer:
   /**
   Writes the given $data to this writer.
 
+  Returns the amount of bytes written (to - from).
+
   If the writer can't write all the data at once tries again until all of the data is
     written. This method is blocking.
   */
-  write data/Data from/int=0 to/int=data.byte-size -> none:
+  write data/Data from/int=0 to/int=data.byte-size -> int:
+    pos := from
     while not is-closed_:
-      from += try-write data from to
-      if from >= to: return
+      pos += try-write data pos to
+      if pos >= to: return (to - from)
       wait-for-more-room_
     assert: is-closed_
     throw "WRITER_CLOSED"
@@ -236,6 +239,9 @@ abstract mixin CloseableWriter extends Writer:
 
 /**
 A source of bytes.
+
+# Inheritance
+Implementations must implement $consume_ and may override $size.
 */
 abstract mixin Reader implements old-reader.Reader:
   static UNEXPECTED-END-OF-READER ::= "UNEXPECTED_END_OF_READER"
@@ -269,6 +275,7 @@ abstract mixin Reader implements old-reader.Reader:
   */
   constructor.adapt r/old-reader.Reader:
     return ReaderAdapter_ r
+
   /**
   Clears any buffered data.
 
@@ -884,6 +891,14 @@ abstract mixin Reader implements old-reader.Reader:
   close-reader_:
     is-closed_ = true
 
+  /**
+  Returns the total number of bytes that this reader can produce.
+
+  May return null if the size is not known.
+  */
+  size -> int?:
+    return null
+
 abstract mixin CloseableReader extends Reader:
   /**
   Closes this reader.
@@ -925,6 +940,9 @@ class ByteArrayReader_ extends Object with Reader:
   data_ / ByteArray? := ?
 
   constructor .data_:
+
+  size -> int:
+    return data_.size
 
   consume_ -> ByteArray?:
     result := data_
