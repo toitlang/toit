@@ -108,6 +108,7 @@ bitmap-draw-bytemap -> none
     destination-width /int:
   #primitive.bitmap.draw-bytemap
 
+/// Older version of bitmap-draw-bytemap.
 bitmap-draw-bytemap -> none
     x /int
     y /int
