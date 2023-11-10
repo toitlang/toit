@@ -86,7 +86,7 @@ foreach(file ${ALL_TESTS})
   elseif("${file}" IN_LIST TOIT_NO_BOOT_TESTS)
     set(TOIT_ARGS "-b" "none")
   elseif("${file}" IN_LIST TOIT_COMPILER_TESTS)
-    set(TEST_ARGS "$<TARGET_FILE:toit.run>")
+    set(TEST_ARGS "$<TARGET_FILE:toit.run>" "$<TARGET_FILE:toit.compile>")
   else()
     # We add 3 arguments to all test-calls.
     # They are only used for tests that deal with arguments.
