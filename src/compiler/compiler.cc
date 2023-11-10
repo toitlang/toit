@@ -548,7 +548,9 @@ void Compiler::analyze(List<const char*> source_paths,
   bool single_source = source_paths.length() == 1;
   FilesystemHybrid fs(single_source ? source_paths[0] : null);
   SourceManager source_manager(&fs);
-  AnalysisDiagnostics analysis_diagnostics(&source_manager, compiler_config.show_package_warnings);
+  AnalysisDiagnostics analysis_diagnostics(&source_manager,
+                                           compiler_config.show_package_warnings,
+                                           compiler_config.print_diagnostics_on_stdout);
   NullDiagnostics null_diagnostics(&source_manager);
   Diagnostics* diagnostics = Flags::migrate_dash_ids
       ? static_cast<Diagnostics*>(&null_diagnostics)
@@ -664,7 +666,9 @@ SnapshotBundle Compiler::compile(const char* source_path,
   out_path = FilesystemLocal::to_local_path(out_path);
   FilesystemHybrid fs(source_path);
   SourceManager source_manager(&fs);
-  CompilationDiagnostics diagnostics(&source_manager, compiler_config.show_package_warnings);
+  CompilationDiagnostics diagnostics(&source_manager,
+                                     compiler_config.show_package_warnings,
+                                     compiler_config.print_diagnostics_on_stdout);
 
   if (direct_script != null) {
     const uint8* direct_script_file_content = wrap_direct_script_expression(direct_script, &diagnostics);
