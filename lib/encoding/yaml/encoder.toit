@@ -118,8 +118,6 @@ class YamlEncoder_ extends Encoder:
                     str.contains "\n" or
                     str.contains "\r"
 
-
-
     escaped := escape-string str
 
     if enclosed_in_map_: put-byte_ ' '

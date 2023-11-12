@@ -19,7 +19,7 @@ main:
   test-number-terminators
   test-block-parse
   test-from-spec
-
+  test-stream
 
 test-stringify:
   expect-equals "testing" (yaml.stringify "testing")
@@ -377,6 +377,10 @@ BIG-BLOCK ::= """
   bar: fizz
   baz: fizz
 """
+
+test-stream:
+  expect-equals [] (yaml.parse --as-stream "")
+  expect-equals ["foo","bar"] (yaml.parse --as-stream "---\nfoo\n...\nbar\n...")
 
 test-from-spec:
   // Example 6.7

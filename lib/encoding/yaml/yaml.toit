@@ -47,11 +47,12 @@ encode obj -> ByteArray:
 Decodes the $bytes, which is a ByteArray in YAML format.
 The result is null or an instance of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
-Only a subset of YAML is supported.
+If $as-stream, returns a list of included documents.
 */
-decode bytes/ByteArray -> any:
+decode --as-stream/bool=false bytes/ByteArray -> any:
   p := Parser_ bytes
   documents := p.l-yaml-stream
+  if as-stream: return documents
   if documents.is-empty: return null
   return documents[0]
 
@@ -91,7 +92,7 @@ stringify obj/any -> string:
 Decodes the $str, which is a string in YAML format.
 The result is null or an instance of of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
-Only a subset of YAML is supported.
+If $as-stream, returns a list of included documents.
 */
-parse str/string:
-  return decode str.to-byte-array
+parse --as-stream/bool=false str/string:
+  return decode --as-stream=as-stream str.to-byte-array

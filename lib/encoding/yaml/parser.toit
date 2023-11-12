@@ -147,6 +147,7 @@ class Parser_:
   bytes_/ByteArray
   offset_/int := 0
   named-nodes := {:}
+  forbidden-detected/int? := null
 
   constructor .bytes_:
 
@@ -195,6 +196,7 @@ class Parser_:
 
   can-read num/int -> bool:
     return offset_ + num <= bytes_.size
+           and (not forbidden-detected or offset_ + num <= forbidden-detected)
 
   match-one [block] -> int?:
     if can-read 1:
@@ -248,6 +250,15 @@ class Parser_:
     value.tag = tag
     return value
 
+  detect-forbidden:
+    if forbidden-detected: return
+    mark := offset_
+    if start-of-line and
+       (c-directives-end or c-document-end) and
+       (match-chars B-LINE-TERMINATORS_ or s-white or l-eof):
+      forbidden-detected = mark
+    rollback mark
+
   find-leading-spaces-on-first-non-empty-line -> int:
     start := offset_
     start-of-line := offset_
@@ -272,7 +283,6 @@ class Parser_:
 
     if not l-eof:
       throw "INVALID_YAML_DOCUMENT"
-
     return documents.map: | node/ValueNode_ | node.resolve
 
   l-yaml-stream-helper documents/List -> bool:
@@ -290,18 +300,18 @@ class Parser_:
 
     return false
 
-
   l-any-document -> ValueNode_?:
     with-rollback:
-      if res := l-directive-document: return res
-      if res := l-explicit-document: return res
-      if res := l-bare-document: return res
+      if document := l-directive-document: return document
+      if document := l-explicit-document: return document
+      if document := l-bare-document: return document
     return null
 
   l-directive-document -> ValueNode_?:
     with-rollback:
       repeat --at-least-one: l-directive
-      if res := l-explicit-document: return res
+      if res := l-explicit-document:
+        return res
 
     return null
 
@@ -327,11 +337,21 @@ class Parser_:
     if not s-l-comments: return false
     return true
 
+  allow-forbidden-read [block]:
+    old-forbidden-detected := forbidden-detected
+    forbidden-detected = null
+    block.call
+    forbidden-detected = old-forbidden-detected
+
   c-document-end -> bool:
-    return match-string "..."
+    allow-forbidden-read:
+      if match-string "...": return true
+    return false
 
   c-directives-end -> bool:
-    return match-string "---"
+    allow-forbidden-read:
+      if match-string "---": return true
+    return false
 
   // Directives
   l-directive -> bool:
@@ -1381,12 +1401,18 @@ class Parser_:
     return offset_ == 0 or bytes_[offset_ - 1] == B-LINE-FEED_ or bytes_[offset_ - 1] == B-CARRIAGE-RETURN_
 
   l-eof -> bool:
-    return offset_ == bytes_.size
+    return offset_ == bytes_.size or forbidden-detected != null and offset_ >= forbidden-detected
 
-  b-break -> bool:
+  b-break-helper -> bool:
     if match-buffer #[B-CARRIAGE_RETURN_, B-LINE-FEED_]: return true
     if match-char B-CARRIAGE_RETURN_: return true
     if match-char B-LINE-FEED_: return true
+    return false
+
+  b-break -> bool:
+    if is-break := b-break-helper:
+      detect-forbidden
+      return true
     return false
 
   c-byte-order-mark -> bool:
