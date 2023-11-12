@@ -8,6 +8,8 @@ import reader show Reader BufferedReader
 import .encoder
 import .parser
 
+export YamlEncoder
+
 INITIAL-BUFFER-SIZE_ ::= 64
 MAX-BUFFER-GROWTH_ ::= 1024
 
@@ -19,14 +21,14 @@ The $obj must be a supported type, which means either a type supported
 Maps must have only string keys.  The elements of lists and the values of
   maps can be any of the above supported types.
 The $converter block is passed an object to be serialized and an instance
-  of the $Encoder class.  If it returns a non-null value, that value will
+  of the $YamlEncoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
-  the $converter block can call the $Encoder.encode, $Encoder.put-list,
-  or Encoder.put_unquoted methods on the encoder.
+  the $converter block can call the $YamlEncoder.encode, $YamlEncoder.put-list,
+  or $YamlEncoder.put_unquoted methods on the encoder.
 Utf-8 encoding is used for strings.
 */
 encode obj [converter] -> ByteArray:
-  e := YamlEncoder_
+  e := YamlEncoder
   e.encode obj converter
   return e.to-byte-array
 
@@ -64,15 +66,15 @@ The $obj must be a supported type, which means either a type supported
 Maps must have only string keys.  The elements of lists and the values of
   maps can be any of the above supported types.
 The $converter block is passed an object to be serialized and an instance
-  of the $Encoder class.  If it returns a non-null value, that value will
+  of the $YamlEncoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
-  the $converter block can call the $Encoder.encode, $Encoder.put-list,
-  or Encoder.put_unquoted methods on the encoder.
+  the $converter block can call the YamlEncoder.encode, YamlEncoder.put-list,
+  or YamlEncoder.put_unquoted methods on the encoder.
 Utf-8 encoding is used for strings.
 Only a subset of YAML is supported.
 */
 stringify obj/any [converter] -> string:
-  e := YamlEncoder_
+  e := YamlEncoder
   e.encode obj converter
   return e.to-string
 

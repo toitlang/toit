@@ -100,6 +100,14 @@ decode-stream reader:
 
 
 class Encoder extends EncoderBase_:
+  /** See $EncoderBase_.encode */
+  encode obj/any converter/Lambda:
+    return super obj converter
+
+  /** See $Buffer_.put-unquoted */
+  put-unquoted data -> none:
+    super data
+
   encode-string_ str:
     escaped := escape-string str
     size := escaped.size

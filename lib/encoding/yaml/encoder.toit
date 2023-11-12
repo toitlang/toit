@@ -101,11 +101,19 @@ class Buffer_:
   clear_:
     offset_ = 0
 
-class YamlEncoder_ extends EncoderBase_:
+class YamlEncoder extends EncoderBase_:
   current-line-start-offset_/int := 0
   indent_/int := 0
   enclosed_in_map_ := false
   indent_buffer_/string := "      " // A buffer of spaces, extends as nescessary
+
+  /** See $EncoderBase_.encode */
+  encode obj/any converter/Lambda:
+    return super obj converter
+
+  /** See $Buffer_.put-unquoted */
+  put-unquoted data -> none:
+    super data
 
   put-value_ val/string:
     if enclosed_in_map_: put-byte_ ' '
