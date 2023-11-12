@@ -18,6 +18,7 @@ main:
   test-repeated-strings
   test-number-terminators
   test-block-parse
+  test-from-spec
 
 
 test-stringify:
@@ -25,22 +26,23 @@ test-stringify:
   expect-equals "€" (yaml.stringify "€")
   expect-equals "🙈" (yaml.stringify "🙈")
   expect-equals "\"\\\"\\\"\\\"\\\"\"" (yaml.stringify "\"\"\"\"")
-  expect-equals "\"\\\\\\\"\"" (yaml.stringify "\\\"")
+  expect-equals "\\\\\\\"" (yaml.stringify "\\\"")
   expect-equals "\"\\u0000\"" (yaml.stringify "\x00")
   expect-equals "\"\\u0001\"" (yaml.stringify "\x01")
 
   expect-equals "\"a: \"" (yaml.stringify "a: ")
   expect-equals "\": a\"" (yaml.stringify ": a")
-  expect-equals "\"a- \"" (yaml.stringify "a- ")
+  expect-equals "a- " (yaml.stringify "a- ")
   expect-equals "\"- a\"" (yaml.stringify "- a")
-  expect-equals "\"a& \"" (yaml.stringify "a& ")
+  expect-equals "a& " (yaml.stringify "a& ")
   expect-equals "\"& a\"" (yaml.stringify "& a")
   expect-equals "\"a: \"" (yaml.stringify "a: ")
   expect-equals "\" [a\"" (yaml.stringify " [a")
   expect-equals "\"[a\"" (yaml.stringify "[a")
   expect-equals "\" {a\"" (yaml.stringify " {a")
   expect-equals "\"{a\"" (yaml.stringify "{a")
-
+  expect-equals "a#" (yaml.stringify "a#")
+  expect-equals "\"#\"" (yaml.stringify "#")
 
   expect-equals "5" (yaml.stringify 5)
   expect-equals "5.00" (yaml.stringify 5.0)
@@ -350,6 +352,33 @@ test-block-parse:
 
   expect-equals "a\nb c" (yaml.parse "a\n\nb\nc")
 
+  expect-equals "foo" (yaml.parse "%YAML 1.2\n---\nfoo")
+  expect-equals "foo" (yaml.parse "%TAG !yaml! tag:yaml.org,2002:\n---\nfoo")
+
+  expect-equals ["foo", "foo"] (yaml.parse "[&a foo, *a]")
+  expect-equals "42" (yaml.parse "!!str 42")
+  expect-equals 42.0 (yaml.parse "!!float 42")
+
+
+  // testing look behind
+  expect-equals "p#" (yaml.parse "p#")
+  expect-equals "æ#" (yaml.parse "æ#")
+  expect-equals "ab🙈#" (yaml.parse "ab🙈#")
+
+
+BIG-BLOCK ::= """
+- foo: 1
+  bar: 2
+  baz: 3
+- foo: 3
+  bar: 4
+  baz: 5
+- foo: fizz
+  bar: fizz
+  baz: fizz
+"""
+
+test-from-spec:
   // Example 6.7
   expect-equals
       "foo \n\n\t bar\n\nbaz\n"
@@ -403,12 +432,6 @@ test-block-parse:
 
                      """
 
-  expect-equals "foo" (yaml.parse "%YAML 1.2\n---\nfoo")
-  expect-equals "foo" (yaml.parse "%TAG !yaml! tag:yaml.org,2002:\n---\nfoo")
-
-  expect-equals ["foo", "foo"] (yaml.parse "[&a foo, *a]")
-  expect-equals "42" (yaml.parse "!!str 42")
-
   // Example 8.1
   expect-equals
       [ "literal\n", " folded\n", "keep\n\n", " strip" ]
@@ -447,8 +470,6 @@ test-block-parse:
       "\n\nliteral\n \n\ntext\n"
       yaml.parse "|\n \n  \n  literal\n   \n  \n  text\n\n # Comment"
 
-
-
   // Example 8.10-8.12
   expect-equals
     "\nfolded line\nnext line\n  * bullet\n\n  * list\n  * lines\n\nlast line\n"
@@ -470,18 +491,6 @@ test-block-parse:
 
                 # Comment
                """
-
-BIG-BLOCK ::= """
-- foo: 1
-  bar: 2
-  baz: 3
-- foo: 3
-  bar: 4
-  baz: 5
-- foo: fizz
-  bar: fizz
-  baz: fizz
-"""
 
 
 class TestReader implements Reader:

@@ -5,11 +5,6 @@
 // This parser follows the grammar of the YAML 1.2.2 draft.
 // The grammar is almost a PEG grammar (except for one lookbehind).
 
-NULL-VALUE_     ::= "null"
-TRUE-VALUE_     ::= "true"
-FALSE-VALUE_    ::= "false"
-OPTIONAL-VALUE_ ::= "optional"
-
 B-LINE-FEED_        ::= '\n'
 B-CARRIAGE_RETURN_  ::= '\r'
 B-LINE-TERMINATORS_ ::= { B-LINE-FEED_, B-CARRIAGE_RETURN_ }
@@ -63,32 +58,117 @@ flatten-list_ list/List -> List:
     else: result.add it
   return result
 
+empty-node_ ::= ValueNode_ null
+
+one-element-queue_ elm -> Deque:
+  q := Deque
+  q.add elm
+  return q
+
+keys-as-set_ map/Map -> Set:
+   set := Set
+   map.do --keys: set.add it
+   return set
+
+class ValueNode_:
+  tag/string? := null
+  value/any
+  constructor .value:
+
+  constructor.map-from-collection collection/Collection:
+    value = Map
+    collection.do: value[it[0]] = it[1]
+
+  // Either use the supplied tag to construct a toit object representing the value or use
+  // the core schema tag resolution
+  resolve -> any:
+    model-value := canonical-value
+    if tag:
+      if tag == "!!str" and value is string:
+        return value
+      if tag == "!!float" and model-value is int:
+        return model-value.to-float
+
+    return model-value
+
+  static NULL     ::= { "null", "NULL", "Null", "~" }
+  static TRUE     ::= { "true", "True", "TRUE" }
+  static FALSE    ::= { "false", "False", "FALSE" }
+  static INFINITY ::= { ".inf", ".Inf", ".INF"  }
+  static NAN      ::= { ".nan", ".Nan", ".NAN" }
+
+  canonical-value -> any:
+    if this == empty-node_: return null
+
+    if value is string:
+      if NULL.contains value: return null
+      if TRUE.contains value: return true
+      if FALSE.contains value: return false
+
+      catch:
+        if res := int.parse value: return res
+
+      catch:
+        if res := float.parse value: return res
+
+      if INFINITY.contains value or
+         value.size > 1 and value[0] == '+' and INFINITY.contains value[1..]:
+        return float.INFINITY
+
+      if value.size > 1 and value[0] == '-' and INFINITY.contains value[1..]:
+        return -float.INFINITY
+
+      if NAN.contains value: return float.NAN
+
+      catch:
+        if value.starts-with "0x":
+          return int.parse --radix 16 value[2..]
+
+      catch:
+        if value.starts-with "0o":
+          return int.parse --radix 8 value[2..]
+
+    if value is List:
+      return value.map: | node/ValueNode_ | node.resolve
+
+    if value is Map:
+      map := Map
+      value.do:| key/ValueNode_  value/ValueNode_| map[key.resolve] = value.resolve
+      return map
+
+    return value
+
+  hash-code:
+    return value.hash-code
+
+  stringify: return "VN: $value.stringify"
+
 class Parser_:
   bytes_/ByteArray
   offset_/int := 0
   named-nodes := {:}
 
   constructor .bytes_:
-    print "Parsing: $bytes_.to-string"
-  // The grammar and hence the parser is greedy. That means that it is nescessary to be able to rollback
+
+  // As a peg grammar is top-down, the parser needs to be able to rollback
   mark -> any:
     return offset_
 
-  rollback mark:
+  rollback mark -> none:
     offset_ = mark
 
   at-mark mark -> bool:
     return offset_ == mark
 
-  with-rollback [block]:
+  with-rollback [block] -> none:
     mark := mark
     block.call
     rollback mark
 
-  lookahead [block]:
+  lookahead [block] -> bool:
     result := false
     with-rollback: result = block.call
-    return result
+    return not (not result)
 
   slice n -> ByteArray:
     return bytes_[offset_..offset_ + n]
@@ -107,13 +187,13 @@ class Parser_:
       if not at-least-one or not result.is-empty: return result
     return null
 
-  optional --or-null/bool=false [block]:
+  optional --or-null/bool=false [block] -> any:
     with-rollback:
       if res := block.call: return res
 
-    return or-null?null:NULL-VALUE_
+    return or-null?null:empty-node_
 
-  can-read num/int:
+  can-read num/int -> bool:
     return offset_ + num <= bytes_.size
 
   match-one [block] -> int?:
@@ -130,19 +210,19 @@ class Parser_:
         return true
     return false
 
-  match-char byte/int:
+  match-char byte/int -> int?:
     return match-one: it == byte
 
   match-chars chars/Set -> int?:
     return match-one: chars.contains it
 
-  match-range from/int to/int:
+  match-range from/int to/int -> int?:
     return match-one: from <= it and it <= to
 
   match-buffer buf/ByteArray -> bool:
     return match-many buf.size: (slice buf.size) == buf
 
-  match-string str/string:
+  match-string str/string -> bool:
     return match-buffer str.to-byte-array
 
   match-hex digits/int -> int?:
@@ -156,39 +236,19 @@ class Parser_:
       if not failed: return int.parse --radix=16 (string-since start)
     return null
     
-  start-of-line:
-    return offset_ == 0 or bytes_[offset_ - 1] == B-LINE-FEED_ or bytes_[offset_ - 1] == B-CARRIAGE-RETURN_
-
   string-since start -> string:
     return bytes_[start .. offset_].to_string
 
-  to_return_value val:
-    if val == NULL-VALUE_: return null
-    if val == OPTIONAL-VALUE_: return null
-    if val == TRUE-VALUE_: return true
-    if val == FALSE-VALUE_: return false
-
-    catch:
-      if res := int.parse val: return res
-
-    catch:
-      if res := float.parse val: return res
-
-    return val
-
-  apply-props props res:
+  apply-props props value/ValueNode_ -> ValueNode_:
+    tag/string? := null
     if props:
-      tag := props[0]
+      tag = props[0]
       anchor := props[1]
+      if anchor: named-nodes[anchor] = value
+    value.tag = tag
+    return value
 
-      if anchor: named-nodes[anchor] = res
-      if tag:
-        if tag == "!!str":
-          res = res.to-string
-          catch --trace: throw ""
-    return res
-
-  find-leading-spaces-on-first-non-empty-line:
+  find-leading-spaces-on-first-non-empty-line -> int:
     start := offset_
     start-of-line := offset_
     while true:
@@ -200,74 +260,66 @@ class Parser_:
     result := offset_ - start-of-line
     offset_ = start
 
-    print "leading space on non-empty: $result"
     return result
 
   // Overall structure
   l-yaml-stream -> List:
     k := repeat: l-document-prefix
-    print "main: $offset_, k=$k"
     documents := []
-    if res := l-any-document: documents.add (to_return_value res)
+    if document := l-any-document: documents.add document
 
     repeat: l-yaml-stream-helper documents
-    print "parse result: $documents"
 
     if not l-eof:
-      print "$offset_, remaining: $bytes_[offset_..].to-string"
       throw "INVALID_YAML_DOCUMENT"
 
-    return documents
+    return documents.map: | node/ValueNode_ | node.resolve
 
   l-yaml-stream-helper documents/List -> bool:
     with-rollback:
       if (repeat --at-least-one: l-document-suffix):
         repeat: l-document-prefix
-        if res := l-any-document: documents.add (to_return_value res)
+        if document := l-any-document: documents.add document
         return true
 
     if c-byte-order-mark: return true
-    if l-comment: print "FISK"; return true
-    if res := l-explicit-document:
-      documents.add res
+    if l-comment: return true
+    if document := l-explicit-document:
+      documents.add document
       return true
 
     return false
 
 
-  l-any-document:
+  l-any-document -> ValueNode_?:
     with-rollback:
       if res := l-directive-document: return res
       if res := l-explicit-document: return res
       if res := l-bare-document: return res
     return null
 
-  l-directive-document:
+  l-directive-document -> ValueNode_?:
     with-rollback:
       repeat --at-least-one: l-directive
       if res := l-explicit-document: return res
 
     return null
 
-  l-explicit-document:
+  l-explicit-document -> ValueNode_?:
     with-rollback:
       if c-directives-end:
         if res := l-bare-document: return res
-        if s-l-comments: return NULL-VALUE_
+        if s-l-comments: empty-node_
     return null
 
-  l-bare-document:
+  l-bare-document -> ValueNode_?:
     with-rollback:
       if res := s-l-plus-block-node -1 BLOCK-IN_: return res
     return null
 
-  l-eof: return offset_ == bytes_.size
-
-  l-document-prefix:
-    print "prefix: $offset_"
+  l-document-prefix -> bool:
     c-byte-order-mark
     repeat: l-comment
-    print "prefix: $offset_"
     return true
 
   l-document-suffix -> bool:
@@ -275,14 +327,14 @@ class Parser_:
     if not s-l-comments: return false
     return true
 
-  c-document-end:
+  c-document-end -> bool:
     return match-string "..."
 
-  c-directives-end:
+  c-directives-end -> bool:
     return match-string "---"
 
   // Directives
-  l-directive:
+  l-directive -> bool:
     with-rollback:
       if match-char C-DIRECTIVE_ and
          (ns-yaml-directive or
@@ -292,7 +344,7 @@ class Parser_:
         return true
     return false
 
-  ns-yaml-directive:
+  ns-yaml-directive -> bool:
     with-rollback:
       if match-string "YAML" and
          s-separate-in-line and
@@ -313,7 +365,8 @@ class Parser_:
         if major > 1 or minor > 2: throw "UNSUPPORTED_YAML_VERSION"
         return true
     return false
-  ns-tag-directive:
+
+  ns-tag-directive -> bool:
     with-rollback:
       if match-string "TAG" and
          s-separate-in-line and
@@ -323,7 +376,7 @@ class Parser_:
         return true
     return false
 
-  c-tag-handle:
+  c-tag-handle -> bool:
     with-rollback:
       if c-named-tag-handle or
           match-string "!!"  or
@@ -331,7 +384,7 @@ class Parser_:
         return true
     return false
 
-  c-named-tag-handle:
+  c-named-tag-handle -> bool:
     with-rollback:
       if  match-char C-TAG_ and
          (repeat --at-least-one : ns-word-char) and
@@ -339,13 +392,13 @@ class Parser_:
         return true
     return false
 
-  ns-tag-prefix:
+  ns-tag-prefix -> bool:
     if c-ns-local-tag-prefix or
        ns-global-tag-prefix:
       return true
     return false
 
-  c-ns-local-tag-prefix:
+  c-ns-local-tag-prefix -> bool:
     with-rollback:
       if match-char C-TAG_ and
          (repeat: ns-uri-char):
@@ -366,54 +419,54 @@ class Parser_:
         return true
     return false
 
-  ns-directive-name:
+  ns-directive-name -> List?:
     return repeat --at-least-one: ns-char
 
-  ns-directive-parameter:
+  ns-directive-parameter -> List?:
     return repeat --at-least-one: ns-char
 
   // comments
-  l-comment:
+  l-comment -> bool:
     with-rollback:
       if s-separate-in-line:
         c-nb-comment-text
-        if b-comment: print offset_; return true
+        if b-comment: return true
     return false
 
-  s-l-comments:
+  s-l-comments -> bool:
     with-rollback:
       if s-b-comment or start-of-line:
         repeat: l-comment
         return true
     return false
 
-  s-b-comment:
+  s-b-comment -> bool:
     with-rollback:
       optional: if s-separate-in-line: (optional: c-nb-comment-text)
       if b-comment: return true
     return false
 
-  s-separate-in-line:
+  s-separate-in-line -> bool:
     with-rollback:
       if (repeat --at-least-one: s-white): return true
       if start-of-line: return true
     return false
 
-  c-nb-comment-text:
+  c-nb-comment-text -> bool:
     if c-comment:
       repeat: nb-char
       return true
     return false
 
-  b-comment:
+  b-comment -> bool:
     with-rollback:
       if b-non-content: return true
     return l-eof
 
-  b-non-content:
+  b-non-content -> bool:
     return b-break
 
-  l-trail-comments n:
+  l-trail-comments n -> bool:
     with-rollback:
       if (s-indent-less-than n and
           c-nb-comment-text and
@@ -422,133 +475,119 @@ class Parser_:
     return false
 
   // Data part
-  s-l-plus-block-node n c -> any:
-    if res := s-l-plus-block-in-block n c: return res
-    if res := s-l-plus-flow-in-block n: return res
+  s-l-plus-block-node n c -> ValueNode_?:
+    if node := s-l-plus-block-in-block n c: return node
+    if node := s-l-plus-flow-in-block n: return node
     return null
 
-  s-l-plus-block-in-block n c -> any:
-    if res := s-l-plus-block-scalar n c: return res
-    if res := s-l-plus-block-collection n c: return res
+  s-l-plus-block-in-block n c -> ValueNode_?:
+    if node := s-l-plus-block-scalar n c: return node
+    if node := s-l-plus-block-collection n c: return node
     return null
 
-  s-l-plus-flow-in-block n:
+  s-l-plus-flow-in-block n -> ValueNode_?:
     with-rollback:
-      print "s-l-plus-flow-in-block: $offset_"
       if s-separate n + 1 FLOW-OUT_:
-        print "s-l-plus-flow-in-block: 2 $offset_"
-        if res := ns-flow-node n + 1 FLOW-OUT_:
-          print "s-l-plus-flow-in-block: 3 $res"
+        if node := ns-flow-node n + 1 FLOW-OUT_:
           if s-l-comments:
-            print "s-l-plus-flow-in-block: 4"
-            return res
+            return node
     return null
 
-  s-l-plus-block-collection n c:
+  s-l-plus-block-collection n c -> ValueNode_?:
     with-rollback:
       props := optional --or-null: if s-separate n + 1 c: c-ns-properties n + 1 c
       if s-l-comments:
-        // TODO: Use prpos
-        if res := seq-space n c: return apply-props props res
-        if res := l-plus-block-mapping n c: return apply-props props res
+        if node := seq-space n c: return apply-props props node
+        if node := l-plus-block-mapping n c: return apply-props props node
     return null
 
-  s-l-plus-block-scalar n c:
+  s-l-plus-block-scalar n c -> ValueNode_?:
     with-rollback:
       if s-separate n + 1 c:
         props := optional --or-null: if p := c-ns-properties n + 1 c and s-separate n + 1 c: p
-        res := c-l-plus-literal n
-        print "s-l-plus-block-scalar: $res"
-        if not res: res = c-l-plus-folded n
-        if res: return apply-props props res
+        node := c-l-plus-literal n
+        if not node: node = c-l-plus-folded n
+        if node: return apply-props props (ValueNode_ node)
     return null
 
-  seq-space n c:
+  seq-space n c -> ValueNode_?:
     if c == BLOCK-OUT_: return l-plus-block-sequence n - 1
     if c == BLOCK-IN_: return l-plus-block-sequence n
     return null
 
-  l-plus-block-sequence n:
+  l-plus-block-sequence n -> ValueNode_?:
     with-rollback:
       if m := s-indent n + 1 --auto-detect-m:
         if first := c-l-block-seq-entry n + 1 + m:
           rest := repeat:
-            res := null
+            node := null
             if s-indent n + 1 + m:
               if tmp :=  c-l-block-seq-entry n + 1 + m:
-                res = tmp
-            res
-          result := [ to_return_value first]
-          result.add-all (rest.map: to_return_value it)
-          return result
+                node = tmp
+            node
+          return ValueNode_ (flatten-list_ [first, rest])
     return null
 
-  l-plus-block-mapping n c -> Map?:
+  l-plus-block-mapping n c -> ValueNode_?:
     with-rollback:
       if m := s-indent n + 1 --auto-detect-m:
         if first := ns-l-block-map-entry n + 1 + m:
           rest := repeat:
-            res := null
+            entry := null
             if s-indent n + 1 + m:
               if tmp := ns-l-block-map-entry n + 1 + m:
-                res = tmp
-            res
-          result := { to_return_value first[0] : to_return_value first[1] }
-          rest.do: result[to_return_value it[0]] = to_return_value it[1]
-          return result
+                entry = tmp
+            entry
+          return ValueNode_.map-from-collection (flatten-list_ [[first], rest])
     return null
 
-  c-l-block-seq-entry n:
+  c-l-block-seq-entry n -> ValueNode_?:
     with-rollback:
       if match-char C-SEQUENCE-ENTRY_:
         if (lookahead: not ns-char):
-          if res := s-l-plus-block-indented n BLOCK-IN_:
-            return res
+          if node := s-l-plus-block-indented n BLOCK-IN_:
+            return node
     return null
 
-  s-l-plus-block-indented n c:
+  s-l-plus-block-indented n c -> ValueNode_?:
     with-rollback:
       if m := s-indent 0 --auto-detect-m:
-        if res := ns-l-compact-sequence n + 1 + m: return res
-        if res := ns-l-compact-mapping n + 1 + m: return res
+        if node := ns-l-compact-sequence n + 1 + m: return node
+        if node := ns-l-compact-mapping n + 1 + m: return node
 
     if res := s-l-plus-block-node n c: return res
 
-    if s-l-comments: return NULL-VALUE_
+    if s-l-comments: return empty-node_
 
     return null
 
-  ns-l-compact-sequence n:
+  ns-l-compact-sequence n -> ValueNode_?:
     with-rollback:
       if first := c-l-block-seq-entry n:
         rest := repeat:
-          res := null
+          entry := null
           if s-indent n:
             if tmp := c-l-block-seq-entry n:
-              res = tmp
-          res
-        result := [ to_return_value first]
-        result.add-all (rest.map: to_return_value it)
-        return result
+              entry = tmp
+          entry
+        return ValueNode_ (flatten-list_ [first, rest])
     return null
 
-  ns-l-compact-mapping n:
+  ns-l-compact-mapping n -> ValueNode_?:
     with-rollback:
       if first := ns-l-block-map-entry n:
         rest := repeat:
-          res := null
+          entry := null
           if s-indent n:
             if tmp := ns-l-block-map-entry n:
-              res = tmp
-          res
-        result := { to_return_value first[0] : to_return_value first[1] }
-        rest.do: result[to_return_value it[0]] = to_return_value it[1]
-        return result
+              entry = tmp
+          entry
+        return ValueNode_.map-from-collection (flatten-list_ [[first], rest])
     return null
 
   ns-l-block-map-entry n -> List?:
-    if res := c-l-block-map-explicit-entry n: return res
-    if res := ns-l-block-map-implicit-entry n: return res
+    if entry := c-l-block-map-explicit-entry n: return entry
+    if entry := ns-l-block-map-implicit-entry n: return entry
     return null
 
   c-l-block-map-explicit-entry n -> List?:
@@ -560,76 +599,75 @@ class Parser_:
           return [key, null]
     return null
 
-  c-l-block-map-explicit-key n:
+  c-l-block-map-explicit-key n -> ValueNode_?:
     with-rollback:
       if match-char C-MAPPING_KEY_:
-        if res := s-l-plus-block-indented n BLOCK-OUT_: return res
+        if node := s-l-plus-block-indented n BLOCK-OUT_: return node
     return null
 
-  l-block-map-explicit-value n:
+  l-block-map-explicit-value n -> ValueNode_?:
     with-rollback:
       if s-indent n and match-char C-MAPPING-VALUE_:
-        if res := s-l-plus-block-indented n BLOCK-OUT_: return res
+        if node := s-l-plus-block-indented n BLOCK-OUT_: return node
     return null
 
-  ns-l-block-map-implicit-entry n:
+  ns-l-block-map-implicit-entry n -> List?:
     with-rollback:
       key := ns-s-block-map-implicit-key
-      if not key: key = NULL-VALUE_
+      if not key: key = empty_node_
       if val := c-l-block-map-implicit-value n:
         return [key, val]
     return null
 
-  ns-s-block-map-implicit-key:
-    if res := c-s-implicit-json-key BLOCK-KEY_: return res
-    if res := ns-s-implicit-yaml-key BLOCK-KEY_: return res
+  ns-s-block-map-implicit-key -> ValueNode_?:
+    if node := c-s-implicit-json-key BLOCK-KEY_: return node
+    if node := ns-s-implicit-yaml-key BLOCK-KEY_: return node
     return null
 
-  c-l-block-map-implicit-value n -> any:
+  c-l-block-map-implicit-value n -> ValueNode_?:
     with-rollback:
       if match-char C-MAPPING-VALUE_:
-        if res := s-l-plus-block-node n BLOCK-OUT_: return res
-        if s-l-comments: return NULL-VALUE_
+        if node := s-l-plus-block-node n BLOCK-OUT_: return node
+        if s-l-comments: return empty_node_
     return null
 
-  c-s-implicit-json-key c:
+  c-s-implicit-json-key c -> ValueNode_?:
     with-rollback:
-      if res := c-flow-json-node 0 c:
-        optional: s-separate-in-line
-        return res
+      if node := c-flow-json-node 0 c:
+        s-separate-in-line
+        return node
     return null
 
-  ns-flow-yaml-node n c:
-    if res := c-ns-alias-node: return res
-    if res := ns-flow-yaml-content n c: return res
-    with-rollback:
-      if props := c-ns-properties n c:
-        with-rollback:
-          if s-separate n c:
-            if res := ns-flow-yaml-content n c: return apply-props props res
-        return NULL-VALUE_
-    return null
-
-  c-flow-json-node n c:
-    with-rollback:
-      props := optional: if p := c-ns-properties n c: if s-separate n c: p
-      if res := c-flow-json-content n c:
-        return apply-props props res
-    return null
-
-  ns-flow-node n c:
-    print "ns-flow-node $n $c"
-    if res := c-ns-alias-node: return res
-    if res := ns-flow-content n c: return res
+  ns-flow-yaml-node n c -> ValueNode_?:
+    if node := c-ns-alias-node: return node
+    if node := ns-flow-yaml-content n c: return node
     with-rollback:
       if props := c-ns-properties n c:
         with-rollback:
           if s-separate n c:
-            if res := ns-flow-content n c: return apply-props props res
-        return NULL-VALUE_
+            if node := ns-flow-yaml-content n c: return apply-props props node
+        return empty-node_
     return null
 
-  c-ns-alias-node:
+  c-flow-json-node n c -> ValueNode_?:
+    with-rollback:
+      props := optional --or-null: if p := c-ns-properties n c: if s-separate n c: p
+      if node := c-flow-json-content n c:
+        return apply-props props node
+    return null
+
+  ns-flow-node n c -> ValueNode_?:
+    if node := c-ns-alias-node: return node
+    if node := ns-flow-content n c: return node
+    with-rollback:
+      if props := c-ns-properties n c:
+        with-rollback:
+          if s-separate n c:
+            if node := ns-flow-content n c: return apply-props props node
+        return empty-node_
+    return null
+
+  c-ns-alias-node -> ValueNode_?:
     with-rollback:
       if match-char C-ALIAS_:
         if anchor := ns-anchor-name:
@@ -637,44 +675,38 @@ class Parser_:
           return named-nodes[anchor]
     return null
 
-  ns-flow-content n c:
-    if res := ns-flow-yaml-content n c: return res
-    if res := c-flow-json-content n c: return res
+  ns-flow-content n c -> ValueNode_?:
+    if node := ns-flow-yaml-content n c: return node
+    if node := c-flow-json-content n c: return node
     return null
 
-  c-flow-json-content n c:
-    if res := c-flow-sequence n c: return res
-    if res := c-flow-mapping n c: return res
-    if res := c-single-quoted n c: return res
-    if res := c-double-quoted n c: return res
+  c-flow-json-content n c -> ValueNode_?:
+    if node := c-flow-sequence n c: return node
+    if node := c-flow-mapping n c: return node
+    if node := c-single-quoted n c: return node
+    if node := c-double-quoted n c: return node
     return null
 
-  ns-flow-yaml-content n c:
-    return ns-plain n c
+  ns-flow-yaml-content n c -> ValueNode_?:
+    if content := ns-plain n c: return ValueNode_ content
+    return null
 
-  c-flow-sequence n c -> List?:
+  c-flow-sequence n c -> ValueNode_?:
     with-rollback:
       if match-char C-SEQUENCE-START_:
         optional: s-separate n c
         res := in-flow n c
         if match-char C-SEQUENCE-END_:
-          if res: return List.from res
-          else: return []
+          return ValueNode_ ( res ? List.from res : [] )
     return null
 
-  c-flow-mapping n c -> Map?:
+  c-flow-mapping n c -> ValueNode_?:
     with-rollback:
       if match-char C-MAPPING-START_:
         optional: s-separate n c
-        print "c-flow-mapping $n $c"
         map-entries := in-flow-map n c // See https://github.com/yaml/yaml-spec/issues/299
         if match-char C-MAPPING-END_:
-          map := Map
-          if map-entries:
-            map-entries.do: map[to_return_value it[0]] = to_return_value it[1]
-          print "c-flow-mapping : $map"
-          return map
-
+          return ValueNode_.map-from-collection ( map-entries ? map-entries : [])
     return null
 
   in-flow n c -> Deque?:
@@ -685,137 +717,125 @@ class Parser_:
     if c == FLOW-OUT_ or c == FLOW-IN_: return ns-s-flow-map-entries n FLOW-IN_
     return ns-s-flow-map-entries n FLOW-KEY_
 
-  one-element-queue elm:
-    q := Deque
-    q.add elm
-    return q
+  flow-entries n c [--head] [--tail] -> Deque?:
+    with-rollback:
+      if head-entry := head.call:
+        s-separate n c
+        with-rollback:
+          if match-char C-COLLECT-ENTRY_:
+            s-separate n c
+            if tail-entries := tail.call:
+              tail-entries.add-first head-entry
+              return tail-entries
+            return one-element-queue_ head-entry
+        return one-element-queue_ head-entry
+    return null
+
 
   ns-s-flow-seq-entries n c -> Deque?:
-    with-rollback:
-      if head := ns-flow-seq-entry n c:
-        head-val := to_return_value head
-        s-separate n c
-        with-rollback:
-          if match-char C-COLLECT-ENTRY_:
-            s-separate n c
-            tail := ns-s-flow-seq-entries n c
-            if tail:
-              tail.add-first head-val
-              return tail
-            return one-element-queue head-val
-        return one-element-queue head-val
-    return null
+    return flow-entries n c
+      --head=: ns-flow-seq-entry n c
+      --tail=: ns-s-flow-seq-entries n c
 
   ns-s-flow-map-entries n c -> Deque?:
-    with-rollback:
-      if head := ns-flow-map-entry n c:
-        s-separate n c
-        with-rollback:
-          if match-char C-COLLECT-ENTRY_:
-            s-separate n c
-            tail := ns-s-flow-map-entries n c
-            if tail:
-              tail.add-first head
-              return tail
-            return one-element-queue head
-        return one-element-queue head
+    return flow-entries n c
+      --head=: ns-flow-map-entry n c
+      --tail=: ns-s-flow-map-entries n c
+
+  ns-flow-seq-entry n c -> ValueNode_?:
+    if pair := ns-flow-pair n c: return pair
+    if node := ns-flow-node n c: return node
     return null
 
-  ns-flow-seq-entry n c:
-    if res := ns-flow-pair n c: return res
-    if res := ns-flow-node n c: print "FN: $res"; return res
-    return null
-
-  ns-flow-map-entry n c:
+  ns-flow-map-entry n c -> List?:
     with-rollback:
       if match-char C-MAPPING-KEY_  and
          s-separate n c:
-        if res := ns-flow-map-explicit-entry n c: return res
-    if res := ns-flow-map-implicit-entry n c: return res
+        if entry := ns-flow-map-explicit-entry n c: return entry
+    if entry := ns-flow-map-implicit-entry n c: return entry
     return null
 
-  ns-flow-pair n c:
+  ns-flow-pair n c -> ValueNode_?:
     with-rollback:
       if match-char C-MAPPING-KEY_ and s-separate n c:
-        if res := ns-flow-map-explicit-entry n c:
-          return { res[0]: res[1] }
-    if res := ns-flow-pair-entry n c:
-      return { res[0]: res[1] }
+        if entry := ns-flow-map-explicit-entry n c:
+          return ValueNode_.map-from-collection [entry]
+    if entry := ns-flow-pair-entry n c:
+      return ValueNode_.map-from-collection [entry]
     return null
 
   ns-flow-map-explicit-entry n c -> List?:
-    if res := ns-flow-map-implicit-entry n c: return res
-    return [null, null]
+    if entry := ns-flow-map-implicit-entry n c: return entry
+    return [empty-node_, empty-node_]
 
   ns-flow-map-implicit-entry n c -> List?:
-    if tmp := ns-flow-map-yaml-key-entry n c: return tmp
-    if tmp := c-ns-flow-map-empty-key-entry n c: return tmp
-    if tmp := c-ns-flow-map-json-key-entry n c: return tmp
+    if entry := ns-flow-map-yaml-key-entry n c: return entry
+    if entry := c-ns-flow-map-empty-key-entry n c: return entry
+    if entry := c-ns-flow-map-json-key-entry n c: return entry
     return null
 
   ns-flow-pair-entry n c -> List?:
-    if res := ns-flow-pair-yaml-key-entry n c: return res
-    if res := c-ns-flow-map-empty-key-entry n c: return res
-    if res := c-ns-flow-pair-json-key-entry n c: return res
+    if entry := ns-flow-pair-yaml-key-entry n c: return entry
+    if entry := c-ns-flow-map-empty-key-entry n c: return entry
+    if entry := c-ns-flow-pair-json-key-entry n c: return entry
     return null
 
   ns-flow-pair-yaml-key-entry n c -> List?:
     with-rollback:
       if key := ns-s-implicit-yaml-key FLOW-KEY_:
-        if val := c-ns-flow-map-separate-value n c:
-          return [to_return_value key, to_return_value val]
+        if value := c-ns-flow-map-separate-value n c:
+          return [key, value]
     return null
 
   c-ns-flow-pair-json-key-entry n c -> List?:
     with-rollback:
       if key := c-s-implicit-json-key FLOW-KEY_:
-        if val := c-ns-flow-map-adjacent-value n c:
-          return [to_return_value key, to_return_value val]
+        if value := c-ns-flow-map-adjacent-value n c:
+          return [key, value]
     return null
 
   c-ns-flow-map-json-key-entry n c -> List?:
     with-rollback:
       if key := c-flow-json-node n c:
-        val := optional: optional: s-separate n c; c-ns-flow-map-adjacent-value n c
-        return [to_return_value key, to_return_value val]
+        value := optional: optional: s-separate n c; c-ns-flow-map-adjacent-value n c
+        return [key, value]
     return null
 
-  c-ns-flow-map-adjacent-value n c:
+  c-ns-flow-map-adjacent-value n c -> ValueNode_?:
     with-rollback:
       if match-char C-MAPPING-VALUE_:
-        val := optional: optional: s-separate n c; ns-flow-node n c
-        return val or NULL-VALUE_
+        value := optional: optional: s-separate n c; ns-flow-node n c
+        return value or empty-node_
     return null
 
-  ns-s-implicit-yaml-key c:
-    if res := ns-flow-yaml-node 0 c:
+  ns-s-implicit-yaml-key c -> ValueNode_?:
+    if node := ns-flow-yaml-node 0 c:
       s-separate-in-line
-      return res
+      return node
     return null
 
   ns-flow-map-yaml-key-entry n c -> List?:
     with-rollback:
       if key := ns-flow-yaml-node n c:
-        val := optional: (optional: s-separate n c); c-ns-flow-map-separate-value n c
-        return [to_return_value key, to_return_value val]
+        value := optional: (optional: s-separate n c); c-ns-flow-map-separate-value n c
+        return [key, value]
     return null
 
   c-ns-flow-map-empty-key-entry n c -> List?:
-    if val := c-ns-flow-map-separate-value n c: return [null, to_return_value val]
+    if value := c-ns-flow-map-separate-value n c: return [null, value]
     return null
 
-  c-ns-flow-map-separate-value n c:
+  c-ns-flow-map-separate-value n c -> ValueNode_?:
     with-rollback:
       if match-char C-MAPPING-VALUE_ and
          (lookahead: not ns-plain-safe c):
         with-rollback:
           if s-separate n c:
-            if res := ns-flow-node n c: return res
-        return NULL-VALUE_
+            if node := ns-flow-node n c: return node
+        return empty-node_
     return null
 
   ns-plain n c -> string?:
-    print "ns-plain $n $c "
     if c == FLOW-OUT_:  return ns-plain-multi-line n c
     if c == FLOW-IN_:   return ns-plain-multi-line n c
     if c == BLOCK-KEY_: return ns-plain-one-line c
@@ -833,7 +853,6 @@ class Parser_:
     with-rollback:
       if first := ns-plain-one-line c:
         rest := repeat: s-ns-plain-next-line n c
-        print "ns-plain-multi-line: first=$first, rest=$rest :: $((flatten-list_ [first, rest]).join "")"
         return (flatten-list_ [first, rest]).join ""
     return null
 
@@ -841,20 +860,19 @@ class Parser_:
     with-rollback:
       if folded := s-flow-folded n:
         if first := ns-plain-char c:
-           if val := nb-ns-plain-in-line c:
-             print "s-ns-plain-next-line: folded=$folded.to-byte-array, first=$(string.from-rune first), val=$val"
-             return "$folded$(string.from-rune first)$val"
+           if rest := nb-ns-plain-in-line c:
+             return "$folded$(string.from-rune first)$rest"
     return null
 
   s-flow-folded n -> string?:
     with-rollback:
       s-separate-in-line
-      if res := b-l-folded n FLOW-IN_:
+      if folded := b-l-folded n FLOW-IN_:
         if s-flow-line-prefix n:
-          return res
+          return folded
     return null
 
-  nb-ns-plain-in-line c:
+  nb-ns-plain-in-line c -> string:
     start := offset_
     repeat: (repeat: match-chars S-WHITESPACE_) and ns-plain-char c
     return string-since start
@@ -892,17 +910,17 @@ class Parser_:
 
     return null
 
-  ns-plain-safe c:
+  ns-plain-safe c -> int?:
     if c == FLOW-OUT_ or c == BLOCK-OUT_: return ns-plain-safe-out
     return ns-plain-safe-in
 
   ns-plain-safe-out: return ns-char
 
-  ns-plain-safe-in:
+  ns-plain-safe-in -> int?:
     with-rollback:
       if rune := ns-char:
         if not C-FLOW-INDICATOR_.contains rune: return rune
-    return false
+    return null
 
 
   c-ns-properties n c -> List?:
@@ -916,27 +934,27 @@ class Parser_:
         return [tag, anchor]
     return null
 
-  c-ns-tag-property: // TODO: Return more structural information about the tags
+  c-ns-tag-property -> string?:
     if res := c-verbatim-tag: return res
     if res := c-ns-shorthand-tag: return res
     if res := c-non-specific-tag: return res
     return null
 
-  c-verbatim-tag:
+  c-verbatim-tag -> string?:
     start := offset_
     with-rollback:
       if match-string "!<" and (repeat --at-least-one: ns-uri-char) and match-char '>':
         return string-since start
     return null
 
-  c-ns-shorthand-tag:
+  c-ns-shorthand-tag -> string?:
     start := offset_
     with-rollback:
       if c-tag-handle and (repeat --at-least-one: ns-tag-char):
         return string-since start
     return null
 
-  c-non-specific-tag:
+  c-non-specific-tag -> string?:
     if match-char C-TAG_: return "!"
     return null
 
@@ -954,17 +972,16 @@ class Parser_:
         return string-since start
     return null
 
-  c-l-plus-literal n:
+  c-l-plus-literal n -> string?:
     with-rollback:
       if match-char C-LITERAL_:
         if t := c-b-block-header:
           spaces := find-leading-spaces-on-first-non-empty-line
           if res := l-literal-content spaces - t[1] t[0]:
-            print "c-l-plus-literal: t=$t $res"
             return res.join ""
     return null
 
-  c-l-plus-folded n:
+  c-l-plus-folded n -> string?:
     with-rollback:
       if match-char C-FOLDED_:
         t := c-b-block-header
@@ -973,7 +990,7 @@ class Parser_:
           return res.join ""
     return null
 
-  c-b-block-header:
+  c-b-block-header -> List?:
     with-rollback:
       indent-char := match-range '1' '9'
       chomp-char := match-chars { '-', '+' }
@@ -985,7 +1002,7 @@ class Parser_:
 
         indent := 0
         if indent-char: indent = indent-char - '0'
-        print "c-b-block-header: chomp=$chomp, indent=$indent"
+
         return [ chomp, indent ]
     return null
 
@@ -995,13 +1012,10 @@ class Parser_:
         res/List? := null
         if first := l-nb-literal-text n:
           next := repeat: b-nb-literal-next n
-          print "NEXT=$next"
           if chomped-last := b-chomped-last t:
             res = flatten-list_ [first, next, chomped-last]
         res
-      print "l-literal-content: content=$content "
       if chomped-empty := l-chomped-empty n t:
-        print "l-literal-content: t=$t chomped-empty=$chomped-empty "
         if content: return flatten-list_ [content, chomped-empty]
         else: return chomped-empty
     return null
@@ -1009,15 +1023,15 @@ class Parser_:
   l-folded-content n t -> List?:
     with-rollback:
       content := optional --or-null:
-        res/List? := null
+        lines/List? := null
         if tmp := l-nb-diff-lines n:
           if chomped-last := b-chomped-last t:
-            res = flatten-list_ [tmp, chomped-last]
-        res
+            lines = flatten-list_ [tmp, chomped-last]
+        lines
 
-      if res := l-chomped-empty n t:
-        if content: return flatten-list_ [content, res]
-        else: return res
+      if chomped-empty := l-chomped-empty n t:
+        if content: return flatten-list_ [content, chomped-empty]
+        else: return chomped-empty
     return null
 
   b-chomped-last t -> string?:
@@ -1030,10 +1044,9 @@ class Parser_:
     return l-strip-empty n
 
   l-keep-empty n -> List?:
-    res := repeat: l-empty n BLOCK-IN_
+    empty-lines := repeat: l-empty n BLOCK-IN_
     optional: l-trail-comments n
-    print "l-keep-empty, $res.size"
-    if res: return List res.size "\n"
+    if empty-lines: return List empty-lines.size "\n"
     return []
 
   l-strip-empty n -> List?:
@@ -1041,7 +1054,7 @@ class Parser_:
     optional: l-trail-comments n
     return []
 
-  l-nb-literal-text n:
+  l-nb-literal-text n -> string?:
     with-rollback:
       empty-lines := repeat: l-empty n BLOCK-IN_
       if s-indent n:
@@ -1051,50 +1064,47 @@ class Parser_:
           return "$prefix$(string-since start)"
     return null
 
-  b-nb-literal-next n:
+  b-nb-literal-next n -> string?:
     with-rollback:
       if b-as-line-feed:
-        if res := l-nb-literal-text n: return "\n$res"
+        if text := l-nb-literal-text n: return "\n$text"
     return null
 
   l-nb-diff-lines n -> List?:
     with-rollback:
       if first := l-nb-same-lines n:
         rest := repeat:
-          result := null
+          content/string? := null
           if b-as-line-feed:
-            if tmp := l-nb-same-lines n:
-              result = (flatten-list_ ["\n", tmp]).join ""
-          result
+            if lines := l-nb-same-lines n:
+              content = (flatten-list_ ["\n", lines]).join ""
+          content
         return flatten-list_ [first, rest]
     return null
 
   l-nb-same-lines n -> List?:
     with-rollback:
       empty-lines := repeat: l-empty n BLOCK-IN_
-      res := l-nb-folded-lines n
-      if not res:
-        res = l-nb-spaced-lines n
-        print "SPACED:::: $res"
-      if res:
-        lines := flatten-list_ [List empty-lines.size "\n", res]
-        print "LINES:::: $lines, $empty-lines.size"
-        return lines
+      lines := l-nb-folded-lines n
+      if not lines:
+        lines = l-nb-spaced-lines n
+      if lines:
+        return flatten-list_ [List empty-lines.size "\n", lines]
     return null
 
   l-nb-folded-lines n -> List?:
     with-rollback:
       if first := s-nb-folded-text n:
         rest := repeat:
-          result/string? := null
+          content/string? := null
           if folded := b-l-folded n BLOCK-IN_:
             if tmp := s-nb-folded-text n:
-              result = "$folded$tmp"
-          result
+              content = "$folded$tmp"
+          content
         return flatten-list_ [first, rest]
     return null
 
-  s-nb-folded-text n:
+  s-nb-folded-text n -> string?:
     with-rollback:
       if s-indent n:
         start := offset_
@@ -1103,8 +1113,7 @@ class Parser_:
     return null
 
   b-l-folded n c -> string?:
-    print "b-l-folded, rest of input: ||$(bytes_[offset_..].to-string)||"
-    if tmp := b-l-trimmed n c: print "b-l-folded, tmp=$tmp"; return string.from-runes (List tmp '\n')
+    if brreaks := b-l-trimmed n c: return string.from-runes (List brreaks '\n')
     if b-as-space: return " "
     return null
 
@@ -1112,11 +1121,11 @@ class Parser_:
     with-rollback:
       if first := s-nb-spaced-text n:
         rest := repeat:
-          result/string? := null
+          content/string? := null
           if space := b-l-spaced n:
-            if tmp := s-nb-spaced-text n:
-              result = "$space$tmp"
-          result
+            if text := s-nb-spaced-text n:
+              content = "$space$text"
+          content
         return flatten-list_ [first, rest]
     return null
 
@@ -1138,27 +1147,25 @@ class Parser_:
   b-l-trimmed n c -> int?:
     with-rollback:
       if b-non-content:
-        if res := (repeat --at-least-one: l-empty n c):
-          return res.size
+        if empty-lines := (repeat --at-least-one: l-empty n c):
+          return empty-lines.size
     return null
 
   // Escaped strings
-  c-single-quoted n c -> string?:
+  c-single-quoted n c -> ValueNode_?:
     with-rollback:
       if match-char C-SINGLE-QUOTE_:
         if res := nb-single-text n c:
           if match-char C-SINGLE-QUOTE_:
-            return res.replace --all "''" "'"
+            return ValueNode_ (res.replace --all "''" "'")
     return null
 
-  c-double-quoted n c -> string?:
+  c-double-quoted n c -> ValueNode_?:
     with-rollback:
       if match-char C-DOUBLE-QUOTE_:
         if res := nb-double-text n c:
-          print "c-double-quoted: remaining=$(bytes_[offset_..].to-string)"
           if match-char C-DOUBLE-QUOTE_:
-            print "c-double-quoted: $res"
-            return res.join ""
+            return ValueNode_ (res.join "")
     return null
 
   nb-single-text n c -> string?:
@@ -1171,14 +1178,13 @@ class Parser_:
 
   nb-single-multi-line n c -> string?:
     with-rollback:
-      if res := nb-ns-single-in-line:
-        if next := s-single-next-line n:
-          print "nb-single-multi-line: res=$res, next=$next"
-          return "$res$(next.join "")"
+      if first := nb-ns-single-in-line:
+        if rest := s-single-next-line n:
+          return "$first$(rest.join "")"
         else:
           start := offset_
           repeat: match-chars S-WHITESPACE_
-          return "$res$(string-since start)"
+          return "$first$(string-since start)"
     return null
 
   nb-single-one-line n c -> string:
@@ -1188,26 +1194,24 @@ class Parser_:
 
   nb-double-multi-line n c -> List?:
     with-rollback:
-      if res := nb-ns-double-in-line:
-        print "nb-double-multi-line: res=|$res|"
-        if next := s-double-next-line n:
-          print "nb-double-multi-line: next=|$next|"
-          return flatten-list_ [res,  next]
+      if first := nb-ns-double-in-line:
+        if rest := s-double-next-line n:
+          return flatten-list_ [first,  rest]
         else:
           start := offset_
           repeat: s-white
-          return [res, string-since start]
+          return [first, string-since start]
     return null
 
   nb-double-one-line n c -> List:
     runes := repeat: nb-double-char
-    print runes
     return [ string.from-runes runes ]
 
   nb-ns-single-in-line -> string:
     start := offset_
     repeat: (repeat: s-white) and ns-single-char
     return string-since start
+
 
   s-single-next-line n -> List?:
     with-rollback:
@@ -1216,15 +1220,12 @@ class Parser_:
           start := offset_
           if first := ns-single-char:
             if line := nb-ns-single-in-line:
-              print " s-single-next-line: folded=$folded.to-byte-array, line=|$line|"
-              tmp := [ folded, string.from-rune first, line ]
-              if rest := s-single-next-line n:
-                tmp.add-all rest
-              else:
+              rest/any := s-single-next-line n
+              if not rest:
                 start = offset_
                 repeat: s-white
-                tmp.add (string-since start)
-              return tmp
+                rest = string-since start
+              return flatten-list_ [ folded, string.from-rune first, line, rest ]
         return [folded]
     return null
 
@@ -1245,23 +1246,21 @@ class Parser_:
         with-rollback:
           if first-rune := ns-double-char:
             if line := nb-ns-double-in-line:
-              print "s-double-next-line: breaks=$breaks, first-rune:$(string.from-rune first_rune), line=$line"
-              tmp := ["$(string.from-runes (flatten-list_ [breaks, first-rune]))$line"]
-              if rest := s-double-next-line n:
-                tmp.add-all rest
-              else:
+              first := "$(string.from-runes (flatten-list_ [breaks, first-rune]))$line"
+              rest/any := s-double-next-line n
+              if not rest:
                 start := offset_
                 repeat: s-white
-                tmp.add (string-since start)
-              return tmp
+                rest = string-since start
+              return flatten-list_ [ first, rest ]
         return [string.from-runes breaks]
     return null
 
   s-double-break n -> List?:
-    if res := s-double-esscaped n: return res
-    if res := s-flow-folded n:
+    if rune := s-double-esscaped n: return rune
+    if folded := s-flow-folded n:
       runes := List
-      res.do --runes: runes.add it
+      folded.do --runes: runes.add it
       return runes
     return null
 
@@ -1292,38 +1291,28 @@ class Parser_:
   ns-double-char -> int?:
     with-rollback:
       if not s-white:
-        if res := nb-double-char:
-          return res
+        if rune := nb-double-char:
+          return rune
     return null
 
   nb-double-char -> int?:
-    if res := c-ns-esc-char: return res
+    if rune := c-ns-esc-char: return rune
     with-rollback:
-      if res := nb-json:
-        if res != C-ESCAPE_ and res != C-DOUBLE-QUOTE_: return res
+      if rune := nb-json:
+        if rune != C-ESCAPE_ and rune != C-DOUBLE-QUOTE_: return rune
     return null
+
+  static SIMPLE-ESCAPES ::= { '0': 0, 'a': '\a', 'b': '\b', 't': '\t', '\t': '\t', 'n': '\n',
+                              'v': '\v', 'f': '\f', 'r': '\r', 'e': 0x18, ' ': ' ', '"': '"',
+                              '/': '/', '\\': '\\', 'N': 0x85, '_': 0x0a, 'L': 0x2028,
+                              'P': 0x2029 }
+  static SIMPLE-ESCAPE-KEYS ::= keys-as-set_ SIMPLE-ESCAPES
 
   c-ns-esc-char -> int?:
     with-rollback:
       if match-char C-ESCAPE_:
-        if match-char '0': return 0
-        if match-char 'a': return '\a'
-        if match-char 'b': return '\b'
-        if match-char 't': return '\t'
-        if match-char '\t': return '\t'
-        if match-char 'n': return '\n'
-        if match-char 'v': return '\v'
-        if match-char 'f': return '\f'
-        if match-char 'r': return '\r'
-        if match-char 'e': return 0x18
-        if match-char ' ': return ' '
-        if match-char '"': return '"'
-        if match-char '/': return '/'
-        if match-char '\\': return '\\'
-        if match-char 'N': return 0x85
-        if match-char '_': return 0xa0
-        if match-char 'L': return 0x2028
-        if match-char 'P': return 0x2029
+        if rune := match-chars SIMPLE-ESCAPE-KEYS:
+          return SIMPLE-ESCAPES[rune]
         if match-char 'x': if res := match-hex 2: return res
         if match-char 'u':
           if res := match-hex 4:
@@ -1387,8 +1376,14 @@ class Parser_:
   s-indent-less-than n:
     return s-indent-less-or-equals n - 1
 
-  // Lexigraphical productions
-  b-break:
+  // Lexigraphical-like productions
+  start-of-line -> bool:
+    return offset_ == 0 or bytes_[offset_ - 1] == B-LINE-FEED_ or bytes_[offset_ - 1] == B-CARRIAGE-RETURN_
+
+  l-eof -> bool:
+    return offset_ == bytes_.size
+
+  b-break -> bool:
     if match-buffer #[B-CARRIAGE_RETURN_, B-LINE-FEED_]: return true
     if match-char B-CARRIAGE_RETURN_: return true
     if match-char B-LINE-FEED_: return true
@@ -1451,7 +1446,7 @@ class Parser_:
           return true
     return false
 
-  ns-special-uri ::= {
+  static ns-special-uri ::= {
       '#', ';', '/', '?', ':', '@', '&', '=', '+',
       '$', ',', '-', '.', '!', '~', '*', '\'', '(', ')',
       '[', ']'

@@ -6,7 +6,6 @@ import binary show LITTLE-ENDIAN
 import bitmap
 import reader show Reader BufferedReader
 import .encoder
-import .decoder
 import .parser
 
 INITIAL-BUFFER-SIZE_ ::= 64

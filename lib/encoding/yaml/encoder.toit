@@ -4,6 +4,7 @@
 
 import bitmap
 import binary show LITTLE-ENDIAN
+import .yaml
 
 INITIAL-BUFFER-SIZE_ ::= 64
 
@@ -111,20 +112,19 @@ class YamlEncoder_ extends Encoder:
     put-unquoted val
 
   encode-string_ str/string:
+    // To determine if the str needs to be double quoted, we try to parse it, and if that works
+    // then it is safe to not double qoute it. Also double quotes all multi-line strings
+    should_quote := (catch: if not (parse str) is string: throw "ERROR") or
+                    str.contains "\n" or
+                    str.contains "\r"
+
+
+
     escaped := escape-string str
-    should_quote := false
-    if escaped != str or
-        str.contains ": " or
-        str.contains "- " or
-        str.contains "& " or
-        str.contains " #" or
-        str.trim.starts-with "[" or
-        str.trim.starts-with "{":
-      should_quote = true
 
     if enclosed_in_map_: put-byte_ ' '
     if should_quote: put-byte_ '"'
-    put-unquoted escaped
+    put-unquoted (escape-string str)
     if should_quote: put-byte_ '"'
 
   encode-number_ number:
