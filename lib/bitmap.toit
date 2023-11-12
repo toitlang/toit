@@ -102,10 +102,24 @@ bitmap-draw-bytemap -> none
     orientation /int
     source-array
     source-width /int
+    source-stride /int
     palette /ByteArray
     destination-array /ByteArray
     destination-width /int:
   #primitive.bitmap.draw-bytemap
+
+/// Older version of bitmap-draw-bytemap.
+bitmap-draw-bytemap -> none
+    x /int
+    y /int
+    transparent-color
+    orientation /int
+    source-array
+    source-width /int
+    palette /ByteArray
+    destination-array /ByteArray
+    destination-width /int:
+  bitmap-draw-bytemap x y transparent-color orientation source-array source-width source-width palette destination-array destination-width
 
 /// Fills a frame buffer with a single color (0: black, 1: white)
 bitmap-zap byte-array color:
