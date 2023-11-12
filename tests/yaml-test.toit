@@ -13,10 +13,12 @@ main:
   test-stringify
   test-converter
   test-encode
-  test-parse
+  test-json-parse
   test-decode
   test-repeated-strings
   test-number-terminators
+  test-block-parse
+
 
 test-stringify:
   expect-equals "testing" (yaml.stringify "testing")
@@ -139,8 +141,6 @@ test-converter -> none:
         bar: Tweedledee
       """
 
-  print "expected: $fb3_expected.to-byte-array"
-  print "produced: $((yaml.stringify fb3 to-json-converter).to-byte-array)"
   expect-equals
       fb3_expected
       (yaml.stringify fb3 to-json-converter)
@@ -181,12 +181,16 @@ class FooBar:
   to-json -> Map:
     return { "foo": foo, "bar": bar }
 
-test-parse:
+test-json-parse:
+  expect-equals "testing" (yaml.parse "testing")
+
+
   expect-equals "testing" (yaml.parse "\"testing\"")
+  expect-equals " testing " (yaml.parse "\" testing \"")
   expect-equals "€" (yaml.parse "\"€\"")
-  expect-equals "🙈" (yaml.parse "\"🙈\"")  // We allow JSON that doesn't use surrogates.
-  expect-equals "🙈" (yaml.parse "\"\\ud83d\\ude48\"")  // JSON can also use escaped surrogates.
-  expect-equals "x🙈y" (yaml.parse "\"x\\ud83d\\ude48y\"")  // JSON can also use escaped surrogates.
+  expect-equals "🙈" (yaml.parse "\"🙈\"")  // We allow YAML that doesn't use surrogates.
+  expect-equals "🙈" (yaml.parse "\"\\ud83d\\ude48\"")  // YAML can also use escaped surrogates.
+  expect-equals "x🙈y" (yaml.parse "\"x\\ud83d\\ude48y\"")  // YAML can also use escaped surrogates.
   expect-equals "x€y" (yaml.parse "\"x\\u20aCy\"")
   expect-equals "\"\"\"\"" (yaml.parse "\"\\\"\\\"\\\"\\\"\"")
   expect-equals "\\\"" (yaml.parse "\"\\\\\\\"\"")
@@ -197,30 +201,33 @@ test-parse:
   expect-equals false (yaml.parse "false")
   expect-equals null (yaml.parse "null")
 
+  expect-equals "" (yaml.parse "|")
+  expect-equals [""] (yaml.parse "- |\n ")
+
   expect-equals "\\ \b \f \n \r \t" (yaml.parse "\"\\\\ \\b \\f \\n \\r \\t\"")
 
   expect-equals "{}" (yaml.stringify (yaml.parse "{}"))
-  expect-equals "{\"a\":\"b\"}" (yaml.stringify (yaml.parse "{\"a\":\"b\"}"))
-  expect-equals "{\"a\":\"b\"}" (yaml.stringify (yaml.parse " { \"a\" : \"b\" } "))
-  expect-equals "[\"a\",\"b\"]" (yaml.stringify (yaml.parse " [ \"a\" , \"b\" ] "))
+  expect-equals "a: b\n" (yaml.stringify (yaml.parse "{\"a\":\"b\"}"))
+  expect-equals "a: b\n" (yaml.stringify (yaml.parse " { \"a\" : \"b\" } "))
+  expect-equals "- a\n- b\n" (yaml.stringify (yaml.parse " [ \"a\" , \"b\" ] "))
 
   expect-equals "=\"\\/bfnrt"
       (yaml.parse "\"\\u003d\\u0022\\u005c\\u002F\\u0062\\u0066\\u006e\\u0072\\u0074\"")
 
-  expect-throw "UNTERMINATED_JSON_STRING": yaml.parse "\"\\u"
-  expect-throw "UNTERMINATED_JSON_STRING": yaml.parse "\"\\ud"
-  expect-throw "UNTERMINATED_JSON_STRING": yaml.parse "\"\\ud8"
-  expect-throw "UNTERMINATED_JSON_STRING": yaml.parse "\"\\ud83"
-  expect-throw "UNTERMINATED_JSON_STRING": yaml.parse "\"\\ud83d"
-  expect-throw "UNTERMINATED_JSON_STRING": yaml.parse "\"\\ud83d\""
-  expect-throw "UNTERMINATED_JSON_STRING": yaml.parse "\"\\ud83d\\"
-  expect-throw "UNTERMINATED_JSON_STRING": yaml.parse "\"\\ud83d\\u"
-  expect-throw "UNTERMINATED_JSON_STRING": yaml.parse "\"\\ud83d\\ud"
-  expect-throw "UNTERMINATED_JSON_STRING": yaml.parse "\"\\ud83d\\ude"
-  expect-throw "UNTERMINATED_JSON_STRING": yaml.parse "\"\\ud83d\\ude4"
-  expect-throw "UNTERMINATED_JSON_STRING": yaml.parse "\"\\ud83d\\ude48"
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "\"\\u"
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "\"\\ud"
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "\"\\ud8"
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "\"\\ud83"
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "\"\\ud83d"
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "\"\\ud83d\""
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "\"\\ud83d\\"
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "\"\\ud83d\\u"
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "\"\\ud83d\\ud"
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "\"\\ud83d\\ude"
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "\"\\ud83d\\ude4"
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "\"\\ud83d\\ude48"
   expect-equals "🙈" (yaml.parse "\"\\ud83d\\ude48\"")
-  expect-throw "INVALID_SURROGATE_PAIR": yaml.parse "\"\\ud83d\\ud848\""
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "\"\\ud83d\\ud848\""
 
   yaml.parse UNICODE-EXAMPLE
   yaml.parse EXAMPLE
@@ -256,7 +263,7 @@ test-encode:
 test-decode:
   expect-equals "testing" (yaml.decode "testing".to-byte-array)
 
-BIG ::= """
+BIG-JSON ::= """
 [
   {
     "foo": 1,
@@ -290,9 +297,8 @@ NUMBER-ENDS-WITH ::= """
 }
 """
 
-
 test-repeated-strings:
-  result := yaml.parse BIG
+  result := yaml.parse BIG-JSON
   check-big-parse-result result
 
 check-big-parse-result result -> none:
@@ -314,79 +320,169 @@ test-number-terminators:
   expect-equals 555 result["bam"]["boom"]
   expect-equals 99 result["buzz"]
 
-  expect-throw "FLOAT_PARSING_ERROR": yaml.parse "[3.1E]"
+  expect-equals ["3.1E"] (yaml.parse "[3.1E]")
+  expect-equals ["3.1M"] (yaml.parse "[3.1M]")
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "[3.1\x01]"
+  expect-equals ["3.1\\x01"] (yaml.parse "[3.1\\x01]")
 
-  expect-throw "FLOAT_PARSING_ERROR": yaml.parse "[3.1M]"
+test-block-parse:
+  check-big-parse-result (yaml.parse BIG-BLOCK)
+  expect-equals " a " (yaml.parse "' a '")
+  expect-equals "a: b\n" (yaml.stringify (yaml.parse "a: b"))
+  expect-equals "a'" (yaml.parse "'a'''")
+  expect-equals "a''" (yaml.parse "'a'''''")
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "'a''''"
 
-  expect-throw "INVALID_JSON_CHARACTER": yaml.parse "[3.1\x01]"
 
-  // Because of the way the JSON parser works, it's a bit random
-  // what error you get in the rare case when the JSON is invalid.
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1!"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1#"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1%"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1&"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1/"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1("
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1)"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1="
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1-"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1_"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1?"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1*"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1'"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1ß"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1ö"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1ü"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1ä"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1ÿ"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1ë"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1ï"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1æ"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1ø"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1å"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1è"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1é"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1µ"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1ł"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1€"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1a"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1b"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1c"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1d"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1e"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1f"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1g"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1h"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1i"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1j"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1k"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1l"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1m"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1n"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1o"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1p"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1q"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1r"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1r"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1s"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1t"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1u"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1v"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1w"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1x"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1y"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "3.1z"
-  expect-throw-parse-number "FLOAT_PARSING_ERROR"    "3.1.f"
-  expect-throw-parse-number "INVALID_JSON_CHARACTER" "31.f"
+  expect-equals " a\nb c " (yaml.parse """
+                               " a
 
-expect-throw-parse-number error/string str/string -> none:
-  expect-throw error: yaml.parse str
-  expect-throw error: yaml.parse " $str "
-  expect-throw error: yaml.parse "[$str]"
-  expect-throw error: yaml.parse "[ $str ]"
-  expect-throw error: yaml.parse "{\"foo\":$str]"
-  expect-throw error: yaml.parse "{\"foo\": $str ]"
+                                b\x20
+                               \tc "
+                               """)
+
+  expect-equals " a\nb c " (yaml.parse """
+                               ' a
+
+                                b\x20
+                               \tc '
+                               """)
+
+  expect-equals "a\nb c" (yaml.parse "a\n\nb\nc")
+
+  // Example 6.7
+  expect-equals
+      "foo \n\n\t bar\n\nbaz\n"
+      yaml.parse """
+                  >
+                    foo\x20
+
+                    \t bar
+
+                    baz
+                 """
+
+  // Example 6.8
+  expect-equals
+        " foo\nbar\nbaz "
+        yaml.parse """
+                    "
+                      foo\x20
+                    \x20
+                      \t bar
+
+                      baz "
+                   """
+
+  // Exmple 6.9
+  expect-equals
+      "key: value\n"
+      yaml.stringify
+          yaml.parse """
+                      key:    # Comment
+                        value
+                     """
+
+  // Exmple 6.10
+  expect-equals
+      null
+      yaml.parse """
+                    # Comment
+                     \x20
+
+                 """
+
+  // Exmple 6.11
+  expect-equals
+      "key: value\n"
+      yaml.stringify
+          yaml.parse """
+                      key:    # Comment
+                              # lines
+                        value
+
+                     """
+
+  expect-equals "foo" (yaml.parse "%YAML 1.2\n---\nfoo")
+  expect-equals "foo" (yaml.parse "%TAG !yaml! tag:yaml.org,2002:\n---\nfoo")
+
+  expect-equals ["foo", "foo"] (yaml.parse "[&a foo, *a]")
+  expect-equals "42" (yaml.parse "!!str 42")
+
+  // Example 8.1
+  expect-equals
+      [ "literal\n", " folded\n", "keep\n\n", " strip" ]
+      yaml.parse """
+                  - | # Empty header
+                   literal
+                  - >1 # Indentation indicator
+                    folded
+                  - |+ # Chomping indicator
+                   keep
+
+                  - >1- # Both indicators
+                    strip
+                 """
+  // Example 8.2
+  expect-equals
+      [ "detected\n", "\n\n# detected\n", " explicit\n", "\t\ndetected\n" ]
+      yaml.parse """
+                  - |
+                   detected
+                  - >\n \n  \n  # detected
+                  - |1
+                    explicit
+                  - >
+                   \t
+                   detected
+                 """
+
+  // Example 8.7
+  expect-equals
+      "literal\n\ttext\n"
+      yaml.parse "|\n literal\n \ttext\n\n"
+
+  // Example 8.8
+  expect-equals
+      "\n\nliteral\n \n\ntext\n"
+      yaml.parse "|\n \n  \n  literal\n   \n  \n  text\n\n # Comment"
+
+
+
+  // Example 8.10-8.12
+  expect-equals
+    "\nfolded line\nnext line\n  * bullet\n\n  * list\n  * lines\n\nlast line\n"
+    yaml.parse """
+                >
+
+                 folded
+                 line
+
+                 next
+                 line
+                   * bullet
+
+                   * list
+                   * lines
+
+                 last
+                 line
+
+                # Comment
+               """
+
+BIG-BLOCK ::= """
+- foo: 1
+  bar: 2
+  baz: 3
+- foo: 3
+  bar: 4
+  baz: 5
+- foo: fizz
+  bar: fizz
+  baz: fizz
+"""
+
 
 class TestReader implements Reader:
   pos := 0
