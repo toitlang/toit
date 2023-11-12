@@ -1,1 +1,7 @@
-# Toit Lock File.
+prefixes:
+  cli: pkg-cli
+packages:
+  pkg-cli:
+    url: github.com/toitlang/pkg-cli
+    version: 1.2.0
+    hash: 0e2adab3ab434c597be60438ccf64008f703ad9c
