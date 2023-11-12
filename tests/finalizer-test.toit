@@ -7,6 +7,7 @@ import crypto.sha256 as crypto
 import crypto.sha1 as crypto
 import crypto.adler32 as crypto
 import crypto.aes as crypto
+import system
 
 limit := 10
 count := 0
@@ -14,8 +15,8 @@ count := 0
 should-never-die ::= List
 
 provoke-finalization-processing:
-  current-count := gc-count
-  while gc-count <= current-count: List 100
+  current-count := system.gc-count
+  while system.gc-count <= current-count: List 100
   sleep --ms=10  // Allow finalization to run.
 
 main:

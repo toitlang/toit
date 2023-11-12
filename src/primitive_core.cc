@@ -1065,6 +1065,11 @@ PRIMITIVE(platform) {
   return process->allocate_string_or_error(platform_name, strlen(platform_name));
 }
 
+PRIMITIVE(architecture) {
+  const char* architecture_name = OS::get_architecture();
+  return process->allocate_string_or_error(architecture_name, strlen(architecture_name));
+}
+
 PRIMITIVE(bytes_allocated_delta) {
   return Primitive::integer(process->bytes_allocated_delta(), process);
 }
@@ -1582,6 +1587,51 @@ PRIMITIVE(string_raw_at) {
   if (index < 0 || index >= receiver.length()) FAIL(OUT_OF_BOUNDS);
   int c = receiver.address()[index] & 0xff;
   return Smi::from(c);
+}
+
+PRIMITIVE(utf_16_to_string) {
+  ARGS(Blob, utf_16);
+  if ((utf_16.length() & 1) != 0) FAIL(INVALID_ARGUMENT);
+  if (utf_16.length() > 0x3fffffff) FAIL(OUT_OF_BOUNDS);
+
+  int utf_8_length = Utils::utf_16_to_8(
+      reinterpret_cast<const uint16*>(utf_16.address()),
+      utf_16.length() >> 1);
+
+  String* result = process->allocate_string(utf_8_length);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+
+  String::MutableBytes utf_8(result);
+
+  Utils::utf_16_to_8(
+      reinterpret_cast<const uint16*>(utf_16.address()),
+      utf_16.length() >> 1,
+      utf_8.address(),
+      utf_8.length());
+
+  return result;
+}
+
+PRIMITIVE(string_to_utf_16) {
+  ARGS(StringOrSlice, utf_8);
+  if (utf_8.length() > 0xfffffff) FAIL(OUT_OF_BOUNDS);
+
+  int utf_16_length = Utils::utf_8_to_16(
+      utf_8.address(),
+      utf_8.length());
+
+  ByteArray* result = process->allocate_byte_array(utf_16_length << 1);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+
+  ByteArray::Bytes bytes(result);
+
+  Utils::utf_8_to_16(
+      utf_8.address(),
+      utf_8.length(),
+      reinterpret_cast<uint16*>(bytes.address()),
+      utf_16_length);
+
+  return result;
 }
 
 PRIMITIVE(array_length) {

@@ -81,6 +81,7 @@ namespace toit {
   PRIMITIVE(seconds_since_epoch_local, 7)    \
   PRIMITIVE(set_tz, 1)                       \
   PRIMITIVE(platform, 0)                     \
+  PRIMITIVE(architecture, 0)                 \
   PRIMITIVE(process_stats, 4)                \
   PRIMITIVE(bytes_allocated_delta, 0)        \
   PRIMITIVE(string_length, 1)                \
@@ -199,6 +200,8 @@ namespace toit {
   PRIMITIVE(crc, 6)                          \
   PRIMITIVE(string_from_rune, 1)             \
   PRIMITIVE(string_write_to_byte_array, 5)   \
+  PRIMITIVE(string_to_utf_16, 1)             \
+  PRIMITIVE(utf_16_to_string, 1)             \
   PRIMITIVE(create_off_heap_byte_array, 1)   \
   PRIMITIVE(add_finalizer, 2)                \
   PRIMITIVE(remove_finalizer, 1)             \
@@ -390,6 +393,10 @@ namespace toit {
   PRIMITIVE(watchdog_init, 1)                \
   PRIMITIVE(watchdog_reset, 0)               \
   PRIMITIVE(watchdog_deinit, 0)              \
+  PRIMITIVE(pin_hold_enable, 1)              \
+  PRIMITIVE(pin_hold_disable, 1)             \
+  PRIMITIVE(deep_sleep_pin_hold_enable, 0)   \
+  PRIMITIVE(deep_sleep_pin_hold_disable, 0)  \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \

@@ -233,6 +233,7 @@ class OS {
   static void set_up();
   static void tear_down();
   static const char* get_platform();
+  static const char* get_architecture();
 
   static int read_entire_file(char* name, uint8** buffer);
 

@@ -119,9 +119,12 @@ class Diagnostics {
 
 class CompilationDiagnostics : public Diagnostics {
  public:
-  explicit CompilationDiagnostics(SourceManager* source_manager, bool show_package_warnings)
+  explicit CompilationDiagnostics(SourceManager* source_manager,
+                                  bool show_package_warnings,
+                                  bool print_on_stdout)
       : Diagnostics(source_manager)
-      , show_package_warnings_(show_package_warnings) {}
+      , show_package_warnings_(show_package_warnings)
+      , print_on_stdout_(print_on_stdout) {}
 
   bool should_report_missing_main() const { return true; }
 
@@ -134,6 +137,7 @@ class CompilationDiagnostics : public Diagnostics {
 
  private:
   bool show_package_warnings_;
+  bool print_on_stdout_;
   bool in_group_ = false;
   std::string group_package_id_;
   Severity group_severity_;
@@ -141,8 +145,10 @@ class CompilationDiagnostics : public Diagnostics {
 
 class AnalysisDiagnostics : public CompilationDiagnostics {
  public:
-  explicit AnalysisDiagnostics(SourceManager* source_manager, bool show_package_warnings)
-      : CompilationDiagnostics(source_manager, show_package_warnings) {}
+  explicit AnalysisDiagnostics(SourceManager* source_manager,
+                               bool show_package_warnings,
+                               bool print_on_stdout)
+      : CompilationDiagnostics(source_manager, show_package_warnings, print_on_stdout) {}
 
   bool should_report_missing_main() const { return false; }
 };

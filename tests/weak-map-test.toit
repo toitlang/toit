@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import system show process-stats
 
 provoke-weak-processing:
   process-stats --gc  // Cause full GC.
