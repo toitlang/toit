@@ -106,10 +106,10 @@ class ValueNode_:
       if FALSE.contains value: return false
 
       catch:
-        if res := int.parse value: return res
+        return int.parse value
 
       catch:
-        if res := float.parse value: return res
+        return float.parse value
 
       if INFINITY.contains value or
          value.size > 1 and value[0] == '+' and INFINITY.contains value[1..]:
@@ -122,11 +122,11 @@ class ValueNode_:
 
       catch:
         if value.starts-with "0x":
-          return int.parse --radix 16 value[2..]
+          return int.parse --radix=16 value[2..]
 
       catch:
         if value.starts-with "0o":
-          return int.parse --radix 8 value[2..]
+          return int.parse --radix=8 value[2..]
 
     if value is List:
       return value.map: | node/ValueNode_ | node.resolve
@@ -880,8 +880,8 @@ class Parser_:
     with-rollback:
       if folded := s-flow-folded n:
         if first := ns-plain-char c:
-           if rest := nb-ns-plain-in-line c:
-             return "$folded$(string.from-rune first)$rest"
+          rest := nb-ns-plain-in-line c
+          return "$folded$(string.from-rune first)$rest"
     return null
 
   s-flow-folded n -> string?:
@@ -917,7 +917,7 @@ class Parser_:
         //  [ lookbehind = ns-char ]
         start := offset_
         offset_ -= 2
-        while offset_ > 0 and not bytes_[offset_..start- 1].is-valid-string-content:
+        while offset_ > 0 and not bytes_[offset_..start - 1].is-valid-string-content:
           offset_--
         is-ns-char := ns-char
         offset_ = start
@@ -1198,13 +1198,13 @@ class Parser_:
 
   nb-single-multi-line n c -> string?:
     with-rollback:
-      if first := nb-ns-single-in-line:
-        if rest := s-single-next-line n:
-          return "$first$(rest.join "")"
-        else:
-          start := offset_
-          repeat: match-chars S-WHITESPACE_
-          return "$first$(string-since start)"
+      first := nb-ns-single-in-line
+      if rest := s-single-next-line n:
+        return "$first$(rest.join "")"
+      else:
+        start := offset_
+        repeat: match-chars S-WHITESPACE_
+        return "$first$(string-since start)"
     return null
 
   nb-single-one-line n c -> string:
@@ -1214,13 +1214,13 @@ class Parser_:
 
   nb-double-multi-line n c -> List?:
     with-rollback:
-      if first := nb-ns-double-in-line:
-        if rest := s-double-next-line n:
-          return flatten-list_ [first,  rest]
-        else:
-          start := offset_
-          repeat: s-white
-          return [first, string-since start]
+      first := nb-ns-double-in-line
+      if rest := s-double-next-line n:
+        return flatten-list_ [first,  rest]
+      else:
+        start := offset_
+        repeat: s-white
+        return [first, string-since start]
     return null
 
   nb-double-one-line n c -> List:
@@ -1239,13 +1239,13 @@ class Parser_:
         with-rollback:
           start := offset_
           if first := ns-single-char:
-            if line := nb-ns-single-in-line:
-              rest/any := s-single-next-line n
-              if not rest:
-                start = offset_
-                repeat: s-white
-                rest = string-since start
-              return flatten-list_ [ folded, string.from-rune first, line, rest ]
+            line := nb-ns-single-in-line
+            rest/any := s-single-next-line n
+            if not rest:
+              start = offset_
+              repeat: s-white
+              rest = string-since start
+            return flatten-list_ [ folded, string.from-rune first, line, rest ]
         return [folded]
     return null
 
@@ -1265,14 +1265,14 @@ class Parser_:
       if breaks := s-double-break n:
         with-rollback:
           if first-rune := ns-double-char:
-            if line := nb-ns-double-in-line:
-              first := "$(string.from-runes (flatten-list_ [breaks, first-rune]))$line"
-              rest/any := s-double-next-line n
-              if not rest:
-                start := offset_
-                repeat: s-white
-                rest = string-since start
-              return flatten-list_ [ first, rest ]
+            line := nb-ns-double-in-line
+            first := "$(string.from-runes (flatten-list_ [breaks, first-rune]))$line"
+            rest/any := s-double-next-line n
+            if not rest:
+              start := offset_
+              repeat: s-white
+              rest = string-since start
+            return flatten-list_ [ first, rest ]
         return [string.from-runes breaks]
     return null
 

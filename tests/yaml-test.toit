@@ -365,6 +365,8 @@ test-block-parse:
   expect-equals "æ#" (yaml.parse "æ#")
   expect-equals "ab🙈#" (yaml.parse "ab🙈#")
 
+  expect-equals 10 (yaml.parse "0xa")
+  expect-equals 10 (yaml.parse "0o12")
 
 BIG-BLOCK ::= """
 - foo: 1
