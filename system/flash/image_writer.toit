@@ -15,14 +15,15 @@
 
 import binary
 import uuid
+import system
 import system.services show ServiceProvider ServiceResource
 
 import .allocation
 import .registry
 import .reservation
 
-IMAGE-WORD-SIZE  ::= BYTES-PER-WORD
-IMAGE-CHUNK-SIZE ::= (BITS-PER-WORD + 1) * IMAGE-WORD-SIZE
+IMAGE-WORD-SIZE  ::= system.BYTES-PER-WORD
+IMAGE-CHUNK-SIZE ::= (system.BITS-PER-WORD + 1) * IMAGE-WORD-SIZE
 
 class ContainerImageWriter extends ServiceResource:
   reservation_/FlashReservation? := ?

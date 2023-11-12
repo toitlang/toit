@@ -496,6 +496,20 @@ const char* OS::get_platform() {
   return "FreeRTOS";
 }
 
+const char* OS::get_architecture() {
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  return "esp32s3";
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+  return "esp32c3";
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
+  return "esp32s2";
+#elif defined(CONFIG_IDF_TARGET_ESP32)
+  return "esp32";
+#else
+  #error "Unknown architecture"
+#endif
+}
+
 int OS::read_entire_file(char* name, uint8** buffer) {
   return -1;
 }

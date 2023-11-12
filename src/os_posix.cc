@@ -308,6 +308,20 @@ size_t ProtectableAlignedMemory::compute_alignment(size_t alignment) {
   return Utils::max(alignment, system_page_size);
 }
 
+const char* OS::get_architecture() {
+#if defined(__aarch64__)
+  return "arm64";
+#elif defined(__arm__)
+  return "arm";
+#elif defined(__amd64__)
+  return "x86_64";
+#elif defined(__i386__)
+  return "x86";
+#else
+  #error "Unknown architecture"
+#endif
+}
+
 } // namespace toit
 
 #endif

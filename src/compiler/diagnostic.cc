@@ -139,8 +139,9 @@ void Diagnostics::report_location(Source::Range range, const char* prefix) {
 }
 
 bool CompilationDiagnostics::emit(Severity severity, const char* format, va_list& arguments) {
-  vprintf(format, arguments);
-  putchar('\n');
+  auto target = print_on_stdout_ ? stdout : stderr;
+  vfprintf(target, format, arguments);
+  fputc('\n', target);
   return true;
 }
 
@@ -199,30 +200,32 @@ bool CompilationDiagnostics::emit(Severity severity,
 
   FILE* (*color_fun)(FILE*) = null;
 
+  auto out_target = print_on_stdout_ ? stdout : stderr;
+
   text_bold(stdout);
   if (absolute_path != null) {
-    printf("%s:%d:%d: ", error_path.c_str(), line_number, column_number);
+    fprintf(out_target, "%s:%d:%d: ", error_path.c_str(), line_number, column_number);
   }
   switch (severity) {
     case Severity::warning:
       color_fun = &text_magenta;
-      (*color_fun)(stdout);
-      printf("warning: ");
+      (*color_fun)(out_target);
+      fprintf(out_target, "warning: ");
       break;
     case Severity::error:
       color_fun = &text_red;
-      (*color_fun)(stdout);
-      printf("error: ");
+      (*color_fun)(out_target);
+      fprintf(out_target, "error: ");
       break;
     case Severity::note:
       color_fun = &text_green;
-      (*color_fun)(stdout);
-      printf("note: ");
+      (*color_fun)(out_target);
+      fprintf(out_target, "note: ");
       break;
   }
-  reset_colors(stdout);
-  vprintf(format, arguments);
-  putchar('\n');
+  reset_colors(out_target);
+  vfprintf(out_target, format, arguments);
+  fputc('\n', out_target);
 
   // Print the source line.
 
@@ -230,25 +233,25 @@ bool CompilationDiagnostics::emit(Severity severity,
   while (true) {
     int c = source[index++];
     if (c == 0 || is_newline(c)) break;
-    putchar(c);
+    fputc(c, out_target);
   }
-  putchar('\n');
+  fputc('\n', out_target);
 
   // Skip over Windows newline.
   if (source[index - 1] == '\r' && source[index] == '\n') index++;
 
   // Print the `^~~~` at the correct location.
 
-  (*color_fun)(stdout);
+  (*color_fun)(out_target);
   index = line_offset;
   while (index < offset_in_source) {
     int c = source[index];
     // Keep tabs, to make it more likely that the ^ aligns correctly.
-    putchar(c == '\t' ? '\t' : ' ');
+    fputc(c == '\t' ? '\t' : ' ', out_target);
     // UTF-8 multi-byte sequences are just treated like one character.
     index += Utils::bytes_in_utf_8_sequence(c);
   }
-  printf("^");
+  fprintf(out_target, "^");
   index += Utils::bytes_in_utf_8_sequence(source[index]);
 
   auto to_location = source_manager()->compute_location(range.to());
@@ -261,11 +264,11 @@ bool CompilationDiagnostics::emit(Severity severity,
 
       // UTF-8 multi-byte sequences are just treated like one character.
       index += Utils::bytes_in_utf_8_sequence(source[index]);
-      printf("~");
+      fprintf(out_target, "~");
     }
   }
-  printf("\n");
-  reset_colors(stdout);
+  fprintf(out_target, "\n");
+  reset_colors(out_target);
   return true;
 }
 

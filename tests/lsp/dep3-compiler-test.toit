@@ -4,6 +4,8 @@
 
 import .lsp-client show LspClient run-client-test
 import expect show *
+import system
+import system show platform
 
 main args:
   run-client-test args: test it
@@ -14,7 +16,7 @@ test client/LspClient:
   // anyways.
 
   LEVELS ::= 6
-  DRIVE ::= platform == PLATFORM-WINDOWS ? "c:" : ""
+  DRIVE ::= platform == system.PLATFORM-WINDOWS ? "c:" : ""
   MODULE-NAME-PREFIX ::= "some_non_existing_path"
   relatives := List LEVELS: ".$MODULE-NAME-PREFIX$it"
   paths := List LEVELS: "$DRIVE/$MODULE-NAME-PREFIX$(it).toit"
