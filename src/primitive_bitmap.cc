@@ -701,7 +701,7 @@ PRIMITIVE(draw_bitmap) {
 #if !defined(CONFIG_TOIT_BIT_DISPLAY) && !defined(CONFIG_TOIT_BYTE_DISPLAY)
   FAIL(UNIMPLEMENTED);
 #else
-  ARGS(int, x_base, int, y_base, int, color, int, orientation, Blob, in_bytes, int, bitmap_offset, int, bitmap_width, MutableBlob, bytes, int, byte_array_width, bool, bytewise_output);
+  ARGS(int, x_base, int, y_base, int, color, int, orientation, Blob, in_bytes, int, bitmap_offset, int, bitmap_width, int, bitmap_stride, MutableBlob, bytes, int, byte_array_width, bool, bytewise_output);
 #ifndef CONFIG_TOIT_BIT_DISPLAY
   if (!bytewise_output) FAIL(UNIMPLEMENTED);
 #endif
@@ -729,16 +729,16 @@ PRIMITIVE(draw_bitmap) {
 
   int bytes_per_line = (bitmap_width + 7) >> 3;
   if (bitmap_offset < 0) FAIL(OUT_OF_BOUNDS);
-  if (bitmap_width < 1) FAIL(OUT_OF_BOUNDS);
-  int bitmap_height = (in_bytes.length() - bitmap_offset) / bytes_per_line;
-  if (bitmap_height * bytes_per_line > in_bytes.length() - bitmap_offset) FAIL(OUT_OF_BOUNDS);
+  if (bitmap_width < 1 || bitmap_stride < 1) FAIL(OUT_OF_BOUNDS);
+  int bitmap_height = (in_bytes.length() - bitmap_offset + bitmap_stride - bytes_per_line) / bitmap_stride;
+  if (bitmap_height * bitmap_stride - bitmap_stride + bytes_per_line > in_bytes.length() - bitmap_offset) FAIL(OUT_OF_BOUNDS);
 
   if (!(0 <= orientation && orientation <= 3)) FAIL(INVALID_ARGUMENT);
 
   const uint8* input_contents = in_bytes.address() + bitmap_offset;
 
   DrawData capture(x_base, y_base, color, orientation * 90, byte_array_width, byte_array_height, output_contents);
-  BitmapSource bitmap_source(input_contents, bytes_per_line);
+  BitmapSource bitmap_source(input_contents, bitmap_stride);
   BitmapPixelBox bit_box(bitmap_width, bitmap_height);
 
   switch (orientation) {
