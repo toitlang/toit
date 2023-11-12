@@ -686,7 +686,8 @@ bytemap-test -> none:
       -1   // No transparency.
       2    // 180 degrees.
       alien
-      ALIEN-WIDTH
+      5            // Only the first 5 pixels of each line
+      ALIEN-WIDTH  // Stride.
       #[]  // No palette.
       canvas
       W
@@ -754,12 +755,12 @@ bytemap-test -> none:
   EXPECTED ::= """
       ###                                #####0
       #O#                                 #O##1
-      ###        __#__#_#__               ####2
-      ###        __#__#_#__                   3
-      #O#        _########_                   4
-      ###        _########_                 **5
-      #          __#O##O#__               ****6
-                 __######__               *o**7
+      ###             #_#__               ####2
+      ###             #_#__                   3
+      #O#             ####_                   4
+      ###             ####_                 **5
+      #               #O#__               ****6
+                      ###__               *o**7
                            __######__     ****8
                            __#O##O#__     ****9
                            _########_     *o**0
