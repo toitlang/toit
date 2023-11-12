@@ -8,7 +8,7 @@ import .yaml
 
 INITIAL-BUFFER-SIZE_ ::= 64
 
-abstract class Encoder extends Buffer_:
+abstract class EncoderBase_ extends Buffer_:
   encode obj/any [converter]:
     if obj is string: encode-string_ obj
     else if obj is num: encode-number_ obj
@@ -101,7 +101,7 @@ class Buffer_:
   clear_:
     offset_ = 0
 
-class YamlEncoder_ extends Encoder:
+class YamlEncoder_ extends EncoderBase_:
   current-line-start-offset_/int := 0
   indent_/int := 0
   enclosed_in_map_ := false

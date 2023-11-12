@@ -22,7 +22,7 @@ The $converter block is passed an object to be serialized and an instance
 Utf-8 encoding is used for strings.
 */
 encode obj [converter] -> ByteArray:
-  e := JsonEncoder_
+  e := Encoder
   e.encode obj converter
   return e.to-byte-array
 
@@ -63,7 +63,7 @@ The $converter block is passed an object to be serialized and an instance
 Utf-8 encoding is used for strings.
 */
 stringify obj/any [converter] -> string:
-  e := JsonEncoder_
+  e := Encoder
   e.encode obj converter
   return e.to-string
 
@@ -99,7 +99,7 @@ decode-stream reader:
   return d.decode-stream reader
 
 
-class JsonEncoder_ extends Encoder:
+class Encoder extends EncoderBase_:
   encode-string_ str:
     escaped := escape-string str
     size := escaped.size
