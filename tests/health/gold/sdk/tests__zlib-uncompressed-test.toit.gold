@@ -1,3 +1,18 @@
+tests/zlib-uncompressed-test.toit:16:28: warning: Deprecated 'Coder_.write'
+  bytes-written := encoder.write zs.to-byte-array
+                           ^~~~~
+tests/zlib-uncompressed-test.toit:20:18: warning: Deprecated 'Coder_.reader'
+  str := encoder.reader.read[7..].to-string
+                 ^~~~~~
+tests/zlib-uncompressed-test.toit:23:11: warning: Deprecated 'Coder_.close'
+  encoder.close
+          ^~~~~
+tests/zlib-uncompressed-test.toit:24:19: warning: Deprecated 'Coder_.reader'
+  rest := encoder.reader.read
+                  ^~~~~~
+<sdk>/zlib.toit:201:12: warning: Deprecated 'RunLengthDeflateBackend_.close'
+      this.close
+           ^~~~~
 <pkg:pkg-host>/pipe.toit:329:6: warning: Deprecated 'platform'
   if platform == PLATFORM_WINDOWS:
      ^~~~~~~~

@@ -1,3 +1,6 @@
+<sdk>/zlib.toit:201:12: warning: Deprecated 'RunLengthDeflateBackend_.close'
+      this.close
+           ^~~~~
 <pkg:pkg-host>/pipe.toit:329:6: warning: Deprecated 'platform'
   if platform == PLATFORM_WINDOWS:
      ^~~~~~~~

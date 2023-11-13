@@ -1,3 +1,8 @@
+tests/uart-test.toit:124:30: error: Argument mismatch for 'UartWriter.try-write'
+No argument named '--wait'
+Valid named arguments include '--break-length', '--flush'
+        written += port1.out.try-write bytes[written ..] --wait
+                             ^~~~~~~~~
 <pkg:pkg-host>/pipe.toit:329:6: warning: Deprecated 'platform'
   if platform == PLATFORM_WINDOWS:
      ^~~~~~~~
