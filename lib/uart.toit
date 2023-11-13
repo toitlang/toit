@@ -337,27 +337,19 @@ class UartWriter extends Object with io.Writer:
     position += my_uart.write (data.byte-slice position data.byte-size)
   ```
 
-  If $wait is true, the method blocks until all bytes that were written have been emitted to the
+  If $flush is true, the method blocks until all bytes that were written have been emitted to the
     physical pins. This is equivalent to calling $flush. Otherwise, returns as soon as the data is
     buffered.
 
   Returns the number of bytes written.
   */
-  write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --wait/bool=false -> none:
+  write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false -> none:
     while not is-closed_:
-      from += try-write data from to --break-length=break-length --wait=wait
+      from += try-write data from to --break-length=break-length --flush=flush
       if from >= to: return
       yield
     assert: is-closed_
     throw "WRITER_CLOSED"
-
-  /**
-  Flushes the output buffer, waiting until all written data has been transmitted.
-
-  Often, one can just use the `--wait` flag of the $write function instead.
-  */
-  flush -> none:
-    port_.flush_
 
   /**
   Tries to write the given $data to this writer.
@@ -369,14 +361,17 @@ class UartWriter extends Object with io.Writer:
     the data is written. The duration of the break signal is bit-duration * $break-length,
     where bit-duration is the duration it takes to write one bit at the current baud rate.
   */
-  try-write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --wait/bool=false:
+  try-write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false:
     if is-closed_: throw "WRITER_CLOSED"
     result := port_.try-write_ data from to --break-length=break-length
-    if wait and (result > 0 or data.byte-size == 0): flush
+    if flush and (result > 0 or data.byte-size == 0): this.flush
     return result
 
   try-write_ data/io.Data from/int to/int --break-length/int=0:
     return port_.try-write_ data from to --break-length=break-length
+
+  flush_ -> none:
+    port_.flush_
 
 resource-group_ ::= uart-init_
 
