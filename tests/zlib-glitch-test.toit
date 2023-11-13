@@ -1,9 +1,14 @@
-
 // Copyright (C) 2023 Toitware ApS.
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
 import zlib
+
+// Prior to the commit that added this test, the pure Toit decoder
+// would fail with an array bounds error when decoding this stream.
+// The issue was that the last entry in the HLIT and HDIST tables
+// was written with a repeat code, and we didn't check that the
+// tables were full before reading the next symbol.
 
 main:
   decoder := zlib.BufferingInflater
