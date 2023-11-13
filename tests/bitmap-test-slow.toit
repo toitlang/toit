@@ -683,7 +683,7 @@ bytemap-test -> none:
       --orientation=2       // 180 degrees.
       --source=alien
       --source-width=5      // Only the first 5 pixels of each line
-      --source-stride=ALIEN-WIDTH
+      --source-line-stride=ALIEN-WIDTH
       --destination=canvas
       --destination-width=W
 

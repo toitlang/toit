@@ -639,10 +639,10 @@ class IndexedBytemapSource : public BytemapDecompresser {
  public:
   // After calling the constructor, out_of_memory must be checked on the
   // resulting object.
-  IndexedBytemapSource(const uint8* pixels, word pixels_per_line, word line_stride, const uint8* palette, word palette_size, const uint8* alpha_map, word alpha_length)
+  IndexedBytemapSource(const uint8* pixels, word pixels_per_line, word source_line_stride, const uint8* palette, word palette_size, const uint8* alpha_map, word alpha_length)
     : pixels_(pixels)
     , pixels_per_line_(pixels_per_line)
-    , line_stride_(line_stride)
+    , source_line_stride_(source_line_stride)
     , palette_(palette)
     , palette_size_(palette_size)
     , alpha_map_(alpha_map)
@@ -668,11 +668,11 @@ class IndexedBytemapSource : public BytemapDecompresser {
       line_buffer_[i] = (color_index * 3 < palette_size_) ? palette_[color_index * 3] : color_index;
       opacity_buffer_[i] = color_index >= alpha_length_ ? 0xff : alpha_map_[color_index];
     }
-    pixels_ += line_stride_;
+    pixels_ += source_line_stride_;
   }
 
   virtual void skip_next_line() {
-    pixels_ += line_stride_;
+    pixels_ += source_line_stride_;
   }
 
   virtual const uint8* line() const {
@@ -686,7 +686,7 @@ class IndexedBytemapSource : public BytemapDecompresser {
  private:
   const uint8* pixels_;
   word pixels_per_line_;
-  word line_stride_;
+  word source_line_stride_;
   const uint8* palette_;
   word palette_size_;
   const uint8* alpha_map_;
@@ -787,7 +787,7 @@ static void byte_draw(int, BytemapDecompresser&, const PixelBox&, DrawData&);
 
 // Draw a bytemap on a bytemap.  A palette is given, where every third byte is used.
 PRIMITIVE(draw_bytemap) {
-  ARGS(int, x_base, int, y_base, Object, transparent_color, int, orientation, Blob, in_bytes, int, pixels_per_line, int, line_stride, Blob, palette, MutableBlob, bytes, int, byte_array_width);
+  ARGS(int, x_base, int, y_base, Object, transparent_color, int, orientation, Blob, in_bytes, int, pixels_per_line, int, source_line_stride, Blob, palette, MutableBlob, bytes, int, byte_array_width);
   // Both the input and output byte arrays are arranged as n rows, each byte_array_width long.
   if (byte_array_width < 1) FAIL(OUT_OF_BOUNDS);
 
@@ -797,9 +797,9 @@ PRIMITIVE(draw_bytemap) {
   uint8* output_contents = bytes.address();
 
   if (pixels_per_line < 1) FAIL(OUT_OF_BOUNDS);
-  if (line_stride < pixels_per_line) FAIL(OUT_OF_BOUNDS);
-  int bitmap_height = (in_bytes.length() + line_stride - pixels_per_line) / line_stride;
-  if (bitmap_height * line_stride - line_stride + pixels_per_line > in_bytes.length()) FAIL(OUT_OF_BOUNDS);
+  if (source_line_stride < pixels_per_line) FAIL(OUT_OF_BOUNDS);
+  int bitmap_height = (in_bytes.length() + source_line_stride - pixels_per_line) / source_line_stride;
+  if (bitmap_height * source_line_stride - source_line_stride + pixels_per_line > in_bytes.length()) FAIL(OUT_OF_BOUNDS);
 
   if (!(0 <= orientation && orientation <= 3)) FAIL(INVALID_ARGUMENT);
 
@@ -822,7 +822,7 @@ PRIMITIVE(draw_bytemap) {
   }
 
   DrawData capture(x_base, y_base, color, orientation * 90, byte_array_width, byte_array_height, output_contents);
-  IndexedBytemapSource bytemap_source(in_bytes.address(), pixels_per_line, line_stride, palette.address(), palette.length(), alpha_map, alpha_length);
+  IndexedBytemapSource bytemap_source(in_bytes.address(), pixels_per_line, source_line_stride, palette.address(), palette.length(), alpha_map, alpha_length);
   if (bytemap_source.out_of_memory()) FAIL(MALLOC_FAILED);
 
   BitmapPixelBox bit_box(pixels_per_line, bitmap_height);

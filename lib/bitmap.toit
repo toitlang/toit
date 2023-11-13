@@ -62,9 +62,9 @@ The assumed pixel layout for both source and destination is rows from top to
   bottom.  Within each row pixels are arranged from left to right.  Within
   each byte the most significant bit is the leftmost pixel.
 The $source-width is in pixels.
-The $source-stride is in bytes and may be more than the rounded byte count
+The $source-line-stride is in bytes and may be more than the rounded byte count
   corresponding to the source width.  In this case some bytes are ignored at
-  the end of each source row.  If unspecified, the source stride is set
+  the end of each source row.  If unspecified, the source line stride is set
   to the lowest number of whole bytes corresponding to the source width.
 The height of the source bitmap is inferred from the size of the $source.
 If $bytewise is true then the destination is one byte per pixel rather than
@@ -77,11 +77,11 @@ bitmap-draw-bitmap -> none
     --orientation/int = 0
     --source  // io.Data.
     --source-width/int
-    --source-stride/int=((source-width + 7) >> 3)
+    --source-line-stride/int=((source-width + 7) >> 3)
     --destination/ByteArray
     --destination-width/int
     --bytewise/bool=false:
-  bitmap-draw-bitmap_ x y color orientation source 0 source-width source-stride destination destination-width bytewise
+  bitmap-draw-bitmap_ x y color orientation source 0 source-width source-line-stride destination destination-width bytewise
 
 /**
 Older version of bitmap-draw-bitmap.
@@ -97,10 +97,10 @@ bitmap-draw-bitmap ->none
     byte-array /ByteArray
     byte-array-width /int
     bytewise /bool:
-  source-stride := (source-width + 7) >> 3
-  bitmap-draw-bitmap_ x y color orientation source source-offset source-width source-stride byte-array byte-array-width bytewise
+  source-line-stride := (source-width + 7) >> 3
+  bitmap-draw-bitmap_ x y color orientation source source-offset source-width source-line-stride byte-array byte-array-width bytewise
 
-bitmap-draw-bitmap_ x y color orientation source source-offset source-width source-stride destination destination-width bytewise -> none:
+bitmap-draw-bitmap_ x y color orientation source source-offset source-width source-line-stride destination destination-width bytewise -> none:
   #primitive.bitmap.draw-bitmap
 
 /**
@@ -125,7 +125,7 @@ The drawing location may be wholly or partially outside the area of the byte
 The assumed pixel layout for both source and destination is rows from top to
   bottom.  Within each row, pixels are arranged from left to right, one
   byte per pixel.
-The $source-stride may be more than the $source-width, in which case
+The $source-line-stride may be more than the $source-width, in which case
   some bytes are ignored at the end of each source row.
 The height of the source bytemap is inferred from the size of the $source.
 */
@@ -137,13 +137,13 @@ bitmap-draw-bytemap -> none
     --orientation/int=0
     --source  // io.Data.
     --source-width/int
-    --source-stride/int=source-width
+    --source-line-stride/int=source-width
     --palette/ByteArray=#[]
     --destination/ByteArray
     --destination-width/int:
   if transparent-index >= 0 and alpha: throw "Specified both alpha and transparent-index"
   transparent := alpha or transparent-index
-  bitmap-draw-bytemap_ x y transparent orientation source source-width source-stride palette destination destination-width
+  bitmap-draw-bytemap_ x y transparent orientation source source-width source-line-stride palette destination destination-width
 
 /// Older version of bitmap-draw-bytemap.
 bitmap-draw-bytemap -> none
@@ -158,7 +158,7 @@ bitmap-draw-bytemap -> none
     destination-width /int:
   bitmap-draw-bytemap_ x y transparent-color orientation source-array source-width source-width palette destination-array destination-width
 
-bitmap-draw-bytemap_ x y transparent-color orientation source-array source-width source-stride palette destination-array destination-width -> none:
+bitmap-draw-bytemap_ x y transparent-color orientation source-array source-width source-line-stride palette destination-array destination-width -> none:
   #primitive.bitmap.draw-bytemap
 
 /// Fills a frame buffer with a single color (0: black, 1: white)
