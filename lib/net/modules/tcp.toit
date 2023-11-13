@@ -214,7 +214,13 @@ tcp-write_ socket-resource-group descriptor data from to:
     List.chunk-up from to 4096: | chunk-from chunk-to chunk-size |
       chunk := ByteArray.from data chunk-from chunk-to
       written := tcp-write_ socket-resource-group descriptor chunk 0 chunk-size
-      if written != chunk-size: return (chunk-from - from) + written
+      if written != chunk-size:
+        // If the primitive returns -1, it means that the buffers are full and
+        // we should try again later.
+        if written == -1:
+          if chunk-from - from > 0: return chunk-from - from
+          return -1
+        return (chunk-from - from) + written
     return to - from
 
 tcp-read_ socket-resource-group descriptor:
