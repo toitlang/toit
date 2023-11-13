@@ -101,6 +101,9 @@ abstract mixin Writer:
 
   /**
   Flushes any buffered data to the underlying resource.
+
+  Often, one can just use the `--flush` flag of the $write, $write-byte or $write-from
+    functions instead.
   */
   flush -> none:
     flush_
