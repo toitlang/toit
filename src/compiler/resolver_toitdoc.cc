@@ -111,7 +111,7 @@ class PrefixIterator : public ToitdocScopeIterator {
 static void ensure_has_toitdoc_scope(ir::Class* klass) {
   if (klass->toitdoc_scope() != null) return;
   ScopeFiller filler;
-  filler.add_all(klass->constructors());
+  filler.add_all(klass->unnamed_constructors());
   filler.add_all(klass->factories());
   filler.add_all(klass->methods());
   filler.add_all(klass->fields());

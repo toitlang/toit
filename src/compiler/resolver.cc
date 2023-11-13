@@ -140,7 +140,7 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
     all_classes.add(module->classes());
     all_methods.add(module->methods());
     for (auto klass : module->classes()) {
-      all_methods.add(klass->constructors());
+      all_methods.add(klass->unnamed_constructors());
       all_methods.add(klass->factories());
       for (auto node : klass->statics()->nodes()) {
         if (node->is_Global()) {
@@ -567,7 +567,7 @@ void Resolver::check_clashing_or_conflicting(std::vector<Module*> modules) {
     }
 
     for (auto klass : module->classes()) {
-      auto constructors = klass->constructors();
+      auto constructors = klass->unnamed_constructors();
       auto factories = klass->factories();
       auto unnamed_factories_and_constructors =
           ListBuilder<ir::Node*>::allocate(constructors.length() + factories.length());
@@ -1830,7 +1830,7 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
         constructors.add(constructor);
       }
 
-      ir_class->set_constructors(constructors.build());
+      ir_class->set_unnamed_constructors(constructors.build());
       ir_class->set_factories(factories.build());
       ir_class->set_methods(methods.build());
       ir_class->set_fields(fields.build());
@@ -2500,7 +2500,7 @@ void Resolver::resolve_fill_class(ir::Class* klass,
     resolve_field(field, klass, &class_scope, entry_module, core_module);
   }
   // Resolve the methods.
-  for (auto constructor : klass->constructors()) {
+  for (auto constructor : klass->unnamed_constructors()) {
     resolve_fill_method(constructor, klass, &class_scope, entry_module, core_module);
   }
   for (auto factory : klass->factories()) {

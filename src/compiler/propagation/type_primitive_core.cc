@@ -75,6 +75,8 @@ TYPE_PRIMITIVE_STRING(printf_style_int64_to_string)
 TYPE_PRIMITIVE_STRING(smi_to_string_base_10)
 TYPE_PRIMITIVE_STRING(concat_strings)
 TYPE_PRIMITIVE_STRING(string_from_rune)
+TYPE_PRIMITIVE_STRING(utf_16_to_string)
+TYPE_PRIMITIVE_BYTE_ARRAY(string_to_utf_16)
 
 TYPE_PRIMITIVE(string_at) {
   result.add_smi(program);

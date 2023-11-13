@@ -356,12 +356,12 @@ class Class : public Node {
   /// The unnamed constructors.
   ///
   /// The named constructors are stored in the [statics] scope.
-  List<Method*> constructors() const { return constructors_; }
-  void set_constructors(List<Method*> constructors) {
+  List<Method*> unnamed_constructors() const { return constructors_; }
+  void set_unnamed_constructors(List<Method*> constructors) {
     ASSERT(constructors_.is_empty());
     constructors_ = constructors;
   }
-  void replace_constructors(List<Method*> new_constructors) { constructors_ = new_constructors; }
+  void replace_unnamed_constructors(List<Method*> new_constructors) { constructors_ = new_constructors; }
 
   /// The unnamed factories.
   ///
