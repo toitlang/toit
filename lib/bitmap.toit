@@ -233,8 +233,10 @@ For both the source and destination we can define how many bytes to skip per
 ```
 */
 blit source destination/ByteArray pixels-per-line/int
-    --source-pixel-stride=1 --source-line-stride=(pixels-per-line * source-pixel-stride)
-    --destination-pixel-stride=1 --destination-line-stride=(pixels-per-line * destination-pixel-stride.abs)
+    --source-pixel-stride=1
+    --source-line-stride=(pixels-per-line * source-pixel-stride)
+    --destination-pixel-stride=1
+    --destination-line-stride=(pixels-per-line * destination-pixel-stride.abs)
     --lookup-table/ByteArray?=null
     --shift=0
     --mask=0xff
