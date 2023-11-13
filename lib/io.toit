@@ -46,6 +46,10 @@ interface Data:
 
 /**
 A consumer of bytes.
+
+# Inheritance
+The method $try-write_ must be implemented by subclasses.
+The method $flush_ may be implemented by subclasses. The default implementation does nothing.
 */
 abstract mixin Writer:
   is-closed_/bool := false
@@ -78,11 +82,13 @@ abstract mixin Writer:
   If the writer can't write all the data at once tries again until all of the data is
     written. This method is blocking.
   */
-  write data/Data from/int=0 to/int=data.byte-size -> int:
+  write data/Data from/int=0 to/int=data.byte-size --flush/bool=false -> int:
     pos := from
     while not is-closed_:
       pos += try-write data pos to
-      if pos >= to: return (to - from)
+      if from >= to:
+        if flush: this.flush
+        return (to - from)
       wait-for-more-room_
     assert: is-closed_
     throw "WRITER_CLOSED"
@@ -90,7 +96,7 @@ abstract mixin Writer:
   /**
   Writes a single byte.
   */
-  write-byte b/int -> none:
+  write-byte b/int --flush/bool=false -> none:
     if not byte-cache_: byte-cache_ = ByteArray 1
     cache := byte-cache_
     cache[0] = b
@@ -98,16 +104,26 @@ abstract mixin Writer:
     // It's probably a mistake to write concurrently, but it's pretty easy to guard
     // the cache against it.
     byte-cache_ = null
-    write cache
+    write cache --flush=flush
     byte-cache_ = cache
 
   /**
   Writes all data that is provided by the given $reader.
   */
-  write-from reader/Reader -> none:
+  write-from reader/Reader --flush/bool=false -> none:
     if is-closed_: throw "WRITER_CLOSED"
     while data := reader.read:
       write data
+    if flush: this.flush
+
+  /**
+  Flushes any buffered data to the underlying resource.
+
+  Often, one can just use the `--flush` flag of the $write, $write-byte or $write-from
+    functions instead.
+  */
+  flush -> none:
+    flush_
 
   /**
   Tries to write the given $data to this writer.
@@ -188,6 +204,12 @@ abstract mixin Writer:
   */
   // This is a protected method. It should not be "private".
   abstract try-write_ data/Data from/int to/int -> int
+
+  /**
+  Flushes any buffered data to the underlying resource.
+  */
+  flush_ -> none:
+    // Do nothing.
 
   /**
   Closes this writer.
