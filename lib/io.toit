@@ -469,7 +469,8 @@ abstract mixin Reader implements old-reader.Reader:
   */
   drain -> none:
     clear
-    while consume_: null // Do nothing.
+    while chunk := consume_:
+      base-consumed_ += chunk.size
 
   /**
   Searches forwards for the $byte.
@@ -619,6 +620,7 @@ abstract mixin Reader implements old-reader.Reader:
       // Instead of adding the array to the arrays we may just be able more
       // efficiently pass it on in string from.
       if (max-size == null or array.size <= max-size) and array[array.size - 1] <= 0x7f:
+        base-consumed_ += array.size
         return array.to-string
       add-byte-array_ array
 
