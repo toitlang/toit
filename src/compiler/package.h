@@ -87,19 +87,28 @@ class Package {
     return is_ok();
   }
 
+  /// Whether this package is referenced through a local path, in contrast
+  /// to a 'git' package that was found in the '.packages' directory (or any
+  /// of the package cache paths.
+  bool is_path_package() const {
+    return is_path_package_;
+  }
+
  private:
   Package(const std::string id,
           const std::string& absolute_path,
           const std::string& absolute_error_path,
           const std::string& relative_error_path,
           ErrorState state,
-          Map<std::string, std::string> prefixes)
+          Map<std::string, std::string> prefixes,
+          bool is_path_package)
       : id_(id)
       , absolute_path_(absolute_path)
       , absolute_error_path_(absolute_error_path)
       , relative_error_path_(relative_error_path)
       , error_state_(state)
-      , prefixes_(prefixes) {}
+      , prefixes_(prefixes)
+      , is_path_package_(is_path_package) {}
 
   std::string id_ = std::string(INVALID_PACKAGE_ID);
   std::string absolute_path_ = std::string("");
@@ -115,6 +124,10 @@ class Package {
 
   // Mapping from prefix to package-id.
   Map<std::string, std::string> prefixes_;
+
+  // By default (which is only used for the invalid package), we treat the
+  // package as "path package", so we show warnings on it.
+  bool is_path_package_ = true;
 
   friend class PackageLock;
 };
