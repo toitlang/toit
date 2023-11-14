@@ -30,14 +30,14 @@ class Package {
  public:
   enum ErrorState {
     /// No error.
-    OK,
+    STATE_OK,
     /// Not a package. Also used to indicate that a prefix doesn't have any target.
-    INVALID,
+    STATE_INVALID,
     /// The package was declared, but there was an error in the package file for
     /// this package.
-    ERROR,
+    STATE_ERROR,
     /// The package was declared, but couldn't be found.
-    NOT_FOUND,
+    STATE_NOT_FOUND,
   };
 
   // The "package" id of the entry file.
@@ -66,7 +66,7 @@ class Package {
   std::string absolute_path() const { return absolute_path_; }
   ErrorState error_state() const { return error_state_; }
 
-  bool is_ok() const { return error_state_ == OK; }
+  bool is_ok() const { return error_state_ == STATE_OK; }
 
   // When a prefix is an sdk prefix then we haven't consumed the prefix yet.
   bool is_sdk_prefix() const { return id_ == std::string(SDK_PACKAGE_ID); }
@@ -75,7 +75,7 @@ class Package {
   // this package.
   std::string build_error_path(Filesystem* fs, const std::string& member_absolute_path) const;
 
-  bool is_valid() const { return error_state_ != INVALID; }
+  bool is_valid() const { return error_state_ != STATE_INVALID; }
 
   static Package invalid() { return Package(); }
 
@@ -120,7 +120,7 @@ class Package {
   // In general only relevant for the entry package.
   std::string relative_error_path_ = std::string("");
 
-  ErrorState error_state_ = INVALID;
+  ErrorState error_state_ = STATE_INVALID;
 
   // Mapping from prefix to package-id.
   Map<std::string, std::string> prefixes_;
