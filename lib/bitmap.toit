@@ -70,9 +70,7 @@ The height of the source bitmap is inferred from the size of the $source.
 If $bytewise is true then the destination is one byte per pixel rather than
   one bit per pixel.  In this case the $color may be in the range 0-255.
 */
-bitmap-draw-bitmap -> none
-    x /int
-    y /int
+bitmap-draw-bitmap x /int y /int -> none
     --color/int
     --orientation/int = 0
     --source  // io.Data.
@@ -86,9 +84,7 @@ bitmap-draw-bitmap -> none
 /**
 Older version of bitmap-draw-bitmap.
 */
-bitmap-draw-bitmap ->none
-    x /int
-    y /int
+bitmap-draw-bitmap x /int y /int -> none
     color /int
     orientation /int
     source
@@ -129,9 +125,7 @@ The $source-line-stride may be more than the $source-width, in which case
   some bytes are ignored at the end of each source row.
 The height of the source bytemap is inferred from the size of the $source.
 */
-bitmap-draw-bytemap -> none
-    x/int
-    y/int
+bitmap-draw-bytemap x/int y/int -> none
     --transparent-index/int=-1
     --alpha/ByteArray?=null
     --orientation/int=0
@@ -146,9 +140,7 @@ bitmap-draw-bytemap -> none
   bitmap-draw-bytemap_ x y transparent orientation source source-width source-line-stride palette destination destination-width
 
 /// Older version of bitmap-draw-bytemap.
-bitmap-draw-bytemap -> none
-    x /int
-    y /int
+bitmap-draw-bytemap x /int y /int -> none
     transparent-color
     orientation /int
     source-array
