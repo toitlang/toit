@@ -22,6 +22,7 @@
 
 #include "list.h"
 #include "map.h"
+#include "package.h"
 #include "symbol.h"
 
 namespace toit {
@@ -29,7 +30,6 @@ namespace compiler {
 
 class Diagnostics;
 class SourceManagerSource;
-class Package;
 class Filesystem;
 
 class Source {
@@ -154,8 +154,17 @@ class Source {
   /// Might be "", if the source was given as argument to the compiler.
   virtual const char* absolute_path() const = 0;
 
+  /// The package id this source comes from.
+  std::string package_id() const {
+    if (package().is_valid()) {
+      return package().id();
+    } else {
+      return Package::ENTRY_PACKAGE_ID;
+    }
+  }
+
   /// The package this source comes from.
-  virtual std::string package_id() const = 0;
+  virtual Package package() const = 0;
 
   /// Returns the error path of the source.
   ///
@@ -245,7 +254,7 @@ class SourceManager {
   mutable Source::Location cached_location_;
 
   SourceManagerSource* register_source(const std::string& path,
-                                       const std::string& package_id,
+                                       const Package& package,
                                        const std::string& error_path,
                                        const uint8* source,
                                        int size);
