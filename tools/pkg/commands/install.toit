@@ -1,6 +1,6 @@
 import cli
 
-import .pkg
+import ..pkg
 
 class InstallCommand:
   static PREFIX    ::= "prefix"
@@ -9,18 +9,33 @@ class InstallCommand:
   static RECOMPUTE ::= "recompute"
   static REST      ::= "package"
 
+  prefix/string?
+  package/string?
+  local/bool
+  recompute/bool
   constructor parsed/cli.Parsed:
     if parsed[PREFIX] and parsed[NAME]:
       error "Only one of 'name' and 'prefix' can be used"
 
+    if parsed[PREFIX]: prefix = parsed[PREFIX]
+    else: prefix = parsed[NAME]
 
-    print "package: $parsed["package"]"
-    print "local: $parsed["local"]"
-    print "prefix: $parsed["prefix"]"
-    print "name: $parsed["name"]"
-    print "recompute: $parsed["recompute"]"
+    package = parsed[REST]
+    local = parsed[LOCAL]
+    recompute = parsed[RECOMPUTE]
+
+    if not package and local:
+      error "Can not specify local without a package"
+
+    if not package and prefix:
+      error "Can not specify a prefix without a package"
+
+    if package and recompute:
+      error "Recompute can only be specified with no other arguments"
 
   execute:
+
+
     error "install: not yet implemeted"
 
 

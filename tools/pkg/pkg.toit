@@ -1,6 +1,9 @@
 import cli
 
-import .install
+import .commands.install
+import .commands.version
+
+VERSION ::= "2.0"
 
 clean parsed/cli.Parsed: print "NYI: clean"
 completion parsed/cli.Parsed: print "NYI: completion"
@@ -85,9 +88,7 @@ main arguments/List:
               --short-help="Updates all packages to their newest versions"
               --run=:: update it,
 
-          cli.Command "version"
-              --short-help="Prints the version of the package manager"
-              --run=:: version it
+          VersionCommand.CLI-COMMAND
       ]
 
       --options=[
