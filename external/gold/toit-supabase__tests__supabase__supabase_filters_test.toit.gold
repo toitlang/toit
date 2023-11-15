@@ -1,9 +1,3 @@
-toit-supabase/examples/utils/local_storage.toit:72:8: warning: Deprecated 'platform'
-    if platform == PLATFORM_WINDOWS:
-       ^~~~~~~~
-toit-supabase/examples/utils/local_storage.toit:72:20: warning: Deprecated 'PLATFORM-WINDOWS'
-    if platform == PLATFORM_WINDOWS:
-                   ^~~~~~~~~~~~~~~~
 <pkg:..>/auth.toit:112:14: warning: Deprecated 'platform'
           if platform == PLATFORM_LINUX:
              ^~~~~~~~
@@ -21,10 +15,4 @@ toit-supabase/examples/utils/local_storage.toit:72:20: warning: Deprecated 'PLAT
                   ^~~~~~~~
 <pkg:..>/auth.toit:118:31: warning: Deprecated 'PLATFORM-WINDOWS'
           else if platform == PLATFORM_WINDOWS:
-                              ^~~~~~~~~~~~~~~~
-toit-supabase/examples/utils/local_storage.toit:24:19: warning: Deprecated 'platform'
-  if not home and platform == PLATFORM_WINDOWS:
-                  ^~~~~~~~
-toit-supabase/examples/utils/local_storage.toit:24:31: warning: Deprecated 'PLATFORM-WINDOWS'
-  if not home and platform == PLATFORM_WINDOWS:
                               ^~~~~~~~~~~~~~~~

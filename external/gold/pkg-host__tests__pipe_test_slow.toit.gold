@@ -58,3 +58,21 @@ pkg-host/tests/pipe_test_slow.toit:200:11: warning: Deprecated 'platform'
 pkg-host/tests/pipe_test_slow.toit:200:23: warning: Deprecated 'PLATFORM-MACOS'
   else if platform == PLATFORM_MACOS:
                       ^~~~~~~~~~~~~~
+<pkg:..>/directory.toit:154:6: warning: Deprecated 'platform'
+  if platform == PLATFORM_WINDOWS:
+     ^~~~~~~~
+<pkg:..>/directory.toit:154:18: warning: Deprecated 'PLATFORM-WINDOWS'
+  if platform == PLATFORM_WINDOWS:
+                 ^~~~~~~~~~~~~~~~
+<pkg:..>/pipe.toit:180:6: warning: Deprecated 'platform'
+  if platform == PLATFORM_WINDOWS:
+     ^~~~~~~~
+<pkg:..>/pipe.toit:180:18: warning: Deprecated 'PLATFORM-WINDOWS'
+  if platform == PLATFORM_WINDOWS:
+                 ^~~~~~~~~~~~~~~~
+<pkg:..>/pipe.toit:395:6: warning: Deprecated 'platform'
+  if platform == PLATFORM_WINDOWS:
+     ^~~~~~~~
+<pkg:..>/pipe.toit:395:18: warning: Deprecated 'PLATFORM-WINDOWS'
+  if platform == PLATFORM_WINDOWS:
+                 ^~~~~~~~~~~~~~~~
