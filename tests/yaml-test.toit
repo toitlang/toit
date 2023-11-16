@@ -364,7 +364,8 @@ test-block-parse:
   expect-equals "p#" (yaml.parse "p#")
   expect-equals "æ#" (yaml.parse "æ#")
   expect-equals "ab🙈#" (yaml.parse "ab🙈#")
-
+  expect-equals "🙈#" (yaml.parse "🙈#")
+  expect-equals "ab" (yaml.parse "ab #")
   expect-equals 10 (yaml.parse "0xa")
   expect-equals 10 (yaml.parse "0o12")
 

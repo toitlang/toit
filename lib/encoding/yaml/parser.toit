@@ -143,11 +143,10 @@ class ValueNode_:
 
   stringify: return "VN: $value.stringify"
 
-class Parser_:
+// A base for peg parsers
+abstract class PegParserBase_:
   bytes_/ByteArray
   offset_/int := 0
-  named-nodes := {:}
-  forbidden-detected/int? := null
 
   constructor .bytes_:
 
@@ -171,8 +170,54 @@ class Parser_:
     with-rollback: result = block.call
     return not (not result)
 
+  // Evaluate block on a the previous input
+  lookbehind glyphs [block] -> bool:
+    start := offset_
+    glyph-start := start
+    glyphs.repeat:
+      if offset_ == 0: return false
+      offset_ -= 1
+      while offset_ > 0 and not bytes_[offset_..glyph-start].is-valid-string-content:
+        offset_--
+      glyph-start = offset_
+
+    behind-result := block.call
+    offset_ = start
+    return behind-result
+
+  eof -> bool: return offset_ >= bytes_.size
+  bof -> bool: return offset_ == 0
+
+  utf-rune -> int?:
+    if can-read 1:
+      c := bytes_[offset_]
+      if c < 0xc0:
+        offset_++
+        return c
+
+      bytes := 2
+      if c >= 0xf0:
+        bytes = 4
+      else if c >= 0xe0:
+        bytes = 3
+
+      if can_read bytes:
+        buf/ByteArray := slice bytes
+        if buf.is-valid-string-content:
+          offset_ += bytes
+          return buf.to-string[0]
+
+    return null
+
   slice n -> ByteArray:
     return bytes_[offset_..offset_ + n]
+
+  string-since mark -> string:
+    return bytes_[mark .. offset_].to_string
+
+  // Will be negative if the mark is in the 'future'
+  bytes-since-mark mark -> int:
+    return offset_ - mark
 
   repeat --at-least-one/bool=false [block] -> List?:
     with-rollback:
@@ -196,7 +241,6 @@ class Parser_:
 
   can-read num/int -> bool:
     return offset_ + num <= bytes_.size
-           and (not forbidden-detected or offset_ + num <= forbidden-detected)
 
   match-one [block] -> int?:
     if can-read 1:
@@ -211,6 +255,9 @@ class Parser_:
         offset_ += n
         return true
     return false
+
+  match-any:
+    offset_ += 1
 
   match-char byte/int -> int?:
     return match-one: it == byte
@@ -227,9 +274,22 @@ class Parser_:
   match-string str/string -> bool:
     return match-buffer str.to-byte-array
 
+
+class Parser_ extends PegParserBase_:
+  named-nodes := {:}
+  forbidden-detected/int? := null
+
+  constructor bytes:
+    super bytes
+
+  can-read num/int -> bool:
+    return super num
+           and (not forbidden-detected or
+                -(bytes-since-mark forbidden-detected) >= num)
+
   match-hex digits/int -> int?:
     with-rollback:
-      start := offset_
+      start := mark
       failed := false
       while digits-- > 0:
         if not ns-hex-digit:
@@ -237,9 +297,6 @@ class Parser_:
           break
       if not failed: return int.parse --radix=16 (string-since start)
     return null
-    
-  string-since start -> string:
-    return bytes_[start .. offset_].to_string
 
   apply-props props value/ValueNode_ -> ValueNode_:
     tag/string? := null
@@ -252,7 +309,7 @@ class Parser_:
 
   detect-forbidden:
     if forbidden-detected: return
-    mark := offset_
+    mark := mark
     if start-of-line and
        (c-directives-end or c-document-end) and
        (match-chars B-LINE-TERMINATORS_ or s-white or l-eof):
@@ -260,16 +317,16 @@ class Parser_:
     rollback mark
 
   find-leading-spaces-on-first-non-empty-line -> int:
-    start := offset_
-    start-of-line := offset_
+    start-mark := mark
+    start-of-line := mark
     while true:
       if s-white: continue
       if b-break:
-        start-of-line = offset_
+        start-of-line = mark
         continue
       break
-    result := offset_ - start-of-line
-    offset_ = start
+    result := bytes-since-mark start-of-line
+    rollback start-mark
 
     return result
 
@@ -373,12 +430,12 @@ class Parser_:
     return false
 
   ns-yaml-version -> bool:
-    start := offset_
+    mark := mark
     with-rollback:
       if (repeat --at-least-one: ns-dec-digit) and
           match-char '.' and
          (repeat --at-least-one: ns-dec-digit):
-        version := string-since start
+        version := string-since mark
         parts := version.split "."
         major := int.parse parts[0]
         minor := int.parse parts[1]
@@ -864,9 +921,9 @@ class Parser_:
 
   ns-plain-one-line c -> string?:
     with-rollback:
-      start := offset_
+      mark := mark
       if ns-plain-first c and nb-ns-plain-in-line c:
-        return string-since start
+        return string-since mark
     return null
 
   ns-plain-multi-line n c -> string?:
@@ -893,9 +950,9 @@ class Parser_:
     return null
 
   nb-ns-plain-in-line c -> string:
-    start := offset_
+    mark := mark
     repeat: (repeat: match-chars S-WHITESPACE_) and ns-plain-char c
-    return string-since start
+    return string-since mark
 
   ns-plain-semi-safe ::= { C-MAPPING-KEY_, C-MAPPING-VALUE_, C-SEQUENCE-ENTRY_ }
   ns-plain-first c:
@@ -915,12 +972,7 @@ class Parser_:
     with-rollback:
       if match-char C-COMMENT_:
         //  [ lookbehind = ns-char ]
-        start := offset_
-        offset_ -= 2
-        while offset_ > 0 and not bytes_[offset_..start - 1].is-valid-string-content:
-          offset_--
-        is-ns-char := ns-char
-        offset_ = start
+        is-ns-char := lookbehind 2: ns-char != null
         if is-ns-char: return C-COMMENT_
 
     with-rollback:
@@ -961,17 +1013,17 @@ class Parser_:
     return null
 
   c-verbatim-tag -> string?:
-    start := offset_
+    mark := mark
     with-rollback:
       if match-string "!<" and (repeat --at-least-one: ns-uri-char) and match-char '>':
-        return string-since start
+        return string-since mark
     return null
 
   c-ns-shorthand-tag -> string?:
-    start := offset_
+    mark := mark
     with-rollback:
       if c-tag-handle and (repeat --at-least-one: ns-tag-char):
-        return string-since start
+        return string-since mark
     return null
 
   c-non-specific-tag -> string?:
@@ -986,10 +1038,10 @@ class Parser_:
     return null
 
   ns-anchor-name -> string?:
-    start := offset_
+    mark := mark
     with-rollback:
       if (repeat --at-least-one: ns-anchor-char):
-        return string-since start
+        return string-since mark
     return null
 
   c-l-plus-literal n -> string?:
@@ -1078,10 +1130,10 @@ class Parser_:
     with-rollback:
       empty-lines := repeat: l-empty n BLOCK-IN_
       if s-indent n:
-        start := offset_
+        mark := mark
         if (repeat --at-least-one: nb-char):
           prefix := string.from-runes (List empty-lines.size '\n')
-          return "$prefix$(string-since start)"
+          return "$prefix$(string-since mark)"
     return null
 
   b-nb-literal-next n -> string?:
@@ -1127,9 +1179,9 @@ class Parser_:
   s-nb-folded-text n -> string?:
     with-rollback:
       if s-indent n:
-        start := offset_
+        mark := mark
         if ns-char and (repeat: nb-char):
-          return string-since start
+          return string-since mark
     return null
 
   b-l-folded n c -> string?:
@@ -1152,9 +1204,9 @@ class Parser_:
   s-nb-spaced-text n -> string?:
     with-rollback:
       if s-indent n:
-        start := offset_
+        mark := mark
         if match-chars S-WHITESPACE_  and (repeat: nb-char):
-          return string-since start
+          return string-since mark
     return null
 
   b-l-spaced n -> string?:
@@ -1202,15 +1254,15 @@ class Parser_:
       if rest := s-single-next-line n:
         return "$first$(rest.join "")"
       else:
-        start := offset_
+        mark := mark
         repeat: match-chars S-WHITESPACE_
-        return "$first$(string-since start)"
+        return "$first$(string-since mark)"
     return null
 
   nb-single-one-line n c -> string:
-    start := offset_
+    mark := mark
     repeat: nb-single-char
-    return string-since start
+    return string-since mark
 
   nb-double-multi-line n c -> List?:
     with-rollback:
@@ -1218,9 +1270,9 @@ class Parser_:
       if rest := s-double-next-line n:
         return flatten-list_ [first,  rest]
       else:
-        start := offset_
+        mark := mark
         repeat: s-white
-        return [first, string-since start]
+        return [first, string-since mark]
     return null
 
   nb-double-one-line n c -> List:
@@ -1228,23 +1280,23 @@ class Parser_:
     return [ string.from-runes runes ]
 
   nb-ns-single-in-line -> string:
-    start := offset_
+    mark := mark
     repeat: (repeat: s-white) and ns-single-char
-    return string-since start
+    return string-since mark
 
 
   s-single-next-line n -> List?:
     with-rollback:
       if folded := s-flow-folded n:
         with-rollback:
-          start := offset_
+          start-mark := mark
           if first := ns-single-char:
             line := nb-ns-single-in-line
             rest/any := s-single-next-line n
             if not rest:
-              start = offset_
+              start-mark = mark
               repeat: s-white
-              rest = string-since start
+              rest = string-since start-mark
             return flatten-list_ [ folded, string.from-rune first, line, rest ]
         return [folded]
     return null
@@ -1269,9 +1321,9 @@ class Parser_:
             first := "$(string.from-runes (flatten-list_ [breaks, first-rune]))$line"
             rest/any := s-double-next-line n
             if not rest:
-              start := offset_
+              mark := mark
               repeat: s-white
-              rest = string-since start
+              rest = string-since mark
             return flatten-list_ [ first, rest ]
         return [string.from-runes breaks]
     return null
@@ -1398,10 +1450,11 @@ class Parser_:
 
   // Lexigraphical-like productions
   start-of-line -> bool:
-    return offset_ == 0 or bytes_[offset_ - 1] == B-LINE-FEED_ or bytes_[offset_ - 1] == B-CARRIAGE-RETURN_
+    return bof or
+           lookbehind 1: (match-chars B-LINE-TERMINATORS_) != null
 
   l-eof -> bool:
-    return offset_ == bytes_.size or forbidden-detected != null and offset_ >= forbidden-detected
+    return eof or forbidden-detected != null and (bytes-since-mark forbidden-detected) >= 0
 
   b-break-helper -> bool:
     if match-buffer #[B-CARRIAGE_RETURN_, B-LINE-FEED_]: return true
@@ -1419,9 +1472,12 @@ class Parser_:
     if can-read 2:
       if match-buffer #[0xFE, 0xFF] or
           match-buffer #[0xFF, 0xFE] or
-          bytes_[offset_] == 0 or
-          bytes_[offset_ + 1] == 0:
+          match-char 0:
         throw "UNSUPPORTED_BYTE_ORDER"
+      with-rollback:
+        match-any
+        if match-char 0:
+          throw "UNSUPPORTED_BYTE_ORDER"
     if can-read 3 and match-buffer #[0xEF, 0xBB, 0xBF]:
       return true
     return true
@@ -1450,19 +1506,19 @@ class Parser_:
         return rune
     return null
 
-  ns-dec-digit:
+  ns-dec-digit -> int?:
     return match-one: '0' <= it and it <= '9'
 
   ns-hex-digit:
     if ns-dec-digit: return true
     return match-range 'A' 'F' or match-range 'a' 'f'
 
-  ns-ascii-letter:
+  ns-ascii-letter -> int?:
     return match-range 'A' 'Z' or match-range 'a' 'z'
 
-  ns-word-char:
-    if ns-dec-digit: return true
-    if ns-ascii-letter: return true
+  ns-word-char -> int?:
+    if char := ns-dec-digit: return char
+    if char := ns-ascii-letter: return char
     return match-one: it == '-'
 
   ns-tag-char:
@@ -1478,13 +1534,14 @@ class Parser_:
       '[', ']'
   }
 
-  ns-uri-char:
-    if (match-char '%' and
-        ns-hex-digit and
-        ns-hex-digit): return true
-    if (ns-word-char or
-        match-chars ns-special-uri): return bytes_[offset_ - 1]
-    return false
+  ns-uri-char -> int?:
+    with-rollback:
+      if (match-char '%' and
+          ns-hex-digit and
+          ns-hex-digit): return '%'
+    if char := ns-word-char: return char
+    if char := match-chars ns-special-uri: return char
+    return null
 
   ns-anchor-char:
     with-rollback:
@@ -1512,23 +1569,3 @@ class Parser_:
         if 0x010000 <= rune and rune <= 0x10FFFF: return rune
     return null
 
-  utf-rune -> int?:
-    if can-read 1:
-      c := bytes_[offset_]
-      if c < 0xc0:
-        offset_++
-        return c
-
-      bytes := 2
-      if c >= 0xf0:
-        bytes = 4
-      else if c >= 0xe0:
-        bytes = 3
-
-      if can_read bytes:
-        buf/ByteArray := slice bytes
-        if buf.is-valid-string-content:
-          offset_ += bytes
-          return buf.to-string[0]
-
-    return null
