@@ -1,3 +1,5 @@
+import system
+
 import cli
 
 import .commands.install
@@ -93,17 +95,19 @@ main arguments/List:
 
       --options=[
           cli.Flag "auto-sync"
-              --short-help="automatically synchronize registries (default true)",
+              --short-help="Automatically synchronize registries (default true)",
 
-          cli.OptionString "project-root"
-              --short-help="specify the project root",
+          cli.Option OPTION-PROJECT-ROOT
+              --short-help="Specify the project root.",
 
-          cli.OptionString "sdk-version"
-              --short-help="specify the SDK version"
+          cli.Option OPTION-SDK-VERSION
+              --short-help="Specify the SDK version."
+              --default=system.vm-sdk-version
       ]
 
   pkg.run arguments
 
-error msg/string:
-  print msg
-  exit 1
+OPTION-SDK-VERSION ::= "sdk-version"
+OPTION-PROJECT-ROOT ::= "project-root"
+
+

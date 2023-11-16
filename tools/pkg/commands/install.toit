@@ -1,6 +1,9 @@
 import cli
 
-import ..pkg
+import ..error
+import ..project
+import ..registry
+import host.file
 
 class InstallCommand:
   static PREFIX    ::= "prefix"
@@ -13,6 +16,8 @@ class InstallCommand:
   package/string?
   local/bool
   recompute/bool
+  project/Project
+
   constructor parsed/cli.Parsed:
     if parsed[PREFIX] and parsed[NAME]:
       error "Only one of 'name' and 'prefix' can be used"
@@ -28,21 +33,45 @@ class InstallCommand:
       error "Can not specify local without a package"
 
     if not package and prefix:
-      error "Can not specify a prefix without a package"
+      error "Can not specify a prefix without a package."
 
     if package and recompute:
-      error "Recompute can only be specified with no other arguments"
+      error "Recompute can only be specified with no other arguments."
+
+    project = project-from-cli parsed
 
   execute:
+    if not local:
+      execute-remote
+    else:
+      execute-local
 
+  execute-remote:
+    remote-package := registries.search package
+    if not prefix: prefix = remote-package.default-prefix
 
-    error "install: not yet implemeted"
+    if project.package-file.has-package prefix:
+      error "Project has already a package with name '$prefix'."
 
+    project.install-remote prefix remote-package
 
+  execute-local:
+    package-file-name := "$package/package.yaml"
+    src-directory := "$package/src"
+    if not file.is-file package-file-name:
+      error "Path supplied in package argument is an invalid local package, missing $package-file-name."
+
+    if not file.is-directory src-directory:
+      error "Path supplied in package argument is an invalid local package, missing $src-directory."
+
+    package-file := PackageFile.load package-file-name
+    if not prefix: prefix = package-file.name
+
+    project.install-local prefix package
 
   static CLI-COMMAND ::=
       cli.Command "install"
-          --short-help="Installs a package in the current project, or downloads all dependencies"
+          --short-help="Installs a package in the current project, or downloads all dependencies."
           --long-help="""
                       If no 'package' is given, then the command downloads all dependencies.
                         If necessary, updates the lock-file. This can happen if the lock file doesn't exist
@@ -121,14 +150,14 @@ class InstallCommand:
           ]
           --options=[
               cli.Flag LOCAL
-                  --short-help="Treat package argument as local path"
+                  --short-help="Treat package argument as local path."
                   --default=false,
-              cli.OptionString NAME
-                  --short-help="The name used for the 'import' clause. Deprecated: use '--prefix' instead",
-              cli.OptionString PREFIX
-                  --short-help="The prefix used for the 'import' clause",
+              cli.Option NAME
+                  --short-help="The name used for the 'import' clause. Deprecated: use '--prefix' instead.",
+              cli.Option PREFIX
+                  --short-help="The prefix used for the 'import' clause.",
               cli.Flag RECOMPUTE
-                  --short-help="Recompute dependencies"
+                  --short-help="Recompute dependencies."
                   --default=false
           ]
           --run=:: (InstallCommand it).execute
