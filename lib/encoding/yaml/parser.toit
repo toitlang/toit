@@ -185,6 +185,9 @@ abstract class PegParserBase_:
     offset_ = start
     return behind-result
 
+  // Returns the current position in the input buffer
+  current-position -> int: return offset_
+
   eof -> bool: return offset_ >= bytes_.size
   bof -> bool: return offset_ == 0
 

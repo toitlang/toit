@@ -24,14 +24,14 @@ class PackageFile:
       file.write_content --path=path
           yaml.encode content
 
-  dependecies -> Map:
+  dependencies -> Map:
     return content.get DEPENDENCIES-KEY_ --if-absent=: error "Corrupt package.yml file"
 
   name -> string:
     return content.get NAME-KEY_ --if-absent=: error "Missing 'name' in $path."
 
   has-package package-name/string:
-    return dependecies.contains package-name
+    return dependencies.contains package-name
 
   static DEPENDENCIES-KEY_ ::= "dependencies:"
   static NAME-KEY_ ::= "name:"
