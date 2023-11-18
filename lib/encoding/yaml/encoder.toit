@@ -1,111 +1,14 @@
 // Copyright (C) 2023 Toitware ApS. All rights reserved.
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
-
-import bitmap
-import binary show LITTLE-ENDIAN
+import ..json-like-encoder_
 import .yaml
-
-INITIAL-BUFFER-SIZE_ ::= 64
-
-abstract class EncoderBase_ extends Buffer_:
-  encode obj/any [converter]:
-    if obj is string: encode-string_ obj
-    else if obj is num: encode-number_ obj
-    else if identical obj true: encode-true_
-    else if identical obj false: encode-false_
-    else if identical obj null: encode-null_
-    else if obj is Map: encode-map_ obj converter
-    else if obj is List: encode-list_ obj converter
-    else:
-      result := converter.call obj this
-      if result != null: encode result converter
-
-  encode obj/any converter/Lambda:
-    encode obj: converter.call obj this
-
-  encode obj/any:
-    encode obj: throw "INVALID_JSON_OBJECT"
-
-  abstract encode-string_ str
-  abstract encode-number_ number
-  abstract encode-true_
-  abstract encode-false_
-  abstract encode-null_
-  abstract encode-map_ map [converter]
-  abstract encode-list_ list [converter]
-
-  /**
-  Outputs a list-like thing to the serialized stream.
-  This can be used by converter blocks.
-  The generator is called repeatedly with indices from 0 to size - 1.
-  */
-  abstract put-list size/int [generator] [converter]
-
-  put-unicode-escape_ code-point/int:
-    put-byte_ 'u'
-    put-byte_
-      to-lower-case-hex (code-point >> 12) & 0xf
-    put-byte_
-      to-lower-case-hex (code-point >> 8) & 0xf
-    put-byte_
-      to-lower-case-hex (code-point >> 4) & 0xf
-    put-byte_
-      to-lower-case-hex code-point & 0xf
-
-
-class Buffer_:
-  buffer_ := ByteArray INITIAL-BUFFER-SIZE_
-  offset_ := 0
-
-  to-string:
-    return buffer_.to-string 0 offset_
-
-  to-byte-array:
-    return buffer_.copy 0 offset_
-
-  ensure_ size -> none:
-    if offset_ + size <= buffer_.size: return
-    new-size := buffer_.size * 2
-    while new-size < offset_ + size:
-      new-size *= 2
-    new := ByteArray new-size
-    new.replace 0 buffer_
-    buffer_ = new
-
-  /**
-  Outputs a string or ByteArray directly to the JSON stream.
-  No quoting, no escaping.  This is mainly used for things
-    that will be parsed as numbers or strings by the receiver.
-  */
-  put-unquoted data -> none:
-    len := data.size
-    ensure_ len
-    buffer_.replace offset_ data
-    offset_ += len
-
-  put-string_ str from to:
-    len := to - from
-    ensure_ len
-    buffer_.replace offset_ str from to
-    offset_ += len
-
-  put-byte_ byte:
-    ensure_ 1
-    buffer_[offset_++] = byte
-
-  peek-last-byte_:
-    if offset_ > 0: return buffer_[offset_ - 1]
-    return null
-
-  clear_:
-    offset_ = 0
 
 class YamlEncoder extends EncoderBase_:
   current-line-start-offset_/int := 0
   indent_/int := 0
   enclosed_in_map_ := false
-  indent_buffer_/string := "      " // A buffer of spaces, extends as nescessary
+  indent_buffer_/string := "      " // A buffer of spaces, extends as nescessary.
 
   /** See $EncoderBase_.encode */
   encode obj/any converter/Lambda:
@@ -120,17 +23,21 @@ class YamlEncoder extends EncoderBase_:
     put-unquoted val
 
   encode-string_ str/string:
-    // To determine if the str needs to be double quoted, we try to parse it, and if that works
-    // then it is safe to not double qoute it. Also double quotes all multi-line strings
-    should_quote := (catch: if not (parse str) is string: throw "ERROR") or
+    // To determine if the str needs to be double quoted, we try to parse it, and if it comes back as a string,
+    // then the string can be written in yaml as an unquoted string, i.e "foo" and "bar" does not need to be quoted,
+    // but "[a" and "{a" does.
+    // Multuline strings will also be quoted even though not strictly nescessay in all cases, but will be done
+    // for simplicity.
+    should_quote := not (parse --on-error=(: null) str) is string or
                     str.contains "\n" or
                     str.contains "\r"
 
     escaped := escape-string str
 
     if enclosed_in_map_: put-byte_ ' '
+
     if should_quote: put-byte_ '"'
-    put-unquoted (escape-string str)
+    put-unquoted escaped
     if should_quote: put-byte_ '"'
 
   encode-number_ number:
@@ -144,7 +51,7 @@ class YamlEncoder extends EncoderBase_:
     put-value_ "false"
 
   encode-null_:
-    //put-unquoted "null"
+    // In yaml, a null value is written as an empty string.
 
   close_element_:
     if peek-last-byte_ != '\n':
@@ -154,9 +61,9 @@ class YamlEncoder extends EncoderBase_:
   put-indent_:
     if indent_buffer_.size < indent_:
       indent_buffer_ = indent_buffer_ * (indent_ / indent_buffer_.size + 1)
-    put-unquoted indent_buffer_[0..indent_]
+    put-unquoted indent_buffer_[..indent_]
 
-  encode-sub-value_ value is-map new-indent [converter]:
+  encode-sub-value_ value --is-map/bool=false new-indent/int [converter]:
     old_indent := indent_
     old_enclosed_in_map := enclosed_in_map_
     indent_ = new-indent
@@ -165,24 +72,25 @@ class YamlEncoder extends EncoderBase_:
     indent_ = old_indent
     enclosed_in_map_ = old_enclosed_in_map
 
-  encode-map_ map [converter]:
-    if map.size == 0: put-value_ "{}"
-    else:
-      do_indent := false
-      if enclosed_in_map_:
-        put-byte_ '\n'
-        do_indent = true
-      map.do: |key value|
-        if key is not string:
-          throw "INVALID_YAML_OBJECT"
-        if do_indent: put-indent_
-        do_indent= true
-        encode-sub-value_ key false indent_ converter
-        put-byte_ ':'
-        encode-sub-value_ value true indent_ + 2 converter
-        close_element_
+  encode-map_ map/Map [converter]:
+    if map.size == 0:
+      put-value_ "{}"
+      return
+    do_indent := false
+    if enclosed_in_map_:
+      put-byte_ '\n'
+      do_indent = true
+    map.do: |key value|
+      if key is not string:
+        throw "INVALID_YAML_OBJECT"
+      if do_indent: put-indent_
+      do_indent= true
+      encode-sub-value_ key indent_ converter
+      put-byte_ ':'
+      encode-sub-value_ value --is-map indent_ + 2 converter
+      close_element_
 
-  encode-list_ list [converter]:
+  encode-list_ list/List [converter]:
     put-list list.size (: list[it]) converter
 
   /**
@@ -191,83 +99,19 @@ class YamlEncoder extends EncoderBase_:
   The generator is called repeatedly with indices from 0 to size - 1.
   */
   put-list size/int [generator] [converter]:
-    if size == 0: put-value_ "[]"
-    else:
-      if enclosed_in_map_:
-        put-byte_ '\n'
-        put-indent_
-      for i := 0; i < size; i++:
-        if i != 0: put-indent_
-        put-byte_ '-'
-        put-byte_ ' '
-        encode-sub-value_
-            generator.call i
-            false
-            offset_ - current-line-start-offset_
-            converter
-        close_element_
+    if size == 0:
+      put-value_ "[]"
+      return
 
-
-
-ESCAPED-CHAR-MAP_ ::= create-escaped-char-map_
-ONE-CHAR-ESCAPES_ ::= {
-    '\b': 'b',
-    '\f': 'f',
-    '\n': 'n',
-    '\r': 'r',
-    '\t': 't',
-    '"':  '"',
-    '\\': '\\'
-}
-
-// A non-zero for every UTF-8 code unit that needs escaping, and a '0' for
-// every code unit that doesn't need escaping.  The number indicates how
-// many extra bytes the escaped version has.
-create-escaped-char-map_ -> ByteArray:
-  // Most control characters (0-31) are output in the form \u00.. which takes 6
-  // characters (5 extra).
-  result := ByteArray 0x100: it < ' ' ? 5 : 0
-  ONE-CHAR-ESCAPES_.do: | code escape | result[code] = 1
-  return result
-
-/**
-Returns a string or a byte array that has been escaped for use in JSON/YAML.
-This means that control characters, double quotes and backslashes have
-  been replaced by backslash sequences.
-*/
-escape-string str/string -> any:
-  if str == "" or str.size == 1 and ESCAPED-CHAR-MAP_[str[0]] == 0: return str
-  counter := ByteArray 2
-  bitmap.blit str counter str.size
-      --destination-pixel-stride=0
-      --lookup-table=ESCAPED-CHAR-MAP_
-      --operation=bitmap.ADD-16-LE
-  extra-chars := LITTLE-ENDIAN.uint16 counter 0
-  if extra-chars == 0: return str  // Nothing to escape.
-  if extra-chars == 0xffff:
-    // Overflow of the saturating counter :-(.  We must count manually.
-    extra-chars = 0
-    str.size.repeat: extra-chars += ESCAPED-CHAR-MAP_[str.at --raw it]
-  result := ByteArray str.size + extra-chars
-  output-posn := 0
-  not-yet-copied := 0
-  str.size.repeat: | i |
-    byte := str.at --raw i
-    if ESCAPED-CHAR-MAP_[byte] != 0:
-      result.replace output-posn str not-yet-copied i
-      output-posn += i - not-yet-copied
-      not-yet-copied = i + 1
-      result[output-posn++] = '\\'
-      if ONE-CHAR-ESCAPES_.contains byte:
-        result[output-posn++] = ONE-CHAR-ESCAPES_[byte]
-      else:
-        result[output-posn    ] = 'u'
-        result[output-posn + 1] = '0'
-        result[output-posn + 2] = '0'
-        result[output-posn + 3] = to-lower-case-hex byte >> 4
-        result[output-posn + 4] = to-lower-case-hex byte & 0xf
-        output-posn += 5
-  result.replace output-posn str not-yet-copied str.size
-  return result
-
-
+    if enclosed_in_map_:
+      put-byte_ '\n'
+      put-indent_
+    for i := 0; i < size; i++:
+      if i != 0: put-indent_
+      put-byte_ '-'
+      put-byte_ ' '
+      encode-sub-value_
+          generator.call i
+          offset_ - current-line-start-offset_
+          converter
+      close_element_
