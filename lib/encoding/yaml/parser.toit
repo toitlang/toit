@@ -2,8 +2,12 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-// This parser follows the grammar of the YAML 1.2.2 draft.
-// The grammar is almost a PEG grammar (except for one lookbehind).
+/**
+A YAML parser.
+
+Follows the grammar of the YAML 1.2.2 draft: https://yaml.org/spec/1.2.2/
+The grammar is almost a PEG grammar (except for one lookbehind).
+*/
 
 B-LINE-FEED_        ::= '\n'
 B-CARRIAGE_RETURN_  ::= '\r'
@@ -58,7 +62,7 @@ flatten-list_ list/List -> List:
     else: result.add it
   return result
 
-empty-node_ ::= ValueNode_ null
+EMPTY-NODE_ ::= ValueNode_ null
 
 one-element-queue_ elm -> Deque:
   q := Deque
@@ -70,6 +74,11 @@ keys-as-set_ map/Map -> Set:
    map.do --keys: set.add it
    return set
 
+STANDARD_STR_TAG_   ::= "!!str"
+STANDARD_FLOAT_TAG_ ::= "!!float"
+STANDARD_MAP_TAG_   ::= "!!map"
+STANDARD_SEQ_TAG_  ::= "!!seq"
+STANDARD_INT_TAG_   ::= "!!int"
 class ValueNode_:
   tag/string? := null
   value/any
@@ -82,13 +91,12 @@ class ValueNode_:
   // Either use the supplied tag to construct a toit object representing the value or use
   // the core schema tag resolution
   resolve -> any:
+    if tag and tag == STANDARD_STR_TAG_ and value is string: return value
     model-value := canonical-value
     if tag:
-      if tag == "!!str" and value is string:
-        return value
-      if tag == "!!float" and model-value is int:
+      if tag == STANDARD_FLOAT_TAG_ and model-value is int:
         return model-value.to-float
-
+      // All other tags and conditions are intentionally ignored.
     return model-value
 
   static NULL     ::= { "null", "NULL", "Null", "~" }
@@ -98,17 +106,17 @@ class ValueNode_:
   static NAN      ::= { ".nan", ".Nan", ".NAN" }
 
   canonical-value -> any:
-    if this == empty-node_: return null
+    if this == EMPTY-NODE_: return null
 
     if value is string:
       if NULL.contains value: return null
       if TRUE.contains value: return true
       if FALSE.contains value: return false
 
-      catch:
-        return int.parse value
+      if as-int := int.parse value --on-error=(: null): return as-int
 
       catch:
+        // TODO(florian): Fix when float.parse takes an --on-error argument
         return float.parse value
 
       if INFINITY.contains value or
@@ -120,30 +128,46 @@ class ValueNode_:
 
       if NAN.contains value: return float.NAN
 
-      catch:
-        if value.starts-with "0x":
-          return int.parse --radix=16 value[2..]
+      if value.starts-with "0x":
+        if as-int := int.parse --radix=16 value[2..] --on-error=(: null):
+          return as-int
 
-      catch:
-        if value.starts-with "0o":
-          return int.parse --radix=8 value[2..]
+      if value.starts-with "0o":
+        if as-int := int.parse --radix=8 value[2..] --on-error=(: null):
+          return as-int
 
     if value is List:
       return value.map: | node/ValueNode_ | node.resolve
 
     if value is Map:
-      map := Map
+      map := {:}
       value.do:| key/ValueNode_  value/ValueNode_| map[key.resolve] = value.resolve
       return map
 
     return value
 
+  is-valid-key -> string?:
+    if value == null:
+      return "NULL_KEYS_UNSUPPORTED"
+    if value is List:
+      return "LIST_KEYS_UNSUPPORTED"
+    if value is Map:
+      return "MAP_KEYS_UNSUPPORTED"
+    return null
+
+  // As a potential key is checked against 'is-valid-key' above this hash-code
+  // should always succeed.
   hash-code:
     return value.hash-code
 
-  stringify: return "VN: $value.stringify"
 
-// A base for peg parsers
+/** Holds infomration about the properties applye to a node. */
+class NodeProperty_:
+ tag/string?
+ anchor/string?
+ constructor .tag .anchor:
+
+/** A base class for PEG parsers. */
 abstract class PegParserBase_:
   bytes_/ByteArray
   offset_/int := 0
@@ -160,35 +184,57 @@ abstract class PegParserBase_:
   at-mark mark -> bool:
     return offset_ == mark
 
-  with-rollback [block] -> none:
-    mark := mark
+  /**
+  Runs the given $block and rolls back if the returned value is null.
+  If the block uses a non-local return, then this function does *not* roll back.
+  Example usage:
+    try-parse:
+      if production-one-result := production-one:
+        if production-two-result := production-two:
+          return true
+    If any of the two production returns false/null then a roll back is issues,
+    otherwise no roll back is issues as we sucessfully parsed the two concatenated productions.
+
+    Use this for concatenated productions separated by |.
+  */
+  try-parse [block] -> none:
+    rollback-mark := mark
     block.call
-    rollback mark
+    rollback rollback-mark
 
+  /**
+  Evaluated the %block and rolls back. The $block can return any value,
+    and the method will return a boolified version of the return value.
+    null and false are considered false values, everything else will be true
+  */
   lookahead [block] -> bool:
-    result := false
-    with-rollback: result = block.call
-    return not (not result)
+    result/any := false
+    try-parse: result = block.call
+    return not (not result) // Boolify the result.
 
-  // Evaluate block on a the previous input
-  lookbehind glyphs [block] -> bool:
-    start := offset_
-    glyph-start := start
-    glyphs.repeat:
-      if offset_ == 0: return false
-      offset_ -= 1
-      while offset_ > 0 and not bytes_[offset_..glyph-start].is-valid-string-content:
+  /**
+  Evaluates the given $block starting $rune-count amount of runes behind the current offset.
+  */
+  lookbehind rune-count [block] -> bool:
+    old-offset := offset_
+    try:
+      rune-count.repeat:
+        if offset_ == 0:
+          return false
         offset_--
-      glyph-start = offset_
-
-    behind-result := block.call
-    offset_ = start
-    return behind-result
+        // Skip to the first byte of Unicode surrogates.
+        // Byte 2, 3, and 4 all start with bits 10.
+        // Since the input is a valid string we only need to check for offset_ > 0.
+        while offset_ > 0 and (bytes_[offset_] & 0b1100_0000) == 0b1000_0000: offset_--
+      behind-result := block.call
+      return behind-result
+    finally:
+      offset_ = old-offset
 
   eof -> bool: return offset_ >= bytes_.size
   bof -> bool: return offset_ == 0
 
-  utf-rune -> int?:
+  consume-rune -> int?:
     if can-read 1:
       c := bytes_[offset_]
       if c < 0xc0:
@@ -202,25 +248,36 @@ abstract class PegParserBase_:
         bytes = 3
 
       if can_read bytes:
-        buf/ByteArray := slice bytes
+         // TODO(florian): Add a static function to string to return a rune at a given position in a ByteArray
+        buf/ByteArray := peek-slice bytes
         if buf.is-valid-string-content:
           offset_ += bytes
           return buf.to-string[0]
 
     return null
 
-  slice n -> ByteArray:
+  peek-slice n/int -> ByteArray:
     return bytes_[offset_..offset_ + n]
 
   string-since mark -> string:
-    return bytes_[mark .. offset_].to_string
+    return bytes_[mark..offset_].to_string
 
-  // Will be negative if the mark is in the 'future'
+   /**
+    Returns the amount of bytes since the given $mark.
+    Returns a negitave value if the mark is in the 'future'.
+    */
   bytes-since-mark mark -> int:
     return offset_ - mark
 
+   /**
+    Continues calling $block aslong as $block return a truthful value.
+    If $at-least-one and no invoceation of $block was truthful, then return null,
+    otherwise returns a list of the results of each invocation of $block.
+
+    Use this for *- and +-productions.
+    */
   repeat --at-least-one/bool=false [block] -> List?:
-    with-rollback:
+    try-parse:
       result := []
       while true:
         mark := mark
@@ -228,16 +285,23 @@ abstract class PegParserBase_:
         if not res:
           rollback mark
           break
-        if at-mark mark: break // No progess, so matched empty. This should terminate the loop
+        if at-mark mark: break // No progress, so matched empty. This should terminate the loop.
         result.add res
       if not at-least-one or not result.is-empty: return result
     return null
 
+   /**
+    Calls $block and returns its value if it is truthful, consuming the input.
+    If $block returns null or false, roll back and return either null if $or-null or
+    the EMPTY-NODE_
+
+    Use this for ?-productions.
+    */
   optional --or-null/bool=false [block] -> any:
-    with-rollback:
+    try-parse:
       if res := block.call: return res
 
-    return or-null?null:empty-node_
+    return or-null ? null : EMPTY-NODE_
 
   can-read num/int -> bool:
     return offset_ + num <= bytes_.size
@@ -245,7 +309,7 @@ abstract class PegParserBase_:
   match-one [block] -> int?:
     if can-read 1:
       if (block.call bytes_[offset_]):
-        offset_ += 1
+        offset_++
         return bytes_[offset_ - 1]
     return null
 
@@ -257,7 +321,7 @@ abstract class PegParserBase_:
     return false
 
   match-any:
-    offset_ += 1
+    offset_++
 
   match-char byte/int -> int?:
     return match-one: it == byte
@@ -266,29 +330,46 @@ abstract class PegParserBase_:
     return match-one: chars.contains it
 
   match-range from/int to/int -> int?:
-    return match-one: from <= it and it <= to
+    return match-one: from <= it <= to
 
   match-buffer buf/ByteArray -> bool:
-    return match-many buf.size: (slice buf.size) == buf
+    return match-many buf.size: (peek-slice buf.size) == buf
 
   match-string str/string -> bool:
     return match-buffer str.to-byte-array
 
 
-class Parser_ extends PegParserBase_:
-  named-nodes := {:}
-  forbidden-detected/int? := null
+// Used to signal a successfull parse. Useful when on-error return should return an alternative value
+class ParseResult_:
+  documents/List
+  constructor .documents:
 
-  constructor bytes:
+
+class Parser_ extends PegParserBase_:
+  named-nodes ::= {:}
+  /**
+  Mark (as in position) for the forbidden directive marks ('---' and '...').
+  This mark is frequently in the "future".
+  */
+  forbidden-mark/int? := null
+  error/string? := null
+
+  constructor bytes/ByteArray:
     super bytes
 
+  set-error error/string:
+    if not this.error: this.error = error
+
   can-read num/int -> bool:
-    return super num
-           and (not forbidden-detected or
-                -(bytes-since-mark forbidden-detected) >= num)
+    super-result := super num
+    if not super-result: return false
+    if not forbidden-mark: return true
+    // bytes-since-mark returns a negative value if the mark is in the future.
+    forbidden-distance := -(bytes-since-mark forbidden-mark)
+    return forbidden-distance >= num
 
   match-hex digits/int -> int?:
-    with-rollback:
+    try-parse:
       start := mark
       failed := false
       while digits-- > 0:
@@ -298,22 +379,23 @@ class Parser_ extends PegParserBase_:
       if not failed: return int.parse --radix=16 (string-since start)
     return null
 
-  apply-props props value/ValueNode_ -> ValueNode_:
-    tag/string? := null
+  apply-props props/NodeProperty_? value/ValueNode_ -> ValueNode_:
     if props:
-      tag = props[0]
-      anchor := props[1]
-      if anchor: named-nodes[anchor] = value
-    value.tag = tag
+      if props.anchor: named-nodes[props.anchor] = value
+    value.tag = props and props.tag
     return value
 
+  /**
+  Finds the forbidden "---" and "..." that separate the documents from directives.
+  Updates the $forbidden-mark mark if it finds one.
+  */
   detect-forbidden:
-    if forbidden-detected: return
+    if forbidden-mark: return
     mark := mark
     if start-of-line and
        (c-directives-end or c-document-end) and
        (match-chars B-LINE-TERMINATORS_ or s-white or l-eof):
-      forbidden-detected = mark
+      forbidden-mark = mark
     rollback mark
 
   find-leading-spaces-on-first-non-empty-line -> int:
@@ -327,23 +409,35 @@ class Parser_ extends PegParserBase_:
       break
     result := bytes-since-mark start-of-line
     rollback start-mark
-
     return result
 
   // Overall structure
-  l-yaml-stream -> List:
+  l-yaml-stream [--on-error] -> any:
     k := repeat: l-document-prefix
     documents := []
     if document := l-any-document: documents.add document
 
+    // Modifies the documents list with any additional documents.
     repeat: l-yaml-stream-helper documents
 
     if not l-eof:
-      throw "INVALID_YAML_DOCUMENT"
-    return documents.map: | node/ValueNode_ | node.resolve
+      set-error "INVALID_YAML_DOCUMENT"
 
+    parsed-value := documents.map: | node/ValueNode_ | node.resolve
+
+    if error:
+      return on-error.call error
+
+    return ParseResult_ parsed-value
+
+  /**
+  Parses the remaining documents and comments from the stream.
+  Modifies $documents.
+  Note: This is mostly separated out from the l-yaml-stream to allow for returns
+  */
   l-yaml-stream-helper documents/List -> bool:
-    with-rollback:
+    named-nodes.clear
+    try-parse:
       if (repeat --at-least-one: l-document-suffix):
         repeat: l-document-prefix
         if document := l-any-document: documents.add document
@@ -358,34 +452,31 @@ class Parser_ extends PegParserBase_:
     return false
 
   l-any-document -> ValueNode_?:
-    with-rollback:
+    try-parse:
       if document := l-directive-document: return document
       if document := l-explicit-document: return document
       if document := l-bare-document: return document
     return null
 
   l-directive-document -> ValueNode_?:
-    with-rollback:
-      repeat --at-least-one: l-directive
-      if res := l-explicit-document:
-        return res
-
+    try-parse:
+      if (repeat --at-least-one: l-directive):
+        if res := l-explicit-document:
+          return res
     return null
 
   l-explicit-document -> ValueNode_?:
-    with-rollback:
+    try-parse:
       if c-directives-end:
         if res := l-bare-document: return res
-        if s-l-comments: empty-node_
+        if s-l-comments: EMPTY-NODE_
     return null
 
   l-bare-document -> ValueNode_?:
-    with-rollback:
-      if res := s-l-plus-block-node -1 BLOCK-IN_: return res
-    return null
+    return s-l-plus-block-node -1 BLOCK-IN_
 
   l-document-prefix -> bool:
-    c-byte-order-mark
+    optional: c-byte-order-mark
     repeat: l-comment
     return true
 
@@ -395,10 +486,10 @@ class Parser_ extends PegParserBase_:
     return true
 
   allow-forbidden-read [block]:
-    old-forbidden-detected := forbidden-detected
-    forbidden-detected = null
+    old-forbidden-detected := forbidden-mark
+    forbidden-mark = null
     block.call
-    forbidden-detected = old-forbidden-detected
+    forbidden-mark = old-forbidden-detected
 
   c-document-end -> bool:
     allow-forbidden-read:
@@ -412,7 +503,7 @@ class Parser_ extends PegParserBase_:
 
   // Directives
   l-directive -> bool:
-    with-rollback:
+    try-parse:
       if match-char C-DIRECTIVE_ and
          (ns-yaml-directive or
           ns-tag-directive or
@@ -422,7 +513,7 @@ class Parser_ extends PegParserBase_:
     return false
 
   ns-yaml-directive -> bool:
-    with-rollback:
+    try-parse:
       if match-string "YAML" and
          s-separate-in-line and
          ns-yaml-version:
@@ -431,7 +522,7 @@ class Parser_ extends PegParserBase_:
 
   ns-yaml-version -> bool:
     mark := mark
-    with-rollback:
+    try-parse:
       if (repeat --at-least-one: ns-dec-digit) and
           match-char '.' and
          (repeat --at-least-one: ns-dec-digit):
@@ -439,12 +530,14 @@ class Parser_ extends PegParserBase_:
         parts := version.split "."
         major := int.parse parts[0]
         minor := int.parse parts[1]
-        if major > 1 or minor > 2: throw "UNSUPPORTED_YAML_VERSION"
+        if major > 1 or minor > 2:
+          set-error "UNSUPPORTED_YAML_VERSION"
+          return false
         return true
     return false
 
   ns-tag-directive -> bool:
-    with-rollback:
+    try-parse:
       if match-string "TAG" and
          s-separate-in-line and
          c-tag-handle and
@@ -454,7 +547,7 @@ class Parser_ extends PegParserBase_:
     return false
 
   c-tag-handle -> bool:
-    with-rollback:
+    try-parse:
       if c-named-tag-handle or
           match-string "!!"  or
           match-char C-TAG_:
@@ -462,7 +555,7 @@ class Parser_ extends PegParserBase_:
     return false
 
   c-named-tag-handle -> bool:
-    with-rollback:
+    try-parse:
       if  match-char C-TAG_ and
          (repeat --at-least-one : ns-word-char) and
           match-char C-TAG_:
@@ -476,21 +569,21 @@ class Parser_ extends PegParserBase_:
     return false
 
   c-ns-local-tag-prefix -> bool:
-    with-rollback:
+    try-parse:
       if match-char C-TAG_ and
          (repeat: ns-uri-char):
         return true
     return false
 
   ns-global-tag-prefix -> bool:
-    with-rollback:
+    try-parse:
       if ns-tag-char and
          (repeat: ns-uri-char):
         return true
     return false
 
   ns-reserved-directive -> bool:
-    with-rollback:
+    try-parse:
       if ns-directive-name
          and (repeat: s-separate-in-line and ns-directive-parameter):
         return true
@@ -504,27 +597,27 @@ class Parser_ extends PegParserBase_:
 
   // comments
   l-comment -> bool:
-    with-rollback:
+    try-parse:
       if s-separate-in-line:
         c-nb-comment-text
         if b-comment: return true
     return false
 
   s-l-comments -> bool:
-    with-rollback:
+    try-parse:
       if s-b-comment or start-of-line:
         repeat: l-comment
         return true
     return false
 
   s-b-comment -> bool:
-    with-rollback:
+    try-parse:
       optional: if s-separate-in-line: (optional: c-nb-comment-text)
       if b-comment: return true
     return false
 
   s-separate-in-line -> bool:
-    with-rollback:
+    try-parse:
       if (repeat --at-least-one: s-white): return true
       if start-of-line: return true
     return false
@@ -536,50 +629,47 @@ class Parser_ extends PegParserBase_:
     return false
 
   b-comment -> bool:
-    with-rollback:
-      if b-non-content: return true
-    return l-eof
+    return b-non-content or l-eof
 
   b-non-content -> bool:
     return b-break
 
-  l-trail-comments n -> bool:
-    with-rollback:
-      if (s-indent-less-than n and
-          c-nb-comment-text and
-          b-comment and
-          (repeat: l-comment)): return true
+  l-trail-comments n/int -> bool:
+    try-parse:
+      if s-indent-less-than n and
+         c-nb-comment-text and
+         b-comment and
+         (repeat: l-comment):
+        return true
     return false
 
   // Data part
-  s-l-plus-block-node n c -> ValueNode_?:
-    if node := s-l-plus-block-in-block n c: return node
-    if node := s-l-plus-flow-in-block n: return node
-    return null
+  s-l-plus-block-node n/int c/int -> ValueNode_?:
+    return s-l-plus-block-in-block n c
+        or s-l-plus-flow-in-block n
 
-  s-l-plus-block-in-block n c -> ValueNode_?:
-    if node := s-l-plus-block-scalar n c: return node
-    if node := s-l-plus-block-collection n c: return node
-    return null
+  s-l-plus-block-in-block n/int c/int -> ValueNode_?:
+    return s-l-plus-block-scalar n c
+        or s-l-plus-block-collection n c
 
-  s-l-plus-flow-in-block n -> ValueNode_?:
-    with-rollback:
+  s-l-plus-flow-in-block n/int -> ValueNode_?:
+    try-parse:
       if s-separate n + 1 FLOW-OUT_:
         if node := ns-flow-node n + 1 FLOW-OUT_:
           if s-l-comments:
             return node
     return null
 
-  s-l-plus-block-collection n c -> ValueNode_?:
-    with-rollback:
+  s-l-plus-block-collection n/int c/int -> ValueNode_?:
+    try-parse:
       props := optional --or-null: if s-separate n + 1 c: c-ns-properties n + 1 c
       if s-l-comments:
         if node := seq-space n c: return apply-props props node
         if node := l-plus-block-mapping n c: return apply-props props node
     return null
 
-  s-l-plus-block-scalar n c -> ValueNode_?:
-    with-rollback:
+  s-l-plus-block-scalar n/int c/int -> ValueNode_?:
+    try-parse:
       if s-separate n + 1 c:
         props := optional --or-null: if p := c-ns-properties n + 1 c and s-separate n + 1 c: p
         node := c-l-plus-literal n
@@ -587,13 +677,13 @@ class Parser_ extends PegParserBase_:
         if node: return apply-props props (ValueNode_ node)
     return null
 
-  seq-space n c -> ValueNode_?:
+  seq-space n c/int -> ValueNode_?:
     if c == BLOCK-OUT_: return l-plus-block-sequence n - 1
     if c == BLOCK-IN_: return l-plus-block-sequence n
     return null
 
-  l-plus-block-sequence n -> ValueNode_?:
-    with-rollback:
+  l-plus-block-sequence n/int -> ValueNode_?:
+    try-parse:
       if m := s-indent n + 1 --auto-detect-m:
         if first := c-l-block-seq-entry n + 1 + m:
           rest := repeat:
@@ -605,8 +695,8 @@ class Parser_ extends PegParserBase_:
           return ValueNode_ (flatten-list_ [first, rest])
     return null
 
-  l-plus-block-mapping n c -> ValueNode_?:
-    with-rollback:
+  l-plus-block-mapping n/int c/int -> ValueNode_?:
+    try-parse:
       if m := s-indent n + 1 --auto-detect-m:
         if first := ns-l-block-map-entry n + 1 + m:
           rest := repeat:
@@ -618,28 +708,28 @@ class Parser_ extends PegParserBase_:
           return ValueNode_.map-from-collection (flatten-list_ [[first], rest])
     return null
 
-  c-l-block-seq-entry n -> ValueNode_?:
-    with-rollback:
+  c-l-block-seq-entry n/int -> ValueNode_?:
+    try-parse:
       if match-char C-SEQUENCE-ENTRY_:
         if (lookahead: not ns-char):
           if node := s-l-plus-block-indented n BLOCK-IN_:
             return node
     return null
 
-  s-l-plus-block-indented n c -> ValueNode_?:
-    with-rollback:
+  s-l-plus-block-indented n/int c/int -> ValueNode_?:
+    try-parse:
       if m := s-indent 0 --auto-detect-m:
         if node := ns-l-compact-sequence n + 1 + m: return node
         if node := ns-l-compact-mapping n + 1 + m: return node
 
     if res := s-l-plus-block-node n c: return res
 
-    if s-l-comments: return empty-node_
+    if s-l-comments: return EMPTY-NODE_
 
     return null
 
-  ns-l-compact-sequence n -> ValueNode_?:
-    with-rollback:
+  ns-l-compact-sequence n/int -> ValueNode_?:
+    try-parse:
       if first := c-l-block-seq-entry n:
         rest := repeat:
           entry := null
@@ -650,8 +740,8 @@ class Parser_ extends PegParserBase_:
         return ValueNode_ (flatten-list_ [first, rest])
     return null
 
-  ns-l-compact-mapping n -> ValueNode_?:
-    with-rollback:
+  ns-l-compact-mapping n/int -> ValueNode_?:
+    try-parse:
       if first := ns-l-block-map-entry n:
         rest := repeat:
           entry := null
@@ -662,37 +752,45 @@ class Parser_ extends PegParserBase_:
         return ValueNode_.map-from-collection (flatten-list_ [[first], rest])
     return null
 
-  ns-l-block-map-entry n -> List?:
+  ns-l-block-map-entry n/int -> List?:
     if entry := c-l-block-map-explicit-entry n: return entry
     if entry := ns-l-block-map-implicit-entry n: return entry
     return null
 
-  c-l-block-map-explicit-entry n -> List?:
-    with-rollback:
+  c-l-block-map-explicit-entry n/int -> List?:
+    try-parse:
       if key := c-l-block-map-explicit-key n:
+        if error_ := key.is-valid-key:
+          set-error error_
+          return null
         if val := l-block-map-explicit-value n:
           return [key, val]
         else:
           return [key, null]
     return null
 
-  c-l-block-map-explicit-key n -> ValueNode_?:
-    with-rollback:
+  c-l-block-map-explicit-key n/int -> ValueNode_?:
+    try-parse:
       if match-char C-MAPPING_KEY_:
-        if node := s-l-plus-block-indented n BLOCK-OUT_: return node
+        if node := s-l-plus-block-indented n BLOCK-OUT_:
+          return node
     return null
 
-  l-block-map-explicit-value n -> ValueNode_?:
-    with-rollback:
+  l-block-map-explicit-value n/int -> ValueNode_?:
+    try-parse:
       if s-indent n and match-char C-MAPPING-VALUE_:
         if node := s-l-plus-block-indented n BLOCK-OUT_: return node
     return null
 
-  ns-l-block-map-implicit-entry n -> List?:
-    with-rollback:
+  ns-l-block-map-implicit-entry n/int -> List?:
+    try-parse:
       key := ns-s-block-map-implicit-key
-      if not key: key = empty_node_
+      if not key: key = EMPTY-NODE_
       if val := c-l-block-map-implicit-value n:
+        if error_ := key.is-valid-key:
+          set-error error_
+          return null
+
         return [key, val]
     return null
 
@@ -701,75 +799,77 @@ class Parser_ extends PegParserBase_:
     if node := ns-s-implicit-yaml-key BLOCK-KEY_: return node
     return null
 
-  c-l-block-map-implicit-value n -> ValueNode_?:
-    with-rollback:
+  c-l-block-map-implicit-value n/int -> ValueNode_?:
+    try-parse:
       if match-char C-MAPPING-VALUE_:
         if node := s-l-plus-block-node n BLOCK-OUT_: return node
-        if s-l-comments: return empty_node_
+        if s-l-comments: return EMPTY-NODE_
     return null
 
-  c-s-implicit-json-key c -> ValueNode_?:
-    with-rollback:
+  c-s-implicit-json-key c/int -> ValueNode_?:
+    try-parse:
       if node := c-flow-json-node 0 c:
         s-separate-in-line
         return node
     return null
 
-  ns-flow-yaml-node n c -> ValueNode_?:
+  ns-flow-yaml-node n/int c/int -> ValueNode_?:
     if node := c-ns-alias-node: return node
     if node := ns-flow-yaml-content n c: return node
-    with-rollback:
+    try-parse:
       if props := c-ns-properties n c:
-        with-rollback:
+        try-parse:
           if s-separate n c:
             if node := ns-flow-yaml-content n c: return apply-props props node
-        return empty-node_
+        return EMPTY-NODE_
     return null
 
-  c-flow-json-node n c -> ValueNode_?:
-    with-rollback:
+  c-flow-json-node n/int c/int -> ValueNode_?:
+    try-parse:
       props := optional --or-null: if p := c-ns-properties n c: if s-separate n c: p
       if node := c-flow-json-content n c:
         return apply-props props node
     return null
 
-  ns-flow-node n c -> ValueNode_?:
+  ns-flow-node n/int c/int -> ValueNode_?:
     if node := c-ns-alias-node: return node
     if node := ns-flow-content n c: return node
-    with-rollback:
+    try-parse:
       if props := c-ns-properties n c:
-        with-rollback:
+        try-parse:
           if s-separate n c:
             if node := ns-flow-content n c: return apply-props props node
-        return empty-node_
+        return EMPTY-NODE_
     return null
 
   c-ns-alias-node -> ValueNode_?:
-    with-rollback:
+    try-parse:
       if match-char C-ALIAS_:
         if anchor := ns-anchor-name:
-          if not named-nodes.contains anchor: throw "UNRESOLVED_ALIAS"
+          if not named-nodes.contains anchor:
+            set-error "UNRESOLVED_ALIAS"
+            return null
           return named-nodes[anchor]
     return null
 
-  ns-flow-content n c -> ValueNode_?:
+  ns-flow-content n/int c/int -> ValueNode_?:
     if node := ns-flow-yaml-content n c: return node
     if node := c-flow-json-content n c: return node
     return null
 
-  c-flow-json-content n c -> ValueNode_?:
+  c-flow-json-content n/int c/int -> ValueNode_?:
     if node := c-flow-sequence n c: return node
     if node := c-flow-mapping n c: return node
     if node := c-single-quoted n c: return node
     if node := c-double-quoted n c: return node
     return null
 
-  ns-flow-yaml-content n c -> ValueNode_?:
+  ns-flow-yaml-content n/int c/int -> ValueNode_?:
     if content := ns-plain n c: return ValueNode_ content
     return null
 
-  c-flow-sequence n c -> ValueNode_?:
-    with-rollback:
+  c-flow-sequence n/int c/int -> ValueNode_?:
+    try-parse:
       if match-char C-SEQUENCE-START_:
         optional: s-separate n c
         res := in-flow n c
@@ -777,8 +877,8 @@ class Parser_ extends PegParserBase_:
           return ValueNode_ ( res ? List.from res : [] )
     return null
 
-  c-flow-mapping n c -> ValueNode_?:
-    with-rollback:
+  c-flow-mapping n/int c/int -> ValueNode_?:
+    try-parse:
       if match-char C-MAPPING-START_:
         optional: s-separate n c
         map-entries := in-flow-map n c // See https://github.com/yaml/yaml-spec/issues/299
@@ -786,19 +886,19 @@ class Parser_ extends PegParserBase_:
           return ValueNode_.map-from-collection ( map-entries ? map-entries : [])
     return null
 
-  in-flow n c -> Deque?:
+  in-flow n/int c/int -> Deque?:
     if c == FLOW-OUT_ or c == FLOW-IN_: return ns-s-flow-seq-entries n FLOW-IN_
     return ns-s-flow-seq-entries n FLOW-KEY_
 
-  in-flow-map n c -> Deque?:
+  in-flow-map n/int c/int -> Deque?:
     if c == FLOW-OUT_ or c == FLOW-IN_: return ns-s-flow-map-entries n FLOW-IN_
     return ns-s-flow-map-entries n FLOW-KEY_
 
-  flow-entries n c [--head] [--tail] -> Deque?:
-    with-rollback:
+  flow-entries n/int c/int [--head] [--tail] -> Deque?:
+    try-parse:
       if head-entry := head.call:
         s-separate n c
-        with-rollback:
+        try-parse:
           if match-char C-COLLECT-ENTRY_:
             s-separate n c
             if tail-entries := tail.call:
@@ -809,31 +909,31 @@ class Parser_ extends PegParserBase_:
     return null
 
 
-  ns-s-flow-seq-entries n c -> Deque?:
+  ns-s-flow-seq-entries n/int c/int -> Deque?:
     return flow-entries n c
       --head=: ns-flow-seq-entry n c
       --tail=: ns-s-flow-seq-entries n c
 
-  ns-s-flow-map-entries n c -> Deque?:
+  ns-s-flow-map-entries n/int c/int -> Deque?:
     return flow-entries n c
       --head=: ns-flow-map-entry n c
       --tail=: ns-s-flow-map-entries n c
 
-  ns-flow-seq-entry n c -> ValueNode_?:
+  ns-flow-seq-entry n/int c/int -> ValueNode_?:
     if pair := ns-flow-pair n c: return pair
     if node := ns-flow-node n c: return node
     return null
 
-  ns-flow-map-entry n c -> List?:
-    with-rollback:
+  ns-flow-map-entry n/int c/int -> List?:
+    try-parse:
       if match-char C-MAPPING-KEY_  and
          s-separate n c:
         if entry := ns-flow-map-explicit-entry n c: return entry
     if entry := ns-flow-map-implicit-entry n c: return entry
     return null
 
-  ns-flow-pair n c -> ValueNode_?:
-    with-rollback:
+  ns-flow-pair n/int c/int -> ValueNode_?:
+    try-parse:
       if match-char C-MAPPING-KEY_ and s-separate n c:
         if entry := ns-flow-map-explicit-entry n c:
           return ValueNode_.map-from-collection [entry]
@@ -841,169 +941,183 @@ class Parser_ extends PegParserBase_:
       return ValueNode_.map-from-collection [entry]
     return null
 
-  ns-flow-map-explicit-entry n c -> List?:
+  ns-flow-map-explicit-entry n/int c/int -> List?:
     if entry := ns-flow-map-implicit-entry n c: return entry
-    return [empty-node_, empty-node_]
+    return [EMPTY-NODE_, EMPTY-NODE_]
 
-  ns-flow-map-implicit-entry n c -> List?:
+  ns-flow-map-implicit-entry n/int c/int -> List?:
     if entry := ns-flow-map-yaml-key-entry n c: return entry
     if entry := c-ns-flow-map-empty-key-entry n c: return entry
     if entry := c-ns-flow-map-json-key-entry n c: return entry
     return null
 
-  ns-flow-pair-entry n c -> List?:
+  ns-flow-pair-entry n/int c/int -> List?:
     if entry := ns-flow-pair-yaml-key-entry n c: return entry
     if entry := c-ns-flow-map-empty-key-entry n c: return entry
     if entry := c-ns-flow-pair-json-key-entry n c: return entry
     return null
 
-  ns-flow-pair-yaml-key-entry n c -> List?:
-    with-rollback:
+  ns-flow-pair-yaml-key-entry n/int c/int -> List?:
+    try-parse:
       if key := ns-s-implicit-yaml-key FLOW-KEY_:
         if value := c-ns-flow-map-separate-value n c:
+          if error_ := key.is-valid-key:
+            set-error error_
+            return null
           return [key, value]
     return null
 
-  c-ns-flow-pair-json-key-entry n c -> List?:
-    with-rollback:
+  c-ns-flow-pair-json-key-entry n/int c/int -> List?:
+    try-parse:
       if key := c-s-implicit-json-key FLOW-KEY_:
         if value := c-ns-flow-map-adjacent-value n c:
+          if error_ := key.is-valid-key:
+            set-error error_
+            return null
           return [key, value]
     return null
 
-  c-ns-flow-map-json-key-entry n c -> List?:
-    with-rollback:
+  c-ns-flow-map-json-key-entry n/int c/int -> List?:
+    try-parse:
       if key := c-flow-json-node n c:
+        if error_ := key.is-valid-key:
+          set-error error_
+          return null
         value := optional: optional: s-separate n c; c-ns-flow-map-adjacent-value n c
+        if not value: value = EMPTY-NODE_
         return [key, value]
     return null
 
-  c-ns-flow-map-adjacent-value n c -> ValueNode_?:
-    with-rollback:
+  c-ns-flow-map-adjacent-value n/int c/int -> ValueNode_?:
+    try-parse:
       if match-char C-MAPPING-VALUE_:
         value := optional: optional: s-separate n c; ns-flow-node n c
-        return value or empty-node_
+        return value or EMPTY-NODE_
     return null
 
-  ns-s-implicit-yaml-key c -> ValueNode_?:
+  ns-s-implicit-yaml-key c/int -> ValueNode_?:
     if node := ns-flow-yaml-node 0 c:
       s-separate-in-line
       return node
     return null
 
-  ns-flow-map-yaml-key-entry n c -> List?:
-    with-rollback:
+  ns-flow-map-yaml-key-entry n/int c/int -> List?:
+    try-parse:
       if key := ns-flow-yaml-node n c:
+        if error_ := key.is-valid-key:
+          set-error error_
+          return null
         value := optional: (optional: s-separate n c); c-ns-flow-map-separate-value n c
+        if not value: value = EMPTY-NODE_
         return [key, value]
     return null
 
-  c-ns-flow-map-empty-key-entry n c -> List?:
+  c-ns-flow-map-empty-key-entry n/int c/int -> List?:
     if value := c-ns-flow-map-separate-value n c: return [null, value]
     return null
 
-  c-ns-flow-map-separate-value n c -> ValueNode_?:
-    with-rollback:
+  c-ns-flow-map-separate-value n/int c/int -> ValueNode_?:
+    try-parse:
       if match-char C-MAPPING-VALUE_ and
          (lookahead: not ns-plain-safe c):
-        with-rollback:
+        try-parse:
           if s-separate n c:
             if node := ns-flow-node n c: return node
-        return empty-node_
+        return EMPTY-NODE_
     return null
 
-  ns-plain n c -> string?:
+  ns-plain n/int c/int -> string?:
     if c == FLOW-OUT_:  return ns-plain-multi-line n c
     if c == FLOW-IN_:   return ns-plain-multi-line n c
     if c == BLOCK-KEY_: return ns-plain-one-line c
     if c == FLOW-KEY_:  return ns-plain-one-line c
     return null
 
-  ns-plain-one-line c -> string?:
-    with-rollback:
+  ns-plain-one-line c/int -> string?:
+    try-parse:
       mark := mark
       if ns-plain-first c and nb-ns-plain-in-line c:
         return string-since mark
     return null
 
-  ns-plain-multi-line n c -> string?:
-    with-rollback:
+  ns-plain-multi-line n/int c/int -> string?:
+    try-parse:
       if first := ns-plain-one-line c:
         rest := repeat: s-ns-plain-next-line n c
         return (flatten-list_ [first, rest]).join ""
     return null
 
-  s-ns-plain-next-line n c -> string?:
-    with-rollback:
+  s-ns-plain-next-line n/int c/int -> string?:
+    try-parse:
       if folded := s-flow-folded n:
         if first := ns-plain-char c:
           rest := nb-ns-plain-in-line c
           return "$folded$(string.from-rune first)$rest"
     return null
 
-  s-flow-folded n -> string?:
-    with-rollback:
+  s-flow-folded n/int -> string?:
+    try-parse:
       s-separate-in-line
       if folded := b-l-folded n FLOW-IN_:
         if s-flow-line-prefix n:
           return folded
     return null
 
-  nb-ns-plain-in-line c -> string:
+  nb-ns-plain-in-line c/int -> string:
     mark := mark
     repeat: (repeat: match-chars S-WHITESPACE_) and ns-plain-char c
     return string-since mark
 
   ns-plain-semi-safe ::= { C-MAPPING-KEY_, C-MAPPING-VALUE_, C-SEQUENCE-ENTRY_ }
   ns-plain-first c:
-    with-rollback:
+    try-parse:
       if rune := ns-char:
         if not C-INDICATOR_.contains rune: return true
-    with-rollback:
+    try-parse:
       if (match-chars ns-plain-semi-safe and
           lookahead: ns-plain-safe c): return true
     return false
 
-  ns-plain-char c -> int?:
-    with-rollback:
+  ns-plain-char c/int -> int?:
+    try-parse:
       if rune := ns-plain-safe c:
         if rune != C-MAPPING-VALUE_ and rune != C-COMMENT_: return rune
 
-    with-rollback:
+    try-parse:
       if match-char C-COMMENT_:
         //  [ lookbehind = ns-char ]
         is-ns-char := lookbehind 2: ns-char != null
         if is-ns-char: return C-COMMENT_
 
-    with-rollback:
+    try-parse:
       if match-char C-MAPPING-VALUE_ and
          (lookahead: ns-plain-safe c):
         return C-MAPPING-VALUE_
 
     return null
 
-  ns-plain-safe c -> int?:
+  ns-plain-safe c/int -> int?:
     if c == FLOW-OUT_ or c == BLOCK-OUT_: return ns-plain-safe-out
     return ns-plain-safe-in
 
   ns-plain-safe-out: return ns-char
 
   ns-plain-safe-in -> int?:
-    with-rollback:
+    try-parse:
       if rune := ns-char:
         if not C-FLOW-INDICATOR_.contains rune: return rune
     return null
 
 
-  c-ns-properties n c -> List?:
-    with-rollback:
+  c-ns-properties n/int c/int -> NodeProperty_?:
+    try-parse:
       if tag := c-ns-tag-property:
         anchor := optional --or-null: if s-separate n c: c-ns-anchor-property; false
-        return [tag, anchor]
-    with-rollback:
+        return NodeProperty_ tag anchor
+    try-parse:
       if anchor := c-ns-anchor-property:
         tag := optional --or-null: if s-separate n c: c-ns-tag-property; false
-        return [tag, anchor]
+        return NodeProperty_ tag anchor
     return null
 
   c-ns-tag-property -> string?:
@@ -1014,14 +1128,14 @@ class Parser_ extends PegParserBase_:
 
   c-verbatim-tag -> string?:
     mark := mark
-    with-rollback:
+    try-parse:
       if match-string "!<" and (repeat --at-least-one: ns-uri-char) and match-char '>':
         return string-since mark
     return null
 
   c-ns-shorthand-tag -> string?:
     mark := mark
-    with-rollback:
+    try-parse:
       if c-tag-handle and (repeat --at-least-one: ns-tag-char):
         return string-since mark
     return null
@@ -1031,7 +1145,7 @@ class Parser_ extends PegParserBase_:
     return null
 
   c-ns-anchor-property -> string?:
-    with-rollback:
+    try-parse:
       if match-char C-ANCHOR_:
         if res := ns-anchor-name:
           return res
@@ -1039,13 +1153,13 @@ class Parser_ extends PegParserBase_:
 
   ns-anchor-name -> string?:
     mark := mark
-    with-rollback:
+    try-parse:
       if (repeat --at-least-one: ns-anchor-char):
         return string-since mark
     return null
 
-  c-l-plus-literal n -> string?:
-    with-rollback:
+  c-l-plus-literal n/int -> string?:
+    try-parse:
       if match-char C-LITERAL_:
         if t := c-b-block-header:
           spaces := find-leading-spaces-on-first-non-empty-line
@@ -1053,8 +1167,8 @@ class Parser_ extends PegParserBase_:
             return res.join ""
     return null
 
-  c-l-plus-folded n -> string?:
-    with-rollback:
+  c-l-plus-folded n/int -> string?:
+    try-parse:
       if match-char C-FOLDED_:
         t := c-b-block-header
         spaces := find-leading-spaces-on-first-non-empty-line
@@ -1063,7 +1177,7 @@ class Parser_ extends PegParserBase_:
     return null
 
   c-b-block-header -> List?:
-    with-rollback:
+    try-parse:
       indent-char := match-range '1' '9'
       chomp-char := match-chars { '-', '+' }
       if not indent-char: indent-char = match-range '1' '9'
@@ -1078,8 +1192,8 @@ class Parser_ extends PegParserBase_:
         return [ chomp, indent ]
     return null
 
-  l-literal-content n t -> List?:
-    with-rollback:
+  l-literal-content n/int t/int -> List?:
+    try-parse:
       content := optional --or-null:
         res/List? := null
         if first := l-nb-literal-text n:
@@ -1092,8 +1206,8 @@ class Parser_ extends PegParserBase_:
         else: return chomped-empty
     return null
 
-  l-folded-content n t -> List?:
-    with-rollback:
+  l-folded-content n/int t/int -> List?:
+    try-parse:
       content := optional --or-null:
         lines/List? := null
         if tmp := l-nb-diff-lines n:
@@ -1106,28 +1220,28 @@ class Parser_ extends PegParserBase_:
         else: return chomped-empty
     return null
 
-  b-chomped-last t -> string?:
+  b-chomped-last t/int -> string?:
     if t == STRIP_: if b-non-content: return ""
     if b-as-line-feed: return "\n"
     return null
 
-  l-chomped-empty n t -> List?:
+  l-chomped-empty n/int t/int -> List?:
     if t == KEEP_: return l-keep-empty n
     return l-strip-empty n
 
-  l-keep-empty n -> List?:
+  l-keep-empty n/int -> List?:
     empty-lines := repeat: l-empty n BLOCK-IN_
     optional: l-trail-comments n
     if empty-lines: return List empty-lines.size "\n"
     return []
 
-  l-strip-empty n -> List?:
+  l-strip-empty n/int -> List?:
     repeat: s-indent-less-or-equals n and (b-non-content or l-eof)
     optional: l-trail-comments n
     return []
 
-  l-nb-literal-text n -> string?:
-    with-rollback:
+  l-nb-literal-text n/int -> string?:
+    try-parse:
       empty-lines := repeat: l-empty n BLOCK-IN_
       if s-indent n:
         mark := mark
@@ -1136,14 +1250,14 @@ class Parser_ extends PegParserBase_:
           return "$prefix$(string-since mark)"
     return null
 
-  b-nb-literal-next n -> string?:
-    with-rollback:
+  b-nb-literal-next n/int -> string?:
+    try-parse:
       if b-as-line-feed:
         if text := l-nb-literal-text n: return "\n$text"
     return null
 
-  l-nb-diff-lines n -> List?:
-    with-rollback:
+  l-nb-diff-lines n/int -> List?:
+    try-parse:
       if first := l-nb-same-lines n:
         rest := repeat:
           content/string? := null
@@ -1154,8 +1268,8 @@ class Parser_ extends PegParserBase_:
         return flatten-list_ [first, rest]
     return null
 
-  l-nb-same-lines n -> List?:
-    with-rollback:
+  l-nb-same-lines n/int -> List?:
+    try-parse:
       empty-lines := repeat: l-empty n BLOCK-IN_
       lines := l-nb-folded-lines n
       if not lines:
@@ -1164,8 +1278,8 @@ class Parser_ extends PegParserBase_:
         return flatten-list_ [List empty-lines.size "\n", lines]
     return null
 
-  l-nb-folded-lines n -> List?:
-    with-rollback:
+  l-nb-folded-lines n/int -> List?:
+    try-parse:
       if first := s-nb-folded-text n:
         rest := repeat:
           content/string? := null
@@ -1176,21 +1290,21 @@ class Parser_ extends PegParserBase_:
         return flatten-list_ [first, rest]
     return null
 
-  s-nb-folded-text n -> string?:
-    with-rollback:
+  s-nb-folded-text n/int -> string?:
+    try-parse:
       if s-indent n:
         mark := mark
         if ns-char and (repeat: nb-char):
           return string-since mark
     return null
 
-  b-l-folded n c -> string?:
+  b-l-folded n/int c/int -> string?:
     if brreaks := b-l-trimmed n c: return string.from-runes (List brreaks '\n')
     if b-as-space: return " "
     return null
 
-  l-nb-spaced-lines n -> List?:
-    with-rollback:
+  l-nb-spaced-lines n/int -> List?:
+    try-parse:
       if first := s-nb-spaced-text n:
         rest := repeat:
           content/string? := null
@@ -1201,55 +1315,55 @@ class Parser_ extends PegParserBase_:
         return flatten-list_ [first, rest]
     return null
 
-  s-nb-spaced-text n -> string?:
-    with-rollback:
+  s-nb-spaced-text n/int -> string?:
+    try-parse:
       if s-indent n:
         mark := mark
         if match-chars S-WHITESPACE_  and (repeat: nb-char):
           return string-since mark
     return null
 
-  b-l-spaced n -> string?:
-    with-rollback:
+  b-l-spaced n/int -> string?:
+    try-parse:
       if b-as-line-feed:
         empty-lines := (repeat: l-empty n BLOCK-IN_)
         return string.from-runes (List empty-lines.size + 1 '\n')
     return null
 
-  b-l-trimmed n c -> int?:
-    with-rollback:
+  b-l-trimmed n/int c/int -> int?:
+    try-parse:
       if b-non-content:
         if empty-lines := (repeat --at-least-one: l-empty n c):
           return empty-lines.size
     return null
 
   // Escaped strings
-  c-single-quoted n c -> ValueNode_?:
-    with-rollback:
+  c-single-quoted n/int c/int -> ValueNode_?:
+    try-parse:
       if match-char C-SINGLE-QUOTE_:
         if res := nb-single-text n c:
           if match-char C-SINGLE-QUOTE_:
             return ValueNode_ (res.replace --all "''" "'")
     return null
 
-  c-double-quoted n c -> ValueNode_?:
-    with-rollback:
+  c-double-quoted n/int c/int -> ValueNode_?:
+    try-parse:
       if match-char C-DOUBLE-QUOTE_:
         if res := nb-double-text n c:
           if match-char C-DOUBLE-QUOTE_:
             return ValueNode_ (res.join "")
     return null
 
-  nb-single-text n c -> string?:
+  nb-single-text n/int c/int -> string?:
     if c == FLOW-OUT_ or c == FLOW-IN_: return nb-single-multi-line n c
     return nb-single-one-line n c
 
-  nb-double-text n c -> List?:
+  nb-double-text n/int c/int -> List?:
     if c == FLOW-OUT_ or c == FLOW-IN_: return nb-double-multi-line n c
     return nb-double-one-line n c
 
-  nb-single-multi-line n c -> string?:
-    with-rollback:
+  nb-single-multi-line n/int c/int -> string?:
+    try-parse:
       first := nb-ns-single-in-line
       if rest := s-single-next-line n:
         return "$first$(rest.join "")"
@@ -1259,13 +1373,13 @@ class Parser_ extends PegParserBase_:
         return "$first$(string-since mark)"
     return null
 
-  nb-single-one-line n c -> string:
+  nb-single-one-line n/int c/int -> string:
     mark := mark
     repeat: nb-single-char
     return string-since mark
 
-  nb-double-multi-line n c -> List?:
-    with-rollback:
+  nb-double-multi-line n/int c/int -> List?:
+    try-parse:
       first := nb-ns-double-in-line
       if rest := s-double-next-line n:
         return flatten-list_ [first,  rest]
@@ -1275,7 +1389,7 @@ class Parser_ extends PegParserBase_:
         return [first, string-since mark]
     return null
 
-  nb-double-one-line n c -> List:
+  nb-double-one-line n/int c/int -> List:
     runes := repeat: nb-double-char
     return [ string.from-runes runes ]
 
@@ -1285,10 +1399,10 @@ class Parser_ extends PegParserBase_:
     return string-since mark
 
 
-  s-single-next-line n -> List?:
-    with-rollback:
+  s-single-next-line n/int -> List?:
+    try-parse:
       if folded := s-flow-folded n:
-        with-rollback:
+        try-parse:
           start-mark := mark
           if first := ns-single-char:
             line := nb-ns-single-in-line
@@ -1312,10 +1426,10 @@ class Parser_ extends PegParserBase_:
       rune
     return string.from-runes runes
 
-  s-double-next-line n -> List?:
-    with-rollback:
+  s-double-next-line n/int -> List?:
+    try-parse:
       if breaks := s-double-break n:
-        with-rollback:
+        try-parse:
           if first-rune := ns-double-char:
             line := nb-ns-double-in-line
             first := "$(string.from-runes (flatten-list_ [breaks, first-rune]))$line"
@@ -1328,7 +1442,7 @@ class Parser_ extends PegParserBase_:
         return [string.from-runes breaks]
     return null
 
-  s-double-break n -> List?:
+  s-double-break n/int -> List?:
     if rune := s-double-esscaped n: return rune
     if folded := s-flow-folded n:
       runes := List
@@ -1336,8 +1450,8 @@ class Parser_ extends PegParserBase_:
       return runes
     return null
 
-  s-double-esscaped n -> List?:
-    with-rollback:
+  s-double-esscaped n/int -> List?:
+    try-parse:
       white-spaces := repeat: s-white
       if match-char C-ESCAPE_ and
          b-non-content and
@@ -1347,21 +1461,21 @@ class Parser_ extends PegParserBase_:
     return null
 
   ns-single-char -> int?:
-    with-rollback:
+    try-parse:
       if not s-white:
         if rune := nb-single-char:
           return rune
     return null
 
   nb-single-char -> int?:
-    with-rollback:
+    try-parse:
       if rune := c-quoted-quote: return '\''
       if rune := nb-json:
         if rune != C-SINGLE-QUOTE_: return rune
     return null
 
   ns-double-char -> int?:
-    with-rollback:
+    try-parse:
       if not s-white:
         if rune := nb-double-char:
           return rune
@@ -1369,7 +1483,7 @@ class Parser_ extends PegParserBase_:
 
   nb-double-char -> int?:
     if rune := c-ns-esc-char: return rune
-    with-rollback:
+    try-parse:
       if rune := nb-json:
         if rune != C-ESCAPE_ and rune != C-DOUBLE-QUOTE_: return rune
     return null
@@ -1381,7 +1495,7 @@ class Parser_ extends PegParserBase_:
   static SIMPLE-ESCAPE-KEYS ::= keys-as-set_ SIMPLE-ESCAPES
 
   c-ns-esc-char -> int?:
-    with-rollback:
+    try-parse:
       if match-char C-ESCAPE_:
         if rune := match-chars SIMPLE-ESCAPE-KEYS:
           return SIMPLE-ESCAPES[rune]
@@ -1390,7 +1504,9 @@ class Parser_ extends PegParserBase_:
           if res := match-hex 4:
             if 0xd800 <= res <= 0xdbff:
               if part-2 := c-ns-esc-char:
-                 if not 0xdc00 <= part-2 <= 0xdfff: throw "INVALID_SURROGATE_PAIR"
+                 if not 0xdc00 <= part-2 <= 0xdfff:
+                  set-error "INVALID_SURROGATE_PAIR"
+                  return null
                  return 0x10000 + ((res & 0x3ff) << 10) | (part-2 & 0x3ff)
             else:
               return res
@@ -1403,7 +1519,7 @@ class Parser_ extends PegParserBase_:
   b-as-line-feed: return b-break
 
   l-empty n c:
-    with-rollback:
+    try-parse:
       if (s-line-prefix n c or s-indent-less-than n) and b-as-line-feed:
         return true
     return false
@@ -1417,7 +1533,7 @@ class Parser_ extends PegParserBase_:
     return s-separate-lines n
 
   s-separate-lines n:
-    with-rollback:
+    try-parse:
       if s-l-comments and s-flow-line-prefix n: return true
     return s-separate-in-line
 
@@ -1454,7 +1570,7 @@ class Parser_ extends PegParserBase_:
            lookbehind 1: (match-chars B-LINE-TERMINATORS_) != null
 
   l-eof -> bool:
-    return eof or forbidden-detected != null and (bytes-since-mark forbidden-detected) >= 0
+    return eof or forbidden-mark != null and (bytes-since-mark forbidden-mark) >= 0
 
   b-break-helper -> bool:
     if match-buffer #[B-CARRIAGE_RETURN_, B-LINE-FEED_]: return true
@@ -1473,14 +1589,16 @@ class Parser_ extends PegParserBase_:
       if match-buffer #[0xFE, 0xFF] or
           match-buffer #[0xFF, 0xFE] or
           match-char 0:
-        throw "UNSUPPORTED_BYTE_ORDER"
-      with-rollback:
+        set-error "UNSUPPORTED_BYTE_ORDER"
+        return false
+      try-parse:
         match-any
         if match-char 0:
-          throw "UNSUPPORTED_BYTE_ORDER"
+          set-error "UNSUPPORTED_BYTE_ORDER"
+          return false
     if can-read 3 and match-buffer #[0xEF, 0xBB, 0xBF]:
       return true
-    return true
+    return false
 
   s-white -> int?:
     if res := match-chars S-WHITESPACE_: return res
@@ -1493,15 +1611,15 @@ class Parser_ extends PegParserBase_:
     return match-string "''"
 
   nb-char:
-    with-rollback:
+    try-parse:
       if rune := c-printable:
         if not is-break rune and not rune == C-BYTE-ORDER-MARK_:
           return rune
     return false
 
   nb-json -> int?:
-    with-rollback:
-      rune := utf-rune
+    try-parse:
+      rune := consume-rune
       if rune and (rune == 0x09 or 0x20 <= rune and rune <= 0x10FFFF):
         return rune
     return null
@@ -1522,7 +1640,7 @@ class Parser_ extends PegParserBase_:
     return match-one: it == '-'
 
   ns-tag-char:
-    with-rollback:
+    try-parse:
       if char := ns-uri-char:
         if char != C-TAG_ and not C-FLOW-INDICATOR_.contains char:
           return true
@@ -1535,7 +1653,7 @@ class Parser_ extends PegParserBase_:
   }
 
   ns-uri-char -> int?:
-    with-rollback:
+    try-parse:
       if (match-char '%' and
           ns-hex-digit and
           ns-hex-digit): return '%'
@@ -1544,13 +1662,13 @@ class Parser_ extends PegParserBase_:
     return null
 
   ns-anchor-char:
-    with-rollback:
+    try-parse:
       if rune := ns-char:
         if not C-FLOW-INDICATOR_.contains rune: return true
     return false
 
   ns-char -> int?:
-    with-rollback:
+    try-parse:
       if rune := nb-char:
         if not S-WHITESPACE_.contains rune: return rune
     return null
@@ -1560,8 +1678,8 @@ class Parser_ extends PegParserBase_:
 
   c-special-printable ::= { S-TAB_, B-CARRIAGE_RETURN_, B-LINE-FEED_, 0x85}
   c-printable -> int?:
-    with-rollback:
-      if rune := utf-rune:
+    try-parse:
+      if rune := consume-rune:
         if 0x20 <= rune and rune<= 0x7E: return rune
         if c-special-printable.contains rune: return rune
         if 0xA0 <= rune and rune <= 0xD7FF: return rune

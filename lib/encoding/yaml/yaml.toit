@@ -51,12 +51,22 @@ The result is null or an instance of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 If $as-stream, returns a list of included documents.
 */
-decode --as-stream/bool=false bytes/ByteArray -> any:
+decode --as-stream/bool=false [--on-error] bytes/ByteArray -> any:
   p := Parser_ bytes
-  documents := p.l-yaml-stream
+  result := p.l-yaml-stream --on-error=on-error
+  if not result is ParseResult_: return result // This happens when on-error is invoked
+  documents := result.documents
   if as-stream: return documents
   if documents.is-empty: return null
   return documents[0]
+
+/**
+Variation of (decode --as-stream --on-error bytes).
+
+Throws on parse error.
+*/
+decode --as-stream/bool=false bytes/ByteArray -> any:
+  return decode --as-stream=as-stream --on-error=(: throw it) bytes
 
 /**
 Encodes the $obj as a YAML string.
@@ -96,5 +106,13 @@ The result is null or an instance of of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 If $as-stream, returns a list of included documents.
 */
-parse --as-stream/bool=false str/string:
-  return decode --as-stream=as-stream str.to-byte-array
+parse --as-stream/bool=false [--on-error] str/string -> any:
+  return decode --as-stream=as-stream --on-error=on-error str.to-byte-array
+
+/**
+Variation of (parse --as-stream --on-error bytes).
+
+Throws on parse error.
+*/
+parse --as-stream/bool=false str/string -> any:
+  return decode --as-stream=as-stream --on-error=(: throw it ) str.to-byte-array

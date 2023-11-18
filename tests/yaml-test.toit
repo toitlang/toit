@@ -59,6 +59,10 @@ test-stringify:
   expect-equals """a: b\nc: d\n""" (yaml.stringify {"a":"b","c":"d"})
 
   expect-equals "[]" (yaml.stringify [])
+  expect-equals "- \n" (yaml.stringify [null])
+  expect-equals "- \n- \n" (yaml.stringify [null, null])
+  expect-equals "a:\n" (yaml.stringify {"a":  null})
+  expect-equals "a:\nb:\n" (yaml.stringify {"a":  null, "b": null})
   expect-equals """- a\n""" (yaml.stringify ["a"])
   expect-equals """- a\n- b\n""" (yaml.stringify ["a","b"])
 
@@ -208,6 +212,8 @@ test-json-parse:
 
   expect-equals "\\ \b \f \n \r \t" (yaml.parse "\"\\\\ \\b \\f \\n \\r \\t\"")
 
+  expect-equals [null, null] (yaml.parse "-\n-\n")
+  expect-equals ["a"] (yaml.parse "[a,]")
   expect-equals "{}" (yaml.stringify (yaml.parse "{}"))
   expect-equals "a: b\n" (yaml.stringify (yaml.parse "{\"a\":\"b\"}"))
   expect-equals "a: b\n" (yaml.stringify (yaml.parse " { \"a\" : \"b\" } "))
@@ -230,6 +236,16 @@ test-json-parse:
   expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "\"\\ud83d\\ude48"
   expect-equals "🙈" (yaml.parse "\"\\ud83d\\ude48\"")
   expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "\"\\ud83d\\ud848\""
+  expect-throw "UNSUPPORTED_BYTE_ORDER": yaml.decode #[0,1]
+  expect-throw "UNSUPPORTED_BYTE_ORDER": yaml.decode #[0xFF, 0xFE]
+  expect-throw "UNSUPPORTED_BYTE_ORDER": yaml.decode #[0xFE, 0xFF]
+  expect-throw "UNSUPPORTED_BYTE_ORDER": yaml.decode #[1, 0]
+  expect-throw "NULL_KEYS_UNSUPPORTED": yaml.parse  ": a"
+  expect-throw "LIST_KEYS_UNSUPPORTED": yaml.parse  "[]: a"
+  expect-throw "LIST_KEYS_UNSUPPORTED": yaml.parse  "[1, 2]: a"
+  expect-throw "MAP_KEYS_UNSUPPORTED": yaml.parse  "{}: a"
+  expect-throw "MAP_KEYS_UNSUPPORTED": yaml.parse  "{f: p}: a"
+
 
   yaml.parse UNICODE-EXAMPLE
   yaml.parse EXAMPLE
@@ -353,9 +369,11 @@ test-block-parse:
   expect-equals "a\nb c" (yaml.parse "a\n\nb\nc")
 
   expect-equals "foo" (yaml.parse "%YAML 1.2\n---\nfoo")
+  expect-throw "UNSUPPORTED_YAML_VERSION": yaml.parse "%YAML 1.3\n---\nfoo"
   expect-equals "foo" (yaml.parse "%TAG !yaml! tag:yaml.org,2002:\n---\nfoo")
 
   expect-equals ["foo", "foo"] (yaml.parse "[&a foo, *a]")
+  expect-throw "UNRESOLVED_ALIAS": yaml.parse "[*a]"
   expect-equals "42" (yaml.parse "!!str 42")
   expect-equals 42.0 (yaml.parse "!!float 42")
 
@@ -368,6 +386,7 @@ test-block-parse:
   expect-equals "ab" (yaml.parse "ab #")
   expect-equals 10 (yaml.parse "0xa")
   expect-equals 10 (yaml.parse "0o12")
+  expect-equals "0o1a" (yaml.parse "0o1a")
 
 BIG-BLOCK ::= """
 - foo: 1

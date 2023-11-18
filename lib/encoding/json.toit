@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 import reader show Reader BufferedReader
-import .yaml.encoder
+import .json-like-encoder_
 
 MAX-BUFFER-GROWTH_ ::= 1024
 
