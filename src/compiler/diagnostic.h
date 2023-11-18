@@ -89,7 +89,6 @@ class Diagnostics {
 
   void report_location(Source::Range range, const char* prefix);
 
-
  public:  // Public only for forwarding.
   /// Emits the diagnostic.
   /// Returns false, if the diagnostic is quelched (for example a warning for a different package).
@@ -139,7 +138,7 @@ class CompilationDiagnostics : public Diagnostics {
   bool show_package_warnings_;
   bool print_on_stdout_;
   bool in_group_ = false;
-  std::string group_package_id_;
+  Package group_package_;
   Severity group_severity_;
 };
 

@@ -148,7 +148,7 @@ bool CompilationDiagnostics::emit(Severity severity, const char* format, va_list
 void CompilationDiagnostics::start_group() {
   ASSERT(!in_group_);
   in_group_ = true;
-  group_package_id_ = Package::INVALID_PACKAGE_ID;
+  group_package_ = Package::invalid();
 }
 
 void CompilationDiagnostics::end_group() {
@@ -163,22 +163,24 @@ bool CompilationDiagnostics::emit(Severity severity,
 
   if (!show_package_warnings_) {
     Severity error_severity;
-    std::string error_package_id;
+    Package error_package;
     if (in_group_) {
       // For groups, the first encountered error defines where the error comes
       // from. Subsequent diagnostics in the group use that package id.
-      if (group_package_id_ == Package::INVALID_PACKAGE_ID) {
-        group_package_id_ = from_location.source->package_id();
+      if (!group_package_.is_valid()) {
+        group_package_ = from_location.source->package();
         group_severity_ = severity;
       }
-      error_package_id = group_package_id_;
+      error_package = group_package_;
       error_severity = group_severity_;
     } else {
-      error_package_id = from_location.source->package_id();
+      error_package = from_location.source->package();
       error_severity = severity;
     }
 
-    if (error_package_id != Package::ENTRY_PACKAGE_ID) {
+    // If the package is not the entry package or a local path package,
+    // skip reporting the warning/note.
+    if (!error_package.is_path_package()) {
       switch (error_severity) {
         case Severity::error:
           break;
