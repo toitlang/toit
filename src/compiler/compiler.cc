@@ -1308,11 +1308,11 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     import_package = package_lock.resolve_prefix(unit_package, prefix);
     auto error_range = module_segment->range();
     switch (import_package.error_state()) {
-      case Package::OK:
+      case Package::STATE_OK:
         // All good.
         break;
 
-      case Package::INVALID:
+      case Package::STATE_INVALID:
         if (package_lock.has_errors()) {
           diagnostics()->report_error(error_range,
                                       "Package for prefix '%s' not found, but lock file has errors",
@@ -1324,13 +1324,13 @@ Source* Pipeline::_load_import(ast::Unit* unit,
         }
         return null;
 
-      case Package::ERROR:
+      case Package::STATE_ERROR:
         diagnostics()->report_error(error_range,
                                     "Package for prefix '%s' not found due to error in lock file",
                                     prefix.c_str());
         return null;
 
-      case Package::NOT_FOUND:
+      case Package::STATE_NOT_FOUND:
         diagnostics()->report_error(error_range,
                                     "Package '%s' for prefix '%s' not found",
                                     import_package.id().c_str(),

@@ -3,4 +3,5 @@ prefixes:
 
 packages:
   target-1.0:
-    path: target
+    url: target
+    version: v1.0.0
