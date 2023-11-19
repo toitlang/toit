@@ -1,9 +1,9 @@
 import ..semantic-version
 import ..constraints
-import ..project
-import ..project.package
 import ..registry
 import ..error
+import ..utils
+import encoding.yaml
 
 class PackageConstraint:
   prefix/string
@@ -15,106 +15,247 @@ class PackageConstraint:
 
 class Resolved:
   sdk-version/SemanticVersion? := null
-  prefixes/Map := {:}
-  packages/List := []
+  packages/Map := {:} // PackageDependency -> ResolvedPackage
+
+  constructor solution/PartialSolution:
+    packages = solution.partial-packages.map: | _ v | ResolvedPackage v
+    // DEBUG
+    m := {:}
+    solution.partial-packages.do: | k v/PartialPackageSolution |
+      m[k.stringify] = pps-to-map v
+    print (yaml.stringify m)
+
+  constructor.empty:
+    print "EMPTY"
+
+  pps-to-map v/PartialPackageSolution: // DEBUG
+    return { "url": v.url, "version": v.solved-version.stringify, "hash": v.ref-hash, "packages": (v.dependencies.keys.map: it.stringify) }
 
 
 class ResolvedPackage:
-  package-name/string
-  url/string
-  version/SemanticVersion
-  prefixes/Map
+  solution_/PartialPackageSolution
 
-  constructor .package-name .url .version .prefixes:
+  constructor .solution_:
+
+  url -> string:
+    return solution_.url
+
+  version -> SemanticVersion:
+    return solution_.solved-version
+
+  ref-hash -> string:
+    return solution_.ref-hash
+
+  name -> string:
+    return solution_.name
+
+  dependencis -> Map:
+    return solution_.dependencies.map: | _ v | ResolvedPackage v
+
+  hash-code -> int:
+    return url.hash-code + version.hash-code
+
+  operator == other/ResolvedPackage:
+    return url == other.url and version == other.version
+
 
 class PartialPackageSolution:
-  prefixes/Map // url to index in resolved list/free list
-  versions/List
-  constructor .versions .prefixes={:}:
+  dependencies/Map := {:} // Map PackageDependency to PartialPackageSolution
+  versions/List? := null // List of possible SemanticVersions
+  url/string
+  description/Description? := null
 
-class PackageSolution:
-  prefixes/Map := {:}
-  version/SemanticVersion
-  constructor .version .prefixes:
+  constructor .url/string .versions/List:
+
+  constructor.copy other/PartialPackageSolution package-translator/IdentityMap:
+    url = other.url
+    description = other.description
+    if other.versions:
+      versions = other.versions.copy
+    dependencies = copy-dependency-to-solution-map_ other.dependencies package-translator
+
+  solved-version -> SemanticVersion:
+    return description.version
+
+  name -> string:
+    return description.name
+
+  sdk-version -> Constraint?:
+    return description.sdk-version
+
+  ref-hash -> string:
+    return description.ref-hash
+
+  satisfies dependency/PackageDependency -> bool:
+    if description:
+      return dependency.satisfies description.version
+    else:
+      filtered := dependency.filter versions
+      return not filtered.is-empty
+
+  add-source-dependency dependency/PackageDependency:
+    if versions:
+      versions = dependency.filter versions
+
+  stringify:
+    return "versions=$versions, solved-version: $(description ? description.version : null), $(dependencies.map: | k v | "$k->$v.solved-version, ")"
+
+  hash-code -> int:
+    return url.hash-code
+
+
+/**
+Represents a dependency on a package from a repository.
+
+For convienience it contains delegate methods to contraint.
+*/
+class PackageDependency:
+  url/string
+  constraint_/string // Keep this around for easy hash-code and ==
+  constraint/Constraint
+  constructor .url .constraint_:
+    constraint = Constraint constraint_
+
+  filter versions/List:
+    return constraint.filter versions
+
+  satisfies version/SemanticVersion -> bool:
+    return constraint.satisfies version
+
+  find-satisfied-package packages/Set -> PartialPackageSolution?:
+    packages.do: | package/PartialPackageSolution |
+      if package.satisfies this:
+        return package
+    return null
+
+  hash-code -> int:
+    return url.hash-code + constraint_.hash-code
+
+  operator == other -> bool:
+    if other is not PackageDependency: return false
+    return stringify == other.stringify
+
+  stringify: return "$url:$constraint_"
+
 
 class PartialSolution:
-  fixed-versions/Map // -> url to list of PackageSolutions
-  free-versions/Map // -> url to list of list of PartialPackageSolutions
+  partial-packages/Map // PackageDependency -> PartialPackageSolution.
+  unsolved-packages/Deque // A queue of PackageDependency's that have unresolved partial solutinos.
+  url-to-dependencies/Map := {:} // string -> [PackageDependency], keeping track of the same url with different constriaints.
   solver/Solver
 
-  constructor .solver .fixed-versions .free-versions:
+  constructor .solver .partial-packages/Map:
+    unsolved-packages = Deque.from partial-packages.keys
+    partial-packages.keys.do: | dependency/PackageDependency |
+      append-to-list-value url-to-dependencies dependency.url dependency
 
-  is-solution -> bool: return free-versions.is-empty
+  /** Performs a deep copy to support backtracking. */
+  constructor.copy other/PartialSolution:
+    solver = other.solver
+    url-to-dependencies = other.url-to-dependencies.map: | _ v | v.copy
+    unsolved-packages = Deque.from other.unsolved-packages
+    package-translator := IdentityMap // Mapping old PartialPackageSolution's to copied version
+    partial-packages = copy-dependency-to-solution-map_ other.partial-packages package-translator
 
-  is-fixed url/string: return fixed-versions.contains url
+  is-solution -> bool:
+   return unsolved-packages.is-empty
 
-  if-free url/string: return free-versions.contains url
+  add-partial-package-solution
+      dependency/PackageDependency
+      package/PartialPackageSolution
+      new-package/PartialPackageSolution:
+    package.dependencies[dependency] = new-package
+    partial-packages[dependency] = new-package
+    add-to-set-value url-to-dependencies dependency.url dependency
+    unsolved-packages.add dependency
 
-  fixed-satisfied url/string contraint/Constraint -> int:
-    fixed-list := fixed-versions[url]
-    fixed-list.
+  refine -> PartialSolution?:
+    if is-solution: return this
 
-  refine -> bool:
-    while not is-solution:
-      free-package := free-versions.first
-      free-package-versions := free-versions[free-versions]
-      free-versions.remove free-package
+    unsolved-dependency/PackageDependency := unsolved-packages.remove-first
+    unsolved-package/PartialPackageSolution := partial-packages[unsolved-dependency]
 
-      found-one := false
-      for i := 0; i < free-package-versions.size; i++:
-        free-version/SemanticVersion := free-package-versions[i]
-        fixed-versions[free-package] = free-version
-        new-free-versions := load-dependencies free-package free-version
-        if not new-free-versions: continue
-        found-one = true
-        free-versions = new-free-versions
-        break
+    package-versions/List := unsolved-package.versions
 
-      if not found-one: return false
+    package-versions.do: | next-version/SemanticVersion |
+      copy := PartialSolution.copy this
+      if copy.load-dependencies unsolved-dependency next-version:
+        if refined := copy.refine: return refined
 
-    return true
+    return null
 
-  load-dependencies package/string version/SemanticVersion -> Map:
-    new-free-versions := free-versions.copy
-    (solver.retrieve-dependencies package version).do: | referred-package/string constraint-string/string |
-      constraint := Constraint constraint-string
-      if fixed-versions.contains referred-package:
-        if not constraint.satisfies fixed-versions[referred-package]:
-          return null // version has a conflict
-      else if free-versions.contains referred-package:
-        refined-free-versions := constraint.filter free-versions[referred-package]
-        if refined-free-versions.is-empty:
-          return null // that version also had a conflict
+  load-dependencies unresolved-dependency/PackageDependency next-version/SemanticVersion -> bool:
+    description := solver.retrieve-description unresolved-dependency.url next-version
+
+    package/PartialPackageSolution := partial-packages[unresolved-dependency]
+    package.description = description
+    package.versions = null
+    description.dependencies.do: | dependency/PackageDependency |
+      if url-to-dependencies.contains dependency.url:
+        partial-package-solutions := IdentitySet
+        url-to-dependencies[dependency.url].do: partial-package-solutions.add partial-packages[it]
+
+        if partial-package := dependency.find-satisfied-package partial-package-solutions:
+          partial-package.add-source-dependency dependency
+          package.dependencies[dependency] = partial-package
         else:
-          new-free-versions[referred-package] = refined-free-versions
+          all-versions := solver.retrieve-versions dependency.url
+          dependency-versions := dependency.filter all-versions
+          if dependency-versions.is-empty: return false
+          // For all existing dependencies, check if the the new dependency resolves a disjoint set of versions
+
+          url-to-dependencies[dependency.url].do: | existing-dependency/PackageDependency |
+            existing-versions/List := existing-dependency.filter all-versions
+            dependency-versions.do:
+              if existing-versions.contains it: // TODO: Should major be checked?
+                // Overlapping versions and not jointly satisfied.
+                return false
+
+          // The dependency resolves to a disjoint set of versions. Add it.
+          add-partial-package-solution dependency package (PartialPackageSolution dependency.url dependency-versions)
       else:
-        new-free-versions[referred-package] = solver.retrieve-versions referred-package
-    return new-free-versions
+        versions := dependency.filter (solver.retrieve-versions dependency.url)
+        if versions.is-empty: return false
+        add-partial-package-solution dependency package (PartialPackageSolution dependency.url versions)
+    return true
 
 
 // Makes an abstract solver to allow easier testing
 abstract class Solver:
-  package-versions/Map := {:} // mapping package-urls to a list of versions
-  package/PackageFile
-  core-package-constraints := []
+  package-versions/Map := {:} // Map of Dependency to list of versions
 
   // Should return a list of all SemanticVersion for the package denoted by url, sorted with highest first
   abstract retrieve-versions url/string -> List
 
-  // Retrieve the dependencise as a list of [ url, constraint-as-string ] elements
-  abstract retrieve-dependencies url/string version/SemanticVersion -> List
+  /** Retrieve the description of a specific version */
+  abstract retrieve-description url/string version/SemanticVersion -> Description
 
-  constructor .package:
-    package.dependencies.do: | prefix/string content/Map |
-      package-constraint := PackageConstraint prefix content["url"] (Constraint content["version"])
-      core-package-constraints.add package-constraint
-      versions := retrieve-versions package-constraint.url
-      versions = package-constraint.version-constraint.filter versions
-      if versions.is-empty: throw "No packages satisfies constraint $content["version"] for package $package-constraint.url"
-      package-versions[package-constraint.url] = versions
+  constructor dependencies/List:
+    dependencies.do: | dependency/PackageDependency |
+      versions := retrieve-versions dependency.url
+      versions = dependency.filter versions
+      if versions.is-empty: throw "No versions for packages $dependency.url satisfies supplied constraint"
+      package-versions[dependency] = versions
 
   solve -> Resolved:
-    partial-solution := PartialSolution this {:} (package-versions.map: | k v | [ PartialPackageSolution it ])
-    if not partial-solution.refine: throw "No solutions found for package dependencies"
-    return Resolved
+    if package-versions.is-empty: return Resolved.empty
+
+    partial-package-solutions := {:}
+    package-versions.do: | dependency/PackageDependency versions/List |
+      if not partial-package-solutions.contains dependency: // The same dependency can appear multiple
+                                                            // times with different names
+        partial-package-solution := PartialPackageSolution dependency.url versions
+        partial-package-solutions[dependency] = partial-package-solution
+
+    partial-solution := PartialSolution this partial-package-solutions
+    if solution := partial-solution.refine: return Resolved solution
+    throw "Unable to resolve dependencies"
+
+
+copy-dependency-to-solution-map_ input/Map translator/IdentityMap -> Map:
+  return input.map: | _ v |
+    if not translator.contains v:
+      copy := PartialPackageSolution.copy v translator
+      translator[v] = copy
+    translator[v]
 

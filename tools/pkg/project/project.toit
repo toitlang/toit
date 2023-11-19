@@ -2,14 +2,17 @@ import host.file
 import host.directory
 import cli
 import encoding.yaml
+import system
 
 import ..registry
 import ..error
 import ..pkg
 import ..git
 import ..git.file-system-view
+import ..semantic-version
 
 import .package
+import .lock
 
 project-from-cli parsed/cli.Parsed:
   root := parsed[OPTION-PROJECT-ROOT]
@@ -33,45 +36,61 @@ project-from-path root/string sdk-version/string:
 class Project:
   root/string
   package-file/PackageFile? := null
-  lock-file/LockFile? := null
   sdk-version/string
+  lock-file/LockFile? := null
+
+  static PACKAGES-CACHE ::= ".packages"
 
   constructor .root .sdk-version:
     if package-file-exists_:
-      package-file = PackageFile.from-file package-file-name_
+      package-file = PackageFile.from-project this
     else:
-      package-file = PackageFile package-file-name_
-
-    if lock-file-exits_:
-      lock-file = LockFile.load lock-file-name_
-    else:
-      lock-file = LockFile lock-file-name_
+      package-file = PackageFile this
 
   save:
     package-file.save
-    lock-file.save
+    lock-file.save root
 
   install-remote prefix/string remote/RemotePackage:
-    repository := open-repository remote.url
-    pack := repository.clone remote.ref-hash
-    files := pack.content
-    new-package-file := PackageFile.from-buffer (files.get PACKAGE-FILE-NAME)
-    solve_ new-package-file
+    package-file.add-remote-dependency prefix remote.url "^$remote.version"
+    solve_
 
   install-local prefix/string path/string:
-    new-package-file := PackageFile.from-file "$path/PACKAGE-FILE-NAME"
-    solve_ new-package-file
+    package-file.add-local-dependency prefix path
+    solve_
 
+  package-file-name_:
+    return "$root/$PackageFile.FILE-NAME"
 
+  package-file-exists_ -> bool:
+    return file.is-file package-file-name_
 
-  package-file-name_: return "$root/$PACKAGE-FILE-NAME"
-  package-file-exists_ -> bool: return file.is-file package-file-name_
+  packages-cache-dir:
+    return "$root/$PACKAGES-CACHE"
 
-  lock-file-name_: return "$root/$PACKAGE-LOCK-FILE-NAME"
-  lock-file-exits_: return file.is-file lock-file-name_
+  solve_ :
+    lock-file = package-file.solve
 
+  cached-repository-dir_ url/string version/SemanticVersion -> string:
+    return "$packages-cache-dir/$url/$version"
 
-  solve_ new/PackageFile:
+  ensure-downloaded url/string version/SemanticVersion:
+    cached-repository-dir := cached-repository-dir_ url version
+    repo-toit-git-path := "$cached-repository-dir/.toit-git"
+    if file.is_file repo-toit-git-path : return
+    directory.mkdir --recursive cached-repository-dir
+    description := registries.retrieve-description url version
+    repository := Repository url
+    pack := repository.clone description.ref-hash
+    pack.expand cached-repository-dir
+    file.write_content description.ref-hash --path=repo-toit-git-path
 
-PACKAGE-FILE-NAME ::= "package.yaml"
-PACKAGE-LOCK-FILE-NAME ::= "package.lock"
+  load-package-package-file url/string version/SemanticVersion:
+    cached-repository-dir := cached-repository-dir_ url version
+    return PackageFile.external "$cached-repository-dir"
+
+main:
+  project := Project "tmp2" system.vm-sdk-version
+  project.solve_
+  print project.lock-file.to-map
+  print (yaml.stringify project.lock-file.to-map)

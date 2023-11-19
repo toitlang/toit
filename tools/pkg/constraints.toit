@@ -29,6 +29,7 @@ class Constraint:
   filter versions/List -> List:
     return versions.filter: satisfies it
 
+
 class SimpleConstraint:
   comparator/string
   constraint-version/SemanticVersion
@@ -37,7 +38,6 @@ class SimpleConstraint:
     this.check = CONSTRAINT-COMPARATORS_[comparator]
 
   satisfies version/SemanticVersion -> bool:
-//    print "$version$comparator$constraint-version: $(check.call version constraint-version)"
     return check.call version constraint-version
 
 

@@ -55,3 +55,8 @@ class SemanticVersion:
     if not build-numbers.is-empty:
       str += "+$(build-numbers.join ".")"
     return str
+
+  hash-code:
+    return major + 1000 * minor + 1000000 * patch
+
+

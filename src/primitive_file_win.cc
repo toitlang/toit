@@ -438,6 +438,13 @@ PRIMITIVE(chdir) {
   return process->null_object();
 }
 
+PRIMITIVE(chmod) {
+  ARGS(WindowsPath, path, int, mode);
+  int result = SetFileAttributesW(path, mode);
+  if (result == 0) WINDOWS_ERROR;
+  return process->null_object();
+}
+
 PRIMITIVE(mkdir) {
   ARGS(WindowsPath, path, int, mode);
 

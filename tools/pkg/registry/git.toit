@@ -3,18 +3,24 @@ import encoding.yaml
 import ..git
 import ..git.file-system-view
 import ..utils
+import ..semantic-version
 import .registry
 
 class GitRegistry extends Registry:
   type ::= "git"
   url/string
-  content/FileSystemView? := null
+  content_/FileSystemView? := null
+
+  description-cache_ := {:}
+
   constructor name .url:
     super name
 
-  search search-string/string -> List:
-    if not content: content = load_
+  content -> FileSystemView:
+    if not content_: content_ = load_
+    return content_
 
+  search search-string/string -> List:
     search-version := null
     if search-string.contains "@":
       split := search-string.split "@"
@@ -77,9 +83,9 @@ class GitRegistry extends Registry:
       return null
 
   static reduce-versions_ versions/List:
-    highest := Version versions[0]
+    highest := SemanticVersion versions[0]
     versions[1..].do:
-      next := Version it
+      next := SemanticVersion it
       if highest <= next: highest = next
     return highest.stringify
 
@@ -88,4 +94,26 @@ class GitRegistry extends Registry:
     head-ref/string := repository.head
     pack := repository.clone head-ref
     return pack.content
+
+  retrieve-description url/string version/SemanticVersion -> Description?:
+    if not description-cache_.contains url or not description-cache_[url].contains version:
+      url-cache := description-cache_.get url --if-absent=: description-cache_[url] = {:}
+      desc-buffer := content.get --path=(flatten_list ["packages", url.split "/", version.stringify, "desc.yaml" ])
+      url-cache[version] = desc-buffer and Description (yaml.decode desc-buffer)
+
+    return description-cache_[url][version]
+
+  retrieve-versions url/string -> List?:
+    versions := content.get --path=(flatten_list ["packages", url.split "/"])
+    if not versions is FileSystemView: return null
+    semantic-versions/List := versions.list.keys.map: SemanticVersion it
+
+    // Sort
+    semantic-versions.sort --in-place
+
+    // Reverse
+    result := []
+    semantic-versions.do --reversed: result.add it
+
+    return result
 

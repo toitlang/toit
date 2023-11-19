@@ -11,7 +11,7 @@ class FileSystemView:
     element := content_.get path[0]
     if not element is Map: return null
 
-    return (FileSystemView element).get path[1..]
+    return (FileSystemView element).get --path=path[1..]
 
   get key/string -> any:
     element := content_.get key

@@ -45,8 +45,11 @@ class Pack:
   static expand_ path m/Map:
     directory.mkdir --recursive path
     m.do: | name/string value/any |
+      file-name := "$path/$name"
       if value is ByteArray:
-        file.write_content value --path="$path/$name"
+        stats := file.stat file-name
+        if not stats: // TODO: Implement overwrite, including a chmod in host.file.
+          file.write_content value --path="$path/$name"
       else:
         expand_ "$path/name" value
 

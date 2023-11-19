@@ -65,7 +65,7 @@ class SemanticVersionParser extends parser.PegParserBase_:
     return TripleParseResult major minor patch
 
   pre-releases -> List:
-    with-rollback:
+    try-parse:
       result := []
       if match-char '-':
         while true:
@@ -75,7 +75,7 @@ class SemanticVersionParser extends parser.PegParserBase_:
     return []
 
   build-numbers -> List:
-    with-rollback:
+    try-parse:
       result := []
       if match-char '+':
         while true:
@@ -90,7 +90,7 @@ class SemanticVersionParser extends parser.PegParserBase_:
 
   build-number -> string:
     if alphanumeric-result := alphanumeric: return alphanumeric-result
-    with-rollback:
+    try-parse:
       mark := mark
       if (repeat --at-least-one: digit):
         return string-since mark
@@ -98,7 +98,7 @@ class SemanticVersionParser extends parser.PegParserBase_:
 
   alphanumeric -> string?:
     mark := mark
-    with-rollback:
+    try-parse:
       if (repeat: digit) and
          non-digit and
          (repeat: identifier-char):
@@ -115,7 +115,7 @@ class SemanticVersionParser extends parser.PegParserBase_:
   numeric -> int?:
     if match-char '0': return 0
     mark := mark
-    with-rollback:
+    try-parse:
       if digit and (repeat: digit):
         return int.parse (string-since mark)
     return null

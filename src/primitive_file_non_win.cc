@@ -36,12 +36,14 @@
 #define FILE_UNLINK_(dirfd, pathname, flags)               unlink(pathname)
 #define FILE_RENAME_(olddirfd, oldpath, newdirfd, newpath) rename(oldpath, newpath)
 #define FILE_MKDIR_(dirfd, ...)                            mkdir(__VA_ARGS__)
+#define FILE_CHMOD_(dirfd, pathname, mode, flags)          chmod(pathname, mode)
 #else
 
 #define FILE_OPEN_(...)     openat(__VA_ARGS__)
 #define FILE_UNLINK_(...)   unlinkat(__VA_ARGS__)
 #define FILE_RENAME_(...)   renameat(__VA_ARGS__)
 #define FILE_MKDIR_(...)    mkdirat(__VA_ARGS__)
+#define FILE_CHMOD_(...)    fchmodat(__VA_ARGS__)
 #endif // TOIT_FREERTOS
 
 namespace toit {
@@ -436,6 +438,13 @@ PRIMITIVE(chdir) {
 #else
   FAIL(UNIMPLEMENTED);
 #endif
+}
+
+PRIMITIVE(chmod) {
+  ARGS(cstring, pathname, int, mode);
+  int result = FILE_CHMOD_(current_dir(process), pathname, mode, 0);
+  if (result < 0) return return_open_error(process, errno);
+  return process->null_object();
 }
 
 PRIMITIVE(mkdir) {

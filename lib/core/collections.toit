@@ -2456,6 +2456,13 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
     do: if not predicate.call it: return false
     return true
 
+  /**
+  Copies the set.
+  The set is shallow.
+  */
+  copy -> Set:
+    return map: it
+
   /** See $Collection.any. */
   // TODO(florian): should be inherited from CollectionBase.
   any [predicate] -> bool:
@@ -3164,6 +3171,11 @@ class Deque implements Collection:
   // implementation.
   first_ := 0
   backing_/List := []
+
+  constructor:
+
+  constructor.from collection/Collection:
+    backing_ = List.from collection
 
   size -> int:
     return backing_.size - first_

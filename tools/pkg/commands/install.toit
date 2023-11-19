@@ -2,6 +2,7 @@ import cli
 
 import ..error
 import ..project
+import ..project.package
 import ..registry
 import host.file
 
@@ -12,7 +13,7 @@ class InstallCommand:
   static RECOMPUTE ::= "recompute"
   static REST      ::= "package"
 
-  prefix/string?
+  prefix/string? := null
   package/string?
   local/bool
   recompute/bool
@@ -56,7 +57,7 @@ class InstallCommand:
     project.install-remote prefix remote-package
 
   execute-local:
-    package-file-name := "$package/package.yaml"
+    package-file-name := "$package/$PackageFile.FILE_NAME"
     src-directory := "$package/src"
     if not file.is-file package-file-name:
       error "Path supplied in package argument is an invalid local package, missing $package-file-name."
@@ -64,7 +65,7 @@ class InstallCommand:
     if not file.is-directory src-directory:
       error "Path supplied in package argument is an invalid local package, missing $src-directory."
 
-    package-file := PackageFile.load package-file-name
+    package-file := PackageFile.external package
     if not prefix: prefix = package-file.name
 
     project.install-local prefix package
