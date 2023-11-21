@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
@@ -429,7 +429,7 @@ test-from-spec:
                       baz "
                    """
 
-  // Exmple 6.9
+  // Example 6.9
   expect-equals
       "key: value\n"
       yaml.stringify
@@ -438,7 +438,7 @@ test-from-spec:
                         value
                      """
 
-  // Exmple 6.10
+  // Example 6.10
   expect-equals
       null
       yaml.parse """
@@ -447,7 +447,7 @@ test-from-spec:
 
                  """
 
-  // Exmple 6.11
+  // Example 6.11
   expect-equals
       "key: value\n"
       yaml.stringify

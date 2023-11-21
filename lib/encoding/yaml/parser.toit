@@ -161,7 +161,7 @@ class ValueNode_:
     return value.hash-code
 
 
-/** Holds infomration about the properties applye to a node. */
+/** Holds infomration about the properties apply to a node. */
 class NodeProperty_:
  tag/string?
  anchor/string?
@@ -203,9 +203,10 @@ abstract class PegParserBase_:
     rollback rollback-mark
 
   /**
-  Evaluated the %block and rolls back. The $block can return any value,
+  Evaluates the $block and rolls back.
+  The $block can return any value,
     and the method will return a boolified version of the return value.
-    null and false are considered false values, everything else will be true
+    null and false are considered false values, everything else is true.
   */
   lookahead [block] -> bool:
     result/any := false
@@ -248,7 +249,7 @@ abstract class PegParserBase_:
         bytes = 3
 
       if can_read bytes:
-         // TODO(florian): Add a static function to string to return a rune at a given position in a ByteArray
+         // TODO(florian): Add a static function to ByteArray to return a rune at a given position.
         buf/ByteArray := peek-slice bytes
         if buf.is-valid-string-content:
           offset_ += bytes
@@ -262,20 +263,20 @@ abstract class PegParserBase_:
   string-since mark -> string:
     return bytes_[mark..offset_].to_string
 
-   /**
-    Returns the amount of bytes since the given $mark.
-    Returns a negitave value if the mark is in the 'future'.
-    */
+  /**
+  Returns the amount of bytes since the given $mark.
+  Returns a negative value if the mark is in the 'future'.
+  */
   bytes-since-mark mark -> int:
     return offset_ - mark
 
-   /**
-    Continues calling $block aslong as $block return a truthful value.
-    If $at-least-one and no invoceation of $block was truthful, then return null,
-    otherwise returns a list of the results of each invocation of $block.
+  /**
+  Repeatedly calls the given $block as long as it returns a truthful value.
+  Returns null if $at-least-one is true and no invocation of $block is truthful.
+  Returns a list of the results of the (truthful) $block invocations, otherwise.
 
-    Use this for *- and +-productions.
-    */
+  Use this for *- and +-productions.
+  */
   repeat --at-least-one/bool=false [block] -> List?:
     try-parse:
       result := []
@@ -290,13 +291,13 @@ abstract class PegParserBase_:
       if not at-least-one or not result.is-empty: return result
     return null
 
-   /**
-    Calls $block and returns its value if it is truthful, consuming the input.
-    If $block returns null or false, roll back and return either null if $or-null or
-    the EMPTY-NODE_
+  /**
+  Calls $block and returns its value if it is truthful, consuming the input.
+  If $block returns null or false, rolls back and returns either null if $or-null or
+    the $EMPTY-NODE_.
 
-    Use this for ?-productions.
-    */
+  Use this for ?-productions.
+  */
   optional --or-null/bool=false [block] -> any:
     try-parse:
       if res := block.call: return res
@@ -339,12 +340,26 @@ abstract class PegParserBase_:
     return match-buffer str.to-byte-array
 
 
-// Used to signal a successfull parse. Useful when on-error return should return an alternative value
+// Used to signal a successful parse. Useful when on-error return should return an alternative value.
 class ParseResult_:
   documents/List
   constructor .documents:
 
 
+/**
+A YAML parser based on https://yaml.org/spec/1.2.2.
+
+Naming conventions:
+- `e-`: A production matching no characters.
+- `c-`: A production starting and ending with a special character.
+- `b-`: A production matching a single line break.
+- `nb-`: A production starting and ending with a non-break character.
+- `s-`: A production starting and ending with a white-space character.
+- `ns-`: A production starting and ending with a non-space character.
+- `l-`: A production matching complete line(s).
+- `X-Y-`: A production starting with an `X-~ character and ending with a `Y-` character, where `X-` and `Y-` are any of the above prefixes.
+- `X-plus`, `X-Y-plus`: A production as above, with the additional property that the matched content indentation level is greater than the specified `n` parameter.
+*/
 class Parser_ extends PegParserBase_:
   named-nodes ::= {:}
   /**
@@ -413,7 +428,7 @@ class Parser_ extends PegParserBase_:
 
   // Overall structure
   l-yaml-stream [--on-error] -> any:
-    k := repeat: l-document-prefix
+    repeat: l-document-prefix
     documents := []
     if document := l-any-document: documents.add document
 
@@ -433,7 +448,7 @@ class Parser_ extends PegParserBase_:
   /**
   Parses the remaining documents and comments from the stream.
   Modifies $documents.
-  Note: This is mostly separated out from the l-yaml-stream to allow for returns
+  Note: This is mostly separated out from the l-yaml-stream to allow for returns.
   */
   l-yaml-stream-helper documents/List -> bool:
     named-nodes.clear
@@ -501,7 +516,7 @@ class Parser_ extends PegParserBase_:
       if match-string "---": return true
     return false
 
-  // Directives
+  // Directives.
   l-directive -> bool:
     try-parse:
       if match-char C-DIRECTIVE_ and
@@ -595,7 +610,7 @@ class Parser_ extends PegParserBase_:
   ns-directive-parameter -> List?:
     return repeat --at-least-one: ns-char
 
-  // comments
+  // Comments.
   l-comment -> bool:
     try-parse:
       if s-separate-in-line:
@@ -643,7 +658,7 @@ class Parser_ extends PegParserBase_:
         return true
     return false
 
-  // Data part
+  // Data part.
   s-l-plus-block-node n/int c/int -> ValueNode_?:
     return s-l-plus-block-in-block n c
         or s-l-plus-flow-in-block n
@@ -881,9 +896,9 @@ class Parser_ extends PegParserBase_:
     try-parse:
       if match-char C-MAPPING-START_:
         optional: s-separate n c
-        map-entries := in-flow-map n c // See https://github.com/yaml/yaml-spec/issues/299
+        map-entries := in-flow-map n c // See https://github.com/yaml/yaml-spec/issues/299.
         if match-char C-MAPPING-END_:
-          return ValueNode_.map-from-collection ( map-entries ? map-entries : [])
+          return ValueNode_.map-from-collection (map-entries or [])
     return null
 
   in-flow n/int c/int -> Deque?:
@@ -1085,7 +1100,7 @@ class Parser_ extends PegParserBase_:
 
     try-parse:
       if match-char C-COMMENT_:
-        //  [ lookbehind = ns-char ]
+        //  [ lookbehind = ns-char ].
         is-ns-char := lookbehind 2: ns-char != null
         if is-ns-char: return C-COMMENT_
 
@@ -1337,7 +1352,7 @@ class Parser_ extends PegParserBase_:
           return empty-lines.size
     return null
 
-  // Escaped strings
+  // Escaped strings.
   c-single-quoted n/int c/int -> ValueNode_?:
     try-parse:
       if match-char C-SINGLE-QUOTE_:
@@ -1445,7 +1460,7 @@ class Parser_ extends PegParserBase_:
   s-double-break n/int -> List?:
     if rune := s-double-esscaped n: return rune
     if folded := s-flow-folded n:
-      runes := List
+      runes := []
       folded.do --runes: runes.add it
       return runes
     return null
@@ -1505,15 +1520,15 @@ class Parser_ extends PegParserBase_:
             if 0xd800 <= res <= 0xdbff:
               if part-2 := c-ns-esc-char:
                  if not 0xdc00 <= part-2 <= 0xdfff:
-                  set-error "INVALID_SURROGATE_PAIR"
-                  return null
+                   set-error "INVALID_SURROGATE_PAIR"
+                   return null
                  return 0x10000 + ((res & 0x3ff) << 10) | (part-2 & 0x3ff)
             else:
               return res
         if match-char 'U': if res := match-hex 8: return res
     return null
 
-  // Space
+  // Space.
   b-as-space: return b-break
 
   b-as-line-feed: return b-break
@@ -1558,13 +1573,13 @@ class Parser_ extends PegParserBase_:
     return 0
 
   s-indent-less-or-equals n:
-    while n-- > 0 and match-char S-SPACE_:
+    while n-- > 0 and match-char S-SPACE_: /* Do nothing. */
     return true
 
   s-indent-less-than n:
-    return s-indent-less-or-equals n - 1
+    return s-indent-less-or-equals (n - 1)
 
-  // Lexigraphical-like productions
+  // Lexicographical-like productions.
   start-of-line -> bool:
     return bof or
            lookbehind 1: (match-chars B-LINE-TERMINATORS_) != null
@@ -1596,6 +1611,7 @@ class Parser_ extends PegParserBase_:
         if match-char 0:
           set-error "UNSUPPORTED_BYTE_ORDER"
           return false
+    // Toit only supports UTF-8.
     if can-read 3 and match-buffer #[0xEF, 0xBB, 0xBF]:
       return true
     return false

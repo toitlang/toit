@@ -14,7 +14,7 @@ INITIAL-BUFFER-SIZE_ ::= 64
 MAX-BUFFER-GROWTH_ ::= 1024
 
 /**
-Encodes the $obj as a YANL ByteArray.
+Encodes the $obj as a YAML ByteArray.
 The $obj must be a supported type, which means either a type supported
   by the $converter block or an instance of int, bool, float, string, List
   or Map.
@@ -32,6 +32,10 @@ encode obj [converter] -> ByteArray:
   e.encode obj converter
   return e.to-byte-array
 
+/**
+Variant of $(encode obj [converter]).
+Takes a lambda instead of a block as $converter.
+*/
 encode obj converter/Lambda -> ByteArray:
   return encode obj: | obj encoder | converter.call obj encoder
 
@@ -49,12 +53,13 @@ encode obj -> ByteArray:
 Decodes the $bytes, which is a ByteArray in YAML format.
 The result is null or an instance of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
-If $as-stream, returns a list of included documents.
+If $as-stream is true, returns a list of included documents. Otherwise only returns
+  the first document or null if none was included.
 */
 decode --as-stream/bool=false [--on-error] bytes/ByteArray -> any:
   p := Parser_ bytes
   result := p.l-yaml-stream --on-error=on-error
-  if not result is ParseResult_: return result // This happens when on-error is invoked
+  if not result is ParseResult_: return result // This happens when on-error is invoked.
   documents := result.documents
   if as-stream: return documents
   if documents.is-empty: return null
