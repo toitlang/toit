@@ -6,7 +6,8 @@ import encoding.hex
 import zlib
 import bytes
 
-import .file-system-view
+import ..file-system-view
+import .git
 
 class Pack:
   version/int
@@ -40,7 +41,7 @@ class Pack:
     if the value is a $ByteArray, the entry is a file. In either case, the key is the name of
     the file/directory
   */
-  content -> FileSystemView: return FileSystemView content_
+  content -> FileSystemView: return GitFileSystemView content_
 
   static expand_ path m/Map:
     directory.mkdir --recursive path

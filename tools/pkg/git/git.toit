@@ -5,9 +5,9 @@ import reader
 import bytes
 
 import .pack
-import .file-system-view
+import ..file-system-view
 
-export Pack FileSystemView
+export Pack
 
 open-repository url/string -> Repository:
   return Repository url
@@ -26,6 +26,7 @@ class Repository:
   head -> string:
     refs := protocol_.load-refs url
     return refs[HEAD-INDICATOR_]
+
 protocol_ ::= GitProtocol_
 UPLOAD-PACK-REQUEST-CONTENT-TYPE_ ::= "pplication/x-git-upload-pack-request"
 HEAD-INDICATOR_ ::= "HEAD"
@@ -148,4 +149,27 @@ class GitProtocol_:
       if not buffer.can-ensure length:
         throw "Premature end of input"
       lines.add (buffer.read-bytes length - 4)
+
+
+class GitFileSystemView implements FileSystemView:
+  content_/Map
+
+  constructor .content_:
+
+  get --path/List -> any:
+    if path.is-empty: return null
+    if path.size == 1: return get path[0]
+
+    element := content_.get path[0]
+    if not element is Map: return null
+
+    return (GitFileSystemView element).get --path=path[1..]
+
+  get key/string -> any:
+    element := content_.get key
+    if element is Map: return GitFileSystemView element
+    return element
+
+  list -> Map:
+    return content_.map: | k v | if v is Map: GitFileSystemView v else: k
 

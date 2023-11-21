@@ -8,7 +8,6 @@ import ..registry
 import ..error
 import ..pkg
 import ..git
-import ..git.file-system-view
 import ..semantic-version
 
 import .package
@@ -16,11 +15,11 @@ import .lock
 
 project-from-cli parsed/cli.Parsed:
   root := parsed[OPTION-PROJECT-ROOT]
-  sdk-version := parsed[OPTION-SDK-VERSION]
+  sdk-version := SemanticVersion parsed[OPTION-SDK-VERSION]
   if root: return project-from-path root sdk-version
   return project-from-pwd sdk-version
 
-project-from-pwd sdk-version/string -> Project:
+project-from-pwd sdk-version/SemanticVersion -> Project:
   project := Project directory.cwd sdk-version
   if not project.package-file-exists_:
     error """
@@ -30,22 +29,22 @@ project-from-pwd sdk-version/string -> Project:
           """
   return project
 
-project-from-path root/string sdk-version/string:
+project-from-path root/string sdk-version/SemanticVersion:
   return Project root sdk-version
 
 class Project:
   root/string
-  package-file/PackageFile? := null
-  sdk-version/string
+  package-file/ProjectPackageFile? := null
+  sdk-version/SemanticVersion
   lock-file/LockFile? := null
 
   static PACKAGES-CACHE ::= ".packages"
 
   constructor .root .sdk-version:
     if package-file-exists_:
-      package-file = PackageFile.from-project this
+      package-file = ProjectPackageFile.load this
     else:
-      package-file = PackageFile this
+      package-file = ProjectPackageFile.new this
 
   save:
     package-file.save
@@ -87,10 +86,11 @@ class Project:
 
   load-package-package-file url/string version/SemanticVersion:
     cached-repository-dir := cached-repository-dir_ url version
-    return PackageFile.external "$cached-repository-dir"
+    return ExternalPackageFile "$cached-repository-dir"
 
 main:
-  project := Project "tmp2" system.vm-sdk-version
+  print system.vm-sdk-version
+  project := Project "tmp2" (SemanticVersion system.vm-sdk-version)
   project.solve_
   print project.lock-file.to-map
   print (yaml.stringify project.lock-file.to-map)
