@@ -349,6 +349,7 @@ test-block-parse:
   expect-equals "a: b\n" (yaml.stringify (yaml.parse "a: b"))
   expect-equals "a'" (yaml.parse "'a'''")
   expect-equals "a''" (yaml.parse "'a'''''")
+  expect-equals "a: []\nb: {}\n" (yaml.stringify (yaml.parse "a: []\nb: {}"))
   expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "'a''''"
 
 
@@ -383,6 +384,7 @@ test-block-parse:
   expect-equals "p#" (yaml.parse "p#")
   expect-equals "æ#" (yaml.parse "æ#")
   expect-equals "ab🙈#" (yaml.parse "ab🙈#")
+  expect-equals "ab🙈a#" (yaml.parse "ab🙈a#")
   expect-equals "🙈#" (yaml.parse "🙈#")
   expect-equals "ab" (yaml.parse "ab #")
   expect-equals 10 (yaml.parse "0xa")

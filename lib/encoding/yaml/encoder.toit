@@ -47,7 +47,7 @@ class YamlEncoder extends EncoderBase_:
     // For floating point numbers, the YAML specification has a core tag for float (tag:yaml.org,2002:float)
     // that specifies this regular expression for floats:
     //   [-+]? ( \. [0-9]+ | [0-9]+ ( \. [0-9]* )? ) ( [eE] [-+]? [0-9]+ )?
-    // TODO(floarian): When the core lib's float can produce that output, then change the following statement.
+    // TODO(florian): When the core lib's float can produce that output, then change the following statement.
     str := number is float ? number.stringify 2 : number.stringify
     put-value_ str
 

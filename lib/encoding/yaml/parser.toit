@@ -6,7 +6,6 @@
 A YAML parser.
 
 Follows the grammar of the YAML 1.2.2 draft: https://yaml.org/spec/1.2.2/
-The grammar is almost a PEG grammar (except for one lookbehind).
 */
 
 B-LINE-FEED_        ::= '\n'
@@ -236,8 +235,10 @@ abstract class PegParserBase_:
         offset_--
         // Skip to the first byte of Unicode surrogates.
         // Byte 2, 3, and 4 all start with bits 10.
-        // Since the input is a valid string we only need to check for offset_ > 0.
-        while offset_ > 0 and (bytes_[offset_] & 0b1100_0000) == 0b1000_0000: offset_--
+        // Since the input is a valid string we do not need to check for offset_ > 0.
+        //  An UTF-8 surrogate will have the two MSB bits set to 0b10 for all but the
+        //  first byte, where it wil be 0b11.
+        while (bytes_[offset_] & 0b1100_0000) == 0b1000_0000: offset_--
       behind-result := block.call
       return behind-result
     finally:
@@ -359,6 +360,7 @@ class ParseResult_:
 
 /**
 A YAML parser based on https://yaml.org/spec/1.2.2.
+The grammar is almost a PEG grammar (except for one lookbehind).
 
 Naming conventions:
 - `e-`: A production matching no characters.
@@ -368,7 +370,7 @@ Naming conventions:
 - `s-`: A production starting and ending with a white-space character.
 - `ns-`: A production starting and ending with a non-space character.
 - `l-`: A production matching complete line(s).
-- `X-Y-`: A production starting with an `X-~' character and ending with a `Y-` character, where `X-` and `Y-` are any of the above prefixes.
+- `X-Y-`: A production starting with an `X-~` character and ending with a `Y-` character, where `X-` and `Y-` are any of the above prefixes.
 - `X-plus`, `X-Y-plus`: A production as above, with the additional property that the matched content indentation level is greater than the specified `n` parameter.
 */
 class Parser_ extends PegParserBase_:
@@ -635,8 +637,9 @@ class Parser_ extends PegParserBase_:
     return s-l-plus-block-scalar n c or s-l-plus-block-collection n c
 
   s-l-plus-flow-in-block n/int -> ValueNode_?:
-    if node := (try-parse: s-separate n + 1 FLOW-OUT_ and ns-flow-node n + 1 FLOW-OUT_):
-      if s-l-comments: return node
+    try-parse:
+      node := s-separate n + 1 FLOW-OUT_ and ns-flow-node n + 1 FLOW-OUT_
+      if node and s-l-comments: return node
     return null
 
   s-l-plus-block-collection n/int c/int -> ValueNode_?:
@@ -1096,7 +1099,7 @@ class Parser_ extends PegParserBase_:
       indent-char := match-range '1' '9'
       chomp-char := match-chars { '-', '+' }
       if not indent-char: indent-char = match-range '1' '9'
-      // Even though it might seem from the spec that indent ise not optional. This is an error, see
+      // It might seem from the spec that indent is not optional. This is an error, see
       // https://github.com/yaml/yaml-spec/issues/230.
       // c-chomping-indicator(CLIP)  ::= "" allows for an empty chomping indicator.
       if s-b-comment:
@@ -1422,11 +1425,11 @@ class Parser_ extends PegParserBase_:
     return null
 
   // Space.
-  b-as-space: return b-break
+  b-as-space -> bool: return b-break
 
-  b-as-line-feed: return b-break
+  b-as-line-feed -> bool: return b-break
 
-  l-empty n c:
+  l-empty n c -> bool:
     try-parse:
       if (s-line-prefix n c or s-indent-less-than n) and b-as-line-feed:
         return true
@@ -1445,10 +1448,13 @@ class Parser_ extends PegParserBase_:
       if s-l-comments and s-flow-line-prefix n: return true
     return s-separate-in-line
 
-  s-flow-line-prefix n:
-    return s-indent n and (optional: s-separate-in-line)
+  s-flow-line-prefix n -> int?:
+    if indent := s-indent n:
+      optional: s-separate-in-line
+      return indent
+    return null
 
-  s-block-line-prefix n:
+  s-block-line-prefix n -> int?:
     return s-indent n
 
   s-indent n --auto-detect-m/bool=false -> int?:
@@ -1486,10 +1492,9 @@ class Parser_ extends PegParserBase_:
     return eof or forbidden-mark != null and (bytes-since-mark forbidden-mark) >= 0
 
   b-break-helper -> bool:
-    if match-buffer #[B-CARRIAGE_RETURN_, B-LINE-FEED_]: return true
-    if match-char B-CARRIAGE_RETURN_: return true
-    if match-char B-LINE-FEED_: return true
-    return false
+    return as-bool (match-buffer #[B-CARRIAGE_RETURN_, B-LINE-FEED_] or
+                    match-char B-CARRIAGE_RETURN_ or
+                    match-char B-LINE-FEED_)
 
   b-break -> bool:
     if is-break := b-break-helper:
