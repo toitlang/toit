@@ -368,7 +368,7 @@ Naming conventions:
 - `s-`: A production starting and ending with a white-space character.
 - `ns-`: A production starting and ending with a non-space character.
 - `l-`: A production matching complete line(s).
-- `X-Y-`: A production starting with an `X-~ character and ending with a `Y-` character, where `X-` and `Y-` are any of the above prefixes.
+- `X-Y-`: A production starting with an `X-~' character and ending with a `Y-` character, where `X-` and `Y-` are any of the above prefixes.
 - `X-plus`, `X-Y-plus`: A production as above, with the additional property that the matched content indentation level is greater than the specified `n` parameter.
 */
 class Parser_ extends PegParserBase_:
@@ -979,7 +979,7 @@ class Parser_ extends PegParserBase_:
     repeat: (repeat: match-chars S-WHITESPACE_) and ns-plain-char c
     return string-since mark
 
-  NS-PLAIN-SEMI_SAFE_ ::= { C-MAPPING-KEY_, C-MAPPING-VALUE_, C-SEQUENCE-ENTRY_ }
+  static NS-PLAIN-SEMI_SAFE_ ::= { C-MAPPING-KEY_, C-MAPPING-VALUE_, C-SEQUENCE-ENTRY_ }
   ns-plain-first c:
     try-parse:
       if rune := ns-char:
