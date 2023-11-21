@@ -101,10 +101,12 @@ decode-stream reader:
 
 class Encoder extends EncoderBase_:
   /** See $EncoderBase_.encode */
+  // TODO(florian): Remove when toitdoc compile understands inherited methods
   encode obj/any converter/Lambda:
     return super obj converter
 
   /** See $Buffer_.put-unquoted */
+  // TODO(florian): Remove when toitdoc compile understands inherited methods
   put-unquoted data -> none:
     super data
 

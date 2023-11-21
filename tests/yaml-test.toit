@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
@@ -369,6 +369,7 @@ test-block-parse:
   expect-equals "a\nb c" (yaml.parse "a\n\nb\nc")
 
   expect-equals "foo" (yaml.parse "%YAML 1.2\n---\nfoo")
+  expect-equals null (yaml.parse "%YAML 1.2\n---\n  #foo")
   expect-throw "UNSUPPORTED_YAML_VERSION": yaml.parse "%YAML 1.3\n---\nfoo"
   expect-equals "foo" (yaml.parse "%TAG !yaml! tag:yaml.org,2002:\n---\nfoo")
 
@@ -429,7 +430,7 @@ test-from-spec:
                       baz "
                    """
 
-  // Exmple 6.9
+  // Example 6.9
   expect-equals
       "key: value\n"
       yaml.stringify
@@ -438,7 +439,7 @@ test-from-spec:
                         value
                      """
 
-  // Exmple 6.10
+  // Example 6.10
   expect-equals
       null
       yaml.parse """
@@ -447,7 +448,7 @@ test-from-spec:
 
                  """
 
-  // Exmple 6.11
+  // Example 6.11
   expect-equals
       "key: value\n"
       yaml.stringify

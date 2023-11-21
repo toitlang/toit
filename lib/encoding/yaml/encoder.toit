@@ -1,6 +1,7 @@
 // Copyright (C) 2023 Toitware ApS. All rights reserved.
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
+
 import ..json-like-encoder_
 import .yaml
 
@@ -11,10 +12,12 @@ class YamlEncoder extends EncoderBase_:
   indent_buffer_/string := "      " // A buffer of spaces, extends as nescessary.
 
   /** See $EncoderBase_.encode */
+  // TODO(florian): Remove when toitdoc compile understands inherited methods
   encode obj/any converter/Lambda:
     return super obj converter
 
   /** See $Buffer_.put-unquoted */
+  // TODO(florian): Remove when toitdoc compile understands inherited methods
   put-unquoted data -> none:
     super data
 
@@ -41,6 +44,10 @@ class YamlEncoder extends EncoderBase_:
     if should_quote: put-byte_ '"'
 
   encode-number_ number:
+    // For floating point numbers, the YAML specification has a core tag for float (tag:yaml.org,2002:float)
+    // that specifies this regular expression for floats:
+    //   [-+]? ( \. [0-9]+ | [0-9]+ ( \. [0-9]* )? ) ( [eE] [-+]? [0-9]+ )?
+    // TODO(floarian): When the core lib's float can produce that output, then change the following statement.
     str := number is float ? number.stringify 2 : number.stringify
     put-value_ str
 
