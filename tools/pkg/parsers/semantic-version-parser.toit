@@ -15,7 +15,8 @@ class TripleParseResult:
 
 /*
   A PEG grammar for the semantic version
-  semantic-version ::= version-core
+  semantic-version ::= "v"?
+                       version-core
                        pre-releases?
                        build-numbers?
   version-core ::= numeric '.' numeric '.' numeric
@@ -48,6 +49,7 @@ class SemanticVersionParser extends parser.PegParserBase_:
     throw "Parse error, expected a numeric value at position $current-position"
 
   semantic-version --consume-all/bool=false -> SemanticVersionParseResult:
+    optional: match-string "v"
     triple := version-core
     pre-releases := pre-releases
     build-numbers := build-numbers

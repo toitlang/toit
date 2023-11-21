@@ -1,6 +1,8 @@
-import ..pkg
-import cli
 import system
+
+import cli
+
+import ..pkg
 
 class VersionCommand:
   constructor parsed/cli.Parsed:

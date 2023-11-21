@@ -20,16 +20,20 @@ class Resolved:
   constructor solution/PartialSolution:
     packages = solution.partial-packages.map: | _ v | ResolvedPackage v
     // DEBUG
+    deps := solution.partial-packages.keys
+    deps.sort --in-place: | a b | a.stringify.compare-to b.stringify
     m := {:}
-    solution.partial-packages.do: | k v/PartialPackageSolution |
-      m[k.stringify] = pps-to-map v
+    deps.do:
+      m[it.stringify] = pps-to-map solution.partial-packages[it]
     print (yaml.stringify m)
 
   constructor.empty:
-    print "EMPTY"
+    print "EMPTY" // DEBUG
 
   pps-to-map v/PartialPackageSolution: // DEBUG
-    return { "url": v.url, "version": v.solved-version.stringify, "hash": v.ref-hash, "packages": (v.dependencies.keys.map: it.stringify) }
+    packs := {:}
+    v.dependencies.do: | k v/PartialPackageSolution | packs[k.stringify] = { "version": v.solved-version.stringify }
+    return { "url": v.url, "version": v.solved-version.stringify, "hash": v.ref-hash, "packages": packs }
 
 
 class ResolvedPackage:
@@ -49,11 +53,14 @@ class ResolvedPackage:
   name -> string:
     return solution_.name
 
-  dependencis -> Map:
+  dependencies -> Map:
     return solution_.dependencies.map: | _ v | ResolvedPackage v
 
   hash-code -> int:
     return url.hash-code + version.hash-code
+
+  sdk-version -> Constraint?:
+    return solution_.sdk-version
 
   operator == other/ResolvedPackage:
     return url == other.url and version == other.version
@@ -64,6 +71,7 @@ class PartialPackageSolution:
   versions/List? := null // List of possible SemanticVersions
   url/string
   description/Description? := null
+  sdk-version-found/bool := false // An stisfying sdk-version was found for a version. For error reporting
 
   constructor .url/string .versions/List:
 
@@ -187,9 +195,13 @@ class PartialSolution:
   load-dependencies unresolved-dependency/PackageDependency next-version/SemanticVersion -> bool:
     description := solver.retrieve-description unresolved-dependency.url next-version
 
+    if not description.satisfies-sdk-version solver.sdk-version:
+      return false
+
     package/PartialPackageSolution := partial-packages[unresolved-dependency]
     package.description = description
     package.versions = null
+
     description.dependencies.do: | dependency/PackageDependency |
       if url-to-dependencies.contains dependency.url:
         partial-package-solutions := IdentitySet
@@ -202,8 +214,8 @@ class PartialSolution:
           all-versions := solver.retrieve-versions dependency.url
           dependency-versions := dependency.filter all-versions
           if dependency-versions.is-empty: return false
-          // For all existing dependencies, check if the the new dependency resolves a disjoint set of versions
 
+          // For all existing dependencies, check if the the new dependency resolves a disjoint set of versions
           url-to-dependencies[dependency.url].do: | existing-dependency/PackageDependency |
             existing-versions/List := existing-dependency.filter all-versions
             dependency-versions.do:
@@ -223,6 +235,7 @@ class PartialSolution:
 // Makes an abstract solver to allow easier testing
 abstract class Solver:
   package-versions/Map := {:} // Map of Dependency to list of versions
+  sdk-version/SemanticVersion
 
   // Should return a list of all SemanticVersion for the package denoted by url, sorted with highest first
   abstract retrieve-versions url/string -> List
@@ -230,11 +243,17 @@ abstract class Solver:
   /** Retrieve the description of a specific version */
   abstract retrieve-description url/string version/SemanticVersion -> Description
 
-  constructor dependencies/List:
+  constructor .sdk-version/SemanticVersion dependencies/List:
     dependencies.do: | dependency/PackageDependency |
       versions := retrieve-versions dependency.url
       versions = dependency.filter versions
       if versions.is-empty: throw "No versions for packages $dependency.url satisfies supplied constraint"
+
+      versions.filter --in-place:
+        description := retrieve-description dependency.url it
+        description.satisfies-sdk-version sdk-version
+      if versions.is-empty: throw "No version of package $dependency.url satisfies sdk-version: $sdk-version"
+
       package-versions[dependency] = versions
 
   solve -> Resolved:
@@ -250,7 +269,6 @@ abstract class Solver:
     partial-solution := PartialSolution this partial-package-solutions
     if solution := partial-solution.refine: return Resolved solution
     throw "Unable to resolve dependencies"
-
 
 copy-dependency-to-solution-map_ input/Map translator/IdentityMap -> Map:
   return input.map: | _ v |

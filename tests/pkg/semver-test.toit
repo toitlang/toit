@@ -25,6 +25,10 @@ main:
   expect-equals false (compare "1.0.0" "1.0.0-beta")
   expect-equals true (compare "2.1.2" "3.0.0")
 
+  expect-equals true (compare "2.0.0-alpha.79" "2.0.0-alpha.121.31+pgk-in-toit.95591318")
+  expect-equals true (compare "2.0.0-alpha.121.31+pgk-in-toit.95591318" "3.0.0")
+
+
   expect-throw "Parse error, expected a numeric value at position 0" : SemanticVersion "."
   expect-throw "Parse error, expected a numeric value at position 4" : SemanticVersion "1.1."
   expect-throw "Parse error, not all input was consumed" : SemanticVersion "1.1.02"

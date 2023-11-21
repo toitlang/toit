@@ -3,8 +3,9 @@ import .parsers.constraint-parser
 
 class Constraint:
   constraints/List
+  source/string
 
-  constructor source/string:
+  constructor .source/string:
     parsed := (ConstraintParser source).constraints
     constraints = []
     parsed.do: | constraint/ConstraintParseResult |
@@ -29,6 +30,8 @@ class Constraint:
   filter versions/List -> List:
     return versions.filter: satisfies it
 
+  stringify -> string:
+    return source
 
 class SimpleConstraint:
   comparator/string
@@ -40,6 +43,8 @@ class SimpleConstraint:
   satisfies version/SemanticVersion -> bool:
     return check.call version constraint-version
 
+  stringify -> string:
+    return "$comparator$constraint-version"
 
 CONSTRAINT-COMPARATORS_ ::= {
   ">=": :: | v c | v >= c,

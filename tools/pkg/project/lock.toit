@@ -1,9 +1,10 @@
 import host.file
 import encoding.yaml
 
-import ..dependency.local-solver as local-solver
-import ..dependency
+import ..solver.local-solver as local-solver
+import ..solver.registry-solver
 import ..semantic-version
+import ..constraints
 
 import .project
 import .package
@@ -14,26 +15,39 @@ abstract class Package:
 
   constructor:
 
-  abstract enrich-map map/Map
-  abstract locator_ -> any
-  abstract package-file -> PackageFile
+  constructor .name .prefixes:
 
-  add-to-map packages/Map:
+  constructor.from-map .name map/Map:
+    map-prefixes := map.get LockFile.PREFIXES-KEY_ --if-absent=: {:}
+    if map.contains LockFile.PATH-KEY_:
+      return LocalPackage.from-map name prefixes map
+    else:
+      return RepositoryPackage.from-map name prefixes map
+
+  abstract enrich-map map/Map project-package-file/ProjectPackageFile
+  abstract locators_ -> Set
+  abstract package-file -> PackageFile
+  abstract sdk-version -> Constraint?
+
+  add-to-map packages/Map project-package-file/ProjectPackageFile:
     sub := {:}
     if not prefixes.is-empty: sub["prefixes"] = prefixes
-    enrich-map sub
+    enrich-map sub project-package-file
     return packages[name] = sub
 
 
 class RepositoryPackage extends Package:
-  dependency_/PackageDependency
+  dependencies_/Set // of PackageDependency
   resolved-package_/ResolvedPackage
   project_/Project
 
-  constructor .project_ .dependency_ .resolved-package_:
+  constructor .project_ dependency/PackageDependency .resolved-package_:
+    dependencies_ = { dependency }
+
+
 
   url -> string:
-    return dependency_.url
+    return dependencies_.first.url
 
   version -> SemanticVersion:
     return resolved-package_.version
@@ -41,66 +55,102 @@ class RepositoryPackage extends Package:
   ref-hash -> string:
     return resolved-package_.ref-hash
 
-  name -> string:
-    return resolved-package_.name
-
-  enrich-map map/Map:
+  enrich-map map/Map project-package-file/ProjectPackageFile:
     map["url"] = url
     map["name"] = name
     map["version"] = version.stringify
     map["hash"] = ref-hash
 
-  locator_ -> any:
-    return dependency_
+  locators_ -> Set:
+    return dependencies_
+
+  add-dependency dependency/PackageDependency:
+    dependencies_.add dependency
 
   package-file -> PackageFile:
     project_.ensure-downloaded url version
     return project_.load-package-package-file url version
 
+  sdk-version -> Constraint?:
+    return resolved-package_.sdk-version
+
+
 class LocalPackage extends Package:
-  path/string
   local-package_/local-solver.LocalPackage
 
-  constructor .path .local-package_:
+  constructor .local-package_:
 
-  enrich-map map/Map:
-    map["path"] = path
+  enrich-map map/Map project-package-file/ProjectPackageFile:
+    if not local-package_.absolute:
+      map["path"] = local-package_.package-file.relative-path-to project-package-file
+    else:
+      map["path"] = local-package_.location
 
-  locator_ -> any:
-    return path
+  locators_ -> Set:
+    return { local-package_.location }
 
   package-file -> PackageFile:
     return local-package_.package-file
+
+  sdk-version -> Constraint?:
+    return local-package_.package-file.sdk-version
+
+
 
 class LockFile:
   sdk-version/SemanticVersion? := null
   prefixes/Map := {:}
   packages/List := []
+  package-file/ProjectPackageFile
 
   static FILE-NAME ::= "package.lock"
 
-  constructor:
+  constructor .package-file:
 
-  to-map -> Map:
+  constructor.load .package-file:
+    contents/Map := (yaml.decode (file.read_content (file-name package-file.root-dir))) as Map
+    yaml-sdk-version/string := contents.get SDK-KEY_
+    if yaml-sdk-version:
+      if not yaml-sdk-version.starts-with "^":
+        throw "The sdk version ($yaml-sdk-version) specified in the lock file is not valid. It should start with a ^"
+      sdk-version = SemanticVersion contents[SDK-KEY_][1..]
+
+    if contents.contains PREFIXES-KEY_:
+      prefixes = contents[PREFIXES-KEY_]
+
+    yaml-packages/Map := contents.get PACKAGES-KEY_ --if-absent=: []
+    yaml-packages.do: | name/string map/Map |
+      packages.add (Package.from-map name map)
+
+  static file-name root/string -> string:
+    return "$root/$FILE_NAME"
+
+  file-name -> string:
+    return file-name package-file.root-dir
+
+  to-map_ -> Map:
     map := {:}
-    if sdk-version: map["sdk"] = "^$sdk-version"
+    if sdk-version: map[SDK-KEY_] = "^$sdk-version"
     if not prefixes.is-empty:
-      map["prefixes"] = prefixes
+      map[PREFIXES-KEY_] = prefixes
     if not packages.is-empty:
       packages-map := {:}
-      packages.do: it.add-to-map packages-map
-      map["packages"] = packages-map
+      packages.do: | package/Package | package.add-to-map packages-map package-file
+      map[PACKAGES-KEY_] = packages-map
     return map
 
-  save project-root/string:
-    content := to-map
-    file-name := "$project-root/$FILE-NAME"
+  save:
+    content := to-map_
     if content.is-empty:
       file.write_content "# Toit Package File." --path=file-name
     else:
       file.write_content --path=file-name
           yaml.encode content
 
+  static SDK-KEY_        ::= "sdk"
+  static PREFIXES-KEY_   ::= "prefixes"
+  static PACKAGES-KEY_   ::= "packages"
+  static PATH-KEY_       ::= "path"
 
 class PackageKey:
   parts/List := []
@@ -143,7 +193,7 @@ class PackageKey:
 
 
 class LockFileBuilder:
-  package-file/PackageFile
+  package-file/ProjectPackageFile
   local-result/local-solver.LocalResult
 
   blocked-name := {}
@@ -151,46 +201,61 @@ class LockFileBuilder:
   dependencies-to-name := {:}
   package-map := {:} // PackageKey -> Package
 
-  constructor .package-file/PackageFile .local-result/local-solver.LocalResult:
+  constructor .package-file/ProjectPackageFile .local-result/local-solver.LocalResult:
 
   build -> LockFile:
     print "build: $local-result.local-packages"
-    lock-file := LockFile
-    local-result.local-packages.do: | path/string package/local-solver.LocalPackage |
-      print "path=$path"
+    lock-file := LockFile package-file
+    local-result.local-packages.do: | _ package/local-solver.LocalPackage |
       count := 0
       while true:
-        key := PackageKey "package" "$path$(count > 0 ? "-$count" : "")"
+        key := PackageKey "package" "$package.location$(count > 0 ? "-$count" : "")"
         if package-map.contains key: continue
-        package-map[key] = LocalPackage path package
+        package-map[key] = LocalPackage package
         break
 
     mutli-version-urls := identify-multi-version-packages
+    resolved-to-repository-package := {:}
     local-result.repository-packages.packages.do: | dependency/PackageDependency package/ResolvedPackage |
+      print "lockfile.build $dependency"
       count := 0
       while true:
         id := dependency.url
+
         if mutli-version-urls.contains id:
           id = "$id-$package.version"
 
+        print "id: $id"
         key := PackageKey "package" "$id$(count > 0 ? "-$count" : "")"
         if package-map.contains key: continue
         package-map[key] = RepositoryPackage package-file.project dependency package
+        resolved-to-repository-package[package] = package-map[key]
         break
 
+    local-result.repository-packages.packages.do --values: | package/ResolvedPackage |
+      package.dependencies.do: | dependecy/PackageDependency depdent-package/ResolvedPackage |
+        resolved-to-repository-package[depdent-package].add-dependency dependecy
+
+    package-map.keys.do: | k/PackageKey | print "key: $k.parts"
     reduced-key-to-key := reduce-keys package-map.keys
+    reduced-key-to-key.keys.do: | k/PackageKey | print "reduced key: $k.parts"
 
     // Update package-map with the shortened keys
     reduced-key-to-key.do: | short/PackageKey long/PackageKey |
       value/Package := package-map[long]
+      value.name = short.name
+      print "$value.name - $short.parts"
       package-map.remove long
       package-map[short] = value
-      value.name = short.name
+    package-map.keys.do: | k/PackageKey | print "reduced2: $k.parts"
 
     // Build a lookup table from PackageDependency/Path to Package
     package-locator-to-package/Map := {:}
     package-map.do: | key/PackageKey package/Package |
-      package-locator-to-package[package.locator_] = package
+      package.locators_.do:
+        print "locator: $it"
+        package-locator-to-package[it] = package
+
     print package-locator-to-package.keys
 
     lock-file.prefixes = compute-prefixes package-file package-locator-to-package
@@ -198,7 +263,9 @@ class LockFileBuilder:
     package-map.do --values: | package/Package |
       package.prefixes = compute-prefixes package.package-file package-locator-to-package
 
-    lock-file.packages = package-map.values
+    lock-file.packages = package-map.values.sort: |a b| a.name.compare-to b.name
+
+    lock-file.sdk-version = find-min-sdk-version package-map.values
 
     return lock-file
 
@@ -245,10 +312,30 @@ class LockFileBuilder:
     prefixes := {:}
 
     package-file.local-dependencies.do: | prefix/string path/string |
-      prefixes[prefix] = package-locator-to-package[path].name
+      prefixes[prefix] = package-locator-to-package[package-file.real-path-for-dependecy path].name
 
     package-file.registry-dependencies.do: | prefix/string dependency/PackageDependency |
       print dependency
       prefixes[prefix] = package-locator-to-package[dependency].name
 
     return prefixes
+
+  find-min-sdk-version packages/List -> SemanticVersion?:
+    min-sdk-version/SemanticVersion? := null
+
+    packages.do: | package/Package |
+      sdk-version := package.sdk-version
+      if sdk-version:
+        if not sdk-version.source.starts-with "^":
+          throw "Unexpected sdk-version constraint: $sdk-version"
+
+        version := SemanticVersion sdk-version.source[1..]
+
+        if not min-sdk-version:
+          min-sdk-version = version
+          continue.do
+
+        if version < min-sdk-version:
+          min-sdk-version = version
+
+    return min-sdk-version

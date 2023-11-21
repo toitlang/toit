@@ -37,6 +37,7 @@ main:
   check-constraint "2.2.1" "2.2.1"
   check-constraint "5.2.1" "=5.2.1"
 
+  check-constraint "2.0.0-alpha.121.31+pgk-in-toit.95591318" "^2.0.0-alpha.79"
 
   check-not-constraint "2.1.0" "^2.1.1"
   check-not-constraint "3.1.0" "^2.1.1"

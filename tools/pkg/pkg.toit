@@ -17,9 +17,8 @@ search parsed/cli.Parsed: print "NYI: search"
 sync parsed/cli.Parsed: print "NYI: sync"
 update parsed/cli.Parsed: print "NYI: sync"
 uninstall parsed/cli.Parsed: print "NYI: update"
-version parsed/cli.Parsed: print "NYI: update"
 
-//  clean        Removes unnecessary packages
+//  clean       Removes unnecessary packages
 //  completion  Generate the autocompletion script for the specified shell
 //  describe    Generates a description of the given package
 //  init        Creates a new package and lock file in the current directory
@@ -53,10 +52,6 @@ main arguments/List:
           cli.Command "describe"
               --short-help="Generates a description of the given package"
               --run=:: describe it,
-
-          cli.Command "init"
-              --short-help="Creates a new package and lock file in the current directory"
-              --run=:: init it,
 
           InstallCommand.CLI-COMMAND,
 

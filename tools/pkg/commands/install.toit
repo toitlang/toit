@@ -39,7 +39,10 @@ class InstallCommand:
     if package and recompute:
       error "Recompute can only be specified with no other arguments."
 
-    project = project-from-cli parsed
+    config := ProjectConfiguration.from-cli parsed
+    config.verify
+
+    project = Project config
 
   execute:
     if not local:
@@ -65,7 +68,7 @@ class InstallCommand:
     if not file.is-directory src-directory:
       error "Path supplied in package argument is an invalid local package, missing $src-directory."
 
-    package-file := PackageFile.external package
+    package-file := ExternalPackageFile package
     if not prefix: prefix = package-file.name
 
     project.install-local prefix package
