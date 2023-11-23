@@ -437,7 +437,7 @@ abstract mixin Reader implements old-reader.Reader:
   # Errors
   At least $n + 1 bytes must be available.
   */
-  peek-byte n/int -> int:
+  peek-byte n/int=0 -> int:
     if n < 0: throw "INVALID_ARGUMENT"
     ensure-buffered n + 1
     n += first-array-position_
@@ -1444,7 +1444,7 @@ class EndianReader:
   This function is an alias for $Reader.peek-byte.
   */
   peek-uint8 -> int:
-    return reader_.peek-byte 0
+    return reader_.peek-byte
 
   /**
   Reads an unsigned 8-bit integer.
@@ -1458,7 +1458,7 @@ class EndianReader:
   Peeks a signed 8-bit integer without consuming it.
   */
   peek-int8 -> int:
-    byte := reader_.peek-byte 0
+    byte := reader_.peek-byte
     if (byte & 0x80) != 0: return byte - 0x100
     return byte
 
