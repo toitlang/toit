@@ -69,7 +69,7 @@ class LspSource : public Source {
 
   bool is_valid() { return true; }
   const char* absolute_path() const { return wrapped_->absolute_path(); }
-  std::string package_id() const { return wrapped_->package_id(); }
+  Package package() const { return wrapped_->package(); }
   std::string error_path() const { return wrapped_->error_path(); }
   const uint8* text() const { return text_with_marker_; }
   Range range(int from, int to) const {
