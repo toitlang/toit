@@ -1444,7 +1444,7 @@ class EndianReader:
   This function is an alias for $Reader.peek-byte.
   */
   peek-uint8 -> int:
-    return reader_.peek-byte
+    return reader_.peek-byte 0
 
   /**
   Reads an unsigned 8-bit integer.
@@ -1458,7 +1458,7 @@ class EndianReader:
   Peeks a signed 8-bit integer without consuming it.
   */
   peek-int8 -> int:
-    byte := reader_.peek-byte
+    byte := reader_.peek-byte 0
     if (byte & 0x80) != 0: return byte - 0x100
     return byte
 
