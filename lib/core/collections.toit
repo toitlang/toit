@@ -3260,6 +3260,10 @@ class Deque implements Collection:
     backing_[first] = element
     first_ = first
 
+  operator [] index/int:
+    if index < 0 or index > backing_.size - first_: throw "OUT_OF_RANGE"
+    return backing_[first_ + index]
+
   shrink-if-needed_ -> none:
     backing := backing_
     first := first_
