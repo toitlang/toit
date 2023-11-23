@@ -708,29 +708,29 @@ class InflaterBackend implements Backend_:
         if extra-repeats != 0:
           last := lengths_[counter_ - 1].bit-len
           extra-repeats.repeat: add-symbol.call last
-        length-code := next_ meta-table_
-        if length-code < 0: return NEED-MORE-DATA_
-        if length-code < 16:
-          add-symbol.call length-code
-        else:
-          last := 0
-          repeats := 3
-          if length-code == 16:
-            last = lengths_[counter_ - 1].bit-len
-            pending-bits_ = 2
-          else if length-code == 17:
-            pending-bits_ = 3
+        if counter_ != lengths_.size:
+          length-code := next_ meta-table_
+          if length-code < 0: return NEED-MORE-DATA_
+          if length-code < 16:
+            add-symbol.call length-code
           else:
-            assert: length-code == 18
-            pending-bits_ = 7
-            repeats = 11
-          (min repeats (lengths_.size - counter_)).repeat:
-            add-symbol.call last
+            last := 0
+            repeats := 3
+            if length-code == 16:
+              last = lengths_[counter_ - 1].bit-len
+              pending-bits_ = 2
+            else if length-code == 17:
+              pending-bits_ = 3
+            else:
+              assert: length-code == 18
+              pending-bits_ = 7
+              repeats = 11
+            (min repeats (lengths_.size - counter_)).repeat:
+              add-symbol.call last
         if counter_ == lengths_.size:
           get-pending-bits.call  // Discard any pending bits.
           symbol-and-length-table_ = HuffmanTables_ lengths_[..hlit_]
           distance-table_ = HuffmanTables_ lengths_[hlit_..]
-          state_ = DECOMPRESSING_
           meta-table_ = null  // Don't need this any more.
           lengths_ = null  // Or this.
           counter_ = 0
