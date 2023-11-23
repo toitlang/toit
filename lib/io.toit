@@ -86,7 +86,7 @@ abstract mixin Writer:
     pos := from
     while not is-closed_:
       pos += try-write data pos to
-      if from >= to:
+      if pos >= to:
         if flush: this.flush
         return (to - from)
       wait-for-more-room_
