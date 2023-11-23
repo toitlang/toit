@@ -9,6 +9,7 @@ import crypto.checksum
 import crypto.hmac show Hmac
 import crypto.sha show Sha256 Sha384
 import encoding.tison
+import io
 import monitor
 import net.x509 as x509
 import tls
@@ -930,7 +931,7 @@ class SymmetricSession_:
 
   constructor .parent_ .writer_ .reader_ .write-keys .read-keys:
 
-  write data from/int to/int --type/int=APPLICATION-DATA_ -> int:
+  write data/io.Data from/int to/int --type/int=APPLICATION-DATA_ -> int:
     if to - from  == 0: return 0
     // We want to be nice to the receiver in case it is an embedded device, so we
     // don't send too large records.  This size is intended to fit in two MTUs on
@@ -964,9 +965,8 @@ class SymmetricSession_:
       List.chunk-up from2 to2 512: | from3 to3 length3 |
         first /bool := from3 == from2
         last /bool := to3 == to2
-        plaintext := data is string
-            ? data.to-byte-array from3 to3
-            : data.copy from3 to3
+        plaintext := ByteArray (to3 - from3)
+        data.write-to-byte-array plaintext --at=0 from3 to3
         parts := [encryptor.add plaintext]
         if first:
           parts = [record-header.bytes, explicit-iv, parts[0]]

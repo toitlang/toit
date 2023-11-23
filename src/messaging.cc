@@ -192,6 +192,8 @@ bool MessageEncoder::encode_any(Object* object) {
       return encode_copy(object, TAG_BYTE_ARRAY);
     } else if (class_id == program->byte_array_slice_class_id()) {
       return encode_copy(object, TAG_BYTE_ARRAY);
+    } else if (class_id == program->string_byte_slice_class_id()) {
+      return encode_copy(object, TAG_BYTE_ARRAY);
     } else if (class_id == program->string_slice_class_id()) {
       return encode_copy(object, TAG_STRING);
     } else {

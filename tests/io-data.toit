@@ -5,17 +5,16 @@
 import io
 
 class FakeData implements io.Data:
-  data_ / ByteArray
+  data_ / io.Data
 
   constructor .data_:
 
-  constructor.str str/string:
-    data_ = str.to-byte-array
+  byte-size -> int: return data_.byte-size
 
-  size -> int: return data_.size
+  byte-at index/int -> int: return data_.byte-at index
+
+  byte-slice from/int to/int -> FakeData:
+    return FakeData (data_.byte-slice from to)
 
   write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none:
     data_.write-to-byte-array byte-array from to --at=at
-
-  operator[..] --from/int=0 --to/int=size -> io.Data:
-    return FakeData data_[from..to]

@@ -36,7 +36,7 @@ class ReaderWriter:
 
   It is an error to close the reader without consuming all data that is written.
   */
-  write data/io.Data from/int = 0 to/int = data.size:
+  write data/io.Data from/int = 0 to/int = data.byte-size:
     return writer_.write data from to
 
   /**

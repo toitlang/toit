@@ -137,18 +137,18 @@ hash-test -> none:
   expect-equals EMPTY-CRC16 (hex.encode (Crc16Xmodem).get)
   GOLD-MEMBER := "Hey, everyone! I am from Holland! Isn't that weird?\n"
   sha1.add GOLD-MEMBER
-  sha1-io-data.add (FakeData.str GOLD-MEMBER)
+  sha1-io-data.add (FakeData GOLD-MEMBER)
   sha2.add GOLD-MEMBER
-  sha2-io-data.add (FakeData.str GOLD-MEMBER)
+  sha2-io-data.add (FakeData GOLD-MEMBER)
   crc32.add GOLD-MEMBER
   crc16.add GOLD-MEMBER
   sha1b := sha1.clone
   sha2b := sha2.clone
   4.repeat: sha1.add GOLD-MEMBER
-  4.repeat: sha1-io-data.add (FakeData.str GOLD-MEMBER)
+  4.repeat: sha1-io-data.add (FakeData GOLD-MEMBER)
   4.repeat: sha1b.add GOLD-MEMBER
   4.repeat: sha2.add GOLD-MEMBER
-  4.repeat: sha2-io-data.add (FakeData.str GOLD-MEMBER)
+  4.repeat: sha2-io-data.add (FakeData GOLD-MEMBER)
   4.repeat: sha2b.add GOLD-MEMBER
   4.repeat: crc32.add GOLD-MEMBER
   4.repeat: crc16.add GOLD-MEMBER
@@ -167,9 +167,9 @@ hash-test -> none:
   expect-already-closed: (sha2.get)   // Can't do this twice.
   expect-already-closed: (sha2b.get)   // Can't do this twice.
   sha1-long.add GOLD-MEMBER * 1000
-  sha1-long-io-data.add (FakeData.str (GOLD-MEMBER * 1000))
+  sha1-long-io-data.add (FakeData (GOLD-MEMBER * 1000))
   sha2-long.add GOLD-MEMBER * 1000
-  sha2-long-io-data.add (FakeData.str (GOLD-MEMBER * 1000))
+  sha2-long-io-data.add (FakeData (GOLD-MEMBER * 1000))
   expect-equals sha1-long.get sha1-long-io-data.get
   expect-equals sha2-long.get sha2-long-io-data.get
 
@@ -321,14 +321,14 @@ adler-test:
   for i := -1; i < VECTORS.size; i++:
     test := VECTORS[i < 0 ? 0 : i]
     input := test[0]
-    if i < 0: input = FakeData.str input
+    if i < 0: input = FakeData input
     output := test[1]
     adler1 := Adler32
-    cut := input.size / 2
-    adler1.add input[..cut]
+    cut := input.byte-size / 2
+    adler1.add (input.byte-slice 0 cut)
     adler2 := adler1.clone
     [adler1, adler2].do: | adler |
-      adler.add input[cut..]
+      adler.add (input.byte-slice cut input.byte-size)
       result := adler.get
       expected := ((List result.size: result[it]).map: "$(%02x it)").join ""
       expect-equals output expected

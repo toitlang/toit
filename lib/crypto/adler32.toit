@@ -18,7 +18,7 @@ This implementation uses native primitives.
 /**
 Computes the Adler32 checksum of the given $data.
 */
-adler32 data/io.Data from/int=0 to/int=data.size -> ByteArray:
+adler32 data/io.Data from/int=0 to/int=data.byte-size -> ByteArray:
   return checksum Adler32 data from to
 
 /** Checksummer that implements Adler-32. */
@@ -47,7 +47,7 @@ class Adler32 extends Checksum:
 
   The $data must be a string or a byte array.
   */
-  unadd data/io.Data from/int=0 to/int=data.size -> none:
+  unadd data/io.Data from/int=0 to/int=data.byte-size -> none:
     adler32-add_ adler_ data from to true
 
   /**

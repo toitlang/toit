@@ -249,6 +249,7 @@ void ProgramBuilder::set_built_in_class_tags_and_sizes() {
   set_built_in_class_tag_and_size(Symbols::CowByteArray_);
   set_built_in_class_tag_and_size(Symbols::ByteArraySlice_);
   set_built_in_class_tag_and_size(Symbols::StringSlice_);
+  set_built_in_class_tag_and_size(Symbols::StringByteSlice_);
   set_built_in_class_tag_and_size(Symbols::List_);
   set_built_in_class_tag_and_size(Symbols::ListSlice_);
   set_built_in_class_tag_and_size(Symbols::Tombstone_);
