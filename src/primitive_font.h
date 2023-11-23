@@ -208,6 +208,7 @@ class Font : public SimpleResource {
 class BytemapDecompresser {
  public:
   virtual void compute_next_line() = 0;
+  virtual void skip_next_line() = 0;
   virtual const uint8* line() const = 0;
   virtual const uint8* opacity_line() const = 0;
 };
@@ -215,6 +216,7 @@ class BytemapDecompresser {
 class BitmapDecompresser {
  public:
   virtual void compute_next_line() = 0;
+  virtual void skip_next_line() = 0;
   virtual const uint8* line() const = 0;
 };
 
@@ -230,6 +232,10 @@ class FontDecompresser : public BitmapDecompresser {
 
   // Gets the next line of image data and puts it in line[].
   virtual void compute_next_line();
+
+  virtual void skip_next_line() {
+    compute_next_line();
+  }
 
   virtual const uint8* line() const { return line_; }
 
