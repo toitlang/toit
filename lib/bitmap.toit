@@ -102,7 +102,7 @@ bitmap-draw-bitmap_ x y color orientation source source-offset source-width sour
   #primitive.bitmap.draw-bitmap: | error |
     io.primitive-redo-io-data_ error source: | bytes-source |
       bitmap-draw-bitmap x y color orientation bytes-source \
-          byte-array-offset source-width byte-array byte-array-width bytewise
+          source-offset source-width destination destination-width bytewise
 
 /**
 Draws an indexed bytemap on a byte-oriented frame buffer.
@@ -153,9 +153,9 @@ bitmap-draw-bytemap x /int y /int -> none
     palette /ByteArray
     destination-array /ByteArray
     destination-width /int:
-  bitmap-draw-bytemap_ x y transparent-color orientation source-array source-width source-width palette destination-array destination-width
+  bitmap-draw-bytemap_ x y transparent-color orientation source source-width source-width palette destination-array destination-width
 
-bitmap-draw-bytemap_ x y transparent-color orientation source-array source-width source-line-stride palette destination-array destination-width -> none:
+bitmap-draw-bytemap_ x y transparent-color orientation source source-width source-line-stride palette destination-array destination-width -> none:
   #primitive.bitmap.draw-bytemap: | error |
     io.primitive-redo-io-data_ error source: | bytes-source |
       bitmap-draw-bytemap x y transparent-color orientation bytes-source \
