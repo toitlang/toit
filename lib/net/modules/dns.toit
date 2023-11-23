@@ -651,7 +651,9 @@ decode-name reader/io.Reader packet/ByteArray -> string:
   return parts.join "."
 
 parts_ reader/io.Reader packet/ByteArray parts/List -> none:
-  while size := reader.peek-byte != 0:
+  while true:
+    size := reader.peek-byte
+    if size == 0: break
     if size <= 63:
       reader.read-byte
       part := reader.read-string size

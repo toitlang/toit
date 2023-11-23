@@ -9,21 +9,13 @@ import net.modules.dns as dns-module
 import net
 
 main:
-  print "x"
   localhost-test
-  print "x"
   ipv6-address-test
-  print "x"
   ipv6-dns-test
-  print "x"
   cache-test
-  print "x"
   fail-test
-  print "x"
   long-test
-  print "x"
   task:: fallback-test
-  print "x"
   task:: fallback-test-2
 
 localhost-test:
@@ -73,24 +65,19 @@ cache-test:
   // Prime cache.
   dns-lookup "www.apple.com"
 
-  print "y"
-
   // We should easily be able to hit the cache in less than 5ms (a round trip
   // lookup takes minimum 15ms).
   duration := Duration.of: dns-lookup "www.apple.com"
   expect duration < (Duration --ms=5)
 
-  print "y"
   // Prime cache.
   dns-lookup "www.yahoo.com" --no-accept-ipv4 --accept-ipv6
 
-  print "y"
   // Make sure we use the IPV6 cache when both answers are OK.
   duration = Duration.of:
     address := dns-lookup "www.yahoo.com" --accept-ipv4 --accept-ipv6
     expect (address.stringify.index-of ":") != -1
   expect duration < (Duration --ms=5)
-  print "y"
 
 fail-test:
   error := catch: dns-lookup "does-not-resolve.example.com"
