@@ -951,7 +951,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
   Object* _raw_##name = __args[-(N)];                                        \
   uninitialized_t _u_##name;                                                 \
   Blob name(_u_##name);                                                      \
-  if (!_raw_##name->byte_content(process->program(), &name, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+  if (!_raw_##name->byte_content(process->program(), &name, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_BYTES_TYPE);
 
 #define _A_T_MutableBlob(N, name)                                            \
   Object* _raw_##name = __args[-(N)];                                        \

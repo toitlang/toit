@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import .checksum
+import ..io as io
 
 /**
 SipHash
@@ -35,7 +36,7 @@ class Siphash extends Checksum:
     add-finalizer this:: finalize-checksum_ this
 
   /** See $super. */
-  add data from/int to/int -> none:
+  add data/io.Data from/int to/int -> none:
     siphash-add_ siphash-state_ data from to
 
   /**
@@ -59,8 +60,13 @@ siphash-clone_ other:
   #primitive.crypto.siphash-clone
 
 // Adds a UTF-8 string or a byte array to the Sip hash.
-siphash-add_ siphash data from/int to/int -> none:
-  #primitive.crypto.siphash-add
+siphash-add_ siphash data/io.Data from/int to/int -> none:
+  #primitive.crypto.siphash-add:
+    if it == "WRONG_BYTES_TYPE":
+      // TODO(florian): we could chunk the input to avoid a full copy in memory.
+      siphash-add_ siphash (ByteArray.from data from to) 0 (to - from)
+    else:
+      throw it
 
 // Rounds off a Sip hash.
 siphash-get_ siphash -> ByteArray:

@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
+
 import reader show CloseableReader
 /**
 Support for inter task reading and writing.
@@ -34,7 +36,7 @@ class ReaderWriter:
 
   It is an error to close the reader without consuming all data that is written.
   */
-  write data from/int = 0 to/int = data.size:
+  write data/io.Data from/int = 0 to/int = data.size:
     return writer_.write data from to
 
   /**
@@ -72,7 +74,7 @@ monitor ReaderWriterHelper_:
   reader-close -> none:
     reader-closed_ = true
 
-  write data from/int to/int -> int:
+  write data/io.Data from/int to/int -> int:
     if writer-closed_: throw "CLOSED"
     result := to - from
     while from != to:

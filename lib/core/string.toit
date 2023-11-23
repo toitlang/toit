@@ -4,6 +4,8 @@
 
 import bitmap
 
+import ..io as io
+
 // Returns the number of bytes needed to code the char in UTF-8.
 utf-8-bytes char:
   return write-utf-8-to-byte-array null 0 char
@@ -57,7 +59,7 @@ A string can only contain valid UTF-8 byte sequences.  To store arbitrary
 Strings are immutable objects.
 See more on strings at https://docs.toit.io/language/strings.
 */
-abstract class string implements Comparable:
+abstract class string implements Comparable io.Data:
   static MIN-SLICE-SIZE_ ::= 16
 
   /**
@@ -1331,22 +1333,25 @@ abstract class string implements Comparable:
   /**
   Writes the raw UTF-8 bytes of the string to an existing ByteArray.
   */
-  write-to-byte-array byte-array:
+  write-to-byte-array byte-array/ByteArray:
     return write-to-byte-array_ byte-array 0 size 0
 
   /**
   Writes the raw UTF-8 bytes of the string to the given
     offset of an existing ByteArray.
   */
-  write-to-byte-array byte-array dest-index:
+  write-to-byte-array byte-array/ByteArray dest-index:
     return write-to-byte-array_ byte-array 0 size dest-index
 
   /** Deprecated. Use $write-to-byte-array on a string slice instead. */
-  write-to-byte-array byte-array start end dest-index:
+  write-to-byte-array byte-array/ByteArray start end dest-index:
     return write-to-byte-array_ byte-array start end dest-index
 
-  write-to-byte-array_ byte-array start end dest-index:
+  write-to-byte-array_ byte-array/ByteArray start end dest-index:
     #primitive.core.string-write-to-byte-array
+
+  write-to-byte-array byte-array/ByteArray --at/int from/int to/int:
+    write-to-byte-array_ byte-array from to at
 
 class String_ extends string:
   constructor.private_:

@@ -4,6 +4,7 @@
 
 import binary
 import bitmap
+import io
 
 LIST-INITIAL-LENGTH_ ::= 4
 HASHED-COLLECTION-INITIAL-LENGTH_ ::= 4
@@ -1090,7 +1091,7 @@ A container specialized for bytes.
 
 A byte array can only contain (non-null) integers in the range 0-255.
 */
-interface ByteArray:
+interface ByteArray extends io.Data:
 
   /**
   Creates a new byte array of the given $size.
@@ -1108,6 +1109,13 @@ interface ByteArray:
   constructor size/int [initializer]:
     result := ByteArray size
     size.repeat: result[it] = initializer.call it
+    return result
+
+  constructor.from bytes/io.Data from/int=0 to/int=bytes.size:
+    if not 0 <= from <= to <= bytes.size: throw "OUT_OF_BOUNDS"
+    size := to - from
+    result := ByteArray size
+    bytes.write-to-byte-array result --at=0 from to
     return result
 
   /**
@@ -1245,10 +1253,7 @@ interface ByteArray:
   /**
   Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[
   */
-  replace index/int source from/int to/int -> none
-  // TODO(florian): use optional arguments in the interface.
-  replace index/int source from/int -> none
-  replace index/int source -> none
+  replace index/int source/io.Data from/int=0 to/int=source.size -> none
 
   /**
   Fills $value into list elements [$from..$to[.
@@ -1265,6 +1270,8 @@ interface ByteArray:
   Returns -1 otherwise.
   */
   index-of byte/int --from/int=0 --to/int=size -> int
+
+  write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none
 
 /** Internal function to create a byte array with one element. */
 create-byte-array_ x/int -> ByteArray_:
@@ -1321,7 +1328,7 @@ abstract class ByteArrayBase_ implements ByteArray:
   # Inheritance
   Use $replace-generic_ as fallback if the primitive operation failed.
   */
-  abstract replace index source from/int=0 to/int=source.size -> none
+  abstract replace index/int source/io.Data from/int=0 to/int=source.size -> none
 
   /**
   Whether this instance is empty.
@@ -1531,6 +1538,9 @@ abstract class ByteArrayBase_ implements ByteArray:
   index-of byte/int --from/int=0 --to/int=size -> int:
     #primitive.core.blob-index-of
 
+  write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
+    target.replace at this from to
+
 /**
 A container specialized for bytes.
 
@@ -1573,10 +1583,13 @@ class ByteArray_ extends ByteArrayBase_:
   /**
   Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[
   */
-  replace index/int source from/int=0 to/int=source.size -> none:
+  replace index/int source/io.Data from/int=0 to/int=source.size -> none:
     #primitive.core.byte-array-replace:
-      // TODO(florian): why can't we throw here?
-      replace-generic_ index source from to
+      if it == "WRONG_BYTES_TYPE" and source is not ByteArray:
+        source.write-to-byte-array this --at=index from to
+      else:
+        // TODO(florian): why can't we throw here?
+        replace-generic_ index source from to
 
   // Returns true if the byte array has raw bytes as opposed to an off-heap C struct.
   is-raw-bytes_ -> bool:
@@ -1585,6 +1598,9 @@ class ByteArray_ extends ByteArrayBase_:
   stringify:
     if not is-raw-bytes_: return "Proxy"
     return super
+
+  write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
+    target.replace at this from to
 
 /**
 A Slice of a ByteArray.
@@ -1624,7 +1640,7 @@ class ByteArraySlice_ extends ByteArrayBase_:
   /**
   Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[
   */
-  replace index/int source from/int=0 to/int=source.size -> none:
+  replace index/int source/io.Data from/int=0 to/int=source.size -> none:
     actual-index := from_ + index
     if from == to and actual-index == to_: return
     if not from_ <= actual-index < to_: throw "OUT_OF_BOUNDS"
@@ -1737,6 +1753,9 @@ class CowByteArray_ implements ByteArray:
       backing_ = backing_.copy
       is-mutable_ = true
     return backing_
+
+  write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
+    backing_.write-to-byte-array target --at=at from to
 
 class ListSlice_ extends List:
   list_ / List
