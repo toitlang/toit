@@ -342,6 +342,7 @@ int main(int argc, char **argv) {
     .force = force,
     .werror = werror,
     .show_package_warnings = show_package_warnings,
+    .print_diagnostics_on_stdout = true,
     .optimization_level = optimization_level,
   };
 
