@@ -140,10 +140,9 @@ random start/int end/int:
 
 /**
 Seeds the random number generator with the $seed.
-The $seed must be a byte array or a string.
 Currently only the first 16 bytes of the $seed are used.
 */
-set-random-seed seed -> none:
+set-random-seed seed/io.Data -> none:
   #primitive.core.random-seed:
     if it == "WRONG_BYTES_TYPE":
       set-random-seed (ByteArray.from seed 0 (min seed.size 16))
@@ -152,8 +151,7 @@ set-random-seed seed -> none:
 
 random-add-entropy_ data/io.Data -> none:
   #primitive.core.add-entropy: | error |
-    // TODO(florian): should we do this in a chunked way?
-    io.primitive-redo-io-data_ error data: random-add-entropy_ it
+    io.primitive-redo-chunked-io-data_ error data: random-add-entropy_ it
 
 /**
 Returns the number of initial zeros in binary representation of the argument.
