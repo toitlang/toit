@@ -52,57 +52,100 @@ bytemap-draw-text_ x y color orientation text font-proxy byte-array byte-array-w
   #primitive.bitmap.byte-draw-text
 
 /**
-Draws a bitmap on a frame buffer.
-$x, $y is the top left of the bitmap.
-$color is 0 or 1.
+Draws a bitmap on a frame buffer.  Any one-bits in the source are drawn
+  with the given color, while the zero-bits are left unchanged.
+$x, $y are the top left of the bitmap.
+$color is the color to draw with in the $destination, normally 0 or 1.
 The $orientation is 0, 1, 2, 3 for 90 degree increments, anticlockwise.
-
-The bitmap may be wholly or partially outside the area of the byte array.  The drawn
-  bitmap will be clipped.
-The assumed pixel layout is the one used by the SSD1306 display.
-  (From top to bottom, each 8-tall strip of pixels is represented by
-  $byte-array-width bytes, where the least significant bit is at the
-  top.)
+  See $ORIENTATION-0, $ORIENTATION-90, $ORIENTATION-180, $ORIENTATION-270.
+The coordinates may be wholly or partially outside the area of the byte array.
+  The drawn bitmap will be clipped.
+The assumed pixel layout for both source and destination is rows from top to
+  bottom.  Within each row pixels are arranged from left to right.  Within
+  each byte the most significant bit is the leftmost pixel.
+The $source-width is in pixels.
+The $source-line-stride is in bytes and may be more than the rounded byte count
+  corresponding to the source width.  In this case some bytes are ignored at
+  the end of each source row.  If unspecified, the source line stride is set
+  to the lowest number of whole bytes corresponding to the source width.
+The height of the source bitmap is inferred from the size of the $source.
+If $bytewise is true then the destination is one byte per pixel rather than
+  one bit per pixel.  In this case the $color may be in the range 0-255.
 */
-bitmap-draw-bitmap -> none
-    x /int
-    y /int
+bitmap-draw-bitmap x /int y /int -> none
+    --color/int
+    --orientation/int = 0
+    --source  // io.Data.
+    --source-width/int
+    --source-line-stride/int=((source-width + 7) >> 3)
+    --destination/ByteArray
+    --destination-width/int
+    --bytewise/bool=false:
+  bitmap-draw-bitmap_ x y color orientation source 0 source-width source-line-stride destination destination-width bytewise
+
+/**
+Older version of bitmap-draw-bitmap.
+*/
+bitmap-draw-bitmap x /int y /int -> none
     color /int
     orientation /int
     source /io.Data
-    byte-array-offset /int
+    source-offset /int
     source-width /int
     byte-array /ByteArray
     byte-array-width /int
     bytewise /bool:
+  source-line-stride := (source-width + 7) >> 3
+  bitmap-draw-bitmap_ x y color orientation source source-offset source-width source-line-stride byte-array byte-array-width bytewise
+
+bitmap-draw-bitmap_ x y color orientation source source-offset source-width source-line-stride destination destination-width bytewise -> none:
   #primitive.bitmap.draw-bitmap: | error |
     io.primitive-redo-io-data_ error source: | bytes-source |
       bitmap-draw-bitmap x y color orientation bytes-source \
-          byte-array-offset source-width byte-array byte-array-width bytewise
+          source-offset source-width destination destination-width bytewise
 
 /**
 Draws an indexed bytemap on a byte-oriented frame buffer.
 $x, $y is the top left of the source bytemap.
-$transparent-color is between 0 and 255, or -1 to indicate no color is
-  transparent.  This corresponds to the way transparency is specified in
-  a GIF file.  Alternatively, transparent-color can be a byte array
-  of alpha values.  Any index that is beyond the end of the byte array
-  will be treated as fully opaque.  This corresponds to the transparency
-  info in an indexed PNG file.
+The $source is a byte array of indexes into the $palette, or a byte array of
+  pixel values if no palette is specified.
+The $transparent-index is an integer between 0 and 255, or -1 (the default) to
+  indicate no color is transparent.  This corresponds to the way transparency
+  is specified in a GIF file.  Alternatively, $alpha can be a byte array of
+  alpha values.  Any index that is beyond the end of the byte array will be
+  treated as fully opaque.  This corresponds to the transparency info in an
+  indexed PNG file.
 The $orientation is 0, 1, 2, 3 for 90 degree increments, anticlockwise.
+  See $ORIENTATION-0, $ORIENTATION-90, $ORIENTATION-180, $ORIENTATION-270.
 The $palette is a byte array where every third byte is used to look up
   values from the source array.  This corresponds to the layout of a
   palette in an indexed PNG file.  If the palette is too short, indexes
   above the palette index are treated as having a 1:1 mapping.
-The source may be wholly or partially outside the area of the byte array.
-  The drawn bitmap will be clipped.
-The assumed pixel layout for both input and output is rows from top to
-  bottom.  Within each row pixels are arranged from left to right, one
+The drawing location may be wholly or partially outside the area of the byte
+  array.  The drawn bitmap will be clipped.
+The assumed pixel layout for both source and destination is rows from top to
+  bottom.  Within each row, pixels are arranged from left to right, one
   byte per pixel.
+The $source-line-stride may be more than the $source-width, in which case
+  some bytes are ignored at the end of each source row.
+The height of the source bytemap is inferred from the size of the $source.
 */
-bitmap-draw-bytemap -> none
-    x /int
-    y /int
+bitmap-draw-bytemap x/int y/int -> none
+    --transparent-index/int=-1
+    --alpha/ByteArray?=null
+    --orientation/int=0
+    --source  // io.Data.
+    --source-width/int
+    --source-line-stride/int=source-width
+    --palette/ByteArray=#[]
+    --destination/ByteArray
+    --destination-width/int:
+  if transparent-index >= 0 and alpha: throw "Specified both alpha and transparent-index"
+  transparent := alpha or transparent-index
+  bitmap-draw-bytemap_ x y transparent orientation source source-width source-line-stride palette destination destination-width
+
+/// Older version of bitmap-draw-bytemap.
+bitmap-draw-bytemap x /int y /int -> none
     transparent-color
     orientation /int
     source /io.Data
@@ -110,6 +153,9 @@ bitmap-draw-bytemap -> none
     palette /ByteArray
     destination-array /ByteArray
     destination-width /int:
+  bitmap-draw-bytemap_ x y transparent-color orientation source source-width source-width palette destination-array destination-width
+
+bitmap-draw-bytemap_ x y transparent-color orientation source source-width source-line-stride palette destination-array destination-width -> none:
   #primitive.bitmap.draw-bytemap: | error |
     io.primitive-redo-io-data_ error source: | bytes-source |
       bitmap-draw-bytemap x y transparent-color orientation bytes-source \
@@ -163,17 +209,17 @@ For both the source and destination we can define how many bytes to skip per
 ```
   // Byte-swap the 16 bit values in byte_array from little-endian
   // to big-endian (or vice versa).
-  tmp := ByteArray byte_array.size
-  blit byte_array tmp[1..] byte_array.size / 2 --source_pixel_stride=2 --destination_pixel_stride=2
-  blit byte_array[1..] tmp byte_array.size / 2 --source_pixel_stride=2 --destination_pixel_stride=2
-  byte_array.replace 0 tmp
+  tmp := ByteArray byte-array.size
+  blit byte-array tmp[1..] byte-array.size / 2 --source-pixel-stride=2 --destination-pixel-stride=2
+  blit byte-array[1..] tmp byte-array.size / 2 --source-pixel-stride=2 --destination-pixel-stride=2
+  byte-array.replace 0 tmp
 
-  // Take three byte_arrays of red, green, and blue pixels, and create a
-  // single byte_array with the pixels interleaved in r, g, b order.
+  // Take three byte-arrays of red, green, and blue pixels, and create a
+  // single byte-array with the pixels interleaved in r, g, b order.
   output := ByteArray red.size * 3
-  blit red   output      red.size --destination_pixel_stride=3
-  blit green output[1..] red.size --destination_pixel_stride=3
-  blit blue  output[2..] red.size --destination_pixel_stride=3
+  blit red   output      red.size --destination-pixel-stride=3
+  blit green output[1..] red.size --destination-pixel-stride=3
+  blit blue  output[2..] red.size --destination-pixel-stride=3
 
   // Extract the red pixels from a 30x20 square in a 100x100 rgb-interleaved 24
   // bit image at position (42,13)
@@ -181,14 +227,16 @@ For both the source and destination we can define how many bytes to skip per
   y := 13
   w := 30
   h := 20
-  red_extract := ByteArray: w * h
-  first_pixel := (x + 100 * y) * 3
-  blit image[first_pixel..] red_extract w --source_pixel_stride=3 --source_line_stride=300
+  red-extract := ByteArray: w * h
+  first-pixel := (x + 100 * y) * 3
+  blit image[first-pixel..] red-extract w --source-pixel-stride=3 --source-line-stride=300
 ```
 */
 blit source/io.Data destination/ByteArray pixels-per-line/int -> none
-    --source-pixel-stride=1 --source-line-stride=(pixels-per-line * source-pixel-stride)
-    --destination-pixel-stride=1 --destination-line-stride=(pixels-per-line * destination-pixel-stride.abs)
+    --source-pixel-stride=1
+    --source-line-stride=(pixels-per-line * source-pixel-stride)
+    --destination-pixel-stride=1
+    --destination-line-stride=(pixels-per-line * destination-pixel-stride.abs)
     --lookup-table/ByteArray?=null
     --shift=0
     --mask=0xff
@@ -215,8 +263,8 @@ REVERSED ::= ByteArray 0x100: 0
   | (it & 0x40) >> 5
   | (it & 0x80) >> 7
 /// Reverse the bits in each byte.
-reverse byte_array/ByteArray -> none:
-  lut byte_array byte_array REVERSED
+reverse byte-array/ByteArray -> none:
+  lut byte-array byte-array REVERSED
 
 ROT13 ::= ByteArray 0x100:
   result := it
@@ -226,9 +274,9 @@ ROT13 ::= ByteArray 0x100:
 
 /// Rot13 encode/decode a string.
 rot13 str/string -> string:
-  byte_array := ByteArray: str.size
-  lut byte_array str ROT13
-  return byte_array.to_string
+  byte-array := ByteArray: str.size
+  lut byte-array str ROT13
+  return byte-array.to-string
 ```
 */
 lut source/ByteArray destination/ByteArray table/ByteArray -> none:

@@ -2,10 +2,10 @@
 class DetachedSocket_ implements tcp.Socket:
       ^~~~~~~~~~~~~~~
 <sdk>/net/tcp.toit:28:3: note: Missing implementation for 'in'
-  in -> io.CloseableReader
+  in -> io.Reader
   ^~
 <sdk>/net/tcp.toit:29:3: note: Missing implementation for 'out'
-  out -> io.CloseableWriter
+  out -> io.Writer
   ^~~
 <pkg:pkg-http>/server.toit:44:10: warning: Name 'interface' will be reserved in future releases
   listen interface/tcp.Interface port/int handler/Lambda -> none:
@@ -13,7 +13,7 @@ class DetachedSocket_ implements tcp.Socket:
 <pkg:pkg-http>/web_socket.toit:33:20: warning: Unresolved reference 'web-socket'
 Obtained from the $Client.web_socket or the $Server.web_socket methods.
                    ^~~~~~~~~~~~~~~~~
-<sdk>/tls/socket.toit:119:13: warning: Deprecated 'Socket.close-write'
+<sdk>/tls/socket.toit:120:13: warning: Deprecated 'Socket.close-write'
     socket_.close-write
             ^~~~~~~~~~~
 <pkg:pkg-http>/connection.toit:230:50: warning: Deprecated 'Socket.write'
