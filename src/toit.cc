@@ -333,6 +333,8 @@ int main(int argc, char **argv) {
       print_usage(1);
     }
 
+    bool generating_bundle = bundle_filename != null;
+
     compiler::Compiler::Configuration compiler_config = {
       .dep_file = dep_file,
       .dep_format = dep_format,
@@ -340,6 +342,10 @@ int main(int argc, char **argv) {
       .force = force,
       .werror = werror,
       .show_package_warnings = show_package_warnings,
+      // Unless we are running the program, we want the diagnostics on stdout.
+      // The compiler might ignore this setting for some configurations, like when
+      // running the language-server, in which case the diagnostics must be on stdout.
+      .print_diagnostics_on_stdout = for_analysis || generating_bundle,
       .optimization_level = optimization_level,
     };
 
@@ -351,8 +357,6 @@ int main(int argc, char **argv) {
       compiler.analyze(List<const char*>(source_paths, source_path_count),
                        compiler_config);
     } else {
-      bool generating_bundle = bundle_filename != null;
-
       auto compiled = SnapshotBundle::invalid();
       { compiler::Compiler compiler;  // Scope the compiler, so we destroy it before running the interpreter.
         auto source_path = source_path_count == 0 ? null : source_paths[0];
