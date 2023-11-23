@@ -548,7 +548,9 @@ void Compiler::analyze(List<const char*> source_paths,
   bool single_source = source_paths.length() == 1;
   FilesystemHybrid fs(single_source ? source_paths[0] : null);
   SourceManager source_manager(&fs);
-  AnalysisDiagnostics analysis_diagnostics(&source_manager, compiler_config.show_package_warnings);
+  AnalysisDiagnostics analysis_diagnostics(&source_manager,
+                                           compiler_config.show_package_warnings,
+                                           compiler_config.print_diagnostics_on_stdout);
   NullDiagnostics null_diagnostics(&source_manager);
   Diagnostics* diagnostics = Flags::migrate_dash_ids
       ? static_cast<Diagnostics*>(&null_diagnostics)
@@ -664,7 +666,9 @@ SnapshotBundle Compiler::compile(const char* source_path,
   out_path = FilesystemLocal::to_local_path(out_path);
   FilesystemHybrid fs(source_path);
   SourceManager source_manager(&fs);
-  CompilationDiagnostics diagnostics(&source_manager, compiler_config.show_package_warnings);
+  CompilationDiagnostics diagnostics(&source_manager,
+                                     compiler_config.show_package_warnings,
+                                     compiler_config.print_diagnostics_on_stdout);
 
   if (direct_script != null) {
     const uint8* direct_script_file_content = wrap_direct_script_expression(direct_script, &diagnostics);
@@ -1304,11 +1308,11 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     import_package = package_lock.resolve_prefix(unit_package, prefix);
     auto error_range = module_segment->range();
     switch (import_package.error_state()) {
-      case Package::OK:
+      case Package::STATE_OK:
         // All good.
         break;
 
-      case Package::INVALID:
+      case Package::STATE_INVALID:
         if (package_lock.has_errors()) {
           diagnostics()->report_error(error_range,
                                       "Package for prefix '%s' not found, but lock file has errors",
@@ -1320,13 +1324,13 @@ Source* Pipeline::_load_import(ast::Unit* unit,
         }
         return null;
 
-      case Package::ERROR:
+      case Package::STATE_ERROR:
         diagnostics()->report_error(error_range,
                                     "Package for prefix '%s' not found due to error in lock file",
                                     prefix.c_str());
         return null;
 
-      case Package::NOT_FOUND:
+      case Package::STATE_NOT_FOUND:
         diagnostics()->report_error(error_range,
                                     "Package '%s' for prefix '%s' not found",
                                     import_package.id().c_str(),
@@ -1840,7 +1844,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   // If we already encountered errors before the type-check we won't be able
   // to compile the program.
   if (encountered_error_before_type_checks) {
-    printf("Compilation failed.\n");
+    diagnostics()->report_error("Compilation failed.");
     exit(1);
   }
   // If we encountered errors abort unless the `--force` flag is on.
@@ -1849,7 +1853,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     encountered_error = true;
   }
   if (!configuration_.force && encountered_error) {
-    printf("Compilation failed.\n");
+    diagnostics()->report_error("Compilation failed.");
     exit(1);
   }
 

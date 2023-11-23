@@ -802,8 +802,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                           std::string(""),  // Doesn't matter. Should never be used.
                           std::string(""),  // Doesn't matter. Should never be used.
                           std::string(""),  // Doesn't matter. Should never be used.
-                          Package::OK,
-                          {});
+                          Package::STATE_OK,
+                          {},
+                          false);  // Not a path package.
   // Note that the virtual package must not be added to the path-to-package map.
   packages[Package::VIRTUAL_PACKAGE_ID] = virtual_package;
 
@@ -812,8 +813,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                         std::string(""),  // Doesn't matter. Should never be used.
                         std::string(""),  // Doesn't matter. Should never be used.
                         std::string(""),  // Doesn't matter. Should never be used.
-                        Package::ERROR,
-                        {});
+                        Package::STATE_ERROR,
+                        {},
+                        false);  // Not a path package.
   // Note that the virtual package must not be added to the path-to-package map.
   packages[Package::ERROR_PACKAGE_ID] = error_package;
 
@@ -834,8 +836,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                       sdk_lib_path,
                       sdk_lib_path,
                       std::string(fs->library_root()),
-                      sdk_is_dir ? Package::OK : Package::NOT_FOUND,
-                      no_prefixes);
+                      sdk_is_dir ? Package::STATE_OK : Package::STATE_NOT_FOUND,
+                      no_prefixes,
+                      false);  // Not a path package.
   packages[Package::SDK_PACKAGE_ID] = sdk_package;
 
   // Path to the lock directory.
@@ -878,8 +881,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                         entry_pkg_path,
                         absolute_error_path,
                         relative_error_path,
-                        Package::OK,
-                        entry_prefixes);
+                        Package::STATE_OK,
+                        entry_prefixes,
+                        true);  // Referenced through a path, thus considered a path package.
   packages[Package::ENTRY_PACKAGE_ID] = entry_package;
 
   List<const char*> package_dirs;
@@ -913,7 +917,8 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
       PathBuilder builder(fs);
 
       std::string error_path;
-      if (!entry.path.empty()) {
+      bool is_path_package = !entry.path.empty();
+      if (is_path_package) {
         char* localized = FilesystemLocal::to_local_path(entry.path.c_str());
         ASSERT(i == -1);
         if (!fs->is_absolute(localized)) {
@@ -964,8 +969,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                           path,
                           path,
                           path,
-                          Package::OK,
-                          package_prefixes);
+                          Package::STATE_OK,
+                          package_prefixes,
+                          is_path_package);
           packages[package_id] = package;
           goto prefix_done;
         } else {
@@ -978,8 +984,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                           std::string(""),
                           std::string(""),
                           std::string(""),
-                          Package::NOT_FOUND,
-                          {});  // The prefixes aren't relevant.
+                          Package::STATE_NOT_FOUND,
+                          {},  // The prefixes aren't relevant.
+                          is_path_package);
           packages[package_id] = package;
           goto prefix_done;
         }
@@ -995,8 +1002,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                         std::string(""),
                         std::string(""),
                         std::string(""),
-                        Package::NOT_FOUND,
-                        {});  // The prefixes aren't relevant.
+                        Package::STATE_NOT_FOUND,
+                        {},  // The prefixes aren't relevant.
+                        is_path_package);
         packages[package_id] = package;
         goto prefix_done;
       }
@@ -1014,8 +1022,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                       std::string(""),
                       std::string(""),
                       std::string(""),
-                      Package::NOT_FOUND,
-                      {});  // The prefixes aren't relevant.
+                      Package::STATE_NOT_FOUND,
+                      {},  // The prefixes aren't relevant.
+                      false);  // Not a path package.
       packages[package_id] = package;
     }
 

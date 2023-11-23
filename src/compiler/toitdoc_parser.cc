@@ -74,7 +74,7 @@ class ToitdocSource : public Source {
   }
 
   const char* absolute_path() const { return source_->absolute_path(); }
-  std::string package_id() const { return source_->package_id(); }
+  Package package() const { return source_->package(); }
   std::string error_path() const { return source_->error_path(); }
 
   const uint8* text() const { return text_; }
