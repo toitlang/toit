@@ -127,7 +127,7 @@ func (s *Server) Analyze(ctx context.Context, conn *jsonrpc2.Conn, req AnalyzePa
 	cCtx := s.GetContext(conn)
 	c := s.createCompiler(cCtx)
 
-	analyzeResult, err := c.Analyze(ctx, uris...)
+	analyzeResult, err := c.Analyze(ctx, cCtx.RootURI, uris...)
 	if err != nil {
 		return false, err
 	}
@@ -199,7 +199,7 @@ func (s *Server) ToitArchiveWriter(ctx context.Context, conn *jsonrpc2.Conn, req
 
 	cCtx := s.GetContext(conn)
 	c := s.createCompiler(cCtx)
-	if err := c.Parse(ctx, uris...); err != nil {
+	if err := c.Parse(ctx, cCtx.RootURI, uris...); err != nil {
 		return s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,
 			Error:    err,
@@ -248,7 +248,7 @@ func (s *Server) ToitSnapshotBundle(ctx context.Context, conn *jsonrpc2.Conn, re
 
 	cCtx := s.GetContext(conn)
 	c := s.createCompiler(cCtx)
-	b, err := c.SnapshotBundle(ctx, uri)
+	b, err := c.SnapshotBundle(ctx, cCtx.RootURI, uri)
 	if err != nil {
 		return nil, s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,

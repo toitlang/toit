@@ -97,7 +97,7 @@ func (s *Server) textDocumentDefinition(ctx context.Context, conn *jsonrpc2.Conn
 	}
 	cCtx := s.GetContext(conn)
 	compiler := s.createCompiler(cCtx)
-	res, err := compiler.GotoDefinition(ctx, req.TextDocument.URI, req.Position)
+	res, err := compiler.GotoDefinition(ctx, cCtx.RootURI, req.TextDocument.URI, req.Position)
 	if err != nil {
 		return nil, s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,
@@ -115,7 +115,7 @@ func (s *Server) textDocumentCompletion(ctx context.Context, conn *jsonrpc2.Conn
 	}
 	cCtx := s.GetContext(conn)
 	compiler := s.createCompiler(cCtx)
-	res, err := compiler.Complete(ctx, req.TextDocument.URI, req.Position)
+	res, err := compiler.Complete(ctx, cCtx.RootURI, req.TextDocument.URI, req.Position)
 	if err != nil {
 		return nil, s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,
@@ -167,7 +167,7 @@ func (s *Server) textDocumentSemanticTokensFull(ctx context.Context, conn *jsonr
 	}
 	cCtx := s.GetContext(conn)
 	compiler := s.createCompiler(cCtx)
-	res, err := compiler.SemanticTokens(ctx, req.TextDocument.URI)
+	res, err := compiler.SemanticTokens(ctx, cCtx.RootURI, req.TextDocument.URI)
 	if err != nil {
 		return nil, s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,
@@ -204,7 +204,7 @@ func (s *Server) analyzeWithRevision(ctx context.Context, conn *jsonrpc2.Conn, r
 
 	cCtx := s.GetContext(conn)
 	c := s.createCompiler(cCtx)
-	result, err := c.Analyze(ctx, uris...)
+	result, err := c.Analyze(ctx, cCtx.RootURI, uris...)
 	if err != nil {
 		err := s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,
