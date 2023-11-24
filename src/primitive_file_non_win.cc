@@ -36,12 +36,16 @@
 #define FILE_UNLINK_(dirfd, pathname, flags)               unlink(pathname)
 #define FILE_RENAME_(olddirfd, oldpath, newdirfd, newpath) rename(oldpath, newpath)
 #define FILE_MKDIR_(dirfd, ...)                            mkdir(__VA_ARGS__)
+#define FILE_CHMOD_(dirfd, pathname, mode, flags)          chmod(pathname, mode)
+#define FILE_READLINK_(dirfd, ...)                         readlink(__VA_ARGS__)
 #else
 
 #define FILE_OPEN_(...)     openat(__VA_ARGS__)
 #define FILE_UNLINK_(...)   unlinkat(__VA_ARGS__)
 #define FILE_RENAME_(...)   renameat(__VA_ARGS__)
 #define FILE_MKDIR_(...)    mkdirat(__VA_ARGS__)
+#define FILE_CHMOD_(...)    fchmodat(__VA_ARGS__)
+#define FILE_READLINK_(...) readlinkat(__VA_ARGS__)
 #endif // TOIT_FREERTOS
 
 namespace toit {
@@ -436,6 +440,47 @@ PRIMITIVE(chdir) {
 #else
   FAIL(UNIMPLEMENTED);
 #endif
+}
+
+PRIMITIVE(chmod) {
+  ARGS(cstring, pathname, int, mode);
+  int result = FILE_CHMOD_(current_dir(process), pathname, mode, 0);
+  if (result < 0) return return_open_error(process, errno);
+  return process->null_object();
+}
+
+// Notice that link does not use the *at(fd,...) version, as the symlink call does not
+// support it. Therefore, source and target must be absolute, this should be handled in the
+// toit api code.
+PRIMITIVE(link) {
+  ARGS(cstring, source, cstring, target, int, type);
+  int result;
+  if (type == 0) {
+    result = link(target, source);
+  } else { // type 1 and 2 are only different on windows.
+    result = symlink(target, source);
+  }
+  if (result < 0) return return_open_error(process, errno);
+  return process->null_object();
+}
+
+PRIMITIVE(readlink) {
+  ARGS(cstring, pathname);
+
+  AllocationManager allocation(process);
+  uint8* backing = allocation.alloc(PATH_MAX);
+  if (!backing) FAIL(ALLOCATION_FAILED);
+
+  int result = FILE_READLINK_(process->current_directory(), pathname,
+                              reinterpret_cast<char*>(backing), PATH_MAX);
+  if (result < 0) return return_open_error(process, errno);
+
+  String* string = process->allocate_string(result);
+  if (!string) FAIL(ALLOCATION_FAILED);
+
+  strncpy(string->as_cstr(), reinterpret_cast<char*>(backing), result);
+
+  return string;
 }
 
 PRIMITIVE(mkdir) {
