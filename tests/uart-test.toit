@@ -85,7 +85,7 @@ run-test tty0/string tty1/string:
 
   2.repeat:
     // With socat the baud rates are only simulated, but we do exercise different code
-    // paths for the '--wait'.
+    // paths for the '--flush'.
     write-done/monitor.Gate := monitor.Gate
     rate := ?
     if it == 0: rate = 9600
@@ -121,7 +121,7 @@ run-test tty0/string tty1/string:
     task::
       written := 0
       while written < bytes.size:
-        written += port1.out.try-write bytes[written ..] --wait
+        written += port1.out.try-write bytes[written ..] --flush
       // Use a gate, as the port could be closed before the --wait is done otherwise
       write-done.unlock
 
