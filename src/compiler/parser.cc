@@ -1541,6 +1541,8 @@ Expression* Parser::parse_call(bool allow_colon) {
 
 Expression* Parser::parse_if() {
   ASSERT(current_token() == Token::IF);
+  bool if_at_newline = at_newline();
+  int if_indentation = current_indentation();
   auto range = current_range();
   start_multiline_construct(IndentationStack::IF_CONDITION);
   consume();
@@ -1579,7 +1581,10 @@ Expression* Parser::parse_if() {
     }
   }
   if (current_token() == Token::ELSE) {
-    auto else_range = Source::Range(current_range().to(), current_range().to());
+    if (if_at_newline && at_newline() && if_indentation != current_indentation()) {
+      diagnostics()->report_warning(current_range(), "Unexpected indentation: 'if' and 'else' not at same level");
+    }
+    auto else_end_range = Source::Range(current_range().to(), current_range().to());
     consume();
     if (current_token() == Token::IF) {
       end_multiline_construct(IndentationStack::IF_BODY);
@@ -1588,7 +1593,7 @@ Expression* Parser::parse_if() {
       if (!optional_delimiter(Token::COLON)) {
         // Just try to read the else block.
         // If it's correctly indented it will work.
-        report_error(else_range, "Missing colon for 'else'");
+        report_error(else_end_range, "Missing colon for 'else'");
       }
       no = parse_sequence();
       end_multiline_construct(IndentationStack::IF_BODY);
