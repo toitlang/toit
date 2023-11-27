@@ -468,17 +468,19 @@ PRIMITIVE(readlink) {
   ARGS(cstring, pathname);
 
   AllocationManager allocation(process);
-  uint8* backing = allocation.alloc(PATH_MAX);
+  uint8* backing = allocation.alloc(PATH_MAX + 1);
   if (!backing) FAIL(ALLOCATION_FAILED);
 
   int result = FILE_READLINK_(process->current_directory(), pathname,
                               reinterpret_cast<char*>(backing), PATH_MAX);
   if (result < 0) return return_open_error(process, errno);
 
+  backing[PATH_MAX] = 0;
   String* string = process->allocate_string(result);
   if (!string) FAIL(ALLOCATION_FAILED);
 
-  strncpy(string->as_cstr(), reinterpret_cast<char*>(backing), result);
+  String::MutableBytes mutable_string(string);
+  memcpy(mutable_string.address(), backing, result);
 
   return string;
 }

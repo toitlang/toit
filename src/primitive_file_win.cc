@@ -343,7 +343,7 @@ PRIMITIVE(close) {
 }
 
 int64 low_high_to_int64(DWORD high, DWORD low) {
-  return (((int64)high) << 32) + low;
+  return (static_cast<int64>(high) << 32) + low;
 }
 
 Object* time_stamp(Process* process, FILETIME* time) {
@@ -403,7 +403,7 @@ PRIMITIVE(stat) {
           type = UNIX_SOCKET;
           break;
         default:
-          type = UNIX_REGULAR_FILE;
+          FAIL(INVALID_ARGUMENT);
       }
     }
   }
@@ -504,9 +504,10 @@ PRIMITIVE(readlink) {
   HANDLE hFile = CreateFileW(path, 0, 0,
                              NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_ATTRIBUTE_NORMAL, NULL);
   if (hFile == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
+
+  AutoCloser closer(hFile);
   DWORD result_length = GetFinalPathNameByHandleW(hFile, NULL, 0, 0);
   if (result_length == 0) {
-    CloseHandle(hFile);
     WINDOWS_ERROR;
   }
 
@@ -514,11 +515,8 @@ PRIMITIVE(readlink) {
   wchar_t* w_result = allocation.wcs_alloc(result_length);
 
   if (GetFinalPathNameByHandleW(hFile, w_result, result_length, 0) == 0) {
-    CloseHandle(hFile);
     WINDOWS_ERROR;
   }
-
-  CloseHandle(hFile);
 
   String* result = process->allocate_string(w_result);
   if (result == null) FAIL(ALLOCATION_FAILED);
