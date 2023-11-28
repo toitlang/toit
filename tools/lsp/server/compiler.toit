@@ -58,16 +58,16 @@ class Compiler:
   /**
   Builds the flags that are passed to the compiler.
   */
-  build-run-flags --project-uri/string -> List:
+  build-run-flags --project-uri/string? -> List:
     args := [
       "--lsp",
     ]
-    if project-uri:
-      project-path-local := uri-path-translator_.to-path project-uri
-      package-lock := "$project-path-local/package.lock"
-      if file.is-file package-lock:
-        project-path-compiler := uri-path-translator_.to-path project-uri --to-compiler
-        args += ["--project-root", project-path-compiler]
+    project-path-local := uri-path-translator_.to-path project-uri
+    package-lock := "$project-path-local/package.lock"
+    if file.is-file package-lock:
+      project-path-compiler := uri-path-translator_.to-path project-uri --to-compiler
+      args += ["--project-root", project-path-compiler]
+    verbose: "run-flags: $args"
     return args
 
   /**
