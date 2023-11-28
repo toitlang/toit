@@ -76,6 +76,12 @@ class Documents:
         compute-project-uri --uri=document-uri --translator=translator_
     return computed
 
+  project-uris-containing --uri/string -> List:
+    result := []
+    analyzed-documents_.do: |project-uri documents/AnalyzedDocuments|
+      if documents.get --uri=uri: result.add project-uri
+    return result
+
   /**
   Returns the $AnalyzedDocuments object for the given $project-uri.
 
