@@ -229,11 +229,11 @@ class LspServer:
     uris := non-canonicalized-uris.map: translator_.canonicalize it
     paths := uris.map: translator_.to-path it
     compiler := compiler_
-    compiler.parse --paths=paths
+    compiler.parse --paths=paths --project-uri=root-uri_
     buffer := bytes.Buffer
     write-repro
         --writer=buffer
-        --compiler-flags=compiler.build-run-flags
+        --compiler-flags=compiler.build-run-flags --project-uri=root-uri_
         --compiler-input=json.stringify paths
         --protocol=compiler.protocol
         --info="toit/archive"
@@ -245,7 +245,7 @@ class LspServer:
   snapshot-bundle params/SnapshotBundleParams -> Map?:
     uri := translator_.canonicalize params.uri
     compiler := compiler_
-    bundle := compiler.snapshot-bundle uri
+    bundle := compiler.snapshot-bundle --project-uri=root-uri_ uri
     // Encode the byte-array as base64.
     if not bundle: return null
     return {
@@ -276,13 +276,13 @@ class LspServer:
 
   completion params/CompletionParams -> List/*<CompletionItem>*/:
     uri := translator_.canonicalize params.text-document.uri
-    return compiler_.complete uri params.position.line params.position.character
+    return compiler_.complete --project-uri=root-uri_ uri params.position.line params.position.character
 
   // TODO(florian): The specification supports a list of locations, or Locationlinks..
   // For now just returns one location.
   goto-definition params/TextDocumentPositionParams -> List/*<Location>*/:
     uri := translator_.canonicalize params.text-document.uri
-    return compiler_.goto-definition uri params.position.line params.position.character
+    return compiler_.goto-definition --project-uri=root-uri_ uri params.position.line params.position.character
 
   document-symbol params/DocumentSymbolParams -> List/*<DocumentSymbol>*/:
     uri := translator_.canonicalize params.text-document.uri
@@ -303,7 +303,7 @@ class LspServer:
 
   semantic-tokens params/SemanticTokensParams -> SemanticTokens:
     uri := translator_.canonicalize params.text-document.uri
-    tokens := compiler_.semantic-tokens uri
+    tokens := compiler_.semantic-tokens --project-uri=root-uri_ uri
     return SemanticTokens --data=tokens
 
   shutdown:
@@ -334,7 +334,7 @@ class LspServer:
 
     verbose: "Analyzing: $uris  ($revision)"
 
-    analysis-result := compiler_.analyze uris
+    analysis-result := compiler_.analyze --project-uri=root-uri_ uris
     if not analysis-result:
       verbose: "Analysis failed (no analysis result). ($revision)"
       return  // Analysis didn't succeed. Don't bother with the result.
@@ -517,7 +517,6 @@ class LspServer:
     compiler := null  // Let the 'compiler' local be visible in the lambda expression below.
     compiler = Compiler compiler-path translator_ timeout-ms
         --protocol=protocol
-        --project-uri=root-uri_
         --on-error=:: |message|
           if is-rate-limited:
             // Do nothing
