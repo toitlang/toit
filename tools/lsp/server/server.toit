@@ -140,7 +140,7 @@ class LspServer:
         "toit/report_idle":        (:: report-idle),
         "toit/reset_crash_rate_limit": (:: reset-crash-rate-limit),
         "toit/settings":           (:: settings_.map_),
-        "toit/AnalyzeMany":        (:: analyze-many it),
+        "toit/analyzeMany":        (:: analyze-many it),
         "toit/archive":            (:: archive (ArchiveParams it)),
         "toit/snapshot_bundle":    (:: snapshot-bundle (SnapshotBundleParams it))
     }
