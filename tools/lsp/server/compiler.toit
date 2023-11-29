@@ -58,7 +58,7 @@ class Compiler:
   /**
   Builds the flags that are passed to the compiler.
   */
-  build-run-flags --project-uri/string -> List:
+  build-run-flags --project-uri/string? -> List:
     args := [
       "--lsp",
     ]
