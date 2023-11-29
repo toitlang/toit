@@ -140,7 +140,7 @@ class LspServer:
         "toit/report_idle":        (:: report-idle),
         "toit/reset_crash_rate_limit": (:: reset-crash-rate-limit),
         "toit/settings":           (:: settings_.map_),
-        "toit/didOpenMany":        (:: did-open-many it),
+        "toit/AnalyzeMany":        (:: analyze-many it),
         "toit/archive":            (:: archive (ArchiveParams it)),
         "toit/snapshot_bundle":    (:: snapshot-bundle (SnapshotBundleParams it))
     }
@@ -213,13 +213,9 @@ class LspServer:
     documents_.did-open --uri=uri document.text content-revision
     analyze [uri]
 
-  did-open-many params -> none:
+  analyze-many params -> none:
     uris := params["uris"]
     uris = uris.map: translator_.canonicalize it
-    content-revision := next-analysis-revision_
-    uris.do:
-      content := null
-      documents_.did-open --uri=it content content-revision
     analyze uris
 
   archive params/ArchiveParams -> string:

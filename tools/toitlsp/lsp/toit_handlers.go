@@ -41,29 +41,21 @@ func (s *Server) ToitReportIdle(ctx context.Context, conn *jsonrpc2.Conn) error 
 	return nil
 }
 
-type DidOpenManyParams struct {
+type AnalyzeManyManyParams struct {
 	URIs []lsp.DocumentURI `json:"uris"`
 }
 
-func (s *Server) ToitDidOpenMany(ctx context.Context, conn *jsonrpc2.Conn, req DidOpenManyParams) error {
-	cCtx := s.GetContext(conn)
-
+func (s *Server) ToitAnalyzeMany(ctx context.Context, conn *jsonrpc2.Conn, req AnalyzeManyParams) error {
 	uris := req.URIs
 	for i := range uris {
 		uris[i] = uri.Canonicalize(uris[i])
 	}
 
-	for _, uri := range uris {
-		if err := cCtx.Documents.Add(uri, nil, cCtx.NextAnalysisRevision); err != nil {
-			return err
-		}
-	}
-
 	err := s.analyze(ctx, conn, uris...)
 	if err != nil {
-		s.logger.Error("failed to analyze toit/DidOpenMany request", zap.Any("URIs", uris), zap.Error(err))
+		s.logger.Error("failed to analyze toit/AnalyzeMany request", zap.Any("URIs", uris), zap.Error(err))
 	} else {
-		s.logger.Debug("successfully analyzed toit/DidOpenMany request", zap.Any("URIs", req.URIs))
+		s.logger.Debug("successfully analyzed toit/AnalyzeMany request", zap.Any("URIs", req.URIs))
 	}
 	return err
 }
