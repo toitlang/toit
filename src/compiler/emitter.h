@@ -73,7 +73,8 @@ class Emitter {
   enum Condition {
     UNCONDITIONAL,
     IF_TRUE,
-    IF_FALSE
+    IF_FALSE,
+    IF_NOT_NULL,
   };
 
   List<uint8> bytecodes();

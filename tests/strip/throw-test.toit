@@ -13,7 +13,7 @@ main args:
   compiler := args[1]
   runner := args[2]
 
-  with-tmp-directory: | tmp-dir|
+  with-tmp-directory: | tmp-dir |
     variants := compile-variants --compiler=compiler --tmp-dir=tmp-dir input
 
     non-stripped-snapshot := variants[0]
