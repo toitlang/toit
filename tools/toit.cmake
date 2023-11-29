@@ -18,7 +18,7 @@
 # In the latter case the `EXECUTING_SCRIPT` variable is defined, and we only
 # process the command that we should execute.
 
-option(TOIT_PKG_AUTO_SYNC "Automatically sync packages when building" ON)
+option(TOIT_PKG_AUTO_SYNC "Automatically sync packages when building" OFF)
 
 set(TOIT_DOWNLOAD_PACKAGE_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/toit.cmake")
 if (DEFINED EXECUTING_SCRIPT)
