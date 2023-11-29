@@ -63,7 +63,11 @@ build-name element klass/Class?=null:
 
 build-refs client/LspClient names/List --path=FILE-PATH:
   all-elements-map := {:}
-  document := client.server.documents_.get-existing-document --path=path
+  uri := client.to-uri path
+  project-uri := client.server.documents_.project-uri-for --uri=uri
+  // Reaching into the private state of the server.
+  analyzed-documents := client.server.documents_.analyzed-documents-for --project-uri=project-uri
+  document := analyzed-documents.get-existing --uri=uri
   summary := document.summary
   summary.classes.do: |klass|
     all-elements-map[build-name klass] = [ToitdocRef.CLASS, klass]
@@ -128,8 +132,11 @@ test-toitdoc
     diagnostics := client.diagnostics-for --path=FILE-PATH
     diagnostics.do: print it
     expect diagnostics.is-empty
+  uri := client.to-uri FILE-PATH
+  project-uri := client.server.documents_.project-uri-for --uri=uri
   // Reaching into the private state of the server.
-  document := client.server.documents_.get-existing-document --path=FILE-PATH
+  analyzed-documents := client.server.documents_.analyzed-documents-for --project-uri=project-uri
+  document := analyzed-documents.get-existing --uri=uri
   toitdoc := extract-toitdoc.call document.summary
   expected-refs := build-expected-refs.call
   ref-counter := 0

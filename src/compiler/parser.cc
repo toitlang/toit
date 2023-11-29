@@ -937,6 +937,21 @@ Declaration* Parser::parse_declaration(bool is_abstract) {
   }
   auto parameters = return_type_parameters.second;
 
+  // Allow colons to be at the same level as the declaring method.
+  // Something like:
+  //   foo
+  //       param1
+  //       param2
+  //   :
+  //     body
+  if (current_token() == Token::DEDENT) {
+    if (peek_token() == Token::COLON &&
+        indentation_stack_.top_indentation() == current_indentation() &&
+        indentation_stack_.is_outmost(IndentationStack::DECLARATION_SIGNATURE)) {
+      // Consume the detent.
+      consume();
+    }
+  }
   Sequence* body;
   if (current_token() == Token::COLON) {
     consume();
@@ -1577,6 +1592,7 @@ Expression* Parser::parse_if() {
     if (peek_token() == Token::ELSE &&
         indentation_stack_.top_indentation() == current_indentation() &&
         indentation_stack_.is_outmost(IndentationStack::IF_BODY)) {
+      // Consume the detent.
       consume();
     }
   }
