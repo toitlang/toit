@@ -86,7 +86,10 @@ class Documents:
 
   did-open --uri/string content/string? revision/int -> none:
     document/OpenedDocument? := opened-documents_.get uri
-    if document: error-reporter_.call "Document $uri already open"
+    if document:
+      error-reporter_.call "Document $uri already open"
+      // Treat it as an did-change.
+      document.content = content
     if not document: document = OpenedDocument --uri=uri --content=content --revision=revision
     opened-documents_[uri] = document
 
