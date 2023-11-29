@@ -253,7 +253,7 @@ func extractSummaries(ctx context.Context, options extractSummariesOptions) (map
 		wg.Add(1)
 		go func(uris []doclsp.DocumentURI) {
 			defer wg.Done()
-			if err := server.ToitDidOpenMany(ctx, conn, lsp.DidOpenManyParams{
+			if err := server.ToitAnalyzeMany(ctx, conn, lsp.AnalyzeManyParams{
 				URIs: uris,
 			}); err != nil && subErr == nil {
 				subErr = err
