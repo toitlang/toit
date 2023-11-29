@@ -289,12 +289,12 @@ class LspClient:
     }
     if always-wait-for-idle: wait-for-idle
 
-  send-did-open-many --paths/List -> none:
+  send-analyze-many --paths/List -> none:
     uris := paths.map: to-uri it
-    send-did-open-many --uris=uris
+    send-analyze-many --uris=uris
 
-  send-did-open-many --uris/List -> none:
-    connection_.send "toit/didOpenMany" { "uris": uris }
+  send-analyze-many --uris/List -> none:
+    connection_.send "toit/analyzeMany" { "uris": uris }
     if always-wait-for-idle: wait-for-idle
 
   send-did-close --path -> none:
