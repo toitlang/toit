@@ -41,7 +41,7 @@ func (s *Server) ToitReportIdle(ctx context.Context, conn *jsonrpc2.Conn) error 
 	return nil
 }
 
-type AnalyzeManyManyParams struct {
+type AnalyzeManyParams struct {
 	URIs []lsp.DocumentURI `json:"uris"`
 }
 
