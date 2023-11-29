@@ -35,6 +35,7 @@
 #include <shlwapi.h>
 #include <fileapi.h>
 #include <share.h>
+#include <ntdef.h>
 
 #include "objects_inline.h"
 
@@ -488,12 +489,20 @@ PRIMITIVE(chmod) {
 }
 
 PRIMITIVE(link) {
-  ARGS(WindowsPath, source, WindowsPath, target, int, type);
+  ARGS(WindowsPath, source, Blob, target, int, type);
+  WideCharAllocationManager allocation(process); 
+  wchar_t* target_relative = allocation.to_wcs(&target);
+  
   int result;
   if (type == 0) {
-    result = CreateHardLinkW(source, target, NULL);
+    wchar_t target_absolute[MAX_PATH];
+    auto error = get_absolute_path(process, target_relative, target_absolute);
+    if (error) return error;
+    result = CreateHardLinkW(source, target_absolute, NULL);
   } else {
-    result = CreateSymbolicLinkW(source, target, type == 2 ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0);
+    DWORD flags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
+    if (type == 2) flags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
+    result = CreateSymbolicLinkW(source, target_relative, flags);
   }
   if (result == 0) WINDOWS_ERROR;
   return process->null_object();
@@ -501,22 +510,29 @@ PRIMITIVE(link) {
 
 PRIMITIVE(readlink) {
   ARGS(WindowsPath, path);
-  HANDLE hFile = CreateFileW(path, 0, 0,
-                             NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_ATTRIBUTE_NORMAL, NULL);
-  if (hFile == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
+  HANDLE handle = CreateFileW(path, 0, 0,
+                              NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+  if (handle == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
+  AutoCloser closer(handle);
 
-  AutoCloser closer(hFile);
-  DWORD result_length = GetFinalPathNameByHandleW(hFile, NULL, 0, 0);
-  if (result_length == 0) {
-    WINDOWS_ERROR;
-  }
+  char buffer[MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
+  DWORD bytes_returned;
+  BOOL success = DeviceIoControl(handle, FSCTL_GET_REPARSE_POINT, NULL, 0, buffer, sizeof(buffer), &bytes_returned, 0);
+  if (!success) WINDOWS_ERROR;
+
+  auto reparse_data = reinterpret_cast<REPARSE_DATA_BUFFER*>(buffer);
+  if (reparse_data->ReparseTag != IO_REPARSE_TAG_SYMLINK) FAIL(INVALID_ARGUMENT);
 
   WideCharAllocationManager allocation(process);
-  wchar_t* w_result = allocation.wcs_alloc(result_length);
+  USHORT link_name_bytes = reparse_data->SymbolicLinkReparseBuffer.SubstituteNameLength;
 
-  if (GetFinalPathNameByHandleW(hFile, w_result, result_length, 0) == 0) {
-    WINDOWS_ERROR;
-  }
+  word string_length = static_cast<word>(link_name_bytes / sizeof(wchar_t) + 1); // including null termination
+  wchar_t* w_result = allocation.wcs_alloc(string_length);
+  memcpy(w_result,
+         reparse_data->SymbolicLinkReparseBuffer.PathBuffer +
+            reparse_data->SymbolicLinkReparseBuffer.SubstituteNameOffset / sizeof(WCHAR),
+         link_name_bytes);
+  w_result[string_length - 1] = 0;
 
   String* result = process->allocate_string(w_result);
   if (result == null) FAIL(ALLOCATION_FAILED);
