@@ -16,9 +16,11 @@
 #include "top.h"
 
 #if defined(TOIT_WINDOWS)
-#define XSTR(x) STR(x)
-#define STR(x) #x
-#pragma message "The value of _WIN32_WINNT: " XSTR(_WIN32_WINNT)
+
+// TODO(mikkel/florian) Figure out a better way to do this for cross builds
+#ifdef _WIN32_WINNT
+#undef _WIN32_WINNT
+#endif
 #define _WIN32_WINNT 0xa000
 
 #include "objects.h"
@@ -371,30 +373,24 @@ PRIMITIVE(stat) {
 
   if (handle == INVALID_HANDLE_VALUE) {
     if (GetLastError() == ERROR_FILE_NOT_FOUND ||
-        GetLastError() == ERROR_PATH_NOT_FOUND) {
-      return process->null_object();
+        GetLastError() == ERROR_PATH_NOT_FOUND ||
+        GetLastError() == ERROR_INVALID_NAME) {
+      return process->null_object(); // Toit code expects this to be null
     }
-    printf("(A) %ls: %lu\n",path, GetLastError());
     WINDOWS_ERROR;
   }
   AutoCloser closer(handle);
 
   BY_HANDLE_FILE_INFORMATION file_info;
   BOOL success = GetFileInformationByHandle(handle, &file_info);
-  if (!success) {
-      printf("(B) %ls: %lu\n",path, GetLastError());
-      WINDOWS_ERROR;
-  }
+  if (!success) WINDOWS_ERROR;
 
   Array* array = process->object_heap()->allocate_array(11, Smi::zero());
   if (!array) FAIL(ALLOCATION_FAILED);
 
   FILE_STANDARD_INFO standard_info;
   success = GetFileInformationByHandleEx(handle, FileStandardInfo, &standard_info, sizeof(FILE_STANDARD_INFO));
-  if (!success) {
-    printf("(C) %ls: %lu\n",path, GetLastError());
-    WINDOWS_ERROR;
-  }
+  if (!success) WINDOWS_ERROR;
 
   int type;
   if (!follow_links && (file_info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
