@@ -366,29 +366,35 @@ PRIMITIVE(stat) {
   DWORD attributes = FILE_FLAG_BACKUP_SEMANTICS | FILE_ATTRIBUTE_NORMAL;
   if (!follow_links) attributes |= FILE_OPEN_REPARSE_POINT;
 
-  HANDLE hFile = CreateFileW(path, 0, 0,
-                             NULL, OPEN_EXISTING, attributes, NULL);
+  HANDLE handle = CreateFileW(path, 0, 0,
+                              NULL, OPEN_EXISTING, attributes, NULL);
 
-  if (hFile == INVALID_HANDLE_VALUE) {
+  if (handle == INVALID_HANDLE_VALUE) {
     if (GetLastError() == ERROR_FILE_NOT_FOUND ||
         GetLastError() == ERROR_PATH_NOT_FOUND) {
       return process->null_object();
     }
-    printf("%ls: %lu\n",path, GetLastError());
+    printf("(A) %ls: %lu\n",path, GetLastError());
     WINDOWS_ERROR;
   }
-  AutoCloser closer(hFile);
+  AutoCloser closer(handle);
 
   BY_HANDLE_FILE_INFORMATION file_info;
-  BOOL success = GetFileInformationByHandle(hFile, &file_info);
-  if (!success) WINDOWS_ERROR;
+  BOOL success = GetFileInformationByHandle(handle, &file_info);
+  if (!success) {
+      printf("(B) %ls: %lu\n",path, GetLastError());
+      WINDOWS_ERROR;
+  }
 
   Array* array = process->object_heap()->allocate_array(11, Smi::zero());
   if (!array) FAIL(ALLOCATION_FAILED);
 
   FILE_STANDARD_INFO standard_info;
-  success = GetFileInformationByHandleEx(hFile, FileStandardInfo, &standard_info, sizeof(FILE_STANDARD_INFO));
-  if (!success) WINDOWS_ERROR;
+  success = GetFileInformationByHandleEx(handle, FileStandardInfo, &standard_info, sizeof(FILE_STANDARD_INFO));
+  if (!success) {
+    printf("(C) %ls: %lu\n",path, GetLastError());
+    WINDOWS_ERROR;
+  }
 
   int type;
   if (!follow_links && (file_info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
@@ -401,7 +407,7 @@ PRIMITIVE(stat) {
     if (standard_info.Directory) {
       type = UNIX_DIRECTORY;
     } else {
-      DWORD file_type = GetFileType(hFile);
+      DWORD file_type = GetFileType(handle);
       switch (file_type) { // Convert to unix enum
         case FILE_TYPE_CHAR:
           type = UNIX_CHARACTER_DEVICE;
