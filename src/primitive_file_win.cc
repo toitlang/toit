@@ -19,6 +19,7 @@
 #define XSTR(x) STR(x)
 #define STR(x) #x
 #pragma message "The value of _WIN32_WINNT: " XSTR(_WIN32_WINNT)
+#define _WIN32_WINNT 0xa000
 
 #include "objects.h"
 #include "primitive_file.h"
@@ -27,17 +28,15 @@
 
 #include <dirent.h>
 #include <cerrno>
-#include <fcntl.h>
 #include <rpc.h>     // For rpcdce.h.
 #include <rpcdce.h>  // For UuidCreate.
-#include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <windows.h>
+
 #include <pathcch.h>
 #include <shlwapi.h>
 #include <fileapi.h>
-#include <share.h>
 #include <ntdef.h>
 
 #include "objects_inline.h"
