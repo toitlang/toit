@@ -368,10 +368,10 @@ PRIMITIVE(stat) {
                              NULL, OPEN_EXISTING, attributes, NULL);
 
   if (hFile == INVALID_HANDLE_VALUE) {
-    if (GetLastError() == ERROR_FILE_NOT_FOUND) {
+    if (GetLastError() == ERROR_FILE_NOT_FOUND ||
+        GetLastError() == ERROR_PATH_NOT_FOUND) {
       return process->null_object();
     }
-    printf("%ls: %lu\n",path, GetLastError());
     WINDOWS_ERROR;
   }
   AutoCloser closer(hFile);
