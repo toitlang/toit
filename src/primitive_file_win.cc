@@ -347,8 +347,13 @@ int64 low_high_to_int64(DWORD high, DWORD low) {
   return (static_cast<int64>(high) << 32) + low;
 }
 
+#define WINDOWS_TICKS_PER_SECOND 10000000
+#define SEC_TO_UNIX_EPOCH 11644473600LL
+
 Object* time_stamp(Process* process, FILETIME* time) {
-  return Primitive::integer(low_high_to_int64(time->dwHighDateTime, time->dwLowDateTime), process);
+  int64 windows_ticks = low_high_to_int64(time->dwHighDateTime, time->dwLowDateTime);
+  int64 unix_ticks = (windows_ticks - SEC_TO_UNIX_EPOCH * WINDOWS_TICKS_PER_SECOND) * 100;
+  return Primitive::integer(unix_ticks, process);
 }
 
 // Returns null for entries that do not exist.
@@ -366,6 +371,7 @@ PRIMITIVE(stat) {
     if (GetLastError() == ERROR_FILE_NOT_FOUND) {
       return process->null_object();
     }
+    printf("%ls: %lu\n",path, GetLastError());
     WINDOWS_ERROR;
   }
   AutoCloser closer(hFile);
