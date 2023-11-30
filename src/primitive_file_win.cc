@@ -16,6 +16,9 @@
 #include "top.h"
 
 #if defined(TOIT_WINDOWS)
+#define XSTR(x) STR(x)
+#define STR(x) #x
+#pragma message "The value of _WIN32_WINNT: " XSTR(_WIN32_WINNT)
 
 #include "objects.h"
 #include "primitive_file.h"
@@ -372,6 +375,7 @@ PRIMITIVE(stat) {
         GetLastError() == ERROR_PATH_NOT_FOUND) {
       return process->null_object();
     }
+    printf("%ls: %lu\n",path, GetLastError());
     WINDOWS_ERROR;
   }
   AutoCloser closer(hFile);
