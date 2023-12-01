@@ -6,18 +6,18 @@ main tests/type_propagation/finally-test.toit
   8[053] - invoke static test-catchy tests/type_propagation/finally-test.toit // {Null_}
  11[041] - pop 1
  12[053] - invoke static test-nlb-out-of-try tests/type_propagation/finally-test.toit // {Null_}
- 15[089] - return null S1 0
+ 15[091] - return null S1 0
 
 test-is-exception tests/type_propagation/finally-test.toit
   0[053] - invoke static return-is-exception tests/type_propagation/finally-test.toit // {True_|False_}
   3[041] - pop 1
   4[022] - load null
   5[029] - load method [block] in test-is-exception tests/type_propagation/finally-test.toit
- 10[094] - link try 0
+ 10[096] - link try 0
  12[038] - load block 4
  14[055] - invoke block S1 // [[block]] -> {Null_}
  16[041] - pop 1
- 17[095] - unlink try 0
+ 17[097] - unlink try 0
  19[020] - load literal -2
  21[015] - load local 1
  22[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True_|False_}
@@ -28,23 +28,23 @@ test-is-exception tests/type_propagation/finally-test.toit
  30[015] - load local 1
  31[004] - store local, pop S7
  33[040] - pop 2
- 35[096] - unwind
+ 35[098] - unwind
  36[002] - pop, load local S0
  38[053] - invoke static id tests/type_propagation/finally-test.toit // [{True_|False_}] -> {True_|False_}
- 41[089] - return null S2 0
+ 41[091] - return null S2 0
 
 [block] in test-is-exception tests/type_propagation/finally-test.toit
  - argument 0: [block]
   0[022] - load null
-  1[088] - return S1 1
+  1[090] - return S1 1
 
 return-is-exception tests/type_propagation/finally-test.toit
   0[029] - load method [block] in return-is-exception tests/type_propagation/finally-test.toit
-  5[094] - link try 0
+  5[096] - link try 0
   7[038] - load block 4
   9[055] - invoke block S1 // [[block]] -> {Null_}
  11[041] - pop 1
- 12[095] - unlink try 0
+ 12[097] - unlink try 0
  14[020] - load literal -2
  16[015] - load local 1
  17[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True_|False_}
@@ -53,25 +53,25 @@ return-is-exception tests/type_propagation/finally-test.toit
  20[082] - branch if false T25
  23[002] - pop, load local S3
  25[015] - load local 1
- 26[088] - return S7 0
- 29[096] - unwind
+ 26[090] - return S7 0
+ 29[098] - unwind
  30[041] - pop 1
 
 [block] in return-is-exception tests/type_propagation/finally-test.toit
  - argument 0: [block]
   0[022] - load null
-  1[088] - return S1 1
+  1[090] - return S1 1
 
 test-exception tests/type_propagation/finally-test.toit
   0[053] - invoke static return-exception tests/type_propagation/finally-test.toit // {Null_|Exception_}
   3[041] - pop 1
   4[022] - load null
   5[029] - load method [block] in test-exception tests/type_propagation/finally-test.toit
- 10[094] - link try 0
+ 10[096] - link try 0
  12[038] - load block 4
  14[055] - invoke block S1 // [[block]] -> {Null_}
  16[041] - pop 1
- 17[095] - unlink try 0
+ 17[097] - unlink try 0
  19[020] - load literal -2
  21[015] - load local 1
  22[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True_|False_}
@@ -82,23 +82,23 @@ test-exception tests/type_propagation/finally-test.toit
  30[014] - load local 0
  31[004] - store local, pop S7
  33[040] - pop 2
- 35[096] - unwind
+ 35[098] - unwind
  36[002] - pop, load local S0
  38[053] - invoke static id tests/type_propagation/finally-test.toit // [{Null_|Exception_}] -> {Null_|Exception_}
- 41[089] - return null S2 0
+ 41[091] - return null S2 0
 
 [block] in test-exception tests/type_propagation/finally-test.toit
  - argument 0: [block]
   0[022] - load null
-  1[088] - return S1 1
+  1[090] - return S1 1
 
 return-exception tests/type_propagation/finally-test.toit
   0[029] - load method [block] in return-exception tests/type_propagation/finally-test.toit
-  5[094] - link try 0
+  5[096] - link try 0
   7[038] - load block 4
   9[055] - invoke block S1 // [[block]] -> {Null_}
  11[041] - pop 1
- 12[095] - unlink try 0
+ 12[097] - unlink try 0
  14[020] - load literal -2
  16[015] - load local 1
  17[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True_|False_}
@@ -107,26 +107,26 @@ return-exception tests/type_propagation/finally-test.toit
  20[082] - branch if false T25
  23[002] - pop, load local S3
  25[014] - load local 0
- 26[088] - return S7 0
- 29[096] - unwind
+ 26[090] - return S7 0
+ 29[098] - unwind
  30[041] - pop 1
 
 [block] in return-exception tests/type_propagation/finally-test.toit
  - argument 0: [block]
   0[022] - load null
-  1[088] - return S1 1
+  1[090] - return S1 1
 
 test-catchy tests/type_propagation/finally-test.toit
   0[053] - invoke static catchy tests/type_propagation/finally-test.toit // {Null_|True_|False_}
-  3[089] - return null S1 0
+  3[091] - return null S1 0
 
 catchy tests/type_propagation/finally-test.toit
   0[029] - load method [block] in catchy tests/type_propagation/finally-test.toit
-  5[094] - link try 0
+  5[096] - link try 0
   7[038] - load block 4
   9[055] - invoke block S1 // [[block]] -> {}
  11[041] - pop 1
- 12[095] - unlink try 0
+ 12[097] - unlink try 0
  14[020] - load literal -2
  16[015] - load local 1
  17[062] - invoke eq // [{SmallInteger_}, {SmallInteger_}] -> {True_|False_}
@@ -135,30 +135,30 @@ catchy tests/type_propagation/finally-test.toit
  20[082] - branch if false T25
  23[002] - pop, load local S3
  25[015] - load local 1
- 26[088] - return S7 0
- 29[096] - unwind
+ 26[090] - return S7 0
+ 29[098] - unwind
  30[041] - pop 1
 
 [block] in catchy tests/type_propagation/finally-test.toit
  - argument 0: [block]
   0[022] - load null
   1[017] - load local 3
-  2[090] - non-local return 0
-  4[088] - return S1 1
+  2[092] - non-local return 0
+  4[090] - return S1 1
 
 test-nlb-out-of-try tests/type_propagation/finally-test.toit
   0[026] - load smi 4
   2[029] - load method [block] in test-nlb-out-of-try tests/type_propagation/finally-test.toit
-  7[094] - link try 0
+  7[096] - link try 0
   9[038] - load block 4
  11[055] - invoke block S1 // [[block]] -> {Null_}
  13[041] - pop 1
- 14[095] - unlink try 0
+ 14[097] - unlink try 0
  16[018] - load local 4
  17[053] - invoke static id tests/type_propagation/finally-test.toit // [{String_|Null_|SmallInteger_}] -> {String_|Null_|SmallInteger_}
  20[041] - pop 1
- 21[096] - unwind
- 22[089] - return null S2 0
+ 21[098] - unwind
+ 22[091] - return null S2 0
 
 [block] in test-nlb-out-of-try tests/type_propagation/finally-test.toit
  - argument 0: [block]
@@ -166,7 +166,7 @@ test-nlb-out-of-try tests/type_propagation/finally-test.toit
   5[038] - load block 0
   7[053] - invoke static invoke tests/type_propagation/finally-test.toit // [[block]] -> {}
  10[040] - pop 2
- 12[083] - branch back T0
+ 12[084] - branch back T0
  17[016] - load local 2
  18[020] - load literal hest
  20[006] - store outer S1
@@ -180,33 +180,33 @@ test-nlb-out-of-try tests/type_propagation/finally-test.toit
  41[016] - load local 2
  42[022] - load null
  43[006] - store outer S1
- 45[088] - return S1 1
+ 45[090] - return S1 1
 
 [block] in [block] in test-nlb-out-of-try tests/type_propagation/finally-test.toit
  - argument 0: [block]
   0[016] - load local 2
-  1[092] - non-local branch {[block] in test-nlb-out-of-try:17}
-  7[088] - return S1 1
+  1[094] - non-local branch {[block] in test-nlb-out-of-try:17}
+  7[090] - return S1 1
 
 [block] in [block] in test-nlb-out-of-try tests/type_propagation/finally-test.toit
  - argument 0: [block]
   0[022] - load null
   1[017] - load local 3
   2[005] - load outer S3 // [block]
-  4[090] - non-local return 16
-  6[088] - return S1 1
+  4[092] - non-local return 16
+  6[090] - return S1 1
 
 id tests/type_propagation/finally-test.toit
  - argument 0: {String_|Null_|True_|False_|SmallInteger_|Exception_}
   0[016] - load local 2
-  1[088] - return S1 1
+  1[090] - return S1 1
 
 pick tests/type_propagation/finally-test.toit
   0[026] - load smi 100
   2[053] - invoke static random <sdk>/core/utils.toit // [{SmallInteger_}] -> {LargeInteger_|SmallInteger_}
   5[026] - load smi 50
   7[063] - invoke lt // [{LargeInteger_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
-  8[088] - return S1 0
+  8[090] - return S1 0
 
 invoke tests/type_propagation/finally-test.toit
  - argument 0: [block]
