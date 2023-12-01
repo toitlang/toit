@@ -639,7 +639,7 @@ WorkerTask.run tests/type_propagation/richards-test.toit
  26[013] - store field, pop 1
  28[016] - load local 2
  29[009] - load field local 20 // [{WorkerTask}] -> {Null_|SmallInteger_}
- 31[061] - invoke virtual set id // [{Null_|Packet}, {Null_|SmallInteger_}] -> {SmallInteger_}
+ 31[061] - invoke virtual set id // [{Packet}, {Null_|SmallInteger_}] -> {SmallInteger_}
  34[002] - pop, load local S2
  36[023] - load smi 0
  37[061] - invoke virtual set a1 // [{Packet}, {SmallInteger_}] -> {SmallInteger_}
@@ -693,7 +693,7 @@ HandlerTask.run tests/type_propagation/richards-test.toit
   0[016] - load local 2
   1[082] - branch if false T36
   4[016] - load local 2
-  5[060] - invoke virtual get kind // [{Null_|Packet}] -> {Null_|SmallInteger_}
+  5[060] - invoke virtual get kind // [{Packet}] -> {Null_|SmallInteger_}
   8[025] - load smi 1
   9[062] - invoke eq // [{Null_|SmallInteger_}, {SmallInteger_}] -> {True_|False_}
  10[082] - branch if false T26

@@ -97,7 +97,7 @@ bool TypeSet::can_be_truthy(Program* program) const {
   Iterator it(*this, TypeSet::words_per_type(program));
   while (it.has_next()) {
     unsigned id = it.next();
-    if (id != null_id || id != false_id) return true;
+    if (id != null_id && id != false_id) return true;
   }
   return false;
 }

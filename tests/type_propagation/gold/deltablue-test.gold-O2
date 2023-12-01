@@ -719,16 +719,15 @@ ScaleConstraint.recalculate tests/type_propagation/deltablue-test.toit
 EqualityConstraint tests/type_propagation/deltablue-test.toit
  - argument 0: {EqualityConstraint}
  - argument 1: {Strength}
- - argument 2: {Null_|Variable}
+ - argument 2: {Variable}
  - argument 3: {Variable}
-  0[052] - load local, as class, pop 3 - Variable(37 - 38) // {True_|False_}
+  0[019] - load local 5
+  1[019] - load local 5
   2[019] - load local 5
   3[019] - load local 5
-  4[019] - load local 5
-  5[019] - load local 5
-  6[053] - invoke static BinaryConstraint tests/type_propagation/deltablue-test.toit // [{EqualityConstraint}, {Strength}, {Variable}, {Variable}] -> {EqualityConstraint}
-  9[002] - pop, load local S5
- 11[088] - return S1 4
+  4[053] - invoke static BinaryConstraint tests/type_propagation/deltablue-test.toit // [{EqualityConstraint}, {Strength}, {Variable}, {Variable}] -> {EqualityConstraint}
+  7[002] - pop, load local S5
+  9[088] - return S1 4
 
 EqualityConstraint.execute tests/type_propagation/deltablue-test.toit
  - argument 0: {EqualityConstraint}
@@ -1211,7 +1210,7 @@ chain-test tests/type_propagation/deltablue-test.toit
  39[032] - load global var lazy G0 // {Strength}
  41[000] - load local S6
  43[017] - load local 3
- 44[053] - invoke static EqualityConstraint tests/type_propagation/deltablue-test.toit // [{EqualityConstraint}, {Strength}, {Null_|Variable}, {Variable}] -> {EqualityConstraint}
+ 44[053] - invoke static EqualityConstraint tests/type_propagation/deltablue-test.toit // [{EqualityConstraint}, {Strength}, {Variable}, {Variable}] -> {EqualityConstraint}
  47[041] - pop 1
  48[015] - load local 1
  49[023] - load smi 0
