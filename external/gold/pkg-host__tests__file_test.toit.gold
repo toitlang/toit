@@ -19,9 +19,3 @@ pkg-host/tests/file_test.toit:143:19: warning: Deprecated 'platform'
 pkg-host/tests/file_test.toit:143:31: warning: Deprecated 'PLATFORM-WINDOWS'
       path_sep := platform == PLATFORM_WINDOWS ? "\\" : "/"
                               ^~~~~~~~~~~~~~~~
-<pkg:..>/directory.toit:154:6: warning: Deprecated 'platform'
-  if platform == PLATFORM_WINDOWS:
-     ^~~~~~~~
-<pkg:..>/directory.toit:154:18: warning: Deprecated 'PLATFORM-WINDOWS'
-  if platform == PLATFORM_WINDOWS:
-                 ^~~~~~~~~~~~~~~~
