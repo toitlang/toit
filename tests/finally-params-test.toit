@@ -13,7 +13,7 @@ test0:
     expect-null exception
 
 test1:
-  // With local. (shifting the try/finally locals.
+  // With local (shifting the try/finally locals).
   was-in-finally := false
   try:
     null

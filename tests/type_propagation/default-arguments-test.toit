@@ -15,15 +15,15 @@ main:
   test-default-false --no-x
   test-default-false --x=null
 
-  test-only-true
-  test-only-true --x
-  test-only-true --x=true
-  test-only-true --x=null
+  test-non-default --x
+  test-non-default --x=true
+  test-non-default --no-x
+  test-non-default --x=false
 
-  test-only-false
-  test-only-false --no-x
-  test-only-false --x=false
-  test-only-false --x=null
+  test-non-default-non-literal --x
+  test-non-default-non-literal --x=true
+  test-non-default-non-literal --no-x
+  test-non-default-non-literal --x=false
 
 test-default-true --x/bool=true:
   return x
@@ -31,8 +31,11 @@ test-default-true --x/bool=true:
 test-default-false --x/bool=false:
   return x
 
-test-only-true --x/bool=true:
+test-non-default --x/bool=true:
   return x
 
-test-only-false --x/bool=false:
+test-non-default-non-literal --x/bool=gettrue:
   return x
+
+gettrue:
+  return true

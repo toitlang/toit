@@ -29,30 +29,30 @@ main tests/type_propagation/default-arguments-test.toit
  53[022] - load null
  54[053] - invoke static test-default-false tests/type_propagation/default-arguments-test.toit // [{Null_}] -> {False_}
  57[041] - pop 1
- 58[022] - load null
- 59[053] - invoke static test-only-true tests/type_propagation/default-arguments-test.toit // [{Null_}] -> {True_}
- 62[041] - pop 1
- 63[020] - load literal true
- 65[053] - invoke static test-only-true tests/type_propagation/default-arguments-test.toit // [{True_}] -> {True_}
- 68[041] - pop 1
- 69[020] - load literal true
- 71[053] - invoke static test-only-true tests/type_propagation/default-arguments-test.toit // [{True_}] -> {True_}
- 74[041] - pop 1
- 75[022] - load null
- 76[053] - invoke static test-only-true tests/type_propagation/default-arguments-test.toit // [{Null_}] -> {True_}
- 79[041] - pop 1
- 80[022] - load null
- 81[053] - invoke static test-only-false tests/type_propagation/default-arguments-test.toit // [{Null_}] -> {False_}
- 84[041] - pop 1
- 85[020] - load literal false
- 87[053] - invoke static test-only-false tests/type_propagation/default-arguments-test.toit // [{False_}] -> {False_}
- 90[041] - pop 1
- 91[020] - load literal false
- 93[053] - invoke static test-only-false tests/type_propagation/default-arguments-test.toit // [{False_}] -> {False_}
- 96[041] - pop 1
- 97[022] - load null
- 98[053] - invoke static test-only-false tests/type_propagation/default-arguments-test.toit // [{Null_}] -> {False_}
-101[089] - return null S1 0
+ 58[020] - load literal true
+ 60[053] - invoke static test-non-default tests/type_propagation/default-arguments-test.toit // [{True_}] -> {True_}
+ 63[041] - pop 1
+ 64[020] - load literal true
+ 66[053] - invoke static test-non-default tests/type_propagation/default-arguments-test.toit // [{True_}] -> {True_}
+ 69[041] - pop 1
+ 70[020] - load literal false
+ 72[053] - invoke static test-non-default tests/type_propagation/default-arguments-test.toit // [{False_}] -> {True_|False_}
+ 75[041] - pop 1
+ 76[020] - load literal false
+ 78[053] - invoke static test-non-default tests/type_propagation/default-arguments-test.toit // [{False_}] -> {True_|False_}
+ 81[041] - pop 1
+ 82[020] - load literal true
+ 84[053] - invoke static test-non-default-non-literal tests/type_propagation/default-arguments-test.toit // [{True_}] -> {True_}
+ 87[041] - pop 1
+ 88[020] - load literal true
+ 90[053] - invoke static test-non-default-non-literal tests/type_propagation/default-arguments-test.toit // [{True_}] -> {True_}
+ 93[041] - pop 1
+ 94[020] - load literal false
+ 96[053] - invoke static test-non-default-non-literal tests/type_propagation/default-arguments-test.toit // [{False_}] -> {True_|False_}
+ 99[041] - pop 1
+100[020] - load literal false
+102[053] - invoke static test-non-default-non-literal tests/type_propagation/default-arguments-test.toit // [{False_}] -> {True_|False_}
+105[089] - return null S1 0
 
 test-default-true tests/type_propagation/default-arguments-test.toit
  - argument 0: {Null_|True_|False_}
@@ -78,26 +78,30 @@ test-default-false tests/type_propagation/default-arguments-test.toit
  12[016] - load local 2
  13[088] - return S1 1
 
-test-only-true tests/type_propagation/default-arguments-test.toit
- - argument 0: {Null_|True_}
+test-non-default tests/type_propagation/default-arguments-test.toit
+ - argument 0: {True_|False_}
   0[016] - load local 2
   1[022] - load null
   2[093] - identical
   3[082] - branch if false T10
   6[020] - load literal true
   8[004] - store local, pop S3
- 10[052] - load local, as class, pop 2 - True_(18 - 20) // {True_|False_}
+ 10[052] - load local, as class, pop 2 - True_(18 - 20) // {True_}
  12[016] - load local 2
  13[088] - return S1 1
 
-test-only-false tests/type_propagation/default-arguments-test.toit
- - argument 0: {Null_|False_}
+test-non-default-non-literal tests/type_propagation/default-arguments-test.toit
+ - argument 0: {True_|False_}
   0[016] - load local 2
   1[022] - load null
   2[093] - identical
-  3[082] - branch if false T10
-  6[020] - load literal false
-  8[004] - store local, pop S3
- 10[052] - load local, as class, pop 2 - True_(18 - 20) // {True_|False_}
- 12[016] - load local 2
- 13[088] - return S1 1
+  3[082] - branch if false T11
+  6[053] - invoke static gettrue tests/type_propagation/default-arguments-test.toit // {True_}
+  9[004] - store local, pop S3
+ 11[052] - load local, as class, pop 2 - True_(18 - 20) // {True_}
+ 13[016] - load local 2
+ 14[088] - return S1 1
+
+gettrue tests/type_propagation/default-arguments-test.toit
+  0[020] - load literal true
+  2[088] - return S1 0
