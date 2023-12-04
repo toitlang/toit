@@ -7,7 +7,9 @@ main:
   test-exception
   test-catchy
   test-nlb-out-of-try
-  test-update-in-finally
+  test-throw-update-in-finally
+  test-break-update-in-finally
+  test-break-update-in-finally-nested
 
 test-is-exception:
   return-is-exception
@@ -59,13 +61,32 @@ test-nlb-out-of-try:
   finally:
     id x
 
-test-update-in-finally:
+test-throw-update-in-finally:
   x := false
   invoke-catch:
     try:
       throw "ugh"
     finally:
       x = true
+  id x
+
+test-break-update-in-finally:
+  x := false
+  while true:
+    try:
+      break
+    finally:
+      x = true
+  id x
+
+test-break-update-in-finally-nested:
+  x := false
+  while true:
+    invoke:
+      try:
+        break
+      finally:
+        x = true
   id x
 
 id x:
