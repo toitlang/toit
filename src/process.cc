@@ -397,7 +397,10 @@ void Process::set_current_directory(const wchar_t* current_directory) {
 
 String* Process::allocate_string(const wchar_t* content) {
   word utf_16_length = wcslen(content);
+  return allocate_string(content, utf_16_length);
+}
 
+String* Process::allocate_string(const wchar_t* content, word utf_16_length) {
   word length = Utils::utf_16_to_8(reinterpret_cast<const uint16*>(content), utf_16_length, null, 0);
 
   String* result = allocate_string(length);
