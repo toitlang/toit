@@ -1,6 +1,7 @@
 import host.file
 import host.directory
 import cli
+import cli.cache show Cache
 import encoding.yaml
 import system
 
@@ -18,13 +19,16 @@ class ProjectConfiguration:
   cwd_/string
   sdk-version/SemanticVersion
 
-  constructor.private_ .project-root_ .cwd_ .sdk-version:
+  constructor.private_ .project-root_ .cwd_ .sdk-version auto-sync/bool:
+    if auto-sync:
+      registries.sync
 
   constructor.from-cli parsed/cli.Parsed:
     return ProjectConfiguration.private_
         parsed[OPTION-PROJECT-ROOT]
         directory.cwd
         SemanticVersion parsed[OPTION-SDK-VERSION]
+        parsed[OPTION-AUTO-SYNC]
 
   root -> string:
     return project-root_ ? project-root_ : cwd_
@@ -42,6 +46,7 @@ class ProjectConfiguration:
               Run 'toit.pkg init' first to create a new application here, or
               run with '--$OPTION-PROJECT-ROOT=.'
             """
+  static CACHE-DIR ::= ".toit-pkg-cache"
 
 
 class Project:
@@ -51,7 +56,7 @@ class Project:
 
   static PACKAGES-CACHE ::= ".packages"
 
-  constructor .config/ProjectConfiguration:
+  constructor .config/ProjectConfiguration --empty-lock-file/bool=false:
     if config.package-file-exists:
       package-file = ProjectPackageFile.load this
     else:
@@ -59,6 +64,10 @@ class Project:
 
     if config.lock-file-exists:
       lock-file = LockFile.load package-file
+    else if empty-lock-file:
+      lock-file = LockFile package-file
+
+    cache = Cache --app-name="toit-pkg"
 
   root -> string:
     return config.root
@@ -79,6 +88,36 @@ class Project:
     package-file.add-local-dependency prefix path
     solve_
     save
+
+  uninstall prefix/string:
+    package-file.remove-dependency prefix
+    lock-file.update --remove-prefix=prefix
+    save
+
+  update:
+    solve_
+    save
+
+  install:
+    lock-file.install
+
+  clean:
+    repository-packages := lock-file.repository-packages
+    url-to-version := {:}
+    repository-packages.do: | package/RepositoryPackage |
+      url-to-version[package.url] = package.version
+
+    urls := directory.DirectoryStream packages-cache-dir
+    while url := urls.next:
+      if not url-to-version.contains url:
+        directory.rmdir --recursive "$packages-cache-dir/$url"
+      else:
+        versions := directory.DirectoryStream "$packages-cache-dir/$url"
+        while version := versions.next:
+          if not url-to-version[url].contains version:
+            directory.rmdir --recursive "$packages-cache-dir/$url/$version"
+        versions.close
+    urls.close
 
   packages-cache-dir:
     return "$config.root/$PACKAGES-CACHE"
@@ -104,8 +143,11 @@ class Project:
     cached-repository-dir := cached-repository-dir_ url version
     return ExternalPackageFile "$cached-repository-dir"
 
+  load-local-package-file path/string -> ExternalPackageFile:
+    return ExternalPackageFile "$root/$path"
+
 main:
-  config := ProjectConfiguration.private_ "tmp2" directory.cwd (SemanticVersion system.vm-sdk-version)
+  config := ProjectConfiguration.private_ "tmp2" directory.cwd (SemanticVersion system.vm-sdk-version) false
   print system.vm-sdk-version
   project := Project config
   project.solve_

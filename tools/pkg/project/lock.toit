@@ -9,25 +9,54 @@ import ..constraints
 import .project
 import .package
 
-abstract class Package:
-  prefixes/Map := {:}
-  name/string? := null
+interface Package:
+  prefixes -> Map
+  name -> string?
+  package-file -> PackageFile
 
-  constructor:
-
-  constructor .name .prefixes:
-
-  constructor.from-map .name map/Map:
+  constructor.from-map name map/Map project-package-file/ProjectPackageFile:
     map-prefixes := map.get LockFile.PREFIXES-KEY_ --if-absent=: {:}
     if map.contains LockFile.PATH-KEY_:
-      return LocalPackage.from-map name prefixes map
+      return LoadedLocalPackage.from-map name map-prefixes project-package-file map
     else:
-      return RepositoryPackage.from-map name prefixes map
+      return LoadedRepositoryPackage.from-map name map-prefixes project-package-file map
+
+
+interface RepositoryPackage extends Package:
+  url -> string
+  version -> SemanticVersion
+  ref-hash -> string
+
+  ensure-downloaded
+  cached-repository-dir -> string
+
+interface LocalPackage extends Package:
+  path -> string
+
+abstract class PackageBase implements Package:
+  project-package-file/ProjectPackageFile
+  prefixes/Map := ?
+  name/string? := ?
+
+  constructor .project-package-file:
+    prefixes = {:}
+    name = null
+
+  constructor .name .prefixes .project-package-file:
+
+  abstract package-file -> PackageFile
+
+  package-file url/string version/SemanticVersion -> PackageFile:
+    project-package-file.project.ensure-downloaded url version
+    return project-package-file.project.load-package-package-file url version
+
+  ensure-downloaded url/string version/SemanticVersion:
+    project-package-file.project.ensure-downloaded url version
+
+  cached-repository-dir url/string version/SemanticVersion:
+    return project-package-file.project.cached-repository-dir_ url version
 
   abstract enrich-map map/Map project-package-file/ProjectPackageFile
-  abstract locators_ -> Set
-  abstract package-file -> PackageFile
-  abstract sdk-version -> Constraint?
 
   add-to-map packages/Map project-package-file/ProjectPackageFile:
     sub := {:}
@@ -36,15 +65,59 @@ abstract class Package:
     return packages[name] = sub
 
 
-class RepositoryPackage extends Package:
+class LoadedRepositoryPackage extends PackageBase implements RepositoryPackage:
+  url/string
+  version/SemanticVersion
+  ref-hash/string
+
+  constructor.from-map name prefixes project-package-file/ProjectPackageFile map/Map:
+    url = map["url"]
+    version = SemanticVersion map["version"]
+    ref-hash = map["hash"]
+    super name prefixes project-package-file
+
+  enrich-map map/Map project-package-file/ProjectPackageFile:
+    map["url"] = url
+    map["version"] = version.stringify
+    map["hash"] = ref-hash
+
+  package-file -> PackageFile:
+    return package-file url version
+
+  ensure-downloaded:
+    ensure-downloaded url version
+
+  cached-repository-dir -> string:
+    return cached-repository-dir url version
+
+class LoadedLocalPackage extends PackageBase implements LocalPackage:
+  path/string
+
+  constructor.from-map name prefixes project-package-file/ProjectPackageFile map/Map:
+    path = map["path"]
+    super name prefixes project-package-file
+
+  enrich-map map/Map project-package-file/ProjectPackageFile:
+    map["path"] = path
+
+  package-file -> PackageFile:
+    return project-package-file.project.load-local-package-file path
+
+abstract class BuiltPackageBase extends PackageBase:
+  constructor project-package-file/ProjectPackageFile:
+    super project-package-file
+
+  abstract locators_-> Set
+  abstract sdk-version -> Constraint?
+
+
+class BuiltRepositoryPackage extends BuiltPackageBase implements RepositoryPackage:
   dependencies_/Set // of PackageDependency
   resolved-package_/ResolvedPackage
-  project_/Project
 
-  constructor .project_ dependency/PackageDependency .resolved-package_:
+  constructor project-package-file/ProjectPackageFile dependency/PackageDependency .resolved-package_:
     dependencies_ = { dependency }
-
-
+    super project-package-file
 
   url -> string:
     return dependencies_.first.url
@@ -67,24 +140,32 @@ class RepositoryPackage extends Package:
   add-dependency dependency/PackageDependency:
     dependencies_.add dependency
 
-  package-file -> PackageFile:
-    project_.ensure-downloaded url version
-    return project_.load-package-package-file url version
-
   sdk-version -> Constraint?:
     return resolved-package_.sdk-version
 
+  package-file -> PackageFile:
+    return package-file url version
 
-class LocalPackage extends Package:
+  ensure-downloaded:
+    ensure-downloaded url version
+
+  cached-repository-dir -> string:
+    return cached-repository-dir url version
+
+class BuiltLocalPackage extends BuiltPackageBase implements LocalPackage:
   local-package_/local-solver.LocalPackage
 
-  constructor .local-package_:
+  constructor project-package-file/ProjectPackageFile .local-package_:
+    super project-package-file
 
   enrich-map map/Map project-package-file/ProjectPackageFile:
+    map["path"] = path
+
+  path -> string:
     if not local-package_.absolute:
-      map["path"] = local-package_.package-file.relative-path-to project-package-file
+      return local-package_.package-file.relative-path-to project-package-file
     else:
-      map["path"] = local-package_.location
+      return local-package_.location
 
   locators_ -> Set:
     return { local-package_.location }
@@ -94,7 +175,6 @@ class LocalPackage extends Package:
 
   sdk-version -> Constraint?:
     return local-package_.package-file.sdk-version
-
 
 
 class LockFile:
@@ -109,7 +189,7 @@ class LockFile:
 
   constructor.load .package-file:
     contents/Map := (yaml.decode (file.read_content (file-name package-file.root-dir))) as Map
-    yaml-sdk-version/string := contents.get SDK-KEY_
+    yaml-sdk-version/string? := contents.get SDK-KEY_
     if yaml-sdk-version:
       if not yaml-sdk-version.starts-with "^":
         throw "The sdk version ($yaml-sdk-version) specified in the lock file is not valid. It should start with a ^"
@@ -120,7 +200,7 @@ class LockFile:
 
     yaml-packages/Map := contents.get PACKAGES-KEY_ --if-absent=: []
     yaml-packages.do: | name/string map/Map |
-      packages.add (Package.from-map name map)
+      packages.add (Package.from-map name map package-file)
 
   static file-name root/string -> string:
     return "$root/$FILE_NAME"
@@ -130,13 +210,13 @@ class LockFile:
 
   to-map_ -> Map:
     map := {:}
-    if sdk-version: map[SDK-KEY_] = "^$sdk-version"
+    if sdk-version: map[LockFile.SDK-KEY_] = "^$sdk-version"
     if not prefixes.is-empty:
-      map[PREFIXES-KEY_] = prefixes
+      map[LockFile.PREFIXES-KEY_] = prefixes
     if not packages.is-empty:
       packages-map := {:}
-      packages.do: | package/Package | package.add-to-map packages-map package-file
-      map[PACKAGES-KEY_] = packages-map
+      packages.do: | package/PackageBase | package.add-to-map packages-map package-file
+      map[LockFile.PACKAGES-KEY_] = packages-map
     return map
 
   save:
@@ -147,10 +227,51 @@ class LockFile:
       file.write_content --path=file-name
           yaml.encode content
 
+  install:
+    (packages.filter : it is RepositoryPackage).do: | package/RepositoryPackage |
+      package.ensure-downloaded
+
+  update --remove-prefix/string:
+    name := prefixes[remove-prefix]
+
+    // Build package=to-retain, mapping package name to package
+    packages-by-name := {:}
+    packages.do: | package/Package | packages-by-name[package.name] = package
+
+
+    packages-to-remove := {}
+    new-packages-to-remove :=  { name }
+    // Calculate the transitive closure through prefixes from the name
+    while not new-packages-to-remove.is-empty:
+      next := {}
+      new-packages-to-remove.do: | name |
+        package := packages-by-name[name]
+        next.add-all package.prefixes.values
+      next.remove-all packages-to-remove
+      packages-to-remove.add-all next
+      new-packages-to-remove = next
+
+    // Make sure that no retained package has a dependency on the packages-to-remove
+    while true:
+      illegal-removed-packages := {}
+      packages.do: | package/Package |
+        if packages-to-remove.contains package.name: continue.do
+        package.prefixes.values.do:
+          if packages-to-remove.contains it:
+            illegal-removed-packages.add it
+      if illegal-removed-packages.is-empty: break
+      packages-to-remove.remove-all illegal-removed-packages
+
+    packages.filter --in-place: not packages-to-remove.contains it.name
+
+  repository-packages -> List:
+    return (packages.filter : it is RepositoryPackage)
+
   static SDK-KEY_        ::= "sdk"
   static PREFIXES-KEY_   ::= "prefixes"
   static PACKAGES-KEY_   ::= "packages"
   static PATH-KEY_       ::= "path"
+
 
 class PackageKey:
   parts/List := []
@@ -193,7 +314,7 @@ class PackageKey:
 
 
 class LockFileBuilder:
-  package-file/ProjectPackageFile
+  project-package-file/ProjectPackageFile
   local-result/local-solver.LocalResult
 
   blocked-name := {}
@@ -201,17 +322,17 @@ class LockFileBuilder:
   dependencies-to-name := {:}
   package-map := {:} // PackageKey -> Package
 
-  constructor .package-file/ProjectPackageFile .local-result/local-solver.LocalResult:
+  constructor .project-package-file/ProjectPackageFile .local-result/local-solver.LocalResult:
 
   build -> LockFile:
     print "build: $local-result.local-packages"
-    lock-file := LockFile package-file
+    lock-file := LockFile project-package-file
     local-result.local-packages.do: | _ package/local-solver.LocalPackage |
       count := 0
       while true:
         key := PackageKey "package" "$package.location$(count > 0 ? "-$count" : "")"
         if package-map.contains key: continue
-        package-map[key] = LocalPackage package
+        package-map[key] = BuiltLocalPackage project-package-file package
         break
 
     mutli-version-urls := identify-multi-version-packages
@@ -228,7 +349,7 @@ class LockFileBuilder:
         print "id: $id"
         key := PackageKey "package" "$id$(count > 0 ? "-$count" : "")"
         if package-map.contains key: continue
-        package-map[key] = RepositoryPackage package-file.project dependency package
+        package-map[key] = BuiltRepositoryPackage project-package-file dependency package
         resolved-to-repository-package[package] = package-map[key]
         break
 
@@ -242,7 +363,7 @@ class LockFileBuilder:
 
     // Update package-map with the shortened keys
     reduced-key-to-key.do: | short/PackageKey long/PackageKey |
-      value/Package := package-map[long]
+      value/PackageBase := package-map[long]
       value.name = short.name
       print "$value.name - $short.parts"
       package-map.remove long
@@ -251,16 +372,16 @@ class LockFileBuilder:
 
     // Build a lookup table from PackageDependency/Path to Package
     package-locator-to-package/Map := {:}
-    package-map.do: | key/PackageKey package/Package |
+    package-map.do: | key/PackageKey package/BuiltPackageBase |
       package.locators_.do:
         print "locator: $it"
         package-locator-to-package[it] = package
 
     print package-locator-to-package.keys
 
-    lock-file.prefixes = compute-prefixes package-file package-locator-to-package
+    lock-file.prefixes = compute-prefixes project-package-file package-locator-to-package
 
-    package-map.do --values: | package/Package |
+    package-map.do --values: | package/PackageBase |
       package.prefixes = compute-prefixes package.package-file package-locator-to-package
 
     lock-file.packages = package-map.values.sort: |a b| a.name.compare-to b.name
@@ -323,7 +444,7 @@ class LockFileBuilder:
   find-min-sdk-version packages/List -> SemanticVersion?:
     min-sdk-version/SemanticVersion? := null
 
-    packages.do: | package/Package |
+    packages.do: | package/BuiltPackageBase |
       sdk-version := package.sdk-version
       if sdk-version:
         if not sdk-version.source.starts-with "^":

@@ -8,6 +8,7 @@ import ..solver.local-solver
 import ..error
 import ..registry
 import ..constraints
+import ..semantic-version
 
 import .project
 import .lock
@@ -36,6 +37,10 @@ class ProjectPackageFile extends PackageFile:
       PackageFile.PATH-KEY_: path
     }
 
+  remove-dependency prefix/string:
+    if not dependencies.contains prefix: error "No package with prefix $prefix"
+    dependencies.remove prefix
+
   save:
     if content.is-empty:
       file.write_content "# Toit Package File." --path=file-name
@@ -48,6 +53,7 @@ class ProjectPackageFile extends PackageFile:
     return (LockFileBuilder this solver.solve-with-local).build
 
 
+
 // An external packkage file. These are read-only
 class ExternalPackageFile extends PackageFile:
   path/string
@@ -58,6 +64,12 @@ class ExternalPackageFile extends PackageFile:
   root-dir -> string:
     return path
 
+class RepositoryPackageFile extends PackageFile:
+  constructor content/ByteArray:
+    super (yaml.decode content)
+
+  root-dir -> string:
+    throw "Not possible to get root dir of a repository package file"
 
 abstract class PackageFile:
   content/Map
@@ -118,8 +130,9 @@ abstract class PackageFile:
     return content.get NAME-KEY_ --if-absent=: error "Missing 'name' in $file-name."
 
   sdk-version -> Constraint?:
-    if content.contains ENVIRONMENT-KEY_ and content[ENVIRONMENT-KEY_].contains SDK-KEY_:
-      return Constraint content[ENVIRONMENT-KEY_][SDK-KEY_]
+    if environment_ := environment:
+      if environment_.contains SDK-KEY_:
+        return Constraint environment_[SDK-KEY_]
     return null
 
   has-package package-name/string:
@@ -141,6 +154,10 @@ abstract class PackageFile:
         dependencies[prefix] = content[PATH-KEY_]
     return dependencies
 
+  description -> string?: return content.get DESCRIPTION-KEY_
+  license -> string?: return content.get LICENSE-KEY_
+  environment -> Map?: return content.get ENVIRONMENT-KEY_
+
   static DEPENDENCIES-KEY_ ::= "dependencies"
   static NAME-KEY_         ::= "name"
   static URL-KEY_          ::= "url"
@@ -148,4 +165,44 @@ abstract class PackageFile:
   static PATH-KEY_         ::= "path"
   static ENVIRONMENT-KEY_  ::= "environment"
   static SDK-KEY_          ::= "sdk"
+  static DESCRIPTION-KEY_  ::= "description"
+  static LICENSE-KEY_      ::= "license"
+
+
+/**
+Represents a dependency on a package from a repository.
+
+For convienience it contains delegate methods to contraint.
+*/
+class PackageDependency:
+  url/string
+  constraint_/string // Keep this around for easy hash-code and ==
+  constraint/Constraint
+  constructor .url .constraint_:
+    constraint = Constraint constraint_
+
+  filter versions/List:
+    return constraint.filter versions
+
+  satisfies version/SemanticVersion -> bool:
+    return constraint.satisfies version
+
+  find-satisfied-package packages/Set -> PartialPackageSolution?:
+    packages.do: | package/PartialPackageSolution |
+      if package.satisfies this:
+        return package
+    return null
+
+  hash-code -> int:
+    return url.hash-code + constraint_.hash-code
+
+  operator == other -> bool:
+    if other is not PackageDependency: return false
+    return stringify == other.stringify
+
+  constraint-string -> string:
+    return constraint_
+
+  stringify: return "$url:$constraint_"
+
 

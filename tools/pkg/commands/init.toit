@@ -7,22 +7,26 @@ import ..project.package
 
 class InitCommand:
   project/Project
+
   constructor parsed/cli.Parsed:
-    project = project-from-cli cli --ignore-missing
+    config := ProjectConfiguration.from-cli parsed
+
+    if config.package-file-exists or config.lock-file-exists:
+      error "Directory already contains a project"
+
+    project = Project config --empty-lock-file
 
   execute:
-    if project.
-    print "Toit package manager version: $system.vm-sdk-version"
+    project.save
 
   static CLI-COMMAND ::=
       cli.Command "init"
-          --short-help="Creates a new package and lock file in the current directory"
-          --long_help="""
-                      Initializes the current directory as the root of the project.
+          --help="""
+                 Initializes the current directory as the root of the project.
 
-                      This is done by creating a 'package.lock' and 'package.yaml' file.
+                 This is done by creating a 'package.lock' and 'package.yaml' file.
 
-                      If the --project-root flag is used, initializes that directory instead.
-                      """
+                 If the --project-root flag is used, initializes that directory instead.
+                 """
           --run=:: (InitCommand it).execute
 

@@ -1,4 +1,8 @@
 import encoding.yaml
+
+import cli.cache show Cache FileStore
+import host.file
+
 import .local
 import .git
 import ..file-system-view
@@ -12,10 +16,32 @@ import ..utils
 
 registries ::= Registries
 
+cache := Cache --app-name="toit-pkg"
+
 class Registries:
   registries := {:}
   constructor:
-    registries["toit"] = GitRegistry "toit" "github.com/toitware/registry"
+    registries-map := yaml.decode
+        cache.get "regestries.yaml" : | store/FileStore |
+            toit := GitRegistry "toit" "github.com/toitware/registry" null
+            store.save
+                yaml.encode {
+                    "toit": {
+                        "url": "github.com/toitware/registry",
+                        "type": "git"
+                    }
+                 }
+    registries-map.do: | name/string map/Map |
+      type := map.get "type" --if-absent=: error "Registry $name does not have a type"
+      if type == "git":
+        url := map.get "url" --if-absent=: error "Registry $name does not have a url"
+        ref-hash := map.get "ref-hash"
+        registries[name] = GitRegistry name url ref-hash
+      else if type == "local":
+        path := map.get "path" --if-absent=: error "Registry $name does not have a path"
+        registries[name] = LocalRegistry name path
+      else:
+        error "Registry $name has an unknown type '$type'"
 
   search --registry-name/string?=null search-string/string -> RemotePackage:
     search-results := search_ registry-name search-string
@@ -53,11 +79,63 @@ class Registries:
     error "Not able to find package $url in any repository"
     unreachable
 
+  add --local name/string path/string:
+    if not local: throw "INVALID_ARGUEMT"
+    if registries.contains name: error "Registry $name already exists"
+    registries[name] = LocalRegistry name path
+    save_
+
+  add --git name/string url/string:
+    if not git: throw "INVALID_ARGUEMT"
+    if registries.contains name: error "Registry $name already exists"
+    registries[name] = GitRegistry name url null
+    registries[name].sync // To check that the url is valid
+    save_
+
+  remove name/string:
+    if not registries.contains name: error "Registry $name does not exist"
+    registries.remove name
+    save_
+
+  list:
+    print "$(%-10s "Name") $(%-6s "Type") Url/Path"
+    print "$(%-10s "----") $(%-6s "----") --------"
+    registries.do: | name registry |
+      print "$(%-10s name) $(%-6s registry.type) $(registry is GitRegistry ? registry.url : registry.path)"
+
+  search --free-text search-string/string -> List:
+    result := []
+    registries.do: | name registry/Registry |
+      result.add-all
+          registry.list-all-packages.filter:  | package/List |
+            package[0].contains search-string or
+              package[2][Description.NAME-KEY_].contains search-string or
+              package[2][Description.DESCRIPTION-KEY_].contains search-string
+    return result
+
+  list-packages -> Map:
+    return registries.map: | name registry/Registry |
+      { "registry" : registry, "packages": registry.list-all-packages }
+
+  sync:
+    registries.do --values: it.sync
+
+  sync --name/string:
+    registry := registries.get name --if-absent=: error "Registry $name does not exist"
+    registry.sync
+
+  save_:
+    registries-map := {:}
+    registries.do: | name registry/Registry |
+      registries-map[name] = registry.to-map
+
+    cache-file := cache.get-file-path "registries.yaml" : | store/FileStore | store.save #[]
+    file.write_content --path=cache-file (yaml.encode registries-map)
+
 
 abstract class Registry:
   name/string
   description-cache_ := {:}
-
 
   constructor .name:
 
@@ -65,6 +143,28 @@ abstract class Registry:
   abstract retrieve-description url/string version/SemanticVersion -> Description?
   abstract retrieve-versions url/string -> List?
   abstract content -> FileSystemView
+  abstract to-map -> Map
+  abstract sync
+  abstract stringify -> string
+
+  filter-filesystem map/Map -> Map:
+    return map.filter: | k v | v is FileSystemView
+
+  list-all-packages -> List:
+    result := []
+
+    hubs/FileSystemView := content.get --path=["packages"]
+    (filter-filesystem hubs.list).do: | hub-name hub |
+      (filter-filesystem hub.list).do: | repository-name repository/FileSystemView |
+        (filter-filesystem repository.list).do: | package-name package/FileSystemView |
+          (filter-filesystem package.list).do: | version-name version/FileSystemView |
+            desc := version.get --path=["desc.yaml"]
+            if desc:
+              description := yaml.decode desc
+              result.add [ package-name, version-name, description ]
+
+    return result
+
 
   retrieve-description url/string version/SemanticVersion -> Description?:
     if not description-cache_.contains url or not description-cache_[url].contains version:

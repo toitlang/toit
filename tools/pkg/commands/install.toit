@@ -45,7 +45,9 @@ class InstallCommand:
     project = Project config
 
   execute:
-    if not local:
+    if not package:
+      project.install
+    else if not local:
       execute-remote
     else:
       execute-local
@@ -75,32 +77,33 @@ class InstallCommand:
 
   static CLI-COMMAND ::=
       cli.Command "install"
-          --short-help="Installs a package in the current project, or downloads all dependencies."
-          --long-help="""
-                      If no 'package' is given, then the command downloads all dependencies.
-                        If necessary, updates the lock-file. This can happen if the lock file doesn't exist
-                        yet, or if the lock-file has local path dependencies (which could have their own
-                        dependencies changed). Recomputation of the dependencies can also be forced by
-                        providing the '--recompute' flag.
+          --help="""
+                 Installs a package in the current project, or downloads all dependencies.
 
-                      If a 'package' is given finds the package with the given name or URL and installs it.
-                        The given 'package' string must uniquely identify a package in the registry.
-                        It is matched against all package names, and URLs. For the names, a package is considered
-                        a match if the string is equal. For URLs it is a match if the string is a complete match, or
-                        the '/' + string is a suffix of the URL.
+                 If no 'package' is given, then the command downloads all dependencies.
+                   If necessary, updates the lock-file. This can happen if the lock file doesn't exist
+                   yet, or if the lock-file has local path dependencies (which could have their own
+                   dependencies changed). Recomputation of the dependencies can also be forced by
+                   providing the '--recompute' flag.
 
-                      The 'package' may be suffixed by a version with a '@' separating the package name and
-                        the version. The version doesn't need to be complete. For example 'foo@2' installs
-                        the package foo with the highest version satisfying '2.0.0 <= version < 3.0.0'.
-                        Note: the version constraint in the package.yaml is set to accept semver compatible
-                        versions. If necessary, modify the constraint in that file.
+                 If a 'package' is given finds the package with the given name or URL and installs it.
+                   The given 'package' string must uniquely identify a package in the registry.
+                   It is matched against all package names, and URLs. For the names, a package is considered
+                   a match if the string is equal. For URLs it is a match if the string is a complete match, or
+                   the '/' + string is a suffix of the URL.
 
-                      Installed packages can be imported by their prefix. By default the prefix is their
-                        name, but the '--prefix' argument can override the default.
+                 The 'package' may be suffixed by a version with a '@' separating the package name and
+                   the version. The version doesn't need to be complete. For example 'foo@2' installs
+                   the package foo with the highest version satisfying '2.0.0 <= version < 3.0.0'.
+                   Note: the version constraint in the package.yaml is set to accept semver compatible
+                   versions. If necessary, modify the constraint in that file.
 
-                      If the '--local' flag is used, then the 'package' argument is interpreted as
-                        a local path to a package directory. Note that published packages may not
-                        contain local packages."""
+                 Installed packages can be imported by their prefix. By default the prefix is their
+                   name, but the '--prefix' argument can override the default.
+
+                 If the '--local' flag is used, then the 'package' argument is interpreted as
+                   a local path to a package directory. Note that published packages may not
+                   contain local packages."""
           --examples=[
               cli.Example --arguments=""
                 """
@@ -154,14 +157,14 @@ class InstallCommand:
           ]
           --options=[
               cli.Flag LOCAL
-                  --short-help="Treat package argument as local path."
+                  --help="Treat package argument as local path."
                   --default=false,
               cli.Option NAME
-                  --short-help="The name used for the 'import' clause. Deprecated: use '--prefix' instead.",
+                  --help="The name used for the 'import' clause. Deprecated: use '--prefix' instead.",
               cli.Option PREFIX
-                  --short-help="The prefix used for the 'import' clause.",
+                  --help="The prefix used for the 'import' clause.",
               cli.Flag RECOMPUTE
-                  --short-help="Recompute dependencies."
+                  --help="Recompute dependencies."
                   --default=false
           ]
           --run=:: (InstallCommand it).execute

@@ -19,16 +19,22 @@ class Repository:
   constructor .url:
     capabilits = protocol_.load-capabilities url
 
+  clone --binary ref-hash/string -> ByteArray:
+    if not binary: throw "INVALID_ARGUMENT"
+    return protocol_.load-pack capabilits url ref-hash
+
   clone ref-hash/string -> Pack:
-    binary-data := protocol_.load-pack capabilits url ref-hash
-    return Pack binary-data ref-hash
+    return Pack (clone --binary ref-hash) ref-hash
 
   head -> string:
     refs := protocol_.load-refs url
     return refs[HEAD-INDICATOR_]
 
+  refs -> Map:
+    return protocol_.load-refs url
+
 protocol_ ::= GitProtocol_
-UPLOAD-PACK-REQUEST-CONTENT-TYPE_ ::= "pplication/x-git-upload-pack-request"
+UPLOAD-PACK-REQUEST-CONTENT-TYPE_ ::= "application/x-git-upload-pack-request"
 HEAD-INDICATOR_ ::= "HEAD"
 
 // See: git help protocol-v2

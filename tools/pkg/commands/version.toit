@@ -12,5 +12,5 @@ class VersionCommand:
 
   static CLI-COMMAND ::=
       cli.Command "version"
-          --short-help="Prints the version of the package manager"
+          --help="Prints the version of the package manager"
           --run=:: (VersionCommand it).execute

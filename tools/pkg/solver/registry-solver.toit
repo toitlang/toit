@@ -3,6 +3,7 @@ import ..constraints
 import ..registry
 import ..error
 import ..utils
+import ..project.package
 import encoding.yaml
 
 class PackageConstraint:
@@ -110,40 +111,6 @@ class PartialPackageSolution:
 
   hash-code -> int:
     return url.hash-code
-
-
-/**
-Represents a dependency on a package from a repository.
-
-For convienience it contains delegate methods to contraint.
-*/
-class PackageDependency:
-  url/string
-  constraint_/string // Keep this around for easy hash-code and ==
-  constraint/Constraint
-  constructor .url .constraint_:
-    constraint = Constraint constraint_
-
-  filter versions/List:
-    return constraint.filter versions
-
-  satisfies version/SemanticVersion -> bool:
-    return constraint.satisfies version
-
-  find-satisfied-package packages/Set -> PartialPackageSolution?:
-    packages.do: | package/PartialPackageSolution |
-      if package.satisfies this:
-        return package
-    return null
-
-  hash-code -> int:
-    return url.hash-code + constraint_.hash-code
-
-  operator == other -> bool:
-    if other is not PackageDependency: return false
-    return stringify == other.stringify
-
-  stringify: return "$url:$constraint_"
 
 
 class PartialSolution:

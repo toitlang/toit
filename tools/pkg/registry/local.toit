@@ -15,6 +15,16 @@ class LocalRegistry extends Registry:
   content -> FileSystemView:
     return FileSystemView_ path
 
+  to-map -> Map:
+    return  {
+      "path": path,
+      "type": type,
+    }
+
+  sync:
+
+  stringify -> string:
+    return "$path ($type)"
 
 class FileSystemView_ implements FileSystemView:
   root/string
@@ -31,6 +41,8 @@ class FileSystemView_ implements FileSystemView:
 
   get key/string -> any:
     entry := "$root/$key"
+
+    if not file.stat entry: return null
 
     if file.is_directory entry:
       return FileSystemView_ entry
