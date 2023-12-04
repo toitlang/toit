@@ -6,7 +6,9 @@ main tests/type_propagation/finally-test.toit
   8[053] - invoke static test-catchy tests/type_propagation/finally-test.toit // {Null_}
  11[041] - pop 1
  12[053] - invoke static test-nlb-out-of-try tests/type_propagation/finally-test.toit // {Null_}
- 15[089] - return null S1 0
+ 15[041] - pop 1
+ 16[053] - invoke static test-update-in-finally tests/type_propagation/finally-test.toit // {Null_}
+ 19[089] - return null S1 0
 
 test-is-exception tests/type_propagation/finally-test.toit
   0[053] - invoke static return-is-exception tests/type_propagation/finally-test.toit // {True_|False_}
@@ -196,6 +198,39 @@ test-nlb-out-of-try tests/type_propagation/finally-test.toit
   4[090] - non-local return 16
   6[088] - return S1 1
 
+test-update-in-finally tests/type_propagation/finally-test.toit
+  0[020] - load literal false
+  2[029] - load method [block] in test-update-in-finally tests/type_propagation/finally-test.toit
+  7[038] - load block 0
+  9[053] - invoke static invoke-catch tests/type_propagation/finally-test.toit // [[block]] -> {Null_}
+ 12[041] - pop 1
+ 13[002] - pop, load local S0
+ 15[053] - invoke static id tests/type_propagation/finally-test.toit // [{False_}] -> {False_}
+ 18[089] - return null S2 0
+
+[block] in test-update-in-finally tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[029] - load method [block] in [block] in test-update-in-finally tests/type_propagation/finally-test.toit
+  5[094] - link try 0
+  7[038] - load block 4
+  9[055] - invoke block S1 // [[block]] -> {}
+ 11[041] - pop 1
+ 12[095] - unlink try 0
+ 14[000] - load local S6
+ 16[020] - load literal true
+ 18[006] - store outer S1
+ 20[041] - pop 1
+ 21[096] - unwind
+ 22[041] - pop 1
+ 23[022] - load null
+ 24[088] - return S1 1
+
+[block] in [block] in test-update-in-finally tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[020] - load literal ugh
+  2[053] - invoke static throw <sdk>/core/exceptions.toit // [{String_}] -> {}
+  5[088] - return S1 1
+
 id tests/type_propagation/finally-test.toit
  - argument 0: {String_|Null_|True_|False_|SmallInteger_|Exception_}
   0[016] - load local 2
@@ -213,3 +248,22 @@ invoke tests/type_propagation/finally-test.toit
   0[016] - load local 2
   1[055] - invoke block S1 // [[block]] -> {}
   3[041] - pop 1
+
+invoke-catch tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[029] - load method [block] in invoke-catch tests/type_propagation/finally-test.toit
+  5[094] - link try 0
+  7[038] - load block 4
+  9[055] - invoke block S1 // [[block]] -> {}
+ 11[041] - pop 1
+ 12[095] - unlink try 0
+ 14[089] - return null S4 1
+ 17[096] - unwind
+ 18[041] - pop 1
+
+[block] in invoke-catch tests/type_propagation/finally-test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[005] - load outer S3 // [block]
+  3[055] - invoke block S1 // [[block]] -> {}
+  5[088] - return S1 1

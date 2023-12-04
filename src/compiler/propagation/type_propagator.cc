@@ -1361,6 +1361,10 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(UNWIND);
+    // Here we continue unwinding if an exception was thrown, so
+    // we must make this as a potential throw site to make sure
+    // any modifications to outer locals are merged back.
+    // scope->throw_maybe();
     // If the try-block is guaranteed to cause unwinding,
     // we avoid analyzing the bytecodes following this one.
     TypeSet target = stack->local(1);

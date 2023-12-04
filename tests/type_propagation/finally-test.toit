@@ -7,6 +7,7 @@ main:
   test-exception
   test-catchy
   test-nlb-out-of-try
+  test-update-in-finally
 
 test-is-exception:
   return-is-exception
@@ -58,6 +59,15 @@ test-nlb-out-of-try:
   finally:
     id x
 
+test-update-in-finally:
+  x := false
+  invoke-catch:
+    try:
+      throw "ugh"
+    finally:
+      x = true
+  id x
+
 id x:
   return x
 
@@ -66,3 +76,9 @@ pick:
 
 invoke [block]:
   block.call
+
+invoke-catch [block]:
+  try:
+    block.call
+  finally:
+    return
