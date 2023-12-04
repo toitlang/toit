@@ -60,7 +60,7 @@ class Documents:
   /**
   The project-uri the given document uri belongs to.
 
-  If the document isn't known yet computes its project-uri.
+  If the document isn't known yet, computes its project-uri.
   If $recompute is true, then recomputes the project-uri even if it is already known.
   */
   project-uri-for --uri/string --recompute/bool=false -> string:
@@ -116,6 +116,7 @@ class Documents:
 
   get-opened --uri/string -> OpenedDocument?:
     return opened-documents_.get uri
+
   get-opened --path/string -> OpenedDocument?:
     return get-opened --uri=(translator_.to-uri path)
 
@@ -150,7 +151,7 @@ class Documents:
         --content-revision=content-revision
 
 /**
-Keeps track of unsaved files.
+Keeps track of analyzed documents.
 */
 class AnalyzedDocuments:
   // A map from a document URI to its project URI.
@@ -167,7 +168,7 @@ class AnalyzedDocuments:
   translator_ /UriPathTranslator ::= ?
   error-reporter_ / Lambda ::= ?
 
-  constructor .translator_ --error-reporter:
+  constructor .translator_ --error-reporter/Lambda:
     error-reporter_ = error-reporter
 
   /**
