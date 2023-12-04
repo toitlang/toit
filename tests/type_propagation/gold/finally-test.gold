@@ -205,7 +205,7 @@ test-update-in-finally tests/type_propagation/finally-test.toit
   9[053] - invoke static invoke-catch tests/type_propagation/finally-test.toit // [[block]] -> {Null_}
  12[041] - pop 1
  13[002] - pop, load local S0
- 15[053] - invoke static id tests/type_propagation/finally-test.toit // [{False_}] -> {False_}
+ 15[053] - invoke static id tests/type_propagation/finally-test.toit // [{True_|False_}] -> {True_|False_}
  18[089] - return null S2 0
 
 [block] in test-update-in-finally tests/type_propagation/finally-test.toit
