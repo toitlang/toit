@@ -53,9 +53,9 @@ func (s *Server) ToitAnalyzeMany(ctx context.Context, conn *jsonrpc2.Conn, req A
 
 	err := s.analyze(ctx, conn, uris...)
 	if err != nil {
-		s.logger.Error("failed to analyze toit/AnalyzeMany request", zap.Any("URIs", uris), zap.Error(err))
+		s.logger.Error("failed to analyze toit/analyzeMany request", zap.Any("URIs", uris), zap.Error(err))
 	} else {
-		s.logger.Debug("successfully analyzed toit/AnalyzeMany request", zap.Any("URIs", req.URIs))
+		s.logger.Debug("successfully analyzed toit/analyzeMany request", zap.Any("URIs", req.URIs))
 	}
 	return err
 }
