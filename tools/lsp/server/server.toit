@@ -137,12 +137,12 @@ class LspServer:
         "textDocument/semanticTokens/full": (:: semantic-tokens (SemanticTokensParams it)),
         "shutdown":                (:: shutdown),
         "exit":                    (:: exit),
-        "toit/report_idle":        (:: report-idle),
-        "toit/reset_crash_rate_limit": (:: reset-crash-rate-limit),
+        "toit/reportIdle":         (:: report-idle),
+        "toit/resetCrashRateLimit": (:: reset-crash-rate-limit),
         "toit/settings":           (:: settings_.map_),
         "toit/analyzeMany":        (:: analyze-many it),
         "toit/archive":            (:: archive (ArchiveParams it)),
-        "toit/snapshot_bundle":    (:: snapshot-bundle (SnapshotBundleParams it))
+        "toit/snapshotBundle":     (:: snapshot-bundle (SnapshotBundleParams it))
     }
     handlers.get method --if-present=: return it.call params
 
