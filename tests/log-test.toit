@@ -9,7 +9,7 @@ import expect show *
 
 service ::= PrintServiceProvider
 
-expect output/string? [block]:
+expect output/string? --with-timestamp=false [block]:
   expect-equals 0 service.messages.size
   try:
     block.call
@@ -17,7 +17,14 @@ expect output/string? [block]:
     result := service.messages
     if output:
       expect-equals 1 result.size
-      expect-equals output result.first
+      if with-timestamp:
+        tmp := result.first
+        time := tmp[0..tmp.index-of " "]
+        rest := tmp[(tmp.index-of " ") + 1..]
+        expect-no-throw : int.parse time
+        expect-equals output rest
+      else:
+        expect-equals output result.first
     else:
       expect-equals 0 result.size
 
@@ -56,5 +63,16 @@ main:
 
   gog-magog-logger := hv-logger.with-tag "gog" "magog"
   expect "[42.103] INFO: hest {gog: magog, fisk: ko, age: 42}": gog-magog-logger.info "hest" --tags={"fisk": "ko", "age": 42}
+
+  time-logger := logger.with-timestamp
+  expect "INFO: hest" --with-timestamp: time-logger.info "hest"
+
+  with-logger := logger.with --level=log.ERROR-LEVEL --name="42"
+  expect null: with-logger.info "hest"
+  expect "[42] ERROR: hest": with-logger.error "hest"
+  with-logger = with-logger.with --name="81" --tags={"fisk": "ko"}
+  expect "[42.81] ERROR: pony {fisk: ko}": with-logger.error "pony"
+  with-logger = with-logger.with --timestamp
+  expect "[42.81] ERROR: pony {fisk: ko}" --with-timestamp: with-logger.error "pony"
 
   service.uninstall

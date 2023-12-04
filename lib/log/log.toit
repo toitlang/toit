@@ -125,7 +125,7 @@ class Logger:
   names_/List?
   keys_/List? ::= null
   values_/List? ::= null
-
+  timestamp_/bool ::= false
   /**
   Constructs a logger with the given $level_ and $target_.
 
@@ -136,7 +136,12 @@ class Logger:
   constructor .level_/int .target_/Target --name/string?=null:
     names_ = name ? [name] : null
 
-  constructor.internal_ parent/Logger --name/string?=null --level/int?=null --tags/Map?=null:
+  constructor.internal_
+      parent/Logger
+      --name/string?=null
+      --level/int?=null
+      --tags/Map?=null
+      --timestamp/bool?=null:
     level_ = level ? (max level parent.level_) : parent.level_
     target_ = parent.target_
     parent-names ::= parent.names_
@@ -148,13 +153,29 @@ class Logger:
         names_ = [name]
     else:
       names_ = parent-names
+    if timestamp == null:
+      timestamp_ = parent.timestamp_
+    else:
+      timestamp_ = timestamp
     merge-tags_ tags parent.keys_ parent.values_: | keys values |
       keys_ = keys
       values_ = values
 
+  /**
+  Adds selected attributes to a copy of this logger.
+
+  If $name is provided, the $name is added to the copy.
+  If $level is provied, the $level is added to the copy.
+    The level can only be increased to log fewer messages.
+  If $tags is provided, the $tags are added to the copy.
+  If $timestamp is provided, the $timestamp is set in the copy.
+  */
+  with --name/string?=null --level/int?=null --tags/Map?=null --timestamp/bool?=null -> Logger:
+    return Logger.internal_ this --name=name --level=level --tags=tags --timestamp=timestamp
+
   /** Adds the $name to a copy of this logger. */
   with-name name/string -> Logger:
-    return Logger.internal_ this --name=name
+    return with --name=name
 
   /**
   Adds the $level to a copy of this logger.
@@ -162,13 +183,20 @@ class Logger:
   The level can only be increased to log fewer messages.
   */
   with-level level/int -> Logger:
-    return Logger.internal_ this --level=level
+    return with --level=level
 
   /**
   Adds the tag composed by the $key and the $value to a copy of this logger.
   */
   with-tag key/string value -> Logger:
-    return Logger.internal_ this --tags={key: value}
+    return with --tags={key: value}
+
+  /**
+  Creates a copy where timestamps are enabled.
+  */
+  with-timestamp -> Logger:
+    return with --timestamp
+
 
   /**
   Calls the $block if $level is enabled by the logger. Can be useful to
@@ -188,7 +216,7 @@ class Logger:
   log level/int message/string --tags/Map?=null -> none:
     if level < level_: return
     merge-tags_ tags keys_ values_: | keys/List? values/List? |
-      target_.log level message names_ keys values
+      target_.log level message names_ keys values timestamp_
     if level == FATAL-LEVEL: throw "FATAL"
 
   /**
