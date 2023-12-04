@@ -534,21 +534,12 @@ PRIMITIVE(readlink) {
   auto reparse_data = reinterpret_cast<REPARSE_DATA_BUFFER*>(buffer);
   if (reparse_data->ReparseTag != IO_REPARSE_TAG_SYMLINK) FAIL(INVALID_ARGUMENT);
 
-  WideCharAllocationManager allocation(process);
   USHORT link_name_bytes = reparse_data->SymbolicLinkReparseBuffer.SubstituteNameLength;
 
-  word string_length = static_cast<word>(link_name_bytes / sizeof(wchar_t) + 1); // including null termination
-  wchar_t* w_result = allocation.wcs_alloc(string_length);
-  memcpy(w_result,
-         reparse_data->SymbolicLinkReparseBuffer.PathBuffer +
-            reparse_data->SymbolicLinkReparseBuffer.SubstituteNameOffset / sizeof(WCHAR),
-         link_name_bytes);
-  w_result[string_length - 1] = 0;
+  wchar_t result = reparse_data->Symbolic_linkReparseBuffer.ParseBuffer +
+      reparse_data->SymbolicLinkReparseBuffer.SubstituteNameOffset / sizeof(WCHAR);
 
-  String* result = process->allocate_string(w_result);
-  if (result == null) FAIL(ALLOCATION_FAILED);
-
-  return result;
+  return process->allocate_string(result, link_name_bytes / sizeof(WCHAR));
 }
 
 PRIMITIVE(mkdir) {
