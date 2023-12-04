@@ -89,7 +89,6 @@ test-stringify:
       """
       yaml.stringify [{"u": 2, "v": 3}]
 
-  print "========="
   expect-equals
       """
       d:
