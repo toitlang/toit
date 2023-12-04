@@ -23,7 +23,7 @@ test client/LspClient:
   ]
   files-to-open := files-to-open-and-diagnostics.map: it[0]
 
-  client.send-did-open-many --paths=files-to-open
+  client.send-analyze-many --paths=files-to-open
   files-to-open-and-diagnostics.do:
     file := it[0]
     expected-diagnostics := it[1]
