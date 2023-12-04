@@ -60,10 +60,13 @@ class YamlEncoder extends EncoderBase_:
   encode-null_:
     // In yaml, a null value is written as an empty string.
 
+  put-new-line:
+    put-byte_ '\n'
+    current-line-start-offset_ = offset_
+
   close_element_:
     if peek-last-byte_ != '\n':
-      put-byte_ '\n'
-      current-line-start-offset_ = offset_
+      put-new-line
 
   put-indent_:
     if indent_buffer_.size < indent_:
@@ -85,13 +88,13 @@ class YamlEncoder extends EncoderBase_:
       return
     do_indent := false
     if enclosed_in_map_:
-      put-byte_ '\n'
+      put-new-line
       do_indent = true
     map.do: |key value|
       if key is not string:
         throw "INVALID_YAML_OBJECT"
       if do_indent: put-indent_
-      do_indent= true
+      do_indent = true
       encode-sub-value_ key indent_ converter
       put-byte_ ':'
       encode-sub-value_ value --is-map indent_ + 2 converter
@@ -111,7 +114,7 @@ class YamlEncoder extends EncoderBase_:
       return
 
     if enclosed_in_map_:
-      put-byte_ '\n'
+      put-new-line
       put-indent_
     for i := 0; i < size; i++:
       if i != 0: put-indent_
