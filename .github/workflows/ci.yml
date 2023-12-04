@@ -325,7 +325,7 @@ jobs:
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
           github.repository_owner == 'toitlang'
-        uses: google-github-actions/auth@v0
+        uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.INFRASTRUCTURE_SERVICE_ACCOUNT_JSON_KEY }}
           service_account: github-action@infrastructure-220307.iam.gserviceaccount.com
@@ -334,7 +334,7 @@ jobs:
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
           github.repository_owner == 'toitlang'
-        uses: google-github-actions/setup-gcloud@v0
+        uses: google-github-actions/setup-gcloud@v1
         with:
           project_id: infrastructure-220307
 
