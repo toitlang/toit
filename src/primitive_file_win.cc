@@ -536,7 +536,7 @@ PRIMITIVE(readlink) {
 
   USHORT link_name_bytes = reparse_data->SymbolicLinkReparseBuffer.SubstituteNameLength;
 
-  wchar_t* result = reparse_data->SymbolicLinkReparseBuffer.ParseBuffer +
+  wchar_t* result = reparse_data->SymbolicLinkReparseBuffer.PathBuffer +
       reparse_data->SymbolicLinkReparseBuffer.SubstituteNameOffset / sizeof(WCHAR);
 
   return process->allocate_string(result, link_name_bytes / sizeof(WCHAR));
