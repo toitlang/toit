@@ -9,7 +9,10 @@ main:
   test-nlb-out-of-try
   test-throw-update-in-finally
   test-break-update-in-finally
-  test-break-update-in-finally-blocked
+  test-break-update-in-finally-block0
+  test-break-update-in-finally-block1
+  test-break-update-in-finally-block2
+  test-break-update-in-finally-block3
   test-break-update-in-finally-nested
 
 test-is-exception:
@@ -80,7 +83,7 @@ test-break-update-in-finally:
       x = true
   id x
 
-test-break-update-in-finally-blocked:
+test-break-update-in-finally-block0:
   x := false
   while true:
     invoke:
@@ -89,6 +92,45 @@ test-break-update-in-finally-blocked:
       finally:
         x = true
   id x
+
+test-break-update-in-finally-block1:
+  x := false
+  while true:
+    block := (: break)
+    try:
+      block.call
+    finally:
+      x = true
+  id x
+
+test-break-update-in-finally-block2:
+  x/any := null
+  while true:
+    block := (: break)
+    try:
+      block.call
+    finally:
+      x = true
+      try:
+        block.call
+      finally:
+        x = false
+  id x
+
+test-break-update-in-finally-block3:
+  x := false
+  y := null
+  while true:
+    block := (: break)
+    while true:
+      try:
+        if pick: block.call
+        else: break
+      finally:
+        x = true
+    y = x
+  id x
+  id y
 
 test-break-update-in-finally-nested:
   x/any := null
