@@ -9,6 +9,7 @@ main:
   test-nlb-out-of-try
   test-throw-update-in-finally
   test-break-update-in-finally
+  test-break-update-in-finally-blocked
   test-break-update-in-finally-nested
 
 test-is-exception:
@@ -79,7 +80,7 @@ test-break-update-in-finally:
       x = true
   id x
 
-test-break-update-in-finally-nested:
+test-break-update-in-finally-blocked:
   x := false
   while true:
     invoke:
@@ -87,6 +88,19 @@ test-break-update-in-finally-nested:
         break
       finally:
         x = true
+  id x
+
+test-break-update-in-finally-nested:
+  x/any := null
+  while true:
+    try:
+      try:
+        x = 0
+        break
+      finally:
+        x = true
+    finally:
+      x = "horse"
   id x
 
 id x:
