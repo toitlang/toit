@@ -846,14 +846,10 @@ jobs:
           overwrite: true
 
   sign_windows:
-    runs-on: windows-signing
+    runs-on: windows-latest
     needs: [combine]
     if: github.event_name == 'release'
     steps:
-      - name: Clean workspace
-        run: |
-          rm -Recurse -Force ${{ github.workspace }}\*
-
       - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v3
@@ -864,11 +860,25 @@ jobs:
         run: |
           & "C:\Program Files\Git\bin\bash.exe" --noprofile --norc -e -o pipefail -c "tar -xzf toit-windows.tar.gz"
 
-      - name: Sign
-        run: |
-          Get-ChildItem toit/bin/*.exe, toit/tools/*.exe | ForEach-Object {
-              signtool sign /debug /n "Toitware ApS" /t http://timestamp.digicert.com/ $_.FullName
-          }
+      - name: Sign Windows binary
+        uses: toitlang/action-code-sign@a4adedba46f2630ed60a1d6e6aa828ac7038c945 # v1.0.0
+        with:
+          certificate: ${{ secrets.DIGICERT_CERTIFICATE }}
+          api-key: ${{ secrets.DIGICERT_API_KEY }}
+          certificate-password: ${{ secrets.DIGICERT_PASSWORD }}
+          certificate-fingerprint: ${{ secrets.DIGICERT_FINGERPRINT }}
+          keypair-alias: ${{ vars.DIGICERT_KEYPAIR_ALIAS }}
+          path: toit/bin
+
+      - name: Sign Windows tools
+        uses: toitlang/action-code-sign@a4adedba46f2630ed60a1d6e6aa828ac7038c945 # v1.0.0
+        with:
+          certificate: ${{ secrets.DIGICERT_CERTIFICATE }}
+          api-key: ${{ secrets.DIGICERT_API_KEY }}
+          certificate-password: ${{ secrets.DIGICERT_PASSWORD }}
+          certificate-fingerprint: ${{ secrets.DIGICERT_FINGERPRINT }}
+          keypair-alias: ${{ vars.DIGICERT_KEYPAIR_ALIAS }}
+          path: toit/tools
 
       - name: Compress
         run: |
