@@ -870,7 +870,7 @@ jobs:
           keypair-alias: ${{ vars.DIGICERT_KEYPAIR_ALIAS }}
           path: toit/bin
 
-      - name: Sign Windows binary
+      - name: Sign Windows tools
         uses: toitlang/action-code-sign@a4adedba46f2630ed60a1d6e6aa828ac7038c945 # v1.0.0
         with:
           certificate: ${{ secrets.DIGICERT_CERTIFICATE }}
