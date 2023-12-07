@@ -248,7 +248,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   inline HeapObject* true_object() const { return true_object_; }
   inline HeapObject* null_object() const { return null_; }
 
-  // These root certificate functions should be guarded by the scheduler mutex.
+  // These root certificate functions should be guarded by the TLS mutex.
   void add_root_certificate(UnparsedRootCertificate* certificate, const Locker& locker) {
     root_certificates_.append(certificate);
   }
