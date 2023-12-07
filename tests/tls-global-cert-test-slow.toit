@@ -15,7 +15,7 @@ expect-error name [code]:
   error := catch code
   expect: error.contains name
 
-is-embedded ::= platform == system.PLATFORM-EMBEDDED
+is-embedded ::= platform == system.PLATFORM-FREERTOS
 
 monitor LimitLoad:
   current := 0
