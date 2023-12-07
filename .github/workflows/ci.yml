@@ -896,7 +896,7 @@ jobs:
         run: |
           & tools\windows_installer\build.bat ${{ steps.version.outputs.version }} $PWD\toit $PWD\toit-windows-x64-installer.exe
 
-      - name: Sign Windows tools
+      - name: Sign Windows installer
         uses: toitlang/action-code-sign@a4adedba46f2630ed60a1d6e6aa828ac7038c945 # v1.0.0
         with:
           certificate: ${{ secrets.DIGICERT_CERTIFICATE }}
