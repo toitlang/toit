@@ -704,8 +704,6 @@ abstract class string implements Comparable:
     '?' will match any single Unicode character.
     '*' will match any number of Unicode characters.
 
-  The private optional named argument $position_ is used for recursive calls.
-
   # Examples
   ```
   "Toad".glob "Toad"   // => true
@@ -715,8 +713,10 @@ abstract class string implements Comparable:
   "Toad".glob "To\\*d" // => false
   ```
   */
+  glob pattern/string -> bool:
+    return glob_ pattern --position_=0
 
-  glob pattern/string --position_/int=0 -> bool:
+  glob_ pattern/string --position_/int -> bool:
     pattern-pos := 0
     while pattern-pos < pattern.size or position_ < size:
       if pattern-pos < pattern.size:
@@ -729,7 +729,7 @@ abstract class string implements Comparable:
         else if pattern-char == '*':
           sub-pattern := pattern.copy pattern-pos + 1
           while position_ <= size:
-            if glob sub-pattern --position_=position_: return true
+            if glob_ sub-pattern --position_=position_: return true
             position_ += position_ == size ? 1 : utf-8-bytes this[position_]
         else if position_ < size and ((pattern-char == '\\') or (this[position_] == pattern-char)):
           if pattern-char == '\\':
