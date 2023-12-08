@@ -40,14 +40,12 @@ class ProjectConfiguration:
     return file.is_file (LockFile.file-name root)
 
   verify:
-    if project-root_ == null and (not package-file-exists or not lock-file-exists):
+    if not project-root_ and (not package-file-exists or not lock-file-exists):
       error """
             Command must be executed in project root.
               Run 'toit.pkg init' first to create a new application here, or
               run with '--$OPTION-PROJECT-ROOT=.'
             """
-  static CACHE-DIR ::= ".toit-pkg-cache"
-
 
 class Project:
   config/ProjectConfiguration
@@ -66,8 +64,6 @@ class Project:
       lock-file = LockFile.load package-file
     else if empty-lock-file:
       lock-file = LockFile package-file
-
-    cache = Cache --app-name="toit-pkg"
 
   root -> string:
     return config.root

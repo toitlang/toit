@@ -13,10 +13,9 @@ class PackageConstraint:
 
   constructor .prefix .url .version-constraint:
 
-
 class Resolved:
   sdk-version/SemanticVersion? := null
-  packages/Map := {:} // PackageDependency -> ResolvedPackage
+  packages/Map := {:}  // PackageDependency -> ResolvedPackage.
 
   constructor solution/PartialSolution:
     packages = solution.partial-packages.map: | _ v | ResolvedPackage v
@@ -68,11 +67,15 @@ class ResolvedPackage:
 
 
 class PartialPackageSolution:
-  dependencies/Map := {:} // Map PackageDependency to PartialPackageSolution
-  versions/List? := null // List of possible SemanticVersions
+  dependencies/Map := {:}  // PackageDependency -> PartialPackageSolution.
+  versions/List? := null  // of possible SemanticVersions.
   url/string
   description/Description? := null
-  sdk-version-found/bool := false // An stisfying sdk-version was found for a version. For error reporting
+  /**
+  Whether a satisfying sdk-version was found for a version.
+  Used for error reporting.
+  */
+  sdk-version-found/bool := false
 
   constructor .url/string .versions/List:
 
@@ -114,9 +117,9 @@ class PartialPackageSolution:
 
 
 class PartialSolution:
-  partial-packages/Map // PackageDependency -> PartialPackageSolution.
-  unsolved-packages/Deque // A queue of PackageDependency's that have unresolved partial solutinos.
-  url-to-dependencies/Map := {:} // string -> [PackageDependency], keeping track of the same url with different constriaints.
+  partial-packages/Map  // PackageDependency -> PartialPackageSolution.
+  unsolved-packages/Deque  // A queue of PackageDependencies that have unresolved partial solutions.
+  url-to-dependencies/Map := {:}  // string -> [PackageDependency], keeping track of the same url with different constraints.
   solver/Solver
 
   constructor .solver .partial-packages/Map:
@@ -129,11 +132,11 @@ class PartialSolution:
     solver = other.solver
     url-to-dependencies = other.url-to-dependencies.map: | _ v | v.copy
     unsolved-packages = Deque.from other.unsolved-packages
-    package-translator := IdentityMap // Mapping old PartialPackageSolution's to copied version
+    package-translator := IdentityMap  // Mapping old PartialPackageSolution's to copied version.
     partial-packages = copy-dependency-to-solution-map_ other.partial-packages package-translator
 
   is-solution -> bool:
-   return unsolved-packages.is-empty
+    return unsolved-packages.is-empty
 
   add-partial-package-solution
       dependency/PackageDependency
@@ -201,15 +204,21 @@ class PartialSolution:
 
 // Makes an abstract solver to allow easier testing
 abstract class Solver:
-  package-versions/Map := {:} // Map of Dependency to list of versions
+  package-versions/Map := {:}  // Dependency -> list of versions.
   sdk-version/SemanticVersion
 
-  // Should return a list of all SemanticVersion for the package denoted by url, sorted with highest first
+  /** Returns a list of all SemanticVersion for the package denoted by url, sorted with highest first. */
   abstract retrieve-versions url/string -> List
 
-  /** Retrieve the description of a specific version */
+  /** Retrieves the description of a specific version. */
   abstract retrieve-description url/string version/SemanticVersion -> Description
 
+  // REVIEW(florian): same as for the `LocalSolver`: instead of getting these arguments,
+  // take them during `solve`.
+  // However: we could take a "Registry" argument, and then call `retrieve-versions` and
+  // `retrieve-descriptions` on that instead.
+  // I generally don't like abstract classes that much, and having some kind of
+  // registry as argument would avoid that while still making it easy to customize for testing.
   constructor .sdk-version/SemanticVersion dependencies/List:
     dependencies.do: | dependency/PackageDependency |
       versions := retrieve-versions dependency.url

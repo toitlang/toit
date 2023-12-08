@@ -14,26 +14,26 @@ class TripleParseResult:
     triple = [major, minor, patch]
 
 /*
-  A PEG grammar for the semantic version
-  semantic-version ::= "v"?
-                       version-core
-                       pre-releases?
-                       build-numbers?
-  version-core ::= numeric '.' numeric '.' numeric
-  pre-releases ::= '-' pre-release ('.' pre-release)*
-  build-numbers ::= '+' build-number ('.' build-number)*
+A PEG grammar for the semantic version
+semantic-version ::= "v"?
+                      version-core
+                      pre-releases?
+                      build-numbers?
+version-core ::= numeric '.' numeric '.' numeric
+pre-releases ::= '-' pre-release ('.' pre-release)*
+build-numbers ::= '+' build-number ('.' build-number)*
 
-  pre-release ::= alphanumeric | numeric
-  build-number ::= alphanumeric | digit+
+pre-release ::= alphanumeric | numeric
+build-number ::= alphanumeric | digit+
 
-  alphanumeric ::= digit* non-digit identifier-char*
+alphanumeric ::= digit* non-digit identifier-char*
 
-  identifier-char ::= digit | non-digit
+identifier-char ::= digit | non-digit
 
-  non-digit ::= '-' | letter
-  numeric ::= '0' | (digit - '0') digit *
-  digit ::= [0-9]
-  letter := [a-zA-Z]
+non-digit ::= '-' | letter
+numeric ::= '0' | (digit - '0') digit *
+digit ::= [0-9]
+letter := [a-zA-Z]
 */
 
 class SemanticVersionParser extends parser.PegParserBase_:
