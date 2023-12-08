@@ -1,27 +1,30 @@
 
 /**
-Represents a hierarchical structure as if it where a directory tree. Intermediate nodes represents
-  directories and leaf nodes represents files.
+A hierarchical structure as if it where a directory tree.
+Intermediate nodes represent directories and leaf nodes represent files.
 */
 interface FileSystemView:
   /**
   Gets the content of the file at $path, by recursively traversing the view.
-    For leaf nodes, return the content of the node, for intermediate nodes return a $FileSystemView.
+
+  Returns the content of the file, if the $path resolves to a leaf node.
+  Returns a $FileSystemView, if the $path resolves to an intermediate node.
   */
   get --path/List -> any
 
   /**
-  Get the value of the entry denoted by $key in this FileSystemView. If the
-    value is a leaf node return the content of that file, otherwise
-    return the a $FileSystemView rooted at $key
+  Gets the value of the entry denoted by $key in this FileSystemView.
+
+  Returns the content of the file, if the $key resolves to a leaf node.
+  Returns a $FileSystemView, if the $key resolves to an intermediate node.
   */
   get key/string -> any
 
   /**
-  Returns a $Map of the children of this intermediate node. The keys in the $Map are the names of the
-    children.
-    If the child in an intermediate node the value is a $FileSystemView.
-    If the child represents a file, the value is a string equal to key
+  Returns a $Map of the children of this intermediate node.
+  The keys in the $Map are the names of the children.
+  If the child is an intermediate node then its value is a $FileSystemView.
+  If the child represents a file, then the value is a string equal to the key.
   */
   list -> Map
 

@@ -13,13 +13,21 @@ import ..semantic-version
 import .project
 import .lock
 
-// The project package file
+/**
+The 'package.yaml' file of the project.
+
+Contrary to an $ExternalPackageFile or a $RepositoryPackageFile, project package files
+  are mutable. In addition, they can be solved and saved.
+*/
 class ProjectPackageFile extends PackageFile:
   project/Project
 
+  // REVIEW(florian): any reason this is "new"?
   constructor.new .project:
     super {:}
 
+  // REVIEW(florian): usually I would prefer a static method here.
+  // On the other hand that would require a private constructor...
   constructor.load .project:
     super (yaml.decode (file.read_content "$project.root/$PackageFile.FILE_NAME"))
 
@@ -54,7 +62,10 @@ class ProjectPackageFile extends PackageFile:
 
 
 
-// An external packkage file. These are read-only
+/**
+An external "path" package file.
+External package files are read-only.
+*/
 class ExternalPackageFile extends PackageFile:
   path/string
 
@@ -64,6 +75,10 @@ class ExternalPackageFile extends PackageFile:
   root-dir -> string:
     return path
 
+/**
+A package file from a published package.
+Repository package files are read-only.
+*/
 class RepositoryPackageFile extends PackageFile:
   constructor content/ByteArray:
     super (yaml.decode content)
@@ -78,6 +93,8 @@ abstract class PackageFile:
 
   constructor .content:
 
+  // REVIEW(florian): we are using `index-of --last` in the relative-path-to method.
+  // Does that mean that we only work with slash paths? Add a comment?
   abstract root-dir -> string
 
   static file-name root/string -> string:
@@ -87,39 +104,44 @@ abstract class PackageFile:
     return file-name root-dir
 
   root-dir-real-path-in-relation-to path/string:
+    // REVIEW(florian): I would use the `fs` package to determine whether the path is absolute.
     if directory.is_absolute_ root-dir: return root-dir
+    // REVIEW(florian): not sure this approach works if the root-dir is rooted but not absolute.
+    // Also not sure if the `fs` package has a way to create the absolute path then.
     return directory.realpath "$path/$root-dir"
 
   root-dir-relative-in-relation-to path/string:
     if directory.is_absolute_ root-dir: return root-dir
+    // REVIEW(florian): same as above: what about rooted paths?
     return canonical "$path/$root-dir"
 
   relative-path-to project-package/ProjectPackageFile -> string:
+    // TODO(florian): provide this functionality in the `fs` package.
     my-dir := root-dir
-    his-dir := directory.realpath project-package.root-dir
-    if his-dir == my-dir: error "Reference to self in $project-package.file-name"
+    other-dir := directory.realpath project-package.root-dir
+    if other-dir == my-dir: error "Reference to self in $project-package.file-name"
 
     idx := 0
-    while idx < my-dir.size and idx < his-dir.size and my-dir[idx] == his-dir[idx]:
+    while idx < my-dir.size and idx < other-dir.size and my-dir[idx] == other-dir[idx]:
       idx++
 
-    prefix := his-dir[..idx].index-of --last "/"
+    prefix := other-dir[..idx].index-of --last "/"
     if prefix <= 0: return my-dir
-    if prefix == his-dir.size: return my-dir[prefix + 1 ..]
+    if prefix == other-dir.size: return my-dir[prefix + 1 ..]
 
-    print (his-dir[prefix..].split --drop-empty "/")
-    dotdots := (his-dir[prefix..].split  --drop-empty "/").size
+    print (other-dir[prefix..].split --drop-empty "/")
+    dotdots := (other-dir[prefix..].split  --drop-empty "/").size
     return "$("../"*dotdots)$(my-dir[prefix + 1 ..])"
 
-
-  real-path-for-dependecy path/string:
+  real-path-for-dependency path/string:
     if directory.is_absolute_ path: return path
+    // REVIEW(florian): same as above: what about rooted paths?
     return directory.realpath "$root-dir/$path"
 
   relative-path-for-dependency path/string:
     if directory.is_absolute_ path: return path
+    // REVIEW(florian): same as above: what about rooted paths?
     return canonical "$root-dir/$path"
-
 
   dependencies -> Map:
     if not content.contains DEPENDENCIES-KEY_:
@@ -138,7 +160,7 @@ abstract class PackageFile:
   has-package package-name/string:
     return dependencies.contains package-name
 
-  /** Returns a map from prefix to  PackageDependency objects */
+  /** Returns a map from prefix to $PackageDependency objects. */
   registry-dependencies -> Map:
     dependencies := {:}
     this.dependencies.do: | prefix/string content/Map |
@@ -172,12 +194,13 @@ abstract class PackageFile:
 /**
 Represents a dependency on a package from a repository.
 
-For convienience it contains delegate methods to contraint.
+For convenience it contains delegate methods to contraint.
 */
 class PackageDependency:
   url/string
   constraint_/string // Keep this around for easy hash-code and ==
   constraint/Constraint
+
   constructor .url .constraint_:
     constraint = Constraint constraint_
 

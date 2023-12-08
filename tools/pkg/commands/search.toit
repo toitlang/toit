@@ -19,8 +19,10 @@ class SearchCommand:
 
     url-to-package/Map := {:}
     search-result.do: | package |
-      url := package[2][Description.URL-KEY_]
-      version := SemanticVersion package[1]
+      version-string/string := package[1]
+      package-description/Map := package[2]
+      url := package-description[Description.URL-KEY_]
+      version := SemanticVersion version-string
       old := url-to-package.get url
       if not old:
         url-to-package[url] = package
@@ -33,11 +35,11 @@ class SearchCommand:
   static CLI-COMMAND ::=
       cli.Command "search"
           --help="""
-                 Searches for the given name in all packages.
+              Searches for the given name in all packages.
 
-                 Searches in the name, and description entries, as well as in the URLs of
-                 the packages.
-                 """
+              Searches in the name, and description entries, as well as in the URLs of
+              the packages.
+              """
           --rest=[
               cli.Option NAME-OPTION
                   --help="The name to search for."

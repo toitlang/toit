@@ -16,13 +16,20 @@ import ..utils
 
 registries ::= Registries
 
-cache := Cache --app-name="toit-pkg"
+// TODO(florian): move this cache global to a better place. It is used by many other libraries.
+cache ::= Cache --app-name="toit-pkg"
 
+/**
+A collection of registries.
+
+This class groups all registries and provides a common interface for them.
+*/
 class Registries:
   registries := {:}
+
   constructor:
     registries-map := yaml.decode
-        cache.get "regestries.yaml" : | store/FileStore |
+        cache.get "registries.yaml": | store/FileStore |
             toit := GitRegistry "toit" "github.com/toitware/registry" null
             store.save
                 yaml.encode {
@@ -30,15 +37,15 @@ class Registries:
                         "url": "github.com/toitware/registry",
                         "type": "git"
                     }
-                 }
+                  }
     registries-map.do: | name/string map/Map |
-      type := map.get "type" --if-absent=: error "Registry $name does not have a type"
+      type := map.get "type" --if-absent=: error "Registry $name does not have a type."
       if type == "git":
-        url := map.get "url" --if-absent=: error "Registry $name does not have a url"
+        url := map.get "url" --if-absent=: error "Registry $name does not have a url."
         ref-hash := map.get "ref-hash"
         registries[name] = GitRegistry name url ref-hash
       else if type == "local":
-        path := map.get "path" --if-absent=: error "Registry $name does not have a path"
+        path := map.get "path" --if-absent=: error "Registry $name does not have a path."
         registries[name] = LocalRegistry name path
       else:
         error "Registry $name has an unknown type '$type'"
@@ -49,13 +56,22 @@ class Registries:
       return search-results[0][1]
 
     if search-results.is-empty:
-      error "Error: Package '$search-string' not found (Implement version check error)"
+      // TODO(florian): implement better version error.
+      error "Package '$search-string' not found (Implement version check error)."
     else:
-      error "Multple packages found (Implement better error)"
+      // TODO(florian): implement better error.
+      error "Multiple packages found (Implement better error)."
 
     unreachable
 
-  search_ registry-name search-string -> List:
+  /**
+  Searches for the given $search-string in the given $registry-name.
+
+  If no $registry-name is given, searches in all registries.
+  Returns a list of matches, where each entry is itself a list containing the
+    registry name and the package.
+  */
+  search_ registry-name/string? search-string/string -> List:
     if not registry-name:
       search-results := []
       registries.do: | name/string registry/Registry |
@@ -63,37 +79,37 @@ class Registries:
             (registry.search search-string).map: [name, it]
       return search-results
     else:
-      registry/Registry := registries.get registry-name --if-absent=: error "Registry $registry-name not found"
+      registry/Registry := registries.get registry-name --if-absent=: error "Registry $registry-name not found."
       search-results := registry.search search-string
       return search-results.map: [registry-name, it]
 
   retrieve-description url/string version/SemanticVersion -> Description:
     registries.do --values:
       if description := it.retrieve-description url version: return description
-    error "Not able to find package $url with version $version"
+    error "Not able to find package $url with version $version."
     unreachable
 
   retrieve-versions url/string -> List:
     registries.do --values:
       if versions := it.retrieve-versions url: return versions
-    error "Not able to find package $url in any repository"
+    error "Not able to find package $url in any registry."
     unreachable
 
   add --local name/string path/string:
     if not local: throw "INVALID_ARGUEMT"
-    if registries.contains name: error "Registry $name already exists"
+    if registries.contains name: error "Registry $name already exists."
     registries[name] = LocalRegistry name path
     save_
 
   add --git name/string url/string:
     if not git: throw "INVALID_ARGUEMT"
-    if registries.contains name: error "Registry $name already exists"
+    if registries.contains name: error "Registry $name already exists."
     registries[name] = GitRegistry name url null
-    registries[name].sync // To check that the url is valid
+    registries[name].sync  // To check that the url is valid.
     save_
 
   remove name/string:
-    if not registries.contains name: error "Registry $name does not exist"
+    if not registries.contains name: error "Registry $name does not exist."
     registries.remove name
     save_
 
@@ -103,6 +119,13 @@ class Registries:
     registries.do: | name registry |
       print "$(%-10s name) $(%-6s registry.type) $(registry is GitRegistry ? registry.url : registry.path)"
 
+  /**
+  Searches for the given $search-string in all registries.
+
+  Returns a list of all matches.
+  Each match is encoded as a list of the form:
+    [package-name/string, version/string, description/Map]
+  */
   search --free-text search-string/string -> List:
     result := []
     registries.do: | name registry/Registry |
@@ -135,7 +158,7 @@ class Registries:
 
 abstract class Registry:
   name/string
-  description-cache_ := {:}
+  description-cache_ := {:}  // registry-name -> (Map of url -> description).
 
   constructor .name:
 
@@ -154,6 +177,10 @@ abstract class Registry:
     result := []
 
     hubs/FileSystemView := content.get --path=["packages"]
+    // REVIEW(florian): we definitely migrated towards this layout, but I'm not
+    // sure if we can/should insist on it. It feels like just recursively looking for all
+    // 'desc.yaml' files should be enough.
+    // On the other hand, it makes things more consistent. So maybe we just should.
     (filter-filesystem hubs.list).do: | hub-name hub |
       (filter-filesystem hub.list).do: | repository-name repository/FileSystemView |
         (filter-filesystem repository.list).do: | package-name package/FileSystemView |
@@ -161,20 +188,26 @@ abstract class Registry:
             desc := version.get --path=["desc.yaml"]
             if desc:
               description := yaml.decode desc
-              result.add [ package-name, version-name, description ]
+              // REVIEW(florian): we should take the package-name and version-name from the
+              // description. If we insist on the layout, then we should at least warn if
+              // they aren't the same.
+              // TODO(florian): return a SearchResult object. Would be more efficient and easier to use.
+              result.add [package-name, version-name, description]
 
     return result
 
-
   retrieve-description url/string version/SemanticVersion -> Description?:
     if not description-cache_.contains url or not description-cache_[url].contains version:
-      url-cache := description-cache_.get url --if-absent=: description-cache_[url] = {:}
-      desc-buffer := content.get --path=(flatten_list ["packages", url.split "/", version.stringify, "desc.yaml" ])
+      url-cache := description-cache_.get url --init=: {:}
+      desc-buffer := content.get --path=(flatten_list ["packages", url.split "/", version.stringify, "desc.yaml"])
       url-cache[version] = desc-buffer and Description (yaml.decode desc-buffer)
 
     return description-cache_[url][version]
 
   retrieve-versions url/string -> List?:
+    // REVIEW(florian): I designed the pkg manager, with the idea that the whole registry could always be in memory.
+    // Not sure that was a good idea, but shouldn't we at least cache everything we read?
+    // Here I would expect to have a versions-cache.
     versions := content.get --path=(flatten_list ["packages", url.split "/"])
     if not versions is FileSystemView: return null
     semantic-versions/List := versions.list.keys.map: SemanticVersion it

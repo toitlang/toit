@@ -14,7 +14,7 @@ import .commands.list
 import .commands.search
 import .commands.describe
 
-// TODO(mikkel): implement completion in the cli package
+// TODO(florian): implement completion in the cli package
 
 main arguments/List:
   pkg := cli.Command "pkg"

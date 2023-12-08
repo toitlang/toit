@@ -11,10 +11,11 @@ import .package
 
 interface Package:
   prefixes -> Map
+  // TODO(florian): we should always have a name. For local packages we would extract it from the folder name.
   name -> string?
   package-file -> PackageFile
 
-  constructor.from-map name map/Map project-package-file/ProjectPackageFile:
+  constructor.from-map name/string? map/Map project-package-file/ProjectPackageFile:
     map-prefixes := map.get LockFile.PREFIXES-KEY_ --if-absent=: {:}
     if map.contains LockFile.PATH-KEY_:
       return LoadedLocalPackage.from-map name map-prefixes project-package-file map
@@ -112,7 +113,7 @@ abstract class BuiltPackageBase extends PackageBase:
 
 
 class BuiltRepositoryPackage extends BuiltPackageBase implements RepositoryPackage:
-  dependencies_/Set // of PackageDependency
+  dependencies_/Set  // of PackageDependency
   resolved-package_/ResolvedPackage
 
   constructor project-package-file/ProjectPackageFile dependency/PackageDependency .resolved-package_:
@@ -162,7 +163,7 @@ class BuiltLocalPackage extends BuiltPackageBase implements LocalPackage:
     map["path"] = path
 
   path -> string:
-    if not local-package_.absolute:
+    if not local-package_.is-absolute:
       return local-package_.package-file.relative-path-to project-package-file
     else:
       return local-package_.location
@@ -433,7 +434,7 @@ class LockFileBuilder:
     prefixes := {:}
 
     package-file.local-dependencies.do: | prefix/string path/string |
-      prefixes[prefix] = package-locator-to-package[package-file.real-path-for-dependecy path].name
+      prefixes[prefix] = package-locator-to-package[package-file.real-path-for-dependency path].name
 
     package-file.registry-dependencies.do: | prefix/string dependency/PackageDependency |
       print dependency
