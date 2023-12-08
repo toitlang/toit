@@ -127,10 +127,20 @@ if (DEFINED EXECUTING_SCRIPT)
         WORKING_DIRECTORY "${REPO_PATH}"
         COMMAND_ERROR_IS_FATAL ANY
       )
+      execute_process(
+        COMMAND "${GIT_EXECUTABLE}" submodule update --init --recursive
+        WORKING_DIRECTORY "${REPO_PATH}"
+        COMMAND_ERROR_IS_FATAL ANY
+      )
     else()
       execute_process(
         COMMAND "${GIT_EXECUTABLE}" clone --depth 1 "${REPO}"
         WORKING_DIRECTORY "${DOWNLOADS_DIR}"
+        COMMAND_ERROR_IS_FATAL ANY
+      )
+      execute_process(
+        COMMAND "${GIT_EXECUTABLE}" submodule update --init --recursive
+        WORKING_DIRECTORY "${REPO_PATH}"
         COMMAND_ERROR_IS_FATAL ANY
       )
     endif()
