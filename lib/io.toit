@@ -1,6 +1,5 @@
 // Copyright (C) 2023 Toitware ApS. All rights reserved.
 
-import .reader
 /**
 A producer of bytes.
 
@@ -43,32 +42,96 @@ interface Data:
   */
   write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none
 
-/**
-Executes the given $block on chunks of the $data if the error indicates
-  that the data is not of the correct type.
-
-This function is primarily intended to be used for primitives that can
-  handle the data in chunks. For example checksums, or writing to a socket/file.
-*/
-primitive-redo-chunked-io-data_ error data/Data from/int=0 to/int=data.byte-size [block] -> none:
-  if error != "WRONG_BYTES_TYPE": throw error
-  List.chunk-up from to 4096: | chunk-from chunk-to chunk-size |
-    chunk := ByteArray.from data chunk-from chunk-to
-    block.call chunk
 
 /**
-Executes the given $block with the given $data converted to a ByteArray, if
-  the error indicates that the data is not of the correct type.
+A consumer of bytes.
 */
-primitive-redo-io-data_ error data/Data from/int=0 to/int=data.byte-size [block] -> any:
-  if error != "WRONG_BYTES_TYPE": throw error
-  return block.call (ByteArray.from data from to)
+abstract class Writer:
+  is-closed_/bool := false
 
-/** A reader wrapper that buffers the content offered by a reader. */
-class BufferedReader implements Reader:
+  constructor:
+
+  /**
+  Writes the given $data to this writer.
+
+  If the writer can't write all the data at once tries again until all of the data is
+    written. This method is blocking.
+  */
+  write data/Data from/int=0 to/int=data.byte-size -> none:
+    while not is-closed_:
+      from += try-write data from to
+      if from >= to: return
+      yield
+    assert: is-closed_
+    throw "WRITER_CLOSED"
+
+  /**
+  Writes all data that is provided by the given $reader.
+  */
+  write-from reader/Reader -> none:
+    if is-closed_: throw "WRITER_CLOSED"
+    while data := reader.read:
+      write data
+
+  /**
+  Tries to write the given $data to this writer.
+  If the writer can't write all the data at once, it writes as much as possible.
+  Always returns the number of bytes written.
+
+  # Inheritance
+  Implementations are not required to check whether the writer is closed.
+
+  If the writer is closed while this operation is in progress, the writer may throw
+    an exception or return a number smaller than $to - $from.
+  */
+  try-write data/Data from/int=0 to/int=data.byte-size -> int:
+    if is-closed_: throw "WRITER_CLOSED"
+    return try-write_ data from to
+
+  /**
+  Closes this writer.
+
+  After this method has been called, no more data can be written to this writer.
+  This method may be called multiple times.
+  */
+  close:
+    if is-closed_: return
+    close_
+    is-closed_ = true
+
+  /**
+  Tries to write the given $data to this writer.
+  If the writer can't write all the data at once, it writes as much as possible.
+  Always returns the number of bytes written.
+
+  # Inheritance
+  Implementations are not required to check whether the writer is closed.
+
+  If the writer is closed while this operation is in progress, the writer may throw
+    an exception or return a number smaller than $to - $from.
+  */
+  // This is a protected method. It should not be "private".
+  abstract try-write_ data/Data from/int to/int -> int
+
+  /**
+  See $close.
+
+  # Inheritance
+  Implementations should close down the underlying resource.
+  If the writer is in the process of writing data, it may throw an exception, or
+    abort the write, returning the number of bytes that have been written so far.
+  */
+  // This is a protected method. It should not be "private".
+  abstract close_ -> none
+
+
+/**
+A source of bytes.
+*/
+abstract class Reader:
   static UNEXPECTED-END-OF-READER ::= "UNEXPECTED_END_OF_READER"
 
-  reader_/Reader := ?
+  is-closed_/bool := false
 
   // An array of byte arrays that have arrived but are not yet processed.
   buffered_/ByteArrayList_? := null
@@ -79,10 +142,24 @@ class BufferedReader implements Reader:
   // The number of bytes in byte arrays that have been used up.
   base-consumed_ := 0
 
-  /*
-  Constructs a buffered reader that wraps the given $reader_.
-  **/
-  constructor .reader_/Reader:
+  constructor:
+  constructor data/ByteArray:
+    return ByteArrayReader_ data
+
+  /**
+  Closes this reader.
+
+  Reading from the reader after this method has been called is allowed and
+    returns the buffered data and then null.
+
+  If $clear-buffered is true, then the buffered data is dropped and reading
+    from the reader after this method has been called returns null.
+  */
+  close --clear-buffered/bool=false -> none:
+    if clear-buffered: clear
+    if is-closed_: return
+    close_
+    is-closed_ = true
 
   /**
   Clears any buffered data.
@@ -107,15 +184,15 @@ class BufferedReader implements Reader:
   /**
   Reads more data from the reader.
 
-  If the the $reader_ returns null, then it is either closed or at the end.
+  If the $consume_ returns null, then it is either closed or at the end.
     In either case, return null.
 
-  If $reader_ has bytes to offer, then the number of bytes read is returned.
+  If $consume_ has bytes to offer, then the number of bytes read is returned.
   */
   more_ -> int?:
     data := null
     while true:
-      data = reader_.read
+      data = consume_
       if not data: return null
       if data.size != 0: break
     add-byte-array_ data
@@ -334,7 +411,7 @@ class BufferedReader implements Reader:
         first-array-position_ = end
       return result
 
-    array := reader_.read
+    array := consume_
     if array == null: return null
     if max-size == null or array.size <= max-size:
       base-consumed_ += array.size
@@ -409,7 +486,7 @@ class BufferedReader implements Reader:
   read-string --max-size/int?=null -> string?:
     if max-size and max-size < 0: throw "INVALID_ARGUMENT"
     if not buffered_ or buffered_.size == 0:
-      array := reader_.read
+      array := consume_
       if array == null: return null
       // Instead of adding the array to the arrays we may just be able more
       // efficiently pass it on in string from.
@@ -532,6 +609,10 @@ class BufferedReader implements Reader:
   If $keep-newline is false, trims the trailing '\r\n' or '\n'. This method
     removes a '\r' even if the platform is not Windows. If the '\r' needs to be
     preserved, set $keep-newline to true and remove the trailing '\n' manually.
+  If the input ends with a newline, then all further reads return null.
+  If the input ends without a newline, then the last line is returned without any
+    newline character (even if $keep-newline) is true, and all further reads
+    return null.
 
   Returns null if no more data is available.
   */
@@ -542,10 +623,10 @@ class BufferedReader implements Reader:
       if rest-size == 0: return null
       return read-string rest-size
 
-    if keep-newline: return read-string delimiter-pos
+    if keep-newline: return read-string (delimiter-pos + 1)
 
     result-size := delimiter-pos
-    if delimiter-pos > 0 and (peek-byte delimiter-pos - 1) == '\r':
+    if delimiter-pos > 0 and (peek-byte (delimiter-pos - 1)) == '\r':
       result-size--
 
     result := peek-string result-size
@@ -613,6 +694,66 @@ class BufferedReader implements Reader:
     base-consumed_ -= value.size
     if not buffered_: buffered_ = ByteArrayList_
     buffered_.prepend value
+
+  /**
+  Reads the next byte array ignoring the buffered data.
+
+  If the reader is closed, returns null.
+
+  # Inheritance
+  If the reader is closed while this operation is in progress, the reader must
+    return null.
+  */
+  // This is a protected method. It should not be "private".
+  abstract consume_ -> ByteArray?
+
+  /**
+  Closes this reader.
+
+  After this method has been called, the reader's $consume_ method must return null.
+  This method may be called multiple times.
+  */
+  // This is a protected method. It should not be "private".
+  abstract close_ -> none
+
+/**
+A producer of bytes from an existing $ByteArray.
+
+See $(Reader.constructor data).
+*/
+class ByteArrayReader_ extends Reader:
+  data_ / ByteArray? := ?
+
+  constructor .data_:
+
+  consume_ -> ByteArray?:
+    result := data_
+    data_ = null
+    return result
+
+  close_ -> none:
+    data_ = null
+
+/**
+Executes the given $block on chunks of the $data if the error indicates
+  that the data is not of the correct type.
+
+This function is primarily intended to be used for primitives that can
+  handle the data in chunks. For example checksums, or writing to a socket/file.
+*/
+primitive-redo-chunked-io-data_ error data/Data from/int=0 to/int=data.byte-size [block] -> none:
+  if error != "WRONG_BYTES_TYPE": throw error
+  List.chunk-up from to 4096: | chunk-from chunk-to chunk-size |
+    chunk := ByteArray.from data chunk-from chunk-to
+    block.call chunk
+
+/**
+Executes the given $block with the given $data converted to a ByteArray, if
+  the error indicates that the data is not of the correct type.
+*/
+primitive-redo-io-data_ error data/Data from/int=0 to/int=data.byte-size [block] -> any:
+  if error != "WRONG_BYTES_TYPE": throw error
+  return block.call (ByteArray.from data from to)
 
 class Element_:
   value/ByteArray
