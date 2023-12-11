@@ -197,7 +197,13 @@ tcp-listen_ socket-resource-group address port backlog:
   #primitive.tcp.listen
 
 tcp-write_ socket-resource-group descriptor data from to:
-  #primitive.tcp.write
+  #primitive.tcp.write: | error |
+    if error != "WRONG_BYTES_TYPE": throw error
+    List.chunk-up from to 4096: | chunk-from chunk-to chunk-size |
+      chunk := ByteArray.from data chunk-from chunk-to
+      written := tcp-write_ socket-resource-group descriptor chunk 0 chunk-size
+      if written != chunk-size: return (chunk-from - from) + written
+    return to - from
 
 tcp-read_ socket-resource-group descriptor:
   #primitive.tcp.read

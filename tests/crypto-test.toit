@@ -231,6 +231,9 @@ aead-simple-test:
 
   expect-equals DREAM.to-byte-array round-trip
 
+  encrypted-io-data := (AesGcm.encryptor key initialization-vector).encrypt (FakeData DREAM)
+  expect-equals encrypted encrypted-io-data
+
 chacha-test:
   // Test vectors from RFC 7539.
   KEY ::= #[
@@ -282,6 +285,9 @@ sip-test:
 
     hash-16 := siphash in[0..size] key --output-length=16
     expect-equals SIP-VECTOR-16[size] hash-16
+
+    hash-16-io-data := siphash (FakeData in[0..size]) key --output-length=16
+    expect-equals SIP-VECTOR-16[size] hash-16-io-data
 
     (size - 1).repeat:
       part1 := in[0..it + 1]
