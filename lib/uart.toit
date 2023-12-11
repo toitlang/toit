@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import gpio
+import io
 import monitor show ResourceState_
 import reader
 import writer
@@ -175,8 +176,8 @@ class Port implements reader.Reader:
     something like the following could be used.
 
   ```
-  for position := 0; position < data.size; null:
-    position += my_uart.write data[position..data.size]
+  for position := 0; position < data.byte-size; null:
+    position += my_uart.write (data.byte-slice position data.byte-size)
   ```
 
   If $wait is true, the method blocks until all bytes that were written have been emitted to the
@@ -185,7 +186,7 @@ class Port implements reader.Reader:
 
   Returns the number of bytes written.
   */
-  write data from=0 to=data.size --break-length=0 --wait=false -> int:
+  write data/io.Data from/int=0 to/int=data.byte-size --break-length=0 --wait=false -> int:
     size := to - from
     while from < to:
       from += write-no-wait_ data from to --break-length=break-length
@@ -225,7 +226,7 @@ class Port implements reader.Reader:
       if flushed: return
       yield
 
-  write-no-wait_ data from=0 to=data.size --break-length=0:
+  write-no-wait_ data/io.Data from/int=0 to/int=data.byte-size --break-length=0:
     while true:
       s := state_.wait-for-state WRITE-STATE_ | ERROR-STATE_
       if not uart_: throw "CLOSED"
@@ -336,4 +337,3 @@ uart-set-control-flags_ uart flags:
 
 uart-get-control-flags_ uart:
   #primitive.uart.get-control-flags
-

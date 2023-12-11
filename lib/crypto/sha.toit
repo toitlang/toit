@@ -16,13 +16,13 @@ See https://en.wikipedia.org/wiki/SHA-256.
 /**
 Computes the SHA224 hash of the given $data.
 */
-sha224 data/io.Data from/int=0 to/int=data.size -> ByteArray:
+sha224 data/io.Data from/int=0 to/int=data.byte-size -> ByteArray:
   return checksum Sha224 data from to
 
 /**
 Computes the SHA256 hash of the given $data.
 */
-sha256 data/io.Data from/int=0 to/int=data.size -> ByteArray:
+sha256 data/io.Data from/int=0 to/int=data.byte-size -> ByteArray:
   return checksum Sha256 data from to
 
 /**
@@ -30,7 +30,7 @@ Computes the SHA384 hash of the given $data.
 
 The $data must be a string or byte array.
 */
-sha384 data/io.Data from/int=0 to/int=data.size -> ByteArray:
+sha384 data/io.Data from/int=0 to/int=data.byte-size -> ByteArray:
   return checksum Sha384 data from to
 
 /**
@@ -38,7 +38,7 @@ Computes the SHA512 hash of the given $data.
 
 The $data must be a string or byte array.
 */
-sha512 data/io.Data from/int=0 to/int=data.size -> ByteArray:
+sha512 data/io.Data from/int=0 to/int=data.byte-size -> ByteArray:
   return checksum Sha512 data from to
 
 /** SHA-224+ hash state. */

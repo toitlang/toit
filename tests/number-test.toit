@@ -1377,5 +1377,5 @@ test-abs-floor-ceil-truncate:
   expect-identical float.NAN float.NAN.truncate
 
 test-io-data:
-  expect-equals 3 (int.parse (FakeData.str "3"))
-  expect-equals 3.1 (float.parse (FakeData.str "3.1"))
+  expect-equals 3 (int.parse (FakeData "3"))
+  expect-equals 3.1 (float.parse (FakeData "3.1"))
