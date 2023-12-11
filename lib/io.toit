@@ -4,8 +4,11 @@
 A producer of bytes.
 
 The most important implementations of this interface are
-  $ByteArray and $string. However, any data structure that can be
-  used as byte-source should implement this interface.
+  $ByteArray and $string, which we call "Primitive IO Data". Any other data
+  structure that implements this interface can still be used as byte-source
+  for primitive operations but will first be converted to a byte array,
+  using the $write-to-byte-array method. Some primitive operations will
+  do this in a chunked way to avoid allocating a large byte array.
 
 Since $Data objects can be instances of $ByteArray it is sometimes
   judicious to test if the given instance is already of class `ByteArray` before
@@ -202,6 +205,7 @@ abstract class Reader:
     if not buffered_: buffered_ = ByteArrayList_
     buffered_.add data
     if buffered_.size == 1:
+      assert: first-array-position_ == 0
       base-consumed_ += first-array-position_
       first-array-position_ = 0
 
@@ -605,6 +609,10 @@ abstract class Reader:
   If $keep-newline is false, trims the trailing '\r\n' or '\n'. This method
     removes a '\r' even if the platform is not Windows. If the '\r' needs to be
     preserved, set $keep-newline to true and remove the trailing '\n' manually.
+  If the input ends with a newline, then all further reads return null.
+  If the input ends without a newline, then the last line is returned without any
+    newline character (even if $keep-newline) is true, and all further reads
+    return null.
 
   Returns null if no more data is available.
   */
@@ -615,10 +623,10 @@ abstract class Reader:
       if rest-size == 0: return null
       return read-string rest-size
 
-    if keep-newline: return read-string delimiter-pos
+    if keep-newline: return read-string (delimiter-pos + 1)
 
     result-size := delimiter-pos
-    if delimiter-pos > 0 and (peek-byte delimiter-pos - 1) == '\r':
+    if delimiter-pos > 0 and (peek-byte (delimiter-pos - 1)) == '\r':
       result-size--
 
     result := peek-string result-size
