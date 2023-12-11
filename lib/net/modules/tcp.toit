@@ -197,6 +197,9 @@ tcp-listen_ socket-resource-group address port backlog:
   #primitive.tcp.listen
 
 tcp-write_ socket-resource-group descriptor data from to:
+  // We are not using `io.primitive-redo-chunked-io-data_` because we
+  // might abort the write once the buffer is full and the written
+  // size is not equal to the size we requested to write.
   #primitive.tcp.write: | error |
     if error != "WRONG_BYTES_TYPE": throw error
     List.chunk-up from to 4096: | chunk-from chunk-to chunk-size |
