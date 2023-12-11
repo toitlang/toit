@@ -714,30 +714,30 @@ abstract class string implements Comparable:
   ```
   */
   glob pattern/string -> bool:
-    return glob_ pattern --position_=0
+    return glob_ pattern --position=0
 
-  glob_ pattern/string --position_/int -> bool:
+  glob_ pattern/string --position/int -> bool:
     pattern-pos := 0
-    while pattern-pos < pattern.size or position_ < size:
+    while pattern-pos < pattern.size or position < size:
       if pattern-pos < pattern.size:
         pattern-char := pattern[pattern-pos]
         if pattern-char == '?':
-          if position_ < size:
+          if position < size:
             pattern-pos += utf-8-bytes pattern-char
-            position_ += utf-8-bytes this[position_]
+            position += utf-8-bytes this[position]
             continue
         else if pattern-char == '*':
           sub-pattern := pattern.copy pattern-pos + 1
-          while position_ <= size:
-            if glob_ sub-pattern --position_=position_: return true
-            position_ += position_ == size ? 1 : utf-8-bytes this[position_]
-        else if position_ < size and ((pattern-char == '\\') or (this[position_] == pattern-char)):
+          while position <= size:
+            if glob_ sub-pattern --position=position: return true
+            position += position == size ? 1 : utf-8-bytes this[position]
+        else if position < size and ((pattern-char == '\\') or (this[position] == pattern-char)):
           if pattern-char == '\\':
             if pattern-pos >= pattern.size: return false
             pattern-pos++
-            if this[position_] != pattern[pattern-pos]: return false
+            if this[position] != pattern[pattern-pos]: return false
           pattern-pos += utf-8-bytes pattern-char
-          position_ += utf-8-bytes this[position_]
+          position += utf-8-bytes this[position]
           continue
       return false
     return true
