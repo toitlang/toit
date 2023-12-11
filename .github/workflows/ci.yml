@@ -334,7 +334,7 @@ jobs:
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
           github.repository_owner == 'toitlang'
-        uses: google-github-actions/setup-gcloud@v1
+        uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: infrastructure-220307
 
