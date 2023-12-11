@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import reader
 
 /**
@@ -33,24 +34,25 @@ class Writer:
     the internal writer must be used directly.
   May yield.
   */
-  write data from/int=0 to/int=data.size:
+  write data/io.Data from/int=0 to/int=data.size:
     size := to - from
     while from < to:
       from += writer_.write data[from..to]
       if from != to:
         yield
-        while data is string and from != to and data[from] == null:  // Not on a character boundary.
-          // We can't slice a string at non-character boundaries.
-          // If the `write` function only wrote parts of a character, we
-          // extract the rest of the character as a byte array and write it
-          // this way.  Uses `while` instead of `if` because even a 2-byte
-          // byte array might not be written in one operation.
-          cut-point := from + 1
-          while cut-point != to and data[cut-point] == null:
-            cut-point++
-          // `to_byte_array` doesn't have an issue with character boundaries.
-          snip := data.to-byte-array from cut-point
-          from += writer_.write snip
+        if data is string:
+          str := data as string
+          while from != to and str[from] == null:  // Not on a character boundary.
+            // We can't slice a string at non-character boundaries.
+            // If the `write` function only wrote parts of a character, we
+            // extract the rest of the character as a byte array and write it
+            // this way.  Uses `while` instead of `if` because even a 2-byte
+            // byte array might not be written in one operation.
+            cut-point := from + 1
+            while cut-point != to and str[cut-point] == null:
+              cut-point++
+            snip := ByteArray.from str from cut-point
+            from += writer_.write snip
     return size
 
   /**

@@ -6,6 +6,7 @@ import binary
 import expect show *
 
 import .checksum
+import ..io as io
 
 /**
 Cyclic Redundancy Check (CRC).
@@ -205,7 +206,7 @@ class Crc extends Checksum:
     return result
 
   /** See $super. */
-  add data from/int to/int -> none:
+  add data/io.Data from/int to/int -> none:
     if little-endian:
       sum_ = calculcate-crc-little-endian_ sum_ 0 data from to table_
     else:
@@ -213,30 +214,40 @@ class Crc extends Checksum:
 
   // The zero argument should be zero to indicate to the primitive that
   // this is a little-endian CRC.
-  static calculcate-crc-little-endian_ sum/int zero/int data from/int to/int table -> int:
+  static calculcate-crc-little-endian_ sum/int zero/int data/io.Data from/int to/int table -> int:
     #primitive.core.crc:
+      if it == "WRONG_BYTES_TYPE":
+        // TODO(florian): we could chunk the data so there isn't a full copy of it.
+        return calculcate-crc-little-endian_ sum zero (ByteArray.from data from to) 0 (to - from) table
+
       if data is string:
+        str := data as string
         (to - from).repeat:
-          b := data.at --raw from + it
+          b := str.at --raw from + it
           sum = (sum >>> 8) ^ table[(b ^ sum) & 0xff]
       else:
-        if data is not ByteArray: throw "WRONG_OBJECT_TYPE"
+        bytes := data as ByteArray
         (to - from).repeat:
-          b := data[from + it]
+          b := bytes[from + it]
           sum = (sum >>> 8) ^ table[(b ^ sum) & 0xff]
       return sum
 
-  static calculcate-crc-big-endian_ sum/int width/int data from/int to/int table -> int:
+  static calculcate-crc-big-endian_ sum/int width/int data/io.Data from/int to/int table -> int:
     #primitive.core.crc:
+      if it == "WRONG_BYTES_TYPE":
+        // TODO(florian): we could chunk the data so there isn't a full copy of it.
+        return calculcate-crc-big-endian_ sum width (ByteArray.from data from to) 0 (to - from) table
+
       mask := width == 64 ? -1 : ((1 << width) - 1)
       if data is string:
+        str := data as string
         (to - from).repeat:
-          b := data.at --raw from + it
+          b := str.at --raw from + it
           sum = ((sum << 8) & mask) ^ table[b ^ (sum >>> (width - 8))]
       else:
-        if data is not ByteArray: throw "WRONG_OBJECT_TYPE"
+        bytes := data as ByteArray
         (to - from).repeat:
-          b := data[from + it]
+          b := bytes[from + it]
           sum = ((sum << 8) & mask) ^ table[b ^ (sum >>> (width - 8))]
       return sum
 
@@ -266,10 +277,9 @@ class Crc extends Checksum:
 /**
 Computes the CRC-16/CCITT-FALSE checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-ccitt-false data -> int:
+crc16-ccitt-false data/io.Data -> int:
   crc := Crc.big-endian 16 --polynomial=0x1021 --initial-state=0xffff
   crc.add data
   return crc.get-as-int
@@ -282,10 +292,9 @@ class Crc16CcittFalse extends Crc:
 /**
 Computes the CRC-16/ARC checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-arc data -> int:
+crc16-arc data/io.Data -> int:
   crc := Crc.little-endian 16 --normal-polynomial=0x8005
   crc.add data
   return crc.get-as-int
@@ -298,10 +307,9 @@ class Crc16Arc extends Crc:
 /**
 Computes the CRC-16/AUG-CCITT checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-aug-ccitt data -> int:
+crc16-aug-ccitt data/io.Data -> int:
   crc := Crc.big-endian 16 --polynomial=0x1021 --initial-state=0x1d0f
   crc.add data
   return crc.get-as-int
@@ -314,10 +322,9 @@ class Crc16AugCcitt extends Crc:
 /**
 Computes the CRC-16/BUYPASS checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-buypass data -> int:
+crc16-buypass data/io.Data -> int:
   crc := Crc.big-endian 16 --polynomial=0x8005
   crc.add data
   return crc.get-as-int
@@ -330,10 +337,9 @@ class Crc16Buypass extends Crc:
 /**
 Computes the CRC-16/CDMA2000 checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-cdma2000 data -> int:
+crc16-cdma2000 data/io.Data -> int:
   crc := Crc.big-endian 16 --polynomial=0xC867 --initial-state=0xffff
   crc.add data
   return crc.get-as-int
@@ -346,10 +352,9 @@ class Crc16Cdma2000 extends Crc:
 /**
 Computes the CRC-16/DDS-110 checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-dds110 data -> int:
+crc16-dds110 data/io.Data -> int:
   crc := Crc.big-endian 16 --polynomial=0x8005 --initial-state=0x800d
   crc.add data
   return crc.get-as-int
@@ -362,10 +367,9 @@ class Crc16Dds110 extends Crc:
 /**
 Computes the CRC-16/DECT-R checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-dect-r data -> int:
+crc16-dect-r data/io.Data -> int:
   crc := Crc.big-endian 16 --polynomial=0x0589 --xor-result=0x1
   crc.add data
   return crc.get-as-int
@@ -378,10 +382,9 @@ class Crc16DectR extends Crc:
 /**
 Computes the CRC-16/DECT-X checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-dect-x data -> int:
+crc16-dect-x data/io.Data -> int:
   crc := Crc.big-endian 16 --polynomial=0x0589
   crc.add data
   return crc.get-as-int
@@ -394,10 +397,9 @@ class Crc16DectX extends Crc:
 /**
 Computes the CRC-16/DNP checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-dnp data -> int:
+crc16-dnp data/io.Data -> int:
   crc := Crc.little-endian 16 --normal-polynomial=0x3D65 --xor-result=0xffff
   crc.add data
   return crc.get-as-int
@@ -410,10 +412,9 @@ class Crc16Dnp extends Crc:
 /**
 Computes the CRC-16/EN-13757 checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-en13757 data -> int:
+crc16-en13757 data/io.Data -> int:
   crc := Crc.big-endian 16 --polynomial=0x3D65 --xor-result=0xffff
   crc.add data
   return crc.get-as-int
@@ -426,10 +427,9 @@ class Crc16En13757 extends Crc:
 /**
 Computes the CRC-16/GENIBUS checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-genibus data -> int:
+crc16-genibus data/io.Data -> int:
   crc := Crc.big-endian 16 --polynomial=0x1021 --initial-state=0xffff --xor-result=0xffff
   crc.add data
   return crc.get-as-int
@@ -442,10 +442,9 @@ class Crc16Genibus extends Crc:
 /**
 Computes the CRC-16/MAXIM checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-maxim data -> int:
+crc16-maxim data/io.Data -> int:
   crc := Crc.little-endian 16 --normal-polynomial=0x8005 --xor-result=0xffff
   crc.add data
   return crc.get-as-int
@@ -458,10 +457,9 @@ class Crc16Maxim extends Crc:
 /**
 Computes the CRC-16/MCRF4XX checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-mcrf4xx data -> int:
+crc16-mcrf4xx data/io.Data -> int:
   crc := Crc.little-endian 16 --normal-polynomial=0x1021 --initial-state=0xffff
   crc.add data
   return crc.get-as-int
@@ -474,7 +472,6 @@ class Crc16Mcrf4xx extends Crc:
 /**
 Computes the CRC-16/RIELLO checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 
 # Note
@@ -484,7 +481,7 @@ Crccalc.com lists the initial state of the CRC as 0xB2AA, whereas we
   with our code, and it is also the value given in the specification at
   https://networkupstools.org/protocols/riello/PSGPSER-0104.pdf
 */
-crc16-riello data -> int:
+crc16-riello data/io.Data -> int:
   crc := Crc.little-endian 16 --normal-polynomial=0x1021 --initial-state=0x554d
   crc.add data
   return crc.get-as-int
@@ -506,10 +503,9 @@ class Crc16Riello extends Crc:
 /**
 Computes the CRC-16/T10-DIF checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-t10-dif data -> int:
+crc16-t10-dif data/io.Data -> int:
   crc := Crc.big-endian 16 --polynomial=0x8BB7
   crc.add data
   return crc.get-as-int
@@ -522,10 +518,9 @@ class Crc16T10Dif extends Crc:
 /**
 Computes the CRC-16/TELEDISK checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-teledisk data -> int:
+crc16-teledisk data/io.Data -> int:
   crc := Crc.big-endian 16 --polynomial=0xA097
   crc.add data
   return crc.get-as-int
@@ -538,7 +533,6 @@ class Crc16Teledisk extends Crc:
 /**
 Computes the CRC-16/TMS37157 checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 
 # Note
@@ -547,7 +541,7 @@ Crccalc.com lists the initial state of the CRC as 0x89EC, whereas we
   one that gives the correct result (matching crccalc.com's check) when run
   with our code.
 */
-crc16-tms37157 data -> int:
+crc16-tms37157 data/io.Data -> int:
   crc := Crc.little-endian 16 --normal-polynomial=0x1021 --initial-state=0x3791
   crc.add data
   return crc.get-as-int
@@ -568,10 +562,9 @@ class Crc16Tms37157 extends Crc:
 /**
 Computes the CRC-16/USB checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-usb data -> int:
+crc16-usb data/io.Data -> int:
   crc := Crc.little-endian 16 --normal-polynomial=0x8005 --initial-state=0xffff --xor-result=0xffff
   crc.add data
   return crc.get-as-int
@@ -584,7 +577,6 @@ class Crc16Usb extends Crc:
 /**
 Computes the CRC-A checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 
 # Note
@@ -593,7 +585,7 @@ Crccalc.com lists the initial state of the CRC as 0xC6C6, whereas we
   one that gives the correct result (matching crccalc.com's check) when run
   with our code.
 */
-crc-a data -> int:
+crc-a data/io.Data -> int:
   crc := Crc.little-endian 16 --normal-polynomial=0x1021 --initial-state=0x6363
   crc.add data
   return crc.get-as-int
@@ -614,10 +606,9 @@ class CrcA extends Crc:
 /**
 Computes the CRC-16/KERMIT checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-kermit data -> int:
+crc16-kermit data/io.Data -> int:
   crc := Crc.little-endian 16 --normal-polynomial=0x1021
   crc.add data
   return crc.get-as-int
@@ -630,10 +621,9 @@ class Crc16Kermit extends Crc:
 /**
 Computes the CRC-16/MODBUS checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-modbus data -> int:
+crc16-modbus data/io.Data -> int:
   crc := Crc.little-endian 16 --normal-polynomial=0x8005 --initial-state=0xffff
   crc.add data
   return crc.get-as-int
@@ -646,10 +636,9 @@ class Crc16Modbus extends Crc:
 /**
 Computes the CRC-16/X-25 checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-x25 data -> int:
+crc16-x25 data/io.Data -> int:
   crc := Crc.little-endian 16 --normal-polynomial=0x1021 --initial-state=0xffff --xor-result=0xffff
   crc.add data
   return crc.get-as-int
@@ -662,10 +651,9 @@ class Crc16X25 extends Crc:
 /**
 Computes the CRC-16/XMODEM checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16-xmodem data -> int:
+crc16-xmodem data/io.Data -> int:
   crc := Crc.big-endian 16 --polynomial=0x1021
   crc.add data
   return crc.get-as-int
@@ -678,10 +666,9 @@ class Crc16Xmodem extends Crc:
 /**
 Computes the CRC-8 checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8 data -> int:
+crc8 data/io.Data -> int:
   crc := Crc.big-endian 8 --polynomial=0x07
   crc.add data
   return crc.get-as-int
@@ -694,10 +681,9 @@ class Crc8 extends Crc:
 /**
 Computes the CRC-8/CDMA2000 checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8-cdma2000 data -> int:
+crc8-cdma2000 data/io.Data -> int:
   crc := Crc.big-endian 8 --polynomial=0x9B --initial-state=0xff
   crc.add data
   return crc.get-as-int
@@ -710,10 +696,9 @@ class Crc8Cdma2000 extends Crc:
 /**
 Computes the CRC-8/DARC checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8-darc data -> int:
+crc8-darc data/io.Data -> int:
   crc := Crc.little-endian 8 --normal-polynomial=0x39
   crc.add data
   return crc.get-as-int
@@ -726,10 +711,9 @@ class Crc8Darc extends Crc:
 /**
 Computes the CRC-8/DVB-S2 checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8-dvb-s2 data -> int:
+crc8-dvb-s2 data/io.Data -> int:
   crc := Crc.big-endian 8 --polynomial=0xD5
   crc.add data
   return crc.get-as-int
@@ -742,10 +726,9 @@ class Crc8DvbS2 extends Crc:
 /**
 Computes the CRC-8/EBU checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8-ebu data -> int:
+crc8-ebu data/io.Data -> int:
   crc := Crc.little-endian 8 --normal-polynomial=0x1D --initial-state=0xff
   crc.add data
   return crc.get-as-int
@@ -758,10 +741,9 @@ class Crc8Ebu extends Crc:
 /**
 Computes the CRC-8/I-CODE checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8-i-code data -> int:
+crc8-i-code data/io.Data -> int:
   crc := Crc.big-endian 8 --polynomial=0x1D --initial-state=0xfd
   crc.add data
   return crc.get-as-int
@@ -774,10 +756,9 @@ class Crc8ICode extends Crc:
 /**
 Computes the CRC-8/ITU checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8-itu data -> int:
+crc8-itu data/io.Data -> int:
   crc := Crc.big-endian 8 --polynomial=0x07 --xor-result=0x55
   crc.add data
   return crc.get-as-int
@@ -790,10 +771,9 @@ class Crc8Itu extends Crc:
 /**
 Computes the CRC-8/MAXIM checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8-maxim data -> int:
+crc8-maxim data/io.Data -> int:
   crc := Crc.little-endian 8 --normal-polynomial=0x31
   crc.add data
   return crc.get-as-int
@@ -806,10 +786,9 @@ class Crc8Maxim extends Crc:
 /**
 Computes the CRC-8/ROHC checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8-rohc data -> int:
+crc8-rohc data/io.Data -> int:
   crc := Crc.little-endian 8 --normal-polynomial=0x07 --initial-state=0xff
   crc.add data
   return crc.get-as-int
@@ -822,10 +801,9 @@ class Crc8Rohc extends Crc:
 /**
 Computes the CRC-8/WCDMA checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8-wcdma data -> int:
+crc8-wcdma data/io.Data -> int:
   crc := Crc.little-endian 8 --normal-polynomial=0x9B
   crc.add data
   return crc.get-as-int
@@ -838,10 +816,9 @@ class Crc8Wcdma extends Crc:
 /**
 Computes the CRC-32 checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32 data -> int:
+crc32 data/io.Data -> int:
   crc := Crc.little-endian 32 --normal-polynomial=0x04C11DB7 --initial-state=0xffffffff --xor-result=0xffffffff
   crc.add data
   return crc.get-as-int
@@ -854,10 +831,9 @@ class Crc32 extends Crc:
 /**
 Computes the CRC-32/BZIP2 checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32-bzip2 data -> int:
+crc32-bzip2 data/io.Data -> int:
   crc := Crc.big-endian 32 --polynomial=0x04C11DB7 --initial-state=0xffffffff --xor-result=0xffffffff
   crc.add data
   return crc.get-as-int
@@ -870,10 +846,9 @@ class Crc32Bzip2 extends Crc:
 /**
 Computes the CRC-32C checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32c data -> int:
+crc32c data/io.Data -> int:
   crc := Crc.little-endian 32 --normal-polynomial=0x1EDC6F41 --initial-state=0xffffffff --xor-result=0xffffffff
   crc.add data
   return crc.get-as-int
@@ -886,10 +861,9 @@ class Crc32c extends Crc:
 /**
 Computes the CRC-32D checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32d data -> int:
+crc32d data/io.Data -> int:
   crc := Crc.little-endian 32 --normal-polynomial=0xA833982B --initial-state=0xffffffff --xor-result=0xffffffff
   crc.add data
   return crc.get-as-int
@@ -902,10 +876,9 @@ class Crc32d extends Crc:
 /**
 Computes the CRC-32/JAMCRC checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32-jamcrc data -> int:
+crc32-jamcrc data/io.Data -> int:
   crc := Crc.little-endian 32 --normal-polynomial=0x04C11DB7 --initial-state=0xffffffff
   crc.add data
   return crc.get-as-int
@@ -918,10 +891,9 @@ class Crc32Jamcrc extends Crc:
 /**
 Computes the CRC-32/MPEG-2 checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32-mpeg2 data -> int:
+crc32-mpeg2 data/io.Data -> int:
   crc := Crc.big-endian 32 --polynomial=0x04C11DB7 --initial-state=0xffffffff
   crc.add data
   return crc.get-as-int
@@ -934,10 +906,9 @@ class Crc32Mpeg2 extends Crc:
 /**
 Computes the CRC-32/POSIX checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32-posix data -> int:
+crc32-posix data/io.Data -> int:
   crc := Crc.big-endian 32 --polynomial=0x04C11DB7 --xor-result=0xffffffff
   crc.add data
   return crc.get-as-int
@@ -950,10 +921,9 @@ class Crc32Posix extends Crc:
 /**
 Computes the CRC-32Q checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32q data -> int:
+crc32q data/io.Data -> int:
   crc := Crc.big-endian 32 --polynomial=0x814141AB
   crc.add data
   return crc.get-as-int
@@ -966,10 +936,9 @@ class Crc32q extends Crc:
 /**
 Computes the CRC-32/XFER checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32-xfer data -> int:
+crc32-xfer data/io.Data -> int:
   crc := Crc.big-endian 32 --polynomial=0x000000AF
   crc.add data
   return crc.get-as-int
@@ -982,10 +951,9 @@ class Crc32Xfer extends Crc:
 /**
 Computes the CRC-64/XZ checksum of the given $data.
 
-The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc64-xz data -> int:
+crc64-xz data/io.Data -> int:
   crc := Crc.little-endian 64 --normal-polynomial=0x42f0e1eba9ea3693 --initial-state=-1 --xor-result=-1
   crc.add data
   return crc.get-as-int
