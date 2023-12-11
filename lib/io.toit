@@ -5,8 +5,11 @@ import .reader
 A producer of bytes.
 
 The most important implementations of this interface are
-  $ByteArray and $string. However, any data structure that can be
-  used as byte-source should implement this interface.
+  $ByteArray and $string, which we call "Primitive IO Data". Any other data
+  structure that implements this interface can still be used as byte-source
+  for primitive operations but will first be converted to a byte array,
+  using the $write-to-byte-array method. Some primitive operations will
+  do this in a chunked way to avoid allocating a large byte array.
 
 Since $Data objects can be instances of $ByteArray it is sometimes
   judicious to test if the given instance is already of class `ByteArray` before
