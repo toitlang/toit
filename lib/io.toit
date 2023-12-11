@@ -128,6 +128,7 @@ class BufferedReader implements Reader:
     if not buffered_: buffered_ = ByteArrayList_
     buffered_.add data
     if buffered_.size == 1:
+      assert: first-array-position_ == 0
       base-consumed_ += first-array-position_
       first-array-position_ = 0
 
