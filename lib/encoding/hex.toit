@@ -26,8 +26,10 @@ encode data/io.Data -> string:
   if data.size == 0: return ""
   if data.size == 1:
     c := ?
-    if data is ByteArray: c = (data as ByteArray)[0]
-    else if data is string: c = (data as string)[0]
+    if data is ByteArray:
+      c = (data as ByteArray)[0]
+    else if data is string:
+      c = (data as string)[0]
     else:
       bytes := ByteArray.from data
       c = bytes[0]

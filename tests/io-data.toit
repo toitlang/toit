@@ -12,7 +12,8 @@ class FakeData implements io.Data:
   constructor.str str/string:
     data_ = str.to-byte-array
 
-  size -> int: return data_.size
+  size -> int:
+    return data_.size
 
   write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none:
     data_.write-to-byte-array byte-array from to --at=at
