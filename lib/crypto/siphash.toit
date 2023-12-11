@@ -20,7 +20,7 @@ The $key must be a 16 element byte array.
 
 The $output-length must be 8 or 16 bytes.
 */
-siphash data key/ByteArray --output-length/int=16 --c-rounds/int=2 --d-rounds/int=4 from/int=0 to/int=data.size -> ByteArray:
+siphash data/io.Data key/ByteArray --output-length/int=16 --c-rounds/int=2 --d-rounds/int=4 from/int=0 to/int=data.byte-size -> ByteArray:
   return checksum (Siphash key --output-length=output-length --c-rounds=c-rounds --d-rounds=d-rounds) data from to
 
 /** SipHash state. */
@@ -62,11 +62,8 @@ siphash-clone_ other:
 // Adds a UTF-8 string or a byte array to the Sip hash.
 siphash-add_ siphash data/io.Data from/int to/int -> none:
   #primitive.crypto.siphash-add:
-    if it == "WRONG_BYTES_TYPE":
-      // TODO(florian): we could chunk the input to avoid a full copy in memory.
-      siphash-add_ siphash (ByteArray.from data from to) 0 (to - from)
-    else:
-      throw it
+    io.primitive-redo-chunked-io-data_ it data from to: | bytes |
+      siphash-add_ siphash bytes 0 bytes.size
 
 // Rounds off a Sip hash.
 siphash-get_ siphash -> ByteArray:

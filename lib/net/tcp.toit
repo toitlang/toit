@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import reader
 
 import .socket-address
@@ -25,7 +26,7 @@ interface Socket implements reader.Reader:
   no-delay= value/bool
 
   read -> ByteArray?
-  write data from/int=0 to/int=data.size -> int
+  write data/io.Data from/int=0 to/int=data.byte-size -> int
 
   mtu -> int
 
