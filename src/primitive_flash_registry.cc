@@ -208,7 +208,10 @@ PRIMITIVE(grant_access) {
   if (!grant) FAIL(MALLOC_FAILED);
   Locker locker(OS::global_mutex());
   for (auto it : grants) {
-    if (it->offset() == offset && it->size() == size) FAIL(ALREADY_IN_USE);
+    if (it->offset() == offset && it->size() == size) {
+      delete grant;
+      FAIL(ALREADY_IN_USE);
+    }
   }
   grants.prepend(grant);
   return process->null_object();
