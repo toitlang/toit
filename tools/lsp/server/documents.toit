@@ -74,6 +74,8 @@ class Documents:
     project-uris_.map --in-place: | document-uri/string document-project-uri/string |
       if document-project-uri == project-uri:
         compute-project-uri --uri=document-uri --translator=translator_
+      else:
+        document-project-uri
     return computed
 
   /**
