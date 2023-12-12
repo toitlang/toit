@@ -96,8 +96,12 @@ func (s *Server) textDocumentDefinition(ctx context.Context, conn *jsonrpc2.Conn
 		return nil, err
 	}
 	cCtx := s.GetContext(conn)
+	projectURI, err := cCtx.Documents.ProjectURIFor(req.TextDocument.URI, true)
+	if err != nil {
+		return nil, err
+	}
 	compiler := s.createCompiler(cCtx)
-	res, err := compiler.GotoDefinition(ctx, cCtx.RootURI, req.TextDocument.URI, req.Position)
+	res, err := compiler.GotoDefinition(ctx, projectURI, req.TextDocument.URI, req.Position)
 	if err != nil {
 		return nil, s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,
@@ -114,8 +118,12 @@ func (s *Server) textDocumentCompletion(ctx context.Context, conn *jsonrpc2.Conn
 		return nil, err
 	}
 	cCtx := s.GetContext(conn)
+	projectURI, err := cCtx.Documents.ProjectURIFor(req.TextDocument.URI, true)
+	if err != nil {
+		return nil, err
+	}
 	compiler := s.createCompiler(cCtx)
-	res, err := compiler.Complete(ctx, cCtx.RootURI, req.TextDocument.URI, req.Position)
+	res, err := compiler.Complete(ctx, projectURI, req.TextDocument.URI, req.Position)
 	if err != nil {
 		return nil, s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,
@@ -172,8 +180,12 @@ func (s *Server) textDocumentSemanticTokensFull(ctx context.Context, conn *jsonr
 		return nil, err
 	}
 	cCtx := s.GetContext(conn)
+	projectURI, err := cCtx.Documents.ProjectURIFor(req.TextDocument.URI, true)
+	if err != nil {
+		return nil, err
+	}
 	compiler := s.createCompiler(cCtx)
-	res, err := compiler.SemanticTokens(ctx, cCtx.RootURI, req.TextDocument.URI)
+	res, err := compiler.SemanticTokens(ctx, projectURI, req.TextDocument.URI)
 	if err != nil {
 		return nil, s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,
@@ -479,6 +491,5 @@ func (s *Server) createCompiler(cCtx ConnContext) *compiler.Compiler {
 		SDKPath:      cCtx.Settings.SDKPath,
 		CompilerPath: cCtx.Settings.ToitcPath,
 		Timeout:      cCtx.Settings.Timeout,
-		RootURI:      cCtx.RootURI,
 	})
 }
