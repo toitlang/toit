@@ -136,12 +136,12 @@ class LspServer:
         "textDocument/semanticTokens/full": (:: semantic-tokens (SemanticTokensParams it)),
         "shutdown":                (:: shutdown),
         "exit":                    (:: exit),
-        "toit/report_idle":        (:: report-idle),
-        "toit/reset_crash_rate_limit": (:: reset-crash-rate-limit),
+        "toit/reportIdle":         (:: report-idle),
+        "toit/resetCrashRateLimit": (:: reset-crash-rate-limit),
         "toit/settings":           (:: settings_.map_),
         "toit/analyzeMany":        (:: analyze-many it),
         "toit/archive":            (:: archive (ArchiveParams it)),
-        "toit/snapshot_bundle":    (:: snapshot-bundle (SnapshotBundleParams it))
+        "toit/snapshotBundle":     (:: snapshot-bundle (SnapshotBundleParams it))
     }
     handlers.get method --if-present=: return it.call params
 
@@ -275,19 +275,19 @@ class LspServer:
 
   completion params/CompletionParams -> List/*<CompletionItem>*/:
     uri := translator_.canonicalize params.text-document.uri
-    project-uri := documents_.project-uri-for --uri=uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
     return compiler_.complete --project-uri=project-uri uri params.position.line params.position.character
 
   // TODO(florian): The specification supports a list of locations, or Locationlinks..
   // For now just returns one location.
   goto-definition params/TextDocumentPositionParams -> List/*<Location>*/:
     uri := translator_.canonicalize params.text-document.uri
-    project-uri := documents_.project-uri-for --uri=uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
     return compiler_.goto-definition --project-uri=project-uri uri params.position.line params.position.character
 
   document-symbol params/DocumentSymbolParams -> List/*<DocumentSymbol>*/:
     uri := translator_.canonicalize params.text-document.uri
-    project-uri := documents_.project-uri-for --uri=uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
     analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
     document := analyzed-documents.get --uri=uri
     if not (document and document.summary):
@@ -307,7 +307,7 @@ class LspServer:
 
   semantic-tokens params/SemanticTokensParams -> SemanticTokens:
     uri := translator_.canonicalize params.text-document.uri
-    project-uri := documents_.project-uri-for --uri=uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
     tokens := compiler_.semantic-tokens --project-uri=project-uri uri
     return SemanticTokens --data=tokens
 
@@ -337,7 +337,7 @@ class LspServer:
 
     project-uris := {:}
     uris.do: |uri|
-      project-uri := documents_.project-uri-for --uri=uri
+      project-uri := documents_.project-uri-for --uri=uri --recompute
       list := project-uris.get project-uri --init=:[]
       list.add uri
 
@@ -390,14 +390,12 @@ class LspServer:
             diagnostics-without-position.any: it.contains entry-path
         document := documents_.get-opened --uri=uri
         if probably-entry-problem and document:
-          if document:
-            // This should not happen.
-            // TODO(florian): report to client and log (potentially creating repro).
-          else:
-            if file.is-file entry-path:
-              // TODO(florian): report to client and log (potentially creating repro).
-            // Either way: delete the entry.
-            documents_.delete --uri=uri
+          // This should not happen.
+          // TODO(florian): report to client and log (potentially creating repro).
+        if file.is-file entry-path:
+          // TODO(florian): report to client and log (potentially creating repro).
+        // Either way: delete the entry.
+        documents_.delete --uri=uri
       // Don't use the analysis result.
       return {}
 

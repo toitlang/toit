@@ -1,12 +1,18 @@
-<pkg:pkg-host>/pipe.toit:329:6: warning: Deprecated 'platform'
+<pkg:pkg-host>/pipe.toit:180:6: warning: Deprecated 'platform'
   if platform == PLATFORM_WINDOWS:
      ^~~~~~~~
-<pkg:pkg-host>/pipe.toit:329:18: warning: Deprecated 'PLATFORM-WINDOWS'
+<pkg:pkg-host>/pipe.toit:180:18: warning: Deprecated 'PLATFORM-WINDOWS'
   if platform == PLATFORM_WINDOWS:
                  ^~~~~~~~~~~~~~~~
-<pkg:pkg-host>/directory.toit:138:6: warning: Deprecated 'platform'
+<pkg:pkg-host>/pipe.toit:395:6: warning: Deprecated 'platform'
   if platform == PLATFORM_WINDOWS:
      ^~~~~~~~
-<pkg:pkg-host>/directory.toit:138:18: warning: Deprecated 'PLATFORM-WINDOWS'
+<pkg:pkg-host>/pipe.toit:395:18: warning: Deprecated 'PLATFORM-WINDOWS'
+  if platform == PLATFORM_WINDOWS:
+                 ^~~~~~~~~~~~~~~~
+<pkg:pkg-host>/directory.toit:154:6: warning: Deprecated 'platform'
+  if platform == PLATFORM_WINDOWS:
+     ^~~~~~~~
+<pkg:pkg-host>/directory.toit:154:18: warning: Deprecated 'PLATFORM-WINDOWS'
   if platform == PLATFORM_WINDOWS:
                  ^~~~~~~~~~~~~~~~
