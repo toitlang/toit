@@ -186,7 +186,7 @@ class AnalyzedDocuments:
       --analysis-revision/int
       --content-revision/int
       --summary/Module:
-    document := get-dependency-document_ --uri=uri
+    document := get-or-create --uri=uri
 
     // If there was already a newer analysis we can completely ignore this update.
     if document.analysis-revision >= analysis-revision: return 0
@@ -206,7 +206,7 @@ class AnalyzedDocuments:
     // Set up the new reverse dependencies.
     new-deps.do: |dep-uri|
       if not old-deps.contains dep-uri:
-        dep-doc := get-dependency-document_ --uri=dep-uri
+        dep-doc := get-or-create --uri=dep-uri
         dep-doc.reverse-deps.add uri
 
     old-summary := document.summary
@@ -224,11 +224,12 @@ class AnalyzedDocuments:
 
     return result
 
-  get-dependency-document_ --uri/string -> AnalyzedDocument:
+  get-or-create --uri/string -> AnalyzedDocument:
     return documents_.get uri --init=: AnalyzedDocument
 
   get-existing --uri/string -> AnalyzedDocument:
     result := documents_.get uri --init=:
+      print-on-stderr_ "Document $uri doesn't exist yet"
       error-reporter_.call "Document $uri doesn't exist yet"
       AnalyzedDocument
     return result
