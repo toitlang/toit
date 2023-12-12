@@ -74,6 +74,8 @@ class Documents:
     project-uris_.map --in-place: | document-uri/string document-project-uri/string |
       if document-project-uri == project-uri:
         compute-project-uri --uri=document-uri --translator=translator_
+      else:
+        document-project-uri
     return computed
 
   /**
@@ -94,7 +96,7 @@ class Documents:
     opened-documents_[uri] = document
 
   did-change --uri/string new-content/string revision/int-> none:
-    document := get-opened-document_ --uri=uri
+    document := get-existing-opened-document_ --uri=uri
     document.content = new-content
     document.revision = revision
 
@@ -109,7 +111,7 @@ class Documents:
     analyzed-documents_.do: | _ documents/AnalyzedDocuments |
       documents.delete --uri=uri
 
-  get-opened-document_ --uri/string -> OpenedDocument:
+  get-existing-opened-document_ --uri/string -> OpenedDocument:
     return opened-documents_.get uri --init=:
       error-reporter_.call "Document $uri doesn't exist yet"
       OpenedDocument --uri=uri --revision=-1 --content=""
@@ -136,34 +138,13 @@ class Documents:
       tar.add (translator_.to-path entry.uri) entry.content
     tar.close --no-close-writer
 
-  update-document-after-analysis -> int  // Returns a bitset.
-      --project-uri/string
-      --uri/string
-      --analysis-revision/int
-      --summary/Module:
-    analyzed := analyzed-documents-for --project-uri=project-uri
-    open-document := opened-documents_.get uri
-    content-revision := open-document ? open-document.revision : -1
-    return analyzed.update-document-after-analysis
-        --uri=uri
-        --analysis-revision=analysis-revision
-        --summary=summary
-        --content-revision=content-revision
-
 /**
 Keeps track of analyzed documents.
 */
 class AnalyzedDocuments:
-  // A map from a document URI to its project URI.
-  project-uris_ /Map/*<string, string>*/ ::= {:}
-  // For each project-uri a map from a document URI to its document.
-  // Note that URIs might be in more than one project.
+  // For this instance of analyzed documents a map from a document URI to its document.
+  // Note that URIs might be in more than one project and thus $AnalyzedDocuments object.
   documents_ /Map/*<Map<string, AnalyzedDocument>>*/ ::= {:}
-  // For each project-uri a set of document URIs that are relevant
-  // for the project.
-  // Note that this information is redundant with the information in
-  // `documents_`, but it is more efficient to keep it here.
-  documents-in-project_ /Map/*<string, Set<string>>*/ ::= {:}
 
   translator_ /UriPathTranslator ::= ?
   error-reporter_ / Lambda ::= ?
