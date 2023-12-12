@@ -149,8 +149,6 @@ func (d *Documents) Close(uri lsp.DocumentURI) error {
 }
 
 func (d *Documents) getExistingOpenedDocument(uri lsp.DocumentURI) *OpenedDocument {
-	d.l.Lock()
-	defer d.l.Unlock()
 	doc, ok := d.openedDocuments[uri]
 	if !ok {
 		d.logger.Error("couldn't get existing opened document", zap.String("uri", string(uri)))
@@ -213,6 +211,8 @@ func newAnalyzedDocuments(logger *zap.Logger) *AnalyzedDocuments {
 }
 
 func (ad *AnalyzedDocuments) Delete(uri lsp.DocumentURI) error {
+	ad.l.Lock()
+	defer ad.l.Unlock()
 	doc, ok := ad.documents[uri]
 	if ok {
 		if doc.Summary != nil {
@@ -239,7 +239,7 @@ func (ad *AnalyzedDocuments) Delete(uri lsp.DocumentURI) error {
 func (ad *AnalyzedDocuments) UpdateAfterAnalysis(docUri lsp.DocumentURI, analysisRevision int, summary *toit.Module, contentRevision int) (int, error) {
 	ad.l.Lock()
 	defer ad.l.Unlock()
-	doc := ad.getDependencyDocument(docUri)
+	doc := ad.getOrCreate(docUri)
 
 	if doc.AnalysisRevision >= analysisRevision {
 		return 0, nil
@@ -255,7 +255,7 @@ func (ad *AnalyzedDocuments) UpdateAfterAnalysis(docUri lsp.DocumentURI, analysi
 
 	for oldDep := range oldDeps {
 		if !newDeps.Contains(oldDep) {
-			depDoc := ad.GetExisting(oldDep)
+			depDoc := ad.getExisting(oldDep)
 			if !depDoc.ReverseDependencies.Contains(docUri) {
 				ad.logger.Error("couldn't delete reverse dependency (not dep anymore)", zap.String("uri", string(docUri)), zap.String("dep_uri", string(oldDep)))
 			} else {
@@ -266,7 +266,7 @@ func (ad *AnalyzedDocuments) UpdateAfterAnalysis(docUri lsp.DocumentURI, analysi
 
 	for newDep := range newDeps {
 		if !oldDeps.Contains(newDep) {
-			depDoc := ad.get(newDep)
+			depDoc := ad.getOrCreate(newDep)
 			depDoc.ReverseDependencies.Add(docUri)
 		}
 	}
@@ -308,9 +308,13 @@ func (ad *AnalyzedDocuments) Get(docUri lsp.DocumentURI) (*AnalyzedDocument, boo
 	return doc, true
 }
 
-func (ad *AnalyzedDocuments) getDependencyDocument(docUri lsp.DocumentURI) *AnalyzedDocument {
+func (ad *AnalyzedDocuments) GetOrCreate(docUri lsp.DocumentURI) *AnalyzedDocument {
 	ad.l.Lock()
 	defer ad.l.Unlock()
+	return ad.getOrCreate(docUri)
+}
+
+func (ad *AnalyzedDocuments) getOrCreate(docUri lsp.DocumentURI) *AnalyzedDocument {
 	doc, ok := ad.documents[docUri]
 	if !ok {
 		doc = newAnalyzedDocument()
@@ -320,19 +324,21 @@ func (ad *AnalyzedDocuments) getDependencyDocument(docUri lsp.DocumentURI) *Anal
 }
 
 func (ad *AnalyzedDocuments) GetExisting(docUri lsp.DocumentURI) *AnalyzedDocument {
-	ad.l.RLock()
-	defer ad.l.RUnlock()
+	ad.l.Lock()
+	defer ad.l.Unlock()
+	return ad.getExisting(docUri)
+}
+
+func (ad *AnalyzedDocuments) getExisting(docUri lsp.DocumentURI) *AnalyzedDocument {
 	doc, ok := ad.documents[docUri]
 	if !ok {
 		ad.logger.Error("couldn't get existing document", zap.String("uri", string(docUri)))
-		return nil
+		return ad.getOrCreate(docUri)
 	}
 	return doc
 }
 
 func (ad *AnalyzedDocuments) get(docUri lsp.DocumentURI) *AnalyzedDocument {
-	ad.l.RLock()
-	defer ad.l.RUnlock()
 	doc, ok := ad.documents[docUri]
 	if !ok {
 		return nil

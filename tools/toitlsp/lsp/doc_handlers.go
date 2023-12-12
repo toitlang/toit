@@ -281,7 +281,7 @@ func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jso
 	reportDiagnosticsDocuments := uri.Set{}
 
 	for _, uri := range uris {
-		doc := analyzedDocuments.GetExisting(uri)
+		doc := analyzedDocuments.GetOrCreate(uri)
 		contentRevision := -1
 		if openedDoc, ok := cCtx.Documents.GetOpenedDocument(uri); ok {
 			contentRevision = openedDoc.Revision
