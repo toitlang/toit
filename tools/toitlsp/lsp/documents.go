@@ -172,6 +172,7 @@ func (d *Documents) GetOpenedDocument(uri lsp.DocumentURI) (*OpenedDocument, boo
 func (d *Documents) Delete(uri lsp.DocumentURI) error {
 	d.l.Lock()
 	defer d.l.Unlock()
+
 	delete(d.openedDocuments, uri)
 
 	for _, ad := range d.analyzedDocuments {

@@ -272,15 +272,17 @@ func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jso
 		for _, uri := range uris {
 			entryPath := util.UriToRealPath(golsp.DocumentURI(uri))
 			probablyEntryProblem := len(result.Diagnostics) == 0 && stringsContainsAny(result.DiagnosticsWithoutPosition, entryPath)
-			_, ok := cCtx.Documents.GetOpenedDocument(uri)
-			if probablyEntryProblem && ok {
-				// This should not happen.
-				// TODO(floitsch): report to client and log (potentially creating repro).
-				s.logger.Info("LSP server error. Document not opened.", zap.String("URI", string(uri)))
-			}
-			// In any case: delete the entry, if there is one.
-			if err := cCtx.Documents.Delete(uri); err != nil {
-				return err
+			if probablyEntryProblem {
+				_, ok := cCtx.Documents.GetOpenedDocument(uri)
+				if ok {
+					// This should not happen.
+					// TODO(floitsch): report to client and log (potentially creating repro).
+					s.logger.Info("LSP server error. Document not opened.", zap.String("URI", string(uri)))
+				}
+				// In any case: delete the entry, if there is one.
+				if err := cCtx.Documents.Delete(uri); err != nil {
+					return err
+				}
 			}
 		}
 		// Don't use the analysis result.
