@@ -388,14 +388,15 @@ class LspServer:
         entry-path := translator_.to-path uri
         probably-entry-problem := diagnostics-per-uri.is-empty and
             diagnostics-without-position.any: it.contains entry-path
-        document := documents_.get-opened --uri=uri
-        if probably-entry-problem and document:
-          // This should not happen.
-          // TODO(florian): report to client and log (potentially creating repro).
-        if file.is-file entry-path:
-          // TODO(florian): report to client and log (potentially creating repro).
-        // Either way: delete the entry.
-        documents_.delete --uri=uri
+        if probably-entry-problem:
+          document := documents_.get-opened --uri=uri
+          if document:
+            // This should not happen.
+            // TODO(florian): report to client and log (potentially creating repro).
+          if file.is-file entry-path:
+            // TODO(florian): report to client and log (potentially creating repro).
+          // Either way: delete the entry.
+          documents_.delete --uri=uri
       // Don't use the analysis result.
       return {}
 
@@ -407,7 +408,7 @@ class LspServer:
     // Always report diagnostics for the given uris, unless there is a more recent
     // analysis already, or if the document has been updated in the meantime.
     uris.do: | uri |
-      doc := analyzed-documents.get-existing --uri=uri
+      doc := analyzed-documents.get-or-create --uri=uri
       opened-doc := documents_.get-opened --uri=uri
       content-revision := opened-doc ? opened-doc.revision : -1
       if not doc.analysis-revision >= revision and not content-revision > revision:
