@@ -371,14 +371,15 @@ class LspServer:
         entry-path := translator_.to-path uri
         probably-entry-problem := diagnostics-per-uri.is-empty and
             diagnostics-without-position.any: it.contains entry-path
-        document := documents_.get-opened --uri=uri
-        if probably-entry-problem and document:
-          // This should not happen.
-          // TODO(florian): report to client and log (potentially creating repro).
-        if file.is-file entry-path:
-          // TODO(florian): report to client and log (potentially creating repro).
-        // Either way: delete the entry.
-        documents_.delete --uri=uri
+        if probably-entry-problem:
+          document := documents_.get-opened --uri=uri
+          if document:
+            // This should not happen.
+            // TODO(florian): report to client and log (potentially creating repro).
+          if file.is-file entry-path:
+            // TODO(florian): report to client and log (potentially creating repro).
+          // Either way: delete the entry.
+          documents_.delete --uri=uri
       // Don't use the analysis result.
       return
 
