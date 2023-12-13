@@ -373,7 +373,7 @@ class LspServer:
             diagnostics-without-position.any: it.contains entry-path
         if probably-entry-problem:
           document := documents_.get-opened --uri=uri
-          if probably-entry-problem and document:
+          if document:
             // This should not happen.
             // TODO(florian): report to client and log (potentially creating repro).
           if file.is-file entry-path:
