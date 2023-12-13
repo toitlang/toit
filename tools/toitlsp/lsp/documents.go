@@ -25,51 +25,118 @@ import (
 )
 
 type Documents struct {
-	l         sync.RWMutex
-	logger    *zap.Logger
-	documents map[lsp.DocumentURI]*Document
+	l      sync.RWMutex
+	logger *zap.Logger
+
+	// A map from document URI to opened document.
+	// During analysis, this map must be used to find the content of a document.
+	openedDocuments map[lsp.DocumentURI]*OpenedDocument
+
+	// A map from a document URI to its project URI.
+	//
+	// The project URI is the root of the projcet where we can find the
+	// package lock file and the downloaded packages.
+	//
+	// From the user's point of view a document is only in one project. Diagnostics
+	// are only shown for this project.
+	//
+	// Internally, a document might be in more than one project, as local dependencies
+	// can lead to a document being referenced from multiple projects.
+	projectURIs map[lsp.DocumentURI]lsp.DocumentURI
+
+	// A map from document URI to analyzed documents for the specific uri..
+	analyzedDocuments map[lsp.DocumentURI]*AnalyzedDocuments
 }
 
 func NewDocuments(logger *zap.Logger) *Documents {
 	return &Documents{
-		logger:    logger,
-		documents: map[lsp.DocumentURI]*Document{},
+		logger:            logger,
+		openedDocuments:   map[lsp.DocumentURI]*OpenedDocument{},
+		projectURIs:       map[lsp.DocumentURI]lsp.DocumentURI{},
+		analyzedDocuments: map[lsp.DocumentURI]*AnalyzedDocuments{},
 	}
 }
 
-func (d *Documents) Add(uri lsp.DocumentURI, content *string, revision int) error {
+func (d *Documents) AnalyzedDocumentsFor(projectURI lsp.DocumentURI) *AnalyzedDocuments {
 	d.l.Lock()
 	defer d.l.Unlock()
-	doc, ok := d.documents[uri]
+	ad, ok := d.analyzedDocuments[projectURI]
+	if !ok {
+		ad = newAnalyzedDocuments(d.logger)
+		d.analyzedDocuments[projectURI] = ad
+	}
+	return ad
+}
+
+func (d *Documents) AllProjectURIs() []lsp.DocumentURI {
+	d.l.RLock()
+	defer d.l.RUnlock()
+	res := make([]lsp.DocumentURI, 0, len(d.projectURIs))
+	for _, uri := range d.projectURIs {
+		res = append(res, uri)
+	}
+	return res
+}
+
+func (d *Documents) ProjectURIFor(uri lsp.DocumentURI, recompute bool) (lsp.DocumentURI, error) {
+	d.l.Lock()
+	defer d.l.Unlock()
+	projectURI, ok := d.projectURIs[uri]
+	if ok && !recompute {
+		return projectURI, nil
+	}
+	computed, err := computeProjectURI(uri)
+	if err != nil {
+		return "", err
+	}
+	d.projectURIs[uri] = computed
+	if !ok {
+		return computed, nil
+	}
+	// Recompute the project-uri for all documents that are in the same project.
+	// A user might have added or removed a package.{yaml|lock} file.
+	for otherURI, otherProjectURI := range d.projectURIs {
+		if otherProjectURI == projectURI {
+			newURI, err := computeProjectURI(otherURI)
+			if err != nil {
+				return "", err
+			}
+			d.projectURIs[otherURI] = newURI
+		}
+	}
+	return computed, nil
+}
+
+func (d *Documents) Open(uri lsp.DocumentURI, content string, revision int) error {
+	d.l.Lock()
+	defer d.l.Unlock()
+	doc, ok := d.openedDocuments[uri]
 	if ok {
 		d.logger.Debug("document already open", zap.String("uri", string(uri)))
+		// Treat it as if it was an update.
+		doc.Content = &content
+		doc.Revision = revision
 	} else {
-		doc = &Document{
-			URI:                         uri,
-			AnalysisRevision:            -1,
-			AnalysisRequestedByRevision: -1,
-		}
-		d.documents[uri] = doc
+		doc = newOpenedDocument(uri, content, revision)
+		d.openedDocuments[uri] = doc
 	}
-	doc.Content = content
-	doc.ContentRevision = revision
-	doc.IsOpen = true
 	return nil
 }
 
 func (d *Documents) Update(uri lsp.DocumentURI, newContent string, revision int) error {
 	d.l.Lock()
 	defer d.l.Unlock()
-	doc := d.get(uri, true)
+	doc := d.getExistingOpenedDocument(uri)
 	doc.Content = &newContent
-	doc.ContentRevision = revision
+	doc.Revision = revision
 	return nil
 }
 
+// Used when the document has been saved.
 func (d *Documents) Clear(uri lsp.DocumentURI) error {
 	d.l.Lock()
 	defer d.l.Unlock()
-	doc := d.get(uri, true)
+	doc := d.getExistingOpenedDocument(uri)
 	doc.Content = nil
 	return nil
 }
@@ -77,87 +144,41 @@ func (d *Documents) Clear(uri lsp.DocumentURI) error {
 func (d *Documents) Close(uri lsp.DocumentURI) error {
 	d.l.Lock()
 	defer d.l.Unlock()
-	doc := d.get(uri, true)
-	doc.IsOpen = false
-	doc.Content = nil
+	delete(d.openedDocuments, uri)
 	return nil
 }
 
-func (d *Documents) GetExisting(uri lsp.DocumentURI) Document {
-	d.l.RLock()
-	defer d.l.RUnlock()
-	doc := d.get(uri, false)
-	if doc == nil {
-		d.logger.Info("failed to lookup document", zap.String("uri", string(uri)))
-		return Document{}
-	}
-	return *doc
-}
-
-func (d *Documents) Get(uri lsp.DocumentURI) (Document, bool) {
-	d.l.RLock()
-	defer d.l.RUnlock()
-	doc, ok := d.documents[uri]
+func (d *Documents) getExistingOpenedDocument(uri lsp.DocumentURI) *OpenedDocument {
+	doc, ok := d.openedDocuments[uri]
 	if !ok {
-		return Document{}, ok
+		d.logger.Error("couldn't get existing opened document", zap.String("uri", string(uri)))
+		doc = newOpenedDocument(uri, "", -1)
+		d.openedDocuments[uri] = doc
 	}
-	return *doc, ok
-}
-
-func (d *Documents) Summaries() map[lsp.DocumentURI]*toit.Module {
-	res := map[lsp.DocumentURI]*toit.Module{}
-	d.l.RLock()
-	defer d.l.RUnlock()
-	for url, doc := range d.documents {
-		res[url] = doc.Summary
-	}
-	return res
-}
-
-func (d *Documents) get(uri lsp.DocumentURI, isOpen bool) *Document {
-	doc, ok := d.documents[uri]
-	if !ok {
-		d.logger.Debug("Document doesn't exist yet", zap.String("uri", string(uri)))
-		doc = &Document{
-			URI:    uri,
-			IsOpen: isOpen,
-		}
-		d.documents[uri] = doc
-	}
-
-	if isOpen && !doc.IsOpen {
-		d.logger.Error("Document isn't open as expected", zap.String("uri", string(uri)))
-	}
-
 	return doc
+}
+
+func (d *Documents) GetOpenedDocument(uri lsp.DocumentURI) (*OpenedDocument, bool) {
+	d.l.RLock()
+	defer d.l.RUnlock()
+	doc, ok := d.openedDocuments[uri]
+	if !ok {
+		return nil, false
+	}
+
+	return doc, true
 }
 
 func (d *Documents) Delete(uri lsp.DocumentURI) error {
 	d.l.Lock()
 	defer d.l.Unlock()
-	doc, ok := d.documents[uri]
-	if ok {
-		if doc.Summary != nil {
-			for _, dep := range doc.Summary.Dependencies {
-				doc := d.get(dep, false)
-				doc.ReverseDependencies.Remove(uri)
-			}
-		}
-	}
-	delete(d.documents, uri)
-	return nil
-}
 
-func (d *Documents) SetAnalysisRequestedByRevision(document Document, analysisRequestedByRevision int) {
-	d.l.Lock()
-	defer d.l.Unlock()
-	doc, ok := d.documents[document.URI]
-	if !ok {
-		return
+	delete(d.openedDocuments, uri)
+
+	for _, ad := range d.analyzedDocuments {
+		ad.Delete(uri)
 	}
-	if doc.AnalysisRequestedByRevision == document.AnalysisRequestedByRevision {
-		doc.AnalysisRequestedByRevision = analysisRequestedByRevision
-	}
+	return nil
 }
 
 const (
@@ -175,6 +196,37 @@ const (
 	FIRST_ANALYSIS_AFTER_CONTENT_CHANGE_BIT = 2
 )
 
+type AnalyzedDocuments struct {
+	l      sync.RWMutex
+	logger *zap.Logger
+	// For this instance of analyzed documents a map from a document URI to its document.
+	// Note that URIs might be in more than one project and thus AnalyzedDocuments object.
+	documents map[lsp.DocumentURI]*AnalyzedDocument
+}
+
+func newAnalyzedDocuments(logger *zap.Logger) *AnalyzedDocuments {
+	return &AnalyzedDocuments{
+		logger:    logger,
+		documents: map[lsp.DocumentURI]*AnalyzedDocument{},
+	}
+}
+
+func (ad *AnalyzedDocuments) Delete(uri lsp.DocumentURI) error {
+	ad.l.Lock()
+	defer ad.l.Unlock()
+	doc, ok := ad.documents[uri]
+	if ok {
+		if doc.Summary != nil {
+			for _, dep := range doc.Summary.Dependencies {
+				doc := ad.get(dep)
+				doc.ReverseDependencies.Remove(uri)
+			}
+		}
+	}
+	delete(ad.documents, uri)
+	return nil
+}
+
 /**
   Updates the $summary for the given $uri.
 
@@ -185,10 +237,10 @@ const (
     diagnostics of this analysis need to be reported.
 */
 
-func (d *Documents) UpdateAfterAnalysis(docUri lsp.DocumentURI, analysisRevision int, summary *toit.Module) (int, error) {
-	d.l.Lock()
-	defer d.l.Unlock()
-	doc := d.get(docUri, false)
+func (ad *AnalyzedDocuments) UpdateAfterAnalysis(docUri lsp.DocumentURI, analysisRevision int, summary *toit.Module, contentRevision int) (int, error) {
+	ad.l.Lock()
+	defer ad.l.Unlock()
+	doc := ad.getOrCreate(docUri)
 
 	if doc.AnalysisRevision >= analysisRevision {
 		return 0, nil
@@ -204,9 +256,9 @@ func (d *Documents) UpdateAfterAnalysis(docUri lsp.DocumentURI, analysisRevision
 
 	for oldDep := range oldDeps {
 		if !newDeps.Contains(oldDep) {
-			depDoc := d.get(oldDep, false)
+			depDoc := ad.getExisting(oldDep)
 			if !depDoc.ReverseDependencies.Contains(docUri) {
-				d.logger.Error("couldn't delete reverse dependency (not dep anymore)", zap.String("uri", string(docUri)), zap.String("dep_uri", string(oldDep)))
+				ad.logger.Error("couldn't delete reverse dependency (not dep anymore)", zap.String("uri", string(docUri)), zap.String("dep_uri", string(oldDep)))
 			} else {
 				depDoc.ReverseDependencies.Remove(docUri)
 			}
@@ -215,7 +267,7 @@ func (d *Documents) UpdateAfterAnalysis(docUri lsp.DocumentURI, analysisRevision
 
 	for newDep := range newDeps {
 		if !oldDeps.Contains(newDep) {
-			depDoc := d.get(newDep, false)
+			depDoc := ad.getOrCreate(newDep)
 			depDoc.ReverseDependencies.Add(docUri)
 		}
 	}
@@ -225,7 +277,7 @@ func (d *Documents) UpdateAfterAnalysis(docUri lsp.DocumentURI, analysisRevision
 	doc.AnalysisRevision = analysisRevision
 
 	res := 0
-	if oldAnalysisRevision < doc.ContentRevision && analysisRevision >= doc.ContentRevision {
+	if oldAnalysisRevision < contentRevision && analysisRevision >= contentRevision {
 		res |= FIRST_ANALYSIS_AFTER_CONTENT_CHANGE_BIT
 	}
 	if oldSummary == nil || !oldSummary.EqualsExternal(summary) {
@@ -235,13 +287,79 @@ func (d *Documents) UpdateAfterAnalysis(docUri lsp.DocumentURI, analysisRevision
 	return res, nil
 }
 
-type Document struct {
-	URI                 lsp.DocumentURI
-	IsOpen              bool
-	Content             *string
-	Summary             *toit.Module
-	ReverseDependencies uri.Set
+func (ad *AnalyzedDocuments) SetAnalysisRequestedByRevision(uri lsp.DocumentURI, document *AnalyzedDocument, analysisRequestedByRevision int) {
+	ad.l.Lock()
+	defer ad.l.Unlock()
+	doc, ok := ad.documents[uri]
+	if !ok {
+		return
+	}
+	if doc.AnalysisRequestedByRevision == document.AnalysisRequestedByRevision {
+		doc.AnalysisRequestedByRevision = analysisRequestedByRevision
+	}
+}
 
+func (ad *AnalyzedDocuments) Get(docUri lsp.DocumentURI) (*AnalyzedDocument, bool) {
+	ad.l.RLock()
+	defer ad.l.RUnlock()
+	doc, ok := ad.documents[docUri]
+	if !ok {
+		return nil, false
+	}
+	return doc, true
+}
+
+func (ad *AnalyzedDocuments) GetOrCreate(docUri lsp.DocumentURI) *AnalyzedDocument {
+	ad.l.Lock()
+	defer ad.l.Unlock()
+	return ad.getOrCreate(docUri)
+}
+
+func (ad *AnalyzedDocuments) getOrCreate(docUri lsp.DocumentURI) *AnalyzedDocument {
+	doc, ok := ad.documents[docUri]
+	if !ok {
+		doc = newAnalyzedDocument()
+		ad.documents[docUri] = doc
+	}
+	return doc
+}
+
+func (ad *AnalyzedDocuments) GetExisting(docUri lsp.DocumentURI) *AnalyzedDocument {
+	ad.l.Lock()
+	defer ad.l.Unlock()
+	return ad.getExisting(docUri)
+}
+
+func (ad *AnalyzedDocuments) getExisting(docUri lsp.DocumentURI) *AnalyzedDocument {
+	doc, ok := ad.documents[docUri]
+	if !ok {
+		ad.logger.Error("couldn't get existing document", zap.String("uri", string(docUri)))
+		return ad.getOrCreate(docUri)
+	}
+	return doc
+}
+
+func (ad *AnalyzedDocuments) get(docUri lsp.DocumentURI) *AnalyzedDocument {
+	doc, ok := ad.documents[docUri]
+	if !ok {
+		return nil
+	}
+	return doc
+}
+
+func (ad *AnalyzedDocuments) Summaries() map[lsp.DocumentURI]*toit.Module {
+	res := map[lsp.DocumentURI]*toit.Module{}
+	ad.l.RLock()
+	defer ad.l.RUnlock()
+	for url, doc := range ad.documents {
+		res[url] = doc.Summary
+	}
+	return res
+}
+
+type OpenedDocument struct {
+	URI     lsp.DocumentURI
+	Content *string
 	/**
 	The revision of the $content.
 
@@ -249,7 +367,20 @@ type Document struct {
 	Any analysis result that is equal or greater than the content revision provides
 		up-to-date results.
 	*/
-	ContentRevision int
+	Revision int
+}
+
+func newOpenedDocument(uri lsp.DocumentURI, content string, revision int) *OpenedDocument {
+	return &OpenedDocument{
+		URI:      uri,
+		Content:  &content,
+		Revision: revision,
+	}
+}
+
+type AnalyzedDocument struct {
+	Summary             *toit.Module
+	ReverseDependencies uri.Set
 
 	// AnalysisRevision, The revision of the analysis that last ran on this document.
 	// -1 if no analysis has been run yet.
@@ -258,4 +389,11 @@ type Document struct {
 	// The revision of an analysis that requested to update the diagnostics of this document.
 	// -1 if no request is pending.
 	AnalysisRequestedByRevision int
+}
+
+func newAnalyzedDocument() *AnalyzedDocument {
+	return &AnalyzedDocument{
+		AnalysisRevision:            -1,
+		AnalysisRequestedByRevision: -1,
+	}
 }
