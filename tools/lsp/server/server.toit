@@ -390,7 +390,7 @@ class LspServer:
     // Always report diagnostics for the given uris, unless there is a more recent
     // analysis already, or if the document has been updated in the meantime.
     uris.do: | uri |
-      doc := analyzed-documents.get-existing --uri=uri
+      doc := analyzed-documents.get-or-create --uri=uri
       opened-doc := documents_.get-opened --uri=uri
       content-revision := opened-doc ? opened-doc.revision : -1
       if not doc.analysis-revision >= revision and not content-revision > revision:
