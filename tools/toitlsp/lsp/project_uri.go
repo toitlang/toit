@@ -31,10 +31,11 @@ func computeProjectURI(documentUri lsp.DocumentURI) (lsp.DocumentURI, error) {
 	// the parent of this segment.
 	for i := 0; i < len(segments); i++ {
 		if segments[i] == ".packages" {
-			segments = segments[:i]
-			resultPath := filepath.Join(segments...)
 			// We don't even check whether there is a package.yaml|lock file.
 			// We just assume that this is the project uri.
+			segments = segments[:i]
+			resultSlashPath := strings.Join(segments, "/")
+			resultPath := filepath.FromSlash(resultSlashPath)
 			return uri.PathToURI(resultPath), nil
 		}
 	}
