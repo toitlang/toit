@@ -190,6 +190,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   Object* allocate_string_or_error(const char* content, int length);
 #if defined(TOIT_WINDOWS)
   String* allocate_string(const wchar_t* content);
+  String* allocate_string(const wchar_t* content, word length);
 #endif
   ByteArray* allocate_byte_array(int length, bool force_external=false);
 
@@ -247,7 +248,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   inline HeapObject* true_object() const { return true_object_; }
   inline HeapObject* null_object() const { return null_; }
 
-  // These root certificate functions should be guarded by the scheduler mutex.
+  // These root certificate functions should be guarded by the TLS mutex.
   void add_root_certificate(UnparsedRootCertificate* certificate, const Locker& locker) {
     root_certificates_.append(certificate);
   }
