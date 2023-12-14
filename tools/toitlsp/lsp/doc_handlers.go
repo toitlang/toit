@@ -345,9 +345,17 @@ func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jso
 		// We add all transitive dependencies, as it's hard to track implicit exports.
 		// For example, the return type of a method, requires all users of the method
 		//   to check whether a member call of the result is now allowed or not.
-		// This can be happen multiple layers down. See #1513 for an example.
+		//   Say class 'A' in lib1 has a method 'foo' that is changed to take an additional parameter.
+		//   Say lib2 imports lib1 and return an 'A' from its 'bar' method.
+		//   Say lib3 imports lib2 and calls `bar.foo`. This call needs a diagnostic change, since
+		//     the 'foo' method now requires an additional parameter.
+		//
 		// Note that we do this only if the summary of the initial file changes. As such, we
 		//   usually don't analyze everything.
+		//
+		// We will also remove files that are in a different project-root. During the
+		//   reverse dependency creation we add them (so we don't end up in an infinite
+		//   recursion), but they will be removed just afterwards.
 		var addReverseDeps func(lsp.DocumentURI) error
 		addReverseDeps = func(revDepURI lsp.DocumentURI) error {
 			if !reportDiagnosticsDocuments.Contains(revDepURI) {
@@ -368,6 +376,19 @@ func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jso
 			}
 		}
 	}
+
+	// Remove the documents that are not in the same project-root.
+	filtered := uri.Set{}
+	for uri := range reportDiagnosticsDocuments {
+		docProjectURI, err := cCtx.Documents.ProjectURIFor(uri, true)
+		if err != nil {
+			return err
+		}
+		if docProjectURI == projectURI {
+			filtered.Add(uri)
+		}
+	}
+	reportDiagnosticsDocuments = filtered
 
 	// Send the diagnostics we have to the client.
 	for uri := range reportDiagnosticsDocuments {
