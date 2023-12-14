@@ -107,6 +107,18 @@ func (d *Documents) ProjectURIFor(uri lsp.DocumentURI, recompute bool) (lsp.Docu
 	return computed, nil
 }
 
+func (d *Documents) ProjectUrisContaining(uri lsp.DocumentURI) []lsp.DocumentURI {
+	result := []lsp.DocumentURI{}
+	d.l.RLock()
+	defer d.l.RUnlock()
+	for projectURI, analyzedDocument := range d.analyzedDocuments {
+		if _, ok := analyzedDocument.Get(uri); ok {
+			result = append(result, projectURI)
+		}
+	}
+	return result
+}
+
 func (d *Documents) Open(uri lsp.DocumentURI, content string, revision int) error {
 	d.l.Lock()
 	defer d.l.Unlock()
