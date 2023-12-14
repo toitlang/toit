@@ -919,15 +919,17 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
       std::string error_path;
       bool is_path_package = !entry.path.empty();
       if (is_path_package) {
-        char* localized = FilesystemLocal::to_local_path(entry.path.c_str());
         ASSERT(i == -1);
+        // The entry_path is always with slashes.
+        auto entry_path = entry.path.c_str();
+        char* localized = FilesystemLocal::to_local_path(entry_path);
         if (!fs->is_absolute(localized)) {
           // TODO(florian): this is not correct for Windows paths that are drive-relative: '\foo'.
-          builder.join(package_lock_dir);
+          builder.add(package_lock_dir);
         }
-        error_path = std::string(localized);
-        builder.join(error_path);
+        builder.joinSlashPath(std::string(entry_path));
         builder.canonicalize();
+        error_path = std::string(localized);
         free(localized);
       } else {
         if (i == -1) continue;
