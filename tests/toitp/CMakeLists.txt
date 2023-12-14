@@ -90,26 +90,36 @@ foreach(file ${TOITP_TESTS})
 
   file(RELATIVE_PATH toitp_test_name ${TOIT_SDK_SOURCE_DIR} ${toitp_test})
   if (NOT "${toitp_test_name}" IN_LIST TOIT_SKIP_TESTS)
+    set(TEST_NAME "${toitp_test_name}")
+    if("${TEST_NAME}" IN_LIST TOIT_FAILING_TESTS)
+      set(TEST_NAME "${TEST_NAME}-expected-to-fail")
+    endif()
+
     add_test(
-      NAME ${toitp_test_name}
+      NAME ${TEST_NAME}
       COMMAND $<TARGET_FILE:toit.run> ${toitp_test} ${snap} $<TARGET_FILE:toit.run> ${TOITP_EXE}
       DEPENDS ${TOITP_EXE}
       )
-    set_tests_properties(${toitp_test_name} PROPERTIES TIMEOUT 40)
+    set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT 40)
     if ("${toitp_test_name}" IN_LIST TOIT_FAILING_TESTS)
-      set_tests_properties(${toitp_test_name} PROPERTIES WILL_FAIL TRUE)
+      set_tests_properties(${TEST_NAME} PROPERTIES WILL_FAIL TRUE)
     endif()
   endif()
 
   file(RELATIVE_PATH snap_test_name ${TOIT_SDK_SOURCE_DIR} ${snap_test})
   if (NOT "${snap_test_name}" IN_LIST TOIT_SKIP_TESTS)
+    set(TEST_NAME "${snap_test_name}")
+    if("${TEST_NAME}" IN_LIST TOIT_FAILING_TESTS)
+      set(TEST_NAME "${TEST_NAME}-expected-to-fail")
+    endif()
+
     add_test(
-      NAME ${snap_test_name}
+      NAME ${TEST_NAME}
       COMMAND $<TARGET_FILE:toit.run> ${snap_test} ${snap}
       )
-    set_tests_properties(${snap_test_name} PROPERTIES TIMEOUT 40)
+    set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT 40)
     if ("${snap_test_name}" IN_LIST TOIT_FAILING_TESTS)
-      set_tests_properties(${snap_test_name} PROPERTIES WILL_FAIL TRUE)
+      set_tests_properties(${TEST_NAME} PROPERTIES WILL_FAIL TRUE)
     endif()
   endif()
 endforeach()

@@ -98,25 +98,30 @@ foreach(file ${ALL_TESTS})
     set(TEST_CONFIGURATIONS "slow")
   endif()
 
+  set(TEST_NAME ${file})
+  if("${TEST_NAME}" IN_LIST TOIT_FAILING_TESTS)
+    set(TEST_NAME "${TEST_NAME}-expected-to-fail")
+  endif()
+
   add_test(
-    NAME ${file}
+    NAME ${TEST_NAME}
     COMMAND $<TARGET_FILE:toit.run> ${TOIT_ARGS} ${file} ${TEST_ARGS}
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     CONFIGURATIONS ${TEST_CONFIGURATIONS}
     )
 
-  set_tests_properties(${file} PROPERTIES ENVIRONMENT "TOIT_TEST_ENV_ENTRY=TOIT_TEST_ENV_VALUE")
+  set_tests_properties(${TEST_NAME} PROPERTIES ENVIRONMENT "TOIT_TEST_ENV_ENTRY=TOIT_TEST_ENV_VALUE")
 
   if("${file}" IN_LIST TOIT_SLOW_TESTS)
-    set_tests_properties(${file} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
+    set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
   else()
-    set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+    set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
   endif()
   if("${file}" IN_LIST TOIT_FAILING_TESTS)
-    set_tests_properties(${file} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(${TEST_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
   if("${file}" IN_LIST TOIT_FLAKY_TESTS)
-    set_tests_properties(${file} PROPERTIES LABELS "flaky")
+    set_tests_properties(${TEST_NAME} PROPERTIES LABELS "flaky")
   endif()
 endforeach()
 
