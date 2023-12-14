@@ -72,7 +72,7 @@ foreach(file ${ALL_TESTS})
       CONFIGURATIONS slow
       )
     set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${LSP_DOUBLE_TIMEOUT})
-  elseif ("${TEST_NAME}" IN_LIST TOIT_COMPILER_TESTS)
+  elseif ("${file}" IN_LIST TOIT_COMPILER_TESTS)
     add_test(
       NAME ${TEST_NAME}
       COMMAND $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
