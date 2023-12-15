@@ -8,8 +8,7 @@ import expect show *
 
 main args:
   run-client-test --use-toitlsp args: test it
-  // The Toit version isn't implemented yet.
-  // run-client-test args: test it
+  run-client-test args: test it
 
 test client/LspClient:
   double-import-dir := "$directory.cwd/double_import"
