@@ -26,12 +26,6 @@ However, it must not be inside a '.packages' folder. In that case we assume that
 there is a `package.{yaml|lock}` file in the parent folder.
 */
 compute-project-uri --uri/string --translator/UriPathTranslator -> string:
-  result := compute-project-uri_ --uri=uri --translator=translator
-  print-on-stderr_ "project-uri: $uri -> $result"
-  print-on-stderr_ "project-uri: $(translator.to-path uri) -> $(translator.to-path result)"
-  return result
-
-compute-project-uri_ --uri/string --translator/UriPathTranslator -> string:
   path := translator.to-path uri
   dir := fs.dirname path
 
