@@ -39,7 +39,11 @@ build-name element klass/Class?=null:
 
 extract-element client/LspClient element-id --path=FILE-PATH -> Method:
   // Reaching into the private state of the server.
-  document := client.server.documents_.get-existing-document --path=path
+  uri := client.to-uri path
+  project-uri := client.server.documents_.project-uri-for --uri=uri
+  // Reaching into the private state of the server.
+  analyzed-documents := client.server.documents_.analyzed-documents-for --project-uri=project-uri
+  document := analyzed-documents.get-existing --uri=uri
   summary := document.summary
   summary.classes.do: |klass|
     klass.statics.do: if (build-name it klass) == element-id: return it

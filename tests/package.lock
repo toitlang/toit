@@ -1,9 +1,10 @@
-sdk: ^1.6.10
+sdk: ^2.0.0-alpha.120
 prefixes:
   ar: pkg-ar
   certificate_roots: toit-cert-roots
   cli: pkg-cli
   font_x11_adobe: pkg-font-x11-adobe
+  fs: pkg-fs
   host: pkg-host
   tar: pkg-tar
 packages:
@@ -22,11 +23,18 @@ packages:
     name: font_x11_adobe
     version: 0.1.0
     hash: f844400722165252148f087cdf189abab0a47f3d
+  pkg-fs:
+    url: github.com/toitlang/pkg-fs
+    name: fs
+    version: 1.0.0
+    hash: c816c85022a155f37a4396455da9b27595050de1
+    prefixes:
+      host: pkg-host
   pkg-host:
     url: github.com/toitlang/pkg-host
     name: host
-    version: 1.8.1
-    hash: 7f0cc4280065fb18ee09d3803f12180cec852d32
+    version: 1.11.0
+    hash: 7e7df6ac70d98a02f232185add81a06cec0d77e8
   pkg-tar:
     url: github.com/toitlang/pkg-tar
     name: tar
