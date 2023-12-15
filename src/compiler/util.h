@@ -124,25 +124,22 @@ class PathBuilder {
 
   // Joins the given sub_path to this builder.
   // The sub_path must use slashes as path separators.
-  void joinSlashPath(const std::string& sub_path) {
+  void join_slash_path(const std::string& sub_path) {
     if (sub_path.empty()) return;
-    size_t last_start = 0;
-    size_t pos = 0;
-    if (sub_path[0] == '/') {
-      join("/");
-      last_start = 1;
-    }
-    while (pos < sub_path.size()) {
-      if (sub_path[pos] == '/') {
-        if (pos > last_start) {
-          join(sub_path.substr(last_start, pos - last_start));
-        }
-        last_start = pos + 1;
+    size_t start_pos = 0;
+    while (start_pos < sub_path.size()) {
+      auto slash_pos = sub_path.find_first_of('/', start_pos);
+      if (slash_pos == std::string::npos) {
+        // No more slashes, use the rest of the string.
+        slash_pos = sub_path.size();
       }
-      pos++;
-    }
-    if (pos > last_start) {
-      join(sub_path.substr(last_start, pos - last_start));
+      // For absolute paths we need to add the leading "/".
+      if (slash_pos == 0 && buffer_.empty()) {
+        buffer_ += fs_->path_separator();
+      } else if (slash_pos > start_pos) {
+        join(sub_path.substr(start_pos, slash_pos - start_pos));
+      }
+      start_pos = slash_pos + 1;
     }
   }
 

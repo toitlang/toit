@@ -927,7 +927,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
           // TODO(florian): this is not correct for Windows paths that are drive-relative: '\foo'.
           builder.add(package_lock_dir);
         }
-        builder.joinSlashPath(std::string(entry_path));
+        builder.join_slash_path(std::string(entry_path));
         builder.canonicalize();
         error_path = std::string(localized);
         free(localized);
