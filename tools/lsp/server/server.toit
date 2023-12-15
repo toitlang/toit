@@ -74,7 +74,6 @@ class LspServer:
   toit-path-override_  /string?     ::= ?
   /// The root uri of the workspace.
   /// Rarely needed, as the server generally works with absolute paths.
-  /// It's mainly used to find package.lock files.
   root-uri_ /string? := null
 
   active-requests_ := 0
@@ -206,6 +205,7 @@ class LspServer:
   did-open params/DidOpenTextDocumentParams -> none:
     document := params.text-document
     uri := translator_.canonicalize document.uri
+    project-uri := documents_.project-uri-for --uri=uri
     // We are calling `analyze` just after updating the document.
     // The next analysis-revision is thus the one where the new content has been
     //   taken into account.
@@ -223,13 +223,15 @@ class LspServer:
     // If the request doesn't specify whether it wants the sdk we include it.
     include-sdk := params.include-sdk == null ? true : params.include-sdk
     uris := non-canonicalized-uris.map: translator_.canonicalize it
+    // We assume the project-uri is from the first uri.
+    project-uri := documents_.project-uri-for --uri=uris[0]
     paths := uris.map: translator_.to-path it
     compiler := compiler_
-    compiler.parse --paths=paths --project-uri=root-uri_
+    compiler.parse --paths=paths --project-uri=project-uri
     buffer := bytes.Buffer
     write-repro
         --writer=buffer
-        --compiler-flags=compiler.build-run-flags --project-uri=root-uri_
+        --compiler-flags=compiler.build-run-flags --project-uri=project-uri
         --compiler-input=json.stringify paths
         --protocol=compiler.protocol
         --info="toit/archive"
@@ -240,8 +242,9 @@ class LspServer:
 
   snapshot-bundle params/SnapshotBundleParams -> Map?:
     uri := translator_.canonicalize params.uri
+    project-uri := documents_.project-uri-for --uri=uri
     compiler := compiler_
-    bundle := compiler.snapshot-bundle --project-uri=root-uri_ uri
+    bundle := compiler.snapshot-bundle --project-uri=project-uri uri
     // Encode the byte-array as base64.
     if not bundle: return null
     return {
@@ -272,24 +275,29 @@ class LspServer:
 
   completion params/CompletionParams -> List/*<CompletionItem>*/:
     uri := translator_.canonicalize params.text-document.uri
-    return compiler_.complete --project-uri=root-uri_ uri params.position.line params.position.character
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    return compiler_.complete --project-uri=project-uri uri params.position.line params.position.character
 
   // TODO(florian): The specification supports a list of locations, or Locationlinks..
   // For now just returns one location.
   goto-definition params/TextDocumentPositionParams -> List/*<Location>*/:
     uri := translator_.canonicalize params.text-document.uri
-    return compiler_.goto-definition --project-uri=root-uri_ uri params.position.line params.position.character
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    return compiler_.goto-definition --project-uri=project-uri uri params.position.line params.position.character
 
   document-symbol params/DocumentSymbolParams -> List/*<DocumentSymbol>*/:
     uri := translator_.canonicalize params.text-document.uri
-    document := documents_.get --uri=uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
+    document := analyzed-documents.get --uri=uri
     if not (document and document.summary):
-      analyze [uri]
-      document = documents_.get-existing-document --uri=uri
+      analyze --project-uri=project-uri [uri] next-analysis-revision_++
+      document = analyzed-documents.get-existing --uri=uri
       if not document.summary: return []
+    opened-document := documents_.get-opened --uri=uri
     content := ""
-    if document.content:
-      content = document.content
+    if opened-document:
+      content = opened-document.content
     else:
       path := translator_.to-path uri
       if file.is-file path:
@@ -299,7 +307,8 @@ class LspServer:
 
   semantic-tokens params/SemanticTokensParams -> SemanticTokens:
     uri := translator_.canonicalize params.text-document.uri
-    tokens := compiler_.semantic-tokens --project-uri=root-uri_ uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    tokens := compiler_.semantic-tokens --project-uri=project-uri uri
     return SemanticTokens --data=tokens
 
   shutdown:
@@ -325,12 +334,26 @@ class LspServer:
     if uris.is-empty: return
 
     revision = revision or next-analysis-revision_++
-    assert: uris.every: | uri |
-      (documents_.get-existing-document --uri=uri).analysis-revision < revision
 
-    verbose: "Analyzing: $uris  ($revision)"
+    project-uris := {:}
+    uris.do: |uri|
+      project-uri := documents_.project-uri-for --uri=uri --recompute
+      list := project-uris.get project-uri --init=:[]
+      list.add uri
 
-    analysis-result := compiler_.analyze --project-uri=root-uri_ uris
+    project-uris.do: |project-uri uris|
+      analyze uris --project-uri=project-uri revision
+
+  analyze uris/List --project-uri/string? revision/int -> none:
+    analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
+
+    assert:
+      uris.every: | uri |
+        (analyzed-documents.get-existing --uri=uri).analysis-revision < revision
+
+    verbose: "Analyzing: $uris  ($revision) in $project-uri"
+
+    analysis-result := compiler_.analyze --project-uri=project-uri uris
     if not analysis-result:
       verbose: "Analysis failed (no analysis result). ($revision)"
       return  // Analysis didn't succeed. Don't bother with the result.
@@ -348,16 +371,15 @@ class LspServer:
         entry-path := translator_.to-path uri
         probably-entry-problem := diagnostics-per-uri.is-empty and
             diagnostics-without-position.any: it.contains entry-path
-        document := documents_.get --uri=uri
-        if probably-entry-problem and document:
-          if document.is-open:
+        if probably-entry-problem:
+          document := documents_.get-opened --uri=uri
+          if document:
             // This should not happen.
             // TODO(florian): report to client and log (potentially creating repro).
-          else:
-            if file.is-file entry-path:
-              // TODO(florian): report to client and log (potentially creating repro).
-            // Either way: delete the entry.
-            documents_.delete --uri=uri
+          if file.is-file entry-path:
+            // TODO(florian): report to client and log (potentially creating repro).
+          // Either way: delete the entry.
+          documents_.delete --uri=uri
       // Don't use the analysis result.
       return
 
@@ -369,18 +391,24 @@ class LspServer:
     // Always report diagnostics for the given uris, unless there is a more recent
     // analysis already, or if the document has been updated in the meantime.
     uris.do: | uri |
-      doc := documents_.get-existing-document --uri=uri
-      if not doc.analysis-revision >= revision and not doc.content-revision > revision:
+      doc := analyzed-documents.get-or-create --uri=uri
+      opened-doc := documents_.get-opened --uri=uri
+      content-revision := opened-doc ? opened-doc.revision : -1
+      if not doc.analysis-revision >= revision and not content-revision > revision:
         report-diagnostics-documents.add uri
 
     summaries.do: |summary-uri summary|
       assert: summary != null
-      update-result := documents_.update-document-after-analysis --uri=summary-uri
+      opened := documents_.get-opened --uri=summary-uri
+      content-revision := opened ? opened.revision : -1
+      update-result := analyzed-documents.update-document-after-analysis
+          --uri=summary-uri
           --analysis-revision=revision
+          --content-revision=content-revision
           --summary=summary
-      has-changed-summary := (update-result & Documents.SUMMARY-CHANGED-EXTERNALLY-BIT) != 0
+      has-changed-summary := (update-result & AnalyzedDocuments.SUMMARY-CHANGED-EXTERNALLY-BIT) != 0
       first-analysis-after-content-change :=
-          (update-result & Documents.FIRST-ANALYSIS-AFTER-CONTENT-CHANGE-BIT) != 0
+          (update-result & AnalyzedDocuments.FIRST-ANALYSIS-AFTER-CONTENT-CHANGE-BIT) != 0
 
       // If the summary has changed, it either means that:
       //  - this was one of the $uris that was analyzed
@@ -392,14 +420,14 @@ class LspServer:
         changed-summary-documents.add summary-uri
       if has-changed-summary or first-analysis-after-content-change:
         report-diagnostics-documents.add summary-uri
-      dep-document := documents_.get-existing-document --uri=summary-uri
+      dep-document := analyzed-documents.get-existing --uri=summary-uri
       request-revision := dep-document.analysis-requested-by-revision
       if request-revision != -1 and request-revision < revision:
         report-diagnostics-documents.add summary-uri
 
     // All reverse dependencies of changed documents need to have their diagnostics printed.
     changed-summary-documents.do:
-      document := documents_.get-existing-document --uri=it
+      document := analyzed-documents.get-existing --uri=it
 
       // Local lambda that transitively adds reverse dependencies.
       // We add all transitive dependencies, as it's hard to track implicit exports.
@@ -412,14 +440,14 @@ class LspServer:
       add-rev-deps = :: |rev-dep-uri|
         if not report-diagnostics-documents.contains rev-dep-uri:
           report-diagnostics-documents.add rev-dep-uri
-          rev-document := documents_.get-existing-document --uri=rev-dep-uri
+          rev-document := analyzed-documents.get-existing --uri=rev-dep-uri
           rev-document.reverse-deps.do: add-rev-deps.call it
 
       document.reverse-deps.do: add-rev-deps.call it
 
     // Send the diagnostics we have to the client.
     report-diagnostics-documents.do: |uri|
-      document := documents_.get-existing-document --uri=uri
+      document := analyzed-documents.get-existing --uri=uri
       request-revision := document.analysis-requested-by-revision
       was-analyzed := summaries.contains uri
       if was-analyzed:
@@ -433,13 +461,15 @@ class LspServer:
 
     // Local lambda that returns whether a document needs analysis.
     needs-analysis := : |uri|
-      document := documents_.get-existing-document --uri=uri
+      document := analyzed-documents.get-existing --uri=uri
       up-to-date := document.analysis-revision >= revision
-      will-be-analyzed := document.content-revision and document.content-revision > revision
+      opened := documents_.get-opened --uri=uri
+      content-revision := opened ? opened.revision : -1
+      will-be-analyzed := content-revision > revision
       not up-to-date and not will-be-analyzed
 
     // See which documents need to be analyzed as a result of changes.
-    documents-needing-analysis := report-diagnostics-documents.filter --in-place: // Reuse the set
+    documents-needing-analysis := report-diagnostics-documents.filter --in-place: // Reuse the set.
       needs-analysis.call it
 
     if not documents-needing-analysis.is-empty:
