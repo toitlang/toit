@@ -961,14 +961,23 @@ jobs:
           name: ${{ steps.constants.outputs.external_result_name }}
           path: external-result
 
-      - name: Check
+      - name: Debug out
         shell: bash
         run: |
           find .
+
+      - name: Check external
+        shell: bash
+        run: |
           cat external-result/*
-          ! grep "fail" external-result/*
+          grep "fail" external-result/* && exit 1
+
+      - name: Check flaky
+        if: always()
+        shell: bash
+        run: |
           cat flaky-result/*
-          ! grep "fail" flaky-result/*
+          grep "fail" flaky-result/* && exit 1
 
   AUR:
     name: Update AUR package
