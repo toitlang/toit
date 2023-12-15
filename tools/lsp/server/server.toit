@@ -350,6 +350,7 @@ class LspServer:
     assert:
       uris.every: | uri |
         (analyzed-documents.get-existing --uri=uri).analysis-revision < revision
+        (documents_.project-uri-for --uri=uri) == project-uri
 
     verbose: "Analyzing: $uris  ($revision) in $project-uri"
 
@@ -433,9 +434,18 @@ class LspServer:
       // We add all transitive dependencies, as it's hard to track implicit exports.
       // For example, the return type of a method, requires all users of the method
       //   to check whether a member call of the result is now allowed or not.
-      // This can be happen multiple layers down. See #1513 for an example.
+      //   Say class 'A' in lib1 has a method 'foo' that is changed to take an additional parameter.
+      //   Say lib2 imports lib1 and return an 'A' from its 'bar' method.
+      //   Say lib3 imports lib2 and calls `bar.foo`. This call needs a diagnostic change, since
+      //     the 'foo' method now requires an additional parameter.
+      //
+      // This can be happen multiple layers down.
       // Note that we do this only if the summary of the initial file changes. As such, we
       //   usually don't analyze everything.
+      //
+      // We will also remove files that are in a different project-root. During the
+      //   reverse dependency creation we add them (so we don't end up in an infinite
+      //   recursion), but they will be removed just afterwards.
       add-rev-deps := null
       add-rev-deps = :: |rev-dep-uri|
         if not report-diagnostics-documents.contains rev-dep-uri:
@@ -444,6 +454,11 @@ class LspServer:
           rev-document.reverse-deps.do: add-rev-deps.call it
 
       document.reverse-deps.do: add-rev-deps.call it
+
+    // Remove the documents that are not in the same project-root.
+    report-diagnostics-documents.filter --in-place: | uri/string |
+      document-project-uri := documents_.project-uri-for --uri=uri
+      document-project-uri == project-uri
 
     // Send the diagnostics we have to the client.
     report-diagnostics-documents.do: |uri|
