@@ -136,7 +136,7 @@ class PathBuilder {
       // For absolute paths we need to add the leading "/".
       if (slash_pos == 0 && buffer_.empty()) {
         buffer_ += fs_->path_separator();
-      } else if (slash_pos > start_pos) {
+      } else {
         join(sub_path.substr(start_pos, slash_pos - start_pos));
       }
       start_pos = slash_pos + 1;
