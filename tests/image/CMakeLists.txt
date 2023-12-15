@@ -65,7 +65,7 @@ foreach(input ${INPUT})
         "-DWORKING_DIR=${TOIT_SDK_SOURCE_DIR}"
         -P "${CMAKE_CURRENT_LIST_DIR}/image.cmake"
     )
-  set_tests_properties(${test_name} PROPERTIES TIMEOUT 80)
+  set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
 
   if("${input}" IN_LIST TOIT_FAILING_TESTS)
     set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
@@ -94,7 +94,7 @@ foreach(file ${S2I_TESTS})
     WORKING_DIRECTORY "${TOIT_SDK_SOURCE_DIR}"
     CONFIGURATIONS slow
     )
-  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
+  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 80)
 
   if("${file}" IN_LIST TOIT_FAILING_TESTS)
     set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
