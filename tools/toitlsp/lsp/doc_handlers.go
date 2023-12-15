@@ -225,19 +225,42 @@ func (s *Server) analyzeWithRevision(ctx context.Context, conn *jsonrpc2.Conn, r
 		projectURIs[projectURI] = append(projectURIs[projectURI], docUri)
 	}
 
-	for projectURI, uris := range projectURIs {
-		if err := s.analyzeWithProjectURIAndRevision(ctx, conn, projectURI, revision, uris...); err != nil {
-			return err
+	changedSummaryDocuments := uri.Set{}
+	for {
+		documents := s.GetContext(conn).Documents
+		oldChangedSize := len(changedSummaryDocuments)
+		for projectURI, uris := range projectURIs {
+			changedInProject, err := s.analyzeWithProjectURIAndRevision(ctx, conn, projectURI, revision, uris...)
+			if err != nil {
+				return err
+			}
+			changedSummaryDocuments.AddAll(changedInProject)
+		}
+		if oldChangedSize == len(changedSummaryDocuments) {
+			break
+		}
+		// Do another run for changed summaries in other projects.
+		projectURIs = map[lsp.DocumentURI][]lsp.DocumentURI{}
+		for uri := range changedSummaryDocuments {
+			projectUrisForUri := documents.ProjectUrisContaining(uri)
+			for _, projectURI := range projectUrisForUri {
+				// No need to analyze if that already happened.
+				analyzedDocuments := documents.AnalyzedDocumentsFor(projectURI)
+				doc := analyzedDocuments.GetExisting(uri)
+				if doc.AnalysisRevision < revision {
+					projectURIs[projectURI] = append(projectURIs[projectURI], uri)
+				}
+			}
 		}
 	}
 	return nil
 }
 
-func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jsonrpc2.Conn, projectURI lsp.DocumentURI, revision int, uris ...lsp.DocumentURI) error {
+func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jsonrpc2.Conn, projectURI lsp.DocumentURI, revision int, uris ...lsp.DocumentURI) (uri.Set, error) {
 	s.logger.Debug("analyzing", zap.Any("uris", uris))
 	defer s.logger.Debug("finished analyzing", zap.Any("uris", uris))
 	if len(uris) == 0 {
-		return nil
+		return uri.Set{}, nil
 	}
 
 	cCtx := s.GetContext(conn)
@@ -254,7 +277,7 @@ func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jso
 		if err != nil {
 			s.logger.Error("failed to analyze uris", zap.Any("uris", err), zap.Error(err))
 		}
-		return err
+		return nil, err
 	}
 
 	if len(result.DiagnosticsWithoutPosition) != 0 {
@@ -281,12 +304,12 @@ func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jso
 				}
 				// In any case: delete the entry, if there is one.
 				if err := cCtx.Documents.Delete(uri); err != nil {
-					return err
+					return nil, err
 				}
 			}
 		}
 		// Don't use the analysis result.
-		return nil
+		return uri.Set{}, nil
 	}
 
 	// Documents for which the summary changed.
@@ -312,7 +335,7 @@ func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jso
 		}
 		updateResult, err := analyzedDocuments.UpdateAfterAnalysis(summaryURI, revision, summary, contentRevision)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		hasChangedSummary := (updateResult & SUMMARY_CHANGED_EXTERNALLY_BIT) != 0
 		firstAnalysisAfterContentChange := (updateResult & FIRST_ANALYSIS_AFTER_CONTENT_CHANGE_BIT) != 0
@@ -372,7 +395,7 @@ func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jso
 
 		for revDepURI := range doc.ReverseDependencies {
 			if err := addReverseDeps(revDepURI); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
@@ -382,7 +405,7 @@ func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jso
 	for uri := range reportDiagnosticsDocuments {
 		docProjectURI, err := cCtx.Documents.ProjectURIFor(uri, true)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if docProjectURI == projectURI {
 			filtered.Add(uri)
@@ -400,7 +423,7 @@ func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jso
 				URI:         uri,
 				Diagnostics: result.Diagnostics[uri],
 			}); err != nil {
-				return err
+				return nil, err
 			}
 			if requestRevision != -1 && requestRevision < revision {
 				// Mark the request as done.
@@ -426,7 +449,18 @@ func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jso
 		}
 	}
 
-	return s.analyzeWithRevision(ctx, conn, revision, documentsNeedsAnalysis.Values()...)
+	if len(documentsNeedsAnalysis) != 0 {
+		// It's highly unlikely that a reverse dependency changes its summary as a result
+		// of a change in a dependency. However, this can easily change with language
+		// extensions. As such, we just add the result of the recursive call to our result.
+		revDepResults, err := s.analyzeWithProjectURIAndRevision(ctx, conn, projectURI, revision, documentsNeedsAnalysis.Values()...)
+		if err != nil {
+			return nil, err
+		}
+		changedSummaryDocuments.AddAll(revDepResults)
+	}
+
+	return changedSummaryDocuments, nil
 }
 
 type handleCompilerErrorOptions struct {

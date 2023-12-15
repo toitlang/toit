@@ -1,0 +1,5 @@
+dependencies:
+  p2:
+    path: ../p2
+  p3:
+    path: ../p3-bad
