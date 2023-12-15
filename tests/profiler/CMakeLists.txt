@@ -27,18 +27,18 @@ foreach(profiler_test ${PROFILER_TESTS})
     continue()
   endif()
 
-  set(TEST_NAME ${profiler_test_name})
-  if("${TEST_NAME}" IN_LIST TOIT_FAILING_TESTS)
-    set(TEST_NAME "${TEST_NAME}-expected-to-fail")
+  set(TEST_EXPECTATION_NAME ${profiler_test_name})
+  if("${profiler_test_name}" IN_LIST TOIT_FAILING_TESTS)
+    set(TEST_EXPECTATION_NAME "${profiler_test_name}-expected-to-fail")
   endif()
 
   add_test(
-    NAME ${TEST_NAME}
+    NAME ${TEST_EXPECTATION_NAME}
     COMMAND $<TARGET_FILE:toit.run> ${profiler_test} $<TARGET_FILE:toit.run> ${profiler_input}
     )
-  set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT 40)
+  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
 
   if("${profiler_test_name}" IN_LIST TOIT_FAILING_TESTS)
-    set_tests_properties(${TEST_NAME} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
 endforeach()

@@ -32,13 +32,13 @@ function(add_tests flags)
     string(REPLACE " " "__" test_name ${relative}${flags})
 
     if(NOT "${test_name}" IN_LIST TOIT_SKIP_TESTS)
-      set(test_expectation_name "${test_name}")
+      set(TEST_EXPECTATION_NAME "${test_name}")
       if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
-        set(test_expectation_name "${test_expectation_name}-expected-to-fail")
+        set(TEST_EXPECTATION_NAME "${test_name}-expected-to-fail")
       endif()
 
       add_test(
-        NAME ${test_expectation_name}
+        NAME ${TEST_EXPECTATION_NAME}
         COMMAND ${CMAKE_COMMAND}
             -DTOIT_RUN=$<TARGET_FILE:toit.run>
             -DTOIT_COMPILE=$<TARGET_FILE:toit.compile>
@@ -53,10 +53,10 @@ function(add_tests flags)
         WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
         CONFIGURATIONS slow
       )
-      set_tests_properties(${test_expectation_name} PROPERTIES TIMEOUT 40)
+      set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
 
       if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
-        set_tests_properties(${test_expectation_name} PROPERTIES WILL_FAIL TRUE)
+        set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
       endif()
     endif()
 

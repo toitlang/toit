@@ -50,49 +50,49 @@ foreach(file ${ALL_TESTS})
     continue()
   endif()
 
-  set(TEST_NAME ${file})
-  if("${TEST_NAME}" IN_LIST TOIT_FAILING_TESTS)
-    set(TEST_NAME "${TEST_NAME}-expected-to-fail")
+  set(TEST_EXPECTATION_NAME ${file})
+  if("${file}" IN_LIST TOIT_FAILING_TESTS)
+    set(TEST_EXPECTATION_NAME "${file}-expected-to-fail")
   endif()
 
 
   if ("${file}" IN_LIST TOIT_COMPLETION_TESTS)
     add_test(
-      NAME ${TEST_NAME}
+      NAME ${TEST_EXPECTATION_NAME}
       COMMAND $<TARGET_FILE:toit.run> ${CMAKE_CURRENT_SOURCE_DIR}/completion-test-runner.toit ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
       CONFIGURATIONS slow
       )
-    set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${LSP_DOUBLE_TIMEOUT})
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${LSP_DOUBLE_TIMEOUT})
   elseif ("${file}" IN_LIST TOIT_GOTO_DEFINITION_TESTS)
     add_test(
-      NAME ${TEST_NAME}
+      NAME ${TEST_EXPECTATION_NAME}
       COMMAND $<TARGET_FILE:toit.run> ${CMAKE_CURRENT_SOURCE_DIR}/goto-definition-test-runner.toit ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
       CONFIGURATIONS slow
       )
-    set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${LSP_DOUBLE_TIMEOUT})
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${LSP_DOUBLE_TIMEOUT})
   elseif ("${file}" IN_LIST TOIT_COMPILER_TESTS)
     add_test(
-      NAME ${TEST_NAME}
+      NAME ${TEST_EXPECTATION_NAME}
       COMMAND $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       CONFIGURATIONS slow
       )
-    set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
   elseif ("${file}" IN_LIST TOIT_SLOW_COMPILER_TESTS)
     add_test(
-      NAME ${TEST_NAME}
+      NAME ${TEST_EXPECTATION_NAME}
       COMMAND $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_LSP_SERVER_DIR}/server.toit $<TARGET_FILE:mock_compiler> ${TOIT_LSP_BIN}
       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       CONFIGURATIONS slow
       )
-    set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
   else()
     message(FATAL_ERROR "Unknown test: ${file}")
   endif()
 
   if ("${file}" IN_LIST TOIT_FAILING_TESTS)
-    set_tests_properties(${TEST_NAME} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
 endforeach()

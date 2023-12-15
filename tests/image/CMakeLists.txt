@@ -46,13 +46,13 @@ foreach(input ${INPUT})
   add_dependencies(check ${build_snap})
   add_dependencies(check_slow ${build_snap})
 
-  set(TEST_NAME ${input})
+  set(TEST_EXPECTATION_NAME ${input})
   if("${input}" IN_LIST TOIT_FAILING_TESTS)
-    set(TEST_NAME "${input}-expected-to-fail")
+    set(TEST_EXPECTATION_NAME "${input}-expected-to-fail")
   endif()
 
   add_test(
-    NAME "${TEST_NAME}"
+    NAME "${TEST_EXPECTATION_NAME}"
     COMMAND "${CMAKE_COMMAND}"
         "-DSNAP=${snap}"
         "-DTOITVM=$<TARGET_FILE:toit.run>"
@@ -68,7 +68,7 @@ foreach(input ${INPUT})
   set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
 
   if("${input}" IN_LIST TOIT_FAILING_TESTS)
-    set_tests_properties(${TEST_NAME} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
 endforeach()
 
@@ -80,13 +80,13 @@ foreach(file ${S2I_TESTS})
   get_filename_component(base ${file} NAME_WE)
   set(snap ${S2I_TEST_DIR}/${base}.snap)
 
-  set(TEST_NAME ${file})
-  if("${TEST_NAME}" IN_LIST TOIT_FAILING_TESTS)
-    set(TEST_NAME "${TEST_NAME}-expected-to-fail")
+  set(TEST_EXPECTATION_NAME ${file})
+  if("${file}" IN_LIST TOIT_FAILING_TESTS)
+    set(TEST_EXPECTATION_NAME "${file}-expected-to-fail")
   endif()
 
   add_test(
-    NAME "${TEST_NAME}"
+    NAME "${TEST_EXPECTATION_NAME}"
     COMMAND "$<TARGET_FILE:toit.run>" "${file}"
         "${snap}"
         "$<TARGET_FILE:toit.run>"
@@ -94,9 +94,9 @@ foreach(file ${S2I_TESTS})
     WORKING_DIRECTORY "${TOIT_SDK_SOURCE_DIR}"
     CONFIGURATIONS slow
     )
-  set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT 40)
+  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
 
   if("${file}" IN_LIST TOIT_FAILING_TESTS)
-    set_tests_properties(${TEST_NAME} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
 endforeach()

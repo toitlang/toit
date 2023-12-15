@@ -22,20 +22,20 @@ foreach(file ${TOIT_OPTIMIZATION_TESTS})
     continue()
   endif()
 
-  set(TEST_NAME ${file})
-  if("${TEST_NAME}" IN_LIST TOIT_FAILING_TESTS)
-    set(TEST_NAME "${TEST_NAME}-expected-to-fail")
+  set(TEST_EXPECTATION_NAME ${file})
+  if("${file}" IN_LIST TOIT_FAILING_TESTS)
+    set(TEST_EXPECTATION_NAME "${file}-expected-to-fail")
   endif()
 
   add_test(
-    NAME ${TEST_NAME}
+    NAME ${TEST_EXPECTATION_NAME}
     COMMAND $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/${file} $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/tools/lsp/server/server.toit
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     CONFIGURATIONS slow
     )
-  set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT 40)
+  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
 
   if("${file}" IN_LIST TOIT_FAILING_TESTS)
-    set_tests_properties(${TEST_NAME} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
 endforeach()
