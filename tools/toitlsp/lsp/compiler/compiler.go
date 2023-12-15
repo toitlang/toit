@@ -21,9 +21,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -379,13 +377,7 @@ func (c *Compiler) run(ctx context.Context, projectURI lsp.DocumentURI, input st
 
 func (c *Compiler) cmd(ctx context.Context, projectURI lsp.DocumentURI, input string, fileServer FileServer) *exec.Cmd {
 	args := []string{"--lsp"}
-	if projectURI != "" {
-		project_root := uri.URIToPath(projectURI)
-		lock_file := filepath.Join(project_root, "package.lock")
-		if stat, err := os.Stat(lock_file); err == nil && !stat.IsDir() {
-			args = append(args, "--project-root", uri.URIToCompilerPath(c.settings.RootURI))
-		}
-	}
+	args = append(args, "--project-root", uri.URIToCompilerPath(projectURI))
 	cmd := exec.CommandContext(ctx, c.settings.CompilerPath, args...)
 	for !fileServer.IsReady() {
 		runtime.Gosched()

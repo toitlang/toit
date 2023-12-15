@@ -37,12 +37,16 @@ compute-project-uri --uri/string --translator/UriPathTranslator -> string:
     // We don't even check whether there is a package.yaml|lock file.
     // We just assume that this is the project uri.
     result-path := segments[..dot-packages-index].join "/"
+    print-on-stderr_ "project-uri: found project uri: $result-path"
     return translator.to-uri result-path
 
   while true:
     if file.is-file "$dir/package.yaml" or file.is-file "$dir/package.lock":
       return translator.to-uri dir
     parent := fs.dirname dir
+    if parent == "" or dir == "":
+      // Work around bug in fs library: the path starts with a separator.
+      return translator.to-uri "/"
     if parent == ".":
       return translator.to-uri dir
     dir = parent
