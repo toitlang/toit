@@ -20,8 +20,9 @@ main args:
   pre-initializer := : | client/LspClient initialize-params/Map |
     initialize-params["rootUri"]=(client.to-uri root)
 
-  run-client-test args --pre-initialize=pre-initializer:
-    test it foo-entry
+  // The Toit version isn't implemented yet.
+  // run-client-test args --pre-initialize=pre-initializer:
+  //   test it foo-entry
   run-client-test --use-toitlsp args --pre-initialize=pre-initializer:
     test it foo-entry
 
