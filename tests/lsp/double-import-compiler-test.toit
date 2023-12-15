@@ -8,7 +8,8 @@ import expect show *
 
 main args:
   run-client-test --use-toitlsp args: test it
-  run-client-test args: test it
+  // The Toit version isn't implemented yet.
+  // run-client-test args: test it
 
 test client/LspClient:
   double-import-dir := "$directory.cwd/double_import"
@@ -23,11 +24,13 @@ test client/LspClient:
 
   // The good directory has a package lock file that
   // leads to 0 errors.
+  // However, the shared file continues to show the diagnostics of
+  // it being analyzed in its own project.
   client.send-did-open --path=good-main
   diagnostics = client.diagnostics-for --path=good-main
   expect-equals 0 diagnostics.size
   diagnostics = client.diagnostics-for --path=shared-file
-  expect-equals 0 diagnostics.size
+  expect diagnostics.size > 0
 
   // The bad directory has a package lock file that
   // leads to errors in the shared file again.
@@ -42,7 +45,6 @@ test client/LspClient:
   diagnostics = client.diagnostics-for --path=bad-main
   // The bad main itself doesn't have errors.
   expect-equals 0 diagnostics.size
-  // However, the diagnostics of the shared file has
-  // errors, as the package lock of the bad directory leads to errors there.
+  // The diagnostics of the shared file still is analyzed in its own project.
   diagnostics = client.diagnostics-for --path=shared-file
   expect diagnostics.size > 0

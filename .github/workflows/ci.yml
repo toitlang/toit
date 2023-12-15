@@ -34,7 +34,7 @@ jobs:
     runs-on: ${{ matrix.container }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -164,7 +164,7 @@ jobs:
           sudo chown $(whoami) apt-cacher-ng/cache.tar.gz
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -334,7 +334,7 @@ jobs:
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
           github.repository_owner == 'toitlang'
-        uses: google-github-actions/setup-gcloud@v1
+        uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: infrastructure-220307
 
@@ -382,7 +382,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -555,7 +555,7 @@ jobs:
         run: |
           echo raspberry_pi_artifact=toit-rpi.tar.gz >> $GITHUB_OUTPUT
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -846,15 +846,11 @@ jobs:
           overwrite: true
 
   sign_windows:
-    runs-on: windows-signing
+    runs-on: windows-latest
     needs: [combine]
     if: github.event_name == 'release'
     steps:
-      - name: Clean workspace
-        run: |
-          rm -Recurse -Force ${{ github.workspace }}\*
-
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v3
         with:
@@ -864,11 +860,25 @@ jobs:
         run: |
           & "C:\Program Files\Git\bin\bash.exe" --noprofile --norc -e -o pipefail -c "tar -xzf toit-windows.tar.gz"
 
-      - name: Sign
-        run: |
-          Get-ChildItem toit/bin/*.exe, toit/tools/*.exe | ForEach-Object {
-              signtool sign /debug /n "Toitware ApS" /t http://timestamp.digicert.com/ $_.FullName
-          }
+      - name: Sign Windows binary
+        uses: toitlang/action-code-sign@a4adedba46f2630ed60a1d6e6aa828ac7038c945 # v1.0.0
+        with:
+          certificate: ${{ secrets.DIGICERT_CERTIFICATE }}
+          api-key: ${{ secrets.DIGICERT_API_KEY }}
+          certificate-password: ${{ secrets.DIGICERT_PASSWORD }}
+          certificate-fingerprint: ${{ secrets.DIGICERT_FINGERPRINT }}
+          keypair-alias: ${{ vars.DIGICERT_KEYPAIR_ALIAS }}
+          path: toit/bin
+
+      - name: Sign Windows tools
+        uses: toitlang/action-code-sign@a4adedba46f2630ed60a1d6e6aa828ac7038c945 # v1.0.0
+        with:
+          certificate: ${{ secrets.DIGICERT_CERTIFICATE }}
+          api-key: ${{ secrets.DIGICERT_API_KEY }}
+          certificate-password: ${{ secrets.DIGICERT_PASSWORD }}
+          certificate-fingerprint: ${{ secrets.DIGICERT_FINGERPRINT }}
+          keypair-alias: ${{ vars.DIGICERT_KEYPAIR_ALIAS }}
+          path: toit/tools
 
       - name: Compress
         run: |
@@ -885,7 +895,16 @@ jobs:
       - name: Build installer
         run: |
           & tools\windows_installer\build.bat ${{ steps.version.outputs.version }} $PWD\toit $PWD\toit-windows-x64-installer.exe
-          signtool sign /debug /n "Toitware ApS" /t http://timestamp.digicert.com/ $PWD\toit-windows-x64-installer.exe
+
+      - name: Sign Windows installer
+        uses: toitlang/action-code-sign@a4adedba46f2630ed60a1d6e6aa828ac7038c945 # v1.0.0
+        with:
+          certificate: ${{ secrets.DIGICERT_CERTIFICATE }}
+          api-key: ${{ secrets.DIGICERT_API_KEY }}
+          certificate-password: ${{ secrets.DIGICERT_PASSWORD }}
+          certificate-fingerprint: ${{ secrets.DIGICERT_FINGERPRINT }}
+          keypair-alias: ${{ vars.DIGICERT_KEYPAIR_ALIAS }}
+          path: toit-windows-x64-installer.exe
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
@@ -961,7 +980,7 @@ jobs:
     steps:
       # This shouldn't be necessary, but the archlinux-package-action
       # doesn't work without it.
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Version number
         id: version

@@ -107,6 +107,23 @@ uint32 BaseMbedTlsSocket::hash_subject(uint8* buffer, int length) {
   return Utils::crc32(0xce77509, buffer, length);
 }
 
+static void* tagging_mbedtls_calloc(size_t nelem, size_t size) {
+  // Sanity check inputs for security.
+  if (nelem > 0xffff || size > 0xffff) return null;
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
+  size_t total_size = nelem * size;
+  void* result = calloc(1, total_size);
+  if (!result) {
+    VM::current()->scheduler()->gc(null, /* malloc_failed = */ true, /* try_hard = */ true);
+    result = calloc(1, total_size);
+  }
+  return result;
+}
+
+static void tagging_mbedtls_free(void* address) {
+  free(address);
+}
+
 // Use the unparsed certificates on the process to find the right one
 // for this connection.
 static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate, mbedtls_x509_crt** chain) {
@@ -130,7 +147,7 @@ static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate
     Locker locker(OS::tls_mutex());
     for (auto unparsed : process->root_certificates(locker)) {
       if (unparsed->subject_hash() != issuer_hash) continue;
-      mbedtls_x509_crt* cert = _new mbedtls_x509_crt;
+      auto cert = unvoid_cast<mbedtls_x509_crt*>(tagging_mbedtls_calloc(1, sizeof(mbedtls_x509_crt)));
       if (!cert) {
         ret = MBEDTLS_ERR_X509_ALLOC_FAILED;
         goto failed;
@@ -159,7 +176,7 @@ failed:
   for (mbedtls_x509_crt* cert = *chain; cert; ) {
     mbedtls_x509_crt* next = cert->next;
     mbedtls_x509_crt_free(cert);
-    delete cert;
+    tagging_mbedtls_free(cert);
     cert = next;
   }
   return ret;  // Problem.  Sadly, this is discarded unless you have a patched MbedTLS.
@@ -220,23 +237,6 @@ void BaseMbedTlsSocket::record_unknown_issuer(const mbedtls_asn1_named_data* iss
     }
   }
   error_flags_ = MBEDTLS_X509_BADCERT_NOT_TRUSTED;
-}
-
-static void* tagging_mbedtls_calloc(size_t nelem, size_t size) {
-  // Sanity check inputs for security.
-  if (nelem > 0xffff || size > 0xffff) return null;
-  HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
-  size_t total_size = nelem * size;
-  void* result = calloc(1, total_size);
-  if (!result) {
-    VM::current()->scheduler()->gc(null, /* malloc_failed = */ true, /* try_hard = */ true);
-    result = calloc(1, total_size);
-  }
-  return result;
-}
-
-static void tagging_mbedtls_free(void* address) {
-  free(address);
 }
 
 void MbedTlsResourceGroup::init_conf(mbedtls_ssl_config* conf) {
@@ -300,6 +300,9 @@ BaseMbedTlsSocket::~BaseMbedTlsSocket() {
   mbedtls_ssl_config_free(&conf_);
   for (mbedtls_x509_crt* c = root_certs_; c != null;) {
     mbedtls_x509_crt* n = c->next;
+    // We just delete the shallow copy, so there is no need
+    // to call mbedtls_x509_crt_free(). The actual freeing
+    // is taken care of by the x509 resource destruction.
     delete c;
     c = n;
   }
@@ -645,11 +648,11 @@ PRIMITIVE(add_global_root_certificate) {
   root->set_subject_hash(subject_hash);
 
   // No errors found, so lets add the root cert to the chain on the process.
-  Locker locker(OS::tls_mutex());
-
-  if (!process->already_has_root_certificate(data, length, locker)) {
-    defer_root_delete.keep();  // Don't delete it, once it's attached to the process.
-    process->add_root_certificate(root, locker);
+  { Locker locker(OS::tls_mutex());
+    if (!process->already_has_root_certificate(data, length, locker)) {
+      defer_root_delete.keep();  // Don't delete it, once it's attached to the process.
+      process->add_root_certificate(root, locker);
+    }
   }
 
   return Primitive::integer(subject_hash, process);
