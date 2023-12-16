@@ -43,9 +43,8 @@ main args:
   expect (file.is-file p3-good-path)
   expect (file.is-file p3-bad-path)
 
-  // Toit version isn't implemented yet.
-  // run-client-test args:
-  //   test it p1-path p2-path p3-good-path p3-bad-path
+  run-client-test args:
+    test it p1-path p2-path p3-good-path p3-bad-path
   run-client-test --use-toitlsp args:
     test it p1-path p2-path p3-good-path p3-bad-path
 

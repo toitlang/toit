@@ -341,23 +341,39 @@ class LspServer:
       list := project-uris.get project-uri --init=:[]
       list.add uri
 
-    project-uris.do: |project-uri uris|
-      analyze uris --project-uri=project-uri revision
+    changed-summary-documents := {}
+    while true:
+      old-changed-size := changed-summary-documents.size
+      project-uris.do: |project-uri uris|
+        changed-in-project := analyze uris --project-uri=project-uri revision
+        changed-summary-documents.add-all changed-in-project
+      if changed-summary-documents.size == old-changed-size: break
+      // Do another run for changed summaries in other projects.
+      project-uris.clear
+      changed-summary-documents.do: | uri |
+        project-uris-for-uri := documents_.project-uris-containing --uri=uri
+        project-uris-for-uri.do: |document-project-uri|
+          // No need to analyze, if that already happened.
+          analyzed-documents := documents_.analyzed-documents-for --project-uri=document-project-uri
+          document := analyzed-documents.get-existing --uri=uri
+          if document.analysis-revision < revision:
+            list := project-uris.get document-project-uri --init=:[]
+            list.add uri
 
-  analyze uris/List --project-uri/string? revision/int -> none:
+  analyze uris/List --project-uri/string? revision/int -> Set:
     analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
 
     assert:
       uris.every: | uri |
-        (analyzed-documents.get-existing --uri=uri).analysis-revision < revision
-        (documents_.project-uri-for --uri=uri) == project-uri
+        doc := analyzed-documents.get --uri=uri
+        not doc or doc.analysis-revision < revision
 
     verbose: "Analyzing: $uris  ($revision) in $project-uri"
 
     analysis-result := compiler_.analyze --project-uri=project-uri uris
     if not analysis-result:
       verbose: "Analysis failed (no analysis result). ($revision)"
-      return  // Analysis didn't succeed. Don't bother with the result.
+      return {} // Analysis didn't succeed. Don't bother with the result.
 
     summaries := analysis-result.summaries
     diagnostics-per-uri := analysis-result.diagnostics
@@ -382,7 +398,7 @@ class LspServer:
           // Either way: delete the entry.
           documents_.delete --uri=uri
       // Don't use the analysis result.
-      return
+      return {}
 
     // Documents for which the summary changed.
     changed-summary-documents := {}
@@ -488,7 +504,13 @@ class LspServer:
       needs-analysis.call it
 
     if not documents-needing-analysis.is-empty:
-      analyze (List.from documents-needing-analysis) revision
+      // It's highly unlikely that a reverse dependency changes its summary as a result
+      // of a change in a dependency. However, this can easily change with language
+      // extensions. As such, we just add the result of the recursive call to our result.
+      rev-dep-result := analyze (List.from documents-needing-analysis) revision --project-uri=project-uri
+      changed-summary-documents.add-all rev-dep-result
+
+    return changed-summary-documents
 
   send-diagnostics params/PushDiagnosticsParams -> none:
     connection_.send "textDocument/publishDiagnostics" params
