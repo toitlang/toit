@@ -365,8 +365,8 @@ class LspServer:
 
     assert:
       uris.every: | uri |
-        (analyzed-documents.get-existing --uri=uri).analysis-revision < revision
-        (documents_.project-uri-for --uri=uri) == project-uri
+        doc := analyzed-documents.get --uri=uri
+        not doc or doc.analysis-revision < revision
 
     verbose: "Analyzing: $uris  ($revision) in $project-uri"
 
