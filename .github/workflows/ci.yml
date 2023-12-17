@@ -961,14 +961,27 @@ jobs:
           name: ${{ steps.constants.outputs.external_result_name }}
           path: external-result
 
-      - name: Check
+      - name: List downloaded files
+        # This is mostly for debugging purposes.
         shell: bash
         run: |
           find .
+
+      - name: Check external
+        shell: bash
+        run: |
           cat external-result/*
-          ! grep "fail" external-result/*
+          grep "fail" external-result/* && exit 1
+
+      - name: Check flaky
+        # Even if the external result already failed we want to know whether flaky tests failed
+        # as well.
+        # Since the two steps aren't dependent always run this step.
+        if: always()
+        shell: bash
+        run: |
           cat flaky-result/*
-          ! grep "fail" flaky-result/*
+          grep "fail" flaky-result/* && exit 1
 
   AUR:
     name: Update AUR package
