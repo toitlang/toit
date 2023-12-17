@@ -961,7 +961,8 @@ jobs:
           name: ${{ steps.constants.outputs.external_result_name }}
           path: external-result
 
-      - name: Debug out
+      - name: List downloaded files
+        # This is mostly for debugging purposes.
         shell: bash
         run: |
           find .
@@ -973,6 +974,9 @@ jobs:
           grep "fail" external-result/* && exit 1
 
       - name: Check flaky
+        # Even if the external result already failed we want to know whether flaky tests failed
+        # as well.
+        # Since the two steps aren't dependent always run this step.
         if: always()
         shell: bash
         run: |
