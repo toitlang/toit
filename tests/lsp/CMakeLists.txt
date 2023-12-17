@@ -92,6 +92,11 @@ foreach(file ${ALL_TESTS})
     message(FATAL_ERROR "Unknown test: ${file}")
   endif()
 
+  if ("${file}" IN_LIST TOIT_SERIAL_TESTS)
+    # Don't run this test in parallel with other tests.
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES RUN_SERIAL TRUE)
+  endif()
+
   if ("${file}" IN_LIST TOIT_FAILING_TESTS)
     set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
