@@ -972,6 +972,11 @@ jobs:
         run: |
           cat external-result/*
           grep "fail" external-result/* && exit 1
+          # If we get here, we didn't find any failures but
+          # the exit code of the grep is still 1 or 2. Echo
+          # something to make it clear and avoid letting the
+          # result of the action be non-zero.
+          echo "success: no failures found"
 
       - name: Check flaky
         # Even if the external result already failed we want to know whether flaky tests failed
@@ -982,6 +987,11 @@ jobs:
         run: |
           cat flaky-result/*
           grep "fail" flaky-result/* && exit 1
+          # If we get here, we didn't find any failures but
+          # the exit code of the grep is still 1 or 2. Echo
+          # something to make it clear and avoid letting the
+          # result of the action be non-zero.
+          echo "success: no failures found"
 
   AUR:
     name: Update AUR package
