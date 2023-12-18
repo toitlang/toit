@@ -1,0 +1,12 @@
+toit-pixel-display/tests/simple.toit:97:24: error: Unresolved identifier: 'SimpleWindow'
+  window := true-color.SimpleWindow 42 23 22 20 context.transform
+                       ^~~~~~~~~~~~
+toit-pixel-display/tests/simple.toit:114:32: error: Unresolved identifier: 'FilledRectangle'
+  rect-in-window := true-color.FilledRectangle
+                               ^~~~~~~~~~~~~~~
+toit-pixel-display/tests/simple.toit:79:22: error: Class 'PixelDisplay' does not have any method 'context'
+  context := display.context
+                     ^~~~~~~
+toit-pixel-display/tests/simple.toit:85:11: error: Class 'PixelDisplay' does not have any method 'filled-rectangle'
+  display.filled-rectangle context 42 23 12 10
+          ^~~~~~~~~~~~~~~~
