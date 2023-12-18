@@ -53,9 +53,7 @@ CRASH-REPORT-RATE-LIMIT-MS ::= 30_000
 monitor Settings:
   map_ /Map := DEFAULT-SETTINGS
 
-  get key: return get key --if-absent=: null
-
-  get key [--if-absent]:
+  get_ key [--if-absent]:
     return map_.get key --if-absent=if-absent
 
   // While the new values are fetched, all other requests to the settings are blocked.
@@ -66,6 +64,24 @@ monitor Settings:
     if replacement-map: map_ = replacement-map
 
   replace new-map/Map -> none: map_ = new-map
+
+  is-verbose -> bool:
+    return (get_ "verbose" --if-absent=: false) == true
+
+  repro-dir -> string:
+    return get_ "reproDir" --if-absent=: DEFAULT-REPRO-DIR
+
+  toit-compiler-path -> string:
+    return get_ "toitPath" --if-absent=: "toit.compile"
+
+  sdk-path compiler-path/string -> string:
+    return get_ "sdkPath" --if-absent=: sdk-path-from-compiler compiler-path
+
+  timeout-ms -> int:
+    return get_ "timeoutMs" --if-absent=: DEFAULT-TIMEOUT-MS
+
+  should-write-repro -> bool:
+    return (get_ "shouldWriteReproOnCrash" --if-absent=: false) == true
 
 class LspServer:
   documents_     /Documents         ::= ?
@@ -189,7 +205,7 @@ class LspServer:
       settings_.replace: request-settings
       // Client configurations can only make the output verbose, but not disable it,
       //   if it was given by command-line.
-      is-verbose = is-verbose or (settings_.get "verbose" --if-absent=: false) == true
+      is-verbose = is-verbose or settings_.is-verbose
     // TODO(florian): register DidChangeConfigurationNotification.type
 
   cancel params/CancelParams -> none:
@@ -530,7 +546,7 @@ class LspServer:
 
   static repro-counter_ := 0
   compute-repro-path_ -> string:
-    repro-dir := settings_.get "reproDir" --if-absent=: DEFAULT-REPRO-DIR
+    repro-dir := settings_.repro-dir
     repro-prefix := "$repro-dir/repro"
     if not file.is-directory repro-dir:
       if file.is-file repro-dir:
@@ -552,19 +568,18 @@ class LspServer:
     compiler-path := toit-path-override_
     if compiler-path != null:
       return compiler-path
-    return settings_.get "toitPath" --if-absent=: "toit.compile"
+    return settings_.toit-compiler-path
 
   sdk-path_ -> string:
     // We can't access a setting while reading settings (the Setting class is a
     // monitor). Read the compiler_path first.
     compiler-path := compiler-path_
-    return settings_.get "sdkPath" --if-absent=:
-      sdk-path-from-compiler compiler-path
+    return settings_.sdk-path compiler-path
 
   compiler_ -> Compiler:
     compiler-path := compiler-path_
     sdk-path := sdk-path_
-    timeout-ms := settings_.get "timeoutMs" --if-absent=: DEFAULT-TIMEOUT-MS
+    timeout-ms := settings_.timeout-ms
 
     // Rate limit crash reporting.
     is-rate-limited := false
@@ -573,7 +588,7 @@ class LspServer:
       CRASH-LIMIT-US ::= CRASH-REPORT-RATE-LIMIT-MS * 1_000
       is-rate-limited = (Time.monotonic-us - last-crash-report-time_) <= CRASH-LIMIT-US
 
-    should-write-repro := settings_.get "shouldWriteReproOnCrash" --if-absent=:false
+    should-write-repro := settings_.should-write-repro
 
     protocol := FileServerProtocol.local compiler-path sdk-path documents_ translator_
 
