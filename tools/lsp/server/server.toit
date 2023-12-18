@@ -50,6 +50,12 @@ DEFAULT-TIMEOUT-MS ::= 10_000
 DEFAULT-REPRO-DIR ::= "/tmp/lsp_repros"
 CRASH-REPORT-RATE-LIMIT-MS ::= 30_000
 
+/**
+The settings for this server.
+
+This class is a monitor so that the $replace function blocks other method accesses
+  until the replacement is done.
+*/
 monitor Settings:
   map_ /Map := DEFAULT-SETTINGS
 
