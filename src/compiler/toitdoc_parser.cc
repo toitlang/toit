@@ -739,14 +739,18 @@ Symbol ToitdocParser::parse_delimited(int delimiter,
     if (c == '\\' &&
         ((look_ahead() == '\\' || look_ahead() == delimiter))) {
       if (keep_delimiters_and_escapes) {
-        // Skip over the escaped character.
-        advance(2);
+        // Skip over the escape character, but not the escaped
+        // character. That happens at the top of the loop.
+        advance();
       } else {
         buffer += make_string(chunk_start, index_);
         advance();
         chunk_start = index_;
-        advance();
       }
+      // Set 'c' to something that isn't a delimiter, so that
+      // we continue iterating. The escaped character will be
+      // consumed at the top of the loop.
+      c = 'X';
     }
   } while (c != delimiter && c != '\0');
   ASSERT(c == delimiter || c == '\0');
