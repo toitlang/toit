@@ -259,13 +259,13 @@ jobs:
           echo success > ${{ steps.constants.outputs.external_result }}
 
       - name: Store flaky test result
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.constants.outputs.flaky_result_name }}
           path: ${{ steps.constants.outputs.flaky_result }}
 
       - name: Store external test result
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.constants.outputs.external_result_name }}
           path: ${{ steps.constants.outputs.external_result }}
@@ -307,7 +307,7 @@ jobs:
       - name: Upload debug artifacts
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: debug
           path: ${{ steps.constants.outputs.debug_root_dir }}
@@ -316,7 +316,7 @@ jobs:
 
       - name: Upload toitdoc - Linux
         if: runner.os == 'Linux' && matrix.shard == 1
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: toitdoc
           path: toitdoc_${{ steps.constants.outputs.toit_version }}.json
@@ -365,14 +365,14 @@ jobs:
 
       - name: Upload unsigned artifacts - Windows
         if: runner.os == 'Windows' && matrix.shard == 1
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ runner.os }}-build-unsigned
           path: build/${{ steps.constants.outputs.artifact }}
 
       - name: Upload artifacts - Linux/macOS
         if: runner.os != 'Windows' && matrix.shard == 1
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.artifact }}
@@ -491,7 +491,7 @@ jobs:
           gzip --to-stdout build/esp32s3/firmware.envelope > build/firmware-esp32s3.gz
 
       - name: Upload firmware artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: firmwares
           path: |
@@ -662,7 +662,7 @@ jobs:
           tar -czf build/toit-aarch64.tar.gz -C ./build/aarch64 --dereference toit
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ runner.os }}-build
           path: |
@@ -764,19 +764,19 @@ jobs:
           done
 
       - name: Upload vessels
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: vessels
           path: vessels.tar.gz
 
       - name: Upload Windows unsigned
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Windows-build-unsigned
           path: toit-windows.tar.gz
 
       - name: Upload Linux
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Linux-build
           path: |
@@ -785,7 +785,7 @@ jobs:
             toit-aarch64.tar.gz
 
       - name: Upload macOS
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: macOS-build
           path: toit-macos.tar.gz
@@ -907,7 +907,7 @@ jobs:
           path: toit-windows-x64-installer.exe
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Windows-build
           path: |
