@@ -273,7 +273,7 @@ class LspServer:
   did-close params/DidCloseTextDocumentParams -> none:
     uri := translator_.canonicalize params.text-document.uri
     documents_.did-close --uri=uri
-    if not settings_.should-report-package-diagnostics and uri.contains "/.packages/":
+    if not settings_.should-report-package-diagnostics and is-inside-dot-packages --uri=uri:
       // Emit an empty diagnostics for this file, in case it had diagnostics before.
       send-diagnostics (PushDiagnosticsParams --uri=uri --diagnostics=[])
 
@@ -499,7 +499,7 @@ class LspServer:
     report-diagnostics-documents.filter --in-place: | uri/string |
       document-project-uri := documents_.project-uri-for --uri=uri
       if document-project-uri != project-uri: continue.filter false
-      if not should-report-package-diagnostics and uri.contains "/.packages/":
+      if not should-report-package-diagnostics and is-inside-dot-packages --uri=uri:
         // Only report diagnostics for package files if they are open.
         if not documents_.get-opened --uri=uri:
           continue.filter false

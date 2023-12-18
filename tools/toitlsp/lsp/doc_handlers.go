@@ -36,6 +36,11 @@ const (
 	crashReportRateLimit = 30 * time.Second
 )
 
+func isInsideDotPackages(uri lsp.DocumentURI) bool {
+	return strings.Contains(string(uri), "/.packages/") ||
+		strings.Contains(string(uri), "%2F.packages%2F")
+}
+
 func (s *Server) TextDocumentDidOpen(ctx context.Context, conn *jsonrpc2.Conn, req lsp.DidOpenTextDocumentParams) error {
 	req.TextDocument.URI = uri.Canonicalize(req.TextDocument.URI)
 	cCtx := s.GetContext(conn)
@@ -92,7 +97,7 @@ func (s *Server) TextDocumentDidClose(ctx context.Context, conn *jsonrpc2.Conn, 
 		return err
 	}
 	reportPackageDiagnostics := cCtx.Settings.ShouldReportPackageDiagnostics
-	if !reportPackageDiagnostics && strings.Contains(string(req.TextDocument.URI), "/.packages/") {
+	if !reportPackageDiagnostics && isInsideDotPackages(req.TextDocument.URI) {
 		// Emit an empty diagnostics for this file, in case it had diagnostics before.
 		// We are not going to update the diagnostics for this file anymore.
 		return publishDiagnostics(ctx, conn, lsp.PublishDiagnosticsParams{
@@ -425,7 +430,7 @@ func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jso
 		if docProjectURI != projectURI {
 			continue
 		}
-		if !reportPackageDiagnostics && strings.Contains(string(uri), "/.packages/") {
+		if !reportPackageDiagnostics && isInsideDotPackages(uri) {
 			// Only report diagnostics for package files if they are open.
 			_, ok := cCtx.Documents.GetOpenedDocument(uri)
 			if !ok {
