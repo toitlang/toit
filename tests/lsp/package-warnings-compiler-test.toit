@@ -41,5 +41,3 @@ test client/LspClient foo-path/string pkg1-path/string --should-report/bool:
   // When closed, the pkg1-path falls back to the original setting.
   diagnostics = client.diagnostics-for --path=pkg1-path
   expect-equals (should-report ? 1 : 0) diagnostics.size
-
-
