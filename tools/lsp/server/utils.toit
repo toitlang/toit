@@ -146,4 +146,6 @@ interval-binary-search list/List needle/int --try-first=null -> int:
 
 /** Whether the given $uri is inside a .packages folder. */
 is-inside-dot-packages --uri/string -> bool:
-  return uri.contains "/.packages/" or uri.contains "%2F.packages%2F"
+  return uri.contains "/.packages/" or
+      uri.contains "%5C.packages%5C" or
+      uri.contains "%5c.packages%5c"

@@ -38,7 +38,8 @@ const (
 
 func isInsideDotPackages(uri lsp.DocumentURI) bool {
 	return strings.Contains(string(uri), "/.packages/") ||
-		strings.Contains(string(uri), "%2F.packages%2F")
+		strings.Contains(string(uri), "%5C.packages%5C") ||
+		strings.Contains(string(uri), "%5c.packages%5c") ||
 }
 
 func (s *Server) TextDocumentDidOpen(ctx context.Context, conn *jsonrpc2.Conn, req lsp.DidOpenTextDocumentParams) error {
