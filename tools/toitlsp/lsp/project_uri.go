@@ -27,9 +27,9 @@ import (
 func computeProjectURI(documentUri lsp.DocumentURI) (lsp.DocumentURI, error) {
 	path := uri.URIToPath(documentUri)
 	segments := strings.Split(filepath.ToSlash(path), "/")
-	// Find the first '.packages' segment. We assume that the project root is
+	// Find the last '.packages' segment. We assume that the project root is
 	// the parent of this segment.
-	for i := 0; i < len(segments); i++ {
+	for i := len(segments) - 1; i >= 0; i-- {
 		if segments[i] == ".packages" {
 			// We don't even check whether there is a package.yaml|lock file.
 			// We just assume that this is the project uri.

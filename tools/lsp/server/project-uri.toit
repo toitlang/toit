@@ -31,7 +31,7 @@ compute-project-uri --uri/string --translator/UriPathTranslator -> string:
 
   slash-dir := dir.replace --all "\\" "/"
   segments := slash-dir.split "/"
-  dot-packages-index := segments.index-of ".packages"
+  dot-packages-index := segments.index-of --last ".packages"
 
   if dot-packages-index != -1:
     // We don't even check whether there is a package.yaml|lock file.
