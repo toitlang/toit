@@ -89,6 +89,9 @@ monitor Settings:
   should-write-repro -> bool:
     return (get_ "shouldWriteReproOnCrash" --if-absent=: false) == true
 
+  should-report-package-diagnostics -> bool:
+    return (get_ "reportPackageDiagnostics" --if-absent=: false) == true
+
 class LspServer:
   documents_     /Documents         ::= ?
   connection_    /RpcConnection     ::= ?
@@ -276,6 +279,9 @@ class LspServer:
   did-close params/DidCloseTextDocumentParams -> none:
     uri := translator_.canonicalize params.text-document.uri
     documents_.did-close --uri=uri
+    if not settings_.should-report-package-diagnostics and is-inside-dot-packages --uri=uri:
+      // Emit an empty diagnostics for this file, in case it had diagnostics before.
+      send-diagnostics (PushDiagnosticsParams --uri=uri --diagnostics=[])
 
   did-save params/DidSaveTextDocumentParams -> none:
     uri := translator_.canonicalize params.text-document.uri
@@ -493,10 +499,17 @@ class LspServer:
 
       document.reverse-deps.do: add-rev-deps.call it
 
-    // Remove the documents that are not in the same project-root.
+    // Remove the documents that are not in the same project-root, or are in
+    // .packages (assuming we don't want them).
+    should-report-package-diagnostics := settings_.should-report-package-diagnostics
     report-diagnostics-documents.filter --in-place: | uri/string |
       document-project-uri := documents_.project-uri-for --uri=uri
-      document-project-uri == project-uri
+      if document-project-uri != project-uri: continue.filter false
+      if not should-report-package-diagnostics and is-inside-dot-packages --uri=uri:
+        // Only report diagnostics for package files if they are open.
+        if not documents_.get-opened --uri=uri:
+          continue.filter false
+      true
 
     // Send the diagnostics we have to the client.
     report-diagnostics-documents.do: |uri|
