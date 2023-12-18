@@ -72,17 +72,17 @@ create-archive path toitc -> string:
   protocol := FileServerProtocol documents repro-filesystem uri-translator
   compiler := Compiler toitc uri-translator timeout-ms
       --protocol=protocol
-      --project-uri=uri-translator.to-uri directory.cwd
 
   compiler-input := create-compiler-input --path=untitled-path
 
   suggestions := null
-  compiler.run --compiler-input=compiler-input:
+  compiler.run --compiler-input=compiler-input
+      --project-uri=uri-translator.to-uri directory.cwd:
     check-compiler-output it
 
   write-repro
       --repro-path=path
-      --compiler-flags=compiler.build-run-flags
+      --compiler-flags=compiler.build-run-flags --project-uri=(uri-translator.to-uri directory.cwd)
       --compiler-input=compiler-input
       --info="Test"
       --protocol=protocol

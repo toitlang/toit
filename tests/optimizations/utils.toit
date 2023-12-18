@@ -21,7 +21,7 @@ run args/List --entry-path/string sources/Map={:} -> SnapshotBundle:
       --supports-config=false: |client/LspClient|
     sources.do: |path content|
       client.send-did-open --path=path --text=content
-    snapshot-bundle := client.send-request "toit/snapshot_bundle" { "uri": client.to-uri entry-path }
+    snapshot-bundle := client.send-request "toit/snapshotBundle" { "uri": client.to-uri entry-path }
     if not snapshot-bundle or not snapshot-bundle["snapshot_bundle"]: throw "Unsuccessful compilation"
     result := SnapshotBundle (base64.decode snapshot-bundle["snapshot_bundle"])
     return result

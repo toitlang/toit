@@ -151,6 +151,15 @@ global-setter= x:
 global-setter2= x -> none:
   42
 
+fun
+    --some
+    --args
+    on
+    multiple
+    lines
+:
+  print "with colon at same level as 'fun'"
+
 abstract class Type:
   foo := 499
   constructor:

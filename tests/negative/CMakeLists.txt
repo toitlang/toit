@@ -33,8 +33,13 @@ foreach(file ${TOIT_TESTS})
   string(REPLACE " " "__" test_name ${relative})
 
   if(NOT "${test_name}" IN_LIST TOIT_SKIP_TESTS)
+    set(TEST_EXPECTATION_NAME "${test_name}")
+    if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
+      set(TEST_EXPECTATION_NAME "${test_name}-expected-to-fail")
+    endif()
+
     add_test(
-      NAME ${test_name}
+      NAME ${TEST_EXPECTATION_NAME}
       COMMAND ${CMAKE_COMMAND}
           -DTOITVM=$<TARGET_FILE:toit.run>
           "-DTEST=${relative}"
@@ -48,10 +53,10 @@ foreach(file ${TOIT_TESTS})
           -P "${CMAKE_CURRENT_SOURCE_DIR}/run.cmake"
       WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
-    set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
 
     if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
-      set_tests_properties(${test_name} PROPERTIES WILL_FAIL TRUE)
+      set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
     endif()
   endif()
 

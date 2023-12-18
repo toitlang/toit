@@ -39,7 +39,7 @@ const (
 func (s *Server) TextDocumentDidOpen(ctx context.Context, conn *jsonrpc2.Conn, req lsp.DidOpenTextDocumentParams) error {
 	req.TextDocument.URI = uri.Canonicalize(req.TextDocument.URI)
 	cCtx := s.GetContext(conn)
-	if err := cCtx.Documents.Add(req.TextDocument.URI, &req.TextDocument.Text, cCtx.NextAnalysisRevision); err != nil {
+	if err := cCtx.Documents.Open(req.TextDocument.URI, req.TextDocument.Text, cCtx.NextAnalysisRevision); err != nil {
 		return err
 	}
 
@@ -96,8 +96,12 @@ func (s *Server) textDocumentDefinition(ctx context.Context, conn *jsonrpc2.Conn
 		return nil, err
 	}
 	cCtx := s.GetContext(conn)
+	projectURI, err := cCtx.Documents.ProjectURIFor(req.TextDocument.URI, true)
+	if err != nil {
+		return nil, err
+	}
 	compiler := s.createCompiler(cCtx)
-	res, err := compiler.GotoDefinition(ctx, req.TextDocument.URI, req.Position)
+	res, err := compiler.GotoDefinition(ctx, projectURI, req.TextDocument.URI, req.Position)
 	if err != nil {
 		return nil, s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,
@@ -114,8 +118,12 @@ func (s *Server) textDocumentCompletion(ctx context.Context, conn *jsonrpc2.Conn
 		return nil, err
 	}
 	cCtx := s.GetContext(conn)
+	projectURI, err := cCtx.Documents.ProjectURIFor(req.TextDocument.URI, true)
+	if err != nil {
+		return nil, err
+	}
 	compiler := s.createCompiler(cCtx)
-	res, err := compiler.Complete(ctx, req.TextDocument.URI, req.Position)
+	res, err := compiler.Complete(ctx, projectURI, req.TextDocument.URI, req.Position)
 	if err != nil {
 		return nil, s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,
@@ -132,19 +140,25 @@ func (s *Server) textDocumentSymbol(ctx context.Context, conn *jsonrpc2.Conn, re
 		return nil, err
 	}
 	cCtx := s.GetContext(conn)
-	doc, ok := cCtx.Documents.Get(req.TextDocument.URI)
+	projectURI, err := cCtx.Documents.ProjectURIFor(req.TextDocument.URI, true)
+	if err != nil {
+		return nil, err
+	}
+	analyzedDocuments := cCtx.Documents.AnalyzedDocumentsFor(projectURI)
+	doc, ok := analyzedDocuments.Get(req.TextDocument.URI)
 	if !ok || doc.Summary == nil {
 		if err := s.analyze(ctx, conn, req.TextDocument.URI); err != nil {
 			return nil, err
 		}
-		doc = cCtx.Documents.GetExisting(req.TextDocument.URI)
+		doc = analyzedDocuments.GetExisting(req.TextDocument.URI)
 		if doc.Summary == nil {
 			return nil, nil
 		}
 	}
-	var content string
-	if doc.Content != nil {
-		content = *doc.Content
+	content := ""
+	openedDoc, ok := cCtx.Documents.GetOpenedDocument(req.TextDocument.URI)
+	if ok && openedDoc.Content != nil {
+		content = *openedDoc.Content
 	} else {
 		path := uri.URIToPath(req.TextDocument.URI)
 		f, err := s.localFileSystem.Read(path)
@@ -166,8 +180,12 @@ func (s *Server) textDocumentSemanticTokensFull(ctx context.Context, conn *jsonr
 		return nil, err
 	}
 	cCtx := s.GetContext(conn)
+	projectURI, err := cCtx.Documents.ProjectURIFor(req.TextDocument.URI, true)
+	if err != nil {
+		return nil, err
+	}
 	compiler := s.createCompiler(cCtx)
-	res, err := compiler.SemanticTokens(ctx, req.TextDocument.URI)
+	res, err := compiler.SemanticTokens(ctx, projectURI, req.TextDocument.URI)
 	if err != nil {
 		return nil, s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,
@@ -178,11 +196,8 @@ func (s *Server) textDocumentSemanticTokensFull(ctx context.Context, conn *jsonr
 	return res, nil
 }
 
-/**
-  Analyzes the given $uris and sends diagnostics to the client.
-
-  Transitively analyzes all newly discovered files.
-*/
+// Analyzes the given $uris and sends diagnostics to the client.
+// Transitively analyzes all newly discovered files.
 func (s *Server) analyze(ctx context.Context, conn *jsonrpc2.Conn, uris ...lsp.DocumentURI) error {
 	if err := s.WaitUntilReady(ctx, conn); err != nil {
 		return err
@@ -196,15 +211,63 @@ func (s *Server) analyze(ctx context.Context, conn *jsonrpc2.Conn, uris ...lsp.D
 }
 
 func (s *Server) analyzeWithRevision(ctx context.Context, conn *jsonrpc2.Conn, revision int, uris ...lsp.DocumentURI) error {
-	s.logger.Debug("analyzing", zap.Any("uris", uris))
-	defer s.logger.Debug("finished analyzing", zap.Any("uris", uris))
 	if len(uris) == 0 {
 		return nil
 	}
 
+	// Map from project URI to a list of documents that need to be analyzed.
+	projectURIs := map[lsp.DocumentURI][]lsp.DocumentURI{}
+	for _, docUri := range uris {
+		projectURI, err := s.GetContext(conn).Documents.ProjectURIFor(docUri, true)
+		if err != nil {
+			return err
+		}
+		projectURIs[projectURI] = append(projectURIs[projectURI], docUri)
+	}
+
+	changedSummaryDocuments := uri.Set{}
+	for {
+		documents := s.GetContext(conn).Documents
+		oldChangedSize := len(changedSummaryDocuments)
+		for projectURI, uris := range projectURIs {
+			changedInProject, err := s.analyzeWithProjectURIAndRevision(ctx, conn, projectURI, revision, uris...)
+			if err != nil {
+				return err
+			}
+			changedSummaryDocuments.AddAll(changedInProject)
+		}
+		if oldChangedSize == len(changedSummaryDocuments) {
+			break
+		}
+		// Do another run for changed summaries in other projects.
+		projectURIs = map[lsp.DocumentURI][]lsp.DocumentURI{}
+		for uri := range changedSummaryDocuments {
+			projectUrisForUri := documents.ProjectUrisContaining(uri)
+			for _, projectURI := range projectUrisForUri {
+				// No need to analyze if that already happened.
+				analyzedDocuments := documents.AnalyzedDocumentsFor(projectURI)
+				doc := analyzedDocuments.GetExisting(uri)
+				if doc.AnalysisRevision < revision {
+					projectURIs[projectURI] = append(projectURIs[projectURI], uri)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jsonrpc2.Conn, projectURI lsp.DocumentURI, revision int, uris ...lsp.DocumentURI) (uri.Set, error) {
+	s.logger.Debug("analyzing", zap.Any("uris", uris))
+	defer s.logger.Debug("finished analyzing", zap.Any("uris", uris))
+	if len(uris) == 0 {
+		return uri.Set{}, nil
+	}
+
 	cCtx := s.GetContext(conn)
+	analyzedDocuments := cCtx.Documents.AnalyzedDocumentsFor(projectURI)
+
 	c := s.createCompiler(cCtx)
-	result, err := c.Analyze(ctx, uris...)
+	result, err := c.Analyze(ctx, projectURI, uris...)
 	if err != nil {
 		err := s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,
@@ -214,7 +277,7 @@ func (s *Server) analyzeWithRevision(ctx context.Context, conn *jsonrpc2.Conn, r
 		if err != nil {
 			s.logger.Error("failed to analyze uris", zap.Any("uris", err), zap.Error(err))
 		}
-		return err
+		return nil, err
 	}
 
 	if len(result.DiagnosticsWithoutPosition) != 0 {
@@ -232,20 +295,21 @@ func (s *Server) analyzeWithRevision(ctx context.Context, conn *jsonrpc2.Conn, r
 		for _, uri := range uris {
 			entryPath := util.UriToRealPath(golsp.DocumentURI(uri))
 			probablyEntryProblem := len(result.Diagnostics) == 0 && stringsContainsAny(result.DiagnosticsWithoutPosition, entryPath)
-			document, ok := cCtx.Documents.Get(uri)
-			if probablyEntryProblem && ok {
-				if document.IsOpen {
+			if probablyEntryProblem {
+				_, ok := cCtx.Documents.GetOpenedDocument(uri)
+				if ok {
 					// This should not happen.
-					// TODO(jesper): report to client and log (potentially creating repro).
-				} else {
-					if err := cCtx.Documents.Delete(uri); err != nil {
-						return err
-					}
+					// TODO(floitsch): report to client and log (potentially creating repro).
+					s.logger.Info("LSP server error. Document not opened.", zap.String("URI", string(uri)))
+				}
+				// In any case: delete the entry, if there is one.
+				if err := cCtx.Documents.Delete(uri); err != nil {
+					return nil, err
 				}
 			}
 		}
 		// Don't use the analysis result.
-		return nil
+		return uri.Set{}, nil
 	}
 
 	// Documents for which the summary changed.
@@ -254,16 +318,24 @@ func (s *Server) analyzeWithRevision(ctx context.Context, conn *jsonrpc2.Conn, r
 	reportDiagnosticsDocuments := uri.Set{}
 
 	for _, uri := range uris {
-		doc := cCtx.Documents.GetExisting(uri)
-		if doc.AnalysisRevision < revision && doc.ContentRevision <= revision {
+		doc := analyzedDocuments.GetOrCreate(uri)
+		contentRevision := -1
+		if openedDoc, ok := cCtx.Documents.GetOpenedDocument(uri); ok {
+			contentRevision = openedDoc.Revision
+		}
+		if doc.AnalysisRevision < revision && contentRevision <= revision {
 			reportDiagnosticsDocuments.Add(uri)
 		}
 	}
 
 	for summaryURI, summary := range result.Summaries {
-		updateResult, err := cCtx.Documents.UpdateAfterAnalysis(summaryURI, revision, summary)
+		contentRevision := -1
+		if openedDoc, ok := cCtx.Documents.GetOpenedDocument(summaryURI); ok {
+			contentRevision = openedDoc.Revision
+		}
+		updateResult, err := analyzedDocuments.UpdateAfterAnalysis(summaryURI, revision, summary, contentRevision)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		hasChangedSummary := (updateResult & SUMMARY_CHANGED_EXTERNALLY_BIT) != 0
 		firstAnalysisAfterContentChange := (updateResult & FIRST_ANALYSIS_AFTER_CONTENT_CHANGE_BIT) != 0
@@ -280,7 +352,7 @@ func (s *Server) analyzeWithRevision(ctx context.Context, conn *jsonrpc2.Conn, r
 		if hasChangedSummary || firstAnalysisAfterContentChange {
 			reportDiagnosticsDocuments.Add(summaryURI)
 		}
-		depDoc := cCtx.Documents.GetExisting(summaryURI)
+		depDoc := analyzedDocuments.GetExisting(summaryURI)
 
 		requestRevision := depDoc.AnalysisRequestedByRevision
 		if requestRevision != -1 && requestRevision < revision {
@@ -290,20 +362,28 @@ func (s *Server) analyzeWithRevision(ctx context.Context, conn *jsonrpc2.Conn, r
 
 	// All reverse dependencies of changed documents need to have their diagnostics printed.
 	for changedURI := range changedSummaryDocuments {
-		doc := cCtx.Documents.GetExisting(changedURI)
+		doc := analyzedDocuments.GetExisting(changedURI)
 
 		// Local lambda that transitively adds reverse dependencies.
 		// We add all transitive dependencies, as it's hard to track implicit exports.
 		// For example, the return type of a method, requires all users of the method
 		//   to check whether a member call of the result is now allowed or not.
-		// This can be happen multiple layers down. See #1513 for an example.
+		//   Say class 'A' in lib1 has a method 'foo' that is changed to take an additional parameter.
+		//   Say lib2 imports lib1 and return an 'A' from its 'bar' method.
+		//   Say lib3 imports lib2 and calls `bar.foo`. This call needs a diagnostic change, since
+		//     the 'foo' method now requires an additional parameter.
+		//
 		// Note that we do this only if the summary of the initial file changes. As such, we
 		//   usually don't analyze everything.
+		//
+		// We will also remove files that are in a different project-root. During the
+		//   reverse dependency creation we add them (so we don't end up in an infinite
+		//   recursion), but they will be removed just afterwards.
 		var addReverseDeps func(lsp.DocumentURI) error
 		addReverseDeps = func(revDepURI lsp.DocumentURI) error {
 			if !reportDiagnosticsDocuments.Contains(revDepURI) {
 				reportDiagnosticsDocuments.Add(revDepURI)
-				revDepDoc := cCtx.Documents.GetExisting(revDepURI)
+				revDepDoc := analyzedDocuments.GetExisting(revDepURI)
 				for depDepURI := range revDepDoc.ReverseDependencies {
 					if err := addReverseDeps(depDepURI); err != nil {
 						return err
@@ -315,14 +395,27 @@ func (s *Server) analyzeWithRevision(ctx context.Context, conn *jsonrpc2.Conn, r
 
 		for revDepURI := range doc.ReverseDependencies {
 			if err := addReverseDeps(revDepURI); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
 
+	// Remove the documents that are not in the same project-root.
+	filtered := uri.Set{}
+	for uri := range reportDiagnosticsDocuments {
+		docProjectURI, err := cCtx.Documents.ProjectURIFor(uri, true)
+		if err != nil {
+			return nil, err
+		}
+		if docProjectURI == projectURI {
+			filtered.Add(uri)
+		}
+	}
+	reportDiagnosticsDocuments = filtered
+
 	// Send the diagnostics we have to the client.
 	for uri := range reportDiagnosticsDocuments {
-		doc := cCtx.Documents.GetExisting(uri)
+		doc := analyzedDocuments.GetExisting(uri)
 		requestRevision := doc.AnalysisRequestedByRevision
 		_, wasAnalyzed := result.Summaries[uri]
 		if wasAnalyzed {
@@ -330,29 +423,44 @@ func (s *Server) analyzeWithRevision(ctx context.Context, conn *jsonrpc2.Conn, r
 				URI:         uri,
 				Diagnostics: result.Diagnostics[uri],
 			}); err != nil {
-				return err
+				return nil, err
 			}
 			if requestRevision != -1 && requestRevision < revision {
 				// Mark the request as done.
-				cCtx.Documents.SetAnalysisRequestedByRevision(doc, -1)
+				analyzedDocuments.SetAnalysisRequestedByRevision(uri, doc, -1)
 			}
 		} else if requestRevision < revision {
-			cCtx.Documents.SetAnalysisRequestedByRevision(doc, revision)
+			analyzedDocuments.SetAnalysisRequestedByRevision(uri, doc, revision)
 		}
 	}
 
 	// See which documents need to be analyzed as a result of changes.
 	documentsNeedsAnalysis := uri.Set{}
 	for uri := range reportDiagnosticsDocuments {
-		doc := cCtx.Documents.GetExisting(uri)
+		doc := analyzedDocuments.GetExisting(uri)
+		documentRevision := -1
+		if openedDoc, ok := cCtx.Documents.GetOpenedDocument(uri); ok {
+			documentRevision = openedDoc.Revision
+		}
 		upToDate := doc.AnalysisRevision >= revision
-		willBeAnalysed := doc.ContentRevision > revision
+		willBeAnalysed := documentRevision > revision
 		if !upToDate && !willBeAnalysed {
 			documentsNeedsAnalysis.Add(uri)
 		}
 	}
 
-	return s.analyzeWithRevision(ctx, conn, revision, documentsNeedsAnalysis.Values()...)
+	if len(documentsNeedsAnalysis) != 0 {
+		// It's highly unlikely that a reverse dependency changes its summary as a result
+		// of a change in a dependency. However, this can easily change with language
+		// extensions. As such, we just add the result of the recursive call to our result.
+		revDepResults, err := s.analyzeWithProjectURIAndRevision(ctx, conn, projectURI, revision, documentsNeedsAnalysis.Values()...)
+		if err != nil {
+			return nil, err
+		}
+		changedSummaryDocuments.AddAll(revDepResults)
+	}
+
+	return changedSummaryDocuments, nil
 }
 
 type handleCompilerErrorOptions struct {
@@ -440,6 +548,5 @@ func (s *Server) createCompiler(cCtx ConnContext) *compiler.Compiler {
 		SDKPath:      cCtx.Settings.SDKPath,
 		CompilerPath: cCtx.Settings.ToitcPath,
 		Timeout:      cCtx.Settings.Timeout,
-		RootURI:      cCtx.RootURI,
 	})
 }

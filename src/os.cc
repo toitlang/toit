@@ -44,7 +44,9 @@ int OS::cpu_revision_ = 1000000;
 
 void OS::set_up_mutexes() {
   global_mutex_ = allocate_mutex(0, "Global mutex");
-  tls_mutex_ = allocate_mutex(4, "TLS mutex");
+  // We need to be able to take the scheduler mutex (level 2), to do GC
+  // while we hold the TLS mutex during handshakes.
+  tls_mutex_ = allocate_mutex(1, "TLS mutex");
   process_mutex_ = allocate_mutex(4, "Process mutex");
   resource_mutex_ = allocate_mutex(99, "Resource mutex");
 }

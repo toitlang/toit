@@ -1,0 +1,15 @@
+toit-pixel-display/tests/true-color.toit:40:18: error: Class 'PixelDisplay' does not have any method 'context'
+  ctx := display.context --landscape --color=(get-rgb 255 120 0) --font=sans10
+                 ^~~~~~~
+toit-pixel-display/tests/true-color.toit:42:11: error: Class 'PixelDisplay' does not have any method 'filled-rectangle'
+  display.filled-rectangle ctx 10 20 30 40
+          ^~~~~~~~~~~~~~~~
+toit-pixel-display/tests/true-color.toit:43:11: error: Class 'PixelDisplay' does not have any method 'text'
+  display.text ctx 50 20 "Testing"
+          ^~~~
+toit-pixel-display/tests/true-color.toit:44:11: error: Class 'PixelDisplay' does not have any method 'text'
+  display.text ctx 50 40 "the display"
+          ^~~~
+toit-pixel-display/tests/true-color.toit:46:11: error: Class 'PixelDisplay' does not have any method 'text'
+  display.text ctx 50 60 "for the win"
+          ^~~~

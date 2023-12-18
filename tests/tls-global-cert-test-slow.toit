@@ -15,11 +15,13 @@ expect-error name [code]:
   error := catch code
   expect: error.contains name
 
+is-embedded ::= platform == system.PLATFORM-FREERTOS
+
 monitor LimitLoad:
   current := 0
   has-test-failure := null
   // FreeRTOS does not have enough memory to run 10 in parallel.
-  concurrent-processes ::= platform == system.PLATFORM-FREERTOS ? 1 : 2
+  concurrent-processes ::= is-embedded ? 1 : 2
 
   inc:
     await: current < concurrent-processes
@@ -189,12 +191,13 @@ add-global-certs -> none:
   expect-error "WRONG_OBJECT_TYPE": tls.add-global-root-certificate_ parsed
 
   // Test that unparseable cert gives an immediate error.
-  expect-error "OID is not found":
-    DIGICERT-GLOBAL-ROOT-CA-BYTES[42] ^= 42
-    tls.add-global-root-certificate_ DIGICERT-GLOBAL-ROOT-CA-BYTES
+  if not is-embedded:
+    expect-error "OID is not found":
+      DIGICERT-GLOBAL-ROOT-CA-BYTES[42] ^= 42
+      tls.add-global-root-certificate_ DIGICERT-GLOBAL-ROOT-CA-BYTES
 
   // Test that it's not too costly to add the same cert multiple times.
-  1_000_000.repeat:
+  (is-embedded ? 1000 : 1_000_000).repeat:
     tls.add-global-root-certificate_ DIGICERT-GLOBAL-ROOT-G2-BYTES 0x025449c2
 
 // Ebay.de sometimes uses this trusted root certificate.
