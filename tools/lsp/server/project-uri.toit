@@ -37,7 +37,6 @@ compute-project-uri --uri/string --translator/UriPathTranslator -> string:
     // We don't even check whether there is a package.yaml|lock file.
     // We just assume that this is the project uri.
     result-path := segments[..dot-packages-index].join "/"
-    print-on-stderr_ "project-uri: found project uri: $result-path"
     return translator.to-uri result-path
 
   while true:
