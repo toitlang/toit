@@ -1,0 +1,3 @@
+<pkg:pkg1>/pkg1.toit:6:9: error: Unresolved identifier: 'unresolved'
+  print unresolved
+        ^~~~~~~~~~

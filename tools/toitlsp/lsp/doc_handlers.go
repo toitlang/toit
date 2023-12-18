@@ -36,6 +36,12 @@ const (
 	crashReportRateLimit = 30 * time.Second
 )
 
+func isInsideDotPackages(uri lsp.DocumentURI) bool {
+	return strings.Contains(string(uri), "/.packages/") ||
+		strings.Contains(string(uri), "%5C.packages%5C") ||
+		strings.Contains(string(uri), "%5c.packages%5c")
+}
+
 func (s *Server) TextDocumentDidOpen(ctx context.Context, conn *jsonrpc2.Conn, req lsp.DidOpenTextDocumentParams) error {
 	req.TextDocument.URI = uri.Canonicalize(req.TextDocument.URI)
 	cCtx := s.GetContext(conn)
@@ -87,7 +93,20 @@ func (s *Server) TextDocumentDidSave(ctx context.Context, conn *jsonrpc2.Conn, r
 func (s *Server) TextDocumentDidClose(ctx context.Context, conn *jsonrpc2.Conn, req lsp.DidCloseTextDocumentParams) error {
 	req.TextDocument.URI = uri.Canonicalize(req.TextDocument.URI)
 	cCtx := s.GetContext(conn)
-	return cCtx.Documents.Close(req.TextDocument.URI)
+	err := cCtx.Documents.Close(req.TextDocument.URI)
+	if err != nil {
+		return err
+	}
+	reportPackageDiagnostics := cCtx.Settings.ShouldReportPackageDiagnostics
+	if !reportPackageDiagnostics && isInsideDotPackages(req.TextDocument.URI) {
+		// Emit an empty diagnostics for this file, in case it had diagnostics before.
+		// We are not going to update the diagnostics for this file anymore.
+		return publishDiagnostics(ctx, conn, lsp.PublishDiagnosticsParams{
+			URI:         req.TextDocument.URI,
+			Diagnostics: []lsp.Diagnostic{},
+		})
+	}
+	return nil
 }
 
 func (s *Server) textDocumentDefinition(ctx context.Context, conn *jsonrpc2.Conn, req lsp.TextDocumentPositionParams) ([]lsp.Location, error) {
@@ -400,16 +419,27 @@ func (s *Server) analyzeWithProjectURIAndRevision(ctx context.Context, conn *jso
 		}
 	}
 
-	// Remove the documents that are not in the same project-root.
+	reportPackageDiagnostics := cCtx.Settings.ShouldReportPackageDiagnostics
+	// Remove the documents that are not in the same project-root, or that are
+	// in .packages.
 	filtered := uri.Set{}
 	for uri := range reportDiagnosticsDocuments {
 		docProjectURI, err := cCtx.Documents.ProjectURIFor(uri, true)
 		if err != nil {
 			return nil, err
 		}
-		if docProjectURI == projectURI {
-			filtered.Add(uri)
+		if docProjectURI != projectURI {
+			continue
 		}
+		if !reportPackageDiagnostics && isInsideDotPackages(uri) {
+			// Only report diagnostics for package files if they are open.
+			_, ok := cCtx.Documents.GetOpenedDocument(uri)
+			if !ok {
+				continue
+			}
+		}
+
+		filtered.Add(uri)
 	}
 	reportDiagnosticsDocuments = filtered
 
