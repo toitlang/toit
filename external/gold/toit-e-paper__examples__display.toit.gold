@@ -1,0 +1,18 @@
+toit-e-paper/examples/display.toit:7:1: error: Failed to import 'pixel-display.texture'
+import pixel_display.texture show TEXT_TEXTURE_ALIGN_CENTER
+^~~~~~
+toit-e-paper/examples/display.toit:7:22: note: Missing library file. Tried '<pkg:toit-pixel-display>/texture.toit' and '<pkg:toit-pixel-display>/texture/texture.toit'
+import pixel_display.texture show TEXT_TEXTURE_ALIGN_CENTER
+                     ^~~~~~~
+toit-e-paper/examples/display.toit:6:27: error: Unresolved show 'TwoColorPixelDisplay'
+import pixel_display show TwoColorPixelDisplay
+                          ^~~~~~~~~~~~~~~~~~~~
+toit-e-paper/examples/display.toit:8:37: error: Unresolved show 'TextTexture'
+import pixel_display.two_color show TextTexture WHITE BLACK
+                                    ^~~~~~~~~~~
+toit-e-paper/examples/display.toit:16:14: error: Unresolved identifier: 'TwoColorPixelDisplay'
+  display := TwoColorPixelDisplay driver
+             ^~~~~~~~~~~~~~~~~~~~
+toit-e-paper/examples/display.toit:19:66: error: Unresolved identifier: 'TEXT-TEXTURE-ALIGN-CENTER'
+  context := display.context --landscape --font=sans --alignment=TEXT_TEXTURE_ALIGN_CENTER --color=BLACK
+                                                                 ^~~~~~~~~~~~~~~~~~~~~~~~~
