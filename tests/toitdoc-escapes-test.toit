@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 /**
-Tests that the toitdoc compiler can deal with escapes..
+Tests that the toitdoc compiler can deal with escapes.
 The health-check of this test must not have any warnings.
 */
 
