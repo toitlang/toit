@@ -744,13 +744,11 @@ Symbol ToitdocParser::parse_delimited(int delimiter,
         advance();
       } else {
         buffer += make_string(chunk_start, index_);
+        // Skip over the escape character, but not the escaped
+        // character. That happens at the top of the loop.
         advance();
         chunk_start = index_;
       }
-      // Set 'c' to something that isn't a delimiter, so that
-      // we continue iterating. The escaped character will be
-      // consumed at the top of the loop.
-      c = 'X';
     }
   } while (c != delimiter && c != '\0');
   ASSERT(c == delimiter || c == '\0');
