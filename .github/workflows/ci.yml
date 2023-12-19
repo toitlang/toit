@@ -895,6 +895,8 @@ jobs:
           $versionV = "${{ github.event.release.tag_name }}"
           if (!$versionV) {
             # Signing was triggered by workflow dispatch.
+            # There is no release tag, so we use an arbitrary version.
+            # This is only used for testing of the signing action.
             $versionV = "v0.0.1"
           }
           $version = $versionV.Substring(1)
