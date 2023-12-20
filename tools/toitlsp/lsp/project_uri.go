@@ -49,7 +49,7 @@ func computeProjectURI(documentUri lsp.DocumentURI) (lsp.DocumentURI, error) {
 			return uri.PathToURI(path), nil
 		}
 		parent := filepath.Dir(path)
-		if parent == path || parent == "" {
+		if parent == path {
 			return uri.PathToURI(path), nil
 		}
 		path = parent

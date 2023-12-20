@@ -49,9 +49,8 @@ compute-project-uri --uri/string --translator/UriPathTranslator -> string:
     if file.is-file "$dir/package.yaml" or file.is-file "$dir/package.lock":
       return translator.to-uri dir
     parent := fs.dirname dir
-    if parent == "" or dir == "":
-      // Work around bug in fs library: the path starts with a separator.
-      return translator.to-uri "/"
-    if parent == ".":
+    if parent == dir:
+      // We have reached the root directory (or the current directory if the
+      // path is relative).
       return translator.to-uri dir
     dir = parent
