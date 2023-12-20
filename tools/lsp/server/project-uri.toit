@@ -21,12 +21,18 @@ import .uri-path-translator
 /**
 Computes the project URI for a given path.
 
+If the $uri is not absolute uses `/` instead. The compiler is
+  not supposed to use the project URI in that case.
+
 The project URI is the path that contains a `package.{yaml|lock}` file.
 However, it must not be inside a '.packages' folder. In that case we assume that
 there is a `package.{yaml|lock}` file in the parent folder.
 */
 compute-project-uri --uri/string --translator/UriPathTranslator -> string:
   path := translator.to-path uri
+  if not fs.is-absolute path:
+    return translator.to-uri "/"
+
   dir := fs.dirname path
 
   slash-dir := dir.replace --all "\\" "/"
