@@ -26,6 +26,9 @@ import (
 
 func computeProjectURI(documentUri lsp.DocumentURI) (lsp.DocumentURI, error) {
 	path := uri.URIToPath(documentUri)
+	if !filepath.IsAbs(path) {
+		return uri.PathToURI("/"), nil
+	}
 	segments := strings.Split(filepath.ToSlash(path), "/")
 	// Find the last '.packages' segment. We assume that the project root is
 	// the parent of this segment.
