@@ -312,7 +312,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: debug-${{ runner.os }}-${{ matrix.shard }}
+          name: debug
           path: ${{ steps.constants.outputs.debug_dir }}
           retention-days: 5
           if-no-files-found: ignore
