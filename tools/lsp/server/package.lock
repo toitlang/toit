@@ -13,8 +13,8 @@ packages:
   pkg-fs:
     url: github.com/toitlang/pkg-fs
     name: fs
-    version: 1.0.0
-    hash: c816c85022a155f37a4396455da9b27595050de1
+    version: 2.0.0
+    hash: ba63e2385baddab27f0c458fd41706b1415ab5fc
     prefixes:
       host: pkg-host
   pkg-host:

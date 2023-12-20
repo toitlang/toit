@@ -4,7 +4,7 @@ dependencies:
     version: ^1.1.1
   fs:
     url: github.com/toitlang/pkg-fs
-    version: ^1.0.0
+    version: ^2.0.0
   host:
     url: github.com/toitlang/pkg-host
     version: ^1.8.1
