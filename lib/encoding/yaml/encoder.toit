@@ -29,11 +29,11 @@ class YamlEncoder extends EncoderBase_:
     // To determine if the str needs to be double quoted, we try to parse it, and if it comes back as a string,
     // then the string can be written in yaml as an unquoted string, i.e "foo" and "bar" does not need to be quoted,
     // but "[a" and "{a" does.
-    // Multuline strings will also be quoted even though not strictly nescessay in all cases, but will be done
+    // Multiline strings will also be quoted even though not strictly nescessay in all cases, but will be done
     // for simplicity.
-    should_quote := not (parse --on-error=(: null) str) is string or
-                    str.contains "\n" or
-                    str.contains "\r"
+    should_quote := str.contains "\n" or
+                    str.contains "\r" or
+                    not (parse --on-error=(: null) str) is string
 
     escaped := escape-string str
 

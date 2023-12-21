@@ -691,10 +691,11 @@ class Parser_ extends PegParserBase_:
     return null
 
   c-l-block-seq-entry n/int -> ValueNode_?:
-    return try-parse:
-      match-char C-SEQUENCE-ENTRY_ and
-         (lookahead: not ns-char) and
-         s-l-plus-block-indented n BLOCK-IN_
+    try-parse:
+      if match-char C-SEQUENCE-ENTRY_ and
+          (lookahead: not ns-char):
+        return s-l-plus-block-indented n BLOCK-IN_
+    return null
 
   s-l-plus-block-indented n/int c/int -> ValueNode_?:
     try-parse:
@@ -1334,7 +1335,7 @@ class Parser_ extends PegParserBase_:
 
   nb-ns-double-in-line -> string:
     runes/List := []
-    repeat: 
+    repeat:
       white := repeat: s-white
       rune := ns-double-char
       if rune:
