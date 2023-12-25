@@ -48,6 +48,16 @@ func (s *Set) Add(uris ...lsp.DocumentURI) {
 	}
 }
 
+func (s *Set) AddAll(other Set) {
+	if *s == nil {
+		*s = Set{}
+	}
+
+	for uri := range other {
+		(*s)[uri] = struct{}{}
+	}
+}
+
 func (s Set) Remove(strs ...lsp.DocumentURI) {
 	if s == nil {
 		return

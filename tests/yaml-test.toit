@@ -82,6 +82,22 @@ test-stringify:
   expect
     escaped.ends-with     "\\u001b\\u001b\""
 
+  expect-equals
+      """
+      - u: 2
+        v: 3
+      """
+      yaml.stringify [{"u": 2, "v": 3}]
+
+  expect-equals
+      """
+      d:
+        - outer: 2
+          v: 3
+      """
+      yaml.stringify {"d": [{"outer": 2, "v": 3}]}
+
+
 test-converter -> none:
   fixed-converter := : | obj encoder |
     if obj is FixedPoint:

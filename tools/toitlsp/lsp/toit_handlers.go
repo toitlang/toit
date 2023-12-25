@@ -41,29 +41,21 @@ func (s *Server) ToitReportIdle(ctx context.Context, conn *jsonrpc2.Conn) error 
 	return nil
 }
 
-type DidOpenManyParams struct {
+type AnalyzeManyParams struct {
 	URIs []lsp.DocumentURI `json:"uris"`
 }
 
-func (s *Server) ToitDidOpenMany(ctx context.Context, conn *jsonrpc2.Conn, req DidOpenManyParams) error {
-	cCtx := s.GetContext(conn)
-
+func (s *Server) ToitAnalyzeMany(ctx context.Context, conn *jsonrpc2.Conn, req AnalyzeManyParams) error {
 	uris := req.URIs
 	for i := range uris {
 		uris[i] = uri.Canonicalize(uris[i])
 	}
 
-	for _, uri := range uris {
-		if err := cCtx.Documents.Add(uri, nil, cCtx.NextAnalysisRevision); err != nil {
-			return err
-		}
-	}
-
 	err := s.analyze(ctx, conn, uris...)
 	if err != nil {
-		s.logger.Error("failed to analyze toit/DidOpenMany request", zap.Any("URIs", uris), zap.Error(err))
+		s.logger.Error("failed to analyze toit/analyzeMany request", zap.Any("URIs", uris), zap.Error(err))
 	} else {
-		s.logger.Debug("successfully analyzed toit/DidOpenMany request", zap.Any("URIs", req.URIs))
+		s.logger.Debug("successfully analyzed toit/analyzeMany request", zap.Any("URIs", req.URIs))
 	}
 	return err
 }
@@ -127,7 +119,7 @@ func (s *Server) Analyze(ctx context.Context, conn *jsonrpc2.Conn, req AnalyzePa
 	cCtx := s.GetContext(conn)
 	c := s.createCompiler(cCtx)
 
-	analyzeResult, err := c.Analyze(ctx, uris...)
+	analyzeResult, err := c.Analyze(ctx, cCtx.RootURI, uris...)
 	if err != nil {
 		return false, err
 	}
@@ -199,7 +191,7 @@ func (s *Server) ToitArchiveWriter(ctx context.Context, conn *jsonrpc2.Conn, req
 
 	cCtx := s.GetContext(conn)
 	c := s.createCompiler(cCtx)
-	if err := c.Parse(ctx, uris...); err != nil {
+	if err := c.Parse(ctx, cCtx.RootURI, uris...); err != nil {
 		return s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,
 			Error:    err,
@@ -248,7 +240,7 @@ func (s *Server) ToitSnapshotBundle(ctx context.Context, conn *jsonrpc2.Conn, re
 
 	cCtx := s.GetContext(conn)
 	c := s.createCompiler(cCtx)
-	b, err := c.SnapshotBundle(ctx, uri)
+	b, err := c.SnapshotBundle(ctx, cCtx.RootURI, uri)
 	if err != nil {
 		return nil, s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,
