@@ -31,8 +31,10 @@ interface RepositoryPackage extends Package:
   ensure-downloaded
   cached-repository-dir -> string
 
+
 interface LocalPackage extends Package:
   path -> string
+
 
 abstract class PackageBase implements Package:
   project-package-file/ProjectPackageFile
@@ -434,7 +436,7 @@ class LockFileBuilder:
     prefixes := {:}
 
     package-file.local-dependencies.do: | prefix/string path/string |
-      prefixes[prefix] = package-locator-to-package[package-file.real-path-for-dependency path].name
+      prefixes[prefix] = package-locator-to-package[package-file.absolute-path-for-dependency path].name
 
     package-file.registry-dependencies.do: | prefix/string dependency/PackageDependency |
       print dependency

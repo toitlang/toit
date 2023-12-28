@@ -21,11 +21,11 @@ class UninstallCommand:
   static CLI-COMMAND ::=
       cli.Command "uninstall"
           --help="""
-                 Uninstalls the package with the given name.
+              Uninstalls the package with the given name.
 
-                 Removes the package of the given name from the package files.
-                   The downloaded code is not automatically deleted.
-                 """
+              Removes the package of the given name from the package files.
+                The downloaded code is not automatically deleted.
+              """
           --rest=[
               cli.Option NAME
                   --help="The name of the package to uninstall."

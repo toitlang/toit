@@ -4,6 +4,7 @@ import cli
 import cli.cache show Cache
 import encoding.yaml
 import system
+import fs
 
 import ..registry
 import ..error
@@ -31,7 +32,7 @@ class ProjectConfiguration:
         parsed[OPTION-AUTO-SYNC]
 
   root -> string:
-    return project-root_ ? project-root_ : cwd_
+    return fs.to-absolute project-root_ ? project-root_ : cwd_
 
   package-file-exists -> bool:
     return file.is_file (PackageFile.file-name root)
@@ -41,11 +42,12 @@ class ProjectConfiguration:
 
   verify:
     if not project-root_ and (not package-file-exists or not lock-file-exists):
-      error """
-            Command must be executed in project root.
-              Run 'toit.pkg init' first to create a new application here, or
-              run with '--$OPTION-PROJECT-ROOT=.'
-            """
+      error
+          """
+          Command must be executed in project root.
+            Run 'toit.pkg init' first to create a new application here, or
+            run with '--$OPTION-PROJECT-ROOT=.'
+          """
 
 class Project:
   config/ProjectConfiguration
@@ -58,7 +60,7 @@ class Project:
     if config.package-file-exists:
       package-file = ProjectPackageFile.load this
     else:
-      package-file = ProjectPackageFile.new this
+      package-file = ProjectPackageFile.empty this
 
     if config.lock-file-exists:
       lock-file = LockFile.load package-file
@@ -137,10 +139,10 @@ class Project:
 
   load-package-package-file url/string version/SemanticVersion:
     cached-repository-dir := cached-repository-dir_ url version
-    return ExternalPackageFile "$cached-repository-dir"
+    return ExternalPackageFile (fs.to-absolute cached-repository-dir)
 
   load-local-package-file path/string -> ExternalPackageFile:
-    return ExternalPackageFile "$root/$path"
+    return ExternalPackageFile (fs.to-absolute "$root/$path")
 
 main:
   config := ProjectConfiguration.private_ "tmp2" directory.cwd (SemanticVersion system.vm-sdk-version) false

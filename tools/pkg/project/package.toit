@@ -1,5 +1,6 @@
 import host.file
 import host.directory
+import fs
 
 import encoding.yaml
 
@@ -22,14 +23,15 @@ Contrary to an $ExternalPackageFile or a $RepositoryPackageFile, project package
 class ProjectPackageFile extends PackageFile:
   project/Project
 
-  // REVIEW(florian): any reason this is "new"?
-  constructor.new .project:
-    super {:}
+  constructor.private_ .project  content/Map:
+    super content
 
-  // REVIEW(florian): usually I would prefer a static method here.
-  // On the other hand that would require a private constructor...
-  constructor.load .project:
-    super (yaml.decode (file.read_content "$project.root/$PackageFile.FILE_NAME"))
+  constructor.empty project/Project:
+    return ProjectPackageFile.private_ project {:}
+
+  constructor.load project/Project:
+    file-content := (yaml.decode (file.read_content "$project.root/$PackageFile.FILE_NAME"))
+    return ProjectPackageFile.private_ project file-content
 
   root-dir -> string:
     return project.root
@@ -70,6 +72,7 @@ class ExternalPackageFile extends PackageFile:
   path/string
 
   constructor .path/string:
+    if not fs.is-absolute path: throw "INVALID_ARGUMENT"
     super ((yaml.decode (file.read_content "$path/$PackageFile.FILE_NAME")) or {:})
 
   root-dir -> string:
@@ -93,8 +96,7 @@ abstract class PackageFile:
 
   constructor .content:
 
-  // REVIEW(florian): we are using `index-of --last` in the relative-path-to method.
-  // Does that mean that we only work with slash paths? Add a comment?
+  // The absolute path to the directory holding the package.yaml file
   abstract root-dir -> string
 
   static file-name root/string -> string:
@@ -103,45 +105,22 @@ abstract class PackageFile:
   file-name -> string:
     return file-name root-dir
 
-  root-dir-real-path-in-relation-to path/string:
-    // REVIEW(florian): I would use the `fs` package to determine whether the path is absolute.
-    if directory.is_absolute_ root-dir: return root-dir
-    // REVIEW(florian): not sure this approach works if the root-dir is rooted but not absolute.
-    // Also not sure if the `fs` package has a way to create the absolute path then.
-    return directory.realpath "$path/$root-dir"
-
-  root-dir-relative-in-relation-to path/string:
-    if directory.is_absolute_ root-dir: return root-dir
-    // REVIEW(florian): same as above: what about rooted paths?
-    return canonical "$path/$root-dir"
-
   relative-path-to project-package/ProjectPackageFile -> string:
-    // TODO(florian): provide this functionality in the `fs` package.
     my-dir := root-dir
     other-dir := directory.realpath project-package.root-dir
     if other-dir == my-dir: error "Reference to self in $project-package.file-name"
 
-    idx := 0
-    while idx < my-dir.size and idx < other-dir.size and my-dir[idx] == other-dir[idx]:
-      idx++
+    return fs.to-relative my-dir other-dir
 
-    prefix := other-dir[..idx].index-of --last "/"
-    if prefix <= 0: return my-dir
-    if prefix == other-dir.size: return my-dir[prefix + 1 ..]
-
-    print (other-dir[prefix..].split --drop-empty "/")
-    dotdots := (other-dir[prefix..].split  --drop-empty "/").size
-    return "$("../"*dotdots)$(my-dir[prefix + 1 ..])"
-
-  real-path-for-dependency path/string:
-    if directory.is_absolute_ path: return path
-    // REVIEW(florian): same as above: what about rooted paths?
-    return directory.realpath "$root-dir/$path"
+  absolute-path-for-dependency path/string:
+    if fs.is-absolute path: return path
+    if fs.is-rooted path: return fs.to-absolute path
+    return fs.to-absolute (fs.join root-dir path)
 
   relative-path-for-dependency path/string:
     if directory.is_absolute_ path: return path
-    // REVIEW(florian): same as above: what about rooted paths?
-    return canonical "$root-dir/$path"
+    if fs.is-rooted path: return fs.to-absolute path
+    return fs.join root-dir path
 
   dependencies -> Map:
     if not content.contains DEPENDENCIES-KEY_:

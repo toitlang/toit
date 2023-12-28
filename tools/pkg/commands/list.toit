@@ -69,12 +69,12 @@ class ListCommand:
   static CLI-COMMAND ::=
       cli.Command "list"
           --help="""
-                 Lists all packages.
+              Lists all packages.
 
-                 If no argument is given, lists all available packages.
-                 If an argument is given, it must point to a registry path. In that case
-                   only the packages from that registry are shown.
-                 """
+              If no argument is given, lists all available packages.
+              If an argument is given, it must point to a registry path. In that case
+                only the packages from that registry are shown.
+              """
           --rest=[
               cli.Option NAME-OPTION
                   --required=false

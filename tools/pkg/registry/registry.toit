@@ -163,8 +163,6 @@ abstract class Registry:
   constructor .name:
 
   abstract type -> string
-  abstract retrieve-description url/string version/SemanticVersion -> Description?
-  abstract retrieve-versions url/string -> List?
   abstract content -> FileSystemView
   abstract to-map -> Map
   abstract sync

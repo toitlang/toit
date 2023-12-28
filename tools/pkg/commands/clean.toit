@@ -18,9 +18,9 @@ class CleanCommand:
   static CLI-COMMAND ::=
       cli.Command "clean"
           --help="""
-                 Removes unnecessary packages.
+              Removes unnecessary packages.
 
-                 If a package isn't used anymore removes the downloaded files from the
-                   local package cache.
-                 """
+              If a package isn't used anymore removes the downloaded files from the
+                local package cache.
+              """
           --run=:: (CleanCommand it).execute

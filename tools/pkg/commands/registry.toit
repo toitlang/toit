@@ -50,14 +50,14 @@ class RegistryCommand:
           --subcommands=[
                 cli.Command "add"
                     --help="""
-                           Adds a registry.
+                        Adds a registry.
 
-                           The 'name' of the registry must not be used yet.
+                        The 'name' of the registry must not be used yet.
 
-                           By default the 'URL' is interpreted as Git-URL.
-                             If the '--local' flag is used, then the 'URL' is interpreted as local
-                             path to a folder containing package descriptions.
-                           """
+                        By default the 'URL' is interpreted as Git-URL.
+                          If the '--local' flag is used, then the 'URL' is interpreted as local
+                          path to a folder containing package descriptions.
+                        """
                     --rest=[
                         cli.Option "name"
                             --help="Name of the registry"
@@ -87,10 +87,10 @@ class RegistryCommand:
 
                 cli.Command "remove"
                     --help="""
-                           Removes a registry.
+                        Removes a registry.
 
-                           The 'name' of the registry must exist.
-                           """
+                        The 'name' of the registry must exist.
+                        """
                     --rest=[
                         cli.Option "name"
                             --help="Name of the registry"
@@ -104,11 +104,11 @@ class RegistryCommand:
 
                 cli.Command "sync"
                     --help="""
-                           Synchronizes all registries.
+                        Synchronizes all registries.
 
-                           If no argument is given, synchronizes all registries.
-                           If an argument is given, only that registry is synchronized.
-                           """
+                        If no argument is given, synchronizes all registries.
+                        If an argument is given, only that registry is synchronized.
+                        """
                     --rest=[
                         cli.Option "name"
                             --help="Name of the registry"

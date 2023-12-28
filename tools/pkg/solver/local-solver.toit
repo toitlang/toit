@@ -1,6 +1,7 @@
 import host.file
 import host.directory
 import system
+import fs
 
 import .registry-solver
 import ..project.package
@@ -54,9 +55,9 @@ abstract class LocalSolver extends Solver:
 
   static find-all-local-packages_ result/Map package-file/PackageFile -> none:
     package-file.local-dependencies.do --values: | path/string |
-      package-location := package-file.real-path-for-dependency path
+      package-location := package-file.absolute-path-for-dependency path
       package-path := package-file.relative-path-for-dependency path
-      local-package-file := ExternalPackageFile package-location
+      local-package-file := ExternalPackageFile (fs.to-absolute package-location)
       print "package-location: $package-location, path=$path, parent=$package-file.root-dir"
       local/LocalPackage := result.get package-location --if-absent=:
         result[package-location] = LocalPackage package-location local-package-file

@@ -147,21 +147,21 @@ class DescribeCommand:
   static CLI-COMMAND ::=
       cli.Command "describe"
           --help="""
-                 Generates a description of the given package.
+              Generates a description of the given package.
 
-                 If no 'path' is given, defaults to the current working directory.
-                   If one argument is given, then it must be a path to a package.
-                   Otherwise, the first argument is interpreted as the URL to the package, and
-                   the second argument must be a version.
+              If no 'path' is given, defaults to the current working directory.
+                If one argument is given, then it must be a path to a package.
+                Otherwise, the first argument is interpreted as the URL to the package, and
+                the second argument must be a version.
 
-                 A package description is used when publishing packages. It describes the
-                   package to the outside world. This command extracts a description from
-                   the given path.
+              A package description is used when publishing packages. It describes the
+                package to the outside world. This command extracts a description from
+                the given path.
 
-                 If the out directory is specified, generates a description file as used
-                   by registries. The actual description file is generated nested in
-                   directories to make the description path unique.
-                 """
+              If the out directory is specified, generates a description file as used
+                by registries. The actual description file is generated nested in
+                directories to make the description path unique.
+              """
           --rest=[
               cli.Option URL-PATH-OPTION
                   --help="The URL or path to the package."

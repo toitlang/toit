@@ -19,10 +19,10 @@ class UpdateCommand:
   static CLI-COMMAND ::=
       cli.Command "update"
           --help="""
-                 Updates all packages to their newest compatible version.
+              Updates all packages to their newest compatible version.
 
-                 Uses semantic versioning to find the highest compatible version
-                   of each imported package (and their transitive dependencies).
-                   It then updates all packages to these versions.
-                 """
+              Uses semantic versioning to find the highest compatible version
+                of each imported package (and their transitive dependencies).
+                It then updates all packages to these versions.
+              """
           --run=:: (UpdateCommand it).execute

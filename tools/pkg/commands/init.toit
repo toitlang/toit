@@ -22,11 +22,11 @@ class InitCommand:
   static CLI-COMMAND ::=
       cli.Command "init"
           --help="""
-                 Initializes the current directory as the root of the project.
+              Initializes the current directory as the root of the project.
 
-                 This is done by creating a 'package.lock' and 'package.yaml' file.
+              This is done by creating a 'package.lock' and 'package.yaml' file.
 
-                 If the --project-root flag is used, initializes that directory instead.
-                 """
+              If the --project-root flag is used, initializes that directory instead.
+              """
           --run=:: (InitCommand it).execute
 

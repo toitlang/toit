@@ -14,8 +14,8 @@ class SyncCommand:
   static CLI-COMMAND ::=
       cli.Command "sync"
           --help="""
-                 Synchronizes all registries.
+              Synchronizes all registries.
 
-                 This is an alias for 'toit.pkg registry sync'
-                 """
+              This is an alias for 'toit.pkg registry sync'
+              """
           --run=:: (SyncCommand it).execute
