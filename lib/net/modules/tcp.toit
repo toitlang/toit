@@ -92,8 +92,9 @@ class TcpSocket_:
 class TcpServerSocket extends TcpSocket_ implements net.ServerSocket:
   backlog_ := 0
 
-  constructor: return TcpServerSocket 10
+  constructor: return TcpServerSocket 1
   constructor .backlog_:
+    print "Construct server socket, backlog $backlog_"
 
   listen address port:
     open_ (tcp-listen_ tcp-resource-group_ address port backlog_)

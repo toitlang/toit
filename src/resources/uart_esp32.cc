@@ -725,7 +725,7 @@ PRIMITIVE(create) {
   if (data_bits < 5 || data_bits > 8) FAIL(INVALID_ARGUMENT);
   if (stop_bits < 1 || stop_bits > 3) FAIL(INVALID_ARGUMENT);
   if (parity < 1 || parity > 3) FAIL(INVALID_ARGUMENT);
-  if (options < 0 || options > 15) FAIL(INVALID_ARGUMENT);
+  if (options < 0 || options > 31) FAIL(INVALID_ARGUMENT);
   if (mode < UART_MODE_UART || mode > UART_MODE_IRDA) FAIL(INVALID_ARGUMENT);
   if (mode == UART_MODE_RS485_HALF_DUPLEX && (rts == -1 || cts != -1)) FAIL(INVALID_ARGUMENT);
   if (baud_rate < 0 || baud_rate > SOC_UART_BITRATE_MAX) FAIL(INVALID_ARGUMENT);
@@ -751,7 +751,7 @@ PRIMITIVE(create) {
     // High speed setting.
     interrupt_flags |= HI;
     full_interrupt_threshold = 35;
-    tx_buffer_size = 1024;
+    tx_buffer_size = 2048;
     rx_buffer_size = 2048;
   } else if ((options & 4) != 0) {
     // Medium speed setting.
@@ -765,6 +765,10 @@ PRIMITIVE(create) {
     full_interrupt_threshold = 105;
     tx_buffer_size = 256;
     rx_buffer_size = 768;
+  }
+  if ((options & 16) != 0) {
+    tx_buffer_size *= 2;
+    rx_buffer_size *= 2;
   }
 
   UartInitialization init;
