@@ -41,7 +41,6 @@ static wchar_t* malloced_wide_string(const char* string) {
   return result;
 }
 
-
 static char* malloced_narrow_string(const wchar_t* string, word w_length) {
   word length = Utils::utf_16_to_8(string, w_length, null, 0);
   char* result = unvoid_cast<char*>(malloc(length + 1));
@@ -56,10 +55,14 @@ static char* malloced_narrow_string(const wchar_t* string) {
 }
 
 char* OS::get_executable_path() {
-  char* path = _new char[MAX_PATH + 1];
-  auto length = GetModuleFileName(NULL, path, MAX_PATH);
-  path[length] = '\0';
-  return path;
+  const int BUFFER_SIZE = 32767 + 1;
+  wchar_t buffer[BUFFER_SIZE];
+  word w_length = GetModuleFileNameW(NULL, buffer, BUFFER_SIZE);
+  // GetModuleFileNameW truncates the path to the buffer size.
+  // If the returned length is equal to the BUFFER_SIZE we assume that the
+  // buffer wasn't big enough.
+  if (w_length == 0 || w_length >= BUFFER_SIZE) return null;
+  return  malloced_narrow_string(buffer, w_length);
 }
 
 char* OS::get_executable_path_from_arg(const char* source_arg) {
