@@ -85,7 +85,8 @@ STANDARD_INT_TAG_   ::= "!!int"
 class ValueNode_:
   tag/string? := null
   value/any
-  constructor .value:
+  force-string/bool
+  constructor .value --.force-string=false:
 
   constructor.map-from-collection list/List:
     // Assume list is alternating [key1, value1, key2, value2, ...]
@@ -95,6 +96,7 @@ class ValueNode_:
       key_ := list[2 * it]
       value_ :=  list[2 * it + 1]
       value[key_] = value_
+    force-string = false
 
   // Either use the supplied tag to construct a toit object representing the value or use
   // the core schema tag resolution
@@ -116,7 +118,7 @@ class ValueNode_:
   canonical-value -> any:
     if this == EMPTY-NODE_: return null
 
-    if value is string:
+    if value is string and not force-string:
       if NULL.contains value: return null
       if TRUE.contains value: return true
       if FALSE.contains value: return false
@@ -694,10 +696,11 @@ class Parser_ extends PegParserBase_:
     return null
 
   c-l-block-seq-entry n/int -> ValueNode_?:
-    return try-parse:
-      match-char C-SEQUENCE-ENTRY_ and
-         (lookahead: not ns-char) and
-         s-l-plus-block-indented n BLOCK-IN_
+    try-parse:
+      if match-char C-SEQUENCE-ENTRY_ and
+          (lookahead: not ns-char):
+        return s-l-plus-block-indented n BLOCK-IN_
+    return null
 
   s-l-plus-block-indented n/int c/int -> ValueNode_?:
     try-parse:
@@ -1263,7 +1266,7 @@ class Parser_ extends PegParserBase_:
       if match-char C-SINGLE-QUOTE_:
         if res := nb-single-text n c:
           if match-char C-SINGLE-QUOTE_:
-            return ValueNode_ (res.replace --all "''" "'")
+            return ValueNode_ (res.replace --all "''" "'") --force-string
     return null
 
   c-double-quoted n/int c/int -> ValueNode_?:
@@ -1271,7 +1274,7 @@ class Parser_ extends PegParserBase_:
       if match-char C-DOUBLE-QUOTE_:
         if res := nb-double-text n c:
           if match-char C-DOUBLE-QUOTE_:
-            return ValueNode_ (res.join "")
+            return ValueNode_ (res.join "") --force-string
     return null
 
   nb-single-text n/int c/int -> string?:
@@ -1337,7 +1340,7 @@ class Parser_ extends PegParserBase_:
 
   nb-ns-double-in-line -> string:
     runes/List := []
-    repeat: 
+    repeat:
       white := repeat: s-white
       rune := ns-double-char
       if rune:

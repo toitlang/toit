@@ -20,6 +20,7 @@ main:
   test-block-parse
   test-from-spec
   test-stream
+  test-value-converter
 
 test-stringify:
   expect-equals "testing" (yaml.stringify "testing")
@@ -65,6 +66,7 @@ test-stringify:
   expect-equals "a:\nb:\n" (yaml.stringify {"a":  null, "b": null})
   expect-equals """- a\n""" (yaml.stringify ["a"])
   expect-equals """- a\n- b\n""" (yaml.stringify ["a","b"])
+  expect-equals "- -O0\n" (yaml.stringify ["-O0"])
 
   expect-equals "\"\\\\ \\b \\f \\n \\r \\t\"" (yaml.stringify "\\ \b \f \n \r \t")
 
@@ -234,6 +236,7 @@ test-json-parse:
   expect-equals "a: b\n" (yaml.stringify (yaml.parse "{\"a\":\"b\"}"))
   expect-equals "a: b\n" (yaml.stringify (yaml.parse " { \"a\" : \"b\" } "))
   expect-equals "- a\n- b\n" (yaml.stringify (yaml.parse " [ \"a\" , \"b\" ] "))
+  expect-equals "- -O0\n" (yaml.stringify (yaml.parse "[\"-O0\"]"))
 
   expect-equals "=\"\\/bfnrt"
       (yaml.parse "\"\\u003d\\u0022\\u005c\\u002F\\u0062\\u0066\\u006e\\u0072\\u0074\"")
@@ -296,6 +299,7 @@ test-encode:
 
 test-decode:
   expect-equals "testing" (yaml.decode "testing".to-byte-array)
+  expect-list-equals ["-O0"] (yaml.decode """["-O0"]""".to-byte-array)
 
 BIG-JSON ::= """
 [
@@ -537,6 +541,19 @@ test-from-spec:
                 # Comment
                """
 
+test-value-converter:
+  result := yaml.parse
+      """
+      float: 1.0
+      int: 4
+      float-as-string: "1.0"
+      int-as-string: "4"
+      """
+
+  expect result["float"] is float
+  expect result["int"] is int
+  expect result["float-as-string"] is string
+  expect result["int-as-string"] is string
 
 class TestReader implements Reader:
   pos := 0
