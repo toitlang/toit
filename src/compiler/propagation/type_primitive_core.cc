@@ -262,6 +262,12 @@ TYPE_PRIMITIVE(command) {
   failure.add_string(program);
 }
 
+TYPE_PRIMITIVE(program_path) {
+  result.add_string(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
 TYPE_PRIMITIVE_ANY(get_generic_resource_group)
 TYPE_PRIMITIVE_ANY(profiler_install)
 TYPE_PRIMITIVE_ANY(profiler_start)

@@ -171,6 +171,7 @@ namespace toit {
   PRIMITIVE(float_floor, 1)                  \
   PRIMITIVE(float_trunc, 1)                  \
   PRIMITIVE(command, 0)                      \
+  PRIMITIVE(program_path, 0)                 \
   PRIMITIVE(main_arguments, 0)               \
   PRIMITIVE(spawn, 3)                        \
   PRIMITIVE(spawn_method, 0)                 \

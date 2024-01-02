@@ -585,6 +585,11 @@ PRIMITIVE(command) {
   return process->allocate_string_or_error(Flags::program_name);
 }
 
+PRIMITIVE(program_path) {
+  if (Flags::program_path == null) return process->null_object();
+  return process->allocate_string_or_error(Flags::program_path);
+}
+
 PRIMITIVE(smi_add) {
   ARGS(word, receiver, Object, arg);
   if (is_smi(arg)) {

@@ -158,6 +158,18 @@ class OS {
   static int64 get_monotonic_time();
   static void reset_monotonic_time();
 
+  /// Computes the executable path.
+  ///
+  /// Returns a malloced data structure that should be freed
+  ///   by the caller with `delete []`.
+  static char* get_executable_path();
+
+  /// Computes the executable path of a source argument.
+  /// This is equivalent to calling `realpath`/`GetFullPathName` on the argument.
+  /// Returns 'null' if anything goes wrong.
+  /// Returns a malloced data structure that should be freed.
+  static char* get_executable_path_from_arg(const char* source_arg);
+
   // Returns the number of microseconds from the last power-on event. This time
   // source is monotonic.
   static int64 get_system_time();

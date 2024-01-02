@@ -33,6 +33,63 @@
 
 namespace toit {
 
+static wchar_t* malloced_wide_string(const char* string) {
+  word length = Utils::utf_8_to_16(unsigned_cast(string), strlen(string));
+  wchar_t* result = reinterpret_cast<wchar_t*>(malloc((length + 1) * sizeof(wchar_t)));
+  Utils::utf_8_to_16(unsigned_cast(string), strlen(string), result, length);
+  result[length] = '\0';
+  return result;
+}
+
+
+static char* malloced_narrow_string(const wchar_t* string, word w_length) {
+  word length = Utils::utf_16_to_8(string, w_length, null, 0);
+  char* result = unvoid_cast<char*>(malloc(length + 1));
+  Utils::utf_16_to_8(string, w_length, unsigned_cast(result), length);
+  result[length] = '\0';
+  return result;
+}
+
+static char* malloced_narrow_string(const wchar_t* string) {
+  word length = wcslen(string);
+  return malloced_narrow_string(string, length);
+}
+
+char* OS::get_executable_path() {
+  char* path = _new char[MAX_PATH + 1];
+  auto length = GetModuleFileName(NULL, path, MAX_PATH);
+  path[length] = '\0';
+  return path;
+}
+
+char* OS::get_executable_path_from_arg(const char* source_arg) {
+  wchar_t* w_source_arg = malloced_wide_string(source_arg);
+
+  DWORD w_result_length = GetFullPathNameW(w_source_arg, 0, NULL, NULL);
+  if (w_result_length == 0) {
+    free(w_source_arg);
+    return null;
+  }
+
+  wchar_t* w_result = unvoid_cast<wchar_t*>(malloc(w_result_length * sizeof(wchar_t)));
+  if (w_result == null) {
+    free(w_source_arg);
+    return null;
+  }
+
+  if (GetFullPathNameW(w_source_arg, w_result_length, w_result, NULL) == 0) {
+    free(w_source_arg);
+    free(w_result);
+    return null;
+  }
+
+  free(w_source_arg);
+
+  char* result = malloced_narrow_string(w_result);
+  free(w_result);
+  return result;
+}
+
 int64 OS::get_system_time() {
   int64 us;
   if (!monotonic_gettime(&us)) {
@@ -260,14 +317,6 @@ void OS::out_of_memory(const char* reason) {
   abort();
 }
 
-static wchar_t* malloced_wide_string(const char* string) {
-  word length = Utils::utf_8_to_16(unsigned_cast(string), strlen(string));
-  wchar_t* result = reinterpret_cast<wchar_t*>(malloc((length + 1) * sizeof(wchar_t)));
-  Utils::utf_8_to_16(unsigned_cast(string), strlen(string), result, length);
-  result[length] = '\0';
-  return result;
-}
-
 char* OS::getenv(const char* variable) {
   wchar_t* wide_variable = malloced_wide_string(variable);
 
@@ -276,11 +325,7 @@ char* OS::getenv(const char* variable) {
   int wide_length = GetEnvironmentVariableW(wide_variable, buffer, BUFFER_SIZE);
   free(wide_variable);
   if (wide_length == 0 || wide_length > BUFFER_SIZE) return null;
-  word size = Utils::utf_16_to_8(buffer, wide_length, null, 0);
-  char* result = unvoid_cast<char*>(malloc(size + 1));
-  Utils::utf_16_to_8(buffer, wide_length, unsigned_cast(result), size);
-  result[size] = '\0';
-  return result;
+  return malloced_narrow_string(buffer, wide_length);
 }
 
 bool OS::setenv(const char* variable, const char* value) {

@@ -164,5 +164,6 @@ int Flags::process_args(int* argc, char** argv) {
 #endif
 
 const char* Flags::program_name = null;
+const char* Flags::program_path = null;
 
 }
