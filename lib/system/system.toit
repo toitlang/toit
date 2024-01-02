@@ -207,3 +207,11 @@ print-objects --marker/string="" --gc/bool=false -> none:
 
 object-histogram_ marker/string full-gcs/int? -> ByteArray:
   #primitive.debug.object-histogram
+
+/**
+Returns the name of the toit file, image, or snapshot that the
+  current program was run from.  May return null if this information
+  is not available.
+*/
+program-name -> string?:
+  #primitive.core.command

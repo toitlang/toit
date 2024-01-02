@@ -610,7 +610,7 @@ write-qemu_ output-path/string firmware-bin/ByteArray envelope/Envelope:
 find-esptool_ -> List:
   bin-extension := ?
   // TODO(florian): can we get the absolute path to our binary?
-  bin-name := program-name
+  bin-name := system.program-name
   if platform == system.PLATFORM-WINDOWS:
     bin-name = bin-name.replace --all "\\" "/"
     bin-extension = ".exe"

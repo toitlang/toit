@@ -42,9 +42,7 @@ foreach(input ${INPUT})
   set(build_snap tests-s2i-build_${base}_input)
   add_custom_target(${build_snap} DEPENDS ${snap})
 
-  # Make sure the test input is built before we run the tests.
-  add_dependencies(check ${build_snap})
-  add_dependencies(check_slow ${build_snap})
+  add_dependencies(build_test_assets ${build_snap})
 
   set(TEST_EXPECTATION_NAME ${input})
   if("${input}" IN_LIST TOIT_FAILING_TESTS)

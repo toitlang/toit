@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import system
+
 // This is the system entry point. It is responsible for
 // calling the main function and halting the system after
 // it returns.
@@ -46,6 +48,8 @@ __entry__task lambda -> none:
 Returns the name of the toit file, image, or snapshot that the
   current program was run from.  May return null if this information
   is not available.
+
+Deprecated. Use $system.program-name instead.
 */
 program-name -> string?:
   #primitive.core.command

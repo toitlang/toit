@@ -10,13 +10,13 @@ import system.trace show send-trace-message
 Contains various utility functions.
 */
 
-/** Deprecated. Use system.BITS-PER-BYTE instead. */
+/** Deprecated. Use $system.BITS-PER-BYTE instead. */
 BITS-PER-BYTE ::= 8
 
-/** Deprecated. Use system.BITS-PER-WORD instead. */
+/** Deprecated. Use $system.BITS-PER-WORD instead. */
 BITS-PER-WORD ::= system.BYTES-PER-WORD * system.BITS-PER-BYTE
 
-/** Deprecated. Use system.BYTES-PER-WORD instead. */
+/** Deprecated. Use $system.BYTES-PER-WORD instead. */
 BYTES-PER-WORD ::= system.word-size_
 
 /** The number of bytes per kilobyte. */
@@ -450,7 +450,7 @@ Converts a number between 0 and 15 to an upper case
 to-upper-case-hex c/int -> int:
   return "0123456789ABCDEF"[c]
 
-/** Deprecated. Use system.print-objects instead. */
+/** Deprecated. Use $system.print-objects instead. */
 print-objects --marker/string="" --gc/bool=false -> none:
   system.print-objects --marker=marker --gc=gc
 
