@@ -7,6 +7,7 @@ import encoding.yaml
 import ..pkg
 import ..registry
 import ..error
+import ..registry.description
 
 class ListCommand:
   name/string?
@@ -20,7 +21,6 @@ class ListCommand:
 
   execute:
     registry-packages := registries.list-packages
-    //  the packages list in each registry has this format [ package-name, version-name, description ]
     if name:
       if not registry-packages.contains name:
         error "Registry not found: $name"
@@ -29,19 +29,19 @@ class ListCommand:
     if output == "list":
       registry-packages.do: | registry-name registry/Map |
         print "$registry-name: $(registry["registry"].stringify)"
-        list-textual registry["packages"] --verbose=verbose --indent="  "
+        list-textual registry["descriptions"] --verbose=verbose --indent="  "
     else:
       result/Map := ?
       if verbose:
         result = registry-packages.map: | registry-name registry/Map |
           { "registry": registry["registry"].to-map,
-            "packages": (registry["packages"].map: verbose-description it[2])
+            "packages": (registry["descriptions"].map: verbose-description it)
           }
       else:
         result = registry-packages.map: | registry-name registry/Map |
           { "registry": registry["registry"].stringify,
-            "packages": (registry["packages"].map: {
-              it[0] : it[1]
+            "packages": (registry["descriptions"].map: | description/Description | {
+              description.name : description.version
             })
           }
       if output == "json":
@@ -49,22 +49,20 @@ class ListCommand:
       else if output == "yaml":
         print (yaml.stringify result)
 
-  static verbose-description description/Map --allow-extra-fields=false -> Map:
-    result := {:}
-    result[description["name"]] = description.filter: | k _ |
-      k != Description.NAME-KEY_ and
-           (allow-extra-fields or
-            k != Description.DEPENDENCIES-KEY_ and k != Description.ENVIRONMENT-KEY_)
-    return result
+  static verbose-description description/Description --allow-extra-fields=false -> Map:
+    filtered := description.content.filter: | k _ |
+                  k != Description.NAME-KEY_ and
+                       (allow-extra-fields or
+                        k != Description.DEPENDENCIES-KEY_ and k != Description.ENVIRONMENT-KEY_)
+    return { description.name : filtered }
 
-  static list-textual packages/List --verbose/bool --indent/string="":
-    packages.do:
+  static list-textual descriptions/List --verbose/bool --indent/string="":
+    descriptions.do: | description/Description |
       if verbose:
-        description := (yaml.stringify (verbose-description it[2]))
-        print "$indent$((description.split "\n").join "\n$indent")"
+        description-text := (yaml.stringify (verbose-description description))
+        print "$indent$((description-text.split "\n").join "\n$indent")"
       else:
-        print "$indent$it[0] - $it[1]"
-
+        print "$indent$description.name - $description.version"
 
   static CLI-COMMAND ::=
       cli.Command "list"

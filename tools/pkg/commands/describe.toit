@@ -10,6 +10,7 @@ import ..error
 import ..project.package
 import ..project
 import ..registry
+import ..registry.description
 import ..license
 import ..git
 import ..file-system-view
@@ -39,7 +40,7 @@ class DescribeCommand:
     else:
       execute-remote
 
-  build-dependencies -> Map
+  build-description -> Description
       [--check-src-dir]
       [--load-package-file]
       [--load-license-file]
@@ -95,7 +96,7 @@ class DescribeCommand:
     environment := package-file.environment
     if environment: description[Description.ENVIRONMENT-KEY_] = environment
 
-    return description
+    return Description description
 
 
   execute-local:
@@ -104,7 +105,7 @@ class DescribeCommand:
       error "The --out-dir flag requires a URL and version"
 
     src := "$url-path/src"
-    description := build-dependencies
+    description := build-description
       --check-src-dir=: file.is_directory src
       --load-package-file=: file.is_file (PackageFile.file-name url-path) and  ExternalPackageFile url-path
       --load-license-file=: file.is_file "LICENSE" and file.read_content "LICENSE"
@@ -123,7 +124,7 @@ class DescribeCommand:
 
     pack := git.clone ref-hash
     file-view/FileSystemView := pack.content
-    description := build-dependencies
+    description := build-description
       --check-src-dir=: (file-view.get "src") is FileSystemView
       --load-package-file=:
         package-content := file-view.get PackageFile.FILE_NAME
@@ -140,7 +141,7 @@ class DescribeCommand:
       directory.mkdir --recursive output-path
       file.write-content --path="$output-path/desc.yaml" (yaml.encode description)
 
-  output description/Map:
+  output description/Description:
     output-map := ListCommand.verbose-description description --allow-extra-fields
     print (yaml.stringify output-map)
 

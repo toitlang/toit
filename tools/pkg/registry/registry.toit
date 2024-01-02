@@ -5,6 +5,7 @@ import host.file
 
 import .local
 import .git
+import .description
 import ..file-system-view
 import ..error
 import ..solver.registry-solver
@@ -13,6 +14,7 @@ import ..semantic-version
 import ..project.package
 import ..constraints
 import ..utils
+import .cache
 
 registries ::= Registries
 
@@ -122,30 +124,28 @@ class Registries:
   /**
   Searches for the given $search-string in all registries.
 
-  Returns a list of all matches.
-  Each match is encoded as a list of the form:
-    [package-name/string, version/string, description/Map]
+  Returns a list of all descriptions that matches.
   */
   search --free-text search-string/string -> List:
     result := []
     registries.do: | name registry/Registry |
       result.add-all
-          registry.list-all-packages.filter:  | package/List |
-            package[0].contains search-string or
-              package[2][Description.NAME-KEY_].contains search-string or
-              package[2][Description.DESCRIPTION-KEY_].contains search-string
+          registry.list-all-packages.filter:  | description/Description |
+            description.matches-free-text search-string
     return result
 
   list-packages -> Map:
     return registries.map: | name registry/Registry |
-      { "registry" : registry, "packages": registry.list-all-packages }
+      { "registry" : registry, "descriptions": registry.list-all-packages }
 
   sync:
     registries.do --values: it.sync
+    save_
 
   sync --name/string:
     registry := registries.get name --if-absent=: error "Registry $name does not exist"
     registry.sync
+    save_
 
   save_:
     registries-map := {:}
@@ -158,9 +158,10 @@ class Registries:
 
 abstract class Registry:
   name/string
-  description-cache_ := {:}  // registry-name -> (Map of url -> description).
+  description-cache_/DescriptionUrlCache? := null
 
   constructor .name:
+    description-cache_ = DescriptionUrlCache content
 
   abstract type -> string
   abstract content -> FileSystemView
@@ -168,39 +169,11 @@ abstract class Registry:
   abstract sync
   abstract stringify -> string
 
-  filter-filesystem map/Map -> Map:
-    return map.filter: | k v | v is FileSystemView
-
-  list-all-packages -> List:
-    result := []
-
-    hubs/FileSystemView := content.get --path=["packages"]
-    // REVIEW(florian): we definitely migrated towards this layout, but I'm not
-    // sure if we can/should insist on it. It feels like just recursively looking for all
-    // 'desc.yaml' files should be enough.
-    // On the other hand, it makes things more consistent. So maybe we just should.
-    (filter-filesystem hubs.list).do: | hub-name hub |
-      (filter-filesystem hub.list).do: | repository-name repository/FileSystemView |
-        (filter-filesystem repository.list).do: | package-name package/FileSystemView |
-          (filter-filesystem package.list).do: | version-name version/FileSystemView |
-            desc := version.get --path=["desc.yaml"]
-            if desc:
-              description := yaml.decode desc
-              // REVIEW(florian): we should take the package-name and version-name from the
-              // description. If we insist on the layout, then we should at least warn if
-              // they aren't the same.
-              // TODO(florian): return a SearchResult object. Would be more efficient and easier to use.
-              result.add [package-name, version-name, description]
-
-    return result
+  list-all-packages -> List: // List of Description objects
+    return description-cache_.all-descriptions
 
   retrieve-description url/string version/SemanticVersion -> Description?:
-    if not description-cache_.contains url or not description-cache_[url].contains version:
-      url-cache := description-cache_.get url --init=: {:}
-      desc-buffer := content.get --path=(flatten_list ["packages", url.split "/", version.stringify, "desc.yaml"])
-      url-cache[version] = desc-buffer and Description (yaml.decode desc-buffer)
-
-    return description-cache_[url][version]
+    return description-cache_.retrieve-description url version
 
   retrieve-versions url/string -> List?:
     // REVIEW(florian): I designed the pkg manager, with the idea that the whole registry could always be in memory.
@@ -302,56 +275,6 @@ class RemotePackage:
   stringify:
     return "$url $version $description"
 
-
-class Description:
-  content/Map
-
-  cached-version_/SemanticVersion? := null
-  cached-sdk-version_/List := []
-  cached-dependencies_/List? := null
-
-  constructor .content:
-
-  name -> string: return content[NAME-KEY_]
-
-  ref-hash -> string: return content[HASH-KEY_]
-
-  version -> SemanticVersion:
-    if not cached_version_:
-      cached_version_ = SemanticVersion content[VERSION-KEY_]
-    return cached_version_
-
-  sdk-version -> Constraint?:
-    if cached-sdk-version_.is-empty:
-      if environment := content.get ENVIRONMENT-KEY_:
-        if sdk-constraint := environment.get SDK-KEY_:
-          cached-sdk-version_.add (Constraint sdk-constraint)
-          return cached-sdk-version_[0]
-      cached-sdk-version_.add null
-    return cached-sdk-version_[0]
-
-  dependencies -> List:
-    if not cached-dependencies_:
-      if not content.contains DEPENDENCIES-KEY_:
-        cached-dependencies_ = []
-      else:
-        cached-dependencies_ =
-            content[DEPENDENCIES-KEY_].map: | dep |
-                PackageDependency dep[URL-KEY_] dep[VERSION-KEY_]
-    return cached-dependencies_
-
-  satisfies-sdk-version concrete-sdk-version/SemanticVersion -> bool:
-    return not sdk-version or sdk-version.satisfies concrete-sdk-version
-
-  static NAME-KEY_ ::= "name"
-  static DESCRIPTION-KEY_ ::= "description"
-  static LICENSE-KEY_ ::= "license"
-  static URL-KEY_ ::= "url"
-  static VERSION-KEY_ ::= "version"
-  static ENVIRONMENT-KEY_ ::= "environment"
-  static HASH-KEY_ ::= "hash"
-  static DEPENDENCIES-KEY_ ::= "dependencies"
-  static SDK-KEY_ ::= "sdk"
 
 
 class RegistrySolver extends LocalSolver:

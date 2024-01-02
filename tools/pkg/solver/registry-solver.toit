@@ -1,6 +1,7 @@
 import ..semantic-version
 import ..constraints
 import ..registry
+import ..registry.description
 import ..error
 import ..utils
 import ..project.package

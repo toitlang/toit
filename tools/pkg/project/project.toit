@@ -32,7 +32,7 @@ class ProjectConfiguration:
         parsed[OPTION-AUTO-SYNC]
 
   root -> string:
-    return fs.to-absolute project-root_ ? project-root_ : cwd_
+    return fs.to-absolute (project-root_ ? project-root_ : cwd_)
 
   package-file-exists -> bool:
     return file.is_file (PackageFile.file-name root)

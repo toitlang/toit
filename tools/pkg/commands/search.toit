@@ -4,6 +4,7 @@ import cli
 
 import ..pkg
 import ..registry
+import ..registry.description
 import ..semantic-version
 import .list
 
@@ -17,20 +18,16 @@ class SearchCommand:
   execute:
     search-result := registries.search --free-text search-string
 
-    url-to-package/Map := {:}
-    search-result.do: | package |
-      version-string/string := package[1]
-      package-description/Map := package[2]
-      url := package-description[Description.URL-KEY_]
-      version := SemanticVersion version-string
-      old := url-to-package.get url
+    url-to-description/Map := {:}
+    search-result.do: | description/Description |
+      version := description.version
+      old/Description := url-to-description.get description.url
       if not old:
-        url-to-package[url] = package
+        url-to-description[description.url] = description
       else:
-        old-version := SemanticVersion old[1]
-        if version > old-version:
-          url-to-package[url] = package
-    ListCommand.list-textual url-to-package.values --verbose=verbose
+        if version > old.version:
+          url-to-description[description.url] = description
+    ListCommand.list-textual url-to-description.values --verbose=verbose
 
   static CLI-COMMAND ::=
       cli.Command "search"
