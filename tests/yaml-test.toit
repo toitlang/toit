@@ -20,6 +20,7 @@ main:
   test-block-parse
   test-from-spec
   test-stream
+  test-value-converter
 
 test-stringify:
   expect-equals "testing" (yaml.stringify "testing")
@@ -540,6 +541,19 @@ test-from-spec:
                 # Comment
                """
 
+test-value-converter:
+  result := yaml.parse
+      """
+      float: 1.0
+      int: 4
+      float-as-string: "1.0"
+      int-as-string: "4"
+      """
+
+  expect result["float"] is float
+  expect result["int"] is int
+  expect result["float-as-string"] is string
+  expect result["int-as-string"] is string
 
 class TestReader implements Reader:
   pos := 0
