@@ -11,13 +11,16 @@ packages:
   pkg-ar:
     url: github.com/toitlang/pkg-ar
     name: ar
-    version: 1.0.0
-    hash: 175bcdfd59b2597c0825ef8765a20498a7e6a2db
+    version: 1.0.1
+    hash: 0f32219787c63521fc5690bbb716fc19cc40f5da
   pkg-cli:
     url: github.com/toitlang/pkg-cli
     name: cli
-    version: 1.1.1
-    hash: 4cfb8204a27b6eea6c4d1339c96f6e8cb41e43db
+    version: 1.3.0
+    hash: 667d385441179dfe90c3427b8bc9ee252a948884
+    prefixes:
+      fs: pkg-fs
+      host: pkg-host
   pkg-font-x11-adobe:
     url: github.com/toitlang/pkg-font-x11-adobe
     name: font_x11_adobe
@@ -43,5 +46,5 @@ packages:
   toit-cert-roots:
     url: github.com/toitware/toit-cert-roots
     name: certificate_roots
-    version: 1.5.0
-    hash: 27a9f9ff3d337b6128e98e220126e3cc275bcd73
+    version: 1.6.1
+    hash: 55d3be82ed53d8d332338b2de931865cf69fe48b
