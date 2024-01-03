@@ -62,13 +62,18 @@ static char* to_narrow_string(const wchar_t* string_w) {
 
 char* OS::get_executable_path() {
   const int BUFFER_SIZE = 32767 + 1;
-  wchar_t buffer[BUFFER_SIZE];
+  wchar_t* buffer = unvoid_cast<wchar_t*>(malloc(BUFFER_SIZE));
   word length_w = GetModuleFileNameW(NULL, buffer, BUFFER_SIZE);
   // GetModuleFileNameW truncates the path to the buffer size.
   // If the returned length is equal to the BUFFER_SIZE we assume that the
   // buffer wasn't big enough.
-  if (length_w == 0 || length_w >= BUFFER_SIZE) return null;
-  return to_narrow_string(buffer, length_w);
+  if (length_w == 0 || length_w >= BUFFER_SIZE) {
+    free(buffer);
+    return null;
+  }
+  char* result = to_narrow_string(buffer, length_w);
+  free(buffer);
+  return result;
 }
 
 char* OS::get_executable_path_from_arg(const char* source_arg) {
@@ -326,11 +331,20 @@ char* OS::getenv(const char* variable) {
   wchar_t* variable_w = to_wide_string(variable);
 
   const int BUFFER_SIZE = 32767;
-  wchar_t buffer[BUFFER_SIZE];
+  wchar_t* buffer = unvoid_cast<wchar_t*>(malloc(BUFFER_SIZE));
   int length_w = GetEnvironmentVariableW(variable_w, buffer, BUFFER_SIZE);
   free(variable_w);
-  if (length_w == 0 || length_w > BUFFER_SIZE) return null;
-  return to_narrow_string(buffer, length_w);
+  // The GetEnvironmentVariableW function returns the length the variable needs,
+  // which could be bigger than the buffer.
+  // If the returned length is equal to the BUFFER_SIZE then no `\0` was written
+  // but we pass the length to `to_narrow_string` so that's fine.
+  if (length_w == 0 || length_w > BUFFER_SIZE) {
+    free(buffer);
+    return null;
+  }
+  char* result = to_narrow_string(buffer, length_w);
+  free(buffer);
+  return result;
 }
 
 bool OS::setenv(const char* variable, const char* value) {
