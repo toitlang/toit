@@ -209,9 +209,28 @@ object-histogram_ marker/string full-gcs/int? -> ByteArray:
   #primitive.debug.object-histogram
 
 /**
-Returns the name of the toit file, image, or snapshot that the
-  current program was run from.  May return null if this information
-  is not available.
+Returns the name of the toit file, image, snapshot, or executable that the
+  current program was run from.
+
+If the program is run by the Toit command line tool, this is the name of the
+  source file passed to the tool.
+If the program is run as an executable, this is the name of the executable. In
+  this case it is equivalent to argv[0] in C, or $0 in bash.
+
+May return null if this information is not available.
 */
 program-name -> string?:
-  #primitive.core.command
+  #primitive.core.program-name
+
+/**
+Returns the fully resolved path to the toit file, image, or snapshot that the
+  current program was run from.
+
+If the program is run by the Toit command line tool, this is the fully resolved
+  path to the source file passed to the tool, as provided by `realpath`.
+
+If the program is run as an executable, this is the fully resolved path to the
+  executable.
+*/
+program-path -> string?:
+  #primitive.core.program-path

@@ -53,7 +53,7 @@ foreach(file ${TOIT-TESTS})
   set(GENERATED_EXE ${CMAKE_CURRENT_BINARY_DIR}/${file}.exe)
   set(GENERATED_DEP ${CMAKE_CURRENT_BINARY_DIR}/${file}.dep)
 
-  cmake_path(NATIVE_PATH GENERATED_EXE NORMALIZE ${GENERATED_EXE})
+  cmake_path(NATIVE_PATH GENERATED_EXE NORMALIZE NATIVE_EXE_PATH)
 
   ADD_TOIT_EXE(
     "${ABSOLUTE_TEST_SOURCE}"
@@ -66,13 +66,13 @@ foreach(file ${TOIT-TESTS})
 
   add_test(
     NAME "${TOIT_TEST}"
-    COMMAND "${GENERATED_EXE}" "${GENERATED_EXE}" "${GENERATED_EXE}"
+    COMMAND "${GENERATED_EXE}" "${GENERATED_EXE}" "${NATIVE_EXE_PATH}"
   )
 
   add_test(
     NAME "${TOIT_TEST}-relative"
     # We use `cmake` because ctest would otherwise make the test-path absolute.
-    COMMAND ${CMAKE_COMMAND} -E env -- "${file}.exe" "${file}.exe" "${GENERATED_EXE}"
+    COMMAND ${CMAKE_COMMAND} -E env -- "${file}.exe" "${file}.exe" "${NATIVE_EXE_PATH}"
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   )
 endforeach()

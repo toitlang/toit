@@ -280,7 +280,7 @@ test:
 	(cd $(BUILD)/$(HOST) && ninja check_slow check_fuzzer_lib)
 
 .PHONY: build-test-assets
-build-test-assets:
+build-test-assets: rebuild-cmake
 	(cd $(BUILD)/$(HOST) && ninja build_test_assets)
 
 .PHONY: test-flaky

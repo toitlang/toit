@@ -33,6 +33,64 @@
 
 namespace toit {
 
+/// Converts the given string to wide (16-bit) characters.
+/// The string is allocated using 'malloc' and must be freed by the caller.
+static wchar_t* to_wide_string(const char* string) {
+  word length_w = Utils::utf_8_to_16(unsigned_cast(string), strlen(string));
+  wchar_t* result_w = reinterpret_cast<wchar_t*>(malloc((length_w + 1) * sizeof(wchar_t)));
+  Utils::utf_8_to_16(unsigned_cast(string), strlen(string), result_w, length_w);
+  result_w[length_w] = '\0';
+  return result_w;
+}
+
+/// Converts the given string to narrow (8-bit) characters.
+/// The string is allocated using 'malloc' and must be freed by the caller.
+static char* to_narrow_string(const wchar_t* string_w, word length_w) {
+  word length = Utils::utf_16_to_8(string_w, length_w, null, 0);
+  char* result = unvoid_cast<char*>(malloc(length + 1));
+  Utils::utf_16_to_8(string_w, length_w, unsigned_cast(result), length);
+  result[length] = '\0';
+  return result;
+}
+
+/// Converts the given string to narrow (8-bit) characters.
+/// The string is allocated using 'malloc' and must be freed by the caller.
+static char* to_narrow_string(const wchar_t* string_w) {
+  word length_w = wcslen(string_w);
+  return to_narrow_string(string_w, length_w);
+}
+
+char* OS::get_executable_path() {
+  char* path = _new char[MAX_PATH + 1];
+  auto length = GetModuleFileName(NULL, path, MAX_PATH);
+  path[length] = '\0';
+  return path;
+}
+
+char* OS::get_executable_path_from_arg(const char* source_arg) {
+  wchar_t* w_source_arg = to_wide_string(source_arg);
+
+  DWORD w_result_length = GetFullPathNameW(w_source_arg, 0, NULL, NULL);
+  if (w_result_length == 0) {
+    free(w_source_arg);
+    return null;
+  }
+
+  wchar_t* w_result = unvoid_cast<wchar_t*>(malloc(w_result_length * sizeof(wchar_t)));
+
+  if (GetFullPathNameW(w_source_arg, w_result_length, w_result, NULL) == 0) {
+    free(w_source_arg);
+    free(w_result);
+    return null;
+  }
+
+  free(w_source_arg);
+
+  char* result = to_narrow_string(w_result);
+  free(w_result);
+  return result;
+}
+
 int64 OS::get_system_time() {
   int64 us;
   if (!monotonic_gettime(&us)) {
@@ -260,42 +318,30 @@ void OS::out_of_memory(const char* reason) {
   abort();
 }
 
-static wchar_t* malloced_wide_string(const char* string) {
-  word length = Utils::utf_8_to_16(unsigned_cast(string), strlen(string));
-  wchar_t* result = reinterpret_cast<wchar_t*>(malloc((length + 1) * sizeof(wchar_t)));
-  Utils::utf_8_to_16(unsigned_cast(string), strlen(string), result, length);
-  result[length] = '\0';
-  return result;
-}
-
 char* OS::getenv(const char* variable) {
-  wchar_t* wide_variable = malloced_wide_string(variable);
+  wchar_t* variable_w = to_wide_string(variable);
 
   const int BUFFER_SIZE = 32767;
   wchar_t buffer[BUFFER_SIZE];
-  int wide_length = GetEnvironmentVariableW(wide_variable, buffer, BUFFER_SIZE);
-  free(wide_variable);
-  if (wide_length == 0 || wide_length > BUFFER_SIZE) return null;
-  word size = Utils::utf_16_to_8(buffer, wide_length, null, 0);
-  char* result = unvoid_cast<char*>(malloc(size + 1));
-  Utils::utf_16_to_8(buffer, wide_length, unsigned_cast(result), size);
-  result[size] = '\0';
-  return result;
+  int length_w = GetEnvironmentVariableW(variable_w, buffer, BUFFER_SIZE);
+  free(variable_w);
+  if (length_w == 0 || length_w > BUFFER_SIZE) return null;
+  return to_narrow_string(buffer, length_w);
 }
 
 bool OS::setenv(const char* variable, const char* value) {
-  wchar_t* wide_variable = malloced_wide_string(variable);
-  wchar_t* wide_value = malloced_wide_string(value);
-  bool ok = SetEnvironmentVariableW(wide_variable, wide_value);
-  free(wide_variable);
-  free(wide_value);
+  wchar_t* variable_w = to_wide_string(variable);
+  wchar_t* value_w = to_wide_string(value);
+  bool ok = SetEnvironmentVariableW(variable_w, value_w);
+  free(variable_w);
+  free(value_w);
   return ok;
 }
 
 bool OS::unsetenv(const char* variable) {
-  wchar_t* wide_variable = malloced_wide_string(variable);
-  bool ok = SetEnvironmentVariableW(wide_variable, null);
-  free(wide_variable);
+  wchar_t* variable_w = to_wide_string(variable);
+  bool ok = SetEnvironmentVariableW(variable_w, null);
+  free(variable_w);
   return ok;
 }
 
