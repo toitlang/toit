@@ -68,7 +68,7 @@ char* OS::get_executable_path() {
   // If the returned length is equal to the BUFFER_SIZE we assume that the
   // buffer wasn't big enough.
   if (length_w == 0 || length_w >= BUFFER_SIZE) return null;
-  return  to_narrow_string(buffer, length_w);
+  return to_narrow_string(buffer, length_w);
 }
 
 char* OS::get_executable_path_from_arg(const char* source_arg) {
