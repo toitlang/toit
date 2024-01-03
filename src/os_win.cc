@@ -61,33 +61,37 @@ static char* to_narrow_string(const wchar_t* string_w) {
 }
 
 char* OS::get_executable_path() {
-  char* path = _new char[MAX_PATH + 1];
-  auto length = GetModuleFileName(NULL, path, MAX_PATH);
-  path[length] = '\0';
-  return path;
+  const int BUFFER_SIZE = 32767 + 1;
+  wchar_t buffer[BUFFER_SIZE];
+  word length_w = GetModuleFileNameW(NULL, buffer, BUFFER_SIZE);
+  // GetModuleFileNameW truncates the path to the buffer size.
+  // If the returned length is equal to the BUFFER_SIZE we assume that the
+  // buffer wasn't big enough.
+  if (length_w == 0 || length_w >= BUFFER_SIZE) return null;
+  return to_narrow_string(buffer, length_w);
 }
 
 char* OS::get_executable_path_from_arg(const char* source_arg) {
-  wchar_t* w_source_arg = to_wide_string(source_arg);
+  wchar_t* source_arg_w = to_wide_string(source_arg);
 
-  DWORD w_result_length = GetFullPathNameW(w_source_arg, 0, NULL, NULL);
-  if (w_result_length == 0) {
-    free(w_source_arg);
+  word result_length_w = GetFullPathNameW(source_arg_w, 0, NULL, NULL);
+  if (result_length_w == 0) {
+    free(source_arg_w);
     return null;
   }
 
-  wchar_t* w_result = unvoid_cast<wchar_t*>(malloc(w_result_length * sizeof(wchar_t)));
+  wchar_t* result_w = unvoid_cast<wchar_t*>(malloc(result_length_w * sizeof(wchar_t)));
 
-  if (GetFullPathNameW(w_source_arg, w_result_length, w_result, NULL) == 0) {
-    free(w_source_arg);
-    free(w_result);
+  if (GetFullPathNameW(source_arg_w, result_length_w, result_w, NULL) == 0) {
+    free(source_arg_w);
+    free(result_w);
     return null;
   }
 
-  free(w_source_arg);
+  free(source_arg_w);
 
-  char* result = to_narrow_string(w_result);
-  free(w_result);
+  char* result = to_narrow_string(result_w);
+  free(result_w);
   return result;
 }
 
