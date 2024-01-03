@@ -220,7 +220,7 @@ If the program is run as an executable, this is the name of the executable. In
 May return null if this information is not available.
 */
 program-name -> string?:
-  #primitive.core.command
+  #primitive.core.program-name
 
 /**
 Returns the fully resolved path to the toit file, image, or snapshot that the

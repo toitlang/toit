@@ -1,27 +1,15 @@
-<pkg:pkg-cli>/cli.toit:124:40: warning: Deprecated 'program-name'
-  run arguments/List --invoked_command=program_name --ui/Ui=Ui_ -> none:
+<pkg:pkg-cli>/cli.toit:160:33: warning: Deprecated 'program-name'
+  help --invoked-command/string=program-name -> string:
+                                ^~~~~~~~~~~~
+<pkg:pkg-cli>/cli.toit:166:34: warning: Deprecated 'program-name'
+  usage --invoked-command/string=program-name -> string:
+                                 ^~~~~~~~~~~~
+<pkg:pkg-cli>/cli.toit:182:40: warning: Deprecated 'program-name'
+  run arguments/List --invoked-command=program-name --ui/Ui=Ui_ -> none:
                                        ^~~~~~~~~~~~
-<pkg:pkg-cli>/cli.toit:132:27: warning: Deprecated 'program-name'
-  check --invoked_command=program_name:
+<pkg:pkg-cli>/cli.toit:190:27: warning: Deprecated 'program-name'
+  check --invoked-command=program-name:
                           ^~~~~~~~~~~~
 tests/lsp/dep7-compiler-test.toit:18:25: warning: Deprecated 'PLATFORM-WINDOWS'
   DRIVE ::= platform == PLATFORM-WINDOWS ? "c:" : ""
                         ^~~~~~~~~~~~~~~~
-<pkg:pkg-host>/directory.toit:154:6: warning: Deprecated 'platform'
-  if platform == PLATFORM_WINDOWS:
-     ^~~~~~~~
-<pkg:pkg-host>/directory.toit:154:18: warning: Deprecated 'PLATFORM-WINDOWS'
-  if platform == PLATFORM_WINDOWS:
-                 ^~~~~~~~~~~~~~~~
-<pkg:pkg-host>/pipe.toit:180:6: warning: Deprecated 'platform'
-  if platform == PLATFORM_WINDOWS:
-     ^~~~~~~~
-<pkg:pkg-host>/pipe.toit:180:18: warning: Deprecated 'PLATFORM-WINDOWS'
-  if platform == PLATFORM_WINDOWS:
-                 ^~~~~~~~~~~~~~~~
-<pkg:pkg-host>/pipe.toit:395:6: warning: Deprecated 'platform'
-  if platform == PLATFORM_WINDOWS:
-     ^~~~~~~~
-<pkg:pkg-host>/pipe.toit:395:18: warning: Deprecated 'PLATFORM-WINDOWS'
-  if platform == PLATFORM_WINDOWS:
-                 ^~~~~~~~~~~~~~~~
