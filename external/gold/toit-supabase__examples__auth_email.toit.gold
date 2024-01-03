@@ -22,6 +22,12 @@ toit-supabase/examples/utils/local_storage.toit:72:8: warning: Deprecated 'platf
 toit-supabase/examples/utils/local_storage.toit:72:20: warning: Deprecated 'PLATFORM-WINDOWS'
     if platform == PLATFORM_WINDOWS:
                    ^~~~~~~~~~~~~~~~
+toit-supabase/examples/auth_email.toit:9:20: warning: Deprecated 'program-name'
+    print "Usage: $program_name signup <email> <password>"
+                   ^~~~~~~~~~~~
+toit-supabase/examples/auth_email.toit:18:20: warning: Deprecated 'program-name'
+    print "Usage: $program_name login <email> <password>"
+                   ^~~~~~~~~~~~
 toit-supabase/examples/utils/local_storage.toit:24:19: warning: Deprecated 'platform'
   if not home and platform == PLATFORM_WINDOWS:
                   ^~~~~~~~

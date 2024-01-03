@@ -1,0 +1,9 @@
+<pkg:..>/arguments.toit:118:37: warning: Deprecated 'program-name'
+  parse arguments --invoked_command=program_name -> Arguments:
+                                    ^~~~~~~~~~~~
+<pkg:..>/arguments.toit:135:37: warning: Deprecated 'program-name'
+  parse arguments --invoked_command=program_name [error_block] -> Arguments:
+                                    ^~~~~~~~~~~~
+<pkg:..>/arguments.toit:157:45: warning: Deprecated 'program-name'
+  usage arguments/List=[] --invoked_command=program_name -> string:
+                                            ^~~~~~~~~~~~
