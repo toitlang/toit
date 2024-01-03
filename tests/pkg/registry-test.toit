@@ -1,3 +1,7 @@
+// Copyright (C) 2024 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
+
 import expect show *
 import host.os
 import host.directory
@@ -90,14 +94,9 @@ LOCAL-REGISTRY-MAP := {
     "type": "local"
 }
 
-reset-registries-yaml:
-  file.write-content --path=".test-cache/registries.yaml"
-      yaml.encode {"toit": TOIT-REGISTRY-MAP}
-
 
 test-registries:
   outputs := []
-  reset-registries-yaml
 
   test-registries := Registries
                        --error-reporter=(:: throw it )
@@ -181,10 +180,15 @@ test-registries:
   expect-throw "Multiple packages found for 'local' in all registries." : test-registries.search  "local"
 
 main:
-  // Initialize the registries storage
-  os.env["TOIT_PKG_CACHE_DIR"] = ".test-cache"
-  directory.mkdir --recursive ".test-cache"
-
+  setup-test-registry
   test-git
   test-local
   test-registries
+
+setup-test-registry:
+  // Initialize the registries storage
+  os.env["TOIT_PKG_CACHE_DIR"] = ".test-cache"
+  directory.mkdir --recursive ".test-cache"
+  file.write-content --path=".test-cache/registries.yaml"
+      yaml.encode {"toit": TOIT-REGISTRY-MAP}
+

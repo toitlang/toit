@@ -1,3 +1,7 @@
+// Copyright (C) 2024 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
+
 import cli
 
 import ..error
@@ -58,7 +62,7 @@ class InstallCommand:
     if not prefix: prefix = remote-package.name
 
     if project.package-file.has-package prefix:
-      error "Project has already a package with name '$prefix'."
+      error "Project already has a package with name '$prefix'."
 
     project.install-remote prefix remote-package
 

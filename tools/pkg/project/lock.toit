@@ -1,3 +1,7 @@
+// Copyright (C) 2024 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
+
 import host.file
 import encoding.yaml
 
@@ -191,7 +195,7 @@ class LockFile:
   constructor .package-file:
 
   constructor.load .package-file:
-    contents/Map := (yaml.decode (file.read_content (file-name package-file.root-dir))) as Map
+    contents/Map := (yaml.decode (file.read_content (file-name package-file.root-dir))) or {:}
     yaml-sdk-version/string? := contents.get SDK-KEY_
     if yaml-sdk-version:
       if not yaml-sdk-version.starts-with "^":
@@ -201,7 +205,7 @@ class LockFile:
     if contents.contains PREFIXES-KEY_:
       prefixes = contents[PREFIXES-KEY_]
 
-    yaml-packages/Map := contents.get PACKAGES-KEY_ --if-absent=: []
+    yaml-packages/Map := contents.get PACKAGES-KEY_ --if-absent=: {:}
     yaml-packages.do: | name/string map/Map |
       packages.add (Package.from-map name map package-file)
 
@@ -328,7 +332,6 @@ class LockFileBuilder:
   constructor .project-package-file/ProjectPackageFile .local-result/local-solver.LocalResult:
 
   build -> LockFile:
-    print "build: $local-result.local-packages"
     lock-file := LockFile project-package-file
     local-result.local-packages.do: | _ package/local-solver.LocalPackage |
       count := 0
@@ -341,7 +344,6 @@ class LockFileBuilder:
     mutli-version-urls := identify-multi-version-packages
     resolved-to-repository-package := {:}
     local-result.repository-packages.packages.do: | dependency/PackageDependency package/ResolvedPackage |
-      print "lockfile.build $dependency"
       count := 0
       while true:
         id := dependency.url
@@ -349,7 +351,6 @@ class LockFileBuilder:
         if mutli-version-urls.contains id:
           id = "$id-$package.version"
 
-        print "id: $id"
         key := PackageKey "package" "$id$(count > 0 ? "-$count" : "")"
         if package-map.contains key: continue
         package-map[key] = BuiltRepositoryPackage project-package-file dependency package
@@ -360,27 +361,20 @@ class LockFileBuilder:
       package.dependencies.do: | dependecy/PackageDependency depdent-package/ResolvedPackage |
         resolved-to-repository-package[depdent-package].add-dependency dependecy
 
-    package-map.keys.do: | k/PackageKey | print "key: $k.parts"
     reduced-key-to-key := reduce-keys package-map.keys
-    reduced-key-to-key.keys.do: | k/PackageKey | print "reduced key: $k.parts"
 
     // Update package-map with the shortened keys
     reduced-key-to-key.do: | short/PackageKey long/PackageKey |
       value/PackageBase := package-map[long]
       value.name = short.name
-      print "$value.name - $short.parts"
       package-map.remove long
       package-map[short] = value
-    package-map.keys.do: | k/PackageKey | print "reduced2: $k.parts"
 
     // Build a lookup table from PackageDependency/Path to Package
     package-locator-to-package/Map := {:}
     package-map.do: | key/PackageKey package/BuiltPackageBase |
       package.locators_.do:
-        print "locator: $it"
         package-locator-to-package[it] = package
-
-    print package-locator-to-package.keys
 
     lock-file.prefixes = compute-prefixes project-package-file package-locator-to-package
 
@@ -407,7 +401,6 @@ class LockFileBuilder:
     input-set.add-all package-keys
     prefix-count := 1
     max-size := package-keys.reduce --initial=0: | m key/PackageKey | max m key.parts.size
-    print max-size
     while not input-set.is-empty and prefix-count <= max-size:
       conflicted := {}
       short-to-long := {:}
@@ -439,7 +432,6 @@ class LockFileBuilder:
       prefixes[prefix] = package-locator-to-package[package-file.absolute-path-for-dependency path].name
 
     package-file.registry-dependencies.do: | prefix/string dependency/PackageDependency |
-      print dependency
       prefixes[prefix] = package-locator-to-package[dependency].name
 
     return prefixes

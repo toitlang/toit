@@ -1,3 +1,7 @@
+// Copyright (C) 2024 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
+
 import host.file
 import host.directory
 import cli
@@ -144,11 +148,3 @@ class Project:
 
   load-local-package-file path/string -> ExternalPackageFile:
     return ExternalPackageFile (fs.to-absolute "$root/$path")
-
-main:
-  config := ProjectConfiguration.private_ "tmp2" directory.cwd (SemanticVersion system.vm-sdk-version) false
-  print system.vm-sdk-version
-  project := Project config
-  project.solve_
-  print project.lock-file.to-map_
-  print (yaml.stringify project.lock-file.to-map_)

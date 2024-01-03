@@ -1,3 +1,7 @@
+// Copyright (C) 2024 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
+
 import encoding.yaml
 
 import cli.cache show Cache FileStore
@@ -231,14 +235,4 @@ abstract class Registry:
     descriptions[1..].do: | next/Description |
       if highest.version < next.version: highest = next
     return highest
-
-class RegistrySolver extends LocalSolver:
-  constructor package-file/ProjectPackageFile:
-    super package-file
-
-  retrieve-description url/string version/SemanticVersion -> Description:
-    return registries.retrieve-description url version
-
-  retrieve-versions url/string -> List:
-    return registries.retrieve-versions url
 

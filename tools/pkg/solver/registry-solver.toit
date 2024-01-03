@@ -1,3 +1,7 @@
+// Copyright (C) 2024 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
+
 import ..semantic-version
 import ..constraints
 import ..registry
@@ -26,10 +30,8 @@ class Resolved:
     m := {:}
     deps.do:
       m[it.stringify] = pps-to-map solution.partial-packages[it]
-    print (yaml.stringify m)
 
   constructor.empty:
-    print "EMPTY" // DEBUG
 
   pps-to-map v/PartialPackageSolution: // DEBUG
     packs := {:}
@@ -164,7 +166,7 @@ class PartialSolution:
     return null
 
   load-dependencies unresolved-dependency/PackageDependency next-version/SemanticVersion -> bool:
-    description := solver.retrieve-description unresolved-dependency.url next-version
+    description := solver.registries.retrieve-description unresolved-dependency.url next-version
 
     if not description.satisfies-sdk-version solver.sdk-version:
       return false
@@ -182,7 +184,7 @@ class PartialSolution:
           partial-package.add-source-dependency dependency
           package.dependencies[dependency] = partial-package
         else:
-          all-versions := solver.retrieve-versions dependency.url
+          all-versions := solver.registries.retrieve-versions dependency.url
           dependency-versions := dependency.filter all-versions
           if dependency-versions.is-empty: return false
 
@@ -197,43 +199,33 @@ class PartialSolution:
           // The dependency resolves to a disjoint set of versions. Add it.
           add-partial-package-solution dependency package (PartialPackageSolution dependency.url dependency-versions)
       else:
-        versions := dependency.filter (solver.retrieve-versions dependency.url)
+        versions := dependency.filter (solver.registries.retrieve-versions dependency.url)
         if versions.is-empty: return false
         add-partial-package-solution dependency package (PartialPackageSolution dependency.url versions)
     return true
 
 
-// Makes an abstract solver to allow easier testing
-abstract class Solver:
-  package-versions/Map := {:}  // Dependency -> list of versions.
+class Solver:
   sdk-version/SemanticVersion
+  registries/Registries
 
-  /** Returns a list of all SemanticVersion for the package denoted by url, sorted with highest first. */
-  abstract retrieve-versions url/string -> List
+  constructor .registries .sdk-version:
 
-  /** Retrieves the description of a specific version. */
-  abstract retrieve-description url/string version/SemanticVersion -> Description
+  solve dependencies/List-> Resolved:
+    package-versions/Map := {:}  // Dependency -> list of versions.
 
-  // REVIEW(florian): same as for the `LocalSolver`: instead of getting these arguments,
-  // take them during `solve`.
-  // However: we could take a "Registry" argument, and then call `retrieve-versions` and
-  // `retrieve-descriptions` on that instead.
-  // I generally don't like abstract classes that much, and having some kind of
-  // registry as argument would avoid that while still making it easy to customize for testing.
-  constructor .sdk-version/SemanticVersion dependencies/List:
     dependencies.do: | dependency/PackageDependency |
-      versions := retrieve-versions dependency.url
+      versions := registries.retrieve-versions dependency.url
       versions = dependency.filter versions
       if versions.is-empty: throw "No versions for packages $dependency.url satisfies supplied constraint"
 
       versions.filter --in-place:
-        description := retrieve-description dependency.url it
+        description := registries.retrieve-description dependency.url it
         description.satisfies-sdk-version sdk-version
       if versions.is-empty: throw "No version of package $dependency.url satisfies sdk-version: $sdk-version"
 
       package-versions[dependency] = versions
 
-  solve -> Resolved:
     if package-versions.is-empty: return Resolved.empty
 
     partial-package-solutions := {:}
@@ -246,6 +238,7 @@ abstract class Solver:
     partial-solution := PartialSolution this partial-package-solutions
     if solution := partial-solution.refine: return Resolved solution
     throw "Unable to resolve dependencies"
+
 
 copy-dependency-to-solution-map_ input/Map translator/IdentityMap -> Map:
   return input.map: | _ v |

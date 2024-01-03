@@ -1,3 +1,7 @@
+// Copyright (C) 2024 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
+
 import host.file
 import host.directory
 import fs
@@ -30,7 +34,7 @@ class ProjectPackageFile extends PackageFile:
     return ProjectPackageFile.private_ project {:}
 
   constructor.load project/Project:
-    file-content := (yaml.decode (file.read_content "$project.root/$PackageFile.FILE_NAME"))
+    file-content := (yaml.decode (file.read_content "$project.root/$PackageFile.FILE_NAME")) or {:}
     return ProjectPackageFile.private_ project file-content
 
   root-dir -> string:
@@ -59,9 +63,8 @@ class ProjectPackageFile extends PackageFile:
           yaml.encode content
 
   solve -> LockFile:
-    solver := RegistrySolver this
-    return (LockFileBuilder this solver.solve-with-local).build
-
+    solver := LocalSolver registries this
+    return (LockFileBuilder this solver.solve).build
 
 
 /**
@@ -77,6 +80,7 @@ class ExternalPackageFile extends PackageFile:
 
   root-dir -> string:
     return path
+
 
 /**
 A package file from a published package.
