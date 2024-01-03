@@ -580,7 +580,7 @@ PRIMITIVE(read_int_little_endian) {
   return Primitive::integer(value, process);
 }
 
-PRIMITIVE(command) {
+PRIMITIVE(program_name) {
   if (Flags::program_name == null) return process->null_object();
   return process->allocate_string_or_error(Flags::program_name);
 }

@@ -52,7 +52,7 @@ Returns the name of the toit file, image, or snapshot that the
 Deprecated. Use $system.program-name instead.
 */
 program-name -> string?:
-  #primitive.core.command
+  #primitive.core.program-name
 
 main-arguments_ -> any:
   #primitive.core.main-arguments

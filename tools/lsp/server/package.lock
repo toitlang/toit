@@ -8,23 +8,23 @@ packages:
   pkg-cli:
     url: github.com/toitlang/pkg-cli
     name: cli
-    version: 1.3.0
-    hash: 667d385441179dfe90c3427b8bc9ee252a948884
+    version: 1.5.0
+    hash: 31f4cc21dbafe2d24c5f9ef249c62e2b770c7572
     prefixes:
       fs: pkg-fs
       host: pkg-host
   pkg-fs:
     url: github.com/toitlang/pkg-fs
     name: fs
-    version: 2.0.0
-    hash: ba63e2385baddab27f0c458fd41706b1415ab5fc
+    version: 2.1.0
+    hash: ac3933367912563055ceea4188adcead3428103c
     prefixes:
       host: pkg-host
   pkg-host:
     url: github.com/toitlang/pkg-host
     name: host
-    version: 1.11.0
-    hash: 7e7df6ac70d98a02f232185add81a06cec0d77e8
+    version: 1.12.0
+    hash: fe5e10c56abc3fca1ef9bcba415e77fd59183cab
   pkg-tar:
     url: github.com/toitlang/pkg-tar
     name: tar
