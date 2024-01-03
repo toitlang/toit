@@ -53,9 +53,7 @@ foreach(file ${CC_FILES})
     ${TOIT_LINK_LIBS}
   )
 
-  # Make sure the test is built before we run the tests.
-  add_dependencies(check ${exe})
-  add_dependencies(check_slow ${exe})
+  add_dependencies(build_test_assets ${exe})
 endforeach()
 
 foreach(file ${CC_TESTS})
@@ -77,9 +75,7 @@ foreach(file ${CC_TESTS})
     COMMAND ${CTEST_DIR}/${exe} ${test_input}
   )
   set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
-  # Make sure the test is built before we run the tests.
-  add_dependencies(check ${exe})
-  add_dependencies(check_slow ${exe})
+  add_dependencies(build_test_assets ${exe})
 
   if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
     set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
@@ -103,9 +99,7 @@ foreach(file ${TOIT_TESTS})
     COMMAND $<TARGET_FILE:toit.run> ${file} ${CTEST_DIR})
 
   set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT 40)
-  # Make sure the test is built before we run the tests.
-  add_dependencies(check ${exe})
-  add_dependencies(check_slow ${exe})
+  add_dependencies(build_test_assets ${exe})
 
   if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
     set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)

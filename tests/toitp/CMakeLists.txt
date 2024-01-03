@@ -46,8 +46,7 @@ set_target_properties(
 set(BYTECODE_LIST ${TOITP_TEST_DIR}/bytecode.output)
 
 add_custom_target(build_test_toitp_requirements DEPENDS ${TOITP_EXE} ${BYTECODE_LIST})
-add_dependencies(check build_test_toitp_requirements)
-add_dependencies(check_slow build_test_toitp_requirements)
+add_dependencies(build_test_assets build_test_toitp_requirements)
 
 add_custom_command(
   OUTPUT ${BYTECODE_LIST}
@@ -84,9 +83,7 @@ foreach(file ${TOITP_TESTS})
   set(build_snap tests-toitp-build_${test_name}-input)
   add_custom_target(${build_snap} DEPENDS ${snap})
 
-  # Make sure the test input is built before we run the tests.
-  add_dependencies(check ${build_snap})
-  add_dependencies(check_slow ${build_snap})
+  add_dependencies(build_test_assets ${build_snap})
 
   file(RELATIVE_PATH toitp_test_name ${TOIT_SDK_SOURCE_DIR} ${toitp_test})
   if (NOT "${toitp_test_name}" IN_LIST TOIT_SKIP_TESTS)
