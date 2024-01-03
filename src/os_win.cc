@@ -334,6 +334,10 @@ char* OS::getenv(const char* variable) {
   wchar_t* buffer = unvoid_cast<wchar_t*>(malloc(BUFFER_SIZE));
   int length_w = GetEnvironmentVariableW(variable_w, buffer, BUFFER_SIZE);
   free(variable_w);
+  // The GetEnvironmentVariableW function returns the length the variable needs,
+  // which could be bigger than the buffer.
+  // If the returned length is equal to the BUFFER_SIZE then no `\0` was written
+  // but we pass the length to `to_narrow_string` so that's fine.
   if (length_w == 0 || length_w > BUFFER_SIZE) {
     free(buffer);
     return null;
