@@ -19,7 +19,7 @@ import .cache
 registries ::= Registries
 
 // TODO(florian): move this cache global to a better place. It is used by many other libraries.
-cache ::= Cache --app-name="toit-pkg"
+cache ::= Cache --app-name="toit_pkg"
 
 /**
 A collection of registries.
@@ -28,43 +28,65 @@ This class groups all registries and provides a common interface for them.
 */
 class Registries:
   registries := {:}
+  error-reporter/Lambda
+  outputter/Lambda
 
-  constructor:
-    registries-map := yaml.decode
-        cache.get "registries.yaml": | store/FileStore |
-            toit := GitRegistry "toit" "github.com/toitware/registry" null
-            store.save
-                yaml.encode {
-                    "toit": {
-                        "url": "github.com/toitware/registry",
-                        "type": "git"
-                    }
-                  }
+  constructor --.error-reporter/Lambda=(:: error it) --.outputter/Lambda=(:: print it):
+    registries-map :=
+        yaml.decode
+            cache.get "registries.yaml": | store/FileStore |
+                store.save
+                    yaml.encode {
+                        "toit": {
+                            "url": "github.com/toitware/registry",
+                            "type": "git"
+                        }
+                      }
+
     registries-map.do: | name/string map/Map |
-      type := map.get "type" --if-absent=: error "Registry $name does not have a type."
+      type := map.get "type" --if-absent=: error-reporter.call "Registry $name does not have a type."
       if type == "git":
-        url := map.get "url" --if-absent=: error "Registry $name does not have a url."
+        url := map.get "url" --if-absent=: error-reporter.call "Registry $name does not have a url."
         ref-hash := map.get "ref-hash"
         registries[name] = GitRegistry name url ref-hash
       else if type == "local":
-        path := map.get "path" --if-absent=: error "Registry $name does not have a path."
+        path := map.get "path" --if-absent=: error-reporter.call "Registry $name does not have a path."
         registries[name] = LocalRegistry name path
       else:
         error "Registry $name has an unknown type '$type'"
 
-  search --registry-name/string?=null search-string/string -> RemotePackage:
+  search --registry-name/string?=null search-string/string -> Description:
     search-results := search_ registry-name search-string
     if search-results.size == 1:
       return search-results[0][1]
 
     if search-results.is-empty:
-      // TODO(florian): implement better version error.
-      error "Package '$search-string' not found (Implement version check error)."
+      registry-info := registry-name != null ? "in registry $registry-name." : "in any registry."
+      if search-string.contains "@":
+        search-string-split := search-string.split "@"
+        search-name-suffix := search-string-split[0]
+        search-version-prefix := search-string-split[1]
+        package-exists := not (search_ registry-name search-name-suffix).is-empty
+        if package-exists:
+          error-reporter.call "Package '$search-name-suffix' exists but not with version '$search-version-prefix' $registry-info"
+      error-reporter.call "Package '$search-string' not found $registry-info"
     else:
-      // TODO(florian): implement better error.
-      error "Multiple packages found (Implement better error)."
+      registry-info := registry-name != null ? "in registry $registry-name." : "in all registries."
+      error-reporter.call "Multiple packages found for '$search-string' $registry-info"
 
     unreachable
+
+  /**
+  Searches for the given $search-string in all registries.
+
+  Returns a list of all descriptions that matches.
+  */
+  search --free-text search-string/string -> List:
+    result := []
+    registries.do: | name registry/Registry |
+      result.add-all
+          registry.search --free-text search-string
+    return result
 
   /**
   Searches for the given $search-string in the given $registry-name.
@@ -81,62 +103,49 @@ class Registries:
             (registry.search search-string).map: [name, it]
       return search-results
     else:
-      registry/Registry := registries.get registry-name --if-absent=: error "Registry $registry-name not found."
+      registry/Registry := registries.get registry-name --if-absent=: error-reporter.call "Registry $registry-name not found."
       search-results := registry.search search-string
       return search-results.map: [registry-name, it]
 
   retrieve-description url/string version/SemanticVersion -> Description:
     registries.do --values:
       if description := it.retrieve-description url version: return description
-    error "Not able to find package $url with version $version."
+    error-reporter.call "Not able to find package $url with version $version."
     unreachable
 
   retrieve-versions url/string -> List:
     registries.do --values:
       if versions := it.retrieve-versions url: return versions
-    error "Not able to find package $url in any registry."
+    error-reporter.call "Not able to find package $url in any registry."
     unreachable
 
   add --local name/string path/string:
     if not local: throw "INVALID_ARGUEMT"
-    if registries.contains name: error "Registry $name already exists."
+    if registries.contains name: error-reporter.call "Registry $name already exists."
     registries[name] = LocalRegistry name path
     save_
 
   add --git name/string url/string:
     if not git: throw "INVALID_ARGUEMT"
-    if registries.contains name: error "Registry $name already exists."
+    if registries.contains name: error-reporter.call "Registry $name already exists."
     registries[name] = GitRegistry name url null
     registries[name].sync  // To check that the url is valid.
     save_
 
   remove name/string:
-    if not registries.contains name: error "Registry $name does not exist."
+    if not registries.contains name: error-reporter.call "Registry $name does not exist."
     registries.remove name
     save_
 
   list:
-    print "$(%-10s "Name") $(%-6s "Type") Url/Path"
-    print "$(%-10s "----") $(%-6s "----") --------"
+    outputter.call "$(%-10s "Name") $(%-6s "Type") Url/Path"
+    outputter.call "$(%-10s "----") $(%-6s "----") --------"
     registries.do: | name registry |
-      print "$(%-10s name) $(%-6s registry.type) $(registry is GitRegistry ? registry.url : registry.path)"
-
-  /**
-  Searches for the given $search-string in all registries.
-
-  Returns a list of all descriptions that matches.
-  */
-  search --free-text search-string/string -> List:
-    result := []
-    registries.do: | name registry/Registry |
-      result.add-all
-          registry.list-all-packages.filter:  | description/Description |
-            description.matches-free-text search-string
-    return result
+      outputter.call "$(%-10s name) $(%-6s registry.type) $(registry is GitRegistry ? registry.url : registry.path)"
 
   list-packages -> Map:
     return registries.map: | name registry/Registry |
-      { "registry" : registry, "descriptions": registry.list-all-packages }
+      { "registry" : registry, "descriptions": registry.list-all-descriptions }
 
   sync:
     registries.do --values: it.sync
@@ -161,7 +170,6 @@ abstract class Registry:
   description-cache_/DescriptionUrlCache? := null
 
   constructor .name:
-    description-cache_ = DescriptionUrlCache content
 
   abstract type -> string
   abstract content -> FileSystemView
@@ -169,19 +177,20 @@ abstract class Registry:
   abstract sync
   abstract stringify -> string
 
-  list-all-packages -> List: // List of Description objects
-    return description-cache_.all-descriptions
+  description-cache -> DescriptionUrlCache:
+    if not description-cache_:
+      description-cache_ = DescriptionUrlCache content
+    return description-cache_
+
+  list-all-descriptions -> List:
+    return description-cache.all-descriptions
 
   retrieve-description url/string version/SemanticVersion -> Description?:
-    return description-cache_.retrieve-description url version
+    return description-cache.retrieve-description url version
 
   retrieve-versions url/string -> List?:
-    // REVIEW(florian): I designed the pkg manager, with the idea that the whole registry could always be in memory.
-    // Not sure that was a good idea, but shouldn't we at least cache everything we read?
-    // Here I would expect to have a versions-cache.
-    versions := content.get --path=(flatten_list ["packages", url.split "/"])
-    if not versions is FileSystemView: return null
-    semantic-versions/List := versions.list.keys.map: SemanticVersion it
+    semantic-versions := description-cache.retrieve-versions url
+    if not semantic-versions: return null
 
     // Sort
     semantic-versions.sort --in-place
@@ -199,83 +208,29 @@ abstract class Registry:
       search-string = split[0]
       search-version = split[1]
 
-    // name-paths will always have size 4 and be pre- and post-fixed with null for missing search terms.
-    // For example "toitlang/pkg-host" will be [null, "toitlang", "pkg-host", null]
-    // And "pkg-host@1.7.1" will be [null, null, "pkg-host", "1.7.1"
-    name-paths := search-string.split "/"
-    paths := []
-    (3 - name-paths.size).repeat:
-      paths.add null
-    paths.add-all name-paths
-    paths.add search-version
+    // search-result maps urls to list of descriptions
+    search-result := description-cache.search search-string search-version
 
-    search-result := prefix-search_ paths (content.get "packages")
+    // Remove empty
+    search-result = search-result.filter: | _ descriptions/List | not descriptions.is-empty
 
-    packages := []
-    search-result.do: | hub-list |
-      hub := hub-list[0]
-      hub-list[1].do: | repository-list |
-        repository := repository-list[0]
-        repository-list[1].do: | package-list |
-          package := package-list[0]
-          packages.add [ [ hub, repository, package ], package-list[1] ]
+    // Reduce versions
+    search-result = search-result.map: | _ descriptions/List |
+      highest-version_ descriptions
 
-    packages = packages.map --in-place: | package/List versions/List |
-      version := highest-version_ versions
-      package-url := package.join "/"
-      description := retrieve-description package-url version
-      RemotePackage package-url version description
+    // search-result now maps from url to one description
+    return search-result.values
 
-    return packages
+  search --free-text search-string/string -> List:
+    return list-all-descriptions.filter: | description/Description |
+      description.matches-free-text search-string
 
-  static highest-version_ versions/List -> SemanticVersion:
-    highest := SemanticVersion versions[0]
-    if versions.size == 1: return highest
-    versions[1..].do:
-      next := SemanticVersion it
-      if highest <= next: highest = next
+  static highest-version_ descriptions/List -> Description:
+    highest/Description := descriptions[0]
+    if descriptions.size == 1: return highest
+    descriptions[1..].do: | next/Description |
+      if highest.version < next.version: highest = next
     return highest
-
-  // TODO: Less lists, more classes
-  static prefix-search_ paths/List files/FileSystemView -> List?:
-    if paths.is-empty: return []
-    if paths[0] == null:
-      if paths.size == 1: // Version term
-        return files.list.keys
-      result := []
-      files.list.do: | k v |
-        if v is FileSystemView:
-          sub-search := prefix-search_ paths[1..] v
-          if sub-search:
-            result.add [ k, sub-search ]
-      return result.is-empty ? null : result
-    else:
-      sub-structure := files.get paths[0]
-      if sub-structure:
-        if paths.size == 1:
-          return [ paths[0] ]
-        else:
-          return [[ paths[0], prefix-search_ paths[1..] sub-structure ]]
-      return null
-
-
-class RemotePackage:
-  url/string
-  version/SemanticVersion
-  description/Description
-
-  constructor .url .version .description:
-
-  default-prefix -> string:
-    return description.name
-
-  ref-hash:
-    return description.ref-hash
-
-  stringify:
-    return "$url $version $description"
-
-
 
 class RegistrySolver extends LocalSolver:
   constructor package-file/ProjectPackageFile:

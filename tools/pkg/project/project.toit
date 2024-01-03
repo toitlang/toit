@@ -7,6 +7,7 @@ import system
 import fs
 
 import ..registry
+import ..registry.description
 import ..error
 import ..pkg
 import ..git
@@ -77,7 +78,7 @@ class Project:
     package-file.save
     lock-file.save
 
-  install-remote prefix/string remote/RemotePackage:
+  install-remote prefix/string remote/Description:
     package-file.add-remote-dependency prefix remote.url "^$remote.version"
     solve_
     save

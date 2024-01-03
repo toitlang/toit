@@ -55,7 +55,7 @@ class InstallCommand:
 
   execute-remote:
     remote-package := registries.search package
-    if not prefix: prefix = remote-package.default-prefix
+    if not prefix: prefix = remote-package.name
 
     if project.package-file.has-package prefix:
       error "Project has already a package with name '$prefix'."

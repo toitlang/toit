@@ -24,14 +24,34 @@ class DescriptionUrlCache:
     version-cache/DescriptionVersionCache? := cache_.get url
     return version-cache and version-cache.get version
 
+  retrieve-versions url/string -> List?:
+    version-cache/DescriptionVersionCache? := cache_.get url
+    return version-cache and version-cache.all-versions
+
+
+  /**
+  Returns a map, mapping urls to lists of descriptions.
+  */
+  search url-suffix/string version-prefix/string? -> Map:
+    result := {:}
+    cache_.do: | url/string version-cache/DescriptionVersionCache |
+      if url.ends-with url-suffix:
+        if not version-prefix:
+          result[url] = version-cache.all-descriptions
+        else:
+          result[url] = version-cache.filter version-prefix
+    return result
+
   recurse_ content/FileSystemView:
     content.list.do: | name/string entry |
       if entry is FileSystemView:
         recurse_ entry
       else if name == Description.DESCRIPTION-FILE-NAME:
-        print "\n$entry:\n$((content.get entry).to-string)"
         description := Description (yaml.decode (content.get entry))
-        add_ description
+        e := catch:
+          add_ description
+        if e:
+          print "Failed to add $description.url@$description.content[Description.VERSION-KEY_] to index"
 
   add_ description/Description:
     (cache_.get description.url --init=(: DescriptionVersionCache)).add_ description
@@ -55,6 +75,16 @@ class DescriptionVersionCache:
 
   get version/SemanticVersion -> Description?:
     return cache_.get version
+
+  all-versions -> List?:
+    return cache_.keys
+
+  filter version-prefix/string -> List:
+    result := []
+    cache_.do: | version/SemanticVersion description |
+      if version.stringify.starts-with version-prefix:
+        result.add description
+    return result
 
   add_ description/Description:
     cache_[description.version] = description
