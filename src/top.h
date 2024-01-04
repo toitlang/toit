@@ -100,10 +100,7 @@
 #define LP64(a,b) a##l##b
 #endif
 
-// define IOT_DEVICE iff compiled for an embedded system.
-#ifdef TOIT_FREERTOS
-#define IOT_DEVICE
-#else
+#ifndef TOIT_FREERTOS
 // For non-embedded applications, this is where we define configuration options
 // that would be determined by the model-specific sdkconfig file on an embedded
 // device.
