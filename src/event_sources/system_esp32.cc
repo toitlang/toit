@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_ESP
+#ifdef TOIT_ESP32
 
 #include <esp_event.h>
 
@@ -118,4 +118,4 @@ SystemEventSource* SystemEventSource::instance_ = null;
 
 } // namespace toit
 
-#endif // TOIT_ESP
+#endif // TOIT_ESP32

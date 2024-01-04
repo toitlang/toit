@@ -50,7 +50,7 @@
 #include "freertos/task.h"
 #endif
 
-#ifdef TOIT_ESP
+#ifdef TOIT_ESP32
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -2281,7 +2281,7 @@ class ByteArrayHeapFragmentationDumper : public HeapFragmentationDumper {
   uword position_;
 };
 
-#if defined(TOIT_LINUX) || defined (TOIT_ESP)
+#if defined(TOIT_LINUX) || defined (TOIT_ESP32)
 // Moved into its own function because the FragmentationDumper is a large
 // object that will increase the stack size if it is inlined.
 static __attribute__((noinline)) uword get_heap_dump_size(const char* description) {
@@ -2322,7 +2322,7 @@ PRIMITIVE(dump_heap) {
   }
 #endif
 
-#if defined(TOIT_LINUX) || defined (TOIT_ESP)
+#if defined(TOIT_LINUX) || defined (TOIT_ESP32)
   const char* description = "Heap usage report";
 
   uword size = get_heap_dump_size(description);
@@ -2402,14 +2402,14 @@ PRIMITIVE(word_size) {
   return Smi::from(WORD_SIZE);
 }
 
-#ifdef TOIT_ESP
+#ifdef TOIT_ESP32
 static spi_flash_mmap_handle_t firmware_mmap_handle;
 static bool firmware_is_mapped = false;
 #endif
 
 PRIMITIVE(firmware_map) {
   ARGS(Object, bytes);
-#ifndef TOIT_ESP
+#ifndef TOIT_ESP32
   return bytes;
 #else
   if (bytes != process->null_object()) {
@@ -2462,7 +2462,7 @@ PRIMITIVE(firmware_map) {
 }
 
 PRIMITIVE(firmware_unmap) {
-#ifdef TOIT_ESP
+#ifdef TOIT_ESP32
   ARGS(ByteArray, proxy);
   if (!firmware_is_mapped) process->null_object();
   spi_flash_munmap(firmware_mmap_handle);
@@ -2514,7 +2514,7 @@ PRIMITIVE(firmware_mapping_copy) {
   return Smi::from(index + bytes);
 }
 
-#ifdef TOIT_ESP
+#ifdef TOIT_ESP32
 PRIMITIVE(rtc_user_bytes) {
   uint8* rtc_memory = RtcMemory::user_data_address();
   ByteArray* result = process->object_heap()->allocate_external_byte_array(

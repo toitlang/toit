@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_ESP
+#ifdef TOIT_ESP32
 
 #include <driver/gpio.h>
 
@@ -148,4 +148,4 @@ void EventQueueEventSource::on_unregister_resource(Locker& locker, Resource* r) 
 
 } // namespace toit
 
-#endif // TOIT_ESP
+#endif // TOIT_ESP32

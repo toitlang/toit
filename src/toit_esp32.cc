@@ -15,7 +15,7 @@
 
 #include "top.h"
 
-#ifdef TOIT_ESP
+#ifdef TOIT_ESP32
 
 #include <stdio.h>
 
@@ -186,4 +186,4 @@ extern "C" void toit_start() {
   toit::start();
 }
 
-#endif // TOIT_ESP
+#endif // TOIT_ESP32

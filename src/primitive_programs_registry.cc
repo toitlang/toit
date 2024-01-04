@@ -92,7 +92,7 @@ PRIMITIVE(kill) {
 }
 
 PRIMITIVE(bundled_images) {
-#ifdef TOIT_ESP
+#ifdef TOIT_ESP32
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   int length = extension->images();
   Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));
@@ -133,7 +133,7 @@ PRIMITIVE(assets) {
 
 PRIMITIVE(config) {
   PRIVILEGED;
-#ifdef TOIT_ESP
+#ifdef TOIT_ESP32
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   List<uint8> config = extension->config();
   Object* result = config.is_empty()

@@ -68,7 +68,7 @@ const Program* EmbeddedDataExtension::program(uword offset) const {
   return reinterpret_cast<const Program*>(reinterpret_cast<uword>(this) + offset);
 }
 
-#ifdef TOIT_ESP
+#ifdef TOIT_ESP32
 
 struct DromData {
   // The data between magic1 and magic2 must be less than 256 bytes, otherwise the

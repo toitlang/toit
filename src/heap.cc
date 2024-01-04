@@ -28,7 +28,7 @@
 #include "utils.h"
 #include "vm.h"
 
-#ifdef TOIT_ESP
+#ifdef TOIT_ESP32
 #include "esp_heap_caps.h"
 #endif
 
