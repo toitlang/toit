@@ -282,7 +282,9 @@ int main(int argc, char **argv) {
     }
 
     Flags::program_name = source_path;
-    Flags::program_path = OS::get_executable_path_from_arg(source_path);
+    Flags::program_path = source_path == null
+        ? null
+        : OS::get_executable_path_from_arg(source_path);
 
     // We break after the first argument that isn't a flag.
     // This means that there is always at most one source-file.
