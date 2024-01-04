@@ -15,7 +15,7 @@
 namespace toit {
 
 #ifdef TOIT_FREERTOS
-// ESP32 has a cache line of 32 bytes, as does Cortex M7.
+// ESP32 has a cache line of 32 bytes, as does Cortex M7 and Cortex M3.
 static const uword CACHE_LINE = 32;
 #else
 // It's OK to round up a little too much on other platforms, even if they have
@@ -42,7 +42,7 @@ void GcMetadata::set_up_singleton() {
   uword range_address = reinterpret_cast<uword>(range.address);
   lowest_address_ = Utils::round_down(range_address, TOIT_PAGE_SIZE);
   uword size = Utils::round_up(range.size + range_address - lowest_address_, TOIT_PAGE_SIZE);
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
   // Assume that the first 108k of memory can be used for C allocations, so we
   // remove that from the area that needs to be covered by the heap metadata.
   // This reduces the heap metadata from 24k or 28k to 16k.
@@ -63,6 +63,8 @@ void GcMetadata::set_up_singleton() {
       size -= adjust;
     }
   }
+#elif defined(TOIT_FREERTOS)
+  FATAL("UNIMPLEMENTED");
 #endif
   heap_extent_ = size;
   heap_start_munged_ = (lowest_address_ >> 1) |

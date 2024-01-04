@@ -13,13 +13,15 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#if !defined(FREERTOS) || defined(TOIT_ESP32)
+
 #include "flash_registry.h"
 #include "primitive.h"
 
 #include "process.h"
 #include "objects_inline.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 #include "esp_flash.h"
 #include "esp_partition.h"
 #else
@@ -245,7 +247,7 @@ PRIMITIVE(partition_find) {
   if (size <= 0 || (type < 0x00) || (type > 0xff)) FAIL(INVALID_ARGUMENT);
   Array* result = process->object_heap()->allocate_array(2, Smi::zero());
   if (!result) FAIL(ALLOCATION_FAILED);
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
   const esp_partition_t* partition = esp_partition_find_first(
       static_cast<esp_partition_type_t>(type),
       ESP_PARTITION_SUBTYPE_ANY,
@@ -344,7 +346,7 @@ PRIMITIVE(region_read) {
     const uint8* region = FlashRegistry::region(offset, resource->size());
     memcpy(bytes.address(), region + from, size);
   } else {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
     uword region = offset - 1;
     uword source = region + from;
     uint8* destination = bytes.address();
@@ -370,7 +372,7 @@ PRIMITIVE(region_write) {
       FAIL(HARDWARE_ERROR);
     }
   } else {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
     uword region = offset - 1;
     uword destination = region + from;
     const uint8* source = bytes.address();
@@ -394,7 +396,7 @@ PRIMITIVE(region_is_erased) {
   if ((offset & 1) == 0) {
     return BOOL(FlashRegistry::is_erased(from + offset, size));
   } else {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
     static const uword BUFFER_SIZE = 256;
     AllocationManager allocation(process);
     uint8* buffer = allocation.alloc(BUFFER_SIZE);
@@ -435,7 +437,7 @@ PRIMITIVE(region_erase) {
       FAIL(HARDWARE_ERROR);
     }
   } else {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
     uword region = offset - 1;
     uword destination = region + from;
     if (esp_flash_erase_region(NULL, destination, size) != ESP_OK) {
@@ -450,3 +452,5 @@ PRIMITIVE(region_erase) {
 }
 
 }
+
+#endif  // !defined(FREERTOS) || defined(TOIT_ESP32)
