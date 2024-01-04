@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP
 
 #include <esp_wifi.h>
 #include <nvs_flash.h>
@@ -730,4 +730,4 @@ PRIMITIVE(ap_info) {
 #endif // CONFIG_TOIT_ENABLE_WIFI
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP

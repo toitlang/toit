@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP
 
 #include <esp_event.h>
 
@@ -118,4 +118,4 @@ SystemEventSource* SystemEventSource::instance_ = null;
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP

@@ -127,4 +127,4 @@ void Siphash::process_block() {
 
 }
 
-#endif
+#endif  // !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO)

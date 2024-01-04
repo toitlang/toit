@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP
 
 #include "event_sources/system_esp32.h"
 #include "uart_esp32_hal.h"
@@ -976,4 +976,4 @@ PRIMITIVE(get_control_flags) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP

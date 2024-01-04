@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP
 
 #include <cmath>
 #include <driver/i2c.h>
@@ -283,4 +283,4 @@ PRIMITIVE(read_address) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP

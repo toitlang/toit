@@ -29,7 +29,7 @@
 
 #include "objects_inline.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP
 #include "esp_heap_caps.h"
 #endif
 

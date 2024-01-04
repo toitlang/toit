@@ -28,7 +28,7 @@
 #include "utils.h"
 #include "vm.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP
 #include "esp_heap_caps.h"
 #endif
 

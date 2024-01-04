@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP
 
 #include <driver/gpio.h>
 #include <driver/spi_master.h>
@@ -281,4 +281,4 @@ PRIMITIVE(release_bus) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP

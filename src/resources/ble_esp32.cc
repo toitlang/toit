@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ENABLED
+#if defined(TOIT_ESP) && CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ENABLED
 
 #include "../resource.h"
 #include "../objects_inline.h"
@@ -2342,4 +2342,4 @@ PRIMITIVE(get_bonded_peers) {
 
 } // namespace toit
 
-#endif // defined(TOIT_FREERTOS) && defined(CONFIG_BT_ENABLED)
+#endif // defined(TOIT_ESP) && defined(CONFIG_BT_ENABLED)

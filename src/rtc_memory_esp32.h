@@ -17,7 +17,7 @@
 
 #include "top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP
 
 namespace toit {
 
@@ -55,4 +55,4 @@ class RtcMemory {
 
 } // namespace toit
 
-#endif  // TOIT_FREERTOS
+#endif  // TOIT_ESP

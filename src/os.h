@@ -261,7 +261,7 @@ class OS {
   static bool setenv(const char* variable, const char* value);
   static bool unsetenv(const char* variable);
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP
   static bool use_spiram_for_heap() { return use_spiram_for_heap_; }
   static bool use_spiram_for_metadata() { return use_spiram_for_metadata_; }
   static int toit_heap_caps_flags_for_heap();
@@ -283,7 +283,7 @@ class OS {
   static Mutex* resource_mutex_;
   static HeapMemoryRange single_range_;
   static int cpu_revision_;
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP
   static bool use_spiram_for_heap_;
   static bool use_spiram_for_metadata_;
 #endif

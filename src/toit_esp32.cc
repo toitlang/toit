@@ -15,7 +15,7 @@
 
 #include "top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP
 
 #include <stdio.h>
 
@@ -186,4 +186,4 @@ extern "C" void toit_start() {
   toit::start();
 }
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP

@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP
 
 #include "../resource.h"
 #include "../objects_inline.h"
@@ -289,4 +289,5 @@ PRIMITIVE(close) {
 }
 
 }
-#endif
+
+#endif  // TOIT_ESP

@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) && !defined(CONFIG_IDF_TARGET_ESP32C3)
+#if defined(TOIT_ESP) && !defined(CONFIG_IDF_TARGET_ESP32C3)
 
 #include <driver/pcnt.h>
 #include <soc/soc.h>
@@ -314,4 +314,4 @@ PRIMITIVE(get_count) {
 
 } // namespace toit
 
-#endif // defined(TOIT_FREERTOS) && !defined(CONFIG_IDF_TARGET_ESP32C3)
+#endif // defined(TOIT_ESP) && !defined(CONFIG_IDF_TARGET_ESP32C3)

@@ -55,14 +55,19 @@
 #error "More than one build configuration specified: use only one of -DTOIT_DEBUG -DTOIT_DEPLOY"
 #endif
 
+//  TOIT_FREERTOS : FreeRTOS
+#if defined(__FREERTOS__)
+#define TOIT_FREERTOS
+#endif
+
 // -----------------------------------------------------------------------------
 // OS configuration:
-//  TOIT_FREERTOS : ESP32 RTOS
+//  TOIT_ESP      : ESP-IDF
 //  TOIT_DARWIN   : Apple's OSX
 //  TOIT_LINUX    : Ubuntu etc.
 
-#if defined(__FREERTOS__)
-#define TOIT_FREERTOS
+#if defined(ESP_PLATFORM)
+#define TOIT_ESP
 #define TOIT_CMPCTMALLOC
 #elif defined(__APPLE__)
 #define TOIT_DARWIN
@@ -75,9 +80,9 @@
 #define TOIT_POSIX
 #endif
 
-#if defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_FREERTOS) > 1
+#if defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_ESP) > 1
 #error "More than one OS configuration specified"
-#elif defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_FREERTOS) < 1
+#elif defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_ESP) < 1
 #error "No OS configuration specified"
 #endif
 
@@ -272,14 +277,14 @@ class AllowThrowingNew {
 void fail(const char* file, int line, const char* format, ...) __attribute__ ((__noreturn__));
 #define ASSERT(cond) if (!(cond)) { toit::fail(__FILE__, __LINE__, "assertion failure, %s.", #cond); }
 #define FATAL(message, ...) toit::fail(__FILE__, __LINE__, message, ##__VA_ARGS__);
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP
 #define FATAL_IF_NOT_ESP_OK(cond) do { if ((cond) != ESP_OK) toit::fail(__FILE__, __LINE__, "%s", #cond); } while (0)
 #endif
 #else  // TOIT_DEPLOY
 void fail(const char* format, ...) __attribute__ ((__noreturn__));
 #define ASSERT(cond) while (false && (cond)) {}
 #define FATAL(message, ...) toit::fail(message, ##__VA_ARGS__);
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP
 #define FATAL_IF_NOT_ESP_OK(cond) do { if ((cond) != ESP_OK) toit::fail("%s", #cond); } while (0)
 #endif
 #endif  // TOIT_DEPLOY

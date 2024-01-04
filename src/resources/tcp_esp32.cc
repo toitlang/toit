@@ -15,11 +15,11 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP
 #include <esp_wifi.h>
 #endif
 
-#if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)
+#if defined(TOIT_ESP) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)
 #include <lwip/ip_addr.h>
 
 #include "../resource.h"
@@ -632,4 +632,4 @@ PRIMITIVE(gc) {
 
 } // namespace toit
 
-#endif // defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)
+#endif // defined(TOIT_ESP) && defined(CONFIG_TOIT_ENABLE_IP) || defined(TOIT_USE_LWIP)
