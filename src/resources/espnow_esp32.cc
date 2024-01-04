@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_ESP) && defined(CONFIG_TOIT_ENABLE_ESPNOW)
+#if defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_ESPNOW)
 
 #include <esp_wifi.h>
 #include <esp_event.h>
@@ -538,4 +538,4 @@ PRIMITIVE(add_peer) {
 
 } // namespace toit
 
-#endif  // defined(TOIT_ESP) && defined(CONFIG_TOIT_ENABLE_ESPNOW)
+#endif  // defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_ESPNOW)

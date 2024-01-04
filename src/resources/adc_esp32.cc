@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_ESP
+#ifdef TOIT_ESP32
 
 #include <driver/gpio.h>
 #include <driver/adc.h>
@@ -286,4 +286,4 @@ PRIMITIVE(close) {
 
 } // namespace toit
 
-#endif // TOIT_ESP
+#endif // TOIT_ESP32

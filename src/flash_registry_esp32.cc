@@ -15,7 +15,7 @@
 
 #include "top.h"
 
-#ifdef TOIT_ESP
+#ifdef TOIT_ESP32
 
 #include "flash_registry.h"
 
@@ -111,4 +111,4 @@ bool FlashRegistry::erase_flash_registry() {
 
 } // namespace toit
 
-#endif // TOIT_ESP
+#endif // TOIT_ESP32

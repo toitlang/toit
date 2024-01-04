@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_ESP
+#ifdef TOIT_ESP32
 
 #include "../resource.h"
 #include "../objects_inline.h"
@@ -290,4 +290,4 @@ PRIMITIVE(close) {
 
 }
 
-#endif  // TOIT_ESP
+#endif  // TOIT_ESP32
