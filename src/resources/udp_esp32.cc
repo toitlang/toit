@@ -19,7 +19,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_ESP || defined(TOIT_USE_LWIP) && CONFIG_TOIT_ENABLE_IP
+#if defined(TOIT_ESP) || defined(TOIT_USE_LWIP) && CONFIG_TOIT_ENABLE_IP
 
 #include <lwip/udp.h>
 #include "lwip/ip_addr.h"
