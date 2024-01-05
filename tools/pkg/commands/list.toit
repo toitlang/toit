@@ -64,6 +64,13 @@ class ListCommand:
       else if output == "yaml":
         print (yaml.stringify result)
 
+  /**
+  Convert the $description into a map suitable for printing, removing keys that should not be printed. The name
+    kye is removed and the the resulting map will have a single entry mapping the name to the filtered
+    content.
+
+  If $allow-extra-fields, then allow dependencies and enviroment keys too.
+  */
   static verbose-description description/Description --allow-extra-fields=false -> Map:
     filtered := description.content.filter: | k _ |
                   k != Description.NAME-KEY_ and

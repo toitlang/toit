@@ -9,7 +9,7 @@ import host.directory
 import host.file
 import expect show *
 
-import .registry-test show setup-test-registry
+import .setup
 
 import ...tools.pkg.project
 import ...tools.pkg.semantic-version
@@ -22,28 +22,35 @@ verify-ref package ref:
   expect-equals ref lock["packages"][package]["hash"]
 
 main:
-  setup-test-registry // Set the registry to a know version (fixed ref-hash)
-  if file.is-directory PROJECT-DIR:
-    directory.rmdir --recursive PROJECT-DIR
+  tmp-dir := setup-test-registry // Set the registry to a know version (fixed ref-hash)
+  try:
+    if file.is-directory PROJECT-DIR:
+      directory.rmdir --recursive PROJECT-DIR
 
-  directory.mkdir PROJECT-DIR
-  config := ProjectConfiguration.private_ PROJECT-DIR  directory.cwd (SemanticVersion system.vm-sdk-version) false
+    directory.mkdir PROJECT-DIR
+    config := ProjectConfiguration.private_
+      --project-root=PROJECT-DIR
+      --cwd=directory.cwd
+      --sdk-version=(SemanticVersion system.vm-sdk-version)
+      --auto-sync=false
 
-  project := Project config --empty-lock-file
-  project.save
+    project := Project config --empty-lock-file
+    project.save
 
-  project = Project config
-  morse := registries.search "morse"
-  project.install-remote morse.name morse
-  verify-ref "toit-morse" "f9f6ba3a04984db16887d7a1051ada8ad30d7db2"
+    project = Project config
+    morse := registries.search "morse"
+    project.install-remote morse.name morse
+    verify-ref "toit-morse" "f9f6ba3a04984db16887d7a1051ada8ad30d7db2"
 
-  host := registries.search "pkg-host"
-  project.install-remote host.name host
-  verify-ref "toit-morse" "f9f6ba3a04984db16887d7a1051ada8ad30d7db2"
-  verify-ref "pkg-host" "7e7df6ac70d98a02f232185add81a06cec0d77e8"
+    host := registries.search "pkg-host"
+    project.install-remote host.name host
+    verify-ref "toit-morse" "f9f6ba3a04984db16887d7a1051ada8ad30d7db2"
+    verify-ref "pkg-host" "7e7df6ac70d98a02f232185add81a06cec0d77e8"
 
-  project = Project config
-  rest := registries.search "rest-server"
-  project.install-remote rest.name rest
-  verify-ref "pkg-http" "108c436cc990535f5d70c380ef68081c38840f4c"
-  verify-ref "pkg-rest-server" "2326ed4341d4094f0d2482580d3b29be020554b0"
+    project = Project config
+    rest := registries.search "rest-server"
+    project.install-remote rest.name rest
+    verify-ref "pkg-http" "108c436cc990535f5d70c380ef68081c38840f4c"
+    verify-ref "pkg-rest-server" "2326ed4341d4094f0d2482580d3b29be020554b0"
+  finally:
+    directory.rmdir --recursive tmp-dir

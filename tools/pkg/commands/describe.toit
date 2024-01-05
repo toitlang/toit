@@ -40,14 +40,12 @@ class DescribeCommand:
   version/string?
   out-dir/string?
   allow-local-deps/bool
-  disallow-local-deps/bool
 
   constructor parsed/cli.Parsed:
     url-path = parsed[URL-PATH-OPTION]
     version = parsed[VERSION-OPTION]
     out-dir = parsed[OUT-DIR-OPTION]
     allow-local-deps = parsed[ALLOW-LOCAL_DEPS]
-    disallow-local-deps = parsed[DISALLOW-LOCAL_DEPS]
 
   execute:
     if not version:
@@ -86,9 +84,6 @@ class DescribeCommand:
         license = guess-license license-content.to-string
         if not license:
           warning "Unknown license in 'LICENSE' file"
-
-    if disallow-local-deps and not package-file.local-dependencies.is-empty:
-      error "Package has local dependencies."
 
     if not allow-local-deps and not package-file.local-dependencies.is-empty:
       warning "Package has local dependencies."
@@ -196,11 +191,6 @@ class DescribeCommand:
                   --help="Allow local dependencies."
                   --required=false
                   --default=false,
-
-              cli.Flag DISALLOW-LOCAL_DEPS
-                  --help="Disallow local dependencies."
-                  --required=false
-                  --default=false
             ]
           --run=:: (DescribeCommand it).execute
 
@@ -208,4 +198,3 @@ class DescribeCommand:
   static VERSION-OPTION ::= "version"
   static OUT-DIR-OPTION ::= "out-dir"
   static ALLOW-LOCAL_DEPS ::= "allow-local-deps"
-  static DISALLOW-LOCAL_DEPS ::= "disallow-local-deps"

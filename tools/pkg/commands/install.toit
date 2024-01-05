@@ -24,7 +24,6 @@ import fs
 
 class InstallCommand:
   static PREFIX    ::= "prefix"
-  static NAME      ::= "name"
   static LOCAL     ::= "local"
   static RECOMPUTE ::= "recompute"
   static REST      ::= "package"
@@ -36,11 +35,7 @@ class InstallCommand:
   project/Project
 
   constructor parsed/cli.Parsed:
-    if parsed[PREFIX] and parsed[NAME]:
-      error "Only one of 'name' and 'prefix' can be used"
-
-    if parsed[PREFIX]: prefix = parsed[PREFIX]
-    else: prefix = parsed[NAME]
+    prefix = parsed[PREFIX]
 
     package = parsed[REST]
     local = parsed[LOCAL]
@@ -122,13 +117,6 @@ class InstallCommand:
                 contain local packages.
               """
           --examples=[
-              cli.Example --arguments=""
-                  """
-                  Assumes that the package 'toitware/toit-morse' has the
-                  name 'morse' and has a library 'morse.toit' in its 'src' folder.
-
-                  Ensures all dependencies are downloaded.
-                  """,
               cli.Example --arguments="morse"
                   """
                   Install package named 'morse'. The installed name is 'morse' (the package name).
@@ -177,8 +165,6 @@ class InstallCommand:
               cli.Flag LOCAL
                   --help="Treat package argument as local path."
                   --default=false,
-              cli.Option NAME
-                  --help="The name used for the 'import' clause. Deprecated: use '--prefix' instead.",
               cli.Option PREFIX
                   --help="The prefix used for the 'import' clause.",
               cli.Flag RECOMPUTE

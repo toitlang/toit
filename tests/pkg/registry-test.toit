@@ -9,6 +9,8 @@ import host.file
 
 import encoding.yaml
 
+import .setup
+
 import ...tools.pkg.registry
 import ...tools.pkg.registry.git
 import ...tools.pkg.registry.local
@@ -84,17 +86,6 @@ test-local:
 
   expect-equals 2 (registry.search "local").size
 
-TOIT-REGISTRY-MAP := {
-    "url": "github.com/toitware/registry",
-    "type": "git",
-    "ref-hash": "1f76f33242ddcb7e71ff72be57c541d969aabfb2",
-}
-LOCAL-REGISTRY-MAP := {
-    "path": "input/registry",
-    "type": "local"
-}
-
-
 test-registries:
   outputs := []
 
@@ -136,7 +127,6 @@ test-registries:
   expect-throw "Registry toit already exists." : test-registries.add --git "toit" ""
   expect-throw "Registry abc does not exist." : test-registries.remove "abc"
 
-  // Note: This will invoke sync, so
   test-registries.add --git "toit2" "github.com/toitware/registry"
   test-registries.list
   expect-equals
@@ -184,11 +174,4 @@ main:
   test-git
   test-local
   test-registries
-
-setup-test-registry:
-  // Initialize the registries storage
-  os.env["TOIT_PKG_CACHE_DIR"] = ".test-cache"
-  directory.mkdir --recursive ".test-cache"
-  file.write-content --path=".test-cache/registries.yaml"
-      yaml.encode {"toit": TOIT-REGISTRY-MAP}
 

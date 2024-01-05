@@ -5,7 +5,7 @@
 import expect show *
 import ...tools.pkg.semantic-version
 
-compare v1 v2:
+is-less-than v1 v2:
   return (SemanticVersion v1) < (SemanticVersion v2)
 
 main:
@@ -21,17 +21,16 @@ main:
   expect-equals ["alpha",2,2,2] v.pre-releases
   expect-equals ["BBA---34", "0-3", "0133k", "42"] v.build-numbers
 
-  expect-equals true (compare "0.1.0" "0.1.1")
-  expect-equals true (compare "0.1.0" "1.0.0")
-  expect-equals true (compare "0.222222.0" "1.0.0")
-  expect-equals true (compare "1.0.0-alpha" "1.0.0")
-  expect-equals true (compare "1.0.0-alpha" "1.0.0-beta")
-  expect-equals false (compare "1.0.0" "1.0.0-beta")
-  expect-equals true (compare "2.1.2" "3.0.0")
+  expect-equals true (is-less-than "0.1.0" "0.1.1")
+  expect-equals true (is-less-than "0.1.0" "1.0.0")
+  expect-equals true (is-less-than "0.222222.0" "1.0.0")
+  expect-equals true (is-less-than "1.0.0-alpha" "1.0.0")
+  expect-equals true (is-less-than "1.0.0-alpha" "1.0.0-beta")
+  expect-equals false (is-less-than "1.0.0" "1.0.0-beta")
+  expect-equals true (is-less-than "2.1.2" "3.0.0")
 
-  expect-equals true (compare "2.0.0-alpha.79" "2.0.0-alpha.121.31+pgk-in-toit.95591318")
-  expect-equals true (compare "2.0.0-alpha.121.31+pgk-in-toit.95591318" "3.0.0")
-
+  expect-equals true (is-less-than "2.0.0-alpha.79" "2.0.0-alpha.121.31+pgk-in-toit.95591318")
+  expect-equals true (is-less-than "2.0.0-alpha.121.31+pgk-in-toit.95591318" "3.0.0")
 
   expect-throw "Parse error, expected a numeric value at position 0" : SemanticVersion "."
   expect-throw "Parse error, expected a numeric value at position 4" : SemanticVersion "1.1."

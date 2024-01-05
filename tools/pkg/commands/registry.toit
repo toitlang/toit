@@ -23,14 +23,14 @@ import ..registry
 class RegistryCommand:
   static LOCAL     ::= "local"
   static NAME      ::= "name"
-  static URLPATH   ::= "URL/path"
+  static LOCATION   ::= "location"
 
   local/bool := false
   url/string? := null
   name/string? := null
   constructor.add parsed/cli.Parsed:
     local = parsed[LOCAL]
-    url = parsed[URLPATH]
+    url = parsed[LOCATION]
     name = parsed[NAME]
 
   constructor.remove parsed/cli.Parsed:
@@ -74,12 +74,13 @@ class RegistryCommand:
                           path to a folder containing package descriptions.
                         """
                     --rest=[
-                        cli.Option "name"
+                        cli.Option NAME
                             --help="Name of the registry"
                             --required,
 
-                        cli.Option "URL/path"
-                            --help="URL/Path of the registry"
+                        cli.Option LOCATION // Either a URL or a path
+                            --type="URL/Path"
+                            --help="Location of the registry, depending on the local flag"
                             --required
                       ]
                     --options=[

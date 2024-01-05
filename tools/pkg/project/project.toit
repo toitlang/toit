@@ -36,16 +36,18 @@ class ProjectConfiguration:
   cwd_/string
   sdk-version/SemanticVersion
 
-  constructor.private_ .project-root_ .cwd_ .sdk-version auto-sync/bool:
+  constructor.private_ --project-root/string? --cwd/string --.sdk-version --auto-sync/bool:
+    project-root_ = project-root
+    cwd_ = cwd
     if auto-sync:
       registries.sync
 
   constructor.from-cli parsed/cli.Parsed:
     return ProjectConfiguration.private_
-        parsed[OPTION-PROJECT-ROOT]
-        directory.cwd
-        SemanticVersion parsed[OPTION-SDK-VERSION]
-        parsed[OPTION-AUTO-SYNC]
+        --project-root=parsed[OPTION-PROJECT-ROOT]
+        --cwd=directory.cwd
+        --sdk-version=SemanticVersion parsed[OPTION-SDK-VERSION]
+        --auto-sync=parsed[OPTION-AUTO-SYNC]
 
   root -> string:
     return fs.to-absolute (project-root_ ? project-root_ : cwd_)
