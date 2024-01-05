@@ -551,10 +551,13 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
   Process* subject_process = group->lookup(process_id);
   if (subject_process == null) return calling_process->null_object();  // Process not found.
   uword length = array->length();
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
   multi_heap_info_t info;
   heap_caps_get_info(&info, MALLOC_CAP_8BIT);
 #else
+#ifdef TOIT_FREERTOS
+  FATAL("UNIMPLEMENTED");
+#endif
   struct multi_heap_info_t {
       uword total_free_bytes;
       uword largest_free_block;

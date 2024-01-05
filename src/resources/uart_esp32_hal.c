@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#if defined(__FREERTOS__)
+#if defined(TOIT_ESP32)
 
 #include "esp_attr.h"
 #include "uart_esp32_hal.h"

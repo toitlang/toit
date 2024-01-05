@@ -27,7 +27,7 @@
 #include "top.h"
 #include "vm.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 #include "spi_flash_mmap.h"
 #include "rtc_memory_esp32.h"
 #endif
@@ -2522,7 +2522,11 @@ PRIMITIVE(rtc_user_bytes) {
   if (result == null) FAIL(ALLOCATION_FAILED);
   return result;
 }
-#elif !defined(TOIT_FREERTOS)
+#elif defined(TOIT_FREERTOS)
+PRIMITIVE(rtc_user_bytes) {
+  FAIL(UNIMPLEMENTED);
+}
+#else
 PRIMITIVE(rtc_user_bytes) {
   static uint8 rtc_memory[4096];
   ByteArray* result = process->object_heap()->allocate_external_byte_array(
