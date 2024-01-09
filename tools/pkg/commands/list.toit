@@ -65,11 +65,11 @@ class ListCommand:
         print (yaml.stringify result)
 
   /**
-  Convert the $description into a map suitable for printing, removing keys that should not be printed. The name
-    kye is removed and the the resulting map will have a single entry mapping the name to the filtered
-    content.
+  Converts the $description into a map suitable for printing.
+  Removes keys that should not be printed. The 'name' key is removed and the resulting map has a
+    single entry mapping the name to the filtered content.
 
-  If $allow-extra-fields, then allow dependencies and enviroment keys too.
+  If $allow-extra-fields, then allows dependencies and environment keys too.
   */
   static verbose-description description/Description --allow-extra-fields=false -> Map:
     filtered := description.content.filter: | k _ |

@@ -111,7 +111,7 @@ abstract class PackageFile:
 
   constructor .content:
 
-  // The absolute path to the directory holding the package.yaml file
+  // The absolute path to the directory holding the package.yaml file.
   abstract root-dir -> string
 
   static file-name root/string -> string:
@@ -192,7 +192,7 @@ For convenience it contains delegate methods to contraint.
 */
 class PackageDependency:
   url/string
-  constraint_/string // Keep this around for easy hash-code and ==
+  constraint_/string // Keep this around for easy hash-code and ==.
   constraint/Constraint
 
   constructor .url .constraint_:

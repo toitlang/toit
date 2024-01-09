@@ -30,7 +30,7 @@ class Pack:
   content_ := {:}
 
   constructor .binary-data_ ref-hash/string:
-    // see: git help format-pack
+    // See: git help format-pack.
     if "PACK" != binary-data_[0..4].to-string-non-throwing:
       throw "Invalid pack file"
     version = binary.BIG-ENDIAN.uint32 binary-data_ 4
@@ -39,22 +39,23 @@ class Pack:
     content_ = parse-binary-data_ binary-data_ ref-hash
 
   /**
-  Expand the pack file to location on disk
+  Expands the pack file to the given location $path on disk.
   */
   expand path/string:
     expand_ path content_
 
   /**
-  Save the compressed pack file to location on disk
+  Saves the compressed pack file to the given location $path on disk.
   */
   save path/string:
     file.write_content binary-data_ --path=path
 
   /**
+  A file-system view of this pack.
   Returns the extracted data as a memory structure, where each entry in the map represents
     either a file or a directory. If the value is a $Map then the entry is a sub-directory and
     if the value is a $ByteArray, the entry is a file. In either case, the key is the name of
-    the file/directory
+    the file/directory.
   */
   content -> FileSystemView: return GitFileSystemView content_
 
@@ -99,7 +100,7 @@ class Pack:
 
       if entry-type == TYPE_COMMIT_ or entry-type == TYPE_TREE_ or
          entry-type == TYPE_BLOB_ or entry-type == TYPE_TAG_:
-         // undeltified representation
+         // Undeltified representation.
         read := read-uncompressed_ uncompress-size binary-data[offset..]
         offset += read[0]
         entry-data := read[1]
@@ -118,7 +119,7 @@ class Pack:
           objects[entry-hash] = entry-data
 
         if entry-type == TYPE_TAG_:
-          // Ignore
+          // Ignore.
 
       // deltified representation
       if entry-type == TYPE_OFS_DELTA_:
@@ -196,7 +197,10 @@ class Pack:
 
   static build-tree objects/Map entry-hash/ByteArray -> any:
       object := objects.get entry-hash
-      if not object: return {:} // Missing hash references, would be to dnagling commits in cloned/detached submodules. Interpret is empty dirs
+      if not object:
+        // Missing hash references, would be to dangling commits in cloned/detached submodules.
+        // Interpret as empty dirs.
+        return {:}
       if object is List:
         node := Map
         object.do: | entry/TreeEntry_ |

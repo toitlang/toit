@@ -78,7 +78,7 @@ class RegistryCommand:
                             --help="Name of the registry"
                             --required,
 
-                        cli.Option LOCATION // Either a URL or a path
+                        cli.Option LOCATION // Either a URL or a path.
                             --type="URL/Path"
                             --help="Location of the registry, depending on the local flag"
                             --required

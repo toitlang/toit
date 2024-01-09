@@ -24,7 +24,7 @@ A cache of registry descriptions.
 This class collects all descriptions in a registry and builds and groups them by url.
 */
 class DescriptionUrlCache:
-  cache_/Map := {:} // url -> DescriptionVersionCache
+  cache_/Map := {:} // url -> DescriptionVersionCache.
 
   constructor content/FileSystemView:
     recurse_ content
@@ -81,7 +81,7 @@ A cache of registry descriptions for a url.
 This class collects all descriptions for the same url and stores them by version.
 */
 class DescriptionVersionCache:
-  cache_/Map := {:} // version -> description
+  cache_/Map := {:} // version -> description.
 
   constructor:
 

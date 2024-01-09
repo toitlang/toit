@@ -63,7 +63,7 @@ class ProjectConfiguration:
       error
           """
           Command must be executed in project root.
-            Run 'toit.pkg init' first to create a new application here, or
+          Run 'toit.pkg init' first to create a new application here, or
             run with '--$OPTION-PROJECT-ROOT=.'
           """
 

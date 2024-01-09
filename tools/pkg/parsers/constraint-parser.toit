@@ -29,7 +29,7 @@ class ConstraintParseResult:
   constraint ::= prefix? semantic-version
   prefix ::= "!=" | '>=' | '<=' | "~>" |  '=' | '>' | '<' | '~' | '^'
   space := ' ' | '\t'
-  In particular, no '*' productinos as in '1.*', that can be done with '^1.0.0'
+  In particular, no '*' productions as in '1.*', that can be done with '^1.0.0'
 */
 class ConstraintParser extends SemanticVersionParser:
   constructor constraint/string:

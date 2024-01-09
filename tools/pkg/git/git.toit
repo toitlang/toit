@@ -85,9 +85,9 @@ class GitProtocol_:
 
   load-refs url/string -> Map:
     refs-response := client.post (pack-command_ "ls-refs" [] [])
-      --uri="https://$(url)/git-upload-pack"
-      --headers=version-2-header
-      --content_type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
+        --uri="https://$(url)/git-upload-pack"
+        --headers=version-2-header
+        --content_type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
 
     if refs-response.status_code != 200:
       throw "Invalid repository $url, $refs-response.status_message"
@@ -129,7 +129,7 @@ class GitProtocol_:
       else:
         if it == FLUSH-PACKET: return buffer.bytes
         if it[0] == 1: buffer.write it 1
-        else if it[0] == 2: // ignore progress
+        else if it[0] == 2: // Ignore progress.
         else if it[0] == 3: throw "Fatal error from server"
 
     throw "Missing flush packet from server"

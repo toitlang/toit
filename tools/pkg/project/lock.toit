@@ -130,7 +130,7 @@ abstract class BuiltPackageBase extends PackageBase:
 
 
 class BuiltRepositoryPackage extends BuiltPackageBase implements RepositoryPackage:
-  dependencies_/Set  // of PackageDependency
+  dependencies_/Set  // of PackageDependency.
   resolved-package_/ResolvedPackage
 
   constructor project-package-file/ProjectPackageFile dependency/PackageDependency .resolved-package_:
@@ -259,7 +259,7 @@ class LockFile:
 
     packages-to-remove := {}
     new-packages-to-remove :=  { name }
-    // Calculate the transitive closure through prefixes from the name
+    // Calculate the transitive closure through prefixes from the name.
     while not new-packages-to-remove.is-empty:
       next := {}
       new-packages-to-remove.do: | name |
@@ -269,7 +269,7 @@ class LockFile:
       packages-to-remove.add-all next
       new-packages-to-remove = next
 
-    // Make sure that no retained package has a dependency on the packages-to-remove
+    // Make sure that no retained package has a dependency on the packages-to-remove.
     while true:
       illegal-removed-packages := {}
       packages.do: | package/Package |
@@ -338,9 +338,9 @@ class LockFileBuilder:
   blocked-name := {}
   name-to-dependecies := {:}
   dependencies-to-name := {:}
-  package-map := {:} // PackageKey -> Package
+  package-map := {:} // PackageKey -> Package.
 
-  constructor .project-package-file/ProjectPackageFile .local-result/local-solver.LocalResult:
+  constructor .project-package-file .local-result:
 
   build -> LockFile:
     lock-file := LockFile project-package-file
@@ -374,14 +374,14 @@ class LockFileBuilder:
 
     reduced-key-to-key := reduce-keys package-map.keys
 
-    // Update package-map with the shortened keys
+    // Update package-map with the shortened keys.
     reduced-key-to-key.do: | short/PackageKey long/PackageKey |
       value/PackageBase := package-map[long]
       value.name = short.name
       package-map.remove long
       package-map[short] = value
 
-    // Build a lookup table from PackageDependency/Path to Package
+    // Build a lookup table from PackageDependency/Path to Package.
     package-locator-to-package/Map := {:}
     package-map.do: | key/PackageKey package/BuiltPackageBase |
       package.locators_.do:

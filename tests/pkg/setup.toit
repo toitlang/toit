@@ -10,7 +10,7 @@ TOIT-REGISTRY-MAP := {
 }
 
 setup-test-registry -> string:
-  // Initialize the registries storage
+  // Initialize the registries storage.
   tmp-dir := directory.mkdtemp "test-"
   os.env["TOIT_PKG_CACHE_DIR"] = ".test-cache"
   directory.mkdir --recursive ".test-cache"
