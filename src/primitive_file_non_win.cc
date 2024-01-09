@@ -454,6 +454,7 @@ PRIMITIVE(link) {
   ARGS(cstring, source, cstring, target, int, type);
   int result;
   auto current_dir_ = current_dir(process);
+  USE(current_dir_);  // On Freertos, current_dir_ is not used.
   if (type == 0) {
     result = FILE_LINK_(current_dir_, target, current_dir_, source, AT_SYMLINK_FOLLOW);
   } else { // type 1 and 2 are only different on windows.
