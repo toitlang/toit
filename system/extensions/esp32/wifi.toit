@@ -152,7 +152,13 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
 
   scan config/Map -> List:
     if state_.module:
-      throw "wifi already connected or established"
+      if state_.module is WifiModule:
+        channels := config.get wifi.CONFIG-SCAN-CHANNELS
+        passive := config.get wifi.CONFIG-SCAN-PASSIVE
+        period := config.get wifi.CONFIG-SCAN-PERIOD
+        return (state_.module as WifiModule).scan channels passive period
+      else:
+        throw "wifi already connected or established"
     module := WifiModule.sta this "" ""
     try:
       channels := config.get wifi.CONFIG-SCAN-CHANNELS
