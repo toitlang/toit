@@ -51,7 +51,7 @@ class ProjectPackageFile extends PackageFile:
   root-dir -> string:
     return project.root
 
-  add-remote-dependency prefix/string url/string constraint/string:
+  add-remote-dependency --prefix/string --url/string --constraint/string:
     dependencies[prefix] = {
       PackageFile.URL-KEY_: url,
       PackageFile.VERSION-KEY_: constraint
@@ -105,6 +105,16 @@ class RepositoryPackageFile extends PackageFile:
     throw "Not possible to get root dir of a repository package file"
 
 abstract class PackageFile:
+  static DEPENDENCIES-KEY_ ::= "dependencies"
+  static NAME-KEY_         ::= "name"
+  static URL-KEY_          ::= "url"
+  static VERSION-KEY_      ::= "version"
+  static PATH-KEY_         ::= "path"
+  static ENVIRONMENT-KEY_  ::= "environment"
+  static SDK-KEY_          ::= "sdk"
+  static DESCRIPTION-KEY_  ::= "description"
+  static LICENSE-KEY_      ::= "license"
+
   content/Map
 
   static FILE_NAME ::= "package.yaml"
@@ -174,16 +184,6 @@ abstract class PackageFile:
   license -> string?: return content.get LICENSE-KEY_
   environment -> Map?: return content.get ENVIRONMENT-KEY_
 
-  static DEPENDENCIES-KEY_ ::= "dependencies"
-  static NAME-KEY_         ::= "name"
-  static URL-KEY_          ::= "url"
-  static VERSION-KEY_      ::= "version"
-  static PATH-KEY_         ::= "path"
-  static ENVIRONMENT-KEY_  ::= "environment"
-  static SDK-KEY_          ::= "sdk"
-  static DESCRIPTION-KEY_  ::= "description"
-  static LICENSE-KEY_      ::= "license"
-
 
 /**
 Represents a dependency on a package from a repository.
@@ -198,7 +198,7 @@ class PackageDependency:
   constructor .url .constraint_:
     constraint = Constraint constraint_
 
-  filter versions/List:
+  filter versions/List -> List:
     return constraint.filter versions
 
   satisfies version/SemanticVersion -> bool:

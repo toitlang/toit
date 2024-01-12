@@ -20,13 +20,15 @@ import cli
 import ..pkg
 import ..project
 
+import .utils_
+
 class UninstallCommand:
   name/string
   project/Project
   constructor parsed/cli.Parsed:
     name = parsed[NAME]
 
-    config := ProjectConfiguration.from-cli parsed
+    config := project-configuration-from-cli parsed
     config.verify
     project = Project config
 

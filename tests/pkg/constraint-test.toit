@@ -7,7 +7,7 @@ import ...tools.pkg.semantic-version
 import ...tools.pkg.constraints
 
 check-constraint v/string c/string:
-  expect --message="$v$c"
+  expect --message="$v $c"
       (Constraint c).satisfies
           SemanticVersion v
 
@@ -49,3 +49,9 @@ main:
   check-not-constraint "3.1.0" "=2.1.1"
   check-not-constraint "3.1.0" "3.1.1"
   check-not-constraint "2.1.1-alpha" "^2.1.1"
+
+  check-constraint "2.1.1" ">2.1.0, <2.1.2"
+  check-constraint "3.1.1" ">2.1.0, <4.0.0"
+  check-constraint "2.1.0" ">=2.1.0, <4.0.0"
+  check-constraint "4.0.0" ">=2.1.0, <=4.0.0"
+  check-not-constraint "4.0.0" ">=2.1.0, <4.0.0"

@@ -35,12 +35,6 @@ class Resolved:
 
   constructor solution/PartialSolution:
     packages = solution.partial-packages.map: | _ v | ResolvedPackage v
-    // DEBUG
-    deps := solution.partial-packages.keys
-    deps.sort --in-place: | a b | a.stringify.compare-to b.stringify
-    m := {:}
-    deps.do:
-      m[it.stringify] = pps-to-map solution.partial-packages[it]
 
   constructor.empty:
 
@@ -98,7 +92,7 @@ class PartialPackageSolution:
     description = other.description
     if other.versions:
       versions = other.versions.copy
-    dependencies = copy-dependency-to-solution-map_ other.dependencies package-translator
+    dependencies = make-copy-of-dependency-to-solution-map_ other.dependencies package-translator
 
   solved-version -> SemanticVersion:
     return description.version
@@ -146,8 +140,7 @@ class PartialSolution:
     solver = other.solver
     url-to-dependencies = other.url-to-dependencies.map: | _ v | v.copy
     unsolved-packages = Deque.from other.unsolved-packages
-    package-translator := IdentityMap  // Mapping old PartialPackageSolution's to copied version.
-    partial-packages = copy-dependency-to-solution-map_ other.partial-packages package-translator
+    partial-packages = make-copy-of-dependency-to-solution-map_ other.partial-packages
 
   is-solution -> bool:
     return unsolved-packages.is-empty
@@ -169,19 +162,21 @@ class PartialSolution:
 
     package-versions/List := unsolved-package.versions
 
+    // Go through all versions of the unresolved-package.
+    // Make a copy of the current partial solution and then fix the package to
+    // the version we are currently trying. Then recursively try to refine the rest, thus
+    // assigning version to the remaining packages.
     package-versions.do: | next-version/SemanticVersion |
-      copy := PartialSolution.copy this
-      if copy.load-dependencies unsolved-dependency next-version:
-        if refined := copy.refine: return refined
+      description := solver.registries.retrieve-description unsolved-dependency.url next-version
+      if description.satisfies-sdk-version solver.sdk-version:
+        copy := PartialSolution.copy this
+        if copy.load-dependencies description unsolved-dependency next-version:
+          if refined := copy.refine: return refined
+        // otherwise backtrack and try the next version.
 
     return null
 
-  load-dependencies unresolved-dependency/PackageDependency next-version/SemanticVersion -> bool:
-    description := solver.registries.retrieve-description unresolved-dependency.url next-version
-
-    if not description.satisfies-sdk-version solver.sdk-version:
-      return false
-
+  load-dependencies description/Description unresolved-dependency/PackageDependency next-version/SemanticVersion -> bool:
     package/PartialPackageSolution := partial-packages[unresolved-dependency]
     package.description = description
     package.versions = null
@@ -189,9 +184,15 @@ class PartialSolution:
     description.dependencies.do: | dependency/PackageDependency |
       if url-to-dependencies.contains dependency.url:
         partial-package-solutions := IdentitySet
+        // Find the partial package-solutions for the dependency URL.
+        // Some of them might already have a unique version. Others might not be fixed yet.
         url-to-dependencies[dependency.url].do: partial-package-solutions.add partial-packages[it]
 
         if partial-package := dependency.find-satisfied-package partial-package-solutions:
+          // One partial package has at least one version that satisfies this dependency.
+          // Shrink the set of all allowed versions in that partial package so it also takes the current
+          // requirement into account. If it is a fixed package then 'add-source-dependency' won't
+          // do anything, since the single version is known to work.
           partial-package.add-source-dependency dependency
           package.dependencies[dependency] = partial-package
         else:
@@ -199,17 +200,28 @@ class PartialSolution:
           dependency-versions := dependency.filter all-versions
           if dependency-versions.is-empty: return false
 
-          // For all existing dependencies, check if the the new dependency resolves a disjoint set of versions
+          existing-major-versions := {}
+          // For all existing dependencies, check if the new dependency resolves a disjoint set of versions
           url-to-dependencies[dependency.url].do: | existing-dependency/PackageDependency |
             existing-versions/List := existing-dependency.filter all-versions
             dependency-versions.do:
-              if existing-versions.contains it: // TODO: Should major be checked?
+              if existing-versions.contains it:
                 // Overlapping versions and not jointly satisfied.
                 return false
+            existing-versions.do: | version/SemanticVersion |
+              existing-major-versions.add version.major
+
+          // The set of versions are disjoint. But they might have the same major version which is not allowed.
+          dependency-versions.filter --in-place: | version/SemanticVersion |
+            not (existing-major-versions.contains version.major)
+          if dependency-versions.is-empty: return false
 
           // The dependency resolves to a disjoint set of versions. Add it.
           add-partial-package-solution dependency package (PartialPackageSolution dependency.url dependency-versions)
       else:
+        // The first time we see this URL.
+        // Add a new partial package with all the versions this requirement accepts.
+        // We will later refine it (potentially trying all the versions that are possible).
         versions := dependency.filter (solver.registries.retrieve-versions dependency.url)
         if versions.is-empty: return false
         add-partial-package-solution dependency package (PartialPackageSolution dependency.url versions)
@@ -222,7 +234,7 @@ class Solver:
 
   constructor .registries .sdk-version:
 
-  solve dependencies/List-> Resolved:
+  solve dependencies/List -> Resolved:
     package-versions/Map := {:}  // Dependency -> list of versions.
 
     dependencies.do: | dependency/PackageDependency |
@@ -239,19 +251,20 @@ class Solver:
 
     if package-versions.is-empty: return Resolved.empty
 
-    partial-package-solutions := {:}
-    package-versions.do: | dependency/PackageDependency versions/List |
-      if not partial-package-solutions.contains dependency: // The same dependency can appear multiple
-                                                            // times with different names
-        partial-package-solution := PartialPackageSolution dependency.url versions
-        partial-package-solutions[dependency] = partial-package-solution
+    partial-package-solutions := package-versions.map: | dependency/PackageDependency versions/List |
+      PartialPackageSolution dependency.url versions
 
     partial-solution := PartialSolution this partial-package-solutions
     if solution := partial-solution.refine: return Resolved solution
     throw "Unable to resolve dependencies"
 
-
-copy-dependency-to-solution-map_ input/Map translator/IdentityMap -> Map:
+/**
+Makes a copy of the dependency-to-solution map $input.
+Uses the $translator map to avoid creating different copies of the same object. When
+  calling 'copy' recursively, the translator map is passed on. If there is eventually another
+  call to this method, it can then remember which objects were already copied.
+*/
+make-copy-of-dependency-to-solution-map_ input/Map translator/IdentityMap=IdentityMap -> Map:
   return input.map: | _ v |
     if not translator.contains v:
       copy := PartialPackageSolution.copy v translator

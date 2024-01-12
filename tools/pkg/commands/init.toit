@@ -20,11 +20,13 @@ import ..error
 import ..project
 import ..project.package
 
+import .utils_
+
 class InitCommand:
   project/Project
 
   constructor parsed/cli.Parsed:
-    config := ProjectConfiguration.from-cli parsed
+    config := project-configuration-from-cli parsed
 
     if config.package-file-exists or config.lock-file-exists:
       error "Directory already contains a project"

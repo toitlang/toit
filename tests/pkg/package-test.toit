@@ -22,13 +22,12 @@ verify-ref package ref:
   expect-equals ref lock["packages"][package]["hash"]
 
 main:
-  tmp-dir := setup-test-registry // Set the registry to a know version (fixed ref-hash)
-  try:
+  with-test-registry:
     if file.is-directory PROJECT-DIR:
       directory.rmdir --recursive PROJECT-DIR
 
     directory.mkdir PROJECT-DIR
-    config := ProjectConfiguration.private_
+    config := ProjectConfiguration
       --project-root=PROJECT-DIR
       --cwd=directory.cwd
       --sdk-version=(SemanticVersion system.vm-sdk-version)
@@ -52,5 +51,3 @@ main:
     project.install-remote rest.name rest
     verify-ref "pkg-http" "108c436cc990535f5d70c380ef68081c38840f4c"
     verify-ref "pkg-rest-server" "2326ed4341d4094f0d2482580d3b29be020554b0"
-  finally:
-    directory.rmdir --recursive tmp-dir

@@ -35,14 +35,13 @@ class DescriptionUrlCache:
       result.add-all versions.all-descriptions
     return result
 
-  retrieve-description url/string version/SemanticVersion -> Description?:
+  get-description url/string version/SemanticVersion -> Description?:
     version-cache/DescriptionVersionCache? := cache_.get url
     return version-cache and version-cache.get version
 
-  retrieve-versions url/string -> List?:
+  get-versions url/string -> List?:
     version-cache/DescriptionVersionCache? := cache_.get url
     return version-cache and version-cache.all-versions
-
 
   /**
   Returns a map, mapping urls to lists of descriptions.
@@ -70,9 +69,6 @@ class DescriptionUrlCache:
 
   add_ description/Description:
     (cache_.get description.url --init=(: DescriptionVersionCache)).add_ description
-
-  operator [] url/string -> DescriptionVersionCache?:
-    return cache_.get url
 
 
 /**

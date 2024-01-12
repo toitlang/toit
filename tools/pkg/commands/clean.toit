@@ -20,10 +20,12 @@ import cli
 import ..pkg
 import ..project
 
+import .utils_
+
 class CleanCommand:
   project/Project
   constructor parsed/cli.Parsed:
-    config := ProjectConfiguration.from-cli parsed
+    config := project-configuration-from-cli parsed
     config.verify
     project = Project config
 

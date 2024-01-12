@@ -17,9 +17,9 @@ import .parsers.semantic-version-parser
 
 // TODO(florian): move this to the semver package.
 
-// See https://semver.org/
+// See https://semver.org/.
 class SemanticVersion:
-  // Identifiers are [major/int, minor/int, patch/int, (pre-release/int | pre-release/string)*]
+  // Identifiers are [major/int, minor/int, patch/int, (pre-release/int | pre-release/string)*].
   major/int
   minor/int
   patch/int

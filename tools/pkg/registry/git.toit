@@ -48,6 +48,8 @@ class GitRegistry extends Registry:
     return pack.content
 
   sync -> FileSystemView:
+    // TODO(mikkel): When the repository gets larger (several mb) it might be faster to let the git
+    //               server calculate the delta objects instead of downloading the full pack file for the head-ref.
     repository := open-repository url
     ref-hash = repository.head
     return load_

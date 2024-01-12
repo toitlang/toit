@@ -18,6 +18,18 @@ import ..constraints
 import ..project.package
 
 class Description:
+  static NAME-KEY_         ::= "name"
+  static DESCRIPTION-KEY_  ::= "description"
+  static LICENSE-KEY_      ::= "license"
+  static URL-KEY_          ::= "url"
+  static VERSION-KEY_      ::= "version"
+  static ENVIRONMENT-KEY_  ::= "environment"
+  static HASH-KEY_         ::= "hash"
+  static DEPENDENCIES-KEY_ ::= "dependencies"
+  static SDK-KEY_          ::= "sdk"
+
+  static DESCRIPTION_FILE_NAME ::= "desc.yaml"
+
   content/Map
 
   cached-version_/SemanticVersion? := null
@@ -62,17 +74,6 @@ class Description:
     return not sdk-version or sdk-version.satisfies concrete-sdk-version
 
   matches-free-text search-string/string -> bool:
-    return url.contains search-string or name.contains search-string or description.contains search-string
-
-  static NAME-KEY_         ::= "name"
-  static DESCRIPTION-KEY_  ::= "description"
-  static LICENSE-KEY_      ::= "license"
-  static URL-KEY_          ::= "url"
-  static VERSION-KEY_      ::= "version"
-  static ENVIRONMENT-KEY_  ::= "environment"
-  static HASH-KEY_         ::= "hash"
-  static DEPENDENCIES-KEY_ ::= "dependencies"
-  static SDK-KEY_          ::= "sdk"
-
-  static DESCRIPTION_FILE_NAME ::= "desc.yaml"
-
+    return url.to-ascii-lower.contains search-string or
+        name.to-ascii-lower.contains search-string or
+        description.to-ascii-lower.contains search-string

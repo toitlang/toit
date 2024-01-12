@@ -36,18 +36,11 @@ class ProjectConfiguration:
   cwd_/string
   sdk-version/SemanticVersion
 
-  constructor.private_ --project-root/string? --cwd/string --.sdk-version --auto-sync/bool:
+  constructor --project-root/string? --cwd/string --.sdk-version --auto-sync/bool:
     project-root_ = project-root
     cwd_ = cwd
     if auto-sync:
       registries.sync
-
-  constructor.from-cli parsed/cli.Parsed:
-    return ProjectConfiguration.private_
-        --project-root=parsed[OPTION-PROJECT-ROOT]
-        --cwd=directory.cwd
-        --sdk-version=SemanticVersion parsed[OPTION-SDK-VERSION]
-        --auto-sync=parsed[OPTION-AUTO-SYNC]
 
   root -> string:
     return fs.to-absolute (project-root_ ? project-root_ : cwd_)
@@ -59,7 +52,7 @@ class ProjectConfiguration:
     return file.is_file (LockFile.file-name root)
 
   verify:
-    if not project-root_ and (not package-file-exists or not lock-file-exists):
+    if not project-root_ and not package-file-exists:
       error
           """
           Command must be executed in project root.
@@ -96,7 +89,7 @@ class Project:
     lock-file.save
 
   install-remote prefix/string remote/Description:
-    package-file.add-remote-dependency prefix remote.url "^$remote.version"
+    package-file.add-remote-dependency --prefix=prefix --url=remote.url --constraint="^$remote.version"
     solve_
     save
 

@@ -29,14 +29,14 @@ open-repository url/string -> Repository:
 
 class Repository:
   url/string
-  capabilits/Map
+  capabilities/Map
 
   constructor .url:
-    capabilits = protocol_.load-capabilities url
+    capabilities = protocol_.load-capabilities url
 
   clone --binary ref-hash/string -> ByteArray:
     if not binary: throw "INVALID_ARGUMENT"
-    return protocol_.load-pack capabilits url ref-hash
+    return protocol_.load-pack capabilities url ref-hash
 
   clone ref-hash/string -> Pack:
     return Pack (clone --binary ref-hash) ref-hash
@@ -62,7 +62,7 @@ class GitProtocol_:
   load-capabilities url/string:
     host := url[0..url.index-of "/"]
     return server-capabilities-cache.get host
-        --if-absent=:
+        --init=:
             capabilities-response :=
                 client.get
                     --uri="https://$(url)/info/refs?service=git-upload-pack"
@@ -106,9 +106,9 @@ class GitProtocol_:
 
     throw "Missing flush packet from server"
 
-  load-pack capabilitis/Map url/string ref-hash/string -> ByteArray:
+  load-pack capabilities/Map url/string ref-hash/string -> ByteArray:
     arguments := ["no-progress", "want $ref-hash"]
-    if capabilitis.get "fetch" and capabilitis["fetch"].contains "shallow": arguments.add "deepen 1"
+    if capabilities.contains "fetch" and capabilities["fetch"].contains "shallow": arguments.add "deepen 1"
     arguments.add "done"
     fetch-response := client.post (pack-command_ "fetch" ["object-format=sha1", "agent=toit"] arguments)
         --uri="https://$url/git-upload-pack"
@@ -127,10 +127,17 @@ class GitProtocol_:
         if it is ByteArray and it.to-string.trim == "packfile":
           reading-data-lines = true
       else:
-        if it == FLUSH-PACKET: return buffer.bytes
-        if it[0] == 1: buffer.write it 1
-        else if it[0] == 2: // Ignore progress.
-        else if it[0] == 3: throw "Fatal error from server"
+        if it is int:
+          if it == FLUSH-PACKET: return buffer.bytes
+          else if it == DELIMITER-PACKET: // ignore
+          else if it == RESPONSE-END-PACKET: // ignore
+          else: throw "Unknown special packet ($it) from server"
+        else if it is ByteArray:
+          if it[0] == 1: buffer.write it 1
+          else if it[0] == 2: // Ignore progress.
+          else if it[0] == 3: throw "Fatal error from server"
+          else: throw "Unknown stream code $it[0] received from server"
+        else: unreachable
 
     throw "Missing flush packet from server"
 

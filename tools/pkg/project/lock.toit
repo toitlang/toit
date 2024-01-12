@@ -65,7 +65,7 @@ abstract class PackageBase implements Package:
   abstract package-file -> PackageFile
 
   package-file url/string version/SemanticVersion -> PackageFile:
-    project-package-file.project.ensure-downloaded url version
+    ensure-downloaded url version
     return project-package-file.project.load-package-package-file url version
 
   ensure-downloaded url/string version/SemanticVersion:
@@ -121,11 +121,17 @@ class LoadedLocalPackage extends PackageBase implements LocalPackage:
   package-file -> PackageFile:
     return project-package-file.project.load-local-package-file path
 
+
 abstract class BuiltPackageBase extends PackageBase:
   constructor project-package-file/ProjectPackageFile:
     super project-package-file
 
-  abstract locators_-> Set
+
+  /**
+  A locator is either a package dependency or a file path that resolved to this package.
+  These locators are used to compute prefixes for packages.
+  */
+  abstract locators_ -> Set
   abstract sdk-version -> Constraint?
 
 
@@ -196,6 +202,11 @@ class BuiltLocalPackage extends BuiltPackageBase implements LocalPackage:
 
 
 class LockFile:
+  static SDK-KEY_        ::= "sdk"
+  static PREFIXES-KEY_   ::= "prefixes"
+  static PACKAGES-KEY_   ::= "packages"
+  static PATH-KEY_       ::= "path"
+
   sdk-version/SemanticVersion? := null
   prefixes/Map := {:}
   packages/List := []
@@ -285,11 +296,6 @@ class LockFile:
   repository-packages -> List:
     return (packages.filter : it is RepositoryPackage)
 
-  static SDK-KEY_        ::= "sdk"
-  static PREFIXES-KEY_   ::= "prefixes"
-  static PACKAGES-KEY_   ::= "packages"
-  static PATH-KEY_       ::= "path"
-
 
 class PackageKey:
   parts/List := []
@@ -348,22 +354,26 @@ class LockFileBuilder:
       count := 0
       while true:
         key := PackageKey "package" "$package.location$(count > 0 ? "-$count" : "")"
-        if package-map.contains key: continue
+        if package-map.contains key:
+          count++
+          continue
         package-map[key] = BuiltLocalPackage project-package-file package
         break
 
-    mutli-version-urls := identify-multi-version-packages
+    multi-version-urls := identify-multi-version-packages
     resolved-to-repository-package := {:}
     local-result.repository-packages.packages.do: | dependency/PackageDependency package/ResolvedPackage |
       count := 0
       while true:
         id := dependency.url
 
-        if mutli-version-urls.contains id:
+        if multi-version-urls.contains id:
           id = "$id-$package.version"
 
         key := PackageKey "package" "$id$(count > 0 ? "-$count" : "")"
-        if package-map.contains key: continue
+        if package-map.contains key:
+          count++
+          continue
         package-map[key] = BuiltRepositoryPackage project-package-file dependency package
         resolved-to-repository-package[package] = package-map[key]
         break
@@ -383,7 +393,7 @@ class LockFileBuilder:
 
     // Build a lookup table from PackageDependency/Path to Package.
     package-locator-to-package/Map := {:}
-    package-map.do: | key/PackageKey package/BuiltPackageBase |
+    package-map.do --values: | package/BuiltPackageBase |
       package.locators_.do:
         package-locator-to-package[it] = package
 
@@ -399,12 +409,12 @@ class LockFileBuilder:
     return lock-file
 
   identify-multi-version-packages -> Set:
-    mutli-version-urls := {}
+    multi-version-urls := {}
     urls := {}
     local-result.repository-packages.packages.do --keys: | dependency/PackageDependency |
-      if urls.contains dependency.url: mutli-version-urls.add dependency.url
+      if urls.contains dependency.url: multi-version-urls.add dependency.url
       urls.add dependency.url
-    return mutli-version-urls
+    return multi-version-urls
 
   reduce-keys package-keys/List -> Map:
     result := {:}

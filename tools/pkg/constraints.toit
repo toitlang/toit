@@ -21,7 +21,7 @@ class Constraint:
   source/string
 
   constructor .source/string:
-    parsed := (ConstraintParser source).constraints
+    parsed := (ConstraintParser source).constraints --consume-all
     constraints = []
     parsed.do: | constraint/ConstraintParseResult |
       version := SemanticVersion.from-parse-result constraint.semantic-version

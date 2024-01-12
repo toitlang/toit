@@ -86,6 +86,14 @@ class Registries:
           error-reporter.call "Package '$search-name-suffix' exists but not with version '$search-version-prefix' $registry-info"
       error-reporter.call "Package '$search-string' not found $registry-info"
     else:
+      if not registry-name:
+        // Test for the same package appearing in multiple registreis.
+        urls := {}
+        search-results.do:
+          urls.add it[1].url
+        if urls.size == 1:
+          return search-results[0][1]
+
       registry-info := registry-name != null ? "in registry $registry-name." : "in all registries."
       error-reporter.call "Multiple packages found for '$search-string' $registry-info"
 
@@ -128,20 +136,36 @@ class Registries:
     error-reporter.call "Not able to find package $url with version $version."
     unreachable
 
+  /**
+  Returns the versions in the registry for the given url.
+  The versions are sorted in descending order.
+  */
   retrieve-versions url/string -> List:
+    all-versions := {}
     registries.do --values:
-      if versions := it.retrieve-versions url: return versions
-    error-reporter.call "Not able to find package $url in any registry."
-    unreachable
+      if registry-versions := it.retrieve-versions url:
+        all-versions.add-all registry-versions
+    if all-versions.is-empty:
+      error-reporter.call "Not able to find package $url in any registry."
+
+    semantic-versions := List.from all-versions
+    // Sort.
+    semantic-versions.sort --in-place
+
+    // Reverse.
+    result := []
+    semantic-versions.do --reversed: result.add it
+
+    return result
 
   add --local name/string path/string:
-    if not local: throw "INVALID_ARGUEMT"
+    if not local: throw "INVALID_ARGUMENT"
     if registries.contains name: error-reporter.call "Registry $name already exists."
     registries[name] = LocalRegistry name path
     save_
 
   add --git name/string url/string:
-    if not git: throw "INVALID_ARGUEMT"
+    if not git: throw "INVALID_ARGUMENT"
     if registries.contains name: error-reporter.call "Registry $name already exists."
     registries[name] = GitRegistry name url null
     registries[name].sync  // To check that the url is valid.
@@ -201,20 +225,10 @@ abstract class Registry:
     return description-cache.all-descriptions
 
   retrieve-description url/string version/SemanticVersion -> Description?:
-    return description-cache.retrieve-description url version
+    return description-cache.get-description url version
 
   retrieve-versions url/string -> List?:
-    semantic-versions := description-cache.retrieve-versions url
-    if not semantic-versions: return null
-
-    // Sort
-    semantic-versions.sort --in-place
-
-    // Reverse
-    result := []
-    semantic-versions.do --reversed: result.add it
-
-    return result
+    return description-cache.get-versions url
 
   search search-string/string -> List:
     search-version := null
@@ -223,20 +237,21 @@ abstract class Registry:
       search-string = split[0]
       search-version = split[1]
 
-    // search-result maps urls to list of descriptions
+    // Initially maps urls to list of descriptions.
     search-result := description-cache.search search-string search-version
 
-    // Remove empty
+    // Remove empty.
     search-result = search-result.filter: | _ descriptions/List | not descriptions.is-empty
 
-    // Reduce versions
+    // Reduce versions.
     search-result = search-result.map: | _ descriptions/List |
       highest-version_ descriptions
 
-    // search-result now maps from url to one description
+    // Now maps from url to one description.
     return search-result.values
 
   search --free-text search-string/string -> List:
+    search-string = search-string.to-ascii-lower
     return list-all-descriptions.filter: | description/Description |
       description.matches-free-text search-string
 

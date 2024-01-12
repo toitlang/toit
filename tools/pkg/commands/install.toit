@@ -14,13 +14,15 @@
 // directory of this repository.
 
 import cli
+import host.file
+import fs
 
 import ..error
 import ..project
 import ..project.package
 import ..registry
-import host.file
-import fs
+
+import .utils_
 
 class InstallCommand:
   static PREFIX    ::= "prefix"
@@ -50,7 +52,7 @@ class InstallCommand:
     if package and recompute:
       error "Recompute can only be specified with no other arguments."
 
-    config := ProjectConfiguration.from-cli parsed
+    config := project-configuration-from-cli parsed
     config.verify
 
     project = Project config

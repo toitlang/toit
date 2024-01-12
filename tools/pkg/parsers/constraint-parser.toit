@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import encoding.yaml.parser
+
 import .semantic-version-parser
 
 
@@ -22,6 +24,7 @@ class ConstraintParseResult:
 
   constructor .prefix .semantic-version:
 
+  stringify: return prefix ? "$prefix$semantic-version.triple.triple": semantic-version.triple.triple.stringify
 /*
   A PEG grammer for the constraints
 
@@ -43,6 +46,7 @@ class ConstraintParser extends SemanticVersionParser:
       if match-char ',':
         repeat: space
         result.add constraint
+        true
 
     repeat: space
 
@@ -65,4 +69,4 @@ class ConstraintParser extends SemanticVersionParser:
     return ""
 
   space:
-    match-chars { ' ', '\t' }
+    return match-chars { ' ', '\t' }

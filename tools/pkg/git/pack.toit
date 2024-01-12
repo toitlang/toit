@@ -92,9 +92,9 @@ class Pack:
         header-byte := binary-data[offset++]
         if not entry-type:
           entry-type = (header-byte & 0b111_0000) >> 4
-          uncompress-size = header-byte& 0b1111
+          uncompress-size = header-byte & 0b1111
         else:
-          uncompress-size |= (header-byte& 0b0111_1111) << header-shift
+          uncompress-size |= (header-byte & 0b0111_1111) << header-shift
           header-shift += 7
         if header-byte& 0b1000_0000 == 0: break
 
@@ -237,20 +237,21 @@ class TreeEntry_:
   //  (?<SP>        \x20)
   // Except in the pack file, the preample  (?<tree>  tree (?&SP) (?&decimal) \0 is not nescessary and thus not included,
   // so the code just parses (?&entry)+
-  static parse b/ByteArray -> List:
+  static parse data/ByteArray -> List:
     i := 0
     parsed := []
 
-    while i < b.size:
+    while i < data.size:
       start := i
-      while b[i] != ' ': i++
-      perm := b[start..i].to-string
+      while data[i] != ' ': i++
+      permissions := data[start..i].to-string
       i++
       start = i
-      while b[i] != 0: i++
-      n := b[start..i].to-string
+      while data[i] != 0: i++
+      name := data[start..i].to-string
       i++
-      parsed.add (TreeEntry_ perm n b[i..i+20])
+      hash := data[i..i+20]
+      parsed.add (TreeEntry_ permissions name hash)
       i += 20
     return parsed
 
