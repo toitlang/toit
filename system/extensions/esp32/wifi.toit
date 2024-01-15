@@ -165,7 +165,7 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
         inner
       // If we didn't bring up the module ourselves we haven't scanned yet.
       if not result:
-        (module as WifiModule).scan channels passive period
+        result = (module as WifiModule).scan channels passive period
       return result
     finally:
       state_.down
