@@ -1093,7 +1093,7 @@ A byte array can only contain (non-null) integers in the range 0-255. When
 
 Byte arrays can be created using the $ByteArray constructors, or by using the
   byte array literal syntax: `#[1, 2, 3]`. If the latter only contains
-  constants it is compiled such that access to the byte array doesn't need
+  constants, it is compiled such that access to the byte array doesn't need
   the dynamic creation of the byte array. On many platforms this requires
   less memory. These literals are still mutable and will copy their content
   into memory the first time they are modified ("Copy on Write").
