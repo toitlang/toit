@@ -66,6 +66,9 @@ typedef __m128i uint128_t;
 
 namespace toit {
 
+static Object* int64_to_string(Process* process, int64 value, int base, bool print_unsigned);
+static Object* int_to_string_using_printf(Process* process, int value, int base);
+
 MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
 PRIMITIVE(write_string_on_stdout) {
@@ -662,28 +665,32 @@ PRIMITIVE(smi_mod) {
   return Primitive::integer((int64) receiver % other, process);
 }
 
-// Signed for base 10, unsigned for bases 2, 8 or 16.
-static Object* printf_style_integer_to_string(Process* process, int64 value, int base) {
+// Unsigned printing of integers for bases 2, 8, 10, or 16.
+// These are the only 4 bases supported.
+// Due to Newlib limitations we don't use this for numbers that
+//   don't fit in 32 bits.
+static Object* int_to_string_using_printf(Process* process, int value, int base) {
   ASSERT(base == 2 || base == 8 || base == 10 || base == 16);
   char buffer[70];
   switch (base) {
     case 2: {
       char* p = buffer;
-      int first_bit = value == 0 ? 0 : 63 - Utils::clz(value);
+      unsigned u = value;
+      int first_bit = u == 0 ? 0 : 31 - Utils::clz(u);
       for (int i = first_bit; i >= 0; i--) {
-        *p++ = '0' + ((value >> i) & 1);
+        *p++ = '0' + ((u >> i) & 1);
       }
       *p++ = '\0';
       break;
     }
     case 8:
-      snprintf(buffer, sizeof(buffer), "%" PRIo64, value);
+      snprintf(buffer, sizeof(buffer), "%o", value);
       break;
     case 10:
-      snprintf(buffer, sizeof(buffer), "%" PRId64, value);
+      snprintf(buffer, sizeof(buffer), "%d", value);
       break;
     case 16:
-      snprintf(buffer, sizeof(buffer), "%" PRIx64, value);
+      snprintf(buffer, sizeof(buffer), "%x", value);
       break;
     default:
       buffer[0] = '\0';
@@ -691,12 +698,26 @@ static Object* printf_style_integer_to_string(Process* process, int64 value, int
   return process->allocate_string_or_error(buffer);
 }
 
+// Always treats negative numbers as negative, unlike printf, which treats them
+//   as unsigned for bases 8 and 16.
 PRIMITIVE(int64_to_string) {
   ARGS(int64, value, int, base);
   if (!(2 <= base && base <= 36)) FAIL(OUT_OF_RANGE);
-  if (base == 10 || (value >= 0 && (base == 2 || base == 8 || base == 16))) {
-    return printf_style_integer_to_string(process, value, base);
+  // For speed we try to use printf if it would give the same result.
+  if (base == 2 || base == 8 || base == 16) {
+    if (0 <= value && value <= INT_MAX) {
+      return int_to_string_using_printf(process, value, base);
+    }
+  } else if (base == 10) {
+    if (INT_MIN <= value && value <= INT_MAX) {
+      return int_to_string_using_printf(process, value, base);
+    }
   }
+
+  return int64_to_string(process, value, base, /* unsigned = */ false);
+}
+
+static Object* int64_to_string(Process* process, int64 value, int base, bool print_unsigned) {
   const int BUFFER_SIZE = 70;
   char buffer[BUFFER_SIZE];
   char* p = &buffer[0];
@@ -705,7 +726,7 @@ PRIMITIVE(int64_to_string) {
   } else {
     uint64 unsigned_value;
     char sign = '+';
-    if (value < 0) {
+    if (value < 0 && !print_unsigned) {
       sign = '-';
       // This also works fine for min-int.  The negation has no effect, but the
       // correct value ends up in the unsigned variable.
@@ -1346,8 +1367,10 @@ PRIMITIVE(smi_to_string_base_10) {
 // bases.
 PRIMITIVE(printf_style_int64_to_string) {
   ARGS(int64, receiver, int, base);
+  uint64 value = receiver;
   if (base != 2 && base != 8 && base != 16) FAIL(INVALID_ARGUMENT);
-  return printf_style_integer_to_string(process, receiver, base);
+  if (value > INT_MAX) return int64_to_string(process, value, base, /* unsigned = */ true);
+  return int_to_string_using_printf(process, value, base);
 }
 
 // Safe way to ensure a double print without chopping off characters.
