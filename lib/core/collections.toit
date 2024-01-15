@@ -1088,7 +1088,28 @@ class LargeArray_ extends Array_:
 /**
 A container specialized for bytes.
 
-A byte array can only contain (non-null) integers in the range 0-255.
+A byte array can only contain (non-null) integers in the range 0-255. When
+  storing other integer values, they are automatically truncated.
+
+Byte arrays can be created using the $ByteArray constructors, or by using the
+  byte array literal syntax: `#[1, 2, 3]`. If the latter only contains
+  constants it is compiled such that access to the byte array doesn't need
+  the dynamic creation of the byte array. On many platforms this requires
+  less memory. These literals are still mutable and will copy their content
+  into memory the first time they are modified ("Copy on Write").
+
+# Examples
+```
+bytes := #[1, 2, 3]
+bytes[0] = 22
+print bytes  // => [22, 2, 3]
+
+bytes += #[4, 5]
+print bytes  // => [22, 2, 3, 4, 5]
+
+bytes := ByteArray 4: it
+print bytes  // => [0, 1, 2, 3]
+```
 */
 interface ByteArray:
 
