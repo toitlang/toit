@@ -269,12 +269,28 @@ inline bool intrinsic_ushr(Object* a, Object* b, Smi** result) {
   return true;
 }
 
+static void** create_dispatch_table(void** static_dispatch_table, int size) {
+  void** dispatch_table = unvoid_cast<void**>(malloc(size * sizeof(void*)));
+  for (int i = 0; i < size; i++) {
+    dispatch_table[i] = static_dispatch_table[i];
+  }
+  return dispatch_table;
+}
+
 Interpreter::Result Interpreter::run() {
 #define LABEL(opcode, length, format, print) &&interpret_##opcode,
-  static void* dispatch_table[] = {
+  static void* static_dispatch_table[] = {
     BYTECODES(LABEL)
   };
+  static void** ram_dispatch_table = null;
 #undef LABEL
+
+  if (ram_dispatch_table == null) {
+    ram_dispatch_table = create_dispatch_table(
+        static_dispatch_table,
+        sizeof(static_dispatch_table) / sizeof(static_dispatch_table[0]));
+  }
+  void** dispatch_table = ram_dispatch_table;
 
   // We sometimes suspend processes and collect their garbage
   // from the outside. In that case, we are not calling the GC

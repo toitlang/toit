@@ -25,6 +25,7 @@
 #include <mbedtls/platform.h>
 #if MBEDTLS_VERSION_MAJOR >= 3
 #include <../library/ssl_misc.h>
+#include <mbedtls/cipher.h>
 #else
 #include <mbedtls/ssl_internal.h>
 #endif
@@ -746,9 +747,9 @@ static bool known_cipher_info(const mbedtls_cipher_info_t* info, size_t key_bitl
   } else {
     return false;
   }
-  if (info->key_bitlen != key_bitlen) return false;
+  if (mbedtls_cipher_info_get_key_bitlen(info) != key_bitlen) return false;
   if (iv_len != 12) return false;
-  if (info->iv_size != 12) return false;
+  if (mbedtls_cipher_info_get_iv_size(info) != 12) return false;
   if ((info->flags & ~MBEDTLS_CIPHER_VARIABLE_IV_LEN) != 0) return false;
   return true;
 }
