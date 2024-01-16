@@ -151,16 +151,24 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
     return (state_.module as WifiModule).ap-info
 
   scan config/Map -> List:
-    if state_.module:
-      throw "wifi already connected or established"
-    module := WifiModule.sta this "" ""
+    channels := config.get wifi.CONFIG-SCAN-CHANNELS
+    passive := config.get wifi.CONFIG-SCAN-PASSIVE
+    period := config.get wifi.CONFIG-SCAN-PERIOD
     try:
-      channels := config.get wifi.CONFIG-SCAN-CHANNELS
-      passive := config.get wifi.CONFIG-SCAN-PASSIVE
-      period := config.get wifi.CONFIG-SCAN-PERIOD
-      return module.scan channels passive period
+      result/List? := null
+      module := state_.up:
+        inner := WifiModule.sta this "" ""
+        // If we are bringing up the wifi module, we scan while keeping the
+        // initialization lock, so others can't interfere with us. They
+        // will have to wait their turn to bring the network up.
+        result = inner.scan channels passive period
+        inner
+      // If we didn't bring up the module ourselves we haven't scanned yet.
+      if not result:
+        result = (module as WifiModule).scan channels passive period
+      return result
     finally:
-      module.disconnect
+      state_.down
 
   configure config/Map? -> none:
     if config:

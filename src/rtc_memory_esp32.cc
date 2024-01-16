@@ -20,7 +20,7 @@
 #include "utils.h"
 #include "uuid.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include "rtc_memory_esp32.h"
 #include "esp_attr.h"
@@ -201,4 +201,4 @@ uint8* RtcMemory::user_data_address() {
 
 } // namespace toit
 
-#endif  // TOIT_FREERTOS
+#endif  // TOIT_ESP32

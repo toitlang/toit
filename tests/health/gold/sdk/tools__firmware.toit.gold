@@ -1,3 +1,15 @@
+<pkg:pkg-cli>/cli.toit:124:33: warning: Deprecated 'program-name'
+  help --invoked_command/string=program_name -> string:
+                                ^~~~~~~~~~~~
+<pkg:pkg-cli>/cli.toit:130:34: warning: Deprecated 'program-name'
+  usage --invoked_command/string=program_name -> string:
+                                 ^~~~~~~~~~~~
+<pkg:pkg-cli>/cli.toit:146:40: warning: Deprecated 'program-name'
+  run arguments/List --invoked_command=program_name --ui/Ui=Ui_ -> none:
+                                       ^~~~~~~~~~~~
+<pkg:pkg-cli>/cli.toit:154:27: warning: Deprecated 'program-name'
+  check --invoked_command=program_name:
+                          ^~~~~~~~~~~~
 <pkg:pkg-host>/directory.toit:138:6: warning: Deprecated 'platform'
   if platform == PLATFORM_WINDOWS:
      ^~~~~~~~

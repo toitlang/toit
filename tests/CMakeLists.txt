@@ -62,6 +62,12 @@ add_custom_target(
   DEPENDS build_tools
   )
 
+add_custom_target(build_test_assets)
+# Make sure the assets are built before we run the tests.
+add_dependencies(check build_test_assets)
+add_dependencies(check_slow build_test_assets)
+
+
 # Create 15 flaky dummy tests, so that the strides mechanism works.
 foreach(i RANGE 15)
   add_test(

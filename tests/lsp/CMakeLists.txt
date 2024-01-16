@@ -40,8 +40,7 @@ target_link_libraries(
   ${TOIT_LINK_LIBS}
   )
 
-add_dependencies(check mock_compiler)
-add_dependencies(check_slow mock_compiler)
+add_dependencies(build_test_assets mock_compiler)
 
 include(fail.cmake)
 

@@ -256,7 +256,13 @@ TYPE_PRIMITIVE_ANY(main_arguments)
 TYPE_PRIMITIVE_SMI(spawn_method)
 TYPE_PRIMITIVE_ANY(spawn_arguments)
 
-TYPE_PRIMITIVE(command) {
+TYPE_PRIMITIVE(program_name) {
+  result.add_string(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE(program_path) {
   result.add_string(program);
   result.add_null(program);
   failure.add_string(program);
