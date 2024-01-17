@@ -134,7 +134,7 @@ int main(int argc, char **argv) {
     char* bundle_filename = null;
 
     int source_path_count = 0;
-    const char* source_path;
+    const char* source_path = null;
     // By default source_paths just points to the single source path.
     // For the multi-case (when we analyze), we will switch the pointer
     //   to the argv array.
