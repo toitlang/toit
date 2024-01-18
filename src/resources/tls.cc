@@ -735,6 +735,14 @@ bool MbedTlsSocket::init() {
   return true;
 }
 
+#if MBEDTLS_VERSION_MAJOR >= 3 && MBEDTLS_VERSION_MINOR >= 5
+#define GET_KEY_BITLEN(info) (mbedtls_cipher_info_get_key_bitlen(info))
+#define GET_IV_SIZE(info) (mbedtls_cipher_info_get_iv_size(info))
+#else
+#define GET_KEY_BITLEN(info) (info->key_bitlen)
+#define GET_IV_SIZE(info) (info->iv_size)
+#endif
+
 static bool known_cipher_info(const mbedtls_cipher_info_t* info, size_t key_bitlen, int iv_len) {
   if (info->mode == MBEDTLS_MODE_GCM) {
     if (info->type != MBEDTLS_CIPHER_AES_128_GCM && info->type != MBEDTLS_CIPHER_AES_256_GCM) return false;
@@ -747,9 +755,9 @@ static bool known_cipher_info(const mbedtls_cipher_info_t* info, size_t key_bitl
   } else {
     return false;
   }
-  if (mbedtls_cipher_info_get_key_bitlen(info) != key_bitlen) return false;
+  if (GET_KEY_BITLEN(info) != key_bitlen) return false;
   if (iv_len != 12) return false;
-  if (mbedtls_cipher_info_get_iv_size(info) != 12) return false;
+  if (GET_IV_SIZE(info) != 12) return false;
   if ((info->flags & ~MBEDTLS_CIPHER_VARIABLE_IV_LEN) != 0) return false;
   return true;
 }
