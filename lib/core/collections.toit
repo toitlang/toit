@@ -2458,7 +2458,9 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
 
   /**
   Copies the set.
-  The set is shallow.
+
+  Returns a new instance that has the same values as this instance.
+  The copy is shallow and does not clone/copy the elements.
   */
   copy -> Set:
     return map: it
