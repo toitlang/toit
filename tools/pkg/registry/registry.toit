@@ -227,6 +227,10 @@ abstract class Registry:
   retrieve-description url/string version/SemanticVersion -> Description?:
     return description-cache.get-description url version
 
+  /**
+  Returns all versions for the given $url.
+  The result is *not* sorted.
+  */
   retrieve-versions url/string -> List?:
     return description-cache.get-versions url
 

@@ -87,6 +87,11 @@ class DescriptionVersionCache:
   get version/SemanticVersion -> Description?:
     return cache_.get version
 
+  /**
+  All versions in this cache.
+
+  The returned list is *not* sorted.
+  */
   all-versions -> List?:
     return cache_.keys
 

@@ -30,6 +30,7 @@ test-git:
 
   morse-versions := registry.retrieve-versions "github.com/toitware/toit-morse"
   expect-equals 5 morse-versions.size
+  morse-versions.sort --in-place
   expect-equals "[1.0.0, 1.0.1, 1.0.2, 1.0.5, 1.0.6]" morse-versions.stringify
 
   morse-search := registry.search "toit-morse"
@@ -74,7 +75,8 @@ test-local:
 
   morse-versions := registry.retrieve-versions "github.com/toitware/toit-morse-local"
   expect-equals 2 morse-versions.size
-  expect-equals "[1.0.6, 1.0.1]" morse-versions.stringify
+  morse-versions.sort --in-place
+  expect-equals "[1.0.1, 1.0.6]" morse-versions.stringify
 
   morse-search := registry.search "toit-morse-local"
   expect-equals 1 morse-search.size
