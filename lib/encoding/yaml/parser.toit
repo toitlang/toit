@@ -246,6 +246,9 @@ abstract class PegParserBase_:
     finally:
       offset_ = old-offset
 
+  // Returns the current position in the input buffer
+  current-position -> int: return offset_
+
   eof -> bool: return offset_ >= bytes_.size
   bof -> bool: return offset_ == 0
 
