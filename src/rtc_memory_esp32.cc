@@ -61,7 +61,7 @@ struct RtcData {
 static RTC_NOINIT_ATTR RtcData rtc;
 static RTC_NOINIT_ATTR uint32 rtc_checksum;
 static RTC_NOINIT_ATTR uint8 rtc_user_data[toit::RtcMemory::RTC_USER_DATA_SIZE];
-static bool reset_after_boot = false;
+static bool is_rtc_invalid_in_start_cpu0 = false;
 
 extern "C" void start_cpu0_default(void) IRAM_ATTR __attribute__((noreturn));
 
@@ -91,6 +91,7 @@ static void reset_rtc(const char* reason) {
   memset(&rtc_user_data, 0, sizeof(rtc_user_data));
   // We only clear RTC on boot, so this must be exactly 1.
   rtc.boot_count = 1;
+  update_rtc_checksum();
 
 #ifndef CONFIG_IDF_TARGET_ESP32
   // Non-ESP32 targets use the SYSTIMER which needs a call to early init.
@@ -103,24 +104,21 @@ static void reset_rtc(const char* reason) {
   struct timespec time = { 0, 0 };
   toit::OS::set_real_time(&time);
 #endif
-  // Checksum will be updated after.
-  reset_after_boot = true;
 }
 
 // Patch the primordial entrypoint of the image (before launching FreeRTOS).
 extern "C" void IRAM_ATTR start_cpu0() {
-  ets_printf("[toit] INFO: starting <%s>\n", toit::vm_git_version());
-  if (!is_rtc_valid()) {
-    reset_rtc("invalid checksum");
-  } else {
-    rtc.boot_count++;
+  if (is_rtc_valid()) {
     uint64 elapsed = esp_rtc_get_time_us() - rtc.rtc_time_us_before_deep_sleep;
     rtc.rtc_time_us_accumulated_deep_sleep += elapsed;
+    rtc.boot_count++;
+    update_rtc_checksum();
+  } else {
+    // Delay the actual RTC memory reset until FreeRTOS has been launched.
+    // We do this to avoid relying on more complex code (printing to UART)
+    // this early in the boot process.
+    is_rtc_invalid_in_start_cpu0 = true;
   }
-
-  // We always increment the boot count, so we always need to recalculate the
-  // checksum.
-  update_rtc_checksum();
 
   // Invoke the default entrypoint that launches FreeRTOS and the real application.
   start_cpu0_default();
@@ -129,8 +127,12 @@ extern "C" void IRAM_ATTR start_cpu0() {
 namespace toit {
 
 void RtcMemory::set_up() {
-  // If the RTC memory was already reset, skip this step.
-  if (reset_after_boot) return;
+  ets_printf("[toit] INFO: starting <%s>\n", toit::vm_git_version());
+
+  if (is_rtc_invalid_in_start_cpu0) {
+    reset_rtc("invalid checksum");
+    return;
+  }
 
   switch (esp_reset_reason()) {
     case ESP_RST_SW:
@@ -141,14 +143,12 @@ void RtcMemory::set_up() {
       // Time drifted backwards while sleeping, clear RTC.
       if (rtc.system_time_us_before_deep_sleep > OS::get_system_time()) {
         reset_rtc("system time drifted backwards");
-        update_rtc_checksum();
       }
       break;
 
     default:
-      // We got a non-software triggered power-on event. Play it save by clearing RTC.
+      // We got a non-software triggered power-on event. Play it safe by clearing RTC.
       reset_rtc("powered on by hardware source");
-      update_rtc_checksum();
       break;
   }
 }
