@@ -160,7 +160,7 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
       // the state lock, so others can't interfere with us. They
       // will have to wait their turn to bring the network up.
       unconnected := WifiModule.sta this "" ""
-      return unconnected.scan channels passive period
+      return unconnected.scan channels passive period --close
     try:
       // Scan using the connected network module.
       return (connected as WifiModule).scan channels passive period
@@ -316,14 +316,14 @@ class WifiModule implements NetworkModule:
   ap-info -> List:
     return wifi-get-ap-info_ resource-group_
 
-  scan channels/ByteArray passive/bool period/int -> List:
+  scan channels/ByteArray passive/bool period/int --close/bool=false -> List:
     if ap or not resource-group_:
       throw "wifi is AP mode or not initialized"
 
     resource := wifi-init-scan_ resource-group_
     scan-events := monitor.ResourceState_ resource-group_ resource
-    result := []
     try:
+      result := []
       channels.do:
         wifi-start-scan_ resource-group_ it passive period
         state := scan-events.wait
@@ -331,10 +331,12 @@ class WifiModule implements NetworkModule:
         scan-events.clear-state WIFI-SCAN-DONE
         array := wifi-read-scan_ resource-group_
         result.add-all array
+      return result
     finally:
       scan-events.dispose
-
-    return result
+      if close:
+        wifi-close_ resource-group_
+        resource-group_ = null
 
   on-event_ state/int:
     // TODO(kasper): We should be clearing the state in the
