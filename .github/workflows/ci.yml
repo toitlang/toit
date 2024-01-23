@@ -95,7 +95,7 @@ jobs:
       - name: Go cache
         # On Windows this takes 3-5 minutes, and doesn't seem to help the build speed much.
         if: runner.os != 'Windows'
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ${{ steps.go-cache-paths.outputs.go-build }}
@@ -104,7 +104,7 @@ jobs:
           restore-keys: ${{ runner.os }}-go-
 
       - name: Ccache cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.ccache
           key: ${{ runner.os }}-ccache-${{ github.sha }}
@@ -113,7 +113,7 @@ jobs:
       # Cache deb files.
       - name: Apt cache - Linux
         if: runner.os == 'Linux'
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/apt-cacher-ng
           key: ${{ runner.os }}-apt-${{ github.sha }}
@@ -414,7 +414,7 @@ jobs:
 
       # Cache go build cache, used to speedup go test.
       - name: Go Build Cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ${{ steps.go-cache-paths.outputs.go-build }}
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
@@ -422,14 +422,14 @@ jobs:
 
       # Cache go mod cache, used to speedup builds.
       - name: Go Mod Cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ${{ steps.go-cache-paths.outputs.go-mod }}
           key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-go-mod-
 
       - name: Ccache cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         # Store and retrieve the cache with the given sha.
         # The 'restore-keys' prefix finds the most recent cache in case there
         # is no match (which should almost always be the case).
@@ -439,7 +439,7 @@ jobs:
           restore-keys: esp32-ccache-
 
       - name: ESP32 tools cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         # Store and retrieve the cache with the given sha.
         # The 'restore-keys' prefix finds the most recent cache in case there
         # is no match (which should almost always be the case).
@@ -582,7 +582,7 @@ jobs:
 
       # Cache go build cache, used to speedup go test
       - name: Go Build Cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ${{ steps.go-cache-paths.outputs.go-build }}
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
@@ -590,14 +590,14 @@ jobs:
 
       # Cache go mod cache, used to speedup builds
       - name: Go Mod Cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ${{ steps.go-cache-paths.outputs.go-mod }}
           key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-go-mod-
 
       - name: Ccache cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         # Store and retrieve the cache with the given sha.
         # The 'restore-keys' prefix finds the most recent cache in case there
         # is no match (which should almost always be the case).
