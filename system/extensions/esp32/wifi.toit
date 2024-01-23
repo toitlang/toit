@@ -154,19 +154,16 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
     channels := config.get wifi.CONFIG-SCAN-CHANNELS
     passive := config.get wifi.CONFIG-SCAN-PASSIVE
     period := config.get wifi.CONFIG-SCAN-PERIOD
+    connected := state_.up --if-unconnected=:
+      // If the network is unconnected, we bring up the network
+      // module, but keep it unconnected. We scan while keeping
+      // the state lock, so others can't interfere with us. They
+      // will have to wait their turn to bring the network up.
+      unconnected := WifiModule.sta this "" ""
+      return unconnected.scan channels passive period --close
     try:
-      result/List? := null
-      module := state_.up:
-        inner := WifiModule.sta this "" ""
-        // If we are bringing up the wifi module, we scan while keeping the
-        // initialization lock, so others can't interfere with us. They
-        // will have to wait their turn to bring the network up.
-        result = inner.scan channels passive period
-        inner
-      // If we didn't bring up the module ourselves we haven't scanned yet.
-      if not result:
-        result = (module as WifiModule).scan channels passive period
-      return result
+      // Scan using the connected network module.
+      return (connected as WifiModule).scan channels passive period
     finally:
       state_.down
 
@@ -319,14 +316,14 @@ class WifiModule implements NetworkModule:
   ap-info -> List:
     return wifi-get-ap-info_ resource-group_
 
-  scan channels/ByteArray passive/bool period/int -> List:
+  scan channels/ByteArray passive/bool period/int --close/bool=false -> List:
     if ap or not resource-group_:
       throw "wifi is AP mode or not initialized"
 
     resource := wifi-init-scan_ resource-group_
     scan-events := monitor.ResourceState_ resource-group_ resource
-    result := []
     try:
+      result := []
       channels.do:
         wifi-start-scan_ resource-group_ it passive period
         state := scan-events.wait
@@ -334,10 +331,12 @@ class WifiModule implements NetworkModule:
         scan-events.clear-state WIFI-SCAN-DONE
         array := wifi-read-scan_ resource-group_
         result.add-all array
+      return result
     finally:
       scan-events.dispose
-
-    return result
+      if close:
+        wifi-close_ resource-group_
+        resource-group_ = null
 
   on-event_ state/int:
     // TODO(kasper): We should be clearing the state in the
