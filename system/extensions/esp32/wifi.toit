@@ -154,19 +154,16 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
     channels := config.get wifi.CONFIG-SCAN-CHANNELS
     passive := config.get wifi.CONFIG-SCAN-PASSIVE
     period := config.get wifi.CONFIG-SCAN-PERIOD
+    connected := state_.up --if-unconnected=:
+      // If the network is unconnected, we bring up the network
+      // module, but keep it unconnected. We scan while keeping
+      // the state lock, so others can't interfere with us. They
+      // will have to wait their turn to bring the network up.
+      unconnected := WifiModule.sta this "" ""
+      return unconnected.scan channels passive period
     try:
-      result/List? := null
-      module := state_.up:
-        inner := WifiModule.sta this "" ""
-        // If we are bringing up the wifi module, we scan while keeping the
-        // initialization lock, so others can't interfere with us. They
-        // will have to wait their turn to bring the network up.
-        result = inner.scan channels passive period
-        inner
-      // If we didn't bring up the module ourselves we haven't scanned yet.
-      if not result:
-        result = (module as WifiModule).scan channels passive period
-      return result
+      // Scan using the connected network module.
+      return (connected as WifiModule).scan channels passive period
     finally:
       state_.down
 
