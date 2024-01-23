@@ -688,9 +688,10 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     case Interpreter::Result::TERMINATED: {
       wait_for_any_gc_to_complete(locker, process, Process::RUNNING);
 
+      int id = process->id();
       ProcessGroup* group = process->group();
       bool last_in_group = !group->remove(process);
-      ASSERT(group->lookup(process->id()) == null);
+      ASSERT(group->lookup(id) == null);
       SystemMessage* message = process->take_termination_message(result.value());
 
       // Deleting processes might need to take the event source lock, so we have
@@ -709,7 +710,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       // the boot process that is going away.
       if (send_system_message(locker, message) != MESSAGE_OK) {
 #ifdef TOIT_FREERTOS
-        printf("[message: cannot send termination message for pid %d]\n", process->id());
+        printf("[message: cannot send termination message for pid %d]\n", id);
 #endif
         delete message;
       }
