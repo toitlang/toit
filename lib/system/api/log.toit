@@ -8,9 +8,9 @@ interface LogService:
   static SELECTOR ::= ServiceSelector
       --uuid="89e6340c-67f5-4055-b1d1-b4f4c2755f67"
       --major=0
-      --minor=1
+      --minor=2
 
-  log level/int message/string names/List? keys/List? values/List? -> none
+  log level/int message/string names/List? keys/List? values/List? timestamp/bool -> none
   static LOG-INDEX /int ::= 0
 
 class LogServiceClient extends ServiceClient implements LogService:
@@ -19,5 +19,5 @@ class LogServiceClient extends ServiceClient implements LogService:
     assert: selector.matches SELECTOR
     super selector
 
-  log level/int message/string names/List? keys/List? values/List? -> none:
-    invoke_ LogService.LOG-INDEX [level, message, names, keys, values]
+  log level/int message/string names/List? keys/List? values/List? timestamp/bool -> none:
+    invoke_ LogService.LOG-INDEX [level, message, names, keys, values, timestamp]
