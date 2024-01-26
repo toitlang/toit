@@ -161,7 +161,9 @@ endif()
 
 add_custom_target(
   build_version_file
-  COMMAND echo ${TOIT_GIT_VERSION} > "${CMAKE_BINARY_DIR}/sdk/VERSION"
+  # It's important that there is no space after the version (before the '>'), as
+  # Windows would add a space into the output otherwise.
+  COMMAND echo ${TOIT_GIT_VERSION}> "${CMAKE_BINARY_DIR}/sdk/VERSION"
 )
 
 add_subdirectory(src)
