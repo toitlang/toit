@@ -116,8 +116,13 @@ class Bucket extends ServiceResourceProxy:
 
   get key/string [--if-present] [--if-absent] -> any:
     bytes := (client_ as StorageServiceClient).bucket-get handle_ key
-    if not bytes: return if-absent.call key
-    return if-present.call (tison.decode bytes)
+    if bytes:
+      // Play it safe and handle the case where a bucket ended up
+      // with illegal encoded bits by treating it as an absent entry.
+      decoded := null
+      exception := catch: decoded = tison.decode bytes
+      if not exception: if-present.call decoded
+    return if-absent.call key
 
   get key/string [--init]:
     return get key
