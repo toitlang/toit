@@ -121,7 +121,7 @@ class Bucket extends ServiceResourceProxy:
       // with illegal encoded bits by treating it as an absent entry.
       decoded := null
       exception := catch: decoded = tison.decode bytes
-      if not exception: if-present.call decoded
+      if not exception: return if-present.call decoded
     return if-absent.call key
 
   get key/string [--init]:
