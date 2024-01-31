@@ -9,6 +9,7 @@ main:
   test-ctz
   test-popcount
   test-parity
+  test-vector-compare
 
 test-clz:
   expect-equals 0
@@ -84,3 +85,21 @@ test-parity:
     0xff.parity
   expect-equals 0
     (-1).parity
+
+test-vector-compare:
+  expect-equals 0
+    0.compare-equal-vector -1
+  expect-equals 0b1111_1111
+    0.compare-equal-vector 0
+  expect-equals 0b1111_1110
+    1.compare-equal-vector 2
+  expect-equals 0b0101_0101
+    (0x1200340056007800).compare-equal-vector 0
+  expect-equals 0b0101_0101
+    (0x1200340056007800).compare-equal-vector 0xff00ff00ff00ff00
+  expect-equals 0b0101_0101
+    (0x1242344256427842).compare-equal-vector 0xff42ff42ff42ff42
+  expect-equals 0b1111_0000
+    (0x1234_5678_0000_0000).compare-equal-vector 0x1234_5678_abab_cdcd
+  expect-equals 0b1111_1111
+    (-1).compare-equal-vector -1
