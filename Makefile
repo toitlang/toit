@@ -264,9 +264,18 @@ INSTALL_SRC_ARCH := $(TARGET)
 
 .PHONY: install-sdk install
 install-sdk:
-	install -D --target-directory="$(DESTDIR)$(prefix)"/bin "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/bin/*
-	install -D --target-directory="$(DESTDIR)$(prefix)"/tools "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/tools/*
-	install -D --target-directory="$(DESTDIR)$(prefix)"/vessels "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/vessels/*
+	mkdir -p "$(DESTDIR)$(prefix)"/bin
+	mkdir -p "$(DESTDIR)$(prefix)"/tools
+	mkdir -p "$(DESTDIR)$(prefix)"/vessels
+	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/bin/*; do \
+		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/bin; \
+	done
+	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/tools/*; do \
+		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/tools; \
+	done
+	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/vessels/*; do \
+		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/vessels; \
+	done
 	mkdir -p "$(DESTDIR)$(prefix)"/lib
 	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib
 	find "$(DESTDIR)$(prefix)"/lib -type f -exec chmod 644 {} \;

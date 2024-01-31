@@ -225,6 +225,14 @@ jobs:
         run: |
           make HOST=host32 BUILD_TYPE=Debug test
 
+      - name: Test install
+        if : matrix.shard == 1
+        shell: bash
+        run: |
+          make prefix=$PWD/build/install-out install
+          build/install-out/bin/toit.run --version
+          build/install-out/bin/toit.run -s "print 499"
+
       # Test external code.
       - name: Test external
         # External tests are allowed to fail, but we record them and
