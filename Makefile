@@ -267,14 +267,14 @@ install-sdk:
 	mkdir -p "$(DESTDIR)$(prefix)"/bin
 	mkdir -p "$(DESTDIR)$(prefix)"/tools
 	mkdir -p "$(DESTDIR)$(prefix)"/vessels
-	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/bin/*; do
-		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/bin
+	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/bin/*; do \
+		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/bin; \
 	done
-	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/tools/*; do
-		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/tools
+	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/tools/*; do \
+		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/tools; \
 	done
-	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/vessels/*; do
-		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/vessels
+	for f in "$(BUILD)"/$(INSTALL_SRC_ARCH)/sdk/vessels/*; do \
+		install -m 755 "$$f" "$(DESTDIR)$(prefix)"/vessels; \
 	done
 	mkdir -p "$(DESTDIR)$(prefix)"/lib
 	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib

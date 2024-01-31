@@ -230,8 +230,8 @@ jobs:
         shell: bash
         run: |
           make prefix=$PWD/build/install-out install
-          build/install-out/bin/toit version
-          build/install-out/bin/toit -s "print 499" > /dev/null
+          build/install-out/bin/toit.run --version
+          build/install-out/bin/toit.run -s "print 499"
 
       # Test external code.
       - name: Test external
