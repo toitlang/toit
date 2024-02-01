@@ -150,7 +150,7 @@ connect-to-site host port expected-certificate-name:
     socket := tls.Socket.client raw
       --server-name=expected-certificate-name or host
 
-    expect-false: socket.resumed  // Not connected yet.
+    expect-not socket.session-resumed  // Not connected yet.
 
     try:
       writer := writer.Writer socket
