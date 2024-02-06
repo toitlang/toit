@@ -39,7 +39,7 @@ class EncodeVisitor : public Visitor {
   EncodeVisitor(ProgramOrientedEncoder* encoder, int level) : encoder_(encoder), level_(level) {};
 
   // Restrictions when encoding collections.
-  const int MAX_NOF_STRING_ELEMENTS = 204;
+  const int MAX_NOF_STRING_ELEMENTS = 255;
   const int MAX_NOF_BYTEARRAY_ELEMENTS = 40;
   const int MAX_NOF_ARRAY_ELEMENTS = 10;
 
