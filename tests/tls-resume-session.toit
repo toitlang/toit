@@ -96,6 +96,8 @@ test-site host/string --read-data/bool=true -> none:
 
     socket.close
 
+    expect-equals tls.SESSION-MODE-CLOSED socket.session-mode
+
 SUITE-MAP ::= {
     0x0000: "NULL_WITH_NULL_NULL",
     0x0001: "RSA_WITH_NULL_MD5",
