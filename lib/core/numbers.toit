@@ -1098,16 +1098,6 @@ abstract class int extends num:
   has-odd-parity -> bool:
     return (population-count & 1) == 1
 
-  /**
-  Compare two integers, treating them as a vector of 8 bytes.
-  The result is a bitmap value from 0-0xff, where a bit is set if the
-    corresponding byte in the first integer is equal to the corresponding byte
-    in the second integer.
-  Often combined with $population-count to count the number of equal bytes.
-  */
-  compare-equal-vector other/int -> int:
-    #primitive.core.compare-equal-vector
-
 class SmallInteger_ extends int:
   /** See $super. */
   operator + other:
