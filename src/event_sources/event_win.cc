@@ -151,7 +151,7 @@ WindowsEventSource::~WindowsEventSource() {
   }
 }
 
-void WindowsEventSource::on_register_resource(Locker &locker, Resource* r) {
+void WindowsEventSource::on_register_resource(Locker& locker, Resource* r) {
   auto windows_resource = reinterpret_cast<WindowsResource*>(r);
   for (auto event : windows_resource->events()) {
     WindowsResourceEvent* resource_event;
@@ -179,7 +179,7 @@ void WindowsEventSource::on_register_resource(Locker &locker, Resource* r) {
   }
 }
 
-void WindowsEventSource::on_unregister_resource(Locker &locker, Resource* r) {
+void WindowsEventSource::on_unregister_resource(Locker& locker, Resource* r) {
   auto windows_resource = reinterpret_cast<WindowsResource*>(r);
   auto range = resource_events_.equal_range(windows_resource);
   for (auto it = range.first; it != range.second; ++it) {
@@ -206,7 +206,8 @@ bool WindowsEventSource::start() {
 }
 
 void WindowsEventSource::stop() {
-  for (auto thread : threads_) {
+  while (!threads_.empty()) {
+    auto thread = threads_.pop_back();
     thread->stop();
     thread->join();
     delete thread;
