@@ -109,7 +109,7 @@ Compare two integers, treating them as a vector of 8 bytes.
 The result is a bitmap value from 0-0xff, where a bit is set if the
   corresponding byte in the first integer is equal to the corresponding byte
   in the second integer.
-Often combined with $population-count to count the number of equal bytes.
+Often combined with $int.population-count to count the number of equal bytes.
 */
 compare-equal-vector a/int b/int -> int:
   #primitive.core.compare-equal-vector
