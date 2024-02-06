@@ -21,13 +21,12 @@
 #include <sys/types.h>
 #include <windows.h>
 
-
+#include "../error_win.h"
 #include "../objects.h"
 #include "../objects_inline.h"
-#include "../vm.h"
-#include "../error_win.h"
-#include "subprocess.h"
 #include "../primitive_file.h"
+#include "subprocess.h"
+#include "../vm.h"
 
 namespace toit {
 

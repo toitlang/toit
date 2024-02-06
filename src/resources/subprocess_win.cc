@@ -18,11 +18,14 @@
 #if defined(TOIT_WINDOWS)
 
 #include <windows.h>
+
 #include "../event_sources/event_win.h"
+#include "../error_win.h"
 #include "../objects_inline.h"
 #include "../process_group.h"
-#include "../vm.h"
 #include "subprocess.h"
+#include "../vm.h"
+
 namespace toit {
 
 static const int PROCESS_EXITED = 1;
