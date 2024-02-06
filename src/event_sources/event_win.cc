@@ -185,7 +185,7 @@ void WindowsEventSource::on_unregister_resource(Locker &locker, Resource* r) {
   for (auto it = range.first; it != range.second; ++it) {
     WindowsResourceEvent* resource_event = it->second;
     resource_event->thread()->remove_resource_event(locker, resource_event);
-    delete resource_event
+    delete resource_event;
   }
   resource_events_.erase(windows_resource);
 
