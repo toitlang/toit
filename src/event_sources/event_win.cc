@@ -85,31 +85,33 @@ class WindowsEventThread: public Thread {
 
  protected:
   void entry() override {
+    Locker locker(event_source_->mutex());
     while (true) {
-      DWORD result = WaitForMultipleObjects(count_, handles_, false, INFINITE);
-      {
-        Locker locker(event_source_->mutex());
-        if (result == WAIT_OBJECT_0 + 0) {
-          if (stopped_) break;
-          recalculate_handles();
-        } else if (result != WAIT_FAILED) {
-          size_t index = result - WAIT_OBJECT_0;
-          ResetEvent(handles_[index]);
-          if (resources_[index]->is_event_enabled(handles_[index]))
-            event_source_->on_event(locker, resources_[index], handles_[index]);
-          else
-            recalculate_handles();
-        } else if (GetLastError() == ERROR_INVALID_HANDLE) {
-          recalculate_handles();  // This happens on Wine, but not on real Windows.
+      DWORD result;
+      { Unlocker unlock(locker);
+        result = WaitForMultipleObjects(count_, handles_, false, INFINITE);
+      }
+      if (result == WAIT_OBJECT_0 + 0) {
+        if (stopped_) break;
+        recalculate_handles(locker);
+      } else if (result != WAIT_FAILED) {
+        size_t index = result - WAIT_OBJECT_0;
+        ResetEvent(handles_[index]);
+        if (resources_[index]->is_event_enabled(handles_[index])) {
+          event_source_->on_event(locker, resources_[index], handles_[index]);
         } else {
-          FATAL("wait failed. error=%lu", GetLastError());
+          recalculate_handles(locker);
         }
+      } else if (GetLastError() == ERROR_INVALID_HANDLE) {
+        recalculate_handles(locker);  // This happens on Wine, but not on real Windows.
+      } else {
+        FATAL("wait failed. error=%lu", GetLastError());
       }
     }
   }
 
  private:
-  void recalculate_handles() {
+  void recalculate_handles(Locker& locker) {
     int index = 1;
     for (auto resource_event : resource_events_) {
       if (index >= MAXIMUM_WAIT_OBJECTS) {
@@ -149,7 +151,7 @@ WindowsEventSource::~WindowsEventSource() {
   }
 }
 
-void WindowsEventSource::on_register_resource(Locker &locker, Resource* r) {
+void WindowsEventSource::on_register_resource(Locker& locker, Resource* r) {
   auto windows_resource = reinterpret_cast<WindowsResource*>(r);
   for (auto event : windows_resource->events()) {
     WindowsResourceEvent* resource_event;
@@ -177,17 +179,18 @@ void WindowsEventSource::on_register_resource(Locker &locker, Resource* r) {
   }
 }
 
-void WindowsEventSource::on_unregister_resource(Locker &locker, Resource* r) {
+void WindowsEventSource::on_unregister_resource(Locker& locker, Resource* r) {
   auto windows_resource = reinterpret_cast<WindowsResource*>(r);
   auto range = resource_events_.equal_range(windows_resource);
   for (auto it = range.first; it != range.second; ++it) {
-    it->second->thread()->remove_resource_event(locker, it->second);
-    delete it->second;
+    WindowsResourceEvent* resource_event = it->second;
+    resource_event->thread()->remove_resource_event(locker, resource_event);
+    delete resource_event;
   }
   resource_events_.erase(windows_resource);
 
   windows_resource->do_close();
-  // sending an event to let the resource update its state, typically to a CLOSE state.
+  // Sending an event to let the resource update its state, typically to a CLOSE state.
   dispatch(locker, windows_resource, reinterpret_cast<word>(INVALID_HANDLE_VALUE));
 }
 
@@ -203,10 +206,12 @@ bool WindowsEventSource::start() {
 }
 
 void WindowsEventSource::stop() {
-  for (auto thread : threads_) {
+  while (!threads_.empty()) {
+    auto thread = threads_.back();
     thread->stop();
     thread->join();
     delete thread;
+    threads_.pop_back();
   }
 
   WSACleanup();
