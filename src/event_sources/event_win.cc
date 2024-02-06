@@ -207,10 +207,11 @@ bool WindowsEventSource::start() {
 
 void WindowsEventSource::stop() {
   while (!threads_.empty()) {
-    auto thread = threads_.pop_back();
+    auto thread = threads_.back();
     thread->stop();
     thread->join();
     delete thread;
+    threads_.pop_back();
   }
 
   WSACleanup();
