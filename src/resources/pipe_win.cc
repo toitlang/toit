@@ -183,6 +183,11 @@ PRIMITIVE(init) {
   auto resource_group = _new PipeResourceGroup(process, WindowsEventSource::instance());
   if (!resource_group) FAIL(MALLOC_FAILED);
 
+  if (!WindowsEventSource::instance()->use()) {
+    resource_group->tear_down();
+    WINDOWS_ERROR;
+  }
+
   proxy->set_external_address(resource_group);
   return proxy;
 }
