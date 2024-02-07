@@ -44,7 +44,10 @@ class SystemImage extends ContainerImage:
     unreachable  // Not implemented yet.
 
 main:
+  print_ "[toit] scanning flash registry"
   registry ::= FlashRegistry.scan
+
+  print_ "[toit] create services"
   container-manager ::= initialize-system registry [
       FirmwareServiceProvider,
       StorageServiceProvider registry,
@@ -52,4 +55,6 @@ main:
   ]
   container-manager.register-system-image
       SystemImage container-manager
+
+  print_ "[toit] start user code"
   exit (boot container-manager)

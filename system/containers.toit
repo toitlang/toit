@@ -293,22 +293,27 @@ class ContainerManager extends ContainerServiceProvider implements SystemMessage
   done_ ::= monitor.Latch
 
   constructor .image-registry .service-manager_:
+    print_ "[toit] setup system message handlers"
     set-system-message-handler_ SYSTEM-TERMINATED_ this
     set-system-message-handler_ SYSTEM-SPAWNED_ this
     set-system-message-handler_ SYSTEM-TRACE_ this
 
+    print_ "[toit] find flash programs"
     image-registry.do: | allocation/FlashAllocation |
       if allocation.type != FLASH-ALLOCATION-TYPE-PROGRAM: continue.do
       add-flash-image allocation
+    print_ "[toit] find flash programs -> $images_.size"
 
     // Run through the bundled images in the VM, but skip the
     // first one which is always the system image. Every image
     // takes up two entries in the $bundled array: The first
     // entry is the address and the second is the size.
+    print_ "[toit] find bundled programs"
     bundled := container-bundled-images_
     for i := 2; i < bundled.size; i += 2:
       allocation := FlashAllocation bundled[i]
       if not images_.contains allocation.id: add-flash-image allocation
+    print_ "[toit] find bundled programs -> $images_.size"
 
   system-image -> ContainerImage:
     return system-image_
