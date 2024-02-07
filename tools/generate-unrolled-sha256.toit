@@ -165,7 +165,7 @@ main:
         }
       }
 
-      // The 'volatile' quantifier is used to prevent the compiler from
+      // The 'volatile' qualifier is used to prevent the compiler from
       // optimizing the state array into synthetic locals, which are then
       // spilled, due to register pressure. It's a very minor optimization.
       static void update(volatile uint32_t* state, const uint8_t* data) {
