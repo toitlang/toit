@@ -47,11 +47,17 @@ main:
   print_ "[toit] scanning flash registry"
   registry ::= FlashRegistry.scan
 
-  print_ "[toit] create services"
+  print_ "[toit] create firmware service"
+  p0 := FirmwareServiceProvider
+  print_ "[toit] create storage service"
+  p1 := StorageServiceProvider registry
+  print_ "[toit] create wifi service"
+  p2 := WifiServiceProvider
+  print_ "[toit] done creating services"
   container-manager ::= initialize-system registry [
-      FirmwareServiceProvider,
-      StorageServiceProvider registry,
-      WifiServiceProvider,
+      p0,
+      p1,
+      p2,
   ]
   container-manager.register-system-image
       SystemImage container-manager
