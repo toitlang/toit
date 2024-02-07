@@ -24,6 +24,11 @@ Initialize the system and create the all important $ContainerManager
   instance.
 */
 initialize-system registry/FlashRegistry extensions/List -> ContainerManager:
+  print_ "[toit] initialize system"
   service-manager ::= SystemServiceManager
-  extensions.do: | provider/ServiceProvider | provider.install
+  print_ "[toit] installing $extensions.size extensions"
+  extensions.do: | provider/ServiceProvider |
+    print_ "[toit] installing extension: $provider.name"
+    provider.install
+    print_ "[toit] installing extension: $provider.name -> done"
   return ContainerManager registry service-manager
