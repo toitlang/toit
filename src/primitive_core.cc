@@ -1132,7 +1132,10 @@ PRIMITIVE(popcount) {
   return Smi::from(Utils::popcount(v));
 }
 
-PRIMITIVE(compare_equal_vector) {
+// Treats two ints as vectors of 8 bytes and compares them
+// bytewise for equality.  Returns an 8 bit packed result with
+// 1 for equality and 0 for inequality.
+PRIMITIVE(int_vector_equals) {
   ARGS(int64, x, int64, y);
 #if defined(__x86_64__) || defined(_M_X64)
   __m128i x128 = _mm_set_epi64x(0, x);

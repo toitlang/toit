@@ -88,21 +88,21 @@ test-parity:
 
 test-vector-compare:
   expect-equals 0
-    compare-equal-vector 0 -1
+    int-vector-equals 0 -1
   expect-equals 0b1111_1111
-    compare-equal-vector 0 0
+    int-vector-equals 0 0
   expect-equals 0b1111_1110
-    compare-equal-vector 1 2
+    int-vector-equals 1 2
   expect-equals 0b0101_0101
-    compare-equal-vector 0x1200340056007800 0
+    int-vector-equals 0x1200340056007800 0
   expect-equals 0b0101_0101
-    compare-equal-vector 0x1200340056007800 0xff00ff00ff00ff00
+    int-vector-equals 0x1200340056007800 0xff00ff00ff00ff00
   expect-equals 0b0101_0101
-    compare-equal-vector 0x1242344256427842 0xff42ff42ff42ff42
+    int-vector-equals 0x1242344256427842 0xff42ff42ff42ff42
   expect-equals 0b1111_0000
-    compare-equal-vector 0x1234_5678_0000_0000 0x1234_5678_abab_cdcd
+    int-vector-equals 0x1234_5678_0000_0000 0x1234_5678_abab_cdcd
   expect-equals 0b1111_1111
-    compare-equal-vector -1 -1
+    int-vector-equals -1 -1
 
 /**
 Compare two integers, treating them as a vector of 8 bytes.
@@ -111,5 +111,5 @@ The result is a bitmap value from 0-0xff, where a bit is set if the
   in the second integer.
 Often combined with $int.population-count to count the number of equal bytes.
 */
-compare-equal-vector a/int b/int -> int:
-  #primitive.core.compare-equal-vector
+int-vector-equals a/int b/int -> int:
+  #primitive.core.int-vector-equals
