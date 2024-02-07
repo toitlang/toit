@@ -55,6 +55,8 @@
 #include "objects_inline.h"
 #include "third_party/dartino/gc_metadata.h"
 
+#include <esp_task_wdt.h>
+
 namespace toit {
 
 const Program* setup_program(bool supports_ota) {
@@ -91,12 +93,27 @@ const Program* setup_program(bool supports_ota) {
 }
 
 static void start() {
+  // Setup watchdog to make sure we get through the booting.
+  esp_task_wdt_config_t config = {
+    .timeout_ms     = 10 * 1000,
+    .idle_core_mask = 0,
+    .trigger_panic  = true,
+  };
+  ets_printf("[toit] setting up watchdog\n");
+  esp_err_t err = esp_task_wdt_init(&config);
+  esp_task_wdt_add(null);
+
+  ets_printf("[toit] setting up rtc memory\n");
   RtcMemory::set_up();
+  ets_printf("[toit] setting up flash registry\n");
   FlashRegistry::set_up();
+  ets_printf("[toit] setting up os\n");
   OS::set_up();
+  ets_printf("[toit] setting up object memory\n");
   ObjectMemory::set_up();
 
   // The Toit firmware only supports OTAs if we can find the OTA app partition.
+  ets_printf("[toit] looking for ota partition\n");
   bool supports_ota = NULL != esp_partition_find_first(
       ESP_PARTITION_TYPE_APP,
       ESP_PARTITION_SUBTYPE_APP_OTA_MIN,
@@ -105,15 +122,23 @@ static void start() {
   // Determine if we're running from a non-boot image chosen by the bootloader.
   // This seems to happen when the bootloader detects that the boot image is
   // damaged, so it decides to boot the other one.
+  ets_printf("[toit] computing boot status\n");
   bool firmware_rejected = supports_ota &&
       esp_ota_get_boot_partition() != esp_ota_get_running_partition();
 
+  ets_printf("[toit] setting up boot program\n");
   const Program* program = setup_program(supports_ota);
   Scheduler::ExitState exit_state;
-  { VM vm;
+  { ets_printf("[toit] setting up virtual machine\n");
+    VM vm;
+    ets_printf("[toit] loading event sources\n");
     vm.load_platform_event_sources();
     int group_id = vm.scheduler()->next_group_id();
+    ets_printf("[toit] deleting watchdog\n");
+    esp_task_wdt_delete(null);
+    ets_printf("[toit] running boot program\n");
     exit_state = vm.scheduler()->run_boot_program(const_cast<Program*>(program), group_id);
+    ets_printf("[toit] running boot program -> done\n");
   }
 
   GcMetadata::tear_down();
