@@ -1928,6 +1928,8 @@ PRIMITIVE(process_send) {
   scheduler_err_t result = (process_id >= 0)
       ? VM::current()->scheduler()->send_message(process_id, message)
       : VM::current()->scheduler()->send_system_message(message);
+  printf("[toit] sending message %d -> %d (%u bytes) => %d\n",
+      process->id(), process_id, size, result);
   return BOOL(result == MESSAGE_OK);
 }
 
@@ -2001,6 +2003,7 @@ PRIMITIVE(task_receive_message) {
   }
 
   process->remove_first_message();
+  printf("[toit] message received %d (type = %d)\n", process->id(), message_type);
   return result;
 }
 
