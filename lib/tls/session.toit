@@ -159,10 +159,10 @@ class Session:
       if symmetric-session_:
         return SESSION-MODE-TOIT
       else:
-        if state-bits_ | HANDSHAKE-ATTEMPTED_ == 0:
-          return SESSION-MODE-CLOSED
-        else:
+        if state-bits_ & HANDSHAKE-ATTEMPTED_ == 0:
           return SESSION-MODE-NONE
+        else:
+          return SESSION-MODE-CLOSED
 
   /**
   Returns true if the session was successfully resumed, rather
