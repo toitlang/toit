@@ -24,7 +24,12 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
   config_/Map ::= {:}
 
   constructor:
-    catch: config_ = ubjson.decode firmware-embedded-config_
+    catch:
+      print_ "[toit] getting embedded config"
+      x := firmware-embedded-config_
+      print_ "[toit] getting embedded config -> $x.size"
+      config_ = ubjson.decode x
+      print_ "[toit] decoded config as ubjson"
     super "system/firmware/esp32" --major=0 --minor=1
 
   is-validation-pending -> bool:
