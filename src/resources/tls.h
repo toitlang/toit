@@ -85,13 +85,7 @@ class BaseMbedTlsSocket : public TlsSocket {
   static uint32 hash_subject(uint8* buffer, int length);
   uint32_t error_flags() const { return error_flags_; }
   char* error_detail(int index) const { return error_details_[index]; }
-  void clear_error_flags() {
-    error_flags_ = 0;
-    for (int i = 0; i < ERROR_DETAILS; i++) {
-      free(error_details_[i]);
-      error_details_[i] = null;
-    }
-  }
+  void clear_error_data();
 
  protected:
   mbedtls_ssl_config conf_;

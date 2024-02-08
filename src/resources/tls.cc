@@ -226,7 +226,7 @@ int BaseMbedTlsSocket::verify_callback(mbedtls_x509_crt* crt, int certificate_de
 void BaseMbedTlsSocket::record_error_detail(const mbedtls_asn1_named_data* issuer, int error_flags, int index) {
   char buffer[MAX_SUBJECT];
   int ret = mbedtls_x509_dn_gets(buffer, MAX_SUBJECT, issuer);
-  if (error_details_[index]) free(error_details_[index]);
+  free(error_details_[index]);
   error_details_[index] = null;
   if (ret > 0 && ret < MAX_SUBJECT) {
     // If we are unlucky and the malloc fails, then the error message will
@@ -239,6 +239,14 @@ void BaseMbedTlsSocket::record_error_detail(const mbedtls_asn1_named_data* issue
     }
   }
   error_flags_ = error_flags;
+}
+
+void BaseMbedTlsSocket::clear_error_data() {
+  error_flags_ = 0;
+  for (int i = 0; i < ERROR_DETAILS; i++) {
+    free(error_details_[i]);
+    error_details_[i] = null;
+  }
 }
 
 void MbedTlsResourceGroup::init_conf(mbedtls_ssl_config* conf) {
@@ -308,10 +316,7 @@ BaseMbedTlsSocket::~BaseMbedTlsSocket() {
     delete c;
     c = n;
   }
-  for (int i = 0; i < ERROR_DETAILS; i++) {
-    free(error_details_[i]);
-    error_details_[i] = null;
-  }
+  clear_error_data();
 }
 
 MbedTlsSocket::MbedTlsSocket(MbedTlsResourceGroup* group)
@@ -427,7 +432,7 @@ Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
       }
       String* str = process->allocate_string(buffer);
       if (str == null) FAIL(ALLOCATION_FAILED);
-      socket->clear_error_flags();
+      socket->clear_error_data();
       return Primitive::mark_as_error(str);
     }
   }
@@ -471,7 +476,7 @@ Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
   buffer[BUFFER_LEN - 1] = '\0';
   String* str = process->allocate_string(buffer);
   if (str == null) FAIL(ALLOCATION_FAILED);
-  if (socket) socket->clear_error_flags();
+  if (socket) socket->clear_error_data();
   return Primitive::mark_as_error(str);
 }
 
