@@ -43,7 +43,7 @@ void mbedtls_sha256_init(mbedtls_sha256_context* ctx) {
 
 void mbedtls_sha256_starts(mbedtls_sha256_context* ctx, int is224) {
   if (is224) {
-    ctx->bit_len = 224;
+    ctx->bit_length = 224;
     ctx->state[0] = 0xc1059ed8;
     ctx->state[1] = 0x367cd507;
     ctx->state[2] = 0x3070dd17;
@@ -53,7 +53,7 @@ void mbedtls_sha256_starts(mbedtls_sha256_context* ctx, int is224) {
     ctx->state[6] = 0x64f98fa7;
     ctx->state[7] = 0xbefa4fa4;
   } else {
-    ctx->bit_len = 256;
+    ctx->bit_length = 256;
     ctx->state[0] = 0x6a09e667;
     ctx->state[1] = 0xbb67ae85;
     ctx->state[2] = 0x3c6ef372;
@@ -138,7 +138,7 @@ int mbedtls_sha256_finish(mbedtls_sha256_context *ctx, uint8_t* output) {
         ctx->state,
         ctx->pending);
   }
-  int out_words = ctx->bit_len == 256 ? 8 : 7;
+  int out_words = ctx->bit_length == 256 ? 8 : 7;
   for (int i = 0; i < out_words; i++) {
     output[i * 4 + 0] = ctx->state[i] >> 24;
     output[i * 4 + 1] = ctx->state[i] >> 16;

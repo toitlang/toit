@@ -24,7 +24,7 @@ extern "C" {
 #define SHA_BLOCK_LEN ((size_t)64)
 
 typedef struct {
-  int bit_len;  // 224 or 256.
+  int bit_length;  // 224 or 256.
   uint8_t pending[SHA_BLOCK_LEN];
   size_t pending_fullness;
   uint32_t state[8];
