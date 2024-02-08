@@ -152,6 +152,8 @@ connect-to-site host port expected-certificate-name:
     socket := tls.Socket.client raw
       --server-name=expected-certificate-name or host
 
+    expect-not socket.session-resumed  // Not connected yet.
+
     try:
       writer := writer.Writer socket
       writer.write """GET / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
