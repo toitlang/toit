@@ -337,7 +337,9 @@ void Process::_ensure_random_seeded() {
 }
 
 uint64_t Process::random() {
+  printf("[toit] random\n");
   _ensure_random_seeded();
+  printf("[toit] random -> seeded\n");
   // xorshift128+.
   uint64_t s1 = random_state0_;
   uint64_t s0 = random_state1_;
@@ -347,6 +349,7 @@ uint64_t Process::random() {
   s1 ^= s0;
   s1 ^= s0 >> 5;
   random_state1_ = s1;
+  printf("[toit] random -> done\n");
   return random_state0_ + random_state1_;
 }
 

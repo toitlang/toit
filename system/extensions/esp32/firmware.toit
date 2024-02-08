@@ -30,7 +30,9 @@ class FirmwareServiceProvider extends FirmwareServiceProviderBase:
       print_ "[toit] getting embedded config -> $x.size"
       config_ = ubjson.decode x
       print_ "[toit] decoded config as ubjson"
+    print_ "[toit] FirmwareServiceProviderBase.constructor"
     super "system/firmware/esp32" --major=0 --minor=1
+    print_ "[toit] FirmwareServiceProviderBase.constructor -> done"
 
   is-validation-pending -> bool:
     return (ota-state_ & OTA-STATE-VALIDATION-PENDING_) != 0
