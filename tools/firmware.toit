@@ -618,12 +618,12 @@ find-esptool_ -> List:
 
   if esptool-path := os.env.get "ESPTOOL_PATH":
     if esptool-path.ends-with ".py":
-      return ["python$bin-extension", esptool-path]
+      return ["python3$bin-extension", esptool-path]
     return [esptool-path]
 
   if jag-toit-repo-path := os.env.get "JAG_TOIT_REPO_PATH":
     return [
-      "python$bin-extension",
+      "python3$bin-extension",
       "$jag-toit-repo-path/third_party/esp-idf/components/esptool_py/esptool/esptool.py"
     ]
 
@@ -633,7 +633,7 @@ find-esptool_ -> List:
     if dir == "": dir = "."
     esptool-py := "$dir/../third_party/esp-idf/components/esptool_py/esptool/esptool.py"
     if file.is-file esptool-py:
-      return ["python$bin-extension", esptool-py]
+      return ["python3$bin-extension", esptool-py]
   else if dir != "":
     esptool := "$dir/esptool$bin-extension"
     if file.is-file esptool:
