@@ -50,8 +50,13 @@ class EntropyMixer {
   }
 
   bool get_entropy(uint8* data, size_t size) {
-    Locker locker(mutex_);
-    int result = mbedtls_entropy_func(&context_, data, size);
+    printf("[toit] get entropy\n");
+    int result;
+    { Locker locker(mutex_);
+      printf("[toit] get entropy - locked\n");
+      int result = mbedtls_entropy_func(&context_, data, size);
+    }
+    printf("[toit] get entropy - unlocked (%d)\n", result);
     return result == 0;
   }
 
