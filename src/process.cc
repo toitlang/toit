@@ -25,6 +25,10 @@
 #include "scheduler.h"
 #include "vm.h"
 
+#ifdef TOIT_ESP32
+#include <esp_task_wdt.h>
+#endif
+
 namespace toit {
 
 const char* Process::StateName[] = {
@@ -330,10 +334,26 @@ int Process::message_count() {
 
 void Process::_ensure_random_seeded() {
   if (random_seeded_) return;
+#ifdef TOIT_ESP32
+  esp_task_wdt_config_t config = {
+    .timeout_ms = 2000,
+    .idle_core_mask = 0,
+    .trigger_panic = true,
+  };
+  printf("[toit] wdt init\n");
+  esp_err_t err = esp_task_wdt_init(&config);
+  printf("[toit] wdt init => %d\n", err);
+  err = esp_task_wdt_add(null);
+  printf("[toit] wdt add => %d\n", err);
+#endif
   uint8 seed[16];
   EntropyMixer::instance()->get_entropy(seed, sizeof(seed));
   random_seed(seed, sizeof(seed));
   random_seeded_ = true;
+#ifdef TOIT_ESP32
+  err = esp_task_wdt_delete(null);
+  printf("[toit] wdt delete => %d\n", err);
+#endif
 }
 
 uint64_t Process::random() {
