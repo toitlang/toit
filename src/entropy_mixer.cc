@@ -17,6 +17,16 @@
 
 namespace toit {
 
-EntropyMixer EntropyMixer::instance_;
+EntropyMixer* EntropyMixer::instance_ = NULL;
+
+void EntropyMixer::set_up() {
+  ASSERT(instance_ == NULL);
+  instance_ = _new EntropyMixer();
+}
+
+void EntropyMixer::tear_down() {
+  delete instance_;
+  instance_ = null;
+}
 
 }

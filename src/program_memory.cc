@@ -138,7 +138,17 @@ void ProgramHeapMemory::set_writable(ProgramBlock* block, bool value) {
   OS::set_writable(block, value);
 }
 
-ProgramHeapMemory ProgramHeapMemory::instance_;
+ProgramHeapMemory* ProgramHeapMemory::instance_ = NULL;
+
+void ProgramHeapMemory::set_up() {
+  ASSERT(instance_ = NULL);
+  instance_ = _new ProgramHeapMemory();
+}
+
+void ProgramHeapMemory::tear_down() {
+  delete instance_;
+  instance_ = NULL;
+}
 
 void ProgramRawHeap::take_blocks(ProgramBlockList* blocks) {
   blocks_.take_blocks(blocks, this);

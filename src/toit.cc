@@ -17,6 +17,7 @@
 #include "flags.h"
 #include "memory.h"
 #include "process.h"
+#include "entropy_mixer.h"
 #include "flash_registry.h"
 #include "interpreter.h"
 #include "scheduler.h"

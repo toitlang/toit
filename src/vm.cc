@@ -48,9 +48,14 @@ VM::VM() {
   event_manager_ = _new EventSourceManager();
   nop_event_source_ = _new NopEventSource();
   event_manager_->add_event_source(nop_event_source_);
+
+  EntropyMixer::set_up();
+  ProgramHeapMemory::set_up();
 }
 
 VM::~VM() {
+  ProgramHeapMemory::tear_down();
+  EntropyMixer::tear_down();
   delete event_manager_;
   delete scheduler_;
   current_ = null;

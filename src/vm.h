@@ -15,8 +15,6 @@
 
 #pragma once
 
-#include "entropy_mixer.h"
-
 namespace toit {
 
 class EventSource;

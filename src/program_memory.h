@@ -165,20 +165,21 @@ class ProgramBlockList {
 // Memory provide blocks for objects.
 class ProgramHeapMemory {
  public:
+  static void set_up();
+  static void tear_down();
 
   void set_writable(ProgramBlock* block, bool value);
 
   Mutex* mutex() const { return memory_mutex_; }
 
-  static ProgramHeapMemory* instance() { return &instance_; }
+  static ProgramHeapMemory* instance() { return instance_; }
+
+ private:
+  static ProgramHeapMemory* instance_;
+  Mutex* memory_mutex_;
 
   ProgramHeapMemory();
   ~ProgramHeapMemory();
-
- private:
-  static ProgramHeapMemory instance_;
-
-  Mutex* memory_mutex_;
 };
 
 class ProgramRawHeap {

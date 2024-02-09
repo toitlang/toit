@@ -29,15 +29,8 @@ namespace toit {
 // so we can't use those for a system-wide entropy mixer.
 class EntropyMixer {
  public:
-  EntropyMixer()
-    : mutex_(OS::allocate_mutex(4, "Entropy mutex")) {
-    mbedtls_entropy_init(&context_);
-  }
-
-  ~EntropyMixer() {
-    mbedtls_entropy_free(&context_);
-    OS::dispose(mutex_);
-  }
+  static void set_up();
+  static void tear_down();
 
   void add_entropy_byte(int datum) {
     const uint8 d = datum;
@@ -60,12 +53,22 @@ class EntropyMixer {
     return result == 0;
   }
 
-  static EntropyMixer* instance() { return &instance_; }
+  static EntropyMixer* instance() { return instance_; }
 
  private:
+  static EntropyMixer* instance_;
   mbedtls_entropy_context context_;
   Mutex* mutex_;
-  static EntropyMixer instance_;
+
+  EntropyMixer()
+      : mutex_(OS::allocate_mutex(4, "Entropy mutex")) {
+    mbedtls_entropy_init(&context_);
+  }
+
+  ~EntropyMixer() {
+    mbedtls_entropy_free(&context_);
+    OS::dispose(mutex_);
+  }
 };
 
 }
