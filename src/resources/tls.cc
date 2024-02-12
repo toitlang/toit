@@ -392,11 +392,11 @@ Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
   static const size_t BUFFER_LEN = 400;
   char buffer[BUFFER_LEN];
   const char* issuer = socket ? socket->error_detail(ISSUER_DETAIL) : "";
-  int flags = socket->error_flags();
+  int flags = socket ? socket->error_flags() : 0;
   if (err == MBEDTLS_ERR_X509_CERT_VERIFY_FAILED &&
       socket &&
       flags) {
-    bool print_issuer = ((flags & MBEDTLS_X509_BADCERT_NOT_TRUSTED) != 0);
+    bool print_issuer = issuer && ((flags & MBEDTLS_X509_BADCERT_NOT_TRUSTED) != 0);
     const char* subject = socket->error_detail(SUBJECT_DETAIL);
     size_t len = 0;
     if (print_issuer) {
