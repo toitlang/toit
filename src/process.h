@@ -259,6 +259,15 @@ class Process : public ProcessListFromProcessGroup::Element,
     return root_certificates_;
   }
 
+  /// Sets the timestamp for when this process was last preempted.
+  void set_last_preemption(uint64 timestamp) {
+    last_preemption_ = timestamp;
+  }
+
+  uint64 last_preemption() {
+    return last_preemption_;
+  }
+
  private:
   Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
   void _append_message(Message* message);
@@ -305,6 +314,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   uint32_t signals_;
   State state_;
   SchedulerThread* scheduler_thread_;
+  uint64_t last_preemption_ = 0;
 
   bool construction_failed_ = false;
   bool idle_since_gc_ = true;

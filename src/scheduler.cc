@@ -624,6 +624,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     Interpreter* interpreter = scheduler_thread->interpreter();
     interpreter->activate(process);
     process->set_idle_since_gc(false);
+    process->set_last_preemption(OS::get_monotonic_time());
     if (process->signals() == 0) {
       Unlocker unlock(locker);
       result = interpreter->run();
@@ -885,7 +886,7 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
 void Scheduler::tick(Locker& locker, int64 now) {
   tick_schedule(locker, now, true);
 
-  int first_non_empty_ready_queue = -1;
+  int first_non_empty_ready_queue = NUMBER_OF_READY_QUEUES;
   for (int i = 0; i < NUMBER_OF_READY_QUEUES; i++) {
     if (ready_queue_[i].is_empty()) continue;
     first_non_empty_ready_queue = i;
@@ -900,11 +901,23 @@ void Scheduler::tick(Locker& locker, int64 now) {
   }
 
   for (SchedulerThread* thread : threads_) {
+    uint64 MAX_RUN_WITHOUT_PREEMPTION_US = 2000000;
     Process* process = thread->interpreter()->process();
     if (process == null) continue;
+    uint64 us_since_preemption = now - process->last_preemption();
+    if (process->signals() & Process::PREEMPT) {
+      // The process is already suppossed to preempt.
+      // Check whether it is stuck.
+      if (us_since_preemption > MAX_RUN_WITHOUT_PREEMPTION_US) {
+        printf("Process is not yielding");
+      } else {
+        continue;
+      }
+    }
     int ready_queue_index = compute_ready_queue_index(process->priority());
     bool is_profiling = any_profiling && process->profiler() != null;
-    if (is_profiling || ready_queue_index >= first_non_empty_ready_queue) {
+    bool has_run_too_long = us_since_preemption > MAX_RUN_WITHOUT_PREEMPTION_US * 2 / 3;
+    if (has_run_too_long || is_profiling || ready_queue_index >= first_non_empty_ready_queue) {
       process->signal(Process::PREEMPT);
     }
   }
