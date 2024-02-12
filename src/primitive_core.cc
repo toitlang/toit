@@ -2554,4 +2554,11 @@ PRIMITIVE(rtc_user_bytes) {
 }
 #endif
 
+PRIMITIVE(no_return) {
+  while (true) {
+    sleep(10000);
+  }
+}
+
+
 } // namespace toit

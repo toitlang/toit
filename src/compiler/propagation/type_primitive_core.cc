@@ -43,6 +43,8 @@ PRIMITIVE_INDEXES(MODULE_CORE)
 
 MODULE_TYPES(core, MODULE_CORE)
 
+TYPE_PRIMITIVE_NULL(no_return)
+
 TYPE_PRIMITIVE(process_stats) {
   result.add_list(program);
   result.add_null(program);

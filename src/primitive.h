@@ -74,6 +74,7 @@ namespace toit {
   M(bignum,  MODULE_BIGNUM)                  \
 
 #define MODULE_CORE(PRIMITIVE)               \
+  PRIMITIVE(no_return, 0)                    \
   PRIMITIVE(write_string_on_stdout, 2)       \
   PRIMITIVE(write_string_on_stderr, 2)       \
   PRIMITIVE(time, 0)                         \
