@@ -909,7 +909,7 @@ void Scheduler::tick(Locker& locker, int64 now) {
       // The process is already suppossed to preempt.
       // Check whether it is stuck.
       if (us_since_preemption > MAX_RUN_WITHOUT_PREEMPTION_US) {
-        printf("Process is not yielding");
+        printf("Process is not yielding\n");
       } else {
         continue;
       }
