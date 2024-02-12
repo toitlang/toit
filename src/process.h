@@ -314,7 +314,6 @@ class Process : public ProcessListFromProcessGroup::Element,
   uint32_t signals_;
   State state_;
   SchedulerThread* scheduler_thread_;
-  uint64_t run_timestamp_ = 0;
 
   bool construction_failed_ = false;
   bool idle_since_gc_ = true;
@@ -328,6 +327,9 @@ class Process : public ProcessListFromProcessGroup::Element,
   HeapObject* null_;
 
   ResourceGroupListFromProcess resource_groups_;
+
+  uint64_t run_timestamp_ = 0;
+
   friend class HeapObject;
   friend class Scheduler;
 };
