@@ -34,6 +34,9 @@
 
 namespace toit {
 
+// The maximum amount of us a process is allowed to run without preemption.
+const uint64 MAX_RUN_WITHOUT_PREEMPTION_US = 2000000;
+
 void SchedulerThread::entry() {
   scheduler_->run(this);
 }
@@ -624,7 +627,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     Interpreter* interpreter = scheduler_thread->interpreter();
     interpreter->activate(process);
     process->set_idle_since_gc(false);
-    process->set_last_preemption(OS::get_monotonic_time());
+    process->set_run_timestamp(OS::get_monotonic_time());
     if (process->signals() == 0) {
       Unlocker unlock(locker);
       result = interpreter->run();
@@ -901,15 +904,14 @@ void Scheduler::tick(Locker& locker, int64 now) {
   }
 
   for (SchedulerThread* thread : threads_) {
-    uint64 MAX_RUN_WITHOUT_PREEMPTION_US = 2000000;
     Process* process = thread->interpreter()->process();
     if (process == null) continue;
-    uint64 us_since_preemption = now - process->last_preemption();
+    uint64 us_since_preemption = now - process->run_timestamp();
     if (process->signals() & Process::PREEMPT) {
       // The process is already suppossed to preempt.
       // Check whether it is stuck.
       if (us_since_preemption > MAX_RUN_WITHOUT_PREEMPTION_US) {
-        printf("Process is not yielding\n");
+        FATAL("Process is not yielding\n");
       } else {
         continue;
       }

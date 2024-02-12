@@ -260,12 +260,12 @@ class Process : public ProcessListFromProcessGroup::Element,
   }
 
   /// Sets the timestamp for when this process was last preempted.
-  void set_last_preemption(uint64 timestamp) {
-    last_preemption_ = timestamp;
+  void set_run_timestamp(uint64 timestamp) {
+    run_timestamp_ = timestamp;
   }
 
-  uint64 last_preemption() {
-    return last_preemption_;
+  uint64 run_timestamp() {
+    return run_timestamp_;
   }
 
  private:
@@ -314,7 +314,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   uint32_t signals_;
   State state_;
   SchedulerThread* scheduler_thread_;
-  uint64_t last_preemption_ = 0;
+  uint64_t run_timestamp_ = 0;
 
   bool construction_failed_ = false;
   bool idle_since_gc_ = true;
