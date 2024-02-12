@@ -87,13 +87,25 @@ class Socket implements tcp.Socket:
     forgotten about it, the handshake will fail.
   */
   session-state= state/ByteArray:
+    m := session_.mode
+    if m != SESSION-MODE-NONE:
+      throw "Too late to set session state"
     session_.session-state = state
+    session_.state-bits_ |= Session.SESSION-PROVIDED_
 
   /**
   Returns one of $SESSION-MODE-CONNECTING, $SESSION-MODE-MBED-TLS, $SESSION-MODE-TOIT, $SESSION-MODE-CLOSED.
   */
   session-mode -> int:
     return session_.mode
+
+  /**
+  Returns true if the session was successfully resumed, rather
+    than going through a full handshake with asymmetric crypto.
+  Returns false until the handshake is complete.
+  */
+  session-resumed -> bool:
+    return session_.resumed
 
   read -> ByteArray?:
     return session_.read
