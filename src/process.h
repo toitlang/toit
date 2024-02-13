@@ -264,7 +264,7 @@ class Process : public ProcessListFromProcessGroup::Element,
     run_timestamp_ = timestamp;
   }
 
-  uint64 run_timestamp() {
+  uint64 run_timestamp() const {
     return run_timestamp_;
   }
 
@@ -328,7 +328,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   ResourceGroupListFromProcess resource_groups_;
 
-  uint64_t run_timestamp_ = 0;
+  uint64 run_timestamp_ = 0;
 
   friend class HeapObject;
   friend class Scheduler;
