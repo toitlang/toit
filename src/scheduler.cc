@@ -901,11 +901,6 @@ void Scheduler::tick(Locker& locker, int64 now) {
   }
 
   bool any_profiling = num_profiled_processes_ > 0;
-  if (!any_profiling && first_non_empty_ready_queue < 0) {
-    // No need to do preemption when there are no active profilers
-    // and no other processes ready to run.
-    return;
-  }
 
   for (SchedulerThread* thread : threads_) {
     Process* process = thread->interpreter()->process();
@@ -914,11 +909,8 @@ void Scheduler::tick(Locker& locker, int64 now) {
     if (process->signals() & Process::PREEMPT) {
       // The process is already suppossed to preempt.
       // Check whether it is stuck.
-      if (us_since_preemption > MAX_RUN_WITHOUT_PREEMPTION_US) {
-        FATAL("Process is not yielding\n");
-      } else {
-        continue;
-      }
+      if (us_since_preemption <= MAX_RUN_WITHOUT_PREEMPTION_US) continue;
+      FATAL("Potential dead-lock detected in process %d\n", process->id());
     }
     int ready_queue_index = compute_ready_queue_index(process->priority());
     bool is_profiling = any_profiling && process->profiler() != null;
