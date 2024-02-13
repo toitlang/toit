@@ -259,6 +259,15 @@ class Process : public ProcessListFromProcessGroup::Element,
     return root_certificates_;
   }
 
+  /// Sets the timestamp for when this process was last preempted.
+  void set_run_timestamp(uint64 timestamp) {
+    run_timestamp_ = timestamp;
+  }
+
+  uint64 run_timestamp() const {
+    return run_timestamp_;
+  }
+
  private:
   Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
   void _append_message(Message* message);
@@ -318,6 +327,9 @@ class Process : public ProcessListFromProcessGroup::Element,
   HeapObject* null_;
 
   ResourceGroupListFromProcess resource_groups_;
+
+  uint64 run_timestamp_ = 0;
+
   friend class HeapObject;
   friend class Scheduler;
 };
