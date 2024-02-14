@@ -911,10 +911,20 @@ void Scheduler::tick(Locker& locker, int64 now) {
       // Check whether it is stuck.
       if (us_since_preemption <= MAX_RUN_WITHOUT_PREEMPTION_US) continue;
       if (process->last_primitive_call_bcp() != 0) {
+        const uint8* uuid = process->program()->id();
+        char uuid_buffer[37];
+        sprintf(uuid_buffer, "%08x-%04x-%04x-%04x-%04x%08x",
+            static_cast<int>(Utils::read_unaligned_uint32_be(uuid)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 4)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 6)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 8)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 10)),
+            static_cast<int>(Utils::read_unaligned_uint32_be(uuid + 12)));
         uint8* last_bcp = process->last_primitive_call_bcp();
         int bci = process->program()->absolute_bci_from_bcp(last_bcp);
-        FATAL("Potential dead-lock detected in process %d; last primitive BCI=%d\n",
+        FATAL("Potential dead-lock detected in process %d; program: %s, last primitive BCI=%x\n",
               process->id(),
+              uuid_buffer,
               bci);
       }
       FATAL("Potential dead-lock detected in process %d\n", process->id());
