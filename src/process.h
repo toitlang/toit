@@ -276,10 +276,6 @@ class Process : public ProcessListFromProcessGroup::Element,
     return last_primitive_call_bcp_;
   }
 
-  int current_primitive_index() const {
-    return primitive_index_;
-  }
-
  private:
   Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
   void _append_message(Message* message);
