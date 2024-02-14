@@ -124,6 +124,9 @@ connect-to-site host port expected-certificate-name:
     print "Read $bytes bytes from https://$host$(port == 443 ? "" : ":$port")/"
 
 add-global-certs -> none:
+  if system.platform == "Windows":
+    tls.use-system-trusted-root-certificates
+    return
   // Test binary (DER) roots.
   tls.add-global-root-certificate_ DIGICERT-GLOBAL-ROOT-G2-BYTES 0x025449c2
   tls.add-global-root-certificate_ DIGICERT-GLOBAL-ROOT-CA-BYTES

@@ -650,7 +650,11 @@ PRIMITIVE(close) {
   return process->null_object();
 }
 
-static Object* add_global_root(const uint8* data, size_t length, Object* hash, Process* process, bool needs_delete, bool in_flash);
+#define NEEDS_DELETE 1
+#define IN_FLASH 2
+#define IGNORE_UNSUPPORTED_HASH 4
+
+static Object* add_global_root(const uint8* data, size_t length, Object* hash, Process* process, int flags);
 
 #ifdef TOIT_WINDOWS
 static Object* get_roots_from_store(const HCERTSTORE store, Process* process) {
@@ -661,7 +665,7 @@ static Object* get_roots_from_store(const HCERTSTORE store, Process* process) {
       // The certificate is in DER format.
       const uint8* data = cert_context->pbCertEncoded;
       size_t size = cert_context->cbCertEncoded;
-      Object* result = add_global_root(data, size, process->null_object(), process, false, false);
+      Object* result = add_global_root(data, size, process->null_object(), process, IGNORE_UNSUPPORTED_HASH);
       // Normally the result is a hash, but we don't need that here, so just
       // check for errors.
       if (Primitive::is_error(result)) return result;
@@ -671,7 +675,7 @@ static Object* get_roots_from_store(const HCERTSTORE store, Process* process) {
   return process->null_object();
 }
 
-static Object* load_system_trusted_roots(const Locker& locker, Process* process) {
+static Object* load_system_trusted_roots(Process* process) {
   const HCERTSTORE root_store = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"ROOT");
   Object* result = get_roots_from_store(root_store, process);
   if (Primitive::is_error(result)) return result;
@@ -683,13 +687,18 @@ static Object* load_system_trusted_roots(const Locker& locker, Process* process)
 
 PRIMITIVE(use_system_trusted_root_certificates) {
 #ifdef TOIT_WINDOWS
+  static bool loaded_system_trusted_roots = false;
+  bool load = false;
   { Locker locker(OS::tls_mutex());
-    static bool loaded_system_trusted_roots = false;
-    if (!loaded_system_trusted_roots) {
-      loaded_system_trusted_roots = true;
-      Object* result = load_system_trusted_roots(locker, process);
-      if (Primitive::is_error(result)) return result;
-    }
+    load = !loaded_system_trusted_roots;
+  }
+  if (load) {
+    Object* result = load_system_trusted_roots(process);
+    if (Primitive::is_error(result)) return result;
+    loaded_system_trusted_roots = true;
+  }
+  { Locker locker(OS::tls_mutex());
+    loaded_system_trusted_roots = true;
   }
 #endif
   return process->null_object();
@@ -706,10 +715,15 @@ PRIMITIVE(add_global_root_certificate) {
 
   bool in_flash = reinterpret_cast<const HeapObject*>(data)->on_program_heap(process);
   ASSERT(!(in_flash && needs_delete));  // We can't free something in flash.
-  return add_global_root(data, length, hash, process, needs_delete, in_flash);
+  int flags = 0;
+  if (needs_delete) flags |= NEEDS_DELETE;
+  if (in_flash) flags |= IN_FLASH;
+  return add_global_root(data, length, hash, process, flags);
 }
 
-static Object* add_global_root(const uint8* data, size_t length, Object* hash, Process* process, bool needs_delete, bool in_flash) {
+static Object* add_global_root(const uint8* data, size_t length, Object* hash, Process* process, int flags) {
+  bool needs_delete = (flags & NEEDS_DELETE) != 0;
+  bool in_flash = (flags & IN_FLASH) != 0;
   if (!needs_delete && !in_flash) {
     // The raw cert data will not survive the end of this primitive, so we need a copy.
     uint8* new_data = _new uint8[length];
@@ -744,7 +758,11 @@ static Object* add_global_root(const uint8* data, size_t length, Object* hash, P
     }
     if (ret != 0) {
       mbedtls_x509_crt_free(&cert);
-      return tls_error(null, process, ret);
+      if ((flags & IGNORE_UNSUPPORTED_HASH) != 0 && ret == MBEDTLS_ERR_X509_UNKNOWN_SIG_ALG) {
+        return process->null_object();
+      } else {
+        return tls_error(null, process, ret);
+      }
     }
 
     uint8 subject_buffer[MAX_SUBJECT];
