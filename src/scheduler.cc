@@ -912,8 +912,8 @@ void Scheduler::tick(Locker& locker, int64 now) {
       if (us_since_preemption <= MAX_RUN_WITHOUT_PREEMPTION_US) continue;
       fprintf(stderr, "Potential dead-lock detected:\n");
       fprintf(stderr, "  Process: %d\n", process->id());
-      if (process->last_primitive_call_bcp() != 0) {
-        uint8* last_bcp = process->last_primitive_call_bcp();
+      if (process->current_bcp() != 0) {
+        uint8* last_bcp = process->current_bcp();
         int bci = process->program()->absolute_bci_from_bcp(last_bcp);
 
         const uint8* uuid = process->program()->id();

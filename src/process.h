@@ -268,12 +268,15 @@ class Process : public ProcessListFromProcessGroup::Element,
     return run_timestamp_;
   }
 
-  void set_last_primitive_call(uint8* bcp) {
-    last_primitive_call_bcp_ = bcp;
+  // Sets the current BCP variable.
+  // We use this variable for bytecodes that could potentially hang, so we can
+  // detect if a process is stuck.
+  void set_current_bcp(uint8* bcp) {
+    current_bcp_ = bcp;
   }
 
-  uint8* last_primitive_call_bcp() const {
-    return last_primitive_call_bcp_;
+  uint8* current_bcp() const {
+    return current_bcp_;
   }
 
  private:
@@ -337,7 +340,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   ResourceGroupListFromProcess resource_groups_;
 
   uint64 run_timestamp_ = 0;
-  uint8* last_primitive_call_bcp_ = 0;
+  uint8* current_bcp_ = null;
 
   friend class HeapObject;
   friend class Scheduler;
