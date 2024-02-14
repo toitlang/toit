@@ -133,7 +133,7 @@ static void tagging_mbedtls_free(void* address) {
 #ifdef TOIT_WINDOWS
 static bool get_roots_from_store(const HCERTSTORE store, const char* issuer, mbedtls_x509_crt*** last) {
   if (!store) return false;
-  CERT_CONTEXT* cert_context = CertEnumCertificatesInStore(store, null);
+  const CERT_CONTEXT* cert_context = CertEnumCertificatesInStore(store, null);
   while (cert_context) {
     if (cert_context->dwCertEncodingType == X509_ASN_ENCODING) {
     }
@@ -144,9 +144,9 @@ static bool get_roots_from_store(const HCERTSTORE store, const char* issuer, mbe
 
 static bool find_matching_roots_windows(const uint8* issuer_buffer, mbedtls_x509_crt*** last) {
   const char* issuer = char_cast(issuer_buffer);
-  HCERTSTORE root_store = CertOpenStore(CERT_STORE_PROC_SYSTEM, 0, null, CERT_SYSTEM_STORE_CURRENT_USER, L"ROOT");
+  const HCERTSTORE root_store = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"ROOT");
   bool root_found = get_roots_from_store(root_store, issuer, last);
-  HCERTSTORE ca_store = CertOpenStore(CERT_STORE_PROC_SYSTEM, 0, null, CERT_SYSTEM_STORE_CURRENT_USER, L"CA");
+  const HCERTSTORE ca_store = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"CA");
   bool ca_found = get_roots_from_store(ca_store, issuer, last);
   return root_found || ca_found;
 }
