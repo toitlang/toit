@@ -268,13 +268,12 @@ class Process : public ProcessListFromProcessGroup::Element,
     return run_timestamp_;
   }
 
-  void set_current_primitive_call(int primitive_module, int primitive_index) {
-    primitive_module_ = primitive_module;
-    primitive_index_ = primitive_index;
+  void set_last_primitive_call(uint8* bcp) {
+    last_primitive_call_bcp_ = bcp;
   }
 
-  int current_primitive_module() const {
-    return primitive_module_;
+  uint8* last_primitive_call_bcp() const {
+    return last_primitive_call_bcp_;
   }
 
   int current_primitive_index() const {
@@ -342,8 +341,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   ResourceGroupListFromProcess resource_groups_;
 
   uint64 run_timestamp_ = 0;
-  int primitive_module_ = -1;
-  int primitive_index_ = -1;
+  uint8* last_primitive_call_bcp_ = 0;
 
   friend class HeapObject;
   friend class Scheduler;

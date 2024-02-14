@@ -910,11 +910,12 @@ void Scheduler::tick(Locker& locker, int64 now) {
       // The process is already suppossed to preempt.
       // Check whether it is stuck.
       if (us_since_preemption <= MAX_RUN_WITHOUT_PREEMPTION_US) continue;
-      if (process->current_primitive_index() != -1) {
-        FATAL("Potential dead-lock detected in process %d; primitive call %d-%d\n",
+      if (process->last_primitive_call_bcp() != 0) {
+        uint8* last_bcp = process->last_primitive_call_bcp();
+        int bci = process->program()->absolute_bci_from_bcp(last_bcp);
+        FATAL("Potential dead-lock detected in process %d; last primitive BCI=%d\n",
               process->id(),
-              process->current_primitive_module(),
-              process->current_primitive_index());
+              bci);
       }
       FATAL("Potential dead-lock detected in process %d\n", process->id());
     }
