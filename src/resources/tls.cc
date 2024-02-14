@@ -30,6 +30,11 @@
 #include <mbedtls/ssl_internal.h>
 #endif
 
+#ifdef TOIT_WINDOWS
+#include <windows.h>
+#include <wincrypt.h>
+#endif
+
 #include "../entropy_mixer.h"
 #include "../heap_report.h"
 #include "../primitive.h"
@@ -125,6 +130,12 @@ static void tagging_mbedtls_free(void* address) {
   free(address);
 }
 
+#ifdef TOIT_WINDOWS
+static bool find_matching_roots_windows(const char* issuer, mbedtls_x509_crt*** last) {
+  return false;
+}
+#endif
+
 // Use the unparsed certificates on the process to find the right one
 // for this connection.
 static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate, mbedtls_x509_crt** chain) {
@@ -167,6 +178,11 @@ static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate
       // We could break here, but a CRC32 checksum is not collision proof, so we had
       // better keep going in case there's a different cert with the same checksum.
     }
+#ifdef TOIT_WINDOWS
+    bool found_in_windows_store =
+        find_matching_roots_windows(issuer_buffer, &last);
+    if (found_in_windows_store) found_root_with_matching_subject = true;
+#endif
     if (!found_root_with_matching_subject) {
       socket->record_error_detail(&certificate->issuer, MBEDTLS_X509_BADCERT_NOT_TRUSTED, ISSUER_DETAIL);
       socket->record_error_detail(&certificate->subject, MBEDTLS_X509_BADCERT_NOT_TRUSTED, SUBJECT_DETAIL);
