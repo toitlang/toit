@@ -1041,6 +1041,7 @@ Interpreter::Result Interpreter::run() {
       Method target = program->primitive_lookup_failure();
       CALL_METHOD(target, PRIMITIVE_LENGTH);
     } else {
+      process_->set_current_primitive_call(primitive_module, primitive_index);
       int arity = primitive->arity;
       Primitive::Entry* entry = reinterpret_cast<Primitive::Entry*>(primitive->function);
 
@@ -1083,6 +1084,7 @@ Interpreter::Result Interpreter::run() {
 
       // GC might have taken place in object heap but local "method" is from program heap.
       PUSH(result);
+      process_->set_current_primitive_call(-1, -1);
       process_->object_heap()->leave_primitive();
       DISPATCH(PRIMITIVE_LENGTH);
 
