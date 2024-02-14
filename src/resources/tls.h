@@ -57,6 +57,10 @@ enum TLS_STATE {
 
 bool is_tls_malloc_failure(int err);
 
+const int ISSUER_DETAIL = 0;
+const int SUBJECT_DETAIL = 1;
+const int ERROR_DETAILS = 2;
+
 // Common base for TLS (stream based) and in the future perhaps DTLS (datagram based) sockets.
 class BaseMbedTlsSocket : public TlsSocket {
  public:
@@ -75,17 +79,13 @@ class BaseMbedTlsSocket : public TlsSocket {
 
   int verify_callback(mbedtls_x509_crt* cert, int certificate_depth, uint32_t* flags);
 
-  void record_unknown_issuer(const mbedtls_asn1_named_data* issuer);
+  void record_error_detail(const mbedtls_asn1_named_data* issuer, int flags, int index);
   // Hash a textual description of the issuer of a certificate, or the
   // subject of a root certificate. These should match.
   static uint32 hash_subject(uint8* buffer, int length);
   uint32_t error_flags() const { return error_flags_; }
-  char* error_issuer() const { return error_issuer_; }
-  void clear_error_flags() {
-    error_flags_ = 0;
-    free(error_issuer_);
-    error_issuer_ = null;
-  }
+  char* error_detail(int index) const { return error_details_[index]; }
+  void clear_error_data();
 
  protected:
   mbedtls_ssl_config conf_;
@@ -94,7 +94,7 @@ class BaseMbedTlsSocket : public TlsSocket {
   mbedtls_x509_crt* root_certs_;
   mbedtls_pk_context* private_key_;
   uint32_t error_flags_;
-  char* error_issuer_;
+  char* error_details_[ERROR_DETAILS];
 };
 
 // A size that should be plenty for all known root certificates, but won't overflow the stack.

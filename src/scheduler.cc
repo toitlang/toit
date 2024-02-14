@@ -910,6 +910,12 @@ void Scheduler::tick(Locker& locker, int64 now) {
       // The process is already suppossed to preempt.
       // Check whether it is stuck.
       if (us_since_preemption <= MAX_RUN_WITHOUT_PREEMPTION_US) continue;
+      if (process->current_primitive_index() != -1) {
+        FATAL("Potential dead-lock detected in process %d; primitive call %d-%d\n",
+              process->id(),
+              process->current_primitive_module(),
+              process->current_primitive_index());
+      }
       FATAL("Potential dead-lock detected in process %d\n", process->id());
     }
     int ready_queue_index = compute_ready_queue_index(process->priority());
