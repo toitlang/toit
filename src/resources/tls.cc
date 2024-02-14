@@ -130,28 +130,6 @@ static void tagging_mbedtls_free(void* address) {
   free(address);
 }
 
-#ifdef TOIT_WINDOWS
-static bool get_roots_from_store(const HCERTSTORE store, const char* issuer, mbedtls_x509_crt*** last) {
-  if (!store) return false;
-  const CERT_CONTEXT* cert_context = CertEnumCertificatesInStore(store, null);
-  while (cert_context) {
-    if (cert_context->dwCertEncodingType == X509_ASN_ENCODING) {
-    }
-    cert_context = CertEnumCertificatesInStore(store, cert_context);
-  }
-  return false;
-}
-
-static bool find_matching_roots_windows(const uint8* issuer_buffer, mbedtls_x509_crt*** last) {
-  const char* issuer = char_cast(issuer_buffer);
-  const HCERTSTORE root_store = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"ROOT");
-  bool root_found = get_roots_from_store(root_store, issuer, last);
-  const HCERTSTORE ca_store = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"CA");
-  bool ca_found = get_roots_from_store(ca_store, issuer, last);
-  return root_found || ca_found;
-}
-#endif
-
 // Use the unparsed certificates on the process to find the right one
 // for this connection.
 static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate, mbedtls_x509_crt** chain) {
@@ -194,11 +172,6 @@ static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate
       // We could break here, but a CRC32 checksum is not collision proof, so we had
       // better keep going in case there's a different cert with the same checksum.
     }
-#ifdef TOIT_WINDOWS
-    bool found_in_windows_store =
-        find_matching_roots_windows(issuer_buffer, &last);
-    if (found_in_windows_store) found_root_with_matching_subject = true;
-#endif
     if (!found_root_with_matching_subject) {
       socket->record_error_detail(&certificate->issuer, MBEDTLS_X509_BADCERT_NOT_TRUSTED, ISSUER_DETAIL);
       socket->record_error_detail(&certificate->subject, MBEDTLS_X509_BADCERT_NOT_TRUSTED, SUBJECT_DETAIL);
@@ -677,6 +650,51 @@ PRIMITIVE(close) {
   return process->null_object();
 }
 
+static Object* add_global_root(const uint8* data, size_t length, Object* hash, Process* process, bool needs_delete, bool in_flash);
+
+#ifdef TOIT_WINDOWS
+static Object* get_roots_from_store(const HCERTSTORE store, Process* process) {
+  if (!store) return process->null_object();
+  const CERT_CONTEXT* cert_context = CertEnumCertificatesInStore(store, null);
+  while (cert_context) {
+    if (cert_context->dwCertEncodingType == X509_ASN_ENCODING) {
+      // The certificate is in DER format.
+      const uint8* data = cert_context->pbCertEncoded;
+      size_t size = cert_context->cbCertEncoded;
+      Object* result = add_global_root(data, size, process->null_object(), process, false, false);
+      // Normally the result is a hash, but we don't need that here, so just
+      // check for errors.
+      if (Primitive::is_error(result)) return result;
+    }
+    cert_context = CertEnumCertificatesInStore(store, cert_context);
+  }
+  return process->null_object();
+}
+
+static Object* load_system_trusted_roots(const Locker& locker, Process* process) {
+  const HCERTSTORE root_store = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"ROOT");
+  Object* result = get_roots_from_store(root_store, process);
+  if (Primitive::is_error(result)) return result;
+
+  const HCERTSTORE ca_store = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"CA");
+  return get_roots_from_store(ca_store, process);
+}
+#endif
+
+PRIMITIVE(use_system_trusted_root_certificates) {
+#ifdef TOIT_WINDOWS
+  { Locker locker(OS::tls_mutex());
+    static bool loaded_system_trusted_roots = false;
+    if (!loaded_system_trusted_roots) {
+      loaded_system_trusted_roots = true;
+      Object* result = load_system_trusted_roots(locker, process);
+      if (Primitive::is_error(result)) return result;
+    }
+  }
+#endif
+  return process->null_object();
+}
+
 PRIMITIVE(add_global_root_certificate) {
   ARGS(Object, unparsed_cert, Object, hash);
   bool needs_delete = false;
@@ -688,7 +706,10 @@ PRIMITIVE(add_global_root_certificate) {
 
   bool in_flash = reinterpret_cast<const HeapObject*>(data)->on_program_heap(process);
   ASSERT(!(in_flash && needs_delete));  // We can't free something in flash.
+  return add_global_root(data, length, hash, process, needs_delete, in_flash);
+}
 
+static Object* add_global_root(const uint8* data, size_t length, Object* hash, Process* process, bool needs_delete, bool in_flash) {
   if (!needs_delete && !in_flash) {
     // The raw cert data will not survive the end of this primitive, so we need a copy.
     uint8* new_data = _new uint8[length];
