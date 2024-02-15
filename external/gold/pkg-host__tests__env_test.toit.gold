@@ -1,3 +1,0 @@
-pkg-host/tests/env_test.toit:30:12: warning: Deprecated 'platform'
-  shell := platform == "Windows" ? ["cmd", "/S", "/C"] : ["sh", "-c"]
-           ^~~~~~~~
