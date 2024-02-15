@@ -912,9 +912,9 @@ void Scheduler::tick(Locker& locker, int64 now) {
       if (us_since_preemption <= MAX_RUN_WITHOUT_PREEMPTION_US) continue;
       fprintf(stderr, "Potential dead-lock detected:\n");
       fprintf(stderr, "  Process: %d\n", process->id());
-      if (process->current_bcp() != 0) {
-        uint8* last_bcp = process->current_bcp();
-        int bci = process->program()->absolute_bci_from_bcp(last_bcp);
+      uint8* current_bcp = process->current_bcp();
+      if (process->program()->is_valid_bcp(current_bcp)) {
+        int bci = process->program()->absolute_bci_from_bcp(current_bcp);
 
         const uint8* uuid = process->program()->id();
         char uuid_buffer[37];
@@ -928,9 +928,9 @@ void Scheduler::tick(Locker& locker, int64 now) {
         fprintf(stderr, "  Program: %s\n", uuid_buffer);
         fprintf(stderr, "  BCI: 0x%x\n", bci);
 
-        if (*last_bcp == Opcode::PRIMITIVE) {
-          int module = last_bcp[1];
-          int index = Utils::read_unaligned_uint16(last_bcp + 2);
+        if (*current_bcp == Opcode::PRIMITIVE) {
+          int module = current_bcp[1];
+          int index = Utils::read_unaligned_uint16(current_bcp + 2);
           printf("  Primitive: %d:%d\n", module, index);
         }
         FATAL("Potential dead-lock");
