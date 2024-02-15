@@ -759,7 +759,9 @@ static Object* add_global_root(const uint8* data, size_t length, Object* hash, P
     if (ret != 0) {
       mbedtls_x509_crt_free(&cert);
       int major_error = (-ret & 0xff80);
-      if ((flags & IGNORE_UNSUPPORTED_HASH) != 0 && -major_error == MBEDTLS_ERR_X509_UNKNOWN_SIG_ALG) {
+      if ((flags & IGNORE_UNSUPPORTED_HASH) != 0 &&
+          (-major_error == MBEDTLS_ERR_X509_UNKNOWN_SIG_ALG ||
+           -major_error == MBEDTLS_ERR_ASN1_UNEXPECTED_TAG)) {
         return process->null_object();
       } else {
         return tls_error(null, process, ret);
