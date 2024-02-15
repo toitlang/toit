@@ -268,6 +268,17 @@ class Process : public ProcessListFromProcessGroup::Element,
     return run_timestamp_;
   }
 
+  // Sets the current BCP variable.
+  // We use this variable for bytecodes that could potentially hang, so we can
+  // detect if a process is stuck.
+  void set_current_bcp(uint8* bcp) {
+    current_bcp_ = bcp;
+  }
+
+  uint8* current_bcp() const {
+    return current_bcp_;
+  }
+
  private:
   Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
   void _append_message(Message* message);
@@ -329,6 +340,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   ResourceGroupListFromProcess resource_groups_;
 
   uint64 run_timestamp_ = 0;
+  uint8* current_bcp_ = null;
 
   friend class HeapObject;
   friend class Scheduler;

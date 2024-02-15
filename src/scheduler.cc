@@ -910,6 +910,31 @@ void Scheduler::tick(Locker& locker, int64 now) {
       // The process is already suppossed to preempt.
       // Check whether it is stuck.
       if (us_since_preemption <= MAX_RUN_WITHOUT_PREEMPTION_US) continue;
+      fprintf(stderr, "Potential dead-lock detected:\n");
+      fprintf(stderr, "  Process: %d\n", process->id());
+      uint8* current_bcp = process->current_bcp();
+      if (process->program()->is_valid_bcp(current_bcp)) {
+        int bci = process->program()->absolute_bci_from_bcp(current_bcp);
+
+        const uint8* uuid = process->program()->id();
+        char uuid_buffer[37];
+        sprintf(uuid_buffer, "%08x-%04x-%04x-%04x-%04x%08x",
+            static_cast<int>(Utils::read_unaligned_uint32_be(uuid)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 4)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 6)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 8)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 10)),
+            static_cast<int>(Utils::read_unaligned_uint32_be(uuid + 12)));
+        fprintf(stderr, "  Program: %s\n", uuid_buffer);
+        fprintf(stderr, "  BCI: 0x%x\n", bci);
+
+        if (*current_bcp == Opcode::PRIMITIVE) {
+          int module = current_bcp[1];
+          int index = Utils::read_unaligned_uint16(current_bcp + 2);
+          printf("  Primitive: %d:%d\n", module, index);
+        }
+        FATAL("Potential dead-lock");
+      }
       FATAL("Potential dead-lock detected in process %d\n", process->id());
     }
     int ready_queue_index = compute_ready_queue_index(process->priority());
