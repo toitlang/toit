@@ -125,6 +125,8 @@ connect-to-site host port expected-certificate-name:
 
 add-global-certs -> none:
   if system.platform == "Windows":
+    // On Windows we test that the built-in root certs in the Windows
+    // installation are sufficient.
     tls.use-system-trusted-root-certificates
     return
   // Test binary (DER) roots.
