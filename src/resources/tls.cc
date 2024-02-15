@@ -650,14 +650,14 @@ PRIMITIVE(close) {
   return process->null_object();
 }
 
-#define NEEDS_DELETE 1
-#define IN_FLASH 2
-#define IGNORE_UNSUPPORTED_HASH 4
+static const int NEEDS_DELETE = 1;
+static const int IN_FLASH = 2;
+static const int IGNORE_UNSUPPORTED_HASH = 4;
 
 static Object* add_global_root(const uint8* data, size_t length, Object* hash, Process* process, int flags);
 
 #ifdef TOIT_WINDOWS
-static Object* get_roots_from_store(const HCERTSTORE store, Process* process) {
+static Object* add_roots_from_store(const HCERTSTORE store, Process* process) {
   if (!store) return process->null_object();
   const CERT_CONTEXT* cert_context = CertEnumCertificatesInStore(store, null);
   while (cert_context) {
@@ -677,11 +677,11 @@ static Object* get_roots_from_store(const HCERTSTORE store, Process* process) {
 
 static Object* load_system_trusted_roots(Process* process) {
   const HCERTSTORE root_store = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"ROOT");
-  Object* result = get_roots_from_store(root_store, process);
+  Object* result = add_roots_from_store(root_store, process);
   if (Primitive::is_error(result)) return result;
 
   const HCERTSTORE ca_store = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"CA");
-  return get_roots_from_store(ca_store, process);
+  return add_roots_from_store(ca_store, process);
 }
 #endif
 
