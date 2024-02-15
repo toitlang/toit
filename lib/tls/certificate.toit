@@ -111,7 +111,7 @@ This is only supported on Windows.  On other platforms it currently does
 
 This need only be called once, then it is available for all TLS connections.
 
-Like $add-global-root-certificate, this function is an alternative to adding
+Like $RootCertificate.install, this function is an alternative to adding
   root certificates to individual TLS sockets.
 */
 use-system-trusted-root-certificates -> none:
