@@ -304,6 +304,7 @@ namespace toit {
   PRIMITIVE(write, 4)                        \
   PRIMITIVE(add_root_certificate, 2)         \
   PRIMITIVE(add_global_root_certificate, 2)  \
+  PRIMITIVE(use_system_trusted_root_certificates, 0) \
   PRIMITIVE(add_certificate, 4)              \
   PRIMITIVE(error, 2)                        \
   PRIMITIVE(get_internals, 1)                \
