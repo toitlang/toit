@@ -983,14 +983,15 @@ ast::Unit* LocationLanguageServerPipeline::parse(Source* source) {
   const uint8* text = source->text();
   int offset = compute_source_offset(text, line_number_, column_number_);
 
-  // We only provide completions after a `-` if we are after a " --".
-  if (offset >= 1 && text[offset - 1] == '-') {
-    if (offset < 3 ||
-        text[offset - 1] != '-' ||
-        text[offset - 2] != '-' ||
-        text[offset - 3] != ' ') {
-      exit(0);
-    }
+  // We only provide completions after a '-' if there isn't a space in
+  // front of the '-', and if we don't have 'foo--'. That is, a '--'
+  // without a space in front.
+  if (offset >= 2 && text[offset - 1] == '-' &&
+      (text[offset - 2] == ' ' || text[offset - 2] == '\n')) {
+    exit(0);
+  }
+  if (offset >= 3 && text[offset - 1] == '-' && text[offset - 2] == '-' && text[offset - 3] != ' ') {
+    exit(0);
   }
 
   LspSource lsp_source(source, offset);
@@ -1014,8 +1015,16 @@ Source* CompletionPipeline::_load_file(const char* path, const PackageLock& pack
   int start_offset = offset;
   IdentifierValidator validator;
   validator.disable_start_check();
-  while (start_offset > 0 &&
-         validator.check_next_char(text[start_offset - 1], [&]() { return text[start_offset]; })) {
+  while (true) {
+    if (start_offset <= 0) break;
+    auto peek = [&]() {
+      if (offset == start_offset) return LSP_SELECTION_MARKER;
+      return text[start_offset];
+    };
+    // Walk backwards as long as it's a valid identifier character.
+    if (!validator.check_next_char(text[start_offset - 1], peek)) {
+      break;
+    }
     start_offset--;
   }
 
