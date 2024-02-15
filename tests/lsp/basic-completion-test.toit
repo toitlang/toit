@@ -63,6 +63,7 @@ main:
   toplevel-fun 499
 /*        ^~~~~~~~
   + toplevel-fun
+  - main, global, SomeClass, null, true, false
 */
 
   toplevel-fun 499
