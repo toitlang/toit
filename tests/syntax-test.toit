@@ -160,6 +160,8 @@ fun
 :
   print "with colon at same level as 'fun'"
 
+class X-Of:
+
 abstract class Type:
   foo := 499
   constructor:
@@ -412,6 +414,9 @@ main:
   "string with\\ \" escapes"
 
   assert-x := 499
+  assert-x--
   as-something := assert-x + 42
   null-foo := as-something + assert-x
   assert-x += null-foo
+
+  x-of := X-Of
