@@ -198,8 +198,8 @@ class LanguageServerPipeline : public Pipeline {
     goto_definition,
   };
 
-  explicit LanguageServerPipeline(Kind kind,
-                                  const PipelineConfiguration& configuration)
+  LanguageServerPipeline(Kind kind,
+                         const PipelineConfiguration& configuration)
       : Pipeline(configuration)
       , kind_(kind) {}
 
