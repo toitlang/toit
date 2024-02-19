@@ -37,6 +37,8 @@ export global-x
 export global-x global-y
 export *
 
+import .syntax as as-prefix
+
 import-foo:
 show-foo:
 
