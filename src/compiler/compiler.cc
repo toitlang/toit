@@ -191,20 +191,35 @@ main args:
 
 class LanguageServerPipeline : public Pipeline {
  public:
-  // Forward constructor arguments to super class.
-  using Pipeline::Pipeline;
+  enum class Kind {
+    analyze,
+    semantic_tokens,
+    completion,
+    goto_definition,
+  };
+
+  explicit LanguageServerPipeline(Kind kind,
+                                  const PipelineConfiguration& configuration)
+      : Pipeline(configuration)
+      , kind_(kind) {}
 
  protected:
   bool is_for_analysis() const { return true; }
+
+  Kind kind() const { return kind_; }
+
+ private:
+  Kind kind_;
 };
 
 class LocationLanguageServerPipeline : public LanguageServerPipeline {
  public:
-  LocationLanguageServerPipeline(const char* path,
+  LocationLanguageServerPipeline(Kind kind,
+                                 const char* path,
                                  int line_number,   // 1-based
                                  int column_number, // 1-based
                                  const PipelineConfiguration& configuration)
-      : LanguageServerPipeline(configuration)
+      : LanguageServerPipeline(kind, configuration)
       , lsp_selection_path_(path)
       , line_number_(line_number)
       , column_number_(column_number) {}
@@ -223,8 +238,15 @@ class LocationLanguageServerPipeline : public LanguageServerPipeline {
 
 class CompletionPipeline : public LocationLanguageServerPipeline {
  public:
-  // Forward constructor arguments to super class.
-  using LocationLanguageServerPipeline::LocationLanguageServerPipeline;
+  CompletionPipeline(const char* completion_path,
+                     int line_number,   // 1-based
+                     int column_number, // 1-based
+                     const PipelineConfiguration& configuration)
+      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::completion,
+                                       completion_path,
+                                       line_number,
+                                       column_number,
+                                       configuration) {}
 
  protected:
   void setup_lsp_selection_handler();
@@ -236,15 +258,20 @@ class CompletionPipeline : public LocationLanguageServerPipeline {
   CompletionHandler* handler() {
     return static_cast<CompletionHandler*>(lsp()->selection_handler());
   }
+
+  friend class LocationLanguageServerPipeline;
 };
 
 class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
  public:
-  GotoDefinitionPipeline(const char* completion_path,
+  GotoDefinitionPipeline(const char* goto_definition_path,
                          int line_number,   // 1-based
                          int column_number, // 1-based
                          const PipelineConfiguration& configuration)
-      : LocationLanguageServerPipeline(completion_path, line_number, column_number,
+      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::goto_definition,
+                                       goto_definition_path,
+                                       line_number,
+                                       column_number,
                                        configuration) {}
 
  protected:
@@ -443,7 +470,7 @@ void Compiler::lsp_goto_definition(const char* source_path,
 void Compiler::lsp_analyze(List<const char*> source_paths,
                            const PipelineConfiguration& configuration) {
   ASSERT(configuration.diagnostics != null);
-  LanguageServerPipeline pipeline(configuration);
+  LanguageServerPipeline pipeline(LanguageServerPipeline::Kind::analyze, configuration);
   pipeline.run(source_paths, false);
 }
 
@@ -463,7 +490,7 @@ void Compiler::lsp_semantic_tokens(const char* source_path,
                                    const PipelineConfiguration& configuration) {
   configuration.lsp->set_should_emit_semantic_tokens(true);
   ASSERT(configuration.diagnostics != null);
-  LanguageServerPipeline pipeline(configuration);
+  LanguageServerPipeline pipeline(LanguageServerPipeline::Kind::semantic_tokens, configuration);
   pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
@@ -964,15 +991,18 @@ ast::Unit* LocationLanguageServerPipeline::parse(Source* source) {
   const uint8* text = source->text();
   int offset = compute_source_offset(text, line_number_, column_number_);
 
-  // We only provide completions after a '-' if there isn't a space in
-  // front of the '-', and if we don't have 'foo--'. That is, a '--'
-  // without a space in front.
-  if (offset >= 2 && text[offset - 1] == '-' &&
-      (text[offset - 2] == ' ' || text[offset - 2] == '\n')) {
-    exit(0);
-  }
-  if (offset >= 3 && text[offset - 1] == '-' && text[offset - 2] == '-' && text[offset - 3] != ' ') {
-    exit(0);
+  if (kind() == LanguageServerPipeline::Kind::completion) {
+    auto handler = static_cast<CompletionPipeline*>(this)->handler();
+    // We only provide completions after a '-' if there isn't a space in
+    // front of the '-', and if we don't have 'foo--'. That is, a '--'
+    // without a space in front.
+    if (offset >= 2 && text[offset - 1] == '-' &&
+        (text[offset - 2] == ' ' || text[offset - 2] == '\n')) {
+      handler->terminate();
+    }
+    if (offset >= 3 && text[offset - 1] == '-' && text[offset - 2] == '-' && text[offset - 3] != ' ') {
+      handler->terminate();
+    }
   }
 
   LspSource lsp_source(source, offset);

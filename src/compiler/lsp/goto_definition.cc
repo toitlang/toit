@@ -20,6 +20,10 @@
 namespace toit {
 namespace compiler {
 
+void GotoDefinitionHandler::terminate() {
+  exit(0);
+}
+
 void GotoDefinitionHandler::_print_range(Source::Range range) {
   if (printed_definitions_.contains(range)) return;
   printed_definitions_.insert(range);
@@ -67,7 +71,7 @@ void GotoDefinitionHandler::class_interface_or_mixin(ast::Node* node,
   if (resolved != null && resolved->is_Class()) {
     _print_range(resolved);
   }
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::type(ast::Node* node,
@@ -77,7 +81,7 @@ void GotoDefinitionHandler::type(ast::Node* node,
   // We are ok with resolving to many nodes (even ambiguous ones).
   // This will help the user to figure out why they have an error.
   _print_all(resolved);
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::call_virtual(ir::CallVirtual* node,
@@ -89,7 +93,7 @@ void GotoDefinitionHandler::call_virtual(ir::CallVirtual* node,
   Symbol name = lsp_selection_dot->name();
 
   if (type.is_none()) {
-    // We don't exit(0) here, as there might be multiple definitions that need to
+    // We don't terminate() here, as there might be multiple definitions that need to
     //   get resolved. This happens when a getter and setter are both target of a
     //   compound assignment.
     return;
@@ -187,7 +191,7 @@ void GotoDefinitionHandler::call_prefixed(ast::Dot* node,
                                           List<ir::Node*> candidates,
                                           IterableScope* scope) {
   call_statically_resolved(resolved1, resolved2, candidates);
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::call_class(ast::Dot* node,
@@ -203,7 +207,7 @@ void GotoDefinitionHandler::call_class(ast::Dot* node,
     // to propose candidates.
     return;
   }
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::call_static(ast::Node* node,
@@ -213,31 +217,31 @@ void GotoDefinitionHandler::call_static(ast::Node* node,
                                         IterableScope* scope,
                                         ir::Method* surrounding) {
   call_statically_resolved(resolved1, resolved2, candidates);
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::call_block(ast::Dot* node, ir::Node* ir_receiver) {
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::call_static_named(ast::Node* name_node, ir::Node* ir_call_target, List<ir::Node*> candidates) {
-  if (ir_call_target == null || ir_call_target->is_Error()) exit(0);
+  if (ir_call_target == null || ir_call_target->is_Error()) terminate();
   if (!ir_call_target->is_ReferenceMethod()) exit(1);
   auto name = name_node->as_LspSelection()->data();
   auto ir_method = ir_call_target->as_ReferenceMethod()->target();
   for (auto parameter : ir_method->parameters()) {
     if (parameter->name() == name) {
       _print_range(parameter->range());
-      exit(0);
+      terminate();
     }
   }
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::call_primitive(ast::Node* node, Symbol module_name, Symbol primitive_name,
                                            int module, int primitive, bool on_module) {
   // Nothing to go to.
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::field_storing_parameter(ast::Parameter* node,
@@ -251,7 +255,7 @@ void GotoDefinitionHandler::field_storing_parameter(ast::Parameter* node,
       break;
     }
   }
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::this_(ast::Identifier* node,
@@ -261,7 +265,7 @@ void GotoDefinitionHandler::this_(ast::Identifier* node,
   if (enclosing_class != null) {
     _print_range(enclosing_class);
   }
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) {
@@ -269,7 +273,7 @@ void GotoDefinitionHandler::show(ast::Node* node, ResolutionEntry entry, ModuleS
     if (node->is_Class()) _print_range(node->as_Class()->range());
     if (node->is_Method()) _print_range(node->as_Method()->range());
   }
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels) {
@@ -279,7 +283,7 @@ void GotoDefinitionHandler::return_label(ast::Node* node, int label_index, const
     auto from = labels[label_index].second->range().from();
     _print_range(Source::Range(from, from));
   }
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::toitdoc_ref(ast::Node* node,
@@ -289,7 +293,7 @@ void GotoDefinitionHandler::toitdoc_ref(ast::Node* node,
   // We are ok with resolving to many nodes (even ambiguous ones).
   // This will help the user to figure out why they have an error.
   _print_all(candidates);
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::import_path(const char* path,
@@ -309,7 +313,7 @@ void GotoDefinitionHandler::import_path(const char* path,
     };
     protocol()->goto_definition()->emit(import_range);
   }
-  exit(0);
+  terminate();
 }
 
 } // namespace toit::compiler

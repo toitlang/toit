@@ -25,6 +25,10 @@
 namespace toit {
 namespace compiler {
 
+void CompletionHandler::terminate() {
+  exit(0);
+}
+
 void CompletionHandler::class_interface_or_mixin(ast::Node* node,
                                                  IterableScope* scope,
                                                  ir::Class* holder,
@@ -42,7 +46,7 @@ void CompletionHandler::class_interface_or_mixin(ast::Node* node,
       complete_entry(name, entry);
     }
   });
-  exit(0);
+  terminate();
 }
 
 static CompletionKind completion_kind_for(ir::Class* klass) {
@@ -92,7 +96,7 @@ void CompletionHandler::type(ast::Node* node,
       complete_entry(name, entry);
     }
   });
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::call_virtual(ir::CallVirtual* node,
@@ -101,11 +105,11 @@ void CompletionHandler::call_virtual(ir::CallVirtual* node,
   bool is_for_named = node->target()->as_LspSelectionDot()->is_for_named();
   if (type.is_none()) {
     // No completions.
-    exit(0);
+    terminate();
   }
   if (type.is_any()) {
     // No completions. Just let the client suggest identifiers it has seen.
-    exit(0);
+    terminate();
   }
   ASSERT(type.is_class());
   auto klass = type.klass();
@@ -130,7 +134,7 @@ void CompletionHandler::call_virtual(ir::CallVirtual* node,
         klass = klass->super();
       }
     }
-    exit(0);
+    terminate();
   }
 
   while (klass != null) {
@@ -152,7 +156,7 @@ void CompletionHandler::call_virtual(ir::CallVirtual* node,
       klass = klass->super();
     }
   }
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::complete_static_ids(IterableScope* scope,
@@ -190,7 +194,7 @@ void CompletionHandler::call_static(ast::Node* node,
   complete("null", CompletionKind::KEYWORD);
   complete("return", CompletionKind::KEYWORD);
   complete_static_ids(scope, surrounding);
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::call_prefixed(ast::Dot* node,
@@ -239,7 +243,7 @@ void CompletionHandler::call_class(ast::Dot* node,
   klass->statics()->for_each([&](Symbol name, const ResolutionEntry& entry) {
     complete_entry(name, entry);
   });
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::call_block(ast::Dot* node, ir::Node* ir_receiver) {
@@ -253,7 +257,7 @@ void CompletionHandler::call_static_named(ast::Node* name_node, ir::Node* ir_cal
     if (!candidate->is_Method()) continue;
     complete_named_args(candidate->as_Method());
   }
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::call_primitive(ast::Node* node, Symbol module_name, Symbol primitive_name,
@@ -277,7 +281,7 @@ void CompletionHandler::call_primitive(ast::Node* node, Symbol module_name, Symb
       complete(PrimitiveResolver::primitive_name(module, i), CompletionKind::PROPERTY);
     }
   }
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::field_storing_parameter(ast::Parameter* node,
@@ -290,7 +294,7 @@ void CompletionHandler::field_storing_parameter(ast::Parameter* node,
       complete(field->name(), CompletionKind::FIELD);
     }
   }
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::this_(ast::Identifier* node,
@@ -298,7 +302,7 @@ void CompletionHandler::this_(ast::Identifier* node,
                               IterableScope* scope,
                               ir::Method* surrounding) {
   call_static(node, null, null, List<ir::Node*>(), scope, surrounding);
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) {
@@ -307,7 +311,7 @@ void CompletionHandler::show(ast::Node* node, ResolutionEntry entry, ModuleScope
   scope->for_each_external([&](Symbol name, const ResolutionEntry& entry) {
     complete_entry(name, entry);
   }, &already_visited);
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels) {
@@ -317,7 +321,7 @@ void CompletionHandler::return_label(ast::Node* node, int label_index, const std
     if (label.is_valid()) complete(label, CompletionKind::KEYWORD);
     if (labels[i].second->is_Lambda()) break;
   }
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::toitdoc_ref(ast::Node* node,
@@ -332,7 +336,7 @@ void CompletionHandler::toitdoc_ref(ast::Node* node,
     complete_entry(name, entry);
   };
   iterator->for_each(param_callback, other_callback);
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::import_path(const char* path,
@@ -354,7 +358,7 @@ void CompletionHandler::import_path(const char* path,
       complete(candidate, CompletionKind::MODULE);
     });
   }
-  exit(0);
+  terminate();
 }
 
 static bool is_constant_name(Symbol name) {
