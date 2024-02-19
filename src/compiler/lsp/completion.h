@@ -45,6 +45,10 @@ class CompletionHandler : public LspSelectionHandler {
     package_id_ = package_id;
   }
 
+  /// Finishes the completion request.
+  /// This invokes exit(0).
+  void terminate();
+
   void import_path(const char* path,
                    const char* segment,
                    bool is_first_segment,
