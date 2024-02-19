@@ -342,9 +342,7 @@ void CompletionHandler::import_path(const char* path,
                                     const Package& current_package,
                                     const PackageLock& package_lock,
                                     Filesystem* fs) {
-  fprintf(stderr, "import-path %s %s %d %s\n", path, segment, is_first_segment, resolved);
   if (is_first_segment) {
-    fprintf(stderr, "current-package: %s\n", current_package.id().c_str());
     current_package.list_prefixes([&](const std::string& candidate) {
       complete(candidate.c_str(), CompletionKind::MODULE);
     });

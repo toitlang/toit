@@ -1208,7 +1208,6 @@ static void _report_failed_import(ast::Import* import,
 Source* Pipeline::_load_import(ast::Unit* unit,
                                ast::Import* import,
                                const PackageLock& package_lock) {
-  fprintf(stderr, "LOAD_IMPORT");
   if (unit->source() == null) FATAL("unit without source");
 
   if (SourceManager::is_virtual_file(unit->absolute_path()) && import->is_relative()) {
@@ -1239,6 +1238,9 @@ Source* Pipeline::_load_import(ast::Unit* unit,
   int relative_segment_start = 0;
   bool dotted_out = false;
   Package import_package;
+
+  Source* result = null;
+  auto result_package = Package::invalid();
 
   if (is_relative) {
     // The file is relative to the unit_package.
@@ -1272,7 +1274,6 @@ Source* Pipeline::_load_import(ast::Unit* unit,
       lsp_path = "",
       lsp_segment = module_segment->data().c_str();
       lsp_is_first_segment = true;
-      fprintf(stderr, "current_package: %s\n", unit_package_id.c_str());
     }
     import_package = package_lock.resolve_prefix(unit_package, prefix);
     auto error_range = module_segment->range();
@@ -1291,29 +1292,26 @@ Source* Pipeline::_load_import(ast::Unit* unit,
                                       "Package for prefix '%s' not found",
                                       prefix.c_str());
         }
-        return null;
+        goto done;
 
       case Package::STATE_ERROR:
         diagnostics()->report_error(error_range,
                                     "Package for prefix '%s' not found due to error in lock file",
                                     prefix.c_str());
-        return null;
+        goto done;
 
       case Package::STATE_NOT_FOUND:
         diagnostics()->report_error(error_range,
                                     "Package '%s' for prefix '%s' not found",
                                     import_package.id().c_str(),
                                     prefix.c_str());
-        return null;
+        goto done;
     }
     expected_import_package_id = import_package.id();
     import_path_builder.join(import_package.absolute_path());
     relative_segment_start = import_package.is_sdk_prefix() ? 0 : 1;
     ASSERT(import_path_builder[import_path_builder.length() - 1] != '/');
   }
-
-  Source* result = null;
-  auto result_package = Package::invalid();
 
   if (relative_segment_start == segments.length()) {
     // Something like `import foo` where `foo` is the name of a package.
@@ -1339,7 +1337,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
                             true, // Did find the alternative directory, since we found a package and its 'src' directory.
                             filesystem(),
                             diagnostics());
-      goto segments_done;
+      goto done;
     }
   }
   for (int i = relative_segment_start; i < segments.length(); i++) {
@@ -1367,7 +1365,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
                               filesystem(),
                               diagnostics());
         // Don't return just yet, but give the lsp handler an opportunity to run.
-        goto segments_done;
+        goto done;
       } else {
         // We didn't find the toit file.
         // Keep the toit file path for error reporting.
@@ -1403,7 +1401,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
                                 filesystem(),
                                 diagnostics());
           // Don't return just yet, but give the lsp handler an opportunity to run.
-          goto segments_done;
+          goto done;
         }
       }
     }
@@ -1417,10 +1415,12 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     } else {
       load_result.report_error(import->range(), diagnostics());
       // Don't return just yet, but give the lsp handler an opportunity to run.
-      goto segments_done;
+      goto done;
     }
   }
-  segments_done:
+
+  done:
+
 
   if (lsp_path != null) {
     lsp()->selection_handler()->import_path(lsp_path,
