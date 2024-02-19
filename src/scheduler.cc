@@ -35,11 +35,7 @@
 namespace toit {
 
 // The maximum amount of us a process is allowed to run without preemption.
-#ifdef TOIT_FREERTOS
-const uint64 MAX_RUN_WITHOUT_PREEMPTION_US = 2000000;
-#else
 const uint64 MAX_RUN_WITHOUT_PREEMPTION_US = 10000000;
-#endif
 
 void SchedulerThread::entry() {
   scheduler_->run(this);
