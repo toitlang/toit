@@ -335,29 +335,25 @@ void CompletionHandler::toitdoc_ref(ast::Node* node,
   exit(0);
 }
 
-void CompletionHandler::import_first_segment(Symbol prefix,
-                                             ast::Identifier* segment,
-                                             const Package& current_pkg,
-                                             const PackageLock& package_lock,
-                                             LspProtocol* protocol) {
-  CompletionHandler handler(prefix, current_pkg.id(), null, protocol);
-  current_pkg.list_prefixes([&](const std::string& candidate) {
-    handler.complete(candidate.c_str(), CompletionKind::MODULE);
-  });
-  package_lock.list_sdk_prefixes([&](const std::string& candidate) {
-    handler.complete(candidate.c_str(), CompletionKind::MODULE);
-  });
-  exit(0);
-}
-
-void CompletionHandler::import_path(Symbol prefix,
-                                    const char* path,
-                                    Filesystem* fs,
-                                    LspProtocol* protocol) {
-  CompletionHandler handler(prefix, Package::INVALID_PACKAGE_ID, null, protocol);
-  fs->list_toit_directory_entries(path, [&](const char* candidate, bool is_directory) {
-    handler.complete(candidate, CompletionKind::MODULE);
-  });
+void CompletionHandler::import_path(const char* path,
+                                    const char* segment,
+                                    bool is_first_segment,
+                                    const char* resolved,
+                                    const Package& current_package,
+                                    const PackageLock& package_lock,
+                                    Filesystem* fs) {
+  if (is_first_segment) {
+    current_package.list_prefixes([&](const std::string& candidate) {
+      complete(candidate.c_str(), CompletionKind::MODULE);
+    });
+    package_lock.list_sdk_prefixes([&](const std::string& candidate) {
+      complete(candidate.c_str(), CompletionKind::MODULE);
+    });
+  } else {
+    fs->list_toit_directory_entries(path, [&](const char* candidate, bool is_directory) {
+      complete(candidate, CompletionKind::MODULE);
+    });
+  }
   exit(0);
 }
 
