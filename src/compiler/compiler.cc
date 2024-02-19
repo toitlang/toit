@@ -1208,6 +1208,7 @@ static void _report_failed_import(ast::Import* import,
 Source* Pipeline::_load_import(ast::Unit* unit,
                                ast::Import* import,
                                const PackageLock& package_lock) {
+  fprintf(stderr, "LOAD_IMPORT");
   if (unit->source() == null) FATAL("unit without source");
 
   if (SourceManager::is_virtual_file(unit->absolute_path()) && import->is_relative()) {
@@ -1271,6 +1272,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
       lsp_path = "",
       lsp_segment = module_segment->data().c_str();
       lsp_is_first_segment = true;
+      fprintf(stderr, "current_package: %s\n", unit_package_id.c_str());
     }
     import_package = package_lock.resolve_prefix(unit_package, prefix);
     auto error_range = module_segment->range();
