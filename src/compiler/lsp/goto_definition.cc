@@ -292,7 +292,13 @@ void GotoDefinitionHandler::toitdoc_ref(ast::Node* node,
   exit(0);
 }
 
-void GotoDefinitionHandler::import_path(const char* resolved, LspProtocol* protocol) {
+void GotoDefinitionHandler::import_path(const char* path,
+                                        const char* segment,
+                                        bool is_first_segment,
+                                        const char* resolved,
+                                        const Package& current_package,
+                                        const PackageLock& package_lock,
+                                        Filesystem* fs) {
   if (resolved != null) {
     auto import_range = LspRange {
       .path = resolved,
@@ -301,7 +307,7 @@ void GotoDefinitionHandler::import_path(const char* resolved, LspProtocol* proto
       .to_line= 0,
       .to_column = 0,
     };
-    protocol->goto_definition()->emit(import_range);
+    protocol()->goto_definition()->emit(import_range);
   }
   exit(0);
 }
