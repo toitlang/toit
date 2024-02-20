@@ -160,16 +160,18 @@ func (s *Server) textDocumentCompletion(ctx context.Context, conn *jsonrpc2.Conn
 	// The prefix ends with a '-'. Vscode doesn't like that and assumes that any completion we
 	// give is a new word. We therefore either add a default range (if supported) or run through
 	// all completions and add a textEdit.
-	if cCtx.SupportsCompletionDefaultRange {
-		result := &lsp.CompletionList{
-			IsIncomplete: false,
-			Items:        items,
-			ItemDefaults: lsp.CompletionItemDefaults{
-				EditRange: rng,
-			},
-		}
-		return result, nil
-	}
+	// TODO(florian): completion-range feature is disabled until we can test it on a
+	// real editor. When changing, make sure to update the test and the Toit version.
+	// if cCtx.SupportsCompletionDefaultRange {
+	// 	result := &lsp.CompletionList{
+	// 		IsIncomplete: false,
+	// 		Items:        items,
+	// 		ItemDefaults: lsp.CompletionItemDefaults{
+	// 			EditRange: rng,
+	// 		},
+	// 	}
+	// 	return result, nil
+	// }
 	for i, item := range items {
 		items[i].TextEdit = &lsp.TextEdit{
 			Range:   *rng,

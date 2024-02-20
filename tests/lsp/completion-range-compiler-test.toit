@@ -9,6 +9,9 @@ import system
 main args:
   2.repeat:
     supports-default-range := it == 1
+    // TODO(florian): Default range feature is disabled until we can test it on
+    // a real editor.
+    if supports-default-range: continue.repeat
     pre-initialize := : | _ initialize-param/Map |
       if supports-default-range:
         capabilities := initialize-param.get "capabilities" --init=: {:}
