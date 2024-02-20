@@ -1059,7 +1059,7 @@ jobs:
           ./update_hash.sh
 
       - name: Update .SRCINFO
-        uses: heyhusen/archlinux-package-action@v2.2.1
+        uses: toitlang/archlinux-package-action@main
         with:
           path: toit
           flags: ''
