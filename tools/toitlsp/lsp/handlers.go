@@ -53,6 +53,12 @@ func (s *Server) Initialize(ctx context.Context, conn *jsonrpc2.Conn, req lsp.In
 	if req.RootURI != "" {
 		cCtx.RootURI = uri.Canonicalize(req.RootURI)
 	}
+	for _, v := range req.Capabilities.TextDocument.Completion.CompletionList.ItemDefaults {
+		if v == "editRange" {
+			cCtx.SupportsCompletionDefaultRange = true
+			break
+		}
+	}
 	s.SetContext(conn, cCtx)
 	return &lsp.InitializeResult{
 		Capabilities: lsp.ServerCapabilities{
@@ -142,7 +148,9 @@ func (s *Server) Cancel(ctx context.Context, conn *jsonrpc2.Conn, req lsp.Cancel
 
 // reflectHandler promotes a generic function into a handlerFunc.
 // It assumes a function on the type:
-//  func(ctx context.Context,conn *jsonrpc2.Conn, [param Any], [req *jsonrpc2.Request]) ([result Any],  errr error)
+//
+//	func(ctx context.Context,conn *jsonrpc2.Conn, [param Any], [req *jsonrpc2.Request]) ([result Any],  errr error)
+//
 // if a specific type is used for param the req.Params will be json unmarshalled into the type of param.
 func reflectHandler(fn interface{}) (handleFunc, error) {
 	rv := reflect.ValueOf(fn)
