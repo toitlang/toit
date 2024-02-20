@@ -36,7 +36,7 @@ test client/LspClient:
   cancel-succeeded := false
   while sleep-amount < 1000_000:
     mock-compiler.set-completion-result
-      "SLOW\n$sleep-amount\nfoo\n-1\nbar\n-1\n"
+      "SLOW\n$sleep-amount\n\n0\n0\n0\n0\nfoo\n-1\nbar\n-1\n"
     client.wait-for-idle
 
     completions := client.send-completion-request --uri=uri 1 2 --id-callback=:
@@ -55,7 +55,7 @@ test client/LspClient:
 
   // Now try to cancel a request where we were too slow for the cancel.
   mock-compiler.set-completion-result
-    "foo\n-1\nbar\n-1\n"
+    "\n0\n0\n0\n0\nfoo\n-1\nbar\n-1\n"
   id := null
   completions := client.send-completion-request --uri=uri 1 2 --id-callback=:
     id = it
