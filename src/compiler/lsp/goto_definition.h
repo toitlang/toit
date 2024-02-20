@@ -30,6 +30,18 @@ class GotoDefinitionHandler : public LspSelectionHandler {
       : LspSelectionHandler(protocol)
       , source_manager_(source_manager) {}
 
+  /// Finishes the goto-definition request.
+  ///
+  /// This invokes exit(0).
+  void terminate();
+
+  void import_path(const char* path,
+                   const char* segment,
+                   bool is_first_segment,
+                   const char* resolved,
+                   const Package& current_package,
+                   const PackageLock& package_lock,
+                   Filesystem* fs);
   void class_interface_or_mixin(ast::Node* node,
                                 IterableScope* scope,
                                 ir::Class* holder,

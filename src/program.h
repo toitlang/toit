@@ -278,6 +278,10 @@ class Program : public FlashAllocation {
     friend class Program;
   };
 
+  bool is_valid_bcp(uint8* bcp) const {
+    return bytecodes.data() <= bcp && bcp < bytecodes.data() + bytecodes.length();
+  }
+
   int absolute_bci_from_bcp(uint8* bcp) const;
   uint8* bcp_from_absolute_bci(int absolute_bci) { return &bytecodes.data()[absolute_bci]; }
 

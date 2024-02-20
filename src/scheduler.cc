@@ -35,11 +35,7 @@
 namespace toit {
 
 // The maximum amount of us a process is allowed to run without preemption.
-#ifdef TOIT_FREERTOS
-const uint64 MAX_RUN_WITHOUT_PREEMPTION_US = 2000000;
-#else
 const uint64 MAX_RUN_WITHOUT_PREEMPTION_US = 10000000;
-#endif
 
 void SchedulerThread::entry() {
   scheduler_->run(this);
@@ -912,9 +908,9 @@ void Scheduler::tick(Locker& locker, int64 now) {
       if (us_since_preemption <= MAX_RUN_WITHOUT_PREEMPTION_US) continue;
       fprintf(stderr, "Potential dead-lock detected:\n");
       fprintf(stderr, "  Process: %d\n", process->id());
-      if (process->current_bcp() != 0) {
-        uint8* last_bcp = process->current_bcp();
-        int bci = process->program()->absolute_bci_from_bcp(last_bcp);
+      uint8* current_bcp = process->current_bcp();
+      if (process->program()->is_valid_bcp(current_bcp)) {
+        int bci = process->program()->absolute_bci_from_bcp(current_bcp);
 
         const uint8* uuid = process->program()->id();
         char uuid_buffer[37];
@@ -928,9 +924,9 @@ void Scheduler::tick(Locker& locker, int64 now) {
         fprintf(stderr, "  Program: %s\n", uuid_buffer);
         fprintf(stderr, "  BCI: 0x%x\n", bci);
 
-        if (*last_bcp == Opcode::PRIMITIVE) {
-          int module = last_bcp[1];
-          int index = Utils::read_unaligned_uint16(last_bcp + 2);
+        if (*current_bcp == Opcode::PRIMITIVE) {
+          int module = current_bcp[1];
+          int index = Utils::read_unaligned_uint16(current_bcp + 2);
           printf("  Primitive: %d:%d\n", module, index);
         }
         FATAL("Potential dead-lock");
@@ -939,7 +935,7 @@ void Scheduler::tick(Locker& locker, int64 now) {
     }
     int ready_queue_index = compute_ready_queue_index(process->priority());
     bool is_profiling = any_profiling && process->profiler() != null;
-    bool has_run_too_long = us_since_preemption > MAX_RUN_WITHOUT_PREEMPTION_US * 2 / 3;
+    bool has_run_too_long = us_since_preemption > MAX_RUN_WITHOUT_PREEMPTION_US / 2;
     if (has_run_too_long || is_profiling || ready_queue_index >= first_non_empty_ready_queue) {
       process->signal(Process::PREEMPT);
     }
