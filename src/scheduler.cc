@@ -34,8 +34,9 @@
 
 namespace toit {
 
-// The maximum amount of us a process is allowed to run without preemption.
-const uint64 MAX_RUN_WITHOUT_PREEMPTION_US = 10000000;
+// The maximum amount of us a process is allowed to run without
+// returning to the scheduler.
+const int64 PROCESS_MAX_RUN_TIME_US = 10 * 1000 * 1000;
 
 void SchedulerThread::entry() {
   scheduler_->run(this);
@@ -613,6 +614,7 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
 void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* scheduler_thread) {
   wait_for_any_gc_to_complete(locker, process, Process::RUNNING);
   process->set_scheduler_thread(scheduler_thread);
+  process->set_run_timestamp(OS::get_monotonic_time());
   scheduler_thread->unpin();
 
   ProcessRunner* runner = process->runner();
@@ -627,7 +629,6 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     Interpreter* interpreter = scheduler_thread->interpreter();
     interpreter->activate(process);
     process->set_idle_since_gc(false);
-    process->set_run_timestamp(OS::get_monotonic_time());
     if (process->signals() == 0) {
       Unlocker unlock(locker);
       result = interpreter->run();
@@ -644,10 +645,11 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     result = runner->run();
   }
 
+  process->clear_run_timestamp();
   process->set_scheduler_thread(null);
 
   while (result.state() != Interpreter::Result::TERMINATED) {
-    uint32_t signals = process->signals();
+    uint32 signals = process->signals();
     if (signals == 0) break;
     if (signals & Process::KILL) {
       result = Interpreter::Result(Interpreter::Result::TERMINATED);
@@ -901,20 +903,19 @@ void Scheduler::tick(Locker& locker, int64 now) {
   for (SchedulerThread* thread : threads_) {
     Process* process = thread->interpreter()->process();
     if (process == null) continue;
-    uint64 us_since_preemption = now - process->run_timestamp();
-    if (process->signals() & Process::PREEMPT) {
-      // The process is already suppossed to preempt.
-      // Check whether it is stuck.
-      if (us_since_preemption <= MAX_RUN_WITHOUT_PREEMPTION_US) continue;
+
+    int64 run_time_us = process->run_time_us(now);
+    if (run_time_us > PROCESS_MAX_RUN_TIME_US) {
       fprintf(stderr, "Potential dead-lock detected:\n");
       fprintf(stderr, "  Process: %d\n", process->id());
       uint8* current_bcp = process->current_bcp();
-      if (process->program()->is_valid_bcp(current_bcp)) {
-        int bci = process->program()->absolute_bci_from_bcp(current_bcp);
+      Program* program = process->program();  // External processes have null programs.
+      if (program && program->is_valid_bcp(current_bcp)) {
+        int bci = program->absolute_bci_from_bcp(current_bcp);
 
-        const uint8* uuid = process->program()->id();
+        const uint8* uuid = program->id();
         char uuid_buffer[37];
-        sprintf(uuid_buffer, "%08x-%04x-%04x-%04x-%04x%08x",
+        snprintf(uuid_buffer, sizeof(uuid_buffer), "%08x-%04x-%04x-%04x-%04x%08x",
             static_cast<int>(Utils::read_unaligned_uint32_be(uuid)),
             static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 4)),
             static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 6)),
@@ -933,9 +934,11 @@ void Scheduler::tick(Locker& locker, int64 now) {
       }
       FATAL("Potential dead-lock detected in process %d\n", process->id());
     }
+
+    if (process->signals() & Process::PREEMPT) continue;
     int ready_queue_index = compute_ready_queue_index(process->priority());
     bool is_profiling = any_profiling && process->profiler() != null;
-    bool has_run_too_long = us_since_preemption > MAX_RUN_WITHOUT_PREEMPTION_US / 2;
+    bool has_run_too_long = run_time_us > PROCESS_MAX_RUN_TIME_US / 2;
     if (has_run_too_long || is_profiling || ready_queue_index >= first_non_empty_ready_queue) {
       process->signal(Process::PREEMPT);
     }

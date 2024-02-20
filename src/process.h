@@ -140,7 +140,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   SystemMessage* take_termination_message(uint8 result);
 
-  uint64_t random();
+  uint64 random();
   void random_seed(const uint8* buffer, size_t size);
 
   State state() { return state_; }
@@ -259,13 +259,25 @@ class Process : public ProcessListFromProcessGroup::Element,
     return root_certificates_;
   }
 
-  /// Sets the timestamp for when this process was last preempted.
-  void set_run_timestamp(uint64 timestamp) {
+  // Sets the timestamp for when this process just started running.
+  void set_run_timestamp(int64 timestamp) {
+    ASSERT(state_ == RUNNING);
+    ASSERT(timestamp >= 0);
     run_timestamp_ = timestamp;
   }
 
-  uint64 run_timestamp() const {
-    return run_timestamp_;
+  // Clears the timestamp, so the process will not appear to have
+  // been running for any time at all.
+  void clear_run_timestamp() {
+    ASSERT(state_ == RUNNING);
+    run_timestamp_ = -1;
+  }
+
+  int64 run_time_us(int64 now) const {
+    ASSERT(now >= 0);
+    int64 timestamp = run_timestamp_;
+    ASSERT(state_ == RUNNING || timestamp < 0);
+    return timestamp < 0 ? 0 : (now - timestamp);
   }
 
   // Sets the current BCP variable.
@@ -313,8 +325,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   SystemMessage* termination_message_;
 
   bool random_seeded_;
-  uint64_t random_state0_;
-  uint64_t random_state1_;
+  uint64 random_state0_;
+  uint64 random_state1_;
 
 #if defined(TOIT_WINDOWS)
   const wchar_t* current_directory_;
@@ -339,7 +351,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   ResourceGroupListFromProcess resource_groups_;
 
-  uint64 run_timestamp_ = 0;
+  int64 run_timestamp_ = -1;
   uint8* current_bcp_ = null;
 
   friend class HeapObject;
