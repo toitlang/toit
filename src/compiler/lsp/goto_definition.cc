@@ -27,7 +27,7 @@ void GotoDefinitionHandler::terminate() {
 void GotoDefinitionHandler::_print_range(Source::Range range) {
   if (printed_definitions_.contains(range)) return;
   printed_definitions_.insert(range);
-  protocol()->goto_definition()->emit(range_to_lsp_range(range, source_manager_));
+  protocol()->goto_definition()->emit(range_to_lsp_location(range, source_manager_));
 }
 
 void GotoDefinitionHandler::_print_range(ir::Node* resolved) {
@@ -304,12 +304,14 @@ void GotoDefinitionHandler::import_path(const char* path,
                                         const PackageLock& package_lock,
                                         Filesystem* fs) {
   if (resolved != null) {
-    auto import_range = LspRange {
+    auto import_range = LspLocation {
       .path = resolved,
-      .from_line = 0,
-      .from_column= 0,
-      .to_line= 0,
-      .to_column = 0,
+      .range = {
+        .from_line = 0,
+        .from_column= 0,
+        .to_line= 0,
+        .to_column = 0,
+      },
     };
     protocol()->goto_definition()->emit(import_range);
   }

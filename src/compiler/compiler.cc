@@ -1041,15 +1041,16 @@ Source* CompletionPipeline::_load_file(const char* path, const PackageLock& pack
   }
 
   if (start_offset == offset || !IdentifierValidator::is_identifier_start(text[start_offset])) {
-    handler()->set_prefix(Symbols::empty_string);
+    handler()->set_and_emit_prefix(Symbols::empty_string, result->range(start_offset, start_offset));
   } else {
+    auto range = result->range(start_offset, offset);
     int len = offset - start_offset;
     auto dash_canonicalized = IdentifierValidator::canonicalize(&text[start_offset], len);
     auto canonicalized = symbol_canonicalizer()->canonicalize_identifier(dash_canonicalized, &dash_canonicalized[len]);
     if (canonicalized.kind == Token::Kind::IDENTIFIER) {
-      handler()->set_prefix(canonicalized.symbol);
+      handler()->set_and_emit_prefix(canonicalized.symbol, range);
     } else {
-      handler()->set_prefix(Token::symbol(canonicalized.kind));
+      handler()->set_and_emit_prefix(Token::symbol(canonicalized.kind), range);
     }
   }
   return result;

@@ -107,6 +107,8 @@ class LspServer:
   next-analysis-revision_ := 0
 
   client-supports-configuration_ := false
+  client-supports-completion-range_ := false
+
   /// The settings from the client (or, if not supported, default settings).
   settings_ /Settings := Settings
 
@@ -182,6 +184,11 @@ class LspServer:
   initialize params/InitializeParams -> InitializationResult:
     capabilities := params.capabilities
     client-supports-configuration_ = capabilities.workspace != null and capabilities.workspace.configuration
+    client-supports-completion-range_ = capabilities.text-document and
+        capabilities.text-document.completion and
+        capabilities.text-document.completion.completion-list and
+        capabilities.text-document.completion.completion-list.item-defaults and
+        capabilities.text-document.completion.completion-list.item-defaults.contains "editRange"
     root-uri_ = params.root-uri
     // Process experimental features, some implemented by us.
     if params.capabilities.experimental:
@@ -301,10 +308,25 @@ class LspServer:
       documents_.did-change --uri=uri it.text next-analysis-revision_
     analyze [uri]
 
-  completion params/CompletionParams -> List/*<CompletionItem>*/:
+  completion params/CompletionParams -> any: // Either a List/*<CompletionItem>*/ or a $CompletionList.
     uri := translator_.canonicalize params.text-document.uri
     project-uri := documents_.project-uri-for --uri=uri --recompute
-    return compiler_.complete --project-uri=project-uri uri params.position.line params.position.character
+    compiler_.complete --project-uri=project-uri uri params.position.line params.position.character:
+      | prefix/string edit-range/Range? completions/List |
+      if completions.is-empty: return completions
+      if not prefix.ends-with "-": return completions
+      // The prefix ends with a '-'. Vscode doesn't like that and assumes that any completion we
+      // give is a new word. We therefore either adda default-range, or run through all
+      // completions and add a textEdit.
+      if client-supports-completion-range_:
+        return CompletionList
+            --items=completions
+            --item-defaults=(CompletionItemDefaults --edit-range=edit-range)
+      completions.do: | item/CompletionItem |
+        text-edit := TextEdit --range=edit-range --new-text=item.label
+        item.set-text-edit text-edit
+      return completions
+    unreachable
 
   // TODO(florian): The specification supports a list of locations, or Locationlinks..
   // For now just returns one location.
