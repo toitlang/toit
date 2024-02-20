@@ -36,7 +36,7 @@ namespace toit {
 
 // The maximum amount of us a process is allowed to run without
 // returning to the scheduler.
-const int64 PROCESS_MAX_RUN_TIME_US = 10 * 1000 * 1000;
+static const int64 PROCESS_MAX_RUN_TIME_US = 10 * 1000 * 1000;
 
 void SchedulerThread::entry() {
   scheduler_->run(this);
