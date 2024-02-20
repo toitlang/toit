@@ -26,7 +26,15 @@ namespace toit {
 namespace compiler {
 
 void CompletionHandler::terminate() {
+  ASSERT(prefix_.is_valid());
   exit(0);
+}
+
+void CompletionHandler::set_and_emit_prefix(Symbol prefix, const Source::Range& range) {
+  ASSERT(!prefix_.is_valid());
+  prefix_ = prefix;
+  protocol()->completion()->emit_prefix(prefix.c_str());
+  protocol()->completion()->emit_prefix_range(range_to_lsp_range(range, source_manager_));
 }
 
 void CompletionHandler::class_interface_or_mixin(ast::Node* node,
@@ -478,10 +486,10 @@ void CompletionHandler::complete_if_visible(Symbol name,
 }
 
 void CompletionHandler::complete(const std::string& name, CompletionKind kind) {
-  if (emitted.contains(name)) return;
+  if (emitted_.contains(name)) return;
   // Filter out completions that don't match the prefix.
   if (strncmp(name.c_str(), prefix_.c_str(), strlen(prefix_.c_str())) != 0) return;
-  emitted.insert(name);
+  emitted_.insert(name);
   protocol()->completion()->emit(name, kind);
 }
 

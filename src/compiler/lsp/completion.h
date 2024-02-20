@@ -36,10 +36,7 @@ class CompletionHandler : public LspSelectionHandler {
       : LspSelectionHandler(protocol)
       , source_manager_(source_manager) {}
 
-  void set_prefix(Symbol prefix) {
-    ASSERT(!prefix_.is_valid());
-    prefix_ = prefix;
-  }
+  void set_and_emit_prefix(Symbol prefix, const Source::Range& range);
 
   void set_package_id(const std::string& package_id) {
     package_id_ = package_id;
@@ -124,7 +121,7 @@ class CompletionHandler : public LspSelectionHandler {
   Symbol prefix_ = Symbol::invalid();
   std::string package_id_ = std::string(Package::INVALID_PACKAGE_ID);
   SourceManager* source_manager_;
-  UnorderedSet<std::string> emitted;
+  UnorderedSet<std::string> emitted_;
 };
 
 } // namespace toit::compiler

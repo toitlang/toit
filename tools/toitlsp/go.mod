@@ -29,4 +29,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/sourcegraph/go-lsp => github.com/toitware/go-lsp v0.0.0-20210105143647-eaf37e31f21d
+replace github.com/sourcegraph/go-lsp => github.com/toitware/go-lsp v0.0.0-20240220075859-6b0ca01316f0

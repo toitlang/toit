@@ -131,7 +131,8 @@ func (s *Server) textDocumentDefinition(ctx context.Context, conn *jsonrpc2.Conn
 	return res, nil
 }
 
-func (s *Server) textDocumentCompletion(ctx context.Context, conn *jsonrpc2.Conn, req lsp.CompletionParams) ([]lsp.CompletionItem, error) {
+// textDocumentCompletion returns either a list of CompletionItems or a CompletionList.
+func (s *Server) textDocumentCompletion(ctx context.Context, conn *jsonrpc2.Conn, req lsp.CompletionParams) (any, error) {
 	req.TextDocument.URI = uri.Canonicalize(req.TextDocument.URI)
 	if err := s.WaitUntilReady(ctx, conn); err != nil {
 		return nil, err
@@ -142,7 +143,7 @@ func (s *Server) textDocumentCompletion(ctx context.Context, conn *jsonrpc2.Conn
 		return nil, err
 	}
 	compiler := s.createCompiler(cCtx)
-	res, err := compiler.Complete(ctx, projectURI, req.TextDocument.URI, req.Position)
+	prefix, rng, items, err := compiler.Complete(ctx, projectURI, req.TextDocument.URI, req.Position)
 	if err != nil {
 		return nil, s.handleCompilerError(ctx, handleCompilerErrorOptions{
 			Conn:     conn,
@@ -150,7 +151,32 @@ func (s *Server) textDocumentCompletion(ctx context.Context, conn *jsonrpc2.Conn
 			Compiler: compiler,
 		})
 	}
-	return res, nil
+	if len(items) == 0 {
+		return items, nil
+	}
+	if !strings.HasSuffix(prefix, "-") {
+		return items, nil
+	}
+	// The prefix ends with a '-'. Vscode doesn't like that and assumes that any completion we
+	// give is a new word. We therefore either add a default range (if supported) or run through
+	// all completions and add a textEdit.
+	if cCtx.SupportsCompletionDefaultRange {
+		result := &lsp.CompletionList{
+			IsIncomplete: false,
+			Items:        items,
+			ItemDefaults: lsp.CompletionItemDefaults{
+				EditRange: rng,
+			},
+		}
+		return result, nil
+	}
+	for i, item := range items {
+		items[i].TextEdit = &lsp.TextEdit{
+			Range:   *rng,
+			NewText: item.Label,
+		}
+	}
+	return items, nil
 }
 
 func (s *Server) textDocumentSymbol(ctx context.Context, conn *jsonrpc2.Conn, req lsp.DocumentSymbolParams) ([]lsp.DocumentSymbol, error) {
