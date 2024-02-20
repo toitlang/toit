@@ -935,7 +935,7 @@ void Scheduler::tick(Locker& locker, int64 now) {
     }
     int ready_queue_index = compute_ready_queue_index(process->priority());
     bool is_profiling = any_profiling && process->profiler() != null;
-    bool has_run_too_long = us_since_preemption > MAX_RUN_WITHOUT_PREEMPTION_US * 2 / 3;
+    bool has_run_too_long = us_since_preemption > MAX_RUN_WITHOUT_PREEMPTION_US / 2;
     if (has_run_too_long || is_profiling || ready_queue_index >= first_non_empty_ready_queue) {
       process->signal(Process::PREEMPT);
     }
