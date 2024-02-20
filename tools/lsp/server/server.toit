@@ -315,7 +315,7 @@ class LspServer:
       | prefix/string edit-range/Range? completions/List |
       if completions.is-empty: return completions
       if not prefix.ends-with "-": return completions
-      // The prefix ends with a '-'. Vscode doesn't like that and assumes that any completion we
+      // The prefix ends with a '-'. VS Code doesn't like that and assumes that any completion we
       // give is a new word. We therefore either adda default-range, or run through all
       // completions and add a textEdit.
       if client-supports-completion-range_:
