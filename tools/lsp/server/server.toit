@@ -318,7 +318,9 @@ class LspServer:
       // The prefix ends with a '-'. VS Code doesn't like that and assumes that any completion we
       // give is a new word. We therefore either adda default-range, or run through all
       // completions and add a textEdit.
-      if client-supports-completion-range_:
+      // TODO(florian): completion-range feature is disabled until we can test it on a
+      // real editor. When changing, make sure to update the test and the Go version.
+      if false and client-supports-completion-range_:
         return CompletionList
             --items=completions
             --item-defaults=(CompletionItemDefaults --edit-range=edit-range)
