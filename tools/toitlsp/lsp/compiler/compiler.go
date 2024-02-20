@@ -165,7 +165,7 @@ func (c *Compiler) GotoDefinition(ctx context.Context, projectURI lsp.DocumentUR
 	return res.result, res.err
 }
 
-func (c *Compiler) Complete(ctx context.Context, projectURI lsp.DocumentURI, docURI lsp.DocumentURI, position lsp.Position) ([]lsp.CompletionItem, error) {
+func (c *Compiler) Complete(ctx context.Context, projectURI lsp.DocumentURI, docURI lsp.DocumentURI, position lsp.Position) (string, *lsp.Range, []lsp.CompletionItem, error) {
 	ctx, cancel := c.ctx(ctx)
 	defer cancel()
 
@@ -173,17 +173,19 @@ func (c *Compiler) Complete(ctx context.Context, projectURI lsp.DocumentURI, doc
 
 	var res struct {
 		err    error
+		prefix string
+		range_ *lsp.Range
 		result []lsp.CompletionItem
 	}
 
 	err := c.run(ctx, projectURI, fmt.Sprintf("COMPLETE\n%s\n%d\n%d\n", path, position.Line, position.Character), func(ctx context.Context, stdout io.Reader) {
-		res.result, res.err = c.parser.CompleteOutput(stdout)
+		res.prefix, res.range_, res.result, res.err = c.parser.CompleteOutput(stdout)
 	})
 	if err != nil {
-		return nil, err
+		return "", nil, nil, err
 	}
 
-	return res.result, res.err
+	return res.prefix, res.range_, res.result, res.err
 }
 
 func (c *Compiler) SemanticTokens(ctx context.Context, projectURI lsp.DocumentURI, docURI lsp.DocumentURI) (*lsp.SemanticTokens, error) {
