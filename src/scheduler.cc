@@ -910,9 +910,7 @@ void Scheduler::tick(Locker& locker, int64 now) {
       fprintf(stderr, "  Process: %d\n", process->id());
       uint8* current_bcp = process->current_bcp();
       Program* program = process->program();  // External processes have null programs.
-      if (program && program->is_valid_bcp(current_bcp)) {
-        int bci = program->absolute_bci_from_bcp(current_bcp);
-
+      if (program) {
         const uint8* uuid = program->id();
         char uuid_buffer[37];
         snprintf(uuid_buffer, sizeof(uuid_buffer), "%08x-%04x-%04x-%04x-%04x%08x",
@@ -923,12 +921,16 @@ void Scheduler::tick(Locker& locker, int64 now) {
             static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 10)),
             static_cast<int>(Utils::read_unaligned_uint32_be(uuid + 12)));
         fprintf(stderr, "  Program: %s\n", uuid_buffer);
-        fprintf(stderr, "  BCI: 0x%x\n", bci);
 
-        if (*current_bcp == Opcode::PRIMITIVE) {
-          int module = current_bcp[1];
-          int index = Utils::read_unaligned_uint16(current_bcp + 2);
-          printf("  Primitive: %d:%d\n", module, index);
+        if (program->is_valid_bcp(current_bcp)) {
+          int bci = program->absolute_bci_from_bcp(current_bcp);
+          fprintf(stderr, "  BCI: 0x%x\n", bci);
+
+          if (*current_bcp == Opcode::PRIMITIVE) {
+            int module = current_bcp[1];
+            int index = Utils::read_unaligned_uint16(current_bcp + 2);
+            printf("  Primitive: %d:%d\n", module, index);
+          }
         }
         FATAL("Potential dead-lock");
       }
