@@ -141,30 +141,39 @@ AlignedMemory::~AlignedMemory() {
 
 // The normal way to get an aligned address is to round up
 // the allocation size, then discard the unaligned ends.  Here
-// we try something slightly different: We try to get an allocation
+// we first try something slightly different: We try to get an allocation
 // near the unaligned one.  (If that fails we'll try random
 // addresses.)
-static void* try_grab_aligned(void* suggestion, uword size) {
+static void* grab_aligned(void* suggestion, uword size) {
   ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
   void* result = OS::grab_virtual_memory(suggestion, size);
   if (result == null) return result;
-  uword numeric_address = reinterpret_cast<uword>(result);
-  uword rounded = Utils::round_up(numeric_address, TOIT_PAGE_SIZE);
-  if (numeric_address == rounded) return result;
+  void* rounded = Utils::round_up(result, TOIT_PAGE_SIZE);
+  if (result == rounded) return result;
   // If we got an allocation that was not toit-page-aligned,
   // then it's a pretty good guess that the next few aligned
   // addresses might work.
   OS::ungrab_virtual_memory(result, size);
   uword increment = size;
   for (int i = 0; i < 16; i++) {
-    void* next_suggestion = reinterpret_cast<void*>(rounded);
-    result = OS::grab_virtual_memory(next_suggestion, size);
-    if (result == next_suggestion) return result;
+    result = OS::grab_virtual_memory(rounded, size);
+    if (result == rounded) return result;
     if (result) OS::ungrab_virtual_memory(result, size);
-    rounded += increment;
+    rounded = Utils::void_add(rounded, increment);
     if ((i & 3) == 3) increment *= 2;
   }
-  return OS::grab_virtual_memory(reinterpret_cast<void*>(rounded), size);
+  // Were not able to get an aligned address, so lets bump the size
+  // and discard the unaligned ends.
+  result = OS::grab_virtual_memory(null, size + TOIT_PAGE_SIZE);
+  void* start = Utils::round_up(result, TOIT_PAGE_SIZE);
+  uword extra_at_start = Utils::void_sub(start, result);
+  uword extra_at_end = TOIT_PAGE_SIZE - extra_at_start;
+  if (extra_at_start) OS::ungrab_virtual_memory(result, extra_at_start);
+  if (extra_at_end) {
+    void* end = Utils::void_add(start, size);
+    OS::ungrab_virtual_memory(end, extra_at_end);
+  }
+  return start;
 }
 
 OS::HeapMemoryRange OS::single_range_ = { 0 };
@@ -186,31 +195,13 @@ void* OS::allocate_pages(uword size) {
   // First attempt, use a recently freed address.
   void* result = null;
   if (recently_freed_index != 0) {
-    result = try_grab_aligned(recently_freed[--recently_freed_index], size);
+    result = grab_aligned(recently_freed[--recently_freed_index], size);
   }
   if (result == null) {
     // Second attempt, let the OS pick a location.
-    result = try_grab_aligned(null, size);
-    if (result == null) return null;
+    result = grab_aligned(null, size);
   }
-  uword numeric_address = reinterpret_cast<uword>(result);
-  uword result_end = numeric_address + size;
-  int attempt = 0;
-  while (result < single_range_.address ||
-         result_end > reinterpret_cast<uword>(single_range_.address) + single_range_.size ||
-         numeric_address != Utils::round_up(numeric_address, TOIT_PAGE_SIZE)) {
-    if (attempt++ > 20) FATAL("Out of memory (cannot allocate pages)");
-    // We did not get a result in the right range.
-    // Try to use a random address in the right range.
-    ungrab_virtual_memory(result, size);
-    uword mask = MAX_HEAP - 1;
-    uword r = rand();
-    r <<= TOIT_PAGE_SIZE_LOG2;  // Do this on a separate line so that it is done on a word-sized integer.
-    uword suggestion = reinterpret_cast<uword>(single_range_.address) + (r & mask);
-    result = try_grab_aligned(reinterpret_cast<void*>(suggestion), size);
-    numeric_address = reinterpret_cast<uword>(result);
-    result_end = numeric_address + size;
-  }
+  if (result == null) return null;
   use_virtual_memory(result, original_size);
   return result;
 }
@@ -239,7 +230,11 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
     // be the last MAX_HEAP of the address space.
     single_range_.address = reinterpret_cast<void*>(-static_cast<word>(MAX_HEAP + TOIT_PAGE_SIZE));
   } else {
+#if defined(TOIT_LINUX) and defined(BUILD_64)
+    uword from = addr - 3 * (MAX_HEAP / 4);
+#else
     uword from = addr - MAX_HEAP / 2;
+#endif
 #if defined(TOIT_DARWIN) && defined(BUILD_64)
     uword to = from + MAX_HEAP;
     // On macOS, we never get addresses in the first 4Gbytes, in order to flush
