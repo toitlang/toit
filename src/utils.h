@@ -125,6 +125,18 @@ class Utils {
     return round_down(x + n - 1, n);
   }
 
+  static inline void* round_up(void* p, int n) {
+    return reinterpret_cast<void*>(round_up(reinterpret_cast<uword>(p), n));
+  }
+
+  static inline void* void_add(void* x, uword y) {
+    return reinterpret_cast<void*>(reinterpret_cast<uword>(x) + y);
+  }
+
+  static inline uword void_sub(void* x, void* y) {
+    return reinterpret_cast<uword>(x) - reinterpret_cast<uword>(y);
+  }
+
   // Implementation is from "Hacker's Delight" by Henry S. Warren, Jr.,
   // figure 3-3, page 48, where the function is called clp2.
   template<typename T>

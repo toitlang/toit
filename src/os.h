@@ -235,7 +235,7 @@ class OS {
   // Allocate/free some pages of memory.  They will be within the range
   // returned by get_heap_memory_range.
   static void* allocate_pages(uword size);
-  static void free_pages(void* address, uword size);
+  static void free_pages(void* address, uword size, bool try_reuse = true);
 
   static Block* allocate_block();
   static void free_block(Block* block);

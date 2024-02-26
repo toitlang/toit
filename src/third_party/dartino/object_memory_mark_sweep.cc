@@ -107,11 +107,6 @@ uword OldSpace::allocate_in_new_chunk(uword size) {
 
     if (chunk_size <= max_expansion) {
       Chunk* chunk = allocate_and_use_chunk(chunk_size);
-      while (chunk == null && chunk_size > TOIT_PAGE_SIZE && chunk_size >= min_space_needed) {
-        // If we fail to get a multi-page chunk, try for a smaller chunk.
-        chunk_size = Utils::round_up(chunk_size >> 1, TOIT_PAGE_SIZE);
-        chunk = allocate_and_use_chunk(chunk_size);
-      }
       if (chunk != null) {
         return allocate(size);
       } else {
