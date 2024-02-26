@@ -78,6 +78,7 @@ void OldSpace::use_whole_chunk(Chunk* chunk) {
 }
 
 Chunk* OldSpace::allocate_and_use_chunk(uword size) {
+  printf("allocate_and_use_chunk %dk\n", (int)(size >> 10));
   Chunk* chunk = ObjectMemory::allocate_chunk(this, size);
   if (chunk != null) {
     // Link it into the space.
@@ -107,11 +108,6 @@ uword OldSpace::allocate_in_new_chunk(uword size) {
 
     if (chunk_size <= max_expansion) {
       Chunk* chunk = allocate_and_use_chunk(chunk_size);
-      while (chunk == null && chunk_size > TOIT_PAGE_SIZE && chunk_size >= min_space_needed) {
-        // If we fail to get a multi-page chunk, try for a smaller chunk.
-        chunk_size = Utils::round_up(chunk_size >> 1, TOIT_PAGE_SIZE);
-        chunk = allocate_and_use_chunk(chunk_size);
-      }
       if (chunk != null) {
         return allocate(size);
       } else {
@@ -604,16 +600,13 @@ uword OldSpace::sweep() {
   end_of_chunk:
     // Repair sentinel in case it was zapped by a marking bitmap.
     *reinterpret_cast<Object**>(end - WORD_SIZE) = chunk_end_sentinel();
-#ifdef TOIT_DEBUG
     validate_sweep(chunk);
-#endif
     GcMetadata::clear_mark_bits_for_chunk(chunk);
     return false;  // Keep chunk in space.
   });
   return used << WORD_SIZE_LOG_2;
 }
 
-#ifdef TOIT_DEBUG
 // Check that all dead objects are replaced with freelist objects and
 // that starts point at valid iteration points.
 void OldSpace::validate_sweep(Chunk* chunk) {
@@ -664,6 +657,7 @@ void OldSpace::validate() {
   for (auto chunk : chunk_list_) {
     uword base = chunk->start();
     uword limit = chunk->end();
+    printf("Chunk %dG %dM %dk %d, %dk\n", (int)(base >> 30), (int)((base >> 20) & 1023), (int)((base >> 10) & 1023), (int)(base & 1023), (int)((limit - base) >> 10));
     uint8* starts = GcMetadata::starts_for(base);
     for (uword card = base; card < limit;
          card += GcMetadata::CARD_SIZE, starts++) {
@@ -694,7 +688,6 @@ void OldSpace::validate() {
     ASSERT(current == chunk->end() - WORD_SIZE);
   }
 }
-#endif
 
 void MarkingStack::empty(RootCallback* visitor) {
   while (!is_empty()) {

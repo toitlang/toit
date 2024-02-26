@@ -168,6 +168,7 @@ static void* grab_aligned(void* suggestion, uword size) {
   void* start = Utils::round_up(result, TOIT_PAGE_SIZE);
   uword extra_at_start = Utils::void_sub(start, result);
   uword extra_at_end = TOIT_PAGE_SIZE - extra_at_start;
+  printf("Used padding, got %p\n", result);
   if (extra_at_start) OS::ungrab_virtual_memory(result, extra_at_start);
   if (extra_at_end) {
     void* end = Utils::void_add(start, size);
@@ -195,7 +196,10 @@ void* OS::allocate_pages(uword size) {
   // First attempt, use a recently freed address.
   void* result = null;
   if (recently_freed_index != 0) {
+    uword t = reinterpret_cast<uword>(recently_freed[recently_freed_index - 1]);
     result = grab_aligned(recently_freed[--recently_freed_index], size);
+    printf("Trying to reuse %dG %dM %dk %dk (%dk) (%s)\n", (int)(t >> 30), (int)(t >> 20) & 1023, (int)(t >> 10) & 1023, (int)(t & 1023), (int)(size >> 10),
+      result == (void*)t ? "success" : result ? "other" : "null");
   }
   if (result == null) {
     // Second attempt, let the OS pick a location.
@@ -206,11 +210,13 @@ void* OS::allocate_pages(uword size) {
   return result;
 }
 
-void OS::free_pages(void* address, uword size) {
+void OS::free_pages(void* address, uword size, bool try_reuse) {
   Locker locker(OS::resource_mutex());
-  if (recently_freed_index < RECENTLY_FREED_SIZE) {
+  if (try_reuse && recently_freed_index < RECENTLY_FREED_SIZE) {
     recently_freed[recently_freed_index++] = address;
   }
+  uword a = (uword)address;
+  printf("Ungrabbing %dG %dM %dk %d (%dk)\n", (int)(a >> 30), (int)(a >> 20) & 1023, (int)(a >> 10) & 1023, (int)(a & 1023), (int)(size >> 10));
   ungrab_virtual_memory(address, size);
 }
 
@@ -231,6 +237,8 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
     single_range_.address = reinterpret_cast<void*>(-static_cast<word>(MAX_HEAP + TOIT_PAGE_SIZE));
   } else {
 #if defined(TOIT_LINUX) and defined(BUILD_64)
+    printf("First addr = %p\n", (void*)addr);
+    printf("First addr = %dG %dM %dk %d\n", (int)(addr >> 30), (int)(addr >> 20) & 1023, (int)(addr >> 10) & 1023, (int)(addr & 1023));
     uword from = addr - 3 * (MAX_HEAP / 4);
 #else
     uword from = addr - MAX_HEAP / 2;

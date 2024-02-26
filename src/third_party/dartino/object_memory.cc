@@ -240,7 +240,8 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
     if (memory == null ||
         (GcMetadata::in_metadata_range(memory) &&
          GcMetadata::in_metadata_range(reinterpret_cast<uword>(memory) + size - 1))) {
-      for (int j = 0; j < i; j++) OS::free_pages(unusable_pages[j], size);
+      const bool try_reuse = false;
+      for (int j = 0; j < i; j++) OS::free_pages(unusable_pages[j], size, try_reuse);
       if (i > 10) printf("Took %d tries.\n", i);
       return allocate_chunk_helper(owner, size, memory);
     }
@@ -248,7 +249,12 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   }
   fprintf(stderr, "New allocation %p-%p\n", unusable_pages[0], unvoid_cast<char*>(unusable_pages[0]) + size);
   fprintf(stderr, "Metadata range %p-%p\n", reinterpret_cast<void*>(lowest), reinterpret_cast<uint8*>(lowest) + GcMetadata::heap_extent());
-  FATAL("Toit heap outside expected range");
+  fprintf(stderr, "Metadata lowst %dG %dM %dk %dk\n", (int)(lowest >> 30), (int)(lowest >> 20) & 1023, (int)(lowest >> 10) & 1023, (int)(lowest & 1023));
+  uword highest = lowest + GcMetadata::heap_extent();
+  fprintf(stderr, "Metadata hghst %dG %dM %dk %dk\n", (int)(highest >> 30), (int)(highest >> 20) & 1023, (int)(highest >> 10) & 1023, (int)(highest & 1023));
+  const bool try_reuse = false;
+  for (int j = 0; j < UNUSABLE_SIZE; j++) OS::free_pages(unusable_pages[j], size, try_reuse);
+  return allocate_chunk_helper(owner, size, null);
 }
 
 

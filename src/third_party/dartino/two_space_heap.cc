@@ -142,10 +142,6 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
   old_space()->flush();
   from->flush();
 
-#ifdef TOIT_DEBUG
-  if (Flags::validate_heap) validate();
-#endif
-
   uword old_used = old_space()->used();
   word old_external = process_heap_->external_memory();
   word from_used;
@@ -214,7 +210,7 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
     swap_semi_spaces(*from, *to);
   }
 
-  if (Flags::tracegc) {
+  if (Flags::tracegc && false) {
     uint64 end = OS::get_monotonic_time();
     int f = from_used;
     int t = to_used;
@@ -299,12 +295,10 @@ GcType TwoSpaceHeap::collect_old_space_if_needed(bool force_compact, bool force)
   return collect_old_space(force_compact);
 }
 
-#ifdef TOIT_DEBUG
 void TwoSpaceHeap::validate() {
   new_space()->validate();
   old_space()->validate();
 }
-#endif
 
 GcType TwoSpaceHeap::collect_old_space(bool force_compact) {
 
@@ -358,11 +352,9 @@ GcType TwoSpaceHeap::collect_old_space(bool force_compact) {
 
   old_space()->set_promotion_failed(false);
 
-#ifdef TOIT_DEBUG
   if (Flags::validate_heap) {
     validate();
   }
-#endif
 
   return compacted ? COMPACTING_GC : FULL_GC;
 }
@@ -401,9 +393,7 @@ bool TwoSpaceHeap::perform_garbage_collection(bool force_compact) {
     sweep_heap();
   }
 
-#ifdef TOIT_DEBUG
   if (Flags::validate_heap) validate();
-#endif
 
   return compact;
 }

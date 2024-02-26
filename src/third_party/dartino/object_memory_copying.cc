@@ -59,7 +59,6 @@ void SemiSpace::flush() {
   }
 }
 
-#ifdef TOIT_DEBUG
 void SemiSpace::validate() {
   // Iterate all objects, checking their size makes sense.
   for (auto chunk : chunk_list_) {
@@ -112,7 +111,6 @@ void Space::validate_before_mark_sweep(PageType expected_page_type, bool object_
     }
   }
 }
-#endif
 
 bool SemiSpace::is_alive(HeapObject* old_location) {
   // If we are doing a scavenge and are asked whether an old-space object is
