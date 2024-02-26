@@ -19,12 +19,14 @@
 namespace toit {
 
 class Program;
+class Process;
 
 class GcMetadata {
  public:
   static void set_up();
-  static void tear_down();
-  static void get_metadata_extent(uword* address_return, uword* size_return);
+  void set_up_instance();
+  void tear_down();
+  void get_metadata_extent(uword* address_return, uword* size_return);
 
   // When calculating the locations of compacted objects we want to use the
   // object starts array, which is arranged in card sizes for the remembered
@@ -48,175 +50,102 @@ class GcMetadata {
   // One word per uint32 of mark bits, corresponding to 32 words of heap.
   static const int CUMULATIVE_MARK_BITS_SHIFT = 5;
 
-  static void initialize_starts_for_chunk(const Chunk* chunk, uword only_above = 0) {
-    uword start = chunk->start();
-    uword end = chunk->end();
-    if (only_above >= end) return;
-    if (only_above > start) {
-      ASSERT(only_above % CARD_SIZE == 0);
-      start = only_above;
-    }
-    ASSERT(in_metadata_range(start));
-    uint8* from = starts_for(start);
-    uint8* to = starts_for(end);
-    memset(from, NO_OBJECT_START, to - from);
-  }
+  void initialize_starts_for_chunk(const Chunk* chunk, uword only_above = 0);
 
-  static void initialize_remembered_set_for_chunk(const Chunk* chunk, uword only_above = 0) {
-    uword start = chunk->start();
-    uword end = chunk->end();
-    if (only_above >= end) return;
-    if (only_above > start) {
-      ASSERT(only_above % CARD_SIZE == 0);
-      start = only_above;
-    }
-    ASSERT(in_metadata_range(start));
-    uint8* from = remembered_set_for(start);
-    uint8* to = remembered_set_for(end);
-    memset(from, GcMetadata::NO_NEW_SPACE_POINTERS, to - from);
-  }
+  void initialize_remembered_set_for_chunk(const Chunk* chunk, uword only_above = 0);
 
-  static void initialize_overflow_bits_for_chunk(const Chunk* chunk) {
-    ASSERT(in_metadata_range(chunk->start()));
-    uint8* from = overflow_bits_for(chunk->start());
-    uint8* to = overflow_bits_for(chunk->end());
-    memset(from, 0, to - from);
-  }
+  void initialize_overflow_bits_for_chunk(const Chunk* chunk);
 
-  static void clear_mark_bits_for_chunk(const Chunk* chunk) {
-    ASSERT(in_metadata_range(chunk->start()));
-    uword base = chunk->start();
-    uword size = chunk->size() >> MARK_BITS_SHIFT;
-    base = (base >> MARK_BITS_SHIFT) + singleton_.mark_bits_bias_;
-    memset(reinterpret_cast<uint8*>(base), 0, size);
-  }
+  void clear_mark_bits_for_chunk(const Chunk* chunk);
 
   // On virtual memory systems (non-embedded) we have to map the
   // pages needed for heap metadata when we allocate the
   // corresponding chunk.
-  static void map_metadata_for_chunk(Chunk* chunk) {
-    ASSERT(in_metadata_range(chunk->start()));
-    uword base = chunk->start();
-    uword mark_size = chunk->size() >> MARK_BITS_SHIFT;
-    // When checking if one-word objects are black we may look one bit into the
-    // next page.  Add one to the area to account for this possibility.
-    mark_size++;
-    uword mark_bits = (base >> MARK_BITS_SHIFT) + singleton_.mark_bits_bias_;
-    round_metadata_extent(&mark_bits, &mark_size);
-    bool ok = OS::use_virtual_memory(reinterpret_cast<void*>(mark_bits), mark_size);
-    if (ok) {
-      uword cumulative_mark_bits = (base >> CUMULATIVE_MARK_BITS_SHIFT) + singleton_.cumulative_mark_bits_bias_;
-      uword cumulative_mark_size = chunk->size() >> CUMULATIVE_MARK_BITS_SHIFT;
-      round_metadata_extent(&cumulative_mark_bits, &cumulative_mark_size);
-      ok = OS::use_virtual_memory(reinterpret_cast<void*>(cumulative_mark_bits), cumulative_mark_size);
-    }
-    if (!ok) FATAL("Out of memory when mapping heap metadata");
-  }
+  void map_metadata_for_chunk(Chunk* chunk);
 
-  // Avoid too many fragments of virtual memory with different permissions by
-  // rounding up the area to be unprotected.  We choose 2MB as the granularity
-  // in order to take advantage of huge pages.
-  static void round_metadata_extent(uword* address, uword* size) {
-#ifdef TOIT_FREERTOS
-    return;
-#endif
-    uword start = reinterpret_cast<uword>(singleton_.metadata_);
-    uword end = reinterpret_cast<uword>(singleton_.metadata_) + singleton_.metadata_size_;
-    uword old_address = *address;
-    *address = Utils::max(start, Utils::round_down(old_address, 2 * MB));
-    *size = Utils::min(end - *address, Utils::round_up(old_address + *size, 2 * MB) - *address);
-  }
-
-  static void mark_pages_for_chunk(Chunk* chunk, PageType page_type) {
-    map_metadata_for_chunk(chunk);
-    uword index = chunk->start() - singleton_.lowest_address_;
-    if (index >= singleton_.heap_extent_) return;
-    uword size = chunk->size() >> TOIT_PAGE_SIZE_LOG2;
-    memset(singleton_.page_type_bytes_ + (index >> TOIT_PAGE_SIZE_LOG2),
-           page_type, size);
-  }
+  void mark_pages_for_chunk(Chunk* chunk, PageType page_type);
 
   // Safe to call with any object, even a Smi.
-  static INLINE PageType get_page_type(const Object* object) {
+  INLINE PageType get_page_type(const Object* object) {
     uword addr = reinterpret_cast<uword>(object);
     uword offset = addr >> 1 | addr << (8 * sizeof(uword) - 1);
-    offset -= singleton_.heap_start_munged_;
-    if (offset >= singleton_.heap_extent_munged_) return UNKNOWN_SPACE_PAGE;
+    offset -= heap_start_munged_;
+    if (offset >= heap_extent_munged_) return UNKNOWN_SPACE_PAGE;
     return static_cast<PageType>(
-        singleton_.page_type_bytes_[offset >> (TOIT_PAGE_SIZE_LOG2 - 1)]);
+        page_type_bytes_[offset >> (TOIT_PAGE_SIZE_LOG2 - 1)]);
   }
 
   // Only safe with an actual address of an old-space or new-space object.
-  static inline PageType get_page_type(uword addr) {
+  inline PageType get_page_type(uword addr) {
     ASSERT((addr & 1) == 0);
-    addr -= singleton_.lowest_address_;
-    ASSERT(addr < singleton_.heap_extent_);
+    addr -= lowest_address_;
+    ASSERT(addr < heap_extent_);
     return static_cast<PageType>(
-        singleton_.page_type_bytes_[addr >> TOIT_PAGE_SIZE_LOG2]);
+        page_type_bytes_[addr >> TOIT_PAGE_SIZE_LOG2]);
   }
 
   // Safe to call with any object, even a Smi.
-  static INLINE bool in_new_or_old_space(Object* object) {
+  INLINE bool in_new_or_old_space(Object* object) {
     PageType page_type = get_page_type(object);
     return page_type != UNKNOWN_SPACE_PAGE;
   }
 
-  static inline uint8* starts_for(uword address) {
+  inline uint8* starts_for(uword address) {
     ASSERT(in_metadata_range(address));
     return reinterpret_cast<uint8*>((address >> CARD_SIZE_LOG_2) +
-                                    singleton_.starts_bias_);
+                                    starts_bias_);
   }
 
-  static inline uint8* remembered_set_for(HeapObject* object) {
+  inline uint8* remembered_set_for(HeapObject* object) {
     return remembered_set_for(reinterpret_cast<uword>(object));
   }
 
-  static inline const uint8* remembered_set_for(const HeapObject* object) {
+  inline const uint8* remembered_set_for(const HeapObject* object) {
     return remembered_set_for(reinterpret_cast<uword>(object));
   }
 
-  static inline uint8* remembered_set_for(uword address) {
+  inline uint8* remembered_set_for(uword address) {
     ASSERT(in_metadata_range(address));
     return reinterpret_cast<uint8*>((address >> CARD_SIZE_LOG_2) +
-                                    singleton_.remembered_set_bias_);
+                                    remembered_set_bias_);
   }
 
-  static inline uint8* overflow_bits_for(uword address) {
+  inline uint8* overflow_bits_for(uword address) {
     ASSERT(in_metadata_range(address));
     return reinterpret_cast<uint8*>((address >> CARD_SIZE_IN_BITS_LOG_2) +
-                                    singleton_.overflow_bits_bias_);
+                                    overflow_bits_bias_);
   }
 
-  static INLINE uword bytewise_mark_bits_for(HeapObject* object) {
+  INLINE uword bytewise_mark_bits_for(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     ASSERT(in_metadata_range(address));
-    return singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT);
+    return mark_bits_bias_ + (address >> MARK_BITS_SHIFT);
   }
 
-  static INLINE uint32* mark_bits_for(uword address) {
+  INLINE uint32* mark_bits_for(uword address) {
     ASSERT(in_metadata_range(address));
-    uword result = (singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT)) & ~3;
+    uword result = (mark_bits_bias_ + (address >> MARK_BITS_SHIFT)) & ~3;
     return reinterpret_cast<uint32*>(result);
   }
 
-  static INLINE uint32* mark_bits_for(HeapObject* object) {
+  INLINE uint32* mark_bits_for(HeapObject* object) {
     return mark_bits_for(reinterpret_cast<uword>(object));
   }
 
-  static INLINE int word_index_in_line(HeapObject* object) {
+  INLINE int word_index_in_line(HeapObject* object) {
     return (reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31;
   }
 
-  static INLINE uword* cumulative_mark_bits_for(HeapObject* object) {
+  INLINE uword* cumulative_mark_bits_for(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     ASSERT(in_metadata_range(address));
-    uword result = (singleton_.cumulative_mark_bits_bias_ +
+    uword result = (cumulative_mark_bits_bias_ +
                     (address >> CUMULATIVE_MARK_BITS_SHIFT)) &
                    ~(sizeof(uword) - 1);
     return reinterpret_cast<uword*>(result);
   }
 
-  static INLINE uword* cumulative_mark_bits_for(uword address) {
+  INLINE uword* cumulative_mark_bits_for(uword address) {
     ASSERT(in_metadata_range(address));
     return cumulative_mark_bits_for(reinterpret_cast<HeapObject*>(address));
   }
@@ -226,31 +155,13 @@ class GcMetadata {
     Destination(ChunkListIterator it, uword a, uword l)
         : address(a), limit(l), it_(it) {}
 
-    Destination(ChunkListIterator it, ChunkListIterator end)
-        : address(it == end ? 0 : it->start()),
-          limit(it == end ? 0 : it->compaction_top()),
-          it_(it) {}
+    Destination(ChunkListIterator it, ChunkListIterator end);
 
     Chunk* chunk() { return *it_; }
 
-    bool has_next_chunk() {
-      Space* owner = chunk()->owner();
-      ChunkListIterator new_it = it_;
-      ++new_it;
-      return new_it != owner->chunk_list_end();
-    }
-
-    Destination next_chunk() {
-      ChunkListIterator new_it = it_;
-      ++new_it;
-      return Destination(new_it, new_it->start(), new_it->usable_end());
-    }
-
-    Destination next_sweeping_chunk() {
-      ChunkListIterator new_it = it_;
-      ++new_it;
-      return Destination(new_it, new_it->start(), new_it->compaction_top());
-    }
+    bool has_next_chunk();
+    Destination next_chunk();
+    Destination next_sweeping_chunk();
 
     uword address;
     uword limit;
@@ -259,20 +170,20 @@ class GcMetadata {
     ChunkListIterator it_;
   };
 
-  static Destination calculate_object_destinations(Program* program, Chunk* src_chunk, Destination dest);
+  Destination calculate_object_destinations(Program* program, Chunk* src_chunk, Destination dest);
 
   // Returns true if the object is grey (queued) or black(scanned).
-  static inline bool is_marked(HeapObject* object) {
+  inline bool is_marked(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
-    address = (singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT)) & ~3;
+    address = (mark_bits_bias_ + (address >> MARK_BITS_SHIFT)) & ~3;
     uint32 mask = 1U << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
     return (*reinterpret_cast<uint32*>(address) & mask) != 0;
   }
 
   // Returns true if the object was already grey (queued) or black(scanned).
-  static INLINE bool mark_grey_if_not_marked(HeapObject* object) {
+  INLINE bool mark_grey_if_not_marked(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
-    address = (singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT)) & ~3;
+    address = (mark_bits_bias_ + (address >> MARK_BITS_SHIFT)) & ~3;
     uint32 mask = 1U << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
     uint32 bits = *reinterpret_cast<uint32*>(address);
     if ((bits & mask) != 0) return true;
@@ -289,7 +200,7 @@ class GcMetadata {
   // cannot contain any pointers, and it is therefore not relevant whether
   // they are grey or black.  If a chunk ends with a one-word object this
   // routine may harmlessly read one bit from the mark bits of the next chunk.
-  static bool is_grey(HeapObject* object) {
+  bool is_grey(HeapObject* object) {
     return is_marked(object) &&
            !is_marked(reinterpret_cast<HeapObject*>(
                reinterpret_cast<uword>(object) + sizeof(uword)));
@@ -297,7 +208,7 @@ class GcMetadata {
 
   // Marks an object grey, which normally means it has been queued on the mark
   // stack.
-  static inline void mark(HeapObject* object) {
+  inline void mark(HeapObject* object) {
     uint32* bits = mark_bits_for(object);
     uint32 mask = 1U << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
     *bits |= mask;
@@ -306,7 +217,7 @@ class GcMetadata {
   // Marks all the bits (1 bit per word) that correspond to a live object.
   // This marks the object black (scanned) and sets up the bitmap data we need
   // for compaction.  For one-word objects it only sets one bit.
-  static void mark_all(HeapObject* object, uword size) {
+  void mark_all(HeapObject* object, uword size) {
     ASSERT(size > 0);
     // It's grey - first bit is marked.
     ASSERT(all_mark_bits_are(object, WORD_SIZE, 1));
@@ -385,7 +296,7 @@ class GcMetadata {
     ASSERT(all_mark_bits_are(object, size, 1));
   }
 
-  static bool all_mark_bits_are(HeapObject* object, uword size, int value) {
+  bool all_mark_bits_are(HeapObject* object, uword size, int value) {
     uword addr = reinterpret_cast<uword>(object);
     for (uword i = 0; i < size; i += WORD_SIZE) {
       uint8* meta_addr = reinterpret_cast<uint8*>(bytewise_mark_bits_for(reinterpret_cast<HeapObject*>(addr + i)));
@@ -395,7 +306,7 @@ class GcMetadata {
     return true;
   }
 
-  static INLINE uword get_destination(HeapObject* pre_compaction) {
+  INLINE uword get_destination(HeapObject* pre_compaction) {
     uword word_position =
         (reinterpret_cast<uword>(pre_compaction) >> WORD_SHIFT) & 31;
     uint32 mask = ~(0xffffffff << word_position);
@@ -404,13 +315,13 @@ class GcMetadata {
     return base + (Utils::popcount(bits) << WORD_SHIFT);
   }
 
-  static int heap_allocation_arena() {
-    return singleton_.heap_allocation_arena_;
+  int heap_allocation_arena() {
+    return heap_allocation_arena_;
   }
 
-  static uword lowest_old_space_address() { return singleton_.lowest_address_; }
+  uword lowest_old_space_address() { return lowest_address_; }
 
-  static uword heap_extent() { return singleton_.heap_extent_; }
+  uword heap_extent() { return heap_extent_; }
 
   // This method returns true for the end of the very last page
   // in the metadata range.  This means it can be used for the end
@@ -421,13 +332,13 @@ class GcMetadata {
   // tagging.  So an object at the start of the first page after
   // the range would be correctly rejected here.
   template<typename T>
-  static bool in_metadata_range(T address_argument) {
+  bool in_metadata_range(T address_argument) {
     uword address = reinterpret_cast<uword>(address_argument);
-    uword lowest = singleton_.lowest_address_;
-    return lowest <= address && address <= lowest + singleton_.heap_extent_;
+    uword lowest = lowest_address_;
+    return lowest <= address && address <= lowest + heap_extent_;
   }
 
-  static uword remembered_set_bias() { return singleton_.remembered_set_bias_; }
+  uword remembered_set_bias() { return remembered_set_bias_; }
 
   // Unaligned, so cannot clash with a real object start.
   static const int NO_OBJECT_START = 2;
@@ -437,7 +348,7 @@ class GcMetadata {
   // in old-space.  The cards are less than 256 bytes large (see the assert
   // below), so writing the last byte of the object start address is enough to
   // uniquely identify the address.
-  inline static void record_start(uword address) {
+  inline void record_start(uword address) {
     uint8* start = starts_for(address);
     ASSERT(CARD_SIZE_LOG_2 <= 8);
     *start = static_cast<uint8>(address);
@@ -446,40 +357,51 @@ class GcMetadata {
   // An object at this address may contain a pointer from old-space to
   // new-space.
   template<typename T>
-  INLINE static void insert_into_remembered_set(T address) {
+  INLINE void insert_into_remembered_set(T address) {
     static_assert(sizeof(T) == sizeof(uword), "invalid type size");
     uword mark_byte = reinterpret_cast<uword>(address) >> CARD_SIZE_LOG_2;
-    mark_byte += singleton_.remembered_set_bias_;
+    mark_byte += remembered_set_bias_;
     *reinterpret_cast<uint8*>(mark_byte) = NEW_SPACE_POINTERS;
   }
 
   // May this card contain pointers from old-space to new-space?
-  inline static bool is_marked_dirty(uword address) {
+  inline bool is_marked_dirty(uword address) {
     address >>= CARD_SIZE_LOG_2;
-    address += singleton_.remembered_set_bias_;
+    address += remembered_set_bias_;
     return *reinterpret_cast<uint8*>(address) != NO_NEW_SPACE_POINTERS;
   }
 
   // The object was marked grey and we tried to push it on the mark stack, but
   // the stack overflowed. Here we record enough information that we can find
   // these objects later.
-  static void mark_stack_overflow(HeapObject* object);
+  void mark_stack_overflow(HeapObject* object);
 
-  static uword object_address_from_start(uword line, uint8 start);
+  uword object_address_from_start(uword line, uint8 start);
+
+#ifndef TOIT_FREERTOS
+  static migrate(
+      GcMetadata* old_metadata,
+      GcMetadata* new_metadata,
+      void* memory,
+      uword size);
+#endif
 
  private:
   GcMetadata() {}
   ~GcMetadata() {}
 
-  static GcMetadata singleton_;
+  static GcMetadata instance_;
 
-  void set_up_singleton();
+  void set_up_instance_();
 
-  static void slow_mark(HeapObject* object, uword size);
-  static uword end_of_destination_of_last_live_object_starting_before(
+  void round_metadata_extent(uword* address, uword* size);
+
+  void slow_mark(HeapObject* object, uword size);
+  uword end_of_destination_of_last_live_object_starting_before(
       Program* program, uword line, uword limit, uword* src_end_return = null);
-  static uword last_line_that_fits(Program* program, uword line, uword dest_limit);
+  uword last_line_that_fits(Program* program, uword line, uword dest_limit);
 
+  bool initialized_ = false;
   // Heap metadata (remembered set etc.).
   uword lowest_address_;
   uword heap_extent_;
@@ -500,6 +422,8 @@ class GcMetadata {
   uword mark_bits_bias_;
   uword overflow_bits_bias_;
   uword cumulative_mark_bits_bias_;
+
+  friend class Process;
 };
 
 }  // namespace toit

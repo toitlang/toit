@@ -291,6 +291,10 @@ class Process : public ProcessListFromProcessGroup::Element,
     return current_bcp_;
   }
 
+  inline GcMetadata* gc_metadata() {
+    return object_heap_.gc_metadata();
+  }
+
  private:
   Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
   void _append_message(Message* message);

@@ -278,8 +278,8 @@ PRIMITIVE(partition_find) {
   if (Primitive::is_error(offset_entry)) return offset_entry;
   Object* size_entry = Primitive::integer(size, process);
   if (Primitive::is_error(size_entry)) return size_entry;
-  result->at_put(0, offset_entry);
-  result->at_put(1, size_entry);
+  result->at_put(process->gc_metadata(), 0, offset_entry);
+  result->at_put(process->gc_metadata(), 1, size_entry);
   return result;
 }
 

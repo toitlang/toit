@@ -49,6 +49,7 @@ enum PageType {
   NEW_SPACE_PAGE
 };
 
+class Chunk;
 typedef DoubleLinkedList<Chunk> ChunkList;
 typedef DoubleLinkedList<Chunk>::Iterator ChunkListIterator;
 
@@ -105,7 +106,7 @@ class Chunk : public ChunkList::Element {
   uword scavenge_pointer_;
   uword compaction_top_;
 
-  Chunk(Space* owner, uword start, uword size);
+  Chunk(Space* owner, uword start, uword size, GcMetadata* gc_metadata);
 
   friend class ObjectMemory;
 };
@@ -180,7 +181,7 @@ class Space : public LivenessOracle {
   void iterate_objects(HeapObjectVisitor* visitor, LivenessOracle* filter = null);
 
   // Iterate all the objects that are grey, after a mark stack overflow.
-  void iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack);
+  void iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack, GcMetadata* gc_metadata);
 
   void iterate_chunks(void* context, Process* process, process_chunk_callback_t* callback);
 
@@ -188,7 +189,7 @@ class Space : public LivenessOracle {
   // See GcMetadata::PageType for a faster possibility.
   bool includes(uword address);
 
-  void clear_mark_bits();
+  void clear_mark_bits(GcMetadata* gc_metadata);
 
   bool is_empty() const { return chunk_list_.is_empty(); }
 
@@ -277,7 +278,7 @@ inline void swap(Space& a, Space& b) {
 
 class SemiSpace : public Space {
  public:
-  SemiSpace(Program* program, Chunk* chunk);
+  SemiSpace(Program* program, Chunk* chunk, GcMetadata* gc_metadata);
 
   // Returns the total size of allocated objects.
   virtual uword used() const;
@@ -299,7 +300,7 @@ class SemiSpace : public Space {
   void start_scavenge();
   bool complete_scavenge(ScavengeVisitor* visitor);
 
-  void update_base_and_limit(Chunk* chunk, uword top);
+  void update_base_and_limit(Chunk* chunk, uword top, GcMetadata* gc_metadata);
 
   virtual void append(Chunk* chunk);
 
@@ -511,14 +512,15 @@ class ObjectMemory {
   // Allocate a new chunk for a given space. All chunk sizes are
   // rounded up the page size and the allocated memory is aligned
   // to a page boundary.
-  static Chunk* allocate_chunk(Space* space, uword size);
+  // While booting the VM, the parent_process may be null.
+  static Chunk* allocate_chunk(Process* parent_process, Space* space, uword size);
 
   // Release the chunk.
   static void free_chunk(Chunk* chunk);
 
   // Set up and tear-down support.
-  static void set_up();
-  static void tear_down();
+  static void set_up(GcMetadata* gc_metadata);
+  static void tear_down(GcMetadata* gc_metadata);
 
   static uword allocated() { return allocated_; }
 

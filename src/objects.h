@@ -25,6 +25,7 @@ namespace toit {
 class Printer;
 class Blob;
 class Chunk;
+class GcMetadata;
 class MutableBlob;
 class Error;
 class Space;
@@ -264,11 +265,6 @@ class HeapObject : public Object {
     _at_put(HEADER_OFFSET, destination);
   }
 
-  // For asserts.  The remembered set is a card marking scheme, so it may
-  // return true when neighbouring objects are in the set.  Always returns true
-  // for objects in the new-space.
-  bool in_remembered_set() const;
-
   // Pseudo virtual member functions.
   int size(Program* program) const;  // Returns the byte size of this object.
   void roots_do(Program* program, RootCallback* cb);  // For GC.
@@ -423,7 +419,7 @@ class Array : public HeapObject {
     _at_put(_offset_from(index), value);
   }
 
-  INLINE void at_put(int index, Object* value);
+  INLINE void at_put(GcMetadata* metadata, int index, Object* value);
 
   INLINE void at_put_no_write_barrier(int index, Object* value) {
     ASSERT(index >= 0 && index < length());
@@ -465,7 +461,7 @@ class Array : public HeapObject {
     *extra_bytes = 0;
   }
 
-  void fill(int from, Object* filler);
+  void fill(GcMetadata* metadata, int from, Object* filler);
 
  private:
   static const int LENGTH_OFFSET = HeapObject::SIZE;
@@ -928,7 +924,7 @@ class Stack : public HeapObject {
 
   int size() const { return allocation_size(length()); }
 
-  void copy_to(Stack* other);
+  void copy_to(Stack* other, Process* process);
 
   void roots_do(Program* program, RootCallback* cb);
 
@@ -1394,7 +1390,7 @@ class Instance : public HeapObject {
 
   // Using this from the compiler will cause link errors.  Use
   // at_put_no_write_barrier in the compiler instead.
-  void at_put(int index, Object* value);
+  void at_put(GcMetadata* metadata, int index, Object* value);
 
   // Fills instance fields with Smi zero.
   void initialize(int instance_size);
@@ -1592,7 +1588,9 @@ class Task : public Instance {
   static const int ID_INDEX = STACK_INDEX + 1;
 
   Stack* stack() { return Stack::cast(at(STACK_INDEX)); }
-  void set_stack(Stack* value) { at_put(STACK_INDEX, value); }
+  void set_stack(GcMetadata* metadata, Stack* value) {
+    at_put(metadata, STACK_INDEX, value);
+  }
 
   int id() { return Smi::value(at(ID_INDEX)); }
 
@@ -1610,9 +1608,9 @@ class Task : public Instance {
   }
 
  private:
-  void _initialize(Stack* stack, Smi* id) {
+  void _initialize(GcMetadata* metadata, Stack* stack, Smi* id) {
     at_put(ID_INDEX, id);
-    set_stack(stack);
+    set_stack(metadata, stack);
   }
 
   friend class ObjectHeap;

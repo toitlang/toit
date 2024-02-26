@@ -24,11 +24,11 @@ Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
     : program_(program),
       page_type_(page_type) {}
 
-SemiSpace::SemiSpace(Program* program, Chunk* chunk)
+SemiSpace::SemiSpace(Program* program, Chunk* chunk, GcMetadata* gc_metadata)
     : Space(program, CANNOT_RESIZE, NEW_SPACE_PAGE) {
   if (!chunk) return;
   append(chunk);
-  update_base_and_limit(chunk, chunk->start());
+  update_base_and_limit(chunk, chunk->start(), gc_metadata);
   chunk->set_owner(this);
 }
 
@@ -37,7 +37,7 @@ bool SemiSpace::is_flushed() {
   return has_sentinel_at(top_);
 }
 
-void SemiSpace::update_base_and_limit(Chunk* chunk, uword top) {
+void SemiSpace::update_base_and_limit(Chunk* chunk, uword top, GcMetadata* gc_metadata) {
   ASSERT(is_flushed());
   ASSERT(top >= chunk->start());
   ASSERT(top < chunk->end());
@@ -46,8 +46,8 @@ void SemiSpace::update_base_and_limit(Chunk* chunk, uword top) {
   // Always write a sentinel so the scavenger knows where to stop.
   write_sentinel_at(top_);
   limit_ = chunk->end();
-  if (top == chunk->start() && GcMetadata::in_metadata_range(top)) {
-    GcMetadata::initialize_starts_for_chunk(chunk);
+  if (top == chunk->start() && gc_metadata->in_metadata_range(top)) {
+    gc_metadata->initialize_starts_for_chunk(chunk);
   }
 }
 

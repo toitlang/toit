@@ -112,7 +112,7 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
     if (n >= length) return false;
 
     if (is_put) {
-      array->at_put(n, *value);
+      array->at_put(process->gc_metadata(), n, *value);
       return true;
     } else {
       (*value) = array->at(n);

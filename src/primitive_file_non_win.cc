@@ -389,17 +389,18 @@ PRIMITIVE(stat) {
   Object* ctime = time_stamp(process, statbuf.st_ctimespec);
   if (Primitive::is_error(ctime)) return ctime;
 #endif
-  array->at_put(FILE_ST_DEV, device_id);
-  array->at_put(FILE_ST_INO, inode);
-  array->at_put(FILE_ST_MODE, Smi::from(mode));
-  array->at_put(FILE_ST_TYPE, Smi::from(type));
-  array->at_put(FILE_ST_NLINK, Smi::from(statbuf.st_nlink));
-  array->at_put(FILE_ST_UID, Smi::from(statbuf.st_uid));
-  array->at_put(FILE_ST_GID, Smi::from(statbuf.st_gid));
-  array->at_put(FILE_ST_SIZE, size);
-  array->at_put(FILE_ST_ATIME, atime);
-  array->at_put(FILE_ST_MTIME, mtime);
-  array->at_put(FILE_ST_CTIME, ctime);
+  GcMetadata* gc_metadata = process->gc_metadata();
+  array->at_put(gc_metadata, FILE_ST_DEV, device_id);
+  array->at_put(gc_metadata, FILE_ST_INO, inode);
+  array->at_put(gc_metadata, FILE_ST_MODE, Smi::from(mode));
+  array->at_put(gc_metadata, FILE_ST_TYPE, Smi::from(type));
+  array->at_put(gc_metadata, FILE_ST_NLINK, Smi::from(statbuf.st_nlink));
+  array->at_put(gc_metadata, FILE_ST_UID, Smi::from(statbuf.st_uid));
+  array->at_put(gc_metadata, FILE_ST_GID, Smi::from(statbuf.st_gid));
+  array->at_put(gc_metadata, FILE_ST_SIZE, size);
+  array->at_put(gc_metadata, FILE_ST_ATIME, atime);
+  array->at_put(gc_metadata, FILE_ST_MTIME, mtime);
+  array->at_put(gc_metadata, FILE_ST_CTIME, ctime);
 
   return array;
 }

@@ -60,8 +60,8 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
     ByteArray::Bytes bytes(ByteArray::cast(new_backing));
     memcpy(bytes.address(), immutable_content, immutable_length);
 
-    instance->at_put(0, new_backing);
-    instance->at_put(1, process->true_object());
+    instance->at_put(process->gc_metadata(), 0, new_backing);
+    instance->at_put_no_write_barrier(1, process->true_object());
     return new_backing->mutable_byte_content(process, content, length, error);
   } else if (instance->class_id() == program->byte_array_slice_class_id()) {
     auto byte_array = instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
@@ -129,7 +129,7 @@ void ByteArray::resize_external(Process* process, word new_length) {
   }
 }
 
-void Stack::copy_to(Stack* other) {
+void Stack::copy_to(Stack* other, Process* process) {
   int used = length() - top();
   ASSERT(other->length() >= used);
   int displacement = other->length() - length();
@@ -145,7 +145,7 @@ void Stack::copy_to(Stack* other) {
   // before leaving the interpreter; also before garbage collections.
   // However, we play it safe and add it here because we have
   // written into the stack and it might point to new objects.
-  GcMetadata::insert_into_remembered_set(other);
+  process->gc_metadata()->insert_into_remembered_set(other);
 }
 
 void Stack::transfer_to_interpreter(Interpreter* interpreter) {
@@ -171,14 +171,7 @@ void Stack::transfer_from_interpreter(Interpreter* interpreter) {
   // stack, so we have to add it here. This is always done before
   // garbage collections, so any stack that has been used by the
   // interpreter since the last GC will be part of the remembered set.
-  GcMetadata::insert_into_remembered_set(this);
-}
-
-bool HeapObject::in_remembered_set() const {
-  if (*GcMetadata::remembered_set_for(this) == GcMetadata::NEW_SPACE_POINTERS) {
-    return true;
-  }
-  return GcMetadata::get_page_type(this) == NEW_SPACE_PAGE;
+  interpreter->process()->gc_metadata()->insert_into_remembered_set(this);
 }
 
 }

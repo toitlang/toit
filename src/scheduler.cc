@@ -590,7 +590,7 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
     case 5: {
       Object* total = Primitive::integer(subject_process->object_heap()->total_bytes_allocated(), calling_process);
       if (Primitive::is_error(total)) return total;
-      array->at_put(4, total);
+      array->at_put(calling_process->gc_metadata(), 4, total);
     }
       [[fallthrough]];
     case 4:

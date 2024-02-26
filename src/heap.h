@@ -22,6 +22,7 @@
 #include "objects.h"
 #include "primitive.h"
 #include "printing.h"
+#include "third_party/dartino/gc_metadata.h"
 #include "third_party/dartino/two_space_heap.h"
 
 namespace toit {
@@ -36,6 +37,8 @@ class InitialMemoryManager {
   Object** global_variables = null;
   Mutex* heap_mutex = null;
 
+  InitialMemoryManager(Process* parent_process = null) : parent_process_(parent_process) {}
+
   void dont_auto_free() {
     initial_chunk = null;
     global_variables = null;
@@ -47,6 +50,9 @@ class InitialMemoryManager {
 
   // Frees any of the fields that are not null.
   ~InitialMemoryManager();
+
+ private:
+  Process* parent_process_ = null;
 };
 
 class ObjectHeap {
@@ -109,6 +115,14 @@ class ObjectHeap {
   }
 
   Process* owner() { return owner_; }
+
+  inline GcMetadata* gc_metadata() {
+#ifdef TOIT_FREERTOS
+    return GcMetadata::singleton();
+#else
+    return &gc_metadata_;
+#endif
+  }
 
  public:
   ObjectHeap(Program* program, Process* owner);
@@ -225,6 +239,10 @@ class ObjectHeap {
   // middle of a GC that frees and allocates chunks, so this
   // per-heap mutex protects against that.
   Mutex* mutex_;
+
+#ifndef TOIT_FREERTOS
+  GcMetadata gc_metadata_;
+#endif
 
   friend class ObjectNotifier;
   friend class Process;

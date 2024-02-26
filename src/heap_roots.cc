@@ -43,7 +43,7 @@ static bool recursive_zap_dead_values(Program* program, Object* backing_array_ob
       HeapObject* entry = HeapObject::cast(entry_object);
       if (entry->class_id() == program->tombstone_class_id()) continue;
       if (!oracle->is_alive(entry)) {
-        backing_array->at_put(i, program->null_object());
+        backing_array->at_put_no_write_barrier(i, program->null_object());
         has_zapped = true;
       }
     }
@@ -133,8 +133,8 @@ bool WeakMapFinalizerNode::weak_processing(bool in_closure_queue, RootCallback* 
   map()->clear_has_active_finalizer();
   map()->at_put(Instance::MAP_SIZE_INDEX, Smi::from(0));
   map()->at_put(Instance::MAP_SPACES_LEFT_INDEX, Smi::from(0));
-  map()->at_put(Instance::MAP_INDEX_INDEX, process->null_object());
-  map()->at_put(Instance::MAP_BACKING_INDEX, process->null_object());
+  map()->at_put_no_write_barrier(Instance::MAP_INDEX_INDEX, process->null_object());
+  map()->at_put_no_write_barrier(Instance::MAP_BACKING_INDEX, process->null_object());
   delete this;
   return true;  // Unlink me.
 }

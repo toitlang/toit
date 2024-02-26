@@ -198,9 +198,9 @@ PRIMITIVE(receive)  {
   if (is_array(output)) {
     Array* out = Array::cast(output);
     if (out->length() < 3) FAIL(INVALID_ARGUMENT);
-    out->at_put(0, array);
+    out->at_put(process->gc_metadata(), 0, array);
     memcpy(ByteArray::Bytes(address).address(), &addr.sin_addr.s_addr, 4);
-    out->at_put(1, address);
+    out->at_put(process->gc_metadata(), 1, address);
     out->at_put(2, Smi::from(ntohs(addr.sin_port)));
     return out;
   }

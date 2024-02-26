@@ -45,7 +45,7 @@ void OldSpace::flush() {
 
 bool OldSpace::is_alive(HeapObject* old_location) {
   // Objects like null are in the program space and live forever.
-  if (!GcMetadata::in_new_or_old_space(old_location)) return true;
+  if (!gc_metadata->in_new_or_old_space(old_location)) return true;
 
   // We can't assert that the object is in old-space, because
   // at the end of a mark-sweep the new-space objects are also
@@ -54,7 +54,7 @@ bool OldSpace::is_alive(HeapObject* old_location) {
   // sweep GC.  This removes them from the finalizer list, but
   // they will remain (untouched) in the new-space until the
   // next scavenge.
-  return GcMetadata::is_marked(old_location);
+  return gc_metadata->is_marked(old_location);
 }
 
 bool OldSpace::has_active_finalizer(HeapObject* old_location) {
@@ -77,15 +77,15 @@ void OldSpace::use_whole_chunk(Chunk* chunk) {
   used_ += chunk->size() - WORD_SIZE;
 }
 
-Chunk* OldSpace::allocate_and_use_chunk(uword size) {
+Chunk* OldSpace::allocate_and_use_chunk(GcMetadata* gc_metadata, uword size) {
   Chunk* chunk = ObjectMemory::allocate_chunk(this, size);
   if (chunk != null) {
     // Link it into the space.
     append(chunk);
     use_whole_chunk(chunk);
-    GcMetadata::initialize_starts_for_chunk(chunk);
-    GcMetadata::initialize_remembered_set_for_chunk(chunk);
-    GcMetadata::clear_mark_bits_for_chunk(chunk);
+    gc_metadata->initialize_starts_for_chunk(chunk);
+    gc_metadata->initialize_remembered_set_for_chunk(chunk);
+    gc_metadata->clear_mark_bits_for_chunk(chunk);
   }
   return chunk;
 }
@@ -161,7 +161,7 @@ uword OldSpace::allocate_from_free_list(uword size) {
   return 0;
 }
 
-uword OldSpace::allocate(uword size) {
+uword OldSpace::allocate(GcMetadata* gc_metadata, uword size) {
   ASSERT(size >= HeapObject::SIZE);
   ASSERT(Utils::is_aligned(size, WORD_SIZE));
 
@@ -169,7 +169,7 @@ uword OldSpace::allocate(uword size) {
   if (limit_ - top_ >= static_cast<uword>(size)) {
     uword result = top_;
     top_ += size;
-    GcMetadata::record_start(result);
+    gc_metadata->record_start(result);
     return result;
   }
 
@@ -228,38 +228,6 @@ void OldSpace::zap_object_starts() {
     GcMetadata::initialize_starts_for_chunk(chunk);
   }
 }
-
-class RememberedSetRebuilder2 : public RootCallback {
- public:
-  virtual void do_roots(Object** pointers, int length) override {
-    for (int i = 0; i < length; i++) {
-      Object* object = pointers[i];
-      if (GcMetadata::get_page_type(object) == NEW_SPACE_PAGE) {
-        found = true;
-        break;
-      }
-    }
-  }
-
-  bool found;
-};
-
-class RememberedSetRebuilder : public HeapObjectVisitor {
- public:
-  RememberedSetRebuilder(Program* program) : HeapObjectVisitor(program) {}
-
-  virtual uword visit(HeapObject* object) override {
-    pointer_callback.found = false;
-    object->roots_do(program_, &pointer_callback);
-    if (pointer_callback.found) {
-      *GcMetadata::remembered_set_for(object) = GcMetadata::NEW_SPACE_POINTERS;
-    }
-    return object->size(program_);
-  }
-
- private:
-  RememberedSetRebuilder2 pointer_callback;
-};
 
 void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
   flush();
@@ -449,15 +417,18 @@ static void INLINE object_mem_move(uword dest, uword source, uword size) {
 
 CompactingVisitor::CompactingVisitor(Program* program,
                                      OldSpace* space,
-                                     FixPointersVisitor* fix_pointers_visitor)
+                                     FixPointersVisitor* fix_pointers_visitor,
+                                     GcMetadata* gc_metadata)
     : HeapObjectVisitor(program),
       used_(0),
       dest_(space->chunk_list_begin(), space->chunk_list_end()),
-      fix_pointers_visitor_(fix_pointers_visitor) {}
+      fix_pointers_visitor_(fix_pointers_visitor),
+      gc_metadata_(gc_metadata) {}
+
 
 uword CompactingVisitor::visit(HeapObject* object) {
-  uint32* bits_addr = GcMetadata::mark_bits_for(object);
-  int pos = GcMetadata::word_index_in_line(object);
+  uint32* bits_addr = gc_metadata_->mark_bits_for(object);
+  int pos = gc_metadata_->word_index_in_line(object);
   uint32 bits = *bits_addr >> pos;
   if ((bits & 1) == 0) {
     // Object is unmarked.
@@ -482,14 +453,14 @@ uword CompactingVisitor::visit(HeapObject* object) {
   while (dest_.address + size > dest_.limit) {
     dest_ = dest_.next_sweeping_chunk();
   }
-  ASSERT(dest_.address == GcMetadata::get_destination(object));
-  GcMetadata::record_start(dest_.address);
+  ASSERT(dest_.address == gc_metadata_->get_destination(object));
+  gc_metadata_->record_start(dest_.address);
   if (object->_raw() != dest_.address) {
     object_mem_move(dest_.address, object->_raw(), size);
 
-    if (*GcMetadata::remembered_set_for(object) !=
+    if (*gc_metadata_->remembered_set_for(object) !=
         GcMetadata::NO_NEW_SPACE_POINTERS) {
-      *GcMetadata::remembered_set_for(dest_.address) =
+      *gc_metadata_->remembered_set_for(dest_.address) =
           GcMetadata::NEW_SPACE_POINTERS;
     }
   }

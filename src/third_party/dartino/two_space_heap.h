@@ -125,13 +125,13 @@ class TwoSpaceHeap {
 // Helper class for copying HeapObjects.
 class ScavengeVisitor : public RootCallback {
  public:
-  explicit ScavengeVisitor(Program* program, TwoSpaceHeap* heap, Chunk* to_chunk)
+  explicit ScavengeVisitor(Program* program, TwoSpaceHeap* heap, Chunk* to_chunk, GcMetadata* gc_metadata)
       : program_(program),
         to_start_(to_chunk->start()),
         to_size_(to_chunk->size()),
         from_start_(heap->new_space()->single_chunk_start()),
         from_size_(heap->new_space()->single_chunk_size()),
-        to_(program, to_chunk),
+        to_(program, to_chunk, gc_metadata),
         old_(heap->old_space()),
         record_(&dummy_record_),
         water_mark_(heap->water_mark_) {}

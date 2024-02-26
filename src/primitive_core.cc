@@ -133,7 +133,7 @@ PRIMITIVE(spawn) {
   ASSERT(method_id != -1);
   Method method(process->program()->bytecodes, method_id);
 
-  InitialMemoryManager initial_memory_manager;
+  InitialMemoryManager initial_memory_manager(process);
   if (!initial_memory_manager.allocate()) FAIL(ALLOCATION_FAILED);
 
   unsigned size = 0;
@@ -1009,7 +1009,7 @@ PRIMITIVE(time_info) {
   result->at_put(6, Smi::from(timeinfo.tm_wday));
   result->at_put(7, Smi::from(timeinfo.tm_yday));
   // When the information isn't available we just say false for daylight saving.
-  result->at_put(8, BOOL(timeinfo.tm_isdst == 1));
+  result->at_put_no_write_barrier(8, BOOL(timeinfo.tm_isdst == 1));
   return result;
 }
 
@@ -1678,7 +1678,7 @@ PRIMITIVE(array_at) {
 PRIMITIVE(array_at_put) {
   ARGS(Array, receiver, int, index, Object, value);
   if (index >= 0 && index < receiver->length()) {
-    receiver->at_put(index, value);
+    receiver->at_put(process->gc_metadata(), index, value);
     return value;
   }
   FAIL(OUT_OF_BOUNDS);
@@ -1696,7 +1696,7 @@ PRIMITIVE(array_expand) {
   if (result == null) FAIL(ALLOCATION_FAILED);
   Array* new_array = Array::cast(result);
   new_array->copy_from(old, Utils::min(length, old_length));
-  if (old_length < length) new_array->fill(old_length, filler);
+  if (old_length < length) new_array->fill(process->gc_metadata(), old_length, filler);
   return new_array;
 }
 
@@ -1734,7 +1734,7 @@ PRIMITIVE(list_add) {
         word size = Smi::value(list->at(1));
         if (size < array->length()) {
           list->at_put(1, Smi::from(size + 1));
-          array->at_put(size, value);
+          array->at_put(process->gc_metadata(), size, value);
           return process->null_object();
         }
       } else {
@@ -2016,7 +2016,7 @@ PRIMITIVE(task_receive_message) {
     array->at_put(0, Smi::from(system_message->type()));
     array->at_put(1, Smi::from(system_message->gid()));
     array->at_put(2, Smi::from(system_message->pid()));
-    array->at_put(3, decoded);
+    array->at_put(process->gc_metadata(), 3, decoded);
     result = array;
   } else {
     UNREACHABLE();
@@ -2226,8 +2226,9 @@ PRIMITIVE(get_real_time_clock) {
   if (Primitive::is_error(tv_sec)) return tv_sec;
   Object* tv_nsec = Primitive::integer(time.tv_nsec, process);
   if (Primitive::is_error(tv_sec)) return tv_nsec;
-  result->at_put(0, tv_sec);
-  result->at_put(1, tv_nsec);
+  GcMetadata* gc_metadata = process->gc_metadata();
+  result->at_put(gc_metadata, 0, tv_sec);
+  result->at_put(gc_metadata, 1, tv_nsec);
   return result;
 }
 

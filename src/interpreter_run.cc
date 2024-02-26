@@ -399,7 +399,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_BEGIN_WITH_WIDE(STORE_FIELD, field_index);
     Object* value = POP();
     Instance* instance = Instance::cast(POP());
-    instance->at_put(field_index, value);
+    instance->at_put(process_->gc_metadata(), field_index, value);
     PUSH(value);
   OPCODE_END();
 
@@ -407,7 +407,7 @@ Interpreter::Result Interpreter::run() {
     B_ARG1(field_index)
     Object* value = POP();
     Instance* instance = Instance::cast(POP());
-    instance->at_put(field_index, value);
+    instance->at_put(process_->gc_metadata(), field_index, value);
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_LITERAL, literal_index);
@@ -548,7 +548,7 @@ Interpreter::Result Interpreter::run() {
     Instance* instance = Instance::cast(result);
     int fields = Instance::fields_from_size(program->instance_size_for(instance));
     for (int i = 0; i < fields; i++) {
-      instance->at_put(i, program->null_object());
+      instance->at_put_no_write_barrier(i, program->null_object());
     }
     PUSH(result);
     if (Flags::gc_a_lot) {
@@ -751,7 +751,7 @@ Interpreter::Result Interpreter::run() {
       int field_index = target.entry()[3];
       ASSERT(target.entry()[4] == RETURN);
       Object* value = STACK_AT(0);
-      Instance::cast(receiver)->at_put(field_index, value);
+      Instance::cast(receiver)->at_put(process_->gc_metadata(), field_index, value);
       STACK_AT_PUT(1, value);
       DROP1();
       DISPATCH(INVOKE_VIRTUAL_SET_LENGTH);
@@ -1708,11 +1708,12 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
       // Calculate index for: index_[deleted_slot] = new_hash_and_position
       index_position = deleted_slot & index_mask;
     }
-    Object* entry = Smi::from(new_hash_and_position);
+    Smi* entry = Smi::from(new_hash_and_position);
     if (is_array(index_object)) {
       Array::cast(index_object)->at_put(index_position, entry);
     } else {
-      bool success = fast_at(process_, index_object, Smi::from(index_position), true, &entry);
+      Object* dummy;
+      bool success = fast_at(process_, index_object, Smi::from(index_position), true, &dummy);
       ASSERT(success);
     }
   }

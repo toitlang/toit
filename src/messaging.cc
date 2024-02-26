@@ -599,7 +599,7 @@ Object* MessageDecoder::decode_array() {
   for (int i = 0; i < length; i++) {
     Object* inner = decode_any();
     if (!success()) return inner;
-    result->at_put(i, inner);
+    result->at_put(process_->gc_metadata(), i, inner);
   }
   return result;
 }
@@ -612,8 +612,8 @@ Object* MessageDecoder::decode_map() {
   if (size == 0) {
     result->at_put(Instance::MAP_SIZE_INDEX, Smi::from(0));
     result->at_put(Instance::MAP_SPACES_LEFT_INDEX, Smi::from(0));
-    result->at_put(Instance::MAP_INDEX_INDEX, program_->null_object());
-    result->at_put(Instance::MAP_BACKING_INDEX, program_->null_object());
+    result->at_put_no_write_barrier(Instance::MAP_INDEX_INDEX, program_->null_object());
+    result->at_put_no_write_barrier(Instance::MAP_BACKING_INDEX, program_->null_object());
     return result;
   }
   Array* array = process_->object_heap()->allocate_array(size * 2, Smi::zero());
@@ -621,12 +621,12 @@ Object* MessageDecoder::decode_map() {
   for (int i = 0; i < size * 2; i++) {
     Object* inner = decode_any();
     if (!success()) return inner;
-    array->at_put(i, inner);
+    array->at_put(process_->gc_metadata(), i, inner);
   }
   result->at_put(Instance::MAP_SIZE_INDEX, Smi::from(size));
   result->at_put(Instance::MAP_SPACES_LEFT_INDEX, Smi::from(0));
-  result->at_put(Instance::MAP_INDEX_INDEX, program_->null_object());
-  result->at_put(Instance::MAP_BACKING_INDEX, array);
+  result->at_put_no_write_barrier(Instance::MAP_INDEX_INDEX, program_->null_object());
+  result->at_put(process_->gc_metadata(), Instance::MAP_BACKING_INDEX, array);
   return result;
 }
 

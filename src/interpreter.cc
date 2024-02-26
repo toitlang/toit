@@ -209,8 +209,8 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
   // Stack: Trace, Type, Instance, ...
 
   instance = Instance::cast(STACK_AT(2));
-  instance->at_put(1, POP());  // Trace.
-  instance->at_put(0, POP());  // Type.
+  instance->at_put(process_->gc_metadata(), 1, POP());  // Trace.
+  instance->at_put(process_->gc_metadata(), 0, POP());  // Type.
   return sp;
 }
 
@@ -270,8 +270,8 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
   }
 
   store_stack(sp);
-  process->task()->stack()->copy_to(new_stack);
-  process->task()->set_stack(new_stack);
+  process->task()->stack()->copy_to(new_stack, process);
+  process->task()->set_stack(process->gc_metadata(), new_stack);
   sp = load_stack();
   *state = OVERFLOW_RESUME;
   return sp;

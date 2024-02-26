@@ -101,8 +101,8 @@ PRIMITIVE(binary_operator) {
   mbedtls_mpi_free(&x_mpi);
   if (ret) FAIL(INVALID_ARGUMENT);
 
-  array->at_put(0, BOOL(sign));
-  array->at_put(1, limbs);
+  array->at_put_no_write_barrier(0, BOOL(sign));
+  array->at_put(process->gc_metadata(), 1, limbs);
 
   return array;
 }
@@ -165,8 +165,8 @@ PRIMITIVE(exp_mod) {
   mbedtls_mpi_free(&x_mpi);
   if (ret) FAIL(INVALID_ARGUMENT);
 
-  array->at_put(0, BOOL(sign));
-  array->at_put(1, limbs);
+  array->at_put_no_write_barrier(0, BOOL(sign));
+  array->at_put(process->gc_metadata(), 1, limbs);
 
   return array;
 }

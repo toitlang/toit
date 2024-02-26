@@ -23,20 +23,18 @@ static const uword CACHE_LINE = 32;
 static const uword CACHE_LINE = 64;
 #endif
 
-GcMetadata GcMetadata::singleton_;
-
 void GcMetadata::tear_down() {
-  OS::free_pages(singleton_.metadata_, singleton_.metadata_size_);
+  OS::free_pages(metadata_, metadata_size_);
 }
 
 void GcMetadata::get_metadata_extent(uword* address_return, uword* size_return) {
-  *address_return = reinterpret_cast<uword>(singleton_.metadata_);
-  *size_return = singleton_.metadata_size_;
+  *address_return = reinterpret_cast<uword>(metadata_);
+  *size_return = metadata_size_;
 }
 
-void GcMetadata::set_up() { singleton_.set_up_singleton(); }
+void GcMetadata::set_up() { instance_.set_up_instance(); }
 
-void GcMetadata::set_up_singleton() {
+void GcMetadata::set_up_instance() {
   OS::HeapMemoryRange range = OS::get_heap_memory_range();
 
   uword range_address = reinterpret_cast<uword>(range.address);
@@ -320,5 +318,151 @@ void GcMetadata::mark_stack_overflow(HeapObject* object) {
   // would mean we would not scan the necessary object.
   if (*start == NO_OBJECT_START || *start > low_byte) *start = low_byte;
 }
+
+void GcMetadata::initialize_starts_for_chunk(const Chunk* chunk, uword only_above) {
+  uword start = chunk->start();
+  uword end = chunk->end();
+  if (only_above >= end) return;
+  if (only_above > start) {
+    ASSERT(only_above % CARD_SIZE == 0);
+    start = only_above;
+  }
+  ASSERT(in_metadata_range(start));
+  uint8* from = starts_for(start);
+  uint8* to = starts_for(end);
+  memset(from, NO_OBJECT_START, to - from);
+}
+
+void GcMetadata::initialize_remembered_set_for_chunk(const Chunk* chunk, uword only_above) {
+  uword start = chunk->start();
+  uword end = chunk->end();
+  if (only_above >= end) return;
+  if (only_above > start) {
+    ASSERT(only_above % CARD_SIZE == 0);
+    start = only_above;
+  }
+  ASSERT(in_metadata_range(start));
+  uint8* from = remembered_set_for(start);
+  uint8* to = remembered_set_for(end);
+  memset(from, GcMetadata::NO_NEW_SPACE_POINTERS, to - from);
+}
+
+void GcMetadata::initialize_overflow_bits_for_chunk(const Chunk* chunk) {
+  ASSERT(in_metadata_range(chunk->start()));
+  uint8* from = overflow_bits_for(chunk->start());
+  uint8* to = overflow_bits_for(chunk->end());
+  memset(from, 0, to - from);
+}
+
+void GcMetadata::clear_mark_bits_for_chunk(const Chunk* chunk) {
+  ASSERT(in_metadata_range(chunk->start()));
+  uword base = chunk->start();
+  uword size = chunk->size() >> MARK_BITS_SHIFT;
+  base = (base >> MARK_BITS_SHIFT) + mark_bits_bias_;
+  memset(reinterpret_cast<uint8*>(base), 0, size);
+}
+
+void GcMetadata::map_metadata_for_chunk(Chunk* chunk) {
+  ASSERT(in_metadata_range(chunk->start()));
+  uword base = chunk->start();
+  uword mark_size = chunk->size() >> MARK_BITS_SHIFT;
+  // When checking if one-word objects are black we may look one bit into the
+  // next page.  Add one to the area to account for this possibility.
+  mark_size++;
+  uword mark_bits = (base >> MARK_BITS_SHIFT) + mark_bits_bias_;
+  round_metadata_extent(&mark_bits, &mark_size);
+  bool ok = OS::use_virtual_memory(reinterpret_cast<void*>(mark_bits), mark_size);
+  if (ok) {
+    uword cumulative_mark_bits = (base >> CUMULATIVE_MARK_BITS_SHIFT) + cumulative_mark_bits_bias_;
+    uword cumulative_mark_size = chunk->size() >> CUMULATIVE_MARK_BITS_SHIFT;
+    round_metadata_extent(&cumulative_mark_bits, &cumulative_mark_size);
+    ok = OS::use_virtual_memory(reinterpret_cast<void*>(cumulative_mark_bits), cumulative_mark_size);
+  }
+  if (!ok) FATAL("Out of memory when mapping heap metadata");
+}
+
+// Avoid too many fragments of virtual memory with different permissions by
+// rounding up the area to be unprotected.  We choose 2MB as the granularity
+// in order to take advantage of huge pages.
+void GcMetadata::round_metadata_extent(uword* address, uword* size) {
+#ifdef TOIT_FREERTOS
+  return;
+#endif
+  uword start = reinterpret_cast<uword>(metadata_);
+  uword end = reinterpret_cast<uword>(metadata_) + metadata_size_;
+  uword old_address = *address;
+  *address = Utils::max(start, Utils::round_down(old_address, 2 * MB));
+  *size = Utils::min(end - *address, Utils::round_up(old_address + *size, 2 * MB) - *address);
+}
+
+void GcMetadata::mark_pages_for_chunk(Chunk* chunk, PageType page_type) {
+  map_metadata_for_chunk(chunk);
+  uword index = chunk->start() - lowest_address_;
+  if (index >= heap_extent_) return;
+  uword size = chunk->size() >> TOIT_PAGE_SIZE_LOG2;
+  memset(page_type_bytes_ + (index >> TOIT_PAGE_SIZE_LOG2),
+         page_type, size);
+}
+
+GcMetadata::Destination::Destination(ChunkListIterator it, ChunkListIterator end)
+    : address(it == end ? 0 : it->start()),
+      limit(it == end ? 0 : it->compaction_top()),
+      it_(it) {}
+
+bool GcMetadata::Destination::has_next_chunk() {
+    Space* owner = chunk()->owner();
+    ChunkListIterator new_it = it_;
+    ++new_it;
+    return new_it != owner->chunk_list_end();
+  }
+
+GcMetadata::Destination GcMetadata::Destination::next_chunk() {
+  ChunkListIterator new_it = it_;
+  ++new_it;
+  return Destination(new_it, new_it->start(), new_it->usable_end());
+}
+
+GcMetadata::Destination GcMetadata::Destination::next_sweeping_chunk() {
+  ChunkListIterator new_it = it_;
+  ++new_it;
+  return Destination(new_it, new_it->start(), new_it->compaction_top());
+}
+
+#ifndef TOIT_FREERTOS
+
+void GcMetadata::migrate(
+    GcMetadata* old_metadata,
+    GcMetadata* new_metadata,
+    void* memory,
+    uword size) {
+  uword address = reinterpret_cast<uword>(memory);
+
+  uint8* old_starts = old_metadata->starts_for(address);
+  uint8* new_starts = new_metadata->starts_for(address);
+  uword starts_extent = old_metadata->starts_for(address + size) - old_starts;
+  memcpy(new_starts, old_starts, starts_extent);
+
+  uint8* old_remembered_set = old_metadata->remembered_set_for(address);
+  uint8* new_remembered_set = new_metadata->remembered_set_for(address);
+  uword remembered_set_extent = old_metadata->remembered_set_for(address + size) - old_remembered_set;
+  memcpy(new_remembered_set, old_remembered_set, remembered_set_extent);
+
+  uint8* old_overflow_bits = old_metadata->overflow_bits_for(address);
+  uint8* new_overflow_bits = new_metadata->overflow_bits_for(address);
+  uword overflow_bits_extent = old_metadata->overflow_bits_for(address + size) - old_overflow_bits;
+  memcpy(new_overflow_bits, old_overflow_bits, overflow_bits_extent);
+
+  uint32* old_mark_bits = old_metadata->mark_bits_for(address);
+  uint32* new_mark_bits = new_metadata->mark_bits_for(address);
+  uword mark_bits_extent = old_metadata->mark_bits_for(address + size) - old_mark_bits;
+  memcpy(new_mark_bits, old_mark_bits, mark_bits_extent * sizeof(uint32));
+
+  uword* old_cumulative_mark_bits = old_metadata->cumulative_mark_bits_for(address);
+  uword* new_cumulative_mark_bits = new_metadata->cumulative_mark_bits_for(address);
+  uword cumulative_mark_bits_extent = old_metadata->cumulative_mark_bits_for(address + size) - old_cumulative_mark_bits;
+  memcpy(new_cumulative_mark_bits, old_cumulative_mark_bits, cumulative_mark_bits_extent * sizeof(uword));
+}
+
+#endif
 
 }  // namespace toit

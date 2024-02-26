@@ -197,7 +197,7 @@ PRIMITIVE(create_pipe) {
   }
   resource_proxy->set_external_address(resource);
 
-  array->at_put(0, resource_proxy);
+  array->at_put(process->gc_metadata(), 0, resource_proxy);
   array->at_put(1, Smi::from(in ? read : write));
 
   return array;

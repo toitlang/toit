@@ -14,18 +14,19 @@ namespace toit {
 
 class MarkingStack {
  public:
-  explicit MarkingStack(Program* program)
+  explicit MarkingStack(Program* program, GcMetadata* gc_metadata)
     : program_(program)
     , next_(&backing_[0])
-    , limit_(&backing_[CHUNK_SIZE]) {}
+    , limit_(&backing_[CHUNK_SIZE])
+    , gc_metadata_(gc_metadata) {}
 
   void push(HeapObject* object) {
-    ASSERT(GcMetadata::is_marked(object));
+    ASSERT(gc_metadata_->is_marked(object));
     if (next_ < limit_) {
       *(next_++) = object;
     } else {
       overflowed_ = true;
-      GcMetadata::mark_stack_overflow(object);
+      gc_metadata_->mark_stack_overflow(object);
     }
   }
 
@@ -43,15 +44,17 @@ class MarkingStack {
   HeapObject** limit_;
   HeapObject* backing_[CHUNK_SIZE];
   bool overflowed_ = false;
+  GcMetadata* gc_metadata_;
 };
 
 class MarkingVisitor : public RootCallback {
  public:
-  MarkingVisitor(SemiSpace* new_space, MarkingStack* marking_stack)
+  MarkingVisitor(SemiSpace* new_space, MarkingStack* marking_stack, GcMetadata* gc_metadata)
       : program_(new_space->program()),
         new_space_address_(new_space->single_chunk_start()),
         new_space_size_(new_space->size()),
-        marking_stack_(marking_stack) {}
+        marking_stack_(marking_stack),
+        gc_metadata_(gc_metadata) {}
 
   virtual void do_roots(Object** start, int length) override {
     Object** end = start + length;
@@ -72,9 +75,9 @@ class MarkingVisitor : public RootCallback {
 
  private:
   void INLINE mark_pointer(Object* object) {
-    if (!GcMetadata::in_new_or_old_space(object)) return;
+    if (!gc_metadata_->in_new_or_old_space(object)) return;
     HeapObject* heap_object = HeapObject::cast(object);
-    if (!GcMetadata::mark_grey_if_not_marked(heap_object)) {
+    if (!gc_metadata_->mark_grey_if_not_marked(heap_object)) {
       marking_stack_->push(heap_object);
     }
   }
@@ -83,6 +86,7 @@ class MarkingVisitor : public RootCallback {
   uword new_space_address_;
   uword new_space_size_;
   MarkingStack* marking_stack_;
+  GcMetadata* gc_metadata_;
 };
 
 class FixPointersVisitor : public RootCallback {
@@ -94,11 +98,11 @@ class FixPointersVisitor : public RootCallback {
 
 class CompactingVisitor : public HeapObjectVisitor {
  public:
-  CompactingVisitor(Program* program, OldSpace* space, FixPointersVisitor* fix_pointers_visitor);
+  CompactingVisitor(Program* program, OldSpace* space, FixPointersVisitor* fix_pointers_visitor, GcMetadata* gc_metadata);
 
   virtual void chunk_start(Chunk* chunk) override {
-    GcMetadata::initialize_starts_for_chunk(chunk);
-    uint32* last_bits = GcMetadata::mark_bits_for(chunk->usable_end());
+    gc_metadata_->initialize_starts_for_chunk(chunk);
+    uint32* last_bits = gc_metadata_->mark_bits_for(chunk->usable_end());
     // When compacting the heap, we skip dead objects.  In order to do this
     // faster when we have hit a dead object we use the mark bits to find the
     // next live object, rather than stepping one object at a time and calling
@@ -115,22 +119,23 @@ class CompactingVisitor : public HeapObjectVisitor {
  private:
   uword used_;
   GcMetadata::Destination dest_;
+  GcMetadata* gc_metadata_;
   FixPointersVisitor* fix_pointers_visitor_;
 };
 
 class SweepingVisitor : public HeapObjectVisitor {
  public:
-  SweepingVisitor(Program* program, OldSpace* space);
+  SweepingVisitor(Program* program, OldSpace* space, GcMetadata* gc_metadata_);
 
   virtual void chunk_start(Chunk* chunk) override {
-    GcMetadata::initialize_starts_for_chunk(chunk);
+    gc_metadata_->initialize_starts_for_chunk(chunk);
   }
 
   virtual uword visit(HeapObject* object) override;
 
   virtual void chunk_end(Chunk* chunk, uword end) override {
     add_free_list_region(end);
-    GcMetadata::clear_mark_bits_for_chunk(chunk);
+    gc_metadata_->clear_mark_bits_for_chunk(chunk);
   }
 
   uword used() const { return used_; }
@@ -141,6 +146,7 @@ class SweepingVisitor : public HeapObjectVisitor {
   FreeList* free_list_;
   uword free_start_;
   int used_;
+  GcMetadata* gc_metadata_;
 };
 
 }  // namespace toit

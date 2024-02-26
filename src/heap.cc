@@ -109,7 +109,7 @@ String* ObjectHeap::allocate_internal_string(int length) {
 }
 
 bool InitialMemoryManager::allocate() {
-  initial_chunk = ObjectMemory::allocate_chunk(null, TOIT_PAGE_SIZE);
+  initial_chunk = ObjectMemory::allocate_chunk(parent_process_, null, TOIT_PAGE_SIZE);
   if (!initial_chunk) return false;
   heap_mutex = OS::allocate_mutex(6, "ObjectHeapMutex");
   return heap_mutex != null;
@@ -131,7 +131,13 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, O
     , external_memory_(0)
     , total_external_memory_(0)
     , global_variables_(global_variables)
-    , mutex_(mutex) {
+    , mutex_(mutex)
+#ifndef TOIT_FREERTOS
+    // On non-embedded targets each object heap has its own pointers to the
+    // garbage collection metadata.
+    , gc_metadata_(GcMetadata::copy_instance())
+#endif
+    {
   if (!initial_chunk) return;
   task_ = allocate_task();
   ASSERT(task_);  // Should not fail, because a newly created heap has at least
@@ -262,10 +268,10 @@ Task* ObjectHeap::allocate_task() {
   Smi* task_id = program()->task_class_id();
   Task* result = unvoid_cast<Task*>(allocate_instance(program()->class_tag_for(task_id), task_id, Smi::from(program()->instance_size_for(task_id))));
   if (result == null) return null;  // Allocation failure.
-  Task::cast(result)->_initialize(stack, Smi::from(owner()->next_task_id()));
+  Task::cast(result)->_initialize(owner_->gc_metadata(), stack, Smi::from(owner()->next_task_id()));
   int fields = Instance::fields_from_size(program()->instance_size_for(result));
   for (int i = Task::ID_INDEX + 1; i < fields; i++) {
-    result->at_put(i, program()->null_object());
+    result->at_put(owner_->gc_metadata(), i, program()->null_object());
   }
   return result;
 }

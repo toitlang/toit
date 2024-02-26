@@ -56,7 +56,7 @@ PRIMITIVE(spawn) {
     return encoder.create_error_object(process);
   }
 
-  InitialMemoryManager initial_memory_manager;
+  InitialMemoryManager initial_memory_manager(process);
   if (!initial_memory_manager.allocate()) FAIL(ALLOCATION_FAILED);
 
   ProcessGroup* process_group = ProcessGroup::create(group_id, program);

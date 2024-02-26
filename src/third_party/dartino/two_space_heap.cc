@@ -12,11 +12,11 @@
 
 namespace toit {
 
-TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk)
+TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk, GcMetadata* gc_metadata)
     : program_(program),
       process_heap_(process_heap),
       old_space_(program, this),
-      semi_space_(program, chunk) {
+      semi_space_(program, chunk, gc_metadata) {
   semi_space_size_ = TOIT_PAGE_SIZE;
   if (chunk) water_mark_ = chunk->start();
 }
@@ -29,10 +29,10 @@ Process* TwoSpaceHeap::process() {
   return process_heap_->owner();
 }
 
-HeapObject* TwoSpaceHeap::allocate(uword size) {
-  uword result = semi_space_.allocate(size);
+HeapObject* TwoSpaceHeap::allocate(uword size, GcMetadata* gc_metadata) {
+  uword result = semi_space_.allocate(size, gc_metadata);
   if (result == 0) {
-    return new_space_allocation_failure(size);
+    return new_space_allocation_failure(size, gc_metadata);
   }
   return HeapObject::from_address(result);
 }
@@ -169,7 +169,7 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
       }
     }
 
-    ScavengeVisitor visitor(program_, this, spare_chunk);
+    ScavengeVisitor visitor(program_, this, spare_chunk, gc_metadata);
     SemiSpace* to = visitor.to_space();
     to->start_scavenge();
     old_space()->start_scavenge();
