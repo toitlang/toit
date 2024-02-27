@@ -248,9 +248,7 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   }
   fprintf(stderr, "New allocation %p-%p\n", unusable_pages[0], unvoid_cast<char*>(unusable_pages[0]) + size);
   fprintf(stderr, "Metadata range %p-%p\n", reinterpret_cast<void*>(lowest), reinterpret_cast<uint8*>(lowest) + GcMetadata::heap_extent());
-  const bool try_reuse = false;
-  for (int j = 0; j < UNUSABLE_SIZE; j++) OS::free_pages(unusable_pages[j], size, try_reuse);
-  return allocate_chunk_helper(owner, size, null);
+  FATAL("Toit heap outside expected range (out of memory).");
 }
 
 
