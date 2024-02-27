@@ -160,7 +160,7 @@ static void* find_free_area(uword size) {
       return Utils::void_add(toit_heap_range, i << (TOIT_PAGE_SIZE_LOG2 + BITS_PER_UINT64_LOG_2));
     }
     uint64 mask = (1 << size) - 1;
-    for (unsigned j = 0; j < 64 - size; j++) {
+    for (unsigned j = 0; j <= 64 - size; j++) {
       if ((map & mask) == 0) {
         toit_heap_bits[i] |= mask;
         return Utils::void_add(toit_heap_range, (i << (TOIT_PAGE_SIZE_LOG2 + BITS_PER_UINT64_LOG_2)) + (j << TOIT_PAGE_SIZE_LOG2));
