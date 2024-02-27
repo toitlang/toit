@@ -234,6 +234,10 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
     // On Linux the allocations tend to go down from the initial address, so we
     // skew the distribution of the metadata coverage area.
     uword from = addr - 3 * (MAX_HEAP / 4);
+#elif defined(TOIT_WINDOWS) and defined(BUILD_64)
+    // On Windows the allocations tend to go up from the initial address, so we
+    // skew the distribution of the metadata coverage area.
+    uword from = addr - MAX_HEAP / 4;
 #else
     uword from = addr - MAX_HEAP / 2;
 #endif
