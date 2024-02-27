@@ -160,10 +160,10 @@ static void* find_free_area(const Locker& locker, uword size) {
     uint64 map = toit_heap_bits[i];
     // Fast out for fully allocated bitmaps.
     if (map + 1 == 0) continue;  // All 1's.
-    unsigned free_pages = 64 - Utils::popcount(map);
+    unsigned unused_pages = 64 - Utils::popcount(map);
     // Fast out - if there are not enough zero bits in the word there is no
     // point in scanning it for a long enough run.
-    if (free_pages < size) continue;
+    if (unused_pages < size) continue;
     if (size == 64) {
       uint64 zero = 0;
       toit_heap_bits[i] = zero - 1;  // All ones.
@@ -193,7 +193,7 @@ void* OS::allocate_pages(uword size) {
   return result;
 }
 
-void OS::free_pages(void* address, uword size, bool try_reuse) {
+void OS::free_pages(void* address, uword size) {
   Locker locker(OS::resource_mutex());
   int size_in_pages = size >> TOIT_PAGE_SIZE_LOG2;
   uword page_number = Utils::void_sub(address, toit_heap_range) >> TOIT_PAGE_SIZE_LOG2;
