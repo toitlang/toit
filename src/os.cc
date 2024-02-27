@@ -145,7 +145,7 @@ AlignedMemory::~AlignedMemory() {
 // near the unaligned one.  (If that fails we'll try random
 // addresses.)
 static void* grab_aligned(void* suggestion, uword size) {
-  ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
+  ASSERT(Utils::is_aligned(size, TOIT_PAGE_SIZE));
   void* result = OS::grab_virtual_memory(suggestion, size);
   if (result == null) return result;
   void* rounded = Utils::round_up(result, TOIT_PAGE_SIZE);
@@ -201,8 +201,7 @@ void* OS::allocate_pages(uword size) {
     // Second attempt, let the OS pick a location.
     result = grab_aligned(null, size);
   }
-  if (result == null) return null;
-  use_virtual_memory(result, original_size);
+  if (result) use_virtual_memory(result, original_size);
   return result;
 }
 
