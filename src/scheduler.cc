@@ -38,6 +38,12 @@ namespace toit {
 // returning to the scheduler.
 static const int64 PROCESS_MAX_RUN_TIME_US = 10 * 1000 * 1000;
 
+#ifdef TOIT_ESP32
+static const bool PROCESS_MAX_RUN_TIME_ENFORCE = true;
+#else
+static const bool PROCESS_MAX_RUN_TIME_ENFORCE = false;
+#endif
+
 void SchedulerThread::entry() {
   scheduler_->run(this);
 }
@@ -899,20 +905,20 @@ void Scheduler::tick(Locker& locker, int64 now) {
   }
 
   bool any_profiling = num_profiled_processes_ > 0;
+  bool any_ready = first_non_empty_ready_queue < NUMBER_OF_READY_QUEUES;
+  if (!PROCESS_MAX_RUN_TIME_ENFORCE && !any_profiling && !any_ready) return;
 
   for (SchedulerThread* thread : threads_) {
     Process* process = thread->interpreter()->process();
     if (process == null) continue;
 
     int64 run_time_us = process->run_time_us(now);
-    if (run_time_us > PROCESS_MAX_RUN_TIME_US) {
+    if (PROCESS_MAX_RUN_TIME_ENFORCE && run_time_us > PROCESS_MAX_RUN_TIME_US) {
       fprintf(stderr, "Potential dead-lock detected:\n");
       fprintf(stderr, "  Process: %d\n", process->id());
       uint8* current_bcp = process->current_bcp();
       Program* program = process->program();  // External processes have null programs.
-      if (program && program->is_valid_bcp(current_bcp)) {
-        int bci = program->absolute_bci_from_bcp(current_bcp);
-
+      if (program) {
         const uint8* uuid = program->id();
         char uuid_buffer[37];
         snprintf(uuid_buffer, sizeof(uuid_buffer), "%08x-%04x-%04x-%04x-%04x%08x",
@@ -923,12 +929,16 @@ void Scheduler::tick(Locker& locker, int64 now) {
             static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 10)),
             static_cast<int>(Utils::read_unaligned_uint32_be(uuid + 12)));
         fprintf(stderr, "  Program: %s\n", uuid_buffer);
-        fprintf(stderr, "  BCI: 0x%x\n", bci);
 
-        if (*current_bcp == Opcode::PRIMITIVE) {
-          int module = current_bcp[1];
-          int index = Utils::read_unaligned_uint16(current_bcp + 2);
-          printf("  Primitive: %d:%d\n", module, index);
+        if (program->is_valid_bcp(current_bcp)) {
+          int bci = program->absolute_bci_from_bcp(current_bcp);
+          fprintf(stderr, "  BCI: 0x%x\n", bci);
+
+          if (*current_bcp == Opcode::PRIMITIVE) {
+            int module = current_bcp[1];
+            int index = Utils::read_unaligned_uint16(current_bcp + 2);
+            fprintf(stderr, "  Primitive: %d:%d\n", module, index);
+          }
         }
         FATAL("Potential dead-lock");
       }
@@ -936,12 +946,11 @@ void Scheduler::tick(Locker& locker, int64 now) {
     }
 
     if (process->signals() & Process::PREEMPT) continue;
-    int ready_queue_index = compute_ready_queue_index(process->priority());
-    bool is_profiling = any_profiling && process->profiler() != null;
-    bool has_run_too_long = run_time_us > PROCESS_MAX_RUN_TIME_US / 2;
-    if (has_run_too_long || is_profiling || ready_queue_index >= first_non_empty_ready_queue) {
-      process->signal(Process::PREEMPT);
-    }
+    bool should_preempt =
+         (PROCESS_MAX_RUN_TIME_ENFORCE && run_time_us > PROCESS_MAX_RUN_TIME_US / 2)
+      || (any_profiling && process->profiler() != null)
+      || (any_ready && compute_ready_queue_index(process->priority()) >= first_non_empty_ready_queue);
+    if (should_preempt) process->signal(Process::PREEMPT);
   }
 }
 
