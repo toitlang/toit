@@ -157,7 +157,8 @@ static void* find_free_area(uword size) {
     unsigned free_pages = 64 - Utils::popcount(map);
     if (free_pages < size) continue;
     if (size == 64) {
-      toit_heap_bits[i] = 0;
+      uint64 zero = 0;
+      toit_heap_bits[i] = zero - 1;  // All ones.
       return Utils::void_add(toit_heap_range, i << (TOIT_PAGE_SIZE_LOG2 + BITS_PER_UINT64_LOG_2));
     }
     uint64 one = 1;
@@ -194,7 +195,8 @@ void OS::free_pages(void* address, uword size, bool try_reuse) {
     ASSERT(old_bits + 1 == 0);  // All 1's.
     toit_heap_bits[index] = 0;
   } else {
-    uint64 mask = (1 << size_in_pages) - 1;
+    uint64 one = 1;
+    uint64 mask = (one << size_in_pages) - 1;
     uint64 new_bits = old_bits & ~(mask << (page_number & 63));
     ASSERT(Utils::popcount(old_bits) - Utils::popcount(new_bits) == size_in_pages);
     toit_heap_bits[index] = new_bits;
