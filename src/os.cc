@@ -15,12 +15,13 @@
 
 #include "os.h"
 
+#include <errno.h>
+#include <limits.h>
+#include <pthread.h>
+#include <stdlib.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
-#include <errno.h>
-#include <pthread.h>
-#include <stdlib.h>
 
 #include "utils.h"
 
@@ -159,7 +160,8 @@ static void* find_free_area(uword size) {
       toit_heap_bits[i] = 0;
       return Utils::void_add(toit_heap_range, i << (TOIT_PAGE_SIZE_LOG2 + BITS_PER_UINT64_LOG_2));
     }
-    uint64 mask = (1 << size) - 1;
+    uint64 one = 1;
+    uint64 mask = (one << size) - 1;
     for (unsigned j = 0; j <= 64 - size; j++) {
       if ((map & mask) == 0) {
         toit_heap_bits[i] |= mask;
@@ -203,15 +205,39 @@ void OS::free_pages(void* address, uword size, bool try_reuse) {
 OS::HeapMemoryRange OS::get_heap_memory_range() {
   if (single_range_.address == null) {
     uword max_heap = MAX_HEAP;
-    if (getenv("TOIT_MAX_HEAP_GB")) {
-      max_heap = 1ull * GB * atoi(getenv("TOIT_MAX_HEAP_GB"));
+    const char* max_string = getenv("TOIT_MAX_HEAP_GB");
+    if (max_string) {
+      long gb = 0;
+      if ('0' <= max_string[0] && max_string[0] <= '9') {
+        gb = strtol(max_string, null, 10);
+        if (gb == LONG_MAX || gb == LONG_MIN) gb = 0;
+      }
+#ifdef BUILD_32
+      if (gb > 1) {
+        // It's not realistic to run with max heap of more than 1Gbyte on a 32 bit
+        // platform.
+        fprintf(stderr, "TOIT_MAX_HEAP_GB is set to %ld, but this is a 32-bit build\n", gb);
+        gb = 1;
+      }
+#else
+      if (gb > 1024) {
+        // In theory, Toit can run with multi-terabyte heaps, but it's not currently
+        // engineered for it, and nobody wants one hour GC pauses.
+        fprintf(stderr, "TOIT_MAX_HEAP_GB is set to %ld, which is unrealistic\n", gb);
+        gb = 1024;
+      }
+#endif
+      max_heap = 1ull * GB * gb;
       if (!max_heap) {
-        fprintf(stderr, "Could not parse TOIT_MAX_HEAP_GB of '%s'\n", getenv("TOIT_MAX_HEAP_GB"));
+        fprintf(stderr, "Could not parse TOIT_MAX_HEAP_GB of '%s'\n", max_string);
         max_heap = MAX_HEAP;
       }
     }
 
     toit_heap_range = Utils::round_up(grab_virtual_memory(null, max_heap + TOIT_PAGE_SIZE), TOIT_PAGE_SIZE);
+    if (!toit_heap_range) {
+      FATAL("Could not reserve %dMbytes of address space.", static_cast<int>(max_heap >> 20));
+    }
     toit_heap_size = max_heap;
     uword bitmaps = max_heap / (TOIT_PAGE_SIZE * 64);
     toit_heap_bits = reinterpret_cast<uint64*>(calloc(bitmaps, sizeof(uint64)));
