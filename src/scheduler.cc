@@ -929,7 +929,7 @@ void Scheduler::tick(Locker& locker, int64 now) {
           if (*current_bcp == Opcode::PRIMITIVE) {
             int module = current_bcp[1];
             int index = Utils::read_unaligned_uint16(current_bcp + 2);
-            printf("  Primitive: %d:%d\n", module, index);
+            fprintf(stderr, "  Primitive: %d:%d\n", module, index);
           }
         }
         FATAL("Potential dead-lock");
