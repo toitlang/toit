@@ -400,7 +400,7 @@ void* OS::allocate_pages(uword size) {
   return allocation;
 }
 
-void OS::free_pages(void* address, uword size, bool try_reuse) {
+void OS::free_pages(void* address, uword size) {
   heap_caps_free(address);
 }
 

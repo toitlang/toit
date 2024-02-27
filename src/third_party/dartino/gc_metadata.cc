@@ -26,7 +26,7 @@ static const uword CACHE_LINE = 64;
 GcMetadata GcMetadata::singleton_;
 
 void GcMetadata::tear_down() {
-  OS::free_pages(singleton_.metadata_, singleton_.metadata_size_);
+  OS::ungrab_virtual_memory(singleton_.metadata_, singleton_.metadata_size_);
 }
 
 void GcMetadata::get_metadata_extent(uword* address_return, uword* size_return) {
