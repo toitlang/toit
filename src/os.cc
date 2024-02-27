@@ -147,14 +147,22 @@ static void* toit_heap_range = null;  // Start of the range.
 static uword toit_heap_size = 0;      // Size of the range.
 static uint64* toit_heap_bits;        // Free bits for the range.
 
-const int BITS_PER_UINT64_LOG_2 = 6;
+static const int BITS_PER_UINT64_LOG_2 = 6;
 
-static void* find_free_area(uword size) {
+// Scans forwards from start of the bitmaps to find a set of free pages that
+// are big enough.  On 64 bit platforms there are 512 bitmaps (each 64 bit) for
+// the default max heap size of 1Gbyte.  We don't make allocations that cross
+// the boundary between bitmaps. Currently the max allocation size requested is
+// 256k, which is 8 pages.
+static void* find_free_area(const Locker& locker, uword size) {
   int bitmaps = toit_heap_size >> (TOIT_PAGE_SIZE_LOG2 + BITS_PER_UINT64_LOG_2);
   for (int i = 0; i < bitmaps; i++) {
     uint64 map = toit_heap_bits[i];
+    // Fast out for fully allocated bitmaps.
     if (map + 1 == 0) continue;  // All 1's.
     unsigned free_pages = 64 - Utils::popcount(map);
+    // Fast out - if there are not enough zero bits in the word there is no
+    // point in scanning it for a long enough run.
     if (free_pages < size) continue;
     if (size == 64) {
       uint64 zero = 0;
@@ -163,6 +171,7 @@ static void* find_free_area(uword size) {
     }
     uint64 one = 1;
     uint64 mask = (one << size) - 1;
+    // Scan the bitmap word for a run of the right length.
     for (unsigned j = 0; j <= 64 - size; j++) {
       if ((map & mask) == 0) {
         toit_heap_bits[i] |= mask;
@@ -179,7 +188,7 @@ void* OS::allocate_pages(uword size) {
   ASSERT(Utils::is_aligned(size, TOIT_PAGE_SIZE));
   size >>= TOIT_PAGE_SIZE_LOG2;
   ASSERT(size <= 64);  // 64 bits per bitmap, since we use uint64.
-  void* result = find_free_area(size);
+  void* result = find_free_area(locker, size);
   if (result) use_virtual_memory(result, size << TOIT_PAGE_SIZE_LOG2);
   return result;
 }
@@ -236,6 +245,8 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
       }
     }
 
+    // We grab the whole virtual memory range with an mmap, but we don't
+    // actually ask for the memory. That is done on demand with mprotect.
     toit_heap_range = Utils::round_up(grab_virtual_memory(null, max_heap + TOIT_PAGE_SIZE), TOIT_PAGE_SIZE);
     if (!toit_heap_range) {
       FATAL("Could not reserve %dMbytes of address space.", static_cast<int>(max_heap >> 20));
