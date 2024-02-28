@@ -230,8 +230,9 @@ void Chunk::find(uword word, const char* name) {
 }
 #endif
 
-Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
 #ifdef TOIT_FREERTOS
+
+Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   static const int UNUSABLE_SIZE = 50;
   void* unusable_pages[UNUSABLE_SIZE];
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
@@ -249,12 +250,17 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   printf("New allocation %p-%p\n", unusable_pages[0], unvoid_cast<char*>(unusable_pages[0]) + size);
   printf("Metadata range %p-%p\n", reinterpret_cast<void*>(lowest), reinterpret_cast<uint8*>(lowest) + GcMetadata::heap_extent());
   FATAL("Toit heap outside expected range");
+}
+
 #else
+
+Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   void* memory = OS::allocate_pages(Utils::round_up(size, TOIT_PAGE_SIZE));
   if (!memory) return null;
   return allocate_chunk_helper(owner, size, memory);
-#endif
 }
+
+#endif
 
 Chunk* ObjectMemory::allocate_chunk_helper(Space* owner, uword size, void* memory) {
   if (memory == null) return null;
