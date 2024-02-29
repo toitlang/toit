@@ -167,6 +167,9 @@ class ScavengeVisitor : public RootCallback {
 
   void set_record_new_space_pointers(uint8* p) { record_ = p; }
 
+  // We inherit shrink_stacks(), which by default returns false, so
+  // we don't shrink stacks during scavenge.
+
  private:
   template <class SomeSpace>
   static inline HeapObject* clone_into_space(Program* program, HeapObject* original, SomeSpace* to);
