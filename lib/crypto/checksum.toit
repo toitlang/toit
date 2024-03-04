@@ -22,11 +22,11 @@ abstract class Checksum:
 
   /** Variant of $(add data from to). */
   add data/io.Data -> none:
-    add data 0 data.size
+    add data 0 data.byte-size
 
   /** Variant of $(add data from to). */
   add data/io.Data from/int -> none:
-    add data from data.size
+    add data from data.byte-size
 
   /**
   Adds the $data to the data to be checksummed.
@@ -47,7 +47,7 @@ Computes the hash of the given $data.
 
 The $data must be a string or a byte array.
 */
-checksum summer/Checksum data/io.Data from/int=0 to/int=data.size -> ByteArray:
+checksum summer/Checksum data/io.Data from/int=0 to/int=data.byte-size -> ByteArray:
   summer.add data from to
   return summer.get
 

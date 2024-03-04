@@ -16,7 +16,7 @@ See https://en.wikipedia.org/wiki/SHA-1.
 /**
 Calculates the SHA-1 hash of the given $data.
 */
-sha1 data/io.Data from/int=0 to/int=data.size -> ByteArray:
+sha1 data/io.Data from/int=0 to/int=data.byte-size -> ByteArray:
   return checksum Sha1 data from to
 
 /** SHA-1 hash state. */

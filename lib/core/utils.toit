@@ -145,7 +145,7 @@ Currently only the first 16 bytes of the $seed are used.
 set-random-seed seed/io.Data -> none:
   #primitive.core.random-seed:
     if it == "WRONG_BYTES_TYPE":
-      set-random-seed (ByteArray.from seed 0 (min seed.size 16))
+      set-random-seed (ByteArray.from seed 0 (min seed.byte-size 16))
     else:
       throw it
 

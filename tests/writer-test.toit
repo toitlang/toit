@@ -3,6 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import io
 import writer show Writer
 import monitor
 
@@ -10,13 +11,9 @@ class WriterThatOnlyWritesOneByte:
   bytes := []
   reset:
     bytes = []
-  write data:
-    if data.size == 0: return 0
-    if data is string:
-      bytes.add
-          data.at --raw 0
-    else:
-      bytes.add data[0]
+  write data/io.Data:
+    if data.byte-size == 0: return 0
+    bytes.add (data.byte-at 0)
     return 1
 
 main:

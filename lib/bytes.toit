@@ -368,7 +368,7 @@ class Buffer extends BufferConsumer:
     while data := r.read: write data
 
   /** See $BufferConsumer.write. */
-  write data/io.Data from/int=0 to/int=data.size -> int:
+  write data/io.Data from/int=0 to/int=data.byte-size -> int:
     count := to - from
     ensure_ count
     buffer_.replace offset_ data from to

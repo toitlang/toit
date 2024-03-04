@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import net
 import net.udp
 import net.tcp
@@ -350,9 +351,9 @@ class SocketResourceProxy_ extends ServiceResourceProxy:
   read -> ByteArray?:
     return (client_ as NetworkServiceClient).socket-read handle_
 
-  write data from=0 to=data.size -> int:
+  write data/io.Data from/int=0 to/int=data.byte-size -> int:
     to = min to (from + WRITE-DATA-SIZE-MAX_)
-    return (client_ as NetworkServiceClient).socket-write handle_ data[from..to]
+    return (client_ as NetworkServiceClient).socket-write handle_ (data.byte-slice from  to)
 
   mtu -> int:
     return (client_ as NetworkServiceClient).socket-mtu handle_

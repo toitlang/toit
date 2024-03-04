@@ -79,7 +79,7 @@ do-test chunk-size chunk-offset str/string zlib-expected/ByteArray uncompressed 
 test-io-data:
   input-str := "H" + ("e" * 262) + "llo"
   expected := #[8, 29, 243, 72, 29, 241, 0, 4, 114, 114, 242, 1, 160, 114, 104, 238]
-  input := FakeData.str input-str
+  input := FakeData input-str
   compressor := RunLengthZlibEncoder
   accumulator := bytes.Buffer
   done := Semaphore

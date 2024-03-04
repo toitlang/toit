@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import monitor show ResourceState_
 import net
 import net.tcp as net
@@ -159,7 +160,7 @@ class TcpSocket extends TcpSocket_ implements net.Socket Reader:
       // TODO(anders): We could consider always clearing this after all reads.
       state.clear-state TOIT-TCP-READ_
 
-  write data from = 0 to = data.size -> int:
+  write data/io.Data from/int=0 to/int=data.byte-size -> int:
     while true:
       state := ensure-state_ TOIT-TCP-WRITE_ --error-bits=(TOIT-TCP-ERROR_ | TOIT-TCP-CLOSE_) --failure=: throw it
       wrote := tcp-write_ state.group state.resource data from to
@@ -196,7 +197,16 @@ tcp-listen_ socket-resource-group address port backlog:
   #primitive.tcp.listen
 
 tcp-write_ socket-resource-group descriptor data from to:
-  #primitive.tcp.write
+  // We are not using `io.primitive-redo-chunked-io-data_` because we
+  // might abort the write once the buffer is full and the written
+  // size is not equal to the size we requested to write.
+  #primitive.tcp.write: | error |
+    if error != "WRONG_BYTES_TYPE": throw error
+    List.chunk-up from to 4096: | chunk-from chunk-to chunk-size |
+      chunk := ByteArray.from data chunk-from chunk-to
+      written := tcp-write_ socket-resource-group descriptor chunk 0 chunk-size
+      if written != chunk-size: return (chunk-from - from) + written
+    return to - from
 
 tcp-read_ socket-resource-group descriptor:
   #primitive.tcp.read

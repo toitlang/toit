@@ -1111,8 +1111,8 @@ interface ByteArray extends io.Data:
     size.repeat: result[it] = initializer.call it
     return result
 
-  constructor.from bytes/io.Data from/int=0 to/int=bytes.size:
-    if not 0 <= from <= to <= bytes.size: throw "OUT_OF_BOUNDS"
+  constructor.from bytes/io.Data from/int=0 to/int=bytes.byte-size:
+    if not 0 <= from <= to <= bytes.byte-size: throw "OUT_OF_BOUNDS"
     size := to - from
     result := ByteArray size
     bytes.write-to-byte-array result --at=0 from to
@@ -1538,6 +1538,15 @@ abstract class ByteArrayBase_ implements ByteArray:
   index-of byte/int --from/int=0 --to/int=size -> int:
     #primitive.core.blob-index-of
 
+  byte-size -> int:
+    return size
+
+  byte-slice from/int to/int -> io.Data:
+    return this[from..to]
+
+  byte-at index/int -> int:
+    return this[index]
+
   write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
     target.replace at this from to
 
@@ -1583,7 +1592,7 @@ class ByteArray_ extends ByteArrayBase_:
   /**
   Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[
   */
-  replace index/int source/io.Data from/int=0 to/int=source.size -> none:
+  replace index/int source/io.Data from/int=0 to/int=source.byte-size -> none:
     #primitive.core.byte-array-replace:
       if it == "WRONG_BYTES_TYPE" and source is not ByteArray:
         source.write-to-byte-array this --at=index from to
@@ -1640,7 +1649,7 @@ class ByteArraySlice_ extends ByteArrayBase_:
   /**
   Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[
   */
-  replace index/int source/io.Data from/int=0 to/int=source.size -> none:
+  replace index/int source/io.Data from/int=0 to/int=source.byte-size -> none:
     actual-index := from_ + index
     if from == to and actual-index == to_: return
     if not from_ <= actual-index < to_: throw "OUT_OF_BOUNDS"
@@ -1753,6 +1762,15 @@ class CowByteArray_ implements ByteArray:
       backing_ = backing_.copy
       is-mutable_ = true
     return backing_
+
+  byte-size -> int:
+    return backing_.byte-size
+
+  byte-slice from/int to/int -> io.Data:
+    return this[from..to]
+
+  byte-at index/int -> int:
+    return this[index]
 
   write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
     backing_.write-to-byte-array target --at=at from to
