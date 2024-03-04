@@ -183,30 +183,38 @@ func (p *parser) GotoDefinitionOutput(r io.Reader) ([]lsp.Location, error) {
 	return res, nil
 }
 
-func (p *parser) CompleteOutput(r io.Reader) ([]lsp.CompletionItem, error) {
+func (p *parser) CompleteOutput(r io.Reader) (string, *lsp.Range, []lsp.CompletionItem, error) {
 	reader := bufio.NewReader(r)
 
-	res := []lsp.CompletionItem{}
+	items := []lsp.CompletionItem{}
 
+	prefix, err := p.readLine(reader)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	rng, err := p.readRange(reader)
+	if err != nil {
+		return "", nil, nil, err
+	}
 	for {
 		label, err := p.readLine(reader)
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, err
+			return "", nil, nil, err
 		}
 		kind, err := p.readInt(reader)
 		if err != nil {
-			return nil, err
+			return "", nil, nil, err
 		}
-		res = append(res, lsp.CompletionItem{
+		items = append(items, lsp.CompletionItem{
 			Label: label,
 			Kind:  lsp.CompletionItemKind(kind),
 		})
 	}
 
-	return res, nil
+	return prefix, rng, items, nil
 }
 
 func (p *parser) SnapshotBundleOutput(r io.Reader) ([]byte, error) {

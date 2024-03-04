@@ -251,20 +251,25 @@ function(add_repo_tests REPO)
       continue()
     endif()
 
+    set(TEST_EXPECTATION_NAME "${TEST_NAME}")
+    if("${TEST_NAME}" IN_LIST FAILING_TESTS OR "${TEST_NAME}" IN_LIST TOIT_FAILING_TESTS)
+      set(TEST_EXPECTATION_NAME "${TEST_NAME}-expected-to-fail")
+    endif()
+
     add_test(
-      NAME "${TEST_NAME}"
+      NAME "${TEST_EXPECTATION_NAME}"
       COMMAND $<TARGET_FILE:toit.run> "${FILE}" $<TARGET_FILE:toit.run>
       WORKING_DIRECTORY "${REPO_PATH}"
       CONFIGURATIONS external
     )
     if("${TEST_NAME}" IN_LIST FAILING_TESTS OR "${TEST_NAME}" IN_LIST TOIT_FAILING_TESTS)
-      set_tests_properties(${TEST_NAME} PROPERTIES WILL_FAIL TRUE)
+      set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
     endif()
 
     if ("${TEST_NAME}" MATCHES "_slow\\.toit$")
-      set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
+      set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
     else()
-      set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+      set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
     endif()
   endforeach()
 endfunction()

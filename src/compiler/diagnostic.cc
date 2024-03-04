@@ -284,7 +284,7 @@ bool LanguageServerAnalysisDiagnostics::emit(Severity severity,
                                              const char* format,
                                              va_list& arguments) {
   lsp()->diagnostics()->emit(severity,
-                             range_to_lsp_range(range, source_manager()),
+                             range_to_lsp_location(range, source_manager()),
                              format,
                              arguments);
   return true;

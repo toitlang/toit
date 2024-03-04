@@ -13,6 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import fs
 import system
 import system show platform
 
@@ -118,7 +119,7 @@ class UriPathTranslator:
     return compiler-path
 
   local-path-to-compiler-path local-path/string -> string:
-    assert: is-absolute_ local-path
+    assert: fs.is-absolute local-path
     if platform == system.PLATFORM-WINDOWS:
       return "/$local-path"
     return local-path
@@ -129,10 +130,3 @@ class UriPathTranslator:
   Specifically deals with different ways of percent-encoding.
   */
   canonicalize uri/string -> string: return to-uri (to-path uri)
-
-  is-absolute_ path/string -> bool:
-    if path.starts-with "/": return true
-    if platform == system.PLATFORM-WINDOWS:
-      if path.starts-with "\\\\": return true
-      if path.size >= 2 and path[1] == ':': return true
-    return false

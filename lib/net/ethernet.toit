@@ -40,10 +40,28 @@ open --name/string?=null -> net.Client:
     // generalize this handling for net.open and wifi.open too,
     // so we get a shared pattern for dealing with discovering
     // such network services at start up.
-    service-initialized_ = true
     service_ = (EthernetServiceClient).open
         --timeout=(Duration --s=5)
         --if-absent=: null
+    // If opening the client failed due to exceptions or
+    // cancelation, we will try again next time $open is
+    // called. If the service was just absent even after
+    // having waited for it to appear, we will not try
+    // again unless $reset has been called in between.
+    service-initialized_ = true
   service := service_
   if not service: throw "ethernet unavailable"
   return net.Client service --name=name service.connect
+
+/**
+Resets the ethernet client.
+
+This allows re-establishing the link to the ethernet service
+  provider at a later time. At that point, the service provider
+  may have changed, so calling $reset enables reacting to that.
+*/
+reset -> none:
+  service := service_
+  service_ = null
+  service-initialized_ = false
+  if service: service.close

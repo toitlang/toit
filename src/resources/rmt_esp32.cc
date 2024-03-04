@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <driver/rmt.h>
 #include <driver/gpio.h>
@@ -404,4 +404,4 @@ PRIMITIVE(stop_receive) {
 }
 
 } // namespace toit
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

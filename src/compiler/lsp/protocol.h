@@ -38,7 +38,6 @@ class ToitdocRegistry;
 /// This range class uses the LSP conventions.
 /// Contrary to the compiler range all integers are 0-indexed.
 struct LspRange {
-  const char* path;
   // All entries are 0-indexed.
   int from_line;
   int from_column;
@@ -46,7 +45,14 @@ struct LspRange {
   int to_column;
 };
 
+/// This location class uses the LSP conventions.
+struct LspLocation {
+  const char* path;
+  LspRange range;
+};
+
 int utf16_offset_in_line(Source::Location location);
+LspLocation range_to_lsp_location(Source::Range range, SourceManager* manager);
 LspRange range_to_lsp_range(Source::Range range, SourceManager* manager);
 
 struct LspWriter {
@@ -72,6 +78,7 @@ class LspProtocolBase {
   LspProtocolBase(LspWriter* writer) : writer_(writer) {}
 
  protected:
+  void print_lsp_location(const LspLocation& location);
   void print_lsp_range(const LspRange& range);
 
   void printf(const char* format, va_list& arguments) {
@@ -102,7 +109,7 @@ class LspDiagnosticsProtocol : public LspProtocolBase {
 
   void emit(Diagnostics::Severity severity, const char* format, va_list& arguments);
   void emit(Diagnostics::Severity severity,
-            const LspRange& range,
+            const LspLocation& location,
             const char* format,
             va_list& arguments);
   void start_group();
@@ -114,7 +121,7 @@ class LspGotoDefinitionProtocol : public LspProtocolBase {
   // Inherit constructor.
   using LspProtocolBase::LspProtocolBase;
 
-  void emit(const LspRange& range);
+  void emit(const LspLocation& location);
 };
 
 class LspCompletionProtocol : public LspProtocolBase {
@@ -122,6 +129,8 @@ class LspCompletionProtocol : public LspProtocolBase {
   // Inherit constructor.
   using LspProtocolBase::LspProtocolBase;
 
+  void emit_prefix(const char* prefix);
+  void emit_prefix_range(const LspRange& range);
   void emit(const std::string& name,
             CompletionKind kind);
 };

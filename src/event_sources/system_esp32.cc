@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <esp_event.h>
 
@@ -26,6 +26,8 @@
 ESP_EVENT_DEFINE_BASE(RUN_EVENT);
 
 namespace toit {
+
+static const int RUN_MAX_DELAY_MS = 5 * 1000;
 
 SystemEventSource::SystemEventSource()
     : EventSource("System", 1)
@@ -53,7 +55,13 @@ void SystemEventSource::run(const std::function<void ()>& func) {
   }
   in_run_ = true;
   is_run_done_ = false;
-  FATAL_IF_NOT_ESP_OK(esp_event_post(RUN_EVENT, 0, const_cast<void*>(reinterpret_cast<const void*>(&func)), sizeof(func), portMAX_DELAY));
+  { // The call to post an event must be done without holding
+    // the lock, because we will wait if the queue is full and
+    // we need the lock to handle and thus consume events.
+    Unlocker unlock(locker);
+    TickType_t ticks = RUN_MAX_DELAY_MS / portTICK_PERIOD_MS;
+    FATAL_IF_NOT_ESP_OK(esp_event_post(RUN_EVENT, 0, const_cast<void*>(reinterpret_cast<const void*>(&func)), sizeof(func), ticks));
+  }
   while (!is_run_done_) {
     OS::wait(run_cond_);
   }
@@ -118,4 +126,4 @@ SystemEventSource* SystemEventSource::instance_ = null;
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

@@ -118,10 +118,8 @@ class FileServerProtocol:
     is-regular := false
     is-directory := false
     content := null
-    document := documents_.get --uri=(translator_.to-uri compiler-path --from-compiler)
-    // Just having a document is not enough, as we might still have entries for
-    // deleted files.
-    if document and document.content:
+    document := documents_.get-opened --uri=(translator_.to-uri compiler-path --from-compiler)
+    if document:
       exists = true
       is-regular = true
       is-directory = false

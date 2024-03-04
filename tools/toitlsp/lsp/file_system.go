@@ -128,7 +128,7 @@ func (fs *DocsCacheFileSystem) PackageCachePaths() ([]string, error) {
 
 func (fs *DocsCacheFileSystem) Read(path string) (compiler.File, error) {
 	uri := uri.PathToURI(path)
-	doc, ok := fs.docs.Get(uri)
+	doc, ok := fs.docs.GetOpenedDocument(uri)
 	if ok && doc.Content != nil {
 		return compiler.File{
 			Path:        path,
