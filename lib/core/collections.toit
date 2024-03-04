@@ -1538,7 +1538,8 @@ abstract class ByteArrayBase_ implements ByteArray:
   index-of byte/int --from/int=0 --to/int=size -> int:
     #primitive.core.blob-index-of
 
-  byte-size -> int: return size
+  byte-size -> int:
+    return size
 
   byte-slice from/int to/int -> io.Data:
     return this[from..to]
