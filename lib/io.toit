@@ -120,6 +120,7 @@ class BufferedReader implements Reader:
   add-byte-array_ data -> none:
     arrays_.add data
     if arrays_.size == 1:
+      assert: first-array-position_ == 0
       base-consumed_ += first-array-position_
       first-array-position_ = 0
 
