@@ -53,6 +53,10 @@ Expression* optimize_virtual_call(CallVirtual* node,
                                   Method* method,
                                   UnorderedSet<Symbol>& field_names,
                                   UnorderedMap<Class*, QueryableClass>& queryables) {
+  // For simplicity, don't optimize mixins. There are some cases where we could
+  // change a virtual call to a static one, but it requires more work.
+  if (holder != null && holder->is_mixin()) return node;
+
   auto dot = node->target();
   auto receiver = dot->receiver();
 

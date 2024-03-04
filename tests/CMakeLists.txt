@@ -43,19 +43,35 @@ set(TEST_SHARD_STRIDE "$ENV{SHARD_STRIDE}")
 
 add_custom_target(
   check
-  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} --label-exclude "flaky" -T test --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
   USES_TERMINAL
   DEPENDS build_tools
   )
 
 add_custom_target(
   check_slow
-  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C slow --output-on-failure  -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} --label-exclude "flaky" -T test -C slow --output-on-failure  -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
   USES_TERMINAL
   DEPENDS build_tools
   )
 
-include(fail.cmake)
+add_custom_target(
+  check_flaky
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} --label-regex "flaky" -T test -C slow --output-on-failure  -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
+  USES_TERMINAL
+  DEPENDS build_tools
+  )
+
+# Create 15 flaky dummy tests, so that the strides mechanism works.
+foreach(i RANGE 15)
+  add_test(
+    NAME "flaky_dummy_${i}"
+    COMMAND ${CMAKE_COMMAND} -E echo "Flaky dummy test ${i}"
+    )
+  set_tests_properties("flaky_dummy_${i}" PROPERTIES LABELS "flaky")
+endforeach()
+
+include(fail.cmake OPTIONAL)
 
 foreach(file ${ALL_TESTS})
   if("${file}" IN_LIST TOIT_SKIP_TESTS)
@@ -70,7 +86,7 @@ foreach(file ${ALL_TESTS})
   elseif("${file}" IN_LIST TOIT_NO_BOOT_TESTS)
     set(TOIT_ARGS "-b" "none")
   elseif("${file}" IN_LIST TOIT_COMPILER_TESTS)
-    set(TEST_ARGS "$<TARGET_FILE:toit.run>")
+    set(TEST_ARGS "$<TARGET_FILE:toit.run>" "$<TARGET_FILE:toit.compile>")
   else()
     # We add 3 arguments to all test-calls.
     # They are only used for tests that deal with arguments.
@@ -98,6 +114,9 @@ foreach(file ${ALL_TESTS})
   endif()
   if("${file}" IN_LIST TOIT_FAILING_TESTS)
     set_tests_properties(${file} PROPERTIES WILL_FAIL TRUE)
+  endif()
+  if("${file}" IN_LIST TOIT_FLAKY_TESTS)
+    set_tests_properties(${file} PROPERTIES LABELS "flaky")
   endif()
 endforeach()
 

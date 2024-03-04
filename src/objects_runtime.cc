@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -22,6 +22,7 @@
 namespace toit {
 
 bool Object::mutable_byte_content(Process* process, uint8** content, int* length, Error** error) {
+  *error = Error::from(process->program()->wrong_object_type());  // Default error if we return false.
   if (is_byte_array(this)) {
     auto byte_array = ByteArray::cast(this);
     // External byte arrays can have structs in them. This is captured in the external tag.
@@ -50,13 +51,10 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
       return false;
     }
 
-    Object* new_backing = process->allocate_byte_array(immutable_length, error);
+    Object* new_backing = process->allocate_byte_array(immutable_length);
     if (new_backing == null) {
-      *content = null;
-      *length = 0;
-      // We return 'true' as this should have worked, but we might just have
-      // run out of memory. The 'error' contains the reason things failed.
-      return true;
+      *error = Error::from(program->allocation_failed());
+      return false;
     }
 
     ByteArray::Bytes bytes(ByteArray::cast(new_backing));
@@ -176,7 +174,7 @@ void Stack::transfer_from_interpreter(Interpreter* interpreter) {
   GcMetadata::insert_into_remembered_set(this);
 }
 
-bool HeapObject::in_remembered_set() {
+bool HeapObject::in_remembered_set() const {
   if (*GcMetadata::remembered_set_for(this) == GcMetadata::NEW_SPACE_POINTERS) {
     return true;
   }

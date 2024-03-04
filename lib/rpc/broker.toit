@@ -16,8 +16,8 @@
 import rpc show RpcSerializable
 
 class RpcBroker implements SystemMessageHandler_:
-  static MAX-TASKS/int     ::= (platform == PLATFORM-FREERTOS) ?  4 : 16
-  static MAX-REQUESTS/int? ::= (platform == PLATFORM-FREERTOS) ? 16 : 64
+  static MAX-TASKS/int     ::= 16
+  static MAX-REQUESTS/int? ::= 64
 
   procedures_/Map ::= {:}
   queue_/RpcRequestQueue_ ::= RpcRequestQueue_ MAX-TASKS

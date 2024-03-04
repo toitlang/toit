@@ -55,6 +55,8 @@ enum TLS_STATE {
   TLS_SENT_HELLO_VERIFY = 1 << 3,
 };
 
+bool is_tls_malloc_failure(int err);
+
 // Common base for TLS (stream based) and in the future perhaps DTLS (datagram based) sockets.
 class BaseMbedTlsSocket : public TlsSocket {
  public:

@@ -22,3 +22,6 @@ imported-global-fun:
 /*
 @ imported_global_fun
 */
+
+mixin ImportedMixin:
+/*    @ ImportedMixin */

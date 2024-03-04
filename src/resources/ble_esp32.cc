@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED
+#if defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ENABLED
 
 #include "../resource.h"
 #include "../objects_inline.h"
@@ -235,16 +235,16 @@ class BleReadWriteElement : public BleErrorCapableResource {
   }
 
   static int on_attribute_read(uint16_t conn_handle,
-                               const ble_gatt_error *error,
-                               ble_gatt_attr *attr,
-                               void *arg) {
+                               const ble_gatt_error* error,
+                               ble_gatt_attr* attr,
+                               void* arg) {
     USE(conn_handle);
     unvoid_cast<BleReadWriteElement*>(arg)->_on_attribute_read(error, attr);
     return BLE_ERR_SUCCESS;
   }
 
   static int on_access(uint16_t conn_handle, uint16_t attr_handle,
-                       struct ble_gatt_access_ctxt *ctxt, void *arg) {
+                       struct ble_gatt_access_ctxt* ctxt, void* arg) {
     USE(conn_handle);
     USE(attr_handle);
     return unvoid_cast<BleReadWriteElement*>(arg)->_on_access(ctxt);
@@ -280,7 +280,7 @@ class BleReadWriteElement : public BleErrorCapableResource {
   }
 
  private:
-  void _on_attribute_read(const ble_gatt_error *error, ble_gatt_attr *attr);
+  void _on_attribute_read(const ble_gatt_error* error, ble_gatt_attr* attr);
   int _on_access(ble_gatt_access_ctxt* ctxt);
 
   ble_uuid_any_t uuid_;
@@ -300,7 +300,7 @@ class BleCharacteristicResource;
 class BleDescriptorResource: public BleReadWriteElement, public DescriptorList::Element, public DiscoverableResource {
  public:
   TAG(BleDescriptorResource);
-  BleDescriptorResource(ResourceGroup* group, BleCharacteristicResource *characteristic,
+  BleDescriptorResource(ResourceGroup* group, BleCharacteristicResource* characteristic,
                         ble_uuid_any_t uuid, uint16 handle, int properties)
     : BleReadWriteElement(group, DESCRIPTOR, uuid, handle)
     , characteristic_(characteristic)
@@ -485,10 +485,10 @@ class BleServiceResource:
   }
 
   static int on_descriptor_discovered(uint16_t conn_handle,
-                                      const struct ble_gatt_error *error,
+                                      const struct ble_gatt_error* error,
                                       uint16_t chr_val_handle,
-                                      const struct ble_gatt_dsc *dsc,
-                                      void *arg) {
+                                      const struct ble_gatt_dsc* dsc,
+                                      void* arg) {
     USE(conn_handle);
     unvoid_cast<BleServiceResource*>(arg)->_on_descriptor_discovered(error, dsc, chr_val_handle, false);
     return BLE_ERR_SUCCESS;
@@ -513,7 +513,7 @@ class BleServiceResource:
   }
 
  private:
-  void _on_characteristic_discovered(const ble_gatt_error *error, const ble_gatt_chr *chr);
+  void _on_characteristic_discovered(const ble_gatt_error* error, const ble_gatt_chr* chr);
   void _on_descriptor_discovered(const struct ble_gatt_error* error,
                                  const struct ble_gatt_dsc* dsc,
                                  uint16_t chr_val_handle,
@@ -560,13 +560,13 @@ class BleCentralManagerResource : public BleErrorCapableResource {
     return newly_discovered_peripherals_.remove_first();
   }
 
-  static int on_discovery(ble_gap_event *event, void *arg) {
+  static int on_discovery(ble_gap_event* event, void* arg) {
     unvoid_cast<BleCentralManagerResource*>(arg)->_on_discovery(event);
     return BLE_ERR_SUCCESS;
   }
 
  private:
-  void _on_discovery(ble_gap_event *event);
+  void _on_discovery(ble_gap_event* event);
   DiscoveredPeripheralList newly_discovered_peripherals_;
 };
 
@@ -632,15 +632,15 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
 
   BleRemoteDeviceResource* type() override { return this; }
 
-  static int on_event(ble_gap_event *event, void *arg) {
+  static int on_event(ble_gap_event* event, void* arg) {
     unvoid_cast<BleRemoteDeviceResource*>(arg)->_on_event(event);
     return BLE_ERR_SUCCESS;
   }
 
   static int on_service_discovered(uint16_t conn_handle,
-                                   const struct ble_gatt_error *error,
-                                   const struct ble_gatt_svc *service,
-                                   void *arg) {
+                                   const struct ble_gatt_error* error,
+                                   const struct ble_gatt_svc* service,
+                                   void* arg) {
     unvoid_cast<BleRemoteDeviceResource*>(arg)->_on_service_discovered(error, service);
     return BLE_ERR_SUCCESS;
   }
@@ -649,7 +649,7 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   void set_handle(uint16 handle) { handle_ = handle; }
 
  private:
-  void _on_event(ble_gap_event *event);
+  void _on_event(ble_gap_event* event);
   void _on_service_discovered(const ble_gatt_error* error, const ble_gatt_svc* service);
 
   uint16 handle_;
@@ -671,6 +671,10 @@ Object* nimble_error_code_to_string(Process* process, int error_code, bool host)
 
 static Object* nimble_stack_error(Process* process, int error_code) {
   return nimble_error_code_to_string(process, error_code, false);
+}
+
+Object* nimble_host_stack_error(Process* process, int error_code) {
+  return nimble_error_code_to_string(process, error_code, true);
 }
 
 static ble_uuid_any_t uuid_from_blob(Blob& blob) {
@@ -1124,19 +1128,31 @@ bool BleCharacteristicResource::update_subscription_status(uint8_t indicate, uin
   return true;
 }
 
+static int do_start_advertising(BlePeripheralManagerResource* peripheral_manager) {
+  return ble_gap_adv_start(
+      BLE_OWN_ADDR_PUBLIC,
+      null,
+      BLE_HS_FOREVER,
+      &peripheral_manager->advertising_params(),
+      BlePeripheralManagerResource::on_gap,
+      peripheral_manager);
+}
+
 int BlePeripheralManagerResource::_on_gap(struct ble_gap_event* event) {
   switch (event->type) {
     case BLE_GAP_EVENT_CONNECT:
       if (advertising_started()) {
         // NimBLE stops advertising on connection event. To keep the library consistent
         // with other platforms the advertising is restarted.
-        int err = ble_gap_adv_start(
-            BLE_OWN_ADDR_PUBLIC,
-            null,
-            BLE_HS_FOREVER,
-            &advertising_params(),
-            BlePeripheralManagerResource::on_gap,
-            this);
+        int err = do_start_advertising(this);
+        if (err != BLE_ERR_SUCCESS && err != BLE_HS_ENOMEM) {
+          ESP_LOGW("BLE", "Could not restart advertising: err=%d", err);
+        }
+      }
+      break;
+    case BLE_GAP_EVENT_DISCONNECT:
+      if (advertising_started() && !ble_gap_adv_active()) {
+        int err = do_start_advertising(this);
         if (err != BLE_ERR_SUCCESS) {
           ESP_LOGW("BLE", "Could not restart advertising: err=%d", err);
         }
@@ -1472,7 +1488,7 @@ PRIMITIVE(connect) {
   memcpy_reverse(addr.val, address.address() + 1, 6);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) FAIL(ALLOCATION_FAILED);
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto device = _new BleRemoteDeviceResource(central_manager->group(), secure_connection);
   if (!device) FAIL(MALLOC_FAILED);
@@ -1917,13 +1933,7 @@ PRIMITIVE(advertise_start) {
   peripheral_manager->advertising_params().itvl_min = advertising_interval;
   peripheral_manager->advertising_params().itvl_max = advertising_interval;
 
-  err = ble_gap_adv_start(
-      BLE_OWN_ADDR_PUBLIC,
-      null,
-      BLE_HS_FOREVER,
-      &peripheral_manager->advertising_params(),
-      BlePeripheralManagerResource::on_gap,
-      peripheral_manager);
+  err = do_start_advertising(peripheral_manager);
   if (err != BLE_ERR_SUCCESS) {
     return nimble_stack_error(process, err);
   }
@@ -2229,11 +2239,11 @@ PRIMITIVE(notify_characteristics_value) {
     err = ble_gattc_indicate_custom(subscription->conn_handle(), characteristic->handle(), om);
   }
 
-  if (err != BLE_ERR_SUCCESS) {
+  if (err != BLE_ERR_SUCCESS && err != BLE_HS_ENOTCONN) {
     // The 'om' buffer is always consumed by the call to
     // ble_gattc_notify_custom() or ble_gattc_indicate_custom()
     // regardless of the outcome.
-    return nimble_stack_error(process, err);
+    return nimble_host_stack_error(process, err);
   }
 
   return process->null_object();

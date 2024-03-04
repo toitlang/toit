@@ -46,7 +46,27 @@ test-url-decode:
   expect-equals "€25,-" (url.decode "%E2%82%AC25%2C-").to-string
 
 test-query-string:
-  qs := url.QueryString.parse "/foo?x=y"
+  qs := url.QueryString.parse "/foo?x"
+  expect-equals "/foo" qs.resource
+  expect-structural-equals { "x": "" } qs.parameters
+  expect-equals "" qs.fragment
+
+  qs = url.QueryString.parse "/foo?+x"
+  expect-equals "/foo" qs.resource
+  expect-structural-equals { " x": "" } qs.parameters
+  expect-equals "" qs.fragment
+
+  qs = url.QueryString.parse "/foo?+x+"
+  expect-equals "/foo" qs.resource
+  expect-structural-equals { " x ": "" } qs.parameters
+  expect-equals "" qs.fragment
+
+  qs = url.QueryString.parse "/foo?++x+y++"
+  expect-equals "/foo" qs.resource
+  expect-structural-equals { "  x y  ": "" } qs.parameters
+  expect-equals "" qs.fragment
+
+  qs = url.QueryString.parse "/foo?x=y"
   expect-equals "/foo" qs.resource
   expect-structural-equals { "x": "y" } qs.parameters
   expect-equals "" qs.fragment
@@ -89,6 +109,16 @@ test-query-string:
   qs = url.QueryString.parse "/foo?x="
   expect-equals "/foo" qs.resource
   expect-structural-equals { "x": "" } qs.parameters
+  expect-equals "" qs.fragment
+
+  qs = url.QueryString.parse "/foo?x=+"
+  expect-equals "/foo" qs.resource
+  expect-structural-equals { "x": " " } qs.parameters
+  expect-equals "" qs.fragment
+
+  qs = url.QueryString.parse "/foo?x=++"
+  expect-equals "/foo" qs.resource
+  expect-structural-equals { "x": "  " } qs.parameters
   expect-equals "" qs.fragment
 
   qs = url.QueryString.parse "/foo?x=&y=z"
@@ -136,9 +166,19 @@ test-query-string:
   expect-structural-equals { "hest": "fisk er sundt" } qs.parameters
   expect-equals "" qs.fragment
 
-  qs = url.QueryString.parse "/foo?hest=fisk%20er%20sundt"
+  qs = url.QueryString.parse "/foo?hest=fisk+er+sundt"
   expect-equals "/foo" qs.resource
   expect-structural-equals { "hest": "fisk er sundt" } qs.parameters
+  expect-equals "" qs.fragment
+
+  qs = url.QueryString.parse "/foo?hest%20fisk=godt"
+  expect-equals "/foo" qs.resource
+  expect-structural-equals { "hest fisk": "godt" } qs.parameters
+  expect-equals "" qs.fragment
+
+  qs = url.QueryString.parse "/foo?hest+fisk=godt"
+  expect-equals "/foo" qs.resource
+  expect-structural-equals { "hest fisk": "godt" } qs.parameters
   expect-equals "" qs.fragment
 
   qs = url.QueryString.parse "/foo?hest%3dlotte=fisk"
@@ -175,3 +215,13 @@ test-query-string:
   expect-equals "http://quux .com/foo" qs.resource
   expect-structural-equals {:} qs.parameters
   expect-equals " bar" qs.fragment
+
+  qs = url.QueryString.parse "http://quux+.com/foo#+bar"
+  expect-equals "http://quux+.com/foo" qs.resource
+  expect-structural-equals {:} qs.parameters
+  expect-equals "+bar" qs.fragment
+
+  qs = url.QueryString.parse "http://www.example.com/fish+chips?peas=mushy"
+  expect-equals "http://www.example.com/fish+chips" qs.resource
+  expect-structural-equals { "peas": "mushy"} qs.parameters
+  expect-equals "" qs.fragment

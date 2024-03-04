@@ -215,7 +215,7 @@ PRIMITIVE(opendir2) {
     if (GetLastError() == ERROR_NO_MORE_FILES) {
       directory->set_done(true);
     } else {
-      delete directory;
+      group->unregister_resource(directory);
       WINDOWS_ERROR;
     }
   }
@@ -237,9 +237,7 @@ PRIMITIVE(readdir) {
   if (directory->done()) return process->null_object();
 
   ByteArray* proxy = process->object_heap()->allocate_proxy(true);
-  if (proxy == null) {
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   const wchar_t* utf_16 = directory->find_file_data()->cFileName;
   size_t utf_16_len = wcslen(utf_16);
@@ -506,14 +504,16 @@ PRIMITIVE(mkdtemp) {
 
 PRIMITIVE(is_open_file) {
   ARGS(int, fd);
-  int result = lseek(fd, 0, SEEK_CUR);
-  if (result < 0) {
-    if (errno == ESPIPE || errno == EINVAL || errno == EBADF) {
-      return process->false_object();
-    }
-    FAIL(ERROR);
+  HANDLE handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
+  if (handle == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
+  int type = GetFileType(handle);
+  if (type == FILE_TYPE_DISK) {
+    return process->true_object();
+  } else if (type == FILE_TYPE_PIPE || type == FILE_TYPE_CHAR) {
+    return process->false_object();
+  } else {
+    FAIL(INVALID_ARGUMENT);
   }
-  return process->true_object();
 }
 
 PRIMITIVE(realpath) {

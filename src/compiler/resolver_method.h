@@ -70,6 +70,7 @@ class MethodResolver : public ast::Visitor {
       , scope_(scope)
       , resolution_mode_(STATIC)
       , super_forcing_expression_(null)
+      , block_has_direct_field_access_(true)
       , current_lambda_(null)
       , loop_status_(NO_LOOP)
       , loop_block_depth_(0) {}
@@ -108,6 +109,28 @@ class MethodResolver : public ast::Visitor {
   ResolutionMode resolution_mode_;
   // The expression that forced to switch the constructor to instance mode.
   ast::Expression* super_forcing_expression_;
+  /// Assuming we are in the static part of a constructor, whether
+  /// the current block is allowed to access a field directly.
+  ///
+  /// Specifically, we do allow:
+  ///     class A:
+  ///       field-x/int
+  ///       field-y/int
+  ///       constructor:
+  ///         field-y = 499
+  ///         [1].do:
+  ///           field-x = field-y + it
+  ///
+  /// However, we don't allow:
+  ///     constructor:
+  ///        b := :
+  ///          field-x = 499
+  ///          field-y = 499
+  ///        field-x = 42
+  ///        field-y = 42
+  ///        super
+  ///        b.call
+  bool block_has_direct_field_access_;
   ast::Node* current_lambda_;
   LoopStatus loop_status_;
   int loop_block_depth_;
@@ -265,6 +288,7 @@ class MethodResolver : public ast::Visitor {
                          Symbol label);
   ir::Code* _create_block(ast::Block* node,
                           bool has_implicit_it_parameter,
+                          bool may_mutate_final,
                           Symbol label);
   ir::Expression* _create_lambda(ast::Lambda* node,
                                  Symbol label);

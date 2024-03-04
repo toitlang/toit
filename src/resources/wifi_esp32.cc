@@ -94,10 +94,10 @@ class WifiResourceGroup : public ResourceGroup {
     strncpy(char_cast(config.sta.ssid), ssid, sizeof(config.sta.ssid) - 1);
     strncpy(char_cast(config.sta.password), password, sizeof(config.sta.password) - 1);
     config.sta.channel = channel;
+    config.sta.scan_method = (channel == 0)
+        ? WIFI_ALL_CHANNEL_SCAN
+        : WIFI_FAST_SCAN;
     err = esp_wifi_set_config(WIFI_IF_STA, &config);
-    if (err != ESP_OK) return err;
-
-    err = esp_wifi_start();
     if (err != ESP_OK) return err;
 
     // When connecting to Android mobile hotspot APs, we
@@ -106,7 +106,10 @@ class WifiResourceGroup : public ResourceGroup {
     // has a good chance of succeeding, so we allow two
     // reconnect attempts.
     reconnects_remaining_ = 2;
-    return esp_wifi_connect();
+
+    // Request to start the WiFi stack. We will try to connect to
+    // the network when we get the WIFI_EVENT_STA_START callback.
+    return esp_wifi_start();
   }
 
   esp_err_t establish(const char* ssid, const char* password, bool broadcast, int channel) {
@@ -154,14 +157,7 @@ class WifiResourceGroup : public ResourceGroup {
   }
 
   ~WifiResourceGroup() {
-    esp_err_t err = esp_wifi_deinit();
-    if (err == ESP_ERR_WIFI_NOT_STOPPED) {
-      FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
-      FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
-    } else {
-      FATAL_IF_NOT_ESP_OK(err);
-    }
-
+    FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy_default_wifi(netif_);
     wifi_pool.put(id_);
   }
@@ -193,21 +189,38 @@ class WifiResourceGroup : public ResourceGroup {
 
 class WifiEvents : public SystemResource {
  public:
+  enum State {
+    STOPPED,
+    STARTED,
+    CONNECTED
+  };
+
   TAG(WifiEvents);
   explicit WifiEvents(WifiResourceGroup* group)
       : SystemResource(group, WIFI_EVENT)
-      , disconnect_reason_(WIFI_REASON_UNSPECIFIED) {}
+      , disconnect_reason_(WIFI_REASON_UNSPECIFIED)
+      , state_(STOPPED) {}
 
   ~WifiEvents() {
-    FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
+    State state = this->state();
+    if (state >= CONNECTED) {
+      FATAL_IF_NOT_ESP_OK(esp_wifi_disconnect());
+    }
+    if (state >= STARTED) {
+      FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
+    }
   }
 
   uint8 disconnect_reason() const { return disconnect_reason_; }
   void set_disconnect_reason(uint8 reason) { disconnect_reason_ = reason; }
 
+  State state() const { return state_; }
+  void set_state(State state) { state_ = state; }
+
  private:
   friend class WifiResourceGroup;
   uint8 disconnect_reason_;
+  State state_;
 };
 
 class WifiIpEvents : public SystemResource {
@@ -219,17 +232,21 @@ class WifiIpEvents : public SystemResource {
 
 uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 state) {
   SystemEvent* system_event = reinterpret_cast<SystemEvent*>(data);
+  WifiEvents* events = static_cast<WifiEvents*>(resource);
 
   switch (system_event->id) {
-    case WIFI_EVENT_STA_CONNECTED:
+    case WIFI_EVENT_STA_CONNECTED: {
+      events->set_state(WifiEvents::CONNECTED);
       reconnects_remaining_ = 0;
       state |= WIFI_CONNECTED;
       cache_wifi_channel();
       break;
+    }
 
     case WIFI_EVENT_STA_DISCONNECTED: {
+      events->set_state(WifiEvents::STARTED);
       uint8 reason = reinterpret_cast<wifi_event_sta_disconnected_t*>(system_event->event_data)->reason;
-      static_cast<WifiEvents*>(resource)->set_disconnect_reason(reason);
+      events->set_disconnect_reason(reason);
 
       bool reconnect = false;
       uint32 outcome = WIFI_DISCONNECTED;
@@ -266,16 +283,30 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
       break;
     }
 
-    case WIFI_EVENT_STA_START:
-    case WIFI_EVENT_STA_STOP:
+    case WIFI_EVENT_STA_START: {
+      events->set_state(WifiEvents::STARTED);
+      // If connecting fails here, we do not want to retry
+      // because something is seriously wrong. We let the
+      // higher level code know that we're disconnected and
+      // clean up from there.
+      if (reconnects_remaining_ > 0 && esp_wifi_connect() != ESP_OK) {
+        reconnects_remaining_ = 0;
+        state |= WIFI_DISCONNECTED;
+      }
       break;
+    }
+
+    case WIFI_EVENT_STA_STOP: {
+      events->set_state(WifiEvents::STOPPED);
+      break;
+    }
 
     case WIFI_EVENT_SCAN_DONE: {
       state |= WIFI_SCAN_DONE;
       break;
     }
 
-    case WIFI_EVENT_STA_BEACON_TIMEOUT:
+    case WIFI_EVENT_STA_BEACON_TIMEOUT: {
       // The beacon timeout mechanism is used by ESP32 station to detect whether the AP
       // is alive or not. If the station continuously loses 60 beacons of the connected
       // AP, the beacon timeout happens.
@@ -284,26 +315,29 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
       // still no probe response or beacon is received from AP, the station disconnects
       // from the AP and raises the WIFI_EVENT_STA_DISCONNECTED event.
       break;
+    }
 
-    case WIFI_EVENT_AP_START:
+    case WIFI_EVENT_AP_START: {
+      events->set_state(WifiEvents::STARTED);
       state |= WIFI_CONNECTED;
       break;
+    }
 
-    case WIFI_EVENT_AP_STOP:
+    case WIFI_EVENT_AP_STOP: {
+      events->set_state(WifiEvents::STOPPED);
       state |= WIFI_DISCONNECTED;
       break;
+    }
 
     case WIFI_EVENT_AP_STACONNECTED:
+    case WIFI_EVENT_AP_STADISCONNECTED: {
       break;
+    }
 
-    case WIFI_EVENT_AP_STADISCONNECTED:
+    default: {
+      printf("[wifi] unhandled Wi-Fi event: %" PRId32 "\n", system_event->id);
       break;
-
-    default:
-      printf(
-          "unhandled Wi-Fi event: %" PRId32 "\n",
-          system_event->id
-      );
+    }
   }
 
   return state;
@@ -328,11 +362,18 @@ uint32 WifiResourceGroup::on_event_ip(Resource* resource, word data, uint32 stat
       break;
     }
 
-    default:
-      printf(
-          "unhandled IP event: %" PRId32 "\n",
-          system_event->id
-      );
+    case IP_EVENT_ETH_GOT_IP:
+    case IP_EVENT_ETH_LOST_IP:
+    case IP_EVENT_PPP_GOT_IP:
+    case IP_EVENT_PPP_LOST_IP: {
+      // Ignore ethernet and PPP events.
+      break;
+    }
+
+    default: {
+      printf("[wifi] unhandled IP event: %" PRId32 "\n", system_event->id);
+      break;
+    }
   }
 
   return state;
@@ -380,9 +421,9 @@ PRIMITIVE(init) {
     // Samsung phones to pop up the captive portal login page.
     // TODO: Make this configurable.
     esp_netif_ip_info_t two_hundred_network;
-    two_hundred_network.ip.addr = ESP_IP4TOADDR( 200, 200, 200, 1);
-    two_hundred_network.gw.addr = ESP_IP4TOADDR( 200, 200, 200, 1);
-    two_hundred_network.netmask.addr = ESP_IP4TOADDR( 255, 255, 255, 0);
+    two_hundred_network.ip.addr = ESP_IP4TOADDR(200, 200, 200, 1);
+    two_hundred_network.gw.addr = ESP_IP4TOADDR(200, 200, 200, 1);
+    two_hundred_network.netmask.addr = ESP_IP4TOADDR(255, 255, 255, 0);
     esp_netif_inherent_config_t netif_config = ESP_NETIF_INHERENT_DEFAULT_WIFI_AP();
     netif_config.ip_info = &two_hundred_network;
     esp_netif_config_t netif_ap_config = ESP_NETIF_DEFAULT_WIFI_AP();

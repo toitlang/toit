@@ -314,7 +314,8 @@ class DefiniteChecker : public Visitor {
   void visit_Constructor(Constructor* node) { return visit_Method(node); }
   void visit_Global(Global* node) { return visit_Method(node); }
   void visit_AdapterStub(AdapterStub* node) { return visit_Method(node); }
-  void visit_IsInterfaceStub(IsInterfaceStub* node) { return visit_Method(node); }
+  void visit_MixinStub(MixinStub* node) { return visit_Method(node); }
+  void visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStub* node) { return visit_Method(node); }
   void visit_FieldStub(FieldStub* node) { return visit_Method(node); }
 
   void visit_Expression(Expression* node) { UNREACHABLE(); }
@@ -392,6 +393,7 @@ class DefiniteChecker : public Visitor {
 
   void visit_Super(Super* node) {
     ASSERT(method_->is_constructor());
+    if (node->expression() != null) visit(node->expression());
     if (state_.empty()) return;
     for (auto field : method_->holder()->fields()) {
       if (state_.is_undefined(field)) {

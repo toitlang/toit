@@ -16,6 +16,7 @@ SLOW := true
 
 main:
   feature-detect
+  bytemap-test
   simple-test
   blit-test
   bitmap-test
@@ -644,3 +645,122 @@ blur-test:
   gold = blur-gold ba 9 0 3
   bytemap-blur ba 9 0 3
   blur-compare ba gold 9 0 3
+
+bytemap-test -> none:
+  W ::= 42
+  H ::= 17
+  canvas := ByteArray (W * H)
+
+  alien := ""
+      + "__######__"
+      + "__#O##O#__"
+      + "_########_"
+      + "_########_"
+      + "__#_#__#__"
+      + "__#_#__#__"
+
+  ALIEN-WIDTH := 10
+
+  expect-equals 0 canvas[0]
+
+  bytemap-zap canvas ' '  // Set background to test transparency.
+
+  // Plain copy to middle.
+  // The x and y coordinates are the top left corner of the top left pixel of
+  // the alien.
+  bitmap-draw-bytemap 21 8  // x, y.
+      --source=alien
+      --source-width=ALIEN-WIDTH
+      --destination=canvas
+      --destination-width=W
+
+  // Upside-down copy to middle.
+  // The x and y coordinates are the top left corner of the top left pixel of
+  // the unrotated alien, therefore at the bottom right corner of the bottom
+  // right pixel of the area the alien covers on the canvas. So the corners
+  // of this and the above just touch.
+  bitmap-draw-bytemap 21 8  // x, y.
+      --orientation=2       // 180 degrees.
+      --source=alien
+      --source-width=5      // Only the first 5 pixels of each line
+      --source-line-stride=ALIEN-WIDTH
+      --destination=canvas
+      --destination-width=W
+
+  // Bottom left corner to test clipping and transparency.
+  bitmap-draw-bytemap -2 (H - 5)  // x, y.
+      --transparent-index='_'     // Underscore is transparent.
+      --source=alien
+      --source-width=ALIEN-WIDTH
+      --destination=canvas
+      --destination-width=W
+
+  PALETTE ::= ByteArray 384:
+    if it / 3 == '#':
+      '*'
+    else if it / 3 == 'O':
+      'o'
+    else:
+      it
+
+  // Right edge, rotated.
+  // The origin is at width - 6, so we can see 5 pixels of the alien.
+  bitmap-draw-bytemap (W - 6) 14  // x, y.
+      --transparent-index='_'     // Underscore is transparent.
+      --orientation=1             // 90 degrees anticlockwise.
+      --source=alien
+      --source-width=ALIEN-WIDTH
+      --palette=PALETTE
+      --destination=canvas
+      --destination-width=W
+
+  // top right corner, rotated.
+  bitmap-draw-bytemap (W + 2) 3  // x, y.
+      --transparent-index='_'    // Underscore is transparent.
+      --orientation=2            // 180 degrees.
+      --source=alien
+      --source-width=ALIEN-WIDTH
+      --destination=canvas
+      --destination-width=W
+
+  ALPHA ::= ByteArray 128:
+    it == '_' ?  0 : 255
+
+  // Top left corner, rotated right.
+  bitmap-draw-bytemap 3 -2  // x, y.
+      --alpha=ALPHA
+      --orientation=3       // 270 degrees anticlockwise.
+      --source=alien
+      --source-width=ALIEN-WIDTH
+      --destination=canvas
+      --destination-width=W
+
+  W.repeat:
+    char := '0' + it % 10
+    canvas[it + (H - 1) * W] = char
+  H.repeat:
+    char := '0' + it % 10
+    canvas[it * W + W - 2] = char
+  bytemap-rectangle (W - 1) 0 '\n' 1 H canvas W
+
+  EXPECTED ::= """
+      ###                                #####0
+      #O#                                 #O##1
+      ###             #_#__               ####2
+      ###             #_#__                   3
+      #O#             ####_                   4
+      ###             ####_                 **5
+      #               #O#__               ****6
+                      ###__               *o**7
+                           __######__     ****8
+                           __#O##O#__     ****9
+                           _########_     *o**0
+                           _########_     ****1
+      ######               __#_#__#__       **2
+      #O##O#               __#_#__#__         3
+      #######                                 4
+      #######                                 5
+      01234567890123456789012345678901234567896
+      """
+
+  expect-equals EXPECTED canvas.to-string

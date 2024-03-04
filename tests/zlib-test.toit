@@ -10,18 +10,16 @@ import host.file
 import monitor show *
 
 test-compress str expected --uncompressed=false:
-  do-test 10000 0 str expected uncompressed --gzip=false
-  do-test 1 0 str expected uncompressed --gzip=false
-  do-test 2 0 str expected uncompressed --gzip=false
-  do-test 2 1 str expected uncompressed --gzip=false
-  do-test 10000 0 str expected uncompressed --gzip=true
-  do-test 1 0 str expected uncompressed --gzip=true
-  do-test 2 0 str expected uncompressed --gzip=true
-  do-test 2 1 str expected uncompressed --gzip=true
+  [true, false].do: | gzip |
+    [true, false].do: | split-writes |
+      do-test 10000 0 str expected uncompressed --gzip=gzip --split-writes=split-writes
+      do-test 1 0 str expected uncompressed --gzip=gzip --split-writes=split-writes
+      do-test 2 0 str expected uncompressed --gzip=gzip --split-writes=split-writes
+      do-test 2 1 str expected uncompressed --gzip=gzip --split-writes=split-writes
 
-do-test chunk-size chunk-offset str zlib-expected uncompressed --gzip/bool:
+do-test chunk-size chunk-offset str zlib-expected uncompressed --gzip/bool --split-writes/bool:
   compressor := uncompressed ?
-    gzip ? UncompressedGzipEncoder : UncompressedZlibEncoder :
+    gzip ? UncompressedGzipEncoder : (UncompressedZlibEncoder --split-writes=split-writes) :
     gzip ? RunLengthGzipEncoder : RunLengthZlibEncoder
   accumulator := bytes.Buffer
   done := Semaphore

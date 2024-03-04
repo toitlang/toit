@@ -1065,6 +1065,11 @@ PRIMITIVE(platform) {
   return process->allocate_string_or_error(platform_name, strlen(platform_name));
 }
 
+PRIMITIVE(architecture) {
+  const char* architecture_name = OS::get_architecture();
+  return process->allocate_string_or_error(architecture_name, strlen(architecture_name));
+}
+
 PRIMITIVE(bytes_allocated_delta) {
   return Primitive::integer(process->bytes_allocated_delta(), process);
 }
@@ -1425,7 +1430,7 @@ PRIMITIVE(number_to_integer) {
   if (is_double(receiver)) {
     double value = Double::cast(receiver)->value();
     if (isnan(value)) FAIL(INVALID_ARGUMENT);
-    if (value < (double) INT64_MIN || value > (double) INT64_MAX) FAIL(OUT_OF_RANGE);
+    if (value < (double) INT64_MIN || value >= (double) INT64_MAX) FAIL(OUT_OF_RANGE);
     return Primitive::integer((int64) value, process);
   }
   FAIL(WRONG_OBJECT_TYPE);
@@ -1466,7 +1471,7 @@ static String* concat_strings(Process* process,
   String* result = process->allocate_string(len_a + len_b);
   if (result == null) return null;
   // Initialize object.
-  String::Bytes bytes(result);
+  String::MutableBytes bytes(result);
   bytes._initialize(0, bytes_a, 0, len_a);
   bytes._initialize(len_a, bytes_b, 0, len_b);
   return result;
@@ -1525,7 +1530,7 @@ PRIMITIVE(string_slice) {
   String* result = process->allocate_string(result_len);
   if (result == null) FAIL(ALLOCATION_FAILED);
   // Initialize object.
-  String::Bytes result_bytes(result);
+  String::MutableBytes result_bytes(result);
   result_bytes._initialize(0, receiver, from, to - from);
   return result;
 }
@@ -1545,7 +1550,7 @@ PRIMITIVE(concat_strings) {
   }
   String* result = process->allocate_string(length);
   if (result == null) FAIL(ALLOCATION_FAILED);
-  String::Bytes bytes(result);
+  String::MutableBytes bytes(result);
   int pos = 0;
   for (int index = 0; index < array->length(); index++) {
     Blob blob;
@@ -1582,6 +1587,51 @@ PRIMITIVE(string_raw_at) {
   if (index < 0 || index >= receiver.length()) FAIL(OUT_OF_BOUNDS);
   int c = receiver.address()[index] & 0xff;
   return Smi::from(c);
+}
+
+PRIMITIVE(utf_16_to_string) {
+  ARGS(Blob, utf_16);
+  if ((utf_16.length() & 1) != 0) FAIL(INVALID_ARGUMENT);
+  if (utf_16.length() > 0x3fffffff) FAIL(OUT_OF_BOUNDS);
+
+  int utf_8_length = Utils::utf_16_to_8(
+      reinterpret_cast<const uint16*>(utf_16.address()),
+      utf_16.length() >> 1);
+
+  String* result = process->allocate_string(utf_8_length);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+
+  String::MutableBytes utf_8(result);
+
+  Utils::utf_16_to_8(
+      reinterpret_cast<const uint16*>(utf_16.address()),
+      utf_16.length() >> 1,
+      utf_8.address(),
+      utf_8.length());
+
+  return result;
+}
+
+PRIMITIVE(string_to_utf_16) {
+  ARGS(StringOrSlice, utf_8);
+  if (utf_8.length() > 0xfffffff) FAIL(OUT_OF_BOUNDS);
+
+  int utf_16_length = Utils::utf_8_to_16(
+      utf_8.address(),
+      utf_8.length());
+
+  ByteArray* result = process->allocate_byte_array(utf_16_length << 1);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+
+  ByteArray::Bytes bytes(result);
+
+  Utils::utf_8_to_16(
+      utf_8.address(),
+      utf_8.length(),
+      reinterpret_cast<uint16*>(bytes.address()),
+      utf_16_length);
+
+  return result;
 }
 
 PRIMITIVE(array_length) {
@@ -1948,14 +1998,30 @@ PRIMITIVE(task_receive_message) {
 
 PRIMITIVE(add_finalizer) {
   ARGS(HeapObject, object, Object, finalizer)
-  if (process->has_finalizer(object, finalizer)) FAIL(OUT_OF_BOUNDS);
-  if (!process->add_finalizer(object, finalizer)) FAIL(MALLOC_FAILED);
+  bool make_weak = false;
+  if (!object->can_be_toit_finalized(process->program())) {
+    if (!is_instance(object) || Instance::cast(object)->class_id() != process->program()->map_class_id()) {
+      FAIL(WRONG_OBJECT_TYPE);
+    }
+    make_weak = true;
+  }
+  ASSERT(is_instance(object));  // Guaranteed by can_be_toit_finalized.
+  // Objects on the program heap will never die, so it makes no difference
+  // whether we have a finalizer on them.
+  if (!object->on_program_heap(process)) {
+    if (object->has_active_finalizer()) FAIL(ALREADY_EXISTS);
+    if (!process->object_heap()->add_callable_finalizer(Instance::cast(object), finalizer, make_weak)) FAIL(MALLOC_FAILED);
+  }
   return process->null_object();
 }
 
 PRIMITIVE(remove_finalizer) {
   ARGS(HeapObject, object)
-  return BOOL(process->remove_finalizer(object));
+  bool result = object->has_active_finalizer();
+  // We don't remove it from the finalizer list, so that must happen at the
+  // next GC.
+  object->clear_has_active_finalizer();
+  return BOOL(result);
 }
 
 PRIMITIVE(gc_count) {
@@ -2279,7 +2345,7 @@ PRIMITIVE(dump_heap) {
 PRIMITIVE(serial_print_heap_report) {
 #ifdef TOIT_CMPCTMALLOC
   ARGS(cstring, marker, int, max_pages);
-  OS::heap_summary_report(max_pages, marker);
+  OS::heap_summary_report(max_pages, marker, process);
 #endif // def TOIT_CMPCTMALLOC
   return process->null_object();
 }
@@ -2358,15 +2424,26 @@ PRIMITIVE(firmware_map) {
   const esp_partition_t* current_partition = esp_ota_get_running_partition();
   if (current_partition == null) FAIL(ERROR);
 
+  // On the ESP32, it is beneficial to map the partition in as instructions
+  // because there is a larger virtual address space for that.
+  esp_partition_mmap_memory_t memory = ESP_PARTITION_MMAP_DATA;
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  memory = ESP_PARTITION_MMAP_INST;
+#endif
+
   const void* mapped_to = null;
   esp_err_t err = esp_partition_mmap(
       current_partition,
       0,  // Offset from start of partition.
       current_partition->size,
-      ESP_PARTITION_MMAP_INST,
+      memory,
       &mapped_to,
       &firmware_mmap_handle);
-  if (err != ESP_OK) FAIL(ERROR);
+  if (err == ESP_ERR_NO_MEM) {
+    FAIL(MALLOC_FAILED);
+  } else if (err != ESP_OK) {
+    FAIL(ERROR);
+  }
 
   firmware_is_mapped = true;
   proxy->set_external_address(

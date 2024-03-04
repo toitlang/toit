@@ -29,7 +29,7 @@ foo -> SomeClass:
 
 bar y / prefix.ImportedClass -> none:
 /*             ^~~~~~~~~~~~~~~~~~~~~~
-  + ImportedClass, ImportedClass2, ImportedInterface
+  + ImportedClass, ImportedClass2, ImportedInterface, ImportedMixin
   - *
 */
 
@@ -41,7 +41,7 @@ bar2 y / ImportedClass -> none:
 
 bar3 y / ImportedClass -> prefix.ImportedInterface:
 /*                               ^~~~~~~~~~~~~~~~~~
-  + ImportedClass, ImportedClass2, ImportedInterface
+  + ImportedClass, ImportedClass2, ImportedInterface, ImportedMixin
   - *
 */
   unreachable
@@ -69,7 +69,7 @@ class A:
 
   method -> prefix.ImportedInterface: throw "foo"
 /*                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  + ImportedInterface, ImportedClass, ImportedClass2
+  + ImportedInterface, ImportedClass, ImportedClass2, ImportedMixin
   - *
 */
 
@@ -93,7 +93,7 @@ class A:
 
   static static-method2 -> prefix.ImportedInterface: throw "foo"
 /*                                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  + ImportedInterface, ImportedClass, ImportedClass2
+  + ImportedInterface, ImportedClass, ImportedClass2, ImportedMixin
   - *
 */
 
@@ -109,7 +109,7 @@ bad -> prefix.ImportedClass2.named:
 //   ambiguous.
 bad2 -> ambiguous.ImportedClass:
 /*                ^~~~~~~~~~~~~~
-  + ImportedClass, ImportedClass2, ImportedInterface
+  + ImportedClass, ImportedClass2, ImportedInterface, ImportedMixin
   - *
 */
   unreachable

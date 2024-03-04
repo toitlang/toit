@@ -3,11 +3,13 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import system
+
 import .utils
 
 test args filter:
   out := run-toitp args ["-bc"] --filter=filter
-  lines := out.split LINE-TERMINATOR
+  lines := out.split system.LINE-TERMINATOR
   expect (lines.first.starts-with "Bytecodes for methods")
 
   expected-bytecodes := [
@@ -23,8 +25,8 @@ test args filter:
     "store global var",
     "is class A",
     "as class A",
-    "is interface is-I",
-    "as interface is-I",
+    "is interface *is-I",
+    "as interface *is-I",
   ]
 
   lines-index := 2

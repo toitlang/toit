@@ -4,6 +4,8 @@
 
 import expect show *
 
+import .confuse
+
 class C000 implements I000:
 class C001 implements I001:
 class C002 implements I002:
@@ -605,8 +607,6 @@ interface I296:
 interface I297:
 interface I298:
 interface I299:
-
-confuse x -> any: return x
 
 main:
   expect ((confuse C000) is C000)

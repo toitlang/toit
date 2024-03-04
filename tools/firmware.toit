@@ -19,6 +19,8 @@ import bytes
 import crypto.sha256 as crypto
 import writer
 import reader
+import system
+import system show platform
 import uuid
 
 import encoding.json
@@ -33,9 +35,9 @@ import host.directory
 import host.file
 import host.os
 import host.pipe
+import partition-table show *
 
 import .image
-import .partition-table
 import .snapshot
 import .snapshot-to-image
 
@@ -609,7 +611,7 @@ find-esptool_ -> List:
   bin-extension := ?
   // TODO(florian): can we get the absolute path to our binary?
   bin-name := program-name
-  if platform == PLATFORM-WINDOWS:
+  if platform == system.PLATFORM-WINDOWS:
     bin-name = bin-name.replace --all "\\" "/"
     bin-extension = ".exe"
   else:
@@ -645,7 +647,7 @@ find-esptool_ -> List:
     return [esptool]
   // An exception was thrown.
   // Try to find esptool.py in PATH.
-  if platform != PLATFORM-WINDOWS:
+  if system.platform != system.PLATFORM-WINDOWS:
     exit-value := pipe.system "esptool.py version > /dev/null 2>&1"
     if exit-value == 0:
       location := pipe.backticks "/bin/sh" "-c" "command -v esptool.py"
@@ -702,7 +704,7 @@ flash parsed/cli.Parsed -> none:
   baud := parsed["baud"]
   envelope := Envelope.load input-path
 
-  if platform != PLATFORM-WINDOWS:
+  if platform != system.PLATFORM-WINDOWS:
     stat := file.stat port
     if not stat or stat[file.ST-TYPE] != file.CHARACTER-DEVICE:
       throw "cannot open port '$port'"

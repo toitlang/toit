@@ -70,6 +70,9 @@ MODULE_IMPLEMENTATION(spi, MODULE_SPI);
 PRIMITIVE(init) {
   ARGS(int, mosi, int, miso, int, clock);
 
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
   spi_host_device_t host_device = kInvalidHostDevice;
 
   // Check if there is a preferred device.
@@ -103,13 +106,6 @@ PRIMITIVE(init) {
   int dma_chan = dma_channels.any();
   if (dma_chan == 0) {
     spi_host_devices.put(host_device);
-    FAIL(ALLOCATION_FAILED);
-  }
-
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    spi_host_devices.put(host_device);
-    dma_channels.put(dma_chan);
     FAIL(ALLOCATION_FAILED);
   }
 
@@ -175,9 +171,7 @@ PRIMITIVE(device) {
   ARGS(SpiResourceGroup, spi, int, cs, int, dc, int, command_bits, int, address_bits, int, frequency, int, mode);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   spi_device_interface_config_t conf = {
     .command_bits     = uint8(command_bits),

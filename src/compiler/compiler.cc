@@ -44,6 +44,7 @@
 #include "lsp/multiplex_stdout.h"
 #include "lock.h"
 #include "map.h"
+#include "mixin.h"
 #include "monitor.h"
 #include "optimizations/optimizations.h"
 #include "parser.h"
@@ -186,17 +187,13 @@ class DebugCompilationPipeline : public Pipeline {
  public:
   static constexpr const char* const DEBUG_ENTRY_PATH = "///<debug>";
   static constexpr const char* const DEBUG_ENTRY_CONTENT = R"""(
-import debug.debug_string show do_debug_string
-
 // We are avoiding types to make the patching easier.
 dispatch_debug_string location_token obj nested -> any:
   // Calls to the static dispatch methods will be patched in here.
   throw "Unknown location token"
 
 main args:
-  do_debug_string args:: |location_token obj nested|
-    dispatch_debug_string location_token obj nested
-     )""";
+  throw "Unimplemented")""";
 };
 
 class LanguageServerPipeline : public Pipeline {
@@ -490,16 +487,33 @@ void Compiler::lsp_semantic_tokens(const char* source_path,
 }
 
 static bool _sorted_by_inheritance(List<ir::Class*> classes) {
+  UnorderedSet<ir::Class*> seen_mixins;
   std::vector<ir::Class*> super_hierarchy;
   ir::Class* current_super = null;
   ir::Class* last = null;
   for (auto klass : classes) {
+    if (klass->is_mixin()) {
+      // For mixins we don't require subclasses to be in depth-first order.
+      // We just require that all its parents have already been seen.
+      if (klass->super() != null && !seen_mixins.contains(klass->super())) return false;
+      for (auto mixin : klass->mixins()) {
+        if (!seen_mixins.contains(mixin)) return false;
+      }
+      seen_mixins.insert(klass);
+      continue;
+    }
+
+    // Check that the hierarchy is depth-first.
+    // Directly after a class must be its first subclass.
     if (klass->super() == current_super) {
       // Do nothing.
     } else if (klass->super() == last) {
+      // The 'last' has subclasses.
       super_hierarchy.push_back(current_super);
       current_super = last;
     } else {
+      // A subclass is done. Walk up the chain to find again the super of this
+      // class.
       while (!super_hierarchy.empty() && current_super != klass->super()) {
         current_super = super_hierarchy.back();
         super_hierarchy.pop_back();
@@ -534,7 +548,9 @@ void Compiler::analyze(List<const char*> source_paths,
   bool single_source = source_paths.length() == 1;
   FilesystemHybrid fs(single_source ? source_paths[0] : null);
   SourceManager source_manager(&fs);
-  AnalysisDiagnostics analysis_diagnostics(&source_manager, compiler_config.show_package_warnings);
+  AnalysisDiagnostics analysis_diagnostics(&source_manager,
+                                           compiler_config.show_package_warnings,
+                                           compiler_config.print_diagnostics_on_stdout);
   NullDiagnostics null_diagnostics(&source_manager);
   Diagnostics* diagnostics = Flags::migrate_dash_ids
       ? static_cast<Diagnostics*>(&null_diagnostics)
@@ -650,7 +666,9 @@ SnapshotBundle Compiler::compile(const char* source_path,
   out_path = FilesystemLocal::to_local_path(out_path);
   FilesystemHybrid fs(source_path);
   SourceManager source_manager(&fs);
-  CompilationDiagnostics diagnostics(&source_manager, compiler_config.show_package_warnings);
+  CompilationDiagnostics diagnostics(&source_manager,
+                                     compiler_config.show_package_warnings,
+                                     compiler_config.print_diagnostics_on_stdout);
 
   if (direct_script != null) {
     const uint8* direct_script_file_content = wrap_direct_script_expression(direct_script, &diagnostics);
@@ -694,6 +712,7 @@ SnapshotBundle Compiler::compile(const char* source_path,
   // TODO(florian): the dep-file needs to keep track of both compilations.
   debug_configuration.dep_file = null;
   debug_configuration.dep_format = DepFormat::none;
+  debug_configuration.werror = false;
 
   auto source_paths = ListBuilder<const char*>::build(source_path);
 
@@ -1289,11 +1308,11 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     import_package = package_lock.resolve_prefix(unit_package, prefix);
     auto error_range = module_segment->range();
     switch (import_package.error_state()) {
-      case Package::OK:
+      case Package::STATE_OK:
         // All good.
         break;
 
-      case Package::INVALID:
+      case Package::STATE_INVALID:
         if (package_lock.has_errors()) {
           diagnostics()->report_error(error_range,
                                       "Package for prefix '%s' not found, but lock file has errors",
@@ -1305,13 +1324,13 @@ Source* Pipeline::_load_import(ast::Unit* unit,
         }
         return null;
 
-      case Package::ERROR:
+      case Package::STATE_ERROR:
         diagnostics()->report_error(error_range,
                                     "Package for prefix '%s' not found due to error in lock file",
                                     prefix.c_str());
         return null;
 
-      case Package::NOT_FOUND:
+      case Package::STATE_NOT_FOUND:
         diagnostics()->report_error(error_range,
                                     "Package '%s' for prefix '%s' not found",
                                     import_package.id().c_str(),
@@ -1602,6 +1621,33 @@ static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
   };
 }
 
+static void drop_abstract_methods(ir::Program* ir_program) {
+  for (auto klass : ir_program->classes()) {
+    switch (klass->kind()) {
+      case ir::Class::Kind::CLASS:
+      case ir::Class::Kind::MIXIN:
+      case ir::Class::Kind::MONITOR:
+        break;
+      case ir::Class::Kind::INTERFACE:
+        continue;
+    }
+    bool has_abstract_methods = false;
+    for (auto method : klass->methods()) {
+      if (method->is_abstract()) {
+        has_abstract_methods = true;
+        break;
+      }
+    }
+    if (!has_abstract_methods) continue;
+    ListBuilder<ir::MethodInstance*> remaining_methods;
+    for (auto method : klass->methods()) {
+      if (method->is_abstract()) continue;
+      remaining_methods.add(method);
+    }
+    klass->replace_methods(remaining_methods.build());
+  }
+}
+
 toit::Program* construct_program(ir::Program* ir_program,
                                  SourceMapper* source_mapper,
                                  TypeOracle* oracle,
@@ -1609,10 +1655,13 @@ toit::Program* construct_program(ir::Program* ir_program,
                                  bool run_optimizations) {
   source_mapper->register_selectors(ir_program->classes());
 
+  drop_abstract_methods(ir_program);
   add_lambda_boxes(ir_program);
   add_monitor_locks(ir_program);
   add_stub_methods_and_switch_to_plain_shapes(ir_program);
   add_interface_stub_methods(ir_program);
+
+  apply_mixins(ir_program);
 
   ASSERT(_sorted_by_inheritance(ir_program->classes()));
 
@@ -1640,6 +1689,94 @@ toit::Program* construct_program(ir::Program* ir_program,
   Backend backend(source_mapper->manager(), source_mapper);
   auto program = backend.emit(ir_program);
   return program;
+}
+
+// Sorts all classes.
+// Changes the given 'classes' list so that:
+// - top is the first class.
+// - all other classes follow top in a depth-first order.
+//   A super class is always directly preceded by its first sub (if there is any).
+//   Any sibling of a sub follows after the first sub's children (and their children...).
+// - After all classes, are all mixins.
+// - Mixins are order in such a way that all dependencies are before their "subs". In
+//   the case of mixins a dependency is either the super, or another mixin that is
+//   referenced in a `with` clause. Here these are available as `m->mixins()`.
+// - Finally, we have all interfaces.
+//   These are, again, in depth-first order.
+static void sort_classes(List<ir::Class*> classes) {
+  ir::Class* top = null;
+  ir::Class* top_mixin = null;
+  ir::Class* top_interface = null;
+  UnorderedMap<ir::Class*, std::vector<ir::Class*>> subs;
+
+  for (auto klass : classes) {
+    if (klass->super() != null) {
+      subs[klass->super()].push_back(klass);
+      if (klass->is_mixin() && !klass->mixins().is_empty()) {
+        for (auto mixin : klass->mixins()) {
+          subs[mixin].push_back(klass);
+        }
+      }
+      continue;
+    }
+    switch (klass->kind()) {
+      case ir::Class::Kind::CLASS:
+      case ir::Class::Kind::MONITOR:
+        top = klass;
+        break;
+      case ir::Class::Kind::MIXIN:
+        top_mixin = klass;
+        break;
+      case ir::Class::Kind::INTERFACE:
+        top_interface = klass;
+        break;
+    }
+  }
+  ASSERT(top != null);
+  ASSERT(top_mixin != null);
+  ASSERT(top_interface != null);
+
+  Set<ir::Class*> done;
+
+  auto are_all_mixin_parents_done = [&](ir::Class* klass) -> bool {
+    if (!klass->is_mixin()) return true;
+    if (klass->has_super() && !done.contains(klass->super())) return false;
+    for (auto mixin : klass->mixins()) {
+      if (!done.contains(mixin)) return false;
+    }
+    return true;
+  };
+
+  auto dfs_traverse = [&](ir::Class* klass) -> void {
+    std::vector<ir::Class*> queue;
+    queue.push_back(klass);
+    while (!queue.empty()) {
+      ir::Class* current = queue.back();
+      queue.pop_back();
+      if (done.contains(current)) {
+        ASSERT(current->is_mixin());
+        continue;
+      }
+      if (!are_all_mixin_parents_done(current)) {
+        continue;
+      }
+      done.insert(current);
+      auto probe = subs.find(current);
+      if (probe != subs.end()) {
+        queue.insert(queue.end(), probe->second.begin(), probe->second.end());
+      }
+    }
+  };
+
+  dfs_traverse(top);
+  dfs_traverse(top_mixin);
+  dfs_traverse(top_interface);
+
+  ASSERT(done.size() == classes.length());
+  int index = 0;
+  for (auto klass : done) {
+    classes[index++] = klass;
+  }
 }
 
 Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
@@ -1689,6 +1826,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   setup_lsp_selection_handler();
 
   ir::Program* ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
+  sort_classes(ir_program->classes());
 
   bool encountered_error_before_type_checks = diagnostics()->encountered_error();
 
@@ -1706,7 +1844,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   // If we already encountered errors before the type-check we won't be able
   // to compile the program.
   if (encountered_error_before_type_checks) {
-    printf("Compilation failed.\n");
+    diagnostics()->report_error("Compilation failed.");
     exit(1);
   }
   // If we encountered errors abort unless the `--force` flag is on.
@@ -1715,7 +1853,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     encountered_error = true;
   }
   if (!configuration_.force && encountered_error) {
-    printf("Compilation failed.\n");
+    diagnostics()->report_error("Compilation failed.");
     exit(1);
   }
 
@@ -1733,6 +1871,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   if (run_optimizations && configuration_.optimization_level >= 2) {
     bool quiet = true;
     ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX, quiet);
+    sort_classes(ir_program->classes());
     patch(ir_program);
     // We check the types again, because the compiler computes types as
     // a side-effect of this and the types are necessary for the

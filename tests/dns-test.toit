@@ -5,6 +5,7 @@
 import expect show *
 
 import .dns
+import net.modules.dns as dns-module
 import net
 
 main:
@@ -14,7 +15,6 @@ main:
   cache-test
   fail-test
   long-test
-  parse-numeric-test
   task:: fallback-test
   task:: fallback-test-2
 
@@ -39,11 +39,11 @@ ipv6-dns-test:
   expect
       ipv6.stringify.starts-with "2a00:8a60:450:0:"
 
-  ipv6 = dns-lookup "ipv6.google.com" --no-accept-ipv4 --accept-ipv6
+  ipv6 = dns-lookup "ipv6.google.com" --accept-ipv4 --accept-ipv6
   print ipv6
   expect (ipv6.stringify.index-of ":") != -1
 
-  ipv6 = dns-lookup "ipv6.google.com" --accept-ipv4 --accept-ipv6
+  ipv6 = dns-lookup "ipv6.google.com" --no-accept-ipv4 --accept-ipv6
   print ipv6
   expect (ipv6.stringify.index-of ":") != -1
 
@@ -53,6 +53,13 @@ ipv6-dns-test:
 
   either := dns-lookup "www.google.com" --accept-ipv6
   print either
+
+  // A domain that has no IPv6 address, but that's the only thing we will
+  // accept.
+  error := catch: dns-lookup "toitlang.org" --accept-ipv6 --no-accept-ipv4
+  print "IPv6: $error"
+  expect
+      error is DnsException
 
 cache-test:
   // Prime cache.
@@ -74,7 +81,7 @@ cache-test:
 
 fail-test:
   error := catch: dns-lookup "does-not-resolve.example.com"
-  print error
+  print "      $error"
   error as DnsException
   expect error is DnsException
   exception := error as DnsException
@@ -89,39 +96,6 @@ long-test:
       dns-lookup "llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch.co.uk"
   print
       dns-lookup "llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogochuchaf.com"
-
-parse-numeric-test:
-  valid-ipv4 "0.0.0.0"
-  valid-ipv4 "192.168.0.1"
-  valid-ipv4 "255.255.255.255"
-  invalid-ipv4 "01.02.092.1"         // Leading zeros are not allowed because some systems
-                                     //   interpret this as octal, others as decimal.
-  invalid-ipv4 "192.168.0.1.3"       // Too long.
-  invalid-ipv4 "192.168.0."          // Too short.
-  invalid-ipv4 "192.168.0"           // Too short.
-  invalid-ipv4 "256.168.0.1"         // Off by one.
-  invalid-ipv4 "312.168.0.1"         // Too Hollywood.
-  invalid-ipv4 ".168.0.1"            // Starts with dot.
-  invalid-ipv4 "5000000000.168.0.1"  // Byte range.
-  invalid-ipv4 "1_2.168.0.1"         // Toit number format not allowed.
-  invalid-ipv4 "::"                  // That's an IPv6 address.
-
-  invalid-ipv6 "192.168.0.1"         // That's an IPv4 address.
-  valid-ipv6 "::"                    // All zeros
-  invalid-ipv6 ":"
-  valid-ipv6 "2001:db8:3333:4444:5555:6666:7777:8888"
-  valid-ipv6 "2001:db8:3333:4444:CCCC:DDDD:EEEE:FFFF"
-  valid-ipv6 "2001:db8::"            // Last 6 segments are zero.
-  valid-ipv6 "::1234:5678"           // First 6 segments are zero.
-  valid-ipv6 "2001:db8::1234:5678"   // Middle 4 segments are zero.
-  valid-ipv6 "2001:0db8:0001:0000:0000:0ab9:C0A8:0102"  // Could be compressed
-  invalid-ipv6 "::1234:5678::"       // Can't have compressed zeros at both ends.
-  invalid-ipv6 "::1234:5678::0"      // Can't have compressed zeros in middle and start.
-  invalid-ipv6 "1234:5678::0::"      // Can't have compressed zeros in middle and end.
-  invalid-ipv6 "::123g:5678"         // Can't have 'g' in hex
-  invalid-ipv6 "12345:5678::"        // Number too big.
-  invalid-ipv6 "1235.5678::"         // No dots.
-  invalid-ipv6 "::12345"             // Too long segment at end.
 
 fallback-test:
   print "Doing fallback test - may pause for a few seconds"
@@ -152,19 +126,3 @@ fallback-test-2:
   error := catch: dns-lookup --client=client "no-such-host.example.com"
   expect
     (error as DnsException).text.contains "NO_SUCH_DOMAIN"
-
-valid-ipv4 str/string -> none:
-  expect
-      net.IpAddress.is-valid str
-
-invalid-ipv4 str/string -> none:
-  expect-not
-      net.IpAddress.is-valid str
-
-valid-ipv6 str/string -> none:
-  expect
-      net.IpAddress.is-valid --no-accept-ipv4 --accept-ipv6 str
-
-invalid-ipv6 str/string -> none:
-  expect-not
-      net.IpAddress.is-valid --no-accept-ipv4 --accept-ipv6 str

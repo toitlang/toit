@@ -106,7 +106,6 @@ MessageEncoder::~MessageEncoder() {
 }
 
 uint8* MessageEncoder::take_buffer() {
-  ObjectHeap* heap = process_->object_heap();
   for (unsigned i = 0; i < externals_count_; i++) {
     ByteArray* array = externals_[i];
     // Neuter the byte array. The contents of the array is now linked to from
@@ -116,7 +115,7 @@ uint8* MessageEncoder::take_buffer() {
 
     // Optimization: Eagerly remove any disposing finalizer, so the garbage
     // collector does not have to deal with disposing a neutered byte array.
-    heap->remove_vm_finalizer(array);
+    array->clear_has_active_finalizer();
   }
   for (unsigned i = 0; i < copied_count_; i++) {
     copied_[i] = null;
@@ -451,9 +450,8 @@ void MessageDecoder::register_external_allocations() {
 
 void MessageDecoder::remove_disposing_finalizers() {
   ASSERT(!decoding_tison());
-  ObjectHeap* heap = process_->object_heap();
   for (unsigned i = 0; i < externals_count(); i++) {
-    heap->remove_vm_finalizer(externals_[i]);
+    externals_[i]->clear_has_active_finalizer();
   }
 }
 
@@ -558,8 +556,11 @@ void MessageDecoder::deallocate() {
       cursor_ += length;
       break;
     }
-    case TAG_ARRAY: {
+    case TAG_ARRAY:
+    case TAG_MAP: {
       int length = read_cardinal();
+      // Maps have two nested encodings per entry.
+      if (tag == TAG_MAP) length *= 2;
       for (int i = 0; i < length; i++) deallocate();
       break;
     }
@@ -660,7 +661,10 @@ bool MessageDecoder::decode_byte_array_external(void** data, int* length) {
     return true;
   } else if (tag == TAG_BYTE_ARRAY_INLINE) {
     int encoded_length = *length = read_cardinal();
-    void* copy = malloc(encoded_length);
+    // 'malloc' is allowed to return 'null' if the length is zero.
+    // We always want to have a valid pointer, so we allocate at least one byte.
+    int malloc_length = Utils::max(1, encoded_length);
+    void* copy = malloc(malloc_length);
     if (copy == null) return mark_allocation_failed();
     memcpy(copy, &buffer_[cursor_], encoded_length);
     *data = copy;

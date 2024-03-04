@@ -1,0 +1,7 @@
+tests/negative/final-field4-test.toit:18:19: error: Final field 'field' cannot be assigned
+    call-lambda:: field = it
+                  ^~~~~
+tests/negative/final-field4-test.toit:26:17: error: Final field 'field' cannot be assigned
+    block := (: field = it)
+                ^~~~~
+Compilation failed.

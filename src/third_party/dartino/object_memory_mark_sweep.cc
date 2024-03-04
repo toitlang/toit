@@ -44,6 +44,9 @@ void OldSpace::flush() {
 }
 
 bool OldSpace::is_alive(HeapObject* old_location) {
+  // Objects like null are in the program space and live forever.
+  if (!GcMetadata::in_new_or_old_space(old_location)) return true;
+
   // We can't assert that the object is in old-space, because
   // at the end of a mark-sweep the new-space objects are also
   // marked and can be checked for liveness.  The finalizers
@@ -52,6 +55,10 @@ bool OldSpace::is_alive(HeapObject* old_location) {
   // they will remain (untouched) in the new-space until the
   // next scavenge.
   return GcMetadata::is_marked(old_location);
+}
+
+bool OldSpace::has_active_finalizer(HeapObject* old_location) {
+  return old_location->has_active_finalizer();
 }
 
 void OldSpace::use_whole_chunk(Chunk* chunk) {
@@ -370,7 +377,7 @@ bool OldSpace::complete_scavenge(
     if (traverse != end) {
       found_work = true;
     }
-    for (HeapObject *obj = HeapObject::from_address(traverse); traverse != end;
+    for (HeapObject* obj = HeapObject::from_address(traverse); traverse != end;
          traverse += obj->size(program_), obj = HeapObject::from_address(traverse)) {
       visitor->set_record_new_space_pointers(GcMetadata::remembered_set_for(obj));
       obj->roots_do(program_, visitor);
@@ -499,7 +506,7 @@ uword OldSpace::sweep() {
   // Clear the free list. It will be rebuilt during sweeping.
   free_list_.clear();
   uword used = 0;
-  const word SINGLE_FREE_WORD = -44;
+  const word SINGLE_FREE_WORD = -108;
   ASSERT(reinterpret_cast<Object*>(SINGLE_FREE_WORD) == FreeListRegion::single_free_word_header());
   chunk_list_.remove_wherever([&](Chunk* chunk) -> bool {
     uword line = chunk->start();

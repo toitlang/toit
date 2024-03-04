@@ -23,6 +23,13 @@ test-deque:
   expect-equals 13 deque.remove-first
   expect deque.size == 5
 
+  deque.add-first 55
+  expect-equals 55 deque.first
+  deque.add-first 103
+  expect-equals 103 deque.first
+  expect-equals 103 deque.remove-first
+  expect-equals 55 deque.remove-first
+
   expect-equals 1 deque.first
   expect-equals 1 deque.remove-first
   expect deque.size == 4

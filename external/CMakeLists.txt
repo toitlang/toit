@@ -68,9 +68,12 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-msa311
     https://github.com/toitware/toit-newton-raphson
     https://github.com/toitware/toit-openai
+    https://github.com/toitware/toit-partition-table-esp32
     https://github.com/toitware/toit-pixel-display
     https://github.com/toitware/toit-pixel-strip
-    https://github.com/toitware/toit-png-display
+# TODO(kasper): Temporarily removed because the tests cannot be
+# run correctly by the external test harness.
+#   https://github.com/toitware/toit-png-display
     https://github.com/toitware/toit-protobuf
     https://github.com/toitware/toit-provision
     https://github.com/toitware/toit-r46ca01
@@ -84,6 +87,7 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-tl19a08
     https://github.com/toitware/toit-tm1640
     https://github.com/toitware/toit-vcnl4040
+    https://github.com/toitware/toit-watchdog
     https://github.com/toitware/toit-1-wire
     https://github.com/toitware/ublox-gnss-driver
 )
@@ -134,6 +138,14 @@ if (DEFINED EXECUTING_SCRIPT)
         COMMAND_ERROR_IS_FATAL ANY
       )
     endif()
+    # If bin/version.toit.in (or app/version.toit.in) exists, copy it to
+    # bin/version.toit (resp. app/version.toit).
+    foreach(LOCATION "app" "bin")
+      set(LOCATION_PATH "${REPO_PATH}/${LOCATION}")
+      if (EXISTS "${LOCATION_PATH}/version.toit.in")
+        configure_file("${LOCATION_PATH}/version.toit.in" "${LOCATION_PATH}/version.toit" COPYONLY)
+      endif()
+    endforeach()
   else()
     message(FATAL_ERROR "Unknown script command ${SCRIPT_COMMAND}")
   endif()
@@ -202,7 +214,7 @@ endforeach()
 function(find_toit_projects REPO)
   get_filename_component(REPO_NAME "${REPO}" NAME)
   set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
-  foreach(LOCATION "" "examples" "tests" "tools" "app")
+  foreach(LOCATION "" "examples" "tests" "tools" "app" "bin")
     set(LOCATION_PATH "${REPO_PATH}/${LOCATION}")
     if (EXISTS "${LOCATION_PATH}/package.yaml" OR EXISTS "${LOCATION_PATH}/package.lock")
       set(PROJECT_NAME "${REPO_NAME}")

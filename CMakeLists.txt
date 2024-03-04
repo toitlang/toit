@@ -122,7 +122,7 @@ endif()
 # the input buffer length to 8k because some sites have very large certificates
 # (eg Telegram, over 5100 bytes) and this is not something we can control.
 # There are some protocol extensions for telling the other side about our buffer
-# sizes, but they just cause the other side to fragment packets more agressively.
+# sizes, but they just cause the other side to fragment packets more aggressively.
 # At this end we still have to reassemble the packets in and unfragmented form
 # that fits in the buffer size below.
 if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
@@ -171,7 +171,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   separate_arguments(GO_ENV)
   list(APPEND GO_ENV GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
 
-  set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.sdkVersion=${TOIT_GIT_VERSION}")
+  set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.version=${TOIT_GIT_VERSION}")
 
   add_custom_command(
     OUTPUT "${TOITLSP_BIN}"

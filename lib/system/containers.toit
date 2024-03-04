@@ -25,7 +25,9 @@ current -> uuid.Uuid:
   // external byte arrays across the RPC boundary.
   return uuid.Uuid current-image-id_.copy
 
-start id/uuid.Uuid arguments/any=[] -> Container:
+start id/uuid.Uuid arguments/any=[] -> Container
+    --on-event/Lambda?=null
+    --on-stopped/Lambda?=null:
   image/List? := _client_.load-image id
   if not image: throw "No such container: $id"
   handle := image[0]
@@ -34,6 +36,8 @@ start id/uuid.Uuid arguments/any=[] -> Container:
       --handle=handle
       --id=id
       --gid=gid
+      --on-event=on-event
+      --on-stopped=on-stopped
   try:
     _client_.start-container handle arguments
     return container
@@ -43,6 +47,10 @@ start id/uuid.Uuid arguments/any=[] -> Container:
 uninstall id/uuid.Uuid -> none:
   _client_.uninstall-image id
 
+/** Notifies the system about a background-state change. */
+notify-background-state-changed new-state/bool -> none:
+  _client_.notify-background-state-changed new-state
+
 class ContainerImage:
   id/uuid.Uuid
   name/string?
@@ -51,6 +59,8 @@ class ContainerImage:
   constructor --.id --.name --.flags --.data:
 
 class Container extends ServiceResourceProxy:
+  static EVENT-BACKGROUND-STATE-CHANGE ::= 0
+
   // TODO(kasper): Rename this and document it.
   id/uuid.Uuid
 
@@ -69,9 +79,12 @@ class Container extends ServiceResourceProxy:
   gid/int
 
   result_/monitor.Latch ::= monitor.Latch
-  on-stopped_/Lambda? := null
+  on-event_/Lambda? := ?
+  on-stopped_/Lambda? := ?
 
-  constructor.internal_ --handle/int --.id --.gid:
+  constructor.internal_ --handle/int --.id --.gid --on-event/Lambda? --on-stopped/Lambda?:
+    on-event_ = on-event
+    on-stopped_ = on-stopped
     super _client_ handle
 
   close -> none:
@@ -89,6 +102,7 @@ class Container extends ServiceResourceProxy:
     if not code: throw "CLOSED"
     return code
 
+  /// Deprecated.
   on-stopped lambda/Lambda? -> none:
     if not lambda:
       on-stopped_ = null
@@ -101,14 +115,31 @@ class Container extends ServiceResourceProxy:
     else:
       on-stopped_ = lambda
 
-  on-notified_ code/int -> none:
-    result_.set code
-    on-stopped := on-stopped_
-    on-stopped_ = null
-    if on-stopped: on-stopped.call code
-    // We no longer expect or care about notifications, so
-    // close the resource.
-    close
+  /// Deprecated.
+  on-event lambda/Lambda? -> none:
+    if not lambda:
+      on-event_ = null
+      return
+    if on-event_: throw "ALREADY_IN_USE"
+    on-event_ = lambda
+
+  on-notified_ notification/any -> none:
+    if notification is int:
+      code/int := notification
+      result_.set code
+      on-stopped := on-stopped_
+      on-stopped_ = null
+      if on-stopped: on-stopped.call code
+      // We no longer expect or care about notifications, so
+      // close the resource.
+      close
+    else if on-event_:
+      if notification is not List or notification.size != 2 or notification[0] is not int:
+        // Discard unknown event.
+        return
+      event-kind := notification[0]
+      event-value := notification[1]
+      on-event_.call event-kind event-value
 
 class ContainerImageWriter extends ServiceResourceProxy:
   size/int ::= ?

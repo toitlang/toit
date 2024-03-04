@@ -451,7 +451,7 @@ PRIMITIVE(get_font) {
 #else
   ARGS(SimpleResourceGroup, resource_group, StringOrSlice, string);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) FAIL(ALLOCATION_FAILED);
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
   Font* font = _new Font(resource_group);
   if (!font) FAIL(MALLOC_FAILED);
   SimpleResourceAllocationManager<Font> font_allocation_manager(font);

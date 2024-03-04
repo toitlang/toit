@@ -37,11 +37,11 @@ class ToitdocDiagnostics : public Diagnostics {
     if (severity == Severity::error) return Severity::warning;
     return severity;
   }
-  void emit(Severity severity, const char* format, va_list& arguments) {
-    wrapped_->emit(severity, format, arguments);
+  bool emit(Severity severity, const char* format, va_list& arguments) {
+    return wrapped_->emit(severity, format, arguments);
   }
-  void emit(Severity severity, Source::Range range, const char* format, va_list& arguments) {
-    wrapped_->emit(severity, range, format, arguments);
+  bool emit(Severity severity, Source::Range range, const char* format, va_list& arguments) {
+    return wrapped_->emit(severity, range, format, arguments);
   }
 
  private:
@@ -74,7 +74,7 @@ class ToitdocSource : public Source {
   }
 
   const char* absolute_path() const { return source_->absolute_path(); }
-  std::string package_id() const { return source_->package_id(); }
+  Package package() const { return source_->package(); }
   std::string error_path() const { return source_->error_path(); }
 
   const uint8* text() const { return text_; }

@@ -437,7 +437,8 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   Node* visit_Constructor(Constructor* node) { return visit_Method(node); }
   Node* visit_Global(Global* node) { return visit_Method(node); }
   Node* visit_AdapterStub(AdapterStub* node) { return visit_Method(node); }
-  Node* visit_IsInterfaceStub(IsInterfaceStub* node) { return visit_Method(node); }
+  Node* visit_MixinStub(MixinStub* node) { return visit_Method(node); }
+  Node* visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStub* node) { return visit_Method(node); }
   Node* visit_FieldStub(FieldStub* node) { return visit_Method(node); }
 
  private:

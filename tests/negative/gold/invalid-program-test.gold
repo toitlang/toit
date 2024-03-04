@@ -1,4 +1,0 @@
-INVALID_PROGRAM error. 
-2672
-  0: run-global-initializer_   <sdk>/core/objects.toit:254:1
-  1: main                      tests/negative/invalid-program-test.toit:9:3

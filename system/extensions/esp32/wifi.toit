@@ -102,7 +102,8 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
     finally: | is-exception exception |
       // If we're not returning a network resource to the client, we
       // must take care to decrement the usage count correctly.
-      if is-exception: state_.down
+      if is-exception:
+        critical-do: state_.down
 
   establish client/int config/Map? -> List:
     if not config: config = {:}
@@ -137,13 +138,14 @@ class WifiServiceProvider extends NetworkServiceProviderBase:
     finally: | is-exception exception |
       // If we're not returning a network resource to the client, we
       // must take care to decrement the usage count correctly.
-      if is-exception: state_.down
+      if is-exception:
+        critical-do: state_.down
 
   address resource/NetworkResource -> ByteArray:
     return (state_.module as WifiModule).address.to-byte-array
 
   resolve resource/ServiceResource host/string -> List:
-    return [(dns-module.dns-lookup host).raw]
+    return (dns-module.dns-lookup-multi host).map: it.raw
 
   ap-info resource/NetworkResource -> List:
     return (state_.module as WifiModule).ap-info
@@ -181,7 +183,7 @@ class WifiModule implements NetworkModule:
   static WIFI-SCAN-DONE    ::= 1 << 5
 
   static WIFI-RETRY-DELAY_     ::= Duration --s=1
-  static WIFI-CONNECT-TIMEOUT_ ::= Duration --s=10
+  static WIFI-CONNECT-TIMEOUT_ ::= Duration --s=24
   static WIFI-DHCP-TIMEOUT_    ::= Duration --s=16
 
   logger_/log.Logger ::= log.default.with-name "wifi"
@@ -222,14 +224,19 @@ class WifiModule implements NetworkModule:
     if not resource-group_:
       return
 
-    if wifi-events_:
-      wifi-events_.dispose
-      wifi-events_ = null
-    if ip-events_:
-      ip-events_.dispose
-      ip-events_ = null
+    // If we're disconnecting because of cancelation, we have
+    // to make sure we still clean up. Logging and disposing
+    // are (potentially) monitor operations, so we have to be
+    // extra careful around those.
+    critical-do:
+      logger_.debug "closing"
+      if wifi-events_:
+        wifi-events_.dispose
+        wifi-events_ = null
+      if ip-events_:
+        ip-events_.dispose
+        ip-events_ = null
 
-    logger_.debug "closing"
     wifi-close_ resource-group_
     resource-group_ = null
     address_ = null
