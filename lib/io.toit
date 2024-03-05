@@ -734,7 +734,6 @@ class ByteArrayReader_ extends Reader:
   close_ -> none:
     data_ = null
 
-
 interface OutStrategy:
   /**
   Writes the given $data to this writer.
@@ -769,8 +768,11 @@ abstract mixin OutMixin implements OutStrategy:
   out_/Out_? := null
 
   out -> Writer:
-    if not out_: out_ = Out_ this
-    return out_
+    result := out_
+    if not result:
+      result = Out_ this
+      out_ = result
+    return result
 
   /**
   Writes the given $data to this writer.
@@ -792,6 +794,11 @@ abstract mixin OutMixin implements OutStrategy:
   // This is a protected method. It should not be "private".
   abstract close-writer_ -> none
 
+/**
+The basic interface that the $InMixin uses to read bytes from a source.
+
+Any class that mixes in the $InMixin must implement this interface.
+*/
 interface InStrategy:
   /**
   Reads the next bytes.
@@ -824,7 +831,10 @@ abstract mixin InMixin implements InStrategy:
   in_/In_? := null
 
   in -> Reader:
-    if not in_: in_ = In_ this
+    result := in_
+    if not result:
+      result = In_ this
+      in_ = result
     return in_
 
   /**
