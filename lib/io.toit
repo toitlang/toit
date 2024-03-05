@@ -734,37 +734,18 @@ class ByteArrayReader_ extends Reader:
   close_ -> none:
     data_ = null
 
-interface OutStrategy:
-  /**
-  Writes the given $data to this writer.
-
-  Returns the number of bytes written.
-
-  See $Writer.try-write_.
-  */
-  // This is a protected method. It should not be "private".
-  try-write_ data/Data from/int to/int -> int
-
-  /**
-  Closes this writer.
-
-  See $Writer.close_.
-  */
-  // This is a protected method. It should not be "private".
-  close-writer_ -> none
-
 class Out_ extends Writer:
-  strategy_/OutStrategy
+  mixin_/OutMixin
 
-  constructor .strategy_:
+  constructor .mixin_:
 
   try-write_ data/Data from/int to/int -> int:
-    return strategy_.try-write_ data from to
+    return mixin_.try-write_ data from to
 
   close_ -> none:
-    strategy_.close-writer_
+    mixin_.close-writer_
 
-abstract mixin OutMixin implements OutStrategy:
+abstract mixin OutMixin:
   out_/Out_? := null
 
   out -> Writer:
@@ -794,40 +775,18 @@ abstract mixin OutMixin implements OutStrategy:
   // This is a protected method. It should not be "private".
   abstract close-writer_ -> none
 
-/**
-The basic interface that the $InMixin uses to read bytes from a source.
-
-Any class that mixes in the $InMixin must implement this interface.
-*/
-interface InStrategy:
-  /**
-  Reads the next bytes.
-
-  See $Reader.consume_.
-  */
-  // This is a protected method. It should not be "private".
-  consume_ -> ByteArray?
-
-  /**
-  Closes this reader.
-
-  See $Reader.close_.
-  */
-  // This is a protected method. It should not be "private".
-  close-reader_ -> none
-
 class In_ extends Reader:
-  strategy_/InStrategy
+  mixin_/InMixin
 
-  constructor .strategy_:
+  constructor .mixin_:
 
   consume_ -> ByteArray?:
-    return strategy_.consume_
+    return mixin_.consume_
 
   close_ -> none:
-    strategy_.close-reader_
+    mixin_.close-reader_
 
-abstract mixin InMixin implements InStrategy:
+abstract mixin InMixin:
   in_/In_? := null
 
   in -> Reader:
