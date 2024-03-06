@@ -15,7 +15,7 @@ CODE-PONG ::= (CODE-CLASS-SIGNALING-CODES << CODE-CLASS-SHIFT_) | 3
 
 CODE-CLASS-SIGNALING-CODES ::= 7
 
-class SizedReader_ extends io.Reader:
+class SizedReader_ extends Object with io.Reader:
   done_/monitor.Latch ::= monitor.Latch
   transport_/Transport
   reader_/io.Reader
