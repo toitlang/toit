@@ -1,5 +1,9 @@
 // Copyright (C) 2023 Toitware ApS. All rights reserved.
 
+import binary
+import reader as old-reader
+import writer as old-writer
+
 /**
 A producer of bytes.
 
@@ -50,6 +54,15 @@ abstract class Writer:
   is-closed_/bool := false
 
   constructor:
+
+  /**
+  Constructor to convert old-style writers to this writer.
+
+  The $writer must either be a $old-writer.Writer or a class with a `write` function
+    that returns the number of bytes written.
+  */
+  constructor.adapt writer:
+    return WriterAdapter_ writer
 
   /**
   Writes the given $data to this writer.
@@ -128,7 +141,7 @@ abstract class Writer:
 /**
 A source of bytes.
 */
-abstract class Reader:
+abstract class Reader implements old-reader.Reader:
   static UNEXPECTED-END-OF-READER ::= "UNEXPECTED_END_OF_READER"
 
   is-closed_/bool := false
@@ -146,6 +159,8 @@ abstract class Reader:
   constructor data/ByteArray:
     return ByteArrayReader_ data
 
+  constructor.adapt r/old-reader.Reader:
+    return ReaderAdapter_ r
   /**
   Closes this reader.
 
@@ -813,6 +828,394 @@ abstract mixin InMixin:
   */
   // This is a protected method. It should not be "private".
   abstract close-reader_ -> none
+
+/**
+A buffer that can be used to build byte data.
+
+# Aliases
+- `BytesBuilder`: Dart
+- `ByteArrayOutputStream`: Java
+*/
+class Buffer extends Writer:
+  static INITIAL-BUFFER-SIZE_ ::= 64
+  static MIN-BUFFER-GROWTH_ ::= 64
+
+  init-size_/int
+  offset_ := 0
+  buffer_/ByteArray := ?
+  is-growable_/bool := ?
+
+  /**
+  Constructs a new buffer.
+
+  The backing byte array is allocated with a default size and will grow if needed.
+  */
+  constructor:
+    return Buffer (ByteArray INITIAL-BUFFER-SIZE_) --growable
+
+  /**
+  Constructs a new buffer, using the given $bytes as backing array.
+
+  If $growable is true, then the $bytes array might be replaced with a bigger one
+    if needed.
+
+  The current backing array can be accessed with $backing-array.
+  A view, only containing the data that has been written so far, can be accessed
+    with $bytes.
+  */
+  constructor bytes/ByteArray --growable/bool=false:
+    buffer_ = bytes
+    is-growable_ = growable
+    init-size_ = bytes.size
+
+  /**
+  Constructs a new buffer with the given initial $size.
+
+  If $growable is true, then the backing array might be replaced with a bigger one
+    if needed.
+
+  The current backing array can be accessed with $backing-array.
+  A view, only containing the data that has been written so far, can be accessed
+    with $bytes.
+  */
+  constructor.with-initial-size size/int --growable/bool=true:
+    buffer_ = ByteArray size
+    init-size_ = size
+    is-growable_ = growable
+
+  /**
+  Whether this instance is allowed to replace the backing store with a bigger one.
+
+  If false, then the $backing-array is always equal to the array that was passed
+    to the constructor.
+  */
+  is-growable -> bool:
+    return is-growable_
+
+  /**
+  The amount of bytes that have been written to this buffer.
+
+  This is not necessarily the size of the backing array.
+  */
+  size -> int:
+    return offset_
+
+  /**
+  The backing array of this buffer.
+
+  If $is-growable is false, always returns the array that was passed to the constructor.
+  This array might have a bigger size than the number of bytes that have been written.
+  */
+  backing-array -> ByteArray:
+    return buffer_
+
+  /**
+  A view of the backing array that only contains the bytes that have been written so far.
+  */
+  bytes -> ByteArray:
+    return buffer_[..offset_]
+
+  /**
+  Converts the consumed data to a string.
+  This operation is equivalent to `bytes.to-string`.
+  */
+  to-string -> string:
+    return bytes.to-string
+
+  /**
+  Reserves $amount bytes.
+
+  Ensures that the backing array has $amount unused bytes available.
+  If this is not the case replaces the backing array with a bigger one. In this
+    case this instance must be growable. (See $is-growable.)
+
+  This method is purely for efficiency, so that this consumer doesn't need to
+    regrow its internal backing store too often.
+  */
+  reserve amount/int -> none:
+    ensure_ amount
+
+  /**
+  Changes the size of the buffer to the given $new-size.
+  */
+  resize new-size/int -> none:
+    ensure_ new-size
+    if new-size < offset_:
+      // Clear the bytes that are no longer part of the buffer.
+      buffer_.fill --from=new-size --to=offset_ 0
+    offset_ = new-size
+
+  /**
+  Grows the buffer by the given $amount.
+
+  The new bytes are initialized to 0.
+  */
+  grow-by amount/int -> none:
+    ensure_ amount
+    offset_ += amount
+
+  /**
+  Closes this instance.
+
+  If this instance is growable, trims the backing store to avoid waste.
+  See $is-growable.
+  */
+  close -> none:
+    super
+
+  /**
+  Resets this instance, discarding all accumulated data.
+  */
+  clear -> none:
+    offset_ = 0
+
+  ensure_ amount/int:
+    new-minimum-size := offset_ + amount
+    if new-minimum-size <= backing-array.size: return
+
+    if not is-growable_: throw "BUFFER_FULL"
+
+    // If we are ensuring a very big size, then make the buffer fit exactly.
+    // This is good for ubjson encodings that end with a large byte array,
+    // because there is no waste.  Otherwise grow by at least a factor (of 1.5)
+    // to avoid quadratic running times.
+    new-size := max
+      buffer_.size +
+        max
+          buffer_.size >> 1
+          MIN-BUFFER-GROWTH_
+      new-minimum-size
+
+    assert: offset_ + size  <= new-size
+
+    new := ByteArray new-size
+    new.replace 0 buffer_ 0 offset_
+    buffer_ = new
+
+  /**
+  Writes the given $data to this buffer at the given index $at.
+
+  The parameters must satisfy 0 <= $at <= ($at + data-size) <= $size, where
+    data-size is the `byte-size` of $data.
+
+  See $grow-by, $resize for ways to ensure that the buffer is big enough.
+  */
+  put --at/int data/Data from/int=0 to/int=data.byte-size:
+    if not 0 <= at <= at + data.byte-size <= offset_: throw "INVALID_ARGUMENT"
+
+  /**
+  Returns the byte at the given $index.
+
+  The parameter must satisfy 0 <= $index < $size.
+  */
+  operator[] index/int -> int:
+    if not 0 <= index < offset_: throw "OUT_OF_BOUNDS"
+    return buffer_[index]
+
+  /**
+  Sets the byte at the given $index to the given $value.
+
+  The parameter $index must satisfy 0 <= $index < $size.
+  */
+  operator[]= index/int value/int -> none:
+    if not 0 <= index < offset_: throw "OUT_OF_BOUNDS"
+    buffer_[index] = value
+
+  try-write_ data/Data from/int to/int -> int:
+    ensure_ to - from
+    buffer_.replace offset_ data from to
+    offset_ += to - from
+    return to - from
+
+  /** See $close. */
+  close_:
+    if is-growable_ and offset_  != buffer_.size:
+      buffer_ = buffer_.copy 0 offset_
+
+  /**
+  Provides endian-aware functions to write to this instance.
+
+  The little-endian byte order writes lower-order ("little") bytes first.
+    For example, if the target of the write operation is a byte array, the
+    first byte written (at position 0) is the least significant byte of the
+    number that is written.
+
+  # Examples
+  ```
+  import io
+
+  main:
+    buffer := io.Buffer
+    buffer.little-endian.write-int32 0x12345678
+    // The least significant byte 0x78 is at index 0.
+    print buffer.bytes  // => #[0x78, 0x56, 0x34, 0x12]
+  ```
+
+  ```
+  import io
+
+  main:
+    buffer := io.Buffer
+    writer := buffer.little-endian
+    writer.write "Can be used like a normal writer."
+    writer.write-int32 0x12345678
+    result := buffer.bytes
+    ...
+  ```
+  */
+  little-endian -> EndianBuffer:
+    return EndianBuffer --buffer=this --byte-order=binary.LITTLE_ENDIAN
+
+  /**
+  Provides endian-aware functions to write to this instance.
+
+  The big-endian byte order writes higher-order (big) bytes first.
+    For example, if  the target of the write operation is a byte array, the
+    first byte written (at position 0) is the most significant byte of
+    the number that is written.
+
+  # Examples
+  ```
+  import io
+
+  main:
+    buffer := io.Buffer
+    buffer.big-endian.write-int32 0x12345678
+    // The most significant byte 0x12 is at index 0.
+    print buffer.bytes  // => #[0x12, 0x34, 0x56, 0x78]
+  ```
+
+  ```
+  import io
+
+  main:
+    buffer := io.Buffer
+    writer := buffer.big-endian
+    writer.write "Can be used like a normal writer."
+    writer.write-int32 0x12345678
+    result := buffer.bytes
+    ...
+  ```
+  */
+  big-endian -> EndianBuffer:
+    return EndianBuffer --buffer=this --byte-order=binary.BIG_ENDIAN
+
+class EndianWriter:
+  writer_/Writer
+  endian_/binary.ByteOrder
+  cached-byte-array_/ByteArray ::= ByteArray 8
+
+  constructor --writer/Writer --byte-order/binary.ByteOrder:
+    writer_ = writer
+    endian_ = byte-order
+
+  /** Writes an 8-bit integer. */
+  write-int8 value/int -> none:
+    cached-byte-array_[0] = value
+    writer_.write cached-byte-array_ 0 1
+
+  /** Writes a 16-bit integer, using the endiannes of this instance. */
+  write-int16 value/int -> none:
+    endian_.put-int16 cached-byte-array_ 0 value
+    writer_.write cached-byte-array_ 0 2
+
+  /** Writes a 24-bit integer, using the endiannes of this instance. */
+  write-int24 value/int -> none:
+    endian_.put-int24 cached-byte-array_ 0 value
+    writer_.write cached-byte-array_ 0 3
+
+  /** Writes a 32-bit integer, using the endiannes of this instance. */
+  write-int32 value/int -> none:
+    endian_.put-int32 cached-byte-array_ 0 value
+    writer_.write cached-byte-array_ 0 4
+
+  /** Writes a 64-bit integer, using the endiannes of this instance. */
+  write-int64 data/int -> none:
+    endian_.put-int64 cached-byte-array_ 0 data
+    writer_.write cached-byte-array_ 0 8
+
+  /** Writes a 32-bit floating-point number, using the endianness of this instance. */
+  write-float32 data/float -> none:
+    endian_.put-float32 cached-byte-array_ 0 data
+    writer_.write cached-byte-array_ 0 4
+
+  /** Writes a 64-bit floating-point number, using the endianness of this instance. */
+  write-float64 data/float -> none:
+    endian_.put-float64 cached-byte-array_ 0 data
+    writer_.write cached-byte-array_ 0 8
+
+class EndianBuffer extends EndianWriter:
+  buffer_/Buffer
+
+  constructor --buffer/Buffer --byte-order/binary.ByteOrder:
+    buffer_ = buffer
+    super --writer=buffer --byte-order=byte-order
+
+  /**
+  Writes the given byte $value to this buffer at the given index $at.
+
+  This function is an alias for $Buffer.[]=.
+  */
+  put-int8 --at/int value/int:
+    buffer_[at] = value
+
+  /** Writes the given int16 $value to this buffer at the given index $at. */
+  put-int16 --at/int value/int:
+    endian_.put-int16 cached-byte-array_ at value
+    buffer_.put --at=at cached-byte-array_ 0 2
+
+  /** Writes the given int24 $value to this buffer at the given index $at. */
+  put-int24 --at/int value/int:
+    endian_.put-int24 cached-byte-array_ at value
+    buffer_.put --at=at cached-byte-array_ 0 3
+
+  /** Writes the given int32 $value to this buffer at the given index $at. */
+  put-int32 --at/int value/int:
+    endian_.put-int32 cached-byte-array_ at value
+    buffer_.put --at=at cached-byte-array_ 0 4
+
+  /** Writes the given int64 $value to this buffer at the given index $at. */
+  put-int64 --at/int value/int:
+    endian_.put-int64 cached-byte-array_ at value
+    buffer_.put --at=at cached-byte-array_ 0 8
+
+  /** Writes the given float32 $value to this buffer at the given index $at. */
+  put-float32 --at/int value/float:
+    endian_.put-float32 cached-byte-array_ at value
+    buffer_.put --at=at cached-byte-array_ 0 4
+
+  /** Writes the given float64 $value to this buffer at the given index $at. */
+  put-float64 --at/int value/float:
+    endian_.put-float64 cached-byte-array_ at value
+    buffer_.put --at=at cached-byte-array_ 0 8
+
+/**
+Adapter to use an old-style writer as $Writer.
+*/
+class WriterAdapter_ extends Writer:
+  w_/any
+
+  constructor .w_:
+
+  try-write_ data/Data from/int to/int -> int:
+    return w_.write data from to
+
+  close_ -> none:
+    w_.close
+
+/**
+Adapter to use an $old-reader.Reader as $Reader.
+*/
+class ReaderAdapter_ extends Reader:
+  r_/any
+
+  constructor .r_:
+
+  consume_ -> ByteArray?:
+    return r_.read
+
+  close_ -> none:
+    r_.close
 
 /**
 Executes the given $block on chunks of the $data if the error indicates
