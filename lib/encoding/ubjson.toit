@@ -23,7 +23,7 @@ decode bytes/ByteArray -> any:
 class BufferSizeCounter_ extends io.Writer:
   size := 0
 
-  write-byte b/int:
+  write-byte value/int:
     size++
 
   try-write_ data/io.Data from/int to/int -> int:

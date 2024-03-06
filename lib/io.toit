@@ -82,10 +82,13 @@ abstract class Writer:
   /**
   Writes a single byte.
   */
-  write-byte b/int -> none:
-    if not byte-cache_: byte-cache_ = ByteArray 1
-    byte-cache_[0] = b
-    write byte-cache_
+  write-byte value/int -> none:
+    cache := byte-cache_
+    if not cache:
+      cache = ByteArray 1
+      byte-cache_ = cache
+    cache[0] = value
+    write cache
 
   /**
   Writes all data that is provided by the given $reader.
