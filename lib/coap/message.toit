@@ -53,7 +53,7 @@ class Message:
 
   code := 0
   token/Token? := null
-  payload/io.SizedInput? := null
+  payload/io.Reader? := null
 
   options := []
 
@@ -84,8 +84,8 @@ class Message:
 
   read-payload -> ByteArray:
     if not payload: return ByteArray 0
-    buffer := io.Buffer.with-initial-size payload.size
-    buffer.write-from payload.in
+    buffer := io.Buffer.with-initial-size payload.byte-size
+    buffer.write-from payload
     return buffer.bytes
 
   write-options_ buffer/io.Buffer:
@@ -109,7 +109,7 @@ class Message:
 
   write-payload_ buffer/io.Buffer:
     if payload:
-      buffer.write-from payload.in
+      buffer.write-from payload
 
   parse-options_ msg-length/int reader/io.Reader -> int:
     read := 0

@@ -791,6 +791,14 @@ abstract class Reader implements old-reader.Reader:
   // This is a protected method. It should not be "private".
   abstract close_ -> none
 
+  /**
+  The size in bytes of the data in this reader.
+  This value is not updated when data is consumed.
+
+  If the reader does not know the size, returns null.
+  */
+  abstract byte-size -> int?
+
 /**
 A producer of bytes from an existing $ByteArray.
 
@@ -798,8 +806,10 @@ See $(Reader.constructor data).
 */
 class ByteArrayReader_ extends Reader:
   data_ / ByteArray? := ?
+  byte-size / int := ?
 
-  constructor .data_:
+  constructor .data_/ByteArray:
+    byte-size = data_.size
 
   consume_ -> ByteArray?:
     result := data_
@@ -860,6 +870,11 @@ class In_ extends Reader:
 
   close_ -> none:
     mixin_.close-reader_
+
+  // TODO(florian): make it possible to set the byte-size of the reader when
+  // using a mixin.
+  byte-size -> int?:
+    return null
 
 abstract mixin InMixin:
   in_/In_? := null
@@ -1543,34 +1558,10 @@ class ReaderAdapter_ extends Reader:
   close_ -> none:
     r_.close
 
-/**
-An interface for objects that can provide data of a given size.
-
-The $size might be null to indicate that the size is unknown.
-*/
-interface SizedInput:
-  constructor bytes/ByteArray:
-    return SizedInput_ bytes.size (Reader bytes)
-
-  constructor size/int reader/Reader:
-    return SizedInput_ size reader
-
-  /**
-  The amount of bytes the reader $in can produce.
-
-  May be null to indicate that the size is unknown. This case must be
-    explicitly allowed by receivers of this object.
-  */
-  size -> int?
-
-  /** The reader that provides data. */
-  in -> Reader
-
-class SizedInput_ implements SizedInput:
-  size/int?
-  in/Reader
-
-  constructor .size .in:
+  byte-size -> int?:
+    if r_ is old-reader.SizedReader:
+      return (r_ as old-reader.SizedReader).size
+    return null
 
 /**
 Executes the given $block on chunks of the $data if the error indicates
