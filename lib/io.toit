@@ -114,7 +114,6 @@ abstract class Writer:
   // This is a protected method. It should not be "private".
   abstract try-write_ data/Data from/int to/int -> int
 
-
 abstract class CloseableWriter extends Writer:
   /**
   Closes this writer.
@@ -776,6 +775,14 @@ abstract class Reader implements old-reader.Reader:
   // This is a protected method. It should not be "private".
   abstract consume_ -> ByteArray?
 
+  /**
+  The size in bytes of the data in this reader.
+  This value is not updated when data is consumed.
+
+  If the reader does not know the size, returns null.
+  */
+  abstract content-size -> int?
+
 abstract class CloseableReader extends Reader:
   /**
   Closes this reader.
@@ -800,14 +807,6 @@ abstract class CloseableReader extends Reader:
   */
   // This is a protected method. It should not be "private".
   abstract close_ -> none
-
-  /**
-  The size in bytes of the data in this reader.
-  This value is not updated when data is consumed.
-
-  If the reader does not know the size, returns null.
-  */
-  abstract content-size -> int?
 
 /**
 A producer of bytes from an existing $ByteArray.
