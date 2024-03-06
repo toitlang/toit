@@ -1,0 +1,15 @@
+tests/zlib-deprecated-test.toit:87:28: warning: Deprecated 'Coder_.reader'
+    while ba := compressor.reader.read:
+                           ^~~~~~
+tests/zlib-deprecated-test.toit:90:14: warning: Deprecated 'Coder_.write'
+  compressor.write input
+             ^~~~~
+tests/zlib-deprecated-test.toit:91:14: warning: Deprecated 'Coder_.close'
+  compressor.close
+             ^~~~~
+<pkg:pkg-host>/pipe.toit:329:6: warning: Deprecated 'platform'
+  if platform == PLATFORM_WINDOWS:
+     ^~~~~~~~
+<pkg:pkg-host>/pipe.toit:329:18: warning: Deprecated 'PLATFORM-WINDOWS'
+  if platform == PLATFORM_WINDOWS:
+                 ^~~~~~~~~~~~~~~~

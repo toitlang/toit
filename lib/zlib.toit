@@ -234,13 +234,8 @@ class RunLengthDeflateBackend_ implements Backend_:
 
   /**
   Closes the encoder for writing.
-
-  Deprecated. Use 'out.close' instead.
   */
   close:
-    close-writer_
-
-  close-writer_:
     if rle_:
       buffer-fullness_ += rle-finish_ rle_ buffer_ buffer-fullness_
       rle_ = null
