@@ -116,7 +116,7 @@ class Socket extends Object with io.CloseableInMixin io.CloseableOutMixin implem
 
   close-writer_ -> none:
     session_.close-write
-    socket_.close-write
+    socket_.out.close
 
   close-reader_ -> none:
     // TODO(florian): Implement.
