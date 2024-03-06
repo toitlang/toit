@@ -8,8 +8,11 @@ import writer as old-writer
 A producer of bytes.
 
 The most important implementations of this interface are
-  $ByteArray and $string. However, any data structure that can be
-  used as byte-source should implement this interface.
+  $ByteArray and $string, which we call "Primitive IO Data". Any other data
+  structure that implements this interface can still be used as byte-source
+  for primitive operations but will first be converted to a byte array,
+  using the $write-to-byte-array method. Some primitive operations will
+  do this in a chunked way to avoid allocating a large byte array.
 
 Since $Data objects can be instances of $ByteArray it is sometimes
   judicious to test if the given instance is already of class `ByteArray` before
@@ -79,10 +82,13 @@ abstract class Writer:
   /**
   Writes a single byte.
   */
-  write-byte b/int -> none:
-    if not byte-cache_: byte-cache_ = ByteArray 1
-    byte-cache_[0] = b
-    write byte-cache_
+  write-byte value/int -> none:
+    cache := byte-cache_
+    if not cache:
+      cache = ByteArray 1
+      byte-cache_ = cache
+    cache[0] = value
+    write cache
 
   /**
   Writes all data that is provided by the given $reader.
@@ -168,7 +174,6 @@ abstract class Writer:
   */
   // This is a protected method. It should not be "private".
   abstract try-write_ data/Data from/int to/int -> int
-
 
 abstract class CloseableWriter extends Writer:
   /**
@@ -272,6 +277,7 @@ abstract class Reader implements old-reader.Reader:
     if not buffered_: buffered_ = ByteArrayList_
     buffered_.add data
     if buffered_.size == 1:
+      assert: first-array-position_ == 0
       base-consumed_ += first-array-position_
       first-array-position_ = 0
 
@@ -689,6 +695,10 @@ abstract class Reader implements old-reader.Reader:
   If $keep-newline is false, trims the trailing '\r\n' or '\n'. This method
     removes a '\r' even if the platform is not Windows. If the '\r' needs to be
     preserved, set $keep-newline to true and remove the trailing '\n' manually.
+  If the input ends with a newline, then all further reads return null.
+  If the input ends without a newline, then the last line is returned without any
+    newline character (even if $keep-newline) is true, and all further reads
+    return null.
 
   Returns null if no more data is available.
   */
@@ -699,10 +709,10 @@ abstract class Reader implements old-reader.Reader:
       if rest-size == 0: return null
       return read-string rest-size
 
-    if keep-newline: return read-string delimiter-pos
+    if keep-newline: return read-string (delimiter-pos + 1)
 
     result-size := delimiter-pos
-    if delimiter-pos > 0 and (peek-byte delimiter-pos - 1) == '\r':
+    if delimiter-pos > 0 and (peek-byte (delimiter-pos - 1)) == '\r':
       result-size--
 
     result := peek-string result-size
@@ -793,9 +803,11 @@ abstract class Reader implements old-reader.Reader:
   ```
   */
   little-endian -> EndianReader:
-    if not endian_ or endian_.byte-order_ != binary.LITTLE_ENDIAN:
-      endian_ = EndianReader --reader=this --byte-order=binary.LITTLE_ENDIAN
-    return endian_
+    result := endian_
+    if not result or result.byte-order_ != binary.LITTLE_ENDIAN:
+      result = EndianReader --reader=this --byte-order=binary.LITTLE_ENDIAN
+      endian_ = result
+    return result
 
   /**
   Provides endian-aware functions to read from this instance.
@@ -817,9 +829,11 @@ abstract class Reader implements old-reader.Reader:
   ```
   */
   big-endian -> EndianReader:
-    if not endian_ or endian_.byte-order_ != binary.BIG_ENDIAN:
-      endian_ = EndianReader --reader=this --byte-order=binary.BIG_ENDIAN
-    return endian_
+    result := endian_
+    if not result or result.byte-order_ != binary.BIG_ENDIAN:
+      result = EndianReader --reader=this --byte-order=binary.BIG_ENDIAN
+      endian_ = result
+    return result
 
   /**
   Reads the next byte array ignoring the buffered data.
@@ -832,6 +846,14 @@ abstract class Reader implements old-reader.Reader:
   */
   // This is a protected method. It should not be "private".
   abstract consume_ -> ByteArray?
+
+  /**
+  The size in bytes of the data in this reader.
+  This value is not updated when data is consumed.
+
+  If the reader does not know the size, returns null.
+  */
+  abstract content-size -> int?
 
 abstract class CloseableReader extends Reader:
   /**
@@ -865,8 +887,10 @@ See $(Reader.constructor data).
 */
 class ByteArrayReader_ extends Reader:
   data_ / ByteArray? := ?
+  content-size / int := ?
 
-  constructor .data_:
+  constructor .data_/ByteArray:
+    content-size = data_.size
 
   consume_ -> ByteArray?:
     result := data_
@@ -876,52 +900,34 @@ class ByteArrayReader_ extends Reader:
   close_ -> none:
     data_ = null
 
-
-interface OutStrategy:
-  /**
-  Writes the given $data to this writer.
-
-  Returns the number of bytes written.
-
-  See $Writer.try-write_.
-  */
-  // This is a protected method. It should not be "private".
-  try-write_ data/Data from/int to/int -> int
-
-interface CloseableOutStrategy extends OutStrategy:
-  /**
-  Closes this writer.
-
-  See $CloseableWriter.close_.
-  */
-  // This is a protected method. It should not be "private".
-  close-writer_ -> none
-
 class Out_ extends Writer:
-  strategy_/OutStrategy
+  mixin_/OutMixin
 
-  constructor .strategy_:
+  constructor .mixin_:
 
   try-write_ data/Data from/int to/int -> int:
-    return strategy_.try-write_ data from to
+    return mixin_.try-write_ data from to
 
 class CloseableOut_ extends CloseableWriter:
-  strategy_/CloseableOutStrategy
+  mixin_/CloseableOutMixin
 
-  constructor .strategy_:
+  constructor .mixin_:
 
   try-write_ data/Data from/int to/int -> int:
-    return strategy_.try-write_ data from to
+    return mixin_.try-write_ data from to
 
   close_ -> none:
-    strategy_.close-writer_
+    mixin_.close-writer_
 
-abstract mixin OutMixin implements OutStrategy:
+abstract mixin OutMixin:
   out_/Out_? := null
 
   out -> Writer:
-    if not out_: out_ = Out_ this
-    return out_
+    result := out_
+    if not result:
+      result = Out_ this
+      out_ = result
+    return result
 
   /**
   Writes the given $data to this writer.
@@ -934,7 +940,7 @@ abstract mixin OutMixin implements OutStrategy:
   // This is a protected method. It should not be "private".
   abstract try-write_ data/Data from/int to/int -> int
 
-abstract mixin CloseableOutMixin implements CloseableOutStrategy:
+abstract mixin CloseableOutMixin:
   out_/CloseableOut_? := null
 
   out -> CloseableWriter:
@@ -961,48 +967,43 @@ abstract mixin CloseableOutMixin implements CloseableOutStrategy:
   // This is a protected method. It should not be "private".
   abstract close-writer_ -> none
 
-interface InStrategy:
-  /**
-  Reads the next bytes.
-
-  See $Reader.consume_.
-  */
-  // This is a protected method. It should not be "private".
-  consume_ -> ByteArray?
-
-interface CloseableInStrategy extends InStrategy:
-  /**
-  Closes this reader.
-
-  See $CloseableReader.close_.
-  */
-  // This is a protected method. It should not be "private".
-  close-reader_ -> none
-
 class In_ extends Reader:
-  strategy_/InStrategy
+  mixin_/InMixin
 
-  constructor .strategy_:
+  constructor .mixin_:
 
   consume_ -> ByteArray?:
-    return strategy_.consume_
+    return mixin_.consume_
+
+  // TODO(florian): make it possible to set the content-size of the reader when
+  // using a mixin.
+  content-size -> int?:
+    return null
 
 class CloseableIn_ extends CloseableReader:
-  strategy_/CloseableInStrategy
+  mixin_/CloseableInMixin
 
-  constructor .strategy_:
+  constructor .mixin_:
 
   consume_ -> ByteArray?:
-    return strategy_.consume_
+    return mixin_.consume_
 
   close_ -> none:
-    strategy_.close-reader_
+    mixin_.close-reader_
 
-abstract mixin InMixin implements InStrategy:
+  // TODO(florian): make it possible to set the content-size of the reader when
+  // using a mixin.
+  content-size -> int?:
+    return null
+
+abstract mixin InMixin:
   in_/In_? := null
 
   in -> Reader:
-    if not in_: in_ = In_ this
+    result := in_
+    if not result:
+      result = In_ this
+      in_ = result
     return in_
 
   /**
@@ -1014,7 +1015,7 @@ abstract mixin InMixin implements InStrategy:
   // This is a protected method. It should not be "private".
   abstract consume_ -> ByteArray?
 
-abstract mixin CloseableInMixin implements CloseableInStrategy:
+abstract mixin CloseableInMixin:
   in_/CloseableIn_? := null
 
   in -> CloseableReader:
@@ -1088,7 +1089,7 @@ class Buffer extends CloseableWriter:
   A view, only containing the data that has been written so far, can be accessed
     with $bytes.
   */
-  constructor.with-initial-size size/int --growable/bool=true:
+  constructor.with-capacity size/int --growable/bool=true:
     buffer_ = ByteArray size
     init-size_ = size
     is-growable_ = growable
@@ -1211,7 +1212,8 @@ class Buffer extends CloseableWriter:
   See $grow-by, $resize for ways to ensure that the buffer is big enough.
   */
   put --at/int data/Data from/int=0 to/int=data.byte-size:
-    if not 0 <= at <= at + data.byte-size <= offset_: throw "INVALID_ARGUMENT"
+    if not 0 <= at <= at + (to - from) <= offset_: throw "INVALID_ARGUMENT"
+    buffer_.replace at data from to
 
   /**
   Returns the byte at the given $index.
@@ -1270,9 +1272,11 @@ class Buffer extends CloseableWriter:
   ```
   */
   little-endian -> EndianBuffer:
-    if not endian_ or endian_.byte-order_ != binary.LITTLE_ENDIAN:
-      endian_ = EndianBuffer --buffer=this --byte-order=binary.LITTLE_ENDIAN
-    return (endian_ as EndianBuffer)
+    result := endian_
+    if not result or result.byte-order_ != binary.LITTLE_ENDIAN:
+      result = EndianBuffer --buffer=this --byte-order=binary.LITTLE_ENDIAN
+      endian_ = result
+    return (result as EndianBuffer)
 
   /**
   Provides endian-aware functions to write to this instance.
@@ -1297,9 +1301,11 @@ class Buffer extends CloseableWriter:
   ```
   */
   big-endian -> EndianBuffer:
-    if not endian_ or endian_.byte-order_ != binary.BIG_ENDIAN:
-      endian_ = EndianBuffer --buffer=this --byte-order=binary.BIG_ENDIAN
-    return (endian_ as EndianBuffer)
+    result := endian_
+    if not result or result.byte-order_ != binary.BIG_ENDIAN:
+      result = EndianBuffer --buffer=this --byte-order=binary.BIG_ENDIAN
+      endian_ = result
+    return (result as EndianBuffer)
 
 class EndianReader:
   reader_/Reader
@@ -1596,7 +1602,7 @@ class EndianBuffer extends EndianWriter:
   Writes the given signed int16 $value to this buffer at the given index $at.
   */
   put-int16 --at/int value/int:
-    byte-order_.put-int16 cached-byte-array_ at value
+    byte-order_.put-int16 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 2
 
   /**
@@ -1611,7 +1617,7 @@ class EndianBuffer extends EndianWriter:
   Writes the given signed int24 $value to this buffer at the given index $at.
   */
   put-int24 --at/int value/int:
-    byte-order_.put-int24 cached-byte-array_ at value
+    byte-order_.put-int24 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 3
 
   /**
@@ -1625,7 +1631,7 @@ class EndianBuffer extends EndianWriter:
   /**
   Writes the given signed int32 $value to this buffer at the given index $at. */
   put-int32 --at/int value/int:
-    byte-order_.put-int32 cached-byte-array_ at value
+    byte-order_.put-int32 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 4
 
   /**
@@ -1638,17 +1644,17 @@ class EndianBuffer extends EndianWriter:
 
   /** Writes the given int64 $value to this buffer at the given index $at. */
   put-int64 --at/int value/int:
-    byte-order_.put-int64 cached-byte-array_ at value
+    byte-order_.put-int64 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 8
 
   /** Writes the given float32 $value to this buffer at the given index $at. */
   put-float32 --at/int value/float:
-    byte-order_.put-float32 cached-byte-array_ at value
+    byte-order_.put-float32 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 4
 
   /** Writes the given float64 $value to this buffer at the given index $at. */
   put-float64 --at/int value/float:
-    byte-order_.put-float64 cached-byte-array_ at value
+    byte-order_.put-float64 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 8
 
 /**
@@ -1673,34 +1679,10 @@ class ReaderAdapter_ extends Reader:
   consume_ -> ByteArray?:
     return r_.read
 
-/**
-An interface for objects that can provide data of a given size.
-
-The $size might be null to indicate that the size is unknown.
-*/
-interface SizedInput:
-  constructor bytes/ByteArray:
-    return SizedInput_ bytes.size (Reader bytes)
-
-  constructor size/int reader/Reader:
-    return SizedInput_ size reader
-
-  /**
-  The amount of bytes the reader $in can produce.
-
-  May be null to indicate that the size is unknown. This case must be
-    explicitly allowed by receivers of this object.
-  */
-  size -> int?
-
-  /** The reader that provides data. */
-  in -> Reader
-
-class SizedInput_ implements SizedInput:
-  size/int?
-  in/Reader
-
-  constructor .size .in:
+  content-size -> int?:
+    if r_ is old-reader.SizedReader:
+      return (r_ as old-reader.SizedReader).size
+    return null
 
 /**
 Executes the given $block on chunks of the $data if the error indicates
