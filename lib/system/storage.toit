@@ -419,6 +419,9 @@ class RegionReader_ extends io.Reader:
     from_ = from + n
     return result
 
+  content-size -> int?:
+    return null
+
 // --------------------------------------------------------------------------
 
 flash-region-open_ group client handle offset size:
