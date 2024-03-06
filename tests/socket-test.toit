@@ -111,5 +111,5 @@ sleepy-reader port --iterations/int=100:
         expected = "Message for sleepy reader $index"
       expect str.size < expected.size
   print "End at $index"
-  expect-equals index iterations
+  expect-equals iterations index
   socket.close-write
