@@ -1077,7 +1077,7 @@ class Buffer extends CloseableWriter:
   A view, only containing the data that has been written so far, can be accessed
     with $bytes.
   */
-  constructor.with-initial-size size/int --growable/bool=true:
+  constructor.with-capacity size/int --growable/bool=true:
     buffer_ = ByteArray size
     init-size_ = size
     is-growable_ = growable
@@ -1200,7 +1200,8 @@ class Buffer extends CloseableWriter:
   See $grow-by, $resize for ways to ensure that the buffer is big enough.
   */
   put --at/int data/Data from/int=0 to/int=data.byte-size:
-    if not 0 <= at <= at + data.byte-size <= offset_: throw "INVALID_ARGUMENT"
+    if not 0 <= at <= at + (to - from) <= offset_: throw "INVALID_ARGUMENT"
+    buffer_.replace at data from to
 
   /**
   Returns the byte at the given $index.
@@ -1589,7 +1590,7 @@ class EndianBuffer extends EndianWriter:
   Writes the given signed int16 $value to this buffer at the given index $at.
   */
   put-int16 --at/int value/int:
-    byte-order_.put-int16 cached-byte-array_ at value
+    byte-order_.put-int16 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 2
 
   /**
@@ -1604,7 +1605,7 @@ class EndianBuffer extends EndianWriter:
   Writes the given signed int24 $value to this buffer at the given index $at.
   */
   put-int24 --at/int value/int:
-    byte-order_.put-int24 cached-byte-array_ at value
+    byte-order_.put-int24 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 3
 
   /**
@@ -1618,7 +1619,7 @@ class EndianBuffer extends EndianWriter:
   /**
   Writes the given signed int32 $value to this buffer at the given index $at. */
   put-int32 --at/int value/int:
-    byte-order_.put-int32 cached-byte-array_ at value
+    byte-order_.put-int32 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 4
 
   /**
@@ -1631,17 +1632,17 @@ class EndianBuffer extends EndianWriter:
 
   /** Writes the given int64 $value to this buffer at the given index $at. */
   put-int64 --at/int value/int:
-    byte-order_.put-int64 cached-byte-array_ at value
+    byte-order_.put-int64 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 8
 
   /** Writes the given float32 $value to this buffer at the given index $at. */
   put-float32 --at/int value/float:
-    byte-order_.put-float32 cached-byte-array_ at value
+    byte-order_.put-float32 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 4
 
   /** Writes the given float64 $value to this buffer at the given index $at. */
   put-float64 --at/int value/float:
-    byte-order_.put-float64 cached-byte-array_ at value
+    byte-order_.put-float64 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 8
 
 /**
