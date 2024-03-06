@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import bytes
+import io
 import coap.tcp as coap
 import coap.message as coap
 import coap.option as coap
@@ -25,8 +25,7 @@ main:
 parse data/ByteArray -> coap.TcpMessage?:
   return coap.TcpMessage.parse
     TestTransport
-    BufferedReader
-      bytes.Reader data
+    io.Reader data
 
 test-parse-valid-message:
   // Empty message.
