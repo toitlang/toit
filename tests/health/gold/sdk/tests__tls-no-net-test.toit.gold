@@ -1,3 +1,6 @@
-<sdk>/tls/socket.toit:120:13: warning: Deprecated 'Socket.close-write'
-    socket_.close-write
-            ^~~~~~~~~~~
+tests/tls-no-net-test.toit:56:7: error: Non-abstract class 'Reader' is missing implementations
+class Reader extends Object with io.CloseableReader:
+      ^~~~~~
+<sdk>/io.toit:894:12: note: Missing implementation for 'content-size'
+  abstract content-size -> int?
+           ^~~~~~~~~~~~
