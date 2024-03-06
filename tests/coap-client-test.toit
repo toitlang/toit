@@ -67,7 +67,7 @@ test-error-response:
   token := #[1,2,3,4]
   msg := coap.Message
   msg.token = coap.Token token
-  msg.payload = io.SizedInput "my error".to-byte-array
+  msg.payload = io.Reader "my error".to-byte-array
   // Delay setting the response until the request is issued.
   task::
     t.set-response
