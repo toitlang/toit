@@ -17,6 +17,9 @@ class TestReader extends Object with io.Reader:
 
   close_:
 
+  content-size -> int?:
+    return null
+
 main:
   simple
   utf-8
@@ -123,6 +126,9 @@ class MultiByteArrayReader extends Object with io.Reader:
     return arrays[index++]
 
   close_:
+
+  content-size -> int?:
+    return null
 
 consumed:
   consumed-one-at-a-time
