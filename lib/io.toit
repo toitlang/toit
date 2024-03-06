@@ -51,6 +51,7 @@ A consumer of bytes.
 */
 abstract class Writer:
   is-closed_/bool := false
+  endian_/EndianWriter? := null
 
   constructor:
 
@@ -99,6 +100,54 @@ abstract class Writer:
   try-write data/Data from/int=0 to/int=data.byte-size -> int:
     if is-closed_: throw "WRITER_CLOSED"
     return try-write_ data from to
+
+  /**
+  Provides endian-aware functions to write to this instance.
+
+  The little-endian byte order writes lower-order ("little") bytes first.
+    For example, if the target of the write operation is a byte array, then the
+    first byte written (at position 0) is the least significant byte of the
+    number that is written.
+
+  # Examples
+  ```
+  import io
+
+  main:
+    buffer := io.Buffer  // A writer.
+    buffer.little-endian.write-int32 0x12345678
+    // The least significant byte 0x78 is at index 0.
+    print buffer.bytes  // => #[0x78, 0x56, 0x34, 0x12]
+  ```
+  */
+  little-endian -> EndianWriter:
+    if not endian_ or endian_.byte-order_ != binary.LITTLE_ENDIAN:
+      endian_ = EndianWriter --writer=this --byte-order=binary.LITTLE_ENDIAN
+    return endian_
+
+  /**
+  Provides endian-aware functions to write to this instance.
+
+  The big-endian byte order writes higher-order (big) bytes first.
+    For example, if  the target of the write operation is a byte array, then the
+    first byte written (at position 0) is the most significant byte of
+    the number that is written.
+
+  # Examples
+  ```
+  import io
+
+  main:
+    buffer := io.Buffer
+    buffer.big-endian.write-int32 0x12345678
+    // The most significant byte 0x12 is at index 0.
+    print buffer.bytes  // => #[0x12, 0x34, 0x56, 0x78]
+  ```
+  */
+  big-endian -> EndianWriter:
+    if not endian_ or endian_.byte-order_ != binary.BIG_ENDIAN:
+      endian_ = EndianWriter --writer=this --byte-order=binary.BIG_ENDIAN
+    return endian_
 
   /**
   Tries to write the given $data to this writer.
@@ -153,6 +202,9 @@ abstract class Reader implements old-reader.Reader:
 
   // The number of bytes in byte arrays that have been used up.
   base-consumed_ := 0
+
+  /** A cached endian-aware reader. */
+  endian_/EndianReader? := null
 
   constructor:
 
@@ -739,7 +791,11 @@ abstract class Reader implements old-reader.Reader:
   ```
   */
   little-endian -> EndianReader:
-    return EndianReader --reader=this --byte-order=binary.LITTLE_ENDIAN
+    result := endian_
+    if not result or result.byte-order_ != binary.LITTLE_ENDIAN:
+      result = EndianReader --reader=this --byte-order=binary.LITTLE_ENDIAN
+      endian_ = result
+    return result
 
   /**
   Provides endian-aware functions to read from this instance.
@@ -761,7 +817,11 @@ abstract class Reader implements old-reader.Reader:
   ```
   */
   big-endian -> EndianReader:
-    return EndianReader --reader=this --byte-order=binary.BIG_ENDIAN
+    result := endian_
+    if not result or result.byte-order_ != binary.BIG_ENDIAN:
+      result = EndianReader --reader=this --byte-order=binary.BIG_ENDIAN
+      endian_ = result
+    return result
 
   /**
   Reads the next byte array ignoring the buffered data.
@@ -1017,7 +1077,7 @@ class Buffer extends CloseableWriter:
   A view, only containing the data that has been written so far, can be accessed
     with $bytes.
   */
-  constructor.with-initial-size size/int --growable/bool=true:
+  constructor.with-capacity size/int --growable/bool=true:
     buffer_ = ByteArray size
     init-size_ = size
     is-growable_ = growable
@@ -1140,7 +1200,8 @@ class Buffer extends CloseableWriter:
   See $grow-by, $resize for ways to ensure that the buffer is big enough.
   */
   put --at/int data/Data from/int=0 to/int=data.byte-size:
-    if not 0 <= at <= at + data.byte-size <= offset_: throw "INVALID_ARGUMENT"
+    if not 0 <= at <= at + (to - from) <= offset_: throw "INVALID_ARGUMENT"
+    buffer_.replace at data from to
 
   /**
   Returns the byte at the given $index.
@@ -1193,22 +1254,17 @@ class Buffer extends CloseableWriter:
     buffer.little-endian.write-int32 0x12345678
     // The least significant byte 0x78 is at index 0.
     print buffer.bytes  // => #[0x78, 0x56, 0x34, 0x12]
-  ```
 
-  ```
-  import io
-
-  main:
-    buffer := io.Buffer
-    writer := buffer.little-endian
-    writer.write "Can be used like a normal writer."
-    writer.write-int32 0x12345678
-    result := buffer.bytes
-    ...
+    // The buffer version also supports 'put' operations
+    buffer.little-endian.put-int32 --at=0 0x11223344
   ```
   */
   little-endian -> EndianBuffer:
-    return EndianBuffer --buffer=this --byte-order=binary.LITTLE_ENDIAN
+    result := endian_
+    if not result or result.byte-order_ != binary.LITTLE_ENDIAN:
+      result = EndianBuffer --buffer=this --byte-order=binary.LITTLE_ENDIAN
+      endian_ = result
+    return (result as EndianBuffer)
 
   /**
   Provides endian-aware functions to write to this instance.
@@ -1227,31 +1283,26 @@ class Buffer extends CloseableWriter:
     buffer.big-endian.write-int32 0x12345678
     // The most significant byte 0x12 is at index 0.
     print buffer.bytes  // => #[0x12, 0x34, 0x56, 0x78]
-  ```
 
-  ```
-  import io
-
-  main:
-    buffer := io.Buffer
-    writer := buffer.big-endian
-    writer.write "Can be used like a normal writer."
-    writer.write-int32 0x12345678
-    result := buffer.bytes
-    ...
+    // The buffer version also supports 'put' operations
+    buffer.big-endian.put-int32 --at=0 0x11223344
   ```
   */
   big-endian -> EndianBuffer:
-    return EndianBuffer --buffer=this --byte-order=binary.BIG_ENDIAN
+    result := endian_
+    if not result or result.byte-order_ != binary.BIG_ENDIAN:
+      result = EndianBuffer --buffer=this --byte-order=binary.BIG_ENDIAN
+      endian_ = result
+    return (result as EndianBuffer)
 
 class EndianReader:
   reader_/Reader
-  endian_/binary.ByteOrder
+  byte-order_/binary.ByteOrder
   cached-byte-array_/ByteArray ::= ByteArray 8
 
   constructor --reader/Reader --byte-order/binary.ByteOrder:
     reader_ = reader
-    endian_ = byte-order
+    byte-order_ = byte-order
 
   /**
   Peeks an unsigned 8-bit integer without consuming it.
@@ -1289,7 +1340,7 @@ class EndianReader:
   peek-uint16 -> int:
     cached-byte-array_[0] = reader_.peek-byte 0
     cached-byte-array_[1] = reader_.peek-byte 1
-    return endian_.uint16 cached-byte-array_ 0
+    return byte-order_.uint16 cached-byte-array_ 0
 
   /**
   Reads an unsigned 16-bit integer.
@@ -1305,7 +1356,7 @@ class EndianReader:
   peek-int16 -> int:
     cached-byte-array_[0] = reader_.peek-byte 0
     cached-byte-array_[1] = reader_.peek-byte 1
-    return endian_.int16 cached-byte-array_ 0
+    return byte-order_.int16 cached-byte-array_ 0
 
   /**
   Reads a signed 16-bit integer.
@@ -1322,7 +1373,7 @@ class EndianReader:
     cached-byte-array_[0] = reader_.peek-byte 0
     cached-byte-array_[1] = reader_.peek-byte 1
     cached-byte-array_[2] = reader_.peek-byte 2
-    return endian_.uint24 cached-byte-array_ 0
+    return byte-order_.uint24 cached-byte-array_ 0
 
   /**
   Reads an unsigned 24-bit integer.
@@ -1339,7 +1390,7 @@ class EndianReader:
     cached-byte-array_[0] = reader_.peek-byte 0
     cached-byte-array_[1] = reader_.peek-byte 1
     cached-byte-array_[2] = reader_.peek-byte 2
-    return endian_.int24 cached-byte-array_ 0
+    return byte-order_.int24 cached-byte-array_ 0
 
   /**
   Reads a signed 24-bit integer.
@@ -1357,7 +1408,7 @@ class EndianReader:
     cached-byte-array_[1] = reader_.peek-byte 1
     cached-byte-array_[2] = reader_.peek-byte 2
     cached-byte-array_[3] = reader_.peek-byte 3
-    return endian_.uint32 cached-byte-array_ 0
+    return byte-order_.uint32 cached-byte-array_ 0
 
   /**
   Reads an unsigned 32-bit integer.
@@ -1375,7 +1426,7 @@ class EndianReader:
     cached-byte-array_[1] = reader_.peek-byte 1
     cached-byte-array_[2] = reader_.peek-byte 2
     cached-byte-array_[3] = reader_.peek-byte 3
-    return endian_.int32 cached-byte-array_ 0
+    return byte-order_.int32 cached-byte-array_ 0
 
   /**
   Reads a signed 32-bit integer.
@@ -1397,7 +1448,7 @@ class EndianReader:
     cached-byte-array_[5] = reader_.peek-byte 5
     cached-byte-array_[6] = reader_.peek-byte 6
     cached-byte-array_[7] = reader_.peek-byte 7
-    return endian_.int64 cached-byte-array_ 0
+    return byte-order_.int64 cached-byte-array_ 0
 
   /**
   Reads a signed 64-bit integer.
@@ -1415,7 +1466,7 @@ class EndianReader:
     cached-byte-array_[1] = reader_.peek-byte 1
     cached-byte-array_[2] = reader_.peek-byte 2
     cached-byte-array_[3] = reader_.peek-byte 3
-    return endian_.float32 cached-byte-array_ 0
+    return byte-order_.float32 cached-byte-array_ 0
 
   /**
   Reads a 32-bit floating-point number.
@@ -1437,7 +1488,7 @@ class EndianReader:
     cached-byte-array_[5] = reader_.peek-byte 5
     cached-byte-array_[6] = reader_.peek-byte 6
     cached-byte-array_[7] = reader_.peek-byte 7
-    return endian_.float64 cached-byte-array_ 0
+    return byte-order_.float64 cached-byte-array_ 0
 
   /**
   Reads a 64-bit floating-point number.
@@ -1450,12 +1501,12 @@ class EndianReader:
 
 class EndianWriter:
   writer_/Writer
-  endian_/binary.ByteOrder
+  byte-order_/binary.ByteOrder
   cached-byte-array_/ByteArray ::= ByteArray 8
 
   constructor --writer/Writer --byte-order/binary.ByteOrder:
     writer_ = writer
-    endian_ = byte-order
+    byte-order_ = byte-order
 
   /** Writes a singed 8-bit integer. */
   write-int8 value/int -> none:
@@ -1469,47 +1520,47 @@ class EndianWriter:
 
   /** Writes a signed 16-bit integer, using the endiannes of this instance. */
   write-int16 value/int -> none:
-    endian_.put-int16 cached-byte-array_ 0 value
+    byte-order_.put-int16 cached-byte-array_ 0 value
     writer_.write cached-byte-array_ 0 2
 
   /** Writes an unsigned 16-bit integer, using the endiannes of this instance. */
   write-uint16 value/int -> none:
-    endian_.put-uint16 cached-byte-array_ 0 value
+    byte-order_.put-uint16 cached-byte-array_ 0 value
     writer_.write cached-byte-array_ 0 2
 
   /** Writes a signed 24-bit integer, using the endiannes of this instance. */
   write-int24 value/int -> none:
-    endian_.put-int24 cached-byte-array_ 0 value
+    byte-order_.put-int24 cached-byte-array_ 0 value
     writer_.write cached-byte-array_ 0 3
 
   /** Writes an unsigned 24-bit integer, using the endiannes of this instance. */
   write-uint24 value/int -> none:
-    endian_.put-uint24 cached-byte-array_ 0 value
+    byte-order_.put-uint24 cached-byte-array_ 0 value
     writer_.write cached-byte-array_ 0 3
 
   /** Writes a signed 32-bit integer, using the endiannes of this instance. */
   write-int32 value/int -> none:
-    endian_.put-int32 cached-byte-array_ 0 value
+    byte-order_.put-int32 cached-byte-array_ 0 value
     writer_.write cached-byte-array_ 0 4
 
   /** Writes an unsigned 32-bit integer, using the endiannes of this instance. */
   write-uint32 value/int -> none:
-    endian_.put-uint32 cached-byte-array_ 0 value
+    byte-order_.put-uint32 cached-byte-array_ 0 value
     writer_.write cached-byte-array_ 0 4
 
   /** Writes a signed 64-bit integer, using the endiannes of this instance. */
   write-int64 data/int -> none:
-    endian_.put-int64 cached-byte-array_ 0 data
+    byte-order_.put-int64 cached-byte-array_ 0 data
     writer_.write cached-byte-array_ 0 8
 
   /** Writes a 32-bit floating-point number, using the endianness of this instance. */
   write-float32 data/float -> none:
-    endian_.put-float32 cached-byte-array_ 0 data
+    byte-order_.put-float32 cached-byte-array_ 0 data
     writer_.write cached-byte-array_ 0 4
 
   /** Writes a 64-bit floating-point number, using the endianness of this instance. */
   write-float64 data/float -> none:
-    endian_.put-float64 cached-byte-array_ 0 data
+    byte-order_.put-float64 cached-byte-array_ 0 data
     writer_.write cached-byte-array_ 0 8
 
 class EndianBuffer extends EndianWriter:
@@ -1539,7 +1590,7 @@ class EndianBuffer extends EndianWriter:
   Writes the given signed int16 $value to this buffer at the given index $at.
   */
   put-int16 --at/int value/int:
-    endian_.put-int16 cached-byte-array_ at value
+    byte-order_.put-int16 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 2
 
   /**
@@ -1554,7 +1605,7 @@ class EndianBuffer extends EndianWriter:
   Writes the given signed int24 $value to this buffer at the given index $at.
   */
   put-int24 --at/int value/int:
-    endian_.put-int24 cached-byte-array_ at value
+    byte-order_.put-int24 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 3
 
   /**
@@ -1568,7 +1619,7 @@ class EndianBuffer extends EndianWriter:
   /**
   Writes the given signed int32 $value to this buffer at the given index $at. */
   put-int32 --at/int value/int:
-    endian_.put-int32 cached-byte-array_ at value
+    byte-order_.put-int32 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 4
 
   /**
@@ -1581,17 +1632,17 @@ class EndianBuffer extends EndianWriter:
 
   /** Writes the given int64 $value to this buffer at the given index $at. */
   put-int64 --at/int value/int:
-    endian_.put-int64 cached-byte-array_ at value
+    byte-order_.put-int64 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 8
 
   /** Writes the given float32 $value to this buffer at the given index $at. */
   put-float32 --at/int value/float:
-    endian_.put-float32 cached-byte-array_ at value
+    byte-order_.put-float32 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 4
 
   /** Writes the given float64 $value to this buffer at the given index $at. */
   put-float64 --at/int value/float:
-    endian_.put-float64 cached-byte-array_ at value
+    byte-order_.put-float64 cached-byte-array_ 0 value
     buffer_.put --at=at cached-byte-array_ 0 8
 
 /**
