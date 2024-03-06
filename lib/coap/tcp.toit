@@ -19,13 +19,13 @@ class SizedReader_ extends io.Reader:
   done_/monitor.Latch ::= monitor.Latch
   transport_/Transport
   reader_/io.Reader
-  byte-size/int
+  content-size/int
 
   remaining_/int := ?
 
-  constructor .transport_ .reader_ .byte-size:
-    remaining_ = byte-size
-    if byte-size == 0: done_.set null
+  constructor .transport_ .reader_ .content-size:
+    remaining_ = content-size
+    if content-size == 0: done_.set null
 
   consume_-> ByteArray?:
     if remaining_ == 0:
@@ -111,7 +111,7 @@ class TcpMessage extends Message:
     write-options_ optionsData
 
     size := optionsData.size
-    if payload: size += payload.byte-size + 1
+    if payload: size += payload.content-size + 1
 
     header := io.Buffer
     // Reserve a byte for data0.
