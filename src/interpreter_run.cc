@@ -527,6 +527,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(ALLOCATE, class_index);
+    process_->set_current_bcp(bcp);
     Object* result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     for (int attempts = 1; result == null && attempts < 4; attempts++) {
 #ifdef TOIT_GC_LOGGING
@@ -540,6 +541,7 @@ Interpreter::Result Interpreter::run() {
       result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     }
     process_->object_heap()->leave_primitive();
+    process_->set_current_bcp(null);
 
     if (result == null) {
       sp = push_error(sp, program->allocation_failed(), "");
