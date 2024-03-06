@@ -807,7 +807,7 @@ abstract class CloseableReader extends Reader:
 
   If the reader does not know the size, returns null.
   */
-  abstract byte-size -> int?
+  abstract content-size -> int?
 
 /**
 A producer of bytes from an existing $ByteArray.
@@ -816,10 +816,10 @@ See $(Reader.constructor data).
 */
 class ByteArrayReader_ extends Reader:
   data_ / ByteArray? := ?
-  byte-size / int := ?
+  content-size / int := ?
 
   constructor .data_/ByteArray:
-    byte-size = data_.size
+    content-size = data_.size
 
   consume_ -> ByteArray?:
     result := data_
@@ -929,9 +929,9 @@ class CloseableIn_ extends CloseableReader:
   close_ -> none:
     mixin_.close-reader_
 
-  // TODO(florian): make it possible to set the byte-size of the reader when
+  // TODO(florian): make it possible to set the content-size of the reader when
   // using a mixin.
-  byte-size -> int?:
+  content-size -> int?:
     return null
 
 abstract mixin InMixin:
@@ -1626,7 +1626,7 @@ class ReaderAdapter_ extends Reader:
   consume_ -> ByteArray?:
     return r_.read
 
-  byte-size -> int?:
+  content-size -> int?:
     if r_ is old-reader.SizedReader:
       return (r_ as old-reader.SizedReader).size
     return null
