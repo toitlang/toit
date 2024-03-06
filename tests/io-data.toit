@@ -9,9 +9,11 @@ class FakeData implements io.Data:
 
   constructor .data_:
 
-  byte-size -> int: return data_.byte-size
+  byte-size -> int:
+    return data_.byte-size
 
-  byte-at index/int -> int: return data_.byte-at index
+  byte-at index/int -> int:
+    return data_.byte-at index
 
   byte-slice from/int to/int -> FakeData:
     return FakeData (data_.byte-slice from to)
