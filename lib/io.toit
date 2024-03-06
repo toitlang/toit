@@ -829,15 +829,6 @@ class ByteArrayReader_ extends Reader:
   close_ -> none:
     data_ = null
 
-interface CloseableOutStrategy extends OutStrategy:
-  /**
-  Closes this writer.
-
-  See $CloseableWriter.close_.
-  */
-  // This is a protected method. It should not be "private".
-  close-writer_ -> none
-
 class Out_ extends Writer:
   mixin_/OutMixin
 
@@ -847,12 +838,12 @@ class Out_ extends Writer:
     return mixin_.try-write_ data from to
 
 class CloseableOut_ extends CloseableWriter:
-  strategy_/CloseableOutStrategy
+  mixin_/CloseableOutMixin
 
-  constructor .strategy_:
+  constructor .mixin_:
 
   try-write_ data/Data from/int to/int -> int:
-    return strategy_.try-write_ data from to
+    return mixin_.try-write_ data from to
 
   close_ -> none:
     mixin_.close-writer_
@@ -878,7 +869,7 @@ abstract mixin OutMixin:
   // This is a protected method. It should not be "private".
   abstract try-write_ data/Data from/int to/int -> int
 
-abstract mixin CloseableOutMixin implements CloseableOutStrategy:
+abstract mixin CloseableOutMixin:
   out_/CloseableOut_? := null
 
   out -> CloseableWriter:
@@ -905,11 +896,6 @@ abstract mixin CloseableOutMixin implements CloseableOutStrategy:
   // This is a protected method. It should not be "private".
   abstract close-writer_ -> none
 
-interface CloseableInStrategy extends InStrategy:
-  /**
-  Closes this reader.
-
-  See $CloseableReader.close_.
 class In_ extends Reader:
   mixin_/InMixin
 
@@ -918,13 +904,18 @@ class In_ extends Reader:
   consume_ -> ByteArray?:
     return mixin_.consume_
 
-class CloseableIn_ extends CloseableReader:
-  strategy_/CloseableInStrategy
+  // TODO(florian): make it possible to set the content-size of the reader when
+  // using a mixin.
+  content-size -> int?:
+    return null
 
-  constructor .strategy_:
+class CloseableIn_ extends CloseableReader:
+  mixin_/CloseableInMixin
+
+  constructor .mixin_:
 
   consume_ -> ByteArray?:
-    return strategy_.consume_
+    return mixin_.consume_
 
   close_ -> none:
     mixin_.close-reader_
@@ -953,7 +944,7 @@ abstract mixin InMixin:
   // This is a protected method. It should not be "private".
   abstract consume_ -> ByteArray?
 
-abstract mixin CloseableInMixin implements CloseableInStrategy:
+abstract mixin CloseableInMixin:
   in_/CloseableIn_? := null
 
   in -> CloseableReader:

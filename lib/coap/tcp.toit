@@ -42,9 +42,6 @@ class SizedReader_ extends io.Reader:
       if is-exception: transport_.close
     unreachable
 
-  close_:
-    // TODO(florian): we don't really want a close here.
-
 class TcpTransport implements Transport:
   socket_ ::= ?
   reader_/io.Reader ::= ?
