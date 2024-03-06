@@ -15,34 +15,34 @@ CODE-PONG ::= (CODE-CLASS-SIGNALING-CODES << CODE-CLASS-SHIFT_) | 3
 
 CODE-CLASS-SIGNALING-CODES ::= 7
 
-class SizedInput_ extends Object with io.InMixin implements io.SizedInput:
+class SizedReader_ extends io.Reader:
   done_/monitor.Latch ::= monitor.Latch
   transport_/Transport
   reader_/io.Reader
-  size/int
+  byte-size/int
 
-  rem_/int := ?
+  remaining_/int := ?
 
-  constructor .transport_ .reader_ .size:
-    rem_ = size
-    if size == 0: done_.set null
+  constructor .transport_ .reader_ .byte-size:
+    remaining_ = byte-size
+    if byte-size == 0: done_.set null
 
   consume_-> ByteArray?:
-    if rem_ == 0:
+    if remaining_ == 0:
       done_.set null
       return null
     // We loop so we get to return the socket's closed error instead
     // of some other one.
     try:
       with-timeout Client.DEFAULT-MAX-DELAY:
-        b := reader_.read --max-size=rem_
-        rem_ -= b.size
+        b := reader_.read --max-size=remaining_
+        remaining_ -= b.size
         return b
     finally: | is-exception _ |
       if is-exception: transport_.close
     unreachable
 
-  close-reader_:
+  close_:
     // TODO(florian): we don't really want a close here.
 
 class TcpTransport implements Transport:
@@ -50,7 +50,7 @@ class TcpTransport implements Transport:
   reader_/io.Reader ::= ?
   writer_/io.Writer ::= ?
 
-  current-sized-input_/SizedInput_? := null
+  current-sized-reader_/SizedReader_? := null
 
   constructor .socket_ --send-csm=true:
     socket_.no-delay = true
@@ -64,25 +64,25 @@ class TcpTransport implements Transport:
 
   write msg/TcpMessage:
     writer_.write msg.header
-    if msg.payload: writer_.write-from msg.payload.in
+    if msg.payload: writer_.write-from msg.payload
 
   read -> Response?:
     while true:
-      if current-sized-input_:
-        current-sized-input_.done_.get
-        current-sized-input_ = null
+      if current-sized-reader_:
+        current-sized-reader_.done_.get
+        current-sized-reader_ = null
       msg := TcpMessage.parse this reader_
       if not msg: return null
       if msg.code == CODE-CSM:
-        while msg.payload.in.read:
+        while msg.payload.read:
         // TODO: Process values.
       else:
-        current-sized-input_ = msg.payload as SizedInput_
+        current-sized-reader_ = msg.payload as SizedReader_
         return Response.message msg
 
   close:
     // Be sure to abort any ongoing reading.
-    if current-sized-input_: current-sized-input_.done_.set null
+    if current-sized-reader_: current-sized-reader_.done_.set null
     socket_.close
 
   new-message --reliable=true -> Message:
@@ -111,7 +111,7 @@ class TcpMessage extends Message:
     write-options_ optionsData
 
     size := optionsData.size
-    if payload: size += payload.size + 1
+    if payload: size += payload.byte-size + 1
 
     header := io.Buffer
     // Reserve a byte for data0.
@@ -161,5 +161,5 @@ class TcpMessage extends Message:
       msg.token = Token
         reader.read-bytes tkl
     rem := msg.parse-options_ length reader
-    msg.payload = SizedInput_ transport reader rem
+    msg.payload = SizedReader_ transport reader rem
     return msg
