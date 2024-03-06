@@ -25,7 +25,7 @@ Standard log service used when the system log service cannot
   be resolved.
 */
 class StandardLogService_ implements LogService:
-  buffer_/io.Buffer ::= io.Buffer.with-initial-size 64
+  buffer_/io.Buffer ::= io.Buffer.with-capacity 64
 
   log level/int message/string names/List? keys/List? values/List? -> none:
     buffer ::= buffer_
