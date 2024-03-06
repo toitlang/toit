@@ -46,7 +46,6 @@ interface Data:
   */
   write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none
 
-
 /**
 A consumer of bytes.
 
@@ -225,6 +224,7 @@ abstract mixin Writer:
   // This is a protected method. It should not be "private".
   close-writer_:
     is-closed_ = true
+
   /**
   Gives the resource the opportunity to make room for more data.
 
