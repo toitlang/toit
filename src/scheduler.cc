@@ -934,10 +934,15 @@ void Scheduler::tick(Locker& locker, int64 now) {
           int bci = program->absolute_bci_from_bcp(current_bcp);
           fprintf(stderr, "  BCI: 0x%x\n", bci);
 
-          if (*current_bcp == Opcode::PRIMITIVE) {
+          Opcode opcode = static_cast<Opcode>(*current_bcp);
+          if (opcode == Opcode::PRIMITIVE) {
             int module = current_bcp[1];
             int index = Utils::read_unaligned_uint16(current_bcp + 2);
             fprintf(stderr, "  Primitive: %d:%d\n", module, index);
+          } else if (opcode == Opcode::ALLOCATE) {
+            fprintf(stderr, "  Allocate: %d\n", current_bcp[1]);
+          } else if (opcode == Opcode::ALLOCATE_WIDE) {
+            fprintf(stderr, "  Allocate: %d\n", Utils::read_unaligned_uint16(current_bcp + 1));
           }
         }
         FATAL("Potential dead-lock");
