@@ -17,9 +17,6 @@ class TestReader extends Object with io.Reader:
 
   close_:
 
-  content-size -> int?:
-    return null
-
 test-read-lines input/List expected-with-newlines/List:
   expected-without-newlines := expected-with-newlines.map: | line/string |
     if line.ends-with "\r\n": line.trim --right "\r\n"
