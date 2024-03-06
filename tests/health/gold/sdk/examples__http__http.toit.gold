@@ -2,10 +2,10 @@
 class DetachedSocket_ implements tcp.Socket:
       ^~~~~~~~~~~~~~~
 <sdk>/net/tcp.toit:28:3: note: Missing implementation for 'in'
-  in -> io.Reader
+  in -> io.CloseableReader
   ^~
 <sdk>/net/tcp.toit:29:3: note: Missing implementation for 'out'
-  out -> io.Writer
+  out -> io.CloseableWriter
   ^~~
 <pkg:pkg-http>/server.toit:44:10: warning: Name 'interface' will be reserved in future releases
   listen interface/tcp.Interface port/int handler/Lambda -> none:
