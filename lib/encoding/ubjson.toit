@@ -42,7 +42,7 @@ class Encoder:
       size-counter := BufferSizeCounter_
       buffer_ = size-counter
       encode_ obj  // Calculate size.
-      buffer := io.Buffer.with-initial-size size-counter.size
+      buffer := io.Buffer.with-capacity size-counter.size
       buffer_ = buffer
     encode_ obj
 
