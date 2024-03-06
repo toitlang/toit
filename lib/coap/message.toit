@@ -84,7 +84,7 @@ class Message:
 
   read-payload -> ByteArray:
     if not payload: return ByteArray 0
-    buffer := io.Buffer.with-initial-size payload.byte-size
+    buffer := io.Buffer.with-initial-size payload.content-size
     buffer.write-from payload
     return buffer.bytes
 
