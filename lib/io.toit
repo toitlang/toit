@@ -734,6 +734,86 @@ class ByteArrayReader_ extends Reader:
   close_ -> none:
     data_ = null
 
+class Out_ extends Writer:
+  mixin_/OutMixin
+
+  constructor .mixin_:
+
+  try-write_ data/Data from/int to/int -> int:
+    return mixin_.try-write_ data from to
+
+  close_ -> none:
+    mixin_.close-writer_
+
+abstract mixin OutMixin:
+  out_/Out_? := null
+
+  out -> Writer:
+    result := out_
+    if not result:
+      result = Out_ this
+      out_ = result
+    return result
+
+  /**
+  Writes the given $data to this writer.
+
+  Returns the number of bytes written.
+
+  # Inheritance
+  See $Writer.try-write_.
+  */
+  // This is a protected method. It should not be "private".
+  abstract try-write_ data/Data from/int to/int -> int
+
+  /**
+  Closes this writer.
+
+  # Inheritance
+  See $Writer.close_.
+  */
+  // This is a protected method. It should not be "private".
+  abstract close-writer_ -> none
+
+class In_ extends Reader:
+  mixin_/InMixin
+
+  constructor .mixin_:
+
+  consume_ -> ByteArray?:
+    return mixin_.consume_
+
+  close_ -> none:
+    mixin_.close-reader_
+
+abstract mixin InMixin:
+  in_/In_? := null
+
+  in -> Reader:
+    result := in_
+    if not result:
+      result = In_ this
+      in_ = result
+    return in_
+
+  /**
+  Reads the next bytes.
+
+  # Inheritance
+  See $Reader.consume_.
+  */
+  // This is a protected method. It should not be "private".
+  abstract consume_ -> ByteArray?
+
+  /**
+  Closes this reader.
+
+  # Inheritance
+  See $Reader.close_.
+  */
+  // This is a protected method. It should not be "private".
+  abstract close-reader_ -> none
+
 /**
 Executes the given $block on chunks of the $data if the error indicates
   that the data is not of the correct type.

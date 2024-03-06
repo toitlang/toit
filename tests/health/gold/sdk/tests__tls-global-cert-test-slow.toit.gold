@@ -1,0 +1,3 @@
+<sdk>/tls/socket.toit:120:13: warning: Deprecated 'Socket.close-write'
+    socket_.close-write
+            ^~~~~~~~~~~

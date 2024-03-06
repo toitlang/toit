@@ -121,7 +121,7 @@ abstract class BufferConsumer:
   */
   abstract put-byte offset/int data/int -> none
   /** Writes the given $data into this consumer. */
-  abstract write data from/int=0 to/int=data.size -> int
+  abstract write data/io.Data from/int=0 to/int=data.byte-size -> int
   /** Writes the data from the $producer into this consumer. */
   abstract write-producer producer/Producer -> none
   /**
@@ -249,7 +249,7 @@ class BufferSizeCounter extends BufferConsumer:
   /** See $BufferConsumer.write-byte. */
   write-byte byte/int -> none: size++
   /** See $BufferConsumer.write. */
-  write data from/int=0 to/int=data.size -> int:
+  write data/io.Data from/int=0 to/int=data.byte-size -> int:
     size += to - from
     return to - from
   /**

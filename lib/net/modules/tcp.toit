@@ -114,7 +114,7 @@ class TcpServerSocket extends TcpSocket_ implements net.ServerSocket:
     return socket
 
 
-class TcpSocket extends TcpSocket_ implements net.Socket Reader:
+class TcpSocket extends TcpSocket_ with io.InMixin io.OutMixin implements net.Socket Reader:
   window-size_ := 0
 
   constructor: return TcpSocket 0
@@ -153,6 +153,9 @@ class TcpSocket extends TcpSocket_ implements net.Socket Reader:
       throw error
 
   read -> ByteArray?:
+    return consume_
+
+  consume_ -> ByteArray?:
     while true:
       state := ensure-state_ TOIT-TCP-READ_ --failure=: throw it
       result := tcp-read_ state.group state.resource
@@ -161,13 +164,22 @@ class TcpSocket extends TcpSocket_ implements net.Socket Reader:
       state.clear-state TOIT-TCP-READ_
 
   write data/io.Data from/int=0 to/int=data.byte-size -> int:
+    return try-write_ data from to
+
+  try-write_ data/io.Data from/int to/int -> int:
     while true:
       state := ensure-state_ TOIT-TCP-WRITE_ --error-bits=(TOIT-TCP-ERROR_ | TOIT-TCP-CLOSE_) --failure=: throw it
       wrote := tcp-write_ state.group state.resource data from to
       if wrote != -1: return wrote
       state.clear-state TOIT-TCP-WRITE_
 
+  close-reader_:
+    // Do nothing.
+
   close-write -> none:
+    close-writer_
+
+  close-writer_ -> none:
     state := state_
     if state == null: return
     tcp-close-write_ state.group state.resource
@@ -205,7 +217,13 @@ tcp-write_ socket-resource-group descriptor data from to:
     List.chunk-up from to 4096: | chunk-from chunk-to chunk-size |
       chunk := ByteArray.from data chunk-from chunk-to
       written := tcp-write_ socket-resource-group descriptor chunk 0 chunk-size
-      if written != chunk-size: return (chunk-from - from) + written
+      if written != chunk-size:
+        // If the primitive returns -1, it means that the buffers are full and
+        // we should try again later.
+        if written == -1:
+          if chunk-from - from > 0: return chunk-from - from
+          return -1
+        return (chunk-from - from) + written
     return to - from
 
 tcp-read_ socket-resource-group descriptor:

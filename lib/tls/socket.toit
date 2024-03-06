@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import net
 import net.tcp
 import reader
@@ -12,7 +13,7 @@ import .certificate
 /**
 TLS Socket implementation that can upgrade a TCP socket to a secure TLS socket.
 */
-class Socket implements tcp.Socket:
+class Socket extends Object with io.InMixin io.OutMixin implements tcp.Socket:
   static TLS-HEADER-SIZE_ ::= 29
 
   socket_/tcp.Socket
@@ -96,9 +97,15 @@ class Socket implements tcp.Socket:
     return session_.mode
 
   read -> ByteArray?:
+    return consume_
+
+  consume_ -> ByteArray?:
     return session_.read
 
-  write data from/int=0 to/int=data.size -> int:
+  write data/io.Data from/int=0 to/int=data.byte-size -> int:
+    return try-write_ data from to
+
+  try-write_ data/io.Data from/int to/int -> int:
     return session_.write data from to
 
   close -> none:
@@ -106,8 +113,14 @@ class Socket implements tcp.Socket:
     socket_.close
 
   close-write -> none:
+    close-writer_
+
+  close-writer_ -> none:
     session_.close-write
     socket_.close-write
+
+  close-reader_ -> none:
+    // TODO(florian): Implement.
 
   local-address -> net.SocketAddress:
     return socket_.local-address
