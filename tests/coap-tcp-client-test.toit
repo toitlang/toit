@@ -131,7 +131,7 @@ test-timeout-while-reading:
   e = catch: client.get "/" --token-id=TOKEN-ID_
   expect-equals "TRANSPORT_CLOSED" e
 
-class TestSocket extends Object with io.InMixin io.OutMixin:
+class TestSocket extends Object with io.CloseableInMixin io.CloseableOutMixin:
   coordinator_ := TestSocketCoordinator_
 
   // Ignore value, as it's only relevant if the implementation has Nagle implemented.

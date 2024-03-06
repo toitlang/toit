@@ -25,8 +25,8 @@ interface Socket implements reader.Reader:
   // Enable or disable TCP_NODELAY option.
   no-delay= value/bool
 
-  in -> io.Reader
-  out -> io.Writer
+  in -> io.CloseableReader
+  out -> io.CloseableWriter
 
   /** Deprecated. Use $(in).read instead. */
   read -> ByteArray?

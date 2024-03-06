@@ -334,7 +334,7 @@ convert-to-socket-address_ address/List offset/int=0 -> net.SocketAddress:
   port ::= address[offset + 1]
   return net.SocketAddress ip port
 
-class SocketResourceProxy_ extends ServiceResourceProxy with io.InMixin io.OutMixin:
+class SocketResourceProxy_ extends ServiceResourceProxy with io.CloseableInMixin io.CloseableOutMixin:
   static WRITE-DATA-SIZE-MAX_ /int ::= 2048
 
   constructor client/NetworkServiceClient handle/int:

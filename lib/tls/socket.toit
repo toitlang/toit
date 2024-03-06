@@ -11,9 +11,9 @@ import .session
 import .certificate
 
 /**
-TLS Socket implementation that can upgrade a TCP socket to a secure TLS socket.
+TLS socket implementation that can upgrade a TCP socket to a secure TLS socket.
 */
-class Socket extends Object with io.InMixin io.OutMixin implements tcp.Socket:
+class Socket extends Object with io.CloseableInMixin io.CloseableOutMixin implements tcp.Socket:
   static TLS-HEADER-SIZE_ ::= 29
 
   socket_/tcp.Socket
