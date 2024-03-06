@@ -1538,7 +1538,8 @@ abstract class ByteArrayBase_ implements ByteArray:
   index-of byte/int --from/int=0 --to/int=size -> int:
     #primitive.core.blob-index-of
 
-  byte-size -> int: return size
+  byte-size -> int:
+    return size
 
   byte-slice from/int to/int -> io.Data:
     return this[from..to]
@@ -3276,6 +3277,10 @@ class Deque implements Collection:
     first--
     backing_[first] = element
     first_ = first
+
+  operator [] index/int:
+    if index < 0 or index > backing_.size - first_: throw "OUT_OF_RANGE"
+    return backing_[first_ + index]
 
   shrink-if-needed_ -> none:
     backing := backing_

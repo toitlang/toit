@@ -32,20 +32,20 @@ namespace compiler {
 class SourceManagerSource : public Source {
  public:
   SourceManagerSource(const char* absolute_path,
-                      const std::string& package_id,
+                      const Package& package,
                       const std::string& error_path,
                       const uint8* text,
                       int size,
                       int offset)
       : absolute_path_(absolute_path)
-      , package_id_(package_id)
+      , package_(package)
       , error_path_(error_path)
       , text_(text)
       , size_(size),
       offset_(offset) {}
 
   static SourceManagerSource invalid() {
-    return SourceManagerSource(null, Package::INVALID_PACKAGE_ID, "", null, 0, 0);
+    return SourceManagerSource(null, Package::invalid(), "", null, 0, 0);
   }
 
   bool is_valid() const { return text_ != null; }
@@ -58,8 +58,8 @@ class SourceManagerSource : public Source {
     return absolute_path_;
   }
 
-  std::string package_id() const {
-    return package_id_;
+  Package package() const {
+    return package_;
   }
 
   std::string error_path() const {
@@ -105,7 +105,7 @@ class SourceManagerSource : public Source {
 
  private:
   const char* absolute_path_;
-  std::string package_id_;
+  Package package_;
   std::string error_path_;
   const uint8* text_;
   int size_;
@@ -182,15 +182,12 @@ SourceManager::LoadResult SourceManager::load_file(const std::string& path, cons
   }
   // This is the first time we encounter this path.
   std::string error_path;
-  std::string package_id;
   if (package.is_valid()) {
     error_path = package.build_error_path(filesystem_, path);
-    package_id = package.id();
   } else {
     error_path = path;
-    package_id = Package::ENTRY_PACKAGE_ID;
   }
-  auto source = register_source(path, package_id, error_path, buffer, size);
+  auto source = register_source(path, package, error_path, buffer, size);
   return {
     .source = source,
     .absolute_path = path,
@@ -199,12 +196,12 @@ SourceManager::LoadResult SourceManager::load_file(const std::string& path, cons
 }
 
 SourceManagerSource* SourceManager::register_source(const std::string& absolute_path,
-                                                    const std::string& package_id,
+                                                    const Package& package,
                                                     const std::string& error_path,
                                                     const uint8* source,
                                                     int size) {
   auto entry = _new SourceManagerSource(strdup(absolute_path.c_str()),
-                                        package_id,
+                                        package,
                                         error_path,
                                         source,
                                         size,

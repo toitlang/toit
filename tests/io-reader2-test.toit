@@ -17,69 +17,43 @@ class TestReader extends Object with io.Reader:
 
   close_:
 
+  content-size -> int?:
+    return null
+
+test-read-lines input/List expected-with-newlines/List:
+  expected-without-newlines := expected-with-newlines.map: | line/string |
+    if line.ends-with "\r\n": line.trim --right "\r\n"
+    else if line.ends-with "\n": line.trim --right "\n"
+    else: line
+
+  r := TestReader input
+  expected-without-newlines.do:
+    expect-equals it r.read-line
+  expect-null r.read-line
+
+  r = TestReader input
+  expected-with-newlines.do:
+    expect-equals it (r.read-line --keep-newline)
+  expect-null (r.read-line --keep-newline)
+
+  r = TestReader input
+  expect-equals expected-without-newlines r.read-lines
+  expect-null r.read-line
+
+  r = TestReader input
+  expect-equals expected-with-newlines (r.read-lines --keep-newlines)
+  expect-null (r.read-line --keep-newline)
+
 main:
-  r := TestReader ["foo\n", "bar\n"]
-  expect-equals "foo" r.read-line
-  expect-equals "bar" r.read-line
-  expect-equals null r.read-line
-  expect-equals null r.read-line
-
-  r = TestReader ["f", "o", "", "o", "\n", "", "b", "", "a", "r", "\n"]
-  expect-equals "foo" r.read-line
-  expect-equals "bar" r.read-line
-  expect-equals null r.read-line
-  expect-equals null r.read-line
-
-  r = TestReader ["foo\r\n", "bar\r\n"]
-  expect-equals "foo" r.read-line
-  expect-equals "bar" r.read-line
-  expect-equals null r.read-line
-  expect-equals null r.read-line
-
-  r = TestReader ["f", "o", "", "o", "\r", "\n", "", "b", "", "a", "r", "\r", "\n"]
-  expect-equals "foo" r.read-line
-  expect-equals "bar" r.read-line
-  expect-equals null r.read-line
-  expect-equals null r.read-line
-
-  r = TestReader ["foo\n", "bar\n"]
-  expect-equals "foo" r.read-line
-  expect-equals "bar" r.read-line
-  expect-equals null r.read-line
-  expect-equals null r.read-line
-
-  r = TestReader ["f", "o", "", "o", "\n", "", "b", "", "a", "r", "\n"]
-  expect-equals "foo" r.read-line
-  expect-equals "bar" r.read-line
-  expect-equals null r.read-line
-  expect-equals null r.read-line
-
-  r = TestReader ["foo\r\n", "bar"]
-  expect-equals "foo" r.read-line
-  expect-equals "bar" r.read-line
-  expect-equals null r.read-line
-  expect-equals null r.read-line
-
-  r = TestReader ["f", "o", "", "o", "\r", "\n", "", "b", "", "a", "r"]
-  expect-equals "foo" r.read-line
-  expect-equals "bar" r.read-line
-  expect-equals null r.read-line
-  expect-equals null r.read-line
-
-  r = TestReader ["foo\r\n", "bar"]
-  expect-equals "foo" r.read-line
-  expect-equals "bar" (r.read-string 3)
-  expect-equals null r.read-line
-  expect-equals null r.read-line
-
-  r = TestReader ["f", "o", "", "o", "\r", "\n", "", "b", "", "a", "r"]
-  expect-equals "foo" r.read-line
-  expect-equals "bar" (r.read-string 3)
-  expect-equals null r.read-line
-  expect-equals null r.read-line
-
-  r = TestReader ["foo\r\nbar"]
-  expect-equals "foo" r.read-line
-  expect-equals "bar" (r.read-string 3)
-  expect-equals null r.read-line
-  expect-equals null r.read-line
+  test-read-lines [""] []
+  test-read-lines ["foo\n", "bar\n"] ["foo\n", "bar\n"]
+  test-read-lines ["f", "o", "", "o", "\n", "", "b", "", "a", "r", "\n"] ["foo\n", "bar\n"]
+  test-read-lines ["foo\r\n", "bar\r\n"] ["foo\r\n", "bar\r\n"]
+  test-read-lines ["f", "o", "", "o", "\r", "\n", "", "b", "", "a", "r", "\r", "\n"] ["foo\r\n", "bar\r\n"]
+  test-read-lines ["f", "o", "", "o", "\n", "", "b", "", "a", "r", "\n"] ["foo\n", "bar\n"]
+  test-read-lines ["foo\r\n", "bar"] ["foo\r\n", "bar"]
+  test-read-lines ["f", "o", "", "o", "\r", "\n", "", "b", "", "a", "r"] ["foo\r\n", "bar"]
+  test-read-lines ["foo\r\nbar"] ["foo\r\n", "bar"]
+  test-read-lines ["foo\r\n", "bar"] ["foo\r\n", "bar"]
+  test-read-lines ["f", "o", "", "o", "\r", "\n", "", "b", "", "a", "r"] ["foo\r\n", "bar"]
+  test-read-lines ["foo\r\nbar"] ["foo\r\n", "bar"]

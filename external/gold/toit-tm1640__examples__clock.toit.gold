@@ -1,0 +1,6 @@
+<pkg:..>/tm1640.toit:51:12: warning: Deprecated 'Pin.config'
+    clock_.config --output
+           ^~~~~~
+<pkg:..>/tm1640.toit:52:11: warning: Deprecated 'Pin.config'
+    data_.config --output
+          ^~~~~~
