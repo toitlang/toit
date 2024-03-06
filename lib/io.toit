@@ -791,9 +791,11 @@ abstract class Reader implements old-reader.Reader:
   ```
   */
   little-endian -> EndianReader:
-    if not endian_ or endian_.byte-order_ != binary.LITTLE_ENDIAN:
-      endian_ = EndianReader --reader=this --byte-order=binary.LITTLE_ENDIAN
-    return endian_
+    result := endian_
+    if not result or result.byte-order_ != binary.LITTLE_ENDIAN:
+      result = EndianReader --reader=this --byte-order=binary.LITTLE_ENDIAN
+      endian_ = result
+    return result
 
   /**
   Provides endian-aware functions to read from this instance.
@@ -815,9 +817,11 @@ abstract class Reader implements old-reader.Reader:
   ```
   */
   big-endian -> EndianReader:
-    if not endian_ or endian_.byte-order_ != binary.BIG_ENDIAN:
-      endian_ = EndianReader --reader=this --byte-order=binary.BIG_ENDIAN
-    return endian_
+    result := endian_
+    if not result or result.byte-order_ != binary.BIG_ENDIAN:
+      result = EndianReader --reader=this --byte-order=binary.BIG_ENDIAN
+      endian_ = result
+    return result
 
   /**
   Reads the next byte array ignoring the buffered data.
@@ -1255,9 +1259,11 @@ class Buffer extends CloseableWriter:
   ```
   */
   little-endian -> EndianBuffer:
-    if not endian_ or endian_.byte-order_ != binary.LITTLE_ENDIAN:
-      endian_ = EndianBuffer --buffer=this --byte-order=binary.LITTLE_ENDIAN
-    return (endian_ as EndianBuffer)
+    result := endian_
+    if not result or result.byte-order_ != binary.LITTLE_ENDIAN:
+      result = EndianBuffer --buffer=this --byte-order=binary.LITTLE_ENDIAN
+      endian_ = result
+    return (result as EndianBuffer)
 
   /**
   Provides endian-aware functions to write to this instance.
@@ -1282,9 +1288,11 @@ class Buffer extends CloseableWriter:
   ```
   */
   big-endian -> EndianBuffer:
-    if not endian_ or endian_.byte-order_ != binary.BIG_ENDIAN:
-      endian_ = EndianBuffer --buffer=this --byte-order=binary.BIG_ENDIAN
-    return (endian_ as EndianBuffer)
+    result := endian_
+    if not result or result.byte-order_ != binary.BIG_ENDIAN:
+      result = EndianBuffer --buffer=this --byte-order=binary.BIG_ENDIAN
+      endian_ = result
+    return (result as EndianBuffer)
 
 class EndianReader:
   reader_/Reader
