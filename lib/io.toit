@@ -984,11 +984,11 @@ abstract mixin OutMixin:
   Closes the writer if it exists.
 
   The $out $Writer doesn't have a 'close' method. However, we can set
-    the internal boolean to `closed`, so that further writes throw an exception, or
+    the internal boolean to closed, so that further writes throw an exception, or
     that existing writes are aborted.
 
   Any existing write needs to be aborted by the caller of this method.
-    The `try-write_` should either throw or return the number of bytes that have been
+    The $try-write_ should either throw or return the number of bytes that have been
     written so far. See $CloseableWriter.close_.
   */
   // This is a protected method. It should not be "private".
@@ -1076,10 +1076,10 @@ abstract mixin InMixin:
   Closes the writer if it exists.
 
   The $in $Reader doesn't have a 'close' method. However, we can set
-    the internal boolean to `closed`, so that further reads return 'null'.
+    the internal boolean to closed, so that further reads return null.
 
-  Any existing read needs to be aborted by the caller of this method. The `consume`
-    method should return 'null'.
+  Any existing read needs to be aborted by the caller of this method. The 'consume'
+    method should return null.
   */
   // This is a protected method. It should not be "private".
   close-reader_ -> none:
