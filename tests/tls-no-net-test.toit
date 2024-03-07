@@ -64,6 +64,9 @@ class Reader extends Object with io.CloseableReader:
   close_:
     // Do nothing for the test.
 
+  content-size -> int?:
+    return null
+
 monitor Socket:
   peer_ := null
   queue_ := []
