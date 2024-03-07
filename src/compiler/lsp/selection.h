@@ -44,9 +44,11 @@ class Class;
 
 class IterableScope;
 class ImportScope;
+class PackageLock;
 class Queryables;
 class ToitdocScopeIterator;
 class ToitdocRegistry;
+class Filesystem;
 
 /// For some operations, the LSP client sends the server a selection for which it
 /// wants information. This selection is given to the compiler which then detects
@@ -62,6 +64,15 @@ class LspSelectionHandler {
   /// sent to the LSP server must go through the protocol.
   explicit LspSelectionHandler(LspProtocol* protocol) : protocol_(protocol) {}
   virtual ~LspSelectionHandler() {}
+
+  /// Handles an import path.
+  virtual void import_path(const char* path,
+                           const char* segment,
+                           bool is_first_segment,
+                           const char* resolved,
+                           const Package& current_package,
+                           const PackageLock& package_lock,
+                           Filesystem* fs) = 0;
 
   /// Handles a class or interface node.
   ///

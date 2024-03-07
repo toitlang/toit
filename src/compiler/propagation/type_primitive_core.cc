@@ -104,6 +104,7 @@ TYPE_PRIMITIVE_NULL(random_seed)
 TYPE_PRIMITIVE_NULL(add_entropy)
 TYPE_PRIMITIVE_SMI(count_leading_zeros)
 TYPE_PRIMITIVE_SMI(popcount)
+TYPE_PRIMITIVE_SMI(int_vector_equals)
 
 TYPE_PRIMITIVE_NULL(put_uint_big_endian)
 TYPE_PRIMITIVE_NULL(put_uint_little_endian)

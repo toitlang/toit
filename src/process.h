@@ -140,7 +140,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   SystemMessage* take_termination_message(uint8 result);
 
-  uint64_t random();
+  uint64 random();
   void random_seed(const uint8* buffer, size_t size);
 
   State state() { return state_; }
@@ -259,6 +259,38 @@ class Process : public ProcessListFromProcessGroup::Element,
     return root_certificates_;
   }
 
+  // Sets the timestamp for when this process just started running.
+  void set_run_timestamp(int64 timestamp) {
+    ASSERT(state_ == RUNNING);
+    ASSERT(timestamp >= 0);
+    run_timestamp_ = timestamp;
+  }
+
+  // Clears the timestamp, so the process will not appear to have
+  // been running for any time at all.
+  void clear_run_timestamp() {
+    ASSERT(state_ == RUNNING);
+    run_timestamp_ = -1;
+  }
+
+  int64 run_time_us(int64 now) const {
+    ASSERT(now >= 0);
+    int64 timestamp = run_timestamp_;
+    ASSERT(state_ == RUNNING || timestamp < 0);
+    return timestamp < 0 ? 0 : (now - timestamp);
+  }
+
+  // Sets the current BCP variable.
+  // We use this variable for bytecodes that could potentially hang, so we can
+  // detect if a process is stuck.
+  void set_current_bcp(uint8* bcp) {
+    current_bcp_ = bcp;
+  }
+
+  uint8* current_bcp() const {
+    return current_bcp_;
+  }
+
  private:
   Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
   void _append_message(Message* message);
@@ -293,8 +325,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   SystemMessage* termination_message_;
 
   bool random_seeded_;
-  uint64_t random_state0_;
-  uint64_t random_state1_;
+  uint64 random_state0_;
+  uint64 random_state1_;
 
 #if defined(TOIT_WINDOWS)
   const wchar_t* current_directory_;
@@ -318,6 +350,10 @@ class Process : public ProcessListFromProcessGroup::Element,
   HeapObject* null_;
 
   ResourceGroupListFromProcess resource_groups_;
+
+  int64 run_timestamp_ = -1;
+  uint8* current_bcp_ = null;
+
   friend class HeapObject;
   friend class Scheduler;
 };

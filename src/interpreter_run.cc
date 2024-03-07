@@ -527,6 +527,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(ALLOCATE, class_index);
+    process_->set_current_bcp(bcp);
     Object* result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     for (int attempts = 1; result == null && attempts < 4; attempts++) {
 #ifdef TOIT_GC_LOGGING
@@ -540,6 +541,7 @@ Interpreter::Result Interpreter::run() {
       result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     }
     process_->object_heap()->leave_primitive();
+    process_->set_current_bcp(null);
 
     if (result == null) {
       sp = push_error(sp, program->allocation_failed(), "");
@@ -1041,6 +1043,7 @@ Interpreter::Result Interpreter::run() {
       Method target = program->primitive_lookup_failure();
       CALL_METHOD(target, PRIMITIVE_LENGTH);
     } else {
+      process_->set_current_bcp(bcp);
       int arity = primitive->arity;
       Primitive::Entry* entry = reinterpret_cast<Primitive::Entry*>(primitive->function);
 
@@ -1084,6 +1087,7 @@ Interpreter::Result Interpreter::run() {
       // GC might have taken place in object heap but local "method" is from program heap.
       PUSH(result);
       process_->object_heap()->leave_primitive();
+      process_->set_current_bcp(null);
       DISPATCH(PRIMITIVE_LENGTH);
 
     done:
@@ -1097,6 +1101,7 @@ Interpreter::Result Interpreter::run() {
       PUSH(result);
       process_->object_heap()->leave_primitive();
       CHECK_PROPAGATED_TYPES_RETURN();
+      process_->set_current_bcp(null);
       DISPATCH(0);
     }
   OPCODE_END();

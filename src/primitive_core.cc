@@ -1132,6 +1132,28 @@ PRIMITIVE(popcount) {
   return Smi::from(Utils::popcount(v));
 }
 
+// Treats two ints as vectors of 8 bytes and compares them
+// bytewise for equality.  Returns an 8 bit packed result with
+// 1 for equality and 0 for inequality.
+PRIMITIVE(int_vector_equals) {
+  ARGS(int64, x, int64, y);
+#if defined(__x86_64__) || defined(_M_X64)
+  __m128i x128 = _mm_set_epi64x(0, x);
+  __m128i y128 = _mm_set_epi64x(0, y);
+  __m128i mask = _mm_cmpeq_epi8(x128, y128);
+  int t = _mm_movemask_epi8(mask);
+  return Smi::from(t & 0xff);
+#else
+  uint64 combined = x ^ y;
+  int result = 0xff;
+  for (int i = 0; combined != 0; i++) {
+    if ((combined & 0xff) != 0) result &= ~(1 << i);
+    combined >>= 8;
+  }
+  return Smi::from(result);
+#endif
+}
+
 PRIMITIVE(string_length) {
   ARGS(StringOrSlice, receiver);
   return Smi::from(receiver.length());
@@ -2521,10 +2543,6 @@ PRIMITIVE(rtc_user_bytes) {
       RtcMemory::RTC_USER_DATA_SIZE, rtc_memory, false, false);
   if (result == null) FAIL(ALLOCATION_FAILED);
   return result;
-}
-#elif defined(TOIT_FREERTOS)
-PRIMITIVE(rtc_user_bytes) {
-  FAIL(UNIMPLEMENTED);
 }
 #else
 PRIMITIVE(rtc_user_bytes) {

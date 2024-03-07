@@ -94,8 +94,8 @@ monitor NetworkState:
 
   up [create] -> NetworkModule:
     usage_++
-    if module_: return module_
-    module/NetworkModule? := null
+    module := module_
+    if module: return module
     try:
       module = create.call
       module.connect
@@ -109,6 +109,14 @@ monitor NetworkState:
         // Disconnect the module if it was created, but connecting
         // failed with an exception.
         if module: module.disconnect
+
+  up [--if-unconnected] -> NetworkModule?:
+    module := module_
+    if module:
+      usage_++
+      return module
+    if-unconnected.call
+    return null
 
   down -> none:
     usage_--
