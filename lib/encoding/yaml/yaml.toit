@@ -4,7 +4,6 @@
 
 import binary show LITTLE-ENDIAN
 import bitmap
-import reader show Reader BufferedReader
 import .encoder
 import .parser
 

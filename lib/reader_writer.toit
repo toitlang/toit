@@ -12,6 +12,8 @@ Support for inter task reading and writing.
 /**
 A shim that allows one task to have a read interface and the other
   task to have a blocking write interface.  Implements $write.
+
+Deprecated.
 */
 class ReaderWriter:
   writer_/ReaderWriterHelper_ ::= ?
