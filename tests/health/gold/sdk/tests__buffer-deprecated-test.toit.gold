@@ -1,0 +1,6 @@
+tests/buffer-deprecated-test.toit:11:13: warning: Class 'Buffer' is deprecated
+  buffer := Buffer
+            ^~~~~~
+tests/buffer-deprecated-test.toit:18:12: warning: Class 'Buffer' is deprecated
+  buffer = Buffer
+           ^~~~~~
