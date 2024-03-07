@@ -420,6 +420,7 @@ class RegionReader_ extends io.Reader:
     return result
 
   content-size -> int?:
+    // TODO(florian): Implement this.
     return null
 
 // --------------------------------------------------------------------------
