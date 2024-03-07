@@ -37,6 +37,8 @@ export global-x
 export global-x global-y
 export *
 
+import .syntax as as-prefix
+
 import-foo:
 show-foo:
 
@@ -150,6 +152,17 @@ global-setter= x:
   499
 global-setter2= x -> none:
   42
+
+fun
+    --some
+    --args
+    on
+    multiple
+    lines
+:
+  print "with colon at same level as 'fun'"
+
+class X-Of:
 
 abstract class Type:
   foo := 499
@@ -403,6 +416,9 @@ main:
   "string with\\ \" escapes"
 
   assert-x := 499
+  assert-x--
   as-something := assert-x + 42
   null-foo := as-something + assert-x
   assert-x += null-foo
+
+  x-of := X-Of

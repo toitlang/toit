@@ -143,3 +143,9 @@ interval-binary-search list/List needle/int --try-first=null -> int:
   while list[result + 1] == needle: result++
   assert: list[result] <= needle < list[result + 1]
   return result
+
+/** Whether the given $uri is inside a .packages folder. */
+is-inside-dot-packages --uri/string -> bool:
+  return uri.contains "/.packages/" or
+      uri.contains "%5C.packages%5C" or
+      uri.contains "%5c.packages%5c"

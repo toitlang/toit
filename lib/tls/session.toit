@@ -105,12 +105,15 @@ SESSION-MODE-MBED-TLS   ::= 1
 SESSION-MODE-TOIT       ::= 2
 // TLS connection closed.
 SESSION-MODE-CLOSED     ::= 3
+// TLS connection did not attempt handshake yet.
+SESSION-MODE-NONE       ::= 4
 
 /**
-TLS Session upgrades a reader/writer pair to a TLS encrypted communication channel.
+TLS Session upgrades a reader/writer pair to a TLS encrypted communication
+  channel.
 
-The most common usage of a TLS session is for upgrading a TCP socket to secure TLS socket.
-  For that use-case see $Socket.
+The most common usage of a TLS session is for upgrading a TCP socket to secure
+  TLS socket.  For that use-case see $Socket.
 */
 class Session:
   static DEFAULT-HANDSHAKE-TIMEOUT ::= Duration --s=10
@@ -136,6 +139,10 @@ class Session:
   reads-encrypted_ := false
   writes-encrypted_ := false
   symmetric-session_/SymmetricSession_? := null
+  state-bits_/int := ?
+
+  static HANDSHAKE-ATTEMPTED_ ::= 1
+  static SESSION-PROVIDED_    ::= 2
 
   /**
   Returns one of the SESSION_MODE_* constants.
@@ -149,8 +156,20 @@ class Session:
     else:
       if symmetric-session_:
         return SESSION-MODE-TOIT
+      else if state-bits_ & HANDSHAKE-ATTEMPTED_ == 0:
+        return SESSION-MODE-NONE
       else:
         return SESSION-MODE-CLOSED
+
+  /**
+  Returns true if the session was successfully resumed, rather
+    than going through a full handshake with asymmetric crypto.
+  Returns false until the handshake is complete.
+  */
+  resumed -> bool:
+    m := mode
+    return state-bits_ & SESSION-PROVIDED_ != 0 and
+        (m == SESSION-MODE-MBED-TLS or m == SESSION-MODE-TOIT)
 
   /**
   Creates a new TLS session at the client-side.
@@ -176,6 +195,7 @@ class Session:
       --.session-state=null
       --.handshake-timeout/Duration=DEFAULT-HANDSHAKE-TIMEOUT:
     server-name_ = server-name
+    state-bits_ = session-state ? SESSION-PROVIDED_ : 0
 
   /**
   Creates a new TLS session at the server-side.
@@ -192,6 +212,7 @@ class Session:
       --.root-certificates=[]
       --.handshake-timeout/Duration=DEFAULT-HANDSHAKE-TIMEOUT:
     is-server = true
+    state-bits_ = 0
 
   /**
   Explicitly completes the handshake step.
@@ -200,6 +221,7 @@ class Session:
     is not completed yet.
   */
   handshake -> none:
+    state-bits_ |= HANDSHAKE-ATTEMPTED_
     if not reader_:
       throw "ALREADY_CLOSED"
     else if handshake-in-progress_:

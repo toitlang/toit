@@ -33,7 +33,9 @@
 namespace toit {
 namespace compiler {
 
-char* get_executable_path();
+char* FilesystemLocal::get_executable_path() {
+  return OS::get_executable_path();
+}
 
 List<const char*> FilesystemLocal::to_local_path(List<const char*> paths) {
   auto result = ListBuilder<const char*>::allocate(paths.length());

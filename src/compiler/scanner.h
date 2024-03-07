@@ -40,7 +40,7 @@ const int TAB_WIDTH = 8;
 // specific location acts as a marker or is just an illegal character.
 // If the callback returns false, then it's illegal. Otherwise the callback should
 // replace the marker with the original character and return true.
-const int LSP_SELECTION_MARKER = 1;
+const uint8 LSP_SELECTION_MARKER = 1;
 
 class LspSource : public Source {
  public:

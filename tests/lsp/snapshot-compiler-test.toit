@@ -22,7 +22,7 @@ test client/LspClient toitc:
   uri := "untitled:Untitled0"
   client.send-did-open --uri=uri --text=HELLO-WORLD
 
-  snapshot-bundle := client.send-request "toit/snapshot_bundle" { "uri": uri }
+  snapshot-bundle := client.send-request "toit/snapshotBundle" { "uri": uri }
   expect-not-null snapshot-bundle
 
   dir := directory.mkdtemp "/tmp/test-lsp-snapshot-"

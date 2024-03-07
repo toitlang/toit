@@ -52,15 +52,9 @@ int utf16_offset_in_line(Source::Location location) {
   return result;
 }
 
-LspRange range_to_lsp_range(Source::Range range, SourceManager* source_manager) {
-  auto from_location = source_manager->compute_location(range.from());
-  auto to_location = source_manager->compute_location(range.to());
-
-  ASSERT(from_location.source->absolute_path() != null);
-  ASSERT(strcmp(from_location.source->absolute_path(), to_location.source->absolute_path()) == 0);
-
+static LspRange range_to_lsp_range(const Source::Location& from_location,
+                                   const Source::Location& to_location) {
   return LspRange {
-    .path = from_location.source->absolute_path(),
     .from_line = from_location.line_number - 1,
     .from_column = utf16_offset_in_line(from_location),
     .to_line = to_location.line_number - 1,
@@ -68,8 +62,35 @@ LspRange range_to_lsp_range(Source::Range range, SourceManager* source_manager) 
   };
 }
 
+LspLocation range_to_lsp_location(Source::Range range, SourceManager* source_manager) {
+  auto from_location = source_manager->compute_location(range.from());
+  auto to_location = source_manager->compute_location(range.to());
+
+  ASSERT(from_location.source->absolute_path() != null);
+  ASSERT(strcmp(from_location.source->absolute_path(), to_location.source->absolute_path()) == 0);
+
+  return LspLocation {
+    .path = from_location.source->absolute_path(),
+    .range = range_to_lsp_range(from_location, to_location),
+  };
+}
+
+LspRange range_to_lsp_range(Source::Range range, SourceManager* source_manager) {
+  auto from_location = source_manager->compute_location(range.from());
+  auto to_location = source_manager->compute_location(range.to());
+
+  ASSERT(from_location.source->absolute_path() != null);
+  ASSERT(strcmp(from_location.source->absolute_path(), to_location.source->absolute_path()) == 0);
+
+  return range_to_lsp_range(from_location, to_location);
+}
+
+void LspProtocolBase::print_lsp_location(const LspLocation& location) {
+  this->printf("%s\n", location.path);
+  print_lsp_range(location.range);
+}
+
 void LspProtocolBase::print_lsp_range(const LspRange& range) {
-  this->printf("%s\n", range.path);
   this->printf("%d\n%d\n", range.from_line, range.from_column);
   this->printf("%d\n%d\n", range.to_line, range.to_column);
 }
@@ -91,12 +112,12 @@ void LspDiagnosticsProtocol::emit(Diagnostics::Severity severity, const char* fo
 }
 
 void LspDiagnosticsProtocol::emit(Diagnostics::Severity severity,
-                                  const LspRange& range,
+                                  const LspLocation& location,
                                   const char* format,
                                   va_list& arguments) {
   this->printf("WITH POSITION\n");
   this->printf("%s\n", severity_to_lsp_severity(severity));
-  print_lsp_range(range);
+  print_lsp_location(location);
   this->printf(format, arguments);
   this->printf("\n*******************\n");
 }
@@ -109,7 +130,15 @@ void LspDiagnosticsProtocol::end_group() {
   this->printf("END GROUP\n");
 }
 
-void LspGotoDefinitionProtocol::emit(const LspRange& range) {
+void LspGotoDefinitionProtocol::emit(const LspLocation& location) {
+  print_lsp_location(location);
+}
+
+void LspCompletionProtocol::emit_prefix(const char* prefix) {
+  this->printf("%s\n", prefix);
+}
+
+void LspCompletionProtocol::emit_prefix_range(const LspRange& range) {
   print_lsp_range(range);
 }
 

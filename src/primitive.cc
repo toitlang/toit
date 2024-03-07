@@ -17,7 +17,7 @@
 #include "process.h"
 #include "objects_inline.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 #include "esp_err.h"
 #endif
 
@@ -68,7 +68,7 @@ Object* Primitive::allocate_array(int length, Object* filler, Process* process) 
 }
 
 Object* Primitive::os_error(int error, Process* process) {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
   if (error == ESP_ERR_NO_MEM) FAIL(MALLOC_FAILED);
   const size_t BUF_SIZE = 200;
   char buffer[BUF_SIZE];

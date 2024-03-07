@@ -25,8 +25,14 @@
 #include <mbedtls/platform.h>
 #if MBEDTLS_VERSION_MAJOR >= 3
 #include <../library/ssl_misc.h>
+#include <mbedtls/cipher.h>
 #else
 #include <mbedtls/ssl_internal.h>
+#endif
+
+#ifdef TOIT_WINDOWS
+#include <windows.h>
+#include <wincrypt.h>
 #endif
 
 #include "../entropy_mixer.h"
@@ -107,6 +113,23 @@ uint32 BaseMbedTlsSocket::hash_subject(uint8* buffer, int length) {
   return Utils::crc32(0xce77509, buffer, length);
 }
 
+static void* tagging_mbedtls_calloc(size_t nelem, size_t size) {
+  // Sanity check inputs for security.
+  if (nelem > 0xffff || size > 0xffff) return null;
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
+  size_t total_size = nelem * size;
+  void* result = calloc(1, total_size);
+  if (!result) {
+    VM::current()->scheduler()->gc(null, /* malloc_failed = */ true, /* try_hard = */ true);
+    result = calloc(1, total_size);
+  }
+  return result;
+}
+
+static void tagging_mbedtls_free(void* address) {
+  free(address);
+}
+
 // Use the unparsed certificates on the process to find the right one
 // for this connection.
 static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate, mbedtls_x509_crt** chain) {
@@ -130,7 +153,7 @@ static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate
     Locker locker(OS::tls_mutex());
     for (auto unparsed : process->root_certificates(locker)) {
       if (unparsed->subject_hash() != issuer_hash) continue;
-      mbedtls_x509_crt* cert = _new mbedtls_x509_crt;
+      auto cert = unvoid_cast<mbedtls_x509_crt*>(tagging_mbedtls_calloc(1, sizeof(mbedtls_x509_crt)));
       if (!cert) {
         ret = MBEDTLS_ERR_X509_ALLOC_FAILED;
         goto failed;
@@ -150,7 +173,8 @@ static int toit_tls_find_root(void* context, const mbedtls_x509_crt* certificate
       // better keep going in case there's a different cert with the same checksum.
     }
     if (!found_root_with_matching_subject) {
-      socket->record_unknown_issuer(&certificate->issuer);
+      socket->record_error_detail(&certificate->issuer, MBEDTLS_X509_BADCERT_NOT_TRUSTED, ISSUER_DETAIL);
+      socket->record_error_detail(&certificate->subject, MBEDTLS_X509_BADCERT_NOT_TRUSTED, SUBJECT_DETAIL);
     }
     return 0;  // No error (but perhaps no certificate was found).
   }
@@ -159,7 +183,7 @@ failed:
   for (mbedtls_x509_crt* cert = *chain; cert; ) {
     mbedtls_x509_crt* next = cert->next;
     mbedtls_x509_crt_free(cert);
-    delete cert;
+    tagging_mbedtls_free(cert);
     cert = next;
   }
   return ret;  // Problem.  Sadly, this is discarded unless you have a patched MbedTLS.
@@ -197,46 +221,37 @@ int BaseMbedTlsSocket::verify_callback(mbedtls_x509_crt* crt, int certificate_de
     if ((*flags & MBEDTLS_X509_BADCERT_NOT_TRUSTED) != 0) {
       // This is the error when the cert relies on a root that we have not
       // trusted/added.
-      record_unknown_issuer(&crt->issuer);
+      record_error_detail(&crt->issuer, *flags, ISSUER_DETAIL);
     }
-    error_flags_ = *flags;
+    record_error_detail(&crt->subject, *flags, SUBJECT_DETAIL);
   }
   return 0; // Keep going.
 }
 
-void BaseMbedTlsSocket::record_unknown_issuer(const mbedtls_asn1_named_data* issuer) {
+void BaseMbedTlsSocket::record_error_detail(const mbedtls_asn1_named_data* issuer, int error_flags, int index) {
   char buffer[MAX_SUBJECT];
   int ret = mbedtls_x509_dn_gets(buffer, MAX_SUBJECT, issuer);
-  if (error_issuer_) free(error_issuer_);
-  error_issuer_ = null;
+  free(error_details_[index]);
+  error_details_[index] = null;
   if (ret > 0 && ret < MAX_SUBJECT) {
     // If we are unlucky and the malloc fails, then the error message will
     // be less informative.
-    char* issuer_text = unvoid_cast<char*>(malloc(ret + 1));
-    if (issuer_text) {
-      memcpy(issuer_text, buffer, ret);
-      issuer_text[ret] = '\0';
-      error_issuer_ = issuer_text;
+    char* text = unvoid_cast<char*>(malloc(ret + 1));
+    if (text) {
+      memcpy(text, buffer, ret);
+      text[ret] = '\0';
+      error_details_[index] = text;
     }
   }
-  error_flags_ = MBEDTLS_X509_BADCERT_NOT_TRUSTED;
+  error_flags_ = error_flags;
 }
 
-static void* tagging_mbedtls_calloc(size_t nelem, size_t size) {
-  // Sanity check inputs for security.
-  if (nelem > 0xffff || size > 0xffff) return null;
-  HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
-  size_t total_size = nelem * size;
-  void* result = calloc(1, total_size);
-  if (!result) {
-    VM::current()->scheduler()->gc(null, /* malloc_failed = */ true, /* try_hard = */ true);
-    result = calloc(1, total_size);
+void BaseMbedTlsSocket::clear_error_data() {
+  error_flags_ = 0;
+  for (int i = 0; i < ERROR_DETAILS; i++) {
+    free(error_details_[i]);
+    error_details_[i] = null;
   }
-  return result;
-}
-
-static void tagging_mbedtls_free(void* address) {
-  free(address);
 }
 
 void MbedTlsResourceGroup::init_conf(mbedtls_ssl_config* conf) {
@@ -288,10 +303,10 @@ BaseMbedTlsSocket::BaseMbedTlsSocket(MbedTlsResourceGroup* group)
     : TlsSocket(group)
     , root_certs_(null)
     , private_key_(null)
-    ,   error_flags_(0)
-    , error_issuer_(null) {
+    ,   error_flags_(0) {
   mbedtls_ssl_init(&ssl);
   group->init_conf(&conf_);
+  for (int i = 0; i < ERROR_DETAILS; i++) error_details_[i] = null;
 }
 
 BaseMbedTlsSocket::~BaseMbedTlsSocket() {
@@ -300,11 +315,13 @@ BaseMbedTlsSocket::~BaseMbedTlsSocket() {
   mbedtls_ssl_config_free(&conf_);
   for (mbedtls_x509_crt* c = root_certs_; c != null;) {
     mbedtls_x509_crt* n = c->next;
+    // We just delete the shallow copy, so there is no need
+    // to call mbedtls_x509_crt_free(). The actual freeing
+    // is taken care of by the x509 resource destruction.
     delete c;
     c = n;
   }
-  free(error_issuer_);
-  error_issuer_ = null;
+  clear_error_data();
 }
 
 MbedTlsSocket::MbedTlsSocket(MbedTlsResourceGroup* group)
@@ -346,18 +363,73 @@ bool is_tls_malloc_failure(int err) {
   return false;
 }
 
+// None of the below messages can be longer than this.
+static size_t MAX_CERT_ERROR_LENGTH = 20;
+
+static const char* CERT_ERRORS[] = {
+  "EXPIRED",
+  "REVOKED",
+  "CN_MISMATCH",
+  "NOT_TRUSTED",
+  "CRL_NOT_TRUSTED",
+  "CRL_EXPIRED",
+  "MISSING",
+  "SKIP_VERIFY",
+  "OTHER",
+  "FUTURE",
+  "CRL_FUTURE",
+  "KEY_USAGE",
+  "EXT_KEY_USAGE",
+  "NS_CERT_TYPE",
+  "BAD_MD",
+  "BAD_PK",
+  "BAD_KEY",
+  "CRL_MAD_MD",
+  "CRL_BAD_PK",
+  "CRL_BAD_KEY",
+  null
+};
+
 Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
   if (is_tls_malloc_failure(err)) {
     FAIL(MALLOC_FAILED);
   }
   static const size_t BUFFER_LEN = 400;
   char buffer[BUFFER_LEN];
-  const char* issuer = socket ? socket->error_issuer() : null;
+  const char* issuer = socket ? socket->error_detail(ISSUER_DETAIL) : "";
+  int flags = socket ? socket->error_flags() : 0;
   if (err == MBEDTLS_ERR_X509_CERT_VERIFY_FAILED &&
       socket &&
-      socket->error_flags() &&
-      (socket->error_flags() & ~MBEDTLS_X509_BADCERT_NOT_TRUSTED) == 0) {
-    size_t len = snprintf(buffer, BUFFER_LEN - 1, "Site relies on unknown root certificate: '%s'", issuer ? issuer : "");
+      flags) {
+    bool print_issuer = issuer && ((flags & MBEDTLS_X509_BADCERT_NOT_TRUSTED) != 0);
+    const char* subject = socket->error_detail(SUBJECT_DETAIL);
+    size_t len = 0;
+    if (print_issuer) {
+      if (subject) {
+        len = snprintf(buffer,
+                       BUFFER_LEN - 1,
+                       "Unknown root certificate: '%s'\nCertificate error 0x%04x: '%s'",
+                       issuer,
+                       flags,
+                       subject);
+      } else {
+        len = snprintf(buffer, BUFFER_LEN - 1, "Unknown root certificate: '%s'", issuer);
+      }
+    } else if (subject) {
+      len = snprintf(buffer, BUFFER_LEN - 1, "Certificate error 0x%x: '%s'", flags, subject);
+    }
+    while (flags != 0) {
+      if (!len || BUFFER_LEN - len < MAX_CERT_ERROR_LENGTH) break;
+      for (int i = 0; CERT_ERRORS[i]; i++) {
+        if ((flags & (1 << i)) != 0) {
+          flags &= ~(1 << i);
+          len += snprintf(buffer + len, BUFFER_LEN - len - 1, "\n%s", CERT_ERRORS[i]);
+          buffer[len] = '\0';
+          // Only add one at a time before checking space requirement.
+          break;
+        }
+      }
+    }
     if (len > 0 && len < BUFFER_LEN) {
       buffer[len] = '\0';
       if (!Utils::is_valid_utf_8(unsigned_cast(buffer), len)) {
@@ -365,7 +437,7 @@ Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
       }
       String* str = process->allocate_string(buffer);
       if (str == null) FAIL(ALLOCATION_FAILED);
-      socket->clear_error_flags();
+      socket->clear_error_data();
       return Primitive::mark_as_error(str);
     }
   }
@@ -409,7 +481,7 @@ Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
   buffer[BUFFER_LEN - 1] = '\0';
   String* str = process->allocate_string(buffer);
   if (str == null) FAIL(ALLOCATION_FAILED);
-  if (socket) socket->clear_error_flags();
+  if (socket) socket->clear_error_data();
   return Primitive::mark_as_error(str);
 }
 
@@ -578,6 +650,60 @@ PRIMITIVE(close) {
   return process->null_object();
 }
 
+static const int NEEDS_DELETE = 1;
+static const int IN_FLASH = 2;
+static const int IGNORE_UNSUPPORTED_HASH = 4;
+
+static Object* add_global_root(const uint8* data, size_t length, Object* hash, Process* process, int flags);
+
+#ifdef TOIT_WINDOWS
+static Object* add_roots_from_store(const HCERTSTORE store, Process* process) {
+  if (!store) return process->null_object();
+  const CERT_CONTEXT* cert_context = CertEnumCertificatesInStore(store, null);
+  while (cert_context) {
+    if (cert_context->dwCertEncodingType == X509_ASN_ENCODING) {
+      // The certificate is in DER format.
+      const uint8* data = cert_context->pbCertEncoded;
+      size_t size = cert_context->cbCertEncoded;
+      Object* result = add_global_root(data, size, process->null_object(), process, IGNORE_UNSUPPORTED_HASH);
+      // Normally the result is a hash, but we don't need that here, so just
+      // check for errors.
+      if (Primitive::is_error(result)) return result;
+    }
+    cert_context = CertEnumCertificatesInStore(store, cert_context);
+  }
+  return process->null_object();
+}
+
+static Object* load_system_trusted_roots(Process* process) {
+  const HCERTSTORE root_store = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"ROOT");
+  Object* result = add_roots_from_store(root_store, process);
+  if (Primitive::is_error(result)) return result;
+
+  const HCERTSTORE ca_store = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"CA");
+  return add_roots_from_store(ca_store, process);
+}
+#endif
+
+PRIMITIVE(use_system_trusted_root_certificates) {
+#ifdef TOIT_WINDOWS
+  static bool loaded_system_trusted_roots = false;
+  bool load = false;
+  { Locker locker(OS::tls_mutex());
+    load = !loaded_system_trusted_roots;
+  }
+  if (load) {
+    Object* result = load_system_trusted_roots(process);
+    if (Primitive::is_error(result)) return result;
+    loaded_system_trusted_roots = true;
+  }
+  { Locker locker(OS::tls_mutex());
+    loaded_system_trusted_roots = true;
+  }
+#endif
+  return process->null_object();
+}
+
 PRIMITIVE(add_global_root_certificate) {
   ARGS(Object, unparsed_cert, Object, hash);
   bool needs_delete = false;
@@ -589,7 +715,15 @@ PRIMITIVE(add_global_root_certificate) {
 
   bool in_flash = reinterpret_cast<const HeapObject*>(data)->on_program_heap(process);
   ASSERT(!(in_flash && needs_delete));  // We can't free something in flash.
+  int flags = 0;
+  if (needs_delete) flags |= NEEDS_DELETE;
+  if (in_flash) flags |= IN_FLASH;
+  return add_global_root(data, length, hash, process, flags);
+}
 
+static Object* add_global_root(const uint8* data, size_t length, Object* hash, Process* process, int flags) {
+  bool needs_delete = (flags & NEEDS_DELETE) != 0;
+  bool in_flash = (flags & IN_FLASH) != 0;
   if (!needs_delete && !in_flash) {
     // The raw cert data will not survive the end of this primitive, so we need a copy.
     uint8* new_data = _new uint8[length];
@@ -624,7 +758,14 @@ PRIMITIVE(add_global_root_certificate) {
     }
     if (ret != 0) {
       mbedtls_x509_crt_free(&cert);
-      return tls_error(null, process, ret);
+      int major_error = (-ret & 0xff80);
+      if ((flags & IGNORE_UNSUPPORTED_HASH) != 0 &&
+          (-major_error == MBEDTLS_ERR_X509_UNKNOWN_SIG_ALG ||
+           -major_error == MBEDTLS_ERR_ASN1_UNEXPECTED_TAG)) {
+        return process->null_object();
+      } else {
+        return tls_error(null, process, ret);
+      }
     }
 
     uint8 subject_buffer[MAX_SUBJECT];
@@ -636,7 +777,7 @@ PRIMITIVE(add_global_root_certificate) {
     subject_hash = BaseMbedTlsSocket::hash_subject(subject_buffer, ret);
   } else {
     // If the subject hash is given to the primitive then we are probably
-    // dealing with a root cert directly from the certificat roots package or
+    // dealing with a root cert directly from the certificate roots package or
     // baked into the VM. In that case we speed up the initialization by not
     // parsing the cert, and trusting that the hash is correct.
     GET_UINT32(hash, subject_hash_64);
@@ -645,11 +786,11 @@ PRIMITIVE(add_global_root_certificate) {
   root->set_subject_hash(subject_hash);
 
   // No errors found, so lets add the root cert to the chain on the process.
-  Locker locker(OS::tls_mutex());
-
-  if (!process->already_has_root_certificate(data, length, locker)) {
-    defer_root_delete.keep();  // Don't delete it, once it's attached to the process.
-    process->add_root_certificate(root, locker);
+  { Locker locker(OS::tls_mutex());
+    if (!process->already_has_root_certificate(data, length, locker)) {
+      defer_root_delete.keep();  // Don't delete it, once it's attached to the process.
+      process->add_root_certificate(root, locker);
+    }
   }
 
   return Primitive::integer(subject_hash, process);
@@ -731,6 +872,14 @@ bool MbedTlsSocket::init() {
   return true;
 }
 
+#if MBEDTLS_VERSION_MAJOR >= 3 && MBEDTLS_VERSION_MINOR >= 5
+#define GET_KEY_BITLEN(info) (mbedtls_cipher_info_get_key_bitlen(info))
+#define GET_IV_SIZE(info) (mbedtls_cipher_info_get_iv_size(info))
+#else
+#define GET_KEY_BITLEN(info) (info->key_bitlen)
+#define GET_IV_SIZE(info) (info->iv_size)
+#endif
+
 static bool known_cipher_info(const mbedtls_cipher_info_t* info, size_t key_bitlen, int iv_len) {
   if (info->mode == MBEDTLS_MODE_GCM) {
     if (info->type != MBEDTLS_CIPHER_AES_128_GCM && info->type != MBEDTLS_CIPHER_AES_256_GCM) return false;
@@ -743,9 +892,9 @@ static bool known_cipher_info(const mbedtls_cipher_info_t* info, size_t key_bitl
   } else {
     return false;
   }
-  if (info->key_bitlen != key_bitlen) return false;
+  if (GET_KEY_BITLEN(info) != key_bitlen) return false;
   if (iv_len != 12) return false;
-  if (info->iv_size != 12) return false;
+  if (GET_IV_SIZE(info) != 12) return false;
   if ((info->flags & ~MBEDTLS_CIPHER_VARIABLE_IV_LEN) != 0) return false;
   return true;
 }

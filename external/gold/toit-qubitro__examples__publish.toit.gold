@@ -1,3 +1,0 @@
-<pkg:..>/service.toit:104:36: warning: Deprecated constructor 'TcpTransport.tls'
-      transport = mqtt.TcpTransport.tls network
-                                   ^

@@ -78,7 +78,17 @@ class Port extends Object with io.InMixin implements reader.Reader:
 
   Setting a $high-priority increases the interrupt priority to level 3 on the ESP32.
     If you do not specify true or false for this argument, the high priority is
-    automatically selected for baud rates of 460800 or above.
+    automatically selected for baud rates of 460800 or above.  (To avoid system
+    hangs, the maximum priority on the ESP32C3 is limited to level 2.)
+
+  For regular priority, the buffer sizes are set to 256 bytes for tx, 768 for
+    rx, and can be doubled with `--large-buffers`.
+
+  For high priority, the buffer sizes are set to 4096 bytes for tx, 4096 for rx,
+    and can be halved with `--no-large-buffers`.
+
+  These are the software buffers, which are used by the interrupt to refill the
+    hardware FIFO.  The hardware FIFO is 128 bytes for tx and 128 bytes for rx.
 
   The ESP32 has hardware support for up to two UART ports (the third one is
     normally already taken for the USB connection/debugging console.
@@ -89,7 +99,8 @@ class Port extends Object with io.InMixin implements reader.Reader:
       --invert-tx/bool=false --invert-rx/bool=false
       --parity/int=PARITY-DISABLED
       --mode/int=MODE-UART
-      --high-priority/bool?=null:
+      --high-priority/bool?=null
+      --large-buffers/bool?=null:
     if (not tx) and (not rx): throw "INVALID_ARGUMENT"
     if mode == MODE-RS485-HALF-DUPLEX and cts: throw "INVALID_ARGUMENT"
     if not MODE-UART <= mode <= MODE-IRDA: throw "INVALID_ARGUMENT"
@@ -98,6 +109,9 @@ class Port extends Object with io.InMixin implements reader.Reader:
     if high-priority == null: high-priority = baud-rate >= 460800
     if high-priority:
       tx-flags |= 8
+    if large-buffers == null: large-buffers = high-priority
+    if large-buffers:
+      tx-flags |= 16
     uart_ = uart-create_
       resource-group_
       tx ? tx.num : -1

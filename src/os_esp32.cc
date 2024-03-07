@@ -15,7 +15,7 @@
 
 #include "top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <esp_efuse.h>
 #include <esp_chip_info.h>
@@ -889,4 +889,4 @@ bool OS::set_real_time(struct timespec* time) {
 
 }
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

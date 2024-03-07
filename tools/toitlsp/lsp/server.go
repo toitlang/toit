@@ -123,11 +123,11 @@ func (s *Server) bind() error {
 		s.addHandler("textDocument/definition", s.textDocumentDefinition),
 		s.addHandler("textDocument/documentSymbol", s.textDocumentSymbol),
 		s.addHandler("textDocument/semanticTokens/full", s.textDocumentSemanticTokensFull),
-		s.addHandler("toit/report_idle", s.ToitReportIdle),
+		s.addHandler("toit/reportIdle", s.ToitReportIdle),
 		s.addHandler("toit/archive", s.ToitArchive),
-		s.addHandler("toit/didOpenMany", s.ToitDidOpenMany),
-		s.addHandler("toit/snapshot_bundle", s.ToitSnapshotBundle),
-		s.addHandler("toit/reset_crash_rate_limit", s.ToitResetCrashRateLimit),
+		s.addHandler("toit/analyzeMany", s.ToitAnalyzeMany),
+		s.addHandler("toit/snapshotBundle", s.ToitSnapshotBundle),
+		s.addHandler("toit/resetCrashRateLimit", s.ToitResetCrashRateLimit),
 	)
 }
 

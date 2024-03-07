@@ -120,6 +120,7 @@ int main(int argc, char **argv) {
     }
     int bundle_argv_index = with_flag ? 2 : 1;
     Flags::program_name = argv[bundle_argv_index];
+    Flags::program_path = OS::get_executable_path_from_arg(argv[bundle_argv_index]);
     char* bundle_file = argv[bundle_argv_index];
     auto bundle = SnapshotBundle::read_from_file(bundle_file);
     if (!bundle.is_valid()) print_usage(1);
@@ -133,7 +134,7 @@ int main(int argc, char **argv) {
     char* bundle_filename = null;
 
     int source_path_count = 0;
-    const char* source_path;
+    const char* source_path = null;
     // By default source_paths just points to the single source path.
     // For the multi-case (when we analyze), we will switch the pointer
     //   to the argv array.
@@ -281,6 +282,9 @@ int main(int argc, char **argv) {
     }
 
     Flags::program_name = source_path;
+    Flags::program_path = source_path == null
+        ? null
+        : OS::get_executable_path_from_arg(source_path);
 
     // We break after the first argument that isn't a flag.
     // This means that there is always at most one source-file.
