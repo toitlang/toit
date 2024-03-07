@@ -681,46 +681,47 @@ create-dns-packet queries/List records/List -> ByteArray
   status-bits := is-response ? 0x8000 : 0x0000
   if is-authoritative: status-bits |= 0x0400
 
-  result.big-endian.write-int16 id
-  result.big-endian.write-int16 status-bits
-  result.big-endian.write-int16 queries.size
-  result.big-endian.write-int16 records.size
-  result.big-endian.write-int32 0  // Don't support the other things.
+  result-be := result.big-endian
+  result-be.write-int16 id
+  result-be.write-int16 status-bits
+  result-be.write-int16 queries.size
+  result-be.write-int16 records.size
+  result-be.write-int32 0  // Don't support the other things.
 
   queries.do: | query/Question |
     write-name_ query.name --locations=previous-locations --buffer=result
-    result.big-endian.write-int16 query.type
+    result-be.write-int16 query.type
     clas := CLASS-INTERNET + (query.unicast-ok ? 0x8000 : 0)
-    result.big-endian.write-int16 clas
+    result-be.write-int16 clas
   records.do: | record/Resource |
     write-name_ record.name --locations=previous-locations --buffer=result
     type := record.type
-    result.big-endian.write-int16 type
+    result-be.write-int16 type
     clas := CLASS-INTERNET + (record.flush ? 0x8000 : 0)
-    result.big-endian.write-int16 clas
-    result.big-endian.write-int32 record.ttl
+    result-be.write-int16 clas
+    result-be.write-int32 record.ttl
     if record is AResource:
       bytes := (record as AResource).address.raw
-      result.big-endian.write-int16 bytes.size
+      result-be.write-int16 bytes.size
       result.write bytes
     else if type == RECORD-CNAME or type == RECORD-PTR:
       str := (record as StringResource).value
       length := write-name_ str --locations=previous-locations --buffer=null
-      result.big-endian.write-int16 length
+      result-be.write-int16 length
       write-name_ str --locations=previous-locations --buffer=result
     else if type == RECORD-TXT:
       str := (record as StringResource).value
       if str.size > 255: throw (DnsException "TXT records cannot exceed 255 bytes" --name=str)
-      result.big-endian.write-int16 str.size
+      result-be.write-int16 str.size
       result.write str
     else if record is SrvResource:
       srv := record as SrvResource
       str := srv.value
       if str.size > 255: throw (DnsException "SRV records cannot exceed 255 bytes" --name=str)
-      result.big-endian.write-int16 (str.size + 7)
-      result.big-endian.write-int16 srv.priority
-      result.big-endian.write-int16 srv.weight
-      result.big-endian.write-int16 srv.port
+      result-be.write-int16 (str.size + 7)
+      result-be.write-int16 srv.priority
+      result-be.write-int16 srv.weight
+      result-be.write-int16 srv.port
       result.write-byte str.size
       result.write str
     else:
