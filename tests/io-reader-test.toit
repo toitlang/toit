@@ -5,7 +5,7 @@
 import expect show *
 import io
 
-class TestReader extends io.Reader:
+class TestReader extends Object with io.Reader:
   index_ := 0
   arrays_ := ?
 
@@ -92,7 +92,7 @@ split-test ba/ByteArray split-point/int offset/int part-2-size:
   expect-equals DIFFICULT-STRING
     s1 + s2
 
-class MultiByteArrayReader extends io.Reader:
+class MultiByteArrayReader extends Object with io.Reader:
   arrays /List ::= []
   index /int := 0
 

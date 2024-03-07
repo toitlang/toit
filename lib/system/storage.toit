@@ -393,7 +393,7 @@ class Region extends ServiceResourceProxy:
       resource_ = null
     super
 
-class RegionReader_ extends io.Reader:
+class RegionReader_ extends Object with io.Reader:
   region_/Region
   from_/int := ?
   to_/int
