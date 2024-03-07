@@ -15,8 +15,7 @@
 
 import encoding.json as json
 import encoding.ubjson as ubjson
-import reader show BufferedReader
-import writer show Writer
+import io
 import monitor
 import .protocol.message
 
@@ -71,8 +70,8 @@ class RpcConnection:
   request-id_              := 0
   pending-requests_       ::= {:}  // From request-id to Channel.
 
-  reader_ /BufferedReader ::= ?
-  writer_                 ::= ?
+  reader_ /io.Reader ::= ?
+  writer_ /io.Writer ::= ?
   mutex_  /monitor.Mutex  ::= monitor.Mutex
 
   use-ubjson_             := false
@@ -80,8 +79,7 @@ class RpcConnection:
   json-count_             := 0
   ubjson-count_           := 0
 
-  constructor .reader_ writer:
-    writer_ = Writer writer
+  constructor .reader_ .writer_:
 
   enable-ubjson: use-ubjson_ = true
 
@@ -90,6 +88,7 @@ class RpcConnection:
   read-packet:
     while true:
       line := reader_.read-line
+      print-on-stderr_ "line: $line"
       if line == null or line == "": return null
       payload-len := -1
       content-type := ""
@@ -102,6 +101,7 @@ class RpcConnection:
         else:
           throw "Unexpected RPC header $line"
         line = reader_.read-line
+        print-on-stderr_ "line: $line"
       if payload-len == -1: throw "Bad RPC header (no payload size)"
       encoded := reader_.read-bytes payload-len
 

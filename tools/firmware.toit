@@ -17,8 +17,8 @@ import binary show LITTLE-ENDIAN
 import bitmap
 import bytes
 import crypto.sha256 as crypto
+import io
 import writer
-import reader
 import system
 import system show platform
 import uuid
@@ -99,7 +99,7 @@ read-file path/string [block]:
     print "Failed to open '$path' for reading ($exception)."
     exit 1
   try:
-    block.call stream
+    block.call (io.Reader.adapt stream)
   finally:
     stream.close
 
@@ -1070,7 +1070,7 @@ class Envelope:
   constructor.load .path/string:
     version/int? := null
     sdk-version = ""
-    read-file path: | reader/reader.Reader |
+    read-file path: | reader/io.Reader |
       ar := ar.ArReader reader
       while file := ar.next:
         if file.name == INFO-ENTRY-NAME:

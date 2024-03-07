@@ -4,7 +4,7 @@
 
 import expect show *
 import host.file
-import reader show BufferedReader
+import io
 import encoding.hex
 import crypto.aes show *
 import crypto.sha1 show *
@@ -39,7 +39,7 @@ main:
 
 read-file map/Map filename/string -> none:
   stream := file.Stream.for-read filename
-  reader := BufferedReader stream
+  reader := io.Reader.adapt stream
   line-number := 0
   current-comment := ""
   while line := reader.read-line:

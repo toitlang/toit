@@ -9,7 +9,7 @@ import encoding.json as json
 import encoding.base64 as base64
 import monitor
 import host.pipe
-import reader show BufferedReader
+import io
 import tar show Tar
 import writer show Writer
 
@@ -23,7 +23,7 @@ import ...tools.lsp.server.file-server
 import ...tools.lsp.server.repro
 import ...tools.lsp.server.tar-utils
 
-read-all-lines reader/BufferedReader:
+read-all-lines reader/io.Reader:
   lines := []
   while true:
     line := reader.read-line
@@ -48,7 +48,7 @@ create-compiler-input --path/string:
   column-number := 7
   return "COMPLETE\n$path\n$line-number\n$column-number\n"
 
-check-compiler-output reader/BufferedReader:
+check-compiler-output reader/io.Reader:
   suggestions := read-all-lines reader
   expect (suggestions.contains "foo")
 
@@ -124,7 +124,7 @@ test-repro-server archive-path toitc toitlsp compiler-input:
   toitlsp-to := toitlsp-pipes[0]
   toitlsp-from := toitlsp-pipes[1]
   toitlsp-pid := toitlsp-pipes[3]
-  r := BufferedReader toitlsp-from
+  r := io.Reader.adapt toitlsp-from
   while true:
     if line := r.read-line:
       result := json.parse line
@@ -140,7 +140,7 @@ test-repro-server archive-path toitc toitlsp compiler-input:
     cpp-to.close
 
   try:
-    check-compiler-output (BufferedReader cpp-from)
+    check-compiler-output (io.Reader.adapt cpp-from)
   finally:
     cpp-from.close
     exit-value := pipe.wait-for cpp-pid

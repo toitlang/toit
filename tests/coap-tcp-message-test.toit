@@ -7,7 +7,6 @@ import coap.tcp as coap
 import coap.message as coap
 import coap.option as coap
 import expect show *
-import reader show *
 
 import .coap-client-test
 

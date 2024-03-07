@@ -17,7 +17,7 @@ import cli
 import host.file
 import monitor
 import host.pipe
-import reader show BufferedReader
+import io
 
 import .utils
 import .rpc
@@ -82,13 +82,13 @@ main args:
   else:
     server-from = FakePipe
     server-to   = FakePipe
-    server-rpc-connection := RpcConnection (BufferedReader server-to) server-from
+    server-rpc-connection := RpcConnection (io.Reader.adapt server-to) server-from
     server := LspServer server-rpc-connection null UriPathTranslator
     task:: catch --trace: server.run
 
   debug-file := parsed["debug-file"]
-  replay-rpc := RpcConnection (BufferedReader (file.Stream.for-read debug-file)) pipe.stderr
-  std-rpc := RpcConnection (BufferedReader server-from) server-to
+  replay-rpc := RpcConnection (io.Reader.adapt (file.Stream.for-read debug-file)) pipe.stderr
+  std-rpc := RpcConnection (io.Reader.adapt server-from) server-to
 
   channel := monitor.Channel 1
 

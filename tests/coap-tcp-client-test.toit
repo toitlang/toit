@@ -7,7 +7,6 @@ import coap.tcp as coap
 import coap.message as coap
 import expect show *
 import io
-import reader show Reader
 
 // Inject known token id, as the token is random.
 TOKEN-ID_ ::= ByteArray 4: it + 42

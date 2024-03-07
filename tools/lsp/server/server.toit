@@ -17,7 +17,6 @@ import core as core
 import cli
 import encoding.json as json
 import encoding.base64 as base64
-import reader show BufferedReader
 import host.file
 import host.directory
 import host.pipe
@@ -148,6 +147,7 @@ class LspServer:
           callbacks.do: it.call
 
   handle_ method/string params/Map? -> any:
+    print-on-stderr_ "handling $method"
     // TODO(florian): this should be a switch or something.
     handlers ::= {
         "initialize":              (:: initialize (InitializeParams it)),
@@ -691,17 +691,19 @@ main args -> none:
   // Generally, this flag is not used, as the extension has a way to log
   // output anyway.
   should-log := false
+  reader/io.Reader := ?
+  writer/io.Writer := ?
   if should-log:
     time := Time.now.stringify
     log-in-file := file.Stream "/tmp/lsp_in-$(time).log" file.CREAT | file.WRONLY 0x1ff
     log-out-file := file.Stream "/tmp/lsp_out-$(time).log" file.CREAT | file.WRONLY 0x1ff
     //log_in_file  := file.Stream "/tmp/lsp.log" file.CREAT | file.WRONLY 0x1ff
     //log_out_file := log_in_file
-    in-pipe  = LoggingIO log-in-file  in-pipe
-    out-pipe = LoggingIO log-out-file out-pipe
-
-  reader := BufferedReader in-pipe
-  writer := out-pipe
+    reader = LoggingIO log-in-file in-pipe
+    writer = LoggingIO log-out-file out-pipe
+  else:
+    reader = io.Reader.adapt in-pipe
+    writer = io.Writer.adapt out-pipe
 
   rpc-connection := RpcConnection reader writer
 

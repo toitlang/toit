@@ -13,16 +13,15 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import reader show BufferedReader Reader CloseableReader
-import writer show Writer
 import binary show LITTLE-ENDIAN
 import host.pipe show OpenPipe
+import io
 import monitor show Semaphore
 
 /**
 Connection that dispatches the data of the given $OpenPipe to two pipes.
 The $compiler-to-fs and $compiler-to-parser $SimplePipe should be used as a
-  normal $CloseableReader.
+  normal $io.CloseableReader.
 
 If data is produced faster than it is consumed, then the data is buffered. There
   is no flow-control.
@@ -36,7 +35,7 @@ class MultiplexConnection:
   compiler-to-fs          / SimplePipe
   compiler-to-parser      / SimplePipe
   from-compiler_          / OpenPipe
-  buffered-from-compiler_ / BufferedReader
+  buffered-from-compiler_ / io.Reader
 
   constructor from-compiler/OpenPipe:
     from-compiler_ = from-compiler
@@ -49,7 +48,7 @@ class MultiplexConnection:
 
     compiler-to-fs = SimplePipe --on-close=close-check
     compiler-to-parser = SimplePipe --on-close=close-check
-    buffered-from-compiler_ = BufferedReader from-compiler_
+    buffered-from-compiler_ = io.Reader.adapt from-compiler_
 
   /**
   Starts reading from stdout pipe and dispatches to the two simple pipes.
@@ -61,7 +60,7 @@ class MultiplexConnection:
 
   do-dispatch_:
     try:
-      while buffered-from-compiler_.can-ensure 4:
+      while buffered-from-compiler_.try-ensure-buffered 4:
         frame-size-bytes := buffered-from-compiler_.read-bytes 4
         frame-size := LITTLE-ENDIAN.int32 frame-size-bytes 0
         to := compiler-to-parser
@@ -78,9 +77,9 @@ class MultiplexConnection:
     compiler-to-parser.close
 
 /**
-A $CloseableReader that is fed data throw the $write_ method.
+A $io.CloseableReader that is fed data throw the $write_ method.
 */
-class SimplePipe implements CloseableReader:
+class SimplePipe extends Object with io.CloseableReader:
   is-closed_ := false
   buffered_ /Deque := Deque
   sem_ / Semaphore := Semaphore
@@ -89,7 +88,7 @@ class SimplePipe implements CloseableReader:
   constructor --on-close/Lambda:
     close-callback_ = on-close
 
-  read -> ByteArray?:
+  consume_ -> ByteArray?:
     sem_.down
     result := ?
     if buffered_.is-empty:
@@ -99,7 +98,7 @@ class SimplePipe implements CloseableReader:
       buffered_.remove-first
     return result
 
-  close:
+  close_:
     if not is-closed_:
       is-closed_ = true
       sem_.up

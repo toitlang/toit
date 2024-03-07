@@ -5,7 +5,6 @@
 import host.file
 import host.pipe
 import io
-import reader show BufferedReader
 import system
 import system show platform
 
@@ -98,7 +97,7 @@ run-toit toitc args -> List?:
 
     lines := []
     try:
-      reader := BufferedReader cpp-from
+      reader := io.Reader.adapt cpp-from
       while line := reader.read-line:
         lines.add line
     finally:

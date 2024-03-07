@@ -15,11 +15,10 @@
 
 import net
 import net.tcp
-import reader show BufferedReader Reader CloseableReader
-import writer show Writer
 import host.pipe show OpenPipe
 import host.file
 import host.directory
+import io
 import monitor
 import system
 import system show platform
@@ -76,7 +75,7 @@ class FileServerProtocol:
   constructor.local compiler-path/string sdk-path/string .documents_ .translator_:
     filesystem = FilesystemLocal sdk-path
 
-  handle reader/BufferedReader writer/Writer:
+  handle reader/io.Reader writer/io.Writer:
       while true:
         line := reader.read-line
         if line == null: break
@@ -143,7 +142,7 @@ interface FileServer:
 class PipeFileServer implements FileServer:
   protocol / FileServerProtocol
   to-compiler_   / OpenPipe
-  from-compiler_ / CloseableReader
+  from-compiler_ / io.CloseableReader
 
   constructor .protocol .to-compiler_ .from-compiler_:
 
@@ -154,8 +153,8 @@ class PipeFileServer implements FileServer:
   run -> string:
     task::
       catch --trace:
-        reader := BufferedReader from-compiler_
-        writer := Writer to-compiler_
+        reader := io.Reader.adapt from-compiler_
+        writer := io.Writer.adapt to-compiler_
         protocol.handle reader writer
     return "-2"
 
@@ -194,9 +193,7 @@ class TcpFileServer implements FileServer:
     socket := server_.accept
     try:
       socket.no-delay = true
-      reader := BufferedReader socket
-      writer := Writer socket
-      protocol.handle reader writer
+      protocol.handle socket.in socket.out
     finally:
       socket.close
       close
