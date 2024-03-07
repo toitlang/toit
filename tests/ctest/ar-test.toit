@@ -10,7 +10,7 @@ import expect show *
 import host.pipe
 import host.directory
 import host.file
-import bytes
+import io
 import system
 import system show platform
 import ar show *
@@ -61,7 +61,7 @@ run-test file-mapping/Map tmp-dir [generate-ar]:
 
   seen := {}
   count := 0
-  ar-reader := ArReader (bytes.Reader ba)
+  ar-reader := ArReader (io.Reader ba)
   ar-reader.do: |file/ArFile|
     count++
     seen.add file.name
@@ -84,7 +84,7 @@ run-test file-mapping/Map tmp-dir [generate-ar]:
   expect-equals seen.size count
   expect-equals file-mapping.size count
 
-  ar-reader = ArReader (bytes.Reader ba)
+  ar-reader = ArReader (io.Reader ba)
   // We should find all files if we advance from top to bottom.
   last-name := null
   file-mapping.do: |name content|
@@ -100,7 +100,7 @@ run-test file-mapping/Map tmp-dir [generate-ar]:
     actual := ba.copy file-offsets.from file-offsets.to
     expect-equals content actual
 
-  ar-reader = ArReader (bytes.Reader ba)
+  ar-reader = ArReader (io.Reader ba)
   ar-file := ar-reader.find "not there"
   expect-null ar-file
   if last-name:

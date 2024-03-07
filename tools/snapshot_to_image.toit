@@ -25,10 +25,11 @@ import .snapshot
 import .firmware show pad
 
 import binary show LITTLE-ENDIAN ByteOrder
-import bytes
 import encoding.ubjson
+import io
 import system
 import uuid
+import writer show Writer
 
 import host.file
 import cli
@@ -155,7 +156,7 @@ main args:
         --system-uuid=system-uuid
         --snapshot-uuid=snapshot-uuid
         --id=id
-    buffer := bytes.Buffer
+    buffer := io.Buffer
     buffer.write image.build-relocatable
     if assets:
       // Send the assets prefixed with the size and make sure
@@ -177,11 +178,12 @@ main args:
     images.add { "flags": [machine], "bytes": buffer.bytes }
 
   out := file.Stream.for-write output-path
+  writer := Writer out
   if format == "binary":
-    out.write output["images"].first["bytes"]
+    writer.write output["images"].first["bytes"]
   else:
-    out.write (ubjson.encode output)
-  out.close
+    writer.write (ubjson.encode output)
+  writer.close
 
 sdk-version-uuid --sdk-version/string -> uuid.Uuid:
   return sdk-version.is-empty

@@ -14,7 +14,6 @@
 // directory of this repository.
 
 import .snapshot as snapshot
-import bytes
 import binary show LITTLE-ENDIAN ByteOrder
 import uuid
 import crypto.sha256

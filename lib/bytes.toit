@@ -304,6 +304,8 @@ class BufferSizeCounter extends BufferConsumer:
 /**
 A buffer that can be used to build byte data.
 
+Deprecated. Use $io.Buffer instead.
+
 # Aliases
 - `BytesBuilder`: Dart
 - `ByteArrayOutputStream`: Java
@@ -319,7 +321,10 @@ class Buffer extends BufferConsumer:
     grow if needed.
   */
   constructor:
-    return Buffer.with-initial-size INITIAL-BUFFER-LENGTH_
+    // We copy the code of the 'with-initial-size' constructor, so we don't get
+    // a deprecation warning.
+    init-size_ = INITIAL-BUFFER-LENGTH_
+    buffer_ = init-size_ > MAX-INTERNAL-SIZE_ ? (ByteArray_.external_ init-size_) : (ByteArray init-size_)
 
   /**
   Constructs a new buffer with the given $init-size_.

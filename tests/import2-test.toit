@@ -52,10 +52,10 @@ main:
   f.Buffer
 
   // Same for the libraries imported through 'g'. No prefix.
-  Writer null
+  Channel 0
 
   h.Map
   h.Buffer
-  h.Writer null
+  h.Channel 0
   expect-equals "h_List" h.List
   expect-equals "h_Response" (h.Response null null)

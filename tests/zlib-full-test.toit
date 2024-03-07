@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import bytes
 import expect show *
 import zlib
 import crypto.sha
@@ -129,4 +128,3 @@ rle-test -> none:
   while data := decoder.in.read:
     round-trip += data
   expect-equals str round-trip.to-string
-

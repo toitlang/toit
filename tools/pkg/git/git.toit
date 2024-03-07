@@ -13,11 +13,11 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import http
-import net
 import certificate_roots
+import http
+import io
+import net
 import reader
-import bytes
 
 import .pack
 import ..file-system-view
@@ -121,7 +121,7 @@ class GitProtocol_:
     lines := parse-response_ fetch-response
 
     reading-data-lines := false
-    buffer/bytes.Buffer := bytes.Buffer
+    buffer := io.Buffer
     lines.do:
       if not reading-data-lines:
         if it is ByteArray and it.to-string.trim == "packfile":
@@ -142,7 +142,7 @@ class GitProtocol_:
     throw "Missing flush packet from server"
 
   pack-command_ command/string capabilities/List arguments/List -> ByteArray:
-    buffer := bytes.Buffer
+    buffer := io.Buffer
     pack-line_ buffer "command=$command"
     if not capabilities.is-empty:
       capabilities.do: pack-line_ buffer it
@@ -151,15 +151,15 @@ class GitProtocol_:
     pack-flush_ buffer
     return buffer.bytes
 
-  pack-line_ buffer/bytes.Buffer data/string:
+  pack-line_ buffer/io.Buffer data/string:
     buffer.write "$(%04x data.size+5)"
     buffer.write data
     buffer.write "\n"
 
-  pack-delim_ buffer/bytes.Buffer:
+  pack-delim_ buffer/io.Buffer:
     buffer.write "0001"
 
-  pack-flush_ buffer/bytes.Buffer:
+  pack-flush_ buffer/io.Buffer:
     buffer.write "0000"
 
   static FLUSH-PACKET ::= 0
@@ -200,4 +200,3 @@ class GitFileSystemView implements FileSystemView:
 
   list -> Map:
     return content_.map: | k v | if v is Map: GitFileSystemView v else: k
-

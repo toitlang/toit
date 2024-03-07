@@ -15,10 +15,10 @@
 
 import host.pipe
 import host.file
+import io
 import monitor
 import reader show BufferedReader
 import writer show Writer
-import bytes
 
 import .protocol.completion
 import .protocol.document
@@ -310,7 +310,7 @@ class Compiler:
       status := reader.read-line
       if status != "OK": return null
       bundle-size := int.parse reader.read-line
-      buffer := bytes.Buffer
+      buffer := io.Buffer
       buffer.reserve bundle-size
       while data := reader.read:
         buffer.write data

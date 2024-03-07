@@ -3,14 +3,14 @@
 // be found in the tests/LICENSE file.
 
 import host.file
-import bytes
 import host.pipe
+import io
 import reader show BufferedReader
 import system
 import system show platform
 
 combine-and-replace lines replacement-index replacement-line:
-  builder := bytes.Buffer
+  builder := io.Buffer
   for i := 0; i < lines.size; i++:
     if i == replacement-index:
       builder.write replacement-line
