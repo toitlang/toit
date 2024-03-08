@@ -147,7 +147,6 @@ class LspServer:
           callbacks.do: it.call
 
   handle_ method/string params/Map? -> any:
-    print-on-stderr_ "handling $method"
     // TODO(florian): this should be a switch or something.
     handlers ::= {
         "initialize":              (:: initialize (InitializeParams it)),

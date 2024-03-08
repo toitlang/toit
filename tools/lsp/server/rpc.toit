@@ -88,7 +88,6 @@ class RpcConnection:
   read-packet:
     while true:
       line := reader_.read-line
-      print-on-stderr_ "line: $line"
       if line == null or line == "": return null
       payload-len := -1
       content-type := ""
@@ -101,7 +100,6 @@ class RpcConnection:
         else:
           throw "Unexpected RPC header $line"
         line = reader_.read-line
-        print-on-stderr_ "line: $line"
       if payload-len == -1: throw "Bad RPC header (no payload size)"
       encoded := reader_.read-bytes payload-len
 

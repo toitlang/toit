@@ -81,7 +81,7 @@ A $io.CloseableReader that is fed data throw the $write_ method.
 */
 class SimplePipe extends Object with io.CloseableReader:
   is-closed_ := false
-  buffered_ /Deque := Deque
+  buffered_chunks_ /Deque := Deque
   sem_ / Semaphore := Semaphore
   close-callback_ / Lambda
 
@@ -91,11 +91,11 @@ class SimplePipe extends Object with io.CloseableReader:
   consume_ -> ByteArray?:
     sem_.down
     result := ?
-    if buffered_.is-empty:
+    if buffered_chunks_.is-empty:
       result = null
     else:
-      result = buffered_.first
-      buffered_.remove-first
+      result = buffered_chunks_.first
+      buffered_chunks_.remove-first
     return result
 
   close_:
@@ -105,5 +105,5 @@ class SimplePipe extends Object with io.CloseableReader:
       close-callback_.call
 
   write_ data/ByteArray:
-    buffered_.add data
+    buffered_chunks_.add data
     sem_.up
