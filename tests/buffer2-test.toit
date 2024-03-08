@@ -43,3 +43,7 @@ test-simple:
   written := buffer.try-write foobar 1 4
   expect-equals 3 written
   expect-equals "foobaroob" buffer.bytes.to-string
+
+  buffer.reserve 100
+  buffer.reserve 5
+  expect buffer.backing-array.size > 105
