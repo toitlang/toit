@@ -436,7 +436,7 @@ abstract mixin Reader implements old-reader.Reader:
   # Errors
   At least $n + 1 bytes must be available.
   */
-  peek-byte n/int -> int:
+  peek-byte n/int=0 -> int:
     if n < 0: throw "INVALID_ARGUMENT"
     ensure-buffered n + 1
     n += first-array-position_
