@@ -13,9 +13,11 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#if !defined(FREERTOS) || defined(TOIT_ESP32)
 
 #include "flash_registry.h"
+
+#if !defined(TOIT_FREERTOS) || defined(TOIT_ESP32)
+
 #include "primitive.h"
 
 #include "process.h"
@@ -33,7 +35,7 @@ namespace toit {
 
 MODULE_IMPLEMENTATION(flash, MODULE_FLASH_REGISTRY)
 
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_ESP32
 static std::unordered_map<std::string, word*> partitions;
 #endif
 
@@ -453,4 +455,4 @@ PRIMITIVE(region_erase) {
 
 }
 
-#endif  // !defined(FREERTOS) || defined(TOIT_ESP32)
+#endif  // !defined(TOIT_FREERTOS) || defined(TOIT_ESP32)
