@@ -51,7 +51,7 @@ A consumer of bytes.
 
 # Inheritance
 The method $try-write_ must be implemented by subclasses.
-The method $flush_ may be implemented by subclasses. The default implementation does nothing.
+The method $flush may be implemented by subclasses. The default implementation does nothing.
 */
 abstract mixin Writer:
   is-closed_/bool := false
@@ -115,9 +115,12 @@ abstract mixin Writer:
 
   Often, one can just use the `--flush` flag of the $write, $write-byte or $write-from
     functions instead.
+
+  # Inheritance
+  This method may be overwritten by subclasses. The default implementation does nothing.
   */
   flush -> none:
-    flush_
+    // Do nothing.
 
   /**
   Tries to write the given $data to this writer.
@@ -196,12 +199,6 @@ abstract mixin Writer:
   */
   // This is a protected method. It should not be "private".
   abstract try-write_ data/Data from/int to/int -> int
-
-  /**
-  Flushes any buffered data to the underlying resource.
-  */
-  flush_ -> none:
-    // Do nothing.
 
   /**
   Closes this writer.
