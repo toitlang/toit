@@ -692,8 +692,7 @@ class ToitHandshake_:
     handshake-hasher /checksum.Checksum := cipher-suite_.hmac-hasher.call
     hello := client-hello-packet_
     handshake-hasher.add hello[5..]
-    sent := session_.writer_.try-write hello
-    assert: sent == hello.size
+    session_.writer_.write hello
     server-hello-packet := session_.extract-first-message_
     handshake-hasher.add server-hello-packet[5..]
     server-hello := ServerHello_ server-hello-packet
@@ -734,8 +733,7 @@ class ToitHandshake_:
     partition := partition-byte-array_ key-data [key-size, key-size, iv-size, iv-size]
     write-key := KeyData_ --key=partition[0] --iv=partition[2] --algorithm=cipher-suite_.algorithm
     read-key := KeyData_ --key=partition[1] --iv=partition[3] --algorithm=cipher-suite_.algorithm
-    sent = session_.writer_.try-write CHANGE-CIPHER-SPEC-TEMPLATE_
-    assert: sent == CHANGE-CIPHER-SPEC-TEMPLATE_.size
+    session_.writer_.write CHANGE-CIPHER-SPEC-TEMPLATE_
     if next-server-packet.size != 6 or next-server-packet[0] != CHANGE-CIPHER-SPEC_ or next-server-packet[5] != 1:
       throw "Peer did not accept change cipher spec"
     server-handshake-hash := handshake-hasher.clone.get
