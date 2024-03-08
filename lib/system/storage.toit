@@ -424,6 +424,7 @@ class RegionReader_ extends Object with io.Reader:
     from_ = from + n
     return result
 
+    // TODO(florian): Implement this.
 // --------------------------------------------------------------------------
 
 flash-region-open_ group client handle offset size:

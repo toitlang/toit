@@ -51,13 +51,13 @@ A consumer of bytes.
 
 # Inheritance
 The method $try-write_ must be implemented by subclasses.
-The method $flush_ may be implemented by subclasses. The default implementation does nothing.
+The method $flush may be implemented by subclasses. The default implementation does nothing.
 */
 abstract mixin Writer:
   is-closed_/bool := false
   endian_/EndianWriter? := null
   byte-cache_/ByteArray? := null
-  written_/int := 0
+  consumed_/int := 0
 
   constructor:
 
@@ -71,10 +71,10 @@ abstract mixin Writer:
     return WriterAdapter_ writer
 
   /**
-  The amount of bytes that have been written so far.
+  The amount of bytes that this writer has consumed so far.
   */
-  written -> int:
-    return written_
+  consumed -> int:
+    return consumed_
 
   /**
   Writes the given $data to this writer.
@@ -125,9 +125,12 @@ abstract mixin Writer:
 
   Often, one can just use the `--flush` flag of the $write, $write-byte or $write-from
     functions instead.
+
+  # Inheritance
+  This method may be overwritten by subclasses. The default implementation does nothing.
   */
   flush -> none:
-    flush_
+    // Do nothing.
 
   /**
   Tries to write the given $data to this writer.
@@ -144,7 +147,7 @@ abstract mixin Writer:
   try-write data/Data from/int=0 to/int=data.byte-size -> int:
     if is-closed_: throw "WRITER_CLOSED"
     written := try-write_ data from to
-    written_ += written
+    consumed_ += written
     return written
 
   /**
@@ -208,12 +211,6 @@ abstract mixin Writer:
   */
   // This is a protected method. It should not be "private".
   abstract try-write_ data/Data from/int to/int -> int
-
-  /**
-  Flushes any buffered data to the underlying resource.
-  */
-  flush_ -> none:
-    // Do nothing.
 
   /**
   Closes this writer.
@@ -281,7 +278,9 @@ abstract mixin Reader implements old-reader.Reader:
   first-array-position_ := 0
 
   // The number of bytes in byte arrays that have been used up.
-  base-consumed_ := 0
+  // Does not yet include the bytes in the first byte array. That is,
+  //   the total number that was given to the user is produced_ + first-array-position_.
+  produced_ := 0
 
   /** A cached endian-aware reader. */
   endian_/EndianReader? := null
@@ -305,11 +304,10 @@ abstract mixin Reader implements old-reader.Reader:
   /**
   Clears any buffered data.
 
-  Any cleared data is not considered consumed.
+  Any cleared data is not considered $produced.
   */
   clear -> none:
     buffered_ = null
-    base-consumed_ += first-array-position_
     first-array-position_ = 0
 
   /**
@@ -345,10 +343,6 @@ abstract mixin Reader implements old-reader.Reader:
   add-byte-array_ data/ByteArray -> none:
     if not buffered_: buffered_ = ByteArrayList_
     buffered_.add data
-    if buffered_.size == 1:
-      assert: first-array-position_ == 0
-      base-consumed_ += first-array-position_
-      first-array-position_ = 0
 
   /**
   Ensures that at least $n bytes are buffered.
@@ -400,10 +394,10 @@ abstract mixin Reader implements old-reader.Reader:
     return buffered_.size-in-bytes - first-array-position_
 
   /**
-  The number of bytes that have been consumed from the BufferedReader.
+  The number of bytes that have been produced by this reader.
   */
-  consumed -> int:
-    return base-consumed_ + first-array-position_
+  produced -> int:
+    return produced_ + first-array-position_
 
   /**
   Skips over the next $n bytes.
@@ -426,7 +420,7 @@ abstract mixin Reader implements old-reader.Reader:
         return
 
       n -= size
-      base-consumed_ += buffered_.first.size
+      produced_ += buffered_.first.size
       first-array-position_ = 0
       buffered_.remove-first
 
@@ -497,7 +491,7 @@ abstract mixin Reader implements old-reader.Reader:
   drain -> none:
     clear
     while chunk := consume_:
-      base-consumed_ += chunk.size
+      produced_ += chunk.size
 
   /**
   Searches forwards for the $byte.
@@ -552,7 +546,7 @@ abstract mixin Reader implements old-reader.Reader:
       array := buffered_.first
       if first-array-position_ == 0 and (max-size == null or array.size <= max-size):
         buffered_.remove-first
-        base-consumed_ += array.size
+        produced_ += array.size
         return array
       byte-count := array.size - first-array-position_
       if max-size:
@@ -560,7 +554,7 @@ abstract mixin Reader implements old-reader.Reader:
       end := first-array-position_ + byte-count
       result := array[first-array-position_..end]
       if end == array.size:
-        base-consumed_ += array.size
+        produced_ += array.size
         first-array-position_ = 0
         buffered_.remove-first
       else:
@@ -570,7 +564,7 @@ abstract mixin Reader implements old-reader.Reader:
     array := consume_
     if array == null: return null
     if max-size == null or array.size <= max-size:
-      base-consumed_ += array.size
+      produced_ += array.size
       return array
     add-byte-array_ array
     first-array-position_ = max-size
@@ -647,7 +641,7 @@ abstract mixin Reader implements old-reader.Reader:
       // Instead of adding the array to the arrays we may just be able more
       // efficiently pass it on in string from.
       if (max-size == null or array.size <= max-size) and array[array.size - 1] <= 0x7f:
-        base-consumed_ += array.size
+        produced_ += array.size
         return array.to-string
       add-byte-array_ array
 
@@ -664,7 +658,7 @@ abstract mixin Reader implements old-reader.Reader:
     if not max-size: max-size = buffered-size
     if first-array-position_ == 0 and array.size <= max-size and array[array.size - 1] <= 0x7f:
       buffered_.remove-first
-      base-consumed_ += array.size
+      produced_ += array.size
       return array.to-string
 
     size := min buffered-size max-size
@@ -846,11 +840,11 @@ abstract mixin Reader implements old-reader.Reader:
     if first-array-position_ != 0:
       first := buffered_.first
       buffered_.remove-first
-      base-consumed_ += first-array-position_
+      produced_ += first-array-position_
       first = first[first-array-position_..]
       buffered_.prepend first
       first-array-position_ = 0
-    base-consumed_ -= value.size
+    produced_ -= value.size
     if not buffered_: buffered_ = ByteArrayList_
     buffered_.prepend value
 
@@ -1022,11 +1016,11 @@ abstract mixin OutMixin:
   Closes the writer if it exists.
 
   The $out $Writer doesn't have a 'close' method. However, we can set
-    the internal boolean to `closed`, so that further writes throw an exception, or
+    the internal boolean to closed, so that further writes throw an exception, or
     that existing writes are aborted.
 
   Any existing write needs to be aborted by the caller of this method.
-    The `try-write_` should either throw or return the number of bytes that have been
+    The $try-write_ should either throw or return the number of bytes that have been
     written so far. See $CloseableWriter.close_.
   */
   // This is a protected method. It should not be "private".
@@ -1108,10 +1102,10 @@ abstract mixin InMixin:
   Closes the writer if it exists.
 
   The $in $Reader doesn't have a 'close' method. However, we can set
-    the internal boolean to `closed`, so that further reads return 'null'.
+    the internal boolean to closed, so that further reads return null.
 
-  Any existing read needs to be aborted by the caller of this method. The `consume`
-    method should return 'null'.
+  Any existing read needs to be aborted by the caller of this method. The 'consume'
+    method should return null.
   */
   // This is a protected method. It should not be "private".
   close-reader_ -> none:
@@ -1274,6 +1268,8 @@ class Buffer extends Object with CloseableWriter:
   */
   grow-by amount/int -> none:
     ensure_ amount
+    // Be sure to clear the data.
+    buffer_.fill --from=offset_ --to=(offset_ + amount) 0
     offset_ += amount
 
   /**
@@ -1308,7 +1304,7 @@ class Buffer extends Object with CloseableWriter:
           MIN-BUFFER-GROWTH_
       new-minimum-size
 
-    assert: offset_ + size  <= new-size
+    assert: offset_ + amount  <= new-size
 
     new := ByteArray new-size
     new.replace 0 buffer_ 0 offset_

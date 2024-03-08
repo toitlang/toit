@@ -335,7 +335,7 @@ class UartWriter extends Object with io.Writer:
   constructor.private_ .port_:
 
   /**
-  Writes data to the Port.
+  Writes data to the $Port.
 
   If $break-length is greater than 0, an additional break signal is added after
     the data is written. The duration of the break signal is bit-duration * $break-length,
