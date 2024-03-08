@@ -14,11 +14,11 @@
 // directory of this repository.
 
 import ar show *
-import bytes
 import encoding.ubjson as ubjson
 import host.file
 import host.directory
 import host.pipe
+import io
 import .snapshot
 import reader show BufferedReader
 import writer show Writer
@@ -83,11 +83,11 @@ run-debug-snapshot snapshot-bytes json-message:
   tmp-directory := directory.mkdtemp "/tmp/debug_snapshot-"
   debug-toit := "$tmp-directory/debug.toit"
   try:
-    ar-reader := ArReader (bytes.Reader snapshot-bytes)
+    ar-reader := ArReader (io.Reader snapshot-bytes)
     magic-bytes := ar-reader.find SnapshotBundle.MAGIC-NAME
     debug-snapshot := ar-reader.find "D-snapshot"
     debug-source-map := ar-reader.find "D-source-map"
-    out-bytes := bytes.Buffer
+    out-bytes := io.Buffer
     ar-writer := ArWriter out-bytes
     ar-writer.add SnapshotBundle.MAGIC-NAME magic-bytes.content
     ar-writer.add SnapshotBundle.SNAPSHOT-NAME debug-snapshot.content

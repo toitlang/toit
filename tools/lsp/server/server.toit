@@ -21,7 +21,7 @@ import reader show BufferedReader
 import host.file
 import host.directory
 import host.pipe
-import bytes
+import io
 
 import .protocol.change
 import .protocol.completion
@@ -260,7 +260,7 @@ class LspServer:
     paths := uris.map: translator_.to-path it
     compiler := compiler_
     compiler.parse --paths=paths --project-uri=project-uri
-    buffer := bytes.Buffer
+    buffer := io.Buffer
     write-repro
         --writer=buffer
         --compiler-flags=compiler.build-run-flags --project-uri=project-uri

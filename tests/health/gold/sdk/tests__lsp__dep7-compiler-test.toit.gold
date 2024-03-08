@@ -13,3 +13,6 @@
 tests/lsp/dep7-compiler-test.toit:18:25: warning: Deprecated 'PLATFORM-WINDOWS'
   DRIVE ::= platform == PLATFORM-WINDOWS ? "c:" : ""
                         ^~~~~~~~~~~~~~~~
+<pkg:pkg-host>/pipe.toit:230:30: warning: Class 'Buffer' is deprecated
+  accumulator := bytes.Buffer.with_initial_size (path.size + 4 + (path.size >> 2))
+                             ^

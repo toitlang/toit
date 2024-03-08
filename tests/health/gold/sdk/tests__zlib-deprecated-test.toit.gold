@@ -1,3 +1,12 @@
+tests/zlib-deprecated-test.toit:26:23: warning: Class 'Buffer' is deprecated
+  accumulator := bytes.Buffer
+                      ^
+tests/zlib-deprecated-test.toit:68:24: warning: Class 'Buffer' is deprecated
+    round-trip := bytes.Buffer
+                       ^
+tests/zlib-deprecated-test.toit:84:23: warning: Class 'Buffer' is deprecated
+  accumulator := bytes.Buffer
+                      ^
 tests/zlib-deprecated-test.toit:87:28: warning: Deprecated 'Coder_.reader'
     while ba := compressor.reader.read:
                            ^~~~~~
@@ -7,3 +16,9 @@ tests/zlib-deprecated-test.toit:90:14: warning: Deprecated 'Coder_.write'
 tests/zlib-deprecated-test.toit:91:14: warning: Deprecated 'Coder_.close'
   compressor.close
              ^~~~~
+tests/zlib-deprecated-test.toit:153:21: warning: Class 'Buffer' is deprecated
+  lorem-out := bytes.Buffer
+                    ^
+<pkg:pkg-host>/pipe.toit:230:30: warning: Class 'Buffer' is deprecated
+  accumulator := bytes.Buffer.with_initial_size (path.size + 4 + (path.size >> 2))
+                             ^

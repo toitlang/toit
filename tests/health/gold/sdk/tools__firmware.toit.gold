@@ -10,6 +10,12 @@
 <pkg:pkg-cli>/cli.toit:154:27: warning: Deprecated 'program-name'
   check --invoked_command=program_name:
                           ^~~~~~~~~~~~
+tools/firmware.toit:266:15: warning: Class 'Buffer' is deprecated
+  out := bytes.Buffer
+              ^
+tools/firmware.toit:904:17: warning: Class 'Buffer' is deprecated
+    out := bytes.Buffer
+                ^
 <pkg:pkg-host>/directory.toit:138:6: warning: Deprecated 'platform'
   if platform == PLATFORM_WINDOWS:
      ^~~~~~~~

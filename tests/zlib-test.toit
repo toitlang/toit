@@ -2,8 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import bytes
 import expect show *
+import io
 import zlib show *
 import host.pipe
 import host.file
@@ -23,7 +23,7 @@ do-test chunk-size chunk-offset str/string zlib-expected/ByteArray uncompressed 
   compressor := uncompressed ?
     gzip ? UncompressedGzipEncoder : (UncompressedZlibEncoder --split-writes=split-writes) :
     gzip ? RunLengthGzipEncoder : RunLengthZlibEncoder
-  accumulator := bytes.Buffer
+  accumulator := io.Buffer
   done := Semaphore
   t := task::
     while ba := compressor.reader.read:
@@ -44,7 +44,7 @@ do-test chunk-size chunk-offset str/string zlib-expected/ByteArray uncompressed 
     // Test output against expected compressed data.
     if not zlib-expected:
       fd := file.Stream.for-write (gzip ? "out.gz" : "out.z")
-      fd.write accumulator.buffer 0 accumulator.size
+      fd.write accumulator.backing-array 0 accumulator.size
       fd.close
       print accumulator.bytes
       exit 1
@@ -52,11 +52,11 @@ do-test chunk-size chunk-offset str/string zlib-expected/ByteArray uncompressed 
       fail := accumulator.size != zlib-expected.size
       if fail:
         print "Expected $zlib-expected.size, got $accumulator.size"
-      zlib-expected.size.repeat: if accumulator.buffer[it] != zlib-expected[it]: fail = true
+      zlib-expected.size.repeat: if accumulator.backing-array[it] != zlib-expected[it]: fail = true
       if fail:
         print_ accumulator.bytes.stringify
         fd := file.Stream.for-write "out.z"
-        fd.write accumulator.buffer 0 accumulator.size
+        fd.write accumulator.backing-array 0 accumulator.size
         fd.close
       expect (not fail)
   else:
@@ -65,9 +65,9 @@ do-test chunk-size chunk-offset str/string zlib-expected/ByteArray uncompressed 
     to-zcat := subprocess[0]  // Stdin of zcat.
     from-zcat := subprocess[1]  // Stdin of zcat.
     pipe.dont-wait-for subprocess[3]  // Avoid zombie processes.
-    round-trip := bytes.Buffer
+    round-trip := io.Buffer
     task::  // Use a task to avoid deadlock if the pipe fills up.
-      to-zcat.write accumulator.buffer 0 accumulator.size
+      to-zcat.write accumulator.backing-array 0 accumulator.size
       to-zcat.close
     while byte-array := from-zcat.read:
       round-trip.write byte-array
@@ -81,7 +81,7 @@ test-io-data:
   expected := #[8, 29, 243, 72, 29, 241, 0, 4, 114, 114, 242, 1, 160, 114, 104, 238]
   input := FakeData input-str
   compressor := RunLengthZlibEncoder
-  accumulator := bytes.Buffer
+  accumulator := io.Buffer
   done := Semaphore
   t := task::
     while ba := compressor.in.read:
@@ -151,7 +151,7 @@ main:
   test-compress
     "H" + ("e" * 262) + "llo"
     #[8, 29, 243, 72, 29, 241, 0, 4, 114, 114, 242, 1, 160, 114, 104, 238]
-  lorem-out := bytes.Buffer
+  lorem-out := io.Buffer
   lorem-out.write LOREM-IPSUM
   lorem-out.write LOREM-IPSUM2
   lorem-out.write LOREM-IPSUM3

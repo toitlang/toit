@@ -5,7 +5,6 @@
 import coap
 import coap.message as coap
 import coap.transport as coap
-import bytes
 import io
 import expect show *
 
