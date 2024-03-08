@@ -79,15 +79,18 @@ abstract mixin Writer:
   /**
   Writes the given $data to this writer.
 
+  Returns the amount of bytes written (to - from).
+
   If the writer can't write all the data at once tries again until all of the data is
     written. This method is blocking.
   */
-  write data/Data from/int=0 to/int=data.byte-size --flush/bool=false -> none:
+  write data/Data from/int=0 to/int=data.byte-size --flush/bool=false -> int:
+    pos := from
     while not is-closed_:
-      from += try-write data from to
-      if from >= to:
+      pos += try-write data pos to
+      if pos >= to:
         if flush: this.flush
-        return
+        return (to - from)
       wait-for-more-room_
     assert: is-closed_
     throw "WRITER_CLOSED"
@@ -259,6 +262,9 @@ abstract mixin CloseableWriter extends Writer:
 
 /**
 A source of bytes.
+
+# Inheritance
+Implementations must implement $consume_ and may override $content-size.
 */
 abstract mixin Reader implements old-reader.Reader:
   static UNEXPECTED-END-OF-READER ::= "UNEXPECTED_END_OF_READER"
@@ -905,12 +911,13 @@ abstract mixin Reader implements old-reader.Reader:
   abstract consume_ -> ByteArray?
 
   /**
-  The size in bytes of the data in this reader.
+  The total number of bytes that this reader can produce.
   This value is not updated when data is consumed.
 
   If the reader does not know the size, returns null.
   */
-  abstract content-size -> int?
+  content-size -> int?:
+    return null
 
   /**
   Closes this reader.
@@ -1056,6 +1063,8 @@ abstract mixin CloseableOutMixin:
   // This is a protected method. It should not be "private".
   abstract close-writer_ -> none
 
+// TODO(florian): make it possible to set the content-size of the reader when
+// using a mixin.
 class In_ extends Object with Reader:
   mixin_/InMixin
 
@@ -1064,11 +1073,8 @@ class In_ extends Object with Reader:
   consume_ -> ByteArray?:
     return mixin_.consume_
 
-  // TODO(florian): make it possible to set the content-size of the reader when
-  // using a mixin.
-  content-size -> int?:
-    return null
-
+// TODO(florian): make it possible to set the content-size of the reader when
+// using a mixin.
 class CloseableIn_ extends Object with CloseableReader:
   mixin_/CloseableInMixin
 
@@ -1079,11 +1085,6 @@ class CloseableIn_ extends Object with CloseableReader:
 
   close_ -> none:
     mixin_.close-reader_
-
-  // TODO(florian): make it possible to set the content-size of the reader when
-  // using a mixin.
-  content-size -> int?:
-    return null
 
 abstract mixin InMixin:
   in_/In_? := null

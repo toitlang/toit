@@ -57,9 +57,6 @@ class CompressionReader extends Object with io.CloseableReader:
   close_ -> none:
     coder_.close-reader_
 
-  content-size -> int?:
-    return null
-
 /**
 Typically creates blocks of 256 bytes (5 bytes of block header, 251 bytes of
   uncompressed data) for a 2% size increase.  Adds a header and a checksum.
