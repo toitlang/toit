@@ -20,7 +20,7 @@ class TestReader extends Object with io.Reader:
 main:
   simple
   utf-8
-  consumed
+  produced
 
 simple:
   r := TestReader ["H".to-byte-array, "ost: ".to-byte-array]
@@ -124,33 +124,33 @@ class MultiByteArrayReader extends Object with io.Reader:
 
   close_:
 
-consumed:
-  consumed-one-at-a-time
-  consumed-get-and-unget
-  consumed-thirteen-at-a-time
+produced:
+  produced-one-at-a-time
+  produced-get-and-unget
+  produced-thirteen-at-a-time
 
-consumed-one-at-a-time:
+produced-one-at-a-time:
   br := MultiByteArrayReader
   256.repeat:
-    expect-equals it br.consumed
+    expect-equals it br.produced
     expect-equals it br.read-byte
 
-consumed-get-and-unget:
+produced-get-and-unget:
   br2 := MultiByteArrayReader
   expected-cursor := 0
   for i := 0; i < 256; i++:
     expect-equals expected-cursor i
     if i + 13 > 256: break
     br2.read-bytes 13
-    expect-equals (expected-cursor + 13) br2.consumed
+    expect-equals (expected-cursor + 13) br2.produced
     br2.unget
         ByteArray 13
-    expect-equals expected-cursor br2.consumed
+    expect-equals expected-cursor br2.produced
     br2.read-byte
     expected-cursor++
 
-consumed-thirteen-at-a-time:
+produced-thirteen-at-a-time:
   br3 := MultiByteArrayReader
   for i := 0; i < 256; i += 13:
-    expect-equals i br3.consumed
+    expect-equals i br3.produced
     br3.read-bytes 13
