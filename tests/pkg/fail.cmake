@@ -16,4 +16,5 @@
 list(APPEND TOIT_FAILING_TESTS
     # The http package is broken after the changes to the io library.
     tests/pkg/package-test.toit
+    tests/pkg/registry-test.toit
   )
