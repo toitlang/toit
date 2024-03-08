@@ -1304,7 +1304,7 @@ class Buffer extends Object with CloseableWriter:
           MIN-BUFFER-GROWTH_
       new-minimum-size
 
-    assert: offset_ + size  <= new-size
+    assert: offset_ + amount  <= new-size
 
     new := ByteArray new-size
     new.replace 0 buffer_ 0 offset_
