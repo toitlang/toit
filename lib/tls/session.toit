@@ -13,8 +13,6 @@ import io
 import monitor
 import net.x509 as x509
 import tls
-import reader
-import writer
 
 import .certificate
 import .socket
@@ -121,9 +119,8 @@ class Session:
   root-certificates/List
   handshake-timeout/Duration
 
-  reader_/reader.BufferedReader? := ?
-  unbuffered-reader_ := ?
-  writer_ ::= ?
+  reader_/io.CloseableReader? := ?
+  writer_/io.CloseableWriter? := ?
   server-name_/string? ::= null
 
   handshake-in-progress_/monitor.Latch? := null
@@ -172,13 +169,12 @@ class Session:
     given, but rejected by the server, an error will be thrown, and the
     operation must be retried without stored session data.
   */
-  constructor.client .unbuffered-reader_ .writer_
+  constructor.client .reader_ .writer_
       --server-name/string?=null
       --.certificate=null
       --.root-certificates=[]
       --.session-state=null
       --.handshake-timeout/Duration=DEFAULT-HANDSHAKE-TIMEOUT:
-    reader_ = reader.BufferedReader unbuffered-reader_
     server-name_ = server-name
 
   /**
@@ -191,11 +187,10 @@ class Session:
   The handshake routine requires at most $handshake-timeout between each step
     in the handshake process.
   */
-  constructor.server .unbuffered-reader_ .writer_
+  constructor.server .reader_ .writer_
       --.certificate=null
       --.root-certificates=[]
       --.handshake-timeout/Duration=DEFAULT-HANDSHAKE-TIMEOUT:
-    reader_ = reader.BufferedReader unbuffered-reader_
     is-server = true
 
   /**
@@ -430,11 +425,11 @@ class Session:
       remove-finalizer this  // Added when tls-group_ is set.
     if reader_:
       reader_.clear
+      reader_.close
       reader_ = null
+    if writer_:
       writer_.close
-    if unbuffered-reader_:
-      unbuffered-reader_.close
-      unbuffered-reader_ = null
+      writer_ = null
     outgoing-buffer_ = #[]
     symmetric-session_ = null
 
@@ -477,7 +472,7 @@ class Session:
             pending-bytes = outgoing-buffer_.copy (from + bytes-before-next-record-header_) (outgoing-buffer_.size)
             // Remove the partial record from the data we are about to send.
             fullness -= pending-bytes.size
-        sent := writer_.write outgoing-buffer_ from fullness
+        sent := writer_.try-write outgoing-buffer_ from fullness
         from += sent
         bytes-before-next-record-header_ -= sent
       else:
@@ -538,7 +533,7 @@ class Session:
   // handshaking message.  May return a synthetic record, (defragmented
   // from several records on the wire).
   extract-first-message_ -> ByteArray:
-    if (reader_.byte 0) == APPLICATION-DATA_:
+    if (reader_.peek-byte 0) == APPLICATION-DATA_:
       // We rarely (never?) find a record with the application data type
       // because normally we have switched to encrypted mode before this
       // happens.  In any case we lose the ability to see the message
@@ -562,7 +557,7 @@ class Session:
         // it may be helpful.
         reader_.unget header.bytes
         text-end := 0
-        while text-end < 100 and text-end < reader_.buffered and is-ascii_ (reader_.byte text-end):
+        while text-end < 100 and text-end < reader_.buffered-size and is-ascii_ (reader_.peek-byte text-end):
           text-end++
         server-reply := ""
         if text-end > 2:
@@ -576,11 +571,11 @@ class Session:
         // Unencrypted, so we use the message header to determine size, which
         // enables us to reassemble messages fragmented across multiple
         // records, something MbedTLS can't do alone.
-        reader_.ensure 4  // 4 byte handshake message header.
+        reader_.ensure-buffered 4  // 4 byte handshake message header.
         // Big endian 24 bit handshake message size.
-        remaining-message-bytes = (reader_.byte 1) << 16
-        remaining-message-bytes += (reader_.byte 2) << 8
-        remaining-message-bytes += (reader_.byte 3)
+        remaining-message-bytes = (reader_.peek-byte 1) << 16
+        remaining-message-bytes += (reader_.peek-byte 2) << 8
+        remaining-message-bytes += (reader_.peek-byte 3)
         remaining-message-bytes += 4  // Encoded size does not include the 4 byte handshake header.
 
     // The protocol requires that records are less than 16k large, so if there is
@@ -609,7 +604,7 @@ class Session:
       // The message ended in the middle of a record.  We have to unget a
       // synthetic record header to the stream to take care of the rest of
       // the record.
-      reader_.ensure 1
+      reader_.ensure-buffered 1
       unget-synthetic-header := RecordHeader_ header.bytes.copy
       unget-synthetic-header.length = remaining-in-record
       reader_.unget unget-synthetic-header.bytes
@@ -697,8 +692,7 @@ class ToitHandshake_:
     handshake-hasher /checksum.Checksum := cipher-suite_.hmac-hasher.call
     hello := client-hello-packet_
     handshake-hasher.add hello[5..]
-    sent := session_.writer_.write hello
-    assert: sent == hello.size
+    session_.writer_.write hello
     server-hello-packet := session_.extract-first-message_
     handshake-hasher.add server-hello-packet[5..]
     server-hello := ServerHello_ server-hello-packet
@@ -739,8 +733,7 @@ class ToitHandshake_:
     partition := partition-byte-array_ key-data [key-size, key-size, iv-size, iv-size]
     write-key := KeyData_ --key=partition[0] --iv=partition[2] --algorithm=cipher-suite_.algorithm
     read-key := KeyData_ --key=partition[1] --iv=partition[3] --algorithm=cipher-suite_.algorithm
-    sent = session_.writer_.write CHANGE-CIPHER-SPEC-TEMPLATE_
-    assert: sent == CHANGE-CIPHER-SPEC-TEMPLATE_.size
+    session_.writer_.write CHANGE-CIPHER-SPEC-TEMPLATE_
     if next-server-packet.size != 6 or next-server-packet[0] != CHANGE-CIPHER-SPEC_ or next-server-packet[5] != 1:
       throw "Peer did not accept change cipher spec"
     server-handshake-hash := handshake-hasher.clone.get
@@ -922,8 +915,8 @@ class ServerHello_:
 class SymmetricSession_:
   write-keys /KeyData_
   read-keys /KeyData_
-  writer_ ::= ?
-  reader_ /reader.BufferedReader
+  writer_ /io.Writer
+  reader_ /io.Reader
   parent_ /Session
 
   buffered-plaintext-index_ := 0
@@ -975,9 +968,7 @@ class SymmetricSession_:
         else:
           yield  // Don't monopolize the CPU with long crypto operations.
         encrypted := byte-array-join_ parts
-        written := 0
-        while written < encrypted.size:
-          written += writer_.write encrypted written
+        writer_.write encrypted
     return to - from
 
   read --expected-type/int=APPLICATION-DATA_ -> ByteArray?:
@@ -995,7 +986,7 @@ class SymmetricSession_:
         result := buffered-plaintext_[buffered-plaintext-index_]
         buffered-plaintext_[buffered-plaintext-index_++] = null  // Allow GC.
         return result
-      if not reader_.can-ensure 1:
+      if not reader_.try-ensure-buffered 1:
         return null
       bytes := reader_.read-bytes RECORD-HEADER-SIZE_
       if not bytes: return null
