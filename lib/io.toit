@@ -57,6 +57,7 @@ abstract mixin Writer:
   is-closed_/bool := false
   endian_/EndianWriter? := null
   byte-cache_/ByteArray? := null
+  consumed_/int := 0
 
   constructor:
 
@@ -68,6 +69,12 @@ abstract mixin Writer:
   */
   constructor.adapt writer:
     return WriterAdapter_ writer
+
+  /**
+  The amount of bytes that this writer has consumed so far.
+  */
+  consumed -> int:
+    return consumed_
 
   /**
   Writes the given $data to this writer.
@@ -136,7 +143,9 @@ abstract mixin Writer:
   */
   try-write data/Data from/int=0 to/int=data.byte-size -> int:
     if is-closed_: throw "WRITER_CLOSED"
-    return try-write_ data from to
+    written := try-write_ data from to
+    consumed_ += written
+    return written
 
   /**
   Provides endian-aware functions to write to this instance.
@@ -263,7 +272,9 @@ abstract mixin Reader implements old-reader.Reader:
   first-array-position_ := 0
 
   // The number of bytes in byte arrays that have been used up.
-  base-consumed_ := 0
+  // Does not yet include the bytes in the first byte array. That is,
+  //   the total number that was given to the user is produced_ + first-array-position_.
+  produced_ := 0
 
   /** A cached endian-aware reader. */
   endian_/EndianReader? := null
@@ -283,14 +294,14 @@ abstract mixin Reader implements old-reader.Reader:
   */
   constructor.adapt r/old-reader.Reader:
     return ReaderAdapter_ r
+
   /**
   Clears any buffered data.
 
-  Any cleared data is not considered consumed.
+  Any cleared data is not considered $produced.
   */
   clear -> none:
     buffered_ = null
-    base-consumed_ += first-array-position_
     first-array-position_ = 0
 
   /**
@@ -326,10 +337,6 @@ abstract mixin Reader implements old-reader.Reader:
   add-byte-array_ data/ByteArray -> none:
     if not buffered_: buffered_ = ByteArrayList_
     buffered_.add data
-    if buffered_.size == 1:
-      assert: first-array-position_ == 0
-      base-consumed_ += first-array-position_
-      first-array-position_ = 0
 
   /**
   Ensures that at least $n bytes are buffered.
@@ -381,10 +388,10 @@ abstract mixin Reader implements old-reader.Reader:
     return buffered_.size-in-bytes - first-array-position_
 
   /**
-  The number of bytes that have been consumed from the BufferedReader.
+  The number of bytes that have been produced by this reader.
   */
-  consumed -> int:
-    return base-consumed_ + first-array-position_
+  produced -> int:
+    return produced_ + first-array-position_
 
   /**
   Skips over the next $n bytes.
@@ -407,7 +414,7 @@ abstract mixin Reader implements old-reader.Reader:
         return
 
       n -= size
-      base-consumed_ += buffered_.first.size
+      produced_ += buffered_.first.size
       first-array-position_ = 0
       buffered_.remove-first
 
@@ -532,7 +539,7 @@ abstract mixin Reader implements old-reader.Reader:
       array := buffered_.first
       if first-array-position_ == 0 and (max-size == null or array.size <= max-size):
         buffered_.remove-first
-        base-consumed_ += array.size
+        produced_ += array.size
         return array
       byte-count := array.size - first-array-position_
       if max-size:
@@ -540,7 +547,7 @@ abstract mixin Reader implements old-reader.Reader:
       end := first-array-position_ + byte-count
       result := array[first-array-position_..end]
       if end == array.size:
-        base-consumed_ += array.size
+        produced_ += array.size
         first-array-position_ = 0
         buffered_.remove-first
       else:
@@ -550,7 +557,7 @@ abstract mixin Reader implements old-reader.Reader:
     array := consume_
     if array == null: return null
     if max-size == null or array.size <= max-size:
-      base-consumed_ += array.size
+      produced_ += array.size
       return array
     add-byte-array_ array
     first-array-position_ = max-size
@@ -643,7 +650,7 @@ abstract mixin Reader implements old-reader.Reader:
     if not max-size: max-size = buffered-size
     if first-array-position_ == 0 and array.size <= max-size and array[array.size - 1] <= 0x7f:
       buffered_.remove-first
-      base-consumed_ += array.size
+      produced_ += array.size
       return array.to-string
 
     size := min buffered-size max-size
@@ -825,11 +832,11 @@ abstract mixin Reader implements old-reader.Reader:
     if first-array-position_ != 0:
       first := buffered_.first
       buffered_.remove-first
-      base-consumed_ += first-array-position_
+      produced_ += first-array-position_
       first = first[first-array-position_..]
       buffered_.prepend first
       first-array-position_ = 0
-    base-consumed_ -= value.size
+    produced_ -= value.size
     if not buffered_: buffered_ = ByteArrayList_
     buffered_.prepend value
 
