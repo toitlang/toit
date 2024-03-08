@@ -25,7 +25,7 @@ UART features asynchronous communication with an external device on two data
 The UART Port exposes the hardware features for communicating with an external
   peripheral using asynchronous communication.
 */
-class Port implements reader.Reader:
+class Port extends Object with io.InMixin implements reader.Reader:
   static STOP-BITS-1   ::= StopBits.private_ 1
   static STOP-BITS-1-5 ::= StopBits.private_ 2
   static STOP-BITS-2   ::= StopBits.private_ 3
@@ -43,6 +43,8 @@ class Port implements reader.Reader:
 
   uart_ := ?
   state_/ResourceState_
+
+  out_/UartWriter? := null
 
   /** Number of encountered errors. */
   errors := 0
@@ -125,13 +127,17 @@ class Port implements reader.Reader:
     return HostPort device --baud-rate=baud-rate --data-bits=data-bits --stop-bits=stop-bits --parity=parity
 
   constructor.host-port_ device/string
-       --baud-rate/int
-       --data-bits/int=8
-       --stop-bits/StopBits=STOP-BITS-1
-       --parity/int=PARITY-DISABLED:
-     group := resource-group_
-     uart_ = uart-create-path_ group device baud-rate data-bits stop-bits.value_ parity
-     state_ = ResourceState_ group uart_
+      --baud-rate/int
+      --data-bits/int=8
+      --stop-bits/StopBits=STOP-BITS-1
+      --parity/int=PARITY-DISABLED:
+    group := resource-group_
+    uart_ = uart-create-path_ group device baud-rate data-bits stop-bits.value_ parity
+    state_ = ResourceState_ group uart_
+
+  out -> UartWriter:
+    if not out_: out_ = UartWriter.private_ this
+    return out_
 
   /**
   Sets the baud rate to the given $new-rate.
@@ -158,6 +164,8 @@ class Port implements reader.Reader:
   */
   close:
     if not uart_: return
+    close-reader_
+    if out_: out_.close-writer_
     critical-do:
       state_.dispose
       uart-close_ resource-group_ uart_
@@ -185,13 +193,15 @@ class Port implements reader.Reader:
     buffered.
 
   Returns the number of bytes written.
+
+  Deprecated. Use $out instead.
   */
   write data/io.Data from/int=0 to/int=data.byte-size --break-length=0 --wait=false -> int:
     size := to - from
     while from < to:
-      from += write-no-wait_ data from to --break-length=break-length
+      from += try-write_ data from to --break-length=break-length
 
-    if wait: flush
+    if wait: flush_
 
     return size
 
@@ -201,8 +211,13 @@ class Port implements reader.Reader:
   This method blocks until data is available.
 
   Returns null if closed.
+
+  Deprecated. Use $in instead.
   */
   read -> ByteArray?:
+    return consume_
+
+  consume_ -> ByteArray?:
     while true:
       state-bits := state_.wait-for-state READ-STATE_ | ERROR-STATE_
       if not uart_: return null
@@ -218,15 +233,20 @@ class Port implements reader.Reader:
   Flushes the output buffer, waiting until all written data has been transmitted.
 
   Often, one can just use the `--wait` flag of the $write function instead.
+
+  Deprecated. Use $out instead.
   */
   flush -> none:
+    flush_
+
+  flush_ -> none:
     while true:
       if not uart_: throw "CLOSED"
       flushed := uart-wait-tx_ uart_
       if flushed: return
       yield
 
-  write-no-wait_ data/io.Data from/int=0 to/int=data.byte-size --break-length=0:
+  try-write_ data/io.Data from/int=0 to/int=data.byte-size --break-length=0:
     while true:
       s := state_.wait-for-state WRITE-STATE_ | ERROR-STATE_
       if not uart_: throw "CLOSED"
@@ -294,6 +314,64 @@ class HostPort extends Port:
   */
   set-control-flags flags/int:
     uart-set-control-flags_ uart_ flags
+
+class UartWriter extends Object with io.Writer:
+  port_/Port
+
+  constructor.private_ .port_:
+
+  /**
+  Writes data to the $Port.
+
+  If $break-length is greater than 0, an additional break signal is added after
+    the data is written. The duration of the break signal is bit-duration * $break-length,
+    where bit-duration is the duration it takes to write one bit at the current baud rate.
+
+  If not all bytes could be written without blocking, this will be indicated by
+    the return value.  In this case the break is not written even if requested.
+    The easiest way to handle this by using the $writer.Writer class.  Alternatively,
+    something like the following could be used.
+
+  ```
+  for position := 0; position < data.byte-size; null:
+    position += my_uart.write (data.byte-slice position data.byte-size)
+  ```
+
+  If $flush is true, the method blocks until all bytes that were written have been emitted to the
+    physical pins. This is equivalent to calling $flush. Otherwise, returns as soon as the data is
+    buffered.
+
+  Returns the number of bytes written.
+  */
+  write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false -> none:
+    while not is-closed_:
+      from += try-write data from to --break-length=break-length --flush=flush
+      if from >= to: return
+      yield
+    assert: is-closed_
+    throw "WRITER_CLOSED"
+
+  /**
+  Tries to write the given $data to this writer.
+  If the writer can't write all the data at once, it writes as much as possible.
+  If the writer is closed while writing, throws, or returns the number of bytes written.
+  Otherwise always returns the number of bytes written.
+
+  If $break-length is greater than 0, an additional break signal is added after
+    the data is written. The duration of the break signal is bit-duration * $break-length,
+    where bit-duration is the duration it takes to write one bit at the current baud rate.
+  */
+  try-write data/io.Data from/int=0 to/int=data.byte-size --break-length/int=0 --flush/bool=false:
+    if is-closed_: throw "WRITER_CLOSED"
+    result := port_.try-write_ data from to --break-length=break-length
+    if flush and (result > 0 or data.byte-size == 0): this.flush
+    return result
+
+  try-write_ data/io.Data from/int to/int --break-length/int=0:
+    return port_.try-write_ data from to --break-length=break-length
+
+  flush_ -> none:
+    port_.flush_
 
 resource-group_ ::= uart-init_
 

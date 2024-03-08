@@ -94,7 +94,12 @@ abstract mixin Writer:
       cache = ByteArray 1
       byte-cache_ = cache
     cache[0] = value
+    // Protect against concurrent writes.
+    // It's probably a mistake to write concurrently, but it's pretty easy to guard
+    // the cache against it.
+    byte-cache_ = null
     write cache --flush=flush
+    byte-cache_ = cache
 
   /**
   Writes all data that is provided by the given $reader.
@@ -120,7 +125,8 @@ abstract mixin Writer:
   /**
   Tries to write the given $data to this writer.
   If the writer can't write all the data at once, it writes as much as possible.
-  Always returns the number of bytes written.
+  If the writer is closed while writing, throws, or returns the number of bytes written.
+  Otherwise always returns the number of bytes written.
 
   # Inheritance
   Implementations are not required to check whether the writer is closed.
@@ -193,6 +199,16 @@ abstract mixin Writer:
   */
   // This is a protected method. It should not be "private".
   abstract try-write_ data/Data from/int to/int -> int
+
+  /**
+  Closes this writer.
+
+  Sets the internal boolean to 'closed'.
+  Further writes throw an exception.
+  */
+  // This is a protected method. It should not be "private".
+  close-writer_:
+    is-closed_ = true
 
 abstract mixin CloseableWriter extends Writer:
   /**
@@ -874,6 +890,16 @@ abstract mixin Reader implements old-reader.Reader:
   */
   abstract content-size -> int?
 
+  /**
+  Closes this reader.
+
+  Sets the internal boolean to 'closed'.
+  Further reads return null.
+  */
+  // This is a protected method. It should not be "private".
+  close-reader_:
+    is-closed_ = true
+
 abstract mixin CloseableReader extends Reader:
   /**
   Closes this reader.
@@ -888,13 +914,16 @@ abstract mixin CloseableReader extends Reader:
     if clear-buffered: clear
     if is-closed_: return
     close_
-    is-closed_ = true
+    close-reader_
 
   /**
   Closes this reader.
 
   After this method has been called, the reader's $consume_ method must return null.
   This method may be called multiple times.
+
+  # Inheritance
+  If a read is already in process, it should be aborted and return null.
   */
   // This is a protected method. It should not be "private".
   abstract close_ -> none
@@ -947,6 +976,21 @@ abstract mixin OutMixin:
       result = Out_ this
       out_ = result
     return result
+
+  /**
+  Closes the writer if it exists.
+
+  The $out $Writer doesn't have a 'close' method. However, we can set
+    the internal boolean to closed, so that further writes throw an exception, or
+    that existing writes are aborted.
+
+  Any existing write needs to be aborted by the caller of this method.
+    The $try-write_ should either throw or return the number of bytes that have been
+    written so far. See $CloseableWriter.close_.
+  */
+  // This is a protected method. It should not be "private".
+  close-writer_ -> none:
+    if out_: out_.close-writer_
 
   /**
   Writes the given $data to this writer.
@@ -1024,6 +1068,19 @@ abstract mixin InMixin:
       result = In_ this
       in_ = result
     return in_
+
+  /**
+  Closes the writer if it exists.
+
+  The $in $Reader doesn't have a 'close' method. However, we can set
+    the internal boolean to closed, so that further reads return null.
+
+  Any existing read needs to be aborted by the caller of this method. The 'consume'
+    method should return null.
+  */
+  // This is a protected method. It should not be "private".
+  close-reader_ -> none:
+    if in_: in_.close-reader_
 
   /**
   Reads the next bytes.
