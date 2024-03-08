@@ -104,6 +104,7 @@ TYPE_PRIMITIVE_NULL(random_seed)
 TYPE_PRIMITIVE_NULL(add_entropy)
 TYPE_PRIMITIVE_SMI(count_leading_zeros)
 TYPE_PRIMITIVE_SMI(popcount)
+TYPE_PRIMITIVE_SMI(int_vector_equals)
 
 TYPE_PRIMITIVE_NULL(put_uint_big_endian)
 TYPE_PRIMITIVE_NULL(put_uint_little_endian)
@@ -256,7 +257,13 @@ TYPE_PRIMITIVE_ANY(main_arguments)
 TYPE_PRIMITIVE_SMI(spawn_method)
 TYPE_PRIMITIVE_ANY(spawn_arguments)
 
-TYPE_PRIMITIVE(command) {
+TYPE_PRIMITIVE(program_name) {
+  result.add_string(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE(program_path) {
   result.add_string(program);
   result.add_null(program);
   failure.add_string(program);

@@ -158,6 +158,7 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
     Locker locker(ObjectMemory::spare_chunk_mutex());
     Chunk* spare_chunk = ObjectMemory::spare_chunk(locker);
 
+#ifdef TOIT_FREERTOS
     // Try to move new-spaces down in memory.
     Chunk* new_spare_chunk = ObjectMemory::allocate_chunk(null, TOIT_PAGE_SIZE);
     if (new_spare_chunk) {
@@ -168,6 +169,7 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
         ObjectMemory::free_chunk(new_spare_chunk);
       }
     }
+#endif
 
     ScavengeVisitor visitor(program_, this, spare_chunk);
     SemiSpace* to = visitor.to_space();

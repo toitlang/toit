@@ -60,13 +60,14 @@ type connection struct {
 type callbackFunc func(ctx context.Context, conn *jsonrpc2.Conn)
 
 type ConnContext struct {
-	SupportsConfiguration bool
-	LastCrashReport       time.Time
-	RootURI               lsp.DocumentURI
-	Verbose               bool
-	Settings              *WorkspaceSettings
-	Documents             *Documents
-	ReadySignal           chan struct{}
+	SupportsConfiguration          bool
+	SupportsCompletionDefaultRange bool
+	LastCrashReport                time.Time
+	RootURI                        lsp.DocumentURI
+	Verbose                        bool
+	Settings                       *WorkspaceSettings
+	Documents                      *Documents
+	ReadySignal                    chan struct{}
 
 	NextAnalysisRevision int
 }

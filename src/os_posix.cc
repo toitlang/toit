@@ -32,6 +32,10 @@
 
 namespace toit {
 
+char* OS::get_executable_path_from_arg(const char* source_arg) {
+  return realpath(source_arg, null);
+}
+
 int64 OS::get_system_time() {
   int64 us;
   if (!monotonic_gettime(&us)) {

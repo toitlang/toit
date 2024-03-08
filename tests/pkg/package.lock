@@ -1,0 +1,38 @@
+sdk: ^2.0.0-alpha.128
+prefixes:
+  certificate_roots: toit-cert-roots
+  cli: pkg-cli
+  fs: pkg-fs
+  host: pkg-host
+  http: pkg-http
+packages:
+  pkg-cli:
+    url: github.com/toitlang/pkg-cli
+    name: cli
+    version: 1.5.1
+    hash: 6fdcf3bb51237f772be37e32a64ad1d283923c3e
+    prefixes:
+      fs: pkg-fs
+      host: pkg-host
+  pkg-fs:
+    url: github.com/toitlang/pkg-fs
+    name: fs
+    version: 2.2.0
+    hash: 863280c5c62ac259d16d0d3b24df21209b461b14
+    prefixes:
+      host: pkg-host
+  pkg-host:
+    url: github.com/toitlang/pkg-host
+    name: host
+    version: 1.13.0
+    hash: 64ee9e7bf1fd0e748e778a61269cd653fd748af8
+  pkg-http:
+    url: github.com/toitlang/pkg-http
+    name: http
+    version: 2.3.4
+    hash: 39fe52083b4c745cc37420649a48277b45728fd2
+  toit-cert-roots:
+    url: github.com/toitware/toit-cert-roots
+    name: certificate_roots
+    version: 1.6.1
+    hash: 55d3be82ed53d8d332338b2de931865cf69fe48b

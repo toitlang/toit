@@ -194,13 +194,12 @@ PRIMITIVE(init) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto resource_group = _new UartResourceGroup(process, WindowsEventSource::instance());
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   if (!WindowsEventSource::instance()->use()) {
     resource_group->tear_down();
     WINDOWS_ERROR;
   }
-
-  if (!resource_group) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(resource_group);
   return proxy;

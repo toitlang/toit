@@ -253,7 +253,7 @@ func extractSummaries(ctx context.Context, options extractSummariesOptions) (map
 		wg.Add(1)
 		go func(uris []doclsp.DocumentURI) {
 			defer wg.Done()
-			if err := server.ToitDidOpenMany(ctx, conn, lsp.DidOpenManyParams{
+			if err := server.ToitAnalyzeMany(ctx, conn, lsp.AnalyzeManyParams{
 				URIs: uris,
 			}); err != nil && subErr == nil {
 				subErr = err
@@ -266,7 +266,22 @@ func extractSummaries(ctx context.Context, options extractSummariesOptions) (map
 		return nil, subErr
 	}
 
-	return server.GetContext(conn).Documents.Summaries(), nil
+	mergedSummaries := map[doclsp.DocumentURI]*toit.Module{}
+	documents := server.GetContext(conn).Documents
+	allProjectURIs := documents.AllProjectURIs()
+	for _, projectUri := range allProjectURIs {
+		analyzedDocuments := server.GetContext(conn).Documents.AnalyzedDocumentsFor(projectUri)
+		for uri, summary := range analyzedDocuments.Summaries() {
+			docProjectUri, err := documents.ProjectURIFor(uri, false)
+			if err != nil {
+				return nil, err
+			}
+			if docProjectUri == projectUri {
+				mergedSummaries[uri] = summary
+			}
+		}
+	}
+	return mergedSummaries, nil
 }
 
 func pathToURI(path string) doclsp.DocumentURI {

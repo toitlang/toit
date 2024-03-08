@@ -46,12 +46,15 @@
 #include <sys/time.h>
 
 #ifdef TOIT_FREERTOS
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#endif
+
+#ifdef TOIT_ESP32
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #elif defined(TOIT_POSIX)
 #include <sys/resource.h>
 #endif
@@ -580,9 +583,14 @@ PRIMITIVE(read_int_little_endian) {
   return Primitive::integer(value, process);
 }
 
-PRIMITIVE(command) {
+PRIMITIVE(program_name) {
   if (Flags::program_name == null) return process->null_object();
   return process->allocate_string_or_error(Flags::program_name);
+}
+
+PRIMITIVE(program_path) {
+  if (Flags::program_path == null) return process->null_object();
+  return process->allocate_string_or_error(Flags::program_path);
 }
 
 PRIMITIVE(smi_add) {
@@ -1122,6 +1130,28 @@ PRIMITIVE(count_leading_zeros) {
 PRIMITIVE(popcount) {
   ARGS(int64, v);
   return Smi::from(Utils::popcount(v));
+}
+
+// Treats two ints as vectors of 8 bytes and compares them
+// bytewise for equality.  Returns an 8 bit packed result with
+// 1 for equality and 0 for inequality.
+PRIMITIVE(int_vector_equals) {
+  ARGS(int64, x, int64, y);
+#if defined(__x86_64__) || defined(_M_X64)
+  __m128i x128 = _mm_set_epi64x(0, x);
+  __m128i y128 = _mm_set_epi64x(0, y);
+  __m128i mask = _mm_cmpeq_epi8(x128, y128);
+  int t = _mm_movemask_epi8(mask);
+  return Smi::from(t & 0xff);
+#else
+  uint64 combined = x ^ y;
+  int result = 0xff;
+  for (int i = 0; combined != 0; i++) {
+    if ((combined & 0xff) != 0) result &= ~(1 << i);
+    combined >>= 8;
+  }
+  return Smi::from(result);
+#endif
 }
 
 PRIMITIVE(string_length) {
@@ -2075,7 +2105,7 @@ PRIMITIVE(encode_object) {
   return result;
 }
 
-#ifdef IOT_DEVICE
+#ifdef TOIT_FREERTOS
 #define STACK_ENCODING_BUFFER_SIZE (2*1024)
 #else
 #define STACK_ENCODING_BUFFER_SIZE (16*1024)
@@ -2273,7 +2303,7 @@ class ByteArrayHeapFragmentationDumper : public HeapFragmentationDumper {
   uword position_;
 };
 
-#if defined(TOIT_LINUX) || defined (TOIT_FREERTOS)
+#if defined(TOIT_LINUX) || defined (TOIT_ESP32)
 // Moved into its own function because the FragmentationDumper is a large
 // object that will increase the stack size if it is inlined.
 static __attribute__((noinline)) uword get_heap_dump_size(const char* description) {
@@ -2314,7 +2344,7 @@ PRIMITIVE(dump_heap) {
   }
 #endif
 
-#if defined(TOIT_LINUX) || defined (TOIT_FREERTOS)
+#if defined(TOIT_LINUX) || defined (TOIT_ESP32)
   const char* description = "Heap usage report";
 
   uword size = get_heap_dump_size(description);
@@ -2394,14 +2424,14 @@ PRIMITIVE(word_size) {
   return Smi::from(WORD_SIZE);
 }
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 static spi_flash_mmap_handle_t firmware_mmap_handle;
 static bool firmware_is_mapped = false;
 #endif
 
 PRIMITIVE(firmware_map) {
   ARGS(Object, bytes);
-#ifndef TOIT_FREERTOS
+#ifndef TOIT_ESP32
   return bytes;
 #else
   if (bytes != process->null_object()) {
@@ -2454,7 +2484,7 @@ PRIMITIVE(firmware_map) {
 }
 
 PRIMITIVE(firmware_unmap) {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
   ARGS(ByteArray, proxy);
   if (!firmware_is_mapped) process->null_object();
   spi_flash_munmap(firmware_mmap_handle);
@@ -2506,7 +2536,7 @@ PRIMITIVE(firmware_mapping_copy) {
   return Smi::from(index + bytes);
 }
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 PRIMITIVE(rtc_user_bytes) {
   uint8* rtc_memory = RtcMemory::user_data_address();
   ByteArray* result = process->object_heap()->allocate_external_byte_array(

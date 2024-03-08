@@ -21,9 +21,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -118,7 +116,7 @@ func (c *Compiler) ctx(ctx context.Context) (context.Context, context.CancelFunc
 	return context.WithCancel(ctx)
 }
 
-func (c *Compiler) Analyze(ctx context.Context, uris ...lsp.DocumentURI) (*AnalyzeResult, error) {
+func (c *Compiler) Analyze(ctx context.Context, projectURI lsp.DocumentURI, uris ...lsp.DocumentURI) (*AnalyzeResult, error) {
 	ctx, cancel := c.ctx(ctx)
 	defer cancel()
 
@@ -132,9 +130,11 @@ func (c *Compiler) Analyze(ctx context.Context, uris ...lsp.DocumentURI) (*Analy
 		result *AnalyzeResult
 	}
 
-	err := c.run(ctx, fmt.Sprintf("ANALYZE\n%d\n%s\n", len(paths), strings.Join(paths, "\n")), func(ctx context.Context, stdout io.Reader) {
-		res.result, res.err = c.parser.AnalyzeOutput(stdout)
-	})
+	err := c.run(ctx,
+		projectURI,
+		fmt.Sprintf("ANALYZE\n%d\n%s\n", len(paths), strings.Join(paths, "\n")), func(ctx context.Context, stdout io.Reader) {
+			res.result, res.err = c.parser.AnalyzeOutput(stdout)
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +142,7 @@ func (c *Compiler) Analyze(ctx context.Context, uris ...lsp.DocumentURI) (*Analy
 	return res.result, res.err
 }
 
-func (c *Compiler) GotoDefinition(ctx context.Context, docURI lsp.DocumentURI, position lsp.Position) ([]lsp.Location, error) {
+func (c *Compiler) GotoDefinition(ctx context.Context, projectURI lsp.DocumentURI, docURI lsp.DocumentURI, position lsp.Position) ([]lsp.Location, error) {
 	ctx, cancel := c.ctx(ctx)
 	defer cancel()
 
@@ -153,9 +153,11 @@ func (c *Compiler) GotoDefinition(ctx context.Context, docURI lsp.DocumentURI, p
 		result []lsp.Location
 	}
 
-	err := c.run(ctx, fmt.Sprintf("GOTO DEFINITION\n%s\n%d\n%d\n", path, position.Line, position.Character), func(ctx context.Context, stdout io.Reader) {
-		res.result, res.err = c.parser.GotoDefinitionOutput(stdout)
-	})
+	err := c.run(ctx,
+		projectURI,
+		fmt.Sprintf("GOTO DEFINITION\n%s\n%d\n%d\n", path, position.Line, position.Character), func(ctx context.Context, stdout io.Reader) {
+			res.result, res.err = c.parser.GotoDefinitionOutput(stdout)
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +165,7 @@ func (c *Compiler) GotoDefinition(ctx context.Context, docURI lsp.DocumentURI, p
 	return res.result, res.err
 }
 
-func (c *Compiler) Complete(ctx context.Context, docURI lsp.DocumentURI, position lsp.Position) ([]lsp.CompletionItem, error) {
+func (c *Compiler) Complete(ctx context.Context, projectURI lsp.DocumentURI, docURI lsp.DocumentURI, position lsp.Position) (string, *lsp.Range, []lsp.CompletionItem, error) {
 	ctx, cancel := c.ctx(ctx)
 	defer cancel()
 
@@ -171,20 +173,22 @@ func (c *Compiler) Complete(ctx context.Context, docURI lsp.DocumentURI, positio
 
 	var res struct {
 		err    error
+		prefix string
+		range_ *lsp.Range
 		result []lsp.CompletionItem
 	}
 
-	err := c.run(ctx, fmt.Sprintf("COMPLETE\n%s\n%d\n%d\n", path, position.Line, position.Character), func(ctx context.Context, stdout io.Reader) {
-		res.result, res.err = c.parser.CompleteOutput(stdout)
+	err := c.run(ctx, projectURI, fmt.Sprintf("COMPLETE\n%s\n%d\n%d\n", path, position.Line, position.Character), func(ctx context.Context, stdout io.Reader) {
+		res.prefix, res.range_, res.result, res.err = c.parser.CompleteOutput(stdout)
 	})
 	if err != nil {
-		return nil, err
+		return "", nil, nil, err
 	}
 
-	return res.result, res.err
+	return res.prefix, res.range_, res.result, res.err
 }
 
-func (c *Compiler) SemanticTokens(ctx context.Context, docURI lsp.DocumentURI) (*lsp.SemanticTokens, error) {
+func (c *Compiler) SemanticTokens(ctx context.Context, projectURI lsp.DocumentURI, docURI lsp.DocumentURI) (*lsp.SemanticTokens, error) {
 	ctx, cancel := c.ctx(ctx)
 	defer cancel()
 
@@ -195,7 +199,7 @@ func (c *Compiler) SemanticTokens(ctx context.Context, docURI lsp.DocumentURI) (
 		result []uint
 	}
 
-	err := c.run(ctx, fmt.Sprintf("SEMANTIC TOKENS\n%s\n", path), func(ctx context.Context, stdout io.Reader) {
+	err := c.run(ctx, projectURI, fmt.Sprintf("SEMANTIC TOKENS\n%s\n", path), func(ctx context.Context, stdout io.Reader) {
 		res.result, res.err = c.parser.SemanticTokensOutput(stdout)
 	})
 	if err != nil {
@@ -211,7 +215,7 @@ func (c *Compiler) SemanticTokens(ctx context.Context, docURI lsp.DocumentURI) (
 	}, nil
 }
 
-func (c *Compiler) Parse(ctx context.Context, uris ...lsp.DocumentURI) error {
+func (c *Compiler) Parse(ctx context.Context, projectURI lsp.DocumentURI, uris ...lsp.DocumentURI) error {
 	ctx, cancel := c.ctx(ctx)
 	defer cancel()
 
@@ -221,9 +225,11 @@ func (c *Compiler) Parse(ctx context.Context, uris ...lsp.DocumentURI) error {
 	}
 
 	var resErr error
-	err := c.run(ctx, fmt.Sprintf("PARSE\n%d\n%s\n", len(paths), strings.Join(paths, "\n")), func(ctx context.Context, stdout io.Reader) {
-		_, resErr = ioutil.ReadAll(stdout)
-	})
+	err := c.run(ctx,
+		projectURI,
+		fmt.Sprintf("PARSE\n%d\n%s\n", len(paths), strings.Join(paths, "\n")), func(ctx context.Context, stdout io.Reader) {
+			_, resErr = ioutil.ReadAll(stdout)
+		})
 	if err != nil {
 		return err
 	}
@@ -231,7 +237,7 @@ func (c *Compiler) Parse(ctx context.Context, uris ...lsp.DocumentURI) error {
 	return resErr
 }
 
-func (c *Compiler) SnapshotBundle(ctx context.Context, docUri lsp.DocumentURI) ([]byte, error) {
+func (c *Compiler) SnapshotBundle(ctx context.Context, projectURI lsp.DocumentURI, docUri lsp.DocumentURI) ([]byte, error) {
 	ctx, cancel := c.ctx(ctx)
 	defer cancel()
 
@@ -241,9 +247,11 @@ func (c *Compiler) SnapshotBundle(ctx context.Context, docUri lsp.DocumentURI) (
 		res []byte
 		err error
 	}
-	err := c.run(ctx, fmt.Sprintf("SNAPSHOT BUNDLE\n%s\n", path), func(ctx context.Context, stdout io.Reader) {
-		res.res, res.err = c.parser.SnapshotBundleOutput(stdout)
-	})
+	err := c.run(ctx,
+		projectURI,
+		fmt.Sprintf("SNAPSHOT BUNDLE\n%s\n", path), func(ctx context.Context, stdout io.Reader) {
+			res.res, res.err = c.parser.SnapshotBundleOutput(stdout)
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -302,14 +310,14 @@ func (w *logWriter) Write(b []byte) (n int, err error) {
 
 type parserFn func(context.Context, io.Reader)
 
-func (c *Compiler) run(ctx context.Context, input string, parserFunc parserFn) error {
+func (c *Compiler) run(ctx context.Context, projectURI lsp.DocumentURI, input string, parserFunc parserFn) error {
 	multi := newMultiplexConn(c.logger)
 	fileServer := NewPipeFileServer(c.fs, c.logger, c.settings.SDKPath)
 	c.fs_protocol = fileServer.Protocol()
 	go fileServer.Run(multi.CompilerToFS.r, multi.FSToCompiler.w)
 	defer fileServer.Stop()
 
-	cmd := c.cmd(ctx, input, fileServer)
+	cmd := c.cmd(ctx, projectURI, input, fileServer)
 	input = fmt.Sprintf("%s\n%s", fileServer.ConfigLine(), input)
 
 	c.logger.Debug("running compiler", zap.String("input", input), zap.Stringer("cmd", cmd))
@@ -369,15 +377,9 @@ func (c *Compiler) run(ctx context.Context, input string, parserFunc parserFn) e
 	return nil
 }
 
-func (c *Compiler) cmd(ctx context.Context, input string, fileServer FileServer) *exec.Cmd {
+func (c *Compiler) cmd(ctx context.Context, projectURI lsp.DocumentURI, input string, fileServer FileServer) *exec.Cmd {
 	args := []string{"--lsp"}
-	if c.settings.RootURI != "" {
-		project_root := uri.URIToPath(c.settings.RootURI)
-		lock_file := filepath.Join(project_root, "package.lock")
-		if stat, err := os.Stat(lock_file); err == nil && !stat.IsDir() {
-			args = append(args, "--project-root", uri.URIToCompilerPath(c.settings.RootURI))
-		}
-	}
+	args = append(args, "--project-root", uri.URIToCompilerPath(projectURI))
 	cmd := exec.CommandContext(ctx, c.settings.CompilerPath, args...)
 	for !fileServer.IsReady() {
 		runtime.Gosched()

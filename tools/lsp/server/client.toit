@@ -237,7 +237,7 @@ class LspClient:
     // Currently we only support one waiter on idle.
     assert: idle-semaphore_ == null
     idle-semaphore_ = monitor.Semaphore
-    connection_.send "toit/report_idle" null
+    connection_.send "toit/reportIdle" null
     idle-semaphore_.down
 
   handle-idle_ msg -> none:
@@ -289,12 +289,12 @@ class LspClient:
     }
     if always-wait-for-idle: wait-for-idle
 
-  send-did-open-many --paths/List -> none:
+  send-analyze-many --paths/List -> none:
     uris := paths.map: to-uri it
-    send-did-open-many --uris=uris
+    send-analyze-many --uris=uris
 
-  send-did-open-many --uris/List -> none:
-    connection_.send "toit/didOpenMany" { "uris": uris }
+  send-analyze-many --uris/List -> none:
+    connection_.send "toit/analyzeMany" { "uris": uris }
     if always-wait-for-idle: wait-for-idle
 
   send-did-close --path -> none:
@@ -397,7 +397,7 @@ class LspClient:
     return result
 
   send-reset-crash-rate-limit -> none:
-    connection_.send "toit/reset_crash_rate_limit" null
+    connection_.send "toit/resetCrashRateLimit" null
 
   send-request method/string arg/any -> any:
     return connection_.request method arg

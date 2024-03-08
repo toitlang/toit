@@ -306,7 +306,7 @@ abstract class ByteOrder:
     8 bytes at index $offset.
   */
   float32 buffer/ByteArray offset/int -> float:
-    bits := int32 buffer offset
+    bits := uint32 buffer offset
     return float.from-bits32 bits
 
   /**
@@ -318,7 +318,7 @@ abstract class ByteOrder:
   */
   put-float32 buffer/ByteArray offset/int f32/float -> none:
     bits := f32.bits32
-    put-int32 buffer offset bits
+    put-uint32 buffer offset bits
 
   /**
   Reads $size-in-bytes from the $buffer at the $offset as a signed integer.

@@ -336,11 +336,11 @@ void Process::_ensure_random_seeded() {
   random_seeded_ = true;
 }
 
-uint64_t Process::random() {
+uint64 Process::random() {
   _ensure_random_seeded();
   // xorshift128+.
-  uint64_t s1 = random_state0_;
-  uint64_t s0 = random_state1_;
+  uint64 s1 = random_state0_;
+  uint64 s0 = random_state1_;
   random_state0_ = s0;
   s1 ^= s1 << 23;
   s1 ^= s1 >> 18;
@@ -397,7 +397,10 @@ void Process::set_current_directory(const wchar_t* current_directory) {
 
 String* Process::allocate_string(const wchar_t* content) {
   word utf_16_length = wcslen(content);
+  return allocate_string(content, utf_16_length);
+}
 
+String* Process::allocate_string(const wchar_t* content, word utf_16_length) {
   word length = Utils::utf_16_to_8(reinterpret_cast<const uint16*>(content), utf_16_length, null, 0);
 
   String* result = allocate_string(length);

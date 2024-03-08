@@ -15,6 +15,7 @@
 
 import ..rpc
 import .experimental
+import .completion show CompletionList // For Toitdoc.
 
 class WorkspaceEditCapabilities extends MapWrapper:
   constructor json-map/Map: super json-map
@@ -244,6 +245,19 @@ class CompletionItemKindCapabilities extends MapWrapper:
   value-set -> List?/*<int>*/:
     return lookup_ "valueSet"
 
+class CompletionListCapabilities extends MapWrapper:
+  constructor json-map/Map: super json-map
+
+  /**
+  The list of item-defaults the client supports in the
+    $CompletionList'.item-defaults' object.
+
+  In null, then no properties are supported.
+  */
+  item-defaults -> List?:
+    return lookup_ "itemDefaults"
+
+
 class CompletionCapabilities extends DynamicRegistrationCapability:
   constructor json-map/Map: super json-map
 
@@ -262,6 +276,9 @@ class CompletionCapabilities extends DynamicRegistrationCapability:
   */
   context-support -> bool?:
     return lookup_ "contextSupport"
+
+  completion-list -> CompletionListCapabilities?:
+    return lookup_ "completionList": CompletionListCapabilities it
 
 class HoverCapabilities extends DynamicRegistrationCapability:
   constructor json-map/Map: super json-map
