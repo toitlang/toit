@@ -51,7 +51,7 @@ A consumer of bytes.
 
 # Inheritance
 The method $try-write_ must be implemented by subclasses.
-The method $flush_ may be implemented by subclasses. The default implementation does nothing.
+The method $flush may be implemented by subclasses. The default implementation does nothing.
 */
 abstract mixin Writer:
   is-closed_/bool := false
@@ -122,9 +122,12 @@ abstract mixin Writer:
 
   Often, one can just use the `--flush` flag of the $write, $write-byte or $write-from
     functions instead.
+
+  # Inheritance
+  This method may be overwritten by subclasses. The default implementation does nothing.
   */
   flush -> none:
-    flush_
+    // Do nothing.
 
   /**
   Tries to write the given $data to this writer.
@@ -205,12 +208,6 @@ abstract mixin Writer:
   */
   // This is a protected method. It should not be "private".
   abstract try-write_ data/Data from/int to/int -> int
-
-  /**
-  Flushes any buffered data to the underlying resource.
-  */
-  flush_ -> none:
-    // Do nothing.
 
   /**
   Closes this writer.
@@ -1012,11 +1009,11 @@ abstract mixin OutMixin:
   Closes the writer if it exists.
 
   The $out $Writer doesn't have a 'close' method. However, we can set
-    the internal boolean to `closed`, so that further writes throw an exception, or
+    the internal boolean to closed, so that further writes throw an exception, or
     that existing writes are aborted.
 
   Any existing write needs to be aborted by the caller of this method.
-    The `try-write_` should either throw or return the number of bytes that have been
+    The $try-write_ should either throw or return the number of bytes that have been
     written so far. See $CloseableWriter.close_.
   */
   // This is a protected method. It should not be "private".
@@ -1104,10 +1101,10 @@ abstract mixin InMixin:
   Closes the writer if it exists.
 
   The $in $Reader doesn't have a 'close' method. However, we can set
-    the internal boolean to `closed`, so that further reads return 'null'.
+    the internal boolean to closed, so that further reads return null.
 
-  Any existing read needs to be aborted by the caller of this method. The `consume`
-    method should return 'null'.
+  Any existing read needs to be aborted by the caller of this method. The 'consume'
+    method should return null.
   */
   // This is a protected method. It should not be "private".
   close-reader_ -> none:
@@ -1270,6 +1267,8 @@ class Buffer extends Object with CloseableWriter:
   */
   grow-by amount/int -> none:
     ensure_ amount
+    // Be sure to clear the data.
+    buffer_.fill --from=offset_ --to=(offset_ + amount) 0
     offset_ += amount
 
   /**
