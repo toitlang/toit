@@ -1239,6 +1239,8 @@ class Buffer extends Object with CloseableWriter:
   */
   grow-by amount/int -> none:
     ensure_ amount
+    // Be sure to clear the data.
+    buffer_.fill --from=offset_ --to=(offset_ + amount) 0
     offset_ += amount
 
   /**
