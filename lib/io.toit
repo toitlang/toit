@@ -48,6 +48,10 @@ interface Data:
 
 /**
 A consumer of bytes.
+
+# Inheritance
+The method $try-write_ must be implemented by subclasses.
+The method $flush may be implemented by subclasses. The default implementation does nothing.
 */
 abstract mixin Writer:
   is-closed_/bool := false
@@ -71,10 +75,12 @@ abstract mixin Writer:
   If the writer can't write all the data at once tries again until all of the data is
     written. This method is blocking.
   */
-  write data/Data from/int=0 to/int=data.byte-size -> none:
+  write data/Data from/int=0 to/int=data.byte-size --flush/bool=false -> none:
     while not is-closed_:
       from += try-write data from to
-      if from >= to: return
+      if from >= to:
+        if flush: this.flush
+        return
       yield
     assert: is-closed_
     throw "WRITER_CLOSED"
@@ -82,21 +88,34 @@ abstract mixin Writer:
   /**
   Writes a single byte.
   */
-  write-byte value/int -> none:
+  write-byte value/int --flush/bool=false -> none:
     cache := byte-cache_
     if not cache:
       cache = ByteArray 1
       byte-cache_ = cache
     cache[0] = value
-    write cache
+    write cache --flush=flush
 
   /**
   Writes all data that is provided by the given $reader.
   */
-  write-from reader/Reader -> none:
+  write-from reader/Reader --flush/bool=false -> none:
     if is-closed_: throw "WRITER_CLOSED"
     while data := reader.read:
       write data
+    if flush: this.flush
+
+  /**
+  Flushes any buffered data to the underlying resource.
+
+  Often, one can just use the `--flush` flag of the $write, $write-byte or $write-from
+    functions instead.
+
+  # Inheritance
+  This method may be overwritten by subclasses. The default implementation does nothing.
+  */
+  flush -> none:
+    // Do nothing.
 
   /**
   Tries to write the given $data to this writer.
