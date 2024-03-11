@@ -329,7 +329,7 @@ class HostPort extends Port:
   set-control-flags flags/int:
     uart-set-control-flags_ uart_ flags
 
-class UartWriter extends Object with io.Writer:
+class UartWriter extends io.Writer:
   port_/Port
 
   constructor.private_ .port_:
