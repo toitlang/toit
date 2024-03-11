@@ -698,8 +698,8 @@ main args -> none:
     log-out-file := file.Stream "/tmp/lsp_out-$(time).log" file.CREAT | file.WRONLY 0x1ff
     //log_in_file  := file.Stream "/tmp/lsp.log" file.CREAT | file.WRONLY 0x1ff
     //log_out_file := log_in_file
-    reader = LoggingIO log-in-file in-pipe
-    writer = LoggingIO log-out-file out-pipe
+    reader = (LoggingIO log-in-file in-pipe).in
+    writer = (LoggingIO log-out-file out-pipe).out
   else:
     reader = io.Reader.adapt in-pipe
     writer = io.Writer.adapt out-pipe

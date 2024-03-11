@@ -79,7 +79,7 @@ class MultiplexConnection:
 /**
 A $io.CloseableReader that is fed data throw the $write_ method.
 */
-class SimplePipe extends Object with io.CloseableReader:
+class SimplePipe extends io.CloseableReader:
   is-closed_ := false
   buffered_chunks_ /Deque := Deque
   sem_ / Semaphore := Semaphore
