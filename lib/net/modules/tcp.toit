@@ -152,6 +152,7 @@ class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin
       if error == "Connection closed": throw "Connection refused"
       throw error
 
+  /** Deprecated. Use $(in).read. */
   read -> ByteArray?:
     return consume_
 
@@ -163,6 +164,7 @@ class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin
       // TODO(anders): We could consider always clearing this after all reads.
       state.clear-state TOIT-TCP-READ_
 
+  /** Deprecated. Use $(out).write. */
   write data/io.Data from/int=0 to/int=data.byte-size -> int:
     return try-write_ data from to
 
@@ -176,6 +178,7 @@ class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin
   close-reader_:
     // Do nothing.
 
+  /** Deprecated. Use $(out).close. */
   close-write -> none:
     close-writer_
 

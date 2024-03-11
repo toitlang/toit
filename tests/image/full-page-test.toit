@@ -4,10 +4,9 @@
 
 import host.directory
 import expect show *
-import io show Buffer
+import io show Buffer Writer
 import host.file
 import host.pipe
-import writer show Writer
 
 TOIT-PAGE-SIZE ::= 1 << 12
 
@@ -61,7 +60,7 @@ compile bigger-chunk-count small-string-size -> int:
   str :=  buffer.bytes.to-string
 
   stream := file.Stream.for-write toit-file
-  (Writer stream).write str
+  (Writer.adapt stream).write str
   stream.close
   pipe.backticks [toitrun, "-w", snap-file, toit-file]
   pipe.backticks [toitrun, snapshot-to-image, "--binary", "-o", img-file, snap-file]

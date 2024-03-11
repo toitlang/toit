@@ -20,7 +20,6 @@ import host.directory
 import host.pipe
 import io
 import .snapshot
-import writer show Writer
 
 to-json_ o/ToitObject program/Program -> any:
   // TODO(florian): deal with cyclic structures.
@@ -95,7 +94,7 @@ run-debug-snapshot snapshot-bytes json-message:
     ar-writer.add "D-snapshot" debug-snapshot.content
     ar-writer.add "D-source-map" debug-source-map.content
     stream := file.Stream.for-write debug-toit
-    (Writer stream).write out-bytes.bytes
+    (io.Writer.adapt stream).write out-bytes.bytes
     stream.close
 
     // TODO(florian): we should use `spawn` or something similar to
@@ -115,7 +114,7 @@ run-debug-snapshot snapshot-bytes json-message:
     from := pipes[1]
     pid  := pipes[3]
 
-    (Writer to).write (ubjson.encode json-message)
+    (io.Writer.adapt to).write (ubjson.encode json-message)
     to.close
 
     sub-reader := io.Reader.adapt from

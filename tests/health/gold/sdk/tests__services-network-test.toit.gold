@@ -1,3 +1,0 @@
-tests/services-network-test.toit:69:26: warning: Deprecated 'Socket.read'
-    while data := socket.read:
-                         ^~~~
