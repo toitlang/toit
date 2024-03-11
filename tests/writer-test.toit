@@ -11,9 +11,9 @@ class WriterThatOnlyWritesOneByte:
   bytes := []
   reset:
     bytes = []
-  write data/io.Data:
-    if data.byte-size == 0: return 0
-    bytes.add (data.byte-at 0)
+  write data/io.Data from/int=0 to/int=data.byte-size -> int:
+    if from == to: return 0
+    bytes.add (data.byte-at from)
     return 1
 
 main:
