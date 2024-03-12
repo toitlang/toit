@@ -53,7 +53,7 @@ A consumer of bytes.
 The method $try-write_ must be implemented by subclasses.
 The method $flush may be implemented by subclasses. The default implementation does nothing.
 */
-abstract mixin Writer:
+abstract class Writer:
   is-closed_/bool := false
   endian_/EndianWriter? := null
   byte-cache_/ByteArray? := null
@@ -233,7 +233,7 @@ abstract mixin Writer:
   wait-for-more-room_ -> none:
     yield
 
-abstract mixin CloseableWriter extends Writer:
+abstract class CloseableWriter extends Writer:
   /**
   Closes this writer.
 
@@ -266,7 +266,7 @@ A source of bytes.
 # Inheritance
 Implementations must implement $consume_ and may override $content-size.
 */
-abstract mixin Reader implements old-reader.Reader:
+abstract class Reader implements old-reader.Reader:
   static UNEXPECTED-END-OF-READER ::= "UNEXPECTED_END_OF_READER"
 
   is-closed_/bool := false
@@ -931,7 +931,7 @@ abstract mixin Reader implements old-reader.Reader:
   close-reader_:
     is-closed_ = true
 
-abstract mixin CloseableReader extends Reader:
+abstract class CloseableReader extends Reader:
   /**
   Closes this reader.
 
@@ -968,7 +968,7 @@ A producer of bytes from an existing $ByteArray.
 
 See $(Reader.constructor data).
 */
-class ByteArrayReader_ extends Object with Reader:
+class ByteArrayReader_ extends Reader:
   data_ / ByteArray? := ?
   content-size / int := ?
 
@@ -983,7 +983,7 @@ class ByteArrayReader_ extends Object with Reader:
   close_ -> none:
     data_ = null
 
-class Out_ extends Object with Writer:
+class Out_ extends Writer:
   mixin_/OutMixin
 
   constructor .mixin_:
@@ -991,7 +991,7 @@ class Out_ extends Object with Writer:
   try-write_ data/Data from/int to/int -> int:
     return mixin_.try-write_ data from to
 
-class CloseableOut_ extends Object with CloseableWriter:
+class CloseableOut_ extends CloseableWriter:
   mixin_/CloseableOutMixin
 
   constructor .mixin_:
@@ -1067,7 +1067,7 @@ abstract mixin CloseableOutMixin:
 
 // TODO(florian): make it possible to set the content-size of the reader when
 // using a mixin.
-class In_ extends Object with Reader:
+class In_ extends Reader:
   mixin_/InMixin
 
   constructor .mixin_:
@@ -1077,7 +1077,7 @@ class In_ extends Object with Reader:
 
 // TODO(florian): make it possible to set the content-size of the reader when
 // using a mixin.
-class CloseableIn_ extends Object with CloseableReader:
+class CloseableIn_ extends CloseableReader:
   mixin_/CloseableInMixin
 
   constructor .mixin_:
@@ -1152,7 +1152,7 @@ A buffer that can be used to build byte data.
 - `BytesBuilder`: Dart
 - `ByteArrayOutputStream`: Java
 */
-class Buffer extends Object with CloseableWriter:
+class Buffer extends CloseableWriter:
   static INITIAL-BUFFER-SIZE_ ::= 64
   static MIN-BUFFER-GROWTH_ ::= 64
 
@@ -1767,7 +1767,7 @@ class EndianBuffer extends EndianWriter:
 /**
 Adapter to use an old-style writer as $Writer.
 */
-class WriterAdapter_ extends Object with Writer:
+class WriterAdapter_ extends Writer:
   w_/any
 
   constructor .w_:
@@ -1778,7 +1778,7 @@ class WriterAdapter_ extends Object with Writer:
 /**
 Adapter to use an $old-reader.Reader as $Reader.
 */
-class ReaderAdapter_ extends Object with Reader:
+class ReaderAdapter_ extends Reader:
   r_/any
 
   constructor .r_:

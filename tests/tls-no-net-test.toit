@@ -42,7 +42,7 @@ main:
     c.write b
     i += b.size
 
-class Writer extends Object with io.CloseableWriter:
+class Writer extends io.CloseableWriter:
   socket_/Socket
 
   constructor .socket_:
@@ -53,7 +53,7 @@ class Writer extends Object with io.CloseableWriter:
   close_:
     // Do nothing for the test.
 
-class Reader extends Object with io.CloseableReader:
+class Reader extends io.CloseableReader:
   socket_/Socket
 
   constructor .socket_:

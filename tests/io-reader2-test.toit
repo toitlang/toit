@@ -5,7 +5,7 @@
 import expect show *
 import io
 
-class TestReader extends Object with io.Reader:
+class TestReader extends io.Reader:
   index_ := 0
   strings_ := ?
 

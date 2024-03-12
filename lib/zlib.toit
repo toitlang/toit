@@ -17,7 +17,7 @@ MINIMAL-GZIP-HEADER_ ::= #[0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]
 An extension of the $io.Writer interface that improves the
   $io.Writer.wait-for-more-room_ method.
 */
-class CompressionWriter_ extends Object with io.CloseableWriter:
+class CompressionWriter_ extends io.CloseableWriter:
   coder_/Coder_
 
   constructor.private_ .coder_:
@@ -37,7 +37,7 @@ An $io.CloseableReader that supports '--no-wait' for the $read method.
 In that case the result might be an empty byte-array, indicating that more
   data needs to be fed into the encoder.
 */
-class CompressionReader extends Object with io.CloseableReader:
+class CompressionReader extends io.CloseableReader:
   coder_/Coder_
 
   constructor.private_ .coder_:

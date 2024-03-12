@@ -134,11 +134,11 @@ class LspClient:
     else:
       server-from := FakePipe
       server-to   := FakePipe
-      server-rpc-connection := RpcConnection (io.Reader.adapt server-to) server-from
+      server-rpc-connection := RpcConnection server-to.in server-from.out
       server := LspServer server-rpc-connection compiler-exe UriPathTranslator
       task::
         server.run
-      return [server-to, server-from, server, null]
+      return [server-to.out, server-from.in, server, null]
 
 
   static start -> LspClient

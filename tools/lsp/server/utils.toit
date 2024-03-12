@@ -42,7 +42,7 @@ class FakePipeLink:
   constructor .data:
 
 // TODO(florian): replace this with a "Buffer" class from io, once that one exists.
-class FakePipe extends Object with io.CloseableWriter io.Reader:
+class FakePipe extends Object with io.CloseableOutMixin io.InMixin:
   first := null
   last := null
   is-closed := false
@@ -76,14 +76,14 @@ class FakePipe extends Object with io.CloseableWriter io.Reader:
       if first == null: last = null
       return result
 
-  close_:
+  close-writer_:
     is-closed = true
     channel.send null
 
 /**
 A Reader/Writer that logs all read/written data.
 */
-class LoggingIO extends Object with io.Reader io.CloseableWriter:
+class LoggingIO extends Object with io.InMixin io.CloseableOutMixin:
   /// The wrapped reader/writer.
   wrapped_ ::= ?
 
@@ -106,7 +106,7 @@ class LoggingIO extends Object with io.Reader io.CloseableWriter:
     log-writer_.write data from to
     return wrapped_.write data from to
 
-  close_:
+  close-writer_:
     if must-close-writer_: log-writer_.close
     wrapped_.close
 
