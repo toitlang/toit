@@ -17,7 +17,6 @@ import host.pipe
 import host.file
 import io
 import monitor
-import writer show Writer
 
 import .protocol.completion
 import .protocol.document
@@ -106,7 +105,7 @@ class Compiler:
 
     did-crash := false
     try:
-      writer := Writer cpp-to
+      writer := io.Writer.adapt cpp-to
       writer.write "$file-server-line\n"
       writer.write compiler-input
 

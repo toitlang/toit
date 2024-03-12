@@ -15,7 +15,6 @@ import system
 import system show platform
 import ar show *
 import tar show *
-import writer show Writer
 
 do-ctest exe-dir tmp-dir file-mapping --in-memory=false:
   tmp-path := "$tmp-dir/c_generated.a"
@@ -125,7 +124,7 @@ run-test file-mapping/Map tmp-dir [generate-ar]:
 
   test-path := "$tmp-dir/test.a"
   stream := file.Stream.for-write test-path
-  (Writer stream).write ba
+  (io.Writer.adapt stream).write ba
   stream.close
   file-mapping.do: |name expected-content|
     actual := extract test-path name

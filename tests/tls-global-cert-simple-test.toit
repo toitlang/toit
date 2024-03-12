@@ -3,7 +3,6 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import writer
 import tls
 import net
 import net.x509
@@ -108,11 +107,12 @@ connect-to-site host port expected-certificate-name:
       --server-name=expected-certificate-name or host
 
     try:
-      writer := writer.Writer socket
+      writer := socket.out
       writer.write """GET / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
       print "$host: $((socket as any).session_.mode == tls.SESSION-MODE-TOIT ? "Toit mode" : "MbedTLS mode")"
 
-      while data := socket.read:
+      reader := socket.in
+      while data := reader.read:
         bytes += data.size
 
     finally:

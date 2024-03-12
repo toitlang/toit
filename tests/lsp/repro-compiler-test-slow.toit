@@ -11,7 +11,6 @@ import monitor
 import host.pipe
 import io
 import tar show Tar
-import writer show Writer
 
 import .lsp-client show LspClient run-client-test
 import .utils
@@ -133,7 +132,7 @@ test-repro-server archive-path toitc toitlsp compiler-input:
       break
 
   try:
-    writer := Writer cpp-to
+    writer := io.Writer.adapt cpp-to
     writer.write "$port\n"
     writer.write compiler-input
   finally:
@@ -166,7 +165,7 @@ archive-test
   tar-string := client.send-request "toit/archive" {"uri": untitled-uri}
   content := base64.decode tar-string
   writer := file.Stream.for-write archive-path
-  (Writer writer).write content
+  (io.Writer.adapt writer).write content
   writer.close
 
   compiler-input := create-compiler-input --path=untitled-path
@@ -176,7 +175,7 @@ archive-test
   tar-string = client.send-request "toit/archive" {"uri": untitled-uri}
   content = base64.decode tar-string
   writer = file.Stream.for-write archive-path
-  (Writer writer).write content
+  (io.Writer.adapt writer).write content
   writer.close
 
   lines := run-toit toitc [archive-path, "world"]
@@ -196,7 +195,7 @@ archive-test
   tar-string = client.send-request "toit/archive" {"uris": [untitled-uri, untitled-uri2]}
   content = base64.decode tar-string
   writer = file.Stream.for-write archive-path
-  (Writer writer).write content
+  (io.Writer.adapt writer).write content
   writer.close
 
   lines = run-toit toitc [archive-path,
@@ -238,7 +237,7 @@ archive-test
   }
   content = base64.decode tar-string
   writer = file.Stream.for-write archive-path
-  (Writer writer).write content
+  (io.Writer.adapt writer).write content
   writer.close
 
   lines = run-toit toitc [archive-path,

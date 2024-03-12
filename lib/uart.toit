@@ -6,7 +6,7 @@ import gpio
 import io
 import monitor show ResourceState_
 import reader
-import writer
+import writer  // For toitdocs.
 
 class StopBits:
   value_ /int

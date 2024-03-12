@@ -29,7 +29,6 @@ import encoding.ubjson
 import io
 import system
 import uuid
-import writer show Writer
 
 import host.file
 import cli
@@ -178,12 +177,12 @@ main args:
     images.add { "flags": [machine], "bytes": buffer.bytes }
 
   out := file.Stream.for-write output-path
-  writer := Writer out
+  writer := io.Writer.adapt out
   if format == "binary":
     writer.write output["images"].first["bytes"]
   else:
     writer.write (ubjson.encode output)
-  writer.close
+  out.close
 
 sdk-version-uuid --sdk-version/string -> uuid.Uuid:
   return sdk-version.is-empty

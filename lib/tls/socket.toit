@@ -107,12 +107,14 @@ class Socket extends Object with io.CloseableInMixin io.CloseableOutMixin implem
   session-resumed -> bool:
     return session_.resumed
 
+  /** Deprecated. Use $(in).read. */
   read -> ByteArray?:
     return consume_
 
   consume_ -> ByteArray?:
     return session_.read
 
+  /** Deprecated. Use $(out).write. */
   write data/io.Data from/int=0 to/int=data.byte-size -> int:
     return try-write_ data from to
 
@@ -123,6 +125,7 @@ class Socket extends Object with io.CloseableInMixin io.CloseableOutMixin implem
     session_.close
     socket_.close
 
+  /** Deprecated. Use $(out).close. */
   close-write -> none:
     close-writer_
 
