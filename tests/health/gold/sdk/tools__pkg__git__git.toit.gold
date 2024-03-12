@@ -79,3 +79,6 @@ class DetachedSocket_ implements tcp.Socket:
 <pkg:toit-cert-roots>/certificate_roots.toit:11172:3: warning: Deprecated 'STAAT-DER-NEDERLANDEN-EV-ROOT-CA'
   STAAT_DER_NEDERLANDEN_EV_ROOT_CA.install
   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+<pkg:pkg-http>/connection.toit:35:21: warning: Class 'BufferedReader' is deprecated
+    reader_ = reader.BufferedReader socket_
+                    ^

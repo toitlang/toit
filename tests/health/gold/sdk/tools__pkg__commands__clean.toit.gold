@@ -61,6 +61,9 @@ class DetachedSocket_ implements tcp.Socket:
 <pkg:pkg-host>/pipe.toit:230:30: warning: Class 'Buffer' is deprecated
   accumulator := bytes.Buffer.with_initial_size (path.size + 4 + (path.size >> 2))
                              ^
+<pkg:pkg-host>/pipe.toit:360:19: warning: Class 'BufferedReader' is deprecated
+  reader := reader.BufferedReader pipe_ends
+                  ^
 <pkg:toit-cert-roots>/certificate_roots.toit:11093:3: warning: Deprecated 'CYBERTRUST-GLOBAL-ROOT'
   CYBERTRUST_GLOBAL_ROOT.install
   ^~~~~~~~~~~~~~~~~~~~~~
@@ -82,3 +85,6 @@ class DetachedSocket_ implements tcp.Socket:
 <pkg:toit-cert-roots>/certificate_roots.toit:11172:3: warning: Deprecated 'STAAT-DER-NEDERLANDEN-EV-ROOT-CA'
   STAAT_DER_NEDERLANDEN_EV_ROOT_CA.install
   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+<pkg:pkg-http>/connection.toit:35:21: warning: Class 'BufferedReader' is deprecated
+    reader_ = reader.BufferedReader socket_
+                    ^

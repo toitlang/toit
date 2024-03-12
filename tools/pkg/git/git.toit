@@ -17,7 +17,6 @@ import certificate_roots
 import http
 import io
 import net
-import reader
 
 import .pack
 import ..file-system-view
@@ -166,15 +165,15 @@ class GitProtocol_:
   static DELIMITER-PACKET ::= 1
   static RESPONSE-END-PACKET ::= 2
   parse-response_ response/http.Response -> List:
-    buffer := reader.BufferedReader response.body
+    buffer := io.Reader.adapt response.body
     lines := []
     while true:
-      if not buffer.can-ensure 4: return lines
+      if not buffer.try-ensure-buffered 4: return lines
       length := int.parse --radix=16 (buffer.read-bytes 4)
       if length < 4:
         lines.add length
         continue
-      if not buffer.can-ensure length:
+      if not buffer.try-ensure-buffered length:
         throw "Premature end of input"
       lines.add (buffer.read-bytes length - 4)
 

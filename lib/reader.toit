@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io  // For toitdocs.
+
 UNEXPECTED-END-OF-READER-EXCEPTION ::= "UNEXPECTED_END_OF_READER"
 
 /** A byte reader. */
@@ -14,7 +16,11 @@ interface Reader:
   */
   read -> ByteArray?
 
-/** A byte reader that can be closed. */
+/**
+A byte reader that can be closed.
+
+Deprecated. Use $io.CloseableReader instead.
+*/
 interface CloseableReader implements Reader:
   /**
   See $Reader.read.
@@ -25,7 +31,11 @@ interface CloseableReader implements Reader:
   /** Closes the reader. */
   close -> none
 
-/** A readable source that knows its size. */
+/**
+A readable source that knows its size.
+
+Deprecated. Use $io.Reader instead.
+*/
 interface SizedReader implements Reader:
   /** See $Reader.read. */
   read -> ByteArray?
@@ -35,7 +45,11 @@ interface SizedReader implements Reader:
   */
   size -> int
 
-/** A reader wrapper that buffers the content offered by a reader. */
+/**
+A reader wrapper that buffers the content offered by a reader.
+
+Deprecated. Use $io.Reader instead.
+*/
 class BufferedReader implements Reader:
   reader_/Reader := ?
 

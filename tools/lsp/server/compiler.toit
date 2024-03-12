@@ -17,7 +17,6 @@ import host.pipe
 import host.file
 import io
 import monitor
-import reader show BufferedReader
 import writer show Writer
 
 import .protocol.completion
@@ -111,7 +110,7 @@ class Compiler:
       writer.write "$file-server-line\n"
       writer.write compiler-input
 
-      reader := BufferedReader to-parser
+      reader := io.Reader.adapt to-parser
       read-callback.call reader
     finally:
       file-server.close
@@ -148,7 +147,7 @@ class Compiler:
       verbose: "Calling compiler analysis with $paths"
       compiler-input := "ANALYZE\n$(paths.size)\n$(paths.join "\n")\n"
       completed-successfully := run --project-uri=project-uri --compiler-input=compiler-input:
-        |reader /BufferedReader|
+        |reader /io.Reader|
 
         summary := null
 
@@ -253,7 +252,7 @@ class Compiler:
     // Just send whatever completions we get.
     run --project-uri=project-uri
         --compiler-input="COMPLETE\n$path\n$line-number\n$column-number\n":
-      |reader /BufferedReader|
+      |reader /io.Reader|
       prefix := reader.read-line
       if not prefix:
         block.call "" null []
@@ -277,7 +276,7 @@ class Compiler:
     // Just send the definitions we got.
     run --project-uri=project-uri
         --compiler-input="GOTO DEFINITION\n$path\n$line-number\n$column-number\n":
-      |reader /BufferedReader|
+      |reader /io.Reader|
       definitions := []
 
       while true:
@@ -296,7 +295,7 @@ class Compiler:
     return run
         --project-uri=project-uri
         --compiler-input="PARSE\n$paths.size\n$(paths.join "\n")\n":
-      |reader /BufferedReader|
+      |reader /io.Reader|
       while true:
         // Just drain the reader.
         data := reader.read
@@ -306,7 +305,7 @@ class Compiler:
     path := uri-path-translator_.to-path uri --to-compiler
     run --project-uri=project-uri
         --compiler-input="SNAPSHOT BUNDLE\n$path\n":
-      |reader /BufferedReader|
+      |reader /io.Reader|
       status := reader.read-line
       if status != "OK": return null
       bundle-size := int.parse reader.read-line
@@ -337,13 +336,13 @@ class Compiler:
     path := uri-path-translator_.to-path uri --to-compiler
     run --project-uri=project-uri
         --compiler-input="SEMANTIC TOKENS\n$path\n":
-      |reader /BufferedReader|
+      |reader /io.Reader|
       element-count := int.parse reader.read-line
       result := List element-count: int.parse reader.read-line
       return result
     unreachable
 
-  static read-range reader/BufferedReader -> Range:
+  static read-range reader/io.Reader -> Range:
     from-line-number := int.parse reader.read-line
     from-column-number := int.parse reader.read-line
     to-line-number := int.parse reader.read-line
@@ -352,7 +351,7 @@ class Compiler:
         Position from-line-number from-column-number
         Position to-line-number   to-column-number
 
-  read-dependencies reader/BufferedReader -> Map/*<string, Set<string>>*/:
+  read-dependencies reader/io.Reader -> Map/*<string, Set<string>>*/:
     entry-count := int.parse reader.read-line
     result := {:}
     entry-count.repeat:
@@ -365,5 +364,5 @@ class Compiler:
 
     return result
 
-  read-summary reader/BufferedReader -> Map/*<path, Module>*/:
+  read-summary reader/io.Reader -> Map/*<path, Module>*/:
     return (SummaryReader reader uri-path-translator_).read-summary

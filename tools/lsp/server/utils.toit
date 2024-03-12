@@ -14,9 +14,9 @@
 // directory of this repository.
 
 import host.file
-import monitor
-import reader show Reader
 import host.os
+import io
+import monitor
 
 PACKAGE-CACHE-PATH := ".cache/toit/tpkg/"
 
@@ -42,13 +42,13 @@ class FakePipeLink:
   constructor .data:
 
 // TODO(florian): replace this with a "Buffer" class from io, once that one exists.
-class FakePipe implements Reader:
+class FakePipe extends Object with io.CloseableWriter io.Reader:
   first := null
   last := null
   is-closed := false
   channel := monitor.Channel 1
 
-  write data from=0 to=data.size:
+  try-write_ data from=0 to=data.size -> int:
     copied := null
     if data is string:
       copied = data.to-byte-array
@@ -65,7 +65,7 @@ class FakePipe implements Reader:
     channel.send null
     return to - from
 
-  read -> ByteArray?:
+  consume_ -> ByteArray?:
     while true:
       if not first and is-closed: return null
       if not first:
@@ -76,14 +76,14 @@ class FakePipe implements Reader:
       if first == null: last = null
       return result
 
-  close-write:
+  close_:
     is-closed = true
     channel.send null
 
 /**
 A Reader/Writer that logs all read/written data.
 */
-class LoggingIO implements Reader:
+class LoggingIO extends Object with io.Reader io.CloseableWriter:
   /// The wrapped reader/writer.
   wrapped_ ::= ?
 
@@ -97,16 +97,16 @@ class LoggingIO implements Reader:
     must-close-writer_ = true
     log-writer_ = file.Stream path file.CREAT | file.WRONLY 0x1ff
 
-  read:
+  consume_:
     msg := wrapped_.read
     if msg != null: log-writer_.write msg
     return msg
 
-  write data from=0 to=data.size:
+  try-write_ data from=0 to=data.size -> int:
     log-writer_.write data from to
     return wrapped_.write data from to
 
-  close:
+  close_:
     if must-close-writer_: log-writer_.close
     wrapped_.close
 

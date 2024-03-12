@@ -1,9 +1,15 @@
+<pkg:pkg-ar>/ar.toit:158:15: warning: Class 'BufferedReader' is deprecated
+    reader_ = BufferedReader reader
+              ^~~~~~~~~~~~~~
 <pkg:pkg-host>/directory.toit:138:6: warning: Deprecated 'platform'
   if platform == PLATFORM_WINDOWS:
      ^~~~~~~~
 <pkg:pkg-host>/directory.toit:138:18: warning: Deprecated 'PLATFORM-WINDOWS'
   if platform == PLATFORM_WINDOWS:
                  ^~~~~~~~~~~~~~~~
+<pkg:pkg-host>/pipe.toit:296:19: warning: Class 'BufferedReader' is deprecated
+  reader := reader.BufferedReader pipe_ends
+                  ^
 <pkg:pkg-host>/pipe.toit:329:6: warning: Deprecated 'platform'
   if platform == PLATFORM_WINDOWS:
      ^~~~~~~~

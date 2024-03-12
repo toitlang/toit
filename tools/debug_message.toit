@@ -20,7 +20,6 @@ import host.directory
 import host.pipe
 import io
 import .snapshot
-import reader show BufferedReader
 import writer show Writer
 
 to-json_ o/ToitObject program/Program -> any:
@@ -119,9 +118,9 @@ run-debug-snapshot snapshot-bytes json-message:
     (Writer to).write (ubjson.encode json-message)
     to.close
 
-    sub-reader := BufferedReader from
+    sub-reader := io.Reader.adapt from
     sub-reader.buffer-all
-    bytes := sub-reader.read-bytes sub-reader.buffered
+    bytes := sub-reader.read-bytes sub-reader.buffered-size
     return bytes.to-string
   finally:
     if file.is-file debug-toit: file.delete debug-toit
