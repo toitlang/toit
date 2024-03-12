@@ -421,8 +421,46 @@ abstract class Reader implements old-reader.Reader:
 
       n -= size
       processed_ += buffered_.first.size
-      first-array-position_ = 0
       buffered_.remove-first
+      first-array-position_ = 0
+
+  /**
+  Skips all bytes up to and including the given $delimiter.
+
+  Returns the number of bytes skipped including the $delimiter.
+
+  If $to is given, then the search is limited to the given range.
+  If $throw-if-missing is true and the $delimiter is not in the remaining data, throws.
+  If $throw-if-missing is false and the $delimiter is not in the remaining data, skips
+    all remaining data.
+  */
+  skip-up-to delimiter/int --to/int?=null --throw-if-missing/bool=false -> int:
+    skipped := 0
+    while true:
+      if not buffered_ or buffered_.size == 0:
+        if not more_:
+          if throw-if-missing: throw UNEXPECTED-END-OF-READER
+          return skipped
+      buffered := buffered_
+      start := first-array-position_
+      while buffered.size > 0:
+        chunk := buffered.first
+        end := to ? min (start + to) chunk.size : chunk.size
+        index := chunk.index-of delimiter --from=start --to=end
+        if index >= 0:
+          skipped += index - start + 1
+          first-array-position_ = index + 1
+          if first-array-position_ == chunk.size:
+            processed_ += chunk.size
+            buffered.remove-first
+            first-array-position_ = 0
+          return skipped
+        if to: to -= chunk.size - start
+        skipped += chunk.size - start
+        processed_ += chunk.size
+        buffered.remove-first
+        first-array-position_ = 0
+        start = 0
 
   /**
   Gets the $n th byte from our current position.
@@ -506,8 +544,8 @@ abstract class Reader implements old-reader.Reader:
   */
   index-of byte/int --to/int?=null --throw-if-missing/bool=false -> int:
     offset := 0
-    start := first-array-position_
     if buffered_:
+      start := first-array-position_
       buffered_.do:
         end := to ? min (start + to) it.size : it.size
         index := it.index-of byte --from=start --to=end
@@ -545,8 +583,8 @@ abstract class Reader implements old-reader.Reader:
     if buffered_ and buffered_.size > 0:
       array := buffered_.first
       if first-array-position_ == 0 and (max-size == null or array.size <= max-size):
-        buffered_.remove-first
         processed_ += array.size
+        buffered_.remove-first
         return array
       byte-count := array.size - first-array-position_
       if max-size:
@@ -555,8 +593,8 @@ abstract class Reader implements old-reader.Reader:
       result := array[first-array-position_..end]
       if end == array.size:
         processed_ += array.size
-        first-array-position_ = 0
         buffered_.remove-first
+        first-array-position_ = 0
       else:
         first-array-position_ = end
       return result
@@ -657,8 +695,8 @@ abstract class Reader implements old-reader.Reader:
     // Remember to avoid chopping up UTF-8 characters while doing this.
     if not max-size: max-size = buffered-size
     if first-array-position_ == 0 and array.size <= max-size and array[array.size - 1] <= 0x7f:
-      buffered_.remove-first
       processed_ += array.size
+      buffered_.remove-first
       return array.to-string
 
     size := min buffered-size max-size
