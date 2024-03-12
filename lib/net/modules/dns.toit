@@ -497,7 +497,7 @@ decode-packet packet/ByteArray --error-name/string?=null -> DecodedPacket:
     flush := clas & 0x8000 != 0
     if clas & 0x7fff != CLASS-INTERNET: protocol-error_  // Unexpected response class.
 
-    consumed-before-record := reader.produced
+    read-before-record := reader.processed
     if type == RECORD-A or type == RECORD-AAAA:
       length := type == RECORD-A ? 4 : 16
       if rd-length != length: protocol-error_  // Unexpected IP address length.
@@ -523,9 +523,9 @@ decode-packet packet/ByteArray --error-name/string?=null -> DecodedPacket:
       value := reader.read-string length
       result.resources.add
           SrvResource r-name type ttl flush value priority weight port
-    consumed-after-record := reader.produced
+    read-after-record := reader.processed
     // Skip the rest of the record if it wasn't consumed.
-    reader.skip (rd-length - (consumed-after-record - consumed-before-record))
+    reader.skip (rd-length - (read-after-record - read-before-record))
 
   return result
 
