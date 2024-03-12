@@ -403,12 +403,14 @@ class RegionReader_ extends io.Reader:
   from_/int := ?
   to_/int
   max-size_/int
+  content-size/int := ?
 
   constructor --region/Region --from/int --to/int --max-size/int:
     region_ = region
     from_ = from
     to_ = to
     max-size_ = max-size
+    content-size = to - from
 
   consume_ -> ByteArray?:
     from := from_
@@ -423,9 +425,6 @@ class RegionReader_ extends io.Reader:
     region_.read --from=from result
     from_ = from + n
     return result
-
-    // TODO(florian): Implement this.
-// --------------------------------------------------------------------------
 
 flash-region-open_ group client handle offset size:
   #primitive.flash.region-open
