@@ -10,6 +10,24 @@
 <pkg:pkg-cli>/cli.toit:154:27: warning: Deprecated 'program-name'
   check --invoked_command=program_name:
                           ^~~~~~~~~~~~
+<pkg:pkg-ar>/ar.toit:47:15: warning: Class 'Writer' is deprecated
+    writer_ = Writer writer
+              ^~~~~~
 <pkg:pkg-ar>/ar.toit:158:15: warning: Class 'BufferedReader' is deprecated
     reader_ = BufferedReader reader
               ^~~~~~~~~~~~~~
+<pkg:pkg-ar>/ar.toit:162:27: warning: Class 'Reader' is deprecated
+    return ArReader (bytes.Reader buffer)
+                          ^
+<pkg:pkg-host>/file.toit:164:13: warning: Class 'Writer' is deprecated
+  writer := Writer stream
+            ^~~~~~
+<sdk>/bytes.toit:254:7: warning: Class 'BufferConsumer' is deprecated
+class BufferSizeCounter extends BufferConsumer:
+      ^~~~~~~~~~~~~~~~~
+<sdk>/bytes.toit:333:3: warning: Class 'BufferConsumer' is deprecated
+  constructor:
+  ^~~~~~~~~~~
+<sdk>/bytes.toit:343:3: warning: Class 'BufferConsumer' is deprecated
+  constructor.with-initial-size .init-size_/int:
+  ^~~~~~~~~~~
