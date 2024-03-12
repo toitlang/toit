@@ -57,7 +57,7 @@ abstract class Writer:
   is-closed_/bool := false
   endian_/EndianWriter? := null
   byte-cache_/ByteArray? := null
-  consumed_/int := 0
+  processed_/int := 0
 
   constructor:
 
@@ -71,10 +71,10 @@ abstract class Writer:
     return WriterAdapter_ writer
 
   /**
-  The amount of bytes that this writer has consumed so far.
+  The amount of bytes that have been written to this writer so far.
   */
-  consumed -> int:
-    return consumed_
+  processed -> int:
+    return processed_
 
   /**
   Writes the given $data to this writer.
@@ -147,7 +147,7 @@ abstract class Writer:
   try-write data/Data from/int=0 to/int=data.byte-size -> int:
     if is-closed_: throw "WRITER_CLOSED"
     written := try-write_ data from to
-    consumed_ += written
+    processed_ += written
     return written
 
   /**
@@ -279,8 +279,8 @@ abstract class Reader implements old-reader.Reader:
 
   // The number of bytes in byte arrays that have been used up.
   // Does not yet include the bytes in the first byte array. That is,
-  //   the total number that was given to the user is produced_ + first-array-position_.
-  produced_ := 0
+  //   the total number that was given to the user is processed_ + first-array-position_.
+  processed_/int := 0
 
   /** A cached endian-aware reader. */
   endian_/EndianReader? := null
@@ -304,7 +304,7 @@ abstract class Reader implements old-reader.Reader:
   /**
   Clears any buffered data.
 
-  Any cleared data is not considered $produced.
+  Any cleared data is not considered $processed.
   */
   clear -> none:
     buffered_ = null
@@ -394,10 +394,10 @@ abstract class Reader implements old-reader.Reader:
     return buffered_.size-in-bytes - first-array-position_
 
   /**
-  The number of bytes that have been produced by this reader.
+  The number of bytes that have been produced by this reader so far.
   */
-  produced -> int:
-    return produced_ + first-array-position_
+  processed -> int:
+    return processed_ + first-array-position_
 
   /**
   Skips over the next $n bytes.
@@ -420,7 +420,7 @@ abstract class Reader implements old-reader.Reader:
         return
 
       n -= size
-      produced_ += buffered_.first.size
+      processed_ += buffered_.first.size
       first-array-position_ = 0
       buffered_.remove-first
 
@@ -491,7 +491,7 @@ abstract class Reader implements old-reader.Reader:
   drain -> none:
     clear
     while chunk := consume_:
-      produced_ += chunk.size
+      processed_ += chunk.size
 
   /**
   Searches forwards for the $byte.
@@ -546,7 +546,7 @@ abstract class Reader implements old-reader.Reader:
       array := buffered_.first
       if first-array-position_ == 0 and (max-size == null or array.size <= max-size):
         buffered_.remove-first
-        produced_ += array.size
+        processed_ += array.size
         return array
       byte-count := array.size - first-array-position_
       if max-size:
@@ -554,7 +554,7 @@ abstract class Reader implements old-reader.Reader:
       end := first-array-position_ + byte-count
       result := array[first-array-position_..end]
       if end == array.size:
-        produced_ += array.size
+        processed_ += array.size
         first-array-position_ = 0
         buffered_.remove-first
       else:
@@ -564,7 +564,7 @@ abstract class Reader implements old-reader.Reader:
     array := consume_
     if array == null: return null
     if max-size == null or array.size <= max-size:
-      produced_ += array.size
+      processed_ += array.size
       return array
     add-byte-array_ array
     first-array-position_ = max-size
@@ -641,7 +641,7 @@ abstract class Reader implements old-reader.Reader:
       // Instead of adding the array to the arrays we may just be able more
       // efficiently pass it on in string from.
       if (max-size == null or array.size <= max-size) and array[array.size - 1] <= 0x7f:
-        produced_ += array.size
+        processed_ += array.size
         return array.to-string
       add-byte-array_ array
 
@@ -658,7 +658,7 @@ abstract class Reader implements old-reader.Reader:
     if not max-size: max-size = buffered-size
     if first-array-position_ == 0 and array.size <= max-size and array[array.size - 1] <= 0x7f:
       buffered_.remove-first
-      produced_ += array.size
+      processed_ += array.size
       return array.to-string
 
     size := min buffered-size max-size
@@ -840,11 +840,11 @@ abstract class Reader implements old-reader.Reader:
     if first-array-position_ != 0:
       first := buffered_.first
       buffered_.remove-first
-      produced_ += first-array-position_
+      processed_ += first-array-position_
       first = first[first-array-position_..]
       buffered_.prepend first
       first-array-position_ = 0
-    produced_ -= value.size
+    processed_ -= value.size
     if not buffered_: buffered_ = ByteArrayList_
     buffered_.prepend value
 
