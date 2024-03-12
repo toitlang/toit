@@ -280,7 +280,7 @@ abstract class Reader implements old-reader.Reader:
   // The number of bytes in byte arrays that have been used up.
   // Does not yet include the bytes in the first byte array. That is,
   //   the total number that was given to the user is processed_ + first-array-position_.
-  processed_ := 0
+  processed_/int := 0
 
   /** A cached endian-aware reader. */
   endian_/EndianReader? := null
