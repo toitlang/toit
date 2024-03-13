@@ -6,7 +6,11 @@ import io  // For toitdocs.
 
 UNEXPECTED-END-OF-READER-EXCEPTION ::= "UNEXPECTED_END_OF_READER"
 
-/** A byte reader. */
+/**
+A byte reader.
+
+Deprecated. Use io.Reader instead.
+*/
 interface Reader:
   /**
   Reads from the source.

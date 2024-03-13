@@ -10,6 +10,9 @@
 <pkg:pkg-cli>/cli.toit:154:27: warning: Deprecated 'program-name'
   check --invoked_command=program_name:
                           ^~~~~~~~~~~~
+<pkg:pkg-host>/file.toit:164:13: warning: Class 'Writer' is deprecated
+  writer := Writer stream
+            ^~~~~~
 <pkg:pkg-host>/pipe.toit:296:19: warning: Class 'BufferedReader' is deprecated
   reader := reader.BufferedReader pipe_ends
                   ^
@@ -19,3 +22,6 @@
 <pkg:pkg-host>/pipe.toit:329:18: warning: Deprecated 'PLATFORM-WINDOWS'
   if platform == PLATFORM_WINDOWS:
                  ^~~~~~~~~~~~~~~~
+<pkg:pkg-host>/pipe.toit:407:13: warning: Class 'Writer' is deprecated
+  writer := Writer pipe
+            ^~~~~~

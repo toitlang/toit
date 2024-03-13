@@ -12,6 +12,8 @@ A lightweight writer wrapper that enhances the the user experience of the
 The internal writer must have the following method: `write data -> int`
 It can optionally have `close` and `close_writer`, which are transparently
   forwarded from the `Writer` to the internal writer.
+
+Deprecated. Use $io.Writer instead.
 */
 class Writer:
   writer_ := ?

@@ -26,6 +26,8 @@ Wraps a byte array and makes it readable. Specifically, it
   supports the $read method.
 This class also implements the $reader.SizedReader interface
   and thus features the $size method.
+
+Deprecated. Use $io.Reader instead.
 */
 class Reader implements reader.SizedReader:
   data_/ByteArray? := ?
@@ -61,6 +63,8 @@ class Reader implements reader.SizedReader:
 Producer that can produce a fixed size payload of data, on demand.
 Can be used to generate data for serialization, when the amount of data is
   known ahead of time.
+
+Deprecated.
 */
 interface Producer:
   /** The size of the generated payload. */
@@ -73,6 +77,8 @@ A $Producer backed by a byte array.
 
 Instead of creating the payload on demand, this producer is initialized
   with a byte array payload which is then used in the $write-to call.
+
+Deprecated.
 */
 class ByteArrayProducer implements Producer:
   byte-array_/ByteArray ::= ?
@@ -98,6 +104,8 @@ A consumer of data.
 
 Due to the operations that take an offset (like $put-int16-big-endian),
   consumers must buffer their data to allow future modifications of it.
+
+Deprecated.
 */
 // TODO(4201): missing function `write_from`.
 abstract class BufferConsumer:
@@ -240,6 +248,8 @@ This class is used when writing happens in two phases:
 
 In this scenario data is processed twice, but the resulting
   buffer is allocated with the right size from the beginning.
+
+Deprecated.
 */
 class BufferSizeCounter extends BufferConsumer:
   /** See $BufferConsumer.size. */
