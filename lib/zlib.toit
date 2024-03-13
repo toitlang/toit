@@ -44,15 +44,15 @@ class CompressionReader extends io.CloseableReader:
 
   read --max-size/int?=null --wait/bool=true -> ByteArray?:
     // It's important that all non-empty byte arrays go through the
-    // normal consume method, as this affects the 'consumed' count.
+    // normal read method, as this affects the $io.Reader.processed count.
     if wait or buffered-size != 0 or not coder_.backend-needs-input_:
       return super --max-size=max-size
 
     if is-closed_: return null
     return #[]
 
-  consume_ -> ByteArray?:
-    return coder_.consume_
+  read_ -> ByteArray?:
+    return coder_.read_
 
   close_ -> none:
     coder_.close-reader_
@@ -334,10 +334,7 @@ abstract class Coder_:
     if not out_: out_ = CompressionWriter_.private_ this
     return out_
 
-  read_ --wait/bool -> ByteArray?:
-    return in.read --wait=wait
-
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     if buffered_:
       result := buffered_
       buffered_ = null

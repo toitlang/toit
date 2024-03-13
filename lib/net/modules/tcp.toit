@@ -154,9 +154,9 @@ class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin
 
   /** Deprecated. Use $(in).read. */
   read -> ByteArray?:
-    return consume_
+    return read_
 
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     while true:
       state := ensure-state_ TOIT-TCP-READ_ --failure=: throw it
       result := tcp-read_ state.group state.resource

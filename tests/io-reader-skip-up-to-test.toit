@@ -11,7 +11,7 @@ class TestReader extends io.Reader:
 
   constructor .strings_:
 
-  consume_:
+  read_:
     if index_ >= strings_.size: return null
     return strings_[index_++].to-byte-array
 

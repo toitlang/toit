@@ -368,7 +368,7 @@ class TestIoReader extends TestReader with io.InMixin:
   constructor list:
     super list
 
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     return read
 
 io-reader-for list -> io.Reader:

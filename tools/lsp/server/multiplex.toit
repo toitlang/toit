@@ -88,7 +88,7 @@ class SimplePipe extends io.CloseableReader:
   constructor --on-close/Lambda:
     close-callback_ = on-close
 
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     sem_.down
     result := ?
     if buffered_chunks_.is-empty:

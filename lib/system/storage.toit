@@ -412,7 +412,7 @@ class RegionReader_ extends io.Reader:
     max-size_ = max-size
     content-size = to - from
 
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     from := from_
     remaining := to_ - from
     if remaining == 0: return null

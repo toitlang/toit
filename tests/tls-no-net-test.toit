@@ -58,7 +58,7 @@ class Reader extends io.CloseableReader:
 
   constructor .socket_:
 
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     return socket_.read
 
   close_:
