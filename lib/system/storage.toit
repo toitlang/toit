@@ -403,7 +403,7 @@ class RegionReader_ extends io.Reader:
   from_/int := ?
   to_/int
   max-size_/int
-  content-size/int := ?
+  content-size/int
 
   constructor --region/Region --from/int --to/int --max-size/int:
     region_ = region
