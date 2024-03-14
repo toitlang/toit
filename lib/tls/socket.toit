@@ -127,10 +127,6 @@ class Socket implements tcp.Socket:
   peer-address -> net.SocketAddress:
     return socket_.peer-address
 
-  // TODO(kasper): Remove this.
-  set-no-delay enabled/bool -> none:
-    no-delay = enabled
-
   no-delay -> bool:
     return socket_.no-delay
 
