@@ -37,7 +37,7 @@ main:
   expect-equals 3 skipped
 
   reader = TestReader ["a", "b", "c"]
-  expect-end-throw: reader.skip-up-to 'd' --throw-if-missing
+  expect-end-throw: reader.skip-up-to 'd' --throw-if-absent
 
   reader = TestReader ["abc"]
   skipped = reader.skip-up-to 'b'

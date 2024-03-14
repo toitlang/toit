@@ -430,16 +430,16 @@ abstract class Reader implements old-reader.Reader:
   Returns the number of bytes skipped including the $delimiter.
 
   If $to is given, then the search is limited to the given range.
-  If $throw-if-missing is true and the $delimiter is not in the remaining data, throws.
-  If $throw-if-missing is false and the $delimiter is not in the remaining data, skips
+  If $throw-if-absent is true and the $delimiter is not in the remaining data, throws.
+  If $throw-if-absent is false and the $delimiter is not in the remaining data, skips
     all remaining data.
   */
-  skip-up-to delimiter/int --to/int?=null --throw-if-missing/bool=false -> int:
+  skip-up-to delimiter/int --to/int?=null --throw-if-absent/bool=false -> int:
     skipped := 0
     while true:
       if not buffered_ or buffered_.size == 0:
         if not more_:
-          if throw-if-missing: throw UNEXPECTED-END-OF-READER
+          if throw-if-absent: throw UNEXPECTED-END-OF-READER
           return skipped
       buffered := buffered_
       start := first-array-position_
@@ -539,10 +539,10 @@ abstract class Reader implements old-reader.Reader:
   If $to is specified the search is limited to the given range.
 
   Returns the index of the first occurrence of the $byte.
-  If $throw-if-missing is true and $byte is not in the remaining data throws.
-  Returns -1 if $throw-if-missing is false and the $byte is not in the remaining data.
+  If $throw-if-absent is true and $byte is not in the remaining data throws.
+  Returns -1 if $throw-if-absent is false and the $byte is not in the remaining data.
   */
-  index-of byte/int --to/int?=null --throw-if-missing/bool=false -> int:
+  index-of byte/int --to/int?=null --throw-if-absent/bool=false -> int:
     offset := 0
     if buffered_:
       start := first-array-position_
@@ -556,7 +556,7 @@ abstract class Reader implements old-reader.Reader:
 
     while true:
       if not more_:
-        if throw-if-missing: throw UNEXPECTED-END-OF-READER
+        if throw-if-absent: throw UNEXPECTED-END-OF-READER
         return -1
       array := buffered_.last
       end := to ? min to array.size : array.size
@@ -843,7 +843,7 @@ abstract class Reader implements old-reader.Reader:
   The $delimiter must be available.
   */
   read-string-up-to delimiter/int -> string:
-    length := index-of delimiter --throw-if-missing
+    length := index-of delimiter --throw-if-absent
     str := peek-string length
     skip length + 1 // Skip delimiter char
     return str
@@ -858,7 +858,7 @@ abstract class Reader implements old-reader.Reader:
   The $delimiter must be available.
   */
   read-bytes-up-to delimiter/int -> ByteArray:
-    length := index-of delimiter --throw-if-missing
+    length := index-of delimiter --throw-if-absent
     bytes := peek-bytes length
     skip length + 1 // Skip delimiter char
     return bytes
