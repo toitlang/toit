@@ -357,9 +357,9 @@ class SocketResourceProxy_ extends ServiceResourceProxy with io.CloseableInMixin
     return convert-to-socket-address_ (client.socket-peer-address handle_)
 
   read -> ByteArray?:
-    return consume_
+    return read_
 
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     return (client_ as NetworkServiceClient).socket-read handle_
 
   write data/io.Data from/int=0 to/int=data.byte-size -> int:

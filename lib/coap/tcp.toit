@@ -27,7 +27,7 @@ class SizedReader_ extends io.Reader:
     remaining_ = content-size
     if content-size == 0: done_.set null
 
-  consume_-> ByteArray?:
+  read_ -> ByteArray?:
     if remaining_ == 0:
       done_.set null
       return null

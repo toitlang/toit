@@ -264,7 +264,7 @@ abstract class CloseableWriter extends Writer:
 A source of bytes.
 
 # Inheritance
-Implementations must implement $consume_ and may override $content-size.
+Implementations must implement $read_ and may override $content-size.
 */
 abstract class Reader implements old-reader.Reader:
   static UNEXPECTED-END-OF-READER ::= "UNEXPECTED_END_OF_READER"
@@ -323,15 +323,15 @@ abstract class Reader implements old-reader.Reader:
   /**
   Reads more data from the reader.
 
-  If the $consume_ returns null, then it is either closed or at the end.
+  If the $read_ returns null, then it is either closed or at the end.
     In either case, return null.
 
-  If $consume_ has bytes to offer, then the number of bytes read is returned.
+  If $read_ has bytes to offer, then the number of bytes read is returned.
   */
   more_ -> int?:
     data := null
     while true:
-      data = consume_
+      data = read_
       if not data: return null
       if data.size != 0: break
     add-byte-array_ data
@@ -528,7 +528,7 @@ abstract class Reader implements old-reader.Reader:
   */
   drain -> none:
     clear
-    while chunk := consume_:
+    while chunk := read_:
       processed_ += chunk.size
 
   /**
@@ -599,7 +599,7 @@ abstract class Reader implements old-reader.Reader:
         first-array-position_ = end
       return result
 
-    array := consume_
+    array := read_
     if array == null: return null
     if max-size == null or array.size <= max-size:
       processed_ += array.size
@@ -674,7 +674,7 @@ abstract class Reader implements old-reader.Reader:
   read-string --max-size/int?=null -> string?:
     if max-size and max-size < 0: throw "INVALID_ARGUMENT"
     if not buffered_ or buffered_.size == 0:
-      array := consume_
+      array := read_
       if array == null: return null
       // Instead of adding the array to the arrays we may just be able more
       // efficiently pass it on in string from.
@@ -948,7 +948,7 @@ abstract class Reader implements old-reader.Reader:
     return null.
   */
   // This is a protected method. It should not be "private".
-  abstract consume_ -> ByteArray?
+  abstract read_ -> ByteArray?
 
   /**
   The total number of bytes that this reader can produce.
@@ -992,7 +992,7 @@ abstract class CloseableReader extends Reader:
   /**
   Closes this reader.
 
-  After this method has been called, the reader's $consume_ method must return null.
+  After this method has been called, the reader's $read_ method must return null.
   This method may be called multiple times.
 
   # Inheritance
@@ -1013,7 +1013,7 @@ class ByteArrayReader_ extends Reader:
   constructor .data_/ByteArray:
     content-size = data_.size
 
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     result := data_
     data_ = null
     return result
@@ -1110,8 +1110,8 @@ class In_ extends Reader:
 
   constructor .mixin_:
 
-  consume_ -> ByteArray?:
-    return mixin_.consume_
+  read_ -> ByteArray?:
+    return mixin_.read_
 
 // TODO(florian): make it possible to set the content-size of the reader when
 // using a mixin.
@@ -1120,8 +1120,8 @@ class CloseableIn_ extends CloseableReader:
 
   constructor .mixin_:
 
-  consume_ -> ByteArray?:
-    return mixin_.consume_
+  read_ -> ByteArray?:
+    return mixin_.read_
 
   close_ -> none:
     mixin_.close-reader_
@@ -1153,10 +1153,10 @@ abstract mixin InMixin:
   Reads the next bytes.
 
   # Inheritance
-  See $Reader.consume_.
+  See $Reader.read_.
   */
   // This is a protected method. It should not be "private".
-  abstract consume_ -> ByteArray?
+  abstract read_ -> ByteArray?
 
 abstract mixin CloseableInMixin:
   in_/CloseableIn_? := null
@@ -1169,10 +1169,10 @@ abstract mixin CloseableInMixin:
   Reads the next bytes.
 
   # Inheritance
-  See $Reader.consume_.
+  See $Reader.read_.
   */
   // This is a protected method. It should not be "private".
-  abstract consume_ -> ByteArray?
+  abstract read_ -> ByteArray?
 
   /**
   Closes this reader.
@@ -1821,7 +1821,7 @@ class ReaderAdapter_ extends Reader:
 
   constructor .r_:
 
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     return r_.read
 
   content-size -> int?:

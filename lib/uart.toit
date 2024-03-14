@@ -229,9 +229,9 @@ class Port extends Object with io.InMixin implements reader.Reader:
   Deprecated. Use $in instead.
   */
   read -> ByteArray?:
-    return consume_
+    return read_
 
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     while true:
       state-bits := state_.wait-for-state READ-STATE_ | ERROR-STATE_
       if not uart_: return null

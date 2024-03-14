@@ -11,7 +11,7 @@ class TestReader extends io.Reader:
 
   constructor .arrays_:
 
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     if index_ >= arrays_.size: return null
     return arrays_[index_++]
 
@@ -119,7 +119,7 @@ class MultiByteArrayReader extends io.Reader:
     arrays.add
         ByteArray 1: it + 255
 
-  consume_:
+  read_:
     return arrays[index++]
 
   close_:

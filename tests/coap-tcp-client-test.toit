@@ -140,7 +140,7 @@ class TestSocket extends Object with io.CloseableInMixin io.CloseableOutMixin:
   instruct expect/ByteArray return-value/ByteArray:
     coordinator_.instruct expect return-value
 
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     return coordinator_.read
 
   try-write_ bytes/ByteArray? from/int to/int -> int:

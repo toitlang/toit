@@ -109,9 +109,9 @@ class Socket extends Object with io.CloseableInMixin io.CloseableOutMixin implem
 
   /** Deprecated. Use $(in).read. */
   read -> ByteArray?:
-    return consume_
+    return read_
 
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     return session_.read
 
   /** Deprecated. Use $(out).write. */

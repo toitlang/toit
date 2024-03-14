@@ -65,7 +65,7 @@ class FakePipe extends Object with io.CloseableOutMixin io.InMixin:
     channel.send null
     return to - from
 
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     while true:
       if not first and is-closed: return null
       if not first:
@@ -97,7 +97,7 @@ class LoggingIO extends Object with io.InMixin io.CloseableOutMixin:
     must-close-writer_ = true
     log-writer_ = file.Stream path file.CREAT | file.WRONLY 0x1ff
 
-  consume_:
+  read_:
     msg := wrapped_.read
     if msg != null: log-writer_.write msg
     return msg
