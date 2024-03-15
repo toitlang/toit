@@ -952,9 +952,7 @@ Interpreter::Result Interpreter::run() {
       STACK_AT_PUT(0, result);
       DISPATCH(INVOKE_SIZE_LENGTH);
     }
-    PUSH(receiver);
-    index__ = program->invoke_bytecode_offset(INVOKE_SIZE);
-    goto INVOKE_VIRTUAL_FALLBACK;
+    DISPATCH_TO(INVOKE_VIRTUAL_GET);
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH);

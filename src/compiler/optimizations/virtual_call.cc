@@ -88,7 +88,7 @@ Expression* optimize_virtual_call(CallVirtual* node,
     }
   }
 
-  if (direct_method != null && opcode != INVOKE_VIRTUAL) {
+  if (opcode != INVOKE_VIRTUAL) {
     // We don't want to change any of the really efficient INVOKE_X opcodes.
     // These bytecodes are optimized for numbers/arrays and shortcut
     // lots of bytecodes.
@@ -99,6 +99,8 @@ Expression* optimize_virtual_call(CallVirtual* node,
     //    See https://github.com/toitlang/toit/blob/e4f55512efd2880c5ab68960ae4c0a21a69ab349/src/compiler/optimizations/virtual_call.cc#L82
     //    for how to treat the `INVOKE_EQ`.
     direct_method = null;
+    node->set_opcode(opcode);
+    return node;
   }
 
   if (direct_method == null) {
@@ -109,7 +111,6 @@ Expression* optimize_virtual_call(CallVirtual* node,
     } else if (is_potential_field && node->shape() == CallShape::for_instance_setter()) {
       node->set_opcode(INVOKE_VIRTUAL_SET);
     } else {
-      // Maybe it's an arithmetic/conditional operation.
       node->set_opcode(opcode);
     }
     return node;
