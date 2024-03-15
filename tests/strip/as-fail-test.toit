@@ -25,7 +25,6 @@ main args:
       output = backticks-failing [runner, it]
       if not output.contains EXPECTED-EXCEPTION-OUTPUT:
         print "Expected exception '$EXPECTED-EXCEPTION-OUTPUT' not found in output:"
-        print "Output:"
         print "  $output"
       expect (output.contains EXPECTED-EXCEPTION-OUTPUT)
       expect-not (output.contains ".toit")
