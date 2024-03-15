@@ -34,11 +34,17 @@ static Opcode opcode_for(Selector<CallShape> selector) {
     return INVOKE_AT_PUT;
   }
 
+  if (selector.name() == Symbols::size &&
+      selector.shape() == CallShape(0).with_implicit_this()) {
+    return INVOKE_SIZE;
+  }
+
   // If this isn't a binary, non-setter method, we just treat it as
   // an ordinary virtual invocation.
   if (selector.shape() != CallShape(1).with_implicit_this()) return INVOKE_VIRTUAL;
 
   auto name = selector.name();
+  ASSERT(INVOKE_SIZE > INVOKE_AT_PUT);
   for (int i = INVOKE_EQ; i < INVOKE_AT_PUT; i++) {
     Opcode opcode = static_cast<Opcode>(i);
     if (Symbol::for_invoke(opcode) == name) return opcode;

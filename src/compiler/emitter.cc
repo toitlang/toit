@@ -381,7 +381,7 @@ void Emitter::invoke_block(int arity) {
 void Emitter::invoke_virtual(Opcode opcode, int offset, int arity) {
   ASSERT(offset >= 0);
   ASSERT(arity >= 1);
-  if (opcode >= INVOKE_EQ && opcode <= INVOKE_AT_PUT) {
+  if (opcode >= INVOKE_EQ && opcode <= INVOKE_SIZE) {
     emit_opcode(opcode);
   } else if (opcode == INVOKE_VIRTUAL_GET || opcode == INVOKE_VIRTUAL_SET) {
     emit_opcode(opcode);
