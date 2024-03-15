@@ -164,11 +164,6 @@ bool Interpreter::fast_size(Process* process, Object* receiver, Smi** result) {
       if (!is_smi(size_object)) return false;
       *result = Smi::cast(size_object);
       return true;
-    } else if (class_id == program->list_class_id()) {
-      Object* size_object = instance->at(Instance::LIST_SIZE_INDEX);
-      if (!is_smi(size_object)) return false;
-      *result = Smi::cast(size_object);
-      return true;
     } else if (class_id == program->byte_array_cow_class_id()) {
       ByteArray* byte_array = ByteArray::cast(instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX));
       ByteArray::Bytes bytes(byte_array);
