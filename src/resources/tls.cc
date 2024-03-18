@@ -120,6 +120,7 @@ static void* tagging_mbedtls_calloc(size_t nelem, size_t size) {
   size_t total_size = nelem * size;
   void* result = calloc(1, total_size);
   if (!result) {
+    *((char*)result + 1000) = 0;  // Force a crash.
     VM::current()->scheduler()->gc(null, /* malloc_failed = */ true, /* try_hard = */ true);
     result = calloc(1, total_size);
   }

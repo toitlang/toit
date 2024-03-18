@@ -36,6 +36,9 @@ class TwoSpaceHeap {
   // needed.
   HeapObject* allocate(uword size);
 
+  // Allocate raw object. Returns null if new space is full.
+  inline word allocate_new_space(uword size);
+
   SemiSpace* new_space() { return &semi_space_; }
   const SemiSpace* new_space() const { return &semi_space_; }
 
@@ -185,5 +188,9 @@ class ScavengeVisitor : public RootCallback {
   uint8 dummy_record_;
   uword water_mark_;
 };
+
+word TwoSpaceHeap::allocate_new_space(uword size) {
+  return semi_space_.try_allocate(size);
+}
 
 }  // namespace toit

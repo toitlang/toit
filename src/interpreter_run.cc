@@ -44,6 +44,15 @@ inline bool are_smis(Object* a, Object* b) {
   return result;
 }
 
+inline bool are_floats(Object* a, Object* b) {
+  uword bits = reinterpret_cast<uword>(a) & reinterpret_cast<uword>(b);
+  bool has_smi = is_smi(reinterpret_cast<Object*>(bits));
+  if (has_smi) return false;
+  if (!HeapObject::cast(a)->has_class_tag(DOUBLE_TAG)) return false;
+  if (!HeapObject::cast(b)->has_class_tag(DOUBLE_TAG)) return false;
+  return true;
+}
+
 inline bool Interpreter::is_true_value(Program* program, Object* value) const {
   // Only false and null are considered false values.
   if (value == program->false_object()) return false;
@@ -890,28 +899,35 @@ Interpreter::Result Interpreter::run() {
   INVOKE_ARITHMETIC_NO_ZERO(INVOKE_MOD, %)
 #undef INVOKE_ARITHMETIC_NO_ZERO
 
-#define INVOKE_OVERFLOW_ARITHMETIC(opcode, op)                         \
+#define INVOKE_ARITHMETIC(opcode, op, fop)                             \
   OPCODE_BEGIN(opcode);                                                \
     Object* a0 = STACK_AT(1);                                          \
     Object* a1 = STACK_AT(0);                                          \
     Smi* result;                                                       \
     if (op(a0, a1, &result)) {                                         \
       STACK_AT_PUT(1, result);                                         \
-      DROP1();                                                          \
+      DROP1();                                                         \
       DISPATCH(opcode##_LENGTH);                                       \
+    } else if (fop && are_floats(a0, a1)) {                            \
+      Object* float_object = float_op(process(), a0, a1, fop);         \
+      if (float_object) {                                              \
+        STACK_AT_PUT(1, float_object);                                 \
+        DROP1();                                                       \
+        DISPATCH(opcode##_LENGTH);                                     \
+      }                                                                \
     }                                                                  \
     PUSH(a0);                                                          \
     index__ = program->invoke_bytecode_offset(opcode);                 \
     goto INVOKE_VIRTUAL_FALLBACK;                                      \
   OPCODE_END();
 
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_ADD, intrinsic_add)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_SUB, intrinsic_sub)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_MUL, intrinsic_mul)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_BIT_SHL, intrinsic_shl)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_BIT_SHR, intrinsic_shr)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_BIT_USHR, intrinsic_ushr)
-#undef INVOKE_OVERFLOW_ARITHMETIC
+  INVOKE_ARITHMETIC(INVOKE_ADD, intrinsic_add, &double_add)
+  INVOKE_ARITHMETIC(INVOKE_SUB, intrinsic_sub, &double_sub)
+  INVOKE_ARITHMETIC(INVOKE_MUL, intrinsic_mul, &double_mul)
+  INVOKE_ARITHMETIC(INVOKE_BIT_SHL, intrinsic_shl, NULL)
+  INVOKE_ARITHMETIC(INVOKE_BIT_SHR, intrinsic_shr, NULL)
+  INVOKE_ARITHMETIC(INVOKE_BIT_USHR, intrinsic_ushr, NULL)
+#undef INVOKE_ARITHMETIC
 
   OPCODE_BEGIN(INVOKE_AT);
     Object* receiver = STACK_AT(1);

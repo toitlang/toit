@@ -42,6 +42,8 @@
 
 namespace toit {
 
+typedef double (double_op)(double a, double b);
+
 class Interpreter {
  public:
   // Number of words that are pushed onto the stack whenever there is a call.
@@ -193,6 +195,9 @@ class Interpreter {
     return Smi::from(base_ - pointer + BLOCK_SALT);
   }
 
+  static Object* float_op(Process* process, Object* a, Object* b, double_op* op);
+
+
   friend class Stack;
 };
 
@@ -209,5 +214,11 @@ class ProcessRunner {
   virtual Interpreter::Result run() = 0;
   virtual void set_process(Process* process) = 0;
 };
+
+bool are_floats(Object* a, Object* b);
+
+double double_add(double a, double b);
+double double_sub(double a, double b);
+double double_mul(double a, double b);
 
 } // namespace toit
