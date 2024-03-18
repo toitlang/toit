@@ -1039,7 +1039,7 @@ jobs:
           git clone ssh://aur@aur.archlinux.org/toit.git
           git clone ssh://aur@aur.archlinux.org/toit-vessels-bin.git
 
-      - name: Git
+      - name: Configure git
         run: |
           pushd toit
           git config user.email "leon@toit.io"
@@ -1050,7 +1050,7 @@ jobs:
           git config user.name "Leon Gungadin Mogensen"
           popd
 
-      - name: Update AUR package
+      - name: Update AUR packages
         shell: bash
         run: |
           # Toit's PKGBUILD is a bit special in that we don't download
@@ -1070,7 +1070,7 @@ jobs:
           sed -i "s/_tag=.*/_tag=\"${{ env.version }}\"/g" PKGBUILD
           popd
 
-      - name: Update toit .SRCINFO for toit
+      - name: Update .SRCINFO for toit
         uses: toitlang/archlinux-package-action@main
         with:
           path: toit
@@ -1078,7 +1078,7 @@ jobs:
           namcap: false
           srcinfo: true
 
-      - name: Update toit pkgsums and .SRCINFO for toit-vessels-bin
+      - name: Update pkgsums and .SRCINFO for toit-vessels-bin
         uses: toitlang/archlinux-package-action@main
         with:
           path: toit-vessels-bin
@@ -1087,7 +1087,7 @@ jobs:
           updpkgsums: true
           srcinfo: true
 
-      - name: Upload toit
+      - name: Upload toit and toit-vessels-bin
         run: |
           pushd toit
           cat PKGBUILD
