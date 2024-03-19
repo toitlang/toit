@@ -40,7 +40,10 @@ Instance* ObjectHeap::allocate_instance(Smi* class_id) {
   word result_word = allocate_new_space(size);
   if (!result_word) return null;  // Allocation failure.
   // Initialize object.
-  memset(reinterpret_cast<void*>(result_word), 0, size);
+  Object* null_object = program()->null_object();
+  for (word i = WORD_SIZE; i < size; i += WORD_SIZE) {
+    *reinterpret_cast<Object**>(result_word + i) = null_object;
+  }
   HeapObject* result = HeapObject::from_address(result_word);
   result->_set_header(class_id, class_tag);
   return Instance::cast(result);
