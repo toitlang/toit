@@ -151,7 +151,6 @@ uword SemiSpace::allocate(uword size) {
     uword result = top_;
     top_ += size;
     // Always write a sentinel so the scavenger knows where to stop.
-    // This is mainly needed during scavenge when allocating in to-space.
     write_sentinel_at(top_);
     return result;
   }
