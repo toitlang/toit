@@ -1034,17 +1034,23 @@ jobs:
 
           ssh-keyscan -H aur.archlinux.org > $HOME/.ssh/known_hosts
 
-      - name: Fetch AUR package
+      - name: Fetch AUR packages
         run: |
           git clone ssh://aur@aur.archlinux.org/toit.git
+          git clone ssh://aur@aur.archlinux.org/toit-vessels-bin.git
 
-      - name: Git
+      - name: Configure git
         run: |
-          cd toit
+          pushd toit
           git config user.email "leon@toit.io"
           git config user.name "Leon Gungadin Mogensen"
+          popd
+          pushd toit-vessels-bin
+          git config user.email "leon@toit.io"
+          git config user.name "Leon Gungadin Mogensen"
+          popd
 
-      - name: Update AUR package
+      - name: Update AUR packages
         shell: bash
         run: |
           # Toit's PKGBUILD is a bit special in that we don't download
@@ -1053,12 +1059,18 @@ jobs:
           # For security, we store the hash of the commit in the PKGBUILD,
           # which is why we run a custom 'update_hash.sh' script.
           # This is the reason we can't just use the 'archlinux-package-action'.
-          cd toit
+          pushd toit
           sed -i "s/_tag=.*/_tag=\"${{ env.version }}\"/g" PKGBUILD
           sed -i "s/pkgrel=.*/pkgrel=1/g" PKGBUILD
           ./update_hash.sh
+          popd
+          # The vessel PKGBUILD also needs the '_tag' replaced instead of
+          # the usual 'pkgver'.
+          pushd toit-vessels-bin
+          sed -i "s/_tag=.*/_tag=\"${{ env.version }}\"/g" PKGBUILD
+          popd
 
-      - name: Update .SRCINFO
+      - name: Update .SRCINFO for toit
         uses: toitlang/archlinux-package-action@main
         with:
           path: toit
@@ -1066,11 +1078,27 @@ jobs:
           namcap: false
           srcinfo: true
 
-      - name: Upload
-        run: |
-          cat ${{ github.workspace }}/toit/PKGBUILD
-          cat ${{ github.workspace }}/toit/.SRCINFO
+      - name: Update pkgsums and .SRCINFO for toit-vessels-bin
+        uses: toitlang/archlinux-package-action@main
+        with:
+          path: toit-vessels-bin
+          flags: ''
+          namcap: false
+          updpkgsums: true
+          srcinfo: true
 
-          cd ${{ github.workspace }}/toit
+      - name: Upload toit and toit-vessels-bin
+        run: |
+          pushd toit
+          cat PKGBUILD
+          cat .SRCINFO
           git commit -am "Update to version ${{ env.version }}"
           git push origin master
+          popd
+
+          pushd toit-vessels-bin
+          cat PKGBUILD
+          cat .SRCINFO
+          git commit -am "Update to version ${{ env.version }}"
+          git push origin master
+          popd
