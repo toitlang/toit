@@ -407,7 +407,7 @@ PRIMITIVE(init) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = wifi_espnow_pool.any();
-  if (id == kInvalidWifiEspnow) FAIL(OUT_OF_BOUNDS);
+  if (id == kInvalidWifiEspnow) FAIL(ALREADY_IN_USE);
 
   // We cannot use the esp_netif_create_default_wifi_xxx() functions,
   // because they do not correctly check for malloc failure.
