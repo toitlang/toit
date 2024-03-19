@@ -193,10 +193,10 @@ class PointerRootCallback : public RootCallback {
 };
 
 void HeapObject::do_pointers(Program* program, PointerCallback* cb) {
-  if (class_tag() == BYTE_ARRAY_TAG) {
+  if (has_class_tag(BYTE_ARRAY_TAG)) {
     auto byte_array = ByteArray::cast(this);
     byte_array->do_pointers(cb);
-  } else if (class_tag() == STRING_TAG) {
+  } else if (has_class_tag(STRING_TAG)) {
     auto str = String::cast(this);
     str->do_pointers(cb);
   } else {

@@ -181,6 +181,10 @@ class ObjectHeap {
     return two_space_heap_.allocate(byte_size);
   }
 
+  inline word allocate_new_space(int byte_size) {
+    return two_space_heap_.allocate_new_space(byte_size);
+  }
+
   void install_heap_limit();
 
   bool retrying_primitive_ = false;
@@ -226,6 +230,7 @@ class ObjectHeap {
   // per-heap mutex protects against that.
   Mutex* mutex_;
 
+  friend class Interpreter;
   friend class ObjectNotifier;
   friend class Process;
 };
