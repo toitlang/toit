@@ -98,11 +98,11 @@ print-bytecodes program/Program:
   print
   methods.do: it.output program
 
-has-call program method:
+has-call program/Program method/ToitMethod:
   method.do-calls program: if matching it: return true
   return false
 
-print-senders program bc:
+print-senders program/Program bc:
   methods := program.methods
   methods = methods.filter: has-call program it
   print "Methods with calls to \"$filter\"[$(methods.size)]:"
@@ -110,6 +110,15 @@ print-senders program bc:
     if bc: it.output program
     else: print (it.stringify program)
 
+print-uuid snapshot/SnapshotBundle:
+  print "$snapshot.uuid"
+
+print-sizes snapshot/SnapshotBundle:
+  print """
+    Uuid: $snapshot.uuid
+    Size: $snapshot.bytes.size bytes
+     - $snapshot.program-snapshot
+    $(snapshot.source-map ? " - $snapshot.source-map" : "")"""
 
 filter := ""
 
@@ -130,6 +139,7 @@ main args:
           cli.Flag "bytecodes"       --short-name="bc",
           cli.Flag "senders"         --short-name="s",
           cli.Flag "primitive_table" --short-name="p",
+          cli.Flag "uuid",
       ]
       --run=:: parsed = it
   parser.run args
@@ -148,4 +158,6 @@ main args:
   if parsed["primitive_table"]: print-primitive-table program; return
   if parsed["senders"]:         print-senders program parsed["bytecodes"]; return
   if parsed["bytecodes"]:       print-bytecodes program; return
-  print snapshot.stringify
+  if parsed["uuid"]:            print-uuid snapshot; return
+  // For compatibility reasons print the sizes.
+  print-sizes snapshot
