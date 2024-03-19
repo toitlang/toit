@@ -899,7 +899,7 @@ Interpreter::Result Interpreter::run() {
   INVOKE_ARITHMETIC_NO_ZERO(INVOKE_MOD, %)
 #undef INVOKE_ARITHMETIC_NO_ZERO
 
-#define INVOKE_ARITHMETIC(opcode, op, fop)                             \
+#define INVOKE_ARITHMETIC(opcode, op)                                  \
   OPCODE_BEGIN(opcode);                                                \
     Object* a0 = STACK_AT(1);                                          \
     Object* a1 = STACK_AT(0);                                          \
@@ -908,7 +908,22 @@ Interpreter::Result Interpreter::run() {
       STACK_AT_PUT(1, result);                                         \
       DROP1();                                                         \
       DISPATCH(opcode##_LENGTH);                                       \
-    } else if (fop && are_floats(a0, a1)) {                            \
+    }                                                                  \
+    PUSH(a0);                                                          \
+    index__ = program->invoke_bytecode_offset(opcode);                 \
+    goto INVOKE_VIRTUAL_FALLBACK;                                      \
+  OPCODE_END();
+
+#define INVOKE_ARITHMETIC_FP(opcode, op, fop)                          \
+  OPCODE_BEGIN(opcode);                                                \
+    Object* a0 = STACK_AT(1);                                          \
+    Object* a1 = STACK_AT(0);                                          \
+    Smi* result;                                                       \
+    if (op(a0, a1, &result)) {                                         \
+      STACK_AT_PUT(1, result);                                         \
+      DROP1();                                                         \
+      DISPATCH(opcode##_LENGTH);                                       \
+    } else if (are_floats(a0, a1)) {                                   \
       Object* float_object = float_op(process(), a0, a1, fop);         \
       if (float_object) {                                              \
         STACK_AT_PUT(1, float_object);                                 \
@@ -921,12 +936,12 @@ Interpreter::Result Interpreter::run() {
     goto INVOKE_VIRTUAL_FALLBACK;                                      \
   OPCODE_END();
 
-  INVOKE_ARITHMETIC(INVOKE_ADD, intrinsic_add, &double_add)
-  INVOKE_ARITHMETIC(INVOKE_SUB, intrinsic_sub, &double_sub)
-  INVOKE_ARITHMETIC(INVOKE_MUL, intrinsic_mul, &double_mul)
-  INVOKE_ARITHMETIC(INVOKE_BIT_SHL, intrinsic_shl, NULL)
-  INVOKE_ARITHMETIC(INVOKE_BIT_SHR, intrinsic_shr, NULL)
-  INVOKE_ARITHMETIC(INVOKE_BIT_USHR, intrinsic_ushr, NULL)
+  INVOKE_ARITHMETIC_FP(INVOKE_ADD, intrinsic_add, &double_add)
+  INVOKE_ARITHMETIC_FP(INVOKE_SUB, intrinsic_sub, &double_sub)
+  INVOKE_ARITHMETIC_FP(INVOKE_MUL, intrinsic_mul, &double_mul)
+  INVOKE_ARITHMETIC(INVOKE_BIT_SHL, intrinsic_shl)
+  INVOKE_ARITHMETIC(INVOKE_BIT_SHR, intrinsic_shr)
+  INVOKE_ARITHMETIC(INVOKE_BIT_USHR, intrinsic_ushr)
 #undef INVOKE_ARITHMETIC
 
   OPCODE_BEGIN(INVOKE_AT);
