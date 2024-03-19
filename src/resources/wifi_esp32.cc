@@ -21,6 +21,8 @@
 #include <nvs_flash.h>
 #include <lwip/sockets.h>
 
+#include "wifi_espnow_esp32.h"
+
 #include "../resource.h"
 #include "../rtc_memory_esp32.h"
 #include "../objects.h"
@@ -43,12 +45,6 @@ enum {
   WIFI_SCAN_DONE    = 1 << 5,
 };
 
-const int kInvalidWifi = -1;
-
-// Only allow one instance of WiFi running.
-ResourcePool<int, kInvalidWifi> wifi_pool(
-  0
-);
 
 class WifiResourceGroup : public ResourceGroup {
  public:
@@ -159,7 +155,7 @@ class WifiResourceGroup : public ResourceGroup {
   ~WifiResourceGroup() {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy_default_wifi(netif_);
-    wifi_pool.put(id_);
+    wifi_espnow_pool.put(id_);
   }
 
   uint32_t on_event(Resource* resource, word data, uint32_t state) override;
@@ -410,8 +406,8 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  int id = wifi_pool.any();
-  if (id == kInvalidWifi) FAIL(OUT_OF_BOUNDS);
+  int id = wifi_espnow_pool.any();
+  if (id == kInvalidWifiEspnow) FAIL(OUT_OF_BOUNDS);
 
   // We cannot use the esp_netif_create_default_wifi_xxx() functions,
   // because they do not correctly check for malloc failure.
@@ -435,7 +431,7 @@ PRIMITIVE(init) {
   }
 
   if (!netif) {
-    wifi_pool.put(id);
+    wifi_espnow_pool.put(id);
     FAIL(MALLOC_FAILED);
   }
 
@@ -450,7 +446,7 @@ PRIMITIVE(init) {
   esp_err_t err = nvs_flash_init();
   if (err != ESP_OK) {
     esp_netif_destroy_default_wifi(netif);
-    wifi_pool.put(id);
+    wifi_espnow_pool.put(id);
     return Primitive::os_error(err, process);
   }
 
@@ -467,7 +463,7 @@ PRIMITIVE(init) {
   err = esp_wifi_init(&init_config);
   if (err != ESP_OK) {
     esp_netif_destroy_default_wifi(netif);
-    wifi_pool.put(id);
+    wifi_espnow_pool.put(id);
     return Primitive::os_error(err, process);
   }
 
@@ -475,7 +471,7 @@ PRIMITIVE(init) {
   if (err != ESP_OK) {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy_default_wifi(netif);
-    wifi_pool.put(id);
+    wifi_espnow_pool.put(id);
     return Primitive::os_error(err, process);
   }
 
@@ -484,7 +480,7 @@ PRIMITIVE(init) {
   if (!resource_group) {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy_default_wifi(netif);
-    wifi_pool.put(id);
+    wifi_espnow_pool.put(id);
     FAIL(MALLOC_FAILED);
   }
 
