@@ -35,18 +35,15 @@
 namespace toit {
 
 Instance* ObjectHeap::allocate_instance(Smi* class_id) {
-  int size = program()->instance_size_for(class_id);
+  int size = program()->allocation_instance_size_for(class_id);
   TypeTag class_tag = program()->class_tag_for(class_id);
-  return allocate_instance(class_tag, class_id, Smi::from(size));
-}
-
-Instance* ObjectHeap::allocate_instance(TypeTag class_tag, Smi* class_id, Smi* instance_size) {
-  Instance* result = unvoid_cast<Instance*>(_allocate_raw(Smi::value(instance_size)));
-  if (result == null) return null;  // Allocation failure.
+  word result_word = allocate_new_space(size);
+  if (!result_word) return null;  // Allocation failure.
   // Initialize object.
+  memset(reinterpret_cast<void*>(result_word), 0, size);
+  HeapObject* result = HeapObject::from_address(result_word);
   result->_set_header(class_id, class_tag);
-  result->initialize(Smi::value(instance_size));
-  return result;
+  return Instance::cast(result);
 }
 
 Array* ObjectHeap::allocate_array(int length, Object* filler) {
@@ -260,7 +257,7 @@ Task* ObjectHeap::allocate_task() {
   if (stack == null) return null;  // Allocation failure.
   // Then allocate the task.
   Smi* task_id = program()->task_class_id();
-  Task* result = unvoid_cast<Task*>(allocate_instance(program()->class_tag_for(task_id), task_id, Smi::from(program()->instance_size_for(task_id))));
+  Task* result = unvoid_cast<Task*>(allocate_instance(task_id));
   if (result == null) return null;  // Allocation failure.
   Task::cast(result)->_initialize(stack, Smi::from(owner()->next_task_id()));
   int fields = Instance::fields_from_size(program()->instance_size_for(result));

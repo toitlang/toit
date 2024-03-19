@@ -65,7 +65,6 @@ class ObjectHeap {
 
   // Shared allocation operations.
   Instance* allocate_instance(Smi* class_id);
-  Instance* allocate_instance(TypeTag class_tag, Smi* class_id, Smi* instance_size);
   Array* allocate_array(int length, Object* filler);
   ByteArray* allocate_external_byte_array(int length, uint8* memory, bool dispose, bool clear_content = true);
   String* allocate_external_string(int length, uint8* memory, bool dispose);
