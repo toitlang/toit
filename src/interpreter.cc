@@ -291,7 +291,7 @@ void Interpreter::trace(uint8* bcp) {
 }
 
 Object* Interpreter::float_op(Process* process, Object* a, Object* b, double_op* op) {
-  word word_result = process->object_heap()->_allocate_new_space(Double::allocation_size());
+  word word_result = process->object_heap()->allocate_new_space(Double::allocation_size());
   if (!word_result) return NULL;
   HeapObject* result = HeapObject::from_address(word_result);
   Smi* header = HeapObject::cast(a)->header();

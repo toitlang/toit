@@ -181,7 +181,7 @@ class ObjectHeap {
     return two_space_heap_.allocate(byte_size);
   }
 
-  inline word _allocate_new_space(int byte_size) {
+  inline word allocate_new_space(int byte_size) {
     return two_space_heap_.allocate_new_space(byte_size);
   }
 
