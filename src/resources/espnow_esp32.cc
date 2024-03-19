@@ -403,7 +403,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(create) {
-  ARGS(EspNowResourceGroup, group, int, mode, Blob, pmk, int, rate);
+  ARGS(EspNowResourceGroup, group, int, mode, Blob, pmk, int, rate, int, channel);
 
   wifi_phy_rate_t phy_rate = WIFI_PHY_RATE_1M_L;
   if (rate != -1) {
@@ -438,6 +438,11 @@ PRIMITIVE(create) {
 
   group->register_resource(resource);
   proxy->set_external_address(resource);
+
+  esp_err_t err = esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
 
   return proxy;
 }

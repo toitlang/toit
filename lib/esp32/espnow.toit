@@ -107,18 +107,23 @@ class Service:
   send-mutex_/monitor.Mutex ::= monitor.Mutex
   resource_ := ?
   state_ := ?
+  channel/int := ?
 
   /**
   Constructs a new ESP-Now service in station mode.
 
   The $rate parameter, if provided, must be a valid ESP-Now rate constant. See
     $RATE-1M-L for example. By default, the rate is set to 1Mbps.
+
+  The $channel parameter must be a valid Wi-Fi channel number.
   */
-  constructor.station --key/Key? --rate/int?=null:
+  constructor.station --key/Key? --rate/int?=null --.channel=1:
+    if not 0 < channel <= 14: throw "INVALID_ARGUMENT"
+
     key-data := key ? key.data : #[]
     if rate and rate < 0: throw "INVALID_ARGUMENT"
     if not rate: rate = -1
-    resource_ = espnow-create_ resource-group_ STATION_ key-data rate
+    resource_ = espnow-create_ resource-group_ STATION_ key-data rate channel
     state_ = ResourceState_ resource-group_ resource_
 
   close -> none:
@@ -135,6 +140,9 @@ class Service:
 
   /**
   Sends the given $data to the given $address.
+
+  Unless the $address is a broadcast address, the $address must be a peer added
+    with $(add-peer address --key). The $address must be a valid MAC address.
 
   The $data must be at most 250 bytes long.
   Waits for the transmission to complete.
@@ -166,10 +174,19 @@ class Service:
       address := Address result[0]
       return Datagram address result[1]
 
+  /**
+  Deprecated. Use $(add-peer address --key) without any channel. The channel is
+    now set during construction of the service (see $Service.station).
+  */
   add-peer address/Address --channel/int --key/Key?=null -> bool:
-    if not 0 <= channel <= 14:
-      throw "ESP-Now channel range must be 0-14"
+    return add-peer address --key=key
 
+  /**
+  Adds a peer with the given $address and $key.
+
+  The channel of the peer is set to the channel of the service.
+  */
+  add-peer address/Address --key/Key?=null -> bool:
     key-data := key ? key.data : #[]
     return espnow-add-peer_ resource_ address.mac channel key-data
 
@@ -181,7 +198,7 @@ SEND-DONE-STATE_ ::= 1 << 1
 espnow-init_:
   #primitive.espnow.init
 
-espnow-create_ group mode pmk rate:
+espnow-create_ group mode pmk rate channel:
   #primitive.espnow.create
 
 espnow-close_ resource:
