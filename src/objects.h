@@ -1406,9 +1406,6 @@ class Instance : public HeapObject {
   // at_put_no_write_barrier in the compiler instead.
   void at_put(int index, Object* value);
 
-  // Fills instance fields with Smi zero.
-  void initialize(int instance_size);
-
   void instance_roots_do(int instance_size, RootCallback* cb);
 
 #ifndef TOIT_FREERTOS

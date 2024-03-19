@@ -555,11 +555,6 @@ Interpreter::Result Interpreter::run() {
       sp = push_error(sp, program->allocation_failed(), "");
       goto THROW_IMPLEMENTATION;
     }
-    Instance* instance = Instance::cast(result);
-    int fields = Instance::fields_from_size(program->instance_size_for(instance));
-    for (int i = 0; i < fields; i++) {
-      instance->at_put(i, program->null_object());
-    }
     PUSH(result);
     if (Flags::gc_a_lot) {
       sp = gc(sp, false, 1, false);
