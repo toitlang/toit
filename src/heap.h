@@ -64,8 +64,8 @@ class ObjectHeap {
   inline bool cross_process_gc_needed() const { return two_space_heap_.cross_process_gc_needed(); }
 
   // Shared allocation operations.
+  // Allocates an instance object in new space and fills it with nulls.
   Instance* allocate_instance(Smi* class_id);
-  Instance* allocate_instance(TypeTag class_tag, Smi* class_id, Smi* instance_size);
   Array* allocate_array(int length, Object* filler);
   ByteArray* allocate_external_byte_array(int length, uint8* memory, bool dispose, bool clear_content = true);
   String* allocate_external_string(int length, uint8* memory, bool dispose);
