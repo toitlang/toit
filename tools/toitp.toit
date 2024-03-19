@@ -117,8 +117,8 @@ main args:
   parsed := null
   parser := cli.Command "toitp"
       --rest=[
-          cli.OptionString "snapshot" --type="file" --required,
-          cli.OptionString "filter",
+          cli.Option "snapshot" --type="file" --required,
+          cli.Option "filter",
       ]
       --options=[
           cli.Flag "literals"        --short-name="l",
