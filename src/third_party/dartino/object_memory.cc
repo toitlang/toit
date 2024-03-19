@@ -272,6 +272,7 @@ Chunk* ObjectMemory::allocate_chunk_helper(Space* owner, uword size, void* memor
 #ifdef TOIT_DEBUG
   chunk->scramble();
 #endif
+  GcMetadata::map_metadata_for_chunk(chunk);
   if (owner) {
     GcMetadata::mark_pages_for_chunk(chunk, owner->page_type());
     chunk->initialize_metadata();
@@ -306,6 +307,7 @@ void ObjectMemory::set_up() {
   GcMetadata::set_up();
   spare_chunk_ = allocate_chunk(null, TOIT_PAGE_SIZE);
   if (!spare_chunk_) FATAL("Can't allocate initial spare chunk");
+
   if (spare_chunk_mutex_) FATAL("Can't call ObjectMemory::set_up twice");
   spare_chunk_mutex_ = OS::allocate_mutex(7, "Spare memory chunk");
   if (!spare_chunk_mutex_) FATAL("Can't allocate spare memory mutex");
