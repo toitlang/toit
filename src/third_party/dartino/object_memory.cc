@@ -307,7 +307,6 @@ void ObjectMemory::set_up() {
   GcMetadata::set_up();
   spare_chunk_ = allocate_chunk(null, TOIT_PAGE_SIZE);
   if (!spare_chunk_) FATAL("Can't allocate initial spare chunk");
-
   if (spare_chunk_mutex_) FATAL("Can't call ObjectMemory::set_up twice");
   spare_chunk_mutex_ = OS::allocate_mutex(7, "Spare memory chunk");
   if (!spare_chunk_mutex_) FATAL("Can't allocate spare memory mutex");
