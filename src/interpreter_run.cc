@@ -35,7 +35,7 @@
 
 namespace toit {
 
-inline bool are_smis(Object* a, Object* b) {
+inline bool Interpreter::are_smis(Object* a, Object* b) {
   uword bits = reinterpret_cast<uword>(a) | reinterpret_cast<uword>(b);
   bool result = is_smi(reinterpret_cast<Object*>(bits));
   // The or-trick only works if smis are tagged with a zero-bit.
@@ -44,13 +44,12 @@ inline bool are_smis(Object* a, Object* b) {
   return result;
 }
 
-inline bool are_floats(Object* a, Object* b) {
+inline bool Interpreter::are_floats(Object* a, Object* b) {
   uword bits = reinterpret_cast<uword>(a) & reinterpret_cast<uword>(b);
   bool has_smi = is_smi(reinterpret_cast<Object*>(bits));
   if (has_smi) return false;
-  if (!HeapObject::cast(a)->has_class_tag(DOUBLE_TAG)) return false;
-  if (!HeapObject::cast(b)->has_class_tag(DOUBLE_TAG)) return false;
-  return true;
+  return HeapObject::cast(a)->has_class_tag(DOUBLE_TAG) &&
+         HeapObject::cast(b)->has_class_tag(DOUBLE_TAG);
 }
 
 inline bool Interpreter::is_true_value(Program* program, Object* value) const {
@@ -224,7 +223,7 @@ inline word mul(word a, word b) { return a * b; }
 
 // Returns false if not smis or overflow.
 inline bool intrinsic_add(Object* a, Object* b, Smi** result) {
-  return are_smis(a, b) &&
+  return Interpreter::are_smis(a, b) &&
 #ifdef BUILD_32
     !__builtin_sadd_overflow((word) a, (word) b, (word*) result);
 #elif BUILD_64
@@ -234,7 +233,7 @@ inline bool intrinsic_add(Object* a, Object* b, Smi** result) {
 
 // Returns false if not smis or overflow.
 inline bool intrinsic_sub(Object* a, Object* b, Smi** result) {
-  return are_smis(a, b) &&
+  return Interpreter::are_smis(a, b) &&
 #ifdef BUILD_32
     !__builtin_ssub_overflow((word) a, (word) b, (word*) result);
 #elif BUILD_64
@@ -244,7 +243,7 @@ inline bool intrinsic_sub(Object* a, Object* b, Smi** result) {
 
 // Returns false if not smis or overflow.
 inline bool intrinsic_mul(Object* a, Object* b, Smi** result) {
-  return are_smis(a, b) &&
+  return Interpreter::are_smis(a, b) &&
 #ifdef BUILD_32
     !__builtin_smul_overflow((word) a, ((word) b) >> 1, (word*) result);
 #elif BUILD_64
@@ -253,7 +252,7 @@ inline bool intrinsic_mul(Object* a, Object* b, Smi** result) {
 }
 
 inline bool intrinsic_shl(Object* a, Object* b, Smi** result) {
-  if (!are_smis(a, b)) return false;
+  if (!Interpreter::are_smis(a, b)) return false;
   word bits_to_shift = Smi::value(b);
   if (bits_to_shift < 0 || bits_to_shift >= WORD_BIT_SIZE) return false;
   *result = (Smi*) (((word) a) << bits_to_shift);
@@ -262,7 +261,7 @@ inline bool intrinsic_shl(Object* a, Object* b, Smi** result) {
 }
 
 inline bool intrinsic_shr(Object* a, Object* b, Smi** result) {
-  if (!are_smis(a, b)) return false;
+  if (!Interpreter::are_smis(a, b)) return false;
   word bits_to_shift = Smi::value(b);
   if (bits_to_shift < 0 || bits_to_shift >= WORD_BIT_SIZE) return false;
   *result = Smi::from(Smi::value(a) >> bits_to_shift);
@@ -270,7 +269,7 @@ inline bool intrinsic_shr(Object* a, Object* b, Smi** result) {
 }
 
 inline bool intrinsic_ushr(Object* a, Object* b, Smi** result) {
-  if (!are_smis(a, b)) return false;
+  if (!Interpreter::are_smis(a, b)) return false;
   word bits_to_shift = Smi::value(b);
   word a_value = Smi::value(a);
   if (bits_to_shift < 0 || bits_to_shift >= WORD_BIT_SIZE || a_value < 0) return false;
@@ -923,7 +922,7 @@ Interpreter::Result Interpreter::run() {
       STACK_AT_PUT(1, result);                                         \
       DROP1();                                                         \
       DISPATCH(opcode##_LENGTH);                                       \
-    } else if (are_floats(a0, a1)) {                                   \
+    } else if (Interpreter::are_floats(a0, a1)) {                                   \
       Object* float_object = float_op(process(), a0, a1, fop);         \
       if (float_object) {                                              \
         STACK_AT_PUT(1, float_object);                                 \

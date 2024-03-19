@@ -1072,6 +1072,7 @@ class Double : public HeapObject {
 
   void _initialize(double value) { _set_value(value); }
   void _set_value(double value) { _double_at_put(VALUE_OFFSET, value); }
+
   friend class Interpreter;
   friend class ObjectHeap;
   friend class ProgramHeap;

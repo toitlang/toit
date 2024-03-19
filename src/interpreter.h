@@ -140,6 +140,9 @@ class Interpreter {
   void preempt();
   uint8* preemption_method_header_bcp() const { return preemption_method_header_bcp_; }
 
+  static bool are_smis(Object* a, Object* b);
+  static bool are_floats(Object* a, Object* b);
+
  private:
   Object** const PREEMPTION_MARKER = reinterpret_cast<Object**>(UINTPTR_MAX);
   Process* process_;
@@ -214,8 +217,6 @@ class ProcessRunner {
   virtual Interpreter::Result run() = 0;
   virtual void set_process(Process* process) = 0;
 };
-
-bool are_floats(Object* a, Object* b);
 
 double double_add(double a, double b);
 double double_sub(double a, double b);
