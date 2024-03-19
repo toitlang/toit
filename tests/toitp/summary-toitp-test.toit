@@ -8,7 +8,8 @@ import .utils
 main args:
   out := run-toitp args []
   required-output-snippets := [
-    "snapshot: ",
+    "Uuid: ",
+    "Size: ",
     "- program:",
     "- method_table:",
     "- class_table:",
