@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "../resource_pool.h"
+
 namespace toit {
 
 const int kInvalidWifiEspnow = -1;

@@ -16,19 +16,19 @@
 #include "../top.h"
 
 #ifdef TOIT_ESP32
+#if defined(CONFIG_TOIT_ENABLE_WIFI) || defined(CONFIG_TOIT_ENABLE_ESPNOW)
 
 #include "wifi_espnow_esp32.h"
 #include "../resource_pool.h"
 
 namespace toit {
-#if defined(CONFIG_TOIT_ENABLE_WIFI) || defined(CONFIG_TOIT_ENABLE_ESPNOW)
 
 // Only allow one instance of WiFi or ESPNow running.
 ResourcePool<int, kInvalidWifiEspnow> wifi_espnow_pool(
   0
 );
 
-#endif // CONFIG_TOIT_ENABLE_WIFI || CONFIG_TOIT_ENABLE_ESPNOW
 } // namespace toit
 
+#endif // CONFIG_TOIT_ENABLE_WIFI || CONFIG_TOIT_ENABLE_ESPNOW
 #endif // TOIT_ESP32
