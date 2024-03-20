@@ -115,8 +115,8 @@ print-uuid snapshot/SnapshotBundle:
 
 print-sizes snapshot/SnapshotBundle:
   print """
-    Uuid: $snapshot.uuid
-    Size: $snapshot.bytes.size bytes
+    uuid: $snapshot.uuid
+    size: $snapshot.bytes.size bytes
      - $snapshot.program-snapshot
     $(snapshot.source-map ? " - $snapshot.source-map" : "")"""
 
