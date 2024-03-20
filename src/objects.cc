@@ -123,7 +123,7 @@ void HeapObject::roots_do(Program* program, RootCallback* cb) {
       break;
     case TypeTag::TASK_TAG:
     case TypeTag::INSTANCE_TAG:
-      Instance::cast(this)->roots_do(program->instance_size_for(this), cb);
+      Instance::cast(this)->instance_roots_do(program->instance_size_for(this), cb);
       break;
     case TypeTag::STRING_TAG:
     case TypeTag::ODDBALL_TAG:
@@ -164,7 +164,7 @@ FreeListRegion* FreeListRegion::create_at(uword start, uword size) {
 
 Object* FreeListRegion::single_free_word_header() {
   uword header = SINGLE_FREE_WORD_CLASS_ID;
-  header = (header << CLASS_TAG_BIT_SIZE) | SINGLE_FREE_WORD_TAG;
+  header = (header << CLASS_ID_OFFSET) | SINGLE_FREE_WORD_TAG;
   return Smi::from(header);
 }
 
@@ -193,10 +193,10 @@ class PointerRootCallback : public RootCallback {
 };
 
 void HeapObject::do_pointers(Program* program, PointerCallback* cb) {
-  if (class_tag() == BYTE_ARRAY_TAG) {
+  if (has_class_tag(BYTE_ARRAY_TAG)) {
     auto byte_array = ByteArray::cast(this);
     byte_array->do_pointers(cb);
-  } else if (class_tag() == STRING_TAG) {
+  } else if (has_class_tag(STRING_TAG)) {
     auto str = String::cast(this);
     str->do_pointers(cb);
   } else {
@@ -204,6 +204,29 @@ void HeapObject::do_pointers(Program* program, PointerCallback* cb) {
     PointerRootCallback root_callback(cb);
     roots_do(program, &root_callback);
   }
+}
+
+bool HeapObject::can_be_toit_finalized(Program* program) const {
+  auto tag = class_tag();
+  if (tag != INSTANCE_TAG) return false;
+  // Some instances are banned for Toit finalizers.  These are typically
+  // things like string slices, which are implemented as special instances,
+  // but don't have identity.  We reuse the byte_content function to check
+  // this.
+  const uint8* dummy1;
+  int dummy2;
+  if (byte_content(program, &dummy1, &dummy2, STRINGS_OR_BYTE_ARRAYS)) {
+    // Can't finalize strings and byte arrays.  This is partly because it
+    // doesn't make sense, but also because we only have one finalizer bit in
+    // the header, and it's also for VM finalizers, that free external memory.
+    return false;
+  }
+  if (is_instance(this) && class_id() == program->map_class_id()) {
+    // Can't finalize maps, because we use the finalize bit in the header to
+    // mark weak maps.
+    return false;
+  }
+  return true;
 }
 
 void ByteArray::do_pointers(PointerCallback* cb) {
@@ -306,16 +329,10 @@ int Stack::frames_do(Program* program, FrameCallback* cb) {
   return frame_no;
 }
 
-void Instance::roots_do(int instance_size, RootCallback* cb) {
+void Instance::instance_roots_do(int instance_size, RootCallback* cb) {
+  if (has_active_finalizer() && cb->skip_marking(this)) return;
   int fields = fields_from_size(instance_size);
   cb->do_roots(_root_at(_offset_from(0)), fields);
-}
-
-void Instance::initialize(int instance_size) {
-  int fields = fields_from_size(instance_size);
-  for (int i = 0; i < fields; i++) {
-    at_put(i, Smi::from(0));
-  }
 }
 
 bool Object::encode_on(ProgramOrientedEncoder* encoder) {
@@ -400,7 +417,7 @@ bool String::_is_valid_utf8() {
 
 void PromotedTrack::zap() {
   uword header = SINGLE_FREE_WORD_CLASS_ID;
-  header = (header << CLASS_TAG_BIT_SIZE) | SINGLE_FREE_WORD_TAG;
+  header = (header << CLASS_ID_OFFSET) | SINGLE_FREE_WORD_TAG;
   Object* filler = Smi::from(header);
   for (uword p = _raw(); p < _raw() + HEADER_SIZE; p += WORD_SIZE) {
     *reinterpret_cast<Object**>(p) = filler;

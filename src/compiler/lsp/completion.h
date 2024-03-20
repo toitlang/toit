@@ -32,12 +32,27 @@ class SourceManager;
 /// A target handler is invoked when the target of a LSP command is encountered.
 class CompletionHandler : public LspSelectionHandler {
  public:
-  CompletionHandler(Symbol prefix, const std::string& package_id, SourceManager* source_manager, LspProtocol* protocol)
+  CompletionHandler(SourceManager* source_manager, LspProtocol* protocol)
       : LspSelectionHandler(protocol)
-      , prefix_(prefix)
-      , package_id_(package_id)
       , source_manager_(source_manager) {}
 
+  void set_and_emit_prefix(Symbol prefix, const Source::Range& range);
+
+  void set_package_id(const std::string& package_id) {
+    package_id_ = package_id;
+  }
+
+  /// Finishes the completion request.
+  /// This invokes exit(0).
+  void terminate();
+
+  void import_path(const char* path,
+                   const char* segment,
+                   bool is_first_segment,
+                   const char* resolved,
+                   const Package& current_package,
+                   const PackageLock& package_lock,
+                   Filesystem* fs);
   void class_interface_or_mixin(ast::Node* node,
                                 IterableScope* scope,
                                 ir::Class* holder,
@@ -85,16 +100,6 @@ class CompletionHandler : public LspSelectionHandler {
                    ToitdocScopeIterator* iterator,
                    bool is_signature_toitdoc);
 
-  static void import_first_segment(Symbol prefix,
-                                   ast::Identifier* segment,
-                                   const Package& current_package,
-                                   const PackageLock& package_lock,
-                                   LspProtocol* protocol);
-  static void import_path(Symbol prefix,
-                          const char* path,
-                          Filesystem* fs,
-                          LspProtocol* protocol);
-
  private:
   void complete_static_ids(IterableScope* scope, ir::Method* surrounding);
   void complete_named_args(ir::Method* method);
@@ -113,10 +118,10 @@ class CompletionHandler : public LspSelectionHandler {
                       CompletionKind kind_override = CompletionKind::NONE);
   void complete(const std::string& name, CompletionKind kind);
 
-  Symbol prefix_;
-  std::string package_id_;
+  Symbol prefix_ = Symbol::invalid();
+  std::string package_id_ = std::string(Package::INVALID_PACKAGE_ID);
   SourceManager* source_manager_;
-  UnorderedSet<std::string> emitted;
+  UnorderedSet<std::string> emitted_;
 };
 
 } // namespace toit::compiler

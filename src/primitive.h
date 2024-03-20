@@ -81,6 +81,7 @@ namespace toit {
   PRIMITIVE(seconds_since_epoch_local, 7)    \
   PRIMITIVE(set_tz, 1)                       \
   PRIMITIVE(platform, 0)                     \
+  PRIMITIVE(architecture, 0)                 \
   PRIMITIVE(process_stats, 4)                \
   PRIMITIVE(bytes_allocated_delta, 0)        \
   PRIMITIVE(string_length, 1)                \
@@ -113,6 +114,7 @@ namespace toit {
   PRIMITIVE(add_entropy, 1)                  \
   PRIMITIVE(count_leading_zeros, 1)          \
   PRIMITIVE(popcount, 1)                     \
+  PRIMITIVE(int_vector_equals, 2)            \
   PRIMITIVE(number_to_float, 1)              \
   PRIMITIVE(put_uint_big_endian, 5)          \
   PRIMITIVE(read_int_big_endian, 4)          \
@@ -169,7 +171,8 @@ namespace toit {
   PRIMITIVE(float_ceil, 1)                   \
   PRIMITIVE(float_floor, 1)                  \
   PRIMITIVE(float_trunc, 1)                  \
-  PRIMITIVE(command, 0)                      \
+  PRIMITIVE(program_name, 0)                 \
+  PRIMITIVE(program_path, 0)                 \
   PRIMITIVE(main_arguments, 0)               \
   PRIMITIVE(spawn, 3)                        \
   PRIMITIVE(spawn_method, 0)                 \
@@ -199,6 +202,8 @@ namespace toit {
   PRIMITIVE(crc, 6)                          \
   PRIMITIVE(string_from_rune, 1)             \
   PRIMITIVE(string_write_to_byte_array, 5)   \
+  PRIMITIVE(string_to_utf_16, 1)             \
+  PRIMITIVE(utf_16_to_string, 1)             \
   PRIMITIVE(create_off_heap_byte_array, 1)   \
   PRIMITIVE(add_finalizer, 2)                \
   PRIMITIVE(remove_finalizer, 1)             \
@@ -299,6 +304,7 @@ namespace toit {
   PRIMITIVE(write, 4)                        \
   PRIMITIVE(add_root_certificate, 2)         \
   PRIMITIVE(add_global_root_certificate, 2)  \
+  PRIMITIVE(use_system_trusted_root_certificates, 0) \
   PRIMITIVE(add_certificate, 4)              \
   PRIMITIVE(error, 2)                        \
   PRIMITIVE(get_internals, 1)                \
@@ -387,6 +393,13 @@ namespace toit {
   PRIMITIVE(total_run_time, 0)               \
   PRIMITIVE(get_mac_address, 0)              \
   PRIMITIVE(memory_page_report, 0)           \
+  PRIMITIVE(watchdog_init, 1)                \
+  PRIMITIVE(watchdog_reset, 0)               \
+  PRIMITIVE(watchdog_deinit, 0)              \
+  PRIMITIVE(pin_hold_enable, 1)              \
+  PRIMITIVE(pin_hold_disable, 1)             \
+  PRIMITIVE(deep_sleep_pin_hold_enable, 0)   \
+  PRIMITIVE(deep_sleep_pin_hold_disable, 0)  \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -500,8 +513,8 @@ namespace toit {
 #define MODULE_BITMAP(PRIMITIVE)             \
   PRIMITIVE(draw_text, 8)                    \
   PRIMITIVE(byte_draw_text, 8)               \
-  PRIMITIVE(draw_bitmap, 10)                 \
-  PRIMITIVE(draw_bytemap, 9)                 \
+  PRIMITIVE(draw_bitmap, 11)                 \
+  PRIMITIVE(draw_bytemap, 10)                \
   PRIMITIVE(byte_zap, 2)                     \
   PRIMITIVE(blit, 11)                        \
   PRIMITIVE(rectangle, 7)                    \
@@ -611,6 +624,9 @@ namespace toit {
   PRIMITIVE(rmdir, 1)                        \
   PRIMITIVE(rename, 2)                       \
   PRIMITIVE(chdir, 1)                        \
+  PRIMITIVE(chmod, 2)                        \
+  PRIMITIVE(link, 3)                         \
+  PRIMITIVE(readlink, 1)                     \
   PRIMITIVE(mkdir, 2)                        \
   PRIMITIVE(opendir, 1)                      \
   PRIMITIVE(opendir2, 2)                     \
@@ -691,7 +707,7 @@ namespace toit {
 
 #define MODULE_ESPNOW(PRIMITIVE)             \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(create, 4)                       \
+  PRIMITIVE(create, 5)                       \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(send, 3)                         \
   PRIMITIVE(send_succeeded, 1)               \

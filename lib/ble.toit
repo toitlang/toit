@@ -7,6 +7,8 @@ import monitor
 import uuid
 import bytes
 import monitor show ResourceState_
+import system
+import system show platform
 import encoding.hex
 
 /**
@@ -702,7 +704,7 @@ class Peripheral extends Resource_:
       data/AdvertisementData
       --interval/Duration=DEFAULT-INTERVAL
       --connection-mode/int=BLE-CONNECT-MODE-NONE:
-    if platform == PLATFORM-MACOS:
+    if platform == system.PLATFORM-MACOS:
       if interval != DEFAULT-INTERVAL or connection-mode != BLE-CONNECT-MODE-NONE: throw "INVALID_ARGUMENT"
 
     raw-service-classes := Array_ data.service-classes.size null
@@ -929,7 +931,7 @@ class LocalReadWriteElement_ extends Resource_:
 
 
 ble-retrieve-adpaters_:
-  if platform == PLATFORM-FREERTOS or platform == PLATFORM-MACOS:
+  if platform == system.PLATFORM-FREERTOS or platform == system.PLATFORM-MACOS:
     return [["default", #[], true, true, null]]
   throw "Unsupported platform"
 
@@ -1054,7 +1056,7 @@ ble-gc_ resource:
   #primitive.ble.gc
 
 ble-platform-requires-uuid-as-byte-array_:
-  return platform == PLATFORM-FREERTOS
+  return platform == system.PLATFORM-FREERTOS
 
 ble-read-request-reply_ resource value:
   ble-run-with-quota-backoff_ :

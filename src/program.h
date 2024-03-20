@@ -148,7 +148,7 @@ class Program : public FlashAllocation {
   inline Method find_method(Object* receiver, int offset);
 
   static const int CLASS_TAG_MASK = (1 << HeapObject::CLASS_TAG_BIT_SIZE) - 1;
-  static const int INSTANCE_SIZE_BIT_SIZE = 16 - HeapObject::CLASS_TAG_BIT_SIZE;
+  static const int INSTANCE_SIZE_BIT_SIZE = 16 - HeapObject::CLASS_ID_OFFSET;
   static const int INSTANCE_SIZE_MASK = (1 << INSTANCE_SIZE_BIT_SIZE) - 1;
 
   inline TypeTag class_tag_for(Smi* class_id) {
@@ -160,24 +160,26 @@ class Program : public FlashAllocation {
   }
 
   inline int instance_fields_for(Smi* class_id) {
-    return Instance::fields_from_size(instance_size_for(class_id));
+    return Instance::fields_from_size(allocation_instance_size_for(class_id));
   }
 
-  inline int instance_size_for(Smi* class_id) {
+  inline int allocation_instance_size_for(Smi* class_id) {
     word value = Smi::value(class_id);
+    ASSERT(value >= 0);
+    return instance_size_from_class_bits(class_bits[value]);
+  }
+
+  static inline int instance_size_from_class_bits(int class_bits) {
+    return ((class_bits >> HeapObject::CLASS_ID_OFFSET) & INSTANCE_SIZE_MASK) * WORD_SIZE;
+  }
+
+  int instance_size_for(const HeapObject* object) {
+    word value = Smi::value(object->class_id());
     if (value < 0) {
       if (value == SINGLE_FREE_WORD_CLASS_ID) return sizeof(word);
       return 0;  // Variable sized object - free-list region or promoted track.
     }
     return instance_size_from_class_bits(class_bits[value]);
-  }
-
-  static inline int instance_size_from_class_bits(int class_bits) {
-    return ((class_bits >> HeapObject::CLASS_TAG_BIT_SIZE) & INSTANCE_SIZE_MASK) * WORD_SIZE;
-  }
-
-  int instance_size_for(const HeapObject* object) {
-    return instance_size_for(object->class_id());
   }
 
 #ifndef TOIT_FREERTOS
@@ -278,6 +280,10 @@ class Program : public FlashAllocation {
     friend class Program;
   };
 
+  bool is_valid_bcp(uint8* bcp) const {
+    return bytecodes.data() <= bcp && bcp < bytecodes.data() + bytecodes.length();
+  }
+
   int absolute_bci_from_bcp(uint8* bcp) const;
   uint8* bcp_from_absolute_bci(int absolute_bci) { return &bytecodes.data()[absolute_bci]; }
 
@@ -319,7 +325,7 @@ class Program : public FlashAllocation {
     ASSERT(Utils::is_aligned(instance_byte_size, WORD_SIZE));
     instance_byte_size = instance_byte_size / WORD_SIZE;
     if (instance_byte_size > INSTANCE_SIZE_MASK) FATAL("Invalid instance size");
-    return (instance_byte_size << HeapObject::CLASS_TAG_BIT_SIZE) | tag;
+    return (instance_byte_size << HeapObject::CLASS_ID_OFFSET) | tag;
   }
 
   void set_invoke_bytecode_offset(Opcode opcode, int offset) {

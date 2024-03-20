@@ -105,7 +105,7 @@ void Interpreter::prepare_task(Method entry, Instance* code) {
 Object** Interpreter::gc(Object** sp, bool malloc_failed, int attempts, bool force_cross_process) {
   ASSERT(attempts >= 1 && attempts <= 3);  // Allocation attempts.
   if (attempts == 3) {
-    OS::heap_summary_report(0, "out of memory");
+    OS::heap_summary_report(0, "out of memory", process_);
     if (VM::current()->scheduler()->is_boot_process(process_)) {
       OS::out_of_memory("Out of memory in system process");
     }
@@ -132,7 +132,7 @@ void Interpreter::prepare_process() {
   store_stack();
 }
 
-#ifdef IOT_DEVICE
+#ifdef TOIT_FREERTOS
 #define STACK_ENCODING_BUFFER_SIZE (2*1024)
 #else
 #define STACK_ENCODING_BUFFER_SIZE (16*1024)
@@ -289,5 +289,21 @@ void Interpreter::trace(uint8* bcp) {
   UNIMPLEMENTED();
 #endif
 }
+
+Object* Interpreter::float_op(Process* process, Object* a, Object* b, double_op* op) {
+  word word_result = process->object_heap()->allocate_new_space(Double::allocation_size());
+  if (!word_result) return NULL;
+  HeapObject* result = HeapObject::from_address(word_result);
+  Smi* header = HeapObject::cast(a)->header();
+  result->_set_header(header);
+  double d1 = Double::cast(a)->value();
+  double d2 = Double::cast(b)->value();
+  Double::cast(result)->_set_value(op(d1, d2));
+  return result;
+}
+
+double double_add(double a, double b) { return a + b; }
+double double_sub(double a, double b) { return a - b; }
+double double_mul(double a, double b) { return a * b; }
 
 } // namespace toit

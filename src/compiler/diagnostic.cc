@@ -138,22 +138,24 @@ void Diagnostics::report_location(Source::Range range, const char* prefix) {
   fprintf(stderr, "%s %s:%d:%d %d\n", prefix, path, line_number, column_number, offset_in_source);
 }
 
-void CompilationDiagnostics::emit(Severity severity, const char* format, va_list& arguments) {
-  vprintf(format, arguments);
-  putchar('\n');
+bool CompilationDiagnostics::emit(Severity severity, const char* format, va_list& arguments) {
+  auto target = print_on_stdout_ ? stdout : stderr;
+  vfprintf(target, format, arguments);
+  fputc('\n', target);
+  return true;
 }
 
 void CompilationDiagnostics::start_group() {
   ASSERT(!in_group_);
   in_group_ = true;
-  group_package_id_ = Package::INVALID_PACKAGE_ID;
+  group_package_ = Package::invalid();
 }
 
 void CompilationDiagnostics::end_group() {
   in_group_ = false;
 }
 
-void CompilationDiagnostics::emit(Severity severity,
+bool CompilationDiagnostics::emit(Severity severity,
                                   Source::Range range,
                                   const char* format,
                                   va_list& arguments) {
@@ -161,28 +163,30 @@ void CompilationDiagnostics::emit(Severity severity,
 
   if (!show_package_warnings_) {
     Severity error_severity;
-    std::string error_package_id;
+    Package error_package;
     if (in_group_) {
       // For groups, the first encountered error defines where the error comes
       // from. Subsequent diagnostics in the group use that package id.
-      if (group_package_id_ == Package::INVALID_PACKAGE_ID) {
-        group_package_id_ = from_location.source->package_id();
+      if (!group_package_.is_valid()) {
+        group_package_ = from_location.source->package();
         group_severity_ = severity;
       }
-      error_package_id = group_package_id_;
+      error_package = group_package_;
       error_severity = group_severity_;
     } else {
-      error_package_id = from_location.source->package_id();
+      error_package = from_location.source->package();
       error_severity = severity;
     }
 
-    if (error_package_id != Package::ENTRY_PACKAGE_ID) {
+    // If the package is not the entry package or a local path package,
+    // skip reporting the warning/note.
+    if (!error_package.is_path_package()) {
       switch (error_severity) {
         case Severity::error:
           break;
         case Severity::warning:
         case Severity::note:
-          return;
+          return false;
       }
     }
   }
@@ -198,30 +202,32 @@ void CompilationDiagnostics::emit(Severity severity,
 
   FILE* (*color_fun)(FILE*) = null;
 
+  auto out_target = print_on_stdout_ ? stdout : stderr;
+
   text_bold(stdout);
   if (absolute_path != null) {
-    printf("%s:%d:%d: ", error_path.c_str(), line_number, column_number);
+    fprintf(out_target, "%s:%d:%d: ", error_path.c_str(), line_number, column_number);
   }
   switch (severity) {
     case Severity::warning:
       color_fun = &text_magenta;
-      (*color_fun)(stdout);
-      printf("warning: ");
+      (*color_fun)(out_target);
+      fprintf(out_target, "warning: ");
       break;
     case Severity::error:
       color_fun = &text_red;
-      (*color_fun)(stdout);
-      printf("error: ");
+      (*color_fun)(out_target);
+      fprintf(out_target, "error: ");
       break;
     case Severity::note:
       color_fun = &text_green;
-      (*color_fun)(stdout);
-      printf("note: ");
+      (*color_fun)(out_target);
+      fprintf(out_target, "note: ");
       break;
   }
-  reset_colors(stdout);
-  vprintf(format, arguments);
-  putchar('\n');
+  reset_colors(out_target);
+  vfprintf(out_target, format, arguments);
+  fputc('\n', out_target);
 
   // Print the source line.
 
@@ -229,25 +235,25 @@ void CompilationDiagnostics::emit(Severity severity,
   while (true) {
     int c = source[index++];
     if (c == 0 || is_newline(c)) break;
-    putchar(c);
+    fputc(c, out_target);
   }
-  putchar('\n');
+  fputc('\n', out_target);
 
   // Skip over Windows newline.
   if (source[index - 1] == '\r' && source[index] == '\n') index++;
 
   // Print the `^~~~` at the correct location.
 
-  (*color_fun)(stdout);
+  (*color_fun)(out_target);
   index = line_offset;
   while (index < offset_in_source) {
     int c = source[index];
     // Keep tabs, to make it more likely that the ^ aligns correctly.
-    putchar(c == '\t' ? '\t' : ' ');
+    fputc(c == '\t' ? '\t' : ' ', out_target);
     // UTF-8 multi-byte sequences are just treated like one character.
     index += Utils::bytes_in_utf_8_sequence(c);
   }
-  printf("^");
+  fprintf(out_target, "^");
   index += Utils::bytes_in_utf_8_sequence(source[index]);
 
   auto to_location = source_manager()->compute_location(range.to());
@@ -260,25 +266,28 @@ void CompilationDiagnostics::emit(Severity severity,
 
       // UTF-8 multi-byte sequences are just treated like one character.
       index += Utils::bytes_in_utf_8_sequence(source[index]);
-      printf("~");
+      fprintf(out_target, "~");
     }
   }
-  printf("\n");
-  reset_colors(stdout);
+  fprintf(out_target, "\n");
+  reset_colors(out_target);
+  return true;
 }
 
-void LanguageServerAnalysisDiagnostics::emit(Severity severity, const char* format, va_list& arguments) {
+bool LanguageServerAnalysisDiagnostics::emit(Severity severity, const char* format, va_list& arguments) {
   lsp()->diagnostics()->emit(severity, format, arguments);
+  return true;
 }
 
-void LanguageServerAnalysisDiagnostics::emit(Severity severity,
+bool LanguageServerAnalysisDiagnostics::emit(Severity severity,
                                              Source::Range range,
                                              const char* format,
                                              va_list& arguments) {
   lsp()->diagnostics()->emit(severity,
-                             range_to_lsp_range(range, source_manager()),
+                             range_to_lsp_location(range, source_manager()),
                              format,
                              arguments);
+  return true;
 }
 
 void LanguageServerAnalysisDiagnostics::start_group() {

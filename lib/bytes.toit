@@ -113,11 +113,6 @@ abstract class BufferConsumer:
   */
   abstract write-byte byte/int -> none
   /**
-  Deprecated.  Use $write-byte.
-  */
-  put-byte byte/int -> none:
-    write-byte byte
-  /**
   Writes the byte of $data at the given $offset.
   The $offset must be valid and the backing store must be able to
     write a byte at this offset. If necessary use $grow before
@@ -126,9 +121,6 @@ abstract class BufferConsumer:
   abstract put-byte offset/int data/int -> none
   /** Writes the given $data into this consumer. */
   abstract write data from/int=0 to/int=data.size -> int
-  /** Deprecated.  Use $write-producer. */
-  put-producer producer/Producer -> none:
-    write-producer producer
   /** Writes the data from the $producer into this consumer. */
   abstract write-producer producer/Producer -> none
   /**
@@ -351,13 +343,6 @@ class Buffer extends BufferConsumer:
   */
   bytes -> ByteArray:
     return buffer_[0..size]
-
-  /**
-  Deprecated. Use $bytes.
-  */
-  take -> ByteArray:
-    if offset_ == buffer_.size: return buffer_
-    return buffer_.copy 0 offset_
 
   /**
   Converts the consumed data to a string.

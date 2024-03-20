@@ -62,6 +62,12 @@ add_custom_target(
   DEPENDS build_tools
   )
 
+add_custom_target(build_test_assets)
+# Make sure the assets are built before we run the tests.
+add_dependencies(check build_test_assets)
+add_dependencies(check_slow build_test_assets)
+
+
 # Create 15 flaky dummy tests, so that the strides mechanism works.
 foreach(i RANGE 15)
   add_test(
@@ -86,7 +92,7 @@ foreach(file ${ALL_TESTS})
   elseif("${file}" IN_LIST TOIT_NO_BOOT_TESTS)
     set(TOIT_ARGS "-b" "none")
   elseif("${file}" IN_LIST TOIT_COMPILER_TESTS)
-    set(TEST_ARGS "$<TARGET_FILE:toit.run>")
+    set(TEST_ARGS "$<TARGET_FILE:toit.run>" "$<TARGET_FILE:toit.compile>")
   else()
     # We add 3 arguments to all test-calls.
     # They are only used for tests that deal with arguments.
@@ -98,25 +104,30 @@ foreach(file ${ALL_TESTS})
     set(TEST_CONFIGURATIONS "slow")
   endif()
 
+  set(TEST_EXPECTATION_NAME ${file})
+  if("${file}" IN_LIST TOIT_FAILING_TESTS)
+    set(TEST_EXPECTATION_NAME "${file}-expected-to-fail")
+  endif()
+
   add_test(
-    NAME ${file}
+    NAME ${TEST_EXPECTATION_NAME}
     COMMAND $<TARGET_FILE:toit.run> ${TOIT_ARGS} ${file} ${TEST_ARGS}
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     CONFIGURATIONS ${TEST_CONFIGURATIONS}
     )
 
-  set_tests_properties(${file} PROPERTIES ENVIRONMENT "TOIT_TEST_ENV_ENTRY=TOIT_TEST_ENV_VALUE")
+  set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES ENVIRONMENT "TOIT_TEST_ENV_ENTRY=TOIT_TEST_ENV_VALUE")
 
   if("${file}" IN_LIST TOIT_SLOW_TESTS)
-    set_tests_properties(${file} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
   else()
-    set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
   endif()
   if("${file}" IN_LIST TOIT_FAILING_TESTS)
-    set_tests_properties(${file} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
   endif()
   if("${file}" IN_LIST TOIT_FLAKY_TESTS)
-    set_tests_properties(${file} PROPERTIES LABELS "flaky")
+    set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES LABELS "flaky")
   endif()
 endforeach()
 
@@ -143,3 +154,4 @@ add_subdirectory(lock_file)
 add_subdirectory(vessels)
 add_subdirectory(valgrind)
 add_subdirectory(strip)
+add_subdirectory(pkg)

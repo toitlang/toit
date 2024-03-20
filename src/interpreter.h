@@ -42,6 +42,8 @@
 
 namespace toit {
 
+typedef double (double_op)(double a, double b);
+
 class Interpreter {
  public:
   // Number of words that are pushed onto the stack whenever there is a call.
@@ -73,6 +75,10 @@ class Interpreter {
   static const int COMPARE_FLAG_EQUAL              = 32;
   static const int COMPARE_FLAG_GREATER_EQUAL      = 64;
   static const int COMPARE_FLAG_STRICTLY_GREATER   = 128;
+
+  static const int SIMPLE_LESS = COMPARE_RESULT_MINUS_1 | COMPARE_FLAG_STRICTLY_LESS | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
+  static const int SIMPLE_EQUAL = COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL;
+  static const int SIMPLE_GREATER = COMPARE_RESULT_PLUS_1 | COMPARE_FLAG_STRICTLY_GREATER | COMPARE_FLAG_GREATER_EQUAL;
 
   class Result {
    public:
@@ -121,6 +127,7 @@ class Interpreter {
   // Fast helpers for indexing and number comparisons.
   static bool fast_at(Process* process, Object* receiver, Object* args, bool is_put, Object** value) INTERPRETER_HELPER;
   static int compare_numbers(Object* lhs, Object* rhs) INTERPRETER_HELPER;
+  static int compare_ints(int64 lhs, int64 rhs) INTERPRETER_HELPER;
 
   // Load stack info from process's stack.
   Object** load_stack(Method* pending = null);
@@ -132,6 +139,9 @@ class Interpreter {
 
   void preempt();
   uint8* preemption_method_header_bcp() const { return preemption_method_header_bcp_; }
+
+  static bool are_smis(Object* a, Object* b);
+  static bool are_floats(Object* a, Object* b);
 
  private:
   Object** const PREEMPTION_MARKER = reinterpret_cast<Object**>(UINTPTR_MAX);
@@ -188,6 +198,9 @@ class Interpreter {
     return Smi::from(base_ - pointer + BLOCK_SALT);
   }
 
+  static Object* float_op(Process* process, Object* a, Object* b, double_op* op);
+
+
   friend class Stack;
 };
 
@@ -204,5 +217,9 @@ class ProcessRunner {
   virtual Interpreter::Result run() = 0;
   virtual void set_process(Process* process) = 0;
 };
+
+double double_add(double a, double b);
+double double_sub(double a, double b);
+double double_mul(double a, double b);
 
 } // namespace toit

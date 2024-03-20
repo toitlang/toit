@@ -704,8 +704,6 @@ abstract class string implements Comparable:
     '?' will match any single Unicode character.
     '*' will match any number of Unicode characters.
 
-  The private optional named argument $position_ is used for recursive calls.
-
   # Examples
   ```
   "Toad".glob "Toad"   // => true
@@ -715,29 +713,31 @@ abstract class string implements Comparable:
   "Toad".glob "To\\*d" // => false
   ```
   */
+  glob pattern/string -> bool:
+    return glob_ pattern --position=0
 
-  glob pattern/string --position_/int=0 -> bool:
+  glob_ pattern/string --position/int -> bool:
     pattern-pos := 0
-    while pattern-pos < pattern.size or position_ < size:
+    while pattern-pos < pattern.size or position < size:
       if pattern-pos < pattern.size:
         pattern-char := pattern[pattern-pos]
         if pattern-char == '?':
-          if position_ < size:
+          if position < size:
             pattern-pos += utf-8-bytes pattern-char
-            position_ += utf-8-bytes this[position_]
+            position += utf-8-bytes this[position]
             continue
         else if pattern-char == '*':
           sub-pattern := pattern.copy pattern-pos + 1
-          while position_ <= size:
-            if glob sub-pattern --position_=position_: return true
-            position_ += position_ == size ? 1 : utf-8-bytes this[position_]
-        else if position_ < size and ((pattern-char == '\\') or (this[position_] == pattern-char)):
+          while position <= size:
+            if glob_ sub-pattern --position=position: return true
+            position += position == size ? 1 : utf-8-bytes this[position]
+        else if position < size and ((pattern-char == '\\') or (this[position] == pattern-char)):
           if pattern-char == '\\':
             if pattern-pos >= pattern.size: return false
             pattern-pos++
-            if this[position_] != pattern[pattern-pos]: return false
+            if this[position] != pattern[pattern-pos]: return false
           pattern-pos += utf-8-bytes pattern-char
-          position_ += utf-8-bytes this[position_]
+          position += utf-8-bytes this[position]
           continue
       return false
     return true
@@ -1313,6 +1313,22 @@ abstract class string implements Comparable:
     return write-to-byte-array_ byte-array start end 0
 
   /**
+  Converts the string to little-endian UTF-16 and writes the raw UTF-16 bytes
+    to a new ByteArray.
+  */
+  to-utf-16 -> ByteArray:
+    #primitive.core.string-to-utf-16
+
+  /**
+  Treats the byte array as little endian UTF-16 and converts it to a string.
+  If the byte array is not a valid UTF-16 string, error characters
+    (U+FFFD) are inserted as replacements. Unpaired surrogates are
+    considered invalid and replaced with the error character.
+  */
+  constructor.from-utf-16 byte-array/ByteArray:
+    return string-from-utf-16_ byte-array
+
+  /**
   Writes the raw UTF-8 bytes of the string to an existing ByteArray.
   */
   write-to-byte-array byte-array:
@@ -1389,3 +1405,6 @@ class StringSlice_ extends string:
 // Unsigned base 2, 8, and 16 stringification.
 printf-style-int-stringify_ value/int base/int -> string:
   #primitive.core.printf-style-int64-to-string
+
+string-from-utf-16_ byte-array/ByteArray -> string:
+  #primitive.core.utf-16-to-string

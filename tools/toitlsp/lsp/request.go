@@ -32,31 +32,34 @@ const (
 
 type WorkspaceSettings struct {
 	// TODO(jesper): each connection should have its on logger changed on the verbose.
-	Verbose                 bool          `json:"verbose"`
-	ShouldWriteReproOnCrash bool          `json:"shouldWriteReproOnCrash"`
-	Timeout                 time.Duration `json:"timeout"`
-	SDKPath                 string        `json:"sdkPath"`
-	ToitcPath               string        `json:"toitcPath"`
-	ReproDirectory          string        `json:"reproDir"`
+	Verbose                        bool          `json:"verbose"`
+	ShouldWriteReproOnCrash        bool          `json:"shouldWriteReproOnCrash"`
+	ShouldReportPackageDiagnostics bool          `json:"reportPackageDiagnostics"`
+	Timeout                        time.Duration `json:"timeout"`
+	SDKPath                        string        `json:"sdkPath"`
+	ToitcPath                      string        `json:"toitcPath"`
+	ReproDirectory                 string        `json:"reproDir"`
 }
 
 type parseWorkspaceSettings struct {
-	Verbose                 bool   `json:"verbose"`
-	ShouldWriteReproOnCrash bool   `json:"shouldWriteReproOnCrash"`
-	TimeoutMs               *int   `json:"timeoutMs"`
-	SDKPath                 string `json:"sdkPath"`
-	ToitcPath               string `json:"toitcPath"`
-	ReproDirectory          string `json:"reproDir"`
+	Verbose                        bool   `json:"verbose"`
+	ShouldWriteReproOnCrash        bool   `json:"shouldWriteReproOnCrash"`
+	ShouldReportPackageDiagnostics bool   `json:"reportPackageDiagnostics"`
+	TimeoutMs                      *int   `json:"timeoutMs"`
+	SDKPath                        string `json:"sdkPath"`
+	ToitcPath                      string `json:"toitcPath"`
+	ReproDirectory                 string `json:"reproDir"`
 }
 
 func (s parseWorkspaceSettings) WorkspaceSettings() *WorkspaceSettings {
 	res := &WorkspaceSettings{
-		Verbose:                 s.Verbose,
-		ShouldWriteReproOnCrash: s.ShouldWriteReproOnCrash,
-		Timeout:                 defaultTimeout,
-		SDKPath:                 s.SDKPath,
-		ToitcPath:               s.ToitcPath,
-		ReproDirectory:          defaultReproDir,
+		Verbose:                        s.Verbose,
+		ShouldWriteReproOnCrash:        s.ShouldWriteReproOnCrash,
+		ShouldReportPackageDiagnostics: s.ShouldReportPackageDiagnostics,
+		Timeout:                        defaultTimeout,
+		SDKPath:                        s.SDKPath,
+		ToitcPath:                      s.ToitcPath,
+		ReproDirectory:                 defaultReproDir,
 	}
 
 	if s.TimeoutMs != nil {

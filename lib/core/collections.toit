@@ -1088,7 +1088,28 @@ class LargeArray_ extends Array_:
 /**
 A container specialized for bytes.
 
-A byte array can only contain (non-null) integers in the range 0-255.
+A byte array can only contain (non-null) integers in the range 0-255. When
+  storing other integer values, they are automatically truncated.
+
+Byte arrays can be created using the $ByteArray constructors, or by using the
+  byte array literal syntax: `#[1, 2, 3]`. If the latter only contains
+  constants, it is compiled such that access to the byte array doesn't need
+  the dynamic creation of the byte array. On many platforms this requires
+  less memory. These literals are still mutable and will copy their content
+  into memory the first time they are modified ("Copy on Write").
+
+# Examples
+```
+bytes := #[1, 2, 3]
+bytes[0] = 22
+print bytes  // => [22, 2, 3]
+
+bytes += #[4, 5]
+print bytes  // => [22, 2, 3, 4, 5]
+
+bytes := ByteArray 4: it
+print bytes  // => [0, 1, 2, 3]
+```
 */
 interface ByteArray:
 
@@ -1311,8 +1332,9 @@ abstract class ByteArrayBase_ implements ByteArray:
   abstract operator []= n/int value/int -> int
 
   operator [..] --from/int=0 --to/int=size -> ByteArray:
-    if not 0 <= from <= to <= size: throw "OUT_OF_BOUNDS"
     if from == 0 and to == size: return this
+    // Don't bother checking the bounds, since the ByteArraySlice_
+    // constructor does this.
     return ByteArraySlice_ this from to
 
   /**
@@ -1599,6 +1621,8 @@ class ByteArraySlice_ extends ByteArrayBase_:
   to_ / int
 
   constructor .byte-array_ .from_ .to_:
+    // We must check the bounds because the [..] operator on ByteArray
+    // does not check.
     if not 0 <= from_ <= to_ <= byte-array_.size:
       throw "OUT_OF_BOUNDS"
 
@@ -2456,6 +2480,15 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
     do: if not predicate.call it: return false
     return true
 
+  /**
+  Copies the set.
+
+  Returns a new instance that has the same values as this instance.
+  The copy is shallow and does not clone/copy the elements.
+  */
+  copy -> Set:
+    return map: it
+
   /** See $Collection.any. */
   // TODO(florian): should be inherited from CollectionBase.
   any [predicate] -> bool:
@@ -2615,9 +2648,31 @@ See also https://docs.toit.io/language/listsetmap.
 class Map extends HashedInsertionOrderedCollection_:
   static STEP_ ::= 2
 
-  // A map that only works with strings, integers, and objects supporting hash_code and equals.
+  /**
+  Constructs an empty map.
+  */
   constructor:
     super
+
+  /**
+  Constructs a weak map where the values may be replaced by null when there is
+    memory pressure.
+  A cleanup task may remove keys whose values are null at some later point, but
+    your program should not rely on this.  This cleanup task will also remove
+    key-value pairs where the value was deliberately set to null.
+  */
+  constructor.weak:
+    super
+    add-gc-processing_ this::
+      backing := backing_
+      length := backing.size
+      for position := 0; position < length; position += 2:
+        key := backing[position]
+        value := backing[position + 1]
+        if key is Tombstone_ or value != null: continue
+        backing[position] = SMALL-TOMBSTONE_
+        backing[position + 1] = SMALL-TOMBSTONE_
+        size_--
 
   /**
   Constructs a Map with a given $size.
@@ -3143,6 +3198,11 @@ class Deque implements Collection:
   first_ := 0
   backing_/List := []
 
+  constructor:
+
+  constructor.from collection/Collection:
+    backing_ = List.from collection
+
   size -> int:
     return backing_.size - first_
 
@@ -3218,6 +3278,10 @@ class Deque implements Collection:
     first--
     backing_[first] = element
     first_ = first
+
+  operator [] index/int:
+    if index < 0 or index > backing_.size - first_: throw "OUT_OF_RANGE"
+    return backing_[first_ + index]
 
   shrink-if-needed_ -> none:
     backing := backing_

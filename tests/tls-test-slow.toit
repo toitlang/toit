@@ -8,12 +8,14 @@ import writer
 import tls
 import .tcp as tcp
 import net.x509 as net
+import system
+import system show platform
 
 monitor LimitLoad:
   current := 0
   has-test-failure := null
   // FreeRTOS does not have enough memory to run 10 in parallel.
-  concurrent-processes ::= platform == "FreeRTOS" ? 1 : 3
+  concurrent-processes ::= platform == system.PLATFORM-FREERTOS ? 1 : 3
 
   inc:
     await: current < concurrent-processes
@@ -44,13 +46,10 @@ run-tests:
     // "ebay.de",  // Currently the IP that is returned first from DNS has connection refused.
     "$(dns-lookup "amazon.com")/amazon.com",  // Connect to the IP address at the TCP level, but verify the cert name.
 
-    //"dkhostmaster.dk",
-    // Gnu.org is down for everyone 2023-08-18.
-    // "gnu.org",  // Doesn't work with Toit mode, falls back to MbedTLS C code for symmetric stage.
+    "dkhostmaster.dk",
+    "gnu.org",  // Doesn't work with Toit mode, falls back to MbedTLS C code for symmetric stage.
 
     "sha256.badssl.com",
-    // "sha384.badssl.com",  Expired.
-    // "sha512.badssl.com",  Expired.
     "ecc256.badssl.com",
     "ecc384.badssl.com",
     "rsa2048.badssl.com",
@@ -67,12 +66,14 @@ run-tests:
     ]
   non-working := [
     "$(dns-lookup "amazon.com")",   // This fails because the name we use to connect (an IP address string) doesn't match the cert name.
-    "wrong.host.badssl.com/Common Name|unknown root cert",
-    "self-signed.badssl.com/Certificate verification failed|unknown root cert",
-    "untrusted-root.badssl.com/Certificate verification failed|unknown root cert",
+    "wrong.host.badssl.com/CN_MISMATCH|nknown root cert",
+    "self-signed.badssl.com/Certificate verification failed|nknown root cert",
+    "untrusted-root.badssl.com/Certificate verification failed|nknown root cert",
+    "sha384.badssl.com/EXPIRED",
+    "sha512.badssl.com/EXPIRED",
     //  "revoked.badssl.com",  // We don't have support for cert revocation yet.
     //  "pinning-test.badssl.com",  // We don't have support for cert pinning yet.
-    //  "sha1-intermediate.badssl.com/unacceptable hash",  // Expired.
+    "sha1-intermediate.badssl.com/EXPIRED|unacceptable hash",
     // The peer rejects us here because we don't have any hash algorithm in common.
     "rc4-md5.badssl.com/7780|received from our peer",
     "rc4.badssl.com/7780|received from our peer",
@@ -83,10 +84,11 @@ run-tests:
     "dh512.badssl.com",
     //  "dh-small-subgroup.badssl.com", // Should we not connect to sites with crappy certs?
     //  "dh-composite.badssl.com", // Should we not connect to sites with crappy certs?
-    "subdomain.preloaded-hsts.badssl.com/Common Name",
+    "subdomain.preloaded-hsts.badssl.com/CN_MISMATCH",
     "captive-portal.badssl.com",
     "mitm-software.badssl.com",
-    "sha1-2017.badssl.com",
+    "sha1-2017.badssl.com/BAD_MD",
+    "sha1.badssl.com/BAD_MD",
     ]
   working.do: | site |
     test-site site true

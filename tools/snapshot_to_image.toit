@@ -27,7 +27,9 @@ import .firmware show pad
 import binary show LITTLE-ENDIAN ByteOrder
 import bytes
 import encoding.ubjson
+import system
 import uuid
+
 import host.file
 import cli
 
@@ -98,14 +100,14 @@ print-usage parser/cli.Command --error/string?=null:
 main args:
   parsed := null
   parser := cli.Command "snapshot_to_image"
-      --rest=[cli.OptionString SNAPSHOT-FILE]
+      --rest=[cli.Option SNAPSHOT-FILE]
       --options=[
           cli.Flag M32-FLAG --short-name="m32",
           cli.Flag M64-FLAG --short-name="m64",
           cli.Flag BINARY-FLAG,
           cli.OptionEnum FORMAT-OPTION ["binary", "ubjson"],
-          cli.OptionString OUTPUT-OPTION --short-name="o",
-          cli.OptionString ASSETS-OPTION,
+          cli.Option OUTPUT-OPTION --short-name="o",
+          cli.Option ASSETS-OPTION,
         ]
       --run=:: parsed = it
 
@@ -133,7 +135,7 @@ main args:
   if parsed[M64-FLAG]:
     machine-word-sizes.add 8
   if machine-word-sizes.is-empty:
-    machine-word-sizes.add BYTES-PER-WORD
+    machine-word-sizes.add system.BYTES-PER-WORD
 
   if format == "binary" and machine-word-sizes.size > 1:
     print-usage parser --error="more than one machine flag provided"

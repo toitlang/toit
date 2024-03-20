@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <cmath>
 #include <driver/i2c.h>
@@ -72,7 +72,7 @@ PRIMITIVE(init) {
   ARGS(int, frequency, int, sda, int, scl);
 
   i2c_port_t port = i2c_ports.any();
-  if (port == kInvalidPort) FAIL(OUT_OF_RANGE);
+  if (port == kInvalidPort) FAIL(ALREADY_IN_USE);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
@@ -283,4 +283,4 @@ PRIMITIVE(read_address) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

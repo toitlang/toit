@@ -57,6 +57,7 @@ TYPE_PRIMITIVE_INT(time)
 TYPE_PRIMITIVE_ARRAY(time_info)
 TYPE_PRIMITIVE_NULL(set_tz)
 TYPE_PRIMITIVE_STRING(platform)
+TYPE_PRIMITIVE_STRING(architecture)
 TYPE_PRIMITIVE_INT(bytes_allocated_delta)
 
 TYPE_PRIMITIVE(seconds_since_epoch_local) {
@@ -74,6 +75,8 @@ TYPE_PRIMITIVE_STRING(printf_style_int64_to_string)
 TYPE_PRIMITIVE_STRING(smi_to_string_base_10)
 TYPE_PRIMITIVE_STRING(concat_strings)
 TYPE_PRIMITIVE_STRING(string_from_rune)
+TYPE_PRIMITIVE_STRING(utf_16_to_string)
+TYPE_PRIMITIVE_BYTE_ARRAY(string_to_utf_16)
 
 TYPE_PRIMITIVE(string_at) {
   result.add_smi(program);
@@ -101,6 +104,7 @@ TYPE_PRIMITIVE_NULL(random_seed)
 TYPE_PRIMITIVE_NULL(add_entropy)
 TYPE_PRIMITIVE_SMI(count_leading_zeros)
 TYPE_PRIMITIVE_SMI(popcount)
+TYPE_PRIMITIVE_SMI(int_vector_equals)
 
 TYPE_PRIMITIVE_NULL(put_uint_big_endian)
 TYPE_PRIMITIVE_NULL(put_uint_little_endian)
@@ -253,7 +257,13 @@ TYPE_PRIMITIVE_ANY(main_arguments)
 TYPE_PRIMITIVE_SMI(spawn_method)
 TYPE_PRIMITIVE_ANY(spawn_arguments)
 
-TYPE_PRIMITIVE(command) {
+TYPE_PRIMITIVE(program_name) {
+  result.add_string(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
+
+TYPE_PRIMITIVE(program_path) {
   result.add_string(program);
   result.add_null(program);
   failure.add_string(program);

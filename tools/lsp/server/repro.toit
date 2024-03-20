@@ -146,13 +146,12 @@ create-archive project-uri/string? compiler-path/string entry-path/string out-pa
   protocol := FileServerProtocol.local compiler-path sdk-path documents translator
   compiler := Compiler compiler-path translator DEFAULT-TIMEOUT-MS
       --protocol=protocol
-      --project-uri=project-uri
   entry-uri := translator.to-uri entry-path
-  compiler.analyze [entry-uri]
+  compiler.analyze [entry-uri] --project-uri=project-uri
 
   write-repro
       --repro-path=out-path
-      --compiler-flags=compiler.build-run-flags
+      --compiler-flags=compiler.build-run-flags --project-uri=project-uri
       --compiler-input="ANALYZE\n1\n$entry-path\n"
       --info="from repro tool"
       --protocol=protocol

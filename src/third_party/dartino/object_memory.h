@@ -133,6 +133,7 @@ class HeapObjectVisitor {
 class LivenessOracle {
  public:
   virtual bool is_alive(HeapObject* object) = 0;
+  virtual bool has_active_finalizer(HeapObject* object) = 0;
 };
 
 // Space is a chain of chunks. It supports allocation and traversal.
@@ -168,6 +169,9 @@ class Space : public LivenessOracle {
   //    liveness although we are in new space - marking will mark object in
   //    new-space even though they are not compacted or swept.
   virtual bool is_alive(HeapObject* old_location) = 0;
+
+  // Used for weak processing (finalizers).
+  virtual bool has_active_finalizer(HeapObject* object) = 0;
 
   // Returns the total size of allocated chunks.
   uword size() const;
@@ -246,6 +250,8 @@ class Space : public LivenessOracle {
 
   void validate_before_mark_sweep(PageType page_type, bool object_starts_should_be_clear);
 
+  Program* program() const { return program_; }
+
  protected:
   Space(Program* program, Resizing resizeable, PageType page_type);
 
@@ -277,6 +283,7 @@ class SemiSpace : public Space {
   virtual uword used() const;
 
   virtual bool is_alive(HeapObject* old_location);
+  virtual bool has_active_finalizer(HeapObject* old_location);
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
@@ -287,6 +294,9 @@ class SemiSpace : public Space {
   // and causes a fatal error if no garbage collection is needed and
   // there is no room to allocate the object.
   uword allocate(uword size);
+
+  // Allocate raw object without trying very hard.
+  inline uword try_allocate(uword size);
 
   // For the mutable heap.
   void start_scavenge();
@@ -417,6 +427,7 @@ class OldSpace : public Space {
   virtual ~OldSpace();
 
   virtual bool is_alive(HeapObject* old_location);
+  virtual bool has_active_finalizer(HeapObject* object);
 
   virtual uword used() const;
 
@@ -527,5 +538,22 @@ class ObjectMemory {
   static Chunk* spare_chunk_;
   static Mutex* spare_chunk_mutex_;
 };
+
+inline void write_sentinel_at(uword address) {
+  ASSERT(sizeof(Object*) == SENTINEL_SIZE);
+  *reinterpret_cast<Object**>(address) = chunk_end_sentinel();
+}
+
+uword SemiSpace::try_allocate(uword size) {
+  // Make sure there is room for chunk end sentinel by using <= instead of <.
+  // Use this ordering of the comparison to avoid very large allocations
+  // turning into 'successful' allocations of negative size.
+  if (limit_ - top_ <= size) return 0;
+  uword result = top_;
+  top_ += size;
+  // Always write a sentinel so the scavenger knows where to stop.
+  write_sentinel_at(top_);
+  return result;
+}
 
 }  // namespace toit

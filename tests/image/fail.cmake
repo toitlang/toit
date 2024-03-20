@@ -16,3 +16,6 @@
 set(TOIT_FAILING_TESTS
 )
 
+set(TOIT_FLAKY_TESTS
+  tests/image/full-page-test.toit
+)

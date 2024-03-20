@@ -20,17 +20,19 @@ import host.os
 import host.file
 import reader show BufferedReader
 import semver
+import system
+import system show platform
 
 REQUIRED-SDK-VERSION ::= "2.0.0-alpha.95"
 
 main args:
   cmd := cli.Command "root"
-      --long-help="""
+      --help="""
         Migrates a project from snake-case to kebab-case.
         """
 
   code-command := cli.Command "code"
-      --long-help="""
+      --help="""
         Migrates the given source files from snake-case ("foo_bar") to
         kebab-case ("foo-bar").
 
@@ -38,14 +40,14 @@ main args:
         """
       --options=[
         cli.Option "toitc"
-            --short-help="The path to the toit.compile binary.",
+            --help="The path to the toit.compile binary.",
         cli.Flag "abort-on-error"
-            --short-help="Abort the migration if a file has errors."
+            --help="Abort the migration if a file has errors."
             --default=false
       ]
       --rest=[
         cli.Option "source"
-            --short-help="The source file to migrate."
+            --help="The source file to migrate."
             --required
             --multi
       ]
@@ -53,7 +55,7 @@ main args:
   cmd.add code-command
 
   files-command := cli.Command "files"
-      --long-help="""
+      --help="""
         Renames the given source files from snake-case ("foo_bar.toit") to
         kebab-case ("foo-bar.toit").
 
@@ -69,12 +71,12 @@ main args:
         """
       --options=[
         cli.Flag "git"
-            --short-help="Use 'git mv' to rename the files."
+            --help="Use 'git mv' to rename the files."
             --default=false
       ]
       --rest=[
         cli.Option "source"
-            --short-help="The source file to migrate."
+            --help="The source file to migrate."
             --required
             --multi
       ]
@@ -165,7 +167,7 @@ rename-files parsed/cli.Parsed:
 
 build-kebab-path path/string -> string:
   last-separator := path.index-of --last "/"
-  if platform == PLATFORM-WINDOWS:
+  if platform == system.PLATFORM-WINDOWS:
     last-separator = max last-separator (path.index-of --last "\\")
 
   if last-separator != -1:
@@ -187,14 +189,14 @@ build-kebab-path path/string -> string:
 
 find-toitc-from-jag -> string:
   home := ?
-  if platform == PLATFORM-WINDOWS:
+  if platform == system.PLATFORM-WINDOWS:
     home = os.env.get "USERPROFILE"
   else:
     home = os.env.get "HOME"
   if not home:
     print "Could not find home directory."
     exit 1
-  exe-extension := platform == PLATFORM-WINDOWS ? ".exe" : ""
+  exe-extension := platform == system.PLATFORM-WINDOWS ? ".exe" : ""
   return "$home/.cache/jaguar/sdk/bin/toit.compile$exe-extension"
 
 check-toitc-version toitc:

@@ -19,6 +19,8 @@ project(toit)
 
 include(tools/toit.cmake)
 
+set(CMAKE_COLOR_DIAGNOSTICS ON)
+
 set(TOIT_IS_CROSS FALSE)
 if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
     (NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "${CMAKE_HOST_SYSTEM_PROCESSOR}"))
@@ -122,7 +124,7 @@ endif()
 # the input buffer length to 8k because some sites have very large certificates
 # (eg Telegram, over 5100 bytes) and this is not something we can control.
 # There are some protocol extensions for telling the other side about our buffer
-# sizes, but they just cause the other side to fragment packets more agressively.
+# sizes, but they just cause the other side to fragment packets more aggressively.
 # At this end we still have to reassemble the packets in and unfragmented form
 # that fits in the buffer size below.
 if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
@@ -159,7 +161,9 @@ endif()
 
 add_custom_target(
   build_version_file
-  COMMAND echo ${TOIT_GIT_VERSION} > "${CMAKE_BINARY_DIR}/sdk/VERSION"
+  # It's important that there is no space after the version (before the '>'), as
+  # Windows would add a space into the output otherwise.
+  COMMAND echo ${TOIT_GIT_VERSION}> "${CMAKE_BINARY_DIR}/sdk/VERSION"
 )
 
 add_subdirectory(src)

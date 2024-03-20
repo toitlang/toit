@@ -6,6 +6,8 @@ import .lsp-client show LspClient run-client-test
 import ...tools.lsp.server.summary
 import ...tools.lsp.server.toitdoc-node
 import .utils
+import system
+import system show platform
 
 import host.directory
 import expect show *
@@ -17,19 +19,23 @@ main args:
   // Since we used '--no-spawn_process' we must exit 0.
   exit 0
 
-DRIVE ::= platform == PLATFORM-WINDOWS ? "c:" : ""
+DRIVE ::= platform == system.PLATFORM-WINDOWS ? "c:" : ""
 FILE-PATH ::= "$DRIVE/tmp/file.toit"
 
 test client/LspClient:
   client.send-did-open --path=FILE-PATH --text=""
 
-  client.send-did-open --path=FILE-PATH --text="""
+  client.send-did-change --path=FILE-PATH """
     class NotImportant:  // ID: 0
     class A:
     interface I1:
     class B extends A implements I1:
     """
-  document := client.server.documents_.get-existing-document --path=FILE-PATH
+  uri := client.to-uri FILE-PATH
+  project-uri := client.server.documents_.project-uri-for --uri=uri
+  analyzed-documents := client.server.documents_.analyzed-documents-for --project-uri=project-uri
+
+  document := analyzed-documents.get-existing --uri=uri
   summary := document.summary
   classes := summary.classes
 

@@ -13,7 +13,9 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#if defined(__FREERTOS__)
+// We can't include 'top.h' in this file.
+// Therefore we don't test for `TOIT_ESP32` but for `ESP_PLATFORM`.
+#if defined(ESP_PLATFORM)
 
 #include "esp_attr.h"
 #include "uart_esp32_hal.h"

@@ -6,12 +6,14 @@ import binary show BIG-ENDIAN
 import bytes show Buffer
 import net.modules.udp as udp-module
 import net
+import system
+import system show platform
 
 DNS-DEFAULT-TIMEOUT ::= Duration --s=20
 DNS-RETRY-TIMEOUT ::= Duration --ms=600
 MAX-RETRY-ATTEMPTS_ ::= 3
 HOSTS_ ::= {"localhost": "127.0.0.1"}
-MAX-CACHE-SIZE_ ::= platform == "FreeRTOS" ? 30 : 1000
+MAX-CACHE-SIZE_ ::= platform == system.PLATFORM-FREERTOS ? 30 : 1000
 
 class DnsException:
   text/string
@@ -104,8 +106,8 @@ On all platforms you can set a custom default client with the
 */
 default-client -> DnsClient:
   if user-set-client_: return user-set-client_
-  if platform == PLATFORM-FREERTOS and dhcp-client_: return dhcp-client_
-  if platform == PLATFORM-LINUX or platform == PLATFORM-MACOS: return etc-resolv-client_
+  if platform == system.PLATFORM-FREERTOS and dhcp-client_: return dhcp-client_
+  if platform == system.PLATFORM-LINUX or platform == system.PLATFORM-MACOS: return etc-resolv-client_
   return DEFAULT-CLIENT
 
 default-client= client/DnsClient? -> none:
@@ -352,7 +354,9 @@ class DnsClient:
 
     // Check for expected response, but mask out the authoritative bit
     // and the recursion available bit, which we do not care about.
-    if decoded.status_bits & ~0x480 != 0x8100:
+    // The recursion desired bit seems to vary randomly, so we ignore
+    // that too.
+    if decoded.status_bits & ~0x580 != 0x8000:
       protocol-error_  // Unexpected response flags.
 
     id := query.base-id

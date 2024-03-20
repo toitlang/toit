@@ -43,15 +43,17 @@ class Diagnostics {
 
   void report(Severity severity, const char* format, va_list& arguments) {
     severity = adjust_severity(severity);
+    bool was_emitted = emit(severity, format, arguments);
+    if (!was_emitted) return;
     if (severity == Severity::error) encountered_error_ = true;
     if (severity == Severity::warning) encountered_warning_ = true;
-    emit(severity, format, arguments);
   }
   void report(Severity severity, Source::Range range, const char* format, va_list& arguments) {
     severity = adjust_severity(severity);
+    bool was_emitted = emit(severity, range, format, arguments);
+    if (!was_emitted) return;
     if (severity == Severity::error) encountered_error_ = true;
     if (severity == Severity::warning) encountered_warning_ = true;
-    emit(severity, range, format, arguments);
   }
 
   void report_error(const char* format, ...);
@@ -87,10 +89,12 @@ class Diagnostics {
 
   void report_location(Source::Range range, const char* prefix);
 
-
  public:  // Public only for forwarding.
-  virtual void emit(Severity severity, const char* format, va_list& arguments) = 0;
-  virtual void emit(Severity severity, Source::Range range, const char* format, va_list& arguments) = 0;
+  /// Emits the diagnostic.
+  /// Returns false, if the diagnostic is quelched (for example a warning for a different package).
+  /// Returns true, otherwise.
+  virtual bool emit(Severity severity, const char* format, va_list& arguments) = 0;
+  virtual bool emit(Severity severity, Source::Range range, const char* format, va_list& arguments) = 0;
 
  protected:
   explicit Diagnostics(SourceManager* source_manager)
@@ -114,9 +118,12 @@ class Diagnostics {
 
 class CompilationDiagnostics : public Diagnostics {
  public:
-  explicit CompilationDiagnostics(SourceManager* source_manager, bool show_package_warnings)
+  explicit CompilationDiagnostics(SourceManager* source_manager,
+                                  bool show_package_warnings,
+                                  bool print_on_stdout)
       : Diagnostics(source_manager)
-      , show_package_warnings_(show_package_warnings) {}
+      , show_package_warnings_(show_package_warnings)
+      , print_on_stdout_(print_on_stdout) {}
 
   bool should_report_missing_main() const { return true; }
 
@@ -124,20 +131,23 @@ class CompilationDiagnostics : public Diagnostics {
   void end_group();
 
  protected:
-  void emit(Severity severity, const char* format, va_list& arguments);
-  void emit(Severity severity, Source::Range range, const char* format, va_list& arguments);
+  bool emit(Severity severity, const char* format, va_list& arguments);
+  bool emit(Severity severity, Source::Range range, const char* format, va_list& arguments);
 
  private:
   bool show_package_warnings_;
+  bool print_on_stdout_;
   bool in_group_ = false;
-  std::string group_package_id_;
+  Package group_package_;
   Severity group_severity_;
 };
 
 class AnalysisDiagnostics : public CompilationDiagnostics {
  public:
-  explicit AnalysisDiagnostics(SourceManager* source_manager, bool show_package_warnings)
-      : CompilationDiagnostics(source_manager, show_package_warnings) {}
+  explicit AnalysisDiagnostics(SourceManager* source_manager,
+                               bool show_package_warnings,
+                               bool print_on_stdout)
+      : CompilationDiagnostics(source_manager, show_package_warnings, print_on_stdout) {}
 
   bool should_report_missing_main() const { return false; }
 };
@@ -154,8 +164,8 @@ class LanguageServerAnalysisDiagnostics : public Diagnostics {
   void end_group();
 
  protected:
-  void emit(Severity severity, const char* format, va_list& arguments);
-  void emit(Severity severity, Source::Range range, const char* format, va_list& arguments);
+  bool emit(Severity severity, const char* format, va_list& arguments);
+  bool emit(Severity severity, Source::Range range, const char* format, va_list& arguments);
 
   Lsp* lsp() { return lsp_; }
 
@@ -180,8 +190,10 @@ class NullDiagnostics : public Diagnostics {
   void end_group() {}
 
  protected:
-  void emit(Severity severity, const char* format, va_list& arguments) {}
-  void emit(Severity severity, Source::Range range, const char* format, va_list& arguments) {}
+  // We return true for the 'emit' methods, so that asserts that test whether we encountered errors
+  // still work.
+  bool emit(Severity severity, const char* format, va_list& arguments) { return true; }
+  bool emit(Severity severity, Source::Range range, const char* format, va_list& arguments) { return true; }
 };
 
 } // namespace toit::compiler
