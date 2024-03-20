@@ -407,21 +407,24 @@ abstract class Reader implements old-reader.Reader:
   */
   skip n/int -> none:
     if n == 0: return
-    if not buffered_:
+    buffered := buffered_
+    if not buffered:
       if not more_: throw UNEXPECTED-END-OF-READER
 
     while n > 0:
-      if buffered_.size == 0:
+      if buffered.size == 0:
         if not more_: throw UNEXPECTED-END-OF-READER
 
-      size := buffered_.first.size - first-array-position_
+      first-size := buffered.first.size
+      first-position := first-array-position_
+      size := first-size - first-position
       if n < size:
-        first-array-position_ += n
+        first-array-position_ = first-position + n
         return
 
       n -= size
-      processed_ += buffered_.first.size
-      buffered_.remove-first
+      processed_ += first-size
+      buffered.remove-first
       first-array-position_ = 0
 
   /**
@@ -437,27 +440,29 @@ abstract class Reader implements old-reader.Reader:
   skip-up-to delimiter/int --to/int?=null --throw-if-absent/bool=false -> int:
     skipped := 0
     while true:
-      if not buffered_ or buffered_.size == 0:
+      buffered := buffered_
+      if not buffered or buffered.size == 0:
         if not more_:
           if throw-if-absent: throw UNEXPECTED-END-OF-READER
           return skipped
-      buffered := buffered_
       start := first-array-position_
       while buffered.size > 0:
         chunk := buffered.first
-        end := to ? min (start + to) chunk.size : chunk.size
+        chunk-size := chunk.size
+        end := to ? min (start + to) chunk-size : chunk-size
         index := chunk.index-of delimiter --from=start --to=end
         if index >= 0:
-          skipped += index - start + 1
-          first-array-position_ = index + 1
-          if first-array-position_ == chunk.size:
-            processed_ += chunk.size
+          next := index + 1
+          if next == chunk-size:
+            processed_ += chunk-size
             buffered.remove-first
             first-array-position_ = 0
-          return skipped
-        if to: to -= chunk.size - start
-        skipped += chunk.size - start
-        processed_ += chunk.size
+          else:
+            first-array-position_ = next
+          return skipped + next - start
+        if to: to -= chunk-size - start
+        skipped += chunk-size - start
+        processed_ += chunk-size
         buffered.remove-first
         first-array-position_ = 0
         start = 0
