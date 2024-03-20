@@ -445,6 +445,9 @@ abstract class Reader implements old-reader.Reader:
         if not more_:
           if throw-if-absent: throw UNEXPECTED-END-OF-READER
           return skipped
+        // The call to $more_ may have changed $buffered_ if
+        // it was null. Read the field again.
+        buffered = buffered_
       start := first-array-position_
       while buffered.size > 0:
         chunk := buffered.first
