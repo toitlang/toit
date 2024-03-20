@@ -117,7 +117,7 @@ class Service:
 
   The $channel parameter must be a valid Wi-Fi channel number.
   */
-  constructor.station --key/Key? --rate/int?=null --.channel=1:
+  constructor.station --key/Key? --rate/int?=null --.channel=6:
     if not 0 < channel <= 14: throw "INVALID_ARGUMENT"
 
     key-data := key ? key.data : #[]
