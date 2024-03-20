@@ -27,6 +27,41 @@ A byte order class with support for common read and write operations on byte
 */
 abstract class ByteOrder:
   /**
+  Swaps the byte-order of all 16-bit integers in the $byte-array.
+  If the integers were in little-endian order they then are in big-endian byte order
+  If the integers were in big-endian order they then are in little-endian byte order.
+  */
+  swap-16 byte-array/ByteArray -> none:
+    if byte-array.size <= 8:
+      for i := 0; i < byte-array.size; i += 2:
+        value := LITTLE-ENDIAN.uint16 byte-array i
+        BIG-ENDIAN.put-uint16 byte-array i value
+      return
+    tmp := ByteArray
+      max byte-array.size 512
+    List.chunk-up 0 byte-array.size 512: | from to size |
+      blit byte-array[from + 1..to] tmp[0..size] size/2 --source-pixel-stride=2 --destination-pixel-stride=2
+      blit byte-array[from    ..to] tmp[1..size] size/2 --source-pixel-stride=2 --destination-pixel-stride=2
+      byte-array.replace from tmp 0 size
+
+  /**
+  Swaps the byte-order of all 32-bit integers in the $byte-array.
+  If the integers were in little-endian order they then are in big-endian byte order
+  If the integers were in big-endian order they then are in little-endian byte order.
+  */
+  swap-32 byte-array/ByteArray -> none:
+    tmp := ByteArray
+      max byte-array.size 512
+    List.chunk-up 0 byte-array.size 512: | from to size |
+      slice := byte-array[from..to]
+      buffer := tmp[..size]
+      blit slice[3..] buffer      size/4 --source-pixel-stride=4 --destination-pixel-stride=4
+      blit slice[2..] buffer[1..] size/4 --source-pixel-stride=4 --destination-pixel-stride=4
+      blit slice[1..] buffer[2..] size/4 --source-pixel-stride=4 --destination-pixel-stride=4
+      blit slice      buffer[3..] size/4 --source-pixel-stride=4 --destination-pixel-stride=4
+      byte-array.replace from buffer
+
+  /**
   Reads an unsigned 8-bit integer from the $buffer at the $offset.
 
   The $offset must be a valid index into the $buffer.
@@ -414,38 +449,3 @@ class BigEndian extends ByteOrder:
       for i := offset + size-in-bytes - 1; i >= offset; i--:
         put-uint8 buffer i value
         value = value >>> 8
-
-/**
-Swaps the byte-order of all 16-bit integers in the $byte-array.
-If the integers were in little-endian order they then are in big-endian byte order
-If the integers were in big-endian order they then are in little-endian byte order.
-*/
-byte-swap-16 byte-array/ByteArray -> none:
-  if byte-array.size <= 8:
-    for i := 0; i < byte-array.size; i += 2:
-      value := LITTLE-ENDIAN.uint16 byte-array i
-      BIG-ENDIAN.put-uint16 byte-array i value
-    return
-  tmp := ByteArray
-    max byte-array.size 512
-  List.chunk-up 0 byte-array.size 512: | from to size |
-    blit byte-array[from + 1..to] tmp[0..size] size/2 --source-pixel-stride=2 --destination-pixel-stride=2
-    blit byte-array[from    ..to] tmp[1..size] size/2 --source-pixel-stride=2 --destination-pixel-stride=2
-    byte-array.replace from tmp 0 size
-
-/**
-Swaps the byte-order of all 32-bit integers in the $byte-array.
-If the integers were in little-endian order they then are in big-endian byte order
-If the integers were in big-endian order they then are in little-endian byte order.
-*/
-byte-swap-32 byte-array/ByteArray -> none:
-  tmp := ByteArray
-    max byte-array.size 512
-  List.chunk-up 0 byte-array.size 512: | from to size |
-    slice := byte-array[from..to]
-    buffer := tmp[..size]
-    blit slice[3..] buffer      size/4 --source-pixel-stride=4 --destination-pixel-stride=4
-    blit slice[2..] buffer[1..] size/4 --source-pixel-stride=4 --destination-pixel-stride=4
-    blit slice[1..] buffer[2..] size/4 --source-pixel-stride=4 --destination-pixel-stride=4
-    blit slice      buffer[3..] size/4 --source-pixel-stride=4 --destination-pixel-stride=4
-    byte-array.replace from buffer
