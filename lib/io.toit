@@ -277,9 +277,12 @@ abstract class Reader implements old-reader.Reader:
   // The position in the first byte array that we got to.
   first-array-position_ := 0
 
-  // The number of bytes in byte arrays that have been used up.
-  // Does not yet include the bytes in the first byte array. That is,
-  //   the total number that was given to the user is processed_ + first-array-position_.
+  /**
+  The number of bytes in byte arrays that have been used up.
+  Does not yet include the bytes in the first byte array. That is,
+    the total number that was given to the user is
+    $processed-without-first-array_ + $first-array-position_.
+  */
   processed-without-first-array_/int := 0
 
   /** A cached endian-aware reader. */
