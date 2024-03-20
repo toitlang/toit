@@ -4,7 +4,6 @@
 
 import expect show *
 
-import binary show *
 import io show Buffer
 
 main:

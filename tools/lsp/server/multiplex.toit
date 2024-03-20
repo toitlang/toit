@@ -13,9 +13,9 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import binary show LITTLE-ENDIAN
 import host.pipe show OpenPipe
 import io
+import io show LITTLE-ENDIAN
 import monitor show Semaphore
 
 /**

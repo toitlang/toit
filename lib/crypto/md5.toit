@@ -2,9 +2,9 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary show LITTLE-ENDIAN
 import .checksum
 import io
+import io show LITTLE-ENDIAN
 
 /**
 Pure Toit MD5 implementation.

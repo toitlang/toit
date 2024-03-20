@@ -2,7 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary show BIG-ENDIAN
 import crypto.aes show *
 import crypto.chacha20 show *
 import crypto.checksum
@@ -10,6 +9,7 @@ import crypto.hmac show Hmac
 import crypto.sha show Sha256 Sha384
 import encoding.tison
 import io
+import io show BIG-ENDIAN
 import monitor
 import net.x509 as x509
 import tls

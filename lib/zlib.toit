@@ -2,13 +2,13 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary show LITTLE_ENDIAN
 import monitor
 import crypto
 import crypto.adler32
 import crypto.crc as crc-algorithms
 import expect show *
 import .io as io
+import .io show LITTLE_ENDIAN
 
 SMALL-BUFFER-DEFLATE-HEADER_ ::= #[8, 0x1d]
 MINIMAL-GZIP-HEADER_ ::= #[0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]

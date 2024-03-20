@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import .buffer
+import .byte-order
 import .data
 import .reader
 import .writer

@@ -2,9 +2,9 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import .byte-order
 import .data
 import .reader
-import binary
 import writer as old-writer
 
 /**
@@ -131,8 +131,8 @@ abstract class Writer:
   ```
   */
   little-endian -> EndianWriter:
-    if not endian_ or endian_.byte-order_ != binary.LITTLE_ENDIAN:
-      endian_ = EndianWriter --writer=this --byte-order=binary.LITTLE_ENDIAN
+    if not endian_ or endian_.byte-order_ != LITTLE_ENDIAN:
+      endian_ = EndianWriter --writer=this --byte-order=LITTLE_ENDIAN
     return endian_
 
   /**
@@ -155,8 +155,8 @@ abstract class Writer:
   ```
   */
   big-endian -> EndianWriter:
-    if not endian_ or endian_.byte-order_ != binary.BIG_ENDIAN:
-      endian_ = EndianWriter --writer=this --byte-order=binary.BIG_ENDIAN
+    if not endian_ or endian_.byte-order_ != BIG_ENDIAN:
+      endian_ = EndianWriter --writer=this --byte-order=BIG_ENDIAN
     return endian_
 
   /**
@@ -306,10 +306,10 @@ class CloseableOut_ extends CloseableWriter:
 
 class EndianWriter:
   writer_/Writer
-  byte-order_/binary.ByteOrder
+  byte-order_/ByteOrder
   cached-byte-array_/ByteArray ::= ByteArray 8
 
-  constructor --writer/Writer --byte-order/binary.ByteOrder:
+  constructor --writer/Writer --byte-order/ByteOrder:
     writer_ = writer
     byte-order_ = byte-order
 
