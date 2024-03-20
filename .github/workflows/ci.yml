@@ -1004,7 +1004,7 @@ jobs:
   AUR:
     name: Update AUR package
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [combine]
     if: github.event_name == 'release' &&
         !github.event.release.prerelease &&
         github.repository_owner == 'toitlang'
