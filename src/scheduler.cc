@@ -449,7 +449,7 @@ bool Scheduler::kill(const Program* program) {
 void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
   bool doing_idle_process_gc = try_hard || malloc_failed || (process && process->system_refused_memory());
   bool doing_cross_process_gc = false;
-  uint64 start = OS::get_monotonic_time();
+  uint64 start = try_hard ? OS::get_monotonic_time() : 0;
 #ifdef TOIT_GC_LOGGING
   bool is_boot_process = process && VM::current()->scheduler()->is_boot_process(process);
 #endif
