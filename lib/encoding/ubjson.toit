@@ -100,16 +100,16 @@ class Encoder:
     buffer_.big-endian.write-float64 f
 
   encode-int_ i:
-    if 0 <= i <= io.UINT8-MAX:
+    if 0 <= i <= int.MAX-U8:
       buffer_.write-byte 'U'
       buffer_.write-byte i
-    else if io.INT8-MIN <= i <= io.INT8-MAX:
+    else if int.MIN-8 <= i <= int.MAX-8:
       buffer_.write-byte 'i'
       buffer_.write-byte i
-    else if io.INT16-MIN <= i <= io.INT16-MAX:
+    else if int.MIN-16 <= i <= int.MAX-16:
       buffer_.write-byte 'I'
       buffer_.big-endian.write-int16 i
-    else if io.INT32-MIN <= i <= io.INT32-MAX:
+    else if int.MIN-32 <= i <= int.MAX-32:
       buffer_.write-byte 'l'
       buffer_.big-endian.write-int32 i
     else:
