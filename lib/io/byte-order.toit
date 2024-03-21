@@ -31,7 +31,7 @@ abstract class ByteOrder:
   If the integers were in little-endian order they then are in big-endian byte order
   If the integers were in big-endian order they then are in little-endian byte order.
   */
-  swap-16 byte-array/ByteArray -> none:
+  static swap-16 byte-array/ByteArray -> none:
     if byte-array.size <= 8:
       for i := 0; i < byte-array.size; i += 2:
         value := LITTLE-ENDIAN.uint16 byte-array i
@@ -49,7 +49,7 @@ abstract class ByteOrder:
   If the integers were in little-endian order they then are in big-endian byte order
   If the integers were in big-endian order they then are in little-endian byte order.
   */
-  swap-32 byte-array/ByteArray -> none:
+  static swap-32 byte-array/ByteArray -> none:
     tmp := ByteArray (max byte-array.size 512)
     List.chunk-up 0 byte-array.size 512: | from to size |
       quarter-size := size / 4
