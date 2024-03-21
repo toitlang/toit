@@ -40,15 +40,33 @@ class DetachedSocket_ implements tcp.Socket:
 <pkg:pkg-http>/connection.toit:89:15: warning: Deprecated 'Socket.close-write'
       socket_.close_write
               ^~~~~~~~~~~
+<pkg:pkg-http>/web_socket.toit:422:9: warning: Deprecated 'BIG-ENDIAN'
+        BIG_ENDIAN.put_int64 header 2 size
+        ^~~~~~~~~~
+<pkg:pkg-http>/web_socket.toit:426:9: warning: Deprecated 'BIG-ENDIAN'
+        BIG_ENDIAN.put_uint16 header 2 size
+        ^~~~~~~~~~
 <pkg:pkg-http>/web_socket.toit:56:20: warning: Deprecated 'Socket.read'
     return socket_.read
                    ^~~~
 <pkg:pkg-http>/web_socket.toit:133:23: warning: Deprecated 'Socket.read'
       next := socket_.read
                       ^~~~
+<pkg:pkg-http>/web_socket.toit:154:13: warning: Deprecated 'BIG-ENDIAN'
+      len = BIG_ENDIAN.uint16 pending_ 2
+            ^~~~~~~~~~
+<pkg:pkg-http>/web_socket.toit:156:13: warning: Deprecated 'BIG-ENDIAN'
+      len = BIG_ENDIAN.int64 pending_ 2
+            ^~~~~~~~~~
+<pkg:pkg-http>/web_socket.toit:176:17: warning: Deprecated 'BIG-ENDIAN'
+        code := BIG_ENDIAN.uint16 payload 0
+                ^~~~~~~~~~
 <pkg:pkg-http>/web_socket.toit:252:23: warning: Deprecated 'Socket.write'
       from += socket_.write data from to
                       ^~~~~
+<pkg:pkg-http>/web_socket.toit:285:11: warning: Deprecated 'BIG-ENDIAN'
+          BIG_ENDIAN.put_uint16 payload 0 status_code
+          ^~~~~~~~~~
 <pkg:pkg-http>/web_socket.toit:291:20: warning: Deprecated 'Socket.close-write'
     catch: socket_.close_write  // Catch because we allow double close, and a previous close causes an exception here.
                    ^~~~~~~~~~~
