@@ -1324,7 +1324,8 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     // difference encoded in the bytecode.
     TypeScope* target_scope = scope->copy_lazy(outer);
     TypeStack* target_top = target_scope->top();
-    for (int i = 0; i < height_diff; i++) target_top->pop();
+    int target_sp = target_top->sp() - height_diff;
+    while (target_top->sp() != target_sp) target_top->pop();
     // Add the copied scope to the correct outer worklist. If we
     // already have a scope registered for the branch target, we
     // will merge into it and end up with a superfluous scope.
@@ -1332,6 +1333,10 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     TypeScope* superfluous =
         worklists[target_level]->add(target_bcp, target_scope, false);
     delete superfluous;
+
+    // TODO(kasper): Capture target_level, target_bcp, target_sp if we're
+    // inside a try-scope.
+
     // We're done. Return the scope, so we can deallocate it.
     return scope;
   OPCODE_END();
@@ -1373,6 +1378,10 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     stack->pop();
     stack->pop();
     stack->pop();
+
+    // TODO(kasper): How do we find the right set of non-local
+    // breaks that we may have to merge to for this unwind?
+
   OPCODE_END();
 
   OPCODE_BEGIN(HALT);
