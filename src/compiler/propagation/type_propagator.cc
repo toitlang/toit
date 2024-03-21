@@ -1324,7 +1324,8 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     // difference encoded in the bytecode.
     TypeScope* target_scope = scope->copy_lazy(outer);
     TypeStack* target_top = target_scope->top();
-    for (int i = 0; i < height_diff; i++) target_top->pop();
+    int target_sp = target_top->sp() - height_diff;
+    while (target_top->sp() != target_sp) target_top->pop();
     // Add the copied scope to the correct outer worklist. If we
     // already have a scope registered for the branch target, we
     // will merge into it and end up with a superfluous scope.
@@ -1332,6 +1333,10 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     TypeScope* superfluous =
         worklists[target_level]->add(target_bcp, target_scope, false);
     delete superfluous;
+
+    // TODO(kasper): Capture target_level, target_bcp, target_sp if we're
+    // inside a try-scope.
+
     // We're done. Return the scope, so we can deallocate it.
     return scope;
   OPCODE_END();
@@ -1361,6 +1366,10 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(UNWIND);
+    // Here we continue unwinding if an exception was thrown, so
+    // we must make this as a potential throw site to make sure
+    // any modifications to outer locals are merged back.
+    scope->throw_maybe();
     // If the try-block is guaranteed to cause unwinding,
     // we avoid analyzing the bytecodes following this one.
     TypeSet target = stack->local(1);
@@ -1369,6 +1378,10 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     stack->pop();
     stack->pop();
     stack->pop();
+
+    // TODO(kasper): How do we find the right set of non-local
+    // breaks that we may have to merge to for this unwind?
+
   OPCODE_END();
 
   OPCODE_BEGIN(HALT);
@@ -1463,14 +1476,40 @@ void MethodTemplate::propagate() {
   Program* program = propagator_->program();
   if (method_.selector_offset() == program->invoke_bytecode_offset(INVOKE_EQ)) {
     ConcreteType null_type = ConcreteType(Smi::value(program->null_class_id()));
+    ASSERT(!argument(0).is_any());  // Receiver is always a single type.
     bool receiver_is_null = argument(0).matches(null_type);
     bool argument_is_null = argument(1).matches(null_type);
-    if (receiver_is_null || argument_is_null) {
-      stack->push_bool_specific(program, receiver_is_null && argument_is_null);
+    bool argument_is_any = argument(1).is_any();
+    if (receiver_is_null) {
+      // If we know the receiver is null, then we can always compute an
+      // answer. If the argument is any, we don't know if the result is
+      // true or false. Otherwise, the result is true if the argument
+      // is null and false if the argument is non-null.
+      if (argument_is_any) {
+        stack->push_bool(program);
+      } else {
+        stack->push_bool_specific(program, argument_is_null);
+      }
       ret(propagator_, stack);
       delete scope;
       return;
     }
+
+    if (argument_is_null) {
+      // The receiver isn't null, so if the argument is null we
+      // know that the result is false.
+      stack->push_bool_specific(program, false);
+      ret(propagator_, stack);
+      delete scope;
+      return;
+    } else if (argument_is_any) {
+      // The receiver isn't null, so unless we know the argument
+      // cannot be null, we must add both true and false to the
+      // result but continue analyzing the method.
+      stack->push_bool(program);
+      ret(propagator_, stack);
+    }
+
     for (int i = 0; i < arity(); i++) {
       TypeSet argument = stack->get(i);
       argument.remove_null(program);
