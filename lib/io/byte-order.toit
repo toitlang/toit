@@ -37,11 +37,11 @@ abstract class ByteOrder:
         value := LITTLE-ENDIAN.uint16 byte-array i
         BIG-ENDIAN.put-uint16 byte-array i value
       return
-    tmp := ByteArray
-      max byte-array.size 512
+    tmp := ByteArray (max byte-array.size 512)
     List.chunk-up 0 byte-array.size 512: | from to size |
-      blit byte-array[from + 1..to] tmp[0..size] size/2 --source-pixel-stride=2 --destination-pixel-stride=2
-      blit byte-array[from    ..to] tmp[1..size] size/2 --source-pixel-stride=2 --destination-pixel-stride=2
+      half-size := size / 2
+      blit byte-array[from + 1..to] tmp[0..size] half-size --source-pixel-stride=2 --destination-pixel-stride=2
+      blit byte-array[from    ..to] tmp[1..size] half-size --source-pixel-stride=2 --destination-pixel-stride=2
       byte-array.replace from tmp 0 size
 
   /**
@@ -50,15 +50,15 @@ abstract class ByteOrder:
   If the integers were in big-endian order they then are in little-endian byte order.
   */
   static swap-32 byte-array/ByteArray -> none:
-    tmp := ByteArray
-      max byte-array.size 512
+    tmp := ByteArray (max byte-array.size 512)
     List.chunk-up 0 byte-array.size 512: | from to size |
+      quarter-size := size / 4
       slice := byte-array[from..to]
       buffer := tmp[..size]
-      blit slice[3..] buffer      size/4 --source-pixel-stride=4 --destination-pixel-stride=4
-      blit slice[2..] buffer[1..] size/4 --source-pixel-stride=4 --destination-pixel-stride=4
-      blit slice[1..] buffer[2..] size/4 --source-pixel-stride=4 --destination-pixel-stride=4
-      blit slice      buffer[3..] size/4 --source-pixel-stride=4 --destination-pixel-stride=4
+      blit slice[3..] buffer      quarter-size --source-pixel-stride=4 --destination-pixel-stride=4
+      blit slice[2..] buffer[1..] quarter-size --source-pixel-stride=4 --destination-pixel-stride=4
+      blit slice[1..] buffer[2..] quarter-size --source-pixel-stride=4 --destination-pixel-stride=4
+      blit slice      buffer[3..] quarter-size --source-pixel-stride=4 --destination-pixel-stride=4
       byte-array.replace from buffer
 
   /**
