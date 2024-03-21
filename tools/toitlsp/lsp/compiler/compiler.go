@@ -21,9 +21,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -167,7 +165,7 @@ func (c *Compiler) GotoDefinition(ctx context.Context, projectURI lsp.DocumentUR
 	return res.result, res.err
 }
 
-func (c *Compiler) Complete(ctx context.Context, projectURI lsp.DocumentURI, docURI lsp.DocumentURI, position lsp.Position) ([]lsp.CompletionItem, error) {
+func (c *Compiler) Complete(ctx context.Context, projectURI lsp.DocumentURI, docURI lsp.DocumentURI, position lsp.Position) (string, *lsp.Range, []lsp.CompletionItem, error) {
 	ctx, cancel := c.ctx(ctx)
 	defer cancel()
 
@@ -175,17 +173,19 @@ func (c *Compiler) Complete(ctx context.Context, projectURI lsp.DocumentURI, doc
 
 	var res struct {
 		err    error
+		prefix string
+		range_ *lsp.Range
 		result []lsp.CompletionItem
 	}
 
 	err := c.run(ctx, projectURI, fmt.Sprintf("COMPLETE\n%s\n%d\n%d\n", path, position.Line, position.Character), func(ctx context.Context, stdout io.Reader) {
-		res.result, res.err = c.parser.CompleteOutput(stdout)
+		res.prefix, res.range_, res.result, res.err = c.parser.CompleteOutput(stdout)
 	})
 	if err != nil {
-		return nil, err
+		return "", nil, nil, err
 	}
 
-	return res.result, res.err
+	return res.prefix, res.range_, res.result, res.err
 }
 
 func (c *Compiler) SemanticTokens(ctx context.Context, projectURI lsp.DocumentURI, docURI lsp.DocumentURI) (*lsp.SemanticTokens, error) {
@@ -379,13 +379,7 @@ func (c *Compiler) run(ctx context.Context, projectURI lsp.DocumentURI, input st
 
 func (c *Compiler) cmd(ctx context.Context, projectURI lsp.DocumentURI, input string, fileServer FileServer) *exec.Cmd {
 	args := []string{"--lsp"}
-	if projectURI != "" {
-		project_root := uri.URIToPath(projectURI)
-		lock_file := filepath.Join(project_root, "package.lock")
-		if stat, err := os.Stat(lock_file); err == nil && !stat.IsDir() {
-			args = append(args, "--project-root", uri.URIToCompilerPath(c.settings.RootURI))
-		}
-	}
+	args = append(args, "--project-root", uri.URIToCompilerPath(projectURI))
 	cmd := exec.CommandContext(ctx, c.settings.CompilerPath, args...)
 	for !fileServer.IsReady() {
 		runtime.Gosched()

@@ -59,15 +59,12 @@ class Compiler:
   Builds the flags that are passed to the compiler.
   */
   build-run-flags --project-uri/string? -> List:
+    project-path-compiler := uri-path-translator_.to-path project-uri --to-compiler
     args := [
       "--lsp",
+      "--project-root", project-path-compiler,
     ]
-    if project-uri:
-      project-path-local := uri-path-translator_.to-path project-uri
-      package-lock := "$project-path-local/package.lock"
-      if file.is-file package-lock:
-        project-path-compiler := uri-path-translator_.to-path project-uri --to-compiler
-        args += ["--project-root", project-path-compiler]
+    verbose: "run-flags: $args"
     return args
 
   /**
@@ -239,21 +236,39 @@ class Compiler:
       latch.set (completed-successfully ? result : null)
     return latch.get
 
-  complete --project-uri/string? uri/string line-number/int column-number/int -> List/*<string>*/:
+  /**
+  Gets all the completion from the compiler and calls the given $block
+    with a prefix, a prefix-range and a list of completions.
+  If not completions are found, the block is called with the empty string and
+    and empty list.
+  */
+  complete -> none
+      --project-uri/string?
+      uri/string
+      line-number/int
+      column-number/int
+      [block]:
     path := uri-path-translator_.to-path uri --to-compiler
     // We don't care if the compiler crashed.
     // Just send whatever completions we get.
     run --project-uri=project-uri
         --compiler-input="COMPLETE\n$path\n$line-number\n$column-number\n":
       |reader /BufferedReader|
-      suggestions := []
+      prefix := reader.read-line
+      if not prefix:
+        block.call "" null []
+        return
+      edit-range := read-range reader
 
+      suggestions := []
       while true:
         line := reader.read-line
         if line == null: break
         kind := int.parse reader.read-line
         suggestions.add (CompletionItem --label=line --kind=kind)
-      return suggestions
+
+      block.call prefix edit-range suggestions
+      return
     unreachable
 
   goto-definition --project-uri/string? uri/string line-number/int column-number/int -> List/*<Location>*/:

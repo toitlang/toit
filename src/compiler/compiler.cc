@@ -135,13 +135,6 @@ class Pipeline {
   // resolved.
   virtual void patch(ir::Program* program);
 
-  virtual void lsp_selection_import_path(const char* path,
-                                         const char* segment,
-                                         const char* resolved) {}
-  virtual void lsp_complete_import_first_segment(ast::Identifier* segment,
-                                                 const Package& current_package,
-                                                 const PackageLock& package_lock) {}
-
   virtual List<const char*> adjust_source_paths(List<const char*> source_paths);
   virtual PackageLock load_package_lock(List<const char*> source_paths);
 
@@ -198,20 +191,35 @@ main args:
 
 class LanguageServerPipeline : public Pipeline {
  public:
-  // Forward constructor arguments to super class.
-  using Pipeline::Pipeline;
+  enum class Kind {
+    analyze,
+    semantic_tokens,
+    completion,
+    goto_definition,
+  };
+
+  LanguageServerPipeline(Kind kind,
+                         const PipelineConfiguration& configuration)
+      : Pipeline(configuration)
+      , kind_(kind) {}
 
  protected:
   bool is_for_analysis() const { return true; }
+
+  Kind kind() const { return kind_; }
+
+ private:
+  Kind kind_;
 };
 
 class LocationLanguageServerPipeline : public LanguageServerPipeline {
  public:
-  LocationLanguageServerPipeline(const char* path,
+  LocationLanguageServerPipeline(Kind kind,
+                                 const char* path,
                                  int line_number,   // 1-based
                                  int column_number, // 1-based
                                  const PipelineConfiguration& configuration)
-      : LanguageServerPipeline(configuration)
+      : LanguageServerPipeline(kind, configuration)
       , lsp_selection_path_(path)
       , line_number_(line_number)
       , column_number_(column_number) {}
@@ -230,44 +238,44 @@ class LocationLanguageServerPipeline : public LanguageServerPipeline {
 
 class CompletionPipeline : public LocationLanguageServerPipeline {
  public:
-  // Forward constructor arguments to super class.
-  using LocationLanguageServerPipeline::LocationLanguageServerPipeline;
+  CompletionPipeline(const char* completion_path,
+                     int line_number,   // 1-based
+                     int column_number, // 1-based
+                     const PipelineConfiguration& configuration)
+      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::completion,
+                                       completion_path,
+                                       line_number,
+                                       column_number,
+                                       configuration) {}
 
  protected:
   void setup_lsp_selection_handler();
   Source* _load_file(const char* path, const PackageLock& package_lock);
 
-
-
-  void lsp_complete_import_first_segment(ast::Identifier* segment,
-                                         const Package& current_package,
-                                         const PackageLock& package_lock);
-  void lsp_selection_import_path(const char* path,
-                                 const char* segment,
-                                 const char* resolved);
-
   bool is_lsp_selection_identifier() { return true; }
 
  private:
-  Symbol completion_prefix_ = Symbol::invalid();
-  std::string package_id_ = Package::INVALID_PACKAGE_ID;
+  CompletionHandler* handler() {
+    return static_cast<CompletionHandler*>(lsp()->selection_handler());
+  }
+
+  friend class LocationLanguageServerPipeline;
 };
 
 class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
  public:
-  GotoDefinitionPipeline(const char* completion_path,
+  GotoDefinitionPipeline(const char* goto_definition_path,
                          int line_number,   // 1-based
                          int column_number, // 1-based
                          const PipelineConfiguration& configuration)
-      : LocationLanguageServerPipeline(completion_path, line_number, column_number,
+      : LocationLanguageServerPipeline(LanguageServerPipeline::Kind::goto_definition,
+                                       goto_definition_path,
+                                       line_number,
+                                       column_number,
                                        configuration) {}
 
  protected:
   void setup_lsp_selection_handler();
-
-  void lsp_selection_import_path(const char* path,
-                                 const char* segment,
-                                 const char* resolved);
 
   bool is_lsp_selection_identifier() { return false; }
 };
@@ -462,7 +470,7 @@ void Compiler::lsp_goto_definition(const char* source_path,
 void Compiler::lsp_analyze(List<const char*> source_paths,
                            const PipelineConfiguration& configuration) {
   ASSERT(configuration.diagnostics != null);
-  LanguageServerPipeline pipeline(configuration);
+  LanguageServerPipeline pipeline(LanguageServerPipeline::Kind::analyze, configuration);
   pipeline.run(source_paths, false);
 }
 
@@ -482,7 +490,7 @@ void Compiler::lsp_semantic_tokens(const char* source_path,
                                    const PipelineConfiguration& configuration) {
   configuration.lsp->set_should_emit_semantic_tokens(true);
   ASSERT(configuration.diagnostics != null);
-  LanguageServerPipeline pipeline(configuration);
+  LanguageServerPipeline pipeline(LanguageServerPipeline::Kind::semantic_tokens, configuration);
   pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
@@ -983,13 +991,17 @@ ast::Unit* LocationLanguageServerPipeline::parse(Source* source) {
   const uint8* text = source->text();
   int offset = compute_source_offset(text, line_number_, column_number_);
 
-  // We only provide completions after a `-` if we are after a " --".
-  if (offset >= 1 && text[offset - 1] == '-') {
-    if (offset < 3 ||
-        text[offset - 1] != '-' ||
-        text[offset - 2] != '-' ||
-        text[offset - 3] != ' ') {
-      exit(0);
+  if (kind() == LanguageServerPipeline::Kind::completion) {
+    auto handler = static_cast<CompletionPipeline*>(this)->handler();
+    // We only provide completions after a '-' if there isn't a space in
+    // front of the '-', and if we don't have 'foo--'. That is, a '--'
+    // without a space in front.
+    if (offset >= 2 && text[offset - 1] == '-' &&
+        (text[offset - 2] == ' ' || text[offset - 2] == '\n')) {
+      handler->terminate();
+    }
+    if (offset >= 3 && text[offset - 1] == '-' && text[offset - 2] == '-' && text[offset - 3] != ' ') {
+      handler->terminate();
     }
   }
 
@@ -1007,61 +1019,49 @@ Source* CompletionPipeline::_load_file(const char* path, const PackageLock& pack
   // Now that we have loaded the file that contains the LSP selection, extract
   // the prefix (if there is any), and the package it is from.
 
-  package_id_ = package_lock.package_for(path, filesystem()).id();
+  auto package_id = package_lock.package_for(path, filesystem()).id();
+  handler()->set_package_id(package_id);
 
   const uint8* text = result->text();
   int offset = compute_source_offset(text, line_number_, column_number_);
   int start_offset = offset;
   IdentifierValidator validator;
   validator.disable_start_check();
-  while (start_offset > 0 &&
-         validator.check_next_char(text[start_offset - 1], [&]() { return text[start_offset]; })) {
+  while (true) {
+    if (start_offset <= 0) break;
+    auto peek = [&]() {
+      if (offset == start_offset) return LSP_SELECTION_MARKER;
+      return text[start_offset];
+    };
+    // Walk backwards as long as it's a valid identifier character.
+    if (!validator.check_next_char(text[start_offset - 1], peek)) {
+      break;
+    }
     start_offset--;
   }
 
   if (start_offset == offset || !IdentifierValidator::is_identifier_start(text[start_offset])) {
-    completion_prefix_ = Symbols::empty_string;
+    handler()->set_and_emit_prefix(Symbols::empty_string, result->range(start_offset, start_offset));
   } else {
+    auto range = result->range(start_offset, offset);
     int len = offset - start_offset;
     auto dash_canonicalized = IdentifierValidator::canonicalize(&text[start_offset], len);
     auto canonicalized = symbol_canonicalizer()->canonicalize_identifier(dash_canonicalized, &dash_canonicalized[len]);
     if (canonicalized.kind == Token::Kind::IDENTIFIER) {
-      completion_prefix_ = canonicalized.symbol;
+      handler()->set_and_emit_prefix(canonicalized.symbol, range);
     } else {
-      completion_prefix_ = Token::symbol(canonicalized.kind);
+      handler()->set_and_emit_prefix(Token::symbol(canonicalized.kind), range);
     }
   }
   return result;
 }
 
 void CompletionPipeline::setup_lsp_selection_handler() {
-  lsp()->setup_completion_handler(completion_prefix_, package_id_, source_manager());
-}
-
-
-void CompletionPipeline::lsp_complete_import_first_segment(ast::Identifier* segment,
-                                                           const Package& current_package,
-                                                           const PackageLock& package_lock) {
-  lsp()->complete_first_segment(completion_prefix_,
-                                segment,
-                                current_package,
-                                package_lock);
-}
-
-void CompletionPipeline::lsp_selection_import_path(const char* path,
-                                                   const char* segment,
-                                                   const char* resolved) {
-  lsp()->complete_import_path(completion_prefix_, path, filesystem());
+  lsp()->setup_completion_handler(source_manager());
 }
 
 void GotoDefinitionPipeline::setup_lsp_selection_handler() {
   lsp()->setup_goto_definition_handler(source_manager());
-}
-
-void GotoDefinitionPipeline::lsp_selection_import_path(const char* path,
-                                                       const char* segment,
-                                                       const char* resolved) {
-  lsp()->goto_definition_import_path(resolved);
 }
 
 /// Returns the error-unit if the file can't be parsed.
@@ -1262,12 +1262,16 @@ Source* Pipeline::_load_import(ast::Unit* unit,
 
   const char* lsp_path = null;
   const char* lsp_segment = null;
+  bool lsp_is_first_segment = false;
 
   std::string expected_import_package_id;
   PathBuilder import_path_builder(filesystem());
   int relative_segment_start = 0;
   bool dotted_out = false;
   Package import_package;
+
+  Source* result = null;
+  auto result_package = Package::invalid();
 
   if (is_relative) {
     // The file is relative to the unit_package.
@@ -1298,12 +1302,9 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     auto module_segment = segments[0];
     auto prefix = std::string(module_segment->data().c_str());
     if (module_segment->is_LspSelection()) {
-      lsp_complete_import_first_segment(module_segment, unit_package, package_lock);
-      // Otherwise still mark that we had an LSP segment, as we might need it for
-      // goto-definition. That one doesn't care for the values, as it only looks
-      // at the result value.
       lsp_path = "",
       lsp_segment = module_segment->data().c_str();
+      lsp_is_first_segment = true;
     }
     import_package = package_lock.resolve_prefix(unit_package, prefix);
     auto error_range = module_segment->range();
@@ -1322,29 +1323,26 @@ Source* Pipeline::_load_import(ast::Unit* unit,
                                       "Package for prefix '%s' not found",
                                       prefix.c_str());
         }
-        return null;
+        goto done;
 
       case Package::STATE_ERROR:
         diagnostics()->report_error(error_range,
                                     "Package for prefix '%s' not found due to error in lock file",
                                     prefix.c_str());
-        return null;
+        goto done;
 
       case Package::STATE_NOT_FOUND:
         diagnostics()->report_error(error_range,
                                     "Package '%s' for prefix '%s' not found",
                                     import_package.id().c_str(),
                                     prefix.c_str());
-        return null;
+        goto done;
     }
     expected_import_package_id = import_package.id();
     import_path_builder.join(import_package.absolute_path());
     relative_segment_start = import_package.is_sdk_prefix() ? 0 : 1;
     ASSERT(import_path_builder[import_path_builder.length() - 1] != '/');
   }
-
-  Source* result = null;
-  auto result_package = Package::invalid();
 
   if (relative_segment_start == segments.length()) {
     // Something like `import foo` where `foo` is the name of a package.
@@ -1370,7 +1368,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
                             true, // Did find the alternative directory, since we found a package and its 'src' directory.
                             filesystem(),
                             diagnostics());
-      goto segments_done;
+      goto done;
     }
   }
   for (int i = relative_segment_start; i < segments.length(); i++) {
@@ -1398,7 +1396,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
                               filesystem(),
                               diagnostics());
         // Don't return just yet, but give the lsp handler an opportunity to run.
-        goto segments_done;
+        goto done;
       } else {
         // We didn't find the toit file.
         // Keep the toit file path for error reporting.
@@ -1434,7 +1432,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
                                 filesystem(),
                                 diagnostics());
           // Don't return just yet, but give the lsp handler an opportunity to run.
-          goto segments_done;
+          goto done;
         }
       }
     }
@@ -1448,15 +1446,21 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     } else {
       load_result.report_error(import->range(), diagnostics());
       // Don't return just yet, but give the lsp handler an opportunity to run.
-      goto segments_done;
+      goto done;
     }
   }
-  segments_done:
+
+  done:
+
 
   if (lsp_path != null) {
-    lsp_selection_import_path(lsp_path,
-                              lsp_segment,
-                              result == null ? null : result->absolute_path());
+    lsp()->selection_handler()->import_path(lsp_path,
+                                            lsp_segment,
+                                            lsp_is_first_segment,
+                                            result == null ? null : result->absolute_path(),
+                                            unit_package,
+                                            package_lock,
+                                            filesystem());
   }
 
   if (result == null) {
@@ -1787,6 +1791,8 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     Flags::enable_asserts = true;
   }
 
+  setup_lsp_selection_handler();
+
   auto fs = configuration_.filesystem;
   fs->initialize(diagnostics());
   source_paths = adjust_source_paths(source_paths);
@@ -1822,8 +1828,6 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   }
 
   if (configuration_.parse_only) return Result::invalid();
-
-  setup_lsp_selection_handler();
 
   ir::Program* ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
   sort_classes(ir_program->classes());

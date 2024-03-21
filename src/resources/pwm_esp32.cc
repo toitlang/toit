@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <driver/ledc.h>
 
@@ -195,7 +195,7 @@ PRIMITIVE(start) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   ledc_channel_t channel = ledc_channels.any();
-  if (channel == kInvalidLedcChannel) FAIL(OUT_OF_RANGE);
+  if (channel == kInvalidLedcChannel) FAIL(ALREADY_IN_USE);
 
   ledc_channel_config_t config = {
     .gpio_num = pin,
@@ -291,4 +291,4 @@ PRIMITIVE(close_channel) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

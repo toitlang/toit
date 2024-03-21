@@ -94,8 +94,8 @@ monitor NetworkState:
 
   up [create] -> NetworkModule:
     usage_++
-    if module_: return module_
-    module/NetworkModule? := null
+    module := module_
+    if module: return module
     try:
       module = create.call
       module.connect
@@ -109,6 +109,14 @@ monitor NetworkState:
         // Disconnect the module if it was created, but connecting
         // failed with an exception.
         if module: module.disconnect
+
+  up [--if-unconnected] -> NetworkModule?:
+    module := module_
+    if module:
+      usage_++
+      return module
+    if-unconnected.call
+    return null
 
   down -> none:
     usage_--
@@ -388,10 +396,6 @@ class UdpSocketResourceProxy_ extends SocketResourceProxy_ implements udp.Socket
 class TcpSocketResourceProxy_ extends SocketResourceProxy_ implements tcp.Socket:
   constructor client/NetworkServiceClient handle/int:
     super client handle
-
-  // TODO(kasper): Remove this.
-  set-no-delay enabled/bool -> none:
-    no-delay = enabled
 
   no-delay -> bool:
     client ::= client_ as NetworkServiceClient

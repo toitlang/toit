@@ -18,11 +18,14 @@
 #if defined(TOIT_WINDOWS)
 
 #include <windows.h>
+
 #include "../event_sources/event_win.h"
+#include "../error_win.h"
 #include "../objects_inline.h"
 #include "../process_group.h"
-#include "../vm.h"
 #include "subprocess.h"
+#include "../vm.h"
+
 namespace toit {
 
 static const int PROCESS_EXITED = 1;
@@ -64,8 +67,13 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  auto  resource_group = _new SubprocessResourceGroup(process, WindowsEventSource::instance());
+  auto resource_group = _new SubprocessResourceGroup(process, WindowsEventSource::instance());
   if (!resource_group) FAIL(MALLOC_FAILED);
+
+  if (!WindowsEventSource::instance()->use()) {
+    resource_group->tear_down();
+    WINDOWS_ERROR;
+  }
 
   proxy->set_external_address(resource_group);
   return proxy;

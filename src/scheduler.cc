@@ -34,6 +34,16 @@
 
 namespace toit {
 
+// The maximum amount of us a process is allowed to run without
+// returning to the scheduler.
+static const int64 PROCESS_MAX_RUN_TIME_US = 10 * 1000 * 1000;
+
+#ifdef TOIT_ESP32
+static const bool PROCESS_MAX_RUN_TIME_ENFORCE = true;
+#else
+static const bool PROCESS_MAX_RUN_TIME_ENFORCE = false;
+#endif
+
 void SchedulerThread::entry() {
   scheduler_->run(this);
 }
@@ -551,7 +561,7 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
   Process* subject_process = group->lookup(process_id);
   if (subject_process == null) return calling_process->null_object();  // Process not found.
   uword length = array->length();
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
   multi_heap_info_t info;
   heap_caps_get_info(&info, MALLOC_CAP_8BIT);
 #else
@@ -610,6 +620,7 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
 void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* scheduler_thread) {
   wait_for_any_gc_to_complete(locker, process, Process::RUNNING);
   process->set_scheduler_thread(scheduler_thread);
+  process->set_run_timestamp(OS::get_monotonic_time());
   scheduler_thread->unpin();
 
   ProcessRunner* runner = process->runner();
@@ -640,10 +651,11 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     result = runner->run();
   }
 
+  process->clear_run_timestamp();
   process->set_scheduler_thread(null);
 
   while (result.state() != Interpreter::Result::TERMINATED) {
-    uint32_t signals = process->signals();
+    uint32 signals = process->signals();
     if (signals == 0) break;
     if (signals & Process::KILL) {
       result = Interpreter::Result(Interpreter::Result::TERMINATED);
@@ -688,9 +700,10 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     case Interpreter::Result::TERMINATED: {
       wait_for_any_gc_to_complete(locker, process, Process::RUNNING);
 
+      int id = process->id();
       ProcessGroup* group = process->group();
       bool last_in_group = !group->remove(process);
-      ASSERT(group->lookup(process->id()) == null);
+      ASSERT(group->lookup(id) == null);
       SystemMessage* message = process->take_termination_message(result.value());
 
       // Deleting processes might need to take the event source lock, so we have
@@ -709,7 +722,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       // the boot process that is going away.
       if (send_system_message(locker, message) != MESSAGE_OK) {
 #ifdef TOIT_FREERTOS
-        printf("[message: cannot send termination message for pid %d]\n", process->id());
+        printf("[message: cannot send termination message for pid %d]\n", id);
 #endif
         delete message;
       }
@@ -884,7 +897,7 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
 void Scheduler::tick(Locker& locker, int64 now) {
   tick_schedule(locker, now, true);
 
-  int first_non_empty_ready_queue = -1;
+  int first_non_empty_ready_queue = NUMBER_OF_READY_QUEUES;
   for (int i = 0; i < NUMBER_OF_READY_QUEUES; i++) {
     if (ready_queue_[i].is_empty()) continue;
     first_non_empty_ready_queue = i;
@@ -892,20 +905,57 @@ void Scheduler::tick(Locker& locker, int64 now) {
   }
 
   bool any_profiling = num_profiled_processes_ > 0;
-  if (!any_profiling && first_non_empty_ready_queue < 0) {
-    // No need to do preemption when there are no active profilers
-    // and no other processes ready to run.
-    return;
-  }
+  bool any_ready = first_non_empty_ready_queue < NUMBER_OF_READY_QUEUES;
+  if (!PROCESS_MAX_RUN_TIME_ENFORCE && !any_profiling && !any_ready) return;
 
   for (SchedulerThread* thread : threads_) {
     Process* process = thread->interpreter()->process();
     if (process == null) continue;
-    int ready_queue_index = compute_ready_queue_index(process->priority());
-    bool is_profiling = any_profiling && process->profiler() != null;
-    if (is_profiling || ready_queue_index >= first_non_empty_ready_queue) {
-      process->signal(Process::PREEMPT);
+
+    int64 run_time_us = process->run_time_us(now);
+    if (PROCESS_MAX_RUN_TIME_ENFORCE && run_time_us > PROCESS_MAX_RUN_TIME_US) {
+      fprintf(stderr, "Potential dead-lock detected:\n");
+      fprintf(stderr, "  Process: %d\n", process->id());
+      uint8* current_bcp = process->current_bcp();
+      Program* program = process->program();  // External processes have null programs.
+      if (program) {
+        const uint8* uuid = program->id();
+        char uuid_buffer[37];
+        snprintf(uuid_buffer, sizeof(uuid_buffer), "%08x-%04x-%04x-%04x-%04x%08x",
+            static_cast<int>(Utils::read_unaligned_uint32_be(uuid)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 4)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 6)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 8)),
+            static_cast<int>(Utils::read_unaligned_uint16_be(uuid + 10)),
+            static_cast<int>(Utils::read_unaligned_uint32_be(uuid + 12)));
+        fprintf(stderr, "  Program: %s\n", uuid_buffer);
+
+        if (program->is_valid_bcp(current_bcp)) {
+          int bci = program->absolute_bci_from_bcp(current_bcp);
+          fprintf(stderr, "  BCI: 0x%x\n", bci);
+
+          Opcode opcode = static_cast<Opcode>(*current_bcp);
+          if (opcode == Opcode::PRIMITIVE) {
+            int module = current_bcp[1];
+            int index = Utils::read_unaligned_uint16(current_bcp + 2);
+            fprintf(stderr, "  Primitive: %d:%d\n", module, index);
+          } else if (opcode == Opcode::ALLOCATE) {
+            fprintf(stderr, "  Allocate: %d\n", current_bcp[1]);
+          } else if (opcode == Opcode::ALLOCATE_WIDE) {
+            fprintf(stderr, "  Allocate: %d\n", Utils::read_unaligned_uint16(current_bcp + 1));
+          }
+        }
+        FATAL("Potential dead-lock");
+      }
+      FATAL("Potential dead-lock detected in process %d\n", process->id());
     }
+
+    if (process->signals() & Process::PREEMPT) continue;
+    bool should_preempt =
+         (PROCESS_MAX_RUN_TIME_ENFORCE && run_time_us > PROCESS_MAX_RUN_TIME_US / 2)
+      || (any_profiling && process->profiler() != null)
+      || (any_ready && compute_ready_queue_index(process->priority()) >= first_non_empty_ready_queue);
+    if (should_preempt) process->signal(Process::PREEMPT);
   }
 }
 

@@ -132,7 +132,7 @@ void Interpreter::prepare_process() {
   store_stack();
 }
 
-#ifdef IOT_DEVICE
+#ifdef TOIT_FREERTOS
 #define STACK_ENCODING_BUFFER_SIZE (2*1024)
 #else
 #define STACK_ENCODING_BUFFER_SIZE (16*1024)
@@ -289,5 +289,21 @@ void Interpreter::trace(uint8* bcp) {
   UNIMPLEMENTED();
 #endif
 }
+
+Object* Interpreter::float_op(Process* process, Object* a, Object* b, double_op* op) {
+  word word_result = process->object_heap()->allocate_new_space(Double::allocation_size());
+  if (!word_result) return NULL;
+  HeapObject* result = HeapObject::from_address(word_result);
+  Smi* header = HeapObject::cast(a)->header();
+  result->_set_header(header);
+  double d1 = Double::cast(a)->value();
+  double d2 = Double::cast(b)->value();
+  Double::cast(result)->_set_value(op(d1, d2));
+  return result;
+}
+
+double double_add(double a, double b) { return a + b; }
+double double_sub(double a, double b) { return a - b; }
+double double_mul(double a, double b) { return a * b; }
 
 } // namespace toit

@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
+#if defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
 
 #include <esp_eth.h>
 #include <esp_mac.h>
@@ -184,7 +184,7 @@ PRIMITIVE(init) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = ethernet_pool.any();
-  if (id == kInvalidEthernet) FAIL(OUT_OF_BOUNDS);
+  if (id == kInvalidEthernet) FAIL(ALREADY_IN_USE);
 
   esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
   esp_netif_t* netif = esp_netif_new(&cfg);
@@ -288,7 +288,7 @@ PRIMITIVE(init_spi) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = ethernet_pool.any();
-  if (id == kInvalidEthernet) FAIL(OUT_OF_BOUNDS);
+  if (id == kInvalidEthernet) FAIL(ALREADY_IN_USE);
 
   esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
   esp_netif_t* netif = esp_netif_new(&cfg);
@@ -445,4 +445,4 @@ PRIMITIVE(get_ip) {
 
 } // namespace toit
 
-#endif // defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
+#endif // defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
