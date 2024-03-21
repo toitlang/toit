@@ -13,12 +13,12 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import binary
 import crypto.sha1
 import encoding.hex
 import host.file
 import host.directory
 import io
+import io show BIG-ENDIAN
 import zlib
 
 import ..file-system-view
@@ -33,7 +33,7 @@ class Pack:
     // See: git help format-pack.
     if "PACK" != binary-data_[0..4].to-string-non-throwing:
       throw "Invalid pack file"
-    version = binary.BIG-ENDIAN.uint32 binary-data_ 4
+    version = BIG-ENDIAN.uint32 binary-data_ 4
     if version > 2: throw "Unsuported pack version $version"
 
     content_ = parse-binary-data_ binary-data_ ref-hash
@@ -78,7 +78,7 @@ class Pack:
   static TYPE_REF_DELTA_ ::= 7
 
   static parse-binary-data_ binary-data/ByteArray ref-hash/string -> Map:
-    num-entries := binary.BIG-ENDIAN.uint32 binary-data 8
+    num-entries := BIG-ENDIAN.uint32 binary-data 8
 
     offset := 12
     objects := {:}

@@ -2,8 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary show LITTLE-ENDIAN
 import bitmap
+import io show LITTLE-ENDIAN
 import .encoder
 import .parser
 

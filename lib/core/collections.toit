@@ -2,9 +2,9 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary
 import bitmap
 import io
+import io show BIG-ENDIAN LITTLE-ENDIAN
 
 LIST-INITIAL-LENGTH_ ::= 4
 HASHED-COLLECTION-INITIAL-LENGTH_ ::= 4
@@ -1243,7 +1243,7 @@ interface ByteArray extends io.Data:
   */
   to-string from/int=0 to/int=size -> string
 
-  /** Deprecated. Use $binary.ByteOrder.float64 instead. */
+  /** Deprecated. Use $io.ByteOrder.float64 instead. */
   to-float from/int --big-endian/bool?=true -> float
 
   /**
@@ -1430,9 +1430,9 @@ abstract class ByteArrayBase_ implements ByteArray:
   to-string from/int=0 to/int=size -> string:
     #primitive.core.byte-array-convert-to-string
 
-  /// Deprecated. Use $binary.ByteOrder.float64 instead.
+  /// Deprecated. Use $io.ByteOrder.float64 instead.
   to-float from/int --big-endian/bool?=true -> float:
-    bin := big-endian ? binary.BIG-ENDIAN : binary.LITTLE-ENDIAN
+    bin := big-endian ? BIG-ENDIAN : LITTLE-ENDIAN
     bits := bin.int64 this from
     return float.from-bits bits
 
@@ -1747,11 +1747,11 @@ class CowByteArray_ implements ByteArray:
   to-string from/int=0 to/int=size -> string:
     return backing_.to-string from to
 
-  /// Deprecated. Use $binary.ByteOrder.float64 instead.
+  /// Deprecated. Use $io.ByteOrder.float64 instead.
   to-float from/int --big-endian/bool?=true -> float:
-    byte-order /binary.ByteOrder := big-endian
-        ? binary.BIG-ENDIAN
-        : binary.LITTLE-ENDIAN
+    byte-order /io.ByteOrder := big-endian
+        ? BIG-ENDIAN
+        : LITTLE-ENDIAN
     return byte-order.float64 backing_ from
 
   to-string-non-throwing from=0 to=size:

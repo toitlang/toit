@@ -2,7 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary
 import expect show *
 
 import .checksum
@@ -261,9 +260,9 @@ class Crc extends Checksum:
     checksum := sum_ ^ xor-result
     result := ByteArray (width + 7) >> 3
     if little-endian:
-      binary.LITTLE-ENDIAN.put-uint result result.size 0 checksum
+      io.LITTLE-ENDIAN.put-uint result result.size 0 checksum
     else:
-      binary.BIG-ENDIAN.put-uint result result.size 0 checksum
+      io.BIG-ENDIAN.put-uint result result.size 0 checksum
     return result
 
   /**

@@ -11,9 +11,9 @@ The $Buffer class can be used to build up binary data. The collected
 The $Reader class makes a byte array readable, by providing a `read` method.
 */
 
-import binary show BIG-ENDIAN LITTLE-ENDIAN
-import reader
 import io
+import reader
+import io show BIG-ENDIAN LITTLE-ENDIAN
 
 INITIAL-BUFFER-LENGTH_ ::= 64
 MIN-BUFFER-GROWTH_ ::= 64

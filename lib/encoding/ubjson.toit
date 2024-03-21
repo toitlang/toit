@@ -2,8 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary
 import io
+import io show BIG-ENDIAN
 
 INVALID-INPUT-ERROR ::= "INVALID_UBJSON_INPUT"
 INVALID-OBJECT-ERROR ::= "INVALID_UBJSON_OBJECT"
@@ -100,16 +100,16 @@ class Encoder:
     buffer_.big-endian.write-float64 f
 
   encode-int_ i:
-    if 0 <= i <= binary.UINT8-MAX:
+    if 0 <= i <= io.UINT8-MAX:
       buffer_.write-byte 'U'
       buffer_.write-byte i
-    else if binary.INT8-MIN <= i <= binary.INT8-MAX:
+    else if io.INT8-MIN <= i <= io.INT8-MAX:
       buffer_.write-byte 'i'
       buffer_.write-byte i
-    else if binary.INT16-MIN <= i <= binary.INT16-MAX:
+    else if io.INT16-MIN <= i <= io.INT16-MAX:
       buffer_.write-byte 'I'
       buffer_.big-endian.write-int16 i
-    else if binary.INT32-MIN <= i <= binary.INT32-MAX:
+    else if io.INT32-MIN <= i <= io.INT32-MAX:
       buffer_.write-byte 'l'
       buffer_.big-endian.write-int32 i
     else:
@@ -160,20 +160,20 @@ class Decoder:
 
   decode-float_:
     offset_ += 8
-    return float.from-bits (binary.BIG-ENDIAN.int64 bytes_ offset_ - 8)
+    return float.from-bits (BIG-ENDIAN.int64 bytes_ offset_ - 8)
 
   decode-int_ type:
-    if type == 'i': return binary.BIG-ENDIAN.int8 bytes_ offset_++
+    if type == 'i': return BIG-ENDIAN.int8 bytes_ offset_++
     else if type == 'U': return bytes_[offset_++]
     else if type == 'I':
       offset_ += 2
-      return binary.BIG-ENDIAN.int16 bytes_ offset_ - 2
+      return BIG-ENDIAN.int16 bytes_ offset_ - 2
     else if type == 'l':
       offset_ += 4
-      return binary.BIG-ENDIAN.int32 bytes_ offset_ - 4
+      return BIG-ENDIAN.int32 bytes_ offset_ - 4
     else if type == 'L':
       offset_ += 8
-      return binary.BIG-ENDIAN.int64 bytes_ offset_ - 8
+      return BIG-ENDIAN.int64 bytes_ offset_ - 8
     else:
       throw INVALID-CHARACTER-ERROR
 

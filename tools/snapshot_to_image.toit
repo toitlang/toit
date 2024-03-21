@@ -24,9 +24,9 @@ import .image
 import .snapshot
 import .firmware show pad
 
-import binary show LITTLE-ENDIAN ByteOrder
 import encoding.ubjson
 import io
+import io show LITTLE-ENDIAN ByteOrder
 import system
 import uuid
 

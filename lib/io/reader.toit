@@ -2,8 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary
 import reader as old-reader
+import .byte-order
 
 /**
 A source of bytes.
@@ -663,8 +663,8 @@ abstract class Reader implements old-reader.Reader:
   */
   little-endian -> EndianReader:
     result := endian_
-    if not result or result.byte-order_ != binary.LITTLE_ENDIAN:
-      result = EndianReader --reader=this --byte-order=binary.LITTLE_ENDIAN
+    if not result or result.byte-order_ != LITTLE_ENDIAN:
+      result = EndianReader --reader=this --byte-order=LITTLE_ENDIAN
       endian_ = result
     return result
 
@@ -689,8 +689,8 @@ abstract class Reader implements old-reader.Reader:
   */
   big-endian -> EndianReader:
     result := endian_
-    if not result or result.byte-order_ != binary.BIG_ENDIAN:
-      result = EndianReader --reader=this --byte-order=binary.BIG_ENDIAN
+    if not result or result.byte-order_ != BIG_ENDIAN:
+      result = EndianReader --reader=this --byte-order=BIG_ENDIAN
       endian_ = result
     return result
 
@@ -859,10 +859,10 @@ class CloseableIn_ extends CloseableReader:
 
 class EndianReader:
   reader_/Reader
-  byte-order_/binary.ByteOrder
+  byte-order_/ByteOrder
   cached-byte-array_/ByteArray ::= ByteArray 8
 
-  constructor --reader/Reader --byte-order/binary.ByteOrder:
+  constructor --reader/Reader --byte-order/ByteOrder:
     reader_ = reader
     byte-order_ = byte-order
 

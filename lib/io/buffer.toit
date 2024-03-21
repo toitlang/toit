@@ -2,8 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary
-
+import .byte-order
 import .data
 import .writer
 
@@ -242,8 +241,8 @@ class Buffer extends CloseableWriter:
   */
   little-endian -> EndianBuffer:
     result := endian_
-    if not result or result.byte-order_ != binary.LITTLE_ENDIAN:
-      result = EndianBuffer --buffer=this --byte-order=binary.LITTLE_ENDIAN
+    if not result or result.byte-order_ != LITTLE_ENDIAN:
+      result = EndianBuffer --buffer=this --byte-order=LITTLE_ENDIAN
       endian_ = result
     return (result as EndianBuffer)
 
@@ -271,15 +270,15 @@ class Buffer extends CloseableWriter:
   */
   big-endian -> EndianBuffer:
     result := endian_
-    if not result or result.byte-order_ != binary.BIG_ENDIAN:
-      result = EndianBuffer --buffer=this --byte-order=binary.BIG_ENDIAN
+    if not result or result.byte-order_ != BIG_ENDIAN:
+      result = EndianBuffer --buffer=this --byte-order=BIG_ENDIAN
       endian_ = result
     return (result as EndianBuffer)
 
 class EndianBuffer extends EndianWriter:
   buffer_/Buffer
 
-  constructor --buffer/Buffer --byte-order/binary.ByteOrder:
+  constructor --buffer/Buffer --byte-order/ByteOrder:
     buffer_ = buffer
     super --writer=buffer --byte-order=byte-order
 

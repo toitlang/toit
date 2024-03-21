@@ -17,9 +17,9 @@ import crypto.hamming
 import crypto.hmac show *
 import tls.session show tls-get-random_
 
-import binary show BIG-ENDIAN
 import encoding.hex
 import encoding.base64
+import io show BIG-ENDIAN
 
 import .confuse
 import .io-data

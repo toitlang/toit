@@ -13,10 +13,10 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import binary show LITTLE-ENDIAN
 import bitmap
 import crypto.sha256 as crypto
 import io
+import io show LITTLE-ENDIAN
 import system
 import system show platform
 import uuid
