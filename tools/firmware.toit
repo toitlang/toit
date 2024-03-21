@@ -126,9 +126,9 @@ write-file-or-print --path/string? output/string -> none:
 main arguments/List:
   root-cmd := cli.Command "root"
       --options=[
-        cli.OptionString OPTION-ENVELOPE
+        cli.Option OPTION-ENVELOPE
             --short-name="e"
-            --short-help="Set the envelope to work on."
+            --help="Set the envelope to work on."
             --type="file"
             --required
       ]
@@ -143,13 +143,13 @@ main arguments/List:
 
 create-cmd -> cli.Command:
   options := AR-ENTRY-FILE-MAP.map: | key/string value/string |
-    cli.OptionString key
-        --short-help="Set the $key part."
+    cli.Option key
+        --help="Set the $key part."
         --type="file"
         --required=(key == "firmware.bin")
   return cli.Command "create"
       --options=options.values + [
-        cli.OptionString "system.snapshot"
+        cli.Option "system.snapshot"
             --type="file"
             --required,
       ]
@@ -187,11 +187,11 @@ create-envelope parsed/cli.Parsed -> none:
 
 container-cmd -> cli.Command:
   cmd := cli.Command "container"
-  option-output := cli.OptionString OPTION-OUTPUT
+  option-output := cli.Option OPTION-OUTPUT
       --short-name=OPTION-OUTPUT-SHORT
-      --short-help="Set the output envelope."
+      --help="Set the output envelope."
       --type="file"
-  option-name := cli.OptionString "name"
+  option-name := cli.Option "name"
       --type="string"
       --required
 
@@ -199,18 +199,18 @@ container-cmd -> cli.Command:
       cli.Command "install"
           --options=[
             option-output,
-            cli.OptionString "assets"
-                --short-help="Add assets to the container."
+            cli.Option "assets"
+                --help="Add assets to the container."
                 --type="file",
             cli.OptionEnum "trigger" ["none", "boot"]
-                --short-help="Trigger the container to run automatically."
+                --help="Trigger the container to run automatically."
                 --default="boot",
             cli.Flag "critical"
-                --short-help="Reboot system if the container terminates.",
+                --help="Reboot system if the container terminates.",
           ]
           --rest=[
             option-name,
-            cli.OptionString "image"
+            cli.Option "image"
                 --type="file"
                 --required
           ]
@@ -219,12 +219,12 @@ container-cmd -> cli.Command:
   cmd.add
       cli.Command "extract"
           --options=[
-            cli.OptionString "output"
-                --short-help="Set the output file name."
+            cli.Option "output"
+                --help="Set the output file name."
                 --short-name="o"
                 --required,
             cli.OptionEnum "part" ["image", "assets"]
-                --short-help="Pick the part of the container to extract."
+                --help="Pick the part of the container to extract."
                 --required
           ]
           --rest=[option-name]
@@ -239,11 +239,11 @@ container-cmd -> cli.Command:
   cmd.add
       cli.Command "list"
           --options=[
-            cli.OptionString "output"
-                --short-help="Set the output file name."
+            cli.Option "output"
+                --help="Set the output file name."
                 --short-name="o",
             cli.OptionEnum "output-format" ["human", "json"]
-                --short-help="Set the output format."
+                --help="Set the output format."
                 --default="human",
           ]
           --run=:: container-list it
@@ -410,19 +410,19 @@ build-entries-json entries/Map -> Map:
 property-cmd -> cli.Command:
   cmd := cli.Command "property"
 
-  option-output := cli.OptionString OPTION-OUTPUT
+  option-output := cli.Option OPTION-OUTPUT
       --short-name=OPTION-OUTPUT-SHORT
-      --short-help="Set the output envelope."
+      --help="Set the output envelope."
       --type="file"
-  option-key := cli.OptionString "key"
+  option-key := cli.Option "key"
       --type="string"
-  option-key-required := cli.OptionString option-key.name
+  option-key-required := cli.Option option-key.name
       --type=option-key.type
       --required
 
   cmd.add
       cli.Command "get"
-          --rest=[ cli.OptionString "key" --type="string" ]
+          --rest=[ cli.Option "key" --type="string" ]
           --run=:: property-get it
 
   cmd.add
@@ -434,7 +434,7 @@ property-cmd -> cli.Command:
   cmd.add
       cli.Command "set"
           --options=[ option-output ]
-          --rest=[ option-key-required, cli.OptionString "value" --multi --required ]
+          --rest=[ option-key-required, cli.Option "value" --multi --required ]
           --run=:: property-set it
 
   return cmd
@@ -497,7 +497,7 @@ properties-update-with-key parsed/cli.Parsed [block] -> none:
 
 extract-cmd -> cli.Command:
   return cli.Command "extract"
-      --long-help="""
+      --help="""
         Extracts the firmware image of the envelope to a file.
 
         The following formats are supported:
@@ -523,15 +523,15 @@ extract-cmd -> cli.Command:
         forwarded to port 1234 in the QEMU image.
         """
       --options=[
-        cli.OptionString OPTION-OUTPUT
+        cli.Option OPTION-OUTPUT
             --short-name=OPTION-OUTPUT-SHORT
-            --short-help="Set the output file."
+            --help="Set the output file."
             --type="file"
             --required,
-        cli.OptionString "config"
+        cli.Option "config"
             --type="file",
         cli.OptionEnum "format" ["binary", "elf", "ubjson", "qemu"]
-            --short-help="Set the output format."
+            --help="Set the output format."
             --default="binary",
       ]
       --run=:: extract it
@@ -655,7 +655,7 @@ find-esptool_ -> List:
 
 tool-cmd -> cli.Command:
   return cli.Command "tool"
-      --short-help="Provides information about used tools."
+      --help="Provides information about used tools."
       --subcommands=[
         esptool-cmd,
       ]
@@ -663,7 +663,7 @@ tool-cmd -> cli.Command:
 esptool-cmd -> cli.Command:
   return cli.Command "esptool"
       --aliases=["esp-tool", "esp_tool"]
-      --short-help="Prints the path and version of the found esptool."
+      --help="Prints the path and version of the found esptool."
       --examples=[
         cli.Example "Print the path and version of the found esptool."
             --arguments="-e ignored-envelope"
@@ -678,9 +678,9 @@ esptool parsed/cli.Parsed -> none:
 flash-cmd -> cli.Command:
   return cli.Command "flash"
       --options=[
-        cli.OptionString "config"
+        cli.Option "config"
             --type="file",
-        cli.OptionString "port"
+        cli.Option "port"
             --type="file"
             --short-name="p"
             --required,
@@ -688,9 +688,9 @@ flash-cmd -> cli.Command:
             --default=921600,
         cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32s2", "esp32s3"]
             --default="esp32",
-        OptionPatterns "partition"
+        cli.OptionPatterns "partition"
             ["file:<name>=<path>", "empty:<name>=<size>"]
-            --short-help="Add a custom partition to the flashed image."
+            --help="Add a custom partition to the flashed image."
             --split-commas
             --multi,
       ]
@@ -965,15 +965,15 @@ extract-binary-content -> ByteArray
 
 show-cmd -> cli.Command:
   return cli.Command "show"
-      --short-help="Show the contents of the given firmware envelope."
+      --help="Show the contents of the given firmware envelope."
       --options=[
         cli.OptionEnum "output-format" ["human", "json"]
             --default="human",
         cli.Flag "all"
-            --short-help="Show all information, including non-container entries."
+            --help="Show all information, including non-container entries."
             --short-name="a",
         cli.Option "output"
-            --short-help="Write output to the given file."
+            --help="Write output to the given file."
             --short-name="o",
       ]
       --run=:: show it
@@ -1470,39 +1470,3 @@ find-details-offset bits/ByteArray -> int:
   // No magic numbers were found so the image is from a legacy SDK that has the
   // image details at a fixed offset.
   throw "cannot find magic marker in binary file"
-
-// TODO(kasper): Move this to the cli package?
-class OptionPatterns extends cli.OptionEnum:
-  constructor name/string patterns/List
-      --default=null
-      --short-name/string?=null
-      --short-help/string?=null
-      --required/bool=false
-      --hidden/bool=false
-      --multi/bool=false
-      --split-commas/bool=false:
-    super name patterns
-      --default=default
-      --short-name=short-name
-      --short-help=short-help
-      --required=required
-      --hidden=hidden
-      --multi=multi
-      --split-commas=split-commas
-
-  parse str/string --for-help-example/bool=false -> any:
-    if not str.contains ":" and not str.contains "=":
-      // Make sure it's a valid one.
-      key := super str --for-help-example=for-help-example
-      return key
-
-    separator-index := str.index-of ":"
-    if separator-index < 0: separator-index = str.index-of "="
-    key := str[..separator-index]
-    key-with-equals := str[..separator-index + 1]
-    if not (values.any: it.starts-with key-with-equals):
-      throw "Invalid value for option '$name': '$str'. Valid values are: $(values.join ", ")."
-
-    return {
-      key: str[separator-index + 1..]
-    }

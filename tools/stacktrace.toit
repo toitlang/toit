@@ -22,12 +22,12 @@ ELF-FILE ::= "elf-file"
 main args/List:
   parsed := null
   parser := cli.Command "stacktrace"
-      --long-help=USAGE
-      --rest=[cli.OptionString --required ELF-FILE --type="path"]
+      --help=USAGE
+      --rest=[cli.Option --required ELF-FILE --type="path"]
       --options=[
           cli.Flag "disassemble" --short-name="d",
-          cli.OptionString "objdump" --default=OBJDUMP,
-          cli.OptionString "backtrace" --default="-"
+          cli.Option "objdump" --default=OBJDUMP,
+          cli.Option "backtrace" --default="-"
           ]
       --run=:: parsed = it
   parser.run args
@@ -113,7 +113,7 @@ main args/List:
   * 4010661d:	0008e0        	callx8	a8
     40106620:	0a2d      	mov.n	a2, a10
   ...
-  */    
+  */
   backtrace-do backtrace symbols: | address symbol |
     name := "(unknown)"
     if disassemble: print ""

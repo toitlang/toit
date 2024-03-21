@@ -29,17 +29,17 @@ OPTION-ASSETS       ::= "assets"
 OPTION-OUTPUT       ::= "output"
 OPTION-OUTPUT-SHORT ::= "o"
 
-option-output ::= cli.OptionString OPTION-OUTPUT
+option-output ::= cli.Option OPTION-OUTPUT
     --short-name=OPTION-OUTPUT-SHORT
-    --short-help="Set the output assets file."
+    --help="Set the output assets file."
     --type="file"
 
 main arguments/List:
   root-cmd := cli.Command "root"
       --options=[
-        cli.OptionString OPTION-ASSETS
+        cli.Option OPTION-ASSETS
             --short-name="e"
-            --short-help="Set the assets to work on."
+            --help="Set the assets to work on."
             --type="file"
             --required
       ]
@@ -64,17 +64,17 @@ add-cmd -> cli.Command:
         option-output,
         cli.OptionEnum "format" ["binary", "ubjson", "tison"]
             --default="binary"
-            --short-help="Pick the encoding format."
+            --help="Pick the encoding format."
 
       ]
       --rest=[
-        cli.OptionString "name"
+        cli.Option "name"
             --required,
-        cli.OptionString "path"
+        cli.Option "path"
             --type="file"
             --required
       ]
-      --short-help="Add or update asset with the given name."
+      --help="Add or update asset with the given name."
       --run=:: add-asset it
 
 add-asset parsed/cli.Parsed -> none:
@@ -101,18 +101,18 @@ get-cmd -> cli.Command:
       --options=[
         cli.OptionEnum "format" ["auto", "binary", "ubjson", "tison"]
             --default="auto"
-            --short-help="Pick the encoding format.",
-        cli.OptionString "output"
+            --help="Pick the encoding format.",
+        cli.Option "output"
             --short-name="o"
-            --short-help="Set the name of the output file."
+            --help="Set the name of the output file."
             --type="file"
             --required,
       ]
       --rest=[
-        cli.OptionString "name"
+        cli.Option "name"
             --required,
       ]
-      --short-help="Get the asset with the given name."
+      --help="Get the asset with the given name."
       --run=:: get-asset it
 
 get-asset parsed/cli.Parsed -> none:
@@ -146,10 +146,10 @@ remove-cmd -> cli.Command:
   return cli.Command "remove"
       --options=[ option-output ]
       --rest=[
-        cli.OptionString "name"
+        cli.Option "name"
             --required,
       ]
-      --short-help="Remove asset with the given name."
+      --help="Remove asset with the given name."
       --run=:: remove-asset it
 
 remove-asset parsed/cli.Parsed -> none:
@@ -159,7 +159,7 @@ remove-asset parsed/cli.Parsed -> none:
 
 list-cmd -> cli.Command:
   return cli.Command "list"
-      --short-help="Print all assets in JSON."
+      --help="Print all assets in JSON."
       --run=:: list-assets it
 
 decode entry/Map content/ByteArray -> string:
