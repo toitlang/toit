@@ -18,30 +18,30 @@ The big-endian byte order stores the most-significant byte at the lowest
   singleton instance of $BigEndian) to manipulate byte arrays in this order.
 */
 
-/** Deprecated. Use $io.INT8-MIN instead. */
+/** Deprecated. Use $int.MIN-8 instead. */
 INT8-MIN ::= -128
-/** Deprecated. Use $io.INT8-MAX instead. */
+/** Deprecated. Use $int.MAX-8 instead. */
 INT8-MAX ::= 127
-/** Deprecated. Use $io.INT16-MIN instead. */
+/** Deprecated. Use $int.MIN-16 instead. */
 INT16-MIN ::= -32_768
-/** Deprecated. Use $io.INT16-MAX instead. */
+/** Deprecated. Use $int.MAX-16 instead. */
 INT16-MAX ::= 32_767
-/** Deprecated. Use $io.INT24-MIN instead. */
+/** Deprecated. Use $int.MIN-24 instead. */
 INT24-MIN ::= -8_388_606
-/** Deprecated. Use $io.INT24-MAX instead. */
+/** Deprecated. Use $int.MAX-24 instead. */
 INT24-MAX ::= 8_388_607
-/** Deprecated. Use $io.INT32-MIN instead. */
+/** Deprecated. Use $int.MIN-32 instead. */
 INT32-MIN ::= -2_147_483_648
-/** Deprecated. Use $io.INT32-MAX instead. */
+/** Deprecated. Use $int.MAX-32 instead. */
 INT32-MAX ::= 2_147_483_647
 
-/** Deprecated. Use $io.UINT8-MAX instead. */
+/** Deprecated. Use $int.MAX-U8 instead. */
 UINT8-MAX ::= 255
-/** Deprecated. Use $io.UINT16-MAX instead. */
+/** Deprecated. Use $int.MAX-U16 instead. */
 UINT16-MAX ::= 65_535
-/** Deprecated. Use $io.UINT24-MAX instead. */
+/** Deprecated. Use $int.MAX-U24 instead. */
 UINT24-MAX ::= 16777216
-/** Deprecated. Use $io.UINT32-MAX instead. */
+/** Deprecated. Use $int.MAX-U32 instead. */
 UINT32-MAX ::= 4_294_967_295
 
 /** Deprecated. Use $io.LITTLE-ENDIAN instead. */

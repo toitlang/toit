@@ -16,32 +16,6 @@ The big-endian byte order stores the most-significant byte at the lowest
   singleton instance of $BigEndian) to manipulate byte arrays in this order.
 */
 
-/** The minimum signed 8-bit integer value. */
-INT8-MIN ::= -128
-/** The maximum signed 8-bit integer value. */
-INT8-MAX ::= 127
-/** The minimum signed 16-bit integer value. */
-INT16-MIN ::= -32_768
-/** The maximum signed 16-bit integer value. */
-INT16-MAX ::= 32_767
-/** The minimum signed 24-bit integer value. */
-INT24-MIN ::= -8_388_606
-/** The maximum signed 24-bit integer value. */
-INT24-MAX ::= 8_388_607
-/** The minimum signed 32-bit integer value. */
-INT32-MIN ::= -2_147_483_648
-/** The maximum signed 32-bit integer values. */
-INT32-MAX ::= 2_147_483_647
-
-/** The maximum unsigned 8-bit integer values. */
-UINT8-MAX ::= 255
-/** The maximum unsigned 16-bit integer values. */
-UINT16-MAX ::= 65_535
-/** The maximum unsigned 24-bit integer values. */
-UINT24-MAX ::= 16777216
-/** The maximum unsigned 32-bit integer values. */
-UINT32-MAX ::= 4_294_967_295
-
 /** A constant $LittleEndian singleton. */
 LITTLE-ENDIAN/LittleEndian ::= LittleEndian.private_
 /** A constant $BigEndian singleton. */

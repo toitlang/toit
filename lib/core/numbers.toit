@@ -564,6 +564,33 @@ abstract class int extends num:
   */
   static MIN ::= -MAX - 1
 
+  /** The minimum signed 8-bit integer value. */
+  static MIN-8 ::= -MAX-8 - 1
+  /** The maximum signed 8-bit integer value. */
+  static MAX-8 ::= 0x7F
+  /** The minimum signed 16-bit integer value. */
+  static MIN-16 ::= -MAX-16 - 1
+  /** The maximum signed 16-bit integer value. */
+  static MAX-16 ::= 0x7FFF
+  /** The minimum signed 24-bit integer value. */
+  static MIN-24 ::= -MAX-24 - 1
+  /** The maximum signed 24-bit integer value. */
+  static MAX-24 ::= 0x7F_FFFF
+  /** The minimum signed 32-bit integer value. */
+  static MIN-32 ::= -MAX-32 - 1
+  /** The maximum signed 32-bit integer values. */
+  static MAX-32 ::= 0x7FFF_FFFF
+
+  /** The maximum unsigned 8-bit integer values. */
+  static MAX-U8 ::= 0xFF
+  /** The maximum unsigned 16-bit integer values. */
+  static MAX-U16 ::= 0xFFFF
+  /** The maximum unsigned 24-bit integer values. */
+  static MAX-U24 ::= 0xFF_FFFF
+  /** The maximum unsigned 32-bit integer values. */
+  static MAX-U32 ::= 0xFFFF_FFFF
+
+
   static PARSE-ERR_ ::= "INTEGER_PARSING_ERROR"
   static RANGE-ERR_ ::= "OUT_OF_RANGE"
   static MAX-INT64-DIV-10_ ::= 922337203685477580
