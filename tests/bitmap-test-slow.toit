@@ -6,7 +6,7 @@ import expect show *
 
 import font show *
 import bitmap show *
-import io show LITTLE-ENDIAN BIG-ENDIAN byte-swap-16 byte-swap-32
+import io show LITTLE-ENDIAN BIG-ENDIAN ByteOrder
 
 import .io-data
 
@@ -54,12 +54,12 @@ simple-test:
       BIG-ENDIAN.put-uint16 ba
         it * 2
         314 * it
-    byte-swap-16 ba[0..24]
+    ByteOrder.swap-16 ba[0..24]
     12.repeat:
       read := LITTLE-ENDIAN.uint16 ba it * 2
       expect-equals 314 * it read
     for i := 0; i < 24; i += 4:
-      byte-swap-16 ba[i..i + 4]
+      ByteOrder.swap-16 ba[i..i + 4]
     12.repeat:
       read := BIG-ENDIAN.uint16 ba it * 2
       expect-equals 314 * it read
@@ -68,12 +68,12 @@ simple-test:
       LITTLE-ENDIAN.put-uint32 ba
         it * 4
         3141592 * it
-    byte-swap-32 ba
+    ByteOrder.swap-32 ba
     6.repeat:
       read := BIG-ENDIAN.uint32 ba it * 4
       expect-equals 3141592 * it read
     for i := 0; i < 24; i += 4:
-      byte-swap-32 ba[i..i + 4]
+      ByteOrder.swap-32 ba[i..i + 4]
     6.repeat:
       read := LITTLE-ENDIAN.uint32 ba it * 4
       expect-equals 3141592 * it read

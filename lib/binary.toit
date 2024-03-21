@@ -54,17 +54,17 @@ Swaps the byte-order of all 16-bit integers in the $byte-array.
 If the integers were in little-endian order they then are in big-endian byte order
 If the integers were in big-endian order they then are in little-endian byte order.
 
-Deprecated. Use io.byte-swap-16 instead.
+Deprecated. Use $io.ByteOrder.swap-16 instead.
 */
 byte-swap-16 byte-array/ByteArray -> none:
-  io.byte-swap-16 byte-array
+  io.ByteOrder.swap-16 byte-array
 
 /**
 Swaps the byte-order of all 32-bit integers in the $byte-array.
 If the integers were in little-endian order they then are in big-endian byte order
 If the integers were in big-endian order they then are in little-endian byte order.
 
-Deprecated. Use $io.byte-swap-32 instead.
+Deprecated. Use $io.ByteOrder.swap-32 instead.
 */
 byte-swap-32 byte-array/ByteArray -> none:
-  io.byte-swap-32 byte-array
+  io.ByteOrder.swap-32 byte-array
