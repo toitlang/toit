@@ -1,3 +1,12 @@
+<pkg:toit-partition-table-esp32>/partition_table.toit:126:5: warning: Deprecated 'LITTLE-ENDIAN'
+    LITTLE-ENDIAN.put-uint32 result 4 offset
+    ^~~~~~~~~~~~~
+<pkg:toit-partition-table-esp32>/partition_table.toit:127:5: warning: Deprecated 'LITTLE-ENDIAN'
+    LITTLE-ENDIAN.put-uint32 result 8 size
+    ^~~~~~~~~~~~~
+<pkg:toit-partition-table-esp32>/partition_table.toit:129:5: warning: Deprecated 'LITTLE-ENDIAN'
+    LITTLE-ENDIAN.put-uint32 result 28 flags
+    ^~~~~~~~~~~~~
 <pkg:pkg-cli>/cli.toit:124:33: warning: Deprecated 'program-name'
   help --invoked_command/string=program_name -> string:
                                 ^~~~~~~~~~~~
@@ -40,6 +49,15 @@
 <pkg:pkg-host>/pipe.toit:407:13: warning: Class 'Writer' is deprecated
   writer := Writer pipe
             ^~~~~~
+<pkg:toit-partition-table-esp32>/partition_table.toit:117:18: warning: Deprecated 'LITTLE-ENDIAN'
+        --offset=LITTLE-ENDIAN.uint32 bytes 4
+                 ^~~~~~~~~~~~~
+<pkg:toit-partition-table-esp32>/partition_table.toit:118:16: warning: Deprecated 'LITTLE-ENDIAN'
+        --size=LITTLE-ENDIAN.uint32 bytes 8
+               ^~~~~~~~~~~~~
+<pkg:toit-partition-table-esp32>/partition_table.toit:119:17: warning: Deprecated 'LITTLE-ENDIAN'
+        --flags=LITTLE-ENDIAN.uint32 bytes 28
+                ^~~~~~~~~~~~~
 <sdk>/bytes.toit:254:7: warning: Class 'BufferConsumer' is deprecated
 class BufferSizeCounter extends BufferConsumer:
       ^~~~~~~~~~~~~~~~~

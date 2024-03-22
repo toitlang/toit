@@ -22,12 +22,24 @@ Obtained from the $Client.web_socket or the $Server.web_socket methods.
 <pkg:pkg-http>/connection.toit:195:27: warning: Deprecated 'Socket.close-write'
       connection_.socket_.close_write
                           ^~~~~~~~~~~
+<pkg:pkg-http>/web_socket.toit:299:9: warning: Deprecated 'BIG-ENDIAN'
+        BIG_ENDIAN.put_int64 header 2 size_
+        ^~~~~~~~~~
+<pkg:pkg-http>/web_socket.toit:303:9: warning: Deprecated 'BIG-ENDIAN'
+        BIG_ENDIAN.put_uint16 header 2 size_
+        ^~~~~~~~~~
 <pkg:pkg-http>/web_socket.toit:49:20: warning: Deprecated 'Socket.read'
     return socket_.read
                    ^~~~
 <pkg:pkg-http>/web_socket.toit:113:23: warning: Deprecated 'Socket.read'
       next := socket_.read
                       ^~~~
+<pkg:pkg-http>/web_socket.toit:134:13: warning: Deprecated 'BIG-ENDIAN'
+      len = BIG_ENDIAN.uint16 pending_ 2
+            ^~~~~~~~~~
+<pkg:pkg-http>/web_socket.toit:136:13: warning: Deprecated 'BIG-ENDIAN'
+      len = BIG_ENDIAN.int64 pending_ 2
+            ^~~~~~~~~~
 <pkg:pkg-http>/web_socket.toit:182:23: warning: Deprecated 'Socket.write'
       from += socket_.write data from to
                       ^~~~~
