@@ -56,7 +56,7 @@ HeapObject* TwoSpaceHeap::new_space_allocation_failure(uword size) {
 
 void TwoSpaceHeap::swap_semi_spaces(SemiSpace& from, SemiSpace& to) {
   water_mark_ = to.top();
-  if (old_space()->is_empty() && to.used() < TOIT_PAGE_SIZE / 2) {
+  if (old_space()->is_empty() && !large_heap_heuristics_ && to.used() < TOIT_PAGE_SIZE / 2) {
     // Don't start promoting to old space until the post GC heap size
     // hits at least half a page.
     water_mark_ = to.single_chunk_start();
@@ -121,6 +121,40 @@ void SemiSpace::start_scavenge() {
   for (auto chunk : chunk_list_) chunk->set_scavenge_pointer(chunk->start());
 }
 
+void TwoSpaceHeap::do_scavenge(ScavengeVisitor* visitor) {
+  SemiSpace* from = new_space();
+  SemiSpace& to = visitor->to_space();
+  to.start_scavenge();
+  old_space()->start_scavenge();
+
+  process_heap_->iterate_roots(visitor);
+
+  old_space()->visit_remembered_set(visitor);
+
+  // Scavenge as much as possible so we can identify which objects need
+  // finalizing.
+  visitor->complete_scavenge();
+
+  // Process finalizers.
+  process_heap_->process_registered_callback_finalizers(visitor, from);
+  process_heap_->process_finalizer_queue(visitor, from);
+
+  // Scavenge as much as possible to find things that are reachable through
+  // the finalization lambdas.  This may revive some objects that are
+  // scheduled for finalization.
+  visitor->complete_scavenge();
+
+  // No more objects can be revived now, so we can process the external
+  // memory freeing finalizers.
+  process_heap_->process_registered_vm_finalizers(visitor, from);
+
+  visitor->complete_scavenge();
+
+  old_space()->end_scavenge();
+
+  total_bytes_allocated_ -= to.used();
+}
+
 GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
   SemiSpace* from = new_space();
 
@@ -154,7 +188,15 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
 
   if (!ObjectMemory::spare_chunk_mutex()) FATAL("ObjectMemory::set_up() not called");
 
-  {
+  if (large_heap_heuristics_ && spare_chunk_ == null) {
+    // Try to create a spare chunk that's exclusive to this heap.
+    // If this fails we fall back on the global spare chunk.  It will
+    // never fail on host machines.
+    spare_chunk_ = ObjectMemory::allocate_chunk(null, TOIT_PAGE_SIZE);
+  }
+
+  if (!spare_chunk_) {
+    // Use shared spare chunk.
     Locker locker(ObjectMemory::spare_chunk_mutex());
     Chunk* spare_chunk = ObjectMemory::spare_chunk(locker);
 
@@ -172,46 +214,28 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
 #endif
 
     ScavengeVisitor visitor(program_, this, spare_chunk);
-    SemiSpace* to = visitor.to_space();
-    to->start_scavenge();
-    old_space()->start_scavenge();
-
-    process_heap_->iterate_roots(&visitor);
-
-    old_space()->visit_remembered_set(&visitor);
-
-    // Scavenge as much as possible so we can identify which objects need
-    // finalizing.
-    visitor.complete_scavenge();
-
-    // Process finalizers.
-    process_heap_->process_registered_callback_finalizers(&visitor, from);
-    process_heap_->process_finalizer_queue(&visitor, from);
-
-    // Scavenge as much as possible to find things that are reachable through
-    // the finalization lambdas.  This may revive some objects that are
-    // scheduled for finalization.
-    visitor.complete_scavenge();
-
-    // No more objects can be revived now, so we can process the external
-    // memory freeing finalizers.
-    process_heap_->process_registered_vm_finalizers(&visitor, from);
-
-    visitor.complete_scavenge();
-
-    old_space()->end_scavenge();
-
-    total_bytes_allocated_ -= to->used();
+    do_scavenge(&visitor);
 
     from_used = from->used();
-    to_used = to->used();
+    to_used = visitor.to_space().used();
     trigger_old_space_gc = visitor.trigger_old_space_gc();
 
     Chunk* spare_chunk_after = from->remove_chunk();
 
     ObjectMemory::set_spare_chunk(locker, spare_chunk_after);
 
-    swap_semi_spaces(*from, *to);
+    swap_semi_spaces(*from, visitor.to_space());
+  } else {
+    // Use our own spare chunk. This means we don't need the lock.
+    ScavengeVisitor visitor(program_, this, spare_chunk_);
+    do_scavenge(&visitor);
+
+    from_used = from->used();
+    to_used = visitor.to_space().used();
+    trigger_old_space_gc = visitor.trigger_old_space_gc();
+
+    spare_chunk_ = from->remove_chunk();
+    swap_semi_spaces(*from, visitor.to_space());
   }
 
   if (Flags::tracegc) {

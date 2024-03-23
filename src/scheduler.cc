@@ -618,6 +618,7 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
 }
 
 void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* scheduler_thread) {
+  printf("Running process %p on thread %p\n", process, scheduler_thread);
   wait_for_any_gc_to_complete(locker, process, Process::RUNNING);
   process->set_scheduler_thread(scheduler_thread);
   process->set_run_timestamp(OS::get_monotonic_time());

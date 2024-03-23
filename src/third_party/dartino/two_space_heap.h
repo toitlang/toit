@@ -12,6 +12,8 @@
 
 namespace toit {
 
+class ScavengeVisitor;
+
 class HeapObjectFunctionVisitor : public HeapObjectVisitor {
  public:
   HeapObjectFunctionVisitor(Program* program, const std::function<void (HeapObject*)>& func)
@@ -114,13 +116,25 @@ class TwoSpaceHeap {
 
   word max_external_allocation();
 
+  void set_large_heap_heuristics() {
+    large_heap_heuristics_ = true;
+  }
+
  private:
   friend class ScavengeVisitor;
+
+  void do_scavenge(ScavengeVisitor* visitor);
 
   Program* program_;
   ObjectHeap* process_heap_;
   OldSpace old_space_;
   SemiSpace semi_space_;
+#ifdef TOIT_FREERTOS
+  bool large_heap_heuristics_ = false;
+#else
+  bool large_heap_heuristics_ = true;
+#endif
+  Chunk* spare_chunk_ = null;  // Only used for large heap heuristics mode.
   uword water_mark_;
   uword semi_space_size_;
   uword total_bytes_allocated_ = 0;
@@ -141,7 +155,7 @@ class ScavengeVisitor : public RootCallback {
         record_(&dummy_record_),
         water_mark_(heap->water_mark_) {}
 
-  SemiSpace* to_space() { return &to_; }
+  SemiSpace& to_space() { return to_; }
 
   void complete_scavenge() {
     bool work_found = true;
