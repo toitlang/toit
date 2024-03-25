@@ -775,7 +775,7 @@ PRIMITIVE(create) {
   uart_port_t port = determine_preferred_port(tx, rx, rts, cts);
 
   port = uart_ports.preferred(port);
-  if (port == kInvalidUartPort) FAIL(OUT_OF_RANGE);
+  if (port == kInvalidUartPort) FAIL(ALREADY_IN_USE);
   init.port = port;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();

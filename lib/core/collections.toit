@@ -1332,8 +1332,9 @@ abstract class ByteArrayBase_ implements ByteArray:
   abstract operator []= n/int value/int -> int
 
   operator [..] --from/int=0 --to/int=size -> ByteArray:
-    if not 0 <= from <= to <= size: throw "OUT_OF_BOUNDS"
     if from == 0 and to == size: return this
+    // Don't bother checking the bounds, since the ByteArraySlice_
+    // constructor does this.
     return ByteArraySlice_ this from to
 
   /**
@@ -1620,6 +1621,8 @@ class ByteArraySlice_ extends ByteArrayBase_:
   to_ / int
 
   constructor .byte-array_ .from_ .to_:
+    // We must check the bounds because the [..] operator on ByteArray
+    // does not check.
     if not 0 <= from_ <= to_ <= byte-array_.size:
       throw "OUT_OF_BOUNDS"
 

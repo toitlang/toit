@@ -193,10 +193,10 @@ class PointerRootCallback : public RootCallback {
 };
 
 void HeapObject::do_pointers(Program* program, PointerCallback* cb) {
-  if (class_tag() == BYTE_ARRAY_TAG) {
+  if (has_class_tag(BYTE_ARRAY_TAG)) {
     auto byte_array = ByteArray::cast(this);
     byte_array->do_pointers(cb);
-  } else if (class_tag() == STRING_TAG) {
+  } else if (has_class_tag(STRING_TAG)) {
     auto str = String::cast(this);
     str->do_pointers(cb);
   } else {
@@ -333,13 +333,6 @@ void Instance::instance_roots_do(int instance_size, RootCallback* cb) {
   if (has_active_finalizer() && cb->skip_marking(this)) return;
   int fields = fields_from_size(instance_size);
   cb->do_roots(_root_at(_offset_from(0)), fields);
-}
-
-void Instance::initialize(int instance_size) {
-  int fields = fields_from_size(instance_size);
-  for (int i = 0; i < fields; i++) {
-    at_put(i, Smi::from(0));
-  }
 }
 
 bool Object::encode_on(ProgramOrientedEncoder* encoder) {
