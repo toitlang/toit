@@ -4,11 +4,12 @@
 
 import expect show *
 import system
-import system show platform
+import system show platform tune-memory-use
 
 ON-DEVICE ::= platform == system.PLATFORM-FREERTOS
 
 main:
+  tune-memory-use 0
   10.repeat:
     if ON-DEVICE:
       allocate-too-much

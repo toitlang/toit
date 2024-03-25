@@ -12,6 +12,8 @@
 
 namespace toit {
 
+class ScavengeVisitor;
+
 class HeapObjectFunctionVisitor : public HeapObjectVisitor {
  public:
   HeapObjectFunctionVisitor(Program* program, const std::function<void (HeapObject*)>& func)
@@ -117,10 +119,13 @@ class TwoSpaceHeap {
  private:
   friend class ScavengeVisitor;
 
+  void do_scavenge(ScavengeVisitor* visitor);
+
   Program* program_;
   ObjectHeap* process_heap_;
   OldSpace old_space_;
   SemiSpace semi_space_;
+  Chunk* spare_chunk_ = null;  // Only used for large heap heuristics mode.
   uword water_mark_;
   uword semi_space_size_;
   uword total_bytes_allocated_ = 0;

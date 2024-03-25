@@ -466,6 +466,14 @@ class GcMetadata {
 
   static uword object_address_from_start(uword line, uint8 start);
 
+  static int large_heap_heuristics() {
+    return singleton_.large_heap_heuristics_;
+  }
+
+  static void set_large_heap_heuristics(int value) {
+    singleton_.large_heap_heuristics_ = value;
+  }
+
  private:
   GcMetadata() {}
   ~GcMetadata() {}
@@ -499,6 +507,11 @@ class GcMetadata {
   uword mark_bits_bias_;
   uword overflow_bits_bias_;
   uword cumulative_mark_bits_bias_;
+#ifdef TOIT_FREERTOS
+  int large_heap_heuristics_ = 0;
+#else
+  int large_heap_heuristics_ = 100;
+#endif
 };
 
 }  // namespace toit
