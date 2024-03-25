@@ -116,10 +116,6 @@ class TwoSpaceHeap {
 
   word max_external_allocation();
 
-  void set_large_heap_heuristics(int value) {
-    large_heap_heuristics_ = value > 50;
-  }
-
  private:
   friend class ScavengeVisitor;
 
@@ -129,11 +125,6 @@ class TwoSpaceHeap {
   ObjectHeap* process_heap_;
   OldSpace old_space_;
   SemiSpace semi_space_;
-#ifdef TOIT_FREERTOS
-  bool large_heap_heuristics_ = false;
-#else
-  bool large_heap_heuristics_ = true;
-#endif
   Chunk* spare_chunk_ = null;  // Only used for large heap heuristics mode.
   uword water_mark_;
   uword semi_space_size_;

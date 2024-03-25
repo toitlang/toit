@@ -61,10 +61,6 @@ class ObjectHeap {
     two_space_heap_.do_objects(func);
   }
 
-  void set_large_heap_heuristics(int percent) {
-    two_space_heap_.set_large_heap_heuristics(percent);
-  }
-
   inline bool cross_process_gc_needed() const { return two_space_heap_.cross_process_gc_needed(); }
 
   // Shared allocation operations.

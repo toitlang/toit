@@ -56,7 +56,7 @@ HeapObject* TwoSpaceHeap::new_space_allocation_failure(uword size) {
 
 void TwoSpaceHeap::swap_semi_spaces(SemiSpace& from, SemiSpace& to) {
   water_mark_ = to.top();
-  if (old_space()->is_empty() && !large_heap_heuristics_ && to.used() < TOIT_PAGE_SIZE / 2) {
+  if (old_space()->is_empty() && GcMetadata::large_heap_heuristics() < 40 && to.used() < TOIT_PAGE_SIZE / 2) {
     // Don't start promoting to old space until the post GC heap size
     // hits at least half a page.
     water_mark_ = to.single_chunk_start();
@@ -188,7 +188,7 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
 
   if (!ObjectMemory::spare_chunk_mutex()) FATAL("ObjectMemory::set_up() not called");
 
-  if (large_heap_heuristics_ && spare_chunk_ == null) {
+  if (GcMetadata::large_heap_heuristics() > 60 && spare_chunk_ == null) {
     // Try to create a spare chunk that's exclusive to this heap.
     // If this fails we fall back on the global spare chunk.  It will
     // never fail on host machines.

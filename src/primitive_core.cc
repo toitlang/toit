@@ -2253,7 +2253,7 @@ PRIMITIVE(get_system_time) {
 PRIMITIVE(tune_memory_use) {
   ARGS(int, percent);
   if (!(0 <= percent && percent <= 100)) FAIL(OUT_OF_RANGE);
-  process->object_heap()->set_large_heap_heuristics(percent);
+  GcMetadata::set_large_heap_heuristics(percent);
   return process->null_object();
 }
 
