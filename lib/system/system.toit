@@ -165,6 +165,8 @@ The $percent argument is a number between 0 and 100, where 0 means that the
   should run as fast as possible.
 Host platforms default to high performance, while embedded platforms
   default to low memory use.
+This setting is global, applying to all Toit processes running on the embedded
+  system, and all Toit processes running in a host process.
 */
 tune-memory-use percent/int -> none:
   #primitive.core.tune-memory-use
