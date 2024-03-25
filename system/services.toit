@@ -45,7 +45,7 @@ class SystemServiceManager extends ServiceProvider
   handle index/int arguments/any --gid/int --client/int -> any:
     pid := pid --client=client
     if index == ServiceDiscoveryService.DISCOVER-INDEX:
-      return discover arguments[0] --wait=arguments[1]
+      return discover arguments[0] --wait=arguments[1] --tags=arguments[2]
     if index == ServiceDiscoveryService.WATCH-INDEX:
       return watch pid arguments
     if index == ServiceDiscoveryService.LISTEN-INDEX:
@@ -99,12 +99,16 @@ class SystemServiceManager extends ServiceProvider
     service-managers_.remove pid
     services-by-pid_.remove pid
 
-  discover uuid/string --wait/bool -> List?:
+  discover uuid/string --wait/bool --tags/List? -> List?:
     services/List? := null
     if wait:
       signal_.wait:
         services = services-by-uuid_.get uuid
-        services != null
+        if tags and services:
+          services = services.filter: | service/DiscoverableService |
+            tags.every: | tag/string |
+              service.tags.contains tag
+        services and services.size > 0
     else:
       services = services-by-uuid_.get uuid
       if not services: return null
