@@ -145,7 +145,6 @@ bool Interpreter::fast_size(Process* process, Object* receiver, Smi** result) {
     Instance* instance = Instance::cast(receiver);
     Smi* class_id = instance->class_id();
     Program* program = process->program();
-    // Note: Assignment in condition.
     if (class_id == program->list_class_id()) {
       *result = Smi::cast(instance->at(Instance::LIST_SIZE_INDEX));
       return true;
