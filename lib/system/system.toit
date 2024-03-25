@@ -158,6 +158,17 @@ bytes-allocated-delta -> int:
 gc-count -> int:
   #primitive.core.gc-count
 
+/**
+Sets the system tradeoff between memory use and speed.
+The $percent argument is a number between 0 and 100, where 0 means that the
+  system should use as little memory as possible, and 100 means that the system
+  should run as fast as possible.
+Host platforms default to high performance, while embedded platforms
+  default to low memory use.
+*/
+tune-memory-use percent/int -> none:
+  #primitive.core.tune-memory-use
+
 // TODO(Lau): does it still make sense to say SDK here?
 /**
 Returns the Toit SDK version that this virtual machine has been built from.

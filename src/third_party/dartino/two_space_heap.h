@@ -116,8 +116,8 @@ class TwoSpaceHeap {
 
   word max_external_allocation();
 
-  void set_large_heap_heuristics() {
-    large_heap_heuristics_ = true;
+  void set_large_heap_heuristics(int value) {
+    large_heap_heuristics_ = value > 50;
   }
 
  private:

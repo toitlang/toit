@@ -2250,6 +2250,13 @@ PRIMITIVE(get_system_time) {
   return Primitive::integer(OS::get_system_time(), process);
 }
 
+PRIMITIVE(tune_memory_use) {
+  ARGS(int, percent);
+  if (!(0 <= percent && percent <= 100)) FAIL(OUT_OF_RANGE);
+  process->object_heap()->set_large_heap_heuristics(percent);
+  return process->null_object();
+}
+
 PRIMITIVE(debug_set_memory_limit) {
   PRIVILEGED;
   ARGS(int64, limit);
