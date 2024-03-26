@@ -37,12 +37,12 @@ ELF-FILE ::= "elf-file"
 main args/List:
   parsed := null
   parser := cli.Command "stacktrace"
-      --long-help=USAGE
-      --rest=[cli.OptionString --required ELF-FILE --type="path"]
+      --help=USAGE
+      --rest=[cli.Option --required ELF-FILE --type="path"]
       --options=[
           cli.Flag "disassemble" --short-name="d",
-          cli.OptionString "objdump" --default=OBJDUMP,
-          cli.OptionString "backtrace" --default="-"
+          cli.Option "objdump" --default=OBJDUMP,
+          cli.Option "backtrace" --default="-"
           ]
       --run=:: parsed = it
   parser.run args

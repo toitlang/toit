@@ -53,24 +53,24 @@ handle-system-message encoded-system-message snapshot-content -> none
 main args:
   command := null
   command = cli.Command "root"
-      --short-help="Decodes system messages from devices"
-      --long-help="""
-        Decodes system messages like stack traces, profile runs, etc.
-          from the devices.  This utility is automatically called
-          by `jag decode` to provide nice output from the encoded
-          messages a device prints on the serial port.
+      --help="""
+        Decodes system messages from devices.
+
+        System messages encode stack traces, profile runs, and other information.
+        This utility is automatically called  by `jag decode` to provide nice
+        output from the encoded messages a device prints on the serial port.
         """
       --options=[
-        cli.OptionString "snapshot" --short-name="s"
-            --short-help="The snapshot file of the program that produced the message",
-        cli.OptionString "message" --short-name="m" --required
-            --short-help="The base64-encoded message from the device",
-        cli.OptionString "uuid" --short-name="u"
-            --short-help="UUID of the snapshot that produced the message",
+        cli.Option "snapshot" --short-name="s"
+            --help="The snapshot file of the program that produced the message",
+        cli.Option "message" --short-name="m" --required
+            --help="The base64-encoded message from the device",
+        cli.Option "uuid" --short-name="u"
+            --help="UUID of the snapshot that produced the message",
         cli.Flag "force-pretty"
-            --short-help="Force the report to use terminal graphics",
+            --help="Force the report to use terminal graphics",
         cli.Flag "force-plain"
-            --short-help="Force the report to be pure ASCII even on a terminal",
+            --help="Force the report to be pure ASCII even on a terminal",
       ]
       --run=:: decode-system-message it command
   command.run args

@@ -668,10 +668,10 @@ main args -> none:
   parsed := null
   parser := cli.Command "server"
       --rest=[
-          cli.OptionString "toit-path-override",
+          cli.Option "toit-path-override",
       ]
       --options=[
-          cli.OptionString "home-path",
+          cli.Option "home-path",
           cli.Flag "verbose" --default=false,
       ]
       --run=:: parsed = it
