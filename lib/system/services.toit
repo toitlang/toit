@@ -66,9 +66,14 @@ class ServiceSelector:
   is-allowed_ --name/string --major/int --minor/int --tags/List? -> bool:
     return true
 
+  mandatory-tags_ -> List?: return null
+
 class ServiceSelectorRestricted extends ServiceSelector:
   tags_ := {:}    // Map<string, bool>
   names_ ::= {:}  // Map<string, List<ServiceSelectorRestriction_>>
+
+  mandatory-tags_ -> List?:
+    return tags_.keys.filter: tags_[it]
 
   tags-include-allowed_/bool := false
   names-include-allowed_/bool := false
@@ -170,9 +175,9 @@ class ServiceClient:
     discovered/List? := null
     if timeout:
       catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
-        with-timeout timeout: discovered = _client_.discover selector.uuid --wait
+        with-timeout timeout: discovered = _client_.discover selector.uuid --wait --tags=selector.mandatory-tags_
     else:
-      discovered = _client_.discover selector.uuid --no-wait
+      discovered = _client_.discover selector.uuid --no-wait --tags=_tags_
     if not discovered: return if-absent.call
 
     candidate-index := null
