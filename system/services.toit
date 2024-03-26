@@ -104,10 +104,11 @@ class SystemServiceManager extends ServiceProvider
     if wait:
       signal_.wait:
         services = services-by-uuid_.get uuid
-        if tags and services:
+        if tags and tags.size != 0 and services:
           services = services.filter: | service/DiscoverableService |
-            tags.every: | tag/string |
-              service.tags.contains tag
+            tags.any: | tag/string |
+              t := service.tags
+              t and t.contains tag
         services and services.size > 0
     else:
       services = services-by-uuid_.get uuid
