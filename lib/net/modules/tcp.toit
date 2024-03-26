@@ -131,9 +131,6 @@ class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin
   keep-alive -> bool: return get-option_ TOIT-TCP-OPTION-KEEP-ALIVE_
   keep-alive= value/bool: return set-option_ TOIT-TCP-OPTION-KEEP-ALIVE_ value
 
-  // TODO(kasper): Remove this again.
-  set-no-delay enabled/bool -> none: no-delay = enabled
-
   no-delay -> bool: return get-option_ TOIT-TCP-OPTION-NO-DELAY_
   no-delay= value/bool -> none: set-option_ TOIT-TCP-OPTION-NO-DELAY_ value
 

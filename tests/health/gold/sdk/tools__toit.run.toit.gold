@@ -16,6 +16,9 @@ class BufferSizeCounter extends BufferConsumer:
 <sdk>/bytes.toit:343:3: warning: Class 'BufferConsumer' is deprecated
   constructor.with-initial-size .init-size_/int:
   ^~~~~~~~~~~
-<pkg:pkg-host>/file.toit:164:13: warning: Class 'Writer' is deprecated
+<pkg:pkg-host>/file.toit:190:13: warning: Class 'Writer' is deprecated
   writer := Writer stream
             ^~~~~~
+<pkg:pkg-host>/file.toit:481:17: warning: Class 'Writer' is deprecated
+  out-writer := Writer out-stream
+                ^~~~~~
