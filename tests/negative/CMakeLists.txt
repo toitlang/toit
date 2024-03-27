@@ -24,7 +24,7 @@ include(fail.cmake)
 
 foreach(file ${TOIT_TESTS})
   get_filename_component(name ${file} NAME_WE)
-  set(lib_dir ".")
+  set(lib_dir "./lib")
   set(toit_file ${CMAKE_CURRENT_SOURCE_DIR}/${file})
   file(RELATIVE_PATH relative_negative_path ${CMAKE_CURRENT_SOURCE_DIR} ${toit_file})
   get_filename_component(relative_negative_dir "${relative_negative_path}" DIRECTORY)
