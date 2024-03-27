@@ -19,7 +19,7 @@ set(TOOLS assets firmware kebabify snapshot_to_image stacktrace system_message t
 set(EXES)
 
 foreach (TOOL ${TOOLS})
-  set(TOOL_EXE ${CMAKE_BINARY_DIR}/sdk/tools/${TOOL}${CMAKE_EXECUTABLE_SUFFIX})
+  set(TOOL_EXE ${CMAKE_BINARY_DIR}/sdk/lib/toit/tools/${TOOL}${CMAKE_EXECUTABLE_SUFFIX})
 
   ADD_TOIT_EXE(
     ${CMAKE_CURRENT_SOURCE_DIR}/${TOOL}.toit
