@@ -145,7 +145,7 @@ class Pack:
       written := 0
 
       while true:
-        written += decoder.out.write input[written..]
+        written += decoder.out.try-write input[written..]
         buffer.write (decoder.in.read --no-wait)
         if buffer.size >= uncompressed-size: break
 
