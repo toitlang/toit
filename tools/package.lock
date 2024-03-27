@@ -2,6 +2,7 @@ sdk: ^2.0.0-alpha.128
 prefixes:
   ar: pkg-ar
   cli: pkg-cli
+  fs: pkg-fs
   host: pkg-host
   partition-table: toit-partition-table-esp32
   semver: toit-semver
