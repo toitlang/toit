@@ -728,14 +728,14 @@ jobs:
             fi
 
             mkdir -p vessels/$CROSS_OS/$CROSS_ARCH
-            cp $source/toit/vessels/vessel* vessels/$CROSS_OS/$CROSS_ARCH
+            cp $source/toit/lib/toit/vessels/vessel* vessels/$CROSS_OS/$CROSS_ARCH
 
             for target in windows linux macos rpi aarch64; do
               if [ "$source" == "$target" ]; then
                 continue
               fi
               mkdir -p $target/toit/vessels/$CROSS_OS/$CROSS_ARCH
-              cp $source/toit/vessels/vessel* $target/toit/vessels/$CROSS_OS/$CROSS_ARCH
+              cp $source/toit/lib/toit/vessels/vessel* $target/toit/lib/toit/vessels/$CROSS_OS/$CROSS_ARCH
             done
           done
 

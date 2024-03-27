@@ -256,7 +256,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
         TARGET ${VESSEL_TARGET}
         POST_BUILD
         COMMAND "codesign" "--remove-signature" "${VESSEL_TARGET}"
-        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/vessels"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/lib/toit/vessels"
         COMMENT "Removing signature from vessel executable"
       )
     endif()
