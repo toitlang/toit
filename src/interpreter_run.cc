@@ -969,6 +969,17 @@ Interpreter::Result Interpreter::run() {
     goto INVOKE_VIRTUAL_FALLBACK;
   OPCODE_END();
 
+  OPCODE_BEGIN(INVOKE_SIZE);
+    Object* receiver = STACK_AT(0);
+    Smi* result;
+
+    if (fast_size(process_, receiver, &result)) {
+      STACK_AT_PUT(0, result);
+      DISPATCH(INVOKE_SIZE_LENGTH);
+    }
+    DISPATCH_TO(INVOKE_VIRTUAL_GET);
+  OPCODE_END();
+
   OPCODE_BEGIN(BRANCH);
     bcp += Utils::read_unaligned_uint16(bcp + 1);
     DISPATCH(0);
