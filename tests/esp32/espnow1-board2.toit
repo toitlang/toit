@@ -10,11 +10,9 @@ import esp32.espnow
 import .espnow1-shared
 
 main:
-  service ::= espnow.Service.station --key=PMK
+  service ::= espnow.Service.station --key=PMK --channel=CHANNEL
 
-  service.add-peer
-      espnow.BROADCAST-ADDRESS
-      --channel=CHANNEL
+  service.add-peer espnow.BROADCAST-ADDRESS
 
   TEST-DATA.do:
     service.send

@@ -1,12 +1,3 @@
-<pkg:pkg-http>/connection.toit:332:7: error: Missing implementations for interface methods
-class DetachedSocket_ implements tcp.Socket:
-      ^~~~~~~~~~~~~~~
-<sdk>/net/tcp.toit:28:3: note: Missing implementation for 'in'
-  in -> io.CloseableReader
-  ^~
-<sdk>/net/tcp.toit:29:3: note: Missing implementation for 'out'
-  out -> io.CloseableWriter
-  ^~~
 <pkg:toit-cert-roots>/certificate_roots.toit:10750:29: warning: Deprecated 'CYBERTRUST-GLOBAL-ROOT'
   "Cybertrust Global Root": CYBERTRUST_GLOBAL_ROOT,
                             ^~~~~~~~~~~~~~~~~~~~~~
@@ -73,10 +64,10 @@ class DetachedSocket_ implements tcp.Socket:
 <pkg:pkg-http>/headers.toit:133:20: warning: Class 'Buffer' is deprecated
     buffer := bytes.Buffer
                    ^
-<pkg:pkg-http>/client.toit:476:29: warning: Class 'Reader' is deprecated
+<pkg:pkg-http>/client.toit:496:29: warning: Class 'Reader' is deprecated
         request.body = bytes.Reader data
                             ^
-<pkg:pkg-http>/client.toit:592:20: warning: Class 'Buffer' is deprecated
+<pkg:pkg-http>/client.toit:609:20: warning: Class 'Buffer' is deprecated
     buffer := bytes.Buffer
                    ^
 <pkg:toit-cert-roots>/certificate_roots.toit:11093:3: warning: Deprecated 'CYBERTRUST-GLOBAL-ROOT'
@@ -103,6 +94,9 @@ class DetachedSocket_ implements tcp.Socket:
 <pkg:pkg-host>/file.toit:190:13: warning: Class 'Writer' is deprecated
   writer := Writer stream
             ^~~~~~
+<pkg:pkg-host>/file.toit:481:17: warning: Class 'Writer' is deprecated
+  out-writer := Writer out-stream
+                ^~~~~~
 <sdk>/bytes.toit:254:7: warning: Class 'BufferConsumer' is deprecated
 class BufferSizeCounter extends BufferConsumer:
       ^~~~~~~~~~~~~~~~~

@@ -410,10 +410,6 @@ class TcpSocketResourceProxy_ extends SocketResourceProxy_ implements tcp.Socket
   constructor client/NetworkServiceClient handle/int:
     super client handle
 
-  // TODO(kasper): Remove this.
-  set-no-delay enabled/bool -> none:
-    no-delay = enabled
-
   no-delay -> bool:
     client ::= client_ as NetworkServiceClient
     return client.socket-get-option handle_ NetworkService.SOCKET-OPTION-TCP-NO-DELAY

@@ -1,4 +1,4 @@
-sdk: ^1.6.10
+sdk: ^2.0.0-alpha.128
 prefixes:
   ar: pkg-ar
   cli: pkg-cli
@@ -9,25 +9,35 @@ packages:
   pkg-ar:
     url: github.com/toitlang/pkg-ar
     name: ar
-    version: 1.0.0
-    hash: 175bcdfd59b2597c0825ef8765a20498a7e6a2db
+    version: 1.0.1
+    hash: 0f32219787c63521fc5690bbb716fc19cc40f5da
   pkg-cli:
     url: github.com/toitlang/pkg-cli
     name: cli
-    version: 1.2.0
-    hash: 0e2adab3ab434c597be60438ccf64008f703ad9c
+    version: 1.7.0
+    hash: a01cd54068fc44f3c5588f0eae6a829853b0634e
+    prefixes:
+      fs: pkg-fs
+      host: pkg-host
+  pkg-fs:
+    url: github.com/toitlang/pkg-fs
+    name: fs
+    version: 2.2.0
+    hash: 863280c5c62ac259d16d0d3b24df21209b461b14
+    prefixes:
+      host: pkg-host
   pkg-host:
     url: github.com/toitlang/pkg-host
     name: host
-    version: 1.8.1
-    hash: 7f0cc4280065fb18ee09d3803f12180cec852d32
+    version: 1.14.1
+    hash: da453fb59f7ef3d37f39e4b438495f7c16614733
   toit-partition-table-esp32:
     url: github.com/toitware/toit-partition-table-esp32
     name: partition-table
-    version: 1.0.2
-    hash: 61befa90f54ceca100fc34f487562844683c3afb
+    version: 1.1.1
+    hash: 49ffcf824c9ac34b8e7abc79bafa72b848c2e690
   toit-semver:
     url: github.com/toitware/toit-semver
     name: semver
-    version: 1.0.0
-    hash: b416c5a542287a8cdbb86398fdb452eaad4f55f8
+    version: 1.1.0
+    hash: a681bad211f7d4803dfdc2a0068706559458274e

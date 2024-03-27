@@ -100,14 +100,14 @@ print-usage parser/cli.Command --error/string?=null:
 main args:
   parsed := null
   parser := cli.Command "snapshot_to_image"
-      --rest=[cli.OptionString SNAPSHOT-FILE]
+      --rest=[cli.Option SNAPSHOT-FILE]
       --options=[
           cli.Flag M32-FLAG --short-name="m32",
           cli.Flag M64-FLAG --short-name="m64",
           cli.Flag BINARY-FLAG,
           cli.OptionEnum FORMAT-OPTION ["binary", "ubjson"],
-          cli.OptionString OUTPUT-OPTION --short-name="o",
-          cli.OptionString ASSETS-OPTION,
+          cli.Option OUTPUT-OPTION --short-name="o",
+          cli.Option ASSETS-OPTION,
         ]
       --run=:: parsed = it
 

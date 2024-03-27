@@ -124,7 +124,9 @@ void SemiSpace::start_scavenge() {
 GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
   SemiSpace* from = new_space();
 
-  uint64 start = OS::get_monotonic_time();
+  // Avoid getting time if we don't need it.  Best-case scavenges
+  // are around 1us on desktop and this call is surprisingly expensive.
+  uint64 start = (Flags::tracegc) ? OS::get_monotonic_time() : 0;
 
   // Might get set during scavenge if we fail to promote to a full old-space
   // that can't be expanded.
@@ -307,7 +309,6 @@ void TwoSpaceHeap::validate() {
 #endif
 
 GcType TwoSpaceHeap::collect_old_space(bool force_compact) {
-
   uint64 start = OS::get_monotonic_time();
   uword old_used = old_space()->used();
   uword old_external = process_heap_->external_memory();

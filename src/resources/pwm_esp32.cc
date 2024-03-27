@@ -195,7 +195,7 @@ PRIMITIVE(start) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   ledc_channel_t channel = ledc_channels.any();
-  if (channel == kInvalidLedcChannel) FAIL(OUT_OF_RANGE);
+  if (channel == kInvalidLedcChannel) FAIL(ALREADY_IN_USE);
 
   ledc_channel_config_t config = {
     .gpio_num = pin,

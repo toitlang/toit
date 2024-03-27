@@ -142,10 +142,6 @@ class Socket extends Object with io.CloseableInMixin io.CloseableOutMixin implem
   peer-address -> net.SocketAddress:
     return socket_.peer-address
 
-  // TODO(kasper): Remove this.
-  set-no-delay enabled/bool -> none:
-    no-delay = enabled
-
   no-delay -> bool:
     return socket_.no-delay
 

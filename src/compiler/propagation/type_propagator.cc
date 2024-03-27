@@ -201,7 +201,7 @@ void TypePropagator::propagate(TypeDatabase* types) {
   // Initialize the fields of Task_. We allocate instances of these in
   // the VM, so we need to make sure the type propagator knows about the
   // types we store in the fields.
-  int task_fields = program()->instance_size_for(program()->task_class_id());
+  int task_fields = program()->allocation_instance_size_for(program()->task_class_id());
   for (int i = 0; i < task_fields; i++) {
     if (i == Task::STACK_INDEX) {
       continue;  // Skip the 'stack' field.

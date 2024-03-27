@@ -1,6 +1,9 @@
-<pkg:pkg-host>/file.toit:182:13: warning: Class 'Writer' is deprecated
+<pkg:pkg-host>/file.toit:190:13: warning: Class 'Writer' is deprecated
   writer := Writer stream
             ^~~~~~
+<pkg:pkg-host>/file.toit:481:17: warning: Class 'Writer' is deprecated
+  out-writer := Writer out-stream
+                ^~~~~~
 <pkg:pkg-tar>/tar.toit:16:15: warning: Class 'Writer' is deprecated
     writer_ = Writer writer
               ^~~~~~

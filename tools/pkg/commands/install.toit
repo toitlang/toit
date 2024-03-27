@@ -161,7 +161,7 @@ class InstallCommand:
                   """,
           ]
           --rest=[
-              cli.OptionString REST
+              cli.Option REST
           ]
           --options=[
               cli.Flag LOCAL

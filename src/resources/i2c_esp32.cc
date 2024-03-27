@@ -72,7 +72,7 @@ PRIMITIVE(init) {
   ARGS(int, frequency, int, sda, int, scl);
 
   i2c_port_t port = i2c_ports.any();
-  if (port == kInvalidPort) FAIL(OUT_OF_RANGE);
+  if (port == kInvalidPort) FAIL(ALREADY_IN_USE);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {

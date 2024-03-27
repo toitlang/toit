@@ -27,7 +27,7 @@
 #include "top.h"
 #include "vm.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 #include "spi_flash_mmap.h"
 #include "rtc_memory_esp32.h"
 #endif

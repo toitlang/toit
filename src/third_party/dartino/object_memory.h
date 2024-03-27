@@ -295,6 +295,9 @@ class SemiSpace : public Space {
   // there is no room to allocate the object.
   uword allocate(uword size);
 
+  // Allocate raw object without trying very hard.
+  inline uword try_allocate(uword size);
+
   // For the mutable heap.
   void start_scavenge();
   bool complete_scavenge(ScavengeVisitor* visitor);
@@ -535,5 +538,22 @@ class ObjectMemory {
   static Chunk* spare_chunk_;
   static Mutex* spare_chunk_mutex_;
 };
+
+inline void write_sentinel_at(uword address) {
+  ASSERT(sizeof(Object*) == SENTINEL_SIZE);
+  *reinterpret_cast<Object**>(address) = chunk_end_sentinel();
+}
+
+uword SemiSpace::try_allocate(uword size) {
+  // Make sure there is room for chunk end sentinel by using <= instead of <.
+  // Use this ordering of the comparison to avoid very large allocations
+  // turning into 'successful' allocations of negative size.
+  if (limit_ - top_ <= size) return 0;
+  uword result = top_;
+  top_ += size;
+  // Always write a sentinel so the scavenger knows where to stop.
+  write_sentinel_at(top_);
+  return result;
+}
 
 }  // namespace toit

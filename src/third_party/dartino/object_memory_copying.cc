@@ -15,10 +15,7 @@ namespace toit {
 
 class Program;
 
-static void write_sentinel_at(uword address) {
-  ASSERT(sizeof(Object*) == SENTINEL_SIZE);
-  *reinterpret_cast<Object**>(address) = chunk_end_sentinel();
-}
+void write_sentinel_at(uword address);
 
 Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
     : program_(program),

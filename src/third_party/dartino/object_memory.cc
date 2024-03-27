@@ -272,6 +272,7 @@ Chunk* ObjectMemory::allocate_chunk_helper(Space* owner, uword size, void* memor
 #ifdef TOIT_DEBUG
   chunk->scramble();
 #endif
+  GcMetadata::map_metadata_for_chunk(chunk);
   if (owner) {
     GcMetadata::mark_pages_for_chunk(chunk, owner->page_type());
     chunk->initialize_metadata();

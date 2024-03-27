@@ -101,7 +101,7 @@ PRIMITIVE(init) {
 #endif
   }
   host_device = spi_host_devices.preferred(host_device);
-  if (host_device == kInvalidHostDevice) FAIL(OUT_OF_RANGE);
+  if (host_device == kInvalidHostDevice) FAIL(ALREADY_IN_USE);
 
   int dma_chan = dma_channels.any();
   if (dma_chan == 0) {

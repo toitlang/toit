@@ -128,7 +128,6 @@ class GcMetadata {
   }
 
   static void mark_pages_for_chunk(Chunk* chunk, PageType page_type) {
-    map_metadata_for_chunk(chunk);
     uword index = chunk->start() - singleton_.lowest_address_;
     if (index >= singleton_.heap_extent_) return;
     uword size = chunk->size() >> TOIT_PAGE_SIZE_LOG2;

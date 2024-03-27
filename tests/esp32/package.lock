@@ -5,5 +5,5 @@ packages:
   toit-hc-sr04:
     url: github.com/lask/toit-hc-sr04
     name: hc_sr04
-    version: 2.1.0
-    hash: a3a90c8217da0c4637fafc095f7c759320978e8b
+    version: 2.1.1
+    hash: da8389adec9f012999c385b69bc42e26e19b51fa

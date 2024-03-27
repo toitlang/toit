@@ -184,7 +184,7 @@ PRIMITIVE(init) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = ethernet_pool.any();
-  if (id == kInvalidEthernet) FAIL(OUT_OF_BOUNDS);
+  if (id == kInvalidEthernet) FAIL(ALREADY_IN_USE);
 
   esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
   esp_netif_t* netif = esp_netif_new(&cfg);
@@ -288,7 +288,7 @@ PRIMITIVE(init_spi) {
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = ethernet_pool.any();
-  if (id == kInvalidEthernet) FAIL(OUT_OF_BOUNDS);
+  if (id == kInvalidEthernet) FAIL(ALREADY_IN_USE);
 
   esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
   esp_netif_t* netif = esp_netif_new(&cfg);
