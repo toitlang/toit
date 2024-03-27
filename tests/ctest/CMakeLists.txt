@@ -28,14 +28,14 @@ endif()
 include(fail.cmake)
 
 add_custom_command(
-  OUTPUT ${CTEST_DIR}/lib
-  COMMAND ln -s${LN_FORCE} ${TOIT_SDK_SOURCE_DIR}/lib ${CTEST_DIR}/lib
+  OUTPUT ${CTEST_DIR}/lib/toit/lib
+  COMMAND ln -s${LN_FORCE} ${TOIT_SDK_SOURCE_DIR}/lib ${CTEST_DIR}/lib/toit/lib
   VERBATIM
 )
 
 add_custom_target(
     generate-ctest-lib-symlink
-    DEPENDS ${CTEST_DIR}/lib
+    DEPENDS ${CTEST_DIR}/lib/toit/lib
     )
 
 foreach(file ${CC_FILES})

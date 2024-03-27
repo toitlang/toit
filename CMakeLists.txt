@@ -31,7 +31,7 @@ if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
   set(TOIT_IS_CROSS TRUE)
   # We are using the compiler from the host system, but we want to use the vessels
   # from the target system.
-  set(TOIT_VESSELS_ROOT ${CMAKE_BINARY_DIR}/sdk/vessels)
+  set(TOIT_VESSELS_ROOT ${CMAKE_BINARY_DIR}/sdk/lib/toit/vessels)
 endif()
 
 set(TOITLSP_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.lsp${CMAKE_EXECUTABLE_SUFFIX}")
