@@ -84,7 +84,7 @@ else()
   set(LN_FORCE "Tf")
 endif()
 
-set(TOIT_LIB_DIR "${CMAKE_BINARY_DIR}/sdk/lib")
+set(TOIT_LIB_DIR "${CMAKE_BINARY_DIR}/sdk/lib/toit/lib")
 
 add_custom_command(
   OUTPUT ${TOIT_LIB_DIR}
