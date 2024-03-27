@@ -47,12 +47,12 @@ abstract class Writer:
   */
   write data/Data from/int=0 to/int=data.byte-size --flush/bool=false -> int:
     pos := from
-    while not is-closed_ and pos < to:
+    while not is-closed_:
       pos += try-write data pos to
-      if pos < to: wait-for-more-room_
-    if pos >= to:
-      if flush: this.flush
-      return (to - from)
+      if pos >= to:
+        if flush: this.flush
+        return (to - from)
+      wait-for-more-room_
     assert: is-closed_
     throw "WRITER_CLOSED"
 
