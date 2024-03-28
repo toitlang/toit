@@ -1604,7 +1604,7 @@ static void assign_global_ids(List<ir::Global*> globals) {
   }
 }
 
-static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
+static bool check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
   semver_t constraint_semver;
   ASSERT(constraint[0] == '^');
   int status = semver_parse(&constraint.c_str()[1], &constraint_semver);
@@ -1622,7 +1622,9 @@ static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
     diagnostics->report_error("The SDK constraint defined in the package.lock file is not satisfied: %s < %s",
                               compiler_version,
                               constraint.c_str());
+    return false;
   };
+  return true;
 }
 
 static void drop_abstract_methods(ir::Program* ir_program) {
@@ -1799,9 +1801,11 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   auto package_lock = load_package_lock(source_paths);
 
   if (package_lock.sdk_constraint() != "") {
-    // TODO(florian): we should be able to continue compiling even with
-    // a wrong SDK.
-    check_sdk(package_lock.sdk_constraint(), diagnostics());
+    bool succeeded = check_sdk(package_lock.sdk_constraint(), diagnostics());
+    if (!succeeded && !configuration_.force && configuration_.lsp == null) {
+      diagnostics()->report_error("Compilation failed.");
+      exit(1);
+    }
   }
 
   auto units = _parse_units(source_paths, package_lock);
