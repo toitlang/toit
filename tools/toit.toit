@@ -47,7 +47,7 @@ main args/List:
   ]
 
   compile-run-options := [
-    cli.OptionInt "optimization" --short-name="O"
+    cli.OptionInt "optimization-level" --short-name="O"
         --help="""
             Set the optimization level.
             0 is no optimization,
