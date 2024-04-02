@@ -4,4 +4,4 @@ tests/negative/block2-test.toit:7:5: error: Unexpected block
 tests/negative/block2-test.toit:7:5: error: List elements may not be blocks
     : print it
     ^~~~~~~~~~
-Compilation failed.
+Compilation failed

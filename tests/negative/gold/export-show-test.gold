@@ -4,4 +4,4 @@ import .export-show-a show foo
 tests/negative/export-show-test.toit:6:8: error: Unresolved export 'foo'
 export foo
        ^~~
-Compilation failed.
+Compilation failed

@@ -32,4 +32,4 @@ tests/negative/incomplete-string-interpolation-test.toit:28:6: error: Argument m
 Method does not take any arguments, but one was provided
 bar: bar 3  // This line is again active.
      ^~~
-Compilation failed.
+Compilation failed

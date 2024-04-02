@@ -61,4 +61,4 @@ global := x := 499
 tests/negative/invalid-definition-test.toit:39:16: warning: Condition always evaluates to true
   y := x := 42 ? true : false
                ^
-Compilation failed.
+Compilation failed

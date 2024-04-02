@@ -4,4 +4,4 @@ class :
 tests/negative/invalid-class-name-instance-test.toit:7:10: error: No method 'bar' in this class
     this.bar
          ^~~
-Compilation failed.
+Compilation failed

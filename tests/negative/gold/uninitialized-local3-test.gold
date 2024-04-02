@@ -1,4 +1,4 @@
 tests/negative/uninitialized-local3-test.toit:15:17: error: Local 'local' must be initialized before first use
     super.named local
                 ^~~~~
-Compilation failed.
+Compilation failed

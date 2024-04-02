@@ -1,4 +1,4 @@
 tests/negative/prefixed-assign2-test.toit:8:6: error: Can't assign to unknown 'prefix'
   pa.prefix = 3
      ^~~~~~
-Compilation failed.
+Compilation failed

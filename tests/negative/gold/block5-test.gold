@@ -4,4 +4,4 @@ tests/negative/block5-test.toit:7:6: error: Unexpected block
 tests/negative/block5-test.toit:7:5: error: Map keys may not be blocks
     (: print it) : "foo"
     ^
-Compilation failed.
+Compilation failed

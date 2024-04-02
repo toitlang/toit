@@ -4,4 +4,4 @@ foo --no-x:
 tests/negative/named3-test.toit:13:3: error: Unexpected --no-
   --no-x
   ^~~~~
-Compilation failed.
+Compilation failed

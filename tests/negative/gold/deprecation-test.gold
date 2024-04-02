@@ -25,4 +25,4 @@ tests/negative/deprecation-test.toit:86:3: warning: Deprecated 'global'
 tests/negative/deprecation-test.toit:88:3: warning: Deprecated 'fun'
   fun
   ^~~
-Compilation failed.
+Compilation failed

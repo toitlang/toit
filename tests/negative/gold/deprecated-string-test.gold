@@ -7,4 +7,4 @@ foo x/String -> String:
 tests/negative/deprecated-string-test.toit:10:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

@@ -7,4 +7,4 @@ interface A B:
 tests/negative/interface-cycle-test.toit:7:13: error: This clause contributes to the cycle
 interface B A:
             ^
-Compilation failed.
+Compilation failed

@@ -4,4 +4,4 @@ tests/negative/shadow6-test.toit:8:3: error: Definition of 'global' shadows glob
 tests/negative/shadow6-test.toit:5:1: note: Global definition of 'global'
 global := 499
 ^~~~~~
-Compilation failed.
+Compilation failed

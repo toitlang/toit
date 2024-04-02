@@ -1820,7 +1820,7 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
           // The internal `Array` class only has factories, which is why we exclude
           // runtime classes.
           const char* kind_name = ir_class->is_mixin() ? "mixin" : "class";
-          report_error(ir_class, "A %s with factories must have a constructor.", kind_name);
+          report_error(ir_class, "A %s with factories must have a constructor", kind_name);
         }
       } else if (!class_is_interface && !class_has_constructors) {
         // Create default-constructor place-holder (which takes `this` as argument).

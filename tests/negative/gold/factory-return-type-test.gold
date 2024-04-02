@@ -4,4 +4,4 @@ tests/negative/factory-return-type-test.toit:8:26: error: Factories may not have
 tests/negative/factory-return-type-test.toit:11:29: error: Factories may not have return types
   constructor.factory2 x -> B:
                             ^
-Compilation failed.
+Compilation failed

@@ -16,4 +16,4 @@ tests/negative/list-literal-type-test.toit:9:9: error: Class 'List' does not hav
 tests/negative/list-literal-type-test.toit:10:21: error: Class 'List' does not have any method 'foo'
   [1, 2, 3, 4, 300].foo
                     ^~~
-Compilation failed.
+Compilation failed

@@ -10,4 +10,4 @@ tests/negative/bad-literalC-test.toit:8:9: error: Floating-point value out of ra
 tests/negative/bad-literalC-test.toit:9:9: error: Floating-point value out of range
   print -1.7976931348623159e+308
         ^~~~~~~~~~~~~~~~~~~~~~~~
-Compilation failed.
+Compilation failed

@@ -58,4 +58,4 @@ tests/negative/none2-test.toit:42:3: warning: Condition always evaluates to true
 tests/negative/none2-test.toit:53:3: warning: Condition always evaluates to true
   if 0:
   ^~
-Compilation failed.
+Compilation failed

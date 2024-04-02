@@ -4,4 +4,4 @@ foo := 2
 tests/negative/conflicting1-test.toit:5:1: note: First definition of 'foo'
 foo:
 ^~~
-Compilation failed.
+Compilation failed

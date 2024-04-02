@@ -40,4 +40,4 @@ ambiguous:
 <pkg:target-1.0>/gee.toit:5:1: note: Resolution candidate for 'ambiguous'
 ambiguous:
 ^~~~~~~~~
-Compilation failed.
+Compilation failed

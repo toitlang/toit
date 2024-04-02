@@ -31,4 +31,4 @@ import error2.not-a-directory.bar
 tests/negative/pkg_not_found/main-test.toit:12:15: error: Unresolved identifier: 'foo'
   print error.foo
               ^~~
-Compilation failed.
+Compilation failed

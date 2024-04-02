@@ -22,4 +22,4 @@ tests/negative/typed-local-test.toit:13:3: error: Unresolved identifier: 'local3
 tests/negative/typed-local-test.toit:15:18: error: Invalid type
   local4 / local.local2 := 3
                  ^~~~~~
-Compilation failed.
+Compilation failed

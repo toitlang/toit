@@ -4,4 +4,4 @@ tests/negative/return-missing2-test.toit:6:3: error: Expected name of declaratio
 tests/negative/return-missing2-test.toit:6:3: error: Method doesn't return a value on all paths
   :
   ^
-Compilation failed.
+Compilation failed

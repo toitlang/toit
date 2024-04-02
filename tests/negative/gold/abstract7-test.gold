@@ -13,4 +13,4 @@ tests/negative/abstract7-test.toit:6:12: note: Missing implementation for 'foo'
 tests/negative/abstract7-test.toit:9:12: note: Missing implementation for 'bar'
   abstract bar x
            ^~~
-Compilation failed.
+Compilation failed

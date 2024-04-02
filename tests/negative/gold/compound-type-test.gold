@@ -7,4 +7,4 @@ tests/negative/compound-type-test.toit:7:14: error: Type mismatch. Expected 'int
 tests/negative/compound-type-test.toit:7:14: error: Type mismatch. Expected 'int'. Got 'string'
   list["str".copy 1]++
              ^~~~
-Compilation failed.
+Compilation failed

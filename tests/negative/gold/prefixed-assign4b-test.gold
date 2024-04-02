@@ -1,4 +1,4 @@
 tests/negative/prefixed-assign4b-test.toit:8:6: error: Can't assign to final global
   pa.final-global += 3
      ^~~~~~~~~~~~
-Compilation failed.
+Compilation failed

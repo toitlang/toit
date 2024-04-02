@@ -91,4 +91,4 @@ tests/negative/return-block-test.toit:83:7: error: If branches may not evaluate 
 tests/negative/return-block-test.toit:84:11: error: If branches may not evaluate to blocks
     else: block-block
           ^~~~~~~~~~~
-Compilation failed.
+Compilation failed

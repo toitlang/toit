@@ -39,4 +39,4 @@ tests/negative/bad-parameter2-test.toit:19:3: error: Argument mismatch for 'bar'
 Too many arguments provided
   bar 1 2 3
   ^~~
-Compilation failed.
+Compilation failed

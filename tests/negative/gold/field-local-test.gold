@@ -4,4 +4,4 @@ tests/negative/field-local-test.toit:8:14: error: Definition of variable not all
 tests/negative/field-local-test.toit:10:9: error: Unresolved identifier: 'x'
     foo x   // The x of the field initializer must not be visible here.
         ^
-Compilation failed.
+Compilation failed

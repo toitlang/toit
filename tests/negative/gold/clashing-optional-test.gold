@@ -88,4 +88,4 @@ tests/negative/clashing-optional-test.toit:23:3: error: Method 'bar' with overla
 tests/negative/clashing-optional-test.toit:22:10: note: Overlaps with static field 'bar'
   static bar := 499
          ^~~
-Compilation failed.
+Compilation failed

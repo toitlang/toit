@@ -4,4 +4,4 @@ tests/negative/bad-literal6-test.toit:9:3: error: Unresolved identifier: 'unreso
 tests/negative/bad-literal6-test.toit:8:11: error: Class 'int' does not have any method '_123456'
   print 0._123456
           ^~~~~~~
-Compilation failed.
+Compilation failed

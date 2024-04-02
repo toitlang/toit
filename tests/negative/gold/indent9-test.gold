@@ -1,4 +1,4 @@
 tests/negative/indent9-test.toit:10:21: error: Invalid type
       bar: |x / y.z.t?|
                     ^
-Compilation failed.
+Compilation failed

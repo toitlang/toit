@@ -16,4 +16,4 @@ tests/negative/index2-test.toit:9:16: error: 'break' must be inside loop
 tests/negative/index2-test.toit:10:15: error: 'break' must be inside loop
   y = "foo $x[break break]"
               ^~~~~
-Compilation failed.
+Compilation failed

@@ -22,4 +22,4 @@ tests/negative/bad-block-parameter-test.toit:9:18: error: Unresolved identifier:
 tests/negative/bad-block-parameter-test.toit:11:8: error: Unresolved identifier: 'unresolved'
   foo: unresolved
        ^~~~~~~~~~
-Compilation failed.
+Compilation failed

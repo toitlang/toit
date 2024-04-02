@@ -1,4 +1,4 @@
 tests/negative/incomplete-comments-test.toit:6:3: error: Unterminated multi-line comment
   /*
   ^~
-Compilation failed.
+Compilation failed

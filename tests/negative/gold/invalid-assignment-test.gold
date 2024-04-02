@@ -55,4 +55,4 @@ tests/negative/invalid-assignment-test.toit:42:3: warning: Condition always eval
 tests/negative/invalid-assignment-test.toit:43:3: warning: Condition always evaluates to true
   while x = 42: null
   ^~~~~
-Compilation failed.
+Compilation failed

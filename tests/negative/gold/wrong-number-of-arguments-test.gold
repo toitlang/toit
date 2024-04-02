@@ -141,7 +141,7 @@ tests/negative/wrong-number-of-arguments-test.toit:185:10: error: Argument misma
 No getter available
   Static.my-setter
          ^~~~~~~~~
-tests/negative/wrong-number-of-arguments-test.toit:187:10: error: No setter method 'zero=' found.
+tests/negative/wrong-number-of-arguments-test.toit:187:10: error: No setter method 'zero=' found
   Static.zero = 42
          ^~~~
 tests/negative/wrong-number-of-arguments-test.toit:43:5: error: Argument mismatch for 'one-or-three'
@@ -171,4 +171,4 @@ Could not find an overload with exactly 2 block arguments
 tests/negative/wrong-number-of-arguments-test.toit:183:25: error: Class 'Static' does not have any method 'missing-setter'
   Static.missing-setter = 5
                         ^
-Compilation failed.
+Compilation failed

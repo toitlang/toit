@@ -1,4 +1,4 @@
 tests/negative/incomplete-string5-test.toit:7:8: error: Unterminated string
   "$foo \
        ^~
-Compilation failed.
+Compilation failed
