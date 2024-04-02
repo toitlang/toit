@@ -68,6 +68,17 @@ static void print_version() {
   exit(0);
 }
 
+static bool is_binary_file(const char* path) {
+  FILE* file = fopen(path, "rb");
+  if (file == null) return false;
+  const int BUFFER_SIZE = 128;
+  uint8 buffer[BUFFER_SIZE];
+  size_t bytes = fread(char_cast(buffer), 1, BUFFER_SIZE, file);
+  bool is_text = Utils::is_valid_utf_8(buffer, bytes);
+  fclose(file);
+  return !is_text;
+}
+
 int main(int argc, char **argv) {
   Flags::process_args(&argc, argv);
   if (argc < 2) print_usage(1);
@@ -275,6 +286,10 @@ int main(int argc, char **argv) {
           ways_to_run++;
           ASSERT(source_path_count == 0);
           source_path = argv[processed_args++];
+          if (is_binary_file(source_path)) {
+            fprintf(stderr, "Not a text-only source file: %s\n", source_path);
+            print_usage(1);
+          }
           source_path_count = 1;
         }
         break;
