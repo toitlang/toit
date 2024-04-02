@@ -7,4 +7,4 @@ tests/negative/lambda-test.toit:6:17: error: Can't explicitly return from within
 tests/negative/lambda-test.toit:7:9: error: Unresolved identifier: 'unresolved2'
   throw unresolved2
         ^~~~~~~~~~~
-Compilation failed.
+Compilation failed

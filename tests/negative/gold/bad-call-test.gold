@@ -43,4 +43,4 @@ tests/negative/bad-call-test.toit:23:5: error: Can't access 'super' in static me
 tests/negative/bad-call-test.toit:24:11: error: Unresolved identifier: 'foo'
     print foo
           ^~~
-Compilation failed.
+Compilation failed

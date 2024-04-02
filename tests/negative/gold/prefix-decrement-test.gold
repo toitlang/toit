@@ -1,4 +1,4 @@
 tests/negative/prefix-decrement-test.toit:9:3: error: Prefix decrement has been removed
   --x
   ^~~
-Compilation failed.
+Compilation failed

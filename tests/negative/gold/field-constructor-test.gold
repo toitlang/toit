@@ -1,7 +1,7 @@
 tests/negative/field-constructor-test.toit:26:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/field-constructor-test.toit:10:15: error: Can't access instance members before `super` call.
+tests/negative/field-constructor-test.toit:10:15: error: Can't access instance members before `super` call
     fun := :: foo
               ^~~
 tests/negative/field-constructor-test.toit:15:9: error: Can't assign final field in dynamic part of constructor
@@ -10,7 +10,7 @@ tests/negative/field-constructor-test.toit:15:9: error: Can't assign final field
 tests/negative/field-constructor-test.toit:14:9: note: Expression that switched to dynamic part
     fun := :: foo
         ^~
-tests/negative/field-constructor-test.toit:18:16: error: Can't access instance members before `super` call.
+tests/negative/field-constructor-test.toit:18:16: error: Can't access instance members before `super` call
     block := : foo
                ^~~
 tests/negative/field-constructor-test.toit:23:9: error: Can't assign final field in dynamic part of constructor
@@ -28,4 +28,4 @@ tests/negative/field-constructor-test.toit:19:5: error: Field 'bar' not initiali
 tests/negative/field-constructor-test.toit:22:11: error: Field 'bar' not initialized on all paths before implicit super-call
     block := : foo
           ^~
-Compilation failed.
+Compilation failed

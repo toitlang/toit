@@ -16,4 +16,4 @@ tests/negative/setting-parameter-statics-test.toit:16:14: error: Field-storing p
 tests/negative/setting-parameter-statics-test.toit:17:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-Compilation failed.
+Compilation failed

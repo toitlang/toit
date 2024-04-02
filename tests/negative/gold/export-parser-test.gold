@@ -16,4 +16,4 @@ export 4  /* comment
 tests/negative/export-parser-test.toit:11:7: error: Incomplete export clause
 export    /* comment
       ^
-Compilation failed.
+Compilation failed

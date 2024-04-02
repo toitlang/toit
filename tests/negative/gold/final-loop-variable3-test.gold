@@ -16,4 +16,4 @@ tests/negative/final-loop-variable3-test.toit:15:41: error: Can't assign to fina
 tests/negative/final-loop-variable3-test.toit:19:12: error: Can't assign to final local
     gee:: x++
            ^~
-Compilation failed.
+Compilation failed

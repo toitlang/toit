@@ -4,4 +4,4 @@ tests/negative/primitive2-test.toit:6:10: error: Unresolved identifier: 'name'
 tests/negative/primitive2-test.toit:6:5: error: Unresolved identifier: 'some'
  {{ some name }}
     ^~~~
-Compilation failed.
+Compilation failed

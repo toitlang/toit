@@ -79,4 +79,4 @@ tests/negative/scanner-test.toit:30:72: error: Unresolved identifier: 'unresolve
 tests/negative/scanner-test.toit:31:199: error: Unresolved identifier: 'unresolved'
   "Error is not allowed to be off: 0123456789112345678921234567893123456789412345678951234567896123456789712345678981234567899123456789A123456789B123456789C123456789D1234567891E23456789F23456789" +	unresolved
                                                                                                                                                                                                      	^~~~~~~~~~
-Compilation failed.
+Compilation failed

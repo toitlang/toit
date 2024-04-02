@@ -7,4 +7,4 @@ foo:
 tests/negative/ambiguous-b.toit:5:1: note: Resolution candidate for 'foo'
 foo:
 ^~~
-Compilation failed.
+Compilation failed

@@ -46,4 +46,4 @@ tests/negative/finally-params-test.toit:47:5: error: Can't reference '_'
 tests/negative/finally-params-test.toit:9:14: error: Type mismatch. Expected 'string'. Got 'bool'
   finally: | in-throw/string exception |
              ^~~~~~~~
-Compilation failed.
+Compilation failed

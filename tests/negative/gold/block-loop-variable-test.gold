@@ -10,4 +10,4 @@ tests/negative/block-loop-variable-test.toit:14:14: error: Condition may not be 
 tests/negative/block-loop-variable-test.toit:18:12: error: Loop variables may not be blocks
   for x := block; x.call; y++:
            ^~~~~
-Compilation failed.
+Compilation failed

@@ -28,4 +28,4 @@ tests/negative/is-test.toit:18:5: error: Invalid type
 tests/negative/is-test.toit:20:8: error: Invalid type
   a is (not B)
        ^
-Compilation failed.
+Compilation failed

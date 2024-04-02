@@ -61,4 +61,4 @@ bar x -> prefix.implements.A: return unresolved
 tests/negative/bad-type-test.toit:10:38: error: Unresolved identifier: 'unresolved'
 bar x -> prefix.implements.A: return unresolved
                                      ^~~~~~~~~~
-Compilation failed.
+Compilation failed

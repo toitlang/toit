@@ -4,4 +4,4 @@ class B extends A:
 tests/negative/abstract5-test.toit:6:12: note: Missing implementation for 'foo'
   abstract foo
            ^~~
-Compilation failed.
+Compilation failed

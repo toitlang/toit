@@ -5,4 +5,4 @@ tests/negative/bad-arguments-super-test.toit:12:5: error: Argument mismatch for 
 Too few arguments provided
   b.foo
     ^~~
-Compilation failed.
+Compilation failed

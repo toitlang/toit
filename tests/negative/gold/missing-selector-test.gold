@@ -7,4 +7,4 @@ tests/negative/missing-selector-test.toit:8:15: error: Unresolved identifier: 'u
 tests/negative/missing-selector-test.toit:8:13: error: Can't invoke method on 'none' type
   none-fun. = unresolved
             ^
-Compilation failed.
+Compilation failed

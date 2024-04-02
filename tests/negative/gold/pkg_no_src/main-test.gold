@@ -7,4 +7,4 @@ import pre.no-src as pre
 tests/negative/pkg_no_src/main-test.toit:8:13: error: Unresolved identifier: 'foo'
   print pre.foo
             ^~~
-Compilation failed.
+Compilation failed

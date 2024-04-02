@@ -23,4 +23,4 @@ tests/negative/incomplete-primitive-test.toit:18:13: error: Missing primitive na
 tests/negative/incomplete-primitive-test.toit:21:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

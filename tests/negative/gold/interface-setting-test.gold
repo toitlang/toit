@@ -8,4 +8,4 @@ tests/negative/interface-setting-test.toit:10:7: error: Field-storing parameter 
   foo .field
       ^~~~~~
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/interface-setting-test.toit'
-Compilation failed.
+Compilation failed

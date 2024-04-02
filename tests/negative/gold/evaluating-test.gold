@@ -7,4 +7,4 @@ tests/negative/evaluating-test.toit:7:3: error: Can't call result of evaluating 
 tests/negative/evaluating-test.toit:7:4: error: Unresolved identifier: 'unresolved'
   (unresolved) 2
    ^~~~~~~~~~
-Compilation failed.
+Compilation failed

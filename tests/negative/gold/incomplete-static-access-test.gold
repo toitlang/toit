@@ -1,4 +1,4 @@
 tests/negative/incomplete-static-access-test.toit:11:15: error: Incomplete expression
   c := self.C.
               ^
-Compilation failed.
+Compilation failed

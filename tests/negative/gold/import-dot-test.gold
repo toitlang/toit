@@ -19,4 +19,4 @@ import foo. /* comment
 tests/negative/import-dot-test.toit:15:9: error: Unresolved identifier: 'unresolved'
   print unresolved
         ^~~~~~~~~~
-Compilation failed.
+Compilation failed

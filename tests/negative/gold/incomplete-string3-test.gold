@@ -4,4 +4,4 @@ tests/negative/incomplete-string3-test.toit:11:7: error: Unterminated string
 tests/negative/incomplete-string3-test.toit:9:7: error: Type mismatch. Expected 'int'. Got 'string'
   foo "str"
       ^~~~~
-Compilation failed.
+Compilation failed

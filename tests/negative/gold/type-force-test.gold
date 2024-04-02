@@ -4,4 +4,4 @@ tests/negative/type-force-test.toit:9:18: error: Constructors may not have retur
 tests/negative/type-force-test.toit:9:3: error: Type mismatch. Expected 'A'. Got 'B'
   constructor -> A:
   ^~~~~~~~~~~
-Compilation failed.
+Compilation failed

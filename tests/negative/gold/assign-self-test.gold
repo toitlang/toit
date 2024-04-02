@@ -13,4 +13,4 @@ tests/negative/assign-self-test.toit:16:11: warning: Assigning local to itself
 tests/negative/assign-self-test.toit:13:11: warning: Assigning local to itself has no effect. Did you forget 'this.'?
     field = field
           ^
-Compilation failed.
+Compilation failed

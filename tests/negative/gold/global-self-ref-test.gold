@@ -4,4 +4,4 @@ some-global /int := some-global + 1
 tests/negative/global-self-ref-test.toit:7:34: error: Can't access global 'some-global3' while initializing it
 some-global3 /int := just-block: some-global3
                                  ^~~~~~~~~~~~
-Compilation failed.
+Compilation failed

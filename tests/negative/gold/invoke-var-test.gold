@@ -16,4 +16,4 @@ tests/negative/invoke-var-test.toit:18:4: error: Can't invoke global variable 's
 tests/negative/invoke-var-test.toit:19:8: error: Can't invoke global variable 'static-field'
   pre.A.static-field 6
        ^
-Compilation failed.
+Compilation failed

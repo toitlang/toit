@@ -37,4 +37,4 @@ Required named argument '--name' not provided
 tests/negative/duplicate-param-test.toit:7:5: error: Class 'int' does not have any method 'copy'
   y.copy 2
     ^~~~
-Compilation failed.
+Compilation failed

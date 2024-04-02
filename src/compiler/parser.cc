@@ -899,7 +899,7 @@ Declaration* Parser::parse_declaration(bool is_abstract) {
       has_initializer = false;
       is_final = true;
     } else {
-      report_error("Missing ':=' or '::=' for field.");
+      report_error("Missing ':=' or '::=' for field");
       switch_multiline_construct(IndentationStack::DECLARATION_SIGNATURE, IndentationStack::DECLARATION);
     }
     Expression* initializer = null;
@@ -1480,7 +1480,7 @@ Expression* Parser::parse_call(bool allow_colon) {
     } else if (at_newline()) {
       if (arguments_indentation == -1) arguments_indentation = current_indentation();
       if (arguments_indentation != current_indentation()) {
-        report_error("All arguments must have the same indentation.");
+        report_error("All arguments must have the same indentation");
       }
       // Given that there is no dedent, we know that this expression is still
       // at the same level and is an argument to the call.

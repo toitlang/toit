@@ -25,4 +25,4 @@ tests/negative/block-lambda-test.toit:13:14: error: Lambda parameters can't be n
 tests/negative/block-lambda-test.toit:14:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

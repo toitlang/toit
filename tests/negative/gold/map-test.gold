@@ -22,4 +22,4 @@ tests/negative/map-test.toit:17:5: error: Unresolved identifier: 'unresolved'
 tests/negative/map-test.toit:18:5: error: 'break' must be inside loop
     break 499
     ^~~~~
-Compilation failed.
+Compilation failed

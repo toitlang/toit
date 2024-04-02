@@ -4,4 +4,4 @@ tests/negative/super3-test.toit:7:16: error: Super constructor calls must be at 
 tests/negative/super3-test.toit:7:5: error: Unresolved identifier: 'unresolved'
     unresolved super
     ^~~~~~~~~~
-Compilation failed.
+Compilation failed

@@ -4,4 +4,4 @@ foo:
 tests/negative/clashing-function-test.toit:5:1: note: First definition of 'foo'
 foo:
 ^~~
-Compilation failed.
+Compilation failed
