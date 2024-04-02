@@ -8,4 +8,4 @@ tests/negative/bad-literal-test.toit:6:3: error: Argument mismatch for 'print'
 Too many arguments provided
   print 0xnope
   ^~~~~
-Compilation failed.
+Compilation failed

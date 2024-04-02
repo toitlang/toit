@@ -31,4 +31,4 @@ tests/negative/unresolved-type-test.toit:16:9: error: Unresolved type: 'Unresolv
 tests/negative/unresolved-type-test.toit:17:12: error: Unresolved identifier: 'unresolved'
     return unresolved
            ^~~~~~~~~~
-Compilation failed.
+Compilation failed

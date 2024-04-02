@@ -49,4 +49,4 @@ tests/negative/assign-test.toit:13:4: error: Unresolved identifier: 'unresolved'
 tests/negative/assign-test.toit:13:18: error: Unresolved identifier: 'unresolved'
   (unresolved) = unresolved
                  ^~~~~~~~~~
-Compilation failed.
+Compilation failed

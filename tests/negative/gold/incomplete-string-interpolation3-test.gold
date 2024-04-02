@@ -4,4 +4,4 @@ tests/negative/incomplete-string-interpolation3-test.toit:6:11: error: Incomplet
 tests/negative/incomplete-string-interpolation3-test.toit:6:11: error: Unterminated string
   print "$
           ^
-Compilation failed.
+Compilation failed

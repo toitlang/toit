@@ -4,4 +4,4 @@ tests/negative/no-nl-test.toit:9:3: error: Incomplete expression
 tests/negative/no-nl-test.toit:9:3: error: Missing colon for 'if' condition
   if
   ^~
-Compilation failed.
+Compilation failed

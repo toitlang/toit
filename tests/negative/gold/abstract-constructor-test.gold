@@ -19,4 +19,4 @@ tests/negative/abstract-constructor-test.toit:16:12: error: Constructors can't b
 tests/negative/abstract-constructor-test.toit:17:12: error: Constructors can't be abstract
   abstract constructor.factory:
            ^~~~~~~~~~~~~~~~~~~
-Compilation failed.
+Compilation failed

@@ -1,4 +1,4 @@
 tests/negative/bad-global-name-test.toit:5:1: error: Invalid name
 foo.bar:
 ^~~~~~~
-Compilation failed.
+Compilation failed

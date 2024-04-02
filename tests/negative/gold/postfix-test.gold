@@ -4,4 +4,4 @@ tests/negative/postfix-test.toit:6:3: error: Can't assign to unknown 'unresolved
 tests/negative/postfix-test.toit:7:3: error: Can't assign to unknown 'unresolved'
   unresolved++
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

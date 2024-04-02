@@ -7,4 +7,4 @@ tests/negative/incomplete-string-interpolation2-test.toit:7:14: error: Untermina
 tests/negative/incomplete-string-interpolation2-test.toit:8:3: error: Unresolved identifier: 'unresolved2'
   unresolved2 // This line gives an error.
   ^~~~~~~~~~~
-Compilation failed.
+Compilation failed

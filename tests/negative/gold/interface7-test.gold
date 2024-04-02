@@ -4,4 +4,4 @@ class B implements A A2:
 tests/negative/interface7-test.toit:9:3: note: Missing implementation for 'bar'
   bar x
   ^~~
-Compilation failed.
+Compilation failed

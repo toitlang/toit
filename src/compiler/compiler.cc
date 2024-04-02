@@ -1242,7 +1242,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
   if (unit->source() == null) FATAL("unit without source");
 
   if (SourceManager::is_virtual_file(unit->absolute_path()) && import->is_relative()) {
-    diagnostics()->report_error(import, "Relative import not possible from virtual file.");
+    diagnostics()->report_error(import, "Relative import not possible from virtual file");
     // Virtual files don't have a location in the file system and thus can't have
     // relative imports.
     return null;
@@ -1803,7 +1803,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   if (package_lock.sdk_constraint() != "") {
     bool succeeded = check_sdk(package_lock.sdk_constraint(), diagnostics());
     if (!succeeded && !configuration_.force && configuration_.lsp == null) {
-      diagnostics()->report_error("Compilation failed.");
+      diagnostics()->report_error("Compilation failed");
       exit(1);
     }
   }
@@ -1852,7 +1852,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   // If we already encountered errors before the type-check we won't be able
   // to compile the program.
   if (encountered_error_before_type_checks) {
-    diagnostics()->report_error("Compilation failed.");
+    diagnostics()->report_error("Compilation failed");
     exit(1);
   }
   // If we encountered errors abort unless the `--force` flag is on.
@@ -1861,7 +1861,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     encountered_error = true;
   }
   if (!configuration_.force && encountered_error) {
-    diagnostics()->report_error("Compilation failed.");
+    diagnostics()->report_error("Compilation failed");
     exit(1);
   }
 

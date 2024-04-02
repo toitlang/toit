@@ -25,4 +25,4 @@ tests/negative/while-true-test.toit:68:10: error: Local 'local' must be initiali
 tests/negative/while-true-test.toit:75:10: error: Local 'local' must be initialized before first use
   return local
          ^~~~~
-Compilation failed.
+Compilation failed

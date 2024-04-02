@@ -17,4 +17,4 @@ Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/nested
 tests/negative/nested-error-test.toit:19:6: error: Class 'string' does not have any method 'bar'
   "".bar
      ^~~
-Compilation failed.
+Compilation failed

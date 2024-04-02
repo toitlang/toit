@@ -10,4 +10,4 @@ tests/negative/none-test.toit:9:7: error: Can't invoke method on 'none' type
 tests/negative/none-test.toit:12:7: error: Can't invoke method on 'none' type
   bar.call-on-none
       ^~~~~~~~~~~~
-Compilation failed.
+Compilation failed

@@ -4,4 +4,4 @@ tests/negative/bad-literal4-test.toit:6:9: error: Invalid number literal
 tests/negative/bad-literal4-test.toit:7:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

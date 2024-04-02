@@ -28,4 +28,4 @@ import .relative-dir.dir2.not-a-directory.bar as toto
 tests/negative/importC-test.toit:9:27: note: Cannot enter 'tests/negative/relative_dir/dir2/not_a_directory': not a folder
 import .relative-dir.dir2.not-a-directory.bar as toto
                           ^~~~~~~~~~~~~~~
-Compilation failed.
+Compilation failed

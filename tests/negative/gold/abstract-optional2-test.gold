@@ -11,4 +11,4 @@ tests/negative/abstract-optional2-test.toit:12:21: error: Can't access 'this' in
 abstract foobar x y=this.gee
                     ^~~~
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/abstract-optional2-test.toit'
-Compilation failed.
+Compilation failed
