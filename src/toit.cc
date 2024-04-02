@@ -29,17 +29,6 @@ extern "C" {
 
 namespace toit {
 
-static bool is_binary_file(const char* path) {
-  FILE* file = fopen(path, "rb");
-  if (file == null) return false;
-  const int BUFFER_SIZE = 128;
-  uint8 buffer[BUFFER_SIZE];
-  size_t bytes = fread(char_cast(buffer), 1, BUFFER_SIZE, file);
-  bool is_text = Utils::is_valid_utf_8(buffer, bytes);
-  fclose(file);
-  return !is_text;
-}
-
 int main(int argc, char **argv) {
   FlashRegistry::set_up();
   OS::set_up();
@@ -69,10 +58,6 @@ int main(int argc, char **argv) {
     memcpy(copy, toit_snapshot, toit_snapshot_len);
     SnapshotBundle toit_bundle(copy, toit_snapshot_len);
     exit_state = run_program(null, toit_bundle, &argv[1]);
-          if (is_binary_file(source_path) && !SnapshotBundle::is_bundle_file(source_path)) {
-            fprintf(stderr, "Not a text-only source file or a snapshot: %s\n", source_path);
-            print_usage(1);
-          }
   }
 
   GcMetadata::tear_down();
