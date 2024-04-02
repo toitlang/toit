@@ -1,60 +1,54 @@
-<pkg:pkg-http>/connection.toit:197:7: error: Missing implementations for interface methods
-class DetachedSocket_ implements tcp.Socket:
-      ^~~~~~~~~~~~~~~
-<sdk>/net/tcp.toit:28:3: note: Missing implementation for 'in'
-  in -> io.CloseableReader
-  ^~
-<sdk>/net/tcp.toit:29:3: note: Missing implementation for 'out'
-  out -> io.CloseableWriter
-  ^~~
-<pkg:pkg-http>/server.toit:44:10: warning: Name 'interface' will be reserved in future releases
-  listen interface/tcp.Interface port/int handler/Lambda -> none:
-         ^~~~~~~~~
-<pkg:pkg-http>/web_socket.toit:33:20: warning: Unresolved reference 'web-socket'
-Obtained from the $Client.web_socket or the $Server.web_socket methods.
-                   ^~~~~~~~~~~~~~~~~
-<pkg:pkg-http>/connection.toit:230:50: warning: Deprecated 'Socket.write'
-  write data from=0 to=data.size: return socket_.write data from to
-                                                 ^~~~~
-<pkg:pkg-http>/connection.toit:231:31: warning: Deprecated 'Socket.close-write'
-  close_write: return socket_.close_write
-                              ^~~~~~~~~~~
-<pkg:pkg-http>/connection.toit:195:27: warning: Deprecated 'Socket.close-write'
-      connection_.socket_.close_write
-                          ^~~~~~~~~~~
-<pkg:pkg-http>/web_socket.toit:299:9: warning: Deprecated 'BIG-ENDIAN'
-        BIG_ENDIAN.put_int64 header 2 size_
-        ^~~~~~~~~~
-<pkg:pkg-http>/web_socket.toit:303:9: warning: Deprecated 'BIG-ENDIAN'
-        BIG_ENDIAN.put_uint16 header 2 size_
-        ^~~~~~~~~~
-<pkg:pkg-http>/web_socket.toit:49:20: warning: Deprecated 'Socket.read'
+<pkg:pkg-http>/connection.toit:354:20: warning: Deprecated 'Socket.read'
     return socket_.read
                    ^~~~
-<pkg:pkg-http>/web_socket.toit:113:23: warning: Deprecated 'Socket.read'
+<pkg:pkg-http>/connection.toit:357:20: warning: Deprecated 'Socket.write'
+    return socket_.write data from to
+                   ^~~~~
+<pkg:pkg-http>/connection.toit:360:13: warning: Deprecated 'Socket.close-write'
+    socket_.close_write
+            ^~~~~~~~~~~
+<pkg:pkg-http>/connection.toit:89:15: warning: Deprecated 'Socket.close-write'
+      socket_.close_write
+              ^~~~~~~~~~~
+<pkg:pkg-http>/web_socket.toit:422:9: warning: Deprecated 'BIG-ENDIAN'
+        BIG_ENDIAN.put_int64 header 2 size
+        ^~~~~~~~~~
+<pkg:pkg-http>/web_socket.toit:426:9: warning: Deprecated 'BIG-ENDIAN'
+        BIG_ENDIAN.put_uint16 header 2 size
+        ^~~~~~~~~~
+<pkg:pkg-http>/web_socket.toit:56:20: warning: Deprecated 'Socket.read'
+    return socket_.read
+                   ^~~~
+<pkg:pkg-http>/web_socket.toit:133:23: warning: Deprecated 'Socket.read'
       next := socket_.read
                       ^~~~
-<pkg:pkg-http>/web_socket.toit:134:13: warning: Deprecated 'BIG-ENDIAN'
+<pkg:pkg-http>/web_socket.toit:154:13: warning: Deprecated 'BIG-ENDIAN'
       len = BIG_ENDIAN.uint16 pending_ 2
             ^~~~~~~~~~
-<pkg:pkg-http>/web_socket.toit:136:13: warning: Deprecated 'BIG-ENDIAN'
+<pkg:pkg-http>/web_socket.toit:156:13: warning: Deprecated 'BIG-ENDIAN'
       len = BIG_ENDIAN.int64 pending_ 2
             ^~~~~~~~~~
-<pkg:pkg-http>/web_socket.toit:182:23: warning: Deprecated 'Socket.write'
+<pkg:pkg-http>/web_socket.toit:176:17: warning: Deprecated 'BIG-ENDIAN'
+        code := BIG_ENDIAN.uint16 payload 0
+                ^~~~~~~~~~
+<pkg:pkg-http>/web_socket.toit:252:23: warning: Deprecated 'Socket.write'
       from += socket_.write data from to
                       ^~~~~
-<pkg:pkg-http>/headers.toit:84:20: warning: Class 'Buffer' is deprecated
+<pkg:pkg-http>/web_socket.toit:285:11: warning: Deprecated 'BIG-ENDIAN'
+          BIG_ENDIAN.put_uint16 payload 0 status_code
+          ^~~~~~~~~~
+<pkg:pkg-http>/web_socket.toit:291:20: warning: Deprecated 'Socket.close-write'
+    catch: socket_.close_write  // Catch because we allow double close, and a previous close causes an exception here.
+                   ^~~~~~~~~~~
+<pkg:pkg-http>/headers.toit:133:20: warning: Class 'Buffer' is deprecated
     buffer := bytes.Buffer
                    ^
-<pkg:pkg-http>/client.toit:275:27: warning: Class 'Reader' is deprecated
-      request.body = bytes.Reader data
-                          ^
-<pkg:pkg-http>/client.toit:354:20: warning: Class 'Buffer' is deprecated
+<pkg:pkg-http>/client.toit:496:29: warning: Class 'Reader' is deprecated
+        request.body = bytes.Reader data
+                            ^
+<pkg:pkg-http>/client.toit:609:20: warning: Class 'Buffer' is deprecated
     buffer := bytes.Buffer
                    ^
-<pkg:pkg-http>/headers.toit:109:13: warning: Deprecated 'string.write-to-byte-array'
-        str.write_to_byte_array bytes 0 it 0
-            ^~~~~~~~~~~~~~~~~~~
 <sdk>/bytes.toit:254:7: warning: Class 'BufferConsumer' is deprecated
 class BufferSizeCounter extends BufferConsumer:
       ^~~~~~~~~~~~~~~~~
@@ -64,9 +58,9 @@ class BufferSizeCounter extends BufferConsumer:
 <sdk>/bytes.toit:343:3: warning: Class 'BufferConsumer' is deprecated
   constructor.with-initial-size .init-size_/int:
   ^~~~~~~~~~~
-<pkg:pkg-http>/connection.toit:25:21: warning: Class 'BufferedReader' is deprecated
+<pkg:pkg-http>/connection.toit:35:21: warning: Class 'BufferedReader' is deprecated
     reader_ = reader.BufferedReader socket_
                     ^
-<pkg:pkg-http>/connection.toit:26:21: warning: Class 'Writer' is deprecated
+<pkg:pkg-http>/connection.toit:36:21: warning: Class 'Writer' is deprecated
     writer_ = writer.Writer socket_
                     ^

@@ -23,6 +23,8 @@
 #include <esp_now.h>
 #include <esp_log.h>
 
+#include "wifi_espnow_esp32.h"
+
 #include "../objects_inline.h"
 #include "../process.h"
 #include "../resource.h"
@@ -118,8 +120,6 @@ class DatagramPool {
   volatile int used_ = 0;
 };
 
-const int kInvalidEspNow = -1;
-
 // These constants must be synchronized with the Toit code.
 const int kDataAvailableState = 1 << 0;
 const int kSendDoneState = 1 << 1;
@@ -130,11 +130,6 @@ enum class EspNowEvent {
   // that it was successful.
   SEND_DONE,
 };
-
-// Only allow one instance to use espnow.
-static  ResourcePool<int, kInvalidEspNow> espnow_pool(
-  0
-);
 
 static DatagramPool* datagram_pool;
 static esp_now_send_status_t tx_status;
@@ -211,7 +206,7 @@ class EspNowResource : public EventQueueResource {
 
   EspNowResource(EspNowResourceGroup* group, QueueHandle_t queue)
       : EventQueueResource(group, queue)
-      , id_(kInvalidEspNow) {}
+      , id_(kInvalidWifiEspnow) {}
 
   ~EspNowResource() override;
 
@@ -264,7 +259,7 @@ EspNowResource::~EspNowResource() {
       datagram_pool = NULL;
       [[fallthrough]];
     case State::ESPNOW_CLAIMED:
-      espnow_pool.put(id_);
+      wifi_espnow_pool.put(id_);
       [[fallthrough]];
     case State::CONSTRUCTED:
       vQueueDelete(event_queue);
@@ -273,8 +268,8 @@ EspNowResource::~EspNowResource() {
 }
 
 Object* EspNowResource::init(Process* process, int mode, Blob pmk, wifi_phy_rate_t phy_rate) {
-  id_ = espnow_pool.any();
-  if (id_ == kInvalidEspNow) FAIL(ALREADY_IN_USE);
+  id_ = wifi_espnow_pool.any();
+  if (id_ == kInvalidWifiEspnow) FAIL(ALREADY_IN_USE);
 
   state_ = State::ESPNOW_CLAIMED;
 
@@ -408,7 +403,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(create) {
-  ARGS(EspNowResourceGroup, group, int, mode, Blob, pmk, int, rate);
+  ARGS(EspNowResourceGroup, group, int, mode, Blob, pmk, int, rate, int, channel);
 
   wifi_phy_rate_t phy_rate = WIFI_PHY_RATE_1M_L;
   if (rate != -1) {
@@ -443,6 +438,11 @@ PRIMITIVE(create) {
 
   group->register_resource(resource);
   proxy->set_external_address(resource);
+
+  esp_err_t err = esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
 
   return proxy;
 }

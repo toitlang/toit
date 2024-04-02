@@ -1,25 +1,16 @@
-<pkg:pkg-cli>/cli.toit:160:33: warning: Deprecated 'program-name'
-  help --invoked-command/string=program-name -> string:
-                                ^~~~~~~~~~~~
-<pkg:pkg-cli>/cli.toit:166:34: warning: Deprecated 'program-name'
-  usage --invoked-command/string=program-name -> string:
-                                 ^~~~~~~~~~~~
-<pkg:pkg-cli>/cli.toit:182:40: warning: Deprecated 'program-name'
-  run arguments/List --invoked-command=program-name --ui/Ui=Ui_ -> none:
-                                       ^~~~~~~~~~~~
-<pkg:pkg-cli>/cli.toit:190:27: warning: Deprecated 'program-name'
-  check --invoked-command=program-name:
-                          ^~~~~~~~~~~~
-<pkg:pkg-host>/file.toit:182:13: warning: Class 'Writer' is deprecated
+<pkg:pkg-host>/file.toit:190:13: warning: Class 'Writer' is deprecated
   writer := Writer stream
             ^~~~~~
-<pkg:pkg-host>/pipe.toit:230:30: warning: Class 'Buffer' is deprecated
-  accumulator := bytes.Buffer.with_initial_size (path.size + 4 + (path.size >> 2))
+<pkg:pkg-host>/file.toit:481:17: warning: Class 'Writer' is deprecated
+  out-writer := Writer out-stream
+                ^~~~~~
+<pkg:pkg-host>/pipe.toit:231:30: warning: Class 'Buffer' is deprecated
+  accumulator := bytes.Buffer.with-initial-size (path.size + 4 + (path.size >> 2))
                              ^
-<pkg:pkg-host>/pipe.toit:360:19: warning: Class 'BufferedReader' is deprecated
-  reader := reader.BufferedReader pipe_ends
+<pkg:pkg-host>/pipe.toit:361:19: warning: Class 'BufferedReader' is deprecated
+  reader := reader.BufferedReader pipe-ends
                   ^
-<pkg:pkg-host>/pipe.toit:479:13: warning: Class 'Writer' is deprecated
+<pkg:pkg-host>/pipe.toit:480:13: warning: Class 'Writer' is deprecated
   writer := Writer pipe
             ^~~~~~
 <pkg:pkg-tar>/tar.toit:16:15: warning: Class 'Writer' is deprecated

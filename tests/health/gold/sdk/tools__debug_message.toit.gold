@@ -7,25 +7,19 @@
 <pkg:pkg-ar>/ar.toit:162:27: warning: Class 'Reader' is deprecated
     return ArReader (bytes.Reader buffer)
                           ^
-<pkg:pkg-host>/file.toit:164:13: warning: Class 'Writer' is deprecated
+<pkg:pkg-host>/file.toit:190:13: warning: Class 'Writer' is deprecated
   writer := Writer stream
             ^~~~~~
-<pkg:pkg-host>/directory.toit:138:6: warning: Deprecated 'platform'
-  if platform == PLATFORM_WINDOWS:
-     ^~~~~~~~
-<pkg:pkg-host>/directory.toit:138:18: warning: Deprecated 'PLATFORM-WINDOWS'
-  if platform == PLATFORM_WINDOWS:
-                 ^~~~~~~~~~~~~~~~
-<pkg:pkg-host>/pipe.toit:296:19: warning: Class 'BufferedReader' is deprecated
-  reader := reader.BufferedReader pipe_ends
+<pkg:pkg-host>/file.toit:481:17: warning: Class 'Writer' is deprecated
+  out-writer := Writer out-stream
+                ^~~~~~
+<pkg:pkg-host>/pipe.toit:231:30: warning: Class 'Buffer' is deprecated
+  accumulator := bytes.Buffer.with-initial-size (path.size + 4 + (path.size >> 2))
+                             ^
+<pkg:pkg-host>/pipe.toit:361:19: warning: Class 'BufferedReader' is deprecated
+  reader := reader.BufferedReader pipe-ends
                   ^
-<pkg:pkg-host>/pipe.toit:329:6: warning: Deprecated 'platform'
-  if platform == PLATFORM_WINDOWS:
-     ^~~~~~~~
-<pkg:pkg-host>/pipe.toit:329:18: warning: Deprecated 'PLATFORM-WINDOWS'
-  if platform == PLATFORM_WINDOWS:
-                 ^~~~~~~~~~~~~~~~
-<pkg:pkg-host>/pipe.toit:407:13: warning: Class 'Writer' is deprecated
+<pkg:pkg-host>/pipe.toit:480:13: warning: Class 'Writer' is deprecated
   writer := Writer pipe
             ^~~~~~
 <sdk>/bytes.toit:254:7: warning: Class 'BufferConsumer' is deprecated
