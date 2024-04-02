@@ -34,4 +34,4 @@ tests/negative/no-arg-named-test.toit:13:3: error: Argument mismatch for 'block-
 Method does not take any non-block arguments, but one was provided
   block-unnamed 0
   ^~~~~~~~~~~~~
-Compilation failed.
+Compilation failed

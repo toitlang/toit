@@ -13,4 +13,4 @@ tests/negative/index3-test.toit:18:5: error: Missing argument for indexing opera
 tests/negative/index3-test.toit:6:3: error: Invalid method shape for '[]'
   operator[]:
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

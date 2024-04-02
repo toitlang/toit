@@ -1,4 +1,4 @@
 tests/negative/import7-test.toit:5:20: error: Not at dedent
 import math as foo import math as bar
                    ^~~~~~
-Compilation failed.
+Compilation failed

@@ -10,4 +10,4 @@ foo:
 tests/negative/import5-test.toit:5:24: error: Unresolved show 'foo'
 import .import5-a show foo
                        ^~~
-Compilation failed.
+Compilation failed

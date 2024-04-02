@@ -121,4 +121,4 @@ tests/negative/import-no-exit-test.toit:40:3: error: Unresolved identifier: 'unr
 tests/negative/import-no-exit-test.toit:41:5: error: Class 'int' does not have any method 'foo'
   1.foo
     ^~~
-Compilation failed.
+Compilation failed

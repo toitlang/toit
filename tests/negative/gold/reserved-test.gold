@@ -406,4 +406,4 @@ tests/negative/reserved-test.toit:52:3: error: Setters must take exactly one par
 tests/negative/reserved-test.toit:54:3: error: Setters must take exactly one parameter
   _= := null
   ^~
-Compilation failed.
+Compilation failed

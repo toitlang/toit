@@ -10,4 +10,4 @@ tests/negative/lambda3-test.toit:15:15: error: Type mismatch. Expected 'string'.
 tests/negative/lambda3-test.toit:21:12: error: Type mismatch. Expected 'string'. Got 'int'
     a2.foo 499
            ^~~
-Compilation failed.
+Compilation failed

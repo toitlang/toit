@@ -22,4 +22,4 @@ tests/negative/constructor-receiver2-test.toit:31:17: error: Class 'C' does not 
 tests/negative/constructor-receiver2-test.toit:32:17: error: Class 'D' does not have any static member or constructor with name 'FOOO'
   print prefix.D.FOOO
                 ^
-Compilation failed.
+Compilation failed

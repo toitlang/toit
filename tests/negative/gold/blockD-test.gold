@@ -148,4 +148,4 @@ global := (: 499)
 tests/negative/blockD-test.toit:17:11: error: Can't initialize global with a block
 global := (: 499)
           ^
-Compilation failed.
+Compilation failed

@@ -1,4 +1,4 @@
 tests/negative/unexpected2-test.toit:10:13: error: Arguments must be separated by newlines
       break 499
             ^~~
-Compilation failed.
+Compilation failed

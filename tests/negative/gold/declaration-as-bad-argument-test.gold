@@ -13,4 +13,4 @@ tests/negative/declaration-as-bad-argument-test.toit:10:13: error: Unresolved id
 tests/negative/declaration-as-bad-argument-test.toit:9:31: error: Class 'A' does not have any method 'foo'
     local := unresolved + (A).foo
                               ^~~
-Compilation failed.
+Compilation failed

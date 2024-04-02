@@ -62,4 +62,4 @@ tests/negative/missing-name-test.toit:31:8: error: Argument mismatch for 'A'
 Method does not take any arguments, but one was provided
   a := A unresolved
        ^
-Compilation failed.
+Compilation failed

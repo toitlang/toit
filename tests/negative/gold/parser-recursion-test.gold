@@ -8,4 +8,4 @@ tests/negative/parser-recursion-test.toit:7:508: error: Incomplete expression
 tests/negative/parser-recursion-test.toit:6:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

@@ -4,4 +4,4 @@ tests/negative/prefix-test.toit:6:5: error: Can't assign to unknown 'unresolved'
 tests/negative/prefix-test.toit:7:5: error: Can't assign to unknown 'unresolved'
   ++unresolved
     ^~~~~~~~~~
-Compilation failed.
+Compilation failed
