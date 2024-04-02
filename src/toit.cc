@@ -286,8 +286,8 @@ int main(int argc, char **argv) {
           ways_to_run++;
           ASSERT(source_path_count == 0);
           source_path = argv[processed_args++];
-          if (is_binary_file(source_path)) {
-            fprintf(stderr, "Not a text-only source file: %s\n", source_path);
+          if (is_binary_file(source_path) && !SnapshotBundle::is_bundle_file(source_path)) {
+            fprintf(stderr, "Not a text-only source file or a snapshot: %s\n", source_path);
             print_usage(1);
           }
           source_path_count = 1;
