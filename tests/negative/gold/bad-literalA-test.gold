@@ -31,4 +31,4 @@ tests/negative/bad-literalA-test.toit:17:9: error: Invalid floating-point litera
 tests/negative/bad-literalA-test.toit:18:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

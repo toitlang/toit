@@ -7,4 +7,4 @@ tests/negative/incomplete-string-interpolation4-test.toit:7:14: error: Missing c
 tests/negative/incomplete-string-interpolation4-test.toit:8:1: error: Unterminated string
 
 ^
-Compilation failed.
+Compilation failed

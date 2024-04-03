@@ -67,4 +67,4 @@ import p1
 tests/negative/pkg_lock_errors/main-test.toit:8:12: error: Unresolved identifier: 'foo'
   print p1.foo
            ^~~
-Compilation failed.
+Compilation failed

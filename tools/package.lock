@@ -2,6 +2,7 @@ sdk: ^2.0.0-alpha.128
 prefixes:
   ar: pkg-ar
   cli: pkg-cli
+  fs: pkg-fs
   host: pkg-host
   partition-table: toit-partition-table-esp32
   semver: toit-semver
@@ -9,8 +10,8 @@ packages:
   pkg-ar:
     url: github.com/toitlang/pkg-ar
     name: ar
-    version: 1.0.1
-    hash: 0f32219787c63521fc5690bbb716fc19cc40f5da
+    version: 1.1.0
+    hash: d265946ec701bc3a7d7fd426f158e038de0109d4
   pkg-cli:
     url: github.com/toitlang/pkg-cli
     name: cli

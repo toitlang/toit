@@ -16,4 +16,4 @@ tests/negative/final-loop-variable2-test.toit:17:28: error: Can't assign to fina
 tests/negative/final-loop-variable2-test.toit:22:6: error: Can't assign to final local
     x++
      ^~
-Compilation failed.
+Compilation failed

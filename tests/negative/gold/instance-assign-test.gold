@@ -1,7 +1,7 @@
-tests/negative/instance-assign-test.toit:7:12: error: Can't access instance members in field initializers.
+tests/negative/instance-assign-test.toit:7:12: error: Can't access instance members in field initializers
   field := hash-code-counter++
            ^~~~~~~~~~~~~~~~~
-tests/negative/instance-assign-test.toit:8:13: error: Can't access instance members in field initializers.
+tests/negative/instance-assign-test.toit:8:13: error: Can't access instance members in field initializers
   field2 := hash-code-counter
             ^~~~~~~~~~~~~~~~~
 tests/negative/instance-assign-test.toit:9:13: error: Can't access 'super' in field initializers
@@ -10,7 +10,7 @@ tests/negative/instance-assign-test.toit:9:13: error: Can't access 'super' in fi
 tests/negative/instance-assign-test.toit:10:13: error: Can't assign to 'super' in field initializer
   field4 := super++
             ^~~~~
-tests/negative/instance-assign-test.toit:17:5: error: Can't access instance members before `super` call.
+tests/negative/instance-assign-test.toit:17:5: error: Can't access instance members before `super` call
     getter-setter++
     ^~~~~~~~~~~~~
 tests/negative/instance-assign-test.toit:18:5: error: Can't assign to 'this'
@@ -41,4 +41,4 @@ tests/negative/instance-assign-test.toit:33:5: error: Can't assign to 'super' in
     super++
     ^~~~~
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/instance-assign-test.toit'
-Compilation failed.
+Compilation failed

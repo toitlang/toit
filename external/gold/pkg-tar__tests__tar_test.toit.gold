@@ -7,3 +7,6 @@ pkg-tar/tests/tar_test.toit:84:19: warning: Deprecated 'platform'
 pkg-tar/tests/tar_test.toit:117:6: warning: Deprecated 'platform'
   if platform == "FreeRTOS": return
      ^~~~~~~~
+<pkg:..>/tar.toit:16:15: warning: Class 'Writer' is deprecated
+    writer_ = Writer writer
+              ^~~~~~

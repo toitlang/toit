@@ -1,0 +1,24 @@
+toit-protobuf/src/protobuf.toit:344:7: warning: Deprecated 'LITTLE-ENDIAN'
+      LITTLE_ENDIAN.put_float64 buffer_ offset value
+      ^~~~~~~~~~~~~
+toit-protobuf/src/protobuf.toit:351:7: warning: Deprecated 'LITTLE-ENDIAN'
+      LITTLE_ENDIAN.put_float32 buffer_ offset value
+      ^~~~~~~~~~~~~
+toit-protobuf/src/protobuf.toit:371:7: warning: Deprecated 'LITTLE-ENDIAN'
+      LITTLE_ENDIAN.put_int32 buffer_ offset value
+      ^~~~~~~~~~~~~
+toit-protobuf/src/protobuf.toit:378:7: warning: Deprecated 'LITTLE-ENDIAN'
+      LITTLE_ENDIAN.put_int64 buffer_ offset value
+      ^~~~~~~~~~~~~
+toit-protobuf/src/protobuf.toit:193:17: warning: Deprecated 'LITTLE-ENDIAN'
+      result := LITTLE_ENDIAN.float64 bytes_ read_offset_
+                ^~~~~~~~~~~~~
+toit-protobuf/src/protobuf.toit:197:17: warning: Deprecated 'LITTLE-ENDIAN'
+      result := LITTLE_ENDIAN.float32 bytes_ read_offset_
+                ^~~~~~~~~~~~~
+toit-protobuf/src/protobuf.toit:207:17: warning: Deprecated 'LITTLE-ENDIAN'
+      result := LITTLE_ENDIAN.int32 bytes_ read_offset_
+                ^~~~~~~~~~~~~
+toit-protobuf/src/protobuf.toit:211:17: warning: Deprecated 'LITTLE-ENDIAN'
+      result := LITTLE_ENDIAN.int64 bytes_ read_offset_
+                ^~~~~~~~~~~~~

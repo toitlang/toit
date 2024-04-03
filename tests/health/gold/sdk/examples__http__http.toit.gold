@@ -40,7 +40,7 @@
 <pkg:pkg-http>/web_socket.toit:291:20: warning: Deprecated 'Socket.close-write'
     catch: socket_.close_write  // Catch because we allow double close, and a previous close causes an exception here.
                    ^~~~~~~~~~~
-<pkg:pkg-http>/headers.toit:133:20: warning: Class 'Buffer' is deprecated
+<pkg:pkg-http>/headers.toit:140:20: warning: Class 'Buffer' is deprecated
     buffer := bytes.Buffer
                    ^
 <pkg:pkg-http>/client.toit:496:29: warning: Class 'Reader' is deprecated

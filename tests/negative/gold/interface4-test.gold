@@ -1,4 +1,4 @@
 tests/negative/interface4-test.toit:7:13: error: Super of an interface must be an interface
 interface A B:
             ^
-Compilation failed.
+Compilation failed

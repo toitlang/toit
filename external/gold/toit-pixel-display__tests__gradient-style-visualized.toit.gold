@@ -1,0 +1,9 @@
+<pkg:..>/true-color.toit:145:55: warning: Deprecated 'BIG-ENDIAN'
+        rectangle x y --w=source-width --h=h --color=(BIG-ENDIAN.uint24 palette 0)
+                                                      ^~~~~~~~~~
+toit-pixel-display/tests/png-visualizer.toit:405:3: warning: Deprecated 'byte-swap-32'
+  byte-swap-32 result
+  ^~~~~~~~~~~~
+toit-pixel-display/tests/png-visualizer.toit:258:5: warning: Deprecated 'BIG-ENDIAN'
+    BIG-ENDIAN.put-uint32 length 0 data.size
+    ^~~~~~~~~~

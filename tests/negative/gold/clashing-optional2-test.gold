@@ -10,4 +10,4 @@ tests/negative/clashing-optional2-test.toit:9:3: error: Method 'foo' with overla
 tests/negative/clashing-optional2-test.toit:10:3: note: Overlaps with method 'foo'
   foo --arg1=499 --arg:
   ^~~
-Compilation failed.
+Compilation failed

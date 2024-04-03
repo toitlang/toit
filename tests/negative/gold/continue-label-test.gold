@@ -4,4 +4,4 @@ tests/negative/continue-label-test.toit:9:14: error: Unresolved label 'bar'
 tests/negative/continue-label-test.toit:13:16: error: Can't return out of lambda
       continue.foo
                ^~~
-Compilation failed.
+Compilation failed

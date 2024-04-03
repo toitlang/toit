@@ -2,4 +2,4 @@ tests/negative/prefix2-test.toit:8:7: error: Argument mismatch for 'Map'
 Too many arguments provided
   pre.Map 1 2 3 4 5
       ^~~
-Compilation failed.
+Compilation failed

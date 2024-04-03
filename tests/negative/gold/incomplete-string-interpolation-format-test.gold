@@ -13,4 +13,4 @@ tests/negative/incomplete-string-interpolation-format-test.toit:7:5: error: Miss
 tests/negative/incomplete-string-interpolation-format-test.toit:8:1: error: Unterminated string
 
 ^
-Compilation failed.
+Compilation failed

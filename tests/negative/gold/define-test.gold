@@ -43,4 +43,4 @@ tests/negative/define-test.toit:11:11: error: Class 'int' does not have any meth
 tests/negative/define-test.toit:13:11: error: Class 'string' does not have any method 'abs'
     local.abs
           ^~~
-Compilation failed.
+Compilation failed

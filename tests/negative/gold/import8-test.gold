@@ -10,4 +10,4 @@ import .import8-b show B A
 tests/negative/import8-test.toit:8:9: error: Unresolved identifier: 'A'
   print A
         ^
-Compilation failed.
+Compilation failed
