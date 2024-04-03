@@ -14,7 +14,7 @@
 // directory of this repository.
 
 import monitor
-import system.services show ServiceProvider ServiceHandler
+import system.services show ServiceProvider ServiceHandler ServiceResource
 import system.api.service-discovery show ServiceDiscoveryService
 
 class DiscoverableService:
@@ -28,6 +28,20 @@ class DiscoverableService:
   tags/List?
   constructor --.pid --.id --.uuid --.name --.major --.minor --.priority --.tags:
 
+class DiscoveryResource extends ServiceResource:
+  uuid/string
+  provider/SystemServiceManager
+
+  constructor .uuid manager/SystemServiceManager client/int:
+    provider = manager
+    super manager client
+
+  hash-code -> int:
+    return uuid.hash-code
+
+  on-closed -> none:
+    provider.waiting_.remove this
+
 class SystemServiceManager extends ServiceProvider
     implements ServiceDiscoveryService ServiceHandler:
   service-managers_/Map ::= {:}  // Map<int, Set<int>>
@@ -35,7 +49,7 @@ class SystemServiceManager extends ServiceProvider
   services-by-pid_/Map ::= {:}   // Map<int, Map<int, DiscoverableService>>>
   services-by-uuid_/Map ::= {:}  // Map<string, List<DiscoverableService>>
 
-  signal_/monitor.Signal ::= monitor.Signal
+  waiting_/Set ::= {}  // Set<DiscoveryResource>
 
   constructor:
     super "system/service-discovery" --major=0 --minor=1 --patch=1
@@ -45,7 +59,7 @@ class SystemServiceManager extends ServiceProvider
   handle index/int arguments/any --gid/int --client/int -> any:
     pid := pid --client=client
     if index == ServiceDiscoveryService.DISCOVER-INDEX:
-      return discover arguments[0] --wait=arguments[1]
+      return discover arguments[0] --wait=arguments[1] client
     if index == ServiceDiscoveryService.WATCH-INDEX:
       return watch pid arguments
     if index == ServiceDiscoveryService.LISTEN-INDEX:
@@ -77,10 +91,15 @@ class SystemServiceManager extends ServiceProvider
     uuids.add service
     uuids.sort --in-place: | a b | b.priority.compare-to a.priority
 
+    // If anyone is waiting for this service, signal them.
+    waiting_.do: | resource/DiscoveryResource |
+      if resource.uuid == uuid:
+        result := array-of-services_ [service]
+        resource.notify_ result
+
     // Register the process as a service manager and signal
     // anyone waiting for services to appear.
     service-managers_.get pid --init=(: {})
-    signal_.raise
 
   unlisten pid/int id/int -> none:
     services := services-by-pid_.get pid
@@ -99,19 +118,20 @@ class SystemServiceManager extends ServiceProvider
     service-managers_.remove pid
     services-by-pid_.remove pid
 
-  discover uuid/string --wait/bool -> List?:
+  discover uuid/string --wait/bool client/int -> List:
     services/List? := null
+    resource/DiscoveryResource? := null
     if wait:
-      signal_.wait:
-        services = services-by-uuid_.get uuid
-        services != null
-    else:
-      services = services-by-uuid_.get uuid
-      if not services: return null
+      resource = DiscoveryResource uuid this client
+    services = services-by-uuid_.get uuid
 
     // TODO(kasper): Consider keeping the list of
     // services in a form that is ready to send
     // back without any transformations.
+    return [array-of-services_ services, resource]
+
+  static array-of-services_ services/List? -> Array_?:
+    if not services: return null
     result := Array_ 7 * services.size
     index := 0
     services.do: | service/DiscoverableService |
@@ -140,6 +160,9 @@ class SystemServiceManager extends ServiceProvider
       if not processes.contains pid: continue.do
       processes.remove pid
       process-send_ manager SYSTEM-RPC-NOTIFY-TERMINATED_ pid
+
+  discover uuid/string --wait/bool -> List:
+    unreachable  // <-- TODO(kasper): nasty
 
   listen id/int uuid/string -> none
       --name/string
