@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import reader show BufferedReader
+import io
 import system
 
 import host.pipe
@@ -29,9 +29,9 @@ run args -> List:
   stderr := pipes[2]
   pid := pipes[3]
 
-  reader := BufferedReader stderr
+  reader := io.Reader.adapt stderr
   reader.buffer-all
-  output := reader.read-string (reader.buffered)
+  output := reader.read-string (reader.buffered-size)
 
   exit-value := pipe.wait-for pid
   exit-code := pipe.exit-code exit-value

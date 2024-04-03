@@ -1,7 +1,22 @@
+// Copyright (C) 2024 Toitware ApS.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; version
+// 2.1 only.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// The license can be found in the file `LICENSE` in the top level
+// directory of this repository.
+
+import cli
 import host.file
 import host.pipe
-import cli
-import reader show BufferedReader
+import io
 
 USAGE ::= """
     Decodes an esp-idf backtrace message from the UART console.
@@ -35,15 +50,15 @@ main args/List:
 
   disassemble := parsed["disassemble"]
   objdump-exe := parsed["objdump"]
-  objdump / BufferedReader? := null
+  objdump / io.Reader? := null
   symbols-only := false
   elf-file := parsed[ELF-FILE]
   elf-size := file.size elf-file
   exception := catch:
     flags := disassemble ? "-dC" : "-tC"
-    objdump = BufferedReader
+    objdump = io.Reader.adapt
         pipe.from objdump-exe flags elf-file
-    objdump.ensure (min 1000 elf-size) // Read once to see if objdump understands the file.
+    objdump.ensure-buffered (min 1000 elf-size) // Read once to see if objdump understands the file.
   if exception:
     throw "$exception: $objdump-exe"
   symbols := []
@@ -78,7 +93,7 @@ main args/List:
   if parsed["backtrace"] == "-":
     error := catch:
       with-timeout --ms=2000:
-        backtrace = (BufferedReader pipe.stdin).read-line
+        backtrace = (io.Reader.adapt pipe.stdin).read-line
     if error == "DEADLINE_EXCEEDED":
       print "Timed out waiting for stdin"
       usage

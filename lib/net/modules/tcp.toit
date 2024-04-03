@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import monitor show ResourceState_
 import net
 import net.tcp as net
@@ -113,7 +114,7 @@ class TcpServerSocket extends TcpSocket_ implements net.ServerSocket:
     return socket
 
 
-class TcpSocket extends TcpSocket_ implements net.Socket Reader:
+class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin implements net.Socket Reader:
   window-size_ := 0
 
   constructor: return TcpSocket 0
@@ -148,7 +149,11 @@ class TcpSocket extends TcpSocket_ implements net.Socket Reader:
       if error == "Connection closed": throw "Connection refused"
       throw error
 
+  /** Deprecated. Use $(in).read. */
   read -> ByteArray?:
+    return read_
+
+  read_ -> ByteArray?:
     while true:
       state := ensure-state_ TOIT-TCP-READ_ --failure=: throw it
       result := tcp-read_ state.group state.resource
@@ -156,14 +161,25 @@ class TcpSocket extends TcpSocket_ implements net.Socket Reader:
       // TODO(anders): We could consider always clearing this after all reads.
       state.clear-state TOIT-TCP-READ_
 
-  write data from = 0 to = data.size -> int:
+  /** Deprecated. Use $(out).write. */
+  write data/io.Data from/int=0 to/int=data.byte-size -> int:
+    return try-write_ data from to
+
+  try-write_ data/io.Data from/int to/int -> int:
     while true:
       state := ensure-state_ TOIT-TCP-WRITE_ --error-bits=(TOIT-TCP-ERROR_ | TOIT-TCP-CLOSE_) --failure=: throw it
       wrote := tcp-write_ state.group state.resource data from to
       if wrote != -1: return wrote
       state.clear-state TOIT-TCP-WRITE_
 
+  close-reader_:
+    // Do nothing.
+
+  /** Deprecated. Use $(out).close. */
   close-write -> none:
+    close-writer_
+
+  close-writer_ -> none:
     state := state_
     if state == null: return
     tcp-close-write_ state.group state.resource
@@ -193,7 +209,22 @@ tcp-listen_ socket-resource-group address port backlog:
   #primitive.tcp.listen
 
 tcp-write_ socket-resource-group descriptor data from to:
-  #primitive.tcp.write
+  // We are not using `io.primitive-redo-chunked-io-data_` because we
+  // might abort the write once the buffer is full and the written
+  // size is not equal to the size we requested to write.
+  #primitive.tcp.write: | error |
+    if error != "WRONG_BYTES_TYPE": throw error
+    List.chunk-up from to 4096: | chunk-from chunk-to chunk-size |
+      chunk := ByteArray.from data chunk-from chunk-to
+      written := tcp-write_ socket-resource-group descriptor chunk 0 chunk-size
+      if written != chunk-size:
+        // If the primitive returns -1, it means that the buffers are full and
+        // we should try again later.
+        if written == -1:
+          if chunk-from - from > 0: return chunk-from - from
+          return -1
+        return (chunk-from - from) + written
+    return to - from
 
 tcp-read_ socket-resource-group descriptor:
   #primitive.tcp.read

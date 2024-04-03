@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import monitor show ResourceState_
 import net
 import net.udp as net
@@ -73,7 +74,7 @@ class Socket implements net.Socket:
         net.IpAddress array[1]
         array[2]
 
-  write data from=0 to=data.size:
+  write data/io.Data from/int=0 to/int=data.byte-size:
     send_ data from to null 0
     return to - from
 
@@ -156,7 +157,10 @@ udp-receive_ udp-resource-group id output:
   #primitive.udp.receive
 
 udp-send_ udp-resource-group id data from to address port:
-  #primitive.udp.send
+  #primitive.udp.send: | error |
+    if error != "WRONG_BYTES_TYPE": throw error
+    bytes := ByteArray.from data
+    return udp-send_ udp-resource-group id bytes 0 bytes.size address port
 
 udp-error-number_ id:
   #primitive.udp.error-number

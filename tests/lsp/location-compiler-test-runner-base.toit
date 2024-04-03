@@ -4,7 +4,6 @@
 
 import host.file
 import host.pipe
-import reader show BufferedReader
 import .lsp-client show LspClient run-client-test
 import .utils
 import system

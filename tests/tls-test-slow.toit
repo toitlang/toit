@@ -4,7 +4,6 @@
 
 import certificate-roots
 import .dns
-import writer
 import tls
 import .tcp as tcp
 import net.x509 as net
@@ -174,11 +173,12 @@ connect-to-site host port expected-certificate-name:
       --server-name=expected-certificate-name or host
 
     try:
-      writer := writer.Writer socket
+      writer := socket.out
       writer.write """GET / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
       print "$host: $((socket as any).session_.mode == tls.SESSION-MODE-TOIT ? "Toit mode" : "MbedTLS mode")"
 
-      while data := socket.read:
+      reader := socket.in
+      while data := reader.read:
         bytes += data.size
 
     finally:
