@@ -5,8 +5,6 @@ packages:
   p2:
     path: ../p2
     prefixes:
-      p3: p3-good
+      p3: p3-bad
   p3-bad:
     path: ../p3-bad
-  p3-good:
-    path: ../p3-good
