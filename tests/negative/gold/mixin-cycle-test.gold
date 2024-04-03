@@ -16,4 +16,4 @@ mixin G extends F with H:
 tests/negative/mixin-cycle-test.toit:14:24: error: This clause contributes to the cycle
 mixin H extends F with G:
                        ^
-Compilation failed.
+Compilation failed

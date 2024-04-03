@@ -7,4 +7,4 @@ tests/negative/incomplete-dot-test.toit:8:5: error: Incomplete expression
 tests/negative/incomplete-dot-test.toit:10:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

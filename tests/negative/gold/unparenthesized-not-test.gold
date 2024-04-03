@@ -38,4 +38,4 @@ tests/negative/unparenthesized-not-test.toit:8:16: error: Can't negate blocks
   gee param=not: unresolved
                ^~~~~~~~~~~~
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/unparenthesized-not-test.toit'
-Compilation failed.
+Compilation failed

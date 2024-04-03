@@ -40,4 +40,4 @@ tests/negative/type-warning-test.toit:36:13: error: Class 'B' does not have any 
 tests/negative/type-warning-test.toit:17:7: error: Type mismatch. Expected 'A'. Got 'B'
     x = B
       ^
-Compilation failed.
+Compilation failed

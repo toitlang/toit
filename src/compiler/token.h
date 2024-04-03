@@ -256,6 +256,7 @@ enum Precedence {
   I(from)                                                                \
   I(to)                                                                  \
   IN(enum_, "enum")                                                      \
+  I(size)                                                                \
 
 
 class Token {

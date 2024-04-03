@@ -31,4 +31,4 @@ test7 arg -> any:
 tests/negative/return-missing-test.toit:39:1: error: Method doesn't return a value on all paths
 test8 arg -> any:
 ^~~~~
-Compilation failed.
+Compilation failed

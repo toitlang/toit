@@ -215,7 +215,7 @@ class Program : public FlashAllocation {
   }
 
   int invoke_bytecode_offset(Opcode opcode) const {
-    ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_AT_PUT);
+    ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_SIZE);
     return invoke_bytecode_offsets_[opcode - INVOKE_EQ];
   }
 
@@ -319,7 +319,7 @@ class Program : public FlashAllocation {
   uint8 snapshot_uuid_[UUID_SIZE];
   word global_max_stack_height_;         // Maximum stack height for all methods.
 
-  static const int INVOKE_BYTECODE_COUNT = INVOKE_AT_PUT - INVOKE_EQ + 1;
+  static const int INVOKE_BYTECODE_COUNT = INVOKE_SIZE - INVOKE_EQ + 1;
   int invoke_bytecode_offsets_[INVOKE_BYTECODE_COUNT];
 
   static uint16 compute_class_bits(TypeTag tag, int instance_byte_size) {
@@ -331,7 +331,7 @@ class Program : public FlashAllocation {
   }
 
   void set_invoke_bytecode_offset(Opcode opcode, int offset) {
-    ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_AT_PUT);
+    ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_SIZE);
     invoke_bytecode_offsets_[opcode - INVOKE_EQ] = offset;
   }
 

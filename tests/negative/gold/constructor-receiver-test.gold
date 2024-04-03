@@ -13,4 +13,4 @@ tests/negative/constructor-receiver-test.toit:25:8: error: Class 'B' does not ha
 tests/negative/constructor-receiver-test.toit:33:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

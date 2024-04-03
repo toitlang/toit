@@ -1,4 +1,4 @@
 tests/negative/import-as-test.toit:5:13: error: 'as' must be followed by identifier
 import math as
             ^~
-Compilation failed.
+Compilation failed

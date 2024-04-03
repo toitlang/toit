@@ -1134,6 +1134,12 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
+  OPCODE_BEGIN(INVOKE_SIZE);
+    int offset = program->invoke_bytecode_offset(INVOKE_SIZE);
+    propagator->call_virtual(method, scope, bcp, 1, offset);
+    if (stack->top_is_empty()) return scope;
+  OPCODE_END();
+
   OPCODE_BEGIN(BRANCH);
     uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
     return worklists.back()->add(target, scope, false);

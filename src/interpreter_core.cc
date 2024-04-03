@@ -140,6 +140,50 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
   return false;
 }
 
+bool Interpreter::fast_size(Process* process, Object* receiver, Smi** result) {
+  if (is_instance(receiver)) {
+    Instance* instance = Instance::cast(receiver);
+    Smi* class_id = instance->class_id();
+    Program* program = process->program();
+    if (class_id == program->list_class_id()) {
+      *result = Smi::cast(instance->at(Instance::LIST_SIZE_INDEX));
+      return true;
+    } else if (class_id == program->byte_array_slice_class_id()) {
+      if (!(is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX)) &&
+            is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX  )))) {
+        return false;
+      }
+
+      word from = Smi::value(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX));
+      word to = Smi::value(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX));
+      *result = Smi::from(to - from);
+      return true;
+    } else if (class_id == program->large_array_class_id()) {
+      Object* size_object = instance->at(Instance::LARGE_ARRAY_SIZE_INDEX);
+      if (!is_smi(size_object)) return false;
+      *result = Smi::cast(size_object);
+      return true;
+    } else if (class_id == program->byte_array_cow_class_id()) {
+      ByteArray* byte_array = ByteArray::cast(instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX));
+      ByteArray::Bytes bytes(byte_array);
+      *result = Smi::from(bytes.length());
+      return true;
+    } else {
+      return false;
+    }
+  } else if (is_byte_array(receiver)) {
+    ByteArray::Bytes bytes(ByteArray::cast(receiver));
+    *result = Smi::from(bytes.length());
+    return true;
+  } else if (is_array(receiver)) {
+    Array* array = Array::cast(receiver);
+    *result = Smi::from(array->length());
+    return true;
+  } else {
+    return false;
+  }
+}
+
 int Interpreter::compare_ints(int64 lhs_int, int64 rhs_int) {
   if (lhs_int < rhs_int) {
     return SIMPLE_LESS;

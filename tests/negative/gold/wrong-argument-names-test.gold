@@ -166,4 +166,4 @@ Required named argument '--fizz-buzz' not provided
 Required named argument '--foo' not provided
   a.lots-of-args
     ^~~~~~~~~~~~
-Compilation failed.
+Compilation failed

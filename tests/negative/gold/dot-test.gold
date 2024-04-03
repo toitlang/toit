@@ -4,4 +4,4 @@ tests/negative/dot-test.toit:8:10: error: Incomplete expression
 tests/negative/dot-test.toit:9:9: error: Unresolved identifier: 'unresolved'
   print unresolved
         ^~~~~~~~~~
-Compilation failed.
+Compilation failed

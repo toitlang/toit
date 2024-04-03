@@ -950,7 +950,7 @@ void MethodResolver::resolve_fill_method() {
         if (setter == null) {
           report_error(field_storing, "Unresolved target for field-storing parameter");
         } else if (!setter->is_FieldStub()) {
-          report_error(field_storing, "Field-storing parameters may not call setters.");
+          report_error(field_storing, "Field-storing parameters may not call setters");
         } else if (!class_fields.contains(setter->as_FieldStub()->field())) {
           report_error(field_storing, "Field-storing parameter can only set local fields");
         } else if (setter->as_FieldStub()->field()->is_final()) {
@@ -1337,7 +1337,7 @@ void MethodResolver::_resolve_parameters(
     }
     if (parameter->default_value() != null) {
       if (parameter->is_block()) {
-        report_error(parameter, "Block parameters may not have a default value.");
+        report_error(parameter, "Block parameters may not have a default value");
       }
       if (!parameter->is_named()) seen_default_values_in_unnamed = true;
       // If the incoming parameter == null, replace it with the default-value (unless the
@@ -2341,11 +2341,11 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
           break;
 
         case CONSTRUCTOR_STATIC:
-          report_error(target_node, "Can't access instance members before `super` call.");
+          report_error(target_node, "Can't access instance members before `super` call");
           return _new ir::Error(range);
 
         case FIELD:
-          report_error(target_node, "Can't access instance members in field initializers.");
+          report_error(target_node, "Can't access instance members in field initializers");
           return _new ir::Error(range);
 
         case INSTANCE:
@@ -2726,10 +2726,10 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
 
   if (receiver->is_block() && selector == Symbols::call) {
     if (call_builder.has_block_arguments()) {
-      report_error(ast_dot, "Can't invoke a block with a block argument.");
+      report_error(ast_dot, "Can't invoke a block with a block argument");
       push(_new ir::Error(ast_dot->range(), call_builder.arguments()));
     } else if (call_builder.has_named_arguments()) {
-      report_error(ast_dot, "Can't invoke a block with a named argument.");
+      report_error(ast_dot, "Can't invoke a block with a named argument");
       push(_new ir::Error(ast_dot->range(), call_builder.arguments()));
     } else {
       push(call_builder.call_block(receiver));
@@ -3276,7 +3276,7 @@ ir::Expression* MethodResolver::_as_or_is(ast::Binary* node) {
   auto type_name = Symbol::invalid();
   if (type.is_none()) {
     auto kind_str = is_as ? "as" : "is";
-    report_error(ast_right, "'none' is not a valid type for '%s' checks.", kind_str);
+    report_error(ast_right, "'none' is not a valid type for '%s' checks", kind_str);
     type = ir::Type::any();
     type_name = Symbols::none;
   } else if (type.is_any()) {
@@ -3944,12 +3944,12 @@ bool MethodResolver::_assign_identifier_resolve_left(ast::Binary* node,
     ASSERT(looking_for_getter || looking_for_setter);
     if (looking_for_getter) {
       report_error(error_position_node,
-                   "No getter method '%s' (0 arguments) found.",
+                   "No getter method '%s' (0 arguments) found",
                    name.c_str());
     }
     if (looking_for_setter) {
       report_error(error_position_node,
-                  "No setter method '%s=' found.",
+                  "No setter method '%s=' found",
                   name.c_str());
     }
     return false;
@@ -4052,11 +4052,11 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
         break;
 
       case CONSTRUCTOR_STATIC:
-        report_error(ast_left, "Can't access instance members before `super` call.");
+        report_error(ast_left, "Can't access instance members before `super` call");
         return _new ir::Error(range, list_of(resolve_expression(ast_right, null, true)));
 
       case FIELD:
-        report_error(ast_left, "Can't access instance members in field initializers.");
+        report_error(ast_left, "Can't access instance members in field initializers");
         return _new ir::Error(range, list_of(resolve_expression(ast_right, null, true)));
 
       case INSTANCE:

@@ -22,4 +22,4 @@ tests/negative/logical-test.toit:6:3: error: Logical operation argument can't be
 tests/negative/logical-test.toit:7:3: error: Logical operation argument can't be 'none'
   print true && false
   ^~~~~
-Compilation failed.
+Compilation failed

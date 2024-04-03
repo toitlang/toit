@@ -4,4 +4,4 @@ tests/negative/mixin-constructor-test.toit:7:3: error: Mixins can only have defa
 tests/negative/mixin-constructor-test.toit:8:3: error: Mixins can only have default constructors
   constructor.named a=0:
   ^~~~~~~~~~~~~~~~~
-Compilation failed.
+Compilation failed
