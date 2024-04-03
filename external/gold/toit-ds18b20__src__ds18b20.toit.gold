@@ -1,0 +1,3 @@
+toit-ds18b20/src/ds18b20.toit:176:12: warning: Deprecated 'LITTLE-ENDIAN'
+    return LITTLE_ENDIAN.int16 bytes 0
+           ^~~~~~~~~~~~~

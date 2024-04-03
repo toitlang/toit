@@ -1,0 +1,3 @@
+mcp342x-driver/src/driver.toit:78:22: warning: Deprecated 'BIG-ENDIAN'
+      value := binary.BIG_ENDIAN.int24 raw 0
+                     ^

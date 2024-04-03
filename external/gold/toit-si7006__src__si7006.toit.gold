@@ -1,0 +1,3 @@
+toit-si7006/src/si7006.toit:99:16: warning: Deprecated 'BIG-ENDIAN'
+        return BIG_ENDIAN.uint16 bytes 0
+               ^~~~~~~~~~

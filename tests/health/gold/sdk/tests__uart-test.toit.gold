@@ -1,3 +1,9 @@
+<sdk>/uart.toit:243:15: warning: Deprecated 'Port.errors'
+        errors++
+              ^~
+<sdk>/uart.toit:243:15: warning: Deprecated 'Port.errors'
+        errors++
+              ^~
 <pkg:pkg-host>/pipe.toit:231:30: warning: Class 'Buffer' is deprecated
   accumulator := bytes.Buffer.with-initial-size (path.size + 4 + (path.size >> 2))
                              ^

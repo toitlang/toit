@@ -1,0 +1,3 @@
+toit-font-tools/bin/convertfont.toit:249:15: warning: Class 'BufferedReader' is deprecated
+    reader := BufferedReader fd
+              ^~~~~~~~~~~~~~

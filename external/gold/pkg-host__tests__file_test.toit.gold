@@ -1,0 +1,9 @@
+pkg-host/tests/file_test.toit:192:16: warning: Class 'Writer' is deprecated
+    writer := (Writer stream)
+               ^~~~~~
+<pkg:..>/file.toit:190:13: warning: Class 'Writer' is deprecated
+  writer := Writer stream
+            ^~~~~~
+<pkg:..>/file.toit:481:17: warning: Class 'Writer' is deprecated
+  out-writer := Writer out-stream
+                ^~~~~~
