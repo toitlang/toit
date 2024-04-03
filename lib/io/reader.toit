@@ -773,7 +773,7 @@ abstract mixin InMixin:
   The $in $Reader doesn't have a 'close' method. However, we can set
     the internal boolean to closed, so that further reads return null.
 
-  Any existing read needs to be aborted by the caller of this method. The 'consume'
+  Any existing read needs to be aborted by the caller of this method. The $read_
     method should return null.
   */
   // This is a protected method. It should not be "private".

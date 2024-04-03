@@ -22,7 +22,7 @@ UART features asynchronous communication with an external device on two data
 */
 
 /**
-The UART Port exposes the hardware features for communicating with an external
+The UART port exposes the hardware features for communicating with an external
   peripheral using asynchronous communication.
 */
 class Port extends Object with io.InMixin implements reader.Reader:
@@ -46,7 +46,10 @@ class Port extends Object with io.InMixin implements reader.Reader:
 
   out_/UartWriter? := null
 
-  /** Number of encountered errors. */
+  /**
+  Number of encountered errors.
+  Deprecated.
+  */
   errors := 0
 
   /**
