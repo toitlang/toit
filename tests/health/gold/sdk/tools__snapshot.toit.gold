@@ -7,12 +7,6 @@
 <pkg:pkg-ar>/ar.toit:162:27: warning: Class 'Reader' is deprecated
     return ArReader (bytes.Reader buffer)
                           ^
-<pkg:pkg-host>/file.toit:190:13: warning: Class 'Writer' is deprecated
-  writer := Writer stream
-            ^~~~~~
-<pkg:pkg-host>/file.toit:481:17: warning: Class 'Writer' is deprecated
-  out-writer := Writer out-stream
-                ^~~~~~
 <sdk>/bytes.toit:254:7: warning: Class 'BufferConsumer' is deprecated
 class BufferSizeCounter extends BufferConsumer:
       ^~~~~~~~~~~~~~~~~

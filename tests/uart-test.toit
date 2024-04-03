@@ -46,13 +46,15 @@ with-socat tmp-dir/string [block] --logger/log.Logger:
   stderr-bytes := #[]
   task::
     stdout /pipe.OpenPipe := fork-data[1]
-    while chunk := stdout.read:
+    stdout-reader := stdout.in
+    while chunk := stdout-reader.read:
       print "got stdout chunk: $chunk.to-string"
       logger.debug chunk.to-string.trim
       stdout-bytes += chunk
   task::
     stderr /pipe.OpenPipe := fork-data[2]
-    while chunk := stderr.read:
+    stderr-reader := stderr.in
+    while chunk := stderr-reader.read:
       str := chunk.to-string.trim
       print "got stderr chunk: $chunk.to-string"
       logger.debug str

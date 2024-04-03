@@ -19,12 +19,6 @@
 <pkg:toit-cert-roots>/certificate_roots.toit:10829:39: warning: Deprecated 'STAAT-DER-NEDERLANDEN-EV-ROOT-CA'
   "Staat der Nederlanden EV Root CA": STAAT_DER_NEDERLANDEN_EV_ROOT_CA,
                                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-<pkg:pkg-host>/file.toit:190:13: warning: Class 'Writer' is deprecated
-  writer := Writer stream
-            ^~~~~~
-<pkg:pkg-host>/file.toit:481:17: warning: Class 'Writer' is deprecated
-  out-writer := Writer out-stream
-                ^~~~~~
 <pkg:toit-cert-roots>/certificate_roots.toit:11093:3: warning: Deprecated 'CYBERTRUST-GLOBAL-ROOT'
   CYBERTRUST_GLOBAL_ROOT.install
   ^~~~~~~~~~~~~~~~~~~~~~

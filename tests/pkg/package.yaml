@@ -10,7 +10,7 @@ dependencies:
     version: ^2.2.0
   host:
     url: github.com/toitlang/pkg-host
-    version: ^1.14.1
+    version: ^1.15.0
   http:
     url: github.com/toitlang/pkg-http
     version: ^2.7.0
