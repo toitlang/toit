@@ -19,57 +19,6 @@
 <pkg:toit-cert-roots>/certificate_roots.toit:10829:39: warning: Deprecated 'STAAT-DER-NEDERLANDEN-EV-ROOT-CA'
   "Staat der Nederlanden EV Root CA": STAAT_DER_NEDERLANDEN_EV_ROOT_CA,
                                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-<pkg:pkg-http>/connection.toit:354:20: warning: Deprecated 'Socket.read'
-    return socket_.read
-                   ^~~~
-<pkg:pkg-http>/connection.toit:357:20: warning: Deprecated 'Socket.write'
-    return socket_.write data from to
-                   ^~~~~
-<pkg:pkg-http>/connection.toit:360:13: warning: Deprecated 'Socket.close-write'
-    socket_.close_write
-            ^~~~~~~~~~~
-<pkg:pkg-http>/connection.toit:89:15: warning: Deprecated 'Socket.close-write'
-      socket_.close_write
-              ^~~~~~~~~~~
-<pkg:pkg-http>/web_socket.toit:422:9: warning: Deprecated 'BIG-ENDIAN'
-        BIG_ENDIAN.put_int64 header 2 size
-        ^~~~~~~~~~
-<pkg:pkg-http>/web_socket.toit:426:9: warning: Deprecated 'BIG-ENDIAN'
-        BIG_ENDIAN.put_uint16 header 2 size
-        ^~~~~~~~~~
-<pkg:pkg-http>/web_socket.toit:56:20: warning: Deprecated 'Socket.read'
-    return socket_.read
-                   ^~~~
-<pkg:pkg-http>/web_socket.toit:133:23: warning: Deprecated 'Socket.read'
-      next := socket_.read
-                      ^~~~
-<pkg:pkg-http>/web_socket.toit:154:13: warning: Deprecated 'BIG-ENDIAN'
-      len = BIG_ENDIAN.uint16 pending_ 2
-            ^~~~~~~~~~
-<pkg:pkg-http>/web_socket.toit:156:13: warning: Deprecated 'BIG-ENDIAN'
-      len = BIG_ENDIAN.int64 pending_ 2
-            ^~~~~~~~~~
-<pkg:pkg-http>/web_socket.toit:176:17: warning: Deprecated 'BIG-ENDIAN'
-        code := BIG_ENDIAN.uint16 payload 0
-                ^~~~~~~~~~
-<pkg:pkg-http>/web_socket.toit:252:23: warning: Deprecated 'Socket.write'
-      from += socket_.write data from to
-                      ^~~~~
-<pkg:pkg-http>/web_socket.toit:285:11: warning: Deprecated 'BIG-ENDIAN'
-          BIG_ENDIAN.put_uint16 payload 0 status_code
-          ^~~~~~~~~~
-<pkg:pkg-http>/web_socket.toit:291:20: warning: Deprecated 'Socket.close-write'
-    catch: socket_.close_write  // Catch because we allow double close, and a previous close causes an exception here.
-                   ^~~~~~~~~~~
-<pkg:pkg-http>/headers.toit:140:20: warning: Class 'Buffer' is deprecated
-    buffer := bytes.Buffer
-                   ^
-<pkg:pkg-http>/client.toit:496:29: warning: Class 'Reader' is deprecated
-        request.body = bytes.Reader data
-                            ^
-<pkg:pkg-http>/client.toit:609:20: warning: Class 'Buffer' is deprecated
-    buffer := bytes.Buffer
-                   ^
 <pkg:toit-cert-roots>/certificate_roots.toit:11093:3: warning: Deprecated 'CYBERTRUST-GLOBAL-ROOT'
   CYBERTRUST_GLOBAL_ROOT.install
   ^~~~~~~~~~~~~~~~~~~~~~
@@ -106,9 +55,3 @@ class BufferSizeCounter extends BufferConsumer:
 <sdk>/bytes.toit:343:3: warning: Class 'BufferConsumer' is deprecated
   constructor.with-initial-size .init-size_/int:
   ^~~~~~~~~~~
-<pkg:pkg-http>/connection.toit:35:21: warning: Class 'BufferedReader' is deprecated
-    reader_ = reader.BufferedReader socket_
-                    ^
-<pkg:pkg-http>/connection.toit:36:21: warning: Class 'Writer' is deprecated
-    writer_ = writer.Writer socket_
-                    ^
