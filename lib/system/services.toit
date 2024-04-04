@@ -195,6 +195,17 @@ class ServiceClient:
 
     candidate-index := null
     candidate-priority := null
+
+    // Called when we have a match.
+    found-block := : | discovered/List |
+      pid := discovered[candidate-index]
+      id := discovered[candidate-index + 1]
+      if proxy:
+        proxy.close
+        proxy = null
+      return _open_ selector --pid=pid --id=id
+
+    // Called on each service we are given, to see if it is a match.
     process-block := : | discovered/List i/int |
       tags := discovered[i + 6]
       allowed := selector.is-allowed_
@@ -209,12 +220,7 @@ class ServiceClient:
           candidate-priority = priority
         else if priority < candidate-priority:
           // All remaining candidates will have a lower priority.
-          pid := discovered[candidate-index]
-          id := discovered[candidate-index + 1]
-          if proxy:
-            proxy.close
-            proxy = null
-          return _open_ selector --pid=pid --id=id
+          found-block.call discovered  // Returns.
         else if priority == candidate-priority:
           // Found multiple candidates with the same priority.
           if proxy:
@@ -223,10 +229,13 @@ class ServiceClient:
           throw "Cannot disambiguate"
 
     if discovered:
-      for i := 0; i <= discovered.size; i += 7:
+      for i := 0; i < discovered.size; i += 7:
         process-block.call discovered i
 
-    if not candidate-index and not timeout:
+    if candidate-index:
+      found-block.call discovered  // Returns.
+
+    if not timeout:
       return if-absent.call
 
     // We got back a proxy for a resource, which will notify us when the
@@ -236,6 +245,8 @@ class ServiceClient:
         while true:
           discovered = channel.receive
           process-block.call discovered 0
+          if candidate-index:
+            found-block.call discovered  // Returns.
     finally:
       if proxy: proxy.close
     unreachable

@@ -34,7 +34,7 @@ class DiscoveryResource extends ServiceResource:
 
   constructor .uuid manager/SystemServiceManager client/int:
     provider = manager
-    super manager client
+    super manager client --notifiable
 
   hash-code -> int:
     return uuid.hash-code
@@ -120,16 +120,18 @@ class SystemServiceManager extends ServiceProvider
 
   discover uuid/string --wait/bool client/int -> List:
     services/List? := null
-    resource/DiscoveryResource? := null
+    resource-serialized := null
     if wait:
-      resource = DiscoveryResource uuid this client
+      resource := DiscoveryResource uuid this client
+      waiting_.add resource
+      resource-serialized = resource.serialize-for-rpc
     services = services-by-uuid_.get uuid
 
-    // TODO(kasper): Consider keeping the list of
-    // services in a form that is ready to send
-    // back without any transformations.
-    return [array-of-services_ services, resource]
+    return [array-of-services_ services, resource-serialized]
 
+  // TODO(kasper): Consider keeping the list of
+  // services in a form that is ready to send
+  // back without any transformations.
   static array-of-services_ services/List? -> Array_?:
     if not services: return null
     result := Array_ 7 * services.size
