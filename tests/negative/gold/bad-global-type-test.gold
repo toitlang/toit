@@ -22,4 +22,4 @@ global5 := global5 + 1
 tests/negative/bad-global-type-test.toit:12:11: error: Type mismatch. Expected 'int'. Got 'string'
   global2 = "str"
           ^
-Compilation failed.
+Compilation failed

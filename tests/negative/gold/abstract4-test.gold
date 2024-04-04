@@ -7,4 +7,4 @@ tests/negative/abstract4-test.toit:6:12: note: Missing implementation for 'foo'
 tests/negative/abstract4-test.toit:14:4: error: Can't instantiate abstract class
   (C).foo
    ^
-Compilation failed.
+Compilation failed

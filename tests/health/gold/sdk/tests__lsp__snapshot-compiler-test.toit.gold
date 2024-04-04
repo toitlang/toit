@@ -1,0 +1,6 @@
+tests/lsp/snapshot-compiler-test.toit:32:12: warning: Deprecated 'Stream.write'
+    writer.write (base64.decode snapshot-bundle["snapshot_bundle"])
+           ^~~~~
+<pkg:pkg-tar>/tar.toit:16:15: warning: Class 'Writer' is deprecated
+    writer_ = Writer writer
+              ^~~~~~

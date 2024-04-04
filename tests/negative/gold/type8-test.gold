@@ -46,4 +46,4 @@ tests/negative/type8-test.toit:11:7: error: Class 'int' does not have any method
 tests/negative/type8-test.toit:13:7: error: Class 'int' does not have any method 'copy'
     x.copy 1
       ^~~~
-Compilation failed.
+Compilation failed

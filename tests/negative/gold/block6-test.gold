@@ -13,4 +13,4 @@ tests/negative/block6-test.toit:10:9: error: Blocks must be after non-block argu
 tests/negative/block6-test.toit:11:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-Compilation failed.
+Compilation failed

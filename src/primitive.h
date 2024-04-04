@@ -242,6 +242,7 @@ namespace toit {
   PRIMITIVE(get_real_time_clock, 0)          \
   PRIMITIVE(set_real_time_clock, 2)          \
   PRIMITIVE(get_system_time, 0)              \
+  PRIMITIVE(tune_memory_use, 1)              \
   PRIMITIVE(debug_set_memory_limit, 1)       \
   PRIMITIVE(dump_heap, 1)                    \
   PRIMITIVE(serial_print_heap_report, 2)     \
@@ -957,7 +958,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
   Object* _raw_##name = __args[-(N)];                                        \
   uninitialized_t _u_##name;                                                 \
   Blob name(_u_##name);                                                      \
-  if (!_raw_##name->byte_content(process->program(), &name, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+  if (!_raw_##name->byte_content(process->program(), &name, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_BYTES_TYPE);
 
 #define _A_T_MutableBlob(N, name)                                            \
   Object* _raw_##name = __args[-(N)];                                        \

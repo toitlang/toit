@@ -22,4 +22,4 @@ tests/negative/constructor-keyword-test.toit:13:3: error: Redefinition of 'const
 tests/negative/constructor-keyword-test.toit:12:10: note: First definition of 'constructor'
   static constructor x y:
          ^~~~~~~~~~~
-Compilation failed.
+Compilation failed

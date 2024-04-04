@@ -80,7 +80,7 @@ foreach(file ${HEALTH_SOURCES})
   endif()
   add_health_test("${file}"
     RELATIVE_TO "${TOIT_SDK_SOURCE_DIR}"
-    LIB_DIR "${TOIT_SDK_SOURCE_DIR}"
+    LIB_DIR "${TOIT_SDK_SOURCE_DIR}/lib"
     GOLD_DIR "${GOLD_DIR}"
     CONFIGURATION health
     SHOW_PACKAGE_WARNINGS ON

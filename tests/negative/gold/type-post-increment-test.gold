@@ -7,4 +7,4 @@ tests/negative/type-post-increment-test.toit:10:4: error: Type mismatch. Expecte
 tests/negative/type-post-increment-test.toit:10:4: error: Can't use value that is typed 'none'
   a++
    ^~
-Compilation failed.
+Compilation failed

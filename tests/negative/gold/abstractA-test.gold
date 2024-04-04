@@ -4,4 +4,4 @@ tests/negative/abstractA-test.toit:6:16: error: Field-storing parameter not allo
 tests/negative/abstractA-test.toit:10:16: error: Unresolved identifier: 'unresolved'
     return x + unresolved
                ^~~~~~~~~~
-Compilation failed.
+Compilation failed

@@ -7,8 +7,6 @@ import host.pipe
 import host.directory
 import log
 import monitor
-import reader
-import writer
 import expect show *
 
 main:
@@ -48,13 +46,15 @@ with-socat tmp-dir/string [block] --logger/log.Logger:
   stderr-bytes := #[]
   task::
     stdout /pipe.OpenPipe := fork-data[1]
-    while chunk := stdout.read:
+    stdout-reader := stdout.in
+    while chunk := stdout-reader.read:
       print "got stdout chunk: $chunk.to-string"
       logger.debug chunk.to-string.trim
       stdout-bytes += chunk
   task::
     stderr /pipe.OpenPipe := fork-data[2]
-    while chunk := stderr.read:
+    stderr-reader := stderr.in
+    while chunk := stderr-reader.read:
       str := chunk.to-string.trim
       print "got stderr chunk: $chunk.to-string"
       logger.debug str
@@ -87,7 +87,7 @@ run-test tty0/string tty1/string:
 
   2.repeat:
     // With socat the baud rates are only simulated, but we do exercise different code
-    // paths for the '--wait'.
+    // paths for the '--flush'.
     write-done/monitor.Gate := monitor.Gate
     rate := ?
     if it == 0: rate = 9600
@@ -98,15 +98,15 @@ run-test tty0/string tty1/string:
     expect-equals rate port1.baud-rate
     expect-equals rate port2.baud-rate
 
-    reader1 := reader.BufferedReader port1
-    writer1 := writer.Writer port1
+    reader1 := port1.in
+    writer1 := port1.out
 
-    reader2 := reader.BufferedReader port2
-    writer2 := writer.Writer port2
+    reader2 := port2.in
+    writer2 := port2.out
 
     str := "foobar"
     writer1.write str
-    reader2.ensure str.size
+    reader2.ensure-buffered str.size
     expect-equals str reader2.read-string
 
     bytes := ByteArray 100_000: it
@@ -123,7 +123,7 @@ run-test tty0/string tty1/string:
     task::
       written := 0
       while written < bytes.size:
-        written += port1.write bytes[written ..] --wait
+        written += port1.out.try-write bytes[written ..] --flush
       // Use a gate, as the port could be closed before the --wait is done otherwise
       write-done.unlock
 

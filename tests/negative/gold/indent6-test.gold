@@ -4,4 +4,4 @@ tests/negative/indent6-test.toit:6:19: error: Unexpected |
 tests/negative/indent6-test.toit:6:6: error: Unresolved identifier: 'list'
   if list.sorted: |a b| a > b:
      ^~~~
-Compilation failed.
+Compilation failed

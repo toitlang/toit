@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import net
 import net.udp
 import net.tcp
@@ -341,7 +342,7 @@ convert-to-socket-address_ address/List offset/int=0 -> net.SocketAddress:
   port ::= address[offset + 1]
   return net.SocketAddress ip port
 
-class SocketResourceProxy_ extends ServiceResourceProxy:
+class SocketResourceProxy_ extends ServiceResourceProxy with io.CloseableInMixin io.CloseableOutMixin:
   static WRITE-DATA-SIZE-MAX_ /int ::= 2048
 
   constructor client/NetworkServiceClient handle/int:
@@ -356,17 +357,29 @@ class SocketResourceProxy_ extends ServiceResourceProxy:
     return convert-to-socket-address_ (client.socket-peer-address handle_)
 
   read -> ByteArray?:
+    return read_
+
+  read_ -> ByteArray?:
     return (client_ as NetworkServiceClient).socket-read handle_
 
-  write data from=0 to=data.size -> int:
+  write data/io.Data from/int=0 to/int=data.byte-size -> int:
+    return try-write_ data from to
+
+  try-write_ data/io.Data from/int to/int -> int:
     to = min to (from + WRITE-DATA-SIZE-MAX_)
-    return (client_ as NetworkServiceClient).socket-write handle_ data[from..to]
+    return (client_ as NetworkServiceClient).socket-write handle_ (data.byte-slice from  to)
 
   mtu -> int:
     return (client_ as NetworkServiceClient).socket-mtu handle_
 
   close-write:
+    close-writer_
+
+  close-writer_:
     return (client_ as NetworkServiceClient).tcp-close-write handle_
+
+  close-reader_:
+    // TODO(florian): Implement this.
 
 class UdpSocketResourceProxy_ extends SocketResourceProxy_ implements udp.Socket:
   constructor client/NetworkServiceClient handle/int:

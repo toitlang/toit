@@ -8,23 +8,23 @@ import expect show *
 
 // Test different multiline imports.
 // The actual imported declarations don't matter and can be changed.
-import bytes
-  as bytes2
+import io
+  as io2
 
-import bytes show
+import io show
   Buffer
-  BufferConsumer
+  InMixin
 
-import bytes show Buffer
-  BufferConsumer
+import io show Buffer
+  InMixin
 
 // Test exporting on multiple lines.
 export
   Buffer
-  BufferConsumer
+  InMixin
 
-export BufferConsumer
-  BufferConsumer
+export InMixin
+  InMixin
 
 run [b]:
   return b.call

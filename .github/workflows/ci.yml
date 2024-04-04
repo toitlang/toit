@@ -701,6 +701,14 @@ jobs:
             tar x -zf toit-$os.tar.gz -C $os
           done
 
+      - name: Delete the unreleased 'toit' executable
+        # TODO(florian): Remove this once the new 'toit' executable is released.
+        run: |
+          for os in linux macos rpi aarch64; do
+            rm -f $os/toit/bin/toit
+          done
+          rm -f windows/toit/bin/toit.exe
+
       - name: Copy vessels
         run: |
           mkdir -p vessels

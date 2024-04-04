@@ -4,4 +4,4 @@ import .import4-a as foo
 tests/negative/import4-test.toit:7:1: error: Toplevel declaration 'foo'
 foo:
 ^~~
-Compilation failed.
+Compilation failed

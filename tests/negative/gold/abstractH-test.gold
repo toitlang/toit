@@ -22,4 +22,4 @@ mixin M3 extends M2 with M1:
 tests/negative/abstractH-test.toit:6:12: note: Missing implementation for 'foo'
   abstract foo x y=null
            ^~~
-Compilation failed.
+Compilation failed

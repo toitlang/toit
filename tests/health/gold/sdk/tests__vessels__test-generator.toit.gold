@@ -1,0 +1,3 @@
+tests/vessels/test-generator.toit:51:23: warning: Deprecated 'Stream.write'
+    written += stream.write content[written..]
+                      ^~~~~

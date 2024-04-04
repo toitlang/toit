@@ -1,0 +1,30 @@
+cellular/src/modules/ublox/ublox.toit:64:7: error: Missing implementations for interface methods
+class TcpSocket extends Socket_ implements tcp.Socket:
+      ^~~~~~~~~
+<sdk>/net/tcp.toit:25:3: note: Missing implementation for 'in'
+  in -> io.CloseableReader
+  ^~
+<sdk>/net/tcp.toit:26:3: note: Missing implementation for 'out'
+  out -> io.CloseableWriter
+  ^~~
+cellular/src/base/xmodem_1k.toit:42:18: warning: Deprecated 'Port.read'
+      r := uart_.read
+                 ^~~~
+cellular/src/base/xmodem_1k.toit:52:16: warning: Deprecated 'Port.read'
+    r := uart_.read
+               ^~~~
+cellular/src/base/at.toit:69:20: warning: Class 'Buffer' is deprecated
+    buffer := bytes.Buffer
+                   ^
+cellular/src/base/at.toit:71:13: warning: Class 'Writer' is deprecated
+      writer.Writer buffer
+            ^
+cellular/src/base/at.toit:166:21: warning: Class 'BufferedReader' is deprecated
+    reader_ = reader.BufferedReader r
+                    ^
+cellular/src/base/at.toit:167:21: warning: Class 'Writer' is deprecated
+    writer_ = writer.Writer w
+                    ^
+cellular/src/base/xmodem_1k.toit:29:21: warning: Class 'Writer' is deprecated
+    writer_ = writer.Writer uart_
+                    ^

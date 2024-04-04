@@ -5,4 +5,4 @@
 import .import2-f2
 
 export Map
-export Buffer BufferedReader
+export Buffer IpAddress

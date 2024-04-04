@@ -4,4 +4,4 @@ tests/negative/typed-local3-test.toit:9:3: error: Unresolved identifier: 'unreso
 tests/negative/typed-local3-test.toit:7:21: error: Type mismatch. Expected 'int'. Got 'string'
   while local /int? := stop:
                     ^~
-Compilation failed.
+Compilation failed

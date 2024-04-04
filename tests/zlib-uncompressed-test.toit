@@ -13,15 +13,15 @@ main:
   encoder := UncompressedZlibEncoder --no-split-writes
 
   zs := "z" * 0x2020
-  bytes-written := encoder.write zs.to-byte-array
+  bytes-written := encoder.out.try-write zs.to-byte-array
   // Wrote all of it.
   expect-equals zs.size bytes-written
   // Read encoded output, strip 2-byte zlib and 5-byte block header.
-  str := encoder.reader.read[7..].to-string
+  str := encoder.in.read[7..].to-string
   expect-equals zs.size str.size
   expect-equals zs str
-  encoder.close
-  rest := encoder.reader.read
+  encoder.out.close
+  rest := encoder.in.read
   // Expect a 5-byte empty literal section (in order to have a block where the
   // last-block bit is set), followed by the 4 byte checksum.
   expect-equals 9 rest.size

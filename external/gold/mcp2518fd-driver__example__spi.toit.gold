@@ -1,6 +1,51 @@
 <pkg:..>/driver.toit:340:15: warning: Deprecated 'Pin.config'
     interrupt.config --input
               ^~~~~~
+<pkg:..>/driver.toit:409:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG_ENDIAN.put_uint16 buffer_ 0 reg | SPI_WRITE_COMMAND_
+          ^
+<pkg:..>/driver.toit:410:11: warning: Deprecated 'LITTLE-ENDIAN'
+    binary.LITTLE_ENDIAN.put_uint32 buffer_ 2 id
+          ^
+<pkg:..>/driver.toit:411:11: warning: Deprecated 'LITTLE-ENDIAN'
+    binary.LITTLE_ENDIAN.put_uint32 buffer_ 6 flags
+          ^
+<pkg:..>/driver.toit:436:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG_ENDIAN.put_uint16 buffer_ 0 reg | SPI_READ_COMMAND_
+          ^
+<pkg:..>/driver.toit:442:17: warning: Deprecated 'LITTLE-ENDIAN'
+    id := binary.LITTLE_ENDIAN.uint32 buffer_ 2
+                ^
+<pkg:..>/driver.toit:443:20: warning: Deprecated 'LITTLE-ENDIAN'
+    flags := binary.LITTLE_ENDIAN.uint32 buffer_ 6
+                   ^
+<pkg:..>/driver.toit:550:28: warning: Deprecated 'UINT32-MAX'
+    for i := 1; i <= binary.UINT32_MAX; i <<= 1:
+                           ^
+<pkg:..>/driver.toit:561:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG_ENDIAN.put_uint16 buffer_ 0 reg | SPI_READ_COMMAND_
+          ^
+<pkg:..>/driver.toit:566:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG_ENDIAN.put_uint16 buffer_ 0 reg | SPI_READ_COMMAND_
+          ^
+<pkg:..>/driver.toit:568:18: warning: Deprecated 'LITTLE-ENDIAN'
+    return binary.LITTLE_ENDIAN.uint16 buffer_ 2
+                 ^
+<pkg:..>/driver.toit:571:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG_ENDIAN.put_uint16 buffer_ 0 reg | SPI_READ_COMMAND_
+          ^
+<pkg:..>/driver.toit:573:18: warning: Deprecated 'LITTLE-ENDIAN'
+    return binary.LITTLE_ENDIAN.uint32 buffer_ 2
+                 ^
+<pkg:..>/driver.toit:577:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG_ENDIAN.put_uint16 buffer_ 0 reg | SPI_WRITE_COMMAND_
+          ^
+<pkg:..>/driver.toit:582:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG_ENDIAN.put_uint16 buffer_ 0 reg | SPI_WRITE_COMMAND_
+          ^
+<pkg:..>/driver.toit:583:11: warning: Deprecated 'LITTLE-ENDIAN'
+    binary.LITTLE_ENDIAN.put_uint32 buffer_ 2 value
+          ^
 mcp2518fd-driver/example/spi.toit:27:9: warning: Deprecated 'Pin.config'
     INT.config --input
         ^~~~~~

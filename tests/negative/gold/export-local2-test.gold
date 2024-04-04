@@ -7,4 +7,4 @@ foo:
 tests/negative/export-local2-test.toit:7:8: error: Can't export local 'foo'
 export foo
        ^~~
-Compilation failed.
+Compilation failed

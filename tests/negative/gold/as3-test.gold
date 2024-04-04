@@ -10,4 +10,4 @@ tests/negative/as3-test.toit:21:12: error: Type mismatch. Expected 'I2'. Got 'B'
 tests/negative/as3-test.toit:22:21: error: Type mismatch. Expected 'I2'. Got 'C'
   wants-i2 static-b as C
                     ^~
-Compilation failed.
+Compilation failed

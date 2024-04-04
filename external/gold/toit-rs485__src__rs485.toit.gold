@@ -1,0 +1,6 @@
+toit-rs485/src/rs485.toit:150:18: warning: Deprecated 'Port.read'
+    return port_.read
+                 ^~~~
+toit-rs485/src/rs485.toit:156:18: warning: Deprecated 'Port.write'
+    return port_.write data from to --wait
+                 ^~~~~

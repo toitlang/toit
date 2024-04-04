@@ -38,7 +38,7 @@ main:
   }
   data := #[]
   while true:
-    chunk := port.read
+    chunk := port.in.read
     data += chunk
     print "received: $chunk.to-string-non-throwing"
     str := data.to-string-non-throwing

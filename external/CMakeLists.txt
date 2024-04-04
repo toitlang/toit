@@ -89,6 +89,7 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-watchdog
     https://github.com/toitware/toit-1-wire
     https://github.com/toitware/ublox-gnss-driver
+    https://github.com/toitware/ubx-message
 )
 
 set(DOWNLOADS_DIR "${CMAKE_CURRENT_LIST_DIR}/downloads")
@@ -294,7 +295,7 @@ foreach(FILE ${HEALTH_SOURCES})
 
   add_health_test("${FILE}"
     RELATIVE_TO "${DOWNLOADS_DIR}"
-    LIB_DIR "${TOIT_SDK_SOURCE_DIR}"
+    LIB_DIR "${TOIT_SDK_SOURCE_DIR}/lib"
     GOLD_DIR "${EXTERNAL_GOLD_DIR}"
     CONFIGURATION external_health
     SHOW_PACKAGE_WARNINGS OFF
