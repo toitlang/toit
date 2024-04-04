@@ -187,7 +187,7 @@ class ServiceClient:
         discovered = result[0]
         resource := result[1]
         channel = monitor.Channel 1
-        proxy = DiscoveryProxy this channel resource
+        proxy = DiscoveryProxy (_client_ as ServiceDiscoveryServiceClient) channel resource
     else:
       // Get a list of current services, but don't wait for new ones.
       result := _client_.discover selector.uuid --no-wait
