@@ -236,7 +236,12 @@ class ServiceClient:
         process-block.call discovered i
 
     if candidate-index:
-      found-block.call discovered  // Returns.
+      pid := discovered[candidate-index]
+      id := discovered[candidate-index + 1]
+      if proxy:
+        proxy.close
+        proxy = null
+      return _open_ selector --pid=pid --id=id
 
     if not timeout:
       return if-absent.call
