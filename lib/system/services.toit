@@ -172,8 +172,11 @@ class ServiceClient:
 
   constructor .selector:
 
-  open --timeout/Duration?=DEFAULT-OPEN-TIMEOUT -> ServiceClient:
+  open --timeout/Duration? -> ServiceClient:
     return open --timeout=timeout --if-absent=: throw "Cannot find service"
+
+  open -> ServiceClient:
+    return open --timeout=DEFAULT-OPEN-TIMEOUT --if-absent=: throw "Cannot find service"
 
   open --timeout/Duration?=null [--if-absent] -> any:
     discovered/List? := null
@@ -241,12 +244,15 @@ class ServiceClient:
     // We got back a proxy for a resource, which will notify us when the
     // service we want has started up.
     try:
-      with-timeout timeout:
-        while true:
-          discovered = channel.receive
-          process-block.call discovered 0
-          if candidate-index:
-            found-block.call discovered  // Returns.
+      error := catch:
+        with-timeout timeout:
+          while true:
+            discovered = channel.receive
+            process-block.call discovered 0
+            if candidate-index:
+              found-block.call discovered  // Returns.
+      if error == "DEADLINE_EXCEEDED": throw "Cannot find service"
+      throw error
     finally:
       if proxy: proxy.close
     unreachable
