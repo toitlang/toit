@@ -89,6 +89,7 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-watchdog
     https://github.com/toitware/toit-1-wire
     https://github.com/toitware/ublox-gnss-driver
+    https://github.com/toitware/ubx-message
 )
 
 set(DOWNLOADS_DIR "${CMAKE_CURRENT_LIST_DIR}/downloads")
