@@ -99,11 +99,11 @@ class LoggingIO extends Object with io.InMixin io.CloseableOutMixin:
 
   read_:
     msg := wrapped_.read
-    if msg != null: log-writer_.write msg
+    if msg != null: log-writer_.out.write msg
     return msg
 
   try-write_ data from=0 to=data.size -> int:
-    log-writer_.write data from to
+    log-writer_.out.write data from to
     return wrapped_.write data from to
 
   close-writer_:
@@ -112,7 +112,7 @@ class LoggingIO extends Object with io.InMixin io.CloseableOutMixin:
 
 log-to-file msg:
   log-file := file.Stream "/tmp/lsp.log" (file.WRONLY | file.CREAT | file.APPEND) 0x1ff
-  log-file.write "$Time.monotonic-us: $msg\n"
+  log-file.out.write "$Time.monotonic-us: $msg\n"
 
 /**
 A binary search to find a $needle in a $list of intervals.

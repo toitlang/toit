@@ -1,4 +1,4 @@
-sdk: ^2.0.0-alpha.128
+sdk: ^2.0.0-alpha.144
 prefixes:
   ar: pkg-ar
   cli: pkg-cli
@@ -30,8 +30,8 @@ packages:
   pkg-host:
     url: github.com/toitlang/pkg-host
     name: host
-    version: 1.14.1
-    hash: da453fb59f7ef3d37f39e4b438495f7c16614733
+    version: 1.15.0
+    hash: 2588faa0c7553eca9a85cb6f829f3df41d9466f2
   toit-partition-table-esp32:
     url: github.com/toitware/toit-partition-table-esp32
     name: partition-table

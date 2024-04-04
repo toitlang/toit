@@ -7,12 +7,6 @@
 <pkg:toit-partition-table-esp32>/partition_table.toit:129:5: warning: Deprecated 'LITTLE-ENDIAN'
     LITTLE-ENDIAN.put-uint32 result 28 flags
     ^~~~~~~~~~~~~
-<pkg:pkg-host>/file.toit:190:13: warning: Class 'Writer' is deprecated
-  writer := Writer stream
-            ^~~~~~
-<pkg:pkg-host>/file.toit:481:17: warning: Class 'Writer' is deprecated
-  out-writer := Writer out-stream
-                ^~~~~~
 <pkg:pkg-ar>/ar.toit:47:15: warning: Class 'Writer' is deprecated
     writer_ = Writer writer
               ^~~~~~
@@ -22,15 +16,6 @@
 <pkg:pkg-ar>/ar.toit:162:27: warning: Class 'Reader' is deprecated
     return ArReader (bytes.Reader buffer)
                           ^
-<pkg:pkg-host>/pipe.toit:231:30: warning: Class 'Buffer' is deprecated
-  accumulator := bytes.Buffer.with-initial-size (path.size + 4 + (path.size >> 2))
-                             ^
-<pkg:pkg-host>/pipe.toit:361:19: warning: Class 'BufferedReader' is deprecated
-  reader := reader.BufferedReader pipe-ends
-                  ^
-<pkg:pkg-host>/pipe.toit:480:13: warning: Class 'Writer' is deprecated
-  writer := Writer pipe
-            ^~~~~~
 <pkg:toit-partition-table-esp32>/partition_table.toit:117:18: warning: Deprecated 'LITTLE-ENDIAN'
         --offset=LITTLE-ENDIAN.uint32 bytes 4
                  ^~~~~~~~~~~~~

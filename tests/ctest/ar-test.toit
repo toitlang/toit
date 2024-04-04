@@ -50,7 +50,8 @@ extract archive-file contained-file -> ByteArray:
   // 'p' prints the $contained_file onto stdout.
   from := pipe.from "ar" "p" archive-file contained-file
   result := ByteArray 0
-  while next := from.read:
+  reader := from.in
+  while next := reader.read:
     result += next
   from.close
   return result

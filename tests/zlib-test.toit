@@ -44,7 +44,7 @@ do-test chunk-size chunk-offset str/string zlib-expected/ByteArray uncompressed 
     // Test output against expected compressed data.
     if not zlib-expected:
       fd := file.Stream.for-write (gzip ? "out.gz" : "out.z")
-      fd.write accumulator.backing-array 0 accumulator.size
+      fd.out.write accumulator.backing-array 0 accumulator.size
       fd.close
       print accumulator.bytes
       exit 1
@@ -56,7 +56,7 @@ do-test chunk-size chunk-offset str/string zlib-expected/ByteArray uncompressed 
       if fail:
         print_ accumulator.bytes.stringify
         fd := file.Stream.for-write "out.z"
-        fd.write accumulator.backing-array 0 accumulator.size
+        fd.out.write accumulator.backing-array 0 accumulator.size
         fd.close
       expect (not fail)
   else:
