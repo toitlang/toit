@@ -1,12 +1,14 @@
 // Copyright (C) 2018 Toitware ApS.
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
-import expect show *
 
+import expect show *
 
 import font show *
 import bitmap show *
-import binary show LITTLE-ENDIAN BIG-ENDIAN byte-swap-16 byte-swap-32
+import io show LITTLE-ENDIAN BIG-ENDIAN ByteOrder
+
+import .io-data
 
 get-test-font byte-array:
   return Font [byte-array]
@@ -21,6 +23,7 @@ main:
   blit-test
   bitmap-test
   blur-test
+  io-data-test
 
 bitmap-primitives-present := true
 bytemap-primitives-present := true
@@ -51,12 +54,12 @@ simple-test:
       BIG-ENDIAN.put-uint16 ba
         it * 2
         314 * it
-    byte-swap-16 ba[0..24]
+    ByteOrder.swap-16 ba[0..24]
     12.repeat:
       read := LITTLE-ENDIAN.uint16 ba it * 2
       expect-equals 314 * it read
     for i := 0; i < 24; i += 4:
-      byte-swap-16 ba[i..i + 4]
+      ByteOrder.swap-16 ba[i..i + 4]
     12.repeat:
       read := BIG-ENDIAN.uint16 ba it * 2
       expect-equals 314 * it read
@@ -65,12 +68,12 @@ simple-test:
       LITTLE-ENDIAN.put-uint32 ba
         it * 4
         3141592 * it
-    byte-swap-32 ba
+    ByteOrder.swap-32 ba
     6.repeat:
       read := BIG-ENDIAN.uint32 ba it * 4
       expect-equals 3141592 * it read
     for i := 0; i < 24; i += 4:
-      byte-swap-32 ba[i..i + 4]
+      ByteOrder.swap-32 ba[i..i + 4]
     6.repeat:
       read := LITTLE-ENDIAN.uint32 ba it * 4
       expect-equals 3141592 * it read
@@ -764,3 +767,48 @@ bytemap-test -> none:
       """
 
   expect-equals EXPECTED canvas.to-string
+
+
+io-data-test:
+  if not bitmap-primitives-present: return
+
+  W ::= 10
+  H ::= 6
+  canvas := ByteArray (W * H)
+
+  alien := ""
+      + "__######__"
+      + "__#O##O#__"
+      + "_########_"
+      + "_########_"
+      + "__#_#__#__"
+      + "__#_#__#__"
+
+  fake-alien := FakeData alien.to-byte-array
+
+  ALIEN-WIDTH := 10
+
+  expect-equals 0 canvas[0]
+
+  bytemap-zap canvas ' '  // Set background to test transparency.
+
+  // Plain copy.
+  // The x and y coordinates are the top left corner of the top left pixel of
+  // the alien.
+  bitmap-draw-bytemap 0 0  // x, y.
+      -1   // No transparency.
+      0    // No rotation.
+      fake-alien
+      ALIEN-WIDTH
+      #[]  // No palette.
+      canvas
+      W
+
+  expect-equals alien canvas.to-string
+
+  ba := #[1, 2, 3, 4]
+
+  // Check mask works.
+  blit (FakeData ba) ba 4 --mask=0xfe
+  ba.size.repeat:
+    expect-equals [0, 2, 2, 4][it] ba[it]

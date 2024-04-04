@@ -7,7 +7,6 @@ import expect show *
 import encoding.yaml
 import fixed_point show FixedPoint
 import math
-import reader show Reader BufferedReader
 
 main:
   test-stringify
@@ -554,20 +553,3 @@ test-value-converter:
   expect result["int"] is int
   expect result["float-as-string"] is string
   expect result["int-as-string"] is string
-
-class TestReader implements Reader:
-  pos := 0
-  list := ?
-  throw-on-last-part := false
-
-  constructor .list:
-    list.size.repeat:
-      if list[it] is not ByteArray:
-        list[it] = list[it].to-byte-array
-
-  read:
-    if pos == list.size: return null
-    if throw-on-last-part and pos == list.size - 1:
-      throw "READ_ERROR"
-    return list[pos++]
-

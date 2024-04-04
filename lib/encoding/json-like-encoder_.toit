@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 import bitmap
-import binary show LITTLE-ENDIAN
+import io show LITTLE-ENDIAN
 
 INITIAL-BUFFER-SIZE_ ::= 64
 

@@ -13,12 +13,10 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import binary show LITTLE-ENDIAN
 import bitmap
-import bytes
 import crypto.sha256 as crypto
-import writer
-import reader
+import io
+import io show LITTLE-ENDIAN
 import system
 import system show platform
 import uuid
@@ -99,7 +97,7 @@ read-file path/string [block]:
     print "Failed to open '$path' for reading ($exception)."
     exit 1
   try:
-    block.call stream
+    block.call (io.Reader.adapt stream)
   finally:
     stream.close
 
@@ -110,14 +108,14 @@ write-file path/string [block] -> none:
     print "Failed to open '$path' for writing ($exception)."
     exit 1
   try:
-    writer := writer.Writer stream
+    writer := io.Writer.adapt stream
     block.call writer
   finally:
     stream.close
 
 write-file-or-print --path/string? output/string -> none:
   if path:
-    write-file path: | writer/writer.Writer |
+    write-file path: | writer/io.Writer |
       writer.write output
       writer.write "\n"
   else:
@@ -263,7 +261,7 @@ read-assets path/string? -> ByteArray?:
   unreachable
 
 decode-image data/ByteArray -> ImageHeader:
-  out := bytes.Buffer
+  out := io.Buffer
   output := BinaryRelocatedOutput out 0x12345678
   output.write WORD-SIZE data
   decoded := out.bytes
@@ -901,7 +899,7 @@ extract-binary-content -> ByteArray
   index := 0
   containers.do: | container/ContainerEntry |
     relocatable := container.relocatable
-    out := bytes.Buffer
+    out := io.Buffer
     output := BinaryRelocatedOutput out relocation-base
     output.write WORD-SIZE relocatable
     image-bits := out.bytes
@@ -1070,7 +1068,7 @@ class Envelope:
   constructor.load .path/string:
     version/int? := null
     sdk-version = ""
-    read-file path: | reader/reader.Reader |
+    read-file path: | reader/io.Reader |
       ar := ar.ArReader reader
       while file := ar.next:
         if file.name == INFO-ENTRY-NAME:
@@ -1085,7 +1083,7 @@ class Envelope:
     version_ = ENVELOPE-FORMAT-VERSION
 
   store path/string -> none:
-    write-file path: | writer/writer.Writer |
+    write-file path: | writer/io.Writer |
       ar := ar.ArWriter writer
       // Add the envelope info entry.
       info := ByteArray INFO-ENTRY-SIZE

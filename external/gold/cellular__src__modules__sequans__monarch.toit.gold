@@ -1,0 +1,21 @@
+cellular/src/modules/sequans/sequans.toit:74:7: error: Missing implementations for interface methods
+class TcpSocket extends Socket_ implements tcp.Socket:
+      ^~~~~~~~~
+<sdk>/net/tcp.toit:25:3: note: Missing implementation for 'in'
+  in -> io.CloseableReader
+  ^~
+<sdk>/net/tcp.toit:26:3: note: Missing implementation for 'out'
+  out -> io.CloseableWriter
+  ^~~
+cellular/src/base/at.toit:69:20: warning: Class 'Buffer' is deprecated
+    buffer := bytes.Buffer
+                   ^
+cellular/src/base/at.toit:71:13: warning: Class 'Writer' is deprecated
+      writer.Writer buffer
+            ^
+cellular/src/base/at.toit:166:21: warning: Class 'BufferedReader' is deprecated
+    reader_ = reader.BufferedReader r
+                    ^
+cellular/src/base/at.toit:167:21: warning: Class 'Writer' is deprecated
+    writer_ = writer.Writer w
+                    ^

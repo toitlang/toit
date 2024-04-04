@@ -1,0 +1,6 @@
+<pkg:..>/driver.toit:101:57: warning: Deprecated 'UINT16-MAX'
+          return -45.0 + (175 * value).to_float / binary.UINT16_MAX
+                                                        ^
+<pkg:..>/driver.toit:109:18: warning: Deprecated 'BIG-ENDIAN'
+    return binary.BIG_ENDIAN.uint16 data 0
+                 ^

@@ -1,0 +1,9 @@
+pkg-ar/src/ar.toit:47:15: warning: Class 'Writer' is deprecated
+    writer_ = Writer writer
+              ^~~~~~
+pkg-ar/src/ar.toit:158:15: warning: Class 'BufferedReader' is deprecated
+    reader_ = BufferedReader reader
+              ^~~~~~~~~~~~~~
+pkg-ar/src/ar.toit:162:27: warning: Class 'Reader' is deprecated
+    return ArReader (bytes.Reader buffer)
+                          ^

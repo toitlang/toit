@@ -1,0 +1,195 @@
+pkg-modbus/src/tcp.toit:44:29: warning: Deprecated 'BIG-ENDIAN'
+    transaction-id := binary.BIG-ENDIAN.uint16 header 0
+                            ^
+pkg-modbus/src/tcp.toit:45:21: warning: Deprecated 'BIG-ENDIAN'
+    length := binary.BIG-ENDIAN.uint16 header 4
+                    ^
+pkg-modbus/src/tcp.toit:46:22: warning: Deprecated 'BIG-ENDIAN'
+    unit-id := binary.BIG-ENDIAN.uint8 header 6
+                     ^
+pkg-modbus/src/tcp.toit:47:28: warning: Deprecated 'BIG-ENDIAN'
+    function-code := binary.BIG-ENDIAN.uint8 header 7
+                           ^
+pkg-modbus/src/tcp.toit:56:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 bytes 0 frame.transaction-id
+          ^
+pkg-modbus/src/tcp.toit:57:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 bytes 4 frame.data.size + 2
+          ^
+pkg-modbus/src/tcp.toit:58:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint8 bytes 6 frame.unit-id
+          ^
+pkg-modbus/src/tcp.toit:59:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint8 bytes 7 frame.function-code
+          ^
+pkg-modbus/src/station.toit:166:36: warning: Deprecated 'BIG-ENDIAN'
+    (byte-count / 2).repeat: binary.BIG-ENDIAN.put-uint16 bytes it * 2 registers[it]
+                                   ^
+pkg-modbus/src/station.toit:187:13: warning: Deprecated 'BIG-ENDIAN'
+      binary.BIG-ENDIAN.int64 bytes 0
+            ^
+pkg-modbus/src/station.toit:217:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 buffer 0 registers[0]
+          ^
+pkg-modbus/src/station.toit:218:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 buffer 2 registers[1]
+          ^
+pkg-modbus/src/station.toit:219:18: warning: Deprecated 'BIG-ENDIAN'
+    return binary.BIG-ENDIAN.uint32 buffer 0
+                 ^
+pkg-modbus/src/station.toit:229:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 buffer 0 registers[0]
+          ^
+pkg-modbus/src/station.toit:230:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 buffer 2 registers[1]
+          ^
+pkg-modbus/src/station.toit:231:18: warning: Deprecated 'BIG-ENDIAN'
+    return binary.BIG-ENDIAN.int32 buffer 0
+                 ^
+pkg-modbus/src/station.toit:350:52: warning: Deprecated 'BIG-ENDIAN'
+    (value.size / 2).repeat: registers[it] = binary.BIG-ENDIAN.uint16 value it * 2
+                                                   ^
+pkg-modbus/src/station.toit:377:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-float64 buffer 0 value
+          ^
+pkg-modbus/src/station.toit:388:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-int32 buffer 0 value
+          ^
+pkg-modbus/src/station.toit:389:25: warning: Deprecated 'BIG-ENDIAN'
+    registers := [binary.BIG-ENDIAN.uint16 buffer 0, binary.BIG-ENDIAN.uint16 buffer 2]
+                        ^
+pkg-modbus/src/station.toit:389:60: warning: Deprecated 'BIG-ENDIAN'
+    registers := [binary.BIG-ENDIAN.uint16 buffer 0, binary.BIG-ENDIAN.uint16 buffer 2]
+                                                           ^
+pkg-modbus/src/protocol.toit:321:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 0 read-address
+          ^
+pkg-modbus/src/protocol.toit:322:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 2 read-register-count
+          ^
+pkg-modbus/src/protocol.toit:323:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 4 write-address
+          ^
+pkg-modbus/src/protocol.toit:324:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 6 write-registers.size
+          ^
+pkg-modbus/src/protocol.toit:325:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint8 data 8 write-registers.size * 2
+          ^
+pkg-modbus/src/protocol.toit:327:13: warning: Deprecated 'BIG-ENDIAN'
+      binary.BIG-ENDIAN.put-uint16 data (9 + it * 2) write-registers[it]
+            ^
+pkg-modbus/src/protocol.toit:290:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 0 address
+          ^
+pkg-modbus/src/protocol.toit:291:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 2 and-mask
+          ^
+pkg-modbus/src/protocol.toit:292:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 4 or-mask
+          ^
+pkg-modbus/src/protocol.toit:233:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 0 address
+          ^
+pkg-modbus/src/protocol.toit:234:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 2 register-count
+          ^
+pkg-modbus/src/protocol.toit:202:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 0 address
+          ^
+pkg-modbus/src/protocol.toit:203:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 2 registers.size
+          ^
+pkg-modbus/src/protocol.toit:204:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint8 data 4 registers.size * 2
+          ^
+pkg-modbus/src/protocol.toit:206:13: warning: Deprecated 'BIG-ENDIAN'
+      binary.BIG-ENDIAN.put-uint16 data (5 + it * 2) registers[it]
+            ^
+pkg-modbus/src/protocol.toit:168:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 0 address
+          ^
+pkg-modbus/src/protocol.toit:169:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 2 count
+          ^
+pkg-modbus/src/protocol.toit:140:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 0 address
+          ^
+pkg-modbus/src/protocol.toit:141:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 2 value
+          ^
+pkg-modbus/src/protocol.toit:114:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 0 address
+          ^
+pkg-modbus/src/protocol.toit:115:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 2 (value ? 0xFF00 : 0)
+          ^
+pkg-modbus/src/protocol.toit:88:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 0 address
+          ^
+pkg-modbus/src/protocol.toit:89:11: warning: Deprecated 'BIG-ENDIAN'
+    binary.BIG-ENDIAN.put-uint16 data 2 bit-count
+          ^
+pkg-modbus/src/protocol.toit:101:25: warning: Deprecated 'BIG-ENDIAN'
+    byte-count := binary.BIG-ENDIAN.uint8 frame.data 0
+                        ^
+pkg-modbus/src/protocol.toit:127:21: warning: Deprecated 'BIG-ENDIAN'
+    address = binary.BIG-ENDIAN.uint16 frame.data 0
+                    ^
+pkg-modbus/src/protocol.toit:128:20: warning: Deprecated 'BIG-ENDIAN'
+    value = (binary.BIG-ENDIAN.uint16 frame.data 2) == 0xFF00
+                   ^
+pkg-modbus/src/protocol.toit:153:21: warning: Deprecated 'BIG-ENDIAN'
+    address = binary.BIG-ENDIAN.uint16 frame.data 0
+                    ^
+pkg-modbus/src/protocol.toit:154:19: warning: Deprecated 'BIG-ENDIAN'
+    value = binary.BIG-ENDIAN.uint16 frame.data 2
+                  ^
+pkg-modbus/src/protocol.toit:189:21: warning: Deprecated 'BIG-ENDIAN'
+    address = binary.BIG-ENDIAN.uint16 frame.data 0
+                    ^
+pkg-modbus/src/protocol.toit:190:19: warning: Deprecated 'BIG-ENDIAN'
+    count = binary.BIG-ENDIAN.uint16 frame.data 2
+                  ^
+pkg-modbus/src/protocol.toit:219:27: warning: Deprecated 'BIG-ENDIAN'
+    first-address = binary.BIG-ENDIAN.uint16 frame.data 0
+                          ^
+pkg-modbus/src/protocol.toit:220:21: warning: Deprecated 'BIG-ENDIAN'
+    changes = binary.BIG-ENDIAN.uint16 frame.data 2
+                    ^
+pkg-modbus/src/protocol.toit:246:25: warning: Deprecated 'BIG-ENDIAN'
+    byte-count := binary.BIG-ENDIAN.uint8 frame.data 0
+                        ^
+pkg-modbus/src/protocol.toit:248:13: warning: Deprecated 'BIG-ENDIAN'
+      binary.BIG-ENDIAN.uint16 frame.data (1 + 2 * it)
+            ^
+pkg-modbus/src/protocol.toit:268:25: warning: Deprecated 'BIG-ENDIAN'
+    byte-count := binary.BIG-ENDIAN.uint8 frame.data 0
+                        ^
+pkg-modbus/src/protocol.toit:305:21: warning: Deprecated 'BIG-ENDIAN'
+    address = binary.BIG-ENDIAN.uint16 frame.data 0
+                    ^
+pkg-modbus/src/protocol.toit:306:22: warning: Deprecated 'BIG-ENDIAN'
+    and-mask = binary.BIG-ENDIAN.uint16 frame.data 2
+                     ^
+pkg-modbus/src/protocol.toit:307:21: warning: Deprecated 'BIG-ENDIAN'
+    or-mask = binary.BIG-ENDIAN.uint16 frame.data 4
+                    ^
+pkg-modbus/src/protocol.toit:338:25: warning: Deprecated 'BIG-ENDIAN'
+    byte-count := binary.BIG-ENDIAN.uint8 frame.data 0
+                        ^
+pkg-modbus/src/protocol.toit:340:13: warning: Deprecated 'BIG-ENDIAN'
+      binary.BIG-ENDIAN.uint16 frame.data (1 + 2 * it)
+            ^
+pkg-modbus/src/tcp.toit:21:21: warning: Class 'BufferedReader' is deprecated
+    reader_ = reader.BufferedReader socket_
+                    ^
+pkg-modbus/src/tcp.toit:22:21: warning: Class 'Writer' is deprecated
+    writer_ = writer.Writer socket_
+                    ^
+pkg-modbus/src/rs485.toit:26:21: warning: Class 'BufferedReader' is deprecated
+    reader_ = reader.BufferedReader rs485_
+                    ^
+pkg-modbus/src/rs485.toit:27:21: warning: Class 'Writer' is deprecated
+    writer_ = writer.Writer rs485_
+                    ^

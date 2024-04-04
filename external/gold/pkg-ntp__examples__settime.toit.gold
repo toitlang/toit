@@ -1,3 +1,15 @@
+<pkg:..>/ntp.toit:114:25: warning: Deprecated 'BIG-ENDIAN'
+  marker -> int: return BIG_ENDIAN.int64 bytes 24         // Stored in incoming originate timestamp field
+                        ^~~~~~~~~~
+<pkg:..>/ntp.toit:115:22: warning: Deprecated 'BIG-ENDIAN'
+  marker= value/int: BIG_ENDIAN.put_int64 bytes 40 value  // Stored in outgoing transmit timestamp field.
+                     ^~~~~~~~~~
+<pkg:..>/ntp.toit:119:18: warning: Deprecated 'BIG-ENDIAN'
+    seconds ::= (BIG_ENDIAN.uint32 bytes offset) - TIME_SECONDS_ADJUSTMENT
+                 ^~~~~~~~~~
+<pkg:..>/ntp.toit:120:13: warning: Deprecated 'BIG-ENDIAN'
+    ns ::= (BIG_ENDIAN.uint32 bytes offset + 4) * Duration.NANOSECONDS_PER_SECOND / (1 << 32)
+            ^~~~~~~~~~
 pkg-ntp/examples/settime.toit:14:17: warning: Deprecated constructor 'Time.from-string'
   if now < (Time.from_string "2022-01-10T00:00:00Z"):
                 ^

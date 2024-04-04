@@ -1,0 +1,6 @@
+<pkg:..>/driver.toit:133:21: warning: Class 'BufferedReader' is deprecated
+    reader_ = reader.BufferedReader raw_reader_
+                    ^
+<pkg:..>/driver.toit:134:21: warning: Class 'Writer' is deprecated
+    writer_ = writer.Writer raw_writer
+                    ^

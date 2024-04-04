@@ -6,7 +6,9 @@ import expect show *
 
 import .tcp
 import monitor show *
-import writer show *
+import net.tcp show Socket
+
+import .io-data
 
 expect-error name [code]:
   exception := "$(catch code)"
@@ -21,7 +23,9 @@ main:
   connect-error-test
   blocking-send-test
   already-in-use-test
+  io-data-test
   print "done"
+
 connect-error-test:
   // Port 47 is reserved/unassigned.
   socket := TcpSocket
@@ -52,28 +56,51 @@ blocking-send-test:
   server := TcpServerSocket
   server.listen "" 0
   task:: sleepy-reader server.local-address.port
-  socket := server.accept
-  writer := Writer socket
+  socket/Socket := server.accept
+  writer := socket.out
   100.repeat:
     writer.write ""
     writer.write "Message for sleepy reader $it"
-  socket.close-write
-  while socket.read != null:
+  writer.close
+  socket.in.drain
   socket.close
   server.close
 
-sleepy-reader port:
+io-data-test:
+  ITERATIONS ::= 500
+  2.repeat: | iteration |
+    server := TcpServerSocket
+    server.listen "" 0
+    task:: sleepy-reader server.local-address.port --iterations=ITERATIONS
+    socket/Socket := server.accept
+    writer := socket.out
+    if iteration == 0:
+      ITERATIONS.repeat:
+        writer.write (FakeData "")
+        writer.write (FakeData "Message for sleepy reader $it")
+    else:
+      data := ""
+      ITERATIONS.repeat:
+        data += "Message for sleepy reader $it"
+      writer.write (FakeData data)
+    writer.close
+    socket.in.drain
+    socket.close
+    server.close
+
+sleepy-reader port --iterations/int=100:
   socket := TcpSocket
   socket.connect "localhost" port
   done := false
   index := 0
   str := ""
   waited := false
+  reader := socket.in
   while not done:
     if index > 10 and not waited:
       waited = true
       sleep --ms=1000
-    chunk := socket.read
+    chunk := reader.read
     if chunk == null:
       done = true
     else:
@@ -85,5 +112,5 @@ sleepy-reader port:
         expected = "Message for sleepy reader $index"
       expect str.size < expected.size
   print "End at $index"
-  expect-equals index 100
-  socket.close-write
+  expect-equals iterations index
+  socket.out.close
