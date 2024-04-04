@@ -3,13 +3,7 @@ main tests/type_propagation/time-test.toit
   1[020] - load literal counter = 
   3[015] - load local 1
   4[058] - invoke virtual stringify // [{LargeInteger_|SmallInteger_}] -> {String_}
-<<<<<<< HEAD
-  8[048] - as class StringSlice_(16 - 18) // {True_}
-||||||| 8b120b33
-  8[048] - as class StringSlice_(14 - 16) // {True_}
-=======
-  8[048] - as class StringSlice_(15 - 17) // {True_}
->>>>>>> origin/master
+  8[048] - as class StringSlice_(17 - 19) // {True_}
  10[073] - invoke add // [{String_}, {String_}] -> {String_}
  11[053] - invoke static print <sdk>/core/print.toit // [{String_}] -> {Null_}
  14[041] - pop 1
