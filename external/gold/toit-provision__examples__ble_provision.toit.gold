@@ -1,3 +1,0 @@
-<pkg:..>/provision.toit:455:18: warning: Class 'Buffer' is deprecated
-  buffer := bytes.Buffer
-                 ^

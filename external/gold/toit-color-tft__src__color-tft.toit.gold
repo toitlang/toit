@@ -1,6 +1,0 @@
-toit-color-tft/src/color-tft.toit:206:11: warning: Deprecated 'BIG-ENDIAN'
-    binary.BIG-ENDIAN.put-uint16 buffer_ 0 from
-          ^
-toit-color-tft/src/color-tft.toit:207:11: warning: Deprecated 'BIG-ENDIAN'
-    binary.BIG-ENDIAN.put-uint16 buffer_ 2 to
-          ^
