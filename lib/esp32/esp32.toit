@@ -60,10 +60,20 @@ total-deep-sleep-time -> int:
   #primitive.esp32.total-deep-sleep-time
 
 /**
-Sets the ESP32 to wake up from deep sleep if the GPIO pins in pin_mask matches the mode.
+Sets the ESP32 to wake up from deep sleep if the GPIO pins in $pin_mask
+  matches the mode.
+
 If $on-any-high is true, the ESP32 will wake up if any pin in the mask is high.
-If $on-any-high is false, the ESP32 will wake up if all pins in the mask are low.
-Only the following GPIO pins can be used: 0,2,4,12-15,25-27,32-39.
+If $on-any-high is false, then the behavior depends on the chip. An ESP32 will
+  wake up if *all* pins in the mask are low. All other chips wake up if *any* pin in
+  the mask is low.
+
+The following GPIO pins can be used:
+- ESP32: 0, 2, 4, 12-15, 25-27, 32-39
+- ESP32-S2: 0-21
+- ESP32-S3: 0-21
+
+Support for the ESP32-C3 is not yet implemented.
 */
 enable-external-wakeup pin-mask/int on-any-high/bool -> none:
   #primitive.esp32.enable-external-wakeup
