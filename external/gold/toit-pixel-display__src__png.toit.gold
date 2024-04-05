@@ -1,3 +1,0 @@
-toit-pixel-display/src/true-color.toit:145:55: warning: Deprecated 'BIG-ENDIAN'
-        rectangle x y --w=source-width --h=h --color=(BIG-ENDIAN.uint24 palette 0)
-                                                      ^~~~~~~~~~

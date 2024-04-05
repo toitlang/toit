@@ -1,6 +1,0 @@
-pkg-modbus/src/rs485.toit:26:21: warning: Class 'BufferedReader' is deprecated
-    reader_ = reader.BufferedReader rs485_
-                    ^
-pkg-modbus/src/rs485.toit:27:21: warning: Class 'Writer' is deprecated
-    writer_ = writer.Writer rs485_
-                    ^
