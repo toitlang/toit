@@ -214,17 +214,10 @@ class ServiceClient:
           candidate-priority = priority
         else if priority < candidate-priority:
           // All remaining candidates will have a lower priority.
-          pid := discovered[candidate-index]
-          id := discovered[candidate-index + 1]
-          if proxy:
-            proxy.close
-            proxy = null
-          return _open_ selector --pid=pid --id=id
+          return result_ discovered candidate-index selector proxy
         else if priority == candidate-priority:
           // Found multiple candidates with the same priority.
-          if proxy:
-            proxy.close
-            proxy = null
+          if proxy: proxy.close
           throw "Cannot disambiguate"
 
     if discovered:
@@ -232,12 +225,7 @@ class ServiceClient:
         process-block.call discovered i
 
     if candidate-index:
-      pid := discovered[candidate-index]
-      id := discovered[candidate-index + 1]
-      if proxy:
-        proxy.close
-        proxy = null
-      return _open_ selector --pid=pid --id=id
+      return result_ discovered candidate-index selector proxy
 
     if not timeout:
       return if-absent.call
@@ -251,17 +239,19 @@ class ServiceClient:
             discovered = channel.receive
             process-block.call discovered 0
             if candidate-index:
-              pid := discovered[candidate-index]
-              id := discovered[candidate-index + 1]
-              if proxy:
-                proxy.close
-                proxy = null
-              return _open_ selector --pid=pid --id=id
+              return result_ discovered candidate-index selector proxy
       if error == "DEADLINE_EXCEEDED": throw "Cannot find service"
       throw error
     finally:
       if proxy: proxy.close
     unreachable
+
+  result_ discovered/List index/int selector/ServiceSelector proxy/DiscoveryProxy? -> any:
+    pid := discovered[index]
+    id := discovered[index + 1]
+    if proxy:
+      proxy.close
+    return _open_ selector --pid=pid --id=id
 
   _open_ selector/ServiceSelector --pid/int --id/int -> ServiceClient:
     if _id_: throw "Already opened"
