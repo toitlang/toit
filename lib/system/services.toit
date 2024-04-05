@@ -199,15 +199,6 @@ class ServiceClient:
     candidate-index := null
     candidate-priority := null
 
-    // Called when we have a match.
-    found-block := : | discovered/List |
-      pid := discovered[candidate-index]
-      id := discovered[candidate-index + 1]
-      if proxy:
-        proxy.close
-        proxy = null
-      return _open_ selector --pid=pid --id=id
-
     // Called on each service we are given, to see if it is a match.
     process-block := : | discovered/List i/int |
       tags := discovered[i + 6]
@@ -223,7 +214,12 @@ class ServiceClient:
           candidate-priority = priority
         else if priority < candidate-priority:
           // All remaining candidates will have a lower priority.
-          found-block.call discovered  // Returns.
+          pid := discovered[candidate-index]
+          id := discovered[candidate-index + 1]
+          if proxy:
+            proxy.close
+            proxy = null
+          return _open_ selector --pid=pid --id=id
         else if priority == candidate-priority:
           // Found multiple candidates with the same priority.
           if proxy:
@@ -255,7 +251,12 @@ class ServiceClient:
             discovered = channel.receive
             process-block.call discovered 0
             if candidate-index:
-              found-block.call discovered  // Returns.
+              pid := discovered[candidate-index]
+              id := discovered[candidate-index + 1]
+              if proxy:
+                proxy.close
+                proxy = null
+              return _open_ selector --pid=pid --id=id
       if error == "DEADLINE_EXCEEDED": throw "Cannot find service"
       throw error
     finally:
