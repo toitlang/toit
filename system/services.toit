@@ -35,11 +35,13 @@ class DiscoveryResource extends ServiceResource:
   constructor .uuid .manager client/int:
     super manager client --notifiable
 
-  hash-code -> int:
-    return uuid.hash-code
-
   on-closed -> none:
-    manager.waiting_.remove this
+    list := manager.waiting_[uuid]
+    if list.size == 1:
+      assert: list[0] == this
+      manager.waiting_.remove uuid
+    else:
+      list.remove this
 
 class SystemServiceManager extends ServiceProvider
     implements ServiceDiscoveryService ServiceHandler:
@@ -48,7 +50,7 @@ class SystemServiceManager extends ServiceProvider
   services-by-pid_/Map ::= {:}   // Map<int, Map<int, DiscoverableService>>>
   services-by-uuid_/Map ::= {:}  // Map<string, List<DiscoverableService>>
 
-  waiting_/Set ::= {}  // Set<DiscoveryResource>
+  waiting_/Map ::= {:}  // Map<uuid, List<DiscoveryResource>>
 
   constructor:
     super "system/service-discovery" --major=0 --minor=1 --patch=1
@@ -91,10 +93,9 @@ class SystemServiceManager extends ServiceProvider
     uuids.sort --in-place: | a b | b.priority.compare-to a.priority
 
     // If anyone is waiting for this service, signal them.
-    waiting_.do: | resource/DiscoveryResource |
-      if resource.uuid == uuid:
-        result := array-of-services_ [service]
-        resource.notify_ result
+    waiting_.get uuid --if-present=: | resources/List |
+      resources.do: | resource/DiscoveryResource |
+        resource.notify_ (array-of-services_ [service])
 
     // Register the process as a service manager and signal
     // anyone waiting for services to appear.
@@ -122,7 +123,7 @@ class SystemServiceManager extends ServiceProvider
     resource-serialized := null
     if wait:
       resource := DiscoveryResource uuid this client
-      waiting_.add resource
+      (waiting_.get uuid --init=: []).add resource
       resource-serialized = resource.serialize-for-rpc
     services = services-by-uuid_.get uuid
     return [array-of-services_ services, resource-serialized]
