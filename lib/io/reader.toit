@@ -158,6 +158,9 @@ abstract class Reader implements old-reader.Reader:
     buffered := buffered_
     if not buffered:
       if not more_: throw UNEXPECTED-END-OF-READER
+      // The call to $more_ may have changed $buffered_ if
+      // it was null. Read the field again.
+      buffered = buffered_
 
     while n > 0:
       if buffered.size == 0:

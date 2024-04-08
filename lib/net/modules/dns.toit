@@ -641,6 +641,18 @@ class SrvResource extends StringResource:
 
 /**
 Decodes a name from a DNS (RFC 1035) packet.
+The block is invoked with the index of the next data in the packet.
+
+Deprecated. Use $(decode-name reader packet) instead.
+*/
+decode-name packet/ByteArray position/int [position-block] -> string:
+  reader := io.Reader packet[position..]
+  result := decode-name reader packet
+  position-block.call (position + reader.processed)
+  return result
+
+/**
+Decodes a name from a DNS (RFC 1035) packet.
 
 Takes both the $reader and the $packet, as the parts can contain
   pointers that are absolute in the packet.

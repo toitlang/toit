@@ -26,6 +26,7 @@ set(TOIT_REPOS
     https://github.com/nilwes/LIS3DH
     https://github.com/toitlang/jaguar
     https://github.com/toitlang/pkg-ar
+    https://github.com/toitlang/pkg-dns-simple-server
     https://github.com/toitlang/pkg-font-tiny
     https://github.com/toitlang/pkg-host
     https://github.com/toitlang/pkg-http
