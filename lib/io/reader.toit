@@ -158,6 +158,7 @@ abstract class Reader implements old-reader.Reader:
     buffered := buffered_
     if not buffered:
       if not more_: throw UNEXPECTED-END-OF-READER
+      buffered = buffered_
 
     while n > 0:
       if buffered.size == 0:
