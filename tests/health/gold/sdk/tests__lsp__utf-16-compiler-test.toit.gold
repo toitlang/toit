@@ -1,3 +1,0 @@
-<pkg:pkg-tar>/tar.toit:16:15: warning: Class 'Writer' is deprecated
-    writer_ = Writer writer
-              ^~~~~~

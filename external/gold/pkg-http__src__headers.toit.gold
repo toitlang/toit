@@ -1,3 +1,0 @@
-pkg-http/src/headers.toit:140:20: warning: Class 'Buffer' is deprecated
-    buffer := bytes.Buffer
-                   ^

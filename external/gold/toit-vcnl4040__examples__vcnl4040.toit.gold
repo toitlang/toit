@@ -1,6 +1,0 @@
-<pkg:..>/vcnl4040.toit:29:18: warning: Deprecated 'LITTLE-ENDIAN'
-    return binary.LITTLE_ENDIAN.uint16 ba 0
-                 ^
-<pkg:..>/vcnl4040.toit:35:11: warning: Deprecated 'LITTLE-ENDIAN'
-    binary.LITTLE_ENDIAN.put_uint16 ba 0 value
-          ^

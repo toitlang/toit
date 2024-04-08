@@ -1,3 +1,0 @@
-<pkg:..>/uart.toit:121:49: warning: Deprecated 'Port.write'
-    output_interleaved_ interleaved_data: port_.write it
-                                                ^~~~~

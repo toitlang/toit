@@ -1,9 +1,0 @@
-<pkg:pkg-http>/connection.toit:324:7: error: Missing implementations for interface methods
-class DetachedSocket_ implements tcp.Socket:
-      ^~~~~~~~~~~~~~~
-<sdk>/net/tcp.toit:25:3: note: Missing implementation for 'in'
-  in -> io.CloseableReader
-  ^~
-<sdk>/net/tcp.toit:26:3: note: Missing implementation for 'out'
-  out -> io.CloseableWriter
-  ^~~

@@ -29,7 +29,7 @@ test client/LspClient toitc:
   snapshot-path := "$dir/hello.snapshot"
   try:
     writer := file.Stream.for-write snapshot-path
-    writer.write (base64.decode snapshot-bundle["snapshot_bundle"])
+    writer.out.write (base64.decode snapshot-bundle["snapshot_bundle"])
     writer.close
 
     check-snapshot toitc snapshot-path

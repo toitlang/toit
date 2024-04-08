@@ -1,9 +1,0 @@
-cellular/src/base/xmodem_1k.toit:42:18: warning: Deprecated 'Port.read'
-      r := uart_.read
-                 ^~~~
-cellular/src/base/xmodem_1k.toit:52:16: warning: Deprecated 'Port.read'
-    r := uart_.read
-               ^~~~
-cellular/src/base/xmodem_1k.toit:29:21: warning: Class 'Writer' is deprecated
-    writer_ = writer.Writer uart_
-                    ^

@@ -1,9 +1,0 @@
-<pkg:..>/driver.toit:116:16: warning: Deprecated 'BIG-ENDIAN'
-    x := binary.BIG_ENDIAN.int16 bytes 0
-               ^
-<pkg:..>/driver.toit:117:16: warning: Deprecated 'BIG-ENDIAN'
-    y := binary.BIG_ENDIAN.int16 bytes 2
-               ^
-<pkg:..>/driver.toit:118:16: warning: Deprecated 'BIG-ENDIAN'
-    z := binary.BIG_ENDIAN.int16 bytes 4
-               ^
