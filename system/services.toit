@@ -30,17 +30,16 @@ class DiscoverableService:
 
 class DiscoveryResource extends ServiceResource:
   uuid/string
-  provider/SystemServiceManager
+  manager/SystemServiceManager
 
-  constructor .uuid manager/SystemServiceManager client/int:
-    provider = manager
+  constructor .uuid .manager client/int:
     super manager client --notifiable
 
   hash-code -> int:
     return uuid.hash-code
 
   on-closed -> none:
-    provider.waiting_.remove this
+    manager.waiting_.remove this
 
 class SystemServiceManager extends ServiceProvider
     implements ServiceDiscoveryService ServiceHandler:
@@ -126,7 +125,6 @@ class SystemServiceManager extends ServiceProvider
       waiting_.add resource
       resource-serialized = resource.serialize-for-rpc
     services = services-by-uuid_.get uuid
-
     return [array-of-services_ services, resource-serialized]
 
   // TODO(kasper): Consider keeping the list of

@@ -138,7 +138,7 @@ class ServiceSelectorRestricted extends ServiceSelector:
         tags-allowed = true
     return tags-allowed
 
-class DiscoveryProxy extends ServiceResourceProxy:
+class DiscoveryProxy_ extends ServiceResourceProxy:
   channel_/monitor.Channel
 
   constructor client/ServiceClient .channel_ handle/int:
@@ -180,7 +180,7 @@ class ServiceClient:
 
   open --timeout/Duration?=null [--if-absent] -> any:
     discovered/List? := null
-    proxy/DiscoveryProxy? := null
+    proxy/DiscoveryProxy_? := null
     channel/monitor.Channel? := null
     if timeout:
       // Get a pair with a list of current services, and a resource that will
@@ -190,17 +190,40 @@ class ServiceClient:
         discovered = result[0]
         resource := result[1]
         channel = monitor.Channel 1
-        proxy = DiscoveryProxy (_client_ as ServiceDiscoveryServiceClient) channel resource
+        proxy = DiscoveryProxy_ (_client_ as ServiceDiscoveryServiceClient) channel resource
     else:
       // Get a list of current services, but don't wait for new ones.
       result := _client_.discover selector.uuid --no-wait
       if result: discovered = result[0]
 
+    try:
+      if discovered:
+        result := find-service_ discovered
+        if result: return result
+
+      if not timeout:
+        return if-absent.call
+
+      // We got back a proxy for a resource, which will notify us when the
+      // service we want has started up.
+      error := catch:
+        with-timeout timeout:
+          while true:
+            discovered = channel.receive
+            result := find-service_ discovered
+            if result: return result
+      if error == "DEADLINE_EXCEEDED":
+        return if-absent.call
+      throw error
+    finally:
+      if proxy: proxy.close
+    unreachable
+
+  find-service_ discovered/List -> ServiceClient?:
     candidate-index := null
     candidate-priority := null
 
-    // Called on each service we are given, to see if it is a match.
-    process-block := : | discovered/List i/int |
+    for i := 0; i < discovered.size; i += 7:
       tags := discovered[i + 6]
       allowed := selector.is-allowed_
           --name=discovered[i + 2]
@@ -214,43 +237,15 @@ class ServiceClient:
           candidate-priority = priority
         else if priority < candidate-priority:
           // All remaining candidates will have a lower priority.
-          return result_ discovered candidate-index selector proxy
+          break
         else if priority == candidate-priority:
           // Found multiple candidates with the same priority.
-          if proxy: proxy.close
           throw "Cannot disambiguate"
 
-    if discovered:
-      for i := 0; i < discovered.size; i += 7:
-        process-block.call discovered i
+    if not candidate-index: return null
 
-    if candidate-index:
-      return result_ discovered candidate-index selector proxy
-
-    if not timeout:
-      return if-absent.call
-
-    // We got back a proxy for a resource, which will notify us when the
-    // service we want has started up.
-    try:
-      error := catch:
-        with-timeout timeout:
-          while true:
-            discovered = channel.receive
-            process-block.call discovered 0
-            if candidate-index:
-              return result_ discovered candidate-index selector proxy
-      if error == "DEADLINE_EXCEEDED": throw "Cannot find service"
-      throw error
-    finally:
-      if proxy: proxy.close
-    unreachable
-
-  result_ discovered/List index/int selector/ServiceSelector proxy/DiscoveryProxy? -> any:
-    pid := discovered[index]
-    id := discovered[index + 1]
-    if proxy:
-      proxy.close
+    pid := discovered[candidate-index]
+    id := discovered[candidate-index + 1]
     return _open_ selector --pid=pid --id=id
 
   _open_ selector/ServiceSelector --pid/int --id/int -> ServiceClient:
