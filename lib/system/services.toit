@@ -201,20 +201,16 @@ class ServiceClient:
         result := find-service_ discovered
         if result: return result
 
-      if not timeout:
-        return if-absent.call
-
-      // We got back a proxy for a resource, which will notify us when the
-      // service we want has started up.
-      error := catch:
-        with-timeout timeout:
-          while true:
-            discovered = channel.receive
-            result := find-service_ discovered
-            if result: return result
-      if error == "DEADLINE_EXCEEDED":
-        return if-absent.call
-      throw error
+      if timeout: 
+        // We got back a proxy for a resource, which will notify us when the
+        // service we want has started up.
+        catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
+          with-timeout timeout:
+            while true:
+              discovered = channel.receive
+              result := find-service_ discovered
+              if result: return result
+      return if-absent.call
     finally:
       if proxy: proxy.close
     unreachable
