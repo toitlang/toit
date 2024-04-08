@@ -235,9 +235,10 @@ class ServiceClient:
         candidate-index = i
         candidate-priority = priority
       else if priority < candidate-priority:
-        // All remaining candidates will have a lower priority.
+        // The remaining entries have lower priorities and
+        // we already found a suitable candidate.
         break
-      else if priority == candidate-priority:
+      else:
         // Found multiple candidates with the same priority.
         throw "Cannot disambiguate"
 
