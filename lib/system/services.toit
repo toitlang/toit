@@ -222,7 +222,6 @@ class ServiceClient:
   find-service_ discovered/List -> ServiceClient?:
     candidate-index := null
     candidate-priority := null
-
     for i := 0; i < discovered.size; i += 7:
       tags := discovered[i + 6]
       allowed := selector.is-allowed_
@@ -230,17 +229,17 @@ class ServiceClient:
           --major=discovered[i + 3]
           --minor=discovered[i + 4]
           --tags=tags
-      if allowed:
-        priority := discovered[i + 5]
-        if not candidate-index:
-          candidate-index = i
-          candidate-priority = priority
-        else if priority < candidate-priority:
-          // All remaining candidates will have a lower priority.
-          break
-        else if priority == candidate-priority:
-          // Found multiple candidates with the same priority.
-          throw "Cannot disambiguate"
+      if not allowed: continue
+      priority := discovered[i + 5]
+      if not candidate-index:
+        candidate-index = i
+        candidate-priority = priority
+      else if priority < candidate-priority:
+        // All remaining candidates will have a lower priority.
+        break
+      else if priority == candidate-priority:
+        // Found multiple candidates with the same priority.
+        throw "Cannot disambiguate"
 
     if not candidate-index: return null
 
