@@ -53,8 +53,6 @@ if ("${TOIT_GIT_VERSION}" STREQUAL "")
   # that should be good enough.
   compute_git_version(TOIT_GIT_VERSION)
 endif()
-# TODO(florian): remove the following hard-coded version number before releasing.
-set(TOIT_GIT_VERSION "v2.0.0-alpha.144")
 
 set(TOIT_SDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
