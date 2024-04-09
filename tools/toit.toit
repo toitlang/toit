@@ -19,6 +19,8 @@ import host.file
 import host.pipe
 import system
 
+import .toitp as toitp
+
 main args/List:
   if args.size > 0 and args[0].ends-with ".toit":
     args = ["run", "--"] + args
@@ -422,6 +424,8 @@ main args/List:
           """
       --run=:: run-pkg-command ["update"] [] [] it
   pkg-command.add pkg-update-command
+
+  root-command.add toitp.build-command
 
   root-command.run args
 
