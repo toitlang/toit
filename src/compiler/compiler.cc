@@ -1844,8 +1844,13 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   check_types_and_deprecations(ir_program);
   check_definite_assignments_returns(ir_program, diagnostics());
 
+  bool encountered_error = diagnostics()->encountered_error();
+  if (configuration_.werror && diagnostics()->encountered_warning()) {
+    encountered_error = true;
+  }
+
   if (configuration_.is_for_analysis) {
-    if (diagnostics()->encountered_error()) exit(1);
+    if (encountered_error) exit(1);
     return Result::invalid();
   }
 
@@ -1856,10 +1861,6 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     exit(1);
   }
   // If we encountered errors abort unless the `--force` flag is on.
-  bool encountered_error = diagnostics()->encountered_error();
-  if (configuration_.werror && diagnostics()->encountered_warning()) {
-    encountered_error = true;
-  }
   if (!configuration_.force && encountered_error) {
     diagnostics()->report_error("Compilation failed");
     exit(1);
