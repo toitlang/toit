@@ -4,6 +4,8 @@
 
 import bitmap
 
+import ..io as io
+
 // Returns the number of bytes needed to code the char in UTF-8.
 utf-8-bytes char:
   return write-utf-8-to-byte-array null 0 char
@@ -57,7 +59,7 @@ A string can only contain valid UTF-8 byte sequences.  To store arbitrary
 Strings are immutable objects.
 See more on strings at https://docs.toit.io/language/strings.
 */
-abstract class string implements Comparable:
+abstract class string implements Comparable io.Data:
   static MIN-SLICE-SIZE_ ::= 16
 
   /**
@@ -1331,22 +1333,37 @@ abstract class string implements Comparable:
   /**
   Writes the raw UTF-8 bytes of the string to an existing ByteArray.
   */
-  write-to-byte-array byte-array:
+  write-to-byte-array byte-array/ByteArray:
     return write-to-byte-array_ byte-array 0 size 0
 
   /**
   Writes the raw UTF-8 bytes of the string to the given
     offset of an existing ByteArray.
   */
-  write-to-byte-array byte-array dest-index:
+  write-to-byte-array byte-array/ByteArray dest-index:
     return write-to-byte-array_ byte-array 0 size dest-index
 
   /** Deprecated. Use $write-to-byte-array on a string slice instead. */
-  write-to-byte-array byte-array start end dest-index:
+  write-to-byte-array byte-array/ByteArray start end dest-index:
     return write-to-byte-array_ byte-array start end dest-index
 
-  write-to-byte-array_ byte-array start end dest-index:
+  write-to-byte-array_ byte-array/ByteArray start end dest-index:
     #primitive.core.string-write-to-byte-array
+
+  byte-size -> int:
+    return size
+
+  byte-slice from to/int -> io.Data:
+    if this is String_: return StringByteSlice_ (this as String_) from to
+    if not 0 <= from <= to <= byte-size: throw "OUT_OF_BOUNDS"
+    slice := this as StringSlice_
+    return StringByteSlice_ slice.str_ (slice.from_ + from) (slice.from_ + to)
+
+  byte-at index/int -> int:
+    return raw-at_ index
+
+  write-to-byte-array byte-array/ByteArray --at/int from/int to/int:
+    write-to-byte-array_ byte-array from to at
 
 class String_ extends string:
   constructor.private_:
@@ -1401,6 +1418,40 @@ class StringSlice_ extends string:
 
   compute-hash_ -> int:
     #primitive.core.blob-hash-code
+
+class StringByteSlice_ implements io.Data:
+  str_ / String_
+  from_ / int
+  to_ / int
+
+  constructor .str_ .from_ .to_:
+
+  // TODO(florian): this method is only here for backwards-compatability.
+  // Some methods used to take 'any' and then take the 'size' of it.
+  // Once we have migrated all these locations to use 'io.Data' and 'byte-size', it
+  // can be removed.
+  size -> int:
+    return byte-size
+
+  byte-size -> int:
+    return to_ - from_
+
+  byte-slice from/int to/int -> io.Data:
+    actual-from := from_ + from
+    actual-to := from_ + to
+    if not from_ <= actual-from <= actual-to <= to_: throw "OUT_OF_BOUNDS"
+    return StringByteSlice_ str_ actual-from actual-to
+
+  byte-at index/int -> int:
+    if not 0 <= index < (to_ - from_): throw "OUT_OF_BOUNDS"
+    actual-index := from_ + index
+    return str_.byte-at actual-index
+
+  write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none:
+    actual-from := from_ + from
+    actual-to := from_ + to
+    if not from_ <= actual-from <= actual-to <= to_: throw "OUT_OF_BOUNDS"
+    str_.write-to-byte-array --at=at byte-array actual-from actual-to
 
 // Unsigned base 2, 8, and 16 stringification.
 printf-style-int-stringify_ value/int base/int -> string:

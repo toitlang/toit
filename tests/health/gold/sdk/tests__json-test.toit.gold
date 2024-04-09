@@ -1,0 +1,3 @@
+tests/json-test.toit:385:17: warning: Class 'BufferedReader' is deprecated
+    buffered := BufferedReader (TestReader it)
+                ^~~~~~~~~~~~~~

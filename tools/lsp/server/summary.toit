@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import reader show BufferedReader
+import io
 import .uri-path-translator
 import .protocol.document-symbol as lsp
 import .protocol.document as lsp
@@ -301,7 +301,7 @@ class Parameter:
         (type == other.type or (type and type.equals-external other.type))
 
 class SummaryReader:
-  reader_ / BufferedReader ::= ?
+  reader_ / io.Reader ::= ?
   uri-path-translator_ / UriPathTranslator ::= ?
 
   module-uris_             / List ::= []

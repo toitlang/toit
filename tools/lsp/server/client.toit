@@ -13,7 +13,6 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import reader show BufferedReader
 import .rpc show RpcConnection
 import .uri-path-translator
 
@@ -21,9 +20,10 @@ import .utils show FakePipe
 import .server show LspServer
 import .file-server show sdk-path-from-compiler
 
-import host.pipe
-import monitor
 import host.file
+import host.pipe
+import io
+import monitor
 
 with-lsp-client [block]
     --toitc/string
@@ -134,11 +134,11 @@ class LspClient:
     else:
       server-from := FakePipe
       server-to   := FakePipe
-      server-rpc-connection := RpcConnection (BufferedReader server-to) server-from
+      server-rpc-connection := RpcConnection server-to.in server-from.out
       server := LspServer server-rpc-connection compiler-exe UriPathTranslator
       task::
         server.run
-      return [server-to, server-from, server, null]
+      return [server-to.out, server-from.in, server, null]
 
 
   static start -> LspClient
@@ -152,8 +152,8 @@ class LspClient:
     server-to   := start-result[0]
     server-from := start-result[1]
     server := start-result[2]
-    reader := BufferedReader server-from
-    writer := server-to
+    reader := io.Reader.adapt server-from
+    writer := io.Writer.adapt server-to
     rpc-connection := RpcConnection reader writer
     client := LspClient.internal_ rpc-connection compiler-exe supports-config --server=server --server-pid=start-result[3]
     client.run_

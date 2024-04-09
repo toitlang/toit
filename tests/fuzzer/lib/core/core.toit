@@ -22,6 +22,7 @@ class ListSlice_:
 class string:
 class String_:
 class StringSlice_:
+class StringByteSlice_:
 class float:
 class LargeInteger_:
 class False_:

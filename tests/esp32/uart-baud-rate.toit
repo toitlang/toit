@@ -38,8 +38,8 @@ main:
   // We expect all messages to go through in one go.
   // As such we don't buffer or use a Writer.
 
-  port1.write "toit" --wait
-  bytes := port2.read
+  port1.out.write "toit" --flush
+  bytes := port2.in.read
   expect-equals "toit" bytes.to-string
 
   expect-baud 9600 port1.baud-rate
@@ -52,12 +52,12 @@ main:
   port2.baud-rate = 115200
   expect-baud 115200 port2.baud-rate
 
-  port1.write "like a" --wait
-  bytes = port2.read
+  port1.out.write "like a" --flush
+  bytes = port2.in.read
   expect-equals "like a" bytes.to-string
 
-  port2.write "tiger" --wait
-  bytes = port1.read
+  port2.out.write "tiger" --flush
+  bytes = port1.in.read
   expect-equals "tiger" bytes.to-string
 
   print "done"

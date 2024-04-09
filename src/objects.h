@@ -1463,6 +1463,10 @@ class Instance : public HeapObject {
   static const int STRING_SLICE_FROM_INDEX   = 1;
   static const int STRING_SLICE_TO_INDEX     = 2;
 
+  static const int STRING_BYTE_SLICE_STRING_INDEX = 0;
+  static const int STRING_BYTE_SLICE_FROM_INDEX   = 1;
+  static const int STRING_BYTE_SLICE_TO_INDEX     = 2;
+
   static const int TOMBSTONE_DISTANCE_INDEX = 0;
 
  private:

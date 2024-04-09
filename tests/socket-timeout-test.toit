@@ -16,7 +16,7 @@ main:
   e := catch:
     with-timeout --ms=100:
       with-timeout --ms=1_000:
-        socket.read
+        socket.in.read
         throw "UNEXPECTED"
   after := Time.monotonic-us
   expect-equals DEADLINE-EXCEEDED-ERROR e
