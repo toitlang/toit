@@ -6,6 +6,7 @@ import expect show *
 
 import encoding.yaml
 import fixed_point show FixedPoint
+import io
 import math
 
 main:
@@ -422,9 +423,29 @@ BIG-BLOCK ::= """
   baz: fizz
 """
 
+class TestWriter extends io.Writer:
+  ba := #[]
+  try-write_ data from/int to/int -> int:
+    slice := data[from..to]
+    if slice is string:
+      ba += slice.to-byte-array
+    else:
+      ba += slice
+    return to - from
+
 test-stream:
   expect-equals [] (yaml.parse --as-stream "")
   expect-equals ["foo","bar"] (yaml.parse --as-stream "---\nfoo\n...\nbar\n...")
+
+  OBJ ::= {"foo": 42}
+
+  writer := TestWriter
+  yaml.encode-stream --writer=writer OBJ
+
+  encoded := yaml.encode OBJ
+
+  expect-equals "foo: 42\n" encoded.to-string
+  expect-equals writer.ba encoded
 
 test-from-spec:
   // Example 6.7

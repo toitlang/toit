@@ -20,6 +20,7 @@ main:
   test-number-terminators
   test-with-reader
   test-multiple-objects
+  test-stream
 
 test-stringify:
   expect-equals "\"testing\"" (json.stringify "testing")
@@ -468,3 +469,24 @@ test-with-reader -> none:
     result = json.decode-stream
         io-reader-for [part-1, part-2]
     expect-equals -123.54e-5 result
+
+test-stream:
+  OBJ ::= {"foo": 42}
+
+  writer := TestWriter
+  json.encode-stream --writer=writer OBJ
+
+  encoded := json.encode OBJ
+
+  expect-equals ("{\"foo\":42}".to-byte-array) encoded
+  expect-equals writer.ba encoded
+
+class TestWriter extends io.Writer:
+  ba := #[]
+  try-write_ data from/int to/int -> int:
+    slice := data[from..to]
+    if slice is string:
+      ba += slice.to-byte-array
+    else:
+      ba += slice
+    return to - from

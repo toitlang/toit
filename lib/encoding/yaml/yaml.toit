@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import bitmap
+import io
 import io show LITTLE-ENDIAN
 import .encoder
 import .parser
@@ -47,6 +48,41 @@ Utf-8 encoding is used for strings.
 */
 encode obj -> ByteArray:
   return encode obj: throw "INVALID_YAML_OBJECT"
+
+/**
+Encodes the $obj onto an $io.Writer in YAML format.
+The $obj must be a supported type, which means either a type supported
+  by the $converter block or an instance of int, bool, float, string, List
+  or Map.
+Maps must have only string keys.  The elements of lists and the values of
+  maps can be any of the above supported types.
+The $converter block is passed an object to be serialized and an instance
+  of the $YamlEncoder class.  If it returns a non-null value, that value will
+  be serialized instead of the object that was passed in.  Alternatively,
+  the $converter block can call the $YamlEncoder.encode, $YamlEncoder.put-list,
+  or $YamlEncoder.put_unquoted methods on the encoder.
+Utf-8 encoding is used on the writer.
+*/
+encode-stream --writer/io.Writer obj [converter] -> none:
+  e := YamlEncoder writer
+  e.encode obj converter
+
+/**
+Variant of $(encode obj [converter]).
+Takes a lambda instead of a block as $converter.
+*/
+encode-stream --writer/io.Writer obj converter/Lambda -> none:
+  encode-stream --writer=writer obj: | obj encoder | converter.call obj encoder
+
+/**
+Encodes the $obj onto an $io.Writer in YAML format.
+The $obj must be null or an instance of int, bool, float, string, List, or Map.
+Maps must have only string keys.  The elements of lists and the values of
+  maps can be any of the above supported types.
+Utf-8 encoding is used on the writer.
+*/
+encode-stream --writer/io.Writer obj -> none:
+  encode-stream --writer=writer obj: throw "INVALID_YAML_OBJECT"
 
 decode_ --as-stream/bool=false [--on-error] bytes/ByteArray -> any:
   p := Parser_ bytes

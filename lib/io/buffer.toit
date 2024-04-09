@@ -22,6 +22,9 @@ class Buffer extends CloseableWriter:
   buffer_/ByteArray := ?
   is-growable_/bool := ?
 
+  processed -> int:
+    return offset_
+
   /**
   Constructs a new buffer.
 

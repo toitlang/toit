@@ -11,11 +11,13 @@ main:
 test-simple:
   buffer := io.Buffer
   expect-equals 0 buffer.size
+  expect-equals 0 buffer.processed
 
   empty := buffer.bytes
   expect empty.is-empty
 
   buffer.write "foobar"
+  expect-equals 6 buffer.processed
   foobar := buffer.bytes
   expect-equals 6 foobar.size
   expect-equals "foobar" foobar.to-string
@@ -37,6 +39,7 @@ test-simple:
   6.repeat: expect-equals 0 zeros[it]
 
   buffer.clear
+  expect-equals 0 buffer.processed
   buffer.write foobar
   expect-equals "foobar" buffer.bytes.to-string
 

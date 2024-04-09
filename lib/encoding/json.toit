@@ -23,9 +23,10 @@ The $converter block is passed an object to be serialized and an instance
 Utf-8 encoding is used for strings.
 */
 encode obj [converter] -> ByteArray:
-  e := Encoder
+  buffer := io.Buffer
+  e := Encoder buffer
   e.encode obj converter
-  return e.to-byte-array
+  return buffer.bytes
 
 encode obj converter/Lambda -> ByteArray:
   return encode obj: | obj encoder | converter.call obj encoder
@@ -39,6 +40,37 @@ Utf-8 encoding is used for strings.
 */
 encode obj -> ByteArray:
   return encode obj: throw "INVALID_JSON_OBJECT"
+
+/**
+Encodes the $obj onto an $io.Writer.
+The $obj must be a supported type, which means either a type supported
+  by the $converter block or an instance of int, bool, float, string, List
+  or Map.
+Maps must have only string keys.  The elements of lists and the values of
+  maps can be any of the above supported types.
+The $converter block is passed an object to be serialized and an instance
+  of the $Encoder class.  If it returns a non-null value, that value will
+  be serialized instead of the object that was passed in.  Alternatively,
+  the $converter block can call the $Encoder.encode, $Encoder.put-list,
+  or Encoder.put_unquoted methods on the encoder.
+Utf-8 encoding is used on the writer.
+*/
+encode-stream --writer/io.Writer obj [converter] -> none:
+  e := Encoder writer
+  e.encode obj converter
+
+encode-stream --writer/io.Writer obj converter/Lambda -> none:
+  encode-stream --writer=writer obj: | obj encoder | converter.call obj encoder
+
+/**
+Encodes the $obj onto an $io.Writer.
+The $obj must be null or an instance of int, bool, float, string, List, or Map.
+Maps must have only string keys.  The elements of lists and the values of
+  maps can be any of the above supported types.
+Utf-8 encoding is used on the writer.
+*/
+encode-stream --writer/io.Writer obj -> none:
+  encode-stream --writer=writer obj: throw "INVALID_JSON_OBJECT"
 
 /**
 Decodes the $bytes, which is a ByteArray in JSON format.
@@ -64,9 +96,10 @@ The $converter block is passed an object to be serialized and an instance
 Utf-8 encoding is used for strings.
 */
 stringify obj/any [converter] -> string:
-  e := Encoder
+  buffer := io.Buffer
+  e := Encoder buffer
   e.encode obj converter
-  return e.to-string
+  return buffer.to-string
 
 stringify obj converter/Lambda -> string:
   return stringify obj: | obj encoder | converter.call obj encoder
@@ -100,53 +133,70 @@ decode-stream reader:
   d := StreamingDecoder
   return d.decode-stream reader
 
-
+/**
+Deprecated.  Use the top level json.encode or json.stringify functions
+  instead.
+*/
 class Encoder extends EncoderBase_:
-  /** See $EncoderBase_.encode */
-  // TODO(florian): Remove when toitdoc compile understands inherited methods
-  encode obj/any converter/Lambda:
-    return super obj converter
+  /**
+  Returns an encoder that encodes into an internal buffer.  The
+    result can be extracted with $to-string or $to-byte-array.
+  */
+  constructor:
+    super io.Buffer
 
-  /** See $Buffer_.put-unquoted */
-  // TODO(florian): Remove when toitdoc compile understands inherited methods
-  put-unquoted data -> none:
-    super data
+  /**
+  Returns an encoder that encodes onto an $io.Writer.
+  */
+  constructor writer/io.Writer:
+    super writer
+
+  /**
+  Returns the encoded JSON object as a string.
+  */
+  to-string -> string:
+    return (writer_ as io.Buffer).to-string
+
+  /**
+  Returns the encoded JSON object as a ByteArray.
+  */
+  to-byte-array -> ByteArray:
+    return (writer_ as io.Buffer).bytes
 
   encode-string_ str:
     escaped := escape-string str
     size := escaped.size
-    ensure_ str.size + 2
-    put-byte_ '"'
-    put-unquoted escaped
-    put-byte_ '"'
+    writer_.write-byte '"'
+    writer_.write escaped
+    writer_.write-byte '"'
 
   encode-number_ number:
     str := number is float ? number.stringify 2 : number.stringify
-    put-unquoted str
+    writer_.write str
 
   encode-true_:
-    put-unquoted "true"
+    writer_.write "true"
 
   encode-false_:
-    put-unquoted "false"
+    writer_.write "false"
 
   encode-null_:
-    put-unquoted "null"
+    writer_.write "null"
 
   encode-map_ map [converter]:
-    put-byte_ '{'
+    writer_.write-byte '{'
 
     first := true
     map.do: |key value|
-      if not first: put-byte_ ','
+      if not first: writer_.write-byte ','
       first = false
       if key is not string:
         throw "INVALID_JSON_OBJECT"
       encode-string_ key
-      put-byte_ ':'
+      writer_.write-byte ':'
       encode value converter
 
-    put-byte_ '}'
+    writer_.write-byte '}'
 
   encode-list_ list [converter]:
     put-list list.size (: list[it]) converter
@@ -157,19 +207,18 @@ class Encoder extends EncoderBase_:
   The generator is called repeatedly with indices from 0 to size - 1.
   */
   put-list size/int [generator] [converter]:
-    put-byte_ '['
+    writer_.write-byte '['
 
     for i := 0; i < size; i++:
-      if i > 0: put-byte_ ','
+      if i > 0: writer_.write-byte ','
       encode (generator.call i) converter
 
-    put-byte_ ']'
-
+    writer_.write-byte ']'
 
 class Decoder:
   bytes_ := null
   offset_ := 0
-  tmp-buffer_ ::= Buffer_
+  tmp-buffer_ ::= io.Buffer
   utf-8-buffer_/ByteArray? := null
   seen-strings_/Set? := null
   buffered-reader_/io.Reader? := null
@@ -242,7 +291,7 @@ class Decoder:
 
   slow-decode-string_:
     buffer := tmp-buffer_
-    buffer.clear_
+    buffer.clear
     bytes-size := bytes_.size
     while true:
       if offset_ >= bytes-size: throw "UNTERMINATED_JSON_STRING"
@@ -278,11 +327,10 @@ class Decoder:
             buf-8 = utf-8-buffer_
           bytes := utf-8-bytes c
           write-utf-8-to-byte-array buf-8 0 c
-          bytes.repeat:
-            buffer.put-byte_ buf-8[it]
+          buffer.write buf-8 0 bytes
           continue
 
-      buffer.put-byte_ c
+      buffer.write-byte c
       offset_++
 
     offset_++
