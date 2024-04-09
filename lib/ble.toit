@@ -2,10 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary
 import monitor
 import uuid
-import bytes
 import monitor show ResourceState_
 import system
 import system show platform

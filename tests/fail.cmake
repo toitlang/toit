@@ -37,6 +37,7 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
   list(APPEND TOIT_FAILING_TESTS
     tests/time-test.toit # https://github.com/toitlang/toit/issues/1369
     tests/zlib-test.toit
+    tests/zlib-deprecated-test.toit
     tests/cow-read-only-test-compiler.toit
     tests/uart-test.toit
   )

@@ -7,7 +7,6 @@ import .tcp as tcp
 import net.x509 as net
 import system
 import system show platform
-import writer
 
 monitor LimitLoad:
   current := 0
@@ -163,12 +162,13 @@ connect-to-site host port add-root:
     // Install the roots needed.
     --root-certificates=(add-root ? [BALTIMORE-CYBERTRUST-ROOT, GLOBALSIGN-ROOT-CA, DIGICERT-GLOBAL-ROOT-G2] : [])
 
-  writer := writer.Writer socket
+  writer := socket.out
   writer.write """GET / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
 
   bytes := 0
 
-  while data := socket.read:
+  reader := socket.in
+  while data := reader.read:
     bytes += data.size
 
   socket.close

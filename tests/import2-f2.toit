@@ -2,8 +2,8 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import bytes show *
-import reader show BufferedReader
+import io show *
+import net show IpAddress
 
 export Map
-export Buffer BufferedReader
+export Buffer IpAddress

@@ -1,3 +1,0 @@
-<pkg:..>/hx711.toit:44:10: warning: Deprecated 'Pin.config'
-    data.config --input
-         ^~~~~~

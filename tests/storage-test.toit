@@ -2,7 +2,6 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import reader show BufferedReader
 import system.storage
 import encoding.tison
 import expect show *
@@ -270,15 +269,14 @@ test-region-flash-stream region/storage.Region max-size/int?:
 
   expect-bytes-equal
       bytes-written
-      (BufferedReader (region.stream --max-size=max-size)).read-bytes region.size
+      (region.stream --max-size=max-size).read-bytes region.size
 
   indexes := [-100, -1, 0, 1, 7, 99, 500, 512, 999, 1000, 1001, 10000]
   indexes.do: | from/int |
     indexes.do: | to/int |
       if 0 <= from <= to <= bytes-written.size:
         reader := region.stream --from=from --to=to --max-size=max-size
-        buffered := BufferedReader reader
-        bytes-read := buffered.read-bytes to - from
+        bytes-read := reader.read-bytes to - from
         expect-bytes-equal bytes-written[from..to] bytes-read
       else:
         expect-throw "OUT_OF_BOUNDS":
