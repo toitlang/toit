@@ -372,11 +372,15 @@ class SocketResourceProxy_ extends ServiceResourceProxy with io.CloseableInMixin
   mtu -> int:
     return (client_ as NetworkServiceClient).socket-mtu handle_
 
-  close-write:
-    close-writer_
+  /**
+  Closes the proxied socket for write. The socket will still be able to read incoming data.
+  Deprecated. Use ($out).close instead.
+  */
+  close-write -> none:
+    out.close
 
-  close-writer_:
-    return (client_ as NetworkServiceClient).tcp-close-write handle_
+  close-writer_ -> none:
+    (client_ as NetworkServiceClient).tcp-close-write handle_
 
   close-reader_:
     // TODO(florian): Implement this.
