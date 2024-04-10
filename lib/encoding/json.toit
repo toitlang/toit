@@ -17,7 +17,7 @@ The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the $Encoder.encode, $Encoder.put-list,
-  or Encoder.put-unquoted methods on the encoder.
+  or $Encoder.put-unquoted methods on the encoder.
 */
 encode obj [converter] -> ByteArray:
   buffer := io.Buffer
@@ -52,14 +52,14 @@ The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the $Encoder.encode, $Encoder.put-list,
-  or Encoder.put-unquoted methods on the encoder.
+  or $Encoder.put-unquoted methods on the encoder.
 */
 encode-stream --writer/io.Writer obj [converter] -> none:
   e := Encoder.private_ writer
   e.encode obj converter
 
 /**
-Variant of $(encode-stream obj [converter]).
+Variant of $(encode-stream --writer obj [converter]).
 Takes a $Lambda instead of a block as $converter.
 */
 encode-stream --writer/io.Writer obj converter/Lambda -> none:
@@ -94,7 +94,7 @@ The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the $Encoder.encode, $Encoder.put-list,
-  or Encoder.put-unquoted methods on the encoder.
+  or $Encoder.put-unquoted methods on the encoder.
 */
 stringify obj/any [converter] -> string:
   buffer := io.Buffer

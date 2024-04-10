@@ -16,13 +16,13 @@ MAX-BUFFER-GROWTH_ ::= 1024
 /**
 Variant of $(encode obj).
 If the $obj is or contains a non-supported type, then the converter
-  block is called with the object and an instance of the $Encoder class.
+  block is called with the object and an instance of the $YamlEncoder class.
   The converter is not called for map keys, which must still be strings.
 The $converter block is passed an object to be serialized and an instance
-  of the $Encoder class.  If it returns a non-null value, that value will
+  of the $YamlEncoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
-  the $converter block can call the $Encoder.encode, $Encoder.put-list,
-  or Encoder.put-unquoted methods on the encoder.
+  the $converter block can call the $YamlEncoder.encode, $YamlEncoder.put-list,
+  or $YamlEncoder.put-unquoted methods on the encoder.
 */
 encode obj [converter] -> ByteArray:
   buffer := io.Buffer
@@ -51,13 +51,13 @@ encode obj -> ByteArray:
 /**
 Variant of $(encode-stream --writer obj).
 If the $obj is or contains a non-supported type, then the converter
-  block is called with the object and an instance of the $Encoder class.
+  block is called with the object and an instance of the $YamlEncoder class.
   The converter is not called for map keys, which must still be strings.
 The $converter block is passed an object to be serialized and an instance
-  of the $Encoder class.  If it returns a non-null value, that value will
+  of the $YamlEncoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
-  the $converter block can call the $Encoder.encode, $Encoder.put-list,
-  or Encoder.put-unquoted methods on the encoder.
+  the $converter block can call the $YamlEncoder.encode, $YamlEncoder.put-list,
+  or $YamlEncoder.put-unquoted methods on the encoder.
 */
 encode-stream --writer/io.Writer obj [converter] -> none:
   e := YamlEncoder.private_ writer
@@ -129,13 +129,13 @@ decode --as-stream bytes/ByteArray -> List:
 /**
 Variant of $(stringify obj).
 If the $obj is or contains a non-supported type, then the converter
-  block is called with the object and an instance of the $Encoder class.
+  block is called with the object and an instance of the $YamlEncoder class.
   The converter is not called for map keys, which must still be strings.
 The $converter block is passed an object to be serialized and an instance
-  of the $Encoder class.  If it returns a non-null value, that value will
+  of the $YamlEncoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
-  the $converter block can call the $Encoder.encode, $Encoder.put-list,
-  or Encoder.put-unquoted methods on the encoder.
+  the $converter block can call the $YamlEncoder.encode, $YamlEncoder.put-list,
+  or $YamlEncoder.put-unquoted methods on the encoder.
 */
 stringify obj/any [converter] -> string:
   buffer := io.Buffer
