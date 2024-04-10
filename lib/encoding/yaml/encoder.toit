@@ -6,10 +6,6 @@ import ..json-like-encoder_
 import .yaml
 import io
 
-/**
-Deprecated.  Use the top level yaml.encode or yaml.stringify functions
-  instead.
-*/
 class YamlEncoder extends EncoderBase_:
   current-line-start-offset_/int := 0
   indent_/int := 0
@@ -17,6 +13,8 @@ class YamlEncoder extends EncoderBase_:
   indent_buffer_/string := "      "  // A buffer of spaces, extends as nescessary.
 
   /**
+  Deprecated.  Use the top level yaml.encode or yaml.stringify functions
+    instead.
   Returns an encoder that encodes into an internal buffer.  The
     result can be extracted with $to-string or $to-byte-array.
   */
@@ -26,7 +24,7 @@ class YamlEncoder extends EncoderBase_:
   /**
   Returns an encoder that encodes onto an $io.Writer.
   */
-  constructor writer/io.Writer:
+  constructor.private_ writer/io.Writer:
     super writer
 
   /** See $EncoderBase_.encode */
@@ -61,11 +59,12 @@ class YamlEncoder extends EncoderBase_:
 
     escaped := escape-string str
 
-    if enclosed_in_map_: writer_.write-byte ' '
+    writer := writer_
+    if enclosed_in_map_: writer.write-byte ' '
 
-    if should_quote: writer_.write-byte '"'
-    writer_.write escaped
-    if should_quote: writer_.write-byte '"'
+    if should_quote: writer.write-byte '"'
+    writer.write escaped
+    if should_quote: writer.write-byte '"'
 
   encode-number_ number:
     // For floating point numbers, the YAML specification has a core tag for float (tag:yaml.org,2002:float)
@@ -114,13 +113,14 @@ class YamlEncoder extends EncoderBase_:
     if enclosed_in_map_:
       put-new-line
       do_indent = true
+    writer := writer_
     map.do: |key value|
       if key is not string:
         throw "INVALID_YAML_OBJECT"
       if do_indent: put-indent_
       do_indent = true
       encode-sub-value_ key indent_ converter
-      writer_.write-byte ':'
+      writer.write-byte ':'
       encode-sub-value_ value --is-map indent_ + 2 converter
       close_element_
 
@@ -140,12 +140,13 @@ class YamlEncoder extends EncoderBase_:
     if enclosed_in_map_:
       put-new-line
       put-indent_
+    writer := writer_
     for i := 0; i < size; i++:
       if i != 0: put-indent_
-      writer_.write-byte '-'
-      writer_.write-byte ' '
+      writer.write-byte '-'
+      writer.write-byte ' '
       encode-sub-value_
           generator.call i
-          writer_.processed - current-line-start-offset_
+          writer.processed - current-line-start-offset_
           converter
       close_element_

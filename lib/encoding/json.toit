@@ -19,12 +19,12 @@ The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the $Encoder.encode, $Encoder.put-list,
-  or Encoder.put_unquoted methods on the encoder.
+  or Encoder.put-unquoted methods on the encoder.
 Utf-8 encoding is used for strings.
 */
 encode obj [converter] -> ByteArray:
   buffer := io.Buffer
-  e := Encoder buffer
+  e := Encoder.private_ buffer
   e.encode obj converter
   return buffer.bytes
 
@@ -52,11 +52,11 @@ The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the $Encoder.encode, $Encoder.put-list,
-  or Encoder.put_unquoted methods on the encoder.
+  or Encoder.put-unquoted methods on the encoder.
 Utf-8 encoding is used on the writer.
 */
 encode-stream --writer/io.Writer obj [converter] -> none:
-  e := Encoder writer
+  e := Encoder.private_ writer
   e.encode obj converter
 
 encode-stream --writer/io.Writer obj converter/Lambda -> none:
@@ -92,12 +92,12 @@ The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the $Encoder.encode, $Encoder.put-list,
-  or Encoder.put_unquoted methods on the encoder.
+  or Encoder.put-unquoted methods on the encoder.
 Utf-8 encoding is used for strings.
 */
 stringify obj/any [converter] -> string:
   buffer := io.Buffer
-  e := Encoder buffer
+  e := Encoder.private_ buffer
   e.encode obj converter
   return buffer.to-string
 
@@ -133,12 +133,9 @@ decode-stream reader:
   d := StreamingDecoder
   return d.decode-stream reader
 
-/**
-Deprecated.  Use the top level json.encode or json.stringify functions
-  instead.
-*/
 class Encoder extends EncoderBase_:
   /**
+  Deprecated.  Use the top-level json.encode functions instead.
   Returns an encoder that encodes into an internal buffer.  The
     result can be extracted with $to-string or $to-byte-array.
   */
@@ -148,7 +145,7 @@ class Encoder extends EncoderBase_:
   /**
   Returns an encoder that encodes onto an $io.Writer.
   */
-  constructor writer/io.Writer:
+  constructor.private_ writer/io.Writer:
     super writer
 
   /**

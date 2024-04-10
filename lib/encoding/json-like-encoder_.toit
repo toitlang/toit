@@ -47,14 +47,15 @@ abstract class EncoderBase_:
   abstract put-list size/int [generator] [converter]
 
   put-unicode-escape_ code-point/int:
-    writer_.write-byte 'u'
-    writer_.write_byte
+    writer := writer_
+    writer.write-byte 'u'
+    writer.write_byte
       to-lower-case-hex (code-point >> 12) & 0xf
-    writer_.write_byte
+    writer.write_byte
       to-lower-case-hex (code-point >> 8) & 0xf
-    writer_.write_byte
+    writer.write_byte
       to-lower-case-hex (code-point >> 4) & 0xf
-    writer_.write_byte
+    writer.write_byte
       to-lower-case-hex code-point & 0xf
 
   /**
@@ -62,7 +63,7 @@ abstract class EncoderBase_:
   No quoting, no escaping.  This is mainly used for things
     that will be parsed as numbers or strings by the receiver.
   */
-  put-unquoted data -> none:
+  put-unquoted data/io.Data -> none:
     writer_.write data
 
 ESCAPED-CHAR-MAP_ ::= create-escaped-char-map_

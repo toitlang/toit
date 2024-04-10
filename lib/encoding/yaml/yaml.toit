@@ -24,13 +24,14 @@ The $converter block is passed an object to be serialized and an instance
   of the $YamlEncoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the $YamlEncoder.encode, $YamlEncoder.put-list,
-  or $YamlEncoder.put_unquoted methods on the encoder.
+  or $YamlEncoder.put-unquoted methods on the encoder.
 Utf-8 encoding is used for strings.
 */
 encode obj [converter] -> ByteArray:
-  e := YamlEncoder
+  buffer := io.Buffer
+  e := YamlEncoder.private_ buffer
   e.encode obj converter
-  return e.to-byte-array
+  return buffer.bytes
 
 /**
 Variant of $(encode obj [converter]).
@@ -60,11 +61,11 @@ The $converter block is passed an object to be serialized and an instance
   of the $YamlEncoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the $YamlEncoder.encode, $YamlEncoder.put-list,
-  or $YamlEncoder.put_unquoted methods on the encoder.
+  or $YamlEncoder.put-unquoted methods on the encoder.
 Utf-8 encoding is used on the writer.
 */
 encode-stream --writer/io.Writer obj [converter] -> none:
-  e := YamlEncoder writer
+  e := YamlEncoder.private_ writer
   e.encode obj converter
 
 /**
@@ -140,13 +141,14 @@ The $converter block is passed an object to be serialized and an instance
   of the $YamlEncoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the YamlEncoder.encode, YamlEncoder.put-list,
-  or YamlEncoder.put_unquoted methods on the encoder.
+  or YamlEncoder.put-unquoted methods on the encoder.
 Utf-8 encoding is used for strings.
 */
 stringify obj/any [converter] -> string:
-  e := YamlEncoder
+  buffer := io.Buffer
+  e := YamlEncoder.private_ buffer
   e.encode obj converter
-  return e.to-string
+  return buffer.to-string
 
 stringify obj converter/Lambda -> string:
   return stringify obj: | obj encoder | converter.call obj encoder
