@@ -112,9 +112,11 @@ class RpcConnection:
       throw "Unexpected content-type: '$content-type'"
 
   write-packet packet:
-    encoder := use-ubjson_ ? ubjson.Encoder : json.Encoder
-    encoder.encode packet
-    payload := encoder.to-byte-array
+    payload/ByteArray := ?
+    if use-ubjson_:
+      payload = ubjson.encode packet
+    else:
+      payload = json.encode packet
     mutex_.do:
       writeln_ "Content-Length: $(payload.size)"
       writeln_ "Content-Type: $(use-ubjson_ ? CONTENT-TYPE-UBJSON_ : CONTENT-TYPE-JSON_)"
