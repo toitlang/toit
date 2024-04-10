@@ -236,13 +236,13 @@ abstract class CloseableWriter extends Writer:
   abstract close_ -> none
 
 abstract mixin OutMixin:
-  out__/Out_? := null
+  _out_/Out_? := null
 
   out -> Writer:
-    result := out__
+    result := _out_
     if not result:
       result = Out_ this
-      out__ = result
+      _out_ = result
     return result
 
   /**
@@ -260,7 +260,7 @@ abstract mixin OutMixin:
   */
   // This is a protected method. It should not be "private".
   close-writer_ -> none:
-    if out__: out__.mark-closed_
+    if _out_: _out_.mark-closed_
 
   /**
   Marks the writer as closed.
@@ -274,7 +274,7 @@ abstract mixin OutMixin:
   */
   // This is a protected method. It should not be "private".
   mark-writer-closed_ -> none:
-    if out__: out__.mark-closed_
+    if _out_: _out_.mark-closed_
 
   /**
   Writes the given $data to this writer.
@@ -288,11 +288,11 @@ abstract mixin OutMixin:
   abstract try-write_ data/Data from/int to/int -> int
 
 abstract mixin CloseableOutMixin:
-  out__/CloseableOut_? := null
+  _out_/CloseableOut_? := null
 
   out -> CloseableWriter:
-    if not out__: out__ = CloseableOut_ this
-    return out__
+    if not _out_: _out_ = CloseableOut_ this
+    return _out_
 
   /**
   Marks the writer as closed.
@@ -306,7 +306,7 @@ abstract mixin CloseableOutMixin:
   */
   // This is a protected method. It should not be "private".
   mark-writer-closed_ -> none:
-    if out__: out__.mark-closed_
+    if _out_: _out_.mark-closed_
 
   /**
   Writes the given $data to this writer.

@@ -775,14 +775,14 @@ abstract class CloseableReader extends Reader:
   abstract close_ -> none
 
 abstract mixin InMixin:
-  in__/In_? := null
+  _in_/In_? := null
 
   in -> Reader:
-    result := in__
+    result := _in_
     if not result:
       result = In_ this
-      in__ = result
-    return in__
+      _in_ = result
+    return _in_
 
   /**
   Closes the reader if it exists.
@@ -797,7 +797,7 @@ abstract mixin InMixin:
   */
   // This is a protected method. It should not be "private".
   close-reader_ -> none:
-    if in__: in__.mark-closed_
+    if _in_: _in_.mark-closed_
 
   /**
   Marks the reader as closed.
@@ -810,7 +810,7 @@ abstract mixin InMixin:
   */
   // This is a protected method. It should not be "private".
   mark-reader-closed_ -> none:
-    if in__: in__.mark-closed_
+    if _in_: _in_.mark-closed_
 
   /**
   Reads the next bytes.
@@ -822,11 +822,11 @@ abstract mixin InMixin:
   abstract read_ -> ByteArray?
 
 abstract mixin CloseableInMixin:
-  in__/CloseableIn_? := null
+  _in_/CloseableIn_? := null
 
   in -> CloseableReader:
-    if not in__: in__ = CloseableIn_ this
-    return in__
+    if not _in_: _in_ = CloseableIn_ this
+    return _in_
 
   /**
   Marks the reader as closed.
@@ -839,7 +839,7 @@ abstract mixin CloseableInMixin:
   */
   // This is a protected method. It should not be "private".
   mark-reader-closed_ -> none:
-    if in__: in__.mark-closed_
+    if _in_: _in_.mark-closed_
 
   /**
   Reads the next bytes.
