@@ -23,6 +23,15 @@ class Buffer extends CloseableWriter:
   is-growable_/bool := ?
 
   /**
+  The number of bytes that have been written into the buffer.
+  If the buffer was cleared, then this value is reset to 0.
+  */
+  processed -> int:
+    // Ignore the processed_ counter from the superclass, which
+    // is not consistently updated.
+    return offset_
+
+  /**
   Constructs a new buffer.
 
   The backing byte array is allocated with a default size and will grow if needed.

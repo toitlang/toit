@@ -3,11 +3,16 @@
 // found in the lib/LICENSE file.
 
 import bitmap
+import io
 import io show LITTLE-ENDIAN
 
 INITIAL-BUFFER-SIZE_ ::= 64
 
-abstract class EncoderBase_ extends Buffer_:
+abstract class EncoderBase_:
+  writer_/io.Writer
+
+  constructor .writer_:
+
   encode obj/any [converter]:
     if obj is string: encode-string_ obj
     else if obj is num: encode-number_ obj
@@ -42,65 +47,30 @@ abstract class EncoderBase_ extends Buffer_:
   abstract put-list size/int [generator] [converter]
 
   put-unicode-escape_ code-point/int:
-    put-byte_ 'u'
-    put-byte_
+    writer := writer_
+    writer.write-byte 'u'
+    writer.write_byte
       to-lower-case-hex (code-point >> 12) & 0xf
-    put-byte_
+    writer.write_byte
       to-lower-case-hex (code-point >> 8) & 0xf
-    put-byte_
+    writer.write_byte
       to-lower-case-hex (code-point >> 4) & 0xf
-    put-byte_
+    writer.write_byte
       to-lower-case-hex code-point & 0xf
 
+  to-string -> string:
+    return (writer_ as io.Buffer).to-string
 
-class Buffer_:
-  buffer_ := ByteArray INITIAL-BUFFER-SIZE_
-  offset_ := 0
-
-  to-string:
-    return buffer_.to-string 0 offset_
-
-  to-byte-array:
-    return buffer_.copy 0 offset_
-
-  ensure_ size/int -> none:
-    if offset_ + size <= buffer_.size: return
-    new-size := buffer_.size * 2
-    while new-size < offset_ + size:
-      new-size *= 2
-    new := ByteArray new-size
-    new.replace 0 buffer_
-    buffer_ = new
+  to-byte-array -> ByteArray:
+    return (writer_ as io.Buffer).bytes
 
   /**
   Outputs a string or ByteArray directly to the JSON stream.
   No quoting, no escaping.  This is mainly used for things
     that will be parsed as numbers or strings by the receiver.
   */
-  put-unquoted data -> none:
-    len := data.size
-    ensure_ len
-    buffer_.replace offset_ data
-    offset_ += len
-
-  put-string_ str/string from/int to/int:
-    len := to - from
-    ensure_ len
-    buffer_.replace offset_ str from to
-    offset_ += len
-
-  put-byte_ byte/int:
-    ensure_ 1
-    buffer_[offset_++] = byte
-
-  peek-last-byte_ -> int?:
-    if offset_ > 0: return buffer_[offset_ - 1]
-    return null
-
-  clear_:
-    offset_ = 0
-
-
+  put-unquoted data/io.Data -> none:
+    writer_.write data
 
 ESCAPED-CHAR-MAP_ ::= create-escaped-char-map_
 ONE-CHAR-ESCAPES_ ::= {
@@ -164,5 +134,3 @@ escape-string str/string -> any:
         output-posn += 5
   result.replace output-posn str not-yet-copied str.size
   return result
-
-
