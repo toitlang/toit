@@ -19,6 +19,9 @@
 <pkg:toit-cert-roots>/certificate_roots.toit:10829:39: warning: Deprecated 'STAAT-DER-NEDERLANDEN-EV-ROOT-CA'
   "Staat der Nederlanden EV Root CA": STAAT_DER_NEDERLANDEN_EV_ROOT_CA,
                                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+<pkg:pkg-http>/server.toit:265:5: warning: Deprecated 'OutMixin.close-writer_'
+    close_writer_
+    ^~~~~~~~~~~~~
 <pkg:toit-cert-roots>/certificate_roots.toit:11093:3: warning: Deprecated 'CYBERTRUST-GLOBAL-ROOT'
   CYBERTRUST_GLOBAL_ROOT.install
   ^~~~~~~~~~~~~~~~~~~~~~

@@ -178,9 +178,21 @@ abstract class Writer:
 
   Sets the internal boolean to 'closed'.
   Further writes throw an exception.
+
+  Deprecated. Use $mark-closed_ instead.
   */
   // This is a protected method. It should not be "private".
   close-writer_:
+    is-closed_ = true
+
+  /**
+  Marks this writer as closed.
+
+  Sets the internal boolean to 'closed'.
+  Further writes throw an exception.
+  */
+  // This is a protected method. It should not be "private".
+  mark-closed_:
     is-closed_ = true
 
   /**
@@ -203,8 +215,10 @@ abstract class CloseableWriter extends Writer:
   */
   close:
     if is-closed_: return
-    close_
-    is-closed_ = true
+    try:
+      close_
+    finally:
+      mark-closed_
 
   /** Whether this writer is closed. */
   is-closed -> bool:
@@ -222,13 +236,13 @@ abstract class CloseableWriter extends Writer:
   abstract close_ -> none
 
 abstract mixin OutMixin:
-  out_/Out_? := null
+  _out_/Out_? := null
 
   out -> Writer:
-    result := out_
+    result := _out_
     if not result:
       result = Out_ this
-      out_ = result
+      _out_ = result
     return result
 
   /**
@@ -241,10 +255,26 @@ abstract mixin OutMixin:
   Any existing write needs to be aborted by the caller of this method.
     The $try-write_ should either throw or return the number of bytes that have been
     written so far. See $CloseableWriter.close_.
+
+  Deprecated. Use $mark-writer-closed_ instead.
   */
   // This is a protected method. It should not be "private".
   close-writer_ -> none:
-    if out_: out_.close-writer_
+    if _out_: _out_.mark-closed_
+
+  /**
+  Marks the writer as closed.
+
+  The $out $Writer doesn't have a 'close' method. It only sets the
+    the internal boolean to closed, so that further writes throw.
+
+  Any existing write needs to be aborted by the caller of this method.
+    The $try-write_ should either throw or return the number of bytes that have been
+    written so far. See $CloseableWriter.close_.
+  */
+  // This is a protected method. It should not be "private".
+  mark-writer-closed_ -> none:
+    if _out_: _out_.mark-closed_
 
   /**
   Writes the given $data to this writer.
@@ -258,11 +288,25 @@ abstract mixin OutMixin:
   abstract try-write_ data/Data from/int to/int -> int
 
 abstract mixin CloseableOutMixin:
-  out_/CloseableOut_? := null
+  _out_/CloseableOut_? := null
 
   out -> CloseableWriter:
-    if not out_: out_ = CloseableOut_ this
-    return out_
+    if not _out_: _out_ = CloseableOut_ this
+    return _out_
+
+  /**
+  Marks the writer as closed.
+
+  The $out $Writer doesn't have a 'close' method. It only sets the
+    the internal boolean to closed, so that further writes throw.
+
+  Any existing write needs to be aborted by the caller of this method.
+    The $try-write_ should either throw or return the number of bytes that have been
+    written so far. See $CloseableWriter.close_.
+  */
+  // This is a protected method. It should not be "private".
+  mark-writer-closed_ -> none:
+    if _out_: _out_.mark-closed_
 
   /**
   Writes the given $data to this writer.
