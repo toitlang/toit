@@ -9,18 +9,15 @@ import .json-like-encoder_
 MAX-BUFFER-GROWTH_ ::= 1024
 
 /**
-Encodes the $obj as a JSON ByteArray.
-The $obj must be a supported type, which means either a type supported
-  by the $converter block or an instance of int, bool, float, string, List
-  or Map.
-Maps must have only string keys.  The elements of lists and the values of
-  maps can be any of the above supported types.
+Variant of $(encode obj).
+If the $obj is or contains a non-supported type, then the converter
+  block is called with the object and an instance of the $Encoder class.
+  The converter is not called for map keys, which must still be strings.
 The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the $Encoder.encode, $Encoder.put-list,
   or Encoder.put-unquoted methods on the encoder.
-UTF-8 encoding is used for strings.
 */
 encode obj [converter] -> ByteArray:
   buffer := io.Buffer
@@ -28,12 +25,17 @@ encode obj [converter] -> ByteArray:
   e.encode obj converter
   return buffer.bytes
 
+/**
+Variant of $(encode obj [converter]).
+Takes a $Lambda instead of a block as $converter.
+*/
 encode obj converter/Lambda -> ByteArray:
   return encode obj: | obj encoder | converter.call obj encoder
 
 /**
 Encodes the $obj as a JSON ByteArray.
-The $obj must be null or an instance of int, bool, float, string, List, or Map.
+The $obj must be a supported type, which means null, or an instance of int,
+  bool, float, string, List or Map.
 Maps must have only string keys.  The elements of lists and the values of
   maps can be any of the above supported types.
 UTF-8 encoding is used for strings.
@@ -42,29 +44,31 @@ encode obj -> ByteArray:
   return encode obj: throw "INVALID_JSON_OBJECT"
 
 /**
-Encodes the $obj onto an $io.Writer.
-The $obj must be a supported type, which means either a type supported
-  by the $converter block or an instance of int, bool, float, string, List
-  or Map.
-Maps must have only string keys.  The elements of lists and the values of
-  maps can be any of the above supported types.
+Variant of $(encode-stream --writer obj).
+If the $obj is or contains a non-supported type, then the converter
+  block is called with the object and an instance of the $Encoder class.
+  The converter is not called for map keys, which must still be strings.
 The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the $Encoder.encode, $Encoder.put-list,
   or Encoder.put-unquoted methods on the encoder.
-UTF-8 encoding is used on the writer.
 */
 encode-stream --writer/io.Writer obj [converter] -> none:
   e := Encoder.private_ writer
   e.encode obj converter
 
+/**
+Variant of $(encode-stream obj [converter]).
+Takes a $Lambda instead of a block as $converter.
+*/
 encode-stream --writer/io.Writer obj converter/Lambda -> none:
   encode-stream --writer=writer obj: | obj encoder | converter.call obj encoder
 
 /**
-Encodes the $obj onto an $io.Writer.
-The $obj must be null or an instance of int, bool, float, string, List, or Map.
+Encodes the $obj onto an $io.Writer in JSON format.
+The $obj must be a supported type, which means null, or an instance of int,
+  bool, float, string, List or Map.
 Maps must have only string keys.  The elements of lists and the values of
   maps can be any of the above supported types.
 UTF-8 encoding is used on the writer.
@@ -74,7 +78,7 @@ encode-stream --writer/io.Writer obj -> none:
 
 /**
 Decodes the $bytes, which is a ByteArray in JSON format.
-The result is null or an instance of int, bool, float, string, List, or Map.
+The result is null, or an instance of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 */
 decode bytes/ByteArray -> any:
@@ -82,18 +86,15 @@ decode bytes/ByteArray -> any:
   return d.decode bytes
 
 /**
-Encodes the $obj as a JSON string.
-The $obj must be a supported type, which means either a type supported
-  by the $converter block or an instance of int, bool, float, string, List
-  or Map.
-Maps must have only string keys.  The elements of lists and the values of
-  maps can be any of the above supported types.
+Variant of $(stringify obj).
+If the $obj is or contains a non-supported type, then the converter
+  block is called with the object and an instance of the $Encoder class.
+  The converter is not called for map keys, which must still be strings.
 The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the $Encoder.encode, $Encoder.put-list,
   or Encoder.put-unquoted methods on the encoder.
-UTF-8 encoding is used for strings.
 */
 stringify obj/any [converter] -> string:
   buffer := io.Buffer
@@ -101,13 +102,18 @@ stringify obj/any [converter] -> string:
   e.encode obj converter
   return buffer.to-string
 
+/**
+Variant of $(stringify obj [converter]).
+Takes a $Lambda instead of a block as $converter.
+*/
 stringify obj converter/Lambda -> string:
   return stringify obj: | obj encoder | converter.call obj encoder
 
 /**
 Encodes the $obj as a JSON string.
-The $obj must be null or an instance of int, bool, float, string, List, or Map.
-  Maps must have only string keys.  The elements of lists and the values of
+The $obj must be a supported type, which means null, or an instance of int,
+  bool, float, string, List or Map.
+Maps must have only string keys.  The elements of lists and the values of
   maps can be any of the above supported types.
 */
 stringify obj/any -> string:
@@ -115,7 +121,7 @@ stringify obj/any -> string:
 
 /**
 Decodes the $str, which is a string in JSON format.
-The result is null or an instance of of int, bool, float, string, List, or Map.
+The result is null, or an instance of of int, bool, float, string, List, or Map.
   The list elements and map values will also be one of these types.
 */
 parse str/string:

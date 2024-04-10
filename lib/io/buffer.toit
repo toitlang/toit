@@ -28,7 +28,7 @@ class Buffer extends CloseableWriter:
   */
   processed -> int:
     // Ignore the processed_ counter from the superclass, which
-    // we don't update.
+    // is not consistently updated.
     return offset_
 
   /**
