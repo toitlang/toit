@@ -723,9 +723,21 @@ abstract class Reader implements old-reader.Reader:
 
   Sets the internal boolean to 'closed'.
   Further reads return null.
+
+  Deprecated. Use $mark-closed_ instead.
   */
   // This is a protected method. It should not be "private".
   close-reader_:
+    is-closed_ = true
+
+  /**
+  Marks this reader as closed.
+
+  Sets the internal boolean to 'closed'.
+  Further reads return null.
+  */
+  // This is a protected method. It should not be "private".
+  mark-closed_:
     is-closed_ = true
 
 abstract class CloseableReader extends Reader:
@@ -741,8 +753,10 @@ abstract class CloseableReader extends Reader:
   close --clear-buffered/bool=false -> none:
     if clear-buffered: clear
     if is-closed_: return
-    close_
-    close-reader_
+    try:
+      close_
+    finally:
+      mark-closed_
 
   /** Whether this reader is closed. */
   is-closed -> bool:
@@ -761,27 +775,42 @@ abstract class CloseableReader extends Reader:
   abstract close_ -> none
 
 abstract mixin InMixin:
-  in_/In_? := null
+  in__/In_? := null
 
   in -> Reader:
-    result := in_
+    result := in__
     if not result:
       result = In_ this
-      in_ = result
-    return in_
+      in__ = result
+    return in__
 
   /**
-  Closes the writer if it exists.
+  Closes the reader if it exists.
 
   The $in $Reader doesn't have a 'close' method. However, we can set
     the internal boolean to closed, so that further reads return null.
 
   Any existing read needs to be aborted by the caller of this method. The $read_
     method should return null.
+
+  Deprecated. Use $mark-reader-closed_ instead.
   */
   // This is a protected method. It should not be "private".
   close-reader_ -> none:
-    if in_: in_.close-reader_
+    if in__: in__.mark-closed_
+
+  /**
+  Marks the reader as closed.
+
+  The $in $Reader doesn't have a 'close' method. It only sets the
+    the internal boolean to closed, so that further reads return null.
+
+  Any existing read needs to be aborted by the caller of this method. The $read_
+    method should then return null.
+  */
+  // This is a protected method. It should not be "private".
+  mark-reader-closed_ -> none:
+    if in__: in__.mark-closed_
 
   /**
   Reads the next bytes.
@@ -793,11 +822,24 @@ abstract mixin InMixin:
   abstract read_ -> ByteArray?
 
 abstract mixin CloseableInMixin:
-  in_/CloseableIn_? := null
+  in__/CloseableIn_? := null
 
   in -> CloseableReader:
-    if not in_: in_ = CloseableIn_ this
-    return in_
+    if not in__: in__ = CloseableIn_ this
+    return in__
+
+  /**
+  Marks the reader as closed.
+
+  The $in $Reader doesn't have a 'close' method. It only sets the
+    the internal boolean to closed, so that further reads return null.
+
+  Any existing read needs to be aborted by the caller of this method. The $read_
+    method should then return null.
+  */
+  // This is a protected method. It should not be "private".
+  mark-reader-closed_ -> none:
+    if in__: in__.mark-closed_
 
   /**
   Reads the next bytes.

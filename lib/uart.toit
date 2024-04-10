@@ -181,8 +181,8 @@ class Port extends Object with io.InMixin implements reader.Reader:
   */
   close:
     if not uart_: return
-    close-reader_
-    if out_: out_.close-writer_
+    mark-reader-closed_
+    if out_: out_.mark-closed_
     critical-do:
       state_.dispose
       uart-close_ resource-group_ uart_
