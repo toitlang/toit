@@ -25,7 +25,7 @@ The $converter block is passed an object to be serialized and an instance
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the $YamlEncoder.encode, $YamlEncoder.put-list,
   or $YamlEncoder.put-unquoted methods on the encoder.
-Utf-8 encoding is used for strings.
+UTF-8 encoding is used for strings.
 */
 encode obj [converter] -> ByteArray:
   buffer := io.Buffer
@@ -45,7 +45,7 @@ Encodes the $obj as a YAML ByteArray.
 The $obj must be null or an instance of int, bool, float, string, List, or Map.
 Maps must have only string keys.  The elements of lists and the values of
   maps can be any of the above supported types.
-Utf-8 encoding is used for strings.
+UTF-8 encoding is used for strings.
 */
 encode obj -> ByteArray:
   return encode obj: throw "INVALID_YAML_OBJECT"
@@ -62,7 +62,7 @@ The $converter block is passed an object to be serialized and an instance
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the $YamlEncoder.encode, $YamlEncoder.put-list,
   or $YamlEncoder.put-unquoted methods on the encoder.
-Utf-8 encoding is used on the writer.
+UTF-8 encoding is used on the writer.
 */
 encode-stream --writer/io.Writer obj [converter] -> none:
   e := YamlEncoder.private_ writer
@@ -80,7 +80,7 @@ Encodes the $obj onto an $io.Writer in YAML format.
 The $obj must be null or an instance of int, bool, float, string, List, or Map.
 Maps must have only string keys.  The elements of lists and the values of
   maps can be any of the above supported types.
-Utf-8 encoding is used on the writer.
+UTF-8 encoding is used on the writer.
 */
 encode-stream --writer/io.Writer obj -> none:
   encode-stream --writer=writer obj: throw "INVALID_YAML_OBJECT"
@@ -142,7 +142,7 @@ The $converter block is passed an object to be serialized and an instance
   be serialized instead of the object that was passed in.  Alternatively,
   the $converter block can call the YamlEncoder.encode, YamlEncoder.put-list,
   or YamlEncoder.put-unquoted methods on the encoder.
-Utf-8 encoding is used for strings.
+UTF-8 encoding is used for strings.
 */
 stringify obj/any [converter] -> string:
   buffer := io.Buffer
