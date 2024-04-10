@@ -148,17 +148,15 @@ class Encoder extends EncoderBase_:
   constructor.private_ writer/io.Writer:
     super writer
 
-  /**
-  Returns the encoded JSON object as a string.
-  */
-  to-string -> string:
-    return (writer_ as io.Buffer).to-string
+  /** See $EncoderBase_.encode */
+  // TODO(florian): Remove when toitdoc compile understands inherited methods
+  encode obj/any converter/Lambda:
+    return super obj converter
 
-  /**
-  Returns the encoded JSON object as a ByteArray.
-  */
-  to-byte-array -> ByteArray:
-    return (writer_ as io.Buffer).bytes
+  /** See $EncoderBase_.put-unquoted */
+  // TODO(florian): Remove when toitdoc compile understands inherited methods
+  put-unquoted data -> none:
+    super data
 
   encode-string_ str:
     escaped := escape-string str

@@ -32,12 +32,6 @@ class YamlEncoder extends EncoderBase_:
   encode obj/any converter/Lambda:
     return super obj converter
 
-  to-string:
-    return (writer_ as io.Buffer).to-string
-
-  to-byte-array:
-    return (writer_ as io.Buffer).bytes
-
   /** See $EncoderBase_.put-unquoted */
   // TODO(florian): Remove when toitdoc compile understands inherited methods
   put-unquoted data -> none:

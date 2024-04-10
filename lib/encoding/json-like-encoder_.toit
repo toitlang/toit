@@ -58,6 +58,12 @@ abstract class EncoderBase_:
     writer.write_byte
       to-lower-case-hex code-point & 0xf
 
+  to-string -> string:
+    return (writer_ as io.Buffer).to-string
+
+  to-byte-array -> ByteArray:
+    return (writer_ as io.Buffer).bytes
+
   /**
   Outputs a string or ByteArray directly to the JSON stream.
   No quoting, no escaping.  This is mainly used for things
