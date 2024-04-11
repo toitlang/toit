@@ -321,8 +321,8 @@ Paints a framed window $frame on top of a background that has already been
   contents.  The $frame is painted on top of the background, then window
   contents are painted on top.
 */
-composit-bytes dest/ByteArray frame-opacity/ByteArray frame/ByteArray
-    painting-opacity/ByteArray painting/ByteArray bits-not-bytes/bool:
+composit-bytes dest/ByteArray frame-opacity/ByteArray frame/ByteArray?
+    painting-opacity/ByteArray painting/ByteArray? bits-not-bytes/bool:
   #primitive.bitmap.composit
 
 /**
