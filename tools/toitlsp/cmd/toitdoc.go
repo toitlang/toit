@@ -269,17 +269,30 @@ func extractSummaries(ctx context.Context, options extractSummariesOptions) (map
 	mergedSummaries := map[doclsp.DocumentURI]*toit.Module{}
 	documents := server.GetContext(conn).Documents
 	allProjectURIs := documents.AllProjectURIs()
-	for _, projectUri := range allProjectURIs {
-		analyzedDocuments := server.GetContext(conn).Documents.AnalyzedDocumentsFor(projectUri)
-		for uri, summary := range analyzedDocuments.Summaries() {
-			docProjectUri, err := documents.ProjectURIFor(uri, false)
-			if err != nil {
-				return nil, err
-			}
-			if docProjectUri == projectUri {
-				mergedSummaries[uri] = summary
-			}
+
+	if len(allProjectURIs) != 1 {
+		// Warn that more than one project was found.
+		stringURIs := make([]string, len(allProjectURIs))
+		for i, uri := range allProjectURIs {
+			stringURIs[i] = string(uri)
 		}
+		options.Logger.Warn("more than one project found", zap.Strings("projects", stringURIs))
+	}
+
+	// Find the shortest projectURI. We assume that it's the one that is still nested
+	// under the root, but has the least nesting.
+	// We will ignore all other projects.
+	// If a user gave a list of files (or a directory) containing other projects, they
+	// will be ignored.
+	var projectUri doclsp.DocumentURI
+	for _, projectURI := range allProjectURIs {
+		if projectUri == "" || len(projectURI) < len(projectUri) {
+			projectUri = projectURI
+		}
+	}
+	analyzedDocuments := documents.AnalyzedDocumentsFor(projectUri)
+	for uri, summary := range analyzedDocuments.Summaries() {
+		mergedSummaries[uri] = summary
 	}
 	return mergedSummaries, nil
 }
