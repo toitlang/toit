@@ -1,3 +1,0 @@
-<pkg:..>/server.toit:265:5: warning: Deprecated 'OutMixin.close-writer_'
-    close_writer_
-    ^~~~~~~~~~~~~
