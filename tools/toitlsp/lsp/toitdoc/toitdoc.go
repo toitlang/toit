@@ -120,9 +120,12 @@ func isLibraryHidden(segments []string) bool {
 }
 
 type Doc struct {
-	SDKVersion string    `json:"sdk_version"`
-	Version    string    `json:"version"`
-	Libraries  Libraries `json:"libraries"`
+	SDKVersion   string    `json:"sdk_version"`
+	Version      string    `json:"version"`
+	PkgName      string    `json:"pkg_name,omitempty"`
+	SDKPath      []string  `json:"sdk_path,omitempty"`
+	PackagesPath []string  `json:"packages_path,omitempty"`
+	Libraries    Libraries `json:"libraries"`
 }
 
 type Summaries map[lsp.DocumentURI]*toit.Module
@@ -136,6 +139,7 @@ type BuildOptions struct {
 	ExcludeSDK     bool
 	ExcludePkgs    bool
 	SDKURI         lsp.DocumentURI
+	PkgName        string
 }
 
 func Build(o BuildOptions) *Doc {
@@ -153,6 +157,7 @@ type builder struct {
 	includePrivate bool
 	excludeSDK     bool
 	excludePkgs    bool
+	pkgName        string
 }
 
 func newBuilder(o BuildOptions) *builder {
@@ -165,6 +170,7 @@ func newBuilder(o BuildOptions) *builder {
 		excludeSDK:     o.ExcludeSDK,
 		excludePkgs:    o.ExcludePkgs,
 		sdkURI:         o.SDKURI,
+		pkgName:        o.PkgName,
 	}
 }
 
@@ -175,22 +181,36 @@ func (b *builder) modulePathSegments(docuri lsp.DocumentURI) []string {
 	p := uri.URIToPath(docuri)
 	p = strings.TrimPrefix(p, b.rootPath)
 	p = strings.TrimPrefix(p, string(os.PathSeparator))
-	return strings.Split(p, string(os.PathSeparator))
+	result := strings.Split(p, string(os.PathSeparator))
+	if len(result) > 0 && result[len(result)-1] == "" {
+		result = result[:len(result)-1]
+	}
+	return result
 }
 
 func (b *builder) build() *Doc {
 	b.inheritance = inheritance.ComputeInheritance(inheritance.Summaries(b.summaries))
 
-	res := Doc{
-		SDKVersion: b.sdkVersion,
-		Version:    b.version,
-		Libraries:  Libraries{},
-	}
-
 	// TODO(florian): don't rely on hardcoded ".packages" path.
 	// Ideally we should get a lock-file mapping in and use that to
 	// figure out which package a file is in.
 	packageURI := uri.PathToURI(b.rootPath) + "/.packages/"
+
+	var pkgSDKPath []string
+	var pkgPackagesPath []string
+	if b.pkgName != "" {
+		pkgSDKPath = b.modulePathSegments(b.sdkURI)
+		pkgPackagesPath = b.modulePathSegments(packageURI)
+	}
+	res := Doc{
+		SDKVersion:   b.sdkVersion,
+		Version:      b.version,
+		PkgName:      b.pkgName,
+		SDKPath:      pkgSDKPath,
+		PackagesPath: pkgPackagesPath,
+		Libraries:    Libraries{},
+	}
+
 	for u, m := range b.summaries {
 		if b.excludeSDK && strings.HasPrefix(string(u), string(b.sdkURI)) {
 			continue
