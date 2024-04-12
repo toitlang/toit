@@ -187,14 +187,14 @@ func (b *builder) build() *Doc {
 		Libraries:  Libraries{},
 	}
 
+	// TODO(florian): don't rely on hardcoded ".packages" path.
+	// Ideally we should get a lock-file mapping in and use that to
+	// figure out which package a file is in.
 	packageURI := uri.PathToURI(b.rootPath) + "/.packages/"
 	for u, m := range b.summaries {
 		if b.excludeSDK && strings.HasPrefix(string(u), string(b.sdkURI)) {
 			continue
 		}
-		// TODO(florian): this is a complete hack.
-		// However, we don't have easy access to where the project was located, so it's
-		// not trivial to
 		if b.excludePkgs && strings.HasPrefix(string(u), string(packageURI)) {
 			continue
 		}
