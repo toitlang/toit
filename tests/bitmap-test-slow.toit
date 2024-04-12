@@ -24,6 +24,7 @@ main:
   bitmap-test
   blur-test
   io-data-test
+  composit-test
 
 bitmap-primitives-present := true
 bytemap-primitives-present := true
@@ -812,3 +813,122 @@ io-data-test:
   blit (FakeData ba) ba 4 --mask=0xfe
   ba.size.repeat:
     expect-equals [0, 2, 2, 4][it] ba[it]
+
+composit-test -> none:
+  if bytemap-primitives-present:
+    composit-test-bytemap
+  if bitmap-primitives-present:
+    composit-test-bitmap
+
+composit-test-bytemap -> none:
+  canvas := ByteArray 16
+  frame := ByteArray 16: 42
+  frame-opacity := #[128, 128, 128, 128,
+                     128,   0,   0, 128,
+                     128,   0,   0, 128,
+                     128, 128, 128, 128,
+                    ]
+  painting := #[1, 2, 3, 4,
+                5, 6, 7, 8,
+                9, 0, 1, 2,
+                3, 4, 5, 6,
+               ]
+  painting-opacity := #[  0,   0,   0, 128,
+                          0,   0, 128, 255,
+                          0, 128, 255, 255,
+                        128, 255, 255, 255,
+                       ]
+
+  BYTE-MODE ::= false
+
+  composit-bytes canvas frame-opacity frame painting-opacity painting BYTE-MODE
+
+  EXPECTED1 := #[0x15, 0x15, 0x15, 0x0c,
+                 0x15,    0,    3,    8,
+                 0x15,    0,    1,    2,
+                 0x0c,    4,    5,    6,
+                ]
+  expect-equals EXPECTED1 canvas
+
+  // Fully transparent frame means we can pass null for the frame bitmap.
+  composit-bytes canvas #[0] null painting-opacity painting BYTE-MODE
+  EXPECTED2 := #[0x15, 0x15, 0x15,    8,
+                 0x15,    0,    5,    8,
+                 0x15,    0,    1,    2,
+                    7,    4,    5,    6,
+                ]
+  expect-equals EXPECTED2 canvas
+
+  // Fully opaque frame can be done with #[0xff] for the opacity.
+  composit-bytes canvas #[0xff] frame painting-opacity painting BYTE-MODE
+  EXPECTED3 := #[42,     42,   42, 0x17,
+                 42,     42, 0x18,    8,
+                 42,   0x15,    1,    2,
+                 0x16,    4,    5,    6,
+                ]
+  expect-equals EXPECTED3 canvas
+
+  // Fully opaque painting can be done with #[0xff] for the opacity.
+  composit-bytes canvas frame-opacity frame #[0xff] painting BYTE-MODE
+  expect-equals painting canvas
+
+  // Fully opaque frame and fully transparent painting.
+  composit-bytes canvas #[0xff] frame #[0] painting BYTE-MODE
+  expect-equals frame canvas
+
+composit-test-bitmap -> none:
+  // The canvas is a bitmap that is 4x32 pixels.
+  canvas := ByteArray 16
+  frame := ByteArray 16: 42
+  frame-opacity := #[255, 128, 128, 255,
+                     255,   0,   0, 255,
+                     255,   0,   0, 255,
+                     255,   1,   1, 255,
+                    ]
+  painting := #[1, 2, 3, 4,
+                5, 6, 7, 8,
+                9, 0, 1, 2,
+                3, 4, 5, 6,
+               ]
+  painting-opacity := #[  0,   0,   0, 255,
+                          0,   0, 255, 255,
+                          0, 255, 255, 255,
+                        255, 255, 255, 255,
+                       ]
+
+  BIT-MODE ::= true
+
+  composit-bytes canvas frame-opacity frame painting-opacity painting BIT-MODE
+
+  EXPECTED1 := #[42, 0, 0, 4,
+                 42, 0, 7, 8,
+                 42, 0, 1, 2,
+                  3, 4, 5, 6,
+                ]
+  expect-equals EXPECTED1 canvas
+
+  // Fully transparent frame means we can pass null for the frame bitmap.
+  composit-bytes canvas #[0] null painting-opacity painting BIT-MODE
+  EXPECTED2 := #[42, 0, 0, 4,
+                 42, 0, 7, 8,
+                 42, 0, 1, 2,
+                  3, 4, 5, 6,
+                ]
+  expect-equals EXPECTED2 canvas
+
+  // Fully opaque frame can be done with #[0xff] for the opacity.
+  composit-bytes canvas #[0xff] frame painting-opacity painting BIT-MODE
+  EXPECTED3 := #[42, 42, 42, 4,
+                 42, 42,  7, 8,
+                 42,  0,  1, 2,
+                  3,  4,  5, 6,
+                ]
+  expect-equals EXPECTED3 canvas
+
+  // Fully opaque painting can be done with #[0xff] for the opacity.
+  composit-bytes canvas frame-opacity frame #[0xff] painting BIT-MODE
+  expect-equals painting canvas
+
+  // Fully opaque frame and fully transparent painting.
+  composit-bytes canvas #[0xff] frame #[0] painting BIT-MODE
+  expect-equals frame canvas
