@@ -229,7 +229,7 @@ abstract class List extends CollectionBase:
   sub[0] = 22
   print list  // => [1, 22, 3, 4, 5]
   sub = list[..3]      // A view into [1, 22, 3]
-  sub.sort --in_place  // Sorts just the 3 values.
+  sub.sort --in-place  // Sorts just the 3 values.
   print sub   // => [1, 3, 22]
   print list  // => [1, 3, 22, 4, 5]
   sub2 := sub[1..]

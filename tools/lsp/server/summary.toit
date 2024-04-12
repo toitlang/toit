@@ -176,7 +176,7 @@ class Class:
         is-abstract == other.is-abstract and
         (superclass == other.superclass or (superclass and superclass.equals-external other.superclass)) and
         (interfaces.equals other.interfaces --element-equals=: |a b| a.equals-external b) and
-        (mixins.equals other.mixins --element_equals=: |a b| a.equals-external b) and
+        (mixins.equals other.mixins --element-equals=: |a b| a.equals-external b) and
         (statics.equals other.statics --element-equals=: |a b| a.equals-external b) and
         (constructors.equals other.constructors --element-equals=: |a b| a.equals-external b) and
         (factories.equals other.factories --element-equals=: |a b| a.equals-external b) and

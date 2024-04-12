@@ -57,7 +57,7 @@ class Crc extends Checksum:
   # Example
   ```
   // The CRC-32 used in PNG.
-  crc := Crc.little_endian 32 --polynomial=0xEDB88320 --initial_state=0xffff_ffff --xor_result=0xffff_ffff
+  crc := Crc.little_endian 32 --polynomial=0xEDB88320 --initial-state=0xffff_ffff --xor-result=0xffff_ffff
   ```
   */
   constructor.little-endian .width/int --.polynomial/int --initial-state/int=0 --.xor-result/int=0:
@@ -79,7 +79,7 @@ class Crc extends Checksum:
   # Example
   ```
   // The CRC-32 used in PNG.
-  crc := Crc.little_endian 32 --normal_polynomial=0x04C11DB7 --initial_state=0xffff_ffff --xor_result=0xffff_ffff
+  crc := Crc.little_endian 32 --normal-polynomial=0x04C11DB7 --initial-state=0xffff_ffff --xor-result=0xffff_ffff
   ```
   */
   constructor.little-endian .width/int --normal-polynomial/int --initial-state/int=0 --.xor-result/int=0:
@@ -109,13 +109,13 @@ class Crc extends Checksum:
   // x³² + x²⁶ + x²³ + x²² + x¹⁶ + x¹² + x¹¹ + x¹⁰ + x⁸ + x⁷ + x⁵ + x⁴ + x² + x + 1.
   crc := Crc.little_endian 32
       --powers=[26, 23, 22, 16, 12, 11, 10, 8, 7, 5, 4, 2, 1, 0]
-      --initial_state=0xffff_ffff
-      --xor_result=0xffff_ffff
+      --initial-state=0xffff_ffff
+      --xor-result=0xffff_ffff
   // Equivalently:
   crc := Crc.little_endian 32
       --powers=[32, 26, 23, 22, 16, 12, 11, 10, 8, 7, 5, 4, 2, 1, 0]
-      --initial_state=0xffff_ffff
-      --xor_result=0xffff_ffff
+      --initial-state=0xffff_ffff
+      --xor-result=0xffff_ffff
   ```
   */
   constructor.little-endian width/int --powers/List --initial-state/int=0 --xor-result/int=0:

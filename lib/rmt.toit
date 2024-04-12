@@ -22,7 +22,7 @@ import rmt
 
 main:
   pin := gpio.Pin 18
-  channel := rmt.Channel pin --output --idle_level=0
+  channel := rmt.Channel pin --output --idle-level=0
   pulse := rmt.Signals 1
   pulse.set 0 --level=1 --duration=50
   channel.write pulse
@@ -72,7 +72,7 @@ class Signals:
     $size * $BYTES-PER-SIGNAL.
   */
   // TODO(florian): take a clock-divider as argument and allow the user to specify
-  // durations in us. Then also add a `do --us_periods:`.
+  // durations in us. Then also add a `do --us-periods:`.
   constructor .size:
     bytes_ = ByteArray
         round-up (size * 2) 4
