@@ -34,7 +34,7 @@ type Documents struct {
 
 	// A map from a document URI to its project URI.
 	//
-	// The project URI is the root of the projcet where we can find the
+	// The project URI is the root of the project where we can find the
 	// package lock file and the downloaded packages.
 	//
 	// From the user's point of view a document is only in one project. Diagnostics
@@ -44,7 +44,7 @@ type Documents struct {
 	// can lead to a document being referenced from multiple projects.
 	projectURIs map[lsp.DocumentURI]lsp.DocumentURI
 
-	// A map from document URI to analyzed documents for the specific uri..
+	// A map from document URI to analyzed documents for the specific uri.
 	analyzedDocuments map[lsp.DocumentURI]*AnalyzedDocuments
 }
 
@@ -71,8 +71,8 @@ func (d *Documents) AnalyzedDocumentsFor(projectURI lsp.DocumentURI) *AnalyzedDo
 func (d *Documents) AllProjectURIs() []lsp.DocumentURI {
 	d.l.RLock()
 	defer d.l.RUnlock()
-	res := make([]lsp.DocumentURI, 0, len(d.projectURIs))
-	for _, uri := range d.projectURIs {
+	res := make([]lsp.DocumentURI, 0, len(d.analyzedDocuments))
+	for uri, _ := range d.analyzedDocuments {
 		res = append(res, uri)
 	}
 	return res
