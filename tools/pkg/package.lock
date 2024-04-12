@@ -1,4 +1,4 @@
-sdk: ^2.0.0-alpha.144
+sdk: ^2.0.0-alpha.145
 prefixes:
   certificate_roots: toit-cert-roots
   cli: pkg-cli
@@ -29,8 +29,8 @@ packages:
   pkg-http:
     url: github.com/toitlang/pkg-http
     name: http
-    version: 2.7.0
-    hash: ba6a3c73462aa8a3baae47881e9b2349725c22c3
+    version: 2.7.2
+    hash: 614dd0f374e70aab09f12e9466a35b779b9a8d63
   toit-cert-roots:
     url: github.com/toitware/toit-cert-roots
     name: certificate_roots
