@@ -17,8 +17,10 @@ package toitdoc
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"sort"
 	"strings"
 
@@ -26,6 +28,7 @@ import (
 	"github.com/toitware/toit.git/toitlsp/lsp/toit"
 	"github.com/toitware/toit.git/toitlsp/lsp/toitdoc/inheritance"
 	"github.com/toitware/toit.git/toitlsp/lsp/uri"
+	"gopkg.in/yaml.v3"
 )
 
 type ObjectType string
@@ -120,12 +123,13 @@ func isLibraryHidden(segments []string) bool {
 }
 
 type Doc struct {
-	SDKVersion   string    `json:"sdk_version"`
-	Version      string    `json:"version"`
-	PkgName      string    `json:"pkg_name,omitempty"`
-	SDKPath      []string  `json:"sdk_path,omitempty"`
-	PackagesPath []string  `json:"packages_path,omitempty"`
-	Libraries    Libraries `json:"libraries"`
+	SDKVersion   string            `json:"sdk_version"`
+	Version      string            `json:"version"`
+	PkgName      string            `json:"pkg_name,omitempty"`
+	SDKPath      []string          `json:"sdk_path,omitempty"`
+	PackagesPath []string          `json:"packages_path,omitempty"`
+	PackageNames map[string]string `json:"package_names,omitempty"`
+	Libraries    Libraries         `json:"libraries"`
 }
 
 type Summaries map[lsp.DocumentURI]*toit.Module
@@ -140,6 +144,7 @@ type BuildOptions struct {
 	ExcludePkgs    bool
 	SDKURI         lsp.DocumentURI
 	PkgName        string
+	ProjectURI     lsp.DocumentURI
 }
 
 func Build(o BuildOptions) *Doc {
@@ -151,6 +156,7 @@ type builder struct {
 	inheritance *inheritance.InheritanceResult
 	rootPath    string
 	sdkURI      lsp.DocumentURI
+	projectURI  lsp.DocumentURI
 
 	sdkVersion     string
 	version        string
@@ -164,6 +170,7 @@ func newBuilder(o BuildOptions) *builder {
 	return &builder{
 		summaries:      o.Summaries,
 		rootPath:       o.RootPath,
+		projectURI:     o.ProjectURI,
 		version:        o.Version,
 		sdkVersion:     o.SDKVersion,
 		includePrivate: o.IncludePrivate,
@@ -188,6 +195,45 @@ func (b *builder) modulePathSegments(docuri lsp.DocumentURI) []string {
 	return result
 }
 
+// LockFile is a minimal representation of a package.lock file.
+// We remove everything we don't need.
+type LockFile struct {
+	Packages map[string]LockPackageEntry `yaml:"packages"`
+}
+
+type LockPackageEntry struct {
+	URL  string `yaml:"url"`
+	Name string `yaml:"name,omitempty"`
+}
+
+func loadPackageNames(projectURI lsp.DocumentURI) map[string]string {
+	if projectURI == "" {
+		return nil
+	}
+	// Load the package names from the package.yaml file.
+	lockPath := path.Join(uri.URIToPath(projectURI), "package.lock")
+	data, err := ioutil.ReadFile(lockPath)
+	if err != nil {
+		// It's fine if this fails. We aren't guaranteed to have a package.lock file.
+		return nil
+	}
+	var lock LockFile
+	if err := yaml.Unmarshal(data, &lock); err != nil {
+		return nil
+	}
+	res := map[string]string{}
+	for prefix, entry := range lock.Packages {
+		if entry.Name != "" {
+			res[entry.URL] = entry.Name
+		} else {
+			// Old package files don't have the name set.
+			// In almost all cases the prefix is the same as the name. Use it instead.
+			res[entry.URL] = prefix
+		}
+	}
+	return res
+}
+
 func (b *builder) build() *Doc {
 	b.inheritance = inheritance.ComputeInheritance(inheritance.Summaries(b.summaries))
 
@@ -198,9 +244,11 @@ func (b *builder) build() *Doc {
 
 	var pkgSDKPath []string
 	var pkgPackagesPath []string
+	var pkgNames map[string]string
 	if b.pkgName != "" {
 		pkgSDKPath = b.modulePathSegments(b.sdkURI)
 		pkgPackagesPath = b.modulePathSegments(packageURI)
+		pkgNames = loadPackageNames(b.projectURI)
 	}
 	res := Doc{
 		SDKVersion:   b.sdkVersion,
@@ -208,6 +256,7 @@ func (b *builder) build() *Doc {
 		PkgName:      b.pkgName,
 		SDKPath:      pkgSDKPath,
 		PackagesPath: pkgPackagesPath,
+		PackageNames: pkgNames,
 		Libraries:    Libraries{},
 	}
 

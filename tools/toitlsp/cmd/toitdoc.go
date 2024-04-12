@@ -166,7 +166,7 @@ func runToitdoc(sdkVersion string) func(cmd *cobra.Command, args []string) error
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		summaries, err := extractSummaries(ctx, extractSummariesOptions{
+		projectURI, summaries, err := extractSummaries(ctx, extractSummariesOptions{
 			Toitc:    toitc,
 			SDK:      sdk,
 			URIs:     uris,
@@ -201,6 +201,7 @@ func runToitdoc(sdkVersion string) func(cmd *cobra.Command, args []string) error
 			excludePkgs:    excludePkgs,
 			sdkURI:         sdkURI,
 			pkgName:        pkgName,
+			projectURI:     projectURI,
 		})
 	}
 }
@@ -215,7 +216,7 @@ type extractSummariesOptions struct {
 	Verbose  bool
 }
 
-func extractSummaries(ctx context.Context, options extractSummariesOptions) (map[doclsp.DocumentURI]*toit.Module, error) {
+func extractSummaries(ctx context.Context, options extractSummariesOptions) (doclsp.DocumentURI, map[doclsp.DocumentURI]*toit.Module, error) {
 	server, err := lsp.NewServer(lsp.ServerOptions{
 		Logger: options.Logger,
 		Settings: lsp.ServerSettings{
@@ -226,7 +227,7 @@ func extractSummaries(ctx context.Context, options extractSummariesOptions) (map
 		},
 	})
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
 	ir, iw := io.Pipe()
@@ -238,11 +239,11 @@ func extractSummaries(ctx context.Context, options extractSummariesOptions) (map
 	if _, err := server.Initialize(ctx, conn, doclsp.InitializeParams{
 		RootURI: options.RootURI,
 	}); err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
 	if err := server.Initialized(ctx, conn); err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
 	uris := options.URIs.Values()
@@ -270,7 +271,7 @@ func extractSummaries(ctx context.Context, options extractSummariesOptions) (map
 
 	wg.Wait()
 	if subErr != nil {
-		return nil, subErr
+		return "", nil, subErr
 	}
 
 	mergedSummaries := map[doclsp.DocumentURI]*toit.Module{}
@@ -278,7 +279,7 @@ func extractSummaries(ctx context.Context, options extractSummariesOptions) (map
 	allProjectURIs := documents.AllProjectURIs()
 
 	if len(allProjectURIs) == 0 {
-		return nil, fmt.Errorf("no project found")
+		return "", nil, fmt.Errorf("no project found")
 	}
 	if len(allProjectURIs) > 1 {
 		// Warn that more than one project was found.
@@ -300,11 +301,12 @@ func extractSummaries(ctx context.Context, options extractSummariesOptions) (map
 			projectUri = projectURI
 		}
 	}
+
 	analyzedDocuments := documents.AnalyzedDocumentsFor(projectUri)
 	for uri, summary := range analyzedDocuments.Summaries() {
 		mergedSummaries[uri] = summary
 	}
-	return mergedSummaries, nil
+	return projectUri, mergedSummaries, nil
 }
 
 func pathToURI(path string) doclsp.DocumentURI {
@@ -326,6 +328,7 @@ type exportSummariesOptions struct {
 	excludePkgs    bool
 	sdkURI         doclsp.DocumentURI
 	pkgName        string
+	projectURI     doclsp.DocumentURI
 }
 
 func exportSummaries(ctx context.Context, options exportSummariesOptions) error {
@@ -339,6 +342,7 @@ func exportSummaries(ctx context.Context, options exportSummariesOptions) error 
 		ExcludePkgs:    options.excludePkgs,
 		SDKURI:         options.sdkURI,
 		PkgName:        options.pkgName,
+		ProjectURI:     options.projectURI,
 	})
 	return json.NewEncoder(options.Writer).Encode(doc)
 }
