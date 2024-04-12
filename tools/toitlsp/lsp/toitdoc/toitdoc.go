@@ -134,6 +134,7 @@ type BuildOptions struct {
 	Summaries      Summaries
 	IncludePrivate bool
 	ExcludeSDK     bool
+	ExcludePkgs    bool
 	SDKURI         lsp.DocumentURI
 }
 
@@ -151,6 +152,7 @@ type builder struct {
 	version        string
 	includePrivate bool
 	excludeSDK     bool
+	excludePkgs    bool
 }
 
 func newBuilder(o BuildOptions) *builder {
@@ -161,6 +163,7 @@ func newBuilder(o BuildOptions) *builder {
 		sdkVersion:     o.SDKVersion,
 		includePrivate: o.IncludePrivate,
 		excludeSDK:     o.ExcludeSDK,
+		excludePkgs:    o.ExcludePkgs,
 		sdkURI:         o.SDKURI,
 	}
 }
@@ -184,8 +187,15 @@ func (b *builder) build() *Doc {
 		Libraries:  Libraries{},
 	}
 
+	// TODO(florian): don't rely on hardcoded ".packages" path.
+	// Ideally we should get a lock-file mapping in and use that to
+	// figure out which package a file is in.
+	packageURI := uri.PathToURI(b.rootPath) + "/.packages/"
 	for u, m := range b.summaries {
 		if b.excludeSDK && strings.HasPrefix(string(u), string(b.sdkURI)) {
+			continue
+		}
+		if b.excludePkgs && strings.HasPrefix(string(u), string(packageURI)) {
 			continue
 		}
 

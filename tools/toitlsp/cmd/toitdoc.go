@@ -53,6 +53,7 @@ func Toitdoc(sdkVersion string) *cobra.Command {
 	cmd.Flags().String("sdk", "", "the SDK path to use")
 	cmd.Flags().String("out", "toitdoc.json", "the output file")
 	cmd.Flags().Bool("exclude-sdk", false, "if set, will remove the sdk libraries from the toitdoc")
+	cmd.Flags().Bool("exclude-pkgs", true, "if set, will remove other packages from the toitdoc")
 	cmd.Flags().Bool("include-private", false, "if set, will include private toitdoc for private elements")
 	cmd.Flags().UintP("parallel", "p", 1, "parallelism")
 	return cmd
@@ -89,6 +90,11 @@ func runToitdoc(sdkVersion string) func(cmd *cobra.Command, args []string) error
 		}
 
 		excludeSDK, err := cmd.Flags().GetBool("exclude-sdk")
+		if err != nil {
+			return err
+		}
+
+		excludePkgs, err := cmd.Flags().GetBool("exclude-pkgs")
 		if err != nil {
 			return err
 		}
@@ -186,6 +192,7 @@ func runToitdoc(sdkVersion string) func(cmd *cobra.Command, args []string) error
 			RootPath:       rootPath,
 			IncludePrivate: includePrivate,
 			excludeSDK:     excludeSDK,
+			excludePkgs:    excludePkgs,
 			sdkURI:         sdkURI,
 		})
 	}
@@ -306,6 +313,7 @@ type exportSummariesOptions struct {
 	RootPath       string
 	IncludePrivate bool
 	excludeSDK     bool
+	excludePkgs    bool
 	sdkURI         doclsp.DocumentURI
 }
 
@@ -317,6 +325,7 @@ func exportSummaries(ctx context.Context, options exportSummariesOptions) error 
 		SDKVersion:     options.SDKVersion,
 		IncludePrivate: options.IncludePrivate,
 		ExcludeSDK:     options.excludeSDK,
+		ExcludePkgs:    options.excludePkgs,
 		SDKURI:         options.sdkURI,
 	})
 	return json.NewEncoder(options.Writer).Encode(doc)
