@@ -1,4 +1,4 @@
 dependencies:
   http:
     url: github.com/toitlang/pkg-http
-    version: ^2.7.0
+    version: ^2.7.2
