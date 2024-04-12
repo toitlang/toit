@@ -151,18 +151,6 @@ func runToitdoc(sdkVersion string) func(cmd *cobra.Command, args []string) error
 			}
 		}
 
-		sdkURI := pathToURI(sdk)
-		if !strings.HasSuffix(string(sdkURI), "/") {
-			sdkURI += "/"
-		}
-		if excludeSDK {
-			for u := range uris {
-				if strings.HasPrefix(string(u), string(sdkURI)) {
-					uris.Remove(u)
-				}
-			}
-		}
-
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -177,6 +165,11 @@ func runToitdoc(sdkVersion string) func(cmd *cobra.Command, args []string) error
 		})
 		if err != nil {
 			return err
+		}
+
+		sdkURI := pathToURI(sdk)
+		if !strings.HasSuffix(string(sdkURI), "/") {
+			sdkURI += "/"
 		}
 
 		f, err := os.Create(out)
