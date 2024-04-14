@@ -755,7 +755,6 @@ class Parser_ extends PegParserBase_:
         if error_ := key.check-key:
           set-error error_
           return null
-
         return [key, val]
     return null
 
@@ -1081,26 +1080,24 @@ class Parser_ extends PegParserBase_:
   c-l-plus-literal n/int -> string?:
     try-parse:
       if match-char C-LITERAL_:
-        if t := c-b-block-header:
+        if t := c-b-block-header n:
           chomp := t[0]
           indent := t[1]
-          spaces := find-leading-spaces-on-first-non-empty-line
-          if res := l-literal-content (spaces - indent) chomp:
+          if res := l-literal-content indent chomp:
             return res.join ""
     return null
 
   c-l-plus-folded n/int -> string?:
     try-parse:
       if match-char C-FOLDED_:
-        t := c-b-block-header
-        spaces := find-leading-spaces-on-first-non-empty-line
+        t := c-b-block-header n
         chomp := t[0]
         indent := t[1]
-        if res := l-folded-content (spaces - indent) chomp:
+        if res := l-folded-content indent chomp:
           return res.join ""
     return null
 
-  c-b-block-header -> List?:
+  c-b-block-header n/int -> List?:
     try-parse:
       indent-char := match-range '1' '9'
       chomp-char := match-chars { '-', '+' }
@@ -1114,8 +1111,10 @@ class Parser_ extends PegParserBase_:
         else if chomp-char == '+': chomp = KEEP_
 
         indent := 0
-        if indent-char: indent = indent-char - '0'
-
+        if indent-char:
+          indent = n + indent-char - '0'
+        else:
+          indent = find-leading-spaces-on-first-non-empty-line
         return [ chomp, indent ]
     return null
 
