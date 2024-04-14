@@ -34,7 +34,7 @@ C-MAPPING-VALUE_    ::= ':'
 C-ALIAS_            ::= '*'
 C-SINGLE-QUOTE_     ::= '\''
 C-DOUBLE-QUOTE_     ::= '"'
-C-RESERVCED-1_      ::= 'Q'
+C-RESERVCED-1_      ::= '@'
 C-RESERVCED-2_      ::= '`'
 C-ESCAPE_           ::= '\\'
 
