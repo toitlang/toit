@@ -203,7 +203,7 @@ jobs:
         if: github.event_name == 'release' && runner.os == 'Linux'
         run: |
           ccache -s
-          make HOST=host64-debug BUILD_TYPE=Debug sdk
+          make BUILD=build-debug BUILD_TYPE=Debug sdk
           ccache -s
 
       # Test.
@@ -236,7 +236,7 @@ jobs:
       - name: Test 64-bit debug
         if: github.event_name == 'release' && runner.os == 'Linux'
         run: |
-          make HOST=host64-debug BUILD_TYPE=Debug test
+          make BUILD=build-debug BUILD_TYPE=Debug test
 
       - name: Test install
         if : matrix.shard == 1
