@@ -44,6 +44,10 @@ monitor LimitLoad:
 load-limiter := LimitLoad
 
 main:
+  task --background::
+    while true:
+      system.process-stats --gc
+      yield
   add-global-certs
   run-tests
 

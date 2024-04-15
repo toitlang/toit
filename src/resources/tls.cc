@@ -513,9 +513,22 @@ PRIMITIVE(get_incoming_from) {
 PRIMITIVE(set_incoming) {
   ARGS(MbedTlsSocket, socket, Object, incoming, int, from);
   Blob blob;
+  uint8* address;
+  word length;
   if (!incoming->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
   if (from < 0 || from > blob.length()) FAIL(INVALID_ARGUMENT);
-  socket->set_incoming(incoming, from);
+  if (!is_byte_array(incoming) || !ByteArray::cast(incoming)->is_external()) {
+    // We need to take a copy of the incoming.
+    address = reinterpret_cast<uint8*>(malloc(blob.length() - from));
+    if (address == null) FAIL(MALLOC_FAILED);
+    length = blob.length - from;
+    memcpy(address, blob.address() + from, length);
+  } else {
+    // We need to neuter the byte array and steal its external data.
+    address = blob.address() + from;
+    ByteArray::cast(incoming)->neuter(process);
+  }
+  socket->set_incoming(address + from, blob.length() - from);
   return process->null_object();
 }
 
