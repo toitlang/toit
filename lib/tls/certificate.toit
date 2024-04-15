@@ -63,7 +63,7 @@ class RootCertificate:
   Add a trusted root certificate that can be used for all TLS connections.
 
   This method is an alternative to adding root certificates to individual TLS
-    sockets, or using the --root_certificates argument on the HTTP client.
+    sockets, or using the --root-certificates argument on the HTTP client.
     If you add root certificates to a specific connection then these global
     certificates are not consulted for that connection, not even as a fallback.
 
@@ -80,7 +80,7 @@ class RootCertificate:
 Add a trusted root certificate that can be used for all TLS connections.
 
 This function is an alternative to adding root certificates to individual TLS
-  sockets, or using the --root_certificates argument on the HTTP client.
+  sockets, or using the --root-certificates argument on the HTTP client.
   If you add root certificates to a specific connection then these global
   certificates are not consulted for that connection, not even as a fallback.
 

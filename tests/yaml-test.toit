@@ -21,6 +21,7 @@ main:
   test-from-spec
   test-stream
   test-value-converter
+  test-reserved
   test-indented-block
 
 test-stringify:
@@ -301,6 +302,7 @@ test-encode:
 test-decode:
   expect-equals "testing" (yaml.decode "testing".to-byte-array)
   expect-list-equals ["-O0"] (yaml.decode """["-O0"]""".to-byte-array)
+  expect-structural-equals { "x": "Q" } (yaml.decode "x: Q".to-byte-array)
 
 BIG-JSON ::= """
 [
@@ -575,6 +577,10 @@ test-value-converter:
   expect result["int"] is int
   expect result["float-as-string"] is string
   expect result["int-as-string"] is string
+
+test-reserved:
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "x: @"
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "x: `"
 
 test-indented-block:
   result := yaml.parse """
