@@ -462,10 +462,10 @@ compile-or-analyze-or-run --command/string parsed/cli.Parsed:
   if command == "analyze":
     args.add "--analyze"
   else:
-    if parsed["optimization"]:
-      optimization/int := parsed["optimization"]
+    if parsed["optimization-level"]:
+      optimization/int := parsed["optimization-level"]
       if not 0 <= optimization <= 2: error "Invalid optimization level"
-      args.add "-O$parsed["optimization"]"
+      args.add "-O$optimization"
 
     if parsed["force"]: args.add "--force"
 
