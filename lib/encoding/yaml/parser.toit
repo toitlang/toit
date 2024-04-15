@@ -34,15 +34,15 @@ C-MAPPING-VALUE_    ::= ':'
 C-ALIAS_            ::= '*'
 C-SINGLE-QUOTE_     ::= '\''
 C-DOUBLE-QUOTE_     ::= '"'
-C-RESERVED-1_      ::= '@'
-C-RESERVED-2_      ::= '`'
+C-RESERVED-1_       ::= '@'
+C-RESERVED-2_       ::= '`'
 C-ESCAPE_           ::= '\\'
 
 C-FLOW-INDICATOR_  ::= { C-COLLECT-ENTRY_, C-SEQUENCE-START_, C-SEQUENCE-END_, C-MAPPING-START_, C-MAPPING-END_ }
 C-INDICATOR_       ::= { C-SEQUENCE-ENTRY_, C-MAPPING-KEY_, C-MAPPING-VALUE_, C-COLLECT-ENTRY_, C-SEQUENCE-START_,
                          C-SEQUENCE-END_, C-MAPPING-START_, C-MAPPING-END_, C-COMMENT_, C-ANCHOR_, C-ALIAS_,
                          C-TAG_, C-LITERAL_, C-FOLDED_, C-SINGLE-QUOTE_, C-DOUBLE-QUOTE_, C-DIRECTIVE_,
-                         C-RESERVCED-1_, C-RESERVCED-2_}
+                         C-RESERVED-1_, C-RESERVED-2_}
 
 S-SECONDARY-TAG-HANDLE_ ::= "!!"
 
