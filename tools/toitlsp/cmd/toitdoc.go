@@ -55,6 +55,7 @@ func Toitdoc(sdkVersion string) *cobra.Command {
 	cmd.Flags().Bool("exclude-sdk", false, "if set, will remove the sdk libraries from the toitdoc")
 	cmd.Flags().Bool("exclude-pkgs", true, "if set, will remove other packages from the toitdoc")
 	cmd.Flags().Bool("include-private", false, "if set, will include private toitdoc for private elements")
+	cmd.Flags().String("pkg-name", "", "the name of the package. If not set, generates documentation for the core libs")
 	cmd.Flags().UintP("parallel", "p", 1, "parallelism")
 	return cmd
 }
@@ -116,6 +117,11 @@ func runToitdoc(sdkVersion string) func(cmd *cobra.Command, args []string) error
 		}
 
 		parallel, err := cmd.Flags().GetUint("parallel")
+		if err != nil {
+			return err
+		}
+
+		pkgName, err := cmd.Flags().GetString("pkg-name")
 		if err != nil {
 			return err
 		}
@@ -194,6 +200,7 @@ func runToitdoc(sdkVersion string) func(cmd *cobra.Command, args []string) error
 			excludeSDK:     excludeSDK,
 			excludePkgs:    excludePkgs,
 			sdkURI:         sdkURI,
+			pkgName:        pkgName,
 		})
 	}
 }
@@ -270,7 +277,10 @@ func extractSummaries(ctx context.Context, options extractSummariesOptions) (map
 	documents := server.GetContext(conn).Documents
 	allProjectURIs := documents.AllProjectURIs()
 
-	if len(allProjectURIs) != 1 {
+	if len(allProjectURIs) == 0 {
+		return nil, fmt.Errorf("no project found")
+	}
+	if len(allProjectURIs) > 1 {
 		// Warn that more than one project was found.
 		stringURIs := make([]string, len(allProjectURIs))
 		for i, uri := range allProjectURIs {
@@ -315,6 +325,7 @@ type exportSummariesOptions struct {
 	excludeSDK     bool
 	excludePkgs    bool
 	sdkURI         doclsp.DocumentURI
+	pkgName        string
 }
 
 func exportSummaries(ctx context.Context, options exportSummariesOptions) error {
@@ -327,6 +338,7 @@ func exportSummaries(ctx context.Context, options exportSummariesOptions) error 
 		ExcludeSDK:     options.excludeSDK,
 		ExcludePkgs:    options.excludePkgs,
 		SDKURI:         options.sdkURI,
+		PkgName:        options.pkgName,
 	})
 	return json.NewEncoder(options.Writer).Encode(doc)
 }
