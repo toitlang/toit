@@ -268,7 +268,7 @@ abstract class string implements Comparable io.Data:
   ```
   heavy_metalize str/string -> string:
     return str.flat_map: | c |
-      {'o': 'ö', 'a': 'ä', 'u': 'ü', 'ä': "\u{20db}a"}.get c --if_absent=: c
+      {'o': 'ö', 'a': 'ä', 'u': 'ü', 'ä': "\u{20db}a"}.get c --if-absent=: c
   ```
   ```
   lower_case str/string -> string:
@@ -568,7 +568,7 @@ abstract class string implements Comparable io.Data:
   ```
   // In class A with fields str_field1 and str_field2:
   compare_to other/A -> int:
-    return str_field1.compare_to other.str_field1 --if_equal=:
+    return str_field1.compare_to other.str_field1 --if-equal=:
       str_field2.compare_to other.str_field2
   ```
   */
@@ -814,11 +814,11 @@ abstract class string implements Comparable io.Data:
   # Examples
   Also see $index-of for more examples.
   ```
-  "foo".index_of "bar" --if_absent=: it.size            // => 3 (the size of "foo")
-  "foobarfoo".index_of "foo" 1 8 --if_absent=: 499      // => 499
-  "".index_of "" -3 -3 --if_absent=: throw "not found"  // Error
-  "".index_of "" 2 2   --if_absent=: -1                 // => -1
-  "foobarfoo".index_of "foo" 1 8 --if_absent=: 42       // => 42
+  "foo".index_of "bar" --if-absent=: it.size            // => 3 (the size of "foo")
+  "foobarfoo".index_of "foo" 1 8 --if-absent=: 499      // => 499
+  "".index_of "" -3 -3 --if-absent=: throw "not found"  // Error
+  "".index_of "" 2 2   --if-absent=: -1                 // => -1
+  "foobarfoo".index_of "foo" 1 8 --if-absent=: 42       // => 42
   ```
   */
   index-of --last/bool=false needle/string from/int=0 to/int=size [--if-absent]:
@@ -929,12 +929,12 @@ abstract class string implements Comparable io.Data:
 
   # Examples
   ```
-  "https://www.example.com".trim --left "http://" --if_absent=: it.trim --left "https://"  // => "www.example.com"
+  "https://www.example.com".trim --left "http://" --if-absent=: it.trim --left "https://"  // => "www.example.com"
   str := "foobar"
-  str.trim --left "foo" --if_absent=: "not_used" // => "bar"
-  str.trim --left ""    --if_absent=: "not_used" // => "foobar"
-  str.trim --left "gee" --if_absent=: it         // => "foobar"   (the default behavior)
-  str.trim --left "gee" --if_absent=: throw "missing prefix" // ERROR
+  str.trim --left "foo" --if-absent=: "not_used" // => "bar"
+  str.trim --left ""    --if-absent=: "not_used" // => "foobar"
+  str.trim --left "gee" --if-absent=: it         // => "foobar"   (the default behavior)
+  str.trim --left "gee" --if-absent=: throw "missing prefix" // ERROR
   ```
   */
   trim --left/bool prefix/string [--if-absent] -> string:
@@ -969,10 +969,10 @@ abstract class string implements Comparable io.Data:
   # Examples
   ```
   str := "foobar"
-  str.trim --right "bar" --if_absent=: "not_used" // => "bar"
-  str.trim --right ""    --if_absent=: "not_used" // => "foobar"
-  str.trim --right "gee" --if_absent=: it         // => "foobar"   (the default behavior)
-  str.trim --right "gee" --if_absent=: throw "missing suffix" // ERROR
+  str.trim --right "bar" --if-absent=: "not_used" // => "bar"
+  str.trim --right ""    --if-absent=: "not_used" // => "foobar"
+  str.trim --right "gee" --if-absent=: it         // => "foobar"   (the default behavior)
+  str.trim --right "gee" --if-absent=: throw "missing suffix" // ERROR
   ```
   */
   trim --right/bool suffix/string [--if-absent] -> string:
@@ -1082,19 +1082,19 @@ abstract class string implements Comparable io.Data:
   gadsby := "If youth, throughout all history, had had a champion to stand up for it;"
   gadsby.split "e": print it // prints the contents of gadsby
 
-  "Toad the Wet Sprocket".split --at_first "e": print it  // prints "Toad th", " Wet Sprocket"
-  " the dust ".split            --at_first " ": print it  // prints "", "the dust "
-  gadsby.split                  --at_first "e": print it  // prints the contents of gadsby
+  "Toad the Wet Sprocket".split --at-first "e": print it  // prints "Toad th", " Wet Sprocket"
+  " the dust ".split            --at-first " ": print it  // prints "", "the dust "
+  gadsby.split                  --at-first "e": print it  // prints the contents of gadsby
 
-  "abc".split  --at_first "":    print it     // prints "a" and "bc"
-  "foo".split  --at_first "foo": print it     // prints "" and ""
-  "afoo".split --at_first "foo": print it     // prints "a" and ""
-  "foob".split --at_first "foo": print it     // prints "" and "b"
-  "".split     --at_first "":    print it     // This is an error.
-  "a".split    --at_first "":    print it     // prints "a" and ""
+  "abc".split  --at-first "":    print it     // prints "a" and "bc"
+  "foo".split  --at-first "foo": print it     // prints "" and ""
+  "afoo".split --at-first "foo": print it     // prints "a" and ""
+  "foob".split --at-first "foo": print it     // prints "" and "b"
+  "".split     --at-first "":    print it     // This is an error.
+  "a".split    --at-first "":    print it     // prints "a" and ""
 
-  "foo".split "foo" --drop_empty: print it                 // Doesn't print.
-  "afoo".split "foo" --drop_empty: print it                 // prints "a"
+  "foo".split "foo" --drop-empty: print it                 // Doesn't print.
+  "afoo".split "foo" --drop-empty: print it                 // prints "a"
   ```
   */
   split --at-first/bool=false separator/string --drop-empty/bool=false [process-part] -> none:
@@ -1153,15 +1153,15 @@ abstract class string implements Comparable io.Data:
   gadsby := "If youth, throughout all history, had had a champion to stand up for it;"
   gadsby.split "e"   // => [gadsby]
 
-  "Toad the Wet Sprocket".split --at_first "e"  // => ["Toad th", " Wet Sprocket"]
-  " the dust ".split            --at_first " "  // => ["", "the dust "]
-  gadsby.split                  --at_first "e"  // => [gadsby]
+  "Toad the Wet Sprocket".split --at-first "e"  // => ["Toad th", " Wet Sprocket"]
+  " the dust ".split            --at-first " "  // => ["", "the dust "]
+  gadsby.split                  --at-first "e"  // => [gadsby]
 
-  "abc".split  --at_first ""      // => ["", "abc"]
-  "foo".split  --at_first "foo"   // => ["", ""]
-  "afoo".split --at_first "foo"   // => ["a", ""]
-  "foob".split --at_first "foo"   // => ["", "b"]
-  "".split     --at_first ""      // => [""]
+  "abc".split  --at-first ""      // => ["", "abc"]
+  "foo".split  --at-first "foo"   // => ["", ""]
+  "afoo".split --at-first "foo"   // => ["a", ""]
+  "foob".split --at-first "foo"   // => ["", "b"]
+  "".split     --at-first ""      // => [""]
   ```
   */
   split --at-first/bool=false separator/string --drop-empty/bool=false -> List/*<string>*/ :

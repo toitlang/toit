@@ -146,7 +146,7 @@ interface Device extends serial.Device:
   1. The CS pin is controlled by the user. Since the hardware only supports a limited number of
     automatic CS pins, it might be necessary to set some CS pins by hand. This should be done
     after the bus has been reserved.
-  2. When using the `--keep_cs_active` flag of the $transfer function, the bus must be reserved.
+  2. When using the `--keep-cs-active` flag of the $transfer function, the bus must be reserved.
   */
   with-reserved-bus [block]
 
