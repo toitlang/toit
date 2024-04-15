@@ -105,7 +105,7 @@ test-bucket-flash:
   expect-equals 87 (bucket.get "hest" --init=: 87)
   expect-equals 87 bucket["hest"]
 
-  // Explicitly storing to the bucket from an --if_absent block is
+  // Explicitly storing to the bucket from an --if-absent block is
   // a bit of anti-pattern (using --init is nicer), but it is not
   // that uncommon and it should work.
   bucket.remove "fisk"

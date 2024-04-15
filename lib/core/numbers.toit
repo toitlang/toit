@@ -511,7 +511,7 @@ abstract class num implements Comparable:
     constructor .seconds .nanoseconds:
 
     compare_to other/MyTime -> int:
-      return seconds.compare_to other.seconds --if_equal=:
+      return seconds.compare_to other.seconds --if-equal=:
         nanoseconds.compare_to other.nanoseconds
   ```
   */

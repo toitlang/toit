@@ -21,6 +21,8 @@ main:
   test-from-spec
   test-stream
   test-value-converter
+  test-reserved
+  test-indented-block
 
 test-stringify:
   expect-equals "testing" (yaml.stringify "testing")
@@ -300,6 +302,7 @@ test-encode:
 test-decode:
   expect-equals "testing" (yaml.decode "testing".to-byte-array)
   expect-list-equals ["-O0"] (yaml.decode """["-O0"]""".to-byte-array)
+  expect-structural-equals { "x": "Q" } (yaml.decode "x: Q".to-byte-array)
 
 BIG-JSON ::= """
 [
@@ -574,3 +577,53 @@ test-value-converter:
   expect result["int"] is int
   expect result["float-as-string"] is string
   expect result["int-as-string"] is string
+
+test-reserved:
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "x: @"
+  expect-throw "INVALID_YAML_DOCUMENT": yaml.parse "x: `"
+
+test-indented-block:
+  result := yaml.parse """
+    bar: |1  # Next line is indented by 1.
+      baz
+    bar2: |2
+      baz
+    bar3:    # Next line is intended by first non-empty indentation.
+        baz
+    bar4:
+
+          baz
+    bar5:
+
+      baz
+    foo:
+        gee:
+          bar: |1  # Next line is indented by 1.
+            baz
+          bar2: |2
+            baz
+          bar3:    # Next line is intended by first non-empty indentation.
+              baz
+          bar4:
+
+                baz
+          bar5:
+
+            baz
+    """
+  expect-structural-equals {
+    "bar": " baz\n", // Note the leading space.
+    "bar2": "baz\n",
+    "bar3": "baz",
+    "bar4": "baz",
+    "bar5": "baz",
+    "foo": {
+      "gee": {
+        "bar": " baz\n",
+        "bar2": "baz\n",
+        "bar3": "baz",
+        "bar4": "baz",
+        "bar5": "baz"
+      }
+    }
+  } result

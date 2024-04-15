@@ -100,13 +100,13 @@ class LspClient:
 
   /**
   The language server.
-  Only set, when the client was configured with `--no-spawn_process`.
+  Only set, when the client was configured with `--no-spawn-process`.
   */
   server/LspServer? ::= ?
 
   /**
   The language server process ID.
-  Only set, when the client was configured without `--spawn_process`.
+  Only set, when the client was configured without `--spawn-process`.
   */
   server-pid ::= ?
 
