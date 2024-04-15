@@ -55,7 +55,7 @@ func Toitdoc(sdkVersion string) *cobra.Command {
 	cmd.Flags().Bool("exclude-sdk", false, "if set, will remove the sdk libraries from the toitdoc")
 	cmd.Flags().Bool("exclude-pkgs", true, "if set, will remove other packages from the toitdoc")
 	cmd.Flags().Bool("include-private", false, "if set, will include private toitdoc for private elements")
-	cmd.Flags().String("pkg-name", "", "the name of the package. If not set, assumes that the core libs are generated.")
+	cmd.Flags().String("pkg-name", "", "the name of the package. If not set, generates documentation for the core libs")
 	cmd.Flags().UintP("parallel", "p", 1, "parallelism")
 	return cmd
 }

@@ -54,7 +54,7 @@ HEAD-INDICATOR_ ::= "HEAD"
 // See: git help protocol-v2
 //      git help protocol-http
 class GitProtocol_:
-  client ::= http.Client net.open --root_certificates=certificate_roots.ALL
+  client ::= http.Client net.open --root-certificates=certificate-roots.ALL
   server-capabilities-cache ::= {:}
   version-2-header ::= http.Headers.from_map {"Git-Protocol": "version=2"}
 
@@ -86,7 +86,7 @@ class GitProtocol_:
     refs-response := client.post (pack-command_ "ls-refs" [] [])
         --uri="https://$(url)/git-upload-pack"
         --headers=version-2-header
-        --content_type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
+        --content-type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
 
     if refs-response.status_code != 200:
       throw "Invalid repository $url, $refs-response.status_message"
@@ -112,7 +112,7 @@ class GitProtocol_:
     fetch-response := client.post (pack-command_ "fetch" ["object-format=sha1", "agent=toit"] arguments)
         --uri="https://$url/git-upload-pack"
         --headers=version-2-header
-        --content_type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
+        --content-type=UPLOAD-PACK-REQUEST-CONTENT-TYPE_
 
     if fetch-response.status_code != 200:
       throw "Invalid repository $url, $fetch-response.status_message"

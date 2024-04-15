@@ -49,7 +49,7 @@ int main(int argc, char **argv) {
     //   initial memory isn't released.
   } else {
     Flags::program_name = argv[0];
-    Flags::program_path = OS::get_executable_path_from_arg(argv[0]);
+    Flags::program_path = OS::get_executable_path();
     // Launch the toit.toit program.
     // TODO(florian): we are currently doing a copy of the snapshot as the
     // snapshot is sent in a message, and then freed as part of the finalizer when

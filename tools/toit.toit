@@ -436,16 +436,14 @@ error message/string:
 bin-dir sdk-dir/string? -> string:
   if sdk-dir:
     return fs.join sdk-dir "bin"
-  else:
-    our-path := system.program-path
-    return fs.dirname our-path
+  our-path := system.program-path
+  return fs.dirname our-path
 
 run sdk-dir/string? tool/string args/List:
   if system.platform == system.PLATFORM-WINDOWS:
     tool = "$(tool).exe"
   tool-path := fs.join (bin-dir sdk-dir) tool
   args = [tool-path] + args
-  print "running: $args"
   pipe.run-program args
 
 compile-or-analyze-or-run --command/string parsed/cli.Parsed:
@@ -462,10 +460,10 @@ compile-or-analyze-or-run --command/string parsed/cli.Parsed:
   if command == "analyze":
     args.add "--analyze"
   else:
-    if parsed["optimization"]:
-      optimization/int := parsed["optimization"]
+    if parsed["optimization-level"]:
+      optimization/int := parsed["optimization-level"]
       if not 0 <= optimization <= 2: error "Invalid optimization level"
-      args.add "-O$parsed["optimization"]"
+      args.add "-O$optimization"
 
     if parsed["force"]: args.add "--force"
 

@@ -49,7 +49,7 @@ main:
 
   // Generally, the acceptable duty-factor range of servos is 0.025 to 0.125.
   // Therefore start the pin with 0.075.
-  channel := generator.start servo --duty_factor=0.075
+  channel := generator.start servo --duty-factor=0.075
   sleep --ms=1000
 
   // Max angle.
