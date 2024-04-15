@@ -56,9 +56,20 @@ HeapObject* TwoSpaceHeap::new_space_allocation_failure(uword size) {
 
 void TwoSpaceHeap::swap_semi_spaces(SemiSpace& from, SemiSpace& to) {
   water_mark_ = to.top();
-  if (old_space()->is_empty() && GcMetadata::large_heap_heuristics() < 40 && to.used() < TOIT_PAGE_SIZE / 2) {
-    // Don't start promoting to old space until the post GC heap size
-    // hits at least half a page.
+#ifdef TOIT_DEBUG
+  // Don't start promoting to old space until the post GC heap size
+  // hits at least 3/4 of a page.  This keeps us in new space for
+  // longer, which can flush out some bugs in tests by moving objects
+  // more agressively.
+  bool start_old_space =
+      old_space()->is_empty() && to.used() < TOIT_PAGE_SIZE * 3 / 4;
+#else
+  // Don't start promoting to old space until the post GC heap size
+  // hits at least half a page.
+  bool start_old_space =
+      old_space()->is_empty() && GcMetadata::large_heap_heuristics() && to.used() < TOIT_PAGE_SIZE / 2;
+#endif
+  if (start_old_space) {
     water_mark_ = to.single_chunk_start();
   }
   if (process_heap_->has_max_heap_size()) {
@@ -239,6 +250,9 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
     trigger_old_space_gc = visitor.trigger_old_space_gc();
 
     spare_chunk_ = from->remove_chunk();
+#ifdef TOIT_DEBUG
+    spare_chunk_->scramble();
+#endif
     swap_semi_spaces(*from, *to);
   }
 
