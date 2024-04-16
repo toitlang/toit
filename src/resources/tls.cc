@@ -506,13 +506,13 @@ PRIMITIVE(set_incoming) {
   ARGS(MbedTlsSocket, socket, Object, incoming, int, from);
   Blob blob;
   if (!incoming->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+  uword length = blob.length() - from;
   uint8* address;
   if (from < 0 || from > blob.length()) FAIL(INVALID_ARGUMENT);
   // is_byte_array is quite strict.  For example, COW byte arrays are not
   // byte arrays.
   if (!is_byte_array(incoming) || !ByteArray::cast(incoming)->has_external_address()) {
     // We need to take a copy of the incoming.
-    uint length = blob.length() - from;
     address = reinterpret_cast<uint8*>(malloc(length));
     if (address == null) FAIL(MALLOC_FAILED);
     memcpy(address, blob.address() + from, length);
@@ -521,7 +521,7 @@ PRIMITIVE(set_incoming) {
     address = const_cast<uint8*>(blob.address()) + from;
     ByteArray::cast(incoming)->neuter(process);
   }
-  socket->set_incoming(address + from, blob.length() - from);
+  socket->set_incoming(address + from, length);
   return process->null_object();
 }
 
