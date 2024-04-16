@@ -71,13 +71,15 @@ void TwoSpaceHeap::swap_semi_spaces(SemiSpace& from, SemiSpace& to) {
   // hits at least 3/4 of a page.  This keeps us in new space for
   // longer, which can flush out some bugs in tests by moving objects
   // more agressively.
-  postpone_old_space &= to.size() - to.used() < MINIMUM_POST_GC_SPACE;
+  bool lots_of_survivors = to.size() - to.used() < MINIMUM_POST_GC_SPACE;
 #else
   // Don't start promoting to old space until the post GC heap size
   // hits at least half a page.
-  postpone_old_space &= GcMetadata::large_heap_heuristics() < 40 && to.used() < TOIT_PAGE_SIZE / 2;
+  bool lots_of_survivors = GcMetadata::large_heap_heuristics() >= 40 || to.used() >= TOIT_PAGE_SIZE / 2;
 #endif
-  if (postpone_old_space) {
+  if (postpone_old_space && !lots_of_survivors) {
+    // Reset the age of surviving new-space objects by putting the water mark
+    // right at the start.
     water_mark_ = to.single_chunk_start();
   }
   if (process_heap_->has_max_heap_size()) {
