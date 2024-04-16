@@ -511,15 +511,15 @@ PRIMITIVE(set_incoming) {
   if (from < 0 || from > blob.length()) FAIL(INVALID_ARGUMENT);
   // is_byte_array is quite strict.  For example, COW byte arrays are not
   // byte arrays.
-  if (!is_byte_array(incoming) || !ByteArray::cast(incoming)->has_external_address()) {
+  if (is_byte_array(incoming) && ByteArray::cast(incoming)->has_external_address()) {
+    // We need to neuter the byte array and steal its external data.
+    address = const_cast<uint8*>(blob.address()) + from;
+    ByteArray::cast(incoming)->neuter(process);
+  } else {
     // We need to take a copy of the incoming.
     address = reinterpret_cast<uint8*>(malloc(length));
     if (address == null) FAIL(MALLOC_FAILED);
     memcpy(address, blob.address() + from, length);
-  } else {
-    // We need to neuter the byte array and steal its external data.
-    address = const_cast<uint8*>(blob.address()) + from;
-    ByteArray::cast(incoming)->neuter(process);
   }
   socket->set_incoming(address + from, length);
   return process->null_object();
