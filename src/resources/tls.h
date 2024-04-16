@@ -112,9 +112,13 @@ class MbedTlsSocket : public BaseMbedTlsSocket {
 
   virtual bool init();
 
-  void set_incoming(Object* incoming, int from) {
-    incoming_packet_ = incoming;
-    incoming_from_ = from;
+  void set_incoming(uint8* data, uword length) {
+    if (incoming_packet_) {
+      free(incoming_packet_);
+    }
+    incoming_packet_ = data;
+    incoming_from_ = 0;
+    incoming_length_ = length;
   }
 
   void set_outgoing(Object* outgoing, int fullness) {
@@ -127,13 +131,15 @@ class MbedTlsSocket : public BaseMbedTlsSocket {
   int from() const { return incoming_from_; }
   void set_from(int f) { incoming_from_ = f; }
   Object* outgoing_packet() const { return *outgoing_packet_; }
-  Object* incoming_packet() const { return *incoming_packet_; }
+  uword incoming_length() const { return incoming_length_; }
+  const uint8* incoming_packet() const { return incoming_packet_; }
 
  private:
   HeapRoot outgoing_packet_; // Blob-compatible or null.
   int outgoing_fullness_;
-  HeapRoot incoming_packet_;  // Blob-compatible or null.
-  int incoming_from_;
+  uint8* incoming_packet_ = null;
+  uword incoming_length_ = 0;
+  uword incoming_from_ = 0;
 };
 
 class MbedTlsResourceGroup : public ResourceGroup {

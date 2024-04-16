@@ -297,7 +297,6 @@ namespace toit {
   PRIMITIVE(set_outgoing, 3)                 \
   PRIMITIVE(get_outgoing_fullness, 1)        \
   PRIMITIVE(set_incoming, 3)                 \
-  PRIMITIVE(get_incoming_from, 1)            \
   PRIMITIVE(handshake, 1)                    \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(close_write, 1)                  \

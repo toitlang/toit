@@ -518,8 +518,6 @@ class Session:
       if header.bytes[RECORD-HEADER-SIZE_..RECORD-HEADER-SIZE_ + 8] != #[0, 0, 0, 0, 0, 0, 0, 0]: throw "MBEDTLS_TOIT_INCOMPATIBLE"
 
   read-more_ -> bool:
-    from := tls-get-incoming-from_ tls_
-    print_ "From = $from"
     ba := reader_.read
     if not ba or not tls_: return false
     tls-set-incoming_ tls_ ba 0
@@ -1179,9 +1177,6 @@ tls-add-certificate_ tls-socket public-byte-array private-byte-array password:
 
 tls-set-incoming_ tls-socket byte-array from:
   #primitive.tls.set-incoming
-
-tls-get-incoming-from_ tls-socket:
-  #primitive.tls.get-incoming-from
 
 tls-set-outgoing_ tls-socket byte-array fullness:
   #primitive.tls.set-outgoing

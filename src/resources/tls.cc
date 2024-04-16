@@ -327,18 +327,15 @@ BaseMbedTlsSocket::~BaseMbedTlsSocket() {
 MbedTlsSocket::MbedTlsSocket(MbedTlsResourceGroup* group)
   : BaseMbedTlsSocket(group)
   , outgoing_packet_(group->process()->program()->null_object())
-  , outgoing_fullness_(0)
-  , incoming_packet_(group->process()->program()->null_object())
-  , incoming_from_(0) {
+  , outgoing_fullness_(0) {
   ObjectHeap* heap = group->process()->object_heap();
   heap->add_external_root(&outgoing_packet_);
-  heap->add_external_root(&incoming_packet_);
 }
 
 MbedTlsSocket::~MbedTlsSocket() {
   ObjectHeap* heap = resource_group()->process()->object_heap();
   heap->remove_external_root(&outgoing_packet_);
-  heap->remove_external_root(&incoming_packet_);
+  free(incoming_packet_);
 }
 
 MODULE_IMPLEMENTATION(tls, MODULE_TLS)
@@ -505,27 +502,23 @@ PRIMITIVE(set_outgoing) {
   return null_object;
 }
 
-PRIMITIVE(get_incoming_from) {
-  ARGS(MbedTlsSocket, socket);
-  return Smi::from(socket->from());
-}
-
 PRIMITIVE(set_incoming) {
   ARGS(MbedTlsSocket, socket, Object, incoming, int, from);
   Blob blob;
-  uint8* address;
-  word length;
   if (!incoming->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+  uint8* address;
   if (from < 0 || from > blob.length()) FAIL(INVALID_ARGUMENT);
-  if (!is_byte_array(incoming) || !ByteArray::cast(incoming)->is_external()) {
+  // is_byte_array is quite strict.  For example, COW byte arrays are not
+  // byte arrays.
+  if (!is_byte_array(incoming) || !ByteArray::cast(incoming)->has_external_address()) {
     // We need to take a copy of the incoming.
-    address = reinterpret_cast<uint8*>(malloc(blob.length() - from));
+    uint length = blob.length() - from;
+    address = reinterpret_cast<uint8*>(malloc(length));
     if (address == null) FAIL(MALLOC_FAILED);
-    length = blob.length - from;
     memcpy(address, blob.address() + from, length);
   } else {
     // We need to neuter the byte array and steal its external data.
-    address = blob.address() + from;
+    address = const_cast<uint8*>(blob.address()) + from;
     ByteArray::cast(incoming)->neuter(process);
   }
   socket->set_incoming(address + from, blob.length() - from);
@@ -844,17 +837,13 @@ static int toit_tls_send(void* ctx, const unsigned char* buf, size_t len) {
 static int toit_tls_recv(void* ctx, unsigned char * buf, size_t len) {
   if (len == 0) return 0;
   auto socket = unvoid_cast<MbedTlsSocket*>(ctx);
-  Blob blob;
-  if (!socket->incoming_packet()->byte_content(socket->resource_group()->process()->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) {
-    return MBEDTLS_ERR_SSL_WANT_READ;
-  }
 
   int from = socket->from();
-  size_t result = Utils::min(static_cast<size_t>(blob.length() - from), len);
+  size_t result = Utils::min(socket->incoming_length() - from, len);
   if (result == 0) {
     return MBEDTLS_ERR_SSL_WANT_READ;
   }
-  memcpy(buf, blob.address() + from, result);
+  memcpy(buf, socket->incoming_packet() + from, result);
   from += result;
   socket->set_from(from);
   return result;
