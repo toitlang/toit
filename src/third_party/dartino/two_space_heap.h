@@ -129,6 +129,7 @@ class TwoSpaceHeap {
   uword water_mark_;
   uword semi_space_size_;
   uword total_bytes_allocated_ = 0;
+  bool large_allocation_failed_ = false;
   bool malloc_failed_ = false;
 };
 
