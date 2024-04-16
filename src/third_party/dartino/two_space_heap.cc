@@ -37,7 +37,16 @@ HeapObject* TwoSpaceHeap::allocate(uword size) {
   return HeapObject::from_address(result);
 }
 
+#ifdef TOIT_DEBUG
+static const uword MINIMUM_POST_GC_SPACE = TOIT_PAGE_SIZE >> 2;
+#else
+static const uword MINIMUM_POST_GC_SPACE = TOIT_PAGE_SIZE >> 1;
+#endif
+
 HeapObject* TwoSpaceHeap::new_space_allocation_failure(uword size) {
+  if (size >= MINIMUM_POST_GC_SPACE) {
+    large_allocation_failed_ = true;
+  }
   if (process_heap_->retrying_primitive()) {
     // When we are rerunning a primitive after a GC we don't want to
     // trigger a new GC unless we abolutely have to, so we allow allocation
@@ -56,20 +65,19 @@ HeapObject* TwoSpaceHeap::new_space_allocation_failure(uword size) {
 
 void TwoSpaceHeap::swap_semi_spaces(SemiSpace& from, SemiSpace& to) {
   water_mark_ = to.top();
+  bool postpone_old_space = old_space()->is_empty() && !large_allocation_failed_;
 #ifdef TOIT_DEBUG
   // Don't start promoting to old space until the post GC heap size
   // hits at least 3/4 of a page.  This keeps us in new space for
   // longer, which can flush out some bugs in tests by moving objects
   // more agressively.
-  bool start_old_space =
-      old_space()->is_empty() && to.used() < TOIT_PAGE_SIZE * 3 / 4;
+  postpone_old_space &= to.size() - to.used() < MINIMUM_POST_GC_SPACE;
 #else
   // Don't start promoting to old space until the post GC heap size
   // hits at least half a page.
-  bool start_old_space =
-      old_space()->is_empty() && GcMetadata::large_heap_heuristics() && to.used() < TOIT_PAGE_SIZE / 2;
+  postpone_old_space &= GcMetadata::large_heap_heuristics() < 40 && to.used() < TOIT_PAGE_SIZE / 2;
 #endif
-  if (start_old_space) {
+  if (postpone_old_space) {
     water_mark_ = to.single_chunk_start();
   }
   if (process_heap_->has_max_heap_size()) {
