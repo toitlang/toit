@@ -198,9 +198,9 @@ jobs:
           fi
           ccache -s
 
-      # Build 64-bit debug if we are doing a release.
+      # Build 64-bit debug if we are comitting to master.
       - name: Build 64-bit debug
-        if: github.event_name == 'release' && runner.os == 'Linux'
+        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: |
           ccache -s
           make BUILD=build-debug BUILD_TYPE=Debug sdk
@@ -234,7 +234,7 @@ jobs:
           make HOST=host32 BUILD_TYPE=Debug test
 
       - name: Test 64-bit debug
-        if: github.event_name == 'release' && runner.os == 'Linux'
+        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: |
           make BUILD=build-debug BUILD_TYPE=Debug test
 
