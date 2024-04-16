@@ -44,7 +44,16 @@ monitor LimitLoad:
 load-limiter := LimitLoad
 
 main:
+  // While the test runs we have another task that causes a lot of garbage
+  // collections, to make sure the TLS handshake does not have any race
+  // conditions.
+  task --background::
+    while true:
+      system.process-stats --gc
+      yield
+  // Install the usual certs.  This should be enough for all these sites.
   add-global-certs
+
   run-tests
 
 run-tests:
