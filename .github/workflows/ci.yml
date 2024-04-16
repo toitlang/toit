@@ -198,6 +198,14 @@ jobs:
           fi
           ccache -s
 
+      # Build 64-bit debug if we are comitting to master.
+      - name: Build 64-bit debug
+        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          ccache -s
+          make BUILD=build-debug BUILD_TYPE=Debug sdk
+          ccache -s
+
       # Test.
       - name: Test
         shell: bash  # This is crucial, as the powershell doesn't abort when there is an error.
@@ -224,6 +232,11 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           make HOST=host32 BUILD_TYPE=Debug test
+
+      - name: Test 64-bit debug
+        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          make BUILD=build-debug BUILD_TYPE=Debug test
 
       - name: Test install
         if : matrix.shard == 1

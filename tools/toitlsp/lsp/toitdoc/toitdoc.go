@@ -17,8 +17,10 @@ package toitdoc
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"sort"
 	"strings"
 
@@ -26,6 +28,7 @@ import (
 	"github.com/toitware/toit.git/toitlsp/lsp/toit"
 	"github.com/toitware/toit.git/toitlsp/lsp/toitdoc/inheritance"
 	"github.com/toitware/toit.git/toitlsp/lsp/uri"
+	"gopkg.in/yaml.v3"
 )
 
 type ObjectType string
@@ -120,9 +123,13 @@ func isLibraryHidden(segments []string) bool {
 }
 
 type Doc struct {
-	SDKVersion string    `json:"sdk_version"`
-	Version    string    `json:"version"`
-	Libraries  Libraries `json:"libraries"`
+	SDKVersion   string            `json:"sdk_version"`
+	Version      string            `json:"version"`
+	PkgName      string            `json:"pkg_name,omitempty"`
+	SDKPath      []string          `json:"sdk_path,omitempty"`
+	PackagesPath []string          `json:"packages_path,omitempty"`
+	PackageNames map[string]string `json:"package_names,omitempty"`
+	Libraries    Libraries         `json:"libraries"`
 }
 
 type Summaries map[lsp.DocumentURI]*toit.Module
@@ -136,6 +143,8 @@ type BuildOptions struct {
 	ExcludeSDK     bool
 	ExcludePkgs    bool
 	SDKURI         lsp.DocumentURI
+	PkgName        string
+	ProjectURI     lsp.DocumentURI
 }
 
 func Build(o BuildOptions) *Doc {
@@ -147,24 +156,28 @@ type builder struct {
 	inheritance *inheritance.InheritanceResult
 	rootPath    string
 	sdkURI      lsp.DocumentURI
+	projectURI  lsp.DocumentURI
 
 	sdkVersion     string
 	version        string
 	includePrivate bool
 	excludeSDK     bool
 	excludePkgs    bool
+	pkgName        string
 }
 
 func newBuilder(o BuildOptions) *builder {
 	return &builder{
 		summaries:      o.Summaries,
 		rootPath:       o.RootPath,
+		projectURI:     o.ProjectURI,
 		version:        o.Version,
 		sdkVersion:     o.SDKVersion,
 		includePrivate: o.IncludePrivate,
 		excludeSDK:     o.ExcludeSDK,
 		excludePkgs:    o.ExcludePkgs,
 		sdkURI:         o.SDKURI,
+		pkgName:        o.PkgName,
 	}
 }
 
@@ -175,22 +188,78 @@ func (b *builder) modulePathSegments(docuri lsp.DocumentURI) []string {
 	p := uri.URIToPath(docuri)
 	p = strings.TrimPrefix(p, b.rootPath)
 	p = strings.TrimPrefix(p, string(os.PathSeparator))
-	return strings.Split(p, string(os.PathSeparator))
+	result := strings.Split(p, string(os.PathSeparator))
+	if len(result) > 0 && result[len(result)-1] == "" {
+		result = result[:len(result)-1]
+	}
+	return result
+}
+
+// LockFile is a minimal representation of a package.lock file.
+// We remove everything we don't need.
+type LockFile struct {
+	Packages map[string]LockPackageEntry `yaml:"packages"`
+}
+
+type LockPackageEntry struct {
+	URL  string `yaml:"url"`
+	Name string `yaml:"name,omitempty"`
+}
+
+func loadPackageNames(projectURI lsp.DocumentURI) map[string]string {
+	if projectURI == "" {
+		return nil
+	}
+	// Load the package names from the package.yaml file.
+	lockPath := path.Join(uri.URIToPath(projectURI), "package.lock")
+	data, err := ioutil.ReadFile(lockPath)
+	if err != nil {
+		// It's fine if this fails. We aren't guaranteed to have a package.lock file.
+		return nil
+	}
+	var lock LockFile
+	if err := yaml.Unmarshal(data, &lock); err != nil {
+		return nil
+	}
+	res := map[string]string{}
+	for prefix, entry := range lock.Packages {
+		if entry.Name != "" {
+			res[entry.URL] = entry.Name
+		} else {
+			// Old package files don't have the name set.
+			// In almost all cases the prefix is the same as the name. Use it instead.
+			res[entry.URL] = prefix
+		}
+	}
+	return res
 }
 
 func (b *builder) build() *Doc {
 	b.inheritance = inheritance.ComputeInheritance(inheritance.Summaries(b.summaries))
 
-	res := Doc{
-		SDKVersion: b.sdkVersion,
-		Version:    b.version,
-		Libraries:  Libraries{},
-	}
-
 	// TODO(florian): don't rely on hardcoded ".packages" path.
 	// Ideally we should get a lock-file mapping in and use that to
 	// figure out which package a file is in.
 	packageURI := uri.PathToURI(b.rootPath) + "/.packages/"
+
+	var pkgSDKPath []string
+	var pkgPackagesPath []string
+	var pkgNames map[string]string
+	if b.pkgName != "" {
+		pkgSDKPath = b.modulePathSegments(b.sdkURI)
+		pkgPackagesPath = b.modulePathSegments(packageURI)
+		pkgNames = loadPackageNames(b.projectURI)
+	}
+	res := Doc{
+		SDKVersion:   b.sdkVersion,
+		Version:      b.version,
+		PkgName:      b.pkgName,
+		SDKPath:      pkgSDKPath,
+		PackagesPath: pkgPackagesPath,
+		PackageNames: pkgNames,
+		Libraries:    Libraries{},
+	}
+
 	for u, m := range b.summaries {
 		if b.excludeSDK && strings.HasPrefix(string(u), string(b.sdkURI)) {
 			continue
