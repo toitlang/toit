@@ -168,8 +168,8 @@ test-revived-maps:
 
   expect-equals "String number 7" map[7]
 
-// Used to pause the main task until the finalizer task has had time to do its
-// thing.
+// Pause the main task until the finalizer task has had time to satisfy the
+// condition in the given block.
 sleep-until [block]:
   with-timeout --ms=2000:
     while not block.call:
