@@ -43,6 +43,8 @@ test client/LspClient:
       print "canceling $it"
       client.send-cancel it
     if completions.contains "code":
+      if completions["code"] != -32800:
+        print "Message: $(completions.get "message")"
       expect-equals -32800 completions["code"]
       cancel-succeeded = true
       break
