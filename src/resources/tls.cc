@@ -475,7 +475,7 @@ Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
   return Primitive::mark_as_error(str);
 }
 
-PRIMITIVE(get_outgoing) {
+PRIMITIVE(take_outgoing) {
   ARGS(MbedTlsSocket, socket);
   Locker locker(OS::tls_mutex());
 

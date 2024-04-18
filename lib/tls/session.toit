@@ -472,29 +472,33 @@ class Session:
     outgoing-data := tls-get-outgoing_ tls_
 
     // Scan the outgoing buffer for record headers.
-    for scan := 0; scan < outgoing-data.size; :
+    size := outgoing-data.size
+    for scan := 0; scan < size; :
+      remain := size - scan
       if bytes-before-next-record-header_ > 0:
-        skip := min
-            bytes-before-next-record-header_
-            outgoing-data.size - scan
+        skip := min remain bytes-before-next-record-header_
         scan += skip
         bytes-before-next-record-header_ -= skip
       else:
+        header := outgoing-partial-header_
         addition := min
-            (RECORD-HEADER-SIZE_ - outgoing-partial-header_.size)
-            (outgoing-data.size - scan)
+            RECORD-HEADER-SIZE_ - header.size
+            remain
         if addition != 0:
-          outgoing-partial-header_ += outgoing-data[scan .. scan + addition]
+          header += outgoing-data[scan .. scan + addition]
+          outgoing-partial-header_ = header
           scan += addition
-          if outgoing-partial-header_.size == RECORD-HEADER-SIZE_:
-            header := RecordHeader_ outgoing-partial-header_
-            if header.type == CHANGE-CIPHER-SPEC_:
+          if header.size == RECORD-HEADER-SIZE_:
+            record-header := RecordHeader_ header
+            if record-header.type == CHANGE-CIPHER-SPEC_:
               writes-encrypted_ = true
             else if writes-encrypted_:
               outgoing-sequence-numbers-used_++
-              check-for-zero-explicit-iv_ header
-            bytes-before-next-record-header_ = header.length
+              check-for-zero-explicit-iv_ record-header
+            bytes-before-next-record-header_ = record-header.length
             outgoing-partial-header_ = #[]
+    // All bytes from outgoing-data have been either skipped, scanned or stored
+    // in outgoing-partial-header_ for later scanning, so we are done scanning.
     writer_.write outgoing-data
 
   check-for-zero-explicit-iv_ header/RecordHeader_ -> none:
