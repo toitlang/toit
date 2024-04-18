@@ -100,7 +100,7 @@ class BaseMbedTlsSocket : public TlsSocket {
 // A size that should be plenty for all known root certificates, but won't overflow the stack.
 static const int MAX_SUBJECT = 400;
 
-// Although it's a resource we never actually wait on a MbedTlsSocket,
+// Although it's a resource, we never actually wait on a MbedTlsSocket,
 // preferring to wait on the underlying TCP socket.
 class MbedTlsSocket : public BaseMbedTlsSocket {
  public:

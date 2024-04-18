@@ -468,33 +468,37 @@ class Session:
   // handshaking is complete.  For this we need to know how many handshake
   // records were sent after encryption was activated.
   flush-outgoing_ -> none:
-    // Replace outgoing buffer.
-    outgoing-buffer := tls-get-outgoing_ tls_
+    // Get the outgoing data from the buffer, freeing up space for more data.
+    outgoing-data := tls-get-outgoing_ tls_
 
     // Scan the outgoing buffer for record headers.
-    for scan := 0; scan < outgoing-buffer.size; :
+    for scan := 0; scan < outgoing-data.size; :
       if bytes-before-next-record-header_ > 0:
         skip := min
             bytes-before-next-record-header_
-            outgoing-buffer.size - scan
+            outgoing-data.size - scan
         scan += skip
         bytes-before-next-record-header_ -= skip
       else:
         addition := min
             (RECORD-HEADER-SIZE_ - outgoing-partial-header_.size)
-            (outgoing-buffer.size - scan)
+            (outgoing-data.size - scan)
         if addition != 0:
-          outgoing-partial-header_ += outgoing-buffer[scan.. scan + addition]
+          outgoing-partial-header_ += outgoing-data[scan.. scan + addition]
           scan += addition
           if outgoing-partial-header_.size == RECORD-HEADER-SIZE_:
+            // Got a record header from the outgoing data.  We need to extract
+            // some data from it so we can later take over the connection with
+            // a Toit-level implementation of the symmetric session.
             header := RecordHeader_ outgoing-partial-header_
             if header.type == CHANGE-CIPHER-SPEC_:
               writes-encrypted_ = true
             else if writes-encrypted_:
               outgoing-sequence-numbers-used_++
+              check-for-zero-explicit-iv_ header
             bytes-before-next-record-header_ = header.length
             outgoing-partial-header_ = #[]
-    writer_.write outgoing-buffer
+    writer_.write outgoing-data
 
   check-for-zero-explicit-iv_ header/RecordHeader_ -> none:
     if header.length == 0x28 and header.bytes.size >= 13:
