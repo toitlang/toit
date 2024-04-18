@@ -809,7 +809,7 @@ static int toit_tls_send(void* ctx, const unsigned char* buf, size_t len) {
 
   auto socket = unvoid_cast<MbedTlsSocket*>(ctx);
   size_t fullness = socket->outgoing_fullness();
-  size_t result = Utils::min(static_cast<size_t>(MbedTlsSocket::OUTGOING_BUFFER_SIZE - fullness), len);
+  size_t result = Utils::min(len, MbedTlsSocket::OUTGOING_BUFFER_SIZE - fullness);
   if (result == 0) return MBEDTLS_ERR_SSL_WANT_WRITE;
   memcpy(socket->outgoing_buffer() + fullness, buf, result);
   fullness += result;

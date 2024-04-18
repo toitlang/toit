@@ -484,12 +484,9 @@ class Session:
             (RECORD-HEADER-SIZE_ - outgoing-partial-header_.size)
             (outgoing-data.size - scan)
         if addition != 0:
-          outgoing-partial-header_ += outgoing-data[scan.. scan + addition]
+          outgoing-partial-header_ += outgoing-data[scan .. scan + addition]
           scan += addition
           if outgoing-partial-header_.size == RECORD-HEADER-SIZE_:
-            // Got a record header from the outgoing data.  We need to extract
-            // some data from it so we can later take over the connection with
-            // a Toit-level implementation of the symmetric session.
             header := RecordHeader_ outgoing-partial-header_
             if header.type == CHANGE-CIPHER-SPEC_:
               writes-encrypted_ = true
