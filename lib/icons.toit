@@ -5,25 +5,25 @@
 import .font
 
 class Icon:
-  code_point_/int ::= ?
+  code-point_/int ::= ?
   font_/Font ::= ?
 
-  constructor .code_point_ .font_:
+  constructor .code-point_ .font_:
 
   stringify -> string:
-    return "$(%c code_point_)"
+    return "$(%c code-point_)"
 
   /**
   Gets the pixel width of the icon.
   Note that when you actually draw the icon it may go a few pixels to the left
-    of the origin or to the right of x origin + pixel_width.  See $icon_extent.
+    of the origin or to the right of x origin + pixel_width.  See $icon-extent.
   */
-  pixel_width -> int:
-    return font_.pixel_width stringify
+  pixel-width -> int:
+    return font_.pixel-width stringify
 
   /**
   Gets the bounding box of the icon.
   Returns [width, height, x-offset, y-offset].
   */
-  icon_extent -> List:
-    return font_.text_extent stringify
+  icon-extent -> List:
+    return font_.text-extent stringify

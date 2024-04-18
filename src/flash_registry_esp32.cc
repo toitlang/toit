@@ -15,26 +15,20 @@
 
 #include "top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include "flash_registry.h"
 
 #include <math.h>
 
 #include "esp_partition.h"
-#include "esp_spi_flash.h"
-
-#ifdef CONFIG_IDF_TARGET_ESP32
-#include <esp32/rom/cache.h>
-#endif
+#include "spi_flash_mmap.h"
 
 namespace toit {
 
 static const esp_partition_t* allocations_partition = null;
 static spi_flash_mmap_handle_t allocations_handle;
 uint8* FlashRegistry::allocations_memory_ = null;
-
-static bool is_dirty = false;
 
 static bool is_erased_page(int offset) {
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
@@ -55,9 +49,7 @@ static esp_err_t ensure_erased(int offset, int size) {
       }
       // Erase dirty range: [cursor, dirty_to).
       esp_err_t result = esp_partition_erase_range(allocations_partition, cursor, dirty_to - cursor);
-      if (result == ESP_OK) {
-        is_dirty = true;
-      } else {
+      if (result != ESP_OK) {
         return result;
       }
       cursor = dirty_to;  // Will continue at [dirty_to] + FLASH_PAGE_SIZE.
@@ -75,7 +67,7 @@ void FlashRegistry::set_up() {
   ASSERT(allocations_partition != null);
   ASSERT(allocations_memory() == null);
   const void* memory = null;
-  esp_partition_mmap(allocations_partition, 0, allocations_size(), SPI_FLASH_MMAP_DATA, &memory, &allocations_handle);
+  esp_partition_mmap(allocations_partition, 0, allocations_size(), ESP_PARTITION_MMAP_DATA, &memory, &allocations_handle);
   allocations_memory_ = reinterpret_cast<uint8*>(const_cast<void*>(memory));
   ASSERT(allocations_memory() != null);
 }
@@ -87,14 +79,6 @@ void FlashRegistry::tear_down() {
 }
 
 void FlashRegistry::flush() {
-  if (!is_dirty) return;
-#if !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(CONFIG_IDF_TARGET_ESP32S2)
-  Cache_Flush(0);
-#ifndef CONFIG_FREERTOS_UNICORE
-  Cache_Flush(1);
-#endif
-#endif
-  is_dirty = false;
 }
 
 int FlashRegistry::allocations_size() {
@@ -116,12 +100,7 @@ int FlashRegistry::erase_chunk(int offset, int size) {
 
 bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
   esp_err_t result = esp_partition_write(allocations_partition, offset, chunk, size);
-  if (result == ESP_OK) {
-    is_dirty = true;
-    return true;
-  } else {
-    return false;
-  }
+  return result == ESP_OK;
 }
 
 bool FlashRegistry::erase_flash_registry() {
@@ -132,4 +111,4 @@ bool FlashRegistry::erase_flash_registry() {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

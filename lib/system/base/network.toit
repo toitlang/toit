@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import net
 import net.udp
 import net.tcp
@@ -20,7 +21,7 @@ import system.services
     ServiceResourceProxy
 
 class NetworkResourceProxy extends ServiceResourceProxy:
-  on_closed_/Lambda? := null
+  on-closed_/Lambda? := null
 
   constructor client/NetworkServiceClient handle/int:
     super client handle
@@ -33,36 +34,36 @@ class NetworkResourceProxy extends ServiceResourceProxy:
     results := (client_ as NetworkServiceClient).resolve handle_ host
     return results.map: net.IpAddress it
 
-  udp_open --port/int?=null -> udp.Socket:
+  udp-open --port/int?=null -> udp.Socket:
     client ::= client_ as NetworkServiceClient
-    socket ::= client.udp_open handle_ port
+    socket ::= client.udp-open handle_ port
     return UdpSocketResourceProxy_ client socket
 
-  tcp_connect address/net.SocketAddress -> tcp.Socket:
+  tcp-connect address/net.SocketAddress -> tcp.Socket:
     client ::= client_ as NetworkServiceClient
-    socket ::= client.tcp_connect handle_ address.ip.to_byte_array address.port
+    socket ::= client.tcp-connect handle_ address.ip.to-byte-array address.port
     return TcpSocketResourceProxy_ client socket
 
-  tcp_listen port/int -> tcp.ServerSocket:
+  tcp-listen port/int -> tcp.ServerSocket:
     client ::= client_ as NetworkServiceClient
-    socket ::= client.tcp_listen handle_ port
+    socket ::= client.tcp-listen handle_ port
     return TcpServerSocketResourceProxy_ client socket
 
-  on_closed lambda/Lambda? -> none:
+  on-closed lambda/Lambda? -> none:
     if not lambda:
-      on_closed_ = null
+      on-closed_ = null
       return
-    if on_closed_: throw "ALREADY_IN_USE"
-    if is_closed: lambda.call
-    else: on_closed_ = lambda
+    if on-closed_: throw "ALREADY_IN_USE"
+    if is-closed: lambda.call
+    else: on-closed_ = lambda
 
-  close_handle_ -> int?:
-    on_closed := on_closed_
-    on_closed_ = null
+  close-handle_ -> int?:
+    on-closed := on-closed_
+    on-closed_ = null
     try:
       return super
     finally:
-      if on_closed: on_closed.call
+      if on-closed: on-closed.call
 
 // ----------------------------------------------------------------------------
 
@@ -74,8 +75,8 @@ class NetworkResource extends ServiceResource:
   state_/NetworkState ::= ?
   constructor provider/ServiceProvider client/int .state_ --notifiable/bool=false:
     super provider client --notifiable=notifiable
-  on_closed -> none:
-    critical_do: state_.down
+  on-closed -> none:
+    critical-do: state_.down
 
 /**
 The $NetworkState monitor handles tracking the usage of a $NetworkModule. The
@@ -94,21 +95,29 @@ monitor NetworkState:
 
   up [create] -> NetworkModule:
     usage_++
-    if module_: return module_
-    module/NetworkModule? := null
+    module := module_
+    if module: return module
     try:
       module = create.call
       module.connect
       module_ = module
       return module
-    finally: | is_exception exception |
-      if is_exception:
+    finally: | is-exception exception |
+      if is-exception:
         // Do not count the usage if we didn't manage
         // to produce a working module.
         usage_--
         // Disconnect the module if it was created, but connecting
         // failed with an exception.
         if module: module.disconnect
+
+  up [--if-unconnected] -> NetworkModule?:
+    module := module_
+    if module:
+      usage_++
+      return module
+    if-unconnected.call
+    return null
 
   down -> none:
     usage_--
@@ -134,26 +143,26 @@ If the language supported mixins, the $CloseableNetwork could be
   mixed into $NetworkResourceProxy.
 */
 abstract class CloseableNetwork:
-  on_closed_/Lambda? := null
+  on-closed_/Lambda? := null
 
-  abstract is_closed -> bool
+  abstract is-closed -> bool
   abstract close_ -> none
 
-  on_closed lambda/Lambda? -> none:
+  on-closed lambda/Lambda? -> none:
     if not lambda:
-      on_closed_ = null
+      on-closed_ = null
       return
-    if on_closed_: throw "ALREADY_IN_USE"
-    if is_closed: lambda.call
-    else: on_closed_ = lambda
+    if on-closed_: throw "ALREADY_IN_USE"
+    if is-closed: lambda.call
+    else: on-closed_ = lambda
 
   close -> none:
-    on_closed := on_closed_
-    on_closed_ = null
+    on-closed := on-closed_
+    on-closed_ = null
     try:
       close_
     finally:
-      if on_closed: on_closed.call
+      if on-closed: on-closed.call
 
 // ----------------------------------------------------------------------------
 
@@ -179,22 +188,22 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
 
   See the description of the proxy mask in the $NetworkService interface.
   */
-  abstract proxy_mask -> int
+  abstract proxy-mask -> int
 
   /**
   Opens the proxied network.
 
   Subclasses may decide to use the call to establish the underlying
     connection in which case the call may throw exceptions and
-    possibly time out. In case of such exceptions, $close_network
+    possibly time out. In case of such exceptions, $close-network
     is not called.
   */
-  abstract open_network -> net.Interface
+  abstract open-network -> net.Interface
 
   /**
   Closes the proxied network.
   */
-  abstract close_network network/net.Interface -> none
+  abstract close-network network/net.Interface -> none
 
   /**
   Requests quarantining the network identified by $name.
@@ -204,78 +213,78 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
   quarantine name/string -> none:
     // Do nothing.
 
-  handle pid/int client/int index/int arguments/any -> any:
-    if index == NetworkService.SOCKET_READ_INDEX:
-      socket ::= convert_to_socket_ client arguments
+  handle index/int arguments/any --gid/int --client/int -> any:
+    if index == NetworkService.SOCKET-READ-INDEX:
+      socket ::= convert-to-socket_ client arguments
       return socket.read
-    if index == NetworkService.SOCKET_WRITE_INDEX:
-      socket ::= convert_to_socket_ client arguments[0]
+    if index == NetworkService.SOCKET-WRITE-INDEX:
+      socket ::= convert-to-socket_ client arguments[0]
       return socket.write arguments[1]
-    if index == NetworkService.UDP_RECEIVE_INDEX:
-      socket ::= convert_to_socket_ client arguments
+    if index == NetworkService.UDP-RECEIVE-INDEX:
+      socket ::= convert-to-socket_ client arguments
       datagram ::= socket.receive
       address ::= datagram.address
-      return [datagram.data, address.ip.to_byte_array, address.port]
-    if index == NetworkService.UDP_SEND_INDEX:
-      socket ::= convert_to_socket_ client arguments[0]
-      datagram ::= udp.Datagram arguments[1] (convert_to_socket_address_ arguments 2)
+      return [datagram.data, address.ip.to-byte-array, address.port]
+    if index == NetworkService.UDP-SEND-INDEX:
+      socket ::= convert-to-socket_ client arguments[0]
+      datagram ::= udp.Datagram arguments[1] (convert-to-socket-address_ arguments 2)
       return socket.send datagram
 
-    if index == NetworkService.CONNECT_INDEX:
+    if index == NetworkService.CONNECT-INDEX:
       return connect client
-    if index == NetworkService.ADDRESS_INDEX:
+    if index == NetworkService.ADDRESS-INDEX:
       return address (resource client arguments)
-    if index == NetworkService.RESOLVE_INDEX:
+    if index == NetworkService.RESOLVE-INDEX:
       return resolve (resource client arguments[0]) arguments[1]
-    if index == NetworkService.QUARANTINE_INDEX:
+    if index == NetworkService.QUARANTINE-INDEX:
       return quarantine arguments
 
-    if index == NetworkService.UDP_OPEN_INDEX:
-      return udp_open client arguments[1]
-    if index == NetworkService.UDP_CONNECT_INDEX:
-      socket ::= convert_to_socket_ client arguments[0]
-      return socket.connect (convert_to_socket_address_ arguments 1)
+    if index == NetworkService.UDP-OPEN-INDEX:
+      return udp-open client arguments[1]
+    if index == NetworkService.UDP-CONNECT-INDEX:
+      socket ::= convert-to-socket_ client arguments[0]
+      return socket.connect (convert-to-socket-address_ arguments 1)
 
-    if index == NetworkService.TCP_CONNECT_INDEX:
-      return tcp_connect client arguments[1] arguments[2]
-    if index == NetworkService.TCP_LISTEN_INDEX:
-      return tcp_listen client arguments[1]
-    if index == NetworkService.TCP_ACCEPT_INDEX:
-      socket ::= convert_to_socket_ client arguments
+    if index == NetworkService.TCP-CONNECT-INDEX:
+      return tcp-connect client arguments[1] arguments[2]
+    if index == NetworkService.TCP-LISTEN-INDEX:
+      return tcp-listen client arguments[1]
+    if index == NetworkService.TCP-ACCEPT-INDEX:
+      socket ::= convert-to-socket_ client arguments
       return ProxyingSocketResource_ this client socket.accept
-    if index == NetworkService.TCP_CLOSE_WRITE_INDEX:
-      socket ::= convert_to_socket_ client arguments
-      return socket.close_write
+    if index == NetworkService.TCP-CLOSE-WRITE-INDEX:
+      socket ::= convert-to-socket_ client arguments
+      return socket.close-write
 
-    if index == NetworkService.SOCKET_LOCAL_ADDRESS_INDEX:
-      socket ::= convert_to_socket_ client arguments
-      address ::= socket.local_address
-      return [address.ip.to_byte_array, address.port]
-    if index == NetworkService.SOCKET_PEER_ADDRESS_INDEX:
-      socket ::= convert_to_socket_ client arguments
-      address ::= socket.peer_address
-      return [address.ip.to_byte_array, address.port]
-    if index == NetworkService.SOCKET_MTU_INDEX:
-      socket ::= convert_to_socket_ client arguments
+    if index == NetworkService.SOCKET-LOCAL-ADDRESS-INDEX:
+      socket ::= convert-to-socket_ client arguments
+      address ::= socket.local-address
+      return [address.ip.to-byte-array, address.port]
+    if index == NetworkService.SOCKET-PEER-ADDRESS-INDEX:
+      socket ::= convert-to-socket_ client arguments
+      address ::= socket.peer-address
+      return [address.ip.to-byte-array, address.port]
+    if index == NetworkService.SOCKET-MTU-INDEX:
+      socket ::= convert-to-socket_ client arguments
       return socket.mtu
-    if index == NetworkService.SOCKET_GET_OPTION_INDEX:
-      socket ::= convert_to_socket_ client arguments[0]
+    if index == NetworkService.SOCKET-GET-OPTION-INDEX:
+      socket ::= convert-to-socket_ client arguments[0]
       option ::= arguments[1]
-      if option == NetworkService.SOCKET_OPTION_UDP_BROADCAST:
+      if option == NetworkService.SOCKET-OPTION-UDP-BROADCAST:
         return socket.broadcast
-      if option == NetworkService.SOCKET_OPTION_TCP_NO_DELAY:
-        return socket.no_delay
-    if index == NetworkService.SOCKET_SET_OPTION_INDEX:
-      socket ::= convert_to_socket_ client arguments[0]
+      if option == NetworkService.SOCKET-OPTION-TCP-NO-DELAY:
+        return socket.no-delay
+    if index == NetworkService.SOCKET-SET-OPTION-INDEX:
+      socket ::= convert-to-socket_ client arguments[0]
       option ::= arguments[1]
       value ::= arguments[2]
-      if option == NetworkService.SOCKET_OPTION_UDP_BROADCAST:
+      if option == NetworkService.SOCKET-OPTION-UDP-BROADCAST:
         return socket.broadcast = value
-      if option == NetworkService.SOCKET_OPTION_TCP_NO_DELAY:
-        return socket.no_delay = value
+      if option == NetworkService.SOCKET-OPTION-TCP-NO-DELAY:
+        return socket.no-delay = value
     unreachable
 
-  convert_to_socket_ client/int handle/int -> any: /* udp.Socket | tcp.Socket | tcp.ServerSocket */
+  convert-to-socket_ client/int handle/int -> any: /* udp.Socket | tcp.Socket | tcp.ServerSocket */
     resource ::= (resource client handle) as ProxyingSocketResource_
     return resource.socket
 
@@ -285,14 +294,14 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
     state_.up: this
     resource := NetworkResource this client state_ --notifiable
     return [
-      resource.serialize_for_rpc,
-      proxy_mask | NetworkService.PROXY_QUARANTINE,
+      resource.serialize-for-rpc,
+      proxy-mask | NetworkService.PROXY-QUARANTINE,
       network_.name
     ]
 
   connect -> none:
-    network := open_network
-    network.on_closed:: disconnect
+    network := open-network
+    network.on-closed:: disconnect
     network_ = network
 
   disconnect -> none:
@@ -300,123 +309,135 @@ abstract class ProxyingNetworkServiceProvider extends ServiceProvider
     if not network: return
     network_ = null
     try:
-      close_network network
+      close-network network
     finally:
-      critical_do:
-        resources_do: | resource/ServiceResource |
-          if resource is NetworkResource and not resource.is_closed:
-            resource.notify_ NetworkService.NOTIFY_CLOSED --close
+      critical-do:
+        resources-do: | resource/ServiceResource |
+          if resource is NetworkResource and not resource.is-closed:
+            resource.notify_ NetworkService.NOTIFY-CLOSED --close
 
   address resource/ServiceResource -> ByteArray:
-    return network_.address.to_byte_array
+    return network_.address.to-byte-array
 
   resolve resource/ServiceResource host/string -> List:
     results ::= network_.resolve host
-    return results.map: it.to_byte_array
+    return results.map: it.to-byte-array
 
-  udp_open client/int port/int? -> ServiceResource:
-    socket ::= network_.udp_open --port=port
+  udp-open client/int port/int? -> ServiceResource:
+    socket ::= network_.udp-open --port=port
     return ProxyingSocketResource_ this client socket
 
-  tcp_connect client/int ip/ByteArray port/int -> ServiceResource:
-    socket ::= network_.tcp_connect (net.IpAddress ip).stringify port
+  tcp-connect client/int ip/ByteArray port/int -> ServiceResource:
+    socket ::= network_.tcp-connect (net.IpAddress ip).stringify port
     return ProxyingSocketResource_ this client socket
 
-  tcp_listen client/int port/int -> ServiceResource:
-    socket ::= network_.tcp_listen port
+  tcp-listen client/int port/int -> ServiceResource:
+    socket ::= network_.tcp-listen port
     return ProxyingSocketResource_ this client socket
 
 // ----------------------------------------------------------------------------
 
-convert_to_socket_address_ address/List offset/int=0 -> net.SocketAddress:
+convert-to-socket-address_ address/List offset/int=0 -> net.SocketAddress:
   ip ::= net.IpAddress address[offset]
   port ::= address[offset + 1]
   return net.SocketAddress ip port
 
-class SocketResourceProxy_ extends ServiceResourceProxy:
-  static WRITE_DATA_SIZE_MAX_ /int ::= 2048
+class SocketResourceProxy_ extends ServiceResourceProxy with io.CloseableInMixin io.CloseableOutMixin:
+  static WRITE-DATA-SIZE-MAX_ /int ::= 2048
 
   constructor client/NetworkServiceClient handle/int:
     super client handle
 
-  local_address -> net.SocketAddress:
+  local-address -> net.SocketAddress:
     client ::= client_ as NetworkServiceClient
-    return convert_to_socket_address_ (client.socket_local_address handle_)
+    return convert-to-socket-address_ (client.socket-local-address handle_)
 
-  peer_address -> net.SocketAddress:
+  peer-address -> net.SocketAddress:
     client ::= client_ as NetworkServiceClient
-    return convert_to_socket_address_ (client.socket_peer_address handle_)
+    return convert-to-socket-address_ (client.socket-peer-address handle_)
 
   read -> ByteArray?:
-    return (client_ as NetworkServiceClient).socket_read handle_
+    return read_
 
-  write data from=0 to=data.size -> int:
-    to = min to (from + WRITE_DATA_SIZE_MAX_)
-    return (client_ as NetworkServiceClient).socket_write handle_ data[from..to]
+  read_ -> ByteArray?:
+    return (client_ as NetworkServiceClient).socket-read handle_
+
+  write data/io.Data from/int=0 to/int=data.byte-size -> int:
+    return try-write_ data from to
+
+  try-write_ data/io.Data from/int to/int -> int:
+    to = min to (from + WRITE-DATA-SIZE-MAX_)
+    return (client_ as NetworkServiceClient).socket-write handle_ (data.byte-slice from  to)
 
   mtu -> int:
-    return (client_ as NetworkServiceClient).socket_mtu handle_
+    return (client_ as NetworkServiceClient).socket-mtu handle_
 
-  close_write:
-    return (client_ as NetworkServiceClient).tcp_close_write handle_
+  /**
+  Closes the proxied socket for write. The socket will still be able to read incoming data.
+  Deprecated. Use ($out).close instead.
+  */
+  close-write -> none:
+    out.close
+
+  close-writer_ -> none:
+    (client_ as NetworkServiceClient).tcp-close-write handle_
+
+  close-reader_:
+    // TODO(florian): Implement this.
 
 class UdpSocketResourceProxy_ extends SocketResourceProxy_ implements udp.Socket:
   constructor client/NetworkServiceClient handle/int:
     super client handle
 
   receive -> udp.Datagram:
-    result ::= (client_ as NetworkServiceClient).udp_receive handle_
-    return udp.Datagram result[0] (convert_to_socket_address_ result 1)
+    result ::= (client_ as NetworkServiceClient).udp-receive handle_
+    return udp.Datagram result[0] (convert-to-socket-address_ result 1)
 
   send datagram/udp.Datagram -> none:
     address ::= datagram.address
     client ::= client_ as NetworkServiceClient
-    client.udp_send handle_ datagram.data address.ip.to_byte_array address.port
+    client.udp-send handle_ datagram.data address.ip.to-byte-array address.port
 
   connect address/net.SocketAddress -> none:
     client ::= client_ as NetworkServiceClient
-    client.udp_connect handle_ address.ip.to_byte_array address.port
+    client.udp-connect handle_ address.ip.to-byte-array address.port
 
   broadcast -> bool:
     client ::= client_ as NetworkServiceClient
-    return client.socket_get_option handle_ NetworkService.SOCKET_OPTION_UDP_BROADCAST
+    return client.socket-get-option handle_ NetworkService.SOCKET-OPTION-UDP-BROADCAST
 
   broadcast= value/bool:
     client ::= client_ as NetworkServiceClient
-    client.socket_set_option handle_ NetworkService.SOCKET_OPTION_UDP_BROADCAST value
+    client.socket-set-option handle_ NetworkService.SOCKET-OPTION-UDP-BROADCAST value
 
 class TcpSocketResourceProxy_ extends SocketResourceProxy_ implements tcp.Socket:
   constructor client/NetworkServiceClient handle/int:
     super client handle
 
-  // TODO(kasper): Remove this.
-  set_no_delay enabled/bool -> none:
-    no_delay = enabled
-
-  no_delay -> bool:
+  no-delay -> bool:
     client ::= client_ as NetworkServiceClient
-    return client.socket_get_option handle_ NetworkService.SOCKET_OPTION_TCP_NO_DELAY
+    return client.socket-get-option handle_ NetworkService.SOCKET-OPTION-TCP-NO-DELAY
 
-  no_delay= value/bool -> none:
+  no-delay= value/bool -> none:
     client ::= client_ as NetworkServiceClient
-    client.socket_set_option handle_ NetworkService.SOCKET_OPTION_TCP_NO_DELAY value
+    client.socket-set-option handle_ NetworkService.SOCKET-OPTION-TCP-NO-DELAY value
 
 class TcpServerSocketResourceProxy_ extends ServiceResourceProxy implements tcp.ServerSocket:
   constructor client/NetworkServiceClient handle/int:
     super client handle
 
-  local_address -> net.SocketAddress:
+  local-address -> net.SocketAddress:
     client ::= client_ as NetworkServiceClient
-    return convert_to_socket_address_ (client.socket_local_address handle_)
+    return convert-to-socket-address_ (client.socket-local-address handle_)
 
   accept -> tcp.Socket?:
     client ::= client_ as NetworkServiceClient
-    socket ::= client.tcp_accept handle_
+    socket ::= client.tcp-accept handle_
     return TcpSocketResourceProxy_ client socket
 
 class ProxyingSocketResource_ extends ServiceResource:
   socket/any ::= ?
   constructor provider/ServiceProvider client/int .socket:
     super provider client
-  on_closed -> none:
+  on-closed -> none:
     socket.close

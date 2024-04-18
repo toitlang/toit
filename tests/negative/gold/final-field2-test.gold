@@ -1,0 +1,4 @@
+EXCEPTION error. 
+FINAL_FIELD_ASSIGNMENT_FAILED
+  0: A.field=                  tests/negative/final-field2-test.toit:8:3
+  1: main                      tests/negative/final-field2-test.toit:12:21

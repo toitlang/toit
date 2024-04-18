@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import ..io as io
+
 /**
 The encoding format TISON is a binary encoded JSON variant similar
   to UBJSON.  It is natively supported by the Toit virtual machine
@@ -25,17 +27,19 @@ Cannot encode data structures with cycles in them.  In this case it will
   throw "NESTING_TOO_DEEP".
 */
 encode object/any -> ByteArray:
-  #primitive.encoding.tison_encode:
+  #primitive.encoding.tison-encode:
     if it is List and it.size != 0 and it[0] is int:
-      serialization_failure_ it[0]
+      serialization-failure_ it[0]
     throw it
 
 /**
-Decodes $bytes, which is a $ByteArray in TISON format.
+Decodes the given $data.
 
 The result is null or an instance of int, bool, float, string, ByteArray,
   List, or Map.  The list elements and map values will also be one of
   these types.
 */
-decode bytes/ByteArray -> any:
-  #primitive.encoding.tison_decode
+decode data/io.Data -> any:
+  #primitive.encoding.tison-decode:
+    return io.primitive-redo-io-data_ it data: | bytes |
+      decode bytes

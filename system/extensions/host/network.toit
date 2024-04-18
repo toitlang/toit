@@ -18,7 +18,7 @@ import net
 import system.services show ServiceProvider ServiceResource
 import system.api.network show NetworkService
 
-import ..shared.network_base
+import ..shared.network-base
 
 class NetworkServiceProvider extends NetworkServiceProviderBase:
   constructor:
@@ -27,8 +27,8 @@ class NetworkServiceProvider extends NetworkServiceProviderBase:
   connect client/int -> List:
     resource := NetworkResource this client
     return [
-      resource.serialize_for_rpc,
-      NetworkService.PROXY_NONE,
+      resource.serialize-for-rpc,
+      NetworkService.PROXY-NONE,
       "system"
     ]
 
@@ -36,5 +36,5 @@ class NetworkResource extends ServiceResource:
   constructor provider/ServiceProvider client/int:
     super provider client
 
-  on_closed -> none:
+  on-closed -> none:
     // Do nothing.

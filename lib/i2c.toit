@@ -28,7 +28,7 @@ In case of the Bosch [BME280 sensor](https://cdn.sparkfun.com/assets/e/7/3/b/1/B
 ```
 */
 
-DEFAULT_FREQUENCY ::= 400_000
+DEFAULT-FREQUENCY ::= 400_000
 
 /**
 Bus for communicating using I2C.
@@ -41,15 +41,18 @@ class Bus:
 
   /**
   Constructs an I2C bus on the $sda (data) and the $scl (clock) pins using
-    the given $frequency. Uses $DEFAULT_FREQUENCY by default.
+    the given $frequency. Uses $DEFAULT-FREQUENCY by default.
   */
-  constructor --sda/gpio.Pin --scl/gpio.Pin --frequency=DEFAULT_FREQUENCY:
-    i2c_ = i2c_init_ frequency sda.num scl.num
+  constructor --sda/gpio.Pin --scl/gpio.Pin --frequency=DEFAULT-FREQUENCY:
+    i2c_ = i2c-init_ frequency sda.num scl.num
 
   /**
   Scans all valid addresses.
 
   Returns the set of addresses that responded.
+
+  Some addresses are reserved and are not scanned. See
+    https://www.i2c-bus.org/addressing/.
   */
   scan -> Set:
     result := {}
@@ -59,8 +62,7 @@ class Bus:
 
   /** Tests if the $address responds. */
   test address -> bool:
-    empty := ByteArray 0
-    write_ address empty: return false
+    write_ address #[]: return false
     return true
 
   /**
@@ -70,53 +72,53 @@ class Bus:
   */
   close -> none:
     devices_.values.do: it.close
-    i2c_close_ i2c_
+    i2c-close_ i2c_
 
   /**
-  Gets the device connected on the $i2c_address.
+  Gets the device connected on the $i2c-address.
 
   It is an error to connect a device on an address already in use.
     The device can be released with $Device.close.
   */
-  device i2c_address/int -> Device:
-    if devices_.contains i2c_address: throw "Device already connected"
-    device := Device.init_ this i2c_address
-    devices_[i2c_address] = device
+  device i2c-address/int -> Device:
+    if devices_.contains i2c-address: throw "Device already connected"
+    device := Device.init_ this i2c-address
+    devices_[i2c-address] = device
     return device
 
   /** See $(Device.write bytes). */
-  write_ i2c_address/int bytes/ByteArray [failure]:
-    r := i2c_write_ i2c_ i2c_address bytes
+  write_ i2c-address/int bytes/ByteArray [failure]:
+    r := i2c-write_ i2c_ i2c-address bytes
     if r: return failure.call "I2C_WRITE_FAILED"
     return r
 
-  /** See $(Device.write_reg register bytes). */
-  write_reg_ i2c_address/int register/int bytes/ByteArray [failure]:
-    r := i2c_write_reg_ i2c_ i2c_address register bytes
+  /** See $(Device.write-reg register bytes). */
+  write-reg_ i2c-address/int register/int bytes/ByteArray [failure]:
+    r := i2c-write-reg_ i2c_ i2c-address register bytes
     if r: return failure.call "I2C_WRITE_FAILED"
     return r
 
-  /** See $(Device.write_address address bytes). */
-  write_address_ i2c_address/int address/ByteArray bytes/ByteArray [failure]:
-    r := i2c_write_address_ i2c_ i2c_address address bytes
+  /** See $(Device.write-address address bytes). */
+  write-address_ i2c-address/int address/ByteArray bytes/ByteArray [failure]:
+    r := i2c-write-address_ i2c_ i2c-address address bytes
     if r: return failure.call "I2C_WRITE_FAILED"
     return r
 
   /** See $(Device.read size). */
-  read_ i2c_address/int size/int [failure] -> ByteArray:
-    b := i2c_read_ i2c_ i2c_address size
+  read_ i2c-address/int size/int [failure] -> ByteArray:
+    b := i2c-read_ i2c_ i2c-address size
     if not b: return failure.call "I2C_READ_FAILED"
     return b
 
-  /** See $(Device.read_reg register size). */
-  read_reg_ i2c_address/int reg/int size/int [failure] -> ByteArray:
-    b := i2c_read_reg_ i2c_ i2c_address reg size
+  /** See $(Device.read-reg register size). */
+  read-reg_ i2c-address/int reg/int size/int [failure] -> ByteArray:
+    b := i2c-read-reg_ i2c_ i2c-address reg size
     if not b: return failure.call "I2C_READ_FAILED"
     return b
 
-  /** See $(Device.read_address address size). */
-  read_address_ i2c_address/int address/ByteArray size/int [failure] -> ByteArray:
-    b := i2c_read_address_ i2c_ i2c_address address size
+  /** See $(Device.read-address address size). */
+  read-address_ i2c-address/int address/ByteArray size/int [failure] -> ByteArray:
+    b := i2c-read-address_ i2c_ i2c-address address size
     if not b: return failure.call "I2C_READ_FAILED"
     return b
 
@@ -174,15 +176,15 @@ class Device implements serial.Device:
   This is a convenience method and equivalent to prepending the $register byte to $bytes
     and then calling $(write bytes).
   */
-  write_reg register/int bytes/ByteArray:
+  write-reg register/int bytes/ByteArray:
     write bytes: throw it
 
   /**
-  Variant of $(write_reg register bytes).
+  Variant of $(write-reg register bytes).
   Calls the $failure block if the write fails.
   */
-  write_reg register/int bytes/ByteArray [failure]:
-    i2c_.write_reg_ address register bytes failure
+  write-reg register/int bytes/ByteArray [failure]:
+    i2c_.write-reg_ address register bytes failure
 
   /**
   Writes the $bytes to the device at the given $address.
@@ -190,15 +192,15 @@ class Device implements serial.Device:
   This is a convenience method and equivalent to prepending the $address bytes to $bytes
     and then calling $(write bytes).
   */
-  write_address address/ByteArray bytes/ByteArray:
-    write_address address bytes: throw it
+  write-address address/ByteArray bytes/ByteArray:
+    write-address address bytes: throw it
 
   /**
-  Variant of $(write_address address bytes).
+  Variant of $(write-address address bytes).
   Calls the $failure block if the write fails.
   */
-  write_address address/ByteArray bytes/ByteArray [failure]:
-    i2c_.write_address_ this.address address bytes failure
+  write-address address/ByteArray bytes/ByteArray [failure]:
+    i2c_.write-address_ this.address address bytes failure
 
   /**
   Reads $size bytes from the device.
@@ -226,18 +228,18 @@ class Device implements serial.Device:
   Reads $size bytes from the given $register.
 
   The $register value must satisfy 0 <= $register < 256.
-  Equivalent to calling $read_address with a byte array containing
+  Equivalent to calling $read-address with a byte array containing
     the register value.
   */
-  read_reg register/int size/int -> ByteArray:
-    return read_reg register size: throw it
+  read-reg register/int size/int -> ByteArray:
+    return read-reg register size: throw it
 
   /**
-  Variant of $(read_reg register size).
+  Variant of $(read-reg register size).
   Calls the $failure block if the read fails.
   */
-  read_reg register/int size/int [failure] -> ByteArray:
-    return i2c_.read_reg_ address register size failure
+  read-reg register/int size/int [failure] -> ByteArray:
+    return i2c_.read-reg_ address register size failure
 
   /**
   Reads $size bytes from the given $address.
@@ -255,15 +257,15 @@ class Device implements serial.Device:
     receipt is confirmed with a 'nack'.
   Finally it sends a 'stop'.
   */
-  read_address address/ByteArray size/int -> ByteArray:
-    return read_address address size: throw it
+  read-address address/ByteArray size/int -> ByteArray:
+    return read-address address size: throw it
 
   /**
-  Variant of $(read_address address size).
+  Variant of $(read-address address size).
   Calls the $failure block if the operation fails.
   */
-  read_address address/ByteArray size/int [failure] -> ByteArray:
-    return i2c_.read_address_ this.address address size failure
+  read-address address/ByteArray size/int [failure] -> ByteArray:
+    return i2c_.read-address_ this.address address size failure
 
   /** Closes this device and releases the I2C address. */
   close -> none:
@@ -285,40 +287,40 @@ class Registers extends serial.Registers:
   constructor.init_ .device_:
 
   /** See $super. */
-  read_bytes reg count:
-    return device_.read_reg reg count
+  read-bytes reg count:
+    return device_.read-reg reg count
 
   /** See $super. */
-  read_bytes reg count [failure]:
-    return device_.read_reg reg count failure
+  read-bytes reg count [failure]:
+    return device_.read-reg reg count failure
 
   /** See $super. */
-  write_bytes reg bytes:
+  write-bytes reg bytes:
     data := ByteArray bytes.size + 1
     data[0] = reg
     data.replace 1 bytes
     device_.write data
 
-i2c_init_ frequency sda scl:
+i2c-init_ frequency sda scl:
   #primitive.i2c.init
 
-i2c_close_ i2c:
+i2c-close_ i2c:
   #primitive.i2c.close
 
-i2c_read_ i2c address size:
+i2c-read_ i2c address size:
   #primitive.i2c.read
 
-i2c_read_reg_ i2c address reg size:
-  #primitive.i2c.read_reg
+i2c-read-reg_ i2c address reg size:
+  #primitive.i2c.read-reg
 
-i2c_read_address_ i2c i2c_address reg_address size:
-  #primitive.i2c.read_address
+i2c-read-address_ i2c i2c-address reg-address size:
+  #primitive.i2c.read-address
 
-i2c_write_ i2c address bytes:
+i2c-write_ i2c address bytes:
   #primitive.i2c.write
 
-i2c_write_reg_ i2c address reg bytes:
-  #primitive.i2c.write_reg
+i2c-write-reg_ i2c address reg bytes:
+  #primitive.i2c.write-reg
 
-i2c_write_address_ i2c i2c_address reg_address bytes:
-  #primitive.i2c.write_address
+i2c-write-address_ i2c i2c-address reg-address bytes:
+  #primitive.i2c.write-address

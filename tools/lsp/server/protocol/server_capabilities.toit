@@ -63,10 +63,10 @@ class CompletionOptions extends MapWrapper:
   - [trigger_characters]: the characters that trigger completion automatically.
   */
   constructor
-      --resolve_provider   /bool?             = null
-      --trigger_characters /List?/*<string>*/ = null:
-    map_["resolveProvider"]   = resolve_provider
-    map_["triggerCharacters"] = trigger_characters
+      --resolve-provider   /bool?             = null
+      --trigger-characters /List?/*<string>*/ = null:
+    map_["resolveProvider"]   = resolve-provider
+    map_["triggerCharacters"] = trigger-characters
 
 /**
 Signature help options.
@@ -80,8 +80,8 @@ class SignatureHelpOptions extends MapWrapper:
   - [trigger_characters]: the characters that trigger signature help automatically.
   */
   constructor
-      trigger_characters /List?/*<string>*/ = null:
-    map_["triggerCharacters"] = trigger_characters
+      trigger-characters /List?/*<string>*/ = null:
+    map_["triggerCharacters"] = trigger-characters
 
 /**
 Code Action options.
@@ -96,8 +96,8 @@ class CodeActionOptions extends MapWrapper:
       may list out every specific kind they provide.
   */
   constructor
-      code_action_kinds /List?/*<string>*/ = null:
-    map_["codeActionKinds"] = code_action_kinds
+      code-action-kinds /List?/*<string>*/ = null:
+    map_["codeActionKinds"] = code-action-kinds
 
 
 /**
@@ -111,8 +111,8 @@ class CodeLensOptions extends MapWrapper:
   - [resolve_provider]: Whether code lens has a resolve provider as well.
   */
   constructor
-      resolve_provider /bool? = null:
-    map_["resolveProvider"] = resolve_provider
+      resolve-provider /bool? = null:
+    map_["resolveProvider"] = resolve-provider
 
 /**
 Format document on type options.
@@ -127,10 +127,10 @@ class DocumentOnTypeFormattingOptions extends MapWrapper:
   - [more_trigger_characters]: more trigger characters.
   */
   constructor
-      first_trigger_character /string            = null
-      more_trigger_characters /List?/*<string>*/ = null:
-    map_["firstTriggerCharacter"] = first_trigger_character
-    map_["moreTriggerCharacters"] = more_trigger_characters
+      first-trigger-character /string            = null
+      more-trigger-characters /List?/*<string>*/ = null:
+    map_["firstTriggerCharacter"] = first-trigger-character
+    map_["moreTriggerCharacters"] = more-trigger-characters
 
 /**
 Rename options.
@@ -143,8 +143,8 @@ class RenameOptions extends MapWrapper:
   - [prepare_provider]: whether renames should be checked and tested before being executed.
   */
   constructor
-      prepare_provider /bool? = null:
-    map_["prepareProvider"] = prepare_provider
+      prepare-provider /bool? = null:
+    map_["prepareProvider"] = prepare-provider
 
 /**
 Document link options.
@@ -157,8 +157,8 @@ class DocumentLinkOptions extends MapWrapper:
   - [resolve_provider]: whether document links have a resolve provider as well.
   */
   constructor
-      resolve_provider /bool? = null:
-    map_["resolveProvider"] = resolve_provider
+      resolve-provider /bool? = null:
+    map_["resolveProvider"] = resolve-provider
 
 /**
 Execute command options.
@@ -185,8 +185,8 @@ class SaveOptions extends MapWrapper:
   - [include_text]: whether the client is supposed to include the content on save.
   */
   constructor
-      --include_text /bool? = null:
-    map_["includeText"] = include_text
+      --include-text /bool? = null:
+    map_["includeText"] = include-text
 
 /**
 Color provider options.
@@ -211,15 +211,15 @@ class TextDocumentSyncOptions extends MapWrapper:
   - [save]: the save notifications that are sent to the server.
   */
   constructor
-      --open_close           /bool?        = null
+      --open-close           /bool?        = null
       --change               /int?         = null // A [TextDocumentSyncKind]
-      --will_save            /bool?        = null
-      --will_save_wait_until /bool?        = null
+      --will-save            /bool?        = null
+      --will-save-wait-until /bool?        = null
       --save                 /SaveOptions? = null:
-    map_["openClose"]         = open_close
+    map_["openClose"]         = open-close
     map_["change"]            = change
-    map_["willSave"]          = will_save
-    map_["willSaveWaitUntil"] = will_save_wait_until
+    map_["willSave"]          = will-save
+    map_["willSaveWaitUntil"] = will-save-wait-until
     map_["save"]              = save
 
 
@@ -243,10 +243,10 @@ class SemanticTokensLegend extends MapWrapper:
   Creates a response object for semantic-tokens legends options.
   */
   constructor
-      --token_types     /List/*<string>*/
-      --token_modifiers /List/*<string>*/:
-    map_["tokenTypes"] = token_types
-    map_["tokenModifiers"] = token_modifiers
+      --token-types     /List/*<string>*/
+      --token-modifiers /List/*<string>*/:
+    map_["tokenTypes"] = token-types
+    map_["tokenModifiers"] = token-modifiers
 
 class SemanticTokensOptions extends MapWrapper:
   /**
@@ -285,9 +285,9 @@ class WorkspaceFoldersServerCapabilities extends MapWrapper:
   */
   constructor
       supported            /bool? = null
-      change_notifications /any   = null:  /* string | bool | Null */
+      change-notifications /any   = null:  /* string | bool | Null */
     map_["supported"] = supported
-    map_["changeNotifications"] = change_notifications
+    map_["changeNotifications"] = change-notifications
 
 /**
 The workspace-specific server-capabilities.
@@ -300,8 +300,8 @@ class WorkspaceServerCapabilities extends MapWrapper:
   - [workspace_folders]: The workspace-folder support.
   */
   constructor
-      workspace_folders /WorkspaceFoldersServerCapabilities? = null:
-    map_["workspaceFolders"] = workspace_folders
+      workspace-folders /WorkspaceFoldersServerCapabilities? = null:
+    map_["workspaceFolders"] = workspace-folders
 
 
 
@@ -346,51 +346,51 @@ class ServerCapabilities extends MapWrapper:
   - [experimental]: experimental server capabilities.
   */
   constructor
-      --text_document_sync       /any                   = null /* TextDocumentSyncOptions | int | Null */
-      --hover_provider           /bool?                 = null
-      --completion_provider      /CompletionOptions?    = null
-      --signature_help_provider  /SignatureHelpOptions? = null
-      --definition_provider      /bool?                 = null
-      --type_definition_provider /any                   = null /* bool | (TextDocumentRegistrationOptions & StaticRegistrationOptions) | Null */
-      --implementation_provider  /any                   = null /* bool | (TextDocumentRegistrationOptions & StaticRegistrationOptions) | Null */
-      --references_provider      /bool?                 = null
-      --document_highlight_provider  /bool?             = null
-      --document_symbol_provider     /bool?             = null
-      --workspace_symbol_provider    /bool?             = null
-      --code_action_provider         /any               = null /* bool | CodeActionOptions | Null */
-      --code_lens_provider           /CodeLensOptions?  = null
-      --document_formatting_provider /bool?             = null
-      --document_range_formatting_provider   /bool?     = null
-      --document_on_type_formatting_provider /DocumentOnTypeFormattingOptions? = null
-      --rename_provider          /any                          = null /* bool | RenameOptions | Null */
-      --document_link_provider   /DocumentLinkOptions?         = null
-      --color_provider           /any                          = null /* bool | ColorProviderOptions | (ColorProviderOptions & TextDocumentRegistrationOptions & StaticRegistrationOptions) | Null */
-      --folding_range_provider   /any                          = null /* bool | FoldingRangeProviderOptions | (FoldingRangeProviderOptions & TextDocumentRegistrationOptions & StaticRegistrationOptions) | Null */
-      --execute_command_provider /ExecuteCommandOptions?       = null
-      --semantic_tokens_provider /SemanticTokensOptions?       = null
+      --text-document-sync       /any                   = null /* TextDocumentSyncOptions | int | Null */
+      --hover-provider           /bool?                 = null
+      --completion-provider      /CompletionOptions?    = null
+      --signature-help-provider  /SignatureHelpOptions? = null
+      --definition-provider      /bool?                 = null
+      --type-definition-provider /any                   = null /* bool | (TextDocumentRegistrationOptions & StaticRegistrationOptions) | Null */
+      --implementation-provider  /any                   = null /* bool | (TextDocumentRegistrationOptions & StaticRegistrationOptions) | Null */
+      --references-provider      /bool?                 = null
+      --document-highlight-provider  /bool?             = null
+      --document-symbol-provider     /bool?             = null
+      --workspace-symbol-provider    /bool?             = null
+      --code-action-provider         /any               = null /* bool | CodeActionOptions | Null */
+      --code-lens-provider           /CodeLensOptions?  = null
+      --document-formatting-provider /bool?             = null
+      --document-range-formatting-provider   /bool?     = null
+      --document-on-type-formatting-provider /DocumentOnTypeFormattingOptions? = null
+      --rename-provider          /any                          = null /* bool | RenameOptions | Null */
+      --document-link-provider   /DocumentLinkOptions?         = null
+      --color-provider           /any                          = null /* bool | ColorProviderOptions | (ColorProviderOptions & TextDocumentRegistrationOptions & StaticRegistrationOptions) | Null */
+      --folding-range-provider   /any                          = null /* bool | FoldingRangeProviderOptions | (FoldingRangeProviderOptions & TextDocumentRegistrationOptions & StaticRegistrationOptions) | Null */
+      --execute-command-provider /ExecuteCommandOptions?       = null
+      --semantic-tokens-provider /SemanticTokensOptions?       = null
       --workspace                /WorkspaceServerCapabilities? = null
       --experimental             /Experimental?                = null:
-    map_["textDocumentSync"]       = text_document_sync
-    map_["hoverProvider"]          = hover_provider
-    map_["completionProvider"]     = completion_provider
-    map_["signatureHelpProvider"]  = signature_help_provider
-    map_["definitionProvider"]     = definition_provider
-    map_["typeDefinitionProvider"] = type_definition_provider
-    map_["implementationProvider"] = implementation_provider
-    map_["referencesProvider"]     = references_provider
-    map_["documentHighlightProvider"]  = document_highlight_provider
-    map_["documentSymbolProvider"]     = document_symbol_provider
-    map_["workspaceSymbolProvider"]    = workspace_symbol_provider
-    map_["codeActionProvider"]         = code_action_provider
-    map_["codeLensProvider"]           = code_lens_provider
-    map_["documentFormattingProvider"] = document_formatting_provider
-    map_["documentRangeFormattingProvider"]  = document_range_formatting_provider
-    map_["documentOnTypeFormattingProvider"] = document_on_type_formatting_provider
-    map_["renameProvider"]         = rename_provider
-    map_["documentLinkProvider"]   = document_link_provider
-    map_["colorProvider"]          = color_provider
-    map_["foldingRangeProvider"]   = folding_range_provider
-    map_["executeCommandProvider"] = execute_command_provider
-    map_["semanticTokensProvider"] = semantic_tokens_provider
+    map_["textDocumentSync"]       = text-document-sync
+    map_["hoverProvider"]          = hover-provider
+    map_["completionProvider"]     = completion-provider
+    map_["signatureHelpProvider"]  = signature-help-provider
+    map_["definitionProvider"]     = definition-provider
+    map_["typeDefinitionProvider"] = type-definition-provider
+    map_["implementationProvider"] = implementation-provider
+    map_["referencesProvider"]     = references-provider
+    map_["documentHighlightProvider"]  = document-highlight-provider
+    map_["documentSymbolProvider"]     = document-symbol-provider
+    map_["workspaceSymbolProvider"]    = workspace-symbol-provider
+    map_["codeActionProvider"]         = code-action-provider
+    map_["codeLensProvider"]           = code-lens-provider
+    map_["documentFormattingProvider"] = document-formatting-provider
+    map_["documentRangeFormattingProvider"]  = document-range-formatting-provider
+    map_["documentOnTypeFormattingProvider"] = document-on-type-formatting-provider
+    map_["renameProvider"]         = rename-provider
+    map_["documentLinkProvider"]   = document-link-provider
+    map_["colorProvider"]          = color-provider
+    map_["foldingRangeProvider"]   = folding-range-provider
+    map_["executeCommandProvider"] = execute-command-provider
+    map_["semanticTokensProvider"] = semantic-tokens-provider
     map_["workspace"]              = workspace
     map_["experimental"]           = experimental

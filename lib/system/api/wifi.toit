@@ -12,19 +12,19 @@ interface WifiService extends NetworkService:
       --minor=9
 
   connect config/Map? -> List
-  static CONNECT_INDEX /int ::= 1000
+  static CONNECT-INDEX /int ::= 1000
 
   establish config/Map? -> List
-  static ESTABLISH_INDEX /int ::= 1001
+  static ESTABLISH-INDEX /int ::= 1001
 
-  ap_info handle/int -> int?
-  static AP_INFO_INDEX /int ::= 1002
+  ap-info handle/int -> int?
+  static AP-INFO-INDEX /int ::= 1002
 
   scan config/Map -> List
-  static SCAN_INDEX /int ::= 1003
+  static SCAN-INDEX /int ::= 1003
 
   configure config/Map? -> none
-  static CONFIGURE_INDEX /int ::= 1004
+  static CONFIGURE-INDEX /int ::= 1004
 
 class WifiServiceClient extends NetworkServiceClient implements WifiService:
   static SELECTOR ::= WifiService.SELECTOR
@@ -33,16 +33,16 @@ class WifiServiceClient extends NetworkServiceClient implements WifiService:
     super selector
 
   connect config/Map? -> List:
-    return invoke_ WifiService.CONNECT_INDEX config
+    return invoke_ WifiService.CONNECT-INDEX config
 
   establish config/Map? -> List:
-    return invoke_ WifiService.ESTABLISH_INDEX config
+    return invoke_ WifiService.ESTABLISH-INDEX config
 
-  ap_info handle/int -> List:
-    return invoke_ WifiService.AP_INFO_INDEX handle
+  ap-info handle/int -> List:
+    return invoke_ WifiService.AP-INFO-INDEX handle
 
   scan config/Map -> List:
-    return invoke_ WifiService.SCAN_INDEX config
+    return invoke_ WifiService.SCAN-INDEX config
 
   configure config/Map? -> none:
-    invoke_ WifiService.CONFIGURE_INDEX config
+    invoke_ WifiService.CONFIGURE-INDEX config

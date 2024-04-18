@@ -19,6 +19,8 @@ project(toit)
 
 include(tools/toit.cmake)
 
+set(CMAKE_COLOR_DIAGNOSTICS ON)
+
 set(TOIT_IS_CROSS FALSE)
 if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
     (NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "${CMAKE_HOST_SYSTEM_PROCESSOR}"))
@@ -82,13 +84,15 @@ if (CCACHE_FOUND)
   set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_FOUND}")
 endif(CCACHE_FOUND)
 
-if ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows")
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -static")
 else()
-  set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} '-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.'")
+  if (NOT ("${CMAKE_HOST_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_HOST_SYSTEM_NAME}" STREQUAL "MSYS"))
+    set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} '-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.'")
+  endif()
 endif()
 
-if (NOT ${ESP32_CHIP} MATCHES "esp32c3")
+if (NOT ${ESP32_CHIP} STREQUAL "esp32c3")
   set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wno-unused-command-line-argument")
 endif()
 
@@ -120,7 +124,7 @@ endif()
 # the input buffer length to 8k because some sites have very large certificates
 # (eg Telegram, over 5100 bytes) and this is not something we can control.
 # There are some protocol extensions for telling the other side about our buffer
-# sizes, but they just cause the other side to fragment packets more agressively.
+# sizes, but they just cause the other side to fragment packets more aggressively.
 # At this end we still have to reassemble the packets in and unfragmented form
 # that fits in the buffer size below.
 if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
@@ -134,7 +138,7 @@ else()
   # pressure, but means the TLS connection often breaks after a while when the
   # counterpart makes the packets larger.  This ...IN_CONTENT_LEN define is
   # overriddden in sdkconfig files for devices.
-  set(MBEDTLS_C_FLAGS "-DMBEDTLS_SSL_IN_CONTENT_LEN=7800 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1")
+  set(MBEDTLS_C_FLAGS "-DMBEDTLS_SSL_IN_CONTENT_LEN=7800 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1 -DMBEDTLS_X509_TRUSTED_CERTIFICATE_CALLBACK=1")
 endif()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${TOIT_GENERIC_FLAGS} ${TOIT_LWIP_C_FLAGS} ${MBEDTLS_C_FLAGS}")
@@ -157,7 +161,9 @@ endif()
 
 add_custom_target(
   build_version_file
-  COMMAND echo ${TOIT_GIT_VERSION} > "${CMAKE_BINARY_DIR}/sdk/VERSION"
+  # It's important that there is no space after the version (before the '>'), as
+  # Windows would add a space into the output otherwise.
+  COMMAND echo ${TOIT_GIT_VERSION}> "${CMAKE_BINARY_DIR}/sdk/VERSION"
 )
 
 add_subdirectory(src)
@@ -169,7 +175,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   separate_arguments(GO_ENV)
   list(APPEND GO_ENV GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
 
-  set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.sdkVersion=${TOIT_GIT_VERSION}")
+  set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.version=${TOIT_GIT_VERSION}")
 
   add_custom_command(
     OUTPUT "${TOITLSP_BIN}"

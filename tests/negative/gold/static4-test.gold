@@ -1,0 +1,4 @@
+tests/negative/static4-test.toit:6:10: error: Operators may not be static
+  static operator == other:
+         ^~~~~~~~~~~
+Compilation failed

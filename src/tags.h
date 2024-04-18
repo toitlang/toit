@@ -39,6 +39,7 @@ namespace toit {
   fn(Siphash)                           \
   fn(Adler32)                           \
   fn(ZlibRle)                           \
+  fn(Zlib)                              \
   fn(UartResource)                      \
   fn(GpioResource)                      \
   fn(I2sResource)                       \
@@ -60,6 +61,8 @@ namespace toit {
   fn(SubprocessResource)                \
   fn(PipeResource)                      \
   fn(AeadContext)                       \
+  fn(TlsHandshakeToken)                 \
+  fn(EspNowResource)                    \
 
 #define TLS_CLASSES_DO(fn)              \
   fn(MbedTlsSocket)                     \

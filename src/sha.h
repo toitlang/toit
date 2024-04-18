@@ -17,6 +17,10 @@
 
 #include <mbedtls/sha256.h>
 #include <mbedtls/sha512.h>
+#if MBEDTLS_VERSION_MAJOR >= 3
+// Bring back the _ret names for sha functions.
+#include <mbedtls/compat-2.x.h>
+#endif
 
 #include "resource.h"
 #include "tags.h"
@@ -30,6 +34,7 @@ class Sha : public SimpleResource {
   // If you pass null for the group, it is not managed by the SimpleResourceGroup and
   // you must take care of allocating and freeing manually.
   Sha(SimpleResourceGroup* group, int bits);
+  Sha(const Sha* parent);
   virtual ~Sha();
 
   static const int HASH_LENGTH_224 = 28;

@@ -15,9 +15,12 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
+#if defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
 
 #include <esp_eth.h>
+#include <esp_mac.h>
+#include <esp_netif.h>
+#include <rom/ets_sys.h>
 
 #include "../resource.h"
 #include "../objects.h"
@@ -39,12 +42,15 @@ enum {
 };
 
 enum {
+  MAC_CHIP_ESP32    = 0,
   MAC_CHIP_W5500    = 1,
+  MAC_CHIP_OPENETH  = 2,
 };
 
 enum {
   PHY_CHIP_IP101    = 1,
   PHY_CHIP_LAN8720  = 2,
+  PHY_CHIP_DP83848  = 3,
 };
 
 const int kInvalidEthernet = -1;
@@ -58,10 +64,13 @@ class EthernetResourceGroup : public ResourceGroup {
  public:
   TAG(EthernetResourceGroup);
   EthernetResourceGroup(Process* process, SystemEventSource* event_source, int id,
+                        esp_eth_mac_t* mac, esp_eth_phy_t* phy,
                         esp_netif_t* netif, esp_eth_handle_t eth_handle,
                         esp_eth_netif_glue_handle_t netif_glue)
       : ResourceGroup(process, event_source)
       , id_(id)
+      , mac_(mac)
+      , phy_(phy)
       , netif_(netif)
       , eth_handle_(eth_handle)
       , netif_glue_(netif_glue) {}
@@ -72,18 +81,21 @@ class EthernetResourceGroup : public ResourceGroup {
 
   ~EthernetResourceGroup() {
     ESP_ERROR_CHECK(esp_eth_stop(eth_handle_));
-    ESP_ERROR_CHECK(esp_eth_clear_default_handlers(eth_handle_));
     ESP_ERROR_CHECK(esp_eth_del_netif_glue(netif_glue_));
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle_));
     esp_netif_destroy(netif_);
     ethernet_pool.put(id_);
+    phy_->del(phy_);
+    mac_->del(mac_);
   }
 
   uint32_t on_event(Resource* resource, word data, uint32_t state);
 
  private:
   int id_;
-  esp_netif_t *netif_;
+  esp_eth_mac_t* mac_;
+  esp_eth_phy_t* phy_;
+  esp_netif_t* netif_;
   esp_eth_handle_t eth_handle_;
   esp_eth_netif_glue_handle_t netif_glue_;
  };
@@ -105,28 +117,20 @@ class EthernetIpEvents : public SystemResource {
   TAG(EthernetIpEvents);
   explicit EthernetIpEvents(EthernetResourceGroup* group)
       : SystemResource(group, IP_EVENT, IP_EVENT_ETH_GOT_IP) {
-    clear_ip();
+    ip_address_ = 0;
   }
 
-  const char* ip() {
-    return ip_;
+  uint32 ip_address() {
+    return ip_address_;
   }
 
-  void update_ip(uint32 addr) {
-    sprintf(ip_, "%d.%d.%d.%d",
-            (addr >> 0) & 0xff,
-            (addr >> 8) & 0xff,
-            (addr >> 16) & 0xff,
-            (addr >> 24) & 0xff);
-  }
-
-  void clear_ip() {
-    memset(ip_, 0, sizeof(ip_));
+  void update_ip_address(uint32 addr) {
+    ip_address_ = addr;
   }
 
  private:
   friend class EthernetResourceGroup;
-  char ip_[16];
+  uint32 ip_address_;
 };
 
 uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t state) {
@@ -153,7 +157,7 @@ uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t
     switch (system_event->id) {
       case IP_EVENT_ETH_GOT_IP: {
         ip_event_got_ip_t* event = reinterpret_cast<ip_event_got_ip_t*>(system_event->event_data);
-        static_cast<EthernetIpEvents*>(resource)->update_ip(event->ip_info.ip.addr);
+        static_cast<EthernetIpEvents*>(resource)->update_ip_address(event->ip_info.ip.addr);
         state |= ETHERNET_DHCP_SUCCESS;
         break;
       }
@@ -170,24 +174,23 @@ uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t
 
 MODULE_IMPLEMENTATION(ethernet, MODULE_ETHERNET)
 
-PRIMITIVE(init_esp32) {
-  ARGS(int, phy_chip, int, phy_addr, int, phy_reset_num, int, mdc_num, int, mdio_num)
+PRIMITIVE(init) {
+  ARGS(int, mac_chip, int, phy_chip, int, phy_addr, int, phy_reset_num, int, mdc_num, int, mdio_num)
 
 #if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
   return Primitive::os_error(ESP_FAIL, process);
 #else
-
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = ethernet_pool.any();
-  if (id == kInvalidEthernet) OUT_OF_BOUNDS;
+  if (id == kInvalidEthernet) FAIL(ALREADY_IN_USE);
 
   esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
-  esp_netif_t *netif = esp_netif_new(&cfg);
+  esp_netif_t* netif = esp_netif_new(&cfg);
   if (!netif) {
     ethernet_pool.put(id);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   // Init MAC and PHY configs to default.
@@ -196,11 +199,22 @@ PRIMITIVE(init_esp32) {
 
   phy_config.phy_addr = phy_addr;
   phy_config.reset_gpio_num = phy_reset_num;
-  mac_config.smi_mdc_gpio_num = mdc_num;
-  mac_config.smi_mdio_gpio_num = mdio_num;
 
-  // TODO(anders): If phy initialization fails, we're leaking this.
-  esp_eth_mac_t* mac = esp_eth_mac_new_esp32(&mac_config);
+  esp_eth_mac_t* mac;
+  if (mac_chip == MAC_CHIP_ESP32) {
+    eth_esp32_emac_config_t emac_config = ETH_ESP32_EMAC_DEFAULT_CONFIG();
+    emac_config.smi_mdc_gpio_num = mdc_num;
+    emac_config.smi_mdio_gpio_num = mdio_num;
+    mac = esp_eth_mac_new_esp32(&emac_config, &mac_config);
+#ifdef CONFIG_ETH_USE_OPENETH
+  } else if (mac_chip == MAC_CHIP_OPENETH) {
+    // Openeth is the network driver that is used with QEMU.
+    mac = esp_eth_mac_new_openeth(&mac_config);
+    phy_config.autonego_timeout_ms = 100;
+#endif
+  } else {
+    FAIL(INVALID_ARGUMENT);
+  }
 
   if (!mac) {
     ethernet_pool.put(id);
@@ -213,13 +227,16 @@ PRIMITIVE(init_esp32) {
       phy = esp_eth_phy_new_ip101(&phy_config);
       break;
     case PHY_CHIP_LAN8720:
-      phy = esp_eth_phy_new_lan8720(&phy_config);
+      phy = esp_eth_phy_new_lan87xx(&phy_config);
       break;
+    case PHY_CHIP_DP83848: {
+      phy = esp_eth_phy_new_dp83848(&phy_config);
+    }
   }
   if (!phy) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
-    // TODO(anders): Hmmm, cannot figure out to de-init the mac part.
+    mac->del(mac);
     return Primitive::os_error(ESP_ERR_INVALID_ARG, process);
   }
 
@@ -229,7 +246,8 @@ PRIMITIVE(init_esp32) {
   if (err != ESP_OK) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
-    // TODO(anders): Ditto, deinit mac and phy.
+    phy->del(phy);
+    mac->del(mac);
     return Primitive::os_error(err, process);
   }
 
@@ -240,17 +258,21 @@ PRIMITIVE(init_esp32) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle));
+    phy->del(phy);
+    mac->del(mac);
     return Primitive::os_error(err, process);
   }
 
   EthernetResourceGroup* resource_group = _new EthernetResourceGroup(
-    process, SystemEventSource::instance(), id, netif, eth_handle, netif_glue);
+    process, SystemEventSource::instance(), id, mac, phy, netif, eth_handle, netif_glue);
   if (!resource_group) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
     ESP_ERROR_CHECK(esp_eth_del_netif_glue(netif_glue));
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle));
-    MALLOC_FAILED;
+    phy->del(phy);
+    mac->del(mac);
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(resource_group);
@@ -260,25 +282,41 @@ PRIMITIVE(init_esp32) {
 
 
 PRIMITIVE(init_spi) {
-  ARGS(int, mac_chip, SpiDevice, spi_device, int, int_num)
+  ARGS(int, mac_chip, SpiResourceGroup, spi, int, frequency, int, cs, int, int_num)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   int id = ethernet_pool.any();
-  if (id == kInvalidEthernet) OUT_OF_BOUNDS;
+  if (id == kInvalidEthernet) FAIL(ALREADY_IN_USE);
 
   esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
-  esp_netif_t *netif = esp_netif_new(&cfg);
+  esp_netif_t* netif = esp_netif_new(&cfg);
   if (!netif) {
     ethernet_pool.put(id);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
+
+  spi_host_device_t spi_host = spi->host_device();
+  spi_device_interface_config_t spi_config = {
+    .command_bits     = 0,
+    .address_bits     = 0,
+    .dummy_bits       = 0,
+    .mode             = 0,
+    .duty_cycle_pos   = 0,
+    .cs_ena_pretrans  = 0,
+    .cs_ena_posttrans = 0,
+    .clock_speed_hz   = frequency,
+    .input_delay_ns   = 0,
+    .spics_io_num     = cs,
+    .flags            = 0,
+    .queue_size       = 1,
+    .pre_cb           = null,
+    .post_cb          = null,
+  };
 
   // Init MAC and PHY configs to default.
   eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG();
-  mac_config.smi_mdc_gpio_num = -1;
-  mac_config.smi_mdio_gpio_num = -1;
   eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
   phy_config.reset_gpio_num = -1;
 
@@ -286,7 +324,7 @@ PRIMITIVE(init_spi) {
   esp_eth_phy_t* phy = null;
   switch (mac_chip) {
     case MAC_CHIP_W5500: {
-      eth_w5500_config_t w5500_config = ETH_W5500_DEFAULT_CONFIG(spi_device->handle());
+      eth_w5500_config_t w5500_config = ETH_W5500_DEFAULT_CONFIG(spi_host, &spi_config);
       w5500_config.int_gpio_num = int_num;
       mac = esp_eth_mac_new_w5500(&w5500_config, &mac_config);
       phy = esp_eth_phy_new_w5500(&phy_config);
@@ -296,6 +334,8 @@ PRIMITIVE(init_spi) {
   if (!phy || !mac) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
+    if (phy) phy->del(phy);
+    if (mac) mac->del(mac);
     return Primitive::os_error(ESP_ERR_INVALID_ARG, process);
   }
 
@@ -305,7 +345,8 @@ PRIMITIVE(init_spi) {
   if (err != ESP_OK) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
-    // TODO(anders): Ditto, deinit mac and phy.
+    phy->del(phy);
+    mac->del(mac);
     return Primitive::os_error(err, process);
   }
 
@@ -320,17 +361,21 @@ PRIMITIVE(init_spi) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle));
+    phy->del(phy);
+    mac->del(mac);
     return Primitive::os_error(err, process);
   }
 
   EthernetResourceGroup* resource_group = _new EthernetResourceGroup(
-    process, SystemEventSource::instance(), id, netif, eth_handle, netif_glue);
+      process, SystemEventSource::instance(), id, mac, phy, netif, eth_handle, netif_glue);
   if (!resource_group) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
     ESP_ERROR_CHECK(esp_eth_del_netif_glue(netif_glue));
     ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle));
-    MALLOC_FAILED;
+    phy->del(phy);
+    mac->del(mac);
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(resource_group);
@@ -341,17 +386,17 @@ PRIMITIVE(close) {
   ARGS(EthernetResourceGroup, group);
   group->tear_down();
   group_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(connect) {
   ARGS(EthernetResourceGroup, group);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   EthernetEvents* ethernet = _new EthernetEvents(group);
-  if (ethernet == null) MALLOC_FAILED;
+  if (ethernet == null) FAIL(MALLOC_FAILED);
 
   group->register_resource(ethernet);
   group->connect();
@@ -364,10 +409,10 @@ PRIMITIVE(setup_ip) {
   ARGS(EthernetResourceGroup, group);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   EthernetIpEvents* ip_events = _new EthernetIpEvents(group);
-  if (ip_events == null) MALLOC_FAILED;
+  if (ip_events == null) FAIL(MALLOC_FAILED);
 
   group->register_resource(ip_events);
 
@@ -381,15 +426,23 @@ PRIMITIVE(disconnect) {
 
   group->unregister_resource(ethernet);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_ip) {
   ARGS(EthernetIpEvents, ip);
-  return process->allocate_string_or_error(ip->ip());
+
+  uint32 address = ip->ip_address();
+  if (address == 0) return process->null_object();
+
+  ByteArray* result = process->object_heap()->allocate_internal_byte_array(4);
+  if (!result) FAIL(ALLOCATION_FAILED);
+  ByteArray::Bytes bytes(result);
+  Utils::write_unaligned_uint32_le(bytes.address(), address);
+  return result;
 }
 
 
 } // namespace toit
 
-#endif // defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
+#endif // defined(TOIT_ESP32) && defined(CONFIG_TOIT_ENABLE_ETHERNET)

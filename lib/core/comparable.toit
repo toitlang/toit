@@ -12,17 +12,17 @@ interface Comparable:
   Subclasses may tighten the $other's type so it is the same
     as this class.
   */
-  compare_to other/Comparable
+  compare-to other/Comparable
 
   /**
-  Variant of $(compare_to other).
+  Variant of $(compare-to other).
 
-  Calls $if_equal if this and $other are equal. Then returns the
+  Calls $if-equal if this and $other are equal. Then returns the
     result of the call.
 
   # Examples
   In the example, `MyTime` implements a lexicographical ordering of seconds
-    and nanoseconds using $(compare_to other [--if_equal]) to move on to
+    and nanoseconds using $(compare-to other [--if-equal]) to move on to
     nanoseconds when the seconds component is equal.
   ```
   class MyTime:
@@ -32,8 +32,8 @@ interface Comparable:
     constructor .seconds .nanoseconds:
 
     compare_to other/MyTime -> int:
-      return seconds.compare_to other.seconds --if_equal=:
+      return seconds.compare_to other.seconds --if-equal=:
         nanoseconds.compare_to other.nanoseconds
   ```
   */
-  compare_to other/Comparable [--if_equal]
+  compare-to other/Comparable [--if-equal]

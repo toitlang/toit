@@ -126,7 +126,7 @@ class TypeSet {
   bool contains_null(Program* program) const { return contains_instance(program->null_class_id()); }
   bool contains_true(Program* program) const { return contains_instance(program->true_class_id()); }
   bool contains_false(Program* program) const { return contains_instance(program->false_class_id()); }
-  bool contains_instance(Smi* class_id) const { return contains(class_id->value()); }
+  bool contains_instance(Smi* class_id) const { return contains(Smi::value(class_id)); }
 
   bool can_be_falsy(Program* program) const;
   bool can_be_truthy(Program* program) const;
@@ -145,7 +145,7 @@ class TypeSet {
   bool add_array(Program* program) { return add_instance(program->array_class_id()); }
   bool add_byte_array(Program* program) { return add_instance(program->byte_array_class_id()); }
   bool add_float(Program* program) { return add_instance(program->double_class_id()); }
-  bool add_instance(Smi* class_id) { return add(class_id->value()); }
+  bool add_instance(Smi* class_id) { return add(Smi::value(class_id)); }
   bool add_null(Program* program) { return add_instance(program->null_class_id()); }
   bool add_smi(Program* program) { return add_instance(program->smi_class_id()); }
   bool add_string(Program* program) { return add_instance(program->string_class_id()); }
@@ -181,7 +181,7 @@ class TypeSet {
   }
 
   void remove_null(Program* program) { return remove_instance(program->null_class_id()); }
-  void remove_instance(Smi* class_id) { return remove(class_id->value()); }
+  void remove_instance(Smi* class_id) { return remove(Smi::value(class_id)); }
   void remove_range(unsigned start, unsigned end);
 
   enum {

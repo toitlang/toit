@@ -24,24 +24,28 @@ if ("${CMAKE_SYSROOT}" STREQUAL "")
   if (DEFINED ENV{SYSROOT})
     set(CMAKE_SYSROOT "$ENV{SYSROOT}")
   else()
-    message(FATAL_ERROR, "Missing sysroot variable")
+    set(CMAKE_SYSROOT "${CMAKE_BINARY_DIR}/sysroot")
   endif()
 endif()
 
 if ("${ARM_TARGET}" STREQUAL "")
-  # Typical targets are:
-  # Barebone Linux:
-  # - arm-linux-gnueabi: Linux ARM system without hardware floating point
-  # Raspbian / Ubuntu:
-  # - arm-linux-gnueabihf: Linux ARM system with hardware floating point
-  # Arch Linux ARM:
-  # - armv6l-unknown-linux-gnueabihf: Raspberry Pi 1.
-  # - armv7l-unknown-linux-gnueabihf: Raspberry Pi 2, 3, 4.
-  # - aarch64-unknown-linux-gnu: Archlinux ARM 64 bit.
-  # Alpine:
-  # - armv6-alpine-linux-musleabihf: Alpine Linux ARM 32 bit.
-  # - aarch64-alpine-linux-musl: Alpine Linux ARM 64 bit.
-  message(FATAL_ERROR, "Missing arm target")
+  if (DEFINED ENV{ARM_TARGET})
+    set(ARM_TARGET "$ENV{ARM_TARGET}")
+  else()
+    # Typical targets are:
+    # Barebone Linux:
+    # - arm-linux-gnueabi: Linux ARM system without hardware floating point
+    # Raspbian / Ubuntu:
+    # - arm-linux-gnueabihf: Linux ARM system with hardware floating point
+    # Arch Linux ARM:
+    # - armv6l-unknown-linux-gnueabihf: Raspberry Pi 1.
+    # - armv7l-unknown-linux-gnueabihf: Raspberry Pi 2, 3, 4.
+    # - aarch64-unknown-linux-gnu: Archlinux ARM 64 bit.
+    # Alpine:
+    # - armv6-alpine-linux-musleabihf: Alpine Linux ARM 32 bit.
+    # - aarch64-alpine-linux-musl: Alpine Linux ARM 64 bit.
+    message(FATAL_ERROR, "Missing arm target")
+  endif()
 endif()
 
 # Typical ARM_CPU_FLAGS are:

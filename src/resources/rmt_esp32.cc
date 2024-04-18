@@ -15,10 +15,11 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
-#include "driver/rmt.h"
-#include "driver/gpio.h"
+#include <driver/rmt.h>
+#include <driver/gpio.h>
+#include <hal/gpio_hal.h>
 
 #include "../objects_inline.h"
 #include "../primitive.h"
@@ -79,10 +80,10 @@ MODULE_IMPLEMENTATION(rmt, MODULE_RMT);
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   RmtResourceGroup* rmt = _new RmtResourceGroup(process);
-  if (!rmt) MALLOC_FAILED;
+  if (!rmt) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(rmt);
   return proxy;
@@ -91,8 +92,8 @@ PRIMITIVE(init) {
 PRIMITIVE(channel_new) {
   ARGS(RmtResourceGroup, resource_group, int, memory_block_count, int, channel_num)
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
-  if (memory_block_count <= 0) INVALID_ARGUMENT;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+  if (memory_block_count <= 0) FAIL(INVALID_ARGUMENT);
 
   rmt_channel_t channel = kInvalidChannel;
 
@@ -131,7 +132,7 @@ PRIMITIVE(channel_new) {
       }
     }
   }
-  if (channel == kInvalidChannel) ALREADY_IN_USE;
+  if (channel == kInvalidChannel) FAIL(ALREADY_IN_USE);
 
   RmtResource* resource = null;
   { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
@@ -140,7 +141,7 @@ PRIMITIVE(channel_new) {
       for (int i = 0; i < memory_block_count; i++) {
         rmt_channels.put(static_cast<rmt_channel_t>(channel + i));
       }
-      MALLOC_FAILED;
+      FAIL(MALLOC_FAILED);
     }
   }
 
@@ -155,7 +156,7 @@ PRIMITIVE(channel_delete) {
   ARGS(RmtResourceGroup, resource_group, RmtResource, resource)
   resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 esp_err_t configure(const rmt_config_t* config, rmt_channel_t channel_num, size_t rx_buffer_size) {
@@ -183,9 +184,9 @@ PRIMITIVE(config_tx) {
        bool, carrier_en, uint32, carrier_freq_hz, int, carrier_level, int, carrier_duty_percent,
        bool, loop_en, bool, idle_output_en, int, idle_level)
 
-  if (carrier_en && carrier_level != 0 && carrier_level != 1) INVALID_ARGUMENT;
-  if (carrier_duty_percent < 0 || carrier_duty_percent > 100) INVALID_ARGUMENT;
-  if (idle_output_en && idle_level != 0 && idle_level != 1) INVALID_ARGUMENT;
+  if (carrier_en && carrier_level != 0 && carrier_level != 1) FAIL(INVALID_ARGUMENT);
+  if (carrier_duty_percent < 0 || carrier_duty_percent > 100) FAIL(INVALID_ARGUMENT);
+  if (idle_output_en && idle_level != 0 && idle_level != 1) FAIL(INVALID_ARGUMENT);
 
   rmt_channel_t channel = resource->channel();
   rmt_config_t config = RMT_DEFAULT_CONFIG_TX(static_cast<gpio_num_t>(pin_num), channel);
@@ -205,7 +206,7 @@ PRIMITIVE(config_tx) {
   esp_err_t err = configure(&config, channel, 0);
   if (ESP_OK != err) return Primitive::os_error(err, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(config_rx) {
@@ -230,7 +231,7 @@ PRIMITIVE(config_rx) {
   esp_err_t err = configure(&config, channel, buffer_size);
   if (ESP_OK != err) return Primitive::os_error(err, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_idle_threshold) {
@@ -245,7 +246,7 @@ PRIMITIVE(set_idle_threshold) {
   ARGS(RmtResource, resource, uint16, threshold)
   esp_err_t err = rmt_set_rx_idle_thresh(resource->channel(), threshold);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(config_bidirectional_pin) {
@@ -259,7 +260,7 @@ PRIMITIVE(config_bidirectional_pin) {
   // TODO(florian): not completely sure why this is needed, but without it
   // it won't work.
 #if defined(CONFIG_IDF_TARGET_ESP32C3)
-  if (pin >= MAX_GPIO_NUM) INVALID_ARGUMENT;
+  if (pin >= MAX_GPIO_NUM) FAIL(INVALID_ARGUMENT);
   GPIO.enable_w1ts.enable_w1ts = (0x1 << pin);
 #else
   if (pin < 32) {
@@ -282,12 +283,12 @@ PRIMITIVE(config_bidirectional_pin) {
     if (err != ESP_OK) return Primitive::os_error(err, process);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(transmit) {
   ARGS(RmtResource, resource, Blob, items_bytes)
-  if (items_bytes.length() % 4 != 0) INVALID_ARGUMENT;
+  if (items_bytes.length() % 4 != 0) FAIL(INVALID_ARGUMENT);
 
   // We are going to pass a pointer to a C function which will consume it, while we
   // yield back to the Toit VM. There could be GCs while the C function uses the memory.
@@ -301,7 +302,7 @@ PRIMITIVE(transmit) {
     // We will return it to the caller, so they can keep it alive.
     // Force external.
     ByteArray* external_copy = process->allocate_byte_array(items_bytes.length(), true);
-    if (external_copy == null) ALLOCATION_FAILED;
+    if (external_copy == null) FAIL(ALLOCATION_FAILED);
     ByteArray::Bytes bytes(external_copy);
     memcpy(bytes.address(), address, items_bytes.length());
     address = bytes.address();
@@ -347,7 +348,7 @@ PRIMITIVE(start_receive) {
   bool reset_memory;
   esp_err_t err = rmt_rx_start(resource->channel(), reset_memory=flush);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(prepare_receive) {
@@ -360,7 +361,7 @@ PRIMITIVE(prepare_receive) {
 
   // Force external, so we can adjust the length after the read.
   ByteArray* data = process->allocate_byte_array(static_cast<int>(max_size), true);
-  if (data == null) ALLOCATION_FAILED;
+  if (data == null) FAIL(ALLOCATION_FAILED);
   return data;
 }
 
@@ -375,11 +376,11 @@ PRIMITIVE(receive) {
 
   size_t received_length;
   auto received_bytes = xRingbufferReceive(rb, &received_length, 0);
-  if (received_bytes == null) return process->program()->null_object();
+  if (received_bytes == null) return process->null_object();
   if (received_length == 0) {
     // We got a 0-length item. The RMT sometimes does this. Ignore it.
     vRingbufferReturnItem(rb, received_bytes);
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   ByteArray::Bytes bytes(output);
@@ -399,8 +400,8 @@ PRIMITIVE(stop_receive) {
   ARGS(RmtResource, resource)
   esp_err_t err = rmt_rx_stop(resource->channel());
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

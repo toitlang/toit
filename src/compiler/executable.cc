@@ -48,10 +48,14 @@ static const uint8 VESSEL_TOKEN[] = { VESSEL_TOKEN_VALUES };
 // just much more complicated for something that doesn't change that frequently.
 static int VESSEL_SIZES[] = { 128, 256, 512, 1024, 8192, };
 
-static int sign_if_necessary(const char* out_path) {
+static int sign_if_necessary(const char* out_path, const char* os) {
 #ifndef TOIT_DARWIN
+  // TODO(florian): sign if os equals "macos".
   return 0;
 #else
+  if (os != null) {
+    return 0;
+  }
   char codesign[] = { "codesign" };
   char minus_fs[] = { "-fs" };
   char dash[] = { "-" };
@@ -76,13 +80,26 @@ static int sign_if_necessary(const char* out_path) {
 #endif
 }
 
-int create_executable(const char* out_path, const SnapshotBundle& bundle, const char* vessel_root) {
+int create_executable(const char* out_path,
+                      const SnapshotBundle& bundle,
+                      const char* vessel_root,
+                      const char* os,
+                      const char* arch) {
   FilesystemLocal fs;
   PathBuilder builder(&fs);
-  if (vessel_root == null) {
-    vessel_root = fs.vessel_root();
+  if (vessel_root != null) {
+    builder.add(vessel_root);
+  } else {
+    builder.add(fs.vessel_root());
   }
-  builder.add(vessel_root);
+  if (os != null) {
+    builder.join(os);
+  }
+  if (arch != null) {
+    // If we have an arch, we should always have an os, but we
+    // don't check for it here.
+    builder.join(arch);
+  }
   bool found_vessel = false;
   for (unsigned int i = 0; i < ARRAY_SIZE(VESSEL_SIZES); i++) {
     if (bundle.size() < VESSEL_SIZES[i] * 1024) {
@@ -115,7 +132,11 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle, const 
     break;
   }
   if (file == null) {
-    fprintf(stderr, "Unable to find vessel file in %s\n", vessel_root);
+    if (os != null || arch != null) {
+      fprintf(stderr, "Unable to find cross-compilation vessel file for %s-%s in %s\n", os, arch, vessel_root);
+    } else {
+      fprintf(stderr, "Unable to find vessel file in %s\n", vessel_root);
+    }
     return -1;
   }
   // Find content size of file.
@@ -169,7 +190,7 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle, const 
         return -1;
       }
       fclose(file_out);
-      if (sign_if_necessary(out_path) != 0) {
+      if (sign_if_necessary(out_path, os) != 0) {
         fprintf(stderr, "Error while signing the generated executable '%s'. The program might still work.\n", out_path);
       }
       return 0;

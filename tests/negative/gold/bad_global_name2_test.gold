@@ -1,7 +1,0 @@
-tests/negative/bad_global_name2_test.toit:5:9: error: Unexpected token: :=
-foo.bar := 499
-        ^~
-tests/negative/bad_global_name2_test.toit:5:1: error: Invalid name
-foo.bar := 499
-^~~~~~~
-Compilation failed.

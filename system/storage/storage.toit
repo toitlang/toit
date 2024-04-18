@@ -19,68 +19,79 @@ import system.api.storage show StorageService
 
 import ..flash.registry show FlashRegistry
 import .bucket show BucketResource FlashBucketResource RamBucketResource
-import .region show FlashRegionResource
+import .region show FlashRegionResource PartitionRegionResource
 
-class StorageServiceProvider extends ServiceProvider implements StorageService ServiceHandler:
+class StorageServiceProvider extends ServiceProvider
+    implements StorageService ServiceHandler:
   registry/FlashRegistry
 
   constructor .registry:
     super "system/storage" --major=0 --minor=2
     provides StorageService.SELECTOR --handler=this
 
-  handle pid/int client/int index/int arguments/any -> any:
-    if index == StorageService.BUCKET_GET_INDEX:
+  handle index/int arguments/any --gid/int --client/int -> any:
+    if index == StorageService.BUCKET-GET-INDEX:
       bucket := (resource client arguments[0]) as BucketResource
       return bucket.get arguments[1]
-    else if index == StorageService.BUCKET_SET_INDEX:
+    else if index == StorageService.BUCKET-SET-INDEX:
       bucket := (resource client arguments[0]) as BucketResource
       return bucket.set arguments[1] arguments[2]
-    else if index == StorageService.BUCKET_REMOVE_INDEX:
+    else if index == StorageService.BUCKET-REMOVE-INDEX:
       bucket := (resource client arguments[0]) as BucketResource
       return bucket.remove arguments[1]
-    else if index == StorageService.BUCKET_OPEN_INDEX:
-      return bucket_open client --scheme=arguments[0] --path=arguments[1]
-    else if index == StorageService.REGION_OPEN_INDEX:
-      return region_open client
+    else if index == StorageService.BUCKET-OPEN-INDEX:
+      return bucket-open client --scheme=arguments[0] --path=arguments[1]
+    else if index == StorageService.REGION-OPEN-INDEX:
+      return region-open client
           --scheme=arguments[0]
           --path=arguments[1]
           --capacity=arguments[2]
-    else if index == StorageService.REGION_DELETE_INDEX:
-      return region_delete --scheme=arguments[0] --path=arguments[1]
-    else if index == StorageService.REGION_LIST_INDEX:
-      return region_list --scheme=arguments
+          --writable=arguments[3]
+    else if index == StorageService.REGION-DELETE-INDEX:
+      return region-delete --scheme=arguments[0] --path=arguments[1]
+    else if index == StorageService.REGION-LIST-INDEX:
+      return region-list --scheme=arguments
     unreachable
 
-  bucket_open client/int --scheme/string --path/string -> BucketResource:
-    if scheme == Bucket.SCHEME_RAM:
+  bucket-open client/int --scheme/string --path/string -> BucketResource:
+    if scheme == Bucket.SCHEME-RAM:
       return RamBucketResource this client path
-    else if scheme == Bucket.SCHEME_FLASH:
+    else if scheme == Bucket.SCHEME-FLASH:
       return FlashBucketResource this client path
     throw "Unsupported '$scheme:' scheme"
 
-  region_open client/int --scheme/string --path/string --capacity/int? -> List:
-    if scheme != Region.SCHEME_FLASH: throw "Unsupported '$scheme:' scheme"
-    return FlashRegionResource.open this client --path=path --capacity=capacity
+  region-open client/int --scheme/string --path/string --capacity/int? --writable/bool -> List:
+    if scheme == Region.SCHEME-FLASH:
+      return FlashRegionResource.open this client
+          --path=path
+          --capacity=capacity
+          --writable=writable
+    else if scheme == Region.SCHEME-PARTITION:
+      return PartitionRegionResource.open this client
+          --path=path
+          --capacity=capacity
+          --writable=writable
+    throw "Unsupported '$scheme:' scheme"
 
-  region_delete --scheme/string --path/string -> none:
-    if scheme != Region.SCHEME_FLASH: throw "Unsupported '$scheme:' scheme"
+  region-delete --scheme/string --path/string -> none:
+    if scheme != Region.SCHEME-FLASH: throw "Unsupported '$scheme:' scheme"
     FlashRegionResource.delete registry --path=path
 
-  region_list --scheme/string -> List:
-    if scheme != Region.SCHEME_FLASH: throw "Unsupported '$scheme:' scheme"
+  region-list --scheme/string -> List:
+    if scheme != Region.SCHEME-FLASH: throw "Unsupported '$scheme:' scheme"
     return FlashRegionResource.list registry
 
-  bucket_open --scheme/string --path/string -> int:
+  bucket-open --scheme/string --path/string -> int:
     unreachable  // TODO(kasper): Nasty.
 
-  bucket_get bucket/int key/string -> ByteArray?:
+  bucket-get bucket/int key/string -> ByteArray?:
     unreachable  // TODO(kasper): Nasty.
 
-  bucket_set bucket/int key/string value/ByteArray -> none:
+  bucket-set bucket/int key/string value/ByteArray -> none:
     unreachable  // TODO(kasper): Nasty.
 
-  bucket_remove bucket/int key/string -> none:
+  bucket-remove bucket/int key/string -> none:
     unreachable  // TODO(kasper): Nasty.
 
-  region_open --scheme/string --path/string --capacity/int? -> int:
+  region-open --scheme/string --path/string --capacity/int? --writable/bool -> int:
     unreachable  // TODO(kasper): Nasty.

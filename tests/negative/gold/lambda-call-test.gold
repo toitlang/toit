@@ -1,0 +1,7 @@
+Called lambda with too few arguments.
+Got: 1 Expected: 2.
+Target:
+     main.<lambda>             tests/negative/lambda-call-test.toit:6:13
+
+  0: Lambda.call               <sdk>/core/objects.toit:128:3
+  1: main                      tests/negative/lambda-call-test.toit:7:10

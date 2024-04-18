@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import monitor show ResourceState_
 import net
 import net.tcp as net
@@ -10,20 +11,20 @@ import reader show Reader
 import .dns
 import .mtu
 
-TOIT_TCP_READ_  ::= 1 << 0
-TOIT_TCP_WRITE_ ::= 1 << 1
-TOIT_TCP_CLOSE_ ::= 1 << 2
-TOIT_TCP_ERROR_ ::= 1 << 3
-TOIT_TCP_NEEDS_GC_ ::= 1 << 4
+TOIT-TCP-READ_  ::= 1 << 0
+TOIT-TCP-WRITE_ ::= 1 << 1
+TOIT-TCP-CLOSE_ ::= 1 << 2
+TOIT-TCP-ERROR_ ::= 1 << 3
+TOIT-TCP-NEEDS-GC_ ::= 1 << 4
 
-TOIT_TCP_OPTION_PORT_          ::= 1
-TOIT_TCP_OPTION_PEER_PORT_     ::= 2
-TOIT_TCP_OPTION_ADDRESS_       ::= 3
-TOIT_TCP_OPTION_PEER_ADDRESS_  ::= 4
-TOIT_TCP_OPTION_KEEP_ALIVE_    ::= 5
-TOIT_TCP_OPTION_NO_DELAY_      ::= 6
-TOIT_TCP_OPTION_WINDOW_SIZE_   ::= 7
-TOIT_TCP_OPTION_SEND_BUFFER_   ::= 8
+TOIT-TCP-OPTION-PORT_          ::= 1
+TOIT-TCP-OPTION-PEER-PORT_     ::= 2
+TOIT-TCP-OPTION-ADDRESS_       ::= 3
+TOIT-TCP-OPTION-PEER-ADDRESS_  ::= 4
+TOIT-TCP-OPTION-KEEP-ALIVE_    ::= 5
+TOIT-TCP-OPTION-NO-DELAY_      ::= 6
+TOIT-TCP-OPTION-WINDOW-SIZE_   ::= 7
+TOIT-TCP-OPTION-SEND-BUFFER_   ::= 8
 
 // Underlying TCP socket, used to implement the TcpSocket and TcpServerSocket
 // classes. It provides basic support for managing the underlying resource
@@ -31,62 +32,62 @@ TOIT_TCP_OPTION_SEND_BUFFER_   ::= 8
 class TcpSocket_:
   state_ := null
 
-  local_address -> net.SocketAddress:
+  local-address -> net.SocketAddress:
     return net.SocketAddress
       net.IpAddress.parse
-        get_option_ TOIT_TCP_OPTION_ADDRESS_
-      get_option_ TOIT_TCP_OPTION_PORT_
+        get-option_ TOIT-TCP-OPTION-ADDRESS_
+      get-option_ TOIT-TCP-OPTION-PORT_
 
   close:
     state := state_
     if state == null: return
-    critical_do:
+    critical-do:
       state_ = null
-      tcp_close_ state.group state.resource
+      tcp-close_ state.group state.resource
       state.dispose
       // Remove the finalizer installed in [open_].
-      remove_finalizer this
+      remove-finalizer this
 
-  mtu -> int: return TOIT_MTU_TCP
+  mtu -> int: return TOIT-MTU-TCP
 
   open_ id:
     // TODO(kasper): Is this useful or should we just throw if we are already connected?
     if state_: close
-    group := tcp_resource_group_
+    group := tcp-resource-group_
     state_ = ResourceState_ group id
-    add_finalizer this::
+    add-finalizer this::
       // TODO(kasper): We'd like to issue a "WARNING: socket was not closed" message here,
       // but the message cannot be printed on stdout because that interferes with the
       // LSP protocol.
       close
 
-  ensure_state_ bits --error_bits=TOIT_TCP_ERROR_ [--failure]:
-    state := ensure_state_
-    state_bits / int? := null
-    while state_bits == null:
-      state_bits = state.wait_for_state (bits | error_bits | TOIT_TCP_NEEDS_GC_)
-      if state_bits & TOIT_TCP_NEEDS_GC_ != 0:
-        state_bits = null
-        tcp_gc_ state.group
-    if state_bits == 0:
+  ensure-state_ bits --error-bits=TOIT-TCP-ERROR_ [--failure]:
+    state := ensure-state_
+    state-bits / int? := null
+    while state-bits == null:
+      state-bits = state.wait-for-state (bits | error-bits | TOIT-TCP-NEEDS-GC_)
+      if state-bits & TOIT-TCP-NEEDS-GC_ != 0:
+        state-bits = null
+        tcp-gc_ state.group
+    if state-bits == 0:
       return failure.call "NOT_CONNECTED"
-    if (state_bits & error_bits) == 0:
+    if (state-bits & error-bits) == 0:
       return state
-    error := tcp_error_ (tcp_error_number_ state.resource)
+    error := tcp-error_ (tcp-error-number_ state.resource)
     close
     return failure.call error
 
-  ensure_state_:
+  ensure-state_:
     if state_: return state_
     throw "NOT_CONNECTED"
 
-  get_option_ option:
-    state := ensure_state_
-    return tcp_get_option_ state.group state.resource option
+  get-option_ option:
+    state := ensure-state_
+    return tcp-get-option_ state.group state.resource option
 
-  set_option_ option value:
-    state := ensure_state_
-    return tcp_set_option_ state.group state.resource option value
+  set-option_ option value:
+    state := ensure-state_
+    return tcp-set-option_ state.group state.resource option value
 
 
 class TcpServerSocket extends TcpSocket_ implements net.ServerSocket:
@@ -96,16 +97,16 @@ class TcpServerSocket extends TcpSocket_ implements net.ServerSocket:
   constructor .backlog_:
 
   listen address port:
-    open_ (tcp_listen_ tcp_resource_group_ address port backlog_)
+    open_ (tcp-listen_ tcp-resource-group_ address port backlog_)
 
   accept:
     return accept: throw it
 
   accept [failure]:
-    state := ensure_state_ TOIT_TCP_READ_ --failure=failure
-    id := tcp_accept_ state.group state.resource
+    state := ensure-state_ TOIT-TCP-READ_ --failure=failure
+    id := tcp-accept_ state.group state.resource
     if not id:
-      state_.clear_state TOIT_TCP_READ_
+      state_.clear-state TOIT-TCP-READ_
       return null
     // Create a new client socket and return it.
     socket := TcpSocket
@@ -113,105 +114,132 @@ class TcpServerSocket extends TcpSocket_ implements net.ServerSocket:
     return socket
 
 
-class TcpSocket extends TcpSocket_ implements net.Socket Reader:
-  window_size_ := 0
+class TcpSocket extends TcpSocket_ with io.CloseableInMixin io.CloseableOutMixin implements net.Socket Reader:
+  window-size_ := 0
 
   constructor: return TcpSocket 0
-  constructor .window_size_:
+  constructor .window-size_:
 
-  peer_address -> net.SocketAddress:
+  peer-address -> net.SocketAddress:
     return net.SocketAddress
       net.IpAddress.parse
-        get_option_ TOIT_TCP_OPTION_PEER_ADDRESS_
-      get_option_ TOIT_TCP_OPTION_PEER_PORT_
+        get-option_ TOIT-TCP-OPTION-PEER-ADDRESS_
+      get-option_ TOIT-TCP-OPTION-PEER-PORT_
 
-  window_size: return get_option_ TOIT_TCP_OPTION_WINDOW_SIZE_
+  window-size: return get-option_ TOIT-TCP-OPTION-WINDOW-SIZE_
 
-  keep_alive -> bool: return get_option_ TOIT_TCP_OPTION_KEEP_ALIVE_
-  keep_alive= value/bool: return set_option_ TOIT_TCP_OPTION_KEEP_ALIVE_ value
+  keep-alive -> bool: return get-option_ TOIT-TCP-OPTION-KEEP-ALIVE_
+  keep-alive= value/bool: return set-option_ TOIT-TCP-OPTION-KEEP-ALIVE_ value
 
-  // TODO(kasper): Remove this again.
-  set_no_delay enabled/bool -> none: no_delay = enabled
-
-  no_delay -> bool: return get_option_ TOIT_TCP_OPTION_NO_DELAY_
-  no_delay= value/bool -> none: set_option_ TOIT_TCP_OPTION_NO_DELAY_ value
+  no-delay -> bool: return get-option_ TOIT-TCP-OPTION-NO-DELAY_
+  no-delay= value/bool -> none: set-option_ TOIT-TCP-OPTION-NO-DELAY_ value
 
   // TODO(kasper): Make window size a named parameter to [connect]?
   connect hostname port:
     return connect hostname port: throw it
 
   connect hostname port [failure]:
-    address := dns_lookup hostname
-    open_ (tcp_connect_ tcp_resource_group_ address.raw port window_size_)
+    address := dns-lookup hostname
+    open_ (tcp-connect_ tcp-resource-group_ address.raw port window-size_)
     error := catch:
-      ensure_state_ TOIT_TCP_WRITE_ --error_bits=(TOIT_TCP_ERROR_ | TOIT_TCP_CLOSE_) --failure=failure
+      ensure-state_ TOIT-TCP-WRITE_ --error-bits=(TOIT-TCP-ERROR_ | TOIT-TCP-CLOSE_) --failure=failure
     if error:
       // LwIP uses the same error code, ERR_CON, for connection refused and
       // connection closed.
       if error == "Connection closed": throw "Connection refused"
       throw error
 
+  /** Deprecated. Use $(in).read. */
   read -> ByteArray?:
+    return read_
+
+  read_ -> ByteArray?:
     while true:
-      state := ensure_state_ TOIT_TCP_READ_ --failure=: throw it
-      result := tcp_read_ state.group state.resource
+      state := ensure-state_ TOIT-TCP-READ_ --failure=: throw it
+      result := tcp-read_ state.group state.resource
       if result != -1: return result
       // TODO(anders): We could consider always clearing this after all reads.
-      state.clear_state TOIT_TCP_READ_
+      state.clear-state TOIT-TCP-READ_
 
-  write data from = 0 to = data.size -> int:
+  /** Deprecated. Use $(out).write. */
+  write data/io.Data from/int=0 to/int=data.byte-size -> int:
+    return try-write_ data from to
+
+  try-write_ data/io.Data from/int to/int -> int:
     while true:
-      state := ensure_state_ TOIT_TCP_WRITE_ --error_bits=(TOIT_TCP_ERROR_ | TOIT_TCP_CLOSE_) --failure=: throw it
-      wrote := tcp_write_ state.group state.resource data from to
+      state := ensure-state_ TOIT-TCP-WRITE_ --error-bits=(TOIT-TCP-ERROR_ | TOIT-TCP-CLOSE_) --failure=: throw it
+      wrote := tcp-write_ state.group state.resource data from to
       if wrote != -1: return wrote
-      state.clear_state TOIT_TCP_WRITE_
+      state.clear-state TOIT-TCP-WRITE_
 
-  close_write -> none:
+  close-reader_:
+    // Do nothing.
+
+  /** Deprecated. Use $(out).close. */
+  close-write -> none:
+    close-writer_
+
+  close-writer_ -> none:
     state := state_
     if state == null: return
-    tcp_close_write_ state.group state.resource
+    tcp-close-write_ state.group state.resource
 
 
 // Lazily-initialized resource group reference.
-tcp_resource_group_ ::= tcp_init_
+tcp-resource-group_ ::= tcp-init_
 
 
 // Top level TCP primitives.
-tcp_init_:
+tcp-init_:
   #primitive.tcp.init
 
-tcp_close_ socket_resource_group descriptor:
+tcp-close_ socket-resource-group descriptor:
   #primitive.tcp.close
 
-tcp_close_write_ socket_resource_group descriptor:
-  #primitive.tcp.close_write
+tcp-close-write_ socket-resource-group descriptor:
+  #primitive.tcp.close-write
 
-tcp_connect_ socket_resource_group address port window_size:
+tcp-connect_ socket-resource-group address port window-size:
   #primitive.tcp.connect
 
-tcp_accept_ socket_resource_group descriptor:
+tcp-accept_ socket-resource-group descriptor:
   #primitive.tcp.accept
 
-tcp_listen_ socket_resource_group address port backlog:
+tcp-listen_ socket-resource-group address port backlog:
   #primitive.tcp.listen
 
-tcp_write_ socket_resource_group descriptor data from to:
-  #primitive.tcp.write
+tcp-write_ socket-resource-group descriptor data from to:
+  // We are not using `io.primitive-redo-chunked-io-data_` because we
+  // might abort the write once the buffer is full and the written
+  // size is not equal to the size we requested to write.
+  #primitive.tcp.write: | error |
+    if error != "WRONG_BYTES_TYPE": throw error
+    List.chunk-up from to 4096: | chunk-from chunk-to chunk-size |
+      chunk := ByteArray.from data chunk-from chunk-to
+      written := tcp-write_ socket-resource-group descriptor chunk 0 chunk-size
+      if written != chunk-size:
+        // If the primitive returns -1, it means that the buffers are full and
+        // we should try again later.
+        if written == -1:
+          if chunk-from - from > 0: return chunk-from - from
+          return -1
+        return (chunk-from - from) + written
+    return to - from
 
-tcp_read_ socket_resource_group descriptor:
+tcp-read_ socket-resource-group descriptor:
   #primitive.tcp.read
 
-tcp_error_number_ descriptor -> int:
-  #primitive.tcp.error_number
+tcp-error-number_ descriptor -> int:
+  #primitive.tcp.error-number
 
-tcp_error_ error/int -> string:
+tcp-error_ error/int -> string:
   #primitive.tcp.error
 
-tcp_get_option_ socket_resource_group id option:
-  #primitive.tcp.get_option
+tcp-get-option_ socket-resource-group id option:
+  #primitive.tcp.get-option
 
-tcp_set_option_ socket_resource_group id option value:
-  #primitive.tcp.set_option
+tcp-set-option_ socket-resource-group id option value:
+  #primitive.tcp.set-option
 
-tcp_gc_ socket_resource_group:
+tcp-gc_ socket-resource-group:
   #primitive.tcp.gc

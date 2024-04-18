@@ -264,14 +264,23 @@ type TopLevelElement interface {
 	GetID() ID
 }
 
+type ClassKind string
+
+const (
+	KindClass     ClassKind = "class"
+	KindInterface ClassKind = "interface"
+	KindMixin     ClassKind = "mixin"
+)
+
 type Class struct {
 	Name         string
 	Range        *Range
 	TopLevelID   ID
-	IsInterface  bool
+	Kind         ClassKind
 	IsAbstract   bool
 	SuperClass   *TopLevelReference
 	Interfaces   []*TopLevelReference
+	Mixins       []*TopLevelReference
 	Statics      []*Method
 	Constructors []*Method
 	Factories    []*Method
@@ -298,10 +307,11 @@ func (c *Class) EqualsExternal(other *Class) bool {
 
 	return other != nil &&
 		c.Name == other.Name &&
-		c.IsInterface == other.IsInterface &&
+		c.Kind == other.Kind &&
 		c.IsAbstract == other.IsAbstract &&
 		c.SuperClass.EqualsExternal(other.SuperClass) &&
 		equalTopLevelReferences(c.Interfaces, other.Interfaces) &&
+		equalTopLevelReferences(c.Mixins, other.Mixins) &&
 		equalMethods(c.Statics, other.Statics) &&
 		equalMethods(c.Constructors, other.Constructors) &&
 		equalMethods(c.Factories, other.Factories) &&
@@ -330,9 +340,10 @@ func (c *Class) lspDocumentSymbol(lines Lines) lsp.DocumentSymbol {
 	}
 
 	var kind lsp.SymbolKind
-	if c.IsInterface {
+	if c.Kind == KindInterface {
 		kind = lsp.SKInterface
 	} else {
+		// This includes mixins.
 		kind = lsp.SKClass
 	}
 

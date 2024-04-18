@@ -2,35 +2,38 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the examples/LICENSE file.
 
+/**
+An example of using ESP-NOW to send and receive data between ESP32 devices.
+
+This program broadcasts a message every second and prints any received messages.
+Running this program on multiple ESP32 devices will result in them printing
+  each other's messages.
+*/
+
 import esp32.espnow
 
-PMK ::= espnow.Key.from_string "pmk1234567890123"
-service ::= espnow.Service.station --key=PMK
+PMK ::= espnow.Key.from-string "pmk1234567890123"
 
 main:
-  service.add_peer
-      espnow.BROADCAST_ADDRESS
-      --channel=1
-  task:: espnow_tx_task
-  task:: espnow_rx_task
+  service := espnow.Service.station --key=PMK --channel=1
+  service.add-peer espnow.BROADCAST-ADDRESS
+  task:: send-task service
+  task:: receive-task service
 
-espnow_tx_task:
+send-task service/espnow.Service:
   count := 0
   while true:
-    buffer := "hello $count"    
+    buffer := "hello $count"
     service.send
-        buffer.to_byte_array
-        --address=espnow.BROADCAST_ADDRESS
+        buffer.to-byte-array
+        --address=espnow.BROADCAST-ADDRESS
     print "Send datagram: \"$buffer\""
 
     count++
-    sleep --ms=1000
+    sleep --ms=1_000
 
-espnow_rx_task:
+receive-task service/espnow.Service:
   while true:
     datagram := service.receive
-    if datagram:
-      recv_data := datagram.data.to_string
-      print "Receive datagram from \"$datagram.address\", data: \"$recv_data\""
-    else:
-      sleep --ms=1000
+    received-data := datagram.data.to-string
+    print "Receive datagram from \"$datagram.address\", data: \"$received-data\""

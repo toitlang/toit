@@ -228,8 +228,8 @@ static bool is_valid_package_id(const std::string& package_id) {
   if (package_id.empty()) return false;
   for (size_t i = 0; i < package_id.size(); i++) {
     char c = package_id[i];
-    if (is_identifier_part(c)) continue;
-    if (c == '+' || c == '-' || c == '*' || c == '/' || c == '\\' || c == '.') continue;
+    if (is_letter(c) || is_decimal_digit(c)) continue;
+    if (c == '_' || c == '+' || c == '-' || c == '*' || c == '/' || c == '\\' || c == '.') continue;
     return false;
   }
   return true;
@@ -237,9 +237,12 @@ static bool is_valid_package_id(const std::string& package_id) {
 
 static bool is_valid_prefix(const std::string& prefix) {
   if (prefix.empty()) return false;
-  if (!is_identifier_start(prefix[0])) return false;
-  for (size_t i = 1; i < prefix.size(); i++) {
-    if (!is_identifier_part(prefix[i])) return false;
+  IdentifierValidator validator;
+
+  for (size_t i = 0; i < prefix.size(); i++) {
+    if (!validator.check_next_char(prefix[i], [&]() { return prefix[i + 1]; })) {
+      return false;
+    }
   }
   return true;
 }
@@ -561,6 +564,8 @@ static LockFileContent parse_lock_file(const std::string& lock_file_path,
         has_errors = true;
       }
 
+      auto canonicalized = IdentifierValidator::canonicalize(prefix);
+
       std::string target_id;
       auto target_range = Source::Range::invalid();
       auto status = parser.parse_string([&](const std::string& str, const Source::Range& range) {
@@ -580,11 +585,11 @@ static LockFileContent parse_lock_file(const std::string& lock_file_path,
         diagnostics->report_error(target_range,
                                   "Package '%s', target of prefix '%s', not found",
                                   target_id.c_str(),
-                                  prefix.c_str());
+                                  canonicalized.c_str());
         target_id = Package::ERROR_PACKAGE_ID;
       }
 
-      pkg_prefixes[prefix] = target_id;
+      pkg_prefixes[canonicalized] = target_id;
       return YamlParser::OK;
     });
 
@@ -797,8 +802,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                           std::string(""),  // Doesn't matter. Should never be used.
                           std::string(""),  // Doesn't matter. Should never be used.
                           std::string(""),  // Doesn't matter. Should never be used.
-                          Package::OK,
-                          {});
+                          Package::STATE_OK,
+                          {},
+                          false);  // Not a path package.
   // Note that the virtual package must not be added to the path-to-package map.
   packages[Package::VIRTUAL_PACKAGE_ID] = virtual_package;
 
@@ -807,8 +813,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                         std::string(""),  // Doesn't matter. Should never be used.
                         std::string(""),  // Doesn't matter. Should never be used.
                         std::string(""),  // Doesn't matter. Should never be used.
-                        Package::ERROR,
-                        {});
+                        Package::STATE_ERROR,
+                        {},
+                        false);  // Not a path package.
   // Note that the virtual package must not be added to the path-to-package map.
   packages[Package::ERROR_PACKAGE_ID] = error_package;
 
@@ -829,8 +836,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                       sdk_lib_path,
                       sdk_lib_path,
                       std::string(fs->library_root()),
-                      sdk_is_dir ? Package::OK : Package::NOT_FOUND,
-                      no_prefixes);
+                      sdk_is_dir ? Package::STATE_OK : Package::STATE_NOT_FOUND,
+                      no_prefixes,
+                      false);  // Not a path package.
   packages[Package::SDK_PACKAGE_ID] = sdk_package;
 
   // Path to the lock directory.
@@ -873,8 +881,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                         entry_pkg_path,
                         absolute_error_path,
                         relative_error_path,
-                        Package::OK,
-                        entry_prefixes);
+                        Package::STATE_OK,
+                        entry_prefixes,
+                        true);  // Referenced through a path, thus considered a path package.
   packages[Package::ENTRY_PACKAGE_ID] = entry_package;
 
   List<const char*> package_dirs;
@@ -908,16 +917,19 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
       PathBuilder builder(fs);
 
       std::string error_path;
-      if (!entry.path.empty()) {
-        char* localized = FilesystemLocal::to_local_path(entry.path.c_str());
+      bool is_path_package = !entry.path.empty();
+      if (is_path_package) {
         ASSERT(i == -1);
+        // The entry_path is always with slashes.
+        auto entry_path = entry.path.c_str();
+        char* localized = FilesystemLocal::to_local_path(entry_path);
         if (!fs->is_absolute(localized)) {
           // TODO(florian): this is not correct for Windows paths that are drive-relative: '\foo'.
-          builder.join(package_lock_dir);
+          builder.add(package_lock_dir);
         }
-        error_path = std::string(localized);
-        builder.join(error_path);
+        builder.join_slash_path(std::string(entry_path));
         builder.canonicalize();
+        error_path = std::string(localized);
         free(localized);
       } else {
         if (i == -1) continue;
@@ -959,8 +971,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                           path,
                           path,
                           path,
-                          Package::OK,
-                          package_prefixes);
+                          Package::STATE_OK,
+                          package_prefixes,
+                          is_path_package);
           packages[package_id] = package;
           goto prefix_done;
         } else {
@@ -973,8 +986,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                           std::string(""),
                           std::string(""),
                           std::string(""),
-                          Package::NOT_FOUND,
-                          {});  // The prefixes aren't relevant.
+                          Package::STATE_NOT_FOUND,
+                          {},  // The prefixes aren't relevant.
+                          is_path_package);
           packages[package_id] = package;
           goto prefix_done;
         }
@@ -990,8 +1004,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                         std::string(""),
                         std::string(""),
                         std::string(""),
-                        Package::NOT_FOUND,
-                        {});  // The prefixes aren't relevant.
+                        Package::STATE_NOT_FOUND,
+                        {},  // The prefixes aren't relevant.
+                        is_path_package);
         packages[package_id] = package;
         goto prefix_done;
       }
@@ -1009,8 +1024,9 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
                       std::string(""),
                       std::string(""),
                       std::string(""),
-                      Package::NOT_FOUND,
-                      {});  // The prefixes aren't relevant.
+                      Package::STATE_NOT_FOUND,
+                      {},  // The prefixes aren't relevant.
+                      false);  // Not a path package.
       packages[package_id] = package;
     }
 

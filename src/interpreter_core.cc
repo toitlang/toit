@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -26,7 +26,7 @@ namespace toit {
 bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool is_put, Object** value) {
   if (!is_smi(arg)) return false;
 
-  word n = Smi::cast(arg)->value();
+  word n = Smi::value(arg);
   if (n < 0) return false;
 
   ByteArray* byte_array = null;
@@ -43,15 +43,15 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
       // The backing storage in a list can be either an array -- or a
       // large array. Only optimize here if it isn't large.
       array = Array::cast(array_object);
-      length = Smi::cast(instance->at(Instance::LIST_SIZE_INDEX))->value();
+      length = Smi::value(instance->at(Instance::LIST_SIZE_INDEX));
     } else if (class_id == program->byte_array_slice_class_id()) {
       if (!(is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX)) &&
             is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX  )))) {
         return false;
       }
 
-      word from = Smi::cast(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX))->value();
-      word to = Smi::cast(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX))->value();
+      word from = Smi::value(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX));
+      word to = Smi::value(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX));
       n = from + n;
       if (n >= to) return false;
 
@@ -83,7 +83,7 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
       }
       word size;
       if (is_smi(size_object)) {
-        size = Smi::cast(size_object)->value();
+        size = Smi::value(size_object);
       } else {
         return false;
       }
@@ -128,7 +128,7 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
     if (is_put) {
       if (!is_smi(*value)) return false;
 
-      uint8 byte_value = (uint8) Smi::cast(*value)->value();
+      uint8 byte_value = (uint8) Smi::value(*value);
       bytes.at_put(n, byte_value);
       (*value) = Smi::from(byte_value);
       return true;
@@ -140,6 +140,60 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
   return false;
 }
 
+bool Interpreter::fast_size(Process* process, Object* receiver, Smi** result) {
+  if (is_instance(receiver)) {
+    Instance* instance = Instance::cast(receiver);
+    Smi* class_id = instance->class_id();
+    Program* program = process->program();
+    if (class_id == program->list_class_id()) {
+      *result = Smi::cast(instance->at(Instance::LIST_SIZE_INDEX));
+      return true;
+    } else if (class_id == program->byte_array_slice_class_id()) {
+      if (!(is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX)) &&
+            is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX  )))) {
+        return false;
+      }
+
+      word from = Smi::value(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX));
+      word to = Smi::value(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX));
+      *result = Smi::from(to - from);
+      return true;
+    } else if (class_id == program->large_array_class_id()) {
+      Object* size_object = instance->at(Instance::LARGE_ARRAY_SIZE_INDEX);
+      if (!is_smi(size_object)) return false;
+      *result = Smi::cast(size_object);
+      return true;
+    } else if (class_id == program->byte_array_cow_class_id()) {
+      ByteArray* byte_array = ByteArray::cast(instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX));
+      ByteArray::Bytes bytes(byte_array);
+      *result = Smi::from(bytes.length());
+      return true;
+    } else {
+      return false;
+    }
+  } else if (is_byte_array(receiver)) {
+    ByteArray::Bytes bytes(ByteArray::cast(receiver));
+    *result = Smi::from(bytes.length());
+    return true;
+  } else if (is_array(receiver)) {
+    Array* array = Array::cast(receiver);
+    *result = Smi::from(array->length());
+    return true;
+  } else {
+    return false;
+  }
+}
+
+int Interpreter::compare_ints(int64 lhs_int, int64 rhs_int) {
+  if (lhs_int < rhs_int) {
+    return SIMPLE_LESS;
+  } else if (lhs_int == rhs_int) {
+    return SIMPLE_EQUAL;
+  } else {
+    return SIMPLE_GREATER;
+  }
+}
+
 int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
   int64 lhs_int = 0;
   int64 rhs_int = 0;
@@ -147,7 +201,7 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
   bool rhs_is_int;
   if (is_smi(lhs)) {
     lhs_is_int = true;
-    lhs_int = Smi::cast(lhs)->value();
+    lhs_int = Smi::value(lhs);
   } else if (is_large_integer(lhs)) {
     lhs_is_int = true;
     lhs_int = LargeInteger::cast(lhs)->value();
@@ -156,7 +210,7 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
   }
   if (is_smi(rhs)) {
     rhs_is_int = true;
-    rhs_int = Smi::cast(rhs)->value();
+    rhs_int = Smi::value(rhs);
   } else if (is_large_integer(rhs)) {
     rhs_is_int = true;
     rhs_int = LargeInteger::cast(rhs)->value();
@@ -165,13 +219,7 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
   }
   // Handle two ints.
   if (lhs_is_int && rhs_is_int) {
-    if (lhs_int < rhs_int) {
-      return COMPARE_RESULT_MINUS_1 | COMPARE_FLAG_STRICTLY_LESS | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
-    } else if (lhs_int == rhs_int) {
-      return COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL;
-    } else {
-      return COMPARE_RESULT_PLUS_1 | COMPARE_FLAG_STRICTLY_GREATER | COMPARE_FLAG_GREATER_EQUAL;
-    }
+    return compare_ints(lhs_int, rhs_int);
   }
   // At least one is a double, so we convert to double.
   double lhs_double;
@@ -190,35 +238,64 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
   } else {
     return COMPARE_FAILED;
   }
-  // Handle any NaNs.
-  if (std::isnan(lhs_double)) {
-    if (std::isnan(rhs_double)) {
-      return COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_FOR_MIN;
-    }
-    return COMPARE_RESULT_PLUS_1 | COMPARE_FLAG_LESS_FOR_MIN;
+  if (lhs_double < rhs_double) {  // Never true for NaNs.
+    return SIMPLE_LESS;
   }
-  if (std::isnan(rhs_double)) {
+  if (lhs_double > rhs_double) {  // Never true for NaNs.
+    return SIMPLE_GREATER;
+  }
+  if (lhs_double != rhs_double) {  // Must be NaNs involved.
+    if (std::isnan(lhs_double)) {
+      if (std::isnan(rhs_double)) {
+        return COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_FOR_MIN;
+      }
+      return COMPARE_RESULT_PLUS_1 | COMPARE_FLAG_LESS_FOR_MIN;
+    }
+    ASSERT(std::isnan(rhs_double));
     return COMPARE_RESULT_MINUS_1;
   }
-  // Handle equal case.
-  if (lhs_double == rhs_double) {
-    // Special treatment for plus/minus zero.
-    if (lhs_double == 0.0) {
-      if (std::signbit(lhs_double) == std::signbit(rhs_double)) {
-        return COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
-      } else if (std::signbit(lhs_double)) {
-        return COMPARE_RESULT_MINUS_1 | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
-      } else {
-        return COMPARE_RESULT_PLUS_1 | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL;
-      }
+  // We only get this far if the doubles are equal.
+  // Special treatment for plus/minus zero.
+  if (lhs_double == 0.0) {
+    if (std::signbit(lhs_double) == std::signbit(rhs_double)) {
+      return SIMPLE_EQUAL;
+    } else if (std::signbit(lhs_double)) {
+      return COMPARE_RESULT_MINUS_1 | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
     } else {
-      return COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
+      return COMPARE_RESULT_PLUS_1 | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL;
     }
   }
-  if (lhs_double < rhs_double) {
-    return COMPARE_RESULT_MINUS_1 | COMPARE_FLAG_STRICTLY_LESS | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
+  // They compared equal, non-zero, non-NaN, but we need to be careful if
+  // one of them originally was an integer.  We know the other had no
+  // fractional part and was in the 64 bit signed range (otherwise they
+  // would not have tested equal), but it could be that they only appear
+  // equal because precision was lost in the conversion to double.
+  if (!lhs_is_int && !rhs_is_int) return SIMPLE_EQUAL;
+
+  // Things get a bit strange near the limits of the 64 bit signed range.
+  // Decimal             Nearest IEEE value  Hex of IEEE value     JS prints as
+  // 9223372036854775295 9223372036854774784 0x7fff_ffff_ffff_f800 9223372036854775000
+  // 9223372036854775296 9223372036854775808 0x8000_0000_0000_0000 9223372036854776000
+  // 9223372036854776832 9223372036854775808 0x8000_0000_0000_0000 9223372036854776000
+  // 9223372036854776833 9223372036854777856 0x8000_0000_0000_0800 9223372036854778000
+  int64 the_int = lhs_is_int ? lhs_int : rhs_int;
+
+  const int64 SHORTCUT_LIMIT = 0x20000000000000LL;
+  if (-SHORTCUT_LIMIT <= the_int && the_int <= SHORTCUT_LIMIT) return SIMPLE_EQUAL;  // Optimization.
+
+  double the_double = lhs_is_int ? rhs_double : lhs_double;
+
+  if (the_double <= -9223372036854778e3) {
+    return lhs_is_int ? SIMPLE_GREATER : SIMPLE_LESS;  // The double is below int.MIN, so they cannot be equal.
+  }
+  if (the_double >= 9223372036854776e3) {
+    return lhs_is_int ? SIMPLE_LESS : SIMPLE_GREATER;  // The double is above int.MAX, so they cannot be equal.
+  }
+  // We now know the static casts can't fail, because we are in range.
+  if (lhs_is_int) {
+    return compare_ints(lhs_int, static_cast<int64>(rhs_double));
   } else {
-    return COMPARE_RESULT_PLUS_1 | COMPARE_FLAG_STRICTLY_GREATER | COMPARE_FLAG_GREATER_EQUAL;
+    return compare_ints(static_cast<int64>(lhs_double), rhs_int);
   }
 }
 
@@ -247,10 +324,10 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
       }
     } else if (step < 0) {
       // Start at the end of the list.
-      c = Smi::cast(Instance::cast(backing)->at(Instance::LIST_SIZE_INDEX))->value() + step;
+      c = Smi::value(Instance::cast(backing)->at(Instance::LIST_SIZE_INDEX)) + step;
     }
     Smi* block = Smi::cast(*from_block(Smi::cast(block_on_stack)));
-    Method target = Method(program->bytecodes, block->value());
+    Method target = Method(program->bytecodes, Smi::value(block));
     if ((step & 1) != 0) {
       ASSERT(step == 1 || step == -1);
       // Block for set should take 1 argument.
@@ -266,7 +343,7 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
     }
   } else {
     // Subsequent entries to the bytecode.
-    c = Smi::cast(current)->value();
+    c = Smi::value(current);
     c += step;
   }
 
@@ -309,7 +386,7 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
       }
       Object* skip = Instance::cast(entry)->at(Instance::TOMBSTONE_DISTANCE_INDEX);
       if (is_smi(skip)) {
-        word distance = Smi::cast(skip)->value();
+        word distance = Smi::value(skip);
         if (distance != 0 && (distance ^ step) >= 0) { // If signs match.
           c += distance;
           continue;  // Skip the increment of c below.

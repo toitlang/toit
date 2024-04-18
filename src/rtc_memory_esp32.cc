@@ -20,33 +20,25 @@
 #include "utils.h"
 #include "uuid.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include "rtc_memory_esp32.h"
 #include "esp_attr.h"
-#include <soc/rtc.h>
+#include "esp_system.h"
 
 #ifdef CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rom/ets_sys.h>
+  #include <esp32c3/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S3
   #include <esp32s3/rom/ets_sys.h>
+  #include <esp32s3/rtc.h>
 #elif CONFIG_IDF_TARGET_ESP32S2
   #include <esp32s2/rom/ets_sys.h>
+  #include <esp32s2/rtc.h>
 #else
   #include <esp32/rom/ets_sys.h>
+  #include <esp32/rtc.h>
 #endif
-
-#include "esp_system.h"
-
-extern "C" {
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-  #include <esp32c3/clk.h>
-#elif CONFIG_IDF_TARGET_ESP32S3
-  #include <esp32s3/clk.h>
-#else
-  #include <esp32/clk.h>
-#endif
-}
 
 #ifndef CONFIG_IDF_TARGET_ESP32
 extern "C" {
@@ -69,37 +61,16 @@ struct RtcData {
 static RTC_NOINIT_ATTR RtcData rtc;
 static RTC_NOINIT_ATTR uint32 rtc_checksum;
 static RTC_NOINIT_ATTR uint8 rtc_user_data[toit::RtcMemory::RTC_USER_DATA_SIZE];
-static bool reset_after_boot = false;
+static bool is_rtc_invalid_in_start_cpu0 = false;
 
 extern "C" void start_cpu0_default(void) IRAM_ATTR __attribute__((noreturn));
 
 extern int _rtc_bss_start;
 extern int _rtc_bss_end;
 
-static inline uint64 rtc_time_us_calibrated() {
-  return rtc_time_slowclk_to_us(rtc_time_get(), esp_clk_slowclk_cal_get());
-}
-
-// Karl Malbrain's compact CRC-32. See "A compact CCITT crc16 and crc32 C implementation that balances processor
-// cache usage against speed": http://www.geocities.com/malbrain/.
-static uint32 crc32(uint32 crc, const uint8* ptr, size_t length) {
-  static const uint32 s_crc32[16] = {
-      0x00000000, 0x1db71064, 0x3b6e20c8, 0x26d930ac, 0x76dc4190, 0x6b6b51f4, 0x4db26158, 0x5005713c,
-      0xedb88320, 0xf00f9344, 0xd6d6a3e8, 0xcb61b38c, 0x9b64c2b0, 0x86d3d2d4, 0xa00ae278, 0xbdbdf21c
-  };
-  uint32 crcu32 = crc;
-  crcu32 = ~crcu32;
-  while (length--) {
-    uint8 b = *ptr++;
-    crcu32 = (crcu32 >> 4) ^ s_crc32[(crcu32 & 0xF) ^ (b & 0xF)];
-    crcu32 = (crcu32 >> 4) ^ s_crc32[(crcu32 & 0xF) ^ (b >> 4)];
-  }
-  return ~crcu32;
-}
-
 static uint32 compute_rtc_checksum() {
-  uint32 vm_checksum = crc32(0x12345678, toit::EmbeddedData::uuid(), toit::UUID_SIZE);
-  return crc32(vm_checksum, reinterpret_cast<uint8*>(&rtc), sizeof(rtc));
+  uint32 vm_checksum = toit::Utils::crc32(0x12345678, toit::EmbeddedData::uuid(), toit::UUID_SIZE);
+  return toit::Utils::crc32(vm_checksum, reinterpret_cast<uint8*>(&rtc), sizeof(rtc));
 }
 
 static void update_rtc_checksum() {
@@ -120,6 +91,7 @@ static void reset_rtc(const char* reason) {
   memset(&rtc_user_data, 0, sizeof(rtc_user_data));
   // We only clear RTC on boot, so this must be exactly 1.
   rtc.boot_count = 1;
+  update_rtc_checksum();
 
 #ifndef CONFIG_IDF_TARGET_ESP32
   // Non-ESP32 targets use the SYSTIMER which needs a call to early init.
@@ -132,24 +104,21 @@ static void reset_rtc(const char* reason) {
   struct timespec time = { 0, 0 };
   toit::OS::set_real_time(&time);
 #endif
-  // Checksum will be updated after.
-  reset_after_boot = true;
 }
 
 // Patch the primordial entrypoint of the image (before launching FreeRTOS).
 extern "C" void IRAM_ATTR start_cpu0() {
-  ets_printf("[toit] INFO: starting <%s>\n", toit::vm_git_version());
-  if (!is_rtc_valid()) {
-    reset_rtc("invalid checksum");
-  } else {
-    rtc.boot_count++;
-    uint64 elapsed = rtc_time_us_calibrated() - rtc.rtc_time_us_before_deep_sleep;
+  if (is_rtc_valid()) {
+    uint64 elapsed = esp_rtc_get_time_us() - rtc.rtc_time_us_before_deep_sleep;
     rtc.rtc_time_us_accumulated_deep_sleep += elapsed;
+    rtc.boot_count++;
+    update_rtc_checksum();
+  } else {
+    // Delay the actual RTC memory reset until FreeRTOS has been launched.
+    // We do this to avoid relying on more complex code (printing to UART)
+    // this early in the boot process.
+    is_rtc_invalid_in_start_cpu0 = true;
   }
-
-  // We always increment the boot count, so we always need to recalculate the
-  // checksum.
-  update_rtc_checksum();
 
   // Invoke the default entrypoint that launches FreeRTOS and the real application.
   start_cpu0_default();
@@ -158,8 +127,12 @@ extern "C" void IRAM_ATTR start_cpu0() {
 namespace toit {
 
 void RtcMemory::set_up() {
-  // If the RTC memory was already reset, skip this step.
-  if (reset_after_boot) return;
+  ets_printf("[toit] INFO: starting <%s>\n", toit::vm_git_version());
+
+  if (is_rtc_invalid_in_start_cpu0) {
+    reset_rtc("invalid checksum");
+    return;
+  }
 
   switch (esp_reset_reason()) {
     case ESP_RST_SW:
@@ -170,21 +143,25 @@ void RtcMemory::set_up() {
       // Time drifted backwards while sleeping, clear RTC.
       if (rtc.system_time_us_before_deep_sleep > OS::get_system_time()) {
         reset_rtc("system time drifted backwards");
-        update_rtc_checksum();
       }
       break;
 
     default:
-      // We got a non-software triggered power-on event. Play it save by clearing RTC.
+      // We got a non-software triggered power-on event. Play it safe by clearing RTC.
       reset_rtc("powered on by hardware source");
-      update_rtc_checksum();
       break;
   }
 }
 
+void RtcMemory::invalidate() {
+  // Set the RTC checksum to an invalid value, so we get
+  // the memory cleared on next boot.
+  rtc_checksum = compute_rtc_checksum() + 1;
+}
+
 void RtcMemory::on_deep_sleep_start() {
   rtc.system_time_us_before_deep_sleep = OS::get_system_time();
-  rtc.rtc_time_us_before_deep_sleep = rtc_time_us_calibrated();
+  rtc.rtc_time_us_before_deep_sleep = esp_rtc_get_time_us();
   update_rtc_checksum();
 }
 
@@ -202,7 +179,7 @@ uint32 RtcMemory::out_of_memory_count() {
 }
 
 uint64 RtcMemory::accumulated_run_time_us() {
-  return rtc_time_us_calibrated();
+  return esp_rtc_get_time_us();
 }
 
 uint64 RtcMemory::accumulated_deep_sleep_time_us() {
@@ -224,4 +201,4 @@ uint8* RtcMemory::user_data_address() {
 
 } // namespace toit
 
-#endif  // TOIT_FREERTOS
+#endif  // TOIT_ESP32

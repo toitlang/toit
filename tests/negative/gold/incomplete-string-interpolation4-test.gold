@@ -1,0 +1,10 @@
+tests/negative/incomplete-string-interpolation4-test.toit:7:15: error: Incomplete expression
+  print "$foo[
+              ^
+tests/negative/incomplete-string-interpolation4-test.toit:7:14: error: Missing closing ']'
+  print "$foo[
+             ^
+tests/negative/incomplete-string-interpolation4-test.toit:8:1: error: Unterminated string
+
+^
+Compilation failed

@@ -31,7 +31,7 @@ A pulse-counter channel.
 class Channel:
   unit_ /Unit
   // Null if the channel is closed.
-  channel_id_ /int? := ?
+  channel-id_ /int? := ?
 
   /**
   Constructs a channel for the $unit using the given given $pin.
@@ -39,19 +39,19 @@ class Channel:
   The pin is automatically set to input with a pullup.
   */
   constructor.private_ unit/Unit pin/gpio.Pin
-      on_positive_edge/int on_negative_edge/int
-      control_pin/gpio.Pin? when_control_low/int when_control_high/int:
-    check_edge_mode_ on_positive_edge
-    check_edge_mode_ on_negative_edge
-    check_control_mode_ when_control_low
-    check_control_mode_ when_control_high
+      on-positive-edge/int on-negative-edge/int
+      control-pin/gpio.Pin? when-control-low/int when-control-high/int:
+    check-edge-mode_ on-positive-edge
+    check-edge-mode_ on-negative-edge
+    check-control-mode_ when-control-low
+    check-control-mode_ when-control-high
 
     unit_ = unit
-    control_pin_num := control_pin ? control_pin.num : -1
-    channel_id_ = pcnt_new_channel_ unit.unit_resource_ pin.num \
-        on_positive_edge on_negative_edge \
-        control_pin_num when_control_low when_control_high
-    add_finalizer this:: close
+    control-pin-num := control-pin ? control-pin.num : -1
+    channel-id_ = pcnt-new-channel_ unit.unit-resource_ pin.num \
+        on-positive-edge on-negative-edge \
+        control-pin-num when-control-low when-control-high
+    add-finalizer this:: close
 
   /**
   Closes this channel.
@@ -59,18 +59,18 @@ class Channel:
   The resources for the channel are returned and can be used for a different configuration.
   */
   close:
-    if not channel_id_: return
-    remove_finalizer this
-    channel_id := channel_id_
-    channel_id_ = null
-    unit_.remove_channel_ this
-    pcnt_close_channel_ unit_.unit_resource_ channel_id
+    if not channel-id_: return
+    remove-finalizer this
+    channel-id := channel-id_
+    channel-id_ = null
+    unit_.remove-channel_ this
+    pcnt-close-channel_ unit_.unit-resource_ channel-id
 
-  static check_edge_mode_ edge_mode/int -> none:
-    if not (Unit.DO_NOTHING <= edge_mode <= Unit.DECREMENT): throw "INVALID_ARGUMENT"
+  static check-edge-mode_ edge-mode/int -> none:
+    if not (Unit.DO-NOTHING <= edge-mode <= Unit.DECREMENT): throw "INVALID_ARGUMENT"
 
-  static check_control_mode_ control_mode/int -> none:
-    if not (Unit.KEEP <= control_mode <= Unit.DISABLE): throw "INVALID_ARGUMENT"
+  static check-control-mode_ control-mode/int -> none:
+    if not (Unit.KEEP <= control-mode <= Unit.DISABLE): throw "INVALID_ARGUMENT"
 
 /**
 A pulse-counter unit.
@@ -78,12 +78,12 @@ A pulse-counter unit.
 The unit shares a counter that is changed by its channels.
 */
 class Unit:
-  unit_resource_ /ByteArray? := ?
-  is_closed_ /bool := false
+  unit-resource_ /ByteArray? := ?
+  is-closed_ /bool := false
   channels_ /List ::= []
 
   /** The channel Does nothing, when the edge change occurs. */
-  static DO_NOTHING /int ::= 0
+  static DO-NOTHING /int ::= 0
   /** The channel increments the unit's $value when the edge change occurs. */
   static INCREMENT /int ::= 1
   /** The channel decrements the unit's $value when the edge change occurs. */
@@ -109,57 +109,57 @@ class Unit:
   The $low and $high values are limits. When the counter reaches this limit, the value
     is reset to 0. Use 0 to use the full 16 bit range of the counter.
 
-  If a $glitch_filter_ns is given, then all pulses shorter than $glitch_filter_ns nanoseconds are
+  If a $glitch-filter-ns is given, then all pulses shorter than $glitch-filter-ns nanoseconds are
     ignored.
 
-  A unit is constructed in a started state. As soon as a channel is added with $add_channel it
+  A unit is constructed in a started state. As soon as a channel is added with $add-channel it
     starts counting.
 
   # Advanced
-  The $glitch_filter_ns are converted to APB clock cycles. Usually the APB clock runs at 80MHz,
+  The $glitch-filter-ns are converted to APB clock cycles. Usually the APB clock runs at 80MHz,
     which means that the shortest glitch_filter_ns that makes sense is 1/80MHz = 12.5ns (-> 13).
 
   The glitch filter is limited to 10 bits, and the highest value is thus 1023 ticks, or 12_787ns
     (12.5 * 1023 = 12_787.5).
   */
-  constructor --low/int=0 --high/int=0 --glitch_filter_ns/int?=null:
-    if glitch_filter_ns != null:
-      if glitch_filter_ns <= 0: throw "INVALID_ARGUMENT"
+  constructor --low/int=0 --high/int=0 --glitch-filter-ns/int?=null:
+    if glitch-filter-ns != null:
+      if glitch-filter-ns <= 0: throw "INVALID_ARGUMENT"
       // The glitch filter runs on the APB clock (80MHz, 12.5ns), and allows at most 1023 ticks.
       // 12.5 * 1023 == 12787.5.
-      if glitch_filter_ns > 12_787: throw "OUT_OF_RANGE"
+      if glitch-filter-ns > 12_787: throw "OUT_OF_RANGE"
     else:
-      glitch_filter_ns = -1
-    unit_resource_ = pcnt_new_unit_ resource_group_ low high glitch_filter_ns
-    add_finalizer this:: close
+      glitch-filter-ns = -1
+    unit-resource_ = pcnt-new-unit_ resource-freeing-module_ low high glitch-filter-ns
+    add-finalizer this:: close
 
   /**
   Adds the channel to this counter.
 
   The channel listens on the given $pin for changes. The counting mode is determined by
-    $on_positive_edge and $on_negative_edge. These parameters must be one of:
-  - $DO_NOTHING
+    $on-positive-edge and $on-negative-edge. These parameters must be one of:
+  - $DO-NOTHING
   - $INCREMENT
   - $DECREMENT
 
-  The $control_pin can be used to change the mode of operation of the channel. The $when_control_low
-    and $when_control_high parameters must be one of:
-  - $KEEP: The $control_pin does not affect the mode of operation for the selected state.
-  - $REVERSE: The $control_pin reverses the effect of the mode of operation. If the channel's pin
+  The $control-pin can be used to change the mode of operation of the channel. The $when-control-low
+    and $when-control-high parameters must be one of:
+  - $KEEP: The $control-pin does not affect the mode of operation for the selected state.
+  - $REVERSE: The $control-pin reverses the effect of the mode of operation. If the channel's pin
     was incrementing on an edge, it now decrements. If it was decrementing it now increments.
-  - $DISABLE: The $control_pin disables the channel. No changes to the unit's $value happen when
+  - $DISABLE: The $control-pin disables the channel. No changes to the unit's $value happen when
     this control mode is active.
   */
-  add_channel pin/gpio.Pin -> Channel
-      --on_positive_edge /int = INCREMENT
-      --on_negative_edge /int = DO_NOTHING
-      --control_pin /gpio.Pin? = null
-      --when_control_low /int = KEEP
-      --when_control_high /int = KEEP:
-    if is_closed: throw "ALREADY_CLOSED"
+  add-channel pin/gpio.Pin -> Channel
+      --on-positive-edge /int = INCREMENT
+      --on-negative-edge /int = DO-NOTHING
+      --control-pin /gpio.Pin? = null
+      --when-control-low /int = KEEP
+      --when-control-high /int = KEEP:
+    if is-closed: throw "ALREADY_CLOSED"
     channel := Channel.private_ this pin \
-        on_positive_edge on_negative_edge \
-        control_pin when_control_low when_control_high
+        on-positive-edge on-negative-edge \
+        control-pin when-control-low when-control-high
     channels_.add channel
     return channel
 
@@ -167,12 +167,12 @@ class Unit:
   Removes the channel from the internal list.
   This function must be called by the $Channel when it is closed.
   */
-  remove_channel_ channel/Channel -> none:
+  remove-channel_ channel/Channel -> none:
     channels_.remove channel
 
   /** Whether this unit is closed. */
-  is_closed -> bool:
-    return is_closed_
+  is-closed -> bool:
+    return is-closed_
 
   /**
   Closes this unit.
@@ -180,17 +180,17 @@ class Unit:
   Frees all the underlying resources.
   */
   close:
-    if is_closed: return
-    is_closed_ = true
-    remove_finalizer this
+    if is-closed: return
+    is-closed_ = true
+    remove-finalizer this
     // The $Channel.close method needs the unit resource. Don't clear it
     // before the channels are closed.
     // Make a copy, since the `close` methods will change the channels_ list.
     channels_.copy.do: it.close
-    assert: channels_.is_empty
-    unit_resource := unit_resource_
-    unit_resource_ = null
-    pcnt_close_unit_ unit_resource
+    assert: channels_.is-empty
+    unit-resource := unit-resource_
+    unit-resource_ = null
+    pcnt-close-unit_ unit-resource
 
   /**
   The value of the counter.
@@ -201,15 +201,15 @@ class Unit:
   The unit must not be closed.
   */
   value -> int:
-    if is_closed: throw "ALREADY_CLOSED"
-    return pcnt_get_count_ unit_resource_
+    if is-closed: throw "ALREADY_CLOSED"
+    return pcnt-get-count_ unit-resource_
 
   /**
   Resets the counter to 0.
   */
   clear -> none:
-    if is_closed: throw "ALREADY_CLOSED"
-    pcnt_clear_ unit_resource_
+    if is-closed: throw "ALREADY_CLOSED"
+    pcnt-clear_ unit-resource_
 
   /**
   Resumes the counter.
@@ -219,8 +219,8 @@ class Unit:
   The unit must not be closed.
   */
   start -> none:
-    if is_closed: throw "ALREADY_CLOSED"
-    pcnt_start_ unit_resource_
+    if is-closed: throw "ALREADY_CLOSED"
+    pcnt-start_ unit-resource_
 
   /**
   Pauses the counter.
@@ -232,33 +232,28 @@ class Unit:
   The unit must not be closed.
   */
   stop -> none:
-    pcnt_stop_ unit_resource_
+    pcnt-stop_ unit-resource_
 
-resource_group_ ::= pcnt_init_
+pcnt-new-unit_ resource-group low high glitch-filter-ns:
+  #primitive.pcnt.new-unit
 
-pcnt_init_:
-  #primitive.pcnt.init
+pcnt-close-unit_ unit:
+  #primitive.pcnt.close-unit
 
-pcnt_new_unit_ resource_group low high glitch_filter_ns:
-  #primitive.pcnt.new_unit
+pcnt-new-channel_ unit pin on-positive-edge on-negative-edge control-pin when-control-low when-control-high:
+  #primitive.pcnt.new-channel
 
-pcnt_close_unit_ unit:
-  #primitive.pcnt.close_unit
+pcnt-close-channel_ unit channel:
+  #primitive.pcnt.close-channel
 
-pcnt_new_channel_ unit pin on_positive_edge on_negative_edge control_pin when_control_low when_control_high:
-  #primitive.pcnt.new_channel
+pcnt-get-count_ unit -> int:
+  #primitive.pcnt.get-count
 
-pcnt_close_channel_ unit channel:
-  #primitive.pcnt.close_channel
-
-pcnt_get_count_ unit -> int:
-  #primitive.pcnt.get_count
-
-pcnt_clear_ unit -> none:
+pcnt-clear_ unit -> none:
   #primitive.pcnt.clear
 
-pcnt_start_ unit -> none:
+pcnt-start_ unit -> none:
   #primitive.pcnt.start
 
-pcnt_stop_ unit -> none:
+pcnt-stop_ unit -> none:
   #primitive.pcnt.stop

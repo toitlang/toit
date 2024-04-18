@@ -65,7 +65,7 @@ word Space::offset_of(HeapObject* object) {
   return address - start;
 }
 
-HeapObject *Space::object_at_offset(word offset) {
+HeapObject* Space::object_at_offset(word offset) {
   uword start = chunk_list_.first()->start();
   uword address = offset + start;
 
@@ -108,8 +108,8 @@ void Space::iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stac
                object_address += object->size(program_)) {
             object = HeapObject::from_address(object_address);
             if (GcMetadata::is_grey(object)) {
+              object->roots_do(program_, visitor);  // This changes the size of stacks!
               GcMetadata::mark_all(object, object->size(program_));
-              object->roots_do(program_, visitor);
             }
           }
         }
@@ -231,6 +231,7 @@ void Chunk::find(uword word, const char* name) {
 #endif
 
 Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
+#ifdef TOIT_FREERTOS
   static const int UNUSABLE_SIZE = 50;
   void* unusable_pages[UNUSABLE_SIZE];
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
@@ -248,8 +249,12 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   printf("New allocation %p-%p\n", unusable_pages[0], unvoid_cast<char*>(unusable_pages[0]) + size);
   printf("Metadata range %p-%p\n", reinterpret_cast<void*>(lowest), reinterpret_cast<uint8*>(lowest) + GcMetadata::heap_extent());
   FATAL("Toit heap outside expected range");
+#else
+  void* memory = OS::allocate_pages(Utils::round_up(size, TOIT_PAGE_SIZE));
+  if (!memory) return null;
+  return allocate_chunk_helper(owner, size, memory);
+#endif
 }
-
 
 Chunk* ObjectMemory::allocate_chunk_helper(Space* owner, uword size, void* memory) {
   if (memory == null) return null;
@@ -267,6 +272,7 @@ Chunk* ObjectMemory::allocate_chunk_helper(Space* owner, uword size, void* memor
 #ifdef TOIT_DEBUG
   chunk->scramble();
 #endif
+  GcMetadata::map_metadata_for_chunk(chunk);
   if (owner) {
     GcMetadata::mark_pages_for_chunk(chunk, owner->page_type());
     chunk->initialize_metadata();

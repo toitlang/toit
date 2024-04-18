@@ -22,18 +22,18 @@ class Bus:
   /**
   Initializes the I2S bus.
 
-  $sample_rate is the rate at which samples are written.
-  $bits_per_sample is the width of each sample. It can be either 16, 24 or 32.
-  $buffer_size, in bytes, is used as size for internal buffers.
+  $sample-rate is the rate at which samples are written.
+  $bits-per-sample is the width of each sample. It can be either 16, 24 or 32.
+  $buffer-size, in bytes, is used as size for internal buffers.
   $mclk is the pin used to output the master clock. Only relevant when the I2S
     Bus is operating in master mode.
-  $mclk_multiplier is the muliplier of the $sample_rate to be used for the
+  $mclk-multiplier is the muliplier of the $sample-rate to be used for the
     master clock.
     It should be one of the 128, 256 or 384.
     It is only relevant if the $mclk is not null.
-  $is_master is a flag determining if the I2S driver should run in master
+  $is-master is a flag determining if the I2S driver should run in master
     (true) or slave (false) mode.
-  $use_apll use a high precision clock.
+  $use-apll use a high precision clock.
   */
   constructor
       --sck/gpio.Pin?=null
@@ -41,19 +41,19 @@ class Bus:
       --tx/gpio.Pin?=null
       --rx/gpio.Pin?=null
       --mclk/gpio.Pin?=null
-      --sample_rate/int
-      --bits_per_sample/int
-      --is_master/bool=true
-      --mclk_multiplier/int=256
-      --use_apll/bool=false
-      --buffer_size/int=(32 * 2 * bits_per_sample / 8):
-    sck_pin := sck ? sck.num : -1
-    ws_pin := ws ? ws.num : -1
-    tx_pin := tx ? tx.num : -1
-    rx_pin := rx ? rx.num : -1
-    mclk_pin := mclk ? mclk.num : -1
-    i2s_ = i2s_create_ resource_group_ sck_pin ws_pin tx_pin rx_pin mclk_pin sample_rate bits_per_sample buffer_size is_master mclk_multiplier use_apll
-    state_ = ResourceState_ resource_group_ i2s_
+      --sample-rate/int
+      --bits-per-sample/int
+      --is-master/bool=true
+      --mclk-multiplier/int=256
+      --use-apll/bool=false
+      --buffer-size/int=(32 * 2 * bits-per-sample / 8):
+    sck-pin := sck ? sck.num : -1
+    ws-pin := ws ? ws.num : -1
+    tx-pin := tx ? tx.num : -1
+    rx-pin := rx ? rx.num : -1
+    mclk-pin := mclk ? mclk.num : -1
+    i2s_ = i2s-create_ resource-group_ sck-pin ws-pin tx-pin rx-pin mclk-pin sample-rate bits-per-sample buffer-size is-master mclk-multiplier use-apll
+    state_ = ResourceState_ resource-group_ i2s_
 
 
   /**
@@ -65,16 +65,16 @@ class Bus:
   */
   write bytes/ByteArray -> int:
     while true:
-      written := i2s_write_ i2s_ bytes
+      written := i2s-write_ i2s_ bytes
       if written != 0: return written
 
-      state_.clear_state WRITE_STATE_
-      state := state_.wait_for_state WRITE_STATE_ | ERROR_STATE_
+      state_.clear-state WRITE-STATE_
+      state := state_.wait-for-state WRITE-STATE_ | ERROR-STATE_
 
       if not i2s_: throw "CLOSED"
 
-      if state & ERROR_STATE_ != 0:
-        state_.clear_state ERROR_STATE_
+      if state & ERROR-STATE_ != 0:
+        state_.clear-state ERROR-STATE_
         errors++
 
   /**
@@ -84,14 +84,14 @@ class Bus:
   */
   read -> ByteArray?:
     while true:
-      state := state_.wait_for_state READ_STATE_ | ERROR_STATE_
-      if state & ERROR_STATE_ != 0:
-        state_.clear_state ERROR_STATE_
+      state := state_.wait-for-state READ-STATE_ | ERROR-STATE_
+      if state & ERROR-STATE_ != 0:
+        state_.clear-state ERROR-STATE_
         errors++
-      else if state & READ_STATE_ != 0:
-        data := i2s_read_ i2s_
+      else if state & READ-STATE_ != 0:
+        data := i2s-read_ i2s_
         if data.size > 0: return data
-        state_.clear_state READ_STATE_
+        state_.clear-state READ-STATE_
       else:
         // It was closed (disposed).
         return null
@@ -103,14 +103,14 @@ class Bus:
   */
   read buffer/ByteArray -> int?:
     while true:
-      state := state_.wait_for_state READ_STATE_ | ERROR_STATE_
-      if state & ERROR_STATE_ != 0:
-        state_.clear_state ERROR_STATE_
+      state := state_.wait-for-state READ-STATE_ | ERROR-STATE_
+      if state & ERROR-STATE_ != 0:
+        state_.clear-state ERROR-STATE_
         errors++
-      else if state & READ_STATE_ != 0:
-        read := i2s_read_to_buffer_ i2s_ buffer
+      else if state & READ-STATE_ != 0:
+        read := i2s-read-to-buffer_ i2s_ buffer
         if read > 0: return read
-        state_.clear_state READ_STATE_
+        state_.clear-state READ-STATE_
       else:
         // It was closed (disposed).
         return null
@@ -120,32 +120,32 @@ class Bus:
   */
   close:
     if not i2s_: return
-    critical_do:
+    critical-do:
       state_.dispose
-      i2s_close_ resource_group_ i2s_
+      i2s-close_ resource-group_ i2s_
       i2s_ = null
 
-resource_group_ ::= i2s_init_
+resource-group_ ::= i2s-init_
 
-READ_STATE_  ::= 1 << 0
-WRITE_STATE_ ::= 1 << 1
-ERROR_STATE_ ::= 1 << 2
+READ-STATE_  ::= 1 << 0
+WRITE-STATE_ ::= 1 << 1
+ERROR-STATE_ ::= 1 << 2
 
 
-i2s_init_:
+i2s-init_:
   #primitive.i2s.init
 
-i2s_create_ resource_group sck_pin ws_pin tx_pin rx_pin mclk_pin sample_rate bits_per_sample buffer_size is_master mclk_multiplier use_apll:
+i2s-create_ resource-group sck-pin ws-pin tx-pin rx-pin mclk-pin sample-rate bits-per-sample buffer-size is-master mclk-multiplier use-apll:
   #primitive.i2s.create
 
-i2s_close_ resource_group i2s:
+i2s-close_ resource-group i2s:
   #primitive.i2s.close
 
-i2s_write_ i2s bytes -> int:
+i2s-write_ i2s bytes -> int:
   #primitive.i2s.write
 
-i2s_read_ i2s -> ByteArray:
+i2s-read_ i2s -> ByteArray:
   #primitive.i2s.read
 
-i2s_read_to_buffer_ i2s buffer:
-  #primitive.i2s.read_to_buffer
+i2s-read-to-buffer_ i2s buffer:
+  #primitive.i2s.read-to-buffer

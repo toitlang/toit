@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#if !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO)
+
 #include "utils.h"
 #include "siphash.h"
 
@@ -39,6 +41,17 @@ Siphash::Siphash(SimpleResourceGroup* group, const uint8* key, int output_length
   v_[3] = 0x7465646279746573 ^ k1;
   if (output_length == 16) v_[1] ^= 0xee;
   ASSERT(output_length == 8 || output_length == 16);  // Checked in the primitive.
+}
+
+Siphash::Siphash(const Siphash* parent)
+  : SimpleResource(static_cast<SimpleResourceGroup*>(parent->resource_group())) {
+  memcpy(data_, parent->data_, BLOCK_SIZE);
+  memcpy(v_, parent->v_, sizeof(v_));
+  block_posn_ = parent->block_posn_;
+  c_rounds_ = parent->c_rounds_;
+  d_rounds_ = parent->d_rounds_;
+  length_ = parent->length_;
+  output_length_ = parent->output_length_;
 }
 
 static inline uint64 rotl(uint64 in, int distance) {
@@ -113,3 +126,5 @@ void Siphash::process_block() {
 }
 
 }
+
+#endif  // !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO)

@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <driver/gpio.h>
 #include <driver/adc.h>
@@ -186,12 +186,12 @@ MODULE_IMPLEMENTATION(adc, MODULE_ADC)
 PRIMITIVE(init) {
   ARGS(SimpleResourceGroup, group, int, pin, bool, allow_restricted, double, max);
 
-  if (max < 0.0) INVALID_ARGUMENT;
+  if (max < 0.0) FAIL(INVALID_ARGUMENT);
 
   int max_mv = static_cast<int>(max * 1000.0);
   if (max_mv == 0) max_mv = 3900;
   adc_atten_t atten = get_atten(max_mv);
-  adc_unit_t unit = ADC_UNIT_MAX;
+  adc_unit_t unit;
 
   int chan = get_adc1_channel(pin);
   if (chan >= 0) {
@@ -208,21 +208,19 @@ PRIMITIVE(init) {
       esp_err_t err = adc2_config_channel_atten(static_cast<adc2_channel_t>(chan), atten);
       if (err != ESP_OK) return Primitive::os_error(err, process);
     } else {
-      OUT_OF_RANGE;
+      FAIL(OUT_OF_RANGE);
     }
   } else {
-    OUT_OF_RANGE;
+    FAIL(OUT_OF_RANGE);
   }
-  
+
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    ALLOCATION_FAILED;
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   AdcResource* resource = null;
   { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
     resource = _new AdcResource(group, unit, chan);
-    if (!resource) MALLOC_FAILED;
+    if (!resource) FAIL(MALLOC_FAILED);
   }
 
   const int DEFAULT_VREF = 1100;
@@ -237,7 +235,7 @@ PRIMITIVE(init) {
 PRIMITIVE(get) {
   ARGS(AdcResource, resource, int, samples);
 
-  if (samples < 1 || samples > 64) OUT_OF_RANGE;
+  if (samples < 1 || samples > 64) FAIL(OUT_OF_RANGE);
 
   uint32_t adc_reading = 0;
 
@@ -283,9 +281,9 @@ PRIMITIVE(close) {
   resource->resource_group()->unregister_resource(resource);
   resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

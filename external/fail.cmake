@@ -18,3 +18,8 @@ list(APPEND TOIT_SKIP_TESTS
   toit-protobuf/tests/all_types_test.toit
   health-external/downloads/toit-protobuf/tests/all_types_test.toit
 )
+
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
+  list(APPEND TOIT_SKIP_TESTS
+  )
+endif()

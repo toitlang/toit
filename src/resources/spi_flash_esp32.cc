@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include "../resource.h"
 #include "../objects_inline.h"
@@ -28,6 +28,8 @@
 #include <esp_flash_spi_init.h>
 
 namespace toit {
+
+#ifdef CONFIG_TOIT_FATFS
 
 class SpiFlashResourceGroup: public ResourceGroup {
  public:
@@ -42,7 +44,7 @@ class SpiFlashResourceGroup: public ResourceGroup {
     if (card_) esp_vfs_fat_sdcard_unmount(mount_point_, card_);
 
     // NOR flash.
-    if (wl_handle_ != -1) esp_vfs_fat_spiflash_unmount(mount_point_, wl_handle_);
+    if (wl_handle_ != -1) esp_vfs_fat_spiflash_unmount_rw_wl(mount_point_, wl_handle_);
     if (data_partition_) esp_partition_deregister_external(data_partition_);
     if (chip_) spi_bus_remove_flash_device(chip_);
 
@@ -82,7 +84,7 @@ MODULE_IMPLEMENTATION(spi_flash, MODULE_SPI_FLASH)
 static ByteArray* init_common(Process* process, const char* mount_point,
                                SpiFlashResourceGroup** group, HeapObject** error) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) {
+  if (proxy == null) {
     *error = Primitive::mark_as_error(process->program()->allocation_failed());
     return null;
   }
@@ -106,7 +108,12 @@ static ByteArray* init_common(Process* process, const char* mount_point,
   return proxy;
 }
 
+#endif
+
 PRIMITIVE(init_sdcard) {
+#ifndef CONFIG_TOIT_FATFS
+  FAIL(UNIMPLEMENTED);
+#else
   ARGS(cstring, mount_point, SpiResourceGroup, spi_host, int, gpio_cs, int, format_if_mount_failed, int, max_files, int, allocation_unit_size)
   SpiFlashResourceGroup* group;
   HeapObject* error;
@@ -123,7 +130,8 @@ PRIMITIVE(init_sdcard) {
   esp_vfs_fat_sdmmc_mount_config_t mount_config = {
       .format_if_mount_failed = static_cast<bool>(format_if_mount_failed),
       .max_files = max_files,
-      .allocation_unit_size = static_cast<size_t>(allocation_unit_size)
+      .allocation_unit_size = static_cast<size_t>(allocation_unit_size),
+      .disk_status_check_enable = false
   };
   sdmmc_card_t* card;
   esp_err_t ret = esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_config, &card);
@@ -135,12 +143,16 @@ PRIMITIVE(init_sdcard) {
   group->set_card(card);
 
   return proxy;
+#endif
 }
 
 PRIMITIVE(init_nor_flash) {
+#ifndef CONFIG_TOIT_FATFS
+  FAIL(UNIMPLEMENTED);
+#else
   ARGS(cstring, mount_point, SpiResourceGroup, spi_bus, int, gpio_cs,int, frequency, int, format_if_mount_failed, int, max_files, int, allocation_unit_size)
 
-  if (frequency < 0 || frequency > ESP_FLASH_80MHZ) INVALID_ARGUMENT;
+  if (frequency < 0 || frequency > ESP_FLASH_80MHZ) FAIL(INVALID_ARGUMENT);
 
   SpiFlashResourceGroup* group;
   HeapObject* error;
@@ -151,9 +163,9 @@ PRIMITIVE(init_nor_flash) {
       .host_id = spi_bus->host_device(),
       .cs_io_num = gpio_cs,
       .io_mode = SPI_FLASH_FASTRD,
-      .speed = static_cast<esp_flash_speed_t>(frequency),
       .input_delay_ns = 0,
-      .cs_id = 0
+      .cs_id = 0,
+      .freq_mhz = frequency
   };
 
   esp_flash_t* chip;
@@ -194,11 +206,12 @@ PRIMITIVE(init_nor_flash) {
   esp_vfs_fat_mount_config_t mount_config = {
       .format_if_mount_failed = static_cast<bool>(format_if_mount_failed),
       .max_files = max_files,
-      .allocation_unit_size = static_cast<size_t>(allocation_unit_size)
+      .allocation_unit_size = static_cast<size_t>(allocation_unit_size),
+      .disk_status_check_enable = false
   };
 
   wl_handle_t wl_handle;
-  ret = esp_vfs_fat_spiflash_mount(mount_point, mount_point, &mount_config, &wl_handle);
+  ret = esp_vfs_fat_spiflash_mount_rw_wl(mount_point, mount_point, &mount_config, &wl_handle);
   if (ret != ESP_OK) {
     group->tear_down();
     return Primitive::os_error(ret, process);
@@ -207,10 +220,11 @@ PRIMITIVE(init_nor_flash) {
   group->set_wl_handle(wl_handle);
 
   return proxy;
+#endif
 }
 
 PRIMITIVE(init_nand_flash) {
-#ifdef CONFIG_SPI_FLASH_NAND_ENABLED
+#if defined(CONFIG_SPI_FLASH_NAND_ENABLED) && defined(CONFIG_TOIT_FATFS)
   ARGS(cstring, mount_point, SpiResourceGroup, spi_bus, int, gpio_cs, int, frequency, int, format_if_mount_failed, int, max_files, int, allocation_unit_size);
 
   SpiFlashResourceGroup* group;
@@ -259,16 +273,21 @@ PRIMITIVE(init_nand_flash) {
 
   return proxy;
 #else
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 #endif // CONFIG_SPI_FLASH_NAND_ENABLED
 }
 
 PRIMITIVE(close) {
+#ifndef CONFIG_TOIT_FATFS
+  FAIL(UNIMPLEMENTED);
+#else
   ARGS(SpiFlashResourceGroup, group)
   group->tear_down();
   group_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
+#endif
 }
 
 }
-#endif
+
+#endif  // TOIT_ESP32

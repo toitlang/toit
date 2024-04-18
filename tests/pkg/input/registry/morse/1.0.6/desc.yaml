@@ -1,0 +1,6 @@
+name: morse
+description: Functions for International (ITU) Morse code.
+license: MIT
+url: github.com/toitware/toit-morse-local
+version: 1.0.6
+hash: f9f6ba3a04984db16887d7a1051ada8ad30d7db2

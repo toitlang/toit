@@ -20,10 +20,14 @@
 namespace toit {
 namespace compiler {
 
+void GotoDefinitionHandler::terminate() {
+  exit(0);
+}
+
 void GotoDefinitionHandler::_print_range(Source::Range range) {
   if (printed_definitions_.contains(range)) return;
   printed_definitions_.insert(range);
-  protocol()->goto_definition()->emit(range_to_lsp_range(range, source_manager_));
+  protocol()->goto_definition()->emit(range_to_lsp_location(range, source_manager_));
 }
 
 void GotoDefinitionHandler::_print_range(ir::Node* resolved) {
@@ -58,12 +62,16 @@ void GotoDefinitionHandler::_print_all(List<ir::Node*> nodes) {
   }
 }
 
-void GotoDefinitionHandler::class_or_interface(ast::Node* node, IterableScope* scope,
-                                               ir::Class* holder, ir::Node* resolved, bool needs_interface) {
+void GotoDefinitionHandler::class_interface_or_mixin(ast::Node* node,
+                                                     IterableScope* scope,
+                                                     ir::Class* holder,
+                                                     ir::Node* resolved,
+                                                     bool needs_interface,
+                                                     bool needs_mixin) {
   if (resolved != null && resolved->is_Class()) {
     _print_range(resolved);
   }
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::type(ast::Node* node,
@@ -73,7 +81,7 @@ void GotoDefinitionHandler::type(ast::Node* node,
   // We are ok with resolving to many nodes (even ambiguous ones).
   // This will help the user to figure out why they have an error.
   _print_all(resolved);
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::call_virtual(ir::CallVirtual* node,
@@ -85,7 +93,7 @@ void GotoDefinitionHandler::call_virtual(ir::CallVirtual* node,
   Symbol name = lsp_selection_dot->name();
 
   if (type.is_none()) {
-    // We don't exit(0) here, as there might be multiple definitions that need to
+    // We don't terminate() here, as there might be multiple definitions that need to
     //   get resolved. This happens when a getter and setter are both target of a
     //   compound assignment.
     return;
@@ -116,29 +124,41 @@ void GotoDefinitionHandler::call_virtual(ir::CallVirtual* node,
   // Keep track of the possible candidates, in case we don't find a full match.
   Map<ResolutionShape, ir::Method*> candidates;
   while (klass != null) {
-    for (auto method : klass->methods()) {
-      if (method->name() != selector) continue;
-      if (method->resolution_shape().accepts(node->shape())) {
-        if (is_for_named) {
-          auto name = lsp_selection_dot->name();
-          for (auto parameter : method->parameters()) {
-            if (parameter->name() == name) {
-              _print_range(parameter->range());
-              break;
+    for (int i = -1; i < klass->mixins().length(); i++) {
+      auto current = i == -1
+          ? klass
+          : klass->mixins()[i];
+      for (auto method : current->methods()) {
+        if (method->name() != selector) continue;
+        if (method->resolution_shape().accepts(node->shape())) {
+          if (is_for_named) {
+            auto name = lsp_selection_dot->name();
+            for (auto parameter : method->parameters()) {
+              if (parameter->name() == name) {
+                _print_range(parameter->range());
+                break;
+              }
             }
+          } else {
+            _print_range(method->range());
           }
-        } else {
-          _print_range(method->range());
+          return;
         }
-        return;
+        // Only add new candidates, if they aren't shadowed.
+        // TODO(florian): different resolution shapes could still shadow each other.
+        if (candidates.find(method->resolution_shape()) != candidates.end()) continue;
+        candidates[method->resolution_shape()] = method;
       }
-      // Only add new candidates, if they aren't shadowed.
-      // TODO(florian): different resolution shapes could still shadow each other.
-      if (candidates.find(method->resolution_shape()) != candidates.end()) continue;
-      candidates[method->resolution_shape()] = method;
     }
-    klass = klass->super();
+    if (klass->super() == null &&
+        (klass->is_interface() || klass->is_mixin())) {
+      // Add the Object methods, which every object has.
+      klass = classes[0];
+    } else {
+      klass = klass->super();
+    }
   }
+
   // Apparently we didn't find a full match. Propose the candidates instead.
   for (auto shape : candidates.keys()) {
     _print_range(candidates[shape]->range());
@@ -171,7 +191,7 @@ void GotoDefinitionHandler::call_prefixed(ast::Dot* node,
                                           List<ir::Node*> candidates,
                                           IterableScope* scope) {
   call_statically_resolved(resolved1, resolved2, candidates);
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::call_class(ast::Dot* node,
@@ -187,7 +207,7 @@ void GotoDefinitionHandler::call_class(ast::Dot* node,
     // to propose candidates.
     return;
   }
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::call_static(ast::Node* node,
@@ -197,31 +217,31 @@ void GotoDefinitionHandler::call_static(ast::Node* node,
                                         IterableScope* scope,
                                         ir::Method* surrounding) {
   call_statically_resolved(resolved1, resolved2, candidates);
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::call_block(ast::Dot* node, ir::Node* ir_receiver) {
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::call_static_named(ast::Node* name_node, ir::Node* ir_call_target, List<ir::Node*> candidates) {
-  if (ir_call_target == null || ir_call_target->is_Error()) exit(0);
+  if (ir_call_target == null || ir_call_target->is_Error()) terminate();
   if (!ir_call_target->is_ReferenceMethod()) exit(1);
   auto name = name_node->as_LspSelection()->data();
   auto ir_method = ir_call_target->as_ReferenceMethod()->target();
   for (auto parameter : ir_method->parameters()) {
     if (parameter->name() == name) {
       _print_range(parameter->range());
-      exit(0);
+      terminate();
     }
   }
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::call_primitive(ast::Node* node, Symbol module_name, Symbol primitive_name,
                                            int module, int primitive, bool on_module) {
   // Nothing to go to.
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::field_storing_parameter(ast::Parameter* node,
@@ -235,7 +255,7 @@ void GotoDefinitionHandler::field_storing_parameter(ast::Parameter* node,
       break;
     }
   }
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::this_(ast::Identifier* node,
@@ -245,7 +265,7 @@ void GotoDefinitionHandler::this_(ast::Identifier* node,
   if (enclosing_class != null) {
     _print_range(enclosing_class);
   }
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) {
@@ -253,7 +273,7 @@ void GotoDefinitionHandler::show(ast::Node* node, ResolutionEntry entry, ModuleS
     if (node->is_Class()) _print_range(node->as_Class()->range());
     if (node->is_Method()) _print_range(node->as_Method()->range());
   }
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels) {
@@ -263,7 +283,7 @@ void GotoDefinitionHandler::return_label(ast::Node* node, int label_index, const
     auto from = labels[label_index].second->range().from();
     _print_range(Source::Range(from, from));
   }
-  exit(0);
+  terminate();
 }
 
 void GotoDefinitionHandler::toitdoc_ref(ast::Node* node,
@@ -273,21 +293,29 @@ void GotoDefinitionHandler::toitdoc_ref(ast::Node* node,
   // We are ok with resolving to many nodes (even ambiguous ones).
   // This will help the user to figure out why they have an error.
   _print_all(candidates);
-  exit(0);
+  terminate();
 }
 
-void GotoDefinitionHandler::import_path(const char* resolved, LspProtocol* protocol) {
+void GotoDefinitionHandler::import_path(const char* path,
+                                        const char* segment,
+                                        bool is_first_segment,
+                                        const char* resolved,
+                                        const Package& current_package,
+                                        const PackageLock& package_lock,
+                                        Filesystem* fs) {
   if (resolved != null) {
-    auto import_range = LspRange {
+    auto import_range = LspLocation {
       .path = resolved,
-      .from_line = 0,
-      .from_column= 0,
-      .to_line= 0,
-      .to_column = 0,
+      .range = {
+        .from_line = 0,
+        .from_column= 0,
+        .to_line= 0,
+        .to_column = 0,
+      },
     };
-    protocol->goto_definition()->emit(import_range);
+    protocol()->goto_definition()->emit(import_range);
   }
-  exit(0);
+  terminate();
 }
 
 } // namespace toit::compiler

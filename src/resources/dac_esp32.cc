@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2)
+#if defined(TOIT_ESP32) && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2)
 
 #include <driver/gpio.h>
 #include <driver/dac.h>
@@ -146,10 +146,10 @@ MODULE_IMPLEMENTATION(dac, MODULE_DAC)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   DacResourceGroup* touch = _new DacResourceGroup(process);
-  if (!touch) MALLOC_FAILED;
+  if (!touch) FAIL(MALLOC_FAILED);
 
   proxy->set_external_address(touch);
   return proxy;
@@ -159,13 +159,13 @@ PRIMITIVE(use) {
   ARGS(DacResourceGroup, group, int, pin, uint8, initial_value);
 
   dac_channel_t channel = get_dac_channel(pin);
-  if (channel == kInvalidChannel) INVALID_ARGUMENT;
+  if (channel == kInvalidChannel) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   DacResource* resource = _new DacResource(group, channel);
-  if (resource == null) MALLOC_FAILED;
+  if (resource == null) FAIL(MALLOC_FAILED);
 
   esp_err_t err = dac_output_voltage(channel, initial_value);
   if (err != ESP_OK) {
@@ -191,7 +191,7 @@ PRIMITIVE(unuse) {
   resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(set) {
@@ -204,16 +204,16 @@ PRIMITIVE(set) {
   err = dac_output_voltage(channel, dac_value);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(cosine_wave) {
   ARGS(DacResource, resource, int, scale, int, phase, uint32, freq, int8, offset);
   dac_channel_t channel = resource->channel();
 
-  if (scale < DAC_CW_SCALE_1 || scale > DAC_CW_SCALE_8) INVALID_ARGUMENT;
-  if (phase != DAC_CW_PHASE_0 && phase != DAC_CW_PHASE_180) INVALID_ARGUMENT;
-  if (freq < kDacMinFrequency || freq > kDacMaxFrequency) INVALID_ARGUMENT;
+  if (scale < DAC_CW_SCALE_1 || scale > DAC_CW_SCALE_8) FAIL(INVALID_ARGUMENT);
+  if (phase != DAC_CW_PHASE_0 && phase != DAC_CW_PHASE_180) FAIL(INVALID_ARGUMENT);
+  if (freq < kDacMinFrequency || freq > kDacMaxFrequency) FAIL(INVALID_ARGUMENT);
 
   dac_cw_config_t cw_config {
     .en_ch = channel,
@@ -228,9 +228,9 @@ PRIMITIVE(cosine_wave) {
   err = resource->use_cosine();
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2)
+#endif // TOIT_ESP32 && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2)

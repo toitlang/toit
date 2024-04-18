@@ -1,0 +1,7 @@
+tests/negative/missing-setting-test.toit:8:18: error: Couldn't find field for field-storing parameter 'y'
+  constructor .x .y .z:
+                 ^~
+tests/negative/missing-setting-test.toit:8:21: error: Couldn't find field for field-storing parameter 'z'
+  constructor .x .y .z:
+                    ^~
+Compilation failed

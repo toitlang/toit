@@ -34,57 +34,59 @@ namespace toit {
   ROOT(Instance,   out_of_memory_error)      \
   ROOT(String,     app_sdk_version)          \
   ROOT(String,     app_sdk_info)             \
-  \
-  ROOT(String,     allocation_failed)        \
-  ROOT(String,     allocation_size_exceeded) \
-  ROOT(String,     already_closed)           \
-  ROOT(String,     already_exists)           \
-  ROOT(String,     division_by_zero)         \
-  ROOT(String,     error)                    \
-  ROOT(String,     file_not_found)           \
-  ROOT(String,     hardware_error)           \
-  ROOT(String,     illegal_utf_8)            \
-  ROOT(String,     invalid_argument)         \
-  ROOT(String,     malloc_failed)            \
-  ROOT(String,     cross_process_gc)         \
-  ROOT(String,     negative_argument)        \
-  ROOT(String,     out_of_bounds)            \
-  ROOT(String,     out_of_range)             \
-  ROOT(String,     already_in_use)           \
-  ROOT(String,     overflow)                 \
-  ROOT(String,     privileged_primitive)     \
-  ROOT(String,     permission_denied)        \
-  ROOT(String,     quota_exceeded)           \
-  ROOT(String,     read_failed)              \
-  ROOT(String,     stack_overflow)           \
-  ROOT(String,     unimplemented)            \
-  ROOT(String,     wrong_object_type)        \
-  ROOT(String,     invalid_signature)        \
 
+#define ERROR_STRINGS(ERROR_STRING)                                 \
+  ERROR_STRING(allocation_failed, ALLOCATION_FAILED)                \
+  ERROR_STRING(allocation_size_exceeded, ALLOCATION_SIZE_EXCEEDED)  \
+  ERROR_STRING(already_closed, ALREADY_CLOSED)                      \
+  ERROR_STRING(already_exists, ALREADY_EXISTS)                      \
+  ERROR_STRING(division_by_zero, DIVISION_BY_ZERO)                  \
+  ERROR_STRING(error, ERROR)                                        \
+  ERROR_STRING(file_not_found, FILE_NOT_FOUND)                      \
+  ERROR_STRING(hardware_error, HARDWARE_ERROR)                      \
+  ERROR_STRING(illegal_utf_8, ILLEGAL_UTF_8)                        \
+  ERROR_STRING(invalid_argument, INVALID_ARGUMENT)                  \
+  ERROR_STRING(malloc_failed, MALLOC_FAILED)                        \
+  ERROR_STRING(cross_process_gc, CROSS_PROCESS_GC)                  \
+  ERROR_STRING(negative_argument, NEGATIVE_ARGUMENT)                \
+  ERROR_STRING(out_of_bounds, OUT_OF_BOUNDS)                        \
+  ERROR_STRING(out_of_range, OUT_OF_RANGE)                          \
+  ERROR_STRING(already_in_use, ALREADY_IN_USE)                      \
+  ERROR_STRING(overflow, OVERFLOW)                                  \
+  ERROR_STRING(privileged_primitive, PRIVILEGED_PRIMITIVE)          \
+  ERROR_STRING(permission_denied, PERMISSION_DENIED)                \
+  ERROR_STRING(quota_exceeded, QUOTA_EXCEEDED)                      \
+  ERROR_STRING(read_failed, READ_FAILED)                            \
+  ERROR_STRING(stack_overflow, STACK_OVERFLOW)                      \
+  ERROR_STRING(unimplemented, UNIMPLEMENTED)                        \
+  ERROR_STRING(wrong_object_type, WRONG_OBJECT_TYPE)                \
+  ERROR_STRING(wrong_bytes_type, WRONG_BYTES_TYPE)                  \
+  ERROR_STRING(invalid_signature, INVALID_SIGNATURE)                \
 
-#define BUILTIN_CLASS_IDS(ID)    \
-  ID(string_class_id)            \
-  ID(array_class_id)             \
-  ID(byte_array_class_id)        \
-  ID(byte_array_cow_class_id)    \
-  ID(byte_array_slice_class_id)  \
-  ID(string_slice_class_id)      \
-  ID(list_class_id)              \
-  ID(list_slice_class_id)        \
-  ID(map_class_id)               \
-  ID(tombstone_class_id)         \
-  ID(stack_class_id)             \
-  ID(null_class_id)              \
-  ID(true_class_id)              \
-  ID(false_class_id)             \
-  ID(object_class_id)            \
-  ID(double_class_id)            \
-  ID(large_integer_class_id)     \
-  ID(smi_class_id)               \
-  ID(task_class_id)              \
-  ID(large_array_class_id)       \
-  ID(lazy_initializer_class_id)  \
-  ID(exception_class_id)         \
+#define BUILTIN_CLASS_IDS(ID)     \
+  ID(string_class_id)             \
+  ID(array_class_id)              \
+  ID(byte_array_class_id)         \
+  ID(byte_array_cow_class_id)     \
+  ID(byte_array_slice_class_id)   \
+  ID(string_slice_class_id)       \
+  ID(string_byte_slice_class_id)  \
+  ID(list_class_id)               \
+  ID(list_slice_class_id)         \
+  ID(map_class_id)                \
+  ID(tombstone_class_id)          \
+  ID(stack_class_id)              \
+  ID(null_class_id)               \
+  ID(true_class_id)               \
+  ID(false_class_id)              \
+  ID(object_class_id)             \
+  ID(double_class_id)             \
+  ID(large_integer_class_id)      \
+  ID(smi_class_id)                \
+  ID(task_class_id)               \
+  ID(large_array_class_id)        \
+  ID(lazy_initializer_class_id)   \
+  ID(exception_class_id)          \
 
 static const int FREE_LIST_REGION_CLASS_ID = -1;
 static const int SINGLE_FREE_WORD_CLASS_ID = -2;
@@ -96,11 +98,14 @@ class Program : public FlashAllocation {
   Program(const uint8* id, int size);
 
   #define DECLARE_ROOT(type, name) name##_INDEX,
+  #define DECLARE_ERROR(name, upper_name) upper_name##_INDEX,
   enum {
     PROGRAM_ROOTS(DECLARE_ROOT)
+    ERROR_STRINGS(DECLARE_ERROR)
     ROOT_COUNT
   };
   #undef DECLARE_ROOT
+  #undef DECLARE_ERROR
 
   #define DECLARE_BUILTIN_CLASS_IDS(name) name##_INDEX,
   enum {
@@ -119,8 +124,11 @@ class Program : public FlashAllocation {
   Object* root(int index) const { ASSERT(index >= 0 && index < ROOT_COUNT); return roots_[index]; }
 
   #define DECLARE_ROOT_ACCESSOR(type, name) type* name() const { return static_cast<type*>(roots_[name##_INDEX]); }
+  #define DECLARE_ERROR_ACCESSOR(name, upper_name) String* name() const { return static_cast<String*>(roots_[upper_name##_INDEX]); }
   PROGRAM_ROOTS(DECLARE_ROOT_ACCESSOR)
+  ERROR_STRINGS(DECLARE_ERROR_ACCESSOR)
   #undef DECLARE_ROOT_ACCESSOR
+  #undef DECLARE_ERROR_ACCESSOR
 
   #define DECLARE_ENTRY_POINT_ACCESSOR(name, lib_name, arity) Method name() { \
     int dispatch_index = entry_point_indexes_[name##_INDEX]; \
@@ -142,11 +150,11 @@ class Program : public FlashAllocation {
   inline Method find_method(Object* receiver, int offset);
 
   static const int CLASS_TAG_MASK = (1 << HeapObject::CLASS_TAG_BIT_SIZE) - 1;
-  static const int INSTANCE_SIZE_BIT_SIZE = 16 - HeapObject::CLASS_TAG_BIT_SIZE;
+  static const int INSTANCE_SIZE_BIT_SIZE = 16 - HeapObject::CLASS_ID_OFFSET;
   static const int INSTANCE_SIZE_MASK = (1 << INSTANCE_SIZE_BIT_SIZE) - 1;
 
   inline TypeTag class_tag_for(Smi* class_id) {
-    return class_tag_from_class_bits(class_bits[class_id->value()]);
+    return class_tag_from_class_bits(class_bits[Smi::value(class_id)]);
   }
 
   static inline TypeTag class_tag_from_class_bits(int class_bits) {
@@ -154,24 +162,26 @@ class Program : public FlashAllocation {
   }
 
   inline int instance_fields_for(Smi* class_id) {
-    return Instance::fields_from_size(instance_size_for(class_id));
+    return Instance::fields_from_size(allocation_instance_size_for(class_id));
   }
 
-  inline int instance_size_for(Smi* class_id) {
-    word value = class_id->value();
+  inline int allocation_instance_size_for(Smi* class_id) {
+    word value = Smi::value(class_id);
+    ASSERT(value >= 0);
+    return instance_size_from_class_bits(class_bits[value]);
+  }
+
+  static inline int instance_size_from_class_bits(int class_bits) {
+    return ((class_bits >> HeapObject::CLASS_ID_OFFSET) & INSTANCE_SIZE_MASK) * WORD_SIZE;
+  }
+
+  int instance_size_for(const HeapObject* object) {
+    word value = Smi::value(object->class_id());
     if (value < 0) {
       if (value == SINGLE_FREE_WORD_CLASS_ID) return sizeof(word);
       return 0;  // Variable sized object - free-list region or promoted track.
     }
     return instance_size_from_class_bits(class_bits[value]);
-  }
-
-  static inline int instance_size_from_class_bits(int class_bits) {
-    return ((class_bits >> HeapObject::CLASS_TAG_BIT_SIZE) & INSTANCE_SIZE_MASK) * WORD_SIZE;
-  }
-
-  int instance_size_for(HeapObject* object) {
-    return instance_size_for(object->class_id());
   }
 
 #ifndef TOIT_FREERTOS
@@ -205,7 +215,7 @@ class Program : public FlashAllocation {
   }
 
   int invoke_bytecode_offset(Opcode opcode) const {
-    ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_AT_PUT);
+    ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_SIZE);
     return invoke_bytecode_offsets_[opcode - INVOKE_EQ];
   }
 
@@ -272,6 +282,10 @@ class Program : public FlashAllocation {
     friend class Program;
   };
 
+  bool is_valid_bcp(uint8* bcp) const {
+    return bytecodes.data() <= bcp && bcp < bytecodes.data() + bytecodes.length();
+  }
+
   int absolute_bci_from_bcp(uint8* bcp) const;
   uint8* bcp_from_absolute_bci(int absolute_bci) { return &bytecodes.data()[absolute_bci]; }
 
@@ -305,7 +319,7 @@ class Program : public FlashAllocation {
   uint8 snapshot_uuid_[UUID_SIZE];
   word global_max_stack_height_;         // Maximum stack height for all methods.
 
-  static const int INVOKE_BYTECODE_COUNT = INVOKE_AT_PUT - INVOKE_EQ + 1;
+  static const int INVOKE_BYTECODE_COUNT = INVOKE_SIZE - INVOKE_EQ + 1;
   int invoke_bytecode_offsets_[INVOKE_BYTECODE_COUNT];
 
   static uint16 compute_class_bits(TypeTag tag, int instance_byte_size) {
@@ -313,11 +327,11 @@ class Program : public FlashAllocation {
     ASSERT(Utils::is_aligned(instance_byte_size, WORD_SIZE));
     instance_byte_size = instance_byte_size / WORD_SIZE;
     if (instance_byte_size > INSTANCE_SIZE_MASK) FATAL("Invalid instance size");
-    return (instance_byte_size << HeapObject::CLASS_TAG_BIT_SIZE) | tag;
+    return (instance_byte_size << HeapObject::CLASS_ID_OFFSET) | tag;
   }
 
   void set_invoke_bytecode_offset(Opcode opcode, int offset) {
-    ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_AT_PUT);
+    ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_SIZE);
     invoke_bytecode_offsets_[opcode - INVOKE_EQ] = offset;
   }
 
@@ -331,8 +345,11 @@ class Program : public FlashAllocation {
 
   Object* roots_[ROOT_COUNT];
   #define DECLARE_ROOT(type, name) void set_##name(type* v) { roots_[name##_INDEX] = v; }
+  #define DECLARE_ERROR(name, upper_name) void set_##name(String* v) { roots_[upper_name##_INDEX] = v; }
   PROGRAM_ROOTS(DECLARE_ROOT)
+  ERROR_STRINGS(DECLARE_ERROR)
   #undef DECLARE_ROOT
+  #undef DECLARE_ERROR
 
   Smi* _builtin_class_ids[BUILTIN_CLASS_IDS_COUNT];
   #define DECLARE_CLASS_ID_ROOT(name) void set_##name(Smi* v) { _builtin_class_ids[name##_INDEX] = v; }

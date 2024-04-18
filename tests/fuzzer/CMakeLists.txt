@@ -13,7 +13,7 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-file(GLOB TOIT_FUZZER_LIB_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "../*_test.toit")
+file(GLOB TOIT_FUZZER_LIB_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "../*-test.toit")
 
 add_custom_target(
   check_fuzzer_lib

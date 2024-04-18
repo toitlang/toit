@@ -320,6 +320,7 @@ class DispatchTableBuilder : public TraversingVisitor {
   List<Method*> dispatch_table_;
 
   void handle_methods(List<Method*> methods);
+
   // Returns the amount of instantiated classes.
   int assign_class_ids(List<Class*> classes);
 
@@ -341,7 +342,6 @@ void DispatchTableBuilder::handle_methods(List<Method*> methods) {
       if (method_index == methods.length()) break;
     }
   }
-  ASSERT(method_index == methods.length());
 }
 
 int DispatchTableBuilder::assign_class_ids(List<Class*> classes) {
@@ -354,7 +354,13 @@ int DispatchTableBuilder::assign_class_ids(List<Class*> classes) {
   int uninstantiated_id = classes.length() - 1;
   for (int i = classes.length() - 1; i >= 0; i--) {
     auto klass = classes[i];
-    if (klass->end_id() == -1) {
+    if (klass->is_mixin()) {
+      klass->set_id(uninstantiated_id);
+      // The start and end IDs don't really matter for mixins.
+      klass->set_start_id(uninstantiated_id);
+      if (klass->end_id() == -1) klass->set_end_id(uninstantiated_id + 1);
+      uninstantiated_id--;
+    } else if (klass->end_id() == -1) {
       // No subclass.
       ASSERT(klass->is_instantiated());  // Otherwise we would have shaken the class.
       ASSERT(i == classes.length() - 1 || classes[i + 1]->super() != klass);
@@ -393,11 +399,12 @@ void DispatchTableBuilder::handle_classes(List<Class*> classes, int static_metho
   // subclasses before superclasses.
   for (int i = classes.length() - 1; i >= 0; i--) {
     auto holder = classes[i];
+    if (holder->is_mixin()) continue;
 
     for (auto method : holder->methods()) {
       ASSERT(!method->is_dead());
       DispatchSelector selector(method->name(), method->plain_shape());
-      if (!method->is_IsInterfaceStub() && !selectors_.contains(selector)) continue;
+      if (!method->is_IsInterfaceOrMixinStub() && !selectors_.contains(selector)) continue;
       fitter.define(selector, holder, method);
     }
   }
@@ -434,6 +441,8 @@ void DispatchTableBuilder::handle_classes(List<Class*> classes, int static_metho
   // holder classes, the methods that aren't in the table yet are those always
   // called through static calls because of our optimizations that turn
   // virtual calls into static ones.
+  // Similarly, mixins are a combination of both: they are not instantiated, and
+  // all calls to them are static calls.
   int table_index = 0;
   int extra_method_count = 0;
   for (auto klass : classes) {

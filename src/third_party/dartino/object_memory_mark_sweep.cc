@@ -44,6 +44,9 @@ void OldSpace::flush() {
 }
 
 bool OldSpace::is_alive(HeapObject* old_location) {
+  // Objects like null are in the program space and live forever.
+  if (!GcMetadata::in_new_or_old_space(old_location)) return true;
+
   // We can't assert that the object is in old-space, because
   // at the end of a mark-sweep the new-space objects are also
   // marked and can be checked for liveness.  The finalizers
@@ -52,6 +55,10 @@ bool OldSpace::is_alive(HeapObject* old_location) {
   // they will remain (untouched) in the new-space until the
   // next scavenge.
   return GcMetadata::is_marked(old_location);
+}
+
+bool OldSpace::has_active_finalizer(HeapObject* old_location) {
+  return old_location->has_active_finalizer();
 }
 
 void OldSpace::use_whole_chunk(Chunk* chunk) {
@@ -89,24 +96,22 @@ uword OldSpace::allocate_in_new_chunk(uword size) {
   // Allocate new chunk.  After a certain heap size we start allocating
   // multi-page chunks to improve fragmentation.
   int tracking_size = tracking_allocations_ ? 0 : PromotedTrack::header_size();
-  uword max_expansion = heap_->max_external_allocation();
-  uword smallest_chunk_size = Utils::round_down(Utils::min(get_default_chunk_size(used()), max_expansion), TOIT_PAGE_SIZE);
-  uword min_space_needed = size + tracking_size + WORD_SIZE;  // Make room for sentinel.
-  // Toit uses arraylets and external objects, so all objects should fit on a page.
-  ASSERT(min_space_needed <= TOIT_PAGE_SIZE);
-  uword chunk_size = Utils::round_up(Utils::max(min_space_needed, smallest_chunk_size), TOIT_PAGE_SIZE);
+  word max_expansion_signed = heap_->max_external_allocation();
+  if (max_expansion_signed > 0) {
+    uword max_expansion = max_expansion_signed;
+    uword smallest_chunk_size = Utils::round_down(Utils::min(get_default_chunk_size(used()), max_expansion), TOIT_PAGE_SIZE);
+    uword min_space_needed = size + tracking_size + WORD_SIZE;  // Make room for sentinel.
+    // Toit uses arraylets and external objects, so all objects should fit on a page.
+    ASSERT(min_space_needed <= TOIT_PAGE_SIZE);
+    uword chunk_size = Utils::round_up(Utils::max(min_space_needed, smallest_chunk_size), TOIT_PAGE_SIZE);
 
-  if (chunk_size <= max_expansion) {
-    Chunk* chunk = allocate_and_use_chunk(chunk_size);
-    while (chunk == null && chunk_size > TOIT_PAGE_SIZE && chunk_size >= min_space_needed) {
-      // If we fail to get a multi-page chunk, try for a smaller chunk.
-      chunk_size = Utils::round_up(chunk_size >> 1, TOIT_PAGE_SIZE);
-      chunk = allocate_and_use_chunk(chunk_size);
-    }
-    if (chunk != null) {
-      return allocate(size);
-    } else {
-      heap_->report_malloc_failed();
+    if (chunk_size <= max_expansion) {
+      Chunk* chunk = allocate_and_use_chunk(chunk_size);
+      if (chunk != null) {
+        return allocate(size);
+      } else {
+        heap_->report_malloc_failed();
+      }
     }
   }
 
@@ -367,7 +372,7 @@ bool OldSpace::complete_scavenge(
     if (traverse != end) {
       found_work = true;
     }
-    for (HeapObject *obj = HeapObject::from_address(traverse); traverse != end;
+    for (HeapObject* obj = HeapObject::from_address(traverse); traverse != end;
          traverse += obj->size(program_), obj = HeapObject::from_address(traverse)) {
       visitor->set_record_new_space_pointers(GcMetadata::remembered_set_for(obj));
       obj->roots_do(program_, visitor);
@@ -496,7 +501,7 @@ uword OldSpace::sweep() {
   // Clear the free list. It will be rebuilt during sweeping.
   free_list_.clear();
   uword used = 0;
-  const word SINGLE_FREE_WORD = -44;
+  const word SINGLE_FREE_WORD = -108;
   ASSERT(reinterpret_cast<Object*>(SINGLE_FREE_WORD) == FreeListRegion::single_free_word_header());
   chunk_list_.remove_wherever([&](Chunk* chunk) -> bool {
     uword line = chunk->start();
@@ -689,8 +694,8 @@ void OldSpace::validate() {
 void MarkingStack::empty(RootCallback* visitor) {
   while (!is_empty()) {
     HeapObject* object = *--next_;
+    object->roots_do(program_, visitor);  // Changes size of stacks!
     GcMetadata::mark_all(object, object->size(program_));
-    object->roots_do(program_, visitor);
   }
 }
 

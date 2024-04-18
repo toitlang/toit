@@ -17,7 +17,7 @@
 
 #include "top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 namespace toit {
 
@@ -26,6 +26,9 @@ class RtcMemory {
  public:
   // Run at program startup (after FreeRTOS is initialized).
   static void set_up();
+
+  // Force clearing of the RTC memory on next boot.
+  static void invalidate();
 
   // Event registration.
   static void on_out_of_memory();
@@ -52,4 +55,4 @@ class RtcMemory {
 
 } // namespace toit
 
-#endif  // TOIT_FREERTOS
+#endif  // TOIT_ESP32

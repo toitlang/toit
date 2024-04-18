@@ -23,6 +23,23 @@
 
 namespace toit {
 
+// Karl Malbrain's compact CRC-32. See "A compact CCITT crc16 and crc32 C implementation that balances processor
+// cache usage against speed": http://www.geocities.com/malbrain/.
+uint32 Utils::crc32(uint32 crc, const uint8* ptr, size_t length) {
+  static const uint32 s_crc32[16] = {
+      0x00000000, 0x1db71064, 0x3b6e20c8, 0x26d930ac, 0x76dc4190, 0x6b6b51f4, 0x4db26158, 0x5005713c,
+      0xedb88320, 0xf00f9344, 0xd6d6a3e8, 0xcb61b38c, 0x9b64c2b0, 0x86d3d2d4, 0xa00ae278, 0xbdbdf21c
+  };
+  uint32 crcu32 = crc;
+  crcu32 = ~crcu32;
+  while (length--) {
+    uint8 b = *ptr++;
+    crcu32 = (crcu32 >> 4) ^ s_crc32[(crcu32 & 0xF) ^ (b & 0xF)];
+    crcu32 = (crcu32 >> 4) ^ s_crc32[(crcu32 & 0xF) ^ (b >> 4)];
+  }
+  return ~crcu32;
+}
+
 #ifdef BUILD_64
 
 /**
@@ -490,7 +507,7 @@ uint16* Utils::create_new_environment(Process* process, uint16* previous_environ
     // mentioned in the new environment map, add the new variables.
     for (int i = 0; i < environment->length(); i += 2) {
       Blob key;
-      if (environment->at(i + 1) != process->program()->null_object()) {
+      if (environment->at(i + 1) != process->null_object()) {
         Blob key, value;
         environment->at(i    )->byte_content(process->program(), &key, STRINGS_ONLY);
         environment->at(i + 1)->byte_content(process->program(), &value, STRINGS_ONLY);
@@ -626,7 +643,7 @@ void Base64Encoder::finish(const std::function<void (uint8 out_byte)>& f) {
 void iram_safe_char_memcpy(char* dst, const char* src, size_t bytes) {
   ASSERT((bytes & 3) == 0);
   ASSERT(((uintptr_t)src & 3) == 0);
-#if defined(TOIT_FREERTOS) && !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S2)
+#if defined(TOIT_ESP32) && !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S2)
   uint32_t tmp;
   __asm__ __volatile__(
     "srai %3, %3, 2   \n"  // Divide bytes by 4.

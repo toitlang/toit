@@ -209,7 +209,7 @@ class SimpleResourceAllocationManager {
   T* ptr_;
 };
 
-// Each EventSourceManger subclass is a singleton that is used by all processes
+// Each EventSourceManager subclass is a singleton that is used by all processes
 // to handle waiting for some OS-level events.  For example on Linux there is
 // an EpollEventSource that waits for file descriptor events using epoll.
 // Typically an EventSourceManager has/is a thread that it uses to do its

@@ -158,6 +158,18 @@ class OS {
   static int64 get_monotonic_time();
   static void reset_monotonic_time();
 
+  /// Computes the executable path.
+  ///
+  /// Returns a malloced data structure that should be freed
+  ///   by the caller with `delete []`.
+  static char* get_executable_path();
+
+  /// Computes the executable path of a source argument.
+  /// This is equivalent to calling `realpath`/`GetFullPathName` on the argument.
+  /// Returns 'null' if anything goes wrong.
+  /// Returns a malloced data structure that should be freed.
+  static char* get_executable_path_from_arg(const char* source_arg);
+
   // Returns the number of microseconds from the last power-on event. This time
   // source is monotonic.
   static int64 get_system_time();
@@ -172,7 +184,8 @@ class OS {
   static void out_of_memory(const char* reason);
 
   static Mutex* global_mutex() { return global_mutex_; }
-  static Mutex* scheduler_mutex() { return scheduler_mutex_; }
+  static Mutex* tls_mutex() { return tls_mutex_; }
+  static Mutex* process_mutex() { return process_mutex_; }
   static Mutex* resource_mutex() { return resource_mutex_; }
 
   // Mutex (used with Locker).
@@ -232,6 +245,7 @@ class OS {
   static void set_up();
   static void tear_down();
   static const char* get_platform();
+  static const char* get_architecture();
 
   static int read_entire_file(char* name, uint8** buffer);
 
@@ -239,7 +253,7 @@ class OS {
   // the origin of allocations on the current thread.
   static void set_heap_tag(word tag);
   static word get_heap_tag();
-  static void heap_summary_report(int max_pages, const char* marker);
+  static void heap_summary_report(int max_pages, const char* marker, Process* process);
 
   // Returns a malloced string.
   static char* getenv(const char* variable);
@@ -247,7 +261,7 @@ class OS {
   static bool setenv(const char* variable, const char* value);
   static bool unsetenv(const char* variable);
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
   static bool use_spiram_for_heap() { return use_spiram_for_heap_; }
   static bool use_spiram_for_metadata() { return use_spiram_for_metadata_; }
   static int toit_heap_caps_flags_for_heap();
@@ -257,15 +271,19 @@ class OS {
 #endif
 
  private:
+  static void set_up_mutexes();
+  static void tear_down_mutexes();
+
   static bool monotonic_gettime(int64* timestamp);
   static void timespec_increment(timespec* ts, int64 ns);
 
   static Mutex* global_mutex_;
-  static Mutex* scheduler_mutex_;
+  static Mutex* tls_mutex_;
+  static Mutex* process_mutex_;
   static Mutex* resource_mutex_;
   static HeapMemoryRange single_range_;
   static int cpu_revision_;
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
   static bool use_spiram_for_heap_;
   static bool use_spiram_for_metadata_;
 #endif

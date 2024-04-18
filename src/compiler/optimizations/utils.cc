@@ -26,7 +26,6 @@ namespace compiler {
 using namespace ir;
 
 bool is_This(Node* node, Class* holder, Method* method) {
-  if (holder != method->holder()) return false;
   if (holder == null) return false;
   if (!(method->is_instance() || method->is_constructor())) return false;
   if (!node->is_ReferenceLocal()) return false;

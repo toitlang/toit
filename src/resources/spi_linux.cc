@@ -27,7 +27,7 @@
 
 namespace toit {
 
-// Defined in primitive_file_posix.cc.
+// Defined in primitive_file_non_win.cc.
 extern Object* return_open_error(Process* process, int err);
 
 MODULE_IMPLEMENTATION(spi_linux, MODULE_SPI_LINUX);
@@ -44,16 +44,16 @@ PRIMITIVE(open) {
 PRIMITIVE(transfer) {
   ARGS(int, fd, int, length, Object, tx, int, from_tx, Object, rx, int, from_rx, int, delay_usecs, bool, cs_change);
 
-  Object* null_object = process->program()->null_object();
-  if (length <= 0 || delay_usecs < 0 || delay_usecs > 0xffff) OUT_OF_BOUNDS;
-  if (fd < 0) INVALID_ARGUMENT;
+  Object* null_object = process->null_object();
+  if (length <= 0 || delay_usecs < 0 || delay_usecs > 0xffff) FAIL(OUT_OF_BOUNDS);
+  if (fd < 0) FAIL(INVALID_ARGUMENT);
 
   const uint8* tx_address = null;
   if (tx != null_object) {
     Blob tx_blob;
-    if (!tx->byte_content(process->program(), &tx_blob, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+    if (!tx->byte_content(process->program(), &tx_blob, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
     int to_tx = from_tx + length;
-    if (from_tx < 0 || to_tx > tx_blob.length()) OUT_OF_BOUNDS;
+    if (from_tx < 0 || to_tx > tx_blob.length()) FAIL(OUT_OF_BOUNDS);
     tx_address = tx_blob.address() + from_tx;
   }
 
@@ -65,11 +65,11 @@ PRIMITIVE(transfer) {
       return error;
     }
     int to_rx = from_rx + length;
-    if (from_rx < 0 || to_rx > rx_blob.length()) OUT_OF_BOUNDS;
+    if (from_rx < 0 || to_rx > rx_blob.length()) FAIL(OUT_OF_BOUNDS);
     rx_address = rx_blob.address() + from_rx;
   }
 
-  if (tx_address == null && rx_address == null) INVALID_ARGUMENT;
+  if (tx_address == null && rx_address == null) FAIL(INVALID_ARGUMENT);
 
   struct spi_ioc_transfer xfer;
   memset(&xfer, 0, sizeof(xfer));

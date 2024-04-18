@@ -5,44 +5,46 @@
 // The standard BLE peripheral demo for simulating a heart rate monitor.
 
 import ble show *
+import system
+import system show platform
 import uuid show Uuid
 
-GATT_IO_UUID ::= #[0x18, 0x25]
+GATT-IO-UUID ::= #[0x18, 0x25]
 
 main:
   adapter := Adapter
   peripheral := adapter.peripheral
 
-  service := peripheral.add_service
-      BleUuid GATT_IO_UUID
+  service := peripheral.add-service
+      BleUuid GATT-IO-UUID
 
   /* Characteristic: SEND DATA */
-  heart_rate_send := service.add_notification_characteristic
+  heart-rate-send := service.add-notification-characteristic
       BleUuid #[0x63, 0x4b, 0x3c, 0x6e, 0xac, 0x41, 0x40, 0x85,
                 0xa9, 0x7c, 0xdd, 0x68, 0x7f, 0xa1, 0xe5, 0x0d]
 
   /* Characteristic: RECEIVE DATA */
-  heart_rate_receive := service.add_write_only_characteristic
+  heart-rate-receive := service.add-write-only-characteristic
       BleUuid #[0x63, 0x4b, 0x3c, 0x6e, 0x1c, 0x41, 0x40, 0x85,
                 0xa9, 0x7c, 0xdd, 0x68, 0x7f, 0xa1, 0xe5, 0x0d]
 
   service.deploy
 
-  connection_mode := platform == PLATFORM_MACOS
-    ? BLE_CONNECT_MODE_NONE
-    : BLE_CONNECT_MODE_UNDIRECTIONAL
-  peripheral.start_advertise
+  connection-mode := platform == system.PLATFORM-MACOS
+    ? BLE-CONNECT-MODE-NONE
+    : BLE-CONNECT-MODE-UNDIRECTIONAL
+  peripheral.start-advertise
     AdvertisementData --name="Toit heart rate demo"
-    --connection_mode=connection_mode
+    --connection-mode=connection-mode
 
   task::
-    simulated_heart_rate := 60
+    simulated-heart-rate := 60
     while true:
       sleep --ms=500
-      heart_rate_send.write #[0x06, simulated_heart_rate]
-      simulated_heart_rate++
-      if simulated_heart_rate == 130: simulated_heart_rate = 60
+      heart-rate-send.write #[0x06, simulated-heart-rate]
+      simulated-heart-rate++
+      if simulated-heart-rate == 130: simulated-heart-rate = 60
 
   while true:
     print
-      "Heart rate app received data $(heart_rate_receive.read)"
+      "Heart rate app received data $(heart-rate-receive.read)"

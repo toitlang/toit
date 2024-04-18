@@ -1,0 +1,6 @@
+tests/negative/named2-test.toit:19:5: error: Argument mismatch for 'A.bar'
+Required named argument '--expected' not provided
+  a.bar 3
+    ^~~
+Argument mismatch for 'A.bar'.
+  0: main                      tests/negative/named2-test.toit:19:5

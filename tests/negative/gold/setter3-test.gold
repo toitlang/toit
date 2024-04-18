@@ -1,0 +1,4 @@
+EXCEPTION error. 
+ok
+  0: A.foo=                    tests/negative/setter3-test.toit:7:5
+  1: main                      tests/negative/setter3-test.toit:12:9

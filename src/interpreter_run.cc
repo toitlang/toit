@@ -35,13 +35,21 @@
 
 namespace toit {
 
-inline bool are_smis(Object* a, Object* b) {
+inline bool Interpreter::are_smis(Object* a, Object* b) {
   uword bits = reinterpret_cast<uword>(a) | reinterpret_cast<uword>(b);
   bool result = is_smi(reinterpret_cast<Object*>(bits));
   // The or-trick only works if smis are tagged with a zero-bit.
   // The following ASSERT makes sure we catch any change to this scheme.
   ASSERT(!result || (is_smi(a) && is_smi(b)));
   return result;
+}
+
+inline bool Interpreter::are_floats(Object* a, Object* b) {
+  uword bits = reinterpret_cast<uword>(a) & reinterpret_cast<uword>(b);
+  bool has_smi = is_smi(reinterpret_cast<Object*>(bits));
+  if (has_smi) return false;
+  return HeapObject::cast(a)->has_class_tag(DOUBLE_TAG) &&
+         HeapObject::cast(b)->has_class_tag(DOUBLE_TAG);
 }
 
 inline bool Interpreter::is_true_value(Program* program, Object* value) const {
@@ -61,7 +69,7 @@ inline bool Interpreter::typecheck_class(Program* program,
     Smi* class_id = is_smi(value)
         ? program->smi_class_id()
         : HeapObject::cast(value)->class_id();
-    int value_class_id = class_id->value();
+    int value_class_id = Smi::value(class_id);
     int start_id = program->class_check_ids[2 * class_index];
     int end_id = program->class_check_ids[2 * class_index + 1];
     return start_id <= value_class_id && value_class_id < end_id;
@@ -80,7 +88,7 @@ inline bool Interpreter::typecheck_interface(Program* program,
 
 Method Program::find_method(Object* receiver, int offset) {
   Smi* class_id = is_smi(receiver) ? smi_class_id() : HeapObject::cast(receiver)->class_id();
-  int index = class_id->value() + offset;
+  int index = Smi::value(class_id) + offset;
   int entry_id = dispatch_table[index];
   if (entry_id == -1) return Method::invalid();
   Method entry(bytecodes, entry_id);
@@ -215,7 +223,7 @@ inline word mul(word a, word b) { return a * b; }
 
 // Returns false if not smis or overflow.
 inline bool intrinsic_add(Object* a, Object* b, Smi** result) {
-  return are_smis(a, b) &&
+  return Interpreter::are_smis(a, b) &&
 #ifdef BUILD_32
     !__builtin_sadd_overflow((word) a, (word) b, (word*) result);
 #elif BUILD_64
@@ -225,7 +233,7 @@ inline bool intrinsic_add(Object* a, Object* b, Smi** result) {
 
 // Returns false if not smis or overflow.
 inline bool intrinsic_sub(Object* a, Object* b, Smi** result) {
-  return are_smis(a, b) &&
+  return Interpreter::are_smis(a, b) &&
 #ifdef BUILD_32
     !__builtin_ssub_overflow((word) a, (word) b, (word*) result);
 #elif BUILD_64
@@ -235,7 +243,7 @@ inline bool intrinsic_sub(Object* a, Object* b, Smi** result) {
 
 // Returns false if not smis or overflow.
 inline bool intrinsic_mul(Object* a, Object* b, Smi** result) {
-  return are_smis(a, b) &&
+  return Interpreter::are_smis(a, b) &&
 #ifdef BUILD_32
     !__builtin_smul_overflow((word) a, ((word) b) >> 1, (word*) result);
 #elif BUILD_64
@@ -244,8 +252,8 @@ inline bool intrinsic_mul(Object* a, Object* b, Smi** result) {
 }
 
 inline bool intrinsic_shl(Object* a, Object* b, Smi** result) {
-  if (!are_smis(a, b)) return false;
-  word bits_to_shift = Smi::cast(b)->value();
+  if (!Interpreter::are_smis(a, b)) return false;
+  word bits_to_shift = Smi::value(b);
   if (bits_to_shift < 0 || bits_to_shift >= WORD_BIT_SIZE) return false;
   *result = (Smi*) (((word) a) << bits_to_shift);
   // Only succeed if no bits are lost.
@@ -253,17 +261,17 @@ inline bool intrinsic_shl(Object* a, Object* b, Smi** result) {
 }
 
 inline bool intrinsic_shr(Object* a, Object* b, Smi** result) {
-  if (!are_smis(a, b)) return false;
-  word bits_to_shift = Smi::cast(b)->value();
+  if (!Interpreter::are_smis(a, b)) return false;
+  word bits_to_shift = Smi::value(b);
   if (bits_to_shift < 0 || bits_to_shift >= WORD_BIT_SIZE) return false;
-  *result = Smi::from(Smi::cast(a)->value() >> bits_to_shift);
+  *result = Smi::from(Smi::value(a) >> bits_to_shift);
   return true;
 }
 
 inline bool intrinsic_ushr(Object* a, Object* b, Smi** result) {
-  if (!are_smis(a, b)) return false;
-  word bits_to_shift = Smi::cast(b)->value();
-  word a_value = Smi::cast(a)->value();
+  if (!Interpreter::are_smis(a, b)) return false;
+  word bits_to_shift = Smi::value(b);
+  word a_value = Smi::value(a);
   if (bits_to_shift < 0 || bits_to_shift >= WORD_BIT_SIZE || a_value < 0) return false;
   *result = Smi::from(a_value >> bits_to_shift);
   return true;
@@ -281,7 +289,7 @@ Interpreter::Result Interpreter::run() {
   // after a failed allocation attempt, so we do not get the
   // pending heap limit installed. Do it here before starting
   // the interpretation.
-  process_->object_heap()->check_install_heap_limit();
+  process_->object_heap()->leave_primitive();
 
   // Interpretation state.
   Program* program = process_->program();
@@ -456,7 +464,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_GLOBAL_VAR_DYNAMIC);
-    int global_index = Smi::cast(POP())->value();
+    int global_index = Smi::value(POP());
     if (!(0 <= global_index && global_index < program->global_variables.length())) {
       PUSH(Smi::from(program->absolute_bci_from_bcp(bcp)));
       Method target = program->program_failure();
@@ -492,7 +500,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(STORE_GLOBAL_VAR_DYNAMIC);
     Object* value = POP();
-    int global_index = Smi::cast(POP())->value();
+    int global_index = Smi::value(POP());
     if (!(0 <= global_index && global_index < program->global_variables.length())) {
       PUSH(Smi::from(program->absolute_bci_from_bcp(bcp)));
       Method target = program->program_failure();
@@ -516,17 +524,18 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(POP);
     B_ARG1(index);
-    if (Flags::preemptalot) preempt();
+    if (Flags::preempt_a_lot) preempt();
     ASSERT(index > 0);
     DROP(index);
   OPCODE_END();
 
   OPCODE_BEGIN(POP_1);
-    if (Flags::preemptalot) preempt();
+    if (Flags::preempt_a_lot) preempt();
     DROP1();
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(ALLOCATE, class_index);
+    process_->set_current_bcp(bcp);
     Object* result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     for (int attempts = 1; result == null && attempts < 4; attempts++) {
 #ifdef TOIT_GC_LOGGING
@@ -539,21 +548,17 @@ Interpreter::Result Interpreter::run() {
       sp = gc(sp, false, attempts, false);
       result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     }
-    process_->object_heap()->check_install_heap_limit();
+    process_->object_heap()->leave_primitive();
+    process_->set_current_bcp(null);
 
     if (result == null) {
       sp = push_error(sp, program->allocation_failed(), "");
       goto THROW_IMPLEMENTATION;
     }
-    Instance* instance = Instance::cast(result);
-    int fields = Instance::fields_from_size(program->instance_size_for(instance));
-    for (int i = 0; i < fields; i++) {
-      instance->at_put(i, program->null_object());
-    }
     PUSH(result);
-    if (Flags::gcalot) {
+    if (Flags::gc_a_lot) {
       sp = gc(sp, false, 1, false);
-      process_->object_heap()->check_install_heap_limit();
+      process_->object_heap()->leave_primitive();
     }
   OPCODE_END();
 
@@ -651,7 +656,7 @@ Interpreter::Result Interpreter::run() {
     B_ARG1(index);
     Smi* block = Smi::cast(STACK_AT(index - 1));
     Object** block_ptr = from_block(block);
-    Method target(program->bytecodes, Smi::cast(*block_ptr)->value());
+    Method target(program->bytecodes, Smi::value(*block_ptr));
     int extra = index - target.arity();
     if (extra < 0) {
       PUSH(program->true_object());  // It's a block.
@@ -670,7 +675,7 @@ Interpreter::Result Interpreter::run() {
     unsigned outer_arity = bcp[2];
     Smi* method_id = Smi::cast(POP());
     height--;
-    Method target(program->bytecodes, method_id->value());
+    Method target(program->bytecodes, Smi::value(method_id));
     unsigned call_arity = target.arity();
     if (call_arity != 0) {
       PUSH(Smi::from(program->absolute_bci_from_bcp(bcp)));
@@ -806,8 +811,8 @@ Interpreter::Result Interpreter::run() {
       DROP1();
       DISPATCH(INVOKE_EQ_LENGTH);
     } else if (are_smis(a0, a1)) {
-      word i0 = Smi::cast(a0)->value();
-      word i1 = Smi::cast(a1)->value();
+      word i0 = Smi::value(a0);
+      word i1 = Smi::value(a1);
       STACK_AT_PUT(1, program->boolean(i0 == i1));
       DROP1();
       DISPATCH(INVOKE_EQ_LENGTH);
@@ -826,8 +831,8 @@ Interpreter::Result Interpreter::run() {
     Object* a0 = STACK_AT(1);                                          \
     Object* a1 = STACK_AT(0);                                          \
     if (are_smis(a0, a1)) {                                            \
-      word i0 = Smi::cast(a0)->value();                                \
-      word i1 = Smi::cast(a1)->value();                                \
+      word i0 = Smi::value(a0);                                        \
+      word i1 = Smi::value(a1);                                        \
       STACK_AT_PUT(1, program->boolean(i0 op i1));                     \
       DROP1();                                                         \
       DISPATCH(opcode##_LENGTH);                                       \
@@ -852,10 +857,10 @@ Interpreter::Result Interpreter::run() {
     Object* a0 = STACK_AT(1);                                          \
     Object* a1 = STACK_AT(0);                                          \
     if (are_smis(a0, a1)) {                                            \
-      word i0 = Smi::cast(a0)->value();                                \
-      word i1 = Smi::cast(a1)->value();                                \
+      word i0 = Smi::value(a0);                                        \
+      word i1 = Smi::value(a1);                                        \
       STACK_AT_PUT(1, Smi::from(op(i0, i1)));                          \
-      DROP1();                                                          \
+      DROP1();                                                         \
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
@@ -873,10 +878,10 @@ Interpreter::Result Interpreter::run() {
     Object* a0 = STACK_AT(1);                                          \
     Object* a1 = STACK_AT(0);                                          \
     if (are_smis(a0, a1) && (a1 != Smi::zero())) {                     \
-      word i0 = Smi::cast(a0)->value();                                \
-      word i1 = Smi::cast(a1)->value();                                \
+      word i0 = Smi::value(a0);                                        \
+      word i1 = Smi::value(a1);                                        \
       STACK_AT_PUT(1, Smi::from(i0 op i1));                            \
-      DROP1();                                                          \
+      DROP1();                                                         \
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
@@ -888,14 +893,14 @@ Interpreter::Result Interpreter::run() {
   INVOKE_ARITHMETIC_NO_ZERO(INVOKE_MOD, %)
 #undef INVOKE_ARITHMETIC_NO_ZERO
 
-#define INVOKE_OVERFLOW_ARITHMETIC(opcode, op)                         \
+#define INVOKE_ARITHMETIC(opcode, op)                                  \
   OPCODE_BEGIN(opcode);                                                \
     Object* a0 = STACK_AT(1);                                          \
     Object* a1 = STACK_AT(0);                                          \
     Smi* result;                                                       \
     if (op(a0, a1, &result)) {                                         \
       STACK_AT_PUT(1, result);                                         \
-      DROP1();                                                          \
+      DROP1();                                                         \
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
@@ -903,13 +908,35 @@ Interpreter::Result Interpreter::run() {
     goto INVOKE_VIRTUAL_FALLBACK;                                      \
   OPCODE_END();
 
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_ADD, intrinsic_add)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_SUB, intrinsic_sub)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_MUL, intrinsic_mul)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_BIT_SHL, intrinsic_shl)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_BIT_SHR, intrinsic_shr)
-  INVOKE_OVERFLOW_ARITHMETIC(INVOKE_BIT_USHR, intrinsic_ushr)
-#undef INVOKE_OVERFLOW_ARITHMETIC
+#define INVOKE_ARITHMETIC_FP(opcode, op, fop)                          \
+  OPCODE_BEGIN(opcode);                                                \
+    Object* a0 = STACK_AT(1);                                          \
+    Object* a1 = STACK_AT(0);                                          \
+    Smi* result;                                                       \
+    if (op(a0, a1, &result)) {                                         \
+      STACK_AT_PUT(1, result);                                         \
+      DROP1();                                                         \
+      DISPATCH(opcode##_LENGTH);                                       \
+    } else if (Interpreter::are_floats(a0, a1)) {                                   \
+      Object* float_object = float_op(process(), a0, a1, fop);         \
+      if (float_object) {                                              \
+        STACK_AT_PUT(1, float_object);                                 \
+        DROP1();                                                       \
+        DISPATCH(opcode##_LENGTH);                                     \
+      }                                                                \
+    }                                                                  \
+    PUSH(a0);                                                          \
+    index__ = program->invoke_bytecode_offset(opcode);                 \
+    goto INVOKE_VIRTUAL_FALLBACK;                                      \
+  OPCODE_END();
+
+  INVOKE_ARITHMETIC_FP(INVOKE_ADD, intrinsic_add, &double_add)
+  INVOKE_ARITHMETIC_FP(INVOKE_SUB, intrinsic_sub, &double_sub)
+  INVOKE_ARITHMETIC_FP(INVOKE_MUL, intrinsic_mul, &double_mul)
+  INVOKE_ARITHMETIC(INVOKE_BIT_SHL, intrinsic_shl)
+  INVOKE_ARITHMETIC(INVOKE_BIT_SHR, intrinsic_shr)
+  INVOKE_ARITHMETIC(INVOKE_BIT_USHR, intrinsic_ushr)
+#undef INVOKE_ARITHMETIC
 
   OPCODE_BEGIN(INVOKE_AT);
     Object* receiver = STACK_AT(1);
@@ -940,6 +967,17 @@ Interpreter::Result Interpreter::run() {
     PUSH(receiver);
     index__ = program->invoke_bytecode_offset(INVOKE_AT_PUT);
     goto INVOKE_VIRTUAL_FALLBACK;
+  OPCODE_END();
+
+  OPCODE_BEGIN(INVOKE_SIZE);
+    Object* receiver = STACK_AT(0);
+    Smi* result;
+
+    if (fast_size(process_, receiver, &result)) {
+      STACK_AT_PUT(0, result);
+      DISPATCH(INVOKE_SIZE_LENGTH);
+    }
+    DISPATCH_TO(INVOKE_VIRTUAL_GET);
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH);
@@ -989,7 +1027,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_BEGIN(INVOKE_LAMBDA_TAIL);
     B_ARG1(bci_offset)
     Instance* receiver = Instance::cast(STACK_AT(bci_offset + FRAME_SIZE));
-    Method target(program->bytecodes, Smi::cast(receiver->at(0))->value());
+    Method target(program->bytecodes, Smi::value(receiver->at(0)));
     int captured_size = 1;
     Object* argument = receiver->at(1);
     if (is_array(argument)) {
@@ -1041,6 +1079,7 @@ Interpreter::Result Interpreter::run() {
       Method target = program->primitive_lookup_failure();
       CALL_METHOD(target, PRIMITIVE_LENGTH);
     } else {
+      process_->set_current_bcp(bcp);
       int arity = primitive->arity;
       Primitive::Entry* entry = reinterpret_cast<Primitive::Entry*>(primitive->function);
 
@@ -1050,7 +1089,7 @@ Interpreter::Result Interpreter::run() {
 
       for (int attempts = 1; true; attempts++) {
         if (!Primitive::is_error(result)) goto done;
-        result = Primitive::unmark_from_error(result);
+        result = Primitive::unmark_from_error(program, result);
         bool malloc_failed = (result == program->malloc_failed());
         bool allocation_failed = (result == program->allocation_failed());
         bool force_cross_process = false;
@@ -1083,7 +1122,8 @@ Interpreter::Result Interpreter::run() {
 
       // GC might have taken place in object heap but local "method" is from program heap.
       PUSH(result);
-      process_->object_heap()->check_install_heap_limit();
+      process_->object_heap()->leave_primitive();
+      process_->set_current_bcp(null);
       DISPATCH(PRIMITIVE_LENGTH);
 
     done:
@@ -1095,8 +1135,9 @@ Interpreter::Result Interpreter::run() {
       DROP(arity);
       ASSERT(!is_stack_empty());
       PUSH(result);
-      process_->object_heap()->check_install_heap_limit();
+      process_->object_heap()->leave_primitive();
       CHECK_PROPAGATED_TYPES_RETURN();
+      process_->set_current_bcp(null);
       DISPATCH(0);
     }
   OPCODE_END();
@@ -1157,8 +1198,8 @@ Interpreter::Result Interpreter::run() {
     PUSH(to_block(target_sp));                                                                \
     /* -1 and -2 are used as markers.*/                                                       \
     static_assert(UNWIND_REASON_WHEN_THROWING_EXCEPTION == -2, "Unexpected unwind reason");   \
-    ASSERT(Smi::from(arity << 1)->value() != -1);                                             \
-    ASSERT(Smi::from(arity << 1)->value() != -2);                                             \
+    ASSERT(Smi::value(Smi::from(arity << 1)) != -1);                                          \
+    ASSERT(Smi::value(Smi::from(arity << 1)) != -2);                                          \
     PUSH(Smi::from(arity << 1));                                                              \
     goto UNWIND_IMPLEMENTATION                                                                \
 
@@ -1187,8 +1228,8 @@ Interpreter::Result Interpreter::run() {
     auto encoded_bci = Smi::from((absolute_bci << 1) | 1);
     // -1 and -2 are used as markers.
     static_assert(UNWIND_REASON_WHEN_THROWING_EXCEPTION == -2, "Unexpected unwind reason");
-    ASSERT(encoded_bci->value() != -1);
-    ASSERT(encoded_bci->value() != -2);
+    ASSERT(Smi::value(encoded_bci) != -1);
+    ASSERT(Smi::value(encoded_bci) != -2);
     PUSH(encoded_bci);
     goto UNWIND_IMPLEMENTATION;
   OPCODE_END();
@@ -1207,7 +1248,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN(UNLINK);
-    try_sp_ = base_ - Smi::cast(POP())->value();
+    try_sp_ = base_ - Smi::value(POP());
   OPCODE_END();
 
   UNWIND_IMPLEMENTATION: {
@@ -1232,7 +1273,7 @@ Interpreter::Result Interpreter::run() {
     //   target-sp, and the third slot the height-difference.
     //   (Which basically adjusts the SP to the height of the loop-entry/exit).
     Object* tos = POP();
-    int tos_value = Smi::cast(tos)->value();
+    int tos_value = Smi::value(tos);
     if (tos_value == -1) {
       // Leaving the try/finally normally. Just clean up.
       Smi* target = Smi::cast(POP());
@@ -1308,7 +1349,7 @@ Interpreter::Result Interpreter::run() {
     } else {
       // A non-local branch.
       int absolute_bci = tos_value >> 1;
-      int height_diff = Smi::cast(result_or_height_diff)->value();
+      int height_diff = Smi::value(result_or_height_diff);
       sp = target_sp;
       bcp = program->bcp_from_absolute_bci(absolute_bci);
       DROP(height_diff);
@@ -1332,7 +1373,7 @@ Interpreter::Result Interpreter::run() {
       if (Flags::trace) printf("[yield from interpretation]\n");
       return Result(Result::YIELDED);
     } else if (return_code == 1) {
-      int exit_value = Smi::cast(POP())->value();
+      int exit_value = Smi::value(POP());
       static_assert(FRAME_SIZE == 2, "Unexpected frame size");
       PUSH(reinterpret_cast<Object*>(bcp + HALT_LENGTH));
       PUSH(program->frame_marker());
@@ -1344,7 +1385,7 @@ Interpreter::Result Interpreter::run() {
       Object* duration = POP();
       int64 value = 0;
       if (is_smi(duration)) {
-        value = Smi::cast(duration)->value();
+        value = Smi::value(duration);
       } else if (is_large_integer(duration)) {
         value = LargeInteger::cast(duration)->value();
       } else {
@@ -1368,7 +1409,7 @@ Interpreter::Result Interpreter::run() {
     Smi* end = Smi::cast(STACK_AT(parameter_offset + 1));  // This.
 
     Object** block_ptr = from_block(block);
-    Method target = Method(program->bytecodes, Smi::cast(*block_ptr)->value());
+    Method target = Method(program->bytecodes, Smi::value(*block_ptr));
 
     // If the block takes the wrong number of arguments, we let the intrinsic fail and
     // continue to the next bytecode (like for primitives).
@@ -1376,8 +1417,8 @@ Interpreter::Result Interpreter::run() {
 
     // Once we're past the end index, we return from the surrounding method just
     // like primitive calls do.
-    word current_value = current->value();
-    if (current_value >= end->value()) {
+    word current_value = Smi::value(current);
+    if (current_value >= Smi::value(end)) {
       DROP1();
       // Restore bcp.
       static_assert(FRAME_SIZE == 2, "Unexpected frame size");
@@ -1402,7 +1443,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(INTRINSIC_ARRAY_DO);
     DROP1();  // Drop last result of calling the block (or initial discardable value).
-    word current = Smi::cast(STACK_AT(0))->value();
+    word current = Smi::value(STACK_AT(0));
     // Load the parameters to Array.do.
     int parameter_offset = 1 + Interpreter::FRAME_SIZE;  // 1 for the `current`.
     Smi* block = Smi::cast(STACK_AT(parameter_offset + 0));
@@ -1410,7 +1451,7 @@ Interpreter::Result Interpreter::run() {
     Array* backing = Array::cast(STACK_AT(parameter_offset + 2));
 
     Object** block_ptr = from_block(block);
-    Method target = Method(program->bytecodes, Smi::cast(*block_ptr)->value());
+    Method target = Method(program->bytecodes, Smi::value(*block_ptr));
 
     // If the block takes the wrong number of arguments, we let the intrinsic fail and
     // continue to the next bytecode (like for primitives).
@@ -1418,7 +1459,7 @@ Interpreter::Result Interpreter::run() {
 
     // Once we're past the end index, we return from the surrounding method just
     // like primitive calls do.
-    if (current >= end->value()) {
+    if (current >= Smi::value(end)) {
       DROP1();
       // Restore bcp.
       static_assert(FRAME_SIZE == 2, "Unexpected frame size");
@@ -1471,16 +1512,16 @@ Interpreter::Result Interpreter::run() {
 
     Instance* collection = Instance::cast(STACK_AT(parameter_offset + COLLECTION));
     Object* backing = collection->at(Instance::MAP_BACKING_INDEX);
-    int step = Smi::cast(STACK_AT(parameter_offset + STEP))->value();
+    int step = Smi::value(STACK_AT(parameter_offset + STEP));
     if (program->true_object() == STACK_AT(parameter_offset + REVERSED)) step = -step;
     Object* entry;
     Object* return_value = hash_do(program, STACK_AT(STATE), backing, step, STACK_AT(parameter_offset + BLOCK), &entry);
-    if (is_smi(return_value) && Smi::cast(return_value)->value() < 0) {
+    if (is_smi(return_value) && Smi::value(return_value) < 0) {
       // Negative Smi means call the block.
-      word c = -(Smi::cast(return_value)->value() + 1);
+      word c = -(Smi::value(return_value) + 1);
       STACK_AT_PUT(STATE, Smi::from(c));
       Smi* block = Smi::cast(STACK_AT(parameter_offset + BLOCK));
-      Method target = Method(program->bytecodes, Smi::cast(*from_block(block))->value());
+      Method target = Method(program->bytecodes, Smi::value(*from_block(block)));
       PUSH(block);
       PUSH(entry);
       if (target.arity() > 2) {
@@ -1509,6 +1550,10 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_HASH_FIND); {
+#if defined(ESP32) && !defined(CONFIG_TOIT_INTERPRETER_HELPERS_IN_IRAM)
+    DROP(7);  // NUMBER_OF_ARGUMENTS from Interpreter::hash_find.
+    DISPATCH(INTRINSIC_HASH_FIND_LENGTH);
+#else
     Method block_to_call(0);
     HashFindAction action;
     Object* result;
@@ -1527,6 +1572,7 @@ Interpreter::Result Interpreter::run() {
       ASSERT(action == kCallBlockThenRestartBytecode);
       CALL_METHOD(block_to_call, 0);  // Continue at the same bytecode after the block call.
     }
+#endif
   }
   OPCODE_END();
 }
@@ -1579,7 +1625,7 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
     HASH                = 4,
     KEY                 = 5,
     COLLECTION          = 6,
-    NUMBER_OF_ARGUMENTS = 7,  // Must be last.
+    NUMBER_OF_ARGUMENTS = 7,  // Must be last.  See also INTRINSIC_HASH_FIND implementation.
   };
   // States.
   enum {
@@ -1605,7 +1651,7 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
   ASSERT(STACK_AT(NUMBER_OF_BYTECODE_LOCALS) == program->frame_marker());
   int parameter_offset = NUMBER_OF_BYTECODE_LOCALS + Interpreter::FRAME_SIZE;
 
-  int state = Smi::cast(STACK_AT(STATE))->value();
+  int state = Smi::value(STACK_AT(STATE));
   if (state == STATE_REBUILD) {
     // Store result of calling not_found block.
     STACK_AT_PUT(parameter_offset + APPEND_POSITION, block_result);
@@ -1613,7 +1659,7 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
     STACK_AT_PUT(STATE, Smi::from(STATE_START));
     // Call the rebuild block with old_size as argument.
     Smi* rebuild_block = Smi::cast(STACK_AT(parameter_offset + REBUILD));
-    Method rebuild_target = Method(program->bytecodes, Smi::cast(*from_block(rebuild_block))->value());
+    Method rebuild_target = Method(program->bytecodes, Smi::value(*from_block(rebuild_block)));
     PUSH(rebuild_block);
     PUSH(STACK_AT(OLD_SIZE));
     *block_to_call = rebuild_target;
@@ -1633,9 +1679,9 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
     Object* not_found_block = *from_block(Smi::cast(STACK_AT(parameter_offset + NOT_FOUND)));
     Object* rebuild_block   = *from_block(Smi::cast(STACK_AT(parameter_offset + REBUILD)));
     Object* compare_block   = *from_block(Smi::cast(STACK_AT(parameter_offset + COMPARE)));
-    Method not_found_target = Method(program->bytecodes, Smi::cast(not_found_block)->value());
-    Method rebuild_target   = Method(program->bytecodes, Smi::cast(rebuild_block)->value());
-    Method compare_target   = Method(program->bytecodes, Smi::cast(compare_block)->value());
+    Method not_found_target = Method(program->bytecodes, Smi::value(not_found_block));
+    Method rebuild_target   = Method(program->bytecodes, Smi::value(rebuild_block));
+    Method compare_target   = Method(program->bytecodes, Smi::value(compare_block));
     if (!is_smi(index_spaces_left_object)
      || !is_smi(hash_object)
      || !is_smi(size_object)
@@ -1661,7 +1707,7 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
     if (is_instance(index_object) && HeapObject::cast(index_object)->class_id() == program->large_array_class_id()) {
       Object* size_object = Instance::cast(index_object)->at(Instance::LARGE_ARRAY_SIZE_INDEX);
       if (is_smi(size_object)) {
-        index_mask = Smi::cast(size_object)->value() - 1;
+        index_mask = Smi::value(size_object) - 1;
         bail = false;
       }
     }
@@ -1678,23 +1724,23 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
   }
   ASSERT(Utils::is_power_of_two(index_mask + 1));
 
-  word hash = Smi::cast(hash_object)->value();
+  word hash = Smi::value(hash_object);
 
   if (state == STATE_NOT_FOUND) {
     Object* append_position = block_result;
     STACK_AT_PUT(parameter_offset + APPEND_POSITION, append_position);
     ASSERT(is_smi(append_position));
     // Update free position in index with new entry.
-    word new_hash_and_position = ((Smi::cast(append_position)->value() + 1) << HASH_SHIFT_) | (hash & HASH_MASK_);
+    word new_hash_and_position = ((Smi::value(append_position) + 1) << HASH_SHIFT_) | (hash & HASH_MASK_);
     ASSERT(Smi::is_valid(new_hash_and_position));
-    word deleted_slot = Smi::cast(STACK_AT(DELETED_SLOT))->value();
+    word deleted_slot = Smi::value(STACK_AT(DELETED_SLOT));
     word index_position;
     if (deleted_slot < 0) {
       // Calculate index for: index_[slot] = new_hash_and_position
-      index_position = Smi::cast(STACK_AT(SLOT))->value() & index_mask;
+      index_position = Smi::value(STACK_AT(SLOT)) & index_mask;
       // index_spaces_left_--
       Object* index_spaces_left_object = collection->at(Instance::MAP_SPACES_LEFT_INDEX);
-      word index_spaces_left = Smi::cast(index_spaces_left_object)->value();
+      word index_spaces_left = Smi::value(index_spaces_left_object);
       collection->at_put(Instance::MAP_SPACES_LEFT_INDEX, Smi::from(index_spaces_left - 1));
     } else {
       // Calculate index for: index_[deleted_slot] = new_hash_and_position
@@ -1759,9 +1805,9 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
     ASSERT(state == STATE_AFTER_COMPARE);  // State AFTER_COMPARE with false compare result.
     ASSERT(!is_true_value(program, block_result));
     // We reinitialize these locals from the Toit stack.
-    slot          = Smi::cast(STACK_AT(SLOT))->value() & index_mask;
-    starting_slot = Smi::cast(STACK_AT(STARTING_SLOT))->value();
-    slot_step     = Smi::cast(STACK_AT(SLOT_STEP))->value();
+    slot          = Smi::value(STACK_AT(SLOT)) & index_mask;
+    starting_slot = Smi::value(STACK_AT(STARTING_SLOT));
+    slot_step     = Smi::value(STACK_AT(SLOT_STEP));
     increment = true;
   }
   // Look or keep looking through the index.
@@ -1776,18 +1822,18 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
     increment = true;
     word hash_and_position;
     if (is_array(index_object)) {
-      hash_and_position = Smi::cast(Array::cast(index_object)->at(slot))->value();
+      hash_and_position = Smi::value(Array::cast(index_object)->at(slot));
     } else {
       Object* hap;
       bool success = fast_at(process_, index_object, Smi::from(slot), false, &hap);
       ASSERT(success);
       ASSERT(is_smi(hap));
-      hash_and_position = Smi::cast(hap)->value();
+      hash_and_position = Smi::value(hap);
     }
     if (hash_and_position == 0 || exhausted) {
       // Found free slot.
       Object* index_spaces_left_object = collection->at(Instance::MAP_SPACES_LEFT_INDEX);
-      word index_spaces_left = Smi::cast(index_spaces_left_object)->value();
+      word index_spaces_left = Smi::value(index_spaces_left_object);
       if (index_spaces_left == 0 || exhausted) {
         Object* size_object = collection->at(Instance::MAP_SIZE_INDEX);
         STACK_AT_PUT(OLD_SIZE, size_object);
@@ -1800,7 +1846,7 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
       if (!is_smi(append_position)) {  // If it is null we haven't called not_found yet.
         Smi* not_found_block = Smi::cast(STACK_AT(parameter_offset + NOT_FOUND));
         Method not_found_target =
-            Method(program->bytecodes, Smi::cast(*from_block(not_found_block))->value());
+            Method(program->bytecodes, Smi::value(*from_block(not_found_block)));
         PUSH(not_found_block);
         *block_to_call = not_found_target;
         *action_return = kCallBlockThenRestartBytecode;
@@ -1823,7 +1869,7 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
     Object* k;
     bool success = fast_at(process_, backing_object, position, false, &k);
     ASSERT(success);
-    word deleted_slot = Smi::cast(STACK_AT(DELETED_SLOT))->value();
+    word deleted_slot = Smi::value(STACK_AT(DELETED_SLOT));
     // if deleted_slot is invalid and k is Tombstone_
     if (deleted_slot == INVALID_SLOT && !is_smi(k) && HeapObject::cast(k)->class_id() == program->tombstone_class_id()) {
       STACK_AT_PUT(DELETED_SLOT, Smi::from(slot));
@@ -1838,7 +1884,7 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
         STACK_AT_PUT(SLOT_STEP, Smi::from(slot_step));
         STACK_AT_PUT(POSITION, position);
         Smi* compare_block = Smi::cast(STACK_AT(parameter_offset + COMPARE));
-        Method compare_target = Method(program->bytecodes, Smi::cast(*from_block(compare_block))->value());
+        Method compare_target = Method(program->bytecodes, Smi::value(*from_block(compare_block)));
         Object* key = STACK_AT(parameter_offset + KEY);
         PUSH(compare_block);
         PUSH(key);

@@ -1,0 +1,6 @@
+tests/negative/parser-test.toit:7:3: error: Field 'field1' must be initialized in a constructor
+  field1/string
+  ^~~~~~
+EXCEPTION error. 
+fail here
+  0: main                      tests/negative/parser-test.toit:13:3

@@ -1,6 +1,0 @@
-<sdk>/device.toit:42:45: warning: Class 'FlashStore' is deprecated
-  static instance_/FlashStore ::= FlashStore.internal_
-                                            ^
-toit-lsm303d/examples/heading.toit:21:12: warning: Class 'FlashStore' is deprecated
-  store := FlashStore
-           ^~~~~~~~~~

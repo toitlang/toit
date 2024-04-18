@@ -17,11 +17,10 @@ import core as core
 import cli
 import encoding.json as json
 import encoding.base64 as base64
-import reader show BufferedReader
 import host.file
 import host.directory
 import host.pipe
-import bytes
+import io
 
 import .protocol.change
 import .protocol.completion
@@ -29,73 +28,99 @@ import .protocol.configuration
 import .protocol.experimental
 import .protocol.diagnostic
 import .protocol.document
-import .protocol.document_symbol
+import .protocol.document-symbol
 import .protocol.initialization
 import .protocol.message
-import .protocol.server_capabilities
-import .protocol.semantic_tokens
-import .protocol_toit
+import .protocol.server-capabilities
+import .protocol.semantic-tokens
+import .protocol-toit
 
 import .compiler
 import .documents
-import .file_server
+import .file-server
 import .repro
 import .rpc
-import .uri_path_translator
+import .uri-path-translator
 import .utils
 import .verbose
 
-DEFAULT_SETTINGS /Map ::= {:}
-DEFAULT_TIMEOUT_MS ::= 10_000
-DEFAULT_REPRO_DIR ::= "/tmp/lsp_repros"
-CRASH_REPORT_RATE_LIMIT_MS ::= 30_000
+DEFAULT-SETTINGS /Map ::= {:}
+DEFAULT-TIMEOUT-MS ::= 10_000
+DEFAULT-REPRO-DIR ::= "/tmp/lsp_repros"
+CRASH-REPORT-RATE-LIMIT-MS ::= 30_000
 
+/**
+The settings for this server.
+
+This class is a monitor so that the $replace function blocks other method accesses
+  until the replacement is done.
+*/
 monitor Settings:
-  map_ /Map := DEFAULT_SETTINGS
+  map_ /Map := DEFAULT-SETTINGS
 
-  get key: return get key --if_absent=: null
-
-  get key [--if_absent]:
-    return map_.get key --if_absent=if_absent
+  get_ key [--if-absent]:
+    return map_.get key --if-absent=if-absent
 
   // While the new values are fetched, all other requests to the settings are blocked.
   replace [b] -> none:
-    replacement_map := b.call
+    replacement-map := b.call
     // The client is allowed to return `null` if it doesn't have
     // any configuration for the settings we requested.
-    if replacement_map: map_ = replacement_map
+    if replacement-map: map_ = replacement-map
 
-  replace new_map/Map -> none: map_ = new_map
+  replace new-map/Map -> none: map_ = new-map
+
+  is-verbose -> bool:
+    return (get_ "verbose" --if-absent=: false) == true
+
+  repro-dir -> string:
+    return get_ "reproDir" --if-absent=: DEFAULT-REPRO-DIR
+
+  toit-compiler-path -> string:
+    return get_ "toitPath" --if-absent=: "toit.compile"
+
+  sdk-path compiler-path/string -> string:
+    return get_ "sdkPath" --if-absent=: sdk-path-from-compiler compiler-path
+
+  timeout-ms -> int:
+    return get_ "timeoutMs" --if-absent=: DEFAULT-TIMEOUT-MS
+
+  should-write-repro -> bool:
+    return (get_ "shouldWriteReproOnCrash" --if-absent=: false) == true
+
+  should-report-package-diagnostics -> bool:
+    return (get_ "reportPackageDiagnostics" --if-absent=: false) == true
 
 class LspServer:
   documents_     /Documents         ::= ?
   connection_    /RpcConnection     ::= ?
   translator_    /UriPathTranslator ::= ?
-  toit_path_override_  /string?     ::= ?
+  toit-path-override_  /string?     ::= ?
   /// The root uri of the workspace.
   /// Rarely needed, as the server generally works with absolute paths.
-  /// It's mainly used to find package.lock files.
-  root_uri_ /string? := null
+  root-uri_ /string? := null
 
-  active_requests_ := 0
-  on_idle_callbacks_ := []
+  active-requests_ := 0
+  on-idle-callbacks_ := []
 
-  next_analysis_revision_ := 0
+  next-analysis-revision_ := 0
 
-  client_supports_configuration_ := false
+  client-supports-configuration_ := false
+  client-supports-completion-range_ := false
+
   /// The settings from the client (or, if not supported, default settings).
   settings_ /Settings := Settings
 
-  last_crash_report_time_ := null
+  last-crash-report-time_ := null
 
   /// A set of open request-ids
   /// When a request is canceled, it is removed from the set, so
   ///   that we don't respond multiple times.
-  open_requests_ /Set := {}
+  open-requests_ /Set := {}
 
   constructor
       .connection_
-      .toit_path_override_
+      .toit-path-override_
       .translator_:
     documents_ = Documents translator_
 
@@ -104,21 +129,21 @@ class LspServer:
       parsed := connection_.read
       if parsed == null: return
       id := parsed.get "id"
-      if id: open_requests_.add id
+      if id: open-requests_.add id
       task:: catch --trace:
-        active_requests_++
+        active-requests_++
         method := parsed["method"]
         params := parsed.get "params"
         verbose: "Request for $method $id"
         response := handle_ method params
         verbose: "Request $method $id handled"
-        if id and (open_requests_.contains id):
-          open_requests_.remove id
+        if id and (open-requests_.contains id):
+          open-requests_.remove id
           connection_.reply id response
-        active_requests_--
-        if active_requests_ == 0 and not on_idle_callbacks_.is_empty:
-          callbacks := on_idle_callbacks_
-          on_idle_callbacks_ = []
+        active-requests_--
+        if active-requests_ == 0 and not on-idle-callbacks_.is-empty:
+          callbacks := on-idle-callbacks_
+          on-idle-callbacks_ = []
           callbacks.do: it.call
 
   handle_ method/string params/Map? -> any:
@@ -127,28 +152,28 @@ class LspServer:
         "initialize":              (:: initialize (InitializeParams it)),
         "initialized":             (:: initialized),
         "\$/cancelRequest":        (:: cancel     (CancelParams it)),
-        "textDocument/didOpen":    (:: did_open   (DidOpenTextDocumentParams   it)),
-        "textDocument/didChange":  (:: did_change (DidChangeTextDocumentParams it)),
-        "textDocument/didSave":    (:: did_save   (DidSaveTextDocumentParams   it)),
-        "textDocument/didClose":   (:: did_close  (DidCloseTextDocumentParams   it)),
+        "textDocument/didOpen":    (:: did-open   (DidOpenTextDocumentParams   it)),
+        "textDocument/didChange":  (:: did-change (DidChangeTextDocumentParams it)),
+        "textDocument/didSave":    (:: did-save   (DidSaveTextDocumentParams   it)),
+        "textDocument/didClose":   (:: did-close  (DidCloseTextDocumentParams   it)),
         "textDocument/completion": (:: completion (CompletionParams it )),
-        "textDocument/definition": (:: goto_definition (TextDocumentPositionParams it)),
-        "textDocument/documentSymbol": (:: document_symbol (DocumentSymbolParams it)),
-        "textDocument/semanticTokens/full": (:: semantic_tokens (SemanticTokensParams it)),
+        "textDocument/definition": (:: goto-definition (TextDocumentPositionParams it)),
+        "textDocument/documentSymbol": (:: document-symbol (DocumentSymbolParams it)),
+        "textDocument/semanticTokens/full": (:: semantic-tokens (SemanticTokensParams it)),
         "shutdown":                (:: shutdown),
         "exit":                    (:: exit),
-        "toit/report_idle":        (:: report_idle),
-        "toit/reset_crash_rate_limit": (:: reset_crash_rate_limit),
+        "toit/reportIdle":         (:: report-idle),
+        "toit/resetCrashRateLimit": (:: reset-crash-rate-limit),
         "toit/settings":           (:: settings_.map_),
-        "toit/didOpenMany":        (:: did_open_many it),
+        "toit/analyzeMany":        (:: analyze-many it),
         "toit/archive":            (:: archive (ArchiveParams it)),
-        "toit/snapshot_bundle":    (:: snapshot_bundle (SnapshotBundleParams it))
+        "toit/snapshotBundle":     (:: snapshot-bundle (SnapshotBundleParams it))
     }
-    handlers.get method --if_present=: return it.call params
+    handlers.get method --if-present=: return it.call params
 
     verbose: "Unknown/unimplemented method $method"
     return ResponseError
-        --code=ErrorCodes.method_not_found
+        --code=ErrorCodes.method-not-found
         --message="Unknown or unimplemented method $method"
 
   /**
@@ -157,153 +182,184 @@ class LspServer:
   */
   initialize params/InitializeParams -> InitializationResult:
     capabilities := params.capabilities
-    client_supports_configuration_ = capabilities.workspace != null and capabilities.workspace.configuration
-    root_uri_ = params.root_uri
+    client-supports-configuration_ = capabilities.workspace != null and capabilities.workspace.configuration
+    client-supports-completion-range_ = capabilities.text-document and
+        capabilities.text-document.completion and
+        capabilities.text-document.completion.completion-list and
+        capabilities.text-document.completion.completion-list.item-defaults and
+        capabilities.text-document.completion.completion-list.item-defaults.contains "editRange"
+    root-uri_ = params.root-uri
     // Process experimental features, some implemented by us.
     if params.capabilities.experimental:
-      if params.capabilities.experimental.ubjson_rpc: connection_.enable_ubjson
+      if params.capabilities.experimental.ubjson-rpc: connection_.enable-ubjson
 
-    server_capabilities := ServerCapabilities
-        --completion_provider= CompletionOptions
-            --resolve_provider=   false
-            --trigger_characters= [".", "-", "\$"]
-        --definition_provider=      true
-        --document_symbol_provider= true
-        --text_document_sync= TextDocumentSyncOptions
-            --open_close
+    server-capabilities := ServerCapabilities
+        --completion-provider= CompletionOptions
+            --resolve-provider=   false
+            --trigger-characters= [".", "-", "\$"]
+        --definition-provider=      true
+        --document-symbol-provider= true
+        --text-document-sync= TextDocumentSyncOptions
+            --open-close
             --change= TextDocumentSyncKind.full
-            --save=   SaveOptions --no-include_text
-        --semantic_tokens_provider= SemanticTokensOptions
+            --save=   SaveOptions --no-include-text
+        --semantic-tokens-provider= SemanticTokensOptions
             --legend= SemanticTokensLegend
-                --token_types= Compiler.SEMANTIC_TOKEN_TYPES
-                --token_modifiers= Compiler.SEMANTIC_TOKEN_MODIFIERS
+                --token-types= Compiler.SEMANTIC-TOKEN-TYPES
+                --token-modifiers= Compiler.SEMANTIC-TOKEN-MODIFIERS
             --no-range
             --full= true  // Or should it be '{ "delta": false }' ?
-        --experimental=Experimental --ubjson_rpc
+        --experimental=Experimental --ubjson-rpc
 
-    return InitializationResult server_capabilities
+    return InitializationResult server-capabilities
 
   initialized -> none:
     // Get the settings, in case the client supports configuration. (Otherwise they are already filled
     //   with default values).
-    if client_supports_configuration_:
-      settings_.replace: request_settings
+    if client-supports-configuration_:
+      settings_.replace: request-settings
       // Client configurations can only make the output verbose, but not disable it,
       //   if it was given by command-line.
-      is_verbose = is_verbose or (settings_.get "verbose" --if_absent=: false) == true
+      is-verbose = is-verbose or settings_.is-verbose
     // TODO(florian): register DidChangeConfigurationNotification.type
 
   cancel params/CancelParams -> none:
     id := params.id
-    task := open_requests_.get id
+    task := open-requests_.get id
     if task:
-      open_requests_.remove id
+      open-requests_.remove id
       connection_.reply id
           ResponseError
-            --code=ErrorCodes.request_cancelled
+            --code=ErrorCodes.request-cancelled
             --message="Cancelled on request"
 
-  did_open params/DidOpenTextDocumentParams -> none:
-    document := params.text_document
+  did-open params/DidOpenTextDocumentParams -> none:
+    document := params.text-document
     uri := translator_.canonicalize document.uri
+    project-uri := documents_.project-uri-for --uri=uri
     // We are calling `analyze` just after updating the document.
     // The next analysis-revision is thus the one where the new content has been
     //   taken into account.
-    content_revision := next_analysis_revision_
-    documents_.did_open --uri=uri document.text content_revision
+    content-revision := next-analysis-revision_
+    documents_.did-open --uri=uri document.text content-revision
     analyze [uri]
 
-  did_open_many params -> none:
+  analyze-many params -> none:
     uris := params["uris"]
     uris = uris.map: translator_.canonicalize it
-    content_revision := next_analysis_revision_
-    uris.do:
-      content := null
-      documents_.did_open --uri=it content content_revision
     analyze uris
 
   archive params/ArchiveParams -> string:
-    non_canonicalized_uris := params.uris or [params.uri]
+    non-canonicalized-uris := params.uris or [params.uri]
     // If the request doesn't specify whether it wants the sdk we include it.
-    include_sdk := params.include_sdk == null ? true : params.include_sdk
-    uris := non_canonicalized_uris.map: translator_.canonicalize it
-    paths := uris.map: translator_.to_path it
+    include-sdk := params.include-sdk == null ? true : params.include-sdk
+    uris := non-canonicalized-uris.map: translator_.canonicalize it
+    // We assume the project-uri is from the first uri.
+    project-uri := documents_.project-uri-for --uri=uris[0]
+    paths := uris.map: translator_.to-path it
     compiler := compiler_
-    compiler.parse --paths=paths
-    buffer := bytes.Buffer
-    write_repro
+    compiler.parse --paths=paths --project-uri=project-uri
+    buffer := io.Buffer
+    write-repro
         --writer=buffer
-        --compiler_flags=compiler.build_run_flags
-        --compiler_input=json.stringify paths
+        --compiler-flags=compiler.build-run-flags --project-uri=project-uri
+        --compiler-input=json.stringify paths
         --protocol=compiler.protocol
         --info="toit/archive"
-        --cwd_path=null
-        --include_sdk=include_sdk
-    byte_array := buffer.bytes
-    return base64.encode byte_array
+        --cwd-path=null
+        --include-sdk=include-sdk
+    byte-array := buffer.bytes
+    return base64.encode byte-array
 
-  snapshot_bundle params/SnapshotBundleParams -> Map?:
+  snapshot-bundle params/SnapshotBundleParams -> Map?:
     uri := translator_.canonicalize params.uri
+    project-uri := documents_.project-uri-for --uri=uri
     compiler := compiler_
-    bundle := compiler.snapshot_bundle uri
+    bundle := compiler.snapshot-bundle --project-uri=project-uri uri
     // Encode the byte-array as base64.
     if not bundle: return null
     return {
       "snapshot_bundle": base64.encode bundle
     }
 
-  did_close params/DidCloseTextDocumentParams -> none:
-    uri := translator_.canonicalize params.text_document.uri
-    documents_.did_close --uri=uri
+  did-close params/DidCloseTextDocumentParams -> none:
+    uri := translator_.canonicalize params.text-document.uri
+    documents_.did-close --uri=uri
+    if not settings_.should-report-package-diagnostics and is-inside-dot-packages --uri=uri:
+      // Emit an empty diagnostics for this file, in case it had diagnostics before.
+      send-diagnostics (PushDiagnosticsParams --uri=uri --diagnostics=[])
 
-  did_save params/DidSaveTextDocumentParams -> none:
-    uri := translator_.canonicalize params.text_document.uri
+  did-save params/DidSaveTextDocumentParams -> none:
+    uri := translator_.canonicalize params.text-document.uri
     // No need to validate, since we should have gotten a `did_change` before
     //   any save (if the document was dirty).
-    documents_.did_save --uri=uri
+    documents_.did-save --uri=uri
 
-  did_change params/DidChangeTextDocumentParams -> none:
-    document := params.text_document
-    changes  := params.content_changes
+  did-change params/DidChangeTextDocumentParams -> none:
+    document := params.text-document
+    changes  := params.content-changes
     uri := translator_.canonicalize document.uri
     changes.do:
       assert: it.range == null  // We only support full-file updates for now.
       // We are calling `analyze` just after updating the document.
       // The next analysis-revision is thus the one where the new content has been
       //   taken into account.
-      documents_.did_change --uri=uri it.text next_analysis_revision_
+      documents_.did-change --uri=uri it.text next-analysis-revision_
     analyze [uri]
 
-  completion params/CompletionParams -> List/*<CompletionItem>*/:
-    uri := translator_.canonicalize params.text_document.uri
-    return compiler_.complete uri params.position.line params.position.character
+  completion params/CompletionParams -> any: // Either a List/*<CompletionItem>*/ or a $CompletionList.
+    uri := translator_.canonicalize params.text-document.uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    compiler_.complete --project-uri=project-uri uri params.position.line params.position.character:
+      | prefix/string edit-range/Range? completions/List |
+      if completions.is-empty: return completions
+      if not prefix.ends-with "-": return completions
+      // The prefix ends with a '-'. VS Code doesn't like that and assumes that any completion we
+      // give is a new word. We therefore either adda default-range, or run through all
+      // completions and add a textEdit.
+      // TODO(florian): completion-range feature is disabled until we can test it on a
+      // real editor. When changing, make sure to update the test and the Go version.
+      if false and client-supports-completion-range_:
+        return CompletionList
+            --items=completions
+            --item-defaults=(CompletionItemDefaults --edit-range=edit-range)
+      completions.do: | item/CompletionItem |
+        text-edit := TextEdit --range=edit-range --new-text=item.label
+        item.set-text-edit text-edit
+      return completions
+    unreachable
 
   // TODO(florian): The specification supports a list of locations, or Locationlinks..
   // For now just returns one location.
-  goto_definition params/TextDocumentPositionParams -> List/*<Location>*/:
-    uri := translator_.canonicalize params.text_document.uri
-    return compiler_.goto_definition uri params.position.line params.position.character
+  goto-definition params/TextDocumentPositionParams -> List/*<Location>*/:
+    uri := translator_.canonicalize params.text-document.uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    return compiler_.goto-definition --project-uri=project-uri uri params.position.line params.position.character
 
-  document_symbol params/DocumentSymbolParams -> List/*<DocumentSymbol>*/:
-    uri := translator_.canonicalize params.text_document.uri
-    document := documents_.get --uri=uri
+  document-symbol params/DocumentSymbolParams -> List/*<DocumentSymbol>*/:
+    uri := translator_.canonicalize params.text-document.uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
+    document := analyzed-documents.get --uri=uri
     if not (document and document.summary):
-      analyze [uri]
-      document = documents_.get_existing_document --uri=uri
+      analyze --project-uri=project-uri [uri] next-analysis-revision_++
+      document = analyzed-documents.get-existing --uri=uri
       if not document.summary: return []
+    opened-document := documents_.get-opened --uri=uri
     content := ""
-    if document.content:
-      content = document.content
+    if opened-document:
+      content = opened-document.content
     else:
-      path := translator_.to_path uri
-      if file.is_file path:
-        content = (file.read_content path).to_string
+      path := translator_.to-path uri
+      if file.is-file path:
+        content = (file.read-content path).to-string
     if not content: return []
-    return document.summary.to_lsp_document_symbol content
+    return document.summary.to-lsp-document-symbol content
 
-  semantic_tokens params/SemanticTokensParams -> SemanticTokens:
-    uri := translator_.canonicalize params.text_document.uri
-    tokens := compiler_.semantic_tokens uri
+  semantic-tokens params/SemanticTokensParams -> SemanticTokens:
+    uri := translator_.canonicalize params.text-document.uri
+    project-uri := documents_.project-uri-for --uri=uri --recompute
+    tokens := compiler_.semantic-tokens --project-uri=project-uri uri
     return SemanticTokens --data=tokens
 
   shutdown:
@@ -311,14 +367,14 @@ class LspServer:
     return null
 
   exit:
-    on_idle_callbacks_.add (:: core.exit 0)
+    on-idle-callbacks_.add (:: core.exit 0)
     task:: catch --trace:
       // Force an exit in case some request is not terminating.
       sleep --ms=1000
       core.exit 1
 
-  report_idle:
-    on_idle_callbacks_.add (:: connection_.send "toit/idle" null)
+  report-idle:
+    on-idle-callbacks_.add (:: connection_.send "toit/idle" null)
 
   /**
   Analyzes the given $uris and sends diagnostics to the client.
@@ -326,65 +382,101 @@ class LspServer:
   Transitively analyzes all newly discovered files.
   */
   analyze uris/List revision/int?=null -> none:
-    if uris.is_empty: return
+    if uris.is-empty: return
 
-    revision = revision or next_analysis_revision_++
-    assert: uris.every: | uri |
-      (documents_.get_existing_document --uri=uri).analysis_revision < revision
+    revision = revision or next-analysis-revision_++
 
-    verbose: "Analyzing: $uris  ($revision)"
+    project-uris := {:}
+    uris.do: |uri|
+      project-uri := documents_.project-uri-for --uri=uri --recompute
+      list := project-uris.get project-uri --init=:[]
+      list.add uri
 
-    analysis_result := compiler_.analyze uris
-    if not analysis_result:
+    changed-summary-documents := {}
+    while true:
+      old-changed-size := changed-summary-documents.size
+      project-uris.do: |project-uri uris|
+        changed-in-project := analyze uris --project-uri=project-uri revision
+        changed-summary-documents.add-all changed-in-project
+      if changed-summary-documents.size == old-changed-size: break
+      // Do another run for changed summaries in other projects.
+      project-uris.clear
+      changed-summary-documents.do: | uri |
+        project-uris-for-uri := documents_.project-uris-containing --uri=uri
+        project-uris-for-uri.do: |document-project-uri|
+          // No need to analyze, if that already happened.
+          analyzed-documents := documents_.analyzed-documents-for --project-uri=document-project-uri
+          document := analyzed-documents.get-existing --uri=uri
+          if document.analysis-revision < revision:
+            list := project-uris.get document-project-uri --init=:[]
+            list.add uri
+
+  analyze uris/List --project-uri/string? revision/int -> Set:
+    analyzed-documents := documents_.analyzed-documents-for --project-uri=project-uri
+
+    assert:
+      uris.every: | uri |
+        doc := analyzed-documents.get --uri=uri
+        not doc or doc.analysis-revision < revision
+
+    verbose: "Analyzing: $uris  ($revision) in $project-uri"
+
+    analysis-result := compiler_.analyze --project-uri=project-uri uris
+    if not analysis-result:
       verbose: "Analysis failed (no analysis result). ($revision)"
-      return  // Analysis didn't succeed. Don't bother with the result.
+      return {} // Analysis didn't succeed. Don't bother with the result.
 
-    summaries := analysis_result.summaries
-    diagnostics_per_uri := analysis_result.diagnostics
+    summaries := analysis-result.summaries
+    diagnostics-per-uri := analysis-result.diagnostics
     // We can't send diagnostics without position to the client, but we can use it
     // to guess why a compilation failed.
-    diagnostics_without_position := analysis_result.diagnostics_without_position
+    diagnostics-without-position := analysis-result.diagnostics-without-position
 
     if summaries == null:
       // If the diagnostics without position isn't empty, and contains something for a uri, we
       // assume that there was a problem reading the file.
       uris.do: |uri|
-        entry_path := translator_.to_path uri
-        probably_entry_problem := diagnostics_per_uri.is_empty and
-            diagnostics_without_position.any: it.contains entry_path
-        document := documents_.get --uri=uri
-        if probably_entry_problem and document:
-          if document.is_open:
+        entry-path := translator_.to-path uri
+        probably-entry-problem := diagnostics-per-uri.is-empty and
+            diagnostics-without-position.any: it.contains entry-path
+        if probably-entry-problem:
+          document := documents_.get-opened --uri=uri
+          if document:
             // This should not happen.
             // TODO(florian): report to client and log (potentially creating repro).
-          else:
-            if file.is_file entry_path:
-              // TODO(florian): report to client and log (potentially creating repro).
-            // Either way: delete the entry.
-            documents_.delete --uri=uri
+          if file.is-file entry-path:
+            // TODO(florian): report to client and log (potentially creating repro).
+          // Either way: delete the entry.
+          documents_.delete --uri=uri
       // Don't use the analysis result.
-      return
+      return {}
 
     // Documents for which the summary changed.
-    changed_summary_documents := {}
+    changed-summary-documents := {}
     // Documents for which we want to report diagnostics.
-    report_diagnostics_documents := {}
+    report-diagnostics-documents := {}
 
     // Always report diagnostics for the given uris, unless there is a more recent
     // analysis already, or if the document has been updated in the meantime.
     uris.do: | uri |
-      doc := documents_.get_existing_document --uri=uri
-      if not doc.analysis_revision >= revision and not doc.content_revision > revision:
-        report_diagnostics_documents.add uri
+      doc := analyzed-documents.get-or-create --uri=uri
+      opened-doc := documents_.get-opened --uri=uri
+      content-revision := opened-doc ? opened-doc.revision : -1
+      if not doc.analysis-revision >= revision and not content-revision > revision:
+        report-diagnostics-documents.add uri
 
-    summaries.do: |summary_uri summary|
+    summaries.do: |summary-uri summary|
       assert: summary != null
-      update_result := documents_.update_document_after_analysis --uri=summary_uri
-          --analysis_revision=revision
+      opened := documents_.get-opened --uri=summary-uri
+      content-revision := opened ? opened.revision : -1
+      update-result := analyzed-documents.update-document-after-analysis
+          --uri=summary-uri
+          --analysis-revision=revision
+          --content-revision=content-revision
           --summary=summary
-      has_changed_summary := (update_result & Documents.SUMMARY_CHANGED_EXTERNALLY_BIT) != 0
-      first_analysis_after_content_change :=
-          (update_result & Documents.FIRST_ANALYSIS_AFTER_CONTENT_CHANGE_BIT) != 0
+      has-changed-summary := (update-result & AnalyzedDocuments.SUMMARY-CHANGED-EXTERNALLY-BIT) != 0
+      first-analysis-after-content-change :=
+          (update-result & AnalyzedDocuments.FIRST-ANALYSIS-AFTER-CONTENT-CHANGE-BIT) != 0
 
       // If the summary has changed, it either means that:
       //  - this was one of the $uris that was analyzed
@@ -392,198 +484,227 @@ class LspServer:
       //  - the $summary_uri (or one of its dependencies) was changed. This could be because
       //    of a change on disk, or because of a `did_change` call. In the latter case,
       //    there would still be another analysis running, but this one completed earlier.
-      if has_changed_summary:
-        changed_summary_documents.add summary_uri
-      if has_changed_summary or first_analysis_after_content_change:
-        report_diagnostics_documents.add summary_uri
-      dep_document := documents_.get_existing_document --uri=summary_uri
-      request_revision := dep_document.analysis_requested_by_revision
-      if request_revision != -1 and request_revision < revision:
-        report_diagnostics_documents.add summary_uri
+      if has-changed-summary:
+        changed-summary-documents.add summary-uri
+      if has-changed-summary or first-analysis-after-content-change:
+        report-diagnostics-documents.add summary-uri
+      dep-document := analyzed-documents.get-existing --uri=summary-uri
+      request-revision := dep-document.analysis-requested-by-revision
+      if request-revision != -1 and request-revision < revision:
+        report-diagnostics-documents.add summary-uri
 
     // All reverse dependencies of changed documents need to have their diagnostics printed.
-    changed_summary_documents.do:
-      document := documents_.get_existing_document --uri=it
+    changed-summary-documents.do:
+      document := analyzed-documents.get-existing --uri=it
 
       // Local lambda that transitively adds reverse dependencies.
       // We add all transitive dependencies, as it's hard to track implicit exports.
       // For example, the return type of a method, requires all users of the method
       //   to check whether a member call of the result is now allowed or not.
-      // This can be happen multiple layers down. See #1513 for an example.
+      //   Say class 'A' in lib1 has a method 'foo' that is changed to take an additional parameter.
+      //   Say lib2 imports lib1 and return an 'A' from its 'bar' method.
+      //   Say lib3 imports lib2 and calls `bar.foo`. This call needs a diagnostic change, since
+      //     the 'foo' method now requires an additional parameter.
+      //
+      // This can be happen multiple layers down.
       // Note that we do this only if the summary of the initial file changes. As such, we
       //   usually don't analyze everything.
-      add_rev_deps := null
-      add_rev_deps = :: |rev_dep_uri|
-        if not report_diagnostics_documents.contains rev_dep_uri:
-          report_diagnostics_documents.add rev_dep_uri
-          rev_document := documents_.get_existing_document --uri=rev_dep_uri
-          rev_document.reverse_deps.do: add_rev_deps.call it
+      //
+      // We will also remove files that are in a different project-root. During the
+      //   reverse dependency creation we add them (so we don't end up in an infinite
+      //   recursion), but they will be removed just afterwards.
+      add-rev-deps := null
+      add-rev-deps = :: |rev-dep-uri|
+        if not report-diagnostics-documents.contains rev-dep-uri:
+          report-diagnostics-documents.add rev-dep-uri
+          rev-document := analyzed-documents.get-existing --uri=rev-dep-uri
+          rev-document.reverse-deps.do: add-rev-deps.call it
 
-      document.reverse_deps.do: add_rev_deps.call it
+      document.reverse-deps.do: add-rev-deps.call it
+
+    // Remove the documents that are not in the same project-root, or are in
+    // .packages (assuming we don't want them).
+    should-report-package-diagnostics := settings_.should-report-package-diagnostics
+    report-diagnostics-documents.filter --in-place: | uri/string |
+      document-project-uri := documents_.project-uri-for --uri=uri
+      if document-project-uri != project-uri: continue.filter false
+      if not should-report-package-diagnostics and is-inside-dot-packages --uri=uri:
+        // Only report diagnostics for package files if they are open.
+        if not documents_.get-opened --uri=uri:
+          continue.filter false
+      true
 
     // Send the diagnostics we have to the client.
-    report_diagnostics_documents.do: |uri|
-      document := documents_.get_existing_document --uri=uri
-      request_revision := document.analysis_requested_by_revision
-      was_analyzed := summaries.contains uri
-      if was_analyzed:
-        diagnostics := diagnostics_per_uri.get uri --if_absent=: []
-        send_diagnostics (PushDiagnosticsParams --uri=uri --diagnostics=diagnostics)
-        if request_revision != -1 and request_revision < revision:
+    report-diagnostics-documents.do: |uri|
+      document := analyzed-documents.get-existing --uri=uri
+      request-revision := document.analysis-requested-by-revision
+      was-analyzed := summaries.contains uri
+      if was-analyzed:
+        diagnostics := diagnostics-per-uri.get uri --if-absent=: []
+        send-diagnostics (PushDiagnosticsParams --uri=uri --diagnostics=diagnostics)
+        if request-revision != -1 and request-revision < revision:
           // Mark the request as done.
-          document.analysis_requested_by_revision = -1
-      else if request_revision < revision:
-        document.analysis_requested_by_revision = revision
+          document.analysis-requested-by-revision = -1
+      else if request-revision < revision:
+        document.analysis-requested-by-revision = revision
 
     // Local lambda that returns whether a document needs analysis.
-    needs_analysis := : |uri|
-      document := documents_.get_existing_document --uri=uri
-      up_to_date := document.analysis_revision >= revision
-      will_be_analyzed := document.content_revision and document.content_revision > revision
-      not up_to_date and not will_be_analyzed
+    needs-analysis := : |uri|
+      document := analyzed-documents.get-existing --uri=uri
+      up-to-date := document.analysis-revision >= revision
+      opened := documents_.get-opened --uri=uri
+      content-revision := opened ? opened.revision : -1
+      will-be-analyzed := content-revision > revision
+      not up-to-date and not will-be-analyzed
 
     // See which documents need to be analyzed as a result of changes.
-    documents_needing_analysis := report_diagnostics_documents.filter --in_place: // Reuse the set
-      needs_analysis.call it
+    documents-needing-analysis := report-diagnostics-documents.filter --in-place: // Reuse the set.
+      needs-analysis.call it
 
-    if not documents_needing_analysis.is_empty:
-      analyze (List.from documents_needing_analysis) revision
+    if not documents-needing-analysis.is-empty:
+      // It's highly unlikely that a reverse dependency changes its summary as a result
+      // of a change in a dependency. However, this can easily change with language
+      // extensions. As such, we just add the result of the recursive call to our result.
+      rev-dep-result := analyze (List.from documents-needing-analysis) revision --project-uri=project-uri
+      changed-summary-documents.add-all rev-dep-result
 
-  send_diagnostics params/PushDiagnosticsParams -> none:
+    return changed-summary-documents
+
+  send-diagnostics params/PushDiagnosticsParams -> none:
     connection_.send "textDocument/publishDiagnostics" params
 
-  request_settings -> Map?:
+  request-settings -> Map?:
     params := ConfigurationParams --items= [ConfigurationItem --section="toitLanguageServer"]
     configuration := connection_.request "workspace/configuration" params
     // If the client doesn't have the the requested section, the content of the
     // configuration might be `null`.
     return configuration[0]  // We only requested one configuration, but it still comes in a list.
 
-  send_log_message msg/string -> none:
+  send-log-message msg/string -> none:
     connection_.send "window/logMessage" {"type": 4, "message": msg}
 
-  send_show_message msg -> none:
+  send-show-message msg -> none:
     connection_.send "window/showMessage" {"type": 3, "message": msg}
 
-  static repro_counter_ := 0
-  compute_repro_path_ -> string:
-    repro_dir := settings_.get "reproDir" --if_absent=: DEFAULT_REPRO_DIR
-    repro_prefix := "$repro_dir/repro"
-    if not file.is_directory repro_dir:
-      if file.is_file repro_dir:
-        send_show_message "Repro-dir exists and is not a directory: $repro_dir"
+  static repro-counter_ := 0
+  compute-repro-path_ -> string:
+    repro-dir := settings_.repro-dir
+    repro-prefix := "$repro-dir/repro"
+    if not file.is-directory repro-dir:
+      if file.is-file repro-dir:
+        send-show-message "Repro-dir exists and is not a directory: $repro-dir"
         // Don't overwrite the existing file.
         // We have a loop just below to find the name of the next non-existing path.
-        repro_prefix = "/tmp/lsp_repro"
+        repro-prefix = "/tmp/lsp_repro"
       else:
-        directory.mkdir repro_dir
-    repro_path := ""
+        directory.mkdir repro-dir
+    repro-path := ""
     while true:
-      repro_path = "$(repro_prefix)_$(Time.monotonic_us)-$(repro_counter_++).tar"
-      if not (file.is_file repro_path or file.is_directory repro_path): break
-    return repro_path
+      repro-path = "$(repro-prefix)_$(Time.monotonic-us)-$(repro-counter_++).tar"
+      if not (file.is-file repro-path or file.is-directory repro-path): break
+    return repro-path
 
-  reset_crash_rate_limit: last_crash_report_time_ = null
+  reset-crash-rate-limit: last-crash-report-time_ = null
 
-  compiler_path_ -> string:
-    compiler_path := toit_path_override_
-    if compiler_path != null:
-      return compiler_path
-    return settings_.get "toitPath" --if_absent=: "toit.compile"
+  compiler-path_ -> string:
+    compiler-path := toit-path-override_
+    if compiler-path != null:
+      return compiler-path
+    return settings_.toit-compiler-path
 
-  sdk_path_ -> string:
+  sdk-path_ -> string:
     // We can't access a setting while reading settings (the Setting class is a
     // monitor). Read the compiler_path first.
-    compiler_path := compiler_path_
-    return settings_.get "sdkPath" --if_absent=:
-      sdk_path_from_compiler compiler_path
+    compiler-path := compiler-path_
+    return settings_.sdk-path compiler-path
 
   compiler_ -> Compiler:
-    compiler_path := compiler_path_
-    sdk_path := sdk_path_
-    timeout_ms := settings_.get "timeoutMs" --if_absent=: DEFAULT_TIMEOUT_MS
+    compiler-path := compiler-path_
+    sdk-path := sdk-path_
+    timeout-ms := settings_.timeout-ms
 
     // Rate limit crash reporting.
-    is_rate_limited := false
-    if last_crash_report_time_:
-      current_us := Time.monotonic_us
-      CRASH_LIMIT_US ::= CRASH_REPORT_RATE_LIMIT_MS * 1_000
-      is_rate_limited = (Time.monotonic_us - last_crash_report_time_) <= CRASH_LIMIT_US
+    is-rate-limited := false
+    if last-crash-report-time_:
+      current-us := Time.monotonic-us
+      CRASH-LIMIT-US ::= CRASH-REPORT-RATE-LIMIT-MS * 1_000
+      is-rate-limited = (Time.monotonic-us - last-crash-report-time_) <= CRASH-LIMIT-US
 
-    should_write_repro := settings_.get "shouldWriteReproOnCrash" --if_absent=:false
+    should-write-repro := settings_.should-write-repro
 
-    protocol := FileServerProtocol.local compiler_path sdk_path documents_ translator_
+    protocol := FileServerProtocol.local compiler-path sdk-path documents_ translator_
 
     compiler := null  // Let the 'compiler' local be visible in the lambda expression below.
-    compiler = Compiler compiler_path translator_ timeout_ms
+    compiler = Compiler compiler-path translator_ timeout-ms
         --protocol=protocol
-        --project_uri=root_uri_
-        --on_error=:: |message|
-          if is_rate_limited:
+        --on-error=:: |message|
+          if is-rate-limited:
             // Do nothing
-          else if should_write_repro:
+          else if should-write-repro:
             // We are using the same flag to send a more visible message.
-            send_show_message message
+            send-show-message message
           else:
-            send_log_message message
-        --on_crash=:: |compiler_flags compiler_input signal protocol|
-          if is_rate_limited:
+            send-log-message message
+        --on-crash=:: |compiler-flags compiler-input signal protocol|
+          if is-rate-limited:
             // Do nothing.
-          else if should_write_repro:
-            repro_path := compute_repro_path_
-            write_repro
-                --repro_path=repro_path
-                --compiler_flags=compiler_flags
-                --compiler_input=compiler_input
+          else if should-write-repro:
+            repro-path := compute-repro-path_
+            write-repro
+                --repro-path=repro-path
+                --compiler-flags=compiler-flags
+                --compiler-input=compiler-input
                 --info=signal
                 --protocol=protocol
-                --cwd_path=root_uri_ and (translator_.to_path root_uri_)
-                --include_sdk
-            send_show_message "Compiler crashed. Repro created: $repro_path"
+                --cwd-path=root-uri_ and (translator_.to-path root-uri_)
+                --include-sdk
+            send-show-message "Compiler crashed. Repro created: $repro-path"
           else:
-            send_log_message "Compiler crashed with signal $signal"
-          last_crash_report_time_ = Time.monotonic_us
+            send-log-message "Compiler crashed with signal $signal"
+          last-crash-report-time_ = Time.monotonic-us
     return compiler
 
 main args -> none:
   parsed := null
   parser := cli.Command "server"
       --rest=[
-          cli.OptionString "toit-path-override",
+          cli.Option "toit-path-override",
       ]
       --options=[
-          cli.OptionString "home-path",
+          cli.Option "home-path",
           cli.Flag "verbose" --default=false,
       ]
       --run=:: parsed = it
   parser.run args
   if not parsed: exit 0
 
-  toit_path_override := parsed["toit-path-override"]
+  toit-path-override := parsed["toit-path-override"]
 
-  is_verbose = parsed["verbose"]
+  is-verbose = parsed["verbose"]
 
-  uri_path_translator := UriPathTranslator
+  uri-path-translator := UriPathTranslator
 
-  in_pipe  := pipe.stdin
-  out_pipe := pipe.stdout
+  in-pipe  := pipe.stdin
+  out-pipe := pipe.stdout
 
   // Generally, this flag is not used, as the extension has a way to log
   // output anyway.
-  should_log := false
-  if should_log:
+  should-log := false
+  reader/io.Reader := ?
+  writer/io.Writer := ?
+  if should-log:
     time := Time.now.stringify
-    log_in_file := file.Stream "/tmp/lsp_in-$(time).log" file.CREAT | file.WRONLY 0x1ff
-    log_out_file := file.Stream "/tmp/lsp_out-$(time).log" file.CREAT | file.WRONLY 0x1ff
+    log-in-file := file.Stream "/tmp/lsp_in-$(time).log" file.CREAT | file.WRONLY 0x1ff
+    log-out-file := file.Stream "/tmp/lsp_out-$(time).log" file.CREAT | file.WRONLY 0x1ff
     //log_in_file  := file.Stream "/tmp/lsp.log" file.CREAT | file.WRONLY 0x1ff
     //log_out_file := log_in_file
-    in_pipe  = LoggingIO log_in_file  in_pipe
-    out_pipe = LoggingIO log_out_file out_pipe
+    reader = (LoggingIO log-in-file in-pipe).in
+    writer = (LoggingIO log-out-file out-pipe).out
+  else:
+    reader = io.Reader.adapt in-pipe
+    writer = io.Writer.adapt out-pipe
 
-  reader := BufferedReader in_pipe
-  writer := out_pipe
+  rpc-connection := RpcConnection reader writer
 
-  rpc_connection := RpcConnection reader writer
-
-  server := LspServer rpc_connection toit_path_override uri_path_translator
+  server := LspServer rpc-connection toit-path-override uri-path-translator
   server.run

@@ -51,10 +51,19 @@ class BackendCollector : public ir::TraversingVisitor {
     TraversingVisitor::visit_Typecheck(node);
     if (node->type().is_class()) {
       auto klass = node->type().klass();
-      if (klass->is_interface()) {
-        interface_usage_counts_[klass]++;
-      } else {
-        class_usage_counts_[klass]++;
+      switch (klass->kind()) {
+        case ir::Class::CLASS:
+        case ir::Class::MONITOR:
+          class_usage_counts_[klass]++;
+          break;
+        // Mixins typechecks are implemented similar to interface checks:
+        // They have a stub method (without body) to indicate that a class
+        // "implements" the mixin.
+        // This is, because mixins can't be checked with a range check.
+        case ir::Class::MIXIN:
+        case ir::Class::INTERFACE:
+          interface_usage_counts_[klass]++;
+          break;
       }
     }
   }
@@ -242,9 +251,11 @@ Program* Backend::emit(ir::Program* ir_program) {
   // TODO(kasper): Move this elsewhere? Compute dispatch table offsets for
   // all the optimized virtual invoke bytecodes, so we can use them in case
   // we need to branch to the generic virtual invoke handling in the interpreter.
-  for (int i = INVOKE_EQ; i <= INVOKE_AT_PUT; i++) {
+  for (int i = INVOKE_EQ; i <= INVOKE_SIZE; i++) {
     Opcode opcode = static_cast<Opcode>(i);
-    int arity = (opcode == INVOKE_AT_PUT) ? 3 : 2;
+    int arity = 2;
+    if (opcode == INVOKE_AT_PUT) arity = 3;
+    if (opcode == INVOKE_SIZE) arity = 1;
     CallShape shape(arity, 0);  // No blocks.
     Symbol name = Symbol::for_invoke(opcode);
     Selector<PlainShape> selector(name, shape.to_plain_shape());
@@ -265,7 +276,8 @@ void Backend::emit_method(ir::Method* method,
   int dispatch_offset;
   bool is_field_accessor;
 
-  if (method->is_static()) {
+  bool is_mixin_method = method->holder() != null && method->holder()->is_mixin();
+  if (method->is_static() || is_mixin_method) {
     dispatch_offset = -1;
     is_field_accessor = false;
   } else {
@@ -280,16 +292,7 @@ void Backend::emit_method(ir::Method* method,
       dispatch_offset = table_offset;
     } else {
       ASSERT(table_offset == -1);
-      if (!typecheck_indexes->contains_key(method->holder())) {
-        // TODO(kasper): This is a slightly weird case, where we have a
-        // method that is never called but the tree shaker fails to
-        // realize this. We end up with an unused entry in the dispatch
-        // table at 'dispatch_table->slot_index_for(method)', but at
-        // least we do not generate code for this. We should be able
-        // to shake this out earlier by realizing that not all static
-        // calls lead to live methods.
-        return;
-      }
+      ASSERT(typecheck_indexes->contains_key(method->holder()));
       int index = (*typecheck_indexes)[method->holder()];
       ASSERT(index >= 0);
       // Negative indexes are for calls with static targets.

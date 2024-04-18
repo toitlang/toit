@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <esp_netif.h>
 
@@ -46,7 +46,7 @@
 #include <lwip/tcpip.h>
 
 #endif  // TOIT_USE_LWIP
-#endif  // TOIT_FREERTOS
+#endif  // TOIT_ESP32
 
 #include "../flags.h"
 #include "../heap_report.h"
@@ -60,7 +60,7 @@ namespace toit {
 
 bool needs_gc = false;
 
-#if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
+#if defined(TOIT_ESP32) || defined(TOIT_USE_LWIP)
 
 static bool is_toit_error(int err) {
   return FIRST_TOIT_ERROR >= err && err >= LAST_TOIT_ERROR;
@@ -105,9 +105,9 @@ String* lwip_strerror(Process* process, err_t err) {
 }
 
 Object* lwip_error(Process* process, err_t err) {
-  if (err == ERR_MEM) MALLOC_FAILED;
+  if (err == ERR_MEM) FAIL(MALLOC_FAILED);
   String* str = lwip_strerror(process, err);
-  if (str == null) ALLOCATION_FAILED;
+  if (str == null) FAIL(ALLOCATION_FAILED);
   return Primitive::mark_as_error(str);
 }
 
@@ -128,7 +128,7 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
       dhcp_set_struct(&global_netif, &static_dhcp);
       netif_set_up(&global_netif);
       err = dhcp_start(&global_netif);
-      return process->program()->null_object();
+      return process->null_object();
     });
     if (err != ERR_OK) {
       return lwip_error(process, err);
@@ -165,13 +165,13 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
       return 0;
     });
   }
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 #else
 
 PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 #endif
@@ -181,7 +181,7 @@ LwipEventSource::LwipEventSource()
     : EventSource("LwIP", 1)
     , call_done_(OS::allocate_condition_variable(mutex())) {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + LWIP_MALLOC_TAG);
-#if defined(TOIT_FREERTOS)
+#if defined(TOIT_ESP32)
   // Create the LWIP thread.
   esp_netif_init();
 #else
@@ -228,14 +228,14 @@ void LwipEventSource::on_thread(void* arg) {
   OS::signal_all(lwip->call_done());
 }
 
-#else // defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
+#else // defined(TOIT_ESP32) || defined(TOIT_USE_LWIP)
 
 MODULE_IMPLEMENTATION(dhcp, MODULE_DHCP)
 
 PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
-  return process->program()->null_object();
+  return process->null_object();
 }
 
-#endif // defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
+#endif // defined(TOIT_ESP32) || defined(TOIT_USE_LWIP)
 
 } // namespace toit

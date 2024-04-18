@@ -1,0 +1,13 @@
+tests/negative/import8-a.toit:6:8: error: Unresolved export 'A'
+export A
+       ^
+tests/negative/import8-test.toit:5:24: error: Unresolved show 'A'
+import .import8-a show A
+                       ^
+tests/negative/import8-a.toit:5:26: error: Unresolved show 'A'
+import .import8-b show B A
+                         ^
+tests/negative/import8-test.toit:8:9: error: Unresolved identifier: 'A'
+  print A
+        ^
+Compilation failed

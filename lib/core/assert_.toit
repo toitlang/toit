@@ -4,4 +4,4 @@
 
 assert_ [condition]:
   if condition.call: return
-  rethrow ASSERTION_FAILED_ERROR (encode_error_ ASSERTION_FAILED_ERROR "")
+  rethrow ASSERTION-FAILED-ERROR (encode-error_ ASSERTION-FAILED-ERROR "")

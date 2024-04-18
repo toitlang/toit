@@ -46,7 +46,8 @@ class Node;
   V(MethodStatic)               \
   V(Constructor)                \
   V(AdapterStub)                \
-  V(IsInterfaceStub)            \
+  V(MixinStub)                  \
+  V(IsInterfaceOrMixinStub)     \
   V(FieldStub)                  \
   V(Code)                       \
   V(Block)                      \
@@ -277,19 +278,25 @@ class Program : public Node {
 
 class Class : public Node {
  public:
-  Class(Symbol name, bool is_interface, bool is_abstract, Source::Range range)
+  enum Kind {
+    CLASS,
+    INTERFACE,
+    MONITOR,
+    MIXIN,
+  };
+
+  Class(Symbol name, Kind kind, bool is_abstract, Source::Range range)
       : name_(name)
       , range_(range)
       , is_runtime_class_(false)
       , super_(null)
+      , kind_(kind)
       , is_abstract_(is_abstract)
-      , is_interface_(is_interface)
       , typecheck_selector_(Selector<CallShape>(Symbol::invalid(), CallShape::invalid()))
+      , is_instantiated_(kind != MIXIN)
       , id_(-1)
       , start_id_(-1)
       , end_id_(-1)
-      , first_subclass_(null)
-      , subclass_sibling_link_(null)
       , total_field_count_(-1) {}
   IMPLEMENTS(Class)
 
@@ -316,6 +323,18 @@ class Class : public Node {
     super_ = klass;
   }
 
+  /// Returns whether the given klass is a super of this class.
+  bool is_transitive_super_of(Class* klass) {
+    auto current = klass->super();
+    while (current != null) {
+      if (current == this) {
+        return true;
+      }
+      current = current->super();
+    }
+    return false;
+  }
+
   List<Class*> interfaces() const { return interfaces_; }
   void set_interfaces(List<Class*> interfaces) {
     ASSERT(interfaces_.is_empty());
@@ -325,15 +344,24 @@ class Class : public Node {
     interfaces_ = interfaces;
   }
 
+  List<Class*> mixins() const { return mixins_; }
+  void set_mixins(List<Class*> mixins) {
+    ASSERT(mixins_.is_empty());
+    mixins_ = mixins;
+  }
+  void replace_mixins(List<Class*> mixins) {
+    mixins_ = mixins;
+  }
+
   /// The unnamed constructors.
   ///
   /// The named constructors are stored in the [statics] scope.
-  List<Method*> constructors() const { return constructors_; }
-  void set_constructors(List<Method*> constructors) {
+  List<Method*> unnamed_constructors() const { return constructors_; }
+  void set_unnamed_constructors(List<Method*> constructors) {
     ASSERT(constructors_.is_empty());
     constructors_ = constructors;
   }
-  void replace_constructors(List<Method*> new_constructors) { constructors_ = new_constructors; }
+  void replace_unnamed_constructors(List<Method*> new_constructors) { constructors_ = new_constructors; }
 
   /// The unnamed factories.
   ///
@@ -365,11 +393,20 @@ class Class : public Node {
   void replace_methods(List<MethodInstance*> new_methods) { methods_ = new_methods; }
 
   List<Field*> fields() const { return fields_; }
-  void set_fields(List<Field*> fields) { fields_ = fields; }
+  void set_fields(List<Field*> fields) {
+    ASSERT(fields_.is_empty());
+    fields_ = fields;
+  }
+  void replace_fields(List<Field*> fields) { fields_ = fields; }
 
+  Kind kind() const { return kind_; }
+
+  /// Whether the class is abstract.
+  /// A class is abstract if it cannot be instantiated.
   bool is_abstract() const { return is_abstract_; }
 
-  bool is_interface() const { return is_interface_; }
+  bool is_interface() const { return kind_ == INTERFACE; }
+  bool is_mixin() const { return kind_ == MIXIN; }
 
   Source::Range range() const { return range_; }
 
@@ -379,7 +416,7 @@ class Class : public Node {
 
   Selector<CallShape> typecheck_selector() const { return typecheck_selector_; }
   void set_typecheck_selector(Selector<CallShape> selector) {
-    ASSERT(is_interface());
+    ASSERT(is_interface() || is_mixin());
     typecheck_selector_ = selector;
   }
 
@@ -397,8 +434,9 @@ class Class : public Node {
   bool is_runtime_class_;
   Class* super_;
   List<Class*> interfaces_;
+  List<Class*> mixins_;
+  Kind kind_;
   bool is_abstract_;
-  bool is_interface_;
   // Only set for interfaces.
   Selector<CallShape> typecheck_selector_;
 
@@ -410,28 +448,11 @@ class Class : public Node {
   StaticsScope* statics_ = null;
   Scope* toitdoc_scope_ = null;
 
-  bool is_instantiated_ = true;
+  bool is_instantiated_;
 
   int id_;
   int start_id_;
   int end_id_;
-
- private:
-  // This is redundant information.
-  // For now we restrict its use to the resolver, so that modifications to the
-  // program structure don't need to update these fields.
-  friend class ::toit::compiler::Resolver;
-
-  Class* first_subclass_;
-  Class* subclass_sibling_link_;
-
-  Class* first_subclass() { return first_subclass_; }
-  Class* subclass_sibling() { return subclass_sibling_link_; }
-
-  void link_subclass(Class* next_subclass) {
-    next_subclass->subclass_sibling_link_ = first_subclass_;
-    first_subclass_ = next_subclass;
-  }
 
  public:
   // Reserved for DispatchTable and the backend:
@@ -604,7 +625,13 @@ class Method : public Node {
   void kill() { is_dead_ = true; }
 
   List<Parameter*> parameters() const { return parameters_; }
+  // Use 'set' for the initial setting, and 'replace' for later replacements.
   void set_parameters(List<Parameter*> parameters) {
+    ASSERT(parameters_.is_empty());
+    ASSERT(_parameters_have_correct_index(parameters));
+    parameters_ = parameters;
+  }
+  void replace_parameters(List<Parameter*> parameters) {
     ASSERT(_parameters_have_correct_index(parameters));
     parameters_ = parameters;
   }
@@ -695,11 +722,25 @@ class AdapterStub : public MethodInstance {
   IMPLEMENTS(AdapterStub)
 };
 
-class IsInterfaceStub : public MethodInstance {
+class MixinStub : public MethodInstance {
  public:
-  IsInterfaceStub(Symbol name, Class* holder, const PlainShape& shape, Source::Range range)
+  MixinStub(Symbol name, Class* holder, const PlainShape& shape, Source::Range range)
       : MethodInstance(name, holder, shape, false, range) {}
-  IMPLEMENTS(IsInterfaceStub);
+  IMPLEMENTS(MixinStub)
+};
+
+class IsInterfaceOrMixinStub : public MethodInstance {
+ public:
+  IsInterfaceOrMixinStub(Symbol name, Class* holder, const PlainShape& shape, Class* interface_or_mixin, Source::Range range)
+      : MethodInstance(name, holder, shape, false, range)
+      , interface_or_mixin_(interface_or_mixin) {}
+
+  IMPLEMENTS(IsInterfaceOrMixinStub);
+
+  ir::Class* interface_or_mixin() const { return interface_or_mixin_; }
+
+ private:
+  ir::Class* interface_or_mixin_;
 };
 
 // TODO(florian): the kind is called "GLOBAL_FUN", but the class is called
@@ -1136,8 +1177,9 @@ class LoopBranch : public Expression {
 
 class Code : public Expression {
  public:
-  Code(List<Parameter*> parameters, Expression* body, bool is_block, Source::Range range)
+  Code(Symbol name, List<Parameter*> parameters, Expression* body, bool is_block, Source::Range range)
       : Expression(range)
+      , name_(name)
       , parameters_(parameters)
       , body_(body)
       , is_block_(is_block)
@@ -1145,6 +1187,8 @@ class Code : public Expression {
     ASSERT(captured_count_ == 0 || !is_block);
   }
   IMPLEMENTS(Code)
+
+  Symbol name() const { return name_; }
 
   // Contains the captured arguments, but not the block-parameter (if it is a block).
   List<Parameter*> parameters() const { return parameters_; }
@@ -1161,6 +1205,7 @@ class Code : public Expression {
   void kill() { is_dead_ = true; }
 
  private:
+  Symbol name_;
   List<Parameter*> parameters_;
   Expression* body_;
   bool is_block_;
@@ -1527,6 +1572,9 @@ class Lambda : public CallStatic {
   Map<Local*, int> captured_depths_;
 };
 
+/// A call to a constructor.
+/// Allocates an object first.
+/// This class is not used for super-calls.
 class CallConstructor : public CallStatic {
  public:
   CallConstructor(ReferenceMethod* target,
@@ -1669,7 +1717,7 @@ class Typecheck : public Expression {
   void replace_expression(Expression* expression) { expression_ = expression; }
 
   bool is_interface_check() const {
-    return type_.is_class() && type_.klass()->is_interface();
+    return type_.is_class() && (type_.klass()->is_interface() || type_.klass()->is_mixin());
   }
 
   /// Returns the type name of this check.

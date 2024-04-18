@@ -1,2 +1,0 @@
-As check failed: null is not a I.
-  0: main                      tests/negative/asA_test.toit:13:5

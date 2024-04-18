@@ -1,0 +1,172 @@
+tests/negative/clashing-test.toit:8:1: error: Redefinition of 'A' as global
+A := (A).foo unresolved
+^
+tests/negative/clashing-test.toit:5:7: note: First definition of 'A'
+class A:
+      ^
+tests/negative/clashing-test.toit:10:1: error: Redefinition of 'A' as method
+A:
+^
+tests/negative/clashing-test.toit:5:7: note: First definition of 'A'
+class A:
+      ^
+tests/negative/clashing-test.toit:15:3: error: Redefinition of 'constructor'
+  constructor y: unresolved
+  ^~~~~~~~~~~
+tests/negative/clashing-test.toit:14:3: note: First definition of 'constructor'
+  constructor x: unresolved
+  ^~~~~~~~~~~
+tests/negative/clashing-test.toit:37:3: error: Redefinition of 'gee'
+  gee y: unresolved
+  ^~~
+tests/negative/clashing-test.toit:36:10: note: First definition of 'gee'
+  static gee x: unresolved
+         ^~~
+tests/negative/clashing-test.toit:40:3: error: Redefinition of 'bar'
+  bar: unresolved
+  ^~~
+tests/negative/clashing-test.toit:39:3: note: First definition of 'bar'
+  bar: unresolved
+  ^~~
+tests/negative/clashing-test.toit:43:3: error: Redefinition of 'field-method'
+  field-method: return unresolved
+  ^~~~~~~~~~~~
+tests/negative/clashing-test.toit:42:3: note: First definition of 'field-method'
+  field-method := unresolved
+  ^~~~~~~~~~~~
+tests/negative/clashing-test.toit:46:10: error: Redefinition of 'field-static-method'
+  static field-static-method: unresolved
+         ^~~~~~~~~~~~~~~~~~~
+tests/negative/clashing-test.toit:45:3: note: First definition of 'field-static-method'
+  field-static-method := unresolved
+  ^~~~~~~~~~~~~~~~~~~
+tests/negative/clashing-test.toit:49:10: error: Redefinition of 'field-static-field'
+  static field-static-field := unresolved
+         ^~~~~~~~~~~~~~~~~~
+tests/negative/clashing-test.toit:48:3: note: First definition of 'field-static-field'
+  field-static-field := unresolved
+  ^~~~~~~~~~~~~~~~~~
+tests/negative/clashing-test.toit:18:3: error: Redefinition of 'named'
+  constructor.named: unresolved
+  ^~~~~~~~~~~
+tests/negative/clashing-test.toit:17:3: note: First definition of 'named'
+  constructor.named: unresolved
+  ^~~~~~~~~~~
+tests/negative/clashing-test.toit:23:3: error: Redefinition of 'named2'
+  constructor.named2:
+  ^~~~~~~~~~~
+tests/negative/clashing-test.toit:20:3: note: First definition of 'named2'
+  constructor.named2:
+  ^~~~~~~~~~~
+tests/negative/clashing-test.toit:29:3: error: Redefinition of 'named3'
+  constructor.named3:
+  ^~~~~~~~~~~
+tests/negative/clashing-test.toit:27:3: note: First definition of 'named3'
+  constructor.named3:
+  ^~~~~~~~~~~
+tests/negative/clashing-test.toit:34:10: error: Redefinition of 'foo'
+  static foo y: unresolved
+         ^~~
+tests/negative/clashing-test.toit:33:10: note: First definition of 'foo'
+  static foo x: unresolved
+         ^~~
+tests/negative/clashing-test.toit:52:10: error: Redefinition of 'named4'
+  static named4: unresolved
+         ^~~~~~
+tests/negative/clashing-test.toit:51:3: note: First definition of 'named4'
+  constructor.named4: unresolved
+  ^~~~~~~~~~~
+tests/negative/clashing-test.toit:53:10: error: Redefinition of 'named4'
+  static named4 := unresolved
+         ^~~~~~
+tests/negative/clashing-test.toit:51:3: note: First definition of 'named4'
+  constructor.named4: unresolved
+  ^~~~~~~~~~~
+tests/negative/clashing-test.toit:56:10: error: Redefinition of 'static-method-field'
+  static static-method-field := unresolved
+         ^~~~~~~~~~~~~~~~~~~
+tests/negative/clashing-test.toit:55:10: note: First definition of 'static-method-field'
+  static static-method-field: unresolved
+         ^~~~~~~~~~~~~~~~~~~
+tests/negative/clashing-test.toit:11:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/clashing-test.toit:42:19: error: Unresolved identifier: 'unresolved'
+  field-method := unresolved
+                  ^~~~~~~~~~
+tests/negative/clashing-test.toit:45:26: error: Unresolved identifier: 'unresolved'
+  field-static-method := unresolved
+                         ^~~~~~~~~~
+tests/negative/clashing-test.toit:48:25: error: Unresolved identifier: 'unresolved'
+  field-static-field := unresolved
+                        ^~~~~~~~~~
+tests/negative/clashing-test.toit:14:18: error: Unresolved identifier: 'unresolved'
+  constructor x: unresolved
+                 ^~~~~~~~~~
+tests/negative/clashing-test.toit:15:18: error: Unresolved identifier: 'unresolved'
+  constructor y: unresolved
+                 ^~~~~~~~~~
+tests/negative/clashing-test.toit:17:22: error: Unresolved identifier: 'unresolved'
+  constructor.named: unresolved
+                     ^~~~~~~~~~
+tests/negative/clashing-test.toit:18:22: error: Unresolved identifier: 'unresolved'
+  constructor.named: unresolved
+                     ^~~~~~~~~~
+tests/negative/clashing-test.toit:21:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/clashing-test.toit:24:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/clashing-test.toit:28:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/clashing-test.toit:30:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/clashing-test.toit:33:17: error: Unresolved identifier: 'unresolved'
+  static foo x: unresolved
+                ^~~~~~~~~~
+tests/negative/clashing-test.toit:34:17: error: Unresolved identifier: 'unresolved'
+  static foo y: unresolved
+                ^~~~~~~~~~
+tests/negative/clashing-test.toit:36:17: error: Unresolved identifier: 'unresolved'
+  static gee x: unresolved
+                ^~~~~~~~~~
+tests/negative/clashing-test.toit:46:31: error: Unresolved identifier: 'unresolved'
+  static field-static-method: unresolved
+                              ^~~~~~~~~~
+tests/negative/clashing-test.toit:49:32: error: Unresolved identifier: 'unresolved'
+  static field-static-field := unresolved
+                               ^~~~~~~~~~
+tests/negative/clashing-test.toit:51:23: error: Unresolved identifier: 'unresolved'
+  constructor.named4: unresolved
+                      ^~~~~~~~~~
+tests/negative/clashing-test.toit:52:18: error: Unresolved identifier: 'unresolved'
+  static named4: unresolved
+                 ^~~~~~~~~~
+tests/negative/clashing-test.toit:53:20: error: Unresolved identifier: 'unresolved'
+  static named4 := unresolved
+                   ^~~~~~~~~~
+tests/negative/clashing-test.toit:55:31: error: Unresolved identifier: 'unresolved'
+  static static-method-field: unresolved
+                              ^~~~~~~~~~
+tests/negative/clashing-test.toit:56:33: error: Unresolved identifier: 'unresolved'
+  static static-method-field := unresolved
+                                ^~~~~~~~~~
+tests/negative/clashing-test.toit:37:10: error: Unresolved identifier: 'unresolved'
+  gee y: unresolved
+         ^~~~~~~~~~
+tests/negative/clashing-test.toit:39:8: error: Unresolved identifier: 'unresolved'
+  bar: unresolved
+       ^~~~~~~~~~
+tests/negative/clashing-test.toit:40:8: error: Unresolved identifier: 'unresolved'
+  bar: unresolved
+       ^~~~~~~~~~
+tests/negative/clashing-test.toit:43:24: error: Unresolved identifier: 'unresolved'
+  field-method: return unresolved
+                       ^~~~~~~~~~
+tests/negative/clashing-test.toit:8:14: error: Unresolved identifier: 'unresolved'
+A := (A).foo unresolved
+             ^~~~~~~~~~
+Compilation failed

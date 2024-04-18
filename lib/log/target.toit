@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import bytes
+import io
 import system.api.log show LogService LogServiceClient
 
 import .level
@@ -18,14 +18,14 @@ class DefaultTarget implements Target:
 Log service used by $DefaultTarget.
 */
 service_/LogService ::= (LogServiceClient).open
-   --if_absent=: StandardLogService_
+   --if-absent=: StandardLogService_
 
 /**
 Standard log service used when the system log service cannot
   be resolved.
 */
 class StandardLogService_ implements LogService:
-  buffer_/bytes.Buffer ::= bytes.Buffer.with_initial_size 64
+  buffer_/io.Buffer ::= io.Buffer.with-capacity 64
 
   log level/int message/string names/List? keys/List? values/List? -> none:
     buffer ::= buffer_
@@ -36,7 +36,7 @@ class StandardLogService_ implements LogService:
         buffer.write names[it]
       buffer.write "] "
 
-    buffer.write (level_name level)
+    buffer.write (level-name level)
     buffer.write ": "
     buffer.write message
 
@@ -53,6 +53,6 @@ class StandardLogService_ implements LogService:
     // be careful and clear the buffer before doing so. Otherwise,
     // another task might start using the non-empty buffer and
     // interleaving the output in strange ways.
-    constructed ::= buffer.to_string
+    constructed ::= buffer.to-string
     buffer.clear
     print constructed

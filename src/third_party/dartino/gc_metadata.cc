@@ -14,10 +14,19 @@
 
 namespace toit {
 
+#ifdef TOIT_FREERTOS
+// ESP32 has a cache line of 32 bytes, as does Cortex M7 and Cortex M3.
+static const uword CACHE_LINE = 32;
+#else
+// It's OK to round up a little too much on other platforms, even if they have
+// a 32 byte cache line.  Intel CPUs tend to have 64 bytes.
+static const uword CACHE_LINE = 64;
+#endif
+
 GcMetadata GcMetadata::singleton_;
 
 void GcMetadata::tear_down() {
-  OS::free_pages(singleton_.metadata_, singleton_.metadata_size_);
+  OS::ungrab_virtual_memory(singleton_.metadata_, singleton_.metadata_size_);
 }
 
 void GcMetadata::get_metadata_extent(uword* address_return, uword* size_return) {
@@ -33,46 +42,57 @@ void GcMetadata::set_up_singleton() {
   uword range_address = reinterpret_cast<uword>(range.address);
   lowest_address_ = Utils::round_down(range_address, TOIT_PAGE_SIZE);
   uword size = Utils::round_up(range.size + range_address - lowest_address_, TOIT_PAGE_SIZE);
-#ifdef TOIT_FREERTOS
-  // If we have very limited memory then we restrict the Toit heap
-  // to the high half, which reduces the metadata allocation from
-  // 24k to 12k.
+#ifdef TOIT_ESP32
+  // Assume that the first 108k of memory can be used for C allocations, so we
+  // remove that from the area that needs to be covered by the heap metadata.
+  // This reduces the heap metadata from 24k or 28k to 16k.
+  const uword ONLY_FOR_MALLOC = 108 * KB;
   const uword TWELVE_K_METADATA_LIMIT = 148 * KB;
-  const uword PLENTY_OF_MEMORY = 308 * KB;
-  if (!OS::use_spiram_for_metadata() && !OS::use_spiram_for_heap() &&
-      TWELVE_K_METADATA_LIMIT < size && size < PLENTY_OF_MEMORY) {
-    uword adjust = size - TWELVE_K_METADATA_LIMIT;
-    lowest_address_ += adjust;
-    size -= adjust;
+  const uword SIXTEEN_K_METADATA_LIMIT = 200 * KB;
+  if (!OS::use_spiram_for_metadata() && !OS::use_spiram_for_heap()) {
+    word adjust = ONLY_FOR_MALLOC;
+    // Metadata sizes are rounded up to the next 4k boundary, so we might as
+    // well increase the covered size to make use of the extra space.
+    if (size - adjust < TWELVE_K_METADATA_LIMIT) {
+      adjust = size - TWELVE_K_METADATA_LIMIT;
+    } else if (size - adjust < SIXTEEN_K_METADATA_LIMIT) {
+      adjust = size - SIXTEEN_K_METADATA_LIMIT;
+    }
+    if (adjust > 0) {
+      lowest_address_ += adjust;
+      size -= adjust;
+    }
   }
+#elif defined(TOIT_FREERTOS)
+  FATAL("UNIMPLEMENTED");
 #endif
   heap_extent_ = size;
   heap_start_munged_ = (lowest_address_ >> 1) |
                        (static_cast<uword>(1) << (8 * sizeof(uword) - 1));
   heap_extent_munged_ = size >> 1;
 
-  number_of_cards_ = size >> CARD_SIZE_LOG_2;
+  // Round up the byte counts for various uses of Metadata so that there is no
+  // false sharing of cache lines.  This is an optimization, and should not
+  // affect correctness.
+  number_of_cards_ = Utils::round_up(size >> CARD_SIZE_LOG_2, CACHE_LINE);
 
-  uword mark_bits_size = size >> MARK_BITS_SHIFT;
-  // Ensure there is a little slack after the mark bits for the border case
-  // where we check a one-word object at the end of a page for blackness.
-  // We need everything to stay word-aligned, so we add a full word of padding.
-  mark_bits_size += sizeof(uword);
+  uword mark_bits_size = Utils::round_up(size >> MARK_BITS_SHIFT, CACHE_LINE);
 
-  uword mark_stack_overflow_bits_size = size >> CARD_SIZE_IN_BITS_LOG_2;
+  uword mark_stack_overflow_bits_size = Utils::round_up(size >> CARD_SIZE_IN_BITS_LOG_2, CACHE_LINE);
 
-  uword cumulative_mark_bits_size = size >> CUMULATIVE_MARK_BITS_SHIFT;
+  uword cumulative_mark_bits_size = Utils::round_up(size >> CUMULATIVE_MARK_BITS_SHIFT, CACHE_LINE);
 
-  uword page_type_size_ = size >> TOIT_PAGE_SIZE_LOG2;
+  uword page_type_size_ = Utils::round_up(size >> TOIT_PAGE_SIZE_LOG2, CACHE_LINE);
 
   metadata_size_ = Utils::round_up(
-                                                               // Overhead on:        32bit   64bit
-      number_of_cards_ +                   // One remembered set byte per card.       1/128   1/256
-          number_of_cards_ +               // One object start offset byte per card.  1/128   1/256
-          mark_bits_size +                 // One mark bit per word.                  1/32    1/64
-          cumulative_mark_bits_size +      // One uword per 32 mark bits              1/32    1/32
-          mark_stack_overflow_bits_size +  // One bit per card                        1/1024  1/2048
-          page_type_size_,                 // One byte per page                       1/4096  1/32768
+                                           //                                                          Size per 4k
+                                           //                     Overhead on:        32bit   64bit    page on 32 bit.
+      number_of_cards_ +                   // One remembered set byte per card.       1/128   1/256    32 bytes
+          number_of_cards_ +               // One object start offset byte per card.  1/128   1/256    32 bytes
+          mark_bits_size +                 // One mark bit per word.                  1/32    1/64     128 bytes
+          cumulative_mark_bits_size +      // One uword per 32 mark bits              1/32    1/32     128 bytes
+          mark_stack_overflow_bits_size +  // One bit per card                        1/1024  1/2048   4 bytes
+          page_type_size_,                 // One byte per page                       1/4096  1/32768  1 byte
                                            //            Total:                       7.9%    5.5%
                                            //            Total without mark bits:     1.6%    0.8%
       TOIT_PAGE_SIZE);

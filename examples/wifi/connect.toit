@@ -7,15 +7,15 @@
 
 import net.wifi
 
-USER_SSID ::= "myssid"
-USER_PASSWORD ::= "mypassword"
+USER-SSID ::= "myssid"
+USER-PASSWORD ::= "mypassword"
 
 main:
   connection := wifi.open
-      --ssid=USER_SSID
-      --password=USER_PASSWORD
+      --ssid=USER-SSID
+      --password=USER-PASSWORD
   
-  ap := connection.access_point
+  ap := connection.access-point
 
   print """
       $(%-32s "SSID") $(%-18s "BSSID") \
@@ -23,6 +23,6 @@ main:
       $(%-8s "Author")\n"""
 
   print """
-      $(%-32s ap.ssid) $(%-18s ap.bssid_name) \
+      $(%-32s ap.ssid) $(%-18s ap.bssid-name) \
       $(%-6s ap.rssi) $(%-8s ap.channel) \
-      $(%-8s ap.authmode_name)"""
+      $(%-8s ap.authmode-name)"""

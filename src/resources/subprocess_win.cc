@@ -18,11 +18,14 @@
 #if defined(TOIT_WINDOWS)
 
 #include <windows.h>
+
 #include "../event_sources/event_win.h"
+#include "../error_win.h"
 #include "../objects_inline.h"
 #include "../process_group.h"
-#include "../vm.h"
 #include "subprocess.h"
+#include "../vm.h"
+
 namespace toit {
 
 static const int PROCESS_EXITED = 1;
@@ -62,10 +65,15 @@ MODULE_IMPLEMENTATION(subprocess, MODULE_SUBPROCESS)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  auto  resource_group = _new SubprocessResourceGroup(process, WindowsEventSource::instance());
-  if (!resource_group) MALLOC_FAILED;
+  auto resource_group = _new SubprocessResourceGroup(process, WindowsEventSource::instance());
+  if (!resource_group) FAIL(MALLOC_FAILED);
+
+  if (!WindowsEventSource::instance()->use()) {
+    resource_group->tear_down();
+    WINDOWS_ERROR;
+  }
 
   proxy->set_external_address(resource_group);
   return proxy;
@@ -74,28 +82,28 @@ PRIMITIVE(init) {
 PRIMITIVE(wait_for) {
   // On Windows we always add an event to get notified when a subprocess ends. So this primitive is intentionally just
   // returning null.
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(dont_wait_for) {
   // On Windows we always add an event to get notified when a subprocess ends. So this primitive is intentionally just
   // returning null.
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(kill) {
   ARGS(SubprocessResource, subprocess, int, signal);
-  if (signal != 9) INVALID_ARGUMENT;
+  if (signal != 9) FAIL(INVALID_ARGUMENT);
 
   subprocess->set_killed();
   TerminateProcess(subprocess->handle(), signal);
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(strsignal) {
   ARGS(int, signal);
   if (signal == 9) return process->allocate_string_or_error("SIGKILL");
-  INVALID_ARGUMENT;
+  FAIL(INVALID_ARGUMENT);
 }
 
 } // namespace toit

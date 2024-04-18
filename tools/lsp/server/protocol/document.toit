@@ -37,7 +37,7 @@ class Position extends MapWrapper:
     map_["line"]      = line
     map_["character"] = character
 
-  constructor.from_map map/Map: super map
+  constructor.from-map map/Map: super map
 
 /**
 A range in a text document expressed as (zero-based) start and end positions.
@@ -48,7 +48,7 @@ A range is comparable to a selection in an editor. Therefore the end position
   the next line
 */
 class Range extends MapWrapper:
-  constructor.from_map map/Map: super map
+  constructor.from-map map/Map: super map
 
   constructor start/Position end/Position:
     map_["start"] = start.map_
@@ -62,19 +62,19 @@ class Range extends MapWrapper:
   The range's start position
   */
   start -> Position:
-    return at_ "start": Position.from_map it
+    return at_ "start": Position.from-map it
 
   /**
   The range's end position.
   */
   end -> Position:
-    return at_ "end": Position.from_map it
+    return at_ "end": Position.from-map it
 
 /**
 A location inside a resource, such as a line inside a text file.
 */
 class Location extends MapWrapper:
-  constructor.from_map json_map/Map: super json_map
+  constructor.from-map json-map/Map: super json-map
 
   constructor
       --uri   /string   // A DocumentUri
@@ -86,7 +86,7 @@ class Location extends MapWrapper:
     return at_ "uri"
 
   range -> Range:
-    return at_ "range": Range.from_map it
+    return at_ "range": Range.from-map it
 
 /**
 A link between a source and a target location.
@@ -98,19 +98,19 @@ class LocationLink:
   Used as the underlined span for mouse interaction. Defaults to the word range at
     the mouse position.
   */
-  origin_selection_range /Range? ::= null
+  origin-selection-range /Range? ::= null
 
   /**
   The target resource identifier of this link.
   */
-  target_uri /string ::= ?
+  target-uri /string ::= ?
 
   /**
   The full target range of this link. If the target for example is a symbol then target range is the
     range enclosing this symbol not including leading/trailing whitespace but everything else
     like comments. This information is typically used to highlight the range in the editor.
   */
-  target_range /Range ::= ?
+  target-range /Range ::= ?
 
   /**
   The range that should be selected and revealed when this link is being followed, e.g the name of a
@@ -118,13 +118,13 @@ class LocationLink:
 
   Must be contained by the the `targetRange`. See also [DocumentSymbol.range]
   */
-  target_selection_range /Range ::= ?
+  target-selection-range /Range ::= ?
 
-  constructor .origin_selection_range .target_uri .target_range .target_selection_range:
-  constructor .target_uri .target_range .target_selection_range:
+  constructor .origin-selection-range .target-uri .target-range .target-selection-range:
+  constructor .target-uri .target-range .target-selection-range:
 
 class TextDocumentIdentifier extends MapWrapper:
-  constructor json_map/Map: super json_map
+  constructor json-map/Map: super json-map
 
   /**
   The text document's URI.
@@ -134,7 +134,7 @@ class TextDocumentIdentifier extends MapWrapper:
     return at_ "uri"
 
 class VersionedTextDocumentIdentifier extends TextDocumentIdentifier:
-  constructor json_map/Map: super json_map
+  constructor json-map/Map: super json-map
 
   /**
   The version number of this document.
@@ -152,7 +152,7 @@ class VersionedTextDocumentIdentifier extends TextDocumentIdentifier:
     return lookup_ "version"
 
 class TextDocumentItem extends MapWrapper:
-  constructor json_map/Map: super json_map
+  constructor json-map/Map: super json-map
 
   /**
   The text document's URI.
@@ -164,7 +164,7 @@ class TextDocumentItem extends MapWrapper:
   /**
   The text document's language identifier.
   */
-  language_id -> string:
+  language-id -> string:
     return at_ "languageId"
 
   /**
@@ -180,16 +180,26 @@ class TextDocumentItem extends MapWrapper:
     return at_ "text"
 
 class TextDocumentPositionParams extends MapWrapper:
-  constructor json_map/Map: super json_map
+  constructor json-map/Map: super json-map
 
   /**
   The text document.
   */
-  text_document -> TextDocumentIdentifier:
+  text-document -> TextDocumentIdentifier:
     return at_ "textDocument": TextDocumentIdentifier it
 
   /**
   The position inside the text document.
   */
   position -> Position:
-    return at_ "position": Position.from_map it
+    return at_ "position": Position.from-map it
+
+/**
+A textual edit applicable to a text document.
+*/
+class TextEdit extends MapWrapper:
+  constructor
+      --range/Range
+      --new-text/string:
+    map_["range"]    = range.map_
+    map_["newText"]  = new-text

@@ -134,11 +134,11 @@ class LinkedList {
       return entry_->container();
     }
 
-    bool operator==(const Iterator&other) const {
+    bool operator==(const Iterator& other) const {
       return entry_ == other.entry_;
     }
 
-    bool operator!=(const Iterator&other) const {
+    bool operator!=(const Iterator& other) const {
       return entry_ != other.entry_;
     }
 
@@ -310,7 +310,7 @@ class LinkedList {
 template <typename T, int N = 1>
 class LinkedFifo : public LinkedList<T, N> {
  public:
-  LinkedFifo<T, N>() : tail_(&this->anchor_) {}
+  LinkedFifo() : tail_(&this->anchor_) {}
 
   typedef LinkedList<T, N> Super;
   typedef typename Super::Element Element;

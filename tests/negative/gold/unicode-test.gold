@@ -1,0 +1,9 @@
+tests/negative/unicode-test.toit:6:10: error: Invalid string: '\u{FFFFFFF}'
+
+  str := "\u{FFFFFFF}"
+         ^~~~~~~~~~~~~
+tests/negative/unicode-test.toit:7:9: error: Invalid string: '\u{FFFFFF}'
+
+  str = "\u{FFFFFF}"
+        ^~~~~~~~~~~~
+Compilation failed

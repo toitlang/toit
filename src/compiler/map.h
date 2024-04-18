@@ -100,6 +100,17 @@ template<typename K, typename V> class Map<K, V*> {
 
   V* at(const K& key) { return map_.at(key); }
 
+  template<typename F>
+  void for_each(const F& callback) {
+    for (auto key : vector_) {
+      callback(key, map_[key]);
+    }
+  }
+
+  bool contains_key(const K& key) const {
+    return map_.find(key) != map_.end();
+  }
+
   V* lookup(const K& key) {
     auto probe = map_.find(key);
     if (probe == map_.end()) return null;

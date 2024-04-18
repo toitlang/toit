@@ -43,14 +43,19 @@ static int encode_histogram(ProgramOrientedEncoder* encoder, PerClass* data, int
 }
 
 PRIMITIVE(object_histogram) {
-  ARGS(cstring, marker, int, full_gc_count);
-  // Return ALLOCATION_FAILED until we cause a full GC.
-  if (process->gc_count(FULL_GC) == full_gc_count) ALLOCATION_FAILED;
+  ARGS(cstring, marker, Object, gc_count);
+
+  if (gc_count != process->null_object()) {
+    INT64_VALUE_OR_WRONG_TYPE(word_gc_count, gc_count);
+    // Return ALLOCATION_FAILED until we cause a full GC.
+    if (process->gc_count(FULL_GC) == word_gc_count) FAIL(ALLOCATION_FAILED);
+  }
+
   Program* program = process->program();
   int length = program->class_bits.length();
   int size = length * sizeof(PerClass);
   MallocedBuffer data_buffer(size);
-  if (!data_buffer.has_content()) MALLOC_FAILED;
+  if (!data_buffer.has_content()) FAIL(MALLOC_FAILED);
   PerClass* data = reinterpret_cast<PerClass*>(data_buffer.content());
 
   // Clear the memory before starting.
@@ -58,7 +63,7 @@ PRIMITIVE(object_histogram) {
 
   // Iterate through the object heap to collect the histogram.
   process->object_heap()->do_objects([&](HeapObject* object) -> void {
-    int class_index = Smi::cast(object->class_id())->value();
+    int class_index = Smi::value(object->class_id());
     if (class_index < 0) return;  // Free-list entries etc.
     int size = object->size(program);
     if (is_byte_array(object) && ByteArray::cast(object)->has_external_address()) {
@@ -77,13 +82,13 @@ PRIMITIVE(object_histogram) {
 
   // First encoding to find the size.
   MallocedBuffer length_counting_buffer(1);
-  if (!length_counting_buffer.has_content()) MALLOC_FAILED;
+  if (!length_counting_buffer.has_content()) FAIL(MALLOC_FAILED);
   ProgramOrientedEncoder length_counting_encoder(program, &length_counting_buffer);
   int non_trivial_entries = encode_histogram(&length_counting_encoder, data, length, 0, marker);
 
   // Second encoding to actually encode into a buffer.
   MallocedBuffer encoding_buffer(length_counting_buffer.size());
-  if (!encoding_buffer.has_content()) MALLOC_FAILED;
+  if (!encoding_buffer.has_content()) FAIL(MALLOC_FAILED);
   ProgramOrientedEncoder encoder(program, &encoding_buffer);
   encode_histogram(&encoder, data, length, non_trivial_entries, marker);
 
@@ -92,7 +97,7 @@ PRIMITIVE(object_histogram) {
       encoding_buffer.content(),
       /* dispose = */ true,
       /* clear_content = */ false);
-  if (result == null) ALLOCATION_FAILED;
+  if (result == null) FAIL(ALLOCATION_FAILED);
   process->object_heap()->register_external_allocation(encoding_buffer.size());
   encoding_buffer.take_content();  // Don't free the content!
   return result;

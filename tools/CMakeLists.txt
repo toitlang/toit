@@ -15,7 +15,7 @@
 
 include(toit.cmake)
 
-set(TOOLS assets firmware system_message snapshot_to_image toitp stacktrace)
+set(TOOLS assets firmware kebabify snapshot_to_image stacktrace system_message toitp)
 set(EXES)
 
 foreach (TOOL ${TOOLS})
@@ -38,3 +38,4 @@ add_custom_target(
 
 toit_project(lsp "${CMAKE_CURRENT_LIST_DIR}/lsp/server")
 toit_project(tools "${CMAKE_CURRENT_LIST_DIR}")
+toit_project(pkg "${CMAKE_CURRENT_LIST_DIR}/pkg")

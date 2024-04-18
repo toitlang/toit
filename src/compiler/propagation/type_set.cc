@@ -92,8 +92,8 @@ bool TypeSet::can_be_falsy(Program* program) const {
 }
 
 bool TypeSet::can_be_truthy(Program* program) const {
-  unsigned null_id = program->null_class_id()->value();
-  unsigned false_id = program->false_class_id()->value();
+  unsigned null_id = Smi::value(program->null_class_id());
+  unsigned false_id = Smi::value(program->false_class_id());
   Iterator it(*this, TypeSet::words_per_type(program));
   while (it.has_next()) {
     unsigned id = it.next();
@@ -150,7 +150,7 @@ int TypeSet::remove_typecheck_class(Program* program, int index, bool is_nullabl
   remove_range(0, start);
   remove_range(end, program->class_bits.length());
   if (contains_null_before && is_nullable) {
-    add(program->null_class_id()->value());
+    add(Smi::value(program->null_class_id()));
   }
   int size_after = size(words_per_type);
   int result = 0;
@@ -178,7 +178,7 @@ int TypeSet::remove_typecheck_interface(Program* program, int index, bool is_nul
     remove(id);
   }
   if (contains_null_before && is_nullable) {
-    add(program->null_class_id()->value());
+    add(Smi::value(program->null_class_id()));
   }
   int size_after = size(words_per_type);
   int result = 0;

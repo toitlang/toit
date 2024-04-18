@@ -1,0 +1,10 @@
+tests/negative/pkg_rel_not_found/main-test.toit:5:1: error: Failed to import 'pre.not-exist'
+import pre.not-exist as pre
+^~~~~~
+tests/negative/pkg_rel_not_found/main-test.toit:5:12: note: Missing library file. Tried '<pkg:nested/id>/not_exist.toit' and '<pkg:nested/id>/not_exist/not-exist.toit'
+import pre.not-exist as pre
+           ^~~~~~~~~
+tests/negative/pkg_rel_not_found/main-test.toit:8:13: error: Unresolved identifier: 'foo'
+  print pre.foo
+            ^~~
+Compilation failed

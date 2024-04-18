@@ -21,15 +21,26 @@
 #include "flags.h"
 #include "memory.h"
 #include "program_memory.h"
-#include <sys/time.h>
-#include <time.h>
 #include <errno.h>
 #include <pthread.h>
 #include <sys/mman.h>
 #include <sys/sysinfo.h>
+#include <sys/time.h>
+#include <limits.h>
+#include <time.h>
 #include <unistd.h>
 
 namespace toit {
+
+char* OS::get_executable_path() {
+  char* path = _new char[PATH_MAX];
+  int nb_written = readlink("/proc/self/exe", path, PATH_MAX - 1);
+  if (nb_written == -1) {
+    FATAL("failure reading executable path: %d", errno);
+  }
+  path[nb_written] = '\0';
+  return path;
+}
 
 int OS::num_cores() {
   return get_nprocs();
@@ -92,18 +103,12 @@ void OS::set_writable(ProgramBlock* block, bool value) {
   mprotect(void_cast(block), TOIT_PAGE_SIZE, PROT_READ | (value ? PROT_WRITE : 0));
 }
 
-void OS::tear_down() {
-  dispose(global_mutex_);
-  dispose(scheduler_mutex_);
-  dispose(resource_mutex_);
-}
-
 const char* OS::get_platform() {
   return "Linux";
 }
 
 int OS::read_entire_file(char* name, uint8** buffer) {
-  FILE *file;
+  FILE* file;
   int length;
   file = fopen(name, "rb");
   if (!file) return -1;
@@ -148,8 +153,6 @@ void OS::set_heap_tag(word tag) {}
 word OS::get_heap_tag() { return 0; }
 
 #endif // def TOIT_CMPCTMALLOC
-
-void OS::heap_summary_report(int max_pages, const char* marker) {}
 
 }
 

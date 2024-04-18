@@ -3,57 +3,54 @@
 // found in the lib/LICENSE file.
 
 // System message types.
-SYSTEM_TERMINATED_ ::= 0
-SYSTEM_SPAWNED_    ::= 1
-SYSTEM_TRACE_      ::= 2  // Stack traces, histograms, and profiling information.
+SYSTEM-TERMINATED_ ::= 0
+SYSTEM-SPAWNED_    ::= 1
+SYSTEM-TRACE_      ::= 2  // Stack traces, histograms, and profiling information.
 
 // System message types for service RPCs.
-SYSTEM_RPC_REQUEST_           ::= 3
-SYSTEM_RPC_REPLY_             ::= 4
-SYSTEM_RPC_CANCEL_            ::= 5
-SYSTEM_RPC_NOTIFY_TERMINATED_ ::= 6
-SYSTEM_RPC_NOTIFY_RESOURCE_   ::= 7
+SYSTEM-RPC-REQUEST_           ::= 3
+SYSTEM-RPC-REPLY_             ::= 4
+SYSTEM-RPC-CANCEL_            ::= 5
+SYSTEM-RPC-NOTIFY-TERMINATED_ ::= 6
+SYSTEM-RPC-NOTIFY-RESOURCE_   ::= 7
 
 /**
-Sends the $message with $type to the process identified by $pid.
+Sends the $message with $type to the process identified by $pid and
+  returns whether the $message was delivered.
+
 It must be possible to encode the $message with the built-in
-  primitive message encoder.
-May throw "NESTING_TOO_DEEP" for deep or cyclic data structures.
-May throw a serialization failure.
-May throw "MESSAGE_NO_SUCH_RECEIVER" if the pid is invalid.
+  message encoder. Throws "NESTING_TOO_DEEP" for deep or cyclic
+  data structures or a serialization error for unserializable
+  messages.
 */
-process_send_ pid/int type/int message -> none:
-  #primitive.core.process_send:
+process-send_ pid/int type/int message -> bool:
+  #primitive.core.process-send:
     if it is List and it.size != 0 and it[0] is int:
-      serialization_failure_ it[0]
+      serialization-failure_ it[0]
     throw it
 
 /** Registered system message handlers for this process. */
-system_message_handlers_ ::= {:}
+system-message-handlers_ ::= {:}
 
 interface SystemMessageHandler_:
   /**
   Handles the $message of the $type from the process with group ID $gid and
     process ID $pid.
-
-  # Inheritance
-  Implementation of this method must not lead to message processing (that is calls to
-    $process_messages_).
   */
-  on_message type/int gid/int pid/int message/any -> none
+  on-message type/int gid/int pid/int message/any -> none
 
 /**
 Sets the $handler as the system message handler for message of the $type.
 */
-set_system_message_handler_ type/int handler/SystemMessageHandler_:
-  system_message_handlers_[type] = handler
+set-system-message-handler_ type/int handler/SystemMessageHandler_:
+  system-message-handlers_[type] = handler
 
 /** Flag to track if we're currently processing messages. */
-is_processing_messages_ := false
+is-processing-messages_ := false
 
 // We cache a message processor, so we don't have to keep allocating
 // new tasks for processing messages all the time.
-message_processor_/MessageProcessor_ := MessageProcessor_ null
+message-processor_/MessageProcessor_ := MessageProcessor_ null
 
 /**
 Processes the incoming messages sent to tasks in this process.
@@ -61,13 +58,13 @@ Processes the incoming messages sent to tasks in this process.
 If we're already processing messages in another task, there is
   no need to take any action here.
 */
-process_messages_:
-  if is_processing_messages_: return
-  is_processing_messages_ = true
+process-messages_:
+  if is-processing-messages_: return
+  is-processing-messages_ = true
 
   try:
-    while task_has_messages_:
-      message := task_receive_message_
+    while task-has-messages_:
+      message := task-receive-message_
       if message is __Monitor__:
         message.notify_
         continue
@@ -81,26 +78,26 @@ process_messages_:
       // handler code can run even in that case, so we do it in
       // a critical section and we do not care about the current
       // task's deadline if any.
-      critical_do --no-respect_deadline:
+      critical-do --no-respect-deadline:
         if message is Array_:
           type := message[0]
-          if type == SYSTEM_RPC_REQUEST_ or type == SYSTEM_RPC_REPLY_:
-            MessageProcessor_.invoke_handler type message
+          if type == SYSTEM-RPC-REQUEST_ or type == SYSTEM-RPC-REPLY_:
+            MessageProcessor_.invoke-handler type message
           else:
-            processor := message_processor_
+            processor := message-processor_
             if not processor.run message:
               processor = MessageProcessor_ message
-              message_processor_ = processor
-            processor.detach_if_not_done_
+              message-processor_ = processor
+            processor.detach-if-not-done_
         else if message is Lambda:
-          pending_finalizers_.add message
+          pending-finalizers_.add message
         else:
           assert: false
   finally:
-    is_processing_messages_ = false
+    is-processing-messages_ = false
 
 monitor MessageProcessor_:
-  static IDLE_TIME_MS /int ::= 100
+  static IDLE-TIME-MS /int ::= 100
 
   task_/Task? := null
   message_/Array_? := null
@@ -114,49 +111,49 @@ monitor MessageProcessor_:
         // cannot be canceled and they avoid yielding after
         // monitor operations. This makes it more likely that
         // they will complete quickly.
-        critical_do:
+        critical-do:
           while true:
             next := message_
             if not next:
-              next = wait_for_next
+              next = wait-for-next
               if not next: break
             try:
-              invoke_handler next[0] next
+              invoke-handler next[0] next
             finally:
               message_ = null
       finally:
         task_ = null
 
-  static invoke_handler type/int message/Array_ -> none:
-    handler ::= system_message_handlers_.get type --if_absent=:
+  static invoke-handler type/int message/Array_ -> none:
+    handler ::= system-message-handlers_.get type --if-absent=:
       print_ "WARNING: unhandled system message $type"
       return
     gid ::= message[1]
     pid ::= message[2]
     arguments ::= message[3]
-    handler.on_message type gid pid arguments
+    handler.on-message type gid pid arguments
 
   run message/Array_ -> bool:
     if message_ or not task_: return false
     message_ = message
     return true
 
-  detach_if_not_done_ -> none:
+  detach-if-not-done_ -> none:
     task/any := task_
-    if task: task_transfer_to_ task false
+    if task: task-transfer-to_ task false
     // If we come back here and the message hasn't been cleared out,
     // we detach this message processor by clearing out the task
     // field. This forces it to stop when it is done with the message.
     if message_: task_ = null
 
-  wait_for_next -> Array_?:
-    deadline ::= Time.monotonic_us + IDLE_TIME_MS * 1_000
-    try_await --deadline=deadline: message_ or not task_
+  wait-for-next -> Array_?:
+    deadline ::= Time.monotonic-us + IDLE-TIME-MS * 1_000
+    try-await --deadline=deadline: message_ or not task_
     // If we got a message, we must return it and deal with even if we timed out.
     return message_
 
-task_has_messages_ -> bool:
-  #primitive.core.task_has_messages
+task-has-messages_ -> bool:
+  #primitive.core.task-has-messages
 
-task_receive_message_:
-  #primitive.core.task_receive_message
+task-receive-message_:
+  #primitive.core.task-receive-message

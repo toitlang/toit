@@ -244,21 +244,28 @@ class Export : public Node {
 
 class Class : public Node {
  public:
+  enum Kind {
+    CLASS,
+    INTERFACE,
+    MONITOR,
+    MIXIN,
+  };
+
   // Super is either an identifier or a prefixed identifier (that is, a Dot).
   Class(Identifier* name,
         Expression* super,
         List<Expression*> interfaces,
+        List<Expression*> mixins,
         List<Declaration*> members,
-        bool is_abstract,
-        bool is_monitor,
-        bool is_interface)
+        Kind kind,
+        bool has_abstract_modifier)
       : name_(name)
       , super_(super)
       , interfaces_(interfaces)
+      , mixins_(mixins)
       , members_(members)
-      , is_abstract_(is_abstract)
-      , is_monitor_(is_monitor)
-      , is_interface_(is_interface) {}
+      , kind_(kind)
+      , has_abstract_modifier_(has_abstract_modifier) {}
   IMPLEMENTS(Class)
 
   bool has_super() const { return super_ != null; }
@@ -266,11 +273,19 @@ class Class : public Node {
   Identifier* name() const { return name_; }
   Expression* super() const { return super_; }
   List<Expression*> interfaces() const { return interfaces_; }
+  List<Expression*> mixins() const { return mixins_; }
   List<Declaration*> members() const { return members_; }
 
-  bool is_abstract() const { return is_abstract_; }
-  bool is_monitor() const { return is_monitor_; }
-  bool is_interface() const { return is_interface_; }
+  Kind kind() const { return kind_; }
+
+  bool is_monitor() const { return kind_ == MONITOR; }
+  bool is_interface() const { return kind_ == INTERFACE; }
+  bool is_mixin() const { return kind_ == MIXIN; }
+
+  // Whether this class was marked with "abstract".
+  // We use this name instead of `is_abstract`, as the latter has a different
+  // meaning in the IR where interfaces are also considered abstract.
+  bool has_abstract_modifier() const { return has_abstract_modifier_; }
 
   void set_toitdoc(Toitdoc<ast::Node*> toitdoc) {
     toitdoc_ = toitdoc;
@@ -281,10 +296,10 @@ class Class : public Node {
   Identifier* name_;
   Expression* super_;
   List<Expression*> interfaces_;
+  List<Expression*> mixins_;
   List<Declaration*> members_;
-  bool is_abstract_;
-  bool is_monitor_;
-  bool is_interface_;
+  Kind kind_;
+  bool has_abstract_modifier_;
   Toitdoc<ast::Node*> toitdoc_ = Toitdoc<ast::Node*>::invalid();
 };
 

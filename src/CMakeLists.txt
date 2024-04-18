@@ -42,7 +42,7 @@ file(GLOB run_SRC
 )
 
 # Exclude files with a main(), and files that are not used in the compiler.
-list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image|vessel|vm|objects_runtime).cc$")
+list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run|toit_run_image|vessel|vm|objects_runtime).cc$")
 list(REMOVE_ITEM toit_core_SRC ${run_SRC})
 
 # Files that are used in the VM, but not in the compiler.
@@ -119,6 +119,8 @@ set(GEN_DIR "${PROJECT_BINARY_DIR}/generated")
 
 set(BOOT_SNAPSHOT ${GEN_DIR}/toit.run.snapshot)
 set(BOOT_SNAPSHOT_CC ${GEN_DIR}/toit.run.snapshot.cc)
+set(TOIT_SNAPSHOT ${GEN_DIR}/toit.snapshot)
+set(TOIT_SNAPSHOT_CC ${GEN_DIR}/toit.snapshot.cc)
 
 add_custom_command(
   OUTPUT "${BOOT_SNAPSHOT_CC}"
@@ -129,10 +131,29 @@ add_custom_command(
   WORKING_DIRECTORY "${GEN_DIR}"
 )
 
+add_custom_command(
+  OUTPUT "${TOIT_SNAPSHOT_CC}"
+  # We can't use ${TOIT_SNAPSHOT} here, as that would include the full path.
+  # xxd just got a patch to change the name, but it's not really released/widely available yet.
+  COMMAND xxd -i "toit.snapshot" "${TOIT_SNAPSHOT_CC}"
+  DEPENDS "${TOIT_SNAPSHOT}"
+  WORKING_DIRECTORY "${GEN_DIR}"
+)
+
 if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   add_executable(
-    toit.run
+    toit
     toit.cc
+    ${TOIT_SNAPSHOT_CC}
+    ${BOOT_SNAPSHOT_CC}
+    ${run_SRC}
+    )
+
+  add_dependencies(build_tools toit)
+
+  add_executable(
+    toit.run
+    toit_run.cc
     ${BOOT_SNAPSHOT_CC}
     ${run_SRC}
     )
@@ -175,15 +196,19 @@ else()
 endif()
 
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "MSYS")
-  set(TOIT_WINDOWS_LIBS ws2_32 rpcrt4 shlwapi)
+  set(TOIT_WINDOWS_LIBS ws2_32 rpcrt4 shlwapi crypt32)
 elseif ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows")
-  set(TOIT_WINDOWS_LIBS rpcrt4 shlwapi)
+  set(TOIT_WINDOWS_LIBS rpcrt4 shlwapi crypt32)
 else()
   set(TOIT_WINDOWS_LIBS )
 endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   set(TOIT_BLUETOOTH_LIBS "-framework Foundation" "-framework CoreBluetooth" ObjC)
+endif()
+
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR (${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND NOT CMAKE_SIZEOF_VOID_P EQUAL 4 AND NOT ${CMAKE_SYSTEM_PROCESSOR} MATCHES "ARM"))
+  set(TOIT_Z_LIB z)
 endif()
 
 # Because of the `CACHE INTERNAL ""` at the end of the `set` we can
@@ -198,6 +223,7 @@ set(TOIT_LINK_LIBS
   ${TOIT_LINK_GROUP_END_FLAGS}
   toit_compiler          # TODO(florian): should not be here by default.
   pthread
+  ${TOIT_Z_LIB}
   ${CMAKE_DL_LIBS}
   ${TOIT_LINK_LIBS_LIBGCC}
   ${TOIT_LINK_SEGFAULT}
@@ -212,6 +238,14 @@ target_link_libraries(
 )
 
 if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+  add_custom_target(build_vessels)
+  add_dependencies(build_tools build_vessels)
+
+  target_link_libraries(
+    toit
+    ${TOIT_LINK_LIBS}
+    )
+
   target_link_libraries(
     toit.run
     ${TOIT_LINK_LIBS}
@@ -253,7 +287,7 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
       )
     endif()
 
-    add_dependencies(build_tools ${VESSEL_TARGET})
+    add_dependencies(build_vessels ${VESSEL_TARGET})
   endforeach()
   include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
@@ -262,6 +296,14 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     ${BOOT_SNAPSHOT_SOURCE}
     ${BOOT_SNAPSHOT}
     ${CMAKE_CURRENT_BINARY_DIR}/boot.dep
+    ""
+  )
+
+  set(TOIT_SNAPSHOT_SOURCE ${TOIT_SDK_SOURCE_DIR}/tools/toit.toit)
+  ADD_TOIT_SNAPSHOT(
+    ${TOIT_SNAPSHOT_SOURCE}
+    ${TOIT_SNAPSHOT}
+    ${CMAKE_CURRENT_BINARY_DIR}/toit.dep
     ""
   )
 

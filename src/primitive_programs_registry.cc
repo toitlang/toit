@@ -34,12 +34,10 @@ PRIMITIVE(next_group_id) {
 PRIMITIVE(spawn) {
   ARGS(int, offset, int, group_id, Object, arguments);
 
-  FlashAllocation* allocation = FlashRegistry::allocation(offset);
-  if (!allocation) OUT_OF_BOUNDS;
-  if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) INVALID_ARGUMENT;
-
-  Program* program = static_cast<Program*>(allocation);
-  if (!program->is_valid(offset)) OUT_OF_BOUNDS;
+  const FlashAllocation* allocation = FlashRegistry::allocation(offset);
+  if (!allocation) FAIL(OUT_OF_BOUNDS);
+  if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) FAIL(INVALID_ARGUMENT);
+  Program* program = const_cast<Program*>(static_cast<const Program*>(allocation));
 
   unsigned message_size = 0;
   { MessageEncoder size_encoder(process, null);
@@ -50,7 +48,7 @@ PRIMITIVE(spawn) {
   uint8* buffer = null;
   { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
     buffer = unvoid_cast<uint8*>(malloc(message_size));
-    if (buffer == null) MALLOC_FAILED;
+    if (buffer == null) FAIL(MALLOC_FAILED);
   }
 
   MessageEncoder encoder(process, buffer);  // Takes over buffer.
@@ -59,46 +57,46 @@ PRIMITIVE(spawn) {
   }
 
   InitialMemoryManager initial_memory_manager;
-  if (!initial_memory_manager.allocate()) ALLOCATION_FAILED;
+  if (!initial_memory_manager.allocate()) FAIL(ALLOCATION_FAILED);
 
   ProcessGroup* process_group = ProcessGroup::create(group_id, program);
-  if (!process_group) MALLOC_FAILED;
+  if (!process_group) FAIL(MALLOC_FAILED);
   AllocationManager free_process_group(process, process_group);
 
   initial_memory_manager.global_variables = program->global_variables.copy();
-  if (!initial_memory_manager.global_variables) MALLOC_FAILED;
+  if (!initial_memory_manager.global_variables) FAIL(MALLOC_FAILED);
 
   // Takes over the encoder and the initial_memory_manager.
   int pid = VM::current()->scheduler()->run_program(program, &encoder, process_group, &initial_memory_manager);
-  if (pid == Scheduler::INVALID_PROCESS_ID) MALLOC_FAILED;
+  if (pid == Scheduler::INVALID_PROCESS_ID) FAIL(MALLOC_FAILED);
   free_process_group.keep_result();
   return Smi::from(pid);
 }
 
 PRIMITIVE(is_running) {
   ARGS(int, offset);
-  FlashAllocation* allocation = FlashRegistry::allocation(offset);
-  if (!allocation) OUT_OF_BOUNDS;
-  if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) INVALID_ARGUMENT;
-  Program* program = static_cast<Program*>(allocation);
+  const FlashAllocation* allocation = FlashRegistry::allocation(offset);
+  if (!allocation) FAIL(OUT_OF_BOUNDS);
+  if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) FAIL(INVALID_ARGUMENT);
+  const Program* program = static_cast<const Program*>(allocation);
   return BOOL(VM::current()->scheduler()->is_running(program));
 }
 
 PRIMITIVE(kill) {
   ARGS(int, offset);
-  FlashAllocation* allocation = FlashRegistry::allocation(offset);
-  if (!allocation) OUT_OF_BOUNDS;
-  if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) INVALID_ARGUMENT;
-  Program* program = static_cast<Program*>(allocation);
+  const FlashAllocation* allocation = FlashRegistry::allocation(offset);
+  if (!allocation) FAIL(OUT_OF_BOUNDS);
+  if (allocation->type() != FLASH_ALLOCATION_TYPE_PROGRAM) FAIL(INVALID_ARGUMENT);
+  const Program* program = static_cast<const Program*>(allocation);
   return BOOL(VM::current()->scheduler()->kill(program));
 }
 
 PRIMITIVE(bundled_images) {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   int length = extension->images();
   Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));
-  if (!result) ALLOCATION_FAILED;
+  if (!result) FAIL(ALLOCATION_FAILED);
   for (int i = 0; i < length; i++) {
     // We store the distance from the start of the header to the image
     // because it naturally fits as a smi even if the virtual addresses
@@ -112,6 +110,8 @@ PRIMITIVE(bundled_images) {
     result->at_put(i * 2 + 1, Smi::from(image.size));
   }
   return result;
+#elif defined(TOIT_FREERTOS)
+  FAIL(UNIMPLEMENTED);
 #else
   return process->program()->empty_array();
 #endif
@@ -127,22 +127,24 @@ PRIMITIVE(assets) {
   } else {
     result = process->object_heap()->allocate_external_byte_array(size, bytes, false, false);
   }
-  if (!result) ALLOCATION_FAILED;
+  if (!result) FAIL(ALLOCATION_FAILED);
   return result;
 }
 
 PRIMITIVE(config) {
   PRIVILEGED;
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   List<uint8> config = extension->config();
   Object* result = config.is_empty()
       ? process->object_heap()->allocate_internal_byte_array(0)
       : process->object_heap()->allocate_external_byte_array(config.length(), config.data(), false, false);
+#elif defined(TOIT_FREERTOS)
+  FAIL(UNIMPLEMENTED);
 #else
   Object* result = process->object_heap()->allocate_internal_byte_array(0);
 #endif
-  if (!result) ALLOCATION_FAILED;
+  if (!result) FAIL(ALLOCATION_FAILED);
   return result;
 }
 

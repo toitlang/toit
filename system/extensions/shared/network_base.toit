@@ -22,12 +22,12 @@ abstract class NetworkServiceProviderBase extends ServiceProvider
     super name --major=major --minor=minor
     provides NetworkService.SELECTOR --handler=this --tags=tags
 
-  handle pid/int client/int index/int arguments/any -> any:
-    if index == NetworkService.CONNECT_INDEX:
+  handle index/int arguments/any --gid/int --client/int -> any:
+    if index == NetworkService.CONNECT-INDEX:
       return connect client
-    if index == NetworkService.ADDRESS_INDEX:
+    if index == NetworkService.ADDRESS-INDEX:
       return address (resource client arguments)
-    if index == NetworkService.RESOLVE_INDEX:
+    if index == NetworkService.RESOLVE-INDEX:
       return resolve (resource client arguments[0]) arguments[1]
     unreachable
 
@@ -46,35 +46,35 @@ abstract class NetworkServiceProviderBase extends ServiceProvider
   quarantine name/string -> none:
     unreachable
 
-  udp_open handle/int port/int? -> int:
+  udp-open handle/int port/int? -> int:
     unreachable
-  udp_connect handle/int ip/ByteArray port/int -> none:
+  udp-connect handle/int ip/ByteArray port/int -> none:
     unreachable
-  udp_receive handle/int -> List:
+  udp-receive handle/int -> List:
     unreachable
-  udp_send handle/int data/ByteArray ip/ByteArray port/int -> none:
-    unreachable
-
-  tcp_connect handle/int ip/ByteArray port/int -> int:
-    unreachable
-  tcp_listen handle/int port/int -> int:
-    unreachable
-  tcp_accept handle/int -> int:
-    unreachable
-  tcp_close_write handle/int -> none:
+  udp-send handle/int data/ByteArray ip/ByteArray port/int -> none:
     unreachable
 
-  socket_get_option handle/int option/string -> any:
+  tcp-connect handle/int ip/ByteArray port/int -> int:
     unreachable
-  socket_set_option handle/int option/string value/any -> none:
+  tcp-listen handle/int port/int -> int:
     unreachable
-  socket_local_address handle/int -> List:
+  tcp-accept handle/int -> int:
     unreachable
-  socket_peer_address handle/int -> List:
+  tcp-close-write handle/int -> none:
     unreachable
-  socket_read handle/int -> ByteArray?:
+
+  socket-get-option handle/int option/string -> any:
     unreachable
-  socket_write handle/int data -> int:
+  socket-set-option handle/int option/string value/any -> none:
     unreachable
-  socket_mtu handle/int -> int:
+  socket-local-address handle/int -> List:
+    unreachable
+  socket-peer-address handle/int -> List:
+    unreachable
+  socket-read handle/int -> ByteArray?:
+    unreachable
+  socket-write handle/int data -> int:
+    unreachable
+  socket-mtu handle/int -> int:
     unreachable

@@ -20,6 +20,8 @@ tedi_test.go
 /tools/lsp/client/out/
 
 /tests/health/health_sources.cmake
+/tests/pkg/.test-cache/
+/tests/pkg/.project-test-root/
 
 .gdb_history
 
@@ -27,5 +29,6 @@ tedi_test.go
 *.swo
 *.swn
 
-/toolchains/esp32*/sdkconfig
 /toolchains/esp32*/sdkconfig.old
+/toolchains/esp32*/dependencies.lock
+

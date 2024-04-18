@@ -15,36 +15,37 @@
 
 import net
 import net.tcp
-import reader show BufferedReader Reader CloseableReader
-import writer show Writer
 import host.pipe show OpenPipe
 import host.file
 import host.directory
+import io
 import monitor
+import system
+import system show platform
 
 import .documents
 import .rpc
-import .uri_path_translator
+import .uri-path-translator
 import .utils
 import .verbose
 
-sdk_path_from_compiler compiler_path/string -> string:
-  is_absolute/bool := ?
-  if platform == PLATFORM_WINDOWS:
-    compiler_path = compiler_path.replace "\\" "/"
-    if compiler_path.starts_with "/":
-      is_absolute = true
-    else if compiler_path.size >= 3 and compiler_path[1] == ':' and compiler_path[2] == '/':
-      is_absolute = true
+sdk-path-from-compiler compiler-path/string -> string:
+  is-absolute/bool := ?
+  if platform == system.PLATFORM-WINDOWS:
+    compiler-path = compiler-path.replace "\\" "/"
+    if compiler-path.starts-with "/":
+      is-absolute = true
+    else if compiler-path.size >= 3 and compiler-path[1] == ':' and compiler-path[2] == '/':
+      is-absolute = true
     else:
-      is_absolute = false
+      is-absolute = false
   else:
-    is_absolute = compiler_path.starts_with "/"
+    is-absolute = compiler-path.starts-with "/"
 
-  index := compiler_path.index_of --last "/"
+  index := compiler-path.index-of --last "/"
   if index < 0: throw "Couldn't determine SDK path"
-  result := compiler_path.copy 0 index
-  if not is_absolute:
+  result := compiler-path.copy 0 index
+  if not is-absolute:
     // Make it absolute.
     result = "$directory.cwd/$result"
   return result
@@ -52,11 +53,11 @@ sdk_path_from_compiler compiler_path/string -> string:
 
 class File:
   exists / bool ::= ?
-  is_regular / bool ::= ?
-  is_directory / bool ::= ?
+  is-regular / bool ::= ?
+  is-directory / bool ::= ?
   content / ByteArray? ::= ?
 
-  constructor .exists .is_regular .is_directory .content:
+  constructor .exists .is-regular .is-directory .content:
 
 
 class FileServerProtocol:
@@ -64,68 +65,72 @@ class FileServerProtocol:
   documents_  / Documents  ::= ?
   translator_ / UriPathTranslator ::= ?
 
-  file_cache_ / Map ::= {:}
-  directory_cache_ / Map ::= {:}
-  sdk_path_ / string? := null
-  package_cache_paths_ / List? := null
+  file-cache_ / Map ::= {:}
+  directory-cache_ / Map ::= {:}
+  sdk-path_ / string? := null
+  package-cache-paths_ / List? := null
 
   constructor .documents_ .filesystem .translator_:
 
-  constructor.local compiler_path/string sdk_path/string .documents_ .translator_:
-    filesystem = FilesystemLocal sdk_path
+  constructor.local compiler-path/string sdk-path/string .documents_ .translator_:
+    filesystem = FilesystemLocal sdk-path
 
-  handle reader/BufferedReader writer/Writer:
+  handle reader/io.Reader writer/io.Writer:
       while true:
-        line := reader.read_line
+        line := reader.read-line
         if line == null: break
         if line == "SDK PATH":
-          if not sdk_path_:
-            sdk_path_ = translator_.local_path_to_compiler_path filesystem.sdk_path
-          writer.write "$sdk_path_\n"
+          if not sdk-path_:
+            sdk-path_ = translator_.local-path-to-compiler-path filesystem.sdk-path
+          writer.write "$sdk-path_\n"
         else if line == "PACKAGE CACHE PATHS":
-          if not package_cache_paths_: package_cache_paths_ = filesystem.package_cache_paths
-          writer.write "$package_cache_paths_.size\n"
-          package_cache_paths_.do: writer.write "$it\n"
+          if not package-cache-paths_: package-cache-paths_ = filesystem.package-cache-paths
+          writer.write "$package-cache-paths_.size\n"
+          package-cache-paths_.do: writer.write "$it\n"
         else if line == "LIST DIRECTORY":
-          compiler_path := reader.read_line
-          entries := directory_cache_.get compiler_path --init=:
-            local_path := translator_.compiler_path_to_local_path compiler_path
-            filesystem.directory_entries local_path
+          compiler-path := reader.read-line
+          entries := directory-cache_.get compiler-path --init=:
+            local-path := translator_.compiler-path-to-local-path compiler-path
+            entries-for-path/List := []
+            exception := catch:  // The path might not exist.
+              entries-for-path = filesystem.directory-entries local-path
+            if exception:
+              verbose: "Couldn't list directory: $local-path"
+            entries-for-path
+
           writer.write "$entries.size\n"
           entries.do: writer.write "$it\n"
         else:
           assert: line == "INFO"
-          compiler_path := reader.read_line
-          file := get_file compiler_path
-          encoded_size := file.content == null ? -1 : file.content.size
-          encoded_content := file.content == null ? "" : file.content
-          writer.write "$file.exists\n$file.is_regular\n$file.is_directory\n$encoded_size\n"
-          writer.write encoded_content
+          compiler-path := reader.read-line
+          file := get-file compiler-path
+          encoded-size := file.content == null ? -1 : file.content.size
+          encoded-content := file.content == null ? "" : file.content
+          writer.write "$file.exists\n$file.is-regular\n$file.is-directory\n$encoded-size\n"
+          writer.write encoded-content
 
-  get_file compiler_path/string -> File:
-    return file_cache_.get compiler_path --init=: create_file_entry_ compiler_path
+  get-file compiler-path/string -> File:
+    return file-cache_.get compiler-path --init=: create-file-entry_ compiler-path
 
-  create_file_entry_ compiler_path / string -> File:
+  create-file-entry_ compiler-path / string -> File:
     exists := false
-    is_regular := false
-    is_directory := false
+    is-regular := false
+    is-directory := false
     content := null
-    document := documents_.get --uri=(translator_.to_uri compiler_path --from_compiler)
-    // Just having a document is not enough, as we might still have entries for
-    // deleted files.
-    if document and document.content:
+    document := documents_.get-opened --uri=(translator_.to-uri compiler-path --from-compiler)
+    if document:
       exists = true
-      is_regular = true
-      is_directory = false
-      content = document.content.to_byte_array
-      return File exists is_regular is_directory content
-    local_path := translator_.compiler_path_to_local_path compiler_path
-    return filesystem.create_file_entry local_path
+      is-regular = true
+      is-directory = false
+      content = document.content.to-byte-array
+      return File exists is-regular is-directory content
+    local-path := translator_.compiler-path-to-local-path compiler-path
+    return filesystem.create-file-entry local-path
 
-  served_files -> Map: return file_cache_
-  served_directories -> Map: return directory_cache_
-  served_sdk_path -> string?: return sdk_path_
-  served_package_cache_paths -> List?: return package_cache_paths_
+  served-files -> Map: return file-cache_
+  served-directories -> Map: return directory-cache_
+  served-sdk-path -> string?: return sdk-path_
+  served-package-cache-paths -> List?: return package-cache-paths_
 
 interface FileServer:
   // Starts the file server and returns the line that should be given
@@ -136,10 +141,10 @@ interface FileServer:
 
 class PipeFileServer implements FileServer:
   protocol / FileServerProtocol
-  to_compiler_   / OpenPipe
-  from_compiler_ / CloseableReader
+  to-compiler_   / OpenPipe
+  from-compiler_ / io.CloseableReader
 
-  constructor .protocol .to_compiler_ .from_compiler_:
+  constructor .protocol .to-compiler_ .from-compiler_:
 
   /**
   Starts the pipe file server in a new task.
@@ -148,14 +153,14 @@ class PipeFileServer implements FileServer:
   run -> string:
     task::
       catch --trace:
-        reader := BufferedReader from_compiler_
-        writer := Writer to_compiler_
+        reader := io.Reader.adapt from-compiler_
+        writer := io.Writer.adapt to-compiler_
         protocol.handle reader writer
     return "-2"
 
   close:
-    from_compiler_.close
-    to_compiler_.close
+    from-compiler_.close
+    to-compiler_.close
 
 
 class TcpFileServer implements FileServer:
@@ -175,10 +180,10 @@ class TcpFileServer implements FileServer:
   */
   run --port=0 -> string:
     network := net.open
-    server_ = network.tcp_listen port
-    local_port := server_.local_address.port
+    server_ = network.tcp-listen port
+    local-port := server_.local-address.port
     task:: catch --trace: accept_
-    return "$local_port"
+    return "$local-port"
 
   close:
     server_.close
@@ -187,83 +192,81 @@ class TcpFileServer implements FileServer:
   accept_:
     socket := server_.accept
     try:
-      socket.no_delay = true
-      reader := BufferedReader socket
-      writer := Writer socket
-      protocol.handle reader writer
+      socket.no-delay = true
+      protocol.handle socket.in socket.out
     finally:
       socket.close
       close
 
-  wait_for_done -> none:
+  wait-for-done -> none:
     semaphore_.down
 
 
 interface Filesystem:
   /** The path to the SDK. */
-  sdk_path -> string
+  sdk-path -> string
 
   /**
   The directories in which to look for packages.
   */
-  package_cache_paths -> List
+  package-cache-paths -> List
 
   /**
   Creates a $File entry for the $path.
 
   The content should be null if the file isn't regular.
   */
-  create_file_entry path/string -> File
+  create-file-entry path/string -> File
 
   /**
   Returns a list of entries in the given $path directory.
   */
-  directory_entries path/string -> List
+  directory-entries path/string -> List
 
 
 abstract class FilesystemBase implements Filesystem:
-  create_file_entry path/string -> File:
-    does_exist := exists path
-    is_reg := does_exist and is_regular_file path
-    is_dir := does_exist and not is_reg and is_directory path
-    content := is_reg ? read_content path : null
-    return File does_exist is_reg is_dir content
+  create-file-entry path/string -> File:
+    does-exist := exists path
+    is-reg := does-exist and is-regular-file path
+    is-dir := does-exist and not is-reg and is-directory path
+    content := is-reg ? read-content path : null
+    return File does-exist is-reg is-dir content
 
-  abstract sdk_path -> string
-  abstract package_cache_paths -> List
+  abstract sdk-path -> string
+  abstract package-cache-paths -> List
 
   abstract exists path/string -> bool
   /// Whether the file (or the file a symlink is pointing to) is regular.
-  abstract is_regular_file path/string -> bool
-  abstract is_directory path/string -> bool
-  abstract read_content path/string -> ByteArray
-  abstract directory_entries path/string -> List
+  abstract is-regular-file path/string -> bool
+  abstract is-directory path/string -> bool
+  abstract read-content path/string -> ByteArray
+  abstract directory-entries path/string -> List
 
 
 class FilesystemLocal extends FilesystemBase:
-  sdk_path_ / string  ::= ?
-  package_cache_paths_ / List? := null
+  sdk-path_ / string  ::= ?
+  package-cache-paths_ / List? := null
 
-  constructor .sdk_path_:
+  constructor .sdk-path_:
 
   exists path/string -> bool:
     return (file.stat path) != null
 
-  is_regular_file path/string -> bool:
-    return file.is_file path
+  is-regular-file path/string -> bool:
+    return file.is-file path
 
-  is_directory path/string -> bool:
-    return file.is_directory path
+  is-directory path/string -> bool:
+    return file.is-directory path
 
-  sdk_path -> string: return sdk_path_
-  package_cache_paths -> List:
-    if not package_cache_paths_:
-      package_cache_paths_ = find_package_cache_paths
-    return package_cache_paths_
+  sdk-path -> string: return sdk-path_
+  package-cache-paths -> List:
+    if not package-cache-paths_:
+      package-cache-paths_ = find-package-cache-paths
+    return package-cache-paths_
 
-  read_content path/string -> ByteArray: return file.read_content path
+  read-content path/string -> ByteArray: return file.read-content path
 
-  directory_entries path/string -> List:
+  directory-entries path/string -> List:
     entries := []
     stream := directory.DirectoryStream path
     while entry := stream.next:

@@ -27,14 +27,6 @@
 
 namespace toit {
 
-// We push the exception and two elements for the unwinding implementation
-// on the stack when we handle stack overflows. This is in addition to the
-// extra frame information we store for the call, because those are not
-// reflected in the max-height of the called method. We do not keep track
-// of where in a method we might do a call, so we conservatively assume
-// that it will happen at max-height and reserve space for that.
-static const int RESERVED_STACK_FOR_CALLS = Interpreter::FRAME_SIZE + 3;
-
 Interpreter::Interpreter()
     : process_(null)
     , limit_(null)
@@ -113,7 +105,7 @@ void Interpreter::prepare_task(Method entry, Instance* code) {
 Object** Interpreter::gc(Object** sp, bool malloc_failed, int attempts, bool force_cross_process) {
   ASSERT(attempts >= 1 && attempts <= 3);  // Allocation attempts.
   if (attempts == 3) {
-    OS::heap_summary_report(0, "out of memory");
+    OS::heap_summary_report(0, "out of memory", process_);
     if (VM::current()->scheduler()->is_boot_process(process_)) {
       OS::out_of_memory("Out of memory in system process");
     }
@@ -140,7 +132,7 @@ void Interpreter::prepare_process() {
   store_stack();
 }
 
-#ifdef IOT_DEVICE
+#ifdef TOIT_FREERTOS
 #define STACK_ENCODING_BUFFER_SIZE (2*1024)
 #else
 #define STACK_ENCODING_BUFFER_SIZE (16*1024)
@@ -164,7 +156,7 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
     sp = gc(sp, false, attempts, false);
     instance = process->object_heap()->allocate_instance(process->program()->exception_class_id());
   }
-  process->object_heap()->check_install_heap_limit();
+  process->object_heap()->leave_primitive();
 
   if (instance == null) {
     DROP(1);
@@ -182,7 +174,7 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
     sp = gc(sp, true, attempts, false);
     buffer.allocate(STACK_ENCODING_BUFFER_SIZE);
   }
-  process->object_heap()->check_install_heap_limit();
+  process->object_heap()->leave_primitive();
 
   if (!buffer.has_content()) {
     DROP(2);
@@ -200,7 +192,7 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
       sp = gc(sp, false, attempts, false);
       trace = process->allocate_byte_array(buffer.size());
     }
-    process->object_heap()->check_install_heap_limit();
+    process->object_heap()->leave_primitive();
 
     if (trace == null) {
       DROP(2);
@@ -211,7 +203,7 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
     PUSH(trace);
   } else {
     STACK_AT_PUT(0, process->program()->out_of_bounds());
-    PUSH(process->program()->null_object());
+    PUSH(process->null_object());
   }
 
   // Stack: Trace, Type, Instance, ...
@@ -269,7 +261,7 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
     sp = gc(sp, false, attempts, false);
     new_stack = process->object_heap()->allocate_stack(new_length);
   }
-  process->object_heap()->check_install_heap_limit();
+  process->object_heap()->leave_primitive();
 
   // Then check for out of memory.
   if (new_stack == null) {
@@ -297,5 +289,21 @@ void Interpreter::trace(uint8* bcp) {
   UNIMPLEMENTED();
 #endif
 }
+
+Object* Interpreter::float_op(Process* process, Object* a, Object* b, double_op* op) {
+  word word_result = process->object_heap()->allocate_new_space(Double::allocation_size());
+  if (!word_result) return NULL;
+  HeapObject* result = HeapObject::from_address(word_result);
+  Smi* header = HeapObject::cast(a)->header();
+  result->_set_header(header);
+  double d1 = Double::cast(a)->value();
+  double d2 = Double::cast(b)->value();
+  Double::cast(result)->_set_value(op(d1, d2));
+  return result;
+}
+
+double double_add(double a, double b) { return a + b; }
+double double_sub(double a, double b) { return a - b; }
+double double_mul(double a, double b) { return a * b; }
 
 } // namespace toit

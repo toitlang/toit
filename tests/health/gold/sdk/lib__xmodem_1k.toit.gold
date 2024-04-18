@@ -1,3 +1,0 @@
-<sdk>/xmodem_1k.toit:28:15: warning: Class 'Buffer' is deprecated
-  buffer_ ::= Buffer
-              ^~~~~~

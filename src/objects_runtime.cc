@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -22,6 +22,7 @@
 namespace toit {
 
 bool Object::mutable_byte_content(Process* process, uint8** content, int* length, Error** error) {
+  *error = Error::from(process->program()->wrong_object_type());  // Default error if we return false.
   if (is_byte_array(this)) {
     auto byte_array = ByteArray::cast(this);
     // External byte arrays can have structs in them. This is captured in the external tag.
@@ -39,10 +40,10 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
   if (instance->class_id() == program->byte_array_cow_class_id()) {
     Object* backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
     auto is_mutable = instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX);
-    if (is_mutable == process->program()->true_object()) {
+    if (is_mutable == process->true_object()) {
       return backing->mutable_byte_content(process, content, length, error);
     }
-    ASSERT(is_mutable == process->program()->false_object());
+    ASSERT(is_mutable == process->false_object());
 
     const uint8* immutable_content;
     int immutable_length;
@@ -50,20 +51,17 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
       return false;
     }
 
-    Object* new_backing = process->allocate_byte_array(immutable_length, error);
+    Object* new_backing = process->allocate_byte_array(immutable_length);
     if (new_backing == null) {
-      *content = null;
-      *length = 0;
-      // We return 'true' as this should have worked, but we might just have
-      // run out of memory. The 'error' contains the reason things failed.
-      return true;
+      *error = Error::from(program->allocation_failed());
+      return false;
     }
 
     ByteArray::Bytes bytes(ByteArray::cast(new_backing));
     memcpy(bytes.address(), immutable_content, immutable_length);
 
     instance->at_put(0, new_backing);
-    instance->at_put(1, process->program()->true_object());
+    instance->at_put(1, process->true_object());
     return new_backing->mutable_byte_content(process, content, length, error);
   } else if (instance->class_id() == program->byte_array_slice_class_id()) {
     auto byte_array = instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
@@ -73,8 +71,8 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
     // TODO(florian): we could eventually accept larger integers here.
     if (!is_smi(from)) return false;
     if (!is_smi(to)) return false;
-    int from_value = Smi::cast(from)->value();
-    int to_value = Smi::cast(to)->value();
+    int from_value = Smi::value(from);
+    int to_value = Smi::value(to);
     bool inner_success = HeapObject::cast(byte_array)->mutable_byte_content(process, content, length, error);
     if (!inner_success) return false;
     // If the content is null, then we probably failed allocating the object.
@@ -176,7 +174,7 @@ void Stack::transfer_from_interpreter(Interpreter* interpreter) {
   GcMetadata::insert_into_remembered_set(this);
 }
 
-bool HeapObject::in_remembered_set() {
+bool HeapObject::in_remembered_set() const {
   if (*GcMetadata::remembered_set_for(this) == GcMetadata::NEW_SPACE_POINTERS) {
     return true;
   }

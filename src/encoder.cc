@@ -39,12 +39,12 @@ class EncodeVisitor : public Visitor {
   EncodeVisitor(ProgramOrientedEncoder* encoder, int level) : encoder_(encoder), level_(level) {};
 
   // Restrictions when encoding collections.
-  const int MAX_NOF_STRING_ELEMENTS = 104;
+  const int MAX_NOF_STRING_ELEMENTS = 255;
   const int MAX_NOF_BYTEARRAY_ELEMENTS = 40;
   const int MAX_NOF_ARRAY_ELEMENTS = 10;
 
   void visit_smi(Smi* smi) {
-    encoder_->write_int(smi->value());
+    encoder_->write_int(Smi::value(smi));
   }
   void visit_string(String* string) {
     encoder_->write_byte('S');
@@ -121,10 +121,10 @@ class EncodeVisitor : public Visitor {
       visit_list(
           instance,
           Array::cast(instance->at(Instance::LIST_ARRAY_INDEX)),
-          Smi::cast(instance->at(Instance::LIST_SIZE_INDEX))->value());
+          Smi::value(instance->at(Instance::LIST_SIZE_INDEX)));
     } else {
       encoder_->write_header(1, 'I');
-      encoder_->write_int(class_id->value());
+      encoder_->write_int(Smi::value(class_id));
     }
   }
 
@@ -160,7 +160,7 @@ class EncodeVisitor : public Visitor {
   int level_;
 };
 
-#ifdef IOT_DEVICE
+#ifdef TOIT_FREERTOS
 #define MAX_NUMBER_OF_STACK_FRAMES  40  // About 629 bytes of stack trace, max.
 #else
 #define MAX_NUMBER_OF_STACK_FRAMES 100

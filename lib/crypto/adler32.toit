@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import .checksum
+import ..io as io
 
 /**
 Support for the Adler-32 checksum algorithm
@@ -16,10 +17,8 @@ This implementation uses native primitives.
 
 /**
 Computes the Adler32 checksum of the given $data.
-
-The $data must be a string or byte array.
 */
-adler32 data from/int=0 to/int=data.size -> ByteArray:
+adler32 data/io.Data from/int=0 to/int=data.byte-size -> ByteArray:
   return checksum Adler32 data from to
 
 /** Checksummer that implements Adler-32. */
@@ -30,12 +29,15 @@ class Adler32 extends Checksum:
   Constructs an Adler-32 checksummer.
   */
   constructor:
-    adler_ = adler32_start_ resource_freeing_module_
-    add_finalizer this:: finalize_checksum_ this
+    adler_ = adler32-start_ resource-freeing-module_
+    add-finalizer this:: finalize-checksum_ this
+
+  constructor.private_ .adler_:
+    add-finalizer this:: finalize-checksum_ this
 
   /** See $super. */
-  add data from/int to/int -> none:
-    adler32_add_ adler_ data from to false
+  add data/io.Data from/int to/int -> none:
+    adler32-add_ adler_ data from to false
 
   /**
   Removes the $data from the start of the checksummed data.
@@ -45,8 +47,8 @@ class Adler32 extends Checksum:
 
   The $data must be a string or a byte array.
   */
-  unadd data from/int=0 to/int=data.size -> none:
-    adler32_add_ adler_ data from to true
+  unadd data/io.Data from/int=0 to/int=data.byte-size -> none:
+    adler32-add_ adler_ data from to true
 
   /**
   See $super.
@@ -67,14 +69,22 @@ class Adler32 extends Checksum:
   */
   get --destructive -> ByteArray:
     if destructive:
-      remove_finalizer this
-    return adler32_get_ adler_ destructive
+      remove-finalizer this
+    return adler32-get_ adler_ destructive
 
-adler32_start_ group:
-  #primitive.zlib.adler32_start
+  clone -> Adler32:
+    return Adler32.private_ (adler32-clone_ adler_)
 
-adler32_add_ adler collection from/int to/int unadd/bool:
-  #primitive.zlib.adler32_add
+adler32-start_ group:
+  #primitive.zlib.adler32-start
 
-adler32_get_ adler destructive:
-  #primitive.zlib.adler32_get
+adler32-clone_ adler:
+  #primitive.zlib.adler32-clone
+
+adler32-add_ adler data/io.Data from/int to/int unadd/bool -> none:
+  #primitive.zlib.adler32-add:
+    io.primitive-redo-chunked-io-data_ it data from to: | bytes |
+      adler32-add_ adler bytes 0 bytes.size unadd
+
+adler32-get_ adler destructive:
+  #primitive.zlib.adler32-get

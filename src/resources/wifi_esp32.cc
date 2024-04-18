@@ -15,11 +15,13 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <esp_wifi.h>
 #include <nvs_flash.h>
 #include <lwip/sockets.h>
+
+#include "wifi_espnow_esp32.h"
 
 #include "../resource.h"
 #include "../rtc_memory_esp32.h"
@@ -43,12 +45,6 @@ enum {
   WIFI_SCAN_DONE    = 1 << 5,
 };
 
-const int kInvalidWifi = -1;
-
-// Only allow one instance of WiFi running.
-ResourcePool<int, kInvalidWifi> wifi_pool(
-  0
-);
 
 class WifiResourceGroup : public ResourceGroup {
  public:
@@ -94,13 +90,22 @@ class WifiResourceGroup : public ResourceGroup {
     strncpy(char_cast(config.sta.ssid), ssid, sizeof(config.sta.ssid) - 1);
     strncpy(char_cast(config.sta.password), password, sizeof(config.sta.password) - 1);
     config.sta.channel = channel;
+    config.sta.scan_method = (channel == 0)
+        ? WIFI_ALL_CHANNEL_SCAN
+        : WIFI_FAST_SCAN;
     err = esp_wifi_set_config(WIFI_IF_STA, &config);
     if (err != ESP_OK) return err;
 
-    err = esp_wifi_start();
-    if (err != ESP_OK) return err;
+    // When connecting to Android mobile hotspot APs, we
+    // quite often get WIFI_REASON_AUTH_FAIL followed by
+    // WIFI_REASON_CONNECTION_FAIL. The next connect still
+    // has a good chance of succeeding, so we allow two
+    // reconnect attempts.
+    reconnects_remaining_ = 2;
 
-    return esp_wifi_connect();
+    // Request to start the WiFi stack. We will try to connect to
+    // the network when we get the WIFI_EVENT_STA_START callback.
+    return esp_wifi_start();
   }
 
   esp_err_t establish(const char* ssid, const char* password, bool broadcast, int channel) {
@@ -120,6 +125,7 @@ class WifiResourceGroup : public ResourceGroup {
     err = esp_wifi_set_config(WIFI_IF_AP, &config);
     if (err != ESP_OK) return err;
 
+    reconnects_remaining_ = 0;
     return esp_wifi_start();
   }
 
@@ -127,6 +133,7 @@ class WifiResourceGroup : public ResourceGroup {
     esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
     if (err != ESP_OK) return err;
 
+    reconnects_remaining_ = 0;
     return esp_wifi_start();
   }
 
@@ -146,16 +153,9 @@ class WifiResourceGroup : public ResourceGroup {
   }
 
   ~WifiResourceGroup() {
-    esp_err_t err = esp_wifi_deinit();
-    if (err == ESP_ERR_WIFI_NOT_STOPPED) {
-      FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
-      FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
-    } else {
-      FATAL_IF_NOT_ESP_OK(err);
-    }
-
+    FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy_default_wifi(netif_);
-    wifi_pool.put(id_);
+    wifi_espnow_pool.put(id_);
   }
 
   uint32_t on_event(Resource* resource, word data, uint32_t state) override;
@@ -164,6 +164,12 @@ class WifiResourceGroup : public ResourceGroup {
   int id_;
   esp_netif_t* netif_;
   uint32 ip_address_[NUMBER_OF_ADDRESSES];
+
+  // In STA mode, we allow the implementation to reconnect few times
+  // on its own. This is useful to flush out weird state in the APs
+  // that may not have noticed that the device has gone away and is
+  // now attempting to re-authenticate.
+  int reconnects_remaining_ = 0;
 
   uint32 on_event_wifi(Resource* resource, word data, uint32 state);
   uint32 on_event_ip(Resource* resource, word data, uint32 state);
@@ -179,21 +185,38 @@ class WifiResourceGroup : public ResourceGroup {
 
 class WifiEvents : public SystemResource {
  public:
+  enum State {
+    STOPPED,
+    STARTED,
+    CONNECTED
+  };
+
   TAG(WifiEvents);
   explicit WifiEvents(WifiResourceGroup* group)
       : SystemResource(group, WIFI_EVENT)
-      , disconnect_reason_(WIFI_REASON_UNSPECIFIED) {}
+      , disconnect_reason_(WIFI_REASON_UNSPECIFIED)
+      , state_(STOPPED) {}
 
   ~WifiEvents() {
-    FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
+    State state = this->state();
+    if (state >= CONNECTED) {
+      FATAL_IF_NOT_ESP_OK(esp_wifi_disconnect());
+    }
+    if (state >= STARTED) {
+      FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
+    }
   }
 
   uint8 disconnect_reason() const { return disconnect_reason_; }
   void set_disconnect_reason(uint8 reason) { disconnect_reason_ = reason; }
 
+  State state() const { return state_; }
+  void set_state(State state) { state_ = state; }
+
  private:
   friend class WifiResourceGroup;
   uint8 disconnect_reason_;
+  State state_;
 };
 
 class WifiIpEvents : public SystemResource {
@@ -205,41 +228,81 @@ class WifiIpEvents : public SystemResource {
 
 uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 state) {
   SystemEvent* system_event = reinterpret_cast<SystemEvent*>(data);
+  WifiEvents* events = static_cast<WifiEvents*>(resource);
 
   switch (system_event->id) {
-    case WIFI_EVENT_STA_CONNECTED:
+    case WIFI_EVENT_STA_CONNECTED: {
+      events->set_state(WifiEvents::CONNECTED);
+      reconnects_remaining_ = 0;
       state |= WIFI_CONNECTED;
       cache_wifi_channel();
       break;
+    }
 
     case WIFI_EVENT_STA_DISCONNECTED: {
+      events->set_state(WifiEvents::STARTED);
       uint8 reason = reinterpret_cast<wifi_event_sta_disconnected_t*>(system_event->event_data)->reason;
+      events->set_disconnect_reason(reason);
+
+      bool reconnect = false;
+      uint32 outcome = WIFI_DISCONNECTED;
       switch (reason) {
         case WIFI_REASON_ASSOC_LEAVE:
         case WIFI_REASON_ASSOC_EXPIRE:
         case WIFI_REASON_AUTH_EXPIRE:
-          state |= WIFI_RETRY;
+        case WIFI_REASON_HANDSHAKE_TIMEOUT:
+          reconnect = true;
+          // If we're not reconnecting, we will do a
+          // delayed retry after waiting in Toit code.
+          outcome = WIFI_RETRY;
           break;
-        default:
-          state |= WIFI_DISCONNECTED;
+        case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+        case WIFI_REASON_AUTH_FAIL:
+        case WIFI_REASON_CONNECTION_FAIL:
+          reconnect = true;
           break;
       }
-      static_cast<WifiEvents*>(resource)->set_disconnect_reason(reason);
+
+      bool reconnecting = false;
+      if (reconnect && reconnects_remaining_ > 0) {
+        reconnects_remaining_--;
+        reconnecting = esp_wifi_connect() == ESP_OK;
+      }
+
+      // If we're attempting to reconnect, we do not
+      // update the state here. Instead we just wait
+      // for the reconnect attempt to conclude.
+      if (!reconnecting) {
+        reconnects_remaining_ = 0;
+        state |= outcome;
+      }
       break;
     }
 
-    case WIFI_EVENT_STA_START:
+    case WIFI_EVENT_STA_START: {
+      events->set_state(WifiEvents::STARTED);
+      // If connecting fails here, we do not want to retry
+      // because something is seriously wrong. We let the
+      // higher level code know that we're disconnected and
+      // clean up from there.
+      if (reconnects_remaining_ > 0 && esp_wifi_connect() != ESP_OK) {
+        reconnects_remaining_ = 0;
+        state |= WIFI_DISCONNECTED;
+      }
       break;
+    }
+
+    case WIFI_EVENT_STA_STOP: {
+      events->set_state(WifiEvents::STOPPED);
+      break;
+    }
 
     case WIFI_EVENT_SCAN_DONE: {
       state |= WIFI_SCAN_DONE;
       break;
     }
 
-    case WIFI_EVENT_STA_STOP:
-      break;
-
-    case WIFI_EVENT_STA_BEACON_TIMEOUT:
+    case WIFI_EVENT_STA_BEACON_TIMEOUT: {
       // The beacon timeout mechanism is used by ESP32 station to detect whether the AP
       // is alive or not. If the station continuously loses 60 beacons of the connected
       // AP, the beacon timeout happens.
@@ -248,30 +311,29 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
       // still no probe response or beacon is received from AP, the station disconnects
       // from the AP and raises the WIFI_EVENT_STA_DISCONNECTED event.
       break;
+    }
 
-    case WIFI_EVENT_AP_START:
+    case WIFI_EVENT_AP_START: {
+      events->set_state(WifiEvents::STARTED);
       state |= WIFI_CONNECTED;
       break;
+    }
 
-    case WIFI_EVENT_AP_STOP:
+    case WIFI_EVENT_AP_STOP: {
+      events->set_state(WifiEvents::STOPPED);
       state |= WIFI_DISCONNECTED;
       break;
+    }
 
     case WIFI_EVENT_AP_STACONNECTED:
+    case WIFI_EVENT_AP_STADISCONNECTED: {
       break;
+    }
 
-    case WIFI_EVENT_AP_STADISCONNECTED:
+    default: {
+      printf("[wifi] unhandled Wi-Fi event: %" PRId32 "\n", system_event->id);
       break;
-
-    default:
-      printf(
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-          "unhandled Wi-Fi event: %lu\n",
-#else
-          "unhandled Wi-Fi event: %d\n",
-#endif
-          system_event->id
-      );
+    }
   }
 
   return state;
@@ -296,15 +358,18 @@ uint32 WifiResourceGroup::on_event_ip(Resource* resource, word data, uint32 stat
       break;
     }
 
-    default:
-      printf(
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-          "unhandled IP event: %lu\n",
-#else
-          "unhandled IP event: %d\n",
-#endif
-          system_event->id
-      );
+    case IP_EVENT_ETH_GOT_IP:
+    case IP_EVENT_ETH_LOST_IP:
+    case IP_EVENT_PPP_GOT_IP:
+    case IP_EVENT_PPP_LOST_IP: {
+      // Ignore ethernet and PPP events.
+      break;
+    }
+
+    default: {
+      printf("[wifi] unhandled IP event: %" PRId32 "\n", system_event->id);
+      break;
+    }
   }
 
   return state;
@@ -339,16 +404,26 @@ PRIMITIVE(init) {
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  int id = wifi_pool.any();
-  if (id == kInvalidWifi) OUT_OF_BOUNDS;
+  int id = wifi_espnow_pool.any();
+  if (id == kInvalidWifiEspnow) FAIL(ALREADY_IN_USE);
 
   // We cannot use the esp_netif_create_default_wifi_xxx() functions,
   // because they do not correctly check for malloc failure.
   esp_netif_t* netif = null;
   if (ap) {
+    // We use this static IP for the access point because it causes
+    // Samsung phones to pop up the captive portal login page.
+    // TODO: Make this configurable.
+    esp_netif_ip_info_t two_hundred_network;
+    two_hundred_network.ip.addr = ESP_IP4TOADDR(200, 200, 200, 1);
+    two_hundred_network.gw.addr = ESP_IP4TOADDR(200, 200, 200, 1);
+    two_hundred_network.netmask.addr = ESP_IP4TOADDR(255, 255, 255, 0);
+    esp_netif_inherent_config_t netif_config = ESP_NETIF_INHERENT_DEFAULT_WIFI_AP();
+    netif_config.ip_info = &two_hundred_network;
     esp_netif_config_t netif_ap_config = ESP_NETIF_DEFAULT_WIFI_AP();
+    netif_ap_config.base = &netif_config;
     netif = esp_netif_new(&netif_ap_config);
   } else {
     esp_netif_config_t netif_sta_config = ESP_NETIF_DEFAULT_WIFI_STA();
@@ -356,8 +431,8 @@ PRIMITIVE(init) {
   }
 
   if (!netif) {
-    wifi_pool.put(id);
-    MALLOC_FAILED;
+    wifi_espnow_pool.put(id);
+    FAIL(MALLOC_FAILED);
   }
 
   if (ap) {
@@ -371,7 +446,7 @@ PRIMITIVE(init) {
   esp_err_t err = nvs_flash_init();
   if (err != ESP_OK) {
     esp_netif_destroy_default_wifi(netif);
-    wifi_pool.put(id);
+    wifi_espnow_pool.put(id);
     return Primitive::os_error(err, process);
   }
 
@@ -388,7 +463,7 @@ PRIMITIVE(init) {
   err = esp_wifi_init(&init_config);
   if (err != ESP_OK) {
     esp_netif_destroy_default_wifi(netif);
-    wifi_pool.put(id);
+    wifi_espnow_pool.put(id);
     return Primitive::os_error(err, process);
   }
 
@@ -396,7 +471,7 @@ PRIMITIVE(init) {
   if (err != ESP_OK) {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy_default_wifi(netif);
-    wifi_pool.put(id);
+    wifi_espnow_pool.put(id);
     return Primitive::os_error(err, process);
   }
 
@@ -405,8 +480,8 @@ PRIMITIVE(init) {
   if (!resource_group) {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy_default_wifi(netif);
-    wifi_pool.put(id);
-    MALLOC_FAILED;
+    wifi_espnow_pool.put(id);
+    FAIL(MALLOC_FAILED);
   }
 
   if (ap) {
@@ -426,7 +501,7 @@ PRIMITIVE(close) {
 
   group->tear_down();
   group_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(connect) {
@@ -434,14 +509,14 @@ PRIMITIVE(connect) {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
   if (ssid == null || password == null) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   WifiEvents* wifi = _new WifiEvents(group);
-  if (wifi == null) MALLOC_FAILED;
+  if (wifi == null) FAIL(MALLOC_FAILED);
 
   group->register_resource(wifi);
 
@@ -460,14 +535,14 @@ PRIMITIVE(establish) {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
   if (ssid == null || password == null) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   WifiEvents* wifi = _new WifiEvents(group);
-  if (wifi == null) MALLOC_FAILED;
+  if (wifi == null) FAIL(MALLOC_FAILED);
 
   group->register_resource(wifi);
 
@@ -486,10 +561,10 @@ PRIMITIVE(setup_ip) {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   WifiIpEvents* ip_events = _new WifiIpEvents(group);
-  if (ip_events == null) MALLOC_FAILED;
+  if (ip_events == null) FAIL(MALLOC_FAILED);
 
   group->register_resource(ip_events);
   proxy->set_external_address(ip_events);
@@ -501,7 +576,7 @@ PRIMITIVE(disconnect) {
 
   group->unregister_resource(wifi);
   wifi_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(disconnect_reason) {
@@ -509,12 +584,14 @@ PRIMITIVE(disconnect_reason) {
   switch (wifi->disconnect_reason()) {
     case WIFI_REASON_ASSOC_EXPIRE:
     case WIFI_REASON_ASSOC_LEAVE:
-      return process->allocate_string_or_error("session expired");
+      return process->allocate_string_or_error("expired session");
     case WIFI_REASON_AUTH_EXPIRE:
-      return process->allocate_string_or_error("timeout");
+      return process->allocate_string_or_error("expired authentication");
     case WIFI_REASON_HANDSHAKE_TIMEOUT:
+      return process->allocate_string_or_error("handshake timeout");
     case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
     case WIFI_REASON_AUTH_FAIL:
+    case WIFI_REASON_CONNECTION_FAIL:
       return process->allocate_string_or_error("bad authentication");
     case WIFI_REASON_NO_AP_FOUND:
       return process->allocate_string_or_error("access point not found");
@@ -528,15 +605,15 @@ PRIMITIVE(disconnect_reason) {
 PRIMITIVE(get_ip) {
   ARGS(WifiResourceGroup, group, int, index);
   if (index < 0 || index >= WifiResourceGroup::NUMBER_OF_ADDRESSES) {
-    INVALID_ARGUMENT;
+    FAIL(INVALID_ARGUMENT);
   }
 
   if (!group->has_ip_address(index)) {
-    return process->program()->null_object();
+    return process->null_object();
   }
 
   ByteArray* result = process->object_heap()->allocate_internal_byte_array(4);
-  if (!result) ALLOCATION_FAILED;
+  if (!result) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes bytes(result);
   Utils::write_unaligned_uint32_le(bytes.address(), group->ip_address(index));
   return result;
@@ -546,10 +623,10 @@ PRIMITIVE(init_scan) {
   ARGS(WifiResourceGroup, group)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   WifiEvents* wifi = _new WifiEvents(group);
-  if (wifi == null) MALLOC_FAILED;
+  if (wifi == null) FAIL(MALLOC_FAILED);
 
   group->register_resource(wifi);
 
@@ -571,7 +648,7 @@ PRIMITIVE(start_scan) {
     return Primitive::os_error(ret, process);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(read_scan) {
@@ -585,7 +662,7 @@ PRIMITIVE(read_scan) {
 
   size_t size = count * sizeof(wifi_ap_record_t);
   MallocedBuffer data_buffer(size);
-  if (!data_buffer.has_content()) MALLOC_FAILED;
+  if (!data_buffer.has_content()) FAIL(MALLOC_FAILED);
 
   uint16_t get_count = count;
   wifi_ap_record_t* ap_record = reinterpret_cast<wifi_ap_record_t*>(data_buffer.content());
@@ -595,16 +672,16 @@ PRIMITIVE(read_scan) {
   const size_t element_count = 5;
   size = element_count * get_count;
   Array* ap_array = process->object_heap()->allocate_array(size, Smi::zero());
-  if (ap_array == null) ALLOCATION_FAILED;
+  if (ap_array == null) FAIL(ALLOCATION_FAILED);
 
   for (int i = 0; i < get_count; i++) {
     size_t offset = i * element_count;
     String* ssid = process->allocate_string((char *)ap_record[i].ssid);
-    if (ssid == null) ALLOCATION_FAILED;
+    if (ssid == null) FAIL(ALLOCATION_FAILED);
 
     size_t bssid_size = 6;
     ByteArray* bssid = process->allocate_byte_array(bssid_size);
-    if (bssid == null) ALLOCATION_FAILED;
+    if (bssid == null) FAIL(ALLOCATION_FAILED);
 
     memcpy(ByteArray::Bytes(bssid).address(), ap_record[i].bssid, bssid_size);
 
@@ -623,18 +700,18 @@ PRIMITIVE(ap_info) {
 
   wifi_ap_record_t ap_record;
   esp_err_t ret = esp_wifi_sta_get_ap_info(&ap_record);
-  if (ret != OK) return Primitive::os_error(ret, process);
+  if (ret != ESP_OK) return Primitive::os_error(ret, process);
 
   const size_t element_count = 5;
   Array* ap_array = process->object_heap()->allocate_array(element_count, Smi::zero());
-  if (ap_array == null) ALLOCATION_FAILED;
+  if (ap_array == null) FAIL(ALLOCATION_FAILED);
 
   String* ssid = process->allocate_string((char*)ap_record.ssid);
-  if (ssid == null) ALLOCATION_FAILED;
+  if (ssid == null) FAIL(ALLOCATION_FAILED);
 
   const size_t bssid_size = 6;
   ByteArray* bssid = process->allocate_byte_array(bssid_size);
-  if (bssid == null) ALLOCATION_FAILED;
+  if (bssid == null) FAIL(ALLOCATION_FAILED);
 
   memcpy(ByteArray::Bytes(bssid).address(), ap_record.bssid, bssid_size);
 
@@ -649,4 +726,4 @@ PRIMITIVE(ap_info) {
 #endif // CONFIG_TOIT_ENABLE_WIFI
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

@@ -73,9 +73,9 @@ class ServiceContainer : public BleResource {
 
   void make_deletable() override;
 
-
   virtual T* type() = 0;
   BleServiceResource* get_or_create_service_resource(CBService* service, bool can_create=false);
+
  private:
   NSMutableDictionary<CBUUID*, BleResourceHolder*>* _service_resource_index;
 };
@@ -110,6 +110,7 @@ class DiscoverableResource {
   DiscoverableResource() : _returned(false) {}
   bool is_returned() const { return _returned; }
   void set_returned(bool returned) { _returned = returned; }
+
  private:
   bool _returned;
 };
@@ -151,6 +152,7 @@ class BleServiceResource: public BleResource, public DiscoverableResource {
   BleCharacteristicResource* get_or_create_characteristic_resource(CBCharacteristic* characteristic, bool can_create= false);
   bool deployed() const { return _deployed; }
   void set_deployed(bool deployed) { _deployed = deployed; }
+
  private:
   CBService* _service;
   BleRemoteDeviceResource* _device;
@@ -166,6 +168,7 @@ class CharacteristicData: public CharacteristicDataList::Element {
   explicit CharacteristicData(NSData* data): _data([data retain]) {}
   ~CharacteristicData() { [_data release]; }
   NSData* data() { return _data; }
+
  private:
   NSData* _data;
 };
@@ -359,7 +362,6 @@ class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManage
  private:
   CBPeripheralManager* _peripheral_manager;
   NSMutableDictionary<CBUUID*, BleResourceHolder*>* _service_resource_index;
-
 };
 
 BleCharacteristicResource* lookup_remote_characteristic_resource(CBPeripheral* peripheral, CBCharacteristic* characteristic);
@@ -728,7 +730,7 @@ MODULE_IMPLEMENTATION(ble, MODULE_BLE)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto group = _new BleResourceGroup(process);
   proxy->set_external_address(group);
@@ -740,7 +742,7 @@ PRIMITIVE(create_central_manager) {
   ARGS(BleResourceGroup, group);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   BleCentralManagerResource* central_manager_resource = _new BleCentralManagerResource(group);
   group->register_resource(central_manager_resource);
@@ -764,7 +766,7 @@ PRIMITIVE(create_central_manager) {
 PRIMITIVE(create_peripheral_manager) {
   ARGS(BleResourceGroup, group);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   BlePeripheralManagerResource* peripheral_manager_resource = _new BlePeripheralManagerResource(group);
   group->register_resource(peripheral_manager_resource);
@@ -789,7 +791,7 @@ PRIMITIVE(close) {
   ARGS(BleResourceGroup, group);
   group->tear_down();
   group_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(scan_start) {
@@ -798,7 +800,7 @@ PRIMITIVE(scan_start) {
   Locker locker(central_manager->scan_mutex());
   bool active = [central_manager->central_manager() isScanning];
 
-  if (active || central_manager->scan_active()) ALREADY_IN_USE;
+  if (active || central_manager->scan_active()) FAIL(ALREADY_IN_USE);
   central_manager->set_scan_active(true);
   [central_manager->central_manager() scanForPeripheralsWithServices:nil options:nil];
 
@@ -810,23 +812,23 @@ PRIMITIVE(scan_start) {
     HostBleEventSource::instance()->on_event(central_manager, kBleCompleted);
   });
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(scan_next) {
   ARGS(BleCentralManagerResource, central_manager);
 
   DiscoveredPeripheral* peripheral = central_manager->next_discovered_peripheral();
-  if (!peripheral) return process->program()->null_object();
+  if (!peripheral) return process->null_object();
 
-  Array* array = process->object_heap()->allocate_array(7, process->program()->null_object());
-  if (!array) ALLOCATION_FAILED;
+  Array* array = process->object_heap()->allocate_array(7, process->null_object());
+  if (!array) FAIL(ALLOCATION_FAILED);
 
   const char* address = [[[peripheral->peripheral() identifier] UUIDString] UTF8String];
   String* address_str = process->allocate_string(address);
   if (address_str == null) {
     delete peripheral;
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
   array->at_put(0, address_str);
 
@@ -837,7 +839,7 @@ PRIMITIVE(scan_next) {
     String* identifier_str = process->allocate_string([identifier UTF8String]);
     if (identifier_str == null) {
       free(peripheral);
-      ALLOCATION_FAILED;
+      FAIL(ALLOCATION_FAILED);
     }
     array->at_put(2, identifier_str);
   }
@@ -846,13 +848,13 @@ PRIMITIVE(scan_next) {
   if (discovered_services != nil) {
     Array* service_classes = process->object_heap()->allocate_array(
         static_cast<int>([discovered_services count]),
-        process->program()->null_object());
+        process->null_object());
 
     for (int i = 0; i < [discovered_services count]; i++) {
       String* uuid = process->allocate_string([[discovered_services[i] UUIDString] UTF8String]);
       if (uuid == null) {
         free(peripheral);
-        ALLOCATION_FAILED;
+        FAIL(ALLOCATION_FAILED);
       }
       service_classes->at_put(i, uuid);
     }
@@ -864,7 +866,7 @@ PRIMITIVE(scan_next) {
     ByteArray* custom_data = process->object_heap()->allocate_internal_byte_array(
         static_cast<int>([manufacturer_data length]));
     ByteArray::Bytes custom_data_bytes(custom_data);
-    if (!custom_data) ALLOCATION_FAILED;
+    if (!custom_data) FAIL(ALLOCATION_FAILED);
     memcpy(custom_data_bytes.address(), manufacturer_data.bytes, [manufacturer_data length]);
 
     array->at_put(4, custom_data);
@@ -889,7 +891,7 @@ PRIMITIVE(scan_stop) {
     OS::signal(central_manager->stop_scan_condition());
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(connect) {
@@ -899,10 +901,10 @@ PRIMITIVE(connect) {
   NSUUID* uuid = [[NSUUID alloc] initWithUUIDString:ns_string_from_blob(address)];
 
   CBPeripheral* peripheral = central_manager->get_peripheral(uuid);
-  if (peripheral == nil) INVALID_ARGUMENT;
+  if (peripheral == nil) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto device =
       _new BleRemoteDeviceResource(
@@ -924,7 +926,7 @@ PRIMITIVE(disconnect) {
 
   [device->central_manager() cancelPeripheralConnection:device->peripheral()];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(release_resource) {
@@ -932,7 +934,7 @@ PRIMITIVE(release_resource) {
 
   resource->resource_group()->unregister_resource(resource);
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(discover_services) {
@@ -943,7 +945,7 @@ PRIMITIVE(discover_services) {
   if (err) return err;
   [device->peripheral() discoverServices:service_uuids];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(discover_services_result) {
@@ -958,20 +960,20 @@ PRIMITIVE(discover_services_result) {
     service_resources[count++] = service_resource;
   }
 
-  Array* array = process->object_heap()->allocate_array(count, process->program()->null_object());
-  if (array == null) ALLOCATION_FAILED;
+  Array* array = process->object_heap()->allocate_array(count, process->null_object());
+  if (array == null) FAIL(ALLOCATION_FAILED);
 
   for (int i = 0; i < count; i++) {
     BleServiceResource* service_resource = service_resources[i];
 
     String* uuid_str = process->allocate_string([[services[i].UUID UUIDString] UTF8String]);
-    if (uuid_str == null) ALLOCATION_FAILED;
+    if (uuid_str == null) FAIL(ALLOCATION_FAILED);
 
-    Array* service_info = process->object_heap()->allocate_array(2, process->program()->null_object());
-    if (service_info == null) ALLOCATION_FAILED;
+    Array* service_info = process->object_heap()->allocate_array(2, process->null_object());
+    if (service_info == null) FAIL(ALLOCATION_FAILED);
 
     ByteArray* proxy = process->object_heap()->allocate_proxy();
-    if (proxy == null) ALLOCATION_FAILED;
+    if (proxy == null) FAIL(ALLOCATION_FAILED);
     proxy->set_external_address(service_resource);
 
     service_info->at_put(0, uuid_str);
@@ -988,7 +990,7 @@ PRIMITIVE(discover_services_result) {
 PRIMITIVE(discover_characteristics) {
   ARGS(BleServiceResource, service, Array, raw_characteristics_uuids);
 
-  if (!service->device()) INVALID_ARGUMENT;
+  if (!service->device()) FAIL(INVALID_ARGUMENT);
 
   Error* err = null;
   NSArray<CBUUID*>* characteristics_uuids =
@@ -997,7 +999,7 @@ PRIMITIVE(discover_characteristics) {
 
   [service->device()->peripheral() discoverCharacteristics:characteristics_uuids forService:service->service()];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(discover_characteristics_result) {
@@ -1014,23 +1016,23 @@ PRIMITIVE(discover_characteristics_result) {
     characteristic_resources[count++] = characteristic_resource;
   }
 
-  Array* array = process->object_heap()->allocate_array(count,process->program()->null_object());
-  if (!array) ALLOCATION_FAILED;
+  Array* array = process->object_heap()->allocate_array(count,process->null_object());
+  if (!array) FAIL(ALLOCATION_FAILED);
 
   for (int i = 0; i < count; i++) {
     String* uuid_str = process->allocate_string([[characteristics[i].UUID UUIDString] UTF8String]);
-    if (uuid_str == null) ALLOCATION_FAILED;
+    if (uuid_str == null) FAIL(ALLOCATION_FAILED);
 
     uint16 flags = characteristics[i].properties;
 
     Array* characteristic_data = process->object_heap()->allocate_array(
-        3, process->program()->null_object());
-    if (!characteristic_data) ALLOCATION_FAILED;
+        3, process->null_object());
+    if (!characteristic_data) FAIL(ALLOCATION_FAILED);
 
     array->at_put(i, characteristic_data);
 
     ByteArray* proxy = process->object_heap()->allocate_proxy();
-    if (proxy == null) ALLOCATION_FAILED;
+    if (proxy == null) FAIL(ALLOCATION_FAILED);
     proxy->set_external_address(characteristic_resources[i]);
 
     characteristic_data->at_put(0, uuid_str);
@@ -1045,11 +1047,11 @@ PRIMITIVE(discover_characteristics_result) {
 }
 
 PRIMITIVE(discover_descriptors) {
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(discover_descriptors_result) {
-  UNIMPLEMENTED_PRIMITIVE;
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(request_read) {
@@ -1057,21 +1059,21 @@ PRIMITIVE(request_read) {
 
   [characteristic->characteristic().service.peripheral readValueForCharacteristic:characteristic->characteristic()];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_value) {
   ARGS(BleCharacteristicResource, characteristic);
 
   CharacteristicData* data = characteristic->remove_first();
-  if (!data) return process->program()->null_object();
+  if (!data) return process->null_object();
 
   ByteArray* byte_array = process->object_heap()->allocate_internal_byte_array(
       static_cast<int>([data->data() length]));
 
   if (!byte_array) {
     characteristic->put_back(data);
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   ByteArray::Bytes bytes(byte_array);
@@ -1085,7 +1087,7 @@ PRIMITIVE(write_value) {
   ARGS(BleCharacteristicResource, characteristic, Object, value, bool, with_response);
 
   Blob bytes;
-  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
 
   if (!with_response) {
     if (!characteristic->characteristic().service.peripheral.canSendWriteWithoutResponse)
@@ -1110,7 +1112,7 @@ PRIMITIVE(set_characteristic_notify) {
       setNotifyValue:enable
    forCharacteristic:characteristic->characteristic()];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(advertise_start) {
@@ -1122,7 +1124,7 @@ PRIMITIVE(advertise_start) {
 
   NSMutableDictionary* data = [NSMutableDictionary new];
 
-  if (manufacturing_data.length() > 0) INVALID_ARGUMENT;
+  if (manufacturing_data.length() > 0) FAIL(INVALID_ARGUMENT);
 
   if (name.length() > 0) {
     data[CBAdvertisementDataLocalNameKey] = ns_string_from_blob(name);
@@ -1136,7 +1138,7 @@ PRIMITIVE(advertise_start) {
 
   [peripheral_manager->peripheral_manager() startAdvertising:data];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(advertise_stop) {
@@ -1144,14 +1146,14 @@ PRIMITIVE(advertise_stop) {
 
   [peripheral_manager->peripheral_manager() stopAdvertising];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(add_service) {
   ARGS(BlePeripheralManagerResource, peripheral_manager, Blob, uuid);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   CBUUID* cb_uuid = cb_uuid_from_blob(uuid);
 
@@ -1167,18 +1169,18 @@ PRIMITIVE(add_service) {
 PRIMITIVE(add_characteristic) {
   ARGS(BleServiceResource, service_resource, Blob, raw_uuid, int, properties, int, permissions, Object, value);
 
-  if (!service_resource->peripheral_manager()) INVALID_ARGUMENT;
+  if (!service_resource->peripheral_manager()) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  if (service_resource->deployed()) INVALID_ARGUMENT;
+  if (service_resource->deployed()) FAIL(INVALID_ARGUMENT);
 
   CBUUID* uuid = cb_uuid_from_blob(raw_uuid);
 
   NSData* data = nil;
   Blob bytes;
-  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
   if (bytes.length()) {
     data = [[NSData alloc] initWithBytes:bytes.address() length:bytes.length()];
   }
@@ -1208,31 +1210,31 @@ PRIMITIVE(add_descriptor) {
 PRIMITIVE(deploy_service) {
   ARGS(BleServiceResource, service_resource);
 
-  if (!service_resource->peripheral_manager()) INVALID_ARGUMENT;
-  if (service_resource->deployed()) INVALID_ARGUMENT;
+  if (!service_resource->peripheral_manager()) FAIL(INVALID_ARGUMENT);
+  if (service_resource->deployed()) FAIL(INVALID_ARGUMENT);
 
   auto service = (CBMutableService*)service_resource->service();
   [service_resource->peripheral_manager()->peripheral_manager() addService:service];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(set_value) {
   ARGS(BleCharacteristicResource, characteristic_resource, Object, value);
   Blob bytes;
-  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
 
   auto characteristic = (CBMutableCharacteristic*) characteristic_resource->characteristic();
   characteristic.value = [[NSData alloc] initWithBytes:bytes.address() length:bytes.length()];
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 // Just return an array with 1 null object. This will cause the toit code to call notify_characteristics_value with
 // a conn_handle of null that we will not use.
 PRIMITIVE(get_subscribed_clients) {
-  Array* array = process->object_heap()->allocate_array(1, process->program()->null_object());
-  if (!array) ALLOCATION_FAILED;
+  Array* array = process->object_heap()->allocate_array(1, process->null_object());
+  if (!array) FAIL(ALLOCATION_FAILED);
   return array;
 }
 
@@ -1241,17 +1243,17 @@ PRIMITIVE(notify_characteristics_value) {
   USE(conn_handle);
 
   BlePeripheralManagerResource* peripheral_manager = characteristic_resource->service()->peripheral_manager();
-  if (!peripheral_manager) WRONG_TYPE;
+  if (!peripheral_manager) FAIL(WRONG_OBJECT_TYPE);
 
   Blob bytes;
-  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
 
   auto characteristic = (CBMutableCharacteristic*) characteristic_resource->characteristic();
   [peripheral_manager->peripheral_manager()
               updateValue:[[NSData alloc] initWithBytes:bytes.address() length:bytes.length()]
         forCharacteristic:characteristic
      onSubscribedCentrals:nil];
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_att_mtu) {
@@ -1278,14 +1280,14 @@ PRIMITIVE(get_att_mtu) {
 
 PRIMITIVE(set_preferred_mtu) {
   // Ignore
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(get_error) {
   ARGS(BleCharacteristicResource, characteristic);
-  if (characteristic->error() == nil) OTHER_ERROR;
+  if (characteristic->error() == nil) FAIL(ERROR);
   String* message = process->allocate_string([characteristic->error().localizedDescription UTF8String]);
-  if (!message) ALLOCATION_FAILED;
+  if (!message) FAIL(ALLOCATION_FAILED);
 
   characteristic->set_error(nil);
 

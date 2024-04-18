@@ -3,37 +3,37 @@
 // be found in the tests/LICENSE file.
 
 import ...tools.snapshot
-import ...tools.lsp.server.client show with_lsp_client LspClient
+import ...tools.lsp.server.client show with-lsp-client LspClient
 import host.directory
 import host.file
 import host.pipe
 import tar show Tar
 import encoding.base64 as base64
 
-run args/List --entry_path/string sources/Map={:} -> SnapshotBundle:
+run args/List --entry-path/string sources/Map={:} -> SnapshotBundle:
   toitc      /string := args[0]
-  lsp_server /string := args[1]
-  with_lsp_client
+  lsp-server /string := args[1]
+  with-lsp-client
       --toitc=toitc
-      --lsp_server=lsp_server
-      --compiler_exe=toitc
-      --spawn_process  // Maybe a tiny bit slower, but easier to handle.
-      --supports_config=false: |client/LspClient|
+      --lsp-server=lsp-server
+      --compiler-exe=toitc
+      --spawn-process  // Maybe a tiny bit slower, but easier to handle.
+      --supports-config=false: |client/LspClient|
     sources.do: |path content|
-      client.send_did_open --path=path --text=content
-    snapshot_bundle := client.send_request "toit/snapshot_bundle" { "uri": client.to_uri entry_path }
-    if not snapshot_bundle or not snapshot_bundle["snapshot_bundle"]: throw "Unsuccessful compilation"
-    result := SnapshotBundle (base64.decode snapshot_bundle["snapshot_bundle"])
+      client.send-did-open --path=path --text=content
+    snapshot-bundle := client.send-request "toit/snapshotBundle" { "uri": client.to-uri entry-path }
+    if not snapshot-bundle or not snapshot-bundle["snapshot_bundle"]: throw "Unsuccessful compilation"
+    result := SnapshotBundle (base64.decode snapshot-bundle["snapshot_bundle"])
     return result
   unreachable
 
-extract_methods program/Program method_names/List -> Map:
+extract-methods program/Program method-names/List -> Map:
   result := {:}
-  method_names.do: result[it] = null
+  method-names.do: result[it] = null
   methods := program.methods
   methods.do:
-    debug_info := program.method_info_for it.id
-    name := debug_info.prefix_string program
+    debug-info := program.method-info-for it.id
+    name := debug-info.prefix-string program
     if result.contains name:
       result.update name: |old|
         if not old:
@@ -49,8 +49,8 @@ extract_methods program/Program method_names/List -> Map:
 
   return result
 
-target_of_invoke_static program/Program method/ToitMethod bci/int -> MethodInfo:
-  assert: BYTE_CODES[method.bytecodes[bci]].name == "INVOKE_STATIC"
-  dispatch_index := method.uint16 bci + 1
-  target := program.dispatch_table[dispatch_index]
-  return program.method_info_for target
+target-of-invoke-static program/Program method/ToitMethod bci/int -> MethodInfo:
+  assert: BYTE-CODES[method.bytecodes[bci]].name == "INVOKE_STATIC"
+  dispatch-index := method.uint16 bci + 1
+  target := program.dispatch-table[dispatch-index]
+  return program.method-info-for target

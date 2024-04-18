@@ -2,16 +2,18 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary show LITTLE_ENDIAN
 import .checksum
+import io
+import io show LITTLE-ENDIAN
 
-class MD5 extends Checksum:
-  static SHIFTS_ ::= [
-    07, 12, 17, 22, 07, 12, 17, 22, 07, 12, 17, 22, 07, 12, 17, 22, 05, 09, 14,
-    20, 05, 09, 14, 20, 05, 09, 14, 20, 05, 09, 14, 20, 04, 11, 16, 23, 04, 11,
-    16, 23, 04, 11, 16, 23, 04, 11, 16, 23, 06, 10, 15, 21, 06, 10, 15, 21, 06,
-    10, 15, 21, 06, 10, 15, 21
-  ]
+/**
+Pure Toit MD5 implementation.
+*/
+class Md5 extends Checksum:
+  // Strings are slightly faster than byte arrays.
+  static SHIFTS_ ::= "\x07\x0c\x11\x16\x07\x0c\x11\x16\x07\x0c\x11\x16\x07\x0c\x11\x16\x05\x09\x0e\x14\x05\x09\x0e\x14\x05\x09\x0e\x14\x05\x09\x0e\x14\x04\x0b\x10\x17\x04\x0b\x10\x17\x04\x0b\x10\x17\x04\x0b\x10\x17\x06\x0a\x0f\x15\x06\x0a\x0f\x15\x06\x0a\x0f\x15\x06\x0a\x0f\x15"
+
+  static F_ ::= "\x00\x04\x08\x0c\x10\x14\x18\x1c\x20\x24\x28\x2c\x30\x34\x38\x3c\x04\x18\x2c\x00\x14\x28\x3c\x10\x24\x38\x0c\x20\x34\x08\x1c\x30\x14\x20\x2c\x38\x04\x10\x1c\x28\x34\x00\x0c\x18\x24\x30\x3c\x08\x00\x1c\x38\x14\x30\x0c\x28\x04\x20\x3c\x18\x34\x10\x2c\x08\x24"
 
   static NOISE_ ::= [
     0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a,
@@ -27,28 +29,41 @@ class MD5 extends Checksum:
     0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
   ]
 
+  static BLOCK-SIZE ::= 64
+
   size_/int := 0
-  buffer_/ByteArray? := ByteArray 64
-  digest_/ByteArray? := null
+  buffer_/ByteArray? := ByteArray BLOCK-SIZE
 
   a_/int := 0x67452301
   b_/int := 0xefcdab89
   c_/int := 0x98badcfe
   d_/int := 0x10325476
 
-  add data from/int to/int -> none:
-    if not buffer_: throw "ALREADY_CLOSED"
-    slice := data[from..to]
-    add_bytes_ (slice is ByteArray ? slice : slice.to_byte_array)
+  clone -> Md5:
+    return Md5.private_ size_ buffer_ a_ b_ c_ d_
 
-  add_bytes_ bytes/ByteArray -> none:
+  constructor:
+
+  constructor.private_ .size_ buffer/ByteArray? .a_ .b_ .c_ .d_:
+    buffer_ = buffer.copy
+
+  add data/io.Data from/int to/int -> none:
+    if not buffer_: throw "ALREADY_CLOSED"
+    slice := ?
+    if data is ByteArray:
+      slice = (data as ByteArray)[from..to]
+    else:
+      slice = ByteArray.from data from to
+    add-bytes_ slice
+
+  add-bytes_ bytes/ByteArray -> none:
     extra := bytes.size
     fullness := size_ & 0x3f
     size_ += extra
 
     // See if we can fit all the extra bytes into the buffer.
     buffer := buffer_
-    n := 64 - fullness
+    n := BLOCK-SIZE - fullness
     if extra < n:
       buffer.replace fullness bytes
       return
@@ -56,25 +71,26 @@ class MD5 extends Checksum:
     // We have enough extra bytes to fill up the
     // buffer completely.
     buffer.replace fullness bytes 0 n
-    add_chunk_ buffer
+    add-chunk_ buffer 0
 
     // Run through the extra bytes and add the
     // full chunks we can find without copying
     // the bytes into the buffer.
     while true:
-      next := n + 64
+      next := n + BLOCK-SIZE
       if next > extra:
         // Save the last extra bytes in the buffer,
         // so we have them for the next add.
-        buffer.replace 0 bytes[n..]
+        buffer.replace 0 bytes n
         return
-      add_chunk_ bytes[n..next]
+      add-chunk_ bytes n
       n = next
 
-  add_chunk_ chunk/ByteArray -> none:
-    assert: chunk.size == 64
+  // Takes the 64 bytes, starting at $from.
+  add-chunk_ chunk/ByteArray from/int -> none:
     noise := NOISE_
     shifts := SHIFTS_
+    f := F_
     mask32 := 0xffff_ffff
 
     a := a_
@@ -82,31 +98,28 @@ class MD5 extends Checksum:
     c := c_
     d := d_
 
-    64.repeat: | i/int |
+    BLOCK-SIZE.repeat: | i/int |
       e := ?
-      f := ?
-      if i < 16:
-        e = (b & c) | ((~b & mask32) & d)
-        f = i
-      else if i < 32:
-        e = (d & b) | ((~d & mask32) & c)
-        f = ((5 * i) + 1) & 0xf
-      else if i < 48:
-        e = b ^ c ^ d
-        f = ((3 * i) + 5) & 0xf
+      if i < 32:
+        if i < 16:
+          e = (b & c) | (~b & d)
+        else:
+          e = (d & b) | (~d & c)
       else:
-        e = c ^ (b | (~d & mask32))
-        f = (7 * i) & 0xf
+        if i < 48:
+          e = b ^ c ^ d
+        else:
+          e = c ^ (b | (~d & mask32))
 
       t := d
       d = c
       c = b
-      ae := (a + e) & mask32
-      cf := LITTLE_ENDIAN.uint32 chunk (f << 2)
-      nc := (noise[i] + cf) & mask32
+      ae := a + e
+      cf := LITTLE-ENDIAN.uint32 chunk (from + f[i])
+      nc := noise[i] + cf
       aenc := (ae + nc) & mask32
       shift := shifts[i]
-      rotated := ((aenc << shift) & mask32) | (aenc >> (32 - shift))
+      rotated := (aenc << shift) | (aenc >> (32 - shift))
       b = (b + rotated) & mask32
       a = t
 
@@ -116,34 +129,38 @@ class MD5 extends Checksum:
     d_ = (d_ + d) & mask32
 
   get -> ByteArray:
-    digest := digest_
-    if digest: return digest
+    if buffer_ == null: throw "ALREADY_CLOSED"
 
-    // The signature is 128 bits with the number of bits
-    // in the content encoded in the last 64 of them.
+    // The signature is 64 bits with the number of bits
+    // in the content encoded in them.
     size := size_
-    signature := ByteArray 16
-    LITTLE_ENDIAN.put_int64 signature 8 (size * 8)
+    signature := ByteArray 8
+    LITTLE-ENDIAN.put-int64 signature 0 (size * 8)
 
     // The padding starts with a 1 bit and then enough
     // zeros to make the total size a multiple of 64.
     padding := #[ 0x80 ]
     size += 1 + signature.size
-    aligned := round_up size 64
+    aligned := round-up size 64
     if aligned > size:
       padding += ByteArray (aligned - size)
       size = aligned
 
     // Add the padding and the signature.
     bytes := padding + signature
-    add_bytes_ bytes
+    add-bytes_ bytes
     assert: size_ == size
 
-    digest = ByteArray 16
-    LITTLE_ENDIAN.put_uint32 digest  0 a_
-    LITTLE_ENDIAN.put_uint32 digest  4 b_
-    LITTLE_ENDIAN.put_uint32 digest  8 c_
-    LITTLE_ENDIAN.put_uint32 digest 12 d_
-    digest_ = digest
+    digest := ByteArray 16
+    LITTLE-ENDIAN.put-uint32 digest  0 a_
+    LITTLE-ENDIAN.put-uint32 digest  4 b_
+    LITTLE-ENDIAN.put-uint32 digest  8 c_
+    LITTLE-ENDIAN.put-uint32 digest 12 d_
     buffer_ = null
     return digest
+
+/**
+Computes the MD5 hash of the given $data.
+*/
+md5 data/io.Data from/int=0 to/int=data.byte-size -> ByteArray:
+  return checksum Md5 data from to

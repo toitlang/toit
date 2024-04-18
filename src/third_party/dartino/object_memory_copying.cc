@@ -15,10 +15,7 @@ namespace toit {
 
 class Program;
 
-static void write_sentinel_at(uword address) {
-  ASSERT(sizeof(Object*) == SENTINEL_SIZE);
-  *reinterpret_cast<Object**>(address) = chunk_end_sentinel();
-}
+void write_sentinel_at(uword address);
 
 Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
     : program_(program),
@@ -119,6 +116,10 @@ bool SemiSpace::is_alive(HeapObject* old_location) {
   // alive, return true.
   if (!includes(old_location->_raw())) return true;
   return old_location->has_forwarding_address();
+}
+
+bool SemiSpace::has_active_finalizer(HeapObject* old_location) {
+  return old_location->has_active_finalizer();
 }
 
 void Space::append(Chunk* chunk) {

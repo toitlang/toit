@@ -25,6 +25,28 @@
 
 namespace toit {
 
+class UnparsedRootCertificate;
+typedef LinkedFifo<UnparsedRootCertificate> UnparsedRootCertificateList;
+
+class UnparsedRootCertificate: public UnparsedRootCertificateList::Element {
+ public:
+  UnparsedRootCertificate(const uint8* data, size_t length, bool needs_delete);
+  ~UnparsedRootCertificate();
+  bool matches(const uint8* data, size_t length) const;
+
+  const uint8* data() const { return data_; }
+  size_t length() const { return length_; }
+
+  void set_subject_hash(uint32 hash) { subject_hash_ = hash; }
+  uint32 subject_hash() const { return subject_hash_; }
+
+ private:
+  const uint8* data_;
+  size_t length_;
+  uint32 subject_hash_ = 0;
+  bool needs_delete_;
+};
+
 // Process is linked into two different linked lists, so we have to make
 // use of the arbitrary N template argument to distinguish the two.
 typedef LinkedList<Process, 1> ProcessListFromProcessGroup;
@@ -95,23 +117,6 @@ class Process : public ProcessListFromProcessGroup::Element,
   bool idle_since_gc() const { return idle_since_gc_; }
   void set_idle_since_gc(bool value) { idle_since_gc_ = value; }
 
-  bool has_finalizer(HeapObject* key, Object* lambda) {
-    return object_heap()->has_finalizer(key, lambda);
-  }
-  bool add_finalizer(HeapObject* key, Object* lambda) {
-    return object_heap()->add_finalizer(key, lambda);
-  }
-  bool add_vm_finalizer(HeapObject* key) {
-    return object_heap()->add_vm_finalizer(key);
-  }
-  bool remove_finalizer(HeapObject* key) {
-    return object_heap()->remove_finalizer(key);
-  }
-
-  Object* next_finalizer_to_run() {
-    return object_heap()->next_finalizer_to_run();
-  }
-
   Program* program() { return program_; }
   ProcessGroup* group() { return group_; }
   ObjectHeap* object_heap() { return &object_heap_; }
@@ -135,7 +140,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   SystemMessage* take_termination_message(uint8 result);
 
-  uint64_t random();
+  uint64 random();
   void random_seed(const uint8* buffer, size_t size);
 
   State state() { return state_; }
@@ -185,6 +190,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   Object* allocate_string_or_error(const char* content, int length);
 #if defined(TOIT_WINDOWS)
   String* allocate_string(const wchar_t* content);
+  String* allocate_string(const wchar_t* content, word length);
 #endif
   ByteArray* allocate_byte_array(int length, bool force_external=false);
 
@@ -233,9 +239,56 @@ class Process : public ProcessListFromProcessGroup::Element,
     delete p;
   }
 
-  inline bool on_program_heap(HeapObject* object) {
+  inline bool on_program_heap(const HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     return address - program_heap_address_ < program_heap_size_;
+  }
+
+  inline HeapObject* false_object() const { return false_object_; }
+  inline HeapObject* true_object() const { return true_object_; }
+  inline HeapObject* null_object() const { return null_; }
+
+  // These root certificate functions should be guarded by the TLS mutex.
+  void add_root_certificate(UnparsedRootCertificate* certificate, const Locker& locker) {
+    root_certificates_.append(certificate);
+  }
+
+  bool already_has_root_certificate(const uint8* data, size_t length, const Locker& locker);
+
+  UnparsedRootCertificateList& root_certificates(const Locker& locker) {
+    return root_certificates_;
+  }
+
+  // Sets the timestamp for when this process just started running.
+  void set_run_timestamp(int64 timestamp) {
+    ASSERT(state_ == RUNNING);
+    ASSERT(timestamp >= 0);
+    run_timestamp_ = timestamp;
+  }
+
+  // Clears the timestamp, so the process will not appear to have
+  // been running for any time at all.
+  void clear_run_timestamp() {
+    ASSERT(state_ == RUNNING);
+    run_timestamp_ = -1;
+  }
+
+  int64 run_time_us(int64 now) const {
+    ASSERT(now >= 0);
+    int64 timestamp = run_timestamp_;
+    ASSERT(state_ == RUNNING || timestamp < 0);
+    return timestamp < 0 ? 0 : (now - timestamp);
+  }
+
+  // Sets the current BCP variable.
+  // We use this variable for bytecodes that could potentially hang, so we can
+  // detect if a process is stuck.
+  void set_current_bcp(uint8* bcp) {
+    current_bcp_ = bcp;
+  }
+
+  uint8* current_bcp() const {
+    return current_bcp_;
   }
 
  private:
@@ -272,8 +325,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   SystemMessage* termination_message_;
 
   bool random_seeded_;
-  uint64_t random_state0_;
-  uint64_t random_state1_;
+  uint64 random_state0_;
+  uint64 random_state1_;
 
 #if defined(TOIT_WINDOWS)
   const wchar_t* current_directory_;
@@ -288,9 +341,19 @@ class Process : public ProcessListFromProcessGroup::Element,
   bool construction_failed_ = false;
   bool idle_since_gc_ = true;
 
+  UnparsedRootCertificateList root_certificates_;
+
   Profiler* profiler_ = null;
 
+  HeapObject* false_object_;
+  HeapObject* true_object_;
+  HeapObject* null_;
+
   ResourceGroupListFromProcess resource_groups_;
+
+  int64 run_timestamp_ = -1;
+  uint8* current_bcp_ = null;
+
   friend class HeapObject;
   friend class Scheduler;
 };

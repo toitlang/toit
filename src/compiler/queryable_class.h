@@ -50,12 +50,12 @@ class QueryableClass {
 
 /// Builds the queryable-map from plain shapes.
 /// This is only valid *after* stubs have been inserted into the program.
-UnorderedMap<ir::Class*, QueryableClass> build_queryables_from_plain_shapes(List<ir::Class*> classes);
+UnorderedMap<ir::Class*, QueryableClass> build_queryables_from_plain_shapes(List<ir::Class*> classes, bool include_abstracts);
 
 /// Builds the queryable-map from resolution shapes.
 /// This is only valid *before* stubs have been inserted into the program.
 /// This function needs to run through the whole program to find all valid selectors.
-UnorderedMap<ir::Class*, QueryableClass> build_queryables_from_resolution_shapes(ir::Program* program);
+UnorderedMap<ir::Class*, QueryableClass> build_queryables_from_resolution_shapes(ir::Program* program, bool include_abstracts);
 
 } // namespace toit::compiler
 } // namespace toit

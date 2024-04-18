@@ -1,0 +1,7 @@
+tests/negative/incomplete-block-call-test.toit:6:9: error: Incomplete expression
+  block.
+        ^
+tests/negative/incomplete-block-call-test.toit:9:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed

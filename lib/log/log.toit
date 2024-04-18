@@ -9,6 +9,46 @@ export *
 
 /**
 Logging support.
+
+Each application has a default logger, $default, that is global to the
+  application. By default it is set to log all messages at $DEBUG-LEVEL.
+
+Messages on the default logger are created by calling $log, $debug,
+  $info, $warn, $error or $fatal. The same functions exist as
+  methods on the $Logger class as well.
+
+Instead of creating strings that contain context relevant information,
+  it is possible to add tags to the log message. Tags are key/value pairs
+  that are added to the log message. For example:
+
+```
+import log
+
+main:
+  log.info "Hello world" --tags={"name": "world"}
+```
+
+The default logger can be set with $set-default. For example:
+```
+import log
+
+main:
+  log.set_default (log.default.with_level log.INFO_LEVEL)
+```
+
+It is common to create a logger for parts of a program. In that case,
+  use `.with --name=<part-name>` to create a sub-logger. Often, the
+  class does this in its constructor:
+
+```
+import log
+
+class Connectivity:
+  logger_/log.Logger
+
+  constructor --logger/log.Logger=(log.default.with_name "connectivity"):
+    logger_ = logger
+```
 */
 
 /** The default logger. */
@@ -16,10 +56,10 @@ default -> Logger:
   return default_
 
 /** Sets the $logger as the default. */
-set_default logger/Logger:
+set-default logger/Logger:
   default_ = logger
 
-default_ := Logger DEBUG_LEVEL DefaultTarget
+default_ := Logger DEBUG-LEVEL DefaultTarget
 
 /**
 Logs the $message at the given $level to the default logger.
@@ -30,53 +70,53 @@ log level/int message/string --tags/Map?=null -> none:
   default_.log level message --tags=tags
 
 /**
-Logs the $message to the default logger at debug level ($DEBUG_LEVEL).
+Logs the $message to the default logger at debug level ($DEBUG-LEVEL).
 
 Includes the given $tags in the log message.
 */
 debug message/string --tags/Map?=null -> none:
-  default_.log DEBUG_LEVEL message --tags=tags
+  default_.log DEBUG-LEVEL message --tags=tags
 
 /**
-Logs the $message to the default logger at info level ($INFO_LEVEL).
+Logs the $message to the default logger at info level ($INFO-LEVEL).
 
 Includes the given $tags in the log message.
 */
 info message/string --tags/Map?=null -> none:
-  default_.log INFO_LEVEL message --tags=tags
+  default_.log INFO-LEVEL message --tags=tags
 
 /**
-Logs the $message to the default logger at warning level ($WARN_LEVEL).
+Logs the $message to the default logger at warning level ($WARN-LEVEL).
 
 Includes the given $tags in the log message.
 */
 warn message/string --tags/Map?=null -> none:
-  default_.log WARN_LEVEL message --tags=tags
+  default_.log WARN-LEVEL message --tags=tags
 
 /**
-Logs the $message to the default logger at error level ($ERROR_LEVEL).
+Logs the $message to the default logger at error level ($ERROR-LEVEL).
 
 Includes the given $tags in the log message.
 */
 error message/string --tags/Map?=null -> none:
-  default_.log ERROR_LEVEL message --tags=tags
+  default_.log ERROR-LEVEL message --tags=tags
 
 /**
-Logs the $message to the default logger at fatal level ($FATAL_LEVEL).
+Logs the $message to the default logger at fatal level ($FATAL-LEVEL).
 
 Includes the given $tags in the log message.
 */
 fatal message/string --tags/Map?=null -> none:
-  default_.log FATAL_LEVEL message --tags=tags
+  default_.log FATAL-LEVEL message --tags=tags
 
 /**
 A logger that logs messages to a given target.
 
 A logger can have a name set in the constructor
   ($Logger level_ target_ name). Sub-loggers with sub-names are created with
-  $with_name.
+  $with-name.
 A logger can be associated with a set of tags that are added to all logged
-  messages (see $with_tag).
+  messages (see $with-tag).
 */
 class Logger:
   target_/Target
@@ -99,21 +139,21 @@ class Logger:
   constructor.internal_ parent/Logger --name/string?=null --level/int?=null --tags/Map?=null:
     level_ = level ? (max level parent.level_) : parent.level_
     target_ = parent.target_
-    parent_names ::= parent.names_
+    parent-names ::= parent.names_
     if name:
-      if parent_names:
-        names_ = parent_names.copy
+      if parent-names:
+        names_ = parent-names.copy
         names_.add name
       else:
         names_ = [name]
     else:
-      names_ = parent_names
-    merge_tags_ tags parent.keys_ parent.values_: | keys values |
+      names_ = parent-names
+    merge-tags_ tags parent.keys_ parent.values_: | keys values |
       keys_ = keys
       values_ = values
 
   /** Adds the $name to a copy of this logger. */
-  with_name name/string -> Logger:
+  with-name name/string -> Logger:
     return Logger.internal_ this --name=name
 
   /**
@@ -121,13 +161,13 @@ class Logger:
 
   The level can only be increased to log fewer messages.
   */
-  with_level level/int -> Logger:
+  with-level level/int -> Logger:
     return Logger.internal_ this --level=level
 
   /**
   Adds the tag composed by the $key and the $value to a copy of this logger.
   */
-  with_tag key/string value -> Logger:
+  with-tag key/string value -> Logger:
     return Logger.internal_ this --tags={key: value}
 
   /**
@@ -136,7 +176,7 @@ class Logger:
 
   The $block is called with the logger as argument.
   */
-  with_level level/int [block] -> none:
+  with-level level/int [block] -> none:
     if level < level_: return
     block.call this
 
@@ -147,49 +187,49 @@ class Logger:
   */
   log level/int message/string --tags/Map?=null -> none:
     if level < level_: return
-    merge_tags_ tags keys_ values_: | keys/List? values/List? |
+    merge-tags_ tags keys_ values_: | keys/List? values/List? |
       target_.log level message names_ keys values
-    if level == FATAL_LEVEL: throw "FATAL"
+    if level == FATAL-LEVEL: throw "FATAL"
 
   /**
-  Logs the $message at debug level ($DEBUG_LEVEL).
+  Logs the $message at debug level ($DEBUG-LEVEL).
 
   Includes the given $tags in the log message.
   */
   debug message/string --tags/Map?=null -> none:
-    log DEBUG_LEVEL message --tags=tags
+    log DEBUG-LEVEL message --tags=tags
 
   /**
-  Logs the $message at info level ($INFO_LEVEL).
+  Logs the $message at info level ($INFO-LEVEL).
 
   Includes the given $tags in the log message.
   */
   info message/string --tags/Map?=null -> none:
-    log INFO_LEVEL message --tags=tags
+    log INFO-LEVEL message --tags=tags
 
   /**
-  Logs the $message at warning level ($WARN_LEVEL).
+  Logs the $message at warning level ($WARN-LEVEL).
 
   Includes the given $tags in the log message.
   */
   warn message/string --tags/Map?=null -> none:
-    log WARN_LEVEL message --tags=tags
+    log WARN-LEVEL message --tags=tags
 
   /**
-  Logs the $message at error level ($ERROR_LEVEL).
+  Logs the $message at error level ($ERROR-LEVEL).
 
   Includes the given $tags in the log message.
   */
   error message/string --tags/Map?=null -> none:
-    log ERROR_LEVEL message --tags=tags
+    log ERROR-LEVEL message --tags=tags
 
   /**
-  Logs the $message at fatal level ($FATAL_LEVEL).
+  Logs the $message at fatal level ($FATAL-LEVEL).
 
   Includes the given $tags in the log message.
   */
   fatal message/string --tags/Map?=null -> none:
-    log FATAL_LEVEL message --tags=tags
+    log FATAL-LEVEL message --tags=tags
 
   /**
   Merge any tags provided in the $tags map with the preexisting $keys
@@ -198,18 +238,18 @@ class Logger:
   The new tags in $tags take override any existing key/value pairs
     represented in the lists.
   */
-  static merge_tags_ tags/Map? keys/List? values/List? [block] -> any:
-    if not tags or tags.is_empty: return block.call keys values
-    merged_keys := keys ? keys.copy : []
-    merged_values := values ? values.copy : []
+  static merge-tags_ tags/Map? keys/List? values/List? [block] -> any:
+    if not tags or tags.is-empty: return block.call keys values
+    merged-keys := keys ? keys.copy : []
+    merged-values := values ? values.copy : []
     tags.do: | key value |
       // We assume that the number of keys is typically less than a
       // handful, so we optimize for memory usage by finding the existing
       // index through a linear search instead of using an extra map.
-      index := keys ? keys.index_of key : -1
+      index := keys ? keys.index-of key : -1
       if index >= 0:
-        merged_values[index] = value.stringify
+        merged-values[index] = value.stringify
       else:
-        merged_keys.add key
-        merged_values.add value.stringify
-    return block.call merged_keys merged_values
+        merged-keys.add key
+        merged-values.add value.stringify
+    return block.call merged-keys merged-values

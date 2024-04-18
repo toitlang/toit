@@ -1,0 +1,174 @@
+tests/negative/wrong-number-of-arguments-test.toit:84:8: error: Class 'Instance' only has named constructors
+  a := Instance
+       ^~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:86:18: error: Argument mismatch for 'constructor-no-arguments'
+Method does not take any arguments, but one was provided
+  i1 := Instance.constructor-no-arguments 42  // Too many arguments.
+                 ^~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:87:18: error: Argument mismatch for 'constructor-one-argument'
+Too few arguments provided
+  i2 := Instance.constructor-one-argument  // Too few arguments.
+                 ^~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:88:18: error: Argument mismatch for 'constructor-one-argument'
+Too many arguments provided
+  i3 := Instance.constructor-one-argument 42 103  // Too many arguments.
+                 ^~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:89:18: error: Argument mismatch for 'constructor-one-or-three-arguments'
+Too few arguments provided
+  i4 := Instance.constructor-one-or-three-arguments  // Too few arguments.
+                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:90:18: error: Argument mismatch for 'constructor-one-or-three-arguments'
+Could not find an overload with exactly 2 arguments
+  i5 := Instance.constructor-one-or-three-arguments 42 103  // No overload with two arguments.
+                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:91:18: error: Argument mismatch for 'constructor-one-or-three-arguments'
+Too many arguments provided
+  i6 := Instance.constructor-one-or-three-arguments 42 103 0 1 // Too many arguments.
+                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:92:18: error: Argument mismatch for 'constructor-foo-argument'
+Required named argument '--foo' not provided
+  i7 := Instance.constructor-foo-argument  // Missing named argument.
+                 ^~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:142:10: error: Argument mismatch for 'zero'
+Method does not take any arguments, but one was provided
+  Static.zero 1
+         ^~~~
+tests/negative/wrong-number-of-arguments-test.toit:143:10: error: Argument mismatch for 'one'
+Too few arguments provided
+  Static.one
+         ^~~
+tests/negative/wrong-number-of-arguments-test.toit:144:10: error: Argument mismatch for 'one'
+Too many arguments provided
+  Static.one 1 2
+         ^~~
+tests/negative/wrong-number-of-arguments-test.toit:145:10: error: Argument mismatch for 'two'
+Too few arguments provided
+  Static.two
+         ^~~
+tests/negative/wrong-number-of-arguments-test.toit:146:10: error: Argument mismatch for 'two'
+Too few arguments provided
+  Static.two 1
+         ^~~
+tests/negative/wrong-number-of-arguments-test.toit:147:10: error: Argument mismatch for 'two'
+Too many arguments provided
+  Static.two 1 2 3
+         ^~~
+tests/negative/wrong-number-of-arguments-test.toit:148:10: error: Argument mismatch for 'three'
+Too few arguments provided
+  Static.three
+         ^~~~~
+tests/negative/wrong-number-of-arguments-test.toit:149:10: error: Argument mismatch for 'three'
+Too few arguments provided
+  Static.three 1
+         ^~~~~
+tests/negative/wrong-number-of-arguments-test.toit:150:10: error: Argument mismatch for 'three'
+Too few arguments provided
+  Static.three 1 2
+         ^~~~~
+tests/negative/wrong-number-of-arguments-test.toit:151:10: error: Argument mismatch for 'three'
+Too many arguments provided
+  Static.three 1 2 3 4
+         ^~~~~
+tests/negative/wrong-number-of-arguments-test.toit:152:10: error: Argument mismatch for 'one-or-three'
+Too few arguments provided
+  Static.one-or-three
+         ^~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:153:10: error: Argument mismatch for 'one-or-three'
+Could not find an overload with exactly 2 arguments
+  Static.one-or-three 1 2
+         ^~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:154:10: error: Argument mismatch for 'one-or-three'
+Too many arguments provided
+  Static.one-or-three 1 2 3 4
+         ^~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:156:10: error: Argument mismatch for 'takes-a-block'
+Block argument not provided
+  Static.takes-a-block
+         ^~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:157:10: error: Argument mismatch for 'takes-a-block'
+Too many block arguments provided
+  Static.takes-a-block (: ) (: )
+         ^~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:158:10: error: Argument mismatch for 'takes-a-block'
+Unnamed block argument not provided
+No argument named '--block'
+  Static.takes-a-block --block=:
+         ^~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:161:10: error: Argument mismatch for 'doesnt-take-a-block'
+Method does not take a block argument, but one was provided
+  Static.doesnt-take-a-block:
+         ^~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:163:10: error: Argument mismatch for 'doesnt-take-a-block'
+Method does not take a block argument, but one was provided
+  Static.doesnt-take-a-block 42:
+         ^~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:166:10: error: Argument mismatch for 'takes-a-named-block'
+Method does not take an unnamed block argument, but one was provided
+Required named argument '--block' not provided
+  Static.takes-a-named-block:
+         ^~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:169:10: error: Argument mismatch for 'takes-two-blocks'
+Block argument not provided
+  Static.takes-two-blocks
+         ^~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:170:10: error: Argument mismatch for 'takes-two-blocks'
+Too few block arguments provided
+  Static.takes-two-blocks:
+         ^~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:173:10: error: Argument mismatch for 'doesnt-take-an-unnamed-block'
+Method does not take an unnamed block argument, but one was provided
+Required named argument '--block' not provided
+  Static.doesnt-take-an-unnamed-block:
+         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:175:10: error: Argument mismatch for 'zero-unnamed'
+Method does not take any unnamed arguments, but one was provided
+Required named argument '--x' not provided
+  Static.zero-unnamed 1
+         ^~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:177:10: error: Argument mismatch for 'one-or-three-blocks'
+Block argument not provided
+  Static.one-or-three-blocks
+         ^~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:179:10: error: Argument mismatch for 'one-or-three-blocks'
+Could not find an overload with exactly 2 block arguments
+  Static.one-or-three-blocks (: ) (: )
+         ^~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:181:10: error: Argument mismatch for 'one-or-three-blocks'
+Too many block arguments provided
+  Static.one-or-three-blocks (: ) (: ) (: ) (: )
+         ^~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:185:10: error: Argument mismatch for 'my-setter'
+No getter available
+  Static.my-setter
+         ^~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:187:10: error: No setter method 'zero=' found
+  Static.zero = 42
+         ^~~~
+tests/negative/wrong-number-of-arguments-test.toit:43:5: error: Argument mismatch for 'one-or-three'
+Could not find an overload with exactly 2 unnamed arguments
+    one-or-three 1 2
+    ^~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:44:5: error: Argument mismatch for 'one-or-three-blocks'
+Could not find an overload with exactly 2 block arguments
+    one-or-three-blocks (: ) (: )
+    ^~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:76:5: error: Argument mismatch for 'one-or-three'
+Could not find an overload with exactly 2 arguments
+    one-or-three 1 2
+    ^~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:77:5: error: Argument mismatch for 'one-or-three-blocks'
+Could not find an overload with exactly 2 block arguments
+    one-or-three-blocks (: ) (: )
+    ^~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:72:5: error: Argument mismatch for 'one-or-three'
+Could not find an overload with exactly 2 arguments
+    one-or-three 1 2
+    ^~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:73:5: error: Argument mismatch for 'one-or-three-blocks'
+Could not find an overload with exactly 2 block arguments
+    one-or-three-blocks (: ) (: )
+    ^~~~~~~~~~~~~~~~~~~
+tests/negative/wrong-number-of-arguments-test.toit:183:25: error: Class 'Static' does not have any method 'missing-setter'
+  Static.missing-setter = 5
+                        ^
+Compilation failed

@@ -70,6 +70,16 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
   current_directory_ = -1;
 #endif
   ASSERT(group_->lookup(id_) == this);
+
+  if (program) {
+    false_object_ = program->false_object();
+    true_object_ = program->true_object();
+    null_ = program->null_object();
+  } else {
+    false_object_ = null;
+    true_object_ = null;
+    null_ = null;
+  }
 }
 
 Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory)
@@ -108,6 +118,11 @@ Process::~Process() {
   // budget is returned.
   while (has_messages()) {
     remove_first_message();
+  }
+
+  Locker locker(OS::tls_mutex());
+  while (auto certificate = root_certificates_.remove_first()) {
+    delete certificate;
   }
 }
 
@@ -174,7 +189,7 @@ String* Process::allocate_string(const char* content, int length) {
   String* result = allocate_string(length);
   if (result == null) return result;  // Allocation failure.
   // Initialize object.
-  String::Bytes bytes(result);
+  String::MutableBytes bytes(result);
   bytes._initialize(content);
   return result;
 }
@@ -275,7 +290,7 @@ ByteArray* Process::allocate_byte_array(int length, bool force_external) {
 }
 
 void Process::_append_message(Message* message) {
-  Locker locker(OS::scheduler_mutex());  // Fix this
+  Locker locker(OS::process_mutex());
   if (message->is_object_notify()) {
     ObjectNotifyMessage* obj_notify = static_cast<ObjectNotifyMessage*>(message);
     if (obj_notify->is_queued()) return;
@@ -285,17 +300,17 @@ void Process::_append_message(Message* message) {
 }
 
 bool Process::has_messages() {
-  Locker locker(OS::scheduler_mutex());  // Fix this
+  Locker locker(OS::process_mutex());
   return !messages_.is_empty();
 }
 
 Message* Process::peek_message() {
-  Locker locker(OS::scheduler_mutex());  // Fix this
+  Locker locker(OS::process_mutex());
   return messages_.first();
 }
 
 void Process::remove_first_message() {
-  Locker locker(OS::scheduler_mutex());  // Fix this
+  Locker locker(OS::process_mutex());
   ASSERT(!messages_.is_empty());
   Message* message = messages_.remove_first();
   if (message->is_object_notify()) {
@@ -305,7 +320,7 @@ void Process::remove_first_message() {
 }
 
 int Process::message_count() {
-  Locker locker(OS::scheduler_mutex());  // Fix this
+  Locker locker(OS::process_mutex());
   int count = 0;
   for (MessageFIFO::Iterator it = messages_.begin(); it != messages_.end(); ++it) {
     count++;
@@ -321,11 +336,11 @@ void Process::_ensure_random_seeded() {
   random_seeded_ = true;
 }
 
-uint64_t Process::random() {
+uint64 Process::random() {
   _ensure_random_seeded();
   // xorshift128+.
-  uint64_t s1 = random_state0_;
-  uint64_t s0 = random_state1_;
+  uint64 s1 = random_state0_;
+  uint64 s0 = random_state1_;
   random_state0_ = s0;
   s1 ^= s1 << 23;
   s1 ^= s1 >> 18;
@@ -382,13 +397,16 @@ void Process::set_current_directory(const wchar_t* current_directory) {
 
 String* Process::allocate_string(const wchar_t* content) {
   word utf_16_length = wcslen(content);
+  return allocate_string(content, utf_16_length);
+}
 
+String* Process::allocate_string(const wchar_t* content, word utf_16_length) {
   word length = Utils::utf_16_to_8(reinterpret_cast<const uint16*>(content), utf_16_length, null, 0);
 
   String* result = allocate_string(length);
   if (result == null) return null;
 
-  String::Bytes bytes(result);
+  String::MutableBytes bytes(result);
 
   Utils::utf_16_to_8(reinterpret_cast<const uint16*>(content), utf_16_length, bytes.address(), bytes.length());
 
@@ -396,5 +414,25 @@ String* Process::allocate_string(const wchar_t* content) {
 }
 
 #endif
+
+bool Process::already_has_root_certificate(const uint8* data, size_t length, const Locker& locker) {
+  for (auto root : root_certificates_) {
+    if (root->matches(data, length)) return true;
+  }
+  return false;
+}
+
+UnparsedRootCertificate::UnparsedRootCertificate(const uint8* data, size_t length, bool needs_delete)
+    : data_(data), length_(length), needs_delete_(needs_delete) {}
+
+UnparsedRootCertificate::~UnparsedRootCertificate() {
+  if (needs_delete_) delete(data_);
+  data_ = null;
+}
+
+bool UnparsedRootCertificate::matches(const uint8* data, size_t length) const {
+  if (length != length_) return false;
+  return memcmp(data, data_, length) == 0;
+}
 
 }

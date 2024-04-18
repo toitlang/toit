@@ -1,7 +1,22 @@
+// Copyright (C) 2024 Toitware ApS.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; version
+// 2.1 only.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// The license can be found in the file `LICENSE` in the top level
+// directory of this repository.
+
+import cli
 import host.file
 import host.pipe
-import cli
-import reader show BufferedReader
+import io
 
 USAGE ::= """
     Decodes an esp-idf backtrace message from the UART console.
@@ -17,51 +32,51 @@ usage:
 
 OBJDUMP ::= "xtensa-esp32-elf-objdump"
 
-ELF_FILE ::= "elf-file"
+ELF-FILE ::= "elf-file"
 
 main args/List:
   parsed := null
   parser := cli.Command "stacktrace"
-      --long_help=USAGE
-      --rest=[cli.OptionString --required ELF_FILE --type="path"]
+      --help=USAGE
+      --rest=[cli.Option --required ELF-FILE --type="path"]
       --options=[
-          cli.Flag "disassemble" --short_name="d",
-          cli.OptionString "objdump" --default=OBJDUMP,
-          cli.OptionString "backtrace" --default="-"
+          cli.Flag "disassemble" --short-name="d",
+          cli.Option "objdump" --default=OBJDUMP,
+          cli.Option "backtrace" --default="-"
           ]
       --run=:: parsed = it
   parser.run args
   if not parsed: exit 0
 
   disassemble := parsed["disassemble"]
-  objdump_exe := parsed["objdump"]
-  objdump / BufferedReader? := null
-  symbols_only := false
-  elf_file := parsed[ELF_FILE]
-  elf_size := file.size elf_file
+  objdump-exe := parsed["objdump"]
+  objdump / io.Reader? := null
+  symbols-only := false
+  elf-file := parsed[ELF-FILE]
+  elf-size := file.size elf-file
   exception := catch:
     flags := disassemble ? "-dC" : "-tC"
-    objdump = BufferedReader
-        pipe.from objdump_exe flags elf_file
-    objdump.ensure (min 1000 elf_size) // Read once to see if objdump understands the file.
+    objdump = io.Reader.adapt
+        pipe.from objdump-exe flags elf-file
+    objdump.ensure-buffered (min 1000 elf-size) // Read once to see if objdump understands the file.
   if exception:
-    throw "$exception: $objdump_exe"
+    throw "$exception: $objdump-exe"
   symbols := []
-  disassembly_lines := {:}
-  while line := objdump.read_line:
+  disassembly-lines := {:}
+  while line := objdump.read-line:
     if line.size < 11: continue
     if line[8] == ' ':
       address := int.parse --radix=16 line[0..8]
       if disassemble:
         // Line format: nnnnnnnn <symbol>:
         if line[9] != '<': continue
-        if not line.ends_with ">:": continue
+        if not line.ends-with ">:": continue
         name := line[10..line.size - 2].copy
         symbol := Symbol address name
         symbols.add symbol
       else:
         // Line format: nnnnnnnn flags   section   	size     <name>
-        tab := line.index_of "\t"
+        tab := line.index-of "\t"
         if tab == -1: continue
         name := tab + 10
         if name >= line.size: continue
@@ -72,13 +87,13 @@ main args/List:
       8.repeat:
         if not '0' <= line[it] <= '9' and not 'a' <= line[it] <= 'f': continue
       address := int.parse --radix=16 line[0..8]
-      disassembly_lines[address] = line
+      disassembly-lines[address] = line
 
   backtrace / string? := null
   if parsed["backtrace"] == "-":
     error := catch:
-      with_timeout --ms=2000:
-        backtrace = (BufferedReader pipe.stdin).read_line
+      with-timeout --ms=2000:
+        backtrace = (io.Reader.adapt pipe.stdin).read-line
     if error == "DEADLINE_EXCEEDED":
       print "Timed out waiting for stdin"
       usage
@@ -86,7 +101,7 @@ main args/List:
       throw error
   else:
     backtrace = parsed["backtrace"]
-    if not (backtrace.starts_with "Backtrace:"):
+    if not (backtrace.starts-with "Backtrace:"):
       backtrace = "Backtrace:$backtrace"
 
   /* Sample output without --disassemble:
@@ -113,36 +128,36 @@ main args/List:
   * 4010661d:	0008e0        	callx8	a8
     40106620:	0a2d      	mov.n	a2, a10
   ...
-  */    
-  backtrace_do backtrace symbols: | address symbol |
+  */
+  backtrace-do backtrace symbols: | address symbol |
     name := "(unknown)"
     if disassemble: print ""
     if symbol:
       name = "$symbol.name + 0x$(%x address - symbol.address)"
     print "0x$(%x address): $name"
     if symbol and disassemble:
-      star_printed := false
+      star-printed := false
       start := max symbol.address (address - 30)
       if start != symbol.address: print "..."
       for add := start; add < address + 15; add++:
         star := " "
-        if not star_printed and add >= address:
-          if disassembly_lines.contains add:
+        if not star-printed and add >= address:
+          if disassembly-lines.contains add:
             star = "*"
           else:
             print "* $(%x add):  (address is inside previous instruction)"
-          star_printed = true
-        if disassembly_lines.contains add:
-          print "$star $disassembly_lines[add]"
+          star-printed = true
+        if disassembly-lines.contains add:
+          print "$star $disassembly-lines[add]"
     if disassemble: print ""
 
-backtrace_do backtrace/string symbols/List [block]:
-  if not backtrace.starts_with "Backtrace:": usage
+backtrace-do backtrace/string symbols/List [block]:
+  if not backtrace.starts-with "Backtrace:": usage
   backtrace[10..].split " ": | pair |
     if pair.contains ":":
-      if not pair.starts_with "0x":
+      if not pair.starts-with "0x":
         throw "Can't parse address: $pair"
-      address := int.parse --radix=16 pair[2..pair.index_of ":"]
+      address := int.parse --radix=16 pair[2..pair.index-of ":"]
       symbol := null
       symbols.do: | candidate |
         if candidate.address <= address and (not symbol or candidate.address > symbol.address):

@@ -8,11 +8,11 @@ tests/project_root_flag/test.toit:7:8: error: Package for prefix 'foo' not found
 import foo
        ^~~
 tests/project_root_flag/test.toit:11:27: error: Unresolved identifier: 'identify'
-  expect_equals "foo" foo.identify
+  expect-equals "foo" foo.identify
                           ^~~~~~~~
 tests/project_root_flag/test.toit:12:37: error: Unresolved identifier: 'identify'
-  expect_equals "target" redirected.identify
+  expect-equals "target" redirected.identify
                                     ^~~~~~~~
 tests/project_root_flag/test.toit:13:27: error: Unresolved identifier: 'identify'
-  expect_equals "sub" sub.identify
+  expect-equals "sub" sub.identify
                           ^~~~~~~~

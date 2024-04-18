@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <driver/i2s.h>
 
@@ -105,13 +105,11 @@ MODULE_IMPLEMENTATION(i2s, MODULE_I2S);
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    ALLOCATION_FAILED;
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   I2sResourceGroup* i2s = _new I2sResourceGroup(process, EventQueueEventSource::instance());
   if (!i2s) {
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   proxy->set_external_address(i2s);
@@ -127,19 +125,19 @@ PRIMITIVE(create) {
 
   uint32 fixed_mclk = 0;
   if (mclk_pin != -1) {
-    if (mclk_multiplier != 128 && mclk_multiplier != 256 && mclk_multiplier != 384) INVALID_ARGUMENT;
+    if (mclk_multiplier != 128 && mclk_multiplier != 256 && mclk_multiplier != 384) FAIL(INVALID_ARGUMENT);
     fixed_mclk = mclk_multiplier * sample_rate;
   }
 
-  if (bits_per_sample != 16 && bits_per_sample != 24 && bits_per_sample != 32) INVALID_ARGUMENT;
+  if (bits_per_sample != 16 && bits_per_sample != 24 && bits_per_sample != 32) FAIL(INVALID_ARGUMENT);
 
   i2s_port_t port = i2s_ports.any();
-  if (port == kInvalidPort) OUT_OF_RANGE;
+  if (port == kInvalidPort) FAIL(OUT_OF_RANGE);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
     i2s_ports.put(port);
-    ALLOCATION_FAILED;
+    FAIL(ALLOCATION_FAILED);
   }
 
   int mode;
@@ -169,7 +167,7 @@ PRIMITIVE(create) {
     .use_apll = use_apll,
     .tx_desc_auto_clear = false,
     .fixed_mclk = static_cast<int>(fixed_mclk),
-    .mclk_multiple = I2S_MCLK_MULTIPLE_DEFAULT,
+    .mclk_multiple = I2S_MCLK_MULTIPLE_256,
     .bits_per_chan = I2S_BITS_PER_CHAN_DEFAULT,
 #if SOC_I2S_SUPPORTS_TDM
     .chan_mask = static_cast<i2s_channel_t>(0),
@@ -222,7 +220,7 @@ PRIMITIVE(create) {
       i2s_driver_uninstall(port);
     });
     i2s_ports.put(port);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   group->register_resource(i2s);
@@ -235,7 +233,7 @@ PRIMITIVE(close) {
   ARGS(I2sResourceGroup, group, I2sResource, i2s);
   group->unregister_resource(i2s);
   i2s_proxy->clear_external_address();
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(write) {
@@ -254,7 +252,7 @@ PRIMITIVE(read) {
   ARGS(I2sResource, i2s);
 
   ByteArray* data = process->allocate_byte_array(i2s->max_read_buffer_size(), /*force_external*/ true);
-  if (data == null) ALLOCATION_FAILED;
+  if (data == null) FAIL(ALLOCATION_FAILED);
 
   ByteArray::Bytes rx(data);
   size_t read = 0;
@@ -281,4 +279,4 @@ PRIMITIVE(read_to_buffer) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

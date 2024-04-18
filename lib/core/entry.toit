@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import system
+
 // This is the system entry point. It is responsible for
 // calling the main function and halting the system after
 // it returns.
@@ -11,9 +13,9 @@ __entry__main task -> none:
   // As an example, accessing a lazily initialized global variable
   // requires access to the task.
   Task_.current = task
-  task.initialize_entry_task_
   task.evaluate_:
-    #primitive.intrinsics.main main_arguments_
+    task.initialize-entry-task_
+    #primitive.intrinsics.main main-arguments_
 
 // This is the entry point for processes just being spawned.
 // It calls the lambda passed in the spawn arguments.
@@ -23,9 +25,10 @@ __entry__spawn task -> none:
   // As an example, accessing a lazily initialized global variable
   // requires access to the task.
   Task_.current = task
-  task.initialize_entry_task_
-  lambda := Lambda.__ spawn_method_ spawn_arguments_
-  task.evaluate_: lambda.call
+  task.evaluate_:
+    task.initialize-entry-task_
+    lambda := Lambda.__ spawn-method_ spawn-arguments_
+    lambda.call
 
 // This is the entry point for newly created tasks.
 __entry__task lambda -> none:
@@ -35,8 +38,9 @@ __entry__task lambda -> none:
   // for us on the stack. The `null` assigned to `task` below
   // is skipped and we let the value passed to us take its place.
   task := null
-  assert: identical task Task_.current
-  task.evaluate_: lambda.call
+  task.evaluate_:
+    assert: identical task Task_.current
+    lambda.call
 
 // --------------------------------------------------------
 
@@ -44,15 +48,17 @@ __entry__task lambda -> none:
 Returns the name of the toit file, image, or snapshot that the
   current program was run from.  May return null if this information
   is not available.
+
+Deprecated. Use $system.program-name instead.
 */
-program_name -> string?:
-  #primitive.core.command
+program-name -> string?:
+  #primitive.core.program-name
 
-main_arguments_ -> any:
-  #primitive.core.main_arguments
+main-arguments_ -> any:
+  #primitive.core.main-arguments
 
-spawn_method_ -> int:
-  #primitive.core.spawn_method
+spawn-method_ -> int:
+  #primitive.core.spawn-method
 
-spawn_arguments_ -> any:
-  #primitive.core.spawn_arguments
+spawn-arguments_ -> any:
+  #primitive.core.spawn-arguments

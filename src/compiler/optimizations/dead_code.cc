@@ -275,7 +275,9 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   Node* visit_AssignmentGlobal(AssignmentGlobal* node) {
     Global* global = node->global();
     if (global->is_dead()) {
-      return terminate(visit(node->right(), null));
+      bool terminates;
+      Expression* result = visit(node->right(), &terminates);
+      return tag(result, terminates);
     } else {
       return visit_Assignment(node);
     }
@@ -435,7 +437,8 @@ class DeadCodeEliminator : public ReturningVisitor<Node*> {
   Node* visit_Constructor(Constructor* node) { return visit_Method(node); }
   Node* visit_Global(Global* node) { return visit_Method(node); }
   Node* visit_AdapterStub(AdapterStub* node) { return visit_Method(node); }
-  Node* visit_IsInterfaceStub(IsInterfaceStub* node) { return visit_Method(node); }
+  Node* visit_MixinStub(MixinStub* node) { return visit_Method(node); }
+  Node* visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStub* node) { return visit_Method(node); }
   Node* visit_FieldStub(FieldStub* node) { return visit_Method(node); }
 
  private:

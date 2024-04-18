@@ -1,0 +1,43 @@
+tests/negative/parse-parameters-test.toit:6:12: error: Can't have space between 'this' and '.'
+  foo this . x:
+           ^
+tests/negative/parse-parameters-test.toit:6:14: error: Can't have space between '.' and the field name
+  foo this . x:
+             ^
+tests/negative/parse-parameters-test.toit:7:9: error: Can't have space between '.' and the field name
+  bar . x:
+        ^
+tests/negative/parse-parameters-test.toit:8:12: error: Can't have space between 'this' and '.'
+  gee this . x . y:
+           ^
+tests/negative/parse-parameters-test.toit:8:14: error: Can't have space between '.' and the field name
+  gee this . x . y:
+             ^
+tests/negative/parse-parameters-test.toit:8:18: error: Can't have space between '.' and the field name
+  gee this . x . y:
+                 ^
+tests/negative/parse-parameters-test.toit:6:7: error: Unresolved target for field-storing parameter
+  foo this . x:
+      ^~~~~~~~
+tests/negative/parse-parameters-test.toit:7:7: error: Unresolved target for field-storing parameter
+  bar . x:
+      ^~~
+tests/negative/parse-parameters-test.toit:8:7: error: Unresolved target for field-storing parameter
+  gee this . x . y:
+      ^~~~~~~~
+tests/negative/parse-parameters-test.toit:8:16: error: Unresolved target for field-storing parameter
+  gee this . x . y:
+               ^~~
+tests/negative/parse-parameters-test.toit:11:7: error: Argument mismatch for 'A.foo'
+Too few arguments provided
+  (A).foo
+      ^~~
+tests/negative/parse-parameters-test.toit:12:7: error: Argument mismatch for 'A.bar'
+Too few arguments provided
+  (A).bar
+      ^~~
+tests/negative/parse-parameters-test.toit:13:7: error: Argument mismatch for 'A.gee'
+Too few arguments provided
+  (A).gee
+      ^~~
+Compilation failed

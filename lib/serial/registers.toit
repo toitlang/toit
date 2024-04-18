@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary show LITTLE_ENDIAN BIG_ENDIAN
+import io show LITTLE-ENDIAN BIG-ENDIAN
 
 /**
 Common integer operations for device registers.
@@ -21,29 +21,29 @@ abstract class Registers:
 
   Returns a byte array of the read bytes.
   */
-  abstract read_bytes register/int count/int -> ByteArray
+  abstract read-bytes register/int count/int -> ByteArray
   /**
-  Variant of $(read_bytes register count)
+  Variant of $(read-bytes register count)
 
   Calls the $failure block in case of an exception.
   */
-  abstract read_bytes register/int count/int [failure] -> ByteArray
+  abstract read-bytes register/int count/int [failure] -> ByteArray
   /** Writes the $data to the given $register. */
-  abstract write_bytes register/int data/ByteArray -> none
+  abstract write-bytes register/int data/ByteArray -> none
 
-  buffer_1_/ByteArray? := null
-  buffer_2_/ByteArray? := null
-  buffer_3_/ByteArray? := null
-  buffer_4_/ByteArray? := null
+  buffer-1_/ByteArray? := null
+  buffer-2_/ByteArray? := null
+  buffer-3_/ByteArray? := null
+  buffer-4_/ByteArray? := null
 
   /** Reads an unsigned 8-bit integer from the $register. */
-  read_u8 register/int -> int:
-    bytes := read_bytes register 1
+  read-u8 register/int -> int:
+    bytes := read-bytes register 1
     return bytes[0]
 
   /** Reads a signed 8-bit integer from the $register. */
-  read_i8 register/int -> int:
-    v := read_u8 register
+  read-i8 register/int -> int:
+    v := read-u8 register
     if v >= 128: return v - 256
     return v
 
@@ -52,36 +52,36 @@ abstract class Registers:
 
   Uses little endian.
   */
-  read_i16_le register/int -> int:
-    bytes := read_bytes register 2
-    return LITTLE_ENDIAN.int16 bytes 0
+  read-i16-le register/int -> int:
+    bytes := read-bytes register 2
+    return LITTLE-ENDIAN.int16 bytes 0
 
   /**
   Reads a signed 16-bit integer from the $register.
 
   Uses big endian.
   */
-  read_i16_be register/int -> int:
-    bytes := read_bytes register 2
-    return BIG_ENDIAN.int16 bytes 0
+  read-i16-be register/int -> int:
+    bytes := read-bytes register 2
+    return BIG-ENDIAN.int16 bytes 0
 
   /**
   Reads an unsigned 16-bit integer from the $register.
 
   Uses little endian.
   */
-  read_u16_le register/int -> int:
-    bytes := read_bytes register 2
-    return LITTLE_ENDIAN.uint16 bytes 0
+  read-u16-le register/int -> int:
+    bytes := read-bytes register 2
+    return LITTLE-ENDIAN.uint16 bytes 0
 
   /**
   Reads an unsigned 16-bit integer from the $register.
 
   Uses big endian.
   */
-  read_u16_be register/int -> int:
-    bytes := read_bytes register 2
-    return BIG_ENDIAN.uint16 bytes 0
+  read-u16-be register/int -> int:
+    bytes := read-bytes register 2
+    return BIG-ENDIAN.uint16 bytes 0
 
   /**
   Reads an unsigned 16-bit integer from the $register.
@@ -90,9 +90,9 @@ abstract class Registers:
 
   Calls the $failure block in case of an exception.
   */
-  read_u16_be register/int [failure] -> int:
-    bytes := read_bytes register 2: return failure.call it
-    return BIG_ENDIAN.uint16 bytes 0
+  read-u16-be register/int [failure] -> int:
+    bytes := read-bytes register 2: return failure.call it
+    return BIG-ENDIAN.uint16 bytes 0
 
 
   /**
@@ -100,197 +100,197 @@ abstract class Registers:
 
   Uses little endian.
   */
-  read_i24_le register/int -> int:
-    bytes := read_bytes register 3
-    return LITTLE_ENDIAN.int24 bytes 0
+  read-i24-le register/int -> int:
+    bytes := read-bytes register 3
+    return LITTLE-ENDIAN.int24 bytes 0
 
   /**
   Reads a signed 24-bit integer from the $register.
 
   Uses big endian.
   */
-  read_i24_be register/int -> int:
-    bytes := read_bytes register 3
-    return BIG_ENDIAN.int24 bytes 0
+  read-i24-be register/int -> int:
+    bytes := read-bytes register 3
+    return BIG-ENDIAN.int24 bytes 0
 
   /**
   Reads an unsigned 24-bit integer from the $register.
 
   Uses little endian.
   */
-  read_u24_le register/int -> int:
-    bytes := read_bytes register 3
-    return LITTLE_ENDIAN.uint24 bytes 0
+  read-u24-le register/int -> int:
+    bytes := read-bytes register 3
+    return LITTLE-ENDIAN.uint24 bytes 0
 
   /**
   Reads an unsigned 24-bit integer from the $register.
 
   Uses big endian.
   */
-  read_u24_be register/int -> int:
-    bytes := read_bytes register 3
-    return BIG_ENDIAN.uint24 bytes 0
+  read-u24-be register/int -> int:
+    bytes := read-bytes register 3
+    return BIG-ENDIAN.uint24 bytes 0
 
   /**
   Reads a signed 32-bit integer from the $register.
 
   Uses little endian.
   */
-  read_i32_le register/int -> int:
-    bytes := read_bytes register 4
-    return LITTLE_ENDIAN.int32 bytes 0
+  read-i32-le register/int -> int:
+    bytes := read-bytes register 4
+    return LITTLE-ENDIAN.int32 bytes 0
 
   /**
   Reads a signed 32-bit integer from the $register.
 
   Uses big endian.
   */
-  read_i32_be register/int -> int:
-    bytes := read_bytes register 4
-    return BIG_ENDIAN.int32 bytes 0
+  read-i32-be register/int -> int:
+    bytes := read-bytes register 4
+    return BIG-ENDIAN.int32 bytes 0
 
   /**
   Reads an unsigned 32-bit integer from the $register.
 
   Uses little endian.
   */
-  read_u32_le register/int -> int:
-    bytes := read_bytes register 4
-    return LITTLE_ENDIAN.uint32 bytes 0
+  read-u32-le register/int -> int:
+    bytes := read-bytes register 4
+    return LITTLE-ENDIAN.uint32 bytes 0
 
   /**
   Reads an unsigned 32-bit integer from the $register.
 
   Uses big endian.
   */
-  read_u32_be register/int -> int:
-    bytes := read_bytes register 4
-    return BIG_ENDIAN.uint32 bytes 0
+  read-u32-be register/int -> int:
+    bytes := read-bytes register 4
+    return BIG-ENDIAN.uint32 bytes 0
 
   /**
   Writes the $value to the given $register as an unsigned 8-bit integer.
   */
-  write_u8 register/int value/int -> none:
-    if not buffer_1_: buffer_1_ = ByteArray 1
-    buffer_1_[0] = value
-    write_bytes register buffer_1_
+  write-u8 register/int value/int -> none:
+    if not buffer-1_: buffer-1_ = ByteArray 1
+    buffer-1_[0] = value
+    write-bytes register buffer-1_
 
   /** Writes the $value to the given $register as a signed 8-bit integer. */
-  write_i8 register/int value/int -> none:
+  write-i8 register/int value/int -> none:
     if not -128 <= value <= 127: throw "OUT_OF_BOUNDS"
-    if not buffer_1_: buffer_1_ = ByteArray 1
-    buffer_1_[0] = value
-    write_bytes register buffer_1_
+    if not buffer-1_: buffer-1_ = ByteArray 1
+    buffer-1_[0] = value
+    write-bytes register buffer-1_
 
   /**
   Writes the $value to the given $register as an unsigned 16-bit integer.
 
   Uses little endian.
   */
-  write_u16_le register/int value/int -> none:
-    if not buffer_2_: buffer_2_ = ByteArray 2
-    LITTLE_ENDIAN.put_uint16 buffer_2_ 0 value
-    write_bytes register buffer_2_
+  write-u16-le register/int value/int -> none:
+    if not buffer-2_: buffer-2_ = ByteArray 2
+    LITTLE-ENDIAN.put-uint16 buffer-2_ 0 value
+    write-bytes register buffer-2_
 
   /**
   Writes the $value to the given $register as a signed 16-bit integer.
 
   Uses little endian.
   */
-  write_i16_le register/int value/int -> none:
-    if not buffer_2_: buffer_2_ = ByteArray 2
-    LITTLE_ENDIAN.put_int16 buffer_2_ 0 value
-    write_bytes register buffer_2_
+  write-i16-le register/int value/int -> none:
+    if not buffer-2_: buffer-2_ = ByteArray 2
+    LITTLE-ENDIAN.put-int16 buffer-2_ 0 value
+    write-bytes register buffer-2_
 
   /**
   Writes the $value to the given $register as an unsigned 16-bit integer.
 
   Uses big endian.
   */
-  write_u16_be register/int value/int -> none:
-    if not buffer_2_: buffer_2_ = ByteArray 2
-    BIG_ENDIAN.put_uint16 buffer_2_ 0 value
-    write_bytes register buffer_2_
+  write-u16-be register/int value/int -> none:
+    if not buffer-2_: buffer-2_ = ByteArray 2
+    BIG-ENDIAN.put-uint16 buffer-2_ 0 value
+    write-bytes register buffer-2_
 
   /**
   Writes the $value to the given $register as a signed 16-bit integer.
 
   Uses big endian.
   */
-  write_i16_be register/int value/int -> none:
-    if not buffer_2_: buffer_2_ = ByteArray 2
-    BIG_ENDIAN.put_int16 buffer_2_ 0 value
-    write_bytes register buffer_2_
+  write-i16-be register/int value/int -> none:
+    if not buffer-2_: buffer-2_ = ByteArray 2
+    BIG-ENDIAN.put-int16 buffer-2_ 0 value
+    write-bytes register buffer-2_
 
   /**
   Writes the $value to the given $register as an unsigned 24-bit integer.
 
   Uses little endian.
   */
-  write_u24_le register/int value/int -> none:
-    if not buffer_3_: buffer_3_ = ByteArray 3
-    LITTLE_ENDIAN.put_uint24 buffer_3_ 0 value
-    write_bytes register buffer_3_
+  write-u24-le register/int value/int -> none:
+    if not buffer-3_: buffer-3_ = ByteArray 3
+    LITTLE-ENDIAN.put-uint24 buffer-3_ 0 value
+    write-bytes register buffer-3_
 
   /**
   Writes the $value to the given $register as a signed 24-bit integer.
 
   Uses little endian.
   */
-  write_i24_le register/int value/int -> none:
-    if not buffer_3_: buffer_3_ = ByteArray 3
-    LITTLE_ENDIAN.put_int24 buffer_3_ 0 value
-    write_bytes register buffer_3_
+  write-i24-le register/int value/int -> none:
+    if not buffer-3_: buffer-3_ = ByteArray 3
+    LITTLE-ENDIAN.put-int24 buffer-3_ 0 value
+    write-bytes register buffer-3_
 
   /**
   Writes the $value to the given $register as an unsigned 24-bit integer.
 
   Uses big endian.
   */
-  write_u24_be register/int value/int -> none:
-    if not buffer_3_: buffer_3_ = ByteArray 3
-    BIG_ENDIAN.put_uint24 buffer_3_ 0 value
-    write_bytes register buffer_3_
+  write-u24-be register/int value/int -> none:
+    if not buffer-3_: buffer-3_ = ByteArray 3
+    BIG-ENDIAN.put-uint24 buffer-3_ 0 value
+    write-bytes register buffer-3_
 
   /**
   Writes the $value to the given $register as a signed 24-bit integer.
 
   Uses big endian.
   */
-  write_i24_be register/int value/int -> none:
-    if not buffer_3_: buffer_3_ = ByteArray 3
-    BIG_ENDIAN.put_int24 buffer_3_ 0 value
-    write_bytes register buffer_3_
+  write-i24-be register/int value/int -> none:
+    if not buffer-3_: buffer-3_ = ByteArray 3
+    BIG-ENDIAN.put-int24 buffer-3_ 0 value
+    write-bytes register buffer-3_
 
   /**
   Writes the $value to the given $register as a signed 32-bit integer.
 
   Uses little endian.
   */
-  write_32_le register/int value/int -> none:
-    if not buffer_4_: buffer_4_ = ByteArray 4
-    LITTLE_ENDIAN.put_int32 buffer_4_ 0 value
-    write_bytes register buffer_4_
+  write-32-le register/int value/int -> none:
+    if not buffer-4_: buffer-4_ = ByteArray 4
+    LITTLE-ENDIAN.put-int32 buffer-4_ 0 value
+    write-bytes register buffer-4_
 
   /**
   Writes the $value to the given $register as an unsigned 32-bit integer.
 
   Uses little endian.
   */
-  write_u32_le register/int value/int -> none:
-    if not buffer_4_: buffer_4_ = ByteArray 4
-    LITTLE_ENDIAN.put_uint32 buffer_4_ 0 value
-    write_bytes register buffer_4_
+  write-u32-le register/int value/int -> none:
+    if not buffer-4_: buffer-4_ = ByteArray 4
+    LITTLE-ENDIAN.put-uint32 buffer-4_ 0 value
+    write-bytes register buffer-4_
 
   /**
   Writes the $value to the given $register as an unsigned 32-bit integer.
 
   Uses big endian.
   */
-  write_i32_be register/int value/int -> none:
-    if not buffer_4_: buffer_4_ = ByteArray 4
-    BIG_ENDIAN.put_int32 buffer_4_ 0 value
-    write_bytes register buffer_4_
+  write-i32-be register/int value/int -> none:
+    if not buffer-4_: buffer-4_ = ByteArray 4
+    BIG-ENDIAN.put-int32 buffer-4_ 0 value
+    write-bytes register buffer-4_
 
   /**
   Prints register values.
@@ -305,7 +305,7 @@ abstract class Registers:
     for i := 0; i < to - from; i++:
       if line.size > 0: line += " "
       line += "0x"
-      v := read_u8 from + i
+      v := read-u8 from + i
       if v < 0x10: line += "0"
       line += v.stringify 16
 

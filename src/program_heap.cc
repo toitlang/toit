@@ -29,7 +29,7 @@
 
 #include "objects_inline.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 #include "esp_heap_caps.h"
 #endif
 
@@ -38,8 +38,7 @@ namespace toit {
 ProgramHeap::ProgramHeap(Program* program)
     : ProgramRawHeap()
     , program_(program)
-    , in_gc_(false)
-    , gc_allowed_(true)
+    , retrying_primitive_(false)
     , total_bytes_allocated_(0)
     , last_allocation_result_(ALLOCATION_SUCCESS) {
   blocks_.append(ProgramBlock::allocate_program_block());
@@ -51,13 +50,13 @@ ProgramHeap::~ProgramHeap() {
 }
 
 Instance* ProgramHeap::allocate_instance(Smi* class_id) {
-  int size = program()->instance_size_for(class_id);
+  int size = program()->allocation_instance_size_for(class_id);
   TypeTag class_tag = program()->class_tag_for(class_id);
   return allocate_instance(class_tag, class_id, Smi::from(size));
 }
 
 Instance* ProgramHeap::allocate_instance(TypeTag class_tag, Smi* class_id, Smi* instance_size) {
-  Instance* result = unvoid_cast<Instance*>(_allocate_raw(instance_size->value()));
+  Instance* result = unvoid_cast<Instance*>(_allocate_raw(Smi::value(instance_size)));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
   result->_set_header(class_id, class_tag);
@@ -134,7 +133,7 @@ String* ProgramHeap::allocate_internal_string(int length) {
   result->_set_header(string_id, program()->class_tag_for(string_id));
   String::cast(result)->_set_length(length);
   String::cast(result)->_raw_set_hash_code(String::NO_HASH_CODE);
-  String::Bytes bytes(String::cast(result));
+  String::MutableBytes bytes(String::cast(result));
   bytes._set_end();
   ASSERT(bytes.length() == length);
   return String::cast(result);
@@ -178,7 +177,7 @@ String* ProgramHeap::allocate_string(const char* str, int length) {
     // We are in the program heap. We should never run out of memory.
     ASSERT(result != null);
     // Initialize object.
-    String::Bytes bytes(result);
+    String::MutableBytes bytes(result);
     bytes._initialize(str);
   } else {
     result = allocate_external_string(length, const_cast<uint8*>(unsigned_cast(str)));
@@ -222,7 +221,7 @@ String* ProgramHeap::allocate_external_string(int length, uint8* memory) {
   ASSERT(!result->content_on_heap());
   if (memory[length] != '\0') {
     // TODO(florian): we should not have '\0' at the end of strings anymore.
-    String::Bytes bytes(String::cast(result));
+    String::MutableBytes bytes(String::cast(result));
     bytes._set_end();
   }
   return result;

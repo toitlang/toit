@@ -1,0 +1,19 @@
+tests/negative/bad-type2-test.toit:10:7: error: Type annotation does not resolve to class or interface: 'C1'
+foo x/C1: null
+      ^~
+tests/negative/bad-type2-test.toit:11:7: error: Ambiguous resolution of type: 'AmbiguousC'
+bar x/AmbiguousC: null
+      ^~~~~~~~~~
+tests/negative/ambiguous-a.toit:10:7: note: Resolution candidate for 'AmbiguousC'
+class AmbiguousC:
+      ^~~~~~~~~~
+tests/negative/ambiguous-b.toit:10:7: note: Resolution candidate for 'AmbiguousC'
+class AmbiguousC:
+      ^~~~~~~~~~
+tests/negative/bad-type2-test.toit:12:7: error: Prefix can't be used as type: 'prefix'
+gee x/prefix: null
+      ^~~~~~
+tests/negative/bad-type2-test.toit:14:10: error: Unexpected 'super' in type
+foobar x/super: null
+         ^~~~~
+Compilation failed

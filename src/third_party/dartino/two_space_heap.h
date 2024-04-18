@@ -12,6 +12,8 @@
 
 namespace toit {
 
+class ScavengeVisitor;
+
 class HeapObjectFunctionVisitor : public HeapObjectVisitor {
  public:
   HeapObjectFunctionVisitor(Program* program, const std::function<void (HeapObject*)>& func)
@@ -35,6 +37,11 @@ class TwoSpaceHeap {
   // Allocate raw object. Returns null if a garbage collection is
   // needed.
   HeapObject* allocate(uword size);
+
+  // Allocate raw object. Returns null if new space is full.
+  inline word allocate_new_space(uword size) {
+    return semi_space_.try_allocate(size);
+  }
 
   SemiSpace* new_space() { return &semi_space_; }
   const SemiSpace* new_space() const { return &semi_space_; }
@@ -112,13 +119,17 @@ class TwoSpaceHeap {
  private:
   friend class ScavengeVisitor;
 
+  void do_scavenge(ScavengeVisitor* visitor);
+
   Program* program_;
   ObjectHeap* process_heap_;
   OldSpace old_space_;
   SemiSpace semi_space_;
+  Chunk* spare_chunk_ = null;  // Only used for large heap heuristics mode.
   uword water_mark_;
   uword semi_space_size_;
   uword total_bytes_allocated_ = 0;
+  bool large_allocation_failed_ = false;
   bool malloc_failed_ = false;
 };
 

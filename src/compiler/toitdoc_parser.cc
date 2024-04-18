@@ -37,11 +37,11 @@ class ToitdocDiagnostics : public Diagnostics {
     if (severity == Severity::error) return Severity::warning;
     return severity;
   }
-  void emit(Severity severity, const char* format, va_list& arguments) {
-    wrapped_->emit(severity, format, arguments);
+  bool emit(Severity severity, const char* format, va_list& arguments) {
+    return wrapped_->emit(severity, format, arguments);
   }
-  void emit(Severity severity, Source::Range range, const char* format, va_list& arguments) {
-    wrapped_->emit(severity, range, format, arguments);
+  bool emit(Severity severity, Source::Range range, const char* format, va_list& arguments) {
+    return wrapped_->emit(severity, range, format, arguments);
   }
 
  private:
@@ -74,7 +74,7 @@ class ToitdocSource : public Source {
   }
 
   const char* absolute_path() const { return source_->absolute_path(); }
-  std::string package_id() const { return source_->package_id(); }
+  Package package() const { return source_->package(); }
   std::string error_path() const { return source_->error_path(); }
 
   const uint8* text() const { return text_; }
@@ -85,8 +85,7 @@ class ToitdocSource : public Source {
 
   int size() const { return size_; }
 
-  // This functionality isn't supported.
-  int offset_in_source(Position position) const { UNREACHABLE();  }
+  int offset_in_source(Position position) const { return source_->offset_in_source(position); }
 
   bool is_lsp_marker_at(int offset);
 
@@ -600,7 +599,7 @@ toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
         // We want to allow $5.2 or even a simple $ in the text.
         // Only if the $ is followed by an identifier we treat it like a ref.
         is_special_char = look_ahead() == '(' ||
-            is_identifier_start(look_ahead()) ||
+            IdentifierValidator::is_identifier_start(look_ahead()) ||
             (is_operator_start(look_ahead()) && !is_comment_start(look_ahead(1), look_ahead(2)));
         break;
 
@@ -740,13 +739,15 @@ Symbol ToitdocParser::parse_delimited(int delimiter,
     if (c == '\\' &&
         ((look_ahead() == '\\' || look_ahead() == delimiter))) {
       if (keep_delimiters_and_escapes) {
-        // Skip over the escaped character.
-        advance(2);
+        // Skip over the escape character, but not the escaped
+        // character. That happens at the top of the loop.
+        advance();
       } else {
         buffer += make_string(chunk_start, index_);
+        // Skip over the escape character, but not the escaped
+        // character. That happens at the top of the loop.
         advance();
         chunk_start = index_;
-        advance();
       }
     }
   } while (c != delimiter && c != '\0');

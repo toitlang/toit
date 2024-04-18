@@ -2,40 +2,44 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import reader
 
-import .socket_address
+import .socket-address
 
 interface Interface:
-  tcp_connect host/string port/int -> Socket
-  tcp_connect address/SocketAddress -> Socket
-  tcp_listen port/int -> ServerSocket
+  tcp-connect host/string port/int -> Socket
+  tcp-connect address/SocketAddress -> Socket
+  tcp-listen port/int -> ServerSocket
 
 interface Socket implements reader.Reader:
-  local_address -> SocketAddress
-  peer_address -> SocketAddress
-
-  // TODO(kasper): Remove this.
-  set_no_delay enabled/bool -> none
+  local-address -> SocketAddress
+  peer-address -> SocketAddress
 
   // Returns true if TCP_NODELAY option is enabled.
-  no_delay -> bool
+  no-delay -> bool
 
   // Enable or disable TCP_NODELAY option.
-  no_delay= value/bool
+  no-delay= value/bool
 
+  in -> io.CloseableReader
+  out -> io.CloseableWriter
+
+  /** Deprecated. Use $(in).read instead. */
   read -> ByteArray?
-  write data from/int=0 to/int=data.size -> int
+  /** Deprecated. Use $(out).write or $(out).try-write instead. */
+  write data/io.Data from/int=0 to/int=data.byte-size -> int
 
   mtu -> int
 
   // Close the socket for write. The socket will still be able to read incoming data.
-  close_write
+  /** Deprecated. Use $(out).close instead. */
+  close-write
 
   // Immediately close the socket and release any resources associated.
   close
 
 interface ServerSocket:
-  local_address -> SocketAddress
+  local-address -> SocketAddress
   accept -> Socket?
   close

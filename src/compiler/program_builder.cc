@@ -249,6 +249,7 @@ void ProgramBuilder::set_built_in_class_tags_and_sizes() {
   set_built_in_class_tag_and_size(Symbols::CowByteArray_);
   set_built_in_class_tag_and_size(Symbols::ByteArraySlice_);
   set_built_in_class_tag_and_size(Symbols::StringSlice_);
+  set_built_in_class_tag_and_size(Symbols::StringByteSlice_);
   set_built_in_class_tag_and_size(Symbols::List_);
   set_built_in_class_tag_and_size(Symbols::ListSlice_);
   set_built_in_class_tag_and_size(Symbols::Tombstone_);
@@ -288,30 +289,11 @@ void ProgramBuilder::set_up_skeleton_program() {
   literals_.push_back(program_->false_object());
 
   // Predefined symbols used for primitive failures.
-  program_->set_allocation_failed(lookup_symbol("ALLOCATION_FAILED"));
-  program_->set_already_closed(lookup_symbol("ALREADY_CLOSED"));
-  program_->set_allocation_size_exceeded(lookup_symbol("ALLOCATION_SIZE_EXCEEDED"));
-  program_->set_already_exists(lookup_symbol("ALREADY_EXISTS"));
-  program_->set_division_by_zero(lookup_symbol("DIVISION_BY_ZERO"));
-  program_->set_error(lookup_symbol("ERROR"));
-  program_->set_file_not_found(lookup_symbol("FILE_NOT_FOUND"));
-  program_->set_hardware_error(lookup_symbol("HARDWARE_ERROR"));
-  program_->set_illegal_utf_8(lookup_symbol("ILLEGAL_UTF_8"));
-  program_->set_invalid_argument(lookup_symbol("INVALID_ARGUMENT"));
-  program_->set_malloc_failed(lookup_symbol("MALLOC_FAILED"));
-  program_->set_cross_process_gc(lookup_symbol("CROSS_PROCESS_GC"));
-  program_->set_negative_argument(lookup_symbol("NEGATIVE_ARGUMENT"));
-  program_->set_out_of_bounds(lookup_symbol("OUT_OF_BOUNDS"));
-  program_->set_out_of_range(lookup_symbol("OUT_OF_RANGE"));
-  program_->set_already_in_use(lookup_symbol("ALREADY_IN_USE"));
-  program_->set_overflow(lookup_symbol("OVERFLOW"));
-  program_->set_privileged_primitive(lookup_symbol("PRIVILEGED_PRIMITIVE"));
-  program_->set_permission_denied(lookup_symbol("PERMISSION_DENIED"));
-  program_->set_quota_exceeded(lookup_symbol("QUOTA_EXCEEDED"));
-  program_->set_read_failed(lookup_symbol("READ_FAILED"));
-  program_->set_stack_overflow(lookup_symbol("STACK_OVERFLOW"));
-  program_->set_unimplemented(lookup_symbol("UNIMPLEMENTED"));
-  program_->set_wrong_object_type(lookup_symbol("WRONG_OBJECT_TYPE"));
+  #define SET_ERROR_STRING(name, upper_name) \
+    program_->set_##name(lookup_symbol(#upper_name));
+  ERROR_STRINGS(SET_ERROR_STRING)
+  #undef SET_ERROR_STRING
+
   program_->set_app_sdk_version(lookup_symbol(vm_git_version()));
   program_->set_app_sdk_info(lookup_symbol(vm_git_info()));
 }

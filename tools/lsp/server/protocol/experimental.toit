@@ -16,13 +16,13 @@
 import ..rpc
 
 class Experimental extends MapWrapper:
-  constructor json_map/Map: super json_map
+  constructor json-map/Map: super json-map
 
-  constructor --ubjson_rpc/bool?=null:
-    map_["ubjsonRpc"] = ubjson_rpc
+  constructor --ubjson-rpc/bool?=null:
+    map_["ubjsonRpc"] = ubjson-rpc
 
   /**
   Whether the RPC connection supports UBJSON.
   */
-  ubjson_rpc -> bool?:
+  ubjson-rpc -> bool?:
     return lookup_ "ubjsonRpc"

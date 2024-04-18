@@ -1,0 +1,10 @@
+tests/negative/error-recovery-test.toit:5:25: error: 'as' must be followed by identifier
+import .error-recovery1 as 4
+                        ^~
+tests/negative/error-recovery-test.toit:6:25: error: 'as' must be followed by identifier
+import .error-recovery2 as 5
+                        ^~
+tests/negative/error-recovery-test.toit:9:9: error: Unresolved identifier: 'from-module'
+  print from-module
+        ^~~~~~~~~~~
+Compilation failed

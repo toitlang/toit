@@ -16,6 +16,9 @@
 set(TOIT_EXTERNAL_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt")
 
 set(TOIT_REPOS
+    https://github.com/floitsch/toit-telegram
+    https://github.com/floitsch/toit-discord
+    https://github.com/floitsch/toit-device-bot
     https://github.com/kasperl/toit-datacake
     https://github.com/kasperl/toit-qubitro
     https://github.com/kasperl/toit-zygote
@@ -23,12 +26,15 @@ set(TOIT_REPOS
     https://github.com/nilwes/LIS3DH
     https://github.com/toitlang/jaguar
     https://github.com/toitlang/pkg-ar
+    https://github.com/toitlang/pkg-dns-simple-server
+    https://github.com/toitlang/pkg-font-tiny
     https://github.com/toitlang/pkg-host
     https://github.com/toitlang/pkg-http
     https://github.com/toitlang/pkg-modbus
     https://github.com/toitlang/pkg-ntp
     https://github.com/toitlang/pkg-tar
     https://github.com/toitlang/pkg-testing
+    https://github.com/toitlang/toit-font-tools
     https://github.com/toitware/bme280-driver
     https://github.com/toitware/cellular
     https://github.com/toitware/dbc
@@ -39,6 +45,7 @@ set(TOIT_REPOS
     https://github.com/toitware/mqtt
     https://github.com/toitware/sts3x-driver
     https://github.com/toitware/toit-A3967
+    https://github.com/toitware/toit-artemis
     https://github.com/toitware/toit-axp192
     https://github.com/toitware/toit-cert-roots
     https://github.com/toitware/toit-color-tft
@@ -60,9 +67,13 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-morse-tutorial
     https://github.com/toitware/toit-msa311
     https://github.com/toitware/toit-newton-raphson
+    https://github.com/toitware/toit-openai
+    https://github.com/toitware/toit-partition-table-esp32
     https://github.com/toitware/toit-pixel-display
     https://github.com/toitware/toit-pixel-strip
-    https://github.com/toitware/toit-png-display
+# TODO(kasper): Temporarily removed because the tests cannot be
+# run correctly by the external test harness.
+#   https://github.com/toitware/toit-png-display
     https://github.com/toitware/toit-protobuf
     https://github.com/toitware/toit-provision
     https://github.com/toitware/toit-r46ca01
@@ -71,11 +82,15 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-si7006
     https://github.com/toitware/toit-solar-position
     https://github.com/toitware/toit-ssd1306
+    https://github.com/toitware/toit-semver
+    https://github.com/toitware/toit-supabase
     https://github.com/toitware/toit-tl19a08
     https://github.com/toitware/toit-tm1640
     https://github.com/toitware/toit-vcnl4040
+    https://github.com/toitware/toit-watchdog
     https://github.com/toitware/toit-1-wire
     https://github.com/toitware/ublox-gnss-driver
+    https://github.com/toitware/ubx-message
 )
 
 set(DOWNLOADS_DIR "${CMAKE_CURRENT_LIST_DIR}/downloads")
@@ -103,6 +118,16 @@ if (DEFINED EXECUTING_SCRIPT)
     set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
     if (EXISTS "${REPO_PATH}")
       execute_process(
+        COMMAND "${GIT_EXECUTABLE}" reset --hard
+        WORKING_DIRECTORY "${REPO_PATH}"
+        COMMAND_ERROR_IS_FATAL ANY
+      )
+      execute_process(
+        COMMAND "${GIT_EXECUTABLE}" clean -fd
+        WORKING_DIRECTORY "${REPO_PATH}"
+        COMMAND_ERROR_IS_FATAL ANY
+      )
+      execute_process(
         COMMAND "${GIT_EXECUTABLE}" pull
         WORKING_DIRECTORY "${REPO_PATH}"
         COMMAND_ERROR_IS_FATAL ANY
@@ -114,6 +139,14 @@ if (DEFINED EXECUTING_SCRIPT)
         COMMAND_ERROR_IS_FATAL ANY
       )
     endif()
+    # If bin/version.toit.in (or app/version.toit.in) exists, copy it to
+    # bin/version.toit (resp. app/version.toit).
+    foreach(LOCATION "app" "bin")
+      set(LOCATION_PATH "${REPO_PATH}/${LOCATION}")
+      if (EXISTS "${LOCATION_PATH}/version.toit.in")
+        configure_file("${LOCATION_PATH}/version.toit.in" "${LOCATION_PATH}/version.toit" COPYONLY)
+      endif()
+    endforeach()
   else()
     message(FATAL_ERROR "Unknown script command ${SCRIPT_COMMAND}")
   endif()
@@ -182,7 +215,7 @@ endforeach()
 function(find_toit_projects REPO)
   get_filename_component(REPO_NAME "${REPO}" NAME)
   set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
-  foreach(LOCATION "" "examples" "tests" "tools")
+  foreach(LOCATION "" "examples" "tests" "tools" "app" "bin")
     set(LOCATION_PATH "${REPO_PATH}/${LOCATION}")
     if (EXISTS "${LOCATION_PATH}/package.yaml" OR EXISTS "${LOCATION_PATH}/package.lock")
       set(PROJECT_NAME "${REPO_NAME}")
@@ -201,7 +234,9 @@ function(add_repo_tests REPO)
   get_filename_component(REPO_NAME "${REPO}" NAME)
   set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
   file(GLOB TEST_FILES RELATIVE "${REPO_PATH}"
+      "${REPO_PATH}/tests/*-test.toit"
       "${REPO_PATH}/tests/*_test.toit"
+      "${REPO_PATH}/tests/*-test-slow.toit"
       "${REPO_PATH}/tests/*_test_slow.toit")
 
   # Set the TEST_PREFIX which will be used by the 'fail.cmake' files.
@@ -217,20 +252,25 @@ function(add_repo_tests REPO)
       continue()
     endif()
 
+    set(TEST_EXPECTATION_NAME "${TEST_NAME}")
+    if("${TEST_NAME}" IN_LIST FAILING_TESTS OR "${TEST_NAME}" IN_LIST TOIT_FAILING_TESTS)
+      set(TEST_EXPECTATION_NAME "${TEST_NAME}-expected-to-fail")
+    endif()
+
     add_test(
-      NAME "${TEST_NAME}"
+      NAME "${TEST_EXPECTATION_NAME}"
       COMMAND $<TARGET_FILE:toit.run> "${FILE}" $<TARGET_FILE:toit.run>
       WORKING_DIRECTORY "${REPO_PATH}"
       CONFIGURATIONS external
     )
     if("${TEST_NAME}" IN_LIST FAILING_TESTS OR "${TEST_NAME}" IN_LIST TOIT_FAILING_TESTS)
-      set_tests_properties(${TEST_NAME} PROPERTIES WILL_FAIL TRUE)
+      set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES WILL_FAIL TRUE)
     endif()
 
     if ("${TEST_NAME}" MATCHES "_slow\\.toit$")
-      set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
+      set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
     else()
-      set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+      set_tests_properties(${TEST_EXPECTATION_NAME} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
     endif()
   endforeach()
 endfunction()
@@ -256,9 +296,10 @@ foreach(FILE ${HEALTH_SOURCES})
 
   add_health_test("${FILE}"
     RELATIVE_TO "${DOWNLOADS_DIR}"
-    LIB_DIR "${TOIT_SDK_SOURCE_DIR}"
+    LIB_DIR "${TOIT_SDK_SOURCE_DIR}/lib"
     GOLD_DIR "${EXTERNAL_GOLD_DIR}"
     CONFIGURATION external_health
+    SHOW_PACKAGE_WARNINGS OFF
     UPDATE_TARGET update_external_health_gold
   )
 endforeach()

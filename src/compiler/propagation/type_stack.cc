@@ -60,53 +60,53 @@ void TypeStack::push_any(Program* program) {
 
 void TypeStack::push_null(Program* program) {
   TypeSet type = push_empty();
-  type.add(program->null_class_id()->value());
+  type.add(Smi::value(program->null_class_id()));
 }
 
 void TypeStack::push_smi(Program* program) {
   TypeSet type = push_empty();
-  type.add(program->smi_class_id()->value());
+  type.add(Smi::value(program->smi_class_id()));
 }
 
 void TypeStack::push_int(Program* program) {
   TypeSet type = push_empty();
-  type.add(program->smi_class_id()->value());
-  type.add(program->large_integer_class_id()->value());
+  type.add(Smi::value(program->smi_class_id()));
+  type.add(Smi::value(program->large_integer_class_id()));
 }
 
 void TypeStack::push_float(Program* program) {
   TypeSet type = push_empty();
-  type.add(program->double_class_id()->value());
+  type.add(Smi::value(program->double_class_id()));
 }
 
 void TypeStack::push_string(Program* program) {
   TypeSet type = push_empty();
-  type.add(program->string_class_id()->value());
+  type.add(Smi::value(program->string_class_id()));
 }
 
 void TypeStack::push_array(Program* program) {
   TypeSet type = push_empty();
-  type.add(program->array_class_id()->value());
+  type.add(Smi::value(program->array_class_id()));
 }
 
 void TypeStack::push_byte_array(Program* program, bool nullable) {
   TypeSet type = push_empty();
-  type.add(program->byte_array_class_id()->value());
-  if (nullable) type.add(program->null_class_id()->value());
+  type.add(Smi::value(program->byte_array_class_id()));
+  if (nullable) type.add(Smi::value(program->null_class_id()));
 }
 
 void TypeStack::push_bool(Program* program) {
   TypeSet type = push_empty();
-  type.add(program->true_class_id()->value());
-  type.add(program->false_class_id()->value());
+  type.add(Smi::value(program->true_class_id()));
+  type.add(Smi::value(program->false_class_id()));
 }
 
 void TypeStack::push_bool_specific(Program* program, bool value) {
   TypeSet type = push_empty();
   if (value) {
-    type.add(program->true_class_id()->value());
+    type.add(Smi::value(program->true_class_id()));
   } else {
-    type.add(program->false_class_id()->value());
+    type.add(Smi::value(program->false_class_id()));
   }
 }
 
@@ -118,9 +118,9 @@ void TypeStack::push_instance(unsigned id) {
 void TypeStack::push(Program* program, Object* object) {
   TypeSet type = push_empty();
   if (is_heap_object(object)) {
-    type.add(HeapObject::cast(object)->class_id()->value());
+    type.add(Smi::value(HeapObject::cast(object)->class_id()));
   } else {
-    type.add(program->smi_class_id()->value());
+    type.add(Smi::value(program->smi_class_id()));
   }
 }
 

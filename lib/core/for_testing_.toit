@@ -7,9 +7,9 @@
 // They should always be tree-shaken.
 __protected_:
 class __Protected_:
-__protected_global_ := 499
-__protected_global_getter_setter_= val:
-__protected_global_getter_setter_: return 0
+__protected-global_ := 499
+__protected-global-getter-setter_= val:
+__protected-global-getter-setter_: return 0
 class Protected_:
   constructor.__named:
   static __:

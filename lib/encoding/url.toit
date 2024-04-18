@@ -2,15 +2,15 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-NEEDS_ENCODING_ ::= ByteArray '~' - '-' + 1:
+NEEDS-ENCODING_ ::= ByteArray '~' - '-' + 1:
   c := it + '-'
   (c == '-' or c == '_' or c == '.' or c == '~' or '0' <= c <= '9' or 'A' <= c <= 'Z' or 'a' <= c <= 'z') ? 0 : 1
 
 // Takes an ASCII string or a byte array.
 // Counts the number of bytes that need escaping.
-count_escapes_ data -> int:
+count-escapes_ data -> int:
   count := 0
-  table := NEEDS_ENCODING_
+  table := NEEDS-ENCODING_
   data.do: | c |
     if not '-' <= c <= '~':
       count++
@@ -19,21 +19,21 @@ count_escapes_ data -> int:
   return count
 
 // Takes an ASCII string or a byte array.
-url_encode_ from -> any:
-  escaped := count_escapes_ from
+url-encode_ from -> any:
+  escaped := count-escapes_ from
   if escaped == 0: return from
   result := ByteArray from.size + escaped * 2
   pos := 0
-  table := NEEDS_ENCODING_
+  table := NEEDS-ENCODING_
   from.do: | c |
     if not '-' <= c <= '~' or table[c - '-'] == 1:
       result[pos] = '%'
-      result[pos + 1] = to_upper_case_hex c >> 4
-      result[pos + 2] = to_upper_case_hex c & 0xf
+      result[pos + 1] = to-upper-case-hex c >> 4
+      result[pos + 2] = to-upper-case-hex c & 0xf
       pos += 3
     else:
       result[pos++] = c
-  return result.to_string
+  return result.to-string
 
 /**
 Encodes the given $data using URL-encoding, also known as percent encoding.
@@ -50,10 +50,10 @@ encode data -> any:
     // If a string is ASCII only then the sizes match.
     if data.size != (data.size --runes):
       // Convert to something where do will iterate over UTF-8 bytes.
-      data = data.to_byte_array
+      data = data.to-byte-array
   else if data is not ByteArray:
     throw "WRONG_OBJECT_TYPE"
-  return url_encode_ data
+  return url-encode_ data
 
 /**
 Decodes the given $data using URL-encoding, also known as percent encoding.
@@ -70,9 +70,9 @@ Plus signs (+) are not decoded to spaces.
 decode data -> any:
   if data is string:
     if not data.contains "%": return data
-    if data.size != (data.size --runes): data = data.to_byte_array
+    if data.size != (data.size --runes): data = data.to-byte-array
   else if data is ByteArray:
-    if (data.index_of '%') == -1: return data
+    if (data.index-of '%') == -1: return data
   else:
     throw "WRONG_OBJECT_TYPE"
   count := 0
@@ -83,8 +83,8 @@ decode data -> any:
   for i := 0; i < data.size; i++:
     c := data[i]
     if c == '%':
-      c = (hex_char_to_value data[i + 1]) << 4
-      c += hex_char_to_value data[i + 2]
+      c = (hex-char-to-value data[i + 1]) << 4
+      c += hex-char-to-value data[i + 2]
       i += 2
     result[j++] = c
   return result
@@ -138,26 +138,26 @@ class QueryString:
   */
   static parse input/string -> QueryString:
     fragment := ""
-    hash := input.index_of "#"
+    hash := input.index-of "#"
     if hash >= 0:
       fragment = input[hash + 1 ..]
       input = input[..hash]
 
     resource := input
     parameters := {:}
-    question := input.index_of "?"
+    question := input.index-of "?"
     if question >= 0:
       resource = input[..question]
       query := input[question + 1 ..]
-      query.split "&" --drop_empty: | component/string |
-        assign := component.index_of "="
+      query.split "&" --drop-empty: | component/string |
+        assign := component.index-of "="
         key/string := ?
         value/string := ?
         if assign >= 0:
-          key = (decode component[..assign]).to_string
-          value = (decode component[assign + 1 ..]).to_string
+          key = decode-form-urlencoded_ component[..assign]
+          value = decode-form-urlencoded_ component[assign + 1 ..]
         else:
-          key = (decode component).to_string
+          key = decode-form-urlencoded_ component
           value = ""
         existing := parameters.get key
         if existing is string:
@@ -168,6 +168,11 @@ class QueryString:
           parameters[key] = value
 
     return QueryString.internal_
-        --resource=(decode resource).to_string
+        --resource=(decode resource).to-string
         --parameters=parameters
-        --fragment=(decode fragment).to_string
+        --fragment=(decode fragment).to-string
+
+  /// Decodes the application/x-www-form-urlencoded $component string.
+  static decode-form-urlencoded_ component/string -> string:
+    decoded := decode (component.replace --all "+" " ")
+    return decoded.to-string

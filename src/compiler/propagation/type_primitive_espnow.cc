@@ -21,10 +21,12 @@ namespace compiler {
 MODULE_TYPES(espnow, MODULE_ESPNOW)
 
 TYPE_PRIMITIVE_ANY(init)
+TYPE_PRIMITIVE_ANY(create)
+TYPE_PRIMITIVE_ANY(close)
 TYPE_PRIMITIVE_ANY(send)
+TYPE_PRIMITIVE_BOOL(send_succeeded)
 TYPE_PRIMITIVE_ANY(receive)
 TYPE_PRIMITIVE_ANY(add_peer)
-TYPE_PRIMITIVE_ANY(deinit)
 
 }  // namespace toit::compiler
 }  // namespace toit

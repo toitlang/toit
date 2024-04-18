@@ -241,10 +241,10 @@ MODULE_IMPLEMENTATION(tcp, MODULE_TCP)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto resource_group = _new TcpResourceGroup(process, WindowsEventSource::instance());
-  if (!resource_group) MALLOC_FAILED;
+  if (!resource_group) FAIL(MALLOC_FAILED);
 
   if (!WindowsEventSource::instance()->use()) {
     resource_group->tear_down();
@@ -255,8 +255,8 @@ PRIMITIVE(init) {
   return proxy;
 }
 
-static HeapObject* create_events(Process* process, SOCKET socket, WSAEVENT& read_event,
-                                 WSAEVENT& write_event, WSAEVENT& auxiliary_event) {
+static Object* create_events(Process* process, SOCKET socket, WSAEVENT& read_event,
+                             WSAEVENT& write_event, WSAEVENT& auxiliary_event) {
   auxiliary_event = WSACreateEvent();
   if (auxiliary_event == WSA_INVALID_EVENT) {
     WINDOWS_ERROR;
@@ -287,7 +287,7 @@ PRIMITIVE(connect) {
   ARGS(TcpResourceGroup, resource_group, Blob, address, int, port, int, window_size);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
   SOCKET socket = TcpResourceGroup::create_socket();
   if (socket == INVALID_SOCKET) WINDOWS_ERROR;
@@ -319,7 +319,7 @@ PRIMITIVE(connect) {
     close_handle_keep_errno(read_event);
     close_handle_keep_errno(write_event);
     close_handle_keep_errno(auxiliary_event);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   resource_group->register_resource(tcp_resource);
@@ -333,12 +333,12 @@ PRIMITIVE(accept) {
   ARGS(TcpResourceGroup, resource_group, TcpServerSocketResource, server_socket_resource);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
   SOCKET socket = accept(server_socket_resource->socket(), NULL, NULL);
   if (socket == INVALID_SOCKET) {
     if (WSAGetLastError() == WSAEWOULDBLOCK)
-      return process->program()->null_object();
+      return process->null_object();
     WINDOWS_ERROR;
   }
 
@@ -355,7 +355,7 @@ PRIMITIVE(accept) {
     close_keep_errno(socket);
     close_handle_keep_errno(read_event);
     close_handle_keep_errno(write_event);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   resource_group->register_resource(tcp_resource);
@@ -369,7 +369,7 @@ PRIMITIVE(listen) {
   ARGS(TcpResourceGroup, resource_group, cstring, hostname, int, port, int, backlog);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
-  if (resource_proxy == null) ALLOCATION_FAILED;
+  if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
   ToitSocketAddress socket_address;
   if (!socket_address.lookup_address(hostname, port)) {
@@ -382,7 +382,7 @@ PRIMITIVE(listen) {
     close_keep_errno(socket);
     if (WSAGetLastError() == WSAEADDRINUSE) {
       String* error = process->allocate_string("Address already in use");
-      if (error == null) ALLOCATION_FAILED;
+      if (error == null) FAIL(ALLOCATION_FAILED);
       return Error::from(error);
     }
     WINDOWS_ERROR;
@@ -409,7 +409,7 @@ PRIMITIVE(listen) {
   if (!resource) {
     close_keep_errno(socket);
     close_handle_keep_errno(event);
-    MALLOC_FAILED;
+    FAIL(MALLOC_FAILED);
   }
 
   resource_group->register_resource(resource);
@@ -422,7 +422,7 @@ PRIMITIVE(write) {
   ARGS(ByteArray, proxy, TcpSocketResource, tcp_resource, Blob, data, int, from, int, to);
   USE(proxy);
 
-  if (from < 0 || from > to || to > data.length()) OUT_OF_BOUNDS;
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_BOUNDS);
 
   if (!tcp_resource->ready_for_write()) return Smi::from(-1);
 
@@ -435,17 +435,17 @@ PRIMITIVE(read)  {
   ARGS(ByteArray, proxy, TcpSocketResource, tcp_resource);
   USE(proxy);
 
-  if (tcp_resource->closed()) return process->program()->null_object();
+  if (tcp_resource->closed()) return process->null_object();
 
   if (!tcp_resource->ready_for_read()) return Smi::from(-1);
 
   if (!tcp_resource->receive_read_response()) WINDOWS_ERROR;
 
   // With overlapped (async) reads a read_count of 0 indicates end of stream.
-  if (tcp_resource->read_count() == 0) return process->program()->null_object();
+  if (tcp_resource->read_count() == 0) return process->null_object();
 
   ByteArray* array = process->allocate_byte_array(static_cast<int>(tcp_resource->read_count()));
-  if (array == null) ALLOCATION_FAILED;
+  if (array == null) FAIL(ALLOCATION_FAILED);
 
   memcpy(ByteArray::Bytes(array).address(), tcp_resource->read_buffer(), tcp_resource->read_count());
 
@@ -521,7 +521,7 @@ PRIMITIVE(get_option) {
     }
 
     default:
-      UNIMPLEMENTED_PRIMITIVE;
+      FAIL(UNIMPLEMENTED);
   }
 }
 
@@ -533,10 +533,10 @@ PRIMITIVE(set_option) {
   switch (option) {
     case TCP_KEEP_ALIVE: {
       int value = 0;
-      if (raw == process->program()->true_object()) {
+      if (raw == process->true_object()) {
         value = 1;
-      } else if (raw != process->program()->false_object()) {
-        WRONG_TYPE;
+      } else if (raw != process->false_object()) {
+        FAIL(WRONG_OBJECT_TYPE);
       }
       if (setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE,
                      reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
@@ -547,10 +547,10 @@ PRIMITIVE(set_option) {
 
     case TCP_NO_DELAY: {
       int value = 0;
-      if (raw == process->program()->true_object()) {
+      if (raw == process->true_object()) {
         value = 1;
-      } else if (raw != process->program()->false_object()) {
-        WRONG_TYPE;
+      } else if (raw != process->false_object()) {
+        FAIL(WRONG_OBJECT_TYPE);
       }
       if (setsockopt(socket, IPPROTO_TCP, TCP_NODELAY,
                      reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
@@ -560,10 +560,10 @@ PRIMITIVE(set_option) {
     }
 
     default:
-      UNIMPLEMENTED_PRIMITIVE;
+      FAIL(UNIMPLEMENTED);
   }
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(close_write) {
@@ -573,7 +573,7 @@ PRIMITIVE(close_write) {
   int result = shutdown(tcp_resource->socket(), SD_SEND);
   if (result != 0) WINDOWS_ERROR;
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(close) {
@@ -584,7 +584,7 @@ PRIMITIVE(close) {
 
   resource_proxy->clear_external_address();
 
-  return process->program()->null_object();
+  return process->null_object();
 }
 
 PRIMITIVE(error_number) {
@@ -594,7 +594,7 @@ PRIMITIVE(error_number) {
 
 PRIMITIVE(error) {
   ARGS(int, error);
-  return Primitive::unmark_from_error(windows_error(process, error));
+  return Primitive::unmark_from_error(process->program(), windows_error(process, error));
 }
 
 PRIMITIVE(gc) {

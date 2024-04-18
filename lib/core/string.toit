@@ -4,15 +4,17 @@
 
 import bitmap
 
+import ..io as io
+
 // Returns the number of bytes needed to code the char in UTF-8.
-utf_8_bytes char:
-  return write_utf_8_to_byte_array null 0 char
+utf-8-bytes char:
+  return write-utf-8-to-byte-array null 0 char
 
 // Writes 1-4 bytes to the byte array, corresponding to the UTF-8 encoding of
 // Unicode code point given as 'char'.  Returns the number of bytes written.
-write_utf_8_to_byte_array byte_array position char:
+write-utf-8-to-byte-array byte-array position char:
   if 0 <= char <= 0x7f:
-    if byte_array: byte_array[position] = char
+    if byte-array: byte-array[position] = char
     return 1
   if not 0 <= char < 0xd800:
     if not 0xe000 <= char <= 0x10ffff: throw "INVALID_ARGUMENT"
@@ -23,15 +25,15 @@ write_utf_8_to_byte_array byte_array position char:
     bytes++
     mask >>= 1
     shifted += 6
-  if byte_array:
-    unary_bits := (0xff00 >> bytes) & 0xff
-    byte_array[position++] = (char >> shifted) | unary_bits
+  if byte-array:
+    unary-bits := (0xff00 >> bytes) & 0xff
+    byte-array[position++] = (char >> shifted) | unary-bits
     while shifted > 0:
       shifted -= 6
-      byte_array[position++] = 0x80 | ((char >> shifted) & 0x3f)
+      byte-array[position++] = 0x80 | ((char >> shifted) & 0x3f)
   return bytes
 
-is_unicode_whitespace_ c/int -> bool:
+is-unicode-whitespace_ c/int -> bool:
   // This list should be kept in sync with the comment in $string.trim.
   return
     0x0009 <= c <= 0x000D or
@@ -57,8 +59,8 @@ A string can only contain valid UTF-8 byte sequences.  To store arbitrary
 Strings are immutable objects.
 See more on strings at https://docs.toit.io/language/strings.
 */
-abstract class string implements Comparable:
-  static MIN_SLICE_SIZE_ ::= 16
+abstract class string implements Comparable io.Data:
+  static MIN-SLICE-SIZE_ ::= 16
 
   /**
   Constructs a single-character string from one Unicode code point.
@@ -73,8 +75,8 @@ abstract class string implements Comparable:
   str4 := string.from_rune 7931 // -> "☃"
   ```
   */
-  constructor.from_rune rune/int:
-    #primitive.core.string_from_rune
+  constructor.from-rune rune/int:
+    #primitive.core.string-from-rune
 
   /**
   Constructs a string from a list of Unicode code points.
@@ -83,7 +85,7 @@ abstract class string implements Comparable:
     the maximum ASCII value of 0x7f the size of the string will be greater than
     the size of the list.
   UTF-8 bytes are not valid input to this constructor.  If you have a ByteArray
-    of UTF-8 bytes, use the $ByteArray.to_string method instead.
+    of UTF-8 bytes, use the $ByteArray.to-string method instead.
 
   # Examples
   ```
@@ -93,17 +95,17 @@ abstract class string implements Comparable:
   str4 := string.from_runes [7931, 0x20ac]  // -> "☃€"
   ```
   */
-  constructor.from_runes runes/List:
+  constructor.from-runes runes/List:
     length := 0
     runes.do:
-      length += utf_8_bytes it
+      length += utf-8-bytes it
     ba := ByteArray length
     length = 0
     runes.do:
-      length += write_utf_8_to_byte_array ba length it
-    return ba.to_string
+      length += write-utf-8-to-byte-array ba length it
+    return ba.to-string
 
-  constructor.from_subclass_:
+  constructor.from-subclass_:
 
   /**
   The size of this instance in UTF-8 code units (byte-sized).
@@ -112,10 +114,10 @@ abstract class string implements Comparable:
   For example the string "Amélie" has a size of 7, but a `size --runes` of 6.
   */
   size -> int:
-    #primitive.core.string_length
+    #primitive.core.string-length
 
   /** Whether this instance is the empty string `""`. */
-  is_empty -> bool:
+  is-empty -> bool:
     return size == 0
 
   /**
@@ -127,10 +129,10 @@ abstract class string implements Comparable:
   */
   size --runes/bool -> int:
     if runes != true: throw "Bad Argument"
-    return rune_size_
+    return rune-size_
 
-  rune_size_ -> int:
-    #primitive.core.string_rune_count
+  rune-size_ -> int:
+    #primitive.core.string-rune-count
 
   /**
   The rune (Unicode "code point") at position $i of the underlying bytes.
@@ -188,7 +190,7 @@ abstract class string implements Comparable:
   operator [..] --from=0 --to=size -> string:
     if not 0 <= from <= to <= size: throw "OUT_OF_BOUNDS"
     if from == 0 and to == size: return this
-    if to - from < MIN_SLICE_SIZE_: return copy from to
+    if to - from < MIN-SLICE-SIZE_: return copy from to
     if this is String_: return StringSlice_ (this as String_) from to
     slice := this as StringSlice_
     return StringSlice_ slice.str_ (slice.from_ + from) (slice.from_ + to)
@@ -203,7 +205,7 @@ abstract class string implements Comparable:
   */
   at --raw/bool i/int -> int:
     if raw != true: throw "Bad Argument"
-    return raw_at_ i
+    return raw-at_ i
 
   /**
   Iterates over all slots in the string (as if using $at) and calls the given $block with
@@ -266,33 +268,33 @@ abstract class string implements Comparable:
   ```
   heavy_metalize str/string -> string:
     return str.flat_map: | c |
-      {'o': 'ö', 'a': 'ä', 'u': 'ü', 'ä': "\u{20db}a"}.get c --if_absent=: c
+      {'o': 'ö', 'a': 'ä', 'u': 'ü', 'ä': "\u{20db}a"}.get c --if-absent=: c
   ```
   ```
   lower_case str/string -> string:
     return str.flat_map: | c | ('A' <= c <= 'Z') ? c - 'A' + 'a' : c
   ```
   */
-  flat_map [block] -> string:
+  flat-map [block] -> string:
     prefix := ""
-    byte_array := ByteArray (min 4 size)
+    byte-array := ByteArray (min 4 size)
     position := 0
 
-    replace_block := : | replacement |
+    replace-block := : | replacement |
       if replacement is string or replacement is ByteArray:
-        if position + replacement.size > byte_array.size:
-          prefix += (byte_array.to_string 0 position) + replacement.to_string
+        if position + replacement.size > byte-array.size:
+          prefix += (byte-array.to-string 0 position) + replacement.to-string
           position = 0
-          byte_array = ByteArray (byte_array.size * 1.5).to_int
+          byte-array = ByteArray (byte-array.size * 1.5).to-int
         else:
-          byte_array.replace position replacement
+          byte-array.replace position replacement
           position += replacement.size
       else if replacement is int:
-        if position + (utf_8_bytes replacement) > byte_array.size:
-          prefix += byte_array.to_string 0 position
-          byte_array = ByteArray (byte_array.size * 1.5).to_int
+        if position + (utf-8-bytes replacement) > byte-array.size:
+          prefix += byte-array.to-string 0 position
+          byte-array = ByteArray (byte-array.size * 1.5).to-int
           position = 0
-        position += write_utf_8_to_byte_array byte_array position replacement
+        position += write-utf-8-to-byte-array byte-array position replacement
       else if replacement != null:
         throw "Invalid replacement"
 
@@ -301,10 +303,10 @@ abstract class string implements Comparable:
       if rune:
         replacement := block.call rune
         if replacement is List:
-          replacement.do: replace_block.call it
+          replacement.do: replace-block.call it
         else:
-          replace_block.call replacement
-    result := prefix + (byte_array.to_string 0 position)
+          replace-block.call replacement
+    result := prefix + (byte-array.to-string 0 position)
     return result == this ? this : result
 
   /**
@@ -326,18 +328,18 @@ abstract class string implements Comparable:
   /**
   Copies the string between $from (inclusive) and $to (exclusive).
 
-  If $force_valid is true, adjusts $from and $to so that they are valid substring indexes.
+  If $force-valid is true, adjusts $from and $to so that they are valid substring indexes.
     If $from (resp. $to) points to the middle of a multi-byte sequence decreases the index
-    until it points to the beginning of the sequence. Also see $rune_index.
+    until it points to the beginning of the sequence. Also see $rune-index.
   */
-  copy from/int to/int=size --force_valid/bool -> string:
-    if force_valid:
-      from = rune_index from
-      to = rune_index to
+  copy from/int to/int=size --force-valid/bool -> string:
+    if force-valid:
+      from = rune-index from
+      to = rune-index to
     return copy from to
 
   /** Equivalent to $copy, but can be used when you have either a ByteArray or a string. */
-  to_string from=0 to=size -> string:
+  to-string from=0 to=size -> string:
     return copy from to
 
   /**
@@ -349,13 +351,13 @@ abstract class string implements Comparable:
 
   The parameter $index must satisfy: `0 <= index <= size`.
   */
-  rune_index index/int -> int:
+  rune-index index/int -> int:
     if index == size: return index
     // TODO(florian): make this more efficient?
     while this[index] == null: index--
     return index
 
-  safe_at_ index/int -> int:
+  safe-at_ index/int -> int:
     return index >= size ? -1 : this[index]
 
 
@@ -390,60 +392,60 @@ abstract class string implements Comparable:
   */
   static format format/string object -> string:
     pos := 0
-    char := format.safe_at_ pos++
-    alignment_type := '>'
+    char := format.safe-at_ pos++
+    alignment-type := '>'
     precision := null
     type := 's'
     // Read optional alignment.
     if char == '^' or char == '-':
-      alignment_type = char
-      char = format.safe_at_ pos++
+      alignment-type = char
+      char = format.safe-at_ pos++
     // Read optional field width.
     start := pos - 1
-    zero_pad := char == '0'
-    if zero_pad and alignment_type != '>': throw "ZERO_PADDING_ONLY_WITH_RIGHT_ALIGNMENT $format"
-    while '0' <= char <= '9': char = format.safe_at_ pos++
-    alignment_width := start == pos - 1
+    zero-pad := char == '0'
+    if zero-pad and alignment-type != '>': throw "ZERO_PADDING_ONLY_WITH_RIGHT_ALIGNMENT $format"
+    while '0' <= char <= '9': char = format.safe-at_ pos++
+    alignment-width := start == pos - 1
         ? 0
-        : int.parse_ format start (pos - 1) --radix=10 --on_error=: throw it
+        : int.parse_ format start (pos - 1) --radix=10 --on-error=: throw it
     if char == '.':
       start = pos
-      char = format.safe_at_ pos++
-      while '0' <= char <= '9': char = format.safe_at_ pos++
+      char = format.safe-at_ pos++
+      while '0' <= char <= '9': char = format.safe-at_ pos++
       if start == pos - 1: throw "MISSING_PRECISION_IN_FORMAT $format"
       precision = int.parse format[start..pos - 1]
     if char == -1: throw "MISSING_TYPE_IN_FORMAT $format"
     type = char
-    char = format.safe_at_ pos++
+    char = format.safe-at_ pos++
     if char != -1: throw "UNEXPECTED_TRAILING_CHARACTERS_IN_FORMAT $format"
     meat := ""
-    meat_size := null
+    meat-size := null
     if type == 's':
       meat = object.stringify
-      meat_size = meat.size --runes
+      meat-size = meat.size --runes
     else if type == 'f':
-      d := object.to_float
+      d := object.to-float
       meat = precision ? (d.stringify precision) : d.stringify
-    else if type == 'd': meat = object.to_int.stringify
-    else if type == 'b': meat = printf_style_int_stringify_ object.to_int 2
-    else if type == 'o': meat = printf_style_int_stringify_ object.to_int 8
-    else if type == 'x': meat = printf_style_int_stringify_ object.to_int 16
+    else if type == 'd': meat = object.to-int.stringify
+    else if type == 'b': meat = printf-style-int-stringify_ object.to-int 2
+    else if type == 'o': meat = printf-style-int-stringify_ object.to-int 8
+    else if type == 'x': meat = printf-style-int-stringify_ object.to-int 16
     else if type == 'X':
-      meat = printf_style_int_stringify_ object.to_int 16
-      meat = (ByteArray meat.size: meat[it] >= 'a' ? meat[it] + 'A' - 'a' : meat[it]).to_string
+      meat = printf-style-int-stringify_ object.to-int 16
+      meat = (ByteArray meat.size: meat[it] >= 'a' ? meat[it] + 'A' - 'a' : meat[it]).to-string
     else if type == 'c':
-      character := object.to_int
-      ba := ByteArray (utf_8_bytes character)
-      write_utf_8_to_byte_array ba 0 character
-      meat = ba.to_string
-      meat_size = 1
+      character := object.to-int
+      ba := ByteArray (utf-8-bytes character)
+      write-utf-8-to-byte-array ba 0 character
+      meat = ba.to-string
+      meat-size = 1
     else: throw "WRONG_TYPE_IN_FORMAT $format"
-    if not meat_size: meat_size = meat.size
-    if alignment_width < meat_size: return meat
-    padding := alignment_width - meat_size
-    if alignment_type == '-': return meat.pad_ 0 padding ' '
-    if alignment_type == '>': return meat.pad_ padding 0 (zero_pad ? '0' : ' ')
-    assert: alignment_type == '^'
+    if not meat-size: meat-size = meat.size
+    if alignment-width < meat-size: return meat
+    padding := alignment-width - meat-size
+    if alignment-type == '-': return meat.pad_ 0 padding ' '
+    if alignment-type == '>': return meat.pad_ padding 0 (zero-pad ? '0' : ' ')
+    assert: alignment-type == '^'
     return meat.pad_ (padding / 2) (padding - padding / 2) ' '
 
   /**
@@ -451,16 +453,16 @@ abstract class string implements Comparable:
 
   This operation is in `O(1)`.
   */
-  abstract hash_code
+  abstract hash-code
 
-  raw_at_ n:
-    #primitive.core.string_raw_at
+  raw-at_ n:
+    #primitive.core.string-raw-at
 
   /**
   Concatenates this instance with the given $other string.
   */
   operator + other/string -> string:
-    #primitive.core.string_add
+    #primitive.core.string-add
 
   /**
   Concatenates $amount copies of this instance.
@@ -471,48 +473,48 @@ abstract class string implements Comparable:
     if amount < 0: throw "Bad Argument"
     if amount == 0 or size == 0: return ""
     if amount == 1: return this
-    new_size := size * amount
-    array := ByteArray new_size
-    bitmap.blit this array size --source_line_stride=0
-    return array.to_string
+    new-size := size * amount
+    array := ByteArray new-size
+    bitmap.blit this array size --source-line-stride=0
+    return array.to-string
 
   /** See $super. */
   operator == other:
     if other is not string: return false
-    #primitive.core.blob_equals
+    #primitive.core.blob-equals
 
 
   /**
   Whether this instance is less than $other.
 
-  Uses $compare_to to determine the ordering of the two strings.
+  Uses $compare-to to determine the ordering of the two strings.
   */
   operator < other/string -> bool:
-    return (compare_to other) == -1
+    return (compare-to other) == -1
 
   /**
   Whether this instance is less or equal to $other.
 
-  Uses $compare_to to determine the ordering of the two strings.
+  Uses $compare-to to determine the ordering of the two strings.
   */
   operator <= other/string -> bool:
-    return (compare_to other) != 1
+    return (compare-to other) != 1
 
   /**
   Whether this instance is greater than $other.
 
-  Uses $compare_to to determine the ordering of the two strings.
+  Uses $compare-to to determine the ordering of the two strings.
   */
   operator > other/string -> bool:
-    return (compare_to other) == 1
+    return (compare-to other) == 1
 
   /**
   Whether this instance is greater or equal to $other.
 
-  Uses $compare_to to determine the ordering of the two strings.
+  Uses $compare-to to determine the ordering of the two strings.
   */
   operator >= other/string -> bool:
-    return (compare_to other) != -1
+    return (compare-to other) != -1
 
   /**
   Compares the two given strings.
@@ -549,30 +551,30 @@ abstract class string implements Comparable:
   "Amélie".compare_to "Amzlie"  // => 1
   ```
   */
-  compare_to other/string -> int:
-    #primitive.core.string_compare
+  compare-to other/string -> int:
+    #primitive.core.string-compare
 
   /**
-  Compares this instance with $other and calls $if_equal if the two are equal.
+  Compares this instance with $other and calls $if-equal if the two are equal.
 
-  See $compare_to for documentation on the ordering.
+  See $compare-to for documentation on the ordering.
 
-  The $if_equal block is called only if this instance and $other are equal.
-  The $if_equal block should return -1, 0, or 1 (since it becomes the result of
+  The $if-equal block is called only if this instance and $other are equal.
+  The $if-equal block should return -1, 0, or 1 (since it becomes the result of
     the call to this method).
 
   # Examples
-  The $if_equal block allows easy chaining of `compare_to` calls.
+  The $if-equal block allows easy chaining of `compare_to` calls.
   ```
   // In class A with fields str_field1 and str_field2:
   compare_to other/A -> int:
-    return str_field1.compare_to other.str_field1 --if_equal=:
+    return str_field1.compare_to other.str_field1 --if-equal=:
       str_field2.compare_to other.str_field2
   ```
   */
-  compare_to other/string [--if_equal] -> int:
-    result := compare_to other
-    if result == 0: return if_equal.call
+  compare-to other/string [--if-equal] -> int:
+    result := compare-to other
+    if result == 0: return if-equal.call
     return result
 
   stringify:
@@ -658,25 +660,25 @@ abstract class string implements Comparable:
 
   pad_ left right char -> string:
     if left < 0 or right < 0: return this
-    width := utf_8_bytes char
+    width := utf-8-bytes char
     array := ByteArray (left + right) * width + size
     pos := 0;
-    left.repeat: pos += write_utf_8_to_byte_array array pos char
-    write_to_byte_array_ array 0 size pos
+    left.repeat: pos += write-utf-8-to-byte-array array pos char
+    write-to-byte-array_ array 0 size pos
     pos += size
-    right.repeat: pos += write_utf_8_to_byte_array array pos char
-    return array.to_string
+    right.repeat: pos += write-utf-8-to-byte-array array pos char
+    return array.to-string
 
   /**
   Whether this instance starts with the given $prefix.
   */
-  starts_with prefix/string -> bool:
+  starts-with prefix/string -> bool:
     return matches prefix --at=0
 
   /**
   Whether this instance ends with the given $suffix.
   */
-  ends_with suffix/string -> bool:
+  ends-with suffix/string -> bool:
     return matches suffix --at=(size - suffix.size)
 
   /**
@@ -704,8 +706,6 @@ abstract class string implements Comparable:
     '?' will match any single Unicode character.
     '*' will match any number of Unicode characters.
 
-  The private optional named argument $position_ is used for recursive calls.
-
   # Examples
   ```
   "Toad".glob "Toad"   // => true
@@ -715,29 +715,31 @@ abstract class string implements Comparable:
   "Toad".glob "To\\*d" // => false
   ```
   */
+  glob pattern/string -> bool:
+    return glob_ pattern --position=0
 
-  glob pattern/string --position_/int=0 -> bool:
-    pattern_pos := 0
-    while pattern_pos < pattern.size or position_ < size:
-      if pattern_pos < pattern.size:
-        pattern_char := pattern[pattern_pos]
-        if pattern_char == '?':
-          if position_ < size:
-            pattern_pos += utf_8_bytes pattern_char
-            position_ += utf_8_bytes this[position_]
+  glob_ pattern/string --position/int -> bool:
+    pattern-pos := 0
+    while pattern-pos < pattern.size or position < size:
+      if pattern-pos < pattern.size:
+        pattern-char := pattern[pattern-pos]
+        if pattern-char == '?':
+          if position < size:
+            pattern-pos += utf-8-bytes pattern-char
+            position += utf-8-bytes this[position]
             continue
-        else if pattern_char == '*':
-          sub_pattern := pattern.copy pattern_pos + 1
-          while position_ <= size:
-            if glob sub_pattern --position_=position_: return true
-            position_ += position_ == size ? 1 : utf_8_bytes this[position_]
-        else if position_ < size and ((pattern_char == '\\') or (this[position_] == pattern_char)):
-          if pattern_char == '\\':
-            if pattern_pos >= pattern.size: return false
-            pattern_pos++
-            if this[position_] != pattern[pattern_pos]: return false
-          pattern_pos += utf_8_bytes pattern_char
-          position_ += utf_8_bytes this[position_]
+        else if pattern-char == '*':
+          sub-pattern := pattern.copy pattern-pos + 1
+          while position <= size:
+            if glob_ sub-pattern --position=position: return true
+            position += position == size ? 1 : utf-8-bytes this[position]
+        else if position < size and ((pattern-char == '\\') or (this[position] == pattern-char)):
+          if pattern-char == '\\':
+            if pattern-pos >= pattern.size: return false
+            pattern-pos++
+            if this[position] != pattern[pattern-pos]: return false
+          pattern-pos += utf-8-bytes pattern-char
+          position += utf-8-bytes this[position]
           continue
       return false
     return true
@@ -789,8 +791,8 @@ abstract class string implements Comparable:
   "foobarfoo".index_of --last "foo" 0 8       // => 0
   ```
   */
-  index_of --last/bool=false needle/string from/int=0 to/int=size -> int:
-    return index_of --last=last needle from to --if_absent=: -1
+  index-of --last/bool=false needle/string from/int=0 to/int=size -> int:
+    return index-of --last=last needle from to --if-absent=: -1
 
   /**
   Searches for $needle in the range $from (inclusive) - $to (exclusive).
@@ -807,19 +809,19 @@ abstract class string implements Comparable:
 
   The range $from - $to must be valid and satisfy 0 <= $from <= $to <= $size.
 
-  Calls $if_absent with this instance if $needle is not found, and returns the result of that call.
+  Calls $if-absent with this instance if $needle is not found, and returns the result of that call.
 
   # Examples
-  Also see $index_of for more examples.
+  Also see $index-of for more examples.
   ```
-  "foo".index_of "bar" --if_absent=: it.size            // => 3 (the size of "foo")
-  "foobarfoo".index_of "foo" 1 8 --if_absent=: 499      // => 499
-  "".index_of "" -3 -3 --if_absent=: throw "not found"  // Error
-  "".index_of "" 2 2   --if_absent=: -1                 // => -1
-  "foobarfoo".index_of "foo" 1 8 --if_absent=: 42       // => 42
+  "foo".index_of "bar" --if-absent=: it.size            // => 3 (the size of "foo")
+  "foobarfoo".index_of "foo" 1 8 --if-absent=: 499      // => 499
+  "".index_of "" -3 -3 --if-absent=: throw "not found"  // Error
+  "".index_of "" 2 2   --if-absent=: -1                 // => -1
+  "foobarfoo".index_of "foo" 1 8 --if-absent=: 42       // => 42
   ```
   */
-  index_of --last/bool=false needle/string from/int=0 to/int=size [--if_absent]:
+  index-of --last/bool=false needle/string from/int=0 to/int=size [--if-absent]:
     if not 0 <= from <= to <= size: throw "BAD ARGUMENTS"
     limit := to - needle.size
     if not last:
@@ -828,7 +830,7 @@ abstract class string implements Comparable:
     else:
       for i := limit; i >= from; i--:
         if matches needle --at=i: return i
-    return if_absent.call this
+    return if-absent.call this
 
   /**
   Removes leading and trailing whitespace.
@@ -861,12 +863,12 @@ abstract class string implements Comparable:
     for ; start < size; start++:
       c := this[start]
       if c == null: continue  // Multi-byte UTF-8 character.
-      if not is_unicode_whitespace_ c: break
+      if not is-unicode-whitespace_ c: break
     end := size
     for ; end > start; end--:
       c := this[end - 1]
       if c == null: continue  // Multi-byte UTF-8 character.
-      if not is_unicode_whitespace_ c: break
+      if not is-unicode-whitespace_ c: break
     // If the last non-whitespace character is a multi-byte UTF-8 character
     //   we have to include them. Move forward again to find all of them.
     while end < size and this[end] == null: end++
@@ -881,7 +883,7 @@ abstract class string implements Comparable:
     if left != true: throw "Bad Argument"
     size.repeat:
       c := this[it]
-      if c != null and not is_unicode_whitespace_ c:
+      if c != null and not is-unicode-whitespace_ c:
         return this[it..]
     return ""
 
@@ -893,7 +895,7 @@ abstract class string implements Comparable:
     if right != true: throw "Bad Argument"
     size.repeat:
       c := this[size - 1 - it]
-      if c != null and not is_unicode_whitespace_ c:
+      if c != null and not is-unicode-whitespace_ c:
         // If the last non-whitespace character is a multi-byte UTF-8 character
         //   we have to include them. Move forward again to find all of them.
         end := size - it
@@ -917,27 +919,27 @@ abstract class string implements Comparable:
   */
   trim --left/bool prefix/string -> string:
     if left != true: throw "Bad Argument"
-    return trim --left prefix --if_absent=: it
+    return trim --left prefix --if-absent=: it
 
   /**
   Removes a leading $prefix.
 
-  Calls $if_absent if this instance does not start with $prefix. The argument
+  Calls $if-absent if this instance does not start with $prefix. The argument
     to the block is this instance.
 
   # Examples
   ```
-  "https://www.example.com".trim --left "http://" --if_absent=: it.trim --left "https://"  // => "www.example.com"
+  "https://www.example.com".trim --left "http://" --if-absent=: it.trim --left "https://"  // => "www.example.com"
   str := "foobar"
-  str.trim --left "foo" --if_absent=: "not_used" // => "bar"
-  str.trim --left ""    --if_absent=: "not_used" // => "foobar"
-  str.trim --left "gee" --if_absent=: it         // => "foobar"   (the default behavior)
-  str.trim --left "gee" --if_absent=: throw "missing prefix" // ERROR
+  str.trim --left "foo" --if-absent=: "not_used" // => "bar"
+  str.trim --left ""    --if-absent=: "not_used" // => "foobar"
+  str.trim --left "gee" --if-absent=: it         // => "foobar"   (the default behavior)
+  str.trim --left "gee" --if-absent=: throw "missing prefix" // ERROR
   ```
   */
-  trim --left/bool prefix/string [--if_absent] -> string:
+  trim --left/bool prefix/string [--if-absent] -> string:
     if left != true: throw "Bad Argument"
-    if not starts_with prefix: return if_absent.call this
+    if not starts-with prefix: return if-absent.call this
     return this[prefix.size..]
 
   /**
@@ -956,29 +958,29 @@ abstract class string implements Comparable:
   */
   trim --right/bool suffix/string -> string:
     if right != true: throw "Bad Argument"
-    return trim --right suffix --if_absent=: it
+    return trim --right suffix --if-absent=: it
 
   /**
   Removes a trailing $suffix.
 
-  Calls $if_absent if this instance does not end with $suffix. The argument
+  Calls $if-absent if this instance does not end with $suffix. The argument
     to the block is this instance.
 
   # Examples
   ```
   str := "foobar"
-  str.trim --right "bar" --if_absent=: "not_used" // => "bar"
-  str.trim --right ""    --if_absent=: "not_used" // => "foobar"
-  str.trim --right "gee" --if_absent=: it         // => "foobar"   (the default behavior)
-  str.trim --right "gee" --if_absent=: throw "missing suffix" // ERROR
+  str.trim --right "bar" --if-absent=: "not_used" // => "bar"
+  str.trim --right ""    --if-absent=: "not_used" // => "foobar"
+  str.trim --right "gee" --if-absent=: it         // => "foobar"   (the default behavior)
+  str.trim --right "gee" --if-absent=: throw "missing suffix" // ERROR
   ```
   */
-  trim --right/bool suffix/string [--if_absent] -> string:
+  trim --right/bool suffix/string [--if-absent] -> string:
     if right != true: throw "Bad Argument"
-    if not ends_with suffix: return if_absent.call this
+    if not ends-with suffix: return if-absent.call this
     return this[..size - suffix.size]
 
-  static TO_UPPER_TABLE_ ::= #[
+  static TO-UPPER-TABLE_ ::= #[
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -999,61 +1001,61 @@ abstract class string implements Comparable:
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
-  static TO_LOWER_TABLE_ ::= TO_UPPER_TABLE_[32..]
+  static TO-LOWER-TABLE_ ::= TO-UPPER-TABLE_[32..]
 
   /**
   Returns a string where all ASCII lower case characters have
     been replaced with their upper case equivalents.
   Non-ASCII characters are unchanged.
   */
-  to_ascii_upper -> string:
-    return case_helper_ TO_UPPER_TABLE_
+  to-ascii-upper -> string:
+    return case-helper_ TO-UPPER-TABLE_
 
   /**
   Returns a string where all ASCII upper case characters have
     been replaced with their lower case equivalents.
   Non-ASCII characters are unchanged.
   */
-  to_ascii_lower -> string:
-    return case_helper_ TO_LOWER_TABLE_
+  to-ascii-lower -> string:
+    return case-helper_ TO-LOWER-TABLE_
 
-  case_helper_ table/ByteArray -> string:
+  case-helper_ table/ByteArray -> string:
     if size == 0: return this
-    single_byte := #[0]
+    single-byte := #[0]
     // By using "OR" as an operation and a pixel stride of 0 we can condense
     // the search for characters with the wrong case into a single byte,
     // avoiding an allocation of a new byte array and string in the cases
     // where it is not needed.
-    bitmap.blit this single_byte size
-        --lookup_table=table
+    bitmap.blit this single-byte size
+        --lookup-table=table
         --operation=bitmap.OR
-        --destination_pixel_stride=0
-    if single_byte[0] == 0: return this
+        --destination-pixel-stride=0
+    if single-byte[0] == 0: return this
     // Since characters with the wrong case were found we create a new string
     // using a temporary byte array.
-    bytes := to_byte_array
-    bitmap.blit bytes bytes bytes.size --lookup_table=table --operation=bitmap.XOR
-    return bytes.to_string
+    bytes := to-byte-array
+    bitmap.blit bytes bytes bytes.size --lookup-table=table --operation=bitmap.XOR
+    return bytes.to-string
 
   /**
   Returns true iff the string has no non-ASCII characters in it.
   The implementation is optimized, but it takes linear time in the size of the
     string.
   */
-  contains_only_ascii -> bool:
+  contains-only-ascii -> bool:
     return size == (size --runes)
 
   /**
   Splits this instance at $separator.
 
-  If $at_first is false (the default) splits at *every* occurrence of $separator.
-  If $at_first is true, splits only at the first occurrence of $separator.
+  If $at-first is false (the default) splits at *every* occurrence of $separator.
+  If $at-first is true, splits only at the first occurrence of $separator.
 
-  If $drop_empty is true, then empty strings are ignored and silently dropped.
-    This happens before a call to $process_part.
+  If $drop-empty is true, then empty strings are ignored and silently dropped.
+    This happens before a call to $process-part.
 
-  Calls $process_part for each part. It $drop_empty is false and this instance
-    starts or ends with a $separator, then $process_part is invoked with the
+  Calls $process-part for each part. It $drop-empty is false and this instance
+    starts or ends with a $separator, then $process-part is invoked with the
     empty string first and last, respectively.
 
   Splits are never in the middle of a UTF-8 multi-byte sequence. This is
@@ -1063,7 +1065,7 @@ abstract class string implements Comparable:
 
   As a special case the empty separator does not result in a zero length string as
     the first and last entries, even though the empty separator can be found at
-    both ends.  However if $at_first is true and the separator is empty then the
+    both ends.  However if $at-first is true and the separator is empty then the
     result is one character, followed by the rest of the string even if that is an
     empty string.
 
@@ -1080,47 +1082,47 @@ abstract class string implements Comparable:
   gadsby := "If youth, throughout all history, had had a champion to stand up for it;"
   gadsby.split "e": print it // prints the contents of gadsby
 
-  "Toad the Wet Sprocket".split --at_first "e": print it  // prints "Toad th", " Wet Sprocket"
-  " the dust ".split            --at_first " ": print it  // prints "", "the dust "
-  gadsby.split                  --at_first "e": print it  // prints the contents of gadsby
+  "Toad the Wet Sprocket".split --at-first "e": print it  // prints "Toad th", " Wet Sprocket"
+  " the dust ".split            --at-first " ": print it  // prints "", "the dust "
+  gadsby.split                  --at-first "e": print it  // prints the contents of gadsby
 
-  "abc".split  --at_first "":    print it     // prints "a" and "bc"
-  "foo".split  --at_first "foo": print it     // prints "" and ""
-  "afoo".split --at_first "foo": print it     // prints "a" and ""
-  "foob".split --at_first "foo": print it     // prints "" and "b"
-  "".split     --at_first "":    print it     // This is an error.
-  "a".split    --at_first "":    print it     // prints "a" and ""
+  "abc".split  --at-first "":    print it     // prints "a" and "bc"
+  "foo".split  --at-first "foo": print it     // prints "" and ""
+  "afoo".split --at-first "foo": print it     // prints "a" and ""
+  "foob".split --at-first "foo": print it     // prints "" and "b"
+  "".split     --at-first "":    print it     // This is an error.
+  "a".split    --at-first "":    print it     // prints "a" and ""
 
-  "foo".split "foo" --drop_empty: print it                 // Doesn't print.
-  "afoo".split "foo" --drop_empty: print it                 // prints "a"
+  "foo".split "foo" --drop-empty: print it                 // Doesn't print.
+  "afoo".split "foo" --drop-empty: print it                 // prints "a"
   ```
   */
-  split --at_first/bool=false separator/string --drop_empty/bool=false [process_part] -> none:
-    if drop_empty:
-      split --at_first=at_first separator:
-        if it != "": process_part.call it
+  split --at-first/bool=false separator/string --drop-empty/bool=false [process-part] -> none:
+    if drop-empty:
+      split --at-first=at-first separator:
+        if it != "": process-part.call it
       return
 
     if separator == "":
-      if at_first:
+      if at-first:
         if size == 0: throw "INVALID_ARGUMENT"
-        len := utf_8_bytes this[0]
-        process_part.call this[..len]
-        process_part.call this[len..]
+        len := utf-8-bytes this[0]
+        process-part.call this[..len]
+        process-part.call this[len..]
         return
-      split_everywhere_ process_part
+      split-everywhere_ process-part
       return
     subject := this
     pos := 0
     while pos <= size:
-      new_pos := subject.index_of separator pos --if_absent=:
+      new-pos := subject.index-of separator pos --if-absent=:
         // No match.
-        process_part.call subject[pos..size]
+        process-part.call subject[pos..size]
         return
-      process_part.call subject[pos..new_pos]
-      pos = new_pos + separator.size
-      if at_first:
-        process_part.call subject[pos..]
+      process-part.call subject[pos..new-pos]
+      pos = new-pos + separator.size
+      if at-first:
+        process-part.call subject[pos..]
         return
 
   /**
@@ -1128,10 +1130,10 @@ abstract class string implements Comparable:
 
   Returns a list of the separated parts.
 
-  If $at_first is false (the default) splits at *every* occurrence of $separator.
-  If $at_first is true, splits only at the first occurrence of $separator.
+  If $at-first is false (the default) splits at *every* occurrence of $separator.
+  If $at-first is true, splits only at the first occurrence of $separator.
 
-  If $drop_empty is true, then empty strings are not included in the result.
+  If $drop-empty is true, then empty strings are not included in the result.
 
   Splits are never in the middle of a UTF-8 multi-byte sequence. This is
     normally a consequence of the seperator (as well as this instance) being
@@ -1151,28 +1153,28 @@ abstract class string implements Comparable:
   gadsby := "If youth, throughout all history, had had a champion to stand up for it;"
   gadsby.split "e"   // => [gadsby]
 
-  "Toad the Wet Sprocket".split --at_first "e"  // => ["Toad th", " Wet Sprocket"]
-  " the dust ".split            --at_first " "  // => ["", "the dust "]
-  gadsby.split                  --at_first "e"  // => [gadsby]
+  "Toad the Wet Sprocket".split --at-first "e"  // => ["Toad th", " Wet Sprocket"]
+  " the dust ".split            --at-first " "  // => ["", "the dust "]
+  gadsby.split                  --at-first "e"  // => [gadsby]
 
-  "abc".split  --at_first ""      // => ["", "abc"]
-  "foo".split  --at_first "foo"   // => ["", ""]
-  "afoo".split --at_first "foo"   // => ["a", ""]
-  "foob".split --at_first "foo"   // => ["", "b"]
-  "".split     --at_first ""      // => [""]
+  "abc".split  --at-first ""      // => ["", "abc"]
+  "foo".split  --at-first "foo"   // => ["", ""]
+  "afoo".split --at-first "foo"   // => ["a", ""]
+  "foob".split --at-first "foo"   // => ["", "b"]
+  "".split     --at-first ""      // => [""]
   ```
   */
-  split --at_first/bool=false separator/string --drop_empty/bool=false -> List/*<string>*/ :
+  split --at-first/bool=false separator/string --drop-empty/bool=false -> List/*<string>*/ :
     res := []
-    split --at_first=at_first --drop_empty=drop_empty separator:
+    split --at-first=at-first --drop-empty=drop-empty separator:
       res.add it
     return res
 
-  split_everywhere_ [process_part]:
+  split-everywhere_ [process-part]:
     subject := this
     size.repeat:
       c := subject[it]
-      if c: process_part.call (subject.copy it it + (utf_8_bytes c))
+      if c: process-part.call (subject.copy it it + (utf-8-bytes c))
 
   /**
   Returns whether $needle is present in this instance.
@@ -1185,7 +1187,7 @@ abstract class string implements Comparable:
   The range $from - $to must be valid and satisfy 0 <= $from <= $to <= $size.
   */
   contains needle/string from/int=0 to/int=size -> bool:
-    return (index_of needle from to) >= 0
+    return (index-of needle from to) >= 0
 
   /**
   Replaces the given $needle with the $replacement string.
@@ -1200,65 +1202,65 @@ abstract class string implements Comparable:
     return replace --all=all needle from to: replacement
 
   /**
-  Replaces the given $needle with the result of calling $replacement_callback.
+  Replaces the given $needle with the result of calling $replacement-callback.
 
   If $all is true, replaces all occurrences of $needle. For each found occurrence calls the
-    $replacement_callback with the matched string as argument.
+    $replacement-callback with the matched string as argument.
 
-  If $all is false, only replaces the first occurrence with the result of calling $replacement_callback
+  If $all is false, only replaces the first occurrence with the result of calling $replacement-callback
     with the matched string.
 
   Does nothing, if this instance doesn't contain the $needle.
 
   This operation only replaces occurrences of $needle that are fully contained in $from-$to.
   */
-  replace --all/bool=false needle/string from/int=0 to/int=size [replacement_callback] -> string:
-    first_index := index_of needle from to
-    if first_index < 0: return this
+  replace --all/bool=false needle/string from/int=0 to/int=size [replacement-callback] -> string:
+    first-index := index-of needle from to
+    if first-index < 0: return this
     if not all:
-      replacement := replacement_callback.call needle
+      replacement := replacement-callback.call needle
       bytes := ByteArray (size - needle.size + replacement.size)
-      write_to_byte_array_ bytes 0 first_index 0
-      replacement.write_to_byte_array_ bytes 0 replacement.size first_index
-      write_to_byte_array_ bytes (first_index + needle.size) size (first_index + replacement.size)
-      return bytes.to_string
-    positions := [first_index]
+      write-to-byte-array_ bytes 0 first-index 0
+      replacement.write-to-byte-array_ bytes 0 replacement.size first-index
+      write-to-byte-array_ bytes (first-index + needle.size) size (first-index + replacement.size)
+      return bytes.to-string
+    positions := [first-index]
     // We start by keeping track of one unique replacement string.
     // If the callback returns a different one, we start using a list for the remaining
     //   replacements.
-    unique_replacement := replacement_callback.call needle
+    unique-replacement := replacement-callback.call needle
     replacements := []
-    last_index := first_index
+    last-index := first-index
     while true:
-      next_index := index_of needle (last_index + needle.size) to
-      if next_index < 0: break
+      next-index := index-of needle (last-index + needle.size) to
+      if next-index < 0: break
 
-      positions.add next_index
-      this_replacement := replacement_callback.call needle
-      if not (replacements.is_empty and unique_replacement == this_replacement):
-        replacements.add this_replacement
-      last_index = next_index
+      positions.add next-index
+      this-replacement := replacement-callback.call needle
+      if not (replacements.is-empty and unique-replacement == this-replacement):
+        replacements.add this-replacement
+      last-index = next-index
 
-    unique_replacement_count := positions.size - replacements.size
-    result_size := size - (needle.size * positions.size)
-        + unique_replacement_count * unique_replacement.size
+    unique-replacement-count := positions.size - replacements.size
+    result-size := size - (needle.size * positions.size)
+        + unique-replacement-count * unique-replacement.size
         + (replacements.reduce --initial=0: |sum new| sum + new.size)
 
-    bytes := ByteArray result_size
-    next_from := 0
-    next_to := 0
+    bytes := ByteArray result-size
+    next-from := 0
+    next-to := 0
     for i := 0; i < positions.size; i++:
-      this_position := positions[i]
-      write_to_byte_array_ bytes next_from this_position next_to
-      next_to += this_position - next_from
-      next_from = this_position + needle.size
-      this_replacement := i < unique_replacement_count
-          ? unique_replacement
-          : replacements[i - unique_replacement_count]
-      this_replacement.write_to_byte_array_ bytes 0 this_replacement.size next_to
-      next_to += this_replacement.size
-    write_to_byte_array_ bytes next_from size next_to
-    return bytes.to_string
+      this-position := positions[i]
+      write-to-byte-array_ bytes next-from this-position next-to
+      next-to += this-position - next-from
+      next-from = this-position + needle.size
+      this-replacement := i < unique-replacement-count
+          ? unique-replacement
+          : replacements[i - unique-replacement-count]
+      this-replacement.write-to-byte-array_ bytes 0 this-replacement.size next-to
+      next-to += this-replacement.size
+    write-to-byte-array_ bytes next-from size next-to
+    return bytes.to-string
 
   /**
   Replaces variables in a string with their values.
@@ -1287,14 +1289,14 @@ abstract class string implements Comparable:
     input := this
     parts := []
     while input != "":
-      index := input.index_of open
+      index := input.index-of open
       if index == -1:
         parts.add input
         break
       parts.add input[..index]
-      substitution_size := input[index..].index_of close
-      variable := input[index + open.size..index + substitution_size]
-      input = input[index + substitution_size + close.size..]
+      substitution-size := input[index..].index-of close
+      variable := input[index + open.size..index + substitution-size]
+      input = input[index + substitution-size + close.size..]
       replacement := block.call variable.trim
       parts.add
           replacement == null ? "$open$variable$close" : replacement
@@ -1303,89 +1305,157 @@ abstract class string implements Comparable:
   /**
   Writes the raw UTF-8 bytes of the string to a new ByteArray.
   */
-  to_byte_array -> ByteArray:
-    byte_array := ByteArray size
-    return write_to_byte_array_ byte_array 0 size 0
+  to-byte-array -> ByteArray:
+    byte-array := ByteArray size
+    return write-to-byte-array_ byte-array 0 size 0
 
-  /** Deprecated. Use $to_byte_array on a string slice instead. */
-  to_byte_array start end -> ByteArray:
-    byte_array := ByteArray end - start
-    return write_to_byte_array_ byte_array start end 0
+  /** Deprecated. Use $to-byte-array on a string slice instead. */
+  to-byte-array start end -> ByteArray:
+    byte-array := ByteArray end - start
+    return write-to-byte-array_ byte-array start end 0
+
+  /**
+  Converts the string to little-endian UTF-16 and writes the raw UTF-16 bytes
+    to a new ByteArray.
+  */
+  to-utf-16 -> ByteArray:
+    #primitive.core.string-to-utf-16
+
+  /**
+  Treats the byte array as little endian UTF-16 and converts it to a string.
+  If the byte array is not a valid UTF-16 string, error characters
+    (U+FFFD) are inserted as replacements. Unpaired surrogates are
+    considered invalid and replaced with the error character.
+  */
+  constructor.from-utf-16 byte-array/ByteArray:
+    return string-from-utf-16_ byte-array
 
   /**
   Writes the raw UTF-8 bytes of the string to an existing ByteArray.
   */
-  write_to_byte_array byte_array:
-    return write_to_byte_array_ byte_array 0 size 0
+  write-to-byte-array byte-array/ByteArray:
+    return write-to-byte-array_ byte-array 0 size 0
 
   /**
   Writes the raw UTF-8 bytes of the string to the given
     offset of an existing ByteArray.
   */
-  write_to_byte_array byte_array dest_index:
-    return write_to_byte_array_ byte_array 0 size dest_index
+  write-to-byte-array byte-array/ByteArray dest-index:
+    return write-to-byte-array_ byte-array 0 size dest-index
 
-  /** Deprecated. Use $write_to_byte_array on a string slice instead. */
-  write_to_byte_array byte_array start end dest_index:
-    return write_to_byte_array_ byte_array start end dest_index
+  /** Deprecated. Use $write-to-byte-array on a string slice instead. */
+  write-to-byte-array byte-array/ByteArray start end dest-index:
+    return write-to-byte-array_ byte-array start end dest-index
 
-  write_to_byte_array_ byte_array start end dest_index:
-    #primitive.core.string_write_to_byte_array
+  write-to-byte-array_ byte-array/ByteArray start end dest-index:
+    #primitive.core.string-write-to-byte-array
+
+  byte-size -> int:
+    return size
+
+  byte-slice from to/int -> io.Data:
+    if this is String_: return StringByteSlice_ (this as String_) from to
+    if not 0 <= from <= to <= byte-size: throw "OUT_OF_BOUNDS"
+    slice := this as StringSlice_
+    return StringByteSlice_ slice.str_ (slice.from_ + from) (slice.from_ + to)
+
+  byte-at index/int -> int:
+    return raw-at_ index
+
+  write-to-byte-array byte-array/ByteArray --at/int from/int to/int:
+    write-to-byte-array_ byte-array from to at
 
 class String_ extends string:
   constructor.private_:
     // Strings are only instantiated by the system. Never through Toit code.
     throw "UNREACHABLE"
-    super.from_subclass_
+    super.from-subclass_
 
   operator [] i/int -> int?:
-    #primitive.core.string_at
+    #primitive.core.string-at
 
   copy from/int to/int -> string:
-    #primitive.core.string_slice
+    #primitive.core.string-slice
 
-  hash_code:
-    #primitive.core.string_hash_code
+  hash-code:
+    #primitive.core.string-hash-code
 
 class StringSlice_ extends string:
   // This constant must be kept in sync with objects.cc so that no valid hash
   // can be 'NO_HASH_'.
-  static NO_HASH_ ::= -1
+  static NO-HASH_ ::= -1
 
   // The order of the fields matters, as the primitives access them directly.
   str_  / String_ // By having a `String_` here we can be more efficient.
   from_ / int
   to_   / int
-  hash_ / int := NO_HASH_
+  hash_ / int := NO-HASH_
 
   constructor .str_ .from_ .to_:
     size := str_.size
     if not 0 <= from_ <= to_ <= size: throw "OUT_OF_BOUNDS"
     // The from and to arguments must not be in the middle of Unicode sequences.
-    if from_ != size and ((str_.raw_at_ from_) & 0b1100_0000) == 0b1000_0000:
+    if from_ != size and ((str_.raw-at_ from_) & 0b1100_0000) == 0b1000_0000:
       throw "ILLEGAL_UTF_8"
-    if to_ != size and ((str_.raw_at_ to_) & 0b1100_0000) == 0b1000_0000:
+    if to_ != size and ((str_.raw-at_ to_) & 0b1100_0000) == 0b1000_0000:
       throw "ILLEGAL_UTF_8"
-    super.from_subclass_
+    super.from-subclass_
 
   operator [] i/int -> int?:
-    actual_i := from_ + i
-    if not from_ <= actual_i < to_: throw "OUT_OF_BOUNDS"
-    return str_[actual_i]
+    actual-i := from_ + i
+    if not from_ <= actual-i < to_: throw "OUT_OF_BOUNDS"
+    return str_[actual-i]
 
   copy from/int to/int -> string:
-    actual_from := from_ + from
-    actual_to := from_ + to
-    if not from_ <= actual_from <= actual_to <= to_: throw "OUT_OF_BOUNDS"
-    return str_.copy actual_from actual_to
+    actual-from := from_ + from
+    actual-to := from_ + to
+    if not from_ <= actual-from <= actual-to <= to_: throw "OUT_OF_BOUNDS"
+    return str_.copy actual-from actual-to
 
-  hash_code -> int:
-    if hash_ == NO_HASH_: hash_ = compute_hash_
+  hash-code -> int:
+    if hash_ == NO-HASH_: hash_ = compute-hash_
     return hash_
 
-  compute_hash_ -> int:
-    #primitive.core.blob_hash_code
+  compute-hash_ -> int:
+    #primitive.core.blob-hash-code
+
+class StringByteSlice_ implements io.Data:
+  str_ / String_
+  from_ / int
+  to_ / int
+
+  constructor .str_ .from_ .to_:
+
+  // TODO(florian): this method is only here for backwards-compatability.
+  // Some methods used to take 'any' and then take the 'size' of it.
+  // Once we have migrated all these locations to use 'io.Data' and 'byte-size', it
+  // can be removed.
+  size -> int:
+    return byte-size
+
+  byte-size -> int:
+    return to_ - from_
+
+  byte-slice from/int to/int -> io.Data:
+    actual-from := from_ + from
+    actual-to := from_ + to
+    if not from_ <= actual-from <= actual-to <= to_: throw "OUT_OF_BOUNDS"
+    return StringByteSlice_ str_ actual-from actual-to
+
+  byte-at index/int -> int:
+    if not 0 <= index < (to_ - from_): throw "OUT_OF_BOUNDS"
+    actual-index := from_ + index
+    return str_.byte-at actual-index
+
+  write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none:
+    actual-from := from_ + from
+    actual-to := from_ + to
+    if not from_ <= actual-from <= actual-to <= to_: throw "OUT_OF_BOUNDS"
+    str_.write-to-byte-array --at=at byte-array actual-from actual-to
 
 // Unsigned base 2, 8, and 16 stringification.
-printf_style_int_stringify_ value/int base/int -> string:
-  #primitive.core.printf_style_int64_to_string
+printf-style-int-stringify_ value/int base/int -> string:
+  #primitive.core.printf-style-int64-to-string
+
+string-from-utf-16_ byte-array/ByteArray -> string:
+  #primitive.core.utf-16-to-string

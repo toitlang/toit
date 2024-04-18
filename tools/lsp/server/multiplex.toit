@@ -13,97 +13,97 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import reader show BufferedReader Reader CloseableReader
-import writer show Writer
-import binary show LITTLE_ENDIAN
 import host.pipe show OpenPipe
+import io
+import io show LITTLE-ENDIAN
 import monitor show Semaphore
 
 /**
 Connection that dispatches the data of the given $OpenPipe to two pipes.
-The $compiler_to_fs and $compiler_to_parser $SimplePipe should be used as a
-  normal $CloseableReader.
+The $compiler-to-fs and $compiler-to-parser $SimplePipe should be used as a
+  normal $io.CloseableReader.
 
 If data is produced faster than it is consumed, then the data is buffered. There
   is no flow-control.
 
 The given incoming $OpenPipe should be the stdout of the C++ compiler. Data
   is framed with a 4-byte integer indicating the size of the frame. If the
-  number is negative then the frame-data is sent to $compiler_to_fs. Otherwise
-  it's destined for $compiler_to_parser.
+  number is negative then the frame-data is sent to $compiler-to-fs. Otherwise
+  it's destined for $compiler-to-parser.
 */
 class MultiplexConnection:
-  compiler_to_fs          / SimplePipe
-  compiler_to_parser      / SimplePipe
-  from_compiler_          / OpenPipe
-  buffered_from_compiler_ / BufferedReader
+  compiler-to-fs          / SimplePipe
+  compiler-to-parser      / SimplePipe
+  from-compiler_          / OpenPipe
+  buffered-from-compiler_ / io.Reader
 
-  constructor .from_compiler_:
-    closed_count := 0
-    close_check := ::
-      closed_count++
-      if closed_count == 2:
-        from_compiler_.close
+  constructor from-compiler/OpenPipe:
+    from-compiler_ = from-compiler
 
-    compiler_to_fs = SimplePipe --on_close=close_check
-    compiler_to_parser = SimplePipe --on_close=close_check
-    buffered_from_compiler_ = BufferedReader from_compiler_
+    closed-count := 0
+    close-check := ::
+      closed-count++
+      if closed-count == 2:
+        from-compiler.close
+
+    compiler-to-fs = SimplePipe --on-close=close-check
+    compiler-to-parser = SimplePipe --on-close=close-check
+    buffered-from-compiler_ = io.Reader.adapt from-compiler_
 
   /**
   Starts reading from stdout pipe and dispatches to the two simple pipes.
   */
-  start_dispatch:
+  start-dispatch:
     task::
       catch --trace:
-        do_dispatch_
+        do-dispatch_
 
-  do_dispatch_:
+  do-dispatch_:
     try:
-      while buffered_from_compiler_.can_ensure 4:
-        frame_size_bytes := buffered_from_compiler_.read_bytes 4
-        frame_size := LITTLE_ENDIAN.int32 frame_size_bytes 0
-        to := compiler_to_parser
-        if frame_size < 0:
-          frame_size = -frame_size
-          to = compiler_to_fs
-        data := buffered_from_compiler_.read_bytes frame_size
+      while buffered-from-compiler_.try-ensure-buffered 4:
+        frame-size-bytes := buffered-from-compiler_.read-bytes 4
+        frame-size := LITTLE-ENDIAN.int32 frame-size-bytes 0
+        to := compiler-to-parser
+        if frame-size < 0:
+          frame-size = -frame-size
+          to = compiler-to-fs
+        data := buffered-from-compiler_.read-bytes frame-size
         to.write_ data
     finally:
       close
 
   close:
-    compiler_to_fs.close
-    compiler_to_parser.close
+    compiler-to-fs.close
+    compiler-to-parser.close
 
 /**
-A $CloseableReader that is fed data throw the $write_ method.
+A $io.CloseableReader that is fed data throw the $write_ method.
 */
-class SimplePipe implements CloseableReader:
-  is_closed_ := false
-  buffered_ /Deque := Deque
+class SimplePipe extends io.CloseableReader:
+  is-closed_ := false
+  buffered_chunks_ /Deque := Deque
   sem_ / Semaphore := Semaphore
-  close_callback_ / Lambda
+  close-callback_ / Lambda
 
-  constructor --on_close/Lambda:
-    close_callback_ = on_close
+  constructor --on-close/Lambda:
+    close-callback_ = on-close
 
-  read -> ByteArray?:
+  read_ -> ByteArray?:
     sem_.down
     result := ?
-    if buffered_.is_empty:
+    if buffered_chunks_.is-empty:
       result = null
     else:
-      result = buffered_.first
-      buffered_.remove_first
+      result = buffered_chunks_.first
+      buffered_chunks_.remove-first
     return result
 
-  close:
-    if not is_closed_:
-      is_closed_ = true
+  close_:
+    if not is-closed_:
+      is-closed_ = true
       sem_.up
-      close_callback_.call
+      close-callback_.call
 
   write_ data/ByteArray:
-    buffered_.add data
+    buffered_chunks_.add data
     sem_.up
-
