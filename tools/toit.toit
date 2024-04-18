@@ -48,7 +48,7 @@ main args/List:
       --options=[
         // For compatibility with the v1 toit executable. This flag is used by
         // the vscode extension.
-        cli.Flag "short" --hidden
+        cli.Option "output" --short-name="o" --hidden
       ]
       --run=:: print system.app-sdk-version
   root-command.add version-command

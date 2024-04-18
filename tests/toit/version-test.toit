@@ -15,5 +15,5 @@ main args:
   dash-version := pipe.backticks toit-bin "--version"
   expect-equals "$system.vm-sdk-version$NL" dash-version
 
-  deprecated-short-version := pipe.backticks toit-bin "version" "--short"
+  deprecated-short-version := pipe.backticks toit-bin "version" "-o" "short"
   expect-equals "$system.vm-sdk-version$NL" deprecated-short-version
