@@ -27,8 +27,16 @@ class Blake2s : public SimpleResource {
   void add(const uint8* contents, intptr_t extra);
   void get_hash(uint8* hash);
 
+  void clone(Blake2s* child) {
+    memcpy(child->data_, data_, BLOCK_SIZE);
+    memcpy(child->h_, h_, sizeof(h_));
+    child->block_posn_ = block_posn_;
+    child->length_ = length_;
+  }
+
+  static const int BLOCK_SIZE = 64;
+
  private:
-  static const uint32_t BLOCK_SIZE = 64;
   static const uint32_t BLOCK_MASK = BLOCK_SIZE - 1;
 
   void process_block(bool last);

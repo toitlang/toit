@@ -28,6 +28,7 @@
 #include "resource.h"
 #include "resources/tls.h"
 #include "sha1.h"
+#include "blake2s.h"
 #include "sha.h"
 #include "siphash.h"
 #include "tags.h"
@@ -82,6 +83,57 @@ PRIMITIVE(sha1_get) {
   memcpy(ByteArray::Bytes(result).address(), hash, 20);
   sha1->resource_group()->unregister_resource(sha1);
   sha1_proxy->clear_external_address();
+  return result;
+}
+
+PRIMITIVE(blake2s_start) {
+  ARGS(SimpleResourceGroup, group, Blob, key, int, output_length);
+  if (key.length() > Blake2s::BLOCK_SIZE) FAIL(INVALID_ARGUMENT);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  Blake2s* blake = _new Blake2s(group, key.length(), output_length);
+  if (!blake) FAIL(MALLOC_FAILED);
+  if (key.length() > 0) {
+    uint8 padded_key[Blake2s::BLOCK_SIZE];
+    memset(padded_key, 0, Blake2s::BLOCK_SIZE);
+    memcpy(padded_key, key.address(), key.length());
+    blake->add(padded_key, Blake2s::BLOCK_SIZE);
+  }
+  proxy->set_external_address(blake);
+  return proxy;
+}
+
+PRIMITIVE(blake2s_clone) {
+  ARGS(Blake2s, parent);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  Blake2s* child = _new Blake2s(static_cast<SimpleResourceGroup*>(parent->resource_group()), 0, 0);
+  if (!child) FAIL(MALLOC_FAILED);
+  parent->clone(child);
+  proxy->set_external_address(child);
+  return proxy;
+}
+
+PRIMITIVE(blake2s_add) {
+  ARGS(Blake2s, blake, Blob, data, int, from, int, to);
+
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
+  blake->add(data.address() + from, to - from);
+  return process->null_object();
+}
+
+PRIMITIVE(blake2s_get) {
+  ARGS(Blake2s, blake, int, size);
+  if (size > 32) FAIL(INVALID_ARGUMENT);
+  ByteArray* result = process->allocate_byte_array(size);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+  uint8 hash[32];
+  blake->get_hash(hash);
+  memcpy(ByteArray::Bytes(result).address(), hash, size);
+  blake->resource_group()->unregister_resource(blake);
+  blake_proxy->clear_external_address();
   return result;
 }
 
