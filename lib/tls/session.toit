@@ -469,7 +469,7 @@ class Session:
   // records were sent after encryption was activated.
   flush-outgoing_ -> none:
     // Get the outgoing data from the buffer, freeing up space for more data.
-    outgoing-data := tls-get-outgoing_ tls_
+    outgoing-data := tls-take-outgoing_ tls_
 
     // Scan the outgoing buffer for record headers.
     size := outgoing-data.size
@@ -1171,8 +1171,8 @@ tls-add-certificate_ tls-socket public-byte-array private-byte-array password:
 tls-set-incoming_ tls-socket byte-array from:
   #primitive.tls.set-incoming
 
-tls-get-outgoing_ tls-socket -> ByteArray:
-  #primitive.tls.get-outgoing
+tls-take-outgoing_ tls-socket -> ByteArray:
+  #primitive.tls.take-outgoing
 
 tls-get-internals_ tls-socket -> List:
   #primitive.tls.get-internals
