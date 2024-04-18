@@ -1,4 +1,4 @@
-// Copyright (C) 2023 Toitware ApS.
+// Copyright (C) 2024 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -18,8 +18,9 @@
 
 namespace toit {
 
-Blake2s::Blake2s(SimpleResourceGroup* group) : SimpleResource(group), data_(), block_posn_(0), length_(0) {
-  h_[0] = 0x6A09E667;
+Blake2s::Blake2s(SimpleResourceGroup* group, int key_bytes, int hash_bytes) :
+    SimpleResource(group) {
+  h_[0] = 0x6A09E667 ^ (0x01010000 + hash_bytes + (key_bytes << 8));
   h_[1] = 0xBB67AE85;
   h_[2] = 0x3C6EF372;
   h_[3] = 0xA54FF53A;
@@ -28,25 +29,34 @@ Blake2s::Blake2s(SimpleResourceGroup* group) : SimpleResource(group), data_(), b
   h_[6] = 0x1F83D9AB;
   h_[7] = 0x5BE0CD19;
 }
-    
+
 void Blake2s::add(const uint8* contents, intptr_t extra) {
-  length_ += extra;
   while (extra) {
+    if (block_posn_ == BLOCK_SIZE) {
+      length_ += BLOCK_SIZE;
+      process_block(false);
+      block_posn_ = 0;
+    }
     intptr_t end = Utils::min<intptr_t>(BLOCK_SIZE, block_posn_ + extra);
     intptr_t size = end - block_posn_;
     memcpy(data_ + block_posn_, contents, size);
     contents += size;
     extra -= size;
     block_posn_ = end;
-    if (block_posn_ == BLOCK_SIZE) {
-      process_block();
-      block_posn_ = 0;
-    }
   }
 }
 
+void Blake2s::get_hash(uint8* hash) {
+  if (block_posn_ != BLOCK_SIZE) {
+    memset(data_ + block_posn_, 0, BLOCK_SIZE - block_posn_);
+  }
+  length_ += block_posn_;
+  process_block(true);
+  memcpy(hash, reinterpret_cast<void*>(&h_[0]), 32);
+}
+
 // SIGMA constants for Blake2s.
-static const uint8 SIGMA[10][16] = {
+static const uint8 SIGMA[160] = {
      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
      14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3,
      11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4,
@@ -69,16 +79,16 @@ static const uint32 IV[8] = {
 
 // Mixing function.
 #define B2S_G(a, b, c, d, x, y)    \
-  v[a] = v[a] + v[b] + x;          \
+  v[a] = v[a] + v[b] + m[x];       \
   v[d] = ROTR32(v[d] ^ v[a], 16);  \
   v[c] = v[c] + v[d];              \
   v[b] = ROTR32(v[b] ^ v[c], 12);  \
-  v[a] = v[a] + v[b] + y;          \
+  v[a] = v[a] + v[b] + m[y];       \
   v[d] = ROTR32(v[d] ^ v[a], 8);   \
   v[c] = v[c] + v[d];              \
   v[b] = ROTR32(v[b] ^ v[c], 7);
 
-void Blake2s::process_block() {
+void Blake2s::process_block(bool last) {
   uint32 m[16];
   for (int i = 0; i < 16; i++) {
     m[i] = *reinterpret_cast<uint32*>(data_ + i * 4);
@@ -90,55 +100,20 @@ void Blake2s::process_block() {
   }
   v[12] ^= length_;
   v[13] ^= length_ >> 32;
-  v[14] ^= 0xFFFFFFFF;
+  if (last) v[14] ^= 0xFFFFFFFF;
   for (int i = 0; i < 10; i++) {
-    round_(m, v, SIGMA[i * 16 + 0], SIGMA[i * 16 + 1]);
-    round_(m, v, SIGMA[i * 16 + 2], SIGMA[i * 16 + 3]);
-    round_(m, v, SIGMA[i * 16 + 4], SIGMA[i * 16 + 5]);
-    round_(m, v, SIGMA[i * 16 + 6], SIGMA[i * 16 + 7]);
-    round_(m, v, SIGMA[i * 16 + 8], SIGMA[i * 16 + 9]);
-    round_(m, v, SIGMA[i * 16 + 10], SIGMA[i * 16 + 11]);
-    round_(m, v, SIGMA[i * 16 + 12], SIGMA[i * 16 + 13]);
-    round_(m, v, SIGMA[i * 16 + 14], SIGMA[i * 16 + 15]);
+    B2S_G(0, 4, 8, 12, SIGMA[i * 16 + 0], SIGMA[i * 16 + 1]);
+    B2S_G(1, 5, 9, 13, SIGMA[i * 16 + 2], SIGMA[i * 16 + 3]);
+    B2S_G(2, 6, 10, 14, SIGMA[i * 16 + 4], SIGMA[i * 16 + 5]);
+    B2S_G(3, 7, 11, 15, SIGMA[i * 16 + 6], SIGMA[i * 16 + 7]);
+    B2S_G(0, 5, 10, 15, SIGMA[i * 16 + 8], SIGMA[i * 16 + 9]);
+    B2S_G(1, 6, 11, 12, SIGMA[i * 16 + 10], SIGMA[i * 16 + 11]);
+    B2S_G(2, 7, 8, 13, SIGMA[i * 16 + 12], SIGMA[i * 16 + 13]);
+    B2S_G(3, 4, 9, 14, SIGMA[i * 16 + 14], SIGMA[i * 16 + 15]);
   }
   for (int i = 0; i < 8; i++) {
     h_[i] ^= v[i] ^ v[i + 8];
   }
 }
 
-void Blake2s::round_
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+}  // namespace toit.

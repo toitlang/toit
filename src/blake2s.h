@@ -1,4 +1,4 @@
-// Copyright (C) 2023 Toitware ApS.
+// Copyright (C) 2024 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -22,7 +22,7 @@ namespace toit {
 class Blake2s : public SimpleResource {
  public:
   TAG(Blake2s);
-  Blake2s(SimpleResourceGroup* group);
+  Blake2s(SimpleResourceGroup* group, int key_bytes, int hash_bytes);
 
   void add(const uint8* contents, intptr_t extra);
   void get_hash(uint8* hash);
@@ -31,14 +31,12 @@ class Blake2s : public SimpleResource {
   static const uint32_t BLOCK_SIZE = 64;
   static const uint32_t BLOCK_MASK = BLOCK_SIZE - 1;
 
-  void process_block();
+  void process_block(bool last);
 
   uint8 data_[BLOCK_SIZE];
   uint32_t h_[8];
-  uint32_t block_posn_;
-  intptr_t length_;
+  uint32_t block_posn_ = 0;
+  intptr_t length_ = 0;
 };
 
 }
-
-
