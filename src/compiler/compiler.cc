@@ -1350,9 +1350,12 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     // use the last segment of the import. The latter is deprecated.
     int length_before_segment = import_path_builder.length();
     auto name = import_package.name();
-    const char* next_segment = (name == Package::NO_NAME)
-        ? segments[segments.length() - 1]->data().c_str()
-        : name.c_str();
+    const char* next_segment;
+    if (name == Package::NO_NAME) {
+      next_segment = segments[segments.length() - 1]->data().c_str();
+    } else {
+      next_segment = IdentifierValidator::canonicalize(name.c_str(), name.size());
+    }
     auto result = add_segment(&import_path_builder,
                               next_segment,
                               filesystem(),
