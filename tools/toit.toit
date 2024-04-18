@@ -442,6 +442,7 @@ main args/List:
   root-command.add toitp.build-command
 
   tool-command := cli.Command "tool"
+      --aliases=["tools"]
       --help="Run a tool."
   root-command.add tool-command
 
