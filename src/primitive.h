@@ -294,8 +294,7 @@ namespace toit {
   PRIMITIVE(deinit, 1)                       \
   PRIMITIVE(init_socket, 2)                  \
   PRIMITIVE(create, 2)                       \
-  PRIMITIVE(set_outgoing, 3)                 \
-  PRIMITIVE(get_outgoing_fullness, 1)        \
+  PRIMITIVE(get_outgoing, 1)                 \
   PRIMITIVE(set_incoming, 3)                 \
   PRIMITIVE(handshake, 1)                    \
   PRIMITIVE(close, 1)                        \

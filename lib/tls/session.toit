@@ -130,7 +130,6 @@ class Session:
   tls_ := null
   tls-group_/TlsGroup_? := null
 
-  outgoing-buffer_/ByteArray := #[]
   bytes-before-next-record-header_ := 0
   outgoing-partial-header_ := #[]
   closed-for-write_ := false
@@ -433,7 +432,6 @@ class Session:
     tls-close-write_ tls_
     flush-outgoing_
     closed-for-write_ = true
-    outgoing-buffer_ = #[]
 
   /**
   Closes the TLS session and releases any resources associated with it.
@@ -453,7 +451,6 @@ class Session:
     if writer_:
       writer_.close
       writer_ = null
-    outgoing-buffer_ = #[]
     symmetric-session_ = null
 
   ensure-handshaken_:
@@ -472,21 +469,20 @@ class Session:
   // records were sent after encryption was activated.
   flush-outgoing_ -> none:
     // Replace outgoing buffer.
-    fullness := tls-get-outgoing-fullness_ tls_
-    outgoing-buffer := outgoing-buffer_
-    outgoing-buffer_ = ByteArray 1500
-    tls-set-outgoing_ tls_ outgoing-buffer_ 0
+    outgoing-buffer := tls-get-outgoing_ tls_
 
     // Scan the outgoing buffer for record headers.
-    for scan := 0; scan < fullness; :
+    for scan := 0; scan < outgoing-buffer.size; :
       if bytes-before-next-record-header_ > 0:
-        skip := min bytes-before-next-record-header_ (fullness - scan)
+        skip := min
+            bytes-before-next-record-header_
+            outgoing-buffer.size - scan
         scan += skip
         bytes-before-next-record-header_ -= skip
       else:
         addition := min
             (RECORD-HEADER-SIZE_ - outgoing-partial-header_.size)
-            (fullness - scan)
+            (outgoing-buffer.size - scan)
         if addition != 0:
           outgoing-partial-header_ += outgoing-buffer[scan.. scan + addition]
           scan += addition
@@ -498,7 +494,7 @@ class Session:
               outgoing-sequence-numbers-used_++
             bytes-before-next-record-header_ = header.length
             outgoing-partial-header_ = #[]
-    writer_.write outgoing-buffer 0 fullness
+    writer_.write outgoing-buffer
 
   check-for-zero-explicit-iv_ header/RecordHeader_ -> none:
     if header.length == 0x28 and header.bytes.size >= 13:
@@ -1170,11 +1166,8 @@ tls-add-certificate_ tls-socket public-byte-array private-byte-array password:
 tls-set-incoming_ tls-socket byte-array from:
   #primitive.tls.set-incoming
 
-tls-set-outgoing_ tls-socket byte-array fullness:
-  #primitive.tls.set-outgoing
-
-tls-get-outgoing-fullness_ tls-socket:
-  #primitive.tls.get-outgoing-fullness
+tls-get-outgoing_ tls-socket -> ByteArray:
+  #primitive.tls.get-outgoing
 
 tls-get-internals_ tls-socket -> List:
   #primitive.tls.get-internals

@@ -100,15 +100,13 @@ class BaseMbedTlsSocket : public TlsSocket {
 // A size that should be plenty for all known root certificates, but won't overflow the stack.
 static const int MAX_SUBJECT = 400;
 
-// Although it's a resource we never actually wait on a MbedTlsSocket, preferring
-// to wait on the underlying TCP socket.
+// Although it's a resource we never actually wait on a MbedTlsSocket,
+// preferring to wait on the underlying TCP socket.
 class MbedTlsSocket : public BaseMbedTlsSocket {
  public:
   TAG(MbedTlsSocket);
   explicit MbedTlsSocket(MbedTlsResourceGroup* group);
   ~MbedTlsSocket();
-
-  Object* get_clear_outgoing();
 
   virtual bool init();
 
@@ -121,22 +119,18 @@ class MbedTlsSocket : public BaseMbedTlsSocket {
     incoming_length_ = length;
   }
 
-  void set_outgoing(Object* outgoing, int fullness) {
-    outgoing_packet_ = outgoing;
-    outgoing_fullness_ = fullness;
-  }
-
   int outgoing_fullness() const { return outgoing_fullness_; }
   void set_outgoing_fullness(int f) { outgoing_fullness_ = f; }
   int from() const { return incoming_from_; }
   void set_from(int f) { incoming_from_ = f; }
-  Object* outgoing_packet() const { return *outgoing_packet_; }
+  uint8* outgoing_buffer() { return outgoing_buffer_; }
   uword incoming_length() const { return incoming_length_; }
   const uint8* incoming_packet() const { return incoming_packet_; }
+  static const int OUTGOING_BUFFER_SIZE = 1500;
 
  private:
-  HeapRoot outgoing_packet_; // Blob-compatible or null.
-  int outgoing_fullness_;
+  uint8 outgoing_buffer_[OUTGOING_BUFFER_SIZE];
+  int outgoing_fullness_ = 0;
   uint8* incoming_packet_ = null;
   uword incoming_length_ = 0;
   uword incoming_from_ = 0;
