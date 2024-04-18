@@ -137,11 +137,6 @@ main args/List:
       --run=:: compile-or-analyze-or-run --command="compile" it
   root-command.add compile-command
 
-  lsp-command := cli.Command "lsp"
-      --help="Start the language server."
-      --run=:: run-lsp-server it
-  root-command.add lsp-command
-
   pkg-command := cli.Command "pkg"
       --help="Manage packages."
       --options=[
@@ -446,6 +441,16 @@ main args/List:
 
   root-command.add toitp.build-command
 
+  tool-command := cli.Command "tool"
+      --help="Run a tool."
+  root-command.add tool-command
+
+  // TODO(florian): add more lsp subcommands, like creating a repro, ...
+  tool-lsp-command := cli.Command "lsp"
+      --help="Start the language server."
+      --run=:: run-lsp-server it
+  tool-command.add tool-lsp-command
+
   root-command.run args
 
 error message/string:
@@ -522,7 +527,7 @@ compile-or-analyze-or-run --command/string parsed/cli.Parsed:
 run-lsp-server parsed/cli.Parsed:
   sdk-dir := parsed["sdk-dir"]
   args := [
-    "--toitc", fs.join (bin-dir sdk-dir) "toitc",
+    "--toitc", fs.join (bin-dir sdk-dir) "toit.compile",
   ]
   run sdk-dir "toit.lsp" args
 
