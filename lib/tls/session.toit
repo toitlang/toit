@@ -130,8 +130,8 @@ class Session:
   tls_ := null
   tls-group_/TlsGroup_? := null
 
-  outgoing-buffer_/ByteArray := #[]
   bytes-before-next-record-header_ := 0
+  outgoing-partial-header_ := #[]
   closed-for-write_ := false
   outgoing-sequence-numbers-used_ := 0
   incoming-sequence-numbers-used_ := 0
@@ -432,7 +432,6 @@ class Session:
     tls-close-write_ tls_
     flush-outgoing_
     closed-for-write_ = true
-    outgoing-buffer_ = #[]
 
   /**
   Closes the TLS session and releases any resources associated with it.
@@ -452,7 +451,6 @@ class Session:
     if writer_:
       writer_.close
       writer_ = null
-    outgoing-buffer_ = #[]
     symmetric-session_ = null
 
   ensure-handshaken_:
@@ -470,43 +468,38 @@ class Session:
   // handshaking is complete.  For this we need to know how many handshake
   // records were sent after encryption was activated.
   flush-outgoing_ -> none:
-    from := 0
-    pending-bytes := #[]
-    while true:
-      fullness := tls-get-outgoing-fullness_ tls_
-      if fullness > from:
-        while fullness - from > bytes-before-next-record-header_:
-          // We have the start of the next record available.
-          if fullness - from + RECORD-HEADER-SIZE_ >= bytes-before-next-record-header_:
-            // We have the full record header available.
-            header := RecordHeader_ outgoing-buffer_[from + bytes-before-next-record-header_..]
-            record-size := header.length
-            if header.type == CHANGE-CIPHER-SPEC_:
+    // Get the outgoing data from the buffer, freeing up space for more data.
+    outgoing-data := tls-take-outgoing_ tls_
+
+    // Scan the outgoing buffer for record headers.
+    size := outgoing-data.size
+    for scan := 0; scan < size; :
+      remain := size - scan
+      if bytes-before-next-record-header_ > 0:
+        skip := min remain bytes-before-next-record-header_
+        scan += skip
+        bytes-before-next-record-header_ -= skip
+      else:
+        header := outgoing-partial-header_
+        addition := min
+            RECORD-HEADER-SIZE_ - header.size
+            remain
+        if addition != 0:
+          header += outgoing-data[scan .. scan + addition]
+          outgoing-partial-header_ = header
+          scan += addition
+          if header.size == RECORD-HEADER-SIZE_:
+            record-header := RecordHeader_ header
+            if record-header.type == CHANGE-CIPHER-SPEC_:
               writes-encrypted_ = true
             else if writes-encrypted_:
               outgoing-sequence-numbers-used_++
-              check-for-zero-explicit-iv_ header
-            // Set this so it skips the next header and its contents.
-            bytes-before-next-record-header_ += RECORD-HEADER-SIZE_ + record-size
-          else:
-            // We have a partial record header available.  Save up the partial
-            // record for later.
-            pending-bytes = outgoing-buffer_.copy (from + bytes-before-next-record-header_) (outgoing-buffer_.size)
-            // Remove the partial record from the data we are about to send.
-            fullness -= pending-bytes.size
-        sent := writer_.try-write outgoing-buffer_ from fullness
-        from += sent
-        bytes-before-next-record-header_ -= sent
-      else:
-        // The outgoing buffer can be neutered by the calls to
-        // write. In that case, we allocate a fresh external one.
-        if outgoing-buffer_.is-empty:
-          outgoing-buffer_ = ByteArray_.external_ 1500
-        // Be sure not to lose the pending bytes.  Instead put them in the
-        // otherwise empty outgoing_buffer_.
-        outgoing-buffer_.replace 0 pending-bytes
-        tls-set-outgoing_ tls_ outgoing-buffer_ pending-bytes.size
-        return
+              check-for-zero-explicit-iv_ record-header
+            bytes-before-next-record-header_ = record-header.length
+            outgoing-partial-header_ = #[]
+    // All bytes from outgoing-data have been either skipped, scanned or stored
+    // in outgoing-partial-header_ for later scanning, so we are done scanning.
+    writer_.write outgoing-data
 
   check-for-zero-explicit-iv_ header/RecordHeader_ -> none:
     if header.length == 0x28 and header.bytes.size >= 13:
@@ -1178,11 +1171,8 @@ tls-add-certificate_ tls-socket public-byte-array private-byte-array password:
 tls-set-incoming_ tls-socket byte-array from:
   #primitive.tls.set-incoming
 
-tls-set-outgoing_ tls-socket byte-array fullness:
-  #primitive.tls.set-outgoing
-
-tls-get-outgoing-fullness_ tls-socket:
-  #primitive.tls.get-outgoing-fullness
+tls-take-outgoing_ tls-socket -> ByteArray:
+  #primitive.tls.take-outgoing
 
 tls-get-internals_ tls-socket -> List:
   #primitive.tls.get-internals

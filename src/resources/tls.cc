@@ -325,16 +325,9 @@ BaseMbedTlsSocket::~BaseMbedTlsSocket() {
 }
 
 MbedTlsSocket::MbedTlsSocket(MbedTlsResourceGroup* group)
-  : BaseMbedTlsSocket(group)
-  , outgoing_packet_(group->process()->program()->null_object())
-  , outgoing_fullness_(0) {
-  ObjectHeap* heap = group->process()->object_heap();
-  heap->add_external_root(&outgoing_packet_);
-}
+  : BaseMbedTlsSocket(group) {}
 
 MbedTlsSocket::~MbedTlsSocket() {
-  ObjectHeap* heap = resource_group()->process()->object_heap();
-  heap->remove_external_root(&outgoing_packet_);
   free(incoming_packet_);
 }
 
@@ -482,24 +475,16 @@ Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
   return Primitive::mark_as_error(str);
 }
 
-PRIMITIVE(get_outgoing_fullness) {
+PRIMITIVE(take_outgoing) {
   ARGS(MbedTlsSocket, socket);
-  return Smi::from(socket->outgoing_fullness());
-}
+  Locker locker(OS::tls_mutex());
 
-PRIMITIVE(set_outgoing) {
-  ARGS(MbedTlsSocket, socket, Object, outgoing, int, fullness);
-  Object* null_object = process->null_object();
-  if (outgoing == null_object) {
-    if (fullness != 0) FAIL(INVALID_ARGUMENT);
-  } else if (is_byte_array(outgoing)) {
-    ByteArray::Bytes data_bytes(ByteArray::cast(outgoing));
-    if (fullness < 0 || fullness >= data_bytes.length()) FAIL(INVALID_ARGUMENT);
-  } else {
-    FAIL(INVALID_ARGUMENT);
-  }
-  socket->set_outgoing(outgoing, fullness);
-  return null_object;
+  ByteArray* array = process->allocate_byte_array(socket->outgoing_fullness());
+  if (array == null) FAIL(ALLOCATION_FAILED);
+  ByteArray::Bytes data_bytes(array);
+  memcpy(data_bytes.address(), socket->outgoing_buffer(), data_bytes.length());
+  socket->set_outgoing_fullness(0);
+  return array;
 }
 
 PRIMITIVE(set_incoming) {
@@ -820,15 +805,13 @@ PRIMITIVE(add_certificate) {
 }
 
 static int toit_tls_send(void* ctx, const unsigned char* buf, size_t len) {
+  Locker locker(OS::tls_mutex());
+
   auto socket = unvoid_cast<MbedTlsSocket*>(ctx);
-  if (!is_byte_array(socket->outgoing_packet())) {
-    return MBEDTLS_ERR_SSL_WANT_WRITE;
-  }
-  ByteArray::Bytes bytes(static_cast<ByteArray*>(socket->outgoing_packet()));
-  int fullness = socket->outgoing_fullness();
-  size_t result = Utils::min(static_cast<size_t>(bytes.length() - fullness), len);
+  size_t fullness = socket->outgoing_fullness();
+  size_t result = Utils::min(len, MbedTlsSocket::OUTGOING_BUFFER_SIZE - fullness);
   if (result == 0) return MBEDTLS_ERR_SSL_WANT_WRITE;
-  memcpy(bytes.address() + fullness, buf, result);
+  memcpy(socket->outgoing_buffer() + fullness, buf, result);
   fullness += result;
   socket->set_outgoing_fullness(fullness);
   return result;

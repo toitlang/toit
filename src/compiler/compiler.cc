@@ -1103,7 +1103,7 @@ enum class AddSegmentResult {
 /// If 'should_check_is_toit_file' is true, checks that the result is a regular file.
 /// If 'should_check_is_toit_file' is false, checks that the result is a directory.
 static AddSegmentResult add_segment(PathBuilder* path_builder,
-                                    Symbol segment,
+                                    const char* segment,
                                     Filesystem* fs,
                                     bool should_check_is_toit_file) {
   auto check_path = [&]() {
@@ -1133,15 +1133,13 @@ static AddSegmentResult add_segment(PathBuilder* path_builder,
   // So remember the length of the path before we add the segment.
   int path_length_before_segment = path_builder->length();
 
-  const char* segment_c = segment.c_str();
-
   // First add the segment verbatim. In most cases that will just work.
-  path_builder->join(segment_c);
+  path_builder->join(segment);
   auto result = check_path();
   if (result != AddSegmentResult::NOT_FOUND) return result;
 
-  const char* old_style = IdentifierValidator::deprecated_underscore_identifier(segment_c, strlen(segment_c));
-  if (old_style == segment_c) {
+  const char* old_style = IdentifierValidator::deprecated_underscore_identifier(segment, strlen(segment));
+  if (old_style == segment) {
     // Didn't contain any '-'.
     return AddSegmentResult::NOT_FOUND;
   }
@@ -1348,11 +1346,18 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     // Something like `import foo` where `foo` is the name of a package.
     // We only allow `foo.toit` (inside the package's `src` directory), but
     // not `foo/foo.toit`.
-    // TODO(florian): the file name should not be based on the import
-    // segment, but on the package name.
+    // If we know the name of the package, then use that to find the library. Otherwise,
+    // use the last segment of the import. The latter is deprecated.
     int length_before_segment = import_path_builder.length();
+    auto name = import_package.name();
+    const char* next_segment;
+    if (name == Package::NO_NAME) {
+      next_segment = segments[segments.length() - 1]->data().c_str();
+    } else {
+      next_segment = IdentifierValidator::canonicalize(name.c_str(), name.size());
+    }
     auto result = add_segment(&import_path_builder,
-                              segments[segments.length() - 1]->data(),
+                              next_segment,
                               filesystem(),
                               true);  // Must be a toit file.
     if (result != AddSegmentResult::OK) {
@@ -1381,7 +1386,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     bool is_last_segment = i == segments.length() - 1;
     int length_before_new_segment = import_path_builder.length();
     auto result = add_segment(&import_path_builder,
-                              segment,
+                              segment.c_str(),
                               filesystem(),
                               is_last_segment);  // Check whether it's a toit file for the last segment.
     if (result != AddSegmentResult::OK) {
@@ -1406,7 +1411,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
         // For example, for `import foo` we search for `foo.toit` and `foo/foo.toit`.
         import_path_builder.reset_to(length_before_new_segment);
         result = add_segment(&import_path_builder,
-                             segment,
+                             segment.c_str(),
                              filesystem(),
                              false);  // Now it must be a directory.
         bool found_alternative_directory = result == AddSegmentResult::OK;
@@ -1416,7 +1421,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
 
           // We found a directory, so we duplicate the last segment.
           result = add_segment(&import_path_builder,
-                               segment,
+                               segment.c_str(),
                                filesystem(),
                                true);  // Now it must be a toit file.
         }
