@@ -472,76 +472,33 @@ class Session:
   // records were sent after encryption was activated.
   flush-outgoing_ -> none:
     // Replace outgoing buffer.
+    fullness := tls-get-outgoing-fullness_ tls_
     outgoing-buffer := outgoing-buffer_
     outgoing-buffer_ = ByteArray 1500
-    tls-set-outgoing_ outgoing-buffer_
+    tls-set-outgoing_ tls_ outgoing-buffer_ 0
 
     // Scan the outgoing buffer for record headers.
     for scan := 0; scan < fullness; :
       if bytes-before-next-record-header_ > 0:
-        scan += min bytes-before-next-record-header_ (fullness - scan)
+        skip := min bytes-before-next-record-header_ (fullness - scan)
+        scan += skip
+        bytes-before-next-record-header_ -= skip
       else:
         addition := min
             (RECORD-HEADER-SIZE_ - outgoing-partial-header_.size)
             (fullness - scan)
-        outgoing-partial-header_ += outgoing-buffer[..addition]
-        scan += addition
-        if outgoing-partial-header_.size == RECORD-HEADER-SIZE_:
-          header := RecordHeader_ outgoing-partial-header_
-          if header.type == CHANGE-CIPHER-SPEC_:
-            writes-encrypted_ = true
-          else if writes-encrypted_:
-            outgoing-sequence-numbers-used_++
-          bytes-before-next-record-header_ = RECORD-HEADER-SIZE_ + header.length
-          outgoing-partial-header_ = #[]
-
-    written := 0
-    scanned := 0
-    if outgoing-buffer_.is-empty:
-      reset-outgoing_ #[]
-    fullness := tls-get-outgoing-fullness_ tls_
-    while written < fullness:
-      if bytes-before-next-record-header_ == 0 and fullness != scanned and fullness - scanned < RECORD-HEADER-SIZE_:
-        // We have a partial record header available at the end.
-        pending-bytes := outgoing-buffer_.copy scanned fullness
-        reset-outgoing_ pending-bytes
-        return
-      // Scan for headers in the outgoing buffer.
-      while scanned < fullness:
-        if bytes-before-next-record-header_ != 0:
-          scanned += min bytes-before-next-record-header_ (fullness - scanned)
-        else if fullness - scanned >= RECORD-HEADER-SIZE_:
-          // We have the full record header available.
-          header := RecordHeader_ outgoing-buffer_[scanned..]
-          record-size := header.length
-          if header.type == CHANGE-CIPHER-SPEC_:
-            writes-encrypted_ = true
-          else if writes-encrypted_:
-            outgoing-sequence-numbers-used_++
-          // Set this so it writes the next header and its contents.
-          bytes-before-next-record-header_ = RECORD-HEADER-SIZE_ + record-size
-        else:
-          // We have a partial record header available at the end.
-          break
-      // The outgoing buffer range written..scanned is now scanned and ready to
-      // be written.
-      writer_.write outgoing-buffer_ written scanned
-      written = scanned
-      // After writing, which may have slept, there may be more in the buffer.
-      fullness = tls-get-outgoing-fullness_ tls_
-    reset-outgoing_ #[]
-    return
-
-  reset_outgoing_ pending-bytes/ByteArray -> none:
-    // The outgoing buffer can be neutered by the calls to
-    // write. In that case, we allocate a fresh external one.
-    if outgoing-buffer_.is-empty:
-      outgoing-buffer_ = ByteArray_.external_ 1500
-    // Be sure not to lose the pending bytes.  Instead put them in the
-    // otherwise empty outgoing_buffer_.
-    outgoing-buffer_.replace 0 pending-bytes
-    // Also resets fullness.
-    tls-set-outgoing_ tls_ outgoing-buffer_ pending-bytes.size
+        if addition != 0:
+          outgoing-partial-header_ += outgoing-buffer[scan.. scan + addition]
+          scan += addition
+          if outgoing-partial-header_.size == RECORD-HEADER-SIZE_:
+            header := RecordHeader_ outgoing-partial-header_
+            if header.type == CHANGE-CIPHER-SPEC_:
+              writes-encrypted_ = true
+            else if writes-encrypted_:
+              outgoing-sequence-numbers-used_++
+            bytes-before-next-record-header_ = header.length
+            outgoing-partial-header_ = #[]
+    writer_.write outgoing-buffer 0 fullness
 
   check-for-zero-explicit-iv_ header/RecordHeader_ -> none:
     if header.length == 0x28 and header.bytes.size >= 13:
