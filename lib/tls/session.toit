@@ -470,43 +470,53 @@ class Session:
   // handshaking is complete.  For this we need to know how many handshake
   // records were sent after encryption was activated.
   flush-outgoing_ -> none:
-    from := 0
-    pending-bytes := #[]
-    while true:
-      fullness := tls-get-outgoing-fullness_ tls_
-      if fullness > from:
-        while fullness - from > bytes-before-next-record-header_:
-          // We have the start of the next record available.
-          if fullness - from + RECORD-HEADER-SIZE_ >= bytes-before-next-record-header_:
-            // We have the full record header available.
-            header := RecordHeader_ outgoing-buffer_[from + bytes-before-next-record-header_..]
-            record-size := header.length
-            if header.type == CHANGE-CIPHER-SPEC_:
-              writes-encrypted_ = true
-            else if writes-encrypted_:
-              outgoing-sequence-numbers-used_++
-              check-for-zero-explicit-iv_ header
-            // Set this so it skips the next header and its contents.
-            bytes-before-next-record-header_ += RECORD-HEADER-SIZE_ + record-size
-          else:
-            // We have a partial record header available.  Save up the partial
-            // record for later.
-            pending-bytes = outgoing-buffer_.copy (from + bytes-before-next-record-header_) (outgoing-buffer_.size)
-            // Remove the partial record from the data we are about to send.
-            fullness -= pending-bytes.size
-        sent := writer_.try-write outgoing-buffer_ from fullness
-        from += sent
-        bytes-before-next-record-header_ -= sent
-      else:
-        // The outgoing buffer can be neutered by the calls to
-        // write. In that case, we allocate a fresh external one.
-        if outgoing-buffer_.is-empty:
-          outgoing-buffer_ = ByteArray_.external_ 1500
-        // Be sure not to lose the pending bytes.  Instead put them in the
-        // otherwise empty outgoing_buffer_.
-        outgoing-buffer_.replace 0 pending-bytes
-        tls-set-outgoing_ tls_ outgoing-buffer_ pending-bytes.size
+    written := 0
+    scanned := 0
+    if outgoing-buffer_.is-empty:
+      reset-outgoing_ #[]
+    fullness := tls-get-outgoing-fullness_ tls_
+    while written < fullness:
+      if bytes-before-next-record-header_ == 0 and fullness != scanned and fullness - scanned < RECORD-HEADER-SIZE_:
+        // We have a partial record header available at the end.
+        pending-bytes := outgoing-buffer_.copy scanned fullness
+        reset-outgoing_ pending-bytes
         return
+      // Scan for headers in the outgoing buffer.
+      while scanned < fullness:
+        if bytes-before-next-record-header_ != 0:
+          scanned += min bytes-before-next-record-header_ (fullness - scanned)
+        else if fullness - scanned >= RECORD-HEADER-SIZE_:
+          // We have the full record header available.
+          header := RecordHeader_ outgoing-buffer_[scanned..]
+          record-size := header.length
+          if header.type == CHANGE-CIPHER-SPEC_:
+            writes-encrypted_ = true
+          else if writes-encrypted_:
+            outgoing-sequence-numbers-used_++
+          // Set this so it writes the next header and its contents.
+          bytes-before-next-record-header_ = RECORD-HEADER-SIZE_ + record-size
+        else:
+          // We have a partial record header available at the end.
+          break
+      // The outgoing buffer range written..scanned is now scanned and ready to
+      // be written.
+      writer_.write outgoing-buffer_ written scanned
+      written = scanned
+      // After writing, which may have slept, there may be more in the buffer.
+      fullness = tls-get-outgoing-fullness_ tls_
+    reset-outgoing_ #[]
+    return
+
+  reset_outgoing_ pending-bytes/ByteArray -> none:
+    // The outgoing buffer can be neutered by the calls to
+    // write. In that case, we allocate a fresh external one.
+    if outgoing-buffer_.is-empty:
+      outgoing-buffer_ = ByteArray_.external_ 1500
+    // Be sure not to lose the pending bytes.  Instead put them in the
+    // otherwise empty outgoing_buffer_.
+    outgoing-buffer_.replace 0 pending-bytes
+    // Also resets fullness.
+    tls-set-outgoing_ tls_ outgoing-buffer_ pending-bytes.size
 
   check-for-zero-explicit-iv_ header/RecordHeader_ -> none:
     if header.length == 0x28 and header.bytes.size >= 13:
