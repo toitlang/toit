@@ -7,12 +7,13 @@ import host.pipe
 import system
 
 main args:
+  NL := system.platform == system.PLATFORM-WINDOWS ? "\r\n" : "\n"
   toit-bin := args[0]
   version := pipe.backticks toit-bin "version"
-  expect-equals "$system.vm-sdk-version\n" version
+  expect-equals "$system.vm-sdk-version$NL" version
 
   dash-version := pipe.backticks toit-bin "--version"
-  expect-equals "$system.vm-sdk-version\n" dash-version
+  expect-equals "$system.vm-sdk-version$NL" dash-version
 
   deprecated-short-version := pipe.backticks toit-bin "version" "--short"
-  expect-equals "$system.vm-sdk-version\n" deprecated-short-version
+  expect-equals "$system.vm-sdk-version$NL" deprecated-short-version
