@@ -132,6 +132,7 @@ class Session:
 
   outgoing-buffer_/ByteArray := #[]
   bytes-before-next-record-header_ := 0
+  outgoing-partial-header_ := #[]
   closed-for-write_ := false
   outgoing-sequence-numbers-used_ := 0
   incoming-sequence-numbers-used_ := 0
@@ -470,6 +471,30 @@ class Session:
   // handshaking is complete.  For this we need to know how many handshake
   // records were sent after encryption was activated.
   flush-outgoing_ -> none:
+    // Replace outgoing buffer.
+    outgoing-buffer := outgoing-buffer_
+    outgoing-buffer_ = ByteArray 1500
+    tls-set-outgoing_ outgoing-buffer_
+
+    // Scan the outgoing buffer for record headers.
+    for scan := 0; scan < fullness; :
+      if bytes-before-next-record-header_ > 0:
+        scan += min bytes-before-next-record-header_ (fullness - scan)
+      else:
+        addition := min
+            (RECORD-HEADER-SIZE_ - outgoing-partial-header_.size)
+            (fullness - scan)
+        outgoing-partial-header_ += outgoing-buffer[..addition]
+        scan += addition
+        if outgoing-partial-header_.size == RECORD-HEADER-SIZE_:
+          header := RecordHeader_ outgoing-partial-header_
+          if header.type == CHANGE-CIPHER-SPEC_:
+            writes-encrypted_ = true
+          else if writes-encrypted_:
+            outgoing-sequence-numbers-used_++
+          bytes-before-next-record-header_ = RECORD-HEADER-SIZE_ + header.length
+          outgoing-partial-header_ = #[]
+
     written := 0
     scanned := 0
     if outgoing-buffer_.is-empty:
