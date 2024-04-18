@@ -477,6 +477,8 @@ Object* tls_error(BaseMbedTlsSocket* socket, Process* process, int err) {
 
 PRIMITIVE(get_outgoing) {
   ARGS(MbedTlsSocket, socket);
+  Locker locker(OS::tls_mutex());
+
   ByteArray* array = process->allocate_byte_array(socket->outgoing_fullness());
   if (array == null) FAIL(ALLOCATION_FAILED);
   ByteArray::Bytes data_bytes(array);
@@ -803,6 +805,8 @@ PRIMITIVE(add_certificate) {
 }
 
 static int toit_tls_send(void* ctx, const unsigned char* buf, size_t len) {
+  Locker locker(OS::tls_mutex());
+
   auto socket = unvoid_cast<MbedTlsSocket*>(ctx);
   size_t fullness = socket->outgoing_fullness();
   size_t result = Utils::min(static_cast<size_t>(MbedTlsSocket::OUTGOING_BUFFER_SIZE - fullness), len);
