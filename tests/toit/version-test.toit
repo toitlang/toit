@@ -6,14 +6,19 @@ import expect show *
 import host.pipe
 import system
 
+import .utils
+
 main args:
-  NL := system.platform == system.PLATFORM-WINDOWS ? "\r\n" : "\n"
-  toit-bin := args[0]
-  version := pipe.backticks toit-bin "version"
-  expect-equals "$system.vm-sdk-version$NL" version
+  toit-exe := ToitExecutable args
+  version := toit-exe.backticks ["version"]
+  expect-equals "$system.vm-sdk-version\n" version
 
-  dash-version := pipe.backticks toit-bin "--version"
-  expect-equals "$system.vm-sdk-version$NL" dash-version
+  // The '--version' flag is special-cased in the 'toit' executable.
+  // It must be the first argument. As such, we can have any '--sdk-version'
+  // before it. The '--no-with-test-sdk' make sure we don't any additional
+  // options when calling the binary.
+  dash-version := toit-exe.backticks --no-with-test-sdk ["--version"]
+  expect-equals "$system.vm-sdk-version\n" dash-version
 
-  deprecated-short-version := pipe.backticks toit-bin "version" "-o" "short"
-  expect-equals "$system.vm-sdk-version$NL" deprecated-short-version
+  deprecated-short-version := toit-exe.backticks ["version", "-o", "short"]
+  expect-equals "$system.vm-sdk-version\n" deprecated-short-version

@@ -139,11 +139,6 @@ main args/List:
       --run=:: compile-or-analyze-or-run --command="compile" it
   root-command.add compile-command
 
-  lsp-command := cli.Command "lsp"
-      --help="Start the language server."
-      --run=:: run-lsp-server it
-  root-command.add lsp-command
-
   pkg-command := cli.Command "pkg"
       --help="Manage packages."
       --options=[
@@ -448,6 +443,16 @@ main args/List:
 
   root-command.add toitp.build-command
 
+  tool-command := cli.Command "tool"
+      --help="Run a tool."
+  root-command.add tool-command
+
+  // TODO(florian): add more lsp subcommands, like creating a repro, ...
+  tool-lsp-command := cli.Command "lsp"
+      --help="Start the language server."
+      --run=:: run-lsp-server it
+  tool-command.add tool-lsp-command
+
   root-command.run args
 
 error message/string:
@@ -460,11 +465,13 @@ bin-dir sdk-dir/string? -> string:
   our-path := system.program-path
   return fs.dirname our-path
 
-run sdk-dir/string? tool/string args/List:
+tool-path sdk-dir/string tool/string -> string:
   if system.platform == system.PLATFORM-WINDOWS:
     tool = "$(tool).exe"
-  tool-path := fs.join (bin-dir sdk-dir) tool
-  args = [tool-path] + args
+  return fs.join (bin-dir sdk-dir) tool
+
+run sdk-dir/string? tool/string args/List:
+  args = [tool-path sdk-dir tool] + args
   pipe.run-program args
 
 compile-or-analyze-or-run --command/string parsed/cli.Parsed:
@@ -524,7 +531,8 @@ compile-or-analyze-or-run --command/string parsed/cli.Parsed:
 run-lsp-server parsed/cli.Parsed:
   sdk-dir := parsed["sdk-dir"]
   args := [
-    "--toitc", fs.join (bin-dir sdk-dir) "toitc",
+    "--toitc",
+    tool-path sdk-dir "toit.compile",
   ]
   run sdk-dir "toit.lsp" args
 
