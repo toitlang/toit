@@ -2523,6 +2523,7 @@ PRIMITIVE(firmware_mapping_at) {
 
 PRIMITIVE(firmware_mapping_copy) {
   ARGS(Instance, receiver, int, from, int, to, ByteArray, into, int, index);
+  if (index < 0) FAIL(OUT_OF_BOUNDS);
   int offset = Smi::value(receiver->at(1));
   int size = Smi::value(receiver->at(2));
   if (!Utils::is_aligned(from + offset, sizeof(uint32)) ||
@@ -2539,6 +2540,7 @@ PRIMITIVE(firmware_mapping_copy) {
   // always reading whole words to avoid issues with this.
   ByteArray::Bytes output(into);
   int bytes = to - from;
+  if (index + bytes > output.length()) FAIL(OUT_OF_BOUNDS);
   iram_safe_memcpy(output.address() + index, input.address() + from + offset, bytes);
   return Smi::from(index + bytes);
 }
