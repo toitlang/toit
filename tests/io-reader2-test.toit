@@ -41,6 +41,16 @@ test-read-lines input/List expected-with-newlines/List:
   expect-equals expected-with-newlines (r.read-lines --keep-newlines)
   expect-null (r.read-line --keep-newline)
 
+  lines := []
+  r = TestReader input
+  r.do --lines: lines.add it
+  expect-equals expected-without-newlines lines
+
+  lines = []
+  r = TestReader input
+  r.do --lines --keep-newlines: lines.add it
+  expect-equals expected-with-newlines lines
+
 main:
   test-read-lines [""] []
   test-read-lines ["foo\n", "bar\n"] ["foo\n", "bar\n"]
