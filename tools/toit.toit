@@ -47,7 +47,9 @@ main args/List:
       --help="Print the version of the Toit SDK."
       --options=[
         // For compatibility with the v1 toit executable. This flag is used by
-        // the vscode extension.
+        // the vscode extension. The v1 executable needed the "short" output to only get
+        // the version number. We are ignoring this option, since we always just print the
+        // version.
         cli.Option "output" --short-name="o" --hidden
       ]
       --run=:: print system.app-sdk-version
@@ -464,11 +466,13 @@ bin-dir sdk-dir/string? -> string:
   our-path := system.program-path
   return fs.dirname our-path
 
-run sdk-dir/string? tool/string args/List:
+tool-path sdk-dir/string tool/string -> string:
   if system.platform == system.PLATFORM-WINDOWS:
     tool = "$(tool).exe"
-  tool-path := fs.join (bin-dir sdk-dir) tool
-  args = [tool-path] + args
+  return fs.join (bin-dir sdk-dir) tool
+
+run sdk-dir/string? tool/string args/List:
+  args = [tool-path sdk-dir tool] + args
   pipe.run-program args
 
 compile-or-analyze-or-run --command/string parsed/cli.Parsed:
@@ -528,7 +532,8 @@ compile-or-analyze-or-run --command/string parsed/cli.Parsed:
 run-lsp-server parsed/cli.Parsed:
   sdk-dir := parsed["sdk-dir"]
   args := [
-    "--toitc", fs.join (bin-dir sdk-dir) "toit.compile",
+    "--toitc",
+    tool-path sdk-dir "toit.compile",
   ]
   run sdk-dir "toit.lsp" args
 
