@@ -599,6 +599,7 @@ abstract class Reader implements old-reader.Reader:
   See $read-line.
   */
   do --lines/bool --keep-newlines/bool=false [block] -> none:
+    if not lines: throw "INVALID_ARGUMENT"
     while line := read-line --keep-newline=keep-newlines:
       block.call line
 
