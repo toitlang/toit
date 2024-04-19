@@ -25,6 +25,15 @@ main args/List:
   if args.size > 0 and args[0].ends-with ".toit":
     args = ["run", "--"] + args
 
+  // We don't want to add a `--version` option to the root command,
+  // as that would make the option available to all subcommands.
+  // Fundamentally, getting the version isn't really an option, but a
+  // command. The `--version` here is just for convenience, since many
+  // tools have it too.
+  if args.size == 1 and args[0] == "--version":
+    print system.vm-sdk-version
+    return
+
   root-command := cli.Command "toit"
       --help="The Toit command line tool."
       --options=[
@@ -33,6 +42,18 @@ main args/List:
             --type="dir"
             --hidden,
       ]
+
+  version-command := cli.Command "version"
+      --help="Print the version of the Toit SDK."
+      --options=[
+        // For compatibility with the v1 toit executable. This flag is used by
+        // the vscode extension. The v1 executable needed the "short" output to only get
+        // the version number. We are ignoring this option, since we always just print the
+        // version.
+        cli.Option "output" --short-name="o" --hidden
+      ]
+      --run=:: print system.app-sdk-version
+  root-command.add version-command
 
   compile-analyze-run-options := [
     cli.Flag "show-package-warnings"
