@@ -593,6 +593,17 @@ abstract class Reader implements old-reader.Reader:
     return result
 
   /**
+  Calls the given $block for each remaining line.
+
+  The $lines argument must be true.
+  See $read-line.
+  */
+  do --lines/bool --keep-newlines/bool=false [block] -> none:
+    if not lines: throw "INVALID_ARGUMENT"
+    while line := read-line --keep-newline=keep-newlines:
+      block.call line
+
+  /**
   Reads the string before the $delimiter.
 
   The read bytes and the delimiter are consumed.
