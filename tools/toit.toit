@@ -47,7 +47,9 @@ main args/List:
       --help="Print the version of the Toit SDK."
       --options=[
         // For compatibility with the v1 toit executable. This flag is used by
-        // the vscode extension.
+        // the vscode extension. The v1 executable needed the "short" output to only get
+        // the version number. We are ignoring this option, since we always just print the
+        // version.
         cli.Option "output" --short-name="o" --hidden
       ]
       --run=:: print system.app-sdk-version
