@@ -463,11 +463,13 @@ bin-dir sdk-dir/string? -> string:
   our-path := system.program-path
   return fs.dirname our-path
 
-run sdk-dir/string? tool/string args/List:
+tool-path sdk-dir/string tool/string -> string:
   if system.platform == system.PLATFORM-WINDOWS:
     tool = "$(tool).exe"
-  tool-path := fs.join (bin-dir sdk-dir) tool
-  args = [tool-path] + args
+  return fs.join (bin-dir sdk-dir) tool
+
+run sdk-dir/string? tool/string args/List:
+  args = [tool-path sdk-dir tool] + args
   pipe.run-program args
 
 compile-or-analyze-or-run --command/string parsed/cli.Parsed:
@@ -527,7 +529,8 @@ compile-or-analyze-or-run --command/string parsed/cli.Parsed:
 run-lsp-server parsed/cli.Parsed:
   sdk-dir := parsed["sdk-dir"]
   args := [
-    "--toitc", fs.join (bin-dir sdk-dir) "toit.compile",
+    "--toitc",
+    tool-path sdk-dir "toit.compile",
   ]
   run sdk-dir "toit.lsp" args
 
