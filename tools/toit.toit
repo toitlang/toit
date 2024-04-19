@@ -441,12 +441,12 @@ main args/List:
       --run=:: run-pkg-command ["update"] [] [] it
   pkg-command.add pkg-update-command
 
-  root-command.add toitp.build-command
-
   tool-command := cli.Command "tool"
       --aliases=["tools"]
       --help="Run a tool."
   root-command.add tool-command
+
+  tool-command.add toitp.build-command
 
   // TODO(florian): add more lsp subcommands, like creating a repro, ...
   tool-lsp-command := cli.Command "lsp"
