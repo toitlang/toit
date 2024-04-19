@@ -17,6 +17,10 @@
 
 #if !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO)
 
+#if !defined(TOIT_FREERTOS)
+#define CONFIG_TOIT_CRYPTO_EXTRA 1
+#endif
+
 #include "mbedtls/gcm.h"
 #include "mbedtls/chachapoly.h"
 

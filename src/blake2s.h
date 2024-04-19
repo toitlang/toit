@@ -44,7 +44,7 @@ class Blake2s : public SimpleResource {
   uint8 data_[BLOCK_SIZE];
   uint32_t h_[8];
   uint32_t block_posn_ = 0;
-  intptr_t length_ = 0;
+  uint64_t length_ = 0;
 };
 
 }

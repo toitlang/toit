@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#if !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO_EXTRA)
+
 #include "utils.h"
 #include "blake2s.h"
 
@@ -117,3 +119,5 @@ void Blake2s::process_block(bool last) {
 }
 
 }  // namespace toit.
+
+#endif  // !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO)
