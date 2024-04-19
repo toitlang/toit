@@ -5,7 +5,7 @@
 import host.pipe
 import system
 
-class ToitBin:
+class ToitExecutable:
   toit-run_/string
   toit-bin-src_/string
   sdk-dir_/string

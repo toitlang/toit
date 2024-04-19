@@ -9,13 +9,16 @@ import system
 import .utils
 
 main args:
-  toit-bin := ToitBin args
-  version := toit-bin.backticks ["version"]
+  toit-exe := ToitExecutable args
+  version := toit-exe.backticks ["version"]
   expect-equals "$system.vm-sdk-version\n" version
 
-  // The '--version' is special-cased. We are not allowed to the test-sdk override.
-  dash-version := toit-bin.backticks --no-with-test-sdk ["--version"]
+  // The '--version' flag is special-cased in the 'toit' executable.
+  // It must be the first argument. As such, we can have any '--sdk-version'
+  // before it. The '--no-with-test-sdk' make sure we don't any additional
+  // options when calling the binary.
+  dash-version := toit-exe.backticks --no-with-test-sdk ["--version"]
   expect-equals "$system.vm-sdk-version\n" dash-version
 
-  deprecated-short-version := toit-bin.backticks ["version", "-o", "short"]
+  deprecated-short-version := toit-exe.backticks ["version", "-o", "short"]
   expect-equals "$system.vm-sdk-version\n" deprecated-short-version
