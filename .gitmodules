@@ -3,6 +3,3 @@
 	url = https://github.com/toitware/esp-idf.git
 	branch = patch-head-4.3-3
 	ignore = untracked
-[submodule "third_party/BLAKE2"]
-	path = third_party/BLAKE2
-	url = https://github.com/BLAKE2/BLAKE2/
