@@ -15,7 +15,7 @@ See https://datatracker.ietf.org/doc/html/rfc7693
 Calculates the Blake2s hash of the given $data.
 */
 blake2s data/io.Data from/int=0 to/int=data.byte-size --hash-size/int=32 --key/ByteArray=#[] -> ByteArray:
-  return checksum (Blake2s key hash-size) data from to
+  return checksum (Blake2s --key=key --hash-size=hash-size) data from to
 
 /** Blake2s-1 hash state. */
 class Blake2s extends Checksum:
@@ -24,10 +24,12 @@ class Blake2s extends Checksum:
 
   /** Constructs an empty Blake2s state. */
   constructor --hash-size/int=32 --key/ByteArray=#[]:
+    hash-size_ = hash-size
     blake2s-state_ = blake2s-start_ resource-freeing-module_ key hash-size
     add-finalizer this:: finalize-checksum_ this
 
   constructor.private_ .blake2s-state_ hash-size/int:
+    hash-size_ = hash-size
     add-finalizer this:: finalize-checksum_ this
 
   /** See $super. */
