@@ -1016,7 +1016,7 @@ class Parser_ extends PegParserBase_:
     return null
 
   ns-plain-safe c/int -> int?:
-    if c == FLOW-OUT_ or c == BLOCK-OUT_: return ns-plain-safe-out
+    if c == FLOW-OUT_ or c == BLOCK-KEY_: return ns-plain-safe-out
     return ns-plain-safe-in
 
   ns-plain-safe-out: return ns-char
