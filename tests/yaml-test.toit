@@ -23,6 +23,7 @@ main:
   test-value-converter
   test-reserved
   test-indented-block
+  test-implicit-key
 
 test-stringify:
   expect-equals "testing" (yaml.stringify "testing")
@@ -626,4 +627,12 @@ test-indented-block:
         "bar5": "baz"
       }
     }
+  } result
+
+test-implicit-key:
+  result := yaml.parse """
+    foo/{bar}: the '{' and '}' is valid in an implicit key.
+    """
+  expect-structural-equals {
+    "foo/{bar}": "the '{' and '}' is valid in an implicit key."
   } result
