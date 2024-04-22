@@ -43,11 +43,17 @@ test client/LspClient:
       print "canceling $it"
       client.send-cancel it
     if completions.contains "code":
-      if completions["code"] != -32800:
-        print "Message: $(completions.get "message")"
-      expect-equals -32800 completions["code"]
-      cancel-succeeded = true
-      break
+      if completions["code"] == -32800:
+        // This is the expected result.
+        cancel-succeeded = true
+        break
+      if completions["code"] != 0:
+        // Fail, if the code is neither -32800 or 0 (see below for 0).
+        expect-equals -32800 completions["code"]
+
+      // On the Go version of the LSP server we sometimes get 0 as code, with
+      // a message saying "EOF".
+      // We just try again.
     else:
       print "Got a response: $completions"
     sleep-amount *= 2
