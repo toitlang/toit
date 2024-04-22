@@ -561,7 +561,9 @@ class LocalService extends Resource_ implements Attribute:
         properties & write-properties-bits == 0:
       throw "Write permission requires write property (WRITE or WRITE_WITHOUT_RESPONSE)"
 
-    return LocalCharacteristic this uuid properties permissions value read-timeout-ms
+    characteristic := LocalCharacteristic this uuid properties permissions value read-timeout-ms
+    characteristics_.add characteristic
+    return characteristic
 
   /**
   Convenience method to add a read-only characteristic with the given $uuid and $value.
@@ -927,7 +929,9 @@ class Peripheral extends Resource_:
     the appropriate characteristics and then be deployed.
   */
   add-service uuid/BleUuid -> LocalService:
-    return LocalService this uuid
+    service := LocalService this uuid
+    services_.add service
+    return service
 
 
 class AdapterConfig:
