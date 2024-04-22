@@ -406,6 +406,8 @@ class RemoteDevice extends Resource_:
 Defines a BLE service with characteristics.
 */
 class LocalService extends Resource_ implements Attribute:
+  static DEFAULT-READ-TIMEOUT-MS ::= 2500
+
   /**
   The UUID of the service.
   */
@@ -421,25 +423,31 @@ class LocalService extends Resource_ implements Attribute:
 
   /**
   Adds a characteristic to this service with the given parameters.
-  $uuid is the uuid of the characteristic
-  $properties is one of the CHARACTERISTIC_PROPERTY_* values (see
+
+  The $uuid is the uuid of the characteristic
+  The $properties is one of the CHARACTERISTIC_PROPERTY_* values (see
     $CHARACTERISTIC-PROPERTY-BROADCAST and similar).
   $permissions is one of the CHARACTERISTIC_PERMISSIONS_* values (see
     $CHARACTERISTIC-PERMISSION-READ and similar).
-  If $value is specified, it is used as the initial value for the characteristic. If $value is null
-    or an empty ByteArray, then the characteristic supports callback reads and the client needs
+
+  If $value is specified and the characteristic supports reads, it is used as the initial
+    value for the characteristic. If $value is null or an empty ByteArray, then the
+    characteristic supports callback reads and the client needs
     to call $LocalCharacteristic.handle-read-request to provide the value upon request.
   NOTE: Read callbacks are not supported in MacOS.
   When using read callbacks, the $read-timeout-ms specifies the time the callback function is allowed
     to use.
   Throws if the service is already deployed.
+
+  See $add-indication-characteristic, $add-notification-characteristic, $add-read-only-characteristic,
+    and $add-write-only-characteristic for convenience methods.
   */
   add-characteristic -> LocalCharacteristic
       uuid/BleUuid
       --properties/int
       --permissions/int
       --value/ByteArray?=null
-      --read-timeout-ms/int=2500:
+      --read-timeout-ms/int=DEFAULT-READ-TIMEOUT-MS:
     if deployed_: throw "Service is already deployed"
     read-permission-bits := CHARACTERISTIC-PERMISSION-READ
         | CHARACTERISTIC-PERMISSION-READ-ENCRYPTED
@@ -462,8 +470,20 @@ class LocalService extends Resource_ implements Attribute:
 
   /**
   Convenience method to add a read-only characteristic with the given $uuid and $value.
+
+  If $value is specified, it is used as the initial value for the characteristic. If $value is null
+    or an empty ByteArray, then the characteristic supports callback reads and the client needs
+    to call $LocalCharacteristic.handle-read-request to provide the value upon request.
+  NOTE: Read callbacks are not supported in MacOS.
+  When using read callbacks, the $read-timeout-ms specifies the time the callback function is allowed
+    to use.
+
+  See $add-characteristic.
   */
-  add-read-only-characteristic uuid/BleUuid --value/ByteArray? -> LocalCharacteristic:
+  add-read-only-characteristic -> LocalCharacteristic
+      uuid/BleUuid
+      --value/ByteArray?
+      --read-timeout-ms/int=DEFAULT-READ-TIMEOUT-MS:
     return add-characteristic
         uuid
         --properties=CHARACTERISTIC-PROPERTY-READ
@@ -471,7 +491,14 @@ class LocalService extends Resource_ implements Attribute:
         --value=value
 
   /**
-  Convenience method to add a write-only characteristic with the given $uuid that can $requires-response for each write.
+  Convenience method to add a write-only characteristic with the given $uuid.
+
+  If $requires-response is true, the client must acknowledge the write operation. Any
+    $RemoteCharacteristic.write operation will block until the client acknowledges the write.
+    The acknowledgment is frequently done by the BLE stack. An acknowledgment thus
+    does not necessarily mean that the write operation has been processed by the client.
+
+  See $add-characteristic.
   */
   add-write-only-characteristic uuid/BleUuid requires-response/bool=false -> LocalCharacteristic:
     properties := requires-response
@@ -483,7 +510,12 @@ class LocalService extends Resource_ implements Attribute:
         --permissions=CHARACTERISTIC-PERMISSION-WRITE
 
   /**
-  Convenience method to add a notification characteristic with the given $uuid. See $add-characteristic.
+  Convenience method to add a notification characteristic with the given $uuid.
+
+  Contrary to indications ($add-indication-characteristic), notifications do not require
+    an acknowledgment from the client.
+
+  See $add-characteristic.
   */
   add-notification-characteristic uuid/BleUuid -> LocalCharacteristic:
     return add-characteristic
@@ -492,9 +524,14 @@ class LocalService extends Resource_ implements Attribute:
         --permissions=CHARACTERISTIC-PERMISSION-READ
 
   /**
-  Convenience method to add an indication characteristic with the given $uuid. See $add-characteristic.
+  Convenience method to add an indication characteristic with the given $uuid.
+
+  Contrary to notifications ($add-notification-characteristic), indications require
+    an acknowledgment from the client.
+
+  See $add-characteristic.
   */
-  add-indication-characteristic  uuid/BleUuid  -> LocalCharacteristic:
+  add-indication-characteristic uuid/BleUuid  -> LocalCharacteristic:
     return add-characteristic
         uuid
         --properties=CHARACTERISTIC-PROPERTY-INDICATE | CHARACTERISTIC-PROPERTY-READ
@@ -503,7 +540,9 @@ class LocalService extends Resource_ implements Attribute:
   /**
   Deploys this service.
 
-  After deployment, no more characteristics can be added. See $add-characteristic.
+  After deployment, no more characteristics can be added.
+
+  See $add-characteristic.
   */
   deploy:
     ble-deploy-service_ resource_
@@ -550,8 +589,10 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
 
   /**
   Handles read requests.
-    This blocking function waits for read requests on this characteristic and calls the given $block for each request.
-    The block must return a ByteArray which is then used as value of the characteristic.
+
+  This blocking function waits for read requests on this characteristic and calls the
+    given $block for each request.
+  The block must return a ByteArray which is then used as value of the characteristic.
   */
   handle-read-request [block]:
     while true:
@@ -775,7 +816,7 @@ class Adapter:
       AdapterMetadata.private_ it[0] it[1] it[2] it[3] it[4]
 
   adapter-metadata/AdapterMetadata?
-  resource-group_/any
+  resource-group_/any := ?
   central_/Central? := null
   peripheral_/Peripheral? := null
 
@@ -783,6 +824,11 @@ class Adapter:
 
   constructor.private_ .adapter-metadata:
     resource-group_ = ble-init_ adapter-metadata.handle_
+
+  close -> none:
+    if resource-group_:
+      ble-close_ resource-group_
+      resource-group_ = null
 
   /**
   The central manager handles connections to remote peripherals.
@@ -873,7 +919,7 @@ class Resource_:
         resource := resource_
         resource_ = null
         resource-state_.dispose
-        ble-release-resource_ resource_
+        ble-release-resource_ resource
       finally:
         remove-finalizer this
 
