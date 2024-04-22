@@ -983,9 +983,9 @@ class Adapter:
       if central_:
         central_.close
         central_ = null
-    // if peripheral_:
-    //   peripheral_.close
-    //   peripheral_ = null
+      if peripheral_:
+        peripheral_.close
+        peripheral_ = null
       ble-close_ resource-group_
       resource-group_ = null
 
