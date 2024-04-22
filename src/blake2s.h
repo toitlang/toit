@@ -35,6 +35,7 @@ class Blake2s : public SimpleResource {
   }
 
   static const int BLOCK_SIZE = 64;
+  static const int MAX_HASH_SIZE = 32;
 
  private:
   static const uint32_t BLOCK_MASK = BLOCK_SIZE - 1;

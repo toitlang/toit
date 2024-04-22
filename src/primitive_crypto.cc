@@ -143,10 +143,10 @@ PRIMITIVE(blake2s_add) {
 PRIMITIVE(blake2s_get) {
 #ifdef CONFIG_TOIT_CRYPTO_EXTRA
   ARGS(Blake2s, blake, int, size);
-  if (size > 32) FAIL(INVALID_ARGUMENT);
+  if (!(1 <= size && size <= Blake2s::MAX_HASH_SIZE)) FAIL(INVALID_ARGUMENT);
   ByteArray* result = process->allocate_byte_array(size);
   if (result == null) FAIL(ALLOCATION_FAILED);
-  uint8 hash[32];
+  uint8 hash[Blake2s::MAX_HASH_SIZE];
   blake->get_hash(hash);
   memcpy(ByteArray::Bytes(result).address(), hash, size);
   blake->resource_group()->unregister_resource(blake);

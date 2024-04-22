@@ -45,7 +45,7 @@ main:
 
 read-file map/Map filename/string -> none:
   stream := file.Stream.for-read filename
-  reader := io.Reader.adapt stream
+  reader := stream.in
   line-number := 0
   current-comment := ""
   while line := reader.read-line:
@@ -58,7 +58,7 @@ read-file map/Map filename/string -> none:
 
 read-blake-file map/Map filename/string -> none:
   stream := file.Stream.for-read filename
-  reader := io.Reader.adapt stream
+  reader := stream.in
   line-number := 0
   current-in := #[]
   current-key := #[]

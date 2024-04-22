@@ -54,7 +54,7 @@ void Blake2s::get_hash(uint8* hash) {
   }
   length_ += block_posn_;
   process_block(true);
-  memcpy(hash, reinterpret_cast<void*>(&h_[0]), 32);
+  memcpy(hash, reinterpret_cast<void*>(&h_[0]), MAX_HASH_SIZE);
 }
 
 // SIGMA constants for Blake2s.
