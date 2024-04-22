@@ -36,12 +36,12 @@ main-peripheral:
   read-only := service.add-read-only-characteristic CHARACTERISTIC-READ-ONLY --value=READ-ONLY-VALUE
   read-only-callback := service.add-read-only-characteristic CHARACTERISTIC-READ-ONLY-CALLBACK --value=null
 
-  callback-task-done := monitor.Signal
+  callback-task-done := monitor.Latch
   task::
     counter := 0
     read-only-callback.handle-read-request:
       #[counter++]
-    callback-task-done.raise
+    callback-task-done.set null
 
   notify := service.add-notification-characteristic CHARACTERISTIC-NOTIFY
   indicate := service.add-indication-characteristic CHARACTERISTIC-INDICATE
@@ -65,7 +65,7 @@ main-peripheral:
   expect-equals #[0, 1, 2, 3, 4] data
 
   adapter.close
-  callback-task-done.wait
+  callback-task-done.get
 
 find-device-with-service central/Central service/BleUuid -> any:
   central.scan --duration=(Duration --s=3): | device/RemoteScannedDevice |
@@ -117,4 +117,12 @@ main-central:
 
   adapter.close
 
+main-central-no-other:
+  is-peripheral = false
+  adapter := Adapter
+  central := adapter.central
 
+  expect-throw "No device found with service $SERVICE-TEST":
+     find-device-with-service central SERVICE-TEST
+
+  adapter.close
