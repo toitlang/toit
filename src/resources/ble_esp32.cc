@@ -36,7 +36,6 @@
 #include <services/gatt/ble_svc_gatt.h>
 #include <store/config/ble_store_config.h>
 
-
 namespace toit {
 
 const int kInvalidBle = -1;
@@ -99,14 +98,14 @@ class BleResourceGroup : public ResourceGroup, public Thread {
   }
 
   void tear_down() override {
+    ResourceGroup::tear_down();
+
     FATAL_IF_NOT_ESP_OK(nimble_port_stop());
     join();
 
     nimble_port_deinit();
 
     ble_pool.put(id_);
-
-    ResourceGroup::tear_down();
   }
 
   static BleResourceGroup* instance() { return instance_; }

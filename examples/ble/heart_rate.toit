@@ -31,11 +31,11 @@ main:
   service.deploy
 
   connection-mode := platform == system.PLATFORM-MACOS
-    ? BLE-CONNECT-MODE-NONE
-    : BLE-CONNECT-MODE-UNDIRECTIONAL
+      ? BLE-CONNECT-MODE-NONE
+      : BLE-CONNECT-MODE-UNDIRECTIONAL
   peripheral.start-advertise
-    AdvertisementData --name="Toit heart rate demo"
-    --connection-mode=connection-mode
+      AdvertisementData --name="Toit heart rate demo"
+      --connection-mode=connection-mode
 
   task::
     simulated-heart-rate := 60

@@ -14,7 +14,6 @@ On Jaguar use:
 
 Run `espnow1_board1.toit` on board1.
 Once that one is running, run `espnow1_board2.toit` on board2.
-
 */
 
 import esp32.espnow
