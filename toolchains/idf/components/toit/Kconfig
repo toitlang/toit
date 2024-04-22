@@ -125,6 +125,13 @@ menu "Toit"
             help
                 This includes certificate and TLS support.
 
+        config TOIT_CRYPTO_EXTRA
+            boolean "Enable extra crypto functions on ESP32"
+            default "n"
+            help
+                This includes crypto and checksum algorithms that are not
+                needed for TLS.
+
         config TOIT_ENABLE_IP
             boolean "Enable IP stack on ESP32"
             default "y"

@@ -7,6 +7,7 @@ import expect show *
 import crypto show *
 import crypto.adler32 show *
 import crypto.aes show *
+import crypto.blake2 show *
 import crypto.chacha20 show *
 import crypto.sha show *
 import crypto.siphash show *
@@ -54,6 +55,7 @@ main:
   sip-test
   aead-simple-test
   adler-test
+  blake-test
   md5-test
   hmac-test
   random-test
@@ -312,6 +314,13 @@ sip-test:
       result16b := h16b.get
       expect-equals SIP-VECTOR-16[size] result16
       expect-equals SIP-VECTOR-16[size] result16b
+
+blake-test:
+  sum := blake2s "abc"
+  expect-equals "508c5e8c327c14e2e1a72ba34eeb452f37458b209ed63a294d999b4c86675982" (hex.encode sum)
+
+  sum2 := blake2s ""
+  expect-equals "69217a3079908094e11121d042354a7c1f55b6482ca1a51e1b250dfd1ed0eef9" (hex.encode sum2)
 
 adler-test:
   VECTORS ::= [

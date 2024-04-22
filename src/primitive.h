@@ -479,6 +479,10 @@ namespace toit {
   PRIMITIVE(sha_clone, 1)                    \
   PRIMITIVE(sha_add, 4)                      \
   PRIMITIVE(sha_get, 1)                      \
+  PRIMITIVE(blake2s_start, 3)                \
+  PRIMITIVE(blake2s_clone, 1)                \
+  PRIMITIVE(blake2s_add, 4)                  \
+  PRIMITIVE(blake2s_get, 2)                  \
   PRIMITIVE(siphash_start, 5)                \
   PRIMITIVE(siphash_clone, 1)                \
   PRIMITIVE(siphash_add, 4)                  \
@@ -1024,6 +1028,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)
 #define _A_T_FlashRegion(N, name)         MAKE_UNPACKING_MACRO(FlashRegion, N, name)
 #define _A_T_Sha1(N, name)                MAKE_UNPACKING_MACRO(Sha1, N, name)
+#define _A_T_Blake2s(N, name)             MAKE_UNPACKING_MACRO(Blake2s, N, name)
 #define _A_T_Siphash(N, name)             MAKE_UNPACKING_MACRO(Siphash, N, name)
 #define _A_T_Sha(N, name)                 MAKE_UNPACKING_MACRO(Sha, N, name)
 #define _A_T_Adler32(N, name)             MAKE_UNPACKING_MACRO(Adler32, N, name)
