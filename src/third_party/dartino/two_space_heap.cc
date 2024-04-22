@@ -440,6 +440,18 @@ bool TwoSpaceHeap::perform_garbage_collection(bool force_compact) {
 
   stack.process(&marking_visitor, old_space(), semi_space);
 
+  if (force_compact) {
+    // This looks a bit crazy, because we are allocating an extra page that
+    // don't need.  Newly allocated pages, like this new page, which is
+    // completely free, are inserted in the old-space list in order of
+    // increasing memory address.  This means that if the new page is at a
+    // lower address than the previous highest-address page, all objects will
+    // be shifted down, and the highest-address page will be freed.  This
+    // helps avoid fragmentation.  This call can harmlessly fail to allocate.
+    old_space()->allocate_and_use_chunk(TOIT_PAGE_SIZE);
+    old_space()->flush();
+  }
+
   word regained_by_compacting = old_space()->compute_compaction_destinations();
 
   bool compact = force_compact || regained_by_compacting > 0;

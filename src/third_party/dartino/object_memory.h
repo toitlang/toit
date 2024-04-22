@@ -506,6 +506,8 @@ class OldSpace : public Space {
   // semispace even though they are old enough for promotion.  We also use this
   // to trigger an old-space GC early.
   bool promotion_failed_ = false;
+
+  friend class TwoSpaceHeap;
 };
 
 // ObjectMemory controls all memory used by object heaps.
