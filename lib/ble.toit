@@ -436,11 +436,11 @@ class RemoteDevice extends Resource_:
 
   If $service-uuids is empty all services for the device are discovered.
 
-  Note: Some platforms only support an empty list or a list of size 1. If the platform is limited, this method
-    throws.
-
   This method adds all discovered services to the list of discovered services of the device,
     regardless of whether a service with the same UUID already exists in the list.
+
+  Note: Some platforms, like the ESP32, only support an empty list (the default) or a list
+    of size 1. If the platform is limited, this method throws.
   */
   discover-services service-uuids/List=[] -> List:
     resource-state_.clear-state SERVICES-DISCOVERED-EVENT_
@@ -543,7 +543,7 @@ class LocalService extends Resource_ implements Attribute:
       --permissions/int
       --value/ByteArray?=null
       --read-timeout-ms/int=DEFAULT-READ-TIMEOUT-MS:
-    if deployed_: throw "Service is already deployed"
+    if peripheral-manager.deployed_: throw "Service is already deployed"
     read-permission-bits := CHARACTERISTIC-PERMISSION-READ
         | CHARACTERISTIC-PERMISSION-READ-ENCRYPTED
     read-properties-bits := CHARACTERISTIC-PROPERTY-READ
@@ -640,13 +640,20 @@ class LocalService extends Resource_ implements Attribute:
   After deployment, no more characteristics can be added.
 
   See $add-characteristic.
+
+  Deprecated. Use $Peripheral.deploy instead.
   */
   deploy:
+    peripheral-manager.deploy
+
+  /**
+  Deploys the service.
+  Depending on the platform, the peripheral manager may still need to start the gatt server.
+  */
+  deploy_:
     ble-deploy-service_ resource_
     state := resource-state_.wait-for-state (SERVICE-ADD-SUCCEEDED-EVENT_ | SERVICE-ADD-FAILED-EVENT_)
     if state & SERVICE-ADD-FAILED-EVENT_ != 0: throw "Failed to add service"
-    deployed_ = true
-
 
 class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   uuid/BleUuid
@@ -860,6 +867,8 @@ class Peripheral extends Resource_:
 
   services_/List := []
 
+  deployed_/bool := false
+
   constructor .adapter bonding/bool secure-connections/bool:
     resource := ble-create-peripheral-manager_ adapter.resource-group_ bonding secure-connections
     super adapter.resource-group_ resource --auto-release
@@ -933,6 +942,22 @@ class Peripheral extends Resource_:
     services_.add service
     return service
 
+  /**
+  Whether the peripheral's services have been deployed.
+  */
+  deployed -> bool:
+    return deployed_
+
+  /**
+  Deploys all services of the peripheral.
+
+  After deployment, no more services or characteristics can be added.
+  */
+  deploy -> none:
+    if deployed_: throw "Already deployed"
+    services_.do: | service/LocalService | service.deploy_
+    ble-start-gatt-server_ resource_
+    deployed_ = true
 
 class AdapterConfig:
   /**
@@ -1235,6 +1260,9 @@ ble-add-descriptor__ characteristic uuid properties permission value:
 
 ble-deploy-service_ service:
   #primitive.ble.deploy-service
+
+ble-start-gatt-server_ peripheral-manager:
+  #primitive.ble.start-gatt-server
 
 ble-set-value_ characteristic new-value -> none:
   ble-run-with-quota-backoff_:

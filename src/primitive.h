@@ -361,6 +361,7 @@ namespace toit {
   PRIMITIVE(add_characteristic, 6)           \
   PRIMITIVE(add_descriptor, 5)               \
   PRIMITIVE(deploy_service, 1)               \
+  PRIMITIVE(start_gatt_server, 1)            \
   PRIMITIVE(set_value, 2)                    \
   PRIMITIVE(get_subscribed_clients, 1)       \
   PRIMITIVE(notify_characteristics_value, 3) \

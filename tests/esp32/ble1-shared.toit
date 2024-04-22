@@ -14,6 +14,7 @@ import expect show *
 import monitor
 
 SERVICE-TEST ::= BleUuid "df451d2d-e899-4346-a8fd-bca9cbfebc0b"
+SERVICE-TEST2 ::= BleUuid "94a11d6a-fa23-4a09-aa6f-2ca0b7cdbb70"
 
 CHARACTERISTIC-READ-ONLY ::= BleUuid "77d0b04e-bf49-4048-a4cd-fb46be32ebd0"
 CHARACTERISTIC-READ-ONLY-CALLBACK ::= BleUuid "9e9f578c-745b-41ec-b0f6-7773157bb5a9"
@@ -31,10 +32,11 @@ main-peripheral:
   adapter := Adapter
   peripheral := adapter.peripheral
 
-  service := peripheral.add-service SERVICE-TEST
+  service1 := peripheral.add-service SERVICE-TEST
+  service2 := peripheral.add-service SERVICE-TEST2
 
-  read-only := service.add-read-only-characteristic CHARACTERISTIC-READ-ONLY --value=READ-ONLY-VALUE
-  read-only-callback := service.add-read-only-characteristic CHARACTERISTIC-READ-ONLY-CALLBACK --value=null
+  read-only := service1.add-read-only-characteristic CHARACTERISTIC-READ-ONLY --value=READ-ONLY-VALUE
+  read-only-callback := service1.add-read-only-characteristic CHARACTERISTIC-READ-ONLY-CALLBACK --value=null
 
   callback-task-done := monitor.Latch
   task::
@@ -43,12 +45,13 @@ main-peripheral:
       #[counter++]
     callback-task-done.set null
 
-  notify := service.add-notification-characteristic CHARACTERISTIC-NOTIFY
-  indicate := service.add-indication-characteristic CHARACTERISTIC-INDICATE
-  write-only := service.add-write-only-characteristic CHARACTERISTIC-WRITE-ONLY
-  write-only-with-response := service.add-write-only-characteristic CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE
+  notify := service1.add-notification-characteristic CHARACTERISTIC-NOTIFY
+  indicate := service2.add-indication-characteristic CHARACTERISTIC-INDICATE
+  write-only := service2.add-write-only-characteristic CHARACTERISTIC-WRITE-ONLY
+  write-only-with-response := service2.add-write-only-characteristic CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE
 
-  service.deploy
+  peripheral.deploy
+
   advertisement := AdvertisementData
       --name="Test"
       --service-classes=[SERVICE-TEST]
@@ -75,30 +78,45 @@ find-device-with-service central/Central service/BleUuid -> any:
 
   throw "No device found with service $service"
 
-main-central:
+main-central --iteration/int:
   is-peripheral = false
   adapter := Adapter
   central := adapter.central
 
   address := find-device-with-service central SERVICE-TEST
   remote-device := central.connect address
-  services := remote-device.discover-services [SERVICE-TEST]
-  test-service/RemoteService := services.first
 
-  characteristics := test-service.discover-characteristics
+  expect-throw "INVALID_ARGUMENT":
+    // The ESP32 does not support discovering multiple services at once.
+    remote-device.discover-services [SERVICE-TEST, SERVICE-TEST2]
+
+  if iteration == 0:
+    service-list := remote-device.discover-services [SERVICE-TEST]
+    expect-equals 1 service-list.size
+    service-list = remote-device.discover-services [SERVICE-TEST2]
+    expect-equals 1 service-list.size
+  else if iteration == 1:
+    all-services := remote-device.discover-services
+    expect-equals 2 all-services.size
+
+  services := remote-device.discovered-services
+
   read-only/RemoteCharacteristic? := null
   read-only-callback/RemoteCharacteristic? := null
   notify/RemoteCharacteristic? := null
   indicate/RemoteCharacteristic? := null
   write-only/RemoteCharacteristic? := null
   write-only-with-response/RemoteCharacteristic? := null
-  characteristics.do: | characteristic/RemoteCharacteristic |
-    if characteristic.uuid == CHARACTERISTIC-READ-ONLY: read-only = characteristic
-    if characteristic.uuid == CHARACTERISTIC-READ-ONLY-CALLBACK: read-only-callback = characteristic
-    if characteristic.uuid == CHARACTERISTIC-NOTIFY: notify = characteristic
-    if characteristic.uuid == CHARACTERISTIC-INDICATE: indicate = characteristic
-    if characteristic.uuid == CHARACTERISTIC-WRITE-ONLY: write-only = characteristic
-    if characteristic.uuid == CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE: write-only-with-response = characteristic
+
+  services.do: | service/RemoteService |
+    characteristics := service.discover-characteristics
+    characteristics.do: | characteristic/RemoteCharacteristic |
+      if characteristic.uuid == CHARACTERISTIC-READ-ONLY: read-only = characteristic
+      if characteristic.uuid == CHARACTERISTIC-READ-ONLY-CALLBACK: read-only-callback = characteristic
+      if characteristic.uuid == CHARACTERISTIC-NOTIFY: notify = characteristic
+      if characteristic.uuid == CHARACTERISTIC-INDICATE: indicate = characteristic
+      if characteristic.uuid == CHARACTERISTIC-WRITE-ONLY: write-only = characteristic
+      if characteristic.uuid == CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE: write-only-with-response = characteristic
 
   expect-equals READ-ONLY-VALUE read-only.read
 

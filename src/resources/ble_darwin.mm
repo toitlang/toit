@@ -1219,6 +1219,11 @@ PRIMITIVE(deploy_service) {
   return process->null_object();
 }
 
+PRIMITIVE(start_gatt_server) {
+  // Nothing to be done on this platform.
+  return process->null_object();
+}
+
 PRIMITIVE(set_value) {
   ARGS(BleCharacteristicResource, characteristic_resource, Object, value);
   Blob bytes;
