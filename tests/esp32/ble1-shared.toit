@@ -2,6 +2,13 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+/**
+Tests the BLE functionality.
+
+Run `ble1-board1.toit` on board1, first.
+Once that one is running, run `ble1-board2.toit` on board2.
+*/
+
 import ble show *
 import expect show *
 
@@ -15,15 +22,6 @@ CHARACTERISTIC-WRITE-ONLY ::= BleUuid "1a1bb179-c006-4217-a57b-342e24eca694"
 CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE ::= BleUuid "8e00e1c7-1b90-4f23-8dc9-384134606fc2"
 
 READ-ONLY-VALUE ::= #[0x70, 0x17]
-
-/*
-CHARACTERISTIC-READ-ONLY-ENCRYPTED ::= BleUuid "67d4117e-d252-4e4a-95fb-d92738f79354"
-CHARACTERISTIC-READ-ONLY-CALLBACK-ENCRYPTED ::= BleUuid "08747814-e35f-45e8-b0f7-8e35f4b61024"
-CHARACTERISTIC-NOTIFY-ENCRYPTED ::= BleUuid "1c47d5ce-a175-4d37-9b1c-d85d42d4f0be"
-CHARACTERISTIC-INDICATE-ENCRYPTED ::= BleUuid "76f8ec24-8b81-4597-89bc-b41567b4fd0f"
-CHARACTERISTIC-WRITE-ONLY-ENCRYPTED ::= BleUuid "22c0a955-0dfd-448b-b56a-8b6d2d1323d4"
-CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE-ENCRYPTED ::= BleUuid "060d0548-f598-40c9-8d55-25bd2b022b70"
-*/
 
 is-peripheral/bool := ?
 
