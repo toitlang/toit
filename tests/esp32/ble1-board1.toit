@@ -9,4 +9,6 @@ See 'ble1_shared.toit'
 import .ble1-shared as shared
 
 main:
-  shared.main-peripheral
+  // Run twice to make sure the `close` works correctly.
+  2.repeat:
+    shared.main-peripheral

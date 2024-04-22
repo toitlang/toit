@@ -104,7 +104,6 @@ main-central:
     value := read-only-callback.read
     expect-equals #[counter++] value
 
-
   counter = 0
   5.repeat:
     write-only.write #[counter++]
