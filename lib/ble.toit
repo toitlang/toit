@@ -660,14 +660,14 @@ class LocalService extends Resource_ implements Attribute:
 
   Deprecated. Use $Peripheral.deploy instead.
   */
-  deploy:
+  deploy -> none:
     peripheral-manager.deploy
 
   /**
   Deploys the service.
   Depending on the platform, the peripheral manager may still need to start the gatt server.
   */
-  deploy_:
+  deploy_ -> none:
     ble-deploy-service_ resource_
     state := resource-state_.wait-for-state (SERVICE-ADD-SUCCEEDED-EVENT_ | SERVICE-ADD-FAILED-EVENT_)
     if state & SERVICE-ADD-FAILED-EVENT_ != 0: throw "Failed to add service"
