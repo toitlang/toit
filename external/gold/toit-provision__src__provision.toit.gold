@@ -1,0 +1,3 @@
+toit-provision/src/provision.toit:116:13: warning: Deprecated 'LocalService.deploy'
+    service.deploy
+            ^~~~~~
