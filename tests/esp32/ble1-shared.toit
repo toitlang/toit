@@ -11,6 +11,7 @@ Once that one is running, run `ble1-board2.toit` on board2.
 
 import ble show *
 import expect show *
+import monitor
 
 SERVICE-TEST ::= BleUuid "df451d2d-e899-4346-a8fd-bca9cbfebc0b"
 
@@ -34,11 +35,13 @@ main-peripheral:
 
   read-only := service.add-read-only-characteristic CHARACTERISTIC-READ-ONLY --value=READ-ONLY-VALUE
   read-only-callback := service.add-read-only-characteristic CHARACTERISTIC-READ-ONLY-CALLBACK --value=null
-  // TODO(florian): Remove the background.
-  task --background::
+
+  callback-task-done := monitor.Latch
+  task::
     counter := 0
     read-only-callback.handle-read-request:
       #[counter++]
+    callback-task-done.set null
 
   notify := service.add-notification-characteristic CHARACTERISTIC-NOTIFY
   indicate := service.add-indication-characteristic CHARACTERISTIC-INDICATE
@@ -61,8 +64,8 @@ main-peripheral:
     data += write-only-with-response.read
   expect-equals #[0, 1, 2, 3, 4] data
 
-  print "done"
   adapter.close
+  callback-task-done.get
 
 find-device-with-service central/Central service/BleUuid -> any:
   central.scan --duration=(Duration --s=3): | device/RemoteScannedDevice |
@@ -104,7 +107,6 @@ main-central:
     value := read-only-callback.read
     expect-equals #[counter++] value
 
-
   counter = 0
   5.repeat:
     write-only.write #[counter++]
@@ -115,4 +117,12 @@ main-central:
 
   adapter.close
 
+main-central-no-other:
+  is-peripheral = false
+  adapter := Adapter
+  central := adapter.central
 
+  expect-throw "No device found with service $SERVICE-TEST":
+     find-device-with-service central SERVICE-TEST
+
+  adapter.close

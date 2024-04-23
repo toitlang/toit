@@ -9,4 +9,8 @@ See 'ble1_shared.toit'
 import .ble1-shared as shared
 
 main:
-  shared.main-central
+  // Run twice to make sure the `close` works correctly.
+  2.repeat:
+    shared.main-central
+
+  shared.main-central-no-other

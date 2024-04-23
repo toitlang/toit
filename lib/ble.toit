@@ -187,6 +187,16 @@ class RemoteDescriptor extends RemoteReadWriteElement_ implements Attribute:
     super characteristic.service descriptor
 
   /**
+  Closes this descriptor.
+
+  Automatically removes the descriptor from the list of discovered descriptors of
+    the characteristic.
+  */
+  close:
+    characteristic.remove-descriptor_ this
+    close_
+
+  /**
   Reads the value of the descriptor on the remote device.
   */
   read -> ByteArray?:
@@ -205,10 +215,31 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
   service/RemoteService
   uuid/BleUuid
   properties/int
-  discovered-descriptors/List := []
+  discovered-descriptors_/List := []
 
   constructor.private_ .service .uuid .properties characteristic:
     super service characteristic
+
+  /**
+  The list of discovered descriptors on the remote characteristic.
+
+  Call $discover-descriptors to populate this list.
+  */
+  discovered-descriptors -> List:
+    return discovered-descriptors_.copy
+
+  /**
+  Closes this characteristic.
+
+  Automatically removes the characteristic from the list of discovered characteristics of
+    the service.
+  */
+  close:
+    descriptors := discovered-descriptors_
+    discovered-descriptors_ = []
+    descriptors.do: | descriptor/RemoteDescriptor | descriptor.close
+    service.remove-characteristic_ this
+    close_
 
   /**
   Reads the value of the characteristic on the remote device.
@@ -274,6 +305,9 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
 
   /**
   Discovers all descriptors for this characteristic.
+
+  This method adds all discovered descriptors to the list of discovered descriptors of the
+    characteristic, regardless of whether a descriptor with the same UUID already exists in the list.
   */
   discover-descriptors -> List:
     resource-state_.clear-state DESCRIPTORS-DISCOVERED-EVENT_
@@ -286,12 +320,18 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
     else if state & DISCOVERY-OPERATION-FAILED_ != 0:
       throw-error_
 
-    discovered-descriptors.add-all
+    discovered-descriptors_.add-all
         List.from
             (ble-discover-descriptors-result_ resource_).map:
                 RemoteDescriptor.private_ this (BleUuid it[0]) it[1]
 
-    return discovered-descriptors
+    return discovered-descriptors_
+
+  /**
+  Removes the given $remote-descriptor from the list of discovered descriptors.
+  */
+  remove-descriptor_ remote-descriptor/RemoteDescriptor -> none:
+    discovered-descriptors_.remove remote-descriptor
 
   /**
   The negotiated mtu on the characteristics.
@@ -317,13 +357,30 @@ class RemoteService extends Resource_ implements Attribute:
     super device.manager.adapter.resource-group_ service_
 
   /**
+  Closes this service.
+
+  Automatically removes the service from the list of discovered services of the device.
+  */
+  close:
+    characteristics := discovered-characteristics
+    discovered-characteristics = []
+    characteristics.do: | characteristic/RemoteCharacteristic | characteristic.close
+    device.remove-service_ this
+    close_
+
+  /**
   Discovers characteristics on the remote service by looking up the handle of the given $characteristic-uuids.
 
-  If $characteristic-uuids is empty all characteristics for the service are discovered.
+  If $characteristic-uuids is not given or empty all characteristics for the service are discovered.
 
   Note: Some platforms only support an empty list or a list of size 1. If the platform is limited, this method
     throws.
+
+  This method adds all discovered characteristics to the list of discovered
+    characteristics of the service, regardless of whether a characteristic with the same UUID
+    already exists in the list.
   */
+  // TODO(florian): only add the characteristics that are not already in the list.
   discover-characteristics characteristic-uuids/List=[] -> List:
     resource-state_.clear-state CHARACTERISTIS-DISCOVERED-EVENT_
     raw-characteristics-uuids := characteristic-uuids.map: | uuid/BleUuid | uuid.encode-for-platform_
@@ -343,18 +400,29 @@ class RemoteService extends Resource_ implements Attribute:
 
     return order-attributes_ characteristic-uuids discovered-characteristics
 
+  /**
+  Removes the given $remote-characteristic from the list of discovered characteristics.
+  */
+  remove-characteristic_ remote-characteristic/RemoteCharacteristic -> none:
+    discovered-characteristics.remove remote-characteristic
 
 /**
 A remote connected device.
 */
 class RemoteDevice extends Resource_:
-  manager/Central
   /**
-  The address of the remote device the client is connected to. The type of the address is platform dependent.
+  The manager that is responsible for the connection.
+  */
+  manager/Central
+
+  /**
+  The address of the remote device the client is connected to.
+
+  The type of the address is platform dependent.
   */
   address/any
 
-  discovered-services/List := []
+  discovered-services_/List := []
 
   constructor.private_ .manager .address secure/bool:
     device := ble-connect_ manager.resource_ address secure
@@ -366,9 +434,26 @@ class RemoteDevice extends Resource_:
       // TODO: Possible leak of the gatt_ resource on connection failures.
 
   /**
+  Removes the given $remote-service from the list of discovered services.
+  */
+  remove-service_ remote-service/RemoteService -> none:
+    discovered-services_.remove remote-service
+
+  /**
+  The list of discovered services on the remote device.
+
+  Call $discover-services to populate this list.
+  */
+  discovered-services -> List:
+    return discovered-services_.copy
+
+  /**
   Discovers remote services by looking up the given $service-uuids on the remote device.
 
   If $service-uuids is empty all services for the device are discovered.
+
+  This method adds all discovered services to the list of discovered services of the device,
+    regardless of whether a service with the same UUID already exists in the list.
 
   Note: Some platforms only support an empty list or a list of size 1. If the platform is limited, this method
     throws.
@@ -385,18 +470,26 @@ class RemoteDevice extends Resource_:
     else if state & DISCOVERY-OPERATION-FAILED_ != 0:
       throw-error_
 
-    discovered-services.add-all
+    discovered-services_.add-all
         (ble-discover-services-result_ resource_).map:
           RemoteService.private_ this (BleUuid it[0]) it[1]
 
-    return order-attributes_ service-uuids discovered-services
+    return order-attributes_ service-uuids discovered-services_
 
   /**
   Disconnects from the remote device.
+
+  If $force is true, the connection is closed immediately. Otherwise, the
+    method waits until the remote device has acknowledged the disconnection.
   */
-  close:
+  close --force/bool=false -> none:
+    services := discovered-services_
+    discovered-services_ = []
+    services.do: | service/RemoteService | service.close
+    manager.remove-device_ this
     ble-disconnect_ resource_
-    resource-state_.wait-for-state DISCONNECTED-EVENT_
+    if not force:
+      resource-state_.wait-for-state DISCONNECTED-EVENT_
     close_
 
   mtu -> int:
@@ -417,9 +510,27 @@ class LocalService extends Resource_ implements Attribute:
 
   deployed_/bool := false
 
+  characteristics_/List := []
+
   constructor .peripheral-manager .uuid:
     resource := ble-add-service_ peripheral-manager.resource_ uuid.encode-for-platform_
     super peripheral-manager.adapter.resource-group_ resource --auto-release
+
+  /**
+  Closes this service and all its characteristics.
+  */
+  close -> none:
+    characteristics := characteristics_
+    characteristics_ = []
+    characteristics.do: | characteristic/LocalCharacteristic | characteristic.close
+    peripheral-manager.remove-service_ this
+    close_
+
+  /**
+  Removes the given $characteristic from the list of characteristics.
+  */
+  remove-characteristic_ characteristic/LocalCharacteristic -> none:
+    characteristics_.remove characteristic
 
   /**
   Adds a characteristic to this service with the given parameters.
@@ -466,7 +577,9 @@ class LocalService extends Resource_ implements Attribute:
         properties & write-properties-bits == 0:
       throw "Write permission requires write property (WRITE or WRITE_WITHOUT_RESPONSE)"
 
-    return LocalCharacteristic this uuid properties permissions value read-timeout-ms
+    characteristic := LocalCharacteristic this uuid properties permissions value read-timeout-ms
+    characteristics_.add characteristic
+    return characteristic
 
   /**
   Convenience method to add a read-only characteristic with the given $uuid and $value.
@@ -558,9 +671,27 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   properties/int
   service/LocalService
 
+  descriptors_/List := []
+
   constructor .service .uuid .properties .permissions value/ByteArray? read-timeout-ms:
     resource := ble-add-characteristic_ service.resource_ uuid.encode-for-platform_ properties permissions value read-timeout-ms
     super service resource
+
+  /**
+  Close this characteristic and all its descriptors.
+  */
+  close -> none:
+    descriptors := descriptors_
+    descriptors_ = []
+    descriptors.do: | descriptor/LocalDescriptor | descriptor.close
+    service.remove-characteristic_ this
+    close_
+
+  /**
+  Removes the given $local-descriptor from the list of descriptors.
+  */
+  remove-descriptor_ local-descriptor/LocalDescriptor -> none:
+    descriptors_.remove local-descriptor
 
   /**
   Sends a notification or an indication, based on the properties of the characteristic.
@@ -627,6 +758,13 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
     resource :=  ble-add-descriptor_ characteristic.resource_ uuid.encode-for-platform_ properties permissions value
     super characteristic.service resource
 
+  /**
+  Closes this descriptor.
+  */
+  close -> none:
+    characteristic.remove-descriptor_ this
+    close_
+
   write value/ByteArray:
     if (permissions & CHARACTERISTIC-PERMISSION-WRITE) == 0:
       throw "Invalid permission"
@@ -644,10 +782,18 @@ The manager for creating client connections.
 class Central extends Resource_:
   adapter/Adapter
 
+  remotes-devices_/List := []
+
   constructor .adapter:
     resource := ble-create-central-manager_ adapter.resource-group_
     super adapter.resource-group_ resource --auto-release
     resource-state_.wait-for-state STARTED-EVENT_
+
+  close:
+    remotes := remotes-devices_
+    remotes-devices_ = []
+    remotes.do: | remote-device/RemoteDevice | remote-device.close
+    close_
 
   /**
   Connects to the remote device with the given $address.
@@ -658,8 +804,15 @@ class Central extends Resource_:
     peer is bonded.
   */
   connect address/any --secure/bool=false -> RemoteDevice:
-    return RemoteDevice.private_ this address secure
+    remote-device := RemoteDevice.private_ this address secure
+    remotes-devices_.add remote-device
+    return remote-device
 
+  /**
+  Removes the given $remote-device from the list of connected devices.
+  */
+  remove-device_ remote-device/RemoteDevice -> none:
+    remotes-devices_.remove remote-device
 
   /**
   Scans for nearby devices. This method blocks while the scan is ongoing.
@@ -721,10 +874,28 @@ class Peripheral extends Resource_:
   static DEFAULT-INTERVAL ::= Duration --us=46875
   adapter/Adapter
 
+  services_/List := []
+
   constructor .adapter bonding/bool secure-connections/bool:
     resource := ble-create-peripheral-manager_ adapter.resource-group_ bonding secure-connections
     super adapter.resource-group_ resource --auto-release
     resource-state_.wait-for-state STARTED-EVENT_
+
+  /**
+  Closes the peripheral manager and all its services.
+  */
+  close:
+    stop-advertise
+    services := services_
+    services_ = []
+    services.do: | service/LocalService | service.close
+    close_
+
+  /**
+  Removes the given $local-service from the list of deployed services.
+  */
+  remove-service_ local-service/LocalService -> none:
+    services_.remove local-service
 
   /**
   Starts advertising the $data.
@@ -774,7 +945,9 @@ class Peripheral extends Resource_:
     the appropriate characteristics and then be deployed.
   */
   add-service uuid/BleUuid -> LocalService:
-    return LocalService this uuid
+    service := LocalService this uuid
+    services_.add service
+    return service
 
 
 class AdapterConfig:
@@ -826,9 +999,15 @@ class Adapter:
     resource-group_ = ble-init_ adapter-metadata.handle_
 
   close -> none:
-    if resource-group_:
-      ble-close_ resource-group_
-      resource-group_ = null
+    if not resource-group_: return
+    if central_:
+      central_.close
+      central_ = null
+    if peripheral_:
+      peripheral_.close
+      peripheral_ = null
+    ble-close_ resource-group_
+    resource-group_ = null
 
   /**
   The central manager handles connections to remote peripherals.
@@ -922,6 +1101,9 @@ class Resource_:
         ble-release-resource_ resource
       finally:
         remove-finalizer this
+
+  is-closed -> bool:
+    return resource_ == null
 
   throw-error_:
     ble-get-error_ resource_
