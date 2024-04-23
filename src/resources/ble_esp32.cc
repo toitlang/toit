@@ -2156,26 +2156,24 @@ PRIMITIVE(deploy_service) {
     return nimble_stack_error(process, rc);
   }
 
-  // TODO(kasper): Calling ble_gatts_start() multiple times without
-  // resetting (and forgetting all registered services) is broken and
-  // leads to memory corruption.
-  //
-  // We should avoid this by resetting, but that requires us to always
-  // pass in the full list of services so we can recreate everything.
-  //
-  // See https://github.com/apache/mynewt-nimble/issues/556.
-  rc = ble_gatts_start();
-  if (rc != BLE_ERR_SUCCESS) {
-    BleServiceResource::dispose_gatt_svcs(gatt_svcs);
-    return nimble_stack_error(process, rc);
-  }
-
   // Mark the service resource as deployed by setting its services.
   service_resource->set_svcs(gatt_svcs);
 
   // NimBLE does not do async service deployments, so
   // simulate success event.
   BleEventSource::instance()->on_event(service_resource, kBleServiceAddSucceeded);
+
+  return process->null_object();
+}
+
+PRIMITIVE(start_gatt_server) {
+  ARGS(BlePeripheralManagerResource, peripheral_manager)
+
+  int rc = ble_gatts_start();
+  if (rc != BLE_ERR_SUCCESS) {
+    return nimble_stack_error(process, rc);
+  }
+
   return process->null_object();
 }
 

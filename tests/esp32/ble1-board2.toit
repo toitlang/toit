@@ -11,6 +11,7 @@ import .ble1-shared as shared
 main:
   // Run twice to make sure the `close` works correctly.
   2.repeat:
-    shared.main-central
+    shared.main-central --iteration=it
 
-  shared.main-central-no-other
+  with-timeout --ms=10_000:
+    shared.main-central-no-other
