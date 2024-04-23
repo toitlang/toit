@@ -55,6 +55,11 @@ main-peripheral --iteration/int:
 
   peripheral.deploy
 
+  // Read the handles and make sure they are all different.
+  seen-handles := {}
+  seen-handles.add-all [read-only.handle, read-only-callback.handle, notify.handle, indicate.handle, write-only.handle, write-only-with-response.handle]
+  expect-equals 6 seen-handles.size
+
   advertisement := AdvertisementData
       --name="Test"
       --service-classes=[SERVICE-TEST]
@@ -126,6 +131,11 @@ main-central --iteration/int:
       if characteristic.uuid == CHARACTERISTIC-INDICATE: indicate = characteristic
       if characteristic.uuid == CHARACTERISTIC-WRITE-ONLY: write-only = characteristic
       if characteristic.uuid == CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE: write-only-with-response = characteristic
+
+  // Read the handles and make sure they are all different.
+  seen-handles := {}
+  seen-handles.add-all [read-only.handle, read-only-callback.handle, notify.handle, indicate.handle, write-only.handle, write-only-with-response.handle]
+  expect-equals 6 seen-handles.size
 
   expect-equals READ-ONLY-VALUE read-only.read
 

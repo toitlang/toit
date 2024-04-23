@@ -1207,6 +1207,10 @@ PRIMITIVE(add_descriptor) {
   UNIMPLEMENTED();
 }
 
+PRIMITIVE(handle) {
+  UNIMPLEMENTED();
+}
+
 PRIMITIVE(deploy_service) {
   ARGS(BleServiceResource, service_resource);
 
