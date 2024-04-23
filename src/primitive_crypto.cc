@@ -17,6 +17,10 @@
 
 #if !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO)
 
+#if !defined(TOIT_FREERTOS)
+#define CONFIG_TOIT_CRYPTO_EXTRA 1
+#endif
+
 #include "mbedtls/gcm.h"
 #include "mbedtls/chachapoly.h"
 
@@ -28,6 +32,7 @@
 #include "resource.h"
 #include "resources/tls.h"
 #include "sha1.h"
+#include "blake2s.h"
 #include "sha.h"
 #include "siphash.h"
 #include "tags.h"
@@ -85,6 +90,73 @@ PRIMITIVE(sha1_get) {
   return result;
 }
 
+PRIMITIVE(blake2s_start) {
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
+  ARGS(SimpleResourceGroup, group, Blob, key, int, output_length);
+  if (key.length() > Blake2s::BLOCK_SIZE) FAIL(INVALID_ARGUMENT);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  Blake2s* blake = _new Blake2s(group, key.length(), output_length);
+  if (!blake) FAIL(MALLOC_FAILED);
+  if (key.length() > 0) {
+    uint8 padded_key[Blake2s::BLOCK_SIZE];
+    memset(padded_key, 0, Blake2s::BLOCK_SIZE);
+    memcpy(padded_key, key.address(), key.length());
+    blake->add(padded_key, Blake2s::BLOCK_SIZE);
+  }
+  proxy->set_external_address(blake);
+  return proxy;
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
+}
+
+PRIMITIVE(blake2s_clone) {
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
+  ARGS(Blake2s, parent);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  Blake2s* child = _new Blake2s(static_cast<SimpleResourceGroup*>(parent->resource_group()), 0, 0);
+  if (!child) FAIL(MALLOC_FAILED);
+  parent->clone(child);
+  proxy->set_external_address(child);
+  return proxy;
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
+}
+
+PRIMITIVE(blake2s_add) {
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
+  ARGS(Blake2s, blake, Blob, data, int, from, int, to);
+
+  if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
+  blake->add(data.address() + from, to - from);
+  return process->null_object();
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
+}
+
+PRIMITIVE(blake2s_get) {
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
+  ARGS(Blake2s, blake, int, size);
+  if (!(1 <= size && size <= Blake2s::MAX_HASH_SIZE)) FAIL(INVALID_ARGUMENT);
+  ByteArray* result = process->allocate_byte_array(size);
+  if (result == null) FAIL(ALLOCATION_FAILED);
+  uint8 hash[Blake2s::MAX_HASH_SIZE];
+  blake->get_hash(hash);
+  memcpy(ByteArray::Bytes(result).address(), hash, size);
+  blake->resource_group()->unregister_resource(blake);
+  blake_proxy->clear_external_address();
+  return result;
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
+}
+
 PRIMITIVE(sha_start) {
   ARGS(SimpleResourceGroup, group, int, bits);
   if (bits != 224 && bits != 256 && bits != 384 && bits != 512) FAIL(INVALID_ARGUMENT);
@@ -129,6 +201,7 @@ PRIMITIVE(sha_get) {
 }
 
 PRIMITIVE(siphash_start) {
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
   ARGS(SimpleResourceGroup, group, Blob, key, int, output_length, int, c_rounds, int, d_rounds);
   if (output_length != 8 && output_length != 16) FAIL(INVALID_ARGUMENT);
   if (key.length() < 16) FAIL(INVALID_ARGUMENT);
@@ -139,9 +212,13 @@ PRIMITIVE(siphash_start) {
   if (!siphash) FAIL(MALLOC_FAILED);
   proxy->set_external_address(siphash);
   return proxy;
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
 }
 
 PRIMITIVE(siphash_clone) {
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
   ARGS(Siphash, parent);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
@@ -150,17 +227,25 @@ PRIMITIVE(siphash_clone) {
   if (!child) FAIL(MALLOC_FAILED);
   proxy->set_external_address(child);
   return proxy;
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
 }
 
 PRIMITIVE(siphash_add) {
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
   ARGS(Siphash, siphash, Blob, data, int, from, int, to);
 
   if (from < 0 || from > to || to > data.length()) FAIL(OUT_OF_RANGE);
   siphash->add(data.address() + from, to - from);
   return process->null_object();
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
 }
 
 PRIMITIVE(siphash_get) {
+#ifdef CONFIG_TOIT_CRYPTO_EXTRA
   ARGS(Siphash, siphash);
   ByteArray* result = process->allocate_byte_array(siphash->output_length());
   if (result == null) FAIL(ALLOCATION_FAILED);
@@ -168,6 +253,9 @@ PRIMITIVE(siphash_get) {
   siphash->resource_group()->unregister_resource(siphash);
   siphash_proxy->clear_external_address();
   return result;
+#else
+  FAIL(UNIMPLEMENTED);
+#endif
 }
 
 /**
