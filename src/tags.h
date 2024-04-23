@@ -35,6 +35,7 @@ namespace toit {
   fn(AesCbcContext)                     \
   fn(SslSession)                        \
   fn(Sha1)                              \
+  fn(Blake2s)                           \
   fn(Sha)                               \
   fn(Siphash)                           \
   fn(Adler32)                           \
