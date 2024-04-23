@@ -11,4 +11,4 @@ import .ble1-shared as shared
 main:
   // Run twice to make sure the `close` works correctly.
   2.repeat:
-    shared.main-peripheral
+    shared.main-peripheral --iteration=it

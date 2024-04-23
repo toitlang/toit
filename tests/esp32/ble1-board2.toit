@@ -12,6 +12,5 @@ main:
   // Run twice to make sure the `close` works correctly.
   2.repeat:
     shared.main-central --iteration=it
-
-  with-timeout --ms=10_000:
-    shared.main-central-no-other
+    // Give the other side time to shut down.
+    if it == 0: sleep --ms=500
