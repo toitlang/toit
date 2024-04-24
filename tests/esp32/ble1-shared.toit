@@ -25,10 +25,8 @@ CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE ::= BleUuid "8e00e1c7-1b90-4f23-8dc9-384
 
 READ-ONLY-VALUE ::= #[0x70, 0x17]
 
-is-peripheral/bool := ?
-
-main-peripheral:
-  is-peripheral = true
+main-peripheral --iteration/int:
+  print "Iteration $iteration"
   adapter := Adapter
   peripheral := adapter.peripheral
 
@@ -39,7 +37,10 @@ main-peripheral:
   read-only-callback := service1.add-read-only-characteristic CHARACTERISTIC-READ-ONLY-CALLBACK --value=null
 
   callback-task-done := monitor.Latch
-  task::
+  // We don't shut down correctly the second time, but we don't want the task
+  // stop the program from terminating.
+  is-background := (iteration == 1)
+  task --background=is-background::
     counter := 0
     read-only-callback.handle-read-request:
       #[counter++]
@@ -48,7 +49,9 @@ main-peripheral:
   notify := service1.add-notification-characteristic CHARACTERISTIC-NOTIFY
   indicate := service2.add-indication-characteristic CHARACTERISTIC-INDICATE
   write-only := service2.add-write-only-characteristic CHARACTERISTIC-WRITE-ONLY
-  write-only-with-response := service2.add-write-only-characteristic CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE
+  write-only-with-response := service2.add-write-only-characteristic
+      --requires-response
+      CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE
 
   peripheral.deploy
 
@@ -67,8 +70,13 @@ main-peripheral:
     data += write-only-with-response.read
   expect-equals #[0, 1, 2, 3, 4] data
 
-  adapter.close
-  callback-task-done.get
+  if iteration == 0:
+    // In the first iteration close correctly down.
+    // In the second one, we let the resource-group do the clean up.
+    print "closing things down"
+    adapter.close
+    callback-task-done.get
+  print "end of iteration"
 
 find-device-with-service central/Central service/BleUuid -> any:
   central.scan --duration=(Duration --s=3): | device/RemoteScannedDevice |
@@ -79,7 +87,7 @@ find-device-with-service central/Central service/BleUuid -> any:
   throw "No device found with service $service"
 
 main-central --iteration/int:
-  is-peripheral = false
+  print "Iteration $iteration"
   adapter := Adapter
   central := adapter.central
 
@@ -97,7 +105,8 @@ main-central --iteration/int:
     expect-equals 1 service-list.size
   else if iteration == 1:
     all-services := remote-device.discover-services
-    expect-equals 2 all-services.size
+    // The device might expose other services. Specifically, 1800 (Generic Access) and 1801 (Generic Attribute).
+    expect all-services.size >= 2
 
   services := remote-device.discovered-services
 
@@ -133,14 +142,9 @@ main-central --iteration/int:
   5.repeat:
     write-only-with-response.write #[counter++]
 
-  adapter.close
-
-main-central-no-other:
-  is-peripheral = false
-  adapter := Adapter
-  central := adapter.central
-
-  expect-throw "No device found with service $SERVICE-TEST":
-     find-device-with-service central SERVICE-TEST
-
-  adapter.close
+  if iteration == 0:
+    // In the first iteration close correctly down.
+    // In the second one, we let the resource-group do the clean up.
+    print "closing things down"
+    adapter.close
+  print "end of iteration"

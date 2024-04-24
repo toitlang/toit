@@ -305,6 +305,8 @@ class BleDescriptorResource: public BleReadWriteElement, public DescriptorList::
     , characteristic_(characteristic)
     , properties_(properties) {}
 
+  ~BleDescriptorResource() override;
+
   BleServiceResource* service() override;
   uint8 properties() const { return properties_; }
 
@@ -348,11 +350,10 @@ class BleCharacteristicResource :
       , properties_(properties)
       , definition_handle_(definition_handle) {}
 
-  ~BleCharacteristicResource() override {
-    while (!subscriptions_.is_empty()) {
-      auto subscription = subscriptions_.remove_first();
-      delete subscription;
-    }
+  ~BleCharacteristicResource() override;
+
+  void remove_descriptor(BleDescriptorResource* descriptor) {
+    descriptors_.unlink(descriptor);
   }
 
   BleServiceResource* service() override { return service_; }
@@ -442,10 +443,7 @@ class BleServiceResource:
     peripheral_manager_ = peripheral_manager;
   }
 
-  ~BleServiceResource() override {
-    if (!deployed()) return;
-    dispose_gatt_svcs(gatt_svcs_);
-  }
+  ~BleServiceResource() override;
 
   BleCharacteristicResource* get_or_create_characteristics_resource(
       ble_uuid_any_t uuid, uint16 properties, uint16 def_handle,
@@ -460,8 +458,14 @@ class BleServiceResource:
   BlePeripheralManagerResource* peripheral_manager() const { return peripheral_manager_; }
   CharacteristicResourceList& characteristics() { return characteristics_; }
 
+  void remove_characteristic(BleCharacteristicResource* characteristic) {
+    characteristics_.unlink(characteristic);
+  }
+
   void clear_characteristics() {
-    while (auto characteristic = characteristics_.remove_first()) {
+    while (!characteristics_.is_empty()) {
+      auto characteristic = characteristics_.first();
+      // Unregistering the characteristic will remove it from the list.
       group()->unregister_resource(characteristic);
     }
   }
@@ -575,12 +579,26 @@ class ServiceContainer : public BleErrorCapableResource {
   ServiceContainer(BleResourceGroup* group, Kind kind)
       : BleErrorCapableResource(group, kind) {}
 
+  ~ServiceContainer() override {
+    while (!services_.is_empty()) {
+      auto service = services_.first();
+      // Unregistering the service will remove it from the list.
+      group()->unregister_resource(service);
+    }
+  }
+
+  void remove_service(BleServiceResource* service) {
+    services_.unlink(service);
+  }
+
   virtual T* type() = 0;
   BleServiceResource* get_or_create_service_resource(ble_uuid_any_t uuid, uint16 start, uint16 end);
   ServiceResourceList& services() { return services_; }
 
   void clear_services() {
-    while (auto service = services_.remove_first()) {
+    while (!services_.is_empty()) {
+      auto service = services_.first();
+      // Unregistering the service will remove it from the list.
       group()->unregister_resource(service);
     }
   }
@@ -627,8 +645,12 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   explicit BleRemoteDeviceResource(BleResourceGroup* group, bool secure_connection)
     : ServiceContainer(group, REMOTE_DEVICE)
     , handle_(kInvalidHandle)
-    , secure_connection_(secure_connection) {}
+    , secure_connection_(secure_connection)
+    , connected_(false) {}
 
+  ~BleRemoteDeviceResource() override {
+    disconnect();
+  }
   BleRemoteDeviceResource* type() override { return this; }
 
   static int on_event(ble_gap_event* event, void* arg) {
@@ -647,12 +669,29 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   uint16 handle() const { return handle_; }
   void set_handle(uint16 handle) { handle_ = handle; }
 
+  int connect(uint8 own_addr_type, ble_addr_t* addr) {
+    if (connected_) return BLE_ERR_SUCCESS;
+    int err = ble_gap_connect(own_addr_type, addr, 3000, null,
+                              BleRemoteDeviceResource::on_event, this);
+    if (err == BLE_ERR_SUCCESS) {
+      connected_ = true;
+    }
+    return err;
+  }
+
+  void disconnect() {
+    if (connected_) {
+      ble_gap_terminate(handle_, BLE_ERR_REM_USER_CONN_TERM);
+    }
+  }
+
  private:
   void _on_event(ble_gap_event* event);
   void _on_service_discovered(const ble_gatt_error* error, const ble_gatt_svc* service);
 
   uint16 handle_;
   bool secure_connection_;
+  bool connected_;
 };
 
 Object* nimble_error_code_to_string(Process* process, int error_code, bool host) {
@@ -759,8 +798,35 @@ uint32_t BleResourceGroup::on_event(Resource* resource, word data, uint32_t stat
   return state;
 }
 
+BleDescriptorResource::~BleDescriptorResource() {
+  characteristic_->remove_descriptor(this);
+}
+
 BleServiceResource* BleDescriptorResource::service() {
   return characteristic_->service();
+}
+
+BleCharacteristicResource::~BleCharacteristicResource() {
+  while (!subscriptions_.is_empty()) {
+    auto subscription = subscriptions_.remove_first();
+    delete subscription;
+  }
+  while (!descriptors_.is_empty()) {
+    auto descriptor = descriptors_.first();
+    // Unregistering the descriptor will remove it from the list.
+    group()->unregister_resource(descriptor);
+  }
+  service_->remove_characteristic(this);
+}
+
+BleServiceResource::~BleServiceResource() {
+  clear_characteristics();
+  if (deployed()) dispose_gatt_svcs(gatt_svcs_);
+  if (peripheral_manager_ != null) {
+    peripheral_manager_->remove_service(this);
+  } else {
+    device_->remove_service(this);
+  }
 }
 
 template<typename T>
@@ -769,7 +835,7 @@ ServiceContainer<T>::get_or_create_service_resource(ble_uuid_any_t uuid, uint16 
   for (auto service : services_) {
     if (uuid_equals(uuid, service->uuid())) return service;
   }
-  auto service = _new BleServiceResource(group(),type(), uuid, start,end);
+  auto service = _new BleServiceResource(group(), type(), uuid, start,end);
   if (!service) return null;
   group()->register_resource(service);
   services_.append(service);
@@ -1492,8 +1558,7 @@ PRIMITIVE(connect) {
   auto device = _new BleRemoteDeviceResource(central_manager->group(), secure_connection);
   if (!device) FAIL(MALLOC_FAILED);
 
-  err = ble_gap_connect(own_addr_type, &addr, 3000, null,
-                        BleRemoteDeviceResource::on_event, device);
+  err = device->connect(own_addr_type, &addr);
   if (err != BLE_ERR_SUCCESS) {
     delete device;
     return nimble_stack_error(process, err);
@@ -1506,7 +1571,7 @@ PRIMITIVE(connect) {
 
 PRIMITIVE(disconnect) {
   ARGS(BleRemoteDeviceResource, device)
-  ble_gap_terminate(device->handle(), BLE_ERR_REM_USER_CONN_TERM);
+  device->disconnect();
   return process->null_object();
 }
 

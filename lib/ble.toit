@@ -487,10 +487,10 @@ class RemoteDevice extends Resource_:
     services := discovered-services_
     discovered-services_ = []
     services.do: | service/RemoteService | service.close
-    manager.remove-device_ this
     ble-disconnect_ resource_
     if not force:
       resource-state_.wait-for-state DISCONNECTED-EVENT_
+    manager.remove-device_ this
     close_
 
   mtu -> int:
@@ -613,8 +613,23 @@ class LocalService extends Resource_ implements Attribute:
     does not necessarily mean that the write operation has been processed by the client.
 
   See $add-characteristic.
+
+  Deprecated. Use $(add-write-only-characteristic uuid --requires-response) instead.
   */
-  add-write-only-characteristic uuid/BleUuid requires-response/bool=false -> LocalCharacteristic:
+  add-write-only-characteristic uuid/BleUuid requires-response/bool -> LocalCharacteristic:
+    return add-write-only-characteristic uuid --requires-response=requires-response
+
+  /**
+  Convenience method to add a write-only characteristic with the given $uuid.
+
+  If $requires-response is true, the client must acknowledge the write operation. Any
+    $RemoteCharacteristic.write operation will block until the client acknowledges the write.
+    The acknowledgment is frequently done by the BLE stack. An acknowledgment thus
+    does not necessarily mean that the write operation has been processed by the client.
+
+  See $add-characteristic.
+  */
+  add-write-only-characteristic uuid/BleUuid --requires-response/bool=false -> LocalCharacteristic:
     properties := requires-response
       ? CHARACTERISTIC-PROPERTY-WRITE
       : CHARACTERISTIC-PROPERTY-WRITE-WITHOUT-RESPONSE
@@ -1153,7 +1168,8 @@ class RemoteReadWriteElement_ extends Resource_:
       remote-service_.device.resource-state_.clear-state READY-TO-SEND-WITHOUT-RESPONSE-EVENT_
       resource-state_.clear-state VALUE-WRITE-FAILED-EVENT_ | VALUE-WRITE-SUCCEEDED-EVENT_
       result := ble-write-value_ resource_ value expects-response
-      if result == 0: return // Write without response success.
+      if result == 0:
+        return // Write without response success.
       if result == 1: // Write with response.
         state := resource-state_.wait-for-state VALUE-WRITE-FAILED-EVENT_ | VALUE-WRITE-SUCCEEDED-EVENT_
         if state & VALUE-WRITE-FAILED-EVENT_ != 0: throw-error_
