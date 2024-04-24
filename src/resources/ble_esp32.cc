@@ -1825,6 +1825,12 @@ PRIMITIVE(write_value) {
   return Smi::from(with_response ? 1 : 0);
 }
 
+PRIMITIVE(handle) {
+  ARGS(Resource, resource)
+  auto element = reinterpret_cast<BleReadWriteElement*>(resource);
+  return Smi::from(element->handle());
+}
+
 /* Enables or disables notifications/indications for the characteristic value
  * of $characteristic. If $characteristic allows both, notifications will be used.
 */

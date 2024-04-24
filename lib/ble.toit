@@ -208,6 +208,15 @@ class RemoteDescriptor extends RemoteReadWriteElement_ implements Attribute:
   write value/ByteArray -> none:
     write_ value --expects-response=false
 
+  /**
+  The handle of the descriptor.
+
+  Typically, users do not need to access the handle directly. It may be useful
+    for debugging purposes, but it is not required for normal operation.
+  */
+  handle -> int:
+    return ble-handle_ resource_
+
 /**
 A remote characteristic belonging to a remote service.
 */
@@ -341,6 +350,16 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
   */
   mtu -> int:
     return ble-get-att-mtu_ resource_
+
+  /**
+  The handle of the characteristic.
+
+  Typically, users do not need to access the handle directly. It may be useful
+    for debugging purposes, but it is not required for normal operation.
+  */
+  handle -> int:
+    return ble-handle_ resource_
+
 
 /**
 A service connected to a remote device through a client.
@@ -770,6 +789,15 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
     if service.deployed_: throw "Service is already deployed"
     return LocalDescriptor this uuid properties permissions value
 
+  /**
+  The handle of the characteristic.
+
+  Typically, users do not need to access the handle directly. It may be useful
+    for debugging purposes, but it is not required for normal operation.
+  */
+  handle -> int:
+    return ble-handle_ resource_
+
 
 class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
   uuid/BleUuid
@@ -798,6 +826,14 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
       throw "Invalid permission"
     return read_
 
+  /**
+  The handle of the descriptor.
+
+  Typically, users do not need to access the handle directly. It may be useful
+    for debugging purposes, but it is not required for normal operation.
+  */
+  handle -> int:
+    return ble-handle_ resource_
 
 /**
 The manager for creating client connections.
@@ -1263,6 +1299,9 @@ ble-write-value_ characteristic value with-response:
 
 ble-write-value__ characteristic value with-response:
   #primitive.ble.write-value
+
+ble-handle_ resource:
+  #primitive.ble.handle
 
 ble-set-characteristic-notify_ characteristic value:
   #primitive.ble.set-characteristic-notify
