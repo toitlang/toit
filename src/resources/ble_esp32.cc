@@ -465,6 +465,7 @@ class BleServiceResource:
   void clear_characteristics() {
     while (!characteristics_.is_empty()) {
       auto characteristic = characteristics_.first();
+      // Unregistering the characteristic will remove it from the list.
       group()->unregister_resource(characteristic);
     }
   }
@@ -581,6 +582,7 @@ class ServiceContainer : public BleErrorCapableResource {
   ~ServiceContainer() override {
     while (!services_.is_empty()) {
       auto service = services_.first();
+      // Unregistering the service will remove it from the list.
       group()->unregister_resource(service);
     }
   }
@@ -596,6 +598,7 @@ class ServiceContainer : public BleErrorCapableResource {
   void clear_services() {
     while (!services_.is_empty()) {
       auto service = services_.first();
+      // Unregistering the service will remove it from the list.
       group()->unregister_resource(service);
     }
   }
@@ -667,6 +670,7 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   void set_handle(uint16 handle) { handle_ = handle; }
 
   int connect(uint8 own_addr_type, ble_addr_t* addr) {
+    if (connected_) return BLE_ERR_SUCCESS;
     int err = ble_gap_connect(own_addr_type, addr, 3000, null,
                               BleRemoteDeviceResource::on_event, this);
     if (err == BLE_ERR_SUCCESS) {
@@ -809,6 +813,7 @@ BleCharacteristicResource::~BleCharacteristicResource() {
   }
   while (!descriptors_.is_empty()) {
     auto descriptor = descriptors_.first();
+    // Unregistering the descriptor will remove it from the list.
     group()->unregister_resource(descriptor);
   }
   service_->remove_characteristic(this);
