@@ -102,7 +102,14 @@ void Interpreter::prepare_task(Method entry, Instance* code) {
   push(process_->program()->frame_marker());
 }
 
-Object** Interpreter::gc(Object** sp, bool malloc_failed, int attempts, bool force_cross_process, const char* reason, int parameter1, int parameter2) {
+Object** Interpreter::gc(
+    Object** sp,
+    bool malloc_failed,
+    int attempts,
+    bool force_cross_process,
+    const char* reason,
+    int parameter1,
+    int parameter2) {
   ASSERT(attempts >= 1 && attempts <= 3);  // Allocation attempts.
   if (attempts == 3) {
     static const int BUFFER_SIZE = 50;
