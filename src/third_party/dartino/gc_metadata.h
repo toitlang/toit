@@ -242,13 +242,26 @@ class GcMetadata {
     Destination next_chunk() {
       ChunkListIterator new_it = it_;
       ++new_it;
-      return Destination(new_it, new_it->start(), new_it->usable_end());
+      return Destination(new_it, new_it->compaction_top(), new_it->usable_end());
+    }
+
+    bool has_prev_chunk() {
+      Space* owner = chunk()->owner();
+      ChunkListIterator new_it = it_;
+      --new_it;
+      return new_it != owner->chunk_list_end();
+    }
+
+    Destination prev_chunk() {
+      ChunkListIterator new_it = it_;
+      --new_it;
+      return Destination(new_it, new_it->compaction_top(), new_it->usable_end());
     }
 
     Destination next_sweeping_chunk() {
       ChunkListIterator new_it = it_;
       ++new_it;
-      return Destination(new_it, new_it->start(), new_it->compaction_top());
+      return Destination(new_it, new_it->compaction_top(), new_it->compaction_top());
     }
 
     uword address;
@@ -486,6 +499,7 @@ class GcMetadata {
   static uword end_of_destination_of_last_live_object_starting_before(
       Program* program, uword line, uword limit, uword* src_end_return = null);
   static uword last_line_that_fits(Program* program, uword line, uword dest_limit);
+  static uword try_to_skip_large_object(Program* program, Chunk* src_chunk, Destination dest);
 
   // Heap metadata (remembered set etc.).
   uword lowest_address_;

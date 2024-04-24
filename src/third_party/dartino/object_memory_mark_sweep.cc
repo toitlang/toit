@@ -199,6 +199,7 @@ word OldSpace::compute_compaction_destinations() {
   auto it = chunk_list_.begin();
   GcMetadata::Destination dest(it, it->start(), it->usable_end());
   for (auto chunk : chunk_list_) {
+    chunk->set_compaction_top(chunk->start());
     GcMetadata::Destination new_dest = GcMetadata::calculate_object_destinations(program_, chunk, dest);
     if (new_dest.address == dest.address) {
       // The chunk was completely empty, so we can free it even without

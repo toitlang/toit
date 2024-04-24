@@ -173,7 +173,7 @@ static const uword LINE_SIZE = 32 * sizeof(word);
 GcMetadata::Destination GcMetadata::calculate_object_destinations(
     Program* program, Chunk* src_chunk, GcMetadata::Destination dest) {
   uword src_start = src_chunk->start();
-  uword src_limit = src_chunk->end();
+  uword src_limit = try_to_skip_large_object(program, src_chunk, dest);
   uword src = src_chunk->start();
   // Gets rid of some edge cases.
   *starts_for(src) = src;
@@ -286,6 +286,85 @@ uword GcMetadata::last_line_that_fits(Program* program, uword line, uword dest_l
   // The last line did not fit, so return the previous one.
   ASSERT(last_line > line);
   return last_line - LINE_SIZE;
+}
+
+// There is a tendency for the start of a chunk to be a large object, and the
+// previous chunk to have free space that is not used, but is not quite big
+// enough.  This function tries to detect that case and move some smaller
+// objects from the end of this chunk to the end of the previous chunk.  In
+// theory we could move the smaller objects to any previous chunk without
+// violating the objects-only-move-downwards rule.
+uword GcMetadata::try_to_skip_large_object(Program* program, Chunk* src_chunk, GcMetadata::Destination dest) {
+  // If compaction is working fine and objects are moving then we don't need
+  // to do anything.
+  if (dest.address != dest.chunk()->start()) return src_chunk->end();
+  while (dest.has_prev_chunk()) {
+    dest = dest.prev_chunk();
+    uword available_space = dest.limit - dest.address;
+    if (available_space > TOIT_PAGE_SIZE / 4) {
+      return fit_as_much_as_possible(program, src_chunk, dest, available_space);
+    }
+    // The main loop only looks at the metadata, not the objects, for speed.
+    ASSERT(dest.address <= dest.limit && src <= src_limit);
+    while (dest.address <= dest.limit) {
+
+    }
+  }
+  return src_chunk->end();
+}
+
+uword GcMetadata::fit_as_much_as_possible(Program* program, Chunk* src_chunk, GcMetadata::Destination dest, uword available_space) {
+  // We found a previous chunk with a lot of waste.  Let's scan the end
+  // of the current source chunk for live objects that might fit there.
+  // We only use the liveness bits for this, not the actual objects.
+  uword needed_space = 0;
+  uword line = src_chunk->end() - LINE_SIZE;
+  uint32* mark_bits = mark_bits_for(line);
+  uword chunk_start = src_chunk->start();
+  while (needed_space < available_space && line >= chunk_start) {
+    needed_space += Utils::popcount(*mark_bits) << WORD_SHIFT;
+    mark_bits--;
+    line -= LINE_SIZE;
+  }
+  // Does the whole of the current chunk fit in a previous chunk.  This
+  // might happen if the chunks are not all the same size.
+  if (line < chunk_start) {
+    return src_chunk->end();  // TODO: We can do better.
+  }
+  ASSERT(line >= chunk_start);
+  // Step forwards to find an object start and a line that fits.
+  uword object_start = 0;
+  if (line > chunk_start && *starts_for(line - LINE_SIZE) != NO_OBJECT_START) {
+    object_start = object_address_from_start(line - LINE_SIZE, *starts_for(line - LINE_SIZE));
+  }
+  while (needed_space > available_space || object_start != 0) {
+    uint8 start = *starts_for(line);
+    if (start != NO_OBJECT_START) {
+      object_start = object_address_from_start(line, start);
+    }
+    needed_space -= Utils::popcount(*mark_bits) << WORD_SHIFT;
+    line += LINE_SIZE;
+    mark_bits++;
+  }
+  if (line == src_chunk->end()) {
+    // There was a large unsplittable object at the end, so nothing could
+    // go in the earlier chunk.
+    return src_chunk->end();
+  }
+  ASSERT(needed_space <= available_space);
+  ASSERT(object_start != 0);
+  // Everything from here to the end of the source chunk can be moved to the
+  // wasted space at the end of an earlier chunk.  Since objects can cross
+  // line boundaries there are some edge cases to consider.  Start by finding
+  // the first object that starts in the line.
+  while (object_start < line) {
+    uword size = HeapObject::from_address(object_start)->size(program);
+    object_start += size;
+  }
+  int words_before_first_object = (object_start - line) >> WORD_SHIFT;
+  uint32 mask = ~(0xffffffff << words_before_first_object);
+  int live_bytes_before_first_object = Utils::popcount(mark_bits_for(line) & mask) << WORD_SHIFT;
+  needed_space -= live_bytes_before_first_object;
 }
 
 uword GcMetadata::object_address_from_start(uword card, uint8 start) {
