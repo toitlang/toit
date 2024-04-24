@@ -386,11 +386,14 @@ class BleCharacteristicResource :
   uint16 properties() const { return properties_;  }
   uint16 definition_handle() const { return definition_handle_; }
 
-  BleDescriptorResource* get_or_create_descriptor(ble_uuid_any_t uuid, uint16_t handle,
-                                                  uint8 properties, bool can_create = false);
+  BleDescriptorResource* get_or_create_descriptor(const BleCallbackScope* scope,
+                                                  ble_uuid_any_t uuid, uint16_t handle,
+                                                  uint8 properties);
 
-  BleDescriptorResource* find_descriptor(ble_uuid_any_t& uuid) {
-    return get_or_create_descriptor(uuid, 0, 0, false);
+  BleDescriptorResource* get_descriptor(ble_uuid_any_t uuid, uint16_t handle, uint8 properties);
+
+  BleDescriptorResource* get_descriptor(ble_uuid_any_t& uuid) {
+    return get_descriptor(uuid, 0, 0);
   }
 
   // Finds the Client Characteristic Configuration Descriptor.
@@ -398,14 +401,14 @@ class BleCharacteristicResource :
     ble_uuid_any_t uuid;
     uuid.u16.u.type = BLE_UUID_TYPE_16;
     uuid.u16.value = BLE_GATT_DSC_CLT_CFG_UUID16; // UUID for Client Characteristic Configuration Descriptor.
-    return find_descriptor(uuid);
+    return get_descriptor(uuid);
   }
 
   DescriptorList& descriptors() {
     return descriptors_;
   }
 
-  bool update_subscription_status(uint8_t indicate, uint8_t notify, uint16_t conn_handle);
+  bool update_subscription_status(const BleCallbackScope& scope, uint8_t indicate, uint8_t notify, uint16_t conn_handle);
   SubscriptionList& subscriptions() { return subscriptions_; }
 
   static int on_write_response(uint16_t conn_handle,
@@ -623,7 +626,9 @@ class ServiceContainer : public BleErrorCapableResource {
   }
 
   virtual T* type() = 0;
-  BleServiceResource* get_or_create_service_resource(ble_uuid_any_t uuid, uint16 start, uint16 end);
+  BleServiceResource* get_service_resource(ble_uuid_any_t uuid, uint16 start, uint16 end);
+  BleServiceResource* get_or_create_service_resource(const BleCallbackScope* scope,
+                                                     ble_uuid_any_t uuid, uint16 start, uint16 end);
   ServiceResourceList& services() { return services_; }
 
   void clear_services() {
@@ -865,11 +870,27 @@ BleServiceResource::~BleServiceResource() {
 
 template<typename T>
 BleServiceResource*
-ServiceContainer<T>::get_or_create_service_resource(ble_uuid_any_t uuid, uint16 start, uint16 end) {
+ServiceContainer<T>::get_service_resource(ble_uuid_any_t uuid, uint16 start, uint16 end) {
   for (auto service : services_) {
     if (uuid_equals(uuid, service->uuid())) return service;
   }
-  auto service = _new BleServiceResource(group(), type(), uuid, start,end);
+  return null;
+}
+
+template<typename T>
+BleServiceResource*
+ServiceContainer<T>::get_or_create_service_resource(const BleCallbackScope* scope,
+                                                    ble_uuid_any_t uuid, uint16 start, uint16 end) {
+  auto service = get_service_resource(uuid, start, end);
+  if (service) return service;
+  service = _new BleServiceResource(group(), type(), uuid, start,end);
+  if (!service && scope) {
+    // Since this method is called from the BLE event handler and there is no
+    // toit code monitoring the interaction, we resort to calling gc by hand to
+    // try to recover on OOM.
+    scope->gc();
+    service = _new BleServiceResource(group(), type(), uuid, start,end);
+  }
   if (!service) return null;
   group()->register_resource(service);
   services_.append(service);
@@ -880,12 +901,14 @@ void
 BleServiceResource::_on_characteristic_discovered(const BleCallbackScope& scope, const struct ble_gatt_error* error, const struct ble_gatt_chr* chr) {
   switch (error->status) {
     case 0: {
-      auto ble_characteristic =
-          get_or_create_characteristics_resource(
-              chr->uuid, chr->properties, chr->def_handle,
-              chr->val_handle);
-      if (!ble_characteristic) {
-        set_malloc_error(true);
+      for (int i = 0; i < 2; i++) {
+        auto ble_characteristic =
+            get_or_create_characteristics_resource(
+                chr->uuid, chr->properties, chr->def_handle,
+                chr->val_handle);
+        if (!ble_characteristic) {
+          set_malloc_error(true);
+        }
       }
       break;
     }
@@ -935,9 +958,16 @@ void BleCentralManagerResource::_on_discovery(const BleCallbackScope& scope, ble
       if (event->disc.length_data > 0) {
         data = unvoid_cast<uint8*>(malloc(event->disc.length_data));
         if (!data) {
-          set_malloc_error(true);
-          BleEventSource::instance()->on_event(this, kBleMallocFailed);
-          return;
+          // Since this method is called from the BLE event handler and there is no
+          // toit code monitoring the interaction, we resort to calling gc by hand to
+          // try to recover on OOM.
+          scope.gc();
+          data = unvoid_cast<uint8*>(malloc(event->disc.length_data));
+          if (!data) {
+            set_malloc_error(true);
+            BleEventSource::instance()->on_event(this, kBleMallocFailed);
+            return;
+          }
         }
         memmove(data, event->disc.data, event->disc.length_data);
         data_length = event->disc.length_data;
@@ -947,10 +977,16 @@ void BleCentralManagerResource::_on_discovery(const BleCallbackScope& scope, ble
           event->disc.addr, event->disc.rssi, data, data_length, event->disc.event_type);
 
       if (!discovered_peripheral) {
-        if (data) free(data);
-        set_malloc_error(true);
-        BleEventSource::instance()->on_event(this, kBleMallocFailed);
-        return;
+        // Same as for the data above: do a GC on the BLE thread.
+        scope.gc();
+        discovered_peripheral = _new DiscoveredPeripheral(
+            event->disc.addr, event->disc.rssi, data, data_length, event->disc.event_type);
+        if (!discovered_peripheral) {
+          if (data) free(data);
+          set_malloc_error(true);
+          BleEventSource::instance()->on_event(this, kBleMallocFailed);
+          return;
+        }
       }
 
       newly_discovered_peripherals_.append(discovered_peripheral);
@@ -1008,7 +1044,7 @@ void BleRemoteDeviceResource::_on_event(const BleCallbackScope& scope, ble_gap_e
 void BleRemoteDeviceResource::_on_service_discovered(const BleCallbackScope& scope, const ble_gatt_error* error, const ble_gatt_svc* service) {
   switch (error->status) {
     case 0: {
-      auto ble_service = get_or_create_service_resource(service->uuid, service->start_handle, service->end_handle);
+      auto ble_service = get_or_create_service_resource(&scope, service->uuid, service->start_handle, service->end_handle);
       if (!ble_service) {
         set_malloc_error(true);
       }
@@ -1034,14 +1070,26 @@ void BleRemoteDeviceResource::_on_service_discovered(const BleCallbackScope& sco
   }
 }
 
-BleDescriptorResource* BleCharacteristicResource::get_or_create_descriptor(
-    ble_uuid_any_t uuid, uint16_t handle, uint8 properties, bool can_create) {
+BleDescriptorResource* BleCharacteristicResource::get_descriptor(ble_uuid_any_t uuid, uint16_t handle, uint8 properties) {
   for (auto descriptor : descriptors_) {
     if (uuid_equals(uuid, descriptor->uuid())) return descriptor;
   }
-  if (!can_create) return null;
+  return null;
+}
 
-  auto descriptor = _new BleDescriptorResource(group(), this, uuid, handle, properties);
+BleDescriptorResource* BleCharacteristicResource::get_or_create_descriptor(const BleCallbackScope* scope,
+                                                                           ble_uuid_any_t uuid, uint16_t handle, uint8 properties) {
+  auto descriptor = get_descriptor(uuid, handle, properties);
+  if (descriptor) return descriptor;
+
+  descriptor = _new BleDescriptorResource(group(), this, uuid, handle, properties);
+  if (!descriptor && scope) {
+    // Since this method is called from the BLE event handler and there is no
+    // toit code monitoring the interaction, we resort to calling gc by hand to
+    // try to recover on OOM.
+    scope->gc();
+    descriptor = _new BleDescriptorResource(group(), this, uuid, handle, properties);
+  }
   if (!descriptor) return null;
   group()->register_resource(descriptor);
   descriptors_.append(descriptor);
@@ -1158,7 +1206,7 @@ BleServiceResource::_on_descriptor_discovered(const BleCallbackScope& scope,
         characteristic = current;
       }
       if (dsc->handle <= characteristic->handle()) return;
-      auto descriptor = characteristic->get_or_create_descriptor(dsc->uuid, dsc->handle, 0, true);
+      auto descriptor = characteristic->get_or_create_descriptor(&scope, dsc->uuid, dsc->handle, 0);
       if (!descriptor) {
         set_malloc_error(true);
       }
@@ -1189,7 +1237,10 @@ BleServiceResource::_on_descriptor_discovered(const BleCallbackScope& scope,
   }
 }
 
-bool BleCharacteristicResource::update_subscription_status(uint8_t indicate, uint8_t notify, uint16_t conn_handle) {
+bool BleCharacteristicResource::update_subscription_status(const BleCallbackScope& scope,
+                                                           uint8_t indicate,
+                                                           uint8_t notify,
+                                                           uint16_t conn_handle) {
   for (auto subscription : subscriptions_) {
     if (subscription->conn_handle() == conn_handle) {
       if (!indicate && !notify) {
@@ -1209,7 +1260,7 @@ bool BleCharacteristicResource::update_subscription_status(uint8_t indicate, uin
     // Since this method is called from the BLE event handler and there is no
     // toit code monitoring the interaction, we resort to calling gc by hand to
     // try to recover on OOM.
-    VM::current()->scheduler()->gc(null, /* malloc_failed = */ true, /* try_hard = */ true);
+    scope.gc();
     subscription = _new Subscription(indicate, notify, conn_handle);
     if (!subscription) return false;
   }
@@ -1256,10 +1307,10 @@ int BlePeripheralManagerResource::_on_gap(const BleCallbackScope& scope, struct 
       for (auto service : services()) {
         for (auto characteristic : service->characteristics()) {
           if (characteristic->handle() == event->subscribe.attr_handle) {
-            bool success = characteristic->update_subscription_status(
-                event->subscribe.cur_indicate,
-                event->subscribe.cur_notify,
-                event->subscribe.conn_handle);
+            bool success = characteristic->update_subscription_status(scope,
+                                                                      event->subscribe.cur_indicate,
+                                                                      event->subscribe.cur_notify,
+                                                                      event->subscribe.conn_handle);
             return success ? BLE_ERR_SUCCESS : BLE_ERR_MEM_CAPACITY;
           }
         }
@@ -2089,14 +2140,17 @@ PRIMITIVE(add_service) {
 
   Locker locker(BleResourceGroup::instance()->mutex());
 
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) FAIL(ALLOCATION_FAILED);
   ble_uuid_any_t ble_uuid = uuid_from_blob(uuid);
 
+  auto existing = peripheral_manager->get_service_resource(ble_uuid, 0, 0);
+  if (existing) FAIL(INVALID_ARGUMENT);
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
   BleServiceResource* service_resource =
-      peripheral_manager->get_or_create_service_resource(ble_uuid, 0, 0);
+      peripheral_manager->get_or_create_service_resource(null, ble_uuid, 0, 0);
   if (!service_resource) FAIL(MALLOC_FAILED);
-  if (service_resource->deployed()) FAIL(INVALID_ARGUMENT);
 
   proxy->set_external_address(service_resource);
   return proxy;
@@ -2200,7 +2254,7 @@ PRIMITIVE(add_descriptor) {
   if (permissions & 0x08) flags |= BLE_ATT_F_WRITE_ENC; // _ENC = Encrypted.
 
   BleDescriptorResource* descriptor =
-      characteristic->get_or_create_descriptor(ble_uuid, 0, flags, true);
+      characteristic->get_or_create_descriptor(null, ble_uuid, 0, flags);
   if (!descriptor) {
     if (om != null) os_mbuf_free(om);
     FAIL(MALLOC_FAILED);
@@ -2448,20 +2502,6 @@ PRIMITIVE(get_error) {
   if (err_resource->error() == 0) FAIL(ERROR);
 
   return nimble_error_code_to_string(process, err_resource->error(), true);
-}
-
-PRIMITIVE(gc) {
-  ARGS(Resource, resource)
-
-  Locker locker(BleResourceGroup::instance()->mutex());
-
-  auto err_resource = reinterpret_cast<BleErrorCapableResource*>(resource);
-  if (err_resource->has_malloc_error()) {
-    err_resource->set_malloc_error(false);
-    FAIL(CROSS_PROCESS_GC);
-  }
-
-  return process->null_object();
 }
 
 PRIMITIVE(read_request_reply) {

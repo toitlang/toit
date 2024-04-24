@@ -96,6 +96,6 @@ main-central:
 
   // TODO(florian): we currently need to wait for the underlying system to flush the data.
   // Either the `write` or the `close` should do that for us.
-  sleep --ms=300
+  sleep --ms=1_000
   print "all sent"
   adapter.close
