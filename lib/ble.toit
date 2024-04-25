@@ -1182,15 +1182,19 @@ class Resource_:
   is-closed -> bool:
     return resource_ == null
 
-  throw-error_:
-    ble-get-error_ resource_
+  throw-error_ --is-oom/bool=false:
+    try:
+      ble-get-error_ resource_ is-oom
+    finally:
+      ble-clear-error_ resource_ is-oom
 
   wait-for-state-with-oom_ bits -> int:
     state := resource-state_.wait-for-state bits | MALLOC-FAILED_
     if state & MALLOC-FAILED_ == 0: return state
     // We encountered an OOM.
+    resource-state_.clear-state MALLOC-FAILED_
     // Use 'throw-error_' to throw the error and clear it from the resource.
-    throw-error_
+    throw-error_ --is-oom
     unreachable
 
 class RemoteReadWriteElement_ extends Resource_:
@@ -1359,8 +1363,11 @@ ble-get-att-mtu_ resource:
 ble-set-preferred-mtu_ mtu:
   #primitive.ble.set-preferred-mtu
 
-ble-get-error_ characteristic:
+ble-get-error_ characteristic is-oom:
   #primitive.ble.get-error
+
+ble-clear-error_ characteristic is-oom:
+  #primitive.ble.clear-error
 
 ble-platform-requires-uuid-as-byte-array_:
   return platform == system.PLATFORM-FREERTOS

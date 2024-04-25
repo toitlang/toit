@@ -2500,19 +2500,35 @@ PRIMITIVE(set_preferred_mtu) {
 }
 
 PRIMITIVE(get_error) {
-  ARGS(Resource, resource)
+  ARGS(Resource, resource, bool, is_oom)
 
   Locker locker(BleResourceGroup::instance()->mutex());
 
   auto err_resource = reinterpret_cast<BleErrorCapableResource*>(resource);
-  if (err_resource->has_malloc_error()) {
-    err_resource->set_malloc_error(false);
+
+  if (is_oom) {
+    if (!err_resource->has_malloc_error()) FAIL(ERROR);
     FAIL(MALLOC_FAILED);
   }
   if (err_resource->error() == 0) FAIL(ERROR);
-  auto result = nimble_error_code_to_string(process, err_resource->error(), true);
-  err_resource->set_error(0);
-  return result;
+  return nimble_error_code_to_string(process, err_resource->error(), true);
+}
+
+PRIMITIVE(clear_error) {
+  ARGS(Resource, resource, bool, is_oom)
+
+  Locker locker(BleResourceGroup::instance()->mutex());
+
+  auto err_resource = reinterpret_cast<BleErrorCapableResource*>(resource);
+
+  if (is_oom) {
+    if (!err_resource->has_malloc_error()) FAIL(ERROR);
+    err_resource->set_malloc_error(false);
+  } else {
+    if (err_resource->error() == 0) FAIL(ERROR);
+    err_resource->set_error(0);
+  }
+  return process->null_object();
 }
 
 PRIMITIVE(read_request_reply) {

@@ -5,6 +5,9 @@
 /**
 Exercises the GC while using BLE.
 
+Unfortunately it's almost impossible to trigger the GC in the
+  nimBLE callback this way.
+
 Run `ble3-board1.toit` on board1, first.
 Once that one is running, run `ble3-board2.toit` on board2.
 
@@ -85,6 +88,7 @@ main-peripheral:
   done-characteristic := first-service.add-write-only-characteristic (BleUuid DONE-CHARACTERISTIC-UUID)
 
   peripheral.deploy
+  print "Deployed $UUIDS.size services"
 
   advertisement := AdvertisementData
       --name="Test"
@@ -107,13 +111,13 @@ find-device-with-service central/Central service/BleUuid -> any:
 main-central:
   done := false
 
-  keep-alive := List 10
+  keep-alive := List 100
   task::
+    i := 0
     while not done:
-      ba := ByteArray 300
-      i := random 100
-      if i < 10:
-        keep-alive[i] = ba
+      ba := ByteArray_.external_ 100
+      keep-alive[i % keep-alive.size] = ba
+      ByteArray 10
       yield
 
   adapter := Adapter
