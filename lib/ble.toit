@@ -204,6 +204,9 @@ class RemoteDescriptor extends RemoteReadWriteElement_ implements Attribute:
 
   /**
   Writes the value of the descriptor on the remote device.
+
+  Throws if the $value is greater than the negotiated mtu (see $Adapter.set-preferred-mtu,
+    $RemoteCharacteristic.mtu, and $RemoteDevice.mtu).
   */
   write value/ByteArray -> none:
     write_ value --expects-response=false --no-flush
@@ -350,8 +353,8 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
   /**
   The negotiated mtu on the characteristics.
   On MacOS this is the maximum payload.
-  On ESP32 this is the raw mtu value. Two of these bytes are needed for status information, and the
-    maximum payload on ESP32 is two bytes smaller than this value.
+  On ESP32 this is the raw mtu value. Three of these bytes are needed for the header, and
+    the maximum payload on ESP32 is thus three bytes smaller than this value.
   */
   mtu -> int:
     return ble-get-att-mtu_ resource_

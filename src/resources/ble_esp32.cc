@@ -435,6 +435,8 @@ class BleCharacteristicResource :
     return BLE_ERR_SUCCESS;
   }
 
+  uint16 get_mtu();
+
  private:
   void _on_write_response(const BleCallbackScope& scope, const ble_gatt_error* error, ble_gatt_attr* attr);
   void _on_subscribe_response(const BleCallbackScope& scope, const ble_gatt_error* error, ble_gatt_attr* attr);
@@ -729,6 +731,10 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
     }
   }
 
+  uint16 get_mtu() {
+    return ble_att_mtu(handle());
+  }
+
  private:
   void _on_event(const BleCallbackScope& scope, ble_gap_event* event);
   void _on_service_discovered(const BleCallbackScope& scope, const ble_gatt_error* error, const ble_gatt_svc* service);
@@ -866,6 +872,17 @@ BleCharacteristicResource::~BleCharacteristicResource() {
     group()->unregister_resource(descriptor);
   }
   service_->remove_characteristic(this);
+}
+
+uint16 BleCharacteristicResource::get_mtu() {
+  int min_sub_mtu = -1;
+  for (auto subscription : subscriptions()) {
+    uint16 sub_mtu = ble_att_mtu(subscription->conn_handle());
+    if (min_sub_mtu == -1) min_sub_mtu = sub_mtu;
+    else min_sub_mtu = Utils::min(min_sub_mtu, static_cast<int>(sub_mtu));
+  }
+  if (min_sub_mtu != -1) return min_sub_mtu;
+  return service()->device()->get_mtu();
 }
 
 BleServiceResource::~BleServiceResource() {
@@ -1343,22 +1360,26 @@ int BlePeripheralManagerResource::_on_gap(const BleCallbackScope& scope, struct 
   return BLE_ERR_SUCCESS;
 }
 
-static Object* object_to_mbuf(Process* process, Object* object, os_mbuf** result) {
+static Object* blob_to_mbuf(Process* process, Blob& bytes, os_mbuf** result) {
   *result = null;
-  if (object != process->null_object()) {
-    Blob bytes;
-    if (!object->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
-    if (bytes.length() > 0) {
-      os_mbuf* mbuf = ble_hs_mbuf_from_flat(bytes.address(), bytes.length());
-      // A null response is not an allocation error, as the mbufs are allocated on boot based on configuration settings.
-      // Therefore, a GC will do little to help the situation and will eventually result in the VM thinking it is out of memory.
-      // The mbuf will be freed eventually by the NimBLE stack. The client code will
-      // have to wait and then try again.
-      if (!mbuf) FAIL(QUOTA_EXCEEDED);
-      *result = mbuf;
-    }
+  if (bytes.length() > 0) {
+    os_mbuf* mbuf = ble_hs_mbuf_from_flat(bytes.address(), bytes.length());
+    // A null response is not an allocation error, as the mbufs are allocated on boot based on configuration settings.
+    // Therefore, a GC will do little to help the situation and will eventually result in the VM thinking it is out of memory.
+    // The mbuf will be freed eventually by the NimBLE stack. The client code will
+    // have to wait and then try again.
+    if (!mbuf) FAIL(QUOTA_EXCEEDED);
+    *result = mbuf;
   }
   return null;  // No error.
+}
+
+static Object* object_to_mbuf(Process* process, Object* object, os_mbuf** result) {
+  *result = null;
+  if (object == process->null_object()) return null;
+  Blob bytes;
+  if (!object->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+  return blob_to_mbuf(process, bytes, result);
 }
 
 static void ble_on_sync() {
@@ -1894,14 +1915,23 @@ PRIMITIVE(get_value) {
 }
 
 PRIMITIVE(write_value) {
-  ARGS(BleReadWriteElement, element, Object, value, bool, with_response, bool, flush, bool, allow_retry)
+  ARGS(BleReadWriteElement, element, Blob, value, bool, with_response, bool, flush, bool, allow_retry)
 
   Locker locker(BleResourceGroup::instance()->mutex());
 
   if (!element->service()->device()) FAIL(INVALID_ARGUMENT);
 
+  uint16 mtu;
+  if (element->kind() == BleResource::CHARACTERISTIC) {
+    auto characteristic = static_cast<BleCharacteristicResource*>(element);
+    mtu = characteristic->get_mtu();
+  } else {
+    mtu = element->service()->device()->get_mtu();
+  }
+  if (value.length() + 3 > mtu) FAIL(OUT_OF_RANGE);
+
   os_mbuf* om = null;
-  Object* error = object_to_mbuf(process, value, &om);
+  Object* error = blob_to_mbuf(process, value, &om);
   if (error) return error;
 
   int err;
@@ -2471,13 +2501,7 @@ PRIMITIVE(get_att_mtu) {
     }
     case BleResource::CHARACTERISTIC: {
       auto characteristic = static_cast<BleCharacteristicResource*>(ble_resource);
-      int min_sub_mtu = -1;
-      for (auto subscription : characteristic->subscriptions()) {
-        uint16 sub_mtu = ble_att_mtu(subscription->conn_handle());
-        if (min_sub_mtu == -1) min_sub_mtu = sub_mtu;
-        else min_sub_mtu = Utils::min(min_sub_mtu, static_cast<int>(sub_mtu));
-      }
-      if (min_sub_mtu != -1) mtu = min_sub_mtu;
+      mtu = characteristic->get_mtu();
       break;
     }
     default: {

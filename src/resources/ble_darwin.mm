@@ -1084,11 +1084,10 @@ PRIMITIVE(get_value) {
 }
 
 PRIMITIVE(write_value) {
-  ARGS(BleCharacteristicResource, characteristic, Object, value, bool, with_response, bool, flush, bool, allow_retry);
+  ARGS(BleCharacteristicResource, characteristic, Blob, bytes, bool, with_response, bool, flush, bool, allow_retry);
 
+  // TODO(florian): check that the bytes fit into the MTU.
   // TODO(florian): take 'flush' into account.
-  Blob bytes;
-  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
 
   if (!with_response) {
     if (!characteristic->characteristic().service.peripheral.canSendWriteWithoutResponse)

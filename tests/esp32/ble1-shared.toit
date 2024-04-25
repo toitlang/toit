@@ -28,6 +28,7 @@ READ-ONLY-VALUE ::= #[0x70, 0x17]
 main-peripheral --iteration/int:
   print "Iteration $iteration"
   adapter := Adapter
+  adapter.set-preferred-mtu 527  // Maximum value.
   peripheral := adapter.peripheral
 
   service1 := peripheral.add-service SERVICE-TEST
@@ -75,6 +76,12 @@ main-peripheral --iteration/int:
     data += write-only-with-response.read
   expect-equals #[0, 1, 2, 3, 4] data
 
+  data = write-only.read
+  if iteration == 0:
+    expect data.size < 500
+  else:
+    expect-equals 512 data.size
+
   if iteration == 0:
     // In the first iteration close correctly down.
     // In the second one, we let the resource-group do the clean up.
@@ -94,10 +101,19 @@ find-device-with-service central/Central service/BleUuid -> any:
 main-central --iteration/int:
   print "Iteration $iteration"
   adapter := Adapter
+
+  if iteration == 1:
+    adapter.set-preferred-mtu 527  // Maximum value.
+
   central := adapter.central
 
   address := find-device-with-service central SERVICE-TEST
   remote-device := central.connect address
+
+  if iteration == 0:
+    expect remote-device.mtu < 500
+  else:
+    expect remote-device.mtu == 527
 
   expect-throw "INVALID_ARGUMENT":
     // The ESP32 does not support discovering multiple services at once.
@@ -151,6 +167,18 @@ main-central --iteration/int:
   counter = 0
   5.repeat:
     write-only-with-response.write #[counter++]
+
+  expect-throw "OUT_OF_RANGE":
+    // Check that the MTU is enforced.
+    // Remember that the payload is the MTU minus 3.
+    write-only.write (ByteArray remote-device.mtu - 2)
+
+  max-packet-size/int := ?
+  if iteration == 0:
+    max-packet-size = remote-device.mtu - 3
+  else:
+    max-packet-size = 512
+  write-only.write (ByteArray max-packet-size)
 
   if iteration == 0:
     // In the first iteration close correctly down.
