@@ -321,7 +321,7 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
   discover-descriptors -> List:
     resource-state_.clear-state DESCRIPTORS-DISCOVERED-EVENT_
     ble-discover-descriptors_ resource_
-    state := wait-for-state-with-gc_ DESCRIPTORS-DISCOVERED-EVENT_
+    state := wait-for-state-with-oom_ DESCRIPTORS-DISCOVERED-EVENT_
                                    | DISCONNECTED-EVENT_
                                    | DISCOVERY-OPERATION-FAILED_
     if state & DISCONNECTED-EVENT_ != 0:
@@ -404,7 +404,7 @@ class RemoteService extends Resource_ implements Attribute:
     resource-state_.clear-state CHARACTERISTIS-DISCOVERED-EVENT_
     raw-characteristics-uuids := characteristic-uuids.map: | uuid/BleUuid | uuid.encode-for-platform_
     ble-discover-characteristics_ resource_ (Array_.ensure raw-characteristics-uuids)
-    state := wait-for-state-with-gc_ CHARACTERISTIS-DISCOVERED-EVENT_
+    state := wait-for-state-with-oom_ CHARACTERISTIS-DISCOVERED-EVENT_
                                    | DISCONNECTED-EVENT_
                                    | DISCOVERY-OPERATION-FAILED_
     if state & DISCONNECTED-EVENT_ != 0:
@@ -482,7 +482,7 @@ class RemoteDevice extends Resource_:
     resource-state_.clear-state SERVICES-DISCOVERED-EVENT_
     raw-service-uuids := service-uuids.map: | uuid/BleUuid | uuid.encode-for-platform_
     ble-discover-services_ resource_ (Array_.ensure raw-service-uuids)
-    state := wait-for-state-with-gc_ SERVICES-DISCOVERED-EVENT_
+    state := wait-for-state-with-oom_ SERVICES-DISCOVERED-EVENT_
                                    | DISCONNECTED-EVENT_
                                    | DISCOVERY-OPERATION-FAILED_
     if state & DISCONNECTED-EVENT_ != 0:
@@ -888,7 +888,7 @@ class Central extends Resource_:
     ble-scan-start_ resource_ duration-us
     try:
       while true:
-        state := wait-for-state-with-gc_ DISCOVERY-EVENT_ | COMPLETED-EVENT_
+        state := wait-for-state-with-oom_ DISCOVERY-EVENT_ | COMPLETED-EVENT_
         next := ble-scan-next_ resource_
         if not next:
           resource-state_.clear-state DISCOVERY-EVENT_
@@ -1182,16 +1182,20 @@ class Resource_:
   is-closed -> bool:
     return resource_ == null
 
-  throw-error_:
-    ble-get-error_ resource_
+  throw-error_ --is-oom/bool=false:
+    try:
+      ble-get-error_ resource_ is-oom
+    finally:
+      ble-clear-error_ resource_ is-oom
 
-  wait-for-state-with-gc_ bits:
-    while true:
-      state := resource-state_.wait-for-state bits | MALLOC-FAILED_
-      if state & MALLOC-FAILED_ != 0:
-        ble-gc_ resource_
-      else:
-        return state
+  wait-for-state-with-oom_ bits -> int:
+    state := resource-state_.wait-for-state bits | MALLOC-FAILED_
+    if state & MALLOC-FAILED_ == 0: return state
+    // We encountered an OOM.
+    resource-state_.clear-state MALLOC-FAILED_
+    // Use 'throw-error_' to throw the error and clear it from the resource.
+    throw-error_ --is-oom
+    unreachable
 
 class RemoteReadWriteElement_ extends Resource_:
   remote-service_/RemoteService
@@ -1359,11 +1363,11 @@ ble-get-att-mtu_ resource:
 ble-set-preferred-mtu_ mtu:
   #primitive.ble.set-preferred-mtu
 
-ble-get-error_ characteristic:
+ble-get-error_ characteristic is-oom:
   #primitive.ble.get-error
 
-ble-gc_ resource:
-  #primitive.ble.gc
+ble-clear-error_ characteristic is-oom:
+  #primitive.ble.clear-error
 
 ble-platform-requires-uuid-as-byte-array_:
   return platform == system.PLATFORM-FREERTOS

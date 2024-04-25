@@ -1293,14 +1293,24 @@ PRIMITIVE(set_preferred_mtu) {
 }
 
 PRIMITIVE(get_error) {
-  ARGS(BleCharacteristicResource, characteristic);
+  ARGS(BleCharacteristicResource, characteristic, bool, is_oom);
+  // Darwin should never have OOM errors.
+  if (is_oom) FAIL(ERROR);
   if (characteristic->error() == nil) FAIL(ERROR);
   String* message = process->allocate_string([characteristic->error().localizedDescription UTF8String]);
   if (!message) FAIL(ALLOCATION_FAILED);
 
+  return Primitive::mark_as_error(message);
+}
+
+PRIMITIVE(clear_error) {
+  ARGS(BleCharacteristicResource, characteristic, bool, is_oom);
+  // Darwin should never have OOM errors.
+  if (is_oom) FAIL(ERROR);
+  if (characteristic->error() == nil) FAIL(ERROR);
   characteristic->set_error(nil);
 
-  return Primitive::mark_as_error(message);
+  return process->null_object();
 }
 
 PRIMITIVE(gc) {

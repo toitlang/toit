@@ -368,8 +368,8 @@ namespace toit {
   PRIMITIVE(notify_characteristics_value, 3) \
   PRIMITIVE(get_att_mtu, 1)                  \
   PRIMITIVE(set_preferred_mtu, 1)            \
-  PRIMITIVE(get_error, 1)                    \
-  PRIMITIVE(gc, 1)                           \
+  PRIMITIVE(get_error, 2)                    \
+  PRIMITIVE(clear_error, 2)                  \
   PRIMITIVE(read_request_reply, 2)           \
   PRIMITIVE(get_bonded_peers, 0)             \
 
