@@ -84,7 +84,7 @@ main-central:
   List.chunk-up 0 TEST-BYTE-COUNT PACKET-SIZE: | _ _ chunk-size/int |
     while true:
       exception := catch:
-        write-only.write data[..chunk-size]
+        write-only.write data[..chunk-size] --flush=(total-sent + chunk-size >= TEST-BYTE-COUNT)
         total-sent += chunk-size
         print "Sent $total-sent bytes"
       if not exception: break
@@ -94,8 +94,5 @@ main-central:
       else:
         throw "Unexpected error: $exception"
 
-  // TODO(florian): we currently need to wait for the underlying system to flush the data.
-  // Either the `write` or the `close` should do that for us.
-  sleep --ms=1_000
   print "all sent"
   adapter.close

@@ -206,7 +206,7 @@ class RemoteDescriptor extends RemoteReadWriteElement_ implements Attribute:
   Writes the value of the descriptor on the remote device.
   */
   write value/ByteArray -> none:
-    write_ value --expects-response=false
+    write_ value --expects-response=false --no-flush
 
   /**
   The handle of the descriptor.
@@ -278,13 +278,18 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
 
   /**
   Writes the value of the characteristic on the remote device.
+
+  If $flush is true, waits until the data has been written. This is the default for
+    characteristics that require a response.
   */
-  write value/ByteArray -> none:
+  write value/ByteArray --flush/bool?=null -> none:
     if (properties & (CHARACTERISTIC-PROPERTY-WRITE
                       | CHARACTERISTIC-PROPERTY-WRITE-WITHOUT-RESPONSE)) == 0:
       throw "Characteristic does not support write"
 
-    write_ value --expects-response=(properties & CHARACTERISTIC-PROPERTY-WRITE) != 0
+    if not flush: flush = false
+    expects-response := (properties & CHARACTERISTIC-PROPERTY-WRITE) != 0
+    write_ value --expects-response=expects-response --flush=flush
 
   /**
   Requests to subscribe on this characteristic.
@@ -1203,11 +1208,11 @@ class RemoteReadWriteElement_ extends Resource_:
   constructor .remote-service_ resource:
     super remote-service_.device.manager.adapter.resource-group_ resource
 
-  write_ value/ByteArray --expects-response/bool:
+  write_ value/ByteArray --expects-response/bool --flush/bool:
     while true:
       remote-service_.device.resource-state_.clear-state READY-TO-SEND-WITHOUT-RESPONSE-EVENT_
       resource-state_.clear-state VALUE-WRITE-FAILED-EVENT_ | VALUE-WRITE-SUCCEEDED-EVENT_
-      result := ble-write-value_ resource_ value expects-response
+      result := ble-write-value_ resource_ value expects-response flush
       if result == 0:
         return // Write without response success.
       if result == 1: // Write with response.
@@ -1297,11 +1302,11 @@ ble-request-read_ resource:
 ble-get-value_ characteristic:
   #primitive.ble.get-value
 
-ble-write-value_ characteristic value with-response:
+ble-write-value_ characteristic value with-response flush:
   return ble-run-with-quota-backoff_:
-    ble-write-value__ characteristic value with-response
+    ble-write-value__ characteristic value with-response flush
 
-ble-write-value__ characteristic value with-response:
+ble-write-value__ characteristic value with-response flush:
   #primitive.ble.write-value
 
 ble-handle_ resource:

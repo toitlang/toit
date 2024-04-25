@@ -353,7 +353,7 @@ namespace toit {
   PRIMITIVE(discover_descriptors_result, 1)  \
   PRIMITIVE(request_read, 1)                 \
   PRIMITIVE(get_value, 1)                    \
-  PRIMITIVE(write_value, 3)                  \
+  PRIMITIVE(write_value, 4)                  \
   PRIMITIVE(handle, 1)                       \
   PRIMITIVE(set_characteristic_notify, 2)    \
   PRIMITIVE(advertise_start, 7)              \
