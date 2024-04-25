@@ -207,7 +207,7 @@ class BleServiceResource;
 
 class BleReadWriteElement : public BleErrorCapableResource {
  public:
-  BleReadWriteElement(ResourceGroup* group, Kind kind, ble_uuid_any_t uuid, uint16 handle)
+  BleReadWriteElement(ResourceGroup* group, Kind kind, const ble_uuid_any_t& uuid, uint16 handle)
       : BleErrorCapableResource(group, kind)
       , uuid_(uuid)
       , handle_(handle)
@@ -325,7 +325,7 @@ class BleDescriptorResource: public BleReadWriteElement, public DescriptorList::
  public:
   TAG(BleDescriptorResource);
   BleDescriptorResource(ResourceGroup* group, BleCharacteristicResource* characteristic,
-                        ble_uuid_any_t uuid, uint16 handle, int properties)
+                        const ble_uuid_any_t& uuid, uint16 handle, int properties)
     : BleReadWriteElement(group, DESCRIPTOR, uuid, handle)
     , characteristic_(characteristic)
     , properties_(properties) {}
@@ -368,7 +368,7 @@ class BleCharacteristicResource :
  public:
   TAG(BleCharacteristicResource);
   BleCharacteristicResource(BleResourceGroup* group, BleServiceResource* service,
-                            ble_uuid_any_t uuid, uint16 properties, uint16 handle,
+                            const ble_uuid_any_t& uuid, uint16 properties, uint16 handle,
                             uint16 definition_handle)
       : BleReadWriteElement(group, CHARACTERISTIC, uuid, handle)
       , service_(service)
@@ -387,12 +387,12 @@ class BleCharacteristicResource :
   uint16 definition_handle() const { return definition_handle_; }
 
   BleDescriptorResource* get_or_create_descriptor(const BleCallbackScope* scope,
-                                                  ble_uuid_any_t uuid, uint16_t handle,
+                                                  const ble_uuid_any_t& uuid, uint16_t handle,
                                                   uint8 properties);
 
-  BleDescriptorResource* get_descriptor(ble_uuid_any_t uuid, uint16_t handle, uint8 properties);
+  BleDescriptorResource* get_descriptor(const ble_uuid_any_t& uuid, uint16_t handle, uint8 properties);
 
-  BleDescriptorResource* get_descriptor(ble_uuid_any_t& uuid) {
+  BleDescriptorResource* get_descriptor(const ble_uuid_any_t& uuid) {
     return get_descriptor(uuid, 0, 0);
   }
 
@@ -450,7 +450,7 @@ class BleServiceResource:
     public BleErrorCapableResource, public ServiceResourceList::Element, public DiscoverableResource {
  private:
   BleServiceResource(BleResourceGroup* group,
-                     ble_uuid_any_t uuid, uint16 start_handle, uint16 end_handle)
+                     const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle)
       : BleErrorCapableResource(group, SERVICE)
       , uuid_(uuid)
       , start_handle_(start_handle)
@@ -462,13 +462,13 @@ class BleServiceResource:
  public:
   TAG(BleServiceResource);
   BleServiceResource(BleResourceGroup* group, BleRemoteDeviceResource* device,
-                     ble_uuid_any_t uuid, uint16 start_handle, uint16 end_handle)
+                     const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle)
       : BleServiceResource(group, uuid, start_handle, end_handle) {
     device_ = device;
   }
 
   BleServiceResource(BleResourceGroup* group, BlePeripheralManagerResource* peripheral_manager,
-                     ble_uuid_any_t uuid, uint16 start_handle, uint16 end_handle)
+                     const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle)
       : BleServiceResource(group, uuid, start_handle, end_handle) {
     peripheral_manager_ = peripheral_manager;
   }
@@ -476,7 +476,8 @@ class BleServiceResource:
   ~BleServiceResource() override;
 
   BleCharacteristicResource* get_or_create_characteristics_resource(
-      ble_uuid_any_t uuid, uint16 properties, uint16 def_handle,
+      const BleCallbackScope* scope,
+      const ble_uuid_any_t& uuid, uint16 properties, uint16 def_handle,
       uint16 value_handle);
 
   ble_uuid_any_t& uuid() { return uuid_; }
@@ -626,9 +627,9 @@ class ServiceContainer : public BleErrorCapableResource {
   }
 
   virtual T* type() = 0;
-  BleServiceResource* get_service_resource(ble_uuid_any_t uuid, uint16 start, uint16 end);
+  BleServiceResource* get_service_resource(const ble_uuid_any_t& uuid, uint16 start, uint16 end);
   BleServiceResource* get_or_create_service_resource(const BleCallbackScope* scope,
-                                                     ble_uuid_any_t uuid, uint16 start, uint16 end);
+                                                     const ble_uuid_any_t& uuid, uint16 start, uint16 end);
   ServiceResourceList& services() { return services_; }
 
   void clear_services() {
@@ -778,7 +779,7 @@ static ble_uuid_any_t uuid_from_blob(Blob& blob) {
   return uuid;
 }
 
-static ByteArray* byte_array_from_uuid(Process* process, ble_uuid_any_t uuid, Error** err) {
+static ByteArray* byte_array_from_uuid(Process* process, const ble_uuid_any_t& uuid, Error** err) {
   *err = null;
 
   ByteArray* byte_array = process->object_heap()->allocate_internal_byte_array(uuid.u.type / 8);
@@ -803,7 +804,7 @@ static ByteArray* byte_array_from_uuid(Process* process, ble_uuid_any_t uuid, Er
   return byte_array;
 }
 
-static bool uuid_equals(ble_uuid_any_t& uuid, ble_uuid_any_t& other) {
+static bool uuid_equals(const ble_uuid_any_t& uuid, const ble_uuid_any_t& other) {
   if (uuid.u.type != other.u.type) return false;
   switch (uuid.u.type) {
     case BLE_UUID_TYPE_16:
@@ -870,7 +871,7 @@ BleServiceResource::~BleServiceResource() {
 
 template<typename T>
 BleServiceResource*
-ServiceContainer<T>::get_service_resource(ble_uuid_any_t uuid, uint16 start, uint16 end) {
+ServiceContainer<T>::get_service_resource(const ble_uuid_any_t& uuid, uint16 start, uint16 end) {
   for (auto service : services_) {
     if (uuid_equals(uuid, service->uuid())) return service;
   }
@@ -880,7 +881,7 @@ ServiceContainer<T>::get_service_resource(ble_uuid_any_t uuid, uint16 start, uin
 template<typename T>
 BleServiceResource*
 ServiceContainer<T>::get_or_create_service_resource(const BleCallbackScope* scope,
-                                                    ble_uuid_any_t uuid, uint16 start, uint16 end) {
+                                                    const ble_uuid_any_t& uuid, uint16 start, uint16 end) {
   auto service = get_service_resource(uuid, start, end);
   if (service) return service;
   service = _new BleServiceResource(group(), type(), uuid, start,end);
@@ -901,14 +902,12 @@ void
 BleServiceResource::_on_characteristic_discovered(const BleCallbackScope& scope, const struct ble_gatt_error* error, const struct ble_gatt_chr* chr) {
   switch (error->status) {
     case 0: {
-      for (int i = 0; i < 2; i++) {
-        auto ble_characteristic =
-            get_or_create_characteristics_resource(
-                chr->uuid, chr->properties, chr->def_handle,
-                chr->val_handle);
-        if (!ble_characteristic) {
-          set_malloc_error(true);
-        }
+      auto ble_characteristic =
+          get_or_create_characteristics_resource(&scope,
+                                                  chr->uuid, chr->properties, chr->def_handle,
+                                                  chr->val_handle);
+      if (!ble_characteristic) {
+        set_malloc_error(true);
       }
       break;
     }
@@ -938,9 +937,17 @@ BleServiceResource::_on_characteristic_discovered(const BleCallbackScope& scope,
 }
 
 BleCharacteristicResource* BleServiceResource::get_or_create_characteristics_resource(
-    ble_uuid_any_t uuid, uint16 properties, uint16 def_handle,
+    const BleCallbackScope* scope,
+    const ble_uuid_any_t& uuid, uint16 properties, uint16 def_handle,
     uint16 value_handle) {
   auto characteristic = _new BleCharacteristicResource(group(), this, uuid, properties, value_handle, def_handle);
+  if (!characteristic && scope) {
+    // Since this method is called from the BLE event handler and there is no
+    // toit code monitoring the interaction, we resort to calling gc by hand to
+    // try to recover on OOM.
+    scope->gc();
+    characteristic = _new BleCharacteristicResource(group(), this, uuid, properties, value_handle, def_handle);
+  }
   if (!characteristic) return null;
   group()->register_resource(characteristic);
   characteristics_.append(characteristic);
@@ -954,23 +961,22 @@ void BleCentralManagerResource::_on_discovery(const BleCallbackScope& scope, ble
       break;
     case BLE_GAP_EVENT_DISC: {
       uint8* data = null;
-      uint8 data_length = 0;
-      if (event->disc.length_data > 0) {
-        data = unvoid_cast<uint8*>(malloc(event->disc.length_data));
+      uint8 data_length = event->disc.length_data;
+      if (data_length > 0) {
+        data = unvoid_cast<uint8*>(malloc(data_length));
         if (!data) {
           // Since this method is called from the BLE event handler and there is no
           // toit code monitoring the interaction, we resort to calling gc by hand to
           // try to recover on OOM.
           scope.gc();
-          data = unvoid_cast<uint8*>(malloc(event->disc.length_data));
+          data = unvoid_cast<uint8*>(malloc(data_length));
           if (!data) {
             set_malloc_error(true);
             BleEventSource::instance()->on_event(this, kBleMallocFailed);
             return;
           }
         }
-        memmove(data, event->disc.data, event->disc.length_data);
-        data_length = event->disc.length_data;
+        memmove(data, event->disc.data, data_length);
       }
 
       auto discovered_peripheral = _new DiscoveredPeripheral(
@@ -1070,7 +1076,7 @@ void BleRemoteDeviceResource::_on_service_discovered(const BleCallbackScope& sco
   }
 }
 
-BleDescriptorResource* BleCharacteristicResource::get_descriptor(ble_uuid_any_t uuid, uint16_t handle, uint8 properties) {
+BleDescriptorResource* BleCharacteristicResource::get_descriptor(const ble_uuid_any_t& uuid, uint16_t handle, uint8 properties) {
   for (auto descriptor : descriptors_) {
     if (uuid_equals(uuid, descriptor->uuid())) return descriptor;
   }
@@ -1078,7 +1084,7 @@ BleDescriptorResource* BleCharacteristicResource::get_descriptor(ble_uuid_any_t 
 }
 
 BleDescriptorResource* BleCharacteristicResource::get_or_create_descriptor(const BleCallbackScope* scope,
-                                                                           ble_uuid_any_t uuid, uint16_t handle, uint8 properties) {
+                                                                           const ble_uuid_any_t& uuid, uint16_t handle, uint8 properties) {
   auto descriptor = get_descriptor(uuid, handle, properties);
   if (descriptor) return descriptor;
 
@@ -2211,7 +2217,7 @@ PRIMITIVE(add_characteristic) {
   if (error) return error;
 
   BleCharacteristicResource* characteristic =
-    service_resource->get_or_create_characteristics_resource(ble_uuid, flags, 0, 0);
+      service_resource->get_or_create_characteristics_resource(null, ble_uuid, flags, 0, 0);
 
   if (!characteristic) {
     if (om != null) os_mbuf_free(om);
@@ -2499,9 +2505,14 @@ PRIMITIVE(get_error) {
   Locker locker(BleResourceGroup::instance()->mutex());
 
   auto err_resource = reinterpret_cast<BleErrorCapableResource*>(resource);
+  if (err_resource->has_malloc_error()) {
+    err_resource->set_malloc_error(false);
+    FAIL(MALLOC_FAILED);
+  }
   if (err_resource->error() == 0) FAIL(ERROR);
-
-  return nimble_error_code_to_string(process, err_resource->error(), true);
+  auto result = nimble_error_code_to_string(process, err_resource->error(), true);
+  err_resource->set_error(0);
+  return result;
 }
 
 PRIMITIVE(read_request_reply) {

@@ -1185,15 +1185,13 @@ class Resource_:
   throw-error_:
     ble-get-error_ resource_
 
-  wait-for-state-with-oom_ bits:
+  wait-for-state-with-oom_ bits -> int:
     state := resource-state_.wait-for-state bits | MALLOC-FAILED_
-    if state & MALLOC-FAILED_ != 0:
-      // The operation had an OOM.
-      // Trigger one by hand.
-      ByteArray 1_000_000_000
-      unreachable
-    else:
-      return state
+    if state & MALLOC-FAILED_ == 0: return state
+    // We encountered an OOM.
+    // Use 'throw-error_' to throw the error and clear it from the resource.
+    throw-error_
+    unreachable
 
 class RemoteReadWriteElement_ extends Resource_:
   remote-service_/RemoteService
