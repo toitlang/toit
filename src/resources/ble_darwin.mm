@@ -1204,11 +1204,11 @@ PRIMITIVE(add_characteristic) {
 }
 
 PRIMITIVE(add_descriptor) {
-  UNIMPLEMENTED();
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(handle) {
-  UNIMPLEMENTED();
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(deploy_service) {
@@ -1314,15 +1314,15 @@ PRIMITIVE(clear_error) {
 }
 
 PRIMITIVE(gc) {
-  UNIMPLEMENTED();
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(read_request_reply) {
-  UNIMPLEMENTED();
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(get_bonded_peers) {
-  UNIMPLEMENTED();
+  FAIL(UNIMPLEMENTED);
 }
 
 }
