@@ -904,8 +904,8 @@ BleServiceResource::_on_characteristic_discovered(const BleCallbackScope& scope,
     case 0: {
       auto ble_characteristic =
           get_or_create_characteristics_resource(&scope,
-                                                  chr->uuid, chr->properties, chr->def_handle,
-                                                  chr->val_handle);
+                                                 chr->uuid, chr->properties, chr->def_handle,
+                                                 chr->val_handle);
       if (!ble_characteristic) {
         set_malloc_error(true);
       }
