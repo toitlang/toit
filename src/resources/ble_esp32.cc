@@ -129,7 +129,7 @@ class BleResourceGroup : public ResourceGroup, public Thread {
     sync_ = sync;
     if (sync) {
       for (auto resource : resources()) {
-        auto ble_resource = reinterpret_cast<BleResource*>(resource);
+        auto ble_resource = static_cast<BleResource*>(resource);
         BleEventSource::instance()->on_event(ble_resource, kBleStarted);
       }
     }
@@ -186,8 +186,10 @@ class DiscoverableResource {
   bool returned_;
 };
 
-class BleErrorCapableResource: public BleResource {
+class BleErrorCapableResource : public BleResource {
  public:
+  TAGS(BleErrorCapableResource);
+
   BleErrorCapableResource(ResourceGroup* group, Kind kind)
       : BleResource(group, kind)
       , malloc_error_(false)
@@ -207,6 +209,8 @@ class BleServiceResource;
 
 class BleReadWriteElement : public BleErrorCapableResource {
  public:
+  TAGS(BleReadWriteElement);
+
   BleReadWriteElement(ResourceGroup* group, Kind kind, const ble_uuid_any_t& uuid, uint16 handle)
       : BleErrorCapableResource(group, kind)
       , uuid_(uuid)
@@ -1597,7 +1601,7 @@ PRIMITIVE(scan_next) {
 }
 
 PRIMITIVE(scan_stop) {
-  ARGS(Resource, resource)
+  ARGS(BleResource, resource)
 
   Locker locker(BleResourceGroup::instance()->mutex());
 
@@ -1608,7 +1612,7 @@ PRIMITIVE(scan_stop) {
     }
     // If ble_gap_disc_cancel returns without an error, the discovery has stopped and NimBLE will not provide an
     // event. So we fire the event manually.
-    BleEventSource::instance()->on_event(reinterpret_cast<BleResource*>(resource), kBleCompleted);
+    BleEventSource::instance()->on_event(resource, kBleCompleted);
   }
 
   return process->null_object();
@@ -1854,11 +1858,9 @@ PRIMITIVE(discover_descriptors_result) {
 }
 
 PRIMITIVE(request_read) {
-  ARGS(Resource, resource)
+  ARGS(BleReadWriteElement, element)
 
   Locker locker(BleResourceGroup::instance()->mutex());
-
-  auto element = reinterpret_cast<BleReadWriteElement*>(resource);
 
   if (!element->service()->device()) FAIL(INVALID_ARGUMENT);
 
@@ -1872,11 +1874,9 @@ PRIMITIVE(request_read) {
 }
 
 PRIMITIVE(get_value) {
-  ARGS(Resource, resource)
+  ARGS(BleReadWriteElement, element)
 
   Locker locker(BleResourceGroup::instance()->mutex());
-
-  auto element = reinterpret_cast<BleReadWriteElement*>(resource);
 
   const os_mbuf* mbuf = element->mbuf_received();
   if (!mbuf) return process->null_object();
@@ -1889,11 +1889,9 @@ PRIMITIVE(get_value) {
 }
 
 PRIMITIVE(write_value) {
-  ARGS(Resource, resource, Object, value, bool, with_response)
+  ARGS(BleReadWriteElement, element, Object, value, bool, with_response)
 
   Locker locker(BleResourceGroup::instance()->mutex());
-
-  auto element = reinterpret_cast<BleReadWriteElement*>(resource);
 
   if (!element->service()->device()) FAIL(INVALID_ARGUMENT);
 
@@ -1929,11 +1927,10 @@ PRIMITIVE(write_value) {
 }
 
 PRIMITIVE(handle) {
-  ARGS(Resource, resource)
+  ARGS(BleReadWriteElement, element)
 
   Locker locker(BleResourceGroup::instance()->mutex());
 
-  auto element = reinterpret_cast<BleReadWriteElement*>(resource);
   return Smi::from(element->handle());
 }
 
@@ -2376,11 +2373,9 @@ PRIMITIVE(start_gatt_server) {
 }
 
 PRIMITIVE(set_value) {
-  ARGS(Resource, resource, Object, value)
+  ARGS(BleReadWriteElement, element, Object, value)
 
   Locker locker(BleResourceGroup::instance()->mutex());
-
-  auto element = reinterpret_cast<BleReadWriteElement*>(resource);
 
   if (!element->service()->peripheral_manager()) FAIL(INVALID_ARGUMENT);
 
@@ -2452,21 +2447,19 @@ PRIMITIVE(notify_characteristics_value) {
 }
 
 PRIMITIVE(get_att_mtu) {
-  ARGS(Resource, resource)
+  ARGS(BleResource, ble_resource)
 
   Locker locker(BleResourceGroup::instance()->mutex());
-
-  auto ble_resource = reinterpret_cast<BleResource*>(resource);
 
   uint16 mtu = BLE_ATT_MTU_DFLT;
   switch (ble_resource->kind()) {
     case BleResource::REMOTE_DEVICE: {
-      auto device = reinterpret_cast<BleRemoteDeviceResource*>(ble_resource);
+      auto device = static_cast<BleRemoteDeviceResource*>(ble_resource);
       mtu = ble_att_mtu(device->handle());
       break;
     }
     case BleResource::CHARACTERISTIC: {
-      auto characteristic = reinterpret_cast<BleCharacteristicResource*>(ble_resource);
+      auto characteristic = static_cast<BleCharacteristicResource*>(ble_resource);
       int min_sub_mtu = -1;
       for (auto subscription : characteristic->subscriptions()) {
         uint16 sub_mtu = ble_att_mtu(subscription->conn_handle());
@@ -2500,11 +2493,9 @@ PRIMITIVE(set_preferred_mtu) {
 }
 
 PRIMITIVE(get_error) {
-  ARGS(Resource, resource, bool, is_oom)
+  ARGS(BleErrorCapableResource, err_resource, bool, is_oom)
 
   Locker locker(BleResourceGroup::instance()->mutex());
-
-  auto err_resource = reinterpret_cast<BleErrorCapableResource*>(resource);
 
   if (is_oom) {
     if (!err_resource->has_malloc_error()) FAIL(ERROR);
@@ -2515,11 +2506,9 @@ PRIMITIVE(get_error) {
 }
 
 PRIMITIVE(clear_error) {
-  ARGS(Resource, resource, bool, is_oom)
+  ARGS(BleErrorCapableResource, err_resource, bool, is_oom)
 
   Locker locker(BleResourceGroup::instance()->mutex());
-
-  auto err_resource = reinterpret_cast<BleErrorCapableResource*>(resource);
 
   if (is_oom) {
     if (!err_resource->has_malloc_error()) FAIL(ERROR);

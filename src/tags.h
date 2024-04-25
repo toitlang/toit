@@ -49,12 +49,6 @@ namespace toit {
   fn(PcntUnitResource)                  \
   fn(PwmResource)                       \
   fn(RmtResource)                       \
-  fn(BleCentralManagerResource)         \
-  fn(BlePeripheralManagerResource)      \
-  fn(BleRemoteDeviceResource)           \
-  fn(BleServiceResource)                \
-  fn(BleCharacteristicResource)         \
-  fn(BleDescriptorResource)             \
   fn(Directory)                         \
   fn(UdpSocketResource)                 \
   fn(TcpSocketResource)                 \
@@ -67,6 +61,19 @@ namespace toit {
 
 #define TLS_CLASSES_DO(fn)              \
   fn(MbedTlsSocket)                     \
+
+// When adding a class make sure that they all are subclasses of
+// the BleErrorCapableResource. If it isn't update the Min/MaxTag below.
+// Similarly, check, whether the new class is a read-write class.
+#define BLE_CLASSES_DO(fn)              \
+  fn(BleCentralManagerResource)         \
+  fn(BlePeripheralManagerResource)      \
+  fn(BleRemoteDeviceResource)           \
+  fn(BleServiceResource)                \
+
+#define BLE_READ_WRITE_CLASSES_DO(fn)   \
+  fn(BleCharacteristicResource)         \
+  fn(BleDescriptorResource)             \
 
 #define RESOURCE_GROUP_CLASSES_DO(fn)   \
   fn(SimpleResourceGroup)               \
@@ -113,6 +120,14 @@ enum StructTag {
   BaseTlsSocketMinTag,
   TLS_CLASSES_DO(MAKE_ENUM)
   BaseTlsSocketMaxTag,
+  BleResourceMinTag,
+  BleErrorCapableResourceMinTag,
+  BLE_CLASSES_DO(MAKE_ENUM)
+  BleReadWriteElementMinTag,
+  BLE_READ_WRITE_CLASSES_DO(MAKE_ENUM)
+  BleReadWriteElementMaxTag,
+  BleErrorCapableResourceMaxTag,
+  BleResourceMaxTag,
   ResourceMaxTag,
 
   // ResourceGroup subclasses.
