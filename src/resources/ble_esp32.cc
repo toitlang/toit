@@ -1408,7 +1408,7 @@ PRIMITIVE(create_peripheral_manager) {
 
 PRIMITIVE(close) {
   ARGS(BleResourceGroup, group)
-  // The group is the only primitive that doesn't allocate a locker.
+  // The close primitive is the only primitive that doesn't allocate a locker.
   group->tear_down();
   group_proxy->clear_external_address();
   return process->null_object();
