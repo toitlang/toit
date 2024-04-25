@@ -739,14 +739,19 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
 };
 
 Object* nimble_error_code_to_string(Process* process, int error_code, bool host) {
-  static const size_t BUFFER_LEN = 400;
-  char buffer[BUFFER_LEN];
-  const char* gist = "https://gist.github.com/mikkeldamsgaard/0857ce6a8b073a52d6f07973a441ad54";
-  int length = snprintf(buffer, BUFFER_LEN, "NimBLE error, Type: %s, error code: 0x%02x. See %s",
-                        host ? "host" : "client",
-                        error_code % 0x100,
-                        gist);
-  String* str = process->allocate_string(buffer, length);
+  String* str;
+  if (host && error_code == BLE_HS_ENOTCONN) {
+    str = process->allocate_string("NimBLE error, Type: host, error code: 0x07. No open connection");
+  } else {
+    static const size_t BUFFER_LEN = 400;
+    char buffer[BUFFER_LEN];
+    const char* gist = "https://gist.github.com/mikkeldamsgaard/0857ce6a8b073a52d6f07973a441ad54";
+    int length = snprintf(buffer, BUFFER_LEN, "NimBLE error, Type: %s, error code: 0x%02x. See %s",
+                          host ? "host" : "client",
+                          error_code % 0x100,
+                          gist);
+    str = process->allocate_string(buffer, length);
+  }
   if (!str) FAIL(ALLOCATION_FAILED);
   return Primitive::mark_as_error(str);
 }
@@ -1889,7 +1894,7 @@ PRIMITIVE(get_value) {
 }
 
 PRIMITIVE(write_value) {
-  ARGS(BleReadWriteElement, element, Object, value, bool, with_response, bool, flush)
+  ARGS(BleReadWriteElement, element, Object, value, bool, with_response, bool, flush, bool, allow_retry)
 
   Locker locker(BleResourceGroup::instance()->mutex());
 
@@ -1916,6 +1921,12 @@ PRIMITIVE(write_value) {
     );
   }
 
+  if (allow_retry && err == BLE_HS_ENOMEM) {
+    // Resource exhaustion.
+    // This typically happens when writing too fast without flushing.
+    // Use the quota-exceeded to signal that the write should be retried.
+    FAIL(QUOTA_EXCEEDED);
+  }
   if (err != BLE_ERR_SUCCESS) {
     // The 'om' buffer is always consumed by the call to
     // ble_gattc_write_long() or ble_gattc_write_no_rsp()
