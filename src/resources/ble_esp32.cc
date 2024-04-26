@@ -46,6 +46,12 @@ ResourcePool<int, kInvalidBle> ble_pool(
     0
 );
 
+/// A mutex protecting BLE operations.
+/// NimBLE has its own thread, and we use this mutex to coordinate operations.
+/// This mutex is set when the BLE is acquired from the ble pool, and released
+/// when it's put back.
+static Mutex* ble_mutex;
+
 class DiscoveredPeripheral;
 typedef DoubleLinkedList<DiscoveredPeripheral> DiscoveredPeripheralList;
 
@@ -76,88 +82,14 @@ class DiscoveredPeripheral : public DiscoveredPeripheralList::Element {
   uint8 event_type_;
 };
 
-// The thread on the BleResourceGroup is responsible for running the nimble background thread. All events from the
-// nimble background thread are delivered through call backs to registered callback methods. The callback methods
-// will then send the events to the EventSource to enable the normal resource state notification mechanism. This is
-// done with the call BleEventSource::instance()->on_event(<resource>, <kBLE* event id>).
-class BleResourceGroup : public ResourceGroup, public Thread {
+class BleResourceGroup : public ResourceGroup {
  public:
   TAG(BleResourceGroup);
-  BleResourceGroup(Process* process, BleEventSource* event_source, int id, Mutex* mutex)
-      : ResourceGroup(process, event_source)
-      , Thread("BLE")
-      , id_(id)
-      , sync_(false)
-      , mutex_(mutex) {
-    ASSERT(!instance_)
-    // Note that the resource group creation is guarded by the resource pool of size 1,
-    // so there can never be two instances created and it is safe to set the static variable
-    // here.
-    instance_ = this;
-    spawn(CONFIG_NIMBLE_TASK_STACK_SIZE);
-  }
+  BleResourceGroup(Process* process, BleEventSource* event_source)
+      : ResourceGroup(process, event_source) {}
 
-  void tear_down() override {
-    // Tears down the resource group.
-    // Contrary to almost all functions we are not running with the BLE lock yet.
-
-    // The `nimble_port_stop` will potentially post an event on the
-    // toit-thread. However, contrary to all other callbacks, it will
-    // wait for that callback to finish. This means, that we are not allowed
-    // to hold the BLE lock when calling this function.
-    FATAL_IF_NOT_ESP_OK(nimble_port_stop());
-
-    // We still aren't allowed to take the lock, since the BLE thread needs to be
-    // able to dispatch its last events.
-    join();
-
-    // The BLE thread has finished running, so we don't need any lock from now on.
-    ResourceGroup::tear_down();
-
-    nimble_port_deinit();
-
-    ble_pool.put(id_);
-  }
-
-  static BleResourceGroup* instance() { return instance_; }
-
-  Mutex* mutex() { return mutex_; }
-
-  // The BLE Host will notify when the BLE subsystem is synchronized. Before a successful sync, most
-  // operation will not succeed.
-  void set_sync(bool sync) {
-    sync_ = sync;
-    if (sync) {
-      for (auto resource : resources()) {
-        auto ble_resource = static_cast<BleResource*>(resource);
-        BleEventSource::instance()->on_event(ble_resource, kBleStarted);
-      }
-    }
-  }
-
-  bool sync() const { return sync_; }
   uint32_t on_event(Resource* resource, word data, uint32_t state) override;
-
- protected:
-  void entry() override{
-    nimble_port_run();
-  }
-
-  ~BleResourceGroup() override {
-    instance_ = null;
-  }
-
- private:
-  int id_;
-  bool sync_;
-  Mutex* mutex_;
-  static BleResourceGroup* instance_;
 };
-
-// There can be only one active BleResourceGroup. This reference will be
-// active when the resource group exists
-BleResourceGroup* BleResourceGroup::instance_ = null;
-
 
 /// A scope for callbacks from the BLE thread.
 /// Automatically takes the BLE mutex and releases it when the scope is destroyed.
@@ -165,7 +97,7 @@ BleResourceGroup* BleResourceGroup::instance_ = null;
 class BleCallbackScope {
  public:
   BleCallbackScope()
-      : locker(BleResourceGroup::instance()->mutex()) {}
+      : locker(ble_mutex) {}
 
   // Requests a global GC.
   // A callback is on a different thread and is thus allowed to request a multi-process GC.
@@ -449,6 +381,7 @@ class BleCharacteristicResource :
 };
 
 typedef DoubleLinkedList<BleServiceResource> ServiceResourceList;
+class BleAdapterResource;
 class BleRemoteDeviceResource;
 class BlePeripheralManagerResource;
 
@@ -577,21 +510,11 @@ class BleCentralManagerResource : public BleErrorCapableResource {
  public:
   TAG(BleCentralManagerResource);
 
-  explicit BleCentralManagerResource(BleResourceGroup* group)
-      : BleErrorCapableResource(group, CENTRAL_MANAGER) {}
+  explicit BleCentralManagerResource(BleResourceGroup* group, BleAdapterResource* adapter)
+      : BleErrorCapableResource(group, CENTRAL_MANAGER)
+      , adapter_(adapter) {}
 
-  ~BleCentralManagerResource() override {
-    if (is_scanning()) {
-      int err = ble_gap_disc_cancel();
-      if (err != BLE_ERR_SUCCESS && err != BLE_HS_EALREADY) {
-        fail("Failed to cancel discovery");
-      }
-    }
-
-    while (auto peripheral = remove_discovered_peripheral()) {
-      delete peripheral;
-    }
-  }
+  ~BleCentralManagerResource() override;
 
   static bool is_scanning() { return ble_gap_disc_active(); }
 
@@ -611,6 +534,7 @@ class BleCentralManagerResource : public BleErrorCapableResource {
 
  private:
   void _on_discovery(const BleCallbackScope& scope, ble_gap_event* event);
+  BleAdapterResource* adapter_;
   DiscoveredPeripheralList newly_discovered_peripherals_;
 };
 
@@ -653,16 +577,13 @@ class ServiceContainer : public BleErrorCapableResource {
 class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManagerResource> {
  public:
   TAG(BlePeripheralManagerResource);
-  explicit BlePeripheralManagerResource(BleResourceGroup* group)
+  explicit BlePeripheralManagerResource(BleResourceGroup* group, BleAdapterResource* adapter)
       : ServiceContainer(group, PERIPHERAL_MANAGER)
+      , adapter_(adapter)
       , advertising_params_({})
       , advertising_started_(false) {}
 
-  ~BlePeripheralManagerResource() override {
-    if (is_advertising()) {
-      FATAL_IF_NOT_ESP_OK(ble_gap_adv_stop());
-    }
-  }
+  ~BlePeripheralManagerResource() override;
 
   BlePeripheralManagerResource* type() override { return this; }
 
@@ -679,6 +600,7 @@ class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManage
 
  private:
   int _on_gap(const BleCallbackScope& scope, struct ble_gap_event* event);
+  BleAdapterResource* adapter_;
   ble_gap_adv_params advertising_params_;
   bool advertising_started_;
 };
@@ -692,9 +614,6 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
     , secure_connection_(secure_connection)
     , connected_(false) {}
 
-  ~BleRemoteDeviceResource() override {
-    disconnect();
-  }
   BleRemoteDeviceResource* type() override { return this; }
 
   static int on_event(ble_gap_event* event, void* arg) {
@@ -743,6 +662,138 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   bool secure_connection_;
   bool connected_;
 };
+
+// The thread on the BleAdapterResource is responsible for running the nimble background thread.
+// All events from the nimble background thread are delivered through callbacks to registered
+// callback methods. The callback methods will then send the events to the EventSource to enable
+// the normal resource state notification mechanism. This is
+// done with the call BleEventSource::instance()->on_event(<resource>, <kBLE* event id>).
+class BleAdapterResource : public BleResource, public Thread {
+ public:
+  TAG(BleAdapterResource);
+  BleAdapterResource(ResourceGroup* group, int id)
+      : BleResource(group, ADAPTER)
+      , Thread("BLE")
+      , id_(id)
+      , state_(CREATED)
+      , central_manager_(null)
+      , peripheral_manager_(null) {
+    // The adapter creation is guaraded by the BLE pool (which only has one entry).
+    // We can thus safely set the instance_ field.
+    ASSERT(instance_ == null);
+    instance_ = this;
+    spawn(CONFIG_NIMBLE_TASK_STACK_SIZE);
+  }
+
+
+  ~BleAdapterResource() override {
+    close();
+
+    if (central_manager_) {
+      // Unregistering the central manager will clear the field.
+      group()->unregister_resource(central_manager_);
+    }
+    if (peripheral_manager_) {
+      // Unregistering the peripheral manager will clear the field.
+      group()->unregister_resource(peripheral_manager_);
+    }
+
+    instance_ = null;
+  }
+
+  // This function must be called without the ble-lock.
+  void close() {
+    if (is_closed()) return;
+
+    // Closes the adapter.
+    // Contrary to almost all functions we are not running with the BLE lock yet.
+
+    state_ = CLOSED;
+
+    // The `nimble_port_stop` will potentially post an event on the
+    // toit-thread. However, contrary to all other callbacks, it will
+    // wait for that callback to finish. This means, that we are not allowed
+    // to hold the BLE lock when calling this function.
+    FATAL_IF_NOT_ESP_OK(nimble_port_stop());
+
+    // We still aren't allowed to take the lock, since the BLE thread needs to be
+    // able to dispatch its last events.
+    join();
+
+    nimble_port_deinit();
+
+    OS::dispose(ble_mutex);
+    ble_mutex = null;
+
+    ble_pool.put(id_);
+  }
+
+  bool is_closed() const {
+    return state_ == CLOSED;
+  }
+
+  bool is_active() const {
+    return state_ == ACTIVE;
+  }
+
+  // The BLE Host will notify when the BLE subsystem is synchronized. Before a successful sync, most
+  // operation will not succeed.
+  void on_sync(const BleCallbackScope& scope) {
+    if (state_ != CREATED) return;
+    state_ = ACTIVE;
+    ble_gatts_reset();
+    BleEventSource::instance()->on_event(this, kBleStarted);
+  }
+
+  BleCentralManagerResource* central_manager() {
+    return central_manager_;
+  }
+
+  /// Clears the central_manager field.
+  /// This should only be called from the destructor of the central manager.
+  void remove_central_manager(BleCentralManagerResource* manager) {
+    ASSERT(central_manager_ == manager);
+    central_manager_ = null;
+  }
+
+  BlePeripheralManagerResource* peripheral_manager() {
+    return peripheral_manager_;
+  }
+
+  /// Clears the peripheral_manager field.
+  /// This should only be called from the destructor of the peripheral manager.
+  void remove_peripheral_manager(BlePeripheralManagerResource* manager) {
+    ASSERT(peripheral_manager_ == manager);
+    peripheral_manager_ = null;
+  }
+
+  /// Callback from the NimBLE thread when the underlying system has been initialized.
+  /// Unlike all other NimBLE callbacks, we don't get any argument, so we have
+  /// to use a static instance_ variable to deliver the event.
+  static void on_sync();
+
+ protected:
+  void entry() override {
+    nimble_port_run();
+  }
+
+ private:
+  enum State {
+    CREATED,
+    ACTIVE,
+    CLOSED,
+  };
+  int id_;
+  State state_;
+  BleCentralManagerResource* central_manager_;
+  BlePeripheralManagerResource* peripheral_manager_;
+
+  static BleAdapterResource* instance_;
+};
+
+// There can be only one active BleAdapterResource. This reference will be
+// active when the adapter exists.
+BleAdapterResource* BleAdapterResource::instance_ = null;
 
 Object* nimble_error_code_to_string(Process* process, int error_code, bool host) {
   String* str;
@@ -980,6 +1031,21 @@ BleCharacteristicResource* BleServiceResource::get_or_create_characteristics_res
   return characteristic;
 }
 
+BleCentralManagerResource::~BleCentralManagerResource() {
+  if (is_scanning()) {
+    int err = ble_gap_disc_cancel();
+    if (err != BLE_ERR_SUCCESS && err != BLE_HS_EALREADY) {
+      fail("Failed to cancel discovery");
+    }
+  }
+
+  while (auto peripheral = remove_discovered_peripheral()) {
+    delete peripheral;
+  }
+
+  adapter_->remove_central_manager(this);
+}
+
 void BleCentralManagerResource::_on_discovery(const BleCallbackScope& scope, ble_gap_event* event) {
   switch (event->type) {
     case BLE_GAP_EVENT_DISC_COMPLETE:
@@ -1026,6 +1092,13 @@ void BleCentralManagerResource::_on_discovery(const BleCallbackScope& scope, ble
       BleEventSource::instance()->on_event(this, kBleDiscovery);
     }
   }
+}
+
+BlePeripheralManagerResource::~BlePeripheralManagerResource() {
+  if (is_advertising()) {
+    FATAL_IF_NOT_ESP_OK(ble_gap_adv_stop());
+  }
+  adapter_->remove_peripheral_manager(this);
 }
 
 void BleRemoteDeviceResource::_on_event(const BleCallbackScope& scope, ble_gap_event* event) {
@@ -1382,18 +1455,15 @@ static Object* object_to_mbuf(Process* process, Object* object, os_mbuf** result
   return blob_to_mbuf(process, bytes, result);
 }
 
-static void ble_on_sync() {
+void BleAdapterResource::on_sync() {
   // Make sure we have proper identity address set (public preferred).
   int rc = ble_hs_util_ensure_addr(0);
   if (rc != 0) {
     FATAL("error setting address; rc=%d", rc)
   }
-  BleResourceGroup* instance = BleResourceGroup::instance();
-  if (instance) {
+  if (instance_) {
     BleCallbackScope scope;
-
-    instance->set_sync(true);
-    ble_gatts_reset();
+    instance_->on_sync(scope);
   }
 }
 
@@ -1403,64 +1473,99 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  BleEventSource* event_source = BleEventSource::instance();
+
+  BleResourceGroup* group = _new BleResourceGroup(process, event_source);
+  if (!group) FAIL(MALLOC_FAILED);
+
+  proxy->set_external_address(group);
+  return proxy;
+}
+
+PRIMITIVE(create_adapter) {
+  ARGS(BleResourceGroup, group)
+  // Note that we don't take the BLE lock yet.
+  // We are setting the lock in this function.
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
   int id = ble_pool.any();
   if (id == kInvalidBle) FAIL(ALREADY_IN_USE);
 
-  BleEventSource* ble = BleEventSource::instance();
-
-  Mutex* mutex = OS::allocate_mutex(0, "BLE");
-  if (!mutex) {
+  ble_mutex = OS::allocate_mutex(0, "BLE");
+  if (!ble_mutex) {
     ble_pool.put(id);
     FAIL(MALLOC_FAILED);
   }
 
-  ble_hs_cfg.sync_cb = ble_on_sync;
+  // We can already set the callback, even though the adapter hasn't been created
+  // yet.
+  // The Adapter starts the NimBLE thread, so there won't be any callback before
+  // the adapter was created, and its instance_ field has been set.
+  ble_hs_cfg.sync_cb = BleAdapterResource::on_sync;
 
   // It is important to call nimble_port_init before creating the resource group, as the
   // resource group constructor starts the nimble background thread that uses
   // structures initialize by the init function.
   nimble_port_init();
 
-  auto group = _new BleResourceGroup(process, ble, id, mutex);
-  if (!group) {
-    OS::dispose(mutex);
-    ble_pool.put(id);
+  auto adapter = _new BleAdapterResource(group, id);
+  if (!adapter) {
+    OS::dispose(ble_mutex);
+    ble_mutex = null;
     nimble_port_deinit();
+    ble_pool.put(id);
     FAIL(MALLOC_FAILED);
   }
 
-  proxy->set_external_address(group);
+  group->register_resource(adapter);
+  proxy->set_external_address(adapter);
   return proxy;
 }
 
 PRIMITIVE(create_central_manager) {
-  ARGS(BleResourceGroup, group)
+  ARGS(BleAdapterResource, adapter)
 
-  Locker locker(group->mutex());
+  Locker locker(ble_mutex);
+
+  if (!adapter->is_active()) {
+    // Either not yet synced, or already closed.
+    FAIL(ERROR);
+  }
+  if (adapter->central_manager()) FAIL(ALREADY_IN_USE);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  auto central_manager = _new BleCentralManagerResource(group);
+  auto group = adapter->group();
+
+  auto central_manager = _new BleCentralManagerResource(group, adapter);
   if (!central_manager) FAIL(MALLOC_FAILED);
 
   group->register_resource(central_manager);
   proxy->set_external_address(central_manager);
 
-  if (group->sync()) BleEventSource::instance()->on_event(central_manager, kBleStarted);
-
   return proxy;
 }
 
 PRIMITIVE(create_peripheral_manager) {
-  ARGS(BleResourceGroup, group, bool, bonding, bool, secure_connections)
+  ARGS(BleAdapterResource, adapter, bool, bonding, bool, secure_connections)
 
-  Locker locker(group->mutex());
+  Locker locker(ble_mutex);
+
+  if (!adapter->is_active()) {
+    // Either not yet synced, or already closed.
+    FAIL(ERROR);
+  }
+  if (adapter->peripheral_manager()) FAIL(ALREADY_IN_USE);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  auto peripheral_manager = _new BlePeripheralManagerResource(group);
+  auto group = adapter->group();
+
+  auto peripheral_manager = _new BlePeripheralManagerResource(group, adapter);
   if (!peripheral_manager) FAIL(MALLOC_FAILED);
 
   ble_hs_cfg.sm_bonding = bonding;
@@ -1485,17 +1590,15 @@ PRIMITIVE(create_peripheral_manager) {
   group->register_resource(peripheral_manager);
   proxy->set_external_address(peripheral_manager);
 
-  if (group->sync()) {
-    ble_gatts_reset();
-    BleEventSource::instance()->on_event(peripheral_manager, kBleStarted);
-  }
+  ble_gatts_reset();
 
   return proxy;
 }
 
 PRIMITIVE(close) {
   ARGS(BleResourceGroup, group)
-  // The close primitive is the only primitive that doesn't allocate a locker.
+  // The close primitive, together with the init and create-adapter primitives, is the
+  // only primitive that doesn't allocate a locker.
   group->tear_down();
   group_proxy->clear_external_address();
   return process->null_object();
@@ -1504,7 +1607,7 @@ PRIMITIVE(close) {
 PRIMITIVE(scan_start) {
   ARGS(BleCentralManagerResource, central_manager, int64, duration_us)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   if (BleCentralManagerResource::is_scanning()) FAIL(ALREADY_EXISTS);
 
@@ -1548,7 +1651,7 @@ PRIMITIVE(scan_start) {
 PRIMITIVE(scan_next) {
   ARGS(BleCentralManagerResource, central_manager)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   DiscoveredPeripheral* next = central_manager->get_discovered_peripheral();
   if (!next) return process->null_object();
@@ -1629,7 +1732,7 @@ PRIMITIVE(scan_next) {
 PRIMITIVE(scan_stop) {
   ARGS(BleResource, resource)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   if (BleCentralManagerResource::is_scanning()) {
     int err = ble_gap_disc_cancel();
@@ -1647,7 +1750,7 @@ PRIMITIVE(scan_stop) {
 PRIMITIVE(connect) {
   ARGS(BleCentralManagerResource, central_manager, Blob, address, bool, secure_connection)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   uint8_t own_addr_type;
 
@@ -1680,18 +1783,23 @@ PRIMITIVE(connect) {
 PRIMITIVE(disconnect) {
   ARGS(BleRemoteDeviceResource, device)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   device->disconnect();
   return process->null_object();
 }
 
 PRIMITIVE(release_resource) {
-  ARGS(Resource, resource)
+  ARGS(BleResource, resource)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  if (resource->kind() != BleResource::ADAPTER) {
+    Locker locker(ble_mutex);
+    resource->resource_group()->unregister_resource(resource);
+  } else {
+    resource->resource_group()->unregister_resource(resource);
+  }
 
-  resource->resource_group()->unregister_resource(resource);
+  resource_proxy->clear_external_address();
 
   return process->null_object();
 }
@@ -1699,7 +1807,7 @@ PRIMITIVE(release_resource) {
 PRIMITIVE(discover_services) {
   ARGS(BleRemoteDeviceResource, device, Array, raw_service_uuids)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   if (raw_service_uuids->length() == 0) {
     int err = ble_gattc_disc_all_svcs(
@@ -1730,7 +1838,7 @@ PRIMITIVE(discover_services) {
 PRIMITIVE(discover_services_result) {
   ARGS(BleRemoteDeviceResource, device)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   int count = 0;
   for (auto service : device->services()) {
@@ -1769,7 +1877,7 @@ PRIMITIVE(discover_services_result) {
 PRIMITIVE(discover_characteristics){
   ARGS(BleServiceResource, service, Array, raw_characteristics_uuids)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   // NimBLE has a funny thing about descriptors (needed for subscriptions), where all characteristics
   // need to be discovered to discover descriptors. Therefore, we ignore the raw_characteristics_uuids
@@ -1794,7 +1902,7 @@ PRIMITIVE(discover_characteristics){
 PRIMITIVE(discover_characteristics_result) {
   ARGS(BleServiceResource, service)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   int count = 0;
   for (auto characteristic : service->characteristics()) {
@@ -1836,7 +1944,7 @@ PRIMITIVE(discover_characteristics_result) {
 PRIMITIVE(discover_descriptors) {
   ARGS(BleCharacteristicResource, characteristic)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   // We always discover descriptors when discovering characteristics.
   BleEventSource::instance()->on_event(characteristic, kBleDescriptorsDiscovered);
@@ -1847,7 +1955,7 @@ PRIMITIVE(discover_descriptors) {
 PRIMITIVE(discover_descriptors_result) {
   ARGS(BleCharacteristicResource, characteristic)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   int count = 0;
   for (auto descriptor : characteristic->descriptors()) {
@@ -1886,7 +1994,7 @@ PRIMITIVE(discover_descriptors_result) {
 PRIMITIVE(request_read) {
   ARGS(BleReadWriteElement, element)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   if (!element->service()->device()) FAIL(INVALID_ARGUMENT);
 
@@ -1902,7 +2010,7 @@ PRIMITIVE(request_read) {
 PRIMITIVE(get_value) {
   ARGS(BleReadWriteElement, element)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   const os_mbuf* mbuf = element->mbuf_received();
   if (!mbuf) return process->null_object();
@@ -1917,7 +2025,7 @@ PRIMITIVE(get_value) {
 PRIMITIVE(write_value) {
   ARGS(BleReadWriteElement, element, Blob, value, bool, with_response, bool, flush, bool, allow_retry)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   if (!element->service()->device()) FAIL(INVALID_ARGUMENT);
 
@@ -1970,7 +2078,7 @@ PRIMITIVE(write_value) {
 PRIMITIVE(handle) {
   ARGS(BleReadWriteElement, element)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   return Smi::from(element->handle());
 }
@@ -1981,7 +2089,7 @@ PRIMITIVE(handle) {
 PRIMITIVE(set_characteristic_notify) {
   ARGS(BleCharacteristicResource, characteristic, bool, enable)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   uint16 value = 0;
 
@@ -2016,7 +2124,7 @@ PRIMITIVE(advertise_start) {
   ARGS(BlePeripheralManagerResource, peripheral_manager, Blob, name, Array, service_classes,
        Blob, manufacturing_data, int, interval_us, int, conn_mode, int, flags)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   if (BlePeripheralManagerResource::is_advertising()) FAIL(ALREADY_EXISTS);
 
@@ -2166,7 +2274,7 @@ PRIMITIVE(advertise_start) {
 PRIMITIVE(advertise_stop) {
   ARGS(BlePeripheralManagerResource, peripheral_manager);
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   if (BlePeripheralManagerResource::is_advertising()) {
     int err = ble_gap_adv_stop();
@@ -2182,7 +2290,7 @@ PRIMITIVE(advertise_stop) {
 PRIMITIVE(add_service) {
   ARGS(BlePeripheralManagerResource, peripheral_manager, Blob, uuid)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   ble_uuid_any_t ble_uuid = uuid_from_blob(uuid);
 
@@ -2204,7 +2312,7 @@ PRIMITIVE(add_characteristic) {
   ARGS(BleServiceResource, service_resource, Blob, raw_uuid, int, properties,
        int, permissions, Object, value, int, read_timeout_ms)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   if (!service_resource->peripheral_manager()) {
     FAIL(INVALID_ARGUMENT);
@@ -2278,7 +2386,7 @@ PRIMITIVE(add_characteristic) {
 PRIMITIVE(add_descriptor) {
   ARGS(BleCharacteristicResource, characteristic, Blob, raw_uuid, int, properties, int, permissions, Object, value)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   if (!characteristic->service()->peripheral_manager()) FAIL(INVALID_ARGUMENT);
 
@@ -2313,7 +2421,7 @@ PRIMITIVE(add_descriptor) {
 PRIMITIVE(deploy_service) {
   ARGS(BleServiceResource, service_resource)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   if (!service_resource->peripheral_manager()) FAIL(INVALID_ARGUMENT);
   if (service_resource->deployed()) FAIL(INVALID_ARGUMENT);
@@ -2403,7 +2511,7 @@ PRIMITIVE(deploy_service) {
 PRIMITIVE(start_gatt_server) {
   ARGS(BlePeripheralManagerResource, peripheral_manager)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   int rc = ble_gatts_start();
   if (rc != BLE_ERR_SUCCESS) {
@@ -2416,7 +2524,7 @@ PRIMITIVE(start_gatt_server) {
 PRIMITIVE(set_value) {
   ARGS(BleReadWriteElement, element, Object, value)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   if (!element->service()->peripheral_manager()) FAIL(INVALID_ARGUMENT);
 
@@ -2432,7 +2540,7 @@ PRIMITIVE(set_value) {
 PRIMITIVE(get_subscribed_clients) {
   ARGS(BleCharacteristicResource, characteristic)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   int count = 0;
   for (auto subscription : characteristic->subscriptions()) {
@@ -2454,7 +2562,7 @@ PRIMITIVE(get_subscribed_clients) {
 PRIMITIVE(notify_characteristics_value) {
   ARGS(BleCharacteristicResource, characteristic, uint16, conn_handle, Object, value)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   Subscription* subscription = null;
   for (auto sub : characteristic->subscriptions()) {
@@ -2490,7 +2598,7 @@ PRIMITIVE(notify_characteristics_value) {
 PRIMITIVE(get_att_mtu) {
   ARGS(BleResource, ble_resource)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   uint16 mtu = BLE_ATT_MTU_DFLT;
   switch (ble_resource->kind()) {
@@ -2514,7 +2622,7 @@ PRIMITIVE(get_att_mtu) {
 PRIMITIVE(set_preferred_mtu) {
   ARGS(int, mtu)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   if (mtu > BLE_ATT_MTU_MAX) FAIL(INVALID_ARGUMENT);
 
@@ -2530,7 +2638,7 @@ PRIMITIVE(set_preferred_mtu) {
 PRIMITIVE(get_error) {
   ARGS(BleErrorCapableResource, err_resource, bool, is_oom)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   if (is_oom) {
     if (!err_resource->has_malloc_error()) FAIL(ERROR);
@@ -2543,7 +2651,7 @@ PRIMITIVE(get_error) {
 PRIMITIVE(clear_error) {
   ARGS(BleErrorCapableResource, err_resource, bool, is_oom)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   if (is_oom) {
     if (!err_resource->has_malloc_error()) FAIL(ERROR);
@@ -2558,7 +2666,7 @@ PRIMITIVE(clear_error) {
 PRIMITIVE(read_request_reply) {
   ARGS(BleCharacteristicResource, characteristic, Object, value)
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   os_mbuf* mbuf = null;
   Object* error = object_to_mbuf(process, value, &mbuf);
@@ -2571,7 +2679,7 @@ PRIMITIVE(read_request_reply) {
 
 PRIMITIVE(get_bonded_peers) {
 
-  Locker locker(BleResourceGroup::instance()->mutex());
+  Locker locker(ble_mutex);
 
   ble_addr_t bonds[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
   int num_peers;

@@ -335,7 +335,8 @@ namespace toit {
   PRIMITIVE(get_ip, 1)                       \
 
 #define MODULE_BLE(PRIMITIVE)                \
-  PRIMITIVE(init, 1)                         \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(create_adapter, 1)               \
   PRIMITIVE(create_peripheral_manager, 3)    \
   PRIMITIVE(create_central_manager, 1)       \
   PRIMITIVE(close, 1)                        \
@@ -1052,6 +1053,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_EspNowResource(N, name)      MAKE_UNPACKING_MACRO(EspNowResource, N, name)
 #define _A_T_RmtResource(N, name)         MAKE_UNPACKING_MACRO(RmtResource, N, name)
 #define _A_T_BleResource(N, name)         MAKE_UNPACKING_MACRO(BleResource, N, name)
+#define _A_T_BleAdapterResource(N, name)  MAKE_UNPACKING_MACRO(BleAdapterResource, N, name)
 #define _A_T_BleReadWriteElement(N, name) MAKE_UNPACKING_MACRO(BleReadWriteElement, N, name)
 #define _A_T_BleErrorCapableResource(N, name)   MAKE_UNPACKING_MACRO(BleErrorCapableResource, N, name)
 #define _A_T_BleCentralManagerResource(N, name) MAKE_UNPACKING_MACRO(BleCentralManagerResource, N, name)

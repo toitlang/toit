@@ -56,6 +56,7 @@ class BleResource : public Resource {
   TAGS(BleResource);
 
   enum Kind {
+    ADAPTER,
     CENTRAL_MANAGER,
     PERIPHERAL_MANAGER,
     REMOTE_DEVICE,

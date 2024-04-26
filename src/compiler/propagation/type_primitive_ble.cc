@@ -21,6 +21,7 @@ namespace compiler {
 MODULE_TYPES(ble, MODULE_BLE)
 
 TYPE_PRIMITIVE_ANY(init)
+TYPE_PRIMITIVE_ANY(create_adapter)
 TYPE_PRIMITIVE_ANY(create_peripheral_manager)
 TYPE_PRIMITIVE_ANY(create_central_manager)
 TYPE_PRIMITIVE_ANY(close)
