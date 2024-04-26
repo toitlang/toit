@@ -545,7 +545,7 @@ Interpreter::Result Interpreter::run() {
             class_index);
       }
 #endif //TOIT_GC_LOGGING
-      sp = gc(sp, false, attempts, false);
+      sp = gc(sp, false, attempts, false, "'allocate instance'", class_index);
       result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     }
     process_->object_heap()->leave_primitive();
@@ -557,7 +557,7 @@ Interpreter::Result Interpreter::run() {
     }
     PUSH(result);
     if (Flags::gc_a_lot) {
-      sp = gc(sp, false, 1, false);
+      sp = gc(sp, false, 1, false, "'gc a lot'");
       process_->object_heap()->leave_primitive();
     }
   OPCODE_END();
@@ -1114,7 +1114,7 @@ Interpreter::Result Interpreter::run() {
         }
 #endif
 
-        sp = gc(sp, malloc_failed, attempts, force_cross_process);
+        sp = gc(sp, malloc_failed, attempts, force_cross_process, "primitive", primitive_module, primitive_index);
         sp_ = sp;
         result = entry(process_, sp + parameter_offset + arity - 1); // Skip the frame.
         sp = sp_;
