@@ -1921,7 +1921,7 @@ PRIMITIVE(write_value) {
 
   if (!element->service()->device()) FAIL(INVALID_ARGUMENT);
 
-  uint16 mtu;
+  int mtu;
   if (element->kind() == BleResource::CHARACTERISTIC) {
     auto characteristic = static_cast<BleCharacteristicResource*>(element);
     mtu = characteristic->get_mtu();
