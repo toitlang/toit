@@ -1889,7 +1889,7 @@ PRIMITIVE(get_value) {
 }
 
 PRIMITIVE(write_value) {
-  ARGS(BleReadWriteElement, element, Object, value, bool, with_response)
+  ARGS(BleReadWriteElement, element, Object, value, bool, with_response, bool, flush)
 
   Locker locker(BleResourceGroup::instance()->mutex());
 
@@ -1900,7 +1900,7 @@ PRIMITIVE(write_value) {
   if (error) return error;
 
   int err;
-  if (with_response) {
+  if (with_response || flush) {
     err = ble_gattc_write_long(
         element->service()->device()->handle(),
         element->handle(),
@@ -1923,7 +1923,7 @@ PRIMITIVE(write_value) {
     return nimble_stack_error(process, err);
   }
 
-  return Smi::from(with_response ? 1 : 0);
+  return Smi::from((with_response || flush) ? 1 : 0);
 }
 
 PRIMITIVE(handle) {

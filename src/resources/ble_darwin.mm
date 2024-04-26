@@ -1084,8 +1084,9 @@ PRIMITIVE(get_value) {
 }
 
 PRIMITIVE(write_value) {
-  ARGS(BleCharacteristicResource, characteristic, Object, value, bool, with_response);
+  ARGS(BleCharacteristicResource, characteristic, Object, value, bool, with_response, bool, flush);
 
+  // TODO(florian): take 'flush' into account.
   Blob bytes;
   if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
 
