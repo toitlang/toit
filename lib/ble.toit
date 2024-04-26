@@ -1303,12 +1303,12 @@ ble-get-value_ characteristic:
   #primitive.ble.get-value
 
 ble-write-value_ characteristic value with-response flush:
-  return ble-run-with-quota-backoff_:
-    ble-write-value__ characteristic value with-response flush
+  return ble-run-with-quota-backoff_: | last-attempt/bool |
+    ble-write-value__ characteristic value with-response flush (not last-attempt)
 
 // Note that we need two arguments for 'with-response' and 'flush' as some backends
 // handle them differently.
-ble-write-value__ characteristic value with-response flush:
+ble-write-value__ characteristic value with-response flush allow-retry:
   #primitive.ble.write-value
 
 ble-handle_ resource:
@@ -1392,6 +1392,9 @@ ble-get-bonded-peers_:
 ble-run-with-quota-backoff_ [block]:
   start := Time.monotonic-us
   while true:
-    catch --unwind=(: it != "QUOTA_EXCEEDED"): return block.call
+    // The last-attempt boolean is a signal to the block that it may abort the operation
+    // itself if it has a better error than "QUOTA_EXCEEDED".
+    last-attempt := Time.monotonic-us - start + 20 > 2_000_000
+    catch --unwind=(: it != "QUOTA_EXCEEDED"): return block.call last-attempt
     sleep --ms=10
     if Time.monotonic-us - start > 2_000_000: throw DEADLINE-EXCEEDED-ERROR

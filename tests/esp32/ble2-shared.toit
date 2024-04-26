@@ -82,17 +82,9 @@ main-central:
   data := ByteArray PACKET-SIZE
   total-sent := 0
   List.chunk-up 0 TEST-BYTE-COUNT PACKET-SIZE: | _ _ chunk-size/int |
-    while true:
-      exception := catch:
-        write-only.write data[..chunk-size] --flush=(total-sent + chunk-size >= TEST-BYTE-COUNT)
-        total-sent += chunk-size
-        print "Sent $total-sent bytes"
-      if not exception: break
-      if exception.contains "error code: 0x06":
-        // Need to retry again in a bit.
-        sleep --ms=10
-      else:
-        throw "Unexpected error: $exception"
+    write-only.write data[..chunk-size] --flush=(total-sent + chunk-size >= TEST-BYTE-COUNT)
+    total-sent += chunk-size
+    print "Sent $total-sent bytes."
 
-  print "all sent"
+  print "All sent."
   adapter.close
