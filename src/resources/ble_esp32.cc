@@ -512,7 +512,8 @@ class BleCentralManagerResource : public BleErrorCapableResource {
 
   explicit BleCentralManagerResource(BleResourceGroup* group, BleAdapterResource* adapter)
       : BleErrorCapableResource(group, CENTRAL_MANAGER)
-      , adapter_(adapter) {}
+      , adapter_(adapter)
+      , device_count_(0) {}
 
   ~BleCentralManagerResource() override;
 
@@ -532,9 +533,18 @@ class BleCentralManagerResource : public BleErrorCapableResource {
     return BLE_ERR_SUCCESS;
   }
 
+  void increase_device_count() {
+    device_count_++;
+  }
+
+  void decrease_device_count() {
+    device_count_--;
+  }
+
  private:
   void _on_discovery(const BleCallbackScope& scope, ble_gap_event* event);
   BleAdapterResource* adapter_;
+  int device_count_;
   DiscoveredPeripheralList newly_discovered_peripherals_;
 };
 
@@ -608,11 +618,18 @@ class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManage
 class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource> {
  public:
   TAG(BleRemoteDeviceResource);
-  explicit BleRemoteDeviceResource(BleResourceGroup* group, bool secure_connection)
-    : ServiceContainer(group, REMOTE_DEVICE)
-    , handle_(kInvalidHandle)
-    , secure_connection_(secure_connection)
-    , connected_(false) {}
+  explicit BleRemoteDeviceResource(BleResourceGroup* group, BleCentralManagerResource* central_manager, bool secure_connection)
+      : ServiceContainer(group, REMOTE_DEVICE)
+      , central_manager_(central_manager)
+      , handle_(kInvalidHandle)
+      , secure_connection_(secure_connection)
+      , connected_(false) {
+    central_manager_->increase_device_count();
+  }
+
+  ~BleRemoteDeviceResource() {
+    central_manager_->decrease_device_count();
+  }
 
   BleRemoteDeviceResource* type() override { return this; }
 
@@ -658,6 +675,7 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   void _on_event(const BleCallbackScope& scope, ble_gap_event* event);
   void _on_service_discovered(const BleCallbackScope& scope, const ble_gatt_error* error, const ble_gatt_svc* service);
 
+  BleCentralManagerResource* central_manager_;
   uint16 handle_;
   bool secure_connection_;
   bool connected_;
@@ -1766,7 +1784,9 @@ PRIMITIVE(connect) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  auto device = _new BleRemoteDeviceResource(central_manager->group(), secure_connection);
+  auto group = central_manager->group();
+
+  auto device = _new BleRemoteDeviceResource(group, central_manager, secure_connection);
   if (!device) FAIL(MALLOC_FAILED);
 
   err = device->connect(own_addr_type, &addr);
@@ -1776,7 +1796,7 @@ PRIMITIVE(connect) {
   }
 
   proxy->set_external_address(device);
-  central_manager->group()->register_resource(device);
+  group->register_resource(device);
   return proxy;
 }
 
