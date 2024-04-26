@@ -279,15 +279,15 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
   /**
   Writes the value of the characteristic on the remote device.
 
-  If $flush is true, waits until the data has been written. This is the default for
-    characteristics that require a response.
+  If $flush is true, waits until the data has been written. If the characteristic
+    requires a response, then this flag is ignored and the function always
+    waits for the response.
   */
-  write value/ByteArray --flush/bool?=null -> none:
+  write value/ByteArray --flush/bool=false -> none:
     if (properties & (CHARACTERISTIC-PROPERTY-WRITE
                       | CHARACTERISTIC-PROPERTY-WRITE-WITHOUT-RESPONSE)) == 0:
       throw "Characteristic does not support write"
 
-    if not flush: flush = false
     expects-response := (properties & CHARACTERISTIC-PROPERTY-WRITE) != 0
     write_ value --expects-response=expects-response --flush=flush
 
@@ -1306,6 +1306,8 @@ ble-write-value_ characteristic value with-response flush:
   return ble-run-with-quota-backoff_: | last-attempt/bool |
     ble-write-value__ characteristic value with-response flush (not last-attempt)
 
+// Note that we need two arguments for 'with-response' and 'flush' as some backends
+// handle them differently.
 ble-write-value__ characteristic value with-response flush allow-retry:
   #primitive.ble.write-value
 
