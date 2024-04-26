@@ -651,7 +651,7 @@ BleCharacteristicResource* lookup_local_characteristic_resource(CBPeripheralMana
 template <typename T>
 BleServiceResource* ServiceContainer<T>::get_or_create_service_resource(CBService* service, bool can_create) {
   BleResourceHolder* holder = _service_resource_index[[service UUID]];
-  if (holder != nil) return reinterpret_cast<BleServiceResource*>(holder.resource);
+  if (holder != nil) return static_cast<BleServiceResource*>(holder.resource);
   if (!can_create) return null;
 
   auto resource = _new BleServiceResource(group(), type(), service);
@@ -677,7 +677,7 @@ BleCharacteristicResource* BleServiceResource::get_or_create_characteristic_reso
     CBCharacteristic* characteristic,
     bool can_create) {
   BleResourceHolder* holder = _characteristics_resource_index[[characteristic UUID]];
-  if (holder != nil) return reinterpret_cast<BleCharacteristicResource*>(holder.resource);
+  if (holder != nil) return static_cast<BleCharacteristicResource*>(holder.resource);
   if (!can_create) return null;
 
   auto resource = _new BleCharacteristicResource(group(), this, characteristic);
@@ -1266,17 +1266,16 @@ PRIMITIVE(notify_characteristics_value) {
 }
 
 PRIMITIVE(get_att_mtu) {
-  ARGS(Resource, resource);
+  ARGS(BleResource, ble_resource);
   NSUInteger mtu = 23;
-  auto ble_resource = reinterpret_cast<BleResource*>(resource);
   switch (ble_resource->kind()) {
     case BleResource::REMOTE_DEVICE: {
-      auto device = reinterpret_cast<BleRemoteDeviceResource*>(ble_resource);
+      auto device = static_cast<BleRemoteDeviceResource*>(ble_resource);
       mtu = [device->peripheral() maximumWriteValueLengthForType:CBCharacteristicWriteWithResponse];
       break;
     }
     case BleResource::CHARACTERISTIC: {
-      auto characteristic = reinterpret_cast<BleCharacteristicResource*>(ble_resource);
+      auto characteristic = static_cast<BleCharacteristicResource*>(ble_resource);
       mtu = characteristic->mtu();
       break;
     }

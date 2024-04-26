@@ -1051,6 +1051,9 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_EspNowResource(N, name)      MAKE_UNPACKING_MACRO(EspNowResource, N, name)
 #define _A_T_RmtResource(N, name)         MAKE_UNPACKING_MACRO(RmtResource, N, name)
+#define _A_T_BleResource(N, name)         MAKE_UNPACKING_MACRO(BleResource, N, name)
+#define _A_T_BleReadWriteElement(N, name) MAKE_UNPACKING_MACRO(BleReadWriteElement, N, name)
+#define _A_T_BleErrorCapableResource(N, name)   MAKE_UNPACKING_MACRO(BleErrorCapableResource, N, name)
 #define _A_T_BleCentralManagerResource(N, name) MAKE_UNPACKING_MACRO(BleCentralManagerResource, N, name)
 #define _A_T_BleRemoteDeviceResource(N, name)   MAKE_UNPACKING_MACRO(BleRemoteDeviceResource, N, name)
 
