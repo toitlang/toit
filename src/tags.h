@@ -17,7 +17,7 @@
 
 namespace toit {
 
-#define NON_TLS_RESOURCE_CLASSES_DO(fn) \
+#define NON_BLE_RESOURCE_CLASSES_DO(fn) \
   fn(IntResource)                       \
   fn(LookupResult)                      \
   fn(LwipSocket)                        \
@@ -58,8 +58,6 @@ namespace toit {
   fn(AeadContext)                       \
   fn(TlsHandshakeToken)                 \
   fn(EspNowResource)                    \
-
-#define TLS_CLASSES_DO(fn)              \
   fn(MbedTlsSocket)                     \
 
 // When adding a class make sure that they all are subclasses of
@@ -116,10 +114,7 @@ enum StructTag {
 
   // Resource subclasses.
   ResourceMinTag,
-  NON_TLS_RESOURCE_CLASSES_DO(MAKE_ENUM)
-  BaseTlsSocketMinTag,
-  TLS_CLASSES_DO(MAKE_ENUM)
-  BaseTlsSocketMaxTag,
+  NON_BLE_RESOURCE_CLASSES_DO(MAKE_ENUM)
   BleResourceMinTag,
   BleErrorCapableResourceMinTag,
   BLE_CLASSES_DO(MAKE_ENUM)
@@ -136,7 +131,6 @@ enum StructTag {
   ResourceGroupMaxTag,
 
   // Misc.
-  LeakyDirectoryTag,
   FontTag,
   ImageOutputStreamTag,
   ChannelTag
