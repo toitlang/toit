@@ -368,19 +368,21 @@ class HeapObject : public Object {
 
   void _set_header(Program* program, Smi* id);
 
-  uword _raw() const { return reinterpret_cast<uword>(this) - HEAP_TAG; }
-  uword* _raw_at(int offset) { return reinterpret_cast<uword*>(_raw() + offset); }
-  const uword* _raw_at(int offset) const { return reinterpret_cast<const uword*>(_raw() + offset); }
+  inline uword _raw() const { return reinterpret_cast<uword>(this) - HEAP_TAG; }
+  inline uword* _raw_at()           { return reinterpret_cast<uword*>(reinterpret_cast<uword>(this) - HEAP_TAG); }
+  inline uword* _raw_at(int offset) { return reinterpret_cast<uword*>(reinterpret_cast<uword>(this) - HEAP_TAG + offset); }
+  inline const uword* _raw_at()           const { return reinterpret_cast<const uword*>(reinterpret_cast<uword>(this) - HEAP_TAG); }
+  inline const uword* _raw_at(int offset) const { return reinterpret_cast<const uword*>(reinterpret_cast<uword>(this) - HEAP_TAG + offset); }
 
-  Object* _at(int offset) const { return *reinterpret_cast<Object* const*>(_raw_at(offset)); }
-  void _at_put(int offset, Object* value) { *reinterpret_cast<Object**>(_raw_at(offset)) = value; }
-  Object** _root_at(int offset) { return reinterpret_cast<Object**>(_raw_at(offset)); }
+  Object* _at(int offset) const { return reinterpret_cast<Object* const*>(_raw_at())[offset / WORD_SIZE]; }
+  void _at_put(int offset, Object* value) { reinterpret_cast<Object**>(_raw_at())[offset / WORD_SIZE] = value; }
+  Object** _root_at(int offset) { return reinterpret_cast<Object**>(_raw_at()) + offset / WORD_SIZE; }
 
-  uword _word_at(int offset) const { return *_raw_at(offset); }
-  void _word_at_put(int offset, uword value) { *_raw_at(offset) = value; }
+  uword _word_at(int offset) const { return _raw_at()[offset / WORD_SIZE]; }
+  void _word_at_put(int offset, uword value) { _raw_at()[offset / WORD_SIZE] = value; }
 
-  uint8 _byte_at(int offset) const { return *reinterpret_cast<const uint8*>(_raw_at(offset)); }
-  void _byte_at_put(int offset, uint8 value) { *reinterpret_cast<uint8*>(_raw_at(offset)) = value; }
+  uint8 _byte_at(int offset) const { return reinterpret_cast<const uint8*>(_raw_at())[offset]; }
+  void _byte_at_put(int offset, uint8 value) { reinterpret_cast<uint8*>(_raw_at())[offset] = value; }
 
   uhalf_word _half_word_at(int offset) const { return *reinterpret_cast<const uhalf_word*>(_raw_at(offset)); }
   void _half_word_at_put(int offset, uhalf_word value) { *reinterpret_cast<uhalf_word*>(_raw_at(offset)) = value; }
@@ -443,7 +445,6 @@ class Array : public HeapObject {
   }
 
   uint8* content() { return reinterpret_cast<uint8*>(_raw() + _offset_from(0)); }
-
 
   int size() const { return allocation_size(length()); }
 
