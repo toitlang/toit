@@ -512,8 +512,7 @@ class BleCentralManagerResource : public BleErrorCapableResource {
 
   explicit BleCentralManagerResource(BleResourceGroup* group, BleAdapterResource* adapter)
       : BleErrorCapableResource(group, CENTRAL_MANAGER)
-      , adapter_(adapter)
-      , device_count_(0) {}
+      , adapter_(adapter) {}
 
   ~BleCentralManagerResource() override;
 
@@ -544,7 +543,7 @@ class BleCentralManagerResource : public BleErrorCapableResource {
  private:
   void _on_discovery(const BleCallbackScope& scope, ble_gap_event* event);
   BleAdapterResource* adapter_;
-  int device_count_;
+  int device_count_ = 0;
   DiscoveredPeripheralList newly_discovered_peripherals_;
 };
 
