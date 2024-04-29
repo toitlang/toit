@@ -466,7 +466,7 @@ bin-dir sdk-dir/string? -> string:
   our-path := system.program-path
   return fs.dirname our-path
 
-tool-path sdk-dir/string tool/string -> string:
+tool-path sdk-dir/string? tool/string -> string:
   if system.platform == system.PLATFORM-WINDOWS:
     tool = "$(tool).exe"
   return fs.join (bin-dir sdk-dir) tool
