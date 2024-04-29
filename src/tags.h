@@ -64,6 +64,7 @@ namespace toit {
 // the BleErrorCapableResource. If it isn't update the Min/MaxTag below.
 // Similarly, check, whether the new class is a read-write class.
 #define BLE_CLASSES_DO(fn)              \
+  fn(BleAdapterResource)                \
   fn(BleCentralManagerResource)         \
   fn(BlePeripheralManagerResource)      \
   fn(BleRemoteDeviceResource)           \

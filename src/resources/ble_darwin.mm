@@ -115,6 +115,15 @@ class DiscoverableResource {
   bool _returned;
 };
 
+class BleAdapterResource: public BleResource {
+ public:
+  TAG(BleAdapterResource);
+
+  BleAdapterResource(BleResourceGroup* group)
+      : BleResource(group, ADAPTER) {}
+};
+
+
 // Supports two use cases:
 //    - as a service on a remote device (_device is not null)
 //    - as a local exposed service (_peripheral_manager is not null)
@@ -738,12 +747,28 @@ PRIMITIVE(init) {
   return proxy;
 }
 
-PRIMITIVE(create_central_manager) {
+PRIMITIVE(create_adapter) {
   ARGS(BleResourceGroup, group);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  // On the host we expect '_new' to succeed.
+  BleAdapterResource* adapter_resource = _new BleAdapterResource(group);
+  group->register_resource(adapter_resource);
+  proxy->set_external_address(adapter_resource);
+  return proxy;
+}
+
+PRIMITIVE(create_central_manager) {
+  ARGS(BleAdapterResource, adapter);
+
+  auto group = adapter->group();
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
+  // On the host we expect '_new' to succeed.
   BleCentralManagerResource* central_manager_resource = _new BleCentralManagerResource(group);
   group->register_resource(central_manager_resource);
 
@@ -764,7 +789,10 @@ PRIMITIVE(create_central_manager) {
 }
 
 PRIMITIVE(create_peripheral_manager) {
-  ARGS(BleResourceGroup, group);
+  ARGS(BleAdapterResource, adapter);
+
+  auto group = adapter->group();
+
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 

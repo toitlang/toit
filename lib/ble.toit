@@ -380,8 +380,8 @@ class RemoteService extends Resource_ implements Attribute:
 
   discovered-characteristics/List := []
 
-  constructor.private_ .device .uuid service_:
-    super device.manager.adapter.resource-group_ service_
+  constructor.private_ .device .uuid service-resource:
+    super service-resource
 
   /**
   Closes this service.
@@ -452,13 +452,12 @@ class RemoteDevice extends Resource_:
   discovered-services_/List := []
 
   constructor.private_ .manager .address secure/bool:
-    device := ble-connect_ manager.resource_ address secure
-    super manager.adapter.resource-group_ device --auto-release
+    device-resource := ble-connect_ manager.resource_ address secure
+    super device-resource
     state := resource-state_.wait-for-state CONNECTED-EVENT_ | CONNECT-FAILED-EVENT_
     if state & CONNECT-FAILED-EVENT_ != 0:
       close_
       throw "BLE connection failed"
-      // TODO: Possible leak of the gatt_ resource on connection failures.
 
   /**
   Removes the given $remote-service from the list of discovered services.
@@ -542,7 +541,7 @@ class LocalService extends Resource_ implements Attribute:
 
   constructor .peripheral-manager .uuid:
     resource := ble-add-service_ peripheral-manager.resource_ uuid.encode-for-platform_
-    super peripheral-manager.adapter.resource-group_ resource --auto-release
+    super resource
 
   /**
   Closes this service and all its characteristics.
@@ -725,7 +724,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
 
   constructor .service .uuid .properties .permissions value/ByteArray? read-timeout-ms:
     resource := ble-add-characteristic_ service.resource_ uuid.encode-for-platform_ properties permissions value read-timeout-ms
-    super service resource
+    super resource
 
   /**
   Close this characteristic and all its descriptors.
@@ -815,7 +814,7 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
 
   constructor .characteristic .uuid .properties .permissions value:
     resource :=  ble-add-descriptor_ characteristic.resource_ uuid.encode-for-platform_ properties permissions value
-    super characteristic.service resource
+    super resource
 
   /**
   Closes this descriptor.
@@ -852,14 +851,13 @@ class Central extends Resource_:
   remotes-devices_/List := []
 
   constructor .adapter:
-    resource := ble-create-central-manager_ adapter.resource-group_
-    super adapter.resource-group_ resource --auto-release
-    resource-state_.wait-for-state STARTED-EVENT_
+    super (ble-create-central-manager_ adapter.resource_)
 
   close:
     remotes := remotes-devices_
     remotes-devices_ = []
     remotes.do: | remote-device/RemoteDevice | remote-device.close
+    adapter.remove-central_ this
     close_
 
   /**
@@ -946,18 +944,19 @@ class Peripheral extends Resource_:
   deployed_/bool := false
 
   constructor .adapter bonding/bool secure-connections/bool:
-    resource := ble-create-peripheral-manager_ adapter.resource-group_ bonding secure-connections
-    super adapter.resource-group_ resource --auto-release
-    resource-state_.wait-for-state STARTED-EVENT_
+    resource := ble-create-peripheral-manager_ adapter.resource_ bonding secure-connections
+    super resource
 
   /**
   Closes the peripheral manager and all its services.
   */
   close:
+    if is-closed: return
     stop-advertise
     services := services_
     services_ = []
     services.do: | service/LocalService | service.close
+    adapter.remove-peripheral_ this
     close_
 
   /**
@@ -1065,34 +1064,33 @@ class AdapterMetadata:
 
 /**
 An adapter represents the chip or peripheral that is used to communicate over BLE.
-On the ESP32 it is the integrated peripheral. On desktops it is provided by the operating system, and
-  can be a USB chip, or an integrated chip of laptops.
+On the ESP32 it is the integrated peripheral. On desktops it is provided by
+  the operating system, and can be a USB chip, or an integrated chip of laptops.
 */
-class Adapter:
-  static discover-adapter-metadata -> List/*<AdapterMetadata>*/:
-    return ble-retrieve-adpaters_.map:
+class Adapter extends Resource_:
+  static discover-adapter-metadata_ -> List/*<AdapterMetadata>*/:
+    return ble-retrieve-adapters_.map:
       AdapterMetadata.private_ it[0] it[1] it[2] it[3] it[4]
 
   adapter-metadata/AdapterMetadata?
-  resource-group_/any := ?
   central_/Central? := null
   peripheral_/Peripheral? := null
 
-  constructor: return discover-adapter-metadata[0].adapter
+  constructor: return discover-adapter-metadata_[0].adapter
 
   constructor.private_ .adapter-metadata:
-    resource-group_ = ble-init_ adapter-metadata.handle_
+    super (ble-create-adapter_ resource-group_)
+    resource-state_.wait-for-state STARTED-EVENT_
 
   close -> none:
-    if not resource-group_: return
+    if is-closed: return
     if central_:
       central_.close
       central_ = null
     if peripheral_:
       peripheral_.close
       peripheral_ = null
-    ble-close_ resource-group_
-    resource-group_ = null
+    close_
 
   /**
   The central manager handles connections to remote peripherals.
@@ -1102,6 +1100,10 @@ class Adapter:
     if not adapter-metadata.supports-central-role: throw "NOT_SUPPORTED"
     if not central_: central_ = Central this
     return central_
+
+  remove-central_ central/Central -> none:
+    assert: central == central_
+    central_ = null
 
   /**
   The peripheral manager is used to advertise and publish local services.
@@ -1116,6 +1118,10 @@ class Adapter:
     if not adapter-metadata.supports-peripheral-role: throw "NOT_SUPPORTED"
     if not peripheral_: peripheral_ = Peripheral this bonding secure-connections
     return peripheral_;
+
+  remove-peripheral_ peripheral/Peripheral -> none:
+    assert: peripheral == peripheral_
+    peripheral_ = null
 
   set-preferred-mtu mtu/int:
     ble-set-preferred-mtu_ mtu
@@ -1171,11 +1177,10 @@ class Resource_:
   resource_/any? := null
   resource-state_/ResourceState_
 
-  constructor resource-group_ .resource_ --auto-release/bool=false:
+  constructor .resource_:
     resource-state_ = ResourceState_ resource-group_ resource_
-    if auto-release:
-      add-finalizer this ::
-        this.close_
+    add-finalizer this::
+      close_
 
   close_:
     if resource_:
@@ -1209,7 +1214,7 @@ class RemoteReadWriteElement_ extends Resource_:
   remote-service_/RemoteService
 
   constructor .remote-service_ resource:
-    super remote-service_.device.manager.adapter.resource-group_ resource
+    super resource
 
   write_ value/ByteArray --expects-response/bool --flush/bool:
     while true:
@@ -1234,8 +1239,8 @@ class RemoteReadWriteElement_ extends Resource_:
 
 
 class LocalReadWriteElement_ extends Resource_:
-  constructor service/LocalService resource:
-    super service.peripheral-manager.adapter.resource-group_ resource
+  constructor resource:
+    super resource
 
   read_ -> ByteArray:
     resource-state_.clear-state DATA-RECEIVED-EVENT_
@@ -1244,24 +1249,24 @@ class LocalReadWriteElement_ extends Resource_:
       if buf: return buf
       resource-state_.wait-for-state DATA-RECEIVED-EVENT_
 
-
-
-ble-retrieve-adpaters_:
+ble-retrieve-adapters_:
   if platform == system.PLATFORM-FREERTOS or platform == system.PLATFORM-MACOS:
     return [["default", #[], true, true, null]]
   throw "Unsupported platform"
 
-ble-init_ adapter:
+resource-group_ := ble-init_
+
+ble-init_:
   #primitive.ble.init
 
-ble-create-central-manager_ resource-group:
+ble-create-adapter_ resource-group_:
+  #primitive.ble.create-adapter
+
+ble-create-central-manager_ adapter-resource:
   #primitive.ble.create-central-manager
 
-ble-create-peripheral-manager_ resource-group bonding secure-connections:
+ble-create-peripheral-manager_ adapter-resource bonding secure-connections:
   #primitive.ble.create-peripheral-manager
-
-ble-close_ resource-group:
-  #primitive.ble.close
 
 ble-scan-start_ central-manager duration-us:
   #primitive.ble.scan-start
@@ -1272,7 +1277,7 @@ ble-scan-next_ central-manager:
 ble-scan-stop_ central-manager:
   #primitive.ble.scan-stop
 
-ble-connect_ resource-group address secure:
+ble-connect_ central-manager address secure:
   #primitive.ble.connect
 
 ble-disconnect_ device:
