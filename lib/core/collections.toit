@@ -2,8 +2,9 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import binary
 import bitmap
+import io
+import io show BIG-ENDIAN LITTLE-ENDIAN
 
 LIST-INITIAL-LENGTH_ ::= 4
 HASHED-COLLECTION-INITIAL-LENGTH_ ::= 4
@@ -228,7 +229,7 @@ abstract class List extends CollectionBase:
   sub[0] = 22
   print list  // => [1, 22, 3, 4, 5]
   sub = list[..3]      // A view into [1, 22, 3]
-  sub.sort --in_place  // Sorts just the 3 values.
+  sub.sort --in-place  // Sorts just the 3 values.
   print sub   // => [1, 3, 22]
   print list  // => [1, 3, 22, 4, 5]
   sub2 := sub[1..]
@@ -1088,9 +1089,30 @@ class LargeArray_ extends Array_:
 /**
 A container specialized for bytes.
 
-A byte array can only contain (non-null) integers in the range 0-255.
+A byte array can only contain (non-null) integers in the range 0-255. When
+  storing other integer values, they are automatically truncated.
+
+Byte arrays can be created using the $ByteArray constructors, or by using the
+  byte array literal syntax: `#[1, 2, 3]`. If the latter only contains
+  constants, it is compiled such that access to the byte array doesn't need
+  the dynamic creation of the byte array. On many platforms this requires
+  less memory. These literals are still mutable and will copy their content
+  into memory the first time they are modified ("Copy on Write").
+
+# Examples
+```
+bytes := #[1, 2, 3]
+bytes[0] = 22
+print bytes  // => [22, 2, 3]
+
+bytes += #[4, 5]
+print bytes  // => [22, 2, 3, 4, 5]
+
+bytes := ByteArray 4: it
+print bytes  // => [0, 1, 2, 3]
+```
 */
-interface ByteArray:
+interface ByteArray extends io.Data:
 
   /**
   Creates a new byte array of the given $size.
@@ -1108,6 +1130,13 @@ interface ByteArray:
   constructor size/int [initializer]:
     result := ByteArray size
     size.repeat: result[it] = initializer.call it
+    return result
+
+  constructor.from bytes/io.Data from/int=0 to/int=bytes.byte-size:
+    if not 0 <= from <= to <= bytes.byte-size: throw "OUT_OF_BOUNDS"
+    size := to - from
+    result := ByteArray size
+    bytes.write-to-byte-array result --at=0 from to
     return result
 
   /**
@@ -1214,7 +1243,7 @@ interface ByteArray:
   */
   to-string from/int=0 to/int=size -> string
 
-  /** Deprecated. Use $binary.ByteOrder.float64 instead. */
+  /** Deprecated. Use $io.ByteOrder.float64 instead. */
   to-float from/int --big-endian/bool?=true -> float
 
   /**
@@ -1245,10 +1274,7 @@ interface ByteArray:
   /**
   Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[
   */
-  replace index/int source from/int to/int -> none
-  // TODO(florian): use optional arguments in the interface.
-  replace index/int source from/int -> none
-  replace index/int source -> none
+  replace index/int source/io.Data from/int=0 to/int=source.size -> none
 
   /**
   Fills $value into list elements [$from..$to[.
@@ -1265,6 +1291,8 @@ interface ByteArray:
   Returns -1 otherwise.
   */
   index-of byte/int --from/int=0 --to/int=size -> int
+
+  write-to-byte-array byte-array/ByteArray --at/int from/int to/int -> none
 
 /** Internal function to create a byte array with one element. */
 create-byte-array_ x/int -> ByteArray_:
@@ -1311,8 +1339,9 @@ abstract class ByteArrayBase_ implements ByteArray:
   abstract operator []= n/int value/int -> int
 
   operator [..] --from/int=0 --to/int=size -> ByteArray:
-    if not 0 <= from <= to <= size: throw "OUT_OF_BOUNDS"
     if from == 0 and to == size: return this
+    // Don't bother checking the bounds, since the ByteArraySlice_
+    // constructor does this.
     return ByteArraySlice_ this from to
 
   /**
@@ -1321,7 +1350,7 @@ abstract class ByteArrayBase_ implements ByteArray:
   # Inheritance
   Use $replace-generic_ as fallback if the primitive operation failed.
   */
-  abstract replace index source from/int=0 to/int=source.size -> none
+  abstract replace index/int source/io.Data from/int=0 to/int=source.size -> none
 
   /**
   Whether this instance is empty.
@@ -1402,9 +1431,9 @@ abstract class ByteArrayBase_ implements ByteArray:
   to-string from/int=0 to/int=size -> string:
     #primitive.core.byte-array-convert-to-string
 
-  /// Deprecated. Use $binary.ByteOrder.float64 instead.
+  /// Deprecated. Use $io.ByteOrder.float64 instead.
   to-float from/int --big-endian/bool?=true -> float:
-    bin := big-endian ? binary.BIG-ENDIAN : binary.LITTLE-ENDIAN
+    bin := big-endian ? BIG-ENDIAN : LITTLE-ENDIAN
     bits := bin.int64 this from
     return float.from-bits bits
 
@@ -1531,6 +1560,18 @@ abstract class ByteArrayBase_ implements ByteArray:
   index-of byte/int --from/int=0 --to/int=size -> int:
     #primitive.core.blob-index-of
 
+  byte-size -> int:
+    return size
+
+  byte-slice from/int to/int -> io.Data:
+    return this[from..to]
+
+  byte-at index/int -> int:
+    return this[index]
+
+  write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
+    target.replace at this from to
+
 /**
 A container specialized for bytes.
 
@@ -1573,10 +1614,13 @@ class ByteArray_ extends ByteArrayBase_:
   /**
   Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[
   */
-  replace index/int source from/int=0 to/int=source.size -> none:
+  replace index/int source/io.Data from/int=0 to/int=source.byte-size -> none:
     #primitive.core.byte-array-replace:
-      // TODO(florian): why can't we throw here?
-      replace-generic_ index source from to
+      if it == "WRONG_BYTES_TYPE" and source is not ByteArray:
+        source.write-to-byte-array this --at=index from to
+      else:
+        // TODO(florian): why can't we throw here?
+        replace-generic_ index source from to
 
   // Returns true if the byte array has raw bytes as opposed to an off-heap C struct.
   is-raw-bytes_ -> bool:
@@ -1585,6 +1629,9 @@ class ByteArray_ extends ByteArrayBase_:
   stringify:
     if not is-raw-bytes_: return "Proxy"
     return super
+
+  write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
+    target.replace at this from to
 
 /**
 A Slice of a ByteArray.
@@ -1599,6 +1646,8 @@ class ByteArraySlice_ extends ByteArrayBase_:
   to_ / int
 
   constructor .byte-array_ .from_ .to_:
+    // We must check the bounds because the [..] operator on ByteArray
+    // does not check.
     if not 0 <= from_ <= to_ <= byte-array_.size:
       throw "OUT_OF_BOUNDS"
 
@@ -1624,7 +1673,7 @@ class ByteArraySlice_ extends ByteArrayBase_:
   /**
   Replaces this[$index..$index+($to-$from)[ with $source[$from..$to[
   */
-  replace index/int source from/int=0 to/int=source.size -> none:
+  replace index/int source/io.Data from/int=0 to/int=source.byte-size -> none:
     actual-index := from_ + index
     if from == to and actual-index == to_: return
     if not from_ <= actual-index < to_: throw "OUT_OF_BOUNDS"
@@ -1701,11 +1750,11 @@ class CowByteArray_ implements ByteArray:
   to-string from/int=0 to/int=size -> string:
     return backing_.to-string from to
 
-  /// Deprecated. Use $binary.ByteOrder.float64 instead.
+  /// Deprecated. Use $io.ByteOrder.float64 instead.
   to-float from/int --big-endian/bool?=true -> float:
-    byte-order /binary.ByteOrder := big-endian
-        ? binary.BIG-ENDIAN
-        : binary.LITTLE-ENDIAN
+    byte-order /io.ByteOrder := big-endian
+        ? BIG-ENDIAN
+        : LITTLE-ENDIAN
     return byte-order.float64 backing_ from
 
   to-string-non-throwing from=0 to=size:
@@ -1737,6 +1786,18 @@ class CowByteArray_ implements ByteArray:
       backing_ = backing_.copy
       is-mutable_ = true
     return backing_
+
+  byte-size -> int:
+    return backing_.byte-size
+
+  byte-slice from/int to/int -> io.Data:
+    return this[from..to]
+
+  byte-at index/int -> int:
+    return this[index]
+
+  write-to-byte-array target/ByteArray --at/int from/int to/int -> none:
+    backing_.write-to-byte-array target --at=at from to
 
 class ListSlice_ extends List:
   list_ / List
@@ -2456,6 +2517,15 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
     do: if not predicate.call it: return false
     return true
 
+  /**
+  Copies the set.
+
+  Returns a new instance that has the same values as this instance.
+  The copy is shallow and does not clone/copy the elements.
+  */
+  copy -> Set:
+    return map: it
+
   /** See $Collection.any. */
   // TODO(florian): should be inherited from CollectionBase.
   any [predicate] -> bool:
@@ -2615,9 +2685,31 @@ See also https://docs.toit.io/language/listsetmap.
 class Map extends HashedInsertionOrderedCollection_:
   static STEP_ ::= 2
 
-  // A map that only works with strings, integers, and objects supporting hash_code and equals.
+  /**
+  Constructs an empty map.
+  */
   constructor:
     super
+
+  /**
+  Constructs a weak map where the values may be replaced by null when there is
+    memory pressure.
+  A cleanup task may remove keys whose values are null at some later point, but
+    your program should not rely on this.  This cleanup task will also remove
+    key-value pairs where the value was deliberately set to null.
+  */
+  constructor.weak:
+    super
+    add-gc-processing_ this::
+      backing := backing_
+      length := backing.size
+      for position := 0; position < length; position += 2:
+        key := backing[position]
+        value := backing[position + 1]
+        if key is Tombstone_ or value != null: continue
+        backing[position] = SMALL-TOMBSTONE_
+        backing[position + 1] = SMALL-TOMBSTONE_
+        size_--
 
   /**
   Constructs a Map with a given $size.
@@ -3143,6 +3235,11 @@ class Deque implements Collection:
   first_ := 0
   backing_/List := []
 
+  constructor:
+
+  constructor.from collection/Collection:
+    backing_ = List.from collection
+
   size -> int:
     return backing_.size - first_
 
@@ -3200,9 +3297,28 @@ class Deque implements Collection:
     if first == backing.size: throw "OUT_OF_RANGE"
     result := backing[first]
     backing[first] = null
-    first_ = first + 1
+    first_++
     shrink-if-needed_
     return result
+
+  add-first element -> none:
+    first := first_
+    if first == 0:
+      padding-size := (backing_.size >> 1) + 1
+      new_size := backing_.size + padding-size
+      // Pad both ends so we are not inefficient in the case where the next
+      // operation adds to the end.
+      new_backing := List_.private_ (new_size + padding-size) new_size
+      new_backing.replace padding-size backing_
+      backing_ = new_backing
+      first = padding-size
+    first--
+    backing_[first] = element
+    first_ = first
+
+  operator [] index/int:
+    if index < 0 or index > backing_.size - first_: throw "OUT_OF_RANGE"
+    return backing_[first_ + index]
 
   shrink-if-needed_ -> none:
     backing := backing_

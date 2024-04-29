@@ -1,6 +1,6 @@
-tests/negative/field-type4-test.toit:7:17: error: Type mismatch: can't assign 'null' to non-nullable 'string'
+tests/negative/field-type4-test.toit:9:17: error: Type mismatch: can't assign 'null' to non-nullable 'string'
   x / string := null
                 ^~~~
 As check failed: null is not a string.
-  0: A                         tests/negative/field-type4-test.toit:7:17
+  0: A                         tests/negative/field-type4-test.toit:9:17
   1: main                      tests/negative/field-type4-test.toit:12:8

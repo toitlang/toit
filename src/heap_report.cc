@@ -24,7 +24,7 @@
 
 #include "objects_inline.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include "esp_partition.h"
 #include "esp_heap_caps.h"
@@ -52,7 +52,7 @@ void HeapFragmentationDumper::log_allocation(void* allocation, uword size, void*
   // Iterate over subranges that do not cross page boundaries.
   for (uword subrange = from; subrange < to; subrange = Utils::round_down(subrange + PAGE_SIZE, PAGE_SIZE)) {
     switch_to_page(subrange);
-    uword subrange_end = Utils::min(to, subrange + PAGE_SIZE);
+    uword subrange_end = Utils::min(to, Utils::round_down(subrange + PAGE_SIZE, PAGE_SIZE));
     size_t subrange_size = subrange_end - subrange;
     if (!unemitted_8_byte_overhead_ && is_overhead && subrange_size == 8) {
       unemitted_8_byte_overhead_ = true;
@@ -134,7 +134,7 @@ void HeapFragmentationDumper::switch_to_page(uword address) {
   }
 }
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 class FlashHeapFragmentationDumper : public HeapFragmentationDumper {
  public:

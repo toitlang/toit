@@ -2,6 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import monitor
 import system.containers
 import expect show *
 
@@ -15,6 +16,7 @@ main arguments:
 
   test-images
   test-start
+  test-background-state-changed
 
 test-images:
   images/List := containers.images
@@ -35,7 +37,7 @@ test-start:
 
   lambda2-value := null
   sub2 := containers.start containers.current {:}
-  sub2.on-stopped:: lambda2-value = it
+      --on-stopped=:: lambda2-value = it
   expect-equals 0 sub2.wait
   expect-equals 0 lambda2-value
 
@@ -48,15 +50,29 @@ test-start:
   lambda4-called := false
   lambda4-value := null
   sub4 := containers.start containers.current {:}
-  sub4.on-stopped::
-    expect-not lambda4-called
-    lambda4-value = it
-    lambda4-called = true
+      --on-stopped=::
+        expect-not lambda4-called
+        lambda4-value = it
+        lambda4-called = true
   // Make sure we get the lambda called before we call
   // wait on the container. Shouldn't take too long.
   with-timeout --ms=5_000: while not lambda4-called: sleep --ms=50
   expect-equals 0 lambda4-value
   expect-equals 0 sub4.wait
 
+test-background-state-changed:
+  channel := monitor.Channel 1
+  sub := containers.start containers.current { "background-state-test": true }
+      --on-event=:: | event-id/int value |
+        expect-equals containers.Container.EVENT-BACKGROUND-STATE-CHANGE event-id
+        channel.send value
+
+  expect-equals true channel.receive
+  expect-equals false channel.receive
+
 main-child arguments/Map:
+  if arguments.contains "background-state-test":
+    sleep --ms=10
+    containers.notify-background-state-changed true
+    containers.notify-background-state-changed false
   sleep --ms=100

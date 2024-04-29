@@ -15,7 +15,7 @@
 
 import ar show *
 import host.file
-import binary show *
+import io show LITTLE-ENDIAN
 import uuid show Uuid NIL
 
 // Library for parsing a snapshot file into a useful structure.
@@ -62,9 +62,10 @@ class Program:
   global-table    / List ::= ?          // List of GlobalInfo
   selectors_      / Map  ::= {:}        // Map from location-id to SelectorClass.
 
-  static CLASS-TAG-SIZE_     ::= 4
+  static CLASS-TAG-SIZE_     ::= ToitHeapObject.CLASS-TAG-BIT-SIZE
   static CLASS-TAG-MASK_     ::= (1 << CLASS-TAG-SIZE_) - 1
-  static INSTANCE-SIZE-MASK_ ::= (1 << (16 - CLASS-TAG-SIZE_)) - 1
+  static CLASS-ID-SIZE_      ::= ToitHeapObject.CLASS-ID-BIT-SIZE
+  static CLASS-ID-OFFSET_    ::= ToitHeapObject.CLASS-ID-OFFSET
 
 
   constructor snapshot/SnapshotBundle:
@@ -74,7 +75,7 @@ class Program:
     built-in-class-ids        = snapshot.program-snapshot.program-segment.built-in-class-ids_
     invoke-bytecode-offsets   = snapshot.program-snapshot.program-segment.invoke-bytecode-offsets_
     class-tags                = snapshot.program-snapshot.program-segment.class-bits_.map: it & CLASS-TAG-MASK_
-    class-instance-sizes      = snapshot.program-snapshot.program-segment.class-bits_.map: it >> CLASS-TAG-SIZE_
+    class-instance-sizes      = snapshot.program-snapshot.program-segment.class-bits_.map: it >> CLASS-ID-OFFSET_
     entry-point-indexes       = snapshot.program-snapshot.program-segment.entry-point-indexes_
     global-variables          = snapshot.program-snapshot.program-segment.global-variables_
     class-check-ids           = snapshot.program-snapshot.program-segment.class-check-ids_
@@ -416,8 +417,12 @@ abstract class ToitHeapObject extends ToitObject:
   static CLASS-TAG-OFFSET/int ::= 0
   static CLASS-TAG-MASK/int ::= (1 << CLASS-TAG-BIT-SIZE) - 1
 
+  static FINALIZER-BIT-SIZE/int ::= 1
+  static FINALIZER-BIT-OFFSET/int ::= CLASS-TAG-OFFSET + CLASS-TAG-BIT-SIZE
+  static FINALIZER-BIT-MASK/int ::= (1 << FINALIZER-BIT-SIZE) - 1
+
   static CLASS-ID-BIT-SIZE/int ::= 10
-  static CLASS-ID-OFFSET/int ::= CLASS-TAG-OFFSET + CLASS-TAG-BIT-SIZE
+  static CLASS-ID-OFFSET/int ::= FINALIZER-BIT-OFFSET + FINALIZER-BIT-SIZE
   static CLASS-ID-MASK/int ::= (1 << CLASS-ID-BIT-SIZE) - 1
 
   header/int? := null
@@ -878,6 +883,7 @@ BYTE-CODES ::= [
   Bytecode "INVOKE_MOD"                 1 OP "invoke mod",
   Bytecode "INVOKE_AT"                  1 OP "invoke at",
   Bytecode "INVOKE_AT_PUT"              1 OP "invoke at_put",
+  Bytecode "INVOKE_SIZE"                3 OP-SO "invoke size",
   Bytecode "BRANCH"                     3 OP-SF "branch",
   Bytecode "BRANCH_IF_TRUE"             3 OP-SF "branch if true",
   Bytecode "BRANCH_IF_FALSE"            3 OP-SF "branch if false",
@@ -1264,13 +1270,10 @@ class MethodInfo:
       .position .bytecode-positions .as-class-names:
 
   stacktrace-string program/Program:
-    if type == BLOCK-TYPE:
+    if type == BLOCK-TYPE or type == LAMBDA-TYPE:
       info := program.method-info-for outer
-      return "$(info.stacktrace-string program).<block>"
-
-    if type == LAMBDA-TYPE:
-      info := program.method-info-for outer
-      return "$(info.stacktrace-string program).<lambda>"
+      code-info := program.method-info-for id
+      return "$(info.stacktrace-string program).$(code-info.name)"
 
     return prefix-string program
 

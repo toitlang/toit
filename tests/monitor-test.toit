@@ -31,6 +31,7 @@ run:
   test-process-messages-on-leave
   test-gate
   test-latch
+  test-signal
 
 monitor A:
   foo-ready := false
@@ -486,6 +487,40 @@ test-latch:
       finally: | is-exception exception |
         l3.set --exception exception
   expect-throw 99: l3.get
+
+test-signal:
+  done := Semaphore
+  order := []
+  signal := Signal
+  t0 := false
+  t1 := false
+  t2 := false
+  task::
+    signal.wait: t0
+    order.add 0
+    done.up
+  task::
+    signal.wait: t1
+    order.add 1
+    done.up
+  // Make sure we can raise the signal here without making
+  // progress and without getting any of the tasks already
+  // waiting stuck.
+  signal.raise
+  task::
+    signal.wait: t2
+    order.add 2
+    done.up
+  t0 = true
+  signal.raise
+  done.down
+  t1 = true
+  signal.raise
+  done.down
+  t2 = true
+  signal.raise
+  done.down
+  expect-list-equals [0, 1, 2] order
 
 test-semaphore:
   semaphore := Semaphore

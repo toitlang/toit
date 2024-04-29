@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include "event_sources/system_esp32.h"
 #include "uart_esp32_hal.h"
@@ -613,9 +613,8 @@ MODULE_IMPLEMENTATION(uart, MODULE_UART)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
+
   UartResourceGroup* uart = _new UartResourceGroup(process, EventQueueEventSource::instance());
   if (!uart) FAIL(MALLOC_FAILED);
 
@@ -726,7 +725,7 @@ PRIMITIVE(create) {
   if (data_bits < 5 || data_bits > 8) FAIL(INVALID_ARGUMENT);
   if (stop_bits < 1 || stop_bits > 3) FAIL(INVALID_ARGUMENT);
   if (parity < 1 || parity > 3) FAIL(INVALID_ARGUMENT);
-  if (options < 0 || options > 15) FAIL(INVALID_ARGUMENT);
+  if (options < 0 || options > 31) FAIL(INVALID_ARGUMENT);
   if (mode < UART_MODE_UART || mode > UART_MODE_IRDA) FAIL(INVALID_ARGUMENT);
   if (mode == UART_MODE_RS485_HALF_DUPLEX && (rts == -1 || cts != -1)) FAIL(INVALID_ARGUMENT);
   if (baud_rate < 0 || baud_rate > SOC_UART_BITRATE_MAX) FAIL(INVALID_ARGUMENT);
@@ -752,7 +751,7 @@ PRIMITIVE(create) {
     // High speed setting.
     interrupt_flags |= HI;
     full_interrupt_threshold = 35;
-    tx_buffer_size = 1024;
+    tx_buffer_size = 2048;
     rx_buffer_size = 2048;
   } else if ((options & 4) != 0) {
     // Medium speed setting.
@@ -767,18 +766,20 @@ PRIMITIVE(create) {
     tx_buffer_size = 256;
     rx_buffer_size = 768;
   }
+  if ((options & 16) != 0) {
+    tx_buffer_size *= 2;
+    rx_buffer_size *= 2;
+  }
 
   UartInitialization init;
   uart_port_t port = determine_preferred_port(tx, rx, rts, cts);
 
   port = uart_ports.preferred(port);
-  if (port == kInvalidUartPort) FAIL(OUT_OF_RANGE);
+  if (port == kInvalidUartPort) FAIL(ALREADY_IN_USE);
   init.port = port;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   init.queue = xQueueCreate(UART_QUEUE_SIZE, sizeof(uart_event_types_t));
   if (!init.queue) {
@@ -975,4 +976,4 @@ PRIMITIVE(get_control_flags) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

@@ -25,18 +25,49 @@
 namespace toit {
 namespace compiler {
 
-void CompletionHandler::class_or_interface(ast::Node* node, IterableScope* scope, ir::Class* holder, ir::Node* resolved, bool needs_interface) {
+void CompletionHandler::terminate() {
+  ASSERT(prefix_.is_valid());
+  exit(0);
+}
+
+void CompletionHandler::set_and_emit_prefix(Symbol prefix, const Source::Range& range) {
+  ASSERT(!prefix_.is_valid());
+  prefix_ = prefix;
+  protocol()->completion()->emit_prefix(prefix.c_str());
+  protocol()->completion()->emit_prefix_range(range_to_lsp_range(range, source_manager_));
+}
+
+void CompletionHandler::class_interface_or_mixin(ast::Node* node,
+                                                 IterableScope* scope,
+                                                 ir::Class* holder,
+                                                 ir::Node* resolved,
+                                                 bool needs_interface,
+                                                 bool needs_mixin) {
   scope->for_each([&](Symbol name, const ResolutionEntry& entry) {
     if (entry.is_class()) {
       auto klass = entry.klass();
-      if (needs_interface != klass->is_interface()) return;
+      if ((needs_interface && !klass->is_interface()) || (!needs_interface && klass->is_interface())) return;
+      if ((needs_mixin && !klass->is_mixin()) || (!needs_mixin && klass->is_mixin())) return;
       if (klass == holder) return;
       complete_entry(name, entry);
     } else if (entry.is_prefix()) {
       complete_entry(name, entry);
     }
   });
-  exit(0);
+  terminate();
+}
+
+static CompletionKind completion_kind_for(ir::Class* klass) {
+  switch (klass->kind()) {
+    case ir::Class::CLASS:
+    case ir::Class::MONITOR:
+    case ir::Class::MIXIN:
+      return CompletionKind::CLASS;
+    case ir::Class::INTERFACE:
+      return CompletionKind::INTERFACE;
+      break;
+  }
+  UNREACHABLE();
 }
 
 void CompletionHandler::type(ast::Node* node,
@@ -67,21 +98,14 @@ void CompletionHandler::type(ast::Node* node,
         // We don't use `complete_entry` here, as we want classes to be
         //   shown as classes and not as constructors.
         auto klass = entry.klass();
-        if (klass->is_interface()) {
-          complete_entry(name, entry, CompletionKind::INTERFACE);
-        } else {
-          complete_entry(name, entry, CompletionKind::CLASS);
-        }
+        complete_entry(name, entry, completion_kind_for(klass));
       }
     } else if (entry.is_prefix()) {
       complete_entry(name, entry);
     }
   });
-  exit(0);
+  terminate();
 }
-
-
-
 
 void CompletionHandler::call_virtual(ir::CallVirtual* node,
                                      ir::Type type,
@@ -89,36 +113,58 @@ void CompletionHandler::call_virtual(ir::CallVirtual* node,
   bool is_for_named = node->target()->as_LspSelectionDot()->is_for_named();
   if (type.is_none()) {
     // No completions.
-    exit(0);
+    terminate();
   }
   if (type.is_any()) {
     // No completions. Just let the client suggest identifiers it has seen.
-    exit(0);
+    terminate();
   }
   ASSERT(type.is_class());
   auto klass = type.klass();
   if (is_for_named) {
     auto selector = node->selector();
     while (klass != null) {
-      for (auto method : klass->methods()) {
-        if (method->name() == selector) {
-          complete_named_args(method);
+      for (int i = -1; i < klass->mixins().length(); i++) {
+        auto current = i == -1
+            ? klass
+            : klass->mixins()[i];
+        for (auto method : current->methods()) {
+          if (method->name() == selector) {
+            complete_named_args(method);
+          }
         }
       }
-      klass = klass->super();
+      if (klass->super() == null &&
+          (klass->is_interface() || klass->is_mixin())) {
+        // Add the Object methods, which every object has.
+        klass = classes[0];
+      } else {
+        klass = klass->super();
+      }
     }
-    exit(0);
+    terminate();
   }
 
   while (klass != null) {
-    auto class_source = source_manager_->source_for_position(klass->range().from());
-    auto class_package = class_source->package_id();
-    for (auto method : klass->methods()) {
-      complete_method(method, class_package);
+    for (int i = -1; i < klass->mixins().length(); i++) {
+      auto current = i == -1
+          ? klass
+          : klass->mixins()[i];
+      auto class_source = source_manager_->source_for_position(current->range().from());
+      auto class_package = class_source->package_id();
+      for (auto method : current->methods()) {
+        complete_method(method, class_package);
+      }
     }
-    klass = klass->super();
+    if (klass->super() == null &&
+        (klass->is_interface() || klass->is_mixin())) {
+      // Add the Object methods, which every object has.
+      klass = classes[0];
+    } else {
+      klass = klass->super();
+    }
   }
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::complete_static_ids(IterableScope* scope,
@@ -156,7 +202,7 @@ void CompletionHandler::call_static(ast::Node* node,
   complete("null", CompletionKind::KEYWORD);
   complete("return", CompletionKind::KEYWORD);
   complete_static_ids(scope, surrounding);
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::call_prefixed(ast::Dot* node,
@@ -186,7 +232,7 @@ void CompletionHandler::call_class(ast::Dot* node,
                                    IterableScope* scope) {
   bool has_default_constructor = false;
   CallShape default_constructor_shape(1);  // 1 argument for `this`.
-  for (auto constructor : klass->constructors()) {
+  for (auto constructor : klass->unnamed_constructors()) {
     if (constructor->resolution_shape().accepts(default_constructor_shape)) {
       has_default_constructor = true;
       break;
@@ -205,7 +251,7 @@ void CompletionHandler::call_class(ast::Dot* node,
   klass->statics()->for_each([&](Symbol name, const ResolutionEntry& entry) {
     complete_entry(name, entry);
   });
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::call_block(ast::Dot* node, ir::Node* ir_receiver) {
@@ -219,7 +265,7 @@ void CompletionHandler::call_static_named(ast::Node* name_node, ir::Node* ir_cal
     if (!candidate->is_Method()) continue;
     complete_named_args(candidate->as_Method());
   }
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::call_primitive(ast::Node* node, Symbol module_name, Symbol primitive_name,
@@ -243,7 +289,7 @@ void CompletionHandler::call_primitive(ast::Node* node, Symbol module_name, Symb
       complete(PrimitiveResolver::primitive_name(module, i), CompletionKind::PROPERTY);
     }
   }
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::field_storing_parameter(ast::Parameter* node,
@@ -256,7 +302,7 @@ void CompletionHandler::field_storing_parameter(ast::Parameter* node,
       complete(field->name(), CompletionKind::FIELD);
     }
   }
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::this_(ast::Identifier* node,
@@ -264,7 +310,7 @@ void CompletionHandler::this_(ast::Identifier* node,
                               IterableScope* scope,
                               ir::Method* surrounding) {
   call_static(node, null, null, List<ir::Node*>(), scope, surrounding);
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::show(ast::Node* node, ResolutionEntry entry, ModuleScope* scope) {
@@ -273,7 +319,7 @@ void CompletionHandler::show(ast::Node* node, ResolutionEntry entry, ModuleScope
   scope->for_each_external([&](Symbol name, const ResolutionEntry& entry) {
     complete_entry(name, entry);
   }, &already_visited);
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::return_label(ast::Node* node, int label_index, const std::vector<std::pair<Symbol, ast::Node*>>& labels) {
@@ -283,7 +329,7 @@ void CompletionHandler::return_label(ast::Node* node, int label_index, const std
     if (label.is_valid()) complete(label, CompletionKind::KEYWORD);
     if (labels[i].second->is_Lambda()) break;
   }
-  exit(0);
+  terminate();
 }
 
 void CompletionHandler::toitdoc_ref(ast::Node* node,
@@ -298,33 +344,29 @@ void CompletionHandler::toitdoc_ref(ast::Node* node,
     complete_entry(name, entry);
   };
   iterator->for_each(param_callback, other_callback);
-  exit(0);
+  terminate();
 }
 
-void CompletionHandler::import_first_segment(Symbol prefix,
-                                             ast::Identifier* segment,
-                                             const Package& current_pkg,
-                                             const PackageLock& package_lock,
-                                             LspProtocol* protocol) {
-  CompletionHandler handler(prefix, current_pkg.id(), null, protocol);
-  current_pkg.list_prefixes([&](const std::string& candidate) {
-    handler.complete(candidate.c_str(), CompletionKind::MODULE);
-  });
-  package_lock.list_sdk_prefixes([&](const std::string& candidate) {
-    handler.complete(candidate.c_str(), CompletionKind::MODULE);
-  });
-  exit(0);
-}
-
-void CompletionHandler::import_path(Symbol prefix,
-                                    const char* path,
-                                    Filesystem* fs,
-                                    LspProtocol* protocol) {
-  CompletionHandler handler(prefix, Package::INVALID_PACKAGE_ID, null, protocol);
-  fs->list_toit_directory_entries(path, [&](const char* candidate, bool is_directory) {
-    handler.complete(candidate, CompletionKind::MODULE);
-  });
-  exit(0);
+void CompletionHandler::import_path(const char* path,
+                                    const char* segment,
+                                    bool is_first_segment,
+                                    const char* resolved,
+                                    const Package& current_package,
+                                    const PackageLock& package_lock,
+                                    Filesystem* fs) {
+  if (is_first_segment) {
+    current_package.list_prefixes([&](const std::string& candidate) {
+      complete(candidate.c_str(), CompletionKind::MODULE);
+    });
+    package_lock.list_sdk_prefixes([&](const std::string& candidate) {
+      complete(candidate.c_str(), CompletionKind::MODULE);
+    });
+  } else {
+    fs->list_toit_directory_entries(path, [&](const char* candidate, bool is_directory) {
+      complete(candidate, CompletionKind::MODULE);
+    });
+  }
+  terminate();
 }
 
 static bool is_constant_name(Symbol name) {
@@ -392,7 +434,7 @@ void CompletionHandler::complete_entry(Symbol name,
 
   if (node->is_Class()) {
     auto klass = node->as_Class();
-    kind = klass->is_interface() ? CompletionKind::INTERFACE : CompletionKind::CLASS;
+    kind = completion_kind_for(klass);
     range = klass->range();
   } else if (node->is_Field()) {
     range = node->as_Field()->range();
@@ -444,10 +486,10 @@ void CompletionHandler::complete_if_visible(Symbol name,
 }
 
 void CompletionHandler::complete(const std::string& name, CompletionKind kind) {
-  if (emitted.contains(name)) return;
+  if (emitted_.contains(name)) return;
   // Filter out completions that don't match the prefix.
   if (strncmp(name.c_str(), prefix_.c_str(), strlen(prefix_.c_str())) != 0) return;
-  emitted.insert(name);
+  emitted_.insert(name);
   protocol()->completion()->emit(name, kind);
 }
 

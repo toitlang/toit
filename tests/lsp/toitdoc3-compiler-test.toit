@@ -6,6 +6,8 @@ import .lsp-client show LspClient run-client-test
 import ...tools.lsp.server.summary
 import ...tools.lsp.server.toitdoc-node
 import .utils
+import system
+import system show platform
 
 import host.directory
 import expect show *
@@ -18,10 +20,10 @@ main args:
   // We are reaching into the server, so we must not spawn the server as
   // a process.
   run-client-test args --no-spawn-process: test it
-  // Since we used '--no-spawn_process' we must exit 0.
+  // Since we used '--no-spawn-process' we must exit 0.
   exit 0
 
-DRIVE ::= platform == PLATFORM-WINDOWS ? "c:" : ""
+DRIVE ::= platform == system.PLATFORM-WINDOWS ? "c:" : ""
 OTHER-PATH ::= "$DRIVE/tmp/other.toit"
 FILE-PATH ::= "$DRIVE/tmp/file.toit"
 
@@ -61,7 +63,11 @@ build-name element klass/Class?=null:
 
 build-refs client/LspClient names/List --path=FILE-PATH:
   all-elements-map := {:}
-  document := client.server.documents_.get-existing-document --path=path
+  uri := client.to-uri path
+  project-uri := client.server.documents_.project-uri-for --uri=uri
+  // Reaching into the private state of the server.
+  analyzed-documents := client.server.documents_.analyzed-documents-for --project-uri=project-uri
+  document := analyzed-documents.get-existing --uri=uri
   summary := document.summary
   summary.classes.do: |klass|
     all-elements-map[build-name klass] = [ToitdocRef.CLASS, klass]
@@ -126,8 +132,11 @@ test-toitdoc
     diagnostics := client.diagnostics-for --path=FILE-PATH
     diagnostics.do: print it
     expect diagnostics.is-empty
+  uri := client.to-uri FILE-PATH
+  project-uri := client.server.documents_.project-uri-for --uri=uri
   // Reaching into the private state of the server.
-  document := client.server.documents_.get-existing-document --path=FILE-PATH
+  analyzed-documents := client.server.documents_.analyzed-documents-for --project-uri=project-uri
+  document := analyzed-documents.get-existing --uri=uri
   toitdoc := extract-toitdoc.call document.summary
   expected-refs := build-expected-refs.call
   ref-counter := 0

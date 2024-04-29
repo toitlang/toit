@@ -3,12 +3,13 @@
 // be found in the tests/LICENSE file.
 
 import host.file
-import bytes
 import host.pipe
-import reader show BufferedReader
+import io
+import system
+import system show platform
 
 combine-and-replace lines replacement-index replacement-line:
-  builder := bytes.Buffer
+  builder := io.Buffer
   for i := 0; i < lines.size; i++:
     if i == replacement-index:
       builder.write replacement-line
@@ -31,7 +32,7 @@ class Location:
     return "$path:$line:$column"
 
   static to-slash_ path/string -> string:
-    if platform == PLATFORM-WINDOWS:
+    if platform == system.PLATFORM-WINDOWS:
       return path.replace --all "\\" "/"
     return path
 
@@ -40,7 +41,7 @@ class Location:
 extract-locations path -> Map/*<string, Location>*/:
   content := (file.read-content path).to-string
   lines := (content.trim --right "\n").split "\n"
-  if platform == PLATFORM-WINDOWS:
+  if platform == system.PLATFORM-WINDOWS:
     lines = lines.map: |line| line.trim --right "\r"
   result := {:}
   for i := 0; i < lines.size; i++:
@@ -96,7 +97,7 @@ run-toit toitc args -> List?:
 
     lines := []
     try:
-      reader := BufferedReader cpp-from
+      reader := io.Reader.adapt cpp-from
       while line := reader.read-line:
         lines.add line
     finally:

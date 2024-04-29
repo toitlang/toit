@@ -5,6 +5,8 @@
 import .lsp-client show LspClient run-client-test
 import ...tools.lsp.server.summary
 import .utils
+import system
+import system show platform
 
 import expect show *
 
@@ -12,7 +14,7 @@ main args:
   // We are reaching into the server, so we must not spawn the server as
   // a process.
   run-client-test args --no-spawn-process: test it
-  // Since we used '--no-spawn_process' we must exit 0.
+  // Since we used '--no-spawn-process' we must exit 0.
   exit 0
 
 check-foo-export summary client foo-path:
@@ -27,7 +29,7 @@ check-foo-export summary client foo-path:
 
 test client/LspClient:
   LEVELS ::= 3
-  DRIVE ::= platform == PLATFORM-WINDOWS ? "c:" : ""
+  DRIVE ::= platform == system.PLATFORM-WINDOWS ? "c:" : ""
   DIR ::= "$DRIVE/non_existing_dir_toit_test"
   MODULE-NAME-PREFIX ::= "some_non_existing_path"
   relatives := List LEVELS: ".$MODULE-NAME-PREFIX$it"
@@ -58,7 +60,11 @@ test client/LspClient:
     diagnostics := client.diagnostics-for --path=paths[it]
     expect-equals 0 diagnostics.size
 
-  document := client.server.documents_.get-existing-document --path=paths[0]
+  document-uri := client.to-uri paths[0]
+  project-uri := client.server.documents_.project-uri-for --uri=(client.to-uri paths[0])
+  analyzed-documents := client.server.documents_.analyzed-documents-for --project-uri=project-uri
+
+  document :=  analyzed-documents.get-existing --uri=document-uri
   summary := document.summary
 
   expect summary.exported-modules.is-empty
@@ -69,7 +75,7 @@ test client/LspClient:
     diagnostics := client.diagnostics-for --path=paths[it]
     expect-equals 0 diagnostics.size
 
-  document = client.server.documents_.get-existing-document --path=paths[0]
+  document =  analyzed-documents.get-existing --uri=document-uri
   summary = document.summary
 
   expect-equals 1 summary.exported-modules.size

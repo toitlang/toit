@@ -55,14 +55,19 @@
 #error "More than one build configuration specified: use only one of -DTOIT_DEBUG -DTOIT_DEPLOY"
 #endif
 
+//  TOIT_FREERTOS : FreeRTOS
+#if defined(__FREERTOS__)
+#define TOIT_FREERTOS
+#endif
+
 // -----------------------------------------------------------------------------
 // OS configuration:
-//  TOIT_FREERTOS : ESP32 RTOS
+//  TOIT_ESP32      : ESP-IDF
 //  TOIT_DARWIN   : Apple's OSX
 //  TOIT_LINUX    : Ubuntu etc.
 
-#if defined(__FREERTOS__)
-#define TOIT_FREERTOS
+#if defined(ESP_PLATFORM)
+#define TOIT_ESP32
 #define TOIT_CMPCTMALLOC
 #elif defined(__APPLE__)
 #define TOIT_DARWIN
@@ -75,9 +80,9 @@
 #define TOIT_POSIX
 #endif
 
-#if defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_FREERTOS) > 1
+#if defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_ESP32) > 1
 #error "More than one OS configuration specified"
-#elif defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_FREERTOS) < 1
+#elif defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_ESP32) < 1
 #error "No OS configuration specified"
 #endif
 
@@ -95,19 +100,15 @@
 #define LP64(a,b) a##l##b
 #endif
 
-// define IOT_DEVICE iff compiled for an embedded system.
-#ifdef TOIT_FREERTOS
-#define IOT_DEVICE
-#else
+#ifndef TOIT_FREERTOS
 // For non-embedded applications, this is where we define configuration options
 // that would be determined by the model-specific sdkconfig file on an embedded
 // device.
 #define CONFIG_TOIT_BYTE_DISPLAY 1
 #define CONFIG_TOIT_BIT_DISPLAY 1
 #define CONFIG_TOIT_FONT 1
-#if !defined(TOIT_WINDOWS) && !defined(BUILD_32) && !defined(__arm__) && !defined(__aarch64__)
 #define CONFIG_TOIT_FULL_ZLIB 1
-#endif
+#define CONFIG_TOIT_ZLIB_RLE 1
 #endif
 
 typedef intptr_t word;
@@ -273,14 +274,14 @@ class AllowThrowingNew {
 void fail(const char* file, int line, const char* format, ...) __attribute__ ((__noreturn__));
 #define ASSERT(cond) if (!(cond)) { toit::fail(__FILE__, __LINE__, "assertion failure, %s.", #cond); }
 #define FATAL(message, ...) toit::fail(__FILE__, __LINE__, message, ##__VA_ARGS__);
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 #define FATAL_IF_NOT_ESP_OK(cond) do { if ((cond) != ESP_OK) toit::fail(__FILE__, __LINE__, "%s", #cond); } while (0)
 #endif
 #else  // TOIT_DEPLOY
 void fail(const char* format, ...) __attribute__ ((__noreturn__));
 #define ASSERT(cond) while (false && (cond)) {}
 #define FATAL(message, ...) toit::fail(message, ##__VA_ARGS__);
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 #define FATAL_IF_NOT_ESP_OK(cond) do { if ((cond) != ESP_OK) toit::fail("%s", #cond); } while (0)
 #endif
 #endif  // TOIT_DEPLOY

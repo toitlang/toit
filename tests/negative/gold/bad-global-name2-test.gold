@@ -4,4 +4,4 @@ foo.bar := 499
 tests/negative/bad-global-name2-test.toit:5:1: error: Invalid name
 foo.bar := 499
 ^~~~~~~
-Compilation failed.
+Compilation failed

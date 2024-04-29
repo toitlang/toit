@@ -8,7 +8,7 @@ throw exception:
 rethrow exception trace:
 lookup-failure_ receiver selector-or-selector-offset:
 as-check-failure_ receiver id:
-run-global-initializer_ id initializer:
+run-global-initializer__ id initializer:
 program-failure_ bci:
 unreachable:
 
@@ -22,11 +22,13 @@ class ListSlice_:
 class string:
 class String_:
 class StringSlice_:
+class StringByteSlice_:
 class float:
 class LargeInteger_:
 class False_:
 class Null_:
 class Object:
+  stringify:
 class SmallInteger_:
 class Task_:
 class True_:
@@ -44,6 +46,7 @@ class CowByteArray_:
 class ByteArraySlice_:
 
 interface Interface_:
+mixin Mixin_:
 class Class_:
 class Stack_:
 class Exception_:
@@ -70,7 +73,7 @@ create-cow-byte-array_ byte-array:
 
 identical x y:
 
-lambda_ method arguments arg-count:
+lambda__ method arguments arg-count:
 class Lambda:
 
 simple-interpolate-strings_ array:

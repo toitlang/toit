@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import reader
 
 import .socket-address
@@ -15,21 +16,24 @@ interface Socket implements reader.Reader:
   local-address -> SocketAddress
   peer-address -> SocketAddress
 
-  // TODO(kasper): Remove this.
-  set-no-delay enabled/bool -> none
-
   // Returns true if TCP_NODELAY option is enabled.
   no-delay -> bool
 
   // Enable or disable TCP_NODELAY option.
   no-delay= value/bool
 
+  in -> io.CloseableReader
+  out -> io.CloseableWriter
+
+  /** Deprecated. Use $(in).read instead. */
   read -> ByteArray?
-  write data from/int=0 to/int=data.size -> int
+  /** Deprecated. Use $(out).write or $(out).try-write instead. */
+  write data/io.Data from/int=0 to/int=data.byte-size -> int
 
   mtu -> int
 
   // Close the socket for write. The socket will still be able to read incoming data.
+  /** Deprecated. Use $(out).close instead. */
   close-write
 
   // Immediately close the socket and release any resources associated.

@@ -15,7 +15,7 @@
 
 #include "top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <stdio.h>
 
@@ -134,7 +134,8 @@ static void start() {
     // If we're updating the firmware, we call esp_restart to ensure we fully
     // reset the chip with the new firmware.
     ets_printf("[toit] INFO: firmware updated; doing chip reset\n");
-    esp_restart();  // Careful: This clears the RTC memory.
+    RtcMemory::invalidate();   // Careful: This clears the RTC memory on boot.
+    esp_restart();
   }
 
   switch (exit_state.reason) {
@@ -157,7 +158,8 @@ static void start() {
       // fails. In that case, we're not rejecting a firmware update.
       if (err == ESP_OK && ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
         ets_printf("[toit] WARN: firmware update rejected; doing chip reset\n");
-        esp_restart();  // Careful: This clears the RTC memory.
+        RtcMemory::invalidate();   // Careful: This clears the RTC memory on boot.
+        esp_restart();
       }
 
       // Sleep for 1s before restarting after an error.
@@ -186,4 +188,4 @@ extern "C" void toit_start() {
   toit::start();
 }
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

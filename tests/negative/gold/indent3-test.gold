@@ -1,4 +1,7 @@
+tests/negative/indent3-test.toit:8:8: warning: Unexpected indentation: 'if' and 'else' not at same level
+       else if true:
+       ^~~~
 tests/negative/indent3-test.toit:9:5: error: All expressions in a sequence must be indented the same way
     "bad indent"
     ^~~~~~~~~~~~
-Compilation failed.
+Compilation failed

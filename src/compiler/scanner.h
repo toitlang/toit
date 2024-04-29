@@ -40,7 +40,7 @@ const int TAB_WIDTH = 8;
 // specific location acts as a marker or is just an illegal character.
 // If the callback returns false, then it's illegal. Otherwise the callback should
 // replace the marker with the original character and return true.
-const int LSP_SELECTION_MARKER = 1;
+const uint8 LSP_SELECTION_MARKER = 1;
 
 class LspSource : public Source {
  public:
@@ -69,7 +69,7 @@ class LspSource : public Source {
 
   bool is_valid() { return true; }
   const char* absolute_path() const { return wrapped_->absolute_path(); }
-  std::string package_id() const { return wrapped_->package_id(); }
+  Package package() const { return wrapped_->package(); }
   std::string error_path() const { return wrapped_->error_path(); }
   const uint8* text() const { return text_with_marker_; }
   Range range(int from, int to) const {

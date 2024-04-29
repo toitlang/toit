@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <driver/gpio.h>
 #include <driver/adc.h>
@@ -213,11 +213,9 @@ PRIMITIVE(init) {
   } else {
     FAIL(OUT_OF_RANGE);
   }
-  
+
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   AdcResource* resource = null;
   { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
@@ -288,4 +286,4 @@ PRIMITIVE(close) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

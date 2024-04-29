@@ -30,7 +30,7 @@ main:
 */
 
 import encoding.tison
-import reader show Reader
+import io
 
 import system.api.storage show StorageService StorageServiceClient
 import system.services show ServiceResourceProxy
@@ -116,8 +116,13 @@ class Bucket extends ServiceResourceProxy:
 
   get key/string [--if-present] [--if-absent] -> any:
     bytes := (client_ as StorageServiceClient).bucket-get handle_ key
-    if not bytes: return if-absent.call key
-    return if-present.call (tison.decode bytes)
+    if bytes:
+      // Play it safe and handle the case where a bucket ended up
+      // with illegal encoded bits by treating it as an absent entry.
+      decoded := null
+      exception := catch: decoded = tison.decode bytes
+      if not exception: return if-present.call decoded
+    return if-absent.call key
 
   get key/string [--init]:
     return get key
@@ -358,7 +363,7 @@ class Region extends ServiceResourceProxy:
     read --from=from bytes
     return bytes
 
-  stream --from/int=0 --to/int=size --max-size/int=256 -> Reader:
+  stream --from/int=0 --to/int=size --max-size/int=256 -> io.Reader:
     if not 0 <= from <= to <= size: throw "OUT_OF_BOUNDS"
     if max-size < 16: throw "Bad Argument"
     return RegionReader_
@@ -393,19 +398,21 @@ class Region extends ServiceResourceProxy:
       resource_ = null
     super
 
-class RegionReader_ implements Reader:
+class RegionReader_ extends io.Reader:
   region_/Region
   from_/int := ?
   to_/int
   max-size_/int
+  content-size/int
 
   constructor --region/Region --from/int --to/int --max-size/int:
     region_ = region
     from_ = from
     to_ = to
     max-size_ = max-size
+    content-size = to - from
 
-  read -> ByteArray?:
+  read_ -> ByteArray?:
     from := from_
     remaining := to_ - from
     if remaining == 0: return null
@@ -418,8 +425,6 @@ class RegionReader_ implements Reader:
     region_.read --from=from result
     from_ = from + n
     return result
-
-// --------------------------------------------------------------------------
 
 flash-region-open_ group client handle offset size:
   #primitive.flash.region-open

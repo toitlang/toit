@@ -1,10 +1,10 @@
 tests/negative/field-setter-type-test.toit:29:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/field-setter-type-test.toit:16:3: error: Type mismatch. Expected 'B'. Got 'A'
+tests/negative/field-setter-type-test.toit:18:3: error: Type mismatch. Expected 'B'. Got 'A'
   return c.field = dynamic
   ^~~~~~
-tests/negative/field-setter-type-test.toit:20:20: error: Type mismatch. Expected 'A'. Got 'string'
+tests/negative/field-setter-type-test.toit:22:20: error: Type mismatch. Expected 'A'. Got 'string'
   return c.field = "str"
                    ^~~~~
-Compilation failed.
+Compilation failed

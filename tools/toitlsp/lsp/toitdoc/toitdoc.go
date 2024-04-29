@@ -17,7 +17,10 @@ package toitdoc
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
 	"os"
+	"path"
 	"sort"
 	"strings"
 
@@ -25,6 +28,7 @@ import (
 	"github.com/toitware/toit.git/toitlsp/lsp/toit"
 	"github.com/toitware/toit.git/toitlsp/lsp/toitdoc/inheritance"
 	"github.com/toitware/toit.git/toitlsp/lsp/uri"
+	"gopkg.in/yaml.v3"
 )
 
 type ObjectType string
@@ -119,9 +123,13 @@ func isLibraryHidden(segments []string) bool {
 }
 
 type Doc struct {
-	SDKVersion string    `json:"sdk_version"`
-	Version    string    `json:"version"`
-	Libraries  Libraries `json:"libraries"`
+	SDKVersion   string            `json:"sdk_version"`
+	Version      string            `json:"version"`
+	PkgName      string            `json:"pkg_name,omitempty"`
+	SDKPath      []string          `json:"sdk_path,omitempty"`
+	PackagesPath []string          `json:"packages_path,omitempty"`
+	PackageNames map[string]string `json:"package_names,omitempty"`
+	Libraries    Libraries         `json:"libraries"`
 }
 
 type Summaries map[lsp.DocumentURI]*toit.Module
@@ -133,7 +141,10 @@ type BuildOptions struct {
 	Summaries      Summaries
 	IncludePrivate bool
 	ExcludeSDK     bool
+	ExcludePkgs    bool
 	SDKURI         lsp.DocumentURI
+	PkgName        string
+	ProjectURI     lsp.DocumentURI
 }
 
 func Build(o BuildOptions) *Doc {
@@ -145,22 +156,28 @@ type builder struct {
 	inheritance *inheritance.InheritanceResult
 	rootPath    string
 	sdkURI      lsp.DocumentURI
+	projectURI  lsp.DocumentURI
 
 	sdkVersion     string
 	version        string
 	includePrivate bool
 	excludeSDK     bool
+	excludePkgs    bool
+	pkgName        string
 }
 
 func newBuilder(o BuildOptions) *builder {
 	return &builder{
 		summaries:      o.Summaries,
 		rootPath:       o.RootPath,
+		projectURI:     o.ProjectURI,
 		version:        o.Version,
 		sdkVersion:     o.SDKVersion,
 		includePrivate: o.IncludePrivate,
 		excludeSDK:     o.ExcludeSDK,
+		excludePkgs:    o.ExcludePkgs,
 		sdkURI:         o.SDKURI,
+		pkgName:        o.PkgName,
 	}
 }
 
@@ -171,20 +188,83 @@ func (b *builder) modulePathSegments(docuri lsp.DocumentURI) []string {
 	p := uri.URIToPath(docuri)
 	p = strings.TrimPrefix(p, b.rootPath)
 	p = strings.TrimPrefix(p, string(os.PathSeparator))
-	return strings.Split(p, string(os.PathSeparator))
+	result := strings.Split(p, string(os.PathSeparator))
+	if len(result) > 0 && result[len(result)-1] == "" {
+		result = result[:len(result)-1]
+	}
+	return result
+}
+
+// LockFile is a minimal representation of a package.lock file.
+// We remove everything we don't need.
+type LockFile struct {
+	Packages map[string]LockPackageEntry `yaml:"packages"`
+}
+
+type LockPackageEntry struct {
+	URL  string `yaml:"url"`
+	Name string `yaml:"name,omitempty"`
+}
+
+func loadPackageNames(projectURI lsp.DocumentURI) map[string]string {
+	if projectURI == "" {
+		return nil
+	}
+	// Load the package names from the package.yaml file.
+	lockPath := path.Join(uri.URIToPath(projectURI), "package.lock")
+	data, err := ioutil.ReadFile(lockPath)
+	if err != nil {
+		// It's fine if this fails. We aren't guaranteed to have a package.lock file.
+		return nil
+	}
+	var lock LockFile
+	if err := yaml.Unmarshal(data, &lock); err != nil {
+		return nil
+	}
+	res := map[string]string{}
+	for prefix, entry := range lock.Packages {
+		if entry.Name != "" {
+			res[entry.URL] = entry.Name
+		} else {
+			// Old package files don't have the name set.
+			// In almost all cases the prefix is the same as the name. Use it instead.
+			res[entry.URL] = prefix
+		}
+	}
+	return res
 }
 
 func (b *builder) build() *Doc {
 	b.inheritance = inheritance.ComputeInheritance(inheritance.Summaries(b.summaries))
 
+	// TODO(florian): don't rely on hardcoded ".packages" path.
+	// Ideally we should get a lock-file mapping in and use that to
+	// figure out which package a file is in.
+	packageURI := uri.PathToURI(b.rootPath) + "/.packages/"
+
+	var pkgSDKPath []string
+	var pkgPackagesPath []string
+	var pkgNames map[string]string
+	if b.pkgName != "" {
+		pkgSDKPath = b.modulePathSegments(b.sdkURI)
+		pkgPackagesPath = b.modulePathSegments(packageURI)
+		pkgNames = loadPackageNames(b.projectURI)
+	}
 	res := Doc{
-		SDKVersion: b.sdkVersion,
-		Version:    b.version,
-		Libraries:  Libraries{},
+		SDKVersion:   b.sdkVersion,
+		Version:      b.version,
+		PkgName:      b.pkgName,
+		SDKPath:      pkgSDKPath,
+		PackagesPath: pkgPackagesPath,
+		PackageNames: pkgNames,
+		Libraries:    Libraries{},
 	}
 
 	for u, m := range b.summaries {
 		if b.excludeSDK && strings.HasPrefix(string(u), string(b.sdkURI)) {
+			continue
+		}
+		if b.excludePkgs && strings.HasPrefix(string(u), string(packageURI)) {
 			continue
 		}
 
@@ -221,16 +301,18 @@ func (b *builder) build() *Doc {
 		}
 
 		exports := computeModuleExports(u, b.summaries)
-		classes, interfaces := b.classesAndInterfaces(m.Classes)
-		exportClasses, exportInterfaces := b.refsToClassesAndInterfaces(exports.Classes)
+		classes, interfaces, mixins := b.classesInterfacesAndMixins(m.Classes)
+		exportClasses, exportInterfaces, exportMixins := b.refsToClassesInterfacesAndMixins(exports.Classes)
 		library.Modules[moduleName] = Module{
 			ObjectType:       ObjectTypeModule,
 			Name:             moduleName,
 			IsPrivate:        IsPrivate(moduleName),
 			Classes:          classes,
 			Interfaces:       interfaces,
+			Mixins:           mixins,
 			ExportClasses:    exportClasses,
 			ExportInterfaces: exportInterfaces,
+			ExportMixins:     exportMixins,
 			Functions:        b.functions(m.Functions),
 			ExportFunctions:  b.refsToFunctions(exports.Functions),
 			Globals:          b.globals(m.Globals),
@@ -269,8 +351,10 @@ type Module struct {
 	IsPrivate        bool        `json:"is_private"`
 	Classes          Classes     `json:"classes"`
 	Interfaces       Classes     `json:"interfaces"`
+	Mixins           Classes     `json:"mixins"`
 	ExportClasses    Classes     `json:"export_classes"`
 	ExportInterfaces Classes     `json:"export_interfaces"`
+	ExportMixins     Classes     `json:"export_mixins"`
 	Functions        Functions   `json:"functions"`
 	ExportFunctions  Functions   `json:"export_functions"`
 	Globals          Globals     `json:"globals"`
@@ -281,38 +365,48 @@ type Module struct {
 
 type Classes []Class
 
-func (b *builder) classesAndInterfaces(classes []*toit.Class) (Classes, Classes) {
+func (b *builder) classesInterfacesAndMixins(classes []*toit.Class) (Classes, Classes, Classes) {
 	resClasses := Classes{}
 	resInterfaces := Classes{}
+	resMixins := Classes{}
 	for _, class := range classes {
 		if !b.includeClass(class) {
 			continue
 		}
-		if class.IsInterface {
-			resInterfaces = append(resInterfaces, b.class(class, nil))
-		} else {
+		if class.Kind == toit.KindClass {
 			resClasses = append(resClasses, b.class(class, nil))
+		} else if class.Kind == toit.KindInterface {
+			resInterfaces = append(resInterfaces, b.class(class, nil))
+		} else if class.Kind == toit.KindMixin {
+			resMixins = append(resMixins, b.class(class, nil))
+		} else {
+			log.Fatalf("unexpected class kind: %v", class.Kind)
 		}
 	}
-	return resClasses, resInterfaces
+	return resClasses, resInterfaces, resMixins
 }
 
-func (b *builder) refsToClassesAndInterfaces(refs []*toit.TopLevelReference) (Classes, Classes) {
+func (b *builder) refsToClassesInterfacesAndMixins(refs []*toit.TopLevelReference) (Classes, Classes, Classes) {
 	resClasses := Classes{}
 	resInterfaces := Classes{}
+	resMixins := Classes{}
 	for i := range refs {
 		ref := refs[i]
 		class := b.summaries[ref.Module].TopLevelElementByID(ref.ID).(*toit.Class)
 		if !b.includeClass(class) {
 			continue
 		}
-		if class.IsInterface {
-			resInterfaces = append(resInterfaces, b.class(class, ref))
-		} else {
+		if class.Kind == toit.KindClass {
 			resClasses = append(resClasses, b.class(class, ref))
+		} else if class.Kind == toit.KindInterface {
+			resInterfaces = append(resInterfaces, b.class(class, ref))
+		} else if class.Kind == toit.KindMixin {
+			resMixins = append(resMixins, b.class(class, ref))
+		} else {
+			log.Fatalf("unexpected class kind: %v", class.Kind)
 		}
 	}
-	return resClasses, resInterfaces
+	return resClasses, resInterfaces, resMixins
 }
 
 func (b *builder) includeClass(class *toit.Class) bool {
@@ -322,12 +416,14 @@ func (b *builder) includeClass(class *toit.Class) bool {
 type Class struct {
 	ObjectType   ObjectType         `json:"object_type"`
 	Name         string             `json:"name"`
+	Kind         toit.ClassKind     `json:"kind"`
+	IsInterface  bool               `json:"is_interface"` // Deprecated. For backwards compatibility.
 	IsAbstract   bool               `json:"is_abstract"`
-	IsInterface  bool               `json:"is_interface"`
 	IsPrivate    bool               `json:"is_private"`
 	ExportedFrom *TopLevelReference `json:"exported_from"`
 	Toitdoc      DocContents        `json:"toitdoc"`
 	Interfaces   TopLevelReferences `json:"interfaces"`
+	Mixins       TopLevelReferences `json:"mixins"`
 	Extends      *TopLevelReference `json:"extends"`
 	Structure    ClassStructure     `json:"structure"`
 }
@@ -357,10 +453,10 @@ func (b *builder) class(class *toit.Class, exportRef *toit.TopLevelReference) Cl
 		methods = append(methods, convertedMethods...)
 	}
 
-	// According to the summary interfaces also implement themselves.
+	// According to the summary, interfaces also implement themselves.
 	// We don't want that in the toitdoc, so we remove them here.
 	interfaces := class.Interfaces
-	if class.IsInterface {
+	if class.Kind == toit.KindInterface {
 		filteredInterfaces := []*toit.TopLevelReference{}
 		alreadyRemoved := false
 		for _, inter := range interfaces {
@@ -379,12 +475,14 @@ func (b *builder) class(class *toit.Class, exportRef *toit.TopLevelReference) Cl
 	return Class{
 		ObjectType:   ObjectTypeClass,
 		Name:         class.Name,
+		Kind:         class.Kind,
 		IsAbstract:   class.IsAbstract,
-		IsInterface:  class.IsInterface,
+		IsInterface:  class.Kind == toit.KindInterface,
 		IsPrivate:    IsPrivate(class.Name),
 		ExportedFrom: b.exportedFrom(exportRef),
 		Toitdoc:      b.toitdoc(class.Toitdoc),
 		Interfaces:   b.topLevelReferences(interfaces),
+		Mixins:       b.topLevelReferences(class.Mixins),
 		Extends:      b.topLevelReference(class.SuperClass, nil),
 		Structure: ClassStructure{
 			Statics:      b.methods(class.Statics),

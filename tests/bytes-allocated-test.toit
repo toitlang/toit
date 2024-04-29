@@ -3,13 +3,15 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
+import system
+import system show process-stats
 
 main:
   test-allocate-doubles
   test-allocate-byte-arrays
   test-cause-gc
 
-ALLOCATED ::= STATS-INDEX-BYTES-ALLOCATED-IN-OBJECT-HEAP
+ALLOCATED ::= system.STATS-INDEX-BYTES-ALLOCATED-IN-OBJECT-HEAP
 
 test-allocate-doubles:
   x := 1.2
@@ -61,8 +63,8 @@ test-allocate-byte-arrays:
   expect ba.size <= diff <= ba.size + 40
 
 test-cause-gc:
-  full-gcs := (process-stats)[STATS-INDEX-FULL-GC-COUNT]
+  full-gcs := (process-stats)[system.STATS-INDEX-FULL-GC-COUNT]
   print "Full gcs: $full-gcs"
-  new-full-gcs := (process-stats --gc)[STATS-INDEX-FULL-GC-COUNT]
+  new-full-gcs := (process-stats --gc)[system.STATS-INDEX-FULL-GC-COUNT]
   print "New full gcs: $new-full-gcs"
   expect new-full-gcs == full-gcs + 1

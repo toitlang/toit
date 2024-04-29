@@ -14,8 +14,7 @@
 // directory of this repository.
 
 import .snapshot as snapshot
-import bytes
-import binary show LITTLE-ENDIAN ByteOrder
+import io show LITTLE-ENDIAN ByteOrder
 import uuid
 import crypto.sha256
 
@@ -590,13 +589,13 @@ class ToitProgram extends ToitObjectType:
     snapshot-class-bits := List class-tags.size:
       tag := class-tags[it]
       instance-size := class-instance-sizes[it]
-      (instance-size << snapshot.Program.CLASS-TAG-SIZE_) | tag
+      (instance-size << snapshot.Program.CLASS-ID-OFFSET_) | tag
 
     // Store the large_integer header in the image so we can use it
     // whenever we need to create a large integer.
     large-integer-id := snapshot-program.header.large-integer-id
     large-integer-tag := class-tags[large-integer-id]
-    large-integer-header := (large-integer-id << CLASS-TAG-BIT-SIZE) | large-integer-tag
+    large-integer-header := (large-integer-id << snapshot.Program.CLASS-ID-OFFSET_) | large-integer-tag
     image.large-integer-header_ = ToitInteger.to-smi-address --word-size=word-size large-integer-header
 
     class-bits := ToitList snapshot-class-bits --element-type=PrimitiveType.UINT16

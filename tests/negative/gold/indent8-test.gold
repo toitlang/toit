@@ -8,4 +8,4 @@ Block argument not provided
 tests/negative/indent8-test.toit:8:12: error: Unresolved identifier: 'unresolved'
   local := unresolved
            ^~~~~~~~~~
-Compilation failed.
+Compilation failed

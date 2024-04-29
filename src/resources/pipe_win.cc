@@ -21,13 +21,12 @@
 #include <sys/types.h>
 #include <windows.h>
 
-
+#include "../error_win.h"
 #include "../objects.h"
 #include "../objects_inline.h"
-#include "../vm.h"
-#include "../error_win.h"
-#include "subprocess.h"
 #include "../primitive_file.h"
+#include "subprocess.h"
+#include "../vm.h"
 
 namespace toit {
 
@@ -45,8 +44,16 @@ class PipeResourceGroup : public ResourceGroup {
   TAG(PipeResourceGroup);
   PipeResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
 
-  bool is_standard_piped(int fd) const { return (standard_pipes_ & ( 1 << fd)) != 0; }
-  void set_standard_piped(int fd) { standard_pipes_ |= ( 1 << fd); }
+  bool is_standard_piped(int fd) const {
+    if (!(0 <= fd && fd <= 2)) return false;
+    return (standard_pipes_ & (1 << fd)) != 0;
+  }
+
+  void set_standard_piped(int fd) {
+    if (0 <= fd && fd <= 2) {
+      standard_pipes_ |= (1 << fd);
+    }
+  }
   volatile long& pipe_serial_number() { return pipe_serial_number_; }
  protected:
   uint32_t on_event(Resource* resource, word data, uint32_t state) override {
@@ -175,6 +182,11 @@ PRIMITIVE(init) {
   auto resource_group = _new PipeResourceGroup(process, WindowsEventSource::instance());
   if (!resource_group) FAIL(MALLOC_FAILED);
 
+  if (!WindowsEventSource::instance()->use()) {
+    resource_group->tear_down();
+    WINDOWS_ERROR;
+  }
+
   proxy->set_external_address(resource_group);
   return proxy;
 }
@@ -217,14 +229,18 @@ PRIMITIVE(create_pipe) {
   security_attributes.bInheritHandle = input;
   security_attributes.lpSecurityDescriptor = NULL;
 
+  // 'input' is from the point of view of the child process.
+  int read_overlap_flag = input ? 0 : FILE_FLAG_OVERLAPPED;
+  int write_overlap_flag = input ? FILE_FLAG_OVERLAPPED : 0;
+
   HANDLE read = CreateNamedPipe(
       pipe_name_buffer,
-      PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED,
+      PIPE_ACCESS_INBOUND | read_overlap_flag,
       PIPE_TYPE_BYTE | PIPE_WAIT,
-      1,             // Number of pipes
-      8192,          // Out buffer size
-      8192,          // In buffer size
-      0,             // Default timeout (50 ms)
+      1,             // Number of pipes.
+      8192,          // Out buffer size.
+      8192,          // In buffer size..
+      0,             // Default timeout (50 ms).
       &security_attributes
   );
 
@@ -241,7 +257,7 @@ PRIMITIVE(create_pipe) {
       0,                         // No sharing
       &security_attributes,
       OPEN_EXISTING,
-      FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,
+      FILE_ATTRIBUTE_NORMAL | write_overlap_flag,
       NULL                       // Template file
   );
 
@@ -267,9 +283,44 @@ PRIMITIVE(create_pipe) {
   resource_proxy->set_external_address(pipe_resource);
 
   array->at_put(0, resource_proxy);
+  // Windows handles are actually limited to 24 bit so this should work
+  // OK.
   array->at_put(1, Smi::from(reinterpret_cast<word>(input ? read : write)));
 
   return array;
+}
+
+class CopyPipeState {
+ public:
+  CopyPipeState(HANDLE from, HANDLE to) : from_(from), to_(to) {}
+
+  ~CopyPipeState() {
+    CloseHandle(from_);
+    CloseHandle(to_);
+  }
+
+  DWORD copy_loop() {
+    char buffer[4096];
+    DWORD read_count;
+    DWORD write_count;
+    while (ReadFile(from_, buffer, sizeof(buffer), &read_count, NULL) && read_count > 0) {
+      if (!WriteFile(to_, buffer, read_count, &write_count, NULL)) {
+        return 1;
+      }
+    }
+    return 0;
+  }
+
+ private:
+  HANDLE from_;
+  HANDLE to_;
+};
+
+static DWORD __attribute__((stdcall)) copy_pipe_thread(void* data) {
+  auto state = reinterpret_cast<CopyPipeState*>(data);
+  DWORD result = state->copy_loop();
+  delete state;
+  return result;
 }
 
 PRIMITIVE(fd_to_pipe) {
@@ -278,6 +329,9 @@ PRIMITIVE(fd_to_pipe) {
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) FAIL(ALLOCATION_FAILED);
 
+  // We have no way to detect the direction of the file descriptor, so
+  // we assume they are used in the traditional directions: 0 - stdin,
+  // 1 - stdout, 2 - stderr.
   if (fd < 0 || fd > 2) FAIL(INVALID_ARGUMENT);
 
   // Check if the standard handle has already been made a pipe. The overlapped
@@ -288,27 +342,86 @@ PRIMITIVE(fd_to_pipe) {
   if (event == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
   HandlePipeResource* pipe_resource;
 
-  switch (fd) {
-    case 0: {
-      HANDLE read = GetStdHandle(STD_INPUT_HANDLE);
-      pipe_resource = _new ReadPipeResource(resource_group, read, event);
-      break;
-    }
-    case 1: {
-      HANDLE write = GetStdHandle(STD_OUTPUT_HANDLE);
-      pipe_resource = _new WritePipeResource(resource_group, write, event);
-      break;
-    }
-    case 2: {
-      HANDLE error = GetStdHandle(STD_ERROR_HANDLE);
-      pipe_resource = _new WritePipeResource(resource_group, error, event);
-      break;
-    }
-    default:
-      FAIL(INVALID_ARGUMENT);
+  HANDLE handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
+  if (handle == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
+  int type = GetFileType(handle);
+  if (type != FILE_TYPE_PIPE && type != FILE_TYPE_CHAR) {
+    FAIL(INVALID_ARGUMENT);  // Ceci n'est pas une pipe.
   }
 
-  if (!pipe_resource) FAIL(MALLOC_FAILED);
+  bool for_writing = fd != 0;  // Stdin vs stdout or stderr.
+
+  // If the pipe was in overlapped mode we could just make a PipeResource with
+  // _new WritePipeResource(resource_group, handle, event) or _new
+  // ReadPipeResource(resource_group, handle, event).  This is what our parent
+  // process has done if it is a Toit process.  But it is not normal to give a
+  // child process stdio pipes in overlapped mode, and it's really hard to
+  // detect it even if it happened (see
+  // https://microsoft.public.win32.programmer.kernel.narkive.com/VYscuhWn/was-handle-opened-using-file-flag-overlapped
+  // or https://archive.vn/wip/bmGhS), so we assume the pipes are in
+  // non-overlapped (synchronous) mode.
+
+  // Our pipe is not in overlapped mode, and unfortunately Windows has
+  // no way to switch to overlapped mode.  So we create a new pipe,
+  // and copy the data from the old pipe to the new pipe in a separate
+  // thread.
+  int read_overlap_flag = for_writing ? 0 : FILE_FLAG_OVERLAPPED;
+  int write_overlap_flag = for_writing ? FILE_FLAG_OVERLAPPED : 0;
+
+  char pipe_name_buffer[MAX_PATH];
+  snprintf(pipe_name_buffer,
+           MAX_PATH,
+           R"(\\.\Pipe\Toit.%08lx.%08lx)",
+           GetCurrentProcessId(),
+           InterlockedIncrement(&resource_group->pipe_serial_number())
+  );
+  HANDLE read = CreateNamedPipe(
+      pipe_name_buffer,
+      PIPE_ACCESS_INBOUND | read_overlap_flag,
+      PIPE_TYPE_BYTE | PIPE_WAIT,
+      1,             // Number of pipes.
+      8192,          // Out buffer size.
+      8192,          // In buffer size.
+      0,             // Default timeout (50 ms).
+      NULL           // Security attributes.
+  );
+  if (read == INVALID_HANDLE_VALUE) {
+    close_handle_keep_errno(event);
+    WINDOWS_ERROR;
+  }
+  HANDLE write = CreateFileA(
+      pipe_name_buffer,
+      GENERIC_WRITE,
+      0,                         // No sharing.
+      NULL,                      // Security attributes.
+      OPEN_EXISTING,
+      FILE_ATTRIBUTE_NORMAL | write_overlap_flag,
+      NULL                       // Template file.
+  );
+  if (write == INVALID_HANDLE_VALUE) {
+    close_handle_keep_errno(event);
+    close_handle_keep_errno(read);
+    WINDOWS_ERROR;
+  }
+  CopyPipeState* state = for_writing
+      ? _new CopyPipeState(read, handle)
+      : _new CopyPipeState(handle, write);
+  ASSERT(state);  // Can't fail on host platforms.
+  HANDLE thread = CreateThread(NULL, 0, copy_pipe_thread, state, 0, NULL);
+  if (thread == NULL) {
+    close_handle_keep_errno(event);
+    close_handle_keep_errno(read);
+    close_handle_keep_errno(write);
+    delete state;
+    WINDOWS_ERROR;
+  }
+  if (for_writing) {
+    pipe_resource = _new WritePipeResource(resource_group, write, event);
+  } else {
+    pipe_resource = _new ReadPipeResource(resource_group, read, event);
+  }
+
+  ASSERT(pipe_resource);  // Can't fail on host platforms.
 
   resource_group->set_standard_piped(fd);
 
@@ -392,7 +505,7 @@ HANDLE handle_from_object(Object* object, DWORD std_handle) {
   return INVALID_HANDLE_VALUE;
 }
 
-bool is_inherited(Object *object) {
+bool is_inherited(Object* object) {
   return is_smi(object) && static_cast<int>(Smi::value(object)) == -1;
 }
 const int MAX_COMMAND_LINE_LENGTH = 32768;

@@ -63,7 +63,7 @@ class RootCertificate:
   Add a trusted root certificate that can be used for all TLS connections.
 
   This method is an alternative to adding root certificates to individual TLS
-    sockets, or using the --root_certificates argument on the HTTP client.
+    sockets, or using the --root-certificates argument on the HTTP client.
     If you add root certificates to a specific connection then these global
     certificates are not consulted for that connection, not even as a fallback.
 
@@ -80,7 +80,7 @@ class RootCertificate:
 Add a trusted root certificate that can be used for all TLS connections.
 
 This function is an alternative to adding root certificates to individual TLS
-  sockets, or using the --root_certificates argument on the HTTP client.
+  sockets, or using the --root-certificates argument on the HTTP client.
   If you add root certificates to a specific connection then these global
   certificates are not consulted for that connection, not even as a fallback.
 
@@ -102,3 +102,17 @@ Returns the hash of the added certificate, which can be used to add it more
 */
 add-global-root-certificate_ cert hash/int?=null -> int:
   #primitive.tls.add-global-root-certificate
+
+/**
+Adds the trusted root certificates that are installed on the system.
+
+This is only supported on Windows.  On other platforms it currently does
+  nothing.
+
+This need only be called once, then it is available for all TLS connections.
+
+Like $RootCertificate.install, this function is an alternative to adding
+  root certificates to individual TLS sockets.
+*/
+use-system-trusted-root-certificates -> none:
+  #primitive.tls.use-system-trusted-root-certificates

@@ -11,8 +11,9 @@ The $Buffer class can be used to build up binary data. The collected
 The $Reader class makes a byte array readable, by providing a `read` method.
 */
 
-import binary show BIG-ENDIAN LITTLE-ENDIAN
+import io
 import reader
+import io show BIG-ENDIAN LITTLE-ENDIAN
 
 INITIAL-BUFFER-LENGTH_ ::= 64
 MIN-BUFFER-GROWTH_ ::= 64
@@ -25,6 +26,8 @@ Wraps a byte array and makes it readable. Specifically, it
   supports the $read method.
 This class also implements the $reader.SizedReader interface
   and thus features the $size method.
+
+Deprecated. Use $io.Reader instead.
 */
 class Reader implements reader.SizedReader:
   data_/ByteArray? := ?
@@ -60,6 +63,8 @@ class Reader implements reader.SizedReader:
 Producer that can produce a fixed size payload of data, on demand.
 Can be used to generate data for serialization, when the amount of data is
   known ahead of time.
+
+Deprecated.
 */
 interface Producer:
   /** The size of the generated payload. */
@@ -72,6 +77,8 @@ A $Producer backed by a byte array.
 
 Instead of creating the payload on demand, this producer is initialized
   with a byte array payload which is then used in the $write-to call.
+
+Deprecated.
 */
 class ByteArrayProducer implements Producer:
   byte-array_/ByteArray ::= ?
@@ -97,6 +104,8 @@ A consumer of data.
 
 Due to the operations that take an offset (like $put-int16-big-endian),
   consumers must buffer their data to allow future modifications of it.
+
+Deprecated.
 */
 // TODO(4201): missing function `write_from`.
 abstract class BufferConsumer:
@@ -113,11 +122,6 @@ abstract class BufferConsumer:
   */
   abstract write-byte byte/int -> none
   /**
-  Deprecated.  Use $write-byte.
-  */
-  put-byte byte/int -> none:
-    write-byte byte
-  /**
   Writes the byte of $data at the given $offset.
   The $offset must be valid and the backing store must be able to
     write a byte at this offset. If necessary use $grow before
@@ -125,10 +129,7 @@ abstract class BufferConsumer:
   */
   abstract put-byte offset/int data/int -> none
   /** Writes the given $data into this consumer. */
-  abstract write data from/int=0 to/int=data.size -> int
-  /** Deprecated.  Use $write-producer. */
-  put-producer producer/Producer -> none:
-    write-producer producer
+  abstract write data/io.Data from/int=0 to/int=data.byte-size -> int
   /** Writes the data from the $producer into this consumer. */
   abstract write-producer producer/Producer -> none
   /**
@@ -247,6 +248,8 @@ This class is used when writing happens in two phases:
 
 In this scenario data is processed twice, but the resulting
   buffer is allocated with the right size from the beginning.
+
+Deprecated.
 */
 class BufferSizeCounter extends BufferConsumer:
   /** See $BufferConsumer.size. */
@@ -256,7 +259,7 @@ class BufferSizeCounter extends BufferConsumer:
   /** See $BufferConsumer.write-byte. */
   write-byte byte/int -> none: size++
   /** See $BufferConsumer.write. */
-  write data from/int=0 to/int=data.size -> int:
+  write data/io.Data from/int=0 to/int=data.byte-size -> int:
     size += to - from
     return to - from
   /**
@@ -311,6 +314,8 @@ class BufferSizeCounter extends BufferConsumer:
 /**
 A buffer that can be used to build byte data.
 
+Deprecated. Use $io.Buffer instead.
+
 # Aliases
 - `BytesBuilder`: Dart
 - `ByteArrayOutputStream`: Java
@@ -326,7 +331,10 @@ class Buffer extends BufferConsumer:
     grow if needed.
   */
   constructor:
-    return Buffer.with-initial-size INITIAL-BUFFER-LENGTH_
+    // We copy the code of the 'with-initial-size' constructor, so we don't get
+    // a deprecation warning.
+    init-size_ = INITIAL-BUFFER-LENGTH_
+    buffer_ = init-size_ > MAX-INTERNAL-SIZE_ ? (ByteArray_.external_ init-size_) : (ByteArray init-size_)
 
   /**
   Constructs a new buffer with the given $init-size_.
@@ -353,13 +361,6 @@ class Buffer extends BufferConsumer:
     return buffer_[0..size]
 
   /**
-  Deprecated. Use $bytes.
-  */
-  take -> ByteArray:
-    if offset_ == buffer_.size: return buffer_
-    return buffer_.copy 0 offset_
-
-  /**
   Converts the consumed data to a string.
   This operation is equivalent to `take.to_string`.
   */
@@ -382,7 +383,7 @@ class Buffer extends BufferConsumer:
     while data := r.read: write data
 
   /** See $BufferConsumer.write. */
-  write data from/int=0 to/int=data.size -> int:
+  write data/io.Data from/int=0 to/int=data.byte-size -> int:
     count := to - from
     ensure_ count
     buffer_.replace offset_ data from to

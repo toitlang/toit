@@ -76,4 +76,4 @@ tests/negative/future-reserved-test.toit:23:3: warning: Name 'switch' will be re
 tests/negative/future-reserved-test.toit:24:3: warning: Name 'rethrow' will be reserved in future releases
   rethrow := 22
   ^~~~~~~
-Compilation failed.
+Compilation failed

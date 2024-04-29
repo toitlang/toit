@@ -28,7 +28,7 @@ class D extends E implements F G H B C:
 tests/negative/inheritance-test.toit:17:38: error: Not an interface
 class D extends E implements F G H B C:
                                      ^
-tests/negative/inheritance-test.toit:21:7: error: Cycle in super/interface chain
+tests/negative/inheritance-test.toit:21:7: error: Cycle in super chain
 class Cycle1 extends Cycle3:
       ^~~~~~
 tests/negative/inheritance-test.toit:21:22: error: This clause contributes to the cycle
@@ -37,7 +37,7 @@ class Cycle1 extends Cycle3:
 tests/negative/inheritance-test.toit:23:22: error: This clause contributes to the cycle
 class Cycle3 extends Cycle1:
                      ^~~~~~
-tests/negative/inheritance-test.toit:25:11: error: Cycle in super/interface chain
+tests/negative/inheritance-test.toit:25:11: error: Cycle in interface chain
 interface ICycle1 extends ICycle3:
           ^~~~~~~
 tests/negative/inheritance-test.toit:25:27: error: This clause contributes to the cycle
@@ -49,13 +49,13 @@ interface ICycle3 extends ICycle2:
 tests/negative/inheritance-test.toit:26:27: error: This clause contributes to the cycle
 interface ICycle2 extends ICycle1:
                           ^~~~~~~
-tests/negative/inheritance-test.toit:31:11: error: Cycle in super/interface chain
+tests/negative/inheritance-test.toit:31:11: error: Cycle in interface chain
 interface ICycle4 implements ICycle4:
           ^~~~~~~
 tests/negative/inheritance-test.toit:31:30: error: This clause contributes to the cycle
 interface ICycle4 implements ICycle4:
                              ^~~~~~~
-tests/negative/inheritance-test.toit:33:11: error: Cycle in super/interface chain
+tests/negative/inheritance-test.toit:33:11: error: Cycle in interface chain
 interface ICycle5 extends ICycle6:
           ^~~~~~~
 tests/negative/inheritance-test.toit:33:27: error: This clause contributes to the cycle
@@ -64,7 +64,7 @@ interface ICycle5 extends ICycle6:
 tests/negative/inheritance-test.toit:34:30: error: This clause contributes to the cycle
 interface ICycle6 implements ICycle5:
                              ^~~~~~~
-tests/negative/inheritance-test.toit:36:11: error: Cycle in super/interface chain
+tests/negative/inheritance-test.toit:36:11: error: Cycle in interface chain
 interface ICycle7 implements ICycle8:
           ^~~~~~~
 tests/negative/inheritance-test.toit:36:30: error: This clause contributes to the cycle
@@ -85,4 +85,4 @@ tests/negative/inheritance-test.toit:15:5: error: Unresolved identifier: 'unreso
 tests/negative/inheritance-test.toit:19:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-Compilation failed.
+Compilation failed

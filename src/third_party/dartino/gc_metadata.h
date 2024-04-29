@@ -128,7 +128,6 @@ class GcMetadata {
   }
 
   static void mark_pages_for_chunk(Chunk* chunk, PageType page_type) {
-    map_metadata_for_chunk(chunk);
     uword index = chunk->start() - singleton_.lowest_address_;
     if (index >= singleton_.heap_extent_) return;
     uword size = chunk->size() >> TOIT_PAGE_SIZE_LOG2;
@@ -137,7 +136,7 @@ class GcMetadata {
   }
 
   // Safe to call with any object, even a Smi.
-  static INLINE PageType get_page_type(Object* object) {
+  static INLINE PageType get_page_type(const Object* object) {
     uword addr = reinterpret_cast<uword>(object);
     uword offset = addr >> 1 | addr << (8 * sizeof(uword) - 1);
     offset -= singleton_.heap_start_munged_;
@@ -168,6 +167,10 @@ class GcMetadata {
   }
 
   static inline uint8* remembered_set_for(HeapObject* object) {
+    return remembered_set_for(reinterpret_cast<uword>(object));
+  }
+
+  static inline const uint8* remembered_set_for(const HeapObject* object) {
     return remembered_set_for(reinterpret_cast<uword>(object));
   }
 
@@ -463,6 +466,14 @@ class GcMetadata {
 
   static uword object_address_from_start(uword line, uint8 start);
 
+  static int large_heap_heuristics() {
+    return singleton_.large_heap_heuristics_;
+  }
+
+  static void set_large_heap_heuristics(int value) {
+    singleton_.large_heap_heuristics_ = value;
+  }
+
  private:
   GcMetadata() {}
   ~GcMetadata() {}
@@ -496,6 +507,11 @@ class GcMetadata {
   uword mark_bits_bias_;
   uword overflow_bits_bias_;
   uword cumulative_mark_bits_bias_;
+#ifdef TOIT_FREERTOS
+  int large_heap_heuristics_ = 0;
+#else
+  int large_heap_heuristics_ = 100;
+#endif
 };
 
 }  // namespace toit

@@ -13,6 +13,10 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import fs
+import system
+import system show platform
+
 // Correctly canonicalized paths never have "///" in their path.
 VIRTUAL-FILE-MARKER_ ::= "///"
 
@@ -64,7 +68,7 @@ class UriPathTranslator:
     if path.starts-with VIRTUAL-FILE-MARKER_:
       return path.trim --left VIRTUAL-FILE-MARKER_
 
-    if platform == PLATFORM-WINDOWS and from-compiler:
+    if platform == system.PLATFORM-WINDOWS and from-compiler:
       // The compiler keeps a '/' to know whether a path is absolute or not.
       assert: path.starts-with "/"
       path = path.trim --left "/"
@@ -76,7 +80,7 @@ class UriPathTranslator:
     // find the lock file. In that case it can remove the drive segment and
     // thus end up with a relative path.
 
-    if platform == PLATFORM-WINDOWS:
+    if platform == system.PLATFORM-WINDOWS:
       // CMake uses forward slashes in the source-bundle. However, the protocol
       // requires backslashes.
       path = path.replace --all "/" "\\"
@@ -96,7 +100,7 @@ class UriPathTranslator:
     if uri.starts-with "file://":
       without-uri-prefix := uri.trim --left "file://"
       decoded := percent-decode_ without-uri-prefix
-      if platform == PLATFORM-WINDOWS:
+      if platform == system.PLATFORM-WINDOWS:
         if to-compiler:
           decoded = decoded.replace --all "\\" "/"
         else:
@@ -109,14 +113,14 @@ class UriPathTranslator:
     return "$VIRTUAL-FILE-MARKER_$uri"
 
   compiler-path-to-local-path compiler-path/string -> string:
-    if platform == PLATFORM-WINDOWS:
+    if platform == system.PLATFORM-WINDOWS:
       assert: compiler-path.starts-with "/"
       return compiler-path[1..].replace --all "/" "\\"
     return compiler-path
 
   local-path-to-compiler-path local-path/string -> string:
-    assert: is-absolute_ local-path
-    if platform == PLATFORM-WINDOWS:
+    assert: fs.is-absolute local-path
+    if platform == system.PLATFORM-WINDOWS:
       return "/$local-path"
     return local-path
 
@@ -126,10 +130,3 @@ class UriPathTranslator:
   Specifically deals with different ways of percent-encoding.
   */
   canonicalize uri/string -> string: return to-uri (to-path uri)
-
-  is-absolute_ path/string -> bool:
-    if path.starts-with "/": return true
-    if platform == PLATFORM-WINDOWS:
-      if path.starts-with "\\\\": return true
-      if path.size >= 2 and path[1] == ':': return true
-    return false

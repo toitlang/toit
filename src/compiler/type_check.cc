@@ -169,7 +169,8 @@ class TypeChecker : public ReturningVisitor<Type> {
   Type visit_MethodStatic(MethodStatic* node) { return visit_Method(node); }
   Type visit_Constructor(Constructor* node) { return visit_Method(node); }
   Type visit_AdapterStub(AdapterStub* node) { return visit_Method(node); }
-  Type visit_IsInterfaceStub(IsInterfaceStub* node) { return visit_Method(node); }
+  Type visit_MixinStub(MixinStub* node) { return visit_Method(node); }
+  Type visit_IsInterfaceOrMixinStub(IsInterfaceOrMixinStub* node) { return visit_Method(node); }
   Type visit_FieldStub(FieldStub* node) { return visit_Method(node); }
 
   Type visit_Expression(Expression* node) { UNREACHABLE(); return Type::invalid(); }
@@ -732,12 +733,17 @@ class TypeChecker : public ReturningVisitor<Type> {
       return;
     }
     ASSERT(receiver_type.is_class() && value_type.is_class());
-    for (int i = -1; i < value_class->interfaces().length(); i++) {
-      Class* current = i == -1 ? value_class : value_class->interfaces()[i];
-      do {
-        if (current == receiver_class) return;
-        current = current->super();
-      } while (current != null);
+    for (Class* current = value_class; current != null; current = current->super()) {
+      if (current == receiver_class) return;
+      for (auto inter : current->interfaces()) {
+        // The interfaces list contains a flattened list of all interfaces this class implements.
+        if (inter == receiver_class) return;
+      }
+      for (auto mixin : current->mixins()) {
+        // The mixin list contains a flattened list of all mixins that are between this
+        // class and the super.
+        if (mixin == receiver_class) return;
+      }
     }
     if (receiver_name.is_valid() && value_name.is_valid()) {
       // TODO(florian); fix internal names (such as "_SmallInteger").
@@ -775,7 +781,8 @@ void check_types_and_deprecations(ir::Program* program,
                                   ToitdocRegistry* toitdocs,
                                   Diagnostics* diagnostics) {
   auto deprecated = collect_deprecated_elements(program, toitdocs);
-  auto queryables = build_queryables_from_resolution_shapes(program);
+  bool include_abstracts;
+  auto queryables = build_queryables_from_resolution_shapes(program, include_abstracts=true);
   TypeChecker checker(program->literal_types(), program->classes(), &queryables, &deprecated, lsp, diagnostics);
   program->accept(&checker);
 }

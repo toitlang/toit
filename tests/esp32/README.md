@@ -22,16 +22,20 @@ On board 1 connect as follows:
 8. IO26 - IO33
 9. IO21 - IO19 with 330Ohm
 
+IO16 must stay unconnected.
+
 Connect board 1 to board 2 as follows:
 1. GND - GND
 2. IO22 - IO23
 3. IO23 - IO22
 
+IO16 must stay unconnected.
+
 ## Running
 
 As of 2023-05-30.
 Run the tests individually. All test run on board 1, except for the
-uart, ultrasound, and wait_for tests. (See their respective files for more info.)
+ble, uart, ultrasound, wait-for tests, and pin-hold tests. (See their respective files for more info.)
 
 The adc and espnow tests only work if no other program is using WiFi.
 For Jaguar:

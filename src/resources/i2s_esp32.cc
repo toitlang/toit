@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <driver/i2s.h>
 
@@ -105,9 +105,7 @@ MODULE_IMPLEMENTATION(i2s, MODULE_I2S);
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    FAIL(ALLOCATION_FAILED);
-  }
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   I2sResourceGroup* i2s = _new I2sResourceGroup(process, EventQueueEventSource::instance());
   if (!i2s) {
@@ -281,4 +279,4 @@ PRIMITIVE(read_to_buffer) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

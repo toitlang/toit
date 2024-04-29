@@ -1,3 +1,0 @@
-toit-lsm303d/examples/calibration.toit:24:12: warning: Class 'FlashStore' is deprecated
-  store := FlashStore
-           ^~~~~~~~~~

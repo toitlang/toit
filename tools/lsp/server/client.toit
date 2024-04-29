@@ -13,7 +13,6 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import reader show BufferedReader
 import .rpc show RpcConnection
 import .uri-path-translator
 
@@ -21,9 +20,10 @@ import .utils show FakePipe
 import .server show LspServer
 import .file-server show sdk-path-from-compiler
 
-import host.pipe
-import monitor
 import host.file
+import host.pipe
+import io
+import monitor
 
 with-lsp-client [block]
     --toitc/string
@@ -100,13 +100,13 @@ class LspClient:
 
   /**
   The language server.
-  Only set, when the client was configured with `--no-spawn_process`.
+  Only set, when the client was configured with `--no-spawn-process`.
   */
   server/LspServer? ::= ?
 
   /**
   The language server process ID.
-  Only set, when the client was configured without `--spawn_process`.
+  Only set, when the client was configured without `--spawn-process`.
   */
   server-pid ::= ?
 
@@ -134,11 +134,11 @@ class LspClient:
     else:
       server-from := FakePipe
       server-to   := FakePipe
-      server-rpc-connection := RpcConnection (BufferedReader server-to) server-from
+      server-rpc-connection := RpcConnection server-to.in server-from.out
       server := LspServer server-rpc-connection compiler-exe UriPathTranslator
       task::
         server.run
-      return [server-to, server-from, server, null]
+      return [server-to.out, server-from.in, server, null]
 
 
   static start -> LspClient
@@ -152,8 +152,8 @@ class LspClient:
     server-to   := start-result[0]
     server-from := start-result[1]
     server := start-result[2]
-    reader := BufferedReader server-from
-    writer := server-to
+    reader := io.Reader.adapt server-from
+    writer := io.Writer.adapt server-to
     rpc-connection := RpcConnection reader writer
     client := LspClient.internal_ rpc-connection compiler-exe supports-config --server=server --server-pid=start-result[3]
     client.run_
@@ -237,7 +237,7 @@ class LspClient:
     // Currently we only support one waiter on idle.
     assert: idle-semaphore_ == null
     idle-semaphore_ = monitor.Semaphore
-    connection_.send "toit/report_idle" null
+    connection_.send "toit/reportIdle" null
     idle-semaphore_.down
 
   handle-idle_ msg -> none:
@@ -289,12 +289,12 @@ class LspClient:
     }
     if always-wait-for-idle: wait-for-idle
 
-  send-did-open-many --paths/List -> none:
+  send-analyze-many --paths/List -> none:
     uris := paths.map: to-uri it
-    send-did-open-many --uris=uris
+    send-analyze-many --uris=uris
 
-  send-did-open-many --uris/List -> none:
-    connection_.send "toit/didOpenMany" { "uris": uris }
+  send-analyze-many --uris/List -> none:
+    connection_.send "toit/analyzeMany" { "uris": uris }
     if always-wait-for-idle: wait-for-idle
 
   send-did-close --path -> none:
@@ -397,7 +397,7 @@ class LspClient:
     return result
 
   send-reset-crash-rate-limit -> none:
-    connection_.send "toit/reset_crash_rate_limit" null
+    connection_.send "toit/resetCrashRateLimit" null
 
   send-request method/string arg/any -> any:
     return connection_.request method arg

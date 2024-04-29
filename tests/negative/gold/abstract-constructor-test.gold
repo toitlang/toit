@@ -1,0 +1,22 @@
+tests/negative/abstract-constructor-test.toit:6:12: error: Constructors can't be abstract
+  abstract constructor:
+           ^~~~~~~~~~~
+tests/negative/abstract-constructor-test.toit:7:12: error: Constructors can't be abstract
+  abstract constructor.factory:
+           ^~~~~~~~~~~~~~~~~~~
+tests/negative/abstract-constructor-test.toit:11:12: error: Constructors can't be abstract
+  abstract constructor:
+           ^~~~~~~~~~~
+tests/negative/abstract-constructor-test.toit:11:12: error: Interfaces can't have constructors
+  abstract constructor:
+           ^~~~~~~~~~~
+tests/negative/abstract-constructor-test.toit:12:12: error: Constructors can't be abstract
+  abstract constructor.factory:
+           ^~~~~~~~~~~~~~~~~~~
+tests/negative/abstract-constructor-test.toit:16:12: error: Constructors can't be abstract
+  abstract constructor:
+           ^~~~~~~~~~~
+tests/negative/abstract-constructor-test.toit:17:12: error: Constructors can't be abstract
+  abstract constructor.factory:
+           ^~~~~~~~~~~~~~~~~~~
+Compilation failed

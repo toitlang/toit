@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <esp_event.h>
 
@@ -26,6 +26,8 @@
 ESP_EVENT_DEFINE_BASE(RUN_EVENT);
 
 namespace toit {
+
+static const int RUN_MAX_DELAY_MS = 5 * 1000;
 
 SystemEventSource::SystemEventSource()
     : EventSource("System", 1)
@@ -53,7 +55,13 @@ void SystemEventSource::run(const std::function<void ()>& func) {
   }
   in_run_ = true;
   is_run_done_ = false;
-  FATAL_IF_NOT_ESP_OK(esp_event_post(RUN_EVENT, 0, const_cast<void*>(reinterpret_cast<const void*>(&func)), sizeof(func), portMAX_DELAY));
+  { // The call to post an event must be done without holding
+    // the lock, because we will wait if the queue is full and
+    // we need the lock to handle and thus consume events.
+    Unlocker unlock(locker);
+    TickType_t ticks = RUN_MAX_DELAY_MS / portTICK_PERIOD_MS;
+    FATAL_IF_NOT_ESP_OK(esp_event_post(RUN_EVENT, 0, const_cast<void*>(reinterpret_cast<const void*>(&func)), sizeof(func), ticks));
+  }
   while (!is_run_done_) {
     OS::wait(run_cond_);
   }
@@ -63,12 +71,29 @@ void SystemEventSource::run(const std::function<void ()>& func) {
 
 void SystemEventSource::on_register_resource(Locker& locker, Resource* resource) {
   SystemResource* system_resource = static_cast<SystemResource*>(resource);
-  FATAL_IF_NOT_ESP_OK(esp_event_handler_register(system_resource->event_base(), system_resource->event_id(), on_event, this));
+  esp_event_base_t base = system_resource->event_base();
+  int32_t id = system_resource->event_id();
+  { // The call to register the event handler must be done
+    // without holding the lock, because registering might
+    // be forced to wait until any ongoing event handling
+    // is done. If the event handling itself is blocked on
+    // the mutex in SystemEventSource::on_event, then we
+    // would get stuck here if we do not release the lock.
+    Unlocker unlock(locker);
+    FATAL_IF_NOT_ESP_OK(esp_event_handler_register(base, id, on_event, this));
+  }
 }
 
 void SystemEventSource::on_unregister_resource(Locker& locker, Resource* resource) {
   SystemResource* system_resource = static_cast<SystemResource*>(resource);
-  FATAL_IF_NOT_ESP_OK(esp_event_handler_unregister(system_resource->event_base(), system_resource->event_id(), on_event));
+  esp_event_base_t base = system_resource->event_base();
+  int32_t id = system_resource->event_id();
+  { // The call to unregister the event handler must be done
+    // without holding the lock. See comment for the equivalent
+    // situation in SystemEventSource::on_register_resource.
+    Unlocker unlock(locker);
+    FATAL_IF_NOT_ESP_OK(esp_event_handler_unregister(base, id, on_event));
+  }
 }
 
 void SystemEventSource::on_event(esp_event_base_t base, int32_t id, void* event_data) {
@@ -101,4 +126,4 @@ SystemEventSource* SystemEventSource::instance_ = null;
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

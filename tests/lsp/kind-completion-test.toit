@@ -33,6 +33,13 @@ class I-Impl implements I:
   + I#Interface
 */
 
+mixin Mix:
+
+class Mix_Impl extends Object with Mix:
+/*                                 ^~~
+  + Mix#Class
+*/
+
 global := 499
 CONSTANT ::= 42
 CONSTANT-OTHER ::= 7
@@ -46,7 +53,7 @@ main:
 /*^~~~~
   + SomeClass#Class, SomeClass2#Class, main#Function
   + global#Variable, CONSTANT#Constant, CONSTANT-OTHER#Constant
-  + toplevel-fun#Function, true#Keyword, I#Interface
+  + toplevel-fun#Function, true#Keyword, I#Interface, Mix#Class
   + prefix#Module
   + local#Variable
   + __#Variable

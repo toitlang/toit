@@ -24,10 +24,12 @@ import .image
 import .snapshot
 import .firmware show pad
 
-import binary show LITTLE-ENDIAN ByteOrder
-import bytes
 import encoding.ubjson
+import io
+import io show LITTLE-ENDIAN ByteOrder
+import system
 import uuid
+
 import host.file
 import cli
 
@@ -98,14 +100,14 @@ print-usage parser/cli.Command --error/string?=null:
 main args:
   parsed := null
   parser := cli.Command "snapshot_to_image"
-      --rest=[cli.OptionString SNAPSHOT-FILE]
+      --rest=[cli.Option SNAPSHOT-FILE]
       --options=[
           cli.Flag M32-FLAG --short-name="m32",
           cli.Flag M64-FLAG --short-name="m64",
           cli.Flag BINARY-FLAG,
           cli.OptionEnum FORMAT-OPTION ["binary", "ubjson"],
-          cli.OptionString OUTPUT-OPTION --short-name="o",
-          cli.OptionString ASSETS-OPTION,
+          cli.Option OUTPUT-OPTION --short-name="o",
+          cli.Option ASSETS-OPTION,
         ]
       --run=:: parsed = it
 
@@ -133,7 +135,7 @@ main args:
   if parsed[M64-FLAG]:
     machine-word-sizes.add 8
   if machine-word-sizes.is-empty:
-    machine-word-sizes.add BYTES-PER-WORD
+    machine-word-sizes.add system.BYTES-PER-WORD
 
   if format == "binary" and machine-word-sizes.size > 1:
     print-usage parser --error="more than one machine flag provided"
@@ -153,7 +155,7 @@ main args:
         --system-uuid=system-uuid
         --snapshot-uuid=snapshot-uuid
         --id=id
-    buffer := bytes.Buffer
+    buffer := io.Buffer
     buffer.write image.build-relocatable
     if assets:
       // Send the assets prefixed with the size and make sure
@@ -175,10 +177,11 @@ main args:
     images.add { "flags": [machine], "bytes": buffer.bytes }
 
   out := file.Stream.for-write output-path
+  writer := io.Writer.adapt out
   if format == "binary":
-    out.write output["images"].first["bytes"]
+    writer.write output["images"].first["bytes"]
   else:
-    out.write (ubjson.encode output)
+    writer.write (ubjson.encode output)
   out.close
 
 sdk-version-uuid --sdk-version/string -> uuid.Uuid:

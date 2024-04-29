@@ -651,7 +651,7 @@ BleCharacteristicResource* lookup_local_characteristic_resource(CBPeripheralMana
 template <typename T>
 BleServiceResource* ServiceContainer<T>::get_or_create_service_resource(CBService* service, bool can_create) {
   BleResourceHolder* holder = _service_resource_index[[service UUID]];
-  if (holder != nil) return reinterpret_cast<BleServiceResource*>(holder.resource);
+  if (holder != nil) return static_cast<BleServiceResource*>(holder.resource);
   if (!can_create) return null;
 
   auto resource = _new BleServiceResource(group(), type(), service);
@@ -677,7 +677,7 @@ BleCharacteristicResource* BleServiceResource::get_or_create_characteristic_reso
     CBCharacteristic* characteristic,
     bool can_create) {
   BleResourceHolder* holder = _characteristics_resource_index[[characteristic UUID]];
-  if (holder != nil) return reinterpret_cast<BleCharacteristicResource*>(holder.resource);
+  if (holder != nil) return static_cast<BleCharacteristicResource*>(holder.resource);
   if (!can_create) return null;
 
   auto resource = _new BleCharacteristicResource(group(), this, characteristic);
@@ -904,7 +904,7 @@ PRIMITIVE(connect) {
   if (peripheral == nil) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) FAIL(ALLOCATION_FAILED);
+  if (proxy == null) FAIL(ALLOCATION_FAILED);
 
   auto device =
       _new BleRemoteDeviceResource(
@@ -1084,10 +1084,10 @@ PRIMITIVE(get_value) {
 }
 
 PRIMITIVE(write_value) {
-  ARGS(BleCharacteristicResource, characteristic, Object, value, bool, with_response);
+  ARGS(BleCharacteristicResource, characteristic, Blob, bytes, bool, with_response, bool, flush, bool, allow_retry);
 
-  Blob bytes;
-  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+  // TODO(florian): check that the bytes fit into the MTU.
+  // TODO(florian): take 'flush' into account.
 
   if (!with_response) {
     if (!characteristic->characteristic().service.peripheral.canSendWriteWithoutResponse)
@@ -1204,7 +1204,11 @@ PRIMITIVE(add_characteristic) {
 }
 
 PRIMITIVE(add_descriptor) {
-  UNIMPLEMENTED();
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(handle) {
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(deploy_service) {
@@ -1216,6 +1220,11 @@ PRIMITIVE(deploy_service) {
   auto service = (CBMutableService*)service_resource->service();
   [service_resource->peripheral_manager()->peripheral_manager() addService:service];
 
+  return process->null_object();
+}
+
+PRIMITIVE(start_gatt_server) {
+  // Nothing to be done on this platform.
   return process->null_object();
 }
 
@@ -1257,17 +1266,16 @@ PRIMITIVE(notify_characteristics_value) {
 }
 
 PRIMITIVE(get_att_mtu) {
-  ARGS(Resource, resource);
+  ARGS(BleResource, ble_resource);
   NSUInteger mtu = 23;
-  auto ble_resource = reinterpret_cast<BleResource*>(resource);
   switch (ble_resource->kind()) {
     case BleResource::REMOTE_DEVICE: {
-      auto device = reinterpret_cast<BleRemoteDeviceResource*>(ble_resource);
+      auto device = static_cast<BleRemoteDeviceResource*>(ble_resource);
       mtu = [device->peripheral() maximumWriteValueLengthForType:CBCharacteristicWriteWithResponse];
       break;
     }
     case BleResource::CHARACTERISTIC: {
-      auto characteristic = reinterpret_cast<BleCharacteristicResource*>(ble_resource);
+      auto characteristic = static_cast<BleCharacteristicResource*>(ble_resource);
       mtu = characteristic->mtu();
       break;
     }
@@ -1284,26 +1292,36 @@ PRIMITIVE(set_preferred_mtu) {
 }
 
 PRIMITIVE(get_error) {
-  ARGS(BleCharacteristicResource, characteristic);
+  ARGS(BleCharacteristicResource, characteristic, bool, is_oom);
+  // Darwin should never have OOM errors.
+  if (is_oom) FAIL(ERROR);
   if (characteristic->error() == nil) FAIL(ERROR);
   String* message = process->allocate_string([characteristic->error().localizedDescription UTF8String]);
   if (!message) FAIL(ALLOCATION_FAILED);
 
-  characteristic->set_error(nil);
-
   return Primitive::mark_as_error(message);
 }
 
+PRIMITIVE(clear_error) {
+  ARGS(BleCharacteristicResource, characteristic, bool, is_oom);
+  // Darwin should never have OOM errors.
+  if (is_oom) FAIL(ERROR);
+  if (characteristic->error() == nil) FAIL(ERROR);
+  characteristic->set_error(nil);
+
+  return process->null_object();
+}
+
 PRIMITIVE(gc) {
-  UNIMPLEMENTED();
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(read_request_reply) {
-  UNIMPLEMENTED();
+  FAIL(UNIMPLEMENTED);
 }
 
 PRIMITIVE(get_bonded_peers) {
-  UNIMPLEMENTED();
+  FAIL(UNIMPLEMENTED);
 }
 
 }

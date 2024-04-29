@@ -9,6 +9,7 @@ import expect show *
 
 import .tcp
 import monitor show *
+import net.tcp show Socket
 
 main:
   test-window-size
@@ -38,10 +39,12 @@ simple-server ready:
   server := TcpServerSocket
   server.listen "127.0.0.1" 0
   ready.send server.local-address.port
-  socket := server.accept
+  socket/Socket := server.accept
 
-  while data := socket.read:
-    socket.write data;
+  reader := socket.in
+  writer := socket.out
+  while data := reader.read:
+    writer.write data;
 
   socket.close
   server.close

@@ -14,7 +14,6 @@ On Jaguar use:
 
 Run `espnow1_board1.toit` on board1.
 Once that one is running, run `espnow1_board2.toit` on board2.
-
 */
 
 import esp32.espnow
@@ -22,11 +21,9 @@ import expect show *
 import .espnow1-shared
 
 main:
-  service ::= espnow.Service.station --key=PMK
+  service ::= espnow.Service.station --key=PMK --channel=CHANNEL
 
-  service.add-peer
-      espnow.BROADCAST-ADDRESS
-      --channel=CHANNEL
+  service.add-peer espnow.BROADCAST-ADDRESS
 
   print "Listening for messages."
   with-timeout --ms=10_000:

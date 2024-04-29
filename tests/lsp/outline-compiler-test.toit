@@ -31,6 +31,7 @@ class ExpectedSymbol:
     if kind == "class":              return lsp.SymbolKind.CLASS
     if kind == "abstract class":     return lsp.SymbolKind.CLASS
     if kind == "interface":          return lsp.SymbolKind.INTERFACE
+    if kind == "mixin":              return lsp.SymbolKind.CLASS
     if kind == "constructor":        return lsp.SymbolKind.CONSTRUCTOR
     if kind == "named constructor":  return lsp.SymbolKind.CONSTRUCTOR
     if kind == "factory":            return lsp.SymbolKind.CONSTRUCTOR

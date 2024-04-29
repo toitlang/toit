@@ -1,6 +1,9 @@
 tests/negative/uninitialized-field-test.toit:69:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
+tests/negative/uninitialized-field-test.toit:44:7: error: Final field 'field' cannot be assigned
+      field = 42
+      ^~~~~
 tests/negative/uninitialized-field-test.toit:13:3: error: Field 'field' must be initialized in a constructor
   field / any
   ^~~~~
@@ -34,4 +37,4 @@ tests/negative/uninitialized-field-test.toit:51:3: error: Field 'field' not init
 tests/negative/uninitialized-field-test.toit:54:3: error: Field 'field' not initialized on all paths in constructor
   constructor.logical-or arg:
   ^~~~~~~~~~~
-Compilation failed.
+Compilation failed

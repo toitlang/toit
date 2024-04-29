@@ -138,6 +138,15 @@ class ServiceSelectorRestricted extends ServiceSelector:
         tags-allowed = true
     return tags-allowed
 
+class DiscoveryProxy_ extends ServiceResourceProxy:
+  channel_/monitor.Channel
+
+  constructor client/ServiceClient .channel_ handle/int:
+    super client handle
+
+  on-notified_ notification/any -> none:
+    channel_.send notification
+
 /**
 Base class for clients that connect to and use provided services
   (see $ServiceProvider).
@@ -163,18 +172,50 @@ class ServiceClient:
 
   constructor .selector:
 
-  open --timeout/Duration?=DEFAULT-OPEN-TIMEOUT -> ServiceClient:
+  open --timeout/Duration? -> ServiceClient:
     return open --timeout=timeout --if-absent=: throw "Cannot find service"
+
+  open -> ServiceClient:
+    return open --timeout=DEFAULT-OPEN-TIMEOUT --if-absent=: throw "Cannot find service"
 
   open --timeout/Duration?=null [--if-absent] -> any:
     discovered/List? := null
+    proxy/DiscoveryProxy_? := null
+    channel/monitor.Channel? := null
     if timeout:
-      catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
-        with-timeout timeout: discovered = _client_.discover selector.uuid --wait
+      // Get a pair with a list of current services, and a resource that will
+      // notify us of new services as they are registered.
+      result := _client_.discover selector.uuid --wait
+      if result:
+        discovered = result[0]
+        resource := result[1]
+        channel = monitor.Channel 1
+        proxy = DiscoveryProxy_ (_client_ as ServiceDiscoveryServiceClient) channel resource
     else:
-      discovered = _client_.discover selector.uuid --no-wait
-    if not discovered: return if-absent.call
+      // Get a list of current services, but don't wait for new ones.
+      result := _client_.discover selector.uuid --no-wait
+      if result: discovered = result[0]
 
+    try:
+      if discovered:
+        result := find-service_ discovered
+        if result: return result
+
+      if timeout: 
+        // We got back a proxy for a resource, which will notify us when the
+        // service we want has started up.
+        catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
+          with-timeout timeout:
+            while true:
+              discovered = channel.receive
+              result := find-service_ discovered
+              if result: return result
+      return if-absent.call
+    finally:
+      if proxy: proxy.close
+    unreachable
+
+  find-service_ discovered/List -> ServiceClient?:
     candidate-index := null
     candidate-priority := null
     for i := 0; i < discovered.size; i += 7:
@@ -197,7 +238,8 @@ class ServiceClient:
         // Found multiple candidates with the same priority.
         throw "Cannot disambiguate"
 
-    if not candidate-index: return if-absent.call
+    if not candidate-index: return null
+
     pid := discovered[candidate-index]
     id := discovered[candidate-index + 1]
     return _open_ selector --pid=pid --id=id
@@ -273,17 +315,6 @@ interface ServiceHandler:
   handle index/int arguments/any --gid/int --client/int -> any
 
 /**
-A handler for requests from clients.
-
-A $ServiceProvider may provide multiple services, each of which comes with a
-  handler. That handler is then called for the corresponding request from the
-  client.
-
-Deprecated. Implement $ServiceHandler instead.
-*/
-interface ServiceHandlerNew extends ServiceHandler:
-
-/**
 A service provider.
 
 Service providers are classes that expose APIs through remote
@@ -345,28 +376,6 @@ class ServiceProvider:
       --id/int?=null
       --priority/int=PRIORITY-NORMAL
       --tags/List?=null:
-    provider-tags := this.tags
-    if provider-tags: tags = tags ? (provider-tags + tags) : provider-tags
-    service := Service_
-        --selector=selector
-        --handler=handler
-        --id=id
-        --priority=priority
-        --tags=tags
-    _services_.add service
-
-  /**
-  Registers a handler for the given $selector.
-
-  This function should only be called from subclasses (typically in their constructor).
-
-  Deprecated. Use $(provides selector --handler) instead.
-  */
-  provides selector/ServiceSelector --handler/ServiceHandler --new/bool -> none
-      --id/int?=null
-      --priority/int=PRIORITY-NORMAL
-      --tags/List?=null:
-    if not new: throw "Bad Argument"
     provider-tags := this.tags
     if provider-tags: tags = tags ? (provider-tags + tags) : provider-tags
     service := Service_

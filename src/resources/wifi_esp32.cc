@@ -15,11 +15,13 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_ESP32
 
 #include <esp_wifi.h>
 #include <nvs_flash.h>
 #include <lwip/sockets.h>
+
+#include "wifi_espnow_esp32.h"
 
 #include "../resource.h"
 #include "../rtc_memory_esp32.h"
@@ -43,12 +45,6 @@ enum {
   WIFI_SCAN_DONE    = 1 << 5,
 };
 
-const int kInvalidWifi = -1;
-
-// Only allow one instance of WiFi running.
-ResourcePool<int, kInvalidWifi> wifi_pool(
-  0
-);
 
 class WifiResourceGroup : public ResourceGroup {
  public:
@@ -94,6 +90,9 @@ class WifiResourceGroup : public ResourceGroup {
     strncpy(char_cast(config.sta.ssid), ssid, sizeof(config.sta.ssid) - 1);
     strncpy(char_cast(config.sta.password), password, sizeof(config.sta.password) - 1);
     config.sta.channel = channel;
+    config.sta.scan_method = (channel == 0)
+        ? WIFI_ALL_CHANNEL_SCAN
+        : WIFI_FAST_SCAN;
     err = esp_wifi_set_config(WIFI_IF_STA, &config);
     if (err != ESP_OK) return err;
 
@@ -154,23 +153,9 @@ class WifiResourceGroup : public ResourceGroup {
   }
 
   ~WifiResourceGroup() {
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] ~WifiResourceGroup()\n");
-#endif
-
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] esp_wifi_deinit()\n");
-#endif
-    esp_err_t err = esp_wifi_deinit();
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] esp_wifi_deinit() -> done: %d\n", err);
-#endif
-    FATAL_IF_NOT_ESP_OK(err);
+    FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy_default_wifi(netif_);
-    wifi_pool.put(id_);
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] ~WifiResourceGroup() -> done\n");
-#endif
+    wifi_espnow_pool.put(id_);
   }
 
   uint32_t on_event(Resource* resource, word data, uint32_t state) override;
@@ -213,45 +198,20 @@ class WifiEvents : public SystemResource {
       , state_(STOPPED) {}
 
   ~WifiEvents() {
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] ~WifiEvents()\n");
-#endif
     State state = this->state();
     if (state >= CONNECTED) {
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[wifi] esp_wifi_disconnect\n");
-#endif
-      esp_err_t err = esp_wifi_disconnect();
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[wifi] esp_wifi_disconnect() -> done: %d\n", err);
-#endif
-      FATAL_IF_NOT_ESP_OK(err);
+      FATAL_IF_NOT_ESP_OK(esp_wifi_disconnect());
     }
     if (state >= STARTED) {
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[wifi] esp_wifi_stop()\n");
-#endif
-      esp_err_t err = esp_wifi_stop();
-#if CONFIG_WPA_DEBUG_PRINT
-      printf("[wifi] esp_wifi_stop() -> done: %d\n", err);
-#endif
-      FATAL_IF_NOT_ESP_OK(err);
+      FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
     }
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] ~WifiEvents() -> done\n");
-#endif
   }
 
   uint8 disconnect_reason() const { return disconnect_reason_; }
   void set_disconnect_reason(uint8 reason) { disconnect_reason_ = reason; }
 
   State state() const { return state_; }
-  void set_state(State state) {
-#if CONFIG_WPA_DEBUG_PRINT
-    printf("[wifi] state updated: %d->%d\n", state_, state);
-#endif
-    state_ = state;
-  }
+  void set_state(State state) { state_ = state; }
 
  private:
   friend class WifiResourceGroup;
@@ -325,7 +285,7 @@ uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 st
       // because something is seriously wrong. We let the
       // higher level code know that we're disconnected and
       // clean up from there.
-      if (esp_wifi_connect() != ESP_OK) {
+      if (reconnects_remaining_ > 0 && esp_wifi_connect() != ESP_OK) {
         reconnects_remaining_ = 0;
         state |= WIFI_DISCONNECTED;
       }
@@ -446,8 +406,8 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  int id = wifi_pool.any();
-  if (id == kInvalidWifi) FAIL(OUT_OF_BOUNDS);
+  int id = wifi_espnow_pool.any();
+  if (id == kInvalidWifiEspnow) FAIL(ALREADY_IN_USE);
 
   // We cannot use the esp_netif_create_default_wifi_xxx() functions,
   // because they do not correctly check for malloc failure.
@@ -471,7 +431,7 @@ PRIMITIVE(init) {
   }
 
   if (!netif) {
-    wifi_pool.put(id);
+    wifi_espnow_pool.put(id);
     FAIL(MALLOC_FAILED);
   }
 
@@ -486,7 +446,7 @@ PRIMITIVE(init) {
   esp_err_t err = nvs_flash_init();
   if (err != ESP_OK) {
     esp_netif_destroy_default_wifi(netif);
-    wifi_pool.put(id);
+    wifi_espnow_pool.put(id);
     return Primitive::os_error(err, process);
   }
 
@@ -503,7 +463,7 @@ PRIMITIVE(init) {
   err = esp_wifi_init(&init_config);
   if (err != ESP_OK) {
     esp_netif_destroy_default_wifi(netif);
-    wifi_pool.put(id);
+    wifi_espnow_pool.put(id);
     return Primitive::os_error(err, process);
   }
 
@@ -511,7 +471,7 @@ PRIMITIVE(init) {
   if (err != ESP_OK) {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy_default_wifi(netif);
-    wifi_pool.put(id);
+    wifi_espnow_pool.put(id);
     return Primitive::os_error(err, process);
   }
 
@@ -520,7 +480,7 @@ PRIMITIVE(init) {
   if (!resource_group) {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy_default_wifi(netif);
-    wifi_pool.put(id);
+    wifi_espnow_pool.put(id);
     FAIL(MALLOC_FAILED);
   }
 
@@ -766,4 +726,4 @@ PRIMITIVE(ap_info) {
 #endif // CONFIG_TOIT_ENABLE_WIFI
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_ESP32

@@ -1,4 +1,4 @@
 tests/negative/import-show2-test.toit:8:3: error: Unresolved identifier: 'b'
   b  // Unresolved.
   ^
-Compilation failed.
+Compilation failed

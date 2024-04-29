@@ -100,7 +100,18 @@ class TokenVisitor : public TraversingVisitor {
       auto klass = node->as_Class();
       if (klass->is_abstract()) modifiers |= ABSTRACT_BIT;
       if (klass->is_runtime_class()) modifiers |= DEFAULT_LIBRARY_BIT;
-      emit_token(range, klass->is_interface() ? TokenType::INTERFACE : TokenType::CLASS, modifiers);
+      TokenType token_type = TokenType::CLASS;  // Initialize with a value, to silence compiler warnings.
+      switch (klass->kind()) {
+        case ir::Class::CLASS:
+        case ir::Class::MONITOR:
+        case ir::Class::MIXIN:
+          token_type = TokenType::CLASS;
+          break;
+        case ir::Class::INTERFACE:
+          token_type = TokenType::INTERFACE;
+          break;
+      }
+      emit_token(range, token_type, modifiers);
     }
   }
   void emit_token(const Source::Range& range, TokenType type, int modifiers = 0) {

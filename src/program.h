@@ -60,31 +60,33 @@ namespace toit {
   ERROR_STRING(stack_overflow, STACK_OVERFLOW)                      \
   ERROR_STRING(unimplemented, UNIMPLEMENTED)                        \
   ERROR_STRING(wrong_object_type, WRONG_OBJECT_TYPE)                \
+  ERROR_STRING(wrong_bytes_type, WRONG_BYTES_TYPE)                  \
   ERROR_STRING(invalid_signature, INVALID_SIGNATURE)                \
 
-#define BUILTIN_CLASS_IDS(ID)    \
-  ID(string_class_id)            \
-  ID(array_class_id)             \
-  ID(byte_array_class_id)        \
-  ID(byte_array_cow_class_id)    \
-  ID(byte_array_slice_class_id)  \
-  ID(string_slice_class_id)      \
-  ID(list_class_id)              \
-  ID(list_slice_class_id)        \
-  ID(map_class_id)               \
-  ID(tombstone_class_id)         \
-  ID(stack_class_id)             \
-  ID(null_class_id)              \
-  ID(true_class_id)              \
-  ID(false_class_id)             \
-  ID(object_class_id)            \
-  ID(double_class_id)            \
-  ID(large_integer_class_id)     \
-  ID(smi_class_id)               \
-  ID(task_class_id)              \
-  ID(large_array_class_id)       \
-  ID(lazy_initializer_class_id)  \
-  ID(exception_class_id)         \
+#define BUILTIN_CLASS_IDS(ID)     \
+  ID(string_class_id)             \
+  ID(array_class_id)              \
+  ID(byte_array_class_id)         \
+  ID(byte_array_cow_class_id)     \
+  ID(byte_array_slice_class_id)   \
+  ID(string_slice_class_id)       \
+  ID(string_byte_slice_class_id)  \
+  ID(list_class_id)               \
+  ID(list_slice_class_id)         \
+  ID(map_class_id)                \
+  ID(tombstone_class_id)          \
+  ID(stack_class_id)              \
+  ID(null_class_id)               \
+  ID(true_class_id)               \
+  ID(false_class_id)              \
+  ID(object_class_id)             \
+  ID(double_class_id)             \
+  ID(large_integer_class_id)      \
+  ID(smi_class_id)                \
+  ID(task_class_id)               \
+  ID(large_array_class_id)        \
+  ID(lazy_initializer_class_id)   \
+  ID(exception_class_id)          \
 
 static const int FREE_LIST_REGION_CLASS_ID = -1;
 static const int SINGLE_FREE_WORD_CLASS_ID = -2;
@@ -148,7 +150,7 @@ class Program : public FlashAllocation {
   inline Method find_method(Object* receiver, int offset);
 
   static const int CLASS_TAG_MASK = (1 << HeapObject::CLASS_TAG_BIT_SIZE) - 1;
-  static const int INSTANCE_SIZE_BIT_SIZE = 16 - HeapObject::CLASS_TAG_BIT_SIZE;
+  static const int INSTANCE_SIZE_BIT_SIZE = 16 - HeapObject::CLASS_ID_OFFSET;
   static const int INSTANCE_SIZE_MASK = (1 << INSTANCE_SIZE_BIT_SIZE) - 1;
 
   inline TypeTag class_tag_for(Smi* class_id) {
@@ -160,24 +162,26 @@ class Program : public FlashAllocation {
   }
 
   inline int instance_fields_for(Smi* class_id) {
-    return Instance::fields_from_size(instance_size_for(class_id));
+    return Instance::fields_from_size(allocation_instance_size_for(class_id));
   }
 
-  inline int instance_size_for(Smi* class_id) {
+  inline int allocation_instance_size_for(Smi* class_id) {
     word value = Smi::value(class_id);
+    ASSERT(value >= 0);
+    return instance_size_from_class_bits(class_bits[value]);
+  }
+
+  static inline int instance_size_from_class_bits(int class_bits) {
+    return ((class_bits >> HeapObject::CLASS_ID_OFFSET) & INSTANCE_SIZE_MASK) * WORD_SIZE;
+  }
+
+  int instance_size_for(const HeapObject* object) {
+    word value = Smi::value(object->class_id());
     if (value < 0) {
       if (value == SINGLE_FREE_WORD_CLASS_ID) return sizeof(word);
       return 0;  // Variable sized object - free-list region or promoted track.
     }
     return instance_size_from_class_bits(class_bits[value]);
-  }
-
-  static inline int instance_size_from_class_bits(int class_bits) {
-    return ((class_bits >> HeapObject::CLASS_TAG_BIT_SIZE) & INSTANCE_SIZE_MASK) * WORD_SIZE;
-  }
-
-  int instance_size_for(HeapObject* object) {
-    return instance_size_for(object->class_id());
   }
 
 #ifndef TOIT_FREERTOS
@@ -211,7 +215,7 @@ class Program : public FlashAllocation {
   }
 
   int invoke_bytecode_offset(Opcode opcode) const {
-    ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_AT_PUT);
+    ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_SIZE);
     return invoke_bytecode_offsets_[opcode - INVOKE_EQ];
   }
 
@@ -278,6 +282,10 @@ class Program : public FlashAllocation {
     friend class Program;
   };
 
+  bool is_valid_bcp(uint8* bcp) const {
+    return bytecodes.data() <= bcp && bcp < bytecodes.data() + bytecodes.length();
+  }
+
   int absolute_bci_from_bcp(uint8* bcp) const;
   uint8* bcp_from_absolute_bci(int absolute_bci) { return &bytecodes.data()[absolute_bci]; }
 
@@ -311,7 +319,7 @@ class Program : public FlashAllocation {
   uint8 snapshot_uuid_[UUID_SIZE];
   word global_max_stack_height_;         // Maximum stack height for all methods.
 
-  static const int INVOKE_BYTECODE_COUNT = INVOKE_AT_PUT - INVOKE_EQ + 1;
+  static const int INVOKE_BYTECODE_COUNT = INVOKE_SIZE - INVOKE_EQ + 1;
   int invoke_bytecode_offsets_[INVOKE_BYTECODE_COUNT];
 
   static uint16 compute_class_bits(TypeTag tag, int instance_byte_size) {
@@ -319,11 +327,11 @@ class Program : public FlashAllocation {
     ASSERT(Utils::is_aligned(instance_byte_size, WORD_SIZE));
     instance_byte_size = instance_byte_size / WORD_SIZE;
     if (instance_byte_size > INSTANCE_SIZE_MASK) FATAL("Invalid instance size");
-    return (instance_byte_size << HeapObject::CLASS_TAG_BIT_SIZE) | tag;
+    return (instance_byte_size << HeapObject::CLASS_ID_OFFSET) | tag;
   }
 
   void set_invoke_bytecode_offset(Opcode opcode, int offset) {
-    ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_AT_PUT);
+    ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_SIZE);
     invoke_bytecode_offsets_[opcode - INVOKE_EQ] = offset;
   }
 

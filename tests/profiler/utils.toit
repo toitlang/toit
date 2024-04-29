@@ -2,8 +2,10 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import io
+import system
+
 import host.pipe
-import reader show BufferedReader
 
 /**
 Runs the given test with $args containing `toit.run` as first argument, and
@@ -27,13 +29,13 @@ run args -> List:
   stderr := pipes[2]
   pid := pipes[3]
 
-  reader := BufferedReader stderr
+  reader := io.Reader.adapt stderr
   reader.buffer-all
-  output := reader.read-string (reader.buffered)
+  output := reader.read-string (reader.buffered-size)
 
   exit-value := pipe.wait-for pid
   exit-code := pipe.exit-code exit-value
 
   if exit-code != 0: throw "Program didn't exit with 0."
-  lines := output.split LINE-TERMINATOR
+  lines := output.split system.LINE-TERMINATOR
   return lines

@@ -15,12 +15,13 @@
 
 import net
 import net.tcp
-import reader show BufferedReader Reader CloseableReader
-import writer show Writer
 import host.pipe show OpenPipe
 import host.file
 import host.directory
+import io
 import monitor
+import system
+import system show platform
 
 import .documents
 import .rpc
@@ -30,7 +31,7 @@ import .verbose
 
 sdk-path-from-compiler compiler-path/string -> string:
   is-absolute/bool := ?
-  if platform == PLATFORM-WINDOWS:
+  if platform == system.PLATFORM-WINDOWS:
     compiler-path = compiler-path.replace "\\" "/"
     if compiler-path.starts-with "/":
       is-absolute = true
@@ -74,7 +75,7 @@ class FileServerProtocol:
   constructor.local compiler-path/string sdk-path/string .documents_ .translator_:
     filesystem = FilesystemLocal sdk-path
 
-  handle reader/BufferedReader writer/Writer:
+  handle reader/io.Reader writer/io.Writer:
       while true:
         line := reader.read-line
         if line == null: break
@@ -116,10 +117,8 @@ class FileServerProtocol:
     is-regular := false
     is-directory := false
     content := null
-    document := documents_.get --uri=(translator_.to-uri compiler-path --from-compiler)
-    // Just having a document is not enough, as we might still have entries for
-    // deleted files.
-    if document and document.content:
+    document := documents_.get-opened --uri=(translator_.to-uri compiler-path --from-compiler)
+    if document:
       exists = true
       is-regular = true
       is-directory = false
@@ -143,7 +142,7 @@ interface FileServer:
 class PipeFileServer implements FileServer:
   protocol / FileServerProtocol
   to-compiler_   / OpenPipe
-  from-compiler_ / CloseableReader
+  from-compiler_ / io.CloseableReader
 
   constructor .protocol .to-compiler_ .from-compiler_:
 
@@ -154,8 +153,8 @@ class PipeFileServer implements FileServer:
   run -> string:
     task::
       catch --trace:
-        reader := BufferedReader from-compiler_
-        writer := Writer to-compiler_
+        reader := io.Reader.adapt from-compiler_
+        writer := io.Writer.adapt to-compiler_
         protocol.handle reader writer
     return "-2"
 
@@ -194,9 +193,7 @@ class TcpFileServer implements FileServer:
     socket := server_.accept
     try:
       socket.no-delay = true
-      reader := BufferedReader socket
-      writer := Writer socket
-      protocol.handle reader writer
+      protocol.handle socket.in socket.out
     finally:
       socket.close
       close

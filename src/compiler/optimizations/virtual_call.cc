@@ -34,11 +34,17 @@ static Opcode opcode_for(Selector<CallShape> selector) {
     return INVOKE_AT_PUT;
   }
 
+  if (selector.name() == Symbols::size &&
+      selector.shape() == CallShape(0).with_implicit_this()) {
+    return INVOKE_SIZE;
+  }
+
   // If this isn't a binary, non-setter method, we just treat it as
   // an ordinary virtual invocation.
   if (selector.shape() != CallShape(1).with_implicit_this()) return INVOKE_VIRTUAL;
 
   auto name = selector.name();
+  ASSERT(INVOKE_SIZE > INVOKE_AT_PUT);
   for (int i = INVOKE_EQ; i < INVOKE_AT_PUT; i++) {
     Opcode opcode = static_cast<Opcode>(i);
     if (Symbol::for_invoke(opcode) == name) return opcode;
@@ -53,6 +59,10 @@ Expression* optimize_virtual_call(CallVirtual* node,
                                   Method* method,
                                   UnorderedSet<Symbol>& field_names,
                                   UnorderedMap<Class*, QueryableClass>& queryables) {
+  // For simplicity, don't optimize mixins. There are some cases where we could
+  // change a virtual call to a static one, but it requires more work.
+  if (holder != null && holder->is_mixin()) return node;
+
   auto dot = node->target();
   auto receiver = dot->receiver();
 
@@ -78,28 +88,16 @@ Expression* optimize_virtual_call(CallVirtual* node,
     }
   }
 
-  if (direct_method != null && opcode != INVOKE_VIRTUAL) {
-    // We don't want to change any of the really efficient INVOKE_X opcodes.
-    // These bytecodes are optimized for numbers/arrays and shortcut
-    // lots of bytecodes.
-    // TODO(florian): change to a static call when the receiver isn't one of
-    //    the optimized types. In that case make sure to special case
-    //    `INVOKE_EQ`: the virtual machine does a null-check on the RHS before
-    //    calling the virtual method.
-    //    See https://github.com/toitlang/toit/blob/e4f55512efd2880c5ab68960ae4c0a21a69ab349/src/compiler/optimizations/virtual_call.cc#L82
-    //    for how to treat the `INVOKE_EQ`.
-    direct_method = null;
-  }
-
   if (direct_method == null) {
     // Can' make it a direct call, but maybe it's a potential field access.
     bool is_potential_field = field_names.contains(selector.name());
-    if (is_potential_field && node->shape() == CallShape::for_instance_getter()) {
+    if (is_potential_field &&
+        node->shape() == CallShape::for_instance_getter() &&
+        opcode != INVOKE_SIZE) {
       node->set_opcode(INVOKE_VIRTUAL_GET);
     } else if (is_potential_field && node->shape() == CallShape::for_instance_setter()) {
       node->set_opcode(INVOKE_VIRTUAL_SET);
     } else {
-      // Maybe it's an arithmetic/conditional operation.
       node->set_opcode(opcode);
     }
     return node;
@@ -128,6 +126,22 @@ Expression* optimize_virtual_call(CallVirtual* node,
       return _new FieldStore(receiver, field, value, node->range());
     }
   }
+
+  if (opcode != INVOKE_VIRTUAL) {
+    // We don't want to change any of the really efficient INVOKE_X opcodes even if
+    // we know the target. These bytecodes are optimized for numbers/arrays and shortcut
+    // lots of bytecodes.
+    // TODO(florian): change to a static call when the receiver isn't one of
+    //    the optimized types. In that case make sure to special case
+    //    `INVOKE_EQ`: the virtual machine does a null-check on the RHS before
+    //    calling the virtual method.
+    //    See https://github.com/toitlang/toit/blob/e4f55512efd2880c5ab68960ae4c0a21a69ab349/src/compiler/optimizations/virtual_call.cc#L82
+    //    for how to treat the `INVOKE_EQ`.
+    direct_method = null;
+    node->set_opcode(opcode);
+    return node;
+  }
+
   ListBuilder<Expression*> new_arguments;
   new_arguments.add(receiver);
   new_arguments.add(node->arguments());

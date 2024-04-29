@@ -6,6 +6,7 @@ import .outline as prefix
 
 class Class:
 /*    @ class: Class */
+
   constructor:
 /*@ constructor: Class.constructor */
 
@@ -57,6 +58,7 @@ class Class:
 
 abstract class B:
 /*             @ abstract class: B */
+
   abstract abstract-method
 /*         @ abstract method: B.abstract-method */
 
@@ -65,8 +67,18 @@ abstract class B:
 
 interface Interface:
 /*        @ interface: Interface */
+
   interface-method
 /*@ interface method: Interface.interface-method */
+
+  constructor:
+/*@ constructor: Interface.constructor */
+    return InterfaceImpl
+
+  constructor.named:
+/*@ named constructor: Interface.named */
+    return InterfaceImpl
+
 
   interface-method x --named-arg [block]
 /*@ interface method: Interface.interface-method x --named-arg [block] */
@@ -76,6 +88,22 @@ interface Interface:
 
   static static-method2 x --named-arg  optional=3 [block] --optional-named=null:
 /*       @ static method: Interface.static-method2 x --named-arg optional= [block] --optional-named= */
+
+class InterfaceImpl implements Interface:
+/*    @ class: InterfaceImpl */
+
+  interface-method:
+/*@ interface method: InterfaceImpl.interface-method */
+
+  interface-method x --named-arg [block]:
+/*@ interface method: InterfaceImpl.interface-method x --named-arg [block] */
+
+mixin Mix1:
+/*    @ mixin: Mix1 */
+
+  static static-method:
+/*       @ static method: Mix1.static-method */
+
 
 global := 499
 /*

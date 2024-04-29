@@ -1,12 +1,14 @@
 // Copyright (C) 2018 Toitware ApS.
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
-import expect show *
 
+import expect show *
 
 import font show *
 import bitmap show *
-import binary show LITTLE-ENDIAN BIG-ENDIAN byte-swap-16 byte-swap-32
+import io show LITTLE-ENDIAN BIG-ENDIAN ByteOrder
+
+import .io-data
 
 get-test-font byte-array:
   return Font [byte-array]
@@ -16,10 +18,13 @@ SLOW := true
 
 main:
   feature-detect
+  bytemap-test
   simple-test
   blit-test
   bitmap-test
   blur-test
+  io-data-test
+  composit-test
 
 bitmap-primitives-present := true
 bytemap-primitives-present := true
@@ -50,12 +55,12 @@ simple-test:
       BIG-ENDIAN.put-uint16 ba
         it * 2
         314 * it
-    byte-swap-16 ba[0..24]
+    ByteOrder.swap-16 ba[0..24]
     12.repeat:
       read := LITTLE-ENDIAN.uint16 ba it * 2
       expect-equals 314 * it read
     for i := 0; i < 24; i += 4:
-      byte-swap-16 ba[i..i + 4]
+      ByteOrder.swap-16 ba[i..i + 4]
     12.repeat:
       read := BIG-ENDIAN.uint16 ba it * 2
       expect-equals 314 * it read
@@ -64,12 +69,12 @@ simple-test:
       LITTLE-ENDIAN.put-uint32 ba
         it * 4
         3141592 * it
-    byte-swap-32 ba
+    ByteOrder.swap-32 ba
     6.repeat:
       read := BIG-ENDIAN.uint32 ba it * 4
       expect-equals 3141592 * it read
     for i := 0; i < 24; i += 4:
-      byte-swap-32 ba[i..i + 4]
+      ByteOrder.swap-32 ba[i..i + 4]
     6.repeat:
       read := LITTLE-ENDIAN.uint32 ba it * 4
       expect-equals 3141592 * it read
@@ -644,3 +649,286 @@ blur-test:
   gold = blur-gold ba 9 0 3
   bytemap-blur ba 9 0 3
   blur-compare ba gold 9 0 3
+
+bytemap-test -> none:
+  W ::= 42
+  H ::= 17
+  canvas := ByteArray (W * H)
+
+  alien := ""
+      + "__######__"
+      + "__#O##O#__"
+      + "_########_"
+      + "_########_"
+      + "__#_#__#__"
+      + "__#_#__#__"
+
+  ALIEN-WIDTH := 10
+
+  expect-equals 0 canvas[0]
+
+  bytemap-zap canvas ' '  // Set background to test transparency.
+
+  // Plain copy to middle.
+  // The x and y coordinates are the top left corner of the top left pixel of
+  // the alien.
+  bitmap-draw-bytemap 21 8  // x, y.
+      --source=alien
+      --source-width=ALIEN-WIDTH
+      --destination=canvas
+      --destination-width=W
+
+  // Upside-down copy to middle.
+  // The x and y coordinates are the top left corner of the top left pixel of
+  // the unrotated alien, therefore at the bottom right corner of the bottom
+  // right pixel of the area the alien covers on the canvas. So the corners
+  // of this and the above just touch.
+  bitmap-draw-bytemap 21 8  // x, y.
+      --orientation=2       // 180 degrees.
+      --source=alien
+      --source-width=5      // Only the first 5 pixels of each line
+      --source-line-stride=ALIEN-WIDTH
+      --destination=canvas
+      --destination-width=W
+
+  // Bottom left corner to test clipping and transparency.
+  bitmap-draw-bytemap -2 (H - 5)  // x, y.
+      --transparent-index='_'     // Underscore is transparent.
+      --source=alien
+      --source-width=ALIEN-WIDTH
+      --destination=canvas
+      --destination-width=W
+
+  PALETTE ::= ByteArray 384:
+    if it / 3 == '#':
+      '*'
+    else if it / 3 == 'O':
+      'o'
+    else:
+      it
+
+  // Right edge, rotated.
+  // The origin is at width - 6, so we can see 5 pixels of the alien.
+  bitmap-draw-bytemap (W - 6) 14  // x, y.
+      --transparent-index='_'     // Underscore is transparent.
+      --orientation=1             // 90 degrees anticlockwise.
+      --source=alien
+      --source-width=ALIEN-WIDTH
+      --palette=PALETTE
+      --destination=canvas
+      --destination-width=W
+
+  // top right corner, rotated.
+  bitmap-draw-bytemap (W + 2) 3  // x, y.
+      --transparent-index='_'    // Underscore is transparent.
+      --orientation=2            // 180 degrees.
+      --source=alien
+      --source-width=ALIEN-WIDTH
+      --destination=canvas
+      --destination-width=W
+
+  ALPHA ::= ByteArray 128:
+    it == '_' ?  0 : 255
+
+  // Top left corner, rotated right.
+  bitmap-draw-bytemap 3 -2  // x, y.
+      --alpha=ALPHA
+      --orientation=3       // 270 degrees anticlockwise.
+      --source=alien
+      --source-width=ALIEN-WIDTH
+      --destination=canvas
+      --destination-width=W
+
+  W.repeat:
+    char := '0' + it % 10
+    canvas[it + (H - 1) * W] = char
+  H.repeat:
+    char := '0' + it % 10
+    canvas[it * W + W - 2] = char
+  bytemap-rectangle (W - 1) 0 '\n' 1 H canvas W
+
+  EXPECTED ::= """
+      ###                                #####0
+      #O#                                 #O##1
+      ###             #_#__               ####2
+      ###             #_#__                   3
+      #O#             ####_                   4
+      ###             ####_                 **5
+      #               #O#__               ****6
+                      ###__               *o**7
+                           __######__     ****8
+                           __#O##O#__     ****9
+                           _########_     *o**0
+                           _########_     ****1
+      ######               __#_#__#__       **2
+      #O##O#               __#_#__#__         3
+      #######                                 4
+      #######                                 5
+      01234567890123456789012345678901234567896
+      """
+
+  expect-equals EXPECTED canvas.to-string
+
+
+io-data-test:
+  if not bitmap-primitives-present: return
+
+  W ::= 10
+  H ::= 6
+  canvas := ByteArray (W * H)
+
+  alien := ""
+      + "__######__"
+      + "__#O##O#__"
+      + "_########_"
+      + "_########_"
+      + "__#_#__#__"
+      + "__#_#__#__"
+
+  fake-alien := FakeData alien.to-byte-array
+
+  ALIEN-WIDTH := 10
+
+  expect-equals 0 canvas[0]
+
+  bytemap-zap canvas ' '  // Set background to test transparency.
+
+  // Plain copy.
+  // The x and y coordinates are the top left corner of the top left pixel of
+  // the alien.
+  bitmap-draw-bytemap 0 0  // x, y.
+      -1   // No transparency.
+      0    // No rotation.
+      fake-alien
+      ALIEN-WIDTH
+      #[]  // No palette.
+      canvas
+      W
+
+  expect-equals alien canvas.to-string
+
+  ba := #[1, 2, 3, 4]
+
+  // Check mask works.
+  blit (FakeData ba) ba 4 --mask=0xfe
+  ba.size.repeat:
+    expect-equals [0, 2, 2, 4][it] ba[it]
+
+composit-test -> none:
+  if bytemap-primitives-present:
+    composit-test-bytemap
+  if bitmap-primitives-present:
+    composit-test-bitmap
+
+composit-test-bytemap -> none:
+  canvas := ByteArray 16
+  frame := ByteArray 16: 42
+  frame-opacity := #[128, 128, 128, 128,
+                     128,   0,   0, 128,
+                     128,   0,   0, 128,
+                     128, 128, 128, 128,
+                    ]
+  painting := #[1, 2, 3, 4,
+                5, 6, 7, 8,
+                9, 0, 1, 2,
+                3, 4, 5, 6,
+               ]
+  painting-opacity := #[  0,   0,   0, 128,
+                          0,   0, 128, 255,
+                          0, 128, 255, 255,
+                        128, 255, 255, 255,
+                       ]
+
+  BYTE-MODE ::= false
+
+  composit-bytes canvas frame-opacity frame painting-opacity painting BYTE-MODE
+
+  EXPECTED1 := #[0x15, 0x15, 0x15, 0x0c,
+                 0x15,    0,    3,    8,
+                 0x15,    0,    1,    2,
+                 0x0c,    4,    5,    6,
+                ]
+  expect-equals EXPECTED1 canvas
+
+  // Fully transparent frame means we can pass null for the frame bitmap.
+  composit-bytes canvas #[0] null painting-opacity painting BYTE-MODE
+  EXPECTED2 := #[0x15, 0x15, 0x15,    8,
+                 0x15,    0,    5,    8,
+                 0x15,    0,    1,    2,
+                    7,    4,    5,    6,
+                ]
+  expect-equals EXPECTED2 canvas
+
+  // Fully opaque frame can be done with #[0xff] for the opacity.
+  composit-bytes canvas #[0xff] frame painting-opacity painting BYTE-MODE
+  EXPECTED3 := #[42,     42,   42, 0x17,
+                 42,     42, 0x18,    8,
+                 42,   0x15,    1,    2,
+                 0x16,    4,    5,    6,
+                ]
+  expect-equals EXPECTED3 canvas
+
+  // Fully opaque painting can be done with #[0xff] for the opacity.
+  composit-bytes canvas frame-opacity frame #[0xff] painting BYTE-MODE
+  expect-equals painting canvas
+
+  // Fully opaque frame and fully transparent painting.
+  composit-bytes canvas #[0xff] frame #[0] painting BYTE-MODE
+  expect-equals frame canvas
+
+composit-test-bitmap -> none:
+  // The canvas is a bitmap that is 4x32 pixels.
+  canvas := ByteArray 16
+  frame := ByteArray 16: 42
+  frame-opacity := #[255, 128, 128, 255,
+                     255,   0,   0, 255,
+                     255,   0,   0, 255,
+                     255,   1,   1, 255,
+                    ]
+  painting := #[1, 2, 3, 4,
+                5, 6, 7, 8,
+                9, 0, 1, 2,
+                3, 4, 5, 6,
+               ]
+  painting-opacity := #[  0,   0,   0, 255,
+                          0,   0, 255, 255,
+                          0, 255, 255, 255,
+                        255, 255, 255, 255,
+                       ]
+
+  BIT-MODE ::= true
+
+  composit-bytes canvas frame-opacity frame painting-opacity painting BIT-MODE
+
+  EXPECTED1 := #[42, 0, 0, 4,
+                 42, 0, 7, 8,
+                 42, 0, 1, 2,
+                  3, 4, 5, 6,
+                ]
+  expect-equals EXPECTED1 canvas
+
+  // Fully transparent frame means we can pass null for the frame bitmap.
+  composit-bytes canvas #[0] null painting-opacity painting BIT-MODE
+  EXPECTED2 := #[42, 0, 0, 4,
+                 42, 0, 7, 8,
+                 42, 0, 1, 2,
+                  3, 4, 5, 6,
+                ]
+  expect-equals EXPECTED2 canvas
+
+  // Fully opaque frame can be done with #[0xff] for the opacity.
+  composit-bytes canvas #[0xff] frame painting-opacity painting BIT-MODE
+  EXPECTED3 := #[42, 42, 42, 4,
+                 42, 42,  7, 8,
+                 42,  0,  1, 2,
+                  3,  4,  5, 6,
+                ]
+  expect-equals EXPECTED3 canvas
+
+  // Fully opaque painting can be done with #[0xff] for the opacity.
+  composit-bytes canvas frame-opacity frame #[0xff] painting BIT-MODE
+  expect-equals painting canvas
+
+  // Fully opaque frame and fully transparent painting.
+  composit-bytes canvas #[0xff] frame #[0] painting BIT-MODE
+  expect-equals frame canvas

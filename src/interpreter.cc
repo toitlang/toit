@@ -102,10 +102,21 @@ void Interpreter::prepare_task(Method entry, Instance* code) {
   push(process_->program()->frame_marker());
 }
 
-Object** Interpreter::gc(Object** sp, bool malloc_failed, int attempts, bool force_cross_process) {
+Object** Interpreter::gc(
+    Object** sp,
+    bool malloc_failed,
+    int attempts,
+    bool force_cross_process,
+    const char* reason,
+    int parameter1,
+    int parameter2) {
   ASSERT(attempts >= 1 && attempts <= 3);  // Allocation attempts.
   if (attempts == 3) {
-    OS::heap_summary_report(0, "out of memory");
+    static const int BUFFER_SIZE = 50;
+    char buffer[BUFFER_SIZE];
+    snprintf(buffer, BUFFER_SIZE, "out of memory in %s %d:%d", reason, parameter1, parameter2);
+    buffer[BUFFER_SIZE - 1] = '\0';
+    OS::heap_summary_report(0, buffer, process_);
     if (VM::current()->scheduler()->is_boot_process(process_)) {
       OS::out_of_memory("Out of memory in system process");
     }
@@ -132,7 +143,7 @@ void Interpreter::prepare_process() {
   store_stack();
 }
 
-#ifdef IOT_DEVICE
+#ifdef TOIT_FREERTOS
 #define STACK_ENCODING_BUFFER_SIZE (2*1024)
 #else
 #define STACK_ENCODING_BUFFER_SIZE (16*1024)
@@ -151,10 +162,11 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
 
   // Stack: Type, ...
 
-  Instance* instance = process->object_heap()->allocate_instance(process->program()->exception_class_id());
+  Smi* class_id = process->program()->exception_class_id();
+  Instance* instance = process->object_heap()->allocate_instance(class_id);
   for (int attempts = 1; instance == null && attempts < 4; attempts++) {
-    sp = gc(sp, false, attempts, false);
-    instance = process->object_heap()->allocate_instance(process->program()->exception_class_id());
+    sp = gc(sp, false, attempts, false, "'pushing error'", Smi::value(class_id));
+    instance = process->object_heap()->allocate_instance(class_id);
   }
   process->object_heap()->leave_primitive();
 
@@ -171,7 +183,7 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
 
   MallocedBuffer buffer(STACK_ENCODING_BUFFER_SIZE);
   for (int attempts = 1; !buffer.has_content() && attempts < 4; attempts++) {
-    sp = gc(sp, true, attempts, false);
+    sp = gc(sp, true, attempts, false, "'pushing error'", Smi::value(class_id));
     buffer.allocate(STACK_ENCODING_BUFFER_SIZE);
   }
   process->object_heap()->leave_primitive();
@@ -189,7 +201,7 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
   if (success) {
     ByteArray* trace = process->allocate_byte_array(buffer.size());
     for (int attempts = 1; trace == null && attempts < 4; attempts++) {
-      sp = gc(sp, false, attempts, false);
+      sp = gc(sp, false, attempts, false, "'pushing error'", Smi::value(class_id));
       trace = process->allocate_byte_array(buffer.size());
     }
     process->object_heap()->leave_primitive();
@@ -258,7 +270,7 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
           length, new_length);
     }
 #endif
-    sp = gc(sp, false, attempts, false);
+    sp = gc(sp, false, attempts, false, "'stack grow'", length, new_length);
     new_stack = process->object_heap()->allocate_stack(new_length);
   }
   process->object_heap()->leave_primitive();
@@ -289,5 +301,21 @@ void Interpreter::trace(uint8* bcp) {
   UNIMPLEMENTED();
 #endif
 }
+
+Object* Interpreter::float_op(Process* process, Object* a, Object* b, double_op* op) {
+  word word_result = process->object_heap()->allocate_new_space(Double::allocation_size());
+  if (!word_result) return NULL;
+  HeapObject* result = HeapObject::from_address(word_result);
+  Smi* header = HeapObject::cast(a)->header();
+  result->_set_header(header);
+  double d1 = Double::cast(a)->value();
+  double d2 = Double::cast(b)->value();
+  Double::cast(result)->_set_value(op(d1, d2));
+  return result;
+}
+
+double double_add(double a, double b) { return a + b; }
+double double_sub(double a, double b) { return a - b; }
+double double_mul(double a, double b) { return a * b; }
 
 } // namespace toit

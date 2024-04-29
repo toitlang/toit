@@ -135,11 +135,13 @@ Unit* Parser::parse_unit(Source* override_source) {
     }
     bool is_abstract = optional(Token::ABSTRACT);
     if (current_token() == Token::CLASS) {
-      declarations.add(parse_class_interface_or_monitor(is_abstract));
-    } else if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::monitor) {
-      declarations.add(parse_class_interface_or_monitor(is_abstract));
-    } else if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::interface_) {
-      declarations.add(parse_class_interface_or_monitor(is_abstract));
+      declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
+    } else if (at_pseudo(Symbols::monitor)) {
+      declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
+    } else if (at_pseudo(Symbols::interface_)) {
+      declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
+    } else if (at_pseudo(Symbols::mixin)) {
+      declarations.add(parse_class_interface_monitor_or_mixin(is_abstract));
     } else {
       declarations.add(parse_declaration(is_abstract));
     }
@@ -685,7 +687,7 @@ Import* Parser::parse_import() {
         prefix = NEW_NODE(Identifier(Symbol::invalid()), as_range);
         skip_to_end_of_multiline_construct();
       }
-    } else if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::show) {
+    } else if (at_pseudo(Symbols::show)) {
       auto show_range = current_range();
       consume();
       ListBuilder<Identifier*> builder;
@@ -897,7 +899,7 @@ Declaration* Parser::parse_declaration(bool is_abstract) {
       has_initializer = false;
       is_final = true;
     } else {
-      report_error("Missing ':=' or '::=' for field.");
+      report_error("Missing ':=' or '::=' for field");
       switch_multiline_construct(IndentationStack::DECLARATION_SIGNATURE, IndentationStack::DECLARATION);
     }
     Expression* initializer = null;
@@ -935,6 +937,21 @@ Declaration* Parser::parse_declaration(bool is_abstract) {
   }
   auto parameters = return_type_parameters.second;
 
+  // Allow colons to be at the same level as the declaring method.
+  // Something like:
+  //   foo
+  //       param1
+  //       param2
+  //   :
+  //     body
+  if (current_token() == Token::DEDENT) {
+    if (peek_token() == Token::COLON &&
+        indentation_stack_.top_indentation() == current_indentation() &&
+        indentation_stack_.is_outmost(IndentationStack::DECLARATION_SIGNATURE)) {
+      // Consume the detent.
+      consume();
+    }
+  }
   Sequence* body;
   if (current_token() == Token::COLON) {
     consume();
@@ -978,28 +995,40 @@ Declaration* Parser::parse_declaration(bool is_abstract) {
   return NEW_NODE(Method(name, return_type, is_setter, is_static, is_abstract, parameters, body), declaration_range);
 }
 
-Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
+Class* Parser::parse_class_interface_monitor_or_mixin(bool is_abstract) {
   ASSERT(current_token() == Token::CLASS ||
-         (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::interface_)||
-         (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::monitor));
+         at_pseudo(Symbols::interface_) ||
+         at_pseudo(Symbols::monitor) ||
+         at_pseudo(Symbols::mixin));
 
   ListBuilder<Expression*> interfaces;
+  ListBuilder<Expression*> mixins;
   ListBuilder<Declaration*> members;
 
   start_multiline_construct(IndentationStack::CLASS);   // Classes/monitors go over multiple lines.
 
-  bool is_monitor = false;
-  bool is_interface = false;
+  ast::Class::Kind kind;
   if (current_token() == Token::IDENTIFIER) {
-    is_monitor = current_token_data() == Symbols::monitor;
-    is_interface = current_token_data() == Symbols::interface_;
-    if (is_abstract) {
-      report_error("%s can't be abstract", is_interface ? "Interfaces" : "Monitors");
+    const char* kind_string;
+    if (at_pseudo(Symbols::interface_)) {
+      kind = ast::Class::INTERFACE;
+      kind_string = "Interfaces";
+    } else if (at_pseudo(Symbols::monitor)) {
+      kind = ast::Class::MONITOR;
+      kind_string = "Monitors";
+    } else {
+      ASSERT(at_pseudo(Symbols::mixin));
+      kind = ast::Class::MIXIN;
+      kind_string = "Mixins";
+    }
+    if (is_abstract && kind != ast::Class::MIXIN) {
+      report_error("%s can't be abstract", kind_string);
       is_abstract = false;
     }
     consume();
   } else {
     ASSERT(current_token() == Token::CLASS);
+    kind = ast::Class::CLASS;
     consume();
   }
 
@@ -1008,9 +1037,20 @@ Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
   Identifier* name;
   Expression* super = null;
   if (current_token() != Token::IDENTIFIER) {
-    const char* kind_name = "class";
-    if (is_monitor) kind_name = "monitor";
-    if (is_interface) kind_name = "interface";
+    const char* kind_name = null;
+    switch (kind) {
+      case ast::Class::CLASS:
+        kind_name = "class";
+        break;
+      case ast::Class::MONITOR:
+        kind_name = "monitor";
+        break;
+      case ast::Class::INTERFACE:
+        kind_name = "interface";
+        break;
+      case ast::Class::MIXIN:
+        kind_name = "mixin";
+    }
     if (is_eol(current_token())) {
       report_error(eol_range(previous_range(), current_range()),
                    "Expected %s name", kind_name);
@@ -1025,14 +1065,36 @@ Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
   } else {
     name = parse_identifier();
     bool requires_super = false;
-    if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::extends) {
+    if (at_pseudo(Symbols::extends)) {
       consume();
       requires_super = true;
     }
-    if (current_token() == Token::IDENTIFIER && current_token_data() != Symbols::implements) {
+
+    if (current_token() == Token::IDENTIFIER &&
+        current_token_data() != Symbols::implements &&
+        current_token_data() != Symbols::with) {
       super = parse_type(false);
     }
-    if (current_token() == Token::IDENTIFIER && current_token_data() == Symbols::implements) {
+    if (at_pseudo(Symbols::with)) {
+      if (!requires_super) {
+        // "requires_super" indicates that there was an `extends`.
+        report_error("'with' requires an 'extends' clause");
+      }
+      if (super == null && requires_super) {
+        report_error("Missing super class");
+        // We reported an error. No need for a super class anymore.
+        requires_super = false;
+      }
+      consume();
+      while (current_token() == Token::IDENTIFIER &&
+             current_token_data() != Symbols::implements) {
+        mixins.add(parse_type(false));
+      }
+      if (mixins.is_empty()) {
+        report_error("'with' without any mixin type");
+      }
+    }
+    if (at_pseudo(Symbols::implements)) {
       if (super == null && requires_super) {
         report_error("Missing super class");
         // We reported an error. No need for a super class anymore.
@@ -1070,10 +1132,10 @@ Class* Parser::parse_class_interface_or_monitor(bool is_abstract) {
   return NEW_NODE(Class(name,
                         super,
                         interfaces.build(),
+                        mixins.build(),
                         members.build(),
-                        is_abstract,
-                        is_monitor,
-                        is_interface),
+                        kind,
+                        is_abstract),
                   name->range());
 }
 
@@ -1418,7 +1480,7 @@ Expression* Parser::parse_call(bool allow_colon) {
     } else if (at_newline()) {
       if (arguments_indentation == -1) arguments_indentation = current_indentation();
       if (arguments_indentation != current_indentation()) {
-        report_error("All arguments must have the same indentation.");
+        report_error("All arguments must have the same indentation");
       }
       // Given that there is no dedent, we know that this expression is still
       // at the same level and is an argument to the call.
@@ -1494,6 +1556,8 @@ Expression* Parser::parse_call(bool allow_colon) {
 
 Expression* Parser::parse_if() {
   ASSERT(current_token() == Token::IF);
+  bool if_at_newline = at_newline();
+  int if_indentation = current_indentation();
   auto range = current_range();
   start_multiline_construct(IndentationStack::IF_CONDITION);
   consume();
@@ -1528,11 +1592,15 @@ Expression* Parser::parse_if() {
     if (peek_token() == Token::ELSE &&
         indentation_stack_.top_indentation() == current_indentation() &&
         indentation_stack_.is_outmost(IndentationStack::IF_BODY)) {
+      // Consume the detent.
       consume();
     }
   }
   if (current_token() == Token::ELSE) {
-    auto else_range = Source::Range(current_range().to(), current_range().to());
+    if (if_at_newline && at_newline() && if_indentation != current_indentation()) {
+      diagnostics()->report_warning(current_range(), "Unexpected indentation: 'if' and 'else' not at same level");
+    }
+    auto else_end_range = Source::Range(current_range().to(), current_range().to());
     consume();
     if (current_token() == Token::IF) {
       end_multiline_construct(IndentationStack::IF_BODY);
@@ -1541,7 +1609,7 @@ Expression* Parser::parse_if() {
       if (!optional_delimiter(Token::COLON)) {
         // Just try to read the else block.
         // If it's correctly indented it will work.
-        report_error(else_range, "Missing colon for 'else'");
+        report_error(else_end_range, "Missing colon for 'else'");
       }
       no = parse_sequence();
       end_multiline_construct(IndentationStack::IF_BODY);
@@ -2458,7 +2526,8 @@ Expression* Parser::parse_type(bool is_type_annotation) {
     }
     auto id = parse_identifier();
     if (id->data() == Symbols::implements ||
-        id->data() == Symbols::extends) {
+        id->data() == Symbols::extends ||
+        id->data() == Symbols::with) {
       report_error(id->range(), "Unexpected token in type: '%s'", id->data().c_str());
       encountered_pseudo_keyword = true;
     }

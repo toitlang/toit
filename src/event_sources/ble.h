@@ -13,8 +13,12 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#pragma once
+
 #include "../top.h"
 #include "../resource.h"
+#include "../tags.h"
+
 namespace toit {
 
 enum {
@@ -49,6 +53,8 @@ class BleResourceGroup;
 
 class BleResource : public Resource {
  public:
+  TAGS(BleResource);
+
   enum Kind {
     CENTRAL_MANAGER,
     PERIPHERAL_MANAGER,

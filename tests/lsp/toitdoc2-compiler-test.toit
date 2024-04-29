@@ -14,7 +14,7 @@ main args:
   // We are reaching into the server, so we must not spawn the server as
   // a process.
   run-client-test args --no-spawn-process: test it
-  // Since we used '--no-spawn_process' we must exit 0.
+  // Since we used '--no-spawn-process' we must exit 0.
   exit 0
 
 FILE-URI ::= "untitled:/non_existent.toit"
@@ -88,8 +88,10 @@ test-toitdoc client/LspClient str/string expected / Contents:
   client.send-did-change --uri=FILE-URI str
   (client.diagnostics-for --uri=FILE-URI).do: print it
   expect (client.diagnostics-for --uri=FILE-URI).is-empty
+  project-uri := client.server.documents_.project-uri-for --uri=FILE-URI
   // Reaching into the private state of the server.
-  document := client.server.documents_.get-existing-document --uri=FILE-URI
+  analyzed-documents := client.server.documents_.analyzed-documents-for --project-uri=project-uri
+  document := analyzed-documents.get-existing --uri=FILE-URI
   summary := document.summary
   actual := summary.toitdoc
   expect-equals expected.sections.size actual.sections.size

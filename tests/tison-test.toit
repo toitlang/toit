@@ -6,6 +6,8 @@ import expect show *
 import encoding.tison
 import encoding.ubjson
 
+import .io-data
+
 main:
   test-simple-types
   test-strings
@@ -13,6 +15,7 @@ main:
   test-lists
   test-byte-arrays
   test-complex
+  test-too-much-map-nesting
 
   test-wrong-marker
   test-wrong-version
@@ -101,9 +104,19 @@ test-complex -> none:
     },
   }
 
+test-too-much-map-nesting -> none:
+  nested := {
+    "foo": "bar"
+  }
+  nested["baz"] = nested
+  expect-throw "NESTING_TOO_DEEP":
+    test-round-trip nested
+
 test-round-trip x/any -> none:
   encoded := tison.encode x
   decoded := tison.decode encoded
+  decoded2 := tison.decode (FakeData encoded)
+  expect-structural-equals decoded decoded2
   expect-bytes-equal
       ubjson.encode x
       ubjson.encode decoded

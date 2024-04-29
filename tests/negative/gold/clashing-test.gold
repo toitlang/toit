@@ -169,4 +169,4 @@ tests/negative/clashing-test.toit:43:24: error: Unresolved identifier: 'unresolv
 tests/negative/clashing-test.toit:8:14: error: Unresolved identifier: 'unresolved'
 A := (A).foo unresolved
              ^~~~~~~~~~
-Compilation failed.
+Compilation failed

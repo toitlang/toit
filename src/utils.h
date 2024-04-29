@@ -125,6 +125,18 @@ class Utils {
     return round_down(x + n - 1, n);
   }
 
+  static inline void* round_up(void* p, int n) {
+    return reinterpret_cast<void*>(round_up(reinterpret_cast<uword>(p), n));
+  }
+
+  static inline void* void_add(void* x, uword y) {
+    return reinterpret_cast<void*>(reinterpret_cast<uword>(x) + y);
+  }
+
+  static inline uword void_sub(void* x, void* y) {
+    return reinterpret_cast<uword>(x) - reinterpret_cast<uword>(y);
+  }
+
   // Implementation is from "Hacker's Delight" by Henry S. Warren, Jr.,
   // figure 3-3, page 48, where the function is called clp2.
   template<typename T>
@@ -216,6 +228,12 @@ class Utils {
   }
 
   template<typename T>
+  static inline uint16 read_unaligned_uint16_be(T* ptr) {
+    uint16 le = read_unaligned_uint16(ptr);
+    return (le >> 8) | (le << 8);
+  }
+
+  template<typename T>
   static inline void write_unaligned_uint16(T* ptr, uint16 value) {
     memcpy(ptr, &value, sizeof(value));
   }
@@ -224,6 +242,12 @@ class Utils {
   template<typename T>
   static inline uint32 read_unaligned_uint32_le(T* ptr) {
     return read_unaligned_uint32(ptr);
+  }
+
+  template<typename T>
+  static inline uint32 read_unaligned_uint32_be(T* ptr) {
+    uint32 le = read_unaligned_uint32(ptr);
+    return (le >> 24) | ((le >> 8) & 0xff00) | ((le << 8) & 0xff0000) | (le << 24);
   }
 
   template<typename T>
@@ -426,6 +450,13 @@ class List {
     ASSERT(length >= 0);
   }
 
+  // Mainly for use in passing a non-const List to something that expects a
+  // const List.
+  template <typename U>
+  List(List<U> other) : data_(other.data_), length_(other.length_) {
+    ASSERT(other.length_ >= 0);
+  }
+
   T* data() const { return data_; }
   T*& data() { return data_; }
   int length() const { return length_; }
@@ -483,6 +514,9 @@ class List {
  private:
   T* data_;
   int length_;
+
+  template <typename U>
+  friend class List;
 };
 
 class Base64Encoder {

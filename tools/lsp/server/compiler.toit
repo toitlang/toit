@@ -15,10 +15,8 @@
 
 import host.pipe
 import host.file
+import io
 import monitor
-import reader show BufferedReader
-import writer show Writer
-import bytes
 
 import .protocol.completion
 import .protocol.document
@@ -44,33 +42,27 @@ class Compiler:
   on-error_            /Lambda?     ::= ?
   timeout-ms_          /int         ::= ?
   protocol             /FileServerProtocol ::= ?
-  project-uri_         /string?     ::= ?
 
   constructor
       .compiler-path_
       .uri-path-translator_
       .timeout-ms_
       --.protocol
-      --project-uri/string?
       --on-error/Lambda?=null
       --on-crash/Lambda?=null:
     on-crash_ = on-crash
     on-error_ = on-error
-    project-uri_ = project-uri
 
   /**
   Builds the flags that are passed to the compiler.
   */
-  build-run-flags -> List:
+  build-run-flags --project-uri/string? -> List:
+    project-path-compiler := uri-path-translator_.to-path project-uri --to-compiler
     args := [
       "--lsp",
+      "--project-root", project-path-compiler,
     ]
-    if project-uri_:
-      project-path-local := uri-path-translator_.to-path project-uri_
-      package-lock := "$project-path-local/package.lock"
-      if file.is-file package-lock:
-        project-path-compiler := uri-path-translator_.to-path project-uri_ --to-compiler
-        args += ["--project-root", project-path-compiler]
+    verbose: "run-flags: $args"
     return args
 
   /**
@@ -79,8 +71,8 @@ class Compiler:
   Returns whether the call was successful.
   If there was a crash, invokes the stored `on_crash` handler, and returns false.
   */
-  run --ignore-crashes/bool=false --compiler-input/string [read-callback] -> bool:
-    flags := build-run-flags
+  run --project-uri/string? --ignore-crashes/bool=false --compiler-input/string [read-callback] -> bool:
+    flags := build-run-flags --project-uri=project-uri
 
     cpp-pipes := pipe.fork
         true                // use_path
@@ -113,11 +105,11 @@ class Compiler:
 
     did-crash := false
     try:
-      writer := Writer cpp-to
+      writer := io.Writer.adapt cpp-to
       writer.write "$file-server-line\n"
       writer.write compiler-input
 
-      reader := BufferedReader to-parser
+      reader := io.Reader.adapt to-parser
       read-callback.call reader
     finally:
       file-server.close
@@ -138,7 +130,7 @@ class Compiler:
           did-crash = true
     return not did-crash
 
-  analyze uris/List -> AnalysisResult?:
+  analyze --project-uri/string? uris/List -> AnalysisResult?:
     // Work around small stack size.
     // TODO(1268): remove work-around
     latch := monitor.Latch
@@ -153,8 +145,8 @@ class Compiler:
 
       verbose: "Calling compiler analysis with $paths"
       compiler-input := "ANALYZE\n$(paths.size)\n$(paths.join "\n")\n"
-      completed-successfully := run --compiler-input=compiler-input:
-        |reader /BufferedReader|
+      completed-successfully := run --project-uri=project-uri --compiler-input=compiler-input:
+        |reader /io.Reader|
 
         summary := null
 
@@ -242,28 +234,48 @@ class Compiler:
       latch.set (completed-successfully ? result : null)
     return latch.get
 
-  complete uri/string line-number/int column-number/int -> List/*<string>*/:
+  /**
+  Gets all the completion from the compiler and calls the given $block
+    with a prefix, a prefix-range and a list of completions.
+  If not completions are found, the block is called with the empty string and
+    and empty list.
+  */
+  complete -> none
+      --project-uri/string?
+      uri/string
+      line-number/int
+      column-number/int
+      [block]:
     path := uri-path-translator_.to-path uri --to-compiler
     // We don't care if the compiler crashed.
     // Just send whatever completions we get.
-    run --compiler-input="COMPLETE\n$path\n$line-number\n$column-number\n":
-      |reader /BufferedReader|
-      suggestions := []
+    run --project-uri=project-uri
+        --compiler-input="COMPLETE\n$path\n$line-number\n$column-number\n":
+      |reader /io.Reader|
+      prefix := reader.read-line
+      if not prefix:
+        block.call "" null []
+        return
+      edit-range := read-range reader
 
+      suggestions := []
       while true:
         line := reader.read-line
         if line == null: break
         kind := int.parse reader.read-line
         suggestions.add (CompletionItem --label=line --kind=kind)
-      return suggestions
+
+      block.call prefix edit-range suggestions
+      return
     unreachable
 
-  goto-definition uri/string line-number/int column-number/int -> List/*<Location>*/:
+  goto-definition --project-uri/string? uri/string line-number/int column-number/int -> List/*<Location>*/:
     path := uri-path-translator_.to-path uri --to-compiler
     // We don't care if the compiler crashed.
     // Just send the definitions we got.
-    run --compiler-input="GOTO DEFINITION\n$path\n$line-number\n$column-number\n":
-      |reader /BufferedReader|
+    run --project-uri=project-uri
+        --compiler-input="GOTO DEFINITION\n$path\n$line-number\n$column-number\n":
+      |reader /io.Reader|
       definitions := []
 
       while true:
@@ -277,23 +289,26 @@ class Compiler:
       return definitions
     unreachable
 
-  parse --paths/List/*<string>*/ -> bool:
+  parse --project-uri/string? --paths/List/*<string>*/ -> bool:
     // Parse all files and fill the fileserver.
-    return run --compiler-input="PARSE\n$paths.size\n$(paths.join "\n")\n":
-      |reader /BufferedReader|
+    return run
+        --project-uri=project-uri
+        --compiler-input="PARSE\n$paths.size\n$(paths.join "\n")\n":
+      |reader /io.Reader|
       while true:
         // Just drain the reader.
         data := reader.read
         if not data: break
 
-  snapshot-bundle uri/string -> ByteArray?:
+  snapshot-bundle --project-uri/string? uri/string -> ByteArray?:
     path := uri-path-translator_.to-path uri --to-compiler
-    run --compiler-input="SNAPSHOT BUNDLE\n$path\n":
-      |reader /BufferedReader|
+    run --project-uri=project-uri
+        --compiler-input="SNAPSHOT BUNDLE\n$path\n":
+      |reader /io.Reader|
       status := reader.read-line
       if status != "OK": return null
       bundle-size := int.parse reader.read-line
-      buffer := bytes.Buffer
+      buffer := io.Buffer
       buffer.reserve bundle-size
       while data := reader.read:
         buffer.write data
@@ -316,16 +331,17 @@ class Compiler:
     "defaultLibrary",
   ]
 
-  semantic-tokens uri/string -> List:
+  semantic-tokens --project-uri/string? uri/string -> List:
     path := uri-path-translator_.to-path uri --to-compiler
-    run --compiler-input="SEMANTIC TOKENS\n$path\n":
-      |reader /BufferedReader|
+    run --project-uri=project-uri
+        --compiler-input="SEMANTIC TOKENS\n$path\n":
+      |reader /io.Reader|
       element-count := int.parse reader.read-line
       result := List element-count: int.parse reader.read-line
       return result
     unreachable
 
-  static read-range reader/BufferedReader -> Range:
+  static read-range reader/io.Reader -> Range:
     from-line-number := int.parse reader.read-line
     from-column-number := int.parse reader.read-line
     to-line-number := int.parse reader.read-line
@@ -334,7 +350,7 @@ class Compiler:
         Position from-line-number from-column-number
         Position to-line-number   to-column-number
 
-  read-dependencies reader/BufferedReader -> Map/*<string, Set<string>>*/:
+  read-dependencies reader/io.Reader -> Map/*<string, Set<string>>*/:
     entry-count := int.parse reader.read-line
     result := {:}
     entry-count.repeat:
@@ -347,5 +363,5 @@ class Compiler:
 
     return result
 
-  read-summary reader/BufferedReader -> Map/*<path, Module>*/:
+  read-summary reader/io.Reader -> Map/*<path, Module>*/:
     return (SummaryReader reader uri-path-translator_).read-summary

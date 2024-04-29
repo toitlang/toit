@@ -44,4 +44,4 @@ tests/negative/primitive-test.toit:32:25: error: Unknown intrinsic 'not-existent
 
   #primitive.intrinsics.not-existent
                         ^~~~~~~~~~~~
-Compilation failed.
+Compilation failed

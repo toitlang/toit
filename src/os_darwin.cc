@@ -21,17 +21,27 @@
 #include "flags.h"
 #include "memory.h"
 #include "program_memory.h"
-#include <sys/time.h>
-#include <time.h>
-#include <sys/mman.h>
-#include <sys/sysctl.h>
+#include <errno.h>
+#include <libproc.h>
 #include <mach/mach_init.h>
 #include <mach/mach_error.h>
 #include <mach/task.h>
+#include <sys/time.h>
+#include <sys/mman.h>
+#include <sys/sysctl.h>
+#include <time.h>
 #include <unistd.h>
-#include <errno.h>
 
 namespace toit {
+
+char* OS::get_executable_path() {
+  pid_t pid = getpid();
+  char* path = _new char[PROC_PIDPATHINFO_MAXSIZE];
+  if (proc_pidpath(pid, path, PROC_PIDPATHINFO_MAXSIZE) <= 0) {
+    FATAL("failure reading executable path: %d", errno);
+  }
+  return path;
+}
 
 int OS::num_cores() {
   int count;
@@ -101,7 +111,7 @@ const char* OS::get_platform() {
 }
 
 int OS::read_entire_file(char* name, uint8** buffer) {
-  FILE *file;
+  FILE* file;
   int length;
   file = fopen(name, "rb");
   if (!file) return -1;
@@ -124,7 +134,6 @@ int OS::read_entire_file(char* name, uint8** buffer) {
 
 void OS::set_heap_tag(word tag) {}
 word OS::get_heap_tag() { return 0; }
-void OS::heap_summary_report(int max_pages, const char* marker) {}
 
 }
 

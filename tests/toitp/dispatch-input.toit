@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import .confuse
+import ..confuse
 
 class ClassA:
   test-foo: print "ClassA.method_a"

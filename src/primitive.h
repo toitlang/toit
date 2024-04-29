@@ -81,6 +81,7 @@ namespace toit {
   PRIMITIVE(seconds_since_epoch_local, 7)    \
   PRIMITIVE(set_tz, 1)                       \
   PRIMITIVE(platform, 0)                     \
+  PRIMITIVE(architecture, 0)                 \
   PRIMITIVE(process_stats, 4)                \
   PRIMITIVE(bytes_allocated_delta, 0)        \
   PRIMITIVE(string_length, 1)                \
@@ -113,6 +114,7 @@ namespace toit {
   PRIMITIVE(add_entropy, 1)                  \
   PRIMITIVE(count_leading_zeros, 1)          \
   PRIMITIVE(popcount, 1)                     \
+  PRIMITIVE(int_vector_equals, 2)            \
   PRIMITIVE(number_to_float, 1)              \
   PRIMITIVE(put_uint_big_endian, 5)          \
   PRIMITIVE(read_int_big_endian, 4)          \
@@ -169,7 +171,8 @@ namespace toit {
   PRIMITIVE(float_ceil, 1)                   \
   PRIMITIVE(float_floor, 1)                  \
   PRIMITIVE(float_trunc, 1)                  \
-  PRIMITIVE(command, 0)                      \
+  PRIMITIVE(program_name, 0)                 \
+  PRIMITIVE(program_path, 0)                 \
   PRIMITIVE(main_arguments, 0)               \
   PRIMITIVE(spawn, 3)                        \
   PRIMITIVE(spawn_method, 0)                 \
@@ -199,6 +202,8 @@ namespace toit {
   PRIMITIVE(crc, 6)                          \
   PRIMITIVE(string_from_rune, 1)             \
   PRIMITIVE(string_write_to_byte_array, 5)   \
+  PRIMITIVE(string_to_utf_16, 1)             \
+  PRIMITIVE(utf_16_to_string, 1)             \
   PRIMITIVE(create_off_heap_byte_array, 1)   \
   PRIMITIVE(add_finalizer, 2)                \
   PRIMITIVE(remove_finalizer, 1)             \
@@ -237,6 +242,7 @@ namespace toit {
   PRIMITIVE(get_real_time_clock, 0)          \
   PRIMITIVE(set_real_time_clock, 2)          \
   PRIMITIVE(get_system_time, 0)              \
+  PRIMITIVE(tune_memory_use, 1)              \
   PRIMITIVE(debug_set_memory_limit, 1)       \
   PRIMITIVE(dump_heap, 1)                    \
   PRIMITIVE(serial_print_heap_report, 2)     \
@@ -288,10 +294,8 @@ namespace toit {
   PRIMITIVE(deinit, 1)                       \
   PRIMITIVE(init_socket, 2)                  \
   PRIMITIVE(create, 2)                       \
-  PRIMITIVE(set_outgoing, 3)                 \
-  PRIMITIVE(get_outgoing_fullness, 1)        \
+  PRIMITIVE(take_outgoing, 1)                \
   PRIMITIVE(set_incoming, 3)                 \
-  PRIMITIVE(get_incoming_from, 1)            \
   PRIMITIVE(handshake, 1)                    \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(close_write, 1)                  \
@@ -299,6 +303,7 @@ namespace toit {
   PRIMITIVE(write, 4)                        \
   PRIMITIVE(add_root_certificate, 2)         \
   PRIMITIVE(add_global_root_certificate, 2)  \
+  PRIMITIVE(use_system_trusted_root_certificates, 0) \
   PRIMITIVE(add_certificate, 4)              \
   PRIMITIVE(error, 2)                        \
   PRIMITIVE(get_internals, 1)                \
@@ -348,7 +353,8 @@ namespace toit {
   PRIMITIVE(discover_descriptors_result, 1)  \
   PRIMITIVE(request_read, 1)                 \
   PRIMITIVE(get_value, 1)                    \
-  PRIMITIVE(write_value, 3)                  \
+  PRIMITIVE(write_value, 5)                  \
+  PRIMITIVE(handle, 1)                       \
   PRIMITIVE(set_characteristic_notify, 2)    \
   PRIMITIVE(advertise_start, 7)              \
   PRIMITIVE(advertise_stop, 1)               \
@@ -356,13 +362,14 @@ namespace toit {
   PRIMITIVE(add_characteristic, 6)           \
   PRIMITIVE(add_descriptor, 5)               \
   PRIMITIVE(deploy_service, 1)               \
+  PRIMITIVE(start_gatt_server, 1)            \
   PRIMITIVE(set_value, 2)                    \
   PRIMITIVE(get_subscribed_clients, 1)       \
   PRIMITIVE(notify_characteristics_value, 3) \
   PRIMITIVE(get_att_mtu, 1)                  \
   PRIMITIVE(set_preferred_mtu, 1)            \
-  PRIMITIVE(get_error, 1)                    \
-  PRIMITIVE(gc, 1)                           \
+  PRIMITIVE(get_error, 2)                    \
+  PRIMITIVE(clear_error, 2)                  \
   PRIMITIVE(read_request_reply, 2)           \
   PRIMITIVE(get_bonded_peers, 0)             \
 
@@ -387,6 +394,13 @@ namespace toit {
   PRIMITIVE(total_run_time, 0)               \
   PRIMITIVE(get_mac_address, 0)              \
   PRIMITIVE(memory_page_report, 0)           \
+  PRIMITIVE(watchdog_init, 1)                \
+  PRIMITIVE(watchdog_reset, 0)               \
+  PRIMITIVE(watchdog_deinit, 0)              \
+  PRIMITIVE(pin_hold_enable, 1)              \
+  PRIMITIVE(pin_hold_disable, 1)             \
+  PRIMITIVE(deep_sleep_pin_hold_enable, 0)   \
+  PRIMITIVE(deep_sleep_pin_hold_disable, 0)  \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -467,6 +481,10 @@ namespace toit {
   PRIMITIVE(sha_clone, 1)                    \
   PRIMITIVE(sha_add, 4)                      \
   PRIMITIVE(sha_get, 1)                      \
+  PRIMITIVE(blake2s_start, 3)                \
+  PRIMITIVE(blake2s_clone, 1)                \
+  PRIMITIVE(blake2s_add, 4)                  \
+  PRIMITIVE(blake2s_get, 2)                  \
   PRIMITIVE(siphash_start, 5)                \
   PRIMITIVE(siphash_clone, 1)                \
   PRIMITIVE(siphash_add, 4)                  \
@@ -500,8 +518,8 @@ namespace toit {
 #define MODULE_BITMAP(PRIMITIVE)             \
   PRIMITIVE(draw_text, 8)                    \
   PRIMITIVE(byte_draw_text, 8)               \
-  PRIMITIVE(draw_bitmap, 10)                 \
-  PRIMITIVE(draw_bytemap, 9)                 \
+  PRIMITIVE(draw_bitmap, 11)                 \
+  PRIMITIVE(draw_bytemap, 10)                \
   PRIMITIVE(byte_zap, 2)                     \
   PRIMITIVE(blit, 11)                        \
   PRIMITIVE(rectangle, 7)                    \
@@ -611,6 +629,9 @@ namespace toit {
   PRIMITIVE(rmdir, 1)                        \
   PRIMITIVE(rename, 2)                       \
   PRIMITIVE(chdir, 1)                        \
+  PRIMITIVE(chmod, 2)                        \
+  PRIMITIVE(link, 3)                         \
+  PRIMITIVE(readlink, 1)                     \
   PRIMITIVE(mkdir, 2)                        \
   PRIMITIVE(opendir, 1)                      \
   PRIMITIVE(opendir2, 2)                     \
@@ -691,7 +712,7 @@ namespace toit {
 
 #define MODULE_ESPNOW(PRIMITIVE)             \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(create, 4)                       \
+  PRIMITIVE(create, 5)                       \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(send, 3)                         \
   PRIMITIVE(send_succeeded, 1)               \
@@ -941,14 +962,13 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
   Object* _raw_##name = __args[-(N)];                                        \
   uninitialized_t _u_##name;                                                 \
   Blob name(_u_##name);                                                      \
-  if (!_raw_##name->byte_content(process->program(), &name, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+  if (!_raw_##name->byte_content(process->program(), &name, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_BYTES_TYPE);
 
 #define _A_T_MutableBlob(N, name)                                            \
   Object* _raw_##name = __args[-(N)];                                        \
   MutableBlob name;                                                          \
   Error* _mutable_blob_error_##name;                                         \
-  if (!_raw_##name->mutable_byte_content(process, &name, &_mutable_blob_error_##name)) FAIL(WRONG_OBJECT_TYPE); \
-  if (name.address() == null) return _mutable_blob_error_##name;
+  if (!_raw_##name->mutable_byte_content(process, &name, &_mutable_blob_error_##name)) return _mutable_blob_error_##name;
 
 #define MAKE_UNPACKING_MACRO(Type, N, name)                      \
   __ARG__(N, name##_proxy, ByteArray, is_byte_array)             \
@@ -1010,6 +1030,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)
 #define _A_T_FlashRegion(N, name)         MAKE_UNPACKING_MACRO(FlashRegion, N, name)
 #define _A_T_Sha1(N, name)                MAKE_UNPACKING_MACRO(Sha1, N, name)
+#define _A_T_Blake2s(N, name)             MAKE_UNPACKING_MACRO(Blake2s, N, name)
 #define _A_T_Siphash(N, name)             MAKE_UNPACKING_MACRO(Siphash, N, name)
 #define _A_T_Sha(N, name)                 MAKE_UNPACKING_MACRO(Sha, N, name)
 #define _A_T_Adler32(N, name)             MAKE_UNPACKING_MACRO(Adler32, N, name)
@@ -1030,6 +1051,9 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_EspNowResource(N, name)      MAKE_UNPACKING_MACRO(EspNowResource, N, name)
 #define _A_T_RmtResource(N, name)         MAKE_UNPACKING_MACRO(RmtResource, N, name)
+#define _A_T_BleResource(N, name)         MAKE_UNPACKING_MACRO(BleResource, N, name)
+#define _A_T_BleReadWriteElement(N, name) MAKE_UNPACKING_MACRO(BleReadWriteElement, N, name)
+#define _A_T_BleErrorCapableResource(N, name)   MAKE_UNPACKING_MACRO(BleErrorCapableResource, N, name)
 #define _A_T_BleCentralManagerResource(N, name) MAKE_UNPACKING_MACRO(BleCentralManagerResource, N, name)
 #define _A_T_BleRemoteDeviceResource(N, name)   MAKE_UNPACKING_MACRO(BleRemoteDeviceResource, N, name)
 

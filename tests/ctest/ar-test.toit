@@ -10,10 +10,11 @@ import expect show *
 import host.pipe
 import host.directory
 import host.file
-import bytes
+import io
+import system
+import system show platform
 import ar show *
 import tar show *
-import writer show Writer
 
 do-ctest exe-dir tmp-dir file-mapping --in-memory=false:
   tmp-path := "$tmp-dir/c_generated.a"
@@ -49,7 +50,8 @@ extract archive-file contained-file -> ByteArray:
   // 'p' prints the $contained_file onto stdout.
   from := pipe.from "ar" "p" archive-file contained-file
   result := ByteArray 0
-  while next := from.read:
+  reader := from.in
+  while next := reader.read:
     result += next
   from.close
   return result
@@ -59,7 +61,7 @@ run-test file-mapping/Map tmp-dir [generate-ar]:
 
   seen := {}
   count := 0
-  ar-reader := ArReader (bytes.Reader ba)
+  ar-reader := ArReader (io.Reader ba)
   ar-reader.do: |file/ArFile|
     count++
     seen.add file.name
@@ -82,7 +84,7 @@ run-test file-mapping/Map tmp-dir [generate-ar]:
   expect-equals seen.size count
   expect-equals file-mapping.size count
 
-  ar-reader = ArReader (bytes.Reader ba)
+  ar-reader = ArReader (io.Reader ba)
   // We should find all files if we advance from top to bottom.
   last-name := null
   file-mapping.do: |name content|
@@ -98,7 +100,7 @@ run-test file-mapping/Map tmp-dir [generate-ar]:
     actual := ba.copy file-offsets.from file-offsets.to
     expect-equals content actual
 
-  ar-reader = ArReader (bytes.Reader ba)
+  ar-reader = ArReader (io.Reader ba)
   ar-file := ar-reader.find "not there"
   expect-null ar-file
   if last-name:
@@ -119,11 +121,11 @@ run-test file-mapping/Map tmp-dir [generate-ar]:
       expect-null file
 
   // FreeRTOS doesn't have `ar`.
-  if platform == "FreeRTOS": return
+  if platform == system.PLATFORM-FREERTOS: return
 
   test-path := "$tmp-dir/test.a"
   stream := file.Stream.for-write test-path
-  (Writer stream).write ba
+  (io.Writer.adapt stream).write ba
   stream.close
   file-mapping.do: |name expected-content|
     actual := extract test-path name
@@ -158,7 +160,7 @@ run-tests [generate-ar]:
 
 main args:
   // FreeRTOS doesn't run c tests.
-  if platform == "FreeRTOS": return
+  if platform == system.PLATFORM-FREERTOS: return
 
   exe-dir := args[0]
   run-tests: |tmp-dir file-mapping|

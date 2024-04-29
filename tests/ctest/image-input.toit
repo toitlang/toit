@@ -3,9 +3,9 @@
 // be found in the tests/LICENSE file.
 
 import host.file
-import writer
+import io
 
-BIG1 ::= [
+BIG1 ::= #[
   0,
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
   1, 2, 3, 4, 5, 6, 7, 8, 9, 20,
@@ -702,6 +702,6 @@ main:
   // The compiled program is only compiled, but not run.
   // We must ensure that interesting parts aren't removed because of tree-shaking.
   stream := file.Stream.for-write "/tmp/foo.txt"
-  (writer.Writer stream).write BIG1
-  (writer.Writer stream).write BIG-STR
+  (io.Writer.adapt stream).write BIG1
+  (io.Writer.adapt stream).write BIG-STR
   stream.close
