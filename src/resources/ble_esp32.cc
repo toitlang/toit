@@ -50,7 +50,7 @@ ResourcePool<int, kInvalidBle> ble_pool(
 /// NimBLE has its own thread, and we use this mutex to coordinate operations.
 /// This mutex is set when the BLE is acquired from the ble pool, and released
 /// when it's put back.
-static Mutex* ble_mutex;
+static Mutex* ble_mutex = null;
 
 class DiscoveredPeripheral;
 typedef DoubleLinkedList<DiscoveredPeripheral> DiscoveredPeripheralList;
@@ -678,6 +678,10 @@ class BleAdapterResource : public BleResource, public Thread {
       , state_(CREATED)
       , central_manager_(null)
       , peripheral_manager_(null) {
+    // It is important to call nimble_port_init before starting the nimble
+    // background thread that uses structures initialize by the init function.
+    nimble_port_init();
+
     // The adapter creation is guaraded by the BLE pool (which only has one entry).
     // We can thus safely set the instance_ field.
     ASSERT(instance_ == null);
@@ -1505,16 +1509,10 @@ PRIMITIVE(create_adapter) {
   // the adapter was created, and its instance_ field has been set.
   ble_hs_cfg.sync_cb = BleAdapterResource::on_sync;
 
-  // It is important to call nimble_port_init before creating the resource group, as the
-  // resource group constructor starts the nimble background thread that uses
-  // structures initialize by the init function.
-  nimble_port_init();
-
   auto adapter = _new BleAdapterResource(group, id);
   if (!adapter) {
     OS::dispose(ble_mutex);
     ble_mutex = null;
-    nimble_port_deinit();
     ble_pool.put(id);
     FAIL(MALLOC_FAILED);
   }
@@ -1796,6 +1794,9 @@ PRIMITIVE(release_resource) {
     Locker locker(ble_mutex);
     resource->resource_group()->unregister_resource(resource);
   } else {
+    // The ble lock is currently deinitialized when the adapter is disposed.
+    // As soch we can't take a locker here, as the mutex would be null when we return.
+    // TODO(florian): move the lock to the resource-group and take the lock here.
     resource->resource_group()->unregister_resource(resource);
   }
 

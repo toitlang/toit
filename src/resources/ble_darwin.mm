@@ -115,8 +115,6 @@ class DiscoverableResource {
   bool _returned;
 };
 
-// TODO(florian): do we need to do more for the BleAdapterResource?
-// If the user closes things nicely on the Toit side, then we should be fine.
 class BleAdapterResource: public BleResource {
  public:
   TAG(BleAdapterResource);
@@ -755,9 +753,9 @@ PRIMITIVE(create_adapter) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  // On the host we expect '_new' to succeed.
   BleAdapterResource* adapter_resource = _new BleAdapterResource(group);
   group->register_resource(adapter_resource);
-
   proxy->set_external_address(adapter_resource);
   return proxy;
 }
@@ -770,6 +768,7 @@ PRIMITIVE(create_central_manager) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
+  // On the host we expect '_new' to succeed.
   BleCentralManagerResource* central_manager_resource = _new BleCentralManagerResource(group);
   group->register_resource(central_manager_resource);
 

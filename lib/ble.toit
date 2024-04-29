@@ -1079,7 +1079,6 @@ class Adapter extends Resource_:
   constructor: return discover-adapter-metadata_[0].adapter
 
   constructor.private_ .adapter-metadata:
-    resource-group_
     super (ble-create-adapter_ resource-group_)
     resource-state_.wait-for-state STARTED-EVENT_
 
@@ -1180,8 +1179,8 @@ class Resource_:
 
   constructor .resource_:
     resource-state_ = ResourceState_ resource-group_ resource_
-    add-finalizer this ::
-      this.close_
+    add-finalizer this::
+      close_
 
   close_:
     if resource_:
@@ -1278,7 +1277,7 @@ ble-scan-next_ central-manager:
 ble-scan-stop_ central-manager:
   #primitive.ble.scan-stop
 
-ble-connect_ central-manager_ address secure:
+ble-connect_ central-manager address secure:
   #primitive.ble.connect
 
 ble-disconnect_ device:
