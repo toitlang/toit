@@ -368,30 +368,30 @@ class HeapObject : public Object {
 
   void _set_header(Program* program, Smi* id);
 
-  inline uword _raw() const { return reinterpret_cast<uword>(this) - HEAP_TAG; }
-  inline uword* _raw_at()           { return reinterpret_cast<uword*>(reinterpret_cast<uword>(this) - HEAP_TAG); }
-  inline uword* _raw_at(int offset) { return reinterpret_cast<uword*>(reinterpret_cast<uword>(this) - HEAP_TAG + offset); }
-  inline const uword* _raw_at()           const { return reinterpret_cast<const uword*>(reinterpret_cast<uword>(this) - HEAP_TAG); }
-  inline const uword* _raw_at(int offset) const { return reinterpret_cast<const uword*>(reinterpret_cast<uword>(this) - HEAP_TAG + offset); }
+  INLINE uword _raw() const { return reinterpret_cast<uword>(this) - HEAP_TAG; }
+  INLINE uword* _raw_at() { return reinterpret_cast<uword*>(reinterpret_cast<uword>(this) - HEAP_TAG); }
+  INLINE uword* _raw_at(int offset) { return reinterpret_cast<uword*>(reinterpret_cast<uword>(this) - HEAP_TAG + offset); }
+  INLINE const uword* _raw_at() const { return reinterpret_cast<const uword*>(reinterpret_cast<uword>(this) - HEAP_TAG); }
+  INLINE const uword* _raw_at(int offset) const { return reinterpret_cast<const uword*>(reinterpret_cast<uword>(this) - HEAP_TAG + offset); }
 
-  Object* _at(int offset) const { return reinterpret_cast<Object* const*>(_raw_at())[offset / WORD_SIZE]; }
-  void _at_put(int offset, Object* value) { reinterpret_cast<Object**>(_raw_at())[offset / WORD_SIZE] = value; }
-  Object** _root_at(int offset) { return reinterpret_cast<Object**>(_raw_at()) + offset / WORD_SIZE; }
+  INLINE Object* _at(int offset) const { return reinterpret_cast<Object* const*>(_raw_at())[offset / WORD_SIZE]; }
+  INLINE void _at_put(int offset, Object* value) { reinterpret_cast<Object**>(_raw_at())[offset / WORD_SIZE] = value; }
+  INLINE Object** _root_at(int offset) { return reinterpret_cast<Object**>(_raw_at()) + offset / WORD_SIZE; }
 
-  uword _word_at(int offset) const { return _raw_at()[offset / WORD_SIZE]; }
-  void _word_at_put(int offset, uword value) { _raw_at()[offset / WORD_SIZE] = value; }
+  INLINE uword _word_at(int offset) const { return _raw_at()[offset / WORD_SIZE]; }
+  INLINE void _word_at_put(int offset, uword value) { _raw_at()[offset / WORD_SIZE] = value; }
 
-  uint8 _byte_at(int offset) const { return reinterpret_cast<const uint8*>(_raw_at())[offset]; }
-  void _byte_at_put(int offset, uint8 value) { reinterpret_cast<uint8*>(_raw_at())[offset] = value; }
+  INLINE uint8 _byte_at(int offset) const { return reinterpret_cast<const uint8*>(_raw_at())[offset]; }
+  INLINE void _byte_at_put(int offset, uint8 value) { reinterpret_cast<uint8*>(_raw_at())[offset] = value; }
 
-  uhalf_word _half_word_at(int offset) const { return *reinterpret_cast<const uhalf_word*>(_raw_at(offset)); }
-  void _half_word_at_put(int offset, uhalf_word value) { *reinterpret_cast<uhalf_word*>(_raw_at(offset)) = value; }
+  INLINE uhalf_word _half_word_at(int offset) const { return *reinterpret_cast<const uhalf_word*>(_raw_at(offset)); }
+  INLINE void _half_word_at_put(int offset, uhalf_word value) { *reinterpret_cast<uhalf_word*>(_raw_at(offset)) = value; }
 
-  double _double_at(int offset) const { return bit_cast<double>(_int64_at(offset)); }
-  void _double_at_put(int offset, double value) { _int64_at_put(offset, bit_cast<int64>(value)); }
+  INLINE double _double_at(int offset) const { return bit_cast<double>(_int64_at(offset)); }
+  INLINE void _double_at_put(int offset, double value) { _int64_at_put(offset, bit_cast<int64>(value)); }
 
-  int64 _int64_at(int offset) const { return *reinterpret_cast<const int64*>(_raw_at(offset)); }
-  void _int64_at_put(int offset, int64 value) { *reinterpret_cast<int64*>(_raw_at(offset)) = value; }
+  INLINE int64 _int64_at(int offset) const { return *reinterpret_cast<const int64*>(_raw_at(offset)); }
+  INLINE void _int64_at_put(int offset, int64 value) { *reinterpret_cast<int64*>(_raw_at(offset)) = value; }
 
   static int _align(int byte_size) { return (byte_size + (WORD_SIZE - 1)) & ~(WORD_SIZE - 1); }
 
