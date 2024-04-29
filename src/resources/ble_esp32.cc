@@ -17,6 +17,8 @@
 
 #if defined(TOIT_ESP32) && CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ENABLED
 
+#include <limits>
+
 #include "../resource.h"
 #include "../objects_inline.h"
 #include "../resource_pool.h"
@@ -82,6 +84,146 @@ class DiscoveredPeripheral : public DiscoveredPeripheralList::Element {
   uint8 event_type_;
 };
 
+static const uword kInvalidToken = std::numeric_limits<uword>::max();
+
+/// A map from tokens to BleResources.
+///
+/// Since NimBLE runs on a separate thread we can have callbacks for resources
+/// that have already been deleted. As such, we can't use pointers to our
+/// objects as callback arguments. Instead we create tokens that we then
+/// convert back to the actual BleResources (assuming they are still alive).
+class TokenResourceMap {
+ public:
+  ~TokenResourceMap() {
+    if (capacity != -1) {
+      free(entries);
+    }
+  }
+
+  // Returns false if there was a malloc error.
+  bool add(BleResource* resource, uword* result);
+
+  bool reserve_space();
+
+  BleResource* get(uword token);
+
+  void remove(uword token);
+
+  /// Prunes deleted entries from the map.
+  /// This operation should be done at opportune moments (at the end of
+  /// deleting a Device object, for example).
+  void compact(bool in_preparation_for_adding=false);
+
+ private:
+  static const int kInitialLength = 4;
+  uword sequence_counter = 0;
+
+  int find(word token) const;
+  bool resize(int new_capacity);
+
+  struct TokenResourceEntry {
+    uword token;
+    BleResource* resource;
+  };
+  // A sorted array of entries.
+  TokenResourceEntry* entries;
+  int length = 0;
+  int capacity = -1;
+};
+
+// Returns false if there was a malloc error.
+bool TokenResourceMap::add(BleResource* resource, uword* result) {
+  if (!reserve_space()) return false;
+  if (sequence_counter == kInvalidToken) FATAL("TokenResourceMap overflow");
+  uword token = sequence_counter++;
+  *result = token;
+  TokenResourceEntry entry = {token, resource};
+  entries[length++] = entry;
+  return true;
+}
+
+bool TokenResourceMap::reserve_space() {
+  if (capacity == -1) {
+    entries = unvoid_cast<TokenResourceEntry*>(malloc(kInitialLength * sizeof(TokenResourceEntry)));
+    if (!entries) return false;
+    capacity = kInitialLength;
+    length = 0;
+  } else if (length == capacity) {
+    // Try to purge deleted entries first.
+    compact(true);
+    // Only if that didn't work grow.
+    if (length == capacity) {
+      bool succeeded = resize(2 * capacity);
+      if (!succeeded) return false;
+    }
+  }
+  return true;
+}
+
+BleResource* TokenResourceMap::get(uword token) {
+  int index = find(token);
+  if (index == -1) return null;
+  // Note that the resource could also be null.
+  return entries[index].resource;
+}
+
+void TokenResourceMap::remove(uword token) {
+  int index = find(token);
+  if (index == -1) return;
+  // Just mark the entry as removed.
+  entries[index].resource = null;
+}
+
+/// Prunes deleted entries from the map.
+/// This operation should be done at opportune moments (at the end of
+/// deleting a Device object, for example).
+void TokenResourceMap::compact(bool in_preparation_for_adding) {
+  // Drop empty entries.
+  int current = 0;
+  for (int i = 0; i < length; i++) {
+    if (entries[i].resource == null) {
+      continue;
+    }
+    entries[current++] = entries[i];
+  }
+  if (length == current) return;
+
+  length = current;
+
+  // If no entries are left, delete the array.
+  if (!in_preparation_for_adding && length == 0) {
+    free(entries);
+    entries = null;
+    capacity = -1;
+    length = 0;
+  }
+}
+
+int TokenResourceMap::find(word token) const {
+  // We can use the fact that the entries are sorted to do a binary search.
+  // The token might not be in the table anymore.
+  int left = 0;
+  int right = length - 1;
+  while (left <= right) {
+    int middle = left + ((right - left) >> 1);
+    if (entries[middle].token == token) return middle;
+    if (entries[middle].token < token) {
+      left = middle + 1;
+    } else {
+      right = middle - 1;
+    }
+  }
+  return -1;
+}
+
+bool TokenResourceMap::resize(int new_capacity) {
+  auto new_entries = unvoid_cast<TokenResourceEntry*>(realloc(entries, new_capacity * sizeof(TokenResourceEntry)));
+  if (!new_entries) return false;
+  entries = new_entries;
+  capacity = new_capacity;
+  return true;
+}
+
 class BleResourceGroup : public ResourceGroup {
  public:
   TAG(BleResourceGroup);
@@ -89,7 +231,11 @@ class BleResourceGroup : public ResourceGroup {
       : ResourceGroup(process, event_source) {}
 
   uint32_t on_event(Resource* resource, word data, uint32_t state) override;
+
+  TokenResourceMap token_resource_map;
 };
+
+static BleResource* resource_for_token(void* o);
 
 /// A scope for callbacks from the BLE thread.
 /// Automatically takes the BLE mutex and releases it when the scope is destroyed.
@@ -118,33 +264,59 @@ class DiscoverableResource {
   bool returned_;
 };
 
-class BleErrorCapableResource : public BleResource {
+/// A class that can be used in a callback.
+class BleCallbackResource : public BleResource {
  public:
-  TAGS(BleErrorCapableResource);
+  TAGS(BleCallbackResource);
 
-  BleErrorCapableResource(ResourceGroup* group, Kind kind)
+  BleCallbackResource(ResourceGroup* group, Kind kind)
       : BleResource(group, kind)
       , malloc_error_(false)
       , error_(0) {}
+
+  ~BleCallbackResource() {
+    if (token_ != kInvalidToken) group()->token_resource_map.remove(token_);
+  }
 
   bool has_malloc_error() const { return malloc_error_;}
   void set_malloc_error(bool malloc_error) { malloc_error_ = malloc_error; }
   int error() const { return error_; }
   void set_error(int error) { error_ = error; }
 
+
+  void* token() const {
+    if (token_ == kInvalidToken) FATAL("Ble Resource token wasn't set");
+    return reinterpret_cast<void*>(token_);
+  }
+
+  /// Ensures that this resource has a token registered in the token-resource map.
+  /// This function should be called before the resource is registered for a
+  /// NimBLE callback.
+  bool ensure_token() {
+    if (token_ == kInvalidToken) {
+      uword token;
+      bool succeeded = group()->token_resource_map.add(this, &token);
+      if (!succeeded) return false;
+      token_ = token;
+    }
+    return true;
+  }
+
  private:
   bool malloc_error_;
   int error_;
+  // The token we use for callbacks.
+  uword token_ = kInvalidToken;
 };
 
 class BleServiceResource;
 
-class BleReadWriteElement : public BleErrorCapableResource {
+class BleReadWriteElement : public BleCallbackResource {
  public:
   TAGS(BleReadWriteElement);
 
   BleReadWriteElement(ResourceGroup* group, Kind kind, const ble_uuid_any_t& uuid, uint16 handle)
-      : BleErrorCapableResource(group, kind)
+      : BleCallbackResource(group, kind)
       , uuid_(uuid)
       , handle_(handle)
       , mbuf_received_(null)
@@ -198,7 +370,10 @@ class BleReadWriteElement : public BleErrorCapableResource {
                                void* arg) {
     USE(conn_handle);
     BleCallbackScope scope;
-    unvoid_cast<BleReadWriteElement*>(arg)->_on_attribute_read(scope, error, attr);
+    // If the resource has been deleted ignore the callback.
+    BleResource* resource = resource_for_token(arg);
+    if (resource == null) return BLE_ERR_SUCCESS;
+    static_cast<BleReadWriteElement*>(resource)->_on_attribute_read(scope, error, attr);
     return BLE_ERR_SUCCESS;
   }
 
@@ -207,7 +382,10 @@ class BleReadWriteElement : public BleErrorCapableResource {
     USE(conn_handle);
     USE(attr_handle);
     BleCallbackScope scope;
-    return unvoid_cast<BleReadWriteElement*>(arg)->_on_access(scope, ctxt);
+    // If the resource has been deleted ignore the callback and just return an empty value.
+    BleResource* resource = resource_for_token(arg);
+    if (resource == null) return BLE_ERR_SUCCESS;
+    return static_cast<BleReadWriteElement*>(resource)->_on_access(scope, ctxt);
   }
 
   static uint16_t mbuf_total_len(os_mbuf* om) {
@@ -353,7 +531,10 @@ class BleCharacteristicResource :
                                void* arg) {
     USE(conn_handle);
     BleCallbackScope scope;
-    unvoid_cast<BleCharacteristicResource*>(arg)->_on_write_response(scope, error, attr);
+    // If the resource has been deleted ignore the callback.
+    BleResource* resource = resource_for_token(arg);
+    if (resource == null) return BLE_ERR_SUCCESS;
+    static_cast<BleCharacteristicResource*>(resource)->_on_write_response(scope, error, attr);
     return BLE_ERR_SUCCESS;
   }
 
@@ -363,7 +544,10 @@ class BleCharacteristicResource :
                                   void* arg) {
     USE(conn_handle);
     BleCallbackScope scope;
-    unvoid_cast<BleCharacteristicResource*>(arg)->_on_subscribe_response(scope, error, attr);
+    // If the resource has been deleted ignore the callback.
+    BleResource* resource = resource_for_token(arg);
+    if (resource == null) return BLE_ERR_SUCCESS;
+    static_cast<BleCharacteristicResource*>(resource)->_on_subscribe_response(scope, error, attr);
     return BLE_ERR_SUCCESS;
   }
 
@@ -386,11 +570,11 @@ class BleRemoteDeviceResource;
 class BlePeripheralManagerResource;
 
 class BleServiceResource:
-    public BleErrorCapableResource, public ServiceResourceList::Element, public DiscoverableResource {
+    public BleCallbackResource, public ServiceResourceList::Element, public DiscoverableResource {
  private:
   BleServiceResource(BleResourceGroup* group,
                      const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle)
-      : BleErrorCapableResource(group, SERVICE)
+      : BleCallbackResource(group, SERVICE)
       , uuid_(uuid)
       , start_handle_(start_handle)
       , end_handle_(end_handle)
@@ -454,7 +638,10 @@ class BleServiceResource:
                                           const ble_gatt_chr* chr, void* arg) {
     USE(conn_handle);
     BleCallbackScope scope;
-    unvoid_cast<BleServiceResource*>(arg)->_on_characteristic_discovered(scope, error, chr);
+    // If the resource has been deleted ignore the callback.
+    BleResource* resource = resource_for_token(arg);
+    if (resource == null) return BLE_ERR_SUCCESS;
+    static_cast<BleServiceResource*>(resource)->_on_characteristic_discovered(scope, error, chr);
     return BLE_ERR_SUCCESS;
   }
 
@@ -465,7 +652,10 @@ class BleServiceResource:
                                       void* arg) {
     USE(conn_handle);
     BleCallbackScope scope;
-    unvoid_cast<BleServiceResource*>(arg)->_on_descriptor_discovered(scope, error, dsc, chr_val_handle, false);
+    // If the resource has been deleted ignore the callback.
+    BleResource* resource = resource_for_token(arg);
+    if (resource == null) return BLE_ERR_SUCCESS;
+    static_cast<BleServiceResource*>(resource)->_on_descriptor_discovered(scope, error, dsc, chr_val_handle, false);
     return BLE_ERR_SUCCESS;
   }
 
@@ -506,12 +696,12 @@ class BleServiceResource:
   ble_gatt_svc_def* gatt_svcs_ = null;
 };
 
-class BleCentralManagerResource : public BleErrorCapableResource {
+class BleCentralManagerResource : public BleCallbackResource {
  public:
   TAG(BleCentralManagerResource);
 
   explicit BleCentralManagerResource(BleResourceGroup* group, BleAdapterResource* adapter)
-      : BleErrorCapableResource(group, CENTRAL_MANAGER)
+      : BleCallbackResource(group, CENTRAL_MANAGER)
       , adapter_(adapter) {}
 
   ~BleCentralManagerResource() override;
@@ -528,7 +718,10 @@ class BleCentralManagerResource : public BleErrorCapableResource {
 
   static int on_discovery(ble_gap_event* event, void* arg) {
     BleCallbackScope scope;
-    unvoid_cast<BleCentralManagerResource*>(arg)->_on_discovery(scope, event);
+    // If the resource has been deleted ignore the callback.
+    BleResource* resource = resource_for_token(arg);
+    if (resource == null) return BLE_ERR_SUCCESS;
+    static_cast<BleCentralManagerResource*>(resource)->_on_discovery(scope, event);
     return BLE_ERR_SUCCESS;
   }
 
@@ -548,10 +741,10 @@ class BleCentralManagerResource : public BleErrorCapableResource {
 };
 
 template <typename T>
-class ServiceContainer : public BleErrorCapableResource {
+class ServiceContainer : public BleCallbackResource {
  public:
   ServiceContainer(BleResourceGroup* group, Kind kind)
-      : BleErrorCapableResource(group, kind) {}
+      : BleCallbackResource(group, kind) {}
 
   ~ServiceContainer() override {
     while (!services_.is_empty()) {
@@ -603,7 +796,10 @@ class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManage
 
   static int on_gap(struct ble_gap_event* event, void* arg) {
     BleCallbackScope scope;
-    return unvoid_cast<BlePeripheralManagerResource*>(arg)->_on_gap(scope, event);
+    // If the resource has been deleted ignore the callback.
+    BleResource* resource = resource_for_token(arg);
+    if (resource == null) return BLE_ERR_SUCCESS;
+    return static_cast<BlePeripheralManagerResource*>(resource)->_on_gap(scope, event);
   }
   static bool is_advertising() { return ble_gap_adv_active(); }
 
@@ -628,13 +824,17 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
 
   ~BleRemoteDeviceResource() {
     central_manager_->decrease_device_count();
+    group()->token_resource_map.compact();
   }
 
   BleRemoteDeviceResource* type() override { return this; }
 
   static int on_event(ble_gap_event* event, void* arg) {
     BleCallbackScope scope;
-    unvoid_cast<BleRemoteDeviceResource*>(arg)->_on_event(scope, event);
+    // If the resource has been deleted ignore the callback.
+    BleResource* resource = resource_for_token(arg);
+    if (resource == null) return BLE_ERR_SUCCESS;
+    static_cast<BleRemoteDeviceResource*>(resource)->_on_event(scope, event);
     return BLE_ERR_SUCCESS;
   }
 
@@ -643,7 +843,10 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
                                    const struct ble_gatt_svc* service,
                                    void* arg) {
     BleCallbackScope scope;
-    unvoid_cast<BleRemoteDeviceResource*>(arg)->_on_service_discovered(scope, error, service);
+    // If the resource has been deleted ignore the callback.
+    BleResource* resource = resource_for_token(arg);
+    if (resource == null) return BLE_ERR_SUCCESS;
+    static_cast<BleRemoteDeviceResource*>(resource)->_on_service_discovered(scope, error, service);
     return BLE_ERR_SUCCESS;
   }
 
@@ -652,8 +855,9 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
 
   int connect(uint8 own_addr_type, ble_addr_t* addr) {
     if (connected_) return BLE_ERR_SUCCESS;
+    // The 'connect' primitive ensured that the token is set.
     int err = ble_gap_connect(own_addr_type, addr, 3000, null,
-                              BleRemoteDeviceResource::on_event, this);
+                              BleRemoteDeviceResource::on_event, token());
     if (err == BLE_ERR_SUCCESS) {
       connected_ = true;
     }
@@ -719,6 +923,7 @@ class BleAdapterResource : public BleResource, public Thread {
       group()->unregister_resource(peripheral_manager_);
     }
 
+    group()->token_resource_map.compact();
     instance_ = null;
   }
 
@@ -793,6 +998,10 @@ class BleAdapterResource : public BleResource, public Thread {
   /// to use a static instance_ variable to deliver the event.
   static void on_sync();
 
+  static BleAdapterResource* instance() {
+    return instance_;
+  }
+
  protected:
   void entry() override {
     nimble_port_run();
@@ -815,6 +1024,12 @@ class BleAdapterResource : public BleResource, public Thread {
 // There can be only one active BleAdapterResource. This reference will be
 // active when the adapter exists.
 BleAdapterResource* BleAdapterResource::instance_ = null;
+
+static BleResource* resource_for_token(void* o) {
+  auto instance = BleAdapterResource::instance();
+  if (instance == null) return null;
+  return instance->group()->token_resource_map.get(unvoid_cast<uword>(o));
+}
 
 Object* nimble_error_code_to_string(Process* process, int error_code, bool host) {
   String* str;
@@ -1018,7 +1233,7 @@ BleServiceResource::_on_characteristic_discovered(const BleCallbackScope& scope,
                                 start_handle(),
                                 end_handle(),
                                 BleServiceResource::on_descriptor_discovered,
-                                this);
+                                token());
       }
       break;
     default:
@@ -1065,6 +1280,7 @@ BleCentralManagerResource::~BleCentralManagerResource() {
   }
 
   adapter_->remove_central_manager(this);
+  group()->token_resource_map.compact();
 }
 
 void BleCentralManagerResource::_on_discovery(const BleCallbackScope& scope, ble_gap_event* event) {
@@ -1120,6 +1336,7 @@ BlePeripheralManagerResource::~BlePeripheralManagerResource() {
     FATAL_IF_NOT_ESP_OK(ble_gap_adv_stop());
   }
   adapter_->remove_peripheral_manager(this);
+  group()->token_resource_map.compact();
 }
 
 void BleRemoteDeviceResource::_on_event(const BleCallbackScope& scope, ble_gap_event* event) {
@@ -1396,13 +1613,14 @@ bool BleCharacteristicResource::update_subscription_status(const BleCallbackScop
 }
 
 static int do_start_advertising(BlePeripheralManagerResource* peripheral_manager) {
+  // The advertise_start primitive ensured that the token is set.
   return ble_gap_adv_start(
       BLE_OWN_ADDR_PUBLIC,
       null,
       BLE_HS_FOREVER,
       &peripheral_manager->advertising_params(),
       BlePeripheralManagerResource::on_gap,
-      peripheral_manager);
+      peripheral_manager->token());
 }
 
 int BlePeripheralManagerResource::_on_gap(const BleCallbackScope& scope, struct ble_gap_event* event) {
@@ -1624,6 +1842,8 @@ PRIMITIVE(scan_start) {
 
   Locker locker(ble_mutex);
 
+  if (!central_manager->ensure_token()) FAIL(ALLOCATION_FAILED);
+
   if (BleCentralManagerResource::is_scanning()) FAIL(ALREADY_EXISTS);
 
   int32 duration_ms = duration_us < 0 ? BLE_HS_FOREVER : static_cast<int>(duration_us / 1000);
@@ -1654,7 +1874,7 @@ PRIMITIVE(scan_start) {
   disc_params.limited = 0;
 
   err = ble_gap_disc(BLE_ADDR_PUBLIC, duration_ms, &disc_params,
-                     BleCentralManagerResource::on_discovery, central_manager);
+                     BleCentralManagerResource::on_discovery, central_manager->token());
 
   if (err != BLE_ERR_SUCCESS) {
     return nimble_stack_error(process, err);
@@ -1767,6 +1987,8 @@ PRIMITIVE(connect) {
 
   Locker locker(ble_mutex);
 
+  if (!central_manager->group()->token_resource_map.reserve_space()) FAIL(ALLOCATION_FAILED);
+
   uint8_t own_addr_type;
 
   int err = ble_hs_id_infer_auto(0, &own_addr_type);
@@ -1785,6 +2007,8 @@ PRIMITIVE(connect) {
 
   auto device = _new BleRemoteDeviceResource(group, central_manager, secure_connection);
   if (!device) FAIL(MALLOC_FAILED);
+  // We reserved space at the top of the function, so this call must succeed.
+  device->ensure_token();
 
   err = device->connect(own_addr_type, &addr);
   if (err != BLE_ERR_SUCCESS) {
@@ -1829,11 +2053,13 @@ PRIMITIVE(discover_services) {
 
   Locker locker(ble_mutex);
 
+  if (!device->ensure_token()) FAIL(ALLOCATION_FAILED);
+
   if (raw_service_uuids->length() == 0) {
     int err = ble_gattc_disc_all_svcs(
         device->handle(),
         BleRemoteDeviceResource::on_service_discovered,
-        device);
+        device->token());
     if (err != BLE_ERR_SUCCESS) {
       return nimble_stack_error(process, err);
     }
@@ -1846,7 +2072,7 @@ PRIMITIVE(discover_services) {
         device->handle(),
         &uuid.u,
         BleRemoteDeviceResource::on_service_discovered,
-        device);
+        device->token());
     if (err != BLE_ERR_SUCCESS) {
       return nimble_stack_error(process, err);
     }
@@ -1899,6 +2125,8 @@ PRIMITIVE(discover_characteristics){
 
   Locker locker(ble_mutex);
 
+  if (!service->ensure_token()) FAIL(ALLOCATION_FAILED);
+
   // NimBLE has a funny thing about descriptors (needed for subscriptions), where all characteristics
   // need to be discovered to discover descriptors. Therefore, we ignore the raw_characteristics_uuids
   // and always discover all, if they haven't been discovered yet.
@@ -1908,7 +2136,7 @@ PRIMITIVE(discover_characteristics){
                                       service->start_handle(),
                                       service->end_handle(),
                                       BleServiceResource::on_characteristic_discovered,
-                                      service);
+                                      service->token());
     if (err != BLE_ERR_SUCCESS) {
       return nimble_stack_error(process, err);
     }
@@ -2017,12 +2245,12 @@ PRIMITIVE(request_read) {
   Locker locker(ble_mutex);
 
   if (!element->service()->device()) FAIL(INVALID_ARGUMENT);
-
+  if (!element->ensure_token()) FAIL(ALLOCATION_FAILED);
   ble_gattc_read_long(element->service()->device()->handle(),
                       element->handle(),
                       0,
                       BleReadWriteElement::on_attribute_read,
-                      element);
+                      element->token());
 
   return process->null_object();
 }
@@ -2049,6 +2277,10 @@ PRIMITIVE(write_value) {
 
   if (!element->service()->device()) FAIL(INVALID_ARGUMENT);
 
+  if (with_response || flush) {
+    if (!element->ensure_token()) FAIL(ALLOCATION_FAILED);
+  }
+
   int mtu;
   if (element->kind() == BleResource::CHARACTERISTIC) {
     auto characteristic = static_cast<BleCharacteristicResource*>(element);
@@ -2070,7 +2302,7 @@ PRIMITIVE(write_value) {
         0,
         om,
         BleCharacteristicResource::on_write_response,
-        element);
+        element->token());
   } else {
     err = ble_gattc_write_no_rsp(
         element->service()->device()->handle(),
@@ -2079,16 +2311,16 @@ PRIMITIVE(write_value) {
     );
   }
 
-  if (allow_retry && err == BLE_HS_ENOMEM) {
-    // Resource exhaustion.
-    // This typically happens when writing too fast without flushing.
-    // Use the quota-exceeded to signal that the write should be retried.
-    FAIL(QUOTA_EXCEEDED);
-  }
   if (err != BLE_ERR_SUCCESS) {
     // The 'om' buffer is always consumed by the call to
     // ble_gattc_write_long() or ble_gattc_write_no_rsp()
     // regardless of the outcome.
+    if (allow_retry && err == BLE_HS_ENOMEM) {
+      // Resource exhaustion.
+      // This typically happens when writing too fast without flushing.
+      // Use the quota-exceeded to signal that the write should be retried.
+      FAIL(QUOTA_EXCEEDED);
+    }
     return nimble_stack_error(process, err);
   }
 
@@ -2111,6 +2343,8 @@ PRIMITIVE(set_characteristic_notify) {
 
   Locker locker(ble_mutex);
 
+  if (!characteristic->ensure_token()) FAIL(ALLOCATION_FAILED);
+
   uint16 value = 0;
 
   if (enable) {
@@ -2130,7 +2364,7 @@ PRIMITIVE(set_characteristic_notify) {
         cccd->handle(),
         static_cast<void*>(&value), 2,
         BleCharacteristicResource::on_subscribe_response,
-        characteristic);
+        characteristic->token());
 
     if (err != BLE_ERR_SUCCESS) {
       return nimble_stack_error(process, err);
@@ -2147,6 +2381,7 @@ PRIMITIVE(advertise_start) {
   Locker locker(ble_mutex);
 
   if (BlePeripheralManagerResource::is_advertising()) FAIL(ALREADY_EXISTS);
+  if (!peripheral_manager->ensure_token()) FAIL(ALLOCATION_FAILED);
 
   // The advertisement packet.
   ble_hs_adv_fields fields{};
@@ -2448,6 +2683,15 @@ PRIMITIVE(deploy_service) {
 
   int characteristic_count = 0;
   for (auto characteristic : service_resource->characteristics()) {
+    if (!characteristic->ensure_token()) FAIL(MALLOC_FAILED);
+
+    for (auto descriptor : characteristic->descriptors()) {
+      if (!descriptor->ensure_token()) FAIL(MALLOC_FAILED);
+    }
+  }
+
+
+  for (auto characteristic : service_resource->characteristics()) {
     USE(characteristic);
     characteristic_count++;
   }
@@ -2459,7 +2703,7 @@ PRIMITIVE(deploy_service) {
   for (auto characteristic : service_resource->characteristics()) {
     gatt_svr_chars[characteristic_index].uuid = characteristic->ptr_uuid();
     gatt_svr_chars[characteristic_index].access_cb = BleReadWriteElement::on_access;
-    gatt_svr_chars[characteristic_index].arg = characteristic;
+    gatt_svr_chars[characteristic_index].arg = characteristic->token();
     gatt_svr_chars[characteristic_index].val_handle = characteristic->ptr_handle();
     gatt_svr_chars[characteristic_index].flags = characteristic->properties();
 
@@ -2484,7 +2728,7 @@ PRIMITIVE(deploy_service) {
         gatt_desc_defs[descriptor_index].uuid = descriptor->ptr_uuid();
         gatt_desc_defs[descriptor_index].att_flags = descriptor->properties();
         gatt_desc_defs[descriptor_index].access_cb = BleReadWriteElement::on_access;
-        gatt_desc_defs[descriptor_index].arg = descriptor;
+        gatt_desc_defs[descriptor_index].arg = descriptor->token();
         descriptor_index++;
       }
     }
@@ -2656,7 +2900,7 @@ PRIMITIVE(set_preferred_mtu) {
 }
 
 PRIMITIVE(get_error) {
-  ARGS(BleErrorCapableResource, err_resource, bool, is_oom)
+  ARGS(BleCallbackResource, err_resource, bool, is_oom)
 
   Locker locker(ble_mutex);
 
@@ -2669,7 +2913,7 @@ PRIMITIVE(get_error) {
 }
 
 PRIMITIVE(clear_error) {
-  ARGS(BleErrorCapableResource, err_resource, bool, is_oom)
+  ARGS(BleCallbackResource, err_resource, bool, is_oom)
 
   Locker locker(ble_mutex);
 
