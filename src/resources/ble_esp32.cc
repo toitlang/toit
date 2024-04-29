@@ -17,6 +17,8 @@
 
 #if defined(TOIT_ESP32) && CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ENABLED
 
+#include <limits>
+
 #include "../resource.h"
 #include "../objects_inline.h"
 #include "../resource_pool.h"
@@ -82,7 +84,7 @@ class DiscoveredPeripheral : public DiscoveredPeripheralList::Element {
   uint8 event_type_;
 };
 
-static const word kInvalidToken = -1;
+static const uword kInvalidToken = std::numeric_limits<uword>::max();
 
 /// A map from tokens to BleResources.
 ///
@@ -99,105 +101,28 @@ class TokenResourceMap {
   }
 
   // Returns false if there was a malloc error.
-  bool add(BleResource* resource, word* result) {
-    if (!reserve_space()) return false;
-    word token = sequence_counter++;
-    *result = token;
-    TokenResourceEntry entry = {token, resource};
-    entries[length++] = entry;
-    return true;
-  }
+  bool add(BleResource* resource, uword* result);
 
-  bool reserve_space() {
-    if (capacity == -1) {
-      entries = unvoid_cast<TokenResourceEntry*>(malloc(kInitialLength * sizeof(TokenResourceEntry)));
-      if (!entries) return false;
-      capacity = kInitialLength;
-      length = 0;
-    } else if (length == capacity) {
-      // Try to purge deleted entries first.
-      compact(true);
-      // Only if that didn't work grow.
-      if (length == capacity) {
-        bool succeeded = resize(2 * capacity);
-        if (!succeeded) return false;
-      }
-    }
-    return true;
-  }
+  bool reserve_space();
 
-  BleResource* get(word token) {
-    int index = find(token);
-    if (index == -1) return null;
-    // Note that the resource could also be null.
-    return entries[index].resource;
-  }
+  BleResource* get(uword token);
 
-  void remove(word token) {
-    int index = find(token);
-    if (index == -1) return;
-    // Just mark the entry as removed.
-    entries[index].resource = null;
-  }
+  void remove(uword token);
 
   /// Prunes deleted entries from the map.
   /// This operation should be done at opportune moments (at the end of
   /// deleting a Device object, for example).
-  void compact(bool in_preparation_for_adding=false) {
-    // Drop empty entries.
-    int current = 0;
-    for (int i = 0; i < length; i++) {
-      if (entries[i].resource == null) {
-        continue;
-      }
-      entries[current++] = entries[i];
-    }
-    if (length == current) return;
-
-    length = current;
-
-    // If no entries are left, delete the array.
-    if (!in_preparation_for_adding && length == 0) {
-      free(entries);
-      entries = null;
-      capacity = -1;
-      length = 0;
-    }
-  }
+  void compact(bool in_preparation_for_adding=false);
 
  private:
   static const int kInitialLength = 4;
-  static word sequence_counter;
+  uword sequence_counter = 0;
 
-  int find(word token) {
-    // We can use the fact that the entries are sorted to do a binary search.
-    // The token might not be in the table anymore.
-    int left = 0;
-    int right = length - 1;
-    while (left <= right) {
-      int middle = left + ((right - left) >> 1);
-      if (entries[middle].token == token) return middle;
-      if (entries[middle].token < token) {
-        left = middle + 1;
-      } else {
-        right = middle - 1;
-      }
-    }
-    return -1;
-  }
-
-  bool resize(int new_capacity) {
-    auto new_entries = unvoid_cast<TokenResourceEntry*>(malloc(new_capacity * sizeof(TokenResourceEntry)));
-    if (!new_entries) return false;
-    memcpy(new_entries, entries, length * sizeof(TokenResourceEntry));
-    free(entries);
-    entries = new_entries;
-    capacity = new_capacity;
-    return true;
-  }
+  int find(word token) const;
+  bool resize(int new_capacity);
 
   struct TokenResourceEntry {
-    word token;
+    uword token;
     BleResource* resource;
   };
   // A sorted array of entries.
@@ -206,7 +131,98 @@ class TokenResourceMap {
   int capacity = -1;
 };
 
-word TokenResourceMap::sequence_counter = 0;
+// Returns false if there was a malloc error.
+bool TokenResourceMap::add(BleResource* resource, uword* result) {
+  if (!reserve_space()) return false;
+  if (sequence_counter == kInvalidToken) FATAL("TokenResourceMap overflow");
+  uword token = sequence_counter++;
+  *result = token;
+  TokenResourceEntry entry = {token, resource};
+  entries[length++] = entry;
+  return true;
+}
+
+bool TokenResourceMap::reserve_space() {
+  if (capacity == -1) {
+    entries = unvoid_cast<TokenResourceEntry*>(malloc(kInitialLength * sizeof(TokenResourceEntry)));
+    if (!entries) return false;
+    capacity = kInitialLength;
+    length = 0;
+  } else if (length == capacity) {
+    // Try to purge deleted entries first.
+    compact(true);
+    // Only if that didn't work grow.
+    if (length == capacity) {
+      bool succeeded = resize(2 * capacity);
+      if (!succeeded) return false;
+    }
+  }
+  return true;
+}
+
+BleResource* TokenResourceMap::get(uword token) {
+  int index = find(token);
+  if (index == -1) return null;
+  // Note that the resource could also be null.
+  return entries[index].resource;
+}
+
+void TokenResourceMap::remove(uword token) {
+  int index = find(token);
+  if (index == -1) return;
+  // Just mark the entry as removed.
+  entries[index].resource = null;
+}
+
+/// Prunes deleted entries from the map.
+/// This operation should be done at opportune moments (at the end of
+/// deleting a Device object, for example).
+void TokenResourceMap::compact(bool in_preparation_for_adding) {
+  // Drop empty entries.
+  int current = 0;
+  for (int i = 0; i < length; i++) {
+    if (entries[i].resource == null) {
+      continue;
+    }
+    entries[current++] = entries[i];
+  }
+  if (length == current) return;
+
+  length = current;
+
+  // If no entries are left, delete the array.
+  if (!in_preparation_for_adding && length == 0) {
+    free(entries);
+    entries = null;
+    capacity = -1;
+    length = 0;
+  }
+}
+
+int TokenResourceMap::find(word token) const {
+  // We can use the fact that the entries are sorted to do a binary search.
+  // The token might not be in the table anymore.
+  int left = 0;
+  int right = length - 1;
+  while (left <= right) {
+    int middle = left + ((right - left) >> 1);
+    if (entries[middle].token == token) return middle;
+    if (entries[middle].token < token) {
+      left = middle + 1;
+    } else {
+      right = middle - 1;
+    }
+  }
+  return -1;
+}
+
+bool TokenResourceMap::resize(int new_capacity) {
+  auto new_entries = unvoid_cast<TokenResourceEntry*>(realloc(entries, new_capacity * sizeof(TokenResourceEntry)));
+  if (!new_entries) return false;
+  entries = new_entries;
+  capacity = new_capacity;
+  return true;
+}
 
 class BleResourceGroup : public ResourceGroup {
  public:
@@ -278,7 +294,7 @@ class BleCallbackResource : public BleResource {
   /// NimBLE callback.
   bool ensure_token() {
     if (token_ == kInvalidToken) {
-      word token;
+      uword token;
       bool succeeded = group()->token_resource_map.add(this, &token);
       if (!succeeded) return false;
       token_ = token;
@@ -290,7 +306,7 @@ class BleCallbackResource : public BleResource {
   bool malloc_error_;
   int error_;
   // The token we use for callbacks.
-  word token_ = kInvalidToken;
+  uword token_ = kInvalidToken;
 };
 
 class BleServiceResource;
@@ -842,7 +858,7 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
     if (connected_) return BLE_ERR_SUCCESS;
     // The 'connect' primitive ensured that the token is set.
     int err = ble_gap_connect(own_addr_type, addr, 3000, null,
-                              BleRemoteDeviceResource::on_event, this->token());
+                              BleRemoteDeviceResource::on_event, token());
     if (err == BLE_ERR_SUCCESS) {
       connected_ = true;
     }
@@ -1009,7 +1025,7 @@ BleAdapterResource* BleAdapterResource::instance_ = null;
 static BleResource* resource_for_token(void* o) {
   auto instance = BleAdapterResource::instance();
   if (instance == null) return null;
-  return instance->group()->token_resource_map.get(unvoid_cast<word>(o));
+  return instance->group()->token_resource_map.get(unvoid_cast<uword>(o));
 }
 
 Object* nimble_error_code_to_string(Process* process, int error_code, bool host) {
@@ -1214,7 +1230,7 @@ BleServiceResource::_on_characteristic_discovered(const BleCallbackScope& scope,
                                 start_handle(),
                                 end_handle(),
                                 BleServiceResource::on_descriptor_discovered,
-                                this->token());
+                                token());
       }
       break;
     default:
