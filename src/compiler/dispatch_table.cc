@@ -311,12 +311,12 @@ class DispatchTableBuilder : public TraversingVisitor {
     selectors_.insert(selector);
   }
 
-  Map<DispatchSelector, int>& selector_offsets() { return selector_offsets_; }
+  Map<DispatchSelector, word>& selector_offsets() { return selector_offsets_; }
   List<Method*> dispatch_table() { return dispatch_table_; }
 
  private:
   Set<DispatchSelector> selectors_;
-  Map<DispatchSelector, int> selector_offsets_;
+  Map<DispatchSelector, word> selector_offsets_;
   List<Method*> dispatch_table_;
 
   void handle_methods(List<Method*> methods);

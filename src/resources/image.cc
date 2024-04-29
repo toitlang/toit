@@ -49,13 +49,13 @@ PRIMITIVE(writer_create) {
   return result;
 }
 
-static Object* write_image_chunk(Process* process, ImageOutputStream* output, const word* data, int length) {
+static Object* write_image_chunk(Process* process, ImageOutputStream* output, const word* data, word length) {
   // The first word is relocation bits, not part of the output.
-  int output_byte_size = (length - 1) * WORD_SIZE;
+  word output_byte_size = (length - 1) * WORD_SIZE;
   word buffer[WORD_BIT_SIZE];
 
   bool first = output->empty();
-  int offset = FlashRegistry::offset(output->cursor());
+  word offset = FlashRegistry::offset(output->cursor());
   if (offset < 0 || offset + output_byte_size > FlashRegistry::allocations_size()) FAIL(OUT_OF_BOUNDS);
   output->write(data, length, buffer);
 
@@ -66,9 +66,9 @@ static Object* write_image_chunk(Process* process, ImageOutputStream* output, co
     Program::Header* header = reinterpret_cast<Program::Header*>(&buffer[0]);
     output->set_program_id(header->id());
     output->set_program_size(header->size());
-    const int header_size = sizeof(Program::Header);
+    const word header_size = sizeof(Program::Header);
     ASSERT(Utils::is_aligned(header_size, WORD_SIZE));
-    const int header_words = header_size / WORD_SIZE;
+    const word header_words = header_size / WORD_SIZE;
     success = FlashRegistry::write_chunk(&buffer[header_words], offset + header_size, output_byte_size - header_size);
   } else {
     success = FlashRegistry::write_chunk(buffer, offset, output_byte_size);
@@ -78,11 +78,11 @@ static Object* write_image_chunk(Process* process, ImageOutputStream* output, co
 }
 
 PRIMITIVE(writer_write) {
-  ARGS(ImageOutputStream, output, Blob, content_bytes, int, from, int, to);
+  ARGS(ImageOutputStream, output, Blob, content_bytes, word, from, word, to);
   if (to < from || from < 0) FAIL(INVALID_ARGUMENT);
   if (to > content_bytes.length()) FAIL(OUT_OF_BOUNDS);
   const word* data = reinterpret_cast<const word*>(content_bytes.address() + from);
-  int length = (to - from) / WORD_SIZE;
+  word length = (to - from) / WORD_SIZE;
   Object* error = write_image_chunk(process, output, data, length);
   return error ? error : process->null_object();
 }

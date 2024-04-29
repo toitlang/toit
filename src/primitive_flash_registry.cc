@@ -52,7 +52,7 @@ static int const SCAN_RESERVED = 2;
 
 PRIMITIVE(next) {
   PRIVILEGED;
-  ARGS(int, current);
+  ARGS(word, current);
   int result;
   if (current == -1) {
     reservation_scan = reservations.begin();
@@ -64,7 +64,7 @@ PRIMITIVE(next) {
   }
 
   // Compute the next.
-  int next = FlashRegistry::find_next(result, &reservation_scan);
+  word next = FlashRegistry::find_next(result, &reservation_scan);
   if (next < 0) return process->null_object();
 
   // Update current and next -- and return the result.
@@ -75,12 +75,12 @@ PRIMITIVE(next) {
 
 PRIMITIVE(info) {
   PRIVILEGED;
-  ARGS(int, current);
+  ARGS(word, current);
   if (current < 0 || flash_registry_offset_current != current) {
     FAIL(OUT_OF_BOUNDS);
   }
   const FlashAllocation* allocation = FlashRegistry::allocation(current);
-  int page_size = (flash_registry_offset_next - current) >> 12;
+  word page_size = (flash_registry_offset_next - current) >> 12;
   if (allocation == null) {
     if (reservation_scan != reservations.end() && current == reservation_scan->left()) {
       ++reservation_scan;
@@ -96,23 +96,23 @@ PRIMITIVE(info) {
 
 PRIMITIVE(erase) {
   PRIVILEGED;
-  ARGS(int, offset, int, size);
+  ARGS(word, offset, word, size);
   return Smi::from(FlashRegistry::erase_chunk(offset, size));
 }
 
 PRIMITIVE(get_size) {
   PRIVILEGED;
-  ARGS(int, offset);
+  ARGS(word, offset);
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
   if (allocation == null) FAIL(INVALID_ARGUMENT);
-  int size = allocation->size();
+  word size = allocation->size();
   if (allocation->is_program()) size += allocation->program_assets_size(null, null);
   return Smi::from(size);
 }
 
 PRIMITIVE(get_header_page) {
   PRIVILEGED;
-  ARGS(int, offset);
+  ARGS(word, offset);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
   const FlashAllocation* allocation = FlashRegistry::allocation(offset);
@@ -126,7 +126,7 @@ PRIMITIVE(get_header_page) {
 
 PRIMITIVE(reserve_hole) {
   PRIVILEGED;
-  ARGS(int, offset, int, size);
+  ARGS(word, offset, word, size);
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   ASSERT(Utils::is_aligned(size, FLASH_PAGE_SIZE));
   if (size == 0) FAIL(INVALID_ARGUMENT);
@@ -154,7 +154,7 @@ PRIMITIVE(reserve_hole) {
 
 PRIMITIVE(cancel_reservation) {
   PRIVILEGED;
-  ARGS(int, offset);
+  ARGS(word, offset);
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   Reservation* reservation = reservations.remove_where([&offset](Reservation* reservation) -> bool {
     return reservation->left() == offset;
@@ -172,7 +172,7 @@ PRIMITIVE(erase_flash_registry) {
 
 PRIMITIVE(allocate) {
   PRIVILEGED;
-  ARGS(int, offset, int, size, int, type, Blob, id, Blob, metadata, Blob, content);
+  ARGS(word, offset, word, size, int, type, Blob, id, Blob, metadata, Blob, content);
   for (auto reservation : reservations) {
     int reserved_offset = reservation->left();
     if (reserved_offset < offset) continue;

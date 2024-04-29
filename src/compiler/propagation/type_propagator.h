@@ -52,7 +52,7 @@ class TypePropagator {
   void propagate(TypeDatabase* types);
 
   void call_static(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target);
-  void call_virtual(MethodTemplate* caller, TypeScope* scope, uint8* site, int arity, int offset);
+  void call_virtual(MethodTemplate* caller, TypeScope* scope, uint8* site, int arity, word offset);
   void call_block(TypeScope* scope, uint8* site, int arity);
 
   void load_block(MethodTemplate* loader, TypeScope* scope, Method method, bool linked, std::vector<Worklist*>& worklists);

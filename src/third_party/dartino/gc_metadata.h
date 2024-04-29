@@ -39,8 +39,8 @@ class GcMetadata {
   static const int CARD_SIZE_IN_BITS_LOG_2 = CARD_SIZE_LOG_2 + 3;
 
   // There is a byte per card, and any two byte values would work here.
-  static const int NO_NEW_SPACE_POINTERS = 0;
-  static const int NEW_SPACE_POINTERS = 1;  // Actually any non-zero value.
+  static const uint8 NO_NEW_SPACE_POINTERS = 0;
+  static const uint8 NEW_SPACE_POINTERS = 1;  // Actually any non-zero value.
 
   // One bit per word of heap, so the size in bytes is 1/8th of that.
   static const int MARK_BITS_SHIFT = 3 + WORD_SHIFT;
@@ -403,10 +403,6 @@ class GcMetadata {
     return base + (Utils::popcount(bits) << WORD_SHIFT);
   }
 
-  static int heap_allocation_arena() {
-    return singleton_.heap_allocation_arena_;
-  }
-
   static uword lowest_old_space_address() { return singleton_.lowest_address_; }
 
   static uword heap_extent() { return singleton_.heap_extent_; }
@@ -494,7 +490,6 @@ class GcMetadata {
   uword heap_extent_munged_;
   uword number_of_cards_;
   uword metadata_size_;
-  int heap_allocation_arena_;
   uint8* metadata_;
   uint8* remembered_set_;
   uint8* object_starts_;

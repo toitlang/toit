@@ -35,7 +35,7 @@
 namespace toit {
 
 Instance* ObjectHeap::allocate_instance(Smi* class_id) {
-  int size = program()->allocation_instance_size_for(class_id);
+  word size = program()->allocation_instance_size_for(class_id);
   TypeTag class_tag = program()->class_tag_for(class_id);
   word result_word = allocate_new_space(size);
   if (!result_word) return null;  // Allocation failure.
@@ -49,7 +49,7 @@ Instance* ObjectHeap::allocate_instance(Smi* class_id) {
   return Instance::cast(result);
 }
 
-Array* ObjectHeap::allocate_array(int length, Object* filler) {
+Array* ObjectHeap::allocate_array(word length, Object* filler) {
   ASSERT(length >= 0);
   ASSERT(length <= Array::max_length_in_process());
   HeapObject* result = _allocate_raw(Array::allocation_size(length));
@@ -62,7 +62,7 @@ Array* ObjectHeap::allocate_array(int length, Object* filler) {
   return Array::cast(result);
 }
 
-ByteArray* ObjectHeap::allocate_internal_byte_array(int length) {
+ByteArray* ObjectHeap::allocate_internal_byte_array(word length) {
   ASSERT(length >= 0);
   // Byte array should fit within one heap block.
   ASSERT(length <= ByteArray::max_internal_size_in_process());
@@ -92,7 +92,7 @@ LargeInteger* ObjectHeap::allocate_large_integer(int64 value) {
   return LargeInteger::cast(result);
 }
 
-String* ObjectHeap::allocate_internal_string(int length) {
+String* ObjectHeap::allocate_internal_string(word length) {
   ASSERT(length >= 0);
   ASSERT(length <= String::max_internal_size_in_process());
   HeapObject* result = _allocate_raw(String::internal_allocation_size(length));
@@ -208,7 +208,7 @@ void ObjectHeap::unregister_external_allocation(word size) {
   ASSERT(old_external_memory >= external_memory);
 }
 
-ByteArray* ObjectHeap::allocate_external_byte_array(int length, uint8* memory, bool dispose, bool clear_content) {
+ByteArray* ObjectHeap::allocate_external_byte_array(word length, uint8* memory, bool dispose, bool clear_content) {
   ByteArray* result = unvoid_cast<ByteArray*>(_allocate_raw(ByteArray::external_allocation_size()));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
@@ -216,7 +216,7 @@ ByteArray* ObjectHeap::allocate_external_byte_array(int length, uint8* memory, b
   result->_initialize_external_memory(length, memory, clear_content);
   //  We add a specialized finalizer on the result so we can free the external memory.
   if (dispose) {
-    if (Flags::allocation) printf("External memory for byte array %p [length = %d] setup for finalization.\n", memory, length);
+    if (Flags::allocation) printf("External memory for byte array %p [length = %" PRIdPTR "] setup for finalization.\n", memory, length);
     Process* process = owner();
     ASSERT(process != null);
     if (!add_vm_finalizer(result)) {
@@ -227,7 +227,7 @@ ByteArray* ObjectHeap::allocate_external_byte_array(int length, uint8* memory, b
   return result;
 }
 
-String* ObjectHeap::allocate_external_string(int length, uint8* memory, bool dispose) {
+String* ObjectHeap::allocate_external_string(word length, uint8* memory, bool dispose) {
   String* result = unvoid_cast<String*>(_allocate_raw(String::external_allocation_size()));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
@@ -243,7 +243,7 @@ String* ObjectHeap::allocate_external_string(int length, uint8* memory, bool dis
   }
   if (dispose) {
     // Ensure finalizer is created for string with external memory.
-    if (Flags::allocation) printf("External memory for string %p [length = %d] setup for finalization.\n", memory, length);
+    if (Flags::allocation) printf("External memory for string %p [length = %" PRIdPTR "] setup for finalization.\n", memory, length);
     Process* process = owner();
     ASSERT(process != null);
     if (!add_vm_finalizer(result)) {
@@ -270,8 +270,8 @@ Task* ObjectHeap::allocate_task() {
   return result;
 }
 
-Stack* ObjectHeap::allocate_stack(int length) {
-  int size = Stack::allocation_size(length);
+Stack* ObjectHeap::allocate_stack(word length) {
+  word size = Stack::allocation_size(length);
   Stack* result = unvoid_cast<Stack*>(_allocate_raw(size));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.

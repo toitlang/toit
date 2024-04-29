@@ -21,7 +21,7 @@
 
 namespace toit {
 
-bool Object::mutable_byte_content(Process* process, uint8** content, int* length, Error** error) {
+bool Object::mutable_byte_content(Process* process, uint8** content, word* length, Error** error) {
   *error = Error::from(process->program()->wrong_object_type());  // Default error if we return false.
   if (is_byte_array(this)) {
     auto byte_array = ByteArray::cast(this);
@@ -46,7 +46,7 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
     ASSERT(is_mutable == process->false_object());
 
     const uint8* immutable_content;
-    int immutable_length;
+    word immutable_length;
     if (!backing->byte_content(program, &immutable_content, &immutable_length, STRINGS_OR_BYTE_ARRAYS)) {
       return false;
     }
@@ -89,7 +89,7 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
 
 bool Object::mutable_byte_content(Process* process, MutableBlob* blob, Error** error) {
   uint8* content = null;
-  int length = 0;
+  word length = 0;
   auto result = mutable_byte_content(process, &content, &length, error);
   *blob = MutableBlob(content, length);
   return result;

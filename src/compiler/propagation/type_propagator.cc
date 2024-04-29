@@ -412,7 +412,7 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
   std::vector<ConcreteType> arguments;
   stack->push_empty();
 
-  int offset = target.selector_offset();
+  word offset = target.selector_offset();
   bool handle_as_static = (offset == -1);
   if (offset >= 0) {
     ASSERT(arity > 0);
@@ -475,7 +475,7 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
   stack->drop_arguments(target.arity());
 }
 
-void TypePropagator::call_virtual(MethodTemplate* caller, TypeScope* scope, uint8* site, int arity, int offset) {
+void TypePropagator::call_virtual(MethodTemplate* caller, TypeScope* scope, uint8* site, int arity, word offset) {
   TypeStack* stack = scope->top();
   TypeSet receiver = stack->local(arity - 1);
   if (site) add_input(site, stack, arity);
@@ -1082,26 +1082,26 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(INVOKE_VIRTUAL, arity);
-    int offset = Utils::read_unaligned_uint16(bcp + 2);
+    word offset = Utils::read_unaligned_uint16(bcp + 2);
     propagator->call_virtual(method, scope, bcp, arity + 1, offset);
     if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_GET);
-    int offset = Utils::read_unaligned_uint16(bcp + 1);
+    word offset = Utils::read_unaligned_uint16(bcp + 1);
     propagator->call_virtual(method, scope, bcp, 1, offset);
     if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_SET);
-    int offset = Utils::read_unaligned_uint16(bcp + 1);
+    word offset = Utils::read_unaligned_uint16(bcp + 1);
     propagator->call_virtual(method, scope, bcp, 2, offset);
     if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
 #define INVOKE_VIRTUAL_BINARY(opcode)                         \
   OPCODE_BEGIN(opcode);                                       \
-    int offset = program->invoke_bytecode_offset(opcode);     \
+    word offset = program->invoke_bytecode_offset(opcode);    \
     propagator->call_virtual(method, scope, bcp, 2, offset);  \
     if (stack->top_is_empty()) return scope;                  \
   OPCODE_END();
@@ -1129,13 +1129,13 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
 #undef INVOKE_VIRTUAL_BINARY
 
   OPCODE_BEGIN(INVOKE_AT_PUT);
-    int offset = program->invoke_bytecode_offset(INVOKE_AT_PUT);
+    word offset = program->invoke_bytecode_offset(INVOKE_AT_PUT);
     propagator->call_virtual(method, scope, bcp, 3, offset);
     if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_SIZE);
-    int offset = program->invoke_bytecode_offset(INVOKE_SIZE);
+    word offset = program->invoke_bytecode_offset(INVOKE_SIZE);
     propagator->call_virtual(method, scope, bcp, 1, offset);
     if (stack->top_is_empty()) return scope;
   OPCODE_END();

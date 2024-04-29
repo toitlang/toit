@@ -165,7 +165,7 @@ class MessageEncoder {
   uint8* take_buffer();
 
   bool encode(Object* object) { ASSERT(!encoding_tison()); return encode_any(object); }
-  bool encode_bytes_external(void* data, int length, bool free_on_failure = true);
+  bool encode_bytes_external(void* data, word length, bool free_on_failure = true);
 
 #ifndef TOIT_FREERTOS
   bool encode_arguments(char** argv, int argc);
@@ -198,7 +198,7 @@ class MessageEncoder {
   //   it points at.
   uint8* buffer_;
   bool take_ownership_of_buffer_ = false;
-  int cursor_ = 0;
+  word cursor_ = 0;
   int nesting_ = 0;
   int problematic_class_id_ = -1;
   bool nesting_too_deep_ = false;
@@ -212,10 +212,10 @@ class MessageEncoder {
   unsigned externals_count_ = 0;
   ByteArray* externals_[MESSAGING_ENCODING_MAX_EXTERNALS];
 
-  bool encode_array(Array* object, int from, int to);
+  bool encode_array(Array* object, word from, word to);
   bool encode_byte_array(ByteArray* object);
   bool encode_copy(Object* object, int tag);
-  bool encode_list(Instance* instance, int from, int to);
+  bool encode_list(Instance* instance, word from, word to);
   bool encode_map(Instance* instance);
 
   void write_uint8(uint8 value) {
@@ -269,7 +269,7 @@ class MessageDecoder {
   void remove_disposing_finalizers();
 
   Object* decode() { ASSERT(!decoding_tison()); return decode_any(); }
-  bool decode_byte_array_external(void** data, int* length);
+  bool decode_byte_array_external(void** data, word* length);
 
   // Encoded messages may contain pointers to external areas allocated using
   // malloc. To deallocate such messages, we have to traverse them and free
@@ -277,12 +277,12 @@ class MessageDecoder {
   static void deallocate(uint8* buffer);
 
  protected:
-  MessageDecoder(Process* process, const uint8* buffer, int size, MessageFormat format);
+  MessageDecoder(Process* process, const uint8* buffer, word size, MessageFormat format);
 
   bool decoding_tison() const { return format_ == MESSAGE_FORMAT_TISON; }
   bool overflown() const { return cursor_ > size_; }
-  int remaining() const { return size_ - cursor_; }
-  unsigned externals_count() const { return externals_count_; }
+  word remaining() const { return size_ - cursor_; }
+  uword externals_count() const { return externals_count_; }
 
   Object* decode_any();
 
@@ -302,17 +302,17 @@ class MessageDecoder {
   Process* const process_ = null;
   Program* const program_ = null;
   const uint8* const buffer_;
-  const int size_ = INT_MAX;
+  const word size_ = INT_MAX;
   const MessageFormat format_ = MESSAGE_FORMAT_IPC;
 
-  int cursor_ = 0;
+  word cursor_ = 0;
   Status status_ = DECODE_SUCCESS;
 
   unsigned externals_count_ = 0;
   HeapObject* externals_[MESSAGING_ENCODING_MAX_EXTERNALS];
   word externals_sizes_[MESSAGING_ENCODING_MAX_EXTERNALS];
 
-  void register_external(HeapObject* object, int length);
+  void register_external(HeapObject* object, word length);
 
   Object* decode_string(bool inlined);
   Object* decode_array();
@@ -324,7 +324,7 @@ class MessageDecoder {
   void deallocate();
 
   uint8 read_uint8() {
-    int cursor = cursor_++;
+    word cursor = cursor_++;
     return (cursor < size_) ? buffer_[cursor] : 0;
   }
 
@@ -334,7 +334,7 @@ class MessageDecoder {
 
 class TisonDecoder : public MessageDecoder {
  public:
-  TisonDecoder(Process* process, const uint8* buffer, int length)
+  TisonDecoder(Process* process, const uint8* buffer, word length)
       : MessageDecoder(process, buffer, length, MESSAGE_FORMAT_TISON) {}
 
   ~TisonDecoder() {
@@ -365,7 +365,7 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   bool set_priority(uint8 priority);
 
   // Callback for received messages.
-  virtual void on_message(int sender, int type, void* data, int length) = 0;
+  virtual void on_message(int sender, int type, void* data, word length) = 0;
 
   // Send a message to a specific pid, using Scheduler::send_message. Returns
   // true if the data was sent or false if an error occurred. The data is
@@ -373,12 +373,12 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   // always freed even on failures; otherwise, only messages that are
   // succesfully sent are taken over by the receiver and must not be touched or
   // deallocated by the sender.
-  bool send(int pid, int type, void* data, int length, bool free_on_failure = false);
+  bool send(int pid, int type, void* data, word length, bool free_on_failure = false);
 
   // Support for handling failed allocations. Return true from the callback
   // if you have cleaned up and want to retry the allocation. Returning false
   // causes the message to be discarded.
-  virtual bool on_failed_allocation(int length) { return false; }
+  virtual bool on_failed_allocation(word length) { return false; }
 
   // Try collecting garbage. If asked to try hard, the system will preempt running
   // processes and get them to stop before garbage collecting their heaps.
