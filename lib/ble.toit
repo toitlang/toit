@@ -930,7 +930,7 @@ class Central extends Resource_:
   NOTE: Not implemented on MacOS.
   */
   bonded-peers -> List:
-    return List.from ble-get-bonded-peers_
+    return List.from (ble-get-bonded-peers_ resource_)
 
 /**
 The manager for advertising and managing local services.
@@ -1124,7 +1124,7 @@ class Adapter extends Resource_:
     peripheral_ = null
 
   set-preferred-mtu mtu/int:
-    ble-set-preferred-mtu_ mtu
+    ble-set-preferred-mtu_ resource_ mtu
 
 // General events
 MALLOC-FAILED_                        ::= 1 << 22
@@ -1375,7 +1375,7 @@ ble-notify-characteristics-value__ characteristic client new-value:
 ble-get-att-mtu_ resource:
   #primitive.ble.get-att-mtu
 
-ble-set-preferred-mtu_ mtu:
+ble-set-preferred-mtu_ adapter mtu:
   #primitive.ble.set-preferred-mtu
 
 ble-get-error_ characteristic is-oom:
@@ -1394,7 +1394,7 @@ ble-read-request-reply_ resource value:
 ble-read-request-reply__ resource value:
   #primitive.ble.read-request-reply
 
-ble-get-bonded-peers_:
+ble-get-bonded-peers_ adapter:
   #primitive.ble.get-bonded-peers
 
 ble-run-with-quota-backoff_ [block]:
