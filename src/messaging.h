@@ -365,7 +365,7 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   bool set_priority(uint8 priority);
 
   // Callback for received messages.
-  virtual void on_message(int sender, int type, void* data, word length) = 0;
+  virtual void on_message(int sender, int type, void* data, int length) = 0;
 
   // Send a message to a specific pid, using Scheduler::send_message. Returns
   // true if the data was sent or false if an error occurred. The data is

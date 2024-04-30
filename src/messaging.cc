@@ -803,6 +803,9 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
       void* data = null;
       word length = 0;
       bool success = decoder.decode_byte_array_external(&data, &length);
+      if (success && length > INT_MAX) {
+        abort();
+      }
 
       // If the allocation failed, we ask the handler if we should retry the failed
       // allocation. If so, we leave the message in place and try again. Otherwise,
