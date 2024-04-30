@@ -1862,11 +1862,12 @@ static Object* blob_to_mbuf(Process* process, Blob& bytes, os_mbuf** result) {
   return null;  // No error.
 }
 
+
 static Object* object_to_mbuf(Process* process, Object* object, os_mbuf** result) {
   *result = null;
   if (object == process->null_object()) return null;
   Blob bytes;
-  if (!object->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+  if (!object->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_BYTES_TYPE);
   return blob_to_mbuf(process, bytes, result);
 }
 

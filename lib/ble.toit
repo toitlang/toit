@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import io
 import monitor
 import uuid
 import monitor show ResourceState_
@@ -113,7 +114,7 @@ class AdvertisementData:
   /**
   Advertised manufacturer-specific data.
   */
-  manufacturer-data/ByteArray
+  manufacturer-data/io.Data
 
   /**
   Whether connections are allowed.
@@ -132,7 +133,7 @@ class AdvertisementData:
     if name: size += 2 + name.size
     service-classes.do: | uuid/BleUuid |
       size += 2 + uuid.to-byte-array.size
-    if not manufacturer-data.is-empty: size += 2 + manufacturer-data.size
+    if manufacturer-data.byte-size != 0: size += 2 + manufacturer-data.byte-size
     if size > 31 and check-size: throw "PACKET_SIZE_EXCEEDED"
 
 /**
@@ -192,7 +193,7 @@ class RemoteDescriptor extends RemoteReadWriteElement_ implements Attribute:
   Automatically removes the descriptor from the list of discovered descriptors of
     the characteristic.
   */
-  close:
+  close -> none:
     characteristic.remove-descriptor_ this
     close_
 
@@ -208,7 +209,7 @@ class RemoteDescriptor extends RemoteReadWriteElement_ implements Attribute:
   Throws if the $value is greater than the negotiated mtu (see $Adapter.set-preferred-mtu,
     $RemoteCharacteristic.mtu, and $RemoteDevice.mtu).
   */
-  write value/ByteArray -> none:
+  write value/io.Data -> none:
     write_ value --expects-response=false --no-flush
 
   /**
@@ -286,7 +287,7 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
     requires a response, then this flag is ignored and the function always
     waits for the response.
   */
-  write value/ByteArray --flush/bool=false -> none:
+  write value/io.Data --flush/bool=false -> none:
     if (properties & (CHARACTERISTIC-PROPERTY-WRITE
                       | CHARACTERISTIC-PROPERTY-WRITE-WITHOUT-RESPONSE)) == 0:
       throw "Characteristic does not support write"
@@ -388,7 +389,7 @@ class RemoteService extends Resource_ implements Attribute:
 
   Automatically removes the service from the list of discovered services of the device.
   */
-  close:
+  close -> none:
     characteristics := discovered-characteristics
     discovered-characteristics = []
     characteristics.do: | characteristic/RemoteCharacteristic | characteristic.close
@@ -586,7 +587,7 @@ class LocalService extends Resource_ implements Attribute:
       uuid/BleUuid
       --properties/int
       --permissions/int
-      --value/ByteArray?=null
+      --value/io.Data?=null
       --read-timeout-ms/int=DEFAULT-READ-TIMEOUT-MS:
     if peripheral-manager.deployed_: throw "Service is already deployed"
     read-permission-bits := CHARACTERISTIC-PERMISSION-READ
@@ -624,7 +625,7 @@ class LocalService extends Resource_ implements Attribute:
   */
   add-read-only-characteristic -> LocalCharacteristic
       uuid/BleUuid
-      --value/ByteArray?
+      --value/io.Data?
       --read-timeout-ms/int=DEFAULT-READ-TIMEOUT-MS:
     return add-characteristic
         uuid
@@ -724,7 +725,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
 
   descriptors_/List := []
 
-  constructor .service .uuid .properties .permissions value/ByteArray? read-timeout-ms:
+  constructor .service .uuid .properties .permissions value/io.Data? read-timeout-ms:
     if service.peripheral-manager.deployed: throw "Peripheral is already deployed"
     if (service.characteristics_.any: it.uuid == uuid): throw "Characteristic already exists"
     resource := ble-add-characteristic_ service.resource_ uuid.encode-for-platform_ properties permissions value read-timeout-ms
@@ -751,7 +752,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
 
   If the characteristic supports both indications and notifications, then a notification is sent.
   */
-  write value/ByteArray:
+  write value/io.Data:
     if permissions & CHARACTERISTIC-PERMISSION-READ == 0: throw "Invalid permission"
 
     if (properties & (CHARACTERISTIC-PROPERTY-NOTIFY | CHARACTERISTIC-PROPERTY-INDICATE)) != 0:
@@ -776,7 +777,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
 
   This blocking function waits for read requests on this characteristic and calls the
     given $block for each request.
-  The block must return a ByteArray which is then used as value of the characteristic.
+  The block must return an $io.Data which is then used as value of the characteristic.
   */
   handle-read-request [block]:
     while true:
@@ -796,7 +797,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   if $value is specified, it is used as the initial value for the characteristic.
   The peripheral must not yet be deployed.
   */
-  add-descriptor uuid/BleUuid properties/int permissions/int value/ByteArray?=null -> LocalDescriptor:
+  add-descriptor uuid/BleUuid properties/int permissions/int value/io.Data?=null -> LocalDescriptor:
     return LocalDescriptor this uuid properties permissions value
 
   /**
@@ -815,7 +816,7 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
   permissions/int
   properties/int
 
-  constructor .characteristic .uuid .properties .permissions value:
+  constructor .characteristic .uuid .properties .permissions value/io.Data:
     service := characteristic.service
     if service.peripheral-manager.deployed: throw "Peripheral is already deployed"
     if (characteristic.descriptors_.any: it.uuid == uuid): throw "Descriptor already exists"
@@ -829,7 +830,7 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
     characteristic.remove-descriptor_ this
     close_
 
-  write value/ByteArray:
+  write value/io.Data:
     if (permissions & CHARACTERISTIC-PERMISSION-WRITE) == 0:
       throw "Invalid permission"
     ble-set-value_ resource_ value
@@ -997,13 +998,13 @@ class Peripheral extends Resource_:
       id/BleUuid := data.service-classes[it]
       raw-service-classes[it] = id.encode-for-platform_
     ble-advertise-start_
-      resource_
-      data.name or ""
-      raw-service-classes
-      data.manufacturer-data
-      interval.in-us
-      connection-mode
-      data.flags
+        resource_
+        data.name or ""
+        raw-service-classes
+        data.manufacturer-data
+        interval.in-us
+        connection-mode
+        data.flags
 
     state := resource-state_.wait-for-state ADVERTISE-START-SUCEEDED-EVENT_ | ADVERTISE-START-FAILED-EVENT_
     if state & ADVERTISE-START-FAILED-EVENT_ != 0: throw "Failed to start advertising"
@@ -1222,7 +1223,7 @@ class RemoteReadWriteElement_ extends Resource_:
   constructor .remote-service_ resource:
     super resource
 
-  write_ value/ByteArray --expects-response/bool --flush/bool:
+  write_ value/io.Data --expects-response/bool --flush/bool:
     while true:
       remote-service_.device.resource-state_.clear-state READY-TO-SEND-WITHOUT-RESPONSE-EVENT_
       resource-state_.clear-state VALUE-WRITE-FAILED-EVENT_ | VALUE-WRITE-SUCCEEDED-EVENT_
@@ -1236,7 +1237,7 @@ class RemoteReadWriteElement_ extends Resource_:
       if result == 2: // Write without response, needs to wait for device ready.
         remote-service_.device.resource-state_.wait-for-state READY-TO-SEND-WITHOUT-RESPONSE-EVENT_
 
-  request-read_:
+  request-read_ -> ByteArray:
     resource-state_.clear-state VALUE-DATA-READY-EVENT_
     ble-request-read_ resource_
     state := resource-state_.wait-for-state VALUE-DATA-READY-EVENT_ | VALUE-DATA-READ-FAILED-EVENT_
@@ -1322,8 +1323,10 @@ ble-write-value_ characteristic value with-response flush:
 
 // Note that we need two arguments for 'with-response' and 'flush' as some backends
 // handle them differently.
-ble-write-value__ characteristic value with-response flush allow-retry:
-  #primitive.ble.write-value
+ble-write-value__ characteristic value/io.Data with-response flush allow-retry:
+  #primitive.ble.write-value:
+    return io.primitive-redo-io-data_ it value: | bytes |
+      ble-write-value__ characteristic bytes with-response flush allow-retry
 
 ble-handle_ resource:
   #primitive.ble.handle
@@ -1346,14 +1349,18 @@ ble-add-characteristic_ service uuid properties permission value read-timeout-ms
   unreachable
 
 ble-add-characteristic__ service uuid properties permission value read-timeout-ms:
-  #primitive.ble.add-characteristic
+  #primitive.ble.add-characteristic:
+    return io.primitive-redo-io-data_ it value: | bytes |
+      ble-add-characteristic__ service uuid properties permission bytes read-timeout-ms
 
 ble-add-descriptor_ characteristic uuid properties permission value:
   return ble-run-with-quota-backoff_:
     ble-add-descriptor__ characteristic uuid properties permission value
 
 ble-add-descriptor__ characteristic uuid properties permission value:
-  #primitive.ble.add-descriptor
+  #primitive.ble.add-descriptor:
+    return io.primitive-redo-io-data_ it value: | bytes |
+      ble-add-descriptor__ characteristic uuid properties permission bytes
 
 ble-deploy-service_ service:
   #primitive.ble.deploy-service
@@ -1366,7 +1373,9 @@ ble-set-value_ characteristic new-value -> none:
     ble-set-value__ characteristic new-value
 
 ble-set-value__ characteristic new-value:
-  #primitive.ble.set-value
+  #primitive.ble.set-value:
+    return io.primitive-redo-io-data_ it new-value: | bytes |
+      ble-set-value__ characteristic bytes
 
 ble-get-subscribed-clients characteristic:
   #primitive.ble.get-subscribed-clients
@@ -1376,7 +1385,9 @@ ble-notify-characteristics-value_ characteristic client new-value:
     ble-notify-characteristics-value__ characteristic client new-value
 
 ble-notify-characteristics-value__ characteristic client new-value:
-  #primitive.ble.notify-characteristics-value
+  #primitive.ble.notify-characteristics-value:
+    return io.primitive-redo-io-data_ it new-value: | bytes |
+      ble-notify-characteristics-value__ characteristic client bytes
 
 ble-get-att-mtu_ resource:
   #primitive.ble.get-att-mtu
@@ -1398,7 +1409,9 @@ ble-read-request-reply_ resource value:
     ble-read-request-reply__ resource value
 
 ble-read-request-reply__ resource value:
-  #primitive.ble.read-request-reply
+  #primitive.ble.read-request-reply:
+    return io.primitive-redo-io-data_ it value: | bytes |
+      ble-read-request-reply__ resource bytes
 
 ble-get-bonded-peers_ adapter:
   #primitive.ble.get-bonded-peers
