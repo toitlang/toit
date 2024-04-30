@@ -636,10 +636,10 @@ class BleServiceResource:
     });
   }
 
-  bool deployed() const { return gatt_svcs_ != null; }
+  bool deployed() const { return deployed_; }
 
-  void set_svcs(ble_gatt_svc_def* svcs) {
-    gatt_svcs_ = svcs;
+  void set_deployed(bool value) {
+    deployed_ = value;
   }
 
   bool characteristics_discovered() const { return characteristics_discovered_; }
@@ -671,6 +671,9 @@ class BleServiceResource:
     return BLE_ERR_SUCCESS;
   }
 
+  /// Disposes of the NimBLE data structure that is used for services.
+  /// The data needs to be alive as long as the peripheral is running. It is therefore
+  /// stored on the adapter instance.
   static void dispose_gatt_svcs(ble_gatt_svc_def* gatt_svcs) {
     ble_gatt_svc_def* cursor = gatt_svcs;
     while (cursor->type != 0) {
@@ -680,6 +683,7 @@ class BleServiceResource:
     free(gatt_svcs);
   }
 
+  /// Disposes of the NimBLE data structure that is used for characteristics.
   static void dispose_gatt_svr_chars(ble_gatt_chr_def* gatt_svr_chars) {
     ble_gatt_chr_def* cursor = gatt_svr_chars;
     while (cursor->uuid != null) {
@@ -704,8 +708,7 @@ class BleServiceResource:
   bool characteristics_discovered_;
   BleRemoteDeviceResource* device_;
   BlePeripheralManagerResource* peripheral_manager_;
-
-  ble_gatt_svc_def* gatt_svcs_ = null;
+  bool deployed_ = false;
 };
 
 class BleCentralManagerResource : public BleCallbackResource {
@@ -1057,6 +1060,10 @@ class BleAdapterResource : public BleResource, public Thread {
     // able to dispatch its last events.
     join();
 
+    if (nimble_services_ != null) {
+      BleServiceResource::dispose_gatt_svcs(nimble_services_);
+    }
+
     nimble_port_deinit();
 
     ble_pool.put(id_);
@@ -1080,6 +1087,63 @@ class BleAdapterResource : public BleResource, public Thread {
 
   bool is_active() const {
     return state_ == ACTIVE;
+  }
+
+  bool started() const {
+    return started_;
+  }
+
+  int start_peripheral() {
+    ASSERT(!started());
+    if (nimble_services_count_ == 0) return BLE_ERR_SUCCESS;
+
+    int rc = ble_gatts_count_cfg(nimble_services_);
+    if (rc != BLE_ERR_SUCCESS) return rc;
+
+    rc = ble_gatts_add_svcs(nimble_services_);
+    if (rc != BLE_ERR_SUCCESS) goto fail;
+
+    rc = ble_gatts_start();
+    if (rc != BLE_ERR_SUCCESS) goto fail;
+
+    started_ = true;
+    return BLE_ERR_SUCCESS;
+
+    fail:
+      // The 'stop' routine resets the NimBLE-internal "max" counts that were updated with
+      // the 'ble_gatts_count_cfg' function. The 'stop' function has been added by Espressif and
+      // is not part of the official NimBLE library.
+      ble_gatts_stop();
+      return rc;
+  }
+
+  /// Reserves space for 'count' services.
+  /// Returns false if there was an allocation error.
+  /// The peripheral must not yet have been deployed.
+  /// If services were already reserved, disposes of the old services and
+  /// creates a new backing store. This should not happen with normal use of the BLE library.
+  bool reserve_services(int count) {
+    ASSERT(!started());
+    if (nimble_services_ != null) {
+      BleServiceResource::dispose_gatt_svcs(nimble_services_);
+      nimble_services_ = null;
+      nimble_services_count_ = 0;
+    }
+    // We need to allocate one more entry for the "END" marker.
+    static_assert(BLE_GATT_SVC_TYPE_END == 0, "Unexpected BLE_GATT_SVC_TYPE_END value");
+    nimble_services_ = unvoid_cast<ble_gatt_svc_def*>(calloc(count + 1, sizeof(ble_gatt_svc_def)));
+    if (!nimble_services_) return false;
+    nimble_services_count_ = count;
+    return true;
+  }
+
+  int services_capacity() const {
+    return nimble_services_count_;
+  }
+
+  void store_nimble_service_definition(int index, const ble_gatt_svc_def& service_definition) {
+    ASSERT(0 <= index && index < nimble_services_count_);
+    nimble_services_[index] = service_definition;
   }
 
   // The BLE Host will notify when the BLE subsystem is synchronized. Before a successful sync, most
@@ -1145,6 +1209,10 @@ class BleAdapterResource : public BleResource, public Thread {
   State state_;
   BleCentralManagerResource* central_manager_;
   BlePeripheralManagerResource* peripheral_manager_;
+  ble_gatt_svc_def* nimble_services_ = null;
+  int nimble_services_count_ = 0;
+  /// Whether the peripheral (GATTS) has been started.
+  bool started_ = false;
 
   static BleAdapterResource* instance_;
 
@@ -1314,7 +1382,6 @@ BleServiceResource::~BleServiceResource() {
   // as long as the gatt server is running. Since there isn't any way to
   // stop the gatt server, this means that the data should be stored on the adapter.
   // Only when that one shuts down can we dispose of the data.
-  if (deployed()) dispose_gatt_svcs(gatt_svcs_);
   if (peripheral_manager_ != null) {
     peripheral_manager_->remove_service(this);
   } else {
@@ -2861,27 +2928,36 @@ PRIMITIVE(add_descriptor) {
   return proxy;
 }
 
+PRIMITIVE(reserve_services) {
+  ARGS(BlePeripheralManagerResource, peripheral_manager, int, count);
+
+  auto adapter = BleAdapterResource::instance();
+  if (adapter->started()) FAIL(ALREADY_IN_USE);
+  if (count < 0) FAIL(INVALID_ARGUMENT);
+  if (!adapter->reserve_services(count)) FAIL(MALLOC_FAILED);
+  return process->null_object();
+}
+
 PRIMITIVE(deploy_service) {
-  ARGS(BleServiceResource, service_resource)
+  ARGS(BleServiceResource, service_resource, int, index)
 
   Locker locker(service_resource->group()->mutex());
 
   if (!service_resource->peripheral_manager()) FAIL(INVALID_ARGUMENT);
   if (service_resource->deployed()) FAIL(INVALID_ARGUMENT);
 
+  auto adapter = BleAdapterResource::instance();
+  if (index < 0 || index >= adapter->services_capacity()) FAIL(INVALID_ARGUMENT);
+
   int characteristic_count = 0;
   for (auto characteristic : service_resource->characteristics()) {
+    characteristic_count++;
+
     if (!characteristic->ensure_token()) FAIL(MALLOC_FAILED);
 
     for (auto descriptor : characteristic->descriptors()) {
       if (!descriptor->ensure_token()) FAIL(MALLOC_FAILED);
     }
-  }
-
-
-  for (auto characteristic : service_resource->characteristics()) {
-    USE(characteristic);
-    characteristic_count++;
   }
 
   auto gatt_svr_chars = static_cast<ble_gatt_chr_def*>(calloc(characteristic_count + 1, sizeof(ble_gatt_chr_def)));
@@ -2924,11 +3000,6 @@ PRIMITIVE(deploy_service) {
   }
 
   static_assert(BLE_GATT_SVC_TYPE_END == 0, "Unexpected BLE_GATT_SVC_TYPE_END value");
-  auto gatt_svcs = static_cast<ble_gatt_svc_def*>(calloc(2, sizeof(ble_gatt_svc_def)));
-  if (!gatt_svcs) {
-    BleServiceResource::dispose_gatt_svr_chars(gatt_svr_chars);
-    FAIL(MALLOC_FAILED);
-  }
 
   struct ble_gatt_svc_def gatt_svc = {
     .type = BLE_GATT_SVC_TYPE_PRIMARY,
@@ -2936,22 +3007,8 @@ PRIMITIVE(deploy_service) {
     .includes = 0,
     .characteristics = gatt_svr_chars
   };
-  gatt_svcs[0] = gatt_svc;
 
-  int rc = ble_gatts_count_cfg(gatt_svcs);
-  if (rc != BLE_ERR_SUCCESS) {
-    BleServiceResource::dispose_gatt_svcs(gatt_svcs);
-    return nimble_stack_error(process, rc);
-  }
-
-  rc = ble_gatts_add_svcs(gatt_svcs);
-  if (rc != BLE_ERR_SUCCESS) {
-    BleServiceResource::dispose_gatt_svcs(gatt_svcs);
-    return nimble_stack_error(process, rc);
-  }
-
-  // Mark the service resource as deployed by setting its services.
-  service_resource->set_svcs(gatt_svcs);
+  adapter->store_nimble_service_definition(index, gatt_svc);
 
   // NimBLE does not do async service deployments, so
   // simulate success event.
@@ -2965,7 +3022,10 @@ PRIMITIVE(start_gatt_server) {
 
   Locker locker(peripheral_manager->group()->mutex());
 
-  int rc = ble_gatts_start();
+  auto adapter = BleAdapterResource::instance();
+
+  if (adapter->started()) FAIL(ALREADY_IN_USE);
+  int rc = adapter->start_peripheral();
   if (rc != BLE_ERR_SUCCESS) {
     return nimble_stack_error(process, rc);
   }

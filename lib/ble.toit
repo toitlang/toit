@@ -711,8 +711,8 @@ class LocalService extends Resource_ implements Attribute:
   Deploys the service.
   Depending on the platform, the peripheral manager may still need to start the gatt server.
   */
-  deploy_ -> none:
-    ble-deploy-service_ resource_
+  deploy_ index/int -> none:
+    ble-deploy-service_ resource_ index
     state := resource-state_.wait-for-state (SERVICE-ADD-SUCCEEDED-EVENT_ | SERVICE-ADD-FAILED-EVENT_)
     if state & SERVICE-ADD-FAILED-EVENT_ != 0: throw "Failed to add service"
 
@@ -1037,7 +1037,10 @@ class Peripheral extends Resource_:
   */
   deploy -> none:
     if deployed_: throw "Already deployed"
-    services_.do: | service/LocalService | service.deploy_
+    ble-reserve-services_ resource_ services_.size
+    services_.size.repeat: | i/int |
+      service/LocalService := services_[i]
+      service.deploy_ i
     ble-start-gatt-server_ resource_
     deployed_ = true
 
@@ -1362,7 +1365,10 @@ ble-add-descriptor__ characteristic uuid properties permission value:
     return io.primitive-redo-io-data_ it value: | bytes |
       ble-add-descriptor__ characteristic uuid properties permission bytes
 
-ble-deploy-service_ service:
+ble-reserve-services_ peripheral-manager count:
+  #primitive.ble.reserve-services
+
+ble-deploy-service_ service index:
   #primitive.ble.deploy-service
 
 ble-start-gatt-server_ peripheral-manager:
