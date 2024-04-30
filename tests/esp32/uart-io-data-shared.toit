@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 /**
-Tests sending bigger chunks.
+Tests sending io.Data to the UART.
 
 Setup:
 Connect GND of one ESP32 to GND of another ESP32.
@@ -11,10 +11,6 @@ Connect pin 22 of the first ESP32 to pin 23 of the second ESP32.
 Connect pin 23 of the first ESP32 to pin 22 of the second ESP32.
 
 Run uart-io-data-board1.toit on one ESP32 and uart-io-data-board2.toit on the other.
-
-For the host-test, use a flasher and connect GND to GND of the flasher.
-Connect pin 22 of the ESP32 to the RX pin of the flasher.
-Connect pin 23 of the ESP32 to the TX pin of the flasher.
 */
 
 import crypto.md5
