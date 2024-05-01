@@ -23,7 +23,8 @@ CHARACTERISTIC-INDICATE ::= BleUuid "01dc8c2f-038d-4f75-b836-b6c4245b23ad"
 CHARACTERISTIC-WRITE-ONLY ::= BleUuid "1a1bb179-c006-4217-a57b-342e24eca694"
 CHARACTERISTIC-WRITE-ONLY-WITH-RESPONSE ::= BleUuid "8e00e1c7-1b90-4f23-8dc9-384134606fc2"
 
-READ-ONLY-VALUE ::= #[0x70, 0x17]
+VALUE-BYTES ::= #[0x70, 0x17]
+VALUE-STRING ::= "7017"
 
 main-peripheral --iteration/int:
   print "Iteration $iteration"
@@ -34,7 +35,8 @@ main-peripheral --iteration/int:
   service1 := peripheral.add-service SERVICE-TEST
   service2 := peripheral.add-service SERVICE-TEST2
 
-  read-only := service1.add-read-only-characteristic CHARACTERISTIC-READ-ONLY --value=READ-ONLY-VALUE
+  value := iteration == 0 ? VALUE-BYTES : VALUE-STRING
+  read-only := service1.add-read-only-characteristic CHARACTERISTIC-READ-ONLY --value=value
   read-only-callback := service1.add-read-only-characteristic CHARACTERISTIC-READ-ONLY-CALLBACK --value=null
 
   callback-task-done := monitor.Latch
@@ -75,6 +77,9 @@ main-peripheral --iteration/int:
   while data.size < 5:
     data += write-only-with-response.read
   expect-equals #[0, 1, 2, 3, 4] data
+
+  notify.write value
+  indicate.write value
 
   data = write-only.read
   if iteration == 0:
@@ -153,12 +158,13 @@ main-central --iteration/int:
   seen-handles.add-all [read-only.handle, read-only-callback.handle, notify.handle, indicate.handle, write-only.handle, write-only-with-response.handle]
   expect-equals 6 seen-handles.size
 
-  expect-equals READ-ONLY-VALUE read-only.read
+  value := iteration == 0 ? VALUE-BYTES : VALUE-STRING.to-byte-array
+
+  expect-equals value read-only.read
 
   counter := 0
   5.repeat:
-    value := read-only-callback.read
-    expect-equals #[counter++] value
+    expect-equals #[counter++] read-only-callback.read
 
   counter = 0
   5.repeat:

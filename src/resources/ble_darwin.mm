@@ -1206,9 +1206,11 @@ PRIMITIVE(add_characteristic) {
 
   CBUUID* uuid = cb_uuid_from_blob(raw_uuid);
 
+  if (value == process->null_object()) FAIL(UNIMPLEMENTED);
+
   NSData* data = nil;
   Blob bytes;
-  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_BYTES_TYPE);
   if (bytes.length()) {
     data = [[NSData alloc] initWithBytes:bytes.address() length:bytes.length()];
   }
@@ -1259,7 +1261,7 @@ PRIMITIVE(start_gatt_server) {
 PRIMITIVE(set_value) {
   ARGS(BleCharacteristicResource, characteristic_resource, Object, value);
   Blob bytes;
-  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_BYTES_TYPE);
 
   auto characteristic = (CBMutableCharacteristic*) characteristic_resource->characteristic();
   characteristic.value = [[NSData alloc] initWithBytes:bytes.address() length:bytes.length()];
@@ -1283,7 +1285,7 @@ PRIMITIVE(notify_characteristics_value) {
   if (!peripheral_manager) FAIL(WRONG_OBJECT_TYPE);
 
   Blob bytes;
-  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_OBJECT_TYPE);
+  if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) FAIL(WRONG_BYTES_TYPE);
 
   auto characteristic = (CBMutableCharacteristic*) characteristic_resource->characteristic();
   [peripheral_manager->peripheral_manager()
