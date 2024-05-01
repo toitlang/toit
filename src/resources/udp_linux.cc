@@ -18,7 +18,7 @@
 #if defined(TOIT_LINUX) && !defined(TOIT_USE_LWIP)
 
 #include <errno.h>
-#include <fcntl.h>
+#include <linux/if_tun.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -39,21 +39,10 @@
 
 #include "../event_sources/epoll_linux.h"
 
+#include "socket_utils.h"
 #include "udp.h"
 
 namespace toit {
-
-static bool mark_non_blocking(int fd) {
-   int flags = fcntl(fd, F_GETFL, 0);
-   if (flags == -1) return false;
-   return fcntl(fd, F_SETFL, flags | O_NONBLOCK) != -1;
-}
-
-static void close_keep_errno(int fd) {
-  int err = errno;
-  close(fd);
-  errno = err;
-}
 
 class UdpResourceGroup : public ResourceGroup {
  public:
@@ -122,7 +111,7 @@ PRIMITIVE(bind) {
   if (id == -1) return Primitive::os_error(errno, process);
 
   IntResource* resource = resource_group->register_id(id);
-  if (!resource) FAIL(MALLOC_FAILED);
+  ASSERT(resource);  // Malloc can't fail on Linux.
   AutoUnregisteringResource<IntResource> resource_manager(resource_group, resource);
 
   struct sockaddr_in addr;

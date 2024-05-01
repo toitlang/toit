@@ -34,6 +34,7 @@ namespace toit {
   M(timer,   MODULE_TIMER)                   \
   M(tcp,     MODULE_TCP)                     \
   M(udp,     MODULE_UDP)                     \
+  M(tun,     MODULE_TUN)                     \
   M(tls,     MODULE_TLS)                     \
   M(esp32,   MODULE_ESP32)                   \
   M(i2c,     MODULE_I2C)                     \
@@ -288,6 +289,12 @@ namespace toit {
   PRIMITIVE(error_number, 1)                 \
   PRIMITIVE(close, 2)                        \
   PRIMITIVE(gc, 1)                           \
+
+#define MODULE_TUN(PRIMITIVE)                \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(receive, 2)                      \
+  PRIMITIVE(close, 2)                        \
+  PRIMITIVE(open, 1)                         \
 
 #define MODULE_TLS(PRIMITIVE)                \
   PRIMITIVE(init, 1)                         \
@@ -1000,6 +1007,7 @@ Object* get_absolute_path(Process* process, const wchar_t* pathname, wchar_t* ou
 #define _A_T_MbedTlsResourceGroup(N, name)MAKE_UNPACKING_MACRO(MbedTlsResourceGroup, N, name)
 #define _A_T_TimerResourceGroup(N, name)  MAKE_UNPACKING_MACRO(TimerResourceGroup, N, name)
 #define _A_T_UdpResourceGroup(N, name)    MAKE_UNPACKING_MACRO(UdpResourceGroup, N, name)
+#define _A_T_TunResourceGroup(N, name)    MAKE_UNPACKING_MACRO(TunResourceGroup, N, name)
 #define _A_T_UartResourceGroup(N, name)   MAKE_UNPACKING_MACRO(UartResourceGroup, N, name)
 #define _A_T_WifiResourceGroup(N, name)   MAKE_UNPACKING_MACRO(WifiResourceGroup, N, name)
 #define _A_T_EthernetResourceGroup(N, name) MAKE_UNPACKING_MACRO(EthernetResourceGroup, N, name)

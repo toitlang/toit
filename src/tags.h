@@ -89,6 +89,7 @@ namespace toit {
   fn(RpcResourceGroup)                  \
   fn(MbedTlsResourceGroup)              \
   fn(UdpResourceGroup)                  \
+  fn(TunResourceGroup)                  \
   fn(UartResourceGroup)                 \
   fn(RmtResourceGroup)                  \
   fn(WifiResourceGroup)                 \

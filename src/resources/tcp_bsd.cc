@@ -18,7 +18,6 @@
 #ifdef TOIT_BSD
 
 #include <errno.h>
-#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -40,21 +39,10 @@
 
 #include "../event_sources/kqueue_bsd.h"
 
+#include "socket_utils.h"
 #include "tcp.h"
 
 namespace toit {
-
-bool mark_non_blocking(int fd) {
-   int flags = fcntl(fd, F_GETFL, 0);
-   if (flags == -1) return false;
-   return fcntl(fd, F_SETFL, flags | O_NONBLOCK) != -1;
-}
-
-void close_keep_errno(int fd) {
-  int err = errno;
-  close(fd);
-  errno = err;
-}
 
 class TcpResourceGroup : public ResourceGroup {
  public:
