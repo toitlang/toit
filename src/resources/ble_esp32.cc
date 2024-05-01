@@ -234,14 +234,14 @@ class BleResourceGroup : public ResourceGroup {
 
   TokenResourceMap token_resource_map;
 
-  Mutex* mutex() {
+  Mutex* mutex() const {
     return mutex_;
   }
 
  private:
   /// A mutex protecting BLE operations.
   /// NimBLE has its own thread, and we use this mutex to coordinate operations.
-  Mutex* mutex_ = null;
+  Mutex* mutex_;
 };
 
 static BleResource* resource_for_token(void* o);
@@ -763,7 +763,7 @@ class BleCentralManagerResource : public BleCallbackResource {
  private:
   void delete_if_able() {
     if (marked_for_deletion_ && device_count_ == 0) {
-      delete(this);
+      delete this;
     }
   }
   void _on_discovery(const BleCallbackScope& scope, ble_gap_event* event);
@@ -1269,7 +1269,7 @@ static Object* convert_mbuf_to_heap_object(Process* process, const os_mbuf* mbuf
 }
 
 BleCallbackScope::BleCallbackScope()
-      : locker(BleAdapterResource::instance()->group()->mutex()) {}
+    : locker(BleAdapterResource::instance()->group()->mutex()) {}
 
 uint32_t BleResourceGroup::on_event(Resource* resource, word data, uint32_t state) {
   USE(resource);

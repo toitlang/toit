@@ -1341,10 +1341,6 @@ PRIMITIVE(clear_error) {
   return process->null_object();
 }
 
-PRIMITIVE(gc) {
-  FAIL(UNIMPLEMENTED);
-}
-
 PRIMITIVE(read_request_reply) {
   FAIL(UNIMPLEMENTED);
 }
