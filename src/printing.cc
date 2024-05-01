@@ -286,7 +286,7 @@ class ShortPrintVisitor : public PrintVisitor {
   }
 
   void visit_string(String* string) {
-    const int MAX = 1280;
+    const word MAX = 1280;
     if (!toplevel_) printer_->printf("\"");
     String::Bytes bytes(string);
     printer_->print_buffer(bytes.address(), Utils::min(bytes.length(), MAX));
