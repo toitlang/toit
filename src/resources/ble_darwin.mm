@@ -1348,7 +1348,15 @@ PRIMITIVE(clear_error) {
   return process->null_object();
 }
 
-PRIMITIVE(read_request_reply) {
+PRIMITIVE(toit_callback_init) {
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(toit_callback_deinit) {
+  FAIL(UNIMPLEMENTED);
+}
+
+PRIMITIVE(toit_callback_reply) {
   FAIL(UNIMPLEMENTED);
 }
 

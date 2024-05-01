@@ -82,11 +82,11 @@ main-peripheral --iteration/int:
   // The 'write' is sent to all subscribers.
   // The 'handle-read-request' is activated for each read-request.
 
-  task::
+  task --background=is-background::
     notify.handle-read-request:
       #['F', 'O', 'O']
 
-  task::
+  task --background=is-background::
     indicate.handle-read-request:
       #['B', 'A', 'R']
 

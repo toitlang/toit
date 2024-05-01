@@ -360,7 +360,7 @@ namespace toit {
   PRIMITIVE(advertise_start, 7)              \
   PRIMITIVE(advertise_stop, 1)               \
   PRIMITIVE(add_service, 2)                  \
-  PRIMITIVE(add_characteristic, 6)           \
+  PRIMITIVE(add_characteristic, 5)           \
   PRIMITIVE(add_descriptor, 5)               \
   PRIMITIVE(reserve_services, 2)             \
   PRIMITIVE(deploy_service, 2)               \
@@ -372,8 +372,10 @@ namespace toit {
   PRIMITIVE(set_preferred_mtu, 2)            \
   PRIMITIVE(get_error, 2)                    \
   PRIMITIVE(clear_error, 2)                  \
-  PRIMITIVE(read_request_reply, 2)           \
   PRIMITIVE(get_bonded_peers, 1)             \
+  PRIMITIVE(toit_callback_init, 3)           \
+  PRIMITIVE(toit_callback_deinit, 2)         \
+  PRIMITIVE(toit_callback_reply, 3)          \
 
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \
