@@ -133,7 +133,7 @@ class AdvertisementData:
     if name: size += 2 + name.size
     service-classes.do: | uuid/BleUuid |
       size += 2 + uuid.to-byte-array.size
-    if manufacturer-data.byte-size != 0: size += 2 + manufacturer-data.byte-size
+    if manufacturer-data.byte-size > 0: size += 2 + manufacturer-data.byte-size
     if size > 31 and check-size: throw "PACKET_SIZE_EXCEEDED"
 
 /**
