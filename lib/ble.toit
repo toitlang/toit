@@ -247,7 +247,7 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
   Automatically removes the characteristic from the list of discovered characteristics of
     the service.
   */
-  close_:
+  close_ -> none:
     descriptors := discovered-descriptors_
     discovered-descriptors_ = []
     descriptors.do: | descriptor/RemoteDescriptor | descriptor.close_
