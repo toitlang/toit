@@ -81,12 +81,12 @@ inline bool Interpreter::typecheck_interface(Program* program,
                                              int interface_selector_index,
                                              bool is_nullable) const {
   if (is_nullable && value == program->null_object()) return true;
-  int selector_offset = program->interface_check_offsets[interface_selector_index];
+  word selector_offset = program->interface_check_offsets[interface_selector_index];
   Method target = program->find_method(value, selector_offset);
   return target.is_valid();
 }
 
-Method Program::find_method(Object* receiver, int offset) {
+Method Program::find_method(Object* receiver, word offset) {
   Smi* class_id = is_smi(receiver) ? smi_class_id() : HeapObject::cast(receiver)->class_id();
   int index = Smi::value(class_id) + offset;
   int entry_id = dispatch_table[index];
@@ -697,7 +697,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN_WITH_WIDE(INVOKE_VIRTUAL, stack_offset);
     Object* receiver = STACK_AT(stack_offset);
-    int selector_offset = Utils::read_unaligned_uint16(bcp + 2);
+    word selector_offset = Utils::read_unaligned_uint16(bcp + 2);
     Method target = program->find_method(receiver, selector_offset);
     if (!target.is_valid()) {
       PUSH(receiver);
@@ -709,7 +709,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_GET);
     Object* receiver = STACK_AT(0);
-    unsigned offset = Utils::read_unaligned_uint16(bcp + 1);
+    word offset = Utils::read_unaligned_uint16(bcp + 1);
     Method target = program->find_method(receiver, offset);
     if (!target.is_valid()) {
       PUSH(receiver);
@@ -741,7 +741,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_SET);
     Object* receiver = STACK_AT(1);
-    unsigned offset = Utils::read_unaligned_uint16(bcp + 1);
+    word offset = Utils::read_unaligned_uint16(bcp + 1);
     Method target = program->find_method(receiver, offset);
     if (!target.is_valid()) {
       PUSH(receiver);

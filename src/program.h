@@ -147,7 +147,7 @@ class Program : public FlashAllocation {
   }
 
   // Implementation is located in interpreter_run.cc
-  inline Method find_method(Object* receiver, int offset);
+  inline Method find_method(Object* receiver, word offset);
 
   static const int CLASS_TAG_MASK = (1 << HeapObject::CLASS_TAG_BIT_SIZE) - 1;
   static const int INSTANCE_SIZE_BIT_SIZE = 16 - HeapObject::CLASS_ID_OFFSET;
@@ -330,7 +330,7 @@ class Program : public FlashAllocation {
     return (instance_byte_size << HeapObject::CLASS_ID_OFFSET) | tag;
   }
 
-  void set_invoke_bytecode_offset(Opcode opcode, int offset) {
+  void set_invoke_bytecode_offset(Opcode opcode, word offset) {
     ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_SIZE);
     invoke_bytecode_offsets_[opcode - INVOKE_EQ] = offset;
   }

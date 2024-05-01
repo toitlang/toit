@@ -107,7 +107,7 @@ HeapObject* ScavengeVisitor::clone_into_space(Program* program, HeapObject* orig
   return target;
 }
 
-void ScavengeVisitor::do_roots(Object** start, int count) {
+void ScavengeVisitor::do_roots(Object** start, word count) {
   Object** end = start + count;
   for (Object** p = start; p < end; p++) {
     if (!in_from_space(*p)) continue;

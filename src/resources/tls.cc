@@ -106,10 +106,10 @@ int BaseMbedTlsSocket::add_root_certificate(X509Certificate* cert) {
   return 0;
 }
 
-uint32 BaseMbedTlsSocket::hash_subject(uint8* buffer, int length) {
+uint32 BaseMbedTlsSocket::hash_subject(uint8* buffer, word length) {
   // Matching should be case independent for ASCII strings, so lets just zap
   // all the 0x20 bits, since we are just doing a fuzzy match.
-  for (int i = 0; i < length; i++) buffer[i] |= 0x20;
+  for (word i = 0; i < length; i++) buffer[i] |= 0x20;
   return Utils::crc32(0xce77509, buffer, length);
 }
 

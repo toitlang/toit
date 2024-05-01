@@ -573,7 +573,7 @@ PRIMITIVE(draw_text) {
   // the bottom, the least significant at the top.  Y coordinates are 0 at the
   // top.
   if (byte_array_width < 1) FAIL(OUT_OF_BOUNDS);
-  int byte_array_height = bytes.length() / byte_array_width;
+  word byte_array_height = bytes.length() / byte_array_width;
   if (byte_array_height * byte_array_width != bytes.length()) FAIL(OUT_OF_BOUNDS);
   byte_array_height <<= 3;  // Height in pixels, not bytes.
   if (!(0 <= orientation && orientation <= 3)) FAIL(INVALID_ARGUMENT);
@@ -719,7 +719,7 @@ PRIMITIVE(draw_bitmap) {
   // Bytewise output:
   //   The byte array is arranged as n rows, each byte_array_width long.
   if (byte_array_width < 1) FAIL(OUT_OF_BOUNDS);
-  int byte_array_height = bytes.length() / byte_array_width;
+  word byte_array_height = bytes.length() / byte_array_width;
   if (byte_array_height * byte_array_width != bytes.length()) FAIL(OUT_OF_BOUNDS);
   if (!bytewise_output) {
     byte_array_height <<= 3;  // Height in pixels, not bytes.
@@ -730,7 +730,7 @@ PRIMITIVE(draw_bitmap) {
   int bytes_per_line = (bitmap_width + 7) >> 3;
   if (bitmap_offset < 0) FAIL(OUT_OF_BOUNDS);
   if (bitmap_width < 1 || bitmap_stride < 1) FAIL(OUT_OF_BOUNDS);
-  int bitmap_height = (in_bytes.length() - bitmap_offset + bitmap_stride - bytes_per_line) / bitmap_stride;
+  word bitmap_height = (in_bytes.length() - bitmap_offset + bitmap_stride - bytes_per_line) / bitmap_stride;
   if (bitmap_height * bitmap_stride - bitmap_stride + bytes_per_line > in_bytes.length() - bitmap_offset) FAIL(OUT_OF_BOUNDS);
 
   if (!(0 <= orientation && orientation <= 3)) FAIL(INVALID_ARGUMENT);
@@ -791,14 +791,14 @@ PRIMITIVE(draw_bytemap) {
   // Both the input and output byte arrays are arranged as n rows, each byte_array_width long.
   if (byte_array_width < 1) FAIL(OUT_OF_BOUNDS);
 
-  int byte_array_height = bytes.length() / byte_array_width;
+  word byte_array_height = bytes.length() / byte_array_width;
   if (byte_array_height * byte_array_width != bytes.length()) FAIL(OUT_OF_BOUNDS);
 
   uint8* output_contents = bytes.address();
 
   if (pixels_per_line < 1) FAIL(OUT_OF_BOUNDS);
   if (source_line_stride < pixels_per_line) FAIL(OUT_OF_BOUNDS);
-  int bitmap_height = (in_bytes.length() + source_line_stride - pixels_per_line) / source_line_stride;
+  word bitmap_height = (in_bytes.length() + source_line_stride - pixels_per_line) / source_line_stride;
   if (bitmap_height * source_line_stride - source_line_stride + pixels_per_line > in_bytes.length()) FAIL(OUT_OF_BOUNDS);
 
   if (!(0 <= orientation && orientation <= 3)) FAIL(INVALID_ARGUMENT);
@@ -808,7 +808,7 @@ PRIMITIVE(draw_bytemap) {
   const uint8* alpha_map;
   word alpha_length;
   if (is_smi(transparent_color)) {
-    int index = Smi::value(transparent_color);
+    word index = Smi::value(transparent_color);
     if (!(-1 <= index && index < 256)) FAIL(INVALID_ARGUMENT);
     memset(stack_alpha_map, 0xff, sizeof(stack_alpha_map));
     if (index != -1) stack_alpha_map[index] = 0;
@@ -874,7 +874,7 @@ PRIMITIVE(byte_draw_text) {
   ARGS(int, x_base, int, y_base, int, color, int, orientation, StringOrSlice, string, Font, font, MutableBlob, bytes, int, byte_array_width);
   // The byte array is arranged as n columns, each byte_array_width long.
   if (byte_array_width < 1) FAIL(OUT_OF_BOUNDS);
-  int byte_array_height = bytes.length() / byte_array_width;
+  word byte_array_height = bytes.length() / byte_array_width;
   if (byte_array_height * byte_array_width != bytes.length()) FAIL(OUT_OF_BOUNDS);
 
   if (!(0 <= orientation && orientation <= 3)) FAIL(INVALID_ARGUMENT);
@@ -901,7 +901,7 @@ PRIMITIVE(rectangle) {
 #else
   ARGS(int, x_base, int, y_base, int, color, int, width, int, height, MutableBlob, bytes, int, byte_array_width);
   if (byte_array_width < 1) FAIL(OUT_OF_BOUNDS);
-  int byte_array_height = bytes.length() / byte_array_width;
+  word byte_array_height = bytes.length() / byte_array_width;
   if (byte_array_height * byte_array_width != bytes.length()) FAIL(OUT_OF_BOUNDS);
   byte_array_height <<= 3;  // Height in pixels, not bytes.
   if (width < 0 || height < 0) FAIL(OUT_OF_RANGE);
@@ -963,7 +963,7 @@ PRIMITIVE(byte_rectangle) {
 #else
   ARGS(int, x_base, int, y_base, int, color, int, width, int, height, MutableBlob, bytes, int, byte_array_width);
   if (byte_array_width < 1) FAIL(OUT_OF_BOUNDS);
-  int byte_array_height = bytes.length() / byte_array_width;
+  word byte_array_height = bytes.length() / byte_array_width;
   if (byte_array_height * byte_array_width != bytes.length()) FAIL(OUT_OF_BOUNDS);
   if (width < 0 || height < 0) FAIL(OUT_OF_RANGE);
   static const int TOO_BIG = 0x8000000;
@@ -1024,7 +1024,7 @@ PRIMITIVE(bytemap_blur) {
   ARGS(MutableBlob, bytes, int, width, int, x_blur_radius, int, y_blur_radius);
   uint8* image = bytes.address();
   if (width < 1) FAIL(OUT_OF_BOUNDS);
-  int height = bytes.length() / width;
+  word height = bytes.length() / width;
   if (height * width != bytes.length()) FAIL(OUT_OF_BOUNDS);
   if (x_blur_radius < 2 && y_blur_radius < 2) return process->null_object();
   if (x_blur_radius < 0 || y_blur_radius < 0) FAIL(INVALID_ARGUMENT);
@@ -1085,7 +1085,8 @@ PRIMITIVE(bytemap_blur) {
         if (y - BUFFER_SIZE >= 0) image[x + (y - BUFFER_SIZE) * width] = buffer[y & BUFFER_MASK];
         buffer[y & BUFFER_MASK] = sum;
       }
-      int y = Utils::max(0, height + 1 - y_blur_radius - BUFFER_SIZE);
+      word zero = 0;
+      word y = Utils::max(zero, height + 1 - y_blur_radius - BUFFER_SIZE);
       for (int image_index = x + y * width; y <= height - y_blur_radius; y++) {
         image[image_index] = buffer[y & BUFFER_MASK];
         image_index += width;
@@ -1113,13 +1114,13 @@ PRIMITIVE(composit) {
 #endif
 
   uint8* dest_address = dest_bytes.address();
-  int dest_length = dest_bytes.length();
+  word dest_length = dest_bytes.length();
 
   // The frame opacity/transparency can be either an alpha map or a single opacity value.
   bool frame_opacity_lookup;
   int frame_opacity = 0;
   const uint8* frame_opacity_bytes = frame_opacity_object.address();
-  int frame_opacity_length = frame_opacity_object.length();
+  word frame_opacity_length = frame_opacity_object.length();
   if (frame_opacity_length == 1) {
     frame_opacity_lookup = false;
     frame_opacity = frame_opacity_bytes[0];
@@ -1132,7 +1133,7 @@ PRIMITIVE(composit) {
   bool painting_opacity_lookup;
   int painting_opacity = 0;
   const uint8* painting_opacity_bytes = painting_opacity_byte_array.address();
-  int painting_opacity_length = painting_opacity_byte_array.length();
+  word painting_opacity_length = painting_opacity_byte_array.length();
   if (painting_opacity_length == 1) {
     painting_opacity_lookup = false;
     painting_opacity = painting_opacity_bytes[0];
@@ -1144,7 +1145,7 @@ PRIMITIVE(composit) {
   // Unless the frame is totally transparent (opacity 0) we need some frame
   // pixels to mix in.
   const uint8* frame_pixels;
-  int frame_length;
+  word frame_length;
   if (!frame->byte_content(process->program(), &frame_pixels, &frame_length, STRINGS_OR_BYTE_ARRAYS)) {
     if (frame_opacity != 0) FAIL(WRONG_OBJECT_TYPE);
   } else {
@@ -1152,13 +1153,13 @@ PRIMITIVE(composit) {
   }
 
   const uint8* painting_pixels = painting.address();
-  int painting_length = painting.length();
+  word painting_length = painting.length();
   // The painting (window contents) must always be in the form of pixels.
   if (painting_length != dest_length) FAIL(OUT_OF_BOUNDS);
 
   if (bit) {
     // Bit version.  The images and opacities are all in a 1-bit-per-pixel format.
-    for (int i = 0; i < dest_length; i++) {
+    for (word i = 0; i < dest_length; i++) {
       int frame_mask = frame_opacity_lookup ? frame_opacity_bytes[i] : frame_opacity;
       int painting_mask = painting_opacity_lookup ? painting_opacity_bytes[i] : painting_opacity;
       if (painting_mask == 0xff) {
@@ -1177,7 +1178,7 @@ PRIMITIVE(composit) {
     }
   } else {
     // Byte version.  Opacities are 0-255 and pixels are also bytes.
-    for (int i = 0; i < dest_length; i++) {
+    for (word i = 0; i < dest_length; i++) {
       int frame_factor = frame_opacity_lookup ? frame_opacity_bytes[i] : frame_opacity;
       int painting_factor = painting_opacity_lookup ? painting_opacity_bytes[i] : painting_opacity;
       if (painting_factor == 0xff) {

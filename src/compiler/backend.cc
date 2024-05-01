@@ -173,7 +173,7 @@ Program* Backend::emit(ir::Program* ir_program) {
 
   DispatchTable dispatch_table = DispatchTable::build(ir_program);
 
-  dispatch_table.for_each_selector_offset([&](DispatchSelector selector, int offset) {
+  dispatch_table.for_each_selector_offset([&](DispatchSelector selector, word offset) {
     source_mapper()->register_selector_offset(offset, selector.name().c_str());
   });
 

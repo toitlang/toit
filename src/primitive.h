@@ -1229,7 +1229,7 @@ class Primitive {
   // Allocates or returns allocation failure.
   static Object* allocate_double(double value, Process* process);
   static Object* allocate_large_integer(int64 value, Process* process);
-  static Object* allocate_array(int length, Object* filler, Process* process);
+  static Object* allocate_array(word length, Object* filler, Process* process);
 
   static Object* integer(int64 value, Process* process) {
     if (Smi::is_valid(value)) return Smi::from((word) value);

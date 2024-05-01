@@ -135,7 +135,7 @@ void ProgramBuilder::push_lazy_initializer_id(int id) {
   push(lazy_initializer);
 }
 
-int ProgramBuilder::create_method(int selector_offset,
+int ProgramBuilder::create_method(word selector_offset,
                                   bool is_field_accessor,
                                   int arity,
                                   List<uint8> bytecodes,

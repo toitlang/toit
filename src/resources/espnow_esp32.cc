@@ -54,7 +54,7 @@ class SpinLocker {
 };
 
 struct Datagram {
-  int len;
+  word len;
   uint8 mac[6];
   uint8 buffer[ESPNOW_RX_DATAGRAM_LEN_MAX];
 };

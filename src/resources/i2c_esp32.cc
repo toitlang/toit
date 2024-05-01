@@ -128,7 +128,7 @@ PRIMITIVE(close) {
 static Object* write_i2c(Process* process, I2cResourceGroup* i2c, int i2c_address, const uint8* address, int address_length, Blob buffer) {
 
   const uint8* data = buffer.address();
-  int length = buffer.length();
+  word length = buffer.length();
   if (!esp_ptr_internal(data)) {
     // Copy buffer to malloc heap, if the buffer is not in memory.
     uint8* copy = unvoid_cast<uint8*>(malloc(length));
@@ -181,7 +181,7 @@ static Object* write_i2c(Process* process, I2cResourceGroup* i2c, int i2c_addres
   return process->null_object();
 }
 
-static Object* read_i2c(Process* process, I2cResourceGroup* i2c, int i2c_address, const uint8* address, int address_length, int length) {
+static Object* read_i2c(Process* process, I2cResourceGroup* i2c, int i2c_address, const uint8* address, int address_length, word length) {
   ByteArray* array = process->allocate_byte_array(length);
   if (array == null) FAIL(ALLOCATION_FAILED);
   uint8* data = ByteArray::Bytes(array).address();

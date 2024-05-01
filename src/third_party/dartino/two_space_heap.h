@@ -92,7 +92,7 @@ class TwoSpaceHeap {
   }
 
   // Returns the number of bytes allocated in the space.
-  int used() const { return old_space_.used() + semi_space_.used(); }
+  word used() const { return old_space_.used() + semi_space_.used(); }
 
   HeapObject* new_space_allocation_failure(uword size);
 
@@ -168,7 +168,7 @@ class ScavengeVisitor : public RootCallback {
     return reinterpret_cast<uword>(object) - to_start_ < to_size_;
   }
 
-  virtual void do_roots(Object** start, int count);
+  virtual void do_roots(Object** start, word count);
 
   bool trigger_old_space_gc() { return trigger_old_space_gc_; }
 

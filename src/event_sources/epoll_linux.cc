@@ -35,10 +35,10 @@ enum {
   kRemove,
 };
 
-bool write_full(int fd, uint8_t* data, int length) {
-  int offset = 0;
+bool write_full(int fd, uint8_t* data, word length) {
+  word offset = 0;
   while (offset < length) {
-    int wrote = write(fd, data + offset, length - offset);
+    word wrote = write(fd, data + offset, length - offset);
     if (wrote < 0 && errno != EINTR) {
       return false;
     }
@@ -47,10 +47,10 @@ bool write_full(int fd, uint8_t* data, int length) {
   return true;
 }
 
-bool read_full(int fd, uint8_t* data, int length) {
-  int offset = 0;
+bool read_full(int fd, uint8_t* data, word length) {
+  word offset = 0;
   while (offset < length) {
-    int wrote = read(fd, data + offset, length - offset);
+    word wrote = read(fd, data + offset, length - offset);
     if (wrote < 0 && errno != EINTR) {
       return false;
     }
