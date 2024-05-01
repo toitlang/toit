@@ -855,6 +855,11 @@ class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManage
   ble_gap_adv_params& advertising_params() { return advertising_params_; }
 
   static int on_gap(struct ble_gap_event* event, void* arg) {
+    // NimBLE sends the notify/indicate transmission events synchronously from the
+    // non-NimBLE stack. We thus can't take the lock here.
+    // Since we don't use NOTIFY_TX events anyway, we just drop them.
+    if (event->type == BLE_GAP_EVENT_NOTIFY_TX) return BLE_ERR_SUCCESS;
+
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
