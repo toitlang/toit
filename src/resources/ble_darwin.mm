@@ -1241,8 +1241,13 @@ PRIMITIVE(handle) {
   FAIL(UNIMPLEMENTED);
 }
 
+PRIMITIVE(reserve_services) {
+  // Nothing to be done on this platform.
+  return process->null_object();
+}
+
 PRIMITIVE(deploy_service) {
-  ARGS(BleServiceResource, service_resource);
+  ARGS(BleServiceResource, service_resource, int, index);
 
   if (!service_resource->peripheral_manager()) FAIL(INVALID_ARGUMENT);
   if (service_resource->deployed()) FAIL(INVALID_ARGUMENT);
