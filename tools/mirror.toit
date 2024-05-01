@@ -95,6 +95,7 @@ class Instance extends Mirror:
     return false
 
   stringify -> string:
+    if not program: return "instance of class $class-id"
     class-name := program.class-name-for class-id
     return "$((is-vowel class-name[0]) ? "an" : "a") $class-name"
 
