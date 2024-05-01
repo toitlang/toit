@@ -569,6 +569,9 @@ class BleAdapterResource;
 class BleRemoteDeviceResource;
 class BlePeripheralManagerResource;
 
+/// A service.
+/// This class is used for remote services, and local services. If it is a remote service,
+/// then the device_ field is set; otherwise the peripheral_manager_.
 class BleServiceResource:
     public BleCallbackResource, public ServiceResourceList::Element, public DiscoverableResource {
  private:
@@ -616,12 +619,17 @@ class BleServiceResource:
     characteristics_.unlink(characteristic);
   }
 
-  void clear_characteristics() {
-    while (!characteristics_.is_empty()) {
-      auto characteristic = characteristics_.first();
-      // Unregistering the characteristic will remove it from the list.
+  /// Clears services that have not yet been returned to the user.
+  /// During discovery, the 'services_' list is used to store newly discovered
+  /// services. As long as their 'returned' state is not set, they don't have a proxy
+  /// yet.
+  /// This can only happen for remote characteristics (when the 'device_' field is set).
+  void clear_pending_characteristics() {
+    characteristics_.remove_wherever([&](BleCharacteristicResource* characteristic) -> bool {
+      if (characteristic->is_returned()) return false;
       group()->unregister_resource(characteristic);
-    }
+      return true;
+    });
   }
 
   bool deployed() const { return gatt_svcs_ != null; }
@@ -702,8 +710,12 @@ class BleCentralManagerResource : public BleCallbackResource {
 
   explicit BleCentralManagerResource(BleResourceGroup* group, BleAdapterResource* adapter)
       : BleCallbackResource(group, CENTRAL_MANAGER)
-      , adapter_(adapter) {}
+      , adapter_(adapter)
+      , marked_for_deletion_(false) {}
 
+  /// Deletes the central manager resource.
+  /// The resource may only get deleted when all children (devices) have been
+  /// deleted as well.
   ~BleCentralManagerResource() override;
 
   static bool is_scanning() { return ble_gap_disc_active(); }
@@ -731,12 +743,36 @@ class BleCentralManagerResource : public BleCallbackResource {
 
   void decrease_device_count() {
     device_count_--;
+    delete_if_able();
+  }
+
+  /// Deletes this instance if no children are alive anymore.
+  /// Otherwise marks this instance as deletable. Once all children are deleted
+  /// we can then safely delete this instance as well.
+  /// Relies on the fact that all children unregister themselves in their destructor.
+  /// See 'delete_if_able'.
+  void make_deletable() override {
+    marked_for_deletion_ = true;
+    delete_if_able();
   }
 
  private:
+  void delete_if_able() {
+    if (marked_for_deletion_ && device_count_ == 0) {
+      delete this;
+    }
+  }
   void _on_discovery(const BleCallbackScope& scope, ble_gap_event* event);
   BleAdapterResource* adapter_;
   int device_count_ = 0;
+  /// If true, then the central manager was closed, but wasn't deleted yet, because children
+  /// are still alive.
+  /// It will delete itself once all children have unregistered themselves.
+  /// See 'delete_if_able'.
+  bool marked_for_deletion_;
+  /// A list of peripherals that have been discovered but that haven't been reported
+  /// to the Toit program yet. These peripherals don't have any resources associated with
+  /// them yet.
   DiscoveredPeripheralList newly_discovered_peripherals_;
 };
 
@@ -746,16 +782,9 @@ class ServiceContainer : public BleCallbackResource {
   ServiceContainer(BleResourceGroup* group, Kind kind)
       : BleCallbackResource(group, kind) {}
 
-  ~ServiceContainer() override {
-    while (!services_.is_empty()) {
-      auto service = services_.first();
-      // Unregistering the service will remove it from the list.
-      group()->unregister_resource(service);
-    }
-  }
-
   void remove_service(BleServiceResource* service) {
     services_.unlink(service);
+    delete_if_able();
   }
 
   virtual T* type() = 0;
@@ -764,13 +793,24 @@ class ServiceContainer : public BleCallbackResource {
                                                      const ble_uuid_any_t& uuid, uint16 start, uint16 end);
   ServiceResourceList& services() { return services_; }
 
-  void clear_services() {
-    while (!services_.is_empty()) {
-      auto service = services_.first();
-      // Unregistering the service will remove it from the list.
+  /// Clears services that have not yet been returned to the user.
+  /// During discovery, the 'services_' list is used to store newly discovered
+  /// services. As long as their 'returned' state is not set, they don't have a proxy
+  /// yet.
+  /// This can only happen if the 'type()/T' is a BleRemoteDevice.
+  void clear_pending_services() {
+    services_.remove_wherever([&](BleServiceResource* service) -> bool {
+      if (service->is_returned()) return false;
       group()->unregister_resource(service);
-    }
+      return true;
+    });
   }
+
+ protected:
+  bool has_services() {
+    return !services_.is_empty();
+  }
+  virtual void delete_if_able() = 0;
 
  private:
   ServiceResourceList services_;
@@ -783,12 +823,25 @@ class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManage
       : ServiceContainer(group, PERIPHERAL_MANAGER)
       , adapter_(adapter)
       , advertising_params_({})
-      , advertising_started_(false) {}
+      , advertising_started_(false)
+      , marked_for_deletion_(false) {}
 
+  /// Deletes the peripheral manager resource.
+  /// The resource may only get deleted when all children (services) have been
+  /// deleted as well.
   ~BlePeripheralManagerResource() override;
 
   BlePeripheralManagerResource* type() override { return this; }
 
+  void stop() {
+    if (is_advertising()) {
+      ble_gap_adv_stop();
+    }
+  }
+
+  /// Whether advertising has been started by the user.
+  /// The NimBLE stack stops advertising when a connection event occurs.
+  /// For consistency with other platforms we restart the advertisement in such a case.
   bool advertising_started() const { return advertising_started_; }
   void set_advertising_started(bool advertising_started)  { advertising_started_ = advertising_started; }
 
@@ -803,11 +856,31 @@ class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManage
   }
   static bool is_advertising() { return ble_gap_adv_active(); }
 
+  /// Deletes this instance if no children (services) are alive anymore.
+  /// Otherwise marks this instance as deletable. Once all children are deleted
+  /// we can then safely delete this instance as well.
+  /// Relies on the fact that all children unregister themselves in their destructor.
+  /// See 'delete_if_able'.
+  void make_deletable() override {
+    marked_for_deletion_ = true;
+    stop();  // Always stop our activity, even if we can't fully shut down yet.
+    delete_if_able();
+  }
+
+ protected:
+  void delete_if_able() override {
+    if (marked_for_deletion_ && !has_services()) {
+      delete this;
+    }
+  }
+
  private:
   int _on_gap(const BleCallbackScope& scope, struct ble_gap_event* event);
+
   BleAdapterResource* adapter_;
   ble_gap_adv_params advertising_params_;
   bool advertising_started_;
+  bool marked_for_deletion_;
 };
 
 class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource> {
@@ -818,7 +891,7 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
       , central_manager_(central_manager)
       , handle_(kInvalidHandle)
       , secure_connection_(secure_connection)
-      , connected_(false) {
+      , state_(DISCONNECTED) {
     central_manager_->increase_device_count();
   }
 
@@ -834,7 +907,9 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
     if (resource == null) return BLE_ERR_SUCCESS;
-    static_cast<BleRemoteDeviceResource*>(resource)->_on_event(scope, event);
+    auto device = static_cast<BleRemoteDeviceResource*>(resource);
+    if (device->state_ == DELETABLE) return BLE_ERR_SUCCESS;
+    device->_on_event(scope, event);
     return BLE_ERR_SUCCESS;
   }
 
@@ -846,7 +921,9 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
     if (resource == null) return BLE_ERR_SUCCESS;
-    static_cast<BleRemoteDeviceResource*>(resource)->_on_service_discovered(scope, error, service);
+    auto device = static_cast<BleRemoteDeviceResource*>(resource);
+    if (device->state_ == DELETABLE) return BLE_ERR_SUCCESS;
+    device->_on_service_discovered(scope, error, service);
     return BLE_ERR_SUCCESS;
   }
 
@@ -854,34 +931,81 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   void set_handle(uint16 handle) { handle_ = handle; }
 
   int connect(uint8 own_addr_type, ble_addr_t* addr) {
-    if (connected_) return BLE_ERR_SUCCESS;
+    if (state_ == DELETABLE) return BLE_ERR_SUCCESS;  // Should never happen.
     // The 'connect' primitive ensured that the token is set.
+    // NimBLE reports descriptive errors if we are already connecting or in another
+    // bad state.
     int err = ble_gap_connect(own_addr_type, addr, 3000, null,
                               BleRemoteDeviceResource::on_event, token());
     if (err == BLE_ERR_SUCCESS) {
-      connected_ = true;
+      state_ = CONNECTING;
     }
     return err;
   }
 
-  void disconnect() {
-    if (connected_) {
-      ble_gap_terminate(handle_, BLE_ERR_REM_USER_CONN_TERM);
+  int disconnect() {
+    // Just try to disconnect, independently of the state we are currently in.
+    int err = ble_gap_terminate(handle_, BLE_ERR_REM_USER_CONN_TERM);
+    if (err == BLE_HS_ENOTCONN || (err & 0xFF) == BLE_ERR_CMD_DISALLOWED) {
+      // We weren't actually connected.
+      switch_to_state(DISCONNECTED);
+      return BLE_ERR_SUCCESS;
     }
+    return err;
   }
 
   uint16 get_mtu() {
     return ble_att_mtu(handle());
   }
 
+  /// Deletes this instance if no children (services) are alive anymore.
+  /// Otherwise marks this instance as deletable. Once all children are deleted
+  /// we can then safely delete this instance as well.
+  /// Relies on the fact that all children unregister themselves in their destructor.
+  /// See 'delete_if_able'.
+  void make_deletable() override {
+    state_ = DELETABLE;
+    // Clears all services that haven't been given to the user yet.
+    // We must be careful not to add new pending services, as there would be nothing
+    // deleting them anymore.
+    clear_pending_services();
+    delete_if_able();
+  }
+
+  /// Whether this device is active.
+  /// We ignore new services,... if we are not in an active state.
+  bool is_connected() const {
+    return state_ == CONNECTED;
+  }
+
+ protected:
+  void delete_if_able() override {
+    if (state_ == DELETABLE && !has_services()) {
+      delete this;
+    }
+  }
+
  private:
+  enum State {
+    CONNECTING,
+    CONNECTED,
+    DISCONNECTING,
+    DISCONNECTED,
+    DELETABLE,
+  };
   void _on_event(const BleCallbackScope& scope, ble_gap_event* event);
   void _on_service_discovered(const BleCallbackScope& scope, const ble_gatt_error* error, const ble_gatt_svc* service);
+
+  void switch_to_state(State new_state) {
+    // Once we are marked for deletion, we don't care for any new state transitions anymore.
+    if (state_ == DELETABLE) return;
+    state_ = new_state;
+  }
 
   BleCentralManagerResource* central_manager_;
   uint16 handle_;
   bool secure_connection_;
-  bool connected_;
+  State state_;
 };
 
 // The thread on the BleAdapterResource is responsible for running the nimble background thread.
@@ -910,31 +1034,12 @@ class BleAdapterResource : public BleResource, public Thread {
     spawn(CONFIG_NIMBLE_TASK_STACK_SIZE);
   }
 
-
+  /// Deletes the adapter resource.
+  /// The resource may only get deleted when all children (central_manager and peripheral_manager)
+  /// have been deleted as well.
   ~BleAdapterResource() override {
-    close();
-
-    if (central_manager_) {
-      // Unregistering the central manager will clear the field.
-      group()->unregister_resource(central_manager_);
-    }
-    if (peripheral_manager_) {
-      // Unregistering the peripheral manager will clear the field.
-      group()->unregister_resource(peripheral_manager_);
-    }
-
+    ASSERT(central_manager_ == null && peripheral_manager_ == null);
     group()->token_resource_map.compact();
-    instance_ = null;
-  }
-
-  // This function must be called without the ble-lock.
-  void close() {
-    if (is_closed()) return;
-
-    // Closes the adapter.
-    // Contrary to almost all functions we are not running with the BLE lock yet.
-
-    state_ = CLOSED;
 
     // The `nimble_port_stop` will potentially post an event on the
     // toit-thread. However, contrary to all other callbacks, it will
@@ -952,6 +1057,18 @@ class BleAdapterResource : public BleResource, public Thread {
     ble_mutex = null;
 
     ble_pool.put(id_);
+
+    instance_ = null;
+  }
+
+  /// Deletes this instance if no children are alive anymore.
+  /// Otherwise marks this instance as deletable. Once all children are deleted
+  /// we can then safely delete this instance as well.
+  /// Relies on the fact that all children unregister themselves in their destructor.
+  /// See 'delete_if_able'.
+  void make_deletable() override {
+    state_ = CLOSED;
+    delete_if_able();
   }
 
   bool is_closed() const {
@@ -980,6 +1097,7 @@ class BleAdapterResource : public BleResource, public Thread {
   void remove_central_manager(BleCentralManagerResource* manager) {
     ASSERT(central_manager_ == manager);
     central_manager_ = null;
+    delete_if_able();
   }
 
   BlePeripheralManagerResource* peripheral_manager() {
@@ -991,6 +1109,7 @@ class BleAdapterResource : public BleResource, public Thread {
   void remove_peripheral_manager(BlePeripheralManagerResource* manager) {
     ASSERT(peripheral_manager_ == manager);
     peripheral_manager_ = null;
+    delete_if_able();
   }
 
   /// Callback from the NimBLE thread when the underlying system has been initialized.
@@ -1009,8 +1128,14 @@ class BleAdapterResource : public BleResource, public Thread {
 
  private:
   enum State {
+    /// The adapter has been created, but the underlying system hasn't synchronized yet.
+    /// At this stage most BLE calls wouldn't work.
     CREATED,
+    /// The system has been initialized and can be used.
     ACTIVE,
+    /// The adapter was closed, but wasn't deleted yet, because children are still alive.
+    /// It will delete itself once all children have unregistered themselves.
+    /// See 'delete_if_able'.
     CLOSED,
   };
   int id_;
@@ -1019,6 +1144,12 @@ class BleAdapterResource : public BleResource, public Thread {
   BlePeripheralManagerResource* peripheral_manager_;
 
   static BleAdapterResource* instance_;
+
+  void delete_if_able() {
+    if (state_ == CLOSED && central_manager_ == null && peripheral_manager_ == null) {
+      delete this;
+    }
+  }
 };
 
 // There can be only one active BleAdapterResource. This reference will be
@@ -1173,7 +1304,10 @@ uint16 BleCharacteristicResource::get_mtu() {
 }
 
 BleServiceResource::~BleServiceResource() {
-  clear_characteristics();
+  // TODO(florian): this is completely wrong: the gatt_svcs_ must be kept alive
+  // as long as the gatt server is running. Since there isn't any way to
+  // stop the gatt server, this means that the data should be stored on the adapter.
+  // Only when that one shuts down can we dispose of the data.
   if (deployed()) dispose_gatt_svcs(gatt_svcs_);
   if (peripheral_manager_ != null) {
     peripheral_manager_->remove_service(this);
@@ -1215,18 +1349,21 @@ void
 BleServiceResource::_on_characteristic_discovered(const BleCallbackScope& scope, const struct ble_gatt_error* error, const struct ble_gatt_chr* chr) {
   switch (error->status) {
     case 0: {
+      if (has_malloc_error()) return;
+
       auto ble_characteristic =
           get_or_create_characteristics_resource(&scope,
                                                  chr->uuid, chr->properties, chr->def_handle,
                                                  chr->val_handle);
       if (!ble_characteristic) {
         set_malloc_error(true);
+        clear_pending_characteristics();
       }
       break;
     }
     case BLE_HS_EDONE: // No more characteristics can be discovered.
       if (has_malloc_error()) {
-        clear_characteristics();
+        clear_pending_characteristics();
         BleEventSource::instance()->on_event(this, kBleMallocFailed);
       } else {
         ble_gattc_disc_all_dscs(device()->handle(),
@@ -1237,7 +1374,7 @@ BleServiceResource::_on_characteristic_discovered(const BleCallbackScope& scope,
       }
       break;
     default:
-      clear_characteristics();
+      clear_pending_characteristics();
       if (has_malloc_error()) {
         BleEventSource::instance()->on_event(this, kBleMallocFailed);
       } else {
@@ -1332,9 +1469,7 @@ void BleCentralManagerResource::_on_discovery(const BleCallbackScope& scope, ble
 }
 
 BlePeripheralManagerResource::~BlePeripheralManagerResource() {
-  if (is_advertising()) {
-    FATAL_IF_NOT_ESP_OK(ble_gap_adv_stop());
-  }
+  stop();
   adapter_->remove_peripheral_manager(this);
   group()->token_resource_map.compact();
 }
@@ -1347,12 +1482,15 @@ void BleRemoteDeviceResource::_on_event(const BleCallbackScope& scope, ble_gap_e
         set_handle(event->connect.conn_handle);
         // TODO(mikkel): Expose this as a primitive.
         ble_gattc_exchange_mtu(event->connect.conn_handle, null, null);
+        switch_to_state(CONNECTED);
       } else {
         BleEventSource::instance()->on_event(this, kBleConnectFailed);
+        switch_to_state(DISCONNECTED);
       }
       break;
     case BLE_GAP_EVENT_DISCONNECT:
       BleEventSource::instance()->on_event(this, kBleDisconnected);
+      switch_to_state(DISCONNECTED);
       break;
     case BLE_GAP_EVENT_NOTIFY_RX:
       // Notify/indicate update.
@@ -1374,11 +1512,13 @@ void BleRemoteDeviceResource::_on_event(const BleCallbackScope& scope, ble_gap_e
         ble_gap_security_initiate(event->mtu.conn_handle);
       } else {
         BleEventSource::instance()->on_event(this, kBleConnected);
+        switch_to_state(CONNECTED);
       }
       break;
     case BLE_GAP_EVENT_ENC_CHANGE:
       if (secure_connection_) {
         BleEventSource::instance()->on_event(this, kBleConnected);
+        switch_to_state(CONNECTED);
       }
       break;
   }
@@ -1387,22 +1527,27 @@ void BleRemoteDeviceResource::_on_event(const BleCallbackScope& scope, ble_gap_e
 void BleRemoteDeviceResource::_on_service_discovered(const BleCallbackScope& scope, const ble_gatt_error* error, const ble_gatt_svc* service) {
   switch (error->status) {
     case 0: {
-      auto ble_service = get_or_create_service_resource(&scope, service->uuid, service->start_handle, service->end_handle);
-      if (!ble_service) {
-        set_malloc_error(true);
+      if (has_malloc_error()) return;
+
+      if (is_connected()) {
+        auto ble_service = get_or_create_service_resource(&scope, service->uuid, service->start_handle, service->end_handle);
+        if (!ble_service) {
+          set_malloc_error(true);
+          clear_pending_services();
+        }
       }
       break;
     }
     case BLE_HS_EDONE: // No more services can be discovered.
       if (has_malloc_error()) {
-        clear_services();
+        clear_pending_services();
         BleEventSource::instance()->on_event(this, kBleMallocFailed);
       } else {
         BleEventSource::instance()->on_event(this, kBleServicesDiscovered);
       }
       break;
     default:
-      clear_services();
+      clear_pending_services();
       if (has_malloc_error()) {
         BleEventSource::instance()->on_event(this, kBleMallocFailed);
       } else {
@@ -2026,7 +2171,10 @@ PRIMITIVE(disconnect) {
 
   Locker locker(ble_mutex);
 
-  device->disconnect();
+  int err = device->disconnect();
+  if (err != BLE_ERR_SUCCESS) {
+    return nimble_stack_error(process, err);
+  }
   return process->null_object();
 }
 
@@ -2558,6 +2706,9 @@ PRIMITIVE(add_service) {
   BleServiceResource* service_resource =
       peripheral_manager->get_or_create_service_resource(null, ble_uuid, 0, 0);
   if (!service_resource) FAIL(MALLOC_FAILED);
+  // On the peripheral side, setting the "returned" value isn't strictly necessary,
+  // as all services are automatically returned. It is more consistent this way, though.
+  service_resource->set_returned(true);
 
   proxy->set_external_address(service_resource);
   return proxy;
@@ -2633,6 +2784,9 @@ PRIMITIVE(add_characteristic) {
       FAIL(MALLOC_FAILED);
     }
   }
+  // On the peripheral side, setting the "returned" value isn't strictly necessary,
+  // as all characteristics are automatically returned. It is more consistent this way, though.
+  characteristic->set_returned(true);
 
   proxy->set_external_address(characteristic);
   return proxy;
@@ -2660,6 +2814,7 @@ PRIMITIVE(add_descriptor) {
   if (permissions & 0x04) flags |= BLE_ATT_F_READ_ENC; // _ENC = Encrypted.
   if (permissions & 0x08) flags |= BLE_ATT_F_WRITE_ENC; // _ENC = Encrypted.
 
+  // TODO(florian): shouldn't we check that the descriptor doesn't exist yet?
   BleDescriptorResource* descriptor =
       characteristic->get_or_create_descriptor(null, ble_uuid, 0, flags);
   if (!descriptor) {
@@ -2668,6 +2823,10 @@ PRIMITIVE(add_descriptor) {
   }
 
   if (om != null) descriptor->set_mbuf_to_send(om);
+
+  // On the peripheral side, setting the "returned" value isn't strictly necessary,
+  // as all descriptors are automatically returned. It is more consistent this way, though.
+  descriptor->set_returned(true);
 
   proxy->set_external_address(descriptor);
   return proxy;
