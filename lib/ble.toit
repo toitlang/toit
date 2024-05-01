@@ -540,6 +540,8 @@ class LocalService extends Resource_ implements Attribute:
   characteristics_/List := []
 
   constructor .peripheral-manager .uuid:
+    if peripheral-manager.deployed_: throw "Peripheral is already deployed"
+    if (peripheral-manager.services_.any: it.uuid == uuid): throw "Service already exists"
     resource := ble-add-service_ peripheral-manager.resource_ uuid.encode-for-platform_
     super resource
 
@@ -575,7 +577,7 @@ class LocalService extends Resource_ implements Attribute:
   NOTE: Read callbacks are not supported in MacOS.
   When using read callbacks, the $read-timeout-ms specifies the time the callback function is allowed
     to use.
-  Throws if the service is already deployed.
+  The peripheral must not yet be deployed.
 
   See $add-indication-characteristic, $add-notification-characteristic, $add-read-only-characteristic,
     and $add-write-only-characteristic for convenience methods.
@@ -723,6 +725,8 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   descriptors_/List := []
 
   constructor .service .uuid .properties .permissions value/ByteArray? read-timeout-ms:
+    if service.peripheral-manager.deployed: throw "Peripheral is already deployed"
+    if (service.characteristics_.any: it.uuid == uuid): throw "Characteristic already exists"
     resource := ble-add-characteristic_ service.resource_ uuid.encode-for-platform_ properties permissions value read-timeout-ms
     super resource
 
@@ -790,10 +794,9 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   $permissions is one of the CHARACTERISTIC_PERMISSIONS_* values (see
     $CHARACTERISTIC-PERMISSION-READ and similar).
   if $value is specified, it is used as the initial value for the characteristic.
-  Throws if the service is already deployed.
+  The peripheral must not yet be deployed.
   */
   add-descriptor uuid/BleUuid properties/int permissions/int value/ByteArray?=null -> LocalDescriptor:
-    if service.deployed_: throw "Service is already deployed"
     return LocalDescriptor this uuid properties permissions value
 
   /**
@@ -813,6 +816,9 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
   properties/int
 
   constructor .characteristic .uuid .properties .permissions value:
+    service := characteristic.service
+    if service.peripheral-manager.deployed: throw "Peripheral is already deployed"
+    if (characteristic.descriptors_.any: it.uuid == uuid): throw "Descriptor already exists"
     resource :=  ble-add-descriptor_ characteristic.resource_ uuid.encode-for-platform_ properties permissions value
     super resource
 

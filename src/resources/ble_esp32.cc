@@ -29,6 +29,7 @@
 
 #include <esp_bt.h>
 #include <esp_coexist.h>
+#include <esp_log.h>
 #include <esp_nimble_hci.h>
 #include <nimble/nimble_port.h>
 #include <host/ble_hs.h>
@@ -507,15 +508,10 @@ class BleCharacteristicResource :
   uint16 properties() const { return properties_;  }
   uint16 definition_handle() const { return definition_handle_; }
 
+  BleDescriptorResource* get_descriptor(const ble_uuid_any_t& uuid);
   BleDescriptorResource* get_or_create_descriptor(const BleCallbackScope* scope,
                                                   const ble_uuid_any_t& uuid, uint16_t handle,
                                                   uint8 properties);
-
-  BleDescriptorResource* get_descriptor(const ble_uuid_any_t& uuid, uint16_t handle, uint8 properties);
-
-  BleDescriptorResource* get_descriptor(const ble_uuid_any_t& uuid) {
-    return get_descriptor(uuid, 0, 0);
-  }
 
   // Finds the Client Characteristic Configuration Descriptor.
   const BleDescriptorResource* find_cccd() {
@@ -608,7 +604,8 @@ class BleServiceResource:
 
   ~BleServiceResource() override;
 
-  BleCharacteristicResource* get_or_create_characteristics_resource(
+  BleCharacteristicResource* get_characteristic(const ble_uuid_any_t& uuid);
+  BleCharacteristicResource* get_or_create_characteristic(
       const BleCallbackScope* scope,
       const ble_uuid_any_t& uuid, uint16 properties, uint16 def_handle,
       uint16 value_handle);
@@ -795,9 +792,9 @@ class ServiceContainer : public BleCallbackResource {
   }
 
   virtual T* type() = 0;
-  BleServiceResource* get_service_resource(const ble_uuid_any_t& uuid, uint16 start, uint16 end);
-  BleServiceResource* get_or_create_service_resource(const BleCallbackScope* scope,
-                                                     const ble_uuid_any_t& uuid, uint16 start, uint16 end);
+  BleServiceResource* get_service(const ble_uuid_any_t& uuid);
+  BleServiceResource* get_or_create_service(const BleCallbackScope* scope,
+                                            const ble_uuid_any_t& uuid, uint16 start, uint16 end);
   ServiceResourceList& services() { return services_; }
 
   /// Clears services that have not yet been returned to the user.
@@ -1327,7 +1324,7 @@ BleServiceResource::~BleServiceResource() {
 
 template<typename T>
 BleServiceResource*
-ServiceContainer<T>::get_service_resource(const ble_uuid_any_t& uuid, uint16 start, uint16 end) {
+ServiceContainer<T>::get_service(const ble_uuid_any_t& uuid) {
   for (auto service : services_) {
     if (uuid_equals(uuid, service->uuid())) return service;
   }
@@ -1336,10 +1333,15 @@ ServiceContainer<T>::get_service_resource(const ble_uuid_any_t& uuid, uint16 sta
 
 template<typename T>
 BleServiceResource*
-ServiceContainer<T>::get_or_create_service_resource(const BleCallbackScope* scope,
-                                                    const ble_uuid_any_t& uuid, uint16 start, uint16 end) {
-  auto service = get_service_resource(uuid, start, end);
-  if (service) return service;
+ServiceContainer<T>::get_or_create_service(const BleCallbackScope* scope,
+                                           const ble_uuid_any_t& uuid, uint16 start, uint16 end) {
+  auto service = get_service(uuid);
+  if (service) {
+    if (service->start_handle() != start || service->end_handle() != end) {
+      ESP_LOGW("BLE", "Service changed handles");
+    }
+    return service;
+  }
   service = _new BleServiceResource(group(), type(), uuid, start,end);
   if (!service && scope) {
     // Since this method is called from the BLE event handler and there is no
@@ -1361,9 +1363,9 @@ BleServiceResource::_on_characteristic_discovered(const BleCallbackScope& scope,
       if (has_malloc_error()) return;
 
       auto ble_characteristic =
-          get_or_create_characteristics_resource(&scope,
-                                                 chr->uuid, chr->properties, chr->def_handle,
-                                                 chr->val_handle);
+          get_or_create_characteristic(&scope,
+                                       chr->uuid, chr->properties, chr->def_handle,
+                                       chr->val_handle);
       if (!ble_characteristic) {
         set_malloc_error(true);
         clear_pending_characteristics();
@@ -1395,11 +1397,26 @@ BleServiceResource::_on_characteristic_discovered(const BleCallbackScope& scope,
   }
 }
 
-BleCharacteristicResource* BleServiceResource::get_or_create_characteristics_resource(
+BleCharacteristicResource* BleServiceResource::get_characteristic(const ble_uuid_any_t& uuid) {
+  for (auto characteristic : characteristics_) {
+    if (uuid_equals(uuid, characteristic->uuid())) return characteristic;
+  }
+  return null;
+}
+
+BleCharacteristicResource* BleServiceResource::get_or_create_characteristic(
     const BleCallbackScope* scope,
     const ble_uuid_any_t& uuid, uint16 properties, uint16 def_handle,
     uint16 value_handle) {
-  auto characteristic = _new BleCharacteristicResource(group(), this, uuid, properties, value_handle, def_handle);
+  auto characteristic = get_characteristic(uuid);
+  if (characteristic != null ) {
+    if (characteristic->properties() != properties ||
+        characteristic->definition_handle() != def_handle ||
+        characteristic->handle() != value_handle) {
+      ESP_LOGW("BLE", "Characteristic changed");
+    }
+  }
+  characteristic = _new BleCharacteristicResource(group(), this, uuid, properties, value_handle, def_handle);
   if (!characteristic && scope) {
     // Since this method is called from the BLE event handler and there is no
     // toit code monitoring the interaction, we resort to calling gc by hand to
@@ -1417,7 +1434,7 @@ BleCentralManagerResource::~BleCentralManagerResource() {
   if (is_scanning()) {
     int err = ble_gap_disc_cancel();
     if (err != BLE_ERR_SUCCESS && err != BLE_HS_EALREADY) {
-      fail("Failed to cancel discovery");
+      ESP_LOGE("BLE", "Failed to cancel discovery");
     }
   }
 
@@ -1539,7 +1556,7 @@ void BleRemoteDeviceResource::_on_service_discovered(const BleCallbackScope& sco
       if (has_malloc_error()) return;
 
       if (is_connected()) {
-        auto ble_service = get_or_create_service_resource(&scope, service->uuid, service->start_handle, service->end_handle);
+        auto ble_service = get_or_create_service(&scope, service->uuid, service->start_handle, service->end_handle);
         if (!ble_service) {
           set_malloc_error(true);
           clear_pending_services();
@@ -1567,7 +1584,7 @@ void BleRemoteDeviceResource::_on_service_discovered(const BleCallbackScope& sco
   }
 }
 
-BleDescriptorResource* BleCharacteristicResource::get_descriptor(const ble_uuid_any_t& uuid, uint16_t handle, uint8 properties) {
+BleDescriptorResource* BleCharacteristicResource::get_descriptor(const ble_uuid_any_t& uuid) {
   for (auto descriptor : descriptors_) {
     if (uuid_equals(uuid, descriptor->uuid())) return descriptor;
   }
@@ -1576,8 +1593,13 @@ BleDescriptorResource* BleCharacteristicResource::get_descriptor(const ble_uuid_
 
 BleDescriptorResource* BleCharacteristicResource::get_or_create_descriptor(const BleCallbackScope* scope,
                                                                            const ble_uuid_any_t& uuid, uint16_t handle, uint8 properties) {
-  auto descriptor = get_descriptor(uuid, handle, properties);
-  if (descriptor) return descriptor;
+  auto descriptor = get_descriptor(uuid);
+  if (descriptor) {
+    if (descriptor->handle() != handle || descriptor->properties() != properties) {
+      ESP_LOGW("BLE", "Descriptor changed handle or properties");
+    }
+    return descriptor;
+  }
 
   descriptor = _new BleDescriptorResource(group(), this, uuid, handle, properties);
   if (!descriptor && scope) {
@@ -2704,14 +2726,13 @@ PRIMITIVE(add_service) {
 
   ble_uuid_any_t ble_uuid = uuid_from_blob(uuid);
 
-  auto existing = peripheral_manager->get_service_resource(ble_uuid, 0, 0);
+  auto existing = peripheral_manager->get_service(ble_uuid);
   if (existing) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  BleServiceResource* service_resource =
-      peripheral_manager->get_or_create_service_resource(null, ble_uuid, 0, 0);
+  BleServiceResource* service_resource = peripheral_manager->get_or_create_service(null, ble_uuid, 0, 0);
   if (!service_resource) FAIL(MALLOC_FAILED);
   // On the peripheral side, setting the "returned" value isn't strictly necessary,
   // as all services are automatically returned. It is more consistent this way, though.
@@ -2727,16 +2748,16 @@ PRIMITIVE(add_characteristic) {
 
   Locker locker(service_resource->group()->mutex());
 
-  if (!service_resource->peripheral_manager()) {
-    FAIL(INVALID_ARGUMENT);
-  }
+  if (!service_resource->peripheral_manager()) FAIL(INVALID_ARGUMENT);
+  if (service_resource->deployed()) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
 
-  if (service_resource->deployed()) {
-    FAIL(INVALID_ARGUMENT);
-  }
+  ble_uuid_any_t ble_uuid = uuid_from_blob(raw_uuid);
+
+  auto existing = service_resource->get_characteristic(ble_uuid);
+  if (existing) FAIL(INVALID_ARGUMENT);
 
   uint32 flags = properties & 0x7F;
   if (permissions & 0x1) {  // READ.
@@ -2769,14 +2790,11 @@ PRIMITIVE(add_characteristic) {
     flags |= BLE_GATT_CHR_F_WRITE_ENC;  // _ENC = Encrypted.
   }
 
-  ble_uuid_any_t ble_uuid = uuid_from_blob(raw_uuid);
-
   os_mbuf* om = null;
   Object* error = object_to_mbuf(process, value, &om);
   if (error) return error;
 
-  BleCharacteristicResource* characteristic =
-      service_resource->get_or_create_characteristics_resource(null, ble_uuid, flags, 0, 0);
+  BleCharacteristicResource* characteristic = service_resource->get_or_create_characteristic(null, ble_uuid, flags, 0, 0);
 
   if (!characteristic) {
     if (om != null) os_mbuf_free(om);
@@ -2805,11 +2823,15 @@ PRIMITIVE(add_descriptor) {
   Locker locker(characteristic->group()->mutex());
 
   if (!characteristic->service()->peripheral_manager()) FAIL(INVALID_ARGUMENT);
+  if (characteristic->service()->deployed()) FAIL(INVALID_ARGUMENT);
+
+  ble_uuid_any_t ble_uuid = uuid_from_blob(raw_uuid);
+
+  auto existing = characteristic->get_descriptor(ble_uuid);
+  if (existing) FAIL(INVALID_ARGUMENT);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) FAIL(ALLOCATION_FAILED);
-
-  ble_uuid_any_t ble_uuid = uuid_from_blob(raw_uuid);
 
   os_mbuf* om = null;
   Object* error = object_to_mbuf(process, value, &om);
@@ -2821,7 +2843,6 @@ PRIMITIVE(add_descriptor) {
   if (permissions & 0x04) flags |= BLE_ATT_F_READ_ENC; // _ENC = Encrypted.
   if (permissions & 0x08) flags |= BLE_ATT_F_WRITE_ENC; // _ENC = Encrypted.
 
-  // TODO(florian): shouldn't we check that the descriptor doesn't exist yet?
   BleDescriptorResource* descriptor =
       characteristic->get_or_create_descriptor(null, ble_uuid, 0, flags);
   if (!descriptor) {
