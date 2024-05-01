@@ -1315,6 +1315,7 @@ PRIMITIVE(get_att_mtu) {
 }
 
 PRIMITIVE(set_preferred_mtu) {
+  ARGS(BleAdapterResource, resource);
   // Ignore
   return process->null_object();
 }
@@ -1345,6 +1346,7 @@ PRIMITIVE(read_request_reply) {
 }
 
 PRIMITIVE(get_bonded_peers) {
+  ARGS(BleCentralManagerResource, central_manager);
   FAIL(UNIMPLEMENTED);
 }
 

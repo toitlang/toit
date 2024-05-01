@@ -368,11 +368,11 @@ namespace toit {
   PRIMITIVE(get_subscribed_clients, 1)       \
   PRIMITIVE(notify_characteristics_value, 3) \
   PRIMITIVE(get_att_mtu, 1)                  \
-  PRIMITIVE(set_preferred_mtu, 1)            \
+  PRIMITIVE(set_preferred_mtu, 2)            \
   PRIMITIVE(get_error, 2)                    \
   PRIMITIVE(clear_error, 2)                  \
   PRIMITIVE(read_request_reply, 2)           \
-  PRIMITIVE(get_bonded_peers, 0)             \
+  PRIMITIVE(get_bonded_peers, 1)             \
 
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \
