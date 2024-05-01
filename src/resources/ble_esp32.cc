@@ -766,7 +766,7 @@ class BleCentralManagerResource : public BleCallbackResource {
  private:
   void delete_if_able() {
     if (marked_for_deletion_ && device_count_ == 0) {
-      delete(this);
+      delete this;
     }
   }
   void _on_discovery(const BleCallbackScope& scope, ble_gap_event* event);
