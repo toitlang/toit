@@ -2971,7 +2971,7 @@ PRIMITIVE(add_service) {
 
 PRIMITIVE(add_characteristic) {
   ARGS(BleServiceResource, service_resource, Blob, raw_uuid, int, properties,
-       int, permissions, Object, value, int, read_timeout_ms)
+       int, permissions, Object, value)
 
   Locker locker(service_resource->group()->mutex());
 
