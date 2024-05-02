@@ -78,6 +78,18 @@ main-peripheral --iteration/int:
     data += write-only-with-response.read
   expect-equals #[0, 1, 2, 3, 4] data
 
+  // Notifications and indications use different mechanisms for read-requests and subscriptions.
+  // The 'write' is sent to all subscribers.
+  // The 'handle-read-request' is activated for each read-request.
+
+  task::
+    notify.handle-read-request:
+      #['F', 'O', 'O']
+
+  task::
+    indicate.handle-read-request:
+      #['B', 'A', 'R']
+
   notify.write value
   indicate.write value
 
@@ -158,6 +170,15 @@ main-central --iteration/int:
   seen-handles.add-all [read-only.handle, read-only-callback.handle, notify.handle, indicate.handle, write-only.handle, write-only-with-response.handle]
   expect-equals 6 seen-handles.size
 
+  notify-latch := monitor.Latch
+  indicate-latch := monitor.Latch
+  notify.subscribe
+  indicate.subscribe
+  task::
+    notify-latch.set notify.wait-for-notification
+  task::
+    indicate-latch.set indicate.wait-for-notification
+
   value := iteration == 0 ? VALUE-BYTES : VALUE-STRING.to-byte-array
 
   expect-equals value read-only.read
@@ -173,6 +194,13 @@ main-central --iteration/int:
   counter = 0
   5.repeat:
     write-only-with-response.write #[counter++]
+
+  expect-equals value notify-latch.get
+  expect-equals value indicate-latch.get
+
+  // We can also read from the notify/indicate characteristics.
+  expect-equals #['F', 'O', 'O'] notify.read
+  expect-equals #['B', 'A', 'R'] indicate.read
 
   expect-throw "OUT_OF_RANGE":
     // Check that the MTU is enforced.

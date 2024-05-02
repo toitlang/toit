@@ -193,9 +193,9 @@ class RemoteDescriptor extends RemoteReadWriteElement_ implements Attribute:
   Automatically removes the descriptor from the list of discovered descriptors of
     the characteristic.
   */
-  close -> none:
+  close_ -> none:
     characteristic.remove-descriptor_ this
-    close_
+    super
 
   /**
   Reads the value of the descriptor on the remote device.
@@ -247,12 +247,12 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
   Automatically removes the characteristic from the list of discovered characteristics of
     the service.
   */
-  close:
+  close_ -> none:
     descriptors := discovered-descriptors_
     discovered-descriptors_ = []
-    descriptors.do: | descriptor/RemoteDescriptor | descriptor.close
+    descriptors.do: | descriptor/RemoteDescriptor | descriptor.close_
     service.remove-characteristic_ this
-    close_
+    super
 
   /**
   Reads the value of the characteristic on the remote device.
@@ -389,12 +389,12 @@ class RemoteService extends Resource_ implements Attribute:
 
   Automatically removes the service from the list of discovered services of the device.
   */
-  close -> none:
+  close_ -> none:
     characteristics := discovered-characteristics
     discovered-characteristics = []
-    characteristics.do: | characteristic/RemoteCharacteristic | characteristic.close
+    characteristics.do: | characteristic/RemoteCharacteristic | characteristic.close_
     device.remove-service_ this
-    close_
+    super
 
   /**
   Discovers characteristics on the remote service by looking up the handle of the given $characteristic-uuids.
@@ -513,7 +513,7 @@ class RemoteDevice extends Resource_:
   close --force/bool=false -> none:
     services := discovered-services_
     discovered-services_ = []
-    services.do: | service/RemoteService | service.close
+    services.do: | service/RemoteService | service.close_
     ble-disconnect_ resource_
     if not force:
       resource-state_.wait-for-state DISCONNECTED-EVENT_
@@ -549,12 +549,12 @@ class LocalService extends Resource_ implements Attribute:
   /**
   Closes this service and all its characteristics.
   */
-  close -> none:
+  close_ -> none:
     characteristics := characteristics_
     characteristics_ = []
-    characteristics.do: | characteristic/LocalCharacteristic | characteristic.close
+    characteristics.do: | characteristic/LocalCharacteristic | characteristic.close_
     peripheral-manager.remove-service_ this
-    close_
+    super
 
   /**
   Removes the given $characteristic from the list of characteristics.
@@ -734,12 +734,12 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   /**
   Close this characteristic and all its descriptors.
   */
-  close -> none:
+  close_ -> none:
     descriptors := descriptors_
     descriptors_ = []
-    descriptors.do: | descriptor/LocalDescriptor | descriptor.close
+    descriptors.do: | descriptor/LocalDescriptor | descriptor.close_
     service.remove-characteristic_ this
-    close_
+    super
 
   /**
   Removes the given $local-descriptor from the list of descriptors.
@@ -826,9 +826,9 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
   /**
   Closes this descriptor.
   */
-  close -> none:
+  close_ -> none:
     characteristic.remove-descriptor_ this
-    close_
+    super
 
   write value/io.Data:
     if (permissions & CHARACTERISTIC-PERMISSION-WRITE) == 0:
@@ -962,7 +962,7 @@ class Peripheral extends Resource_:
     stop-advertise
     services := services_
     services_ = []
-    services.do: | service/LocalService | service.close
+    services.do: | service/LocalService | service.close_
     adapter.remove-peripheral_ this
     close_
 

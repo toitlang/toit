@@ -538,7 +538,7 @@ void DispatchTableBuilder::print_table() {
       printf(", %s", name.c_str());
     }
     auto id = selector_offsets().at(selector);
-    printf(": %d\n", id);
+    printf(": %" PRIdPTR "\n", id);
   }
 }
 
