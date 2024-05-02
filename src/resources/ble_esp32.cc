@@ -506,6 +506,11 @@ class BleDescriptorResource: public BleReadWriteElement, public DescriptorList::
   BleServiceResource* service() override;
   uint8 properties() const { return properties_; }
 
+  void delete_or_mark_for_deletion() override {
+    delete_token();  // From now on, callbacks can't reach this instance.
+    delete this;
+  }
+
  protected:
   bool marked_for_deletion() const override {
     // Descriptors don't need to be marked for deletion, as they can always
