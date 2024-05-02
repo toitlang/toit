@@ -32,36 +32,36 @@ test-resource pin/gpio.Pin:
   // If we request a channel with more than one memory block, then the
   // next channel becomes unusable.
   channels := []
-  8.repeat: channels.add (rmt.Channel pin)
-  expect-throw "ALREADY_IN_USE": rmt.Channel pin
+  8.repeat: channels.add (rmt.Channel pin --input)
+  expect-throw "ALREADY_IN_USE": rmt.Channel pin --input
   channels.do: it.close
   // Now that we closed all channels we are again OK to get one.
-  channel := rmt.Channel pin
+  channel := rmt.Channel pin --input
   channel.close
 
   channels = []
   // We should be able to allocate 4 channels with 2 memory blocks.
-  4.repeat: channels.add (rmt.Channel pin --memory-block-count=2)
-  expect-throw "ALREADY_IN_USE": rmt.Channel pin
+  4.repeat: channels.add (rmt.Channel pin --memory-block-count=2 --input)
+  expect-throw "ALREADY_IN_USE": rmt.Channel pin --input
   channels.do: it.close
   // Now that we closed all channels we are again OK to get one.
-  channel = rmt.Channel pin
+  channel = rmt.Channel pin --input
   channel.close
 
   channels = []
   // We should be able to allocate 2 channels with 3 memory blocks, and one with 2
-  2.repeat: channels.add (rmt.Channel pin --memory-block-count=3)
+  2.repeat: channels.add (rmt.Channel pin --memory-block-count=3 --input)
   channels.add (rmt.Channel pin --memory-block-count=2)
-  expect-throw "ALREADY_IN_USE": rmt.Channel pin
+  expect-throw "ALREADY_IN_USE": rmt.Channel pin --input
   channels.do: it.close
   // Now that we closed all channels we are again OK to get one.
-  channel = rmt.Channel pin
+  channel = rmt.Channel pin --input
   channel.close
 
   channels = []
   // We should be able to allocate 2 channels with 4 memory blocks.
-  2.repeat: channels.add (rmt.Channel pin --memory-block-count=4)
-  expect-throw "ALREADY_IN_USE": rmt.Channel pin
+  2.repeat: channels.add (rmt.Channel pin --memory-block-count=4 --input)
+  expect-throw "ALREADY_IN_USE": rmt.Channel pin --input
   channels.do: it.close
   // Now that we closed all channels we are again OK to get one.
   channel = rmt.Channel pin
@@ -69,21 +69,21 @@ test-resource pin/gpio.Pin:
 
   // Test fragmentation.
   channels = []
-  8.repeat: channels.add (rmt.Channel pin)
+  8.repeat: channels.add (rmt.Channel pin --input)
   for i := 0; i < channels.size; i += 2: channels[i].close
-  expect-throw "ALREADY_IN_USE": rmt.Channel pin --memory-block-count=2
+  expect-throw "ALREADY_IN_USE": rmt.Channel pin --memory-block-count=2 --input
   // Close one additional one, which makes 2 adjacent memory blocks free.
   channels[5].close
-  channel = rmt.Channel pin --memory-block-count=2
+  channel = rmt.Channel pin --memory-block-count=2 --input
   channel.close
   channels.do: it.close
 
   // Test specific IDs.
-  channel1 := rmt.Channel pin --channel-id=1
-  channel0 := rmt.Channel pin --channel-id=0
-  expect-throw "ALREADY_IN_USE": rmt.Channel pin --memory-block-count=7
+  channel1 := rmt.Channel pin --channel-id=1 --input
+  channel0 := rmt.Channel pin --channel-id=0 --input
+  expect-throw "ALREADY_IN_USE": rmt.Channel pin --memory-block-count=7 --input
   channel1.close
-  channel = rmt.Channel pin --memory-block-count=7
+  channel = rmt.Channel pin --memory-block-count=7 --input
   channel.close
 
 in-parallel fun1/Lambda fun2/Lambda:
