@@ -233,7 +233,7 @@ class Channel:
   Constructs a channel using the given $num using the given $pin.
 
   Note: only the ESP32 and the ESP32S2 support configuring the channel direction at a later
-    time. For all other platforms this constructor will give a TX channel, unless
+    time. For all other platforms, this constructor will give a TX channel, unless
     the channel-id is provided.
 
   The $memory-block-count determines how many memory blocks are assigned to this channel. See

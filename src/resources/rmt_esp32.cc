@@ -46,7 +46,7 @@ const rmt_channel_t kInvalidChannel = static_cast<rmt_channel_t>(-1);
 #if SOC_RMT_CHANNELS_PER_GROUP == SOC_RMT_TX_CANDIDATES_PER_GROUP
 // All channels are TX channels. We assume that they also are RX channels.
 // This is the setup on the ESP32 and ESP32S2 chips.
-ResourcePool<rmt_channel_t, kInvalidChannel> rmt_channels_(
+static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_channels_(
     RMT_CHANNEL_0, RMT_CHANNEL_1
 #if SOC_RMT_CHANNEL_PER_GROUP > 2
     , RMT_CHANNEL_2, RMT_CHANNEL_3
@@ -56,8 +56,8 @@ ResourcePool<rmt_channel_t, kInvalidChannel> rmt_channels_(
 #endif
 );
 
-ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_tx_channels = &rmt_channels_;
-ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_rx_channels = &rmt_channels_;
+static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_tx_channels = &rmt_channels_;
+static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_rx_channels = &rmt_channels_;
 
 #else
 // Some channels are TX, some are RX.
@@ -69,25 +69,25 @@ ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_rx_channels = &rmt_channels_;
 #endif
 
 #if SOC_RMT_TX_CANDIDATES_PER_GROUP == 2
-ResourcePool<rmt_channel_t, kInvalidChannel> rmt_tx_channels_(
+static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_tx_channels_(
     RMT_CHANNEL_0, RMT_CHANNEL_1
 );
-ResourcePool<rmt_channel_t, kInvalidChannel> rmt_rx_channels_(
+static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_rx_channels_(
     RMT_CHANNEL_2, RMT_CHANNEL_3
 );
 #elif SOC_RMT_TX_CANDIDATES_PER_GROUP == 4
-ResourcePool<rmt_channel_t, kInvalidChannel> rmt_tx_channels_(
+static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_tx_channels_(
     RMT_CHANNEL_0, RMT_CHANNEL_1, RMT_CHANNEL_2, RMT_CHANNEL_3
 );
-ResourcePool<rmt_channel_t, kInvalidChannel> rmt_rx_channels_(
+static ResourcePool<rmt_channel_t, kInvalidChannel> rmt_rx_channels_(
     RMT_CHANNEL_4, RMT_CHANNEL_5, RMT_CHANNEL_6, RMT_CHANNEL_7
 );
 #else
 error "Unexpected amount of RMT channels"
 #endif
 
-ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_tx_channels = &rmt_tx_channels_;
-ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_rx_channels = &rmt_rx_channels_;
+static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_tx_channels = &rmt_tx_channels_;
+static ResourcePool<rmt_channel_t, kInvalidChannel>* rmt_rx_channels = &rmt_rx_channels_;
 
 #endif
 
