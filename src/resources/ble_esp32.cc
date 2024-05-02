@@ -1743,7 +1743,7 @@ int ToitCallback::call_toit(BleCallbackScope& scope,
     OS::wait_us(condition_, 1000 * timeout_ms_);
   }
   int result = BLE_ERR_SUCCESS;
-  switch(state_) {
+  switch (state_) {
     case NO_CALLBACK:
       UNREACHABLE();
     case WAITING_FOR_VALUE:
@@ -3346,8 +3346,6 @@ PRIMITIVE(toit_callback_deinit) {
   Locker locker(characteristic->group()->mutex());
 
   if (!characteristic->toit_callback_is_setup(for_read)) {
-    // deinit is often called in a finalizer. It could be that the
-    // object was already
     return process->null_object();
   }
   characteristic->toit_callback_deinit(for_read);

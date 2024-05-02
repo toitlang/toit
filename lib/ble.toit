@@ -781,7 +781,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   The block must return an $io.Data which is then used as value of the characteristic.
   */
   handle-read-request [block]:
-    for-read := true
+    for-read ::= true
     resource-state_.clear-state DATA-READ-REQUEST-EVENT_
     ble-callback-init_ resource_ read-timeout-ms_ for-read
     try:
@@ -792,6 +792,8 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
         resource-state_.clear-state DATA-READ-REQUEST-EVENT_
         ble-callback-reply_ resource_ value for-read
     finally:
+      // If the resource is already gone, then the corresponding callback data-structure
+      // is already deallocated as well.
       if resource_: ble-callback-deinit_ resource_ for-read
 
   /**
