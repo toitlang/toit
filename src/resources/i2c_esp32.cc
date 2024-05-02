@@ -39,10 +39,10 @@ const i2c_port_t kInvalidPort = i2c_port_t(-1);
 #error "SOC_I2C_NUM not defined"
 #endif
 
-ResourcePool<i2c_port_t, kInvalidPort> i2c_ports(
-   I2C_NUM_0
+static ResourcePool<i2c_port_t, kInvalidPort> i2c_ports(
+    I2C_NUM_0
 #if SOC_I2C_NUM >= 2
- , I2C_NUM_1
+  , I2C_NUM_1
 #endif
 );
 

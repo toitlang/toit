@@ -28,7 +28,6 @@
 #include "../objects_inline.h"
 #include "../process.h"
 #include "../resource.h"
-#include "../resource_pool.h"
 #include "../vm.h"
 
 #include "../event_sources/system_esp32.h"
