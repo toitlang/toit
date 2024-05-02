@@ -45,7 +45,7 @@ const int kInvalidBle = -1;
 const int kInvalidHandle = UINT16_MAX;
 
 // Only allow one instance of BLE running.
-ResourcePool<int, kInvalidBle> ble_pool(
+static ResourcePool<int, kInvalidBle> ble_pool(
     0
 );
 

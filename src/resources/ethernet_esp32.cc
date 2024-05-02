@@ -56,7 +56,7 @@ enum {
 const int kInvalidEthernet = -1;
 
 // Only allow one instance of WiFi running.
-ResourcePool<int, kInvalidEthernet> ethernet_pool(
+static ResourcePool<int, kInvalidEthernet> ethernet_pool(
   0
 );
 

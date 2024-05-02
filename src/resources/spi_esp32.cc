@@ -32,11 +32,11 @@
 
 namespace toit {
 
-ResourcePool<int, 0> dma_channels(1, 2);
+static ResourcePool<int, 0> dma_channels(1, 2);
 
 const spi_host_device_t kInvalidHostDevice = spi_host_device_t(-1);
 
-ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
+static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
 #ifdef CONFIG_IDF_TARGET_ESP32S3
   SPI2_HOST,
   SPI3_HOST
