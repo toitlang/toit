@@ -57,7 +57,7 @@ const int kInvalidEthernet = -1;
 
 // Only allow one instance of WiFi running.
 static ResourcePool<int, kInvalidEthernet> ethernet_pool(
-  0
+    0
 );
 
 class EthernetResourceGroup : public ResourceGroup {

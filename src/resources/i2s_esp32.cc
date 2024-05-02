@@ -39,7 +39,7 @@ const int kErrorState = 1 << 2;
 static ResourcePool<i2s_port_t, kInvalidPort> i2s_ports(
     I2S_NUM_0
 #if SOC_I2S_NUM > 1
-    , I2S_NUM_1
+  , I2S_NUM_1
 #endif
 );
 

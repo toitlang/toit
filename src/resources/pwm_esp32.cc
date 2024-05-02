@@ -59,8 +59,7 @@ static ResourcePool<ledc_channel_t, kInvalidLedcChannel> ledc_channels(
     LEDC_CHANNEL_4,
     LEDC_CHANNEL_5
 #if SOC_LEDC_CHANNEL_NUM > 6
-    ,
-    LEDC_CHANNEL_6,
+  , LEDC_CHANNEL_6,
     LEDC_CHANNEL_7
 #endif
 );

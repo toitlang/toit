@@ -38,16 +38,16 @@ const spi_host_device_t kInvalidHostDevice = spi_host_device_t(-1);
 
 static ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
 #ifdef CONFIG_IDF_TARGET_ESP32S3
-  SPI2_HOST,
-  SPI3_HOST
+    SPI2_HOST,
+    SPI3_HOST
 #elif CONFIG_IDF_TARGET_ESP32S2
-  SPI2_HOST,
-  SPI3_HOST
+    SPI2_HOST,
+    SPI3_HOST
 #elif CONFIG_IDF_TARGET_ESP32C3
-  SPI2_HOST
+    SPI2_HOST
 #else
-  HSPI_HOST,
-  VSPI_HOST
+    HSPI_HOST,
+    VSPI_HOST
 #endif
 );
 
