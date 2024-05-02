@@ -1362,6 +1362,7 @@ ble-add-characteristic_ service uuid properties permission value:
 
 ble-add-characteristic__ service uuid properties permission value:
   #primitive.ble.add-characteristic:
+    if value == null: throw it
     return io.primitive-redo-io-data_ it value: | bytes |
       ble-add-characteristic__ service uuid properties permission bytes
 
@@ -1371,6 +1372,7 @@ ble-add-descriptor_ characteristic uuid properties permission value:
 
 ble-add-descriptor__ characteristic uuid properties permission value:
   #primitive.ble.add-descriptor:
+    if value == null: throw it
     return io.primitive-redo-io-data_ it value: | bytes |
       ble-add-descriptor__ characteristic uuid properties permission bytes
 
@@ -1389,6 +1391,7 @@ ble-set-value_ characteristic new-value -> none:
 
 ble-set-value__ characteristic new-value:
   #primitive.ble.set-value:
+    if new-value == null: throw it
     return io.primitive-redo-io-data_ it new-value: | bytes |
       ble-set-value__ characteristic bytes
 
@@ -1401,6 +1404,7 @@ ble-notify-characteristics-value_ characteristic client new-value:
 
 ble-notify-characteristics-value__ characteristic client new-value:
   #primitive.ble.notify-characteristics-value:
+    if new-value == null: throw it
     return io.primitive-redo-io-data_ it new-value: | bytes |
       ble-notify-characteristics-value__ characteristic client bytes
 
@@ -1431,6 +1435,7 @@ ble-callback-reply_ resource value for-read:
 
 ble-callback-reply__ resource value for-read:
   #primitive.ble.toit-callback-reply:
+    if value == null: throw it
     return io.primitive-redo-io-data_ it value: | bytes |
       ble-callback-reply__ resource bytes for-read
 
