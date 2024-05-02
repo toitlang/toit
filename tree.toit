@@ -1,39 +1,126 @@
-class RedBlackTree:
-  root_ /RedBlackNode? := null
+abstract
+class Tree:
+  root_ /TreeNode? := null
 
   do [block] -> none:
     if root_:
       do_ root_ block
 
-  do_ node/RedBlackNode [block] -> none:
+  do_ node/TreeNode [block] -> none:
     if node.left_:
       do_ node.left_ block
     block.call node
     if node.right_:
       do_ node.right_ block
 
+  abstract dump -> none
+
+  abstract add value/TreeNode -> none
+
+  abstract delete value/TreeNode -> none
+
+  dump_ node/TreeNode depth/int [block] -> none:
+    if node.left_:
+      dump_ node.left_ (depth + 1):
+        if node.left_.parent_ != node:
+          throw "node.left_.parent is not node"
+      block.call node node.left_
+    print "  " * depth + node.stringify
+    if node.right_:
+      dump_ node.right_ (depth + 1):
+        if node.right_.parent_ != node:
+          throw "node.right_.parent is not node"
+      block.call node node.right_
+
+class SplayTree extends Tree:
   dump -> none:
     print "***************************"
     if root_.parent_:
       throw "root_.parent is not null"
     if root_:
-      dump_ root_ 0
+      dump_ root_ 0: | parent child |
+        if child.parent_ != parent:
+          throw "child.parent is not parent"
 
-  dump_ node/RedBlackNode depth/int -> none:
-    if node.left_:
-      dump_ node.left_ (depth + 1)
-      if node.left_.parent_ != node:
-        throw "node.left_.parent is not node"
-      if node.red_ and node.left_.red_:
-        throw "red-red violation"
-    color := node.red_ ? "r" : "b"
-    print "  " * depth + "$color$node"
-    if node.right_:
-      dump_ node.right_ (depth + 1)
-      if node.right_.parent_ != node:
-        throw "node.right_.parent is not node"
-      if node.red_ and node.right_.red_:
-        throw "red-red violation"
+  add value/TreeNode -> none:
+    if root_ == null:
+      root_ = value
+      return
+    insert_ value root_
+    splay_ value
+
+  delete value/TreeNode -> none:
+    unreachable
+
+  insert_ value/TreeNode node/TreeNode -> none:
+    if value < node:
+      if node.left_ == null:
+        value.parent_ = node
+        node.left_ = value
+      else:
+        insert_ value node.left_
+    else:
+      if node.right_ == null:
+        value.parent_ = node
+        node.right_ = value
+      else:
+        insert_ value node.right_
+
+  splay_ node/TreeNode -> none:
+    while node.parent_:
+      parent := node.parent_
+      gramps := parent.parent_
+      if gramps == null:
+        rotate_ node
+      else:
+        if node == parent.left_ and parent == gramps.left_:
+          rotate_ parent
+          rotate_ node
+        else if node == parent.right_ and parent == gramps.right_:
+          rotate_ parent
+          rotate_ node
+        else:
+          rotate_ node
+          rotate_ node
+
+  rotate_ node/TreeNode -> none:
+    parent := node.parent_
+    if parent == null:
+      return
+    gramps := parent.parent_
+    if gramps:
+      if parent == gramps.left_:
+        gramps.left_ = node
+      else:
+        assert: parent == gramps.right_
+        gramps.right_ = node
+    else:
+      root_ = node
+    if node == parent.left_:
+      parent.left_ = node.right_
+      if node.right_:
+        node.right_.parent_ = parent
+      node.right_ = parent
+    else:
+      assert: node == parent.right_
+      parent.right_ = node.left_
+      if node.left_:
+        node.left_.parent_ = parent
+      node.left_ = parent
+    node.parent_ = gramps
+    parent.parent_ = node
+
+class RedBlackTree extends Tree:
+  dump -> none:
+    print "***************************"
+    if root_.parent_:
+      throw "root_.parent is not null"
+    if root_:
+      dump_ root_ 0: | parent child |
+        if parent.red_ and child.red_:
+          throw "red-red violation"
+        if child.parent_ != parent:
+          throw "child.parent is not parent"
 
   add value/RedBlackNode -> none:
     if root_ == null:
@@ -41,7 +128,7 @@ class RedBlackTree:
       value.red_ = false
       return 
     value.red_ = true
-    insert_ value root_
+    insert_ value (root_ as any)
 
   insert_ value/RedBlackNode node/RedBlackNode -> none:
     if value < node:
@@ -206,15 +293,13 @@ class RedBlackTree:
     return node
 
 abstract
-class RedBlackNode:
+class TreeNode:
   left_ /any := null
   right_ /any := null
   parent_ /any := null
+
+  abstract operator < other/TreeNode -> bool
+
+abstract
+class RedBlackNode extends TreeNode:
   red_ /bool := false
-
-  constructor:
-
-  constructor .left_ .right_ .parent_:
-
-  abstract operator < other/RedBlackNode -> bool
-
