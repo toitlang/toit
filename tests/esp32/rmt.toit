@@ -51,7 +51,7 @@ test-resource pin/gpio.Pin:
   channels = []
   // We should be able to allocate 2 channels with 3 memory blocks, and one with 2
   2.repeat: channels.add (rmt.Channel pin --memory-block-count=3 --input)
-  channels.add (rmt.Channel pin --memory-block-count=2)
+  channels.add (rmt.Channel pin --memory-block-count=2 --input)
   expect-throw "ALREADY_IN_USE": rmt.Channel pin --input
   channels.do: it.close
   // Now that we closed all channels we are again OK to get one.
@@ -64,7 +64,7 @@ test-resource pin/gpio.Pin:
   expect-throw "ALREADY_IN_USE": rmt.Channel pin --input
   channels.do: it.close
   // Now that we closed all channels we are again OK to get one.
-  channel = rmt.Channel pin
+  channel = rmt.Channel pin --input
   channel.close
 
   // Test fragmentation.
