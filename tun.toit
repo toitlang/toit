@@ -87,45 +87,103 @@ tun-close_ tun-resource-group id:
 tun-open_ resource-group:
   #primitive.tun.open
 
-class TwoThreeFourTree:
-  root_ /TwoThreeFourNode_? := null
+class RedBlackTree:
+  root_ /RedBlackNode? := null
 
-  insert value/any -> none:
+  insert value/RedBlackNode -> none:
     if root_ == null:
-      root_ = TwoThreeFourNode_ value
+      root_ = value
+      insert-value.red_ = false
+      return 
+    insert-value.red_ = true
+    insert_ value root_
+
+  insert_ insert-value/RedBlackNode node/RedBlackNode -> none:
+    if insert-value < node:
+      if node.left_ == null:
+        insert-value.parent_ = node
+        node.left_ = insert-value
+        insert-value.red_ = true
+        red-check_ insert_value node
+      else:
+        insert_ insert_value node.left_
     else:
-      subtree := root_.insert value
-      if subtree: root_ = subtree
+      if node.right_ == null:
+        insert-value.parent_ = node
+        node.right_ = insert-value
+        insert-value.red_ = true
+        red-check_ insert_value node
+      else:
+        insert_ insert_value node.right_
 
-class TwoThreeFourNode_:
-  static INTERNAL-2-NODE := 0
-  static INTERNAL-3-NODE := 1
-  static INTERNAL-4-NODE := 2
-  static LEAF-2-NODE := 3
-  static LEAF-3-NODE := 4
-  static LEAF-4-NODE := 5
-  static LEAF-5-NODE := 6
-  static LEAF_6-NODE := 7
-  // One of the constants above.
-  size_/int := ?
-  slot-0_/any := null
-  slot-1_/any := null
-  slot-2_/any := null
-  slot-3_/any := null
-  slot-4_/any := null
-  slot-5_/any := null
-  slot-6_/any := null
+  red-check_ node/RedBlackNode parent/RedBlackNode -> none:
+    while node != root_:
+      if not parent.red_:
+        // I1.
+        return
+      gramps := parent.parent_
+      if gramps_ == null:
+        // I4.
+        parent.red_ = false
+        return
+      index := parent == gramps.left_ ? 0 : 1
+      uncle := index == 0 ? gramps.right_ : gramps.left_
+      if uncle == null or not uncle.red_:
+        // I5 or I6, parent is red, uncle is black.
+        sibling := index == 0 ? parent.right_ : parent.left_
+        if node == sibling:
+          // I5, parent is red, uncle is black node is inner grandchild of gramps.
+          rotate_ parent index
+          node = parent
+          parent = index == 0 ? gramps->left_ : gramps->right_
+          // Fall through to I6.
+        rotate_ gramps (1 - index)
+        parent.red_ = false
+        gramps.red_ = true
+        return
+      else:
+        // I2, parent and uncle are red.
+        parent->red_ = false
+        uncle->red_ = false
+        gramps->red_ = true
+        node = gramps
+        parent = node->parent
+    // I3.
 
-  insert value/any -> none:
-    if size_ == INTERNAL-2-NODE:
-      // Two values, one subtree.
-      if value < slot-1_:
-        subtree := insert slot-0_ value
-        if subtree != null:
-          size_ = INTERNAL-3-NODE
-          slot_4_ = slot_2_
-          slot_3_ = slot_1_
-          slot_2_ = slot_0_
+  rotate_ parent/RedBlackNode index/int -> none:
+    gramps := parent->parent
+    s := index == 0 ? parent->right : parent->left
+    c := index == 0 ? s->left : s->right
+    if index == 0:
+      parent->right = c
+    else:
+      parent->left = c
+    if c: c->parent = parent
+    if index == 0:
+      s->left = parent
+    else:
+      s->right = parent
+    p->parent = s
+    s->parent = g
+    if g:
+      if p = g->right:
+        g->right = s
+      else:
+        g->left = s
+    else:
+      root_ = s
+
+class RedBlackNode:
+  left_ /any := null
+  right_ /any := null
+  parent_ /any := null
+  red_ /bool := false
+
+  constructor:
+
+  constructor .left_ .right_ .parent_:
+
+
 
 
 
