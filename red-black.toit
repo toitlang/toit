@@ -13,16 +13,26 @@ class RedBlackTree:
       do_ node.right_ block
 
   dump -> none:
+    if root_.parent_:
+      throw "root_.parent is not null"
     if root_:
       dump_ root_ 0
 
   dump_ node/RedBlackNode depth/int -> none:
     if node.left_:
       dump_ node.left_ (depth + 1)
+      if node.left_.parent_ != node:
+        throw "node.left_.parent is not node"
+      if node.red_ and node.left_.red_:
+        throw "red-red violation"
     color := node.red_ ? "r" : "b"
     print "  " * depth + "$color$node"
     if node.right_:
       dump_ node.right_ (depth + 1)
+      if node.right_.parent_ != node:
+        throw "node.right_.parent is not node"
+      if node.red_ and node.right_.red_:
+        throw "red-red violation"
 
   add value/RedBlackNode -> none:
     if root_ == null:
@@ -109,6 +119,45 @@ class RedBlackTree:
         gramps.left_ = s
     else:
       root_ = s
+
+  delete value/RedBlackNode -> none:
+    parent := value.parent_
+    if value.left_ != null and value.right_ != null:
+      // Both children exist.
+      // Replace with leftmost successor.
+      successor := leftmost_ value.right_
+      overwrite-child_ successor null
+      overwrite-child_ value successor
+    else if value.left_ != null or value.right_ != null:
+      // Exactly one of the children is non-null.
+      child := value.left_ ? value.left_ : value.right_
+      overwrite_child_ value child
+      child.red_ = false
+    else:
+      // Leaf node.
+      if value == root_ or value.red_:
+        overwrite_child_ value null
+      else:
+        // Leaf node is black.
+        throw "unimplemented"
+
+  overwrite_child_ from/RedBlackNode to/RedBlackNode? -> none:
+    parent := from.parent_
+    if parent:
+      if parent.left_ == from:
+        parent.left_ = to
+      else:
+        assert: parent.right_ == from
+        parent.right_ = to
+    else:
+      root_ = to
+    if to:
+      to.parent_ = parent
+
+  leftmost_ node/RedBlackNode -> RedBlackNode:
+    while node.left_:
+      node = node.left_
+    return node
 
 abstract
 class RedBlackNode:

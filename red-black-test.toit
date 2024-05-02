@@ -15,40 +15,26 @@ class Timeout extends RedBlackNode:
 main:
   tree := RedBlackTree
 
-  tree.add
-      Timeout 1000::
-        print "Timed out"
-
-  print "added 1000"
-
-  tree.dump
-
-  tree.add
-      Timeout 999::
-        print "Timed out"
-  
-  print "added 999"
-  tree.dump
-
-  tree.add
-      Timeout 1001::
-        print "Timed out"
-  
-  print "added 1001"
-  tree.dump
-
-  10.repeat: | i |
-    print "Adding $(i * 1000)"
-    tree.add
-        Timeout i * 1000::
-          print "Timed out"
-
-  tree.dump
-
   100.repeat: | i |
-    print "Adding $i"
     tree.add
-        Timeout i::
-          print "Timed out"
+        Timeout (random i)::
+            print "Timed out"
+
+  x := 0
+  tree.do: | node |
+    if node.us < x:
+      throw "Error: $node.us < $x"
+    x = node.us
+
+  tree.dump
+
+  cent := Timeout 100::
+    print "Timed out"
+
+  tree.add cent
+
+  tree.dump
+
+  tree.delete cent
 
   tree.dump
