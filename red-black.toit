@@ -48,7 +48,7 @@ class RedBlackTree:
         value.parent_ = node
         node.left_ = value
         value.red_ = true
-        red-check_ value node
+        insert-check_ value node
       else:
         insert_ value node.left_
     else:
@@ -56,12 +56,11 @@ class RedBlackTree:
         value.parent_ = node
         node.right_ = value
         value.red_ = true
-        red-check_ value node
+        insert-check_ value node
       else:
         insert_ value node.right_
 
-  red-check_ node/RedBlackNode parent/RedBlackNode? -> none:
-    print "red-check_"
+  insert-check_ node/RedBlackNode parent/RedBlackNode? -> none:
     while node != root_:
       if not parent.red_:
         print "  L1"
@@ -130,16 +129,74 @@ class RedBlackTree:
       overwrite-child_ value successor
     else if value.left_ != null or value.right_ != null:
       // Exactly one of the children is non-null.
-      child := value.left_ ? value.left_ : value.right_
+      child := ?
+      if value.left_:
+        child = value.left_
+        value.left_ = null
+      else:
+        assert: value.right_
+        child = value.right_
+        value.right_ = null
       overwrite_child_ value child
       child.red_ = false
     else:
+      assert: value.left_ == null and value.right_ == null
       // Leaf node.
-      if value == root_ or value.red_:
-        overwrite_child_ value null
-      else:
-        // Leaf node is black.
-        throw "unimplemented"
+      index := (not parent or value == parent.left_) ? 0 : 1
+      overwrite_child_ value null
+      if value != root_ and not value.red_:
+        // Leaf node is black - the difficult case.
+        delete-check_ value parent index
+
+    assert: value.parent_ == null
+    assert: value.left_ == null
+    assert: value.right_ == null
+
+  delete-check_ value/RedBlackNode parent/RedBlackNode index/int -> none:
+    while value != root_:
+      sibling := index == 0 ? parent.right_ : parent.left_
+      if sibling.red_:
+        // D1.
+        rotate_ parent (1 - index)
+        sibling.red_ = false
+        parent.red_ = true
+        sibling = index == 0 ? parent.right_ : parent.left_
+      if (sibling.left_ and sibling.left_.red_) or (sibling.right_ and sibling.right_.red_):
+        // D2.
+        if sibling == parent.right_:
+          if sibling.left_ == null or not sibling.left_.red_:
+            // D2a.
+            rotate_ sibling 0
+            sibling.red_ = true
+            sibling = parent.right_
+          // D2b.
+          rotate_ parent 1
+          sibling.red_ = parent.red_
+          parent.red_ = false
+          sibling.left_.red_ = false
+          return
+        else:
+          if sibling.right_ == null or not sibling.right_.red_:
+            // D2a.
+            rotate_ sibling 1
+            sibling.red_ = true
+            sibling = parent.left_
+          // D2b.
+          rotate_ parent 0
+          sibling.red_ = parent.red_
+          parent.red_ = false
+          sibling.right_.red_ = false
+          return
+      if parent.red_:
+        // D3.
+        parent.red_ = false
+        sibling.red_ = true
+        return
+      // D4.
+      sibling.red_ = true
+      value = parent
+      parent = value.parent_
+      index = (not parent or value == parent.left_) ? 0 : 1
 
   overwrite_child_ from/RedBlackNode to/RedBlackNode? -> none:
     parent := from.parent_
@@ -153,6 +210,7 @@ class RedBlackTree:
       root_ = to
     if to:
       to.parent_ = parent
+    from.parent_ = null
 
   leftmost_ node/RedBlackNode -> RedBlackNode:
     while node.left_:
