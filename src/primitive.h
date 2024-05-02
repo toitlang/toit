@@ -450,7 +450,7 @@ namespace toit {
 
 #define MODULE_RMT(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(channel_new, 3)                  \
+  PRIMITIVE(channel_new, 4)                  \
   PRIMITIVE(channel_delete, 2)               \
   PRIMITIVE(config_rx, 8)                    \
   PRIMITIVE(config_tx, 11)                   \
