@@ -317,6 +317,59 @@ class BleCallbackResource : public BleResource {
   uword token_ = kInvalidToken;
 };
 
+class BleReadWriteElement;
+
+class ToitCallback {
+ public:
+  ToitCallback(int timeout_ms, Mutex* mutex, ConditionVariable* condition)
+      : timeout_ms_(timeout_ms)
+      , mutex_(mutex)
+      , condition_(condition) {}
+
+  ~ToitCallback() {
+    OS::dispose(mutex_);
+    OS::dispose(condition_);
+  }
+
+  bool is_pending_deletion() const { return pending_deletion_; }
+  void mark_for_deletion() { pending_deletion_ = true; }
+  int timeout_ms() const { return timeout_ms_; }
+
+  bool needs_value() const { return state_ == WAITING_FOR_VALUE; }
+  os_mbuf* value() const { return value_; }
+
+  int call_toit(BleCallbackScope& scope,
+                BleReadWriteElement* element,
+                word request_kind,
+                ble_gatt_access_ctxt* ctxt);
+
+  /// The Toit code has produced a value.
+  /// Make it available to the NimBLE thread.
+  void handle_reply(os_mbuf* new_value);
+
+  void delete_or_mark_for_deletion();
+
+ private:
+  // State relevant to the NimBLE thread.
+  enum State {
+    // No callback in progress.
+    NO_CALLBACK,
+    // Callback in progress. No value yet.
+    WAITING_FOR_VALUE,
+    // Callback in progress. Value has been set by the Toit callback.
+    VALUE_PENDING,
+    // Callback in progress. Toit callback has been canceled.
+    CANCELED,
+  };
+
+  State state_ = NO_CALLBACK;
+  bool pending_deletion_ = false;
+  os_mbuf* value_ = null;
+  int timeout_ms_;
+  Mutex* mutex_;
+  ConditionVariable* condition_;
+};
+
 class BleServiceResource;
 
 class BleReadWriteElement : public BleCallbackResource {
@@ -329,17 +382,12 @@ class BleReadWriteElement : public BleCallbackResource {
       , handle_(handle)
       , mbuf_received_(null)
       , mbuf_to_send_(null)
-      , read_request_mbuf_(null)
-      , read_request_mutex_(null)
-      , read_request_condition_(null)
-      , read_timeout_ms_(0) {}
+      , read_handler_(null) {}
 
   ~BleReadWriteElement() override {
     if (mbuf_received_) os_mbuf_free_chain(mbuf_received_);
     if (mbuf_to_send_) os_mbuf_free(mbuf_to_send_);
-    if (read_request_mbuf_) os_mbuf_free(read_request_mbuf_);
-    if (read_request_mutex_) OS::dispose(read_request_mutex_);
-    if (read_request_condition_) OS::dispose(read_request_condition_);
+    toit_callback_deinit(true);  // TODO(florian): also deinit write request fields.
   }
 
   ble_uuid_any_t &uuid() { return uuid_; }
@@ -348,6 +396,8 @@ class BleReadWriteElement : public BleCallbackResource {
   uint16* ptr_handle() { return &handle_; }
   virtual BleServiceResource* service() = 0;
 
+  // Sets received buffer to the new value.
+  // Unless mbuf is null, this is done by the NimBLE thread.
   void set_mbuf_received(os_mbuf* mbuf) {
     if (mbuf_received_ == null)  {
       mbuf_received_ = mbuf;
@@ -372,6 +422,8 @@ class BleReadWriteElement : public BleCallbackResource {
     mbuf_to_send_ = mbuf;
   }
 
+  // Callback for when we receive a response from a remote device.
+  // We requested to read an attribute, and are now getting called back.
   static int on_attribute_read(uint16_t conn_handle,
                                const ble_gatt_error* error,
                                ble_gatt_attr* attr,
@@ -385,6 +437,7 @@ class BleReadWriteElement : public BleCallbackResource {
     return BLE_ERR_SUCCESS;
   }
 
+  // Callback for when this peripheral is accessed.
   static int on_access(uint16_t conn_handle, uint16_t attr_handle,
                        struct ble_gatt_access_ctxt* ctxt, void* arg) {
     USE(conn_handle);
@@ -393,6 +446,8 @@ class BleReadWriteElement : public BleCallbackResource {
     // If the resource has been deleted ignore the callback and just return an empty value.
     BleResource* resource = resource_for_token(arg);
     if (resource == null) return BLE_ERR_SUCCESS;
+    // Note that `_on_access` may release the BLE lock. It is unsafe to access 'this'
+    // after this call.
     return static_cast<BleReadWriteElement*>(resource)->_on_access(scope, ctxt);
   }
 
@@ -406,24 +461,11 @@ class BleReadWriteElement : public BleCallbackResource {
     return total_len;
   }
 
-  bool setup_callback_readable_characteristic(int read_timeout_ms) {
-    read_request_mutex_ = OS::allocate_mutex(1, "Read request");
-    if (!read_request_mutex_) return false;
-    read_request_condition_ = OS::allocate_condition_variable(read_request_mutex_);
-    if (!read_request_condition_) {
-      OS::dispose(read_request_mutex_);
-      return false;
-    }
-    read_timeout_ms_ = read_timeout_ms;
-    return true;
-  }
-
-  void handle_read_reply_request(os_mbuf* mbuf) {
-    Locker locker(read_request_mutex_);
-    if (read_request_mbuf_ != null) os_mbuf_free(read_request_mbuf_);
-    read_request_mbuf_ = mbuf;
-    OS::signal_all(read_request_condition_);
-  }
+  bool toit_callback_needs_value(bool for_read) const;
+  bool toit_callback_init(int timeout_ms, bool for_read);
+  void toit_callback_deinit(bool for_read);
+  void toit_callback_handle_reply(os_mbuf* mbuf, bool for_read);
+  bool toit_callback_is_setup(bool for_read) const;
 
  private:
   void _on_attribute_read(const BleCallbackScope& scope, const ble_gatt_error* error, ble_gatt_attr* attr);
@@ -433,10 +475,7 @@ class BleReadWriteElement : public BleCallbackResource {
   uint16 handle_;
   os_mbuf* mbuf_received_;
   os_mbuf* mbuf_to_send_;
-  os_mbuf* read_request_mbuf_;
-  Mutex* read_request_mutex_;
-  ConditionVariable* read_request_condition_;
-  int read_timeout_ms_;
+  ToitCallback* read_handler_;
 };
 
 class BleDescriptorResource;
@@ -1687,6 +1726,129 @@ BleDescriptorResource* BleCharacteristicResource::get_or_create_descriptor(const
   return descriptor;
 }
 
+int ToitCallback::call_toit(BleCallbackScope& scope,
+                             BleReadWriteElement* element,
+                             word request_kind,
+                             ble_gatt_access_ctxt* ctxt) {
+  ASSERT(state_ == NO_CALLBACK);
+  // Signal a pending handler (if one exists) that it should produce data.
+  BleEventSource::instance()->on_event(element, request_kind);
+  state_ = WAITING_FOR_VALUE;
+  { Unlocker unlocker(scope.locker);
+    Locker locker(mutex_);
+    // Wait for the value, or the timeout.
+    // Due to the unlocker other BLE calls are allowed, but they might
+    // be blocked by us (the NimBLE thread) being stuck here. Due to the timeout,
+    // this can only be temporary.
+    OS::wait_us(condition_, 1000 * timeout_ms_);
+  }
+  int result = BLE_ERR_SUCCESS;
+  switch (state_) {
+    case NO_CALLBACK:
+      UNREACHABLE();
+    case WAITING_FOR_VALUE:
+      // The timeout triggered without any value.
+      result = BLE_ERR_OPERATION_CANCELLED;
+      break;
+    case VALUE_PENDING:
+      if (value_ != null) {
+        result = os_mbuf_appendfrom(ctxt->om,
+                                    value_,
+                                    0,
+                                    BleReadWriteElement::mbuf_total_len(value_));
+        os_mbuf_free(value_);
+        value_ = null;
+      } else {
+        // Empty response. Do nothing (but return with BLE_ERR_SUCCESS).
+      }
+      break;
+    case CANCELED:
+      result = BLE_ERR_OPERATION_CANCELLED;
+      break;
+  }
+  if (pending_deletion_) {
+    delete this;
+  }
+  return result;
+}
+
+void ToitCallback::delete_or_mark_for_deletion() {
+  if (pending_deletion_) return;
+  switch (state_) {
+    case NO_CALLBACK:
+      delete this;
+      return;
+    case WAITING_FOR_VALUE:
+      // Since a request is in progress, we can't delete the mutex and condition variable yet.
+      // We have to let the NimBLE thread do that. We need to wake the thread, though.
+      state_ = CANCELED;
+      pending_deletion_ = true;
+      { Locker callback_locker(mutex_);
+        OS::signal_all(condition_);
+      }
+      break;
+    case VALUE_PENDING:
+    case CANCELED:
+      // We don't need to signal the NimBLE thread anymore, but we need to
+      // mark ourselves.
+      pending_deletion_ = true;
+      break;
+  }
+}
+
+void ToitCallback::handle_reply(os_mbuf* new_value) {
+  ASSERT(value_ == null);
+  ASSERT(needs_value());
+  value_ = new_value;
+  state_ = VALUE_PENDING;
+  Locker callback_locker(mutex_);
+  OS::signal_all(condition_);
+}
+
+bool BleReadWriteElement::toit_callback_needs_value(bool for_read) const {
+  ASSERT(for_read);  // TODO(florian): implement write requests.
+  return read_handler_ != null && read_handler_->needs_value();
+}
+
+bool BleReadWriteElement::toit_callback_init(int timeout_ms, bool for_read) {
+  ASSERT(for_read);  // TODO(florian): implement write requests.
+  ASSERT(read_handler_ == null);
+  auto mutex = OS::allocate_mutex(1, "Read request");
+  if (!mutex) return false;
+  auto condition = OS::allocate_condition_variable(mutex);
+  if (!condition) {
+    OS::dispose(mutex);
+    return false;
+  }
+  auto callback = _new ToitCallback(timeout_ms, mutex, condition);
+  if (!callback) {
+    OS::dispose(condition);
+    OS::dispose(mutex);
+    return false;
+  }
+  read_handler_ = callback;
+  return true;
+}
+
+void BleReadWriteElement::toit_callback_deinit(bool for_read) {
+  ASSERT(for_read);  // TODO(florian): implement write requests.
+  if (read_handler_ == null) return;
+  read_handler_->delete_or_mark_for_deletion();
+  read_handler_ = null;
+}
+
+/// The Toit code gave us a value for the request.
+/// Signal the NimBLE thread that it should use it.
+void BleReadWriteElement::toit_callback_handle_reply(os_mbuf* mbuf, bool for_read) {
+  ASSERT(for_read);  // TODO(florian): implement write requests.
+  read_handler_->handle_reply(mbuf);
+}
+
+bool BleReadWriteElement::toit_callback_is_setup(bool for_read) const {
+  ASSERT(for_read);  // TODO(florian): implement write requests.
+  return read_handler_ != null;
+}
+
 void BleReadWriteElement::_on_attribute_read(const BleCallbackScope& scope,
                                              const struct ble_gatt_error* error,
                                              struct ble_gatt_attr* attr) {
@@ -1715,22 +1877,14 @@ int BleReadWriteElement::_on_access(BleCallbackScope& scope, ble_gatt_access_ctx
       if (mbuf_to_send() != null) {
         return os_mbuf_appendfrom(ctxt->om, mbuf_to_send(), 0, mbuf_total_len(mbuf_to_send_));
       } else {
-        BleEventSource::instance()->on_event(this, kBleDataReadRequest);
-        {
-          {
-            Unlocker unlocker(scope.locker);
-            Locker locker(read_request_mutex_);
-            if (!OS::wait_us(read_request_condition_, 1000 * read_timeout_ms_)) return BLE_ERR_OPERATION_CANCELLED;
-          }
-          if (read_request_mbuf_) {
-            int result = os_mbuf_appendfrom(ctxt->om, read_request_mbuf_, 0, mbuf_total_len(read_request_mbuf_));
-            os_mbuf_free(read_request_mbuf_);
-            read_request_mbuf_ = null;
-            return result;
-          } else {  // Empty response
-            return BLE_ERR_SUCCESS;
-          }
+        auto callback = read_handler_;
+        if (callback == null) {
+          return BLE_ERR_OPERATION_CANCELLED;
         }
+        // Note that 'call_toit' will release the BLE lock.
+        // It is thus unsafe to use 'this' after the call, as this instance might have
+        // been deleted in the meantime.
+        return callback->call_toit(scope, this, kBleDataReadRequest, ctxt);
       }
       break;
     case BLE_GATT_ACCESS_OP_WRITE_CHR:
@@ -2876,11 +3030,6 @@ PRIMITIVE(add_characteristic) {
 
   if (om != null) {
     characteristic->set_mbuf_to_send(om);
-  } else {
-    if (!characteristic->setup_callback_readable_characteristic(read_timeout_ms)) {
-      delete characteristic;
-      FAIL(MALLOC_FAILED);
-    }
   }
   // On the peripheral side, setting the "returned" value isn't strictly necessary,
   // as all characteristics are automatically returned. It is more consistent this way, though.
@@ -3180,16 +3329,42 @@ PRIMITIVE(clear_error) {
   return process->null_object();
 }
 
-PRIMITIVE(read_request_reply) {
-  ARGS(BleCharacteristicResource, characteristic, Object, value)
+PRIMITIVE(toit_callback_init) {
+  ARGS(BleCharacteristicResource, characteristic, int, timeout_ms, bool, for_read)
 
   Locker locker(characteristic->group()->mutex());
+
+  if (timeout_ms < 0 || timeout_ms > 2500) FAIL(INVALID_ARGUMENT);
+  if (characteristic->toit_callback_is_setup(for_read)) FAIL(ALREADY_IN_USE);
+  if (!characteristic->toit_callback_init(timeout_ms, for_read)) FAIL(MALLOC_FAILED);
+  return process->null_object();
+}
+
+PRIMITIVE(toit_callback_deinit) {
+  ARGS(BleCharacteristicResource, characteristic, bool, for_read)
+
+  Locker locker(characteristic->group()->mutex());
+
+  if (!characteristic->toit_callback_is_setup(for_read)) {
+    return process->null_object();
+  }
+  characteristic->toit_callback_deinit(for_read);
+  return process->null_object();
+}
+
+PRIMITIVE(toit_callback_reply) {
+  ARGS(BleCharacteristicResource, characteristic, Object, value, bool, for_read)
+
+  Locker locker(characteristic->group()->mutex());
+
+  // We might throw if the callback is too late.
+  if (!characteristic->toit_callback_needs_value(for_read)) FAIL(INVALID_STATE);
 
   os_mbuf* mbuf = null;
   Object* error = object_to_mbuf(process, value, &mbuf);
   if (error) return error;
 
-  characteristic->handle_read_reply_request(mbuf);
+  characteristic->toit_callback_handle_reply(mbuf, for_read);
 
   return process->null_object();
 }

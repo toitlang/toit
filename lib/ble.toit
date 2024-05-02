@@ -724,11 +724,12 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   service/LocalService
 
   descriptors_/List := []
+  read-timeout-ms_/int
 
-  constructor .service .uuid .properties .permissions value/io.Data? read-timeout-ms:
+  constructor .service .uuid .properties .permissions value/io.Data? .read-timeout-ms_:
     if service.peripheral-manager.deployed: throw "Peripheral is already deployed"
     if (service.characteristics_.any: it.uuid == uuid): throw "Characteristic already exists"
-    resource := ble-add-characteristic_ service.resource_ uuid.encode-for-platform_ properties permissions value read-timeout-ms
+    resource := ble-add-characteristic_ service.resource_ uuid.encode-for-platform_ properties permissions value
     super resource
 
   /**
@@ -780,12 +781,20 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   The block must return an $io.Data which is then used as value of the characteristic.
   */
   handle-read-request [block]:
-    while true:
-      resource-state_.wait-for-state DATA-READ-REQUEST-EVENT_
-      if not resource_: return
-      value := block.call
-      resource-state_.clear-state DATA-READ-REQUEST-EVENT_
-      ble-read-request-reply_ resource_ value
+    for-read ::= true
+    resource-state_.clear-state DATA-READ-REQUEST-EVENT_
+    ble-callback-init_ resource_ read-timeout-ms_ for-read
+    try:
+      while true:
+        resource-state_.wait-for-state DATA-READ-REQUEST-EVENT_
+        if not resource_: return
+        value := block.call
+        resource-state_.clear-state DATA-READ-REQUEST-EVENT_
+        ble-callback-reply_ resource_ value for-read
+    finally:
+      // If the resource is already gone, then the corresponding callback data-structure
+      // is already deallocated as well.
+      if resource_: ble-callback-deinit_ resource_ for-read
 
   /**
   Adds a descriptor to this characteristic.
@@ -1346,15 +1355,15 @@ ble-advertise-stop_ peripheral-manager:
 ble-add-service_ peripheral-manager uuid:
   #primitive.ble.add-service
 
-ble-add-characteristic_ service uuid properties permission value read-timeout-ms:
+ble-add-characteristic_ service uuid properties permission value:
   return ble-run-with-quota-backoff_:
-    ble-add-characteristic__ service uuid properties permission value read-timeout-ms
+    ble-add-characteristic__ service uuid properties permission value
   unreachable
 
-ble-add-characteristic__ service uuid properties permission value read-timeout-ms:
+ble-add-characteristic__ service uuid properties permission value:
   #primitive.ble.add-characteristic:
     return io.primitive-redo-io-data_ it value: | bytes |
-      ble-add-characteristic__ service uuid properties permission bytes read-timeout-ms
+      ble-add-characteristic__ service uuid properties permission bytes
 
 ble-add-descriptor_ characteristic uuid properties permission value:
   return ble-run-with-quota-backoff_:
@@ -1410,14 +1419,20 @@ ble-clear-error_ characteristic is-oom:
 ble-platform-requires-uuid-as-byte-array_:
   return platform == system.PLATFORM-FREERTOS
 
-ble-read-request-reply_ resource value:
-  ble-run-with-quota-backoff_ :
-    ble-read-request-reply__ resource value
+ble-callback-init_ resource read-timeout-ms for-read:
+  #primitive.ble.toit-callback-init
 
-ble-read-request-reply__ resource value:
-  #primitive.ble.read-request-reply:
+ble-callback-deinit_ resource for-read:
+  #primitive.ble.toit-callback-deinit
+
+ble-callback-reply_ resource value for-read:
+  ble-run-with-quota-backoff_ :
+    ble-callback-reply__ resource value for-read
+
+ble-callback-reply__ resource value for-read:
+  #primitive.ble.toit-callback-reply:
     return io.primitive-redo-io-data_ it value: | bytes |
-      ble-read-request-reply__ resource bytes
+      ble-callback-reply__ resource bytes for-read
 
 ble-get-bonded-peers_ adapter:
   #primitive.ble.get-bonded-peers
