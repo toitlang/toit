@@ -79,7 +79,8 @@ class DiscoveredPeripheral : public DiscoveredPeripheralList::Element {
   uint8 event_type_;
 };
 
-static const uword kInvalidToken = std::numeric_limits<uword>::max();
+static const uword kInvalidToken = std::numeric_limits<uword>::max() - 1;
+static const uword kDeletedToken = std::numeric_limits<uword>::max();
 
 /// A map from tokens to BleResources.
 ///
@@ -283,7 +284,7 @@ class BleCallbackResource : public BleResource {
       , error_(0) {}
 
   ~BleCallbackResource() {
-    if (token_ != kInvalidToken) group()->token_resource_map.remove(token_);
+    if (token_ != kDeletedToken) FATAL("token must be set to deleted");
   }
 
   bool has_malloc_error() const { return malloc_error_;}
@@ -294,6 +295,7 @@ class BleCallbackResource : public BleResource {
 
   void* token() const {
     if (token_ == kInvalidToken) FATAL("Ble Resource token wasn't set");
+    if (token_ == kDeletedToken) FATAL("Ble Resource token taken for deleted object");
     return reinterpret_cast<void*>(token_);
   }
 
@@ -301,6 +303,7 @@ class BleCallbackResource : public BleResource {
   /// This function should be called before the resource is registered for a
   /// NimBLE callback.
   bool ensure_token() {
+    if (token_ == kDeletedToken) FATAL("Ble Resource ensure token for deleted object");
     if (token_ == kInvalidToken) {
       uword token;
       bool succeeded = group()->token_resource_map.add(this, &token);
@@ -308,6 +311,15 @@ class BleCallbackResource : public BleResource {
       token_ = token;
     }
     return true;
+  }
+
+ protected:
+  void delete_token() {
+    Locker locker(group()->mutex());
+    if (token_ != kInvalidToken && token_ != kDeletedToken) {
+      group()->token_resource_map.remove(token_);
+    }
+    token_ = kDeletedToken;
   }
 
  private:
@@ -432,7 +444,7 @@ class BleReadWriteElement : public BleCallbackResource {
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
     static_cast<BleReadWriteElement*>(resource)->_on_attribute_read(scope, error, attr);
     return BLE_ERR_SUCCESS;
   }
@@ -443,11 +455,9 @@ class BleReadWriteElement : public BleCallbackResource {
     USE(conn_handle);
     USE(attr_handle);
     BleCallbackScope scope;
-    // If the resource has been deleted ignore the callback and just return an empty value.
+    // If the resource has been deleted ignore the callback and cancel it.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
-    // Note that `_on_access` may release the BLE lock. It is unsafe to access 'this'
-    // after this call.
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
     return static_cast<BleReadWriteElement*>(resource)->_on_access(scope, ctxt);
   }
 
@@ -466,6 +476,9 @@ class BleReadWriteElement : public BleCallbackResource {
   void toit_callback_deinit(bool for_read);
   void toit_callback_handle_reply(os_mbuf* mbuf, bool for_read);
   bool toit_callback_is_setup(bool for_read) const;
+
+ protected:
+  virtual bool marked_for_deletion() const = 0;
 
  private:
   void _on_attribute_read(const BleCallbackScope& scope, const ble_gatt_error* error, ble_gatt_attr* attr);
@@ -486,15 +499,19 @@ class BleDescriptorResource: public BleReadWriteElement, public DescriptorList::
  public:
   TAG(BleDescriptorResource);
   BleDescriptorResource(ResourceGroup* group, BleCharacteristicResource* characteristic,
-                        const ble_uuid_any_t& uuid, uint16 handle, int properties)
-    : BleReadWriteElement(group, DESCRIPTOR, uuid, handle)
-    , characteristic_(characteristic)
-    , properties_(properties) {}
+                        const ble_uuid_any_t& uuid, uint16 handle, int properties);
 
   ~BleDescriptorResource() override;
 
   BleServiceResource* service() override;
   uint8 properties() const { return properties_; }
+
+ protected:
+  bool marked_for_deletion() const override {
+    // Descriptors don't need to be marked for deletion, as they can always
+    // get deleted immediately.
+    return false;
+  }
 
  private:
   BleCharacteristicResource* characteristic_;
@@ -530,16 +547,16 @@ class BleCharacteristicResource :
   TAG(BleCharacteristicResource);
   BleCharacteristicResource(BleResourceGroup* group, BleServiceResource* service,
                             const ble_uuid_any_t& uuid, uint16 properties, uint16 handle,
-                            uint16 definition_handle)
-      : BleReadWriteElement(group, CHARACTERISTIC, uuid, handle)
-      , service_(service)
-      , properties_(properties)
-      , definition_handle_(definition_handle) {}
+                            uint16 definition_handle);
 
   ~BleCharacteristicResource() override;
 
-  void remove_descriptor(BleDescriptorResource* descriptor) {
-    descriptors_.unlink(descriptor);
+  void delete_or_mark_for_deletion() override {
+    if (marked_for_deletion_) return;
+    delete_token();  // From now on, callbacks can't reach this instance.
+    marked_for_deletion_ = true;
+    clear_pending_descriptors();
+    delete_if_able();
   }
 
   BleServiceResource* service() override { return service_; }
@@ -560,8 +577,38 @@ class BleCharacteristicResource :
     return get_descriptor(uuid);
   }
 
+  // Called from the constructor of the BleDescriptorResource.
+  void add_descriptor(BleDescriptorResource* descriptor) {
+    descriptors_.append(descriptor);
+  }
+
+  // Called from the destructor of the BleDescriptorResource.
+  void remove_descriptor(BleDescriptorResource* descriptor) {
+    if (descriptors_.is_linked(descriptor)) {
+      descriptors_.unlink(descriptor);
+      delete_if_able();
+    } else {
+      // This could happen when we are clearing the pending descriptors, where
+      // these entries are currently unlinked, but will be removed from the list.
+      ASSERT(!descriptor->is_returned());
+    }
+  }
+
   DescriptorList& descriptors() {
     return descriptors_;
+  }
+
+  /// Clears descriptors that have not yet been returned to the user.
+  /// During discovery, the 'descriptors_' list is used to store newly discovered
+  /// services. As long as their 'returned' state is not set, they don't have a proxy
+  /// yet.
+  /// This can only happen for remote characteristics.
+  void clear_pending_descriptors() {
+    descriptors_.remove_wherever([&](BleDescriptorResource* descriptor) -> bool {
+      if (descriptor->is_returned()) return false;
+      group()->unregister_resource(descriptor);
+      return true;
+    });
   }
 
   bool update_subscription_status(const BleCallbackScope& scope, uint8_t indicate, uint8_t notify, uint16_t conn_handle);
@@ -575,7 +622,7 @@ class BleCharacteristicResource :
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
     static_cast<BleCharacteristicResource*>(resource)->_on_write_response(scope, error, attr);
     return BLE_ERR_SUCCESS;
   }
@@ -588,14 +635,24 @@ class BleCharacteristicResource :
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
     static_cast<BleCharacteristicResource*>(resource)->_on_subscribe_response(scope, error, attr);
     return BLE_ERR_SUCCESS;
   }
 
   uint16 get_mtu();
 
+ protected:
+  bool marked_for_deletion() const override {
+    return marked_for_deletion_;
+  }
+
  private:
+  void delete_if_able() {
+    if (marked_for_deletion_ && descriptors_.is_empty()) {
+      delete this;
+    }
+  }
   void _on_write_response(const BleCallbackScope& scope, const ble_gatt_error* error, ble_gatt_attr* attr);
   void _on_subscribe_response(const BleCallbackScope& scope, const ble_gatt_error* error, ble_gatt_attr* attr);
 
@@ -604,6 +661,7 @@ class BleCharacteristicResource :
   uint16 definition_handle_;
   DescriptorList descriptors_;
   SubscriptionList subscriptions_;
+  bool marked_for_deletion_ = false;
 };
 
 typedef DoubleLinkedList<BleServiceResource> ServiceResourceList;
@@ -630,18 +688,27 @@ class BleServiceResource:
  public:
   TAG(BleServiceResource);
   BleServiceResource(BleResourceGroup* group, BleRemoteDeviceResource* device,
-                     const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle)
-      : BleServiceResource(group, uuid, start_handle, end_handle) {
-    device_ = device;
-  }
+                     const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle);
 
   BleServiceResource(BleResourceGroup* group, BlePeripheralManagerResource* peripheral_manager,
-                     const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle)
-      : BleServiceResource(group, uuid, start_handle, end_handle) {
-    peripheral_manager_ = peripheral_manager;
-  }
+                     const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle);
 
   ~BleServiceResource() override;
+
+  /// Deletes this instance if no children are alive anymore.
+  /// Otherwise marks this instance as deletable. Once all children are deleted
+  /// we can then safely delete this instance as well.
+  /// Relies on the fact that all children unregister themselves in their destructor.
+  /// See 'delete_if_able'.
+  void delete_or_mark_for_deletion() override {
+    if (marked_for_deletion_) return;
+    delete_token();  // From now on, callbacks can't reach this instance.
+    // Clear the pending characteristics. We must be careful not to add any new ones
+    // as there wouldn't be anything deleting them anymore.
+    clear_pending_characteristics();
+    marked_for_deletion_ = true;
+    delete_if_able();
+  }
 
   BleCharacteristicResource* get_characteristic(const ble_uuid_any_t& uuid);
   BleCharacteristicResource* get_or_create_characteristic(
@@ -658,13 +725,26 @@ class BleServiceResource:
   BlePeripheralManagerResource* peripheral_manager() const { return peripheral_manager_; }
   CharacteristicResourceList& characteristics() { return characteristics_; }
 
-  void remove_characteristic(BleCharacteristicResource* characteristic) {
-    characteristics_.unlink(characteristic);
+  // Called from the constructor of the BleCharacteristicResource.
+  void add_characteristic(BleCharacteristicResource* characteristic) {
+    characteristics_.append(characteristic);
   }
 
-  /// Clears services that have not yet been returned to the user.
-  /// During discovery, the 'services_' list is used to store newly discovered
-  /// services. As long as their 'returned' state is not set, they don't have a proxy
+  // Called from the destructor of the BleCharacteristicResource.
+  void remove_characteristic(BleCharacteristicResource* characteristic) {
+    if (characteristics_.is_linked(characteristic)) {
+      characteristics_.unlink(characteristic);
+      delete_if_able();
+    } else {
+      // This could happen when we are clearing the pending characteristics, where
+      // these entries are currently unlinked, but will be removed from the list.
+      ASSERT(!characteristic->is_returned());
+    }
+  }
+
+  /// Clears characteristics that have not yet been returned to the user.
+  /// During discovery, the 'characteristics_' list is used to store newly discovered
+  /// characteristics. As long as their 'returned' state is not set, they don't have a proxy
   /// yet.
   /// This can only happen for remote characteristics (when the 'device_' field is set).
   void clear_pending_characteristics() {
@@ -691,7 +771,7 @@ class BleServiceResource:
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
     static_cast<BleServiceResource*>(resource)->_on_characteristic_discovered(scope, error, chr);
     return BLE_ERR_SUCCESS;
   }
@@ -705,7 +785,7 @@ class BleServiceResource:
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
     static_cast<BleServiceResource*>(resource)->_on_descriptor_discovered(scope, error, dsc, chr_val_handle, false);
     return BLE_ERR_SUCCESS;
   }
@@ -733,6 +813,11 @@ class BleServiceResource:
   }
 
  private:
+  void delete_if_able() {
+    if (marked_for_deletion_ && characteristics_.is_empty()) {
+      delete this;
+    }
+  }
   void _on_characteristic_discovered(const BleCallbackScope& scope, const ble_gatt_error* error, const ble_gatt_chr* chr);
   void _on_descriptor_discovered(const BleCallbackScope& scope,
                                  const struct ble_gatt_error* error,
@@ -748,16 +833,14 @@ class BleServiceResource:
   BleRemoteDeviceResource* device_;
   BlePeripheralManagerResource* peripheral_manager_;
   bool deployed_ = false;
+  bool marked_for_deletion_ = false;
 };
 
 class BleCentralManagerResource : public BleCallbackResource {
  public:
   TAG(BleCentralManagerResource);
 
-  explicit BleCentralManagerResource(BleResourceGroup* group, BleAdapterResource* adapter)
-      : BleCallbackResource(group, CENTRAL_MANAGER)
-      , adapter_(adapter)
-      , marked_for_deletion_(false) {}
+  explicit BleCentralManagerResource(BleResourceGroup* group, BleAdapterResource* adapter);
 
   /// Deletes the central manager resource.
   /// The resource may only get deleted when all children (devices) have been
@@ -778,7 +861,7 @@ class BleCentralManagerResource : public BleCallbackResource {
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
     static_cast<BleCentralManagerResource*>(resource)->_on_discovery(scope, event);
     return BLE_ERR_SUCCESS;
   }
@@ -798,6 +881,7 @@ class BleCentralManagerResource : public BleCallbackResource {
   /// Relies on the fact that all children unregister themselves in their destructor.
   /// See 'delete_if_able'.
   void delete_or_mark_for_deletion() override {
+    delete_token();  // From now on, callbacks can't reach this instance.
     marked_for_deletion_ = true;
     delete_if_able();
   }
@@ -808,6 +892,7 @@ class BleCentralManagerResource : public BleCallbackResource {
       delete this;
     }
   }
+
   void _on_discovery(const BleCallbackScope& scope, ble_gap_event* event);
   BleAdapterResource* adapter_;
   int device_count_ = 0;
@@ -828,9 +913,21 @@ class ServiceContainer : public BleCallbackResource {
   ServiceContainer(BleResourceGroup* group, Kind kind)
       : BleCallbackResource(group, kind) {}
 
+  // Called from the constructor of the BleServiceResource.
+  void add_service(BleServiceResource* service) {
+    services_.append(service);
+  }
+
+  // Called from the destructor of the BleServiceResource.
   void remove_service(BleServiceResource* service) {
-    services_.unlink(service);
-    delete_if_able();
+    if (services_.is_linked(service)) {
+      services_.unlink(service);
+      delete_if_able();
+    } else {
+      // This can happen when being called through the 'clear_pending_services'.
+      // In this case the service will be unlinked there.
+      ASSERT(!service->is_returned());
+    }
   }
 
   virtual T* type() = 0;
@@ -865,12 +962,7 @@ class ServiceContainer : public BleCallbackResource {
 class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManagerResource> {
  public:
   TAG(BlePeripheralManagerResource);
-  explicit BlePeripheralManagerResource(BleResourceGroup* group, BleAdapterResource* adapter)
-      : ServiceContainer(group, PERIPHERAL_MANAGER)
-      , adapter_(adapter)
-      , advertising_params_({})
-      , advertising_started_(false)
-      , marked_for_deletion_(false) {}
+  explicit BlePeripheralManagerResource(BleResourceGroup* group, BleAdapterResource* adapter);
 
   /// Deletes the peripheral manager resource.
   /// The resource may only get deleted when all children (services) have been
@@ -913,6 +1005,7 @@ class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManage
   /// Relies on the fact that all children unregister themselves in their destructor.
   /// See 'delete_if_able'.
   void delete_or_mark_for_deletion() override {
+    delete_token();  // From now on, callbacks can't reach this instance.
     marked_for_deletion_ = true;
     stop();  // Always stop our activity, even if we can't fully shut down yet.
     delete_if_able();
@@ -957,10 +1050,8 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
-    auto device = static_cast<BleRemoteDeviceResource*>(resource);
-    if (device->state_ == DELETABLE) return BLE_ERR_SUCCESS;
-    device->_on_event(scope, event);
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
+    static_cast<BleRemoteDeviceResource*>(resource)->_on_event(scope, event);
     return BLE_ERR_SUCCESS;
   }
 
@@ -971,10 +1062,8 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
     BleCallbackScope scope;
     // If the resource has been deleted ignore the callback.
     BleResource* resource = resource_for_token(arg);
-    if (resource == null) return BLE_ERR_SUCCESS;
-    auto device = static_cast<BleRemoteDeviceResource*>(resource);
-    if (device->state_ == DELETABLE) return BLE_ERR_SUCCESS;
-    device->_on_service_discovered(scope, error, service);
+    if (resource == null) return BLE_ERR_OPERATION_CANCELLED;
+    static_cast<BleRemoteDeviceResource*>(resource)->_on_service_discovered(scope, error, service);
     return BLE_ERR_SUCCESS;
   }
 
@@ -982,7 +1071,7 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   void set_handle(uint16 handle) { handle_ = handle; }
 
   int connect(uint8 own_addr_type, ble_addr_t* addr) {
-    if (state_ == DELETABLE) return BLE_ERR_SUCCESS;  // Should never happen.
+    if (state_ == DELETABLE) return BLE_ERR_OPERATION_CANCELLED;  // Should never happen.
     // The 'connect' primitive ensured that the token is set.
     // NimBLE reports descriptive errors if we are already connecting or in another
     // bad state.
@@ -1015,10 +1104,9 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   /// Relies on the fact that all children unregister themselves in their destructor.
   /// See 'delete_if_able'.
   void delete_or_mark_for_deletion() override {
+    delete_token();  // From now on, callbacks can't reach this instance.
     state_ = DELETABLE;
     // Clears all services that haven't been given to the user yet.
-    // We must be careful not to add new pending services, as there would be nothing
-    // deleting them anymore.
     clear_pending_services();
     delete_if_able();
   }
@@ -1203,8 +1291,13 @@ class BleAdapterResource : public BleResource, public Thread {
     return central_manager_;
   }
 
-  /// Clears the central_manager field.
-  /// This should only be called from the destructor of the central manager.
+  // Called in the constructor of the BleCentralManagerResource.
+  void set_central_manager(BleCentralManagerResource* manager) {
+    ASSERT(central_manager_ == null);
+    central_manager_ = manager;
+  }
+
+  // Called in the destructor of the BleCentralManagerResource.
   void remove_central_manager(BleCentralManagerResource* manager) {
     ASSERT(central_manager_ == manager);
     central_manager_ = null;
@@ -1215,8 +1308,13 @@ class BleAdapterResource : public BleResource, public Thread {
     return peripheral_manager_;
   }
 
-  /// Clears the peripheral_manager field.
-  /// This should only be called from the destructor of the peripheral manager.
+  // Called in the constructor of the BlePeripheralManagerResource.
+  void set_peripheral_manager(BlePeripheralManagerResource* manager) {
+    ASSERT(peripheral_manager_ == null);
+    peripheral_manager_ = manager;
+  }
+
+  // Called in the destructor of the BlePeripheralManagerResource.
   void remove_peripheral_manager(BlePeripheralManagerResource* manager) {
     ASSERT(peripheral_manager_ == manager);
     peripheral_manager_ = null;
@@ -1389,6 +1487,16 @@ uint32_t BleResourceGroup::on_event(Resource* resource, word data, uint32_t stat
   return state;
 }
 
+BleDescriptorResource::BleDescriptorResource(ResourceGroup* group,
+                                             BleCharacteristicResource* characteristic,
+                                             const ble_uuid_any_t& uuid, uint16 handle, int properties)
+    : BleReadWriteElement(group, DESCRIPTOR, uuid, handle)
+    , characteristic_(characteristic)
+    , properties_(properties) {
+  characteristic->add_descriptor(this);
+}
+
+
 BleDescriptorResource::~BleDescriptorResource() {
   characteristic_->remove_descriptor(this);
 }
@@ -1397,15 +1505,20 @@ BleServiceResource* BleDescriptorResource::service() {
   return characteristic_->service();
 }
 
+BleCharacteristicResource::BleCharacteristicResource(BleResourceGroup* group, BleServiceResource* service,
+                                                     const ble_uuid_any_t& uuid, uint16 properties, uint16 handle,
+                                                     uint16 definition_handle)
+    : BleReadWriteElement(group, CHARACTERISTIC, uuid, handle)
+    , service_(service)
+    , properties_(properties)
+    , definition_handle_(definition_handle) {
+  service->add_characteristic(this);
+}
+
 BleCharacteristicResource::~BleCharacteristicResource() {
   while (!subscriptions_.is_empty()) {
     auto subscription = subscriptions_.remove_first();
     delete subscription;
-  }
-  while (!descriptors_.is_empty()) {
-    auto descriptor = descriptors_.first();
-    // Unregistering the descriptor will remove it from the list.
-    group()->unregister_resource(descriptor);
   }
   service_->remove_characteristic(this);
 }
@@ -1419,6 +1532,20 @@ uint16 BleCharacteristicResource::get_mtu() {
   }
   if (min_sub_mtu != -1) return min_sub_mtu;
   return service()->device()->get_mtu();
+}
+
+BleServiceResource::BleServiceResource(BleResourceGroup* group, BleRemoteDeviceResource* device,
+                                       const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle)
+    : BleServiceResource(group, uuid, start_handle, end_handle) {
+  device_ = device;
+  device->add_service(this);
+}
+
+BleServiceResource::BleServiceResource(BleResourceGroup* group, BlePeripheralManagerResource* peripheral_manager,
+                                       const ble_uuid_any_t& uuid, uint16 start_handle, uint16 end_handle)
+    : BleServiceResource(group, uuid, start_handle, end_handle) {
+  peripheral_manager_ = peripheral_manager;
+  peripheral_manager->add_service(this);
 }
 
 BleServiceResource::~BleServiceResource() {
@@ -1463,7 +1590,6 @@ ServiceContainer<T>::get_or_create_service(const BleCallbackScope* scope,
   }
   if (!service) return null;
   group()->register_resource(service);
-  services_.append(service);
   return service;
 }
 
@@ -1537,8 +1663,15 @@ BleCharacteristicResource* BleServiceResource::get_or_create_characteristic(
   }
   if (!characteristic) return null;
   group()->register_resource(characteristic);
-  characteristics_.append(characteristic);
   return characteristic;
+}
+
+BleCentralManagerResource::BleCentralManagerResource(BleResourceGroup* group,
+                                                     BleAdapterResource* adapter)
+    : BleCallbackResource(group, CENTRAL_MANAGER)
+    , adapter_(adapter)
+    , marked_for_deletion_(false) {
+  adapter_->set_central_manager(this);
 }
 
 BleCentralManagerResource::~BleCentralManagerResource() {
@@ -1603,6 +1736,16 @@ void BleCentralManagerResource::_on_discovery(const BleCallbackScope& scope, ble
       BleEventSource::instance()->on_event(this, kBleDiscovery);
     }
   }
+}
+
+BlePeripheralManagerResource::BlePeripheralManagerResource(BleResourceGroup* group,
+                                                           BleAdapterResource* adapter)
+    : ServiceContainer(group, PERIPHERAL_MANAGER)
+    , adapter_(adapter)
+    , advertising_params_({})
+    , advertising_started_(false)
+    , marked_for_deletion_(false) {
+  adapter_->set_peripheral_manager(this);
 }
 
 BlePeripheralManagerResource::~BlePeripheralManagerResource() {
@@ -1722,7 +1865,6 @@ BleDescriptorResource* BleCharacteristicResource::get_or_create_descriptor(const
   }
   if (!descriptor) return null;
   group()->register_resource(descriptor);
-  descriptors_.append(descriptor);
   return descriptor;
 }
 
@@ -2437,15 +2579,8 @@ PRIMITIVE(disconnect) {
 PRIMITIVE(release_resource) {
   ARGS(BleResource, resource)
 
-
-  if (resource->kind() != BleResource::ADAPTER) {
-    Locker locker(resource->group()->mutex());
-    resource->resource_group()->unregister_resource(resource);
-  } else {
-    // The adapter resource shuts down the NimBLE thread. It must allow the
-    // thread to take the BLE lock. As such we can't take the BLE lock here.
-    resource->resource_group()->unregister_resource(resource);
-  }
+  // We don't take the lock while calling unregister.
+  resource->resource_group()->unregister_resource(resource);
 
   resource_proxy->clear_external_address();
 
