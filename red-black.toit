@@ -13,6 +13,7 @@ class RedBlackTree:
       do_ node.right_ block
 
   dump -> none:
+    print "***************************"
     if root_.parent_:
       throw "root_.parent is not null"
     if root_:
@@ -74,7 +75,7 @@ class RedBlackTree:
         return
       index := parent == gramps.left_ ? 0 : 1
       uncle := index == 0 ? gramps.right_ : gramps.left_
-      if uncle == null or not uncle.red_:
+      if is-black_ uncle:
         // I5 or I6, parent is red, uncle is black.
         sibling := index == 0 ? parent.right_ : parent.left_
         if node == sibling:
@@ -98,26 +99,26 @@ class RedBlackTree:
 
   rotate_ parent/RedBlackNode index/int -> none:
     gramps := parent.parent_
-    s := index == 0 ? parent.right_ : parent.left_
-    c := index == 0 ? s.left_ : s.right_
+    sibling := index == 0 ? parent.right_ : parent.left_
+    close := index == 0 ? sibling.left_ : sibling.right_  // Close nephew.
     if index == 0:
-      parent.right_ = c
+      parent.right_ = close
     else:
-      parent.left_ = c
-    if c: c.parent_ = parent
+      parent.left_ = close
+    if close: close.parent_ = parent
     if index == 0:
-      s.left_ = parent
+      sibling.left_ = parent
     else:
-      s.right_ = parent
-    parent.parent_ = s
-    s.parent_ = gramps
+      sibling.right_ = parent
+    parent.parent_ = sibling
+    sibling.parent_ = gramps
     if gramps:
       if parent == gramps.right_:
-        gramps.right_ = s
+        gramps.right_ = sibling
       else:
-        gramps.left_ = s
+        gramps.left_ = sibling
     else:
-      root_ = s
+      root_ = sibling
 
   delete value/RedBlackNode -> none:
     parent := value.parent_
@@ -155,48 +156,35 @@ class RedBlackTree:
   delete-check_ value/RedBlackNode parent/RedBlackNode index/int -> none:
     while value != root_:
       sibling := index == 0 ? parent.right_ : parent.left_
+      distant := index == 0 ? sibling.right_ : sibling.left_  // Close nephew.
+      close := index == 0 ? sibling.left_ : sibling.right_    // Distant nephew.
       if sibling.red_:
-        // D1.
-        rotate_ parent (1 - index)
-        sibling.red_ = false
-        parent.red_ = true
-        sibling = index == 0 ? parent.right_ : parent.left_
-      if (sibling.left_ and sibling.left_.red_) or (sibling.right_ and sibling.right_.red_):
-        // D2.
-        if sibling == parent.right_:
-          if sibling.left_ == null or not sibling.left_.red_:
-            // D2a.
-            rotate_ sibling 0
-            sibling.red_ = true
-            sibling = parent.right_
-          // D2b.
-          rotate_ parent 1
-          sibling.red_ = parent.red_
-          parent.red_ = false
-          sibling.left_.red_ = false
-          return
-        else:
-          if sibling.right_ == null or not sibling.right_.red_:
-            // D2a.
-            rotate_ sibling 1
-            sibling.red_ = true
-            sibling = parent.left_
-          // D2b.
-          rotate_ parent 0
-          sibling.red_ = parent.red_
-          parent.red_ = false
-          sibling.right_.red_ = false
-          return
-      if parent.red_:
         // D3.
-        parent.red_ = false
+        assert: parent.red_
+        assert: is-black_ close
+        assert: is-black_ distant
+        unreachable
+      else if distant and distant.red_:
+        // D6.
+        unreachable
+      else if close and close.red_:
+        // D5.
+        unreachable
+      else:
+        // D4 and D2
         sibling.red_ = true
-        return
-      // D4.
-      sibling.red_ = true
-      value = parent
-      parent = value.parent_
-      index = (not parent or value == parent.left_) ? 0 : 1
+        if parent.red_:
+          // D4.
+          parent.red_ = false
+          return
+        // D2.  Got up the tree.
+        value = parent
+        parent = value.parent_
+        index = value == parent.left_ ? 0 : 1
+    // D1.  Return.
+
+  is-black_ node/RedBlackNode? -> bool:
+    return node == null or not node.red_
 
   overwrite_child_ from/RedBlackNode to/RedBlackNode? -> none:
     parent := from.parent_

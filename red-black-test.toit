@@ -43,7 +43,6 @@ main:
   tree.dump
 
   elements.do: | e |
-    print "**********************"
     print "Removing $e"
     tree.delete e
     tree.dump
