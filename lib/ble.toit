@@ -778,19 +778,69 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
 
   This blocking function waits for read requests on this characteristic and calls the
     given $block for each request.
+
   The block must return an $io.Data which is then used as value of the characteristic.
+
+  If no request-handler is active, and the characteristic has a value, then the value is
+    returned. In other words, this function takes precedence over the value that was given
+    in the constructor.
   */
   handle-read-request [block]:
-    for-read ::= true
-    resource-state_.clear-state DATA-READ-REQUEST-EVENT_
+    handle-request_ block --for-read
+
+  /**
+  Handles write requests.
+
+  In many cases, the $read function is sufficient and easier to use. See below
+    for reasons to use this function instead.
+
+  This blocking function waits for write requests on this characteristic and calls the
+    given $block for each request with the written value.
+
+  If no request-handler is active, then the data is accumulated and can be
+    read by calling $read. In other words, this function takes precedence over
+    the $read function.
+
+  If data was accumulated before the handler or `read` was called, then the $block is
+    called with the accumulated data.
+
+  While $read is easier to use, $handle-write-request may be necessary for characteristics
+    that respond. The BLE stack will send a response only once the called $block has
+    returned, thus ensuring that the data has been processed before the response is sent.
+  */
+  handle-write-request [block]:
+    handle-request_ block --for-read=false
+
+  handle-request_ [block] --for-read/bool:
+    // In case of a write-handler, we also accept data-received-events, just in case
+    // data was received before the handler was set.
+    event := for-read ? DATA-READ-REQUEST-EVENT_ : (DATA-WRITE-REQUEST-EVENT_ | DATA-RECEIVED-EVENT_)
     ble-callback-init_ resource_ read-timeout-ms_ for-read
     try:
       while true:
-        resource-state_.wait-for-state DATA-READ-REQUEST-EVENT_
+        state := resource-state_.wait-for-state event
         if not resource_: return
-        value := block.call
-        resource-state_.clear-state DATA-READ-REQUEST-EVENT_
-        ble-callback-reply_ resource_ value for-read
+        value := null
+        try:
+          if for-read:
+            // Call the block to get the value we should send to the client.
+            value = block.call
+          else:
+            value = null
+            // Get the received value, and call the block with it.
+            received-value := ble-get-value_ resource_
+            // Typically, we only get a 'null' here if it was a data-received-event.
+            // TODO(florian): why is this possible?
+            if received-value:
+              block.call received-value
+        finally:
+          // Always reply.
+          // If no value was set we store null.
+          // TODO(florian): would be nice to mark the callback as canceled if the block throws.
+          critical-do:
+            resource-state_.clear-state event
+            if state & (DATA_READ-REQUEST-EVENT_ | DATA-WRITE-REQUEST-EVENT_) != 0:
+              ble-callback-reply_ resource_ value for-read
     finally:
       // If the resource is already gone, then the corresponding callback data-structure
       // is already deallocated as well.
@@ -1182,6 +1232,7 @@ SERVICE-ADD-SUCCEEDED-EVENT_          ::= 1 << 18
 SERVICE-ADD-FAILED-EVENT_             ::= 1 << 19
 DATA-RECEIVED-EVENT_                  ::= 1 << 20
 DATA-READ-REQUEST-EVENT_              ::= 1 << 23
+DATA-WRITE-REQUEST-EVENT_             ::= 1 << 24
 
 
 order-attributes_ input/List/*<BleUUID>*/ output/List/*<Attribute>*/ -> List:
