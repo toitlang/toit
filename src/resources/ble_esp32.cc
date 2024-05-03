@@ -797,7 +797,7 @@ class BleCentralManagerResource : public BleCallbackResource {
   /// we can then safely delete this instance as well.
   /// Relies on the fact that all children unregister themselves in their destructor.
   /// See 'delete_if_able'.
-  void make_deletable() override {
+  void delete_or_mark_for_deletion() override {
     marked_for_deletion_ = true;
     delete_if_able();
   }
@@ -912,7 +912,7 @@ class BlePeripheralManagerResource : public ServiceContainer<BlePeripheralManage
   /// we can then safely delete this instance as well.
   /// Relies on the fact that all children unregister themselves in their destructor.
   /// See 'delete_if_able'.
-  void make_deletable() override {
+  void delete_or_mark_for_deletion() override {
     marked_for_deletion_ = true;
     stop();  // Always stop our activity, even if we can't fully shut down yet.
     delete_if_able();
@@ -1014,7 +1014,7 @@ class BleRemoteDeviceResource : public ServiceContainer<BleRemoteDeviceResource>
   /// we can then safely delete this instance as well.
   /// Relies on the fact that all children unregister themselves in their destructor.
   /// See 'delete_if_able'.
-  void make_deletable() override {
+  void delete_or_mark_for_deletion() override {
     state_ = DELETABLE;
     // Clears all services that haven't been given to the user yet.
     // We must be careful not to add new pending services, as there would be nothing
@@ -1120,7 +1120,7 @@ class BleAdapterResource : public BleResource, public Thread {
   /// we can then safely delete this instance as well.
   /// Relies on the fact that all children unregister themselves in their destructor.
   /// See 'delete_if_able'.
-  void make_deletable() override {
+  void delete_or_mark_for_deletion() override {
     state_ = CLOSED;
     delete_if_able();
   }
