@@ -50,6 +50,7 @@ main-peripheral:
     received += data.size
     print "Received $received bytes"
 
+  done := write-only-with-response.read
   print "all data received"
 
 find-device-with-service central/Central service/BleUuid -> any:
@@ -82,9 +83,12 @@ main-central:
   data := ByteArray PACKET-SIZE
   total-sent := 0
   List.chunk-up 0 TEST-BYTE-COUNT PACKET-SIZE: | _ _ chunk-size/int |
-    write-only.write data[..chunk-size] --flush=(total-sent + chunk-size >= TEST-BYTE-COUNT)
+    write-only.write data[..chunk-size]
     total-sent += chunk-size
     print "Sent $total-sent bytes."
 
-  print "All sent."
+  print "awaiting response"
+  write-only-with-response.write "done"
+
+  print "All done."
   adapter.close

@@ -2840,13 +2840,13 @@ PRIMITIVE(get_value) {
 }
 
 PRIMITIVE(write_value) {
-  ARGS(BleReadWriteElement, element, Blob, value, bool, with_response, bool, flush, bool, allow_retry)
+  ARGS(BleReadWriteElement, element, Blob, value, bool, with_response, bool, allow_retry)
 
   Locker locker(element->group()->mutex());
 
   if (!element->service()->device()) FAIL(INVALID_ARGUMENT);
 
-  if (with_response || flush) {
+  if (with_response) {
     if (!element->ensure_token()) FAIL(ALLOCATION_FAILED);
   }
 
@@ -2864,7 +2864,7 @@ PRIMITIVE(write_value) {
   if (error) return error;
 
   int err;
-  if (with_response || flush) {
+  if (with_response) {
     err = ble_gattc_write_long(
         element->service()->device()->handle(),
         element->handle(),
@@ -2893,7 +2893,7 @@ PRIMITIVE(write_value) {
     return nimble_stack_error(process, err);
   }
 
-  return Smi::from((with_response || flush) ? 1 : 0);
+  return Smi::from(with_response ? 1 : 0);
 }
 
 PRIMITIVE(handle) {
