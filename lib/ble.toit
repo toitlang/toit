@@ -210,7 +210,7 @@ class RemoteDescriptor extends RemoteReadWriteElement_ implements Attribute:
     $RemoteCharacteristic.mtu, and $RemoteDevice.mtu).
   */
   write value/io.Data -> none:
-    write_ value --expects-response=false --no-flush
+    write_ value --expects-response=false
 
   /**
   The handle of the descriptor.
@@ -283,17 +283,17 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
   /**
   Writes the value of the characteristic on the remote device.
 
-  If $flush is true, waits until the data has been written. If the characteristic
-    requires a response, then this flag is ignored and the function always
-    waits for the response.
+  For characteristics without response, the function returns as soon as
+    the data has been delivered to the BLE stack. Shutting down the adapter or
+    program too soon afterwards might lead to lost data.
   */
-  write value/io.Data --flush/bool=false -> none:
+  write value/io.Data -> none:
     if (properties & (CHARACTERISTIC-PROPERTY-WRITE
                       | CHARACTERISTIC-PROPERTY-WRITE-WITHOUT-RESPONSE)) == 0:
       throw "Characteristic does not support write"
 
     expects-response := (properties & CHARACTERISTIC-PROPERTY-WRITE) != 0
-    write_ value --expects-response=expects-response --flush=flush
+    write_ value --expects-response=expects-response
 
   /**
   Requests to subscribe on this characteristic.
@@ -1286,11 +1286,11 @@ class RemoteReadWriteElement_ extends Resource_:
   constructor .remote-service_ resource:
     super resource
 
-  write_ value/io.Data --expects-response/bool --flush/bool:
+  write_ value/io.Data --expects-response/bool:
     while true:
       remote-service_.device.resource-state_.clear-state READY-TO-SEND-WITHOUT-RESPONSE-EVENT_
       resource-state_.clear-state VALUE-WRITE-FAILED-EVENT_ | VALUE-WRITE-SUCCEEDED-EVENT_
-      result := ble-write-value_ resource_ value expects-response flush
+      result := ble-write-value_ resource_ value expects-response
       if result == 0:
         return // Write without response success.
       if result == 1: // Write with response.
@@ -1380,16 +1380,14 @@ ble-request-read_ resource:
 ble-get-value_ characteristic:
   #primitive.ble.get-value
 
-ble-write-value_ characteristic value with-response flush:
+ble-write-value_ characteristic value with-response:
   return ble-run-with-quota-backoff_: | last-attempt/bool |
-    ble-write-value__ characteristic value with-response flush (not last-attempt)
+    ble-write-value__ characteristic value with-response (not last-attempt)
 
-// Note that we need two arguments for 'with-response' and 'flush' as some backends
-// handle them differently.
-ble-write-value__ characteristic value/io.Data with-response flush allow-retry:
+ble-write-value__ characteristic value/io.Data with-response allow-retry:
   #primitive.ble.write-value:
     return io.primitive-redo-io-data_ it value: | bytes |
-      ble-write-value__ characteristic bytes with-response flush allow-retry
+      ble-write-value__ characteristic bytes with-response allow-retry
 
 ble-handle_ resource:
   #primitive.ble.handle
