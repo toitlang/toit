@@ -394,12 +394,14 @@ class BleReadWriteElement : public BleCallbackResource {
       , handle_(handle)
       , mbuf_received_(null)
       , mbuf_to_send_(null)
-      , read_handler_(null) {}
+      , read_handler_(null)
+      , write_handler_(null) {}
 
   ~BleReadWriteElement() override {
     if (mbuf_received_) os_mbuf_free_chain(mbuf_received_);
     if (mbuf_to_send_) os_mbuf_free(mbuf_to_send_);
-    toit_callback_deinit(true);  // TODO(florian): also deinit write request fields.
+    toit_callback_deinit(true);
+    toit_callback_deinit(false);
   }
 
   ble_uuid_any_t &uuid() { return uuid_; }
@@ -489,6 +491,7 @@ class BleReadWriteElement : public BleCallbackResource {
   os_mbuf* mbuf_received_;
   os_mbuf* mbuf_to_send_;
   ToitCallback* read_handler_;
+  ToitCallback* write_handler_;
 };
 
 class BleDescriptorResource;
@@ -1953,14 +1956,14 @@ void ToitCallback::handle_reply(os_mbuf* new_value) {
 }
 
 bool BleReadWriteElement::toit_callback_needs_value(bool for_read) const {
-  ASSERT(for_read);  // TODO(florian): implement write requests.
-  return read_handler_ != null && read_handler_->needs_value();
+  auto handler = for_read ? read_handler_ : write_handler_;
+  return handler != null && handler->needs_value();
 }
 
 bool BleReadWriteElement::toit_callback_init(int timeout_ms, bool for_read) {
-  ASSERT(for_read);  // TODO(florian): implement write requests.
-  ASSERT(read_handler_ == null);
-  auto mutex = OS::allocate_mutex(1, "Read request");
+  auto handler = for_read ? read_handler_ : write_handler_;
+  ASSERT(handler == null);
+  auto mutex = OS::allocate_mutex(1, for_read ? "Read request" : "Write request");
   if (!mutex) return false;
   auto condition = OS::allocate_condition_variable(mutex);
   if (!condition) {
@@ -1973,27 +1976,36 @@ bool BleReadWriteElement::toit_callback_init(int timeout_ms, bool for_read) {
     OS::dispose(mutex);
     return false;
   }
-  read_handler_ = callback;
+  if (for_read) {
+    read_handler_ = callback;
+  } else {
+    write_handler_ = callback;
+  }
   return true;
 }
 
 void BleReadWriteElement::toit_callback_deinit(bool for_read) {
-  ASSERT(for_read);  // TODO(florian): implement write requests.
-  if (read_handler_ == null) return;
-  read_handler_->delete_or_mark_for_deletion();
-  read_handler_ = null;
+  if (for_read) {
+    if (read_handler_ == null) return;
+    read_handler_->delete_or_mark_for_deletion();
+    read_handler_ = null;
+  } else {
+    if (write_handler_ == null) return;
+    write_handler_->delete_or_mark_for_deletion();
+    write_handler_ = null;
+  }
 }
 
 /// The Toit code gave us a value for the request.
 /// Signal the NimBLE thread that it should use it.
 void BleReadWriteElement::toit_callback_handle_reply(os_mbuf* mbuf, bool for_read) {
-  ASSERT(for_read);  // TODO(florian): implement write requests.
-  read_handler_->handle_reply(mbuf);
+  auto handler = for_read ? read_handler_ : write_handler_;
+  handler->handle_reply(mbuf);
 }
 
 bool BleReadWriteElement::toit_callback_is_setup(bool for_read) const {
-  ASSERT(for_read);  // TODO(florian): implement write requests.
-  return read_handler_ != null;
+  auto handler = for_read ? read_handler_ : write_handler_;
+  return handler != null;
 }
 
 void BleReadWriteElement::_on_attribute_read(const BleCallbackScope& scope,
@@ -2020,26 +2032,39 @@ void BleReadWriteElement::_on_attribute_read(const BleCallbackScope& scope,
 int BleReadWriteElement::_on_access(BleCallbackScope& scope, ble_gatt_access_ctxt* ctxt) {
   switch (ctxt->op) {
     case BLE_GATT_ACCESS_OP_READ_CHR:
-    case BLE_GATT_ACCESS_OP_READ_DSC:
-      if (mbuf_to_send() != null) {
-        return os_mbuf_appendfrom(ctxt->om, mbuf_to_send(), 0, mbuf_total_len(mbuf_to_send_));
-      } else {
-        auto callback = read_handler_;
-        if (callback == null) {
-          return BLE_ERR_OPERATION_CANCELLED;
+    case BLE_GATT_ACCESS_OP_READ_DSC: {
+      auto callback = read_handler_;
+      if (callback == null) {
+        if (mbuf_to_send() != null) {
+          return os_mbuf_appendfrom(ctxt->om, mbuf_to_send(), 0, mbuf_total_len(mbuf_to_send_));
+        } else {
+          // Complete without data.
+          return BLE_ERR_SUCCESS;
         }
+      } else {
         // Note that 'call_toit' will release the BLE lock.
         // It is thus unsafe to use 'this' after the call, as this instance might have
         // been deleted in the meantime.
         return callback->call_toit(scope, this, kBleDataReadRequest, ctxt);
       }
       break;
+    }
     case BLE_GATT_ACCESS_OP_WRITE_CHR:
-    case BLE_GATT_ACCESS_OP_WRITE_DSC:
+    case BLE_GATT_ACCESS_OP_WRITE_DSC: {
       set_mbuf_received(ctxt->om);
       ctxt->om = null;
-      BleEventSource::instance()->on_event(this, kBleDataReceived);
+      auto callback = write_handler_;
+      if (callback == null) {
+        // Notify any 'read' function that there is data.
+        BleEventSource::instance()->on_event(this, kBleDataReceived);
+      } else {
+        // Note that 'call_toit' will release the BLE lock.
+        // It is thus unsafe to use 'this' after the call, as this instance might have
+        // been deleted in the meantime.
+        return callback->call_toit(scope, this, kBleDataWriteRequest, ctxt);
+      }
       break;
+    }
     default:
       // Unhandled event, no dispatching.
       return 0;
@@ -3499,6 +3524,8 @@ PRIMITIVE(toit_callback_reply) {
 
   // We might throw if the callback is too late.
   if (!characteristic->toit_callback_needs_value(for_read)) FAIL(INVALID_STATE);
+
+  if (!for_read && value != process->null_object()) FAIL(INVALID_ARGUMENT);
 
   os_mbuf* mbuf = null;
   Object* error = object_to_mbuf(process, value, &mbuf);
