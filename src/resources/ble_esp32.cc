@@ -294,8 +294,8 @@ class BleCallbackResource : public BleResource {
 
 
   void* token() const {
-    if (token_ == kInvalidToken) FATAL("Ble Resource token wasn't set");
-    if (token_ == kDeletedToken) FATAL("Ble Resource token taken for deleted object");
+    if (token_ == kInvalidToken) FATAL("BleResource token wasn't set");
+    if (token_ == kDeletedToken) FATAL("BleResource token taken for deleted object");
     return reinterpret_cast<void*>(token_);
   }
 
@@ -303,7 +303,7 @@ class BleCallbackResource : public BleResource {
   /// This function should be called before the resource is registered for a
   /// NimBLE callback.
   bool ensure_token() {
-    if (token_ == kDeletedToken) FATAL("Ble Resource ensure token for deleted object");
+    if (token_ == kDeletedToken) FATAL("BleResource ensure token for deleted object");
     if (token_ == kInvalidToken) {
       uword token;
       bool succeeded = group()->token_resource_map.add(this, &token);
