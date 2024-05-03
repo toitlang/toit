@@ -71,7 +71,7 @@ class ServiceContainer : public BleResource {
     [_service_resource_index release];
   }
 
-  void make_deletable() override;
+  void delete_or_mark_for_deletion() override;
 
   virtual T* type() = 0;
   BleServiceResource* get_or_create_service_resource(CBService* service, bool can_create=false);
@@ -153,7 +153,7 @@ class BleServiceResource: public BleResource, public DiscoverableResource {
     [_characteristics_resource_index release];
   }
 
-  void make_deletable() override;
+  void delete_or_mark_for_deletion() override;
 
   CBService* service() { return _service; }
   BleRemoteDeviceResource* device() { return _device; }
@@ -670,7 +670,7 @@ BleServiceResource* ServiceContainer<T>::get_or_create_service_resource(CBServic
 }
 
 template<typename T>
-void ServiceContainer<T>::make_deletable() {
+void ServiceContainer<T>::delete_or_mark_for_deletion() {
   // Tearing down the resource group will also delete the services (resources) that
 	// this service container holds on to. We don't want to do that twice.
   if (!group()->is_tearing_down()) {
@@ -679,7 +679,7 @@ void ServiceContainer<T>::make_deletable() {
       group()->unregister_resource(services[i].resource);
     }
   }
-  BleResource::make_deletable();
+  BleResource::delete_or_mark_for_deletion();
 }
 
 BleCharacteristicResource* BleServiceResource::get_or_create_characteristic_resource(
@@ -695,14 +695,14 @@ BleCharacteristicResource* BleServiceResource::get_or_create_characteristic_reso
   return resource;
 }
 
-void BleServiceResource::make_deletable() {
+void BleServiceResource::delete_or_mark_for_deletion() {
   if (!group()->is_tearing_down()) {
     NSArray<BleResourceHolder*>* characteristics = [_characteristics_resource_index allValues];
     for (int i = 0; i < [characteristics count]; i++) {
       group()->unregister_resource(characteristics[i].resource);
     }
   }
-  BleResource::make_deletable();
+  BleResource::delete_or_mark_for_deletion();
 }
 
 NSString* ns_string_from_blob(Blob &blob) {
