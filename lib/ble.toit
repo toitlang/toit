@@ -836,10 +836,11 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
         finally:
           // Always reply.
           // If no value was set we store null.
-          // TODO(florian): would be nice to call "CANCELLED" if the block throws.
-          resource-state_.clear-state event
-          if state & (DATA_READ-REQUEST-EVENT_ | DATA-WRITE-REQUEST-EVENT_) != 0:
-            ble-callback-reply_ resource_ value for-read
+          // TODO(florian): would be nice to mark the callback as canceled if the block throws.
+          critical-do:
+            resource-state_.clear-state event
+            if state & (DATA_READ-REQUEST-EVENT_ | DATA-WRITE-REQUEST-EVENT_) != 0:
+              ble-callback-reply_ resource_ value for-read
     finally:
       // If the resource is already gone, then the corresponding callback data-structure
       // is already deallocated as well.
